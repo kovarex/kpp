@@ -1,0 +1,10 @@
+// spec: config::arch is the target's processor (Arch::X86_64 for windows, linux, freebsd and macos-x64; Arm64 for macos and linux-arm64), as config::platform is its system
+extern "C" int printf(const char* format, ...);
+int main()
+{
+  if constexpr (config::arch == Arch::X86_64)
+    printf("x86_64\n");
+  else
+    printf("arm64\n");
+  return 0;
+}

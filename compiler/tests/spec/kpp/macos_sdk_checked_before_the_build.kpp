@@ -1,0 +1,5 @@
+// spec: a good macOS SDK (11.3, with arm64's stubs) passes the check; kppc writes no Mach-O yet, which it says (stage 8's next steps change this snippet)
+// kppc: --target arm64-apple-macosx12.0 --sysroot {here}/macos_sdk_checked_before_the_build.sdk
+// exit: 2
+// error: --target macos: kppc writes no Mach-O programs yet (docs/design.md, "Targets and hosts", stage 8); the SDK is good
+int main() { return 0; }

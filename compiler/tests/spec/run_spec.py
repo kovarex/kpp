@@ -9,7 +9,8 @@ snippet says what it is about:
     // pending: no generic lambdas yet           (a known gap: the snippet is expected to fail)
     // pending on windows linux: why            (a known gap of those targets alone: windows, windows-gnu, linux, freebsd)
     // kppc: --release                           (kppc options this snippet is always built with: a
-                                                  gap that only one configuration shows)
+                                                  gap that only one configuration shows; {here} is the
+                                                  snippet's directory)
     // error: static assertion failed            (the program must not compile, and the compiler's
                                                   output must say this; one line per expected error)
     // warning: long is C's type                 (the program compiles, runs and prints its .expected, and the
@@ -20,7 +21,8 @@ snippet says what it is about:
     // run: alpha "two words"                    (built and run in one step by `kppc --run snippet ARGS`)
     // test: --filter parse                      (the snippet's tests run by `kppc --test snippet -- ARGS`, from
                                                   the snippet's directory: the paths printed are its name)
-    // exit: 3                                   (the program's exit code; 0 or 1 when not given)
+    // exit: 3                                   (the program's exit code; 0 or 1 when not given; with error
+                                                  lines, the compiler's, 1 when not given)
     // target: windows (why)                     (the snippet is about that target alone: skipped for others;
                                                   windows has windows-gnu too, windows-msvc is MSVC's ABI alone)
 
@@ -260,6 +262,8 @@ def run_one(path):
 
 def build_and_run(path, area, name, work):
     info = header(path)
+    # (`{here}` in a `kppc:` line is the snippet's directory: a path beside it, as a fake SDK)
+    info["kppc"] = info["kppc"].replace("{here}", os.path.dirname(os.path.abspath(path)).replace("\\", "/"))
     exe = os.path.join(work, f"{area}.{name}.exe")
     # (a snippet's own --modules wins: the ones about splitting a program ask for 64 or 128)
     modules = [] if "--modules" in shlex.split(info["kppc"]) else ["--modules", "4"]
@@ -305,9 +309,14 @@ def build_and_run(path, area, name, work):
         # A snippet that must not compile: every expected error is in the compiler's output.
         output = c.stdout + c.stderr
         missing = [e for e in info["errors"] if e not in output]
+        # (an error of the command line or the target's tools before any source is read is exit code 2:
+        # `// exit: 2`)
+        want = int(info["exit"]) if info["exit"] is not None else 1
         if c.returncode == 0:
             result["status"] = "FAIL"; result["note"] = f"compiled, but the error `{info['errors'][0]}` was expected"
-        elif c.returncode != 1:
+        elif c.returncode != want and c.returncode in (1, 2):
+            result["status"] = "FAIL"; result["note"] = f"the compiler exited with {c.returncode}, not {want}"
+        elif c.returncode != want:
             result["status"] = "FAIL"; result["note"] = f"the compiler crashed (exit 0x{c.returncode & 0xFFFFFFFF:X})"
         elif missing:
             result["status"] = "FAIL"; result["note"] = f"no error `{missing[0]}`; the first complaint: " + (first_complaint(output) or "none")

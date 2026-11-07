@@ -1,0 +1,6 @@
+// spec: a --sysroot for macOS that is no macOS SDK (no SDKSettings.json: here the snippets' own directory) is refused with what to have instead
+// kppc: --target macos --sysroot {here}
+// exit: 2
+// error: has no SDKSettings.json: it is no macOS SDK.
+// error: A macOS SDK is a directory such as MacOSX.sdk.
+int main() { return 0; }

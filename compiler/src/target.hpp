@@ -12,15 +12,26 @@ struct Target
     Windows,
     Linux,
     FreeBSD,
+    Mac,
+  };
+  // The processor: config::arch (design.md, "Targets and hosts" 1).
+  enum class Arch
+  {
+    X86_64,
+    Arm64,
   };
 
   bool windows() const { return os == Os::Windows; }
   bool msvc() const { return os == Os::Windows && !gnu; } // Visual Studio's headers, libraries and link.exe
   bool posix() const { return os != Os::Windows; }
+  bool mac() const { return os == Os::Mac; } // Mach-O, ld64.lld, the SDK (--sysroot or SDKROOT)
+  bool arm64() const { return arch == Arch::Arm64; }
+  const char* archName() const { return arch == Arch::Arm64 ? "arm64" : "x86_64"; } // sysroots' suffix, the SDK's .tbd name
   // ELF's data layout differs from COFF's only in the name mangling (`m:e`).
   static constexpr const char* elfX86_64Layout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
 
   Os os = Os::Windows;
+  Arch arch = Arch::X86_64;
   std::string name = "windows"; // the short name (--target's, the reports')
   std::string triple = "x86_64-pc-windows-msvc";
   std::string dataLayout = "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
@@ -34,7 +45,7 @@ struct Target
 // enumerator (Platform::FreeBSD, the enumeration <config> declares in this order) and the short name
 // --target, the sysroots (sysroots\freebsd-x86_64), build.kpp's systemLibrary(NAME, PLATFORM) and the
 // reports use (freebsd). Project.kpp reads the short name through config::platformName, which <config>
-// writes from this table too (main.cpp, configSource). Mac is no --target yet.
+// writes from this table too (main.cpp, configSource). Mac's --target names are macos and macos-x64.
 struct PlatformName
 {
   const char* enumerator;
@@ -43,8 +54,10 @@ struct PlatformName
 inline constexpr PlatformName platformNames[] = {{"Windows", "windows"}, {"Linux", "linux"}, {"Mac", "mac"}, {"FreeBSD", "freebsd"}};
 inline const PlatformName& platformOf(Target::Os os)
 {
-  return platformNames[os == Target::Os::Linux ? 1 : os == Target::Os::FreeBSD ? 3 : 0];
+  return platformNames[os == Target::Os::Linux ? 1 : os == Target::Os::Mac ? 2 : os == Target::Os::FreeBSD ? 3 : 0];
 }
+// config::arch's enumeration (Arch::X86_64, <config> declares it in this order).
+inline constexpr const char* archEnumerators[] = {"X86_64", "Arm64"};
 
 // --target's value: a short name or a triple. False, with why, for one kppc does not build for (yet).
 inline bool targetNamed(std::string_view name, Target& out, std::string& why)
@@ -83,10 +96,33 @@ inline bool targetNamed(std::string_view name, Target& out, std::string& why)
     out = t;
     return true;
   }
-  if (name == "linux-arm64" || name.starts_with("aarch64") || name.starts_with("arm64") || name == "macos" || name == "macos-x64" || name.find("apple") != std::string_view::npos)
-    why = "comes with a later stage (docs/design.md, \"Targets and hosts\": AArch64 is stage 7, macOS stage 8)";
+  // macOS (stage 8): arm64 from macOS 11.0, x86-64 from 10.15 (design.md Q6), built against a macOS SDK
+  // the user supplies (--sysroot or SDKROOT, checked by the driver: checkMacSdk). A triple names the
+  // architecture; the oldest system is kpp's whatever version it says.
+  bool apple = name.find("-apple-macos") != std::string_view::npos || name.find("-apple-darwin") != std::string_view::npos;
+  if (name == "macos" || (apple && (name.starts_with("arm64-") || name.starts_with("aarch64-"))))
+  {
+    t.os = Target::Os::Mac;
+    t.arch = Target::Arch::Arm64;
+    t.name = "macos";
+    t.triple = "arm64-apple-macosx11.0.0";
+    t.dataLayout = "e-m:o-i64:64-i128:128-n32:64-S128-Fn32";
+    out = t;
+    return true;
+  }
+  if (name == "macos-x64" || (apple && name.starts_with("x86_64-")))
+  {
+    t.os = Target::Os::Mac;
+    t.name = "macos-x64";
+    t.triple = "x86_64-apple-macosx10.15.0";
+    t.dataLayout = "e-m:o-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+    out = t;
+    return true;
+  }
+  if (name == "linux-arm64" || name.starts_with("aarch64") || name.starts_with("arm64"))
+    why = "comes with a later stage (docs/design.md, \"Targets and hosts\": AArch64 is stage 7)";
   else
-    why = "is no target kppc knows (windows, windows-gnu, linux, freebsd)";
+    why = "is no target kppc knows (windows, windows-gnu, linux, freebsd, macos, macos-x64)";
   return false;
 }
 

@@ -1,0 +1,6 @@
+// spec: a macOS SDK older than 11.0 (the first with arm64) is refused with what to have instead; its version is SDKSettings.json's
+// kppc: --target macos-x64 --sysroot {here}/macos_sdk_too_old_is_explained.sdk
+// exit: 2
+// error: --target macos-x64 needs a macOS SDK, version 11.0 or newer: it is version 10.15, older than 11.0.
+// error: Then give it to kppc: --sysroot DIR, or the environment variable SDKROOT.
+int main() { return 0; }

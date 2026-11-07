@@ -36,6 +36,11 @@ namespace platform
   const i32 mutexWords = 5;
   const i32 conditionWords = 6;
   const i32 rwlockWords = 7;
+  // The first word of PTHREAD_MUTEX_INITIALIZER, _COND_ and _RWLOCK_ (Lock, Condition, SharedLock):
+  // glibc's are zeroes throughout.
+  const u64 mutexSignature = 0;
+  const u64 conditionSignature = 0;
+  const u64 rwlockSignature = 0;
   // sysconf's name for the processors online (bits/confname.h).
   const i32 scNprocessorsOnln = 84;
   // A thread's pthread_t from the handle startThread gave.

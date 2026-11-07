@@ -120,6 +120,11 @@ std::filesystem::path defaultStdlib(const std::filesystem::path& compiler);
 // tests\targets.ps1 make them in compiler\build\sysroots for a build of kppc). "" when there is none.
 // what is the sysroot's own description (its kpp-sysroot.txt: "FreeBSD 14.3-RELEASE ..."), if any.
 std::filesystem::path defaultSysroot(const std::filesystem::path& compiler, const char* name, std::string* what = nullptr);
+// What is wrong with sdk as the macOS SDK of a build for a Mac (arch "arm64" or "x86_64"), "" when
+// nothing: a directory whose SDKSettings.json says version 11.0 or newer, with usr/include/stdio.h and a
+// usr/lib/libSystem.tbd that lists the architecture (design.md, "Targets and hosts", Q7: each user
+// supplies one, and kppc says what to have when it is missing or wrong).
+std::string macSdkProblem(const std::string& sdk, const char* arch);
 // The official libraries kpp brings (libraries\ beside stdlib\: a release's, or a checkout's for a
 // build of kppc), where use("NAME") looks last (docs/build.md, "kpp libraries").
 std::filesystem::path defaultLibraries(const std::filesystem::path& compiler);

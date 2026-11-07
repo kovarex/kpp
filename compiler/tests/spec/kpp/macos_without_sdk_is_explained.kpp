@@ -1,0 +1,7 @@
+// spec: a build for macOS without a macOS SDK (an empty --sysroot is none: the FreeBSD run passes its own) says what to have and where it comes from (each user supplies one: design.md, "Targets and hosts", Q7), never a header clang cannot find
+// kppc: --target macos --sysroot ""
+// exit: 2
+// error: --target macos needs a macOS SDK, version 11.0 or newer: none was given (neither --sysroot nor SDKROOT).
+// error: On a Mac, `xcrun --show-sdk-path` prints the one that Xcode or the
+// error: Then give it to kppc: --sysroot DIR, or the environment variable SDKROOT.
+int main() { return 0; }

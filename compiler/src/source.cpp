@@ -583,6 +583,58 @@ std::filesystem::path defaultSysroot(const std::filesystem::path& compiler, cons
   return root;
 }
 
+std::string macSdkProblem(const std::string& sdk, const char* arch)
+{
+  namespace fs = std::filesystem;
+  std::error_code ec;
+  fs::path root(sdk);
+  if (!fs::is_directory(root, ec))
+    return "there is no directory " + sdk;
+  std::string settings;
+  if (!readFile(root / "SDKSettings.json", settings))
+    return sdk + " has no SDKSettings.json: it is no macOS SDK";
+  // ({"CanonicalName":"macosx11.0", ..., "Version":"11.0", ...})
+  size_t at = settings.find("\"Version\"");
+  if (at != std::string::npos)
+    at = settings.find_first_not_of(" \t\r\n", at + 9);
+  if (at != std::string::npos && settings[at] == ':')
+    at = settings.find_first_not_of(" \t\r\n", at + 1);
+  if (at == std::string::npos || settings[at] != '"' || at + 1 >= settings.size() || !isdigit((unsigned char)settings[at + 1]))
+    return "its SDKSettings.json names no version";
+  std::string version = settings.substr(at + 1, settings.find('"', at + 1) - at - 1);
+  if (atoi(version.c_str()) < 11)
+    return "it is version " + version + ", older than 11.0";
+  if (!fs::is_regular_file(root / "usr" / "include" / "stdio.h", ec))
+    return "it has no usr/include/stdio.h";
+  std::string tbd;
+  if (!readFile(root / "usr" / "lib" / "libSystem.tbd", tbd))
+    return "it has no usr/lib/libSystem.tbd";
+  // The architectures it links for: a text stub's `targets: [ x86_64-macos, arm64-macos, arm64e-macos ]`
+  // (version 4; a long list goes on over lines), or `archs: [ x86_64, arm64e ]` (version 3).
+  std::string want = arch, wantTarget = want + "-macos";
+  for (const char* key : {"targets:", "archs:"})
+    for (size_t at = tbd.find(key); at != std::string::npos; at = tbd.find(key, at + 1))
+    {
+      size_t open = tbd.find_first_not_of(" \t", at + strlen(key)), close = tbd.find(']', at);
+      if (open == std::string::npos || tbd[open] != '[' || close == std::string::npos)
+        continue;
+      std::string word;
+      for (size_t i = open + 1; i <= close; ++i)
+      {
+        char c = tbd[i];
+        if (c == ',' || c == ']' || c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\'' || c == '"')
+        {
+          if (word == want || word == wantTarget)
+            return "";
+          word.clear();
+        }
+        else
+          word += c;
+      }
+    }
+  return "its usr/lib/libSystem.tbd lists no " + want + " (it is for other processors)";
+}
+
 namespace
 {
   std::string chosenClang; // --toolchain's (selectToolchain), for this build

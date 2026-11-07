@@ -106,12 +106,21 @@ namespace platform
   // --- Threads and locks (Thread.kpp, SharedPtr.kpp) ---
 
   // A lock for one thread at a time (Mutex, the library's own locks): a pthread_mutex_t of the C
-  // library's size, zeroed, which both C libraries take for PTHREAD_MUTEX_INITIALIZER (FreeBSD's
-  // allocates its mutex on first use, which pthread_mutex_destroy releases).
+  // library's size, set as PTHREAD_MUTEX_INITIALIZER: zeroes but for its first word, mutexSignature
+  // (glibc's and FreeBSD's are all zeroes; FreeBSD's allocates its mutex on first use, which
+  // pthread_mutex_destroy releases). macOS's initializers start with a signature (pthread_impl.h's
+  // _PTHREAD_MUTEX_SIG_init 0x32AAABA7, _PTHREAD_COND_SIG_init 0x3CB0B1BB, _PTHREAD_RWLOCK_SIG_init
+  // 0x2DA8B3B4; 64, 48 and 200 bytes), without which a zeroed lock is no lock there: each platform
+  // file says its signatures, none has a default.
   class Lock
   {
   public:
-    Lock() { memset(this->storage, 0, sizeof(this->storage)); }
+    Lock()
+    {
+      memset(this->storage, 0, sizeof(this->storage));
+      this->storage[0] = mutexSignature;
+    }
+
     posix::pthread_mutex_t* mutex() { return (posix::pthread_mutex_t*)this->storage; }
     Lock(const Lock&) = delete;
     Lock& operator=(const Lock&) = delete;
@@ -125,12 +134,17 @@ namespace platform
     u64 storage[mutexWords];
   };
 
-  // A lock for one writer or many readers (SharedMutex, Atomic<SharedPtr>): a pthread_rwlock_t,
-  // zeroed as PTHREAD_RWLOCK_INITIALIZER.
+  // A lock for one writer or many readers (SharedMutex, Atomic<SharedPtr>): a pthread_rwlock_t, set
+  // as PTHREAD_RWLOCK_INITIALIZER (rwlockSignature, then zeroes).
   class SharedLock
   {
   public:
-    SharedLock() { memset(this->storage, 0, sizeof(this->storage)); }
+    SharedLock()
+    {
+      memset(this->storage, 0, sizeof(this->storage));
+      this->storage[0] = rwlockSignature;
+    }
+
     posix::pthread_rwlock_t* rwlock() { return (posix::pthread_rwlock_t*)this->storage; }
     SharedLock(const SharedLock&) = delete;
     SharedLock& operator=(const SharedLock&) = delete;
@@ -147,12 +161,17 @@ namespace platform
     u64 storage[rwlockWords];
   };
 
-  // A condition variable that waits with a Lock: a pthread_cond_t, zeroed as PTHREAD_COND_INITIALIZER
-  // (its clock the realtime one).
+  // A condition variable that waits with a Lock: a pthread_cond_t, set as PTHREAD_COND_INITIALIZER
+  // (conditionSignature, then zeroes; its clock the realtime one).
   class Condition
   {
   public:
-    Condition() { memset(this->storage, 0, sizeof(this->storage)); }
+    Condition()
+    {
+      memset(this->storage, 0, sizeof(this->storage));
+      this->storage[0] = conditionSignature;
+    }
+
     posix::pthread_cond_t* cond() { return (posix::pthread_cond_t*)this->storage; }
     Condition(const Condition&) = delete;
     Condition& operator=(const Condition&) = delete;

@@ -497,6 +497,27 @@ int compile(int argc, char** argv)
     // one that comes with kppc, sysroots\freebsd-x86_64 or linux-x86_64 beside it (a release brings
     // FreeBSD's: `--target freebsd` works as installed, 2026-11-04). A link without either is an error
     // naming where it looked; an --emit-llvm build needs none.
+    // A Mac's: the macOS SDK the user supplies (Q7), --sysroot or SDKROOT, checked before any work: when
+    // it is missing or wrong, what to have and where it comes from, never a header clang cannot find.
+    if (options.target.mac())
+    {
+      if (options.sysroot.empty() && getenv("SDKROOT") && *getenv("SDKROOT"))
+        options.sysroot = getenv("SDKROOT");
+      std::string problem = options.sysroot.empty() ? "none was given (neither --sysroot nor SDKROOT)" : macSdkProblem(options.sysroot, options.target.archName());
+      if (!problem.empty())
+      {
+        fprintf(stderr,
+                "--target %s needs a macOS SDK, version 11.0 or newer: %s.\n"
+                "  A macOS SDK is a directory such as MacOSX.sdk. On a Mac, `xcrun --show-sdk-path` prints the one that Xcode or the\n"
+                "  Command Line Tools installed; copy that directory to this machine.\n"
+                "  Then give it to kppc: --sysroot DIR, or the environment variable SDKROOT.\n",
+                options.target.name.c_str(), problem.c_str());
+        return 2;
+      }
+      fprintf(stderr, "--target %s: kppc writes no Mach-O programs yet (docs/design.md, \"Targets and hosts\", stage 8); the SDK is good\n",
+              options.target.name.c_str());
+      return 2;
+    }
     if (options.target.posix() && options.sysroot.empty())
     {
       std::string name = std::string(platformOf(options.target.os).name) + "-x86_64";
@@ -525,6 +546,15 @@ int compile(int argc, char** argv)
     else if (options.configValues["platform"].text != platform)
     {
       fprintf(stderr, "--config platform=%s: the platform is the target's (--target), %s\n", options.configValues["platform"].text.c_str(), platform);
+      return 2;
+    }
+    // config::arch is the target's too.
+    const char* arch = archEnumerators[size_t(options.target.arch)];
+    if (!options.configValues.count("arch"))
+      options.configValues["arch"] = parseConfigValue(arch);
+    else if (options.configValues["arch"].text != arch)
+    {
+      fprintf(stderr, "--config arch=%s: the architecture is the target's (--target), %s\n", options.configValues["arch"].text.c_str(), arch);
       return 2;
     }
     // config::mingw: Windows' GNU dialect (windows-gnu), whose C runtime's headers are MinGW-w64's

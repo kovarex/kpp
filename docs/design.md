@@ -3993,10 +3993,8 @@ The semantics of section 9 hold on every target:
         enumerators.
     - Before this, FreeBSD 14.3's ucontext_t imported as 360 bytes, not 880 (2026-11-03).
 - **macOS targets.** Built on Windows and Linux in this stage (kovarex, 2026-11-06), as "any host
-  builds any target" has it (2026-11-02): ld64.lld and the SDK's headers and stubs. The proposal of
-  2026-10-31 built them on a Mac instead (Xcode's command-line tools' clang, ld64 and the SDK), because
-  Apple's SDK licence ties its use to Apple hardware: that is Q7 below. Running them still takes a
-  Mac or CI's macOS runners (Q5).
+  builds any target" has it (2026-11-02): ld64.lld and the SDK's headers and stubs, the SDK supplied by
+  each user (Q7). Running them takes CI's macOS runners (Q5).
 - **Windows target from another host:** lld-link and the Windows SDK's import libraries and UCRT
   headers. That is not needed for the minimum: Windows builds on Windows.
 - **Finding the toolchain:**
@@ -4500,6 +4498,30 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   host (host.cpp has its executable path and machine description; nothing tested), FreeBSD as a
   host (the same), and a release for Linux (packaging, E's).
 
+### Stage 8, step M0: the macOS targets and the SDK check (2026-11-07, thread I)
+
+- `--target macos` is `arm64-apple-macosx11.0.0` (data layout `e-m:o-...-Fn32`), `macos-x64`
+  `x86_64-apple-macosx10.15.0` (Q6; Factorio's own x86-64 release says 10.13, which is for kovarex to
+  decide), and a triple `arm64-apple-macos...`, `-darwin...` or `x86_64-apple-...` names one of them by its
+  processor: the oldest system is kpp's, whatever version the triple says. `config::platform` is
+  `Platform::Mac`, and `config::arch` is new on every target: `Arch::X86_64` or `Arch::Arm64` (an
+  enumeration beside Platform; `--config arch=` must agree with the target).
+- **The SDK (Q7):** `--sysroot DIR`, else `SDKROOT`; nothing is looked for beside kppc. Before any
+  work kppc checks that the directory's SDKSettings.json says version 11.0 or newer (the first with
+  arm64), that it has usr/include/stdio.h, and that usr/lib/libSystem.tbd lists the target's processor
+  (a text stub's `targets:` or `archs:`). Otherwise one message: what was wrong, what a macOS SDK is,
+  where one comes from (`xcrun --show-sdk-path` on a Mac, Xcode's or the Command Line Tools'; copied to
+  this machine) and the two ways to give it. Specs kpp/macos_without_sdk_is_explained,
+  macos_sdk_too_old_is_explained, macos_sdk_lacks_the_architecture_is_explained,
+  macos_not_an_sdk_is_explained (fake SDKs beside them: the spec runner's `{here}`), and
+  macos_sdk_checked_before_the_build: with a good SDK kppc says it writes no Mach-O yet (M2 and M3
+  change that), never a silent build of something else.
+- **Locks ahead of M7:** a zeroed pthread_mutex_t, pthread_cond_t or pthread_rwlock_t is no lock on
+  macOS (its initializers start with a signature: 0x32AAABA7, 0x3CB0B1BB, 0x2DA8B3B4; 64, 48 and
+  200 bytes). The library's Lock, Condition and SharedLock now set their first word to the platform
+  file's `mutexSignature`, `conditionSignature` and `rwlockSignature` (0 on glibc and FreeBSD), which
+  each platform file must declare.
+
 ### Questions for kovarex
 
 - **Q1:** `long` on LP64 targets: decided 2026-11-01, "Distinct fixed types, deprecate long" (above).
@@ -4508,9 +4530,10 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   (both 2026-11-03, stage 6 above). How tests run there: a FreeBSD VM in CI and one smoke run on
   NFS, proposed and agreed with the coordinator; the CI job is still to be set up.
 - **Q4:** decided 2026-11-03: FreeBSD 14, the one NFS runs, linked statically.
-- **Q5:** (to decide when macOS comes, kovarex 2026-11-01) CI for macOS (arm64 and x86-64) and Linux arm64 on GitHub's runners. macOS minutes cost
-  10 times Linux's on a private repository. The alternative is a Mac he has, as a self-hosted
-  runner.
+- **Q5:** decided 2026-11-07 (kovarex): the macOS programs kpp builds run on GitHub's macOS runners,
+  arm64 and x86-64; building stays on Windows and Linux, never on macOS: a Windows or Linux job builds
+  the specs and tests, a macOS job runs them. Linux arm64 works the same way later (ubuntu arm64
+  runners).
 - **Q6:** decided 2026-11-04 (kovarex: "the targets are ok as they are"; accepted again 2026-11-06): the oldest systems a
   kpp program runs on are Windows 10 x64, FreeBSD 14, glibc 2.31 (Debian 11, Ubuntu 20.04; Steam's
   Linux runtime "sniper" is Debian 11) and, when macOS work starts, macOS 11.0 arm64 and 10.15
@@ -4520,10 +4543,9 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   (tools/sysroot/linux.ps1, as freebsd.ps1 is: pinned packages checked by their SHA-256, from
   bullseye's signed index); a hello world and an uncaught exception linked with it need no glibc
   symbol newer than GLIBC_2.14.
-- **Q7:** (open, 2026-11-06) building macOS targets on Windows and Linux needs Apple's SDK headers and
-  stubs off a Mac. That the SDK's licence ties its use to Apple hardware is this section's reading of
-  2026-10-31, unchecked. Whether a release may bring a macOS sysroot, as it brings FreeBSD's, or each
-  user supplies one, is to be decided before that work starts.
+- **Q7:** decided 2026-11-07 (kovarex): each user supplies the macOS SDK (a release brings none); when
+  it is missing or wrong, kppc says what to have, where it comes from and how to give it (stage 8's M0,
+  below).
 
 ## Open questions
 - **Syntax must be parseable without name lookup.** C++ needs to know whether a name is a type
@@ -4552,7 +4574,7 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   2026-11-06: none). Q2 (`--filter`), Q3 (the runner's isolation and parallelism) and Q4 (native
   tests) are settled by 8.7.
 
-- **Targets and hosts** (the section above, 2026-10-31): Q1 `long` on LP64 targets (decided 2026-11-01), Q2 `wchar_t`, Q3 a FreeBSD sysroot (14.3, OK'd 2026-11-03) and a way to run tests there, Q4 the FreeBSD version (14, decided 2026-11-03), Q5 CI for macOS and Linux arm64, Q6 the minimum OS versions (decided 2026-11-04), Q7 the macOS SDK off a Mac.
+- **Targets and hosts** (the section above, 2026-10-31): Q1 `long` on LP64 targets (decided 2026-11-01), Q2 `wchar_t`, Q3 a FreeBSD sysroot (14.3, OK'd 2026-11-03) and a way to run tests there, Q4 the FreeBSD version (14, decided 2026-11-03), Q5 CI for macOS and Linux arm64 (decided 2026-11-07), Q6 the minimum OS versions (decided 2026-11-04), Q7 the macOS SDK off a Mac (decided 2026-11-07).
 
 - **How a build is described** ([build.md](build.md), "Questions for kovarex"): whether the
   repository's `kppc.exe` takes the released name `kpp`. Settled: debug information in release builds
