@@ -163,7 +163,8 @@ namespace projects
     bool posix() const { return platform != "windows"; }
 
     std::string platform = "windows"; // windows, linux, freebsd: platformNames' short names
-    std::string triple;               // clang's --target, off Windows
+    bool gnu = false;                 // windows-gnu: Windows' GNU dialect (llvm-mingw's clang), not MSVC's
+    std::string triple;               // clang's --target, off Windows and for windows-gnu
     std::string sysroot;              // off Windows; empty when there is none
   };
 
@@ -231,7 +232,7 @@ namespace projects
   fs::path libraryDirectory(const fs::path& root, const CLibrary& c, const std::vector<std::string>& cFlags, const std::string& platform = "windows");
   std::vector<fs::path> libraryFiles(const fs::path& root, const CLibrary& c, const std::vector<std::string>& cFlags,
                                      const std::string& platform = "windows");
-  std::vector<std::string> cppRuntimeLibraries(const fs::path& root, const CLibrary& c, const std::string& platform);
+  std::vector<std::string> cppRuntimeLibraries(const fs::path& root, const CLibrary& c, const std::string& platform, bool gnu);
   fs::file_time_type modified(const fs::path& path);
   std::vector<fs::path> resourceInputs(const fs::path& script);
   bool upToDate(const fs::path& object, const fs::path& dependencies, std::unordered_map<std::string, fs::file_time_type>& times);

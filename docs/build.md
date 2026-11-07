@@ -1078,7 +1078,9 @@ on a Windows with no Visual Studio, Build Tools or Windows SDK.
   variant for x86-64): clang and lld of LLVM 19.1.7 with MinGW-w64's headers and import libraries,
   which link the UCRT's ucrtbase.dll that every Windows 10 and 11 has. Its `bin\` is next to kpp.exe
   in an installation. `tools\sysroot\llvm-mingw.ps1` downloads the pinned release once (SHA-256
-  checked) into build\llvm-mingw, for the tests and the package. Licences: LLVM's Apache-2.0 WITH
+  checked) into build\llvm-mingw, for the tests and the package; `tools/sysroot/llvm-mingw.sh` the same
+  release's Linux build into build/llvm-mingw-linux, with which kppc on Linux builds windows-gnu
+  programs (KPP_CLANG=ROOT/bin/clang; design.md, stage 5). Licences: LLVM's Apache-2.0 WITH
   LLVM-exception, MinGW-w64's headers and libraries public domain or ZPL (the DirectX headers from
   Wine LGPL-2.1+), llvm-mingw's own scripts ISC.
 - **Windows' GNU dialect** (`--target windows-gnu`, the bundled toolchain's own): the same ABI, data

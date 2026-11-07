@@ -39,7 +39,7 @@ std::string gnuRuntime(const Options& options)
   std::filesystem::path tools = std::filesystem::path(clangPath()).parent_path();
   std::string lib = madeOnce("libkpp_ucrt", ".a", def, options, [&](const std::string& in, const std::string& out)
   {
-    return "\"" + (tools / "llvm-dlltool.exe").string() + "\" -m i386:x86-64 -d \"" + in + "\" -l \"" + out + "\"";
+    return "\"" + (tools / (std::string("llvm-dlltool") + host::executableSuffix())).string() + "\" -m i386:x86-64 -d \"" + in + "\" -l \"" + out + "\"";
   });
   std::string object = madeOnce("kpp_long_double", ".o", longDouble, options, [&](const std::string& in, const std::string& out)
   {

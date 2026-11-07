@@ -4461,8 +4461,27 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   and Ninja builds kppc, `kppc --run` builds and runs hello world, and the spec runs natively. First
   green on master at b644530d: spec ALL PASSED (1375 pass, 2 pending, 22 skipped for linux, the
   Windows-only snippets and the compile server's steps).
-- **Not yet:** the compile server and the language server on POSIX (a Unix socket, A's; F's), kpp's
-  C libraries built on a Linux host (CLibraryBuild names llvm-ar.exe and llvm-lib.exe), macOS as a
+- **Windows programs from a Linux host** (kovarex 2026-11-07, stage 1: Factorio's Windows exe built
+  on Linux, "as long as it is not extremely difficult"): `--target windows-gnu` with llvm-mingw's
+  Linux build of the bundled toolchain's release (`tools/sysroot/llvm-mingw.sh`, pinned and SHA-256
+  checked, through KPP_CLANG or as an installation's bin/). What it took:
+  - the UCRT import library's llvm-dlltool and the C libraries' llvm-ar named with the host's
+    executable suffix, not `.exe`;
+  - the C libraries' dialect chosen by the target (windows-gnu: clang's GNU driver with
+    `--target=x86_64-w64-windows-gnu`), not by whether the toolchain is the bundled one: KPP_CLANG
+    naming llvm-mingw's clang built them with clang-cl's flags;
+  - Windows' headers found without case, as on Windows: MinGW-w64's are lower case, and Windows code
+    includes `<Windows.h>`, `<WinSock2.h>` (25 of Factorio's files, the converted game's C imports
+    and its C libraries). On a host whose file names have case, kppc writes a clang VFS overlay of
+    the toolchain's system include directories, every file listed with `'case-sensitive': 'false'`
+    (one that only remaps a directory looks inside it as it is), made once per toolchain and target
+    in the imports' cache, and passes `-ivfsoverlay` to the C import and the C libraries' compiles
+    (source.cpp's headerCaseOverlay);
+  - the code generator's threads on 1 GB stacks on every host (`host::startOnLargeStack`), as on
+    Windows: a Linux thread's default 8 MB is less than the game's deepest code needs.
+  CI's linux_host job builds hello world and tests/targets/clibrary (whose Windows library and C
+  import include `<WinSock2.h>` and `<Windows.h>`) for windows-gnu, in debug and release.
+- **Not yet:** the compile server and the language server on POSIX (a Unix socket, A's; F's), macOS as a
   host (host.cpp has its executable path and machine description; nothing tested), FreeBSD as a
   host (the same), and a release for Linux (packaging, E's).
 

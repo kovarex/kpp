@@ -44,6 +44,24 @@ foreach ($lto in @(), @('--lto', 'full'))
   $out = (& "$work\startup.exe" | Out-String).Trim() -replace "`r", ''
   if ($out -ne (Get-Content -Raw "$startup.expected").Trim().Replace("`r", '')) { $failed += "startup order in a release build $lto" }
 }
+# A project with C libraries (tests/targets/clibrary: a C file, a C++ file, Windows' own library with
+# <WinSock2.h> and <Windows.h>), built in GNU's dialect with --target=x86_64-w64-windows-gnu, its C++
+# file's libc++ and libunwind linked from their archives (Project/CLibraryBuild.cpp: none were, and
+# operator delete and __cxa_throw were undefined; KPP_CLANG naming llvm-mingw built clang-cl objects).
+$project = Join-Path $work 'clibrary'
+if (Test-Path $project) { cmd /c rd /s /q $project }
+Copy-Item -Recurse "$PSScriptRoot\targets\clibrary" $project
+Push-Location $project
+try
+{
+  foreach ($configuration in 'debug', 'release')
+  {
+    & $Kppc $configuration --no-server --target windows-gnu > "$work\clibrary.$configuration.txt" 2>&1
+    $out = if (Test-Path "build\$configuration\app.exe") { (& "build\$configuration\app.exe" | Out-String).Trim() } else { '' }
+    if ($out -ne '42 windows 10') { $failed += "the C library project ($configuration): '$out' ($work\clibrary.$configuration.txt)" }
+  }
+}
+finally { Pop-Location }
 foreach ($f in $failed) { "FAIL windows-gnu $f" }
-if (-not $failed.Count) { "ok   windows-gnu: $passed end-to-end programs, and the .natvis in a --debug-info build's PDB" }
+if (-not $failed.Count) { "ok   windows-gnu: $passed end-to-end programs, the .natvis in a --debug-info build's PDB, a project's C libraries" }
 exit $failed.Count

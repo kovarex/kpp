@@ -15,9 +15,13 @@ void build(Project& project)
   CLibrary& kernel = project.cLibrary("kernel");
   kernel.source("kernel", Platform::Linux);
   kernel.include("=/usr/include/linux", Platform::Linux);
+  // Windows' own library, its headers spelled <Windows.h> and <WinSock2.h> (a Linux host's case).
+  CLibrary& windows = project.cLibrary("windows");
+  windows.source("windows", Platform::Windows);
   Executable& app = project.executable("app", {"src"});
   app.link("numbers");
   app.link("kernel");
+  app.link("windows");
   app.cInclude("c");
   // Each has an included_for.h, which main.kpp imports: its own platform's alone is on the path.
   app.cInclude("include-windows", Platform::Windows);

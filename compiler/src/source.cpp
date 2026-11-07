@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include "host.hpp"
 #ifdef _WIN32
 #include <windows.h>
@@ -755,6 +756,115 @@ std::string visualStudioToolchain(std::string& missing)
 void setThreadBelowNormal(bool below)
 {
   host::setThreadBelowNormal(below);
+}
+
+std::string headerCaseOverlay(const std::string& clang, const std::string& triple)
+{
+  if (host::pathsIgnoreCase || clang.empty() || (triple.find("windows") == std::string::npos && triple.find("mingw") == std::string::npos))
+    return "";
+  static std::mutex mutex;
+  static std::map<std::string, std::string> made; // (clang and triple) -> the flag
+  std::lock_guard lock(mutex);
+  std::string key = clang + "\n" + triple;
+  if (auto it = made.find(key); it != made.end())
+    return it->second;
+  std::error_code ec;
+  // The key: the toolchain (its path and when it was written) and the target.
+  uint64_t hash = 1469598103934665603ull;
+  std::string stamp = key + "\n" + std::to_string(std::filesystem::last_write_time(clang, ec).time_since_epoch().count());
+  for (unsigned char c : "kpp header case 1\n" + stamp)
+    hash = (hash ^ c) * 1099511628211ull;
+  std::filesystem::path dir = std::filesystem::temp_directory_path(ec) / "kpp-imports";
+  std::filesystem::create_directories(dir, ec);
+  char hex[32];
+  snprintf(hex, sizeof hex, "%016llx", (unsigned long long)hash);
+  std::filesystem::path overlay = dir / ("case-" + std::string(hex) + ".yaml");
+  std::string flag = " -ivfsoverlay \"" + overlay.string() + "\"";
+  if (!std::filesystem::exists(overlay, ec))
+  {
+    // clang's own list of the system include directories for the target (-E -v)
+    std::vector<std::string> includes;
+    if (FILE* pipe = host::openPipe("\"" + clang + "\" --target=" + triple + " -x c -E -v " + host::nullDevice() + " -o " + host::nullDevice() + " 2>&1", "r"))
+    {
+      bool list = false;
+      char line[4096];
+      while (fgets(line, sizeof line, pipe))
+      {
+        std::string s = line;
+        while (!s.empty() && (s.back() == '\n' || s.back() == '\r'))
+          s.pop_back();
+        if (s.rfind("#include <...>", 0) == 0)
+          list = true;
+        else if (s.rfind("End of search list", 0) == 0)
+          list = false;
+        else if (list && !s.empty())
+          includes.push_back(s.substr(s.find_first_not_of(' ')));
+      }
+      host::closePipe(pipe);
+    }
+    // Every file under each directory, by name: an overlay matches its own names without case
+    // ('case-sensitive': 'false'), while a directory it only remaps is looked up as it is.
+    auto quoted = [](const std::string& text)
+    {
+      std::string out = "\"";
+      for (char c : text)
+        out += c == '"' || c == '\\' ? std::string("\\") + c : std::string(1, c);
+      return out + "\"";
+    };
+    std::function<void(const std::filesystem::path&, std::string&)> contents = [&](const std::filesystem::path& from, std::string& out)
+    {
+      std::vector<std::filesystem::directory_entry> entries;
+      for (const std::filesystem::directory_entry& e : std::filesystem::directory_iterator(from, ec))
+        entries.push_back(e);
+      std::sort(entries.begin(), entries.end(), [](const auto& a, const auto& b) { return a.path().filename() < b.path().filename(); });
+      bool first = true;
+      for (const std::filesystem::directory_entry& e : entries)
+      {
+        out += first ? "" : ",";
+        first = false;
+        std::string name = quoted(e.path().filename().string());
+        if (e.is_directory(ec))
+        {
+          out += "{\"type\":\"directory\",\"name\":" + name + ",\"contents\":[";
+          contents(e.path(), out);
+          out += "]}";
+        }
+        else
+          out += "{\"type\":\"file\",\"name\":" + name + ",\"external-contents\":" + quoted(e.path().string()) + "}";
+      }
+    };
+    std::string text = "{\"version\":0,\"case-sensitive\":\"false\",\"roots\":[";
+    bool first = true;
+    for (const std::string& include : includes)
+      if (std::filesystem::is_directory(include, ec))
+      {
+        text += first ? "" : ",";
+        first = false;
+        text += "{\"type\":\"directory\",\"name\":" + quoted(include) + ",\"contents\":[";
+        contents(include, text);
+        text += "]}";
+      }
+    text += "]}\n";
+    if (first)
+      flag = ""; // (clang listed no directory: nothing to overlay)
+    else
+    {
+      // (several compilers may make it at once: each writes its own file and renames it into place)
+      std::filesystem::path own = dir / ("case-" + std::string(hex) + "." + std::to_string(host::processId()) + ".yaml");
+      if (FILE* f = host::openFile(own, "wb"))
+      {
+        fwrite(text.data(), 1, text.size(), f);
+        fclose(f);
+        std::filesystem::rename(own, overlay, ec);
+        if (ec)
+          std::filesystem::remove(own, ec);
+      }
+      if (!std::filesystem::exists(overlay, ec))
+        flag = "";
+    }
+  }
+  made[key] = flag;
+  return flag;
 }
 
 std::string clangPath()

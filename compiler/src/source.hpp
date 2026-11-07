@@ -144,6 +144,12 @@ std::string selectToolchain(const std::filesystem::path& compiler, const std::st
 // Whether clangPath() is the bundled toolchain's: its links are lld-link's (Visual Studio's link.exe
 // is not part of it).
 bool bundledToolchain();
+// For a Windows target (triple: clang's --target) on a host whose file names have case (Linux,
+// FreeBSD): ` -ivfsoverlay "FILE"`, an overlay in which the toolchain's system include directories are
+// found without case, as on Windows: MinGW-w64's headers are lower case, and Windows code includes
+// <Windows.h> and <WinSock2.h>. Made once per toolchain and target, in the imports' cache; "" on a
+// Windows host or for another target.
+std::string headerCaseOverlay(const std::string& clang, const std::string& triple);
 // The toolchain a build takes, as --toolchain names it ("bundled", "msvc"), or "KPP_CLANG".
 std::string toolchainName();
 // Why the last selectToolchain's list did not take its toolchains before the one it took (`--toolchain

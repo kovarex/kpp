@@ -776,6 +776,31 @@ jobs:
             [ "$out" = "42 linux 10" ]
           done
 
+      # Windows programs from a Linux host (kovarex 2026-11-07: Factorio's Windows exe built on Linux):
+      # llvm-mingw's Linux toolchain (tools/sysroot/llvm-mingw.sh, the bundled one's release, cached)
+      # through KPP_CLANG, hello world and the C library project built for windows-gnu, whose Windows
+      # library and C import include <WinSock2.h> and <Windows.h> as Windows code spells them, found in
+      # MinGW-w64's lower-case headers without case (source.cpp's headerCaseOverlay). Not run: no Windows.
+      - name: llvm-mingw cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/llvm-mingw
+          key: llvm-mingw-linux-20250114-${{ hashFiles('tools/sysroot/llvm-mingw.sh') }}
+
+      - name: windows-gnu from a Linux host
+        run: |
+          root=$(sh tools/sysroot/llvm-mingw.sh "$RUNNER_TEMP/llvm-mingw" | tail -n 1)
+          kppc="$GITHUB_WORKSPACE/compiler/build/kppc"
+          KPP_CLANG="$root/bin/clang" "$kppc" --target windows-gnu --exe /tmp/hello/hello.exe /tmp/hello/hello.kpp
+          file /tmp/hello/hello.exe | grep -q "PE32+ executable"
+          cp -r compiler/tests/targets/clibrary /tmp/clibrary-gnu
+          cd /tmp/clibrary-gnu
+          for configuration in debug release; do
+            KPP_CLANG="$root/bin/clang" "$kppc" "$configuration" --target windows-gnu
+            file "build/$configuration/app.exe" | grep -q "PE32+ executable"
+          done
+          test -f build/release/app.pdb
+
       - name: spec on a Linux host
         run: python3 compiler/tests/spec/run_spec.py --jobs "$(nproc)"
 

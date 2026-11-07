@@ -1071,6 +1071,10 @@ void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexe
   // (design.md, "Targets and hosts").
   if (options.target.os == Target::Os::Linux)
     includeArgs += " -D_GNU_SOURCE";
+  // Windows' headers found without case on a Linux or FreeBSD host, as on Windows (<Windows.h> of
+  // MinGW-w64's windows.h: source.cpp's headerCaseOverlay); nothing on a Windows host.
+  if (options.target.windows())
+    includeArgs += headerCaseOverlay(clangPath(), options.target.triple);
   for (const std::string& dir : options.cIncludeDirs)
   {
     std::filesystem::path absolute = std::filesystem::absolute(dir, ec);

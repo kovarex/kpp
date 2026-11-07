@@ -18,6 +18,7 @@
 #include <cerrno>
 #include <csignal>
 #include <fcntl.h>
+#include <pthread.h>
 #include <spawn.h>
 #include <sys/file.h>
 #include <sys/resource.h>
@@ -233,6 +234,37 @@ namespace host
   }
 
   void setThreadBelowNormal(bool below) { SetThreadPriority(GetCurrentThread(), below ? THREAD_PRIORITY_BELOW_NORMAL : THREAD_PRIORITY_NORMAL); }
+
+  bool startOnLargeStack(size_t bytes, void (*fn)(void*), void* arg, LargeStackThread& thread)
+  {
+    struct Start
+    {
+      void (*fn)(void*);
+      void* arg;
+    };
+    Start* start = new Start{fn, arg};
+    HANDLE h = CreateThread(nullptr, bytes, [](void* p) -> DWORD
+    {
+      Start s = *static_cast<Start*>(p);
+      delete static_cast<Start*>(p);
+      s.fn(s.arg);
+      return 0;
+    }, start, STACK_SIZE_PARAM_IS_A_RESERVATION, nullptr);
+    if (!h)
+    {
+      delete start;
+      return false;
+    }
+    thread.handle = h;
+    return true;
+  }
+
+  void joinThread(LargeStackThread& thread)
+  {
+    WaitForSingleObject(thread.handle, INFINITE);
+    CloseHandle(thread.handle);
+    thread.handle = nullptr;
+  }
 
   FILE* openFile(const fs::path& path, const char* mode) { return _wfopen(path.c_str(), wide(mode).c_str()); }
   // (cmd /c takes the first and the last quote off a command line that starts with one: the whole is
@@ -531,6 +563,46 @@ namespace host
 #else
     (void)below;
 #endif
+  }
+
+  // (glibc's and FreeBSD's thread stacks are mappings that take memory as they are touched, as a
+  // Windows reservation does: the default 8 MB is less than the game's deepest code needs)
+  bool startOnLargeStack(size_t bytes, void (*fn)(void*), void* arg, LargeStackThread& thread)
+  {
+    struct Start
+    {
+      void (*fn)(void*);
+      void* arg;
+    };
+    Start* start = new Start{fn, arg};
+    pthread_attr_t attributes;
+    pthread_attr_init(&attributes);
+    pthread_attr_setstacksize(&attributes, bytes);
+    pthread_t* t = new pthread_t;
+    int error = pthread_create(t, &attributes, [](void* p) -> void*
+    {
+      Start s = *static_cast<Start*>(p);
+      delete static_cast<Start*>(p);
+      s.fn(s.arg);
+      return nullptr;
+    }, start);
+    pthread_attr_destroy(&attributes);
+    if (error != 0)
+    {
+      delete start;
+      delete t;
+      return false;
+    }
+    thread.handle = t;
+    return true;
+  }
+
+  void joinThread(LargeStackThread& thread)
+  {
+    pthread_t* t = static_cast<pthread_t*>(thread.handle);
+    pthread_join(*t, nullptr);
+    delete t;
+    thread.handle = nullptr;
   }
 
   FILE* openFile(const fs::path& path, const char* mode) { return fopen(path.c_str(), mode); }

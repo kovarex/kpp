@@ -26,7 +26,17 @@ namespace projects
         else if ((*list)[i] == "--sysroot")
           sysroot = (*list)[i + 1];
       }
+    // (the bundled toolchain builds Windows' GNU dialect, as kppc takes it: Compile.cpp)
+    if (bundledToolchain() && target.windows() && !target.gnu)
+    {
+      std::string why;
+      targetNamed("windows-gnu", target, why);
+    }
     out.platform = platformOf(target.os).name;
+    // (windows-gnu's triple said: a Linux host's llvm-mingw clang targets Linux by default)
+    out.gnu = target.gnu;
+    if (target.gnu)
+      out.triple = target.triple;
     if (!target.windows())
     {
       out.triple = target.triple;
@@ -100,10 +110,12 @@ namespace projects
   // no default library, as a COFF one names MSVC's C++ runtime (/DEFAULTLIB), and kppc links with
   // clang's C driver. Linux: libstdc++, statically (as Factorio's Linux build does: the program needs
   // no particular libstdc++ of the system it runs on); FreeBSD: libc++ and libcxxrt, its C++ ABI
-  // library (a FreeBSD program links statically). Nothing for Windows or a library of C files only.
-  std::vector<std::string> cppRuntimeLibraries(const fs::path& root, const CLibrary& c, const std::string& platform)
+  // library (a FreeBSD program links statically); windows-gnu: llvm-mingw's libc++ (its C++ ABI part
+  // in it) and libunwind, their archives by name, as the import libraries would make the program need
+  // libc++.dll and libunwind.dll. Nothing for MSVC's Windows or a library of C files only.
+  std::vector<std::string> cppRuntimeLibraries(const fs::path& root, const CLibrary& c, const std::string& platform, bool gnu)
   {
-    if (platform == "windows" || !forPlatform(c.prebuilt, platform).empty())
+    if ((platform == "windows" && !gnu) || !forPlatform(c.prebuilt, platform).empty())
       return {};
     for (const std::string& s : forPlatform(c.sources, platform))
       for (const fs::path& file : collectFiles(rooted(root, s), {".cc", ".cpp"}))
@@ -111,6 +123,8 @@ namespace projects
         (void)file;
         if (platform == "freebsd")
           return {"-lc++", "-lcxxrt"};
+        if (platform == "windows")
+          return {"-l:libc++.a", "-l:libunwind.a"};
         return {"-l:libstdc++.a"};
       }
     return {};
@@ -263,9 +277,12 @@ namespace projects
       // FreeBSD, clang for the target's triple with its sysroot's headers (glibc's and libstdc++'s,
       // FreeBSD's and libc++), as kppc compiles and links the program: ELF objects, and an archive
       // llvm-ar makes (NAME.a).
-      bool gnu = job.gnu = bundledToolchain() || target.posix();
+      // (windows-gnu decides it, not the toolchain alone: KPP_CLANG naming llvm-mingw's clang, a Linux
+      // host's, built the libraries in MSVC's dialect, clang-cl's flags)
+      bool gnu = job.gnu = bundledToolchain() || target.gnu || target.posix();
       std::string flags = !gnu             ? std::string("/nologo /c /O2 /MT /GS- /DNDEBUG /w")
                           : target.posix() ? "--target=" + target.triple + " " + quoteArg("--sysroot=" + target.sysroot) + " -c -O2 -DNDEBUG -w -fno-stack-protector"
+                          : target.gnu     ? "--target=" + target.triple + headerCaseOverlay(clangPath(), target.triple) + " -c -O2 -DNDEBUG -w -fno-stack-protector"
                                            : std::string("-c -O2 -DNDEBUG -w -fno-stack-protector");
       // The MSVC headers and libraries of clang's own Visual Studio: on its own, clang-cl takes the
       // newest installed, whose STL may require a newer clang (Build Tools 18's wants clang 20).
@@ -330,7 +347,7 @@ namespace projects
       job.lib = clibDirectory(root, cFlags, platform) / (c.name + (target.posix() ? ".a" : ".lib"));
       job.archive = !job.commands.empty() || !fs::exists(job.lib, ec);
       std::string dialect = target.posix() ? platform + ": clang for " + target.triple + " with the target's sysroot"
-                            : gnu          ? std::string("the bundled toolchain, Windows' GNU dialect")
+                            : gnu          ? "Windows' GNU dialect, llvm-mingw's clang for " + target.triple
                                            : std::string("clang-cl, MSVC's dialect");
       if (job.archive)
         printf("kpp: %s: compiling %zu of %zu C/C++ files with %s (%s)\n", c.name.c_str(), job.commands.size(), sources.size(), clangPath().c_str(),

@@ -3,6 +3,7 @@
 // codegen.cpp held after the emitters, and its prologue (codegen.cpp split, stage 2), moved without
 // a change.
 #include "Emitter.hpp"
+#include "host.hpp"
 #ifdef _WIN32
 // SEH wrapper: catches stack overflow that C++ try/catch can't.
 // Returns 0 on success, 1 on stack overflow.
@@ -51,43 +52,36 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
 
 // Runs work(i) for i in [0, n): the calling thread runs work(0), n - 1 threads with 1 GB stacks
 // (reserved, committed as used: the emitter recurses as deep as the code it walks) the rest.
+// (on every host: a Linux one's default 8 MB stacks are less than the game's deepest code needs)
 template<typename F>
 static void onThreads(unsigned n, F& work)
 {
-#ifdef _WIN32
   struct Arg
   {
     F* work;
     unsigned i;
   };
   std::vector<Arg> args(n);
-  std::vector<HANDLE> handles;
+  std::vector<host::LargeStackThread> threads;
+  std::vector<unsigned> unstarted; // (run here after work(0): never left out)
   for (unsigned i = 1; i < n; ++i)
   {
     args[i] = {&work, i};
-    HANDLE h = CreateThread(nullptr, size_t(1) << 30, [](void* p) -> DWORD
+    host::LargeStackThread t;
+    if (host::startOnLargeStack(size_t(1) << 30, [](void* p)
     {
       auto* a = static_cast<Arg*>(p);
       (*a->work)(a->i);
-      return 0;
-    }, &args[i], STACK_SIZE_PARAM_IS_A_RESERVATION, nullptr);
-    if (h)
-      handles.push_back(h);
+    }, &args[i], t))
+      threads.push_back(t);
+    else
+      unstarted.push_back(i);
   }
   work(0);
-  for (HANDLE h : handles)
-  {
-    WaitForSingleObject(h, INFINITE);
-    CloseHandle(h);
-  }
-#else
-  std::vector<std::thread> pool;
-  for (unsigned i = 1; i < n; ++i)
-    pool.emplace_back([&work, i] { work(i); });
-  work(0);
-  for (std::thread& t : pool)
-    t.join();
-#endif
+  for (unsigned i : unstarted)
+    work(i);
+  for (host::LargeStackThread& t : threads)
+    host::joinThread(t);
 }
 
 // --stub-missing: the definition of a function that was left out, which reports it and aborts when
@@ -210,9 +204,9 @@ unsigned codegenOutputModules(unsigned moduleCount, bool debug, bool optimize)
 CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols,
                            const CodegenOptions& options, CodegenSessionPtr* keep, PieceStream* stream)
 {
-#ifdef _WIN32
   // The emitter recurses as deep as the code it walks (long else-if chains, nested expressions),
-  // so it runs on a thread with a 1 GB stack, reserved and committed only as it is used.
+  // so it runs on a thread with a 1 GB stack, reserved and committed only as it is used (on every
+  // host: Linux's 8 MB main stack is less than the game needs).
   struct Job
   {
     std::vector<std::unique_ptr<ParsedFile>>* files;
@@ -223,19 +217,16 @@ CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, Glob
     PieceStream* stream;
     CodegenResult result;
   } job{&files, &global, &symbols, &options, keep, stream, {}};
-  HANDLE thread = CreateThread(nullptr, size_t(1) << 30, [](void* p) -> DWORD
+  host::LargeStackThread thread;
+  if (host::startOnLargeStack(size_t(1) << 30, [](void* p)
   {
     auto* j = static_cast<Job*>(p);
     j->result = generate(*j->files, *j->global, *j->symbols, *j->options, j->keep, j->stream);
-    return 0;
-  }, &job, STACK_SIZE_PARAM_IS_A_RESERVATION, nullptr);
-  if (thread)
+  }, &job, thread))
   {
-    WaitForSingleObject(thread, INFINITE);
-    CloseHandle(thread);
+    host::joinThread(thread);
     return std::move(job.result);
   }
-#endif
   return generate(files, global, symbols, options, keep, stream);
 }
 

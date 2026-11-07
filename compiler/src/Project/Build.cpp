@@ -161,12 +161,13 @@ namespace projects
       if (const CLibrary* c = findLibrary(d, name))
         for (const fs::path& file : libraryFiles(root, *c, p.cFlags, platform))
           args.push_back("--lib"), args.push_back(file.string());
-    // Their C++ files' library off Windows (cppRuntimeLibraries: libstdc++ for Linux, libc++ for
-    // FreeBSD), once, after them.
+    // Their C++ files' library off MSVC's Windows (cppRuntimeLibraries: libstdc++ for Linux, libc++
+    // for FreeBSD and windows-gnu), once, after them.
     std::vector<std::string> cppRuntime;
+    bool gnu = libraryTarget(p, request).gnu;
     for (const std::string& name : p.links)
       if (const CLibrary* c = findLibrary(d, name))
-        for (const std::string& lib : cppRuntimeLibraries(root, *c, platform))
+        for (const std::string& lib : cppRuntimeLibraries(root, *c, platform, gnu))
           if (std::find(cppRuntime.begin(), cppRuntime.end(), lib) == cppRuntime.end())
             cppRuntime.push_back(lib);
     for (const std::string& lib : cppRuntime)
@@ -254,7 +255,7 @@ namespace projects
     std::vector<LibraryJob> jobs(p.links.size());
     // (Linux and FreeBSD libraries are compiled by clang's GNU driver, as the bundled toolchain's are)
     LibraryTarget libTarget = libraryTarget(p, request);
-    std::string prefixMap = libraryPrefixMap(root, p, bundledToolchain() || libTarget.posix());
+    std::string prefixMap = libraryPrefixMap(root, p, bundledToolchain() || libTarget.gnu || libTarget.posix());
     std::vector<const CLibrary*> cLibraries;
     for (const std::string& name : p.links)
     {
