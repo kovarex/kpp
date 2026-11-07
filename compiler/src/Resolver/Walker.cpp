@@ -1742,6 +1742,160 @@ auto GlobalScope::Impl::Walker::safeNavigationOptional(const Ty* value, const Ex
   return types.classType(optional, Span<const Ty*>{args, 1});
 }
 
+auto GlobalScope::Impl::Walker::noteThisReference(uint32_t token, const std::string& message) -> void
+{
+  noteThisReferenceWarning(Impl::locationOf(file, token) + ": warning: " + message);
+}
+
+auto GlobalScope::Impl::Walker::noteThisAddress(Expr* t) -> void
+{
+  if (thisUsesNoted.insert(t).second)
+    noteThisReference(t->token, "this is a reference (the object's address): write `&this`, not `this`");
+}
+
+auto GlobalScope::Impl::Walker::noteThisCondition(Node* cond) -> void
+{
+  // `if (this)`, `while (this)`: a reference is never null (Q17)
+  if (thisReferenceWarningsOn() && file && !file->isImported && !probing && cond && cond->kind == NodeKind::ThisExpr &&
+      thisUsesNoted.insert(static_cast<Expr*>(cond)).second)
+    noteThisReference(cond->token, "this is a reference, never null (design.md 23d)");
+}
+
+auto GlobalScope::Impl::Walker::noteDefaultCaptureOfThis(LambdaExpr* l) -> void
+{
+  // `[=]` that uses the object, a member named bare or `this`: it will not capture it (design.md 23d)
+  if (l->defaultCapture != 1 || !l->body)
+    return;
+  std::unordered_set<Decl*> inner;
+  std::vector<Decl*> used;
+  bool usesThis = false;
+  impl.lambdaNames(l->body, inner, used, usesThis);
+  if (!usesThis)
+    return;
+  for (uint32_t i = l->token + 1; i < tokens.size() && i < l->token + 4; ++i)
+    if (text.substr(tokens[i].offset, tokens[i].length) == "=")
+    {
+      noteThisReference(i, "[=] will not capture the object (design.md 23d): write `=, &this`, not `=`");
+      return;
+    }
+}
+
+auto GlobalScope::Impl::Walker::noteThisUse(Expr* e) -> void
+{
+  auto isThis = [](const Expr* x) { return x && x->kind == NodeKind::ThisExpr; };
+  auto isNull = [&](const Expr* x)
+  {
+    if (!x || x->kind != NodeKind::LiteralExpr || x->token >= tokens.size())
+      return false;
+    std::string_view spelled = text.substr(tokens[x->token].offset, tokens[x->token].length);
+    return spelled == "nullptr" || spelled == "0" || spelled == "NULL";
+  };
+  auto claim = [&](const Expr* t, const std::string& message)
+  {
+    if (thisUsesNoted.insert(t).second)
+      noteThisReference(t->token, message);
+  };
+  const std::string never = "this is a reference, never null (design.md 23d)";
+  switch (e->kind)
+  {
+    case NodeKind::ThisExpr:
+      noteThisAddress(e); // (no parent spoke for it: passed, returned, stored)
+      break;
+    case NodeKind::MemberExpr:
+      if (auto* m = static_cast<MemberExpr*>(e); isThis(m->base) && P(m->op) == P::Arrow)
+        claim(m->base, "this is a reference: write `this.`, not `this->`");
+      break;
+    case NodeKind::CallExpr: // (`this->f()`: a member call walks its callee's object itself, not the MemberExpr)
+      if (auto* c = static_cast<CallExpr*>(e); c->callee && c->callee->kind == NodeKind::MemberExpr)
+        if (auto* m = static_cast<MemberExpr*>(c->callee); isThis(m->base) && P(m->op) == P::Arrow)
+          claim(m->base, "this is a reference: write `this.`, not `this->`");
+      break;
+    case NodeKind::UnaryExpr:
+    {
+      auto* u = static_cast<UnaryExpr*>(e);
+      if (!isThis(u->operand) || u->isKeyword)
+        break;
+      if (P(u->op) == P::Star && !u->postfix)
+      {
+        // (the editor's fix starts at the `*`)
+        bool hasStar = false;
+        if (thisType && thisType->kind == TyKind::Pointer && thisType->inner)
+          if (const Ty* cls = types.unqualified(thisType->inner); cls->kind == TyKind::Class)
+            if (Scope* scope = impl.classScopeOf(cls))
+            {
+              Lookup star; // (a lookup that reports nothing: two bases' operator* is no error of this warning's)
+              hasStar = impl.lookupInScope(scope, impl.opSymbols[uint32_t(P::Star)], star, 0) && star.decl;
+            }
+        if (thisUsesNoted.insert(u->operand).second)
+          noteThisReference(u->token, hasStar ? "this is a reference (its class has an operator*, which `*this` will call): write `this`, not `*this`"
+                                              : "this is a reference: write `this`, not `*this`");
+      }
+      else if (P(u->op) == P::Bang)
+        claim(u->operand, never);
+      break;
+    }
+    case NodeKind::BinaryExpr:
+    {
+      auto* b = static_cast<BinaryExpr*>(e);
+      if (b->isKeyword)
+        break;
+      P op = P(b->op);
+      if (op == P::EqEq || op == P::NotEq)
+      {
+        for (auto [side, other] : {std::pair{b->lhs, b->rhs}, std::pair{b->rhs, b->lhs}})
+          if (isThis(side))
+            claim(side, isNull(other) ? never : "this is a reference (a comparison of the object's address): write `&this`, not `this`");
+      }
+      else if (op == P::AndAnd || op == P::OrOr)
+      {
+        if (isThis(b->lhs))
+          claim(b->lhs, never);
+        if (isThis(b->rhs))
+          claim(b->rhs, never);
+      }
+      break;
+    }
+    case NodeKind::ConditionalExpr:
+      if (auto* c = static_cast<ConditionalExpr*>(e); isThis(c->cond))
+        claim(c->cond, never);
+      break;
+    case NodeKind::DeleteExpr:
+      if (auto* d = static_cast<DeleteExpr*>(e); isThis(d->operand))
+        claim(d->operand, "this is a reference (delete takes its address): write `&this`, not `this`");
+      break;
+    case NodeKind::LambdaExpr:
+    {
+      auto* l = static_cast<LambdaExpr*>(e);
+      // The capture list's tokens, `[` at the lambda's token to its `]`: where `this` and `=` are written.
+      auto tokenIn = [&](std::string_view want) -> uint32_t
+      {
+        int depth = 0;
+        for (uint32_t i = l->token; i < tokens.size() && i < l->token + 256; ++i)
+        {
+          std::string_view spelled = text.substr(tokens[i].offset, tokens[i].length);
+          if (spelled == "[" || spelled == "(")
+            ++depth;
+          else if (spelled == "]" || spelled == ")")
+          {
+            if (--depth == 0)
+              break;
+          }
+          else if (depth == 1 && spelled == want)
+            return i;
+        }
+        return UINT32_MAX;
+      };
+      for (const LambdaCapture& cap : l->captures)
+        if (cap.isThis && !cap.byRef && !cap.init)
+          if (uint32_t at = tokenIn("this"); at != UINT32_MAX)
+            noteThisReference(at, "this is a reference (a capture by reference): write `&this`, not `this`");
+      break;
+    }
+    default:
+      break;
+  }
+}
+
 auto GlobalScope::Impl::Walker::memberThroughThis(const Lookup& l, const Ty* t) -> const Ty*
 {
   // In a const member function a data member is const, unless mutable; in a volatile one volatile,
@@ -8624,6 +8778,7 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
         locals.pop(mark);
         break;
       }
+      noteThisCondition(i->cond);
       walkNode(i->cond);
       // In an instantiation, and in a function that is no template (`if constexpr (config::debug)`,
       // whose discarded branch names what only the other configuration declares: design.md
@@ -8655,6 +8810,7 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
       auto* f = static_cast<ForStmt*>(s);
       size_t mark = locals.mark();
       walkStmt(f->init);
+      noteThisCondition(f->cond);
       walkNode(f->cond);
       walkExpr(f->step);
       walkStmt(f->body);
@@ -8775,6 +8931,7 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
     {
       auto* w = static_cast<WhileStmt*>(s);
       size_t mark = locals.mark();
+      noteThisCondition(w->cond);
       walkNode(w->cond);
       walkStmt(w->body);
       locals.pop(mark);
@@ -8782,6 +8939,7 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
     }
     case NodeKind::DoStmt:
       walkStmt(static_cast<DoStmt*>(s)->body);
+      noteThisCondition(static_cast<DoStmt*>(s)->cond);
       walkExpr(static_cast<DoStmt*>(s)->cond);
       break;
     case NodeKind::SwitchStmt:
@@ -8875,6 +9033,8 @@ auto GlobalScope::Impl::Walker::walkExpr(Expr* e) -> const Ty*
     Current(Expr*& slot, Expr* e) : slot(slot), saved(slot) { slot = e; }
     ~Current() { slot = saved; }
   } guard(current, e);
+  if (thisReferenceWarningsOn() && file && !file->isImported && !probing)
+    noteThisUse(e);
   switch (e->kind)
   {
     case NodeKind::NameExpr: return record(e, resolveName(static_cast<NameExpr*>(e)));
@@ -9396,6 +9556,8 @@ auto GlobalScope::Impl::Walker::walkExpr(Expr* e) -> const Ty*
         std::lock_guard lock(impl.lambdaEnvMutex);
         impl.lambdaEnvs[lambdaTy] = std::move(env);
       }
+      if (thisReferenceWarningsOn() && file && !file->isImported && !probing)
+        noteDefaultCaptureOfThis(l); // (after the body's walk: its names resolved, members among them)
       return record(e, lambdaTy);
     }
     case NodeKind::BraceInitExpr:

@@ -349,6 +349,14 @@
     // of a class, which required `this.` writes `this.x` (a static one `This::x`). One beside a name of its
     // spelling around the class says so: a bare name will be that one.
     void noteImplicitMember(const NameExpr* n, const Lookup& l);
+    // --this-reference-warnings (design.md 23d): what e does with `this` that changes once it is a reference,
+    // noted before e's operands are walked; a `this` no parent claimed is its address (noteThisAddress).
+    void noteThisUse(Expr* e);
+    void noteThisCondition(Node* cond);
+    void noteThisAddress(Expr* thisExpr);
+    void noteThisReference(uint32_t token, const std::string& message);
+    void noteDefaultCaptureOfThis(LambdaExpr* l);
+    std::unordered_set<const Expr*> thisUsesNoted; // the `this` nodes a parent has spoken for
     // A declaration in kpp code named `This`, the keyword for the class around the code: an error (design.md 23c).
     void checkNotThis(uint32_t symbol, uint32_t token);
     // The name of a scoped enum the scopes around declare with an enumerator spelled symbol, for "write

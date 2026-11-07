@@ -1104,6 +1104,8 @@ namespace
   std::atomic<bool> thisWarningsEnabled{false};
   std::atomic<bool> explicitByDefaultEnabled{false};
   std::set<std::string> thisNotes; // (sorted, each name once per place, whichever walks reached it)
+  std::atomic<bool> thisReferenceWarningsEnabled{false};
+  std::set<std::string> thisReferenceNotes; // (sorted, each use once, whichever walks reached it)
 }
 
 std::set<std::pair<const void*, uint32_t>> zeroNullSeen;
@@ -1162,6 +1164,30 @@ std::vector<std::string> takeThisWarnings()
   std::lock_guard lock(zeroNullMutex);
   std::vector<std::string> out(thisNotes.begin(), thisNotes.end());
   thisNotes.clear();
+  sortDiagnostics(out);
+  return out;
+}
+
+void setThisReferenceWarnings(bool on)
+{
+  std::lock_guard lock(zeroNullMutex);
+  thisReferenceNotes.clear();
+  thisReferenceWarningsEnabled = on;
+}
+
+bool thisReferenceWarningsOn() { return thisReferenceWarningsEnabled; }
+
+void noteThisReferenceWarning(const std::string& warning)
+{
+  std::lock_guard lock(zeroNullMutex);
+  thisReferenceNotes.insert(warning);
+}
+
+std::vector<std::string> takeThisReferenceWarnings()
+{
+  std::lock_guard lock(zeroNullMutex);
+  std::vector<std::string> out(thisReferenceNotes.begin(), thisReferenceNotes.end());
+  thisReferenceNotes.clear();
   sortDiagnostics(out);
   return out;
 }

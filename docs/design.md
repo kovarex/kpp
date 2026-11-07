@@ -2343,6 +2343,29 @@ kovarex answered Q13 to Q17 on 2026-11-07, as recommended but for Q13. `this` na
 `this` as the value. The order, as for `override`: warnings under a flag counted on the game, then C's
 converter rewrite, then the errors.
 
+`--this-reference-warnings` is the first step (2026-11-07) and changes nothing else: each use of `this` that
+changes is a warning in the editor's fix form (23e): `this->` ("write `this.`, not `this->`"), `*this` ("write
+`this`, not `*this`", saying so when the class has an operator* that `*this` will call), its address passed,
+returned, stored, compared or deleted ("write `&this`, not `this`"), a `[this]` capture (the same), a `[=]`
+lambda that uses the object ("write `=, &this`, not `=`"), and a null test, which has no fix to write. The
+counts, lines of tests.cmd's whole-game build (factorio-in-kpp at Factorio 4c178a5b915) and of ours (every
+library's tests, kppsite, kpplex, projectlib):
+
+| | the game | ours |
+|---|---|---|
+| `this->` | 185,189 | 4,439 |
+| `*this` | 3,655 | 230 |
+| `*this` of a class with an operator* | 1,442 | 115 |
+| the address (`&this`): passed, returned, stored | 8,180 | 51 |
+| the address compared with another pointer | 519 | 35 |
+| `delete this` | 8 | 0 |
+| `[this]` | 2,191 | 7 |
+| `[=]` using the object | 0 | 0 |
+| a null test | 0 | 0 |
+
+The address's two rows are one fix: a comparison through a class's operator== counts as passed. Spec
+language/this_reference_warnings_mode.
+
 ### 23e. A fix in a message (F, 2026-11-07)
 An error or warning whose fix is mechanical ends, before any " (design.md N)", with exactly one of two
 clauses, which the editor's quick fix reads: "write `NEW`, not `OLD`" ("write `this.width`, not `width`",

@@ -84,6 +84,8 @@ int compile(int argc, char** argv)
       options.thisWarnings = true;
     else if (arg == "--explicit-by-default")
       options.explicitByDefault = true;
+    else if (arg == "--this-reference-warnings")
+      options.thisReferenceWarnings = true;
     else if (arg == "--struct-rule")
       options.structRule = true;
     else if (arg == "--c-type-warnings")

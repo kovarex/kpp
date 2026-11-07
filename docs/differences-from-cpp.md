@@ -444,6 +444,8 @@ Pinned make() { Pinned p; return p; }   // compiles: an error in C++
   `this == other` compares the objects; `[&this]` captures it by reference and `[copy = this]` copies it,
   while `[this]` and `[*this]` are errors, and `[=]` never captures it; `this` is never null, so
   `if (this)` is an error. Today it is a pointer, except in an enum's methods, where it is the value.
+- **Status:** `--this-reference-warnings` lists each use that changes; the game has 185,189 lines of
+  `this->`, 5,097 of `*this` and 8,707 using its address ([design 23d](design.md)).
 - **Why:** one meaning of `this` in every place, and `*this` gone from the code.
 - **See:** [design 6][d6]; the readme's Planned.
 
