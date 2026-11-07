@@ -63,7 +63,11 @@ function Check($what, $ok, $detail)
   if (-not $ok) { $script:failures++; if ($devenv) { Snap 'failed' } }
 }
 
-# Into the experimental instance only: the user's own Visual Studio is not touched.
+# Into the experimental instance only: the user's own Visual Studio is not touched. The build before is
+# uninstalled first: the manifest's version stays 0.1.0, and an install over the same version is refused
+# (exit 1001, AlreadyInstalled), which left the instance on the old build.
+$id = ([xml](Get-Content "$PSScriptRoot\source.extension.vsixmanifest")).PackageManifest.Metadata.Identity.Id
+Start-Process "$ide\VSIXInstaller.exe" -ArgumentList '/quiet', '/rootSuffix:Exp', "/uninstall:$id" -Wait
 $p = Start-Process "$ide\VSIXInstaller.exe" -ArgumentList '/quiet', '/rootSuffix:Exp', "`"$((Resolve-Path $Vsix).Path)`"" -PassThru -Wait
 Check 'VSIXInstaller /rootSuffix:Exp' ($p.ExitCode -eq 0) "exit $($p.ExitCode)"
 # The experimental instance's pkgdefs and MEF cache brought up to date, so the new build's parts load.
