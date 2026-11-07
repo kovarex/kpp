@@ -451,15 +451,19 @@ Pinned make() { Pinned p; return p; }   // compiles: an error in C++
 
 - **C++:** a constructor or conversion operator converts implicitly unless marked `explicit`.
 - **kpp:** it converts implicitly only when marked `implicit`, and `explicit` is gone: plain `explicit`
-  is an error, and `explicit(cond)` is written `implicit(cond)`. A braced list without a name is no
-  function argument: `draw(Color(1, 0, 0))`, not `draw({1, 0, 0})`. In `return {x, y};` and `Color c =
-  {1, 0, 0};` a list of two or more values takes any constructor, and `{a}` needs `implicit`. A default
+  is an error, and `explicit(cond)` is written `implicit(cond)`. A function argument's braces name their
+  type: `draw(Color{1, 0, 0})`, not `draw({1, 0, 0})`, unless the parameter is an InitializerList
+  (`max({a, b, c})`); nested braces never need one. In `return {x, y};` and `Color c = {1, 0, 0};` a list
+  of two or more values takes any constructor, and `{a}` needs `implicit`. A default
   constructor is never a conversion; `if (x)` takes an unmarked `operator bool`, a `switch` a marked
-  conversion; `Box b = 5;` deduces from marked constructors only. `implicit` and `implicit(cond)` are
-  built, and an unmarked constructor still converts.
+  conversion; `Box b = 5;` deduces from marked constructors only.
+- **Status:** `implicit` and `implicit(cond)` are built. The rest is built behind `--explicit-by-default`, with
+  every rule's error; it becomes the default once the game, the stdlib, the libraries and the specs build with
+  it, and until then an unmarked constructor converts.
 - **Why:** an implicit conversion should be something the author asked for, and a keyword that does
   nothing goes (kovarex, 2026-11-07).
-- **See:** [design 6][d6] and its "Explicit by default" entry; spec `kpp/implicit_constructors`.
+- **See:** [design 6][d6] and its "Explicit by default" entry; specs `kpp/implicit_constructors`,
+  `kpp/implicit_condition`, `kpp/explicit_by_default` and its three `_is_error` ones.
 
 ```cpp
 struct Celsius { implicit Celsius(double degrees); };

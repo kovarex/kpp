@@ -608,6 +608,10 @@
     // `Strict s = {5};`, `return {5};`: copy-list-initialisation whose chosen constructor is explicit
     // ([over.match.list]).
     void checkExplicitListCopy(BraceInitExpr* b, const Ty* to);
+    // `switch (flag)` on a class: it converts implicitly to an integer or an enum ([stmt.switch] 2, the conversion
+    // codegen's chooseConversion takes; under --explicit-by-default a marked one, design.md "Explicit by default",
+    // rule 4). A typed union switches on its tag.
+    void checkSwitchOnClass(SwitchStmt* w);
     // Whether converting e (of type from) to type to in a brace initialization narrows it
     // ([dcl.init.list] 7): a floating value to an integer; a floating one to a floating type of
     // fewer bits, or an integer to a floating type, unless e is a constant the target holds (and,
@@ -626,6 +630,34 @@
     void checkListNarrowing(Span<Expr*> elements, const Ty* to, int depth = 0);
     // Each argument of a call of f (fnTy: its type) for a class parameter, checked (checkExplicitCopy).
     void checkExplicitArguments(FunctionDecl* f, const Ty* fnTy, const Span<Expr*>& args);
+    // --explicit-by-default (design.md "Explicit by default"), its errors. A constructor's or conversion
+    // operator's plain `explicit` ("remove `explicit`") and `explicit(cond)` ("write `implicit(...)`, not
+    // `explicit(cond)`", the condition turned round), at the word.
+    void checkConversionMark(FunctionDecl* f);
+    // A function argument's outermost braces that name no type, of a call of f (fnTy: its type): `draw({1, 0, 0})`,
+    // "write `Color{1, 0, 0}`, not `{1, 0, 0}`", whatever they reach (a constructor, an aggregate, a container,
+    // `{}`); not for an InitializerList parameter, nor one a template parameter would be deduced from (no C++
+    // either). refused: set at the arguments reported.
+    void checkBracedArguments(FunctionDecl* f, const Ty* fnTy, const Span<Expr*>& args, std::vector<bool>* refused = nullptr);
+    // A construction's arguments of class t, as checkBracedArguments, by the constructor they choose.
+    void checkBracedConstruction(const Ty* t, const Span<Expr*>& args);
+    // The error of braced list b given for a parameter of type to (p: as declared, or null for an implicit
+    // constructor's), naming the fix: `T{...}`, `nullptr` or the value for a pointer.
+    void refuseBracedArgument(BraceInitExpr* b, const Ty* to, ParamDecl* p);
+    // Whether a template's own walk leaves a call of these arguments to its instances (one is dependent).
+    bool undecidedInTemplate(const Span<Expr*>& args);
+    // Whether braced list b, a function argument for a parameter of type to, must name its type: any but an
+    // InitializerList parameter's (rule 1), and not the checker's own text lists.
+    bool bracedArgumentNamesNoType(BraceInitExpr* b, const Ty* to);
+    // The type a fix names for parameter p of type to (`Color` of `const Color& c`): as written, when it names
+    // no template parameter and no member of a class unqualified (the call may be outside it); else a class of
+    // no template arguments by its namespaces and classes; else empty (a printed type is not always kpp:
+    // `int32`).
+    std::string spelledParameterType(ParamDecl* p, const Ty* to);
+    // An explicit check's error: as reportHere, and under --explicit-by-default in template code too, a
+    // template's own walk reporting it at once (the check's types are not dependent: every instance would say
+    // the same), an instance's walk as that instance's.
+    void reportExplicitError(uint32_t token, const std::string& message);
 
     // `NamedFunction(move(parameters), create, Expression::computeConstant)`: the constructor of
     // class type t the arguments choose, its parameters binding the overload sets among them.

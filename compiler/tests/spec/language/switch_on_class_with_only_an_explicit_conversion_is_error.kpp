@@ -1,0 +1,37 @@
+// spec: a switch on a class takes its implicit conversion to an integer or an enum ([stmt.switch] 2, contextually implicitly converted: no explicit conversion operator); a class with only an explicit one is the checker's error at the condition (it was codegen's "does not support a switch on a class without a conversion ... yet")
+// error: switch_on_class_with_only_an_explicit_conversion_is_error.kpp:18: error: a switch on Flag needs its conversion operator to an integer or an enum, and Flag has no implicit one: switch on the value it converts to
+struct Flag
+{
+  bool on;
+  explicit operator int() const { return on ? 1 : 2; }
+};
+struct Level
+{
+  int n;
+  operator int() const { return n; }
+};
+int main()
+{
+  Flag f{true};
+  Level l{1};
+  int r = 0;
+  switch (f)
+  {
+    case 1:
+      r = 1;
+      break;
+  }
+  switch (l)
+  {
+    case 1:
+      r += 2;
+      break;
+  }
+  switch (int(f))
+  {
+    case 1:
+      r += 4;
+      break;
+  }
+  return r;
+}

@@ -1197,6 +1197,11 @@ auto GlobalScope::Impl::deduceClassArgs(const Ty* primary, const std::vector<con
     std::vector<const Ty*> args;
     if (!argumentsFrom(d, args))
       continue;
+    // `Box b = 5;`: an explicit constructor's guide is no candidate of a copy-initialization ([over.match.class.deduct]
+    // 3; under --explicit-by-default an unmarked one's, design.md "Explicit by default", rule 5). (After the
+    // class's defaults are in d: an explicit(cond) may read them.)
+    if (copyInit && isExplicit(ctor, &d))
+      continue;
     bool ok = true;
     std::vector<int> ranks;
     const Ty* inst = substitute(ft, d); // (as a whole: `M&... values` becomes one parameter for each element)

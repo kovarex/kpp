@@ -1,0 +1,94 @@
+// spec: under --explicit-by-default (design.md "Explicit by default") a constructor or conversion operator without `implicit` converts nothing: a copy-initialization (`T x = a;`, `T x = {a};`, a return, an argument, an assignment's operand) through it is an error naming the direct-initialization, in a template's instance too, through an inherited, a converting template's, a variadic or a defaulted constructor; a switch on a class needs a marked conversion (rule 4); class template argument deduction by copy takes no unmarked constructor (rule 5)
+// kppc: --explicit-by-default --no-std
+// error: explicit_by_default_conversions_is_error.kpp:54: error: copy-initialising Strict from int32 by its constructor, which converts only when marked implicit (design.md "Explicit by default"): Strict(...) takes it
+// error: explicit_by_default_conversions_is_error.kpp:55: error: copy-list-initialising Strict by its constructor, which converts only when marked implicit (design.md "Explicit by default"): Strict(...) takes it
+// error: explicit_by_default_conversions_is_error.kpp:58: error: copy-initialising Strict from int32 by its constructor, which converts only when marked implicit (design.md "Explicit by default"): Strict(...) takes it (in T = Strict)
+// error: explicit_by_default_conversions_is_error.kpp:63: error: copy-initialising Strict from int32 by its constructor, which converts only when marked implicit (design.md "Explicit by default"): Strict(...) takes it
+// error: explicit_by_default_conversions_is_error.kpp:64: error: copy-list-initialising Strict by its constructor, which converts only when marked implicit (design.md "Explicit by default"): Strict(...) takes it
+// error: explicit_by_default_conversions_is_error.kpp:65: error: copy-initialising Strict from int32 by its constructor, which converts only when marked implicit (design.md "Explicit by default"): Strict(...) takes it
+// error: explicit_by_default_conversions_is_error.kpp:66: error: copy-initialising Strict from int32 by its constructor, which converts only when marked implicit (design.md "Explicit by default"): Strict(...) takes it
+// error: explicit_by_default_conversions_is_error.kpp:67: error: copy-initialising Derived from int32 by its constructor, which converts only when marked implicit (design.md "Explicit by default"): Derived(...) takes it
+// error: explicit_by_default_conversions_is_error.kpp:70: error: copy-initialising Box<double> from Box<int32> by its constructor, which converts only when marked implicit (design.md "Explicit by default"): Box<double>(...) takes it
+// error: explicit_by_default_conversions_is_error.kpp:71: error: copy-initialising Many from int32 by its constructor, which converts only when marked implicit (design.md "Explicit by default"): Many(...) takes it
+// error: explicit_by_default_conversions_is_error.kpp:72: error: copy-initialising Defaulted from int32 by its constructor, which converts only when marked implicit (design.md "Explicit by default"): Defaulted(...) takes it
+// error: explicit_by_default_conversions_is_error.kpp:77: error: a class (Flag) does not convert to int32: it has no implicit conversion operator to a scalar
+// error: explicit_by_default_conversions_is_error.kpp:78: error: a switch on Flag needs its conversion operator to an integer or an enum, and Flag has none marked implicit (design.md "Explicit by default"): switch on the value it converts to
+// error: explicit_by_default_conversions_is_error.kpp:87: error: the arguments of Box are deduced from (int32) only by a constructor that converts only when marked implicit (design.md "Explicit by default"), which a copy-initialisation does not take: a direct-initialisation does, Box b(...)
+struct Strict
+{
+  int value;
+  Strict(int v) : value(v) {}
+};
+struct Base
+{
+  int b;
+  Base(int v) : b(v) {}
+};
+struct Derived : Base
+{
+  using Base::Base;
+};
+template <typename T> struct Box
+{
+  T value;
+  Box(T v) : value(v) {}
+  Box(const Box& o) : value(o.value) {}
+  template <typename U> Box(const Box<U>& o) : value(T(o.value)) {}
+};
+struct Many
+{
+  int n;
+  template <typename... A> Many(A... a) : n(sizeof...(A)) {}
+};
+struct Defaulted
+{
+  int v;
+  Defaulted(int a = 3) : v(a) {}
+};
+struct Flag
+{
+  bool on;
+  operator int() const { return 1; }
+};
+int place(const Strict& s) { return s.value; }
+Strict give() { return 5; }
+Strict giveList() { return {5}; }
+template <typename T> T twice(int v)
+{
+  T made = v;
+  return made;
+}
+int copies()
+{
+  Strict s = 5;
+  Strict t = {6};
+  int r = place(7);
+  s = 3;
+  Derived d = 4;
+  Box<int> a(1);
+  Box<int> copy = a;
+  Box<double> b = a;
+  Many m = 5;
+  Defaulted e = 4;
+  return s.value + t.value + r + d.b + copy.value + int(b.value) + m.n + e.v;
+}
+int converts(Flag f)
+{
+  int n = f;
+  switch (f)
+  {
+    case 1:
+      return 0;
+  }
+  return n;
+}
+int deduces()
+{
+  Box b = 7;
+  return b.value;
+}
+int main()
+{
+  Strict u = twice<Strict>(3);
+  return u.value;
+}

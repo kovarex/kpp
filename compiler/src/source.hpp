@@ -68,6 +68,12 @@ std::vector<std::string> takeOverrideWarnings();
 // NAME is a data member: write this.NAME" (a member function; a static member's `This::NAME`), each once per
 // place; one beside a global of its spelling says so. The count before required `this.`
 // (the readme's Planned, design.md 23c) becomes an error.
+// --explicit-by-default (design.md "Explicit by default", landing behind the flag): a constructor or a conversion
+// operator converts implicitly only when marked `implicit`, and the rule's errors are on (plain `explicit`,
+// `explicit(cond)`, a braced list as an argument of a constructor). The default once the game, the stdlib, the
+// libraries and the specs build with it.
+void setExplicitByDefault(bool on);
+bool explicitByDefaultOn();
 void setThisWarnings(bool on);
 bool thisWarningsOn();
 void noteThisWarning(const std::string& warning);

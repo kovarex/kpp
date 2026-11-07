@@ -46,6 +46,8 @@ void usage(FILE* out)
           "                convert.cmd's nullptr pass rewrites what they name\n"
           "  --override-warnings  warn of each class with a virtual function whose destructor is not virtual, which\n"
           "                kpp makes virtual (docs/design.md 23b); no error, no other change\n"
+          "  --explicit-by-default  a constructor or conversion operator converts only when marked implicit (design.md,\n"
+          "                \"Explicit by default\": the flip before it is the default), and its errors are on\n"
           "  --this-warnings  warn of each unqualified name that finds a data member or a member function, which\n"
           "                required `this.` writes `this.x` (the readme's Planned); no error, no other change\n"
           "  --return-copy-warnings  warn of each `return x;` of a class object that is copied or moved, not built in\n"

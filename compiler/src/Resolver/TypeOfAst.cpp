@@ -311,6 +311,11 @@ auto GlobalScope::Impl::derivesFrom(const Ty* derived, const Ty* base, int depth
 
 auto GlobalScope::Impl::isExplicit(FunctionDecl* f, const Subst* subst) -> bool
 {
+  // Explicit by default (--explicit-by-default until it is the default): what converts says so, `implicit` or
+  // `implicit(cond)` (kept as an explicit condition, below); a copy, a move and a default constructor are never
+  // conversions (design.md "Explicit by default", rules 2 and 6).
+  if (explicitByDefaultOn() && !(f->flags & DF_Implicit) && (f->flags & (DF_Constructor | DF_Conversion)) && !neverConversion(f))
+    return true;
   if (!(f->flags & DF_Explicit))
     return false;
   if (!f->explicitCondition)
@@ -757,6 +762,37 @@ auto GlobalScope::Impl::abstractClass(const Ty* t, std::unordered_set<std::strin
       return a;
   }
   return false;
+}
+
+auto GlobalScope::Impl::neverConversion(FunctionDecl* f) -> bool
+{
+  if (!(f->flags & DF_Constructor))
+    return false;
+  if (f->params.empty())
+    return true; // a default constructor (`Box(int a = 0)` converts an int: not this; `T x = {};` is no conversion)
+  if (!f->templateParams.empty())
+    return false; // a constructor template is no copy or move constructor ([class.copy.ctor] 1): `Box(const Box<U>&)`
+  size_t required = 0;
+  for (Decl* p : f->params)
+  {
+    if (static_cast<ParamDecl*>(p)->isPack)
+      return false;
+    if (!static_cast<ParamDecl*>(p)->defaultValue)
+      ++required;
+  }
+  Decl* owner = owningClassOf(f);
+  if (required != 1 || !owner || owner->kind != NodeKind::ClassDecl)
+    return false;
+  // A copy or move constructor: its parameter a reference to the class itself (`Box(const Box<int>&)` in Box<T>
+  // converts another instance).
+  if (int self = selfParameter(f->params[0], static_cast<ClassDecl*>(owner)); self < 1 || self > 3)
+    return false;
+  const Ty* written = declaredTypeOf(f->params[0], nullptr, 0);
+  const Ty* own = selfType(owner);
+  if (!written || !written->isKnown() || !own)
+    return true; // (as written, the class's name)
+  written = types.unqualified(types.stripRef(written));
+  return written->kind != TyKind::Class || written == types.unqualified(own);
 }
 
 auto GlobalScope::Impl::selfParameter(Decl* p, ClassDecl* def) -> int

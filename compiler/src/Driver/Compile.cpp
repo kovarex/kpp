@@ -82,6 +82,8 @@ int compile(int argc, char** argv)
       options.overrideWarnings = true;
     else if (arg == "--this-warnings")
       options.thisWarnings = true;
+    else if (arg == "--explicit-by-default")
+      options.explicitByDefault = true;
     else if (arg == "--struct-rule")
       options.structRule = true;
     else if (arg == "--c-type-warnings")

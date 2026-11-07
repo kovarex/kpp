@@ -3322,6 +3322,7 @@ auto GlobalScope::Impl::Walker::checkParenthesizedArray(Span<Expr*> args, const 
 
 auto GlobalScope::Impl::Walker::checkConstruction(const Ty* t, Span<Expr*> args, uint32_t token) -> void
 {
+  checkBracedConstruction(t, args); // (before the exit below: an instance's construction too)
   if (probing || activeSubst || !file || !t || !t->isKnown() || types.isDependent(t))
     return;
   const Ty* c = types.unqualified(types.stripRef(t));
@@ -3387,7 +3388,8 @@ auto GlobalScope::Impl::Walker::checkConstruction(const Ty* t, Span<Expr*> args,
 
 auto GlobalScope::Impl::Walker::checkExplicitCopy(const Ty* from, const Ty* to, uint32_t token) -> void
 {
-  if (probing || activeSubst || !file || !from || !to || !from->isKnown() || !to->isKnown() || types.isDependent(from) || types.isDependent(to) ||
+  // (under --explicit-by-default in template code too: reportExplicitError)
+  if (probing || (activeSubst && !explicitByDefaultOn()) || !file || !from || !to || !from->isKnown() || !to->isKnown() || types.isDependent(from) || types.isDependent(to) ||
       Impl::mentionsUnknown(from) || Impl::mentionsUnknown(to))
     return;
   const Ty* t = types.unqualified(types.stripRef(to));
@@ -3415,7 +3417,7 @@ auto GlobalScope::Impl::Walker::checkExplicitCopy(const Ty* from, const Ty* to, 
     if (int rank = pt ? impl.conversionRank(from, pt, 0) : NotViable; rank >= 4 && rank < NotViable)
     {
       std::string name = types.toString(t, &symbols), via = types.toString(types.unqualified(types.stripRef(pt)), &symbols);
-      reportHere(token, "copy-initialising " + name + " from " + types.toString(f, &symbols) + " takes two user-defined conversions, to " + via +
+      reportExplicitError(token, "copy-initialising " + name + " from " + types.toString(f, &symbols) + " takes two user-defined conversions, to " + via +
                           " and then to " + name + ", where an implicit conversion has one at most ([over.best.ics] 4): " + name + "(...) says which");
       return;
     }
@@ -3424,13 +3426,44 @@ auto GlobalScope::Impl::Walker::checkExplicitCopy(const Ty* from, const Ty* to, 
   if (!ctor || ambiguous || (ctor->explicitCondition && !ctor->templateParams.empty()) || !impl.isExplicit(ctor, s.empty() ? nullptr : &s))
     return;
   std::string name = types.toString(t, &symbols);
-  reportHere(token, "copy-initialising " + name + " from " + types.toString(f, &symbols) +
-                      " by its explicit constructor, which only a direct-initialisation takes (" + name + "(...))");
+  if (explicitByDefaultOn() && !(ctor->flags & DF_Explicit))
+    reportExplicitError(token, "copy-initialising " + name + " from " + types.toString(f, &symbols) +
+                                 " by its constructor, which converts only when marked implicit (design.md \"Explicit by default\"): " + name +
+                                 "(...) takes it");
+  else
+    reportExplicitError(token, "copy-initialising " + name + " from " + types.toString(f, &symbols) +
+                                 " by its explicit constructor, which only a direct-initialisation takes (" + name + "(...))");
+}
+
+auto GlobalScope::Impl::Walker::checkSwitchOnClass(SwitchStmt* w) -> void
+{
+  if (probing || !w || !w->cond || w->cond->kind == NodeKind::DeclStmt || uint8_t(w->cond->kind) < uint8_t(NodeKind::NameExpr))
+    return;
+  const Ty* ct = static_cast<Expr*>(w->cond)->ty;
+  if (!ct || !ct->isKnown() || types.isDependent(ct) || Impl::mentionsUnknown(ct))
+    return;
+  const Ty* cls = types.unqualified(types.stripRef(ct));
+  if (cls->kind != TyKind::Class || typedUnionOf(cls) || (cls->decl && (cls->decl->attributes & ATTR_Draft)))
+    return; // (a typed union switches on its tag)
+  Subst args;
+  if (impl.chooseConversion(cls, nullptr, GlobalScope::ConversionKind::ToIntegral, false, nullptr, &args))
+    return;
+  // (codegen's rule, chooseConversion: it said "a switch on a class without a conversion ... yet", which now holds
+  // this error: at the condition)
+  std::string name = types.toString(cls, &symbols);
+  reportExplicitError(w->cond->token, "a switch on " + name + " needs its conversion operator to an integer or an enum, and " + name + " has " +
+                                          (explicitByDefaultOn() ? "none marked implicit (design.md \"Explicit by default\")" : "no implicit one") +
+                                          ": switch on the value it converts to");
 }
 
 auto GlobalScope::Impl::Walker::checkExplicitListCopy(BraceInitExpr* b, const Ty* to) -> void
 {
-  if (probing || activeSubst || !file || !b || !b->designators.empty() || !to || !to->isKnown() || types.isDependent(to) || Impl::mentionsUnknown(to))
+  // Under --explicit-by-default a list of two or more values takes an unmarked constructor (`return {x, y};`,
+  // `Color c = {1, 0, 0};`), and `{a}` an implicit one, as `= a` does (design.md "Explicit by default", rule 1);
+  // `{}` any default one (rule 2); in template code too (reportExplicitError).
+  if (explicitByDefaultOn() && b && (b->args.size() >= 2 || b->args.empty()))
+    return; // (`{}`: a default constructor's, never a conversion, rule 2)
+  if (probing || (activeSubst && !explicitByDefaultOn()) || !file || !b || !b->designators.empty() || !to || !to->isKnown() || types.isDependent(to) || Impl::mentionsUnknown(to))
     return;
   const Ty* t = types.unqualified(types.stripRef(to));
   if (t->kind != TyKind::Class || impl.isInitializerList(t))
@@ -3466,7 +3499,11 @@ auto GlobalScope::Impl::Walker::checkExplicitListCopy(BraceInitExpr* b, const Ty
   if (!ctor || ambiguous || (ctor->explicitCondition && !ctor->templateParams.empty()) || !impl.isExplicit(ctor, s.empty() ? nullptr : &s))
     return;
   std::string name = types.toString(t, &symbols);
-  reportHere(b->token, "copy-list-initialising " + name + " by its explicit constructor, which only a direct-initialisation takes (" + name + "{...})");
+  if (explicitByDefaultOn() && !(ctor->flags & DF_Explicit))
+    reportExplicitError(b->token, "copy-list-initialising " + name + " by its constructor, which converts only when marked implicit (design.md "
+                                  "\"Explicit by default\"): " + name + "(...) takes it");
+  else
+    reportExplicitError(b->token, "copy-list-initialising " + name + " by its explicit constructor, which only a direct-initialisation takes (" + name + "{...})");
 }
 
 auto GlobalScope::Impl::Walker::surelyNotConstant(const Expr* e, int depth) -> bool
@@ -3716,8 +3753,353 @@ auto GlobalScope::Impl::Walker::checkListNarrowing(Span<Expr*> elements, const T
       element(elements[i], impl.declaredTypeOf(p, sp, 0));
 }
 
+namespace
+{
+  // The token closing the bracket opened at token (a `{`, `(` or `<` of a template argument list), or UINT32_MAX.
+  uint32_t closingToken(const ParsedFile* file, uint32_t token)
+  {
+    if (!file || !file->tokens || token >= file->tokens->size())
+      return UINT32_MAX;
+    const std::vector<Token>& t = *file->tokens;
+    bool angle = t[token].is(P::Less);
+    int depth = 0, inner = 0; // (inner: parentheses and brackets, inside which a `>` closes no argument list)
+    for (uint32_t i = token; i < t.size() && i < token + 65536; ++i)
+    {
+      if (t[i].is(P::LBrace) || t[i].is(P::LParen) || t[i].is(P::LBracket))
+        angle && i != token ? ++inner : ++depth;
+      else if (t[i].is(P::RBrace) || t[i].is(P::RParen) || t[i].is(P::RBracket))
+        angle ? --inner : --depth;
+      else if (angle && inner == 0 && t[i].is(P::Less))
+        ++depth;
+      else if (angle && inner == 0 && (t[i].is(P::Greater) || t[i].is(P::Shr)))
+        depth -= t[i].is(P::Shr) ? 2 : 1;
+      if (depth <= 0 && inner <= 0)
+        return depth == 0 && inner == 0 ? i : UINT32_MAX;
+      if (inner < 0 || (angle && t[i].is(P::Semi)))
+        return UINT32_MAX;
+    }
+    return UINT32_MAX;
+  }
+
+  // The last token of the qualified name at token (`::geometry::Vector2<i32>`), or UINT32_MAX.
+  uint32_t qualifiedNameEnd(const ParsedFile* file, uint32_t token)
+  {
+    if (!file || !file->tokens)
+      return UINT32_MAX;
+    const std::vector<Token>& t = *file->tokens;
+    uint32_t i = token, last = UINT32_MAX;
+    if (i < t.size() && t[i].is(P::ColonColon))
+      ++i;
+    while (i < t.size() && t[i].getKind() == TokenKind::Identifier)
+    {
+      last = i++;
+      if (i < t.size() && t[i].is(P::Less))
+      {
+        last = closingToken(file, i);
+        if (last == UINT32_MAX)
+          return UINT32_MAX;
+        i = last + 1;
+      }
+      if (i + 1 < t.size() && t[i].is(P::ColonColon))
+        ++i;
+      else
+        break;
+    }
+    return last;
+  }
+}
+
+auto GlobalScope::Impl::Walker::reportExplicitError(uint32_t token, const std::string& message) -> void
+{
+  if (!explicitByDefaultOn())
+    return reportHere(token, message);
+  if (!file || file->isImported || probing)
+    return;
+  if (activeSubst)
+    reportInInstance(token, message);
+  else
+    impl.reportCheckerError(file, token, message);
+}
+
+auto GlobalScope::Impl::Walker::checkConversionMark(FunctionDecl* f) -> void
+{
+  // (once, at the declaration that has the word: its walk as written, not an instance's)
+  if (!explicitByDefaultOn() || probing || activeSubst || retypingElements || !file || file->isImported || !file->tokens || !f ||
+      f->conversionMark == UINT32_MAX || f->conversionMark >= file->tokens->size() || !(f->flags & DF_Explicit) || (f->flags & DF_Implicit) ||
+      !(f->flags & (DF_Constructor | DF_Conversion)) || !(*file->tokens)[f->conversionMark].is(Kw::explicit_))
+    return;
+  const std::string what = (f->flags & DF_Constructor) ? "constructors" : "conversion operators";
+  const std::string rule = " (design.md \"Explicit by default\")";
+  uint32_t at = f->conversionMark;
+  if (!f->explicitCondition)
+  {
+    impl.reportCheckerError(file, at, what + " are explicit by default: remove `explicit`" + rule);
+    return;
+  }
+  // `explicit(cond)` is `implicit(!cond)`: the condition turned round, as plainly as its form allows.
+  uint32_t close = at + 1 < file->tokens->size() && (*file->tokens)[at + 1].is(P::LParen) ? closingToken(file, at + 1) : UINT32_MAX;
+  std::string old = close != UINT32_MAX && close > at + 2 ? Impl::spelledTokens(file, at, close) : std::string();
+  const std::string head = what + " are explicit by default, and implicit(condition) says when one converts";
+  if (old.empty() || old.find('\n') != std::string::npos || old.find('`') != std::string::npos)
+  {
+    impl.reportCheckerError(file, at, head + ": write implicit with the condition turned round, not explicit(condition)" + rule);
+    return;
+  }
+  uint32_t first = at + 2, last = close - 1;
+  Expr* c = f->explicitCondition;
+  if (c->kind == NodeKind::LiteralExpr && (static_cast<LiteralExpr*>(c)->keyword == Kw::true_ || static_cast<LiteralExpr*>(c)->keyword == Kw::false_))
+  {
+    if (static_cast<LiteralExpr*>(c)->keyword == Kw::true_)
+      impl.reportCheckerError(file, at, what + " are explicit by default: remove `" + old + "`" + rule);
+    else
+      impl.reportCheckerError(file, at, head + ": write `implicit`, not `" + old + "`" + rule);
+    return;
+  }
+  std::string turned;
+  if (c->kind == NodeKind::UnaryExpr && P(static_cast<UnaryExpr*>(c)->op) == P::Bang && !static_cast<UnaryExpr*>(c)->postfix && first < last)
+  {
+    // `explicit(!isConvertible<U, T>)`: implicit(isConvertible<U, T>); `explicit(!(a && b))`: implicit(a && b)
+    uint32_t from = first + 1, to = last;
+    if ((*file->tokens)[from].is(P::LParen) && closingToken(file, from) == to && from + 1 < to)
+    {
+      ++from;
+      --to;
+    }
+    turned = Impl::spelledTokens(file, from, to);
+  }
+  else if (c->kind == NodeKind::BinaryExpr && P(static_cast<BinaryExpr*>(c)->op) == P::OrOr)
+  {
+    // `explicit(!a || !b)`: implicit(a && b), when every operand of the `||`s is a negation (each spans from
+    // its `!` to the next operator, whose token the expression records).
+    std::vector<Expr*> leaves;
+    std::vector<uint32_t> operators;
+    std::function<void(Expr*)> flatten = [&](Expr* e)
+    {
+      if (e && e->kind == NodeKind::BinaryExpr && P(static_cast<BinaryExpr*>(e)->op) == P::OrOr)
+      {
+        flatten(static_cast<BinaryExpr*>(e)->lhs);
+        operators.push_back(e->token);
+        flatten(static_cast<BinaryExpr*>(e)->rhs);
+      }
+      else
+        leaves.push_back(e);
+    };
+    flatten(c);
+    bool negations = leaves.size() == operators.size() + 1;
+    for (size_t k = 0; k < leaves.size() && negations; ++k)
+    {
+      uint32_t from = k == 0 ? first : operators[k - 1] + 1, to = k + 1 == leaves.size() ? last : operators[k] - 1;
+      Expr* leaf = leaves[k];
+      negations = leaf && leaf->kind == NodeKind::UnaryExpr && P(static_cast<UnaryExpr*>(leaf)->op) == P::Bang && !static_cast<UnaryExpr*>(leaf)->postfix &&
+                  leaf->token == from && from < to;
+      if (negations)
+        turned += (k ? " && " : "") + Impl::spelledTokens(file, from + 1, to);
+    }
+    if (!negations)
+      turned = "!(" + Impl::spelledTokens(file, first, last) + ")";
+  }
+  else if (c->kind == NodeKind::NameExpr || c->kind == NodeKind::CallExpr || c->kind == NodeKind::MemberExpr || c->kind == NodeKind::ParenExpr)
+    turned = "!" + Impl::spelledTokens(file, first, last);
+  else
+    turned = "!(" + Impl::spelledTokens(file, first, last) + ")";
+  impl.reportCheckerError(file, at, head + ": write `implicit(" + turned + ")`, not `" + old + "`" + rule);
+}
+
+auto GlobalScope::Impl::Walker::bracedArgumentNamesNoType(BraceInitExpr* b, const Ty* to) -> bool
+{
+  // A function argument's outermost braces name their type, whatever they reach: a constructor, an aggregate, a
+  // container's InitializerList constructor, `{}` (design.md "Explicit by default", rule 1). Not for a parameter that
+  // is an InitializerList itself (`max({a, b, c})`), nor inside braces, whose nested braces never name one.
+  if (!b || b->text || !to)
+    return false; // (the checker's own list of `out << a << b`: no braces written)
+  const Ty* t = types.unqualified(types.stripRef(to));
+  if (!t || !t->isKnown() || Impl::mentionsUnknown(t) || types.isDependent(t) || t->kind == TyKind::Param || t->kind == TyKind::Pack ||
+      t->kind == TyKind::DependentMember)
+    return false; // (a template parameter is deduced from no list: another error; or each instance says)
+  return !impl.isInitializerList(t);
+}
+
+auto GlobalScope::Impl::Walker::spelledParameterType(ParamDecl* p, const Ty* to) -> std::string
+{
+  Type* core = p ? p->type : nullptr;
+  while (core && (core->kind == NodeKind::LRefType || core->kind == NodeKind::RRefType || core->kind == NodeKind::ConstType))
+    core = core->kind == NodeKind::LRefType   ? static_cast<LRefType*>(core)->referenced
+           : core->kind == NodeKind::RRefType ? static_cast<RRefType*>(core)->referenced
+                                              : static_cast<ConstType*>(core)->inner;
+  if (core && core->kind == NodeKind::BuiltinType && p->file && p->file->tokens)
+  {
+    const std::vector<Token>& tk = *p->file->tokens;
+    auto word = [&](uint32_t i)
+    {
+      return i < tk.size() && (tk[i].is(Kw::unsigned_) || tk[i].is(Kw::signed_) || tk[i].is(Kw::long_) || tk[i].is(Kw::short_) || tk[i].is(Kw::int_) ||
+                               tk[i].is(Kw::char_) || tk[i].is(Kw::bool_) || tk[i].is(Kw::float_) || tk[i].is(Kw::double_) || tk[i].is(Kw::wchar_t_) ||
+                               tk[i].is(Kw::char8_t_) || tk[i].is(Kw::char16_t_) || tk[i].is(Kw::char32_t_));
+    };
+    if (word(core->token))
+    {
+      uint32_t end = core->token;
+      while (word(end + 1))
+        ++end;
+      return Impl::spelledTokens(p->file, core->token, end);
+    }
+  }
+  if (core && core->kind == NodeKind::NamedType && p->file)
+  {
+    auto* named = static_cast<NamedType*>(core);
+    const Ty* written = impl.declaredTypeOf(p, nullptr, 0);
+    bool member = named->name.parts.size() == 1 && !named->name.global && named->resolved && named->resolved->parent &&
+                  named->resolved->parent->kind == NodeKind::ClassDecl;
+    if (written && written->isKnown() && !types.isDependent(written) && !member && !named->typename_)
+      if (uint32_t end = qualifiedNameEnd(p->file, named->token); end != UINT32_MAX)
+        return Impl::spelledTokens(p->file, named->token, end);
+  }
+  const Ty* t = to ? types.unqualified(types.stripRef(to)) : nullptr;
+  if (!t || t->kind != TyKind::Class || !t->args.empty() || !t->decl || t->decl->kind != NodeKind::ClassDecl || (t->decl->flags & DF_Specialization))
+    return {};
+  std::string path;
+  for (Decl* d = t->decl; d; d = d->parent)
+  {
+    std::string name;
+    if (d->kind == NodeKind::ClassDecl)
+    {
+      const QualifiedName& n = static_cast<ClassDecl*>(d)->name;
+      if (n.empty() || n.last().symbol == UINT32_MAX)
+        return {}; // (an unnamed class)
+      name = std::string(symbols.name(n.last().symbol));
+    }
+    else if (d->kind == NodeKind::NamespaceDecl)
+    {
+      if (static_cast<NamespaceDecl*>(d)->name == UINT32_MAX)
+        continue; // (an unnamed namespace's names are its file's)
+      name = std::string(symbols.name(static_cast<NamespaceDecl*>(d)->name));
+    }
+    else
+      return {}; // (a class local to a function: no name outside it)
+    path = path.empty() ? name : name + "::" + path;
+  }
+  return path;
+}
+
+auto GlobalScope::Impl::Walker::checkBracedArguments(FunctionDecl* f, const Ty* fnTy, const Span<Expr*>& args, std::vector<bool>* refused) -> void
+{
+  if (!explicitByDefaultOn() || probing || !f || !fnTy || fnTy->kind != TyKind::Function || !file || file->isImported || !file->tokens ||
+      undecidedBranches > 0)
+    return;
+  bool any = false;
+  for (Expr* a : args)
+    any = any || (a && a->kind == NodeKind::BraceInitExpr);
+  if (!any)
+    return;
+  if (undecidedInTemplate(args))
+    return;
+  for (size_t i = 0; i < args.size() && i < fnTy->args.size(); ++i)
+  {
+    // (an argument for a pack: an element of a class's pack, its type in fnTy; a function's own pack is deduced from
+    // no list, and fnTy holds it unexpanded)
+    auto* p = i < f->params.size() ? static_cast<ParamDecl*>(f->params[i])
+              : !f->params.empty() && static_cast<ParamDecl*>(f->params[f->params.size() - 1])->isPack ? static_cast<ParamDecl*>(f->params[f->params.size() - 1])
+                                                                                                        : nullptr;
+    if (!p || (p->isPack && fnTy->args.size() != args.size()))
+      break;
+    if (!args[i] || args[i]->kind != NodeKind::BraceInitExpr || !bracedArgumentNamesNoType(static_cast<BraceInitExpr*>(args[i]), fnTy->args[i]))
+      continue;
+    refuseBracedArgument(static_cast<BraceInitExpr*>(args[i]), fnTy->args[i], p);
+    if (refused)
+    {
+      refused->resize(args.size());
+      (*refused)[i] = true;
+    }
+  }
+}
+
+auto GlobalScope::Impl::Walker::refuseBracedArgument(BraceInitExpr* b, const Ty* to, ParamDecl* p) -> void
+{
+  const Ty* t = types.unqualified(types.stripRef(to));
+  uint32_t close = (*file->tokens)[b->token].is(P::LBrace) ? closingToken(file, b->token) : UINT32_MAX;
+  std::string old = close != UINT32_MAX ? Impl::spelledTokens(file, b->token, close) : std::string();
+  // The whole list in the clause when it is short and on one line; else its `{` alone ("write `Point{`, not `{`"),
+  // which the editor's fix replaces as well.
+  bool whole = !old.empty() && old.size() <= 80 && old.find('\n') == std::string::npos && old.find('`') == std::string::npos;
+  std::string fix, replaced = whole ? old : std::string("{");
+  if (t->kind == TyKind::Pointer || t->kind == TyKind::MemberPointer || t->kind == TyKind::Nullptr)
+  {
+    // (a pointer's type is no prefix of braces: `nullptr` for `{}`, the value itself for `{p}`)
+    uint32_t last = close != UINT32_MAX && close > b->token + 1 ? close - 1 : UINT32_MAX;
+    if (last != UINT32_MAX && last > b->token + 1 && (*file->tokens)[last].is(P::Comma))
+      --last;
+    if (whole && b->args.empty())
+      fix = "nullptr";
+    else if (whole && b->args.size() == 1 && b->designators.empty() && last != UINT32_MAX)
+      fix = Impl::spelledTokens(file, b->token + 1, last);
+  }
+  else if (std::string type = !old.empty() ? spelledParameterType(p, to) : std::string(); !type.empty())
+    fix = type + replaced;
+  std::string message = "the braces of a function argument name their type";
+  if (!fix.empty())
+    message += ": write `" + fix + "`, not `" + replaced + "`";
+  else
+    message += ": " + types.toString(t, &symbols) + "{...}";
+  message += " (design.md \"Explicit by default\")";
+  if (activeSubst)
+    reportInInstance(b->token, message);
+  else
+    impl.reportCheckerError(file, b->token, message);
+}
+
+auto GlobalScope::Impl::Walker::undecidedInTemplate(const Span<Expr*>& args) -> bool
+{
+  // A template's own walk decides only a call of no dependent argument (the same function in every instance);
+  // the instances say the rest.
+  if (!inGenericTemplate() || activeSubst)
+    return false;
+  std::function<bool(Expr*)> dependent = [&](Expr* e)
+  {
+    if (!e)
+      return true;
+    if (e->kind == NodeKind::BraceInitExpr)
+    {
+      for (Expr* x : static_cast<BraceInitExpr*>(e)->args)
+        if (dependent(x))
+          return true;
+      return false;
+    }
+    return !e->ty || !e->ty->isKnown() || types.isDependent(e->ty) || Impl::mentionsUnknown(e->ty);
+  };
+  for (Expr* a : args)
+    if (dependent(a))
+      return true;
+  return false;
+}
+
+auto GlobalScope::Impl::Walker::checkBracedConstruction(const Ty* t, const Span<Expr*>& args) -> void
+{
+  if (!explicitByDefaultOn() || probing || !t)
+    return;
+  bool any = false;
+  for (Expr* a : args)
+    any = any || (a && a->kind == NodeKind::BraceInitExpr);
+  const Ty* c = any ? types.unqualified(types.stripRef(t)) : nullptr;
+  if (!c || c->kind != TyKind::Class || !c->isKnown() || types.isDependent(c) || Impl::mentionsUnknown(c) || c->isBraceList() || Impl::lambdaOf(c))
+    return;
+  bool ambiguous = false;
+  FunctionDecl* ctor = impl.chooseConstructor(c, argTypesOf(args), nullptr, nullptr, false, &ambiguous);
+  if (ctor && !ambiguous)
+  {
+    Subst s = impl.substFor(c);
+    checkBracedArguments(ctor, impl.declaredTypeOf(ctor, s.empty() ? nullptr : &s, 0), args);
+    return;
+  }
+  // `: color({r, g, b})`, `Color c({r, g, b})`: one list, which no declared constructor takes: the implicit copy or
+  // move constructor's.
+  if (!ctor && args.size() == 1 && args[0] && args[0]->kind == NodeKind::BraceInitExpr && !undecidedInTemplate(args) && file && !file->isImported &&
+      file->tokens && undecidedBranches == 0 && bracedArgumentNamesNoType(static_cast<BraceInitExpr*>(args[0]), c))
+    refuseBracedArgument(static_cast<BraceInitExpr*>(args[0]), c, nullptr);
+}
+
 auto GlobalScope::Impl::Walker::checkExplicitArguments(FunctionDecl* f, const Ty* fnTy, const Span<Expr*>& args) -> void
 {
+  std::vector<bool> refused;
+  checkBracedArguments(f, fnTy, args, &refused); // (before the exit below: a template's call too)
   if (probing || !f || !f->templateParams.empty() || !fnTy || fnTy->kind != TyKind::Function || types.isDependent(fnTy))
     return;
   std::vector<const Ty*> argTypes = argTypesOf(args);
@@ -3728,6 +4110,8 @@ auto GlobalScope::Impl::Walker::checkExplicitArguments(FunctionDecl* f, const Ty
     {
       if (args[i]->kind == NodeKind::BraceInitExpr)
       {
+        if (i < refused.size() && refused[i])
+          continue; // (one error for the list: it is no argument at all)
         checkExplicitListCopy(static_cast<BraceInitExpr*>(args[i]), fnTy->args[i]);
         if (static_cast<BraceInitExpr*>(args[i])->designators.empty() && !static_cast<BraceInitExpr*>(args[i])->text)
           checkListNarrowing(static_cast<BraceInitExpr*>(args[i])->args, fnTy->args[i]); // `take({1.5})` for an int
@@ -7439,6 +7823,7 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
       checkRefQualifierMix(f);
       checkTextSignature(f);
       checkOverride(f);
+      checkConversionMark(f);
       Decl* initialized = f->ctorInits.empty() ? nullptr : impl.owningClassOf(f);
       for (FunctionDecl::CtorInit& init : f->ctorInits)
       {
@@ -7474,7 +7859,10 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
                                 : l.decl->kind == NodeKind::ClassDecl  ? impl.selfType(l.decl)
                                                                        : nullptr;
           if (initialized && initialized->kind == TyKind::Class && !types.isDependent(initialized))
+          {
             packText(init.args, textConstructor(initialized, init.args), f->token);
+            checkBracedConstruction(initialized, init.args); // `: origin(0, {1, 2})`
+          }
           if (initialized && initialized->kind == TyKind::Array && l.decl->kind == NodeKind::VariableDecl && !init.args.empty())
             checkParenthesizedArray(init.args, initialized, f->token); // `values(4, 5)` (C++20)
         }
@@ -7635,6 +8023,23 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
         const Ty* deduced = impl.deduceClassArgs(declared, argTypes, !direct);
         if (!deduced && v->init && v->init->kind == NodeKind::BraceInitExpr)
           deduced = impl.deduceAggregateArgs(declared, argTypes);
+        // `Box b = 7;` where only `Box b(7)` deduces: an explicit constructor's guide is none for a copy
+        // ([over.match.class.deduct] 3), and under --explicit-by-default an unmarked one's (rule 5).
+        if (!deduced && !direct && !inGenericTemplate() && impl.deduceClassArgs(declared, argTypes, false))
+        {
+          std::string from;
+          for (const Ty* a : argTypes)
+            from += (from.empty() ? "" : ", ") + types.toString(a, &symbols);
+          std::string name = types.toString(declared, &symbols);
+          if (Scope* cs = impl.classScopeOf(declared); cs && cs->owner && cs->owner->kind == NodeKind::ClassDecl)
+            if (const QualifiedName& n = static_cast<ClassDecl*>(cs->owner)->name; !n.empty() && n.last().symbol != UINT32_MAX)
+              name = std::string(symbols.name(n.last().symbol)); // (Box, not Box<T>)
+          reportHere(v->token, "the arguments of " + name + " are deduced from (" + from + ") only by a constructor that " +
+                                   (explicitByDefaultOn() ? "converts only when marked implicit (design.md \"Explicit by default\")"
+                                                          : "is explicit ([over.match.class.deduct] 3)") +
+                                   ", which a copy-initialisation does not take: a direct-initialisation does, " + name + " " +
+                                   (v->name.empty() || v->name.last().symbol == UINT32_MAX ? std::string("x") : std::string(symbols.name(v->name.last().symbol))) + "(...)");
+        }
         // `constexpr Array names = {...}` is const, and `const Box b{1};` is a const Box<int> as
         // `const Box<int>` is: the declaration's qualifiers stay (until 2026-11-06 a const one
         // was dropped, so b.get() called the non-const get() and `b.v = 5` compiled).
@@ -8386,6 +8791,7 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
       size_t mark = locals.mark();
       walkStmt(w->init);
       walkNode(w->cond);
+      checkSwitchOnClass(w);
       walkStmt(w->body);
       locals.pop(mark);
       break;

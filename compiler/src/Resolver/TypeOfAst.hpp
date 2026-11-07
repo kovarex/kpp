@@ -173,6 +173,8 @@
 
   // Whether a parameter's type is the class itself: 1 `const C&`, 2 `C&`, 3 `C&&`, 4 `C`; 0 not.
   int selfParameter(Decl* p, ClassDecl* def);
+  // A constructor that is never a conversion: a default one (callable with no argument), a copy or a move one.
+  bool neverConversion(FunctionDecl* f);
 
   SpecialMembers specialMembersOf(ClassDecl* def);
 

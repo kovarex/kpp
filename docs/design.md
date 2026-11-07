@@ -2349,7 +2349,8 @@ clauses, which the editor's quick fix reads: "write `NEW`, not `OLD`" ("write `t
 "write `Direction::North`, not `North`", "write `int g() const override`, not `int g() const`") or "remove `OLD`".
 OLD is the source's text as written, starting at the message's line and column: the server replaces it only
 when that exact text starts there. Notes go before the clause. So far: --this-warnings, --override-warnings,
-a bare enumerator of a scoped enum.
+a bare enumerator of a scoped enum, `implicit` written twice or beside `explicit`, and --explicit-by-default's
+plain `explicit`, `explicit(cond)` and braced argument ("Explicit by default").
 
 ### 24. The compiler's own sources: laid out as Factorio's (decided 2026-11-05)
 kovarex, 2026-11-05: the compiler's C++ follows Factorio's layout, "one class per file, classes with
@@ -4728,12 +4729,17 @@ its IR for every spec snippet (1073) is byte-identical before and after.
 - **Explicit by default** (readme's Planned; decided by kovarex 2026-11-07 on thread D's questions, Q1 and Q3 reshaped;
   D's survey in the coordinator's notes). A constructor or a conversion operator converts implicitly only when marked
   `implicit`; an unmarked one is what C++'s `explicit` one is.
-  1. A braced list without a name as a function argument is an error naming the fix: `draw({1, 0, 0})` is written
-     `draw(Color(1, 0, 0))` (kovarex: unreadable, ambiguous beside `draw(Color(1, 0, 0))`, and a new overload
-     `draw(const Vector3&)` would break the untouched line). In `return {x, y};` and a variable's `Color c = {1, 0, 0};`
-     a list of two or more values takes a constructor with no mark, and `{a}` needs `implicit`, as `= a` does. `{}`,
-     an aggregate's list and an InitializerList's stay as they are outside arguments; whether they are refused as
-     arguments too he decides on the count (D-braced-list-arguments-survey.md in the coordinator's notes).
+  1. Braced lists (settled by kovarex on the count, 2026-11-07 evening; D-braced-list-arguments-survey.md in the
+     coordinator's notes). A function argument's outermost braces name their type, whatever they reach: a constructor,
+     an aggregate, a container through its InitializerList constructor, or `{}`: `move(Point{1, 2})`,
+     `fill(Vector<i32>{1, 2, 3})`, `reset(Color())`, an error naming the fix ("write `Point{1, 2}`, not `{1, 2}`"),
+     not `draw({1, 0, 0})` (kovarex: unreadable, ambiguous beside `draw(Color(1, 0, 0))`, and a new overload
+     `draw(const Vector3&)` would break the untouched line). The one exception is a parameter that is an
+     InitializerList itself: `max({a, b, c})`. Inside a braced list whose element type is known (an InitializerList's
+     elements, a struct's members, an array's elements) nested braces never name a type, at any depth (Go's rule):
+     `Values values({{"hello", Color(5)}, {"foo", Color(7)}});`. In `return {x, y};` and a variable's
+     `Color c = {1, 0, 0};` the braces stay unnamed: a list of two or more values takes a constructor with no mark,
+     and `{a}` needs `implicit`, as `= a` does.
   2. A default constructor is never a conversion: `T x = {};` and `return {};` take an unmarked one.
   3. `explicit` is removed ("we remove explicit to remove a keyword that does nothing, the goal is clean language"):
      plain `explicit` is an error naming the fix ("constructors are explicit by default, remove explicit"), and
@@ -4745,9 +4751,30 @@ its IR for every spec snippet (1073) is byte-identical before and after.
      no candidate there; written guides are as in C++.
   6. Inherited constructors keep their base's mark; a copy or move constructor is never a conversion.
   The order: the counts and the marks first (the converter marks the game, C; the stdlib's `implicit(cond)`s and
-  Atomic's `operator T`), the warnings, then the flip with the errors, the headline staying 0. Built: `implicit(cond)`
-  (kept as the explicit condition `!(cond)`), and `implicit` twice or beside `explicit` an error naming the word to remove
-  (2026-11-07, specs kpp/implicit_condition, kpp/implicit_condition_errors_is_error).
+  Atomic's `operator T`), then the flip with its errors behind a flag, then the flag as the default, the headline
+  staying 0. Built: `implicit(cond)` (kept as the explicit condition `!(cond)`), and `implicit` twice or beside
+  `explicit` an error naming the word to remove (2026-11-07, specs kpp/implicit_condition,
+  kpp/implicit_condition_errors_is_error).
+  Built behind `--explicit-by-default` (D, 2026-11-07), every rule as an error exactly as it will be, so that the
+  converter and the stdlib are fixed against it: an unmarked constructor or conversion operator is explicit
+  (isExplicit), a copy or move constructor (not a template, its one parameter a reference to the class itself) and
+  one of no parameters never; plain `explicit` ("remove `explicit`") and `explicit(cond)` ("write `implicit(...)`",
+  the condition turned round: a negation's operand, `a && b` for `!a || !b`, else `!cond`) at the word; a function
+  argument's outermost braces that name no type, of a call, a construction, `new` or a member initializer ("write
+  `Point{1, 2}`, not `{1, 2}`", or for a long or multi-line list "write `Point{`, not `{`"; the type as the parameter
+  writes it, else the class by its namespaces and classes, else no fix; for a pointer `nullptr`, or the value of
+  `{p}`); `{a}` in a copy-initialization needs `implicit`, `{a, b}` and `{}` do not; the explicit checks in template
+  code too (a template's own walk for what is not dependent, each instance for the rest); a switch on a class; class
+  template argument deduction by copy. The stdlib alone gives 87 errors under it (72 plain `explicit` on
+  constructors, 11 on conversion operators, its 4 `explicit(cond)`), the stdlib owner's to fix before the game's
+  errors read clean. Not refused under the flag, for kovarex: a braced list as an operator's operand (`x = {..}`, 301
+  in the game; `m[{..}]`); `explicit` on a deduction guide stays, written guides being as in C++ (rule 5). Specs kpp/explicit_by_default, kpp/explicit_by_default_marks_is_error,
+  kpp/explicit_by_default_braced_arguments_is_error, kpp/explicit_by_default_conversions_is_error. Two C++ rules it
+  leans on were missing and hold without the flag too: class template argument deduction by copy takes no explicit
+  constructor's guide ([over.match.class.deduct] 3; `Box b = 7;` took it), and a switch on a class takes no explicit
+  conversion operator ([stmt.switch] 2; the checker's error, codegen's "does not support" before); specs
+  templates/class_template_argument_deduction_by_copy_takes_no_explicit_constructor_is_error,
+  language/switch_on_class_with_only_an_explicit_conversion_is_error.
 
 - **The noexcept operator** (D, 2026-11-06, [except.spec] 6) answers for any operand: what it names and what it
   calls without naming it (Walker::canThrow): a class's operators, constructions, implicit and defaulted

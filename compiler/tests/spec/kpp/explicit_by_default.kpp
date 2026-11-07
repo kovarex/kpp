@@ -1,0 +1,125 @@
+// spec: --explicit-by-default (design.md "Explicit by default", the flip behind a flag until the code builds with it): what is marked `implicit` converts, an `implicit(cond)` while cond holds; direct-initialization takes an unmarked constructor, and so do `return {x, y};` and `Color c = {1, 0, 0};` (two or more values); `{}` takes a default constructor and a copy an unmarked copy constructor (never conversions); a contextual conversion takes an unmarked `operator bool`; a switch a marked conversion; an inherited constructor keeps its base's mark; class template argument deduction by copy takes an implicit constructor; a function argument's braces name their type (`Agg{20, 30}`) unless the parameter is an InitializerList, inside whose braces nested ones name none (rule 1)
+// kppc: --explicit-by-default --no-std
+struct Meters
+{
+  int value;
+  implicit Meters(int v) : value(v) {}
+};
+struct Color
+{
+  int r, g, b;
+  Color(int r, int g, int b) : r(r), g(g), b(b) {}
+};
+struct Strict
+{
+  int value;
+  Strict(int v) : value(v) {}
+  Strict() : value(7) {}
+  Strict(const Strict& o) : value(o.value) {}
+};
+struct Flag
+{
+  bool on;
+  operator bool() const { return on; }
+  implicit operator int() const { return on ? 10 : 20; }
+};
+template <typename T> struct Box
+{
+  T value;
+  implicit Box(T v) : value(v) {}
+};
+template <typename T> struct Wrap
+{
+  T value;
+  implicit(sizeof(T) == 4) Wrap(T v) : value(v) {}
+};
+struct Base
+{
+  int b;
+  implicit Base(int v) : b(v) {}
+};
+struct Derived : Base
+{
+  using Base::Base;
+};
+struct Defaulted
+{
+  int v;
+  Defaulted(int a = 3) : v(a) {}
+};
+struct Agg
+{
+  int a, b;
+};
+// (as the stdlib's: a pointer, then a count)
+template <typename T> struct InitializerList
+{
+  const T* items = nullptr;
+  u64 length = 0;
+  const T* begin() const { return items; }
+  const T* end() const { return items + length; }
+};
+struct Entry
+{
+  const char* name;
+  int v;
+};
+struct Values
+{
+  int total = 0;
+  Values(InitializerList<Entry> entries)
+  {
+    for (const Entry& e : entries)
+      total += e.v;
+  }
+};
+int total(InitializerList<int> values)
+{
+  int t = 0;
+  for (int v : values)
+    t += v;
+  return t;
+}
+int sumEntries(InitializerList<Entry> entries) { return Values(entries).total; }
+int take(Meters m) { return m.value; }
+Color make() { return {1, 2, 3}; }
+int takeBase(Derived d) { return d.b; }
+int takeWrap(Wrap<int> w) { return w.value; }
+int takeAgg(Agg g) { return g.a + g.b; }
+int takeStrict(const Strict& s) { return s.value; }
+int main()
+{
+  Meters m = 5;
+  Color c = {4, 5, 6};
+  Color d = make();
+  Strict s(3);
+  Strict t = Strict(8);
+  Strict u = {};
+  Strict v = s;
+  Flag f{true};
+  int n = f;
+  int ok = 0;
+  if (f)
+    ok += 1;
+  if (!f)
+    ok += 100;
+  ok += f && true ? 1 : 0;
+  switch (f)
+  {
+    case 10:
+      ok += 1000;
+      break;
+    default:
+      ok += 5000;
+  }
+  Box b = 9;
+  Derived dd = 11;
+  Wrap<int> w = 13;
+  Wrap<double> x(1.5);
+  Defaulted e = {};
+  Values values({{"hello", 5}, {"foo", 7}});
+  int sum = take(6) + m.value + c.r + c.g + c.b + d.r + s.value + t.value + u.value + v.value + n + ok + b.value + dd.b + takeBase(12) +
+            takeWrap(14) + w.value + int(x.value * 2) + e.v + takeAgg(Agg{20, 30}) + takeStrict(Strict{}) + total({1, 2, 3}) +
+            sumEntries({{"a", 1}, {"b", 2}}) + values.total;
+  return sum == 1203 ? 0 : 1;
+}

@@ -1102,6 +1102,7 @@ namespace
   std::atomic<bool> overrideWarningsEnabled{false};
   std::set<std::string> overrideNotes; // (sorted, an instance's as its template's, once)
   std::atomic<bool> thisWarningsEnabled{false};
+  std::atomic<bool> explicitByDefaultEnabled{false};
   std::set<std::string> thisNotes; // (sorted, each name once per place, whichever walks reached it)
 }
 
@@ -1136,6 +1137,10 @@ std::vector<std::string> takeOverrideWarnings()
   sortDiagnostics(out);
   return out;
 }
+
+void setExplicitByDefault(bool on) { explicitByDefaultEnabled = on; }
+
+bool explicitByDefaultOn() { return explicitByDefaultEnabled; }
 
 void setThisWarnings(bool on)
 {

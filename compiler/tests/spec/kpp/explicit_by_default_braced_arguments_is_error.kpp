@@ -1,0 +1,120 @@
+// spec: under --explicit-by-default (design.md "Explicit by default", rule 1) a function argument's outermost braces name their type, whatever they reach (a constructor, an aggregate, a container through its InitializerList constructor, `{}`, a scalar): an error naming the fix ("write `Point{1, 2}`, not `{1, 2}`", F's form, design.md 23e; a long or multi-line list's `{` alone), the type as the parameter writes it, else the class by its namespaces and classes; for a pointer `nullptr` or the value; for a call, a member call, a function template's call, a construction with parentheses, `new`, a member initializer, one list for an implicit copy constructor
+// kppc: --explicit-by-default --no-std
+// error: explicit_by_default_braced_arguments_is_error.kpp:77: error: the braces of a function argument name their type: write `geo::Point{a, a}`, not `{a, a}` (design.md "Explicit by default")
+// error: explicit_by_default_braced_arguments_is_error.kpp:98: error: the braces of a function argument name their type: write `geo::Point{1, 2}`, not `{1, 2}` (design.md "Explicit by default")
+// error: explicit_by_default_braced_arguments_is_error.kpp:99: error: the braces of a function argument name their type: write `Spot{3, 4}`, not `{3, 4}` (design.md "Explicit by default")
+// error: explicit_by_default_braced_arguments_is_error.kpp:100: error: the braces of a function argument name their type: write `Outer::Inner{5, 6}`, not `{5, 6}` (design.md "Explicit by default")
+// error: explicit_by_default_braced_arguments_is_error.kpp:101: error: the braces of a function argument name their type: write `geo::Point{7, 8}`, not `{7, 8}` (design.md "Explicit by default")
+// error: explicit_by_default_braced_arguments_is_error.kpp:102: error: the braces of a function argument name their type: write `Pair2<int>{2, 3}`, not `{2, 3}` (design.md "Explicit by default")
+// error: explicit_by_default_braced_arguments_is_error.kpp:103: error: the braces of a function argument name their type: write `geo::Point{9, 9}`, not `{9, 9}` (design.md "Explicit by default")
+// error: explicit_by_default_braced_arguments_is_error.kpp:104: error: the braces of a function argument name their type: write `geo::Point{`, not `{` (design.md "Explicit by default")
+// error: explicit_by_default_braced_arguments_is_error.kpp:106: error: the braces of a function argument name their type: write `geo::Point{1, 2,}`, not `{1, 2,}` (design.md "Explicit by default")
+// error: explicit_by_default_braced_arguments_is_error.kpp:107: error: the braces of a function argument name their type: write `geo::Point{1, 2}`, not `{1, 2}` (design.md "Explicit by default")
+// error: explicit_by_default_braced_arguments_is_error.kpp:108: error: the braces of a function argument name their type: write `geo::Point{3, 4}`, not `{3, 4}` (design.md "Explicit by default")
+// error: explicit_by_default_braced_arguments_is_error.kpp:109: error: the braces of a function argument name their type: write `geo::Point{5, 5}`, not `{5, 5}` (design.md "Explicit by default")
+// error: explicit_by_default_braced_arguments_is_error.kpp:110: error: the braces of a function argument name their type: write `Agg{1, 1}`, not `{1, 1}` (design.md "Explicit by default")
+// error: explicit_by_default_braced_arguments_is_error.kpp:111: error: the braces of a function argument name their type: write `geo::Point{}`, not `{}` (design.md "Explicit by default")
+// error: explicit_by_default_braced_arguments_is_error.kpp:112: error: the braces of a function argument name their type: write `IntList{1, 2, 3}`, not `{1, 2, 3}` (design.md "Explicit by default")
+// error: explicit_by_default_braced_arguments_is_error.kpp:113: error: the braces of a function argument name their type: write `int{5}`, not `{5}` (design.md "Explicit by default")
+// error: explicit_by_default_braced_arguments_is_error.kpp:114: error: the braces of a function argument name their type: write `i32{6}`, not `{6}` (design.md "Explicit by default")
+// error: explicit_by_default_braced_arguments_is_error.kpp:115: error: the braces of a function argument name their type: write `nullptr`, not `{}` (design.md "Explicit by default")
+// error: explicit_by_default_braced_arguments_is_error.kpp:116: error: the braces of a function argument name their type: write `&r`, not `{&r}` (design.md "Explicit by default")
+// error: explicit_by_default_braced_arguments_is_error.kpp:117: error: the braces of a function argument name their type: write `IntList{`, not `{` (design.md "Explicit by default")
+template <typename T> struct InitializerList
+{
+  const T* items = nullptr;
+  u64 length = 0;
+  const T* begin() const { return items; }
+  const T* end() const { return items + length; }
+};
+namespace geo
+{
+  struct Point
+  {
+    int x, y;
+    Point() : x(0), y(0) {}
+    Point(int x, int y) : x(x), y(y) {}
+  };
+}
+struct Outer
+{
+  struct Inner
+  {
+    int v;
+    Inner(int a, int b) : v(a + b) {}
+  };
+  using Alias = Inner;
+  int take(Alias a) { return a.v; }
+};
+using Spot = geo::Point;
+struct Agg
+{
+  int a, b;
+};
+struct IntList
+{
+  int count = 0;
+  IntList(InitializerList<int> values)
+  {
+    for (int v : values)
+      count += v;
+  }
+};
+template <typename T> struct List
+{
+  T items[4];
+  int count = 0;
+  void push(const T& t) { items[count++] = t; }
+};
+template <typename T> struct Pair2
+{
+  T a, b;
+  Pair2(T a, T b) : a(a), b(b) {}
+};
+struct Holder
+{
+  geo::Point at;
+  Holder(int a) : at({a, a}) {}
+};
+struct Line
+{
+  geo::Point from, to;
+  Line(geo::Point from, geo::Point to) : from(from), to(to) {}
+};
+int sum(geo::Point p) { return p.x + p.y; }
+int spot(const Spot& p) { return p.x; }
+int agg(Agg g) { return g.a + g.b; }
+int pair(Pair2<int> p) { return p.a; }
+int point(geo::Point p) { return p.x; }
+int fill(const IntList& l) { return l.count; }
+int scalar(int v) { return v; }
+int fixed(i32 v) { return v; }
+int pointer(const int* p) { return p ? *p : 0; }
+template <typename T> int generic(T t, geo::Point p) { return p.x; }
+int main()
+{
+  Outer o;
+  List<geo::Point> list;
+  int r = sum({1, 2});
+  r += spot({3, 4});
+  r += o.take({5, 6});
+  list.push({7, 8});
+  r += pair({2, 3});
+  r += generic(5, {9, 9});
+  r += sum({1,
+            2});
+  r += sum({1, 2,});
+  geo::Point* p = new geo::Point({1, 2});
+  geo::Point q({3, 4});
+  Line l(geo::Point(0, 0), {5, 5});
+  r += agg({1, 1});
+  r += point({});
+  r += fill({1, 2, 3});
+  r += scalar({5});
+  r += fixed({6});
+  r += pointer({});
+  r += pointer({&r});
+  r += fill({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28});
+  delete p;
+  return r;
+}

@@ -446,6 +446,7 @@ void runResolve(Build& build)
   setZeroNullWarnings(options.zeroNullWarnings); // (the walks' notes and codegen's)
   setOverrideWarnings(options.overrideWarnings);
   setThisWarnings(options.thisWarnings);
+  setExplicitByDefault(options.explicitByDefault);
   if (options.convertDir.empty())
     global.enableAccessErrors(); // (not the C++ a conversion reads: its friends, its quirks)
   if (options.structRule && options.convertDir.empty()) // (not the C++ a conversion reads, whose structs may break it)

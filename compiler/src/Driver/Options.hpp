@@ -26,6 +26,7 @@
     bool zeroNullWarnings = false; // --zero-null-warnings
     bool overrideWarnings = false; // --override-warnings
     bool thisWarnings = false; // --this-warnings
+    bool explicitByDefault = false; // --explicit-by-default
     bool structRule = true;      // design.md "struct and class" (--struct-rule, the default)
     bool cTypeWarnings = false;  // --c-type-warnings
     bool quiet = false;

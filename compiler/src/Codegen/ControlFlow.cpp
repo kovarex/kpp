@@ -520,7 +520,7 @@ auto codegen::Emitter::switchStatement(SwitchStmt* sw) -> void
     const Ty* owner = nullptr;
     FunctionDecl* op = integralConversionOperator(cond.ty, sw, &owner);
     if (!op)
-      unsupported(sw, "a switch on a class without a conversion to an enum or an integer");
+      unsupported(sw->cond, "a switch on a class without a conversion to an enum or an integer"); // (the checker's error, Walker::checkSwitchOnClass)
     cond = callConversion(op, cond.ty, owner, cond.text, sw);
     switchedTy = cond.ty;
   }
