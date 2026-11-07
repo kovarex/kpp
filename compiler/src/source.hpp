@@ -74,6 +74,12 @@ std::vector<std::string> takeOverrideWarnings();
 // libraries and the specs build with it.
 void setExplicitByDefault(bool on);
 bool explicitByDefaultOn();
+// --no-implicit-fallthrough (design.md "No implicit fallthrough", step 2 behind the flag): every group of a switch
+// ends with an implicit break, `fallthrough;` runs on into the next, each group is a scope, and the rules' errors
+// are on (a trailing `break;`, `[[fallthrough]];`, `fallthrough;` elsewhere, a nested label). The default once
+// the game, the stdlib, the libraries and the specs build with it.
+void setNoImplicitFallthrough(bool on);
+bool noImplicitFallthroughOn();
 void setThisWarnings(bool on);
 bool thisWarningsOn();
 void noteThisWarning(const std::string& warning);

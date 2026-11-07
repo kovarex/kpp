@@ -531,12 +531,16 @@ enum class Direction : u8
 - **kpp:** every group of statements after a label ends with an implicit `break`; labels side by side
   share one group, and falling through is `fallthrough;` as a group's last statement. A `break;` that
   ends a group, `[[fallthrough]];` and a label nested in another statement are errors, and each group
-  is a scope of its own. Built so far: a case that can reach the next label without `break;`,
-  `fallthrough;`, `return`, `continue`, `goto` or `throw` is an error, `switch` keeping C++'s meaning.
+  is a scope of its own.
+- **Status:** step 1 is built: a case that can reach the next label without `break;`, `fallthrough;`,
+  `return`, `continue`, `goto` or `throw` is an error, and `switch` keeps C++'s meaning. The flip is built
+  behind `--no-implicit-fallthrough`, with every rule's error. It becomes the default once the game, the
+  stdlib, the libraries and the specs build with it.
 - **Why:** falling through by accident is a bug class; a keyword that does nothing goes (kovarex,
   2026-11-07).
 - **See:** [design 6][d6] and its "No implicit fallthrough" entry; specs
-  `language/switch_case_running_on_is_error`, `language/switch_case_ends_written`.
+  `language/switch_case_running_on_is_error`, `language/switch_case_ends_written`,
+  `kpp/no_implicit_fallthrough` and its `_errors_is_error`.
 
 ### Typed unions (built)
 

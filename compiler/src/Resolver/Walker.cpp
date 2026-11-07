@@ -4657,6 +4657,45 @@ auto GlobalScope::Impl::Walker::checkDestructorRedeclared(FunctionDecl* f) -> vo
       impl.reportCheckerError(file, f->token, "this destructor says otherwise of noexcept than its declaration at " + Impl::locationOf(d->file, d->token));
 }
 
+auto GlobalScope::Impl::Walker::walkSwitchBody(Stmt* body) -> void
+{
+  if (!noImplicitFallthroughOn() || !body || body->kind != NodeKind::BlockStmt)
+    return walkStmt(body);
+  size_t mark = locals.mark(), savedBlock = blockLocals;
+  blockLocals = mark;
+  blockStarts.push_back(mark);
+  for (Stmt* inner : static_cast<BlockStmt*>(body)->stmts)
+  {
+    if (inner && (inner->kind == NodeKind::CaseStmt || inner->kind == NodeKind::DefaultStmt))
+      locals.pop(mark); // (the group before it ends: its names with it)
+    walkStmt(inner);
+  }
+  blockStarts.pop_back();
+  blockLocals = savedBlock;
+  locals.pop(mark);
+}
+
+auto GlobalScope::Impl::Walker::checkPlacedInSwitch(Stmt* s) -> void
+{
+  if (!noImplicitFallthroughOn() || activeSubst || probing || !file || file->isImported || !file->tokens || !s || s->token >= file->tokens->size())
+    return;
+  const std::string rule = " (design.md \"No implicit fallthrough\")";
+  if (s->kind == NodeKind::FallthroughStmt)
+  {
+    if ((*file->tokens)[s->token].is(P::LBracket))
+      impl.reportCheckerError(file, s->token, "a case runs on into the next by `fallthrough;` alone: write `fallthrough;`, not `" +
+                                                  Impl::spelledTokens(file, s->token, s->token + 5) + "`" + rule);
+    else if (!placedFallthroughs.count(s))
+      impl.reportCheckerError(file, s->token, "fallthrough; is the last statement of a case with another case after it, which it runs on into: not "
+                                              "inside another statement, in the last case or outside a switch" + rule);
+    return;
+  }
+  if (!switchLabels.count(s))
+    impl.reportCheckerError(file, s->token, std::string(s->kind == NodeKind::CaseStmt ? "a case label" : "a default label") +
+                                                " is a statement of its switch's body: nested in another statement it means nothing where every "
+                                                "case ends with a break" + rule);
+}
+
 auto GlobalScope::Impl::Walker::checkCaseEnds(Stmt* body) -> void
 {
   // The first step of no implicit fallthrough (design.md): what a case runs on into the next by is written, so
@@ -4664,6 +4703,57 @@ auto GlobalScope::Impl::Walker::checkCaseEnds(Stmt* body) -> void
   // statements alone, as the converter says it when it writes `fallthrough;`.
   if (activeSubst || probing || !file || file->isImported || !body || body->kind != NodeKind::BlockStmt)
     return;
+  if (noImplicitFallthroughOn())
+  {
+    // Step 2 (--no-implicit-fallthrough): every case ends with a break. Its last `break;` (also as the last
+    // statement of a block that ends it) is an error naming its removal; `fallthrough;` ending a case with
+    // another after it runs on into it (rules 2 and 5).
+    auto trailingBreak = [&](Stmt* last)
+    {
+      while (last && last->kind == NodeKind::BlockStmt && !static_cast<BlockStmt*>(last)->stmts.empty())
+        last = static_cast<BlockStmt*>(last)->stmts[static_cast<BlockStmt*>(last)->stmts.size() - 1];
+      if (last && last->kind == NodeKind::BreakStmt && file->tokens && last->token + 1 < file->tokens->size())
+        impl.reportCheckerError(file, last->token, "every case ends with a break: remove `" + Impl::spelledTokens(file, last->token, last->token + 1) +
+                                                       "` (design.md \"No implicit fallthrough\")");
+    };
+    Stmt* ending = nullptr; // the last statement since a label
+    std::function<void(Span<Stmt*>)> groups = [&](Span<Stmt*> stmts)
+    {
+      for (Stmt* s : stmts)
+      {
+        if (!s || s->kind == NodeKind::EmptyStmt)
+          continue;
+        if (s->kind == NodeKind::CaseStmt || s->kind == NodeKind::DefaultStmt)
+        {
+          switchLabels.insert(s);
+          if (ending && ending->kind == NodeKind::FallthroughStmt)
+            placedFallthroughs.insert(ending);
+          else
+            trailingBreak(ending);
+          ending = nullptr;
+        }
+        else if (s->kind == NodeKind::ForConstexprStmt)
+        {
+          // `for constexpr (...) case T::kind: ...`: each element's statements are written once.
+          Stmt* each = static_cast<ForConstexprStmt*>(s)->body;
+          if (each && each->kind == NodeKind::BlockStmt)
+            groups(static_cast<BlockStmt*>(each)->stmts);
+          else if (each && (each->kind == NodeKind::CaseStmt || each->kind == NodeKind::DefaultStmt))
+          {
+            switchLabels.insert(each);
+            ending = nullptr;
+          }
+          else if (each)
+            ending = each;
+        }
+        else
+          ending = s;
+      }
+    };
+    groups(static_cast<BlockStmt*>(body)->stmts);
+    trailingBreak(ending); // (the last case's: no case after it, and a `fallthrough;` there is misplaced)
+    return;
+  }
   std::function<bool(Stmt*)> closes = [&](Stmt* s)
   {
     if (!s)
@@ -9057,13 +9147,18 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
       walkStmt(w->init);
       walkNode(w->cond);
       checkSwitchOnClass(w);
-      walkStmt(w->body);
+      walkSwitchBody(w->body);
       locals.pop(mark);
       break;
     }
     case NodeKind::CaseStmt:
+      checkPlacedInSwitch(s);
       walkExpr(static_cast<CaseStmt*>(s)->value);
       walkExpr(static_cast<CaseStmt*>(s)->rangeEnd);
+      break;
+    case NodeKind::DefaultStmt:
+    case NodeKind::FallthroughStmt:
+      checkPlacedInSwitch(s);
       break;
     case NodeKind::ReturnStmt:
     {

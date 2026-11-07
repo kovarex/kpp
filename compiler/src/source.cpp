@@ -1182,6 +1182,7 @@ namespace
   std::set<std::string> overrideNotes; // (sorted, an instance's as its template's, once)
   std::atomic<bool> thisWarningsEnabled{false};
   std::atomic<bool> explicitByDefaultEnabled{false};
+  std::atomic<bool> noImplicitFallthroughEnabled{false};
   std::set<std::string> thisNotes; // (sorted, each name once per place, whichever walks reached it)
   std::atomic<bool> thisReferenceWarningsEnabled{false};
   std::atomic<bool> plainEnumWarningsEnabled{false};
@@ -1224,6 +1225,10 @@ std::vector<std::string> takeOverrideWarnings()
 void setExplicitByDefault(bool on) { explicitByDefaultEnabled = on; }
 
 bool explicitByDefaultOn() { return explicitByDefaultEnabled; }
+
+void setNoImplicitFallthrough(bool on) { noImplicitFallthroughEnabled = on; }
+
+bool noImplicitFallthroughOn() { return noImplicitFallthroughEnabled; }
 
 void setThisWarnings(bool on)
 {

@@ -607,8 +607,22 @@ auto codegen::Emitter::switchStatement(SwitchStmt* sw) -> void
   loops.push_back({endL, "", scopes.size()});
   pushScope();
   size_t bodyScope = scopeInits.size() - 1;
+  // --no-implicit-fallthrough (design.md "No implicit fallthrough", step 2): a group whose end is reached breaks,
+  // unless it ends with `fallthrough;`; labels side by side share one group, and each top-level group is a scope of
+  // its own (rule 4: its objects are destroyed at its end).
+  bool implicitBreaks = noImplicitFallthroughOn();
+  enum class Last { Nothing, Label, Fallthrough, Statement } last = Last::Nothing;
+  bool groupScope = false;
   auto emitLabelled = [&](Stmt* st, size_t element)
   {
+    if (implicitBreaks && (st->kind == NodeKind::CaseStmt || st->kind == NodeKind::DefaultStmt) && last != Last::Label)
+    {
+      if (groupScope)
+        popScope(); // (the group before it ends: its objects with it)
+      groupScope = false;
+      if (last != Last::Nothing)
+        emitBranch(last == Last::Fallthrough ? caseLabels[{st, element}] : endL); // (nothing when its end is not reached)
+    }
     if (st->kind == NodeKind::CaseStmt || st->kind == NodeKind::DefaultStmt)
     {
       // The switch jumps to it from before its body: past nothing initialized in the body's
@@ -621,17 +635,37 @@ auto codegen::Emitter::switchStatement(SwitchStmt* sw) -> void
       const std::string& l = caseLabels[{st, element}];
       emitBranch(l);
       startBlock(l);
+      if (implicitBreaks && element == topLevel && !groupScope)
+      {
+        pushScope();
+        groupScope = true;
+      }
+      last = Last::Label;
       return;
     }
     if (st->kind == NodeKind::FallthroughStmt)
+    {
+      last = Last::Fallthrough;
       return;
+    }
     statement(st);
+    if (st->kind != NodeKind::EmptyStmt)
+      last = Last::Statement;
   };
   for (Stmt* st : body->stmts)
   {
     if (st->kind == NodeKind::ForConstexprStmt)
     {
       auto* fc = static_cast<ForConstexprStmt*>(st);
+      // (its elements' labels begin groups of their own, each element its scope: the group before it ends here)
+      if (implicitBreaks && groupScope)
+        for (Stmt* inner : bodyStatements(fc->body))
+          if (inner->kind == NodeKind::CaseStmt || inner->kind == NodeKind::DefaultStmt)
+          {
+            popScope();
+            groupScope = false;
+            break;
+          }
       forEachConstexprElement(fc, [&](size_t element)
       {
         pushScope();
@@ -643,6 +677,8 @@ auto codegen::Emitter::switchStatement(SwitchStmt* sw) -> void
     }
     emitLabelled(st, topLevel);
   }
+  if (groupScope)
+    popScope(); // (the last group's)
   popScope();
   loops.pop_back();
   emitBranch(endL);

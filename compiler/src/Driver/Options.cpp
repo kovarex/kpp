@@ -48,6 +48,8 @@ void usage(FILE* out)
           "                kpp makes virtual (docs/design.md 23b); no error, no other change\n"
           "  --explicit-by-default  a constructor or conversion operator converts only when marked implicit (design.md,\n"
           "                \"Explicit by default\": the flip before it is the default), and its errors are on\n"
+          "  --no-implicit-fallthrough  every case of a switch ends with an implicit break, fallthrough; runs on (design.md,\n"
+          "                \"No implicit fallthrough\": the flip before it is the default), and its errors are on\n"
           "  --this-warnings  warn of each unqualified name that finds a data member or a member function, which\n"
           "                required `this.` writes `this.x` (the readme's Planned); no error, no other change\n"
           "  --plain-enum-warnings  warn of each plain (unscoped) enum and each use of its enumerators by kind (bits,\n"

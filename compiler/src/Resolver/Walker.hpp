@@ -29,6 +29,9 @@
     size_t blockLocals = 0;            // where the innermost block's locals start (a `when` clash: whenHolds)
     std::vector<size_t> blockStarts;   // where each enclosing block's locals start, the innermost last (whenUse)
     int undecidedBranches = 0;         // inside an instance's `if constexpr` branch this walk could not decide
+    // Under --no-implicit-fallthrough, of the switches checkCaseEnds saw: their labels (any other is nested in a
+    // statement) and each `fallthrough;` ending a group with another after it (any other is misplaced).
+    std::unordered_set<const Stmt*> switchLabels, placedFallthroughs;
     // The code generator's re-typing of an instance's copy with a type pack bound to one element
     // (a fold over the pack, GlobalScope::retypeFor): its static_asserts were checked with the
     // whole pack, and a fold over the pack cannot be evaluated against one element.
@@ -921,6 +924,11 @@
     // That f, not noexcept, overrides no noexcept function (an error).
     void checkOverrideNoexcept(FunctionDecl* f);
     void checkCaseEnds(Stmt* body);
+    // A switch's body under --no-implicit-fallthrough: each group of statements after a label a scope of its own
+    // (design.md "No implicit fallthrough", rule 4); else as any block.
+    void walkSwitchBody(Stmt* body);
+    // `fallthrough;`, a label: an error under --no-implicit-fallthrough where checkCaseEnds did not place it.
+    void checkPlacedInSwitch(Stmt* s);
     void checkDestructorNoexcept(ClassDecl* c);
     void checkDestructorRedeclared(FunctionDecl* f);
     // Whether e can throw, for the noexcept operator ([expr.unary.noexcept]): a call of a function

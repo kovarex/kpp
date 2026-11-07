@@ -4824,6 +4824,15 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   alone), kpp's stdlib, libraries and programs cleaned, and step 2, the flip with the errors above, the game's IR
   byte-identical across it, the evaluator flipped by the specs. Specs language/switch_case_running_on_is_error,
   switch_case_ends_written.
+  Step 2 built behind `--no-implicit-fallthrough` (D, 2026-11-07), every rule as an error exactly as it will be, so
+  that the converter and the stdlib are fixed against it. In the code generator and the evaluator a group whose end
+  is reached breaks; `fallthrough;` as its last statement runs on into the next; labels side by side share one group.
+  Each group is a scope of its own: the walker's names, and codegen's objects, destroyed at the group's end; a
+  `for constexpr`'s element is its group. The errors: a group's last `break;` (also as the last statement of a block
+  that ends it) ends "remove `break;`"; `[[fallthrough]];` ends "write `fallthrough;`, not `[[fallthrough]];`";
+  `fallthrough;` elsewhere (inside another statement, in the last group, outside a switch) and a label nested in
+  another statement are errors; step 1's "runs on into it" is off. Specs kpp/no_implicit_fallthrough and
+  kpp/no_implicit_fallthrough_errors_is_error, built with `--no-std` until the stdlib's trailing breaks are gone.
 
 - **Explicit by default** (readme's Planned; decided by kovarex 2026-11-07 on thread D's questions, Q1 and Q3 reshaped;
   D's survey in the coordinator's notes). A constructor or a conversion operator converts implicitly only when marked

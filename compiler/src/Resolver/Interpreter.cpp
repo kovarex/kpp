@@ -9011,13 +9011,26 @@ auto GlobalScope::Impl::constStatementIn(Stmt* s, const TypeContext& ctx, std::v
       }
       if (start == stmts.size())
         start = fallback;
+      // Under --no-implicit-fallthrough a group whose end is reached breaks, unless it ends with `fallthrough;`
+      // (design.md "No implicit fallthrough", step 2); labels side by side share one group.
+      bool implicitBreaks = noImplicitFallthroughOn();
+      enum class Last { Label, Fallthrough, Statement } last = Last::Label;
       for (size_t i = start; i < stmts.size(); ++i)
       {
+        bool label = stmts[i] && (stmts[i]->kind == NodeKind::CaseStmt || stmts[i]->kind == NodeKind::DefaultStmt);
+        if (implicitBreaks && label && last == Last::Statement)
+          break;
         ConstFlow flow = constStatement(stmts[i], ctx, env, result, depth + 1);
         if (flow == ConstFlow::Break)
           break;
         if (flow != ConstFlow::Next)
           return flow; // a return, a failure, or a continue of the loop around the switch
+        if (label)
+          last = Last::Label;
+        else if (stmts[i] && stmts[i]->kind == NodeKind::FallthroughStmt)
+          last = Last::Fallthrough;
+        else if (stmts[i] && stmts[i]->kind != NodeKind::EmptyStmt)
+          last = Last::Statement;
       }
       return ConstFlow::Next;
     }

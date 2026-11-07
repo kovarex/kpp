@@ -449,6 +449,7 @@ void runResolve(Build& build)
   setExplicitByDefault(options.explicitByDefault);
   setThisReferenceWarnings(options.thisReferenceWarnings);
   setPlainEnumWarnings(options.plainEnumWarnings);
+  setNoImplicitFallthrough(options.noImplicitFallthrough);
   if (options.convertDir.empty())
     global.enableAccessErrors(); // (not the C++ a conversion reads: its friends, its quirks)
   if (options.structRule && options.convertDir.empty()) // (not the C++ a conversion reads, whose structs may break it)

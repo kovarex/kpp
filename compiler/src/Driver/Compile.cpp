@@ -88,6 +88,8 @@ int compile(int argc, char** argv)
       options.thisReferenceWarnings = true;
     else if (arg == "--plain-enum-warnings")
       options.plainEnumWarnings = true;
+    else if (arg == "--no-implicit-fallthrough")
+      options.noImplicitFallthrough = true;
     else if (arg == "--struct-rule")
       options.structRule = true;
     else if (arg == "--c-type-warnings")
