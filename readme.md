@@ -48,7 +48,8 @@ Factorio already has (see [Status](#status)).
   (`kpp --lsp`), so completion, errors and navigation in VS Code, Visual Studio and other editors come
   from the same compilation, in the configuration you build.
 - **One compiler everywhere.** The same compiler and standard library on every platform, no
-  per-compiler quirks. kpp runs on Windows today and builds for Windows, Linux and FreeBSD from there.
+  per-compiler quirks. kpp runs on Windows and Linux and builds for Windows, Linux and FreeBSD. Factorio's
+  Windows exe built on a Linux host passes all 9,501 of the game's tests and gives the C++ build's checksums.
   A release is self-contained: it compiles and links without Visual Studio or a Windows SDK.
 - **No silent surprises.** An unsupported construct is a compile error, never a guess: a `struct` is a
   checked public value type, a `class` checks access, two declarations of one name are an error.
