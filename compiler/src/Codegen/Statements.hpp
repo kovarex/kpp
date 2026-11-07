@@ -85,6 +85,11 @@
     std::string staticReferenceTarget(VariableDecl* v, const std::string& name, const Ty* t, Expr* init, Node* at, bool perThread);
     // The one value a reference's `(expr)` or `{expr}` initializer binds, as `= expr` does.
     static Expr* referenceInitializer(VariableDecl* v, Expr* init);
+    // The temporary of class type a reference bound to a subobject of it keeps alive
+    // ([class.temporary] 6): what `make().inner`, `make().items[1]` and
+    // `static_cast<const T&>(make().t)` designate a part of, through `.`, a built-in subscript of an
+    // array and a cast to a reference; null for an initializer that is no such part.
+    Expr* temporaryOfSubobject(Expr* init) const;
 
     // `auto [a, b] = e;` binding tuple-like: after the object, the hidden variables `auto&& a =
     // get<0>(e)` and so on that the bindings' names name (the resolver's tupleBindings).

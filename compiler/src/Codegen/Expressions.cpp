@@ -232,8 +232,8 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
         }
         if (!v || !t || !t->isKnown())
           unsupported(e, "a template parameter whose value is not known here");
-        if (t->kind == TyKind::Pointer && *v == 0)
-          return {"null", t}; // `fold = nullptr` for a function pointer parameter
+        if ((t->kind == TyKind::Pointer || t->kind == TyKind::Nullptr) && *v == 0)
+          return {"null", t}; // `fold = nullptr` for a function pointer parameter; `template<auto V>` given nullptr
         return {t->kind == TyKind::Bool ? std::string(*v ? "true" : "false") : std::to_string(*v), t};
       }
       if (d && d->kind == NodeKind::FunctionDecl)

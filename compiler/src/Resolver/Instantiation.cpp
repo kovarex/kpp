@@ -652,7 +652,7 @@ auto GlobalScope::Impl::templateArgument(Node* arg, Decl* param, const TypeConte
   if (u && (u->isArithmetic() || u->kind == TyKind::Enum))
     v = constArith().convert(*v, u);
   else if (!u || !u->isKnown() || u->kind == TyKind::Auto)
-    of = v->type && (v->type->isArithmetic() || v->type->kind == TyKind::Enum) ? v->type : types.intType();
+    of = v->type && (v->type->isArithmetic() || v->type->kind == TyKind::Enum || v->type->kind == TyKind::Nullptr) ? v->type : types.intType(); // (`N<nullptr>` is no N<0>: until 2026-11-07 an int 0, the same instance)
   if (!v)
     return types.unknown();
   return types.valueType(of, v->i);
@@ -2901,6 +2901,21 @@ auto GlobalScope::Impl::deduce(const Ty* pattern, const Ty* arg, Subst& out, int
   }
   if (pattern->kind == TyKind::Param)
   {
+    // A non-type parameter given a value of another type deduces nothing ([temp.deduct.type] 20):
+    // `template<int I> struct N<I>` does not match N<'a'> nor N<nullptr> of `template<auto V>
+    // struct N`, which took the int one for both, the value converted. g++ has it so; clang calls
+    // N<'a'> ambiguous between `int I` and `char C`.
+    if (arg->kind == TyKind::Value && arg->inner && pattern->decl && pattern->decl->kind == NodeKind::TemplateParamDecl)
+      if (auto* tp = static_cast<TemplateParamDecl*>(pattern->decl); tp->valueType)
+        if (const Ty* of = convertType(tp->valueType, TypeContext{lexicalScopeOf(tp), nullptr, nullptr}, depth + 1);
+            of && of->isKnown() && !types.isDependent(of) && of->kind != TyKind::Auto && !(of->inner && of->inner->kind == TyKind::Auto) &&
+            types.unqualified(of) != types.unqualified(arg->inner))
+          return;
+    // `const T` and `volatile T` given a function type deduce nothing: no function type has a
+    // qualifier, so none is `const T` (S<const T, U> matched S<int(char), U>, T the function; clang
+    // and g++ have it so, as for `const T*` given a function below).
+    if (depth > 0 && (pattern->isConst || pattern->isVolatile) && types.stripRef(arg)->kind == TyKind::Function)
+      return;
     // `T value` takes the decayed argument; inside a pointer or a class (`T*`, `Vector<T>`) T
     // keeps the argument's qualifiers: `const int*` against `T*` makes T `const int`, but
     // against `const T*` int (the pattern's own qualifiers come off, as C++ deduces).

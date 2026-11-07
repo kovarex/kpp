@@ -1059,7 +1059,12 @@ auto GlobalScope::Impl::matchPatterns(ClassDecl* c, Decl* primary, const std::ve
   if (!specializationPatterns(c, primary, patterns, depth))
     return false;
   size_t n = patterns.size(); // the written ones, then the primary's defaults
-  if (expansion ? args.size() < n - 1 : args.size() != n)
+  // The primary's defaults that name the specialization's parameters (`int N = sizeof(U)` for
+  // `N3<T, T>`) form only once those are deduced: fewer patterns than arguments, the rest checked
+  // after the loop. Until 2026-11-07 such a specialization matched nothing (N3<int, int> took the
+  // primary).
+  bool defaultsLater = !expansion && args.size() > n;
+  if (expansion ? args.size() < n - 1 : args.size() != n && !defaultsLater)
     return false;
   Subst s;
   for (size_t i = 0; i < n; ++i)
@@ -1068,7 +1073,52 @@ auto GlobalScope::Impl::matchPatterns(ClassDecl* c, Decl* primary, const std::ve
     if (expansion && i == n - 1)
     {
       if (!isPackParam(pattern))
-        return false; // `Ts*...`: a pattern around the pack, not deduced yet
+      {
+        // `V<Box<Ts>...>`, `V<Ts*...>`: each remaining argument matches the pattern, deducing one
+        // element of each pack the pattern names ([temp.deduct.type] 9), as a call's `const
+        // Vector<Args>&...` does (deduceParams). Until 2026-11-07 such a specialization matched
+        // nothing: V<Box<int>, Box<char>> took the primary.
+        std::vector<Decl*> packs;
+        packParamsIn(pattern, packs);
+        if (packs.empty())
+          return false;
+        auto isPack = [&](Decl* d) { return std::find(packs.begin(), packs.end(), d) != packs.end(); };
+        std::vector<std::vector<const Ty*>> elems(packs.size());
+        for (size_t j = i; j < args.size(); ++j)
+        {
+          if (isPackParam(args[j]))
+            return false; // (partial ordering: another specialization's bare `Us...` is no `Box<Ts>`)
+          Subst one;
+          for (const Subst::Pair& q : s.pairs)
+            if (!isPack(q.param))
+              one.pairs.push_back(q);
+          deduceArgument(pattern, args[j], one, 1);
+          if (!sameArgument(substitute(pattern, one), args[j]))
+            return false;
+          for (size_t k = 0; k < packs.size(); ++k)
+          {
+            const Ty* e = one.find(packs[k]);
+            if (!e)
+              return false;
+            elems[k].push_back(e);
+          }
+          for (const Subst::Pair& q : one.pairs)
+            if (!isPack(q.param) && !s.find(q.param))
+              s.pairs.push_back(q); // (`Two<T, Ts>...`: T the same in every element, the first deducing it)
+        }
+        for (size_t k = 0; k < packs.size(); ++k)
+        {
+          const Ty* pack = types.pack(Span<const Ty*>{elems[k].data(), uint32_t(elems[k].size())});
+          if (const Ty* bound = s.find(packs[k]))
+          {
+            if (bound != pack)
+              return false;
+          }
+          else
+            s.pairs.push_back({packs[k], pack});
+        }
+        break;
+      }
       std::vector<const Ty*> rest(args.begin() + i, args.end());
       const Ty* pack = types.pack(Span<const Ty*>{rest.data(), uint32_t(rest.size())});
       if (const Ty* bound = s.find(pattern->decl))
@@ -1090,6 +1140,23 @@ auto GlobalScope::Impl::matchPatterns(ClassDecl* c, Decl* primary, const std::ve
     }
     else if (!sameArgument(pattern, args[i]))
       return false;
+  }
+  if (defaultsLater)
+  {
+    std::vector<const Ty*> full;
+    for (const Ty* pattern : patterns)
+    {
+      const Ty* t = substitute(pattern, s);
+      if (!t || !t->isKnown() || types.isDependent(t))
+        return false;
+      full.push_back(t);
+    }
+    appendDefaultPatterns(primary, full, depth);
+    if (full.size() != args.size())
+      return false;
+    for (size_t i = n; i < args.size(); ++i)
+      if (!sameArgument(full[i], args[i]))
+        return false;
   }
   for (Decl* p : c->templateParams)
   {
@@ -1130,6 +1197,18 @@ auto GlobalScope::Impl::atLeastAsSpecialized(ClassDecl* a, ClassDecl* b, Decl* p
 {
   std::vector<const Ty*> patterns;
   if (!specializationPatterns(a, primary, patterns, depth))
+    return false;
+  // a's last argument a pack expansion around its packs (`V<Box<Us>...>`): its pattern stands for
+  // any number of arguments, so only an expansion of b at the same place matches it (`V<Ts...>`,
+  // `V<Box<Ts>...>`); b's fixed arguments there never do ([temp.deduct.type] 9: a P that is no
+  // expansion against an A that is one fails), so `V<T, Ts...>` and `V<Box<Us>...>` stay unordered.
+  auto expansionAt = [](ClassDecl* c) -> size_t
+  {
+    const NamePart& part = c->name.last();
+    size_t written = part.templateArgs.size();
+    return written > 0 && part.templateArgs[written - 1] && part.templateArgs[written - 1]->kind == NodeKind::PackType ? written : 0;
+  };
+  if (size_t at = expansionAt(a); at && !isPackParam(patterns[at - 1]) && expansionAt(b) != at)
     return false;
   std::vector<const Ty*> deduced;
   return matchPatterns(b, primary, patterns, deduced, depth);

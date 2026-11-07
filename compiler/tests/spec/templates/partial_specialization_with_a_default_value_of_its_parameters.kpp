@@ -1,0 +1,15 @@
+// spec: a partial specialization that leaves out an argument the primary gives by a default naming earlier parameters (`int N = sizeof(U)` for `N3<T, T>`) matches when the default, formed from the arguments it deduced, is the instance's: N3<int, int> and N3<int, int, 4> take `N3<T, T>`, N3<int, int, 3> the primary, as does N3<int, char>. clang's and g++'s output
+// found by thread J's template generator (2026-11-07): the default could not be formed while T was unknown, so the specialization matched nothing and every instance took the primary
+extern "C" int printf(const char* format, ...);
+template<class T> struct Box { T value; };
+template<class T, class U = T*, int N = sizeof(U)> struct N3 { static int v() { return N; } };
+template<class T> struct N3<T, T> { static int v() { return 7000 + (int)sizeof(T); } };
+template<class T, class U = Box<T>, bool B = (sizeof(T) > 2)> struct D { static int v() { return B ? 1 : 0; } };
+template<class T> struct D<T*> { static int v() { return 10; } };
+template<class T> struct D<T, Box<T>, false> { static int v() { return 20; } };
+int main()
+{
+  printf("%d %d %d %d %d\n", N3<int, int>::v(), N3<int, int, 4>::v(), N3<int, int, 3>::v(), N3<int, char>::v(), N3<Box<char>, Box<char>>::v());
+  printf("%d %d %d %d\n", D<int*>::v(), D<char>::v(), D<int>::v(), D<short, Box<short>, true>::v());
+  return 0;
+}

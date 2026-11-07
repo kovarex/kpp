@@ -1,0 +1,19 @@
+// spec: a non-type template parameter is deduced only from a value of its own type ([temp.deduct.type] 20): of `template<auto V> struct N`'s partial specializations `template<int I> N<I>` and `template<char C> N<C>`, N<'a'> takes the char one, N<5> the int one, and N<nullptr>, N<5u>, N<true> neither (the primary), N<nullptr> being an instance of its own, a nullptr_t value, never N<0>; NT<'a', char> of `template<int N, class T>` is an int argument already, so `template<int N> NT<N, char>` matches it. g++'s output (clang calls N<5>, N<'a'>, N<5u> and N<true> ambiguous between the two)
+// found by thread J's template generator (2026-11-07): the int specialization matched every value, converted (N<'a'> was 1097, N<nullptr> 1000: an int 0, the instance N<0>)
+extern "C" int printf(const char* format, ...);
+template<auto V> struct N { static int v() { return 1; } };
+template<int I> struct N<I> { static int v() { return 1000 + I; } };
+template<char C> struct N<C> { static int v() { return 2000 + C; } };
+template<int N, class T> struct NT { static constexpr int v = 0; };
+template<class T> struct NT<0, T> { static constexpr int v = 1; };
+template<int N> struct NT<N, char> { static constexpr int v = 2; };
+template<auto V> struct G { static bool isNull() { return V == nullptr; } };
+template<class A, class B> struct SameT { static constexpr int v = 0; };
+template<class A> struct SameT<A, A> { static constexpr int v = 1; };
+int main()
+{
+  printf("%d %d %d %d %d\n", N<nullptr>::v(), N<5>::v(), N<'a'>::v(), N<5u>::v(), N<true>::v());
+  printf("%d %d %d\n", NT<0, int>::v, NT<'a', char>::v, NT<sizeof(int), char>::v);
+  printf("%d %d %d\n", SameT<N<nullptr>, N<0>>::v, SameT<N<0>, N<0>>::v, G<nullptr>::isNull() ? 1 : 0);
+  return 0;
+}

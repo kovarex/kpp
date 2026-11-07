@@ -498,6 +498,17 @@ auto codegen::Emitter::initializeClosure(const std::string& addr, const Ty* t, E
     makeClosure(static_cast<LambdaExpr*>(inner), addr);
     return;
   }
+  if (inner && inner->kind == NodeKind::CallExpr && inner->ty && !inner->ty->isReference() && types.unqualified(inner->ty) == types.unqualified(t))
+  {
+    // `auto f = makeCounter(3);`, `return makeCounter(i);`: the call builds its closure in the
+    // object itself (guaranteed elision, [dcl.init] 17.6.1), as a class result is
+    // (initializeFrom). It was built in a temporary and moved, each capture's move constructor run
+    // and the moved-from one destroyed.
+    Value v = callValue(static_cast<CallExpr*>(inner), addr);
+    if (v.text != addr)
+      unsupported(at, "a call that built its closure result somewhere else than the object it initialises");
+    return;
+  }
   Value v = rvalue(init);
   if (isClass(v.ty))
   {

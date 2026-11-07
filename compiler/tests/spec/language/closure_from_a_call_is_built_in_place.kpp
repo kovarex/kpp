@@ -1,0 +1,40 @@
+// spec: a call returning a closure by value builds it in the object it initialises, as a call returning a class does (guaranteed elision, [dcl.init] 17.6.1): `auto f = make(8);`, `return make(i);` in another function, a template's and a member function's closure, an argument taken by value, a generic lambda's closure; the captures are neither moved nor destroyed on the way. clang's and g++'s output
+// found by thread J's lambda generator (2026-11-07): each closure was built in a temporary and moved, a captured class's move constructor run and the moved-from capture destroyed
+extern "C" int printf(const char* format, ...);
+struct T
+{
+  int id;
+  T(int i = 0) : id(i) { printf("+%d ", id); }
+  T(const T& o) : id(o.id + 100) { printf("c%d ", id); }
+  T(T&& o) : id(o.id + 200) { o.id = -o.id; printf("m%d ", id); }
+  ~T() { printf("-%d ", id); }
+};
+auto make(int i) { return [u = T(i)]() { return u.id; }; }
+auto again(int i) { return make(i); }
+auto copying(const T& t) { return [t]() { return t.id; }; }
+template<class X> auto fromTemplate(const X& x) { return [x]() { return x.id; }; }
+auto generic(int i) { return [u = T(i)](auto k) { return u.id + k; }; }
+template<class F> int byValue(F f) { return f(); }
+struct Holder
+{
+  T t;
+  auto get() { return [t = t]() { return t.id; }; }
+};
+int main()
+{
+  { auto f = make(1); printf("| %d\n", f()); }
+  { auto f = again(2); printf("| %d\n", f()); }
+  {
+    T t(3);
+    printf("\n");
+    { auto f = copying(t); printf("| %d\n", f()); }
+    { auto f = fromTemplate(t); printf("| %d\n", f()); }
+  }
+  printf("\n");
+  { auto f = generic(4); printf("| %d\n", f(10)); }
+  { int r = byValue(make(5)); printf("| %d\n", r); }
+  { Holder h{T(6)}; auto f = h.get(); printf("| %d\n", f()); }
+  { auto f = [](int i) { return make(i); }(7); printf("| %d\n", f()); }
+  printf("end\n");
+  return 0;
+}

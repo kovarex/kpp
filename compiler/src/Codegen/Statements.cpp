@@ -378,19 +378,41 @@ auto codegen::Emitter::referenceInitializer(VariableDecl* v, Expr* init) -> Expr
   return init;
 }
 
+auto codegen::Emitter::temporaryOfSubobject(Expr* init) const -> Expr*
+{
+  // `.member` (not `->`), a built-in subscript of an array (`make().items[1]`: an array of a
+  // temporary is a part of it; a pointer's or an operator[]'s element is not) and a static_cast or
+  // const_cast to a reference (`static_cast<T&&>(make().t)`) designate a part of their operand.
+  // Until 2026-11-07 only `.` was followed: `const T& x = make().items[1];` destroyed the
+  // temporary at the end of the statement and left x dangling.
+  Expr* e = init;
+  bool part = false;
+  for (;;)
+  {
+    if (!e)
+      return nullptr;
+    if (e->kind == NodeKind::ParenExpr)
+      e = static_cast<ParenExpr*>(e)->inner;
+    else if (e->kind == NodeKind::MemberExpr && static_cast<MemberExpr*>(e)->op != P::Arrow && !static_cast<MemberExpr*>(e)->dynamicMember)
+      part = true, e = static_cast<MemberExpr*>(e)->base;
+    else if (Expr* b = e->kind == NodeKind::IndexExpr ? static_cast<IndexExpr*>(e)->base : nullptr;
+             b && b->ty && types.unqualified(types.stripRef(b->ty))->kind == TyKind::Array)
+      part = true, e = b;
+    else if (e->kind == NodeKind::NamedCastExpr && e->ty && e->ty->isReference() &&
+             (static_cast<NamedCastExpr*>(e)->castKind == Kw::static_cast_ || static_cast<NamedCastExpr*>(e)->castKind == Kw::const_cast_))
+      e = static_cast<NamedCastExpr*>(e)->operand;
+    else
+      break;
+  }
+  return part && e->ty && !e->ty->isReference() && isClass(e->ty) && !isLvalueExpression(e) ? e : nullptr;
+}
+
 auto codegen::Emitter::staticReferenceTarget(VariableDecl* v, const std::string& name, const Ty* t, Expr* init, Node* at, bool perThread) -> std::string
 {
   init = referenceInitializer(v, init);
   {
     // A member of a temporary (`const int& n = make().id;`) would keep the whole temporary.
-    Expr* e = init;
-    bool member = false;
-    while (e && (e->kind == NodeKind::ParenExpr || (e->kind == NodeKind::MemberExpr && static_cast<MemberExpr*>(e)->op != P::Arrow)))
-    {
-      member = member || e->kind == NodeKind::MemberExpr;
-      e = e->kind == NodeKind::ParenExpr ? static_cast<ParenExpr*>(e)->inner : static_cast<MemberExpr*>(e)->base;
-    }
-    if (member && e && e->ty && !e->ty->isReference() && isClass(e->ty) && !isLvalueExpression(e))
+    if (temporaryOfSubobject(init))
       unsupported(at, "a reference of static storage bound to a member of a temporary");
   }
   uint32_t temporaries = 0;
@@ -600,17 +622,8 @@ auto codegen::Emitter::declareLocal(VariableDecl* v) -> void
     // done, and a member access makes none.
     const Ty* temporaryBase = nullptr;
     size_t tempsBefore = statementTemps.size();
-    {
-      Expr* e = init;
-      bool member = false;
-      while (e && (e->kind == NodeKind::ParenExpr || (e->kind == NodeKind::MemberExpr && static_cast<MemberExpr*>(e)->op != P::Arrow)))
-      {
-        member = member || e->kind == NodeKind::MemberExpr;
-        e = e->kind == NodeKind::ParenExpr ? static_cast<ParenExpr*>(e)->inner : static_cast<MemberExpr*>(e)->base;
-      }
-      if (member && e && e->ty && !e->ty->isReference() && isClass(e->ty) && !isLvalueExpression(e))
-        temporaryBase = types.unqualified(e->ty);
-    }
+    if (Expr* e = temporaryOfSubobject(init))
+      temporaryBase = types.unqualified(e->ty);
     auto extendTemporaryBase = [&]
     {
       if (!temporaryBase || statementTemps.size() <= tempsBefore)

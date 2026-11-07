@@ -1,0 +1,21 @@
+// spec: a partial specialization's `const T` or `volatile T` never matches a function type, which has no qualifier to give: S<int(char), void(*)(int)> takes `S<T, U*>`, not `S<const T, U>` nor `S<volatile T, U>`; C<int(char)> the primary, not `C<const T>` nor `C<const volatile T>`; a const int still takes `C<const T>`. clang's and g++'s output
+// found by thread J's template generator (2026-11-07): `const T` matched the function, T being it (S<int(char), int> was 100, C<void()> 2)
+extern "C" int printf(const char* format, ...);
+template<class A, class B> struct S { static int v() { return 0; } };
+template<class T, class U> struct S<const T, U> { static int v() { return 100; } };
+template<class T, class U> struct S<volatile T, U> { static int v() { return 200; } };
+template<class T, class U> struct S<T, U*> { static int v() { return 300; } };
+template<class T> struct C { static int v() { return 0; } };
+template<class T> struct C<const T> { static int v() { return 1; } };
+template<class T> struct C<const volatile T> { static int v() { return 2; } };
+template<class T> struct Box { static int v() { return 0; } };
+template<class T> struct Box<const T*> { static int v() { return 1; } };
+template<class T> int byRef(const T&) { return 1; }
+int g(char) { return 0; }
+int main()
+{
+  printf("%d %d %d\n", S<int(char), void(*)(int)>::v(), S<int(char), int>::v(), S<int(), char>::v());
+  printf("%d %d %d %d\n", C<int(char)>::v(), C<void()>::v(), C<const int>::v(), C<const volatile int>::v());
+  printf("%d %d %d\n", Box<int(*)(char)>::v(), Box<const int*>::v(), byRef(g));
+  return 0;
+}

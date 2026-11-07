@@ -1,0 +1,22 @@
+// spec: a reference bound to an element of a temporary's array member keeps the whole temporary alive to the end of the reference's scope, as one bound to a member does ([class.temporary] 6: a built-in subscript of an array that is part of a temporary, a static_cast to a reference of such a part): `const T& x = Arr{T(1), T(2)}.a[1];`, `make(3).a[0]`, `Outer{...}.arr.a[1]`, `static_cast<T&&>(make(8).a[1])`; both elements are destroyed after the reference's last use. clang's and g++'s output
+// found by thread J's initialization generator (2026-11-07): only `.member` chains were followed, so the temporary was destroyed at the end of the declaration and the reference dangled
+extern "C" int printf(const char* format, ...);
+struct T
+{
+  int id;
+  T(int i = 0) : id(i) { printf("+%d ", id); }
+  T(const T& o) : id(o.id + 100) { printf("c%d ", id); }
+  ~T() { printf("-%d ", id); }
+};
+struct Arr { T a[2]; };
+struct Outer { Arr arr; int n; };
+Arr make(int i) { return Arr{T(i), T(i + 1)}; }
+int main()
+{
+  { const T& x = Arr{T(1), T(2)}.a[1]; printf("| %d ; ", x.id); } printf("\n");
+  { const T& x = make(3).a[0]; printf("| %d ; ", x.id); } printf("\n");
+  { const T& x = Outer{{T(5), T(6)}, 7}.arr.a[1]; printf("| %d ; ", x.id); } printf("\n");
+  { T&& x = static_cast<T&&>(make(8).a[1]); printf("| %d ; ", x.id); } printf("\n");
+  { const int& n = Outer{{T(9), T(10)}, 11}.n; printf("| %d ; ", n); } printf("\n");
+  return 0;
+}

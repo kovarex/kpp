@@ -1,0 +1,26 @@
+// spec: a partial specialization whose last argument is a pack expansion around the pack (`V<Box<Ts>...>`, `P<Ts*...>`, `M<T, Two<T, Ts>...>`, `Q<int, Box<Ts>...>`) matches each remaining argument against the pattern, one element of the pack from each ([temp.deduct.type] 9), none for no argument; `Q<int, Box<Ts>...>` is more specialized than `Q<int, Ts...>`; an argument the pattern does not fit (V<Box<int>, char>, M<int, Two<char, int>>) leaves the primary. clang's and g++'s output
+// found by thread J's template generator (2026-11-07): such a specialization matched nothing, V<Box<int>, Box<char>> took the primary
+extern "C" int printf(const char* format, ...);
+template<class T> struct Box {};
+template<class A, class B> struct Two {};
+template<class T> struct Name { static constexpr int v = 9; };
+template<> struct Name<int> { static constexpr int v = 1; };
+template<> struct Name<char> { static constexpr int v = 2; };
+template<> struct Name<double> { static constexpr int v = 3; };
+template<class... Ts> struct V { static int v() { return 0; } };
+template<class... Ts> struct V<Box<Ts>...> { static int v() { return 100 + (int)sizeof...(Ts) * 10 + (0 + ... + Name<Ts>::v); } };
+template<class... Ts> struct P { static int v() { return 0; } };
+template<class... Ts> struct P<Ts*...> { static int v() { return 200 + (int)sizeof...(Ts) * 10 + (0 + ... + Name<Ts>::v); } };
+template<class... Ts> struct M { static int v() { return 0; } };
+template<class T, class... Ts> struct M<T, Two<T, Ts>...> { static int v() { return 300 + Name<T>::v * 10 + (0 + ... + Name<Ts>::v); } };
+template<class... Ts> struct Q { static int v() { return 0; } };
+template<class... Ts> struct Q<int, Ts...> { static int v() { return 400 + (int)sizeof...(Ts); } };
+template<class... Ts> struct Q<int, Box<Ts>...> { static int v() { return 500 + (int)sizeof...(Ts) * 10 + (0 + ... + Name<Ts>::v); } };
+int main()
+{
+  printf("%d %d %d %d\n", V<Box<int>, Box<char>>::v(), V<Box<double>>::v(), V<Box<int>, char>::v(), V<int>::v());
+  printf("%d %d %d\n", P<int*, char*, double*>::v(), P<int*, char>::v(), P<int**>::v());
+  printf("%d %d %d\n", M<int, Two<int, char>, Two<int, double>>::v(), M<char>::v(), M<int, Two<char, int>>::v());
+  printf("%d %d %d %d\n", Q<int, Box<char>, Box<int>>::v(), Q<int, char>::v(), Q<int, Box<int>, char>::v(), Q<char>::v());
+  return 0;
+}
