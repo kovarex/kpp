@@ -3596,7 +3596,12 @@ statistics pass. `kpp --run hello.kpp a b` means the same in a project's directo
   chain, ManualBuilding to Simulations, 203 of 234 s of one run). The longest suite goes first: by
   `--durations FILE`, an earlier run's `--report` (each line's `"suite"` and `"seconds"`; a suite it
   does not name at its seconds per test), else the most tests first; with `--exit-on-failure` a
-  suite's own time and its longest chain of dependents. How: the N workers start once, and before
+  suite's own time and its longest chain of dependents. Measured on the game's 9,501 tests
+  (2026-11-07, factorio-in-kpp 9dae92d21, one binary, interleaved, each run after 20 s of load under
+  10%): `--jobs 16 --durations` 61.5 and 61.2 s against suites.py `--shards 16` 67.8 and 69.8 s;
+  at 32, 65.1 and 64.2 s against 61.6 and 64.8 s; without `--durations` (most tests first) 59.0 s at
+  16. Both are at the floor: Simulations alone takes 54 s, and a worker's `testsSetup` about 5 s
+  (C's 92.7 and 120.1 s at 16 waited for the dependencies). How: the N workers start once, and before
   the first process's `testsSetup`, since a program's may take seconds; the first process runs
   `testsSetup` too (the generators need it), selects as without `--jobs`, runs no test, and gives
   each idle worker the first suite in that order that may start, over a pipe. The workers send back what each test said, and the first
