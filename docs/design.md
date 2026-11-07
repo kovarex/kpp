@@ -4759,7 +4759,9 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   converter and the stdlib are fixed against it: an unmarked constructor or conversion operator is explicit
   (isExplicit), a copy or move constructor (not a template, its one parameter a reference to the class itself) and
   one of no parameters never; plain `explicit` ("remove `explicit`") and `explicit(cond)` ("write `implicit(...)`",
-  the condition turned round: a negation's operand, `a && b` for `!a || !b`, else `!cond`) at the word; a function
+  the condition turned round: a negation's operand, `a && b` for `!a || !b`, else `!cond`) at the word, an
+  `explicit(cond)` keeping its condition meanwhile (the game's FixedPointNumberTemplate, unmarked, made 17,000 errors
+  of every `MapPosition(1, 2)` where its seven say why); a function
   argument's outermost braces that name no type, of a call, a construction, `new` or a member initializer ("write
   `Point{1, 2}`, not `{1, 2}`", or for a long or multi-line list "write `Point{`, not `{`"; the type as the parameter
   writes it, else the class by its namespaces and classes, else no fix; for a pointer `nullptr`, or the value of

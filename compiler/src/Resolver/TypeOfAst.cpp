@@ -313,8 +313,10 @@ auto GlobalScope::Impl::isExplicit(FunctionDecl* f, const Subst* subst) -> bool
 {
   // Explicit by default (--explicit-by-default until it is the default): what converts says so, `implicit` or
   // `implicit(cond)` (kept as an explicit condition, below); a copy, a move and a default constructor are never
-  // conversions (design.md "Explicit by default", rules 2 and 6).
-  if (explicitByDefaultOn() && !(f->flags & DF_Implicit) && (f->flags & (DF_Constructor | DF_Conversion)) && !neverConversion(f))
+  // conversions (design.md "Explicit by default", rules 2 and 6). An `explicit(cond)` not yet written as
+  // `implicit` keeps its condition beside its error (checkConversionMark): the game's FixedPointNumberTemplate's
+  // `explicit(Explicit)` made every MapPosition(1, 2) "no constructor takes" (17,000 errors where one says why).
+  if (explicitByDefaultOn() && !(f->flags & DF_Implicit) && !f->explicitCondition && (f->flags & (DF_Constructor | DF_Conversion)) && !neverConversion(f))
     return true;
   if (!(f->flags & DF_Explicit))
     return false;

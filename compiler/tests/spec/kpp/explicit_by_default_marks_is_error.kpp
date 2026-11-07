@@ -1,14 +1,17 @@
-// spec: under --explicit-by-default (design.md "Explicit by default", rule 3) a constructor's or conversion operator's plain `explicit` is an error naming its removal, and `explicit(cond)` one naming `implicit` of the condition turned round: a negation's operand, `a && b` for `!a || !b`, else `!cond`; in F's form, at the word (design.md 23e)
+// spec: under --explicit-by-default (design.md "Explicit by default", rule 3) a constructor's or conversion operator's plain `explicit` is an error naming its removal, and `explicit(cond)` one naming `implicit` of the condition turned round: a negation's operand, `a && b` for `!a || !b`, else `!cond`; in F's form, at the word (design.md 23e); an `explicit(cond)` keeps its condition meanwhile, converting while it is false (no error where it converts: the game's FixedPointNumberTemplate made 17,000 of them)
 // kppc: --explicit-by-default --no-std
-// error: explicit_by_default_marks_is_error.kpp:14: error: constructors are explicit by default: remove `explicit` (design.md "Explicit by default")
-// error: explicit_by_default_marks_is_error.kpp:18: error: conversion operators are explicit by default: remove `explicit` (design.md "Explicit by default")
-// error: explicit_by_default_marks_is_error.kpp:22: error: constructors are explicit by default, and implicit(condition) says when one converts: write `implicit(sizeof(T) == 4)`, not `explicit(!(sizeof(T) == 4))` (design.md "Explicit by default")
-// error: explicit_by_default_marks_is_error.kpp:26: error: constructors are explicit by default, and implicit(condition) says when one converts: write `implicit((sizeof(T) == 4) && (sizeof(T) > 1))`, not `explicit(!(sizeof(T) == 4) || !(sizeof(T) > 1))` (design.md "Explicit by default")
-// error: explicit_by_default_marks_is_error.kpp:30: error: constructors are explicit by default, and implicit(condition) says when one converts: write `implicit(!(sizeof(T) == 4 || sizeof(T) == 8))`, not `explicit(sizeof(T) == 4 || sizeof(T) == 8)` (design.md "Explicit by default")
-// error: explicit_by_default_marks_is_error.kpp:35: error: constructors are explicit by default, and implicit(condition) says when one converts: write `implicit(!small)`, not `explicit(small)` (design.md "Explicit by default")
-// error: explicit_by_default_marks_is_error.kpp:39: error: constructors are explicit by default: remove `explicit(true)` (design.md "Explicit by default")
-// error: explicit_by_default_marks_is_error.kpp:43: error: constructors are explicit by default, and implicit(condition) says when one converts: write `implicit`, not `explicit(false)` (design.md "Explicit by default")
-// error: explicit_by_default_marks_is_error.kpp:47: error: conversion operators are explicit by default, and implicit(condition) says when one converts: write `implicit(sizeof(T) > 2)`, not `explicit(!(sizeof(T) > 2))` (design.md "Explicit by default")
+// error: explicit_by_default_marks_is_error.kpp:17: error: constructors are explicit by default: remove `explicit` (design.md "Explicit by default")
+// error: explicit_by_default_marks_is_error.kpp:21: error: conversion operators are explicit by default: remove `explicit` (design.md "Explicit by default")
+// error: explicit_by_default_marks_is_error.kpp:25: error: constructors are explicit by default, and implicit(condition) says when one converts: write `implicit(sizeof(T) == 4)`, not `explicit(!(sizeof(T) == 4))` (design.md "Explicit by default")
+// error: explicit_by_default_marks_is_error.kpp:29: error: constructors are explicit by default, and implicit(condition) says when one converts: write `implicit((sizeof(T) == 4) && (sizeof(T) > 1))`, not `explicit(!(sizeof(T) == 4) || !(sizeof(T) > 1))` (design.md "Explicit by default")
+// error: explicit_by_default_marks_is_error.kpp:33: error: constructors are explicit by default, and implicit(condition) says when one converts: write `implicit(!(sizeof(T) == 4 || sizeof(T) == 8))`, not `explicit(sizeof(T) == 4 || sizeof(T) == 8)` (design.md "Explicit by default")
+// error: explicit_by_default_marks_is_error.kpp:38: error: constructors are explicit by default, and implicit(condition) says when one converts: write `implicit(!small)`, not `explicit(small)` (design.md "Explicit by default")
+// error: explicit_by_default_marks_is_error.kpp:42: error: constructors are explicit by default: remove `explicit(true)` (design.md "Explicit by default")
+// error: explicit_by_default_marks_is_error.kpp:46: error: constructors are explicit by default, and implicit(condition) says when one converts: write `implicit`, not `explicit(false)` (design.md "Explicit by default")
+// error: explicit_by_default_marks_is_error.kpp:50: error: conversion operators are explicit by default, and implicit(condition) says when one converts: write `implicit(sizeof(T) > 2)`, not `explicit(!(sizeof(T) > 2))` (design.md "Explicit by default")
+// error: explicit_by_default_marks_is_error.kpp:55: error: copy-initialising Negated<char> from char by its explicit constructor, which only a direct-initialisation takes (Negated<char>(...))
+// no-warning: explicit_by_default_marks_is_error.kpp:54:
+// no-warning: explicit_by_default_marks_is_error.kpp:56:
 struct Plain
 {
   explicit Plain(int v) {}
@@ -48,5 +51,8 @@ template <typename T> struct Reads
 };
 int main()
 {
+  Negated<int> converts = 5;
+  Negated<char> refused = 'c';
+  Never never = 3;
   return 0;
 }
