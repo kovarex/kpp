@@ -446,6 +446,20 @@ machine's load at the time is not known):
 | Whole build of factorio.exe, libraries included | 46 s | 19.5 s | 23.4 s | 9.2 s (5x) |
 | Whole build of factorio-test.exe, libraries included | 60 s | 23.9 s | 24.9 s | 12 s (5x) |
 
+On the development machine, B's quiet window of 2026-11-07 measured that day's debug information work: 22:01
+to 22:12, `kpp measure --rounds 1` with each kppc in turn, two interleaved rounds, factorio-in-kpp d97dc7389,
+the machine 2 to 10% busy before each build. The columns are master before cc3b286c and 8f48fb95 (one round:
+the slot ended), master at 8f48fb95, and that with b3d8abf5 and d534c3b6 (and largest first, which measured
+nothing: step 2's row). A's 8e481d22 (the instance check on every thread) is in none of them.
+
+| | before | 8f48fb95 | b3d8abf5, d534c3b6 |
+|---|---:|---:|---:|
+| Clean build, libraries already built | 16.1 s | 14.0 to 14.5 s | 12.2 s |
+| Whole build of factorio.exe, libraries included | 20.0 s | 18.0 to 18.6 s | 16.4 to 16.5 s |
+| Whole build of factorio-test.exe, libraries included | 24.6 s | 21.6 to 23.8 s | 20.1 to 20.2 s |
+
+The edits did not move: 2.3 to 2.5 s and 3.1 to 3.5 s on this machine, in every column.
+
 When this plan was written, a clean debug build of the game was 17.1 s, the leaf edit 1.4 to 1.5 s,
 and the wide edit 1.9 s. These were thread A's quiet numbers: kppc run directly, without debug info.
 The gains overlap; each line is against the line before. The status column is as of 2026-11-02.
@@ -453,7 +467,7 @@ The gains overlap; each line is against the line before. The status column is as
 | step | owner | clean | leaf edit | wide edit | status |
 |---|---|---:|---:|---:|---|
 | 1. One home per linkonce global (codegen placement) | D | −1.3 s (clang −0.75, link −0.6) | −0.05 s | −0.1 s | **done**, 0998f157: IR 967 -> 708 MB, clang 3.76–4.13 -> 3.10–3.19 s, link 2.15 -> 1.65 s (section 6). With debug info too since 1a8e88c5 (section 7) |
-| 2. Largest module first (driver) | B | −0.2 s | 0 | 0 | measured by thread A (c263459f), **not landed** |
+| 2. Largest module first (driver) | B | −0.2 s | 0 | 0 | measured by thread A (c263459f), **not landed**; measured again with debug information in B's quiet window of 2026-11-07 (`kpp measure`, two rounds each): clean 13.98–14.46 -> 13.99–14.35 s, whole factorio.exe 18.00–18.61 -> 17.91–18.32 s, inside the rounds' spread: **dropped** |
 | 3. Integration step 2: LLVM in kppc, the IR in memory, still per module | D | −0.7 to −1 s | −0.1 s | −0.2 s | **done**, 54da91a8, 265df4c2, 0ab4574e (windows-gnu): back end 3.07–3.11 -> 2.86–2.92 s (before the verifier, 5% of its work). With debug info too since 8b5c902c (section 7) |
 | 4. Integration step 3: streaming pieces on kppc's pool (b1) | D | −2.5 to −3 s | 0 | −0.2 s | **done**: P1 4d884644, P2 91671241 (section 6): the program pieces compiled during codegen; the game's clean build 13.7 -> 11.3 s (back end after codegen 2.8 -> 1.3 s, 120 of the 128 program pieces during codegen), peak memory unchanged |
 | 5. Pieces cached by IR hash (c) | B | 0 | −0.2 s | −0.5 s | not started |
