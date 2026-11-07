@@ -1,0 +1,21 @@
+// spec: a function template's `T*` parameter deduces T from a function passed by name, T the function type ([temp.deduct.call] 2: the function becomes its pointer), with the pointer const or not, and beats a `bool` overload, which takes the pointer only by a conversion; between `T*` and `T` the `T*` template is more specialized. clang's output
+// found by thread J's overload generator (2026-11-07): `pick(fun)` with `pick(T*)` and `pick(bool)` called pick(bool), and `only(fun)` did not resolve
+extern "C" int printf(const char* format, ...);
+int fun(int x) { return x + 1; }
+int twice(int x) { return 2 * x; }
+template<class T> int pick(T* f) { return f(10); }
+int pick(bool b) { return -1; }
+template<class T> int only(T* f) { return f(20); }
+template<class T> int constPointer(T* const f) { return f(30); }
+template<class T> int ordered(T f) { return 100; }
+template<class T> int ordered(T* f) { return 200 + f(1); }
+template<class T> int twoOf(T* f, T* g) { return f(3) * 10 + g(3); }
+int main()
+{
+  printf("%d %d %d\n", pick(fun), pick(twice), pick(&fun));
+  printf("%d %d\n", only(fun), only(twice));
+  printf("%d\n", constPointer(fun));
+  printf("%d %d\n", ordered(fun), ordered(5));
+  printf("%d %d\n", twoOf(fun, twice), twoOf(twice, &fun));
+  return 0;
+}
