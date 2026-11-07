@@ -434,7 +434,7 @@ Direction::count                       // 5
 for (Direction d : Direction::values)  // iteration, in declaration order
 d.str()                                // "North"; a user-written str() replaces the generated one
 Direction::fromStr("North")            // Optional<Direction>
-switch (d) { case North: ... }         // exhaustive, no default; an invalid value aborts
+switch (d) { case Direction::North: ... } // exhaustive, no default; an invalid value aborts
 ```
 Inside the enum's methods `this` is the value and the enumerators are in scope unqualified.
 Comparison, copying and `switch` work on the value; the underlying type is explicit or `i32`.
@@ -2253,9 +2253,12 @@ kovarex, 2026-11-07:
 - **`This`**, a type keyword (Q9, after Rust's and Swift's `Self` and PHP's `self::`): the class lexically
   enclosing the code. In a class template it is the current instance (`Vector<T>`, the arguments not
   repeated); in a base class it is the base, never the class deriving from it; in an enum's methods the
-  enum (`This::North`); it works in a static member function. It is a keyword in kpp code, as `this` is,
-  and stays a name in imported C: the parser reads it as a type the resolver binds to the class around, so
-  `This::x` is a qualified member name (hover, go-to-definition and rename through it, F).
+  enum (`This::North`); it works in a static member function. Built 2026-11-07: the token stays an
+  identifier, and the unqualified lookup binds `This` to the class around the code as its injected name
+  would be (so `This::x` is a qualified member name: hover, go-to-definition and rename through it, F); in
+  kpp code nothing may be named `This` ("`This` is a keyword: it names the class the code is in"), and
+  outside every class it is "`This` names the class the code is in, and this code is in none". Imported C
+  keeps it a name. Specs language/this_names_the_class, language/this_outside_a_class_is_error.
 - **Statics** are `This::count` or `Train::count`. `this.count` of a static is an error (Rust's rule: it is no
   value of the object).
 - **Nested types and enumerators** stay bare; `This::State` works too.

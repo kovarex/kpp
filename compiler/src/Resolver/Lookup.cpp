@@ -449,6 +449,23 @@ auto GlobalScope::Impl::lookupTypeName(const NamedType* t, Scope* context, const
 auto GlobalScope::Impl::lookupUnqualified(uint32_t symbol, Scope* context, const LocalStack* locals, int depth, bool qualifierOnly) -> Lookup
 {
   Lookup out;
+  // `This` in kpp code (design.md 23c): the class lexically around the code, as its injected name would be (a
+  // class template's current instance, a base's member its base), or the enum around an enum's method. Nothing
+  // may be named `This` there (Walker::checkNotThis); imported C keeps it a name.
+  if (symbol == symThisType && !(lookupFile && lookupFile->isImported))
+  {
+    for (Scope* s = context; s; s = s->parent)
+      if ((s->kind == ScopeKind::Class || s->kind == ScopeKind::Enum) && s->owner &&
+          (s->owner->kind == NodeKind::ClassDecl || s->owner->kind == NodeKind::EnumDecl))
+      {
+        out.decl = s->owner;
+        out.scope = s;
+        out.found = Found::Member;
+        out.foundIn = s;
+        return out;
+      }
+    return out;
+  }
   // The locals below `from` down to `to`, the innermost first.
   auto inLocals = [&](size_t from, size_t to)
   {

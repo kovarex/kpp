@@ -346,6 +346,8 @@
     // of a class, which required `this.` writes `this.x` (a static one `This::x`). One beside a name of its
     // spelling around the class says so: a bare name will be that one.
     void noteImplicitMember(const NameExpr* n, const Lookup& l);
+    // A declaration in kpp code named `This`, the keyword for the class around the code: an error (design.md 23c).
+    void checkNotThis(uint32_t symbol, uint32_t token);
     // The name of a scoped enum the scopes around declare with an enumerator spelled symbol, for "write
     // Direction::North"; empty when there is none.
     std::string scopedEnumeratorNamed(uint32_t symbol);

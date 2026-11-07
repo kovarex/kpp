@@ -1,0 +1,63 @@
+// spec: `This` names the class lexically around the code (kovarex, 2026-11-07, design.md 23c): in a member, a static member function and a lambda in a member; the current instance in a class template (`Box<T>`, its arguments not repeated); the base in a base's member, never the class deriving from it; the enum in an enum's methods; `This::count` for a static, `This::Moving` for an enumerator
+class Train
+{
+public:
+  static int count;
+  int speed = 3;
+  enum State { Moving, Stopped };
+  State state = Moving;
+  This& faster()
+  {
+    this->speed += 1;
+    return *this;
+  }
+  static int total() { return This::count; }
+  bool moving() const { return this->state == This::Moving; }
+  This copy() const { return *this; }
+  int later() const
+  {
+    auto f = [this]() { return This::count + this->speed; };
+    return f();
+  }
+};
+int Train::count = 5;
+template<class T> class Box
+{
+public:
+  T value{};
+  This with(T v) const
+  {
+    This b;
+    b.value = v;
+    return b;
+  }
+};
+class Base
+{
+public:
+  int x = 0;
+  int size() const { return int(sizeof(This)); }
+};
+class Derived : public Base
+{
+public:
+  int y = 0;
+  int z = 0;
+  int ownSize() const { return int(sizeof(This)); }
+};
+enum class Direction
+{
+  { North, East }
+  Direction turned() const { return this == This::North ? This::East : Direction::North; }
+};
+int main()
+{
+  Train t;
+  println(t.faster().speed, " ", Train::total(), " ", t.moving(), " ", t.copy().speed, " ", t.later());
+  Box<double> b;
+  println(b.with(2.5).value);
+  Derived d;
+  println(d.size(), " ", d.ownSize());
+  println(StringView(Direction::North.turned().str()), " ", StringView(Direction::East.turned().str()));
+  return 0;
+}

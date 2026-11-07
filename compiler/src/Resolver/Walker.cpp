@@ -265,7 +265,9 @@ auto GlobalScope::Impl::Walker::reportUndeclared(const QualifiedName& name, uint
       spelled.starts_with("_MM_"))
     return;
   std::string message = "'" + std::string(spelled) + "' is not declared";
-  if (Lookup again = impl.lookupUnqualified(name.parts[0].symbol, scope, &locals, 0); again.absent)
+  if (name.parts[0].symbol == impl.symThisType)
+    message = "`This` names the class the code is in, and this code is in none";
+  else if (Lookup again = impl.lookupUnqualified(name.parts[0].symbol, scope, &locals, 0); again.absent)
   {
     // A false `when` declaration's name (design.md 19), which stopped the lookup.
     std::string condition = conditionText(again.absent);
@@ -7138,6 +7140,7 @@ auto GlobalScope::Impl::Walker::checkTypeNamesNoVariable(Node* base, uint32_t to
 
 auto GlobalScope::Impl::Walker::walkParam(ParamDecl* p) -> void
 {
+  checkNotThis(p->name, p->token);
   ++declaredTypes;
   walkType(p->type);
   --declaredTypes;
@@ -7250,11 +7253,37 @@ auto GlobalScope::Impl::Walker::walkWhenCondition(Decl* d) -> void
     walkExpr(d->when);
 }
 
+auto GlobalScope::Impl::Walker::checkNotThis(uint32_t symbol, uint32_t token) -> void
+{
+  if (symbol == impl.symThisType && file && !file->isImported && !probing && !activeSubst)
+    impl.reportCheckerError(file, token, "`This` is a keyword: it names the class the code is in");
+}
+
 auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
 {
   if (!d)
     return;
   walkWhenCondition(d);
+  switch (d->kind) // (nothing in kpp code is named `This`: design.md 23c)
+  {
+    case NodeKind::ClassDecl:
+      if (const QualifiedName& n = static_cast<ClassDecl*>(d)->name; !n.empty())
+        checkNotThis(n.last().symbol, d->token);
+      break;
+    case NodeKind::EnumDecl:
+      if (const QualifiedName& n = static_cast<EnumDecl*>(d)->name; !n.empty())
+        checkNotThis(n.last().symbol, d->token);
+      break;
+    case NodeKind::FunctionDecl:
+      if (const QualifiedName& n = static_cast<FunctionDecl*>(d)->name; !n.empty() && !n.last().special)
+        checkNotThis(n.last().symbol, d->token);
+      break;
+    case NodeKind::VariableDecl:
+      if (const QualifiedName& n = static_cast<VariableDecl*>(d)->name; !n.empty())
+        checkNotThis(n.last().symbol, d->token);
+      break;
+    default: break;
+  }
   // While the files are resolved, a template function's own walk (the generic one, outside any
   // other unit) is a task for whichever worker is free: one file of heavy templates
   // (ValueToWidget.kpp: 18 template functions of 50 to 100 ms each, 1.26 s of the game's 1.31 s

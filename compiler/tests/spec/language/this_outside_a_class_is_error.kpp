@@ -1,0 +1,15 @@
+// spec: `This` names the class around the code, so outside every class it names nothing, and nothing in kpp code may be named `This` (design.md 23c)
+// error: this_outside_a_class_is_error.kpp:6: error: `This` names the class the code is in, and this code is in none
+// error: this_outside_a_class_is_error.kpp:8: error: `This` is a keyword: it names the class the code is in
+int free()
+{
+  return sizeof(This);
+}
+struct This
+{
+  int x;
+};
+int main()
+{
+  return 0;
+}

@@ -938,6 +938,7 @@
   // The allocation and deallocation functions' names ("operator new", "operator delete[]"): a
   // new-expression and a delete-expression look up the class's own (Walker::chooseAllocation).
   uint32_t symOperatorNew, symOperatorDelete, symOperatorNewArray, symOperatorDeleteArray;
+  uint32_t symThisType; // `This`, the class around the code (design.md 23c): lookupUnqualified's
   uint32_t symBegin, symEnd, symFirst, symSecond;
   uint32_t symTupleSize, symGet;
   // The numbers 0 to 63 spelled in a file of their own: the explicit template argument of the
@@ -982,6 +983,7 @@
     symOperatorDelete = symbols.intern("operator delete");
     symOperatorNewArray = symbols.intern("operator new[]");
     symOperatorDeleteArray = symbols.intern("operator delete[]");
+    symThisType = symbols.intern("This");
     auto add = [&](const char* name, const Ty* t) { builtinNames.push_back({symbols.intern(name), t}); };
     add("int8_t", types.intType(8));
     add("i8", types.intType(8));
