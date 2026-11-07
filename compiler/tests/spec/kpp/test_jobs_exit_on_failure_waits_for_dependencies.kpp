@@ -1,5 +1,5 @@
-// spec: under --jobs a suite starts when its dependencies have finished, also through a suite left out
-// test: --jobs 2 --skip-suite Between
+// spec: under --jobs with --exit-on-failure a suite starts when its dependencies have finished, also through a suite left out, so that a failure in one stops the run before its dependents
+// test: --jobs 2 --exit-on-failure --skip-suite Between
 // exit: 0
 auto started = SteadyClock::now();
 

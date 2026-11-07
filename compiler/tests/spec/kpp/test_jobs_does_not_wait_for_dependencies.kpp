@@ -1,0 +1,32 @@
+// spec: under --jobs (without --exit-on-failure) a suite does not wait for its dependencies, as Factorio's --fork: the processes share nothing
+// test: --jobs 2
+// exit: 0
+const char* flag = "test_jobs_does_not_wait_for_dependencies.flag";
+
+suite Base
+{
+  // (Last, which depends on Base, runs meanwhile in the other process)
+  test WaitsForLast
+  {
+    bool seen = false;
+    for (int i = 0; i < 1000 && !seen; ++i)
+    {
+      FILE* file = fopen(flag, "r");
+      seen = file != nullptr;
+      if (file)
+        fclose(file);
+      else
+        thisThread::sleepFor(Milliseconds(10));
+    }
+    remove(flag);
+    check(seen);
+  }
+}
+
+suite Last depends Base
+{
+  test Starts
+  {
+    fclose(fopen(flag, "w"));
+  }
+}

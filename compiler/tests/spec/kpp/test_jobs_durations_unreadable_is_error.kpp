@@ -1,0 +1,7 @@
+// spec: --durations that cannot be read is an error, nothing runs (the workers, already started, end)
+// test: --jobs 2 --durations test_jobs_durations_unreadable_is_error.jsonl
+// exit: 2
+suite Only
+{
+  test Runs { println("Only.Runs"); }
+}

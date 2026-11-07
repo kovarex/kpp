@@ -3445,20 +3445,27 @@ statistics pass. `kpp --run hello.kpp a b` means the same in a project's directo
   they cost nothing.
 - **The runner** (its arguments after `--`, or on the test executable): `--filter TEXT` (a
   substring of the full name, `*` matching anything; repeatable), `--list` (the tests, no run),
-  `--report FILE` (below), `--jobs N` (below; the test executable starts its processes). One line per failure and `failed: <full name>`
+  `--report FILE` (below), `--jobs N` and `--durations FILE` (below; the test executable starts its processes). One line per failure and `failed: <full name>`
   after a failed test, then a summary: `12 tests, 1 failed`. The exit code is 0 when all pass, 1 when one failed, the compiler's when the
   build failed. **Q2 is settled by 8.7** (2026-11-06): `--filter` replaces 8.6's `--run-test <name or
   file>`; it matches the full name, and `--suite`, `--skip-suite` and `--tag` select beside it.
 - **Isolation and parallelism.** **Q3 is settled by 8.7** (2026-11-06; test-suites.md (d), and its
   question 2 decides how `--exit-on-failure` acts under `--jobs`): by default the tests run in one
   process, one after another (the fastest; a crash ends the run and is reported as that test's);
-  `--jobs N` schedules whole suites over N processes of the same executable, a suite
-  starting after its dependencies have finished, and a crash fails only its test (the process is
-  started again for the rest of its share), which is what `suites.py` does by hand for the converted
-  UnitTest++. No threads inside one process: tests may use globals. How: the N workers start once,
-  since a program's `testsSetup` may take seconds; the first process runs `testsSetup` too (the
-  generators need it), selects as without `--jobs`, runs no test, and gives each idle worker the
-  first suite that is ready, over a pipe. The workers send back what each test said, and the first
+  `--jobs N` schedules whole suites over N processes of the same executable, and a crash fails only
+  its test (the process is started again for the rest of its share), which is what `suites.py` does
+  by hand for the converted UnitTest++. No threads inside one process: tests may use globals. A suite
+  does not wait for its dependencies, as Factorio's `--fork` does not: the processes share nothing,
+  and the output is said in the suites' order, so `(after failures in: A)` and the root failures
+  come out the same; with `--exit-on-failure` it waits, so that a failure in a dependency stops the
+  run before its dependents (2026-11-07: waiting always made the game's tests take the longest
+  chain, ManualBuilding to Simulations, 203 of 234 s of one run). The longest suite goes first: by
+  `--durations FILE`, an earlier run's `--report` (each line's `"suite"` and `"seconds"`; a suite it
+  does not name at its seconds per test), else the most tests first; with `--exit-on-failure` a
+  suite's own time and its longest chain of dependents. How: the N workers start once, and before
+  the first process's `testsSetup`, since a program's may take seconds; the first process runs
+  `testsSetup` too (the generators need it), selects as without `--jobs`, runs no test, and gives
+  each idle worker the first suite in that order that may start, over a pipe. The workers send back what each test said, and the first
   process says it in the order of the suites, `failed:` lines, report and summary, so the output is
   the same whichever finished first (what a test prints itself goes straight to the shared stdout).
   A crash is `failed: S.t (it crashed: exit code 3)`, `"status":"crash"` in the report; a process that

@@ -1,0 +1,7 @@
+// spec: --durations orders the suites of --jobs: without --jobs it is an error
+// test: --durations x.jsonl
+// exit: 2
+suite Only
+{
+  test Runs { println("Only.Runs"); }
+}

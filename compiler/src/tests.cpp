@@ -16,11 +16,13 @@
 // in declaration order, then the tests outside suites by file and line. Command line: --filter TEXT
 // (repeatable, `*` matches anything), --suite NAME and --skip-suite NAME (repeatable, case ignored),
 // --with-dependencies, --from NAME, --after NAME, --tag TAG, --exit-on-failure, --shuffle [SEED],
-// --slow SECONDS, --jobs N, --list, --report FILE (- for stdout). Exit code 0 when every test run
-// passed, 1 otherwise, 2 for a bad argument.
-// --jobs N: N worker processes of the same executable (--kpp-worker), each started once, since a
-// program's testsSetup may take seconds. The first process, which runs no test, gives them a suite at
-// a time, once the suite's dependencies have finished; they send back what each test said, and it
+// --slow SECONDS, --jobs N, --durations FILE, --list, --report FILE (- for stdout). Exit code 0 when
+// every test run passed, 1 otherwise, 2 for a bad argument.
+// --jobs N: N worker processes of the same executable (--kpp-worker), each started once and before the
+// first process's testsSetup, since a program's may take seconds. The first process, which runs no
+// test, gives them a suite at a time, the longest first (by --durations, an earlier run's --report,
+// else the most tests first); with --exit-on-failure a suite waits for its dependencies, so that a
+// failure in one stops the run before its dependents. They send back what each test said, and it
 // says it in the order of the suites, so the output does not depend on who was first. A worker that
 // dies fails the test it was in, and another takes the rest of the suite.
 std::string testRunnerSource()
@@ -1104,6 +1106,7 @@ struct __KppJobWorker
   Thread reader;
   bool alive = false;
   int job = -1;
+  bool inTest = false; // between its 'B' and its 'D'
 };
 
 // Whether a suite must wait: a dependency, directly or through suites left out, has not finished.
@@ -1120,20 +1123,141 @@ bool __kppJobWaits(const __KppSuite& suite, const Vector<__KppJob>& jobs)
   return false;
 }
 
-bool __kppStartJobWorker(__KppJobWorker& worker, int index, __KppJobEvents& events, const Vector<String>& extra, int argc, char** argv)
+// --jobs' workers, started before the first process's testsSetup (the workers' run at the same time),
+// and ended when it returns, whatever it returns: an error after they started closes their input, and
+// they end.
+class __KppJobPool
 {
-  if (!__kppStartWorker(worker.process, index + 1, extra, argc, argv))
+public:
+  ~__KppJobPool()
+  {
+    for (__KppJobWorker& worker : this->workers)
+      if (worker.alive)
+        __kppCloseWorkerInput(worker.process);
+    while (this->alive() > 0)
+      this->ended(this->events.pop());
+  }
+
+  // Starts count workers; false when one could not start.
+  bool start(int count, Vector<String> extra, int argc, char** argv)
+  {
+    this->extra = move(extra);
+    this->argc = argc;
+    this->argv = argv;
+    this->workers.resize(count);
+    bool started = true;
+    for (int i = 0; i < count; ++i)
+      started = this->restart(i) && started;
+    return started;
+  }
+
+  bool restart(int index)
+  {
+    __KppJobWorker& worker = this->workers[index];
+    if (!__kppStartWorker(worker.process, index + 1, this->extra, this->argc, this->argv))
+      return false;
+    worker.alive = true;
+    worker.job = -1;
+    worker.inTest = false;
+    worker.reader = Thread(__kppReadWorker, &this->events, index, worker.process.from);
+    return true;
+  }
+
+  int alive() const
+  {
+    int count = 0;
+    for (const __KppJobWorker& worker : this->workers)
+      count += worker.alive ? 1 : 0;
+    return count;
+  }
+
+  // A worker's 'X': its reader and its process end. Its exit code, or 0 for another message.
+  int ended(const __KppJobEvent& event)
+  {
+    if (event.kind != 'X')
+      return 0;
+    __KppJobWorker& worker = this->workers[event.worker];
+    worker.reader.join();
+    worker.alive = false;
+    return __kppEndWorker(worker.process);
+  }
+
+  __KppJobEvents events;
+  Vector<__KppJobWorker> workers;
+  bool started = false;
+
+private:
+  Vector<String> extra;
+  int argc = 0;
+  char** argv = nullptr;
+};
+
+// --durations FILE: the seconds an earlier run's --report gives each suite (the lines with "suite"
+// and "seconds"), into seconds; false when it cannot be read.
+bool __kppReadDurations(const char* name, HashMap<String, double>& seconds)
+{
+  FILE* file = fopen(name, "rb");
+  if (!file)
     return false;
-  worker.alive = true;
-  worker.job = -1;
-  worker.reader = Thread(__kppReadWorker, &events, index, worker.process.from);
+  String text;
+  char buffer[65536];
+  for (;;)
+  {
+    size_t count = fread(buffer, 1, sizeof(buffer), file);
+    if (count == 0)
+      break;
+    text.append(buffer, count);
+  }
+  fclose(file);
+  StringView rest(text);
+  while (!rest.empty())
+  {
+    auto end = rest.find('\n');
+    StringView line = rest.substr(0, end);
+    rest = end == StringView::npos ? StringView() : rest.substr(end + 1);
+    auto suite = line.find("\"suite\":\"");
+    auto took = line.find("\"seconds\":");
+    if (suite == StringView::npos || took == StringView::npos)
+      continue;
+    StringView name = line.substr(suite + 9);
+    name = name.substr(0, name.find('"'));
+    // (a JSON number: digits, a fraction, an exponent)
+    double value = 0, scale = 0;
+    auto i = took + 10;
+    for (; i < line.size(); ++i)
+    {
+      char c = line[i];
+      if (c == '.' && scale == 0)
+        scale = 1;
+      else if (c >= '0' && c <= '9')
+      {
+        if (scale == 0)
+          value = value * 10 + (c - '0');
+        else
+          value += (c - '0') * (scale /= 10);
+      }
+      else
+        break;
+    }
+    if (i < line.size() && (line[i] == 'e' || line[i] == 'E'))
+    {
+      bool negative = i + 1 < line.size() && line[i + 1] == '-';
+      i += i + 1 < line.size() && (line[i + 1] == '-' || line[i + 1] == '+') ? 2 : 1;
+      int exponent = 0;
+      for (; i < line.size() && line[i] >= '0' && line[i] <= '9'; ++i)
+        exponent = exponent * 10 + (line[i] - '0');
+      for (int k = 0; k < exponent; ++k)
+        value = negative ? value / 10 : value * 10;
+    }
+    seconds[String(name)] += value;
+  }
   return true;
 }
 
 // Runs the selection over the workers; finished(position, test) says each test's end, in the order of
 // the selection. False when no worker could go on.
-template<typename Finished> bool __kppRunJobs(const Vector<const __KppTest*>& selected, int jobCount, const Vector<String>& extra, bool exitOnFailure,
-                                              int argc, char** argv, Finished finished)
+template<typename Finished> bool __kppRunJobs(const Vector<const __KppTest*>& selected, __KppJobPool& pool, const HashMap<String, double>* durations,
+                                              bool exitOnFailure, Finished finished)
 {
   __KppTestState& state = __kppTestState();
   Vector<__KppJobTest> results;
@@ -1157,31 +1281,58 @@ template<typename Finished> bool __kppRunJobs(const Vector<const __KppTest*>& se
     if (jobs[i].suite)
       __kppSuite(jobs[i].suite->name.c_str())->job = i;
 
-  __KppJobEvents events;
-  Vector<__KppJobWorker> workers;
-  workers.resize(min(jobCount, int(jobs.size())));
-  bool started = true;
-  for (int i = 0; i < int(workers.size()); ++i)
-    started = __kppStartJobWorker(workers[i], i, events, extra, argc, argv) && started;
+  // The order the jobs are given in: the longest first, by durations (a suite they do not name at
+  // their seconds per test), else the most tests first; with --exit-on-failure a job's own time and
+  // the longest chain of its dependents after it, as those wait for it. Ties in the suites' order.
+  auto secondsOf = [&](const __KppJob& job) -> const double*
+  {
+    if (!durations || !job.suite)
+      return nullptr;
+    auto at = durations->find(job.suite->name);
+    return at == durations->end() ? nullptr : &at->second;
+  };
+  double known = 0, knownTests = 0;
+  for (const __KppJob& job : jobs)
+    if (const double* took = secondsOf(job))
+    {
+      known += *took;
+      knownTests += job.last - job.first;
+    }
+  double perTest = knownTests > 0 ? known / knownTests : 1;
+  Vector<double> weight;
+  for (const __KppJob& job : jobs)
+  {
+    const double* took = secondsOf(job);
+    weight.push_back(took ? *took : perTest * (job.last - job.first));
+  }
+  if (exitOnFailure)
+  {
+    Vector<double> own = weight;
+    for (int j = int(jobs.size()) - 1; j >= 0; --j) // (a dependent comes after its dependencies)
+      for (int k = j + 1; k < int(jobs.size()); ++k)
+        if (jobs[j].suite && jobs[k].suite)
+          for (const String& name : jobs[k].suite->depends)
+            if (name == jobs[j].suite->name)
+              weight[j] = max(weight[j], own[j] + weight[k]);
+  }
+  Vector<int> byWeight;
+  for (int j = 0; j < int(jobs.size()); ++j)
+    byWeight.push_back(j);
+  stableSort(byWeight.begin(), byWeight.end(), [&](int a, int b) { return weight[a] > weight[b]; });
 
+  __KppJobEvents& events = pool.events;
+  Vector<__KppJobWorker>& workers = pool.workers;
   int said = 0;      // the jobs whose tests finished() has seen
   int deaths = 0;    // workers that ended with no suite to blame
-  bool stopping = !started;
-  auto alive = [&]()
-  {
-    int count = 0;
-    for (const __KppJobWorker& worker : workers)
-      count += worker.alive ? 1 : 0;
-    return count;
-  };
+  bool stopping = !pool.started;
   auto give = [&]()
   {
     for (int w = 0; w < int(workers.size()) && !stopping; ++w)
     {
       if (!workers[w].alive || workers[w].job >= 0)
         continue;
-      for (int j = 0; j < int(jobs.size()); ++j)
-        if (!jobs[j].given && !jobs[j].finished && !(jobs[j].suite && __kppJobWaits(*jobs[j].suite, jobs)))
+      for (int j : byWeight)
+        if (!jobs[j].given && !jobs[j].finished && !(exitOnFailure && jobs[j].suite && __kppJobWaits(*jobs[j].suite, jobs)))
         {
           jobs[j].given = true;
           workers[w].job = j;
@@ -1215,31 +1366,33 @@ template<typename Finished> bool __kppRunJobs(const Vector<const __KppTest*>& se
     __KppJob* job = worker.job >= 0 ? &jobs[worker.job] : nullptr;
     if (event.kind == 'X')
     {
-      worker.reader.join();
-      int code = __kppEndWorker(worker.process);
-      worker.alive = false;
-      if (job)
+      int code = pool.ended(event);
+      // The test it was in crashed; ended outside a test (its testsSetup, between tests) it has
+      // nothing to blame, and another takes the rest of its suite.
+      if (job && worker.inTest)
       {
-        if (job->next < job->last) // (past its last test it ended between them: nothing to blame)
-        {
-          __KppJobTest& result = results[job->next];
-          result.finished = true;
-          result.crashed = toString("exit code ", code);
-          result.report = __kppJsonTest(*selected[job->next], "crash", Vector<__KppTestFailure>());
-          ++job->next;
-        }
-        job->given = false;
-        job->finished = job->next == job->last;
-        worker.job = -1;
+        __KppJobTest& result = results[job->next];
+        result.finished = true;
+        result.crashed = toString("exit code ", code);
+        result.report = __kppJsonTest(*selected[job->next], "crash", Vector<__KppTestFailure>());
+        ++job->next;
         stopping = stopping || exitOnFailure;
       }
       else
         ++deaths;
+      if (job)
+      {
+        job->given = false;
+        job->finished = job->next == job->last;
+        worker.job = -1;
+      }
       if (!stopping && deaths <= int(workers.size()))
-        stopping = !__kppStartJobWorker(worker, event.worker, events, extra, argc, argv) && alive() == 0;
+        stopping = !pool.restart(event.worker) && pool.alive() == 0;
     }
     else if (!job)
       continue; // (nothing is asked of it: a program's own use of the pipe does not exist)
+    else if (event.kind == 'B')
+      worker.inTest = true;
     else if (event.kind == 'P')
       results[job->next].printed.append(event.text);
     else if (event.kind == 'R')
@@ -1248,6 +1401,7 @@ template<typename Finished> bool __kppRunJobs(const Vector<const __KppTest*>& se
     {
       results[job->next].finished = true;
       results[job->next].passed = event.text == "1";
+      worker.inTest = false;
       stopping = stopping || (exitOnFailure && !results[job->next].passed);
       ++job->next;
     }
@@ -1263,15 +1417,12 @@ template<typename Finished> bool __kppRunJobs(const Vector<const __KppTest*>& se
     if (worker.alive)
       __kppCloseWorkerInput(worker.process);
   bool ended = true;
-  while (alive() > 0)
+  while (pool.alive() > 0)
   {
     __KppJobEvent event = events.pop();
-    __KppJobWorker& worker = workers[event.worker];
     if (event.kind != 'X')
       continue;
-    worker.reader.join();
-    int code = __kppEndWorker(worker.process);
-    worker.alive = false;
+    int code = pool.ended(event);
     if (code != 0)
     {
       println("a test worker ended with exit code ", code, " after its tests");
@@ -1285,7 +1436,7 @@ template<typename Finished> bool __kppRunJobs(const Vector<const __KppTest*>& se
       ran = ran && (results[i].finished || exitOnFailure);
       finished(i, results[i]);
     }
-  return started && ran && ended;
+  return pool.started && ran && ended;
 }
 
 int main(int argc, char** argv)
@@ -1301,6 +1452,7 @@ int main(int argc, char** argv)
   bool seeded = false;
   u64 slowSeconds = 300;
   u64 jobs = 0;
+  const char* durations = nullptr;
   u64 workerIn = 0, workerOut = 0, workerIndex = 0;
   for (int i = 1; i < argc; ++i)
   {
@@ -1345,6 +1497,8 @@ int main(int argc, char** argv)
         return 2;
       }
     }
+    else if (strcmp(argv[i], "--durations") == 0 && i + 1 < argc)
+      durations = argv[++i];
     else if (strcmp(argv[i], "--kpp-worker") == 0 && i + 3 < argc)
     {
       __kppNumber(argv[i + 1], workerIndex);
@@ -1368,6 +1522,11 @@ int main(int argc, char** argv)
     report = nullptr; // (the first process's)
     jobs = 0;
   }
+  else if (durations && jobs == 0)
+  {
+    println("--durations orders the suites of --jobs: give --jobs N too");
+    return 2;
+  }
   FILE* reportFile = nullptr;
   bool reportToStdout = report && strcmp(report, "-") == 0;
   if (report && !reportToStdout)
@@ -1387,6 +1546,24 @@ int main(int argc, char** argv)
       fputs(text.c_str(), reportFile);
   };
 
+  // --jobs: the workers start now and run their testsSetup while this process runs its own, which
+  // the generators need (they get the seed this one would choose).
+  if (shuffle && !seeded)
+  {
+    seed = __kppNanoseconds();
+    seeded = true;
+  }
+  __KppJobPool pool;
+  if (jobs > 0 && !list)
+  {
+    Vector<String> extra;
+    if (shuffle)
+    {
+      extra.push_back(String("--shuffle"));
+      extra.push_back(toString(seed));
+    }
+    pool.started = pool.start(int(min(jobs, u64(1000))), move(extra), argc, argv);
+  }
   if (!list)
   {
     try
@@ -1403,7 +1580,7 @@ int main(int argc, char** argv)
   {
     println("unknown test runner argument ", others[0],
             "; the runner takes --filter TEXT, --suite NAME, --skip-suite NAME, --with-dependencies, --from NAME, --after NAME, --tag TAG, "
-            "--exit-on-failure, --shuffle [SEED], --slow SECONDS, --jobs N, --list, --report FILE (- for stdout), "
+            "--exit-on-failure, --shuffle [SEED], --slow SECONDS, --jobs N, --durations FILE, --list, --report FILE (- for stdout), "
             "and the program's testsSetup the others");
     return 2;
   }
@@ -1433,13 +1610,8 @@ int main(int argc, char** argv)
     println("--from and --after both say where to start: give one");
     return 2;
   }
-  if (shuffle)
-  {
-    if (!seeded)
-      seed = __kppNanoseconds();
-    if (!state.working)
-      println("shuffle seed: ", seed);
-  }
+  if (shuffle && !state.working)
+    println("shuffle seed: ", seed);
   u64 random = seed;
   __kppOrderSuites(shuffle ? &random : nullptr);
   // The suites in their order, each one's tests by line (a suite is one block in one file), then the
@@ -1603,13 +1775,13 @@ int main(int argc, char** argv)
   bool jobsRan = true;
   if (jobs > 0)
   {
-    Vector<String> extra;
-    if (shuffle)
+    HashMap<String, double> seconds;
+    if (durations && !__kppReadDurations(durations, seconds))
     {
-      extra.push_back(String("--shuffle"));
-      extra.push_back(toString(seed));
+      println("--durations: cannot read ", StringView(durations));
+      return 2;
     }
-    jobsRan = __kppRunJobs(selected, int(min(jobs, u64(1000))), extra, exitOnFailure, argc, argv, [&](int position, const __KppJobTest& result)
+    jobsRan = __kppRunJobs(selected, pool, durations ? &seconds : nullptr, exitOnFailure, [&](int position, const __KppJobTest& result)
     {
       print(result.printed);
       if (!result.finished)

@@ -359,10 +359,13 @@ per-test `"seconds"`. A test running longer than 5 minutes gets a warning line, 
 `SlowDetector` gives. XML: not needed, because `--report` is the machine format, and the game's
 scripts (suites.py, failures.py; H's) would read it.
 
-**Parallelism:** `--jobs N` (Q3 in design.md) schedules whole suites over N processes. A suite
-starts only after its dependencies have finished. Factorio's `--fork` does not wait, because its
-results do not depend on order, and with Q2's default kpp's do not either, so the wait only keeps
-the root-failure report exact. A crash fails its test, and the process restarts for the rest of
+**Parallelism:** `--jobs N` (Q3 in design.md) schedules whole suites over N processes, the longest
+first (`--durations FILE`, an earlier run's `--report`, else the most tests first). A suite does not
+wait for its dependencies, as Factorio's `--fork` does not, because its results do not depend on
+order, and with Q2's default kpp's do not either; the output is said in the suites' order, so the
+root-failure report stays exact. With `--exit-on-failure` it waits, so that a failure in a dependency
+stops the run before its dependents (2026-11-07: waiting always made the game's tests take their
+longest chain, ManualBuilding to Simulations). A crash fails its test, and the process restarts for the rest of
 its share. That replaces suites.py's process-per-suite and `--shards` by hand.
 
 ## (e) Converter mapping (C's)
