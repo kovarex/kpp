@@ -1,5 +1,4 @@
-// spec: a comma expression whose right operand is a temporary is that prvalue: it builds the result object itself, also of a class that cannot move ([expr.comma], [class.temporary])
-// pending: the result goes through a temporary, then a move: one move and one destruction too many, and a class with no move constructor must still compile (battery ce against clang)
+// spec: a comma expression whose right operand is a temporary is that prvalue: it builds the result object itself, also of a class that cannot move ([expr.comma], [class.temporary]); so in a return, a variable, a member initializer, a conditional's branch, a lambda's variable and a new-expression (battery ce against clang)
 struct Counted
 {
   static int moved, destroyed;
@@ -19,6 +18,12 @@ struct Pinned
   Pinned(Pinned&&) = delete;
 };
 
+struct Holder
+{
+  Counted counted;
+  explicit Holder(int side) : counted((side, Counted(7))) {}
+};
+
 Counted counted(int side) { return (side, Counted(4)); }
 Pinned pinned(int side) { return (side, Pinned(5)); }
 
@@ -31,5 +36,16 @@ int main()
   println(Counted::moved, " moved, ", Counted::destroyed, " destroyed");
   Pinned result = pinned(1);
   println(result.value);
+  {
+    int side = 1;
+    Counted local = (side, Counted(6));
+    Holder holder(side);
+    Counted chosen = side ? (side, Counted(8)) : Counted(9);
+    auto lambda = (side, [kept = Counted(10)] { return kept.value; });
+    Counted* made = new Counted((side, Counted(11)));
+    println(local.value, " ", holder.counted.value, " ", chosen.value, " ", lambda(), " ", made->value);
+    delete made;
+  }
+  println(Counted::moved, " moved, ", Counted::destroyed, " destroyed");
   return 0;
 }

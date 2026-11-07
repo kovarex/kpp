@@ -451,6 +451,10 @@
     // the object initialised from c in place. Not two lvalues (one is copied) or another class
     // (converted).
     bool conditionalOfPrvalues(ConditionalExpr* c, const Ty* t, Node* at);
+    // e as a built-in comma, in parentheses or not (`(x, T(4))`), as binary() evaluates it: its left
+    // operand, then its right one, which is the result. Null for anything else, among them a comma
+    // that calls the comma operator of a class the checker chose.
+    BinaryExpr* builtinComma(Expr* e) const;
 
     void initializeFrom(const std::string& addr, const Ty* t, Expr* init, Node* at);
 

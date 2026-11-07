@@ -2743,6 +2743,14 @@ auto codegen::Emitter::conditionalOfPrvalues(ConditionalExpr* c, const Ty* t, No
   return prvalue;
 }
 
+auto codegen::Emitter::builtinComma(Expr* e) const -> BinaryExpr*
+{
+  while (e && e->kind == NodeKind::ParenExpr)
+    e = static_cast<ParenExpr*>(e)->inner;
+  auto* b = e && e->kind == NodeKind::BinaryExpr ? static_cast<BinaryExpr*>(e) : nullptr;
+  return b && !b->isKeyword && P(b->op) == P::Comma && (verifyDecisions() || !recordedOperator(b)) ? b : nullptr;
+}
+
 auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr* init, Node* at) -> void
 {
   t = types.stripRef(t);
@@ -2777,6 +2785,15 @@ auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr
     // (The same for a member pointer, whose null is no zero: -1 for a data member, as MSVC has it.)
     if (!zeroIsNoPointer(init))
       store({t->inner && t->inner->kind == TyKind::Function ? (memberFunctionPointerAdjusts(t, at) ? "zeroinitializer" : "null") : "-1", t}, addr, t, at);
+    return;
+  }
+  if (BinaryExpr* comma = isClass(t) || isLambda(t) ? builtinComma(init) : nullptr)
+  {
+    // `T a = (x, T(4));`, `return (side, make());`: the comma is its right operand once the left one
+    // ran, so a prvalue there builds the object itself ([expr.comma] 1, guaranteed elision), as a
+    // class that cannot move needs. Until 2026-11-07 it was built in a temporary and moved.
+    rvalue(comma->lhs); // (its temporaries live to the end of the full-expression)
+    initializeFrom(addr, t, comma->rhs, at);
     return;
   }
   if (isLambda(t))
