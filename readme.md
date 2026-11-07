@@ -12,20 +12,20 @@ Factorio already has (see [Status](#status)).
   file is parsed once, every template instantiated once, and an edit rebuilds only what it touched.
   Factorio converted to kpp, against its own C++ build (debug, 32 threads):
 
-  | | C++ (MSVC, FASTBuild) | kpp 0.2.171 |
+  | | C++ (MSVC, FASTBuild) | kpp 0.2.937 |
   |---|---:|---:|
-  | Edit of one function | 25 s | 1.4 s |
-  | Edit of an inline function used across the game | 55 s | 2.0 s |
-  | Clean build of the game, libraries already built | 42 s | 10.7 s |
-  | Whole build of factorio.exe, every library included | 46 s | 19.5 s |
-  | Whole build of factorio-test.exe (the unit tests), every library included | 60 s | 23.9 s |
+  | Edit of one function | 25 s | 1.8 s |
+  | Edit of an inline function used across the game | 55 s | 2.5 s |
+  | Clean build of the game, libraries already built | 42 s | 15.0 s |
+  | Whole build of factorio.exe, every library included | 46 s | 23.4 s |
+  | Whole build of factorio-test.exe (the unit tests), every library included | 60 s | 24.9 s |
 
   The kpp column is the released kpp, run as a user runs it: kovarex's `kpp measure` (the average of 3 rounds,
   the compile server warm for the edits) on the development machine (Ryzen 9 9950X, 32
   threads, 128 GB), where the C++ edit times were also measured (the average of 2 rounds, docs/test-matrix.md).
   The C++ clean and whole builds are kovarex's own measurement; the clean build is of a precompiled-header
   change, practically only Factorio recompiling. The last two rows are whole builds
-  including all the C and C++ libraries the game links. These are today's numbers, and the work to
+  including all the C and C++ libraries the game links. Both sides build full debug information. These are today's numbers, and the work to
   bring them down is in the documents below. How they are measured: [docs/compile-speed.md](docs/compile-speed.md),
   [docs/codegen-speed.md](docs/codegen-speed.md), [docs/test-matrix.md](docs/test-matrix.md). To measure them
   on your own machine, run `kpp measure` in a factorio-in-kpp checkout
