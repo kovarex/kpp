@@ -30,6 +30,11 @@ Factorio already has (see [Status](#status)).
   [docs/codegen-speed.md](docs/codegen-speed.md), [docs/test-matrix.md](docs/test-matrix.md). To measure them
   on your own machine, run `kpp measure` in a factorio-in-kpp checkout
   ([docs/getting-started.md](docs/getting-started.md#measuring-the-readmes-compile-times-yourself)).
+- **Run speed.** The converted game's kpp final build runs Factorio's 45 menu-screen maps in about
+  0.85x the time of the C++ FinalRelease build players get (0.84x to 0.87x across runs), and two real saves
+  in 0.96x and 0.97x: the same configuration and Factorio commit on both sides, identical checksums, and no
+  map slower than C++ (kpp f8787782, Factorio 4c178a5b915, 2026-11-07). How it is measured:
+  [docs/final-release.md](docs/final-release.md).
 - **Disk use.** Factorio's C++ build directory holds more than 16 GB of object files. The kpp debug
   build of the same game is about 1.5 GB in all, executable and debug information included, and
   shrinks further as the compiler keeps more in memory instead of on disk.
