@@ -1,0 +1,89 @@
+requires config::platform == Platform::Mac;
+// What macOS's C library (libSystem) has its own way in the platform layer (PlatformPosix.kpp;
+// PlatformLinux.kpp, PlatformFreeBSD.kpp), the same on arm64 and x86-64: the values of the SDK's
+// headers (sys/_pthread/_pthread_types.h, pthread/pthread_impl.h, sys/stat.h with 64-bit inodes,
+// sys/statvfs.h, sys/dirent.h, sys/errno.h, time.h, unistd.h, fcntl.h). Written before an SDK was on
+// this machine (2026-11-07): what only a link and a run check is listed in docs/design.md (stage 8, M7).
+
+// pthreads' types, as sys/_pthread/_pthread_types.h names them: pthread_t a pointer to
+// `struct _opaque_pthread_t`, the others structs of a signature and opaque bytes. Declared by their
+// tags, so that a program's import of pthread.h declares the functions that take them the same way.
+struct _opaque_pthread_t;
+struct _opaque_pthread_attr_t;
+struct _opaque_pthread_mutex_t;
+struct _opaque_pthread_cond_t;
+struct _opaque_pthread_rwlock_t;
+// A directory stream, as dirent.h names it: `typedef struct { ... } DIR;`, a struct of no tag, which
+// the C import names by its typedef.
+struct DIR;
+
+namespace posix
+{
+  // errno, which macOS's errno.h defines as (*__error()).
+  extern "C" i32* __error();
+  using pthread_t = _opaque_pthread_t*;
+  using pthread_attr_t = _opaque_pthread_attr_t;
+  using pthread_mutex_t = _opaque_pthread_mutex_t;
+  using pthread_cond_t = _opaque_pthread_cond_t;
+  using pthread_rwlock_t = _opaque_pthread_rwlock_t;
+  using DIR = ::DIR;
+  using mode_t = u16;
+}
+
+namespace platform
+{
+  // The clocks' ids (time.h's clockid_t; clock_gettime is there from macOS 10.12).
+  const i32 clockRealtime = 0;
+  const i32 clockMonotonic = 6;
+
+  // The locks' sizes in 8-byte words (a `long __sig` and opaque bytes): pthread_mutex_t 64 bytes,
+  // pthread_cond_t 48, pthread_rwlock_t 200.
+  const i32 mutexWords = 8;
+  const i32 conditionWords = 6;
+  const i32 rwlockWords = 25;
+  // The first word of PTHREAD_MUTEX_INITIALIZER, _COND_ and _RWLOCK_ (Lock, Condition, SharedLock):
+  // pthread_impl.h's _PTHREAD_MUTEX_SIG_init, _PTHREAD_COND_SIG_init and _PTHREAD_RWLOCK_SIG_init. A
+  // lock of zeroes is no lock here.
+  const u64 mutexSignature = 0x32AAABA7;
+  const u64 conditionSignature = 0x3CB0B1BB;
+  const u64 rwlockSignature = 0x2DA8B3B4;
+  // sysconf's name for the processors online (unistd.h).
+  const i32 scNprocessorsOnln = 58;
+  // A thread's pthread_t from the handle startThread gave.
+  posix::pthread_t threadOf(void* handle) { return (_opaque_pthread_t*)handle; }
+
+  // Where the file system's structs keep what FilesPosix.kpp reads: struct stat with 64-bit inodes
+  // (144 bytes; on x86-64 through stat$INODE64 and its kin, which the code generator names) st_dev
+  // (32 bits) at 0, st_mode (16) at 4, st_nlink (16) at 6, st_ino at 8, st_mtimespec at 48, st_size
+  // at 96; struct statvfs (64 bytes) f_frsize at 8 and its counts 32 bits wide, f_blocks at 16,
+  // f_bfree 20, f_bavail 24; struct dirent (64-bit inodes) d_name at 21.
+  const i32 statDeviceBytes = 4;
+  const i32 statModeOffset = 4;
+  const i32 statSizeOffset = 96;
+  const i32 statWriteTimeOffset = 48;
+  const i32 statLinksOffset = 6; // st_nlink, 16 bits
+  const i32 statLinksBytes = 2;
+  // utimensat's AT_FDCWD and UTIME_OMIT (fcntl.h, sys/stat.h).
+  const i32 atCurrentDirectory = -2;
+  const i64 utimeOmit = -2;
+  const i32 statvfsFragmentSizeOffset = 8;
+  const i32 statvfsCountBytes = 4;
+  const i32 statvfsBlocksOffset = 16;
+  const i32 statvfsFreeOffset = 20;
+  const i32 statvfsAvailableOffset = 24;
+  const i32 direntNameOffset = 21;
+
+  // C's errno of the calling thread.
+  i32* errnoLocation() { return posix::__error(); }
+
+  // macOS's errno values where the C libraries differ (sys/errno.h; Errc).
+  const i32 errnoAgain = 35;
+  const i32 errnoIllegalSequence = 92;
+  const i32 errnoDeadlock = 11;
+  const i32 errnoNameTooLong = 63;
+  const i32 errnoNoSys = 78;
+  const i32 errnoNotEmpty = 66;
+  const i32 errnoNotSupported = 45;
+  const i32 errnoOpNotSupported = 102;
+  const i32 errnoTimedOut = 60;
+}

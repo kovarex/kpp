@@ -1,0 +1,34 @@
+// spec: a program of the standard library's threads, locks, condition variables, files, directories, the file system's space, clocks, a map and exceptions compiles for macos into Mach-O objects through the library's macOS layer (PlatformMac.kpp, CMac.kpp: macOS's pthread sizes and initializers, struct stat, statvfs and dirent, errno values); the link (M3) is not there yet, which kppc says
+// kppc: --target macos --sysroot {here}/macos_sdk_checked_before_the_build.sdk
+// error: error: --target macos: its
+// error: objects are written; kppc links no Mach-O program yet (docs/design.md, "Targets and hosts", stage 8)
+int main()
+{
+  Mutex m;
+  ConditionVariable cv;
+  int counter = 0;
+  Vector<Thread> threads;
+  for (int i = 0; i < 4; ++i)
+    threads.push_back(Thread([&]() { LockGuard<Mutex> g(m); ++counter; cv.notify_all(); }));
+  for (Thread& t : threads)
+    t.join();
+  filesystem::path dir = filesystem::temp_directory_path() / "kpp-mac";
+  filesystem::create_directories(dir);
+  for (const filesystem::directory_entry& e : filesystem::directory_iterator(dir))
+    println(e.path().string(), " ", e.is_regular_file());
+  ErrorCode ec;
+  println(filesystem::space(dir).capacity > 0, " ", filesystem::equivalent(dir, dir), " ", filesystem::hard_link_count(dir, ec));
+  auto start = SteadyClock::now();
+  thisThread::sleepFor(Milliseconds(1));
+  HashMap<String, int> map;
+  map["a"] = counter;
+  try
+  {
+    throw RuntimeError("x");
+  }
+  catch (const Exception& e)
+  {
+    println(StringView(e.what()), " ", map["a"], " ", (SteadyClock::now() - start).count() > 0, " ", Thread::hardware_concurrency());
+  }
+  return 0;
+}

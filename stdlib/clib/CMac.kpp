@@ -1,0 +1,27 @@
+requires config::platform == Platform::Mac;
+// What macOS's C library has its own way (CWindows.kpp, CLinux.kpp, CFreeBSD.kpp for the others).
+
+// FILE as macOS's stdio.h names it, `typedef struct __sFILE { ... } FILE;`: declared, not defined, so a
+// program's import of stdio.h gives its definition, and without one sizeof(FILE) or a FILE held by
+// value is an error, never a wrong size.
+struct __sFILE;
+using FILE = __sFILE;
+
+// The standard streams: its stdio.h's macros name the C library's __stdinp, __stdoutp and __stderrp.
+extern "C" FILE* __stdinp;
+extern "C" FILE* __stdoutp;
+extern "C" FILE* __stderrp;
+FILE* stdin  = __stdinp;
+FILE* stdout = __stdoutp;
+FILE* stderr = __stderrp;
+
+// math.h's fpclassify, a macro of macOS's over __fpclassifyf, __fpclassifyd and __fpclassifyl: the
+// import carries no function-like macro, so it is the C library's own classifiers, whose results are
+// macOS's FP_NAN 1, FP_INFINITE 2, FP_ZERO 3, FP_NORMAL 4 and FP_SUBNORMAL 5 (isnan and the others:
+// core/Math.kpp).
+extern "C" int __fpclassifyd(double value);
+extern "C" int __fpclassifyf(float value);
+int fpclassify(double value) { return __fpclassifyd(value); }
+int fpclassify(float value) { return __fpclassifyf(value); }
+template<typename T> requires isIntegral<T>
+int fpclassify(T value) { return fpclassify(double(value)); }

@@ -50,7 +50,7 @@ auto codegen::Emitter::withSpecialisationArgs(std::string q, Decl* d) -> std::st
 auto codegen::Emitter::computeFunctionName(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy) -> std::string
 {
   if (global.isExternC(f))
-    return "@" + sym(f->name.last().symbol);
+    return "@" + cSymbol(sym(f->name.last().symbol));
   // The global main (wmain): called by the generated @main (@wmain), which reports uncaught
   // exceptions. A namespace's main is a function like any other (tool::main), as in C++.
   if (f->name.parts.size() == 1 && !f->parent && (sym(f->name.parts[0].symbol) == "main" || sym(f->name.parts[0].symbol) == "wmain") && !global.owningClass(f))
@@ -140,6 +140,28 @@ auto codegen::Emitter::computeFunctionName(FunctionDecl* f, const TemplateArgs& 
     q.replace(at, 1, "\\22");
   return "@\"" + q + "(" + params + ")" + ((f->flags & DF_Const) && !(f->flags & DF_Static) ? " const" : "") + ((f->flags & DF_Volatile) && !(f->flags & DF_Static) ? " volatile" : "") +
          (f->refQualifier == FunctionDecl::RefQualifier::RValue && !(f->flags & DF_Static) ? " &&" : "") + "\"";
+}
+
+auto codegen::Emitter::cSymbol(const std::string& name) -> std::string
+{
+  if (!sh.target.mac())
+    return name;
+  // macOS's headers give some C functions another symbol (an asm label): with 64-bit inodes on x86-64,
+  // the struct stat and dirent functions' `$INODE64` ones (the plain ones fill the old, smaller
+  // structs: a silent wrong layout), and on both the conforming `$DARWIN_EXTSN` fopen, fdopen, popen and
+  // realpath (sys/cdefs.h's __DARWIN_INODE64, __DARWIN_ALIAS_I, __DARWIN_EXTSN). A name named wrongly
+  // here is an undefined symbol at the link, never another function. (M6 imports the SDK's labels.)
+  static const char* const inode64[] = {"stat", "lstat", "fstat", "fstatat", "statfs", "fstatfs", "getfsstat", "opendir", "fdopendir", "readdir",
+                                        "readdir_r", "rewinddir", "seekdir", "telldir", "scandir", "alphasort", "glob", "globfree"};
+  static const char* const extension[] = {"fopen", "fdopen", "popen", "realpath"};
+  for (const char* e : extension)
+    if (name == e)
+      return name + "$DARWIN_EXTSN";
+  if (!sh.target.arm64())
+    for (const char* i : inode64)
+      if (name == i)
+        return name + "$INODE64";
+  return name;
 }
 
 auto codegen::Emitter::displayFunctionName(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy) -> std::string

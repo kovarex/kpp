@@ -1,8 +1,8 @@
 requires config::platform != Platform::Windows;
-// The file system's calls on Linux and FreeBSD (filesystem's, core/Filesystem.kpp): POSIX's, the
-// path's wide text (UTF-32) as UTF-8 (FilesWindows.kpp for Windows). The structs whose layouts
+// The file system's calls on Linux, FreeBSD and macOS (filesystem's, core/Filesystem.kpp): POSIX's,
+// the path's wide text (UTF-32) as UTF-8 (FilesWindows.kpp for Windows). The structs whose layouts
 // differ (stat, statvfs, dirent) are read at their C library's offsets: PlatformLinux.kpp,
-// PlatformFreeBSD.kpp.
+// PlatformFreeBSD.kpp, PlatformMac.kpp.
 
 // The C library's structs, declared by their tags as its headers name them, so that a program's
 // import of sys/stat.h, sys/statvfs.h or dirent.h declares these functions the same way; the library
@@ -175,7 +175,11 @@ namespace platform
     StatBuffer first, second;
     if (!statOf(a, true, first, ec) || !statOf(b, true, second, ec))
       return false;
-    same = first.at64(0) == second.at64(0) && first.at64(8) == second.at64(8);
+    // (st_dev at 0, 32 bits on macOS; st_ino at 8)
+    u64 firstDevice = 0, secondDevice = 0;
+    memcpy(&firstDevice, (const char*)first.words, statDeviceBytes);
+    memcpy(&secondDevice, (const char*)second.words, statDeviceBytes);
+    same = firstDevice == secondDevice && first.at64(8) == second.at64(8);
     return true;
   }
 
@@ -307,15 +311,16 @@ namespace platform
       return false;
     }
     ec.clear();
-    auto field = [&](i32 offset) {
+    auto field = [&](i32 offset, i32 bytes) {
       u64 value = 0;
-      memcpy(&value, (const char*)words + offset, 8);
+      memcpy(&value, (const char*)words + offset, bytes);
       return value;
     };
-    u64 fragment = field(statvfsFragmentSizeOffset);
-    result.capacity = field(statvfsBlocksOffset) * fragment;
-    result.free = field(statvfsFreeOffset) * fragment;
-    result.available = field(statvfsAvailableOffset) * fragment;
+    u64 fragment = field(statvfsFragmentSizeOffset, 8);
+    // (the counts: 64 bits in glibc and FreeBSD, 32 in macOS's)
+    result.capacity = field(statvfsBlocksOffset, statvfsCountBytes) * fragment;
+    result.free = field(statvfsFreeOffset, statvfsCountBytes) * fragment;
+    result.available = field(statvfsAvailableOffset, statvfsCountBytes) * fragment;
     return true;
   }
 

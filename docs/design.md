@@ -4644,6 +4644,26 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   static local and a throw, with --no-std, since the library has no macOS platform layer yet (M7: a
   program with it fails on Lock's size and the errno values, each an error). Not checked without an
   SDK: the C import of Apple's headers (M6) and anything run.
+- **M7, the library's macOS layer (2026-11-07, thread I for C):** stdlib/platform/PlatformMac.kpp and
+  stdlib/clib/CMac.kpp, from the SDK's headers as written before an SDK was here: pthread_t a pointer,
+  the locks 64, 48 and 200 bytes with their initializers' signatures (0x32AAABA7, 0x3CB0B1BB,
+  0x2DA8B3B4), CLOCK_MONOTONIC 6, _SC_NPROCESSORS_ONLN 58, `__error()`, struct stat with 64-bit inodes
+  (st_dev 32 bits at 0, st_mode 16 at 4, st_nlink 16 at 6, st_mtimespec at 48, st_size at 96), struct
+  statvfs (its counts 32 bits: FilesPosix reads them by statvfsCountBytes, st_dev by statDeviceBytes,
+  8 on glibc and FreeBSD), dirent's d_name at 21, AT_FDCWD and UTIME_OMIT -2, macOS's errno values,
+  FILE `struct __sFILE` and its __stdinp/__stdoutp/__stderrp, fpclassify by __fpclassifyd. The code
+  generator: stderr through `__stderrp`, a thread_local's destructor through libSystem's `_tlv_atexit`,
+  and the symbols macOS's headers give C functions (Emitter::cSymbol): on x86-64 the struct stat and
+  dirent functions' `$INODE64` ones (stat, lstat, fstat, opendir, readdir ...: the plain ones fill the
+  old 32-bit-inode structs, a silent wrong layout), on both `fopen$DARWIN_EXTSN`, `realpath$DARWIN_EXTSN`
+  (and fdopen, popen); a wrong name there is an undefined symbol at M3's link, never another function.
+  On arm64 the modules compile without GlobalISel (`-fno-global-isel`): LLVM 19's -O0 selector crashed
+  on a float's bits read as an int and passed through printf's `...`. Checked: specs
+  kpp/macos_stdlib_compiles_to_mach_o_objects and macos_x64_stdlib_compiles_to_mach_o_objects (threads,
+  locks, condition variables, files, directories, space, clocks, a map, exceptions, and the test runner
+  with --tests by hand), and every spec snippet built for both: 1354 of 1460 compile to Mach-O objects,
+  the other 106 import C headers the stand-in SDK has not got. Waiting for the SDK: the link, a run,
+  and checking these values and symbols against its headers and .tbd stubs.
 - **Locks ahead of M7:** a zeroed pthread_mutex_t, pthread_cond_t or pthread_rwlock_t is no lock on
   macOS (its initializers start with a signature: 0x32AAABA7, 0x3CB0B1BB, 0x2DA8B3B4; 64, 48 and
   200 bytes). The library's Lock, Condition and SharedLock now set their first word to the platform

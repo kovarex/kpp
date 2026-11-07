@@ -1780,7 +1780,7 @@ auto codegen::Emitter::stderrStream() -> std::string
     return "  %err = call ptr @__acrt_iob_func(i32 2)\n";
   }
   // (quoted, as a C variable the program declares is named: one declaration for both)
-  std::string stream = sh.target.os == Target::Os::FreeBSD ? "@\"__stderrp\"" : "@\"stderr\"";
+  std::string stream = sh.target.os == Target::Os::FreeBSD || sh.target.mac() ? "@\"__stderrp\"" : "@\"stderr\""; // (FreeBSD's and macOS's)
   if (declaredNames.claim(stream))
     decls += stream + " = external global ptr\n";
   return "  %err = load ptr, ptr " + stream + "\n";
@@ -1867,6 +1867,15 @@ auto codegen::Emitter::finishThreadExitRuntime() -> void
   if (!usesThreadExit || !declaredNames.claim("@kpp_thread_atexit"))
     return;
   emittingShared = true;
+  if (sh.target.mac())
+  {
+    // macOS's: libSystem's _tlv_atexit, which runs a thread's destructors as its thread_locals go.
+    if (declaredNames.claim("@_tlv_atexit"))
+      decls += "declare void @_tlv_atexit(ptr, ptr)\n";
+    shared += sharedComdat("@kpp_thread_atexit") + std::string(kppThreadAtExitHeader) + "\nentry:\n  call void @_tlv_atexit(ptr %dtor, ptr %object)\n  ret void\n}\n";
+    emittingShared = false;
+    return;
+  }
   if (!sh.target.windows())
   {
     // The C library's: glibc's __cxa_thread_atexit_impl, FreeBSD's __cxa_thread_atexit, given the

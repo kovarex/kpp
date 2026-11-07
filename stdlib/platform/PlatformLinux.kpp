@@ -58,6 +58,8 @@ namespace platform
   // utimensat's AT_FDCWD and UTIME_OMIT (fcntl.h, sys/stat.h).
   const i32 atCurrentDirectory = -100;
   const i64 utimeOmit = (1ll << 30) - 2;
+  const i32 statDeviceBytes = 8; // st_dev at 0
+  const i32 statvfsCountBytes = 8; // f_blocks, f_bfree, f_bavail
   const i32 statvfsFragmentSizeOffset = 8;
   const i32 statvfsBlocksOffset = 16;
   const i32 statvfsFreeOffset = 24;

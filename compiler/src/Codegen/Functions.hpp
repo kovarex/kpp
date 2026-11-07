@@ -57,6 +57,9 @@
 
     // `declare RET NAME(TYPES)`, as declareFromHeader reads it from the header of the definition.
     static std::string declarationText(const Signature& s, const std::string& name);
+    // A C function's symbol on the target: its name, or the one macOS's headers give it (stat$INODE64 on
+    // x86-64, fopen$DARWIN_EXTSN).
+    std::string cSymbol(const std::string& name);
 
     // Whether the declarations of requests are recorded (Shared::requestDeclarations): a debug
     // build's modules, until level 0's barrier.

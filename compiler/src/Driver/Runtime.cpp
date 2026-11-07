@@ -7,6 +7,11 @@ namespace driver
 {
 std::string targetFlags(const Options& options)
 {
+  // (macOS arm64 without GlobalISel, the instruction selector of LLVM 19's -O0 there: it crashed on a
+  // module of spec language/reinterpret_cast_keeps_address_and_bits, a float's bits read as an int and
+  // passed through printf's `...`, which Apple's arm64 puts on the stack; SelectionDAG compiles it)
+  if (options.target.mac() && options.target.arm64())
+    return " --target=" + options.target.triple + " -fno-global-isel";
   return options.target.msvc() ? std::string() : " --target=" + options.target.triple;
 }
 
