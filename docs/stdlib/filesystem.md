@@ -7,7 +7,11 @@ reads the same. On Windows paths are UTF-16 text as Windows keeps them, and ever
 Win32 wide-character call. On Linux and FreeBSD paths are wide text too (UTF-32: wchar_t is 32 bits
 there), and every operation is a POSIX call with the path in UTF-8 (stat, opendir, realpath, ...;
 stdlib/platform/FilesPosix.kpp). *Difference from C++*: there std's `path::value_type` is char and
-its native string the bytes; kpp keeps one wide type on every target. The error types it reports
+its native string the bytes; kpp keeps one wide type on every target. A name there is bytes, UTF-8
+or not, and the path keeps every one: each byte of a sequence that is not UTF-8 (0x80 to 0xFF) is
+the lone surrogate U+DC80 to U+DCFF in the wide text, which no UTF-8 decodes to, and is that byte
+again at each system call and in `string()` (Python's surrogateescape, PEP 383). So a path that
+`directory_iterator` gives names its file, and `filename().string()` is its bytes, as libstdc++'s. The error types it reports
 with (ErrorCode, Errc, SystemError) are specified at the end.
 
 ## path
@@ -61,7 +65,8 @@ Text: `string()` and `u8string()` (UTF-8 String), `wstring()` (WString), `generi
 `generic_u8string()` and `generic_wstring()` (the same with `/` for every `\`). A lone surrogate has
 no UTF-8 form: the narrow ones throw SystemError (Windows: ERROR_NO_UNICODE_TRANSLATION, as MSVC's;
 elsewhere EILSEQ, and every operation on such a path, whose name the system takes in UTF-8, throws it
-too: libstdc++ refuses the path itself), where U+FFFD would name another file. `wstring()` keeps it,
+too: libstdc++ refuses the path itself), where U+FFFD would name another file. Off Windows U+DC80 to
+U+DCFF are a name's bytes that are not UTF-8 (above) and give those bytes. `wstring()` keeps it,
 and a filesystem_error's `what()` shows it as U+FFFD.
 
 `lexically_normal()`: separators made `\`; every `.` element and every `name\..` pair (name not

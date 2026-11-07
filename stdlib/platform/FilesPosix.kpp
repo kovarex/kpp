@@ -35,8 +35,13 @@ namespace posix
 
 namespace platform
 {
-  // UTF-8 to the wide text (UTF-32 here) and back; an invalid sequence, or a wide character that is
-  // no Unicode scalar value, becomes U+FFFD.
+  // A name here is bytes, UTF-8 or not, and the wide text (UTF-32 here) keeps every one: a byte of
+  // a sequence that is not UTF-8 (0x80 to 0xFF) is the lone surrogate U+DC80 to U+DCFF, which no
+  // UTF-8 decodes to, and narrowWide gives the byte back (Python's surrogateescape, PEP 383). So a
+  // path that directory_iterator gives names its file, and string() is its bytes, as libstdc++'s.
+  const u32 escapedByteFirst = 0xDC80;
+  const u32 escapedByteLast = 0xDCFF;
+
   WString widenUtf8(const char* text, i32 length)
   {
     WString result;
@@ -46,23 +51,31 @@ namespace platform
     for (ContainerSize at = 0; at < view.size();)
     {
       Utf8Decoded decoded = utf8Decode(view, at);
-      result.push_back((wchar_t)decoded.codePoint);
+      if (decoded.valid)
+        result.push_back((wchar_t)decoded.codePoint);
+      else
+        for (ContainerSize i = 0; i < decoded.length; ++i)
+          result.push_back((wchar_t)(0xDC00 + (u32)(u8)view[at + i]));
       at += decoded.length;
     }
     return result;
   }
 
-  // The wide text to UTF-8. What is no scalar value (a lone surrogate) has no UTF-8 form:
-  // SystemError with EILSEQ, what libstdc++ refuses such a path with.
+  // The wide text to UTF-8, each escaped byte (U+DC80 to U+DCFF) as that byte. Any other value that
+  // is no scalar value (another lone surrogate, past U+10FFFF) has no UTF-8 form: SystemError with
+  // EILSEQ, what libstdc++ refuses such a path with.
   String narrowWide(const wchar_t* text, i32 length)
   {
     String result;
     for (i32 i = 0; i < length; ++i)
     {
       u32 c = (u32)text[i];
-      if (!isScalarValue(c))
+      if (c >= escapedByteFirst && c <= escapedByteLast)
+        result.append((char)(u8)(c - 0xDC00));
+      else if (!isScalarValue(c))
         throw SystemError(ErrorCode(errnoIllegalSequence, systemCategory()));
-      appendUtf8(result, c);
+      else
+        appendUtf8(result, c);
     }
     return result;
   }

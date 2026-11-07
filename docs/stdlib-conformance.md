@@ -29,8 +29,9 @@ kpp's setTerminate does not install.
 
 **A path is wide text on every target** (core/Filesystem.kpp, 2026-11-04): off Windows std's
 `filesystem::path::value_type` is char and its native string the path's bytes; kpp's stays wchar_t
-(UTF-32 there), converted to UTF-8 at each system call. A name that is not UTF-8 reads as U+FFFD
-where its bytes are not, and is not given back as the same bytes. docs/stdlib/filesystem.md.
+(UTF-32 there), converted to UTF-8 at each system call. A name's bytes that are not UTF-8 are kept
+as U+DC80 to U+DCFF and given back as the same bytes (so `wstring()` of such a path has lone
+surrogates, where libstdc++'s conversion would throw). docs/stdlib/filesystem.md.
 
 **Sizes are unsigned** (core/Sizes.kpp; kovarex 2026-11-01: "all the sizes should be
 unsigned"). Every size, count, capacity, length, index and position is a `ContainerSize`, unsigned

@@ -48,7 +48,8 @@ Each is a small value whose `appendTo` writes the text described; the names are 
   A negative width is that many characters aligned left, as printf's `*` width taken from an
   argument: `alignRight(7, -4)` is `7   ` (`printf("%*d", -4, 7)`).
 - `zeroPadded(x, width)`: the text of `x` zero-padded to `width` after its sign (C's `0` flag):
-  `zeroPadded(-5, 4)` is `-005`, `zeroPadded(withSign(3), 4)` `+003`.
+  `zeroPadded(-5, 4)` is `-005`, `zeroPadded(withSign(3), 4)` `+003`. An infinity or a NaN is padded with spaces
+  before it, as the flag does: `zeroPadded(fixed(-inf, 2), 8)` is `    -inf`.
 - `address(p)`: a pointer as 16 uppercase hexadecimal digits, no prefix, as MSVC's `%p`. It is the
   only way to print a pointer: a pointer is no piece by itself.
 

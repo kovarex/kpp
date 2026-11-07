@@ -6,8 +6,10 @@
 
 namespace filesystem
 {
-  // UTF-8 to the wide text (platform::widenUtf8): an invalid sequence becomes U+FFFD. The wide text
-  // to UTF-8 (platform::narrowWide): a lone surrogate has no UTF-8 form and throws SystemError.
+  // UTF-8 to the wide text (platform::widenUtf8): on Windows an invalid sequence becomes U+FFFD,
+  // elsewhere each of its bytes is kept as U+DC80 to U+DCFF (a name there is bytes). The wide text to
+  // UTF-8 (platform::narrowWide): such a kept byte is that byte again; another lone surrogate has no
+  // UTF-8 form and throws SystemError.
   WString widenUtf8(const char* text, i32 length) { return platform::widenUtf8(text, length); }
   String narrowUtf16(const wchar_t* text, i32 length) { return platform::narrowWide(text, length); }
 

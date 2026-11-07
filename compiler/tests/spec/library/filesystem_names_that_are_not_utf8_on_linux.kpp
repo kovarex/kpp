@@ -1,7 +1,6 @@
 // spec: on Linux a file name is bytes, UTF-8 or not, and a path that directory_iterator gives names that file: exists, file_size and remove reach it, and filename().string() is its bytes, as libstdc++'s std::filesystem::path (a POSIX path is its native bytes); two names that are not UTF-8 (`\xff\xfe.txt`, `a\xc0\xafb`) and a UTF-8 one (`3 3 3 3 0 61c0af62 c5be2e747874 fffe2e747874`)
 // factorio: E's text encoding battery against C++ (en2, 2026-11-06): kpp listed `a\xc0\xafb` as `a\xef\xbf\xbd\xef\xbf\xbdb` and `\xed\xa0\x80` as three U+FFFDs; exists, file_size and remove failed for the 3 names that are not UTF-8 of 5, and they stayed in the directory
 // target: linux (Linux's byte names; on Windows a name is UTF-16 and the path keeps it as it is)
-// pending: path stores a WString on every platform, and FilesPosix widens a name from UTF-8 with U+FFFD for each maximal subpart that is not UTF-8, so the name is lost before narrowWide gives bytes back (C)
 extern "C" import "stdio.h";
 extern "C" import "unistd.h";
 int main()

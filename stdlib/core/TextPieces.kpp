@@ -169,7 +169,7 @@ template<typename T>
 AlignedText<T> alignLeft(T value, i32 width, char fill = ' ') { return AlignedText<T>{value, width, fill, true}; }
 
 // A piece's text zero-padded to `width` characters after its sign, as C's '0' flag: zeroPadded(-5, 4)
-// is "-005".
+// is "-005". An infinity or a NaN is padded with spaces before it, as the flag does (C17 7.21.6.1).
 template<typename T>
 struct ZeroPaddedText
 {
@@ -182,7 +182,16 @@ struct ZeroPaddedText
     appendPieceText(this->value, text);
     i32 count = this->width - i32(text.size());
     usize from = 0;
-    if (text.size() > 0 && (text[0] == '-' || text[0] == '+' || text[0] == ' '))
+    bool sign = text.size() > 0 && (text[0] == '-' || text[0] == '+' || text[0] == ' ');
+    char first = text.size() > usize(sign) ? text[usize(sign)] : '0';
+    if (first == 'i' || first == 'I' || first == 'n' || first == 'N')
+    {
+      for (i32 i = 0; i < count; ++i)
+        out.append(' ');
+      out.append(text);
+      return;
+    }
+    if (sign)
     {
       out.append(text[0]);
       from = 1;
