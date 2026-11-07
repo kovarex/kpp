@@ -266,6 +266,56 @@ public:
     return entry;
   }
 
+  // Builds an entry from the arguments and places it unless its key is here already, as std's emplace
+  // builds its node first: a stable table builds it in its node, placed as it is or destroyed (no
+  // copy or move of the entry); a fast one builds it aside and moves it into its slot. Returns the
+  // slot of the entry with the key; placed tells whether it is the new one.
+  template<typename... Args>
+  ContainerSize emplaceEntry(bool& placed, Args&&... args)
+  {
+    bool found;
+    if constexpr (stable)
+    {
+      E* entry = (E*)allocateBytes(sizeof(E));
+      new (entry) E(forward<Args>(args)...);
+      usize hash = this->hashKey(KeyOf::of(*entry));
+      ContainerSize slot = this->place(KeyOf::of(*entry), hash, found);
+      if (slot == hashNoSlot)
+      {
+        this->grow();
+        slot = this->place(KeyOf::of(*entry), hash, found);
+      }
+      placed = !found;
+      if (found)
+      {
+        entry->~E();
+        free(entry);
+        return slot;
+      }
+      if (this->tags[slot] == hashSlotEmpty)
+        ++this->used;
+      ((E**)this->slots)[slot] = entry;
+      this->tags[slot] = hashTagOf(hash);
+      ++this->count;
+      return slot;
+    }
+    else
+    {
+      E entry(forward<Args>(args)...);
+      usize hash = this->hashKey(KeyOf::of(entry));
+      ContainerSize slot = this->place(KeyOf::of(entry), hash, found);
+      if (slot == hashNoSlot)
+      {
+        this->grow();
+        slot = this->place(KeyOf::of(entry), hash, found);
+      }
+      placed = !found;
+      if (!found)
+        this->emplaceAt(slot, hash, move(entry));
+      return slot;
+    }
+  }
+
   void eraseAt(ContainerSize slot)
   {
     E* entry = this->entryAt(slot);
@@ -658,8 +708,14 @@ public:
     return Pair<HashIterator<Pair<K, V>, stable>, bool>(this->table.iteratorAt(slot), !found);
   }
 
+  // The entry built from the arguments, in its node (HashMap) as std's, inserted when its key is new.
   template<typename... Args>
-  Pair<HashIterator<Pair<K, V>, stable>, bool> emplace(Args&&... args) { return this->insert(Pair<K, V>(forward<Args>(args)...)); }
+  Pair<HashIterator<Pair<K, V>, stable>, bool> emplace(Args&&... args)
+  {
+    bool placed;
+    ContainerSize slot = this->table.emplaceEntry(placed, forward<Args>(args)...);
+    return Pair<HashIterator<Pair<K, V>, stable>, bool>(this->table.iteratorAt(slot), placed);
+  }
 
   // emplace(key, value): the key looked up first, as std's do, and the entry built in its slot only
   // when it is new: no entry is built and moved, and none built for an existing key.
@@ -765,10 +821,7 @@ public:
   iterator insert(const_iterator hint, Pair<K, V>&& entry) { return this->insert(move(entry)).first; }
 
   template<typename... Args>
-  iterator emplace_hint(const_iterator hint, Args&&... args)
-  {
-    return this->insert(Pair<K, V>(forward<Args>(args)...)).first;
-  }
+  iterator emplace_hint(const_iterator hint, Args&&... args) { return this->emplace(forward<Args>(args)...).first; }
 
   // Inserts copies of the entries of [first, last).
   template<typename It>
@@ -908,8 +961,14 @@ public:
     return Pair<HashIterator<T, stable>, bool>(this->table.iteratorAt(slot), !found);
   }
 
+  // The value built from the arguments, in its node (HashSet) as std's, inserted when it is new.
   template<typename... Args>
-  Pair<iterator, bool> emplace(Args&&... args) { return this->insert(T(forward<Args>(args)...)); }
+  Pair<iterator, bool> emplace(Args&&... args)
+  {
+    bool placed;
+    ContainerSize slot = this->table.emplaceEntry(placed, forward<Args>(args)...);
+    return Pair<iterator, bool>(this->table.iteratorAt(slot), placed);
+  }
 
   // The number of values removed (0 or 1).
   ContainerSize erase(const T& value)
@@ -932,7 +991,7 @@ public:
   iterator insert(const_iterator hint, const T& value) { return this->insert(value).first; }
   iterator insert(const_iterator hint, T&& value) { return this->insert(move(value)).first; }
   template<typename... Args>
-  iterator emplace_hint(const_iterator hint, Args&&... args) { return this->insert(T(forward<Args>(args)...)).first; }
+  iterator emplace_hint(const_iterator hint, Args&&... args) { return this->emplace(forward<Args>(args)...).first; }
 
   template<typename It>
   void insert(It first, It last)

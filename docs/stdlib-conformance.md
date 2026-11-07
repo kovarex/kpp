@@ -94,6 +94,11 @@ The edges are specified in library/size_limits_string, size_limits_vector and si
 stableSort throws BadAlloc when malloc cannot give its buffer. std's stable_sort falls back to
 sorting in place instead; that fallback comes when a use needs it.
 
+**A node whose element's constructor throws is not freed** (List, ForwardList, Map, Set, MultiMap,
+MultiSet, HashMap and HashSet, 2026-11-07): the container is left as it was, as std's, but the
+node's block leaks, where std's deallocates it. Freeing it needs a try, which constant evaluation does not run, and the
+containers work at compile time (language/consteval_node_containers).
+
 **Optional** (docs/stdlib/optional.md): not in the specification, kept from the game's own
 Optional until nothing uses them: get(), set(), clear(), operator~, emptyValue().
 
@@ -115,12 +120,10 @@ char as `char(x)`, C text as `StringView(x)`. Not silent: a `+=` left on a Strin
 
 ## Missing types and API
 
-None of the members specified in docs/stdlib/ are missing (2026-10-29). One works only for
-movable values: HashMap's `emplace(args...)` builds the entry and then moves it into its node
-(map.md: constructed in place), so a value that can be neither copied nor moved does not compile
-there; operator[] and try_emplace construct it in place as specified. Map, Set, MultiMap and
-MultiSet build it in the node since 2026-10-29 (BuildingRenderer's `std::map<RailWithDirection,
-RailNode>`, whose MinHeap base deletes its copy).
+None of the members specified in docs/stdlib/ are missing (2026-10-29). Map, Set, MultiMap and
+MultiSet build an emplaced entry in its node since 2026-10-29 (BuildingRenderer's
+`std::map<RailWithDirection, RailNode>`, whose MinHeap base deletes its copy), HashMap and HashSet
+since 2026-11-07 (spec library/hash_map_emplace_builds_the_entry_in_its_node).
 
 Not in the library (time.md has what replaces each): the C++20 calendar and time zones of
 `<chrono>` (year_month_day, weekday, the other calendar types and their `/` syntax, time_zone,

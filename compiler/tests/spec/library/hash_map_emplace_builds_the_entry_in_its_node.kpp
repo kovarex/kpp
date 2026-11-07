@@ -1,0 +1,44 @@
+// spec: HashMap's and HashSet's emplace(args...) build the entry in its node, as std's: no copy or move of it, so a value that can be neither copied nor moved is emplaced; an entry built for a key that is there already is destroyed, the old one kept
+// factorio: K's ranking of the stdlib gaps (2026-11-06): emplace built the entry and then moved it into its node (docs/stdlib-conformance.md)
+struct Fixed
+{
+  static int built, destroyed;
+  int value;
+  explicit Fixed(int value) : value(value) { built++; }
+  Fixed(const Fixed&) = delete;
+  Fixed(Fixed&&) = delete;
+  ~Fixed() { destroyed++; }
+};
+
+int Fixed::built = 0;
+int Fixed::destroyed = 0;
+
+struct Key
+{
+  static int moved;
+  int id;
+  Key(int id) : id(id) {}
+  Key(const Key& other) : id(other.id) {}
+  Key(Key&& other) : id(other.id) { moved++; }
+  bool operator==(const Key& other) const { return this->id == other.id; }
+};
+
+int Key::moved = 0;
+usize hashOf(const Key& key) { return hashOf(key.id); }
+
+int main()
+{
+  HashMap<int, Fixed> map;
+  for (int i = 0; i < 20; ++i)
+    map.emplace(piecewiseConstruct, forwardAsTuple(i), forwardAsTuple(i * 10));
+  auto [it, created] = map.emplace(piecewiseConstruct, forwardAsTuple(3), forwardAsTuple(99));
+  println(map.size(), " ", created, " ", it->second.value, " ", Fixed::built, " built ", Fixed::destroyed, " destroyed");
+  println(map.at(19).value);
+  HashSet<Key> keys;
+  auto [where, added] = keys.emplace(7);
+  auto [again, addedAgain] = keys.emplace(7);
+  println(keys.size(), " ", added, " ", addedAgain, " ", where->id, " ", where == again, " moved ", Key::moved);
+  auto hinted = map.emplace_hint(map.begin(), piecewiseConstruct, forwardAsTuple(40), forwardAsTuple(4));
+  println(hinted->first, " ", hinted->second.value, " ", map.size());
+  return 0;
+}

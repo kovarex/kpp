@@ -57,8 +57,10 @@ O(n), amortized O(1) per insert.
 - `insert(entry)`: inserts when the key is absent; an existing entry is left alone, including its
   value. Returns `Pair<iterator, bool>` (the entry with the key, whether it was inserted).
 - `emplace(args...)`, `try_emplace(key, args...)`, `try_emplace(hint, key, args...)`: as for Map. As there, operator[], emplace and
-  try_emplace construct the value in its entry and need no copy or move constructor of V
-  (FastHashMap moves its entries when it grows, so there V needs a move constructor all the same).
+  try_emplace construct the value in its entry and need no copy or move constructor of V. emplace(key,
+  value) of a K looks the key up first and builds the entry only when it is new; emplace of other
+  arguments builds the whole entry in its node first, and destroys it when its key is there (FastHashMap builds it aside and moves it into its slot, and moves its entries when it grows,
+  so there V needs a move constructor all the same). HashSet's emplace is the same.
 - `insert_or_assign(key, value)`: inserts, or assigns the value of the existing entry.
 - `==`: the same keys, each with an equal value, in any order (common.md). There is no ordering.
 - `erase(key)`: returns the number removed (0 or 1); `erase(position)`: returns the next position.
