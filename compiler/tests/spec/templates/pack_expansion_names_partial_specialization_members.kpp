@@ -1,0 +1,42 @@
+// spec: a pack expansion's pattern naming a member of a class template through each element finds that element's instance, its partial specialization where one matches: a static member function, a member type, an enumerator, a static member of a class element (`Ts::value`), as a fold, in call arguments and in an array's braces ([temp.variadic] 8); the name's lookup typed for the element (it took the primary's member for every element of two or more). clang's output
+extern "C" int printf(const char* format, ...);
+template<class T> struct Kind
+{
+  static int get() { return 1; }
+  using Type = char;
+  enum { Value = 10 };
+};
+template<class T> struct Kind<T*>
+{
+  static int get() { return 100; }
+  using Type = double;
+  enum { Value = 1000 };
+};
+struct A
+{
+  static constexpr int value = 3;
+};
+struct B
+{
+  static constexpr int value = 4;
+};
+int add3(int a, int b, int c) { return a * 10000 + b * 100 + c; }
+template<class... Ts> int gets() { return (Kind<Ts>::get() + ...); }
+template<class... Ts> int sizes() { return (int(sizeof(typename Kind<Ts>::Type)) + ...); }
+template<class... Ts> int values() { return (Kind<Ts>::Value + ... + 0); }
+template<class... Ts> int members() { return (Ts::value * ...); }
+template<class... Ts> int args() { return add3(Kind<Ts>::get()...); }
+template<class... Ts> int sizesList()
+{
+  int a[] = {int(sizeof(typename Kind<Ts>::Type))...};
+  int s = 0;
+  for (int x : a)
+    s = s * 10 + x;
+  return s;
+}
+int main()
+{
+  printf("%d %d %d\n", gets<int, int*, char*>(), sizes<int, int*>(), values<int*, int, int*>());
+  printf("%d %d %d\n", members<A, B, A>(), args<int*, int, int*>(), sizesList<int, int*, int>());
+  return 0;
+}

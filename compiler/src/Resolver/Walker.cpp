@@ -243,7 +243,7 @@ auto GlobalScope::Impl::Walker::reportUndeclared(const QualifiedName& name, uint
     // on a template, an instance's specialization) to judge.
     QualifiedName qualifier = name;
     qualifier.parts.count -= 1;
-    Lookup q = impl.lookupQualified(qualifier, scope, &locals, 0, activeSubst);
+    Lookup q = lookupHere(qualifier);
     if (q.found == Found::No || !q.decl || q.decl->kind != NodeKind::NamespaceDecl || q.ambiguousWith)
       return;
     std::string spelledName;
@@ -1209,7 +1209,7 @@ auto GlobalScope::Impl::Walker::resolveTypeName(NamedType* t) -> void
 {
   if (t->name.empty())
     return;
-  Lookup l = impl.lookupTypeName(t, scope, &locals, 0, activeSubst);
+  Lookup l = impl.lookupTypeName(t, scope, &locals, 0, activeSubst, elementPacks, elementIndex);
   reportAmbiguity(l, t->name, t->token);
   if (l.found == Found::Local && l.decl && l.decl->when && t->name.parts.size() == 1)
   {
@@ -1574,7 +1574,7 @@ auto GlobalScope::Impl::Walker::resolveName(NameExpr* e) -> const Ty*
   for (const NamePart& part : e->name.parts)
     for (Node* arg : part.templateArgs)
       walkNode(arg);
-  Lookup l = impl.lookupQualified(e->name, scope, &locals, 0, activeSubst);
+  Lookup l = lookupHere(e->name);
   if (l.found == Found::No && e->name.parts.size() > 1)
     l = memberOfQualifierInstance(e);
   Impl::preferValue(l); // (`&stat`: the function, not the struct)
@@ -1636,7 +1636,7 @@ auto GlobalScope::Impl::Walker::resolveName(NameExpr* e) -> const Ty*
     tmp.name = qualifier;
     tmp.token = e->token;
     if (!qualifier.parts.empty() && qualifier.last().hasTemplateArgs) // `S<Box<int>, int>::v`: its specialization's tie too
-      checkSpecializationTie(&tmp, impl.lookupQualified(qualifier, scope, &locals, 0, activeSubst));
+      checkSpecializationTie(&tmp, lookupHere(qualifier));
     const Ty* q = qualifier.parts.empty() ? typeOf(e->name.typeQualifier) : typeOf(&tmp);
     q = q ? types.unqualified(types.stripRef(q)) : types.unknown();
     // `IsSmall::value` with `struct IsSmall : Constant<bool, true> {}`: a member of a template
@@ -2998,7 +2998,7 @@ auto GlobalScope::Impl::Walker::namesFunctionsWithoutTarget(Expr* e) -> bool
   auto* n = static_cast<NameExpr*>(e);
   if (!n->resolved || n->resolved->kind != NodeKind::FunctionDecl || n->name.empty() || n->name.last().hasTemplateArgs)
     return false;
-  Lookup l = impl.lookupQualified(n->name, scope, &locals, 0, activeSubst);
+  Lookup l = lookupHere(n->name);
   if (l.found == Found::No && n->name.parts.size() > 1)
     l = memberOfQualifierInstance(n);
   return l.decl && l.decl->kind == NodeKind::FunctionDecl && !onlyPlainCandidate(l.decl, l.overloads);
@@ -3052,7 +3052,7 @@ auto GlobalScope::Impl::Walker::overloadSetArgument(Expr* a, size_t index, Overl
   auto* n = static_cast<NameExpr*>(a);
   if (!n->resolved || n->resolved->kind != NodeKind::FunctionDecl || n->name.empty())
     return false;
-  Lookup l = impl.lookupQualified(n->name, scope, &locals, 0, activeSubst);
+  Lookup l = lookupHere(n->name);
   if (l.found == Found::Global)
     l = impl.withNamespaceUsings(l, 0);
   size_t functions = 0;
@@ -3086,7 +3086,7 @@ auto GlobalScope::Impl::Walker::bindTemplateAddress(Expr* a, const Ty* target) -
   {
     // `constructExpression<BitwiseNot>` beside a constructExpression(double) that is no
     // template: the written arguments name the template (the only one of the name).
-    Lookup l = impl.lookupQualified(n->name, scope, &locals, 0, activeSubst);
+    Lookup l = lookupHere(n->name);
     FunctionDecl* only = nullptr;
     int templates = 0;
     if (l.overloads)
@@ -4247,7 +4247,7 @@ auto GlobalScope::Impl::Walker::parenthesisedTypeCallee(Expr* e) -> NameExpr*
   if (!inner || inner->kind != NodeKind::NameExpr || static_cast<NameExpr*>(inner)->name.empty())
     return nullptr;
   auto* n = static_cast<NameExpr*>(inner);
-  Lookup l = impl.lookupQualified(n->name, scope, &locals, 0, activeSubst);
+  Lookup l = lookupHere(n->name);
   if (l.found == Found::No)
     return n->name.parts.size() == 1 && !n->name.parts[0].hasTemplateArgs && impl.builtinByName(n->name.parts[0].symbol) ? n : nullptr;
   Decl* d = l.decl;
@@ -5058,7 +5058,7 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
     for (const NamePart& part : n->name.parts)
       for (Node* arg : part.templateArgs)
         walkNode(arg);
-    Lookup l = impl.lookupQualified(n->name, scope, &locals, 0, activeSubst);
+    Lookup l = lookupHere(n->name);
     Impl::preferValue(l); // (`stat("/", &s)`: the function, not the struct's aggregate initialisation)
     if (!whenLookup(l, n))
     {
@@ -9469,7 +9469,7 @@ auto GlobalScope::Impl::Walker::walkExpr(Expr* e) -> const Ty*
       {
         // typeid(Widget), or typeid(q) with q a variable the parser read as a type name.
         auto* n = t->operand->kind == NodeKind::NamedType ? static_cast<NamedType*>(t->operand) : nullptr;
-        Lookup l = n ? impl.lookupQualified(n->name, scope, &locals, 0, activeSubst) : Lookup{};
+        Lookup l = n ? lookupHere(n->name) : Lookup{};
         if (l.decl && (l.decl->kind == NodeKind::VariableDecl || l.decl->kind == NodeKind::ParamDecl) && !(l.decl->flags & DF_Typedef))
         {
           t->operandDecl = l.decl;

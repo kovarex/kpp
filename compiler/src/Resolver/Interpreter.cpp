@@ -888,7 +888,7 @@ auto GlobalScope::Impl::constValueIn(Expr* e, const TypeContext& ctx, int depth)
                                   : s->operand && s->operand->kind == NodeKind::NameExpr ? &static_cast<NameExpr*>(s->operand)->name : nullptr;
         if (!name || name->parts.size() != 1 || !ctx.subst)
           return std::nullopt;
-        Lookup l = lookupQualified(*name, ctx.scope, ctx.locals, depth + 1, ctx.subst);
+        Lookup l = lookupQualified(*name, ctx.scope, ctx.locals, depth + 1, ctx.subst, ctx.elementPacks, ctx.elementIndex);
         Decl* d = l.decl;
         if (!d) // `sizeof...(args)` where the context has no locals (the code generator's): what the walk found
           d = s->type && s->type->kind == NodeKind::NamedType ? static_cast<NamedType*>(s->type)->resolved
@@ -910,7 +910,7 @@ auto GlobalScope::Impl::constValueIn(Expr* e, const TypeContext& ctx, int depth)
       // A name the walk left unresolved, as the context's locals have it: a function parameter in a
       // trailing requires clause (`requires (sizeof(v) <= 4)`, pushFunctionParams).
       if (!named && s->type && s->type->kind == NodeKind::NamedType && ctx.locals && static_cast<NamedType*>(s->type)->name.parts.size() == 1)
-        if (Decl* d = lookupQualified(static_cast<NamedType*>(s->type)->name, ctx.scope, ctx.locals, depth + 1, ctx.subst).decl;
+        if (Decl* d = lookupQualified(static_cast<NamedType*>(s->type)->name, ctx.scope, ctx.locals, depth + 1, ctx.subst, ctx.elementPacks, ctx.elementIndex).decl;
             d && (d->kind == NodeKind::ParamDecl || d->kind == NodeKind::VariableDecl))
           named = d;
       // `sizeof(copy)` in a class template's member, copy one of several `when` data members of the name (design.md 19):
@@ -1195,7 +1195,7 @@ auto GlobalScope::Impl::constName(NameExpr* n, const TypeContext& ctx) -> std::o
   auto boolean = [this](std::optional<bool> b) {
     return b ? std::optional<ConstValue>(ConstValue::integer(*b, types.boolType())) : std::nullopt;
   };
-  Lookup l = lookupQualified(n->name, ctx.scope, ctx.locals, 1, ctx.subst);
+  Lookup l = lookupQualified(n->name, ctx.scope, ctx.locals, 1, ctx.subst, ctx.elementPacks, ctx.elementIndex);
   if (l.found == Found::No && !n->resolved && n->name.parts.size() == 1 && n->name.parts[0].hasTemplateArgs &&
       isBoolTraitName(n->name.parts[0].symbol))
   {
@@ -1675,7 +1675,7 @@ auto GlobalScope::Impl::constCall(CallExpr* c, const TypeContext& ctx, int depth
   bool ofThePrimary = d && d->kind == NodeKind::FunctionDecl && callee->name.parts.size() > 1 && ctx.subst && d->parent && (d->parent->attributes & ATTR_Specialized);
   if (!d || d->kind == NodeKind::TemplateParamDecl || ofThePrimary)
   {
-    Lookup l = lookupQualified(callee->name, ctx.scope, ctx.locals, depth + 1, ctx.subst);
+    Lookup l = lookupQualified(callee->name, ctx.scope, ctx.locals, depth + 1, ctx.subst, ctx.elementPacks, ctx.elementIndex);
     d = l.decl || !ofThePrimary ? l.decl : d;
     // Not typed where it is written (a template argument, `Imm<max(a, b)>`): of the
     // functions of the name, the one whose parameters the arguments fill, when one does.
@@ -1800,7 +1800,7 @@ auto GlobalScope::Impl::constCall(CallExpr* c, const TypeContext& ctx, int depth
     explicitFor(f, given);
     if (!fillsTemplate(f, given))
     {
-      Lookup l = lookupQualified(callee->name, ctx.scope, ctx.locals, depth + 1, ctx.subst);
+      Lookup l = lookupQualified(callee->name, ctx.scope, ctx.locals, depth + 1, ctx.subst, ctx.elementPacks, ctx.elementIndex);
       FunctionDecl* fits = nullptr;
       int fitting = 0;
       std::vector<const Ty*> candidateArgs;
@@ -2524,7 +2524,7 @@ auto GlobalScope::Impl::constBinaryChain(BinaryExpr* e, const TypeContext& ctx, 
       (P(chain.back()->op) == P::Minus || P(chain.back()->op) == P::Plus))
   {
     auto* name = static_cast<NameExpr*>(static_cast<ParenExpr*>(first)->inner);
-    Decl* d = name->resolved ? name->resolved : lookupQualified(name->name, ctx.scope, ctx.locals, depth + 1, ctx.subst).decl;
+    Decl* d = name->resolved ? name->resolved : lookupQualified(name->name, ctx.scope, ctx.locals, depth + 1, ctx.subst, ctx.elementPacks, ctx.elementIndex).decl;
     if (d && (d->kind == NodeKind::UsingAliasDecl || d->kind == NodeKind::EnumDecl || (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef))))
     {
       NamedType named{};
@@ -4528,7 +4528,7 @@ auto GlobalScope::Impl::constDesignated(Expr* x, const TypeContext& ctx, int dep
       }
       Decl* d = n->resolved;
       if (!d || d->kind == NodeKind::TemplateParamDecl)
-        d = lookupQualified(n->name, ctx.scope, ctx.locals, depth + 1, ctx.subst).decl;
+        d = lookupQualified(n->name, ctx.scope, ctx.locals, depth + 1, ctx.subst, ctx.elementPacks, ctx.elementIndex).decl;
       if (!constStaticStorage(d))
         return std::nullopt;
       ConstDesignated a;
@@ -4654,7 +4654,7 @@ auto GlobalScope::Impl::constAddressOf(Expr* operand, const TypeContext& ctx, in
     Lookup l;
     if (!d || d->kind == NodeKind::TemplateParamDecl)
     {
-      l = lookupQualified(n->name, ctx.scope, ctx.locals, depth + 1, ctx.subst);
+      l = lookupQualified(n->name, ctx.scope, ctx.locals, depth + 1, ctx.subst, ctx.elementPacks, ctx.elementIndex);
       d = l.decl;
       if (d && d->kind == NodeKind::FunctionDecl && l.overloads)
       {

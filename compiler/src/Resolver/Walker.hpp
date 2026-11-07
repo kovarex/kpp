@@ -228,6 +228,9 @@
     void traceAt(Expr* e, const Ty* t);
 
     TypeContext ctx() const;
+    // A name written in the walked code, looked up as this walk types it: under activeSubst, and in a pack
+    // expansion's pattern typed for one element (elementPacks) naming that element.
+    Lookup lookupHere(const QualifiedName& name) { return impl.lookupQualified(name, scope, &locals, 0, activeSubst, elementPacks, elementIndex); }
 
     // --- template instantiation: check bodies once per (template, arguments) ---
 

@@ -63,7 +63,8 @@
   Lookup lookupUnqualified(uint32_t symbol, Scope* context, const LocalStack* locals, int depth, bool qualifierOnly = false);
   // The type a NamedType names: an elaborated `struct stat s` passes over a variable or a function
   // of the name, as C++ does ([basic.lookup.elab]).
-  Lookup lookupTypeName(const NamedType* t, Scope* context, const LocalStack* locals, int depth, const Subst* subst);
+  Lookup lookupTypeName(const NamedType* t, Scope* context, const LocalStack* locals, int depth, const Subst* subst,
+                        const std::vector<Decl*>* elementPacks = nullptr, uint32_t elementIndex = 0);
 
   // The nearest namespace enclosing both a and b (the global one at worst).
   static Scope* enclosingBoth(Scope* a, Scope* b);
@@ -193,12 +194,16 @@
                                 const Subst* enclosing = nullptr);
 
   // A name as written, found from context: what lookupWritten finds, a using-declaration of an
-  // enumerator taken for that enumerator (usingEnumerator).
-  Lookup lookupQualified(const QualifiedName& name, Scope* context, const LocalStack* locals, int depth, const Subst* subst = nullptr);
+  // enumerator taken for that enumerator (usingEnumerator). elementPacks, elementIndex: the name is in
+  // the pattern of a pack expansion typed for one element (TypeContext::elementPacks), its own template
+  // arguments and qualifiers naming that element of the packs (`IsRef<Ts>::v`, `Ts::value`).
+  Lookup lookupQualified(const QualifiedName& name, Scope* context, const LocalStack* locals, int depth, const Subst* subst = nullptr,
+                         const std::vector<Decl*>* elementPacks = nullptr, uint32_t elementIndex = 0);
 
   // A lookup in s, and in the global scope (`::helper`) first in the private names of the file the
   // lookup from context is made for (design.md 15), which hide the global ones there.
   bool lookupInScopeOrPrivate(Scope* s, Scope* context, uint32_t symbol, Lookup& out, int depth);
 
-  Lookup lookupWritten(const QualifiedName& name, Scope* context, const LocalStack* locals, int depth, const Subst* subst = nullptr);
+  Lookup lookupWritten(const QualifiedName& name, Scope* context, const LocalStack* locals, int depth, const Subst* subst = nullptr,
+                       const std::vector<Decl*>* elementPacks = nullptr, uint32_t elementIndex = 0);
 

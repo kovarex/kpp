@@ -416,7 +416,7 @@ auto GlobalScope::Impl::qualifierSubst(const QualifiedName& name, const TypeCont
   // The qualifier as a type: `Vector<int>::`, or `VT::` with `using VT = Vector<int>`.
   QualifiedName prefix = name;
   prefix.parts.count -= 1;
-  Lookup l = lookupQualified(prefix, ctx.scope, ctx.locals, depth + 1, ctx.subst);
+  Lookup l = lookupQualified(prefix, ctx.scope, ctx.locals, depth + 1, ctx.subst, ctx.elementPacks, ctx.elementIndex);
   if (!l.decl)
     return s;
   if (l.decl->kind == NodeKind::TemplateParamDecl && ctx.subst)
@@ -505,7 +505,7 @@ auto GlobalScope::Impl::templateArgument(Node* arg, Decl* param, const TypeConte
       return b ? types.valueType(types.boolType(), *b ? 1 : 0) : types.unknown();
     }
     // `Array<char, bufferSize>`: a bare name is a type to the parser; it may be a constant.
-    Lookup l = lookupQualified(an, ctx.scope, ctx.locals, depth + 1, ctx.subst);
+    Lookup l = lookupQualified(an, ctx.scope, ctx.locals, depth + 1, ctx.subst, ctx.elementPacks, ctx.elementIndex);
     if (!l.decl && an.parts.size() == 1)
       if (Decl* r = static_cast<NamedType*>(arg)->resolved; r && r->kind == NodeKind::VariableDecl && r->parent && r->parent->kind == NodeKind::FunctionDecl)
         l.decl = r; // `Flag<sign>` with a local constant, where the context has no locals: what the walk found
@@ -539,7 +539,7 @@ auto GlobalScope::Impl::templateArgument(Node* arg, Decl* param, const TypeConte
            static_cast<UnaryExpr*>(arg)->operand && static_cast<UnaryExpr*>(arg)->operand->kind == NodeKind::NameExpr)
   {
     // `BinaryOperation<Mul, &Functions::mul>`: the address of a function.
-    Lookup l = lookupQualified(static_cast<NameExpr*>(static_cast<UnaryExpr*>(arg)->operand)->name, ctx.scope, ctx.locals, depth + 1, ctx.subst);
+    Lookup l = lookupQualified(static_cast<NameExpr*>(static_cast<UnaryExpr*>(arg)->operand)->name, ctx.scope, ctx.locals, depth + 1, ctx.subst, ctx.elementPacks, ctx.elementIndex);
     // The class a member's qualifier names, of a class template's member: the declaration is every
     // instance's. Null when the member's class is no template, unknown when it says none.
     auto instanceNamed = [&]() -> const Ty*
@@ -1607,7 +1607,7 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
           return trait;
       // Under an instantiation the qualifier's arguments are known: `Pick<1, A, B>::Type` with
       // A = int finds the member in the specialisation those arguments pick.
-      Lookup l = lookupTypeName(n, ctx.scope, ctx.locals, depth + 1, ctx.subst);
+      Lookup l = lookupTypeName(n, ctx.scope, ctx.locals, depth + 1, ctx.subst, ctx.elementPacks, ctx.elementIndex);
       // `using ThrowOnError = NamedBool<class ThrowOnError>;` (SpriteBank): an elaborated `class X`
       // names a class, never a type alias of the name (C++ looks it up before the alias is declared,
       // and an alias it found would be ill-formed). Found, the alias was its own argument: an endless
@@ -1631,7 +1631,7 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
         // arguments pick once they are known; the primary's member must not stand in for it.
         QualifiedName prefix = n->name;
         prefix.parts.count -= 1;
-        Lookup pl = lookupQualified(prefix, ctx.scope, ctx.locals, depth + 1, ctx.subst);
+        Lookup pl = lookupQualified(prefix, ctx.scope, ctx.locals, depth + 1, ctx.subst, ctx.elementPacks, ctx.elementIndex);
         if (pl.decl && pl.decl->kind == NodeKind::ClassDecl)
         {
           const Ty* q = typeOfTypeDecl(pl.decl, pl, prefix.last(), ctx, depth + 1);
@@ -1856,7 +1856,7 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
       if (!n && a->size && a->size->kind == NodeKind::NameExpr)
       {
         // `const T (&array)[N]` with N a constant parameter not yet bound: the bound is N.
-        Lookup l = lookupQualified(static_cast<NameExpr*>(a->size)->name, ctx.scope, ctx.locals, depth + 1, ctx.subst);
+        Lookup l = lookupQualified(static_cast<NameExpr*>(a->size)->name, ctx.scope, ctx.locals, depth + 1, ctx.subst, ctx.elementPacks, ctx.elementIndex);
         if (l.decl && l.decl->kind == NodeKind::TemplateParamDecl && !static_cast<TemplateParamDecl*>(l.decl)->isType &&
             !(ctx.subst && ctx.subst->find(l.decl)))
           return types.dependentArray(element, l.decl);
@@ -1892,7 +1892,7 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
         isNoexcept = v && *v != 0;
         if (!v && f->noexceptCondition->kind == NodeKind::NameExpr)
         {
-          Lookup l = lookupQualified(static_cast<NameExpr*>(f->noexceptCondition)->name, ctx.scope, ctx.locals, depth + 1, ctx.subst);
+          Lookup l = lookupQualified(static_cast<NameExpr*>(f->noexceptCondition)->name, ctx.scope, ctx.locals, depth + 1, ctx.subst, ctx.elementPacks, ctx.elementIndex);
           if (l.decl && l.decl->kind == NodeKind::TemplateParamDecl && !static_cast<TemplateParamDecl*>(l.decl)->isType)
             noexceptParam = l.decl;
         }

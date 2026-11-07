@@ -439,11 +439,12 @@ auto GlobalScope::Impl::absentStop(const Lookup& l) -> Lookup
   return out;
 }
 
-auto GlobalScope::Impl::lookupTypeName(const NamedType* t, Scope* context, const LocalStack* locals, int depth, const Subst* subst) -> Lookup
+auto GlobalScope::Impl::lookupTypeName(const NamedType* t, Scope* context, const LocalStack* locals, int depth, const Subst* subst,
+                                       const std::vector<Decl*>* elementPacks, uint32_t elementIndex) -> Lookup
 {
   if (t->elaborated && t->name.parts.size() == 1 && !t->name.global && !t->name.parts[0].hasTemplateArgs)
     return lookupUnqualified(t->name.parts[0].symbol, context, locals, depth, true);
-  return lookupQualified(t->name, context, locals, depth, subst);
+  return lookupQualified(t->name, context, locals, depth, subst, elementPacks, elementIndex); // (`typename IsRef<Ts>::Type` in a pattern)
 }
 
 auto GlobalScope::Impl::lookupUnqualified(uint32_t symbol, Scope* context, const LocalStack* locals, int depth, bool qualifierOnly) -> Lookup
@@ -1268,9 +1269,10 @@ auto GlobalScope::Impl::matchSpecialization(const Lookup& l, const std::vector<c
   return types.classType(m.decl, Span<const Ty*>{m.deduced.data(), uint32_t(m.deduced.size())});
 }
 
-auto GlobalScope::Impl::lookupQualified(const QualifiedName& name, Scope* context, const LocalStack* locals, int depth, const Subst* subst) -> Lookup
+auto GlobalScope::Impl::lookupQualified(const QualifiedName& name, Scope* context, const LocalStack* locals, int depth, const Subst* subst,
+                                        const std::vector<Decl*>* elementPacks, uint32_t elementIndex) -> Lookup
 {
-  Lookup l = lookupWritten(name, context, locals, depth, subst);
+  Lookup l = lookupWritten(name, context, locals, depth, subst, elementPacks, elementIndex);
   if (Decl* en = usingEnumerator(l.decl, depth))
     l.decl = en, l.overloads = nullptr, l.scope = nullptr;
   return l;
@@ -1284,17 +1286,24 @@ auto GlobalScope::Impl::lookupInScopeOrPrivate(Scope* s, Scope* context, uint32_
   return lookupInScope(s, symbol, out, depth);
 }
 
-auto GlobalScope::Impl::lookupWritten(const QualifiedName& name, Scope* context, const LocalStack* locals, int depth, const Subst* subst) -> Lookup
+auto GlobalScope::Impl::lookupWritten(const QualifiedName& name, Scope* context, const LocalStack* locals, int depth, const Subst* subst,
+                                      const std::vector<Decl*>* elementPacks, uint32_t elementIndex) -> Lookup
 {
   Lookup out;
   if (name.empty() || depth > 24)
     return out;
+  // The name's own nodes (its type qualifier, its template arguments) as a pack expansion's pattern typed
+  // for one element sees them: `(IsRef<Ts>::v + ...)` over <int&, int&> is IsRef<int&>'s v, a partial
+  // specialization's, for each element (it took the primary's for every one: IsRef<Pack> matched none).
+  TypeContext own{context, locals, subst};
+  own.elementPacks = elementPacks;
+  own.elementIndex = elementIndex;
   Scope* current = name.global ? &root : nullptr;
   const Ty* currentTy = nullptr; // the class current is the scope of, when its arguments are known
   if (name.typeQualifier)
   {
     // `decltype(this->inventories)::mapped_type`: the name inside the class the type names.
-    const Ty* q = convertType(name.typeQualifier, TypeContext{context, locals, subst}, depth + 1);
+    const Ty* q = convertType(name.typeQualifier, own, depth + 1);
     q = q ? types.unqualified(types.stripRef(q)) : nullptr;
     if (!q || !q->isKnown())
       return out;
@@ -1366,7 +1375,7 @@ auto GlobalScope::Impl::lookupWritten(const QualifiedName& name, Scope* context,
     {
       if (!last && subst && step.decl && step.decl->kind == NodeKind::TemplateParamDecl)
       {
-        const Ty* sub = subst->find(step.decl);
+        const Ty* sub = elementOf(step.decl, subst->find(step.decl), own); // (`Ts::value` in a pattern: the element's)
         if (sub && sub->kind == TyKind::Class && sub->decl)
           if (Scope* inside = classScopeOf(sub))
           {
@@ -1392,7 +1401,7 @@ auto GlobalScope::Impl::lookupWritten(const QualifiedName& name, Scope* context,
     {
       // `Limits<int>::max`: the specialisation for these arguments, when there is one.
       std::vector<const Ty*> args;
-      TypeContext actx{context, locals, subst};
+      const TypeContext& actx = own;
       Decl* primary = step.overloads ? primaryOf(*step.overloads) : step.decl;
       for (size_t i = 0; i < part.templateArgs.size(); ++i)
         args.push_back(templateArgument(part.templateArgs[i], parameterFor(primary, i), actx, depth + 1)); // types, and constants for value parameters

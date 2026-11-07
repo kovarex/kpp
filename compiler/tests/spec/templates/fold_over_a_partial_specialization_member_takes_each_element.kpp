@@ -1,5 +1,4 @@
 // spec: a pack expansion over a type pack that names a static member of a class template takes each element's instance, its partial specialization where one matches: `(IsRef<Ts>::v + ...)` over <int&, int&> is 2, as `IsRef<int&>::v` is 1 ([temp.variadic] 8, [temp.spec.partial.match]); folds with and without an initial value, a brace list of the elements, a pack deduced from a call. clang's and g++'s output
-// pending: of two or more elements every element takes the primary template's member (0 0 0 for all of these, `cnt<int&>()` alone is right): a silent wrong answer, found by thread J while probing forwarding references (2026-11-07); a primary template alone is right (`Size<Ts>::v` sums the sizes)
 extern "C" int printf(const char* format, ...);
 template<class T> struct IsRef
 {
