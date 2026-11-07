@@ -52,16 +52,12 @@ Functions:
   (Pair's piecewise constructor). It refers to temporaries that end with the full expression.
 
 Tuple-like types: `TupleSize<E>::value` is the number of elements of a tuple-like type E
-(`tupleSize<E>` for short) and `TupleElement<i, E>::Type` its element i's type. Tuple and
-`Array<T, N>` are tuple-like (an Array has N elements of type T, and `get<i>(array)` is element i
-of it). Tuple-like is what a structured binding goes by: `auto [a, b, c] = e` with E tuple-like
+(`tupleSize<E>` for short) and `TupleElement<i, E>::Type` its element i's type. Tuple, Pair
+(two elements, first and second) and `Array<T, N>` are tuple-like (an Array has N elements of type
+T, and `get<i>(array)` is element i of it). Tuple-like is what a structured binding goes by: `auto [a, b, c] = e` with E tuple-like
 binds a, b and c to `get<0>(e)`, `get<1>(e)` and `get<2>(e)` (`e.get<i>()` where E has such a
 member), whatever E's data members are. A program may make its own class tuple-like by
 specializing TupleSize for it and giving it a get.
-
-Pair is not tuple-like (TupleSize is not specialized for it): a binding of a Pair takes its members
-first and second directly. Difference from C++ (std::pair is tuple-like); the bindings are the same
-either way.
 
 ## Pair
 

@@ -4,7 +4,7 @@
 
 // The number of elements of a tuple-like type E (std::tuple_size): specialized for one, it says that
 // `auto [a, b] = e` binds a and b to get<0>(e) and get<1>(e) rather than to e's data members
-// (design.md 4). Tuple and Array are tuple-like.
+// (design.md 4). Tuple, Pair and Array are tuple-like.
 template<typename E>
 struct TupleSize {};
 template<typename E>
@@ -307,6 +307,14 @@ auto&& get(Pair<A, B>&& p)
   else
     return forward<B>(p.second);
 }
+
+// Pair is tuple-like, as std::pair: two elements, first and second.
+template<typename A, typename B>
+struct TupleSize<Pair<A, B>> { static constexpr i32 value = 2; };
+template<typename A, typename B>
+struct TupleElement<0, Pair<A, B>> { using Type = A; };
+template<typename A, typename B>
+struct TupleElement<1, Pair<A, B>> { using Type = B; };
 
 // The member of type T, of the two different types.
 template<typename T, typename A, typename B> requires (isSame<T, A> != isSame<T, B>)
