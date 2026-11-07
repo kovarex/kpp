@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**1849 pass, 5 pending, 0 failing, 0 fixed** (1854 snippets, 196.0 s).
+**1850 pass, 5 pending, 0 failing, 0 fixed** (1855 snippets, 172.1 s).
 
 ## Language: statements, expressions, declarations
 
@@ -498,6 +498,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `language/parenthesised_list_argument.kpp` | `T({...})`, a class named with one brace list in parentheses, passes the list to a constructor as its argument (`Widths({{120, 0}})` builds the Vector<Item> parameter from the list), where `T{...}` is the class's own list (`Vector<Pair<int, int>>{{1, 2}}` holds one pair) | pass | ModInfoPane's `this->modInfoTable.style.setColumnWidths((agui::TableStyle::Widths({{int(GuiConstants::getScaled(120)), 0}})));` |  |
 | `language/placement_new_over_const_object_is_error.kpp` | a placement new over an object declared const is an error (kovarex, 2026-11-04; design.md 21): a const global, a const local, a member of one and an element of a const array, where the place visibly names it; through a pointer (const_cast included) it is allowed, as are objects with const or reference members | pass |  |  |
 | `language/placement_new_replaces_transparently.kpp` | a placement new over an object with a const member and a reference member replaces it transparently, as C++20 does ([basic.life]/8, kovarex 2026-11-04; design.md 21): the old name and an old pointer reach the new object, its const member's and reference's new values (kpp has no launder); through a const_cast pointer to an object not declared const it is allowed, as in C++ | pass |  |  |
+| `language/plain_enum_warnings_mode.kpp` | --plain-enum-warnings: kpp code has only enum class (kovarex, 2026-11-07): each plain enum declared in kpp code is a warning, a nameless one too, and each use of its enumerators by kind: a bit operation, an array's index or size, arithmetic, a comparison with an integer, a conversion to an integer; a comparison with its own enum's value is none | pass |  |  |
 | `language/pointer_bitwise_operator_is_an_error.kpp` | an arithmetic or bitwise operator other than + and - on a pointer is an error (C++ has none), never an instruction LLVM rejects | pass |  |  |
 | `language/pointer_difference_of_different_types_is_error.kpp` | only pointers to one type subtract (C++'s [expr.add]/2): the difference of an int32* and an int64* is an error, where until 2026-11-05 it counted bytes in the left's elements (an inexact division, poison); const on either side is no other type | pass |  |  |
 | `language/pointer_to_a_function_pointer_declarators.kpp` | `int (**q)(int)` and `int (*(*q))(int)` are a pointer to a pointer to the function, as a variable, a member and a parameter; overloads tell them from `int (*)(int)` | pass |  |  |

@@ -1,0 +1,29 @@
+// spec: --plain-enum-warnings: kpp code has only enum class (kovarex, 2026-11-07): each plain enum declared in kpp code is a warning, a nameless one too, and each use of its enumerators by kind: a bit operation, an array's index or size, arithmetic, a comparison with an integer, a conversion to an integer; a comparison with its own enum's value is none
+// kppc: --plain-enum-warnings
+// warning: plain_enum_warnings_mode.kpp:15: warning: Flags is a plain enum: kpp has only enum class (design.md 8.4)
+// warning: plain_enum_warnings_mode.kpp:16: warning: Solid of Flags used in a bit operation
+// warning: plain_enum_warnings_mode.kpp:17: warning: Count of Flags used in an array's size
+// warning: plain_enum_warnings_mode.kpp:19: warning: Plain is a plain enum: kpp has only enum class (design.md 8.4)
+// warning: plain_enum_warnings_mode.kpp:20: warning: a nameless plain enum: kpp has only enum class (design.md 8.4)
+// warning: plain_enum_warnings_mode.kpp:24: warning: Solid of Flags used in an array's index
+// warning: plain_enum_warnings_mode.kpp:25: warning: Hidden of a nameless plain enum used in arithmetic, as an integer
+// warning: plain_enum_warnings_mode.kpp:28: warning: Water of Flags used in a conversion to an integer
+// no-warning: plain_enum_warnings_mode.kpp:27:
+class Mask
+{
+public:
+  enum Flags { None = 0, Solid = 1, Water = 2, Count = 3 };
+  int bits = Solid | Water;
+  int table[Count];
+};
+enum Plain { Red, Green };
+enum { Hidden = 7 };
+int main()
+{
+  Mask m;
+  m.table[Mask::Solid] = 1;
+  int n = Hidden + 1;
+  Plain p = Red;
+  bool same = p == Green;
+  println(int(Mask::Water) + (m.bits > Mask::None ? 0 : 1) + n + same); return 0;
+}

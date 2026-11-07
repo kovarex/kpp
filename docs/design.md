@@ -452,8 +452,19 @@ An enumerator of a scoped enum is named through its enum outside the enum, in a 
 enum's own methods `North`, `Direction::North` and `This::North` (23c) all name it. A bare one outside is
 the error "'North' is not declared (...): write `Direction::North`, not `North`" (spec
 language/scoped_enumerator_needs_its_enum;
-the game has none, as kppc never accepted one). An unscoped enum's enumerators are bare today, as in C;
-whether the rule covers them is open with kovarex.
+the game has none, as kppc never accepted one).
+
+**No plain enums** (kovarex, 2026-11-07: "plain enums are not nice"; decided, not built): kpp code has only
+`enum class`; imported C and C++ headers keep theirs. As with the other rules, the error comes behind a flag
+first, counted, then the converter's rewrite, then the error by default. `--plain-enum-warnings` (built) lists
+each plain enum in kpp code and each use of its enumerators by kind ("Solid of Flags used in a bit operation
+(the enum at PATH:LINE)"). The game (tests.cmd's build, Factorio 4c178a5b915): 208, 115 in src, 79 in libraries
+(converted C: Lua, stb, trio, StackWalker), 13 in tests, 1 in the stdlib (Win32.kpp); by their heaviest use,
+144 only as their own type (14 nameless), 20 flags in bit operations, 20 an array's index or size, 24
+integers otherwise (Lua's opcode tables). Uses: 498 in bit operations, 466 in arithmetic, 375 as an index, 177
+compared with an integer, 40 as an array's size, 16 converted. The form each kind converts to is a proposal
+with C and the coordinator (enum class with its C++ underlying type, flags with bit operators, `count` for
+array sizes, named constants for nameless ones and opcode tables). Spec language/plain_enum_warnings_mode.
 
 An enumeration of a class template belongs to its instance (2026-11-06): the type carries the
 instance's arguments, so `enum : T`, `sizeof`, promotion, overload ranking, a bit field, `count`,

@@ -81,6 +81,12 @@ std::vector<std::string> takeThisWarnings();
 // --this-reference-warnings: each use of `this` that changes once `this` is a reference (design.md 23d), in the
 // editor's fix form: `this->` ("write `this.`, not `this->`"), `*this`, its address passed, returned, compared or
 // deleted, a `[this]` capture, a `[=]` lambda using the object, a null test. The converter's list before the change.
+// --plain-enum-warnings: kpp has no plain (unscoped) enum (kovarex, 2026-11-07): each one in kpp code, and each use
+// of its enumerators by kind (a bit operation, as an integer, an array's index or size), the count before the error.
+void setPlainEnumWarnings(bool on);
+bool plainEnumWarningsOn();
+void notePlainEnumWarning(const std::string& warning);
+std::vector<std::string> takePlainEnumWarnings();
 void setThisReferenceWarnings(bool on);
 bool thisReferenceWarningsOn();
 void noteThisReferenceWarning(const std::string& warning);

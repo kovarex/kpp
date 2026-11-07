@@ -50,6 +50,8 @@ void usage(FILE* out)
           "                \"Explicit by default\": the flip before it is the default), and its errors are on\n"
           "  --this-warnings  warn of each unqualified name that finds a data member or a member function, which\n"
           "                required `this.` writes `this.x` (the readme's Planned); no error, no other change\n"
+          "  --plain-enum-warnings  warn of each plain (unscoped) enum and each use of its enumerators by kind (bits,\n"
+          "                integer, array index or size: kpp has only enum class, docs/design.md 8.4); no other change\n"
           "  --this-reference-warnings  warn of each use of `this` that changes once it is a reference (`this->`,\n"
           "                `*this`, its address, `[this]`, a null test: docs/design.md 23d); no error, no other change\n"
           "  --return-copy-warnings  warn of each `return x;` of a class object that is copied or moved, not built in\n"

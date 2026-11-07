@@ -1105,6 +1105,8 @@ namespace
   std::atomic<bool> explicitByDefaultEnabled{false};
   std::set<std::string> thisNotes; // (sorted, each name once per place, whichever walks reached it)
   std::atomic<bool> thisReferenceWarningsEnabled{false};
+  std::atomic<bool> plainEnumWarningsEnabled{false};
+  std::set<std::string> plainEnumNotes; // (sorted, each once, whichever walks reached it)
   std::set<std::string> thisReferenceNotes; // (sorted, each use once, whichever walks reached it)
 }
 
@@ -1164,6 +1166,30 @@ std::vector<std::string> takeThisWarnings()
   std::lock_guard lock(zeroNullMutex);
   std::vector<std::string> out(thisNotes.begin(), thisNotes.end());
   thisNotes.clear();
+  sortDiagnostics(out);
+  return out;
+}
+
+void setPlainEnumWarnings(bool on)
+{
+  std::lock_guard lock(zeroNullMutex);
+  plainEnumNotes.clear();
+  plainEnumWarningsEnabled = on;
+}
+
+bool plainEnumWarningsOn() { return plainEnumWarningsEnabled; }
+
+void notePlainEnumWarning(const std::string& warning)
+{
+  std::lock_guard lock(zeroNullMutex);
+  plainEnumNotes.insert(warning);
+}
+
+std::vector<std::string> takePlainEnumWarnings()
+{
+  std::lock_guard lock(zeroNullMutex);
+  std::vector<std::string> out(plainEnumNotes.begin(), plainEnumNotes.end());
+  plainEnumNotes.clear();
   sortDiagnostics(out);
   return out;
 }

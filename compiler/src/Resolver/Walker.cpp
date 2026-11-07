@@ -1896,6 +1896,109 @@ auto GlobalScope::Impl::Walker::noteThisUse(Expr* e) -> void
   }
 }
 
+auto GlobalScope::Impl::Walker::notePlainEnumDecl(EnumDecl* e) -> void
+{
+  if (e->isClass || !e->isDefinition || activeSubst)
+    return;
+  if (e->name.empty())
+    notePlainEnumWarning(Impl::locationOf(file, e->token) + ": warning: a nameless plain enum: kpp has only enum class (design.md 8.4)");
+  else
+  {
+    std::string name = impl.debugName(e->name.last().symbol);
+    notePlainEnumWarning(Impl::locationOf(file, e->token) + ": warning: " + name + " is a plain enum: kpp has only enum class (design.md 8.4)");
+  }
+}
+
+auto GlobalScope::Impl::Walker::notePlainEnumUse(const Expr* operand, const char* kind) -> void
+{
+  // An enumerator of a plain enum declared in kpp code, named here (through parentheses too)
+  while (operand && operand->kind == NodeKind::ParenExpr)
+    operand = static_cast<const ParenExpr*>(operand)->inner;
+  if (!operand || operand->kind != NodeKind::NameExpr)
+    return;
+  const Decl* d = static_cast<const NameExpr*>(operand)->resolved;
+  if (!d || d->kind != NodeKind::EnumeratorDecl || !d->parent || d->parent->kind != NodeKind::EnumDecl)
+    return;
+  auto* en = static_cast<const EnumDecl*>(d->parent);
+  if (en->isClass || !en->file || en->file->isImported)
+    return;
+  std::string name = en->name.empty() ? std::string("a nameless plain enum") : impl.debugName(en->name.last().symbol);
+  notePlainEnumWarning(Impl::locationOf(file, operand->token) + ": warning: " + impl.debugName(static_cast<const EnumeratorDecl*>(d)->name) +
+                       " of " + name + " used in " + kind + " (the enum at " + Impl::locationOf(en->file, en->token) + ")");
+}
+
+auto GlobalScope::Impl::Walker::notePlainEnumUses(Expr* e) -> void
+{
+  switch (e->kind)
+  {
+    case NodeKind::BinaryExpr:
+    {
+      auto* b = static_cast<BinaryExpr*>(e);
+      if (b->isKeyword)
+        break;
+      switch (P(b->op))
+      {
+        case P::Pipe: case P::Amp: case P::Caret: case P::PipeAssign: case P::AmpAssign: case P::CaretAssign: case P::Shl: case P::Shr:
+        case P::ShlAssign: case P::ShrAssign:
+          notePlainEnumUse(b->lhs, "a bit operation");
+          notePlainEnumUse(b->rhs, "a bit operation");
+          break;
+        case P::Plus: case P::Minus: case P::Star: case P::Slash: case P::Percent: case P::PlusAssign: case P::MinusAssign:
+        case P::StarAssign: case P::SlashAssign: case P::PercentAssign:
+          notePlainEnumUse(b->lhs, "arithmetic, as an integer");
+          notePlainEnumUse(b->rhs, "arithmetic, as an integer");
+          break;
+        case P::Less: case P::Greater: case P::LessEq: case P::GreaterEq: case P::EqEq: case P::NotEq:
+        {
+          // (against its own enum's value it stays a comparison of enumerators)
+          auto sameEnum = [&](const Expr* x, const Expr* y)
+          {
+            const Ty* a = x && x->ty ? types.unqualified(types.stripRef(x->ty)) : nullptr;
+            const Ty* b2 = y && y->ty ? types.unqualified(types.stripRef(y->ty)) : nullptr;
+            return a && b2 && a == b2 && a->kind == TyKind::Enum;
+          };
+          if (!sameEnum(b->lhs, b->rhs))
+          {
+            notePlainEnumUse(b->lhs, "a comparison with an integer");
+            notePlainEnumUse(b->rhs, "a comparison with an integer");
+          }
+          break;
+        }
+        default:
+          break;
+      }
+      break;
+    }
+    case NodeKind::UnaryExpr:
+    {
+      auto* u = static_cast<UnaryExpr*>(e);
+      if (u->isKeyword)
+        break;
+      if (P(u->op) == P::Tilde)
+        notePlainEnumUse(u->operand, "a bit operation");
+      else if (P(u->op) == P::Minus || P(u->op) == P::Plus)
+        notePlainEnumUse(u->operand, "arithmetic, as an integer");
+      break;
+    }
+    case NodeKind::IndexExpr:
+      for (Expr* a : static_cast<IndexExpr*>(e)->args)
+        notePlainEnumUse(a, "an array's index");
+      break;
+    case NodeKind::CastExpr:
+      if (auto* c = static_cast<CastExpr*>(e); e->ty && types.unqualified(types.stripRef(e->ty))->isArithmetic() &&
+                                                 types.unqualified(types.stripRef(e->ty))->kind != TyKind::Enum)
+        notePlainEnumUse(c->operand, "a conversion to an integer");
+      break;
+    case NodeKind::FunctionalCastExpr: // `int(Mask::Water)`
+      if (auto* c = static_cast<FunctionalCastExpr*>(e); c->args.size() == 1 && e->ty && types.unqualified(types.stripRef(e->ty))->isArithmetic() &&
+                                                           types.unqualified(types.stripRef(e->ty))->kind != TyKind::Enum)
+        notePlainEnumUse(c->args[0], "a conversion to an integer");
+      break;
+    default:
+      break;
+  }
+}
+
 auto GlobalScope::Impl::Walker::memberThroughThis(const Lookup& l, const Ty* t) -> const Ty*
 {
   // In a const member function a data member is const, unless mutable; in a volatile one volatile,
@@ -7636,6 +7739,8 @@ auto GlobalScope::Impl::Walker::walkType(Type* t) -> void
     case NodeKind::ArrayType:
       walkType(static_cast<ArrayType*>(t)->element);
       walkExpr(static_cast<ArrayType*>(t)->size);
+      if (plainEnumWarningsOn() && file && !file->isImported && !probing)
+        notePlainEnumUse(static_cast<ArrayType*>(t)->size, "an array's size");
       break;
     case NodeKind::FunctionType:
     {
@@ -7915,6 +8020,8 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
     case NodeKind::EnumDecl:
     {
       auto* e = static_cast<EnumDecl*>(d);
+      if (plainEnumWarningsOn() && file && !file->isImported && !probing)
+        notePlainEnumDecl(e);
       walkType(e->underlying);
       // Local to an instance of a function, this copy is that instance's alone, and only this walk
       // has its arguments (a class template's enumeration has them in its type: substFor): what
@@ -9023,6 +9130,14 @@ auto GlobalScope::Impl::Walker::walkExprs(Span<Expr*> exprs) -> void
 }
 
 auto GlobalScope::Impl::Walker::walkExpr(Expr* e) -> const Ty*
+{
+  const Ty* t = walkExprDispatch(e);
+  if (e && plainEnumWarningsOn() && file && !file->isImported && !probing)
+    notePlainEnumUses(e); // (after: its operands' names are resolved)
+  return t;
+}
+
+auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
 {
   if (!e)
     return nullptr;

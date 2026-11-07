@@ -86,6 +86,8 @@ int compile(int argc, char** argv)
       options.explicitByDefault = true;
     else if (arg == "--this-reference-warnings")
       options.thisReferenceWarnings = true;
+    else if (arg == "--plain-enum-warnings")
+      options.plainEnumWarnings = true;
     else if (arg == "--struct-rule")
       options.structRule = true;
     else if (arg == "--c-type-warnings")

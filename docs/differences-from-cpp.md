@@ -504,8 +504,9 @@ function that runs every level of a hierarchy. See the readme's Planned.
 - **Names:** outside the enum an enumerator is `Direction::North`, in a case label too; no bare label and
   no `.North` shorthand (kovarex, 2026-11-07). Inside the enum's own methods `North`, `Direction::North`
   and `This::North` all name it. A bare one outside is an error naming the fix (spec
-  `language/scoped_enumerator_needs_its_enum`). *Open:* whether this covers an unscoped enum's
-  enumerators, bare today as in C.
+  `language/scoped_enumerator_needs_its_enum`).
+- **No plain enums** (decided, not built): kpp code has only `enum class` (kovarex, 2026-11-07); imported
+  headers keep theirs. `--plain-enum-warnings` lists them; the game has 208 ([design 8.4](design.md)).
 - **See:** [design 8.4][d8]; spec `kpp/enum_from_str`; the [readme](../readme.md#less-boilerplate).
 
 ```cpp

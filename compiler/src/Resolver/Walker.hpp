@@ -355,6 +355,12 @@
     void noteThisCondition(Node* cond);
     void noteThisAddress(Expr* thisExpr);
     void noteThisReference(uint32_t token, const std::string& message);
+    // --plain-enum-warnings: a plain enum declared in kpp code, and the uses of its enumerators e makes, noted
+    // once e's operands are walked (their names resolved): `kind` the use's (bits, integer, index, size).
+    const Ty* walkExprDispatch(Expr* e);
+    void notePlainEnumDecl(EnumDecl* e);
+    void notePlainEnumUses(Expr* e);
+    void notePlainEnumUse(const Expr* operand, const char* kind);
     void noteDefaultCaptureOfThis(LambdaExpr* l);
     std::unordered_set<const Expr*> thisUsesNoted; // the `this` nodes a parent has spoken for
     // A declaration in kpp code named `This`, the keyword for the class around the code: an error (design.md 23c).

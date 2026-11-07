@@ -28,6 +28,7 @@
     bool thisWarnings = false; // --this-warnings
     bool explicitByDefault = false; // --explicit-by-default
     bool thisReferenceWarnings = false; // --this-reference-warnings
+    bool plainEnumWarnings = false; // --plain-enum-warnings
     bool structRule = true;      // design.md "struct and class" (--struct-rule, the default)
     bool cTypeWarnings = false;  // --c-type-warnings
     bool quiet = false;
