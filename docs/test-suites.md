@@ -15,7 +15,10 @@ Section 8.6 of design.md, implemented 2026-10-30 (`compiler/src/tests.cpp`, `par
   out and `config::tests` is true.
 - `check(expr)` records a failure and **continues**. `require(expr)` records it and **ends the
   test** by throwing, so destructors run. Both are statements only inside a test's body; elsewhere
-  `check` is an ordinary name. The message is in the compiler's error format, with both operand
+  `check` is an ordinary name. Where a declaration of that name is visible in test code (a local, a
+  member, a global function), a bare `check(...)` is an error: call it as `::check` or `ns::check`;
+  `obj.check(x)` and `this->check(x)` are member calls, never the statement (kovarex, 2026-11-07).
+  The message is in the compiler's error format, with both operand
   values for a top-level comparison (`==`, `!=`, `<`, `<=`, `>`, `>=`) when `toString` or `str()`
   can show them:
   `square.kpp:7:3: check failed: square(-2) == 5 (4 == 5)`.

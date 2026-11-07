@@ -760,10 +760,13 @@ suite DragBuildingBelt depends DragBuilding, TransportBelt
   that depends on a template parameter, which the instance reports, or a function of an argument's
   namespace) the statement is a compile error, "rename the declaration": the call would otherwise
   silently be read as a check.
-  Elsewhere they stay ordinary names, and a test may call one qualified (`math::check(1)`).
+  Elsewhere they stay ordinary names, and a test may call one qualified (`math::check(1)`,
+  `::check(1)`). Decided (kovarex, 2026-11-07): a global `check` is no exception, and a member named
+  check stays fine: `obj.check(x)` and `this->check(x)` are member access, never the statement
+  (kpp/test_check_member_call).
 Spec snippets: kpp/test_suite_helper_uses_require, kpp/test_before_each, kpp/test_current_name,
 kpp/test_run_by_name, kpp/test_run_by_name_unknown, kpp/test_run_captured, kpp/test_run_hook,
-kpp/test_ended_public, kpp/test_check_hidden_name_is_error, kpp/test_check_hidden_by_dependent_base_is_error,
+kpp/test_ended_public, kpp/test_check_hidden_name_is_error, kpp/test_check_member_call, kpp/test_check_hidden_by_dependent_base_is_error,
 kpp/test_check_dependent_base_without_the_name, kpp/test_check_hidden_by_argument_namespace_is_error,
 kpp/test_with_dependencies, kpp/test_from, kpp/test_after, kpp/test_from_unknown_is_error, kpp/test_shuffle,
 kpp/test_slow, kpp/test_called_from_kinds, kpp/test_called_from_never_stale, kpp/test_class_template_body_outside,

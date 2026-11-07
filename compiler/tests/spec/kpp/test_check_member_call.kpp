@@ -1,0 +1,35 @@
+// spec: a member named check stays a call in test code: fixture.check(x) and this->check(x) are member access, never the check statement (kovarex, 2026-11-07: classes keep their check methods); a bare check(...) where such a declaration is visible is the error (test_check_hidden_name_is_error), and a global check is called as ::check
+// test:
+// exit: 0
+bool check(int value) { return value > 0; }
+
+test class Fixture
+{
+public:
+  int calls = 0;
+
+  bool check(int value)
+  {
+    ++this->calls;
+    return value > 0;
+  }
+
+  void twice(int value)
+  {
+    require(this->check(value));
+    require(this->check(value + 1));
+  }
+};
+
+suite Members
+{
+  test Calls
+  {
+    Fixture fixture;
+    require(fixture.check(1));
+    fixture.twice(2);
+    require(fixture.calls == 3);
+    require(::check(1));
+    require(!::check(-1));
+  }
+}
