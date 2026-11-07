@@ -11,10 +11,10 @@ simple templates, own standard library, C-only interop.
   `docs/stdlib/`: the standard library specification (self-contained; changing a rule there is a
   design decision), `docs/stdlib-conformance.md`: where stdlib/ does not meet it yet.
   `docs/code-style.md`: kpp's code style (Factorio's), checked by `tools\style\kppstyle.py`.
-- `compiler/`: the compiler. `compiler\build.cmd` builds `compiler\build\kppc.exe` (CMake + Ninja +
+- `compiler/`: the compiler. `compiler\build.cmd` builds `compiler\build\kpp.exe` (CMake + Ninja +
   clang-cl from VS 2022). Benchmarks live in `compiler/bench/`, test inputs in `compiler/tests/`.
 - `stdlib/`: the standard library, written in kpp and compiled from source with every program
-  (`kppc` finds it next to the compiler; `--std DIR` or `--no-std` override that).
+  (`kpp` finds it next to the compiler; `--std DIR` or `--no-std` override that).
 - `programs/`: real kpp programs, one directory each (`kpplex`: the lexer in kpp, with its C++
   transliteration and `run.cmd` timing both on the Factorio corpus).
 - `kppnet/`: the kpp.net hosting kit (site, registry, git hosting; nothing deployed by threads);
@@ -112,7 +112,7 @@ Decided by kovarex; every thread follows them.
 ## Current phase
 Front end (lexer, parser, resolver, type checker, template instantiation) is done and measured
 (docs/prototype-results.md). Code generation for the kpp v0 subset works through textual LLVM IR
-and the bundled clang: `compiler\build\kppc.exe --exe out.exe program.kpp`. Run
+and the bundled clang: `compiler\build\kpp.exe --exe out.exe program.kpp`. Run
 `compiler\tests\gate.cmd` after every compiler change: the end-to-end tests and checks
 (`compiler\tests\run_tests.cmd`, its quick run; `--full` for all of it) beside the specification
 suite `compiler\tests\spec.cmd` (one snippet per construct, pass/pending, writes
