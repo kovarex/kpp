@@ -54,5 +54,5 @@ int main()
   row<decltype(emptyDefault)>("emptyDef");
   printf("%d %d %d %d %d\n", noexcept([cap] { return cap; }), noexcept([big] { return big.v; }), noexcept([&big] { return big.v; }),
          noexcept([t = Throwing()] { (void)t; }), noexcept([=] { return big.v; }));
-  return none() + byCopy() + byRef() + defaultCopy() + defaultRef() + bigCopy() + bigDefault() + bigRef() + moveOnly() + throwingCopy() + emptyDefault() - 8;
+  return none() + byCopy() + byRef() + defaultCopy() + defaultRef() + bigCopy() + bigDefault() + bigRef() + moveOnly() + throwingCopy() + emptyDefault() - 6;
 }
