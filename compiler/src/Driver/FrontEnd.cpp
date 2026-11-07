@@ -385,7 +385,8 @@ void runResolve(Build& build)
   std::vector<std::unique_ptr<ParsedFile>>& parsed = build.parsed;
   build.global = std::make_unique<GlobalScope>(symbols);
   GlobalScope& global = *build.global;
-  global.setLP64(!options.target.windows()); // (long, wchar_t, printf's %ld; docs/design.md, "Targets and hosts")
+  // (long, wchar_t, printf's %ld; docs/design.md, "Targets and hosts"; glibc's wchar_t on AArch64 unsigned)
+  global.setLP64(!options.target.windows(), options.target.arm64() && options.target.os == Target::Os::Linux);
   global.setMsvcAbi(options.target.msvc()); // (a pointer to a data member's size)
   global.setConverting(!options.convertDir.empty());
   global.setDebug(options.debug);

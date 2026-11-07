@@ -124,10 +124,18 @@ inline bool targetNamed(std::string_view name, Target& out, std::string& why)
     out = t;
     return true;
   }
-  if (name == "linux-arm64" || name.starts_with("aarch64") || name.starts_with("arm64"))
-    why = "comes with a later stage (docs/design.md, \"Targets and hosts\": AArch64 is stage 7)";
-  else
-    why = "is no target kppc knows (windows, windows-gnu, linux, freebsd, macos, macos-x64)";
+  // Linux on AArch64 (stage 7): glibc 2.31's, as linux's (Debian 11 arm64: tools/sysroot/linux.ps1 -Arch arm64).
+  if (name == "linux-arm64" || name == "aarch64-unknown-linux-gnu" || name == "aarch64-linux-gnu" || name == "arm64-unknown-linux-gnu")
+  {
+    t.os = Target::Os::Linux;
+    t.arch = Target::Arch::Arm64;
+    t.name = "linux-arm64";
+    t.triple = "aarch64-unknown-linux-gnu";
+    t.dataLayout = "e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128-Fn32";
+    out = t;
+    return true;
+  }
+  why = "is no target kppc knows (windows, windows-gnu, linux, linux-arm64, freebsd, macos, macos-x64)";
   return false;
 }
 
@@ -137,7 +145,9 @@ inline Target hostTarget()
 {
   Target t;
   std::string why;
-#if defined(__linux__)
+#if defined(__linux__) && defined(__aarch64__)
+  targetNamed("linux-arm64", t, why);
+#elif defined(__linux__)
   targetNamed("linux", t, why);
 #elif defined(__FreeBSD__)
   targetNamed("freebsd", t, why);

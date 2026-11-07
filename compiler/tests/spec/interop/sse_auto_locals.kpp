@@ -1,5 +1,6 @@
 // spec: an `auto` local initialized from an SSE operation has the operation's vector type (__m128i of _mm_loadu_si128, __m128 of _mm_shuffle_ps with _MM_SHUFFLE), as when the type is written
 // factorio: YCoCgDXTCompression's GetMinMaxYCoCg_SSE2, ScaleYCoCg_SSE2, EmitAlphaIndices_SSE2 and EmitColorIndices_SSE2 (`auto xmm0 = _mm_loadu_si128((const __m128i*)(colorBlock));`) and CpuIntrinsics::sum (`auto y = _mm_shuffle_ps(x, x, _MM_SHUFFLE(1, 0, 3, 2));`)
+// arch: x86_64 (x86's SSE: intrin.h, which another processor's C headers refuse)
 extern "C" import "intrin.h";
 int main()
 {

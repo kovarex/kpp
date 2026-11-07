@@ -11,13 +11,26 @@
     // enough of those registers are left, and any other on the stack (`byval`) or through the slot.
     static bool isCFunction(const FunctionDecl* f) { return (f->flags & DF_ExternC) || (f->file && f->file->isImported); }
 
+    // AAPCS64 (Linux arm64, Apple's arm64): a homogeneous floating-point aggregate (1 to 4 floats or
+    // doubles of one type) in that many vector registers, as `[N x float]`; any other struct of up to
+    // 16 bytes in one or two general registers, as `i64`, `[2 x i64]` (or `i128` when 16-aligned),
+    // its bytes past the struct's end undefined; a larger one through a pointer to a copy, a larger
+    // result through the slot in x8 (`sret`). LLVM keeps an array argument's registers together (all of
+    // them, or all on the stack, as AAPCS64 says), so no registers are counted.
     struct CPassing
     {
       bool inMemory = true;
       std::vector<std::string> parts; // in registers: each register's LLVM type, in order
       std::vector<uint64_t> offsets;  // and where it starts in the struct
       unsigned ints = 0, sses = 0;    // SysV: the registers it takes
+      uint64_t size = 0;              // the struct's (a part may be wider: AAPCS64's i64 for 3 bytes)
     };
+
+    // A part of a struct passed in registers, read from (or written to) its place at addr + offset,
+    // where bytes of the struct are left: a part wider than that (AAPCS64's `i64` or `[2 x i64]`) is
+    // read as the bytes there and widened, written narrowed, never past the struct.
+    std::string loadCPart(const std::string& addr, uint64_t offset, const std::string& type, uint64_t bytes);
+    void storeCPart(const std::string& addr, uint64_t offset, const std::string& type, const std::string& value, uint64_t bytes, bool gepAtZero = false);
 
     // The scalars a C struct holds, with their offsets: the members of its members, the elements of
     // its arrays, the storage of its bit fields, every member of a union at its start.
@@ -33,8 +46,9 @@
     };
 
     // The LLVM type a C call's struct argument of type t is passed as, given the registers left
-    // (taken when it goes in registers): one text per register ("i64", "double"), or one `byval`
-    // text for a copy on the stack, or "ptr" (Windows' pointer to a copy).
+    // (taken when it goes in registers): one text per register ("i64", "double"; with its parameter
+    // attributes: Linux arm64's `[2 x float] alignstack(8)`), or one `byval` text for a copy on the
+    // stack, or "ptr" (Windows' and AAPCS64's pointer to a copy).
     std::vector<std::string> cArgumentTypes(const Ty* t, CRegisters& left, CPassing& p, Node* at);
 
     // A scalar argument of a C call takes one of SysV's registers.
@@ -55,7 +69,11 @@
     const char* narrowExtension(const Ty* t);
     // An argument's text ("i16 %v") with t's narrowExtension after its type ("i16 signext %v").
     std::string withNarrowExtension(const Ty* t, const std::string& text);
-    // A C function's parameter list without its parameter attributes (`byval`, `signext`, ...), for a
+    // The argument text before a C call's result slot: `ptr `, and off Windows `ptr sret(T) ` for a C
+    // function's (ret: its result type; null for a kpp function's slot), which AAPCS64 passes in x8,
+    // not x0, as the C-callable definition's `sret` parameter has it.
+    std::string cSlotArgument(const Ty* ret, Node* at);
+    // A C function's parameter list without its parameter attributes (`byval`, `sret`, `signext`, ...), for a
     // call's function type, which takes none: they go on the call's arguments.
     static std::string withoutParameterAttributes(std::string params);
 

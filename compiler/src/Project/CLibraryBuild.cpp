@@ -7,7 +7,7 @@ namespace projects
 {
   // The platform a program's C libraries are built for: the last --target of build.kpp's arguments and
   // the command line's (as targetPlatform), its triple, and the sysroot kppc links with (the last
-  // --sysroot, else the one beside kppc, sysroots\linux-x86_64 or freebsd-x86_64).
+  // --sysroot, else the one beside kppc, sysroots\linux-x86_64, linux-arm64 or freebsd-x86_64).
   LibraryTarget libraryTarget(const Program& p, const Request& request)
   {
     LibraryTarget out;
@@ -40,7 +40,8 @@ namespace projects
     if (!target.windows())
     {
       out.triple = target.triple;
-      out.sysroot = !sysroot.empty() ? sysroot : defaultSysroot(compilerPath(), (out.platform + "-x86_64").c_str()).string();
+      out.sysrootName = out.platform + "-" + target.archName();
+      out.sysroot = !sysroot.empty() ? sysroot : defaultSysroot(compilerPath(), out.sysrootName.c_str()).string();
     }
     return out;
   }
@@ -321,7 +322,7 @@ namespace projects
       if (target.posix() && target.sysroot.empty())
       {
         fprintf(stderr, "error: the C library %s: building it for %s needs the target's C headers and libraries: --sysroot DIR, or %s\n",
-                c.name.c_str(), platform.c_str(), (compilerPath().parent_path() / "sysroots" / (platform + "-x86_64")).string().c_str());
+                c.name.c_str(), platform.c_str(), (compilerPath().parent_path() / "sysroots" / target.sysrootName).string().c_str());
         return false;
       }
       std::vector<fs::path> sources;

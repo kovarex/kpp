@@ -678,11 +678,13 @@ LexResult lexInChunks(std::string_view text, SymbolTable& symbols, unsigned thre
   return whole;
 }
 
-std::string vaListForSysV(const std::string& text)
+std::string vaListForSysV(const std::string& text, bool aapcs64)
 {
   const std::string from = "__builtin_va_list", to = "__kpp_va_list";
-  std::string out = "typedef struct __kpp_va_list_tag { unsigned int gp_offset; unsigned int fp_offset; void* overflow_arg_area; "
-                    "void* reg_save_area; } __kpp_va_list[1];\n";
+  std::string out = aapcs64 ? "typedef struct __kpp_va_list_tag { void* __stack; void* __gr_top; void* __vr_top; int __gr_offs; int __vr_offs; } "
+                              "__kpp_va_list;\n"
+                            : "typedef struct __kpp_va_list_tag { unsigned int gp_offset; unsigned int fp_offset; void* overflow_arg_area; "
+                              "void* reg_save_area; } __kpp_va_list[1];\n";
   out.reserve(text.size() + out.size());
   auto word = [&](size_t i) { return i < text.size() && (isalnum((unsigned char)text[i]) || text[i] == '_'); };
   for (size_t i = 0; i < text.size();)
@@ -1089,8 +1091,8 @@ void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexe
     return;
   }
   uint64_t hash = 1469598103934665603ull;
-  // the version of what the cache holds (macroConstants' rules, vaListForSysV), then what it is made from
-  for (unsigned char c : "kpp import 11\n" + wrapper + includeArgs + "\n" + toolchain)
+  // the version of what the cache holds (macroConstants' rules, vaListForSysV: 12 for AAPCS64's va_list), then what it is made from
+  for (unsigned char c : "kpp import 12\n" + wrapper + includeArgs + "\n" + toolchain)
     hash = (hash ^ c) * 1099511628211ull;
   std::filesystem::path cacheDir = std::filesystem::temp_directory_path(ec) / "kpp-imports";
   std::filesystem::create_directories(cacheDir, ec);
@@ -1168,8 +1170,8 @@ void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexe
       codegenExit = 1;
       return;
     }
-    if (!options.target.windows())
-      text = vaListForSysV(text);
+    if (!options.target.windows() && !(options.target.mac() && options.target.arm64())) // (Apple's arm64: a char*, as Windows')
+      text = vaListForSysV(text, options.target.arm64());
     // The import, then its stamps (a reader that finds the import with older stamps checks those:
     // they still match only when the headers, and so the import, are the same).
     std::filesystem::path ownImport = cacheDir / (own + ".i"), ownStamps = cacheDir / (own + ".deps");

@@ -1,5 +1,6 @@
 // spec: the SSE conversions of the lowest lane to an integer, as MSVC and clang-cl give them: _mm_cvtss_si32/_mm_cvtsd_si32 (and the 64-bit forms) round by the current rounding mode, to nearest even by default (2.5 to 2, 3.5 to 4); _mm_cvttss_si32/_mm_cvttsd_si32 truncate; a value out of range gives the integer indefinite (INT_MIN), never a wrong number
 // for the C libraries: opus's float2int (celt/float_cast.h) and vorbis's vorbis_ftoi (os.h) on x64 Windows; the expected output is MSVC's and clang-cl's for the same program written in C++
+// arch: x86_64 (x86's SSE: intrin.h, which another processor's C headers refuse)
 extern "C" import "intrin.h";
 int main()
 {

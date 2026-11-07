@@ -147,23 +147,29 @@ if (shift < 64 && (byte & 0x40))
 return (int64_t)result;
 }
 
-/* The type table's entry `index` (1 and up, counted back from its base): udata4 (absolute: a static
- non-PIC link, FreeBSD's), absptr, or indirect pcrel sdata4 (PIC: glibc's). A zero is null, catch
- (...)'s, in every encoding: pc-relative too, where it is no offset. */
+/* The type table's entry `index` (1 and up, counted back from its base), in the encoding its header
+ gives: a value of 2, 4 or 8 bytes (signed or not; absptr a pointer's 8), relative to the entry's
+ own place where pc-relative, read through where indirect: udata4 in a static non-PIC link
+ (FreeBSD's), indirect pcrel sdata4 in a PIC one on x86-64 (glibc's), indirect pcrel sdata8 on
+ AArch64's. A zero is null, catch (...)'s, in every encoding: pc-relative too, where it is no offset. */
 static const void* typeEntry(const uint8_t* base, uint8_t encoding, int64_t index)
 {
-if (encoding == 0x03)
-  return (const void*)(uintptr_t)*(const uint32_t*)(base - index * 4);
-if (encoding == 0x00)
-  return *(const void* const*)(base - index * 8);
-if (encoding == 0x9b)
-{
-  const uint8_t* at = base - index * 4;
-  int32_t offset = *(const int32_t*)at;
-  return offset ? *(const void* const*)(at + offset) : 0;
-}
-badTable();
-return 0;
+uint8_t format = encoding & 0x0f, application = encoding & 0x70;
+int size = format == 0x00 || format == 0x04 || format == 0x0c ? 8 : format == 0x03 || format == 0x0b ? 4 : format == 0x02 || format == 0x0a ? 2 : 0;
+if (!size || (application != 0x00 && application != 0x10))
+  badTable();
+const uint8_t* at = base - index * size;
+int64_t value = 0;
+if (size == 8)
+  value = *(const int64_t*)at;
+else if (size == 4)
+  value = format == 0x0b ? (int64_t)*(const int32_t*)at : (int64_t)*(const uint32_t*)at;
+else
+  value = format == 0x0a ? (int64_t)*(const int16_t*)at : (int64_t)*(const uint16_t*)at;
+if (!value)
+  return 0;
+uintptr_t address = application == 0x10 ? (uintptr_t)at + (uintptr_t)value : (uintptr_t)value;
+return encoding & 0x80 ? *(const void* const*)address : (const void*)address;
 }
 
 int __kpp_personality_v0(int version, int actions, uint64_t exceptionClass, Header* exception, void* context)

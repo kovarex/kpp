@@ -1,5 +1,6 @@
 // spec: new T[n] with a list builds the first elements from it and value-initializes the rest; new T[0] and its delete[] touch nothing; the elements of a class aligned to 16 are aligned; new T[n][4]() zeroes rows; UniqueArray takes over new T[n] and destroys all of it
 // found with language/array_new_and_delete (new T[n] built one element): the count stored before the elements (when T needs destroying) is what delete[] destroys
+// arch: x86_64 (x86's SSE: intrin.h's __m128, which another processor's C headers refuse)
 extern "C" import "intrin.h";
 struct Item
 {

@@ -81,7 +81,7 @@ namespace projects
   // The platform a program is built for, as Library::systemLibrary names it (windows, linux, freebsd):
   // the last --target of build.kpp's arguments and the command line's, the host's without one. One kppc
   // does not know leaves the host's here, and kppc reports it.
-  std::string targetPlatform(const Program& p, const Request& request)
+  Target programTarget(const Program& p, const Request& request)
   {
     Target target = hostTarget();
     for (const std::vector<std::string>* list : {&p.arguments, &request.passed})
@@ -93,8 +93,10 @@ namespace projects
           if (targetNamed((*list)[i + 1], named, why))
             target = named;
         }
-    return platformOf(target.os).name;
+    return target;
   }
+
+  std::string targetPlatform(const Program& p, const Request& request) { return platformOf(programTarget(p, request).os).name; }
 
   // The executable a cell builds: build\CONFIGURATION\NAME.exe, NAME alone for Linux and FreeBSD.
   fs::path exeOf(const fs::path& root, const Program& p, const Request& request)
@@ -637,10 +639,10 @@ namespace projects
     }
     // A program for another platform does not run here: an error before the build, as kppc --run's
     // (run.cpp), never a build that then fails to start an ELF.
-    if (request.run && targetPlatform(*chosen[0], request) != host::platformName())
+    if (Target t = programTarget(*chosen[0], request); request.run && (platformOf(t.os).name != std::string(host::platformName()) || t.arch != hostTarget().arch))
     {
       fprintf(stderr, "error: %s %s is built for %s, which does not run on this machine: build it without --run (%s)\n",
-              chosen[0]->name.c_str(), chosen[0]->configuration.c_str(), targetPlatform(*chosen[0], request).c_str(),
+              chosen[0]->name.c_str(), chosen[0]->configuration.c_str(), t.name.c_str(),
               exeOf(root, *chosen[0], request).string().c_str());
       return 2;
     }

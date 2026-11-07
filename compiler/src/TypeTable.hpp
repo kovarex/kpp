@@ -27,11 +27,12 @@ public:
   // C++, and as wide as the target's C long (32 bits on Windows, 64 on LP64 targets).
   const Ty* longType(bool isUnsigned = false);
   // The target's C data model: long and wchar_t 64 and 32 bits wide (lp64: Linux, FreeBSD, macOS),
-  // else 32 and 16 (Windows).
-  void setDataModel(bool lp64)
+  // else 32 and 16 (Windows); wchar_t unsigned on Windows and on Linux's AArch64 (wcharUnsigned).
+  void setDataModel(bool lp64, bool wcharUnsigned = false)
   {
     this->cLongBits = lp64 ? 64 : 32;
     this->cWcharBits = lp64 ? 32 : 16;
+    this->cWcharUnsigned = !lp64 || wcharUnsigned;
   }
   uint8_t longBits() const { return this->cLongBits; }
   uint8_t wcharBits() const { return this->cWcharBits; }
@@ -138,9 +139,10 @@ private:
   Impl* impl;
   uint8_t cLongBits = 32;
   // wchar_t, and the units of L"..." and L'x': the target's C wchar_t (unsigned 16 bits, UTF-16, on
-  // Windows; a signed 32-bit int, UTF-32, as glibc, FreeBSD and macOS have it: docs/design.md,
-  // "Targets and hosts").
+  // Windows; a signed 32-bit int, UTF-32, as glibc on x86-64, FreeBSD and macOS have it, unsigned in
+  // glibc on AArch64: docs/design.md, "Targets and hosts").
   uint8_t cWcharBits = 16;
+  bool cWcharUnsigned = true;
   const Ty* void_;
   const Ty* bool_;
   const Ty* nullptr_;

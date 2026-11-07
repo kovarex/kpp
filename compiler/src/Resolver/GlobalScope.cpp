@@ -567,10 +567,10 @@ void GlobalScope::setDebug(bool debug) { impl->debug = debug; }
 
 void GlobalScope::setMsvcAbi(bool msvc) { impl->msvcAbi = msvc; }
 
-void GlobalScope::setLP64(bool lp64)
+void GlobalScope::setLP64(bool lp64, bool wcharUnsigned)
 {
   impl->cLong64 = lp64;
-  impl->types.setDataModel(lp64);
+  impl->types.setDataModel(lp64, wcharUnsigned);
   for (auto& [symbol, t] : impl->builtinNames)
     if (impl->symbols.name(symbol) == "wchar_t")
       t = impl->types.wcharType();

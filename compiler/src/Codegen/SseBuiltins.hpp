@@ -33,7 +33,11 @@
     // `_MM_SHUFFLE2(x, y)`, which the import does not have (function-like) and evalConst cannot call.
     std::optional<int64_t> sseImmediate(Expr* e);
 
+    // An SSE intrinsic's value (sseX86's), and an error for a target with no SSE (arm64): no
+    // stand-in of another instruction set's, which a program of the target's says itself (the game's
+    // HAS_SSE2 off).
     std::optional<Value> sseBuiltin(NameExpr* n, CallExpr* c);
+    std::optional<Value> sseX86(NameExpr* n, CallExpr* c);
 
     // The SSE operations sseBuiltin does not have: on 8-, 16- and 64-bit lanes, on the lowest lane
     // only (_ss, _sd), packs, saturating and horizontal ones, the set, load and store forms and the

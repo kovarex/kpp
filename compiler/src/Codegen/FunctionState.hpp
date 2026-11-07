@@ -162,6 +162,7 @@
     // parts from it and returns them (emitReturnVoid). Empty otherwise.
     std::vector<std::string> cReturnParts;
     std::vector<uint64_t> cReturnOffsets;
+    uint64_t cReturnSize = 0; // the struct's bytes (CPassing::size)
     std::unordered_map<Decl*, Local> locals;
     // One local per element of a parameter pack: the function's own parameters', or in a lambda's
     // call operator the closure's fields that hold the elements of a pack of the function it is

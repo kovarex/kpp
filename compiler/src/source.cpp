@@ -566,7 +566,7 @@ std::filesystem::path defaultSysroot(const std::filesystem::path& compiler, cons
     // The host's own platform (a Linux kppc building for Linux) with no sysroot beside kppc: the
     // host's own system is the sysroot, as a native clang takes it (thread E, 2026-11-06).
     Target host = hostTarget();
-    if (!host.windows() && std::string(platformOf(host.os).name) + "-x86_64" == name && std::filesystem::is_directory("/usr/include", ec))
+    if (!host.windows() && std::string(platformOf(host.os).name) + "-" + host.archName() == name && std::filesystem::is_directory("/usr/include", ec))
     {
       if (what)
         *what = "the host's own system";

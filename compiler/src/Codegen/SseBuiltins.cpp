@@ -96,6 +96,14 @@ auto codegen::Emitter::sseImmediate(Expr* e) -> std::optional<int64_t>
 
 auto codegen::Emitter::sseBuiltin(NameExpr* n, CallExpr* c) -> std::optional<Value>
 {
+  std::optional<Value> v = sseX86(n, c);
+  if (v && sh.target.arm64())
+    unsupported(c, "the x86 intrinsic " + sym(n->name.parts[0].symbol) + " for " + sh.target.triple + ", which has no SSE");
+  return v;
+}
+
+auto codegen::Emitter::sseX86(NameExpr* n, CallExpr* c) -> std::optional<Value>
+{
   if (n->name.parts.size() != 1)
     return std::nullopt;
   std::string name = sym(n->name.parts[0].symbol);
@@ -1100,6 +1108,8 @@ auto codegen::Emitter::msvcBuiltin(NameExpr* n, CallExpr* c) -> std::optional<Va
     fn += "  " + r + " = zext i1 " + found + " to i8\n";
     return Value{r, types.intType(8, true)};
   }
+  if ((name == "__cpuid" || name == "__cpuidex") && sh.target.arm64())
+    unsupported(c, name + " (x86's cpuid instruction) for " + sh.target.triple);
   if (name == "__cpuid" || name == "__cpuidex")
   {
     if (c->args.size() != (name == "__cpuid" ? 2u : 3u))
@@ -1136,6 +1146,8 @@ auto codegen::Emitter::gccBuiltin(NameExpr* n, CallExpr* c) -> std::optional<Val
   // inline asm: the cpuid instruction as MSVC's __cpuid is (msvcBuiltin, the subleaf 0 where none is
   // given), without branches. __get_cpuid answers a leaf only when the highest leaf of its range (0
   // or 0x80000000) is at least it; otherwise it gives 0 and the four values stay as they were.
+  if ((name == "__get_cpuid_max" || name == "__get_cpuid" || name == "__get_cpuid_count") && sh.target.arm64())
+    unsupported(c, name + " (x86's cpuid instruction) for " + sh.target.triple);
   if (name == "__get_cpuid_max" || name == "__get_cpuid" || name == "__get_cpuid_count")
   {
     bool highestOnly = name == "__get_cpuid_max", withSubleaf = name == "__get_cpuid_count";

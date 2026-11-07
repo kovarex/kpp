@@ -57,10 +57,12 @@
 
   // Collects `extern "C" import "header";` declarations, preprocesses the headers with clang
   // once (cached by content hash in the temp directory) and parses the result as one more file.
-  // An imported C text for a SysV target: its va_list (clang's __builtin_va_list) is SysV x86-64's,
-  // an array of one register save area (`__va_list_tag[1]`, 24 bytes), which C passes on as a pointer
-  // to it; the resolver's __builtin_va_list is Windows' char*.
-  std::string vaListForSysV(const std::string& text);
+  // An imported C text for a target other than Windows: its va_list (clang's __builtin_va_list) is
+  // the target's. SysV x86-64's is an array of one register save area (`__va_list_tag[1]`, 24 bytes),
+  // which C passes on as a pointer to it; Linux's AAPCS64's a struct of 32 bytes (__stack, __gr_top,
+  // __vr_top, __gr_offs, __vr_offs); Apple's arm64's a char*, as Windows' (the resolver's
+  // __builtin_va_list), which is left as it is.
+  std::string vaListForSysV(const std::string& text, bool aapcs64 = false);
 
 
   // The toolchain an import is made with, for its cache key: clang's version, the target triple and

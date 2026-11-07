@@ -55,6 +55,7 @@ namespace platform
   const i32 statSizeOffset = 112;
   const i32 statWriteTimeOffset = 64;
   const i32 statLinksOffset = 16; // st_nlink, 64 bits
+  const i32 statLinksBytes = 8;
   // utimensat's AT_FDCWD and UTIME_OMIT (fcntl.h, sys/stat.h).
   const i32 atCurrentDirectory = -100;
   const i64 utimeOmit = -2;

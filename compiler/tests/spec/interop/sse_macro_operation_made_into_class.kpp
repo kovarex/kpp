@@ -1,5 +1,6 @@
 // spec: an SSE operation clang's intrin.h has as a macro (_mm_shuffle_ps, _mm_shuffle_epi32), which the code generator builds by name, made into a class that wraps its vector (Util/SSE.kpp's float32x4 and int32x4) is built by the class's constructor in every initialisation: `T x = op`, a return value, a parameter by value and by const reference, an assignment (implicit or defaulted), a member operator's operand, and directly (parentheses, braces, a member initializer, new, a functional cast) by an explicit one; here the constructors do more than store the vector
 // factorio: none wrong (float32x4's and int32x4's constructors only store); `T x = op`, a return value and a defaulted copy, move or assignment (float32x4's) stored the vector into the class's first field, skipping the constructor (a silent wrong value: 1 for 11, 4 for 400), a by-value parameter was IR clang rejected (Util/VectorOrientation.kpp built for FreeBSD), and a reference parameter and an implicit assignment were errors
+// arch: x86_64 (x86's SSE: intrin.h, which another processor's C headers refuse)
 extern "C" import "intrin.h";
 
 // Built from a vector implicitly, the lanes plus 10.

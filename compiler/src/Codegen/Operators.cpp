@@ -1050,7 +1050,73 @@ auto codegen::Emitter::vaBuiltin(NameExpr* n, CallExpr* c) -> std::optional<Valu
       return rvalue(e).text;
     return lvalue(e);
   };
-  if (name == "va_arg" && c->args.size() == 2 && c->args[1]->kind == NodeKind::SizeofExpr && c->ty && !sh.target.windows())
+  if (name == "va_arg" && c->args.size() == 2 && c->args[1]->kind == NodeKind::SizeofExpr && c->ty && sh.target.arm64() && !sh.target.mac())
+  {
+    // `va_arg(list, T)` on Linux's AAPCS64, lowered as clang lowers it: the va_list is { ptr __stack,
+    // ptr __gr_top, ptr __vr_top, i32 __gr_offs, i32 __vr_offs }. An integer (a pointer, an
+    // enumeration) comes from the general registers' save area while __gr_offs is negative (8 bytes
+    // each, 16 for one aligned to 16), a float or double from the vector registers' (16 bytes each,
+    // __vr_offs), any other from the stack, in 8-byte steps (16-aligned for one aligned to 16).
+    const Ty* t = withCurrentArgs(types.unqualified(types.stripRef(c->ty)));
+    if (isAggregate(t) || t->kind == TyKind::Vector)
+      unsupported(c, "va_arg of a struct or vector on " + sh.target.triple);
+    std::string list = sysvList(c->args[0]);
+    uint64_t size = sizeOf(t, c), align = alignOf(t, c);
+    bool fp = t->kind == TyKind::Float;
+    if (fp && size > 8)
+      unsupported(c, "va_arg of a long double on " + sh.target.triple);
+    uint64_t step = fp ? 16 : (size + 7) / 8 * 8;
+    std::string offsetAddr = newTemp(), offset = newTemp(), negative = newTemp();
+    std::string tryL = newLabel("vaarg.try"), regL = newLabel("vaarg.reg"), memL = newLabel("vaarg.mem"), endL = newLabel("vaarg.end");
+    fn += "  " + offsetAddr + " = getelementptr inbounds i8, ptr " + list + ", i64 " + (fp ? "28" : "24") + "\n";
+    fn += "  " + offset + " = load i32, ptr " + offsetAddr + "\n";
+    fn += "  " + negative + " = icmp slt i32 " + offset + ", 0\n";
+    fn += "  br i1 " + negative + ", label %" + tryL + ", label %" + memL + "\n";
+    startBlock(tryL);
+    std::string from = offset;
+    if (!fp && align > 8)
+    {
+      std::string up = newTemp();
+      from = newTemp();
+      fn += "  " + up + " = add i32 " + offset + ", 15\n";
+      fn += "  " + from + " = and i32 " + up + ", -16\n";
+    }
+    std::string nextOffset = newTemp(), fits = newTemp();
+    fn += "  " + nextOffset + " = add i32 " + from + ", " + std::to_string(step) + "\n";
+    fn += "  store i32 " + nextOffset + ", ptr " + offsetAddr + "\n";
+    fn += "  " + fits + " = icmp sle i32 " + nextOffset + ", 0\n";
+    fn += "  br i1 " + fits + ", label %" + regL + ", label %" + memL + "\n";
+    startBlock(regL);
+    std::string topAddr = newTemp(), top = newTemp(), from64 = newTemp(), inRegister = newTemp();
+    fn += "  " + topAddr + " = getelementptr inbounds i8, ptr " + list + ", i64 " + (fp ? "16" : "8") + "\n";
+    fn += "  " + top + " = load ptr, ptr " + topAddr + "\n";
+    fn += "  " + from64 + " = sext i32 " + from + " to i64\n";
+    fn += "  " + inRegister + " = getelementptr inbounds i8, ptr " + top + ", i64 " + from64 + "\n";
+    std::string regEnd = currentBlock;
+    emitBranch(endL);
+    startBlock(memL);
+    std::string stack = newTemp(), next = newTemp();
+    fn += "  " + stack + " = load ptr, ptr " + list + "\n";
+    std::string inMemory = stack;
+    if (align > 8)
+    {
+      std::string bits = newTemp(), up = newTemp(), aligned = newTemp();
+      inMemory = newTemp();
+      fn += "  " + bits + " = ptrtoint ptr " + stack + " to i64\n";
+      fn += "  " + up + " = add i64 " + bits + ", 15\n";
+      fn += "  " + aligned + " = and i64 " + up + ", -16\n";
+      fn += "  " + inMemory + " = inttoptr i64 " + aligned + " to ptr\n";
+    }
+    fn += "  " + next + " = getelementptr inbounds i8, ptr " + inMemory + ", i64 " + std::to_string((size + 7) / 8 * 8) + "\n";
+    fn += "  store ptr " + next + ", ptr " + list + "\n";
+    std::string memEnd = currentBlock;
+    emitBranch(endL);
+    startBlock(endL);
+    std::string address = newTemp();
+    fn += "  " + address + " = phi ptr [ " + inRegister + ", %" + regEnd + " ], [ " + inMemory + ", %" + memEnd + " ]\n";
+    return load(address, t, c);
+  }
+  if (name == "va_arg" && c->args.size() == 2 && c->args[1]->kind == NodeKind::SizeofExpr && c->ty && !sh.target.windows() && !sh.target.arm64())
   {
     // `va_arg(list, T)` on SysV x86-64, lowered as clang lowers it, not by LLVM's va_arg
     // instruction: at -O0 that read the va_list's pointer back from a stack slot nothing wrote
@@ -1112,8 +1178,12 @@ auto codegen::Emitter::vaBuiltin(NameExpr* n, CallExpr* c) -> std::optional<Valu
   if (name == "va_arg" && c->args.size() == 2 && c->args[1]->kind == NodeKind::SizeofExpr && c->ty)
   {
     // `va_arg(list, T)` (Parser::parseVaArg): x64 Windows passes each variadic argument in an
-    // 8-byte slot, one larger than 8 bytes or of another size than 1, 2, 4, 8 by its address.
+    // 8-byte slot, one larger than 8 bytes or of another size than 1, 2, 4, 8 by its address. Apple's
+    // arm64 has every variadic argument on the stack, in 8-byte slots, its va_list a pointer too (a
+    // scalar of up to 8 bytes; a larger one, a struct, is not lowered there).
     const Ty* t = withCurrentArgs(types.unqualified(types.stripRef(c->ty)));
+    if (sh.target.mac() && sh.target.arm64() && (isAggregate(t) || t->kind == TyKind::Vector || sizeOf(t, c) > 8))
+      unsupported(c, "va_arg of a struct, a vector or a scalar wider than 8 bytes on " + sh.target.triple);
     std::string list = lvalue(c->args[0]);
     std::string slot = newTemp(), next = newTemp();
     fn += "  " + slot + " = load ptr, ptr " + list + "\n";
@@ -1132,12 +1202,13 @@ auto codegen::Emitter::vaBuiltin(NameExpr* n, CallExpr* c) -> std::optional<Valu
     return std::nullopt;
   if (c->args.size() < (name == "va_start" ? 2u : name == "va_copy" ? 2u : 1u))
     unsupported(c, name + " with too few arguments");
-  std::string list = sh.target.windows() ? lvalue(c->args[0]) : sysvList(c->args[0]);
+  bool pointerList = sh.target.windows() || (sh.target.mac() && sh.target.arm64()); // (va_list a char*)
+  std::string list = pointerList ? lvalue(c->args[0]) : sysvList(c->args[0]);
   std::string intrinsic = name == "va_start" ? "@llvm.va_start.p0" : name == "va_end" ? "@llvm.va_end.p0" : "@llvm.va_copy.p0";
   if (declaredNames.claim(intrinsic))
     decls += "declare void " + intrinsic + (name == "va_copy" ? "(ptr, ptr)\n" : "(ptr)\n");
   if (name == "va_copy")
-    fn += "  call void " + intrinsic + "(ptr " + list + ", ptr " + (sh.target.windows() ? lvalue(c->args[1]) : sysvList(c->args[1])) + ")\n";
+    fn += "  call void " + intrinsic + "(ptr " + list + ", ptr " + (pointerList ? lvalue(c->args[1]) : sysvList(c->args[1])) + ")\n";
   else
     fn += "  call void " + intrinsic + "(ptr " + list + ")\n";
   return Value{"", types.voidType(), false};

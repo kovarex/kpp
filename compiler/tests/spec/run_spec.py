@@ -25,6 +25,8 @@ snippet says what it is about:
                                                   lines, the compiler's, 1 when not given)
     // target: windows (why)                     (the snippet is about that target alone: skipped for others;
                                                   windows has windows-gnu too, windows-msvc is MSVC's ABI alone)
+    // arch: x86_64 (why)                        (the snippet is about that processor alone, x86's SSE or cpuid:
+                                                  skipped for the others' targets, linux-arm64's)
 
 Statuses: pass, FAIL (a regression), pending (a known gap, still failing), fixed (a pending
 snippet that passes: remove its pending line). The run writes docs/spec-status.md, the
@@ -75,6 +77,12 @@ WSL) and runs it under WSL, into build\\spec-linux, writing no spec-status.md. S
 `test:` snippets (kppc runs those itself, on this machine) and those with another `target:`. Output
 that differs on Linux goes in <name>.linux.expected.
 
+--target linux-arm64 builds every snippet for Linux on AArch64 against Debian 11's arm64 glibc
+(KPP_SYSROOT_LINUX_ARM64, else build\\sysroots\\linux-arm64, which tools\\sysroot\\linux.ps1 -Arch arm64
+makes) and runs it under WSL through qemu's user mode (KPP_QEMU_AARCH64: the qemu-aarch64 there, a WSL
+path; default qemu-aarch64-static), into build\\spec-linux-arm64. Skipped as for Linux; output that
+differs goes in <name>.linux-arm64.expected, else <name>.linux.expected.
+
 --target windows-gnu builds every snippet for Windows in the GNU dialect (design.md 17: MinGW-w64's
 headers and import libraries, the bundled toolchain's) with the llvm-mingw clang KPP_CLANG names, into
 build\\spec-windows-gnu, and runs it here, `run:` and `test:` snippets too; a `target: windows` snippet
@@ -122,6 +130,8 @@ CLANG = os.environ.get("KPP_CLANG", r"C:\Program Files\Microsoft Visual Studio\2
 TARGET = None
 C_TARGET_FLAGS = []
 SYSROOT_LINUX = os.environ.get("KPP_SYSROOT_LINUX", os.path.join(COMPILER, "build", "sysroots", "linux-x86_64"))
+SYSROOT_LINUX_ARM64 = os.environ.get("KPP_SYSROOT_LINUX_ARM64", os.path.join(COMPILER, "build", "sysroots", "linux-arm64"))
+QEMU_AARCH64 = os.environ.get("KPP_QEMU_AARCH64", "qemu-aarch64-static")
 SYSROOT_FREEBSD = os.environ.get("KPP_SYSROOT_FREEBSD", os.path.join(COMPILER, "build", "sysroots", "freebsd-x86_64"))
 # FreeBSD's known failures (freebsd-known-failures.txt): `build area/name  why` for a snippet that does
 # not build for FreeBSD yet, `run area/name  why` for one that builds and does not run right. A known
@@ -182,10 +192,16 @@ def program_env(exe):
     env["TEMP"] = env["TMP"] = temp
     return env
 
+def wsl_path(path):
+    drive, rest = os.path.splitdrive(os.path.abspath(path))
+    return "/mnt/" + drive[0].lower() + rest.replace("\\", "/")
+
 def run_program(exe, arguments=()):
     if TARGET == "linux" and not NATIVE:
-        drive, rest = os.path.splitdrive(os.path.abspath(exe))
-        return ["wsl.exe", "-e", "/mnt/" + drive[0].lower() + rest.replace("\\", "/"), *arguments]
+        return ["wsl.exe", "-e", wsl_path(exe), *arguments]
+    if TARGET == "linux-arm64" and not NATIVE:
+        # (qemu's user mode, the sysroot's dynamic loader and libraries: -L)
+        return ["wsl.exe", "-e", QEMU_AARCH64, "-L", wsl_path(SYSROOT_LINUX_ARM64), wsl_path(exe), *arguments]
     return [exe, *arguments]
 
 AREA_TITLES = {
@@ -200,12 +216,12 @@ AREA_TITLES = {
 
 def header(path):
     info = {"spec": os.path.splitext(os.path.basename(path))[0], "factorio": "", "pending": None, "errors": [], "warnings": [], "no-warnings": [], "run": None, "test": None,
-            "exit": None, "kppc": "", "target": None}
+            "exit": None, "kppc": "", "target": None, "arch": None}
     with open(path, encoding="utf-8") as f:
         for line in f:
             if line.startswith("//--- step"):
                 break # (a snippet of steps: each step's own expect and error lines are its own)
-            m = re.match(r"//\s*(spec|factorio|pending(?: on [\w -]+?)?|error|warning|no-warning|run|test|exit|kppc|target):\s*(.*)", line.strip())
+            m = re.match(r"//\s*(spec|factorio|pending(?: on [\w -]+?)?|error|warning|no-warning|run|test|exit|kppc|target|arch):\s*(.*)", line.strip())
             if not m:
                 if line.strip() and not line.startswith("//"):
                     break
@@ -271,7 +287,7 @@ def build_and_run(path, area, name, work):
     # A snippet that prints its own configuration has the release build's output next to the debug one's.
     if "--release" in EXTRA and os.path.exists(os.path.splitext(path)[0] + ".release.expected"):
         expected_path = os.path.splitext(path)[0] + ".release.expected"
-    for variant in ([TARGET, "linux"] if TARGET == "freebsd" else [TARGET] if TARGET else []):
+    for variant in ([TARGET, "linux"] if TARGET in ("freebsd", "linux-arm64") else [TARGET] if TARGET else []):
         if os.path.exists(os.path.splitext(path)[0] + f".{variant}.expected"):
             expected_path = os.path.splitext(path)[0] + f".{variant}.expected"
             break
@@ -282,6 +298,8 @@ def build_and_run(path, area, name, work):
     if TARGET and (not on_target or (TARGET != "windows-gnu" and not NATIVE and (info["run"] is not None or info["test"] is not None))):
         result["status"] = "skip"; return result
     if not TARGET and target not in (None, "windows", "windows-msvc"):
+        result["status"] = "skip"; return result
+    if info["arch"] and info["arch"].split()[0] != ("arm64" if TARGET == "linux-arm64" else "x86_64"):
         result["status"] = "skip"; return result
     os.makedirs(work, exist_ok=True)
     libs = []
@@ -556,7 +574,7 @@ def main():
     ap.add_argument("--no-doc", action="store_true")
     ap.add_argument("--release", action="store_true")
     ap.add_argument("--debug-info", action="store_true")
-    ap.add_argument("--target", choices=["linux", "freebsd", "windows-gnu"])
+    ap.add_argument("--target", choices=["linux", "linux-arm64", "freebsd", "windows-gnu"])
     ap.add_argument("--shard", default="")
     ap.add_argument("--out", default="")
     ap.add_argument("--snippets", default="")
@@ -604,6 +622,22 @@ def main():
             print("spec: FAILED: no FreeBSD sysroot"); return 2
         EXTRA.extend(["--target", "freebsd", "--sysroot", SYSROOT_FREEBSD])
         C_TARGET_FLAGS = ["--target=x86_64-unknown-freebsd14", "--sysroot=" + SYSROOT_FREEBSD]
+        OUT += "-" + TARGET
+        args.no_doc = True
+    elif args.target == "linux-arm64":
+        TARGET = args.target
+        if not os.path.exists(os.path.join(SYSROOT_LINUX_ARM64, "usr", "lib", "aarch64-linux-gnu", "libc.so.6")):
+            print("no Linux arm64 sysroot at", SYSROOT_LINUX_ARM64, "(tools\\sysroot\\linux.ps1 -Arch arm64 makes one)")
+            print("spec: FAILED: no Linux arm64 sysroot"); return 2
+        try:
+            r = subprocess.run(["wsl.exe", "-e", QEMU_AARCH64, "--version"], capture_output=True, timeout=300)
+        except subprocess.TimeoutExpired:
+            print("spec: FAILED: WSL did not answer in 300 s"); return 2
+        if r.returncode != 0:
+            print("no", QEMU_AARCH64, "in WSL (KPP_QEMU_AARCH64 names one: Ubuntu's qemu-user-static)")
+            print("spec: FAILED: no qemu-aarch64"); return 2
+        EXTRA.extend(["--target", "linux-arm64", "--sysroot", SYSROOT_LINUX_ARM64])
+        C_TARGET_FLAGS = ["--target=aarch64-unknown-linux-gnu", "--sysroot=" + SYSROOT_LINUX_ARM64]
         OUT += "-" + TARGET
         args.no_doc = True
     elif args.target:

@@ -241,7 +241,7 @@ const Ty* TypeTable::wcharType()
 {
   Ty t{TyKind::Char};
   t.bits = this->cWcharBits;
-  t.isUnsigned = this->cWcharBits == 16;
+  t.isUnsigned = this->cWcharUnsigned;
   t.count = 1;
   return intern(t);
 }

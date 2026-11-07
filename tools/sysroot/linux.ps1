@@ -1,4 +1,5 @@
-# A glibc x86-64 sysroot for kppc --target linux (docs/design.md, "Targets and hosts", Q6): the oldest
+# A glibc x86-64 sysroot for kppc --target linux, or with -Arch arm64 an AArch64 one for --target linux-arm64
+# (docs/design.md, "Targets and hosts", Q6; the same packages of the same release for arm64): the oldest
 # system a kpp program runs on is glibc 2.31 (kovarex, 2026-11-04), so the sysroot is Debian 11's
 # (bullseye, 11.11, its last point release): the C headers, the C runtime's start files and libraries,
 # Linux's headers, gcc 10's runtime (crtbegin, libgcc, libgcc_s) and its C++ library (libstdc++'s
@@ -12,20 +13,35 @@
 # own layout (lib\, lib64\, usr\include\, usr\lib\), with every symbolic link replaced by a copy of
 # its target (a Windows linker does not follow them), and the packages' copyright files beside them;
 # prints the sysroot. Needs Git for Windows' xz (Windows' tar reads a .deb but cannot decompress xz).
-#   powershell -ExecutionPolicy Bypass -File tools\sysroot\linux.ps1 [-Out compiler\build\sysroots\linux-x86_64]
+#   powershell -ExecutionPolicy Bypass -File tools\sysroot\linux.ps1 [-Arch arm64] [-Out compiler\build\sysroots\linux-x86_64]
 # The pins come from bullseye's signed index: InRelease (Date: Sat, 09 Aug 2025 09:16:30 UTC, Version
 # 11.11), whose signature checked good with Debian's "Archive Automatic Signing Key (11/bullseye)"
 # (A7236886F3CCCAAD148A27F80E98404D386FA1D9, from https://ftp-master.debian.org/keys/archive-key-11.asc),
 # lists main/binary-amd64/Packages.xz with SHA-256 1c3405444297ead864711c18e64bce4810db63b48340a2f9d81182d9f235ad71,
-# whose entries give each package's SHA-256 below (checked 2026-11-04).
+# whose entries give each package's SHA-256 below (checked 2026-11-04), and main/binary-arm64/Packages.xz with
+# SHA-256 71a52585dc5ca78e5d682e13fc702a077c2b14355bce020ab0ff94e4ef84107a, arm64's (checked 2026-11-07).
 param(
-  [string]$Out = "$PSScriptRoot\..\..\compiler\build\sysroots\linux-x86_64",
+  [ValidateSet('x86_64', 'arm64')][string]$Arch = 'x86_64',
+  [string]$Out = '',
   [string]$Download = "$PSScriptRoot\..\..\compiler\build\sysroots",
   [string]$ExtraPackages = ''
 )
 $ErrorActionPreference = 'Stop'
 $mirrors = 'https://deb.debian.org/debian', 'https://archive.debian.org/debian'
-$packages = @(
+if (-not $Out) { $Out = "$PSScriptRoot\..\..\compiler\build\sysroots\linux-$Arch" }
+# Debian's directory of the architecture's libraries and headers, and its dynamic loader.
+$triple = if ($Arch -eq 'arm64') { 'aarch64-linux-gnu' } else { 'x86_64-linux-gnu' }
+$loader = if ($Arch -eq 'arm64') { 'lib\ld-linux-aarch64.so.1' } else { 'lib64\ld-linux-x86-64.so.2' }
+$packages = if ($Arch -eq 'arm64') { @(
+  @{ file = 'pool/main/g/glibc/libc6_2.31-13+deb11u11_arm64.deb'; size = 2455356; sha256 = 'BAAA9AA184E2F21738C5819055E6740CC5B22F198E3F416E33F82B40FF6933D8' },
+  @{ file = 'pool/main/g/glibc/libc6-dev_2.31-13+deb11u11_arm64.deb'; size = 2029884; sha256 = '28D478134722DCD4B0BD2045A199301D18713BF95947B9FCE66634E7AEACAB2E' },
+  @{ file = 'pool/main/l/linux/linux-libc-dev_5.10.223-1_arm64.deb'; size = 1735984; sha256 = '8B6374A64412D33EAC61D74F77B8F932DA4B8A707EA8A614791E2A35B8917618' },
+  @{ file = 'pool/main/g/gcc-10/libgcc-10-dev_10.2.1-6_arm64.deb'; size = 876396; sha256 = '80FC73D339ADA2E194175AFE83CD89014565242153B6E3C2128849D8817DA367' },
+  @{ file = 'pool/main/g/gcc-10/libgcc-s1_10.2.1-6_arm64.deb'; size = 34572; sha256 = 'E2FCDB378D3C1AD1BCB64D4FB6B37AAB44011152BECA12A4944F435A2582DF1F' },
+  @{ file = 'pool/main/g/gcc-10/gcc-10-base_10.2.1-6_arm64.deb'; size = 201340; sha256 = '7D782BECE7B4A36BED045A7E17D17244CB8F7E4732466091B01412EBF215DEFB' },
+  @{ file = 'pool/main/g/gcc-10/libstdc++-10-dev_10.2.1-6_arm64.deb'; size = 1703864; sha256 = 'CEE7CA63613B50A8A51CC670DB385C7E6D1181B72C94148FC8B7992E4570782D' },
+  @{ file = 'pool/main/g/gcc-10/libstdc++6_10.2.1-6_arm64.deb'; size = 450672; sha256 = '7869AA540CC46E9F3D4267D5BDE2AF0E5B429A820C1D6F1A4CFCCFE788C31890' }
+) } else { @(
   @{ file = 'pool/main/g/glibc/libc6_2.31-13+deb11u11_amd64.deb'; size = 2822708; sha256 = '05F7264DA867B37F4C5CE49266B558EA1E81E05A9464F623152FCA70F3550282' },
   @{ file = 'pool/main/g/glibc/libc6-dev_2.31-13+deb11u11_amd64.deb'; size = 2361268; sha256 = 'E7F7B45D9C5CFCF37609F0B6EFD3C645272C812144703AF89DFD32218FCB0FD3' },
   @{ file = 'pool/main/l/linux/linux-libc-dev_5.10.223-1_amd64.deb'; size = 1755736; sha256 = 'E3BE603BD12377BB90FCFB0F2048CA3A81C886E49D6F09945B82159D1C54F7B2' },
@@ -37,7 +53,7 @@ $packages = @(
   # and its shared one, which the -dev package's libstdc++.so names (2026-11-05)
   @{ file = 'pool/main/g/gcc-10/libstdc++-10-dev_10.2.1-6_amd64.deb'; size = 1741436; sha256 = '20B1F56863DCC5F187D6CB53B2AA6149BD013BE4EC67E10C2C31A22FDA619A01' },
   @{ file = 'pool/main/g/gcc-10/libstdc++6_10.2.1-6_amd64.deb'; size = 492540; sha256 = '5C155C58935870BF3B4BFE769116841C0D286A74F59ECCFD5645693AC23F06B1' }
-)
+) }
 # A program's own packages (-ExtraPackages FILE): `pool/... SIZE SHA256` lines, pinned from the same index.
 if ($ExtraPackages)
 {
@@ -82,7 +98,7 @@ $tar = "$env:SystemRoot\System32\tar.exe"
 
 # (Only a directory this script made, one linux-from-wsl.sh made (a glibc sysroot: its libc.so.6 and
 # stdio.h, no stamp) or an empty one is cleared: a wrong -Out is refused.)
-$fromWsl = (Test-Path (Join-Path $Out 'usr\lib\x86_64-linux-gnu\libc.so.6')) -and (Test-Path (Join-Path $Out 'usr\include\stdio.h'))
+$fromWsl = (Test-Path (Join-Path $Out "usr\lib\$triple\libc.so.6")) -and (Test-Path (Join-Path $Out 'usr\include\stdio.h'))
 if ((Get-ChildItem $Out -Force | Measure-Object).Count -and -not (Test-Path $stamp) -and -not $fromWsl) { throw "$Out is not empty and is no sysroot this script made" }
 Get-ChildItem $Out -Force | ForEach-Object { if ($_.PSIsContainer) { & cmd /c rd /s /q $_.FullName } else { Remove-Item -Force $_.FullName } }
 
@@ -150,19 +166,19 @@ while ($left.Count)
 # Debian 11's libraries are in /lib (its /usr is not merged yet): they are copied into usr\lib too,
 # where a merged-/usr system has them and where kpp's tools look (targets.ps1, run_spec.py); the linker
 # scripts (libc.so: /lib/x86_64-linux-gnu/libc.so.6) still find theirs in lib\.
-$lib = Join-Path $Out 'lib\x86_64-linux-gnu'
-$usrLib = Join-Path $Out 'usr\lib\x86_64-linux-gnu'
+$lib = Join-Path $Out "lib\$triple"
+$usrLib = Join-Path $Out "usr\lib\$triple"
 foreach ($f in Get-ChildItem $lib -File)
 {
   if (-not (Test-Path (Join-Path $usrLib $f.Name))) { Copy-Item $f.FullName (Join-Path $usrLib $f.Name) }
 }
 
-foreach ($need in 'usr\lib\x86_64-linux-gnu\crt1.o', 'usr\lib\x86_64-linux-gnu\crti.o', 'usr\lib\x86_64-linux-gnu\libc.so',
-                 'usr\lib\x86_64-linux-gnu\libc_nonshared.a', 'usr\lib\x86_64-linux-gnu\libm.so', 'lib\x86_64-linux-gnu\libc.so.6', 'usr\lib\x86_64-linux-gnu\libc.so.6',
-                 'lib\x86_64-linux-gnu\libm.so.6', 'lib\x86_64-linux-gnu\libgcc_s.so.1', 'lib64\ld-linux-x86-64.so.2',
-                 'usr\lib\gcc\x86_64-linux-gnu\10\crtbegin.o', 'usr\lib\gcc\x86_64-linux-gnu\10\libgcc.a', 'usr\lib\gcc\x86_64-linux-gnu\10\libgcc_eh.a',
-                 'usr\include\stdio.h', 'usr\include\x86_64-linux-gnu\bits\types.h', 'usr\include\linux\errno.h',
-                 'usr\include\c++\10\vector', 'usr\include\x86_64-linux-gnu\c++\10\bits\c++config.h', 'usr\lib\gcc\x86_64-linux-gnu\10\libstdc++.a',
+foreach ($need in "usr\lib\$triple\crt1.o", "usr\lib\$triple\crti.o", "usr\lib\$triple\libc.so",
+                 "usr\lib\$triple\libc_nonshared.a", "usr\lib\$triple\libm.so", "lib\$triple\libc.so.6", "usr\lib\$triple\libc.so.6",
+                 "lib\$triple\libm.so.6", "lib\$triple\libgcc_s.so.1", $loader,
+                 "usr\lib\gcc\$triple\10\crtbegin.o", "usr\lib\gcc\$triple\10\libgcc.a", "usr\lib\gcc\$triple\10\libgcc_eh.a",
+                 'usr\include\stdio.h', "usr\include\$triple\bits\types.h", 'usr\include\linux\errno.h',
+                 'usr\include\c++\10\vector', "usr\include\$triple\c++\10\bits\c++config.h", "usr\lib\gcc\$triple\10\libstdc++.a",
                  'usr\share\doc\libc6\copyright', 'usr\share\doc\gcc-10-base\copyright', 'usr\share\doc\linux-libc-dev\copyright')
 {
   if (-not (Test-Path (Join-Path $Out $need)) -or (Get-Item (Join-Path $Out $need)).Length -eq 0) { throw "the sysroot has no $need" }

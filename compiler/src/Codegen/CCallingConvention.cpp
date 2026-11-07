@@ -58,10 +58,52 @@ auto codegen::Emitter::cPassing(const Ty* t, Node* at) -> CPassing
 {
   CPassing p;
   uint64_t size = sizeOf(t, at);
+  p.size = size;
   if (sh.target.windows())
   {
     if (size == 1 || size == 2 || size == 4 || size == 8)
       p.inMemory = false, p.parts = {"i" + std::to_string(size * 8)}, p.offsets = {0};
+    return p;
+  }
+  if (sh.target.arm64())
+  {
+    if (size == 0)
+      return p;
+    std::vector<std::pair<uint64_t, const Ty*>> scalars;
+    cScalars(t, 0, scalars, at);
+    // A homogeneous floating-point aggregate: every scalar a float of one size, at the places of an
+    // array of 1 to 4 of them (a union's members may share one).
+    uint64_t element = 0;
+    bool homogeneous = !scalars.empty();
+    for (auto& [offset, s] : scalars)
+    {
+      if (s->kind == TyKind::Vector)
+        unsupported(at, "a struct holding a vector (" + irString(t) + ") passed by value to or from a C function on " + sh.target.triple);
+      uint64_t ssize = sizeOf(s, at);
+      if (s->kind != TyKind::Float || ssize > 8 || (element && ssize != element) || offset % ssize != 0)
+        homogeneous = false;
+      element = ssize;
+    }
+    if (homogeneous && size % element == 0 && size / element <= 4)
+    {
+      std::vector<bool> filled(size / element, false);
+      for (auto& [offset, s] : scalars)
+        filled[offset / element] = true;
+      if (std::find(filled.begin(), filled.end(), false) == filled.end())
+      {
+        p.parts = {"[" + std::to_string(size / element) + " x " + (element == 4 ? "float" : "double") + "]"};
+        p.offsets = {0};
+        p.sses = unsigned(size / element);
+        p.inMemory = false;
+        return p;
+      }
+    }
+    if (size > 16)
+      return p; // through a pointer to a copy (a result through the slot)
+    p.parts = {size <= 8 ? "i64" : alignOf(t, at) == 16 ? "i128" : "[2 x i64]"};
+    p.offsets = {0};
+    p.ints = size <= 8 ? 1 : 2;
+    p.inMemory = false;
     return p;
   }
   if (size == 0 || size > 16)
@@ -109,14 +151,17 @@ auto codegen::Emitter::cPassing(const Ty* t, Node* at) -> CPassing
 auto codegen::Emitter::cArgumentTypes(const Ty* t, CRegisters& left, CPassing& p, Node* at) -> std::vector<std::string>
 {
   p = cPassing(t, at);
-  if (!sh.target.windows() && !p.inMemory && (p.ints > left.ints || p.sses > left.sses))
+  if (!sh.target.windows() && !sh.target.arm64() && !p.inMemory && (p.ints > left.ints || p.sses > left.sses))
     p.inMemory = true; // not enough registers left: all of it on the stack, as C does
   if (!p.inMemory)
   {
-    left.ints -= p.ints, left.sses -= p.sses;
+    left.ints -= std::min(left.ints, p.ints), left.sses -= std::min(left.sses, p.sses);
+    // (Linux's AAPCS64 gives a float aggregate on the stack an 8-byte slot, as clang says; Apple's packs)
+    if (sh.target.arm64() && !sh.target.mac() && p.sses)
+      return {p.parts[0] + " alignstack(8)"};
     return p.parts;
   }
-  if (sh.target.windows())
+  if (sh.target.windows() || sh.target.arm64())
     return {"ptr"};
   uint64_t align = std::max<uint64_t>(8, alignOf(t, at));
   return {"ptr byval([" + std::to_string(sizeOf(t, at)) + " x i8]) align " + std::to_string(align)};
@@ -162,17 +207,65 @@ auto codegen::Emitter::lowerCArguments(std::vector<std::pair<const Ty*, std::str
     text.clear();
     for (size_t i = 0; i < p.parts.size(); ++i)
     {
-      std::string from = addr;
-      if (p.offsets[i])
-      {
-        from = newTemp();
-        fn += "  " + from + " = getelementptr inbounds i8, ptr " + addr + ", i64 " + std::to_string(p.offsets[i]) + "\n";
-      }
-      std::string v = newTemp();
-      fn += "  " + v + " = load " + p.parts[i] + ", ptr " + from + "\n";
-      text += (i ? ", " : "") + p.parts[i] + " " + v;
+      std::string v = loadCPart(addr, p.offsets[i], p.parts[i], p.size - p.offsets[i]);
+      text += (i ? ", " : "") + passed[i] + " " + v;
     }
   }
+}
+
+auto codegen::Emitter::loadCPart(const std::string& addr, uint64_t offset, const std::string& type, uint64_t bytes) -> std::string
+{
+  if (type == "[2 x i64]" && bytes < 16)
+  {
+    std::string low = loadCPart(addr, offset, "i64", 8), high = loadCPart(addr, offset + 8, "i64", bytes - 8);
+    std::string half = newTemp(), whole = newTemp();
+    fn += "  " + half + " = insertvalue [2 x i64] undef, i64 " + low + ", 0\n";
+    fn += "  " + whole + " = insertvalue [2 x i64] " + half + ", i64 " + high + ", 1\n";
+    return whole;
+  }
+  std::string from = addr;
+  if (offset)
+  {
+    from = newTemp();
+    fn += "  " + from + " = getelementptr inbounds i8, ptr " + addr + ", i64 " + std::to_string(offset) + "\n";
+  }
+  std::string v = newTemp();
+  if (type == "i64" && bytes < 8)
+  {
+    std::string narrow = "i" + std::to_string(bytes * 8), n = newTemp();
+    fn += "  " + n + " = load " + narrow + ", ptr " + from + "\n";
+    fn += "  " + v + " = zext " + narrow + " " + n + " to i64\n";
+    return v;
+  }
+  fn += "  " + v + " = load " + type + ", ptr " + from + "\n";
+  return v;
+}
+
+auto codegen::Emitter::storeCPart(const std::string& addr, uint64_t offset, const std::string& type, const std::string& value, uint64_t bytes, bool gepAtZero) -> void
+{
+  if (type == "[2 x i64]" && bytes < 16)
+  {
+    std::string low = newTemp(), high = newTemp();
+    fn += "  " + low + " = extractvalue [2 x i64] " + value + ", 0\n";
+    fn += "  " + high + " = extractvalue [2 x i64] " + value + ", 1\n";
+    storeCPart(addr, offset, "i64", low, 8, gepAtZero);
+    storeCPart(addr, offset + 8, "i64", high, bytes - 8, gepAtZero);
+    return;
+  }
+  std::string to = addr;
+  if (offset || gepAtZero) // (a call's result: every part's address made, as it always was)
+  {
+    to = newTemp();
+    fn += "  " + to + " = getelementptr inbounds i8, ptr " + addr + ", i64 " + std::to_string(offset) + "\n";
+  }
+  if (type == "i64" && bytes < 8)
+  {
+    std::string narrow = "i" + std::to_string(bytes * 8), n = newTemp();
+    fn += "  " + n + " = trunc i64 " + value + " to " + narrow + "\n";
+    fn += "  store " + narrow + " " + n + ", ptr " + to + "\n";
+    return;
+  }
+  fn += "  store " + type + " " + value + ", ptr " + to + "\n";
 }
 
 auto codegen::Emitter::cReturnType(const CPassing& p) -> std::string
@@ -200,7 +293,7 @@ auto codegen::Emitter::cDeclarationOf(const Ty* ret, const Signature& s, Node* f
     if (!r.inMemory)
       returnType = cReturnType(r); // (no slot parameter)
     else
-      params = "ptr", left.ints -= 1;
+      params = cSlotArgument(ret, f), params.pop_back(), left.ints -= 1;
   }
   for (size_t i = s.hasSret ? 1 : 0; i < s.paramTypes.size(); ++i)
   {
@@ -247,6 +340,13 @@ auto codegen::Emitter::withNarrowExtension(const Ty* t, const std::string& text)
   return text.substr(0, space) + extension + text.substr(space);
 }
 
+auto codegen::Emitter::cSlotArgument(const Ty* ret, Node* at) -> std::string
+{
+  if (!ret || sh.target.windows())
+    return "ptr ";
+  return "ptr sret(" + llType(ret, at) + ") ";
+}
+
 auto codegen::Emitter::withoutParameterAttributes(std::string params) -> std::string
 {
   for (const char* attribute : {" byval(", " sret(", " alignstack("})
@@ -285,14 +385,7 @@ auto codegen::Emitter::emitReturnVoid() -> void
   std::string type = cReturnType(p), value = "undef";
   for (size_t i = 0; i < cReturnParts.size(); ++i)
   {
-    std::string from = sretAddr;
-    if (cReturnOffsets[i])
-    {
-      from = newTemp();
-      fn += "  " + from + " = getelementptr inbounds i8, ptr " + sretAddr + ", i64 " + std::to_string(cReturnOffsets[i]) + "\n";
-    }
-    std::string part = newTemp();
-    fn += "  " + part + " = load " + cReturnParts[i] + ", ptr " + from + "\n";
+    std::string part = loadCPart(sretAddr, cReturnOffsets[i], cReturnParts[i], cReturnSize - cReturnOffsets[i]);
     if (cReturnParts.size() == 1)
     {
       value = part;
@@ -369,7 +462,7 @@ auto codegen::Emitter::callIndirectC(const std::string& fnText, const Ty* ft, Sp
   for (auto& [t, text] : argList) // (a char, short or bool extended, as the C callee reads it)
     if (t && !isAggregate(t))
       text = withNarrowExtension(t, text);
-  std::string argText = slot ? "ptr " + resultAddr : std::string();
+  std::string argText = slot ? cSlotArgument(ret, c) + resultAddr : std::string();
   for (auto& [t, text] : argList)
     argText += std::string(argText.empty() ? "" : ", ") + text;
   auto [returnType, params] = cDeclarationOf(ret, s, c);
@@ -389,9 +482,7 @@ auto codegen::Emitter::callIndirectC(const std::string& fnText, const Ty* ft, Sp
         part = newTemp();
         fn += "  " + part + " = extractvalue " + returnType + " " + r + ", " + std::to_string(i) + "\n";
       }
-      std::string at8 = newTemp();
-      fn += "  " + at8 + " = getelementptr inbounds i8, ptr " + resultAddr + ", i64 " + std::to_string(cResult.offsets[i]) + "\n";
-      fn += "  store " + cResult.parts[i] + " " + part + ", ptr " + at8 + "\n";
+      storeCPart(resultAddr, cResult.offsets[i], cResult.parts[i], part, cResult.size - cResult.offsets[i], true);
     }
     if (resultTemp)
       statementTemps.push_back({resultAddr, ret});

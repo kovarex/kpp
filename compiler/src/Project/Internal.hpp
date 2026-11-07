@@ -167,6 +167,7 @@ namespace projects
     bool gnu = false;                 // windows-gnu: Windows' GNU dialect (llvm-mingw's clang), not MSVC's
     std::string triple;               // clang's --target, off Windows and for windows-gnu
     std::string sysroot;              // off Windows; empty when there is none
+    std::string sysrootName;          // the one beside kppc that it is when none is given: linux-x86_64, linux-arm64
   };
 
   // A C library's part of a build (prepareLibrary): its objects' compile commands and its resources',

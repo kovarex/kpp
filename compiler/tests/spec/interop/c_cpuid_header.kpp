@@ -1,5 +1,6 @@
 // spec: cpuid.h's __get_cpuid_max, __get_cpuid and __get_cpuid_count, inline functions whose bodies are inline asm (`__asm("cpuid" : "=a"(...) ...)`), are the code generator's cpuid instruction, as MSVC's __cpuid is: the highest basic and extended leaves, leaf 0 answered (its eax the highest leaf, with or without a subleaf), and a leaf above the highest refused with 0, the four values left as they were (`true true true true true true`)
 // factorio: SystemUtil's cpuid and getCpuidExtendedMaxInputValue on Linux (`#include <cpuid.h>`, MSVC's __cpuid on Windows): "codegen does not support the statement kind AsmStmt yet (in __get_cpuid(...))"
+// arch: x86_64 (x86's cpuid instruction: cpuid.h, which another processor's C headers refuse)
 extern "C" import "cpuid.h";
 
 int main()

@@ -520,7 +520,7 @@ int compile(int argc, char** argv)
     }
     if (options.target.posix() && options.sysroot.empty())
     {
-      std::string name = std::string(platformOf(options.target.os).name) + "-x86_64";
+      std::string name = std::string(platformOf(options.target.os).name) + "-" + options.target.archName();
       std::filesystem::path beside = defaultSysroot(compilerPath(), name.c_str());
       if (!beside.empty())
         options.sysroot = beside.string();
@@ -529,6 +529,7 @@ int compile(int argc, char** argv)
         fprintf(stderr, "--target %s needs the target's C headers and libraries to link: --sysroot DIR, or %s (%s)\n", options.target.name.c_str(),
                 (compilerPath().parent_path() / "sysroots" / name).string().c_str(),
                 options.target.os == Target::Os::FreeBSD ? "a release's installer puts it there; in a build of kppc, tools\\sysroot\\freebsd.ps1"
+                : options.target.arm64()                 ? "tools\\sysroot\\linux.ps1 -Arch arm64, Debian 11's glibc 2.31 for arm64"
                                                          : "tools\\sysroot\\linux.ps1, Debian 11's glibc 2.31, which tests\\targets.ps1 runs");
         return 2;
       }

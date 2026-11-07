@@ -1,5 +1,6 @@
 // spec: an SSE operation clang's intrin.h has as a macro (_mm_shuffle_ps, _mm_shuffle_epi32, _mm_extract_epi16, _MM_SHUFFLE) has the type its macro's cast gives, as in C++ (__m128, __m128i, int): a function template's argument deduced from it, an overload chosen by it (between classes made of either vector, and between the vectors themselves), and `auto`
 // factorio: none known wrong (a template given such an operation directly); the walker left the macro's name untyped, so nothing was deduced from it ("codegen does not support a call to lane0Of whose template arguments could not be deduced yet"); an overload between classes made of the vectors was chosen by codegen, on the vector it built
+// arch: x86_64 (x86's SSE: intrin.h, which another processor's C headers refuse)
 extern "C" import "intrin.h";
 
 float lane0(__m128 v) { return _mm_cvtss_f32(v); }

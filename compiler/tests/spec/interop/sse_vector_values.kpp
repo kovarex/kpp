@@ -1,5 +1,6 @@
 // spec: SSE vectors (__m128, __m128i) are values with intrin.h imported: locals, parameters, results and class members hold them, the _mm_ operations take and give them, and a wrapper class converts from and to them
 // found linking the converted game: Color::anyGreaterThan's `__m128 cmp` was a float (intrin.h's typedef of __m128, imported without its vector_size), and each operation's result was the address of a slot, stored as if it were the vector
+// arch: x86_64 (x86's SSE: intrin.h, which another processor's C headers refuse)
 extern "C" import "intrin.h";
 
 struct Float4

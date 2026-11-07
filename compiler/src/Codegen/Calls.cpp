@@ -156,13 +156,14 @@ auto codegen::Emitter::useFunction(FunctionDecl* f, const TemplateArgs& args, co
   // table), so a call would pass and take double's bits where the function has x87's: an error, as
   // its address is (until 2026-11-05 the call was made as double(double), silently: FreeBSD's
   // floorl(2.5) printed garbage).
-  if (!sh.target.windows() && f->file && f->file->isImported)
+  // (Apple's arm64 has long double as double, as Windows does: nothing to refuse there)
+  if (!sh.target.windows() && !(sh.target.mac() && sh.target.arm64()) && f->file && f->file->isImported)
   {
     bool longDouble = namesCLongDouble(f->returnType);
     for (Decl* p : f->params)
       longDouble = longDouble || (p && p->kind == NodeKind::ParamDecl && namesCLongDouble(static_cast<ParamDecl*>(p)->type));
     if (longDouble)
-      fail(at ? at : f, "a C function of long double (" + sym(f->name.last().symbol) + "): off Windows C's long double is x87's 80 bits, kpp's is double (design.md, \"Targets and hosts\")");
+      fail(at ? at : f, "a C function of long double (" + sym(f->name.last().symbol) + "): C's long double is " + (sh.target.arm64() ? "128 bits" : "x87's 80 bits") + " on " + sh.target.name + ", kpp's is double (design.md, \"Targets and hosts\")");
   }
   std::string key = functionName(f, args, classTy);
   if (auto mine = usedFunctions.find(key); mine != usedFunctions.end())
@@ -1035,7 +1036,7 @@ auto codegen::Emitter::callFunction(FunctionDecl* f, const TemplateArgs& args, c
       resultTemp = true;
     }
     if (cResult.inMemory)
-      argText += std::string(argText.empty() ? "" : ", ") + "ptr " + resultAddr;
+      argText += std::string(argText.empty() ? "" : ", ") + cSlotArgument(cFunction ? ret : nullptr, at) + resultAddr;
     ++slot;
   }
   // The arguments with their types (a variadic one's its own), each as argumentText gives it; a C
@@ -1135,10 +1136,9 @@ auto codegen::Emitter::callFunction(FunctionDecl* f, const TemplateArgs& args, c
           part = newTemp();
           fn += "  " + part + " = extractvalue " + returnType + " " + r + ", " + std::to_string(i) + "\n";
         }
-        // (each part's type covers exactly the struct's bytes it holds: i32 for the last four)
-        std::string at8 = newTemp();
-        fn += "  " + at8 + " = getelementptr inbounds i8, ptr " + resultAddr + ", i64 " + std::to_string(cResult.offsets[i]) + "\n";
-        fn += "  store " + cResult.parts[i] + " " + part + ", ptr " + at8 + "\n";
+        // (each part's type covers exactly the struct's bytes it holds: i32 for the last four; AAPCS64's
+        // wider ones are stored narrowed)
+        storeCPart(resultAddr, cResult.offsets[i], cResult.parts[i], part, cResult.size - cResult.offsets[i], true);
       }
       if (resultTemp)
         statementTemps.push_back({resultAddr, ret});

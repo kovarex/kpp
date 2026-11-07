@@ -260,6 +260,7 @@ auto codegen::Emitter::emitFunction(FunctionDecl* original, const TemplateArgs& 
           returnType = cReturnType(r);
           cReturnParts = r.parts;
           cReturnOffsets = r.offsets;
+          cReturnSize = r.size;
           paramNames.push_back(newObjectSlot(ret, f));
           continue;
         }
@@ -279,13 +280,8 @@ auto codegen::Emitter::emitFunction(FunctionDecl* original, const TemplateArgs& 
         std::string copy = newObjectSlot(pt, f);
         for (size_t k = 0; k < p.parts.size(); ++k)
         {
-          std::string pn = parameter(p.parts[k]), to = copy;
-          if (p.offsets[k])
-          {
-            to = newTemp();
-            fn += "  " + to + " = getelementptr inbounds i8, ptr " + copy + ", i64 " + std::to_string(p.offsets[k]) + "\n";
-          }
-          fn += "  store " + p.parts[k] + " " + pn + ", ptr " + to + "\n";
+          std::string pn = parameter(passed[k]); // (with its attributes: Linux arm64's alignstack)
+          storeCPart(copy, p.offsets[k], p.parts[k], pn, p.size - p.offsets[k]);
         }
         paramNames.push_back(copy);
       }

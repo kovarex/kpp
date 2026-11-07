@@ -460,7 +460,8 @@ namespace platform
     StatBuffer buffer;
     if (!statOf(p, true, buffer, ec))
       return false;
-    count = buffer.at64(statLinksOffset);
+    count = 0;
+    memcpy(&count, (const char*)buffer.words + statLinksOffset, statLinksBytes); // (little-endian: 32 bits of glibc's arm64)
     return true;
   }
 

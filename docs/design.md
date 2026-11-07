@@ -4520,6 +4520,47 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   host (host.cpp has its executable path and machine description; nothing tested), FreeBSD as a
   host (the same), and a release for Linux (packaging, E's).
 
+### Stage 7, AArch64: Linux arm64 (2026-11-07, thread I)
+
+- `--target linux-arm64` is `aarch64-unknown-linux-gnu` (`config::arch` `Arch::Arm64`), linked as
+  linux is against a glibc 2.31 sysroot: Debian 11's same eight packages for arm64
+  (`tools\sysroot\linux.ps1 -Arch arm64`, into sysroots\linux-arm64; pinned from bullseye's signed
+  index as amd64's are). A Linux host on AArch64 builds for itself.
+- **The C calling convention (AAPCS64, codegen's cPassing):** a homogeneous floating-point aggregate
+  (1 to 4 floats or doubles of one type, a union's members sharing places too) is `[N x float]` in that
+  many vector registers (Linux's with `alignstack(8)`, as clang has it); any other struct of up to 16
+  bytes `i64`, `[2 x i64]`, or `i128` when 16-aligned, its bytes read and written within the struct
+  (a 3-byte struct is loaded as 3 bytes and widened, stored narrowed); a larger one through a pointer
+  to a copy, a larger result through the caller's slot, `sret`, which AAPCS64 passes in x8 (a C
+  function's slot is `sret` off Windows at the call and the declaration as at the definition). LLVM
+  keeps an array's registers together, all of them or all on the stack, as AAPCS64 says. A struct
+  holding a vector is refused.
+- **Varargs:** `va_arg` on Linux's AAPCS64 is lowered as clang lowers it (the general registers' save
+  area while `__gr_offs` is negative, the vector registers' by `__vr_offs`, else the stack); on Apple's
+  arm64 every variadic argument is in an 8-byte stack slot and va_list a pointer. The C import's
+  va_list is the target's: SysV's 24-byte array, AAPCS64's 32-byte struct (it was SysV's on every
+  target off Windows), Apple's char* (the import cache's version is 12).
+- **x86 alone:** an SSE intrinsic (`_mm_...`) or cpuid for an arm64 target is a compile error, never
+  a stand-in (the game turns HAS_SSE2 off there itself); x86's headers (intrin.h, cpuid.h) refuse
+  another processor already. The spin of a static local's guard is AArch64's `yield`, not x86's
+  `pause`. The spec snippets about x86 alone say `// arch: x86_64` (skipped for linux-arm64).
+- **Exceptions:** the personality reads the type table in any DWARF pointer encoding (2, 4 or 8 bytes,
+  pc-relative, indirect): AArch64's PIC table is indirect pcrel sdata8, where it knew x86-64's three.
+- **wchar_t** is unsigned 32 bits in glibc on AArch64 (signed on x86-64 and Apple's arm64), so it
+  promotes to unsigned int there; plain `char` stays signed (kpp's meaning, the type table above), so
+  a `char` bit field kpp writes -1 into is 7 to glibc's C on AArch64, the same bits; C's long double
+  (128 bits there) refused as off Windows everywhere, but on Apple's arm64, where it is double.
+- **The library:** glibc's arm64 layouts where they differ (PlatformLinux.kpp by `config::arch`):
+  pthread_mutex_t 48 bytes, struct stat asm-generic's (st_mode at 16, a 32-bit st_nlink at 20).
+- **Tests:** `run_spec.py --target linux-arm64` builds every snippet and runs it under WSL through
+  qemu's user mode (KPP_QEMU_AARCH64, Ubuntu's qemu-user-static), the C ABI snippets against clang's C
+  for the target: 1722 pass, 5 pending, 114 skipped (the `run:`, `test:` and x86 ones) on 2026-11-07.
+  New: interop/c_structs_by_value_float_aggregates (the classes only AAPCS64 tells apart, on every
+  target). A CI job on GitHub's ubuntu arm64 runners is E's (Q5).
+- **Apple's variant**, written with it and not run until Mach-O links (M2, M3): no `alignstack` on a
+  float aggregate, varargs on the stack, va_list a char*, narrow arguments extended by the caller
+  (Target::extendsNarrowIntegers), long double = double.
+
 ### Stage 8, step M0: the macOS targets and the SDK check (2026-11-07, thread I)
 
 - `--target macos` is `arm64-apple-macosx11.0.0` (data layout `e-m:o-...-Fn32`), `macos-x64`
