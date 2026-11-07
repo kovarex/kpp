@@ -214,7 +214,7 @@ auto codegen::Emitter::cDeclarationOf(const Ty* ret, const Signature& s, Node* f
     else
     {
       cScalarArgument(pt, left);
-      texts = {s.paramTypes[i]};
+      texts = {s.paramTypes[i] + narrowExtension(pt)};
     }
     for (const std::string& t : texts)
       params += (params.empty() ? "" : ", ") + t;
@@ -222,6 +222,44 @@ auto codegen::Emitter::cDeclarationOf(const Ty* ret, const Signature& s, Node* f
   if (s.variadic)
     params += params.empty() ? "..." : ", ...";
   return {returnType, params};
+}
+
+auto codegen::Emitter::narrowExtension(const Ty* t) -> const char*
+{
+  if (!sh.target.extendsNarrowIntegers() || !t || t->isReference())
+    return "";
+  t = types.unqualified(withCurrentArgs(t)); // (an instance's T)
+  if (t->kind == TyKind::Enum)
+    t = types.unqualified(enumUnderlying(t));
+  if (t->kind == TyKind::Bool)
+    return " zeroext";
+  if ((t->kind == TyKind::Int || t->kind == TyKind::Char) && t->bits < 32)
+    return t->isUnsigned ? " zeroext" : " signext";
+  return "";
+}
+
+auto codegen::Emitter::withNarrowExtension(const Ty* t, const std::string& text) -> std::string
+{
+  const char* extension = narrowExtension(t);
+  size_t space = text.find(' ');
+  if (!*extension || space == std::string::npos)
+    return text;
+  return text.substr(0, space) + extension + text.substr(space);
+}
+
+auto codegen::Emitter::withoutParameterAttributes(std::string params) -> std::string
+{
+  for (const char* attribute : {" byval(", " sret(", " alignstack("})
+    for (size_t at = params.find(attribute); at != std::string::npos; at = params.find(attribute, at))
+    {
+      size_t end = params.find(')', at);
+      size_t align = params.compare(end + 1, 7, " align ") == 0 ? params.find_first_not_of("0123456789", end + 8) : end + 1;
+      params.erase(at, (align == std::string::npos ? params.size() : align) - at);
+    }
+  for (const char* attribute : {" signext", " zeroext"})
+    for (size_t at = params.find(attribute); at != std::string::npos; at = params.find(attribute, at))
+      params.erase(at, strlen(attribute));
+  return params;
 }
 
 auto codegen::Emitter::cStructsByValue(const Signature& s, const Ty* ret, Node* at) -> bool
@@ -328,17 +366,15 @@ auto codegen::Emitter::callIndirectC(const std::string& fnText, const Ty* ft, Sp
   }
   bool slot = s.hasSret && cResult.inMemory;
   lowerCArguments(argList, slot, c);
+  for (auto& [t, text] : argList) // (a char, short or bool extended, as the C callee reads it)
+    if (t && !isAggregate(t))
+      text = withNarrowExtension(t, text);
   std::string argText = slot ? "ptr " + resultAddr : std::string();
   for (auto& [t, text] : argList)
     argText += std::string(argText.empty() ? "" : ", ") + text;
   auto [returnType, params] = cDeclarationOf(ret, s, c);
   // (the call's function type takes no parameter attributes: a byval copy's are its argument's)
-  for (size_t at = params.find(" byval("); at != std::string::npos; at = params.find(" byval(", at))
-  {
-    size_t end = params.find(')', at);
-    size_t align = params.compare(end + 1, 7, " align ") == 0 ? params.find_first_not_of("0123456789", end + 8) : end + 1;
-    params.erase(at, (align == std::string::npos ? params.size() : align) - at);
-  }
+  params = withoutParameterAttributes(params);
   std::string callee = returnType + " (" + params + ") " + fnText + "(" + argText + ")";
   if (s.hasSret && !cResult.inMemory)
   {
@@ -412,7 +448,10 @@ auto codegen::Emitter::methodSignature(const Ty* ft, Node* at) -> Signature
     s.returnType = "void";
   }
   else
+  {
     s.returnType = !ret || !ret->isKnown() || ret->isReference() ? "ptr" : llType(ret, at);
+    s.resultExtension = ret && ret->isKnown() ? narrowExtension(ret) : "";
+  }
   s.hasThis = true;
   s.paramTypes.push_back("ptr");
   s.paramTys.push_back(nullptr);
@@ -446,7 +485,10 @@ auto codegen::Emitter::signatureOf(FunctionDecl* f) -> Signature
   else if (!ret || !ret->isKnown())
     s.returnType = "ptr"; // unknown return type: treat as opaque pointer
   else
+  {
     s.returnType = ret->isReference() ? "ptr" : llType(ret, f);
+    s.resultExtension = narrowExtension(ret);
+  }
   if (method)
   {
     s.hasThis = true;

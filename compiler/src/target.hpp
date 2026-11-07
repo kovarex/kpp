@@ -26,6 +26,11 @@ struct Target
   bool posix() const { return os != Os::Windows; }
   bool mac() const { return os == Os::Mac; } // Mach-O, ld64.lld, the SDK (--sysroot or SDKROOT)
   bool arm64() const { return arch == Arch::Arm64; }
+  // Whether the target's C reads a char, short or bool argument or result from its whole 32-bit
+  // register, extended by the caller (an argument) or the callee (a result): SysV x86-64, as clang
+  // reads it, and Apple's arm64, as Apple's ABI says (LLVM's `signext`/`zeroext`). Not MS x64, and not
+  // Linux's AAPCS64, whose callee extends what it reads.
+  bool extendsNarrowIntegers() const { return !windows() && (!arm64() || mac()); }
   const char* archName() const { return arch == Arch::Arm64 ? "arm64" : "x86_64"; } // sysroots' suffix, the SDK's .tbd name
   // ELF's data layout differs from COFF's only in the name mangling (`m:e`).
   static constexpr const char* elfX86_64Layout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";

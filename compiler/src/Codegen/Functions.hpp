@@ -47,6 +47,7 @@
       std::vector<std::string> paramTypes;
       std::vector<const Ty*> paramTys; // null for this/sret
       bool hasThis = false, hasSret = false, variadic = false;
+      const char* resultExtension = ""; // " signext" or " zeroext" for a narrow result (narrowExtension)
     };
 
     // A lambda's call operator's signature, as emitLambda writes its header and a caller declares it

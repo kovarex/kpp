@@ -4187,6 +4187,22 @@ All of this goes through the coordinator.
   - The game: one call differs, `SetConsoleCursorPosition(HANDLE, COORD)`. COORD is 4 bytes, so
     the console cursor went to a pointer's bits; it is now passed in a register.
 
+- **Narrow integers (2026-11-07, thread I; a silent wrong answer until then):** where the target's C
+  reads a char, short or bool from its whole 32-bit register (SysV x86-64 as clang reads it, and
+  Apple's arm64 as its ABI says; not MS x64, not Linux's AAPCS64), the caller extends such an argument
+  and the callee such a result (LLVM's `signext`/`zeroext`, by the type's sign; bool `zeroext`):
+  - a C function's `declare` line has them on its narrow parameters and result, so every direct call
+    extends;
+  - a call through a function pointer extends its narrow arguments at the call (the callee may be C's;
+    a kpp callee ignores the upper bits);
+  - every definition extends its narrow result, so that a C caller of a kpp function, through a
+    pointer too, reads it right; no definition counts on its narrow parameters being extended.
+
+  Before, kpp passed them with garbage in the upper bits: on Linux a clang-compiled
+  `widen(short, signed char, unsigned char)` gave 655355400 in a debug build and -4600 in a release
+  one, not -30200. Spec interop/c_narrow_integers_extended (direct, through a pointer, and kpp's
+  functions' results that C reads through pointers). The Windows IR is unchanged.
+
 ### Stage 2, the target's C headers (2026-11-01)
 
 Done before Q1 and Q2 were decided; what changed with them is in the next section.

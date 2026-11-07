@@ -313,7 +313,9 @@ auto codegen::Emitter::useFunctionOnce(FunctionDecl* f, const TemplateArgs& args
     if (s.variadic)
       params += params.empty() ? "..." : ", ...";
   }
-  decls += "declare " + returnType + " " + name + "(" + params + ")\n";
+  // (a narrow result extended by the callee, a C function's as the target's C says and every kpp
+  // definition's: narrowExtension; the declaration as the definition has it)
+  decls += "declare" + std::string(s.resultExtension) + " " + returnType + " " + name + "(" + params + ")\n";
   return name;
 }
 
@@ -1119,7 +1121,7 @@ auto codegen::Emitter::callFunction(FunctionDecl* f, const TemplateArgs& args, c
   if (cFunction)
   {
     auto [returnType, params] = cDeclaration(f, s);
-    sig = (s.variadic || !indirect.empty()) ? returnType + " (" + params + ") " : returnType + " ";
+    sig = (s.variadic || !indirect.empty()) ? returnType + " (" + withoutParameterAttributes(params) + ") " : returnType + " ";
     if (!cResult.inMemory)
     {
       // The result in registers, stored into the slot part by part.

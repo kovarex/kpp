@@ -1004,7 +1004,8 @@ auto codegen::Emitter::callIndirect(const std::string& fnText, const Ty* ft, con
   auto addArgument = [&](Expr* arg)
   {
     const Ty* pt = position < ft->args.size() ? ft->args[position] : nullptr;
-    std::string text = argumentText(pt, arg, c);
+    // (a char, short or bool extended: the callee may be C's, which reads the whole register)
+    std::string text = withNarrowExtension(pt, argumentText(pt, arg, c));
     args += (args.empty() ? "" : ", ") + text;
     ++position;
   };

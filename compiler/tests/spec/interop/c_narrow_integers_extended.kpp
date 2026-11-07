@@ -1,0 +1,25 @@
+// spec: a char, short or bool passed to C is extended to 32 bits by the caller, and one returned to C by the callee, where the target's C reads the whole register (SysV x86-64, Apple's arm64: clang's `signext`/`zeroext`), in direct calls, through a function pointer, and from kpp's functions C calls through pointers (c_narrow_integers_extended.c); the values' upper bits are garbage on purpose
+// found on Linux (2026-11-07, thread I): widen(short, signed char, unsigned char) printed 655355400 in a debug build and -4600 in a release build, not -30200: kpp passed the narrow types with no extension and clang's callee used the whole register
+extern "C" int printf(const char* format, ...);
+extern "C" int specWiden(short s, signed char c, unsigned char u, unsigned short w, bool b);
+extern "C" int specNarrowResults(short (*s)(int), signed char (*c)(int), unsigned char (*u)(int), bool (*b)(int));
+
+short shortOf(int x) { return (short)x; }
+signed char charOf(int x) { return (signed char)x; }
+extern "C" unsigned char unsignedCharOf(int x) { return (unsigned char)x; }
+bool boolOf(int x) { return (x & 0xff) == 0; }
+
+int main(int argc, char** argv)
+{
+  int big = 0x12340000 + argc * 4; // 0x12340004
+  short s = (short)(big - 7);                 // -3
+  signed char c = (signed char)(big + 250);   // -2
+  unsigned char u = (unsigned char)(big + 252); // 0
+  unsigned short w = (unsigned short)(big - 5); // 65535
+  bool b = (big & 0xff) == 4;
+  printf("%d\n", specWiden(s, c, u, w, b));
+  int (*widen)(short, signed char, unsigned char, unsigned short, bool) = specWiden;
+  printf("%d\n", widen(s, c, u, w, b));
+  printf("%d\n", specNarrowResults(shortOf, charOf, unsignedCharOf, boolOf));
+  return 0;
+}

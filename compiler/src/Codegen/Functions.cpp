@@ -236,7 +236,7 @@ auto codegen::Emitter::lambdaSignatureOf(const Ty* callTy, Node* at) -> Signatur
 
 auto codegen::Emitter::declarationText(const Signature& s, const std::string& name) -> std::string
 {
-  std::string text = "declare " + s.returnType + " " + name + "(";
+  std::string text = "declare" + std::string(s.resultExtension) + " " + s.returnType + " " + name + "(";
   for (size_t i = 0; i < s.paramTypes.size(); ++i)
     text += (i ? ", " : "") + s.paramTypes[i];
   if (s.variadic)

@@ -46,6 +46,19 @@
     // slot first (it takes a register).
     void lowerCArguments(std::vector<std::pair<const Ty*, std::string>>& args, bool sretSlot, Node* at);
 
+    // The parameter (or result) attribute of a char, short or bool (an enumeration of one too) where the
+    // target's C reads it extended to 32 bits (Target::extendsNarrowIntegers): " signext" or " zeroext"
+    // by its sign, else "". A C function's declaration takes it on its narrow parameters and result, a
+    // call through a pointer on its narrow arguments (the caller extends: what a C callee reads, what
+    // a kpp callee ignores), and every definition on its narrow result (the callee extends: what a C
+    // caller of a kpp function, through a pointer too, reads).
+    const char* narrowExtension(const Ty* t);
+    // An argument's text ("i16 %v") with t's narrowExtension after its type ("i16 signext %v").
+    std::string withNarrowExtension(const Ty* t, const std::string& text);
+    // A C function's parameter list without its parameter attributes (`byval`, `signext`, ...), for a
+    // call's function type, which takes none: they go on the call's arguments.
+    static std::string withoutParameterAttributes(std::string params);
+
     // How a C function returns its result of class type ret (a struct by value): in registers (the
     // LLVM return type, its parts at their offsets), or through the caller's slot (inMemory).
     std::string cReturnType(const CPassing& p);

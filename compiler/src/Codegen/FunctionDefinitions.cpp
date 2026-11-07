@@ -305,7 +305,10 @@ auto codegen::Emitter::emitFunction(FunctionDecl* original, const TemplateArgs& 
     // module's copy is the only one, and ThinLTO dropped a linkonce_odr one that only other
     // modules called (`undefined symbol: floorl`).
     bool headerInline = original->file && original->file->isImported;
-    std::string header = std::string("define ") + (headerInline ? "weak_odr " : "") + returnType + " " + name + "(" + params + ") " +
+    // (a narrow result extended by the callee, as a C caller of it reads it: narrowExtension)
+    const char* resultExtension = s.resultExtension; // (signatureOf's, as its declarations have it)
+    std::string header = std::string("define ") + (headerInline ? "weak_odr " : "") + (*resultExtension ? resultExtension + 1 + std::string(" ") : "") +
+                         returnType + " " + name + "(" + params + ") " +
                          attributeText(f) + "{\nentry:\n";
     pushScope();
     size_t slot = 0;
