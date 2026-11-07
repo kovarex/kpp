@@ -102,10 +102,20 @@ auto codegen::Emitter::foldArith() -> ConstArith
   return ConstArith{types, ConstMode::Fold, nullptr, [this](const Ty* e) { return e->decl ? enumUnderlying(e) : nullptr; }};
 }
 
+auto codegen::Emitter::constantRequired(const VariableDecl* v, const VariableDecl* def, const Ty* t) -> bool
+{
+  if (((v->flags | def->flags) & DF_Constexpr) != 0)
+    return true;
+  // `static const int size = A * B;` in its class: an integral (or enumeration) member's initializer there is a
+  // constant expression ([class.static.data] 4); one outside the class, or a const variable's, may be built at startup.
+  bool inClass = def->init && def->parent && def->parent->kind == NodeKind::ClassDecl && (def->flags & DF_Static);
+  return inClass && t && t->isConst && (t->kind == TyKind::Int || t->kind == TyKind::Char || t->kind == TyKind::Bool || t->kind == TyKind::Enum);
+}
+
 auto codegen::Emitter::foldHooks(Node* at, bool& layoutFailed) -> ConstHooks
 {
   ConstHooks hooks;
-  hooks.mode = ConstMode::Fold;
+  hooks.mode = requiredConstant ? ConstMode::Required : ConstMode::Fold;
   hooks.underlying = [this](const Ty* e) { return e->decl ? enumUnderlying(e) : nullptr; };
   hooks.layout = [this, at, &layoutFailed](const Ty* t, bool alignment) -> std::optional<int64_t>
   {
@@ -211,6 +221,9 @@ auto codegen::Emitter::enumeratorNamed(EnumeratorDecl* en, Expr* e) -> int64_t
 
 auto codegen::Emitter::enumeratorValue(EnumeratorDecl* en, const Ty* type) -> int64_t
 {
+  // (An enumerator's value is a constant expression: a signed overflow fails it, as the checker's does.)
+  Restore<bool> requiredRestore(requiredConstant);
+  requiredConstant = true;
   // Of an instance (`Tm<3>::value`): as the interpreter computes it from the instance's arguments.
   const Ty* instance = type ? withCurrentArgs(types.unqualified(types.stripRef(type))) : nullptr;
   if (instance && instance->kind == TyKind::Enum && !instance->args.empty() && !types.isDependent(instance))
@@ -220,9 +233,22 @@ auto codegen::Emitter::enumeratorValue(EnumeratorDecl* en, const Ty* type) -> in
       return known->second;
     bool layoutFailed = false;
     ConstContextScope context(*this, en->parent);
+    GlobalScope::clearConstantReason();
     std::optional<ConstValue> v = global.evaluateEnumerator(en, instance, foldHooks(en, layoutFailed));
     if (!v || v->kind != ConstValue::Kind::Int)
-      unsupported(en, "the enumerator " + sym(en->name) + " of " + types.toString(instance, &symbols) + ", no constant the compiler could evaluate");
+    {
+      // An enumerator's value is a constant expression: a signed overflow is an error, said with its reason.
+      std::string why = GlobalScope::constantReason();
+      auto* enumeration = static_cast<EnumDecl*>(en->parent);
+      Decl* cls = enumeration && enumeration->name.empty() ? enumeration->parent : nullptr;
+      std::string of = cls && cls->kind == NodeKind::ClassDecl ? "an unnamed enumeration of " + types.toString(types.classType(cls, instance->args), &symbols)
+                                                               : types.toString(instance, &symbols);
+      Restore<ParsedFile*> fileRestore(currentFile);
+      currentFile = enumeration && enumeration->file ? enumeration->file : currentFile; // (said at the enumerator, whose tokens are its file's)
+      if (why.empty())
+        unsupported(en, "the enumerator " + sym(en->name) + " of " + of + ", no constant the compiler could evaluate");
+      fail(en, "the enumerator " + sym(en->name) + " of " + of + " is no constant the compiler could evaluate: " + why);
+    }
     instanceEnumerators[key] = v->i;
     return v->i;
   }
@@ -243,9 +269,15 @@ auto codegen::Emitter::enumeratorValue(EnumeratorDecl* en, const Ty* type) -> in
       auto* cur = static_cast<EnumeratorDecl*>(d);
       if (cur->value)
       {
+        GlobalScope::clearConstantReason();
         std::optional<int64_t> v = evalConst(cur->value);
         if (!v)
-          unsupported(cur, "the enumerator " + sym(cur->name) + ", no constant the compiler could evaluate"); // (never the one before plus one)
+        {
+          std::string why = GlobalScope::constantReason();
+          if (why.empty())
+            unsupported(cur, "the enumerator " + sym(cur->name) + ", no constant the compiler could evaluate"); // (never the one before plus one)
+          fail(cur, "the enumerator " + sym(cur->name) + " is no constant the compiler could evaluate: " + why);
+        }
         next = *v;
       }
       enumeratorValues[cur] = next;

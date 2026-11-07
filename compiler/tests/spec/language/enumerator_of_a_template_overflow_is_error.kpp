@@ -1,0 +1,11 @@
+// spec: a signed overflow in an enumerator's value in a template's instance is a compile error with its reason, said at the enumerator, as an enumerator's value is a constant expression (C++ [dcl.enum] 5; until 2026-11-07 the code generator's arithmetic wrapped it silently, as for a static constexpr member)
+// error: enumerator_of_a_template_overflow_is_error.kpp:5: error: the enumerator value of an unnamed enumeration of Product<4000000000000000000, 3> is no constant the compiler could evaluate: signed overflow in int64 (multiplication)
+template <i64 A, i64 B> struct Product
+{
+  enum : i64 { value = A * B };
+};
+int main()
+{
+  println(Product<4000000000000000000ll, 3>::value);
+  return 0;
+}

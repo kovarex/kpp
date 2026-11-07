@@ -31,6 +31,14 @@
     // layoutFailed: set when a layout the evaluation needs fails (it has reported itself).
     ConstHooks foldHooks(Node* at, bool& layoutFailed);
 
+    // The initializer being evaluated is one C++ requires to be a constant (a constexpr variable's, a static
+    // const integral member's in its class): the evaluation's mode is Required there, a signed overflow failing
+    // it with its reason as the checker's does, never wrapping as the emitted code's arithmetic would (until
+    // 2026-11-07 `static constexpr i64 value = A * B;` of an instance printed the wrapped product).
+    bool requiredConstant = false;
+    // Whether v (defined by def, of type t as this instance has it) is such a variable.
+    static bool constantRequired(const VariableDecl* v, const VariableDecl* def, const Ty* t);
+
     // The byte offset of data member m in an object of class t as laid out (offsetof), m declared
     // in t or in one of its bases; nullopt when it is in neither.
     std::optional<uint64_t> memberOffset(const Ty* t, Decl* m, Node* at, int depth = 0);

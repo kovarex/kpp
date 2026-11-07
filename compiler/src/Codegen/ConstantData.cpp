@@ -630,6 +630,8 @@ auto codegen::Emitter::preEvaluateGlobal(VariableDecl* v, Node* at, const Ty* cl
   const Ty* st = types.stripRef(t);
   Restore<ParsedFile*> fileRestore(currentFile);
   currentFile = def->file;
+  Restore<bool> requiredRestore(requiredConstant);
+  requiredConstant = constantRequired(v, def, t);
   if (!value)
   {
     // No initializer: a class's default initialization, as globalForOnce asks constantData for it
@@ -888,6 +890,8 @@ auto codegen::Emitter::globalForOnce(VariableDecl* v, Node* at, const Ty* classT
   Expr* value = classTy ? global.instanceInitializer(def, classArgs) : def->init;
   ParsedFile* saved = currentFile;
   currentFile = def->file;
+  Restore<bool> requiredRestore(requiredConstant);
+  requiredConstant = constantRequired(v, def, t);
   // `thread_local IntrusiveList<CrashHookBase> CrashHooks::hooks;`: one per thread (TLS), built by
   // each thread at its first use (emitGlobalConstructor's perThread).
   bool threadLocal = ((v->flags | def->flags) & DF_ThreadLocal) != 0;
@@ -978,9 +982,11 @@ auto codegen::Emitter::globalForOnce(VariableDecl* v, Node* at, const Ty* classT
       // constant"): one the checker left to the code generator (its value needs exact layouts)
       // and that is no constant here either is an error, never a global built at startup, which
       // a global initialized before it reads as zero.
-      if (!evaluated && ((v->flags | def->flags) & DF_Constexpr) && !global.checkerErrorWithin(def->file, def->token, def->token))
-        error(def, "the constexpr variable " + sym(def->name.last().symbol) + " is no constant the compiler could evaluate" +
-                     (notConstantWhy.empty() ? std::string() : ": " + notConstantWhy));
+      if (!evaluated && requiredConstant && !global.checkerErrorWithin(def->file, def->token, def->token))
+        error(def, std::string(((v->flags | def->flags) & DF_Constexpr) ? "the constexpr variable " : "the static member ") + sym(def->name.last().symbol) +
+                     (classTy ? " of " + types.toString(classTy, &symbols) : std::string()) +
+                     (((v->flags | def->flags) & DF_Constexpr) ? std::string() : std::string(", whose initializer in its class is a constant expression,")) +
+                     " is no constant the compiler could evaluate" + (notConstantWhy.empty() ? std::string() : ": " + notConstantWhy));
     }
   }
   else if (needsConstruction(st, at))

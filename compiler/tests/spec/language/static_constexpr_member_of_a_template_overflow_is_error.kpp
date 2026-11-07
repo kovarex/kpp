@@ -1,6 +1,5 @@
 // spec: a signed overflow in the initializer of a static constexpr member of a template's instance is a compile error with its reason, as in a constexpr variable outside a template (design.md: a required constant fails with its reason; C++ [expr.const]: the initializer is no constant expression)
 // error: signed overflow in int64 (multiplication)
-// pending: an instance's static constexpr member folds the product as wrapping arithmetic: Product<4000000000000000000, 3>::value prints -6446744073709551616, a silent wrong answer, where `constexpr i64 x = 4000000000000000000ll * 3;` is refused (found through Time.kpp's RatioAdd of two Ratio<1, 10^12>, battery tm1)
 template<i64 A, i64 B>
 struct Product
 {

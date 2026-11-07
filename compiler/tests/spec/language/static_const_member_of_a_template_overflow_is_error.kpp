@@ -1,0 +1,15 @@
+// spec: a static const integral member's initializer in its class is a constant expression ([class.static.data] 4): a signed overflow there in a template's instance is a compile error with its reason (until 2026-11-07 the code generator's arithmetic wrapped it silently); an unsigned product wraps, and a member defined outside its class may be computed at startup
+// error: static_const_member_of_a_template_overflow_is_error.kpp:5: error: the static member value of Product<4000000000000000000, 3>, whose initializer in its class is a constant expression, is no constant the compiler could evaluate: signed overflow in int64 (multiplication)
+template <i64 A, i64 B> struct Product
+{
+  static const i64 value = A * B;
+  static constexpr u64 wraps = u64(A) * u64(B);
+  static const i64 outside;
+};
+template <i64 A, i64 B> const i64 Product<A, B>::outside = A + B;
+int main()
+{
+  println(Product<4000000000000000000ll, 5>::wraps, " ", Product<1, 2>::outside);
+  println(Product<4000000000000000000ll, 3>::value);
+  return 0;
+}
