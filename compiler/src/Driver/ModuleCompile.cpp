@@ -5,6 +5,44 @@
 
 namespace driver
 {
+// text with every function definition given unwind information (LLVM's `uwtable` after its
+// parameters, where a definition's function attributes go), as clang gives every function on x86-64.
+// Without it an optimized build's back end leaves a function the optimizer proves cannot throw
+// without its unwind information (Windows x64's .pdata, an ELF's .eh_frame), so a crash in it is
+// walked as a leaf's: on Windows the walk ended there, and the process died with no crash report, its
+// unhandled-exception filter never reached (E's finding, 2026-11-07). For a module clang compiles (an
+// unoptimized build in kppc keeps every function's tables, none proven unable to throw).
+std::string withUnwindTables(const std::string& text)
+{
+  std::string out;
+  out.reserve(text.size() + text.size() / 64);
+  size_t from = 0;
+  for (size_t at = text.starts_with("define ") ? 0 : text.find("\ndefine "); at != std::string::npos; at = text.find("\ndefine ", at + 1))
+  {
+    size_t name = text.find('@', at + 1);
+    if (name == std::string::npos)
+      break;
+    size_t open = text[name + 1] == '"' ? text.find('"', name + 2) : name; // (a quoted name's `\22` is no quote)
+    open = open == std::string::npos ? open : text.find('(', open);
+    size_t close = std::string::npos;
+    for (size_t i = open, depth = 0; i != std::string::npos && i < text.size() && text[i] != '\n'; ++i)
+      if (text[i] == '(')
+        ++depth;
+      else if (text[i] == ')' && --depth == 0)
+      {
+        close = i;
+        break;
+      }
+    if (close == std::string::npos)
+      continue; // (no definition kppc writes)
+    out.append(text, from, close + 1 - from);
+    out += " uwtable";
+    from = close + 1;
+  }
+  out.append(text, from, std::string::npos);
+  return out;
+}
+
 size_t reportCheckerErrors(GlobalScope& global, bool laidOut, size_t instancesChecked)
 {
   for (const std::string& w : global.checkerWarnings())
@@ -561,6 +599,7 @@ void runCodegen(Build& build)
   if (cg.modules.empty())
   {
     std::string llPath = options.emitLLVM.empty() ? options.exe + ".ll" : options.emitLLVM;
+    cg.ir = withUnwindTables(cg.ir);
     if (!writeFile(llPath, cg.ir) || options.exe.empty() || stop)
       return;
     std::string command = "\"" + clang + "\" " + level + targetFlags(options) + " -w " + compileFlags + " \"" + llPath + "\" -o \"" + options.exe + "\" " +
@@ -595,6 +634,8 @@ void runCodegen(Build& build)
       return;
     }
     std::string hashText;
+    if (!inProcess)
+      cg.modules[k] = withUnwindTables(cg.modules[k]); // (before its hash: an object made without them is made again)
     if (unchangedObject(k, cg.modules[k], level, hashText))
       return;
     if (inProcess)

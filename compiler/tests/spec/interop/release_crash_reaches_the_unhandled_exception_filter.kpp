@@ -1,0 +1,33 @@
+// spec: every function has unwind information (LLVM's `uwtable`, as clang gives every function), also one the optimizer proves cannot throw: in a release build an access violation several calls deep in such a function, called through a pointer, reaches the process's unhandled-exception filter, which a crash report is (`before the crash`, `filter reached: 1`, and the filter's exit 0)
+// E's finding with release debug information: Windows x64 walks a frame without unwind information as a leaf's, the walk ended there, and the process died with 0xC0000005 and no report (the debug build, unoptimized, keeps its functions' tables)
+// kppc: --release
+// target: windows (windows.h)
+extern "C" import "windows.h";
+extern "C" import "stdlib.h";
+LONG filter(EXCEPTION_POINTERS* e)
+{
+  println("filter reached: ", int(e->ExceptionRecord->ExceptionCode == 0xC0000005u)); // (EXCEPTION_ACCESS_VIOLATION)
+  exit(0); // (the C library's exit: the output flushed)
+  return EXCEPTION_EXECUTE_HANDLER;
+}
+i32 reached = 0;
+i32 crashHere(i32* target, i32 depth)
+{
+  if (depth == 0)
+  {
+    *target = 42;
+    return *target;
+  }
+  ++reached;
+  return crashHere(target, depth - 1) * 3 + depth;
+}
+i32 other(i32* target, i32 depth) { return depth; }
+int main(int argc, char** argv)
+{
+  SetUnhandledExceptionFilter(filter);
+  i32 kept = 7;
+  i32* target = argc > 5 ? &kept : (i32*)(usize)(argc - 1); // (null, which the optimizer cannot know)
+  i32 (*step)(i32*, i32) = argc > 9 ? other : crashHere;
+  println("before the crash");
+  return step(target, argc * 3);
+}
