@@ -580,6 +580,37 @@ It uninitializedFillN(It first, Size n, const T& value)
   return built;
 }
 
+// The elements of [first, last) moved n places towards the front, the first n dropped (std::shift_left):
+// returns the end of the moved ones; first when n is the length or more, last when n <= 0.
+template<typename It>
+It shiftLeft(It first, It last, i64 n)
+{
+  if (n <= 0)
+    return last;
+  It from = first;
+  for (i64 i = 0; i < n; ++i, ++from)
+    if (from == last)
+      return first;
+  for (; from != last; ++first, ++from)
+    *first = move(*from);
+  return first;
+}
+
+// The elements moved n places towards the back, the last n dropped (std::shift_right; bidirectional
+// iterators): returns the start of the moved ones; last when n is the length or more, first when n
+// <= 0.
+template<typename It>
+It shiftRight(It first, It last, i64 n)
+{
+  if (n <= 0)
+    return first;
+  It from = last;
+  for (i64 i = 0; i < n; ++i, --from)
+    if (from == first)
+      return last;
+  return moveBackward(first, from, last);
+}
+
 // The reverse of it (std::make_reverse_iterator).
 template<typename It>
 ReverseIterator<It> makeReverseIterator(It it) { return ReverseIterator<It>(it); }

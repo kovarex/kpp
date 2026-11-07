@@ -100,3 +100,51 @@ private:
   IntType low;
   IntType high;
 };
+
+// The elements of [first, last) (random access) in a random order, each order equally likely
+// (std::shuffle): from the back, each element swapped with one drawn from it and those before it.
+template<typename It, typename G>
+void shuffle(It first, It last, G&& g)
+{
+  for (i64 i = (i64)(last - first) - 1; i > 0; --i)
+  {
+    i64 j = UniformIntDistribution<i64>(0, i)(g);
+    if (j != i)
+      iterSwap(first + i, first + j);
+  }
+}
+
+// n distinct elements of [first, last) (all of them when there are fewer), each choice equally likely,
+// written to out (std::sample); returns the end of what was written. From forward iterators the
+// chosen ones keep their order (selection sampling); from input iterators out must be random
+// access, and their order there is random (reservoir sampling).
+template<typename InIt, typename OutIt, typename G>
+OutIt sample(InIt first, InIt last, OutIt out, i64 n, G&& g)
+{
+  if constexpr (isBaseOf<ForwardIteratorTag, typename IteratorTraits<InIt>::iterator_category>)
+  {
+    i64 remaining = (i64)distance(first, last);
+    i64 needed = n < remaining ? n : remaining;
+    for (; needed > 0; ++first, --remaining)
+      if (UniformIntDistribution<i64>(0, remaining - 1)(g) < needed)
+      {
+        *out = *first;
+        ++out;
+        --needed;
+      }
+    return out;
+  }
+  else
+  {
+    i64 kept = 0;
+    for (; first != last && kept < n; ++first, ++kept)
+      out[kept] = *first;
+    for (i64 seen = kept; first != last; ++first, ++seen)
+    {
+      i64 slot = UniformIntDistribution<i64>(0, seen)(g);
+      if (slot < n)
+        out[slot] = *first;
+    }
+    return out + kept;
+  }
+}

@@ -41,7 +41,8 @@ Functions:
 - `get<i>(t)`: element i of t, i from 0 to n - 1 (another i does not compile). A reference to it
   for an lvalue Tuple, a const reference for a const one, an rvalue reference for an rvalue one,
   so that `get<0>(move(t))` moves the element out. A reference element is given as the reference
-  it is in all three cases.
+  it is in all three cases. `get<T>(t)`: the element of type T, as get<i> gives it; T must be the
+  type of exactly one element (otherwise the call does not compile).
 - `makeTuple(v1, ..., vn)`: a Tuple of the values, of their decayed types, each moved in when it
   is an rvalue; a `ref(x)` argument makes a reference element.
 - `tie(a1, ..., an)`: a Tuple of references to the variables, `Tuple<A1&, ..., An&>`; assigning a

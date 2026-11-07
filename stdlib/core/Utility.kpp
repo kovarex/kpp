@@ -106,6 +106,17 @@ template<typename T>
 const T& max(const T& a, const T& b) { return a < b ? b : a; }
 template<typename T>
 const T& clamp(const T& value, const T& low, const T& high) { return value < low ? low : high < value ? high : value; }
+// The same under less (a when the two are equivalent, for min and max as for clamp's value).
+template<typename T, typename F>
+const T& min(const T& a, const T& b, F less) { return less(b, a) ? b : a; }
+template<typename T, typename F>
+const T& max(const T& a, const T& b, F less) { return less(a, b) ? b : a; }
+
+template<typename T, typename F>
+const T& clamp(const T& value, const T& low, const T& high, F less)
+{
+  return less(value, low) ? low : less(high, value) ? high : value;
+}
 
 // The tag of Pair's constructor that builds the second member in place: `Pair<K, V>(inPlaceSecond,
 // key, args...)`.

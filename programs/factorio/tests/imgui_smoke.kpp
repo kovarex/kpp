@@ -6,7 +6,7 @@
 extern "C" import "stdio.h";
 extern "C" import "stdint.h";
 
-static float sample(void* data, int idx) { return ((float*)data)[idx] * 2.0f; }
+static float plotSample(void* data, int idx) { return ((float*)data)[idx] * 2.0f; }
 
 static bool item(void* data, int idx, const char** out_text)
 {
@@ -57,7 +57,7 @@ int main()
       ImGui::InputText("input", text, sizeof(text));
       ImGui::Combo("combo", &current, item, nullptr, 3);
       ImGui::PlotLines("plot", values, 5);
-      ImGui::PlotLines("plot2", sample, values, 5, 0, nullptr, 0.0f, 2.0f, ImVec2(100, 40));
+      ImGui::PlotLines("plot2", plotSample, values, 5, 0, nullptr, 0.0f, 2.0f, ImVec2(100, 40));
       if (ImGui::TreeNode("tree"))
       {
         ImGui::BulletText("inside %s", "the tree");

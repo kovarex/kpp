@@ -1,0 +1,20 @@
+// spec: get<T>(tuple) gives the element of type T, which is the type of exactly one element, as get<I> gives it: a reference from an lvalue, const from a const one, moved from an rvalue (std::get<T>)
+// factorio: K's ranking of the stdlib gaps (2026-11-06): there was get<T> of a Pair only
+int main()
+{
+  Tuple<int, String, double> t(1, "two", 3.5);
+  get<int>(t) = 4;
+  get<String>(t) << "!";
+  println(get<0>(t), " ", get<String>(t), " ", get<double>(t));
+  const Tuple<int, String, double>& same = t;
+  println(get<double>(same) * 2);
+  String taken = get<String>(move(t));
+  println(taken, " '", get<1>(t), "'");
+  int x = 5;
+  Tuple<int&, char> refs(x, 'c');
+  get<int&>(refs) = 6;
+  println(x, " ", get<char>(refs));
+  Tuple<int, int, char> twice(1, 2, 'z');
+  println(get<char>(twice));
+  return 0;
+}

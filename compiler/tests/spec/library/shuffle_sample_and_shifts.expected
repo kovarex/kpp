@@ -1,0 +1,14 @@
+shuffle permutes true, moved true
+same seed, same order true
+shuffle of one: 5
+each first about a third true
+sample of 3: 3 in order and distinct true
+sample of more than there are: 8
+sample returns its end true
+shiftLeft returns 3
+shiftLeft 2: 3 4 5
+shiftLeft all true none true
+shiftRight returns 2
+shiftRight 2 (from 2): 1 2 3
+shiftRight of a list: 1 2 3
+shiftRight past the end true

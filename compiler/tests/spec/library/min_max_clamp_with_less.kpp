@@ -1,0 +1,23 @@
+// spec: min, max and clamp take a less as std's do: min(a, b, less) and max(a, b, less) give a reference to a when the two are equivalent, clamp(value, low, high, less) a reference to the bound value passed, min and max of a brace list (without a less) the first least (greatest) one
+// factorio: K's ranking of the stdlib gaps (2026-11-06): only the forms without a less were there
+struct Item
+{
+  int weight;
+  char name;
+};
+
+bool lighter(const Item& a, const Item& b) { return a.weight < b.weight; }
+
+int main()
+{
+  Item a{2, 'a'};
+  Item b{2, 'b'};
+  Item c{5, 'c'};
+  println(min(a, b, lighter).name, max(a, b, lighter).name, min(c, a, lighter).name, max(a, c, lighter).name);
+  Item low{1, 'l'};
+  Item high{3, 'h'};
+  println(clamp(c, low, high, lighter).name, clamp(Item{0, 'z'}, low, high, lighter).name, clamp(a, low, high, lighter).name);
+  println(&clamp(a, low, high, lighter) == &a);
+  println(min({3, 1, 2}), " ", max({3, 1, 2}), " ", clamp(7, 9, 1, Greater<>()));
+  return 0;
+}

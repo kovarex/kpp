@@ -212,6 +212,35 @@ decltype(auto) get(Tuple<Types...>&& t)
   return t.template getRvalue<I>();
 }
 
+// How many of Types are T, and the index of the first T (the count of Types otherwise).
+template<typename T, typename... Types>
+struct TypeCount { static constexpr i32 value = 0; };
+template<typename T, typename H, typename... Rest>
+struct TypeCount<T, H, Rest...> { static constexpr i32 value = (isSame<T, H> ? 1 : 0) + TypeCount<T, Rest...>::value; };
+template<typename T, typename... Types>
+struct TypeIndex { static constexpr i32 value = 0; };
+template<typename T, typename H, typename... Rest>
+struct TypeIndex<T, H, Rest...> { static constexpr i32 value = isSame<T, H> ? 0 : 1 + TypeIndex<T, Rest...>::value; };
+
+// The element of type T, which is the type of exactly one element (std::get<T>), as get<I> gives it.
+template<typename T, typename... Types> requires (TypeCount<T, Types...>::value == 1)
+decltype(auto) get(Tuple<Types...>& t)
+{
+  return get<TypeIndex<T, Types...>::value>(t);
+}
+
+template<typename T, typename... Types> requires (TypeCount<T, Types...>::value == 1)
+decltype(auto) get(const Tuple<Types...>& t)
+{
+  return get<TypeIndex<T, Types...>::value>(t);
+}
+
+template<typename T, typename... Types> requires (TypeCount<T, Types...>::value == 1)
+decltype(auto) get(Tuple<Types...>&& t)
+{
+  return get<TypeIndex<T, Types...>::value>(move(t));
+}
+
 // A Tuple of the values, each moved in when it is an rvalue (std::make_tuple): of their types
 // without reference and const, an array or a function as a pointer; a ReferenceWrapper (ref(x))
 // makes a reference element.

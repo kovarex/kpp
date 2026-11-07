@@ -70,7 +70,11 @@ are equal; without it, `operator==`. Results that are counts or distances are `p
   any of the second, or last1.
 - `accumulate(first, last, init [, op])`: init with every element added in order
   (`init = init + x`, or `init = op(init, x)`).
-- `min({a, b, c})`, `max({a, b, c})`: of a brace list.
+- `min(a, b [, less])`, `max(a, b [, less])`: a reference to the lesser (greater) argument, a when
+  the two are equivalent. `clamp(value, low, high [, less])`: a reference to low when value is less
+  than low, to high when high is less than value, to value otherwise.
+- `min({a, b, c})`, `max({a, b, c})`: a copy of the first least (greatest) element of a brace list,
+  which must not be empty.
 - `minmax(a, b [, less])`: a Pair of references to the arguments, (b, a) when b is less than a and
   (a, b) otherwise. `minmax({a, b, c} [, less])`: a Pair of copies of the first least and the last
   greatest; the list must not be empty.
@@ -161,6 +165,10 @@ iterator included; the functions return the position after the last element writ
 - `reverse(first, last)` (bidirectional).
 - `rotate(first, middle, last)`: moves middle's element to first, keeping the cyclic order;
   returns the new position of first's element. O(n).
+- `shiftLeft(first, last, n)`: moves the elements n places towards the front (move assignment), the
+  first n dropped; returns the end of the moved ones (first when n is the length or more, last when
+  n <= 0). `shiftRight(first, last, n)` (bidirectional): towards the back, the last n dropped;
+  returns the start of the moved ones (last when n is the length or more, first when n <= 0).
 - `nextPermutation(first, last [, less])` (bidirectional): the next greater arrangement in
   dictionary order, returning true; from the greatest, the least one (sorted), returning false.
   `prevPermutation(first, last [, less])`: the next smaller one; from the least, the greatest one,
@@ -245,7 +253,23 @@ the exception passes on; the storage is then as before the call.
   last)`, `uninitializedValueConstructN(first, n)`: value-initialized (`T()`: a number is 0). The N
   forms return the end of what was built.
 
+## Random order
+
+`g` is a random number engine giving 64 random bits a call, as the library's DefaultRandomEngine
+and RandomDevice do; numbers are drawn from it with `UniformIntDistribution<i64>`, so a given seed
+gives the same order on every target (not the order std's implementations give, which differ from
+each other).
+
+- `shuffle(first, last, g)` (random access): the elements in a random order, every order equally
+  likely.
+- `sample(first, last, out, n, g)`: n elements of the range (all of them when there are fewer), every
+  choice equally likely, written to out; returns the end of what was written. From forward
+  iterators the chosen elements keep their order; from input iterators out must be random access,
+  and their order there is random.
+
 ## Not specified yet
 
-shuffle, sample, shiftLeft and shiftRight; clamp with a less, min and max of a brace list with a less.
-None of them has a user in the converted code yet.
+min and max of a brace list with a less: with `max(InitializerList<T>, F)` in the library, the game's
+`::max(sizeof(SharedPtr<const String>) + 1u, 2 * sizeof(const char*) - 1)` (ImmutableString's
+default N) is no longer evaluated, a compiler gap not yet reduced to a snippet. No converted code
+uses them.

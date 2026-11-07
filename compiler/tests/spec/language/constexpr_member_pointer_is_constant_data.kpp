@@ -5,9 +5,9 @@ struct L
   int a;
   int b;
 };
-L sample{1, 2};
-int read = sample.*second;
-int readFromArray = sample.*Accessors::all[1];
+L rail{1, 2};
+int read = rail.*second;
+int readFromArray = rail.*Accessors::all[1];
 constexpr int L::*second = &L::b;
 struct Accessors
 {
