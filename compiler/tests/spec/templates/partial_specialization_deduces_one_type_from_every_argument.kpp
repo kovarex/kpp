@@ -1,0 +1,14 @@
+// spec: a parameter of a partial specialization that two arguments deduce must come out the same type from both ([temp.deduct.type] 2): `S<T, const T>` matches S<int, const int> and S<int*, int* const> but not S<const int, const int> nor S<int* const, int* const> (T const int from the first, int from the second); `P<T*, const T*>` matches P<int*, const int*>, not P<const int*, const int*>. clang's and g++'s output
+// found by thread J's template generator (2026-11-07): the first deduction stood and only the substitution was compared, which a const the argument already had absorbed
+extern "C" int printf(const char* format, ...);
+template<class A, class B> struct S { static int v() { return 0; } };
+template<class T> struct S<T, const T> { static int v() { return 1; } };
+template<class A, class B> struct P { static int v() { return 0; } };
+template<class T> struct P<T*, const T*> { static int v() { return 1; } };
+template<class T> int f(T, const T*) { return 1; }
+int main()
+{
+  printf("%d %d %d %d %d\n", S<int* const, int* const>::v(), S<const int, const int>::v(), S<int, const int>::v(), S<int*, int* const>::v(), S<int, int>::v());
+  printf("%d %d %d\n", P<const int*, const int*>::v(), P<int*, const int*>::v(), P<const int*, const int* const>::v());
+  return 0;
+}

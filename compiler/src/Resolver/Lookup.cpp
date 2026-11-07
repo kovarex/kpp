@@ -1134,7 +1134,22 @@ auto GlobalScope::Impl::matchPatterns(ClassDecl* c, Decl* primary, const std::ve
       return false;
     if (types.isDependent(pattern))
     {
-      deduceArgument(pattern, args[i], s, 1);
+      // Each argument deduces on its own, and a parameter two of them deduce must be the same type
+      // from both ([temp.deduct.type] 2): `S<T, const T>` does not match S<const int, const int>
+      // (T const int, then int). Until 2026-11-07 the first deduction stood and only the
+      // substitution was compared, which a const already there absorbed.
+      Subst one;
+      deduceArgument(pattern, args[i], one, 1);
+      for (const Subst::Pair& q : one.pairs)
+      {
+        if (const Ty* had = s.find(q.param))
+        {
+          if (!sameArgument(had, q.type))
+            return false;
+        }
+        else
+          s.pairs.push_back(q);
+      }
       if (!sameArgument(substitute(pattern, s), args[i]))
         return false;
     }
