@@ -248,6 +248,9 @@ Decided, and not built yet:
   and its const iterator). The details are not decided yet.
 - **Named arguments**, passing only the defaults you change, by name; the syntax is not chosen yet.
 - **A localisation library**, with its own tools, for text whose word order changes per language.
+- **An official library for LED and RGB devices** that works on Linux too (for example through
+  OpenRGB's SDK), so a game lights keyboards and mice off Windows: Factorio's Logitech, Razer and
+  SteelSeries lighting is Windows-only today. After the next stage.
 
 ### Under consideration, not decided
 
