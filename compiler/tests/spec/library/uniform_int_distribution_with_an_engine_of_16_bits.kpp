@@ -29,5 +29,8 @@ int main()
     if (all(engine) >= 9223372036854775808ull)
       ++top;
   println("full u64, the top half about half the draws: ", top > 45000 && top < 55000);
+  RandomDevice device;
+  DefaultRandomEngine standard;
+  println("the library's own engines: ", UniformIntDistribution<u32>(5, 5)(device), " ", UniformIntDistribution<i32>(-3, -3)(standard));
   return 0;
 }

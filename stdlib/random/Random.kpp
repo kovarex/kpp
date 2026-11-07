@@ -2,8 +2,15 @@
 // std::default_random_engine, std::random_device and std::uniform_int_distribution convert to.
 // The engine is a 64-bit xoshiro256**, fast and good enough for games and simulations.
 
+// A uniform random bit generator, as the library's engines: 64 random bits a call, min() 0 and max()
+// every bit set.
 struct RandomDevice
 {
+  using result_type = u64;
+
+  static constexpr u64 min() { return 0; }
+  static constexpr u64 max() { return ~0ull; }
+
   u64 operator()()
   {
     u64 x = (u64)platform::fastCounter();
@@ -55,8 +62,10 @@ public:
     return result;
   }
 
-  static u64 min() { return 0; }
-  static u64 max() { return ~0ull; }
+  using result_type = u64;
+
+  static constexpr u64 min() { return 0; }
+  static constexpr u64 max() { return ~0ull; }
 
   void discard(u64 count)
   {
