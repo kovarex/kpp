@@ -1,0 +1,150 @@
+// spec: ForwardList is std::forward_list: ForwardList(count), ForwardList(count, value), ForwardList(first, last), assign, resize, insert_after of a count, a range and a list, splice_after of a list, an element and a range (within the list too, and from an rvalue), merge and unique with a predicate, remove of one of its own elements, swap, and assignment over the elements there are; the output is what libstdc++ and MSVC's STL print for the same program
+// factorio: K's ranking of the gaps (2026-11-06): these forms did not exist, and remove(value) copied the value
+extern "C" int printf(const char* format, ...);
+int copied = 0;
+int copyAssigned = 0;
+int destroyed = 0;
+
+struct Counted
+{
+  int value;
+  Counted(int v) : value(v) {}
+  Counted(const Counted& other) : value(other.value) { ++copied; }
+  Counted& operator=(const Counted& other) { value = other.value; ++copyAssigned; return *this; }
+  ~Counted() { ++destroyed; }
+};
+
+void reportCounts(const char* what, const ForwardList<Counted>& l)
+{
+  printf("%s: copy %d copy= %d destroy %d |", what, copied, copyAssigned, destroyed);
+  for (const Counted& x : l)
+    printf(" %d", x.value);
+  printf("\n");
+  copied = 0;
+  copyAssigned = 0;
+  destroyed = 0;
+}
+
+void show(const char* what, const ForwardList<int>& l)
+{
+  printf("%s:", what);
+  for (int x : l)
+    printf(" %d", x);
+  printf("\n");
+}
+
+bool descending(int a, int b) { return a > b; }
+bool sameParity(int a, int b) { return a % 2 == b % 2; }
+
+int main()
+{
+  ForwardList<int> counted(3);
+  show("count", counted);
+  ForwardList<int> filled(3, 7);
+  show("count value", filled);
+  Vector<int> source = {1, 2, 3};
+  ForwardList<int> ranged(source.begin(), source.end());
+  show("range", ranged);
+  ranged.assign(2, 9);
+  show("assign count", ranged);
+  ranged.assign(source.begin(), source.end());
+  show("assign range", ranged);
+  ranged.assign({4, 5});
+  show("assign list", ranged);
+  ranged.resize(4);
+  show("resize up", ranged);
+  ranged.resize(5, 8);
+  show("resize up value", ranged);
+  ranged.resize(1);
+  show("resize down", ranged);
+  ranged.resize(0);
+  show("resize zero", ranged);
+  auto at = ranged.insert_after(ranged.before_begin(), source.begin(), source.end());
+  show("insert range", ranged);
+  printf("last inserted %d\n", *at);
+  auto none = ranged.insert_after(ranged.begin(), source.begin(), source.begin());
+  printf("insert nothing %d\n", (int)(none == ranged.begin()));
+  auto copies = ranged.insert_after(ranged.begin(), 2, 6);
+  show("insert count", ranged);
+  printf("last copy %d\n", *copies);
+  auto listed = ranged.insert_after(ranged.before_begin(), {10, 11});
+  show("insert list", ranged);
+  printf("last listed %d\n", *listed);
+  auto zero = ranged.insert_after(ranged.begin(), 0, 5);
+  printf("insert zero %d\n", (int)(zero == ranged.begin()));
+
+  ForwardList<int> a = {1, 2, 3};
+  ForwardList<int> b = {7, 8, 9};
+  auto kept = a.begin();
+  auto taken = b.begin();
+  a.splice_after(kept, b);
+  show("splice all", a);
+  printf("spliced from empty %d\n", (int)b.empty());
+  printf("iterators stay %d %d\n", *kept, *taken);
+  ForwardList<int> c = {10, 11, 12, 13};
+  auto from = c.begin();
+  auto to = from;
+  ++to;
+  ++to;
+  ++to;
+  a.splice_after(a.before_begin(), c, from, to);
+  show("splice range", a);
+  show("spliced range from", c);
+  a.splice_after(a.before_begin(), c, c.begin());
+  show("splice one", a);
+  show("spliced one from", c);
+  auto second = a.begin();
+  ++second;
+  a.splice_after(a.before_begin(), a, second);
+  show("splice one within", a);
+  a.splice_after(a.begin(), a, a.begin());
+  show("splice onto itself", a);
+  a.splice_after(a.before_begin(), ForwardList<int>({20, 21}));
+  show("splice rvalue", a);
+  a.splice_after(a.before_begin(), c, c.before_begin(), c.begin());
+  show("splice empty range", a);
+
+  ForwardList<int> d = {9, 5, 1};
+  ForwardList<int> e = {8, 5, 2};
+  d.merge(e, descending);
+  show("merge less", d);
+  printf("merged from empty %d\n", (int)e.empty());
+  ForwardList<int> f = {1, 2};
+  f.merge(ForwardList<int>({0, 3, 4}));
+  show("merge rvalue", f);
+  ForwardList<int> g;
+  g.merge(f);
+  show("merge into empty", g);
+  ForwardList<int> u = {1, 3, 2, 4, 6, 5, 5};
+  printf("unique removed %d\n", (int)u.unique(sameParity));
+  show("unique same", u);
+  ForwardList<int> w = {1, 1, 2, 2, 2, 3, 1};
+  printf("unique removed %d\n", (int)w.unique());
+  show("unique", w);
+  ForwardList<int> r = {3, 1, 3, 2, 3};
+  printf("remove element %d\n", (int)r.remove(r.front()));
+  show("removed", r);
+  r.swap(w);
+  show("swapped", r);
+  show("swapped other", w);
+
+  ForwardList<Counted> x = {1, 2, 3, 4};
+  ForwardList<Counted> y = {5, 6};
+  ForwardList<Counted> z = {7, 8, 9, 10, 11, 12};
+  copied = 0;
+  copyAssigned = 0;
+  destroyed = 0;
+  x = y;
+  reportCounts("= fewer", x);
+  x = z;
+  reportCounts("= more", x);
+  x.assign(z.begin(), z.begin());
+  reportCounts("assign nothing", x);
+  x.assign(3, Counted(1));
+  reportCounts("assign count", x);
+  x.resize(1, Counted(2));
+  reportCounts("resize down", x);
+  x.resize(3, Counted(2));
+  reportCounts("resize up", x);
+  return 0;
+}

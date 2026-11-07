@@ -67,24 +67,24 @@ public:
 
   ForwardList() {}
 
-  implicit ForwardList(InitializerList<T> items)
-  {
-    ForwardIterator<T> last = this->before_begin();
-    for (const T& item : items)
-      last = this->insert_after(last, item);
-  }
+  implicit ForwardList(InitializerList<T> items) { this->insert_after(this->before_begin(), items.begin(), items.end()); }
+
+  // count value-initialized elements, or count copies of value.
+  explicit ForwardList(ContainerSize count) { this->resize(count); }
+  ForwardList(ContainerSize count, const T& value) { this->insert_after(this->before_begin(), count, value); }
+
+  // The elements of [first, last), input iterators of any kind, in order.
+  template<typename InputIt> requires (!isIntegral<InputIt>)
+  ForwardList(InputIt first, InputIt last) { this->insert_after(this->before_begin(), first, last); }
 
   // `= {...}`: the listed elements, replacing the contents.
   ForwardList<T>& operator=(InitializerList<T> items)
   {
-    this->clear();
-    ForwardIterator<T> last = this->before_begin();
-    for (const T& item : items)
-      last = this->insert_after(last, item);
+    this->assign(items.begin(), items.end());
     return *this;
   }
 
-  ForwardList(const ForwardList<T>& other) { this->copyFrom(other); }
+  ForwardList(const ForwardList<T>& other) { this->insert_after(this->before_begin(), other.begin(), other.end()); }
 
   ForwardList(ForwardList<T>&& other) noexcept
   {
@@ -97,10 +97,7 @@ public:
   ForwardList<T>& operator=(const ForwardList<T>& other)
   {
     if (this != &other)
-    {
-      this->clear();
-      this->copyFrom(other);
-    }
+      this->assign(other.begin(), other.end());
     return *this;
   }
 
@@ -115,11 +112,56 @@ public:
     return *this;
   }
 
+  // Replace the contents: assigned over the elements there are, as std's, the others added or
+  // erased at the back. The range must not be this list's.
+  template<typename InputIt> requires (!isIntegral<InputIt>)
+  void assign(InputIt first, InputIt last)
+  {
+    ForwardIterator<T> previous = this->before_begin();
+    if constexpr (requires { *previous = *first; })
+      for (; previous.node->next != nullptr && first != last; ++first)
+        *++previous = *first;
+    this->erase_after(previous, this->end());
+    this->insert_after(previous, first, last);
+  }
+
+  void assign(ContainerSize count, const T& value)
+  {
+    ForwardIterator<T> previous = this->before_begin();
+    for (; previous.node->next != nullptr && count > 0; --count)
+      *++previous = value;
+    this->erase_after(previous, this->end());
+    this->insert_after(previous, count, value);
+  }
+
+  void assign(InitializerList<T> items) { this->assign(items.begin(), items.end()); }
+
+  // The first newLength elements kept, value-initialized ones (copies of value) added after them.
+  void resize(ContainerSize newLength)
+  {
+    ContainerSize missing = newLength;
+    ForwardIterator<T> last = this->walk(missing);
+    this->erase_after(last, this->end());
+    for (; missing > 0; --missing)
+      last = this->emplace_after(last);
+  }
+
+  void resize(ContainerSize newLength, const T& value)
+  {
+    ContainerSize missing = newLength;
+    ForwardIterator<T> last = this->walk(missing);
+    this->erase_after(last, this->end());
+    this->insert_after(last, missing, value);
+  }
+
+  void swap(ForwardList<T>& other) { ::swap(this->beforeHead.next, other.beforeHead.next); }
+
   bool empty() const { return this->beforeHead.next == nullptr; }
   T& front() const { return ((ForwardNode<T>*)this->beforeHead.next)->value; }
   ForwardIterator<T> before_begin() const { return ForwardIterator<T>((ForwardLinks*)&this->beforeHead); }
   ForwardIterator<T> begin() const { return ForwardIterator<T>(this->beforeHead.next); }
   ForwardIterator<T> end() const { return ForwardIterator<T>(nullptr); }
+  ForwardIterator<T> cbefore_begin() const { return this->before_begin(); }
   ForwardIterator<T> cbegin() const { return this->begin(); }
   ForwardIterator<T> cend() const { return this->end(); }
   // Equal with the same elements in the same order, ordered lexicographically (common.md).
@@ -135,6 +177,25 @@ public:
   // Inserts after position; returns the new element's position.
   ForwardIterator<T> insert_after(ForwardIterator<T> position, const T& value) { return this->emplace_after(position, value); }
   ForwardIterator<T> insert_after(ForwardIterator<T> position, T&& value) { return this->emplace_after(position, move(value)); }
+
+  // count copies of value, or the elements of [first, last) (input iterators of any kind, not this
+  // list's), after position, in order; returns the last one's position, or position for none.
+  ForwardIterator<T> insert_after(ForwardIterator<T> position, ContainerSize count, const T& value)
+  {
+    for (; count > 0; --count)
+      position = this->emplace_after(position, value);
+    return position;
+  }
+
+  template<typename InputIt> requires (!isIntegral<InputIt>)
+  ForwardIterator<T> insert_after(ForwardIterator<T> position, InputIt first, InputIt last)
+  {
+    for (; first != last; ++first)
+      position = this->emplace_after(position, *first);
+    return position;
+  }
+
+  ForwardIterator<T> insert_after(ForwardIterator<T> position, InitializerList<T> items) { return this->insert_after(position, items.begin(), items.end()); }
 
   template<typename... Args>
   ForwardIterator<T> emplace_after(ForwardIterator<T> position, Args&&... args)
@@ -166,8 +227,25 @@ public:
   // Removes every element equal to value; returns how many.
   ContainerSize remove(const T& value)
   {
-    T copy(value); // value may be an element
-    return this->removeIf([&](const T& element) { return element == copy; });
+    // value may be an element of this list: the equal nodes move to another list first, and are
+    // destroyed only when it goes, after the last comparison (as std's, which copies nothing).
+    ForwardList<T> removed;
+    ForwardLinks* removedLast = &removed.beforeHead;
+    ContainerSize count = 0;
+    ForwardLinks* previous = &this->beforeHead;
+    while (previous->next)
+      if (ForwardList<T>::valueOf(previous->next) == value)
+      {
+        ForwardLinks* moved = previous->next;
+        previous->next = moved->next;
+        moved->next = nullptr;
+        removedLast->next = moved;
+        removedLast = moved;
+        ++count;
+      }
+      else
+        previous = previous->next;
+    return count;
   }
 
   // Removes every element for which predicate is true (std's remove_if); returns how many.
@@ -187,6 +265,103 @@ public:
         ++previous;
     }
     return removed;
+  }
+
+  // Removes each element equal to (by == or same(previous, element)) the kept one before it; returns
+  // how many.
+  ContainerSize unique() { return this->unique(EqualTo<>()); }
+
+  template<typename F>
+  ContainerSize unique(F same)
+  {
+    ContainerSize removed = 0;
+    ForwardLinks* kept = this->beforeHead.next;
+    if (kept == nullptr)
+      return 0;
+    while (kept->next)
+      if (same(ForwardList<T>::valueOf(kept), ForwardList<T>::valueOf(kept->next)))
+      {
+        this->erase_after(ForwardIterator<T>(kept));
+        ++removed;
+      }
+      else
+        kept = kept->next;
+    return removed;
+  }
+
+  // Moves all of other's nodes after position, without copying (other ends up empty); O(other's
+  // length), as std's.
+  void splice_after(ForwardIterator<T> position, ForwardList<T>& other)
+  {
+    if (this != &other && !other.empty())
+      this->splice_after(position, other, other.before_begin(), other.end());
+  }
+
+  void splice_after(ForwardIterator<T> position, ForwardList<T>&& other) { this->splice_after(position, other); }
+
+  // Moves the node after it (in other, which may be this list) after position.
+  void splice_after(ForwardIterator<T> position, ForwardList<T>& other, ForwardIterator<T> it)
+  {
+    ForwardLinks* moved = it.node->next;
+    if (position.node == it.node || position.node == moved)
+      return;
+    it.node->next = moved->next;
+    moved->next = position.node->next;
+    position.node->next = moved;
+  }
+
+  void splice_after(ForwardIterator<T> position, ForwardList<T>&& other, ForwardIterator<T> it) { this->splice_after(position, other, it); }
+
+  // Moves the nodes strictly between first and last (in other, which may be this list; position is
+  // not among them) after position.
+  void splice_after(ForwardIterator<T> position, ForwardList<T>& other, ForwardIterator<T> first, ForwardIterator<T> last)
+  {
+    if (first.node->next == last.node)
+      return;
+    ForwardLinks* head = first.node->next;
+    ForwardLinks* tail = head;
+    while (tail->next != last.node)
+      tail = tail->next;
+    first.node->next = last.node;
+    tail->next = position.node->next;
+    position.node->next = head;
+  }
+
+  void splice_after(ForwardIterator<T> position, ForwardList<T>&& other, ForwardIterator<T> first, ForwardIterator<T> last)
+  {
+    this->splice_after(position, other, first, last);
+  }
+
+  // Merges the sorted other into this sorted list by relinking its nodes (stable: other's elements
+  // after equal ones of this list); other ends up empty.
+  void merge(ForwardList<T>& other) { this->merge(other, Less<>()); }
+  void merge(ForwardList<T>&& other) { this->merge(other, Less<>()); }
+
+  template<typename F>
+  void merge(ForwardList<T>&& other, F less) { this->merge(other, less); }
+
+  template<typename F>
+  void merge(ForwardList<T>& other, F less)
+  {
+    if (this == &other)
+      return;
+    ForwardLinks* previous = &this->beforeHead;
+    while (other.beforeHead.next)
+    {
+      ForwardLinks* incoming = other.beforeHead.next;
+      while (previous->next && !less(ForwardList<T>::valueOf(incoming), ForwardList<T>::valueOf(previous->next)))
+        previous = previous->next;
+      if (previous->next == nullptr)
+      {
+        previous->next = incoming;
+        other.beforeHead.next = nullptr;
+        return;
+      }
+      other.beforeHead.next = incoming->next;
+      incoming->next = previous->next;
+      previous->next = incoming;
+      previous = incoming;
+    }
   }
 
   // Stable sort that relinks the nodes; elements do not move (as List's).
@@ -240,11 +415,16 @@ private:
     free(node);
   }
 
-  void copyFrom(const ForwardList<T>& other)
+  static T& valueOf(ForwardLinks* node) { return ((ForwardNode<T>*)node)->value; }
+
+  // The position count elements in (before_begin() for 0), or the last element's when there are
+  // fewer; count is left with how many were missing.
+  ForwardIterator<T> walk(ContainerSize& count) const
   {
-    ForwardIterator<T> last = this->before_begin();
-    for (const T& value : other)
-      last = this->insert_after(last, value);
+    ForwardIterator<T> position = this->before_begin();
+    for (; count > 0 && position.node->next != nullptr; --count)
+      ++position;
+    return position;
   }
 
   ForwardLinks beforeHead; // its next is the first node; end() is null

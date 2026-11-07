@@ -29,10 +29,20 @@ length); other may be an rvalue); `remove(value)`, `removeIf(predicate)`;
 ## ForwardList (singly linked)
 
 As List with one link per node, so only forward iterators and operations at or after a position:
-`push_front`, `emplace_front`, `pop_front`, `front()`, `insert_after(position, value)` and
-`emplace_after(position, args...)` (returning the new element's position), `erase_after(position)`
-and `erase_after(first, last)` (removing what is strictly between; returning the position after
-the removed ones), `before_begin()` (the position before the first element, for inserting at the
-front), `begin()`, `end()`, `empty()`, `remove(value)`, `removeIf(predicate)`, `reverse()`, `sort()`,
-`sort(less)` (stable, relinking the nodes), `clear()`, `= {...}`, `==` and `<=>`.
+`ForwardList()`, `ForwardList({...})`, `ForwardList(count)`, `ForwardList(count, value)`,
+`ForwardList(first, last)`, copy, move, `= {...}`; `assign(first, last)`, `assign(count, value)`,
+`assign({...})` (assigning over the elements there are, as copy assignment and `= {...}` do);
+`resize(n)`, `resize(n, value)`; `push_front`, `emplace_front`, `pop_front`, `front()`;
+`insert_after(position, value)` and `emplace_after(position, args...)` (returning the new element's
+position), `insert_after(position, count, value)`, `insert_after(position, first, last)`,
+`insert_after(position, {...})` (returning the last new element's position, or position for none);
+`erase_after(position)` and `erase_after(first, last)` (removing what is strictly between;
+returning the position after the removed ones); `before_begin()` (the position before the first
+element, for inserting at the front), `cbefore_begin()`, `begin()`, `end()`, `empty()`;
+`splice_after(position, other)` (all of other's nodes, O(their number)), `splice_after(position,
+other, it)` (the node after it), `splice_after(position, other, first, last)` (the nodes strictly
+between), moving nodes without copying, other may be this list (not for the first form) or an
+rvalue; `remove(value)` (value may be an element), `removeIf(predicate)`, `unique()`, `unique(same)`,
+`merge(other)`, `merge(other, less)` (stable, relinking; other may be an rvalue), `reverse()`,
+`sort()`, `sort(less)` (stable, relinking the nodes), `swap(other)`, `clear()`, `==` and `<=>`.
 There is no `size()` (it would be O(n)). Invalidation as for List.

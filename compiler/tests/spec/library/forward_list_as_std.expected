@@ -1,0 +1,47 @@
+count: 0 0 0
+count value: 7 7 7
+range: 1 2 3
+assign count: 9 9
+assign range: 1 2 3
+assign list: 4 5
+resize up: 4 5 0 0
+resize up value: 4 5 0 0 8
+resize down: 4
+resize zero:
+insert range: 1 2 3
+last inserted 3
+insert nothing 1
+insert count: 1 6 6 2 3
+last copy 6
+insert list: 10 11 1 6 6 2 3
+last listed 11
+insert zero 1
+splice all: 1 7 8 9 2 3
+spliced from empty 1
+iterators stay 1 7
+splice range: 11 12 1 7 8 9 2 3
+spliced range from: 10 13
+splice one: 13 11 12 1 7 8 9 2 3
+spliced one from: 10
+splice one within: 12 13 11 1 7 8 9 2 3
+splice onto itself: 12 13 11 1 7 8 9 2 3
+splice rvalue: 20 21 12 13 11 1 7 8 9 2 3
+splice empty range: 20 21 12 13 11 1 7 8 9 2 3
+merge less: 9 8 5 5 2 1
+merged from empty 1
+merge rvalue: 0 1 2 3 4
+merge into empty: 0 1 2 3 4
+unique removed 4
+unique same: 1 2 5
+unique removed 3
+unique: 1 2 3 1
+remove element 3
+removed: 1 2
+swapped: 1 2 3 1
+swapped other: 1 2
+= fewer: copy 0 copy= 2 destroy 2 | 5 6
+= more: copy 4 copy= 2 destroy 0 | 7 8 9 10 11 12
+assign nothing: copy 0 copy= 0 destroy 6 |
+assign count: copy 3 copy= 0 destroy 1 | 1 1 1
+resize down: copy 0 copy= 0 destroy 3 | 1
+resize up: copy 2 copy= 0 destroy 1 | 1 2 2
