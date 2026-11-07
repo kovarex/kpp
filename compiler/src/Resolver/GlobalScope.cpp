@@ -439,9 +439,14 @@ size_t GlobalScope::checkInstanceStaticAsserts(size_t from)
           // Q7: an instance whose base is its parameter overrides or not by that argument; one that says
           // `override` of nothing is an error once required `override` lands (until then only a member
           // called by name is: spec classes/override_of_nothing_in_an_instance_is_error).
-          noteOverrideWarning(Impl::locationOf(c->file, m->token) + ": warning: " + name +
-                              (says ? " says override and overrides nothing in " + impl->types.toString(cls, &impl->symbols)
-                                    : " overrides a virtual function: write override"));
+          uint32_t overrideToken = UINT32_MAX;
+          std::string old = Impl::spelledTokens(c->file, m->token, Impl::declaratorEnd(c->file, m->token, &overrideToken));
+          if (says)
+            noteOverrideWarning(Impl::locationOf(c->file, overrideToken != UINT32_MAX ? overrideToken : m->token) + ": warning: " + name +
+                                " says override and overrides nothing in " + impl->types.toString(cls, &impl->symbols) + ": remove `override`");
+          else
+            noteOverrideWarning(Impl::locationOf(c->file, m->token) + ": warning: " + name + " overrides a virtual function: write `" + old +
+                                " override`, not `" + old + "`");
         }
     }
     Subst subst = impl->substFor(cls);

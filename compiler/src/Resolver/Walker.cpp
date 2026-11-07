@@ -201,6 +201,24 @@ auto GlobalScope::Impl::Walker::checkNotLibrary(const Type* type, uint32_t token
     checkNotLibrary(static_cast<const NamedType*>(type)->name, token);
 }
 
+auto GlobalScope::Impl::Walker::scopedEnumeratorNamed(uint32_t symbol) -> std::string
+{
+  // The scoped enums the scopes around declare, each scope's entries read under its shards' locks (an error's
+  // message only: never on a lookup's path).
+  std::string found;
+  for (Scope* s = scope; s && found.empty(); s = s->parent)
+    for (uint32_t i = 0; i < s->shardCount && found.empty(); ++i)
+    {
+      std::lock_guard lock(s->shards[i].mutex);
+      for (const auto& [entrySymbol, entries] : s->shards[i].map)
+        for (const Entry& e : entries)
+          if (e.decl && e.decl->kind == NodeKind::EnumDecl && static_cast<EnumDecl*>(e.decl)->isClass && e.decl->ownScope &&
+              e.decl->ownScope->find(symbol) && (found.empty() || symbols.name(entrySymbol) < found)) // (the first by spelling)
+            found = symbols.name(entrySymbol);
+    }
+  return found;
+}
+
 auto GlobalScope::Impl::Walker::reportUndeclared(const QualifiedName& name, uint32_t token, const NameExpr* at, bool dependentCall) -> void
 {
   if ((at && at == undeclaredLater) || !file || file->isImported || probing || name.parts.empty() || name.parts[0].symbol == UINT32_MAX)
@@ -255,6 +273,9 @@ auto GlobalScope::Impl::Walker::reportUndeclared(const QualifiedName& name, uint
   }
   else if (const ParsedFile* owner = impl.filePrivateTo(name.parts[0].symbol, file))
     message = "'" + std::string(spelled) + "' is private to " + owner->path;
+  else if (std::string scoped = scopedEnumeratorNamed(name.parts[0].symbol); !scoped.empty())
+    message += " (an enumerator of a scoped enum is named through its enum, in a case label too): write `" + scoped + "::" + std::string(spelled) +
+               "`, not `" + std::string(spelled) + "`";
   else
     for (Scope* library : impl.libraryScopes)
       if (library->find(name.parts[0].symbol))
@@ -1667,10 +1688,14 @@ auto GlobalScope::Impl::Walker::noteImplicitMember(const NameExpr* n, const Look
   if (symbol == UINT32_MAX)
     return;
   std::string name(symbols.name(symbol));
+  // As written (`operator ==`): the operator's tokens, `()` and `[]` two of them.
+  std::string old = !part.special ? name
+                                  : Impl::spelledTokens(file, n->token, n->token + (P(part.opToken) == P::LParen || P(part.opToken) == P::LBracket ? 2 : 1));
+  if (old.empty())
+    return;
   bool isStatic = (d->flags & DF_Static) != 0;
   std::string message = Impl::locationOf(file, n->token) + ": warning: " + name + " is a " +
-                        (isStatic ? "static member" : d->kind == NodeKind::FunctionDecl ? "member function" : "data member") + ": write ";
-  message += (isStatic ? "This::" : "this.") + name; // (a static is no value of the object: `This::count`, design.md 23c)
+                        (isStatic ? "static member" : d->kind == NodeKind::FunctionDecl ? "member function" : "data member");
   for (Scope* s = scope; s; s = s->parent)
     if (s->kind == ScopeKind::Class)
       if (int via = reachThroughBases(s, l.foundIn, 0))
@@ -1686,7 +1711,8 @@ auto GlobalScope::Impl::Walker::noteImplicitMember(const NameExpr* n, const Look
           message += " (a bare " + name + " will be the one around the class)";
         break;
       }
-  noteThisWarning(message);
+  // The fix last, the form an editor's quick fix reads: a static is no value of the object (design.md 23c).
+  noteThisWarning(message + ": write `" + (isStatic ? "This::" : "this.") + old + "`, not `" + old + "`");
 }
 
 auto GlobalScope::Impl::Walker::memberThroughThis(const Lookup& l, const Ty* t) -> const Ty*
@@ -4023,7 +4049,11 @@ auto GlobalScope::Impl::Walker::checkOverride(FunctionDecl* f) -> void
   if (unmarked)
   {
     if (overrides && *overrides)
-      noteOverrideWarning(Impl::locationOf(file, f->token) + ": warning: " + name + " overrides a virtual function: write override");
+    {
+      std::string old = Impl::spelledTokens(file, f->token, Impl::declaratorEnd(file, f->token));
+      noteOverrideWarning(Impl::locationOf(file, f->token) + ": warning: " + name + " overrides a virtual function: write `" + old + " override`, not `" +
+                          old + "`");
+    }
     return;
   }
   if (!overrides || *overrides)

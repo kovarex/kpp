@@ -480,6 +480,8 @@ function that runs every level of a hierarchy. See the readme's Planned.
   and the underlying type is `i32` unless written. A plain `enum class` without the inner block keeps
   C++'s rules.
 - **Why:** it replaces the hand-written tables and macros beside each enum.
+- **Names:** outside the enum an enumerator is `Direction::North`, in a case label too; no bare label and
+  no `.North` shorthand (kovarex, 2026-11-07).
 - **See:** [design 8.4][d8]; spec `kpp/enum_from_str`; the [readme](../readme.md#less-boilerplate).
 
 ```cpp

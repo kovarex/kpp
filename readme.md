@@ -230,11 +230,14 @@ Decided, and not built yet:
 - **Explicit by default.** A constructor or conversion operator converts implicitly only when marked
   `implicit` (`implicit Celsius(double degrees)`). The keyword is accepted today, but an unmarked
   constructor still converts, as in C++.
-- **Required `this.`**: a member is written `this.x`, so that adding a local or a global never changes
-  what an existing line means.
-- **Required `override`** on every function that overrides a virtual one.
-- **`this` is a reference** everywhere: `this.x`, `this[7]`, `!this`. (Inside an enum's methods `this`
-  already is the value.)
+- **Required `this.`**: a member is written `this.x` and a static one `This::count`, so that adding a
+  local or a global never changes what an existing line means; a bare name is never a member.
+  `This` names the class the code is in (`Vector<T>` inside Vector). Outside a scoped enum its values
+  are `Direction::North`, in case labels too.
+- **Required `override`** on every function that overrides a virtual one (or says `final`), and a class
+  with a virtual function always has a virtual destructor.
+- **`this` is a reference** everywhere: `this.x`, `return this;`, `&this` for the pointer. (Inside an
+  enum's methods `this` already is the value.)
 - **macOS as a target**, built on Windows and Linux ([design.md](docs/design.md), "Targets and
   hosts").
 - **Factorio on the bundled toolchain.** The game still builds with an installed Visual Studio

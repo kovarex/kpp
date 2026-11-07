@@ -443,6 +443,15 @@ text)` returns `Optional<E>`; the compiler declares it on every kpp enum and low
 library's `enumFromStr<E>(text)` (stdlib/core/Optional.kpp), which walks `E::values` comparing
 `str()`; a `String` passes its `c_str()`, and a hand-written `fromStr` replaces the generated one.
 
+An enumerator of a scoped enum is named through its enum outside the enum, in a case label too
+(kovarex, 2026-11-07: "for readability and simplicity ... for now, this is a simple rule"):
+`case Direction::North:`, no bare label on a switch over the enum and no `.North` shorthand. Inside the
+enum's own methods `North`, `Direction::North` and `This::North` (23c) all name it. A bare one outside is
+the error "'North' is not declared (...): write `Direction::North`, not `North`" (spec
+language/scoped_enumerator_needs_its_enum;
+the game has none, as kppc never accepted one). An unscoped enum's enumerators are bare today, as in C;
+whether the rule covers them is open with kovarex.
+
 An enumeration of a class template belongs to its instance (2026-11-06): the type carries the
 instance's arguments, so `enum : T`, `sizeof`, promotion, overload ranking, a bit field, `count`,
 `values`, `kppEnumeratorName` and `UnderlyingType` read the argument's type and the instance's
@@ -2182,7 +2191,8 @@ as a virtual call reaches a member no walk does. Exempt: destructors (Q5, below)
 `override` too (kovarex, 2026-11-07, Q6). The check is per instance (Q7): in a class template whose base
 is its parameter, a mixin over polymorphic or plain bases, each instance overrides or not by its argument,
 and the error is at the instance that overrides without saying so or says `override` of nothing; the
-warning names that instance, "g says override and overrides nothing in Mixin<Bare>". `virtual` beside
+warning names that instance, "g says override and overrides nothing in Mixin<Bare>: remove `override`".
+An unmarked one is "g overrides a virtual function: write `int g() const override`, not `int g() const`". `virtual` beside
 `override` stays allowed (Q8).
 
 **A polymorphic class's destructor is virtual** (kovarex, 2026-11-07, Q5; decided, not built). A class with
@@ -2236,7 +2246,7 @@ kovarex, 2026-11-07:
 - **A bare name is a local, a parameter or a global, never a member** (Q10: "required this is the point of
   this, to make it very clear what is meant by saying just speed"). `void setX(i32 x) { this.x = x; }` is
   the form, with no warning for the parameter beside the member. A bare name that would find only a member
-  is the error "write this.speed" ("write This::count" for a static). A bare name with a member and a global
+  is the error "write `this.speed`, not `speed`" ("write `This::count`, not `count`" for a static). A bare name with a member and a global
   of its spelling is the global: until the converter's count is 0 that case is an error too, as a missed
   rewrite would change the meaning silently.
 - **Where it does not apply** (Q11: "the : constructor doesn't need this as it always means this"): the
@@ -2254,7 +2264,8 @@ can become `This`. The parser's and resolver's part of `This` is not built yet.
 It lands as `override` does: a warning under a flag, counted, then the converter, then an error.
 `--this-warnings` is the first step and changes nothing else: each
 unqualified name that finds a data member or a member function of a class is a warning at the name, "x is a
-data member: write this.x" ("a member function"), a static member's "a static member: write This::x". Not
+data member: write `this.x`, not `x`" ("a member function"), a static member's "a static member: write
+`This::x`, not `x`", the editor's quick fix (F) reading the fix from that last clause. Not
 warned: a name that finds a local or a parameter first (Q10), types, enumerators, nested classes, the name a
 member initializer initializes (`: x(1)`, its argument is code), and a name inside a parameter's, a data
 member's or a function's leading return type (Q11), where `this` is no value. A default member initializer, a
@@ -2305,6 +2316,14 @@ kovarex answered Q13 to Q17 on 2026-11-07, as recommended but for Q13. `this` na
 `this[7]`, `!this` and `this + 1` act on the object, as a reference's do. An enum's methods already have
 `this` as the value. The order, as for `override`: warnings under a flag counted on the game, then C's
 converter rewrite, then the errors.
+
+### 23e. A fix in a message (F, 2026-11-07)
+An error or warning whose fix is mechanical ends, before any " (design.md N)", with exactly one of two
+clauses, which the editor's quick fix reads: "write `NEW`, not `OLD`" ("write `this.width`, not `width`",
+"write `Direction::North`, not `North`", "write `int g() const override`, not `int g() const`") or "remove `OLD`".
+OLD is the source's text as written, starting at the message's line and column: the server replaces it only
+when that exact text starts there. Notes go before the clause. So far: --this-warnings, --override-warnings,
+a bare enumerator of a scoped enum.
 
 ### 24. The compiler's own sources: laid out as Factorio's (decided 2026-11-05)
 kovarex, 2026-11-05: the compiler's C++ follows Factorio's layout, "one class per file, classes with

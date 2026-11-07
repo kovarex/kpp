@@ -1,0 +1,18 @@
+// spec: an enumerator of a scoped enum is named through its enum outside the enum, in a case label too (kovarex, 2026-11-07): a bare one is an error that names the fix
+// error: scoped_enumerator_needs_its_enum.kpp:9: error: 'North' is not declared (an enumerator of a scoped enum is named through its enum, in a case label too): write `Direction::North`, not `North`
+// error: scoped_enumerator_needs_its_enum.kpp:16: error: 'East' is not declared (an enumerator of a scoped enum is named through its enum, in a case label too): write `Direction::East`, not `East`
+enum class Direction { North, East };
+int code(Direction d)
+{
+  switch (d)
+  {
+    case North: return 1;
+    case Direction::East: return 2;
+  }
+  return 0;
+}
+int main()
+{
+  Direction d = East;
+  return code(d);
+}

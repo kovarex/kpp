@@ -1,11 +1,11 @@
 // spec: --override-warnings: a function that overrides a virtual one and does not say so is a warning at its name, in a class and in an instance whose base is its parameter, as is an instance's `override` of nothing (a mixin over a plain base), at the declaration and never on an out-of-line definition, which cannot say it; a destructor, `final`, `override`, a hiding non-virtual and a new function are not
 // kppc: --override-warnings
-// warning: override_warnings_mode.kpp:22: warning: f overrides a virtual function: write override
-// warning: override_warnings_mode.kpp:31: warning: g overrides a virtual function: write override
-// warning: override_warnings_mode.kpp:37: warning: g overrides a virtual function: write override
+// warning: override_warnings_mode.kpp:22: warning: f overrides a virtual function: write `void f() override`, not `void f()`
+// warning: override_warnings_mode.kpp:31: warning: g overrides a virtual function: write `int g() const override`, not `int g() const`
+// warning: override_warnings_mode.kpp:37: warning: g overrides a virtual function: write `int g() const override`, not `int g() const`
 // no-warning: override_warnings_mode.kpp:39:
 // no-warning: override_warnings_mode.kpp:40:
-// warning: override_warnings_mode.kpp:49: warning: g says override and overrides nothing in Mixin<Bare>
+// warning: override_warnings_mode.kpp:49: warning: g says override and overrides nothing in Mixin<Bare>: remove `override`
 class Base
 {
 public:

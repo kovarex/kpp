@@ -343,6 +343,9 @@
     // of a class, which required `this.` writes `this.x` (a static one `This::x`). A name a dependent base
     // gave (`struct D : B<T>`) says what C++ finds instead, which never searches such a base.
     void noteImplicitMember(const NameExpr* n, const Lookup& l);
+    // The name of a scoped enum the scopes around declare with an enumerator spelled symbol, for "write
+    // Direction::North"; empty when there is none.
+    std::string scopedEnumeratorNamed(uint32_t symbol);
     // Inside a parameter's, a data member's or a function's leading return type, where `this` is no
     // value and a name needs no `this.` (design.md 23c).
     int declaredTypes = 0;

@@ -1621,6 +1621,41 @@ static std::string placeOf(const ParsedFile* file, uint32_t token)
 
 auto GlobalScope::Impl::locationOf(const ParsedFile* file, uint32_t token) -> std::string { return placeOf(file, token); }
 
+auto GlobalScope::Impl::spelledTokens(const ParsedFile* file, uint32_t first, uint32_t last) -> std::string
+{
+  if (!file || !file->tokens || first > last || last >= file->tokens->size())
+    return {};
+  const Token& a = (*file->tokens)[first];
+  const Token& b = (*file->tokens)[last];
+  size_t end = std::min<size_t>(size_t(b.offset) + b.length, file->text.size());
+  return a.offset < end ? std::string(file->text.substr(a.offset, end - a.offset)) : std::string();
+}
+
+auto GlobalScope::Impl::declaratorEnd(const ParsedFile* file, uint32_t name, uint32_t* overrideToken) -> uint32_t
+{
+  if (overrideToken)
+    *overrideToken = UINT32_MAX;
+  if (!file || !file->tokens || name >= file->tokens->size())
+    return name;
+  const std::vector<Token>& tokens = *file->tokens;
+  int depth = 0;
+  uint32_t last = name;
+  for (uint32_t i = name; i < tokens.size() && i < name + 4096; ++i)
+  {
+    const Token& t = tokens[i];
+    if (t.is(P::LParen) || t.is(P::LBracket))
+      ++depth;
+    else if (t.is(P::RParen) || t.is(P::RBracket))
+      --depth;
+    else if (depth == 0 && i > name && (t.is(P::LBrace) || t.is(P::Semi) || t.is(P::Assign) || t.is(P::RBrace)))
+      break;
+    if (overrideToken && depth == 0 && t.getKind() == TokenKind::Identifier && file->text.substr(t.offset, t.length) == "override")
+      *overrideToken = i;
+    last = i;
+  }
+  return last;
+}
+
 std::string CheckerError::text() const { return placeOf(this->file, this->token) + ": error: " + this->message; }
 
 auto GlobalScope::Impl::reportCheckerError(const ParsedFile* file, uint32_t token, const std::string& message) -> void

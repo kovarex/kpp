@@ -282,6 +282,12 @@
 
   // `path:line` of a token, `path:line:column` with --diagnostic-columns (sourceLocation).
   static std::string locationOf(const ParsedFile* file, uint32_t token);
+  // The source text from token first to token last as written, for a fix's "write `NEW`, not `OLD`" (the
+  // editor's quick fix replaces OLD where it starts, at the location's column); empty when out of range.
+  static std::string spelledTokens(const ParsedFile* file, uint32_t first, uint32_t last);
+  // A function declaration whose name is at token name: the last token of its declarator, before the body,
+  // `;`, `= 0` or `= default` (`g() const`, `f() noexcept`), and the token `override` among them if any.
+  static uint32_t declaratorEnd(const ParsedFile* file, uint32_t name, uint32_t* overrideToken = nullptr);
 
   void reportCheckerError(const ParsedFile* file, uint32_t token, const std::string& message);
 
