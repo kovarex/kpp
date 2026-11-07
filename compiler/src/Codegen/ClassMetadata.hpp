@@ -457,6 +457,9 @@
     // t with the template parameters of the instantiation being emitted replaced by their
     // arguments, for an expression the type checker typed with a parameter left in.
     const Ty* withCurrentArgs(const Ty* t, int depth = 0);
+    // t when it is an enumeration of a class template's instance (`S<long long>::Dir`), as the code
+    // emitted now binds its arguments, unqualified; otherwise null. Its methods are that instance's.
+    const Ty* enumInstance(const Ty* t);
 
     // Whether a temporary of class t may move to the object it initialises bitwise, as if it had been
     // built there (C++17 builds a prvalue in its object; kppc may build it in a slot of its own first):

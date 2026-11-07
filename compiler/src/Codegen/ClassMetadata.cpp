@@ -3037,6 +3037,12 @@ auto codegen::Emitter::withCurrentArgs(const Ty* t, int depth) -> const Ty*
   }
 }
 
+auto codegen::Emitter::enumInstance(const Ty* t) -> const Ty*
+{
+  t = t ? withCurrentArgs(types.unqualified(types.stripRef(t))) : nullptr;
+  return t && t->kind == TyKind::Enum && !t->args.empty() && !types.isDependent(t) ? t : nullptr;
+}
+
 auto codegen::Emitter::relocatesBitwise(const Ty* t, Node* at, int depth) -> bool
 {
   t = types.unqualified(types.stripRef(t));

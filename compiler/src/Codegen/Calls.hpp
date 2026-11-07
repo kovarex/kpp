@@ -62,7 +62,7 @@
     Value enumIntrinsic(int which, CallExpr* c);
 
     // The generated `const char* str() const` of a kpp enum: a switch over the enumerators.
-    void emitEnumStr(FunctionDecl* f, const std::string& name);
+    void emitEnumStr(FunctionDecl* f, const std::string& name, const Ty* classTy);
 
     // The class a friend function defined in a class (a hidden friend, a static member to the
     // compiler) is called through: for one of a class template, the instance among the arguments'

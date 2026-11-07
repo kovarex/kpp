@@ -1,3 +1,9 @@
-north 1
-east 0
-south 0
+north 1 6
+east 0 12
+south 0 600
+wide 0 16
+north 1 6
+east 0 12
+south 0 600
+wide 0 4
+6

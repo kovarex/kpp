@@ -72,6 +72,12 @@ auto GlobalScope::Impl::selfType(Decl* d) -> const Ty*
   return types.classType(d, Span<const Ty*>{args.data(), uint32_t(args.size())});
 }
 
+auto GlobalScope::Impl::thisTypeOf(const Ty* objectType) -> const Ty*
+{
+  const Ty* t = types.unqualified(types.stripRef(objectType));
+  return t->kind == TyKind::Enum ? types.lref(t) : types.pointer(t);
+}
+
 auto GlobalScope::Impl::substFor(const Ty* classTy) -> Subst
 {
   Subst s;

@@ -449,10 +449,11 @@ instance's arguments, so `enum : T`, `sizeof`, promotion, overload ranking, a bi
 enumerators (GlobalScope::underlyingOf, one answer for the checker and the code generator). One in a
 function's body is a copy of that instance's, whose walk keeps what its arguments make the underlying
 type. Off Windows one without a fixed type is as wide as that instance's enumerators; on Windows it
-stays int, as MSVC's is (clang's MSVC target widens it: not followed). Open: an enumeration's methods
-and `str()` are not emitted per instance, a compile error (pending spec kpp/enum_method_of_class_template).
-Specs language/enum_underlying_type_from_template_parameter, enum_local_to_a_template_instance,
-enum_wider_than_int_in_a_template and kpp/enum_of_a_class_template_instance.
+stays int, as MSVC's is (clang's MSVC target widens it: not followed). Its methods, `str()` and
+`fromStr()` are the instance's: a call passes the enumeration's type with its arguments as the class
+type, its body is typed and emitted per instance (2026-11-07; a compile error before). Specs
+language/enum_underlying_type_from_template_parameter, enum_local_to_a_template_instance,
+enum_wider_than_int_in_a_template, kpp/enum_of_a_class_template_instance and enum_method_of_class_template.
 
 **8.5 Typed unions**, the proposal's `union enum`: an enum whose every value carries a typed
 payload, stored as the tag plus storage for the largest alternative.
@@ -1017,9 +1018,9 @@ Volatile (2026-11-06). A read or a write of a volatile scalar is `load volatile`
 through its name, a pointer, a reference, an element, a member of a volatile object, whose members are
 volatile as a const object's are const. Before this nothing reached the IR and an optimized build moved
 such reads out of loops (silent wrong answer, spec language/volatile_access_is_kept_by_the_optimizer).
-Open: `this` is not volatile in a volatile member function, so a member read there is a plain read
-(pending language/volatile_member_function_reads_its_members_as_volatile); a volatile class copied
-whole, and a volatile bit field, are plain accesses. Volatile overloads as const does (classes/overloads_on_volatile): it
+In a volatile member function `this` points to a volatile object, so its members are volatile, a
+mutable one too (language/volatile_member_function_reads_its_members_as_volatile, 2026-11-07). Open: a
+volatile class copied whole, and a volatile bit field, are plain accesses. Volatile overloads as const does (classes/overloads_on_volatile): it
 is part of a member function's identity, its name in the IR and its out-of-line match, a `volatile`
 object takes volatile members only, and a qualification more is the worse conversion. An out-of-line
 pair that differed only in const or volatile took the first definition found.

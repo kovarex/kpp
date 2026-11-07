@@ -26,6 +26,9 @@
   const Ty* tagTypeOf(ClassDecl* u, const Ty* of);
 
   const Ty* selfType(Decl* d);
+  // `this` in a member function called on an object of type objectType: a pointer to it, in an
+  // enumeration's method the value (a reference to it).
+  const Ty* thisTypeOf(const Ty* objectType);
 
   // Maps the template parameters of `cls` to the arguments of an instantiation type.
   Subst substFor(const Ty* classTy);

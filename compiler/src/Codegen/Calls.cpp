@@ -143,10 +143,12 @@ static bool namesCLongDouble(const Type* t, int depth = 0)
 
 auto codegen::Emitter::useFunction(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy, Node* at) -> std::string
 {
-  if (f->parent && f->parent->kind == NodeKind::EnumDecl && !f->builtin)
+  // A method of an enumeration of a class template is the instance's (`S<long long>::Dir::str`): its
+  // type, with the arguments, is the class type a call passes.
+  if (f->parent && f->parent->kind == NodeKind::EnumDecl && !enumInstance(classTy))
     for (Decl* o = f->parent; o && (o->kind == NodeKind::ClassDecl || o->kind == NodeKind::EnumDecl); o = o->parent)
       if (!o->templateParams.empty())
-        unsupported(at ? at : f, "a method of an enumeration of a class template"); // (no instance of it is emitted: pending spec kpp/enum_method_of_class_template)
+        unsupported(at ? at : f, "a method of an enumeration of a class template, called without its instance");
   if (f->builtin == BUILTIN_EnumFromStr)
     return useFunctionOnce(f, args, classTy);
   // An imported C function that takes or returns C's long double, or a pointer to one, off Windows:
@@ -217,7 +219,7 @@ auto codegen::Emitter::useFunctionOnce(FunctionDecl* f, const TemplateArgs& args
     if (!lib || lib->templateParams.size() != 1 || !f->parent || f->parent->kind != NodeKind::EnumDecl)
       unsupported(f, "E::fromStr without the library's enumFromStr<E>");
     TemplateArgs libArgs;
-    libArgs.pairs.push_back({lib->templateParams[0], types.enumType(f->parent)});
+    libArgs.pairs.push_back({lib->templateParams[0], enumInstance(classTy) ? enumInstance(classTy) : types.enumType(f->parent)});
     return useFunction(static_cast<FunctionDecl*>(lib), libArgs, nullptr);
   }
   std::string name = functionName(f, args, classTy);
@@ -289,7 +291,7 @@ auto codegen::Emitter::useFunctionOnce(FunctionDecl* f, const TemplateArgs& args
   }
   if (f->builtin == BUILTIN_EnumStr)
   {
-    emitEnumStr(f, name);
+    emitEnumStr(f, name, classTy);
     return name;
   }
   // A function of the program's own (not C's) with no definition found: only declared, it would
@@ -372,21 +374,23 @@ auto codegen::Emitter::enumIntrinsic(int which, CallExpr* c) -> Value
   return {r, charPointer};
 }
 
-auto codegen::Emitter::emitEnumStr(FunctionDecl* f, const std::string& name) -> void
+auto codegen::Emitter::emitEnumStr(FunctionDecl* f, const std::string& name, const Ty* classTy) -> void
 {
   emittingShared = true;
   auto* e = static_cast<EnumDecl*>(f->parent);
-  std::string k = llType(enumUnderlying(e), f), cases, blocks;
+  const Ty* et = enumInstance(classTy) ? enumInstance(classTy) : types.enumType(e); // (of a class template's enumeration, the instance's values)
+  std::string k = llType(enumUnderlying(et), f), cases, blocks;
   int i = 0;
   std::set<std::string> seen; // (of enumerators of one value, the first names it)
   for (Decl* d : e->enumerators)
     if (d->kind == NodeKind::EnumeratorDecl)
     {
       auto* en = static_cast<EnumeratorDecl*>(d);
-      if (!seen.insert(std::to_string(enumeratorValue(en))).second)
+      std::string value = std::to_string(enumeratorValue(en, et));
+      if (!seen.insert(value).second)
         continue;
       std::string l = "e" + std::to_string(i++);
-      cases += "    " + k + " " + std::to_string(enumeratorValue(en)) + ", label %" + l + "\n";
+      cases += "    " + k + " " + value + ", label %" + l + "\n";
       blocks += l + ":\n  ret ptr " + cStringConstant(sym(en->name)) + "\n";
     }
   shared += "$" + name.substr(1) + " = comdat any\n"
@@ -414,7 +418,9 @@ auto codegen::Emitter::friendClass(FunctionDecl* f, const std::vector<const Ty*>
 auto codegen::Emitter::calleeArgs(FunctionDecl* f, const Ty* classTy, CallExpr* call, Node* at) -> TemplateArgs
 {
   TemplateArgs args;
-  if (classTy)
+  if (const Ty* e = enumInstance(classTy))
+    args = global.classArgsOf(e); // (a method of S<long long>::Dir: T is long long)
+  else if (classTy)
     args = global.classArgsOf(canonicalClass(classTy, at));
   if (!f->templateParams.empty())
   {

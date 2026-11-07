@@ -1625,14 +1625,20 @@ auto GlobalScope::Impl::Walker::resolveName(NameExpr* e) -> const Ty*
 
 auto GlobalScope::Impl::Walker::memberThroughThis(const Lookup& l, const Ty* t) -> const Ty*
 {
-  if (!t || !t->isKnown() || t->isReference() || Impl::isConstObject(t) || l.found != Found::Member || !l.decl || l.decl->kind != NodeKind::VariableDecl ||
-      (l.decl->flags & (DF_Static | DF_Mutable | DF_Typedef)) || !l.foundIn || l.foundIn->kind != ScopeKind::Class || !thisType ||
-      thisType->kind != TyKind::Pointer || !thisType->inner || !thisType->inner->isConst)
+  // In a const member function a data member is const, unless mutable; in a volatile one volatile,
+  // a mutable one too ([dcl.stc] 10 lifts const alone).
+  if (!t || !t->isKnown() || t->isReference() || l.found != Found::Member || !l.decl || l.decl->kind != NodeKind::VariableDecl ||
+      (l.decl->flags & (DF_Static | DF_Typedef)) || !l.foundIn || l.foundIn->kind != ScopeKind::Class || !thisType ||
+      thisType->kind != TyKind::Pointer || !thisType->inner)
+    return t;
+  bool addConst = thisType->inner->isConst && !(l.decl->flags & DF_Mutable) && !Impl::isConstObject(t);
+  bool addVolatile = thisType->inner->isVolatile && !t->isVolatile;
+  if (!addConst && !addVolatile)
     return t;
   Scope* self = impl.classScopeOf(types.unqualified(thisType->inner));
   if (!self || !reachesClassScope(self, l.foundIn, 0))
     return t;
-  return types.qualified(t, true, t->isVolatile);
+  return types.qualified(t, t->isConst || addConst, t->isVolatile || addVolatile);
 }
 
 auto GlobalScope::Impl::Walker::memberOfQualifierInstance(NameExpr* e) -> Lookup
@@ -2207,8 +2213,8 @@ auto GlobalScope::Impl::Walker::typeOfMember(MemberExpr* m) -> const Ty*
       !r.type->isReference() && r.type->isKnown() && !Impl::isConstObject(r.type))
     if (const Ty* obj = types.stripRef(object); obj && obj->isConst)
       return types.qualified(r.type, true, r.type->isVolatile || obj->isVolatile);
-  // (of a volatile one volatile, the same way, and read and written as one)
-  if (r.type && r.decl && r.decl->kind == NodeKind::VariableDecl && !(r.decl->flags & (DF_Static | DF_Mutable | DF_Typedef)) && !r.type->isReference() && r.type->isKnown())
+  // (of a volatile one volatile, the same way, a mutable one too, and read and written as one)
+  if (r.type && r.decl && r.decl->kind == NodeKind::VariableDecl && !(r.decl->flags & (DF_Static | DF_Typedef)) && !r.type->isReference() && r.type->isKnown())
     if (const Ty* obj = types.stripRef(object); obj && obj->isVolatile)
       return types.qualified(r.type, r.type->isConst, true);
   return r.type ? r.type : types.unknown();
@@ -7280,8 +7286,9 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
       }
       if (f->flags & DF_Static)
         thisType = nullptr;
-      else if ((f->flags & DF_Const) && thisType && thisType->kind == TyKind::Pointer && !thisType->inner->isConst)
-        thisType = impl.types.pointer(impl.types.qualified(thisType->inner, true, false)); // `const C* this` in a const method
+      else if ((f->flags & (DF_Const | DF_Volatile)) && thisType && thisType->kind == TyKind::Pointer)
+        thisType = impl.types.pointer(impl.types.qualified(thisType->inner, thisType->inner->isConst || (f->flags & DF_Const), // `const C* this` in a const method,
+                                                           thisType->inner->isVolatile || (f->flags & DF_Volatile)));       // `volatile C* this` in a volatile one
       FunctionDecl* savedBodyOf = bodyOf;
       bodyOf = f;
       walkStmt(f->body);

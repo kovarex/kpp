@@ -607,7 +607,7 @@ auto codegen::Emitter::callValue(CallExpr* c, const std::string& sret) -> Value
         if (!currentClassTy)
           unsupported(c, "a method call outside a method");
         thisArg = thisPointer(c);
-        classTy = isClass(currentClassTy) ? currentClassTy : nullptr;
+        classTy = isClass(currentClassTy) ? currentClassTy : enumInstance(currentClassTy); // (`isNorth()` in another method of S<T>::Dir)
         // `Right::get()`, `Chain<Tail...>::count()` in Chain<Head, Tail...>: this->Right::get().
         if (const Ty* qualifier = owner->kind == NodeKind::ClassDecl && classTy ? implicitThisQualifier(n, c) : nullptr)
           moveToQualifier(classTy, thisArg, f, qualifier, c);
@@ -624,7 +624,7 @@ auto codegen::Emitter::callValue(CallExpr* c, const std::string& sret) -> Value
         }
       }
       std::string indirect;
-      if (classTy && n->name.parts.size() == 1 && !thisArg.empty())
+      if (classTy && isClass(classTy) && n->name.parts.size() == 1 && !thisArg.empty())
         if (int slot = slotOf(classTy, f, c); slot >= 0)
           indirect = loadSlot(thisArg, slot);
       if (!classTy && (f->flags & DF_Static) && n->name.parts.size() == 1 && currentClassTy && isClass(currentClassTy))
@@ -659,6 +659,8 @@ auto codegen::Emitter::callValue(CallExpr* c, const std::string& sret) -> Value
           classTy = declaring;
         else if (q && isClass(q) && !q->args.empty())
           classTy = canonicalClass(q, c);
+        else if (enumInstance(q))
+          classTy = enumInstance(q); // `S<short>::Dir::fromStr(text)`
       }
       // move(x) and forward(x): identity casts (lref -> rref in the type system,
       // but both are just a pointer in LLVM IR).
@@ -884,7 +886,7 @@ auto codegen::Emitter::callValue(CallExpr* c, const std::string& sret) -> Value
           }
         }
         else
-          objectTy = nullptr; // an enum: no class arguments, no bases
+          objectTy = enumInstance(objectTy); // an enum: no bases; of a class template's, its instance's arguments
       }
       else if (m->base)
       {
@@ -904,7 +906,7 @@ auto codegen::Emitter::callValue(CallExpr* c, const std::string& sret) -> Value
         }
       }
       std::string indirect;
-      if (objectTy && !thisArg.empty() && m->member.parts.size() == 1)
+      if (objectTy && isClass(objectTy) && !thisArg.empty() && m->member.parts.size() == 1)
         if (int slot = slotOf(objectTy, f, c); slot >= 0)
           indirect = loadSlot(thisArg, slot);
       return callFunction(f, calleeArgs(f, objectTy, c, c), objectTy, thisArg, sret, c->args, c, indirect);

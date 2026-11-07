@@ -1833,7 +1833,7 @@ const Ty* GlobalScope::typeFunctionFor(FunctionDecl* f, FunctionDecl* nodes, con
     fprintf(stderr, "%s\n", line.c_str());
   }
   if (objectType)
-    w.thisType = impl.types.pointer(impl.types.unqualified(impl.types.stripRef(objectType)));
+    w.thisType = impl.thisTypeOf(objectType);
   else if (Decl* cls = Impl::enclosingClassDecl(w.scope))
     w.thisType = impl.types.pointer(impl.substitute(impl.selfType(cls), subst));
   if (nodes != f && nodes->body)
@@ -1862,7 +1862,7 @@ FunctionDecl* GlobalScope::instanceBody(FunctionDecl* f, const TemplateArgs& arg
   Subst subst = toSubst(args);
   const Ty* thisType = nullptr;
   if (objectType)
-    thisType = impl.types.pointer(impl.types.unqualified(impl.types.stripRef(objectType)));
+    thisType = impl.thisTypeOf(objectType);
   else if (Decl* cls = owningClass(f))
     thisType = impl.types.pointer(impl.substitute(impl.selfType(cls), subst));
   bool producer;
