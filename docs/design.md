@@ -97,8 +97,10 @@ builds win less unless machine code is cached per function.
   metaprogramming language.
 - Kept: type and value parameters, variadic parameters, full specialization,
   `if constexpr`, constraints written as plain conditions (`requires`-like).
-- Dropped: SFINAE / `enable_if` tricks, template metaprogramming as computation,
-  `typename` / `template` disambiguators.
+- SFINAE stays, for C++ compatibility (kovarex, 2026-11-07, F's question: imported C++ libraries rely on
+  it): a candidate whose substitution fails is removed, as C++ removes it. kpp's own code writes
+  `requires`; `EnableIf` and `VoidT` stay in the library for imported or unconverted code.
+- Dropped: template metaprogramming as computation, `typename` / `template` disambiguators.
 - Compile-time computation is done with ordinary constexpr code run by an interpreter.
 - Factorio survey: almost no SFINAE (2 `enable_if`, 1 `void_t`), but 593 full
   specializations, plus `if constexpr`, `requires` and variadics, so those stay.
@@ -4581,13 +4583,47 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   funclets' UnwindHelp on Windows). Specs language/destructor_*, language/noexcept_*destructor*,
   templates/destructor_*.
 
-- **No implicit fallthrough, in three steps** (C's plan, 2026-11-06; readme's Planned; the rules wait for kovarex, thread
-  D's survey in the coordinator's notes). Step 1, built: a case that can reach the next label without saying so is an
-  error, `switch` keeping C++'s meaning (Walker::checkCaseEnds, by the statements alone: `break`, `return`,
-  `continue`, `goto`, `throw`, `fallthrough;`, a block or both branches of an `if` ending so), and `[[fallthrough]];`
-  is the statement `fallthrough;` is. So what every case does is written before the meaning changes. Step 2: the implicit
-  break, the game's IR byte-identical across it, the evaluator flipped by the specs. Step 3, optional: the converter drops
-  the `break;` that ends a case. Specs language/switch_case_running_on_is_error, switch_case_ends_written.
+- **No implicit fallthrough** (readme's Planned; rules decided by kovarex 2026-11-07 on thread D's questions, Q5 and Q6
+  changed on his rule "no keyword that does nothing"; the steps are C's plan of 2026-11-06). Every group of statements
+  after a label ends with an implicit `break`:
+  1. Labels side by side share their statements: `case A: case B: x();` is one group (2,956 in the game).
+  2. `fallthrough;` is the last statement of a group with another group after it (Go's rule); anywhere else, inside an
+     `if`, in the last group or outside a switch, it is an error.
+  3. A label nested in another statement (Duff's device) is an error: it means nothing with implicit breaks (J's held item
+     closes as refused).
+  4. Each group is a scope of its own: `case 1: Foo f; ...` needs no braces, and two groups may declare one name.
+  5. `break;` keeps only its early-exit meaning (inside an `if`, in the middle of a group); a `break;` that is a group's
+     last statement is an error naming the fix ("every case ends with a break, remove it").
+  6. `[[fallthrough]];` is an error: `fallthrough;` alone says it.
+  Step 1, built: a case that can reach the next label without saying so is an error, `switch` keeping C++'s meaning
+  (Walker::checkCaseEnds, by the statements alone: `break`, `return`, `continue`, `goto`, `throw`, `fallthrough;`, a block
+  or both branches of an `if` ending so), so what every case does is written before the meaning changes. Then: the count
+  of trailing `break;`s in the game and in kpp's own code, the converter's removal of them (C; it writes `fallthrough;`
+  alone), kpp's stdlib, libraries and programs cleaned, and step 2, the flip with the errors above, the game's IR
+  byte-identical across it, the evaluator flipped by the specs. Specs language/switch_case_running_on_is_error,
+  switch_case_ends_written.
+
+- **Explicit by default** (readme's Planned; decided by kovarex 2026-11-07 on thread D's questions, Q1 and Q3 reshaped;
+  D's survey in the coordinator's notes). A constructor or a conversion operator converts implicitly only when marked
+  `implicit`; an unmarked one is what C++'s `explicit` one is.
+  1. A braced list without a name as a function argument is an error naming the fix: `draw({1, 0, 0})` is written
+     `draw(Color(1, 0, 0))` (kovarex: unreadable, ambiguous beside `draw(Color(1, 0, 0))`, and a new overload
+     `draw(const Vector3&)` would break the untouched line). In `return {x, y};` and a variable's `Color c = {1, 0, 0};`
+     a list of two or more values takes a constructor with no mark, and `{a}` needs `implicit`, as `= a` does. `{}`,
+     an aggregate's list and an InitializerList's stay as they are outside arguments; whether they are refused as
+     arguments too he decides on the count (D-braced-list-arguments-survey.md in the coordinator's notes).
+  2. A default constructor is never a conversion: `T x = {};` and `return {};` take an unmarked one.
+  3. `explicit` is removed ("we remove explicit to remove a keyword that does nothing, the goal is clean language"):
+     plain `explicit` is an error naming the fix ("constructors are explicit by default, remove explicit"), and
+     `explicit(cond)` is written `implicit(cond)`, the positive form: `implicit(isConvertible<U, T>) Optional(U&& v)`.
+     `implicit` twice, or `implicit(cond)` beside a plain `implicit`, is an error.
+  4. A contextual conversion (`if`, `while`, `!`, `&&`, `||`, `?:`) takes an unmarked `operator bool`, as C++'s
+     `explicit operator bool`; `switch` on a class needs a marked conversion, as C++ needs a non-explicit one.
+  5. Class template argument deduction by copy (`Box b = 5;`) takes marked constructors only, as C++'s explicit guide is
+     no candidate there; written guides are as in C++.
+  6. Inherited constructors keep their base's mark; a copy or move constructor is never a conversion.
+  The order: the counts and the marks first (the converter marks the game, C; the stdlib's `implicit(cond)`s and
+  Atomic's `operator T`), the warnings, then the flip with the errors, the headline staying 0.
 
 - **The noexcept operator** (D, 2026-11-06, [except.spec] 6) answers for any operand: what it names and what it
   calls without naming it (Walker::canThrow): a class's operators, constructions, implicit and defaulted

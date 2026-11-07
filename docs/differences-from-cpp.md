@@ -443,10 +443,16 @@ Pinned make() { Pinned p; return p; }   // compiles: an error in C++
 ### Explicit by default (this stage)
 
 - **C++:** a constructor or conversion operator converts implicitly unless marked `explicit`.
-- **kpp:** it converts implicitly only when marked `implicit`. The keyword is accepted today, and an
+- **kpp:** it converts implicitly only when marked `implicit`, and `explicit` is gone: plain `explicit`
+  is an error, and `explicit(cond)` is written `implicit(cond)`. A braced list without a name is no
+  function argument: `draw(Color(1, 0, 0))`, not `draw({1, 0, 0})`. In `return {x, y};` and `Color c =
+  {1, 0, 0};` a list of two or more values takes any constructor, and `{a}` needs `implicit`. A default
+  constructor is never a conversion; `if (x)` takes an unmarked `operator bool`, a `switch` a marked
+  conversion; `Box b = 5;` deduces from marked constructors only. The keyword is accepted today, and an
   unmarked constructor still converts.
-- **Why:** an implicit conversion should be something the author asked for.
-- **See:** [design 6][d6]; spec `kpp/implicit_constructors`.
+- **Why:** an implicit conversion should be something the author asked for, and a keyword that does
+  nothing goes (kovarex, 2026-11-07).
+- **See:** [design 6][d6] and its "Explicit by default" entry; spec `kpp/implicit_constructors`.
 
 ```cpp
 struct Celsius { implicit Celsius(double degrees); };
@@ -503,9 +509,15 @@ enum class Direction : u8
 ### No implicit fallthrough (this stage)
 
 - **C++:** a `case` runs into the next without `break`.
-- **kpp:** every `case` ends with an implicit `break`, and falling through is written `fallthrough;`.
-  That statement is accepted today, but `switch` keeps C++'s rules.
-- **See:** [design 6][d6]; the readme's Planned.
+- **kpp:** every group of statements after a label ends with an implicit `break`; labels side by side
+  share one group, and falling through is `fallthrough;` as a group's last statement. A `break;` that
+  ends a group, `[[fallthrough]];` and a label nested in another statement are errors, and each group
+  is a scope of its own. Built so far: a case that can reach the next label without `break;`,
+  `fallthrough;`, `return`, `continue`, `goto` or `throw` is an error, `switch` keeping C++'s meaning.
+- **Why:** falling through by accident is a bug class; a keyword that does nothing goes (kovarex,
+  2026-11-07).
+- **See:** [design 6][d6] and its "No implicit fallthrough" entry; specs
+  `language/switch_case_running_on_is_error`, `language/switch_case_ends_written`.
 
 ### Typed unions (built)
 
@@ -559,6 +571,16 @@ p[Property::Text] = String("hello");
 int twice(int x) { return x * 2; }
 static_assert(twice(4) == 8);
 ```
+
+### SFINAE works, kpp code writes `requires` (built)
+
+- **C++:** a candidate whose substitution fails is dropped, and `enable_if` and `void_t` lean on it.
+- **kpp:** the same, kept for C++ compatibility: imported C++ libraries rely on it. kpp's own code
+  constrains with `requires`; `EnableIf` and `VoidT` stay in the library for imported or unconverted
+  code.
+- **Why:** imported C++ libraries rely on SFINAE (kovarex, 2026-11-07, F's question); `requires`
+  states the condition that SFINAE hides in a type.
+- **See:** [design 3][d3].
 
 ### Instantiation depth is 64 (built)
 
