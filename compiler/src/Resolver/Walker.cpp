@@ -1575,6 +1575,7 @@ auto GlobalScope::Impl::Walker::resolveName(NameExpr* e) -> const Ty*
   }
   if (!whenLookup(l, e))
     return types.unknown(); // (design.md 19: reported, or the instances' to tell)
+  noteImplicitMember(e, l);
   switch (l.found)
   {
     case Found::No:
@@ -1621,6 +1622,71 @@ auto GlobalScope::Impl::Walker::resolveName(NameExpr* e) -> const Ty*
         return impl.declaredTypeOf(l.decl, &s, 0);
   }
   return memberThroughThis(l, typeOfResolvedName(l, e->name.last(), e));
+}
+
+auto GlobalScope::Impl::Walker::reachThroughBases(Scope* cls, Scope* target, int depth) -> int
+{
+  if (cls == target)
+    return 1;
+  if (depth > 16 || cls->baseTypes.empty() || !cls->owner)
+    return 0;
+  LocalStack params;
+  for (Decl* p : cls->templateParams)
+    params.push(static_cast<TemplateParamDecl*>(p)->name, p);
+  Impl::pushEnclosingTemplateParams(cls->owner->parent, params);
+  int reached = 0;
+  for (Type* b : cls->baseTypes)
+  {
+    Scope* bs = impl.scopeOfType(b, cls->parent, &params, depth + 1);
+    if (!bs || bs == cls)
+      continue;
+    int via = reachThroughBases(bs, target, depth + 1);
+    if (!via)
+      continue;
+    const Ty* bt = impl.convertType(b, TypeContext{cls->parent, &params, nullptr}, depth + 1);
+    if (via == 1 && !(bt && types.isDependent(bt)))
+      return 1;
+    reached = 2;
+  }
+  return reached;
+}
+
+auto GlobalScope::Impl::Walker::noteImplicitMember(const NameExpr* n, const Lookup& l) -> void
+{
+  if (!thisWarningsOn() || l.found != Found::Member || n->name.parts.size() != 1 || n->name.global || n->name.typeQualifier || !file ||
+      file->isImported || probing || declaredTypes > 0 || !l.foundIn || l.foundIn->kind != ScopeKind::Class || !l.foundIn->owner)
+    return;
+  Decl* d = l.decl;
+  if (d && d->kind == NodeKind::UsingNameDecl && !static_cast<UsingNameDecl*>(d)->isEnum) // (`using Base::f;`, then `f()`)
+    d = impl.lookupQualified(static_cast<UsingNameDecl*>(d)->name, impl.lexicalScopeOf(d), nullptr, 0).decl;
+  if (!d || (d->kind != NodeKind::VariableDecl && d->kind != NodeKind::FunctionDecl) || (d->flags & (DF_Typedef | DF_Constructor | DF_Destructor)))
+    return; // (types, enumerators and nested classes need no `this.`: design.md 23c)
+  // (`operator=(other)`: the operator's symbol; a destructor's or a conversion's name has none to give)
+  const NamePart& part = n->name.parts[0];
+  uint32_t symbol = !part.special ? part.symbol : part.special == 2 && part.opToken < uint32_t(P::Count) ? impl.opSymbols[part.opToken] : UINT32_MAX;
+  if (symbol == UINT32_MAX)
+    return;
+  std::string name(symbols.name(symbol));
+  bool isStatic = (d->flags & DF_Static) != 0;
+  std::string message = Impl::locationOf(file, n->token) + ": warning: " + name + " is a " +
+                        (isStatic ? "static member" : d->kind == NodeKind::FunctionDecl ? "member function" : "data member") + ": write ";
+  message += (isStatic ? "This::" : "this.") + name; // (a static is no value of the object: `This::count`, design.md 23c)
+  for (Scope* s = scope; s; s = s->parent)
+    if (s->kind == ScopeKind::Class)
+      if (int via = reachThroughBases(s, l.foundIn, 0))
+      {
+        // What the scopes around the class have of the name: what a bare name means once it is never a
+        // member (Q10), and what C++ takes for a member of a dependent base, which it looks up where the
+        // template is written ([temp.dep] 3).
+        bool around = impl.lookupUnqualified(symbol, s->parent, nullptr, 0).found != Found::No;
+        if (via == 2)
+          message += around ? " (found in a dependent base, which C++ does not search: it takes the " + name + " around the class)"
+                            : " (found in a dependent base, which C++ does not search: an error there)";
+        else if (around)
+          message += " (a bare " + name + " will be the one around the class)";
+        break;
+      }
+  noteThisWarning(message);
 }
 
 auto GlobalScope::Impl::Walker::memberThroughThis(const Lookup& l, const Ty* t) -> const Ty*
@@ -4537,6 +4603,7 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
       record(n, types.unknown());
       return types.unknown(); // (design.md 19: reported, or the instances' to tell)
     }
+    noteImplicitMember(n, l);
     Subst friendArgs; // the class arguments of the friend functions argument-dependent lookup finds
     if (l.found == Found::Global)
       l = impl.withNamespaceUsings(l, 0); // `using lib::size;` beside the namespace's own size(int)
@@ -6993,7 +7060,9 @@ auto GlobalScope::Impl::Walker::checkTypeNamesNoVariable(Node* base, uint32_t to
 
 auto GlobalScope::Impl::Walker::walkParam(ParamDecl* p) -> void
 {
+  ++declaredTypes;
   walkType(p->type);
+  --declaredTypes;
   if (!p->inheritedDefault)
     walkExpr(p->defaultValue);
   locals.push(p->name, p);
@@ -7147,6 +7216,8 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
     case NodeKind::ClassDecl:
     {
       auto* c = static_cast<ClassDecl*>(d);
+      if (overrideWarningsOn() && Impl::effectiveParams(c).empty() && !activeSubst && !probing && file && !file->isImported)
+        impl.noteNonVirtualDestructor(impl.selfType(c), c); // (a class template's, per instance: checkInstanceStaticAsserts)
       Scope* saved = scope;
       const Ty* savedThis = thisType;
       // The bases are named from where the class is (its scope's parent: `class A::B : Base`
@@ -7227,7 +7298,9 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
         impl.recordInstanceSubst(f, *activeSubst); // the classes of its body see these arguments
       Scope* saved = scope;
       const Ty* savedThis = thisType;
+      ++declaredTypes;
       walkType(f->returnType);
+      --declaredTypes;
       if (f->name.parts.size() > 1)
       {
         scope = semanticScopeFor(f->name);
@@ -7351,7 +7424,10 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
       // condition, which codegen folds per instance for the layout, walked with the member.
       if (v->when && v->whenKnown < 0 && v->parent && v->parent->kind == NodeKind::ClassDecl)
         walkExpr(v->when);
+      bool member = v->parent && v->parent->kind == NodeKind::ClassDecl;
+      declaredTypes += member;
       walkType(v->type);
+      declaredTypes -= member;
       checkTypeNamesNoVariable(v->type, v->token);
       checkArrayBounds(v);
       walkExpr(v->bitfield);

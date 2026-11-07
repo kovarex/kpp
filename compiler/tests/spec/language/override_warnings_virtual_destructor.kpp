@@ -1,0 +1,58 @@
+// spec: --override-warnings: a class with a virtual function, its own or a base's, whose destructor is not virtual is a warning at the class, as kovarex's rule makes that destructor virtual (design.md 23b), and says when its vtable gains the slot (no polymorphic base); a virtual destructor, a base's, and a class with no virtual function are not
+// kppc: --override-warnings
+// warning: override_warnings_virtual_destructor.kpp:12: warning: Shape has a virtual function and an implicit destructor, which becomes virtual (its vtable gains the slot)
+// warning: override_warnings_virtual_destructor.kpp:17: warning: Square has a virtual function and an implicit destructor, which becomes virtual
+// warning: override_warnings_virtual_destructor.kpp:22: warning: Guarded has a virtual function and a protected non-virtual destructor, which becomes virtual (its vtable gains the slot)
+// warning: override_warnings_virtual_destructor.kpp:29: warning: Open has a virtual function and an implicit destructor, which becomes virtual
+// no-warning: override_warnings_virtual_destructor.kpp:17: warning: Square has a virtual function and an implicit destructor, which becomes virtual (
+// no-warning: override_warnings_virtual_destructor.kpp:29: warning: Open has a virtual function and an implicit destructor, which becomes virtual (
+// no-warning: override_warnings_virtual_destructor.kpp:32:
+// no-warning: override_warnings_virtual_destructor.kpp:38:
+// warning: override_warnings_virtual_destructor.kpp:44: warning: Holder has a virtual function and an implicit destructor, which becomes virtual (its vtable gains the slot)
+class Shape
+{
+public:
+  virtual int sides() const { return 0; }
+};
+class Square : public Shape
+{
+public:
+  int sides() const override { return 4; }
+};
+class Guarded
+{
+public:
+  virtual int f() const { return 1; }
+protected:
+  ~Guarded() {}
+};
+class Open : public Guarded
+{
+};
+class Fine
+{
+public:
+  virtual ~Fine() {}
+  virtual int f() const { return 2; }
+};
+class Plain
+{
+public:
+  ~Plain() {}
+  int f() const { return 3; }
+};
+template<class T> class Holder
+{
+public:
+  virtual T get() const { return T(5); }
+};
+int main()
+{
+  Square s;
+  Open o;
+  Fine fine;
+  Plain plain;
+  Holder<int> h;
+  println(s.sides(), " ", o.f(), " ", fine.f(), " ", plain.f(), " ", h.get());
+  return 0;
+}

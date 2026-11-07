@@ -424,14 +424,25 @@ size_t GlobalScope::checkInstanceStaticAsserts(size_t from)
     if (overrideWarningsOn() && c->file && !c->file->isImported)
     {
       Impl::TokenScope tokenScope(c->file->tokens, c->file->text);
+      impl->noteNonVirtualDestructor(cls, c);
       for (Decl* m : membersRead(c))
-        if (m->kind == NodeKind::FunctionDecl && m->templateParams.empty() && !(m->flags & (DF_Override | DF_Final | DF_Static | DF_Constructor | DF_Destructor)))
-          if (std::optional<bool> overrides = impl->overridesVirtual(cls, impl->overrideKey(static_cast<FunctionDecl*>(m), cls), 0); overrides && *overrides)
-          {
-            const NamePart& n = static_cast<FunctionDecl*>(m)->name.last();
-            std::string name = n.special ? std::string("this operator") : impl->debugName(n.symbol);
-            noteOverrideWarning(Impl::locationOf(c->file, m->token) + ": warning: " + name + " overrides a virtual function: write override");
-          }
+        if (m->kind == NodeKind::FunctionDecl && m->templateParams.empty() && !(m->flags & (DF_Static | DF_Constructor | DF_Destructor)))
+        {
+          bool says = (m->flags & (DF_Override | DF_Final)) != 0;
+          if (says && !(m->flags & DF_Override))
+            continue; // (`final` alone may end a new virtual function)
+          std::optional<bool> overrides = impl->overridesVirtual(cls, impl->overrideKey(static_cast<FunctionDecl*>(m), cls), 0);
+          if (!overrides || *overrides == says)
+            continue;
+          const NamePart& n = static_cast<FunctionDecl*>(m)->name.last();
+          std::string name = n.special ? std::string("this operator") : impl->debugName(n.symbol);
+          // Q7: an instance whose base is its parameter overrides or not by that argument; one that says
+          // `override` of nothing is an error once required `override` lands (until then only a member
+          // called by name is: spec classes/override_of_nothing_in_an_instance_is_error).
+          noteOverrideWarning(Impl::locationOf(c->file, m->token) + ": warning: " + name +
+                              (says ? " says override and overrides nothing in " + impl->types.toString(cls, &impl->symbols)
+                                    : " overrides a virtual function: write override"));
+        }
     }
     Subst subst = impl->substFor(cls);
     LocalStack params;

@@ -80,6 +80,8 @@ int compile(int argc, char** argv)
       options.zeroNullWarnings = true;
     else if (arg == "--override-warnings")
       options.overrideWarnings = true;
+    else if (arg == "--this-warnings")
+      options.thisWarnings = true;
     else if (arg == "--struct-rule")
       options.structRule = true;
     else if (arg == "--c-type-warnings")

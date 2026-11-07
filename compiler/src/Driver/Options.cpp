@@ -46,6 +46,8 @@ void usage(FILE* out)
           "                convert.cmd's nullptr pass rewrites what they name\n"
           "  --override-warnings  warn of each function that overrides a virtual one and does not say so (the readme's\n"
           "                Planned); no error, no other change\n"
+          "  --this-warnings  warn of each unqualified name that finds a data member or a member function, which\n"
+          "                required `this.` writes `this.x` (the readme's Planned); no error, no other change\n"
           "  --return-copy-warnings  warn of each `return x;` of a class object that is copied or moved, not built in\n"
           "                the result's place (a named return), and why; no error, no other change\n"
           "  --struct-rule  a struct is a public value type: one with a private or protected section, a base that is not\n"

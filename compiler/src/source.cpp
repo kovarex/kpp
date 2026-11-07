@@ -939,6 +939,8 @@ namespace
   std::set<std::string> zeroNullNotes; // (sorted, each token once)
   std::atomic<bool> overrideWarningsEnabled{false};
   std::set<std::string> overrideNotes; // (sorted, an instance's as its template's, once)
+  std::atomic<bool> thisWarningsEnabled{false};
+  std::set<std::string> thisNotes; // (sorted, each name once per place, whichever walks reached it)
 }
 
 std::set<std::pair<const void*, uint32_t>> zeroNullSeen;
@@ -969,6 +971,30 @@ std::vector<std::string> takeOverrideWarnings()
   std::lock_guard lock(zeroNullMutex);
   std::vector<std::string> out(overrideNotes.begin(), overrideNotes.end());
   overrideNotes.clear();
+  sortDiagnostics(out);
+  return out;
+}
+
+void setThisWarnings(bool on)
+{
+  std::lock_guard lock(zeroNullMutex);
+  thisNotes.clear();
+  thisWarningsEnabled = on;
+}
+
+bool thisWarningsOn() { return thisWarningsEnabled; }
+
+void noteThisWarning(const std::string& warning)
+{
+  std::lock_guard lock(zeroNullMutex);
+  thisNotes.insert(warning);
+}
+
+std::vector<std::string> takeThisWarnings()
+{
+  std::lock_guard lock(zeroNullMutex);
+  std::vector<std::string> out(thisNotes.begin(), thisNotes.end());
+  thisNotes.clear();
   sortDiagnostics(out);
   return out;
 }

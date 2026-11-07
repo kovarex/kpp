@@ -1172,6 +1172,29 @@ auto GlobalScope::Impl::hasVirtualDestructor(const Ty* t, int depth) -> bool
   return false;
 }
 
+auto GlobalScope::Impl::noteNonVirtualDestructor(const Ty* t, ClassDecl* c) -> void
+{
+  if (!c || !c->file || c->file->isImported || c->name.empty() || classDefinition(t) != c || polymorphicClass(t) != std::optional<bool>(true) ||
+      hasVirtualDestructor(t))
+    return;
+  Decl* destructor = nullptr;
+  for (Decl* m : membersRead(c))
+    if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Destructor))
+      destructor = m;
+  bool rootOfVtable = true;
+  std::vector<const Ty*> bases;
+  if (directBases(t, c, bases))
+    for (const Ty* b : bases)
+      if (polymorphicClass(b) == std::optional<bool>(true))
+        rootOfVtable = false;
+  std::string kind = !destructor                                   ? "an implicit destructor"
+                     : destructor->access == Access::Protected ? "a protected non-virtual destructor"
+                     : destructor->access == Access::Private   ? "a private non-virtual destructor"
+                                                                 : "a non-virtual destructor";
+  noteOverrideWarning(locationOf(c->file, c->token) + ": warning: " + debugName(c->name.last().symbol) + " has a virtual function and " + kind +
+                      ", which becomes virtual" + (rootOfVtable ? " (its vtable gains the slot)" : ""));
+}
+
 auto GlobalScope::Impl::destructorLoosens(const Ty* t) -> const Ty*
 {
   ClassDecl* def = classDefinition(t);

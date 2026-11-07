@@ -297,7 +297,7 @@ builds win less unless machine code is cached per function.
     interop/sse_scalar_conversions.
 
 ### 6. Language changes from the proposal (not yet scheduled)
-Real enum class with methods/str()/iteration, `this` as a reference, required `this->`,
+Real enum class with methods/str()/iteration, `this` as a reference, required `this.`,
 required `override`, explicit by default (`implicit` keyword), no implicit switch
 fallthrough, exhaustive enum switches (abort on invalid value), typed union, `?->`, `?:`,
 `both_const` / `class_const`, named parameters, test tools in the compiler, `accumulate`
@@ -2173,12 +2173,41 @@ them yet (the questions: C:\kpp-sandbox\handoff\A-stage1-language-questions.md).
 
 Specs: language/safe_navigation*, language/elvis.
 
-### 23b. Required `override` (warning built 2026-11-06, Q5 to Q8 awaiting kovarex)
+### 23b. Required `override` (warning built 2026-11-06, rules decided 2026-11-07)
 Every function that overrides a virtual one says so. It lands in three steps: a warning under a flag,
 counted on the game, then the converter writes the word, then an error. `--override-warnings` is the
 first step and changes nothing else. It reads the in-class declaration: an out-of-line definition cannot
 say `override`. A class template is read per instance, each instance the program names, called or not,
-as a virtual call reaches a member no walk does. So far exempt: destructors, and `final` alone.
+as a virtual call reaches a member no walk does. Exempt: destructors (Q5, below). `final` alone says
+`override` too (kovarex, 2026-11-07, Q6). The check is per instance (Q7): in a class template whose base
+is its parameter, a mixin over polymorphic or plain bases, each instance overrides or not by its argument,
+and the error is at the instance that overrides without saying so or says `override` of nothing; the
+warning names that instance, "g says override and overrides nothing in Mixin<Bare>". `virtual` beside
+`override` stays allowed (Q8).
+
+**A polymorphic class's destructor is virtual** (kovarex, 2026-11-07, Q5; decided, not built). A class with
+a virtual function, its own or a base's, has a virtual destructor, written or not; `virtual ~X()` stays
+allowed and says nothing more. "What is the point of a non-virtual destructor": `delete` through a base
+of such a class is no longer undefined behaviour, and a destructor needs no `override`. A deliberate
+difference from C++. Before it lands, `--override-warnings` lists each class it changes, "X has a virtual
+function and a non-virtual destructor, which becomes virtual" ("an implicit destructor", "a protected
+non-virtual destructor"), with "(its vtable gains the slot)" where no base is polymorphic: there the
+layout changes by a new slot (where it goes is the code generator's to settle), which matters to a class
+whose vtable C or COM code reads (the vtable section's interop/c_object_with_vtable). Spec
+language/override_warnings_virtual_destructor.
+
+The count (the same build, 2026-11-07): 942 classes of the game change (243 in src, 699 in tests), 890 with
+an implicit destructor, 29 a protected one and 23 a public one; 48 gain the slot, every other one deriving
+from them. Ours: none. One of the 48 is interop and would break: IUnknown, in the generated
+src/Graphics/DX11/ComInterfaces.kpp, the root of 112 COM interfaces the system's objects are called through
+(declared with no destructor, as COM objects are released): a slot in it moves every method of the 111
+derived interfaces. So the rule needs an exception for a vtable that is not kpp's, open with kovarex (a
+mark on the class, or interfaces of pure virtual functions only, which would bring the undefined delete back
+for them). The other 47 are the game's own (Freezable, Targetable, ThreadListener, ...).
+
+The rest of the count: the 13 functions are cxxopts' (abstract_value<T> : Value, a named base); no instance
+of a class template whose base is its parameter overrides without saying so or says `override` of nothing,
+in the game or in ours.
 
 The game's count (factorio-in-kpp's src, libraries and tests at Factorio 4c178a5b915, tests.cmd's build
 with --override-warnings --emit-llvm): 13 functions, all in libraries\cxxopts\cxxopts.kpp, and 490
@@ -2190,6 +2219,92 @@ warning reports with no unit, so a compile server would keep such an error after
 unit it can forget.
 
 Specs: language/override_warnings_mode, classes/override_of_nothing_is_error.
+
+### 23c. Required `this.` and `This` (warning built 2026-11-07, rules decided 2026-11-07)
+A member is named through the class, so that a new local or global never changes an existing line.
+kovarex, 2026-11-07:
+- **`this.x`** for an instance's data members and member functions (`this.f()`). Q13: `this` is a reference
+  everywhere, never a reference in one place and a pointer in another, so the readme's "required `this->`"
+  was a mistake for "required `this.`" (23d).
+- **`This`**, a type keyword (Q9, after Rust's and Swift's `Self` and PHP's `self::`): the class lexically
+  enclosing the code. In a class template it is the current instance (`Vector<T>`, the arguments not
+  repeated); in a base class it is the base, never the class deriving from it; it works in a static member
+  function.
+- **Statics** are `This::count` or `Train::count`. `this.count` of a static is an error (Rust's rule: it is no
+  value of the object).
+- **Nested types and enumerators** stay bare; `This::State` works too.
+- **A bare name is a local, a parameter or a global, never a member** (Q10: "required this is the point of
+  this, to make it very clear what is meant by saying just speed"). `void setX(i32 x) { this.x = x; }` is
+  the form, with no warning for the parameter beside the member. A bare name that would find only a member
+  is the error "write this.speed" ("write This::count" for a static). A bare name with a member and a global
+  of its spelling is the global: until the converter's count is 0 that case is an error too, as a missed
+  rewrite would change the meaning silently.
+- **Where it does not apply** (Q11: "the : constructor doesn't need this as it always means this"): the
+  member a member initializer names (`: speed(speed)` is the member from the parameter), `using`
+  declarations, and the types in declarations. The initializer's arguments, default member initializers,
+  default arguments and lambda bodies are code and need `this.` or `This::`.
+- **Whose code** (Q12): all kpp code, the game, the stdlib, the official libraries and the programs.
+  Imported C and C++ headers are exempt, "so we can actually use C++ libraries, which we will have for a
+  long time".
+
+`This` is an identifier nowhere in the game or our kpp (comments only), so the keyword breaks nothing. The
+converter writes `This::` for the statics named bare today, and cxxopts' `using Self = abstract_value<T>;`
+can become `This`. The parser's and resolver's part of `This` is not built yet.
+
+It lands as `override` does: a warning under a flag, counted, then the converter, then an error.
+`--this-warnings` is the first step and changes nothing else: each
+unqualified name that finds a data member or a member function of a class is a warning at the name, "x is a
+data member: write this.x" ("a member function"), a static member's "a static member: write This::x". Not
+warned: a name that finds a local or a parameter first (Q10), types, enumerators, nested classes, the name a
+member initializer initializes (`: x(1)`, its argument is code), and a name inside a parameter's, a data
+member's or a function's leading return type (Q11), where `this` is no value. A default member initializer, a
+default argument, a trailing return type, a lambda in a member and an out-of-line member's body are code and
+warned. Each name is listed once per line, whichever walks reached it (a class template's own and its
+instances'). Until `this` is a reference and `This` exists the fixes it names do not compile: today `this->x`
+and `C::x` are the spellings, and the warning counts the names either spelling needs.
+
+A name found in a dependent base (`template<class T> struct D : B<T>`, the base written with the class's
+parameters) says so: C++ looks such a name up where the template is written, never in that base
+([temp.dep] 3), and takes the name around the class or finds none. kpp takes the base's member there,
+where a base that is the parameter itself (`: T`) is not searched, as in C++. kovarex decides the rule
+with this count.
+
+The counts (tests.cmd's whole-game build with --this-warnings --emit-llvm, places = a name on a line).
+The game (factorio-in-kpp's src, libraries and tests at Factorio 4c178a5b915): 282 places for `this.` (134
+data members and 148 member functions; 239 in tests, 37 in src, 6 in libraries) and 2,601 for `This::`
+(2,011 in src, 392 in libraries, 198 in tests; `type` 202 times, getTypeStatic 65, addCommand 61): its code
+style already writes `this->` for instance members and names statics bare. 21 places name a member that
+has a global of its spelling (`eof`, `size`, `format`, `toString`, `operator==`, ...), which a missed
+rewrite would turn into the global.
+
+Ours (every library's tests, kppsite, kpplex, projectlib, each library's build.kpp): the stdlib has 69 places,
+67 static members (59 `npos`, mostly default arguments) and 2 `pmf` in MemFnWrapper; projectlib has 81 data
+members, 2 of them (`includes`) beside the stdlib's global includes; the libraries, kppsite, kpplex and the
+build.kpp files none, as the code style already writes `this->`.
+
+Dependent bases: no name in the game or in ours resolves through a dependent base, so C++'s rule (never
+search such a base) changes nothing in either and compiles both ways; the difference shows only in a spec
+(language/this_warnings_mode: `shadeOf()` in `D<T> : B<T>` is B's member in kpp, the global in C++).
+
+Spec: language/this_warnings_mode.
+
+### 23d. `this` is a reference (decided 2026-11-07, not built)
+kovarex answered Q13 to Q17 on 2026-11-07, as recommended but for Q13. `this` names the object, everywhere:
+- **Member access is `this.x`** (Q13 a), the only form; `this->x` is the class's `operator->`, as on any
+  object. Required `this.` (23c) is this rule's spelling. The game has 182,657 lines with `this->` for the
+  converter to rewrite.
+- **`*this` is the class's `operator*`** (Q14), an error when it has none, saying "write this": `return *this;`
+  is `return this;` (8,647 lines in the game), "one of the selling points of the change".
+- **`&this` is the pointer** (Q15): `foo(&this)`, `return &this;`, `&this == other`, `delete &this` (5,411 lines
+  pass `this`, 926 return it, 3,175 compare it, 163 `delete this`). `this == other` compares the objects through
+  operator==, which is the one place a missed rewrite would compile silently (a class with an operator==
+  taking a pointer): until the converter's count is 0, `this ==` and `this !=` in converted code are errors.
+- **`[this]` captures the reference** (Q16, 2,902 lines in the game).
+- **`this` is never null** (Q17): `if (this)` and `this == nullptr` are errors, counted on the game first.
+
+`this[7]`, `!this` and `this + 1` act on the object, as a reference's do. An enum's methods already have
+`this` as the value. The order, as for `override`: warnings under a flag counted on the game, then C's
+converter rewrite, then the errors.
 
 ### 24. The compiler's own sources: laid out as Factorio's (decided 2026-11-05)
 kovarex, 2026-11-05: the compiler's C++ follows Factorio's layout, "one class per file, classes with
@@ -3289,7 +3404,7 @@ The smallest language that is still kpp, as the target of the first code generat
 - **Declarations.** Functions, `struct`/`class` with methods, bases, constructors and
   destructors, `enum class` with methods, `using` aliases, global and local variables, `auto`.
   Simple templates (type parameters, full specialisation, `if constexpr`).
-- **Statements and expressions.** The C++ set, with the proposal's rules: required `this->`,
+- **Statements and expressions.** The C++ set, with the proposal's rules: required `this.`,
   explicit by default, no implicit fallthrough, exhaustive `switch`, `?->` and `?:`.
 - **C interop.** `extern "C"` declarations of functions and structs; those are the only
   externally linked names (nothing is mangled across kpp code, since everything is one program).

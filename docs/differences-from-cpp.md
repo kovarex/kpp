@@ -397,29 +397,47 @@ Pinned make() { Pinned p; return p; }   // compiles: an error in C++
 - **See:** [design 21][d21]; specs `language/placement_new_over_const_object_is_error`,
   `language/placement_new_replaces_transparently`.
 
-### Required `override` (this stage, rules open)
+### Required `override` (this stage, rules decided)
 
 - **C++:** `override` is optional.
-- **kpp:** every function that overrides a virtual one says so. *Open:* whether destructors are exempt,
-  whether `final` alone counts, the check per instance for a base that is a template parameter.
+- **kpp:** every function that overrides a virtual one says so, `override` or `final`, but a destructor
+  (below), checked in each instance of a class template whose base is its parameter.
 - **Status:** `--override-warnings` lists them; the game has 13 functions, and 490 destructors ([design 23b](design.md)).
 - **Why:** a change in a base cannot silently unhook an override.
 - **See:** [design 6][d6]; the readme's Planned.
 
-### Required `this->` (this stage, rules open)
+### A polymorphic class's destructor is virtual (this stage, decided, not built)
 
-- **C++:** a member is named bare.
-- **kpp:** a member is written `this->x`, so adding a local or a global never changes an existing line.
-  *Open:* which names need it (static members, nested types, enumerators), where it does not apply,
-  and whether libraries follow it. Today members are named bare, as in C++.
+- **C++:** a destructor is virtual only when declared so, its own or a base's; `delete` through a base
+  whose destructor is not virtual is undefined behaviour.
+- **kpp:** a class with a virtual function, its own or a base's, always has a virtual destructor, written
+  or not (kovarex, 2026-11-07). `virtual ~X()` is allowed and redundant.
+- **Status:** `--override-warnings` lists the classes it changes ([design 23b](design.md)).
+- **Why:** deleting through a base always runs the right destructor.
+
+### Required `this.` and `This` (this stage, rules decided)
+
+- **C++:** a member is named bare; a class names itself by its name and arguments.
+- **kpp:** an instance's member is written `this.x`, so adding a local or a global never changes an
+  existing line (kovarex, 2026-11-07: `this` is a reference everywhere, so the readme's "required
+  `this->`" is `this.`). `This` is a type keyword for the class around the code, the current instance of a
+  class template (`This` for `Vector<T>`); a static is `This::count` or `Train::count`, never `this.count`;
+  nested types and enumerators stay bare. A bare name is a local, a parameter or a global, never a
+  member: `void setX(i32 x) { this.x = x; }`. The member a member initializer names stays bare
+  (`: speed(speed)`), as do `using` declarations and declared types. All kpp code follows it, the
+  stdlib and libraries too; imported headers are exempt. Today members are named bare, as in C++.
+- **Status:** `--this-warnings` lists them ([design 23c](design.md)).
 - **See:** [design 6][d6]; the readme's Planned.
 
-### `this` is a reference (this stage, rules open)
+### `this` is a reference (this stage, decided, not built)
 
 - **C++:** `this` is a pointer.
-- **kpp:** `this[7]`, `!this` and `this == other` act on the object. *Open:* whether `this->x` stays the
-  member access beside `this.x`, what `*this` means, `&this` where the pointer is meant, and `if (this)`.
-  Today it is a pointer, except in an enum's methods, where it is the value.
+- **kpp:** `this` is a reference everywhere (kovarex, 2026-11-07): `this.x` is the member access and
+  `this->x` the class's `operator->`; `return this;` where C++ writes `return *this;`, and `*this` is the
+  class's `operator*`, an error when it has none; `&this` is the pointer (`foo(&this)`, `delete &this`);
+  `this == other` compares the objects; `[this]` captures the reference; `this` is never null, so
+  `if (this)` is an error. Today it is a pointer, except in an enum's methods, where it is the value.
+- **Why:** one meaning of `this` in every place, and `*this` gone from the code.
 - **See:** [design 6][d6]; the readme's Planned.
 
 ### Explicit by default (this stage)

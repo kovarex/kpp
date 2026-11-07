@@ -1,0 +1,76 @@
+// spec: --this-warnings: an unqualified name that finds a data member or a member function is a warning, in a body, a lambda in it, an out-of-line member, a member initializer's argument, a default member initializer and a default argument, a static member's fix `This::x`, a member beside a global of its spelling says so; a dependent base's member says what C++ finds there instead; `this->x`, `C::x`, a local, an enumerator, a type, a member initializer's name and a parameter's or data member's type are not
+// kppc: --this-warnings
+// warning: this_warnings_mode.kpp:29: warning: value is a data member: write this.value
+// no-warning: this_warnings_mode.kpp:32:
+// warning: this_warnings_mode.kpp:33: warning: created is a static member: write This::created
+// warning: this_warnings_mode.kpp:34: warning: value is a data member: write this.value
+// warning: this_warnings_mode.kpp:35: warning: get is a member function: write this.get
+// no-warning: this_warnings_mode.kpp:36:
+// no-warning: this_warnings_mode.kpp:37:
+// no-warning: this_warnings_mode.kpp:38:
+// warning: this_warnings_mode.kpp:39: warning: value is a data member: write this.value
+// warning: this_warnings_mode.kpp:40: warning: created is a static member: write This::created
+// warning: this_warnings_mode.kpp:44: warning: created is a static member: write This::created
+// no-warning: this_warnings_mode.kpp:45:
+// no-warning: this_warnings_mode.kpp:46:
+// warning: this_warnings_mode.kpp:50: warning: value is a data member: write this.value
+// warning: this_warnings_mode.kpp:58: warning: shadeOf is a member function: write this.shadeOf (found in a dependent base, which C++ does not search: it takes the shadeOf around the class)
+// warning: this_warnings_mode.kpp:59: warning: ownOnly is a member function: write this.ownOnly (found in a dependent base, which C++ does not search: an error there)
+// warning: this_warnings_mode.kpp:43: warning: levelOf is a member function: write this.levelOf (a bare levelOf will be the one around the class)
+// warning: this_warnings_mode.kpp:65: warning: operator= is a member function: write this.operator=
+// warning: this_warnings_mode.kpp:68: warning: fromPlain is a member function: write this.fromPlain
+int shadeOf() { return 9; }
+int levelOf() { return 7; }
+class Counter
+{
+public:
+  static int created;
+  int value = 1;
+  int doubled = value * 2;
+  enum { Limit = 5 };
+  using Number = int;
+  Counter() : value(2) {}
+  Counter(int start) : value(start + created) {}
+  int get() const { return value; }
+  int twice() const { return get() * 2; }
+  int spelled() const { return this->value + this->get() + Counter::created; }
+  int local(int value) const { return value; }
+  int limit() const { Number n = Limit; return n; }
+  int lambda() const { auto f = [this] { return value; }; return f(); }
+  static int make() { return created; }
+  int outside() const;
+  int levelOf() const { return 8; }
+  int level() const { return levelOf(); }
+  int defaulted(int extra = created) const { return extra; }
+  decltype(value) copy = 0;
+  int sized[Limit];
+  static_assert(sizeof(value) == 4);
+};
+int Counter::created = 3;
+int Counter::outside() const { return value + 1; }
+template<class T> struct Base
+{
+  int shadeOf() const { return 4; }
+  int ownOnly() const { return 5; }
+};
+template<class T> struct Derived : Base<T>
+{
+  int both() const { return shadeOf(); }
+  int only() const { return ownOnly(); }
+};
+struct Copied
+{
+  int x = 1;
+  Copied& operator=(const Copied& o) { this->x = o.x; return *this; }
+  void copyFrom(const Copied& o) { operator=(o); }
+};
+struct Plain { int fromPlain() const { return 6; } };
+struct Mid : Plain { int mid() const { return fromPlain(); } };
+int main()
+{
+  Counter c;
+  Derived<int> d;
+  Mid m;
+  println(c.twice(), " ", c.lambda(), " ", Counter::make(), " ", c.outside(), " ", d.only(), " ", m.mid(), " ", c.doubled, " ", c.defaulted(), " ", c.level());
+  return 0;
+}

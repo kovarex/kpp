@@ -339,6 +339,17 @@
     // reference member's t as it is.
     const Ty* memberThroughThis(const Lookup& l, const Ty* t);
 
+    // --this-warnings (design.md 23c): an unqualified name that finds a data member or a member function
+    // of a class, which required `this.` writes `this.x` (a static one `This::x`). A name a dependent base
+    // gave (`struct D : B<T>`) says what C++ finds instead, which never searches such a base.
+    void noteImplicitMember(const NameExpr* n, const Lookup& l);
+    // Inside a parameter's, a data member's or a function's leading return type, where `this` is no
+    // value and a name needs no `this.` (design.md 23c).
+    int declaredTypes = 0;
+    // How the class cls reaches the class scope target, itself or a base's: 0 not at all, 1 through bases
+    // that do not depend on a template parameter, 2 only through one that does.
+    int reachThroughBases(Scope* cls, Scope* target, int depth);
+
     // `Accumulator::kind` (`&T::kind` in an instance) with kind a member of a base that an
     // instantiation's arguments choose (`class BehaviorTemplate : public Parent`, Parent =
     // Behavior): the class template's scope links no such base, so the name is looked up as a

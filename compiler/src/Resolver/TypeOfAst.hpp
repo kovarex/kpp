@@ -223,6 +223,11 @@
   std::optional<bool> destructorPartsMayThrow(const Ty* t);
   // t's destructor is virtual, declared so or by a base's.
   bool hasVirtualDestructor(const Ty* t, int depth = 0);
+  // --override-warnings: a class t (c its definition) with a virtual function whose destructor is not
+  // virtual, which kovarex's rule makes virtual (design.md 23b, Q5), as "warning: X has a virtual function
+  // and a non-virtual destructor, which becomes virtual"; its own vtable gains the slot when no base is
+  // polymorphic.
+  void noteNonVirtualDestructor(const Ty* t, ClassDecl* c);
   // The direct base whose noexcept virtual destructor t's, which may throw, overrides ([except.spec] 4); null
   // when there is none or it is not known.
   const Ty* destructorLoosens(const Ty* t);
