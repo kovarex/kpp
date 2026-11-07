@@ -365,7 +365,8 @@ scripts (suites.py, failures.py; H's) would read it.
 **Parallelism:** `--jobs N` (Q3 in design.md) schedules whole suites over N processes, the most tests
 first; with `--durations FILE` (an earlier run's `--report`) each test on its own, the longest first,
 as Factorio's `--fork` splits by its cached test times, so that a long suite's tests run in several
-processes at once (`tests.cmd --shards N` keeps the last passing run's report for the next). A suite does not
+processes at once (`tests.cmd --shards N` keeps the last passing run's report for the next; the game's tests went from
+suites.py's 67 s to 34 s at 16, 61 s to 28 s at 32). A suite does not
 wait for its dependencies, as Factorio's `--fork` does not, because its results do not depend on
 order, and with Q2's default kpp's do not either; the output is said in the suites' order, so the
 root-failure report stays exact. With `--exit-on-failure` suites stay whole and wait, so that a failure in a dependency

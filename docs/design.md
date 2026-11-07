@@ -3683,7 +3683,14 @@ statistics pass. `kpp --run hello.kpp a b` means the same in a project's directo
   at Simulations, the longest; by test the floor is the longest test, Migrations.EntityRemovals).
   With `--exit-on-failure` suites stay whole, the longest first by the file's seconds for their tests
   plus their longest chain of dependents. `tests.cmd --shards N` keeps the report of the last run that
-  passed as the next one's `--durations`. Measured before tests went on their own on the game's 9,501 tests
+  passed as the next one's `--durations`. Measured on the game's 9,501 tests (2026-11-07, factorio-in-kpp
+  5176c864e, two binaries of one tree, master's runner and per test, in a quiet window, interleaved ABCCBA,
+  each run's load under 4% before it, `--durations` an earlier run's report): at 16, per test 34.3 and
+  34.3 s against whole suites (`--durations`) 60.6 and 60.9 s and suites.py `--shards 16` 67.0 and 66.2 s;
+  at 32, per test 28.4 and 28.3 s against 63.8 and 63.3 s and 60.5 and 60.8 s. At 16 it is the even
+  share, 448 s of tests over 16 processes plus a worker's setup (simulated 33.0 s, no tail); at 32 each
+  test runs on an SMT thread (655 s of tests in all, Migrations.EntityRemovals 15.5 s against 8.6 s),
+  so the floor is that test. Measured before tests went on their own on the game's 9,501 tests
   (2026-11-07, factorio-in-kpp 9dae92d21, one binary, interleaved, each run after 20 s of load under
   10%): `--jobs 16 --durations` 61.5 and 61.2 s against suites.py `--shards 16` 67.8 and 69.8 s;
   at 32, 65.1 and 64.2 s against 61.6 and 64.8 s; without `--durations` (most tests first) 59.0 s at
