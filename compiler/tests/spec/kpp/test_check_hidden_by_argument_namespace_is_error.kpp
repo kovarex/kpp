@@ -1,5 +1,5 @@
 // spec: a check statement is an error when a call of that name would find a function in an argument's namespace
-// kppc: --tests
+// kpp: --tests
 // error: 'check' in a test is the statement
 namespace signals
 {

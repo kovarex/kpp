@@ -1,11 +1,11 @@
 # The natvis of a --debug-info build (docs/debugging.md, "Values in Visual Studio"): builds
-# natvis\values.kpp, runs it, and checks that kppc warned of no rule a library change broke, that
+# natvis\values.kpp, runs it, and checks that kpp warned of no rule a library change broke, that
 # the .natvis is valid by Visual Studio's natvis.xsd, that the link put it into the PDB (a named
 # stream /src/files/PATH, PATH the .natvis's, lower case; llvm-pdbutil) and that its rules are the ones natvis\values.expected
 # lists. run_tests.cmd runs it. -Update writes values.expected from this run.
-param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe", [switch]$Update)
+param([string]$KppExe = "$PSScriptRoot\..\build\kpp.exe", [switch]$Update)
 $ErrorActionPreference = 'Stop'
-$Kppc = (Resolve-Path $Kppc).Path # (the project's build runs in its own directory)
+$KppExe = (Resolve-Path $KppExe).Path # (the project's build runs in its own directory)
 $work = Join-Path $PSScriptRoot '..\build\tests\natvis'
 New-Item -ItemType Directory -Force $work | Out-Null
 $work = (Resolve-Path $work).Path
@@ -17,12 +17,12 @@ $natvis = Join-Path $work 'values.natvis'
 Remove-Item $natvis -ErrorAction SilentlyContinue
 
 $ErrorActionPreference = 'Continue'
-$log = & $Kppc --quiet --debug-info --exe $exe (Join-Path $PSScriptRoot 'natvis\values.kpp') 2>&1 | ForEach-Object { "$_" }
+$log = & $KppExe --quiet --debug-info --exe $exe (Join-Path $PSScriptRoot 'natvis\values.kpp') 2>&1 | ForEach-Object { "$_" }
 $code = $LASTEXITCODE
 $ErrorActionPreference = 'Stop'
 if ($code -ne 0) { "FAIL natvis: compile (exit $code)"; $log | Select-Object -Last 5 | ForEach-Object { "  $_" }; exit 1 }
 $warnings = @($log | Where-Object { $_ -match 'warning: natvis' })
-if ($warnings) { "FAIL natvis: kppc left rules out"; $warnings | ForEach-Object { "  $_" }; exit 1 }
+if ($warnings) { "FAIL natvis: kpp left rules out"; $warnings | ForEach-Object { "  $_" }; exit 1 }
 $out = & $exe
 if ("$out" -ne '2 kpp 51 2 1 5 false 4 12 gear 40 -20 2 9 3 1 3 2 false 6') { "FAIL natvis: the program printed $out"; exit 1 }
 if (-not (Test-Path $natvis)) { "FAIL natvis: no $natvis"; exit 1 }
@@ -54,8 +54,8 @@ if ($Update) { [IO.File]::WriteAllLines($expectedPath, [string[]]$names); "natvi
 $d = Compare-Object @(Get-Content $expectedPath) $names -SyncWindow 0
 if ($d) { "FAIL natvis: its rules differ from natvis\values.expected"; $names | ForEach-Object { "  $_" }; exit 1 }
 
-# A program's own .natvis (build.kpp's Executable::natvis, kppc's --natvis): natvis\project builds
-# values.kpp with point.natvis; its debug build's PDB holds both that file and the one kppc writes.
+# A program's own .natvis (build.kpp's Executable::natvis, kpp's --natvis): natvis\project builds
+# values.kpp with point.natvis; its debug build's PDB holds both that file and the one kpp writes.
 $project = Join-Path $work 'project'
 if (Test-Path $project) { cmd /c rd /s /q "$project" }
 New-Item -ItemType Directory -Force $project | Out-Null
@@ -63,7 +63,7 @@ Copy-Item (Join-Path $PSScriptRoot 'natvis\project\*') $project -Force
 Copy-Item (Join-Path $PSScriptRoot 'natvis\values.kpp') $work
 Push-Location $project
 $ErrorActionPreference = 'Continue'
-$log = & $Kppc values debug --debug-info --no-server 2>&1 # (no compile server left holding the directory) | ForEach-Object { "$_" }
+$log = & $KppExe values debug --debug-info --no-server 2>&1 # (no compile server left holding the directory) | ForEach-Object { "$_" }
 $code = $LASTEXITCODE
 $ErrorActionPreference = 'Stop'
 Pop-Location
@@ -84,14 +84,14 @@ foreach ($round in 1, 2)
 {
   if ($round -eq 2) { Add-Content $own '<!-- edited: the rule file grows, nothing else changes -->' }
   $ErrorActionPreference = 'Continue'
-  & $Kppc --server @serverArgs 2>&1 | Out-Null
+  & $KppExe --server @serverArgs 2>&1 | Out-Null
   $code = $LASTEXITCODE
   $ErrorActionPreference = 'Stop'
-  if ($code -ne 0) { & $Kppc --stop-server @serverArgs 2>&1 | Out-Null; "FAIL natvis: the build through a compile server failed (exit $code)"; exit 1 }
+  if ($code -ne 0) { & $KppExe --stop-server @serverArgs 2>&1 | Out-Null; "FAIL natvis: the build through a compile server failed (exit $code)"; exit 1 }
   $streams = (& $pdbutil dump --named-streams (Join-Path $served 'values.pdb')) -join "`n"
   $sizes += if ($streams -match '/src/files/\S*point\.natvis\s+Index: \d+\s+Size in bytes: (\d+)') { [int]$Matches[1] } else { 0 }
 }
-& $Kppc --stop-server @serverArgs 2>&1 | Out-Null
+& $KppExe --stop-server @serverArgs 2>&1 | Out-Null
 if ($sizes[0] -le 0 -or $sizes[1] -ne (Get-Item $own).Length)
 { "FAIL natvis: through a compile server the PDB's point.natvis is $($sizes -join ' then ') bytes, not the edited file's $((Get-Item $own).Length)"; exit 1 }
 "ok   natvis ($($names.Count) rules, $size bytes, in the PDB; a project's own .natvis beside it, taken again when edited through a compile server)"

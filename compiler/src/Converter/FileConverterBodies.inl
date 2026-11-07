@@ -571,7 +571,7 @@
       }
     }
 
-    // --- C's rules (ConvertInput::c, kppc --c-sources) ---
+    // --- C's rules (ConvertInput::c, kpp --c-sources) ---
     // C converts a void* to any object pointer implicitly (`unsigned char* p = malloc(n);`,
     // `b->buffer = ret;`), kpp only with a cast: the converter writes the cast. The types come from
     // the declarations the converted files and their headers make; a C library function that

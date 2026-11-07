@@ -1,6 +1,6 @@
 // spec: a protected member of a base named through a class N (`c->forceID` with a Character*, `handle->forceID` through a Handle<Character>'s operator->) may be named in a friend of N, as C++'s [class.access.base] 5 has it
 // factorio: EntityWithOwner::forceID in AssociatedCharacters (a friend of Character, through Targeter<Character>), SegmentEngine and LatencyState
-// kppc: --access-warnings
+// kpp: --access-warnings
 // warning: Entity::forceID is protected, named in Associated::direct, which a friend class declaration allows
 // warning: Entity::forceID is protected, named in Associated::viaHandle, which a friend class declaration allows
 class Entity

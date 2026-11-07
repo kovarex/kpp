@@ -6,20 +6,20 @@ integration (`tools/vs/`). Open details are the questions at the end.
 
 ## Today
 
-**One command builds a program.** `kppc [options] <file-or-dir>...` compiles the whole program
+**One command builds a program.** `kpp [options] <file-or-dir>...` compiles the whole program
 in one process. It takes every `.kpp` under the given roots plus the standard library (`stdlib/`
-next to kppc, or `--std DIR`, or none with `--no-std`). It runs the front end and code generation
+next to kpp, or `--std DIR`, or none with `--no-std`). It runs the front end and code generation
 on all threads and splits the IR into modules (two per thread by default, `--modules N`). It
 compiles each module, skipping modules whose IR hash is unchanged (the `.N.hash` and `.N.o` files
 next to the executable are the object cache), and links. A debug build for Windows (windows or
-windows-gnu) compiles its modules in kppc, with LLVM's back end linked in (src/backend.cpp,
-docs/codegen-speed.md), when kppc was built with it; every other build runs the bundled clang per
+windows-gnu) compiles its modules in kpp, with LLVM's back end linked in (src/backend.cpp,
+docs/codegen-speed.md), when kpp was built with it; every other build runs the bundled clang per
 module on its `.N.ll` file. Either way LLVM's verifier checks every module first (clang with
-`-fverify-intermediate-code`, which a release clang leaves off: it compiled an IR bug of kppc's at
+`-fverify-intermediate-code`, which a release clang leaves off: it compiled an IR bug of kpp's at
 -O0 and hung on it at -O2; tests\verifier.ps1), at no measurable cost (the game's release modules
 compiled in 9.3 to 10.2 s with it, 9.3 to 9.7 s without). There
 are no headers, no per-file compile steps and nothing like make: a "build system" for kpp code is
-only the choice of kppc's arguments.
+only the choice of kpp's arguments.
 
 **What controls a build: command-line options only.**
 
@@ -38,7 +38,7 @@ only the choice of kppc's arguments.
 | `--clang-flags F` | more flags for clang's compile of the modules (`-fsanitize=address`) |
 | `--incremental-link` | debug builds only: link.exe `/INCREMENTAL`, so the next link redoes only changed objects; the modules have no section per function (the link keeps every function) |
 | `--file-prefix-map FROM=TO` | the source paths the program's text holds (an assertion's message, a `CallerLocation`'s file) start with TO in place of the directory FROM, `/` between names; diagnostics and debug info keep theirs. kpp's release and final builds pass the standard library's as `stdlib`, each kpp library's as its name, and the project's as nothing (`src/main.kpp`), so that a release binary holds no path of the machine that built it |
-| `--no-inline` | kppc emits no trivial function into its callers (a diagnostic tool; inlining is on by default) |
+| `--no-inline` | kpp emits no trivial function into its callers (a diagnostic tool; inlining is on by default) |
 | `--keep-going`, `--stub-missing` | bring-up tools: link what was emitted despite errors, stub what is missing |
 | `--server` | build through a persistent compile server ([compile-speed.md](compile-speed.md)) |
 | `--msvc-diagnostics` | errors as `path(line): error: ...`, which Visual Studio's Error List reads |
@@ -53,9 +53,9 @@ fastdebug is `config::debug` true, optimized):
 | clang (`--optimize` decides) | `-O0` | `-O2`, ThinLTO when there are several modules (lld runs the back ends) |
 | link (`--optimize` decides) | link.exe, `--incremental-link` allowed | lld, whole program; `--incremental-link` is an error |
 | debug info | only with `--debug-info` (CodeView line tables, a PDB; ee17f9a8) | the same |
-| kppc inlining of trivial functions | on | on |
+| kpp inlining of trivial functions | on | on |
 
-**Whole-program optimization (2026-11-04).** `--lto full` is kppc's part of factorio-in-kpp's final
+**Whole-program optimization (2026-11-04).** `--lto full` is kpp's part of factorio-in-kpp's final
 configuration, kpp's FinalRelease ([final-release.md](final-release.md)): the official Factorio builds
 are compiled with `/GL` and linked with `/LTCG`, one optimization over the whole program, its C and
 C++ libraries included. With `--lto full` the modules become bitcode for full LTO (`-flto`, not
@@ -77,25 +77,25 @@ without stack cookies (`/GS-`, clang's `-fno-stack-protector`), as both of Facto
 clang-cl's default put them in until 2026-11-04. tests\lto.ps1 builds a program both ways for Windows
 and windows-gnu; tests\project.ps1 builds a configuration with `--lto full` and C flags of its own.
 
-**The compile server.** `--server` anywhere on the line makes kppc a client. The server is keyed by
-kppc's path, the working directory and the argument list, so every distinct argument list has its
+**The compile server.** `--server` anywhere on the line makes kpp a client. The server is keyed by
+kpp's path, the working directory and the argument list, so every distinct argument list has its
 own server. A server keeps the last build's program in memory, rebuilds only what an edit touched,
-and ends after an hour idle, or as soon as the kppc it was started from changes (a rebuild, an
-install). `--stop-server` with the same arguments stops it; `--stop-all-servers` alone (kppc's or
+and ends after an hour idle, or as soon as the kpp it was started from changes (a rebuild, an
+install). `--stop-server` with the same arguments stops it; `--stop-all-servers` alone (kpp's or
 kpp's) stops every compile server of this user. `--msvc-diagnostics` is left out of the key: it changes
 only the form a diagnostic's place is printed in, which the client gives it (the server marks each
 place), so a Visual Studio build and the command line's share one server and its kept build, each
 reading its errors in its own form.
 
 **Programs describe their builds in .cmd scripts.** `programs/factorio/link-settings.cmd` sets
-`KPPC`, `CINC` (8 `--cinclude`) and `LIBS` (19 libraries of the game's C++ build, 21 Windows
+`KPP`, `CINC` (8 `--cinclude`) and `LIBS` (19 libraries of the game's C++ build, 21 Windows
 libraries, the shims and the resource file). `link.cmd` and `run.cmd` both call it and then each
-write their own kppc line: 6 source roots and 4 (link) or 9 (run) more options.
+write their own kpp line: 6 source roots and 4 (link) or 9 (run) more options.
 `tools/vs/factorio/generate.cmd` is a third copy of run.cmd's line. Three copies of one build is what a project file removes.
 
 ## FASTBuild
 
-**FASTBuild plays no part in building kpp code.** kppc never calls it and has no use for it: there
+**FASTBuild plays no part in building kpp code.** kpp never calls it and has no use for it: there
 is one compile per program, already parallel and cached, so a distributed per-file build tool has
 nothing to schedule. FASTBuild remains Factorio's C++ build (`C:\Factorio\fastbuild\fbuild.bff`).
 
@@ -157,11 +157,11 @@ memory limits: Starlark's sandbox, without a second language.
 
 ### build.kpp
 
-- **What it is.** kppc compiles `build.kpp` on its own, with the standard library and a small
+- **What it is.** kpp compiles `build.kpp` on its own, with the standard library and a small
   `build` package (`Project`, `Executable`, `Step`), and runs its `build` function in the
   interpreter once, for every target and configuration (below, "Targets and configurations"). The
   function can compute (loops, functions, the standard
-  library), but it can only describe: it fills in a `Project`, and kppc builds what that says.
+  library), but it can only describe: it fills in a `Project`, and kpp builds what that says.
 - **It cannot act.** It cannot read a file, start a process or call C. That is the interpreter's
   existing limit, so no separate sandbox is needed.
 - **Its errors are kpp errors**, with the same Error List, colouring and IDE navigation.
@@ -205,8 +205,8 @@ void build(Project& project)
   kpp --test              build and run the tests
   ```
 
-  debug is the default and may be written out (`--debug` and `--release` say the same). `kpp` is the name kovarex used; it would
-  replace `kppc` (question 1). A file or directory given on the command line still means what it
+  debug is the default and may be written out (`--debug` and `--release` say the same). `kpp` is the name kovarex used, the
+  compiler's own since 2026-11-07 (question 2: "kpp everywhere"). A file or directory given on the command line still means what it
   means today: build these sources, with no build.kpp.
 - **Targets.** `project.executable(name, roots)` is one program. It gets the project's settings and
   libraries, plus its own. Each target is a whole program: two executables from one `src/` share
@@ -216,7 +216,7 @@ void build(Project& project)
   adds one based on another ("Targets and configurations", below).
 - **Steps** are for what is not compiling kpp or C: generating code, copying into a game
   directory. A step is a built-in (`Step::copy`) or a kpp program in the project
-  (`Step::run("tools/generate_imgui.kpp", inputs, outputs)`). kppc compiles and runs it with the
+  (`Step::run("tools/generate_imgui.kpp", inputs, outputs)`). kpp compiles and runs it with the
   full standard library, and only when its inputs changed. Only the root project declares steps:
   a library's build.kpp may not, so adding a library runs none of its code on your machine
   (library-registry.md, decision 5).
@@ -233,7 +233,7 @@ run_tests.cmd.
   - `kpp [targets] [configurations]` builds those cells, every target when none is named, debug
     when no configuration is;
   - `kpp NAME --run ARGS` builds and runs one; one built for another platform (`--target freebsd`,
-    linux) is an error before the build, as `kppc --run`'s: build it without `--run`;
+    linux) is an error before the build, as `kpp --run`'s: build it without `--run`;
   - `kpp --run FILE.kpp ARGS`, with no target or configuration named before `--run`, is the one
     exception to names: it runs that file with ARGS, as outside a project, and a FILE.kpp that is not
     there is an error (2026-11-06: it built and ran the project, with the file among its arguments,
@@ -246,7 +246,7 @@ run_tests.cmd.
   - `--set NAME=VALUE` gives a setting; `--no-server` builds without the compile server, and
     `--stop-server` stops the project's servers, every one whose arguments name a file of the
     project (a build with options of its own, `--verbose` or another `--toolchain`, has a server of
-    its own), and says which it stopped; `--verbose` shows kppc's report of each build (its
+    its own), and says which it stopped; `--verbose` shows kpp's report of each build (its
     phases' times), which a project's builds otherwise keep quiet;
   - `kpp` alone in a console shows a menu of these, each with its command, and so in Git Bash
     (mintty) and Cygwin, whose terminals give programs a pipe, not a console (its name,
@@ -255,12 +255,12 @@ run_tests.cmd.
     build.kpp, `src\main.kpp` and a `.gitignore`.
   An argument that is an existing file or directory makes it a plain build of those sources, as
   before.
-- **How build.kpp runs.** kpp runs `kppc --run-build matrix` on build.kpp, projectlib and a
+- **How build.kpp runs.** kpp runs `kpp --run-build matrix` on build.kpp, projectlib and a
   generated `build\kpp\settings.kpp` (the `--set` values and the project's name), through the
   compile server. The interpreter (GlobalScope::runBuild) default-constructs a Project, runs
   build(project) and then projectlib's `String describe(const Project&)` (which runs configure()
   for every cell), and
-  kppc prints that text, which kpp reads. Nothing is linked or run. An I/O call in build() is an
+  kpp prints that text, which kpp reads. Nothing is linked or run. An I/O call in build() is an
   error naming it: `build.kpp:4: a call to puts, a C function, which has no body to run at
   compile time`. The result is kept, keyed by build.kpp, projectlib, the settings and kpp itself.
 - **projectlib** (`projectlib/Project.kpp`). Lists are `Vector<String>`, paths join with `+`
@@ -321,7 +321,7 @@ void build(Project& project)
      builds and tests on its own;
   3. kpp's own libraries: `libraries\` beside `stdlib\`, a release's (the official libraries,
      this release's versions: so the installed kpp alone builds a project that uses httpclient,
-     with no checkout; kovarex, 2026-11-04), or a checkout's for a build of kppc. `kpp --version`
+     with no checkout; kovarex, 2026-11-04), or a checkout's for a build of kpp. `kpp --version`
      names the directory and its libraries (`libraries: C:\Program Files\kpp\libraries (base64,
      bcrypt, ...)`). The project's own copy, by 1 or by `local(...)`, comes first;
   4. later, the registry; now a missing library is an error naming where it looked.
@@ -329,37 +329,37 @@ void build(Project& project)
   `--set` settings; the description is kept in the using project's `build\kpp\uses\NAME`, never in
   the library's directory, which may be read-only: an installed kpp's libraries, under
   `C:\Program Files\kpp`, failed every project that used one with no word, 2026-11-05; a file kpp
-  cannot write is an error that names it), checks the version and minimumKpp, gives kppc its roots as the library's, with
+  cannot write is an error that names it), checks the version and minimumKpp, gives kpp its roots as the library's, with
   its scope ("Library scopes" below), and does the same for the libraries it uses, depth first. A
   library rooted at its own directory (`root(".")`, a converted C library's) keeps its build.kpp out
-  of its sources (kpp passes `--exclude`); the cell's kppc options apply to its roots too, so a cell's
+  of its sources (kpp passes `--exclude`); the cell's kpp options apply to its roots too, so a cell's
   `--ext .kpp` leaves out the C headers beside a converted library's kpp. One name in two directories is an error: a
   program has one copy of each library. Only the library part of its build.kpp is read: its
   executables and their commands are never built or run, and C libraries (`cLibrary`) in a used
   library are an error until they are supported.
 - **System libraries** (2026-11-04, for httpclient's OpenSSL on FreeBSD): `lib.systemLibrary("ssl")`
   is linked by every program that uses the library, its own tests included, as
-  `Executable::systemLibrary` is for one executable (kppc's `--lib -lssl`). With a platform,
+  `Executable::systemLibrary` is for one executable (kpp's `--lib -lssl`). With a platform,
   `systemLibrary("ssl", Platform::FreeBSD)`, only a build for that platform (its `--target`, from
   build.kpp's arguments or the command line; windows without one) links it. Each name is linked once
   however many libraries name it. Tested by `tests/project.ps1` (a library linking version.dll for
-  Windows, and a library no platform has for FreeBSD, left out; with FreeBSD's sysroot beside kppc,
+  Windows, and a library no platform has for FreeBSD, left out; with FreeBSD's sysroot beside kpp,
   `kpp --target freebsd` fails to link that one and leaves out the same library for Linux).
   An executable's own takes a platform the same way (`app.systemLibrary("ssl", Platform::FreeBSD)`,
   2026-11-05), and is linked once with its libraries' of the same name.
 - **A program's own .natvis** (thread F, 2026-11-05): `game.natvis("tools/factorio.natvis")`, a file
   relative to the project with Visual Studio's display rules for the program's types, is linked into
-  the PDB of a `--debug-info` build for Windows beside the rules kppc writes for the standard library
-  (kppc's `--natvis FILE`; link.exe's or lld-link's `/NATVIS`, lld's MinGW driver's `--Xlink`).
+  the PDB of a `--debug-info` build for Windows beside the rules kpp writes for the standard library
+  (kpp's `--natvis FILE`; link.exe's or lld-link's `/NATVIS`, lld's MinGW driver's `--Xlink`).
   Visual Studio finds it with the program (debugging.md, "Values in Visual Studio"). A missing file
   fails the link. Tested by `tests/natvis.ps1` (natvis\project). A change of the file alone links
-  again: kpp keeps the stamps (size and time) of the link's inputs besides kppc's objects, the
+  again: kpp keeps the stamps (size and time) of the link's inputs besides kpp's objects, the
   .natvis files and the libraries named by path (`linkFile`), in `<exe>.link.inputs`, and links when
   one differs. Before, a build through the compile server, which replays an unchanged build, kept the
   old rules in the PDB (project.ps1's linkinputs part).
 - **`kpp --test [names] [-- runner arguments]`** builds and runs the tests (design.md, "Native
   tests") of the executables and libraries named, all when none is: each one's roots, a
-  library's test roots too, through `kppc --test` with its build's options. `kpp --test -- --filter
+  library's test roots too, through `kpp --test` with its build's options. `kpp --test -- --filter
   "json.kpp > parse"` runs some. The exit code is 1 when a test failed. The `test` blocks in the
   source roots of the libraries a program uses are in its test build too, so a library keeps its
   tests in its test roots when they should not run in its users' tests.
@@ -394,7 +394,7 @@ project.configuration("debug").config("zlib::debug", true);
   (`requiredOption`) is required.
 - **The library's code reads `config::zlib::debug`,** its own scope, so libraries never collide
   with each other or with the program's constants. It is an ordinary `config::` constant: in
-  expressions, `if constexpr` and `conditional(...)`, at declaration scope too (kppc's
+  expressions, `if constexpr` and `conditional(...)`, at declaration scope too (kpp's
   `--config zlib::debug=true`; tests/spec/kpp/config_library_scope).
 - **The user sets one** with `use("zlib").config(NAME, VALUE)`, or as a constant named
   `zlib::NAME` of the project, a configuration, a target or a cell (`config("zlib::debug", true)`),
@@ -445,21 +445,21 @@ config bool finalRelease = false;
   `option()`s are: set by `use("zlib").config(...)`, a `zlib::NAME` constant of the project, a
   configuration, a target or a cell, or `kpp --config zlib::level=9`, and listed by `kpp options`
   ("set by the default", with the declaration's FILE:LINE). The program's are set by its own
-  constants of build.kpp and `--config`, as before. kppc alone takes them too: `kppc --exe a.exe
+  constants of build.kpp and `--config`, as before. kpp alone takes them too: `kpp --exe a.exe
   src` with no `--config` builds with the defaults.
 - **Errors**, each at the declaration: a required one nothing sets; two declarations of one name
   that differ (both named); a value of another type (`--config level=x`, an i8's 300, a bool's 1);
-  `debug`, `platform`, `mingw` or `tests` (kppc's own); a library's name declared both in source and
+  `debug`, `platform`, `mingw` or `tests` (kpp's own); a library's name declared both in source and
   by `option()`; a malformed declaration, one not first on its line, and one anywhere but a file's
   top level. A top-level `config` followed by a name is always a declaration.
-- **How:** kppc reads the declarations from the tokens of the files that may hold one (src/config.cpp:
+- **How:** kpp reads the declarations from the tokens of the files that may hold one (src/config.cpp:
   a text check picks them, the lexer decides, so a commented-out one is not one), before any file is
   parsed, and writes them into `<config>` with their types; the parser drops their tokens. A compile
   server's build whose `<config>` changed (an edited default) is not incremental. kpp reads a used
   library's declarations the same way from its roots.
 - **Open:** whether these replace build.kpp's `option()` (both work today).
 
-#### Library scopes (decided 2026-11-01, design.md 16; the lookup is not in kppc yet)
+#### Library scopes (decided 2026-11-01, design.md 16; the lookup is not in kpp yet)
 
 kovarex, 2026-11-01: "adding library means that I have to change unrelated code to remove
 ambiguity is not nice"; "libraries can decide".
@@ -485,9 +485,9 @@ util.unscoped = true;                       // its names are bare everywhere, as
   shows it on the library's page.
 - **Adding a scoped library never changes existing code's meaning.** There is no per-file
   `using`: a name means the same in every file.
-- **What kpp gives kppc,** per root of each library a cell uses, in resolveUses' order:
-  `--library-root NAME DIR` (scoped) or `--unscoped-library-root NAME DIR` (kppc's options, thread
-  A's lookup); the program's own roots stay plain arguments, and the stdlib, which kppc adds itself,
+- **What a project build gives its compile,** per root of each library a cell uses, in resolveUses' order:
+  `--library-root NAME DIR` (scoped) or `--unscoped-library-root NAME DIR` (kpp's options, thread
+  A's lookup); the program's own roots stay plain arguments, and the stdlib, which kpp adds itself,
   is unscoped. A library's own tests (`kpp --test` in its directory) build its roots and test roots
   as the program, so its names are bare there; the libraries it uses come as library roots. Visual
   Studio's project lists the libraries' files too. Tested by tests/project.ps1 (a bare use of a
@@ -551,7 +551,7 @@ void build(Project& project)
 - **Linux and FreeBSD (thread B, 2026-11-05).** A program built for another platform (its
   `--target`, build.kpp's or the command line's) has its C libraries built for that platform: clang
   for the target's triple with the target's sysroot (the program's `--sysroot`, else the one beside
-  kppc), `-c -O2 -DNDEBUG -w -fno-stack-protector`, ELF objects and an archive llvm-ar makes,
+  kpp), `-c -O2 -DNDEBUG -w -fno-stack-protector`, ELF objects and an archive llvm-ar makes,
   `build\clib-linux\NAME.a` (`build\clib-freebsd\...`), so that building for one platform leaves
   another's objects as they are. Every entry of a library may name its platform, as
   `systemLibrary(NAME, PLATFORM)` does: `source`, `exclude`, `include`, `define`,
@@ -559,7 +559,7 @@ void build(Project& project)
   platform (`numbers.define("PLATFORM_ID=2", Platform::Linux);`, kept as "linux PLATFORM_ID=2",
   compiler/src/Project/CLibraryBuild.cpp's forPlatform), and an entry without one counts on every
   platform. So does an include directory of the C import, an executable's or the project's
-  `cInclude` (kppc's `--cinclude`): `game.cInclude("libraries/libbacktrace", Platform::Linux)` for
+  `cInclude` (kpp's `--cinclude`): `game.cInclude("libraries/libbacktrace", Platform::Linux)` for
   the import only Linux's files have (2026-11-05). An include directory that starts with `=` is in the target's sysroot, as GCC's `-I=`
   (which Visual Studio's clang does not take with a Windows sysroot path): SDL3's
   `include("=/usr/include/dbus-1.0", Platform::Linux)`; in a build for Windows it is an error. A
@@ -592,7 +592,7 @@ void build(Project& project)
 ### Adding a library
 
 **Writing the line adds the library.** `project.use("json")` (or `game.use(...)` for one target)
-is the whole act. On the next build kppc does the following:
+is the whole act. On the next build kpp does the following:
 1. It evaluates build.kpp for every configuration and collects the `use` calls.
 2. It finds each library:
    - first in `libraries/<name>`;
@@ -605,7 +605,7 @@ is the whole act. On the next build kppc does the following:
 
 So there is no separate `kpp add` that has to edit a program. Clicking is a convenience on top of
 the same line: the IDE or `kpp add json` inserts `project.use("json");` after the project's
-last `use` call. kppc parses kpp, so it knows where that is.
+last `use` call. kpp parses kpp code, so it knows where that is.
 
 - **Versions.**
   - `use("json")` takes the newest release the first time, and build.lock pins it from then on.
@@ -619,7 +619,7 @@ last `use` call. kppc parses kpp, so it knows where that is.
 - **Forks.** A library's name resolves to `libraries/<name>` before the registry, so a fork changes
   no `use` line.
   - `kpp fork json` copies the locked version there and records where it came from. From that
-    record, kppc can show the fork's diff and say when upstream has a newer release.
+    record, kpp can show the fork's diff and say when upstream has a newer release.
   - Deleting the directory goes back to the registry's version.
 - **Safety.**
   - Downloading on a build runs nothing: a library's build.kpp is interpreted and declares no
@@ -634,7 +634,7 @@ last `use` call. kppc parses kpp, so it knows where that is.
 ```
 factorio/
   build.kpp          optional
-  build.lock         written by kppc when there are libraries; committed
+  build.lock         written by kpp when there are libraries; committed
   src/               the project's code
   tests/             more source roots, as build.kpp names them
   libraries/         libraries kept in this repository: your own, and forks; committed
@@ -693,15 +693,15 @@ void configure(Cell& cell)
 - **build() runs once** and declares the whole matrix as data. Project has no `configuration`
   member any more: what differs by configuration is in the configuration, or in configure().
 - **Configurations.** `debug` and `release` are built in. `project.configuration(NAME)` returns
-  one (made if new, with no base: not optimized, no debug info, `config::debug` true as kppc's
+  one (made if new, with no base: not optimized, no debug info, `config::debug` true as kpp's
   default), `project.configuration(NAME, BASE)` makes one based on another: the base's
   settings come first, then its own, resolved after build() (a change to debug later in build()
   reaches fastdebug too). A configuration holds:
   - `config(NAME, VALUE)`: a `config::` constant (bool, integer or string);
-  - `optimize`: clang -O2 and ThinLTO and a whole link (kppc `--optimize`), or -O0 and an
+  - `optimize`: clang -O2 and ThinLTO and a whole link (kpp `--optimize`), or -O0 and an
     incremental link;
   - `debugInfo`: line tables and a PDB (Linux and FreeBSD: DWARF; an optimized build's in NAME.debug beside the executable, which keeps a .gnu_debuglink to it);
-  - `clangFlag(F)` (kppc `--clang-flags`) and `argument(OPTION)` (any kppc option);
+  - `clangFlag(F)` (kpp `--clang-flags`) and `argument(OPTION)` (any kpp option);
   - `cFlag(F)`: one more flag for its C libraries' compiles, after kpp's own (clang-cl's, or clang's
     for windows-gnu). A configuration with C flags builds its C libraries in a directory of those
     flags' own, `build\clib\flags-HASH`, which configurations with the same flags share: building it
@@ -715,12 +715,12 @@ void configure(Cell& cell)
   | `config::debug`, so `assert` | true: asserts in | false: `assert` compiles to nothing, `release_assert` stays |
   | `optimize` | false: `-O0`, incremental link | true: `-O2` + ThinLTO, lld, a whole link |
   | `debugInfo` | true | true: line tables in a file beside the executable, the PDB (Linux, FreeBSD: NAME.debug), which it names without its directory; its code unchanged (kovarex 2026-11-07, question 1) |
-  | kppc trivial-function inlining | on | on |
+  | kpp trivial-function inlining | on | on |
   | its C libraries | unoptimized: `/Od` (`-O0` for clang's GNU driver) after kpp's `/O2`, in `build\clib\flags-HASH` (kovarex 2026-11-07: "debug builds means everything debug", as Factorio's C++ Debug build compiles its libraries) | `/O2`, in `build\clib` |
 - **config constants** are set for the project (`project.config`), for a configuration, for a
   target (`tests.config`) and for a cell (configure()); each later one overrides: project,
   configuration, target, cell. The command line's `kpp --config NAME=VALUE` overrides them all.
-  They reach the program as kppc's `--config NAME=VALUE`, so the program reads `config::NAME`.
+  They reach the program as kpp's `--config NAME=VALUE`, so the program reads `config::NAME`.
 - **configure(Cell& cell)** is optional. The interpreter runs it once per cell after build(), on
   a copy of the cell's target and configuration: `cell.target` and `cell.configuration` are
   readable and changeable for that cell only (`cell.target.linkFile(...)`,
@@ -738,7 +738,7 @@ void configure(Cell& cell)
   a template that does nothing (a function is chosen over a template). It runs for every cell, not
   lazily for the ones built: the description is computed once and kept (above), the Visual Studio
   files and the language server need every cell, and a cell costs little. Measured 2026-11-01 on
-  factorio-in-kpp's build.kpp (`kppc --quiet --run-build matrix projectlib build.kpp
+  factorio-in-kpp's build.kpp (`kpp --quiet --run-build matrix projectlib build.kpp
   build\kpp\settings.kpp`, 15 interleaved rounds, the machine shared with other builds): 272 ms at
   best with 4 cells (2 targets, debug and release), 299 ms with 6 (fastdebug added).
 - **The command line.** `kpp TARGET CONFIGURATION`, in either order: `kpp factorio-test release`.
@@ -749,8 +749,8 @@ void configure(Cell& cell)
   directory is still a plain build of those sources, so a target is best not named like a
   directory (`tests`).
 - **Outputs** go to `build/<configuration>/<target>.exe` (`build/<configuration>/<target>` for Linux and
-  FreeBSD, whose programs have no extension), with kppc's object cache beside it. A cell's
-  kppc arguments differ from every other cell's (its configuration's options and constants, its
+  FreeBSD, whose programs have no extension), with kpp's object cache beside it. A cell's
+  kpp arguments differ from every other cell's (its configuration's options and constants, its
   output), so each has its own compile server and its own cache: switching from debug to
   fastdebug and back rebuilds nothing.
 - **Visual Studio** gets one project per target and one solution configuration per named
@@ -784,32 +784,32 @@ void configure(Cell& cell)
 
 ### The whole build (2026-11-02)
 
-A program's build is its C libraries and kppc's work at once, then the link:
+A program's build is its C libraries and kpp's work at once, then the link:
 - Every library the program links has its changed files (and resources) compiled in **one pool**
-  on all cores, no library waiting for another, while kppc builds the program (its front end,
+  on all cores, no library waiting for another, while kpp builds the program (its front end,
   code generation and modules need no library). Each library is archived once its files are.
-- kppc leaves the link to kpp (`--defer-link`): it writes the link command to `EXE.link.command`,
+- kpp leaves the link to kpp (`--defer-link`): it writes the link command to `EXE.link.command`,
   and `EXE.link.pending` when its objects are new. kpp links once both are done, also when only a
   C library changed (a compile server replays an unchanged program's build, which does not link).
 - kpp's line gives the toolchain the build took, the whole build's time and its split, `kpp: built
   ...\factorio.exe (debug, msvc toolchain, total 21.2 s: C libraries 18.8 s alongside kpp 18.3 s,
   link 2.4 s)`, and a command that builds several programs ends with `kpp: built 2 programs, total N s`.
 - Measured on factorio-in-kpp's debug build from scratch (d84869e1, its 641 C/C++ files, PC-PRACOVNA,
-  3 rounds interleaved): 32.8, 39.1, 34.0 s with the libraries one after another before kppc;
+  3 rounds interleaved): 32.8, 39.1, 34.0 s with the libraries one after another before kpp;
   22.3, 27.6, 26.2 s with the pool (the last two on a machine 80 to 100% busy). The machine is busy
-  all the time either way: the libraries take as long beside kppc as alone, and so does kppc.
+  all the time either way: the libraries take as long beside kpp as alone, and so does kpp.
 
 ### kpp's own steps in an edit build (2026-11-05)
 
-An edit build is kpp's steps around kppc's and the link: build.kpp's description (cached in
+An edit build is kpp's steps around kpp's and the link: build.kpp's description (cached in
 `build\kpp\describe.txt`), each used library's, the C libraries' check, the after-build step.
 `KPP_STEP_TIMES=1` (an environment variable, so that the build keeps its compile server) prints
 where they went: `kpp steps: 0.039 s before the build (build.kpp described at 0.001 s, its libraries at
-0.039 s), kppc 0.056 s (the C libraries' check alongside, 0.085 s), link 0.000 s, ...`. Measured on
+0.039 s), kpp 0.056 s (the C libraries' check alongside, 0.085 s), link 0.000 s, ...`. Measured on
 factorio-in-kpp's `kpp factorio debug --msvc-diagnostics` (Visual Studio's build) with nothing changed:
 - the C libraries' check (18 libraries: each object against its source and the headers its `.d`
-  names) ran before kppc, one library after another, 0.10 to 0.19 s of every build; it now runs on
-  a thread per library alongside kppc, and only the link waits for it;
+  names) ran before kpp, one library after another, 0.10 to 0.19 s of every build; it now runs on
+  a thread per library alongside kpp, and only the link waits for it;
 - the libraries' config declarations (design.md, "config:: defaults in source") were read from every
   file of the six used libraries, 25 ms; they are kept in `build\kpp\uses\LIBRARY\config-LIBRARY.txt` with each
   file's time and size, 8 to 10 ms;
@@ -862,10 +862,10 @@ These build, run and debug. IntelliSense (errors as you type, hover, go to defin
 comes from the language server, `kpp --lsp`: [editors.md](editors.md) has it for VS Code, Visual
 Studio and other editors.
 
-**kppc generates them** (decided by kovarex 2026-10-31: no hand-written project files):
+**kpp generates them** (decided by kovarex 2026-10-31: no hand-written project files):
 
 ```
-kppc --generate-visual-studio-files --generate-vs-code-files <build options> --exe OUT.exe SOURCES...
+kpp --generate-visual-studio-files --generate-vs-code-files <build options> --exe OUT.exe SOURCES...
 ```
 
 - **Visual Studio:** `build\visual-studio\<name>.sln`, `.vcxproj` and `.vcxproj.filters`. Every
@@ -873,13 +873,13 @@ kppc --generate-visual-studio-files --generate-vs-code-files <build options> --e
   *Standard Library*, each used kpp library as *Libraries\NAME* (its roots' names below that when it
   has several; 2026-11-05: by its root's name alone, gorating's src and every library's src were one
   folder).
-- **VS Code:** `.vscode\tasks.json`, `launch.json` and `settings.json`. A `.vscode` file kppc
+- **VS Code:** `.vscode\tasks.json`, `launch.json` and `settings.json`. A `.vscode` file kpp
   did not write is never overwritten. A build task starts kpp itself (`"command"`: kpp's path,
   `"args"`, `"options": { "cwd" }`), no cmd between: VS Code quotes a process task's arguments
   for CreateProcess, so a command line handed to `cmd /c` in one argument reached cmd with its
   quotes as `\"`, which cmd does not read, and every kpp under a path with blanks (an installed
   one, in Program Files) failed (kovarex, 2026-11-02). A build with before- and after-build steps
-  (kppc's own `--before-build`, `--after-build`) needs cmd: its command is a `.cmd` file in
+  (kpp's own `--before-build`, `--after-build`) needs cmd: its command is a `.cmd` file in
   `.vscode`, which the task hands to cmd as a path alone.
 
 Both have debug (`--debug-info`, incremental link) and release (`--release`), each with its
@@ -906,7 +906,7 @@ copy into the game's directory. VS Code is not installed on PC-PRACOVNA: its fil
 as JSON only, not run.
 
 **Why a Makefile `.vcxproj`.** It is Visual Studio's own "external build" project.
-- Ctrl+Shift+B runs kppc through its server.
+- Ctrl+Shift+B runs kpp through its server.
 - F5 builds, then starts the program under the debugger.
 - The Debug/Release dropdown maps to the configurations.
 - `.kpp` files are in Solution Explorer, and no C++ IntelliSense runs on them.
@@ -917,13 +917,13 @@ it fills the Error List from a task's output. It was not built or measured.
 
 **The Error List.** MSBuild reads errors from a tool's output only in the MSVC form,
 `file(line[,col]): error|warning [code]: text`. Verified with MSBuild 17 on a Makefile project:
-kppc's `path:line: error:` gave only `MSB3073 exited with code 1`, and `path(line): error:` gave
+kpp's `path:line: error:` gave only `MSB3073 exited with code 1`, and `path(line): error:` gave
 an error with file and line. Hence `--msvc-diagnostics`. Every diagnostic's place comes from one
 formatter, `sourceLocation` (source.hpp), which gives `path:line`, or `path(line)` with the
 option. Every diagnostic carries its label: the code generator's gaps ("does not support ...
 yet") now print as `error:` too. run_tests.cmd checks both forms on tests/diagnostics: a parse,
-a checker, a codegen and a static_assert diagnostic. kppc's messages have no column, so the Error
-List shows lines only. (The first version, 456eda12, rewrote kppc's output through a pipe. That
+a checker, a codegen and a static_assert diagnostic. kpp's messages have no column, so the Error
+List shows lines only. (The first version, 456eda12, rewrote kpp's output through a pipe. That
 was replaced because it could misread a program's own output under `--run`.)
 
 **Measurements** (hand-written projects, before generation;
@@ -931,7 +931,7 @@ was replaced because it could misread a program's own output under `--run`.)
 
 | | command | times |
 |---|---|---|
-| hello, edit→build | `kppc --quiet --exe hello.exe hello.kpp` | 130–420 ms (10 runs) |
+| hello, edit→build | `kpp --quiet --exe hello.exe hello.kpp` | 130–420 ms (10 runs) |
 | hello, edit→build | the same with `--server` | 170–400 ms |
 | hello, edit→build | `MSBuild.exe hello.vcxproj` (hand-written then; standalone, so its process start included) | 1.2–2.5 s |
 | factorio, cold (server start) | `MSBuild.exe tools\vs\factorio\factorio.vcxproj` | 38.4 s |
@@ -939,7 +939,7 @@ was replaced because it could misread a program's own output under `--run`.)
 | factorio, warm, a comment edit | `MSBuild.exe factorio.vcxproj` | 6.4, 6.5, 9.8, 21.9 s |
 
 Of factorio's warm build, `native\build.cmd`'s up-to-date check is 0.9 s and the copy into the
-game's directory 0.16 s; the rest is kppc (front end, codegen, link). Inside Visual Studio the
+game's directory 0.16 s; the rest is kpp (front end, codegen, link). Inside Visual Studio the
 build runs in-process, with no MSBuild.exe start. That measurement is still to do:
 `measure.ps1` opened Visual Studio, which stopped at a "Microsoft Visual Studio Account Settings"
 dialog (a sign-in prompt) that only kovarex can answer. After he has signed in once:
@@ -965,15 +965,15 @@ install. `install.cmd` links it there.
 
 kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a kpp release, run
 `kpp` in the project's root, and build or generate Visual Studio files from there.
-- **A release** is `kpp.exe` (kppc under the name users type), `stdlib\`, `projectlib\`, `libraries\`, the
+- **A release** is `kpp.exe`, `stdlib\`, `projectlib\`, `libraries\`, the
   bundled toolchain (below), the TextMate grammar, kpp-vscode.vsix, kpp-visualstudio.vsix and a README. kpp finds `stdlib\`,
   `projectlib\` and `bin\` next to itself. An installation needs nothing else: no Visual Studio,
   Build Tools or Windows SDK (design.md 17, stage 2; `--toolchain msvc` uses an installed Visual
   Studio's clang on request, as the game's build does).
 - **FreeBSD as installed** (kovarex, 2026-11-04): a release brings FreeBSD 14.3's headers and static
   libraries in `sysroots\freebsd-x86_64`, so `kpp --target freebsd` builds and links with no
-  `--sysroot` (kppc takes `sysroots\NAME` beside itself for `--target freebsd` and `linux`, where
-  tools\sysroot\freebsd.ps1 also puts it in a build of kppc; a link without either is an error naming
+  `--sysroot` (kpp takes `sysroots\NAME` beside itself for `--target freebsd` and `linux`, where
+  tools\sysroot\freebsd.ps1 also puts it in a build of kpp; a link without either is an error naming
   the path; `kpp --version` names it). package.ps1 copies a cut of freebsd.ps1's sysroot: the
   headers, the start files and every static library, no shared libraries (kpp links FreeBSD programs
   statically), with FreeBSD's COPYRIGHT, LLVM's licence for libc++, libcxxrt and compiler-rt, and a
@@ -994,15 +994,15 @@ kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a 
   project that needs another keeps its own copy. package.ps1's zip test unpacks the zip outside the
   repository and builds and runs a project using httpclient and mariadb with it; the nightly release
   check does the same with the installer's installation.
-- **`kpp --version`** prints the version and commit kppc was built from ("Versions" below), the
+- **`kpp --version`** prints the version and commit kpp was built from ("Versions" below), the
   compiler's path, the toolchain a build takes without `--toolchain`, and the standard library.
   `kpp --help` lists the options. Both work only alone; in a project's directory they print and
   build nothing.
 - **Options** (2026-11-02, after `kpp --version` built kovarex's project): an option that is neither
-  kpp's (`--run`, `--test`, `--set`, `--no-server`...) nor kppc's is an error with a hint at
+  kpp's (`--run`, `--test`, `--set`, `--no-server`...) nor kpp's is an error with a hint at
   `kpp --help`, and so is one missing its value. It is never passed on or ignored. A project's
-  command line passes kppc's options on to each cell's build with their values (the table
-  `compileOptions` in main.cpp, which kppc's own parsing must match).
+  command line passes kpp's options on to each cell's build with their values (the table
+  `compileOptions` in main.cpp, which kpp's own parsing must match).
 - **The bundled toolchain in a release** is llvm-mingw's x86-64 part at its own relative paths, so
   clang finds the rest from its `bin\`: `bin\` (clang.exe, clang-19.exe, ld.lld.exe, llvm-ar.exe,
   llvm-rc.exe, llvm-dlltool.exe, libLLVM-19.dll, libclang-cpp.dll, libc++.dll, libunwind.dll and the
@@ -1012,7 +1012,7 @@ kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a 
   `LICENSE-llvm-mingw.txt` (the archive's LICENSE.TXT) and `NOTICE-toolchain.txt`, which gives each
   part's licence. The i686, armv7 and aarch64 trees, python, lldb, clangd and clang-tidy are left
   out.
-- **`tools\release\package.cmd`** packages a built kppc into `build\release\`, named by kppc's own
+- **`tools\release\package.cmd`** packages a built kpp into `build\release\`, named by kpp's own
   version ("Versions" below; `-Version` is an error). It runs
   package.ps1 with `-ExecutionPolicy Bypass`, because Windows' default policy forbids running
   scripts (kovarex's other PC, 2026-11-02). `tools\sysroot\llvm-mingw.cmd` does the same for its
@@ -1082,8 +1082,8 @@ kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a 
   Studio's installer, which failed on the VS Code one when it was kpp.vsix (kovarex, 2026-11-02). An
   upgrade deletes an earlier release's kpp.vsix.
 - **`.github/workflows/release.yml`** is started by hand (Actions > release > Run workflow): it
-  builds kppc on a windows-2022 runner, packages it, and publishes the zip and installer as the
-  prerelease `build-<run number>`, named by kppc's version. It ran on every master commit from
+  builds kpp on a windows-2022 runner, packages it, and publishes the zip and installer as the
+  prerelease `build-<run number>`, named by kpp's version. It ran on every master commit from
   e0ca8975 until the coordinator made it manual (2026-10-31): master gets dozens of commits a day,
   and no run had been checked. The automatic releases come from ci.yml (below): a numbered full release from
   every green master run. The repository is private, so its
@@ -1099,7 +1099,7 @@ on a Windows with no Visual Studio, Build Tools or Windows SDK.
   which link the UCRT's ucrtbase.dll that every Windows 10 and 11 has. Its `bin\` is next to kpp.exe
   in an installation. `tools\sysroot\llvm-mingw.ps1` downloads the pinned release once (SHA-256
   checked) into build\llvm-mingw, for the tests and the package; `tools/sysroot/llvm-mingw.sh` the same
-  release's Linux build into build/llvm-mingw-linux, with which kppc on Linux builds windows-gnu
+  release's Linux build into build/llvm-mingw-linux, with which kpp on Linux builds windows-gnu
   programs (KPP_CLANG=ROOT/bin/clang; design.md, stage 5). Licences: LLVM's Apache-2.0 WITH
   LLVM-exception, MinGW-w64's headers and libraries public domain or ZPL (the DirectX headers from
   Wine LGPL-2.1+), llvm-mingw's own scripts ISC.
@@ -1108,7 +1108,7 @@ on a Windows with no Visual Studio, Build Tools or Windows SDK.
   `__extension__` and `__restrict__` taken as MSVC's are), lld's GNU driver (`--gc-sections`,
   `-municode` for a wmain). A program imports only Windows' own DLLs (ucrtbase, the api-ms-win-crt
   set, kernel32...). `config::mingw` is true for it (CWindows.kpp's fpclassify returns MinGW-w64's
-  FP_ codes). Two pieces kppc makes once into the import cache with the toolchain's tools: an import
+  FP_ codes). Two pieces kpp makes once into the import cache with the toolchain's tools: an import
   library of ucrtbase.dll's functions MinGW-w64's leave out (`__uncaught_exceptions`, strtold), and
   math.h's long double functions on doubles: kpp's long double is a double, as MSVC's, and
   libmingwex's are x87's 80 bits.
@@ -1146,7 +1146,7 @@ on a Windows with no Visual Studio, Build Tools or Windows SDK.
   NAME although nothing names it, a C library's object that registers itself at startup (kpp-native's
   crash report, `kpp_crash_report_install`): link.exe's and lld-link's `/INCLUDE:NAME`, the GNU
   driver's `-u NAME`. A build.kpp gives it as an argument, never as a linker flag of one toolchain.
-- **Checked:** tests\toolchain.ps1 (an installation made of llvm-mingw and this kppc: its default,
+- **Checked:** tests\toolchain.ps1 (an installation made of llvm-mingw and this kpp: its default,
   `--toolchain msvc`, a list with and without Visual Studio (KPP_VSWHERE), the errors, a project's
   debug link, `--keep-symbol` with both toolchains, and that its programs import Windows' DLLs
   alone), tests\windowsgnu.ps1 (the 45 end-to-end programs in the GNU dialect), and
@@ -1161,7 +1161,7 @@ design.md 18 (decided 2026-11-02): MAJOR.MINOR.PATCH.
   `git rev-list --count --first-parent <base>..HEAD`, where the base is
   `git log -1 --first-parent --format=%H -- VERSION`. The commit that changes VERSION is X.Y.0, and
   every later commit adds 1 with nothing edited.
-- **The build:** `compiler/version.cmake` runs at every build of kppc (CMake's target
+- **The build:** `compiler/version.cmake` runs at every build of kpp (CMake's target
   `kpp_version`). It rewrites `compiler\build\generated\version.hpp` only when something changed,
   so only version.cpp is compiled again.
   - "+dirty" marks a build in which a tracked file differs from HEAD, or VERSION is not committed
@@ -1171,11 +1171,11 @@ design.md 18 (decided 2026-11-02): MAJOR.MINOR.PATCH.
     `fetch-depth: 0` in CI.
 - **`kpp --version`** prints `kpp 0.2.5, commit <hash>`, then the compiler, the toolchain and the
   standard library.
-- **The objects** of a `--debug-info` build name their compiler `kppc 0.2.5` (CodeView's S_COMPILE3,
+- **The objects** of a `--debug-info` build name their compiler `kpp 0.2.5` (CodeView's S_COMPILE3,
   DWARF's DW_AT_producer): the version without the commit and "+dirty", so one version's objects are
   the same (kovarex, 2026-11-03). LF_BUILDINFO stays empty.
-- **A release** is named by it, always. `tools\release\package.cmd` reads it from the kppc it
-  packages (`kppc --version`), and it names the files, the README, the installer and the VS Code
+- **A release** is named by it, always. `tools\release\package.cmd` reads it from the kpp it
+  packages (`kpp --version`), and it names the files, the README, the installer and the VS Code
   extension. Nothing takes a version by hand (kovarex: "take the version from the versioning system
   always, not from command line"). `-Version` is an error, and kpp.iss without one is an error. A
   local package of uncommitted changes is `X.Y.Z+dirty`. CI's release is v<version>, and a "+dirty"
@@ -1188,8 +1188,8 @@ design.md 18 (decided 2026-11-02): MAJOR.MINOR.PATCH.
 `.github/workflows/ci.yml` (thread H, 2026-10-31) runs kpp's tests on windows-2022 runners,
 or on the runner named by the repository variable `KPP_CI_RUNNER`, as parallel jobs (kovarex,
 2026-11-02: the repository is public, so GitHub's standard runners cost nothing):
-- **build:** kppc, once, with `compiler\build.cmd` through ccache (below), handed to the other
-  jobs as the artifact `kppc` (compiler\build\kppc.exe, kept 3 days).
+- **build:** kpp, once, with `compiler\build.cmd` through ccache (below), handed to the other
+  jobs as the artifact `kpp` (compiler\build\kpp.exe, kept 3 days).
 - **run_tests:** `compiler\tests\run_tests.cmd --full --part 1` and `--full --part 2` in 2 jobs,
   after build: part 2 is determinism, concurrency, generate and project, part 1 everything else
   (about 2 minutes each on the runner). Each ends with its own line, as `run_tests: ALL PASSED (part
@@ -1276,7 +1276,7 @@ Triggers (kovarex, 2026-10-31, chosen from the costs below):
 - **Publishing:** every green run on master (push, nightly or by hand) installs Inno Setup
   (`choco install innosetup`, as release.yml does) and packages kpp with `tools/release/package.ps1`,
   including the package's own smoke test: the zip, the installer `kpp-<version>-setup.exe` and
-  kpp-vscode.vsix and kpp-visualstudio.vsix. The version is kppc's own ("Versions": VERSION and the commits since it changed; the
+  kpp-vscode.vsix and kpp-visualstudio.vsix. The version is kpp's own ("Versions": VERSION and the commits since it changed; the
   checkout fetches the whole history for it). `tools/release/publish.ps1`
   then publishes the three files to two places, each only when its credential is there:
   - **kpp.net** ([library-registry.md](library-registry.md), "Hosting on kpp.net"; the store's
@@ -1341,7 +1341,7 @@ Triggers (kovarex, 2026-10-31, chosen from the costs below):
     a launcher from `KPP_CCACHE` when it configures build\. version.cpp is compiled again on every
     commit (its header names the commit).
   - **LLVM** (compiler\llvm.ps1's unpacked libraries and headers of the pinned clang+llvm release,
-    256 MB, for the back end inside kppc), keyed on the release's SHA-256, which the build job reads
+    256 MB, for the back end inside kpp), keyed on the release's SHA-256, which the build job reads
     from llvm.ps1; without it every run downloads the 845 MB archive.
   - **llvm-mingw** (build\llvm-mingw, for run_tests and the package), keyed on
     tools/sysroot/llvm-mingw.ps1, which pins the release and its SHA-256 and checks it.
@@ -1351,7 +1351,7 @@ Triggers (kovarex, 2026-10-31, chosen from the costs below):
   - **linux_host's apt packages** (the 16 .deb files of clang 19, lld, ninja and cmake): a hit installs
     them with dpkg, no Ubuntu mirror. Files that no longer install go to the mirror, and that run saves its
     own under a new key (the run's id), the newest being restored.
-  - kppc's import cache (%TEMP%\kpp-imports) is not worth one.
+  - kpp's import cache (%TEMP%\kpp-imports) is not worth one.
 - **Concurrency:** one run at a time per trigger and branch. A push run on master that has started
   finishes, so a green one publishes; of the pushes meanwhile, only the newest waits (GitHub
   cancels an older waiting run), so at most one run waits. Until 2026-11-02 a newer push cancelled
@@ -1382,7 +1382,7 @@ The repositories' home is to be a Forgejo forge on kpp.net, with GitHub as a mir
 - What is not portable, or not checked on Forgejo:
   - **`actions/checkout@v4`:** Forgejo fetches it from its own mirror of the actions (its runner's
     default actions URL), not from github.com.
-  - **The artifact `kppc`:** Forgejo's artifact store speaks the protocol of upload-artifact@v3 and
+  - **The artifact `kpp`:** Forgejo's artifact store speaks the protocol of upload-artifact@v3 and
     download-artifact@v3, not v4's; there the two are written @v3. actions/cache works against the
     runner's own cache server.
   - **`runs-on`:** a Forgejo runner is self-hosted, with labels of its own, so the repository
@@ -1402,7 +1402,7 @@ the full machine:
 
 | Step | 2 CPUs | 32 CPUs |
 |---|---|---|
-| clean kppc build | 68 s | |
+| clean kpp build | 68 s | |
 | run_tests.cmd | 208 s | 252 s |
 | spec.cmd (debug, `--jobs 2`) | 1,168 s | 269 s (39.5 s on a quiet machine: the 32-CPU column ran beside other threads' builds) |
 | spec.cmd --release | | 275 s |
@@ -1422,14 +1422,14 @@ faster than that, the push queue keeps the runner busy whether runs are cancelle
 (a cancelled run bills the minutes it ran). Running more snippets at once does not shorten spec on
 2 CPUs: spec's library snippets pinned to 2 CPUs took 17.5 / 17.3 s with `--jobs 2`, 15.7 / 15.3 s
 with 4 and 15.5 / 15.6 s with 8 (the default). Splitting spec over several runners would shorten a
-run but bill each runner's checkout and 2-minute kppc build again.
+run but bill each runner's checkout and 2-minute kpp build again.
 
 Measured on the public repository's windows-2022 runners (4 CPUs, 2026-11-02), from the first
 job's start to the run's end, a push run (debug spec):
 
 | | one job (run 164, a840908e) | parallel jobs, caches warm (run 192, f79d7624) | run_tests in halves, package beside the tests (run 201, 44d0f0fa) |
 |---|---|---|---|
-| build | 56 s | 62 s job: LLVM 1 s (cached), kppc 35 s (ccache: 17 of 19 compiles hit) | 51 s job |
+| build | 56 s | 62 s job: LLVM 1 s (cached), kpp 35 s (ccache: 17 of 19 compiles hit) | 51 s job |
 | run_tests | 269 s | 260 s job, beside the spec | 2 jobs: 137 s and 115 s |
 | spec (debug) | 229 s | 4 shards at once, 59 to 74 s per job (spec itself 40 to 55 s) | 54 to 78 s per job |
 | package | 121 s | in the publish job: 73 s | 111 s job, beside the tests |
@@ -1437,7 +1437,7 @@ job's start to the run's end, a push run (debug spec):
 | **the run** | **13 min 43 s** | **9 min 43 s** | **6 min 23 s** |
 
 The first parallel runs, before the caches held anything, took longer in their build job: D's
-LLVM step downloads and unpacks the 845 MB archive in 56 to 65 s, and kppc's clean build takes 91 s
+LLVM step downloads and unpacks the 845 MB archive in 56 to 65 s, and kpp's clean build takes 91 s
 (run 191, 9 min 47 s in all). Now the run is build, then run_tests' longer half, then publish, half
 of it GitHub's upload of the three files (about 146 MB), which alone varies from 95 s to 3 min 40 s.
 
@@ -1480,7 +1480,7 @@ its package and MariaDB; it passed on Linux (WSL) with a made-up package and dat
 ## Questions for kovarex
 
 Answered 2026-10-31: the build description is `build.kpp` in kpp, with `src/` and `libraries/`
-(above); project files for an IDE are generated by kppc (54e30458), so there are no hand-written
+(above); project files for an IDE are generated by kpp (54e30458), so there are no hand-written
 `.vcxproj` files. Settled by what exists (2026-11-06): who builds the C libraries the game links
 ("FASTBuild", above). Answered 2026-11-07: release builds have debug information by default, "for
 crash reports the same way as in factorio" (kovarex): `debugInfo` is true in release, so in final and
@@ -1488,8 +1488,12 @@ every configuration based on it unless one sets it false. It is a file beside th
 PDB; for Linux and FreeBSD NAME.debug, split out by llvm-objcopy, the executable keeping a
 .gnu_debuglink), and an optimized build is line tables only; the executable names its PDB without the
 directory (/PDBALTPATH:%_PDB%) and its text keeps the --file-prefix-map paths, so it still holds no
-path of this machine.
+path of this machine (question 1, d8ce47da). Answered 2026-11-07, question 2, the command's name:
+"kpp everywhere" (kovarex). The repository builds `compiler\build\kpp.exe` (`compiler/build/kpp` on
+Linux), the name a release installs; it built kppc.exe until then. Every script, doc, spec snippet and
+CI step says kpp (the `// kpp:` directive of a snippet, KPP and KPP_EXTRA in the scripts), and the
+compile servers live in `%TEMP%\kpp-server` (`/tmp/kpp-server-UID`): a kppc server still running from
+before is in kppc-server, never taken for one of kpp's, and exits when idle. No kppc.exe is left
+beside it, so a stale script fails loudly instead of running an old compiler.
 
-1. **The command's name**: a release installs it as `kpp.exe` (kovarex writes `kpp`), and this
-   repository still builds `compiler\build\kppc.exe`, which every script calls. Rename it in the
-   repository too, or keep the two names?
+No question is open.

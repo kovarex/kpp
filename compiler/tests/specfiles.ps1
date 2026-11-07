@@ -2,7 +2,7 @@
 # once the snippet passes and kept when it fails, and a failure still fails the run. On specfiles\, a
 # snippet that passes and one whose output differs, into build\tests\specfiles, where a file left by
 # an earlier layout and a directory of a snippet that is gone are planted first: a whole run clears
-# both. A kept build is at most 60 files (--modules 4: about 12 of objects and IR; kppc's default made
+# both. A kept build is at most 60 files (--modules 4: about 12 of objects and IR; kpp's default made
 # about 385 a snippet, 2.6 million files in one worktree, 2026-11-03). run_tests.cmd runs it.
 $ErrorActionPreference = 'Stop'
 $out = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\build\tests\specfiles'))

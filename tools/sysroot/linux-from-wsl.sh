@@ -1,5 +1,5 @@
 #!/bin/sh
-# A glibc x86-64 sysroot for kppc --target linux, copied from a Linux system (WSL's Ubuntu on
+# A glibc x86-64 sysroot for kpp --target linux, copied from a Linux system (WSL's Ubuntu on
 # Windows), whose programs then need that system's glibc. The default is linux.ps1's (Debian 11,
 # glibc 2.31, the oldest kpp targets: docs/design.md, Q6); this one is for trying another glibc.
 #the C headers, the C runtime's start files and libraries, and gcc's runtime (crtbegin,

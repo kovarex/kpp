@@ -1,6 +1,6 @@
 @echo off
 rem The converted game's unit tests (C:\Factorio\tests, written in UnitTest++, converted to kpp's own
-rem suites and tests, design.md 8.7: kppc --tests, the runner's options and the game's hooks in
+rem suites and tests, design.md 8.7: kpp --tests, the runner's options and the game's hooks in
 rem overrides\added\tests\TestHooks.kpp), built and run as run.cmd builds and runs the game. They come from a conversion that has them: convert.cmd's whole
 rem one (the checkout given as an argument, else FACTORIO_IN_KPP), with UnitTest++. The
 rem build links link-settings.cmd's libraries with --keep-going and --stub-missing (a function the
@@ -14,13 +14,13 @@ rem build's: 9006 tests passed (2026-10-29). `tests.cmd --baseline` runs the C++
 rem C:\Factorio\bin\Releasex64vs2022\factorio-test.exe the same way (its own write directory
 rem kpp\tests-baseline\run) to measure that again. A stub or a failed assertion ends the run where it
 rem is reached: suites.py runs the built binary one suite per process instead, and crashes.py tallies
-rem what stopped each suite. `tests.cmd --asan` builds with AddressSanitizer (kppc's --clang-flags
+rem what stopped each suite. `tests.cmd --asan` builds with AddressSanitizer (kpp's --clang-flags
 rem -fsanitize=address, the ASan runtime linked) into kpp\tests-asan\factorio-test.exe and runs it
 rem with the runtime's directory (VS 2022's clang 19) on PATH; to run that binary with suites.py, put
 rem the directory on PATH too. The game's own signal handler reports a segfault before ASan can, so a
 rem read through a wild pointer still shows only as "Received SIGSEGV"; a use after free or an
 rem overflow gets ASan's report with the allocation and free stacks. `tests.cmd --release` builds the
-rem tests as kppc --release builds (config::debug false, ThinLTO) into kpp\tests-release.
+rem tests as kpp --release builds (config::debug false, ThinLTO) into kpp\tests-release.
 rem `tests.cmd --baseline-debug` runs C:\Factorio\bin\Debugx64vs2022\factorio-test.exe as --baseline
 rem runs the Release one (write directory kpp\tests-baseline-debug\run).
 rem Cross-build CRC comparison, with the runner's own cross-platform mode (tests\Main.cpp's
@@ -85,8 +85,8 @@ for %%l in (%CLIBRARIES%) do if exist "%HERE%c-libraries\%%l\interface.txt" (cal
 for %%l in (%CLIBRARIES%) do call set CINC=%%CINC%% --cinclude %CONVERSION%\libraries\%%l
 set LIBS=%LIBS% --lib -Wl,/DEBUG --lib -Wl,/MAP --lib -ldbghelp --lib -Wl,/INCLUDE:kpp_crash_report_install
 if exist %OUT%\factorio-test.exe del %OUT%\factorio-test.exe
-%KPPC% --std ..\..\stdlib %CINC% --tests --ext .kpp --errors 0 --unresolved 0 --keep-going --stub-missing %LIBS% %SANITIZE% --exe %OUT%\factorio-test.exe %CONVERSION%\libraries\CommonUtil %CONVERSION%\libraries\Agui %CONVERSION%\libraries\cxxopts %CONVERSION%\libraries\StackWalker %CONVERSION%\libraries\Lua %CONVERSION%\libraries\crc32fast %CLIBWHOLE% %CONVERSION%\libraries\UnitTest++ %CONVERSION%\src %CONVERSION%\tests > %OUT%\build.txt 2> %OUT%\build-errors.txt
-echo == %OUT%\factorio-test.exe, built by kppc (exit %errorlevel%) from %CONVERSION% with --stub-missing:
+%KPP% --std ..\..\stdlib %CINC% --tests --ext .kpp --errors 0 --unresolved 0 --keep-going --stub-missing %LIBS% %SANITIZE% --exe %OUT%\factorio-test.exe %CONVERSION%\libraries\CommonUtil %CONVERSION%\libraries\Agui %CONVERSION%\libraries\cxxopts %CONVERSION%\libraries\StackWalker %CONVERSION%\libraries\Lua %CONVERSION%\libraries\crc32fast %CLIBWHOLE% %CONVERSION%\libraries\UnitTest++ %CONVERSION%\src %CONVERSION%\tests > %OUT%\build.txt 2> %OUT%\build-errors.txt
+echo == %OUT%\factorio-test.exe, built by kpp (exit %errorlevel%) from %CONVERSION% with --stub-missing:
 %SystemRoot%\System32\findstr.exe /b /c:"stubs:" %OUT%\build.txt
 %SystemRoot%\System32\find.exe /c /v "" %OUT%\build-errors.txt
 if not exist %OUT%\factorio-test.exe (

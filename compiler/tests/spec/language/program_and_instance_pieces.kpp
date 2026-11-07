@@ -1,5 +1,5 @@
 // spec: a debug build of several modules has each module in two pieces (docs/codegen-speed.md, step 4): its program piece, what the functions the program writes own (their lambdas' call operators, catch filters and static locals with them), and its instance piece, the rest; each piece declares what the other defines (a program function an instance calls, an instance's or a lambda thunk's function), and what both name (a vtable and its thunks, a type descriptor, `dynamic_cast`'s helper, a string literal) each has a copy of (`17 9 3 square count 2 102 caught 9 ok ok 30 6 11`)
-// kppc: --modules 4
+// kpp: --modules 4
 class Shape
 {
 public:

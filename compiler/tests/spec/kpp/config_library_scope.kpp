@@ -1,5 +1,5 @@
 // spec: a config constant in a library's scope (build.kpp's library options: `--config zlib::debug=true`) is config::zlib::debug, read in an expression, in a declaration-scope if constexpr and in conditional(), apart from the program's own config::debug (`true 7 checked on fast`)
-// kppc: --config zlib::debug=true --config zlib::level=7 --config zlib::mode=fast
+// kpp: --config zlib::debug=true --config zlib::level=7 --config zlib::mode=fast
 conditional(config::zlib::debug) void trace() { println("on"); }
 conditional(!config::zlib::debug) void trace() { println("off"); }
 if constexpr (config::zlib::debug)

@@ -3,12 +3,12 @@
 # link.exe's command, EXE.link.exe.rsp link.exe's arguments. The program links and runs; the key
 # follows the toolchain's environment (a changed PATH asks the driver again) and a stale one is replaced;
 # a release build (ThinLTO, lld) keeps going through clang. run_tests.ps1 runs it.
-param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe")
+param([string]$KppExe = "$PSScriptRoot\..\build\kpp.exe")
 $ErrorActionPreference = 'Stop'
 $work = Join-Path $PSScriptRoot '..\build\tests\directlink'
 if (Test-Path $work) { cmd /c rd /s /q "$work" }
 New-Item -ItemType Directory -Force "$work\out" | Out-Null
-$Kppc = (Resolve-Path $Kppc).Path
+$KppExe = (Resolve-Path $KppExe).Path
 $failed = 0
 function Fail([string]$what) { "FAIL directlink: $what"; $script:failed++ }
 [IO.File]::WriteAllText("$work\main.kpp", "int main()`n{`n  Vector<int> v;`n  v.push_back(6);`n  println(`"linked `", v[0] * 7);`n  return 0;`n}`n")
@@ -16,7 +16,7 @@ $exe = "$work\out\main.exe"
 function Build([string]$flags = '')
 {
   $ErrorActionPreference = 'Continue'
-  cmd /c "`"$Kppc`" --quiet $flags --modules 4 --exe `"$exe`" `"$work\main.kpp`" > `"$work\build.txt`" 2>&1"
+  cmd /c "`"$KppExe`" --quiet $flags --modules 4 --exe `"$exe`" `"$work\main.kpp`" > `"$work\build.txt`" 2>&1"
   $code = $LASTEXITCODE
   $ErrorActionPreference = 'Stop'
   $printed = if ($code -eq 0) { (& $exe | Out-String).Trim() } else { '' }

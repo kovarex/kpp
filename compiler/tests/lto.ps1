@@ -1,17 +1,17 @@
-# kppc --lto full and --opt-level 3 (docs/build.md, "Whole-program optimization"): an optimized build is
+# kpp --lto full and --opt-level 3 (docs/build.md, "Whole-program optimization"): an optimized build is
 # one optimization over the whole program in lld's link (full LTO, as FinalRelease's /GL and /LTCG),
 # its code generated in one partition per thread, at -O2 or -O3, of four modules or one; ThinLTO at -O3.
 # Builds a spec whose functions cross modules (language/static_local_constant_initialization) for
 # Windows (Visual Studio's clang, lld-link) and, where run_tests' llvm-mingw is, windows-gnu (lld's
 # MinGW driver, which has no partitions), runs each, and checks the link's options; --lto and
 # --opt-level's other values are errors. run_tests.cmd runs it.
-param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe")
+param([string]$KppExe = "$PSScriptRoot\..\build\kpp.exe")
 $ErrorActionPreference = 'Stop'
 $work = Join-Path $PSScriptRoot '..\build\tests\lto'
 if (Test-Path $work) { cmd /c rd /s /q "$work" }
 New-Item -ItemType Directory -Force $work | Out-Null
 $work = (Resolve-Path $work).Path
-$Kppc = (Resolve-Path $Kppc).Path
+$KppExe = (Resolve-Path $KppExe).Path
 $source = (Resolve-Path "$PSScriptRoot\spec\language\static_local_constant_initialization.kpp").Path
 $expected = (Get-Content "$PSScriptRoot\spec\language\static_local_constant_initialization.expected" -Raw).Trim()
 $failed = @()
@@ -19,7 +19,7 @@ $failed = @()
 function Native([string[]]$arguments)
 {
   $ErrorActionPreference = 'Continue'
-  $output = & $Kppc @arguments 2>&1 | ForEach-Object { "$_" }
+  $output = & $KppExe @arguments 2>&1 | ForEach-Object { "$_" }
   $script:code = $LASTEXITCODE
   return ($output -join "`n")
 }

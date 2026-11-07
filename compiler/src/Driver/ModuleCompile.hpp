@@ -1,4 +1,4 @@
-// The driver: codegen's modules compiled (clang or the back end in kppc, the shared object cache)
+// The driver: codegen's modules compiled (clang or the back end in kpp, the shared object cache)
 // and linked: runCodegen; the declarations, in namespace driver (Driver.hpp includes this), the
 // definitions in ModuleCompile.cpp (main.cpp split, stage 2, 2026-11-05, moved without a change).
   // The errors the checker found itself (a static_assert that fails or cannot be evaluated).

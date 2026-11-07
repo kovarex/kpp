@@ -161,7 +161,7 @@ auto codegen::Emitter::debuggerClassName(const Ty* t) const -> std::string
       return debuggerTypeName(types.toString(t->args[0], &symbols, true)) + "^";
   std::string name = types.toString(t, &symbols, true);
   // A class declared in a class template carries the enclosing template's arguments (then its
-  // own), which kppc's name writes after the innermost class, `Outer::Inner<A, B>`: here each
+  // own), which kpp's name writes after the innermost class, `Outer::Inner<A, B>`: here each
   // class's arguments follow it, `Outer<A>::Inner<B>`, as C++ and MSVC's PDBs name it (the game's
   // natvis rule `IntrusiveListImplementation<*,*,*,*>::List`).
   if (t && t->kind == TyKind::Class && t->decl && t->decl->kind == NodeKind::ClassDecl && !t->args.empty() && !(t->decl->flags & DF_Specialization))

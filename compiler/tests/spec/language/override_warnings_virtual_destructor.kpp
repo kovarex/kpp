@@ -1,5 +1,5 @@
 // spec: --override-warnings: a class with a virtual function, its own or a base's, whose destructor is not virtual is a warning at the class, as kovarex's rule makes that destructor virtual (design.md 23b), and says when its vtable gains the slot (no polymorphic base); a virtual destructor, a base's, and a class with no virtual function are not
-// kppc: --override-warnings
+// kpp: --override-warnings
 // warning: override_warnings_virtual_destructor.kpp:12: warning: Shape has a virtual function and an implicit destructor, which becomes virtual (its vtable gains the slot)
 // warning: override_warnings_virtual_destructor.kpp:17: warning: Square has a virtual function and an implicit destructor, which becomes virtual
 // warning: override_warnings_virtual_destructor.kpp:22: warning: Guarded has a virtual function and a protected non-virtual destructor, which becomes virtual (its vtable gains the slot)

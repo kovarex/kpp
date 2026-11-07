@@ -6,16 +6,16 @@
 # - a const object with a mutable member: `internal global`, initialized;
 # - one whose initializer calls a function or reads a parameter keeps its guard (it runs on the first pass).
 # The spec checks what the program prints; this checks that nothing is left to the pass. run_tests.cmd runs it.
-param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe")
+param([string]$KppExe = "$PSScriptRoot\..\build\kpp.exe")
 $ErrorActionPreference = 'Stop'
 $work = Join-Path $PSScriptRoot '..\build\tests\staticconstants'
 New-Item -ItemType Directory -Force $work | Out-Null
 $work = (Resolve-Path $work).Path
-$Kppc = (Resolve-Path $Kppc).Path
+$KppExe = (Resolve-Path $KppExe).Path
 $source = (Resolve-Path "$PSScriptRoot\spec\language\static_local_constant_initialization.kpp").Path
 $failed = @()
 
-& $Kppc --quiet --emit-llvm "$work\statics.ll" --exe "$work\statics.exe" $source 2>&1 | Out-Null
+& $KppExe --quiet --emit-llvm "$work\statics.ll" --exe "$work\statics.exe" $source 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path "$work\statics.ll")) { "FAIL static constants: the snippet does not build (exit $LASTEXITCODE)"; exit 1 }
 $ir = Get-Content -Raw "$work\statics.ll"
 $output = (& "$work\statics.exe" | Out-String).Trim()

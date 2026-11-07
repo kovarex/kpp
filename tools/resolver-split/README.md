@@ -16,7 +16,7 @@ the code stood. Stage 2 makes each part a translation unit of its own, mechanica
 
 To convert a part: run inl2cpp.py on it, change its `#include "X.inl"` in GlobalScopeImpl.hpp to
 `X.hpp`, add `src/Resolver/X.cpp` to compiler/CMakeLists.txt, build, and check that the game's IR is
-byte-identical with the kppc before (both with one `--std`: the standard library's path is in the
+byte-identical with the kpp before (both with one `--std`: the standard library's path is in the
 program's strings) and that compiler\tests\gate.cmd passes.
 
 Impl's own parts (Indexer, Lookup, Interpreter and the others) are pieces of Impl's body, their members

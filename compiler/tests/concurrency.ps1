@@ -6,7 +6,7 @@
 # docs/compile-speed.md, "Codegen's scaling") needs hundreds. run_tests.cmd runs it.
 # One program is written here: 1,000 functions each returning a lambda, each beside a function that
 # holds the closure and calls it, so that a lambda's writer and its caller are emitted at once on two
-# threads. A closure copied while its writer was recorded into it crashed kppc (0xC0000005) in 6 to 8
+# threads. A closure copied while its writer was recorded into it crashed kpp (0xC0000005) in 6 to 8
 # of 160 builds (codegen's ClosureWriter; once in a full spec run, language/lambda_returned_by_value).
 # Built half as many times as the others (it costs about twice their CPU each): 80 such builds miss a
 # crash of that rate about once in 300 runs.
@@ -22,9 +22,9 @@
 # - a function template's lambda as a default argument, written by two callers.
 # In each, the users are instances that sort side by side in their level, so their threads emit them at
 # once.
-param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe", [int]$Copies = 160)
+param([string]$KppExe = "$PSScriptRoot\..\build\kpp.exe", [int]$Copies = 160)
 $ErrorActionPreference = 'Stop'
-$Kppc = (Resolve-Path $Kppc).Path # (the processes start in .NET's current directory, not PowerShell's)
+$KppExe = (Resolve-Path $KppExe).Path # (the processes start in .NET's current directory, not PowerShell's)
 $work = Join-Path $PSScriptRoot '..\build\tests\concurrency'
 if (Test-Path $work) { Remove-Item -Recurse -Force $work }
 New-Item -ItemType Directory -Force $work | Out-Null
@@ -68,13 +68,13 @@ $sources += Join-Path $work 'lambdas_above.kpp'
 # The two written here are built half as many times as the others.
 $copiesOf = @($Copies) * ($programs.Count - 2) + @([Math]::Max(1, [int]($Copies / 2))) * 2
 
-# kppc started on its own: the process's WaitForExit and HasExited are kppc's alone. (Start-Process -Wait
+# kpp started on its own: the process's WaitForExit and HasExited are kpp's alone. (Start-Process -Wait
 # waits for every process it leaves too, and a build that links leaves link.exe's vctip.exe, which
 # outlives it on CI's runners: run_tests' part 2 waited there until the job's hour ran out.)
-function Start-Kppc([string]$arguments)
+function Start-KppExe([string]$arguments)
 {
   $info = New-Object System.Diagnostics.ProcessStartInfo
-  $info.FileName = $Kppc
+  $info.FileName = $KppExe
   $info.Arguments = $arguments
   $info.UseShellExecute = $false
   $info.CreateNoWindow = $true
@@ -82,7 +82,7 @@ function Start-Kppc([string]$arguments)
   $info.RedirectStandardError = $false
   return [System.Diagnostics.Process]::Start($info)
 }
-function Start-Build([string]$src, [string]$ir, [string]$j) { return Start-Kppc "--quiet -j $j --emit-llvm `"$ir`" `"$src`"" }
+function Start-Build([string]$src, [string]$ir, [string]$j) { return Start-KppExe "--quiet -j $j --emit-llvm `"$ir`" `"$src`"" }
 
 $failed = 0
 $reference = @{}
@@ -165,7 +165,7 @@ foreach ($placed in @(@('lambdas', $genericSource), @('returned lambdas', $sourc
     $dir = Join-Path $work "placement.$($placed[0] -replace ' ', '_').$run"
     New-Item -ItemType Directory -Force $dir | Out-Null
     $j = if ($run -eq 'j1') { '1' } else { '32' }
-    $proc = Start-Kppc "--quiet -j $j --modules 8 --exe `"$(Join-Path $dir 'p.exe')`" `"$($placed[1])`""
+    $proc = Start-KppExe "--quiet -j $j --modules 8 --exe `"$(Join-Path $dir 'p.exe')`" `"$($placed[1])`""
     $proc.WaitForExit()
     $hashes = @(Get-ChildItem $dir -Filter 'p.exe.*.hash' | Sort-Object Name)
     if ($proc.ExitCode -ne 0 -or $hashes.Count -eq 0) { Write-Host "FAIL concurrency: the $($placed[0])' program does not build with modules (exit $($proc.ExitCode))"; exit 1 }

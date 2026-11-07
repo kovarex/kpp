@@ -10,10 +10,10 @@ using Microsoft.VisualStudio.Shell.Interop;
 using Newtonsoft.Json.Linq;
 
 /// <summary>
-/// The cell (docs/editors.md, "Cells") a solution kppc generated is in: its startup project names
+/// The cell (docs/editors.md, "Cells") a solution kpp generated is in: its startup project names
 /// the target (one project per target, named after it) and its active configuration the
 /// configuration (Debug, or the cell's Visual Studio name). Opened as a folder, or in a solution
-/// kppc did not write, there is none and the server keeps its own.
+/// kpp did not write, there is none and the server keeps its own.
 /// </summary>
 internal sealed class Cell : IVsUpdateSolutionEvents, IVsSelectionEvents
 {

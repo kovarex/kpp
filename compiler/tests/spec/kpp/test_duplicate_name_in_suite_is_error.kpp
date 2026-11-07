@@ -1,5 +1,5 @@
 // spec: two tests of one name in one suite are an error
-// kppc: --tests
+// kpp: --tests
 // error: test 'Empty' is declared twice in suite 'Belts'
 suite Belts
 {

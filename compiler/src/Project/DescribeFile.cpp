@@ -1,7 +1,7 @@
 // describe.txt, the description build.kpp's describe() writes (projectlib/Project.kpp), read into a
 // Description: one table of its keys, each with the sections it may stand in and what it sets
 // (2026-11-05, thread J's refactoring list: a new build.kpp setting is one entry here). A key the
-// table does not have, or has for other sections, is an error naming it: projectlib and kppc
+// table does not have, or has for other sections, is an error naming it: projectlib and kpp
 // disagree, which until then dropped the setting silently.
 #include "Project/Internal.hpp"
 

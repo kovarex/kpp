@@ -1,5 +1,5 @@
 // spec: under --explicit-by-default (design.md "Explicit by default") a constructor or conversion operator without `implicit` converts nothing: a copy-initialization (`T x = a;`, `T x = {a};`, a return, an argument, an assignment's operand) through it is an error naming the direct-initialization, in a template's instance too, through an inherited, a converting template's, a variadic or a defaulted constructor; a switch on a class needs a marked conversion (rule 4); class template argument deduction by copy takes no unmarked constructor (rule 5)
-// kppc: --explicit-by-default --no-std
+// kpp: --explicit-by-default --no-std
 // error: explicit_by_default_conversions_is_error.kpp:54: error: copy-initialising Strict from int32 by its constructor, which converts only when marked implicit (design.md "Explicit by default"): Strict(...) takes it
 // error: explicit_by_default_conversions_is_error.kpp:55: error: copy-list-initialising Strict by its constructor, which converts only when marked implicit (design.md "Explicit by default"): Strict(...) takes it
 // error: explicit_by_default_conversions_is_error.kpp:58: error: copy-initialising Strict from int32 by its constructor, which converts only when marked implicit (design.md "Explicit by default"): Strict(...) takes it (in T = Strict)

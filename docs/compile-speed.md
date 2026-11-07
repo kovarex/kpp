@@ -1,13 +1,13 @@
 # Compile speed on the Factorio source
 
-What kppc costs on the converted Factorio source today, phase by phase, and what a full build is
+What kpp costs on the converted Factorio source today, phase by phase, and what a full build is
 projected to cost once the source compiles. Measured 2026-10-28 on PC-PRACOVNA (Ryzen 9 9950X,
-32 threads, 128 GB), kppc Release build at commit `de690f4`. The C++ numbers it is compared with
+32 threads, 128 GB), kpp Release build at commit `de690f4`. The C++ numbers it is compared with
 are in factorio-build-baseline.md (debug clean 62 s, one-line edit in an ordinary header 16 s,
 one-line edit in a header the PCH includes 55 s).
 
 Reproduce: run `programs\factorio\convert.cmd`, copy `programs\factorio\kpp\` somewhere stable
-(another thread running convert.cmd rewrites it mid-measurement, which once left a kppc spinning
+(another thread running convert.cmd rewrites it mid-measurement, which once left a kpp spinning
 for 10 minutes on half-written input), then
 
 ```
@@ -33,16 +33,16 @@ Microsoft Defender), kpp alone:
 | Clean build of the game, libraries built | 23.3 to 60.3 s |
 
 These are `kpp factorio`'s times, as the readme's kpp column is. kpp's own line splits each build:
-in the edits kppc took 1.0 to 3.5 s and the link 0.6 to 1.7 s; the rest was mostly the check of the
+in the edits kpp took 1.0 to 3.5 s and the link 0.6 to 1.7 s; the rest was mostly the check of the
 C libraries, now cut (below). A clean build in its own process took 45.1 s once on the same
-busy machine (kppc 29.2 s: codegen 14.8 s, clang 8.7 s), against 77 to 94 s through a fresh compile
+busy machine (kpp 29.2 s: codegen 14.8 s, clang 8.7 s), against 77 to 94 s through a fresh compile
 server, then taken for the server's slower first build; the next day showed most of it to be the
 stopped server (below), and `kpp measure`'s clean row is a build through the server, as a user's. The C++
 side ran here only with `-DryRun` (its checks against C:\Factorio, which nothing on this machine
 edits or touches).
 
 **The leaf edit through `kpp factorio`, phase by phase (2026-11-02).** On a quiet machine (0 to 9% busy
-before each build, but for two rounds before the change at 51 and 94%), master's kppc with LLVM's back end in it (as CI's packages have it; a `--debug-info` build such as
+before each build, but for two rounds before the change at 51 and 94%), master's kpp with LLVM's back end in it (as CI's packages have it; a `--debug-info` build such as
 `kpp factorio debug` still compiles its modules with clang processes, D found), timed
 at each phase from the client's start (a copy with timing points, scratch\build\phase.ps1 and
 instrument.py in thread E's scratch), 3 rounds of the edit, its undo and a build with no change:
@@ -51,7 +51,7 @@ instrument.py in thread E's scratch), 3 rounds of the edit, its undo and a build
 |---|---:|---:|
 | build.kpp (its description cached) and the toolchain | 0.04 s | 0.04 s |
 | the C and C++ libraries' up-to-date check (641 objects) | 1.49 to 2.92 s | 0.11 to 0.13 s |
-| kppc through the server: the server's walks 0.2 s, codegen 0.19 to 0.25 s, clang for 1 of 128 modules 0.50 to 0.70 s | 0.95 to 1.78 s | 1.00 to 1.09 s |
+| kpp through the server: the server's walks 0.2 s, codegen 0.19 to 0.25 s, clang for 1 of 128 modules 0.50 to 0.70 s | 0.95 to 1.78 s | 1.00 to 1.09 s |
 | the link (link.exe, incremental) | 0.58 to 1.26 s | 0.54 to 1.26 s |
 | build.kpp's after-build step: factorio.exe (108 MB) and its .pdb (218 MB) copied to bin\Debugx64 | 0.57 to 1.03 s | 0.58 to 0.61 s |
 | **wall** | **4.21 to 6.01 s** | **2.29 to 3.04 s** |
@@ -59,7 +59,7 @@ instrument.py in thread E's scratch), 3 rounds of the edit, its undo and a build
 
 The check read each object's dependency file and asked the file system for the time of every header
 it names, about 100,000 times for the same few thousand headers (the SDK's, SDL's); it now asks once
-per header per build (project.cpp, upToDate). What is left is kppc and the link (1.5 to 1.7 s, the
+per header per build (project.cpp, upToDate). What is left is kpp and the link (1.5 to 1.7 s, the
 readme's earlier figure was these two alone) and the after-build copies, which hard links instead
 of copies would make nearly free.
 
@@ -88,7 +88,7 @@ in every module, and every module imported from all 63 others (lld's import list
 (one module changed) made 64 of 64 new cache entries, and the link ran every back end again.
 - Link alone, quiet machine: nothing changed 8.2 s (LTO 3.4 s, PDB 4.1 s); empty cache 62.8 s
   (8.6 s before the back ends, the thin link 1.5 s of it; back ends 47.4 s on 32 threads; PDB 4.1 s).
-- `/opt:lldltojobs` on an empty cache: 8 jobs 110.9 s, 16 76.8 s, 32 68.5 s (32 is kppc's).
+- `/opt:lldltojobs` on an empty cache: 8 jobs 110.9 s, 16 76.8 s, 32 68.5 s (32 is kpp's).
 - The back ends as separate clang processes (distributed ThinLTO, 32 at a time) are slower. Paired,
   3 rounds on a fresh conversion of 4c178a5b915, all 64 back ends (an empty cache): inside lld 50.6,
   54.1, 50.3 s; as processes (lld's thin link alone, the back ends, a plain link of their objects,
@@ -100,7 +100,7 @@ in every module, and every module imported from all 63 others (lld's import list
   (12,317 against 9,154 ms); per-module -O2 objects without ThinLTO 1.38 times (12,617 ms).
 
 **Placement by callers (landed).** In a release build each function shorter than 300 lines of
-kppc's IR goes where its callers are, as ThinLTO would import it (Emitter::placeShortDefinitions):
+kpp's IR goes where its callers are, as ThinLTO would import it (Emitter::placeShortDefinitions):
 called from one module, into that module; from several, into one of 32 importable modules (by its
 name; first in the link, so the constants they name are kept from there); from none, it stays. The
 callers are found from the definitions' names, through other short functions, thunks and vtables
@@ -111,7 +111,7 @@ Long functions keep their module. Afterwards most of the 32 other modules are im
 instructions (a 1,099-line switch, `InputAction::noData`, becomes a table lookup) and what those
 call.
 
-Paired and interleaved (base kppc, then the new one, each through its own server, on one tree; the
+Paired and interleaved (base kpp, then the new one, each through its own server, on one tree; the
 machine shared; two runs of two rounds; seconds, wall time from start to linked executable):
 
 | Step | base | placed | back ends run (placed) |
@@ -209,7 +209,7 @@ modules.py, oldnew.py), interleaved:
   steps (link-settings, c-libraries) 0.1 s. kpp's own part is 11 s, LLVM's (clang and the link) 6.5 s.
 
 **The rebuild times after one home module per global, against FASTBuild (2026-11-02, thread A).**
-Paired and interleaved, 09:12 to 09:35: kppc at 96daf50d (base) and at 0998f157 (step2: a debug
+Paired and interleaved, 09:12 to 09:35: kpp at 96daf50d (base) and at 0998f157 (step2: a debug
 build's linkonce_odr globals defined in one module each, docs/codegen-speed.md), each with its own
 standard library, on the frozen tree scratch\resolver\ftree (the conversion of 4c178a5b915), the game
 as run.cmd builds it (scratch\resolver\scripts\quiet.py over edbuild.cmd: debug, incremental link,
@@ -217,7 +217,7 @@ as run.cmd builds it (scratch\resolver\scripts\quiet.py over edbuild.cmd: debug,
 library, factorio-in-kpp d9080751: oldbuild.cmd) in every round as the machine's control. **The machine
 was not quiet**: no quiet window came in ten minutes of waiting, the total CPU (typeperf, every 2 s)
 averaged 76 to 96% in every minute of the clean builds and 33 to 38% during the edits, from other
-threads' kppc, clang-cl, lld-link, factorio-test and spec runs.
+threads' kpp, clang-cl, lld-link, factorio-test and spec runs.
 
 The edit loop through the server (3 rounds, each edit and its undo; seconds, wall time from start to
 linked executable):
@@ -252,7 +252,7 @@ largest module 3.1 s in both (module 18, 16 MB, 14 MB with step 2), the pool's w
 **With the C and C++ libraries, against FASTBuild.** kovarex measured Factorio's C++ Debug full
 rebuild of factorio.exe, every library rebuilt, at 50.4 and 50.6 s on his other machine (same
 setup). Here, in the same window: factorio-in-kpp's build.kpp (a sparse clone of 170b8751 without
-data\, scratch\resolver\fik; build\clib and build\debug emptied first, `kppc factorio --no-server`,
+data\, scratch\resolver\fik; build\clib and build\debug emptied first, `kpp factorio --no-server`,
 scratch\resolver\scripts\fikclean.py), which compiles 10 C and C++ libraries from libraries\ with
 clang-cl (641 files: SDL, SDL_Mixer, curl, vorbis, opus, opusfile, RE2, imgui, open-vcdiff and the
 native shims) and the game with its 9 converted libraries as kpp, and FASTBuild's
@@ -643,7 +643,7 @@ one-line edit) needs both of them to stop being proportional to the program:
 Memory: the front end peaks at 1.6 GB of working set, front end and one-module codegen at 2.0 GB,
 so a process that keeps all of it between builds fits easily.
 
-## Design: inlining trivial functions in kppc (proposed 2026-10-29, for the coordinator's OK)
+## Design: inlining trivial functions in kpp (proposed 2026-10-29, for the coordinator's OK)
 
 **Why.** A debug build compiles its 64 modules at -O0, where clang inlines only `alwaysinline`
 functions and only within a module. A template instance lands in the module its name hashes to,
@@ -656,7 +656,7 @@ debug build (unique-pointer-research.md 1.5): with `[[forceinline]]` it was stil
 The most called are `forward` 19,771 and `move` 16,574, the two owners' `operator->` 9,931 and
 8,983, Vector's `end`/`begin` 5,577/5,343, `[]` 3,993 and `size` 3,861, and the NamedBool and ID
 constructors 5,577 and 5,184. design.md section 2 chose this fix on 2026-10-28 as option (4):
-kppc inlines them itself when it emits IR. ThinLTO, option (1), already serves release builds.
+kpp inlines them itself when it emits IR. ThinLTO, option (1), already serves release builds.
 
 **What qualifies.** It is decided once per function instance, from its typed body, and cached in
 the shared state. The decision depends on nothing but the body, so the IR stays deterministic.
@@ -686,14 +686,14 @@ No alloca and no store are needed, since a parameter that qualifies is only read
 function is still emitted when its address is taken or a call to it does not inline. A
 `--no-inline` switch keeps every call, for comparisons and to bisect a suspected miscompile.
 
-**With `--release` (ThinLTO).** LLVM inlines these anyway, importing across modules. kppc's
+**With `--release` (ThinLTO).** LLVM inlines these anyway, importing across modules. kpp's
 expansion comes before LLVM in both builds, so the IR has one shape and there is one code path.
 LLVM has less to import and inline, which should cost a little less link time; run time should
 be the same within noise. Both are measured below.
 
 **With debug information (Visual Studio, later).** No debug information is emitted today, since
 the PDB carries function names only, so an inlined accessor drops out of a crash stack, as it
-does in a release build. When kppc emits line information, the instructions of an inlined body
+does in a release build. When kpp emits line information, the instructions of an inlined body
 carry the callee's own locations, with an `inlinedAt` pointing at the call: the DILocation
 chain LLVM's inliner writes. The PDB then gets S_INLINESITE records, which Visual Studio shows
 as a frame of the trivial function. Stepping into the call enters the accessor's line, and the
@@ -753,14 +753,14 @@ byte-identical to a clean build of the same sources. Today's edit costs 13 to 17
 and codegen before clang and the link; the target is under 0.2 s for an edit inside a function
 body, so that clang's one module and the link are what is left.
 
-**The process.** `kppc` with the same arguments as today becomes a thin client: it finds a server
-for this (kppc binary, working directory, arguments) by a named pipe whose name is a hash of the
-three, starts one (`kppc --serve ...`, detached) if there is none, sends the request and streams
+**The process.** `kpp` with the same arguments as today becomes a thin client: it finds a server
+for this (kpp binary, working directory, arguments) by a named pipe whose name is a hash of the
+three, starts one (`kpp --serve ...`, detached) if there is none, sends the request and streams
 back stdout, stderr and the exit code. `--no-server` builds in-process as today. The server holds
 everything a build makes: files (text, tokens, syntax trees), the symbol table, the global index,
 the resolved program (types on the nodes, bound declarations, class and function instances),
 codegen's per-function results, the module texts and their hashes. It exits after an idle hour,
-when its binary changes, or on `kppc --stop-server`. Anything the server cannot handle
+when its binary changes, or on `kpp --stop-server`. Anything the server cannot handle
 incrementally (a new or removed file, a changed option, stdlib or C headers changed, an error it
 did not expect) is a full rebuild inside the server, which is never slower than today.
 
@@ -839,28 +839,28 @@ that is expected, and the target there is a clean build's speed, not the fast pa
 (step 4); the client starts a server itself, which exits after an idle hour. Anything the server
 cannot prove local is a full rebuild inside it, `--verify-incremental` must be byte-identical to
 a clean build, the incremental test covers at least a body, a signature and a layout edit and a
-new file, and a server never builds with state from another kppc binary, stdlib, flags or input
+new file, and a server never builds with state from another kpp binary, stdlib, flags or input
 set (they are in its key, or hashed and checked per build).
 
 ### The compile server: protocol (step 1, as built)
 
-- `kppc --server ARGS` is a client; `kppc ARGS` without it builds in its own process as before.
-  `kppc --stop-server ARGS` stops the server of ARGS; `kppc --stop-all-servers` (`kpp
+- `kpp --server ARGS` is a client; `kpp ARGS` without it builds in its own process as before.
+  `kpp --stop-server ARGS` stops the server of ARGS; `kpp --stop-all-servers` (`kpp
   --stop-all-servers`, in a project's directory too) stops every server of this user, of any
-  arguments and any kppc: each runs from its `%TEMP%\kppc-server\KEY.exe`, which it finds them by.
-- **Key:** FNV-1a of the kppc binary's path, size and write time, the working directory
+  arguments and any kpp: each runs from its `%TEMP%\kpp-server\KEY.exe`, which it finds them by.
+- **Key:** FNV-1a of the kpp binary's path, size and write time, the working directory
   (lowercased) and the arguments, all but `--msvc-diagnostics` and `--verify-incremental`. The
   server writes each diagnostic's place marked (`\1path:line[\2column]\3`), and the client prints
   it as its own `--msvc-diagnostics` asks (renderDiagnostics, source.hpp): kept errors and a
   replayed build's output serve Visual Studio's builds and a terminal's alike. Errors sort as a
   build without a server writes them (plainDiagnostic). One server per key, on the named pipe
-  `\\.\pipe\kppc-server-KEY` (one instance, local clients only). Another binary, directory or
+  `\\.\pipe\kpp-server-KEY` (one instance, local clients only). Another binary, directory or
   argument list is another server, so a server never serves a build it did not start for; the
   files' contents and the stdlib are read again on every build at step 1, and from step 3 on are
   checked by hash on every build.
-- **Starting:** a client that finds no pipe copies kppc to `%TEMP%\kppc-server\KEY.exe` (Windows
-  locks a running executable, and kppc must stay rebuildable) and starts the copy as
-  `KEY.exe --serve KEY ORIGIN STAMP` (ORIGIN the kppc the client ran, STAMP its size and write
+- **Starting:** a client that finds no pipe copies kpp to `%TEMP%\kpp-server\KEY.exe` (Windows
+  locks a running executable, and kpp must stay rebuildable) and starts the copy as
+  `KEY.exe --serve KEY ORIGIN STAMP` (ORIGIN the kpp the client ran, STAMP its size and write
   time, as the key has them) in a new process group with a console of its own and no window
   (CREATE_NO_WINDOW), in the client's directory, inheriting no handles; it then waits
   up to 20 s for the pipe. (It was started without a console, DETACHED_PROCESS, until a small
@@ -870,7 +870,7 @@ set (they are in its key, or hashed and checked per build).
   194 ms, with the console 116 to 128 ms; a new process 146 to 157 ms.) A second server for a key fails to create the pipe
   (FILE_FLAG_FIRST_PIPE_INSTANCE) and exits, so racing clients share one. A client that reaches no
   server, or loses it before the answer, says so on stderr and builds in its own process.
-- **Request:** `KPS1`, a u32 kind (1 build, 2 stop); for a build the kppc path the client ran
+- **Request:** `KPS1`, a u32 kind (1 build, 2 stop); for a build the kpp path the client ran
   (argv[0]: the stdlib is found next to it, not next to the copy), the working directory, the
   arguments (u32 count, then each) and the environment block (UTF-16, as
   GetEnvironmentStringsW returns it). A string is a u32 byte count and the bytes. The server sets
@@ -889,7 +889,7 @@ set (they are in its key, or hashed and checked per build).
   so nothing reaches the old server again, and it would hold its memory for the rest of the hour;
   checked every 2 s between builds, a build under way is finished), on a stop request, or when it
   crashes. It logs each of these, and each build's start and exit code, to
-  `%TEMP%\kppc-server\KEY.log` (a crash's exception code and address from its crash handler).
+  `%TEMP%\kpp-server\KEY.log` (a crash's exception code and address from its crash handler).
   The processes a build starts are in a job that ends with the server (kill on close), so nothing
   of a dead server's build goes on writing. A client that loses its server before the exit code
   waits for the server's process to end (ending it after 30 s), says so on stderr with the read
@@ -903,7 +903,7 @@ set (they are in its key, or hashed and checked per build).
   one server and by a new process after each edit (a body, a signature, a class's layout, a new
   file, the file removed); stdout, stderr (timings masked) and the IR must be identical and the
   server's program must print what the step expects. tests/servers.ps1 (in run_tests): a server
-  exits within 20 s of its kppc being written again, and --stop-all-servers stops two servers of
+  exits within 20 s of its kpp being written again, and --stop-all-servers stops two servers of
   two programs (the servers of a TEMP of the test's own).
 
 Step 1's numbers (full game as run.cmd builds it, frozen tree, no-change rebuild, three
@@ -976,7 +976,7 @@ before relying on the recorded uses.
   and VsPerMonitorDpiAwarenessEnabled.*, which change with each of its builds or devenvs and no build
   reads, 2026-11-05: until then no build from Visual Studio was a replay), the stamps of the C headers the import
   read (headersUnchanged), and the outputs (`--exe`, `--emit-llvm`) at the size and time the build
-  left them; the arguments, the directory and the kppc binary are the server's key already.
+  left them; the arguments, the directory and the kpp binary are the server's key already.
   `--verify-incremental` (not part of the key) then builds from scratch in the same server, its
   output into files, and compares: stdout and stderr with timings, rates, wait counts, the
   interned types' count, `(cached)` and the object cache's "N unchanged" masked, the exit code, and
@@ -1019,7 +1019,7 @@ before relying on the recorded uses.
      (`late` records) and every instance the old bodies requested and the new ones do not is still
      requested by some other unit (step 2's recorded uses). Otherwise the request is built from
      scratch, and the kept build (changed by then) is dropped. A crash in the server now logs its
-     stack (module offsets, and names when kppc has a PDB): the graft's first version crashed in
+     stack (module offsets, and names when kpp has a PDB): the graft's first version crashed in
      codegen, a literal still naming the new parse's file, found that way.
   4. **The reports** are what a build from scratch prints: the lexer's counts from lexing every
      file again into a symbol table of its own (the kept one holds earlier versions' identifiers
@@ -1133,7 +1133,7 @@ template two achievements' static_asserts run) edited and back: 3 files walked a
 (a global's initializer reads it). Wall time of the `oppositeSide` edit and back twice without
 `--verify-incremental`: **3.6, 2.6, 2.6, 2.6 s** to a linked game (resolve 0.60 to 1.15 s, most of
 it finding the readers in every recorded read; codegen 0.12 to 0.26 s; clang 0.63 s; link 0.46 s).
-The same edits with master d98f13b9's kppc, which builds a constexpr body edit from scratch in the
+The same edits with master d98f13b9's kpp, which builds a constexpr body edit from scratch in the
 server: 12.8, 17.0, 19.9, 21.8 s (resolve 2.2 to 4.0 s, codegen 8.1 to 15.7 s), run one after the
 other on the shared machine.
 
@@ -1166,7 +1166,7 @@ variable's type or a function's signature) is a build from scratch, and a follow
 must be a function's, a parameter's, a template parameter's, an alias's or a function's local's
 (else from scratch); layouts that change go through codegen's `changedLayouts` once step 4 takes
 them. The edit test's step "return type edit (a data member is declared with it)" fails with master's
-kppc and passes now.
+kpp and passes now.
 
 ### Design: step 4 for class layouts (draft, 2026-10-30; codegen's half for the codegen thread's review)
 
@@ -1224,7 +1224,7 @@ the order of work:
    target is looked up elsewhere and cached), records the symbol alone. A changed member of class X
    is read by the symbol-alone records, and by the records of X and of every class derived from X
    (`nameReaders`); a member whose class cannot be told (`X::f` not attached) by every class's.
-   Measured on the frozen game tree, the front end at -j 32, master's kppc (07b19720) and this one
+   Measured on the frozen game tree, the front end at -j 32, master's kpp (07b19720) and this one
    interleaved, 4 rounds (scratch\resolver\memmeasure.ps1): a build in its own process 1.32 to 1.35
    s of resolve and 1,705 to 1,708 MB peak, both alike; a recording build (a server's) 1.85 to 1.89
    s with master, 1.86 to 1.91 s with this, 11.8 M names recorded against 16.9 M, peak 2,012 to
@@ -1253,7 +1253,7 @@ the order of work:
    scratch). The edit test's `Panel::scaled<int>` (a member template defined out of line, called with
    explicit arguments: codegen makes it) is dropped and made anew when `Panel::base` changes.
    The `getPrototype` signature edit and back on the game, paired, 3 rounds interleaved
-   (scratch\resolver\game-time.ps1; each through its own output directory): this kppc's server
+   (scratch\resolver\game-time.ps1; each through its own output directory): this kpp's server
    **10.44 to 10.77 s** to a linked game (resolve 1.05 to 1.11 s, codegen in full 7.8 to 8.1 s, one
    module compiled, the incremental link); master cddf99aa's server, which builds it from scratch
    after the attempt, 31.8 to 34.9 s; a new process building from scratch 10.14 to 10.33 s (resolve
@@ -1268,7 +1268,7 @@ the order of work:
    a data member added to `MergeRequest` (7 instances read it, 1 layout changed) and removed again
    through the server: 66 functions emitted again, codegen 1.1 s instead of 5.3; all 64 modules'
    IR the same as a build from scratch's of the edited source, and the build back the same as the
-   first. Paired with the parent commit's kppc (codegen in full), 3 rounds interleaved
+   first. Paired with the parent commit's kpp (codegen in full), 3 rounds interleaved
    (scratch\codegen\merge-pair.sh 3, another thread building meanwhile): the edit 4.8 to 9.3 s
    against 9.1 to 10.8 s, the build back 5.2 to 6.7 s against 9.8 to 14.2 s.
 2. **The resolver's half of a layout edit.** A changed file whose differences are data members of
@@ -1338,7 +1338,7 @@ as from scratch), are built from the kept program through each server.
 Full game: `uint32_t extraCount = 0;` added to `BuildEntityAchievement` and taken out, with
 `--verify-incremental`: each "the same as from scratch", resolve 0.75 and 0.77 s, one file walked
 again, codegen in full, 5 modules compiled. Edit to linked game, 3 rounds interleaved
-(scratch\resolver\game-time-layout.ps1): this kppc's server 10.32 to 10.61 s (resolve 0.76 to 0.81 s,
+(scratch\resolver\game-time-layout.ps1): this kpp's server 10.32 to 10.61 s (resolve 0.76 to 0.81 s,
 codegen 7.6 to 7.9 s); master cddf99aa's server, from scratch, 16.3 to 17.7 s; a new process 10.47 to
 10.56 s. As for the signature edit, codegen in full is what is left.
 
@@ -1374,7 +1374,7 @@ line the shared declarations hold as it is adds nothing. Paired on the game (fac
 interleaved, the machine shared with other threads): the undo 9.4 to 12.0 s with master 77d13d13
 (rebuildLLVM declined, the program generated in full), 2.3 to 4.3 s with the change (1 module
 assembled again, 2 functions emitted again; the server's build 0.5 to 0.9 s, the rest `kpp`'s project
-mode, which an editor's `kppc --lsp` does not run); the error's check 3.8 to 4.6 s and 2.5 to 4.4 s.
+mode, which an editor's `kpp --lsp` does not run); the error's check 3.8 to 4.6 s and 2.5 to 4.4 s.
 The edit test (tests\incremental.ps1) gets the steps, each failing with master's compiler: a line
 added above a capturing lambda in its function, a codegen error typed there, the error taken out, and
 an edit above a kept function with a lambda and back. Still from scratch: an edit of a function with a
@@ -1444,7 +1444,7 @@ before).
 `runCodegen` freed the kept codegen session before generating anew, on the build's own time:
 1.01 to 1.07 s on the game (timed around `build.codegen.reset()`, 4 builds). The replaced session is
 now kept (`Build::retiredCodegen`) and freed once the build has answered its client. The layout edit
-above, edit to linked game, interleaved, 4 builds each: this kppc's server **9.03 to 9.15 s**
+above, edit to linked game, interleaved, 4 builds each: this kpp's server **9.03 to 9.15 s**
 (codegen in full 6.27 to 6.40 s) against a new process building from scratch 10.46 to 10.65 s
 (codegen 6.73 to 6.85 s): an incremental build with codegen in full now beats a build from scratch.
 
@@ -1496,7 +1496,7 @@ its member's name.
 The game (kpp2, a fresh conversion of 4c178a5b915), the language server's check arguments
 (`--server --quiet --diagnostic-columns --check`, debug, `--keep-going --stub-missing`), an int
 initialised from `nullptr` (a codegen error, no checker error) typed into
-`AnimationBank::getAnimation` and removed, 3 rounds, master and this kppc interleaved
+`AnimationBank::getAnimation` and removed, 3 rounds, master and this kpp interleaved
 (`scratch\codegen\rel\errpair.ps1`):
 
 | | master | kept across errors |
@@ -1562,7 +1562,7 @@ writes. Both paths take the home from the lambda alone, so whichever is first, t
 one module. The game's IR grew 0.32% as run.cmd builds it (709,197,896 to 711,487,966 bytes;
 714,848,640 with every operator in its name's module) and 0.23% in the project's debug configuration
 (1,082,266,378 to 1,084,743,969). Leaf edits of EntityPrototypeFilters::buildMapping (55 lambdas)
-through the server rebuild the same modules as with master's kppc: a string in it 1, one nested
+through the server rebuild the same modules as with master's kpp: a string in it 1, one nested
 lambda's body 1, an empty line above all its lambdas none. The times are the same within the load's
 noise (3 paired, interleaved rounds during other threads' gates; the quietest pairs 0.81 against
 0.84 s and 0.79 against 0.80 s). run_tests' concurrency check builds a generated program with 1,000
@@ -1571,7 +1571,7 @@ the code before, all 8 modules differed.
 
 ### Edits with errors stay incremental (2026-10-31)
 
-Errors as you type (`kppc --lsp`, [ide.md](ide.md), "The language server as built") check the
+Errors as you type (`kpp --lsp`, [ide.md](ide.md), "The language server as built") check the
 program after every change, and a program being typed has errors most of the time. The server's
 incremental paths took none: a kept file with checker errors was built from scratch (a walk could
 not take back the errors it had reported: they were kept by text), and so was a file that did not
@@ -1666,7 +1666,7 @@ keeps the PDB, so the crash report keeps naming functions from it and the debugg
 them from the map instead (the lld route) loses both and is slower. Copying the 113 MB executable
 to bin\x64 takes 0.04 s.
 
-What landed: `kppc --incremental-link` (a debug build's link with `/OPT:NOREF /INCREMENTAL`;
+What landed: `kpp --incremental-link` (a debug build's link with `/OPT:NOREF /INCREMENTAL`;
 `/INCREMENTAL` rules out `/OPT:REF`, so the executable keeps the functions nobody calls; a release
 build with it is an error). run.cmd links with it and without `/MAP` (nothing read the map), and no
 longer deletes kpp\run\factorio.exe before a build, which made every link a full one: whether the
@@ -2099,7 +2099,7 @@ about 2,000 fewer spurious overload failures than `-j 32` (resolver thread's mea
 
 ## The full src past IR for the first time: clang and the link (2026-10-28, night)
 
-`kppc --keep-going --exe` (e7d4669) compiles and links what codegen emitted although it reported
+`kpp --keep-going --exe` (e7d4669) compiles and links what codegen emitted although it reported
 errors: the functions the errors left out are only declared, so the link lists them. Same inputs
 as above, the game's own Release builds of its C libraries (C:\Factorio\vs2022\Releasex64: lua,
 sdl, sdl-mixer, curl, zlib, zstd, minizip, ogg, vorbis, opus, opusfile, re2, crc32fast, stb,
@@ -2136,7 +2136,7 @@ What the numbers depend on:
 ## Whole converted src, morning of 2026-10-28 (de690f4)
 
 Input: CommonUtil, Agui, all of `src/`, the stubs and the stdlib: 4,412 files, 41 MB, 1.04 M lines,
-6.4 M tokens. `kppc --exe` on it, three runs: **8.3 s, 8.5 s, 9.2 s** wall, peak working set
+6.4 M tokens. `kpp --exe` on it, three runs: **8.3 s, 8.5 s, 9.2 s** wall, peak working set
 **1.03 to 1.04 GB**. The phase split (the time each driver line appears, warm file cache):
 
 | phase | wall | notes |
@@ -2229,11 +2229,11 @@ close to a clean debug build, 4 to 12 s.
 | | total | assumptions |
 |---|---:|---|
 | per-module -O2, no cross-module inlining | **13 to 28 s** | 165 to 345 s of -O2 CPU over 12x to 20x |
-| kppc inlines trivial functions at IR emission | **15 to 35 s** | IR grows 10% to 30% |
+| kpp inlines trivial functions at IR emission | **15 to 35 s** | IR grows 10% to 30% |
 | ThinLTO over the modules | **18 to 50 s** | ThinLTO typically costs 1.2x to 2x plain per-module -O2, with a serial thin-link step |
 
 A one-line edit in a release build recompiles one module at -O2 (0.3 to 1 s) on top of the
-incremental debug numbers, with or without kppc-side inlining; with ThinLTO the importing
+incremental debug numbers, with or without kpp-side inlining; with ThinLTO the importing
 modules are recompiled too, so a few seconds.
 
 **ThinLTO is what release builds do (2026-10-29).** Since instantiations go to the module their

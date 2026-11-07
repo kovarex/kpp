@@ -1,6 +1,6 @@
 // spec: under --explicit-by-default `Box<Strict> b = {5, 6};`, where neither the InitializerList<Strict> constructor (each element copy-initialized from an int) nor Box(int, const Strict&) (its second argument) is viable without Strict's unmarked constructor converting, is the resolver's error naming that conversion, as C++ refuses `std::vector<Strict> v = {5, 6};` for an explicit Strict(int)
 // factorio: checking the stdlib under --explicit-by-default with K's removal of `explicit` (7d9fd9ac), 2026-11-07: list_as_std's `List<Counted> x = {1, 2, 3, 4};` and `Vector<Counted> z = {5, 6};` stopped in codegen
-// kppc: --explicit-by-default --no-std
+// kpp: --explicit-by-default --no-std
 // error: explicit_by_default_brace_list_of_unmarked_elements_is_error.kpp:27: error: copy-initialising Strict from int32 by its constructor, which converts only when marked implicit (design.md "Explicit by default"): Strict(...) takes it
 // (as the stdlib's: a pointer, then a count; the snippet is built with --no-std until the stdlib is marked)
 template<typename T>

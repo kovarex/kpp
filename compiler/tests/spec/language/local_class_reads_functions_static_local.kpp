@@ -1,6 +1,6 @@
 // spec: a member function of a class declared in a function's body names a static local of that function (a local class's virtual function, emitted where its vtable is, in another module or piece of a build of 64 modules, and the release suite's): it reads and writes the function's one static, and two such statics of one name are two (`9011 140160`)
 // factorio: none known; found fixing language/generic_lambda_reads_writers_static_local: with 4d884644's pieces the member function went to its module's instance piece and the static to the program piece, and clang rejected the instance piece ("use of undefined value '@"makeA()::calls.23"'", debug at --modules 64)
-// kppc: --modules 64
+// kpp: --modules 64
 class Counter
 {
 public:

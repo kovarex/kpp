@@ -14,8 +14,8 @@ process), so running them in one process made results depend on their order.
 
 Columns:
 - **kpp, before**: the stdlib at 117ba0a, built with `--std` (DIR argument of run.cmd).
-- **kpp**: `kppc --release`, the default split into IR modules (two files per thread).
-- **kpp, 1 module**: `kppc --release --modules 1`: the same program as one LLVM module, so clang
+- **kpp**: `kpp --release`, the default split into IR modules (two files per thread).
+- **kpp, 1 module**: `kpp --release --modules 1`: the same program as one LLVM module, so clang
   can inline across files. The difference to the previous column is a codegen gap, not a
   library one.
 - **MSVC STL**: clang 19.1.5 `-O2 -std=c++20`, Windows, same machine.
@@ -215,12 +215,12 @@ Library design:
   only through glibc's memmove.
 
 Compiler codegen:
-- **No inlining across IR modules.** kppc defines each non-template function in one module, so
+- **No inlining across IR modules.** kpp defines each non-template function in one module, so
   String's small methods are calls everywhere else; compare the "kpp" and "kpp, 1 module"
   columns: string.compare 20.8 vs 14.1 ms, sort.String 164.9 vs 121.6, string.concat 28.7 vs
   22.8, string.append char 13.3 vs 10.5, hash.String 10%. C++ has every std function in headers,
   so the C++ columns are the "1 module" case. Decided 2026-10-28 (design.md section 2), for
-  later: ThinLTO at link time or kppc inlining trivial functions itself when it emits IR;
+  later: ThinLTO at link time or kpp inlining trivial functions itself when it emits IR;
   available_externally copies per chunk were rejected (they grow with the number of chunks).
 - Within one module the kpp code is at or near clang/C++ quality for these loops (vector.iterate,
   sort.int, vector.copy are equal to the MSVC STL).

@@ -12,7 +12,7 @@ $a = $test.IndexOf('Add-Type @"'); $b = $test.IndexOf('[KppVsMessageFilter]::Reg
 Invoke-Expression $test.Substring($a, $b - $a)
 [KppVsMessageFilter]::Register()
 $ide = "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE"
-$env:KPP_LSP_SERVER = (Resolve-Path "$PSScriptRoot\..\..\..\compiler\build\kppc.exe").Path
+$env:KPP_LSP_SERVER = (Resolve-Path "$PSScriptRoot\..\..\..\compiler\build\kpp.exe").Path
 $Sln = (Resolve-Path $Sln).Path
 $Main = (Resolve-Path $Main).Path
 if ($Arguments)
@@ -57,7 +57,7 @@ finally
 {
   try { $dte.Documents.CloseAll(2) } catch { }
   try { $dte.Quit() } catch { }
-  # (Quit after a debugging session can leave it running, holding kppc.exe through its language
+  # (Quit after a debugging session can leave it running, holding kpp.exe through its language
   # server: the instance this script started is ended.)
   if (-not $devenv.WaitForExit(60000)) { Stop-Process -Id $devenv.Id -Force -ErrorAction SilentlyContinue }
 }

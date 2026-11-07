@@ -1,6 +1,6 @@
-# LLVM's libraries and headers for the back end inside kppc (src\backend.cpp, docs/codegen-speed.md):
+# LLVM's libraries and headers for the back end inside kpp (src\backend.cpp, docs/codegen-speed.md):
 # the official clang+llvm 19.1.7 release for Windows, downloaded once, its SHA-256 checked, and of it
-# only what kppc links unpacked into -Out\<the archive's SHA-256> (lib\LLVM*.lib, include\llvm and
+# only what kpp links unpacked into -Out\<the archive's SHA-256> (lib\LLVM*.lib, include\llvm and
 # include\llvm-c: 256 MB of what the 845 MB archive holds). Prints that directory, which
 # compiler\build.cmd takes as KPP_LLVM_DIR. A directory already there is used as it is, so a runner
 # that keeps -Out between runs downloads once per pinned release.

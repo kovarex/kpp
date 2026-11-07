@@ -1,4 +1,4 @@
-// spec: a static structured binding: its hidden object, which has no name, is built once at the first pass (before: kppc crashed on the name). clang's output
+// spec: a static structured binding: its hidden object, which has no name, is built once at the first pass (before: kpp crashed on the name). clang's output
 // found comparing kpp with clang (thread I's battery si2)
 extern "C" int printf(const char* format, ...);
 int say(const char* what, int v) { printf("init %s = %d\n", what, v); return v; }

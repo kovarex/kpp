@@ -1,12 +1,12 @@
 @echo off
 rem What link.cmd and run.cmd build the converted game with, so that the two link the same game:
-rem kppc, the C include directories, and the libraries of the link line (link.cmd says what each
-rem is for). Called by them from programs\factorio; sets KPPC, CINC and LIBS.
+rem kpp, the C include directories, and the libraries of the link line (link.cmd says what each
+rem is for). Called by them from programs\factorio; sets KPP, CINC and LIBS.
 rem The Factorio source tree read (src, libraries, tests, data): C:\Factorio unless FACTORIO names another,
 rem as a snapshot of an older commit taken with git archive. Its prebuilt libraries and executables
 rem (vs2022\, bin\) are always C:\Factorio's.
 if not defined FACTORIO set FACTORIO=C:\Factorio
-set KPPC=..\..\compiler\build\kppc.exe
+set KPP=..\..\compiler\build\kpp.exe
 set CINC=--cinclude %FACTORIO%\libraries\SDL3\include --cinclude %FACTORIO%\libraries\SDL_Mixer\include --cinclude %FACTORIO%\libraries\Lua --cinclude %FACTORIO%\libraries --cinclude %FACTORIO%\libraries\curl\include --cinclude %FACTORIO%\libraries\glad\include --cinclude %FACTORIO%\libraries\trio --cinclude native\include
 rem The C libraries converted to kpp (c-libraries.cmd) are compiled with the game (CLIBKPP, kpp\NAME,
 rem as convert.cmd writes them), not linked, and their headers imported.

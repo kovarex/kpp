@@ -1,4 +1,4 @@
-# --target (docs/design.md, "Targets and hosts"): tests\targets\ built for each target kppc has.
+# --target (docs/design.md, "Targets and hosts"): tests\targets\ built for each target kpp has.
 # Windows: built and run here. Linux: built and linked here against Debian 11's glibc 2.31 sysroot
 # (tools\sysroot\linux.ps1 into build\sysroots\linux-x86_64, made again whenever its stamp is not
 # linux.ps1's, a copy of WSL's Ubuntu that linux-from-wsl.sh made included; or KPP_SYSROOT_LINUX), and
@@ -12,7 +12,7 @@
 # -WslExe: what runs as wsl.exe (a stub that hangs tests the timeout). -NoLinux: Linux's programs not run
 # (exit 5), for run_tests' quick run: under other threads' load a program's run under WSL timed out
 # (2026-11-05), and the full run (thread H's batch on master) has it. They are still built and linked.
-param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe", [string]$WslExe = 'wsl.exe', [switch]$NoLinux)
+param([string]$KppExe = "$PSScriptRoot\..\build\kpp.exe", [string]$WslExe = 'wsl.exe', [switch]$NoLinux)
 $ErrorActionPreference = 'Stop'
 $work = Join-Path $PSScriptRoot '..\build\tests\targets'
 New-Item -ItemType Directory -Force $work | Out-Null
@@ -50,9 +50,9 @@ function Run([string]$exe, [string[]]$arguments, [int]$seconds = 0)
 
 function Build([string[]]$arguments)
 {
-  $r = Run $Kppc (@('--quiet') + $arguments)
+  $r = Run $KppExe (@('--quiet') + $arguments)
   # (Fail's line goes to the host: in the function's output it would make a failed build's result true.)
-  if ($r.exit -ne 0) { Fail "kppc $($arguments -join ' '): exit $($r.exit): $($r.err) $($r.out)" | Write-Host }
+  if ($r.exit -ne 0) { Fail "kpp $($arguments -join ' '): exit $($r.exit): $($r.err) $($r.out)" | Write-Host }
   return $r.exit -eq 0
 }
 
@@ -64,12 +64,12 @@ function BuildCLibraryProject([string]$name, [string[]]$options)
   $dir = Join-Path $work $name
   if (Test-Path $dir) { cmd /c rd /s /q $dir }
   Copy-Item -Recurse (Join-Path $src 'clibrary') $dir
-  $kpp = (Resolve-Path $Kppc).Path # (run_tests passes it relative to compiler\)
+  $kppPath = (Resolve-Path $KppExe).Path # (run_tests passes it relative to compiler\)
   Push-Location $dir
   try
   {
     $ErrorActionPreference = 'Continue'
-    try { $output = @(& $kpp debug --no-server @options 2>&1 | ForEach-Object { "$_" }); $code = $LASTEXITCODE }
+    try { $output = @(& $kppPath debug --no-server @options 2>&1 | ForEach-Object { "$_" }); $code = $LASTEXITCODE }
     catch { $output = @("$_"); $code = -1 }
     $ErrorActionPreference = 'Stop'
   }
@@ -204,9 +204,9 @@ else
     }
     elseif ($name -eq 'debug-info' -and ((Test-Path "$elf.debug") -or -not $text.Contains('.debug_line'))) { Fail "freebsd hello ($name): a debug build's DWARF is not in the executable" }
   }
-  # Without --sysroot (2026-11-04): the sysroot that comes with kppc, sysroots\freebsd-x86_64 beside
-  # it (a release brings it; compiler\build\sysroots in this repository), when $Kppc has one.
-  $beside = Join-Path (Split-Path $Kppc) 'sysroots\freebsd-x86_64'
+  # Without --sysroot (2026-11-04): the sysroot that comes with kpp, sysroots\freebsd-x86_64 beside
+  # it (a release brings it; compiler\build\sysroots in this repository), when $KppExe has one.
+  $beside = Join-Path (Split-Path $KppExe) 'sysroots\freebsd-x86_64'
   if (Test-Path (Join-Path $beside 'usr\lib\libc.a'))
   {
     $elf = Join-Path $work 'hello.freebsd.beside.elf'
@@ -216,14 +216,14 @@ else
       if ($problems) { Fail "freebsd hello without --sysroot: $problems" }
     }
   }
-  # A kppc with no sysroot beside it: a link for freebsd without --sysroot is an error naming where it
+  # A kpp with no sysroot beside it: a link for freebsd without --sysroot is an error naming where it
   # looked, never one against no headers and libraries.
-  $alone = [IO.Path]::GetFullPath((Join-Path $work 'kppc-alone'))
+  $alone = [IO.Path]::GetFullPath((Join-Path $work 'kpp-alone'))
   New-Item -ItemType Directory -Force $alone | Out-Null
-  Copy-Item $Kppc "$alone\kppc.exe" -Force
+  Copy-Item $KppExe "$alone\kpp.exe" -Force
   $stdlib = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\stdlib'))
-  $r = Run "$alone\kppc.exe" @('--quiet', '--std', $stdlib, '--target', 'freebsd', '--exe', (Join-Path $work 'hello.freebsd.none.elf'), (Join-Path $src 'hello.kpp'))
-  if ($r.exit -ne 2 -or "$($r.err)" -notmatch [regex]::Escape("$alone\sysroots\freebsd-x86_64")) { Fail "freebsd without --sysroot and none beside kppc: exit $($r.exit): $($r.err) $($r.out)" }
+  $r = Run "$alone\kpp.exe" @('--quiet', '--std', $stdlib, '--target', 'freebsd', '--exe', (Join-Path $work 'hello.freebsd.none.elf'), (Join-Path $src 'hello.kpp'))
+  if ($r.exit -ne 2 -or "$($r.err)" -notmatch [regex]::Escape("$alone\sysroots\freebsd-x86_64")) { Fail "freebsd without --sysroot and none beside kpp: exit $($r.exit): $($r.err) $($r.out)" }
   # The libraries kpp.net's programs use (their FreeBSD side: BSD sockets, environ), with FreeBSD's
   # own headers.
   $libraries = Join-Path $PSScriptRoot '..\..\libraries'
@@ -236,20 +236,20 @@ else
   }
   # A kpp project built for FreeBSD, in debug and release: kpp's build line names that toolchain, clang
   # with ld.lld and the sysroot (it said "msvc toolchain"), and the debug build links whole (kpp passed
-  # it --incremental-link, link.exe's, which kppc refuses for FreeBSD).
+  # it --incremental-link, link.exe's, which kpp refuses for FreeBSD).
   $project = Join-Path $work 'freebsdproject'
   if (Test-Path "$project\build") { cmd /c rd /s /q "$project\build" }
   New-Item -ItemType Directory -Force "$project\src" | Out-Null
   [IO.File]::WriteAllText((Join-Path $project 'build.kpp'), "void build(Project& project)`n{`n  project.executable(`"hello`", {`"src`"});`n}`n")
   [IO.File]::WriteAllText((Join-Path $project 'src\main.kpp'), "int main()`n{`n  println(`"hello`");`n  return 0;`n}`n")
-  $kpp = (Resolve-Path $Kppc).Path # (run_tests passes it relative to compiler\)
+  $kppPath = (Resolve-Path $KppExe).Path # (run_tests passes it relative to compiler\)
   Push-Location $project
   try
   {
     foreach ($configuration in 'debug', 'release')
     {
       $ErrorActionPreference = 'Continue'
-      try { $output = @(& $kpp $configuration --no-server --target freebsd --sysroot $freebsdSysroot 2>&1 | ForEach-Object { "$_" }); $code = $LASTEXITCODE }
+      try { $output = @(& $kppPath $configuration --no-server --target freebsd --sysroot $freebsdSysroot 2>&1 | ForEach-Object { "$_" }); $code = $LASTEXITCODE }
       catch { $output = @("$_"); $code = -1 }
       $ErrorActionPreference = 'Stop'
       $line = @($output | Where-Object { $_ -like 'kpp: built *' }) -join ''
@@ -265,15 +265,15 @@ else
   # statically with libc++ and libcxxrt.
   $exe = BuildCLibraryProject 'clibrary-freebsd' @('--target', 'freebsd', '--sysroot', $freebsdSysroot)
   if ($exe -and ($problems = ElfProblems $exe 1403)) { Fail "the C library project for freebsd: $problems" }
-  # kppc --run --no-run likewise names a FreeBSD program without .exe.
+  # kpp --run --no-run likewise names a FreeBSD program without .exe.
   $ErrorActionPreference = 'Continue'
-  $output = @(& $Kppc --no-server --target freebsd --sysroot $freebsdSysroot --no-run --run (Join-Path $src 'hello.kpp') 2>&1 | ForEach-Object { "$_" })
+  $output = @(& $KppExe --no-server --target freebsd --sysroot $freebsdSysroot --no-run --run (Join-Path $src 'hello.kpp') 2>&1 | ForEach-Object { "$_" })
   $code = $LASTEXITCODE
   $ErrorActionPreference = 'Stop'
-  $built = if (($output -join "`n") -match 'kppc --run: built (.*) \(not run: --no-run\)') { $Matches[1] } else { '' }
-  if ($code -ne 0 -or [IO.Path]::GetFileName($built) -ne 'hello') { Fail "kppc --target freebsd --no-run --run: exit $code, built '$built', not ...\hello: $($output -join ' ')" }
-  elseif (-not (Test-Path $built)) { Fail "kppc --target freebsd --no-run --run: no $built" }
-  elseif ($problems = ElfProblems $built 1403) { Fail "kppc --target freebsd --no-run --run: $built`: $problems" }
+  $built = if (($output -join "`n") -match 'kpp --run: built (.*) \(not run: --no-run\)') { $Matches[1] } else { '' }
+  if ($code -ne 0 -or [IO.Path]::GetFileName($built) -ne 'hello') { Fail "kpp --target freebsd --no-run --run: exit $code, built '$built', not ...\hello: $($output -join ' ')" }
+  elseif (-not (Test-Path $built)) { Fail "kpp --target freebsd --no-run --run: no $built" }
+  elseif ($problems = ElfProblems $built 1403) { Fail "kpp --target freebsd --no-run --run: $built`: $problems" }
 }
 
 # Linux: built here, run under WSL. Each call of wsl.exe has a timeout (a hung WSL once blocked every
@@ -344,9 +344,9 @@ if ($sysrootMade)
   # format-checked any more, design.md 14: this replaced a check that printf's %ld refused an int32.)
   $sized = Join-Path $work 'long_size.kpp'
   [IO.File]::WriteAllText($sized, "static_assert(sizeof(long) == 8 && sizeof(unsigned long) == 8);`nint main() { return 0; }`n")
-  $r = Run $Kppc @('--quiet', '--target', 'linux', '--sysroot', $sysroot, '--exe', (Join-Path $work 'long_size.elf'), $sized)
+  $r = Run $KppExe @('--quiet', '--target', 'linux', '--sysroot', $sysroot, '--exe', (Join-Path $work 'long_size.elf'), $sized)
   if ($r.exit -ne 0) { Fail "linux long is 64 bits: exit $($r.exit), '$($r.err)'" }
-  $r = Run $Kppc @('--quiet', '--exe', (Join-Path $work 'long_size.exe'), $sized)
+  $r = Run $KppExe @('--quiet', '--exe', (Join-Path $work 'long_size.exe'), $sized)
   if ($r.exit -eq 0 -or -not $r.err.Contains('static assertion failed')) { Fail "windows long is 32 bits: exit $($r.exit), '$($r.err)'" }
   # The project's C library for Linux: clang for Linux with the sysroot's glibc and libstdc++ headers,
   # libstdc++ linked statically; run under WSL.

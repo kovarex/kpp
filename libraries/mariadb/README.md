@@ -51,7 +51,7 @@ Quoting assumes the server's default `sql_mode` without `NO_BACKSLASH_ESCAPES`, 
 
 ## Tests
 
-`kpp --test` in this directory (not `kppc --test libraries/mariadb`, which leaves out the build.kpp
+`kpp --test` in this directory (not `kpp --test libraries/mariadb`, which leaves out the build.kpp
 that brings in net):
 - SHA-1 against FIPS 180's examples (the million `a` too), `mysql_native_password` against
   Python's `hashlib`;

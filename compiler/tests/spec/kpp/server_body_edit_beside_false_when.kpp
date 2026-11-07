@@ -1,5 +1,5 @@
 // spec: a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile server"): a file with a false `when` (design.md 19) at namespace and class scope takes a body's edit as an edit of that body, the absent declarations' names still hiding outer ones; a use of one is still the error
-// kppc: --config tracing=false
+// kpp: --config tracing=false
 //--- step: the program
 when (config::tracing) int releaseCounter = 0;
 struct Stats

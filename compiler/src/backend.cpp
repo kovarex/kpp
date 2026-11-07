@@ -6,7 +6,7 @@ bool inProcessBackend() { return false; }
 
 bool compileModule(std::string_view, const BackendOptions&, std::string&, std::string& error)
 {
-  error = "this kppc was built without LLVM's back end (CMake's KPP_LLVM_DIR)";
+  error = "this kpp was built without LLVM's back end (CMake's KPP_LLVM_DIR)";
   return false;
 }
 
@@ -50,21 +50,21 @@ namespace
 
   // A report_fatal_error in LLVM ends the process when this handler returns (LLVM's rule: it cannot be
   // recovered from), on whichever thread it happened. Before that, it names the module and writes its
-  // text where clang would have read it, so the failure is never kppc exiting with no module named.
+  // text where clang would have read it, so the failure is never kpp exiting with no module named.
   void fatalError(void*, const char* reason, bool)
   {
     if (compiling)
     {
       std::ofstream(compiling->options->path, std::ios::binary).write(compiling->ir.data(), std::streamsize(compiling->ir.size()));
-      fprintf(stderr, "%s: error: LLVM's back end failed on module %u, which ends kppc: %s\n", compiling->options->path.c_str(),
+      fprintf(stderr, "%s: error: LLVM's back end failed on module %u, which ends kpp: %s\n", compiling->options->path.c_str(),
               compiling->options->module, reason);
     }
     else
-      fprintf(stderr, "kppc: error: LLVM failed outside a module, which ends kppc: %s\n", reason);
+      fprintf(stderr, "kpp: error: LLVM failed outside a module, which ends kpp: %s\n", reason);
     fflush(stderr);
   }
 
-  // The targets kppc builds for (design.md, "Targets and hosts"): x86-64 and AArch64.
+  // The targets kpp builds for (design.md, "Targets and hosts"): x86-64 and AArch64.
   void initializeTargets()
   {
     static std::once_flag once;
@@ -116,7 +116,7 @@ namespace
         fprintf(stderr, "%s: warning: %s\n", d.options->path.c_str(), text.c_str());
         break;
       case llvm::DS_Remark:
-        break; // (only the remarks asked for arrive, and kppc asks for none)
+        break; // (only the remarks asked for arrive, and kpp asks for none)
       }
     }
 
@@ -145,11 +145,11 @@ bool compileModule(std::string_view ir, const BackendOptions& options, std::stri
   {
     std::string text;
     llvm::raw_string_ostream out(text);
-    diagnostic.print("kppc", out);
+    diagnostic.print("kpp", out);
     error = out.str();
     return false;
   }
-  // The IR checked before the back end sees it: an IR bug of kppc's is the verifier's message here,
+  // The IR checked before the back end sees it: an IR bug of kpp's is the verifier's message here,
   // never a crash in the back end or an object built from broken IR.
   {
     std::string text;
@@ -160,8 +160,8 @@ bool compileModule(std::string_view ir, const BackendOptions& options, std::stri
       return false;
     }
   }
-  // The target is the module's own (kppc's target triple and data layout); LLVM's must agree with it,
-  // never replace it: a data layout of kppc's that is not LLVM's for the triple is kppc's error.
+  // The target is the module's own (kpp's target triple and data layout); LLVM's must agree with it,
+  // never replace it: a data layout of kpp's that is not LLVM's for the triple is kpp's error.
   std::string triple = module->getTargetTriple();
   if (triple.empty())
   {
@@ -215,10 +215,10 @@ bool compileModule(std::string_view ir, const BackendOptions& options, std::stri
   std::string layout = machine->createDataLayout().getStringRepresentation();
   if (module->getDataLayoutStr() != layout)
   {
-    error = "kppc's data layout \"" + module->getDataLayoutStr() + "\" is not LLVM's for " + triple + ": \"" + layout + "\"";
+    error = "kpp's data layout \"" + module->getDataLayoutStr() + "\" is not LLVM's for " + triple + ": \"" + layout + "\"";
     return false;
   }
-  // clang's -O0 pipeline: the always-inliner (kppc's alwaysinline functions) and what else it runs.
+  // clang's -O0 pipeline: the always-inliner (kpp's alwaysinline functions) and what else it runs.
   {
     llvm::LoopAnalysisManager loops;
     llvm::FunctionAnalysisManager functions;

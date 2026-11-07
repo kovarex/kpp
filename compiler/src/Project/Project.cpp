@@ -54,7 +54,7 @@ int runProject(int argc, char** argv, CompileFunction compile)
   Request request;
   request.options = options;
   bool runner = false; // after --test's `--`: the test runner's arguments
-  std::string badOption; // the first argument that is no option of kpp's or kppc's, or lacks its value
+  std::string badOption; // the first argument that is no option of kpp's, or lacks its value
   for (int i = 1; i < argc; ++i)
   {
     std::string arg = argv[i];
@@ -105,9 +105,9 @@ int runProject(int argc, char** argv, CompileFunction compile)
       request.server = true;
     else if (arg[0] == '-')
     {
-      // kppc's options go on to each cell's build with their values; any other is an error, never
+      // kpp's options go on to each cell's build with their values; any other is an error, never
       // passed on or ignored (`kpp --version` among others built the project). The error waits for
-      // the end: a source among the arguments makes them a plain build's (`kppc --server ... build.kpp`).
+      // the end: a source among the arguments makes them a plain build's (`kpp --server ... build.kpp`).
       int values = compileOptionValues(arg);
       if (values < 0 || i + values >= argc)
       {

@@ -1,3 +1,3 @@
 # The scoped libraries minizip uses (design.md 16): its conversion writes their names qualified
-# (zlib::deflate, kppc's --convert-library), and its build.kpp uses them.
+# (zlib::deflate, kpp's --convert-library), and its build.kpp uses them.
 zlib

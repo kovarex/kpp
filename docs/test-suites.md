@@ -10,7 +10,7 @@ kpp b574b288, Factorio 4c178a5b915, factorio-in-kpp 14ce2fbb. Owners: the langua
 Section 8.6 of design.md, implemented 2026-10-30 (`compiler/src/tests.cpp`, `parser.cpp` 3767 and 4460):
 
 - `test "name" { ... }` at namespace scope or inside a class, where it sees private members and
-  is the class's static function. It is compiled only with `kppc --test ROOTS [-- runner args]`
+  is the class's static function. It is compiled only with `kpp --test ROOTS [-- runner args]`
   (build and run) or `--tests --exe` (build only). In a test build the program's `main` is left
   out and `config::tests` is true.
 - `check(expr)` records a failure and **continues**. `require(expr)` records it and **ends the
@@ -486,7 +486,7 @@ the libraries' owners told through the coordinator), so no tree ever has both fo
 
 ## The conversion as it stands (2026-11-06)
 
-`kppc --convert-native-tests` (Converter/NativeTests.inl), convert.cmd's default: the 9,501 tests of Factorio
+`kpp --convert-native-tests` (Converter/NativeTests.inl), convert.cmd's default: the 9,501 tests of Factorio
 4c178a5b915 pass under the native runner, and their names are the C++ build's (its `--xml` against the
 runner's `--report`), with three mappings: a generated test is `Suite.Generator.name` where UnitTest++ has
 `Suite.Generator_name`, and 2x2UndergroundPipeSmartFixing and 4GBZipFileWriteRead, whose names are no

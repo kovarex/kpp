@@ -26,7 +26,7 @@
     // bits of the storage unit alone). Asked right after lvalue(e), which records the place of the
     // member it found in the layout holding it (lvalueBitfield): that instance's own. A member alone
     // does not tell it: an instance's members are its template's declarations, and Bits<3> and
-    // Bits<5> place `uint32_t a : N` differently (kppc read one instance's bits with the other's).
+    // Bits<5> place `uint32_t a : N` differently (kpp read one instance's bits with the other's).
     std::pair<const Expr*, const BitfieldInfo*> lvalueBitfield{nullptr, nullptr}; // the member lvalue computed last, its bit field
     const BitfieldInfo* bitfieldNamed(Expr* e);
     // An arithmetic operand's value v (just computed from e) as C++'s [conv.prom] 5 promotes it

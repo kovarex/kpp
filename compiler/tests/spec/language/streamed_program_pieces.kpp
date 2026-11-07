@@ -1,5 +1,5 @@
-// spec: a debug build of several modules whose objects kppc's own back end makes has its program pieces compiled while codegen emits the instances, each from the text level 0's barrier assembles (docs/codegen-speed.md, step 4's P2); a piece the end assembles otherwise is compiled again from the end's text: here a program function's generic lambdas, whose call operators only instances of later levels ask for (`11 12 8 3`)
-// kppc: --modules 4
+// spec: a debug build of several modules whose objects kpp's own back end makes has its program pieces compiled while codegen emits the instances, each from the text level 0's barrier assembles (docs/codegen-speed.md, step 4's P2); a piece the end assembles otherwise is compiled again from the end's text: here a program function's generic lambdas, whose call operators only instances of later levels ask for (`11 12 8 3`)
+// kpp: --modules 4
 template<typename F> int applyTwice(F f, int x)
 {
   return f(f(x));

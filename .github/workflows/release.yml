@@ -1,5 +1,5 @@
 # A kpp release, started by hand (Actions > release > Run workflow; docs/build.md, "Installing"):
-# kppc built on a Windows runner, packaged by tools/release/package.ps1 (which builds a new project
+# kpp built on a Windows runner, packaged by tools/release/package.ps1 (which builds a new project
 # with the package as its smoke test), the installer made with Inno Setup, and both published as a
 # prerelease named after the run: build-<run number>. Manual only until a run has been checked: master
 # gets dozens of commits a day and Windows runners of a private repository bill at a multiplier; an
@@ -26,7 +26,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Build kppc
+      - name: Build kpp
         shell: cmd
         run: compiler\build.cmd
 
@@ -44,7 +44,7 @@ jobs:
         shell: pwsh
         run: |
           tools\release\package.ps1
-          $version = (& compiler\build\kppc.exe --version | Select-Object -First 1) -replace '^kpp (\S+), commit .*$', '$1'
+          $version = (& compiler\build\kpp.exe --version | Select-Object -First 1) -replace '^kpp (\S+), commit .*$', '$1'
           "KPP_VERSION=$version" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
 
       - name: Publish

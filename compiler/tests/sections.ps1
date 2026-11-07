@@ -2,19 +2,19 @@
 # one (--incremental-link, which keeps every function: /OPT:NOREF), so that the edit's link does not
 # carry a section contribution per function (docs/debugging.md, "The edit's link"); with one per
 # function where the link drops what nobody calls (a debug build linked whole). The same program at 2
-# modules (and kppc's own pieces) both ways: the --incremental-link build's objects hold a few .text
+# modules (and kpp's own pieces) both ways: the --incremental-link build's objects hold a few .text
 # sections, the other's one per function, and both programs print the same. run_tests.cmd runs it.
-param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe")
+param([string]$KppExe = "$PSScriptRoot\..\build\kpp.exe")
 $ErrorActionPreference = 'Stop'
 $work = Join-Path $PSScriptRoot '..\build\tests\sections'
 New-Item -ItemType Directory -Force $work | Out-Null
 $work = (Resolve-Path $work).Path
 
-# kppc's output and exit code (its stderr is no error of PowerShell's).
+# kpp's output and exit code (its stderr is no error of PowerShell's).
 function Native([string[]]$arguments)
 {
   $ErrorActionPreference = 'Continue'
-  $output = & $Kppc @arguments 2>&1 | ForEach-Object { "$_" }
+  $output = & $KppExe @arguments 2>&1 | ForEach-Object { "$_" }
   $script:code = $LASTEXITCODE
   return $output
 }

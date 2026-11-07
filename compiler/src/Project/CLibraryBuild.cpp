@@ -6,8 +6,8 @@
 namespace projects
 {
   // The platform a program's C libraries are built for: the last --target of build.kpp's arguments and
-  // the command line's (as targetPlatform), its triple, and the sysroot kppc links with (the last
-  // --sysroot, else the one beside kppc, sysroots\linux-x86_64, linux-arm64 or freebsd-x86_64).
+  // the command line's (as targetPlatform), its triple, and the sysroot kpp links with (the last
+  // --sysroot, else the one beside kpp, sysroots\linux-x86_64, linux-arm64 or freebsd-x86_64).
   LibraryTarget libraryTarget(const Program& p, const Request& request)
   {
     LibraryTarget out;
@@ -26,7 +26,7 @@ namespace projects
         else if ((*list)[i] == "--sysroot")
           sysroot = (*list)[i + 1];
       }
-    // (the bundled toolchain builds Windows' GNU dialect, as kppc takes it: Compile.cpp)
+    // (the bundled toolchain builds Windows' GNU dialect, as kpp takes it: Compile.cpp)
     if (bundledToolchain() && target.windows() && !target.gnu)
     {
       std::string why;
@@ -125,7 +125,7 @@ namespace projects
   }
 
   // The C++ library a program links for its C libraries' C++ files, off Windows: an ELF object names
-  // no default library, as a COFF one names MSVC's C++ runtime (/DEFAULTLIB), and kppc links with
+  // no default library, as a COFF one names MSVC's C++ runtime (/DEFAULTLIB), and kpp links with
   // clang's C driver. Linux: libstdc++, statically (as Factorio's Linux build does: the program needs
   // no particular libstdc++ of the system it runs on); FreeBSD: libc++ and libcxxrt, its C++ ABI
   // library (a FreeBSD program links statically); windows-gnu: llvm-mingw's libc++ (its C++ ABI part
@@ -344,7 +344,7 @@ namespace projects
       // toolchain (llvm-mingw) builds Windows' GNU dialect (design.md 17): clang's own flags, its
       // MinGW-w64 headers and libc++; Visual Studio's clang is clang-cl, with MSVC's. For Linux and
       // FreeBSD, clang for the target's triple with its sysroot's headers (glibc's and libstdc++'s,
-      // FreeBSD's and libc++), as kppc compiles and links the program: ELF objects, and an archive
+      // FreeBSD's and libc++), as kpp compiles and links the program: ELF objects, and an archive
       // llvm-ar makes (NAME.a).
       // (windows-gnu decides it, not the toolchain alone: KPP_CLANG naming llvm-mingw's clang, a Linux
       // host's, built the libraries in MSVC's dialect, clang-cl's flags)

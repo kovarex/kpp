@@ -1,6 +1,6 @@
 // spec: off Windows the standard library's FILE is the C library's own incomplete struct, as its stdio.h names it (glibc's `struct _IO_FILE`, FreeBSD's `struct __sFILE`): sizeof(FILE) is an error, never the UCRT's 8 where glibc's FILE is 216 bytes and FreeBSD's 312 (a program that imports stdio.h gets the real definition)
 // factorio: none: the game runs on Windows; a kpp program for Linux or FreeBSD that held a FILE by value or measured it
-// target: linux (glibc's FILE; FreeBSD's alike, checked with kppc --target freebsd)
+// target: linux (glibc's FILE; FreeBSD's alike, checked with kpp --target freebsd)
 // error: c_file_is_incomplete_off_windows.kpp:7: error: _IO_FILE is only declared (no definition in the program), and this use needs its layout
 int main()
 {

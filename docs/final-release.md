@@ -3,7 +3,7 @@
 The official Factorio releases are built in fbuild.bff's FinalRelease configuration, of its
 factorio-all-in-one target: all of `src` in one unity file (kovarex, 2026-11-04). A fair runtime
 comparison puts kpp's best release build against that, not against C++ Release (kovarex,
-2026-11-03). This page records what FinalRelease is, what the converted game and kppc need to build
+2026-11-03). This page records what FinalRelease is, what the converted game and kpp need to build
 the same program, and the measurements. Thread H leads it. The converter's part belongs to C, the
 build cell's to B.
 
@@ -124,7 +124,7 @@ levels up, as Release does.
 
 ## For C: the converter
 
-As built (thread C, 2026-11-04): a third configuration, `kppc --convert-final` (Release's defines with
+As built (thread C, 2026-11-04): a third configuration, `kpp --convert-final` (Release's defines with
 FINAL_RELEASE, PACKAGED_BUILD and ALL_IN_ONE=1), merged with the other two under
 `config::finalRelease`, which factorio-in-kpp's build.kpp sets in its final configuration. 197 #if
 groups differ in final alone, and 2 differ in all three. Details, and the five groups taken from
@@ -168,7 +168,7 @@ or kovarex's decision), as plan B did for `config::debug`.
 
 ## For B: a kpp final cell
 
-kppc's `--release` today, for a program of several modules:
+kpp's `--release` today, for a program of several modules:
 - clang `-O2 -flto=thin` on each module;
 - lld with ThinLTO (`/opt:lldltojobs`, a cache next to the executable) and `/OPT:REF` (main.cpp:622,
   1590, 1929).
@@ -186,7 +186,7 @@ To match FinalRelease:
    in COMDATs) has an equivalent in `-fdata-sections`.
 3. **The game's FINAL_RELEASE configuration**, from C (above).
 4. **The same runtime and checks as far as they matter:** `/MT` (the static CRT; the libraries are
-   /MT already) and `/GS-` (no stack cookies). kppc's own IR gets no stack protector. The libraries
+   /MT already) and `/GS-` (no stack cookies). kpp's own IR gets no stack protector. The libraries
    (Lua, zlib and the game's other C and C++ libraries) are a different case: kpp compiles them with
    clang-cl `/nologo /c /O2 /MT /DNDEBUG /w` (project.cpp:902, with no flags from build.kpp's
    `fromSource`), and clang-cl's `/GS` is on by default. So kpp's libraries carry stack cookies,
@@ -369,7 +369,7 @@ kpp final now builds the game in FinalRelease's own configuration: factorio-in-k
 code of FINAL_RELEASE, PACKAGED_BUILD and ALL_IN_ONE as `config::finalRelease`, and build.kpp's final
 configuration sets it (kpp 6167873d).
 
-- **The build:** `kpp factorio final` (compiler\build\kppc.exe at 6167873d) in a copy of
+- **The build:** `kpp factorio final` (compiler\build\kpp.exe at 6167873d) in a copy of
   factorio-in-kpp at 76a1ede1 (`setup-checkout.cmd`). Visual Studio's toolchain, full LTO.
   - 198.3 s in all: C libraries 18.5 s alongside kpp's 31.1 s, then the link 167.2 s. The machine
     was at 81% load at the start.
@@ -425,7 +425,7 @@ The builds:
 - **C++ FinalRelease all-in-one:** above, the reference.
 - **C++ FinalRelease's factorio-run:** above.
 - **kpp release:** B's plan-B game, as in the next section.
-- **kpp final:** B's final cell (branch final-cell): `kppc --lto full`, full LTO of the kpp code in
+- **kpp final:** B's final cell (branch final-cell): `kpp --lto full`, full LTO of the kpp code in
   32 partitions, the C libraries built with `/GS-` outside the LTO. Still without FINAL_RELEASE's and
   ALL_IN_ONE's configuration (C's, above).
 - **kpp final at -O3:** the same with `--opt-level 3`.

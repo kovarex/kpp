@@ -1,5 +1,5 @@
 // spec: a conversion operator template without a constraint (`template<class T> implicit operator T() const`) converts to each type wanted, a class with only an explicit constructor from int among them: `Strict s = value;` takes `operator Strict()`, as C++ does ([over.match.copy]), while asking whether value converts to that constructor's int
-// found in the converted game: checking copy-initialization for explicit constructors crashed kppc on such a template, whose missing requires clause the constraint check read
+// found in the converted game: checking copy-initialization for explicit constructors crashed kpp on such a template, whose missing requires clause the constraint check read
 struct Value
 {
   int stored = 3;

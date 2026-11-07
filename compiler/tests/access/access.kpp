@@ -1,4 +1,4 @@
-// kppc --access-warnings (docs/design.md, "struct and class"), compared by run_tests with access.expected: a friend class and a friend function allow their uses, a derived class names a protected member, a static data member's definition is its class's code; outside them a private and a protected member, a private nested type and a lambda's use are warned of, as are the structs with a private member, a virtual function or a base that is not public (Leaf, polymorphic through a base only, is not)
+// kpp --access-warnings (docs/design.md, "struct and class"), compared by run_tests with access.expected: a friend class and a friend function allow their uses, a derived class names a protected member, a static data member's definition is its class's code; outside them a private and a protected member, a private nested type and a lambda's use are warned of, as are the structs with a private member, a virtual function or a base that is not public (Leaf, polymorphic through a base only, is not)
 class Account
 {
 public:

@@ -471,7 +471,7 @@
     const Ty* enumInstance(const Ty* t);
 
     // Whether a temporary of class t may move to the object it initialises bitwise, as if it had been
-    // built there (C++17 builds a prvalue in its object; kppc may build it in a slot of its own first):
+    // built there (C++17 builds a prvalue in its object; kpp may build it in a slot of its own first):
     // no user-provided copy or move constructor in the class, its bases or its members. A class with
     // one may keep its own address somewhere: IDConnector hands `this` to its resolver, and its move
     // constructor gives the resolver the new address (a bitwise move left the resolver writing to the

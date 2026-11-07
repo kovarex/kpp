@@ -1,7 +1,7 @@
-// spec: with a good macOS SDK (11.3, with arm64's stubs) a program for macOS arm64 (a triple names it) compiles into Mach-O objects, no COMDATs in them (Mach-O has none: the shared definitions are weak and coalesced), a template instance, a vtable, a thread_local, a static local and a throw included; the link (ld64.lld, M3) is not there yet, which kppc says; the stdlib has no macOS layer yet (M7): --no-std
-// kppc: --no-std --target arm64-apple-macosx12.0 --sysroot {here}/macos_sdk_checked_before_the_build.sdk
+// spec: with a good macOS SDK (11.3, with arm64's stubs) a program for macOS arm64 (a triple names it) compiles into Mach-O objects, no COMDATs in them (Mach-O has none: the shared definitions are weak and coalesced), a template instance, a vtable, a thread_local, a static local and a throw included; the link (ld64.lld, M3) is not there yet, which kpp says; the stdlib has no macOS layer yet (M7): --no-std
+// kpp: --no-std --target arm64-apple-macosx12.0 --sysroot {here}/macos_sdk_checked_before_the_build.sdk
 // error: error: --target macos: its 
-// error: objects are written; kppc links no Mach-O program yet (docs/design.md, "Targets and hosts", stage 8)
+// error: objects are written; kpp links no Mach-O program yet (docs/design.md, "Targets and hosts", stage 8)
 extern "C" int printf(const char* format, ...);
 template<class T> struct Box { T v; T twice() const { return v * 2; } };
 class Shape { public: virtual int area() const { return 0; } virtual ~Shape() {} };

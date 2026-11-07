@@ -1,5 +1,5 @@
-// spec: a line splice inside an identifier joins it in C++ (`coun\` + `t` is `count`); kppc does not read it so yet: an error, never two names
-// error: line_splice_inside_an_identifier.kpp:6: error: a line splice inside a token (C++ joins the two lines into one token; kppc does not read it so yet)
+// spec: a line splice inside an identifier joins it in C++ (`coun\` + `t` is `count`); kpp does not read it so yet: an error, never two names
+// error: line_splice_inside_an_identifier.kpp:6: error: a line splice inside a token (C++ joins the two lines into one token; kpp does not read it so yet)
 int main()
 {
   int count = 3;

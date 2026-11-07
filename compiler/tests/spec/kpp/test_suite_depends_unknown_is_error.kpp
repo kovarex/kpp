@@ -1,5 +1,5 @@
 // spec: depends must name a suite of the program (names are case-sensitive)
-// kppc: --tests
+// kpp: --tests
 // error: no suite named 'belts'
 suite Belts
 {

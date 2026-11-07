@@ -9,13 +9,13 @@ rem --release; build.kpp's folders, Factorio's names: the game's path discovery 
 rem writes where C:\Factorio's game does, into the checkout itself (config\, saves\, mods\, the
 rem log): never %APPDATA%\Factorio, never C:\Factorio. Arguments go to the game:
 rem `run.cmd --version`, `run.cmd --dump-data`; `--no-build` first runs the last build again;
-rem `--release` builds the release game (kppc --release, kpp\run-release) instead of the debug one. The
+rem `--release` builds the release game (kpp --release, kpp\run-release) instead of the debug one. The
 rem C++ build's log to compare with is C:\Factorio\factorio-current.log.
 rem
 rem A crash prints its stack (native\crash_report.c, named from the PDB this link writes) and ends
 rem the game: the game's own crash handler hangs in the converted game, so it runs with
-rem --no-crash-handler. KPPC_EXTRA adds kppc options, as for an AddressSanitizer build:
-rem `set KPPC_EXTRA=--clang-flags -fsanitize=address --lib -fsanitize=address`.
+rem --no-crash-handler. KPP_EXTRA adds kpp options, as for an AddressSanitizer build:
+rem `set KPP_EXTRA=--clang-flags -fsanitize=address --lib -fsanitize=address`.
 setlocal
 rem The Factorio source tree read (src, libraries, tests, data): C:\Factorio unless FACTORIO names another,
 rem as a snapshot of an older commit taken with git archive. Its prebuilt libraries and executables
@@ -51,8 +51,8 @@ rem the objects that changed (0.6 s instead of 2.3). So the executable is never 
 rem link's own line in build.txt ("+ link ... (exit 0)") says whether it linked.
 set LIBS=%LIBS% --lib -Wl,/DEBUG --lib -ldbghelp --lib -Wl,/INCLUDE:kpp_crash_report_install
 if not exist %RUNDIR% mkdir %RUNDIR%
-%KPPC% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --keep-going --stub-missing %MODE% %LIBS% %KPPC_EXTRA% --exe %RUNDIR%\factorio.exe kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\crc32fast %CLIBKPP% kpp\src > %RUNDIR%\build.txt 2> %RUNDIR%\build-errors.txt
-echo == %GAME%\%BIN%\factorio.exe, built by kppc (exit %errorlevel%) with --stub-missing:
+%KPP% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --keep-going --stub-missing %MODE% %LIBS% %KPP_EXTRA% --exe %RUNDIR%\factorio.exe kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\crc32fast %CLIBKPP% kpp\src > %RUNDIR%\build.txt 2> %RUNDIR%\build-errors.txt
+echo == %GAME%\%BIN%\factorio.exe, built by kpp (exit %errorlevel%) with --stub-missing:
 %SystemRoot%\System32\findstr.exe /b /c:"stubs:" %RUNDIR%\build.txt
 %SystemRoot%\System32\find.exe /c /v "" %RUNDIR%\build-errors.txt
 %SystemRoot%\System32\findstr.exe /r /b /c:"clang: .*+ link .*(exit 0)" %RUNDIR%\build.txt >nul || (

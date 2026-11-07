@@ -6,7 +6,7 @@ page has the server's interface and the setup for each editor. For building and 
 an IDE, see [build.md](build.md), "Project files for an IDE".
 
 Status (2026-11-03):
-- `kppc --lsp` is on master (thread F, ff6054ab), on the interface below. run_tests checks it
+- `kpp --lsp` is on master (thread F, ff6054ab), on the interface below. run_tests checks it
   with the smoke client.
 - The VS Code extension is ready and checked in a real VS Code 1.144 (2026-11-02, see "VS Code"):
   errors, completion, go to definition, hover with config:: values, and switching cells, on
@@ -18,7 +18,7 @@ Status (2026-11-03):
 
 ## The language server
 
-- **Launch.** `kpp --lsp` (in a checkout: `compiler\build\kppc.exe --lsp`), with no other
+- **Launch.** `kpp --lsp` (in a checkout: `compiler\build\kpp.exe --lsp`), with no other
   arguments. `--stdio`, which vscode-languageclient adds, is taken; `--pipe`, `--socket` and
   `--node-ipc` are refused. `--lsp-log FILE` writes a trace. A check that fails with no diagnostic
   (an option the build does not take) is shown as a `window/showMessage` error, once per failure. The standard library is found next to the compiler,
@@ -26,7 +26,7 @@ Status (2026-11-03):
 - **Project.** The client's root (rootUri, or the first workspace folder) is the starting point.
   The server walks up from it to build.kpp, as `kpp` does. It checks the sources build.kpp
   describes, for one configuration. With no build.kpp, every `.kpp` file under the root is the
-  program, as for `kppc DIR`.
+  program, as for `kpp DIR`.
 - **initializationOptions.** Every key is optional:
 
   ```json
@@ -116,7 +116,7 @@ Status (2026-11-03):
   Studio's extension (initializationOptions' `semanticColors`, which also leaves the capability
   out, see "Visual Studio 2022"). Until the refresh, a client that asked before the first check
   had none. Checked by the transcripts refresh and colors.
-- **Checked by** `tools\vscode\test\lsp-smoke.js`: `node lsp-smoke.js kppc.exe --lsp`. It
+- **Checked by** `tools\vscode\test\lsp-smoke.js`: `node lsp-smoke.js kpp.exe --lsp`. It
   initializes, expects these capabilities, expects an error for an undeclared name and expects
   it gone after the fix, then asks a hover. It needs only Node.js.
 
@@ -172,7 +172,7 @@ The extension is in `tools/vscode`; its README covers the details.
 
 Checked with libraries on 2026-11-05 (gorating, its generated solution, where each library used is a
 folder Libraries\NAME beside Standard Library and src; `test.ps1 -Solution`, kpp 0.2.519 and this
-checkout's kppc): go to definition and declaration from the program into libraries\json, hover in the
+checkout's kpp): go to definition and declaration from the program into libraries\json, hover in the
 library's file, completion after `json::`, the library file's colors, a typed error; breakpoints in the
 program and in the library's code, and the natvis in a windows-gnu build (see debugging.md). Visual
 Studio 17.14's popups are no longer top-level UI Automation elements of class Popup: test.ps1 reads
@@ -228,7 +228,7 @@ Studio. `tools\vs\install.cmd`, the grammar alone, is not needed with it.
     is factorio and factorio-test together: 32 s for the first check where `factorio` alone takes
     15 to 20 s.
 - **Visual Studio and VS Code on the game:** factorio-in-kpp 3765db6f, the cell *factorio, debug*,
-  one after the other on the same kppc. Visual Studio opened the generated solution (9,374
+  one after the other on the same kpp. Visual Studio opened the generated solution (9,374
   files), VS Code the folder with `kpp.target` factorio. Every check passes in both. Times from
   the action to the answer, with the server's check in brackets:
 
@@ -246,17 +246,17 @@ Studio. `tools\vs\install.cmd`, the grammar alone, is not needed with it.
   It took 7.5 to 19.5 s here, where a day earlier it took 0.6 s and the check after it 11 s (on
   2026-11-04 with kpp 21ac9322: 0.85 and 1.1 s, see "VS Code").
   Visual Studio's Error List takes about 3 s more than VS Code to clear an error.
-- **The cell** (see "Cells") is the solution's. In a solution kppc generated (one project per
+- **The cell** (see "Cells") is the solution's. In a solution kpp generated (one project per
   target, named after it), the startup project is the target and the active configuration is the
   configuration. The server starts in that cell (initializationOptions). Picking another
   configuration or startup project sends `kpp/selectCell`, and the status bar shows the server's
-  answer. In a folder, or in a solution kppc did not write, the server checks every target in
+  answer. In a folder, or in a solution kpp did not write, the server checks every target in
   debug.
 
 ## Other editors
 
 The commands below assume `kpp` is on the PATH (the installer puts it there). In a checkout, use
-the full path of `compiler\build\kppc.exe` instead.
+the full path of `compiler\build\kpp.exe` instead.
 
 **Neovim** (0.11 or later), in init.lua:
 

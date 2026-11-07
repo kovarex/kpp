@@ -1,5 +1,5 @@
 // spec: `[[foreign_vtable]]` on a class says an outside ABI fixes its vtable (a COM interface): it gets no virtual destructor, which kpp gives every other class with a virtual function (design.md 23b), and the mark is inherited, so a COM interface's derived interfaces have it too
-// kppc: --override-warnings
+// kpp: --override-warnings
 // no-warning: foreign_vtable_keeps_its_layout.kpp:7:
 // no-warning: foreign_vtable_keeps_its_layout.kpp:13:
 // no-warning: foreign_vtable_keeps_its_layout.kpp:23:

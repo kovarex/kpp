@@ -1,11 +1,11 @@
 #!/bin/sh
 # The bundled toolchain for a Linux host (design.md 17; llvm-mingw.ps1 is Windows'): llvm-mingw, clang
 # and lld of LLVM 19.1.7 with MinGW-w64's headers and import libraries for the UCRT, built to run on
-# Linux (glibc 2.31 or later), so that kppc on Linux builds Windows programs in the GNU dialect
-# (kppc --target windows-gnu) with nothing of Visual Studio's. The same release as llvm-mingw.ps1's.
+# Linux (glibc 2.31 or later), so that kpp on Linux builds Windows programs in the GNU dialect
+# (kpp --target windows-gnu) with nothing of Visual Studio's. The same release as llvm-mingw.ps1's.
 # Downloads the pinned archive once, checks its SHA-256, unpacks it into the output directory and
-# prints the toolchain's root (bin/clang under it), which kppc takes as KPP_CLANG=ROOT/bin/clang, or
-# as an installation's own toolchain at bin/ beside kppc.
+# prints the toolchain's root (bin/clang under it), which kpp takes as KPP_CLANG=ROOT/bin/clang, or
+# as an installation's own toolchain at bin/ beside kpp.
 #   sh tools/sysroot/llvm-mingw.sh [OUT]   (OUT: build/llvm-mingw-linux in the repository)
 set -e
 here=$(cd "$(dirname "$0")" && pwd)

@@ -1,5 +1,5 @@
 // spec: a suite is one block in one file: declaring it a second time is an error
-// kppc: --tests
+// kpp: --tests
 // error: suite 'Belts' is declared twice
 suite Belts
 {

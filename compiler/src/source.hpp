@@ -40,7 +40,7 @@ bool readFile(const std::filesystem::path& path, std::string& out);
 // Whether readFile gives an overlay's text for path (setFileOverlay), not the file's.
 bool hasFileOverlay(const std::filesystem::path& path);
 
-// A text that stands for a file on disk, as an editor holds it unsaved (`kppc --lsp`, lsp.hpp):
+// A text that stands for a file on disk, as an editor holds it unsaved (`kpp --lsp`, lsp.hpp):
 // readFile gives it instead of the file's contents. Null removes it. Paths compare as Windows
 // does (absolute, normalised, case-insensitive).
 void setFileOverlay(const std::filesystem::path& path, const std::string* text);
@@ -133,25 +133,25 @@ std::string programPath(const std::string& path);
 
 // The running compiler's executable, and the standard library a compiler at `compiler` uses
 // unless --std names one: stdlib\ next to it in an installation (docs/build.md, "Installing"),
-// ..\..\stdlib from compiler\build\ in this repository. A compile server runs from a copy of kppc
+// ..\..\stdlib from compiler\build\ in this repository. A compile server runs from a copy of kpp
 // elsewhere, so it is given its client's path (main makes argv[0] that).
 std::filesystem::path compilerPath();
 // The calling thread below normal priority (true) or at normal priority (false): step 4's P2 runs the
 // back end below codegen's threads (main.cpp, BackEndPool).
 void setThreadBelowNormal(bool below);
 std::filesystem::path defaultStdlib(const std::filesystem::path& compiler);
-// A target's sysroot (its C headers and libraries) that comes with kppc: sysroots\NAME next to it,
+// A target's sysroot (its C headers and libraries) that comes with kpp: sysroots\NAME next to it,
 // NAME freebsd-x86_64 or linux-x86_64 (a release brings FreeBSD's; tools\sysroot\freebsd.ps1 and
-// tests\targets.ps1 make them in compiler\build\sysroots for a build of kppc). "" when there is none.
+// tests\targets.ps1 make them in compiler\build\sysroots for a build of kpp). "" when there is none.
 // what is the sysroot's own description (its kpp-sysroot.txt: "FreeBSD 14.3-RELEASE ..."), if any.
 std::filesystem::path defaultSysroot(const std::filesystem::path& compiler, const char* name, std::string* what = nullptr);
 // What is wrong with sdk as the macOS SDK of a build for a Mac (arch "arm64" or "x86_64"), "" when
 // nothing: a directory whose SDKSettings.json says version 11.0 or newer, with usr/include/stdio.h and a
 // usr/lib/libSystem.tbd that lists the architecture (design.md, "Targets and hosts", Q7: each user
-// supplies one, and kppc says what to have when it is missing or wrong).
+// supplies one, and kpp says what to have when it is missing or wrong).
 std::string macSdkProblem(const std::string& sdk, const char* arch);
 // The official libraries kpp brings (libraries\ beside stdlib\: a release's, or a checkout's for a
-// build of kppc), where use("NAME") looks last (docs/build.md, "kpp libraries").
+// build of kpp), where use("NAME") looks last (docs/build.md, "kpp libraries").
 std::filesystem::path defaultLibraries(const std::filesystem::path& compiler);
 
 // kpp's version, MAJOR.MINOR.PATCH with "+dirty" for a build of uncommitted changes, or "unknown"
@@ -160,7 +160,7 @@ std::filesystem::path defaultLibraries(const std::filesystem::path& compiler);
 const char* kppVersion();
 const char* kppCommit();
 
-// The clang kppc compiles and links with (docs/build.md, "The toolchain"): --toolchain's choice
+// The clang kpp compiles and links with (docs/build.md, "The toolchain"): --toolchain's choice
 // (selectToolchain), else KPP_CLANG, else an installation's own (bin\clang.exe next to kpp.exe, the
 // bundled toolchain: clang, lld-link, ld.lld, llvm-lib and llvm-rc of LLVM 19.1.7), else the clang of
 // the newest Visual Studio with its Clang component, any edition (vswhere), else Community 2022's.

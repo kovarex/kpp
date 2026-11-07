@@ -1,5 +1,5 @@
 // spec: --no-implicit-fallthrough (design.md "No implicit fallthrough", step 2 behind a flag until the code builds with it): every group of statements after a label ends with an implicit break; labels side by side share their statements; `fallthrough;` as a group's last statement runs on into the next; `break;` still leaves early; each group is a scope of its own (a declaration needs no braces, two groups may declare one name, an object is destroyed at its group's end); a `for constexpr`'s elements are groups too; the evaluator alike
-// kppc: --no-implicit-fallthrough --no-std
+// kpp: --no-implicit-fallthrough --no-std
 int destroyed = 0;
 struct Noisy
 {

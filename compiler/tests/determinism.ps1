@@ -7,7 +7,7 @@
 # front end at -j 8 and -j 32 (its -j 1 build was 61 of the check's 149 s on a loaded machine). The
 # builds compared with each other run at once, each in its own process: what they are compared on is
 # their own output, which another process's load must not change either.
-param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe", [switch]$Full)
+param([string]$KppExe = "$PSScriptRoot\..\build\kpp.exe", [switch]$Full)
 $threadCounts = if ($Full) { @('1', '8', '32') } else { @('1', '32') }
 $ErrorActionPreference = 'Stop'
 $work = Join-Path $PSScriptRoot '..\build\tests\determinism'
@@ -27,14 +27,14 @@ function Normalize([string[]]$lines)
   }
 }
 
-# A kppc run started, its stdout and stderr to files of its label. Waited for by its own process
+# A kpp run started, its stdout and stderr to files of its label. Waited for by its own process
 # (WaitForExit), never by Start-Process -Wait, which also waits for what it started (link.exe's
 # vctip.exe lingers: tests\concurrency.ps1).
 function Start-Run([string[]]$arguments, [string]$label)
 {
   $out = Join-Path $work "$label.out.txt"
   $err = Join-Path $work "$label.err.txt"
-  $p = Start-Process -FilePath $Kppc -ArgumentList $arguments -NoNewWindow -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+  $p = Start-Process -FilePath $KppExe -ArgumentList $arguments -NoNewWindow -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
   # (its handle taken at once: WaitForExit on a process that ended before anyone held its handle
   # throws "The parameter is incorrect", which run_tests' quick run hit, 2026-11-05)
   $null = $p.Handle
@@ -107,7 +107,7 @@ foreach ($name in $groups.Keys)
 
 # --debug-info's variables and types in a build of 8 modules (debuginfo\values.kpp: each class defined
 # in its home module, declared in the others; the types appended in their keys' order): every
-# module's text, by the hash kppc keeps beside its object, the same at -j 1, -j 8 and -j 32. And
+# module's text, by the hash kpp keeps beside its object, the same at -j 1, -j 8 and -j 32. And
 # debuginfo\classes.kpp's 96 classes, which homeDebugClasses defines on every emitter at once (one
 # emitter at -j 1).
 foreach ($program in @('values', 'classes'))

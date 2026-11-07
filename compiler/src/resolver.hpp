@@ -247,10 +247,10 @@ public:
   // discarded, a [[deprecated]] function called (no error: code is generated).
   std::vector<std::string> checkerWarnings();
   // Whether the checker has reported an error in the program (checkerErrors' own, before any
-  // instance codegen emits is checked): kppc --check stops before codegen then, when codegen has no
+  // instance codegen emits is checked): kpp --check stops before codegen then, when codegen has no
   // session to follow the edit (main.cpp, reportResolve).
   bool hasCheckerErrors();
-  // Access checking, warnings only, after enableAccessWarnings() before the resolve (kppc
+  // Access checking, warnings only, after enableAccessWarnings() before the resolve (kpp
   // --access-warnings; design.md, "struct and class"): the uses of private and protected members
   // outside their class, its derived classes (protected) and its friends, and the structs with a
   // private or protected member, a base that is not public or a virtual function. accessReport()
@@ -266,7 +266,7 @@ public:
   // A use of a private or protected member its code may not name is an error (design.md "struct and
   // class": the default, not for a conversion's C++). Before the resolve.
   void enableAccessErrors();
-  // The struct rule as errors (kppc --struct-rule; design.md "struct and class"): a struct with a
+  // The struct rule as errors (kpp --struct-rule; design.md "struct and class"): a struct with a
   // private or protected section, a base that is not public or a virtual function, or deriving from
   // a polymorphic class. Before the resolve. The default once the converter writes such structs as
   // classes.
@@ -289,10 +289,10 @@ public:
   // The target's C++ ABI is MSVC's (the windows target, not windows-gnu): a pointer to a data member
   // is 4 bytes there (constSizeOf, as the code generator lays it out), 8 in Itanium's.
   void setMsvcAbi(bool msvc);
-  // A conversion's resolve (kppc --convert): both branches of an `if constexpr` in a function that is no
+  // A conversion's resolve (kpp --convert): both branches of an `if constexpr` in a function that is no
   // template are walked, as C++ checks them (the converter rewrites both); a build walks the taken one.
   void setConverting(bool converting);
-  // config::debug of the build (kppc's `--config debug=...`, false in a release build): where it is
+  // config::debug of the build (kpp's `--config debug=...`, false in a release build): where it is
   // false, `assert` compiles to nothing (design.md 7), so the checker and the evaluator leave its
   // expression as discarded code (a `when (config::debug)` member it names is no error, design.md 19).
   void setDebug(bool debug);
@@ -734,7 +734,7 @@ public:
   // The instances' own copies of a file's nodes (bodies, initializers, generic lambdas' operators),
   // with the declaration each was copied from: they index the file's tokens too.
   void forEachInstanceCopy(const ParsedFile& file, const std::function<void(Node* copy, const Decl* source)>& visit);
-  // The same for every file at once, with the file each copy's tokens index (`kppc --lsp`'s rename).
+  // The same for every file at once, with the file each copy's tokens index (`kpp --lsp`'s rename).
   void forEachInstanceCopy(const std::function<void(Node* copy, const Decl* source, const ParsedFile& file)>& visit);
 private:
   Impl* impl;

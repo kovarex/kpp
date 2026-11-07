@@ -75,16 +75,16 @@ that differ from C++, for a reader who knows it, are in
   [macro-survey.md](macro-survey.md)): build configuration is a set of typed `config` constants,
   and every use of macros is covered by the features in section 7.
 
-- **Inlining across chunks** (decided 2026-10-28, to be done later): kppc hands clang the program
+- **Inlining across chunks** (decided 2026-10-28, to be done later): kpp hands clang the program
   in chunks (IR modules) compiled in parallel, and a non-template function's body is in one chunk
   only, so calls from other chunks cannot be inlined (up to 35% on small String methods,
   docs/stdlib-performance.md). The options were (1) ThinLTO at link time, (2) available_externally
   copies of small functions in every chunk that calls them, (3) grouping callers with callees into
-  chunks, (4) kppc inlining trivial functions itself when it emits IR. kovarex: (1) or (4); (2)
+  chunks, (4) kpp inlining trivial functions itself when it emits IR. kovarex: (1) or (4); (2)
   rejected, since the copies grow with the number of chunks. One chunk (`--modules 1`) remains the
   manual extreme for a release build.
-- **Floating point is strict IEEE** (the game builds with /fp:strict for its determinism): kppc
-  emits no fast-math flags and no `contract`, and the back end (clang, or LLVM's in kppc) compiles
+- **Floating point is strict IEEE** (the game builds with /fp:strict for its determinism): kpp
+  emits no fast-math flags and no `contract`, and the back end (clang, or LLVM's in kpp) compiles
   the modules with `-ffp-contract=off` for the baseline x86-64 target (no FMA), so no multiply-add is fused and
   every operation rounds as written.
 
@@ -171,7 +171,7 @@ builds win less unless machine code is cached per function.
   instantiates itself with ever larger arguments never stops, and every step costs more because
   the names grow (the first case, from a wrong deduction, ran for over ten minutes). C++ allows
   1024 nested instantiations, but counts fewer of them (a function body's calls are instantiated
-  later, not nested); kppc counts every link of the chain, and the whole Factorio source needs 12.
+  later, not nested); kpp counts every link of the chain, and the whole Factorio source needs 12.
   Templates as computation are dropped (above), so deep recursion is not expected.
 
 ### 4. Our own standard library
@@ -232,7 +232,7 @@ builds win less unless machine code is cached per function.
   String/Vector etc". H measured u64 against u32 on the game: release 0.983x on the 45 menu maps
   and 0.994x on the unit tests, debug 1.001x and 1.005x, the exe +1.3%, peak commit +6 MB, CRCs
   9,501/9,501 with 0 mismatches against C++ Release. The u32 width and its
-  `kppc --config sizeBits` switch were removed (the option is now an error). String is 32 bytes,
+  `kpp --config sizeBits` switch were removed (the option is now an error). String is 32 bytes,
   Vector 24.
 
 ### 5. Interop: C only
@@ -452,7 +452,7 @@ An enumerator of a scoped enum is named through its enum outside the enum, in a 
 enum's own methods `North`, `Direction::North` and `This::North` (23c) all name it. A bare one outside is
 the error "'North' is not declared (...): write `Direction::North`, not `North`" (spec
 language/scoped_enumerator_needs_its_enum;
-the game has none, as kppc never accepted one).
+the game has none, as kpp never accepted one).
 
 **No plain enums** (kovarex, 2026-11-07: "plain enums are not nice"; decided, not built): kpp code has only
 `enum class`; imported C and C++ headers keep theirs. As with the other rules, the error comes behind a flag
@@ -597,9 +597,9 @@ test directionIsVertical
 A `test name { ... }` declaration (8.6 had a quoted name; 8.7 made it an identifier) may appear at namespace scope or inside a class (where it
 sees private members). `check(expr)` records a failure with the expression text, the location
 and the operand values and continues; `require(expr)` ends the test. Tests are compiled only
-with `kppc --tests`, which generates the runner (`--run-test <name or file>` selects); without
+with `kpp --tests`, which generates the runner (`--run-test <name or file>` selects); without
 the switch they cost nothing. Fixtures are ordinary classes constructed in the test.
-Done 2026-10-30 (thread G; the runner's details in "Running and testing kpp code"): `kppc --test
+Done 2026-10-30 (thread G; the runner's details in "Running and testing kpp code"): `kpp --test
 FILES [-- runner arguments]` builds and runs them, `--tests` builds them (with `--exe`). The
 selection is the runner's `--filter TEXT` (repeatable, `*` matches anything) instead of
 `--run-test`, plus `--list` and `--report FILE`. `check` and `require` are statements inside a
@@ -681,7 +681,7 @@ suite DragBuildingBelt depends DragBuilding, TransportBelt
   destroyed it), as do an `InitializerList` and a value `__kppShow` cannot say, a null pointer shows `null`, an argument left
   to its default is not listed, and a `char*` is read as C text. A call of a function or a member
   function has them; a call through a pointer or of a closure has none. The checked call is not
-  inlined by kppc. Its cost, measured on the game's tests (52,089 checks, 2026-11-07): kppc of
+  inlined by kpp. Its cost, measured on the game's tests (52,089 checks, 2026-11-07): kpp of
   1dd08930 against the same with call values, one converted tree and stdlib, tests.cmd's build
   command from scratch, interleaved, each run after 20 s of load under 10%: the build 19.5 s (19.8,
   19.5, 19.5) against 19.2 s (19.3, 19.2, 19.2), factorio-test.exe 522,752 bytes larger (0.37%),
@@ -1120,10 +1120,10 @@ want." A file declares one at its top level, first on its line: `config bool fin
 A library's is `config::LIB::NAME`, the program's `config::NAME`. The default is the lowest value:
 anything that sets it (build.kpp's project, configuration, target, cell, use(), `--config`) wins, its
 value checked against the declared type. Errors: a required one nothing sets, two declarations of one
-name that differ, a value of the wrong type, a declaration of kppc's own (debug, platform, mingw,
+name that differ, a value of the wrong type, a declaration of kpp's own (debug, platform, mingw,
 tests), a library's name declared both in source and by build.kpp's option(), and a `config`
 declaration anywhere else (in a namespace, a class, a block). A top-level `config` followed by a name
-is always one: a type named `config` there is an error. kppc reads the declarations from the tokens
+is always one: a type named `config` there is an error. kpp reads the declarations from the tokens
 (src/config.cpp) before any file is parsed, since the parser's declaration-scope if constexpr,
 `when` and `requires` read config:: values; the parser never sees one. kpp takes a library's as its
 options (`kpp options` shows the default and where it is declared). option() stays for now; whether
@@ -1146,11 +1146,11 @@ kpp/config_debug_branch_names_debug_only_members). The unit tests' CRCs and the 
 in both configurations, and the release build is checked to hold no DEBUG code.
 
 As converted (thread C, 2026-11-02):
-- `kppc --convert --convert-marks [--convert-release]` converts the game as FastDebug or as Release
+- `kpp --convert --convert-marks [--convert-release]` converts the game as FastDebug or as Release
   preprocesses it (Release: NDEBUG for _DEBUG and DEBUG, no DISABLE_EXPRESSION_ID, as fbuild.bff's
   .BuildVanillaRelease), each #if group marked where its first and last directive stood, and each use
   of a macro of the file marked too (a macro may be defined otherwise in the other configuration: Lua's
-  api_check, GameRenderer's CHECK_AND_ADVANCE_STATE). `kppc --convert-merge DEBUG RELEASE OUT CHOICES`
+  api_check, GameRenderer's CHECK_AND_ADVANCE_STATE). `kpp --convert-merge DEBUG RELEASE OUT CHOICES`
   makes the two one text. A group whose two texts are the same is written once, whatever its condition:
   so the platform parts of a condition fold, and a macro that a configuration's #if defines is
   followed to its uses, with no condition parsed. A group whose texts differ, where a statement,
@@ -1187,7 +1187,7 @@ As converted (thread C, 2026-11-02):
 
 **The game's FinalRelease as config::finalRelease (thread C, 2026-11-04; docs/final-release.md).**
 The official builds are FinalRelease of the all-in-one target: Release with FINAL_RELEASE,
-PACKAGED_BUILD and ALL_IN_ONE=1. `kppc --convert-final` converts the game so (with --convert-marks),
+PACKAGED_BUILD and ALL_IN_ONE=1. `kpp --convert-final` converts the game so (with --convert-marks),
 and `--convert-merge DEBUG RELEASE OUT CHOICES FINAL` merges the three. All three defines come and go
 together, so one constant, `config::finalRelease`, chooses them:
 - A group whose release and final texts are the same is chosen by `config::debug` as before. One
@@ -1209,7 +1209,7 @@ together, so one constant, `config::finalRelease`, chooses them:
 - The program declares the constant with its default (build.md, "config:: defaults in source"):
   libraries/CommonUtil/FinalRelease.kpp, an added file of the conversion, holds `config bool
   finalRelease = false;` (CommonUtil, as Agui reads it too). factorio-in-kpp's final configuration
-  sets it true; every other build, kppc alone included, takes the default (until 2026-11-04 the
+  sets it true; every other build, kpp alone included, takes the default (until 2026-11-04 the
   scripts passed `--config finalRelease=false`).
 
 **The game's platforms as config::platform (thread C, 2026-11-05).** The game is converted as Windows
@@ -1327,7 +1327,7 @@ kovarex, 2026-11-01:
   `signed char` and `unsigned char` as numbers, and `int8_t` ... `uint64_t`, `size_t`,
   `ptrdiff_t`, `intptr_t` and `uintptr_t`. They are kept, with C++'s meanings, for the imported C
   headers and `extern "C"` declarations and blocks (a binding's aliases and C struct mirrors go
-  there too). Elsewhere they are deprecated: `kppc --c-type-warnings` warns at each one, naming
+  there too). Elsewhere they are deprecated: `kpp --c-type-warnings` warns at each one, naming
   kpp's type, and is never an error. It is opt-in until the converter and the standard library
   have moved, then on by default; whether it later becomes an error is kovarex's call.
 - **The types are C++'s, distinct** ("Distinct fixed types, deprecate long"). `char`, `signed char`
@@ -1349,10 +1349,10 @@ kovarex, 2026-11-01:
   call compiler-rt (`__divti3`, `__udivti3`, `__modti3`): tens of cycles, as in C. clang accepts
   `__int128` on Windows x64 too, where MSVC has none. Tested here with clang 19 (`clang-cl`):
   division and remainder are right, but the link needs VS's `clang_rt.builtins-x86_64.lib`, which
-  kppc would add to the link line. No Windows C API takes one, so calls between kpp functions are
+  kpp would add to the link line. No Windows C API takes one, so calls between kpp functions are
   kpp's own. On Windows x64 clang passes an i128 argument by pointer and returns it in xmm0, and
   LLVM's own library calls followed another convention until recent fixes (LLVM issue 136428).
-  So kppc calls compiler-rt only through clang's lowering, never declares such calls itself, and a
+  So kpp calls compiler-rt only through clang's lowering, never declares such calls itself, and a
   spec covers each operation on every target.
 - **`usize` is `u64`**, the width of every size (below), so the game's `size_t` maps to `usize`
   with no type change.
@@ -1460,8 +1460,8 @@ a one-line switch, removed with the decision).
     - separate compact containers (`CompactVector<T>` with u32 sizes, for hot objects);
     - a per-project setting. That one changes every library's layout, so kpp.net's packages would
       need a build per setting; it is the worst of the three.
-- **The measurement** (H, kppc fe933d5b on Factorio 4c178a5b915; method and tables in
-  [test-matrix.md, "Container sizes: u32 against u64"](test-matrix.md#container-sizes-u32-against-u64-kppc-fe933d5b-factorio-4c178a5b915-2026-11-01)).
+- **The measurement** (H, kpp fe933d5b on Factorio 4c178a5b915; method and tables in
+  [test-matrix.md, "Container sizes: u32 against u64"](test-matrix.md#container-sizes-u32-against-u64-kpp-fe933d5b-factorio-4c178a5b915-2026-11-01)).
   u64 against u32, with the same results as C++ at both widths (45/45 map checksums, 9,501/9,501
   unit-test CRCs):
   - time: release 0.983× on the 45 menu maps and 0.994× in the unit tests; debug 1.001× and 1.005×;
@@ -1733,14 +1733,14 @@ unscoped if they wanted."
   they become libraries.
 
 Owners: thread A lookup and the errors; thread E `unscoped` and the qualifier in build.kpp's
-description (done: kpp passes each used library's roots as kppc's `--library-root NAME DIR` or
+description (done: kpp passes each used library's roots as kpp's `--library-root NAME DIR` or
 `--unscoped-library-root NAME DIR`, build.md "Library scopes"); thread C the stdlib marked unscoped and the converter's qualification; thread I the
 registry's docs. This supersedes the "distinct names" answer below for libraries; the package tree
 for browsing stays as proposed.
 
 As built (thread A, 2026-11-02; specs `kpp/library_*`, `kpp/two_libraries_*`, `kpp/unscoped_*`,
 `kpp/using_namespace_of_a_library_is_error`):
-- kppc takes `--library-root NAME DIR` and `--unscoped-library-root NAME DIR`, both repeatable (one
+- kpp takes `--library-root NAME DIR` and `--unscoped-library-root NAME DIR`, both repeatable (one
   library may have several roots, its tests' among them); DIR may be a file, `--exclude` applies,
   the positional roots are the program. NAME must be an identifier and no keyword; one NAME given
   both scoped and unscoped is an error. Files are ordered the standard library first, then the
@@ -1773,7 +1773,7 @@ glad stays unscoped, its build.kpp says why; CommonUtil, Agui and Util not this 
   headers (zstd's zstd.h, zstd_errors.h and zdict.h). They are converted with the library, not kept as C
   imports: their declarations are kpp in the library's scope. The library is a kpp library of the
   game's build.kpp (`e.use("zstd", local("libraries/zstd"))`, its build.kpp `root(".")`, copied
-  beside it by convert.cmd), kppc's `--library-root zstd` in convert.cmd's builds. Its C functions
+  beside it by convert.cmd), kpp's `--library-root zstd` in convert.cmd's builds. Its C functions
   keep `extern "C"` and their C names, so the C symbols are unchanged.
 - **An interface header's macros are the scope's names:** a number is a constant (`const auto
   ZSTD_CONTENTSIZE_UNKNOWN = (0ULL - 1);`) by section 15's rule for a `.c` file's own constant,
@@ -1797,7 +1797,7 @@ glad stays unscoped, its build.kpp says why; CommonUtil, Agui and Util not this 
   negative long long with its result's size; the C build and the converted one print the same
   bytes (2,719 lines). The harness converts a scoped library as convert.cmd does: the library on
   its own, then the driver as the program.
-- **The game:** kppc `--convert-library NAME DIR` gives the conversion the converted library; its
+- **The game:** kpp `--convert-library NAME DIR` gives the conversion the converted library; its
   names are the top-level declarations that are not private of its interface files, those the
   converter marks so: what C's users see by including the headers, not an internal header's
   (zstd's mem.h declares `BYTE`, which the game takes from Windows' headers). The game's uses are
@@ -1897,7 +1897,7 @@ glad stays unscoped, its build.kpp says why; CommonUtil, Agui and Util not this 
   without parentheses (`out << flags & mask`, which is `(out << flags) & mask`) is an error.
   Specs: language/string_literal_plus_integer_is_error,
   language/shift_chain_with_bitwise_operator_is_error.
-- **`format` with a literal format:** through C++20 `consteval`, which kppc now enforces. A call
+- **`format` with a literal format:** through C++20 `consteval`, which kpp now enforces. A call
   of a consteval function outside another consteval function, including an implicit consteval
   converting constructor, is evaluated where it is written. One that is no constant (a run-time
   argument, a throw) is an error naming the function. The library's
@@ -1957,12 +1957,12 @@ kovarex: "every commit should add to the smallest version". kpp's version is MAJ
   changed VERSION. The commit that changes VERSION is X.Y.0 and every later commit adds 1, so no
   file is edited per commit and parallel threads never conflict over it. kovarex's example: after
   0.0.158 comes 0.1.0, not 0.1.159.
-- The build works it out (compiler/version.cmake) and puts it in kppc, with the commit. A build
+- The build works it out (compiler/version.cmake) and puts it in kpp, with the commit. A build
   with uncommitted changes adds "+dirty". A build outside git (a source zip) says "unknown" rather
   than guessing. A shallow clone that lacks VERSION's last change is an error, so CI fetches the
   whole history.
 - `kpp --version` prints it. A release is named by it (tag v<version>): package.ps1 takes it from
-  the kppc it packages and never from its command line (kovarex: "take the version from the
+  the kpp it packages and never from its command line (kovarex: "take the version from the
   versioning system always, not from command line").
 - VERSION starts at 0.2: CI had already published v0.1.141 to v0.1.146 under the run-number
   scheme, and 0.2.0 sorts above them.
@@ -2072,7 +2072,7 @@ to all", 2026-11-04):
 Specs: language/placement_new_over_const_object_is_error, language/placement_new_replaces_transparently.
 
 ### 22. A grammar without name lookup (decided 2026-11-04)
-kppc parses every file before any name is known (section 2), so where C++ needs to know whether a
+kpp parses every file before any name is known (section 2), so where C++ needs to know whether a
 name is a type or a template, kpp decides by syntax alone and the resolver rejects what does not
 fit, never reading it another way. This settles the open question "Syntax must be parseable without
 name lookup" (kovarex, 2026-11-04).
@@ -2167,7 +2167,7 @@ costs, and whether it runs a constructor, does not depend on the optimizer or th
   result's address (`sretAddr`; its debug variable there; a result that comes back in registers is a
   class copied as bits, with no constructor to skip) and skips its destructor on the return path
   alone (B); the interpreter elides too (D), so that a class that cannot be moved returns by name in
-  a constant expression as well; kppc's inliner inlines no function whose result is returned in
+  a constant expression as well; kpp's inliner inlines no function whose result is returned in
   memory, so it never meets the variable (inlineCall refuses one, D). Specs
   language/named_return_elided, named_return_of_non_movable_type, named_return_fallback_moves,
   named_return_destroyed_in_slot_on_throw, named_return_loop_variable,
@@ -2425,7 +2425,7 @@ capital letters, like LinkHelper.cpp", and refactorings that are clear wins are 
 **Decided** (kovarex, 2026-11-04): a directory is a package, named after the directory; an optional
 README.md documents it; package names never appear in code. Changed from the proposal: no
 `package.kpp` and no display name other than the directory's, and the description is the README's
-first paragraph. Rollout: first `kppc --packages` and the language server's package tree and symbol
+first paragraph. Rollout: first `kpp --packages` and the language server's package tree and symbol
 search with the package path; `packageof(T)` and the standard library's split into directories
 after kovarex has seen the tree on the game.
 
@@ -2452,7 +2452,7 @@ extended to the library.
 - **The package's name is its directory's name**, always: there is no other display name.
 - **An optional `README.md` in the directory documents the package** (kovarex, 2026-11-04: an md
   file, "so there can be more thorough document about the workings of the package"). Its first
-  paragraph is the short description tools show (the tree's hover, `kppc --packages`); the rest
+  paragraph is the short description tools show (the tree's hover, `kpp --packages`); the rest
   is free documentation. Pictures and diagrams sit in the same directory, next to the README, and
   are linked by their bare file name (`![belts](belts.png)`); Mermaid blocks are fine for text
   diagrams. The compiler reads only `.kpp` files, so none of these affect compilation.
@@ -2518,7 +2518,7 @@ extended to the library.
   cursor.
 - **Moving between packages** is a file move; since names are global, no reference anywhere
   changes. A rename of a class is the only refactor that touches its users.
-- `kppc --packages` prints the tree with the declarations in each package (for the command line
+- `kpp --packages` prints the tree with the declarations in each package (for the command line
   and for scripts), and diagnostics name the package along with the file.
   - Done 2026-11-04 (step 1, the language server's tree and search to follow): the build's front
     end, then one line per package, its path from its root (the standard library's directory, a
@@ -2577,7 +2577,7 @@ checks as warnings over the converted game, errors once it is clean; the convert
 game's 438 friend declarations. The analysis follows.
 
 **As built (thread A, 2026-11-02): the struct rule, the default since the converter writes the game's
-breaking structs as classes (C's 3e46a07c; `kppc --struct-rule` is accepted and changes nothing).** The parser records a `private:` or `protected:`
+breaking structs as classes (C's 3e46a07c; `kpp --struct-rule` is accepted and changes nothing).** The parser records a `private:` or `protected:`
 section in a struct ("a struct's members are all public"), a private or protected base ("a struct's
 bases are all public") and a virtual function, pure function, override or virtual destructor ("a
 struct has no virtual functions"); the resolver adds a struct deriving from a polymorphic class
@@ -2602,7 +2602,7 @@ each base written without an access (a class's bases start private). The breaks 
 or protected member, a base that is not public, a virtual function, a polymorphic base, followed
 across files), local structs in function bodies included. The game and its tests: 37 (31 with a
 private or protected member, 4 with a polymorphic base, 2 with a virtual function), 9 bases written
-public; `kppc --struct-rule` passes over the converted game and tests. The converter keeps the game's
+public; `kpp --struct-rule` passes over the converted game and tests. The converter keeps the game's
 409 friend declarations (it removed them all before) and its 32 hidden friends as written (it made
 21 of them member operators and moved 11 to namespace scope before; A's b4239284 finds them through a
 nested enum and makes them for a class nested in a class template: NotificationData's `Flags
@@ -2679,7 +2679,7 @@ the convention: its containers are objects with invariants, written as public st
 - The struct rule can come first: it is one check in the parser, and the game breaks it in 35
   places.
 
-**Measured with the checker (2026-10-30).** `kppc --access-warnings` runs option 3's rules as
+**Measured with the checker (2026-10-30).** `kpp --access-warnings` runs option 3's rules as
 warnings only (off by default, no other change: the game's IR is the same byte for byte; on, it
 adds 0.06 s to the 1.4 s resolve of the converted game and its tests). It reports every use of a
 private or protected member outside its class and the classes around the use, the classes derived
@@ -2721,7 +2721,7 @@ choose them, codegen does (step 2 below). Run over the converted game with its t
   accessor, the partner nested in the class), in 177 classes, by hand.
 
 **Access warnings, step 1 (thread A, 2026-11-02).** Run again over the conversion of C:\Factorio
-4c178a5b915 (factorio-in-kpp e4cfd9ba, `kppc factorio-test --check --access-warnings`): 2,071 uses
+4c178a5b915 (factorio-in-kpp e4cfd9ba, `kpp factorio-test --check --access-warnings`): 2,071 uses
 (2,048 game, 23 tests; 1,866 private, 205 protected) in a program with 0 friend declarations,
 since the converter still removes all of them (409). Over the C++ it reads, friends declared: 1,551
 uses that 260 of its 441 friend declarations allow, and 94 warnings, all quirks of reading the C++
@@ -3289,14 +3289,14 @@ configuration at once), `build(project)` run, then
 `describe(project)`, whose String's characters it returns; both are destroyed after, so memory
 left allocated is an error as in any constant. When that is no constant, the error names the
 innermost statement that failed and why ("build.kpp:6: a call to puts, a C function, which has no
-body to run at compile time"). `kppc --run-build CONFIGURATION files...` prints it (run_tests'
+body to run at compile time"). `kpp --run-build CONFIGURATION files...` prints it (run_tests'
 runbuild case); `--run-build debug,release` prints each in turn, which is how kpp describes a
 project (project.cpp, through the compile server; projectlib's `describe`), with no describe.exe.
 
 *Its cost, measured 2026-10-31 (stage 7).* A description at Factorio's scale, written with Vector and
 String as projectlib will be (15 C libraries of 20 sources, 5 include directories and 5 defines
 each, two executables; 481 lines of description; `C:\kpp-sandbox\scratch\templates\rb7`), with
-`C:\kpp-sandbox\scratch\templates\runbuild-time.ps1` (10 interleaved rounds, `kppc --std stdlib
+`C:\kpp-sandbox\scratch\templates\runbuild-time.ps1` (10 interleaved rounds, `kpp --std stdlib
 --quiet [--run-build release] projectlib.kpp build.kpp`): the front end alone 37 ms, with the
 evaluation 7,429 ms, then 178 ms after a write into a value no other value shares (the binding's
 own array) stopped copying the array: about 145 ms of interpretation per configuration. Two
@@ -3485,7 +3485,7 @@ The smallest language that is still kpp, as the target of the first code generat
     (a binding's aliases and C struct mirrors go there too), and the standard library's overloads
     that cover it (`toString(long)`, as `std::to_string` has). Its size follows the target's C ABI:
     32 bits on Windows, 64 on LP64 targets (`TypeTable::longBits`, set from the target).
-    Elsewhere it is deprecated, as all of C's integer names are (section 13: `kppc
+    Elsewhere it is deprecated, as all of C's integer names are (section 13: `kpp
     --c-type-warnings`). kpp code writes `i32`/`i64` and `f64` for `long double`.
 
   Specs language/integer_types_are_distinct (the overloads, identities, literals and conversions
@@ -3524,7 +3524,7 @@ syntax is already decided (8.6: `test "name" { }`, `check`, `require`); what fol
 of the mechanism, what is done, and the choices left to kovarex (marked **Q**).
 
 ### How to use it (works on master since 2026-10-30)
-Run a program: `kppc --run` builds it (only what changed since the last run) and runs it with
+Run a program: `kpp --run` builds it (only what changed since the last run) and runs it with
 the arguments after the file; the exit code is the program's.
 ```
 // hello.kpp
@@ -3534,10 +3534,10 @@ int main(int argc, char** argv)
   return 0;
 }
 ```
-`compiler\build\kppc.exe --run hello.kpp a b` prints `hello, 2 arguments`.
+`compiler\build\kpp.exe --run hello.kpp a b` prints `hello, 2 arguments`.
 
 Test code: write `test` blocks next to the code (or in a file of their own) and run them with
-`kppc --test`, with the files or directories to build. A normal build skips the tests, and the
+`kpp --test`, with the files or directories to build. A normal build skips the tests, and the
 file's `main` is left out of a test build.
 ```
 // square.kpp
@@ -3550,9 +3550,9 @@ test square
   require(square(0) == 0);   // a failed require ends the test
 }
 ```
-`compiler\build\kppc.exe --test square.kpp` prints each failure as above, `failed: square.kpp >
+`compiler\build\kpp.exe --test square.kpp` prints each failure as above, `failed: square.kpp >
 square` after a test that failed, and `1 test, 1 failed`. The exit code is 0 when every test
-passed and 1 otherwise. Arguments after `--` go to the runner: `kppc --test src -- --filter
+passed and 1 otherwise. Arguments after `--` go to the runner: `kpp --test src -- --filter
 square` (a part of "file > name"; `*` matches anything), `-- --list`, and `-- --report -` (a JSON
 line per test, for tools). Compiler options go before `--run` or `--test`: `--release`,
 `--msvc-diagnostics`, `--no-server` (build without the compile server, which both use by
@@ -3560,11 +3560,11 @@ default). When the build reports an error, nothing runs. A small program or test
 0.15-0.17 s from the edit to the result, under 0.02 s when nothing changed.
 
 ### What exists (surveyed 2026-10-30 on 7f3e55c)
-- **Running a snippet** is two commands: `kppc --exe out.exe file.kpp`, then `out.exe`. The
+- **Running a snippet** is two commands: `kpp --exe out.exe file.kpp`, then `out.exe`. The
   program is built with the whole standard library (59 files; the front end takes 0.04 s of it).
 - **The spec suite** (`compiler/tests/spec.cmd`, `run_spec.py`): one program per construct,
   compiled, run, stdout compared with `.expected`; headers `// spec:`, `// pending:`, `// error:`,
-  and now `// run:` / `// exit:` (built and run in one step through `kppc --run`). It checks
+  and now `// run:` / `// exit:` (built and run in one step through `kpp --run`). It checks
   output, not assertions: it is the compiler's specification, not a test framework for kpp code.
 - **`compiler/tests/run_tests.cmd`**: the same shape for `tests/run/*.kpp`, plus the access,
   determinism and incremental checks.
@@ -3584,12 +3584,12 @@ default). When the build reports an error, nothing runs. A small program or test
 The 10-line program (`fib` into a `Vector<int>`, `println`), PowerShell `Measure-Command`, six
 rounds each, median (range):
 
-| From the edit to the output | `kppc --exe`, then the program | `kppc --run` | `kppc --server --run` |
+| From the edit to the output | `kpp --exe`, then the program | `kpp --run` | `kpp --server --run` |
 |---|---|---|---|
 | file edited | 0.33 s (0.29-0.38) + 0.07 s | 0.47 s (0.44-0.78) | 0.61 s (0.53-0.81) |
 | nothing changed | 0.30 s (0.28-0.33) + 0.07 s | 0.31 s (0.25-0.63) | 0.07 s (0.03-0.16) |
 
-Where an edited build's time goes (`kppc --exe` without `--quiet`): the front end 0.03-0.05 s over
+Where an edited build's time goes (`kpp --exe` without `--quiet`): the front end 0.03-0.05 s over
 the 59 files, codegen 0.02 s, clang -O0 of the one changed module 0.12-0.27 s, the link
 0.17-0.39 s: clang and the link are 80-90% of it. Two findings for the owners of the server
 (thread A) and the link (thread B): the compile server's rebuild after an edit is slower than a
@@ -3598,27 +3598,27 @@ server), and a freshly linked 10-line executable takes 0.06-0.09 s to run (likel
 scanner reading the new file). A small test costs the same build: until 8.6 exists a test is a
 snippet with asserts, 0.3-0.5 s from the edit to the result.
 
-### (a) `kppc --run` (done 2026-10-30)
-`kppc [options] --run SOURCE [program arguments]` builds SOURCE (a file or a directory) with the
+### (a) `kpp --run` (done 2026-10-30)
+`kpp [options] --run SOURCE [program arguments]` builds SOURCE (a file or a directory) with the
 options before `--run`, runs it with the arguments after SOURCE, and returns the program's exit
 code; when the build fails, the compiler's errors and exit code. The executable and its module
 objects live in `%TEMP%\kpp-run\<name>-<hash of the source's path and the options>\`, so the next
 run rebuilds only the changed module and nothing is written next to the source. Every thread's runs
 share that cache, which came to 734 directories and 191,078 files on 2026-11-03, when the kernel's
 record of each cached file filled its pool: since then a run builds with `--modules 4` unless its
-options name `--modules` (some 15 files a directory, against some 385 at kppc's default), and the
+options name `--modules` (some 15 files a directory, against some 385 at kpp's default), and the
 cache keeps the 100 most recently used directories. A run holds its directory's `lock` file open,
 deletable by no one else, from before its build until its program ends, and the time of last use is
 that file's; the cleanup, at the end of each run, deletes a directory only while it holds its lock
 file alone (a run that finds it held waits, then makes the directory again), and one from before the
 lock file only once it has been unchanged for an hour (tests\runcache.ps1). `--no-run` among the
-options builds only and names the executable (`kppc --run: built PATH (not run: --no-run)`; NAME.exe,
+options builds only and names the executable (`kpp --run: built PATH (not run: --no-run)`; NAME.exe,
 NAME alone for Linux and FreeBSD, as a project's build/CONFIGURATION/NAME is); a
 program for another `--target`, which this machine does not run, is an error without it, before
 any build (2026-11-04: CI builds the libraries' tests for FreeBSD with `kpp --target freebsd
 --no-run --test` and runs them in a FreeBSD VM). The build is a
-kppc process of its own (a build ends its process when done), a client of the compile server: it
-starts the server when none runs, and the server stops after an hour idle (one per kppc binary,
+kpp process of its own (a build ends its process when done), a client of the compile server: it
+starts the server when none runs, and the server stops after an hour idle (one per kpp binary,
 directory and argument list; 25-48 MB each for small programs). `--no-server` among the options
 builds in that process instead, which the spec suite does so that it leaves no servers behind.
 At first the server lost after an edit (above); since 6812a62 (thread A: the server's tools share
@@ -3652,7 +3652,7 @@ statistics pass. `kpp --run hello.kpp a b` means the same in a project's directo
   `str()` method can say them (the text alone otherwise). The same values then go into `assert` messages (7.2's "operand
   values: later"). Inside a test, a failing `assert` or `release_assert` fails the test (the
   runner's `kpp_assert_failed` ends the test by throwing, section 9).
-- **One command.** `kppc [options] --test ROOTS... [-- runner arguments]` builds the tests under
+- **One command.** `kpp [options] --test ROOTS... [-- runner arguments]` builds the tests under
   ROOTS into one test executable (in `%TEMP%\kpp-run\`, as `--run` does) and runs it; `--tests`
   (8.6) stays the build-only switch, with `--exe`, for a binary to keep or debug. In a test build
   the program's `main` is left out and the runner is the entry point. The standard library's tests
@@ -3717,7 +3717,7 @@ statistics pass. `kpp --run hello.kpp a b` means the same in a project's directo
 ### (c) Visual Studio (thread E) and the IDE (thread F)
 Both drive the same command line and read the same machine-readable report; neither parses the
 human output.
-- **Discovery**: `kppc --test ROOTS -- --list --report -` writes one JSON object per line,
+- **Discovery**: `kpp --test ROOTS -- --list --report -` writes one JSON object per line,
   `{"test":"core/Vector.kpp > push_back grows","file":"C:/.../Vector.kpp","line":120}`. Listing
   needs only the front end (no codegen, no link), so it can run on every save; today `--list`
   runs in the built test executable, and a listing from the front end alone comes later.
@@ -3730,7 +3730,7 @@ human output.
   exception left the test). Spec snippet kpp/test_report.
 - **Visual Studio**: the Test Explorer needs a test adapter (thread E's extension) running the two
   commands above; a failure's file, line and column open the source. A project's "Start Without
-  Debugging" is `kppc --run`; debugging builds with `--exe` (or `--tests --exe`) and starts the
+  Debugging" is `kpp --run`; debugging builds with `--exe` (or `--tests --exe`) and starts the
   executable under the debugger. Compile errors already reach the Error List through
   `--msvc-diagnostics` (456eda1, docs/build.md); check failures are in the compiler's error
   format, so the same option shows them there without the adapter.
@@ -3759,7 +3759,7 @@ human output.
 5. Not yet: a compile error for two tests of one name, leaving the standard library's
    tests out of a program's run (it has none yet).
 
-Latency of a small test (one `test` with a loop and two checks, `kppc --test fib.kpp`, six rounds
+Latency of a small test (one `test` with a loop and two checks, `kpp --test fib.kpp`, six rounds
 on 2026-10-30, other threads building): 0.34 s median from the edit to the summary (0.32-0.69 s),
 0.27 s with nothing changed (0.25-0.45 s). Again after `--test` began reading the build's output
 for errors, the machine quieter: 0.22 s median after an edit (0.20-0.40 s), 0.19 s with nothing
@@ -3774,9 +3774,9 @@ the standard library's modules once.
 windows/mac/linux is minimum." kpp.net, the website and library registry written in kpp, is hosted
 on NearlyFreeSpeech.NET, which runs FreeBSD. That decision has two axes:
 
-- **Targets:** what kppc emits and links for. The minimum is Windows x64 (the default), Linux x86-64
+- **Targets:** what kpp emits and links for. The minimum is Windows x64 (the default), Linux x86-64
   and arm64, macOS arm64 (Apple Silicon) and x86-64, and FreeBSD x86-64 for kpp.net.
-- **Hosts:** where kppc itself (C++20) builds and runs. That is Windows and Linux (done 2026-11-06,
+- **Hosts:** where kpp itself (C++20) builds and runs. That is Windows and Linux (done 2026-11-06,
   stage 5 below); macOS as a host is under consideration (below).
 
 On both axes Windows stays the default, with its output unchanged: the game, the tests, and the IR
@@ -3785,7 +3785,7 @@ byte for byte unless a difference is shown to be a fix.
 **This stage (kovarex, 2026-11-06; "Roadmap" has the stages):** macOS as a host moves to under
 consideration, not decided. Building every target, macOS included, on Windows and Linux is enough
 for this stage, so macOS as a target stays planned. What this section says of a Mac host (section 5,
-`xcrun`, kppc hosted on macOS) waits for that decision.
+`xcrun`, kpp hosted on macOS) waits for that decision.
 
 **Order (proposed):**
 1. Linux x86-64: the most tooling, CI runners, and the closest to FreeBSD. It is also testable on
@@ -3832,7 +3832,7 @@ for this stage, so macOS as a target stays planned. What this section says of a 
   class through a hidden slot, extern "C" functions included. For C functions that is MS x64's
   rule only above 8 bytes, where MS x64 passes 1, 2, 4 and 8-byte structs in a register. That gap
   exists on Windows today.
-- **kppc as a host program** uses Win32 in its sources (lines matching Win32 APIs):
+- **kpp as a host program** uses Win32 in its sources (lines matching Win32 APIs):
   - server.cpp 49: named pipes and processes;
   - codegen.cpp 22: threads with 1 GB stacks, an SEH guard against stack overflow,
     `TerminateProcess`;
@@ -3879,7 +3879,7 @@ for this stage, so macOS as a target stays planned. What this section says of a 
 | COMDAT | `linkonce_odr` with `comdat any` | ELF has COMDATs. Mach-O has none (LLVM rejects them) and coalesces weak definitions instead. | Emitted on Windows and ELF, left out on Mach-O. The shared definitions stay `linkonce_odr` or `weak_odr`. |
 | TLS | `thread_local` globals, lazily built per thread | ELF TLS; Mach-O's TLV descriptors (`__tlv_bootstrap`); both through LLVM | Unchanged. |
 | Global constructors | `llvm.global_ctors` | `.init_array` on ELF, `__mod_init_func` on Mach-O, from the same IR | Unchanged. Destructors at exit: kpp_atexit, on Mach-O `__cxa_atexit` as on ELF. |
-| Entry | `main`, or `wmain` (the game) | `main`, with UTF-8 `argv` | `wmain` is Windows-only. Done 2026-11-06: on Windows a `main` that takes arguments is entered through a generated `wmain`, which makes the C runtime's wide `argv` UTF-8 (WideCharToMultiByte; the narrow one is the ANSI code page's), the link naming `wmainCRTStartup`; an argument holding a lone surrogate, which has no UTF-8 form, ends the program before `main` with a message naming it (as a path holding one throws: kovarex, 2026-11-06). `getenv` is UTF-8 too: on Windows it is the stdlib's, not the C runtime's (FilesWindows.kpp; an import of stdlib.h leaves it to the stdlib, as any library function of the same parameters), reading the wide environment (`_wgetenv`) into a UTF-8 copy kept until the variable changes; a value holding a lone surrogate throws SystemError, as a path does. C code linked in (`--lib`) keeps the C runtime's, and a program's own `extern "C"` declaration of getenv is a link error on Windows (the stdlib's definition takes its symbol, which the C runtime has). `kppc --run` passes the program's arguments on as UTF-8 too. A program with `main` and `wmain` is entered at `main`, as the C++ linkers choose. `main` is C++'s `int main()` or `int main(int argc, char** argv)` (`wmain`'s `wchar_t**`) and nothing else: another form (one parameter, the environment's third, a `void` result) is an error, as is an `extern "C"` main; a namespace's `main` is an ordinary function. |
+| Entry | `main`, or `wmain` (the game) | `main`, with UTF-8 `argv` | `wmain` is Windows-only. Done 2026-11-06: on Windows a `main` that takes arguments is entered through a generated `wmain`, which makes the C runtime's wide `argv` UTF-8 (WideCharToMultiByte; the narrow one is the ANSI code page's), the link naming `wmainCRTStartup`; an argument holding a lone surrogate, which has no UTF-8 form, ends the program before `main` with a message naming it (as a path holding one throws: kovarex, 2026-11-06). `getenv` is UTF-8 too: on Windows it is the stdlib's, not the C runtime's (FilesWindows.kpp; an import of stdlib.h leaves it to the stdlib, as any library function of the same parameters), reading the wide environment (`_wgetenv`) into a UTF-8 copy kept until the variable changes; a value holding a lone surrogate throws SystemError, as a path does. C code linked in (`--lib`) keeps the C runtime's, and a program's own `extern "C"` declaration of getenv is a link error on Windows (the stdlib's definition takes its symbol, which the C runtime has). `kpp --run` passes the program's arguments on as UTF-8 too. A program with `main` and `wmain` is entered at `main`, as the C++ linkers choose. `main` is C++'s `int main()` or `int main(int argc, char** argv)` (`wmain`'s `wchar_t**`) and nothing else: another form (one parameter, the environment's third, a `void` result) is an error, as is an `extern "C"` main; a namespace's `main` is an ordinary function. |
 | Debug info | CodeView | DWARF (on macOS, `dsymutil` collects it into a .dSYM) | One module flag per target. |
 | Signing | none needed | macOS arm64 runs only signed code | ld64 and ld64.lld sign ad hoc on arm64 by default. A program shipped to others needs a Developer ID signature and notarization (packaging, thread E). |
 | The runtime's stderr and errno | `__acrt_iob_func(2)`, `_errno()` | `write(2, ...)`; `__errno_location()` on glibc, `__error()` on FreeBSD and macOS | The runtime's few calls go through the platform layer (3). |
@@ -4072,7 +4072,7 @@ The semantics of section 9 hold on every target:
   - Linux and FreeBSD: `clang` and `ld.lld` on PATH, or an LLVM release directory.
   - macOS: `xcrun --find clang`.
   - Everywhere: `KPP_CLANG`, and a `--sysroot` or build.kpp's `project.sysroot`; without one, the
-    sysroot beside kppc, `sysroots\freebsd-x86_64` or `linux-x86_64` (a release brings FreeBSD's:
+    sysroot beside kpp, `sysroots\freebsd-x86_64` or `linux-x86_64` (a release brings FreeBSD's:
     docs/build.md, "Installing"; 2026-11-04).
 
   One clang major version is supported per release (19 today).
@@ -4088,9 +4088,9 @@ The semantics of section 9 hold on every target:
   targets that do not run on the host. The Windows-only snippets (Win32, UTF-16, SEH-specific) are
   marked.
 
-### 5. The host: kppc on Linux and macOS
+### 5. The host: kpp on Linux and macOS
 
-kppc is C++20, built with clang. Its Win32 uses come in four kinds:
+kpp is C++20, built with clang. Its Win32 uses come in four kinds:
 - threads with large stacks and a guard against stack overflow;
 - processes and pipes;
 - the compile server's channel;
@@ -4127,7 +4127,7 @@ Builds and tests:
 - The test entry points become cross-platform: `run_tests` and `spec` as PowerShell 7 (`pwsh`,
   which runs on all three) or Python scripts, keeping the `.cmd` files as one-line wrappers on
   Windows.
-- CI adds ubuntu and macOS jobs that build kppc and run the portable tests.
+- CI adds ubuntu and macOS jobs that build kpp and run the portable tests.
 
 **Who does what (proposed):**
 - **Thread B (this thread):** the targets, the driver and the toolchain (main.cpp's link lines and
@@ -4161,13 +4161,13 @@ All of this goes through the coordinator.
 4. **The platform layer on POSIX:** the Win32 code moves behind `platform::`. POSIX threads,
    mutexes, condition variables, time and sockets come first, then files, the environment and
    processes.
-5. **The host layer:** kppc builds and runs on Linux (WSL here, CI ubuntu), with A, E and F.
+5. **The host layer:** kpp builds and runs on Linux (WSL here, CI ubuntu), with A, E and F.
 6. **FreeBSD x86-64:** its sysroot, its headers' constants and structs, its errno, and a test
    bundle run on FreeBSD. kpp.net's server can be built from here on.
 7. **AArch64:** the AAPCS64 and Apple C lowerings, Linux arm64 (CI or qemu), and the memory
    ordering audit.
 8. **macOS arm64, then x86-64:** Mach-O (no COMDATs, ld64.lld, ad-hoc signing, compact unwind), built
-   on Windows and Linux, and CI macOS jobs that run the result. kppc hosted on macOS is not part of
+   on Windows and Linux, and CI macOS jobs that run the result. kpp hosted on macOS is not part of
    it (under consideration, 2026-11-06).
 
 ### Stage 1 as built (2026-11-01)
@@ -4223,7 +4223,7 @@ All of this goes through the coordinator.
   64 bits in glibc's C.
 - **The spec suite on Linux** (`spec.cmd --target linux`, built here and run under WSL, 2026-11-01):
   819 pass, 3 pending, 72 failing, 14 skipped.
-  - Skipped: the `run:` and `test:` snippets (kppc runs those on this machine), and 4 marked
+  - Skipped: the `run:` and `test:` snippets (kpp runs those on this machine), and 4 marked
     `// target: windows`:
     - MSVC's `%I64u` and LLP64's `%ld` (glibc reads `%I64u` as its `I` flag and a width of 64);
     - a file that requires the Windows platform;
@@ -4536,10 +4536,10 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   - (`uncaught_exceptions()` off Windows, listed here until 2026-11-05: it counts kpp's own
     exceptions on every target since b55e5442, library/uncaught_exceptions_during_unwinding.)
 
-### Stage 5, kppc on a Linux host (2026-11-06, thread E with A, B, D and F's files)
+### Stage 5, kpp on a Linux host (2026-11-06, thread E with A, B, D and F's files)
 
 - **The host layer** is `compiler/src/host.hpp` and `host.cpp`, not the proposal's `runWithStack`
-  set: what kppc and kpp did through Win32 or the C runtime's Windows names, behind one interface,
+  set: what kpp did through Win32 or the C runtime's Windows names, behind one interface,
   its Windows half the code it replaced, moved unchanged. It covers:
   - the platform's name, the executable's path, the process id;
   - files by any path, pipes to a shell command, a shell command run to its end
@@ -4551,20 +4551,20 @@ its IR for every spec snippet (1073) is byte-identical before and after.
 - **No #ifdef outside host.cpp**, but for three Windows-only parts that compile to an explicit
   "not yet" on POSIX: source.cpp's watched listing (ReadDirectoryChangesW) and Visual Studio's clang
   (vswhere), and server.cpp, the compile server (named pipes). `host::compileServer` is false
-  there: kpp and `kppc --run` build in their own process, `--server` is an error that says so, and
+  there: kpp builds in its own process, `kpp --run` too, `--server` is an error that says so, and
   the language server's in-process builds say the same.
 - **On a Linux host**:
   - the default target is the host's (B's `hostTarget()`, c68df005), and the sysroot the host's
-    own system unless one sits beside kppc;
+    own system unless one sits beside kpp;
   - the toolchain is the bundled one, KPP_CLANG's, else the clang on PATH;
   - every non-MSVC link needs lld, and a missing ld.lld is an error naming the package (B's
     rule: never GNU ld in its place);
-  - clang 19 is needed: kppc's IR names LLVM 19's intrinsics, which clang 18 links as undefined
+  - clang 19 is needed: kpp's IR names LLVM 19's intrinsics, which clang 18 links as undefined
     symbols (`llvm.eh.typeid.for.p0`).
 - **Built with CMake** on Linux (Threads, `-std=c++20`, not gnu++20, whose `linux` macro breaks
-  the converter). `run_spec.py` on a Linux host runs build/kppc and the snippets natively.
+  the converter). `run_spec.py` on a Linux host runs build/kpp and the snippets natively.
 - **Tested** by `.github/workflows/linux-host.yml` on every push: ubuntu-24.04 with clang 19, lld 19
-  and Ninja builds kppc, `kppc --run` builds and runs hello world, and the spec runs natively. First
+  and Ninja builds kpp, `kpp --run` builds and runs hello world, and the spec runs natively. First
   green on master at b644530d: spec ALL PASSED (1375 pass, 2 pending, 22 skipped for linux, the
   Windows-only snippets and the compile server's steps).
 - **Windows programs from a Linux host** (kovarex 2026-11-07, stage 1: Factorio's Windows exe built
@@ -4578,7 +4578,7 @@ its IR for every spec snippet (1073) is byte-identical before and after.
     naming llvm-mingw's clang built them with clang-cl's flags;
   - Windows' headers found without case, as on Windows: MinGW-w64's are lower case, and Windows code
     includes `<Windows.h>`, `<WinSock2.h>` (25 of Factorio's files, the converted game's C imports
-    and its C libraries). On a host whose file names have case, kppc writes a clang VFS overlay of
+    and its C libraries). On a host whose file names have case, kpp writes a clang VFS overlay of
     the toolchain's system include directories, every file listed with `'case-sensitive': 'false'`
     (one that only remaps a directory looks inside it as it is), made once per toolchain and target
     in the imports' cache, and passes `-ivfsoverlay` to the C import and the C libraries' compiles
@@ -4640,8 +4640,8 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   processor: the oldest system is kpp's, whatever version the triple says. `config::platform` is
   `Platform::Mac`, and `config::arch` is new on every target: `Arch::X86_64` or `Arch::Arm64` (an
   enumeration beside Platform; `--config arch=` must agree with the target).
-- **The SDK (Q7):** `--sysroot DIR`, else `SDKROOT`; nothing is looked for beside kppc. Before any
-  work kppc checks that the directory's SDKSettings.json says version 11.0 or newer (the first with
+- **The SDK (Q7):** `--sysroot DIR`, else `SDKROOT`; nothing is looked for beside kpp. Before any
+  work kpp checks that the directory's SDKSettings.json says version 11.0 or newer (the first with
   arm64), that it has usr/include/stdio.h, and that usr/lib/libSystem.tbd lists the target's processor
   (a text stub's `targets:` or `archs:`). Otherwise one message: what was wrong, what a macOS SDK is,
   where one comes from (`xcrun --show-sdk-path` on a Mac, Xcode's or the Command Line Tools'; copied to
@@ -4710,7 +4710,7 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   bullseye's signed index); a hello world and an uncaught exception linked with it need no glibc
   symbol newer than GLIBC_2.14.
 - **Q7:** decided 2026-11-07 (kovarex): each user supplies the macOS SDK (a release brings none); when
-  it is missing or wrong, kppc says what to have, where it comes from and how to give it (stage 8's M0,
+  it is missing or wrong, kpp says what to have, where it comes from and how to give it (stage 8's M0,
   below).
 
 ## Open questions
@@ -4731,7 +4731,7 @@ its IR for every spec snippet (1073) is byte-identical before and after.
 - **An own IDE** (proposed 2026-10-30, [ide.md](ide.md)): a query layer in the compile server and an
   LSP adapter first, then an editor written in kpp with a DbgEng debugger and hot reload. Its eight
   decisions are listed at the end of ide.md. **Decided 2026-10-31 (kovarex): integrate with the
-  Language Server Protocol**, so that IntelliSense works in most editors: `kppc --lsp` (ide.md, "The
+  Language Server Protocol**, so that IntelliSense works in most editors: `kpp --lsp` (ide.md, "The
   language server as built"). **Decided 2026-11-06 (kovarex): an own editor comes later, only when kpp
   is fully mature with all features implemented.** No editor work until then; ide.md's decisions 3 to
   8 that depend on the editor are parked with it.
@@ -4742,8 +4742,9 @@ its IR for every spec snippet (1073) is byte-identical before and after.
 
 - **Targets and hosts** (the section above, 2026-10-31): Q1 `long` on LP64 targets (decided 2026-11-01), Q2 `wchar_t`, Q3 a FreeBSD sysroot (14.3, OK'd 2026-11-03) and a way to run tests there, Q4 the FreeBSD version (14, decided 2026-11-03), Q5 CI for macOS and Linux arm64 (decided 2026-11-07), Q6 the minimum OS versions (decided 2026-11-04), Q7 the macOS SDK off a Mac (decided 2026-11-07).
 
-- **How a build is described** ([build.md](build.md), "Questions for kovarex"): whether the
-  repository's `kppc.exe` takes the released name `kpp`. Settled: debug information in release builds
+- **How a build is described** ([build.md](build.md), "Questions for kovarex"): none open. Settled:
+  the command's name (kovarex 2026-11-07, "kpp everywhere": the repository builds compiler\build\kpp.exe,
+  as a release installs it; it was kppc.exe), debug information in release builds
   (kovarex 2026-11-07: on by default, a file beside the executable, for crash reports as Factorio's);
   project files are generated (kovarex 2026-10-31, 54e30458); `kpp` builds the game's C libraries
   from source (7074036f) and the scripts link FASTBuild's, rebuilt at Factorio's HEAD on 2026-10-31.
@@ -4981,7 +4982,7 @@ The work so far, in order:
    constants with `if constexpr` at every scope, `_` locals, attributes; then the ones that need
    design work: reflection, `for constexpr`, typed unions, real enums, tests.
 5. Backend at Factorio scale (first measurement 2026-10-24, see prototype-results.md "Backend at
-   scale": for 73 k functions LLVM needs 5 s at -O0 and 109 s at -O2 on one thread, kppc 0.84 s
+   scale": for 73 k functions LLVM needs 5 s at -O0 and 109 s at -O2 on one thread, kpp 0.84 s
    for everything before it). Done the same day: one IR module per group of files, compiled by
    clang in parallel, -O0 for debug and -O2 for release: 0.6 s and 3.8 s of LLVM for the 73 k
    functions on 32 threads, a debug build of 615 k lines in 1.7 s; unchanged modules keep their

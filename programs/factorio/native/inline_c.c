@@ -1,5 +1,5 @@
 /* The inline functions of C headers that the converted game calls. The import declares them, but
-   their bodies are C, which kppc does not compile, so nothing defines them for the link. Taking
+   their bodies are C, which kpp does not compile, so nothing defines them for the link. Taking
    their addresses here makes clang emit each one as an ordinary function (a COMDAT the link can
    pull from factorio-native.lib), with the headers' own bodies. MinGW-w64 (the bundled toolchain)
    has two of them in another form: IsWindows8OrGreater is static inline there, so it is renamed while

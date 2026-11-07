@@ -1,5 +1,5 @@
 // What every editor's client relies on, checked against a language server: the stub
-// (`node lsp-smoke.js node stub-server.js`) or the compiler's (`node lsp-smoke.js kppc.exe --lsp`).
+// (`node lsp-smoke.js node stub-server.js`) or the compiler's (`node lsp-smoke.js kpp.exe --lsp`).
 // In a new project (build.kpp, src\main.kpp) it initializes with the agreed initializationOptions,
 // expects the agreed capabilities, opens main.kpp with an undeclared name and expects an error on
 // its line, fixes the line and expects the error gone, asks a hover and the cells (kpp/cells), and

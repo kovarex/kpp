@@ -1,6 +1,6 @@
 // spec: a struct is a public value type (design.md "struct and class", decided 2026-11-01): one deriving from a polymorphic class, directly or through a base, without a virtual function of its own is an error naming the fix, make it a class
 // factorio: 3 of the game's structs are polymorphic through a base only (--access-warnings' count, 2026-10-30)
-// kppc: --struct-rule
+// kpp: --struct-rule
 // error: struct_deriving_from_polymorphic_class_is_error.kpp:13: error: struct Label derives from Widget, a polymorphic class (a struct is a public value type, design.md "struct and class"): make it a class
 // error: struct_deriving_from_polymorphic_class_is_error.kpp:17: error: struct Mixed derives from Label, a polymorphic class (a struct is a public value type, design.md "struct and class"): make it a class
 class Widget

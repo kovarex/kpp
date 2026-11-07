@@ -1,4 +1,4 @@
-// kppc: the kpp compiler. Currently the speed-test prototype: parallel lexing of a file tree.
+// kpp: the kpp compiler. Currently the speed-test prototype: parallel lexing of a file tree.
 #include "Driver/Driver.hpp"
 
 // The driver is namespace driver's (Driver/, translation units of their own since the main.cpp split's
@@ -104,7 +104,7 @@ int main(int argc, char** argv)
     abort();
   });
   // argv[0] as the executable's full path, also when found on PATH: a compile server, which runs
-  // from a copy of kppc, finds the standard library next to the client's (source.hpp).
+  // from a copy of kpp, finds the standard library next to the client's (source.hpp).
   static std::string self = compilerPath().string();
   if (argc > 0 && !(argc == 5 && std::string(argv[1]) == "--serve"))
     argv[0] = self.data();
@@ -121,11 +121,11 @@ int main(int argc, char** argv)
     return printVersion();
   if (argc == 2 && std::string(argv[1]) == "--help")
     return usage(stdout), 0;
-  // The game's two configurations' conversions made one (convert.hpp): `kppc --convert-merge DEBUG
+  // The game's two configurations' conversions made one (convert.hpp): `kpp --convert-merge DEBUG
   // RELEASE OUT`.
   if ((argc >= 5 && argc <= 7) && std::string(argv[1]) == "--convert-merge")
     return convertMerge(argv[2], argv[3], argv[4], argc >= 6 ? argv[5] : "", argc == 7 ? argv[6] : "");
-  // One configuration's Windows and Linux conversions made one (convert.hpp): `kppc
+  // One configuration's Windows and Linux conversions made one (convert.hpp): `kpp
   // --convert-merge-platform WINDOWS LINUX OUT`.
   // `... FIRST SECOND OUT LINUX FREEBSD`: other platforms than Windows and Linux, each a comma list
   // (`Windows` and `Linux,FreeBSD`: Linux's and FreeBSD's merge against Windows').
@@ -133,7 +133,7 @@ int main(int argc, char** argv)
     return convertMergePlatform(argv[2], argv[3], argv[4]);
   if (argc == 7 && std::string(argv[1]) == "--convert-merge-platform")
     return convertMergePlatform(argv[2], argv[3], argv[4], argv[5], argv[6]);
-  // The language server (lsp.hpp): `kppc --lsp`, started by an editor, JSON-RPC on stdin and stdout.
+  // The language server (lsp.hpp): `kpp --lsp`, started by an editor, JSON-RPC on stdin and stdout.
   for (int i = 1; i < argc; ++i)
     if (std::string(argv[i]) == "--lsp")
       return runLanguageServer(argc, argv, compile);

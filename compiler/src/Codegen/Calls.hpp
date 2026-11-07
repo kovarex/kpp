@@ -79,7 +79,7 @@
     // The library's `move` and `forward` called with their one argument: identity casts, a reference
     // in and the same reference out, so the call is the argument's address as the parameter would
     // receive it (the same conversions and temporaries) without the call (docs/compile-speed.md,
-    // "Design: inlining trivial functions in kppc", step 1). Null for any other call.
+    // "Design: inlining trivial functions in kpp", step 1). Null for any other call.
     std::optional<Value> inlinedIdentity(FunctionDecl* f, const TemplateArgs& args, Span<Expr*> callArgs, Node* at);
 
     std::unordered_map<FunctionDecl*, FunctionDecl*> trivialDefinitions; // a function's typed definition -> it, when trivial (or null)

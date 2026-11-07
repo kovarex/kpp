@@ -1,5 +1,5 @@
 // spec: a constant given as a Text piece is the value the same expression has everywhere else: kept in a variable, bound to a const reference, read through its address (a variable template's object, one per argument list) and checked by static_assert, each also the value written here, for builtin traits, variable templates (a requires-expression's, a sizeof's, a pack's), config:: constants, a constexpr global, an enumerator and a real enum's generated count and values (`19 same`)
-// kppc: --config zlib::debug=true --config zlib::level=7
+// kpp: --config zlib::debug=true --config zlib::level=7
 extern "C" import "stdio.h";
 struct Plain { int a; };
 enum class Shade { light, dark };

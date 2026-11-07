@@ -2,9 +2,9 @@
 // its definitions in AccessChecker.cpp (resolver.cpp split, 2026-11-05, moved without a change).
   // ---------------- access checking, warnings only (design.md, "struct and class") ----------------
 
-  bool accessWarnings = false; // kppc --access-warnings: checkAccessIn after every walked function and variable
+  bool accessWarnings = false; // kpp --access-warnings: checkAccessIn after every walked function and variable
   bool accessErrors = false;   // design.md "struct and class": a denied use is an error (the default; not a conversion's)
-  bool structRuleErrors = false; // kppc --struct-rule: its breaks are errors (the parser's, a struct deriving from a polymorphic class)
+  bool structRuleErrors = false; // kpp --struct-rule: its breaks are errors (the parser's, a struct deriving from a polymorphic class)
   std::mutex accessMutex;
   // A use of a private or protected member that its code may not name, by its warning (`path:line:
   // warning: ...`), each once: a template's instances share the uses of their template.

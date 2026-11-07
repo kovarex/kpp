@@ -1,4 +1,4 @@
-// The driver: codegen's modules compiled (clang or the back end in kppc, the shared object cache)
+// The driver: codegen's modules compiled (clang or the back end in kpp, the shared object cache)
 // and linked: runCodegen; its declarations in ModuleCompile.hpp (Driver.hpp). A translation unit of
 // its own since 2026-11-05 (main.cpp split, stage 2), moved without a change.
 #include "Driver.hpp"
@@ -11,7 +11,7 @@ namespace driver
 // without its unwind information (Windows x64's .pdata, an ELF's .eh_frame), so a crash in it is
 // walked as a leaf's: on Windows the walk ended there, and the process died with no crash report, its
 // unhandled-exception filter never reached (E's finding, 2026-11-07). For a module clang compiles (an
-// unoptimized build in kppc keeps every function's tables, none proven unable to throw).
+// unoptimized build in kpp keeps every function's tables, none proven unable to throw).
 // text without its COMDATs, for Mach-O (macOS), which has none: LLVM refuses a module that names one
 // there. A shared definition stays linkonce_odr or weak_odr, which the Mach-O linker coalesces by name
 // (design.md, "Targets and hosts", the COMDAT row). Each `$NAME = comdat any` line goes, and in a
@@ -78,7 +78,7 @@ static bool refuseMachOLink(const Options& options, const std::string& what)
 {
   if (!options.target.mac())
     return false;
-  fprintf(stderr, "error: --target %s: %s; kppc links no Mach-O program yet (docs/design.md, \"Targets and hosts\", stage 8)\n",
+  fprintf(stderr, "error: --target %s: %s; kpp links no Mach-O program yet (docs/design.md, \"Targets and hosts\", stage 8)\n",
           options.target.name.c_str(), what.c_str());
   codegenExit = 1;
   return true;
@@ -106,7 +106,7 @@ std::string withUnwindTables(const std::string& text)
         break;
       }
     if (close == std::string::npos)
-      continue; // (no definition kppc writes)
+      continue; // (no definition kpp writes)
     out.append(text, from, close + 1 - from);
     out += " uwtable";
     from = close + 1;
@@ -161,7 +161,7 @@ void reportAccessWarnings(Build& build)
 
   // KPP_OBJECT_CACHE=DIR: module objects shared by every output directory, keyed by the SHA-256 of all
   // an object is made from: the module's text and number, the optimisation level, the compile flags and
-  // the compiler (clang's path, size and time, or this kppc's for LLVM's back end in process). The spec
+  // the compiler (clang's path, size and time, or this kpp's for LLVM's back end in process). The spec
   // suite's snippets share their standard library's modules (run_spec.py sets it): of 38 snippets'
   // module texts (--modules 4), modules 0 to 2 were the same in all and the instance pieces in about
   // half, 74% of the text; its debug run took 97 s with a cache it began empty, 143-149 s without. A
@@ -405,7 +405,7 @@ void runCodegen(Build& build)
   const std::string optLevel = "-O" + std::to_string(options.optLevel);
   const std::string levelText = !options.optimize ? "-O0" : fullLTO ? optLevel + " -flto" : thinLTO ? optLevel + " -flto=thin" : optLevel;
   const char* level = levelText.c_str();
-  // Every function and global in its own section (compileFlags, the back end in kppc alike), but in
+  // Every function and global in its own section (compileFlags, the back end in kpp alike), but in
   // an --incremental-link build: its link (link.exe /INCREMENTAL, /OPT:NOREF) keeps every function,
   // so the sections drop nothing there and cost every edit's link (the game's 650,000 section
   // contributions in its PDB, half its .ilk: about a fifth of the link; docs/debugging.md).
@@ -435,18 +435,18 @@ void runCodegen(Build& build)
   };
   std::vector<ModuleFailure> moduleFailures;
   std::mutex moduleFailuresMutex;
-  // LLVM's back end in this process when kppc has it (src/backend.cpp, docs/codegen-speed.md): a
+  // LLVM's back end in this process when kpp has it (src/backend.cpp, docs/codegen-speed.md): a
   // debug build's module for Windows (windows or windows-gnu, with --debug-info too) compiled from
   // its text in memory, no IR file written, no clang started. Its objects are clang's apart from
   // what names the compiler in CodeView (S_COMPILE3's back-end version, LF_BUILDINFO's tool and
-  // command line, which kppc leaves empty). A release build (ThinLTO, lld), Linux and --clang-flags
+  // command line, which kpp leaves empty). A release build (ThinLTO, lld), Linux and --clang-flags
   // (their objects not compared with clang's) stay clang's; so does any build with
   // KPP_BACKEND=clang (the comparison).
   const char* backendChoice = getenv("KPP_BACKEND");
   bool inProcess = inProcessBackend() && !options.optimize && options.target.windows() && options.clangFlags.empty() &&
                    !(backendChoice && std::string(backendChoice) == "clang");
   // KPP_TEST_BROKEN_MODULE=K (run_tests' "rejected module"): module K gets a function LLVM's verifier
-  // rejects (a use its definition does not dominate), as an IR bug of kppc's would be.
+  // rejects (a use its definition does not dominate), as an IR bug of kpp's would be.
   // KPP_TEST_BROKEN_ASM=K: module K gets an instruction the assembler rejects, which the verifier
   // passes and only the back end finds (LLVM's diagnostics, not its verifier).
   const char* brokenModule = getenv("KPP_TEST_BROKEN_MODULE");
@@ -463,7 +463,7 @@ void runCodegen(Build& build)
   std::string objectCacheCompiler, objectCacheFlags;
   if (!objectCacheDir.empty())
   {
-    objectCacheCompiler = inProcess ? "kppc " + objectcache::stamp(compilerPath()) : "clang " + objectcache::stamp(clangPath());
+    objectCacheCompiler = inProcess ? "kpp " + objectcache::stamp(compilerPath()) : "clang " + objectcache::stamp(clangPath());
     objectCacheFlags = targetFlags(options) + " " + options.clangFlags + (functionSections ? " sections" : " no-sections");
   }
   std::vector<std::string> objectCacheKeys(outputModules);
@@ -642,9 +642,9 @@ void runCodegen(Build& build)
   // --incremental-link build, whose link keeps them all: functionSections above.)
   // (-ffp-contract=off: no multiply-add fused, every operation rounded as written; the game's
   // /fp:strict, design.md section 2)
-  // -fverify-intermediate-code: LLVM's verifier checks the module, as the back end in kppc does
+  // -fverify-intermediate-code: LLVM's verifier checks the module, as the back end in kpp does
   // (src/backend.cpp). A release clang passes -disable-llvm-verifier by default, which took an IR
-  // bug of kppc's in silently: at -O0 the module compiled (exit 0), at -O2 clang hung on it
+  // bug of kpp's in silently: at -O0 the module compiled (exit 0), at -O2 clang hung on it
   // (KPP_TEST_BROKEN_MODULE's use its definition does not dominate, tests\verifier.ps1).
   const char* compileFlags = functionSections ? "-ffunction-sections -fdata-sections -ffp-contract=off -fverify-intermediate-code"
                                               : "-ffp-contract=off -fverify-intermediate-code";

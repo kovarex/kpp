@@ -5,12 +5,12 @@
 # up to the call. Such a failure, not shown, is a failure all the same: when it was the only one of
 # codegen's, nothing declared what it left out, and clang rejected the calling module. In one module,
 # in four, and in a release build (ThinLTO). run_tests.cmd runs it.
-param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe")
+param([string]$KppExe = "$PSScriptRoot\..\build\kpp.exe")
 $ErrorActionPreference = 'Stop'
 $work = Join-Path $PSScriptRoot '..\build\tests\stubs'
 New-Item -ItemType Directory -Force $work | Out-Null
 $work = (Resolve-Path $work).Path
-$Kppc = (Resolve-Path $Kppc).Path
+$KppExe = (Resolve-Path $KppExe).Path
 $sources = @((Resolve-Path "$PSScriptRoot\stubs\broken.kpp").Path, (Resolve-Path "$PSScriptRoot\stubs\main.kpp").Path)
 $failed = @()
 
@@ -33,7 +33,7 @@ foreach ($mode in '--modules 1', '--modules 4', '--release --modules 4')
 {
   $exe = "$work\stubs$($mode -replace '[- ]', '').exe"
   Remove-Item $exe -ErrorAction SilentlyContinue
-  $build = Run $Kppc "--quiet --keep-going --stub-missing $mode --exe `"$exe`" `"$($sources[0])`" `"$($sources[1])`""
+  $build = Run $KppExe "--quiet --keep-going --stub-missing $mode --exe `"$exe`" `"$($sources[0])`" `"$($sources[1])`""
   $errorLines = @($build.text -split "`r?`n" | Where-Object { $_ -match ': error: ' })
   if ($build.code -ne 1) { $failed += "${mode}: the build exited $($build.code), not 1"; continue }
   if ($errorLines.Count -ne 1 -or -not $errorLines[0].Contains("'undefinedName' is not declared"))
@@ -61,7 +61,7 @@ foreach ($mode in '--modules 1', '--modules 4', '--release --modules 4')
 {
   $exe = "$work\undefined$($mode -replace '[- ]', '').exe"
   Remove-Item $exe -ErrorAction SilentlyContinue
-  $build = Run $Kppc "--quiet --keep-going --stub-missing $mode --file-prefix-map `"$(Split-Path $undefined)=`" --exe `"$exe`" `"$undefined`""
+  $build = Run $KppExe "--quiet --keep-going --stub-missing $mode --file-prefix-map `"$(Split-Path $undefined)=`" --exe `"$exe`" `"$undefined`""
   $said = ($build.text -split "`r?`n" | Select-Object -First 4) -join ' | '
   if ($build.code -ne 1 -or $build.text -notmatch 'missing is used, but no definition of it was found') { $failed += "undefined, ${mode}: the build exited $($build.code): $said"; continue }
   if (-not (Test-Path $exe)) { $failed += "undefined, ${mode}: no executable: $said"; continue }

@@ -1,5 +1,5 @@
 @echo off
-rem Builds the C++ transliteration with the same clang that kppc uses, inside the VS 2022
+rem Builds the C++ transliteration with the same clang that kpp uses, inside the VS 2022
 rem environment (so that clang finds the matching MSVC headers and libraries).
 setlocal
 cd /d "%~dp0"

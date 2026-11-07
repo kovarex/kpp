@@ -1,4 +1,4 @@
-// The natvis kppc links into the PDB of a build with debug information (tests\natvis.ps1,
+// The natvis kpp links into the PDB of a build with debug information (tests\natvis.ps1,
 // docs/debugging.md, "Values in Visual Studio"): a value of each library type it has a rule for, and
 // a typed union; containers with more than one block or node.
 struct Point

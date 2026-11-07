@@ -1,5 +1,5 @@
 // spec: a rethrow from a nested try's handler reaches the enclosing try's handler, in a release build too
-// kppc: --release
+// kpp: --release
 int main()
 {
   try

@@ -1,7 +1,7 @@
 # Speed-test prototype: results
 
 Date: 2026-10-23. Machine: PC-PRACOVNA, AMD Ryzen 9 9950X (16 cores / 32 threads), 128 GB RAM,
-Windows 10. Compiler for kppc: clang-cl 19.1.5, Release.
+Windows 10. Compiler for kpp: clang-cl 19.1.5, Release.
 
 ## Question
 
@@ -11,7 +11,7 @@ in a fraction of a second? This is the core bet of kpp (see [design.md](design.m
 
 ## What was built
 
-`kppc` (about 5,500 lines of C++20 in `compiler/src/`):
+`kpp` (about 5,500 lines of C++20 in `compiler/src/`):
 
 1. **Lexer** (`lexer.cpp`): one pass, no preprocessor; a `#` line becomes one token. Identifiers
    are interned into a shared, sharded symbol table.
@@ -43,7 +43,7 @@ The standard library, the C libraries (SDL, Lua, zlib...) and the other third-pa
 
 ## Numbers
 
-Command: `compiler\build\kppc.exe C:\Factorio\src C:\Factorio\tests C:\Factorio\libraries\CommonUtil C:\Factorio\libraries\Agui`
+Command: `compiler\build\kpp.exe C:\Factorio\src C:\Factorio\tests C:\Factorio\libraries\CommonUtil C:\Factorio\libraries\Agui`
 
 | Phase | 1 thread | 32 threads | Notes |
 |---|---|---|---|
@@ -73,7 +73,7 @@ dominated by `<cstdint>` types (`uint32_t` 13k, `int32_t` 13k, `uint8_t`, `size_
 `CALL_ON_EVERY_*` macros (`registerRead`, `OptionalMapPosition`, `CorePrototypes::normalQuality`,
 enum wrappers). In a kpp code base these would be imported C declarations and ordinary code,
 not holes. I found no systematic resolver gap in the top 30; the list is printed by
-`kppc --unresolved 30`.
+`kpp --unresolved 30`.
 
 ### Comparison with clang
 
@@ -82,7 +82,7 @@ generation) on a random sample of 40 Factorio `.cpp` files with the include path
 from `fastbuild/fbuild.bff` (FastDebug configuration), without the precompiled header. All 40
 compile cleanly. Results (`compiler/bench/clang_syntax_only.result.txt`):
 
-| | clang-cl /Zs, per translation unit | kppc, whole code base |
+| | clang-cl /Zs, per translation unit | kpp, whole code base |
 |---|---|---|
 | one file, sequential | mean **1.09 s** (0.42-2.0 s) | |
 | 40 files, 40 parallel processes | 4.63 s wall | |
@@ -90,10 +90,10 @@ compile cleanly. Results (`compiler/bench/clang_syntax_only.result.txt`):
 
 Why the gap is so large: each translation unit re-reads and re-parses its headers (several
 hundred thousand preprocessed lines per `.cpp`), so clang processes the same declarations
-thousands of times; kppc reads every line once. This is exactly the cost kpp's model removes.
+thousands of times; kpp reads every line once. This is exactly the cost kpp's model removes.
 
 What the comparison does *not* show: clang also type-checks every expression and instantiates
-every template, which kppc does not do yet. That work is proportional to the amount of code,
+every template, which kpp does not do yet. That work is proportional to the amount of code,
 not to the number of translation units, so it is expected to cost seconds, not minutes, when
 done once.
 
@@ -185,7 +185,7 @@ instantiation.
 ## Stage 4: a kpp program runs (2026-10-23)
 
 `compiler/src/codegen.cpp` turns the checked program into textual LLVM IR for the whole program
-and `kppc --exe out.exe program.kpp` hands it to the bundled clang (`clang -O2 out.exe.ll`),
+and `kpp --exe out.exe program.kpp` hands it to the bundled clang (`clang -O2 out.exe.ll`),
 which does the optimisation, machine code and linking. No LLVM libraries are needed on the
 machine. The subset covered is the one in design.md, "kpp v0": functions, structs with
 methods and single inheritance, enums, the arithmetic types, pointers, references, arrays,
@@ -205,7 +205,7 @@ counter.
 
 | step for `hello.kpp` | time |
 |---|---|
-| kppc: lex, parse, resolve, check, IR | about 1 ms |
+| kpp: lex, parse, resolve, check, IR | about 1 ms |
 | clang: optimise, codegen, link | 0.07 s |
 
 Templates in generated code (same day): a struct layout per instantiation type, instantiated
@@ -217,7 +217,7 @@ templates of class templates, destructors of instantiations. IR names carry the 
 
 Standard library seed (same day, `stdlib/core/`): `String` (one UTF-8 class, zero-terminated,
 no traits or allocator parameters) and `Vector<T>` (growable, elements relocated bitwise), both
-written in kpp v0 and compiled from source with every program; `kppc` adds `stdlib/` next to
+written in kpp v0 and compiled from source with every program; `kpp` adds `stdlib/` next to
 the compiler automatically (`--std DIR`, `--no-std`). `strings.kpp` builds strings, copies
 them, stores them in a `Vector<String>`, iterates with range-for and checks that everything is
 destroyed. Needed in the code generator for this: range-for over arrays and classes with
@@ -287,7 +287,7 @@ declarations. The preprocessed text is cached by content hash under the temp dir
 | stdio.h, string.h, math.h, stdlib.h |        3,575 |            0 |     0.085 s | 0.002 s |
 | windows.h, stdio.h                  |       40,678 |           17 |     0.195 s | 0.033 s |
 
-(The `imports:` line of kppc. The first-build time is the two clang invocations; the cached time
+(The `imports:` line of kpp. The first-build time is the two clang invocations; the cached time
 is reading, lexing and parsing the preprocessed text on one thread.)
 
 `cimport.kpp` uses `snprintf`, `sqrt`, `fopen`/`fprintf`/`fscanf`, `malloc`/`free`, `abs` and
@@ -340,7 +340,7 @@ unresolved 41,476 -> 34,494 in the "other" group, expressions typed 76.4% -> 76.
 same token layout without the bit fields, a directory walk through `io.h`, timing through
 `windows.h`). It needed one compiler fix on the way: the C importer dropped every macro with a
 leading underscore, so `_A_SUBDIR` did not exist; now only `__`-prefixed names stay out.
-kppc compiles it with the standard library (10 files, 1,132 lines) in 15 ms of its own work
+kpp compiles it with the standard library (10 files, 1,132 lines) in 15 ms of its own work
 (parse 2 ms, index 5 ms, resolve 6 ms, codegen 2 ms; the cached `windows.h` import adds 34 ms),
 then clang spends 0.19 s on the 156 KB of IR.
 
@@ -352,14 +352,14 @@ To separate code quality from algorithm, `kpplex.cpp` is the same program transl
 |---|---:|---:|---|
 | kpplex, kpp | 0.139 s | 390 MB/s, 60.7 M tokens/s | 1,326,156 lines, 8,440,831 tokens, 98,907 identifiers, 0 errors |
 | kpplex, C++ transliteration | 0.144 s | 376 MB/s, 58.6 M tokens/s | identical |
-| kppc's lexer, `--lex-only -j 1` | 0.743 s | 73 MB/s, 11.4 M tokens/s | identical (plus the generated config file) |
-| kppc's lexer, 32 threads | 0.076 s | 716 MB/s | |
+| kpp's lexer, `--lex-only -j 1` | 0.743 s | 73 MB/s, 11.4 M tokens/s | identical (plus the generated config file) |
+| kpp's lexer, 32 threads | 0.076 s | 716 MB/s | |
 
 (Three runs each, best shown; the spread is 0.139-0.142 s for kpp and 0.143-0.145 s for C++.
 Both binaries are 191,488 bytes.)
 
 So the code kpp generates for this program is the code clang generates for the C++ version: same
-backend, same instructions, within 3%. The 5x gap to kppc's own lexer is the thread-safe design
+backend, same instructions, within 3%. The 5x gap to kpp's own lexer is the thread-safe design
 of that lexer (a sharded `unordered_map` behind a `shared_mutex`, two lookups per word, a vector
 per file), not the language, and it says that lexer could be several times faster on 32 threads
 too.
@@ -387,20 +387,20 @@ reference to the enum and gives `values` the array type `E[count]`, codegen fold
 `compiler/bench/synth_program.py N` generates N modules of 10 classes each (fields, a
 constructor, five arithmetic methods, two virtual overrides of a shared base, a method using
 `Vector<int>` and calling a class of the next module, one `runModule` function per module, a
-`main` that touches everything), about 300 lines per module, inside the v0 subset. kppc compiles
+`main` that touches everything), about 300 lines per module, inside the v0 subset. kpp compiles
 it into one IR module; clang is then timed on that module alone, single-threaded, with the
 32-thread machine otherwise idle:
 
-| classes | lines | functions | IR | kppc, all phases | clang -O0 | clang -O1 | clang -O2 |
+| classes | lines | functions | IR | kpp, all phases | clang -O0 | clang -O1 | clang -O2 |
 |---:|---:|---:|---:|---:|---:|---:|---:|
 | 100 | 7.7 k | 965 | 1.5 MB | 0.016 s | | | 1.40 s |
 | 500 | 38 k | 4,605 | 7.3 MB | 0.053 s | 0.37 s | 5.4 s | 6.7 s |
 | 2,000 | 154 k | 18,255 | 29 MB | 0.21 s | 1.22 s | 22.1 s | 26.8 s |
 | 8,000 | 615 k | 72,855 | 117 MB | 0.84 s | 4.98 s | | 108.8 s |
 
-(kppc's 0.84 s at 8,000 classes is parse 0.037 + index 0.011 + resolve 0.064 + codegen 0.728,
+(kpp's 0.84 s at 8,000 classes is parse 0.037 + index 0.011 + resolve 0.064 + codegen 0.728,
 the last single-threaded. At -O0, 4.72 s of the 4.98 are compilation and 0.25 s the lld link.
-Peak working set: kppc 596 MB, clang -O0 1,349 MB. Everything scales linearly with size.)
+Peak working set: kpp 596 MB, clang -O0 1,349 MB. Everything scales linearly with size.)
 
 The 8,000-class program has as many function bodies as Factorio (73 k against 71 k), so per
 function LLVM costs about 65 microseconds at -O0 and 1.5 ms at -O2, and the whole front end
@@ -417,7 +417,7 @@ plus IR writing about 12 microseconds. What follows for the design:
   are the two things worth doing there, in that order.
 - Memory is not a concern at this size.
 
-**Per-file modules (same day).** kppc now emits one IR module per group of files (two groups per
+**Per-file modules (same day).** kpp now emits one IR module per group of files (two groups per
 thread by default, `--modules N` to choose; `--emit-llvm` still writes one module) and compiles
 them with clang in parallel, -O0 for debug and -O2 for release builds, then links through a
 response file. Functions go to the module of their file, instantiations to the module of the
@@ -459,7 +459,7 @@ Two things cost most of the day and are worth knowing before touching this again
   runtime takes the unwind for a jump within the scope and skips the cleanups (destructors) in
   between. LLVM lays the handler out there whenever the code after the call is `unreachable`,
   including after calls to functions it has *inferred* noreturn (a function whose paths all
-  throw). So kppc emits no `unreachable` after a throw: the raise functions are declared as
+  throw). So kpp emits no `unreachable` after a throw: the raise functions are declared as
   returning, the code after a throw stays, and no function is ever provably noreturn. Found
   with a vectored exception handler printing every exception code: `0xE0000001`, then
   `0x80000003`.
@@ -504,7 +504,7 @@ clang: 0.237 s (-O0, 64 modules on 32 threads) + link 0.091 s
 
 The program (`programs/factorio/tests/agui_smoke.kpp`, run by convert.cmd) builds a `Gui` on the
 Void backend, adds a `Label`, runs one `logic()` step and prints the label's size: 100 x 20 for
-ten characters of a 10-pixel font, the first GUI layout computed by code kppc compiled. Getting
+ten characters of a 10-pixel font, the first GUI layout computed by code kpp compiled. Getting
 there took seven compiler fixes for code that compiled and linked but ran wrong, listed in
 docs/path-to-factorio.md ("Agui links and runs"); the Factorio front-end numbers did not move
 (99.54% of files parse clean since the Util pass of 2026-10-25, 77.7% of expressions typed). Test
@@ -580,7 +580,7 @@ test suite: 45 run-tests, 188 spec snippets (3 pending), 0 failing
 
 ```
 compiler\build.cmd
-compiler\build\kppc.exe C:\Factorio\src C:\Factorio\tests C:\Factorio\libraries\CommonUtil C:\Factorio\libraries\Agui
-compiler\build\kppc.exe -j 1 ...          (single-threaded)
+compiler\build\kpp.exe C:\Factorio\src C:\Factorio\tests C:\Factorio\libraries\CommonUtil C:\Factorio\libraries\Agui
+compiler\build\kpp.exe -j 1 ...          (single-threaded)
 compiler\bench\clang_syntax_only.cmd      (clang-cl /Zs on a 40-file sample, VS environment)
 ```

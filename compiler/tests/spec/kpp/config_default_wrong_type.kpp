@@ -1,6 +1,6 @@
 // spec: a --config value that does not fit the type declared in source is an error (a bool's 1, an i8's 300), never a constant of another type
 // factorio: none
-// kppc: --config verbose=1 --config small=300
+// kpp: --config verbose=1 --config small=300
 // error: --config small=300: config::small has the type i8
 // error: --config verbose=1: config::verbose has the type bool (true or false)
 config bool verbose = false;

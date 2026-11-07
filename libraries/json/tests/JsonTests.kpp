@@ -1,4 +1,4 @@
-// The json library's own tests: kppc --test libraries/json
+// The json library's own tests: kpp --test libraries/json
 
 test parseScalars
 {

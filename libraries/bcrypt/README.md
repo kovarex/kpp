@@ -35,7 +35,7 @@ has none yet (its `RandomDevice` is not one); `bcryptHash(password, cost)` comes
 
 ## Tests
 
-`kpp --test` in this directory, or `kppc --test libraries/bcrypt` anywhere:
+`kpp --test` in this directory, or `kpp --test libraries/bcrypt` anywhere:
 - Solar Designer's crypt_blowfish vectors (`U*U`, the 72-byte limit, the empty password), as
   `$2a$`, `$2b$` and `$2y$`, and a non-canonical last salt character;
 - 38 hashes PHP 8.3.27's `crypt()` wrote (tests/BcryptPhpVectors.kpp, from

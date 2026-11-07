@@ -1,5 +1,5 @@
 // spec: under --explicit-by-default the fix of a function argument's braces names a type the call can write (C's converter applies it): a member alias of a class or one declared in a namespace qualified by its classes and namespaces (`Replacer::Parameters{...}`, `net::Address{...}`), a class template's member alias or a template parameter by the type in kpp's spelling (`Pair2<i32>{...}`), a template's type as the parameter writes it; and where the type differs by instance (a specialization's parameter each) no fix, each instance naming its own
-// kppc: --explicit-by-default --no-std
+// kpp: --explicit-by-default --no-std
 // error: explicit_by_default_braced_argument_types_is_error.kpp:54: error: the braces of a function argument name their type, here Inner{1, 2}, another in another instance, so no fix fits the line (design.md "Explicit by default")
 // error: explicit_by_default_braced_argument_types_is_error.kpp:54: error: the braces of a function argument name their type, here Point{1, 2}, another in another instance, so no fix fits the line (design.md "Explicit by default")
 // error: explicit_by_default_braced_argument_types_is_error.kpp:59: error: the braces of a function argument name their type: write `Replacer::Parameters{1, 2}`, not `{1, 2}` (design.md "Explicit by default")

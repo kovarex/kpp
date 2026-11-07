@@ -11,7 +11,7 @@
 #include <thread>
 #include <vector>
 
-// The build is a kppc process of its own (`kppc OPTIONS --server --quiet --exe EXE SOURCE`: a client
+// The build is a kpp process of its own (`kpp OPTIONS --server --quiet --exe EXE SOURCE`: a client
 // of the compile server, which it starts when none runs; --no-server builds in that process instead),
 // so that it ends the way every build ends (a build
 // in this process exits on the spot when done, server.hpp's buildDone). The executable goes to
@@ -49,7 +49,7 @@ namespace
 
   // Deletes the directories of root beyond the keptRunDirectories most recently used, each while
   // holding its lock file alone (one a run holds is skipped). A directory without a lock file was
-  // made by a kppc from before the lock, whose build may still run in it: it goes only once it has
+  // made by a kpp from before the lock, whose build may still run in it: it goes only once it has
   // been an hour unchanged.
   void trimRunDirectories(const std::filesystem::path& root)
   {
@@ -111,7 +111,7 @@ namespace
     int code = host::run(program, args, how, why);
     if (code == -1 && !why.empty())
     {
-      fprintf(stderr, "kppc --run: cannot start %s (%s)\n", program.c_str(), why.c_str());
+      fprintf(stderr, "kpp --run: cannot start %s (%s)\n", program.c_str(), why.c_str());
       return -1;
     }
     if (reportedError)
@@ -134,17 +134,17 @@ int runProgram(int argc, char** argv, int runIndex)
   }
   else if (i < argc)
     sources.push_back(argv[i++]);
-  // (UTF-8, as the program's argv is: on Windows kppc's own argv is the ANSI code page's)
+  // (UTF-8, as the program's argv is: on Windows kpp's own argv is the ANSI code page's)
   std::string notText;
   if (!host::argumentsAsUtf8(argc, argv, i, programArgs, notText))
   {
-    fprintf(stderr, "kppc %s: the program's %s\n", argv[runIndex], notText.c_str());
+    fprintf(stderr, "kpp %s: the program's %s\n", argv[runIndex], notText.c_str());
     return 2;
   }
   if (sources.empty())
   {
-    fprintf(stderr, test ? "usage: kppc [options] --test <file-or-dir>... [-- runner arguments]\n"
-                         : "usage: kppc [options] --run <file-or-dir> [program arguments]\n");
+    fprintf(stderr, test ? "usage: kpp [options] --test <file-or-dir>... [-- runner arguments]\n"
+                         : "usage: kpp [options] --run <file-or-dir> [program arguments]\n");
     return 2;
   }
 
@@ -173,7 +173,7 @@ int runProgram(int argc, char** argv, int runIndex)
     }
   if ((platformOf(target.os).name != std::string(host::platformName()) || target.arch != hostTarget().arch) && !noRun && !stop)
   {
-    fprintf(stderr, "kppc %s: a %s program does not run on this machine; --no-run builds it and names the executable\n",
+    fprintf(stderr, "kpp %s: a %s program does not run on this machine; --no-run builds it and names the executable\n",
             argv[runIndex], target.name.c_str());
     return 2;
   }
@@ -191,7 +191,7 @@ int runProgram(int argc, char** argv, int runIndex)
     std::filesystem::path absolute = std::filesystem::absolute(source, ec).lexically_normal();
     if (!std::filesystem::exists(absolute, ec))
     {
-      fprintf(stderr, "kppc %s: %s not found\n", argv[runIndex], source.c_str());
+      fprintf(stderr, "kpp %s: %s not found\n", argv[runIndex], source.c_str());
       return 2;
     }
     mix(absolute.string());
@@ -205,7 +205,7 @@ int runProgram(int argc, char** argv, int runIndex)
   }
   if (test)
     options.push_back("--tests");
-  // Four modules unless the options say otherwise, as the spec runner builds a snippet: kppc's default
+  // Four modules unless the options say otherwise, as the spec runner builds a snippet: kpp's default
   // (four per thread) made some 385 files of objects and IR a build, every one kept in the cache.
   if (std::find(options.begin(), options.end(), "--modules") == options.end())
   {
@@ -218,7 +218,7 @@ int runProgram(int argc, char** argv, int runIndex)
   if (noServer != options.end())
     options.erase(noServer);
   else if (std::find(options.begin(), options.end(), "--server") == options.end() && host::compileServer)
-    options.push_back("--server"); // (a host without the compile server yet builds in the kppc it starts)
+    options.push_back("--server"); // (a host without the compile server yet builds in the kpp it starts)
   for (const std::string& o : options)
     mix(o);
   char hex[17];
@@ -247,7 +247,7 @@ int runProgram(int argc, char** argv, int runIndex)
   host::FileLock lock = lockRunDirectory(dir);
   if (!lock.held())
   {
-    fprintf(stderr, "kppc %s: cannot lock %s\n", argv[runIndex], (dir / "lock").string().c_str());
+    fprintf(stderr, "kpp %s: cannot lock %s\n", argv[runIndex], (dir / "lock").string().c_str());
     return 1;
   }
   // Once the program has ended (or the build failed): the cache is trimmed, this directory among the
@@ -278,12 +278,12 @@ int runProgram(int argc, char** argv, int runIndex)
     return built < 0 ? 1 : built;
   if (reportedError)
   {
-    fprintf(stderr, "kppc %s: the build reported an error; not running it\n", argv[runIndex]);
+    fprintf(stderr, "kpp %s: the build reported an error; not running it\n", argv[runIndex]);
     return 1;
   }
   if (noRun)
   {
-    printf("kppc %s: built %s (not run: --no-run)\n", argv[runIndex], exe.c_str());
+    printf("kpp %s: built %s (not run: --no-run)\n", argv[runIndex], exe.c_str());
     return 0;
   }
   return runAndWait(exe, programArgs);

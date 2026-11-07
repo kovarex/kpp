@@ -18,7 +18,7 @@ folder.
   `code --install-extension kpp-vscode.vsix`.
 
 ## Settings
-- `kpp.path`: the compiler, when `kpp` is not on the PATH (`C:\kpp\compiler\build\kppc.exe` in a
+- `kpp.path`: the compiler, when `kpp` is not on the PATH (`C:\kpp\compiler\build\kpp.exe` in a
   checkout).
 - `kpp.configuration`: one of build.kpp's configurations, `debug` by default.
 - `kpp.target`: one of build.kpp's executables. Unset, it covers all of them. (`kpp.executable`, its
@@ -45,5 +45,5 @@ editors are covered in [docs/editors.md](https://github.com/kovarex/kpp/blob/mas
 - `npm ci` installs the dependencies. `npm run grammar` copies the TextMate grammar from
   `tools\vs\kpp\Syntaxes` into `syntaxes\`; packaging does that by itself.
 - `npm run smoke` checks the protocol the extension relies on against `test\stub-server.js`, a
-  stand-in server. `node test\lsp-smoke.js PATH\kppc.exe --lsp` runs the same check against the
+  stand-in server. `node test\lsp-smoke.js PATH\kpp.exe --lsp` runs the same check against the
   compiler's own server.

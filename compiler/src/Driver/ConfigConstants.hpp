@@ -17,7 +17,7 @@
   // The config:: constants the program's .kpp files declare (config.cpp; design.md, "config:: defaults
   // in source"): config::NAME, a library's config::LIB::NAME. Each takes its --config value, which must
   // fit its type, else its default; one with no default that nothing sets is an error, and so are two
-  // declarations of one name that differ and one of a name kppc sets itself. False, the errors
+  // declarations of one name that differ and one of a name kpp sets itself. False, the errors
   // printed, when there is one.
   bool configDeclarations(const std::vector<SourceFile>& files, size_t count, const std::vector<int>& fileLibrary, Options& options,
                           std::map<std::string, ConfigDeclared>& declared);

@@ -1,4 +1,4 @@
-# A glibc x86-64 sysroot for kppc --target linux, or with -Arch arm64 an AArch64 one for --target linux-arm64
+# A glibc x86-64 sysroot for kpp --target linux, or with -Arch arm64 an AArch64 one for --target linux-arm64
 # (docs/design.md, "Targets and hosts", Q6; the same packages of the same release for arm64): the oldest
 # system a kpp program runs on is glibc 2.31 (kovarex, 2026-11-04), so the sysroot is Debian 11's
 # (bullseye, 11.11, its last point release): the C headers, the C runtime's start files and libraries,

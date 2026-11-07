@@ -1,11 +1,11 @@
-# kppc --check (an editor's check, kppc --lsp) of a program the front end found errors in (docs/ide.md,
+# kpp --check (an editor's check, kpp --lsp) of a program the front end found errors in (docs/ide.md,
 # "Errors as you type"). Without a kept codegen session to follow the edit (a check of its own, a
 # server's first build), the front end's errors are the answer and no code is generated: codegen keeps
 # no session across some errors, so while many persisted every check generated the whole program again
 # (the game: 17-22 s a check with 264 errors, 6-9 s with 1,602, its front end 0.4 s). Through a compile
 # server whose kept session follows the edit, codegen runs as before and its own errors show beside the
 # front end's (a member function used as a value is codegen's). run_tests.cmd runs it.
-param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe")
+param([string]$KppExe = "$PSScriptRoot\..\build\kpp.exe")
 $ErrorActionPreference = 'Stop'
 $work = Join-Path $PSScriptRoot '..\build\tests\checkerrors'
 function StopLeftovers()
@@ -19,7 +19,7 @@ New-Item -ItemType Directory -Force "$work\src", "$work\tmp" | Out-Null
 $env:TMP = "$work\tmp"
 $env:TEMP = "$work\tmp"
 $std = (Resolve-Path "$PSScriptRoot\..\..\stdlib").Path
-$Kppc = (Resolve-Path $Kppc).Path
+$KppExe = (Resolve-Path $KppExe).Path
 
 # Two files, two modules (a session keeps its texts only then).
 [IO.File]::WriteAllText("$work\src\shape.kpp", "struct Shape { int width = 0; int height = 0; int size() const { return width; } };`nint area(const Shape& s) { return s.width * s.height; }`n")
@@ -36,7 +36,7 @@ $failed = 0
 function Check([string]$label, [string]$client, [int]$exit, [bool]$checkers, [bool]$codegen, [bool]$noCode)
 {
   $ErrorActionPreference = 'Continue'
-  cmd /c "`"$Kppc`" $client --quiet --check --std `"$std`" `"$work\src`" > `"$work\out.txt`" 2> `"$work\err.txt`""
+  cmd /c "`"$KppExe`" $client --quiet --check --std `"$std`" `"$work\src`" > `"$work\out.txt`" 2> `"$work\err.txt`""
   $code = $LASTEXITCODE
   $ErrorActionPreference = 'Stop'
   $text = [IO.File]::ReadAllText("$work\out.txt") + [IO.File]::ReadAllText("$work\err.txt")
@@ -67,7 +67,7 @@ try
   # A server whose first check has the errors: no session, the front end's errors alone, then
   # codegen's once they are fixed.
   $ErrorActionPreference = 'Continue'
-  & $Kppc --stop-server @arguments > $null 2> $null
+  & $KppExe --stop-server @arguments > $null 2> $null
   $ErrorActionPreference = 'Stop'
   Write-Main $both
   Check 'a new server, both errors' '--server' 1 $true $false $true
@@ -80,7 +80,7 @@ try
 finally
 {
   $ErrorActionPreference = 'Continue'
-  & $Kppc --stop-server @arguments > $null 2> $null
+  & $KppExe --stop-server @arguments > $null 2> $null
   $ErrorActionPreference = 'Stop'
   StopLeftovers
 }

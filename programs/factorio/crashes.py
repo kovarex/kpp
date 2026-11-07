@@ -47,7 +47,7 @@ for f in sorted(glob.glob(os.path.join(logs, '*.txt'))):
     if m:
         cause = 'assertion %s:%s %s' % (m.group(1), m.group(2), m.group(3)[:70])
     if not cause:
-        m = re.search(r'kppc [^:\n]*: (.+?) at (\S+?):(\d+)', text)
+        m = re.search(r'kpp [^:\n]*: (.+?) at (\S+?):(\d+)', text)
         if m:
             cause = 'stub ' + m.group(1)
     if not cause:

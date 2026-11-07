@@ -1,13 +1,13 @@
 # What an edit costs through the compile server against the program's first build (docs/compile-speed.md,
 # "The compile server"): an edit of a function that writes many lambdas, each one's closure an instance
 # of a function template, in a program whose codegen answered many functions, the error typed into it
-# and taken out, and a clean edit of it, all with --check (an editor's check, kppc --lsp). Each check
+# and taken out, and a clean edit of it, all with --check (an editor's check, kpp --lsp). Each check
 # must take well under the first build: rebuildLLVM once forgot each released closure instance's name
 # through every emitter's answers one name at a time, so that each such check took longer than the
 # first build (the game's fmain: an error typed checked in 7 to 19 s, F's Visual Studio test,
 # 2026-11-03). The median of the checks must be under 3/4 of the first build's time (it was 1.1 to 1.25
 # times it; 0.21 to 0.47 since). run_tests.cmd runs it.
-param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe")
+param([string]$KppExe = "$PSScriptRoot\..\build\kpp.exe")
 $ErrorActionPreference = 'Stop'
 $work = Join-Path $PSScriptRoot '..\build\tests\editcost'
 function StopLeftovers()
@@ -22,7 +22,7 @@ New-Item -ItemType Directory -Force "$work\src", "$work\tmp" | Out-Null
 $env:TMP = "$work\tmp"
 $env:TEMP = "$work\tmp"
 $std = (Resolve-Path "$PSScriptRoot\..\..\stdlib").Path
-$Kppc = (Resolve-Path $Kppc).Path
+$KppExe = (Resolve-Path $KppExe).Path
 
 # 3000 lambdas in main, each passed to call<F>; 20000 functions, each with a lambda of its own.
 $helpers = New-Object Text.StringBuilder
@@ -39,7 +39,7 @@ function Check([string]$label, [int]$expectExit)
 {
   $watch = [Diagnostics.Stopwatch]::StartNew()
   $ErrorActionPreference = 'Continue'
-  & $Kppc --server @arguments > "$work\out.txt" 2> "$work\err.txt"
+  & $KppExe --server @arguments > "$work\out.txt" 2> "$work\err.txt"
   $code = $LASTEXITCODE
   $ErrorActionPreference = 'Stop'
   $seconds = $watch.Elapsed.TotalSeconds
@@ -53,7 +53,7 @@ function Write-Main([string]$text) { [IO.File]::WriteAllText("$work\src\main.kpp
 function Measure-EditCost()
 {
   $ErrorActionPreference = 'Continue'
-  & $Kppc --stop-server @arguments > $null 2> $null
+  & $KppExe --stop-server @arguments > $null 2> $null
   $ErrorActionPreference = 'Stop'
   Write-Main $main
   $first = Check 'the first build' 0
@@ -92,7 +92,7 @@ try
 finally
 {
   $ErrorActionPreference = 'Continue'
-  & $Kppc --stop-server @arguments > $null 2> $null
+  & $KppExe --stop-server @arguments > $null 2> $null
   $ErrorActionPreference = 'Stop'
   StopLeftovers
 }

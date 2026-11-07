@@ -5,14 +5,14 @@ rem              rejected | library NAME | kppsite
 rem Run from compiler\. Prints "ok   ..." or "FAIL ..." and exits 0 or 1.
 setlocal EnableDelayedExpansion
 cd /d "%~dp0.."
-set KPPC=build\kppc.exe
+set KPP=build\kpp.exe
 if not exist build\tests mkdir build\tests
 goto :%~1
 
 rem An end-to-end program: tests\run\NAME.kpp compiled, run, and its output compared with NAME.expected.
 :e2e
 set NAME=%~2
-%KPPC% --quiet --exe build\tests\%NAME%.exe tests\run\%NAME%.kpp > build\tests\%NAME%.compile.txt 2>&1
+%KPP% --quiet --exe build\tests\%NAME%.exe tests\run\%NAME%.kpp > build\tests\%NAME%.compile.txt 2>&1
 if errorlevel 1 (
   echo FAIL %NAME%: compile
   type build\tests\%NAME%.compile.txt
@@ -26,14 +26,14 @@ if errorlevel 1 (
   exit /b 1
 )
 echo ok   %NAME%
-rem (a passing program's build goes: its objects and IR, about 400 files at kppc's default modules)
+rem (a passing program's build goes: its objects and IR, about 400 files at kpp's default modules)
 del /q build\tests\%NAME%.exe build\tests\%NAME%.exe.* build\tests\%NAME%.compile.txt build\tests\%NAME%.out.txt 2> nul
 exit /b 0
 
 rem Access (docs/design.md, "struct and class"): the errors of the uses it denies, and with --access-warnings
 rem the notes of those friends allow, on tests\access\access.kpp.
 :access
-%KPPC% --quiet --access-warnings --exe build\tests\access.exe tests\access\access.kpp 2> build\tests\access.all.txt > nul
+%KPP% --quiet --access-warnings --exe build\tests\access.exe tests\access\access.kpp 2> build\tests\access.all.txt > nul
 %SystemRoot%\System32\findstr.exe /b /c:"tests\access\access.kpp" build\tests\access.all.txt > build\tests\access.warnings.txt
 fc /w build\tests\access.warnings.txt tests\access\access.expected > nul
 if errorlevel 1 (
@@ -50,7 +50,7 @@ rem errors come in the order its threads finish.
 :diagnostics
 set M=%~2
 if %M%==msvc (set FORM=--msvc-diagnostics) else (set FORM=)
-%KPPC% --quiet %FORM% --exe build\tests\diagnostics-%M%.exe tests\diagnostics\diagnostics.kpp 2>&1 | %SystemRoot%\System32\sort.exe > build\tests\%M%.errors.txt
+%KPP% --quiet %FORM% --exe build\tests\diagnostics-%M%.exe tests\diagnostics\diagnostics.kpp 2>&1 | %SystemRoot%\System32\sort.exe > build\tests\%M%.errors.txt
 fc /w build\tests\%M%.errors.txt tests\diagnostics\%M%.expected > nul
 if errorlevel 1 (
   echo FAIL %M% diagnostics: build\tests\%M%.errors.txt differs from tests\diagnostics\%M%.expected
@@ -64,7 +64,7 @@ rem Top-level names (docs/design.md, "One global scope, so clashes are errors"):
 rem program's files declare is an error, a static one's too (not local to its file yet), and no code
 rem is generated; one type named twice or one constant written alike in two files is one name.
 :clashes
-%KPPC% --quiet --exe build\tests\clashes.exe tests\clashes\errors 2>&1 | %SystemRoot%\System32\sort.exe > build\tests\clashes.errors.txt
+%KPP% --quiet --exe build\tests\clashes.exe tests\clashes\errors 2>&1 | %SystemRoot%\System32\sort.exe > build\tests\clashes.errors.txt
 fc /w build\tests\clashes.errors.txt tests\clashes\errors.expected > nul
 if errorlevel 1 (
   echo FAIL clashes: build\tests\clashes.errors.txt differs from tests\clashes\errors.expected
@@ -77,7 +77,7 @@ exit /b 0
 rem An input path that names no file or directory: an error naming it and exit 1, not a crash in the
 rem listing of the sources ("fatal: recursive_directory_iterator ...").
 :missing
-%KPPC% --quiet --exe build\tests\missing.exe tests\no-such-input > build\tests\missing.out.txt 2>&1
+%KPP% --quiet --exe build\tests\missing.exe tests\no-such-input > build\tests\missing.out.txt 2>&1
 set RC=!errorlevel!
 %SystemRoot%\System32\findstr.exe /c:"error: tests\no-such-input: no such file or directory" build\tests\missing.out.txt > nul
 if errorlevel 1 (
@@ -96,8 +96,8 @@ rem build.kpp at compile time (docs/design.md 12, GlobalScope::runBuild): the de
 rem configuration, computed by the interpreter with Vector and String; a build() that calls C is an
 rem error at its line.
 :runbuild
-(for %%c in (debug release) do %KPPC% --quiet --run-build %%c tests\runbuild\project.kpp tests\runbuild\build.kpp) > build\tests\runbuild.txt 2>&1
-%KPPC% --quiet --run-build debug tests\runbuild\project.kpp tests\runbuild\calls_c.kpp 2> build\tests\runbuild.errors.txt > nul
+(for %%c in (debug release) do %KPP% --quiet --run-build %%c tests\runbuild\project.kpp tests\runbuild\build.kpp) > build\tests\runbuild.txt 2>&1
+%KPP% --quiet --run-build debug tests\runbuild\project.kpp tests\runbuild\calls_c.kpp 2> build\tests\runbuild.errors.txt > nul
 fc /w build\tests\runbuild.txt tests\runbuild\descriptions.expected > nul
 if errorlevel 1 (
   echo FAIL runbuild: build\tests\runbuild.txt differs from tests\runbuild\descriptions.expected
@@ -115,7 +115,7 @@ exit /b 0
 
 rem A name declared alike in two files is one name: the program builds and runs.
 :allowed
-%KPPC% --quiet --exe build\tests\allowed.exe tests\clashes\allowed > build\tests\allowed.compile.txt 2>&1
+%KPP% --quiet --exe build\tests\allowed.exe tests\clashes\allowed > build\tests\allowed.compile.txt 2>&1
 if errorlevel 1 (
   echo FAIL clashes allowed: compile
   type build\tests\allowed.compile.txt
@@ -133,7 +133,7 @@ exit /b 0
 rem A module clang rejects (here: a flag clang does not know) is an error whatever --quiet says, with
 rem clang's message, and the build fails, --keep-going or not.
 :rejected
-%KPPC% --quiet --keep-going --clang-flags -fno-such-kpp-flag --exe build\tests\rejected.exe tests\debuginfo\lines.kpp > nul 2> build\tests\rejected.errors.txt
+%KPP% --quiet --keep-going --clang-flags -fno-such-kpp-flag --exe build\tests\rejected.exe tests\debuginfo\lines.kpp > nul 2> build\tests\rejected.errors.txt
 if not errorlevel 1 (
   echo FAIL rejected module: the build exited 0
   exit /b 1
@@ -151,7 +151,7 @@ rem build.kpp, so the libraries it uses come in: mariadb uses net).
 :library
 set L=%~2
 pushd ..\libraries\%L%
-..\..\compiler\%KPPC% --no-server --test > ..\..\compiler\build\tests\library-%L%.txt 2>&1
+..\..\compiler\%KPP% --no-server --test > ..\..\compiler\build\tests\library-%L%.txt 2>&1
 set LIBRARY_EXIT=!errorlevel!
 popd
 if !LIBRARY_EXIT! neq 0 (
@@ -166,9 +166,9 @@ rem kpp.net's site generator (kppnet\site\README.md): its tests, and a run over 
 rem fixture\registry as the registry's store, which must write the fixture's library pages.
 :kppsite
 pushd ..\kppnet\site
-..\..\compiler\%KPPC% --no-server --test > ..\..\compiler\build\tests\kppsite-tests.txt 2>&1
+..\..\compiler\%KPP% --no-server --test > ..\..\compiler\build\tests\kppsite-tests.txt 2>&1
 set SITE_TESTS=!errorlevel!
-..\..\compiler\%KPPC% --no-server --debug > ..\..\compiler\build\tests\kppsite-build.txt 2>&1
+..\..\compiler\%KPP% --no-server --debug > ..\..\compiler\build\tests\kppsite-build.txt 2>&1
 build\debug\kppsite.exe --out ..\..\compiler\build\tests\site --repository ..\.. --registry fixture\registry > ..\..\compiler\build\tests\kppsite-run.txt 2>&1
 set SITE_RUN=!errorlevel!
 popd

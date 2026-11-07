@@ -1,7 +1,7 @@
-"""How much of a kppc program's IR is calls to trivial functions (docs/compile-speed.md, "Design:
+"""How much of a kpp program's IR is calls to trivial functions (docs/compile-speed.md, "Design:
 inlining trivial functions"): a function is trivial here when its body is one basic block of at
 most MAX instructions with no call. Counts the trivial functions, the call sites (call and invoke)
-that name one, and all call sites, from IR as `kppc --emit-llvm FILE` writes it.
+that name one, and all call sites, from IR as `kpp --emit-llvm FILE` writes it.
 Usage: python compiler/bench/trivial_calls.py FILE.ll [MAX] (MAX defaults to 12)."""
 import re, sys
 from collections import Counter

@@ -50,7 +50,7 @@ namespace host
 #elif defined(__APPLE__)
     return "macos";
 #else
-#error kppc does not know this host
+#error kpp does not know this host
 #endif
   }
 

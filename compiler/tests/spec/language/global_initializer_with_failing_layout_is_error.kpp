@@ -1,5 +1,5 @@
 // spec: a global whose initializer needs a layout that fails (here sizeof of a class holding a flexible array member by value) is an error naming the layout, at the global and at each use; never a global built without its error, whichever thread defines it first and however its initializer was evaluated (before or under codegen's shared lock)
-// kppc: --modules 4
+// kpp: --modules 4
 // error: global_initializer_with_failing_layout_is_error.kpp:15: error: a use of the global holderSize, whose definition failed (the layout of Holder: the member inner (`Flex inner`) holds Flex, which has a flexible array member: only a pointer may refer to such an object inside another) (in the initializer of holderSize)
 // error: global_initializer_with_failing_layout_is_error.kpp:18: error: the layout of Holder: the member inner (`Flex inner`) holds Flex, which has a flexible array member: only a pointer may refer to such an object inside another (in main())
 extern "C" int printf(const char* format, ...);

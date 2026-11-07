@@ -29,7 +29,7 @@ if (Sha256::constantTimeEqual(mac.view(), given)) ...
 
 ## Tests
 
-`kpp --test` in this directory, or `kppc --test libraries/sha256` anywhere:
+`kpp --test` in this directory, or `kpp --test libraries/sha256` anywhere:
 - the five examples of FIPS 180-2's appendix, the million `a` included;
 - RFC 4231's seven HMAC-SHA-256 test cases (case 5 truncated to 128 bits, as it is there);
 - messages of every length from 0 to 299 bytes, HMACs over 20 key lengths and 11 message lengths

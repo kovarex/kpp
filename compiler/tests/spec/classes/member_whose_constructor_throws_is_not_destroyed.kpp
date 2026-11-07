@@ -1,6 +1,6 @@
 // spec: a member whose constructor throws was never constructed, so its destructor does not run while the constructor unwinds; only the members built before it are destroyed (C++ [except.ctor] 3), also when the constructor's body calls a function that may throw: one Part destroyed of the three objects, the one built before the throw (`0 0 1`)
 // factorio: E's exceptions battery against C++ (ex1, 2026-11-06): on Windows, Part's destructor ran for the member whose constructor threw, whenever the class's constructor body called a function that may throw (`1 1 1`); on Linux `0 0 1`
-// kppc: --no-optimize
+// kpp: --no-optimize
 // until 2026-11-06 on Windows the member's constructor, a plain call, returned to where the next invoke's scope entry began (the body's call), so __C_specific_handler ran that invoke's cleanup for it: a nop before each invoke now (B); built unoptimized, where it showed (the optimized build happened to lay the calls apart)
 extern "C" import "stdio.h";
 int destroyed = 0;

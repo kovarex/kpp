@@ -4,12 +4,12 @@
 # compiles what changed and runs its new text, never an object of the old one; a release build takes
 # none of the debug build's objects; builds that share one cache at once all build and run, and leave
 # no file of a writer's half way. run_tests.cmd runs it.
-param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe")
+param([string]$KppExe = "$PSScriptRoot\..\build\kpp.exe")
 $ErrorActionPreference = 'Stop'
 $work = Join-Path $PSScriptRoot '..\build\tests\objectcache'
 if (Test-Path $work) { cmd /c rd /s /q "$work" }
 New-Item -ItemType Directory -Force "$work\src" | Out-Null
-$Kppc = (Resolve-Path $Kppc).Path
+$KppExe = (Resolve-Path $KppExe).Path
 $failed = 0
 function Fail([string]$what) { "FAIL objectcache: $what"; $script:failed++ }
 
@@ -24,7 +24,7 @@ function Build([string]$name, [string]$cache, [string]$flags = '')
   New-Item -ItemType Directory -Force "$work\out" | Out-Null
   $env:KPP_OBJECT_CACHE = $cache
   $ErrorActionPreference = 'Continue'
-  cmd /c "`"$Kppc`" $flags --modules 4 --exe `"$work\out\$name.exe`" `"$work\src`" > `"$work\$name.txt`" 2>&1"
+  cmd /c "`"$KppExe`" $flags --modules 4 --exe `"$work\out\$name.exe`" `"$work\src`" > `"$work\$name.txt`" 2>&1"
   $code = $LASTEXITCODE
   $ErrorActionPreference = 'Stop'
   Remove-Item Env:KPP_OBJECT_CACHE
@@ -62,7 +62,7 @@ New-Item -ItemType Directory -Force "$work\out" | Out-Null
 $env:KPP_OBJECT_CACHE = $together
 $running = foreach ($i in 1..6)
 {
-  Start-Process -FilePath $Kppc -ArgumentList '--quiet', '--modules', '4', '--exe', "`"$work\out\together$i.exe`"", "`"$work\src`"" -PassThru -NoNewWindow `
+  Start-Process -FilePath $KppExe -ArgumentList '--quiet', '--modules', '4', '--exe', "`"$work\out\together$i.exe`"", "`"$work\src`"" -PassThru -NoNewWindow `
     -RedirectStandardOutput "$work\together$i.txt" -RedirectStandardError "$work\together$i.err.txt"
 }
 Remove-Item Env:KPP_OBJECT_CACHE

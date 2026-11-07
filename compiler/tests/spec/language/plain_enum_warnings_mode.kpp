@@ -1,5 +1,5 @@
 // spec: --plain-enum-warnings: kpp code has only enum class (kovarex, 2026-11-07): each plain enum declared in kpp code is a warning, a nameless one too, and each use of its enumerators by kind: a bit operation, an array's index or size, arithmetic, a comparison with an integer, a conversion to an integer; a comparison with its own enum's value is none
-// kppc: --plain-enum-warnings
+// kpp: --plain-enum-warnings
 // warning: plain_enum_warnings_mode.kpp:15: warning: Flags is a plain enum: kpp has only enum class (design.md 8.4)
 // warning: plain_enum_warnings_mode.kpp:16: warning: Solid of Flags used in a bit operation
 // warning: plain_enum_warnings_mode.kpp:17: warning: Count of Flags used in an array's size

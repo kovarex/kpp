@@ -1,8 +1,8 @@
 #pragma once
 
-// The host kppc runs on (docs/design.md, "Targets and hosts", 5): what Windows and POSIX (Linux,
-// FreeBSD, macOS) do differently, behind one interface, so that the rest of kppc has no #ifdef. The
-// Windows side is what kppc did before, moved here unchanged; host.cpp has both.
+// The host kpp runs on (docs/design.md, "Targets and hosts", 5): what Windows and POSIX (Linux,
+// FreeBSD, macOS) do differently, behind one interface, so that the rest of kpp has no #ifdef. The
+// Windows side is what kpp did before, moved here unchanged; host.cpp has both.
 
 #include <cstdint>
 #include <cstdio>
@@ -13,11 +13,11 @@
 
 namespace host
 {
-  // The platform kppc runs on as `--target` names it (windows, linux, freebsd): the default target
+  // The platform kpp runs on as `--target` names it (windows, linux, freebsd): the default target
   // (design.md, "Targets and hosts", 1: the host's own platform).
   const char* platformName();
 
-  // Whether kppc has its compile server on this host (server.cpp: Windows' named pipes, Linux's and
+  // Whether kpp has its compile server on this host (server.cpp: Windows' named pipes, Linux's and
   // FreeBSD's Unix sockets). A build that would go through it builds in its own process instead
   // (kpp, --run).
 #if defined(_WIN32) || defined(__linux__) || defined(__FreeBSD__)
@@ -58,7 +58,7 @@ namespace host
   // A path from its UTF-8 text (Windows' paths are UTF-16; POSIX's are the bytes).
   std::filesystem::path pathOfUtf8(const std::string& text);
 
-  // This process's arguments from first on as UTF-8 text, as a kpp program's argv is (kppc --run's
+  // This process's arguments from first on as UTF-8 text, as a kpp program's argv is (kpp --run's
   // program arguments): on Windows the C runtime's wide argv, split from the command line as the
   // narrow argv was (that one is the ANSI code page's: U+017E as 9e in 1250, Japanese as `??`); POSIX's
   // as they are. False, with why, for an argument that has no UTF-8 form (a lone surrogate), named by
@@ -120,7 +120,7 @@ namespace host
 
   // The machine as `kpp measure`'s table names it: the processor, its cores and threads, the memory.
   std::string machineDescription();
-  // How busy the machine is, every core, over the next second, in percent; -1 where kppc cannot
+  // How busy the machine is, every core, over the next second, in percent; -1 where kpp cannot
   // tell (macOS so far).
   int machineLoad();
 

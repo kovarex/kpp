@@ -1,5 +1,5 @@
 // spec: --this-reference-warnings (design.md 23d): each use of `this` that changes once it is a reference is a warning in the editor's fix form: `this->` (write `this.`), `*this` (write `this`, noting a class whose operator* `*this` will call), its address passed, returned, compared or deleted (write `&this`), a `[this]` capture (write `&this`), a `[=]` lambda that uses the object, and a null test, which has no fix to write
-// kppc: --this-reference-warnings
+// kpp: --this-reference-warnings
 // warning: this_reference_warnings_mode.kpp:19: warning: this is a reference (the object's address): write `&this`, not `this`
 // warning: this_reference_warnings_mode.kpp:20: warning: this is a reference: write `this.`, not `this->`
 // warning: this_reference_warnings_mode.kpp:21: warning: this is a reference: write `this`, not `*this`

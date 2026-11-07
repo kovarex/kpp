@@ -1,5 +1,5 @@
 @echo off
-rem The C libraries converted to kpp by C's rules (kppc --c-sources; docs/path-to-factorio.md,
+rem The C libraries converted to kpp by C's rules (kpp --c-sources; docs/path-to-factorio.md,
 rem "Converting the C libraries"), each once its differential harness (harness.cmd NAME) was
 rem byte-identical: the game compiles their kpp instead of linking the C library. Each has its
 rem directory c-libraries\NAME: the conversion's overrides (expand-macros.txt) and includes.txt, the
@@ -24,6 +24,6 @@ set CLIBNAMES=
 for %%l in (%CLIBRARIES%) do if exist "%~dp0c-libraries\%%l\clib.txt" (for /f "usebackq eol=# delims=" %%n in ("%~dp0c-libraries\%%l\clib.txt") do call set CLIBNAMES=%%CLIBNAMES%% %%n) else call set CLIBNAMES=%%CLIBNAMES%% %%l
 rem CLIBSCOPED: the scoped ones (design.md 16), whose c-libraries\NAME\interface.txt names the headers
 rem converted into the library's scope: the game writes their names NAME::name and builds the library
-rem as a library (build.kpp's use, kppc's --library-root), not as its own sources.
+rem as a library (build.kpp's use, kpp's --library-root), not as its own sources.
 set CLIBSCOPED=
 for %%l in (%CLIBRARIES%) do if exist "%~dp0c-libraries\%%l\interface.txt" call set CLIBSCOPED=%%CLIBSCOPED%% %%l

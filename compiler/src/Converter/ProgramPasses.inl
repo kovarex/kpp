@@ -484,7 +484,7 @@ static const char* const scopeFunctionsLine = "// Its functions, defined in the 
 // declarations of its interface files under dir (scopeInterfaceLine: what C's users include, zstd.h,
 // not its internal mem.h's BYTE, which Windows' headers declare too) that are not private
 // (functions, classes, enumerations and their enumerators, aliases, variables and constants),
-// parsed as kppc parses them.
+// parsed as kpp parses them.
 static std::set<std::string> scopedNamesOf(const std::filesystem::path& dir, std::set<std::string>& headers)
 {
   std::set<std::string> names;

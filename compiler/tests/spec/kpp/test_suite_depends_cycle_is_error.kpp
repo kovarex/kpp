@@ -1,5 +1,5 @@
 // spec: suites that depend on each other in a cycle are an error that lists the cycle
-// kppc: --tests
+// kpp: --tests
 // error: the suites depend on each other in a cycle: A -> C -> B -> A
 suite A depends C { test One { check(true); } }
 suite B depends A { test Two { check(true); } }

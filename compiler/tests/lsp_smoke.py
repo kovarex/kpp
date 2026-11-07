@@ -1,13 +1,13 @@
 """The language server's smoke test on any host (Linux's CI job; Windows has tests/lsp.ps1's sessions):
-`kppc --lsp --stdio --check-each-change` on a program with an error, opened, then fixed: the server
+`kpp --lsp --stdio --check-each-change` on a program with an error, opened, then fixed: the server
 answers initialize, publishes the error as a diagnostic at its place, then none once the file is
 fixed, and ends on shutdown and exit.
-    python3 compiler/tests/lsp_smoke.py [path/to/kppc]
+    python3 compiler/tests/lsp_smoke.py [path/to/kpp]
 """
 import json, os, subprocess, sys, tempfile, threading, queue
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-KPPC = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "..", "build", "kppc.exe" if os.name == "nt" else "kppc")
+KPP = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "..", "build", "kpp.exe" if os.name == "nt" else "kpp")
 
 
 def main():
@@ -18,7 +18,7 @@ def main():
     with open(source, "w", newline="\n") as f:
         f.write(broken)
     uri = "file://" + ("/" if os.name == "nt" else "") + source.replace("\\", "/")
-    server = subprocess.Popen([KPPC, "--lsp", "--stdio", "--check-each-change"], cwd=work, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+    server = subprocess.Popen([KPP, "--lsp", "--stdio", "--check-each-change"], cwd=work, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                               stderr=subprocess.PIPE)
     messages = queue.Queue()
 

@@ -8,7 +8,7 @@ struct ParsedFile;
 class SymbolTable;
 class GlobalScope;
 
-// The language server (docs/ide.md, "The language server as built"): `kppc --lsp [OPTIONS
+// The language server (docs/ide.md, "The language server as built"): `kpp --lsp [OPTIONS
 // SOURCES]`, started by an editor, speaks the Language Server Protocol as JSON-RPC on stdin and
 // stdout. It builds the program's front end in this process as a compile server does (kept between
 // builds, incremental where it can be), with the editor's unsaved buffers standing for their files,

@@ -1,4 +1,4 @@
-shop: A shop: its orders and its stock, the program tests\packages.ps1 lists with kppc --packages.
+shop: A shop: its orders and its stock, the program tests\packages.ps1 lists with kpp --packages.
   main.kpp: functions main
 shop/orders: Orders and their lines, written over two lines of the README.
   Order.kpp: types Order, OrderState, OrderId; functions orderCount; variables maxOrders

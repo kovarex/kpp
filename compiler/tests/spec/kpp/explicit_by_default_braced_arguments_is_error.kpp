@@ -1,5 +1,5 @@
 // spec: under --explicit-by-default (design.md "Explicit by default", rule 1) a function argument's outermost braces name their type, whatever they reach (a constructor, an aggregate, a container through its InitializerList constructor, `{}`, a scalar): an error naming the fix ("write `Point{1, 2}`, not `{1, 2}`", F's form, design.md 23e; a long or multi-line list's `{` alone), the type as the parameter writes it, else the class by its namespaces and classes; for a pointer `nullptr` or the value; for a call, a member call, a function template's call, a construction with parentheses, `new`, a member initializer, one list for an implicit copy constructor
-// kppc: --explicit-by-default --no-std
+// kpp: --explicit-by-default --no-std
 // error: explicit_by_default_braced_arguments_is_error.kpp:77: error: the braces of a function argument name their type: write `geo::Point{a, a}`, not `{a, a}` (design.md "Explicit by default")
 // error: explicit_by_default_braced_arguments_is_error.kpp:98: error: the braces of a function argument name their type: write `geo::Point{1, 2}`, not `{1, 2}` (design.md "Explicit by default")
 // error: explicit_by_default_braced_arguments_is_error.kpp:99: error: the braces of a function argument name their type: write `Spot{3, 4}`, not `{3, 4}` (design.md "Explicit by default")

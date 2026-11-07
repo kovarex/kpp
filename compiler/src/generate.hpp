@@ -4,7 +4,7 @@
 #include <vector>
 
 // Project files for an IDE (docs/build.md, "Project files for an IDE"):
-// `kppc --generate-visual-studio-files <build options> <sources> --exe OUT` writes a solution and a
+// `kpp --generate-visual-studio-files <build options> <sources> --exe OUT` writes a solution and a
 // Makefile project into build\visual-studio\, `--generate-vs-code-files ...` writes .vscode\
 // (tasks, launch, settings). Both list every source file and build with the same arguments,
 // debug and release, through the compile server. A project with a build.kpp (project.hpp) writes
@@ -13,7 +13,7 @@
 bool isGenerateOption(const char* arg);
 int generateProjectFiles(int argc, char** argv);
 
-// kppc's options that take a value (main.cpp's compile), so that the value is not read as a source.
+// kpp's options that take a value (main.cpp's compile), so that the value is not read as a source.
 bool takesValue(const std::string& arg);
 // An argument as cmd.exe needs it: quoted when it has a blank or a character cmd reads.
 std::string quoteArg(const std::string& arg);

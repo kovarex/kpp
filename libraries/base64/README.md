@@ -33,6 +33,6 @@ String token = base64UrlEncode(random32);  // '-' and '_', no padding
 
 ## Tests
 
-`kpp --test` in this directory, or `kppc --test libraries/base64` anywhere: RFC 4648's section 10
+`kpp --test` in this directory, or `kpp --test libraries/base64` anywhere: RFC 4648's section 10
 vectors in both alphabets, padded and not; the 256 byte values and a 40-byte pattern against Python's
 `base64` module; round trips of every length from 0 to 299; each rejection above, with its message.

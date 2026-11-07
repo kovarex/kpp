@@ -1,6 +1,6 @@
 // spec: what a struct may have as a public value type (design.md "struct and class", option 3): constructors, a destructor, methods, operators, static members, nested types, a public: label, a friend declaration, public bases that are not polymorphic, as a template and inside a function; none of it an error
 // factorio: 982 structs of the game's C++, 96% of them public data with at most constructors and methods; the standard library's 231
-// kppc: --struct-rule
+// kpp: --struct-rule
 struct Base { int id = 7; };
 template<class T>
 struct Box : public Base

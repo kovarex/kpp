@@ -1,6 +1,6 @@
 // spec: a lambda's capture by name of a `when` local (design.md 19) is a use of it, checked in the configuration being built: where the local does not exist (tracing is off here), the capture is an error at the lambda, never a capture of an outer or library name of that spelling
 // factorio: none: the converter writes each use of a debug-only local inside `if constexpr (config::debug)` or `when (config::debug)`
-// kppc: --config tracing=false
+// kpp: --config tracing=false
 // error: when_capture_outside_its_condition_is_error.kpp:9: error: 'count' exists only when config::tracing holds: use it inside `if constexpr (config::tracing)` or a `when` on it
 int main()
 {

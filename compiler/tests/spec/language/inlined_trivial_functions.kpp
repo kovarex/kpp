@@ -1,4 +1,4 @@
-// spec: a call of a trivial function (one statement `return E;` or `E;` over its parameters, `this` and fields, built-in operators only) behaves exactly as the call: the arguments are evaluated once and in order, a reference parameter and a reference result stay references, `this` reached through a second base is that base's subobject, a setter and an increment write through, and a call that does not inline (an overloaded operator inside) sits beside them unchanged (docs/compile-speed.md, "Design: inlining trivial functions in kppc"; `--no-inline` keeps every call)
+// spec: a call of a trivial function (one statement `return E;` or `E;` over its parameters, `this` and fields, built-in operators only) behaves exactly as the call: the arguments are evaluated once and in order, a reference parameter and a reference result stay references, `this` reached through a second base is that base's subobject, a setter and an increment write through, and a call that does not inline (an overloaded operator inside) sits beside them unchanged (docs/compile-speed.md, "Design: inlining trivial functions in kpp"; `--no-inline` keeps every call)
 struct Counter
 {
   int count = 0;

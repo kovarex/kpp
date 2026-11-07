@@ -1,6 +1,6 @@
 // A smoke test of the converted CommonUtil: compiled together with programs/factorio/kpp by
 // convert.cmd and run; the output is compared with smoke.expected. It exercises what the
-// converter and the hand-written overrides produced, end to end through kppc.
+// converter and the hand-written overrides produced, end to end through kpp.
 extern "C" int printf(const char* format, ...);
 
 int main()

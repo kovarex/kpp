@@ -1,4 +1,4 @@
-"""Builds and runs the standard library benchmarks: bench.kpp with kppc --release (default IR
+"""Builds and runs the standard library benchmarks: bench.kpp with kpp --release (default IR
 module split, and one module, which shows what cross-module inlining would give), bench.cpp with
 clang -O2 against the MSVC STL and, when WSL has the compilers, against libstdc++ and libc++.
 Every benchmark runs in a process of its own (the heap state one leaves behind changes the next
@@ -14,7 +14,7 @@ import sys
 
 here = os.path.dirname(os.path.abspath(__file__))
 out = os.path.normpath(os.path.join(here, '..', '..', 'build', 'bench', 'stdlib'))
-kppc = os.path.normpath(os.path.join(here, '..', '..', 'build', 'kppc.exe'))
+kpp = os.path.normpath(os.path.join(here, '..', '..', 'build', 'kpp.exe'))
 os.makedirs(out, exist_ok=True)
 
 
@@ -22,11 +22,11 @@ def build():
     programs = {}
     if len(sys.argv) > 1:
         std = os.path.abspath(sys.argv[1])
-        subprocess.run([kppc, '--quiet', '--release', '--std', std, '--exe', os.path.join(out, 'kpp_other.exe'), 'bench.kpp'], cwd=here, check=True)
+        subprocess.run([kpp, '--quiet', '--release', '--std', std, '--exe', os.path.join(out, 'kpp_other.exe'), 'bench.kpp'], cwd=here, check=True)
         programs['kpp, ' + os.path.basename(os.path.normpath(std))] = [os.path.join(out, 'kpp_other.exe')]
-    subprocess.run([kppc, '--quiet', '--release', '--exe', os.path.join(out, 'kpp.exe'), 'bench.kpp'], cwd=here, check=True)
+    subprocess.run([kpp, '--quiet', '--release', '--exe', os.path.join(out, 'kpp.exe'), 'bench.kpp'], cwd=here, check=True)
     programs['kpp'] = [os.path.join(out, 'kpp.exe')]
-    subprocess.run([kppc, '--quiet', '--release', '--modules', '1', '--exe', os.path.join(out, 'kpp1.exe'), 'bench.kpp'], cwd=here, check=True)
+    subprocess.run([kpp, '--quiet', '--release', '--modules', '1', '--exe', os.path.join(out, 'kpp1.exe'), 'bench.kpp'], cwd=here, check=True)
     programs['kpp, 1 module'] = [os.path.join(out, 'kpp1.exe')]
     subprocess.run(['clang++', '-O2', '-std=c++20', 'bench.cpp', '-o', os.path.join(out, 'msvc.exe')], cwd=here, check=True)
     programs['MSVC STL'] = [os.path.join(out, 'msvc.exe')]

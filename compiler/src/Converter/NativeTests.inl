@@ -1,4 +1,4 @@
-// NativeTests.inl: the game's UnitTest++ tests written as kpp's own (kppc --convert-native-tests,
+// NativeTests.inl: the game's UnitTest++ tests written as kpp's own (kpp --convert-native-tests,
 // design.md 8.7, docs/test-suites.md). UnitTest++'s macros get bodies of kpp's syntax
 // (nativeTestMacroBodies), which the converter's macro expansion puts the arguments in as for any
 // macro, so that a check inside another macro (the game's own CHECK_BUILDABILITY) is written alike.
@@ -201,7 +201,7 @@ static std::string withSuiteHeadersResolved(std::string text, Counts& counts)
     if (suite == std::string::npos)
     {
       at = end;
-      continue; // (left as it is: kppc reports the unknown name)
+      continue; // (left as it is: kpp reports the unknown name)
     }
     size_t nameEnd = suite + 6;
     while (nameEnd < text.size() && isIdentChar(text[nameEnd]))

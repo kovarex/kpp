@@ -1,6 +1,6 @@
 // spec: a const or constexpr static local that a lambda, a generic lambda a template's instance calls first, a function template instance's lambda or a local class's virtual function names (code that may be emitted in another module or piece, before or after the function, in a build of 64 modules and the release suite's) reads the function's value from all of them, as the function itself does (`8 13 203 30 60 1677721`)
 // factorio: none known; language/static_local_constant_initialization's constants are those only their function names: one that a lambda or a local class names stays the function's shared static (codegen's staticLocal), whose copies elsewhere are set on the function's first pass
-// kppc: --modules 64
+// kpp: --modules 64
 struct Fixed
 {
   long long value;

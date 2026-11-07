@@ -1103,7 +1103,7 @@ bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, double collec
   kept.resolveTime = seconds(Clock::now() - start);
   // The reports a build from scratch prints. The lexer's counts come from lexing every file again
   // into a table of its own (the kept table holds the old texts' identifiers too); with --quiet
-  // there is no report, and nothing is lexed again (an editor's check, kppc --lsp).
+  // there is no report, and nothing is lexed again (an editor's check, kpp --lsp).
   start = Clock::now();
   if (!quietOutput)
   {

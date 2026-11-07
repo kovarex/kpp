@@ -1,4 +1,4 @@
-// spec: `kppc --run file.kpp args...` builds the program, runs it with the arguments and returns its exit code
+// spec: `kpp --run file.kpp args...` builds the program, runs it with the arguments and returns its exit code
 // run: alpha "two words" 3
 // exit: 3
 int main(int argc, char** argv)

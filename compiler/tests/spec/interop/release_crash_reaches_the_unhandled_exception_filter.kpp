@@ -1,6 +1,6 @@
 // spec: every function has unwind information (LLVM's `uwtable`, as clang gives every function), also one the optimizer proves cannot throw: in a release build an access violation several calls deep in such a function, called through a pointer, reaches the process's unhandled-exception filter, which a crash report is (`before the crash`, `filter reached: 1`, and the filter's exit 0)
 // E's finding with release debug information: Windows x64 walks a frame without unwind information as a leaf's, the walk ended there, and the process died with 0xC0000005 and no report (the debug build, unoptimized, keeps its functions' tables)
-// kppc: --release
+// kpp: --release
 // target: windows (windows.h)
 extern "C" import "windows.h";
 extern "C" import "stdlib.h";

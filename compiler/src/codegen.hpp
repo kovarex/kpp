@@ -79,7 +79,7 @@ struct CodegenOptions
   // called, so that the program links and runs up to the first one it reaches.
   bool stubMissing = false;
   // Calls of trivial functions are emitted as the callees' bodies (docs/compile-speed.md, "Design:
-  // inlining trivial functions in kppc"); false (--no-inline) keeps every call.
+  // inlining trivial functions in kpp"); false (--no-inline) keeps every call.
   bool inlineTrivial = true;
   // --debug-info: line tables, each statement's instructions at its line, so that a debugger steps
   // through the kpp source (docs/debugging.md).
@@ -97,7 +97,7 @@ CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, Glob
 // How many modules a build of moduleCount modules writes (CodegenResult::modules): a debug build of
 // several, not optimized, has each in two, its program piece (what the functions the program writes
 // own) and its instance piece (the rest), the program pieces first (docs/codegen-speed.md, step 4).
-// (The pieces are for kppc's -O0 back end; an optimized build's is ThinLTO's link, where twice the
+// (The pieces are for kpp's -O0 back end; an optimized build's is ThinLTO's link, where twice the
 // modules only cost.)
 unsigned codegenOutputModules(unsigned moduleCount, bool debug, bool optimize);
 

@@ -583,7 +583,7 @@ void reportResolve(Build& build)
   }
   else if (generatesCode(options) && options.check && !build.rebuildCodegen && global.hasCheckerErrors())
   {
-    // kppc --check (`kppc --lsp`'s checks) of a program the front end found errors in, when codegen
+    // kpp --check (`kpp --lsp`'s checks) of a program the front end found errors in, when codegen
     // has no kept session to follow the edit: the front end's errors are the answer, codegen's own
     // come once they are fixed. Codegen keeps no session across some errors (a failure remembered for
     // every use, one it cannot give to a function), so while they persisted every check generated the

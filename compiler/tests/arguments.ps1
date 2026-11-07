@@ -1,13 +1,13 @@
 # main's arguments on Windows (design.md, "Targets and hosts"): UTF-8, from the C runtime's wide argv
 # through the generated wmain (codegen's emitEntry), for the MSVC target and windows-gnu; an argument
 # holding a lone surrogate, which has no UTF-8 form, ends the program before main with a message that
-# names it (kovarex, 2026-11-06: a path holding one throws), and kppc --run refuses to pass one on. A
+# names it (kovarex, 2026-11-06: a path holding one throws), and kpp --run refuses to pass one on. A
 # surrogate pair is one character, four bytes. The UTF-8 of ordinary text is the spec's
 # (interop/main_arguments_are_utf8): a snippet cannot hold a lone surrogate. run_tests.cmd runs it.
-param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe")
+param([string]$KppExe = "$PSScriptRoot\..\build\kpp.exe")
 $ErrorActionPreference = 'Stop'
 $work = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\build\tests\arguments'))
-$Kppc = (Resolve-Path $Kppc).Path
+$KppExe = (Resolve-Path $KppExe).Path
 $failed = 0
 function Fail([string]$what) { "FAIL arguments: $what"; $script:failed++ }
 
@@ -59,7 +59,7 @@ foreach ($target in 'windows', 'windows-gnu')
   $exe = Join-Path $work "bytes-$target.exe"
   if ($target -eq 'windows-gnu') { $env:KPP_CLANG = "$mingw\bin\clang.exe" }
   $ErrorActionPreference = 'Continue'
-  & $Kppc --quiet --target $target --exe $exe $source > "$exe.build.txt" 2>&1
+  & $KppExe --quiet --target $target --exe $exe $source > "$exe.build.txt" 2>&1
   $built = $LASTEXITCODE
   $ErrorActionPreference = 'Stop'
   Remove-Item Env:\KPP_CLANG -ErrorAction SilentlyContinue
@@ -70,12 +70,12 @@ foreach ($target in 'windows', 'windows-gnu')
   if ($r.out -ne '' -or $r.exit -eq 0 -or $r.err -notmatch "argument 2 holds a lone surrogate, which has no UTF-8 form") { Fail "$target, a lone surrogate: '$($r.out)' exit $($r.exit) '$($r.err)'" }
 }
 
-# kppc --run: the program's arguments as UTF-8 (kppc's own argv is the ANSI code page's), a lone
+# kpp --run: the program's arguments as UTF-8 (kpp's own argv is the ANSI code page's), a lone
 # surrogate refused.
-$r = RunWith $Kppc @('--quiet', '--no-server', '--run', $source, ([string][char]0x17E), $pair)
-if ($r.out -ne 'c5be 78f09f9880' -or $r.exit -ne 0) { Fail "kppc --run, ordinary text and a surrogate pair: '$($r.out)' exit $($r.exit) $($r.err)" }
-$r = RunWith $Kppc @('--quiet', '--no-server', '--run', $source, 'ok', $lone)
-if ($r.exit -ne 2 -or $r.err -notmatch "kppc --run: the program's argument 2 holds a lone surrogate") { Fail "kppc --run, a lone surrogate: '$($r.out)' exit $($r.exit) '$($r.err)'" }
+$r = RunWith $KppExe @('--quiet', '--no-server', '--run', $source, ([string][char]0x17E), $pair)
+if ($r.out -ne 'c5be 78f09f9880' -or $r.exit -ne 0) { Fail "kpp --run, ordinary text and a surrogate pair: '$($r.out)' exit $($r.exit) $($r.err)" }
+$r = RunWith $KppExe @('--quiet', '--no-server', '--run', $source, 'ok', $lone)
+if ($r.exit -ne 2 -or $r.err -notmatch "kpp --run: the program's argument 2 holds a lone surrogate") { Fail "kpp --run, a lone surrogate: '$($r.out)' exit $($r.exit) '$($r.err)'" }
 
-if ($failed -eq 0) { "ok   arguments: UTF-8 main arguments on windows and windows-gnu, a lone surrogate refused, kppc --run's passed on" }
+if ($failed -eq 0) { "ok   arguments: UTF-8 main arguments on windows and windows-gnu, a lone surrogate refused, kpp --run's passed on" }
 exit $failed

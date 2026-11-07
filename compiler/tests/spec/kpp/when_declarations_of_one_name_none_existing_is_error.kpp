@@ -1,6 +1,6 @@
 // spec: a use outside any condition of a name several `when` declarations declare (design.md 19) is an error where none of them exists, in that configuration: here neither tracing nor profiling is on
 // factorio: none: the converter writes complementary conditions (`config::debug`, `!config::debug`)
-// kppc: --config tracing=false --config profiling=false
+// kpp: --config tracing=false --config profiling=false
 // error: when_declarations_of_one_name_none_existing_is_error.kpp:17: error: 'timer' does not exist here: none of its `when` conditions holds (config::tracing, config::profiling)
 struct TraceTimer
 {

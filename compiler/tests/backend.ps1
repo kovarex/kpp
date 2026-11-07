@@ -1,12 +1,12 @@
-# LLVM's back end in kppc (src\backend.cpp), when this kppc has it (kppc --version): what LLVM rejects
+# LLVM's back end in kpp (src\backend.cpp), when this kpp has it (kpp --version): what LLVM rejects
 # fails its module with LLVM's message and fails the build (never a crash, an exit from a worker
 # thread, or an object), for both targets it compiles: windows (Visual Studio's) and windows-gnu
 # (llvm-mingw's, tools\sysroot\llvm-mingw.ps1). KPP_TEST_BROKEN_MODULE=0 gives module 0 an IR bug the
 # verifier rejects; KPP_TEST_BROKEN_ASM=0 an instruction only the back end's assembler rejects (LLVM's
 # diagnostics). run_tests.cmd runs it. Exit 0: passed; 1: failed; 3: skipped (no LLVM back end).
-param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe")
+param([string]$KppExe = "$PSScriptRoot\..\build\kpp.exe")
 $ErrorActionPreference = 'Stop'
-if (-not ((& $Kppc --version) -match "^back end: LLVM's")) { "skipped: this kppc has no LLVM back end"; exit 3 }
+if (-not ((& $KppExe --version) -match "^back end: LLVM's")) { "skipped: this kpp has no LLVM back end"; exit 3 }
 $work = Join-Path $PSScriptRoot '..\build\tests\backend'
 New-Item -ItemType Directory -Force $work | Out-Null
 $work = (Resolve-Path $work).Path
@@ -24,7 +24,7 @@ foreach ($target in 'windows', 'windows-gnu')
   {
     $errors = "$work\$target-$($c.name).errors.txt"
     Set-Item "Env:$($c.variable)" '0'
-    cmd /c "`"$Kppc`" --quiet --keep-going --target $target --exe `"$work\$target-$($c.name).exe`" `"$source`" > nul 2> `"$errors`""
+    cmd /c "`"$KppExe`" --quiet --keep-going --target $target --exe `"$work\$target-$($c.name).exe`" `"$source`" > nul 2> `"$errors`""
     $rc = $LASTEXITCODE
     Remove-Item "Env:$($c.variable)"
     $text = Get-Content -Raw $errors

@@ -15,7 +15,7 @@ directory's lock allows one game). The mods of that write directory count: menu-
 keeps the C++ run's prototype list checksum, and a map whose run printed another one is reported as
 not comparable instead of as different (run.cmd's test_mod, a scratch mod).
 
---linux runs the Linux build, GAME_DIR\\build\\CONFIGURATION\\factorio (kppc factorio --target linux),
+--linux runs the Linux build, GAME_DIR\\build\\CONFIGURATION\\factorio (kpp factorio --target linux),
 under WSL, reading C:\\Factorio\\data with a config and write directory of its own
 (kpp\\menu-checksums\\linux): the same simulations, the same checksums as the C++ build's on Windows.
 

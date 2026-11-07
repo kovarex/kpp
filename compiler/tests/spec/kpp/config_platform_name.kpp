@@ -1,4 +1,4 @@
-// spec: config::platformName(PLATFORM) is the platform's short name (windows, linux, freebsd), as --target, the sysroots and build.kpp's systemLibrary(NAME, PLATFORM) spell it; one table in kppc gives it and config::platform's enumeration (target.hpp, platformNames)
+// spec: config::platformName(PLATFORM) is the platform's short name (windows, linux, freebsd), as --target, the sysroots and build.kpp's systemLibrary(NAME, PLATFORM) spell it; one table in kpp gives it and config::platform's enumeration (target.hpp, platformNames)
 // factorio: none; projectlib's Project.kpp names a platform's system libraries with it
 int main()
 {

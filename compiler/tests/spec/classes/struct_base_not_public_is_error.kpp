@@ -1,6 +1,6 @@
 // spec: a struct is a public value type (design.md "struct and class", option 3): a private or protected base is an error naming the fix, make it a class
 // factorio: none in the game (the rule as written, checked by --access-warnings since 2026-10-30)
-// kppc: --struct-rule
+// kpp: --struct-rule
 // error: struct_base_not_public_is_error.kpp:7: error: a struct's bases are all public (a struct is a public value type, design.md "struct and class"): make it a class
 // error: struct_base_not_public_is_error.kpp:8: error: a struct's bases are all public (a struct is a public value type, design.md "struct and class"): make it a class
 struct Position { int x = 1; int y = 2; };

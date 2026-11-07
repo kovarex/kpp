@@ -12,7 +12,7 @@ call :fetch commonmark-spec https://github.com/commonmark/commonmark-spec.git %C
 call :fetch cmark-gfm https://github.com/github/cmark-gfm.git %GFM% || exit /b 1
 python -I "%HERE%generate_spec.py" "%OUT%\commonmark-spec" "%OUT%\cmark-gfm" "%OUT%\tests" || exit /b 1
 copy /y "%HERE%CommonMarkTests.kpp.in" "%OUT%\tests\CommonMarkTests.kpp" > nul
-"%HERE%..\..\..\compiler\build\kppc.exe" --no-server --test "%HERE%..\src" "%OUT%\tests"
+"%HERE%..\..\..\compiler\build\kpp.exe" --no-server --test "%HERE%..\src" "%OUT%\tests"
 exit /b %errorlevel%
 
 rem A repository at one commit, fetched once.

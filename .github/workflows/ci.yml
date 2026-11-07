@@ -1,4 +1,4 @@
-# kpp's tests on Windows runners (docs/build.md, "Continuous integration"): kppc built once by
+# kpp's tests on Windows runners (docs/build.md, "Continuous integration"): kpp built once by
 # compiler\build.cmd, then compiler\tests\run_tests.cmd and compiler\tests\spec.cmd in 4 shards, as
 # parallel jobs (kovarex, 2026-11-02: the repository is public, so its runners cost nothing). Every
 # push to master and every pull request runs every job: run_tests --full, the spec in debug, --release
@@ -34,8 +34,8 @@ concurrency:
 
 jobs:
   # The jobs run on a GitHub-hosted Windows runner by default, a Forgejo runner's label through
-  # the repository variable KPP_CI_RUNNER. kppc is built once (build) and handed to the test jobs as
-  # the artifact "kppc"; run_tests' 2 halves, the spec's shards and (on master) package run at once;
+  # the repository variable KPP_CI_RUNNER. kpp is built once (build) and handed to the test jobs as
+  # the artifact "kpp"; run_tests' 2 halves, the spec's shards and (on master) package run at once;
   # publish runs only when every one of them is green, so a red run publishes nothing
   # (docs/build.md, "Continuous integration"). Steps are scripts
   # (Windows PowerShell 5.1, cmd) except checkout, cache and the artifact's upload and download.
@@ -101,7 +101,7 @@ jobs:
           path: ${{ runner.workspace }}\llvm\${{ steps.llvm-pin.outputs.sha256 }}
           key: llvm-${{ steps.llvm-pin.outputs.sha256 }}
 
-      # LLVM's libraries for the back end inside kppc (compiler\llvm.ps1: the pinned release, its
+      # LLVM's libraries for the back end inside kpp (compiler\llvm.ps1: the pinned release, its
       # SHA-256 checked, unpacked under that hash outside the workspace); build.cmd links them in
       # (KPP_LLVM_DIR), and run_tests' "LLVM back end" checks that path.
       - name: LLVM
@@ -112,7 +112,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'compiler\llvm.ps1 failed' }
           "KPP_LLVM_DIR=$llvm" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
 
-      - name: Build kppc
+      - name: Build kpp
         shell: cmd
         run: |
           rem (call: a batch file run without it never returns to this one)
@@ -121,8 +121,8 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: kppc
-          path: compiler/build/kppc.exe
+          name: kpp
+          path: compiler/build/kpp.exe
           retention-days: 3
           if-no-files-found: error
 
@@ -144,7 +144,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: kppc
+          name: kpp
           path: compiler/build
 
       # llvm-mingw (tests\toolchain.ps1, windowsgnu.ps1; tools\sysroot\llvm-mingw.ps1 pins it by
@@ -210,7 +210,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: kppc
+          name: kpp
           path: compiler/build
 
       - name: SDL3 cache
@@ -306,7 +306,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: kppc
+          name: kpp
           path: compiler/build
 
       - name: SDL3 cache
@@ -361,7 +361,7 @@ jobs:
 
       # A known build failure is listed as known, and the bundle has the snippets that linked. The step
       # fails on a new failure (or a known one that builds) after the bundle is uploaded, when
-      # run_spec.py itself cannot run (exit code 2: no sysroot, no compiler), and when kppc crashes or
+      # run_spec.py itself cannot run (exit code 2: no sysroot, no compiler), and when kpp crashes or
       # times out on a snippet.
       - name: spec built for FreeBSD
         shell: powershell
@@ -373,7 +373,7 @@ jobs:
           $crashes = @($out | Where-Object { $_ -match 'crashed|timed out' })
           @('### spec built for FreeBSD 14.3', '', '    ' + ($out | Select-Object -Last 1)) + @($crashes | ForEach-Object { "    $_" }) | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
           if ($code -gt 1) { throw "run_spec.py --target freebsd: exit code $code" }
-          if ($crashes.Count) { throw "kppc crashed or timed out on $($crashes.Count) snippet(s)" }
+          if ($crashes.Count) { throw "kpp crashed or timed out on $($crashes.Count) snippet(s)" }
           # (exit 0 here: the upload runs first, and the step after it fails on run_spec.py's 1)
           "KPP_FREEBSD_BUILD=$code" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
           exit 0
@@ -452,7 +452,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: kppc
+          name: kpp
           path: compiler/build
 
       - name: FreeBSD sysroot cache
@@ -554,7 +554,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: kppc
+          name: kpp
           path: compiler/build
 
       # The bundled toolchain (tools\sysroot\llvm-mingw.ps1), which the package carries.
@@ -573,8 +573,8 @@ jobs:
           path: compiler/build/sysroots/freebsd-x86_64
           key: freebsd-sysroot-${{ hashFiles('tools/sysroot/freebsd.ps1') }}
 
-      # The package's version is kppc's own (docs/build.md, "Versions": VERSION and the commits since it
-      # changed), which package.ps1 takes from kppc --version; never "+dirty" or unknown here. A push
+      # The package's version is kpp's own (docs/build.md, "Versions": VERSION and the commits since it
+      # changed), which package.ps1 takes from kpp --version; never "+dirty" or unknown here. A push
       # run's release is tagged v<version>; the nightly run's, of a commit a push run has released
       # already, nightly-<date> (UTC), the day's release, which tools/release/settle.ps1 never deletes (a
       # second nightly run on the same day replaces it).
@@ -583,8 +583,8 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $printed = @(& compiler\build\kppc.exe --version)
-          if ($printed[0] -notmatch '^kpp (\d+\.\d+\.\d+), commit ${{ github.sha }}$') { throw "kppc's version is not a release's: $($printed[0])" }
+          $printed = @(& compiler\build\kpp.exe --version)
+          if ($printed[0] -notmatch '^kpp (\d+\.\d+\.\d+), commit ${{ github.sha }}$') { throw "kpp's version is not a release's: $($printed[0])" }
           $version = $Matches[1]
           $tag = if ('${{ github.event_name }}' -eq 'schedule') { 'nightly-' + (Get-Date).ToUniversalTime().ToString('yyyyMMdd') } else { "v$version" }
           "KPP_VERSION=$version" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
@@ -629,8 +629,8 @@ jobs:
           if-no-files-found: error
           compression-level: 0
 
-  # kpp on a Linux host (docs/design.md, "Targets and hosts", 5), on ubuntu: kppc built with CMake,
-  # clang 19, lld and Ninja, hello world and a project with C libraries built and run with kppc --run,
+  # kpp on a Linux host (docs/design.md, "Targets and hosts", 5), on ubuntu: kpp built with CMake,
+  # clang 19, lld and Ninja, hello world and a project with C libraries built and run with kpp --run,
   # the spec's snippets built and run natively, and kpp's Linux release packaged
   # (tools/release/package-linux.sh), which publish uploads beside the Windows package (E, 2026-11-06;
   # it was linux-host.yml, a workflow of its own, while the Linux host was new).
@@ -651,8 +651,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Clang 19, as the bundled toolchain's (kppc's IR names LLVM 19's intrinsics: clang 18, Ubuntu
-      # 24.04's default, links llvm.eh.typeid.for.p0 as an undefined symbol), and its lld; kppc takes
+      # Clang 19, as the bundled toolchain's (kpp's IR names LLVM 19's intrinsics: clang 18, Ubuntu
+      # 24.04's default, links llvm.eh.typeid.for.p0 as an undefined symbol), and its lld; kpp takes
       # it through KPP_CLANG, and clang-19's ld.lld is beside it.
       # (apt with time limits, tried 3 times: on 2026-11-06 an Ubuntu mirror held apt-get for 40 minutes
       # and the job hit its 45, run 42171827019, and gave 50 KB/s for two more runs, which hit the step's
@@ -708,19 +708,19 @@ jobs:
           test -f "$dir/SDL3-3.4.18/include/SDL3/SDL.h"
           echo "KPP_SDL_INCLUDE=$dir/SDL3-3.4.18/include" >> "$GITHUB_ENV"
 
-      - name: Build kppc
+      - name: Build kpp
         run: |
           cmake -S compiler -B compiler/build -G Ninja -DCMAKE_C_COMPILER=clang-19 -DCMAKE_CXX_COMPILER=clang++-19 -DCMAKE_BUILD_TYPE=Release "-DCMAKE_EXE_LINKER_FLAGS=-static-libstdc++ -static-libgcc"
           cmake --build compiler/build
-          compiler/build/kppc --version
+          compiler/build/kpp --version
 
-      # The program's output, its arguments and its exit code through kppc --run.
+      # The program's output, its arguments and its exit code through kpp --run.
       - name: hello world
         run: |
           mkdir -p /tmp/hello
           printf 'int main(int argc, char** argv)\n{\n  println("hello from linux ", argc);\n  return 3;\n}\n' > /tmp/hello/hello.kpp
           set +e
-          out=$(compiler/build/kppc --run /tmp/hello/hello.kpp a b)
+          out=$(compiler/build/kpp --run /tmp/hello/hello.kpp a b)
           code=$?
           set -e
           echo "$out (exit $code)"
@@ -735,16 +735,16 @@ jobs:
       - name: the compile server
         run: |
           mkdir -p /tmp/served && cd /tmp/served
-          kppc="$GITHUB_WORKSPACE/compiler/build/kppc"
+          kpp="$GITHUB_WORKSPACE/compiler/build/kpp"
           for text in one one two; do
             printf 'int main()\n{\n  println("%s");\n  return 0;\n}\n' "$text" > main.kpp
-            "$kppc" --server --exe app main.kpp
+            "$kpp" --server --exe app main.kpp
             [ "$(./app)" = "$text" ]
           done
-          grep -q "no input changed, the previous build's output sent again" /tmp/kppc-server-$(id -u)/*.log
-          grep -q "incremental:" /tmp/kppc-server-$(id -u)/*.log
-          "$kppc" --stop-server --exe app main.kpp | grep -q "compile server stopped"
-          "$kppc" --stop-server --exe app main.kpp | grep -q "no compile server runs for these arguments"
+          grep -q "no input changed, the previous build's output sent again" /tmp/kpp-server-$(id -u)/*.log
+          grep -q "incremental:" /tmp/kpp-server-$(id -u)/*.log
+          "$kpp" --stop-server --exe app main.kpp | grep -q "compile server stopped"
+          "$kpp" --stop-server --exe app main.kpp | grep -q "no compile server runs for these arguments"
 
       # The compile server's crash report on Linux: a request with KPP_SERVER_CRASH_TEST=1 crashes the
       # server on purpose; its client says so and builds in its own process; the server's log has the
@@ -753,10 +753,10 @@ jobs:
         run: |
           mkdir -p /tmp/crash && cd /tmp/crash
           printf 'int main()\n{\n  println("built");\n  return 0;\n}\n' > main.kpp
-          KPP_SERVER_CRASH_TEST=1 "$GITHUB_WORKSPACE/compiler/build/kppc" --server --exe app main.kpp 2> err.txt
+          KPP_SERVER_CRASH_TEST=1 "$GITHUB_WORKSPACE/compiler/build/kpp" --server --exe app main.kpp 2> err.txt
           [ "$(./app)" = "built" ]
           grep -q "the compile server ended without finishing the build" err.txt
-          log=$(grep -l "crashing on purpose" /tmp/kppc-server-$(id -u)/*.log)
+          log=$(grep -l "crashing on purpose" /tmp/kpp-server-$(id -u)/*.log)
           grep "crashed in build\|^.*\]   " "$log"
           grep -q "crashed in build 1: signal 11" "$log"
           grep -q "kppServerCrashForTest" "$log"
@@ -771,7 +771,7 @@ jobs:
           cp -r compiler/tests/targets/clibrary /tmp/clibrary
           cd /tmp/clibrary
           for configuration in debug release; do
-            out=$("$GITHUB_WORKSPACE/compiler/build/kppc" "$configuration" --run | tail -n 1)
+            out=$("$GITHUB_WORKSPACE/compiler/build/kpp" "$configuration" --run | tail -n 1)
             echo "$configuration: $out"
             [ "$out" = "42 linux 10" ]
           done
@@ -790,13 +790,13 @@ jobs:
       - name: windows-gnu from a Linux host
         run: |
           root=$(sh tools/sysroot/llvm-mingw.sh "$RUNNER_TEMP/llvm-mingw" | tail -n 1)
-          kppc="$GITHUB_WORKSPACE/compiler/build/kppc"
-          KPP_CLANG="$root/bin/clang" "$kppc" --target windows-gnu --exe /tmp/hello/hello.exe /tmp/hello/hello.kpp
+          kpp="$GITHUB_WORKSPACE/compiler/build/kpp"
+          KPP_CLANG="$root/bin/clang" "$kpp" --target windows-gnu --exe /tmp/hello/hello.exe /tmp/hello/hello.kpp
           file /tmp/hello/hello.exe | grep -q "PE32+ executable"
           cp -r compiler/tests/targets/clibrary /tmp/clibrary-gnu
           cd /tmp/clibrary-gnu
           for configuration in debug release; do
-            KPP_CLANG="$root/bin/clang" "$kppc" "$configuration" --target windows-gnu
+            KPP_CLANG="$root/bin/clang" "$kpp" "$configuration" --target windows-gnu
             file "build/$configuration/app.exe" | grep -q "PE32+ executable"
           done
           test -f build/release/app.pdb
@@ -828,8 +828,8 @@ jobs:
           if-no-files-found: error
 
   # kpp on Linux arm64 (I's step M1 of the macOS plan, 77a72c2c: `--target linux-arm64`), natively on
-  # GitHub's ubuntu-24.04-arm runner (free, the repository being public): kppc built there with clang 19,
-  # lld and Ninja, hello world and the C library project built and run with kppc --run, and the spec's
+  # GitHub's ubuntu-24.04-arm runner (free, the repository being public): kpp built there with clang 19,
+  # lld and Ninja, hello world and the C library project built and run with kpp --run, and the spec's
   # snippets built and run natively (run_spec.py takes an AArch64 host as linux-arm64: its `// arch:`
   # skips and .linux-arm64.expected files). publish does not wait for it, as for the FreeBSD jobs.
   linux_arm64:
@@ -890,18 +890,18 @@ jobs:
           unzip -q "$dir/$SDL_NAME" 'SDL3-3.4.18/include/*' -d "$dir"
           echo "KPP_SDL_INCLUDE=$dir/SDL3-3.4.18/include" >> "$GITHUB_ENV"
 
-      - name: Build kppc
+      - name: Build kpp
         run: |
           cmake -S compiler -B compiler/build -G Ninja -DCMAKE_C_COMPILER=clang-19 -DCMAKE_CXX_COMPILER=clang++-19 -DCMAKE_BUILD_TYPE=Release "-DCMAKE_EXE_LINKER_FLAGS=-static-libstdc++ -static-libgcc"
           cmake --build compiler/build
-          compiler/build/kppc --version
+          compiler/build/kpp --version
 
       - name: hello world
         run: |
           mkdir -p /tmp/hello
           printf 'int main(int argc, char** argv)\n{\n  println("hello from ", config::arch == Arch::Arm64 ? StringView("arm64") : StringView("another"), " ", argc);\n  return 3;\n}\n' > /tmp/hello/hello.kpp
           set +e
-          out=$(compiler/build/kppc --run /tmp/hello/hello.kpp a b)
+          out=$(compiler/build/kpp --run /tmp/hello/hello.kpp a b)
           code=$?
           set -e
           echo "$out (exit $code)"
@@ -912,7 +912,7 @@ jobs:
           cp -r compiler/tests/targets/clibrary /tmp/clibrary
           cd /tmp/clibrary
           for configuration in debug release; do
-            out=$("$GITHUB_WORKSPACE/compiler/build/kppc" "$configuration" --run | tail -n 1)
+            out=$("$GITHUB_WORKSPACE/compiler/build/kpp" "$configuration" --run | tail -n 1)
             echo "$configuration: $out"
             [ "$out" = "42 linux 10" ]
           done

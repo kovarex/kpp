@@ -1,5 +1,5 @@
-# Packages a built kppc as a kpp release (docs/build.md, "Installing"): build\release\kpp\ with
-# kpp.exe (compiler\build\kppc.exe under the name users type), LICENSE.txt, stdlib\, projectlib\,
+# Packages a built kpp as a kpp release (docs/build.md, "Installing"): build\release\kpp\ with
+# kpp.exe (compiler\build\kpp.exe under the name users type), LICENSE.txt, stdlib\, projectlib\,
 # libraries\ (the official libraries), sysroots\freebsd-x86_64, the TextMate
 # grammar, the VS Code extension kpp-vscode.vsix (tools/vscode), the Visual Studio extension
 # kpp-visualstudio.vsix (tools/vs/vsix) and the bundled toolchain (design.md 17:
@@ -8,7 +8,7 @@
 # found. The CI workflows (ci.yml, release.yml) run it; it runs the same by hand:
 #   tools\release\package.cmd
 # (package.cmd runs it with -ExecutionPolicy Bypass: Windows' default policy forbids scripts.)
-# The version and commit are always kppc's own (kppc --version: VERSION and the commits since it
+# The version and commit are always kpp's own (kpp --version: VERSION and the commits since it
 # changed, docs/build.md "Versions"), never given by hand; they name the files, the README, the
 # installer and both editors' extensions.
 # The toolchain comes from tools\sysroot\llvm-mingw.ps1 (pinned, SHA-256 checked, unpacked once into
@@ -18,14 +18,14 @@
 # time is printed at the end; docs/build.md, "Installing").
 param([string]$IsccPath = '', [switch]$NoSmokeTest, [string]$Version, [string]$Commit)
 $ErrorActionPreference = 'Stop'
-if ($Version -or $Commit) { throw "package.ps1 takes no -Version or -Commit: they are kppc's own (kpp --version; docs/build.md, `"Versions`")" }
+if ($Version -or $Commit) { throw "package.ps1 takes no -Version or -Commit: they are kpp's own (kpp --version; docs/build.md, `"Versions`")" }
 if ($NoSmokeTest -and $env:CI -eq 'true') { throw 'package.ps1 -NoSmokeTest is for local runs: CI always runs the smoke test' }
 $repository = (Resolve-Path "$PSScriptRoot\..\..").Path
 $out = Join-Path $repository 'build\release'
 $kpp = Join-Path $out 'kpp'
 
-$printed = @(& "$repository\compiler\build\kppc.exe" --version)
-if ($LASTEXITCODE -ne 0 -or $printed[0] -notmatch '^kpp (\d+\.\d+\.\d+(?:\+dirty)?), commit ([0-9a-f]{40})$') { throw "compiler\build\kppc.exe has no version to package (kppc --version: $($printed -join ' / '))" }
+$printed = @(& "$repository\compiler\build\kpp.exe" --version)
+if ($LASTEXITCODE -ne 0 -or $printed[0] -notmatch '^kpp (\d+\.\d+\.\d+(?:\+dirty)?), commit ([0-9a-f]{40})$') { throw "compiler\build\kpp.exe has no version to package (kpp --version: $($printed -join ' / '))" }
 $Version = $Matches[1]
 $Commit = $Matches[2]
 Write-Output "packaging kpp $Version, commit $Commit"
@@ -122,7 +122,7 @@ function CopyTree([string]$from, [string]$to)
   $global:LASTEXITCODE = 0
 }
 
-Copy-Item "$repository\compiler\build\kppc.exe" "$kpp\kpp.exe"
+Copy-Item "$repository\compiler\build\kpp.exe" "$kpp\kpp.exe"
 # Apache 2.0's section 4(a): every copy carries the license (LICENSE, with its third-party section).
 Copy-Item "$repository\LICENSE" "$kpp\LICENSE.txt"
 

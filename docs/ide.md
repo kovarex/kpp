@@ -2,7 +2,7 @@
 
 **Decided (kovarex, 2026-10-31):** "Integrate with the Language Server Protocol
 (https://microsoft.github.io/language-server-protocol/) which will allow intellisense to work in
-most editors." That is decision 1 below (the query layer and the LSP adapter), built as `kppc --lsp`:
+most editors." That is decision 1 below (the query layer and the LSP adapter), built as `kpp --lsp`:
 see "The language server as built" at the end. Decisions 2 to 8 (an own editor, its language, the
 debugger, hot reload, ownership beyond the language server) stay open.
 
@@ -22,8 +22,8 @@ queries as VS + LSP.
 
 ## What exists to build on (measured, master 7f3e55cb)
 
-- **The compile server** (`kppc --server`, [compile-speed.md](compile-speed.md), "The persistent
-  compiler" and the steps after it): a process per (kppc binary, directory, arguments) on a named
+- **The compile server** (`kpp --server`, [compile-speed.md](compile-speed.md), "The persistent
+  compiler" and the steps after it): a process per (kpp binary, directory, arguments) on a named
   pipe, keeping `Build` (main.cpp: files, tokens, trees, symbol table, the resolved program, codegen's
   session) between builds. A body edit to the full game: resolve 0.07 to 0.13 s, codegen 0.10 to
   0.26 s, one module through clang 0.55 to 0.8 s; the incremental link alone 0.44 to 0.63 s
@@ -95,13 +95,13 @@ falls back to it on a keystroke.
 ## Architecture
 
 ```
-  editor (one process)                          compile server (kppc --serve KEY, one per configuration)
+  editor (one process)                          compile server (kpp --serve KEY, one per configuration)
   - text buffers, rendering, input              - Build: files, trees, symbols, resolved program,
   - project = the build description (thread E)    codegen session, reference index (new)
   - debugger front end (DbgEng)        pipe     - query layer (new): at, definition, references,
   - LSP adapter is a separate process <------->   symbols, diagnostics, check(overlay), rename
                                                 - build / run / test (exists: request kind 1)
-  VS Code / Visual Studio --LSP--> kppc --lsp --+
+  VS Code / Visual Studio --LSP--> kpp --lsp --+
 ```
 
 ### Talking to the compile server: a protocol, not in-process
@@ -116,7 +116,7 @@ was considered and rejected:
   an edit's incremental build serves both.
 - **Crashes stay apart.** A compiler crash (the server logs its stack and the next client restarts
   it) must not take the unsaved text with it.
-- **The editor can be written in kpp** (below) while kppc stays C++: the pipe is the boundary.
+- **The editor can be written in kpp** (below) while kpp stays C++: the pipe is the boundary.
 - **Cost:** 15 to 30 us a round trip, against a 16 ms frame. Large answers (a type's 17,796
   references) are streamed in pages.
 
@@ -193,7 +193,7 @@ is 0.07 to 0.13 s today, which includes per-build overhead a check does not have
 
 ### Also speaking LSP
 
-Yes, as an adapter: `kppc --lsp` speaks JSON-RPC on stdio to VS Code or Visual Studio and translates
+Yes, as an adapter: `kpp --lsp` speaks JSON-RPC on stdio to VS Code or Visual Studio and translates
 to the server's requests (definition, references, hover, document and workspace symbols,
 diagnostics, rename, semantic tokens all have LSP forms). It keeps VS and VS Code working for anyone
 who does not use the kpp IDE, it is how thread E's VS integration gets navigation (VS 2022 hosts
@@ -208,7 +208,7 @@ the server's own requests. One query layer, two front doors.
 | option | for | against |
 |---|---|---|
 | **Written in kpp, Win32 and GDI text through the C import** (recommended) | dogfooding: the second real kpp program after the game, every gap it hits becomes a spec snippet; the C import already takes `windows.h` and imgui's C interface (convert.cmd's smoke tests); no runtime but ours | a compiler gap can block editor work for a day; GDI text (ClearType through `ExtTextOutW`) is enough for monospaced code, but DirectWrite and Direct2D, if ever needed, have C++-only headers: a thin C shim or their vtables declared in kpp |
-| The same in C++ | no compiler risk | no dogfooding; another C++ codebase beside kppc |
+| The same in C++ | no compiler risk | no dogfooding; another C++ codebase beside kpp |
 | Scintilla as the text core | a mature editing control, driven by window messages (`SCI_*`), so usable from kpp through the C import | a 1 MB third-party component whose model (styled bytes, its own undo) we would work around for semantic colouring and overlays |
 | An existing IDE framework (Theia, a VS Code fork, Lapce, Zed) | features at once | the bloat kovarex wants to avoid; a second language runtime; their extension model, not ours |
 
@@ -232,7 +232,7 @@ constant expressions in the interpreter. A debugger of our own (the Win32 debug 
 PDB reading) is not proposed: months of work for what DbgEng does, until DbgEng is measured to be
 the bottleneck (stepping speed, conditional breakpoints in a hot loop).
 
-A side product for Visual Studio: kppc writes a `.natvis` from the library's layouts into every
+A side product for Visual Studio: kpp writes a `.natvis` from the library's layouts into every
 `--debug-info` build's PDB, so the VS debugger shows kpp values too (docs/debugging.md, "Values in
 Visual Studio"; it needs the PDB's types, thread B's).
 
@@ -249,7 +249,7 @@ running map without restarting and reloading the save.
 ## Compared with thread E's Visual Studio integration
 
 Thread E (build model, docs/build.md, tools/vs/; nothing pushed yet at the time of writing) gives VS
-a kpp project: build through kppc (through the server), errors in the error list, and with
+a kpp project: build through kpp (through the server), errors in the error list, and with
 `--debug-info` the VS debugger. What it does not give is any understanding of `.kpp` in the
 editor: VS's C++ IntelliSense parses headers and translation units, and kpp has neither, so it would
 report every cross-file name as undefined.
@@ -282,7 +282,7 @@ the editor.
 
 - **Code packages** (decided 2026-11-04): the package tree, the directories with their README.md's
   first paragraph on hover, is the IDE's project view; search shows package paths.
-- **Tests in the compiler** (design.md 8: `test name { ... }`, `kppc --tests`, `--filter`):
+- **Tests in the compiler** (design.md 8: `test name { ... }`, `kpp --tests`, `--filter`):
   run the test under the cursor, a package's tests, failures with their operand values as
   diagnostics. Thread G's work on testing kpp code defines the runner's output; the IDE consumes it.
 - **Configurations** (thread H, debug and release) and `config` constants with `if constexpr` at
@@ -309,8 +309,8 @@ the ranges are honest, the upper ends assume compiler gaps found on the way.
 
 | phase | what | estimate | done when |
 |---|---|---:|---|
-| 0 | **Query layer** in the server: pipe instances and the reader/writer lock, overlays, structured diagnostics, `at`, `definition`, `references` (index with instance copies), `symbols`, `search`, speculative `check` for body edits; `kppc --query` on the command line for tests and measurement; tests in run_tests (answers on tests/ programs) | 2 to 3 | the metrics below measured on the full game, the determinism rule holding |
-| 1 | **LSP adapter** `kppc --lsp` and a minimal VS Code extension (grammar for colouring before semantic tokens, the language client); a note to thread E on hosting it in VS | 1 | navigation and diagnostics in VS Code on the full game |
+| 0 | **Query layer** in the server: pipe instances and the reader/writer lock, overlays, structured diagnostics, `at`, `definition`, `references` (index with instance copies), `symbols`, `search`, speculative `check` for body edits; `kpp --query` on the command line for tests and measurement; tests in run_tests (answers on tests/ programs) | 2 to 3 | the metrics below measured on the full game, the determinism rule holding |
+| 1 | **LSP adapter** `kpp --lsp` and a minimal VS Code extension (grammar for colouring before semantic tokens, the language client); a note to thread E on hosting it in VS | 1 | navigation and diagnostics in VS Code on the full game |
 | 2 | **Minimal kpp IDE** in kpp: window, buffers, rendering, file/package tree, go to definition and symbol, references panel, diagnostics as you type, build and run through the server, output panel | 4 to 6 | kovarex can open the game, navigate, edit and run it from the IDE |
 | 3 | **Debugger**: DbgEng, breakpoints, stepping, call stack, locals and watches with the server's `layout`, `evaluate`; `.natvis` export for VS | 3 to 5 (after `--debug-info` lands) | a crash in the game stops in the IDE with kpp values shown |
 | 4 | **Rename and refactors, test runner, hot reload** (research spike first: one body patched into the running game) | 2 for rename and tests; 4 to 8 for hot reload, with a real chance the spike says no | an edited body takes effect in the running game without a restart |
@@ -365,7 +365,7 @@ don't guess"), on the full converted game.
 
 ## The language server as built (2026-10-31)
 
-Decision 1 (LSP) is `kppc --lsp`. An editor starts it and speaks the Language Server Protocol 3.17
+Decision 1 (LSP) is `kpp --lsp`. An editor starts it and speaks the Language Server Protocol 3.17
 on its stdin and stdout; its log goes to stderr.
 
 **Launch**, as thread E's clients start it ([editors.md](editors.md), "The language server", whose
@@ -375,7 +375,7 @@ of one cell, a configuration (`configuration`, debug by default) of one target (
 targets together (their sources and exclusions with the first one's options), with build.kpp's
 `settings` (`projectCheckArguments`, compiler/src/Project/Project.cpp; those are the keys of initializationOptions and of
 `workspace/didChangeConfiguration`'s `kpp`; saving build.kpp describes the project again). Without
-a build.kpp the folder itself is the program. `kppc --lsp OPTIONS SOURCES` checks exactly those. A
+a build.kpp the folder itself is the program. `kpp --lsp OPTIONS SOURCES` checks exactly those. A
 check always adds
 `--quiet --diagnostic-columns --check` and the standard library; `--exe`, `--emit-llvm` and
 `--server` given are left out (logged). `--lsp-log FILE` writes the log to a file too.
@@ -489,11 +489,11 @@ as a template argument too) and four refusals, signature help, semantic tokens, 
 resolver's, with its column), a type error, a parse error (the token's range), each cleared when
 fixed, and closing a document. `--check-each-change` makes the check run after every change, so the
 transcript does not depend on timing. Thread E's tools/vscode/test/lsp-smoke.js (what the editors'
-clients rely on) runs against `kppc --lsp` in run_tests when Node.js is found.
+clients rely on) runs against `kpp --lsp` in run_tests when Node.js is found.
 
 **Measured on the full game** (scratchpad lspmeasure.py: a client that times each request from its
 send to its answer; the converted tree of the resolver thread's worktree, 2026-10-31 19:19, frozen
-copy, 0 diagnostics; run.cmd's sources and C include directories; kppc of this commit; the machine
+copy, 0 diagnostics; run.cmd's sources and C include directories; kpp of this commit; the machine
 85% busy with other threads). The first check is the whole program from scratch; a request waits
 for the check of the documents as they are, so "after a body edit" is the check plus the answer.
 

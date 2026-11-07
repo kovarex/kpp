@@ -1,5 +1,5 @@
 // spec: a static array member of a class template takes a pack's elements in its initializer, constexpr or not, beside other values, the rest of the array zero
-// found by thread A's comparison with clang (2026-11-06): kppc crashed
+// found by thread A's comparison with clang (2026-11-06): kpp crashed
 extern "C" int printf(const char* format, ...);
 template<class... T> struct S
 {

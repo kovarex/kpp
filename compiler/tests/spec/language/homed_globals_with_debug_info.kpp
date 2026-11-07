@@ -1,5 +1,5 @@
 // spec: a debug build with debug info (`--debug-info`, line tables and a PDB) across several modules defines each linkonce_odr global of the shared declarations in one module only (its home) and reads it from the others, as a debug build without debug info does: line tables put no metadata on a global (16 constants, each read by its own instance of a template in whichever module the instance lands) (`120`)
-// kppc: --debug-info --modules 4
+// kpp: --debug-info --modules 4
 extern "C" int printf(const char* format, ...);
 const int c0[2] = {0, 1};
 const int c1[2] = {1, 1};

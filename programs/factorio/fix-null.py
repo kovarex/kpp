@@ -1,5 +1,5 @@
 # convert.cmd's nullptr pass (kovarex, 2026-11-04: "writing 0 instead of nullptr is not nice"): reads
-# kppc's --zero-null-warnings --diagnostic-columns output, one line per literal 0 that converts to a
+# kpp's --zero-null-warnings --diagnostic-columns output, one line per literal 0 that converts to a
 # pointer or member pointer, `PATH:LINE:COL: warning: the literal 0 is no pointer: write nullptr
 # (design.md 4)`, and writes nullptr for exactly that token in the converted file. The types are
 # kpp's own (thread A's check), so `f(0)` choosing a pointer parameter is found as the compiler sees it.

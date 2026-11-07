@@ -929,7 +929,7 @@ auto codegen::Emitter::finishStubRuntime() -> void
   if (!sh.stubMissing || !declaredNames.claim("@kpp_missing"))
     return;
   emittingShared = true;
-  std::string format = cStringConstant("kppc left this function out (it did not compile; see the compile's errors): %s\n");
+  std::string format = cStringConstant("kpp left this function out (it did not compile; see the compile's errors): %s\n");
   emittingShared = false;
   if (declaredNames.claim("@fprintf"))
     decls += "declare i32 @fprintf(ptr, ptr, ...)\n";

@@ -1,6 +1,6 @@
 // spec: a generic lambda a function returns names that function's static local, and the function's caller calls it first (the call operator emitted with that caller, before the function itself is): the operator reads and writes the function's one static, whichever is emitted first and whichever module each is in, and two such statics of one name are two (each its function's), in a build of 64 modules (and the release suite's) (`9011 140160`)
 // factorio: none known; found fixing language/generic_lambda_reads_writers_static_local
-// kppc: --modules 64
+// kpp: --modules 64
 // The functions returning a generic lambda that names their own static local.
 auto makeA()
 {

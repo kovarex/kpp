@@ -1,5 +1,5 @@
 // spec: --return-copy-warnings (kovarex's NRVO rule, 2026-11-04; GlobalScope::namedReturnVariable): a function whose every return names one local of its return class builds that local in the result's place and is not warned of (built, which returns w); each other `return x;` of a class object is a warning with why: two variables returned, a parameter, another type (a const Wire returned as an Optional<Wire> copies, as in C++), a range-for's variable returned beside another; the program runs as without the option
-// kppc: --return-copy-warnings
+// kpp: --return-copy-warnings
 // warning: named_return_copy_warnings.kpp:25: warning: the return of 'a' copies or moves it, not built in the result's place: two variables are returned
 // warning: named_return_copy_warnings.kpp:26: warning: the return of 'c' copies or moves it, not built in the result's place: two variables are returned
 // warning: named_return_copy_warnings.kpp:28: warning: the return of 'p' copies or moves it, not built in the result's place: a parameter is returned

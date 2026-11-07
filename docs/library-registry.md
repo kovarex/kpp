@@ -11,7 +11,7 @@ pinned in build.lock). The open decisions are listed at the end
 **The proposal in one paragraph.** A library is a directory of kpp source (a top-level code
 package, [design.md](design.md) "Code packages") with its own build.kpp
 ([build.md](build.md)); C code it needs ships as C/C++
-source that kppc compiles with its bundled clang, and only prebuilt binaries that cannot be built
+source that kpp compiles with its bundled clang, and only prebuilt binaries that cannot be built
 from source (Steam SDK, Logitech LED) ship as files, flagged. Every release is an immutable
 archive identified by a SHA-256 of its file tree (Zig's model), so any mirror, a cache or a
 vendored copy is as good as the registry. Versions are three numbers as in Factorio; a program
@@ -47,7 +47,7 @@ after, as a dogfooding target, when the standard library has networking.
   [Decisions for kovarex](#decisions-for-kovarex), [Sources](#sources)
 
 ## What exists today
-- `kppc` takes the program's files, compiles the standard library from source with every program
+- `kpp` takes the program's files, compiles the standard library from source with every program
   (`--std DIR`, `--no-std`), and links C libraries given with `--lib`; `extern "C" import "h.h";`
   imports C headers found through `--cinclude DIR` ([design.md](design.md) section 5).
 - Code packages (decided 2026-11-04): a directory is a package, the source roots (program,
@@ -62,7 +62,7 @@ after, as a dogfooding target, when the standard library has networking.
   part would package.
 - Thread E is defining the build description (project file, named configurations) and the
   Visual Studio integration; thread F an IDE ([ide.md](ide.md), not yet written); thread G native
-  tests (`kppc --test`). None of their documents is on master yet, so this one states what it
+  tests (`kpp --test`). None of their documents is on master yet, so this one states what it
   needs from them ([below](#what-this-needs-from-thread-e)) instead of a syntax.
 
 ## Research
@@ -139,7 +139,7 @@ The two C++ package managers, both built around compiling native code for many c
   or shared) and running a foreign build system. kpp avoids both for kpp code: one compiler,
   whole-program compilation from source, a configuration that is just `config` constants. It
   still meets that problem for C libraries, which is why the proposal below compiles C source
-  with kppc's own clang rather than running anyone's CMake.
+  with kpp's own clang rather than running anyone's CMake.
 
 ### Zig's package manager
 - `build.zig.zon` lists dependencies by `url` and `hash`; **the hash is the identity** and the
@@ -170,15 +170,15 @@ The two C++ package managers, both built around compiling native code for many c
 
 | Lesson | Where from | What kpp does |
 |---|---|---|
-| Code that runs at install/build time is the main attack surface | npm scripts, build.rs, Conan recipes, xz's m4 | Nothing runs: libraries are source, compile-time code is interpreted and cannot call C or do I/O ([design.md](design.md) "Compile-time evaluation"). A C part is compiled by kppc, not built by the library's script |
+| Code that runs at install/build time is the main attack surface | npm scripts, build.rs, Conan recipes, xz's m4 | Nothing runs: libraries are source, compile-time code is interpreted and cannot call C or do I/O ([design.md](design.md) "Compile-time evaluation"). A C part is compiled by kpp, not built by the library's script |
 | Never delete a published version; yank | left-pad, crates.io | Releases are immutable; yanking hides from new resolution only; admins remove malware |
 | Content hash is identity | Zig, go.sum | SHA-256 of the file tree in the index and the lockfile |
 | Reproducible versions without a solver | Go MVS | MVS, plus a lockfile for hashes |
 | Everyone gets the same bytes | sum.golang.org | Later phase: a transparency log over the index |
 | Typosquats are constant | crates.io 2025, npm | Name similarity check at first publish, `-`/`_` equal, new-account review |
 | Stolen tokens publish malware | Shai-Hulud | Scoped tokens, 2FA, trusted publishing from CI; nothing to steal at install time anyway |
-| The artifact records what it was built from | Factorio saves | The exe embeds its library list; `kppc sync --from game.exe` restores it |
-| The platform/compiler is a dependency | Factorio `base`, `factorio_version` | A library states the minimum kppc version |
+| The artifact records what it was built from | Factorio saves | The exe embeds its library list; `kpp sync --from game.exe` restores it |
+| The platform/compiler is a dependency | Factorio `base`, `factorio_version` | A library states the minimum kpp version |
 | One version per program | Factorio | Forced by the global scope; same as Factorio's one version per mod |
 
 ## Design for kpp
@@ -192,7 +192,7 @@ The two C++ package managers, both built around compiling native code for many c
   and inlining across the library boundary work as for the program's own code, which binary
   distribution would lose.
 - **A manifest**, which is the project description of thread E with a `library` part: registry
-  name, version, authors, SPDX license, summary, homepage/source URL, minimum kppc version,
+  name, version, authors, SPDX license, summary, homepage/source URL, minimum kpp version,
   dependencies, C parts, supported targets, and the list of files that belong to the release
   (Zig's `paths`: tests and examples may be excluded). A library is a project, so it builds and
   tests on its own with the same tools.
@@ -202,10 +202,10 @@ The two C++ package managers, both built around compiling native code for many c
 - **The registry name** is the top-level directory name in the cache and in the tree: lowercase
   letters, digits and `-`, 2 to 48 characters, `-` and `_` treated as equal for uniqueness
   (crates.io's rule), unique for ever (never reused after a removal).
-- **Tests**: a library's tests (thread G's `kppc --test`) are part of its source but outside the
+- **Tests**: a library's tests (thread G's `kpp --test`) are part of its source but outside the
   release's `paths` by default, so they cost the user nothing. The registry can run them at
   publish time.
-- **The standard library is not in the registry**: it ships with kppc and its version is kppc's,
+- **The standard library is not in the registry**: it ships with kpp and its version is kpp's,
   as Factorio's `base` mod is the game's.
 
 ### Names: library scopes (decided 2026-11-01)
@@ -230,7 +230,7 @@ What the registry does with it:
    and the library page shows a visible *unscoped* mark next to the license, with a sentence on
    what it means for the user's program. Changing it in either direction breaks programs (the
    qualifiers appear or disappear), so publishing refuses the change outside a new major version.
-2. **The clash pre-check is for unscoped releases only.** `kppc --exports` lists a release's
+2. **The clash pre-check is for unscoped releases only.** `kpp --exports` lists a release's
    top-level names, and the registry stores the list with every release. For an unscoped one,
    `kpp add` checks the list against the program and the other unscoped libraries and refuses
    with the message the compiler would give, before editing anything:
@@ -239,8 +239,8 @@ What the registry does with it:
    libraries ("does not work with: ..."). A scoped release's list is still stored, for the page's
    exported names and for the major-version check of [Library options](#library-options-kovarex-2026-11-01).
 3. **Clashes with the standard library**: an unscoped library declaring `Pair` cannot be published
-   for a kppc whose stdlib has `Pair`, and the stdlib's new names are checked against the most-used
-   unscoped libraries before a kppc release, so a compiler update does not break programs without
+   for a kpp whose stdlib has `Pair`, and the stdlib's new names are checked against the most-used
+   unscoped libraries before a kpp release, so a compiler update does not break programs without
    notice. Scoped libraries cannot clash with the stdlib.
 4. **Authors of unscoped libraries** are asked to keep names specific; the registry warns at
    publish time about generic names on a short list (`Node`, `Item`, `Data`, `Logger`, `Config`,
@@ -253,9 +253,9 @@ date.
 ### C dependencies
 C is the only interop, so many useful libraries are a kpp face over C code. Three kinds:
 1. **System libraries** (`kernel32`, `user32`, `ws2_32`): named in the manifest, no files.
-2. **C or C++ source compiled by kppc** (proposed default): the release includes the C/C++ files
+2. **C or C++ source compiled by kpp** (proposed default): the release includes the C/C++ files
    and headers (zlib, Lua, imgui with its C interface, re2 with its C interface: today's
-   `programs/factorio/native`); kppc compiles them with its bundled clang, with flags from a short
+   `programs/factorio/native`); kpp compiles them with its bundled clang, with flags from a short
    allowed list (defines, include directories, language standard, optimization follows the
    program's configuration), and caches the objects by content hash. No CMake, no scripts: the
    library's author writes the list of files, which is what vcpkg ports spend most of their
@@ -278,35 +278,35 @@ packaging suffix if needed (decision 6).
   caret); Factorio's `!` (incompatible with) is kept, for clashes and known breakage; `?`
   optional is a later phase, since the program needs a way to know at compile time whether the
   library is there (a generated `config::has_json` constant would do it, as `--config` generates
-  constants today). The library states its minimum kppc version, as Factorio's
+  constants today). The library states its minimum kpp version, as Factorio's
   `factorio_version`.
 - **Resolution: minimal version selection** (Go): each library gets the highest of the minimums
   required anywhere in the graph. One version per library is what kpp needs anyway; MVS needs no
   solver, is deterministic, and a new release upstream changes nothing until someone runs
-  `kppc update`. A conflict (a minimum `>= 2.0` against a `< 2.0`, or a `!`) is an error that
+  `kpp update`. A conflict (a minimum `>= 2.0` against a `< 2.0`, or a `!`) is an error that
   names the chain of requirements.
 - **The lockfile**, `build.lock` (build.md), committed to source control: each library
   with exact version, tree hash and the registry it came from. With MVS it is not needed to pick
-  versions; it is needed to detect a changed archive and to pin a yanked version. kppc refuses to
+  versions; it is needed to detect a changed archive and to pin a yanked version. kpp refuses to
   build when a file in the cache does not match the lockfile.
-- **The built program remembers**: kppc embeds the lockfile's content (names, versions, hashes) in
-  the exe as a read-only section, and `kppc sync --from program.exe` restores the exact libraries
+- **The built program remembers**: kpp embeds the lockfile's content (names, versions, hashes) in
+  the exe as a read-only section, and `kpp sync --from program.exe` restores the exact libraries
   a binary was built with: Factorio's *Sync mods with save*, for reproducing a crash report.
 - **Yanking**: an author marks a version yanked with a reason; new resolution skips it, existing
-  lockfiles still get it, `kppc` prints the reason. Deletion only by registry admins for
+  lockfiles still get it, `kpp` prints the reason. Deletion only by registry admins for
   malware or legal reasons, recorded publicly; a removed version's name and number are never
   reused.
 
 ### The commands and the project description
-All of this is a part of kppc (one tool; the persistent server already holds the program model):
-- `kppc add json` (or `json@1.4`): look up the index, resolve with MVS, check name clashes,
+All of this is a part of kpp (one tool; the persistent server already holds the program model):
+- `kpp add json` (or `json@1.4`): look up the index, resolve with MVS, check name clashes,
   download into the cache, verify hashes, **then** edit the project description (add the
   requirement) and the lockfile. Also `--path DIR` and `--git URL#commit` for unpublished
   libraries.
-- `kppc remove json`, `kppc update [json]` (raise minimums to the newest non-yanked within the
-  major, show what changed, re-check clashes), `kppc sync` (make the cache match the lockfile;
-  what a fresh clone runs, and what the build runs implicitly), `kppc vendor` (copy the libraries
-  into the project tree), `kppc publish` (phase 2), `kppc search`.
+- `kpp remove json`, `kpp update [json]` (raise minimums to the newest non-yanked within the
+  major, show what changed, re-check clashes), `kpp sync` (make the cache match the lockfile;
+  what a fresh clone runs, and what the build runs implicitly), `kpp vendor` (copy the libraries
+  into the project tree), `kpp publish` (phase 2), `kpp search`.
 - **Cache**: `%LOCALAPPDATA%\kpp\libraries\<name>-<version>-<hash8>\`, read-only, shared by all
   projects; the persistent compiler keeps parsed libraries keyed by the hash, so switching
   projects that use the same version does not re-parse it.
@@ -316,7 +316,7 @@ All of this is a part of kppc (one tool; the persistent server already holds the
 next build resolves, checks clashes and writes build.lock); `use("json", "1.4")` states a minimum;
 `git(...)` and `local(...)` are the other sources; `libraries/<name>` in the project overrides the
 registry (forks); a library is a project whose build.kpp says `project.library(...)` and may not
-declare build steps. So `kppc add` above is `kpp add`, which only inserts the `use` line.
+declare build steps. So `kpp add` above is `kpp add`, which only inserts the `use` line.
 `project.library(...)` with its version, license, minimum kpp, source and test roots, `use`
 from `libraries/` and local paths, and `kpp --test` work since 2026-10-31 (build.md, "kpp
 libraries"). What the registry still needs from E's format: the rest of the manifest fields listed
@@ -366,7 +366,7 @@ what config values should be provided to the library, with defaults". So the reg
   Cloudflare in front, or Windows' http.sys through C), which keeps the kpp program small. It
   exercises threads, I/O, strings and containers under real load, which the game does not
   (the game exercises everything else). The index stays a set of static files the service
-  writes, so kppc's client code does not change and a CDN serves the reads.
+  writes, so kpp's client code does not change and a CDN serves the reads.
 - **Hosting and accounts**: decided, next section. Ownership per library: owners and co-owners
   (the forge's repository permissions in phase 1), transferable; scoped API tokens; 2FA required
   to publish.
@@ -545,7 +545,7 @@ Everything else (the website, the registry, the archive store, the canonical rep
 pushes are allowed, and backups) fits NFS.
 
 #### The website and the library provider in kpp
-**The blocker:** kppc produces Windows x64 programs only. The FreeBSD target is thread B's
+**The blocker:** kpp produces Windows x64 programs only. The FreeBSD target is thread B's
 ([design.md](design.md) "Targets and hosts": `--target freebsd`, `x86_64-unknown-freebsd14`,
 ELF, ld.lld). So the plan has a stage that needs no FreeBSD at all.
 
@@ -572,7 +572,7 @@ and exits: no sockets and no threads. Apache in front handles TLS, HTTP and proc
 - `site.cgi` serves whatever cannot be precomputed: search on the server, download counts,
   per-version pages built on demand.
 
-State lives in files plus SQLite (the SQLite amalgamation is one C file, compiled by kppc).
+State lives in files plus SQLite (the SQLite amalgamation is one C file, compiled by kpp).
 SQLite is cheaper than a MariaDB process and needs no server. One unconfirmed point: whether
 SQLite's file locking is safe on NFS's file storage. If it is not, a MariaDB process is free.
 
@@ -587,7 +587,7 @@ hosted. Each is scoped by its name (`json::`, `html::`), as design.md section 16
    iteration).
 2. `sha256`, with HMAC-SHA-256 for tokens and a constant-time compare. Hashes are needed by the
    registry itself (the tree hash, kppnet/registry/tree_hash.py).
-3. `zlib`, the C library compiled from source by kppc, and a `zip` reader and writer over it, for
+3. `zlib`, the C library compiled from source by kpp, and a `zip` reader and writer over it, for
    the archives.
 4. `markdown`: CommonMark to HTML, for README and documentation pages.
 5. `html`: templates that escape by default. A template is parsed at compile time by the
@@ -627,7 +627,7 @@ accounts use API tokens until then.
 - **Build and run:**
   - a cross build from Windows to a FreeBSD sysroot (base.txz's headers, crt objects and libc.a),
     linked by VS's `ld.lld`;
-  - or, as a stopgap, kppc's IR copied to NFS and compiled with NFS's own clang;
+  - or, as a stopgap, kpp's IR copied to NFS and compiled with NFS's own clang;
   - and a FreeBSD VM for tests, since NFS is production (design.md's Q3).
 
 ### Security and moderation
@@ -636,7 +636,7 @@ accounts use API tokens until then.
   If a future feature lets compile-time code read files (embedding assets), it must be limited to
   the library's own directory.
 - **What remains**: a malicious library's code runs when the program runs; a prebuilt binary is
-  opaque. Mitigations: source-only by default; the "binary" mark everywhere; `kppc update` shows
+  opaque. Mitigations: source-only by default; the "binary" mark everywhere; `kpp update` shows
   the diff of a library between the locked and the new version (it is all source, so the diff is
   readable, unlike npm's minified bundles); releases are built from a tagged commit by the
   registry's CI or trusted publishing, so the archive equals the repository (xz).
@@ -649,16 +649,16 @@ accounts use API tokens until then.
   (TUF-style roles) so a compromised mirror or CDN cannot serve other bytes.
 - **Publishing**: by a maintainer's `kpp publish` in phase 1; from stage 2 on, through the
   registry's CGI endpoint with tokens scoped to one library and one action, later short-lived
-  per-job tokens as crates.io's trusted publishing; 2FA for maintainers. A security advisory list and `kppc audit` (phase 3).
+  per-job tokens as crates.io's trusted publishing; 2FA for maintainers. A security advisory list and `kpp audit` (phase 3).
 - **Moderation**: reports from users and automated checks; admins remove malware and ban
   accounts, publicly logged. Phase 1's pull-request review is moderation by construction, which
   is fine while the registry is small.
 
 ### Mirrors, offline and private registries
 - Content addressing makes any copy trustworthy: the cache, a mirror, a vendored directory, a
-  USB stick. `kppc sync --offline` uses only the cache; the build never touches the network
+  USB stick. `kpp sync --offline` uses only the cache; the build never touches the network
   unless the lockfile names something not in the cache.
-- **Mirrors**: the index lists archive URLs, and kppc tries a configured mirror list first; a
+- **Mirrors**: the index lists archive URLs, and kpp tries a configured mirror list first; a
   mirror is a static copy of the index and the archives (a `rsync`/`git clone` plus a file
   server).
 - **Private registries** (a company, Wube): an index in a private git repository or a directory
@@ -672,10 +672,10 @@ For threads F and E; proposals for their documents, not decisions.
   license and a "binary" badge; go to definition opens the library's (read-only) source; a
   *Libraries* view searches the registry, shows a library's page (readme, exported names, the
   unscoped mark and, for an unscoped one, its clashes with the current program, dependencies, binary parts), and adds, updates or removes with the
-  same kppc commands; an available update or a yanked locked version shows as a notice; a clash
+  same kpp commands; an available update or a yanked locked version shows as a notice; a clash
   diagnostic offers "show the other declaration".
 - **Visual Studio (E)**: a *Libraries* node under the project listing the locked libraries; menu
-  commands for add (a search box), update and remove that run kppc and reload the project
+  commands for add (a search box), update and remove that run kpp and reload the project
   description. A NuGet-style browser is not worth building twice; the IDE is where the rich view
   lives.
 
@@ -782,14 +782,14 @@ Estimates are in weeks of one thread, assuming thread E's project description ex
 
 | Phase | Contents | Effort |
 |---|---|---|
-| 0. Local libraries | `--path`/`--git` dependencies in the project description, cache, lockfile with SHA-256, `kppc add/remove/sync/vendor`, `kppc --exports` and the clash pre-check, C source parts compiled by kppc (moving `programs/factorio/native`'s build into this is the test) | 2 to 3 |
+| 0. Local libraries | `--path`/`--git` dependencies in the project description, cache, lockfile with SHA-256, `kpp add/remove/sync/vendor`, `kpp --exports` and the clash pre-check, C source parts compiled by kpp (moving `programs/factorio/native`'s build into this is the test) | 2 to 3 |
 | H. Hosting | kpp.net on NFS: bare repositories, the mirror to GitHub, the static store, daily backups ([kppnet/RUNBOOK.md](../kppnet/RUNBOOK.md)) | half a day of kovarex's time |
 | S1. Static site and registry in kpp | `kppsite` and `kpp publish` running on Windows, with the libraries json, sha256, zlib/zip, markdown, html | 4 to 6 |
 | S2. CGI on FreeBSD | `registry.cgi`, `site.cgi`, libraries url, cgi, sqlite; needs thread B's FreeBSD target (CGI subset) | 3 to 4 after the target |
 | S3. kpp HTTP daemon | the `http` library and the site as an NFS daemon; needs sockets and threads on FreeBSD | 3 to 5 after the target |
 | 1. Registry without a service | index repository and archives on kpp.net, CI checks on publish pull requests, MVS, `update`, yanking, `search` over the index, embedded library list in the exe, first libraries: zlib, lua, imgui, json, a kpp face over sockets | 2 to 3, plus porting the first libraries |
 | 2. The service in kpp | stdlib networking/HTTP/JSON/SQLite face first (3 to 5 weeks, useful beyond this), then API, accounts, web pages, publish API, tokens, 2FA, download counts | 6 to 10 |
-| 3. Hardening | trusted publishing, transparency log or signed index, advisories and `kppc audit`, typosquat review queue | 4 to 6 |
+| 3. Hardening | trusted publishing, transparency log or signed index, advisories and `kpp audit`, typosquat review queue | 4 to 6 |
 | 4. Tools | IDE Libraries view, VS commands, generated documentation pages per library from reflection, more targets for binary parts, private registry setup | with threads E and F |
 
 The minimal first version is phases 0, 1 and S1 on the hosting of phase H: about 10 weeks, no
@@ -802,7 +802,7 @@ C source parts, MVS with one version) before any server code is written.
   ones still share the global scope. The exported-name index over all published releases shows
   whether unscoped libraries clash in practice, and the page's mark makes the choice visible.
 - **Every library is compiled with every program.** Fine for the front end; code generation and
-  LLVM dominate builds, so what matters is how much of a library kppc emits for a program that
+  LLVM dominate builds, so what matters is how much of a library kpp emits for a program that
   uses a little of it; a big C part (Lua, imgui) compiles once per configuration and is cached.
   Measure on the first libraries.
 - **C libraries are most of the value and most of the risk.** Compiling their source with fixed
@@ -814,15 +814,15 @@ C source parts, MVS with one version) before any server code is written.
 - **Moderation load** grows with users; phase 1's pull-request model does not scale past a few
   hundred libraries, which is when phase 2 is needed anyway.
 - **Language not stable yet**: libraries published now will break with language changes (struct
-  and class and code packages are decided, 2026-11-01 and 2026-11-04, but more will come). The minimum-kppc-version field and a kppc
+  and class and code packages are decided, 2026-11-01 and 2026-11-04, but more will come). The minimum-kpp-version field and a kpp
   version in the lockfile make the breakage visible; the registry can rebuild all releases with a
-  new kppc before it ships (crater-style) to see what breaks.
+  new kpp before it ships (crater-style) to see what breaks.
 
 ## Decisions for kovarex
 1. **Is a registry wanted now**, or after the language settles? Proposed: phase 0 now (it also
    tidies `programs/factorio/native`), phase 1 when there are three or more libraries worth
    sharing.
-2. **Source only, with C source compiled by kppc and prebuilt binaries allowed but flagged?**
+2. **Source only, with C source compiled by kpp and prebuilt binaries allowed but flagged?**
    Proposed: yes.
 3. **Name clashes**: decided 2026-11-01, kovarex ([design.md](design.md) section 16): a library's
    names are qualified by its name by default; `unscoped` is the library's choice (the stdlib is),

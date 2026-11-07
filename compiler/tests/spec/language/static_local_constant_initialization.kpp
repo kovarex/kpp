@@ -1,6 +1,6 @@
 // spec: a const or constexpr static local whose initializer is a constant is that constant from the start, as C++'s constant initialization makes it (no guard, nothing done on the pass): a double, an object a constexpr constructor builds, an array, one of a template's instance with that instance's arguments (two instances of a function template, two of a class template's member function: each its own), one of an inline function the optimizer inlines into two callers (one object, the same address from both); a const object with a mutable member stays writable; one whose initializer calls a function, or reads a parameter, is initialized on the first pass, once (the first call's value); in a build of 64 modules (and the release suite's) (`10 1677721 31 12 20 16 2 0.5 true 3 2 1 10`)
 // factorio: FluidBuffer::getFlowRate's `static constexpr FluidAmount MIN_FLOW = FluidAmount(0.1)` and `static constexpr double MAX_FLOW_MULTIPLIER = 0.8`, a guard checked and the double loaded from memory on every call in kpp's release game (1,935 such statics); compiler/tests/staticconstants.ps1 checks the IR
-// kppc: --modules 64
+// kpp: --modules 64
 struct Fixed
 {
   long long value;

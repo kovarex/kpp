@@ -1,5 +1,5 @@
 // spec: a member template of a test class defined outside it writes test
-// kppc: --tests
+// kpp: --tests
 // error: of a test class is defined outside it: write test
 test class Checker
 {

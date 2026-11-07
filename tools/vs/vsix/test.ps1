@@ -14,7 +14,7 @@
 # The extension's semantic tokens of -File (its colors) must be in the log, at least one token.
 # -ImplementationFrom FILE:LINE:COLUMN with -Implementation FILE:LINE: Edit.GoToImplementation there must
 # land at FILE:LINE (one implementation: an override, a derived class).
-# -Solution opens the solution kppc --generate-visual-studio-files writes instead of the folder; with
+# -Solution opens the solution kpp --generate-visual-studio-files writes instead of the folder; with
 # -CellError TEXT it then checks the cells (docs/editors.md, "Cells"): -CellConfiguration as the active
 # configuration must show an error containing TEXT, -OtherTarget as the startup project must not.
 #   test.ps1 -Name cells-solution -Project compiler\tests\lsp\cells -File src\game\main.kpp -Line 6 -Column 12 -Definition src\common\shared.kpp:1 -Solution -CellError 'debug only' -OtherTarget tool
@@ -26,7 +26,7 @@ param(
   [Parameter(Mandatory)][int]$Column,
   [Parameter(Mandatory)][string]$Definition,
   [string]$Declaration,
-  [string]$Kppc, # default: the checkout's compiler\build\kppc.exe
+  [string]$KppExe, # default: the checkout's compiler\build\kpp.exe
   [string]$Vsix, # default: tools\vs\kpp-visualstudio.vsix (build.cmd)
   [string]$Work, # default: compiler\build\vs: the project's copy, the log, the screenshot
   [int]$Timeout = 120,
@@ -48,13 +48,13 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $checkout = (Resolve-Path "$PSScriptRoot\..\..\..").Path
-if (-not $Kppc) { $Kppc = "$checkout\compiler\build\kppc.exe" }
+if (-not $KppExe) { $KppExe = "$checkout\compiler\build\kpp.exe" }
 if (-not $Vsix) { $Vsix = "$checkout\tools\vs\kpp-visualstudio.vsix" }
 if (-not $Work) { $Work = "$checkout\compiler\build\vs" }
 if (-not $Declaration) { $Declaration = $Definition }
 if (-not $DeclarationFrom) { $DeclarationFrom = "${File}:${Line}:${Column}" }
 New-Item -ItemType Directory -Force $Work | Out-Null
-$Kppc = (Resolve-Path $Kppc).Path
+$KppExe = (Resolve-Path $KppExe).Path
 $ide = "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE"
 $failures = 0
 function Check($what, $ok, $detail)
@@ -86,10 +86,10 @@ $open = $copy
 if ($Solution)
 {
   Push-Location $copy
-  $generated = & $Kppc --generate-visual-studio-files 2>&1
+  $generated = & $KppExe --generate-visual-studio-files 2>&1
   Pop-Location
   $open = (Get-ChildItem "$copy\build\visual-studio" -Filter *.sln | Select-Object -First 1).FullName
-  Check 'kppc --generate-visual-studio-files' ([bool]$open) "$generated"
+  Check 'kpp --generate-visual-studio-files' ([bool]$open) "$generated"
 }
 
 Add-Type @"
@@ -175,8 +175,8 @@ public static class SnapAll {
 $shots = 0
 function Snap($why) { if ($script:shots++ -lt 8) { [SnapAll]::Save([uint32]$devenv.Id, "$Work\$Name-$why") | % { "screenshot: $_" } } }
 
-# The server the extension starts: this checkout's kppc (KPP_LSP_SERVER, read by the extension).
-$env:KPP_LSP_SERVER = $Kppc
+# The server the extension starts: this checkout's kpp (KPP_LSP_SERVER, read by the extension).
+$env:KPP_LSP_SERVER = $KppExe
 $watch = [Diagnostics.Stopwatch]::StartNew()
 $devenv = Start-Process "$ide\devenv.exe" -ArgumentList '/rootsuffix', 'Exp', "`"$open`"" -PassThru
 $dte = $null

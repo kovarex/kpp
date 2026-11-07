@@ -1,6 +1,6 @@
 // spec: a constexpr pointer to a string literal has one value in the whole program: read in one module and through a pointer to the variable in another, it is the same address (the literal is one object, not a private copy per module)
 // factorio: TestLatencyCarWhiteBox's `this->prototypeName == SuiteLatencyCar::TANK_WITH_GRID_NAME`, false in the debug build (the tank's grid never filled), its CRCs other than the C++ build's
-// kppc: --modules 4
+// kpp: --modules 4
 // (The variable is defined in every module, linkonce_odr, pointing at the literal; clang at -O0 folds
 // a load of it in a function with exception handling to its own module's definition. With the literal
 // a private constant of each module, that was another object than the one the kept definition names.)

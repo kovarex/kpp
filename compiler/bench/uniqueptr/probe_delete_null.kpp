@@ -1,7 +1,7 @@
-// Probe (2026-10-29, master 89058a6): `delete p` with p == nullptr must do nothing (C++). kppc's
+// Probe (2026-10-29, master 89058a6): `delete p` with p == nullptr must do nothing (C++). kpp's
 // DeleteExpr destroys and frees without a null check, so a class with a virtual destructor is
 // destroyed through a null vtable pointer: the program ends with 0xC0000005 before "virtual ok".
-// kppc --exe probe.exe probe_delete_null.kpp
+// kpp --exe probe.exe probe_delete_null.kpp
 extern "C" int printf(const char* format, ...);
 struct Plain
 {

@@ -54,7 +54,7 @@
     void debugAskedThisGeneration();
 
     // A type's name in the debug information (and so in the .natvis, which takes the classes' from
-    // CodegenResult::debugClasses): kppc's (TypeTable::toString, qualified) with closing angle
+    // CodegenResult::debugClasses): kpp's (TypeTable::toString, qualified) with closing angle
     // brackets kept apart, `RbNode<Pair<String, int32> >`, as MSVC's PDBs write them. Visual Studio's
     // expression evaluator reads `>>` as a shift, so it could not name, cast to or match a natvis
     // rule to a type whose name ends two template argument lists at once.
@@ -70,7 +70,7 @@
     // Type t's metadata: node 0 the type, the nodes it needs after it, other types by placeholder.
     // Basic types as CodeView names them (its simple types have no names of their own: int32 is
     // `int`), each of kpp's integers a typedef of its name too (int32, uint8: an S_UDT, so that a
-    // natvis rule's $T1 parses). A class or enum is named as kppc's IR names it (game::Entity,
+    // natvis rule's $T1 parses). A class or enum is named as kpp's IR names it (game::Entity,
     // Vector<int32>), the whole spelling, its closing brackets apart (debuggerTypeName), and
     // identified by it.
     std::string debugTypeText(const Ty* t, const std::string& spelling);

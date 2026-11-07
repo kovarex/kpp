@@ -1,4 +1,4 @@
-# kppc --run's build cache, %TEMP%\kpp-run (src/run.cpp): a run builds with four modules, keeps the
+# kpp --run's build cache, %TEMP%\kpp-run (src/run.cpp): a run builds with four modules, keeps the
 # 100 most recently used directories, and never deletes one a run holds (its lock file). In a TEMP of
 # its own, build\tests\runcache\temp, planted first: 102 directories used in turn; two older still,
 # one whose lock file is held open as a running build holds it and one from before the lock file;
@@ -7,10 +7,10 @@
 # a lock file goes, as it has been unchanged for over an hour. Then a run waits while its
 # directory's lock file is held alone, as the cleanup holds it, and builds once it is let go. And
 # --no-run builds without running; a program for another --target needs it. run_tests.cmd runs it.
-param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe")
+param([string]$KppExe = "$PSScriptRoot\..\build\kpp.exe")
 $ErrorActionPreference = 'Stop'
 $work = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\build\tests\runcache'))
-$Kppc = (Resolve-Path $Kppc).Path
+$KppExe = (Resolve-Path $KppExe).Path
 $failed = 0
 function Fail([string]$what) { "FAIL runcache: $what"; $script:failed++ }
 
@@ -43,10 +43,10 @@ $env:TEMP = $temp; $env:TMP = $temp
 try
 {
   $ErrorActionPreference = 'Continue'
-  $output = & $Kppc --no-server --run (Join-Path $work 'hello.kpp') 2>&1 | ForEach-Object { "$_" }
+  $output = & $KppExe --no-server --run (Join-Path $work 'hello.kpp') 2>&1 | ForEach-Object { "$_" }
   $code = $LASTEXITCODE
   $ErrorActionPreference = 'Stop'
-  if ($code -ne 0 -or ($output -join "`n") -ne 'hello 42') { Fail "kppc --run hello.kpp: exit $code, '$($output -join ' | ')'" }
+  if ($code -ne 0 -or ($output -join "`n") -ne 'hello 42') { Fail "kpp --run hello.kpp: exit $code, '$($output -join ' | ')'" }
   $run = @(Get-ChildItem -Directory $cache -Filter 'hello-*')
   if ($run.Count -ne 1) { Fail "$($run.Count) directories hello-* in the cache, not 1" }
   else
@@ -66,7 +66,7 @@ try
     # The cleanup's hold: the lock file alone. The run waits for it, then builds.
     $lockPath = Join-Path $run[0].FullName 'lock'
     $alone = [IO.File]::Open($lockPath, 'Open', 'ReadWrite', 'None')
-    $process = Start-Process -FilePath $Kppc -ArgumentList '--no-server', '--run', (Join-Path $work 'hello.kpp') -NoNewWindow -PassThru `
+    $process = Start-Process -FilePath $KppExe -ArgumentList '--no-server', '--run', (Join-Path $work 'hello.kpp') -NoNewWindow -PassThru `
       -RedirectStandardOutput (Join-Path $work 'waiting.txt') -RedirectStandardError (Join-Path $work 'waiting.errors.txt')
     $null = $process.Handle
     Start-Sleep -Milliseconds 1500
@@ -81,14 +81,14 @@ try
   # --no-run builds and names the executable without running it; a program for another --target is
   # an error without it, before any build (2026-11-04: CI builds the libraries' tests for FreeBSD).
   $ErrorActionPreference = 'Continue'
-  $output = & $Kppc --no-server --no-run --run (Join-Path $work 'hello.kpp') 2>&1 | ForEach-Object { "$_" }
+  $output = & $KppExe --no-server --no-run --run (Join-Path $work 'hello.kpp') 2>&1 | ForEach-Object { "$_" }
   $code = $LASTEXITCODE
-  $built = if (($output -join "`n") -match 'kppc --run: built (.*hello\.exe) \(not run: --no-run\)') { $Matches[1] } else { '' }
-  if ($code -ne 0 -or -not $built -or -not (Test-Path $built) -or ($output -join "`n") -match 'hello 42') { Fail "kppc --no-run --run: exit $code, '$($output -join ' | ')'" }
-  $output = & $Kppc --no-server --target freebsd --run (Join-Path $work 'hello.kpp') 2>&1 | ForEach-Object { "$_" }
+  $built = if (($output -join "`n") -match 'kpp --run: built (.*hello\.exe) \(not run: --no-run\)') { $Matches[1] } else { '' }
+  if ($code -ne 0 -or -not $built -or -not (Test-Path $built) -or ($output -join "`n") -match 'hello 42') { Fail "kpp --no-run --run: exit $code, '$($output -join ' | ')'" }
+  $output = & $KppExe --no-server --target freebsd --run (Join-Path $work 'hello.kpp') 2>&1 | ForEach-Object { "$_" }
   $code = $LASTEXITCODE
   $ErrorActionPreference = 'Stop'
-  if ($code -ne 2 -or ($output -join "`n") -notmatch 'a freebsd program does not run on this machine; --no-run builds it') { Fail "kppc --target freebsd --run without --no-run: exit $code, '$($output -join ' | ')'" }
+  if ($code -ne 2 -or ($output -join "`n") -notmatch 'a freebsd program does not run on this machine; --no-run builds it') { Fail "kpp --target freebsd --run without --no-run: exit $code, '$($output -join ' | ')'" }
 }
 finally
 {

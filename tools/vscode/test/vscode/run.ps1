@@ -9,19 +9,19 @@ param(
   [Parameter(Mandatory)][string]$Project,
   [string]$Target = $null,
   [string]$Configuration = 'debug',
-  [string]$Kppc, # default: the checkout's compiler\build\kppc.exe
+  [string]$KppExe, # default: the checkout's compiler\build\kpp.exe
   [string]$Vsix, # default: tools\vscode\kpp-vscode.vsix (npm run package)
   [string]$Work, # default: compiler\build\vscode: the profile, the project's copy, the log
   [string]$Code = "$env:LOCALAPPDATA\Programs\Microsoft VS Code"
 )
 $ErrorActionPreference = 'Stop'
 $checkout = "$PSScriptRoot\..\..\..\.."
-if (-not $Kppc) { $Kppc = "$checkout\compiler\build\kppc.exe" }
+if (-not $KppExe) { $KppExe = "$checkout\compiler\build\kpp.exe" }
 if (-not $Vsix) { $Vsix = "$PSScriptRoot\..\..\kpp-vscode.vsix" }
 if (-not $Work) { $Work = "$checkout\compiler\build\vscode" }
 New-Item -ItemType Directory -Force "$Work\user", "$Work\ext" | Out-Null
 $Work = (Resolve-Path $Work).Path
-$Kppc = (Resolve-Path $Kppc).Path
+$KppExe = (Resolve-Path $KppExe).Path
 
 cmd /c "`"$Code\bin\code.cmd`" --user-data-dir `"$Work\user`" --extensions-dir `"$Work\ext`" --install-extension `"$((Resolve-Path $Vsix).Path)`" --force >nul 2>nul"
 if ($LASTEXITCODE) { throw "run.ps1: code --install-extension $Vsix failed ($LASTEXITCODE)" }
@@ -31,7 +31,7 @@ $copy = "$Work\$Name"
 if (Test-Path $copy) { cmd /c "rd /s /q `"$copy`"" }
 robocopy $Project $copy /E /XD .git build bin /XJ /NFL /NDL /NJH /NJS /NP /MT:16 | Out-Null
 New-Item -ItemType Directory -Force "$copy\.vscode" | Out-Null
-@{ 'kpp.path' = $Kppc; 'kpp.target' = $(if ($Target) { $Target } else { $null }); 'kpp.configuration' = $Configuration } |
+@{ 'kpp.path' = $KppExe; 'kpp.target' = $(if ($Target) { $Target } else { $null }); 'kpp.configuration' = $Configuration } |
   ConvertTo-Json | Set-Content "$copy\.vscode\settings.json" -Encoding utf8
 
 $log = "$Work\$Name.log"

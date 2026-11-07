@@ -5,20 +5,20 @@
 # a listed one that builds fails too (its line must go). The last line says ALL PASSED or what failed.
 # CI's libraries_freebsd jobs run it and run.sh in a FreeBSD VM (docs/build.md, "Continuous
 # integration").
-#   powershell -ExecutionPolicy Bypass -File libraries\target-tests.ps1 -Target freebsd [-Out DIR] [-Kppc PATH] [-Sysroot DIR]
+#   powershell -ExecutionPolicy Bypass -File libraries\target-tests.ps1 -Target freebsd [-Out DIR] [-KppExe PATH] [-Sysroot DIR]
 param(
   [Parameter(Mandatory = $true)][ValidateSet('freebsd', 'linux')][string]$Target,
   [string]$Out = '',
-  [string]$Kppc = '',
+  [string]$KppExe = '',
   [string]$Sysroot = ''
 )
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path "$PSScriptRoot\..").Path
 # (the defaults here: an advanced script's parameter defaults do not see $PSScriptRoot in PowerShell 5.1)
 if (-not $Out) { $Out = "$repo\compiler\build\libraries-$Target" }
-if (-not $Kppc) { $Kppc = "$repo\compiler\build\kppc.exe" }
+if (-not $KppExe) { $KppExe = "$repo\compiler\build\kpp.exe" }
 if (-not $Sysroot) { $Sysroot = "$repo\compiler\build\sysroots\$Target-x86_64" }
-$Kppc = (Resolve-Path $Kppc).Path
+$KppExe = (Resolve-Path $KppExe).Path
 $Sysroot = (Resolve-Path $Sysroot).Path
 if (Test-Path $Out) { cmd /c rd /s /q $Out }
 New-Item -ItemType Directory -Force $Out | Out-Null
@@ -34,12 +34,12 @@ foreach ($project in $projects)
   $name = $project[0]
   Push-Location (Join-Path $repo $project[1])
   $ErrorActionPreference = 'Continue'
-  $log = & $Kppc --no-server --target $Target --sysroot $Sysroot --no-run --test 2>&1 | ForEach-Object { "$_" }
+  $log = & $KppExe --no-server --target $Target --sysroot $Sysroot --no-run --test 2>&1 | ForEach-Object { "$_" }
   $code = $LASTEXITCODE
   $ErrorActionPreference = 'Stop'
   Pop-Location
   $log | Out-File -Encoding utf8 "$Out\$name.build.log"
-  $elf = $log | ForEach-Object { if ($_ -match '^kppc --test: built (.*) \(not run: --no-run\)$') { $Matches[1] } } | Select-Object -First 1
+  $elf = $log | ForEach-Object { if ($_ -match '^kpp --test: built (.*) \(not run: --no-run\)$') { $Matches[1] } } | Select-Object -First 1
   $ok = $code -eq 0 -and $elf -and (Test-Path $elf)
   if ($ok)
   {

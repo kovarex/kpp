@@ -1,16 +1,16 @@
 # --debug-info (docs/debugging.md): builds debuginfo\lines.kpp with line tables, runs it, and compares
 # the lines of each of its functions in the PDB (llvm-pdbutil from Visual Studio's LLVM, in address
 # order) with debuginfo\lines.expected, one function per row, the rows sorted; the compiler its
-# objects name, kppc and kpp's version; and debuginfo\values.kpp's variables and types (below)
+# objects name, kpp and its version; and debuginfo\values.kpp's variables and types (below)
 # with debuginfo\values.expected. run_tests.cmd runs it.
-param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe")
+param([string]$KppExe = "$PSScriptRoot\..\build\kpp.exe")
 $ErrorActionPreference = 'Stop'
 $work = Join-Path $PSScriptRoot '..\build\tests\debuginfo'
 New-Item -ItemType Directory -Force $work | Out-Null
 $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
 $pdbutil = Join-Path $vs 'VC\Tools\Llvm\x64\bin\llvm-pdbutil.exe'
 $exe = Join-Path $work 'lines.exe'
-& $Kppc --quiet --debug-info --exe $exe (Join-Path $PSScriptRoot 'debuginfo\lines.kpp')
+& $KppExe --quiet --debug-info --exe $exe (Join-Path $PSScriptRoot 'debuginfo\lines.kpp')
 if ($LASTEXITCODE -ne 0) { "FAIL debug info: compile"; exit 1 }
 $out = & $exe
 if ("$out" -ne '26') { "FAIL debug info: the program printed $out"; exit 1 }
@@ -31,9 +31,9 @@ if ($d)
   $actual | ForEach-Object { "  $_" }
   exit 1
 }
-# Each of the program's objects names its compiler (S_COMPILE3): kppc and the version `kppc --version`
+# Each of the program's objects names its compiler (S_COMPILE3): kpp and the version `kpp --version`
 # gives, without "+dirty" (docs/build.md, "Versions").
-$version = if ((& $Kppc --version | Select-Object -First 1) -match '^kpp ([^,+]+)') { $Matches[1] } else { 'unknown' }
+$version = if ((& $KppExe --version | Select-Object -First 1) -match '^kpp ([^,+]+)') { $Matches[1] } else { 'unknown' }
 $compilers = @()
 $inProgram = $false
 foreach ($line in (& $pdbutil dump -symbols (Join-Path $work 'lines.pdb')))
@@ -41,8 +41,8 @@ foreach ($line in (& $pdbutil dump -symbols (Join-Path $work 'lines.pdb')))
   if ($line -match '^\s*Mod \d+ \| `(.*)`') { $inProgram = $Matches[1] -match 'lines\.exe\.\d+\.o$' }
   elseif ($inProgram -and $line -match 'Ver = ([^,]*), language') { $compilers += $Matches[1] }
 }
-$others = @($compilers | Where-Object { $_ -ne "kppc $version" })
-if ($compilers.Count -eq 0 -or $others.Count -gt 0) { "FAIL debug info: the objects name their compiler '$(@($compilers | Sort-Object -Unique) -join "', '")', not 'kppc $version'"; exit 1 }
+$others = @($compilers | Where-Object { $_ -ne "kpp $version" })
+if ($compilers.Count -eq 0 -or $others.Count -gt 0) { "FAIL debug info: the objects name their compiler '$(@($compilers | Sort-Object -Unique) -join "', '")', not 'kpp $version'"; exit 1 }
 
 # Variables and types (docs/debugging.md, "Variables and types"): debuginfo\values.kpp built with
 # --debug-info as one module and as 64 (its classes then defined in their home modules alone, every
@@ -192,7 +192,7 @@ foreach ($modules in '1', '64')
   $exe = Join-Path $work "values$modules.exe"
   # (No PDB of an earlier run: link.exe would add to it, and its records would answer for this build's.)
   Remove-Item "$work\values$modules.*" -ErrorAction SilentlyContinue
-  & $Kppc --quiet --debug-info --modules $modules --exe $exe (Join-Path $PSScriptRoot 'debuginfo\values.kpp')
+  & $KppExe --quiet --debug-info --modules $modules --exe $exe (Join-Path $PSScriptRoot 'debuginfo\values.kpp')
   if ($LASTEXITCODE -ne 0) { "FAIL debug info: values.kpp at $modules module(s): compile"; exit 1 }
   $printed = & $exe
   if ("$printed" -ne '27') { "FAIL debug info: values.kpp at $modules module(s) printed $printed"; exit 1 }

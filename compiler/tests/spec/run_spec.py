@@ -1,14 +1,14 @@
-"""The feature specification suite of kppc.
+"""The feature specification suite of kpp.
 
 Every compiler/tests/spec/<area>/<name>.kpp is one small program showing one construct; it is
-compiled with build/kppc.exe, run, and its output compared with <name>.expected. The header of a
+compiled with build/kpp.exe, run, and its output compared with <name>.expected. The header of a
 snippet says what it is about:
 
     // spec: default arguments
     // factorio: 32235 uses in 4539 files        (from the construct survey, optional)
     // pending: no generic lambdas yet           (a known gap: the snippet is expected to fail)
     // pending on windows linux: why            (a known gap of those targets alone: windows, windows-gnu, linux, freebsd)
-    // kppc: --release                           (kppc options this snippet is always built with: a
+    // kpp: --release                           (kpp options this snippet is always built with: a
                                                   gap that only one configuration shows; {here} is the
                                                   snippet's directory)
     // error: static assertion failed            (the program must not compile, and the compiler's
@@ -18,8 +18,8 @@ snippet says what it is about:
     // no-warning: x.kpp:36                      (and the compiler's output does not say this, a warning or an
                                                   error, as a `warning:` or `error:` line alone cannot tell: it
                                                   looks for what it names and no more)
-    // run: alpha "two words"                    (built and run in one step by `kppc --run snippet ARGS`)
-    // test: --filter parse                      (the snippet's tests run by `kppc --test snippet -- ARGS`, from
+    // run: alpha "two words"                    (built and run in one step by `kpp --run snippet ARGS`)
+    // test: --filter parse                      (the snippet's tests run by `kpp --test snippet -- ARGS`, from
                                                   the snippet's directory: the paths printed are its name)
     // exit: 3                                   (the program's exit code; 0 or 1 when not given; with error
                                                   lines, the compiler's, 1 when not given)
@@ -30,7 +30,7 @@ snippet says what it is about:
 
 Statuses: pass, FAIL (a regression), pending (a known gap, still failing), fixed (a pending
 snippet that passes: remove its pending line). The run writes docs/spec-status.md, the
-specification of what kppc can and cannot do yet, with the first compiler complaint of every gap.
+specification of what kpp can and cannot do yet, with the first compiler complaint of every gap.
 
 A <name>.c next to a snippet is a C library of its own: compiled with clang and linked into the
 snippet's executable (`--lib`), for what only a real C object shows (the variables it defines).
@@ -45,18 +45,18 @@ directory: a `// run:` snippet then runs from that copy, for what a command does
 
 Each snippet is built in a directory of its own, build\\spec\\<area>.<name>\\, deleted as soon as the snippet
 passes: what a run leaves is the failing and pending snippets' builds (and the FreeBSD bundle). A
-snippet is built with --modules 4 unless its `kppc:` line says --modules: cross-module code and a
-release build's ThinLTO are still exercised, in about 12 files of objects and IR where kppc's default
+snippet is built with --modules 4 unless its `kpp:` line says --modules: cross-module code and a
+release build's ThinLTO are still exercised, in about 12 files of objects and IR where kpp's default
 (4 modules per thread) made about 385. Every build of a whole run kept in the worktree, 380 to 600 files a
 snippet, came to 2.6 million files in one worktree, and the kernel kept a record of each in its pool
 (2026-11-03).
 
 A snippet of steps (`//--- step: TITLE` lines) is a compile server's builds after each edit: each step's
 text is the whole of the snippet's program at that point, written over one file and built through one
-server (`kppc --server --verify-incremental`, so each step's build is also compared with a build from
+server (`kpp --server --verify-incremental`, so each step's build is also compared with a build from
 scratch, and any difference fails it), the server stopped at the end. In a step, `// expect: TEXT`
 lines are what its program prints (none: nothing), `// error: TEXT` lines what its build must say
-instead (it must fail). The header above the first step applies to all (`kppc:`, `pending:`). Windows
+instead (it must fail). The header above the first step applies to all (`kpp:`, `pending:`). Windows
 only (the server is). A step's `//--- file: NAME` lines start further files of its program, written into
 a directory beside it (given as a source); each step has all of them, and its expectations come before
 its first file, written into the program's file as empty lines (a step that edits only another file
@@ -69,7 +69,7 @@ runner itself on a snippet that passes and one that fails).
 the I-th, so each part gets a share of every area. CI runs the parts as parallel jobs (docs/build.md,
 "Continuous integration"); a part writes no spec-status.md, and its summary line names it.
 
---release and --debug-info build every snippet with that kppc option too (the release and the
+--release and --debug-info build every snippet with that kpp option too (the release and the
 debug-info configurations, docs/test-matrix.md), into build\\spec-release or build\\spec-debug-info,
 and write no spec-status.md, which is the debug build's. A snippet that prints its own configuration
 has the release build's output in <name>.release.expected, and a target's release output in
@@ -78,7 +78,7 @@ has the release build's output in <name>.release.expected, and a target's releas
 --target linux builds every snippet for Linux x86-64 (docs/design.md, "Targets and hosts") against a
 glibc sysroot (KPP_SYSROOT_LINUX, else build\\sysroots\\linux-x86_64, which tests\\targets.ps1 makes from
 WSL) and runs it under WSL, into build\\spec-linux, writing no spec-status.md. Skipped: the `run:` and
-`test:` snippets (kppc runs those itself, on this machine) and those with another `target:`. Output
+`test:` snippets (kpp runs those itself, on this machine) and those with another `target:`. Output
 that differs on Linux goes in <name>.linux.expected.
 
 --target linux-arm64 builds every snippet for Linux on AArch64 against Debian 11's arm64 glibc
@@ -111,14 +111,14 @@ os.environ.setdefault("KPP_CHECK_BARRIER", "1")
 HERE = os.path.dirname(os.path.abspath(__file__))
 COMPILER = os.path.dirname(os.path.dirname(HERE))
 # The snippets share the objects of the modules they have alike (most of the standard library's):
-# kppc's shared object cache (main.cpp, objectcache), one directory for every run of this kppc's
+# kpp's shared object cache (main.cpp, objectcache), one directory for every run of this kpp's
 # worktree, its debug, release and target runs at once included.
 os.environ.setdefault("KPP_OBJECT_CACHE", os.path.join(COMPILER, "build", "object-cache"))
 ROOT = os.path.dirname(COMPILER)
-# A Linux host runs its own build of kppc, and its snippets natively (NATIVE, main): no WSL, no sysroot.
+# A Linux host runs its own build of kpp, and its snippets natively (NATIVE, main): no WSL, no sysroot.
 HOST_WINDOWS = sys.platform == "win32"
 NATIVE = False
-KPPC = os.path.join(COMPILER, "build", "kppc.exe" if HOST_WINDOWS else "kppc")
+KPP = os.path.join(COMPILER, "build", "kpp.exe" if HOST_WINDOWS else "kpp")
 # The game's SDL3 headers, for the interop snippets that import them (skipped when the Factorio
 # checkout is not on this machine; the snippet then shows as failing to find the header). CI sets
 # KPP_SDL_INCLUDE to upstream SDL 3.4.18's include directory (.github/workflows/ci.yml).
@@ -129,7 +129,7 @@ EXTRA += ["--cinclude", os.path.join(HERE, "interop")]
 OUT = os.path.join(COMPILER, "build", "spec")
 SNIPPETS = HERE
 DOC = os.path.join(ROOT, "docs", "spec-status.md")
-# The clang kppc itself uses (main.cpp's clangPath), for the snippets' own C sources.
+# The clang kpp itself uses (main.cpp's clangPath), for the snippets' own C sources.
 CLANG = os.environ.get("KPP_CLANG", r"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\Llvm\x64\bin\clang.exe" if HOST_WINDOWS else "clang")
 # --target: the target the snippets are built for (None: this machine's, Windows), the clang flags
 # for their C sources, and how a program runs (under WSL for linux).
@@ -222,12 +222,12 @@ AREA_TITLES = {
 
 def header(path):
     info = {"spec": os.path.splitext(os.path.basename(path))[0], "factorio": "", "pending": None, "errors": [], "warnings": [], "no-warnings": [], "run": None, "test": None,
-            "exit": None, "kppc": "", "target": None, "arch": None}
+            "exit": None, "kpp": "", "target": None, "arch": None}
     with open(path, encoding="utf-8") as f:
         for line in f:
             if line.startswith("//--- step"):
                 break # (a snippet of steps: each step's own expect and error lines are its own)
-            m = re.match(r"//\s*(spec|factorio|pending(?: on [\w -]+?)?|error|warning|no-warning|run|test|exit|kppc|target|arch):\s*(.*)", line.strip())
+            m = re.match(r"//\s*(spec|factorio|pending(?: on [\w -]+?)?|error|warning|no-warning|run|test|exit|kpp|target|arch):\s*(.*)", line.strip())
             if not m:
                 if line.strip() and not line.startswith("//"):
                     break
@@ -284,11 +284,11 @@ def run_one(path):
 
 def build_and_run(path, area, name, work):
     info = header(path)
-    # (`{here}` in a `kppc:` line is the snippet's directory: a path beside it, as a fake SDK)
-    info["kppc"] = info["kppc"].replace("{here}", os.path.dirname(os.path.abspath(path)).replace("\\", "/"))
+    # (`{here}` in a `kpp:` line is the snippet's directory: a path beside it, as a fake SDK)
+    info["kpp"] = info["kpp"].replace("{here}", os.path.dirname(os.path.abspath(path)).replace("\\", "/"))
     exe = os.path.join(work, f"{area}.{name}.exe")
     # (a snippet's own --modules wins: the ones about splitting a program ask for 64 or 128)
-    modules = [] if "--modules" in shlex.split(info["kppc"]) else ["--modules", "4"]
+    modules = [] if "--modules" in shlex.split(info["kpp"]) else ["--modules", "4"]
     expected_path = os.path.splitext(path)[0] + ".expected"
     # A snippet that prints its own configuration has the release build's output next to the debug one's.
     if "--release" in EXTRA and os.path.exists(os.path.splitext(path)[0] + ".release.expected"):
@@ -335,7 +335,7 @@ def build_and_run(path, area, name, work):
     sources = [path, companions] if os.path.isdir(companions) else [path]
     sources += library_roots(path)
     try:
-        c = subprocess.run([KPPC, "--quiet", *EXTRA, *shlex.split(info["kppc"]), *modules, *libs, "--exe", exe, *sources], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
+        c = subprocess.run([KPP, "--quiet", *EXTRA, *shlex.split(info["kpp"]), *modules, *libs, "--exe", exe, *sources], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
     except subprocess.TimeoutExpired:
         result["status"] = "FAIL"; result["note"] = "compiler timed out"; return finish(result)
     if info["errors"]:
@@ -400,7 +400,7 @@ def build_and_run(path, area, name, work):
 
 
 def library_roots(path):
-    """The kppc options of a snippet's library directories, <name>.library.NAME and <name>.unscoped.NAME."""
+    """The kpp options of a snippet's library directories, <name>.library.NAME and <name>.unscoped.NAME."""
     folder, stem = os.path.split(os.path.splitext(path)[0])
     options = []
     for entry in sorted(os.listdir(folder)):
@@ -416,14 +416,14 @@ def is_companion(directory):
 
 
 def run_command(path, info, libs, expected_path, result, work):
-    """A `// run:` snippet: `kppc --run` builds and runs it in one step; its exit code is the program's.
+    """A `// run:` snippet: `kpp --run` builds and runs it in one step; its exit code is the program's.
     With a <name>.project directory it runs from a copy of that project.
-    A `// test:` snippet: `kppc --test` builds its tests and runs them, from the snippet's directory."""
-    extra = EXTRA + shlex.split(info["kppc"])
+    A `// test:` snippet: `kpp --test` builds its tests and runs them, from the snippet's directory."""
+    extra = EXTRA + shlex.split(info["kpp"])
     if info["test"] is not None:
-        command, cwd = [KPPC, *extra, *libs, "--no-server", "--test", os.path.basename(path), "--", *shlex.split(info["test"])], os.path.dirname(path)
+        command, cwd = [KPP, *extra, *libs, "--no-server", "--test", os.path.basename(path), "--", *shlex.split(info["test"])], os.path.dirname(path)
     else:
-        command, cwd = [KPPC, *extra, *libs, "--no-server", "--run", path, *shlex.split(info["run"])], None
+        command, cwd = [KPP, *extra, *libs, "--no-server", "--run", path, *shlex.split(info["run"])], None
         project = os.path.splitext(path)[0] + ".project"
         if os.path.isdir(project):
             cwd = os.path.join(work, "project")
@@ -431,7 +431,7 @@ def run_command(path, info, libs, expected_path, result, work):
     try:
         r = subprocess.run(command, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=360)
     except subprocess.TimeoutExpired:
-        result["status"] = "FAIL"; result["note"] = f"kppc {command[len(extra) + len(libs) + 2]} timed out"; return result
+        result["status"] = "FAIL"; result["note"] = f"kpp {command[len(extra) + len(libs) + 2]} timed out"; return result
     want = int(info["exit"]) if info["exit"] is not None else None
     if want is not None and r.returncode != want or want is None and r.returncode not in (0, 1):
         result["status"] = "FAIL"
@@ -459,7 +459,7 @@ def run_steps(path, info, work, options, result):
     # (a step's `//--- file: NAME` sections: files of the program beside it, in a directory given as a source)
     companions = os.path.join(work, os.path.splitext(os.path.basename(path))[0] + ".files")
     has_files = re.search(r"^//--- file:", text, flags=re.M) is not None
-    arguments = ["--quiet", *EXTRA, *shlex.split(info["kppc"]), *options, "--exe", exe, source, *([companions] if has_files else [])]
+    arguments = ["--quiet", *EXTRA, *shlex.split(info["kpp"]), *options, "--exe", exe, source, *([companions] if has_files else [])]
     try:
         for i in range(1, len(parts), 2):
             title, body = parts[i].strip(), parts[i + 1]
@@ -487,7 +487,7 @@ def run_steps(path, info, work, options, result):
                         with open(target, "w", encoding="utf-8", newline="\n") as f:
                             f.write(content)
             try:
-                c = subprocess.run([KPPC, "--server", "--verify-incremental", *arguments], capture_output=True, text=True, encoding="utf-8",
+                c = subprocess.run([KPP, "--server", "--verify-incremental", *arguments], capture_output=True, text=True, encoding="utf-8",
                                    errors="replace", timeout=300)
             except subprocess.TimeoutExpired:
                 result["status"] = "FAIL"; result["note"] = f"{step}: the compiler timed out"; return result
@@ -522,7 +522,7 @@ def run_steps(path, info, work, options, result):
         result["status"] = "pass"
         return result
     finally:
-        subprocess.run([KPPC, "--stop-server", *arguments], capture_output=True, text=True, timeout=60)
+        subprocess.run([KPP, "--stop-server", *arguments], capture_output=True, text=True, timeout=60)
 
 
 def compare(stdout, expected_path, result):
@@ -551,7 +551,7 @@ def finish(result):
 
 def write_doc(results, elapsed):
     counts = {s: sum(1 for r in results if r["status"] == s) for s in ("pass", "pending", "FAIL", "fixed")}
-    lines = ["# What kppc compiles: the specification suite", "",
+    lines = ["# What kpp compiles: the specification suite", "",
              "Generated by `compiler\\tests\\spec.cmd` from `compiler/tests/spec/<area>/*.kpp`: one small program per",
              "construct, compiled, run and compared with its `.expected` output. The Factorio column is the",
              "construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 files), so the gaps are",
@@ -619,7 +619,7 @@ def main():
     ap.add_argument("--only", default="")
     args = ap.parse_args()
     global OUT, TARGET, C_TARGET_FLAGS, SNIPPETS, NATIVE
-    # On a Linux host the snippets are built for it and run here: kppc's default target is the host's,
+    # On a Linux host the snippets are built for it and run here: kpp's default target is the host's,
     # linux-arm64 on AArch64 (CI's linux_arm64 job: its `// arch:` skips and .linux-arm64.expected files).
     arm64 = platform.machine().lower() in ("aarch64", "arm64")
     if not HOST_WINDOWS and args.target in (None, "linux", "linux-arm64"):
@@ -693,8 +693,8 @@ def main():
         C_TARGET_FLAGS = ["--target=x86_64-unknown-linux-gnu", "--sysroot=" + SYSROOT_LINUX]
         OUT += "-" + TARGET
         args.no_doc = True
-    if not os.path.exists(KPPC):
-        print("no compiler at", KPPC)
+    if not os.path.exists(KPP):
+        print("no compiler at", KPP)
         print("spec: FAILED: no compiler"); return 2
     os.makedirs(OUT, exist_ok=True)
     # Files directly in OUT are an earlier run's: the FreeBSD bundle, or every build's objects from

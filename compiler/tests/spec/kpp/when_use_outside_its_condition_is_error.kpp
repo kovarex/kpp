@@ -1,6 +1,6 @@
 // spec: a name `when (condition)` declares (design.md 19) is checked in the configuration being built: where the declaration does not exist (tracing is off here), a use of the name is a compile error in that build, never a silent fallback to another declaration of that spelling (here the library's count), while a use inside a discarded branch is not checked
 // factorio: none: the converter writes each use of a debug-only local inside `if constexpr (config::debug)` or `when (config::debug)`
-// kppc: --config tracing=false
+// kpp: --config tracing=false
 // error: when_use_outside_its_condition_is_error.kpp:11: error: 'count' exists only when config::tracing holds: use it inside `if constexpr (config::tracing)` or a `when` on it
 int main()
 {

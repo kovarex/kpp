@@ -51,11 +51,11 @@ extern char** environ;
 
 // The protocol (docs/compile-speed.md, "The compile server: protocol"). One named pipe per key,
 // one client at a time. A request: "KPS1", a u32 kind (1 build, 2 stop), then for a build the
-// kppc path the client ran, its working directory, its arguments (a u32 count, then each) and its
+// kpp path the client ran, its working directory, its arguments (a u32 count, then each) and its
 // environment (UTF-16, as GetEnvironmentStringsW gives it); a string is a u32 byte count and the
 // bytes. The answer: frames of a u8 type (1 stdout, 2 stderr, 3 exit code, 4 the server's process
 // id, sent first), a u32 byte count and the bytes, ending with the exit code's frame. The server
-// logs what it does to %TEMP%\kppc-server\KEY.log: a client that loses its server says why.
+// logs what it does to %TEMP%\kpp-server\KEY.log: a client that loses its server says why.
 
 namespace
 {
@@ -77,11 +77,11 @@ namespace
 #ifdef _WIN32
     char temp[MAX_PATH * 4];
     DWORD n = GetTempPathA(DWORD(sizeof temp), temp);
-    return std::string(temp, n) + "kppc-server\\";
+    return std::string(temp, n) + "kpp-server\\";
 #else
     // (the user's own, not others': its sockets take requests to build and to run what a build runs)
     std::error_code ec;
-    return (std::filesystem::temp_directory_path(ec) / ("kppc-server-" + std::to_string(getuid()))).string() + "/";
+    return (std::filesystem::temp_directory_path(ec) / ("kpp-server-" + std::to_string(getuid()))).string() + "/";
 #endif
   }
 
@@ -291,7 +291,7 @@ namespace
   }
 #endif
 
-  // The key of a server: the kppc binary (path, size and time: a rebuilt kppc is another server),
+  // The key of a server: the kpp binary (path, size and time: a rebuilt kpp is another server),
   // the working directory and the arguments. A server only ever builds its own key's arguments,
   // so a changed flag or input list goes to another server, never to one holding older state.
   // --msvc-diagnostics is not in it: it changes no build, only the form the client prints a
@@ -299,7 +299,7 @@ namespace
   // share one server and its kept build. Nor is --packages, a listing, whose build the server never
   // keeps or replays (main.cpp's compile).
   // A file's size and time of writing (or that it is missing): what tells a rebuilt or reinstalled
-  // kppc from the one before, a changed output of a kept build from the one it left.
+  // kpp from the one before, a changed output of a kept build from the one it left.
   std::string stampOf(const std::string& path)
   {
 #ifdef _WIN32
@@ -318,7 +318,7 @@ namespace
 
   std::string serverKey(const std::string& exe, const std::string& cwd, const std::vector<std::string>& args)
   {
-    std::string text = "kppc server 1\n" + exe + "\n" + stampOf(exe) + "\n";
+    std::string text = "kpp server 1\n" + exe + "\n" + stampOf(exe) + "\n";
     for (char c : cwd) // (Windows' file names ignore case; POSIX's do not: two directories there)
       text += host::pathsIgnoreCase ? char(tolower(static_cast<unsigned char>(c))) : c;
     for (const std::string& arg : args)
@@ -333,7 +333,7 @@ namespace
   }
 
 #ifdef _WIN32
-  std::string pipeName(const std::string& key) { return "\\\\.\\pipe\\kppc-server-" + key; }
+  std::string pipeName(const std::string& key) { return "\\\\.\\pipe\\kpp-server-" + key; }
 
   // Connects to the server's pipe, waiting while another client is being served.
   HANDLE connectPipe(const std::string& name, DWORD waitMs)
@@ -354,8 +354,8 @@ namespace
     }
   }
 
-  // The server directory stays bounded: every key had its copy of kppc (KEY.exe, 42 MB with LLVM's
-  // back end), and every rebuilt kppc and every set of arguments is a key, so nothing ever went: 4,044
+  // The server directory stays bounded: every key had its copy of kpp (KEY.exe, 42 MB with LLVM's
+  // back end), and every rebuilt kpp and every set of arguments is a key, so nothing ever went: 4,044
   // copies, 53.3 GB, and 6,300 other files on 2026-11-04. Each server start removes what is more than
   // ten minutes old and in no one's use: a copy whose server has ended (a running server's copy is its
   // image, which Windows does not delete), then the files of a key whose copy is gone (KEY.log,
@@ -379,7 +379,7 @@ namespace
         continue;
       std::string name = found.cFileName;
       std::string stem = name.substr(0, name.find('.'));
-      // (A copy's time of writing is its kppc's; when it was made is its creation.)
+      // (A copy's time of writing is its kpp's; when it was made is its creation.)
       if (stem == keep || now - std::max(value(found.ftCreationTime), value(found.ftLastWriteTime)) < margin)
         continue;
       bool exe = name.size() > 4 && name.compare(name.size() - 4, 4, ".exe") == 0;
@@ -396,7 +396,7 @@ namespace
     }
   }
 
-  // Starts a server for the key. It runs from a copy of kppc in the temp directory, so that kppc
+  // Starts a server for the key. It runs from a copy of kpp in the temp directory, so that kpp
   // itself can be rebuilt while a server runs (Windows keeps a running executable locked).
   bool startServer(const std::string& exe, const std::string& key, const std::string& cwd)
   {
@@ -417,7 +417,7 @@ namespace
         DeleteFileA(part.c_str()); // another client put it there first
       held = hold();
     }
-    // The kppc it was started from and that kppc's stamp, as the key has it: the server exits once
+    // The kpp it was started from and that kpp's stamp, as the key has it: the server exits once
     // they differ (runServer).
     std::string command = "\"" + copy + "\" --serve " + key + " \"" + exe + "\" \"" + stampOf(exe) + "\"";
     STARTUPINFOA si{};
@@ -505,7 +505,7 @@ namespace
       std::filesystem::remove(path, ec);
   }
 
-  // Starts a server for the key: kppc itself, in a session of its own (no copy: a running executable
+  // Starts a server for the key: kpp itself, in a session of its own (no copy: a running executable
   // can be replaced on POSIX), its streams the null device. The client holds KEY.starting meanwhile.
   bool startServer(const std::string& exe, const std::string& key, const std::string& cwd)
   {
@@ -537,7 +537,7 @@ namespace
   }
 
   // The crash report's stack (Windows' logStack): a frame a line, its module and offset (resolvable
-  // with addr2line later) and the function's name, demangled, where the module exports it (kppc is
+  // with addr2line later) and the function's name, demangled, where the module exports it (kpp is
   // linked with -rdynamic on POSIX). On an alternate stack each thread sets up (useCrashStack), so
   // that an overflowing build's stack is reported too.
   void useCrashStack()
@@ -1181,7 +1181,7 @@ namespace
     logLine("build %zu: --verify-incremental: %s", builds, problem.empty() ? "the same as from scratch" : problem.c_str());
     if (problem.empty())
       return true;
-    std::string message = "kppc: --verify-incremental: the server's build is not what a build from scratch gives: " + problem + "\n";
+    std::string message = "kpp: --verify-incremental: the server's build is not what a build from scratch gives: " + problem + "\n";
     sendFrame(s, stderrFrame, message.data(), uint32_t(message.size())); // (the build's streams are drained)
     return false;
   }
@@ -1240,7 +1240,7 @@ namespace
     if (chdir(cwd.c_str()) != 0) // (never a build in another directory)
     {
       logLine("build %zu: cannot enter %s", builds, cwd.c_str());
-      std::string message = "kppc server: cannot enter " + cwd + ": " + strerror(errno) + "\n";
+      std::string message = "kpp server: cannot enter " + cwd + ": " + strerror(errno) + "\n";
       sendFrame(s, stderrFrame, message.data(), uint32_t(message.size()));
       int one = 1;
       sendFrame(s, exitFrame, &one, 4);
@@ -1249,7 +1249,7 @@ namespace
 #endif
     if (!redirectOutput(s))
     {
-      const char* message = "kppc server: cannot redirect the build's output\n";
+      const char* message = "kpp server: cannot redirect the build's output\n";
       sendFrame(s, stderrFrame, message, uint32_t(strlen(message)));
       int one = 1;
       sendFrame(s, exitFrame, &one, 4);
@@ -1290,7 +1290,7 @@ int buildInThisProcess(CompileFunction compile, std::vector<std::string> args, s
   s.muted = true; // what it prints is captured for the caller, sent to no client
   if (!redirectOutput(s))
   {
-    err = "kppc: cannot redirect the build's output\n";
+    err = "kpp: cannot redirect the build's output\n";
     return 1;
   }
   session = &s;
@@ -1450,7 +1450,7 @@ int runClient(int argc, char** argv, CompileFunction compile)
   }
   if (pipe == noChannel)
   {
-    fprintf(stderr, "kppc: no compile server could be reached; building in this process\n");
+    fprintf(stderr, "kpp: no compile server could be reached; building in this process\n");
     return compile(argc, argv);
   }
   std::string request = requestHeader(buildRequest);
@@ -1537,7 +1537,7 @@ int runClient(int argc, char** argv, CompileFunction compile)
   }
 #endif
   std::string why = lastLogLine(logPath(key));
-  fprintf(stderr, "kppc: the compile server ended without finishing the build (read error %lu; its log, %s, ends: %s); building in this process\n",
+  fprintf(stderr, "kpp: the compile server ended without finishing the build (read error %lu; its log, %s, ends: %s); building in this process\n",
           readError, logPath(key).c_str(), why.empty() ? "(nothing)" : why.c_str());
   return compile(argc, argv);
 }
@@ -1604,7 +1604,7 @@ int runServer(const char* key, const char* origin, const char* stamp, CompileFun
   setvbuf(stdout, nullptr, _IONBF, 0);
   lastActivity = nowSeconds();
   static std::mutex idleMutex; // the checks and the start of a client's service exclude each other
-  // Between builds: exits once idle for an hour, or once the kppc it was started from has changed.
+  // Between builds: exits once idle for an hour, or once the kpp it was started from has changed.
   std::thread([origin = std::string(origin), stamp = std::string(stamp), name]
   {
     for (;;)
@@ -1615,7 +1615,7 @@ int runServer(const char* key, const char* origin, const char* stamp, CompileFun
         continue;
       if (stampOf(origin) != stamp)
       {
-        logLine("the kppc it was started from (%s) changed: exiting", origin.c_str());
+        logLine("the kpp it was started from (%s) changed: exiting", origin.c_str());
         unlink(name.c_str());
         _exit(0);
       }
@@ -1689,7 +1689,7 @@ int runServer(const char* key, const char* origin, const char* stamp, CompileFun
   setvbuf(stdout, nullptr, _IONBF, 0);
   lastActivity = nowSeconds();
   static std::mutex idleMutex; // the checks and the start of a client's service exclude each other
-  // Between builds: exits once idle for an hour, or once the kppc it was started from has changed (a
+  // Between builds: exits once idle for an hour, or once the kpp it was started from has changed (a
   // rebuild, an install), whose clients have another key: nothing would reach this server again.
   std::thread([origin = std::string(origin), stamp = std::string(stamp)]
   {
@@ -1701,7 +1701,7 @@ int runServer(const char* key, const char* origin, const char* stamp, CompileFun
         continue;
       if (stampOf(origin) != stamp)
       {
-        logLine("the kppc it was started from (%s) changed: exiting", origin.c_str());
+        logLine("the kpp it was started from (%s) changed: exiting", origin.c_str());
         ExitProcess(0);
       }
       if (nowSeconds() - lastActivity > idleSeconds)
@@ -1742,7 +1742,7 @@ namespace
   {
     Channel pipe = connectPipe(pipeName(key), 0);
     // A server still starting (its client wrote KEY.args before starting it, runClient) has no pipe
-    // yet: its copy of kppc, KEY.exe, is in use (running, or held by the client that starts it), so
+    // yet: its copy of kpp, KEY.exe, is in use (running, or held by the client that starts it), so
     // that it cannot be opened for deletion. It is waited for as its client waits, never left
     // running unseen (thread H, 2026-11-05: a stop could miss a server that came up a moment later).
 #ifdef _WIN32
@@ -1799,7 +1799,7 @@ int stopServer(int argc, char** argv)
 
 int stopAllServers()
 {
-  // Every server runs from its copy, KEY.exe (startServer), whatever kppc started it and whether its
+  // Every server runs from its copy, KEY.exe (startServer), whatever kpp started it and whether its
   // KEY.args is there or not.
   std::vector<std::string> keys;
 #ifdef _WIN32

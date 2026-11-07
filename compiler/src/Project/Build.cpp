@@ -1,11 +1,11 @@
-// A cell's build: kppc's arguments, the build (kppc, the C libraries alongside, the link, the steps
+// A cell's build: kpp's arguments, the build (kpp, the C libraries alongside, the link, the steps
 // around), running it and its tests, and kpp's commands on a project (act).
 // (Moved out of project.cpp on 2026-11-05 without a change.)
 #include "Project/Internal.hpp"
 
 namespace projects
 {
-  // One kppc compile: through the compile server (runClient), or a kppc process of its own. Never
+  // One kpp compile: through the compile server (runClient), or a kpp process of its own. Never
   // compile() in this process: a build that is no server's ends its process when it is done.
   int invoke(std::vector<std::string> args, bool server, CompileFunction compile, bool stop)
   {
@@ -40,7 +40,7 @@ namespace projects
   }
 
   // What a C library's __FILE__ (an SDL_assert's, a LOG(FATAL)'s) says of the paths under the project:
-  // relative to it, and under a kpp library's root the library's name, as kppc's --file-prefix-map
+  // relative to it, and under a kpp library's root the library's name, as kpp's --file-prefix-map
   // writes kpp's own paths in a release build, so that no binary holds a path of this machine. Clang's
   // -ffile-prefix-map, the longest directory first (clang's own order). In every configuration: they
   // share the C libraries' objects (build\clib), which have no debug information to open files by.
@@ -79,8 +79,8 @@ namespace projects
   }
 
   // The platform a program is built for, as Library::systemLibrary names it (windows, linux, freebsd):
-  // the last --target of build.kpp's arguments and the command line's, the host's without one. One kppc
-  // does not know leaves the host's here, and kppc reports it.
+  // the last --target of build.kpp's arguments and the command line's, the host's without one. One kpp
+  // does not know leaves the host's here, and kpp reports it.
   Target programTarget(const Program& p, const Request& request)
   {
     Target target = hostTarget();
@@ -104,7 +104,7 @@ namespace projects
     return root / "build" / p.configuration / (p.name + (targetPlatform(p, request) == "windows" ? ".exe" : ""));
   }
 
-  // kppc's arguments for one cell: its configuration's options and constants (each config a --config,
+  // kpp's arguments for one cell: its configuration's options and constants (each config a --config,
   // in the order the project, the configuration, the target and configure() set them, so that the
   // later one wins), its own, and then the command line's (`kpp --config N=V` overrides them all).
   std::vector<std::string> buildArguments(const fs::path& root, const Description& d, const Program& p, const Request& request)
@@ -206,7 +206,7 @@ namespace projects
     return args;
   }
 
-  // kppc's arguments for a cell's build: buildArguments' with the link left to kpp (buildProgram). The
+  // kpp's arguments for a cell's build: buildArguments' with the link left to kpp (buildProgram). The
   // compile server of a build is the one of these arguments: --stop-server stops it by them too.
   std::vector<std::string> buildCommand(const fs::path& root, const Description& d, const Program& p, const Request& request)
   {
@@ -221,12 +221,12 @@ namespace projects
     std::error_code ec;
     // configure(cell) chose the cell's steps by cell.platform (projectlib's kppCellPlatform): a build for
     // another platform would run them, Windows' cmd steps in a Linux build. They differ when configure
-    // adds a --target itself, or when projectlib's reading of a target name is not kppc's.
+    // adds a --target itself, or when projectlib's reading of a target name is not kpp's.
     if (std::string platform = targetPlatform(p, request); !p.platform.empty() && p.platform != platform)
     {
       fprintf(stderr, "error: %s (%s) is built for %s, but build.kpp's configure(cell) saw cell.platform %s: a --target added in configure(cell) "
               "comes too late for it (give it to the configuration or the target in build()); else projectlib's kppTargetPlatform reads the name otherwise "
-              "than kppc\n",
+              "than kpp\n",
               p.name.c_str(), p.configuration.c_str(), platform.c_str(), p.platform.c_str());
       return 1;
     }
@@ -270,10 +270,10 @@ namespace projects
       cLibraries.push_back(c);
     }
     // The C libraries are checked (each object against its source and the headers its .d names) and
-    // their changed files compiled in one pool, all while kppc builds the program (its front end, code
-    // generation and modules need no library); kppc leaves the link (--defer-link), which runs here
+    // their changed files compiled in one pool, all while kpp builds the program (its front end, code
+    // generation and modules need no library); kpp leaves the link (--defer-link), which runs here
     // once both are done (docs/build.md, "The whole build"). The check alone took 0.13 to 0.19 s of
-    // every build of the game before kppc started (2026-11-05).
+    // every build of the game before kpp started (2026-11-05).
     bool libraryWork = false, librariesBuilt = true;
     double prepareSeconds = 0, librarySeconds = 0;
     std::thread libraries;
@@ -312,17 +312,17 @@ namespace projects
       libraries.join();
     if (!librariesBuilt)
       code = 1;
-    // The link: kppc's command (it marks it pending when it built new objects), also when only a
-    // C library changed (kppc replays an unchanged build, which does not link).
+    // The link: kpp's command (it marks it pending when it built new objects), also when only a
+    // C library changed (kpp replays an unchanged build, which does not link).
     double linkSeconds = 0;
     fs::path pending = exe.string() + ".link.pending", command = exe.string() + ".link.command";
     // Also when what the link writes is gone (the executable, a debug build's .pdb beside it, deleted
-    // while the compile server kept the build): kppc's objects are all there (it replays a build only
+    // while the compile server kept the build): kpp's objects are all there (it replays a build only
     // then), so the link makes them again.
     fs::path pdb = fs::path(exe).replace_extension(".pdb");
     bool linked = fs::exists(exe, ec) && !(p.debugInfo && exe.extension() == ".exe" && !fs::exists(pdb, ec));
-    // And when a file the link takes besides kppc's objects changed: the program's .natvis files and
-    // the libraries it names by path (linkFile, a prebuilt .lib). kppc's replay of an unchanged build
+    // And when a file the link takes besides kpp's objects changed: the program's .natvis files and
+    // the libraries it names by path (linkFile, a prebuilt .lib). kpp's replay of an unchanged build
     // does not look at them, so a .natvis edit alone left the PDB with the old rules (2026-11-05,
     // F's Executable::natvis). Each by size and time, kept in <exe>.link.inputs after a link.
     fs::path inputsFile = exe.string() + ".link.inputs";
@@ -376,7 +376,7 @@ namespace projects
     // Built means written: never "built" for an executable that is not there.
     if (code == 0 && !fs::exists(exe, ec))
     {
-      fprintf(stderr, "error: %s (%s): %s was not written (kppc reported success; no link command to make it)\n", p.name.c_str(),
+      fprintf(stderr, "error: %s (%s): %s was not written (kpp reported success; no link command to make it)\n", p.name.c_str(),
               p.configuration.c_str(), exe.string().c_str());
       code = 1;
     }
@@ -405,11 +405,11 @@ namespace projects
       fprintf(stderr, "error: %s's after-build command failed: %s\n", p.name.c_str(), p.afterBuild.c_str());
       return 1;
     }
-    // KPP_STEP_TIMES=1: where an edit build's time goes besides kppc's and the link's (an environment
+    // KPP_STEP_TIMES=1: where an edit build's time goes besides kpp's and the link's (an environment
     // variable, not an option: an option of its own would give the build a compile server of its own).
     if (getenv("KPP_STEP_TIMES"))
       printf("kpp steps: %.3f s before the build (build.kpp described at %.3f s, its libraries at %.3f s), "
-             "kppc %.3f s (the C libraries' check alongside, %.3f s), link %.3f s, %.3f s else, after-build %.3f s\n",
+             "kpp %.3f s (the C libraries' check alongside, %.3f s), link %.3f s, %.3f s else, after-build %.3f s\n",
              beforeSeconds, describedAt, usesResolvedAt, kppSeconds, prepareSeconds, linkSeconds, seconds - kppSeconds - linkSeconds, since(afterStart));
     return code;
   }
@@ -436,7 +436,7 @@ namespace projects
   }
 
   // kpp --test: the tests of the executables and libraries asked for (all when none is named) in
-  // one configuration, each built and run by kppc --test (run.hpp) with its cell's options and roots,
+  // one configuration, each built and run by kpp --test (run.hpp) with its cell's options and roots,
   // a library's test roots too, and the runner's arguments (after `--`). Every one runs; 1 when one
   // failed.
   int runTests(const fs::path& root, const Description& d, const Configuration& configuration, const std::vector<std::string>& targets,
@@ -533,7 +533,7 @@ namespace projects
            }))
       {
         // Which one it was: its --exe (or build.kpp's description), and the options by which its
-        // arguments differ from the cell's own today (kpp's --verbose is kppc without --quiet).
+        // arguments differ from the cell's own today (kpp's --verbose is kpp without --quiet).
         std::string what = "build.kpp's description", options;
         for (size_t i = 0; i + 1 < args.size(); ++i)
           if (args[i] == "--exe")
@@ -637,7 +637,7 @@ namespace projects
       fprintf(stderr, "error: --run needs one target in one configuration; this names %zu cells\n", chosen.size());
       return 2;
     }
-    // A program for another platform does not run here: an error before the build, as kppc --run's
+    // A program for another platform does not run here: an error before the build, as kpp --run's
     // (run.cpp), never a build that then fails to start an ELF.
     if (Target t = programTarget(*chosen[0], request); request.run && (platformOf(t.os).name != std::string(host::platformName()) || t.arch != hostTarget().arch))
     {

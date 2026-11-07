@@ -1,16 +1,16 @@
-# LLVM's verifier on clang's path (main.cpp's -fverify-intermediate-code): an IR bug of kppc's
+# LLVM's verifier on clang's path (main.cpp's -fverify-intermediate-code): an IR bug of kpp's
 # (KPP_TEST_BROKEN_MODULE=0: module 0 gets a use its definition does not dominate) fails the build
 # with the verifier's message for module 0, in a release build and in a debug build through clang
 # (KPP_BACKEND=clang), for windows (Visual Studio's clang) and windows-gnu (llvm-mingw's,
 # tools\sysroot\llvm-mingw.ps1). Without the flag a release clang (-disable-llvm-verifier) compiled
 # such a module at -O0 and hung on it at -O2, so each build has a time limit. The back end inside
-# kppc has its own check (tests\backend.ps1). run_tests.cmd runs it.
-param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe")
+# kpp has its own check (tests\backend.ps1). run_tests.cmd runs it.
+param([string]$KppExe = "$PSScriptRoot\..\build\kpp.exe")
 $ErrorActionPreference = 'Stop'
 $work = Join-Path $PSScriptRoot '..\build\tests\verifier'
 New-Item -ItemType Directory -Force $work | Out-Null
 $work = (Resolve-Path $work).Path
-$Kppc = (Resolve-Path $Kppc).Path
+$KppExe = (Resolve-Path $KppExe).Path
 $source = (Resolve-Path "$PSScriptRoot\debuginfo\lines.kpp").Path
 $mingw = (& "$PSScriptRoot\..\..\tools\sysroot\llvm-mingw.ps1" | Select-Object -Last 1)
 $failed = @()
@@ -30,7 +30,7 @@ try
       $errors = "$work\$target$mode.errors.txt"
       $info = New-Object System.Diagnostics.ProcessStartInfo
       $info.FileName = 'cmd.exe'
-      $info.Arguments = "/c `"`"$Kppc`" --quiet $mode --target $target --exe `"$work\$target$mode.exe`" `"$source`" > nul 2> `"$errors`"`""
+      $info.Arguments = "/c `"`"$KppExe`" --quiet $mode --target $target --exe `"$work\$target$mode.exe`" `"$source`" > nul 2> `"$errors`"`""
       $info.UseShellExecute = $false
       $p = [System.Diagnostics.Process]::Start($info)
       if (-not $p.WaitForExit(120000))

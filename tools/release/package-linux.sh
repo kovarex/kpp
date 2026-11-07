@@ -1,28 +1,28 @@
 #!/bin/sh
-# Packages a kppc built on Linux as kpp's Linux release (docs/build.md, "Installing"):
-# build/release/kpp-<version>-linux-x86_64/ with kpp (compiler/build/kppc under the name users type),
+# Packages a kpp built on Linux as kpp's Linux release (docs/build.md, "Installing"):
+# build/release/kpp-<version>-linux-x86_64/ with kpp (compiler/build/kpp under the name users type),
 # LICENSE.txt, stdlib/, projectlib/, libraries/ (the official libraries: each one's tracked files) and
-# README.txt; then build/release/kpp-<version>-linux-x86_64.tar.gz. The version and commit are kppc's
-# own (kppc --version), never given by hand. No toolchain inside: a Linux system's clang 19 and lld
-# build and link (KPP_CLANG, else the clang on PATH; docs/design.md, "Stage 5, kppc on a Linux host").
+# README.txt; then build/release/kpp-<version>-linux-x86_64.tar.gz. The version and commit are kpp's
+# own (kpp --version), never given by hand. No toolchain inside: a Linux system's clang 19 and lld
+# build and link (KPP_CLANG, else the clang on PATH; docs/design.md, "Stage 5, kpp on a Linux host").
 # Its smoke test unpacks the tarball outside the repository and runs, there, kpp new and kpp --run
 # (`Hello from kpp`), a project that uses kpp's own json library, and kpp --version (the package's
 # stdlib and libraries named).
 #   sh tools/release/package-linux.sh
 set -eu
 repository=$(cd "$(dirname "$0")/../.." && pwd)
-kppc="$repository/compiler/build/kppc"
-printed=$("$kppc" --version | head -n 1)
+compiler="$repository/compiler/build/kpp"
+printed=$("$compiler" --version | head -n 1)
 version=$(echo "$printed" | sed -n 's/^kpp \([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\(+dirty\)\{0,1\}\), commit \([0-9a-f]\{40\}\)$/\1/p')
 commit=$(echo "$printed" | sed -n 's/^kpp .*, commit \([0-9a-f]\{40\}\)$/\1/p')
-[ -n "$version" ] && [ -n "$commit" ] || { echo "compiler/build/kppc has no version to package (kppc --version: $printed)"; exit 1; }
+[ -n "$version" ] && [ -n "$commit" ] || { echo "compiler/build/kpp has no version to package (kpp --version: $printed)"; exit 1; }
 name="kpp-$version-linux-x86_64"
 out="$repository/build/release"
 kpp="$out/$name"
 echo "packaging kpp $version, commit $commit"
 rm -rf "$kpp" "$out/$name.tar.gz"
 mkdir -p "$kpp"
-cp "$kppc" "$kpp/kpp"
+cp "$compiler" "$kpp/kpp"
 strip "$kpp/kpp" 2>/dev/null || true
 # Apache 2.0's section 4(a): every copy carries the license.
 cp "$repository/LICENSE" "$kpp/LICENSE.txt"

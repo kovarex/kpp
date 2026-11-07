@@ -144,7 +144,7 @@ def one(unit):
         m = re.search(r'^(\d+) tests?, (\d+) failed', output, re.M)
         if m:
             total, failed = int(m.group(1)), int(m.group(2))
-        m = re.search(r'kppc [^:\n]*: (.+?) at (\S+?):(\d+)', output)
+        m = re.search(r'kpp [^:\n]*: (.+?) at (\S+?):(\d+)', output)
         stub = m.group(1) if m else ''
         return suite, code, total, failed, stub, time.time() - start
     finally:

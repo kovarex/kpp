@@ -1,11 +1,11 @@
 // The types a project's build.kpp uses (docs/build.md, "build.kpp"). kpp compiles build.kpp with this
 // library, the standard library and a generated file (kppSetting and kppProjectName: the command
 // line's settings and the project directory's name), and the compile-time interpreter runs it
-// (kppc --run-build, GlobalScope::runBuild): a Project default-constructed, build(project) once,
+// (kpp --run-build, GlobalScope::runBuild): a Project default-constructed, build(project) once,
 // then describe(project), which runs configure(cell) for every cell and whose text kpp reads
 // (compiler/src/Project/). So build.kpp can compute but cannot read files, start processes or call C.
 
-// config:: constants (docs/build.md, "Targets and configurations"), NAME=VALUE in the order set: kppc's
+// config:: constants (docs/build.md, "Targets and configurations"), NAME=VALUE in the order set: kpp's
 // --config, where a later one overrides an earlier one.
 void kppConfig(Vector<String>& to, StringView name, StringView value)
 {
@@ -22,12 +22,12 @@ struct Configuration
 {
   String name;
   String base;               // the configuration it is based on; "": none
-  Optional<bool> optimize;   // clang -O2, ThinLTO and a whole link (kppc --optimize); else -O0, an incremental link
-  Optional<bool> debugInfo;  // line tables, in a PDB (Linux, FreeBSD: DWARF, a release build's in NAME.debug) (kppc --debug-info)
+  Optional<bool> optimize;   // clang -O2, ThinLTO and a whole link (kpp --optimize); else -O0, an incremental link
+  Optional<bool> debugInfo;  // line tables, in a PDB (Linux, FreeBSD: DWARF, a release build's in NAME.debug) (kpp --debug-info)
   Vector<String> configs;    // config:: constants, NAME=VALUE (kppConfig)
-  Vector<String> clangFlags; // kppc's --clang-flags, joined by blanks
+  Vector<String> clangFlags; // kpp's --clang-flags, joined by blanks
   Vector<String> cFlags;     // the C libraries' compiles, after kpp's own flags (clang-cl's, or clang's for windows-gnu)
-  Vector<String> arguments;  // more kppc options, one per entry
+  Vector<String> arguments;  // more kpp options, one per entry
 
   void config(StringView name, bool value) { kppConfig(configs, name, value ? "true" : "false"); }
   void config(StringView name, i32 value) { kppConfig(configs, name, toString(value)); }
@@ -70,7 +70,7 @@ struct Dependency
 };
 
 // A system library for one platform as kpp reads it (systemLibrary(NAME, PLATFORM)): "PLATFORM NAME",
-// the platform's short name (freebsd) as kppc's one table of them gives it (target.hpp, platformNames,
+// the platform's short name (freebsd) as kpp's one table of them gives it (target.hpp, platformNames,
 // which <config> writes as config::platformName).
 String kppPlatformLibrary(StringView name, Platform platform) { return String(config::platformName(platform)) + " " + name; }
 
@@ -87,9 +87,9 @@ struct Executable
   String name;
   Vector<String> roots;     // directories or files, relative to the project's directory or absolute
   Vector<String> excluded;  // files under the roots left out (a second program's Main.kpp)
-  Vector<String> arguments; // more kppc options, one per entry (`--keep-going`)
-  Vector<String> libraries; // what the link takes: a .lib, -lname, a .res (kppc's --lib)
-  Vector<String> cIncludes; // directories the C headers are found in (kppc's --cinclude)
+  Vector<String> arguments; // more kpp options, one per entry (`--keep-going`)
+  Vector<String> libraries; // what the link takes: a .lib, -lname, a .res (kpp's --lib)
+  Vector<String> cIncludes; // directories the C headers are found in (kpp's --cinclude)
   Vector<String> links;     // the project's C libraries it links (Project::cLibrary), by name
   Vector<String> systemLibraries; // systemLibrary()'s: NAME, or PLATFORM NAME (windows, linux, freebsd)
   Vector<String> natvisFiles; // natvis()'s: Visual Studio's rules for the program's own types
@@ -129,14 +129,14 @@ struct Executable
 
   // A C library of the project (Project::cLibrary) by its name.
   void link(StringView name) { links.push_back(name); }
-  // A system library by its name (`gdi32`): kppc's --lib -lgdi32; with a platform, only a build for it
+  // A system library by its name (`gdi32`): kpp's --lib -lgdi32; with a platform, only a build for it
   // (`systemLibrary("ssl", Platform::FreeBSD)`, its --target), as Library::systemLibrary. Each name is
   // linked once with its libraries' (compiler/src/Project/Build.cpp).
   void systemLibrary(StringView name) { systemLibraries.push_back(name); }
   void systemLibrary(StringView name, Platform platform) { systemLibraries.push_back(kppPlatformLibrary(name, platform)); }
   // A .natvis file of the program's own (Visual Studio's display rules for its types), relative to the
-  // project's directory: linked into the PDB of a --debug-info build for Windows with the rules kppc
-  // writes for the standard library (kppc's --natvis; docs/debugging.md, "Values in Visual Studio").
+  // project's directory: linked into the PDB of a --debug-info build for Windows with the rules kpp
+  // writes for the standard library (kpp's --natvis; docs/debugging.md, "Values in Visual Studio").
   void natvis(StringView path) { natvisFiles.push_back(path); }
   // A config:: constant in every configuration of this target, over the project's and the
   // configuration's.
@@ -267,7 +267,7 @@ struct Library
 
   void root(StringView path) { roots.push_back(path); }
   void test(StringView path) { testRoots.push_back(path); }
-  // A system library every program using this one links, its own tests too: kppc's --lib -lNAME
+  // A system library every program using this one links, its own tests too: kpp's --lib -lNAME
   // (`systemLibrary("ssl")`), as Executable::systemLibrary; with a platform, only a build for it
   // (`systemLibrary("ssl", Platform::FreeBSD)`).
   void systemLibrary(StringView name) { systemLibraries.push_back(name); }
@@ -445,7 +445,7 @@ struct Project
     return measurement;
   }
 
-  // A file the link takes for every executable: a .lib, -lname, a .res (kppc's --lib).
+  // A file the link takes for every executable: a .lib, -lname, a .res (kpp's --lib).
   void linkFile(StringView path) { libraries.push_back(path); }
   void cInclude(StringView path) { cIncludes.push_back(path); }
   void cInclude(StringView path, Platform platform) { cIncludes.push_back(kppPlatformLibrary(path, platform)); }
@@ -596,9 +596,9 @@ void kppConfigurationLines(String& out, const Project& project, const Configurat
   kppLines(out, "c-flag", c.cFlags);
 }
 
-// The platform a --target names, as kppc's targetNamed reads it (compiler/src/target.hpp): its names
-// and triples for Linux and FreeBSD, Windows for the rest (windows, windows-gnu; a name kppc does not
-// know fails kppc's build). kpp checks the cell's against its own (Project/Build.cpp), so that this
+// The platform a --target names, as kpp's targetNamed reads it (compiler/src/target.hpp): its names
+// and triples for Linux and FreeBSD, Windows for the rest (windows, windows-gnu; a name kpp does not
+// know fails kpp's build). kpp checks the cell's against its own (Project/Build.cpp), so that this
 // copy cannot go wrong silently.
 Platform kppTargetPlatform(StringView name)
 {
@@ -617,12 +617,12 @@ void kppLastTarget(String& name, const Vector<String>& arguments)
       name = StringView(arguments[i + 1]); // (tests/spec/language/consteval_string_assigned_through_reference)
 }
 
-// A cell's platform (Cell::platform): the last --target of its arguments in kppc's order (the
+// A cell's platform (Cell::platform): the last --target of its arguments in kpp's order (the
 // project's, the configuration's, the target's) and the command line's (kppCommandLineTarget, the
 // generated settings').
 Platform kppCellPlatform(const Project& project, const Configuration& resolved, const Executable& target)
 {
-  String name = kppHostTarget(); // (none given: the host's, kppc's default target)
+  String name = kppHostTarget(); // (none given: the host's, kpp's default target)
   kppLastTarget(name, project.arguments);
   kppLastTarget(name, resolved.arguments);
   kppLastTarget(name, target.arguments);

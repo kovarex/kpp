@@ -1,5 +1,5 @@
 // spec: a new-expression of a class with its own operator new calls it with the size, and a delete-expression calls the class's operator delete after the destructor, a base's when the class inherits it, the sized form with the class's size; `::new` and `::delete` pass them by, and a null pointer's delete calls none ([expr.new] 9, [expr.delete] 10, [class.free]); operator new and operator delete members are static whether or not they say so
-// factorio: found checking C++17's sequencing for new (templates thread): kppc allocated with the global functions whatever the class declared (0 0 3 where C++ has 1 1 3), then refused a class's own; clang's output
+// factorio: found checking C++17's sequencing for new (templates thread): kpp allocated with the global functions whatever the class declared (0 0 3 where C++ has 1 1 3), then refused a class's own; clang's output
 int allocations = 0;
 int deletions = 0;
 struct Counted

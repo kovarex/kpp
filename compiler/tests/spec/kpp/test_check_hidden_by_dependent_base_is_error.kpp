@@ -1,5 +1,5 @@
 // spec: in an instance, a check statement whose class has a dependent base with a member of that name is an error: only the instance knows the base, and check(1, 2) would silently not call it
-// kppc: --tests
+// kpp: --tests
 // error: 'check' in a test is the statement
 class Base
 {

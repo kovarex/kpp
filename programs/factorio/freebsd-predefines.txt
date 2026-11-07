@@ -1,5 +1,5 @@
 // clang's predefined macros for the game's FreeBSD x86-64 build (as the Linux one: -std=c++20, -march=x86-64 -msse2),
-// read by kppc --convert-predefines (convert.cmd's FreeBSD conversions). Made by Visual Studio's clang 19:
+// read by kpp --convert-predefines (convert.cmd's FreeBSD conversions). Made by Visual Studio's clang 19:
 //   clang -target x86_64-unknown-freebsd14.3 -std=c++20 -march=x86-64 -msse2 -dM -E -x c++ NUL
 #define _LP64 1
 #define __ATOMIC_ACQUIRE 2

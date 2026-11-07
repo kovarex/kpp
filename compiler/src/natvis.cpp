@@ -1,6 +1,6 @@
 // The .natvis of a program (natvis.hpp): fixed rules for the library's containers, each checked
 // against the members it reads, and one rule per HashTable instance, whose slots are cast to its
-// entry type by name. Type names are kppc's (TypeTable::toString, qualified), which the PDB's are
+// entry type by name. Type names are kpp's (TypeTable::toString, qualified), which the PDB's are
 // (docs/debugging.md, "Values in Visual Studio": agreed with the code generator).
 #include "natvis.hpp"
 #include "codegen.hpp"
@@ -294,7 +294,7 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
   }
 
   std::string out = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
-                    "<!-- Written by kppc for a build with debug information (docs/debugging.md, \"Values in Visual Studio\"). -->\n"
+                    "<!-- Written by kpp for a build with debug information (docs/debugging.md, \"Values in Visual Studio\"). -->\n"
                     "<AutoVisualizer xmlns=\"http://schemas.microsoft.com/vstudio/debugger/natvis/2010\">\n";
   std::set<std::string> ruleOut; // classes whose rule is left out
   for (const Rule& r : rules)
@@ -342,7 +342,7 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
   for (const DebugClass& c : classes)
     named.emplace(c.type, &c.name);
   // A type's name in the PDB: a class's as the debug information gives it, a pointer's its pointee's
-  // with `*`, the rest kppc's.
+  // with `*`, the rest kpp's.
   std::function<std::string(const Ty*)> typeName = [&](const Ty* t)
   {
     if (auto n = named.find(t); n != named.end())

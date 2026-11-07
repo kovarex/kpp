@@ -1,6 +1,6 @@
 // spec: a generic lambda names a static local of the member function it is written in, a static initialized at the function's first call (with its guard), and an instance (a template calling the lambda twice) calls it first, in a build of 128 modules (and the release suite's): the call operator, emitted where that instance is, reads and writes the one static the member function does (`308 317 338 347 368 377 398 407 428 437 458 467`)
 // factorio: none known; with language/generic_lambda_reads_writers_static_local (64 modules, free functions)
-// kppc: --modules 128
+// kpp: --modules 128
 template<typename F> int twice(F f) { return f(1) + f(1); }
 
 int start(int k) { return 100 + 10 * k; }

@@ -37,7 +37,7 @@ surrogates, where libstdc++'s conversion would throw). docs/stdlib/filesystem.md
 unsigned"). Every size, count, capacity, length, index and position is a `ContainerSize`, unsigned
 and as wide as std's `size_t`: `u64`, the one width (common.md; design.md, "Container sizes are
 u64", with kovarex's rule and H's measurement of u32 against u64). From 2026-11-01 until that
-decision the sizes were u32, and `kppc --config sizeBits=64` made them u64; the switch is gone and
+decision the sizes were u32, and `kpp --config sizeBits=64` made them u64; the switch is gone and
 the option is an error. String is 32 bytes. What stays signed is what can be negative: differences
 of positions (`difference_type`, iterator subtraction), iterator offsets, comparison results. The
 only deviation left is the limit (common.md): maxContainerSize for every element type, where std's

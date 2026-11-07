@@ -1,4 +1,4 @@
-# Patches a scratch copy of the kppc sources with a per-template profile (front-end exclusive time and
+# Patches a scratch copy of the kpp sources with a per-template profile (front-end exclusive time and
 # typed expressions per template; codegen emit time per template), written at the end of a run to
 # %KPROF_OUT% (default kprof.txt) as a tab-separated table. Never apply it to the repository's sources.
 # Usage: copy compiler\ somewhere, then python -X utf8 -I prof_patch.py <copy>\src and build the copy

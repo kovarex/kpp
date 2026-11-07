@@ -1,4 +1,4 @@
-# Statistics of kppc's textual IR: function definitions grouped by the template (or class) they belong
+# Statistics of kpp's textual IR: function definitions grouped by the template (or class) they belong
 # to, their size, and the call sites of each UniquePtr member.
 # Usage: python -X utf8 -I ir_stats.py full.ll [topN]
 import sys, re, collections

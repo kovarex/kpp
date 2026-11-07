@@ -1,5 +1,5 @@
 // spec: --explicit-by-default (design.md "Explicit by default", the flip behind a flag until the code builds with it): what is marked `implicit` converts, an `implicit(cond)` while cond holds; direct-initialization takes an unmarked constructor, and so do `return {x, y};` and `Color c = {1, 0, 0};` (two or more values); `{}` takes a default constructor and a copy an unmarked copy constructor (never conversions); a contextual conversion takes an unmarked `operator bool`; a switch a marked conversion; an inherited constructor keeps its base's mark; class template argument deduction by copy takes an implicit constructor; a function argument's braces name their type (`Agg{20, 30}`) unless the parameter is an InitializerList, inside whose braces nested ones name none (rule 1)
-// kppc: --explicit-by-default --no-std
+// kpp: --explicit-by-default --no-std
 struct Meters
 {
   int value;

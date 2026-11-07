@@ -1,5 +1,5 @@
 // clang's predefined macros for the game's Linux x86-64 build (fbuild.bff: -std=c++20, -march=x86-64 -msse2), read by
-// kppc --convert-predefines (convert.cmd's Linux conversions). Made by Visual Studio's clang 19:
+// kpp --convert-predefines (convert.cmd's Linux conversions). Made by Visual Studio's clang 19:
 //   clang -target x86_64-linux-gnu -std=c++20 -march=x86-64 -msse2 -dM -E -x c++ NUL
 #define _GNU_SOURCE 1
 #define _LP64 1

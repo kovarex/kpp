@@ -18,7 +18,7 @@ param([string]$Part = '', [int]$Jobs = 0, [switch]$Full)
 $ErrorActionPreference = 'Stop'
 $compiler = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 Set-Location $compiler
-$kppc = 'build\kppc.exe'
+$kpp = 'build\kpp.exe'
 $logs = Join-Path $compiler 'build\tests\logs'
 # What an earlier run's deletion left (it was still deleting, or stopped).
 foreach ($d in @(Get-ChildItem -Directory 'build\tests.old-*' -ErrorAction SilentlyContinue)) { cmd /c "rd /s /q `"$($d.FullName)`" 2> nul" }
@@ -41,7 +41,7 @@ function Add([string]$name, [string[]]$command, [int]$part = 1, [double]$seconds
 {
   $checks.Add([pscustomobject]@{ Name = $name; Command = $command; Part = $part; Seconds = $seconds; Skip = $skip; Counted = $counted; Kind = $kind; Note = $note; After = $after; FullOnly = $fullOnly })
 }
-function PsCheck([string]$script) { return @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $script, '-Kppc', $kppc) }
+function PsCheck([string]$script) { return @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $script, '-KppExe', $kpp) }
 function Inline([string[]]$arguments) { return @('cmd', '/c', 'tests\inline.cmd') + $arguments }
 
 # Part 1: the end-to-end programs (tests\run\*.kpp), then the checks.
@@ -54,9 +54,9 @@ Add 'missing input' (Inline @('missing')) -seconds 1
 Add 'runbuild' (Inline @('runbuild')) -seconds 2
 Add 'clashes allowed' (Inline @('allowed')) -seconds 2
 Add 'rejected module' (Inline @('rejected')) -seconds 2
-# The same through LLVM's back end in kppc (tests\backend.ps1), when this kppc has it: an IR bug (the
+# The same through LLVM's back end in kpp (tests\backend.ps1), when this kpp has it: an IR bug (the
 # verifier) or what the back end rejects (LLVM's diagnostics) fails its module with LLVM's message.
-Add 'LLVM back end' (PsCheck 'tests\backend.ps1') -seconds 5 -skip @{ 3 = 'LLVM back end (none in this kppc)' }
+Add 'LLVM back end' (PsCheck 'tests\backend.ps1') -seconds 5 -skip @{ 3 = 'LLVM back end (none in this kpp)' }
 Add 'verifier' (PsCheck 'tests\verifier.ps1') -seconds 17
 Add 'stubs' (PsCheck 'tests\stubs.ps1') -seconds 7
 Add 'static constants' (PsCheck 'tests\staticconstants.ps1') -seconds 1
@@ -94,7 +94,7 @@ Add 'lower case' @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-F
 # kpp's code style (docs/code-style.md): the empty lines and line ends of the kpp code in the repository,
 # what `python tools\style\kppstyle.py --fix` corrects.
 Add 'code style' @('python', '-I', '..\tools\style\kppstyle.py', '--fixable', '--tracked', '..\stdlib', '..\libraries', '..\programs', '..\projectlib', '..\kppnet') -seconds 2 -note 'FAIL code style: python tools\style\kppstyle.py --fix PATH corrects it (docs/code-style.md)'
-# Code packages (tests\packages.ps1, docs/design.md): kppc --packages lists each directory as a package,
+# Code packages (tests\packages.ps1, docs/design.md): kpp --packages lists each directory as a package,
 # with its README.md's first paragraph and the names each file declares.
 Add 'packages' (PsCheck 'tests\packages.ps1') -seconds 1
 Add 'lsp' (PsCheck 'tests\lsp.ps1') -seconds 9
@@ -102,7 +102,7 @@ Add 'lsp' (PsCheck 'tests\lsp.ps1') -seconds 9
 # (tools\release\publish-test.ps1): every one tried again, the release whole.
 Add 'publish' @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', '..\tools\release\publish-test.ps1') -seconds 2
 $skipped = New-Object System.Collections.Generic.List[string]
-if (Get-Command node -ErrorAction SilentlyContinue) { Add 'lsp-smoke' @('node', '..\tools\vscode\test\lsp-smoke.js', $kppc, '--lsp') -seconds 3 }
+if (Get-Command node -ErrorAction SilentlyContinue) { Add 'lsp-smoke' @('node', '..\tools\vscode\test\lsp-smoke.js', $kpp, '--lsp') -seconds 3 }
 else { $skipped.Add('lsp-smoke (no Node.js)') }
 Add 'incremental' (PsCheck 'tests\incremental.ps1') -seconds 108 -fullOnly $true -note "FAIL incremental: the compile server's build differs from a new process's"
 $libraries = @(Get-ChildItem -Directory '..\libraries' | Sort-Object Name | ForEach-Object { "library $($_.Name)" })

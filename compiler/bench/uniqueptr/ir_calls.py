@@ -1,4 +1,4 @@
-# Call sites of UniquePtr members in kppc's IR, by member signature with the class argument written
+# Call sites of UniquePtr members in kpp's IR, by member signature with the class argument written
 # as T (and a converting member's own argument as U). Usage: python -X utf8 -I ir_calls.py full.ll
 import sys, re, collections
 

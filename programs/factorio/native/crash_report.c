@@ -64,7 +64,7 @@ static void frame(HANDLE process, DWORD64 address, int index)
   else
     snprintf(text, sizeof text, "  %2d  %s+0x%llx", index, name, (unsigned long long)(address - (DWORD64)module));
   say(text);
-  /* The source line, when the objects carry line tables (kppc --debug-info, docs/debugging.md); a
+  /* The source line, when the objects carry line tables (kpp --debug-info, docs/debugging.md); a
      caller's address is the return address, so its line is the one of the byte before (the call). */
   IMAGEHLP_LINE64 line;
   memset(&line, 0, sizeof line);

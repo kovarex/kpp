@@ -24,9 +24,9 @@ bool isCSource(const std::filesystem::path& path)
 void usage(FILE* out)
 {
   fprintf(out,
-          "usage: kppc [options] <file-or-dir>...\n"
+          "usage: kpp [options] <file-or-dir>...\n"
           "       kpp [targets] [configurations] [options] in a project's directory (build.kpp: --run ARGS,\n"
-          "       --test, --set NAME=VALUE, --verbose (kppc's report of each build) and the options below;\n"
+          "       --test, --set NAME=VALUE, --verbose (kpp's report of each build) and the options below;\n"
           "       kpp new, kpp options, kpp measure [--rounds N] [--compare DIR]; docs/build.md)\n"
           "  --version     the version and commit, the compiler, the toolchain a build takes, the standard library\n"
           "  --help        this list\n"
@@ -68,7 +68,7 @@ void usage(FILE* out)
           "  --msvc-diagnostics  diagnostics at path(line) instead of path:line, the form Visual Studio's\n"
           "                Error List reads (docs/build.md)\n"
           "  --diagnostic-columns  the column too where it is known: path:line:column, path(line,column)\n"
-          "                (`kppc --lsp`, docs/ide.md)\n"
+          "                (`kpp --lsp`, docs/ide.md)\n"
           "  --emit-llvm F write LLVM IR for the program to F\n"
           "  --exe F       compile the program to the executable F (needs clang)\n"
           "  --check       every error a build reports, codegen's included, writing nothing\n"
@@ -109,7 +109,7 @@ void usage(FILE* out)
           "                definition) is a stub that prints its name and line and aborts when called, so the\n"
           "                program links; the errors are still reported and the exit code is still 1\n"
           "  --no-inline   keep every call a call: no trivial function is emitted in its caller\n"
-          "                (docs/compile-speed.md, \"Design: inlining trivial functions in kppc\")\n"
+          "                (docs/compile-speed.md, \"Design: inlining trivial functions in kpp\")\n"
           "  --clang-flags F  more flags clang compiles the modules with (`-fsanitize=address`; link with\n"
           "                `--lib -fsanitize=address`); they are part of each module's cache key\n"
           "  --incremental-link  a debug build links incrementally (link.exe /INCREMENTAL): the next link redoes\n"
@@ -144,7 +144,7 @@ void usage(FILE* out)
           "                (docs/compile-speed.md, \"The compile server: protocol\")\n"
           "  --stop-server stop the compile server of the other arguments\n"
           "  --stop-all-servers  alone: stop every compile server of this user (a server also exits by\n"
-          "                itself once the kppc it was started from changes, or after an idle hour)\n"
+          "                itself once the kpp it was started from changes, or after an idle hour)\n"
           "  --generate-visual-studio-files, --generate-vs-code-files  write project files for the build the\n"
           "                other arguments describe, debug and release, listing every source file, instead of\n"
           "                building (build\\visual-studio\\, .vscode\\; docs/build.md, \"Project files for an IDE\")\n"
@@ -193,7 +193,7 @@ int printVersion()
     else
       printf("toolchain msvc: %s (Visual Studio's: --toolchain msvc)\n", msvc.c_str());
   }
-  printf("back end: %s\n", inProcessBackend() ? "LLVM's, in kppc, for a debug build of windows or windows-gnu (clang otherwise)" : "clang's");
+  printf("back end: %s\n", inProcessBackend() ? "LLVM's, in kpp, for a debug build of windows or windows-gnu (clang otherwise)" : "clang's");
   // The sysroots --target freebsd and linux take without --sysroot (FreeBSD's always shown: a release
   // brings it; Linux's when there is one).
   for (const char* name : {"freebsd-x86_64", "linux-x86_64"})

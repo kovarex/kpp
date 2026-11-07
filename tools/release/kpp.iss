@@ -8,7 +8,7 @@
 ; Code extension); when Visual Studio 2022 17.14 or later is found (VSIXInstaller), the Visual Studio
 ; extension kpp-visualstudio.vsix likewise. kpp needs nothing of Visual Studio's, so nothing is
 ; required.
-; Its version is kpp's own, which package.ps1 passes (kppc --version; docs/build.md, "Versions").
+; Its version is kpp's own, which package.ps1 passes (kpp --version; docs/build.md, "Versions").
 #ifndef Version
   #error kpp.iss is built by package.ps1, which passes kpp's version (/DVersion)
 #endif

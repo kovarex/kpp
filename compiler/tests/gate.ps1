@@ -15,15 +15,15 @@ Set-Location $compiler
 $out = Join-Path $compiler 'build\gate'
 New-Item -ItemType Directory -Force $out | Out-Null
 $started = Get-Date
-# A kppc older than its sources tests something else than the change: C's gate went red on one
-# (2026-11-05). The gate does not build it (a thread may have put a kppc variant there on purpose):
+# A kpp older than its sources tests something else than the change: C's gate went red on one
+# (2026-11-05). The gate does not build it (a thread may have put a kpp variant there on purpose):
 # it stops and says so.
-$kppc = Join-Path $compiler 'build\kppc.exe'
-if (-not (Test-Path $kppc)) { "gate: FAILED (no $kppc`: run compiler\build.cmd)"; exit 1 }
+$kpp = Join-Path $compiler 'build\kpp.exe'
+if (-not (Test-Path $kpp)) { "gate: FAILED (no $kpp`: run compiler\build.cmd)"; exit 1 }
 $newest = Get-ChildItem -Recurse -File (Join-Path $compiler 'src'), (Join-Path $compiler 'CMakeLists.txt') | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-if ($newest.LastWriteTime -gt (Get-Item $kppc).LastWriteTime)
+if ($newest.LastWriteTime -gt (Get-Item $kpp).LastWriteTime)
 {
-  "gate: FAILED (build\kppc.exe, $((Get-Item $kppc).LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss')), is older than $($newest.FullName.Substring($compiler.Length + 1)), $($newest.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss')): run compiler\build.cmd first)"
+  "gate: FAILED (build\kpp.exe, $((Get-Item $kpp).LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss')), is older than $($newest.FullName.Substring($compiler.Length + 1)), $($newest.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss')): run compiler\build.cmd first)"
   exit 1
 }
 function Start-Logged([string]$command, [string]$log)

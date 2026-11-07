@@ -1,8 +1,8 @@
 #pragma once
 // Where each line of a text starts, for the line and column of an offset (a binary search): the one
-// copy of what codegen's diagnostics, the resolver's locations and kppc --lsp each worked out on their
+// copy of what codegen's diagnostics, the resolver's locations and kpp --lsp each worked out on their
 // own (design.md 24). Lines and columns counted from 1 (line, column), or the line's index from 0
-// (index, kppc --lsp's positions); a column in bytes.
+// (index, kpp --lsp's positions); a column in bytes.
 #include <algorithm>
 #include <cstddef>
 #include <string_view>

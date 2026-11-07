@@ -1,5 +1,5 @@
 // spec: `int g(int);` in a body is no function (design.md 22: a body declares no function; `T x(...)` is a variable) and its parenthesised type no value: an error
-// found by thread A's comparison with clang (2026-11-06): kppc crashed
+// found by thread A's comparison with clang (2026-11-06): kpp crashed
 // error: body_declares_no_function.kpp:6: error: a type where a value is expected
 int main()
 {

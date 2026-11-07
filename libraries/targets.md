@@ -1,7 +1,7 @@
 # The libraries on FreeBSD and Linux
 
 How far the official libraries and kppsite (kppnet/site) are from running on FreeBSD 14.3 (kpp.net's
-host) and Linux, 2026-11-04, kppc at master 6167873d (stage 3's exceptions and stage 4's POSIX
+host) and Linux, 2026-11-04, kpp at master 6167873d (stage 3's exceptions and stage 4's POSIX
 layer in). Each project's tests were built with `kpp --no-server --target T --sysroot S --test` in
 its directory (the sysroots of tools\sysroot\freebsd.ps1 and linux-from-wsl.sh) and each test then
 run on its own (`--list`, then `--filter NAME`): Linux in WSL (Ubuntu 24.04, glibc 2.39), FreeBSD in

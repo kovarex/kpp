@@ -1,5 +1,5 @@
 // spec: a function template's first declaration decides too: its body may not add test
-// kppc: --tests
+// kpp: --tests
 // error: is test here and its first declaration is not
 template<typename T> void requirePositive(T value);
 

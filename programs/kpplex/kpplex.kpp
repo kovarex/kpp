@@ -1,7 +1,7 @@
 // kpplex: the kpp lexer, written in kpp. The first real program.
 //
 // Lexes every .cpp/.hpp/.h file under the directories given on the command line and prints the
-// same counts as `kppc --lex-only`: files, bytes, lines, tokens, distinct identifiers, errors,
+// same counts as `kpp --lex-only`: files, bytes, lines, tokens, distinct identifiers, errors,
 // and the time spent lexing. It is the C++ lexer in compiler/src/lexer.cpp, line for line where
 // the language allows, so that the two can be timed against each other on the Factorio corpus
 // (see docs/prototype-results.md). Single-threaded.

@@ -1,5 +1,5 @@
 // UnitTest++'s comparisons (Checks.h, Checks.cpp) as plain functions, for the checks the conversion
-// writes as `require(UnitTest::isClose(a, e, t))` (kppc --convert-native-tests, design.md 8.7): a
+// writes as `require(UnitTest::isClose(a, e, t))` (kpp --convert-native-tests, design.md 8.7): a
 // failed check shows a call's argument values, so these only answer.
 
 namespace UnitTest

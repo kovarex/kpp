@@ -1,5 +1,5 @@
 // spec: a read of a volatile object happens each time it is written, in an optimized build too ([intro.abstract] 6): through its name, a pointer, a reference, a member of a volatile object, an element, a volatile member. Each loop ends when the other thread's write is seen; a read moved out of the loop leaves it at once, its count at the limit
-// kppc: --release
+// kpp: --release
 extern "C" int printf(const char* format, ...);
 class Box
 {

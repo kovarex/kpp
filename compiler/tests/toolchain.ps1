@@ -1,16 +1,16 @@
 # --toolchain (docs/build.md, "The toolchain"; design.md 17): an installation's own toolchain (bin\
 # next to kpp.exe: llvm-mingw, building Windows' GNU dialect, windows-gnu) is its default, Visual
 # Studio's is --toolchain msvc. Here an installation made of llvm-mingw (tools\sysroot\llvm-mingw.ps1,
-# downloaded once into build\llvm-mingw) with this kppc, stdlib\ and projectlib\ put in its root and
+# downloaded once into build\llvm-mingw) with this kpp, stdlib\ and projectlib\ put in its root and
 # taken out again. Its programs must import nothing a Windows without Visual Studio lacks.
 # run_tests.cmd runs it.
-param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe")
+param([string]$KppExe = "$PSScriptRoot\..\build\kpp.exe")
 $ErrorActionPreference = 'Stop'
 $work = Join-Path $PSScriptRoot '..\build\tests\toolchain'
 if (Test-Path $work) { cmd /c rd /s /q "$work" }
 New-Item -ItemType Directory -Force $work | Out-Null
 $work = (Resolve-Path $work).Path
-$Kppc = (Resolve-Path $Kppc).Path
+$KppExe = (Resolve-Path $KppExe).Path
 $failed = 0
 function Fail([string]$what) { "FAIL toolchain: $what"; $script:failed++ }
 Remove-Item Env:KPP_CLANG -ErrorAction SilentlyContinue
@@ -32,8 +32,8 @@ function Run([string]$exe, [string[]]$arguments)
   return [pscustomobject]@{ exit = $p.ExitCode; text = (($out + $errTask.Result) -replace "`r", '') }
 }
 
-# A clang older than kppc's IR needs (KPP_CLANG naming one that says it is clang 18, as Ubuntu 24.04's
-# default is): kppc stops before anything compiles and says which, never an undefined
+# A clang older than kpp's IR needs (KPP_CLANG naming one that says it is clang 18, as Ubuntu 24.04's
+# default is): kpp stops before anything compiles and says which, never an undefined
 # llvm.eh.typeid.for.p0 at the link (thread E's Linux host, 2026-11-06).
 $oldClang = Join-Path $work 'clang18.cmd'
 Set-Content -Encoding ascii $oldClang "@echo off`r`necho Ubuntu clang version 18.1.3 (1ubuntu1)`r`necho Target: x86_64-pc-linux-gnu"
@@ -41,14 +41,14 @@ Set-Content -Encoding ascii "$work\old.kpp" "int main() { return 0; }"
 $env:KPP_CLANG = $oldClang
 try
 {
-  $r = Run $Kppc @('--exe', "$work\old.exe", "$work\old.kpp")
-  if ($r.exit -ne 2 -or $r.text -notmatch [regex]::Escape($oldClang) + ' is clang 18, and kppc''s IR needs clang 19 or later' -or (Test-Path "$work\old.exe")) { Fail "a clang 18 named by KPP_CLANG was not refused: exit $($r.exit), $($r.text)" }
+  $r = Run $KppExe @('--exe', "$work\old.exe", "$work\old.kpp")
+  if ($r.exit -ne 2 -or $r.text -notmatch [regex]::Escape($oldClang) + ' is clang 18, and kpp''s IR needs clang 19 or later' -or (Test-Path "$work\old.exe")) { Fail "a clang 18 named by KPP_CLANG was not refused: exit $($r.exit), $($r.text)" }
 }
 finally { Remove-Item Env:KPP_CLANG -ErrorAction SilentlyContinue }
 
 $inst = (& "$PSScriptRoot\..\..\tools\sysroot\llvm-mingw.ps1" | Select-Object -Last 1)
 foreach ($d in 'stdlib', 'projectlib') { if (Test-Path "$inst\$d") { cmd /c rd /s /q "$inst\$d" } }
-Copy-Item $Kppc "$inst\kpp.exe" -Force
+Copy-Item $KppExe "$inst\kpp.exe" -Force
 Copy-Item -Recurse "$PSScriptRoot\..\..\stdlib" "$inst\stdlib"
 Copy-Item -Recurse "$PSScriptRoot\..\..\projectlib" "$inst\projectlib"
 
@@ -76,10 +76,10 @@ int main()
 '@
 
 # Builds probe.kpp with `kpp` and runs it: the report's toolchain line, the output, the exit codes.
-function Probe([string]$kpp, [string]$label, [string[]]$more)
+function Probe([string]$compiler, [string]$label, [string[]]$more)
 {
   $exe = "$work\$label.exe"
-  $build = Run $kpp (@('--std', "$inst\stdlib") + $more + @('--exe', $exe, "$work\probe.kpp"))
+  $build = Run $compiler (@('--std', "$inst\stdlib") + $more + @('--exe', $exe, "$work\probe.kpp"))
   $out = if ($build.exit -eq 0 -and (Test-Path $exe)) { (Run $exe @()).text.Trim() } else { '' }
   $line = ($build.text -split "`n" | Where-Object { $_ -like 'toolchain:*' } | Select-Object -First 1)
   return [pscustomobject]@{ code = $build.exit; out = $out; line = "$line".Trim(); report = $build.text; exe = $exe }
@@ -112,13 +112,13 @@ try
   $r = Probe "$inst\kpp.exe" 'preferbundled' @('--toolchain', 'bundled,msvc')
   if ($r.code -ne 0 -or $r.out -ne 'toolchain 9') { Fail "--toolchain bundled,msvc did not build: $($r.report)" }
   elseif ($r.line -notlike "toolchain: $inst\bin\clang.exe (bundled, windows-gnu*") { Fail "--toolchain bundled,msvc in an installation is not its bin\: '$($r.line)'" }
-  $r = Probe $Kppc 'nextone' @('--toolchain', 'bundled,msvc')
+  $r = Probe $KppExe 'nextone' @('--toolchain', 'bundled,msvc')
   if ($r.code -ne 0 -or $r.out -ne 'toolchain 9') { Fail "--toolchain bundled,msvc without bin\ did not build with Visual Studio's clang: $($r.report)" }
   elseif ($r.line -notlike "toolchain: *(Visual Studio's, windows*") { Fail "--toolchain bundled,msvc without bin\ is not Visual Studio's clang: '$($r.line)'" }
-  $r = Probe $Kppc 'badlist' @('--toolchain', 'msvc,gcc')
+  $r = Probe $KppExe 'badlist' @('--toolchain', 'msvc,gcc')
   if ($r.code -ne 2 -or $r.report -notmatch 'takes bundled, msvc or a list') { Fail "--toolchain msvc,gcc was not an error: exit $($r.code), $($r.report)" }
 
-  $r = Probe $Kppc 'none' @('--toolchain', 'bundled')
+  $r = Probe $KppExe 'none' @('--toolchain', 'bundled')
   if ($r.code -ne 2 -or $r.report -notmatch '--toolchain bundled: this installation has no') { Fail "--toolchain bundled without bin\ was not an error: exit $($r.code), $($r.report)" }
 
   $r = Probe "$inst\kpp.exe" 'incremental' @('--incremental-link')
@@ -127,7 +127,7 @@ try
   $r = Probe "$inst\kpp.exe" 'msvcdialect' @('--target', 'windows')
   if ($r.code -ne 2 -or $r.report -notmatch 'needs Visual Studio') { Fail "--target windows with the bundled toolchain was not an error: exit $($r.code), $($r.report)" }
 
-  $r = Probe $Kppc 'gnuvs' @('--target', 'windows-gnu')
+  $r = Probe $KppExe 'gnuvs' @('--target', 'windows-gnu')
   if ($r.code -ne 2 -or $r.report -notmatch 'needs the bundled toolchain') { Fail "--target windows-gnu with Visual Studio's clang was not an error: exit $($r.code), $($r.report)" }
 
   # The projects are built as from an MSYS2 shell (MSYSTEM, another clang first on PATH: here a
@@ -163,7 +163,7 @@ void build(Project& project)
 '@
     $run = Run "$inst\kpp.exe" @('--no-server', '--run')
     if ($run.exit -ne 0 -or $run.text -notmatch 'Hello from kpp 42') { Fail "kpp new with a C library, kpp --run did not run: $($run.text)" }
-    # Through the compile server: a C library's change alone (the program's kpp source the same, so kppc
+    # Through the compile server: a C library's change alone (the program's kpp source the same, so kpp
     # replays its build and links nothing) is linked in, by kpp's link after the libraries.
     $run = Run "$inst\kpp.exe" @('--run')
     Set-Content -Encoding ascii 'libs\plus\plus.c' "#ifdef _MSC_VER`n#error the bundled toolchain builds the GNU dialect`n#endif`nint plus_one(int value) { return value + PLUS + 1; }"
@@ -277,16 +277,16 @@ void build(Project& project)
       if ($r.code -ne 0 -or $r.line -notlike "toolchain: $real\VC\Tools\Llvm\x64\bin\clang.exe*") { Fail "--toolchain msvc did not take a prerelease Visual Studio's clang: '$($r.line)' $($r.report)" }
     }
     $env:KPP_VSWHERE = $noVs
-    # The repository's kppc (no toolchain of its own) without Visual Studio's clang: the same, said for it.
-    $r = Probe $Kppc 'novs' @()
-    if ($r.code -ne 2 -or $r.report -notmatch 'has no toolchain of its own.*none is installed') { Fail "a kppc without a toolchain and without Visual Studio: exit $($r.code), $($r.report)" }
+    # The repository's kpp (no toolchain of its own) without Visual Studio's clang: the same, said for it.
+    $r = Probe $KppExe 'novs' @()
+    if ($r.code -ne 2 -or $r.report -notmatch 'has no toolchain of its own.*none is installed') { Fail "a kpp without a toolchain and without Visual Studio: exit $($r.code), $($r.report)" }
     # Without Visual Studio, a list goes on to the bundled toolchain (and without that too, it says
     # none of them is here): a project's build.kpp asking for msvc,bundled builds with it, and its
     # debug build links whole (kpp adds no --incremental-link, which the bundled toolchain refuses).
     $r = Probe "$inst\kpp.exe" 'novsbundled' @('--toolchain', 'msvc,bundled')
     if ($r.code -ne 0 -or $r.out -ne 'toolchain 9') { Fail "--toolchain msvc,bundled without Visual Studio did not build with the bundled toolchain: $($r.report)" }
     elseif ($r.line -notlike "toolchain: $inst\bin\clang.exe (bundled, windows-gnu*") { Fail "--toolchain msvc,bundled without Visual Studio is not the bundled toolchain: '$($r.line)'" }
-    $r = Probe $Kppc 'novsnone' @('--toolchain', 'msvc,bundled')
+    $r = Probe $KppExe 'novsnone' @('--toolchain', 'msvc,bundled')
     if ($r.code -ne 2 -or $r.report -notmatch 'none of them is here') { Fail "--toolchain msvc,bundled with neither was not an error: exit $($r.code), $($r.report)" }
     Push-Location $project
     try

@@ -7,7 +7,7 @@
 # run_tests.cmd runs it. Its sections run at once, each in a process of its own (-Section NAME runs
 # one): their projects are directories of their own under $work, so the test takes its longest
 # section's time, not their sum (kovarex, 2026-11-04: the gate must be fast).
-param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe", [string]$Section = '')
+param([string]$KppExe = "$PSScriptRoot\..\build\kpp.exe", [string]$Section = '')
 $ErrorActionPreference = 'Stop'
 $work = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\build\tests\project'))
 # The compile servers of this test's projects, stopped at its start and its end (testservers.ps1).
@@ -19,13 +19,13 @@ if (-not $Section)
   if (Test-Path $work) { Remove-Item -Recurse -Force $work }
   New-Item -ItemType Directory -Force $work | Out-Null
 }
-$Kppc = (Resolve-Path $Kppc).Path
+$KppExe = (Resolve-Path $KppExe).Path
 $failed = 0
 function Fail([string]$what) { Write-Output "FAIL project: $what"; $script:failed++ }
 function Kpp([string[]]$arguments)
 {
   $ErrorActionPreference = 'Continue'
-  $output = & $Kppc @arguments 2>&1 | ForEach-Object { "$_" }
+  $output = & $KppExe @arguments 2>&1 | ForEach-Object { "$_" }
   $script:code = $LASTEXITCODE
   $ErrorActionPreference = 'Stop'
   return $output
@@ -41,7 +41,7 @@ if (-not $Section)
   {
     $out = Join-Path $work "section-$name.out.txt"
     $err = Join-Path $work "section-$name.err.txt"
-    $p = Start-Process powershell -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSCommandPath`"", '-Kppc', "`"$Kppc`"", '-Section', $name `
+    $p = Start-Process powershell -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSCommandPath`"", '-KppExe', "`"$KppExe`"", '-Section', $name `
            -RedirectStandardOutput $out -RedirectStandardError $err -PassThru -NoNewWindow
     $null = $p.Handle # (so that ExitCode is kept)
     [pscustomobject]@{ name = $name; process = $p; out = $out; err = $err }
@@ -127,7 +127,7 @@ if (Run 'basic')
     # (exit 2). The pipe a Cygwin or MSYS terminal gives its programs (Git Bash's mintty:
     # \msys-<hash>-pty0-from-master) is a terminal: the menu asks, and 0 quits.
     $ErrorActionPreference = 'Continue'
-    $output = ('' | & $Kppc 2>&1 | ForEach-Object { "$_" }) -join "`n"
+    $output = ('' | & $KppExe 2>&1 | ForEach-Object { "$_" }) -join "`n"
     $code = $LASTEXITCODE
     $ErrorActionPreference = 'Stop'
     if ($code -ne 2 -or $output -notmatch 'kpp debug' -or $output -notmatch 'nothing was asked') { Fail "kpp alone, input from a pipe: exit $code`n$output" }
@@ -136,7 +136,7 @@ if (Run 'basic')
     $connected = $pipe.WaitForConnectionAsync()
     $info = New-Object Diagnostics.ProcessStartInfo
     $info.FileName = "$env:SystemRoot\System32\cmd.exe"
-    $info.Arguments = "/d /s /c `"`"$Kppc`" < \\.\pipe\$pipeName`""
+    $info.Arguments = "/d /s /c `"`"$KppExe`" < \\.\pipe\$pipeName`""
     $info.WorkingDirectory = (Get-Location).Path
     $info.UseShellExecute = $false
     $info.RedirectStandardOutput = $true
@@ -226,7 +226,7 @@ void build(Project& project)
 
     $good = Get-Content 'build.kpp' -Raw
     # A configuration with C flags of its own and whole-program optimization, as factorio-in-kpp's final
-    # (build.kpp's cFlag, kppc --lto full): its C library is compiled with them (-DPLUS=2 after the
+    # (build.kpp's cFlag, kpp --lto full): its C library is compiled with them (-DPLUS=2 after the
     # library's PLUS=1: tests 43) into a directory of those flags', as bitcode (-flto) that the link
     # optimizes with the program's modules as one; the release build's objects stay where they are,
     # untouched. Every C library is compiled without stack cookies (/GS-, as Factorio's C++ builds).
@@ -381,9 +381,9 @@ void build(Project& project)
     Pop-Location
     $output = (Kpp @('--no-server')) -join "`n"
     if ($code -eq 0 -or $output -notmatch 'the library greet needs kpp 99\.0\.0 or later') { Fail "a minimum kpp above this one: exit $code`n$output" }
-    # Against this kpp's own version (kppc --version; 0.2.N+dirty counts as 0.2.N): exactly it builds,
+    # Against this kpp's own version (kpp --version; 0.2.N+dirty counts as 0.2.N): exactly it builds,
     # its next patch is refused. (The version compared was a constant, 0.1.0, until 2026-11-03.)
-    if ((& $Kppc --version | Select-Object -First 1) -match '^kpp (\d+)\.(\d+)\.(\d+)')
+    if ((& $KppExe --version | Select-Object -First 1) -match '^kpp (\d+)\.(\d+)\.(\d+)')
     {
       $own = "$($Matches[1]).$($Matches[2]).$($Matches[3])"
       $next = "$($Matches[1]).$($Matches[2]).$([int]$Matches[3] + 1)"
@@ -394,7 +394,7 @@ void build(Project& project)
       $output = (Kpp @('--no-server')) -join "`n"
       if ($code -eq 0 -or $output -notmatch "the library greet needs kpp $([regex]::Escape($next)) or later, and this is kpp $([regex]::Escape($own))") { Fail "a minimum kpp one patch above this one ($next): exit $code`n$output" }
     }
-    else { Fail "kppc --version names no version: $(& $Kppc --version | Select-Object -First 1)" }
+    else { Fail "kpp --version names no version: $(& $KppExe --version | Select-Object -First 1)" }
     Set-Content 'libraries\greet\build.kpp' $greet
     Set-Content 'build.kpp' "void build(Project& project)`n{`n  project.executable(`"app`", {`"src`"});`n  project.use(`"greet`", `"0.3`");`n}"
     $output = (Kpp @('--no-server')) -join "`n"
@@ -403,7 +403,7 @@ void build(Project& project)
     $output = (Kpp @('--no-server')) -join "`n"
     if ($code -eq 0 -or $output -notmatch 'the library jsno is neither in .*libraries\\jsno nor among kpp''s own libraries') { Fail "a missing library: exit $code`n$output" }
     # kpp's own libraries (2026-11-04: a release brings them): base64, of which the project has no
-    # copy, comes from the libraries\ beside stdlib\ (the checkout's, for this kppc); a copy in the
+    # copy, comes from the libraries\ beside stdlib\ (the checkout's, for this kpp); a copy in the
     # project's libraries\ comes first.
     Set-Content 'build.kpp' "void build(Project& project)`n{`n  project.executable(`"app`", {`"src`"});`n  project.use(`"base64`");`n}"
     Set-Content 'src\main.kpp' "int main()`n{`n  println(base64::base64Encode(`"kpp`"));`n  return 0;`n}"
@@ -428,7 +428,7 @@ if (Run 'syslibs')
   try
   {
     # A library's system libraries (Library::systemLibrary, 2026-11-04: httpclient's OpenSSL on
-    # FreeBSD): sys calls version.dll's GetFileVersionInfoSizeA, which kppc does not link by itself.
+    # FreeBSD): sys calls version.dll's GetFileVersionInfoSizeA, which kpp does not link by itself.
     # systemLibrary("version", Platform::Windows) reaches the link of app, which uses sys, and of sys's
     # own tests; one for FreeBSD is left out (no such library here); without them, or with that one
     # for every platform, the link fails.
@@ -463,7 +463,7 @@ if (Run 'syslibs')
       if ($case[1] -eq 1 -and ($code -eq 0 -or ($output -join "`n") -notmatch 'nosuchlibrary')) { Fail "an executable's system library for every platform: the link did not fail on nosuchlibrary: exit $code`n$($output -join "`n")" }
     }
     Set-Content 'build.kpp' "void build(Project& project)`n{`n  Executable& app = project.executable(`"app`", {`"src`"});`n  app.use(`"sys`");`n}"
-    # `kpp --run` of a program for another platform: an error before the build (kppc --run's too), never a
+    # `kpp --run` of a program for another platform: an error before the build (kpp --run's too), never a
     # build that then fails to start an ELF. No sysroot needed: nothing is built.
     if (Test-Path 'build\debug\app') { Remove-Item 'build\debug\app' }
     $output = (Kpp @('--no-server', '--target', 'freebsd', '--run')) -join "`n"
@@ -496,8 +496,8 @@ if (Run 'syslibs')
     # The other side of the platform: `kpp --target freebsd` links what a library keeps for FreeBSD and
     # leaves out what it keeps for Linux. bsd calls nothing of Windows; with
     # systemLibrary("nosuchlibrary", Platform::FreeBSD) the link fails on it, with Platform::Linux it
-    # links. Needs FreeBSD's sysroot beside kppc (tools\sysroot\freebsd.ps1), skipped without it.
-    if (-not (Test-Path (Join-Path (Split-Path $Kppc) 'sysroots\freebsd-x86_64\usr\lib\libc.a'))) { "skip project: a library's system library for freebsd (no sysroot beside kppc: tools\sysroot\freebsd.ps1)" }
+    # links. Needs FreeBSD's sysroot beside kpp (tools\sysroot\freebsd.ps1), skipped without it.
+    if (-not (Test-Path (Join-Path (Split-Path $KppExe) 'sysroots\freebsd-x86_64\usr\lib\libc.a'))) { "skip project: a library's system library for freebsd (no sysroot beside kpp: tools\sysroot\freebsd.ps1)" }
     else
     {
       New-Item -ItemType Directory -Force 'libraries\bsd\src' | Out-Null
@@ -648,14 +648,14 @@ void configure(Cell& cell)
     $output = (Kpp @('nosuch', '--no-server')) -join "`n"
     if ($code -eq 0 -or $output -notmatch 'describes no target or configuration nosuch \(its configurations: debug release fastdebug\)') { Fail "an unknown name: exit $code`n$output" }
 
-    # In a project's directory, --version and --help print and build nothing, and an option kppc does
+    # In a project's directory, --version and --help print and build nothing, and an option kpp does
     # not have is an error, never passed on or ignored (kovarex's `kpp --version` built the project).
     cmd /c rd /s /q build
     $output = (Kpp @('--version')) -join "`n"
-    if ($code -ne 0 -or $output -notmatch '^kpp \d+\.\d+\.\d+(\+dirty)?, commit [0-9a-f]{40}\r?\n' -or $output -notmatch "(?m)^compiler: $([regex]::Escape($Kppc))$" -or
+    if ($code -ne 0 -or $output -notmatch '^kpp \d+\.\d+\.\d+(\+dirty)?, commit [0-9a-f]{40}\r?\n' -or $output -notmatch "(?m)^compiler: $([regex]::Escape($KppExe))$" -or
         $output -notmatch '(?m)^toolchain: ' -or $output -notmatch '(?m)^stdlib: .*stdlib$') { Fail "kpp --version in a project: exit $code`n$output" }
     $output = (Kpp @('--help')) -join "`n"
-    if ($code -ne 0 -or $output -notmatch '^usage: kppc' -or $output -notmatch '--version') { Fail "kpp --help in a project: exit $code`n$output" }
+    if ($code -ne 0 -or $output -notmatch '^usage: kpp' -or $output -notmatch '--version') { Fail "kpp --help in a project: exit $code`n$output" }
     foreach ($case in @(
         @(@('--frobnicate'), 'error: unknown option --frobnicate'),
         @(@('main', '--no-server', '--versoin'), 'error: unknown option --versoin'),
@@ -668,23 +668,23 @@ void configure(Cell& cell)
       if ($code -ne 2 -or $output -notmatch [regex]::Escape($case[1])) { Fail "kpp $($case[0] -join ' '): exit $code, not 2 with '$($case[1])'`n$output" }
     }
     if (Test-Path 'build') { Fail 'kpp --version, --help or an option error built the project' }
-    # kppc's options with their values go on to the cells' builds: --toolchain's value is no target name.
+    # kpp's options with their values go on to the cells' builds: --toolchain's value is no target name.
     $output = (Kpp @('main', '--no-server', '--toolchain', 'nosuch')) -join "`n"
     if ($code -eq 0 -or $output -notmatch [regex]::Escape("--toolchain takes bundled, msvc or a list of them in the order preferred (msvc,bundled), not 'nosuch'")) { Fail "kpp main --toolchain nosuch: exit $code`n$output" }
   }
   finally { Pop-Location }
 }
 
-# Outside a project: an unknown option of kppc is the same error. A copy of kppc elsewhere (an
+# Outside a project: an unknown option of kpp is the same error. A copy of kpp elsewhere (an
 # installation) prints the version and commit it was built from.
 if (Run 'outside')
 {
   $output = (Kpp @('--frobnicate', $work)) -join "`n"
-  if ($code -ne 2 -or $output -notmatch 'error: unknown option --frobnicate') { Fail "kppc --frobnicate: exit $code`n$output" }
+  if ($code -ne 2 -or $output -notmatch 'error: unknown option --frobnicate') { Fail "kpp --frobnicate: exit $code`n$output" }
   $installation = Join-Path $work 'installation'
   New-Item -ItemType Directory -Force $installation | Out-Null
-  Copy-Item $Kppc "$installation\kpp.exe"
-  $built = (& $Kppc --version | Select-Object -First 1)
+  Copy-Item $KppExe "$installation\kpp.exe"
+  $built = (& $KppExe --version | Select-Object -First 1)
   # No toolchain of its own and no Visual Studio (KPP_VSWHERE naming a vswhere that is not there):
   # --version still prints, and says what is missing.
   $saved = $env:KPP_CLANG, $env:KPP_VSWHERE
@@ -777,7 +777,7 @@ if (Run 'readonly')
   }
 }
 
-# A file the link takes besides kppc's objects, changed alone (2026-11-05, Executable::natvis): kpp
+# A file the link takes besides kpp's objects, changed alone (2026-11-05, Executable::natvis): kpp
 # links again, the compile server having replayed the unchanged build. The .natvis edited between
 # two builds through the server: the PDB holds the new rule, never the old one only.
 if (Run 'linkinputs')
@@ -874,7 +874,7 @@ if (Run 'paths')
     Set-Content 'build.kpp' "void build(Project& project)`n{`n  CLibrary& where = project.cLibrary(`"where`");`n  where.source(`"libs/where`");`n  where.include(`"include`");`n  Executable& paths = project.executable(`"paths`", {`"src`"});`n  paths.link(`"where`");`n  paths.cInclude(`"include`");`n}"
     Set-Content 'src\main.kpp' "extern `"C`" import `"where.h`";`nvoid where(CallerLocation here = caller) { println(StringView(here.file_name())); }`nint main()`n{`n  println(format(`"{}`", 1)); // (Format.kpp's release_assert in the program)`n  println(StringView(c_file()));`n  where();`n  return 0;`n}"
     $root = (Get-Location).Path
-    $stdlib = [IO.Path]::GetFullPath((Join-Path (Split-Path $Kppc) '..\..\stdlib'))
+    $stdlib = [IO.Path]::GetFullPath((Join-Path (Split-Path $KppExe) '..\..\stdlib'))
     $output = @(Kpp @('--release', '--no-server', '--run'))
     $printed = if ($output.Count) { $output[-1] } else { '' }
     if ($code -ne 0 -or $printed -ne 'src/main.kpp') { Fail "a release build's CallerLocation file is '$printed', not src/main.kpp`n$($output -join "`n")" }
@@ -894,7 +894,7 @@ if (Run 'paths')
     $printed = if ($output.Count) { $output[-1] } else { '' }
     if ($code -ne 0 -or $printed -ne (Join-Path $root 'src\main.kpp')) { Fail "a debug build's CallerLocation file is '$printed', not $(Join-Path $root 'src\main.kpp')`n$($output -join "`n")" }
     # describe.txt's keys are one table (Project/DescribeFile.cpp, 2026-11-05): a line kpp does not know
-    # (projectlib and kppc of different releases) is an error naming it, never a setting dropped.
+    # (projectlib and kpp of different releases) is an error naming it, never a setting dropped.
     Add-Content 'build\kpp\describe.txt' 'frobnicate 1'
     $output = (Kpp @('--debug', '--no-server')) -join "`n"
     if ($code -eq 0 -or $output -notmatch 'describe\.txt line \d+: `frobnicate` is no key kpp knows') { Fail "an unknown key in describe.txt: exit $code`n$output" }

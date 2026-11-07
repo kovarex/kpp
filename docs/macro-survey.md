@@ -18,7 +18,7 @@ Every number below comes from `compiler\bench\macro_survey.py` and `macro_catego
   friends 141, Tracy `ZoneScoped` 126, Windows `FAILED`/`SUCCEEDED`/`HIBYTE`/`LOBYTE` 226.
 - Directives: 58,189 `#include`, 4,152 `#pragma` (once), **2,098 conditional blocks**
   (`#ifdef` 1,457, `#ifndef` 414, `#if` 227, `#elif` 70) keyed by about 40 symbols, 261 `#undef`.
-- kppc's resolver sees the same picture from the other side: of the names it cannot resolve
+- kpp's resolver sees the same picture from the other side: of the names it cannot resolve
   in Factorio, 14,773 are macro-like (`assert` 5,255, `release_assert` 1,728, `lua_pop`,
   `ZoneScoped`, ...) and a further group are enumerators and typedefs that only exist inside
   macro expansions (`normalQuality` 577, `Nothing` 268, `PrototypeType` 267, `Success` 235).
@@ -279,7 +279,7 @@ typed lists by hand (15 lists).
 ```
 python -X utf8 -I compiler\bench\macro_survey.py        (writes macro_survey.txt/.json to the current directory)
 python -X utf8 -I compiler\bench\macro_categories.py    (reads macro_survey.json, prints the categories)
-compiler\build\kppc.exe --unresolved 70 C:\Factorio\src C:\Factorio\tests C:\Factorio\libraries\CommonUtil C:\Factorio\libraries\Agui
+compiler\build\kpp.exe --unresolved 70 C:\Factorio\src C:\Factorio\tests C:\Factorio\libraries\CommonUtil C:\Factorio\libraries\Agui
 ```
 
 The survey script joins backslash-continued lines, matches `#define`, strips comments and string

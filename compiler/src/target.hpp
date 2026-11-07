@@ -1,7 +1,7 @@
 #pragma once
 // The platform a build is for (--target; docs/design.md, "Targets and hosts"): what the code
 // generator writes (the triple and data layout, the exception model, the runtime's calls) and how
-// the driver compiles and links it. Windows x64 is the default and what kppc built before targets.
+// the driver compiles and links it. Windows x64 is the default and what kpp built before targets.
 #include <string>
 #include <string_view>
 
@@ -64,7 +64,7 @@ inline const PlatformName& platformOf(Target::Os os)
 // config::arch's enumeration (Arch::X86_64, <config> declares it in this order).
 inline constexpr const char* archEnumerators[] = {"X86_64", "Arm64"};
 
-// --target's value: a short name or a triple. False, with why, for one kppc does not build for (yet).
+// --target's value: a short name or a triple. False, with why, for one kpp does not build for (yet).
 inline bool targetNamed(std::string_view name, Target& out, std::string& why)
 {
   Target t;
@@ -135,11 +135,11 @@ inline bool targetNamed(std::string_view name, Target& out, std::string& why)
     out = t;
     return true;
   }
-  why = "is no target kppc knows (windows, windows-gnu, linux, linux-arm64, freebsd, macos, macos-x64)";
+  why = "is no target kpp knows (windows, windows-gnu, linux, linux-arm64, freebsd, macos, macos-x64)";
   return false;
 }
 
-// The platform kppc runs on, --target's default (design.md, "Targets and hosts" 1): windows on
+// The platform kpp runs on, --target's default (design.md, "Targets and hosts" 1): windows on
 // Windows, linux on Linux, freebsd on FreeBSD (thread E's Linux host, 2026-11-06).
 inline Target hostTarget()
 {

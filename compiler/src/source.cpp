@@ -563,7 +563,7 @@ std::filesystem::path defaultSysroot(const std::filesystem::path& compiler, cons
   std::error_code ec;
   if (!std::filesystem::is_directory(root / "usr" / "include", ec))
   {
-    // The host's own platform (a Linux kppc building for Linux) with no sysroot beside kppc: the
+    // The host's own platform (a Linux kpp building for Linux) with no sysroot beside kpp: the
     // host's own system is the sysroot, as a native clang takes it (thread E, 2026-11-06).
     Target host = hostTarget();
     if (!host.windows() && std::string(platformOf(host.os).name) + "-" + host.archName() == name && std::filesystem::is_directory("/usr/include", ec))
@@ -650,7 +650,7 @@ namespace
   // KPP_CLANG names none; empty on Windows, whose clang is the bundled one or Visual Studio's.
   std::string systemClang() { return host::platformName() == std::string("windows") ? std::string() : host::findOnPath("clang").string(); }
 
-  // The oldest clang kppc's IR compiles with: it names LLVM 19's intrinsics (llvm.eh.typeid.for.p0,
+  // The oldest clang kpp's IR compiles with: it names LLVM 19's intrinsics (llvm.eh.typeid.for.p0,
   // which clang 18 takes for a function and leaves undefined at the link), as the bundled toolchain's
   // clang 19.1.5 has them.
   constexpr int oldestClang = 19;
@@ -770,13 +770,13 @@ std::string selectToolchain(const std::filesystem::path& compiler, const std::st
   else if (visualStudioClang().empty())
     return "this kpp has no toolchain of its own (" + bundledClang(compiler).parent_path().string() + "), and building with Visual Studio's " +
            visualStudioMissing();
-  // A clang older than kppc's IR needs (a distribution's clang 18, an older Visual Studio's): said
+  // A clang older than kpp's IR needs (a distribution's clang 18, an older Visual Studio's): said
   // before anything compiles, never an undefined llvm.eh.typeid.for.p0 at the link (thread E's Linux
   // host, 2026-11-06). The bundled one is kpp's own.
   if (!chosenBundled)
     if (std::string clang = clangPath(); !clang.empty())
       if (int major = clangMajorVersion(clang); major && major < oldestClang)
-        return clang + " is clang " + std::to_string(major) + ", and kppc's IR needs clang " + std::to_string(oldestClang) +
+        return clang + " is clang " + std::to_string(major) + ", and kpp's IR needs clang " + std::to_string(oldestClang) +
                " or later (LLVM " + std::to_string(oldestClang) + "'s intrinsics): name one with KPP_CLANG";
   return "";
 }
@@ -1081,7 +1081,7 @@ namespace
   }
 
   // vswhere's answer (visualStudioClang) kept in %TEMP%\kpp-visual-studio-clang.txt while the
-  // instances are as they were: running vswhere was 50 to 60 ms of every kppc process, every spec
+  // instances are as they were: running vswhere was 50 to 60 ms of every kpp process, every spec
   // snippet's included (2026-11-04). Not with KPP_VSWHERE (a test's own vswhere).
   std::string cachedVisualStudioClangPath()
   {
@@ -1133,7 +1133,7 @@ std::string visualStudioClang()
     }
   if (added && !own && !stamp.empty() && !cachePath.empty() && !it->second.empty())
   {
-    // (written whole under another name and renamed: another kppc reading it meanwhile sees the
+    // (written whole under another name and renamed: another kpp reading it meanwhile sees the
     // old file or the new one)
     std::string part = cachePath + "." + std::to_string(GetCurrentProcessId());
     if (FILE* f = fopen(part.c_str(), "wb"))

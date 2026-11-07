@@ -1,14 +1,14 @@
 # Debugging kpp programs
 
-`kppc --debug-info` puts line tables (CodeView) into the objects and links with `/DEBUG`, so a
+`kpp --debug-info` puts line tables (CodeView) into the objects and links with `/DEBUG`, so a
 `.pdb` lands next to the executable: a debugger maps every instruction to the kpp line it came from,
 breakpoints go on kpp lines, and stepping walks the kpp source.
 
 ```
-compiler\build\kppc.exe --debug-info --exe out.exe program.kpp
+compiler\build\kpp.exe --debug-info --exe out.exe program.kpp
 ```
 
-The converted game: `set KPPC_EXTRA=--debug-info` before `programs\factorio\run.cmd` (run.cmd links
+The converted game: `set KPP_EXTRA=--debug-info` before `programs\factorio\run.cmd` (run.cmd links
 with `/DEBUG` already, for the crash report's function names).
 
 ## What is in it
@@ -34,11 +34,11 @@ with `/DEBUG` already, for the crash report's function names).
 - The entry block's allocas and parameter stores are at the declaration's line (the debugger stops
   there first, then on the first statement).
 - A trivial callee inlined into its caller (docs/compile-speed.md, "Design: inlining trivial
-  functions in kppc") has no lines of its own: its instructions are at the call's line, and stepping
+  functions in kpp") has no lines of its own: its instructions are at the call's line, and stepping
   into it steps over it. `--no-inline` keeps every call, for stepping into getters.
 - Variables and types, in an unoptimized build (2026-11-04, "Variables and types" below): every
   parameter and local, `this` too, by its kpp name and visible in its block, with its type; every
-  class with its members, bases and vtable pointer as kppc lays it out, named as kppc's IR names it
+  class with its members, bases and vtable pointer as kpp lays it out, named as kpp's IR names it
   (`game::Entity`, `Vector<int32>`). An optimized build with `--debug-info` (build.kpp's fastdebug)
   keeps the line tables alone (`emissionKind: LineTablesOnly`).
 - Not covered: the startup functions of global initializers (no lines); a function's static locals
@@ -73,7 +73,7 @@ In a debug build (unoptimized) `--debug-info` describes the program's data too (
   LF_MFUNCTION), so Visual Studio evaluates `this` and `this->member` in it; as a free function it said
   "'this' may only be used inside a nonstatic member function" (thread F, 2026-11-05). A static member
   function and DWARF's functions stay free functions; the class's field list does not list its methods.
-- **Globals**: each global of the program by the name kppc's IR gives it (`game::counter`,
+- **Globals**: each global of the program by the name kpp's IR gives it (`game::counter`,
   `PrototypeList<EntityPrototype>::sorted`; a static data member's storage is `Class::member`), where
   the debugger reads it: the module whose text defines it (its home, in a debug build) describes it
   (S_GDATA32, S_GTHREAD32 for a thread_local one).
@@ -88,12 +88,12 @@ In a debug build (unoptimized) `--debug-info` describes the program's data too (
   its `&` and `&&` a bit of that pointer's record, as clang's, and a member function's own type says the
   same (battery f17, 2026-11-06; before, the first two reached a const member function only).
 - **Enums** with their enumerators and underlying type.
-- **Classes** with their data members at their offsets in kppc's own layout (a bit field at its
+- **Classes** with their data members at their offsets in kpp's own layout (a bit field at its
   bits), each with its access as written (`private:` in a class's public part, and so on), their
   static data members (LF_STMEMBER), their bases at their offsets with their access, a polymorphic
   class's vtable pointer (CodeView's LF_VFUNCTAB), an
   anonymous struct's or union's members as the enclosing class's (as MSVC's PDBs list them:
-  String's `heapChars`). A class or enum is named as kppc's IR names it, the whole spelling
+  String's `heapChars`). A class or enum is named as kpp's IR names it, the whole spelling
   (TypeTable::toString, qualified: `game::Entity`, `Vector<Vector<int32>>`, every template argument
   with the defaults), which identifies it too: the natvis rules match these names (agreed with
   thread F, "Values in Visual Studio" below).
@@ -259,7 +259,7 @@ writes `NAME.natvis` beside `NAME.exe` and links it into the PDB (`/NATVIS`; lld
 as `--Xlink=/natvis:`), where Visual Studio finds it with the program: nothing to install. Until
 2026-11-05 a windows-gnu build had none, so a project built with an installed kpp showed `String` and
 `Vector` raw in Visual Studio (gorating with kpp 0.2.519); tests\windowsgnu.ps1 checks its PDB. A
-program's own rules for its own types go in beside it: build.kpp's `executable.natvis("FILE")` (kppc's
+program's own rules for its own types go in beside it: build.kpp's `executable.natvis("FILE")` (kpp's
 `--natvis FILE`; build.md), as Factorio's tools\vs15\Visualizers\factorio.natvis for the converted
 game. It shows the library's values as values (compiler\src\natvis.cpp):
 - `String` and `StringView` as their text (a String's last byte tells a small string's length from
@@ -282,7 +282,7 @@ game. It shows the library's values as values (compiler\src\natvis.cpp):
   instance of one in a template) by its tag `__tag`, valued in the alternatives' order, and the
   alternatives' storage `__alt_<Name>`, the names the parser gives them and the PDB keeps.
 
-The type names are kppc's (TypeTable::toString, qualified: `HashTable<Pair<String, int32>, String,
+The type names are kpp's (TypeTable::toString, qualified: `HashTable<Pair<String, int32>, String,
 HashMapKey<String, int32>, Hash<String>, EqualTo<String>, true>`), each instance's full argument
 list, made in one place: the debug information names its classes (Emitter::debuggerTypeName and
 debuggerClassName, compiler\src\Codegen\DebugInfo.inl) and hands the classes it defines with those
@@ -305,7 +305,7 @@ one whose member is gone is left out with `warning: natvis: ...`. The per-instan
 by name, so the file does not depend on the threads.
 
 `tests\natvis.ps1` (run by run_tests.cmd) builds `tests\natvis\values.kpp` with `--debug-info` and
-checks that kppc warned of nothing, that the .natvis is valid by Visual Studio's natvis.xsd, that
+checks that kpp warned of nothing, that the .natvis is valid by Visual Studio's natvis.xsd, that
 the PDB holds it (its named stream `/src/files/PATH`) and that its rules are `values.expected`.
 Checked in Visual Studio 17.14.42 on 2026-11-04, once the PDB had the types (thread B's bcbbed6e):
 values.kpp as a project of its own, Debug, stopped on its `println`, each local read through DTE's
@@ -339,10 +339,10 @@ this stage, readme's Planned). Visual Studio's expression evaluator takes `this`
 the member function's object pointer: in a member function it shows `Shape *`, takes `this->width`,
 `*this` and a bare `width`, and `this.width` is an error ("class "Shape" has no member "width"",
 though `this.count` finds a static member). The debug information cannot change that: giving its
-`this` variable a reference type left all of it as it was (tried 2026-11-07 on kppc ac6731fd), so
-kppc writes `this` as a pointer, as clang does. In the watch window, write `this->x` or `x`.
+`this` variable a reference type left all of it as it was (tried 2026-11-07 on kpp ac6731fd), so
+kpp writes `this` as a pointer, as clang does. In the watch window, write `this->x` or `x`.
 
-## How kppc emits it
+## How kpp emits it
 
 The emitter writes a marker line `  ;@LINE` before each statement (`Emitter::debugLine`, not inside a
 body inlined into its caller). When the function is done, `Emitter::debugLines` appends

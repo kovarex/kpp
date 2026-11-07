@@ -1,6 +1,6 @@
 // spec: a use of a `when` local is checked in the configuration being built (design.md 19): where the local exists (tracing is on here), a use outside any condition is an ordinary use of it (`4 3`)
 // factorio: a debug-only local the converted code uses after its `#ifdef DEBUG`, in the debug configuration
-// kppc: --config tracing=true
+// kpp: --config tracing=true
 int main()
 {
   when (config::tracing) int count = 3;

@@ -1,5 +1,5 @@
 // spec: a reverseView of an iotaView gives its numbers: *it of a ReverseIterator goes through a copy of the iterator, whose value must outlive it
-// kppc: --release
+// kpp: --release
 int main()
 {
   auto numbers = iotaView(1, 4);

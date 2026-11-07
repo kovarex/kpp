@@ -254,7 +254,7 @@
     // GCC's and clang's __attribute__), one spelling on every platform: noreturn is kpp's attribute,
     // a symbol's visibility none of kpp's business.
     {"l_noret", "[[noreturn]] void"}, {"LUAI_FUNC", "extern"}, {"LUAI_DDEC", "extern"}, {"LUAI_DDEF", ""},
-    // Stack allocation, kppc's builtin on every target (malloc.h's `#define alloca _alloca`, glibc's
+    // Stack allocation, kpp's builtin on every target (malloc.h's `#define alloca _alloca`, glibc's
     // `#define alloca(size) __builtin_alloca (size)`): the builtin's name, which the C import declares
     // on every target.
     {"alloca", "__builtin_alloca"},

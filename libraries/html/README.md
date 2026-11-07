@@ -71,7 +71,7 @@ error that says so.
 
 ## Tests
 
-`kpp --test` in this directory, or `kppc --test libraries/html` anywhere: escaping, templates made
+`kpp --test` in this directory, or `kpp --test libraries/html` anywhere: escaping, templates made
 at compile time (a card, URL holes, a whole page with a comment, `<style>`, void and self-closed
 elements, boolean attributes), each template error and each render error with its message.
 

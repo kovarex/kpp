@@ -1,5 +1,5 @@
 # The converted files read as the program's own (convert.cmd's check, kovarex 2026-11-04):
-# - no file starts with a line naming its sources (`// Converted from Entity.hpp Entity.cpp by kppc
+# - no file starts with a line naming its sources (`// Converted from Entity.hpp Entity.cpp by kpp
 #   --convert`): CONVERSION.md says what each file was converted from;
 # - no forward declaration of a class the program defines (`class DrawingFlags;` beside
 #   DrawingFlags.kpp's `class DrawingFlags : public BitFieldBase`): kpp needs none. A class declared

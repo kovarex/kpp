@@ -102,7 +102,7 @@ namespace codegen
   // The function a lambda is written in, recorded whenever it comes, often after the closure was laid
   // out and read by others: by its closure's writer (makeClosure) or by its call operator's emission on
   // demand. Kept apart from the ClosureInfo and read under the lock: written into the laid-out closure,
-  // a copy racing with the write read a string being assigned (kppc crashed, 0xC0000005, in 6 to 8 of
+  // a copy racing with the write read a string being assigned (kpp crashed, 0xC0000005, in 6 to 8 of
   // 160 builds of 1,000 functions returning lambdas, each called beside it; tests\concurrency.ps1).
   struct ClosureWriter
   {
@@ -624,14 +624,14 @@ namespace codegen
   // The functions' own ids start after these.
   inline const char* const debugModuleTail = "!llvm.dbg.cu = !{!0}\n"
                                              "!llvm.module.flags = !{!3, !4}\n"
-                                             "!0 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus, file: !1, producer: \"kppc\", "
+                                             "!0 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus, file: !1, producer: \"kpp\", "
                                              "isOptimized: false, runtimeVersion: 0, emissionKind: LineTablesOnly)\n"
                                              "!1 = !DIFile(filename: \"kpp\", directory: \"\")\n"
                                              "!2 = !DISubroutineType(types: !{})\n"
                                              "!3 = !{i32 2, !\"CodeView\", i32 1}\n"
                                              "!4 = !{i32 2, !\"Debug Info Version\", i32 3}\n";
   // The tail for a target: DWARF instead of CodeView off Windows. The producer (CodeView's S_COMPILE3,
-  // DWARF's DW_AT_producer) is kppc with kpp's release version, without the commit and "+dirty": the
+  // DWARF's DW_AT_producer) is kpp with its release version, without the commit and "+dirty": the
   // objects of one version are the same (docs/build.md, "Versions"). An unoptimized build's has
   // variables and types (Shared::fullDebugInfo): FullDebug.
   inline std::string debugModuleTailFor(const Target& target, bool full, DebugLists lists = {})
@@ -649,8 +649,8 @@ namespace codegen
     }
     std::string version = kppVersion();
     version.erase(std::min(version.find('+'), version.size()));
-    const std::string producer = "producer: \"kppc\"";
-    tail.replace(tail.find(producer), producer.size(), "producer: \"kppc " + version + "\"");
+    const std::string producer = "producer: \"kpp\"";
+    tail.replace(tail.find(producer), producer.size(), "producer: \"kpp " + version + "\"");
     if (!target.windows())
     {
       const std::string codeView = "!3 = !{i32 2, !\"CodeView\", i32 1}";

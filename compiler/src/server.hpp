@@ -5,12 +5,12 @@
 #include <string>
 #include <vector>
 
-// The compile server (docs/compile-speed.md, "The compile server: protocol"). `kppc --server ARGS`
+// The compile server (docs/compile-speed.md, "The compile server: protocol"). `kpp --server ARGS`
 // is a client: it hands ARGS to a server process that builds them and streams back what the build
-// printed and its exit code, starting the server first if there is none. `kppc --serve KEY` is the
+// printed and its exit code, starting the server first if there is none. `kpp --serve KEY` is the
 // server; it is started by a client, never by hand.
 
-// The build itself, with main's arguments (argv[0] is the kppc the client ran).
+// The build itself, with main's arguments (argv[0] is the kpp the client ran).
 using CompileFunction = int (*)(int argc, char** argv);
 
 // The client: argv without --server. Builds in this process if no server can be reached or the
@@ -18,19 +18,19 @@ using CompileFunction = int (*)(int argc, char** argv);
 int runClient(int argc, char** argv, CompileFunction compile);
 
 // The server (`--serve KEY ORIGIN STAMP`): serves builds for its key until it has been idle for an
-// hour, the kppc it was started from (ORIGIN) no longer has the size and time STAMP, or a client asks
+// hour, the kpp it was started from (ORIGIN) no longer has the size and time STAMP, or a client asks
 // it to stop (--stop-server, --stop-all-servers).
 int runServer(const char* key, const char* origin, const char* stamp, CompileFunction compile);
 
-// `kppc --stop-server ARGS`: stops the server for ARGS if one runs.
+// `kpp --stop-server ARGS`: stops the server for ARGS if one runs.
 int stopServer(int argc, char** argv);
 // The same without a word: whether one ran.
 bool stopServerQuietly(int argc, char** argv);
-// `kppc --stop-all-servers` (and `kpp --stop-all-servers`): stops every compile server of this user
-// (of this %TEMP%), of any arguments and any kppc.
+// `kpp --stop-all-servers` (and `kpp --stop-all-servers`): stops every compile server of this user
+// (of this %TEMP%), of any arguments and any kpp.
 int stopAllServers();
 // Stops every running server, of any arguments, whose arguments whose accepts (the client that
-// starts a server keeps them in %TEMP%\kppc-server\KEY.args), and returns the arguments of each one
+// starts a server keeps them in %TEMP%\kpp-server\KEY.args), and returns the arguments of each one
 // it stopped. A record whose server has ended is removed.
 std::vector<std::vector<std::string>> stopServers(const std::function<bool(const std::vector<std::string>& args)>& whose);
 
@@ -41,7 +41,7 @@ void buildDone(int exitCode);
 // Whether this build runs in a compile server (for its client).
 bool servingBuild();
 
-// A build in this process as a compile server runs one, for the language server (`kppc --lsp`,
+// A build in this process as a compile server runs one, for the language server (`kpp --lsp`,
 // lsp.hpp): kept for the next, which is incremental from it where it can be, and what it printed
 // captured into out and err instead of reaching this process's streams (they point at NUL after
 // it); notes: what a server would log about it (why it was not incremental). One at a time.

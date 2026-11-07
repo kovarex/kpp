@@ -1163,7 +1163,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     // (no line naming the sources: the file reads as the program's own, kovarex 2026-11-04;
     // CONVERSION.md lists what each file was converted from)
     std::string text;
-    // (the line kppc --convert-library finds a library's interface files by: scopedNamesOf)
+    // (the line kpp --convert-library finds a library's interface files by: scopedNamesOf)
     if (std::any_of(pieces.begin(), pieces.end(), [](const Piece& p) { return p.scopeInterface; }))
     {
       text += std::string(scopeInterfaceLine) + "\n";
@@ -1299,7 +1299,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     }
     if (!count)
       continue;
-    std::string text = "// The C headers this library imports, written once by kppc --convert from its files' #includes:\n"
+    std::string text = "// The C headers this library imports, written once by kpp --convert from its files' #includes:\n"
                        "// an import is the whole program's wherever it is written (design.md 5), so the files start with\n"
                        "// their code. In the include order of the files (a Windows header may need another before it).\n\n" +
                        lines;

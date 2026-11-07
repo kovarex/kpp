@@ -1,4 +1,4 @@
-﻿# Measures kppc on the converted Factorio sources for docs/compile-speed.md. Run convert.cmd first
+﻿# Measures kpp on the converted Factorio sources for docs/compile-speed.md. Run convert.cmd first
 # (it writes kpp\). Reports, for the whole converted src: the wall time at which each driver line
 # appears (the phase split), the total wall time and the peak working set; then, for the converted
 # CommonUtil + Agui program (the largest converted code that compiles to an executable today), the
@@ -8,7 +8,7 @@
 param([int]$Runs = 3, [string]$Tree = 'kpp') # -Tree: a copy of kpp\, so that a concurrent convert.cmd does not change the input mid-run
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
-$kppc = (Resolve-Path ..\..\compiler\build\kppc.exe).Path
+$kpp = (Resolve-Path ..\..\compiler\build\kpp.exe).Path
 $clang = 'C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\Llvm\x64\bin\clang.exe'
 $out = Join-Path $env:TEMP 'kpp-measure-speed'
 New-Item -ItemType Directory -Force $out | Out-Null
@@ -17,7 +17,7 @@ $cinc = '--cinclude C:\Factorio\libraries\SDL3\include --cinclude C:\Factorio\li
 function Run-Timed([string]$arguments, [switch]$Echo)
 {
   $psi = New-Object Diagnostics.ProcessStartInfo
-  $psi.FileName = $kppc; $psi.Arguments = $arguments; $psi.WorkingDirectory = $PSScriptRoot
+  $psi.FileName = $kpp; $psi.Arguments = $arguments; $psi.WorkingDirectory = $PSScriptRoot
   $psi.UseShellExecute = $false; $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true
   $p = [Diagnostics.Process]::Start($psi)
   $sw = [Diagnostics.Stopwatch]::StartNew()
@@ -55,7 +55,7 @@ foreach ($mode in @('', '--release'))
     Remove-Item "$out\agui.exe*" -ErrorAction SilentlyContinue
     $script:peak = 0
     $sw = [Diagnostics.Stopwatch]::StartNew()
-    $lines = & $kppc ($agui -f $mode).Split(' ', [StringSplitOptions]::RemoveEmptyEntries) 2>&1
+    $lines = & $kpp ($agui -f $mode).Split(' ', [StringSplitOptions]::RemoveEmptyEntries) 2>&1
     '  wall {0:N2} s' -f $sw.Elapsed.TotalSeconds
     $lines | Where-Object { "$_" -match '^(files|lines|codegen|clang):' } | ForEach-Object { "    $_" }
   }

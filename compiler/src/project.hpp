@@ -14,14 +14,14 @@
 // `--run FILE.kpp ARGS`, which runs that file).
 int runProject(int argc, char** argv, CompileFunction compile);
 
-// How many values kppc's option arg takes, -1 when kppc has no such option (main.cpp). A project's
-// command line passes kppc's options on and rejects every other.
+// How many values kpp's option arg takes, -1 when kpp has no such option (main.cpp). A project's
+// command line passes kpp's options on and rejects every other.
 int compileOptionValues(const std::string& arg);
-// An option that is not kppc's, or lacks its value: the error, a hint at `kpp --help`, exit code 2.
+// An option that is not kpp's, or lacks its value: the error, a hint at `kpp --help`, exit code 2.
 int optionError(const std::string& arg);
 
 // The arguments a check of the project whose build.kpp is in directory or above it (or is
-// buildFile) compiles with (`kppc --lsp`, docs/ide.md and docs/editors.md): one cell, an executable
+// buildFile) compiles with (`kpp --lsp`, docs/ide.md and docs/editors.md): one cell, an executable
 // in a configuration (by its name or its Visual Studio name: fastdebug or Fastdebug), or every
 // executable in it together (their sources and exclusions with the first one's options), without
 // what only code generation and the link read; args[0] is the compiler. False when there is no
@@ -61,6 +61,6 @@ struct ProjectCell
 {
   std::string target, configuration, visualStudio;
   std::vector<ProjectOption> options;    // the libraries' options in this cell, library by library
-  std::vector<ProjectLibrary> libraries; // the kpp libraries it uses, in kppc's order
+  std::vector<ProjectLibrary> libraries; // the kpp libraries it uses, in kpp's order
 };
 bool projectCells(const std::filesystem::path& directory, const ProjectCheck& check, std::vector<ProjectCell>& cells, std::string& error);

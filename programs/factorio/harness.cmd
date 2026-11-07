@@ -10,8 +10,8 @@ rem - with the C or C++ library as the game links it today: CONVERSION\build\cli
 rem   `kpp factorio` builds in the factorio-in-kpp checkout CONVERSION (FACTORIO_IN_KPP unless
 rem   given), clang-cl with the library's own flags (so it runs before the library's swap: after it,
 rem   build.kpp builds no NAME.lib);
-rem - converted by kppc --convert together with the library's sources (FACTORIO\libraries\NAME),
-rem   and compiled by kppc. A C library has a directory c-libraries\NAME: it is converted by C's
+rem - converted by kpp --convert together with the library's sources (FACTORIO\libraries\NAME),
+rem   and compiled by kpp. A C library has a directory c-libraries\NAME: it is converted by C's
 rem   rules (--c-sources), with c-libraries\NAME as the conversion's overrides (its
 rem   expand-macros.txt names the headers whose macros the converted code expands), and its headers
 rem   stay C imports, found in the directories c-libraries\NAME\includes.txt names (below
@@ -30,7 +30,7 @@ if not "%~2"=="" set CONVERSION=%~f2
 if "%CONVERSION%"=="" (echo harness: name the factorio-in-kpp checkout: harness.cmd NAME DIR, or set FACTORIO_IN_KPP=DIR& exit /b 2)
 if not defined FACTORIO set FACTORIO=C:\Factorio
 cd /d "%~dp0"
-set KPPC=..\..\compiler\build\kppc.exe
+set KPP=..\..\compiler\build\kpp.exe
 set CLANGCL=C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\Llvm\x64\bin\clang-cl.exe
 set DRIVER=harness\%NAME%.cpp
 if not exist %DRIVER% set DRIVER=harness\%NAME%.c
@@ -87,8 +87,8 @@ rem for the game, and the driver with --convert-library, which writes its uses q
 rem the library is compiled as the library NAME (--library-root), the driver as the program.
 copy /y %DRIVER% %OUT%\driver\ > nul
 if exist c-libraries\%NAME%\interface.txt goto :scoped
-%KPPC% --no-std --quiet %CMODE% --convert %OUT%\converted --ext .cpp,.hpp,.h,.kpp,.c %OUT%\driver %CSOURCES% %CINPUTS% > %OUT%\convert.txt 2>&1 || (type %OUT%\convert.txt& exit /b 1)
-%KPPC% --std ..\..\stdlib --quiet %CINC% %KLINKS% --exe %OUT%\kpp.exe %OUT%\converted > %OUT%\kpp-build.txt 2>&1 || (type %OUT%\kpp-build.txt& exit /b 1)
+%KPP% --no-std --quiet %CMODE% --convert %OUT%\converted --ext .cpp,.hpp,.h,.kpp,.c %OUT%\driver %CSOURCES% %CINPUTS% > %OUT%\convert.txt 2>&1 || (type %OUT%\convert.txt& exit /b 1)
+%KPP% --std ..\..\stdlib --quiet %CINC% %KLINKS% --exe %OUT%\kpp.exe %OUT%\converted > %OUT%\kpp-build.txt 2>&1 || (type %OUT%\kpp-build.txt& exit /b 1)
 goto :run
 :scoped
 rem (the scoped libraries it uses, c-libraries\NAME\uses.txt, minizip's zlib: each converted on its own
@@ -100,15 +100,15 @@ type nul > %OUT%\convert.txt
 if exist c-libraries\%NAME%\uses.txt for /f "usebackq eol=# delims=" %%u in ("c-libraries\%NAME%\uses.txt") do call :useLibrary %%u || exit /b 1
 set KLINKS=
 if exist c-libraries\%NAME%\links.txt for /f "usebackq eol=# delims=" %%i in ("c-libraries\%NAME%\links.txt") do call :linkUnlessUsed %%i
-%KPPC% --no-std --quiet %CMODE% %USED% --convert %OUT%\library --ext .c,.h,.hpp %CSOURCES% %CINPUTS% >> %OUT%\convert.txt 2>&1 || (type %OUT%\convert.txt& exit /b 1)
+%KPP% --no-std --quiet %CMODE% %USED% --convert %OUT%\library --ext .c,.h,.hpp %CSOURCES% %CINPUTS% >> %OUT%\convert.txt 2>&1 || (type %OUT%\convert.txt& exit /b 1)
 rem (the hand-written files the library adds, written at their path below Factorio's repository,
 rem libraries\NAME\: beside its converted ones, which a list of sources puts at NAME\, stb_image's)
 if exist %OUT%\library\libraries\%NAME% xcopy /s /y /q %OUT%\library\libraries\%NAME% %OUT%\library\%NAME%\ >nul
-%KPPC% --no-std --quiet --c-sources %USED% --convert-library %NAME% %OUT%\library\%NAME% --convert %OUT%\converted --ext .cpp,.c %OUT%\driver >> %OUT%\convert.txt 2>&1 || (type %OUT%\convert.txt& exit /b 1)
-%KPPC% --std ..\..\stdlib --quiet %CINC% %KLINKS% %USEDROOTS% --library-root %NAME% %OUT%\library\%NAME% --exe %OUT%\kpp.exe %OUT%\converted > %OUT%\kpp-build.txt 2>&1 || (type %OUT%\kpp-build.txt& exit /b 1)
+%KPP% --no-std --quiet --c-sources %USED% --convert-library %NAME% %OUT%\library\%NAME% --convert %OUT%\converted --ext .cpp,.c %OUT%\driver >> %OUT%\convert.txt 2>&1 || (type %OUT%\convert.txt& exit /b 1)
+%KPP% --std ..\..\stdlib --quiet %CINC% %KLINKS% %USEDROOTS% --library-root %NAME% %OUT%\library\%NAME% --exe %OUT%\kpp.exe %OUT%\converted > %OUT%\kpp-build.txt 2>&1 || (type %OUT%\kpp-build.txt& exit /b 1)
 goto :run
 :useLibrary
-%KPPC% --no-std --quiet --c-sources --overrides c-libraries\%1 --convert %OUT%\library --ext .c,.h,.hpp %FACTORIO%\libraries\%1 >> %OUT%\convert.txt 2>&1 || (type %OUT%\convert.txt& exit /b 1)
+%KPP% --no-std --quiet --c-sources --overrides c-libraries\%1 --convert %OUT%\library --ext .c,.h,.hpp %FACTORIO%\libraries\%1 >> %OUT%\convert.txt 2>&1 || (type %OUT%\convert.txt& exit /b 1)
 set USED=%USED% --convert-library %1 %OUT%\library\%1
 set USEDROOTS=%USEDROOTS% --library-root %1 %OUT%\library\%1
 goto :eof

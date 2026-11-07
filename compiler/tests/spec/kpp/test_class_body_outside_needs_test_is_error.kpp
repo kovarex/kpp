@@ -1,5 +1,5 @@
 // spec: a test class's member defined outside it writes test: a build without tests must skip the body
-// kppc: --tests
+// kpp: --tests
 // error: of a test class is defined outside it: write test
 test class Checker
 {

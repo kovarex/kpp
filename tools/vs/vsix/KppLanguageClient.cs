@@ -124,7 +124,7 @@ internal sealed class KppLanguageClient : ILanguageClient, ILanguageClientCustom
             // ShowNotificationOnInitializeFailed: Visual Studio shows this in its info bar.
             throw new FileNotFoundException(
                 "kpp: the language server was not found, so .kpp files have no IntelliSense. Install kpp (its installer puts kpp.exe on the PATH), " +
-                "or set the environment variable KPP_LSP_SERVER to kpp.exe or kppc.exe, then restart Visual Studio.");
+                "or set the environment variable KPP_LSP_SERVER to kpp.exe, then restart Visual Studio.");
         }
 
         Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!);
@@ -206,14 +206,14 @@ internal sealed class KppLanguageClient : ILanguageClient, ILanguageClientCustom
     }
 
     /// <summary>
-    /// KPP_LSP_SERVER when set, else kpp.exe on the PATH (the installer puts it there), else kppc.exe.
+    /// KPP_LSP_SERVER when set, else kpp.exe on the PATH (the installer puts it there), else kpp.exe.
     /// </summary>
     private static string? FindServer()
     {
         string? explicitServer = Environment.GetEnvironmentVariable("KPP_LSP_SERVER");
         if (!string.IsNullOrEmpty(explicitServer))
             return File.Exists(explicitServer) ? explicitServer : null;
-        foreach (string name in new[] { "kpp.exe", "kppc.exe" })
+        foreach (string name in new[] { "kpp.exe" })
         {
             foreach (string directory in (Environment.GetEnvironmentVariable("PATH") ?? string.Empty).Split(Path.PathSeparator))
             {

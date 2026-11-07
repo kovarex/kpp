@@ -2,22 +2,22 @@
 
 Background and measurements: [docs/build.md](../../docs/build.md), "Project files for an IDE".
 
-**kppc writes the project files.** Give it the build's own arguments and one or both options:
+**kpp writes the project files.** Give it the build's own arguments and one or both options:
 
 ```
-kppc --generate-visual-studio-files --generate-vs-code-files --exe build\hello.exe src
+kpp --generate-visual-studio-files --generate-vs-code-files --exe build\hello.exe src
 ```
 
 - `build\visual-studio\hello.sln`: a Makefile project with every source file, in folders by source
   root and directory, the standard library as *Standard Library*.
-- `.vscode\tasks.json`, `launch.json` and `settings.json`. A `.vscode` file kppc did not write is
+- `.vscode\tasks.json`, `launch.json` and `settings.json`. A `.vscode` file kpp did not write is
   never overwritten.
 
 Both have debug (`--debug-info`, incremental link) and release (`--release`). Each executable
 goes to `build\<configuration>\` next to the `--exe` given. Generate again after changing the
 arguments or adding a file. Once build.kpp exists, the arguments come from it.
 
-- **Build:** Ctrl+Shift+B in either IDE runs kppc through its compile server with
+- **Build:** Ctrl+Shift+B in either IDE runs kpp through its compile server with
   `--msvc-diagnostics`. Errors go to the Error List or the Problems view, with absolute paths, so
   a double-click opens the line.
 - **Run, debug:** F5 builds, then starts the program under the debugger. VS Code needs the C/C++

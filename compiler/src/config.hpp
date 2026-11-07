@@ -7,7 +7,7 @@
 
 // A config:: constant declared in source with its default (design.md, "config:: defaults in source",
 // 2026-11-04): `config bool finalRelease = false;` at a file's top level, `config i32 level;` with
-// none (required). kppc takes the defaults before it parses a file (the parser's declaration-scope
+// none (required). kpp takes the defaults before it parses a file (the parser's declaration-scope
 // if constexpr, when and requires read config:: values), and kpp takes a library's as its options.
 struct ConfigDeclaration
 {
@@ -37,8 +37,8 @@ bool mayDeclareConfig(std::string_view text);
 void collectConfigDeclarations(const std::vector<Token>& tokens, std::string_view text, std::vector<ConfigDeclaration>& out,
                                std::vector<ConfigError>& errors);
 
-// mayDeclareConfig, then lexing (a table of its own) and collectConfigDeclarations: what kppc and kpp
-// read a file's declarations with.
+// mayDeclareConfig, then lexing (a table of its own) and collectConfigDeclarations: what kpp reads a
+// file's declarations with, a project's build and a compile alike.
 void findConfigDeclarations(std::string_view text, std::vector<ConfigDeclaration>& out, std::vector<ConfigError>& errors);
 
 // Takes the well-formed config declarations out of a .kpp file's tokens before it is parsed: they are

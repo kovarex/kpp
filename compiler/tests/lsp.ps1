@@ -1,5 +1,5 @@
 # The language server (docs/ide.md, "The language server as built"): each tests\lsp\NAME.jsonl is a
-# scripted editor session, one JSON-RPC message per line, sent to `kppc --lsp --check-each-change`
+# scripted editor session, one JSON-RPC message per line, sent to `kpp --lsp --check-each-change`
 # on a copy of its program; every message the server sends back must be the line of
 # tests\lsp\NAME.expected in the same place. $ROOT stands for the copy's URI both ways.
 # session: tests\lsp\program, the requests and diagnostics. cells: tests\lsp\cells, a build.kpp's
@@ -12,13 +12,13 @@
 # navigation: tests\lsp\hierarchy, go to implementation and type definition, highlights, folding.
 # members: tests\lsp\members, completion after `this.`, `this->` and `This::`, and quick fixes.
 # -Update writes the expected files from this run (read them before committing). run_tests.cmd runs it.
-param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe", [switch]$Update)
+param([string]$KppExe = "$PSScriptRoot\..\build\kpp.exe", [switch]$Update)
 $ErrorActionPreference = 'Stop'
 $work = Join-Path $PSScriptRoot '..\build\tests\lsp'
 if (Test-Path $work) { Remove-Item -Recurse -Force $work }
 New-Item -ItemType Directory -Force $work | Out-Null
 $work = (Resolve-Path $work).Path
-$Kppc = (Resolve-Path $Kppc).Path
+$KppExe = (Resolve-Path $KppExe).Path
 $failed = 0
 
 foreach ($session in @(@{ Name = 'session'; Program = 'program'; Args = '--stdio' }, @{ Name = 'cells'; Program = 'cells'; Args = '--stdio' },
@@ -52,7 +52,7 @@ foreach ($session in @(@{ Name = 'session'; Program = 'program'; Args = '--stdio
   [IO.File]::WriteAllBytes($inPath, $request.ToArray())
   Push-Location $work
   $ErrorActionPreference = 'Continue'
-  cmd /c "`"$Kppc`" --lsp $($session.Args) --check-each-change < `"$inPath`" > `"$outPath`" 2> `"$logPath`""
+  cmd /c "`"$KppExe`" --lsp $($session.Args) --check-each-change < `"$inPath`" > `"$outPath`" 2> `"$logPath`""
   $exitCode = $LASTEXITCODE
   $ErrorActionPreference = 'Stop'
   Pop-Location

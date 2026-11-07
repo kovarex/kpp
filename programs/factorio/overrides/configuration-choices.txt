@@ -1,4 +1,4 @@
-# The #if groups whose debug, release and final texts kppc --convert-merge cannot write as one
+# The #if groups whose debug, release and final texts kpp --convert-merge cannot write as one
 # `if constexpr (config::debug)` or `(config::finalRelease)` (a part of an expression), each taken
 # from one configuration for all builds: FILE GROUP debug|release|final  why. (design.md 12, "The game's
 # DEBUG as config::debug"; docs/final-release.md)

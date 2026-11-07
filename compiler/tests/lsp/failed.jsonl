@@ -1,4 +1,4 @@
-// A check that fails without a diagnostic, for tests\lsp.ps1 (kppc --lsp --no-such-option): the
+// A check that fails without a diagnostic, for tests\lsp.ps1 (kpp --lsp --no-such-option): the
 // editor is told once (window/showMessage), not again while the same failure stands.
 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootUri":"$ROOT","capabilities":{}}}
 {"jsonrpc":"2.0","method":"initialized","params":{}}

@@ -1,5 +1,5 @@
 // spec: kpp requires nullptr (kovarex, 2026-11-04: "writing 0 instead of nullptr is not nice"; design.md 4): a literal 0 that would be a pointer or member pointer without a cast is an error at the 0 token itself (its column with --diagnostic-columns, inside parentheses too): an initializer, a parenthesised one, a member pointer, an argument, a comparison, a template's return (once, however many instances); nullptr is none; imported C keeps C's rule
-// kppc: --diagnostic-columns
+// kpp: --diagnostic-columns
 // error: zero_literal_as_pointer_is_error.kpp:15:41: error: the literal 0 is no pointer: write nullptr (design.md 4)
 // error: zero_literal_as_pointer_is_error.kpp:18:13: error: the literal 0 is no pointer: write nullptr (design.md 4)
 // error: zero_literal_as_pointer_is_error.kpp:19:14: error: the literal 0 is no pointer: write nullptr (design.md 4)

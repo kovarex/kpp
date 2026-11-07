@@ -5,11 +5,11 @@
 # (Normal by default: it competes with the watch's thread, which Idle spinners never do, thread A).
 # One stale round fails it. Not part of run_tests (minutes); run it after a change to collectFilesWatched.
 #   powershell -File compiler\tests\watchstress.ps1 [-Rounds 500] [-Spin] [-SpinPriority Normal]
-param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe", [int]$Rounds = 500, [switch]$Spin, [string]$SpinPriority = 'Normal')
+param([string]$KppExe = "$PSScriptRoot\..\build\kpp.exe", [int]$Rounds = 500, [switch]$Spin, [string]$SpinPriority = 'Normal')
 $ErrorActionPreference = 'Stop'
-$Kppc = (Resolve-Path $Kppc).Path
+$KppExe = (Resolve-Path $KppExe).Path
 $work = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\build\tests\watchstress'))
-function StopServer { $ErrorActionPreference = 'Continue'; & $Kppc --stop-server --quiet --exe "$work\w.exe" "$work\src" 2>&1 | Out-Null }
+function StopServer { $ErrorActionPreference = 'Continue'; & $KppExe --stop-server --quiet --exe "$work\w.exe" "$work\src" 2>&1 | Out-Null }
 if (Test-Path $work) { StopServer; cmd.exe /c rd /s /q $work }
 New-Item -ItemType Directory -Force "$work\src" | Out-Null
 $env:KPP_WATCH_CHECK = '1'
@@ -35,7 +35,7 @@ try
     # Another file of a different size or the same size each round (a stamp that differs only in time).
     [IO.File]::WriteAllText($main, "int main() { println($(1000 + $r)); return 0; }")
     $ErrorActionPreference = 'Continue'
-    $out = & $Kppc --server --quiet --exe "$work\w.exe" "$work\src" 2>&1 | ForEach-Object { "$_" }
+    $out = & $KppExe --server --quiet --exe "$work\w.exe" "$work\src" 2>&1 | ForEach-Object { "$_" }
     $code = $LASTEXITCODE
     $ErrorActionPreference = 'Stop'
     $printed = if ($code -eq 0) { (& "$work\w.exe") -join ' ' } else { "exit $code" }

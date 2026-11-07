@@ -1,5 +1,5 @@
 // spec: a macOS SDK whose libSystem.tbd lists no stubs for the target's processor is refused (here an arm64-only one for macos-x64; its target list goes on over two lines)
-// kppc: --target macos-x64 --sysroot {here}/macos_sdk_lacks_the_architecture_is_explained.sdk
+// kpp: --target macos-x64 --sysroot {here}/macos_sdk_lacks_the_architecture_is_explained.sdk
 // exit: 2
 // error: --target macos-x64 needs a macOS SDK, version 11.0 or newer: its usr/lib/libSystem.tbd lists no x86_64 (it is for other processors).
 int main() { return 0; }

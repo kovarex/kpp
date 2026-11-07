@@ -1,5 +1,5 @@
 #pragma once
-// LLVM's back end inside kppc (docs/codegen-speed.md, "The integration in three steps", step 2): a
+// LLVM's back end inside kpp (docs/codegen-speed.md, "The integration in three steps", step 2): a
 // module's IR compiled to an object in this process, on the calling thread, as `clang -O0 -c` compiles
 // it (the same -O0 pipeline, the same target options), without writing the IR to a file or starting a
 // process. Built only when CMake is given LLVM (KPP_LLVM_DIR); otherwise inProcessBackend() is false
@@ -15,7 +15,7 @@ struct BackendOptions
   bool functionSections = true; // -ffunction-sections -fdata-sections: not in an --incremental-link build (main.cpp)
 };
 
-// Whether this kppc was built with LLVM's back end in it.
+// Whether this kpp was built with LLVM's back end in it.
 bool inProcessBackend();
 
 // The object file for module text ir (textual LLVM IR), in object; false with error set when LLVM

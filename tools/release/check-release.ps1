@@ -116,7 +116,7 @@ try
       {
         Build "hello, $configuration" @('hello', $configuration, '--toolchain', 'bundled', '--run') 'Hello from kpp' "build\$configuration\hello.exe"
       }
-      # --verbose: kppc's report of each build, whose toolchain line says which clang it used.
+      # --verbose: kpp's report of each build, whose toolchain line says which clang it used.
       $r = Run 'kpp' @('hello', '--toolchain', 'bundled', '--verbose')
       $line = ($r.text -split "`n") -match '^toolchain: ' | Select-Object -First 1
       if ($r.exit -ne 0 -or $line -notlike "toolchain: $Install\bin\clang.exe (bundled, windows-gnu: links with lld)") { Fail "kpp hello --verbose: exit $($r.exit), its toolchain line '$line'" }

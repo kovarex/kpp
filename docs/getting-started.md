@@ -106,5 +106,5 @@ kpp\compiler\build.cmd
 ```
 
 This needs the same Visual Studio components plus "C++ CMake tools for Windows"; the result is
-`compiler\build\kppc.exe`, the same program a release names `kpp.exe`. `tools\release\package.cmd`
+`compiler\build\kpp.exe`, the same program a release names `kpp.exe`. `tools\release\package.cmd`
 makes the release package and installer.

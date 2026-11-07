@@ -236,28 +236,28 @@
     // (fileapi.h: StackWalker.cpp defines it `#ifndef INVALID_FILE_ATTRIBUTES`, for VC5/6)
     {"INVALID_FILE_ATTRIBUTES", "((DWORD)-1)"}};
   // The game is converted in two configurations and the two made one (design.md 12, "The game's
-  // DEBUG as config::debug"): FastDebug's defines above, and with kppc --convert-release Release's,
+  // DEBUG as config::debug"): FastDebug's defines above, and with kpp --convert-release Release's,
   // which have NDEBUG for _DEBUG and DEBUG and no DISABLE_EXPRESSION_ID (fbuild.bff's
   // .BuildVanillaRelease). With --convert-marks each #if group is marked where its first and last
   // directive stood (`/*kpp:if FILE:N*/`, `/*kpp:endif FILE:N*/`), and convertMerge writes a group
   // whose two texts differ as `if constexpr (config::debug)`.
-  // With kppc --convert-final, the official builds' FinalRelease: Release's defines with FINAL_RELEASE
+  // With kpp --convert-final, the official builds' FinalRelease: Release's defines with FINAL_RELEASE
   // and PACKAGED_BUILD (fbuild.bff's .BuildVanillaFinalRelease) and ALL_IN_ONE=1, which the
   // factorio-all-in-one build that packages are made from adds (docs/final-release.md).
   bool convertRelease = false;
   bool convertFinal = false;
   bool convertMarks = false;
-  // With kppc --convert-native-tests, the game's UnitTest++ tests are written as kpp's own (design.md
+  // With kpp --convert-native-tests, the game's UnitTest++ tests are written as kpp's own (design.md
   // 8.7): SUITE as `suite`, TEST and TEST_FIXTURE as `test`, every CHECK as `require`
   // (nativeTestMacroBodies in Preprocessor.inl).
   bool convertNativeTests = false;
-  // With kppc --convert-platform linux (CONVERSION.md TODO 17), the game as fbuild.bff builds it for
+  // With kpp --convert-platform linux (CONVERSION.md TODO 17), the game as fbuild.bff builds it for
   // Linux x86-64: its Linux `.defines` (LINUX, LUA_USE_POSIX, `NULL=0L`...) and `.architectureSpecificDefines`
   // (ARCH_X86_64) for the Windows ones, the configuration's and the libraries' defines as for Windows,
   // and clang's predefines for x86_64-linux-gnu with -std=c++20 -march=x86-64 -msse2 for MSVC's and the
   // Windows SDK's (--convert-predefines FILE, clang's `-dM -E` output: programs/factorio/linux-predefines.txt).
   // Each configuration is converted for each platform and the two made one by config::platform
-  // (kppc --convert-merge-platform), before the configurations are by config::debug.
+  // (kpp --convert-merge-platform), before the configurations are by config::debug.
   std::string convertPlatform = "windows";
   std::map<std::string, std::string> convertPredefines;
   const std::map<std::string, std::string> linuxDefines = {
@@ -306,7 +306,7 @@
     }();
     return convertFinal ? final : convertRelease ? release : platformDefines();
   }
-  // The build a C library converted as C (kppc --c-sources) is preprocessed as: factorio-in-kpp's
+  // The build a C library converted as C (kpp --c-sources) is preprocessed as: factorio-in-kpp's
   // build.kpp compiles the C libraries with clang-cl as C, release (/O2 /DNDEBUG), with Factorio's
   // global defines (its fromSource); no C++ and no debug build's names. MSVC's x64 predefines, and
   // the C runtime's limits and the open flags the libraries test in #if (limits.h, fcntl.h:

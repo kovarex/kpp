@@ -1,7 +1,7 @@
 // --debug-info's classes defined on every emitter at once (homeDebugClasses' levels, 2026-11-07):
 // determinism.ps1 builds this with --debug-info at 8 modules, at -j 1 (one emitter defines every class)
 // and at -j 32 (each level's classes on every emitter at once), and compares every module's text by the
-// hash kppc keeps beside its object. 96 classes, more than homeDebugClasses leaves to one thread (64):
+// hash kpp keeps beside its object. 96 classes, more than homeDebugClasses leaves to one thread (64):
 // each with data members, an array, a member function and a pointer to the next; every fourth derived
 // from a polymorphic base. main's locals name every one, so the first level has them all.
 // (Written by a script: Part<i> for i in 0..95.)

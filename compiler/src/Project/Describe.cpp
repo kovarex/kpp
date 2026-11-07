@@ -159,7 +159,7 @@ namespace projects
     s += "  return otherwise;\n}\n"
          "StringView kppProjectName() { return " + kppString(root.filename().string()) + "; }\n"
          "StringView kppCommandLineTarget() { return " + kppString(target) + "; }\n"
-         // (the default target, kppc's hostTarget: Cell::platform without any --target)
+         // (the default target, kpp's hostTarget: Cell::platform without any --target)
          "StringView kppHostTarget() { return " + kppString(host::platformName()) + "; }\n";
     return s;
   }
@@ -202,7 +202,7 @@ namespace projects
     return host::closePipe(pipe);
   }
 
-  // kppc on build.kpp, projectlib and the settings: the interpreter runs build() once and
+  // kpp on build.kpp, projectlib and the settings: the interpreter runs build() once and
   // describe(), which runs configure() for every cell (--run-build; projectlib's Project has no
   // configuration, so the name `matrix` is not used), and prints the description. Through the
   // compile server unless --no-server, so that the standard library is not checked again for every
@@ -336,7 +336,7 @@ namespace projects
             }
             Option o;
             o.name = d.name;
-            o.type = d.kind == "enum" ? "string" : d.kind; // kppc checks the value against its type (an enumerator's name, an integer's range)
+            o.type = d.kind == "enum" ? "string" : d.kind; // kpp checks the value against its type (an enumerator's name, an integer's range)
             o.declaredType = d.type;
             o.declaredAt = at;
             o.defaultValue = d.value;
@@ -376,7 +376,7 @@ namespace projects
   // The libraries uses names (by's build.kpp says use()), each found at its path, or else in the
   // project's libraries/NAME, or else next to by when by is in a directory named libraries (the
   // libraries of one libraries/ directory use each other), or else among kpp's own (defaultLibraries:
-  // the release's libraries/, a checkout's for a build of kppc), then described (the same settings),
+  // the release's libraries/, a checkout's for a build of kpp), then described (the same settings),
   // checked (its version, its minimum kpp), and then the libraries it uses, depth
   // first. Each library is added to libraries once, with its roots, absolute, and its scope. A name
   // found in two directories is an error: a program has one copy of each library.
@@ -647,7 +647,7 @@ namespace projects
     return true;
   }
 
-  // kppc's arguments for one executable of one configuration.
+  // kpp's arguments for one executable of one configuration.
   const CLibrary* findLibrary(const Description& d, const std::string& name)
   {
     for (const CLibrary& c : d.cLibraries)

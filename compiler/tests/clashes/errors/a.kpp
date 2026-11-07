@@ -1,6 +1,6 @@
 // Each name here is declared again in b.kpp: two entities of one top-level name, an error at the
 // second (docs/design.md, "One global scope, so clashes are errors"). A static name and one in an
-// unnamed namespace are local to their file in C++, which kppc does not support yet: an error too,
+// unnamed namespace are local to their file in C++, which kpp does not support yet: an error too,
 // where they were one variable that both files read.
 int total = 1;
 struct Crate { int v = 1; };

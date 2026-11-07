@@ -1,5 +1,5 @@
 // spec: a debug build compiled with optimization (`--config debug=true --optimize`, ThinLTO across several modules) keeps every global a module defines for the others: each linkonce_odr global of the shared declarations is defined in one module only (its home) and read from the others, so its one definition is weak_odr, never dropped as unused where it is defined (16 constants, each read by its own instance of a template in whichever module the instance lands) (`120`)
-// kppc: --config debug=true --optimize --modules 4
+// kpp: --config debug=true --optimize --modules 4
 extern "C" int printf(const char* format, ...);
 const int c0[2] = {0, 1};
 const int c1[2] = {1, 1};

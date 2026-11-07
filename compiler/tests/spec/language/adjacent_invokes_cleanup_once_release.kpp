@@ -1,5 +1,5 @@
 // spec: a call that throws runs only its own scope's cleanups, even when the next call's scope starts at its return address (release)
-// kppc: --release
+// kpp: --release
 struct Item
 {
   int id;

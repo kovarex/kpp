@@ -3,10 +3,10 @@
 kovarex asked (2026-10-29) whether the unique pointer should be part of the language, with syntax
 like `A^ b;`, instead of the library class `UniquePtr<T>` (docs/stdlib/uniqueptr.md). This is a
 research note: nothing in the language, the compiler or the library was changed. It records what
-Factorio uses, what the class costs kppc today, what clang pays for `std::unique_ptr`, what a
+Factorio uses, what the class costs kpp today, what clang pays for `std::unique_ptr`, what a
 built-in would have to mean, the syntax options, how other languages do it, and a recommendation.
 
-Measured on PC-PRACOVNA (Ryzen 9 9950X, 32 threads) with kppc built from master `89058a6`, on a
+Measured on PC-PRACOVNA (Ryzen 9 9950X, 32 threads) with kpp built from master `89058a6`, on a
 fresh conversion of the game (the headline inputs of path-to-factorio.md: CommonUtil, Agui,
 cxxopts, Lua and `src/`, 4,102 files with the stdlib, 0.99 M lines). The scripts are in
 `compiler/bench/uniqueptr/`; each command is given with its numbers.
@@ -16,18 +16,18 @@ cxxopts, Lua and `src/`, 4,102 files with the stdlib, 0.99 M lines). The scripts
 **Keep `UniquePtr<T>` a library class. If the short spelling is wanted, make `T^` a spelling of
 `UniquePtr<T>`, not a new kind of type.** The reasons, each measured below:
 
-- The class costs kppc about 1% of the build: UniquePtr and makeUnique together are 1.5 to 2.2% of
+- The class costs kpp about 1% of the build: UniquePtr and makeUnique together are 1.5 to 2.2% of
   the front end's instantiation CPU (1.8% of all typed expressions), 1.3% of codegen and 1.1% of
   the IR bytes (1.4% of its instructions). That is about 0.03 s of the front end's wall time and
   0.11 s of codegen on the whole game. A built-in cannot save more than that.
 - What clang pays for `std::unique_ptr` (3.1% of its front end, 147 class instantiations in every
   TU, each distinct `unique_ptr<T>` instantiated again in 52 TUs on average) is a cost of
-  instantiating per translation unit. kppc instantiates each `UniquePtr<T>` once, which already
+  instantiating per translation unit. kpp instantiates each `UniquePtr<T>` once, which already
   removed that.
 - The one large effect is debug-build run time: reading through a UniquePtr at -O0 is 2.5 to 2.7
   times slower than through a plain pointer, because `->` and `bool` are calls. That is true of
   every small library accessor (Vector's `[]`, Optional's `*`, String's `size()`), and it goes away
-  the same way for all of them: kppc inlining trivial functions when it emits IR (design.md
+  the same way for all of them: kpp inlining trivial functions when it emits IR (design.md
   section 2, option (4), already preferred). With `[[forceinline]]` and the instantiation in the
   calling module the ratio drops to 1.2.
 - A new type kind is the most expensive thing to build: every place that knows pointers or classes
@@ -76,7 +76,7 @@ stripped. The template arguments are read as spelled, so a T is counted once per
 | | count |
 |---|---:|
 | `std::unique_ptr<...>` written | **4,064**, in 1,124 files |
-| distinct T | 731 as spelled (967 distinct instantiations reach kppc's codegen, 1.3 below) |
+| distinct T | 731 as spelled (967 distinct instantiations reach kpp's codegen, 1.3 below) |
 | most used T | agui::Widget 977, ElementImageSet 115, Color 110, MemoryBitmap 86, LuaEventFilters 72, Entity 70, BlueprintRecord 66 |
 | `std::make_unique<T>(...)` | 990 (434 distinct T), 13 of them `make_unique<T[]>` |
 | `.reset(new ...)` | 742 (any smart pointer) |
@@ -116,9 +116,9 @@ are missing, so these are lower bounds). At -O0 every use in the source is one c
 | derived-to-base assignment / `==` with a plain pointer / `swap` | 9 / 2 / 0 |
 | **all members** | **59,360**, plus 635 calls of makeUnique |
 
-### 1.3 What the class costs kppc
+### 1.3 What the class costs kpp
 
-A scratch copy of kppc (copy `compiler\`, run `python -X utf8 -I
+A scratch copy of kpp (copy `compiler\`, run `python -X utf8 -I
 compiler\bench\uniqueptr\prof_patch.py <copy>\src` and build the copy; the patch is never
 committed) records, per template, the exclusive CPU time and typed expressions of the front end's
 instantiation checks (nested instantiations are charged to their own template) and the time
@@ -163,7 +163,7 @@ in a program that does nothing else. In the game the same costs are the 1% of 1.
 
 ### 1.5 Run time in debug and release builds
 
-`compiler/bench/uniqueptr/deref.kpp`, built with `kppc --exe` (debug) and `--release`: 1,000
+`compiler/bench/uniqueptr/deref.kpp`, built with `kpp --exe` (debug) and `--release`: 1,000
 owners in a Vector read as `if (p) sum += p->value` 20 M times, 2 M owners made and destroyed,
 200 x 1,000 owners moved between Vectors, each against the same loop on `Node*`. Four runs:
 
@@ -197,17 +197,17 @@ exclusive times, nested instantiations of other templates excluded:
   1.9% of the 673 functions a TU defines and 1.2% of its IR, as `linkonce_odr` copies that the
   linker throws away again.
 - For all 3,230 `.cpp` of `src`: about 474 k class instantiations and 41 k emitted unique_ptr
-  functions where kppc has 1,438 instantiations and 5,643 functions; about 110 s of CPU (3.1% of
+  functions where kpp has 1,438 instantiations and 5,643 functions; about 110 s of CPU (3.1% of
   the measured untraced 1.09 s per TU). The real build repeats less, since FASTBuild compiles
   about 100 files per unity object with a PCH.
 
 clang treats `std::unique_ptr` as an ordinary template (libc++ only offers an opt-in
-`[[clang::trivial_abi]]` variant that is passed in a register; kppc passes a `UniquePtr<T>`
+`[[clang::trivial_abi]]` variant that is passed in a register; kpp passes a `UniquePtr<T>`
 argument by address, as clang does by default). What compilers do special-case are the smallest
 and most used library functions: clang (since 15) treats `std::move`, `std::forward`,
 `std::move_if_noexcept`, `std::as_const` and `std::addressof` as builtins that are never
 instantiated, and MSVC's library marks `std::move` and `std::forward` `[[msvc::intrinsic]]`, for
-compile time and for debug builds. In kppc `move` and `forward` are 17,662 instantiations and
+compile time and for debug builds. In kpp `move` and `forward` are 17,662 instantiations and
 7,853 functions (0.47% of the IR bytes, half of what UniquePtr is), called for example 1,174 times
 as `move<UniquePtr<T>>`.
 
@@ -386,7 +386,7 @@ and `UniquePtr<T, D>` in every option.
 The general mechanisms give most of E's and the built-in's benefit to every small template, not
 only to UniquePtr, which is why they come first in the recommendation:
 
-1. **Inlining trivial functions when kppc emits IR** (design.md section 2, option (4)). UniquePtr's
+1. **Inlining trivial functions when kpp emits IR** (design.md section 2, option (4)). UniquePtr's
    accessors are 8,791 of the call sites in 1.2 alone, and the same holds for Vector's `[]`,
    `size()`, `begin()`/`end()` and String's `c_str()`, each called thousands of times in the
    game's IR. Measured on UniquePtr: 2.6x to 1.2x in debug.

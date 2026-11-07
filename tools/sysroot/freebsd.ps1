@@ -1,4 +1,4 @@
-# A FreeBSD x86-64 sysroot for kppc --target freebsd (docs/design.md, "Targets and hosts", stage 6):
+# A FreeBSD x86-64 sysroot for kpp --target freebsd (docs/design.md, "Targets and hosts", stage 6):
 # the C headers, the C runtime's start files and libraries (static and shared) of the FreeBSD
 # release kpp.net's host runs (NearlyFreeSpeech.NET: 14.3-RELEASE, kovarex 2026-11-03), taken from
 # that release's base.txz.

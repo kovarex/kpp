@@ -40,7 +40,7 @@ written.
 
 ## Tests
 
-`kpp --test` in this directory, or `kppc --test libraries/url` anywhere:
+`kpp --test` in this directory, or `kpp --test libraries/url` anywhere:
 - every example of RFC 3986 section 5.4, normal and abnormal (42), resolved against
   `http://a/b/c/d;p?q`. Python's `urljoin` gives the same results except for `http:g`, where it
   takes the RFC's backward-compatible reading (`http://a/b/c/g`) and this library the strict one

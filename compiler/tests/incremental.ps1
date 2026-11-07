@@ -1,10 +1,10 @@
-# The compile server must build exactly what a new kppc process builds (docs/compile-speed.md,
+# The compile server must build exactly what a new kpp process builds (docs/compile-speed.md,
 # "The compile server"). A copy of tests\incremental\ is edited step by step (a function body, a
 # signature, a return type a data member is declared with, a class's layout (built from the kept program), a file added, the file removed); after each edit it is built through
 # one long-lived server and by a new process, and the IR, stdout and stderr (timings masked) must
 # be identical, and the program the server built must print what the step expects. run_tests.cmd
 # runs it.
-param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe")
+param([string]$KppExe = "$PSScriptRoot\..\build\kpp.exe")
 $ErrorActionPreference = 'Stop'
 $work = Join-Path $PSScriptRoot '..\build\tests\incremental'
 if (Test-Path $work) { Remove-Item -Recurse -Force $work }
@@ -16,7 +16,7 @@ $lib = Join-Path $work 'lib'
 New-Item -ItemType Directory -Force $lib | Out-Null
 Set-Content (Join-Path $lib 'ilib.kpp') "int libValue() { return 1; }`nstruct LibBox { int v = 2; int get() const { return v + libValue(); } };"
 $libRoot = @('--library-root', 'ilib', $lib) # (before the sources: the server's log names a build by its last argument)
-$Kppc = (Resolve-Path $Kppc).Path
+$KppExe = (Resolve-Path $KppExe).Path
 $failed = 0
 $env:KPP_WATCH_CHECK = '1' # (and each build's listing compared with the watched one: a difference fails the build)
 $started = Get-Date
@@ -34,20 +34,20 @@ function Build([string[]]$arguments, [string]$label)
   $err = Join-Path $work "$label.err.txt"
   # Not Start-Process -Wait: it waits for the client's whole process tree, the server included.
   $ErrorActionPreference = 'Continue'
-  & $Kppc @arguments > $out 2> $err
+  & $KppExe @arguments > $out 2> $err
   $code = $LASTEXITCODE
   $ErrorActionPreference = 'Stop'
   return [pscustomobject]@{ exit = $code; out = @(Normalize (Get-Content $out)); err = @(Normalize (Get-Content $err)) }
 }
 
 # This run's servers' log lines since a time. Other worktrees and threads run servers at the same
-# time, logging to the same directory (%TEMP%\kppc-server, shared for the C import cache): a log is a
+# time, logging to the same directory (%TEMP%\kpp-server, shared for the C import cache): a log is a
 # server key's, and the key holds the working directory and the arguments, so ours are the logs whose
 # builds name $last (this worktree's own copy of the program) last; a line of another log is never
 # counted, even one of a process whose id is ours.
 function ServerLog([datetime]$since, [string]$last = $src)
 {
-  return @(Get-ChildItem (Join-Path $env:TEMP 'kppc-server\*.log') | Where-Object { $_.LastWriteTime -ge $since } | ForEach-Object {
+  return @(Get-ChildItem (Join-Path $env:TEMP 'kpp-server\*.log') | Where-Object { $_.LastWriteTime -ge $since } | ForEach-Object {
     $lines = @(Get-Content $_.FullName | Where-Object { $_.Length -gt 23 -and [datetime]::ParseExact($_.Substring(0, 23), 'yyyy-MM-dd HH:mm:ss.fff', $null) -ge $since })
     if ($lines | Where-Object { $_.Contains("the last $last") }) { $lines }
   })
@@ -229,7 +229,7 @@ foreach ($step in $steps)
 # their own (their build directories differ), logging to the same directory.
 $ours = ServerLog $started
 $log = $ours | Where-Object { $_ -match 'verify-incremental: the same as from scratch' }
-if (@($log).Count -lt $steps.Count) { "FAIL incremental: $(@($log).Count) replays verified, $($steps.Count) expected (the server's log, %TEMP%\kppc-server)"; $failed++ }
+if (@($log).Count -lt $steps.Count) { "FAIL incremental: $(@($log).Count) replays verified, $($steps.Count) expected (the server's log, %TEMP%\kpp-server)"; $failed++ }
 else { "ok   incremental replays ($($steps.Count), each the same as from scratch)" }
 # The body edits (a plain function's, twice in one file, a template's, a class template member's, a
 # constexpr function's) were built from the kept program, the changed bodies checked again, and verified.
@@ -281,10 +281,10 @@ if (@($whole).Count -lt 12) { "FAIL incremental: the signature edits and the ove
 else { "ok   incremental whole-function edits built from the kept program ($(@($whole).Count))" }
 # (and the edits with errors, through each server: the undeclared name typed and fixed, the line that
 # does not parse and the line taken out)
-if (@($fast).Count -lt 18) { "FAIL incremental: $(@($fast).Count) body edits built from the kept program, 18 expected (9 through each of two servers) (the server's log, %TEMP%\kppc-server)"; $failed++ }
+if (@($fast).Count -lt 18) { "FAIL incremental: $(@($fast).Count) body edits built from the kept program, 18 expected (9 through each of two servers) (the server's log, %TEMP%\kpp-server)"; $failed++ }
 else { "ok   incremental body edits built from the kept program ($(@($fast).Count))" }
-& $Kppc --stop-server --emit-llvm (Join-Path $work 'server.ll') $src | Out-Null
-& $Kppc --stop-server --verify-incremental --exe $exe $src | Out-Null
+& $KppExe --stop-server --emit-llvm (Join-Path $work 'server.ll') $src | Out-Null
+& $KppExe --stop-server --verify-incremental --exe $exe $src | Out-Null
 
 # A program without the standard library (whose noexcept move assignments need the noexcept filter
 # from the first build) and without a noexcept function, then noexcept added to a function that calls
@@ -308,5 +308,5 @@ $declined = @(ServerLog $nostdStart $nostd | Where-Object { $_ -match "a first n
 if ($b1.exit -ne 0 -or $b2.exit -ne 0 -or $ran -ne 7) { "FAIL incremental: noexcept added without the standard library: builds exit $($b1.exit) and $($b2.exit), the program $ran (7 expected): $($b2.err -join ' ')"; $failed++ }
 elseif (-not $declined) { "FAIL incremental: noexcept added without the standard library: the kept session's rebuild was not declined for the noexcept filter"; $failed++ }
 else { "ok   incremental noexcept added without the standard library (the rebuild declined for the noexcept filter; it links and runs)" }
-& $Kppc --stop-server --no-std --exe $nostdExe $nostd | Out-Null
+& $KppExe --stop-server --no-std --exe $nostdExe $nostd | Out-Null
 if ($failed -gt 0) { exit 1 }

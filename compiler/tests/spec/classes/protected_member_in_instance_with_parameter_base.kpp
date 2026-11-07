@@ -1,6 +1,6 @@
 // spec: a class template deriving from its parameter (`class Dragging : public W`) may name the protected members of the base an instance's argument makes (`super::paint()` with W a Table)
 // factorio: DragPaneWidget<agui::Table, ...> calling agui::Layout's and agui::Widget's protected recursivePaint functions
-// kppc: --access-warnings
+// kpp: --access-warnings
 class Widget
 {
 protected:

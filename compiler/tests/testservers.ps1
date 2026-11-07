@@ -1,5 +1,5 @@
 # Dot-sourced by the checks that start compile servers in a directory of their own (project.ps1,
-# generate.ps1): Stop-TestServers ROOT stops the servers whose KEY.args (in %TEMP%\kppc-server,
+# generate.ps1): Stop-TestServers ROOT stops the servers whose KEY.args (in %TEMP%\kpp-server,
 # server.cpp) starts with a working directory under ROOT, each through its process, KEY.exe. A check
 # that failed partway left its servers running, holding ROOT, which the next run could not delete
 # (thread B, 2026-11-04; D, generate.ps1, 2026-11-05); never kpp --stop-all-servers, which would stop
@@ -7,7 +7,7 @@
 function Stop-TestServers([string]$root)
 {
   $root = [IO.Path]::GetFullPath($root)
-  $dir = Join-Path $env:TEMP 'kppc-server'
+  $dir = Join-Path $env:TEMP 'kpp-server'
   foreach ($record in @(Get-ChildItem (Join-Path $dir '*.args') -ErrorAction SilentlyContinue))
   {
     # (one another thread's client is writing as its server starts cannot be read: not this test's,

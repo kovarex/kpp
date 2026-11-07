@@ -9,7 +9,7 @@ library project:
 - `src/`: the library, which is what a release contains, with `README.md`;
 - `tests/`: native tests (`test name { check(...); }`, docs/design.md 8.6).
 
-`kpp --test` in a library's directory runs its tests, as does `kppc --test libraries/NAME` for a
+`kpp --test` in a library's directory runs its tests, as does `kpp --test libraries/NAME` for a
 library that uses no other (it leaves the directory's build.kpp out); and `compiler\tests\run_tests.cmd` runs every library's.
 [targets.md](targets.md) says how far each one is from running on FreeBSD and Linux.
 

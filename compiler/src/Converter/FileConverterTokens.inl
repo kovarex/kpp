@@ -2397,7 +2397,7 @@
     void narrowFormatArguments(CallExpr* call)
     {
       // A C-variadic function's call whose last named parameter is the format (ssprintf, printf,
-      // snprintf), as kppc checks them: no other call's literal is a format.
+      // snprintf), as kpp checks them: no other call's literal is a format.
       Expr* callee = call->callee;
       Decl* d = callee->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(callee)->resolved
               : callee->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(callee)->resolved
@@ -2452,7 +2452,7 @@
         }
         // (Not in C: a C library's variadic function may read its own format, stb_image_write's
         // `stbiw__writef(s, "111 221 2222 11", 0, 0, format, ...)`, whose arguments are its data;
-        // kppc's format check reports it instead: language/variadic_with_own_format.)
+        // kpp's format check reports it instead: language/variadic_with_own_format.)
         else if (following > conversions.size() && !in.c)
         {
           uint32_t from = conversions.empty() ? last + 1 : ranges[conversions.size() - 1].second;

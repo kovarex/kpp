@@ -318,7 +318,7 @@ namespace
       inRecovery = true;
       // (the lexer's error token for a line splice inside a token: that is the cause, whatever was expected)
       if (at(TokenKind::Error) && spelling().starts_with("\\"))
-        message = "a line splice inside a token (C++ joins the two lines into one token; kppc does not read it so yet)";
+        message = "a line splice inside a token (C++ joins the two lines into one token; kpp does not read it so yet)";
       out.diagnostics.push_back({pos, message});
     }
 

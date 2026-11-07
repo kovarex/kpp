@@ -3,7 +3,7 @@
 # another Visual Studio's MSVC) are another entry, never the first environment's import. Here two
 # INCLUDE directories each have a kpp_cache_probe.h of their own, with a TMP of the test's own.
 # run_tests.cmd runs it.
-param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe")
+param([string]$KppExe = "$PSScriptRoot\..\build\kpp.exe")
 $ErrorActionPreference = 'Stop'
 $work = Join-Path $PSScriptRoot '..\build\tests\importcache'
 if (Test-Path $work) { cmd /c rd /s /q "$work" }
@@ -35,7 +35,7 @@ for ($k = 0; $k -lt $runs.Count; $k++)
   $n = $runs[$k][0]
   $env:INCLUDE = "$work\env$n"
   $exe = "$work\probe$k.exe"
-  $report = & $Kppc --exe $exe "$work\probe.kpp" 2>&1 | Out-String
+  $report = & $KppExe --exe $exe "$work\probe.kpp" 2>&1 | Out-String
   if ($LASTEXITCODE -ne 0) { Fail "run $k (INCLUDE env$n) did not compile: $report"; continue }
   $out = (& $exe | Out-String).Trim()
   if ($out -ne "$n") { Fail "run $k (INCLUDE env$n) printed '$out', not $n (another environment's import)" }

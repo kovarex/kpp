@@ -1655,7 +1655,7 @@ int convertMerge(const std::filesystem::path& debugDir, const std::filesystem::p
   for (const auto& [key, configuration] : report.choices)
     if (!report.chosen.count(key) && std::filesystem::exists(debugDir / key.substr(0, key.find(' ')), ec))
       report.problems.push_back(choicesFile.generic_string() + ": `" + key + "` chooses for no group whose configurations differ");
-  std::string summary = "\n## The two configurations made one (kppc --convert-merge)\n\n- files: " + std::to_string(files) +
+  std::string summary = "\n## The two configurations made one (kpp --convert-merge)\n\n- files: " + std::to_string(files) +
                         "\n- #if groups whose configurations differ, written with `when (config::debug)` and `if constexpr (config::debug)` (design.md 19): " + std::to_string(report.conditional) +
                         "\n- their declarations, each `when (config::debug)` or `when (!config::debug)`: " + std::to_string(report.when) +
                         "\n- their declarations whose initializer alone differs, `= config::debug ? a : b`: " + std::to_string(report.perConfiguration) +

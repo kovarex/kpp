@@ -12,7 +12,7 @@ if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
-add_executable(kppc
+add_executable(kpp
   src/main.cpp
   src/Driver/BodyGraft.cpp
   src/Driver/CImport.cpp
@@ -87,7 +87,7 @@ add_executable(kppc
   src/version.cpp
   src/backend.cpp
 )
-target_include_directories(kppc PRIVATE src)
+target_include_directories(kpp PRIVATE src)
 
 # kpp's version (docs/build.md, "Versions"): version.cmake runs at every build and rewrites
 # generated/version.hpp only when the version or the commit changed, so only version.cpp recompiles.
@@ -96,41 +96,41 @@ add_custom_target(kpp_version
           -P "${CMAKE_CURRENT_SOURCE_DIR}/version.cmake"
   BYPRODUCTS "${CMAKE_CURRENT_BINARY_DIR}/generated/version.hpp"
   COMMENT "kpp's version")
-add_dependencies(kppc kpp_version)
-target_include_directories(kppc PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+add_dependencies(kpp kpp_version)
+target_include_directories(kpp PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
 if (MSVC)
   # Warnings are errors, so the build stays at none. Two are off: `T{a, b}` leaving the later
   # fields to their defaults is the code's aggregate style, and `a || b && c` reads as `a + b * c`.
-  target_compile_options(kppc PRIVATE /W4 /WX /EHsc)
+  target_compile_options(kpp PRIVATE /W4 /WX /EHsc)
   if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    target_compile_options(kppc PRIVATE -Wno-missing-field-initializers -Wno-logical-op-parentheses)
+    target_compile_options(kpp PRIVATE -Wno-missing-field-initializers -Wno-logical-op-parentheses)
   endif()
-  target_compile_definitions(kppc PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX WIN32_LEAN_AND_MEAN)
-  target_link_options(kppc PRIVATE /STACK:8388608)  # 8 MB stack for deep ASTs
+  target_compile_definitions(kpp PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX WIN32_LEAN_AND_MEAN)
+  target_link_options(kpp PRIVATE /STACK:8388608)  # 8 MB stack for deep ASTs
 else()
   # A POSIX host (design.md, "Targets and hosts", 5): clang or g++ with libstdc++, POSIX threads; the
   # main thread's stack is the system's (8 MB on Linux, as /STACK gives it on Windows).
   find_package(Threads REQUIRED)
-  target_link_libraries(kppc PRIVATE Threads::Threads ${CMAKE_DL_LIBS})
+  target_link_libraries(kpp PRIVATE Threads::Threads ${CMAKE_DL_LIBS})
   # -rdynamic: the compile server's crash report names each frame's function (dladdr reads the
   # dynamic symbol table; server.cpp's crashLogged).
-  target_link_options(kppc PRIVATE -rdynamic)
+  target_link_options(kpp PRIVATE -rdynamic)
 endif()
 
-# LLVM's back end inside kppc (src/backend.cpp, docs/codegen-speed.md): KPP_LLVM_DIR names the
+# LLVM's back end inside kpp (src/backend.cpp, docs/codegen-speed.md): KPP_LLVM_DIR names the
 # official clang+llvm-19.1.7 release's lib and include, as compiler/llvm.ps1 unpacks them. Without
-# it kppc runs clang per module as before.
+# it kpp runs clang per module as before.
 set(KPP_LLVM_DIR "" CACHE PATH "LLVM (lib and include) for the in-process back end; empty: none")
 if (KPP_LLVM_DIR)
   # The release's static libraries (not its DLLs' import libraries: LLVM-C, LTO, Remarks); the linker
-  # takes what the back end uses. (Its CMake package names its tools in bin\, which kppc needs not.)
+  # takes what the back end uses. (Its CMake package names its tools in bin\, which kpp needs not.)
   file(GLOB kpp_llvm_libs "${KPP_LLVM_DIR}/lib/LLVM*.lib")
   list(FILTER kpp_llvm_libs EXCLUDE REGEX "LLVM-C[.]lib$")
-  target_include_directories(kppc PRIVATE "${KPP_LLVM_DIR}/include")
-  target_compile_definitions(kppc PRIVATE KPP_WITH_LLVM)
-  # The release's libraries are built against the static C runtime (/MT): so is kppc with them.
-  set_property(TARGET kppc PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
-  target_link_libraries(kppc PRIVATE ${kpp_llvm_libs} psapi shell32 ole32 uuid advapi32 ws2_32 ntdll)
+  target_include_directories(kpp PRIVATE "${KPP_LLVM_DIR}/include")
+  target_compile_definitions(kpp PRIVATE KPP_WITH_LLVM)
+  # The release's libraries are built against the static C runtime (/MT): so is kpp with them.
+  set_property(TARGET kpp PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
+  target_link_libraries(kpp PRIVATE ${kpp_llvm_libs} psapi shell32 ole32 uuid advapi32 ws2_32 ntdll)
   if (MSVC)
     # (LLVM's headers are not warning-free at /W4.)
     set_source_files_properties(src/backend.cpp PROPERTIES COMPILE_OPTIONS "/W0;/WX-")

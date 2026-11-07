@@ -40,6 +40,6 @@ TcpStream client = listener.accept();
 
 ## Tests
 
-`kpp --test` here, or `kppc --test libraries/net`: a loopback connection both ways (100,000 bytes
+`kpp --test` here, or `kpp --test libraries/net`: a loopback connection both ways (100,000 bytes
 back, `shutdownWrite`, `readAll`), a read timeout, and the errors: a refused connection, a name
 that does not resolve, a closed stream, a connection closing before `readExactly` has its bytes.

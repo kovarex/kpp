@@ -137,10 +137,10 @@ namespace projects
     std::vector<std::string> names;          // the targets and configurations asked for (act sorts them)
     std::vector<std::string> configurations; // --debug, --release
     std::vector<std::pair<std::string, std::string>> settings;
-    std::vector<std::string> passed;         // kppc's own options, given to every build
+    std::vector<std::string> passed;         // kpp's own options, given to every build
     bool run = false, test = false, visualStudio = false, vsCode = false, msvc = false, stop = false;
     bool server = host::compileServer; // through the compile server (--no-server: not), where the host has one
-    bool verbose = false; // --verbose: kppc's report of each build (its phases' times), not --quiet
+    bool verbose = false; // --verbose: kpp's report of each build (its phases' times), not --quiet
     bool options = false; // kpp options: list the libraries' options of the cells asked for
     std::vector<std::string> runArguments;   // --run's: the program's; --test's: the runner's
   };
@@ -158,7 +158,7 @@ namespace projects
 
   // The platform a program's C libraries are built for, its target's (build.kpp's and the command
   // line's --target): windows (clang-cl, or the bundled toolchain's GNU dialect), or linux and freebsd
-  // (clang for the target's triple, with the target's sysroot: --sysroot, else kppc's own beside it).
+  // (clang for the target's triple, with the target's sysroot: --sysroot, else kpp's own beside it).
   struct LibraryTarget
   {
     bool posix() const { return platform != "windows"; }
@@ -167,11 +167,11 @@ namespace projects
     bool gnu = false;                 // windows-gnu: Windows' GNU dialect (llvm-mingw's clang), not MSVC's
     std::string triple;               // clang's --target, off Windows and for windows-gnu
     std::string sysroot;              // off Windows; empty when there is none
-    std::string sysrootName;          // the one beside kppc that it is when none is given: linux-x86_64, linux-arm64
+    std::string sysrootName;          // the one beside kpp that it is when none is given: linux-x86_64, linux-arm64
   };
 
   // A C library's part of a build (prepareLibrary): its objects' compile commands and its resources',
-  // which run in one pool with every other library's of the program (runLibraries), alongside kppc's
+  // which run in one pool with every other library's of the program (runLibraries), alongside kpp's
   // own work, and then its archive (finishLibrary). Only the objects whose source, headers or flags
   // changed are compiled; prebuilt libraries need nothing. Errors are clang's, at their file and line.
   struct LibraryJob

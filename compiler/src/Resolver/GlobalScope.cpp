@@ -1028,7 +1028,7 @@ std::vector<std::string> GlobalScope::topLevelClashes()
     return !sa.empty() && sa == constantSpelling(b);
   };
   // A file-local name (`static`, or in an unnamed namespace) is local to its file in C++ and in
-  // design.md; kppc gives every top-level name one entity, so one that another declaration also
+  // design.md; kpp gives every top-level name one entity, so one that another declaration also
   // claims is two entities merged: an error until names local to their file are supported.
   auto clash = [&](const Decl* d, uint32_t symbol, const Decl* other)
   {
@@ -1041,7 +1041,7 @@ std::vector<std::string> GlobalScope::topLevelClashes()
     if (other->file->isImported)
       text += "; a C header's names are the program's, rename the program's";
     else if (fileLocal(d) || fileLocal(other))
-      text += "; a name local to its file (static, or in an unnamed namespace) is not supported yet (kppc gives every top-level name one entity), rename one of them";
+      text += "; a name local to its file (static, or in an unnamed namespace) is not supported yet (kpp gives every top-level name one entity), rename one of them";
     else
       text += "; top-level names are global, rename one of them";
     out.push_back(text);

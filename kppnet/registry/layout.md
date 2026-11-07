@@ -17,7 +17,7 @@ https://kpp.net/registry/
   archives/
     <hh>/<hex>.zip            a release's files; <hex> is its tree hash, <hh> its first two digits
     <hh>/<hex>.manifest       the manifest the tree hash is the SHA-256 of (tree_hash.py)
-    <hh>/<hex>.exports        its top-level names (kppc --exports): the clash check before download, for unscoped releases
+    <hh>/<hex>.exports        its top-level names (kpp --exports): the clash check before download, for unscoped releases
   mirror/
     <sha256>/<file name>      third-party files CI and builds download (SDL3-devel-3.4.18-VC.zip...),
                               named by the SHA-256 of the file itself

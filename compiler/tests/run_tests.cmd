@@ -1,5 +1,5 @@
 @echo off
-rem run_tests: compiles every tests\run\*.kpp with kppc, runs it, and compares stdout with the .expected
+rem run_tests: compiles every tests\run\*.kpp with kpp, runs it, and compares stdout with the .expected
 rem file; then the other checks (tests\*.ps1, tests\inline.cmd's sections, the libraries' tests). They
 rem run side by side, each a process of its own (tests\run_tests.ps1, which lists them). The last line
 rem sums up every part, and the exit code agrees with it:

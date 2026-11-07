@@ -1,6 +1,6 @@
 // spec: exceptions: an exception thrown inside a handler, out of a scope with locals to destroy, destroys the locals around the try too
 // factorio: ExportResultGui::loadAndAttachInternal (a handler's calls in a scope of their own, a FloatingGuiWindow local around the try)
-// kppc: --debug-info
+// kpp: --debug-info
 // (LLVM's verifier rejects a handler's cleanup that unwinds elsewhere than its catchswitch only in a module with debug info.)
 struct Note { const char* text; Note(const char* t) : text(t) {} ~Note() { println("~", StringView(this->text)); } };
 void fail(const char* what) { throw RuntimeError(String(what)); }

@@ -19,7 +19,7 @@ struct ConvertInput
   std::string_view text;
   const std::vector<Token>* tokens;
   ParsedFile* parsed;
-  // C, not C++ (kppc --c-sources: a C library): written as kpp by C's rules, where C and C++
+  // C, not C++ (kpp --c-sources: a C library): written as kpp by C's rules, where C and C++
   // differ (programs/factorio/tests/convert_c/rules.c), with every conversion C makes implicitly
   // made explicit.
   bool c = false;
@@ -41,7 +41,7 @@ void cKeywordsAsNames(std::vector<Token>& tokens, std::string_view text, SymbolT
 class SourceConfiguration
 {
 public:
-  // cSources: the inputs are C (kppc --c-sources), preprocessed as factorio-in-kpp builds a C
+  // cSources: the inputs are C (kpp --c-sources), preprocessed as factorio-in-kpp builds a C
   // library (with overridesDir's defines.txt), and the parse sees through C's macros that are
   // nothing, one keyword or their argument (cKeywordMacros).
   SourceConfiguration(const std::vector<std::filesystem::path>& paths, const std::vector<std::string_view>& texts,
@@ -68,7 +68,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
                          const std::vector<std::filesystem::path>& roots, const std::filesystem::path& outDir,
                          const std::filesystem::path& overridesDir = {}, const SourceConfiguration* configuration = nullptr,
                          const std::filesystem::path& libraryDir = {}, const std::filesystem::path& baseDir = {});
-// kppc --convert-library NAME DIR (design.md 16): the program uses the scoped library NAME, converted
+// kpp --convert-library NAME DIR (design.md 16): the program uses the scoped library NAME, converted
 // into DIR. Its names (the top-level declarations of DIR's .kpp files that are not private) are
 // written qualified in the converted program, zstd::ZSTD_compress, and an include of its headers
 // (zstd/zstd.h) imports nothing.
@@ -77,27 +77,27 @@ void setConvertLibraries(std::vector<std::pair<std::string, std::filesystem::pat
 // (paths[i]'s text is *texts[i]), made before anything reads them. Returns the errors, empty if none.
 std::string applyConvertSourceEdits(const std::filesystem::path& overridesDir, const std::vector<std::filesystem::path>& paths,
                                     const std::vector<std::string*>& texts);
-// The configuration a conversion preprocesses the game as (kppc --convert-release): Release's
+// The configuration a conversion preprocesses the game as (kpp --convert-release): Release's
 // defines (NDEBUG) instead of FastDebug's; and whether it marks each #if group (--convert-marks), for
 // convertMerge. Set before the configuration is built.
 void setConvertRelease();
-// kppc --convert-final: FinalRelease's (Release's with FINAL_RELEASE, PACKAGED_BUILD and ALL_IN_ONE).
+// kpp --convert-final: FinalRelease's (Release's with FINAL_RELEASE, PACKAGED_BUILD and ALL_IN_ONE).
 void setConvertFinal();
 void setConvertMarks();
-// kppc --convert-native-tests: the game's UnitTest++ tests as kpp's suites, tests and checks (design.md 8.7).
+// kpp --convert-native-tests: the game's UnitTest++ tests as kpp's suites, tests and checks (design.md 8.7).
 void setConvertNativeTests();
-// kppc --convert-platform windows|linux: the platform the game is preprocessed for (Windows' defines
+// kpp --convert-platform windows|linux: the platform the game is preprocessed for (Windows' defines
 // and MSVC's predefines, or Linux's and those --convert-predefines FILE gives, clang's `-dM -E`
 // output). False for another name or an unreadable file.
 bool setConvertPlatform(const std::string& platform);
 bool setConvertPredefines(const std::filesystem::path& file);
-// kppc --convert-merge-platform WINDOWS LINUX OUT: one configuration's marked Windows and Linux
+// kpp --convert-merge-platform WINDOWS LINUX OUT: one configuration's marked Windows and Linux
 // conversions made one, each #if group whose two texts differ chosen by config::platform, its marks
 // kept for convertMerge, which makes the configurations one after; a file of one platform alone
 // starts `requires config::platform == Platform::X;`. Returns 1 when they differ outside a group.
 int convertMergePlatform(const std::filesystem::path& windowsDir, const std::filesystem::path& linuxDir, const std::filesystem::path& outDir,
                          const std::string& firstPlatforms = "Windows", const std::string& secondPlatforms = "Linux");
-// kppc --convert-merge DEBUG RELEASE OUT: the two configurations' marked conversions made one into
+// kpp --convert-merge DEBUG RELEASE OUT: the two configurations' marked conversions made one into
 // OUT, each #if group whose texts differ written as `if constexpr (config::debug)` (design.md 12).
 // Returns 1 when they differ where no group can say so (reported, with the debug text written).
 // choicesFile lists the groups no `if constexpr` can choose between, each taken from one
@@ -109,6 +109,6 @@ int convertMerge(const std::filesystem::path& debugDir, const std::filesystem::p
                  const std::filesystem::path& choicesFile = {}, const std::filesystem::path& finalDir = {});
 
 // The errors the last convertToKpp found that leave its output wrong, which it printed: C, an #if
-// name that nothing defines and the library's c-libraries\NAME\undefined.txt does not list. kppc
+// name that nothing defines and the library's c-libraries\NAME\undefined.txt does not list. kpp
 // exits 1.
 int convertErrorCount();

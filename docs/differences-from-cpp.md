@@ -6,7 +6,7 @@ where one helps, the reason and where it is decided or tested.
 
 Each entry has a status:
 
-- **built**: works today. Every built entry was tried on kppc at 7c4a7e0a (2026-11-06), or has a
+- **built**: works today. Every built entry was tried on kpp at 7c4a7e0a (2026-11-06), or has a
   passing snippet in `compiler/tests/spec/`.
 - **this stage**: planned for the stage that ends with kpp integrated into Factorio's code.
 - **later**: decided, for the stage after that.
@@ -202,7 +202,7 @@ trace("cost ", expensive());   // nothing is evaluated in a release build
 
 ## Grammar
 
-kppc parses every file before it knows any name, so where C++ asks whether a name is a type, kpp
+kpp parses every file before it knows any name, so where C++ asks whether a name is a type, kpp
 decides by syntax alone, and the resolver rejects what does not fit. These rules hold in kpp's own
 sources; the converter's C++ input keeps C++'s reading.
 

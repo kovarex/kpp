@@ -68,7 +68,7 @@ heading ids on (one run on PC-PRACOVNA).
 
 ## Tests
 
-`kpp --test` in this directory, or `kppc --test libraries/markdown` anywhere: the library's own
+`kpp --test` in this directory, or `kpp --test libraries/markdown` anywhere: the library's own
 tests, a few per construct and option (`tests/MarkdownTests.kpp`).
 
 ## License
@@ -93,7 +93,7 @@ repository's (Apache-2.0 WITH LLVM-exception) does not take in, so the examples 
 run.cmd fetches [commonmark-spec](https://github.com/commonmark/commonmark-spec) and
 [cmark-gfm](https://github.com/github/cmark-gfm) at fixed commits into
 `%TEMP%\kpp-conformance\markdown`, `generate_spec.py` turns their examples into kpp data there,
-and `kppc --test` runs `CommonMarkTests.kpp.in` on them. It needs git, Python and the network the
+and `kpp --test` runs `CommonMarkTests.kpp.in` on them. It needs git, Python and the network the
 first time.
 
 ## Generated tables

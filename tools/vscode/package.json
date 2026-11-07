@@ -42,7 +42,7 @@
         "kpp.path": {
           "type": "string",
           "default": "",
-          "markdownDescription": "The kpp compiler that serves IntelliSense (`kpp.exe` or `kppc.exe`). Empty: `kpp` on the PATH, as the installer puts it."
+          "markdownDescription": "The kpp compiler that serves IntelliSense (`kpp.exe`). Empty: `kpp` on the PATH, as the installer puts it."
         },
         "kpp.configuration": {
           "type": "string",

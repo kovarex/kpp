@@ -36,7 +36,7 @@
     std::string emitLLVM; // --emit-llvm <path>
     std::string exe;      // --exe <path>
     std::string runBuild; // --run-build CONFIGURATION: print build.kpp's description (GlobalScope::runBuild)
-    std::string stdDir;   // --std <dir>; default: <kppc dir>\..\..\stdlib when it exists
+    std::string stdDir;   // --std <dir>; default: <kpp dir>\..\..\stdlib when it exists
     std::filesystem::path conversionLibrary; // the library --convert keeps the program's names apart from
     bool noStd = false;
     std::filesystem::path libraryRoot; // the standard library's directory, when it joins the program
@@ -80,7 +80,7 @@
     bool deferLink = false;        // --defer-link: the link command written for kpp to run (Project/Build.cpp), not run
     std::string toolchain;         // --toolchain bundled|msvc: which clang and linker (source.hpp's selectToolchain)
     bool debugInfo = false;        // --debug-info: line tables (docs/debugging.md)
-    bool check = false;            // --check: codegen's errors too, nothing written (`kppc --lsp`'s checks)
+    bool check = false;            // --check: codegen's errors too, nothing written (`kpp --lsp`'s checks)
     bool packages = false;         // --packages: the code packages and what each file declares (design.md, "Code packages")
     Target target = hostTarget();  // --target: the platform the program is built for (the host's by default)
     bool targetChosen = false;     // --target was given (else the toolchain's own: windows-gnu for the bundled one)
@@ -94,7 +94,7 @@
   void usage(FILE* out = stderr);
 
 
-  // `kpp --version` (docs/build.md, "Versions"): the version and commit kppc was built from, the
+  // `kpp --version` (docs/build.md, "Versions"): the version and commit kpp was built from, the
   // compiler, the toolchain a build takes without --toolchain, and the standard library.
   int printVersion();
 

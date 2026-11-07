@@ -1,6 +1,6 @@
 # The bundled toolchain (design.md 17): llvm-mingw, clang and lld of LLVM 19.1.7 with MinGW-w64's
 # headers and import libraries for the UCRT (ucrtbase.dll, on every Windows 10 and 11), which builds
-# Windows programs in the GNU dialect (kppc --target windows-gnu) with nothing of Visual Studio's.
+# Windows programs in the GNU dialect (kpp --target windows-gnu) with nothing of Visual Studio's.
 # Downloads the pinned release once, checks its SHA-256, and unpacks it into -Out; prints the
 # toolchain's root (bin\clang.exe under it). tests\toolchain.ps1 and tools\release\package.ps1 use it.
 #   tools\sysroot\llvm-mingw.cmd [-Out build\llvm-mingw]

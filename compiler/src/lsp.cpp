@@ -145,7 +145,7 @@ namespace
     vsnprintf(text, sizeof text, format, args);
     va_end(args);
     std::lock_guard lock(outputMutex);
-    writeHandle(logHandle, std::string("kppc --lsp: ") + text + "\n");
+    writeHandle(logHandle, std::string("kpp --lsp: ") + text + "\n");
     if (logFile != host::noStream)
       writeHandle(logFile, std::string(text) + "\n");
   }
@@ -3025,7 +3025,7 @@ namespace
         initialized = true;
         respond(id, Json::object()
                       .set("capabilities", capabilities())
-                      .set("serverInfo", Json::object().set("name", "kppc").set("version", "0.1")));
+                      .set("serverInfo", Json::object().set("name", "kpp").set("version", "0.1")));
         return true;
       }
       if (method == "initialized")
@@ -3131,12 +3131,12 @@ namespace
       else if (method == "textDocument/foldingRange")
         respond(id, foldingRanges(params));
       else if (request)
-        respondError(id, -32601, "kppc --lsp does not support " + method);
+        respondError(id, -32601, "kpp --lsp does not support " + method);
       return true;
     }
 
     CompileFunction compile = nullptr;
-    std::vector<std::string> explicitArguments; // `kppc --lsp OPTIONS SOURCES`
+    std::vector<std::string> explicitArguments; // `kpp --lsp OPTIONS SOURCES`
     fs::path workspace;                         // the editor's root folder
     fs::path projectFolder;                     // build.kpp's folder: the workspace or one above it
     ProjectCheck project;                       // the cell checked: initializationOptions, workspace/didChangeConfiguration, kpp/selectCell (docs/editors.md)
@@ -3182,7 +3182,7 @@ int runLanguageServer(int argc, char** argv, CompileFunction compile)
       continue;
     if (arg == "--pipe" || arg.rfind("--pipe=", 0) == 0 || arg.rfind("--socket", 0) == 0 || arg == "--node-ipc")
     {
-      fprintf(stderr, "kppc --lsp: %s is not supported: the language server talks on stdin and stdout (--stdio)\n", arg.c_str());
+      fprintf(stderr, "kpp --lsp: %s is not supported: the language server talks on stdin and stdout (--stdio)\n", arg.c_str());
       return 2;
     }
     if (arg == "--check-each-change")
@@ -3191,7 +3191,7 @@ int runLanguageServer(int argc, char** argv, CompileFunction compile)
     {
       logFile = host::createLog(argv[++i]);
       if (logFile == host::noStream)
-        fprintf(stderr, "kppc --lsp: cannot write %s\n", argv[i]);
+        fprintf(stderr, "kpp --lsp: cannot write %s\n", argv[i]);
     }
     else
       server.explicitArguments.push_back(arg);

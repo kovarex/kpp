@@ -1,4 +1,4 @@
-# From here to Factorio built by kppc
+# From here to Factorio built by kpp
 
 Written 2026-10-24, answering "what is needed to compile the game with our compiler". The counts
 are from the Factorio corpus (`src`, `tests`, `libraries/CommonUtil`, `libraries/Agui`, 1.33 M
@@ -103,7 +103,7 @@ programs\factorio\tests\checkout.ps1 runs a new copy and an unlinked old one thr
 switch, a reset --hard and a reapply, then removes them and an old one with its junctions with
 `git worktree remove --force`, on a throwaway main checkout, which must stay whole.
 
-## Where kppc is
+## Where kpp is
 
 - **Front end.** Parses 99.54% of Factorio's files and types 77% of the expressions and 78% of
   the member accesses in 0.32 s on 32 threads. What it cannot type is the standard library
@@ -122,7 +122,7 @@ switch, a reset --hard and a reapply, then removes them and an old one with its 
   `nameof` are in; `for constexpr`, reflection, typed unions and compiler tests are specified in
   design.md section 8 and wait for review.
 
-## What the game needs that kppc does not have
+## What the game needs that kpp does not have
 
 | area | in Factorio | what it takes | size |
 |---|---|---|---|
@@ -146,7 +146,7 @@ machinery, FASTBuild.
 
 ## The converter, first run (2026-10-24)
 
-`kppc --convert OUT <dirs>` rewrites the parsed and resolved C++ into kpp: preprocessor lines
+`kpp --convert OUT <dirs>` rewrites the parsed and resolved C++ into kpp: preprocessor lines
 evaluated for Windows/MSVC/debug (`#include` of C headers becomes `extern "C" import`, the rest
 goes), constant macros become `const auto`, other macros stay as `// TODO(kpp)` comments,
 forward declarations go, converting constructors get `implicit`, members get `this->`, a case
@@ -156,7 +156,7 @@ names). A header and its source of the same stem merge into one `.kpp` file; `CO
 the output lists what was done and what is left per file.
 
 On `libraries/CommonUtil` (29 files, 4,140 lines): 21 kpp files, 1,008 `std::` names renamed,
-109 forward declarations removed, 26 macros turned into constants, 4 kept as comments. kppc
+109 forward declarations removed, 26 macros turned into constants, 4 kept as comments. kpp
 parses the result 100% clean and types 88% of its expressions with the current library; the
 unresolved rest is the library worklist, in order: `Pair` (350 uses), `StringView` (38),
 `forward`/`move`, `min`/`max`, the type traits (`isArray`, `isSame`, `RemoveConst`...),
@@ -500,7 +500,7 @@ checked against the suite, the 40 end-to-end tests and the CommonUtil and Agui s
     template template parameter is the parameter applied to arguments (a parameter type carrying
     them); deduction against `Vector<int>` binds `Container` to the template itself and `T` to
     `int`, and substitution applies the bound template to the substituted arguments. **The SDL
-    header import** passes in the suite now that the runner hands kppc the game's SDL3 include
+    header import** passes in the suite now that the runner hands kpp the game's SDL3 include
     directory when the Factorio checkout is present: `SDL_Rect` and `SDL_INIT_VIDEO` come straight
     from `SDL3/SDL.h`. Spec: `templates/template_template_parameters`, `interop/sdl_header`.
 
@@ -518,8 +518,8 @@ With the suite's compiler-side list empty, the next module of the roadmap is the
 CommonUtil and Agui as context and nothing hand-written yet:
 
 ```
-compiler\build\kppc.exe --no-std --quiet --convert OUT --overrides programs\factorio\overrides C:\Factorio\libraries\CommonUtil C:\Factorio\libraries\Agui C:\Factorio\src\Util
-compiler\build\kppc.exe --std stdlib --cinclude C:\Factorio\libraries\SDL3\include --errors 60 --unresolved 60 --emit-llvm out.ll OUT\CommonUtil OUT\Agui OUT\Util
+compiler\build\kpp.exe --no-std --quiet --convert OUT --overrides programs\factorio\overrides C:\Factorio\libraries\CommonUtil C:\Factorio\libraries\Agui C:\Factorio\src\Util
+compiler\build\kpp.exe --std stdlib --cinclude C:\Factorio\libraries\SDL3\include --errors 60 --unresolved 60 --emit-llvm out.ll OUT\CommonUtil OUT\Agui OUT\Util
 ```
 
 | | |
@@ -593,7 +593,7 @@ variable over `InitializerList<Pair<K, V>>`) and a brace list used as a value. S
 7, 9, 2.5 and 9: the tokenizer, the postfix tokenizer and the evaluator, their `FlatMap` tables
 of operators and named functions (lambdas stored as function pointers), `Pair`, `StringView`,
 `Span`, `debug_float_cast` and the exceptions they declare, all converted from C++ and compiled
-by kppc. `convert.cmd` now converts Util with CommonUtil and Agui (461 files), links the subset
+by kpp. `convert.cmd` now converts Util with CommonUtil and Agui (461 files), links the subset
 the evaluator needs (CommonUtil, `Util/Container` without `ExtendedBitBuffer`, `Sort`,
 `MathExpressions`, `BitBuffer`, `ToStr`, the root `Typedefs`, `FloatCast`, `BitmapFormat`,
 `NoiseRegisterIndex`) with four stand-ins in `tests/stubs` (`Log.kpp`: `logAndAbort`, which the
@@ -623,7 +623,7 @@ running does. Spec suite: 156 pass, 2 pending.
 
 ## The whole converted set through the code generator (2026-10-26)
 
-Running `kppc --emit-llvm` over everything converted (CommonUtil, Agui, Util and the root
+Running `kpp --emit-llvm` over everything converted (CommonUtil, Agui, Util and the root
 headers: 488 files) is the next check after the smoke tests, since it exercises the generator
 on all the code that types. It first died three ways: `friend Description;` (a friend class
 named without the keyword) made an unnamed member that crashed the member walk; `operator<=>`
@@ -651,7 +651,7 @@ expressions 78.0% to 78.5%.
 1. Decide exceptions and RTTI; implement them (they shape what the converter emits).
 2. Library parity, driven by the converter on `libraries/CommonUtil` first (313 includes, its
    own unit tests), then `Agui`, then `Util`: the first real modules of the game compiled and
-   tested by kppc, with the resolver and codegen gaps fixed as they appear. (CommonUtil and
+   tested by kpp, with the resolver and codegen gaps fixed as they appear. (CommonUtil and
    Agui compile, link and run smoke tests as of 2026-10-25.)
 3. Statics, intrinsics, constexpr and the small language gaps in the order the converter reports
    them.
@@ -659,7 +659,7 @@ expressions 78.0% to 78.5%.
 5. Lua, SDL3 and DirectX through C import; a window with the game loop; then the rest of `src`
    module by module, measuring the typed percentage climbing to 100.
 6. Debug info, then the persistent compiler for the edit-build-run loop.
-7. Release-build code quality: inlining across chunks, by ThinLTO or by kppc inlining trivial
+7. Release-build code quality: inlining across chunks, by ThinLTO or by kpp inlining trivial
    functions at IR emission (design.md section 2, decided 2026-10-28).
 
 The compiler-side items are each days to a couple of weeks at the pace of the work so far; the
@@ -681,7 +681,7 @@ generator writes for the converted CommonUtil, Agui, cxxopts, StackWalker, Lua a
 (or just its conversion step into `kpp\`), from `programs\factorio`:
 
 ```
-..\..\compiler\build\kppc.exe --std ..\..\stdlib ^
+..\..\compiler\build\kpp.exe --std ..\..\stdlib ^
   --cinclude C:\Factorio\libraries\SDL3\include --cinclude C:\Factorio\libraries\SDL_Mixer\include ^
   --cinclude C:\Factorio\libraries\Lua --cinclude C:\Factorio\libraries --cinclude C:\Factorio\libraries\curl\include --cinclude C:\Factorio\libraries\glad\include ^
   --cinclude C:\Factorio\libraries\trio --cinclude native\include ^
@@ -689,7 +689,7 @@ generator writes for the converted CommonUtil, Agui, cxxopts, StackWalker, Lua a
 find /c /v "" kpp\full-errors.txt
 ```
 
-The conversion behind it (convert.cmd's second one, into a fresh `kpp\`): `kppc --no-std --convert
+The conversion behind it (convert.cmd's second one, into a fresh `kpp\`): `kpp --no-std --convert
 kpp --ext .cpp,.hpp,.h,.kpp,.c --overrides overrides` with CommonUtil, Agui, cxxopts, StackWalker,
 `C:\Factorio\libraries\Lua` and `C:\Factorio\src`. trio's include directory joined with Lua's
 switch: the converted Lua formats through trio as its C++ build does, and its override_printf.h
@@ -975,7 +975,7 @@ zeroinitializer`) crashed instruction selection (a memset now); and the entry is
 
 ### The link line (2026-10-29)
 
-`programs/factorio/link.cmd` links the converted tree: kppc `--keep-going --exe` against the game's
+`programs/factorio/link.cmd` links the converted tree: kpp `--keep-going --exe` against the game's
 own Release builds of its libraries (C:\Factorio\vs2022\Releasex64), `native\build\factorio-native.lib`
 (built first by native\build.cmd), and the Windows libraries of the game's link line
 (fbuild.bff's .extraExecLibs: dnsapi, wldap32, gdi32, comdlg32, ole32, winmm, psapi, opengl32,
@@ -1042,7 +1042,7 @@ Every one of the 53 has its root cause named, almost all in a pending spec that 
 static member taken through the derived class (computeConstant) and an MplVector::forEach of a
 lambda. To redo the split: link.cmd, `externals.py kpp\factorio.exe.link.txt kpp\link-errors.txt
 GROUP` for a group's symbols, each one's function's first error in link-errors.txt, and
-`kppc --why-at "File.kpp:LINE,..."` (quoted: cmd splits arguments at commas) on the lines whose
+`kpp --why-at "File.kpp:LINE,..."` (quoted: cmd splits arguments at commas) on the lines whose
 error names no cause by itself.
 
 On master 185a717 (the evening): LNK1120 5 = 4 left out (the headline's 4 lines) + 1 never
@@ -1076,7 +1076,7 @@ it: `run.cmd --version`, `run.cmd --dump-data`, or no arguments for a normal sta
   one it reaches. The flag is opt-in, only works with --keep-going, and is never a default; the
   compile still exits 1 and its errors stay in `kpp\run\build-errors.txt`; run.cmd prints the
   stub count and the error count at the top of each run. Nothing ships with it.
-- **Inline C functions.** The import declares a C header's static inline functions but kppc
+- **Inline C functions.** The import declares a C header's static inline functions but kpp
   compiles no C bodies, so `native/inline_c.c` takes the addresses of the ones the game calls
   (ws2tcpip.h's gai_strerrorW, versionhelpers.h's IsWindows8OrGreater) and clang emits them into
   factorio-native.lib with the headers' own bodies.
@@ -1194,7 +1194,7 @@ UniqueArray one pointer).
     object they initialise, which C++17 builds in place: anything that knows its own address broke
     (the library's Map, whose empty tree points at its own header; IDConnector, whose resolver
     points back at it). A temporary is now the parameter it is passed to, a call's result is built
-    in the member or object it initialises (`: map(makeMap())`), and where kppc still builds one
+    in the member or object it initialises (`: map(makeMap())`), and where kpp still builds one
     elsewhere a class with a copy or move constructor of its own (or in a member or base) is moved
     by its constructor and the temporary destroyed (classes/temporaries_of_self_referential_classes;
     the old compiler's program looped forever in the broken map). With that, prototype loading and
@@ -1209,8 +1209,8 @@ UniqueArray one pointer).
     (language/condition_declaration_of_reference). Then the prototype setup completes and prints
     "Prototype list checksum: 2335390327" (the C++ log's 486241314 includes test_mod; see 22).
 19. Then heap corruption, exit 0xC0000374, which ends the process past the exception filters, so
-    the crash report says nothing. kppc's `--clang-flags F` builds the game with AddressSanitizer:
-    `set KPPC_EXTRA=--clang-flags -fsanitize=address --lib -fsanitize=address` before run.cmd. The
+    the crash report says nothing. kpp's `--clang-flags F` builds the game with AddressSanitizer:
+    `set KPP_EXTRA=--clang-flags -fsanitize=address --lib -fsanitize=address` before run.cmd. The
     first such run stopped earlier, at the game's own "double value not in range for fixed point
     number: -nan" in EntityWithOwnerPrototype: `TinyVector(0, 0)` with `TinyVector(const double&
     dx, const double& dy)` bound the references to the ints themselves, and the constructor read
@@ -1637,7 +1637,7 @@ another, written only when the check fails, as the macro evaluates them. The loc
 use's, the expression text stays the macro's `#value`, and an exception is caught as UnitTest++
 catches it. 50,113 checks without an id call the overload without one, and 2,721 `*_SIGNED` ones pass
 it. The macros' padding (the spaces before the continuation backslashes) is gone from every
-expansion. Measured on factorio-test (tests.cmd's build alone, the same kppc, clean, two rounds
+expansion. Measured on factorio-test (tests.cmd's build alone, the same kpp, clean, two rounds
 alternating; before is C:\Factorio 4c178a5b915 converted by kpp dd480a7c, after by the same with
 this and the five converter changes after it, the type names, the imports and the cleanups among
 them, which change little of the IR):
@@ -1761,13 +1761,13 @@ copyable (pending spec templates/brace_init_capture_keeps_closure_move_only, the
 
 ### The release build (2026-10-30)
 
-`kppc --release` (config::debug false, the modules compiled as ThinLTO bitcode) had built the game
+`kpp --release` (config::debug false, the modules compiled as ThinLTO bitcode) had built the game
 but never run it: the executable answered its own command line with "Error opening '--benchmark'."
 That is opus_compare.c's main (opus's comparison tool, `fprintf(stderr,"Error opening '%s'.\n",
 _argv[1])`), whose object is in the game's opus.lib. The game defines wmain only. Left to infer the
 entry, lld-link said "found both wmain and main; using latter" when the program's objects were
 bitcode, took the archive's main and with it mainCRTStartup; the debug build's COFF objects let it
-infer wmainCRTStartup. Since the fix, kppc's driver names the entry itself when the program defines
+infer wmainCRTStartup. Since the fix, kpp's driver names the entry itself when the program defines
 wmain and no main (`-Wl,/ENTRY:wmainCRTStartup`, main.cpp linkFlags).
 
 The release game then runs: `--version` prints the C++ build's version lines, and the train junction
@@ -1972,7 +1972,7 @@ anonymous members, a dropped const. convert.cmd converts the file as C and runs 
 must be the C build's (`tests/convert_c.expected`). The check stays pending until the C mode has all
 of them.
 
-**The converter's C mode** (`kppc --convert --c-sources`, 2026-11-01) takes its inputs as C. The
+**The converter's C mode** (`kpp --convert --c-sources`, 2026-11-01) takes its inputs as C. The
 rules come as the libraries need them; ogg needed three:
 - C++'s keywords that C does not have are names: they lex as identifiers and are written with `_`
   (`class_`).
@@ -2204,9 +2204,9 @@ game does neither). B's c06cec46 took the two specs it waited for (`language/nul
 stbi__errpuc's `(size_t)(... ? NULL : NULL)`, 25 places; `language/conditional_of_two_arrays`,
 stbiw__encode_png_line's `y ? mapping : firstmap`). The harness then found TGA's and BMP's headers
 wrong: stbiw__writef and stbiw__outfile read their own format (`"111 221 2222 11"`, the digits
-are byte widths), which kppc checks as printf's, and the converter had dropped the arguments the
+are byte widths), which kpp checks as printf's, and the converter had dropped the arguments the
 "format" does not read. It drops none in C now (it is for the game's own printf mismatches), so
-kppc reports the three calls, and stb_image waits for `language/variadic_with_own_format`: which
+kpp reports the three calls, and stb_image waits for `language/variadic_with_own_format`: which
 C-variadic functions are printf-like.
 
 kovarex retired the printf check (design.md 14, D's 958c39bd: a C-variadic call is never
@@ -2244,7 +2244,7 @@ what clang-cl, with the library's flags, defines in each of its source files (`-
 are trio's `defined(INFINITY) && defined(__STDC_IEC_559__)` and glad's and minizip's
 WINAPI_FAMILY_PARTITION, which C answers the same. And so that the next library cannot take a branch
 C does not: a C library's `#if` name that nothing the conversion reads defines is an error now
-(kppc exits 1), unless its `c-libraries\NAME\undefined.txt` lists it: the names that check found
+(kpp exits 1), unless its `c-libraries\NAME\undefined.txt` lists it: the names that check found
 undefined in the C build, and the few it defines whose every `#if` was read and is answered the same
 (the header-only libraries' `__cplusplus`, their `extern "C"` wrappers). B's 4a797289 took
 `interop/c_math_classification_macros` (fpclassify, FP_NORMAL and FP_SUBNORMAL through the import).
@@ -2305,7 +2305,7 @@ the headers' C would be:
 
 ### From emitted functions to an executable (2026-10-28, night)
 
-The first run of the full src past IR (`kppc --keep-going --exe`, e7d4669; timings in
+The first run of the full src past IR (`kpp --keep-going --exe`, e7d4669; timings in
 compile-speed.md), against the game's own Release builds of its C libraries. What stands between
 "every function emitted" and an executable, beyond the headline's codegen errors:
 
@@ -2342,7 +2342,7 @@ compile-speed.md), against the game's own Release builds of its C libraries. Wha
 - **One duplicate definition**: `Curl_HMAC_MD5`, defined both by curl.lib and by the imported
   curl header (a C header's data definition emitted as a definition, not a declaration).
 
-**The functions defined nowhere (2026-10-29).** Counted over the 64 emitted modules (`kppc
+**The functions defined nowhere (2026-10-29).** Counted over the 64 emitted modules (`kpp
 --keep-going --exe`; with most modules rejected by clang the link lists nothing, so a script
 compares the modules' `declare`s with their `define`s and leaves out the functions a codegen error
 names): on master d1ccfb8, 1,345 kpp functions are called and defined nowhere. Most of them were
@@ -2450,7 +2450,7 @@ fields, empty bases); they are counted on the report and left to the code genera
 
 | category | count | % | what it is |
 |---|---:|---:|---|
-| **(a) Third-party references** | **9,217** | **28%** | Code touching libraries kppc does not convert |
+| **(a) Third-party references** | **9,217** | **28%** | Code touching libraries kpp does not convert |
 |   Lua | 8,899 | 27% | `lua_pushinteger`, `luaL_checkstring`, the scripting layer |
 |   SDL | 312 | 1% | `SDL_Rect`, `SDL_CreateWindow`, rendering and input |
 |   other (tracy, imgui) | 6 | <1% | Profiler and debug UI |

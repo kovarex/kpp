@@ -1,5 +1,5 @@
 // zstd, converted to kpp from Factorio's libraries/zstd by kpp's programs/factorio/convert.cmd (C's
-// rules, kppc --c-sources), which copies this file beside it. A scoped library (design.md 16): the
+// rules, kpp --c-sources), which copies this file beside it. A scoped library (design.md 16): the
 // game writes its names zstd::ZSTD_compress, zstd::ZSTD_CONTENTSIZE_UNKNOWN; its C functions keep
 // their C names. Rooted at its own directory, whose C headers the game's `--ext .kpp` leaves out.
 void build(Project& project)

@@ -5,7 +5,7 @@
     python -I tree_hash.py verify STORE              recompute every archive's tree hash in STORE
     python -I tree_hash.py mirror FILE STORE         add a third-party file under STORE/mirror/
 
-This is the reference definition kppc's implementation must agree with byte for byte (the hash goes
+This is the reference definition kpp's implementation must agree with byte for byte (the hash goes
 into build.lock). The tree hash of a directory:
 1. Every regular file under it, by its path relative to it with '/' separators, in UTF-8. A
    symbolic link, a device or another special file is an error; empty directories do not count.
@@ -72,7 +72,7 @@ def store_paths(store, digest_hex):
 
 def pack(root, store):
     """A zip with sorted entries, fixed times and no extra fields, so packing twice gives the same
-    bytes; kppc checks the tree hash after unpacking, never the zip's own bytes."""
+    bytes; kpp checks the tree hash after unpacking, never the zip's own bytes."""
     manifest = manifest_of(root)
     digest_hex = tree_hash(manifest)[len(PREFIX):]
     archive, manifest_path = store_paths(store, digest_hex)

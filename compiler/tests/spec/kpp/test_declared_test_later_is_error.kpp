@@ -1,5 +1,5 @@
 // spec: a function's first declaration decides whether it is test: a later declaration or its body may not add test
-// kppc: --tests
+// kpp: --tests
 // error: is test here and its first declaration is not
 void requirePositive(int value);
 

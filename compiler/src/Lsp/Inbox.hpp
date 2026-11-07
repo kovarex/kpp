@@ -1,5 +1,5 @@
 #pragma once
-// Part of kppc --lsp: lsp.cpp includes it where it was.
+// Part of kpp --lsp: lsp.cpp includes it where it was.
 
 // The messages read, in order; the end of the input is a message with ended set.
 struct Inbox

@@ -640,7 +640,7 @@
     // from-a-value does not make, where std::variant selects an alternative by conversion: a
     // string literal (the std::string alternative) and std::nullopt (the std::optional one), when
     // one alternative is of that kind. Any other construction stays as written (from a value of
-    // one alternative's type; kppc rejects one it cannot decide).
+    // one alternative's type; kpp rejects one it cannot decide).
     // (A cast `V(...)` or, in a function body, a call of the alias's name: the parse takes a name
     // it does not know as a type for a function.)
     void variantConstruction(const VariantInfo& info, uint32_t typeToken, Span<Expr*> args)

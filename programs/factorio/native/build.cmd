@@ -16,7 +16,7 @@ rem from the PDB). factorio.rc becomes build\factorio.res, the game's manifest a
 rem as the
 rem game's Release builds are made: /MT, /O2, against the game's library headers, so that the
 rem objects link with C:\Factorio\vs2022\Releasex64\re2.lib and imgui.lib. link.cmd
-rem passes the .lib to kppc with --lib, next to those.
+rem passes the .lib to kpp with --lib, next to those.
 rem Nothing is built when the inputs are as at the last build (stamp.ps1 says what they are): a
 rem rebuild took 3 s and changed the library's bytes, which made the game's next link a full one.
 setlocal

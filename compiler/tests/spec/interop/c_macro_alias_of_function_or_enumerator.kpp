@@ -1,7 +1,7 @@
 // spec: an imported header's object-like macro whose body is one name the headers declare as a function or an enumerator is a constant of it: glibc's resolv.h `#define dn_expand __dn_expand` (res_ninit, res_nquery, res_nclose alike) is called as dn_expand, and bits/confname.h's `#define _SC_PAGE_SIZE _SC_PAGESIZE`, an enumerator that is also a macro of its own name, is the constant sysconf takes; a self-named macro stays the enumerator
 // factorio: on Linux, the multiplayer's SRV lookup (res_ninit, res_nquery, dn_expand, res_nclose) and SystemUtil's sysconf(_SC_PAGE_SIZE): the import dropped them (only aliases of integer and floating macros were typed)
 // target: linux (glibc's resolv.h and unistd.h)
-// kppc: --lib -lresolv
+// kpp: --lib -lresolv
 extern "C" import "resolv.h";
 extern "C" import "unistd.h";
 

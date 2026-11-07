@@ -5,12 +5,12 @@
 # one function (kpp measure's: src\AnimationBank.kpp), its undo, and a build with nothing changed.
 # Prints each round (the machine's load, the three times, KPP_STEP_TIMES' line) and each binary's medians.
 # Usage, in a factorio-in-kpp checkout (programs\factorio\setup-checkout.cmd makes one):
-#   powershell -File compiler\bench\vs-edit-pair.ps1 -Checkout DIR -Kppcs "BEFORE.exe,AFTER.exe" [-Blocks 3] [-PerBlock 3]
-# Each kppc.exe must sit in its own compiler\build (it finds the standard library beside it): copy the
-# first one's to compiler\build\kppc-before.exe before building the second.
-param([Parameter(Mandatory = $true)][string]$Checkout, [Parameter(Mandatory = $true)][string]$Kppcs, [int]$Blocks = 3, [int]$PerBlock = 3)
+#   powershell -File compiler\bench\vs-edit-pair.ps1 -Checkout DIR -KppExes "BEFORE.exe,AFTER.exe" [-Blocks 3] [-PerBlock 3]
+# Each kpp.exe must sit in its own compiler\build (it finds the standard library beside it): copy the
+# first one's to compiler\build\kpp-before.exe before building the second.
+param([Parameter(Mandatory = $true)][string]$Checkout, [Parameter(Mandatory = $true)][string]$KppExes, [int]$Blocks = 3, [int]$PerBlock = 3)
 $ErrorActionPreference = 'Stop'
-$binaries = @($Kppcs -split ',') # (-File passes "BEFORE.exe,AFTER.exe" as one string)
+$binaries = @($KppExes -split ',') # (-File passes "BEFORE.exe,AFTER.exe" as one string)
 Set-Location $Checkout
 $file = Join-Path $Checkout 'src\AnimationBank.kpp'
 $a = 'Missing specification of animation with name'

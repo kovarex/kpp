@@ -12,7 +12,7 @@ The Visual Studio extension (docs/editors.md, "Visual Studio 2022"). It needs Vi
   `textDocument/declaration` on the client's connection and opens the answer;
 - the colors (docs/editors.md, "Colors"): `SemanticColors.cs` draws the server's semantic tokens
   in Visual Studio's C++ colors (types, functions, parameters, members);
-- the cell (docs/editors.md, "Cells") from a solution kppc generated: `Cell.cs` takes the startup
+- the cell (docs/editors.md, "Cells") from a solution kpp generated: `Cell.cs` takes the startup
   project as the target and the active configuration as the configuration. They go to the server
   at its start, and as `kpp/selectCell` when either changes.
 
@@ -22,7 +22,7 @@ extension no way to send the server a request of its own, so it cannot serve go 
 declaration. Installing it therefore needs a restart of Visual Studio.
 
 - **The server:** `KPP_LSP_SERVER` when that is set, else `kpp.exe` on the PATH (the installer puts
-  it there), else `kppc.exe`. Its log goes to `%LOCALAPPDATA%\kpp\visual-studio-lsp.log`. When no
+  it there), else `kpp.exe`. Its log goes to `%LOCALAPPDATA%\kpp\visual-studio-lsp.log`. When no
   server is found, Visual Studio's info bar says so.
 - **Build:** `build.cmd` writes `tools\vs\kpp-visualstudio.vsix`. It needs the .NET 8 SDK (`winget install
   --id Microsoft.DotNet.SDK.8 -e`) and Visual Studio's MSBuild; the "Visual Studio extension
@@ -31,7 +31,7 @@ declaration. Installing it therefore needs a restart of Visual Studio.
   Studio's Common7\IDE.
 - **Test:** `test.ps1` installs it into the experimental instance (`/rootsuffix Exp`), so the user's
   own Visual Studio is untouched. It opens a copy of a project as a folder, or with `-Solution` as
-  the solution kppc generates. It checks through DTE and UI Automation:
+  the solution kpp generates. It checks through DTE and UI Automation:
   - where Edit.GoToDefinition and Edit.GoToDeclaration land;
   - that a typed error reaches the Error List, and leaves it after undo;
   - with `-HoverAt` and `-CompleteAt`, Quick Info's text and the completion list's items, read from

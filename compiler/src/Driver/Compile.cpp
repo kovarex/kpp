@@ -439,7 +439,7 @@ int compile(int argc, char** argv)
     return h;
   };
   // A compile server's file whose stamp is the kept build's, and for which no editor's unsaved text
-  // stands (an overlay, kppc --lsp), is the kept build's text: not read again (the listing gave its
+  // stands (an overlay, kpp --lsp), is the kept build's text: not read again (the listing gave its
   // stamp). An overlaid file's stamp is none, so that it is read once the overlay is gone.
   // (--verify-incremental's build from scratch reads every file.)
   const Build* last = servingBuild() && !replayDisabled() && options.convertDir.empty() && keptBuild ? keptBuild.get() : nullptr;
@@ -502,7 +502,7 @@ int compile(int argc, char** argv)
       return 2;
     }
     // Another platform's C headers and libraries (design.md, "Targets and hosts"): --sysroot, else the
-    // one that comes with kppc, sysroots\freebsd-x86_64 or linux-x86_64 beside it (a release brings
+    // one that comes with kpp, sysroots\freebsd-x86_64 or linux-x86_64 beside it (a release brings
     // FreeBSD's: `--target freebsd` works as installed, 2026-11-04). A link without either is an error
     // naming where it looked; an --emit-llvm build needs none.
     // A Mac's: the macOS SDK the user supplies (Q7), --sysroot or SDKROOT, checked before any work: when
@@ -518,7 +518,7 @@ int compile(int argc, char** argv)
                 "--target %s needs a macOS SDK, version 11.0 or newer: %s.\n"
                 "  A macOS SDK is a directory such as MacOSX.sdk. On a Mac, `xcrun --show-sdk-path` prints the one that Xcode or the\n"
                 "  Command Line Tools installed; copy that directory to this machine.\n"
-                "  Then give it to kppc: --sysroot DIR, or the environment variable SDKROOT.\n",
+                "  Then give it to kpp: --sysroot DIR, or the environment variable SDKROOT.\n",
                 options.target.name.c_str(), problem.c_str());
         return 2;
       }
@@ -533,7 +533,7 @@ int compile(int argc, char** argv)
       {
         fprintf(stderr, "--target %s needs the target's C headers and libraries to link: --sysroot DIR, or %s (%s)\n", options.target.name.c_str(),
                 (compilerPath().parent_path() / "sysroots" / name).string().c_str(),
-                options.target.os == Target::Os::FreeBSD ? "a release's installer puts it there; in a build of kppc, tools\\sysroot\\freebsd.ps1"
+                options.target.os == Target::Os::FreeBSD ? "a release's installer puts it there; in a build of kpp, tools\\sysroot\\freebsd.ps1"
                 : options.target.arm64()                 ? "tools\\sysroot\\linux.ps1 -Arch arm64, Debian 11's glibc 2.31 for arm64"
                                                          : "tools\\sysroot\\linux.ps1, Debian 11's glibc 2.31, which tests\\targets.ps1 runs");
         return 2;

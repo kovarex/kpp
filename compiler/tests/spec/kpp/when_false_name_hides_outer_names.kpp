@@ -1,6 +1,6 @@
 // spec: where a `when` condition is false (design.md 19), its declaration's name still hides the names of the same spelling around it: a use outside the condition is an error, never a use of the global `tally`, the base's `size`, the outer `Info` or the outer `note`
 // factorio: none: the converter writes each use of a debug-only name inside `if constexpr (config::debug)` (the game's #ifdef DEBUG members and globals beside release ones of the same spelling)
-// kppc: --release
+// kpp: --release
 // error: when_false_name_hides_outer_names.kpp:19: error: 'tally' exists only when config::debug holds: use it inside `if constexpr (config::debug)` or a `when` on it
 // error: when_false_name_hides_outer_names.kpp:20: error: 'Info' exists only when config::debug holds: use it inside `if constexpr (config::debug)` or a `when` on it
 // error: when_false_name_hides_outer_names.kpp:20: error: 'note' exists only when config::debug holds: use it inside `if constexpr (config::debug)` or a `when` on it

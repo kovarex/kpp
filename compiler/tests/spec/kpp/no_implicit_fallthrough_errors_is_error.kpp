@@ -1,5 +1,5 @@
 // spec: under --no-implicit-fallthrough (design.md "No implicit fallthrough", rules 2, 3, 5 and 6) a case's last `break;` (also ending a block that ends the case) is an error naming its removal, `[[fallthrough]];` one naming `fallthrough;` (F's form, design.md 23e), `fallthrough;` inside another statement, in the last case or outside a switch an error, and so is a label nested in another statement (Duff's device); a case whose end is reached is no error any more (step 1's "runs on into it"): it breaks
-// kppc: --no-implicit-fallthrough --no-std
+// kpp: --no-implicit-fallthrough --no-std
 // error: no_implicit_fallthrough_errors_is_error.kpp:18: error: every case ends with a break: remove `break;` (design.md "No implicit fallthrough")
 // error: no_implicit_fallthrough_errors_is_error.kpp:22: error: every case ends with a break: remove `break;` (design.md "No implicit fallthrough")
 // error: no_implicit_fallthrough_errors_is_error.kpp:25: error: a case runs on into the next by `fallthrough;` alone: write `fallthrough;`, not `[[fallthrough]];` (design.md "No implicit fallthrough")
