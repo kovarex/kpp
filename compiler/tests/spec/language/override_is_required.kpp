@@ -1,0 +1,62 @@
+// spec: required `override` (design.md 23b): a function that overrides a virtual one says so, `override` or `final`, an error at its declaration, in a class and per instance of a class template whose base is its parameter (naming the instance), as is an instance's `override` of nothing (a mixin over a plain base); a destructor, `final`, a hiding non-virtual, a new function and an out-of-line definition, which cannot say it, are not
+// error: override_is_required.kpp:24: error: f overrides a virtual function: write `void f() override`, not `void f()`
+// error: override_is_required.kpp:33: error: g overrides a virtual function in Over<Base>: write `int g() const override`, not `int g() const`
+// error: override_is_required.kpp:39: error: g overrides a virtual function: write `int g() const override`, not `int g() const`
+// no-warning: override_is_required.kpp:41:
+// no-warning: override_is_required.kpp:42:
+// error: override_is_required.kpp:51: error: g says override and overrides no virtual function in Mixin<Bare>: remove `override`
+// no-warning: override_is_required.kpp:25:
+// no-warning: override_is_required.kpp:26:
+// no-warning: override_is_required.kpp:23:
+class Base
+{
+public:
+  virtual ~Base() {}
+  virtual void f() {}
+  virtual int g() const { return 1; }
+  virtual void h() {}
+  void plain() {}
+};
+class Derived : public Base
+{
+public:
+  ~Derived() {}
+  void f() {}
+  int g() const override { return 2; }
+  void h() final {}
+  void plain() {}
+  void other() {}
+};
+template<class T> class Over : public T
+{
+public:
+  int g() const { return 3; }
+};
+class Outside : public Base
+{
+public:
+  void f() override;
+  int g() const;
+};
+void Outside::f() {}
+int Outside::g() const { return 4; }
+class Bare
+{
+public:
+  int g() const { return 5; }
+};
+template<class T> class Mixin : public T
+{
+public:
+  int g() const override { return 6; }
+};
+int main()
+{
+  Derived d;
+  Mixin<Base> withVirtual;
+  Mixin<Bare> withPlain;
+  Over<Base> o;
+  Base* b = &o;
+  println(d.g(), " ", b->g());
+  return 0;
+}

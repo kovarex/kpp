@@ -14,8 +14,9 @@ snippet says what it is about:
                                                   output must say this; one line per expected error)
     // warning: long is C's type                 (the program compiles, runs and prints its .expected, and the
                                                   compiler's output says this; one line per expected warning)
-    // no-warning: x.kpp:36                      (and the compiler's output does not say this, as a `warning:`
-                                                  line alone cannot tell: it looks for what it names and no more)
+    // no-warning: x.kpp:36                      (and the compiler's output does not say this, a warning or an
+                                                  error, as a `warning:` or `error:` line alone cannot tell: it
+                                                  looks for what it names and no more)
     // run: alpha "two words"                    (built and run in one step by `kppc --run snippet ARGS`)
     // test: --filter parse                      (the snippet's tests run by `kppc --test snippet -- ARGS`, from
                                                   the snippet's directory: the paths printed are its name)
@@ -310,6 +311,8 @@ def build_and_run(path, area, name, work):
             result["status"] = "FAIL"; result["note"] = f"the compiler crashed (exit 0x{c.returncode & 0xFFFFFFFF:X})"
         elif missing:
             result["status"] = "FAIL"; result["note"] = f"no error `{missing[0]}`; the first complaint: " + (first_complaint(output) or "none")
+        elif unwanted := [w for w in info["no-warnings"] if w in output]:
+            result["status"] = "FAIL"; result["note"] = f"said what it should not: `{unwanted[0]}`"
         else:
             result["status"] = "pass"
         return finish(result)

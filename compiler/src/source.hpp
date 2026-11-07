@@ -57,9 +57,9 @@ std::string sourceLocation(const std::string& path, size_t line, size_t column =
 // instead, "PATH:LINE[:COL]: warning: the literal 0 is no pointer: write nullptr (design.md 4)", each token
 // once, printed after codegen (takeZeroNullWarnings): convert.cmd's nullptr pass (fix-null.py) rewrites
 // what they name in the C++ it converted. set turns the mode on and clears the notes.
-// --override-warnings: a function that overrides a virtual one and does not say so, "PATH:LINE: warning:
-// NAME overrides a virtual function: write override", each once. The count before required `override`
-// (the readme's Planned) becomes an error: the converter's list, as fix-null.py's is the literal 0s'.
+// --override-warnings: a class with a virtual function whose destructor is not virtual, which kpp's rule
+// makes virtual (design.md 23b), "PATH:LINE: warning: X has a virtual function and an implicit destructor,
+// which becomes virtual", each once: the count before that rule lands. (Required `override` is an error.)
 void setOverrideWarnings(bool on);
 bool overrideWarningsOn();
 void noteOverrideWarning(const std::string& warning);

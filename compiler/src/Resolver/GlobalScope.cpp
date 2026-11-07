@@ -419,14 +419,18 @@ size_t GlobalScope::checkInstanceStaticAsserts(size_t from)
     if (impl->resolveSpecialization(cls, 0) != cls)
       continue;
     auto* c = static_cast<ClassDecl*>(cls->decl);
-    // --override-warnings: an instance overrides through a member nothing calls by name, which no walk
-    // reaches (a virtual call does not), so each instance says what its members override.
-    if (overrideWarningsOn() && c->file && !c->file->isImported)
+    // Required `override` per instance (design.md 23b, Q7): an instance overrides through a member nothing
+    // calls by name, which no walk reaches (a virtual call does not), so each instance says what its members
+    // override, an error naming the instance. Reported outside any walk, as this loop's static_asserts are: a
+    // compile server walks a file with such an error again from scratch (BodyGraft, unitlessErrorIn).
+    if (c->file && !c->file->isImported)
     {
       Impl::TokenScope tokenScope(c->file->tokens, c->file->text);
-      impl->noteNonVirtualDestructor(cls, c);
+      if (overrideWarningsOn())
+        impl->noteNonVirtualDestructor(cls, c);
       for (Decl* m : membersRead(c))
-        if (m->kind == NodeKind::FunctionDecl && m->templateParams.empty() && !(m->flags & (DF_Static | DF_Constructor | DF_Destructor)))
+        if (m->kind == NodeKind::FunctionDecl && m->templateParams.empty() && !(m->flags & (DF_Static | DF_Constructor)) &&
+            (!(m->flags & DF_Destructor) || (m->flags & DF_Override))) // (a destructor need not say it, Q5, but one that does overrides)
         {
           bool says = (m->flags & (DF_Override | DF_Final)) != 0;
           if (says && !(m->flags & DF_Override))
@@ -435,18 +439,16 @@ size_t GlobalScope::checkInstanceStaticAsserts(size_t from)
           if (!overrides || *overrides == says)
             continue;
           const NamePart& n = static_cast<FunctionDecl*>(m)->name.last();
-          std::string name = n.special ? std::string("this operator") : impl->debugName(n.symbol);
-          // Q7: an instance whose base is its parameter overrides or not by that argument; one that says
-          // `override` of nothing is an error once required `override` lands (until then only a member
-          // called by name is: spec classes/override_of_nothing_in_an_instance_is_error).
+          std::string name = (m->flags & DF_Destructor) ? std::string("the destructor") : n.special ? std::string("this operator") : impl->debugName(n.symbol);
+          // (an instance whose base is its parameter overrides or not by that argument: a mixin over a plain base)
           uint32_t overrideToken = UINT32_MAX;
           std::string old = Impl::spelledTokens(c->file, m->token, Impl::declaratorEnd(c->file, m->token, &overrideToken));
+          std::string instance = impl->types.toString(cls, &impl->symbols);
           if (says)
-            noteOverrideWarning(Impl::locationOf(c->file, overrideToken != UINT32_MAX ? overrideToken : m->token) + ": warning: " + name +
-                                " says override and overrides nothing in " + impl->types.toString(cls, &impl->symbols) + ": remove `override`");
+            impl->reportCheckerError(c->file, overrideToken != UINT32_MAX ? overrideToken : m->token,
+                                     name + " says override and overrides no virtual function in " + instance + ": remove `override`");
           else
-            noteOverrideWarning(Impl::locationOf(c->file, m->token) + ": warning: " + name + " overrides a virtual function: write `" + old +
-                                " override`, not `" + old + "`");
+            impl->reportCheckerError(c->file, m->token, name + " overrides a virtual function in " + instance + ": write `" + old + " override`, not `" + old + "`");
         }
     }
     Subst subst = impl->substFor(cls);

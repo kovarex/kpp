@@ -4056,38 +4056,30 @@ auto GlobalScope::Impl::Walker::checkOverride(FunctionDecl* f) -> void
   checkDestructorRedeclared(f);
   // (factorio: a stream deriving from OutStream kept `writeBytes(const char*, int) override` when the
   // library's sizes became unsigned, compiled, and writing to it called the base's pure function)
-  // Under --override-warnings: the ones that override and do not say so. A destructor and `final` need
-  // not, as the rule stands so far (design.md's questions for kovarex), and an out-of-line definition
-  // cannot: the word is its class's declaration's.
-  bool unmarked = overrideWarningsOn() && f->name.parts.size() == 1 && !(f->flags & (DF_Override | DF_Final | DF_Static | DF_Constructor | DF_Destructor));
-  if ((!(f->flags & DF_Override) && !unmarked) || probing || retypingElements || !file || file->isImported)
+  // Required `override` (design.md 23b): one that overrides says so, `override` or `final` (Q6); a destructor
+  // need not, a polymorphic class's being virtual (Q5), and an out-of-line definition cannot: the word is
+  // its class's declaration's. A class template's are its instances' to tell, each by its arguments (Q7,
+  // GlobalScope::checkInstanceStaticAsserts, which names the instance).
+  bool unmarked = f->name.parts.size() == 1 && !(f->flags & (DF_Override | DF_Final | DF_Static | DF_Constructor | DF_Destructor));
+  if ((!(f->flags & DF_Override) && !unmarked) || probing || retypingElements || !file || file->isImported || activeSubst || inGenericTemplate())
     return;
   Decl* cls = impl.owningClassOf(f);
   if (!cls || cls->kind != NodeKind::ClassDecl)
     return;
   const Ty* self = impl.selfType(cls);
-  if (activeSubst)
-    self = impl.substitute(self, *activeSubst);
-  else if (inGenericTemplate())
-    return; // (a template's own walk: its instances say what the parameters are)
   if (!self || !self->isKnown() || types.isDependent(self))
     return;
   std::optional<bool> overrides = impl.overridesVirtual(self, impl.overrideKey(f, self), 0);
+  if (!overrides || *overrides != unmarked)
+    return;
   const NamePart& n = f->name.last();
   std::string name = (f->flags & DF_Destructor) ? std::string("the destructor") : n.special ? std::string("this operator") : impl.debugName(n.symbol);
+  uint32_t overrideToken = UINT32_MAX;
+  std::string old = Impl::spelledTokens(file, f->token, Impl::declaratorEnd(file, f->token, &overrideToken));
   if (unmarked)
-  {
-    if (overrides && *overrides)
-    {
-      std::string old = Impl::spelledTokens(file, f->token, Impl::declaratorEnd(file, f->token));
-      noteOverrideWarning(Impl::locationOf(file, f->token) + ": warning: " + name + " overrides a virtual function: write `" + old + " override`, not `" +
-                          old + "`");
-    }
-    return;
-  }
-  if (!overrides || *overrides)
-    return;
-  impl.reportCheckerError(file, f->token, name + " is marked override but overrides no virtual function");
+    impl.reportCheckerError(file, f->token, name + " overrides a virtual function: write `" + old + " override`, not `" + old + "`");
+  else
+    impl.reportCheckerError(file, overrideToken != UINT32_MAX ? overrideToken : f->token, name + " says override and overrides no virtual function: remove `override`");
 }
 
 auto GlobalScope::Impl::Walker::checkAbstractObject(VariableDecl* v, const Ty* declared) -> void

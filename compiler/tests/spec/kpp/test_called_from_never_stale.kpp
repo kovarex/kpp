@@ -22,7 +22,7 @@ public:
 class Implicit : public Derived
 {
 public:
-  void run() { call(-2); } // (no override keyword, and its base's is no test function)
+  void run() override { call(-2); } // (its base's is no test function; `override` is required, design.md 23b)
 };
 
 int thrower()

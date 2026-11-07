@@ -308,7 +308,8 @@ methods (the Factorio survey suggests generating save/load from the class may be
 `[*this]`, a lambda's capture of the object by copy (C++17), is an error until a program needs
 it (2026-11-05, A and B): the parser read it as `[this]`, so a later change to the object showed
 through the lambda (`7` where g++ prints `3`). No code of the game, the standard library or the
-libraries uses it. Spec language/lambda_capture_of_this_by_copy_is_error.
+libraries uses it. Spec language/lambda_capture_of_this_by_copy_is_error. It stays an error once `this`
+is a reference (kovarex, 2026-11-07, 23d): a copy is `[copy = this]`, the object by reference `[&this]`.
 
 ### 7. No preprocessor; what replaces macros (decided 2026-10-23)
 Based on [macro-survey.md](macro-survey.md): Factorio's 611 macros and 22,647 expansions fall
@@ -2165,15 +2166,21 @@ costs, and whether it runs a constructor, does not depend on the optimizer or th
   then no constant, as C++'s constant evaluation rejects a pointer to an ended object, never an
   answer other than the program's, where that address is the result's.
 
-### 23a. Safe navigation `?->` and the Elvis `?:` (built 2026-11-06, Q1 to Q4 awaiting kovarex)
-The readme's rule, with thread A's recommended answers to what it left open; kovarex has not confirmed
-them yet (the questions: C:\kpp-sandbox\handoff\A-stage1-language-questions.md).
-- **`a?->b`** runs what follows only when a is set, and otherwise gives the default value of the result's
-  type. Everything after a `?->` in the postfix chain belongs to it: members, calls with their arguments,
-  subscripts (`a?->b->c`, `a?->f(g())`: g is not called when a is not set). Parentheses end the chain.
-- **The result is always a value**, of the unqualified type, never an lvalue: `a?->x = 3;` is an error,
-  and a function giving `T&` gives a T, copied. `void` is fine as a statement. A class with no default
-  constructor is an error at the `?->`.
+### 23a. Safe navigation `?->` and the Elvis `?:` (built 2026-11-06; Q1 to Q4 decided 2026-11-07, Q1's result being built)
+The readme's rule, with what it left open answered by kovarex on 2026-11-07: Q2 to Q4 as built, Q1 in a
+new shape ("the rest should be optional").
+- **`a?->b`** runs what follows only when a is set. Everything after a `?->` in the postfix chain belongs
+  to it: members, calls with their arguments, subscripts (`a?->b->c`, `a?->f(g())`: g is not called when a
+  is not set). Parentheses end the chain.
+- **When a is not set** (Q1): a pointer result, raw or a class with `operator->` and a bool conversion
+  ("unique ptr and such": UniquePtr, `T^`, SharedPtr), is null; a bool result is false; a void call does
+  nothing; any other result makes the whole expression `Optional<T>`, so `i32 s = t?->engine->power;` is a
+  compile error and `i32 s = t?->engine->power ?: -1;` works: `?:` on an Optional gives its value or the
+  right side. Classes too: `t?->name` is `Optional<String>`. Not built yet: today the result is the
+  result type's default value.
+- **The result is always a value** (Q2), of the unqualified type, never an lvalue: `a?->x = 3;` is an
+  error, and a function giving `T&` gives a T, copied (inside the Optional too). `void` is fine as a
+  statement. A type that cannot be copied is an error at the `?->`.
 - **Left of `?->`**: a pointer, or a class with `operator->` and a bool conversion (`T^`, Optional).
 - **`a ?: b`** is `a ? a : b` with a evaluated once, typed as that conditional is, so an lvalue when both
   are lvalues of one type. `c ?::x : y` is C++'s conditional.
@@ -2184,18 +2191,19 @@ them yet (the questions: C:\kpp-sandbox\handoff\A-stage1-language-questions.md).
 
 Specs: language/safe_navigation*, language/elvis.
 
-### 23b. Required `override` (warning built 2026-11-06, rules decided 2026-11-07)
-Every function that overrides a virtual one says so. It lands in three steps: a warning under a flag,
-counted on the game, then the converter writes the word, then an error. `--override-warnings` is the
-first step and changes nothing else. It reads the in-class declaration: an out-of-line definition cannot
-say `override`. A class template is read per instance, each instance the program names, called or not,
+### 23b. Required `override` (an error since 2026-11-07, rules decided 2026-11-07)
+Every function that overrides a virtual one says so. It landed in three steps: a warning under a flag,
+counted on the game (13 functions, all cxxopts'), the converter writing the word (C, 8af8a46f), then the
+error, at the in-class declaration: an out-of-line definition cannot say `override`. A class template is read per instance, each instance the program names, called or not,
 as a virtual call reaches a member no walk does. Exempt: destructors (Q5, below). `final` alone says
 `override` too (kovarex, 2026-11-07, Q6). The check is per instance (Q7): in a class template whose base
 is its parameter, a mixin over polymorphic or plain bases, each instance overrides or not by its argument,
-and the error is at the instance that overrides without saying so or says `override` of nothing; the
-warning names that instance, "g says override and overrides nothing in Mixin<Bare>: remove `override`".
-An unmarked one is "g overrides a virtual function: write `int g() const override`, not `int g() const`". `virtual` beside
-`override` stays allowed (Q8).
+and the error is at the instance that overrides without saying so or says `override` of nothing, naming
+it: "g says override and overrides no virtual function in Mixin<Bare>: remove `override`". An unmarked one
+is "g overrides a virtual function: write `int g() const override`, not `int g() const`" (", in Over<Base>"
+for an instance's). `virtual` beside `override` stays allowed (Q8). `--override-warnings` now lists only
+the classes whose destructor becomes virtual. Specs language/override_is_required,
+classes/override_of_nothing_is_error, classes/override_of_nothing_in_an_instance_is_error.
 
 **A polymorphic class's destructor is virtual** (kovarex, 2026-11-07, Q5; decided, not built). A class with
 a virtual function, its own or a base's, has a virtual destructor, written or not; `virtual ~X()` stays
@@ -2225,12 +2233,12 @@ The game's count (factorio-in-kpp's src, libraries and tests at Factorio 4c178a5
 with --override-warnings --emit-llvm): 13 functions, all in libraries\cxxopts\cxxopts.kpp, and 490
 destructors if Q5 does not exempt them.
 
-Open until the error lands: `override` of nothing in an instance is reported only for a member called by
-name (spec classes/override_of_nothing_in_an_instance_is_error, pending). The instance loop that serves the
-warning reports with no unit, so a compile server would keep such an error after its fix: the error needs a
-unit it can forget.
+An instance's errors come from the loop over the class instances the program names (the one that checks
+their static_asserts), as no walk reaches a member only a virtual call reaches. They are reported outside
+any walk, as those static_asserts are, so a compile server walks a file with one again from scratch
+(BodyGraft's unitlessErrorIn) rather than keep it after its fix.
 
-Specs: language/override_warnings_mode, classes/override_of_nothing_is_error.
+Specs: language/override_is_required, language/override_warnings_virtual_destructor, classes/override_of_nothing_is_error.
 
 ### 23c. Required `this.` and `This` (warning built 2026-11-07, rules decided 2026-11-07)
 A member is named through the class, so that a new local or global never changes an existing line.
@@ -2240,8 +2248,10 @@ kovarex, 2026-11-07:
   was a mistake for "required `this.`" (23d).
 - **`This`**, a type keyword (Q9, after Rust's and Swift's `Self` and PHP's `self::`): the class lexically
   enclosing the code. In a class template it is the current instance (`Vector<T>`, the arguments not
-  repeated); in a base class it is the base, never the class deriving from it; it works in a static member
-  function.
+  repeated); in a base class it is the base, never the class deriving from it; in an enum's methods the
+  enum (`This::North`); it works in a static member function. It is a keyword in kpp code, as `this` is,
+  and stays a name in imported C: the parser reads it as a type the resolver binds to the class around, so
+  `This::x` is a qualified member name (hover, go-to-definition and rename through it, F).
 - **Statics** are `This::count` or `Train::count`. `this.count` of a static is an error (Rust's rule: it is no
   value of the object).
 - **Nested types and enumerators** stay bare; `This::State` works too.
@@ -2312,7 +2322,12 @@ kovarex answered Q13 to Q17 on 2026-11-07, as recommended but for Q13. `this` na
   pass `this`, 926 return it, 3,175 compare it, 163 `delete this`). `this == other` compares the objects through
   operator==, which is the one place a missed rewrite would compile silently (a class with an operator==
   taking a pointer): until the converter's count is 0, `this ==` and `this !=` in converted code are errors.
-- **`[this]` captures the reference** (Q16, 2,902 lines in the game).
+- **Lambdas** (kovarex, 2026-11-07, replacing Q16): `[&this]` captures the object by reference; a copy
+  only as an explicit init-capture, `[copy = this]` (any name, used as `copy.x`; `this` itself is not
+  captured then). `[this]` is the error "write `&this`, not `this`", as a silent copy would be a big
+  gotcha and a C++ habit must fail loudly; `[*this]` is an error too. `[=]` never captures the object
+  implicitly; `[&]` captures it by reference. The converter rewrites the game's 2,902 `[this]` to
+  `[&this]` in this step.
 - **`this` is never null** (Q17): `if (this)` and `this == nullptr` are errors, counted on the game first.
 
 `this[7]`, `!this` and `this + 1` act on the object, as a reference's do. An enum's methods already have

@@ -369,7 +369,10 @@ Container::value_type first(const Container& container) { return container[0]; }
 ### `[*this]` is refused (built)
 
 - **C++:** a lambda captures a copy of the object.
-- **kpp:** an error until a program needs it. Nothing in the game or the libraries uses it.
+- **kpp:** an error. A copy of the object is an explicit init-capture, `[copy = this]`, used as `copy.x`;
+  `[&this]` captures it by reference, and `[this]` is the error "write `&this`, not `this`" (kovarex,
+  2026-11-07: a silent copy would be a big gotcha). `[=]` never captures the object. Nothing in the game or
+  the libraries copies it today.
 - **See:** [design 6][d6]; spec `language/lambda_capture_of_this_by_copy_is_error`.
 
 ### Returning a local is guaranteed to build it in place (built)
@@ -398,12 +401,12 @@ Pinned make() { Pinned p; return p; }   // compiles: an error in C++
 - **See:** [design 21][d21]; specs `language/placement_new_over_const_object_is_error`,
   `language/placement_new_replaces_transparently`.
 
-### Required `override` (this stage, rules decided)
+### Required `override` (built)
 
 - **C++:** `override` is optional.
 - **kpp:** every function that overrides a virtual one says so, `override` or `final`, but a destructor
   (below), checked in each instance of a class template whose base is its parameter.
-- **Status:** `--override-warnings` lists them; the game has 13 functions, and 490 destructors ([design 23b](design.md)).
+- **Status:** an error since 2026-11-07 ([design 23b](design.md)).
 - **Why:** a change in a base cannot silently unhook an override.
 - **See:** [design 6][d6]; the readme's Planned.
 
@@ -422,8 +425,10 @@ Pinned make() { Pinned p; return p; }   // compiles: an error in C++
 - **kpp:** an instance's member is written `this.x`, so adding a local or a global never changes an
   existing line (kovarex, 2026-11-07: `this` is a reference everywhere, so the readme's "required
   `this->`" is `this.`). `This` is a type keyword for the class around the code, the current instance of a
-  class template (`This` for `Vector<T>`); a static is `This::count` or `Train::count`, never `this.count`;
-  nested types and enumerators stay bare. A bare name is a local, a parameter or a global, never a
+  class template (`This` for `Vector<T>`), and inside an enum's methods the enum (`This::North`); a
+  static is `This::count` or `Train::count`, never `this.count`; nested types and enumerators stay bare.
+  `This` is a keyword in kpp code, as `this` is (not in imported C, where it stays a name): C++ that names
+  something `This` must rename it; the game and our kpp have no such name. A bare name is a local, a parameter or a global, never a
   member: `void setX(i32 x) { this.x = x; }`. The member a member initializer names stays bare
   (`: speed(speed)`), as do `using` declarations and declared types. All kpp code follows it, the
   stdlib and libraries too; imported headers are exempt. Today members are named bare, as in C++.
@@ -436,7 +441,8 @@ Pinned make() { Pinned p; return p; }   // compiles: an error in C++
 - **kpp:** `this` is a reference everywhere (kovarex, 2026-11-07): `this.x` is the member access and
   `this->x` the class's `operator->`; `return this;` where C++ writes `return *this;`, and `*this` is the
   class's `operator*`, an error when it has none; `&this` is the pointer (`foo(&this)`, `delete &this`);
-  `this == other` compares the objects; `[this]` captures the reference; `this` is never null, so
+  `this == other` compares the objects; `[&this]` captures it by reference and `[copy = this]` copies it,
+  while `[this]` and `[*this]` are errors, and `[=]` never captures it; `this` is never null, so
   `if (this)` is an error. Today it is a pointer, except in an enum's methods, where it is the value.
 - **Why:** one meaning of `this` in every place, and `*this` gone from the code.
 - **See:** [design 6][d6]; the readme's Planned.
@@ -488,7 +494,10 @@ function that runs every level of a hierarchy. See the readme's Planned.
   C++'s rules.
 - **Why:** it replaces the hand-written tables and macros beside each enum.
 - **Names:** outside the enum an enumerator is `Direction::North`, in a case label too; no bare label and
-  no `.North` shorthand (kovarex, 2026-11-07).
+  no `.North` shorthand (kovarex, 2026-11-07). Inside the enum's own methods `North`, `Direction::North`
+  and `This::North` all name it. A bare one outside is an error naming the fix (spec
+  `language/scoped_enumerator_needs_its_enum`). *Open:* whether this covers an unscoped enum's
+  enumerators, bare today as in C.
 - **See:** [design 8.4][d8]; spec `kpp/enum_from_str`; the [readme](../readme.md#less-boilerplate).
 
 ```cpp
@@ -541,13 +550,16 @@ p[Property::Text] = String("hello");
 
 ## Expressions
 
-### `?->` and `?:` (built, rules awaiting kovarex)
+### `?->` and `?:` (built; the result's type decided 2026-11-07, being built)
 
 - **C++:** neither (`?:` is a GNU extension).
-- **kpp:** `a?->b?->foo()` calls `foo` only when `a` and `a->b` are set, and otherwise gives the last
-  member's default value. `a ?: b` is `a ? a : b` with `a` evaluated once. As built, not yet confirmed:
-  a `?->` skips the rest of the postfix chain, its result is always a value, a pointer or a class with
-  `operator->` and a bool conversion may stand left of it, and `?:` types as `a ? a : b`.
+- **kpp:** `a?->b?->foo()` calls `foo` only when `a` and `a->b` are set: the rest of the postfix chain is
+  skipped as one piece, its arguments not evaluated. When it is skipped, a pointer result (raw, or a class
+  with `operator->` and a bool conversion: UniquePtr, `T^`, SharedPtr) is null and a bool result false;
+  any other result makes the expression `Optional<T>` (kovarex, 2026-11-07): `i32 s = t?->engine->power;`
+  is an error, `i32 s = t?->engine->power ?: -1;` works, as `?:` on an Optional gives its value or the
+  right side. `a ?: b` is `a ? a : b` with `a` evaluated once. Today kppc still gives the result type's
+  default value where an Optional is decided.
 - **See:** design 23a.
 
 ### Three-way comparison has one result type (built)

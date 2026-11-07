@@ -1,6 +1,6 @@
 // spec: a member function marked override that overrides no virtual function of a base (here: its parameter is int where the base's is unsigned) is an error, as in C++
 // factorio: found when the library's sizes became unsigned (OutStream::writeBytes(const char*, ContainerSize)): a stream deriving from OutStream with the old `writeBytes(const char*, int) override` compiled, and writing to it called the pure virtual function (an access violation)
-// error: override_of_nothing_is_error.kpp:14: error: write is marked override but overrides no virtual function
+// error: override_of_nothing_is_error.kpp:14: error: write says override and overrides no virtual function: remove `override`
 class Base
 {
 public:

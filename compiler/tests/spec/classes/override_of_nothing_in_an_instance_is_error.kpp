@@ -1,6 +1,5 @@
 // spec: `override` of nothing in a class template is an error at the instance, when no call names the member too: C++ checks it as the class is instantiated ([class.virtual] 5)
-// pending: an instance's member reaches checkOverride only through a call by name, so this compiles, and a call through the base runs the base's function (thread A, 2026-11-06: the error needs a unit a compile server can forget, so it lands with required `override`'s error)
-// error: override_of_nothing_in_an_instance_is_error.kpp:13: error: value is marked override but overrides no virtual function
+// error: override_of_nothing_in_an_instance_is_error.kpp:12: error: value says override and overrides no virtual function in Over<Base>: remove `override`
 class Base
 {
 public:

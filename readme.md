@@ -69,8 +69,9 @@ what is decided but not built yet is under [Planned](#planned). Every rule that 
 - **No format strings.** `println("x = ", x)` prints its arguments in sequence; a type becomes text
   through its `appendTo`, and a pointer prints only through `address(p)`.
 - **Safe navigation `?->` and the Elvis `?:`.** `a?->b?->foo()` calls `foo` only when `a` and
-  `a->b` are set, and as an expression gives the last member's default value when one is not;
-  `a ?: b` is `a ? a : b` with `a` evaluated once.
+  `a->b` are set. When one is not, a pointer result is null and a bool false, and any other result is an
+  `Optional`, which `?:` unwraps: `i32 power = train?->engine->power ?: -1;`. `a ?: b` is `a ? a : b`
+  with `a` evaluated once. (The Optional is being built; today such a result is its type's default.)
 
 ### Less boilerplate
 
@@ -239,8 +240,8 @@ Decided, and not built yet:
   local or a global never changes what an existing line means; a bare name is never a member.
   `This` names the class the code is in (`Vector<T>` inside Vector). Outside a scoped enum its values
   are `Direction::North`, in case labels too.
-- **Required `override`** on every function that overrides a virtual one (or says `final`), and a class
-  with a virtual function always has a virtual destructor.
+- **Required `override`** on every function that overrides a virtual one (or says `final`): an error
+  today. Next, a class with a virtual function always has a virtual destructor.
 - **`this` is a reference** everywhere: `this.x`, `return this;`, `&this` for the pointer. (Inside an
   enum's methods `this` already is the value.)
 - **macOS as a target**, built on Windows and Linux ([design.md](docs/design.md), "Targets and
