@@ -3264,6 +3264,35 @@ auto GlobalScope::Impl::Walker::checkClassToScalar(const Ty* from, const Ty* to,
                                          ": it has no implicit conversion operator to a scalar");
 }
 
+auto GlobalScope::Impl::Walker::checkParenthesizedArray(Span<Expr*> args, const Ty* array, uint32_t token) -> void
+{
+  if (probing || !file || file->isImported || !array || array->kind != TyKind::Array || !array->isKnown() || types.isDependent(array) || inGenericTemplate())
+    return;
+  for (Expr* a : args)
+    if (!a || (a->kind == NodeKind::UnaryExpr && static_cast<UnaryExpr*>(a)->postfix && P(static_cast<UnaryExpr*>(a)->op) == P::Ellipsis))
+      return; // (a pack's elements: counted where they are expanded)
+  const Ty* element = array->inner;
+  std::string elementName = types.toString(element, &symbols);
+  if (array->count != 0 && args.size() > array->count)
+  {
+    reportCheck(args[array->count]->token, std::to_string(args.size()) + " values in parentheses for an array of " + std::to_string(array->count) + " " + elementName);
+    return;
+  }
+  for (Expr* a : args)
+  {
+    if (a->kind == NodeKind::BraceInitExpr || !a->ty || !a->ty->isKnown() || types.isDependent(a->ty) || Impl::mentionsUnknown(a->ty))
+      continue; // (an element's own braces, as in a list; what the walk could not type is said where it is)
+    const Ty* from = argumentType(a, a->ty, types);
+    if (impl.conversionRank(from, element, 0) >= NotViable)
+      reportCheck(a->token, "an array's element of type " + elementName + " is initialized from a value of type " + types.toString(types.stripRef(from), &symbols) +
+                                ", which does not convert to it (parentheses elide no braces: each value is one element)");
+  }
+  if (array->count > args.size())
+    if (std::optional<bool> fills = impl.defaultConstructible(element); fills && !*fills)
+      reportCheck(token, "the array's elements after the " + std::to_string(args.size()) + " values in parentheses are value-initialized, and " + elementName +
+                             " has no default constructor");
+}
+
 auto GlobalScope::Impl::Walker::checkConstruction(const Ty* t, Span<Expr*> args, uint32_t token) -> void
 {
   if (probing || activeSubst || !file || !t || !t->isKnown() || types.isDependent(t))
@@ -7398,6 +7427,8 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
                                                                        : nullptr;
           if (initialized && initialized->kind == TyKind::Class && !types.isDependent(initialized))
             packText(init.args, textConstructor(initialized, init.args), f->token);
+          if (initialized && initialized->kind == TyKind::Array && l.decl->kind == NodeKind::VariableDecl && !init.args.empty())
+            checkParenthesizedArray(init.args, initialized, f->token); // `values(4, 5)` (C++20)
         }
       }
       bool autoReturn = f->returnType && Impl::astMentionsAuto(f->returnType) && !f->trailingReturn;
@@ -7495,6 +7526,8 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
       }
       if (v->init && declared && !impl.containsAuto(declared) && !v->bracedInit && v->init->kind == NodeKind::BraceInitExpr)
         checkExplicitListCopy(static_cast<BraceInitExpr*>(v->init), declared); // `Strict s = {5};`
+      if (v->init && declared && declared->kind == TyKind::Array && v->init->kind == NodeKind::FunctionalCastExpr && !static_cast<FunctionalCastExpr*>(v->init)->braced)
+        checkParenthesizedArray(static_cast<FunctionalCastExpr*>(v->init)->args, declared, v->init->token); // `int a[3](1, 2)` (C++20)
       // `int x{1.5};`, `char c = {300};`, `int a[2] = {1, 2.5};`: a brace list narrowing an element.
       if (v->init && declared && !impl.containsAuto(declared) && v->init->kind == NodeKind::BraceInitExpr &&
           static_cast<BraceInitExpr*>(v->init)->designators.empty() && !static_cast<BraceInitExpr*>(v->init)->text)
@@ -8666,6 +8699,7 @@ auto GlobalScope::Impl::Walker::walkExpr(Expr* e) -> const Ty*
       walkExprs(n->args);
       const Ty* t = typeOf(n->type);
       bool array = t->kind == TyKind::Array;
+      const Ty* wholeArray = array ? t : nullptr;
       if (array)
         t = t->inner;
       else if (impl.isUndeducedClassTemplate(t))
@@ -8685,7 +8719,9 @@ auto GlobalScope::Impl::Walker::walkExpr(Expr* e) -> const Ty*
         bindOverloadSetsOfConstruction(t, n->args);
       if (impl.holdsText(t) && !inGenericTemplate())
         reportTextError(n->token, impl.isTextClosure(t) ? "a lambda capturing a Text cannot be stored (design.md 14)" : textStored("allocated"));
-      if (!n->braced)
+      if (!n->braced && array && !n->args.empty())
+        checkParenthesizedArray(n->args, wholeArray, n->token); // `new int[3](8, 9)` (C++20)
+      else if (!n->braced)
       {
         checkConstruction(t, n->args, n->token);
         packText(n->args, textConstructor(t, n->args), n->token); // `new Problem("bad ", point)`

@@ -572,6 +572,10 @@
     // walked where it is written (not a template's instance), and not from a class with a conversion
     // operator (which may make the T the copy constructor takes): codegen still reports those.
     void checkConstruction(const Ty* t, Span<Expr*> args, uint32_t token);
+    // C++20's parentheses for an array ([dcl.init.general] 16.5: `int a[3](1, 2)`, a member's `values(4, 5)`,
+    // `new int[3](8, 9)`): each value copy-initializes an element, narrowing allowed and no braces elided, as
+    // many values as elements at most, and the rest value-initialized. An error for what does not fit.
+    void checkParenthesizedArray(Span<Expr*> args, const Ty* array, uint32_t token);
 
     // Each argument of a call of f (fnTy: its type), the single plain candidate whose parameters the arguments do not
     // fit (pickOverload chose none), that is a class where its parameter is a scalar, checked (checkClassToScalar). Not

@@ -985,10 +985,12 @@ auto codegen::Emitter::initializeMembers(const std::string& addr, const Ty* t, S
         withSingleElement(init->args[0], at, [&](Expr* one) { initializeFrom(fieldAddr, ft, one, at); }); // `f(f)`: the closure's bytes, not its address
       else if (size_t values = expandedCount(init->args, at); values == 0)
         storeZero(ft, fieldAddr, at); // `value()`, `value(forward<Args>(args)...)` with Args empty: value-initialized
-      else if (ft->kind == TyKind::Array && init->braced)
+      else if (ft->kind == TyKind::Array)
       {
+        // `v{m...}`, and `values(4, 5)` (C++20: each value one element, the checker refused another),
+        // the rest value-initialized.
         storeZero(ft, fieldAddr, at); // (what the values leave out)
-        initializeArrayElements(fieldAddr, ft, init->args, at); // `v{m...}`: its elements
+        initializeArrayElements(fieldAddr, ft, init->args, at);
       }
       else if (values == 1)
         forEachExpanded(init->args, at, [&](Expr* one)
@@ -3013,6 +3015,15 @@ auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr
       decls += "declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)\n";
     fn += "  call void @llvm.memcpy.p0.p0.i64(ptr " + addr + ", ptr " + stringConstant(l) + ", i64 " +
           std::to_string(std::min<uint64_t>(units + 1, t->count) * unitBytes) + ", i1 false)\n";
+    return;
+  }
+  if (t->kind == TyKind::Array && init->kind == NodeKind::FunctionalCastExpr && !static_cast<FunctionalCastExpr*>(init)->braced &&
+      !static_cast<FunctionalCastExpr*>(init)->args.empty())
+  {
+    // `int a[3](1, 2)` (C++20, [dcl.init.general] 16.5): each value initializes an element whole (the
+    // checker refused one that is no element: parentheses elide no braces), the rest value-initialized.
+    storeZero(t, addr, at);
+    initializeArrayElements(addr, t, static_cast<FunctionalCastExpr*>(init)->args, init); // (at the values: a failure the checker said is not said again)
     return;
   }
   if (t->kind == TyKind::Array && init->kind != NodeKind::BraceInitExpr)

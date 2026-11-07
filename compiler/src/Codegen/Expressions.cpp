@@ -1394,7 +1394,12 @@ auto codegen::Emitter::arrayNew(NewExpr* n, const Ty* t, Expr* sizeExpr) -> std:
     valueInit = true;
   }
   else if (!n->args.empty())
-    unsupported(n, "new[] with constructor arguments");
+  {
+    // `new int[3](8, 9)` (C++20): the values initialize the first elements, each one whole (the checker
+    // refused one that is no element), the rest value-initialized.
+    list = n->args;
+    valueInit = true;
+  }
   // The elements the list initializes: one for each value, or for each run of values an element
   // takes with its braces elided (`new In[2]{1, 2, 3}` of `struct In { int a; int b; }`: {1, 2} and
   // {3, 0}, [dcl.init.aggr] 16; D, 2026-11-06: it was refused as three initializers for two).

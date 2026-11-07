@@ -428,6 +428,17 @@ auto GlobalScope::Impl::traitValueUncached(std::string_view name, const std::vec
     // class was: `isConstructible<NoCopy, const NoCopy&>` was true, J's battery's C(C&) aside).
     if (copy && (t->kind == TyKind::Class || t->kind == TyKind::Lambda))
       return constructibleFromSelf(t, args[0]->kind != TyKind::LRef && !types.stripRef(args[0])->isConst, TraitForm::Plain);
+    if (t->kind == TyKind::Array)
+    {
+      // `isConstructible<int[3], int>`, C++20's parentheses ([dcl.init.general] 16.5): each argument copy-initializes
+      // an element, as many as the bound at most, the rest value-initialized; an array of no known bound is none.
+      if (t->count == 0 || args.size() > t->count)
+        return false;
+      for (const Ty* arg : args)
+        if (!traitValue("isConvertible", {arg, t->inner}).value_or(false))
+          return false;
+      return args.size() == t->count || defaultConstructible(t->inner).value_or(false);
+    }
     if (t->kind == TyKind::Class)
     {
       Decl* def = t->decl && t->decl->ownScope ? t->decl : (classScopeOf(t) ? classScopeOf(t)->owner : nullptr);
@@ -1071,6 +1082,8 @@ auto GlobalScope::Impl::triviallyDestructible(const Ty* t, int depth) -> std::op
     return std::nullopt;
   if (t->isReference())
     return true;
+  if (const Ty* u = types.unqualified(t); u->kind == TyKind::Array && u->count == 0)
+    return false; // `int[]`: no object of it to destroy, as the libraries answer
   if (const Ty* closure = closureWithCaptures(t))
   {
     // A closure: destroyed as the parts it holds by value are.
@@ -1324,6 +1337,8 @@ auto GlobalScope::Impl::defaultConstructible(const Ty* t, int depth) -> std::opt
   if (t->isReference())
     return false;
   const Ty* u = types.unqualified(t);
+  if (u->kind == TyKind::Array && u->count == 0)
+    return false; // an array of no known bound: no object of it (`int[]`, as the libraries answer)
   while (u->kind == TyKind::Array)
     u = types.unqualified(u->inner);
   if (u->kind == TyKind::Void || u->kind == TyKind::Function)
@@ -1412,6 +1427,8 @@ auto GlobalScope::Impl::triviallyDefaultConstructible(const Ty* t, int depth) ->
     return std::nullopt;
   if (t->isReference())
     return false;
+  if (const Ty* u = types.unqualified(t); u->kind == TyKind::Array && u->count == 0)
+    return false; // `int[]`: no object of it, as the libraries answer
   if (closureWithCaptures(t))
     return false; // a closure of a lambda-capture has no default constructor
   TrivialSubject s = trivialSubject(t);

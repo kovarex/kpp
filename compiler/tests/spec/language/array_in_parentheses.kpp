@@ -1,0 +1,40 @@
+// spec: C++20's parentheses for an array ([dcl.init.general] 16.5): `int a[3](1, 2, 3)`, fewer values (the rest value-initialized: zero, a class's default constructor), narrowing allowed, aggregates as elements, an unknown bound taken from the values, a member's `values(4, 5)`, `new int[3](8, 9)`, and at compile time; clang's output
+extern "C" int printf(const char* format, ...);
+struct Agg { int a; double b; };
+struct Counted
+{
+  int v;
+  Counted() : v(-1) {}
+  Counted(int x) : v(x) {}
+};
+struct Holder
+{
+  int values[3];
+  Counted counted[3];
+  Holder() : values(4, 5), counted(7) {}
+};
+constexpr int sumOf()
+{
+  int values[3](1, 2);
+  return values[0] + values[1] * 10 + values[2] * 100;
+}
+int main()
+{
+  constexpr int fixed[3](4, 5, 6);
+  static_assert(fixed[1] == 5 && sumOf() == 21);
+  int a[3](1, 2, 3);
+  int b[4](7);
+  double c[2](1, 2.5);
+  int narrowed[2](3.9, 2);
+  Agg aggs[2](Agg{1, 1.5}, Agg{2, 2.5});
+  int d[](4, 5, 6);
+  Counted e[3](8, 9);
+  int* heap = new int[3](8, 9);
+  Holder h;
+  printf("%d %d %d | %d %d %d %d | %g %g | %d %d\n", a[0], a[1], a[2], b[0], b[1], b[2], b[3], c[0], c[1], narrowed[0], narrowed[1]);
+  printf("%d %g %d %g | %d %d %d %d | %d %d %d\n", aggs[0].a, aggs[0].b, aggs[1].a, aggs[1].b, int(sizeof(d)), d[0], d[1], d[2], e[0].v, e[1].v, e[2].v);
+  printf("%d %d %d | %d %d %d | %d %d %d\n", heap[0], heap[1], heap[2], h.values[0], h.values[1], h.values[2], h.counted[0].v, h.counted[1].v, h.counted[2].v);
+  printf("%d %d\n", fixed[2], sumOf());
+  delete[] heap;
+  return 0;
+}

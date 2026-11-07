@@ -1,0 +1,20 @@
+// spec: C++20's parentheses for an array ([dcl.init.general] 16.5) take what fits: more values than elements, a value that is no element (parentheses elide no braces: an aggregate's two values are two elements, not one), and elements left over of a class with no default constructor are errors, each saying why
+// error: array_in_parentheses_errors_is_error.kpp:16: error: 3 values in parentheses for an array of 2 int32
+// error: array_in_parentheses_errors_is_error.kpp:17: error: an array's element of type Duo is initialized from a value of type int32, which does not convert to it
+// error: array_in_parentheses_errors_is_error.kpp:18: error: the array's elements after the 1 values in parentheses are value-initialized, and NoDefault has no default constructor
+struct Duo
+{
+  int a;
+  int b;
+};
+struct NoDefault
+{
+  NoDefault(int v) {}
+};
+int main()
+{
+  int tooMany[2](1, 2, 3);
+  Duo noElision[2](1, 2);
+  NoDefault leftOver[2](5);
+  return 0;
+}

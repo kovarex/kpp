@@ -3729,6 +3729,11 @@ auto GlobalScope::Impl::constInitializeIn(const Ty* t, Expr* init, const TypeCon
       auto* b = static_cast<BraceInitExpr*>(init);
       return u->kind == TyKind::Array ? constArrayInit(u, b->args, ctx, depth) : constBraceInit(u, b, ctx, depth, target);
     }
+    // `int a[3](1, 2)` (C++20, [dcl.init.general] 16.5): the values as a list's, each one element (the checker refused
+    // one that is none), the rest value-initialized.
+    if (u->kind == TyKind::Array && init->kind == NodeKind::FunctionalCastExpr && !static_cast<FunctionalCastExpr*>(init)->braced &&
+        !static_cast<FunctionalCastExpr*>(init)->args.empty())
+      return constArrayInit(u, static_cast<FunctionalCastExpr*>(init)->args, ctx, depth);
     // An object of another class converted by u's converting constructor, the one the value as
     // written chooses, its argument bound by its category: `Optional<String> o = s;` takes s by
     // `const T&`, where it is (by the value alone, an rvalue: `Optional(T&&)` moved from s, a String

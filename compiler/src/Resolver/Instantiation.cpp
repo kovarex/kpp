@@ -2223,6 +2223,16 @@ auto GlobalScope::Impl::computeDeclaredType(Decl* d, const Subst* subst, int dep
         };
         t = types.array(t->inner, uint32_t(elementsFromValues(t->inner, values, typeOf, ctx.subst)));
       }
+      else if (t && t->kind == TyKind::Array && t->count == 0 && v->init && v->init->kind == NodeKind::FunctionalCastExpr &&
+               !static_cast<FunctionalCastExpr*>(v->init)->braced && !static_cast<FunctionalCastExpr*>(v->init)->args.empty())
+      {
+        // `int a[](1, 2, 3)` (C++20, [dcl.init.general] 16.5): an element for each value, none elided.
+        bool expands = false;
+        for (Expr* a : static_cast<FunctionalCastExpr*>(v->init)->args)
+          expands = expands || (a->kind == NodeKind::UnaryExpr && static_cast<UnaryExpr*>(a)->postfix && P(static_cast<UnaryExpr*>(a)->op) == P::Ellipsis);
+        if (!expands)
+          t = types.array(t->inner, uint32_t(static_cast<FunctionalCastExpr*>(v->init)->args.size()));
+      }
       // A static data member declared without its bound (`static Type const types[];`) has the
       // bound of its out-of-line definition (`Highlights::types[] = {...}`), as in C++.
       if (t && t->kind == TyKind::Array && t->count == 0 && !v->init)
