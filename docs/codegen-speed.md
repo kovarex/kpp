@@ -428,6 +428,23 @@ kovarex's order. Each step has its measured or prototyped gain, and the next is 
 
 ## 5. Recommended order, with expected gains, and where each step is
 
+**Stage 1's target (kovarex, 2026-11-07): 5x C++ on the clean and the whole builds.** In his words:
+"having 5X on clean build would be great, if it can be done in reasonable time, the current around 2.5
+is already convincing, but lets try for 5x for some time". So about 8.4 s for the clean build (C++ 42 s,
+a precompiled-header change), 9.2 s for the whole factorio.exe (46 s) and 12 s for the whole
+factorio-test.exe (60 s); the edits stay 10x or better (2.5 s and 5.5 s). 10x everywhere stays the
+long-term goal; release builds (their ThinLTO link) are a separate study. The target is worth real time,
+not a gate on stage 1. Where it stands, kovarex's `kpp measure` (the readme's method; for 0.2.937 the
+machine's load at the time is not known):
+
+| | C++ | kpp 0.2.171 (readme) | kpp 0.2.937 (2026-11-07) | target |
+|---|---:|---:|---:|---:|
+| Edit of one function | 25 s | 1.4 s | 1.8 s (undone 1.7 s) | 2.5 s (10x) |
+| Edit of an inline function used across the game | 55 s | 2.0 s | 2.5 s (undone 2.0 s) | 5.5 s (10x) |
+| Clean build, libraries already built | 42 s | 10.7 s | 15.0 s | 8.4 s (5x) |
+| Whole build of factorio.exe, libraries included | 46 s | 19.5 s | 23.4 s | 9.2 s (5x) |
+| Whole build of factorio-test.exe, libraries included | 60 s | 23.9 s | 24.9 s | 12 s (5x) |
+
 When this plan was written, a clean debug build of the game was 17.1 s, the leaf edit 1.4 to 1.5 s,
 and the wide edit 1.9 s. These were thread A's quiet numbers: kppc run directly, without debug info.
 The gains overlap; each line is against the line before. The status column is as of 2026-11-02.
