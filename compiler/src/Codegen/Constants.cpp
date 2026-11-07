@@ -1288,8 +1288,24 @@ auto codegen::Emitter::placeShortDefinitions(unsigned threads) -> void
     for (uint32_t x = 0; x < nodes; ++x)
       if (stays[x])
         stays[find(x)] = 1;
+    // (a definition's own lines, not its --debug-info metadata, `!N = ...` after them: with them counted,
+    // a release build with debug information placed other definitions than one without, and ThinLTO
+    // made other code of the game, 49 KB more, thread E 2026-11-07)
+    auto codeLines = [](const std::string& text)
+    {
+      size_t lines = 0;
+      for (size_t at = 0; at < text.size();)
+      {
+        size_t end = text.find('\n', at);
+        if (end == std::string::npos)
+          break;
+        lines += text[at] != '!';
+        at = end + 1;
+      }
+      return lines;
+    };
     for (size_t i = 0; i < defs.size(); ++i)
-      if (definedName[k][i].empty() || size_t(std::count(defs[i].text.begin(), defs[i].text.end(), '\n')) > shortLines)
+      if (definedName[k][i].empty() || codeLines(defs[i].text) > shortLines)
         stays[find(uint32_t(i))] = 1;
     // What each definition names from the module's declarations, and what those name in turn:
     // copied with it, or (a local name of its group) moved with it. A local name of another

@@ -4372,8 +4372,9 @@ its IR for every spec snippet (1073) is byte-identical before and after.
 
 - **Targets and hosts** (the section above, 2026-10-31): Q1 `long` on LP64 targets (decided 2026-11-01), Q2 `wchar_t`, Q3 a FreeBSD sysroot (14.3, OK'd 2026-11-03) and a way to run tests there, Q4 the FreeBSD version (14, decided 2026-11-03), Q5 CI for macOS and Linux arm64, Q6 the minimum OS versions (decided 2026-11-04), Q7 the macOS SDK off a Mac.
 
-- **How a build is described** ([build.md](build.md), "Questions for kovarex"): debug information in
-  release builds, and whether the repository's `kppc.exe` takes the released name `kpp`. Settled:
+- **How a build is described** ([build.md](build.md), "Questions for kovarex"): whether the
+  repository's `kppc.exe` takes the released name `kpp`. Settled: debug information in release builds
+  (kovarex 2026-11-07: on by default, a file beside the executable, for crash reports as Factorio's);
   project files are generated (kovarex 2026-10-31, 54e30458); `kpp` builds the game's C libraries
   from source (7074036f) and the scripts link FASTBuild's, rebuilt at Factorio's HEAD on 2026-10-31.
 

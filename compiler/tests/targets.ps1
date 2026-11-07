@@ -184,13 +184,25 @@ $hasFreeBSD = Test-Path (Join-Path $freebsdSysroot 'usr\lib\libc.a')
 if (-not $hasFreeBSD) { "skip targets: freebsd's link (no sysroot: tools\sysroot\freebsd.ps1)" }
 else
 {
-  foreach ($configuration in @(@('debug'), @('release', '--release'), @('debug-info', '--debug-info')))
+  foreach ($configuration in @(@('debug'), @('release', '--release'), @('debug-info', '--debug-info'), @('release-debug-info', '--release', '--debug-info')))
   {
     $name = $configuration[0]
     $elf = Join-Path $work "hello.freebsd.$name.elf"
+    if (Test-Path "$elf.debug") { Remove-Item "$elf.debug" }
     if (-not (Build (@('--target', 'freebsd', '--sysroot', $freebsdSysroot, '--exe', $elf) + $configuration[1..9] + @((Join-Path $src 'hello.kpp'))))) { continue }
     $problems = ElfProblems $elf 1403
     if ($problems) { Fail "freebsd hello ($name): $problems" }
+    # An optimized build's DWARF in a file of its own beside the executable, which keeps a
+    # .gnu_debuglink to it (Link.cpp's splitDebugInfoCommand, kovarex 2026-11-07); a debug build's in
+    # the executable.
+    $text = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($elf))
+    if ($name -eq 'release-debug-info')
+    {
+      if (-not (Test-Path "$elf.debug")) { Fail "freebsd hello ($name): no $elf.debug" }
+      elseif (-not [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes("$elf.debug")).Contains('.debug_line')) { Fail "freebsd hello ($name): $elf.debug has no .debug_line" }
+      if ($text.Contains('.debug_line') -or -not $text.Contains('.gnu_debuglink')) { Fail "freebsd hello ($name): the executable keeps its DWARF or has no .gnu_debuglink" }
+    }
+    elseif ($name -eq 'debug-info' -and ((Test-Path "$elf.debug") -or -not $text.Contains('.debug_line'))) { Fail "freebsd hello ($name): a debug build's DWARF is not in the executable" }
   }
   # Without --sysroot (2026-11-04): the sysroot that comes with kppc, sysroots\freebsd-x86_64 beside
   # it (a release brings it; compiler\build\sysroots in this repository), when $Kppc has one.

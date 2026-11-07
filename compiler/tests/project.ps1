@@ -878,6 +878,11 @@ if (Run 'paths')
     {
       if ($text.IndexOf($held, [StringComparison]::OrdinalIgnoreCase) -ge 0) { Fail "the release build's executable holds the path $held" }
     }
+    # A release build has debug information by default, in a file of its own beside the executable,
+    # for crash reports (kovarex 2026-11-07, docs/build.md question 1): the PDB, which the executable
+    # names without its directory (/PDBALTPATH:%_PDB%), so that the check above holds with it.
+    if (-not (Test-Path 'build\release\paths.pdb')) { Fail "the release build left no build\release\paths.pdb" }
+    elseif ($text.IndexOf('paths.pdb', [StringComparison]::OrdinalIgnoreCase) -lt 0) { Fail "the release build's executable does not name paths.pdb" }
     $output = @(Kpp @('--debug', '--no-server', '--run'))
     $printed = if ($output.Count) { $output[-1] } else { '' }
     if ($code -ne 0 -or $printed -ne (Join-Path $root 'src\main.kpp')) { Fail "a debug build's CallerLocation file is '$printed', not $(Join-Path $root 'src\main.kpp')`n$($output -join "`n")" }

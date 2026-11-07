@@ -182,11 +182,12 @@ namespace projects
       for (const std::string& e : l.excluded)
         args.push_back("--exclude"), args.push_back(e);
     }
-    // A release or final build (optimized, no debug info) holds no path of this machine: the paths its
-    // text gives (an assertion's message, a CallerLocation's file) are the standard library's as
-    // stdlib/..., a kpp library's under its name, the project's relative to its directory
-    // (--file-prefix-map). A debug build keeps them whole, as its debugger and IDE open them.
-    if (p.optimize && !p.debugInfo)
+    // A release or final build (optimized) holds no path of this machine: the paths its text gives (an
+    // assertion's message, a CallerLocation's file) are the standard library's as stdlib/..., a kpp
+    // library's under its name, the project's relative to its directory (--file-prefix-map); its debug
+    // information, in a file of its own, keeps them whole, and the executable names that file without
+    // its directory (Link.cpp). A debug build keeps them whole, as its debugger and IDE open them.
+    if (p.optimize)
     {
       args.push_back("--file-prefix-map"), args.push_back(defaultStdlib(compilerPath()).string() + "=stdlib");
       for (const ProjectLibrary& l : p.kppLibraries)

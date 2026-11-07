@@ -23,7 +23,7 @@ struct Configuration
   String name;
   String base;               // the configuration it is based on; "": none
   Optional<bool> optimize;   // clang -O2, ThinLTO and a whole link (kppc --optimize); else -O0, an incremental link
-  Optional<bool> debugInfo;  // line tables and a PDB (kppc --debug-info)
+  Optional<bool> debugInfo;  // line tables, in a PDB (Linux, FreeBSD: DWARF, a release build's in NAME.debug) (kppc --debug-info)
   Vector<String> configs;    // config:: constants, NAME=VALUE (kppConfig)
   Vector<String> clangFlags; // kppc's --clang-flags, joined by blanks
   Vector<String> cFlags;     // the C libraries' compiles, after kpp's own flags (clang-cl's, or clang's for windows-gnu)
@@ -557,8 +557,10 @@ void kppResolve(const Project& project, const Configuration& configuration, Conf
   }
   else if (root == "release")
   {
+    // (debug information in a file of its own beside the executable, its code unchanged, for crash
+    // reports as Factorio's release builds have it: kovarex 2026-11-07, docs/build.md question 1)
     resolved.optimize = true;
-    resolved.debugInfo = false;
+    resolved.debugInfo = true;
     resolved.config("debug", false);
   }
   // (through a StringView: tests/spec/language/consteval_string_assigned_through_reference)

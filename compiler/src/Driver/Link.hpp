@@ -14,6 +14,12 @@
   std::string linkFlags(const Options& options, bool wideEntry);
 
 
+  // What follows the link of an optimized ELF build with --debug-info (` && llvm-objcopy ...`): its
+  // DWARF moved into NAME.debug beside the executable, which keeps a .gnu_debuglink to it; empty
+  // otherwise (and, its error said, when there is no llvm-objcopy).
+  std::string splitDebugInfoCommand(const Options& options);
+
+
   // An optimized build's LTO options for lld beyond what clang's driver passes it: --lto full's code
   // generated in one partition per thread or --lto-partitions' (FinalRelease's /LTCG has /CGTHREADS;
   // lld's MinGW driver, windows-gnu's, has no such option: one), and --opt-level 3 for the link's

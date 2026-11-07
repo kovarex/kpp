@@ -65,6 +65,8 @@ std::string linkFlags(const Options& options, bool wideEntry)
       flags += " -g -Wl,--pdb= \"-Wl,--Xlink=/natvis:" + natvisPath(options) + "\"";
       for (const std::string& file : options.natvisFiles)
         flags += " \"-Wl,--Xlink=/natvis:" + file + "\"";
+      if (options.optimize) // (the PDB named without its directory, as below)
+        flags += " -Wl,--Xlink=/pdbaltpath:%_PDB%";
     }
     for (const std::string& symbol : options.keepSymbols)
       flags += " -Wl,-u," + symbol;
@@ -92,7 +94,9 @@ std::string linkFlags(const Options& options, bool wideEntry)
       flags += " \"" + lib + "\"";
     return flags;
   }
-  std::string flags = options.optimize           ? "-Wl,/OPT:REF"
+  // (an optimized build's /OPT:ICF said, not left to the default, which /DEBUG turns off: a release
+  // build's code is the same with its PDB and without)
+  std::string flags = options.optimize           ? "-Wl,/OPT:REF -Wl,/OPT:ICF"
                       : options.incrementalLink ? "-Wl,/OPT:NOREF -Wl,/INCREMENTAL"
                                                 : "-Wl,/OPT:REF -Wl,/OPT:NOICF";
   flags += " -llegacy_stdio_definitions -luser32 -ladvapi32 -lshell32 -lole32 -lws2_32";
@@ -105,12 +109,51 @@ std::string linkFlags(const Options& options, bool wideEntry)
     flags += " -Wl,/DEBUG \"-Wl,/NATVIS:" + natvisPath(options) + "\""; // (the .natvis in the PDB: Visual Studio loads it with it)
     for (const std::string& file : options.natvisFiles) // (the program's own: --natvis, build.kpp's natvis)
       flags += " \"-Wl,/NATVIS:" + file + "\"";
+    // An optimized build (release, final: debug information by default, kovarex 2026-11-07) names its
+    // PDB without the directory, so that the executable holds no path of this machine; the debugger
+    // and dbghelp (a crash report's names) find it beside the executable.
+    if (options.optimize)
+      flags += " -Wl,/PDBALTPATH:%_PDB%";
   }
   for (const std::string& symbol : options.keepSymbols)
     flags += " -Wl,/INCLUDE:" + symbol;
   for (const std::string& lib : options.libs)
     flags += " \"" + lib + "\"";
   return flags;
+}
+
+// An optimized ELF build's debug information goes into a file of its own, NAME.debug beside the
+// executable, as a Windows build's goes into its PDB (kovarex 2026-11-07: release builds have debug
+// information for crash reports, the code unchanged): llvm-objcopy copies the DWARF out, then strips
+// it from the executable and leaves a .gnu_debuglink naming the file, where gdb, lldb and a crash
+// report's symbolizer look for it. A debug build keeps its DWARF in the executable.
+std::string splitDebugInfoCommand(const Options& options)
+{
+  if (!options.debugInfo || !options.optimize || options.target.windows() || options.exe.empty())
+    return "";
+  std::string objcopy = std::string("llvm-objcopy") + host::executableSuffix();
+  std::filesystem::path clang = clangPath();
+  std::error_code ec;
+  std::filesystem::path tool;
+  for (const std::filesystem::path& dir : {clang.parent_path(), std::filesystem::canonical(clang, ec).parent_path()})
+    if (!dir.empty() && std::filesystem::is_regular_file(dir / objcopy, ec))
+    {
+      tool = dir / objcopy;
+      break;
+    }
+  if (tool.empty())
+    tool = host::findOnPath("llvm-objcopy");
+  if (tool.empty())
+  {
+    fprintf(stderr, "error: an optimized build's debug information goes into %s.debug with llvm-objcopy, which is neither beside %s nor on "
+                    "PATH: install LLVM's tools (apt install llvm, dnf install llvm, pkg install llvm), or build without --debug-info\n",
+            options.exe.c_str(), clang.string().c_str());
+    codegenExit = 1;
+    return "";
+  }
+  std::string debugFile = options.exe + ".debug";
+  return " && \"" + tool.string() + "\" --only-keep-debug \"" + options.exe + "\" \"" + debugFile + "\" && \"" + tool.string() +
+         "\" --strip-debug \"--add-gnu-debuglink=" + debugFile + "\" \"" + options.exe + "\"";
 }
 
 std::string ltoLinkFlags(const Options& options)

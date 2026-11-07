@@ -561,7 +561,8 @@ void runCodegen(Build& build)
     if (!writeFile(llPath, cg.ir) || options.exe.empty() || stop)
       return;
     std::string command = "\"" + clang + "\" " + level + targetFlags(options) + " -w " + compileFlags + " \"" + llPath + "\" -o \"" + options.exe + "\" " +
-                          (fullLTO ? "-fuse-ld=lld " + ltoLinkFlags(options) + " " : std::string()) + linkFlags(options, wideEntry(parsed, symbols, options.target));
+                          (fullLTO ? "-fuse-ld=lld " + ltoLinkFlags(options) + " " : std::string()) + linkFlags(options, wideEntry(parsed, symbols, options.target)) +
+                          splitDebugInfoCommand(options);
     if (options.deferLink) // (one module: its compile goes with the link)
     {
       deferLinkCommand(options, command);
@@ -744,6 +745,7 @@ void runCodegen(Build& build)
   std::string link = linkCommand;
   if (options.keepGoing) // the link's complaints (unresolved externals) go to a file next to the executable
     link = linkCommand + " > \"" + options.exe + ".link.txt\" 2>&1";
+  link += splitDebugInfoCommand(options); // (an optimized ELF build's DWARF into NAME.debug)
   if (int shared = sharedHits.load())
     during = ", " + std::to_string(shared) + " of them from KPP_OBJECT_CACHE" + during;
   // One build in 16 trims the shared cache to the most recently used 768 MB once it is past 1 GB.
