@@ -444,9 +444,10 @@ name, found by token (`occurrencesIn`, one walk of the file, cached until the ne
 | `textDocument/references` | every name in the program resolved to the declaration or its other declarations; an index of all files made on the first request after a check, on all threads |
 | `textDocument/documentSymbol` | the file's outline: namespaces, classes and their members, enums, functions, variables |
 | `workspace/symbol` | every declaration outside function bodies, exact names first, then prefixes, substrings and the query's letters in order; 200 at most |
-| `textDocument/completion` (`.`, `>`, `:`) | after `.` and `->`: the members of the class the expression before is (names, calls, indexing and `this` chained; its bases' members after its own), each with its declaration as the detail; after `X::`: the names declared in X; else the function's parameters and locals declared before, its class's members, and the top-level names starting with what was typed (300 at most, `isIncomplete` past that) |
+| `textDocument/completion` (`.`, `>`, `:`) | after `.` and `->`: the members of the class the expression before is (names, calls, indexing and `this` chained; its bases' members after its own), each with its declaration as the detail; right after `this`, only what an object names (data members and member functions, not statics, nested types or aliases); after `X::`: the names declared in X; after `This::`, the enclosing class's or enum's statics, nested types and enumerators (an unscoped nested enum's too), its bases' after its own; else the function's parameters and locals declared before, its class's members, and the top-level names starting with what was typed (300 at most, `isIncomplete` past that) |
 | `textDocument/signatureHelp` (`(`, `,`) | the overloads of the function called (a member after `.` and `->`, a scope's after `X::`), each parameter's range in the label, the argument the cursor is at |
 | `textDocument/prepareRename`, `textDocument/rename` | below |
+| `textDocument/codeAction` | below, "Quick fixes" |
 | `textDocument/semanticTokens/full` | every resolved name and declaration's own name by kind (namespace, type, class, enum, struct, typeParameter, parameter, variable, property, enumMember, function, method), `declaration` and `defaultLibrary` (the standard library's) as modifiers |
 
 **Rename never misses a use silently.** Every identifier spelled like the old name in the program's
@@ -463,6 +464,15 @@ change what another name means: a member the class or a base already has, a name
 local's function, and, for everything else, any declaration outside function bodies so named (one
 global scope). The edits are returned, not applied: the editor applies them, and the next check is
 the build that confirms them.
+
+**Quick fixes** come from the diagnostic's message, so the compiler states each fix once, for the
+command line and the editor alike. A mechanical error ends, before any parenthesized note such as
+`(design.md 8)`, with one of two clauses, OLD copied from the source where the error points:
+``write `NEW`, not `OLD` `` replaces OLD with NEW (``write `this.width`, not `width` ``);
+``remove `OLD` `` removes it (``remove `explicit` ``, ``remove `break;` ``) with the spaces after it,
+before it at the end of a line, or its whole line when nothing else is on it. The server offers the
+fix only when OLD starts at the diagnostic's position or occurs once on its line; a message without
+either clause has none. The fixes are `quickfix` code actions with the edit in them (`isPreferred`).
 
 Gaps: an operator has no name token, so it is not found by position; completion and signature help
 look a name up from its nearest resolved spelling before the cursor, the enclosing class and the

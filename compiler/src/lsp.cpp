@@ -1838,8 +1838,43 @@ namespace
         if (d->kind == NodeKind::NamespaceDecl || d->kind == NodeKind::ClassDecl)
           if (FunctionDecl* f = enclosingFunction(childrenOf(d), token))
             return f;
+        if (d->kind == NodeKind::EnumDecl)
+          if (FunctionDecl* f = enclosingFunction(static_cast<EnumDecl*>(d)->members, token))
+            return f;
       }
       return nullptr;
+    }
+
+    // The class or enum `This` names at `token`: a member function's (one defined outside its class
+    // too), else the innermost one whose braces hold the token.
+    Decl* enclosingType(const KeptProgram& program, Span<Decl*> decls, uint32_t token, FunctionDecl* function)
+    {
+      if (function)
+        if (Decl* c = program.global->owningClass(function))
+          return c;
+      for (Decl* d : decls)
+      {
+        if (token < d->token || (d->endToken && token >= d->endToken))
+          continue;
+        if (d->kind == NodeKind::NamespaceDecl)
+          if (Decl* inner = enclosingType(program, childrenOf(d), token, nullptr))
+            return inner;
+        if (d->kind == NodeKind::ClassDecl)
+        {
+          Decl* inner = enclosingType(program, childrenOf(d), token, nullptr);
+          return inner ? inner : d;
+        }
+        if (d->kind == NodeKind::EnumDecl)
+          return d;
+      }
+      return nullptr;
+    }
+
+    // What an object names (`this.x`): a data member or a member function, not a static one, a type
+    // or an alias.
+    bool isInstanceMember(const Decl* m)
+    {
+      return (m->kind == NodeKind::VariableDecl || m->kind == NodeKind::FunctionDecl) && !(m->flags & DF_Static);
     }
 
     // A class's definition with its bases', most derived first.
@@ -2079,21 +2114,49 @@ namespace
         if (tokens[k].is(P::Dot) || tokens[k].is(P::Arrow))
         {
           Decl* cls = classBefore(program, f, k, function);
+          // After `this.`: what the object names, not the class's statics and types (`This::`).
+          bool onThis = k >= 1 && tokens[k - 1].is(Kw::this_) && !(k >= 2 && (tokens[k - 2].is(P::Dot) || tokens[k - 2].is(P::Arrow)));
           std::vector<ClassDecl*> classes;
           classesOf(*program.global, cls, classes);
           for (size_t c = 0; c < classes.size(); ++c)
             for (Decl* m : classes[c]->members)
-              if (symbolKind(m))
+              if (symbolKind(m) && (!onThis || isInstanceMember(m)))
                 add(m, c == 0 ? "0" : "1");
           if (cls && cls->kind == NodeKind::EnumDecl)
             for (Decl* m : static_cast<EnumDecl*>(cls)->members)
-              add(m, "0");
+              if (!onThis || isInstanceMember(m))
+                add(m, "0");
           return;
         }
         if (tokens[k].is(P::ColonColon))
         {
           if (k == 0 || tokens[k - 1].getKind() != TokenKind::Identifier)
             return;
+          // `This::`: the class's (or the enum's) statics, nested types and enumerators, its own first.
+          if (program.symbols->name(tokens[k - 1].id) == "This" && !(k >= 2 && tokens[k - 2].is(P::ColonColon)))
+          {
+            Decl* cls = enclosingType(program, f->decls, k, function);
+            std::vector<ClassDecl*> classes;
+            classesOf(*program.global, cls, classes);
+            for (size_t c = 0; c < classes.size(); ++c)
+              for (Decl* m : classes[c]->members)
+              {
+                if (m->kind == NodeKind::EnumDecl && !static_cast<EnumDecl*>(m)->isClass) // (an unscoped enum's are named through the class)
+                  for (Decl* e : static_cast<EnumDecl*>(m)->enumerators)
+                    add(e, c == 0 ? "0" : "1");
+                if (symbolKind(m) && !isInstanceMember(m))
+                  add(m, c == 0 ? "0" : "1");
+              }
+            if (cls && cls->kind == NodeKind::EnumDecl)
+            {
+              for (Decl* e : static_cast<EnumDecl*>(cls)->enumerators)
+                add(e, "0");
+              for (Decl* m : static_cast<EnumDecl*>(cls)->members)
+                if (!isInstanceMember(m))
+                  add(m, "0");
+            }
+            return;
+          }
           std::string scope(program.symbols->name(tokens[k - 1].id));
           knowSymbols(program);
           for (const Cache::Symbol& s : cache.symbols)
@@ -2146,6 +2209,88 @@ namespace
           }
       });
       return Json::object().set("isIncomplete", incomplete).set("items", std::move(items));
+    }
+
+    // ---- code actions ----
+
+    // The quick fixes a diagnostic's message names (docs/ide.md, "Quick fixes"): "write `NEW`, not
+    // `OLD`" replaces OLD with NEW, "remove `OLD`" removes it, with the spaces after it (before it, at
+    // the end of a line) or its whole line when nothing else is on it. OLD is the source's text where
+    // the diagnostic starts, or its only occurrence on that line; nothing is offered when it is not there.
+    Json codeActions(const Json& params)
+    {
+      Json actions = Json::array();
+      const std::string& uri = params["textDocument"]["uri"].text;
+      fs::path path = uriToPath(uri);
+      std::string text;
+      if (auto d = documents.find(overlayKey(path)); d != documents.end())
+        text = d->second.text;
+      else if (!readFile(path, text))
+        return actions;
+      LineStarts starts(text);
+      // The clause ends the message, before any parenthesized notes: (design.md 8.4), (at '...').
+      static const std::regex replaceClause("write `([^`]+)`, not `([^`]+)`(?: \\([^`]*\\))?$");
+      static const std::regex removeClause("remove `([^`]+)`(?: \\([^`]*\\))?$");
+      for (const Json& d : params["context"]["diagnostics"].items)
+      {
+        std::smatch m;
+        std::string newText, oldText;
+        bool removing = false;
+        if (std::regex_search(d["message"].text, m, replaceClause))
+        {
+          newText = m[1].str();
+          oldText = m[2].str();
+        }
+        else if (std::regex_search(d["message"].text, m, removeClause))
+        {
+          oldText = m[1].str();
+          removing = true;
+        }
+        else
+          continue;
+        size_t from = offsetOf(text, starts, d["range"]["start"]);
+        size_t line = starts.index(from);
+        size_t lineStart = starts[line];
+        size_t lineEnd = line + 1 < starts.size() ? starts[line + 1] - 1 : text.size();
+        if (text.compare(from, oldText.size(), oldText) != 0)
+        {
+          std::string_view lineText = std::string_view(text).substr(lineStart, lineEnd - lineStart);
+          size_t at = lineText.find(oldText);
+          if (at == std::string_view::npos || lineText.find(oldText, at + 1) != std::string_view::npos)
+            continue;
+          from = lineStart + at;
+        }
+        size_t to = from + oldText.size();
+        if (removing)
+        {
+          auto blank = [&](size_t a, size_t b)
+          {
+            for (; a < b; ++a)
+              if (text[a] != ' ' && text[a] != '\t' && text[a] != '\r')
+                return false;
+            return true;
+          };
+          if (to <= lineEnd && blank(lineStart, from) && blank(to, lineEnd))
+          {
+            from = lineStart;
+            to = lineEnd < text.size() ? lineEnd + 1 : lineEnd;
+          }
+          else if (to < lineEnd && (text[to] == ' ' || text[to] == '\t') && !blank(to, lineEnd))
+            while (to < lineEnd && (text[to] == ' ' || text[to] == '\t'))
+              ++to;
+          else
+            while (from > lineStart && (text[from - 1] == ' ' || text[from - 1] == '\t'))
+              --from;
+        }
+        Json edits = Json::array().push(Json::object().set("range", range(text, starts, from, to)).set("newText", newText));
+        actions.push(Json::object()
+                       .set("title", removing ? "remove `" + oldText + "`" : "write `" + newText + "`")
+                       .set("kind", "quickfix")
+                       .set("diagnostics", Json::array().push(d))
+                       .set("isPreferred", true)
+                       .set("edit", Json::object().set("changes", Json::object().set(uri, std::move(edits)))));
+      }
+      return actions;
     }
 
     // ---- rename ----
@@ -2724,7 +2869,8 @@ namespace
         .set("hoverProvider", true)
         .set("completionProvider", Json::object().set("triggerCharacters", Json::array().push(".").push(">").push(":")))
         .set("signatureHelpProvider", Json::object().set("triggerCharacters", Json::array().push("(").push(",")))
-        .set("renameProvider", Json::object().set("prepareProvider", true));
+        .set("renameProvider", Json::object().set("prepareProvider", true))
+        .set("codeActionProvider", Json::object().set("codeActionKinds", Json::array().push("quickfix")));
       if (!semanticColors)
         c.set("semanticTokensProvider", semanticTokensOptions());
       c.set("definitionProvider", true)
@@ -2873,6 +3019,8 @@ namespace
       }
       else if (method == "textDocument/signatureHelp")
         respond(id, signatureHelp(params));
+      else if (method == "textDocument/codeAction")
+        respond(id, codeActions(params));
       else if (method == "textDocument/semanticTokens/full")
       {
         Json tokens = semanticTokens(params);

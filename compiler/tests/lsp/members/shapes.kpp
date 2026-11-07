@@ -1,0 +1,45 @@
+// The language server's members test (tests/lsp.ps1, members.jsonl): completion after `this.`,
+// `this->` and `This::`, and the quick fixes diagnostics name.
+struct Shape
+{
+  enum Kind { Round, Square };
+  struct Corner { i32 x = 0; };
+  static i32 count;
+  static i32 made() { return Shape::count; }
+  i32 width = 1;
+  i32 area() const { return this->width; }
+  i32 twice() const
+  {
+    return this->area() * 2;
+  }
+  i32 counted() const
+  {
+    return Shape::count;
+  }
+  i32 bare() const { return width; }
+};
+i32 Shape::count = 2;
+
+struct Size
+{
+  explicit Size(i32 v) : v(v) {}
+  i32 v;
+};
+
+i32 pick(i32 v)
+{
+  switch (v)
+  {
+  case 1:
+    return 1;
+  default:
+    break;
+  }
+  return 0;
+}
+
+i32 main()
+{
+  Shape s;
+  return s.twice() + pick(2) - 2;
+}

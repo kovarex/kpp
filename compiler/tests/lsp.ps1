@@ -10,6 +10,7 @@
 # refresh: workspace/semanticTokens/refresh after each check, to a client that takes it. colors:
 # Visual Studio's extension's semantic tokens (semanticColors, kpp/semanticTokensChanged).
 # navigation: tests\lsp\hierarchy, go to implementation and type definition, highlights, folding.
+# members: tests\lsp\members, completion after `this.`, `this->` and `This::`, and quick fixes.
 # -Update writes the expected files from this run (read them before committing). run_tests.cmd runs it.
 param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe", [switch]$Update)
 $ErrorActionPreference = 'Stop'
@@ -24,7 +25,8 @@ foreach ($session in @(@{ Name = 'session'; Program = 'program'; Args = '--stdio
                       @{ Name = 'failed'; Program = 'program'; Args = '--no-such-option' }, @{ Name = 'nested'; Program = 'cells'; Args = '--stdio' },
                       @{ Name = 'inactive'; Program = 'inactive'; Args = '--stdio' }, @{ Name = 'refresh'; Program = 'program'; Args = '--stdio' },
                       @{ Name = 'colors'; Program = 'program'; Args = '--stdio' },
-                      @{ Name = 'navigation'; Program = 'hierarchy'; Args = '--stdio' }))
+                      @{ Name = 'navigation'; Program = 'hierarchy'; Args = '--stdio' },
+                      @{ Name = 'members'; Program = 'members'; Args = '--stdio' }))
 {
   $name = $session.Name
   $program = Join-Path $work $session.Program
