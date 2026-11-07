@@ -94,8 +94,10 @@ if not exist %OUT%\factorio-test.exe (
   exit /b 1
 )
 set EXE=%OUT%\factorio-test.exe
-rem --shards N: the tests in N processes at once, each a group of suites (suites.py --shards; the
-rem batch run on master's: 88 s against 701 s in one process), its last line `tests: ALL PASSED (...)`.
+rem --shards N: the tests in N processes at once, the runner's --jobs N (design.md 8.7), its last line
+rem `tests: ALL PASSED (...)`. The --report of the last run that passed, kpp\tests-run\test-seconds.jsonl,
+rem is the next run's --durations: each test given on its own, the longest first (without it, whole
+rem suites, the most tests first). suites.py runs one suite per process, to say what stopped each.
 if defined SHARDS goto shards
 :run
 rem Run from the write directory, so that nothing the runner writes next to its working directory
@@ -112,5 +114,21 @@ exit /b %RESULT%
 
 :shards
 if not "%ARGS%"=="" (echo tests: --shards takes no runner arguments: %ARGS%& exit /b 2)
-python -I "%HERE%suites.py" %EXE% %OUT%\shards --jobs %SHARDS% --shards %SHARDS%
-exit /b %errorlevel%
+set DURATIONS=
+if exist %OUT%\test-seconds.jsonl set DURATIONS=--durations %OUT%\test-seconds.jsonl
+if exist %OUT%\report.jsonl del %OUT%\report.jsonl
+pushd %OUT%\run
+echo == running %EXE% --config %OUT%\config.ini --write-data %OUT%\run --no-colors --jobs %SHARDS% --report %OUT%\report.jsonl %DURATIONS%
+%EXE% --config %OUT%\config.ini --write-data %OUT%\run --no-colors --jobs %SHARDS% --report %OUT%\report.jsonl %DURATIONS% > %OUT%\tests.txt 2>&1
+set RESULT=%errorlevel%
+popd
+set SUMMARY=no summary line
+for /f "delims=" %%l in ('%SystemRoot%\System32\findstr.exe /r /c:"^[0-9]* tests*, [0-9]* failed" %OUT%\tests.txt') do set SUMMARY=%%l
+echo == factorio-test exit %RESULT%; its output: %OUT%\tests.txt
+if not %RESULT%==0 goto shardsFailed
+copy /y %OUT%\report.jsonl %OUT%\test-seconds.jsonl >nul
+echo tests: ALL PASSED (%SUMMARY%, --jobs %SHARDS%)
+exit /b 0
+:shardsFailed
+echo tests: FAILED (%SUMMARY%, exit code %RESULT%, --jobs %SHARDS%)
+exit /b 1

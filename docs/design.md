@@ -3661,7 +3661,8 @@ statistics pass. `kpp --run hello.kpp a b` means the same in a project's directo
   seconds per test the file names, else the file's seconds per test (2026-11-07: whole suites stopped
   at Simulations, the longest; by test the floor is the longest test, Migrations.EntityRemovals).
   With `--exit-on-failure` suites stay whole, the longest first by the file's seconds for their tests
-  plus their longest chain of dependents. Measured before tests went on their own on the game's 9,501 tests
+  plus their longest chain of dependents. `tests.cmd --shards N` keeps the report of the last run that
+  passed as the next one's `--durations`. Measured before tests went on their own on the game's 9,501 tests
   (2026-11-07, factorio-in-kpp 9dae92d21, one binary, interleaved, each run after 20 s of load under
   10%): `--jobs 16 --durations` 61.5 and 61.2 s against suites.py `--shards 16` 67.8 and 69.8 s;
   at 32, 65.1 and 64.2 s against 61.6 and 64.8 s; without `--durations` (most tests first) 59.0 s at
