@@ -804,6 +804,12 @@ jobs:
       - name: spec on a Linux host
         run: python3 compiler/tests/spec/run_spec.py --jobs "$(nproc)"
 
+      # The spec in release on Linux too (ThinLTO, lld's back ends, and code the optimizer sees through):
+      # no other job ran it, and 12 snippets failed there on 2026-11-07 (10 noexcept snippets caught
+      # where they must terminate; I's fix), found by hand.
+      - name: spec on a Linux host, release
+        run: python3 compiler/tests/spec/run_spec.py --jobs "$(nproc)" --release
+
       # kpp's Linux release (tools/release/package-linux.sh: the tarball, its smoke test outside the
       # repository), kept as this run's artifact. libstdc++ and libgcc are linked into kpp (above), so
       # it needs only glibc (2.39, this runner's) and the system's clang 19 and lld.
@@ -820,6 +826,99 @@ jobs:
           name: kpp-linux
           path: build/release/kpp-*-linux-x86_64.tar.gz
           if-no-files-found: error
+
+  # kpp on Linux arm64 (I's step M1 of the macOS plan, 77a72c2c: `--target linux-arm64`), natively on
+  # GitHub's ubuntu-24.04-arm runner (free, the repository being public): kppc built there with clang 19,
+  # lld and Ninja, hello world and the C library project built and run with kppc --run, and the spec's
+  # snippets built and run natively (run_spec.py takes an AArch64 host as linux-arm64: its `// arch:`
+  # skips and .linux-arm64.expected files). publish does not wait for it, as for the FreeBSD jobs.
+  linux_arm64:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    env:
+      SDL_NAME: SDL3-devel-3.4.18-VC.zip
+      SDL_SHA256: 78d84602ae616cfe26b33a73b7d3b9b6b56e8a6650e53d92c9c6ca938f747acd
+      SDL_FALLBACK: https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-devel-3.4.18-VC.zip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # (the .deb files kept as linux_host's are, under arm64's own key)
+      - name: Packages cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/debs
+          key: linux-arm64-debs-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: linux-arm64-debs-
+
+      - name: Tools
+        timeout-minutes: 30
+        run: |
+          apt="-q -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o APT::Keep-Downloaded-Packages=true"
+          mkdir -p ~/debs
+          if ls ~/debs/*.deb >/dev/null 2>&1 && timeout 300 sudo dpkg -i ~/debs/*.deb; then
+            echo "installed from the cache: $(ls ~/debs | wc -l) packages"
+          else
+            for attempt in 1 2 3; do
+              if timeout 300 sudo apt-get update $apt && timeout 600 sudo apt-get install -y $apt clang-19 lld-19 ninja-build cmake; then break; fi
+              [ "$attempt" -lt 3 ] || { echo "apt-get failed 3 times"; exit 1; }
+              echo "apt-get attempt $attempt failed; again in 30 s"
+              sleep 30
+            done
+            rm -f ~/debs/*.deb
+            cp /var/cache/apt/archives/*.deb ~/debs/
+            echo "DEBS_FETCHED=1" >> "$GITHUB_ENV"
+          fi
+          echo "KPP_CLANG=/usr/bin/clang-19" >> "$GITHUB_ENV"
+          clang-19 --version | head -n 2
+          echo "CPUs: $(nproc), $(uname -m)"
+
+      - name: Save the packages
+        if: env.DEBS_FETCHED == '1'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/debs
+          key: linux-arm64-debs-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: SDL3 headers
+        run: |
+          dir="$RUNNER_TEMP/sdl"
+          mkdir -p "$dir"
+          fetch() { curl -fsSL --retry 3 -o "$dir/$SDL_NAME" "$1" && echo "$SDL_SHA256  $dir/$SDL_NAME" | sha256sum -c -; }
+          fetch "https://kpp.net/registry/mirror/$SDL_SHA256/$SDL_NAME" || fetch "$SDL_FALLBACK"
+          unzip -q "$dir/$SDL_NAME" 'SDL3-3.4.18/include/*' -d "$dir"
+          echo "KPP_SDL_INCLUDE=$dir/SDL3-3.4.18/include" >> "$GITHUB_ENV"
+
+      - name: Build kppc
+        run: |
+          cmake -S compiler -B compiler/build -G Ninja -DCMAKE_C_COMPILER=clang-19 -DCMAKE_CXX_COMPILER=clang++-19 -DCMAKE_BUILD_TYPE=Release "-DCMAKE_EXE_LINKER_FLAGS=-static-libstdc++ -static-libgcc"
+          cmake --build compiler/build
+          compiler/build/kppc --version
+
+      - name: hello world
+        run: |
+          mkdir -p /tmp/hello
+          printf 'int main(int argc, char** argv)\n{\n  println("hello from ", config::arch == Arch::Arm64 ? StringView("arm64") : StringView("another"), " ", argc);\n  return 3;\n}\n' > /tmp/hello/hello.kpp
+          set +e
+          out=$(compiler/build/kppc --run /tmp/hello/hello.kpp a b)
+          code=$?
+          set -e
+          echo "$out (exit $code)"
+          [ "$out" = "hello from arm64 3" ] && [ $code -eq 3 ]
+
+      - name: a project with C libraries
+        run: |
+          cp -r compiler/tests/targets/clibrary /tmp/clibrary
+          cd /tmp/clibrary
+          for configuration in debug release; do
+            out=$("$GITHUB_WORKSPACE/compiler/build/kppc" "$configuration" --run | tail -n 1)
+            echo "$configuration: $out"
+            [ "$out" = "42 linux 10" ]
+          done
+
+      - name: spec on Linux arm64
+        run: python3 compiler/tests/spec/run_spec.py --jobs "$(nproc)"
 
   # Publishes the package, only when the jobs it needs are green: run_tests' halves, every spec shard,
   # package and linux_host. If one of them is red or cancelled it publishes nothing: no release, no
