@@ -96,8 +96,10 @@ def split_top(params):
 
 
 # Macros of guiddef.h that C reads as pointers (the import makes constants of object-like macros,
-# not types).
-TYPE_MACROS = {'REFIID': 'const IID*', 'REFGUID': 'const GUID*', 'REFCLSID': 'const CLSID*', 'REFFMTID': 'const FMTID*'}
+# not types), and the Windows SDK's names that MinGW-w64's headers (the bundled toolchain) do not have:
+# d3d11.h's APP_DEPRECATED_HRESULT, HRESULT with a deprecation, and wincodec.h's WICInProcPointer.
+TYPE_MACROS = {'REFIID': 'const IID*', 'REFGUID': 'const GUID*', 'REFCLSID': 'const CLSID*', 'REFFMTID': 'const FMTID*',
+               'APP_DEPRECATED_HRESULT': 'HRESULT', 'WICInProcPointer': 'BYTE*'}
 
 
 def parameter(p):
@@ -125,7 +127,7 @@ def interfaces_of(path, wanted=None):
         body = strip_annotations(body)
         methods = []
         for e in re.finditer(r'([\w\s\*]+?)\(\s*STDMETHODCALLTYPE\s*\*\s*(\w+)\s*\)\s*\((.*?)\)\s*;', body, flags=re.S):
-            result, method, params = ' '.join(e.group(1).split()), e.group(2), split_top(e.group(3))
+            result, method, params = parameter(' '.join(e.group(1).split())), e.group(2), split_top(e.group(3))
             if not params or not re.match(r'(const\s+)?' + name + r'\s*\*\s*This$', params[0]):
                 raise SystemExit(f'{path}: {name}::{method}: no `This` first')
             methods.append((result, method, [parameter(p) for p in params[1:]]))

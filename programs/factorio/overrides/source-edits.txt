@@ -1,7 +1,8 @@
 # Hand edits of the game's C++ before the converter reads it (Converter/SourceEdits.inl): `@ FILE: why`,
 # then the old text's lines after `- ` and the new text's after `+ `; every occurrence is replaced, and an
 # old text the file no longer has is an error. Each writes what kpp decided where the C++ says it otherwise:
-# Windows' code as Linux's, where kpp has one form for every platform, and a constraint as `requires`.
+# Windows' code as Linux's, where kpp has one form for every platform, a constraint as `requires`, and
+# Windows code both Windows toolchains read (MSVC's and the bundled one's MinGW-w64 headers).
 #
 # Strings are UTF-8 on every platform (kovarex, 2026-11-05; design.md 12, "One spelling on every
 # platform"): no wide literal, converted to wide only at the Windows API's boundaries. The game's
@@ -782,3 +783,7 @@
 - constexpr bool force_memcpy_save<T, std::void_t<typename T::force_memcpy_save>> = true;
 + template <class T>
 + constexpr bool force_memcpy_save = requires { typename T::force_memcpy_save; };
+
+@ src/Graphics/DX11/GraphicsInterfaceDX11.cpp: MONITORINFOEX passed as the MONITORINFO it starts with, as SDLWindow.cpp casts it: MinGW-w64's (the bundled toolchain) does not derive from MONITORINFO
+-     GetMonitorInfo(hMonitor, &monitorInfo);
++     GetMonitorInfo(hMonitor, (LPMONITORINFO)&monitorInfo);

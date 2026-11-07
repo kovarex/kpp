@@ -602,21 +602,21 @@ public:
   virtual HRESULT DecoderBeginFrame(ID3D11VideoDecoder* pDecoder, ID3D11VideoDecoderOutputView* pView, UINT ContentKeySize, const void* pContentKey) = 0;
   virtual HRESULT DecoderEndFrame(ID3D11VideoDecoder* pDecoder) = 0;
   virtual HRESULT SubmitDecoderBuffers(ID3D11VideoDecoder* pDecoder, UINT NumBuffers, const D3D11_VIDEO_DECODER_BUFFER_DESC* pBufferDesc) = 0;
-  virtual APP_DEPRECATED_HRESULT DecoderExtension(ID3D11VideoDecoder* pDecoder, const D3D11_VIDEO_DECODER_EXTENSION* pExtensionData) = 0;
+  virtual HRESULT DecoderExtension(ID3D11VideoDecoder* pDecoder, const D3D11_VIDEO_DECODER_EXTENSION* pExtensionData) = 0;
   virtual void VideoProcessorSetOutputTargetRect(ID3D11VideoProcessor* pVideoProcessor, BOOL Enable, const RECT* pRect) = 0;
   virtual void VideoProcessorSetOutputBackgroundColor(ID3D11VideoProcessor* pVideoProcessor, BOOL YCbCr, const D3D11_VIDEO_COLOR* pColor) = 0;
   virtual void VideoProcessorSetOutputColorSpace(ID3D11VideoProcessor* pVideoProcessor, const D3D11_VIDEO_PROCESSOR_COLOR_SPACE* pColorSpace) = 0;
   virtual void VideoProcessorSetOutputAlphaFillMode(ID3D11VideoProcessor* pVideoProcessor, D3D11_VIDEO_PROCESSOR_ALPHA_FILL_MODE AlphaFillMode, UINT StreamIndex) = 0;
   virtual void VideoProcessorSetOutputConstriction(ID3D11VideoProcessor* pVideoProcessor, BOOL Enable, SIZE Size) = 0;
   virtual void VideoProcessorSetOutputStereoMode(ID3D11VideoProcessor* pVideoProcessor, BOOL Enable) = 0;
-  virtual APP_DEPRECATED_HRESULT VideoProcessorSetOutputExtension(ID3D11VideoProcessor* pVideoProcessor, const GUID* pExtensionGuid, UINT DataSize, void* pData) = 0;
+  virtual HRESULT VideoProcessorSetOutputExtension(ID3D11VideoProcessor* pVideoProcessor, const GUID* pExtensionGuid, UINT DataSize, void* pData) = 0;
   virtual void VideoProcessorGetOutputTargetRect(ID3D11VideoProcessor* pVideoProcessor, BOOL* Enabled, RECT* pRect) = 0;
   virtual void VideoProcessorGetOutputBackgroundColor(ID3D11VideoProcessor* pVideoProcessor, BOOL* pYCbCr, D3D11_VIDEO_COLOR* pColor) = 0;
   virtual void VideoProcessorGetOutputColorSpace(ID3D11VideoProcessor* pVideoProcessor, D3D11_VIDEO_PROCESSOR_COLOR_SPACE* pColorSpace) = 0;
   virtual void VideoProcessorGetOutputAlphaFillMode(ID3D11VideoProcessor* pVideoProcessor, D3D11_VIDEO_PROCESSOR_ALPHA_FILL_MODE* pAlphaFillMode, UINT* pStreamIndex) = 0;
   virtual void VideoProcessorGetOutputConstriction(ID3D11VideoProcessor* pVideoProcessor, BOOL* pEnabled, SIZE* pSize) = 0;
   virtual void VideoProcessorGetOutputStereoMode(ID3D11VideoProcessor* pVideoProcessor, BOOL* pEnabled) = 0;
-  virtual APP_DEPRECATED_HRESULT VideoProcessorGetOutputExtension(ID3D11VideoProcessor* pVideoProcessor, const GUID* pExtensionGuid, UINT DataSize, void* pData) = 0;
+  virtual HRESULT VideoProcessorGetOutputExtension(ID3D11VideoProcessor* pVideoProcessor, const GUID* pExtensionGuid, UINT DataSize, void* pData) = 0;
   virtual void VideoProcessorSetStreamFrameFormat(ID3D11VideoProcessor* pVideoProcessor, UINT StreamIndex, D3D11_VIDEO_FRAME_FORMAT FrameFormat) = 0;
   virtual void VideoProcessorSetStreamColorSpace(ID3D11VideoProcessor* pVideoProcessor, UINT StreamIndex, const D3D11_VIDEO_PROCESSOR_COLOR_SPACE* pColorSpace) = 0;
   virtual void VideoProcessorSetStreamOutputRate(ID3D11VideoProcessor* pVideoProcessor, UINT StreamIndex, D3D11_VIDEO_PROCESSOR_OUTPUT_RATE OutputRate, BOOL RepeatFrame, const DXGI_RATIONAL* pCustomRate) = 0;
@@ -629,7 +629,7 @@ public:
   virtual void VideoProcessorSetStreamStereoFormat(ID3D11VideoProcessor* pVideoProcessor, UINT StreamIndex, BOOL Enable, D3D11_VIDEO_PROCESSOR_STEREO_FORMAT Format, BOOL LeftViewFrame0, BOOL BaseViewFrame0, D3D11_VIDEO_PROCESSOR_STEREO_FLIP_MODE FlipMode, int MonoOffset) = 0;
   virtual void VideoProcessorSetStreamAutoProcessingMode(ID3D11VideoProcessor* pVideoProcessor, UINT StreamIndex, BOOL Enable) = 0;
   virtual void VideoProcessorSetStreamFilter(ID3D11VideoProcessor* pVideoProcessor, UINT StreamIndex, D3D11_VIDEO_PROCESSOR_FILTER Filter, BOOL Enable, int Level) = 0;
-  virtual APP_DEPRECATED_HRESULT VideoProcessorSetStreamExtension(ID3D11VideoProcessor* pVideoProcessor, UINT StreamIndex, const GUID* pExtensionGuid, UINT DataSize, void* pData) = 0;
+  virtual HRESULT VideoProcessorSetStreamExtension(ID3D11VideoProcessor* pVideoProcessor, UINT StreamIndex, const GUID* pExtensionGuid, UINT DataSize, void* pData) = 0;
   virtual void VideoProcessorGetStreamFrameFormat(ID3D11VideoProcessor* pVideoProcessor, UINT StreamIndex, D3D11_VIDEO_FRAME_FORMAT* pFrameFormat) = 0;
   virtual void VideoProcessorGetStreamColorSpace(ID3D11VideoProcessor* pVideoProcessor, UINT StreamIndex, D3D11_VIDEO_PROCESSOR_COLOR_SPACE* pColorSpace) = 0;
   virtual void VideoProcessorGetStreamOutputRate(ID3D11VideoProcessor* pVideoProcessor, UINT StreamIndex, D3D11_VIDEO_PROCESSOR_OUTPUT_RATE* pOutputRate, BOOL* pRepeatFrame, DXGI_RATIONAL* pCustomRate) = 0;
@@ -642,7 +642,7 @@ public:
   virtual void VideoProcessorGetStreamStereoFormat(ID3D11VideoProcessor* pVideoProcessor, UINT StreamIndex, BOOL* pEnable, D3D11_VIDEO_PROCESSOR_STEREO_FORMAT* pFormat, BOOL* pLeftViewFrame0, BOOL* pBaseViewFrame0, D3D11_VIDEO_PROCESSOR_STEREO_FLIP_MODE* pFlipMode, int* MonoOffset) = 0;
   virtual void VideoProcessorGetStreamAutoProcessingMode(ID3D11VideoProcessor* pVideoProcessor, UINT StreamIndex, BOOL* pEnabled) = 0;
   virtual void VideoProcessorGetStreamFilter(ID3D11VideoProcessor* pVideoProcessor, UINT StreamIndex, D3D11_VIDEO_PROCESSOR_FILTER Filter, BOOL* pEnabled, int* pLevel) = 0;
-  virtual APP_DEPRECATED_HRESULT VideoProcessorGetStreamExtension(ID3D11VideoProcessor* pVideoProcessor, UINT StreamIndex, const GUID* pExtensionGuid, UINT DataSize, void* pData) = 0;
+  virtual HRESULT VideoProcessorGetStreamExtension(ID3D11VideoProcessor* pVideoProcessor, UINT StreamIndex, const GUID* pExtensionGuid, UINT DataSize, void* pData) = 0;
   virtual HRESULT VideoProcessorBlt(ID3D11VideoProcessor* pVideoProcessor, ID3D11VideoProcessorOutputView* pView, UINT OutputFrame, UINT StreamCount, const D3D11_VIDEO_PROCESSOR_STREAM* pStreams) = 0;
   virtual HRESULT NegotiateCryptoSessionKeyExchange(ID3D11CryptoSession* pCryptoSession, UINT DataSize, void* pData) = 0;
   virtual void EncryptionBlt(ID3D11CryptoSession* pCryptoSession, ID3D11Texture2D* pSrcSurface, ID3D11Texture2D* pDstSurface, UINT IVSize, void* pIV) = 0;
@@ -1376,7 +1376,7 @@ public:
   static const IID* iid() { return &IID_IWICStream; }
   virtual HRESULT InitializeFromIStream(IStream* pIStream) = 0;
   virtual HRESULT InitializeFromFilename(LPCWSTR wzFileName, DWORD dwDesiredAccess) = 0;
-  virtual HRESULT InitializeFromMemory(WICInProcPointer pbBuffer, DWORD cbBufferSize) = 0;
+  virtual HRESULT InitializeFromMemory(BYTE* pbBuffer, DWORD cbBufferSize) = 0;
   virtual HRESULT InitializeFromIStreamRegion(IStream* pIStream, ULARGE_INTEGER ulOffset, ULARGE_INTEGER ulMaxSize) = 0;
 };
 
