@@ -105,6 +105,7 @@ namespace projects
   struct CLibrary
   {
     std::string name, language;
+    std::string precompiled; // its precompiled header, as its sources #include it ("": none)
     std::vector<std::string> sources, excluded, includes, defines, prebuilt, resources;
   };
 
@@ -183,6 +184,18 @@ namespace projects
     std::string stamp;                    // what the objects are built with (flags.txt)
     bool gnu = false, archive = false;    // archive: the objects changed, or the library is not there
     std::unique_ptr<std::atomic<bool>[]> failed; // by command
+    // Its precompiled header's builds, one per language its sources that include it first are in (C,
+    // C++), each before the compiles that use it: the command ("" when it is up to date), its log, and
+    // its state (0 not built yet, 1 built or up to date, 2 failed); usesPch, by command: the build it
+    // waits for, or -1.
+    struct Precompiled
+    {
+      std::string command;
+      fs::path log;
+      std::unique_ptr<std::atomic<int>> state = std::make_unique<std::atomic<int>>(1);
+    };
+    std::vector<Precompiled> pchs;
+    std::vector<int> usesPch;
   };
 
   // What Run and the debugger start (Executable::debug): the program, its arguments and its directory,

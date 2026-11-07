@@ -33,7 +33,7 @@ function Kpp([string[]]$arguments)
 
 # The sections, each started as `project.ps1 -Section NAME`, its output kept and shown in this order,
 # its exit code its failures; one that stops on an error of its own (not a Fail) is a failure too.
-$sections = 'basic', 'clibs', 'libraries', 'syslibs', 'matrix', 'outside', 'runfile', 'measure', 'paths', 'readonly', 'linkinputs'
+$sections = 'basic', 'clibs', 'libraries', 'syslibs', 'matrix', 'outside', 'runfile', 'measure', 'paths', 'readonly', 'linkinputs', 'pch'
 function Run([string]$name) { return $Section -eq $name }
 if (-not $Section)
 {
@@ -892,6 +892,58 @@ if (Run 'paths')
     $output = (Kpp @('--debug', '--no-server')) -join "`n"
     if ($code -eq 0 -or $output -notmatch 'describe\.txt line \d+: `frobnicate` is no key kpp knows') { Fail "an unknown key in describe.txt: exit $code`n$output" }
     Remove-Item 'build\kpp\describe.key'
+  }
+  finally { Pop-Location }
+}
+# A C library's precompiled header (CLibrary::precompiledHeader, docs/build.md): built once per language
+# and used by each source whose first directive includes it as written (a.c, and c.cpp after comments);
+# b.c defines a macro first and own\d.c has a pre.h of its own beside it, so both compile as they are.
+# The objects are those of the build without it (the COFF header's time stamp aside); an edit of the
+# header builds it again and recompiles what uses it; a header in no include directory is an error.
+if (Run 'pch')
+{
+  $pch = Join-Path $work 'pch'
+  if (Test-Path $pch) { cmd /c rd /s /q $pch }
+  New-Item -ItemType Directory -Force "$pch\src", "$pch\pre\own", "$pch\inc" | Out-Null
+  Push-Location $pch
+  try
+  {
+    Set-Content 'inc\pre.h' "#ifndef PRE_H`n#define PRE_H`n#include <stdio.h>`n#define VALUE 7`n#endif"
+    Set-Content 'pre\own\pre.h' "#define VALUE 100"
+    Set-Content 'inc\api.h' "#ifdef __cplusplus`nextern `"C`" {`n#endif`nint a_value(void);`nint b_value(void);`nint c_value(void);`nint d_value(void);`n#ifdef __cplusplus`n}`n#endif"
+    Set-Content 'pre\a.c' "#include `"pre.h`"`nint a_value(void) { char text[8]; snprintf(text, 8, `"%d`", VALUE); return text[0] - '0'; }"
+    Set-Content 'pre\b.c' "#define B_FIRST 1`n#include `"pre.h`"`nint b_value(void) { return VALUE * B_FIRST; }"
+    Set-Content 'pre\c.cpp' "// a comment`n/* and another */`n#include `"pre.h`"`n#include `"api.h`"`nint c_value(void) { return VALUE; }"
+    Set-Content 'pre\own\d.c' "#include `"pre.h`"`nint d_value(void) { return VALUE; }"
+    Set-Content 'src\main.kpp' "extern `"C`" import `"api.h`";`nint main()`n{`n  println(a_value(), `" `", b_value(), `" `", c_value(), `" `", d_value());`n  return 0;`n}"
+    $describe = { param([string]$header) "void build(Project& project)`n{`n  CLibrary& pre = project.cLibrary(`"pre`");`n  pre.source(`"pre`");`n  pre.include(`"inc`");`n$header  Executable& app = project.executable(`"app`", {`"src`"});`n  app.link(`"pre`");`n  app.cInclude(`"inc`");`n}" }
+    Set-Content 'build.kpp' (& $describe '')
+    $output = @(Kpp @('release', '--no-server', '--run'))
+    if ($code -ne 0 -or $output[-1] -ne '7 7 7 100') { Fail "without a precompiled header: exit $code, '$($output[-1])'`n$($output -join "`n")" }
+    New-Item -ItemType Directory 'plain' | Out-Null
+    Copy-Item 'build\clib\pre\*.obj' 'plain\'
+    Set-Content 'build.kpp' (& $describe "  pre.precompiledHeader(`"pre.h`");`n")
+    $output = @(Kpp @('release', '--no-server', '--run'))
+    if ($code -ne 0 -or $output[-1] -ne '7 7 7 100') { Fail "with a precompiled header: exit $code, '$($output[-1])'`n$($output -join "`n")" }
+    foreach ($made in 'pch-c.pch', 'pch-cpp.pch')
+    {
+      if (-not (Test-Path "build\clib\pre\$made")) { Fail "the precompiled header made no build\clib\pre\$made" }
+    }
+    foreach ($plain in Get-ChildItem 'plain' -Filter *.obj)
+    {
+      $a = [IO.File]::ReadAllBytes($plain.FullName)
+      $b = [IO.File]::ReadAllBytes((Join-Path $pch "build\clib\pre\$($plain.Name)"))
+      foreach ($x in $a, $b) { for ($i = 4; $i -lt 8; $i++) { $x[$i] = 0 } } # (the time stamp)
+      if ([Convert]::ToBase64String($a) -ne [Convert]::ToBase64String($b)) { Fail "$($plain.Name) differs from its build without the precompiled header" }
+    }
+    $output = @(Kpp @('release', '--no-server'))
+    if ($output -match 'pre: compiling') { Fail "nothing changed, and pre compiled again:`n$($output -join "`n")" }
+    Set-Content 'inc\pre.h' "#ifndef PRE_H`n#define PRE_H`n#include <stdio.h>`n#define VALUE 8`n#endif"
+    $output = @(Kpp @('release', '--no-server', '--run'))
+    if ($code -ne 0 -or $output[-1] -ne '8 8 8 100') { Fail "the header edited: exit $code, '$($output[-1])', not 8 8 8 100`n$($output -join "`n")" }
+    Set-Content 'build.kpp' (& $describe "  pre.precompiledHeader(`"missing.h`");`n")
+    $output = (Kpp @('release', '--no-server')) -join "`n"
+    if ($code -eq 0 -or $output -notmatch 'the C library pre: its precompiled header missing\.h is in none of its include directories') { Fail "a header in no include directory: exit $code`n$output" }
   }
   finally { Pop-Location }
 }

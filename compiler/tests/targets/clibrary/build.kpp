@@ -11,6 +11,9 @@ void build(Project& project)
   numbers.define("PLATFORM_ID=1", Platform::Windows);
   numbers.define("PLATFORM_ID=2", Platform::Linux);
   numbers.define("PLATFORM_ID=3", Platform::FreeBSD);
+  // numbers.c includes numbers.h first, from beside it (the include directory's file): it compiles with
+  // the header precompiled; sum.cpp includes <numeric> first, and compiles as it is.
+  numbers.precompiledHeader("numbers.h");
   // Linux's own library, with a directory of the target's sysroot (`=`) as its include directory.
   CLibrary& kernel = project.cLibrary("kernel");
   kernel.source("kernel", Platform::Linux);

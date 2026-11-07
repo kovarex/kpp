@@ -199,6 +199,7 @@ struct CLibrary
   Vector<String> prebuilt;  // .lib files used as they are, instead of sources
   Vector<String> resources; // .rc files, compiled into .res files the executables link
   String cppStandard;       // a C++ file's standard: c++17 (unset) or c++20
+  String precompiled;       // its precompiled header, as its sources #include it (precompiledHeader)
 
   void source(StringView path) { sources.push_back(path); }
   void exclude(StringView path) { excluded.push_back(path); }
@@ -207,6 +208,11 @@ struct CLibrary
   void prebuiltLibrary(StringView path) { prebuilt.push_back(path); }
   void resource(StringView path) { resources.push_back(path); }
   void standard(StringView name) { cppStandard = name; }
+  // A header built once and used by every source whose first directive includes it as written here
+  // (`precompiledHeader("SDL_internal.h")`): its declarations are compiled once, not in each file.
+  // The objects are the same as without it; a source that includes something else first, or has a
+  // file of that name of its own beside it, is compiled as it is.
+  void precompiledHeader(StringView header) { precompiled = header; }
   // With a platform, only a build for it (`define("_GNU_SOURCE", Platform::Linux)`, its --target), as
   // systemLibrary's: kept as "PLATFORM ENTRY" (compiler/src/Project/CLibraryBuild.cpp, forPlatform).
   void source(StringView path, Platform platform) { sources.push_back(kppPlatformLibrary(path, platform)); }
@@ -720,6 +726,7 @@ String describe(const Project& project)
     kppLines(out, "prebuilt", c.prebuilt);
     kppLines(out, "resource", c.resources);
     kppLine(out, "language", c.cppStandard);
+    kppLine(out, "precompiled-header", c.precompiled);
     out << "end\n";
   }
   for (const Library& l : project.kppLibraries)

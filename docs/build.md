@@ -569,6 +569,23 @@ void build(Project& project)
   (tools/sysroot/linux.ps1). Test: tests/targets.ps1's C library project (tests/targets/clibrary,
   a C file, a C++ file and a define per platform), built and run for Windows, built and run under
   WSL for Linux, and built and linked statically for FreeBSD: `42 windows 10`, `42 linux 10`.
+- **A precompiled header (2026-11-07, thread E, from B's whole-build profile: the C libraries were 214
+  s of the whole build's 507 s of CPU, SDL 118 s of it, mostly Windows' and SDL's headers).**
+  `sdl.precompiledHeader("SDL_internal.h")`: the header, the file the library's include directories
+  give, is compiled once per language its sources are in (C, C++), and every source whose first
+  directive is `#include` of it as written (comments and blank lines before it allowed) uses it:
+  clang-cl's `/Yc` and `/Yu` in MSVC's dialect, `-include-pch` in GNU's (windows-gnu, Linux, FreeBSD).
+  A source that includes something else first, defines a macro first, or has a file of that name
+  beside it (which its `#include "..."` would find first) compiles as it is. The precompiled headers
+  are built first in the libraries' pool, a source that uses one waits for it, and a header rebuilt
+  (one of the files it read changed) recompiles every source that uses it. **The objects are the
+  same:** the game's 422 SDL and curl objects compiled with it equal those compiled without but for
+  the COFF header's time stamp and, in 2 of them, the order of two inline functions of the C
+  runtime's headers; the game's release factorio.exe linked from them is the same but for the link's
+  time stamps. Measured (a project of the game's sdl and curl entries as its build.kpp has them,
+  `python cpu.py`'s job object, two interleaved rounds): 170 and 174 s of CPU without, 94 and 95.5 s
+  with. Tests: tests/project.ps1's pch section; tests/targets/clibrary's numbers library uses one on
+  every platform (targets.ps1, windowsgnu.ps1, CI's Linux host).
 
 ### Adding a library
 

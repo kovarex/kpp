@@ -189,6 +189,57 @@ namespace projects
   // Whether object depends only on files older than itself: the source and the headers clang
   // named in its dependency file (-MD). times keeps each file's time for the build: the 641 objects of
   // factorio-in-kpp's libraries name the same headers (the SDK's, SDL's) about 100,000 times in all.
+  // The header a source's first directive includes, as written between its quotes or angle brackets
+  // ("" when its first directive is another, or something before it is not a comment or blank): which
+  // sources a library's precompiled header stands in for.
+  std::string firstInclude(const fs::path& source)
+  {
+    std::string text = readText(source);
+    size_t i = 0;
+    auto blank = [&](bool newlines)
+    {
+      for (;;)
+      {
+        if (i < text.size() && (text[i] == ' ' || text[i] == '\t' || text[i] == '\r' || (newlines && text[i] == '\n') || text[i] == '\f' || text[i] == '\v'))
+          ++i;
+        else if (text.compare(i, 2, "\\\n") == 0)
+          i += 2;
+        else if (text.compare(i, 3, "\\\r\n") == 0)
+          i += 3;
+        else if (text.compare(i, 2, "/*") == 0)
+        {
+          size_t end = text.find("*/", i + 2);
+          i = end == std::string::npos ? text.size() : end + 2;
+        }
+        else if (newlines && text.compare(i, 2, "//") == 0)
+        {
+          size_t end = text.find('\n', i);
+          i = end == std::string::npos ? text.size() : end;
+        }
+        else
+          return;
+      }
+    };
+    if (text.compare(0, 3, "\xEF\xBB\xBF") == 0)
+      i = 3;
+    blank(true);
+    if (i >= text.size() || text[i] != '#')
+      return "";
+    ++i;
+    blank(false);
+    if (text.compare(i, 7, "include") != 0)
+      return "";
+    i += 7;
+    blank(false);
+    if (i >= text.size() || (text[i] != '"' && text[i] != '<'))
+      return "";
+    char close = text[i] == '"' ? '"' : '>';
+    size_t end = text.find(close, i + 1);
+    if (end == std::string::npos || text.find('\n', i) < end)
+      return "";
+    return text.substr(i + 1, end - i - 1);
+  }
+
   bool upToDate(const fs::path& object, const fs::path& dependencies, std::unordered_map<std::string, fs::file_time_type>& times)
   {
     std::error_code ec;
@@ -314,13 +365,78 @@ namespace projects
       std::string language = c.language.empty() ? std::string("c++17") : c.language;
       std::string cppFlags = gnu ? " -std=" + language : " /EHsc /std:" + language;
       // What the objects are built with: the flags and the compiler (another toolchain's are built again).
-      job.stamp = flags + cppFlags + "\n" + clangPath();
+      job.stamp = flags + cppFlags + "\n" + clangPath() + (c.precompiled.empty() ? std::string() : "\nprecompiled " + c.precompiled);
       bool flagsChanged = readText(job.directory / "flags.txt") != job.stamp;
       // Gone until all of this build's objects are made (written before the archive): a build that
       // fails part way leaves objects of the new flags beside the old ones, which the old flags'
       // stamp would vouch for in a later build (another toolchain's objects in its archive).
       if (flagsChanged)
         fs::remove(job.directory / "flags.txt", ec);
+      // Its precompiled header (CLibrary::precompiledHeader, B's whole-build profile: SDL's 234 files
+      // spent most of their 118 s of CPU in Windows' and SDL's headers): the file the include
+      // directories give, built once per language, and used by each source whose first directive
+      // includes it as written and that has no file of that name of its own beside it (which its
+      // `#include "..."` would find first). The objects are those of the compiles without it.
+      fs::path pchHeader;
+      if (!c.precompiled.empty())
+      {
+        for (const std::string& i : forPlatform(c.includes, platform))
+          if (!i.empty() && i[0] != '=' && fs::is_regular_file(rooted(root, i) / c.precompiled, ec))
+          {
+            pchHeader = fs::absolute(rooted(root, i) / c.precompiled, ec).lexically_normal();
+            break;
+          }
+        if (pchHeader.empty())
+        {
+          fprintf(stderr, "error: the C library %s: its precompiled header %s is in none of its include directories\n", c.name.c_str(),
+                  c.precompiled.c_str());
+          return false;
+        }
+      }
+      auto usesHeader = [&](const fs::path& source)
+      {
+        if (pchHeader.empty() || firstInclude(source) != c.precompiled)
+          return false;
+        fs::path beside = source.parent_path() / c.precompiled;
+        return !fs::exists(beside, ec) || fs::equivalent(beside, pchHeader, ec);
+      };
+      // per language (0 C, 1 C++): the PCH, whether it is built in this build
+      fs::path pchFile[2];
+      bool pchBuilt[2] = {false, false};
+      int pchIndex[2] = {-1, -1};
+      std::vector<char> eligible(sources.size(), 0);
+      for (size_t n = 0; n < sources.size(); ++n)
+        eligible[n] = usesHeader(sources[n]);
+      for (int l = 0; l < 2; ++l)
+      {
+        bool any = false;
+        for (size_t n = 0; n < sources.size(); ++n)
+          any = any || (eligible[n] && (sources[n].extension() != ".c") == (l == 1));
+        if (!any)
+          continue;
+        std::string name = l ? "pch-cpp" : "pch-c";
+        pchFile[l] = job.directory / (name + ".pch");
+        fs::path stub = job.directory / (name + (gnu ? (l ? ".hpp" : ".h") : (l ? ".cpp" : ".c")));
+        fs::path deps = job.directory / (name + ".d"), log = job.directory / (name + ".log");
+        std::string include = "#include \"" + c.precompiled + "\"\n";
+        if (readText(stub) != include)
+          if (FILE* f = host::openFile(stub, "wb"))
+            fwrite(include.data(), 1, include.size(), f), fclose(f);
+        pchIndex[l] = int(job.pchs.size());
+        LibraryJob::Precompiled& p = job.pchs.emplace_back();
+        pchBuilt[l] = flagsChanged || !upToDate(pchFile[l], deps, times);
+        if (!pchBuilt[l])
+          continue;
+        p.state->store(0);
+        p.log = log;
+        if (gnu)
+          p.command = quoteArg(clangPath()) + " " + flags + (l ? cppFlags : "") + (l ? " -x c++-header" : " -x c-header") + " -MD -MF" + quoteArg(deps.string()) +
+                      " -o " + quoteArg(pchFile[l].string()) + " " + quoteArg(stub.string()) + " > " + quoteArg(log.string()) + " 2>&1";
+        else
+          p.command = quoteArg(clangPath()) + " --driver-mode=cl " + flags + (l ? cppFlags : "") + " /Yc" + quoteArg(c.precompiled) + " /Fp" +
+                      quoteArg(pchFile[l].string()) + " /clang:-MD /clang:-MF" + quoteArg(deps.string()) + " /Fo" +
+                      quoteArg((job.directory / (name + ".obj")).string()) + " " + quoteArg(stub.string()) + " > " + quoteArg(log.string()) + " 2>&1";
+      }
       for (size_t n = 0; n < sources.size(); ++n)
       {
         const fs::path& source = sources[n];
@@ -330,16 +446,21 @@ namespace projects
             ch = '_';
         fs::path object = job.directory / (stem + (target.posix() ? ".o" : ".obj")), dependencies = job.directory / (stem + ".d");
         job.objects.push_back(object);
-        if (!flagsChanged && upToDate(object, dependencies, times))
-          continue;
         bool cpp = source.extension() != ".c";
+        int l = cpp ? 1 : 0;
+        bool withPch = eligible[n] && pchIndex[l] >= 0;
+        if (!flagsChanged && !(withPch && pchBuilt[l]) && upToDate(object, dependencies, times))
+          continue;
         job.logs.push_back(job.directory / (stem + ".log"));
+        job.usesPch.push_back(withPch ? pchIndex[l] : -1);
+        std::string pch = !withPch ? std::string() : gnu ? " -include-pch " + quoteArg(pchFile[l].string())
+                                                         : " /Yu" + quoteArg(c.precompiled) + " /Fp" + quoteArg(pchFile[l].string());
         // clang-cl is clang in its cl mode (no clang-cl.exe to ship).
         if (gnu)
-          job.commands.push_back(quoteArg(clangPath()) + " " + flags + (cpp ? cppFlags : "") + " -MD -MF" + quoteArg(dependencies.string()) +
+          job.commands.push_back(quoteArg(clangPath()) + " " + flags + (cpp ? cppFlags : "") + pch + " -MD -MF" + quoteArg(dependencies.string()) +
                                  " -o " + quoteArg(object.string()) + " " + quoteArg(source.string()) + " > " + quoteArg(job.logs.back().string()) + " 2>&1");
         else
-          job.commands.push_back(quoteArg(clangPath()) + " --driver-mode=cl " + flags + (cpp ? cppFlags : "") +
+          job.commands.push_back(quoteArg(clangPath()) + " --driver-mode=cl " + flags + (cpp ? cppFlags : "") + pch +
                                  " /clang:-MD /clang:-MF" + quoteArg(dependencies.string()) + " /Fo" + quoteArg(object.string()) +
                                  " " + quoteArg(source.string()) + " > " + quoteArg(job.logs.back().string()) + " 2>&1");
       }
@@ -379,10 +500,20 @@ namespace projects
   // one's errors and archive; false when one did not build.
   bool runLibraries(std::vector<LibraryJob>& jobs)
   {
-    std::vector<std::pair<size_t, size_t>> work; // (job, command)
+    // (job, command), a precompiled header's build as command SIZE_MAX - its index: those first, then the
+    // compiles that use none, then the ones that do, each waiting for its header if it is not built yet
+    // (by then it nearly always is)
+    std::vector<std::pair<size_t, size_t>> work;
+    auto usesPch = [&](size_t j, size_t k) { return k < jobs[j].usesPch.size() ? jobs[j].usesPch[k] : -1; };
     for (size_t j = 0; j < jobs.size(); ++j)
-      for (size_t k = 0; k < jobs[j].commands.size(); ++k)
-        work.push_back({j, k});
+      for (size_t p = 0; p < jobs[j].pchs.size(); ++p)
+        if (!jobs[j].pchs[p].command.empty())
+          work.push_back({j, SIZE_MAX - p});
+    for (int pass = 0; pass < 2; ++pass)
+      for (size_t j = 0; j < jobs.size(); ++j)
+        for (size_t k = 0; k < jobs[j].commands.size(); ++k)
+          if ((usesPch(j, k) >= 0) == (pass == 1))
+            work.push_back({j, k});
     std::atomic<size_t> next = 0;
     std::vector<std::thread> threads;
     unsigned count = std::max(1u, std::thread::hardware_concurrency());
@@ -390,8 +521,28 @@ namespace projects
       threads.emplace_back([&]
       {
         for (size_t i; (i = next++) < work.size();)
-          if (host::shell(jobs[work[i].first].commands[work[i].second]) != 0)
-            jobs[work[i].first].failed[work[i].second] = true;
+        {
+          LibraryJob& job = jobs[work[i].first];
+          size_t k = work[i].second;
+          if (k >= job.commands.size())
+          {
+            LibraryJob::Precompiled& p = job.pchs[SIZE_MAX - k];
+            p.state->store(host::shell(p.command) == 0 ? 1 : 2);
+            continue;
+          }
+          if (int p = usesPch(work[i].first, k); p >= 0)
+          {
+            while (job.pchs[size_t(p)].state->load() == 0)
+              std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            if (job.pchs[size_t(p)].state->load() == 2)
+            {
+              job.failed[k] = true; // (its header's errors are the ones reported)
+              continue;
+            }
+          }
+          if (host::shell(job.commands[k]) != 0)
+            job.failed[k] = true;
+        }
       });
     for (std::thread& t : threads)
       t.join();
@@ -400,6 +551,24 @@ namespace projects
     for (LibraryJob& job : jobs)
     {
       const CLibrary& c = *job.library;
+      bool pchFailed = false;
+      for (const LibraryJob::Precompiled& p : job.pchs)
+        if (!p.command.empty())
+        {
+          std::string text = readText(p.log);
+          if (!text.empty())
+            fprintf(stderr, "%s", text.c_str());
+          if (p.state->load() == 2)
+          {
+            fprintf(stderr, "error: the C library %s: its precompiled header %s did not compile (above)\n", c.name.c_str(), c.precompiled.c_str());
+            pchFailed = true;
+          }
+        }
+      if (pchFailed)
+      {
+        ok = false;
+        continue;
+      }
       for (const fs::path& log : job.logs)
       {
         std::string text = readText(log);

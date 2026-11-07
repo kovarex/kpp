@@ -122,6 +122,7 @@ namespace projects
       {"prebuilt", InCLibrary, [](Reading& r, const std::string& v) { r.d.cLibraries.back().prebuilt.push_back(v); }},
       {"resource", InCLibrary, [](Reading& r, const std::string& v) { r.d.cLibraries.back().resources.push_back(v); }},
       {"language", InCLibrary, [](Reading& r, const std::string& v) { r.d.cLibraries.back().language = v; }},
+      {"precompiled-header", InCLibrary, [](Reading& r, const std::string& v) { r.d.cLibraries.back().precompiled = v; }},
       // kpp measure's (build.kpp's measure()).
       {"measure-target", InMeasure, [](Reading& r, const std::string& v) { r.d.measurement.target = v; }},
       {"measure-configuration", InMeasure, [](Reading& r, const std::string& v) { r.d.measurement.configuration = v; }},
