@@ -291,16 +291,18 @@ def build_and_run(path, area, name, work):
     if "--release" in EXTRA and os.path.exists(os.path.splitext(path)[0] + ".release.expected"):
         expected_path = os.path.splitext(path)[0] + ".release.expected"
     variants = [TARGET, "linux"] if TARGET in ("freebsd", "linux-arm64") else [TARGET] if TARGET else []
+    # (the first of the variants that has a file: FreeBSD's own over Linux's, which it falls back on)
     for variant in variants:
         if os.path.exists(os.path.splitext(path)[0] + f".{variant}.expected"):
             expected_path = os.path.splitext(path)[0] + f".{variant}.expected"
+            break
     # (a target's release output, <name>.linux.release.expected, over both: CI's Linux release run took
     # .linux.expected, the debug build's text, for the snippets that print their configuration)
     if "--release" in EXTRA:
-        for variant in reversed(variants):
+        for variant in variants:
             if os.path.exists(os.path.splitext(path)[0] + f".{variant}.release.expected"):
                 expected_path = os.path.splitext(path)[0] + f".{variant}.release.expected"
-            break
+                break
     result = {"area": area, "name": name, "info": info, "note": ""}
     target = info["target"].split()[0] if info["target"] else None # (`// target: windows (why)`)
     # (windows-gnu is Windows: a snippet about Windows is about it too, and its programs run here)
