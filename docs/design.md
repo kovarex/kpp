@@ -4871,11 +4871,22 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   `explicit(cond)` keeping its condition meanwhile (the game's FixedPointNumberTemplate, unmarked, made 17,000 errors
   of every `MapPosition(1, 2)` where its seven say why); a function
   argument's outermost braces that name no type, of a call, a construction, `new` or a member initializer ("write
-  `Point{1, 2}`, not `{1, 2}`", or for a long or multi-line list "write `Point{`, not `{`"; the type as the parameter
-  writes it, else the class by its namespaces and classes, else no fix; for a pointer `nullptr`, or the value of
-  `{p}`); `{a}` in a copy-initialization needs `implicit`, `{a, b}` and `{}` do not; the explicit checks in template
-  code too (a template's own walk for what is not dependent, each instance for the rest); a switch on a class; class
-  template argument deduction by copy. The stdlib alone gives 87 errors under it (72 plain `explicit` on
+  `Point{1, 2}`, not `{1, 2}`", or for a long or multi-line list "write `Point{`, not `{`"). The type is one the
+  call can write, for C's converter applies the fixes:
+  - as the parameter writes it, a name declared in a namespace or a class qualified by them
+    (`CircuitNetworkHelper::VectorOfSignalValues`, `LocaleStringReplacer::Parameters`);
+  - else (a class template's member alias, a template parameter) the type in kpp's spelling
+    (`Pair<BlueprintRecordID, f32>`, `Vector<i32>`);
+  - for a pointer `nullptr`, or the value of `{p}`;
+  - in template code, as its instances decide: one error where they agree, and where the type differs by instance
+    (`ScriptObjectHelper<T>::SelectAction({a, b})`, a specialization's parameter each) no fix, each instance naming its
+    own, for a hand edit.
+  A list of two or more values that no constructor takes, for want of its elements' conversions to the InitializerList's
+  type, is that conversion's error (`Box<Strict> b = {5, 6};`); `{a}` in a copy-initialization needs `implicit`,
+  `{a, b}` and `{}` do not. The explicit checks run in template code too (a template's own walk for what is not
+  dependent, each instance for the rest), and a requirement's probe of an assignment the value reaches by no implicit
+  conversion is not met (`requires { t = u; }`, which Vector's assign and insert ask). A switch on a class and class
+  template argument deduction by copy take marked conversions only. The stdlib alone gives 87 errors under it (72 plain `explicit` on
   constructors, 11 on conversion operators, its 4 `explicit(cond)`), the stdlib owner's to fix before the game's
   errors read clean. Not refused under the flag, for kovarex: a braced list as an operator's operand (`x = {..}`, 301
   in the game; `m[{..}]`); `explicit` on a deduction guide stays, written guides being as in C++ (rule 5). Specs kpp/explicit_by_default, kpp/explicit_by_default_marks_is_error,

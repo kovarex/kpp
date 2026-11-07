@@ -632,6 +632,10 @@
     // codegen's chooseConversion takes; under --explicit-by-default a marked one, design.md "Explicit by default",
     // rule 4). A typed union switches on its tag.
     void checkSwitchOnClass(SwitchStmt* w);
+    // Under --explicit-by-default, a list of two or more values copy-initializing a class no constructor takes, its
+    // InitializerList constructor's for want of an element's conversion: each such conversion's error
+    // (checkExplicitCopy), as C++'s `std::vector<Strict> v = {5, 6};` for an explicit Strict(int).
+    void checkUnmarkedListElements(BraceInitExpr* b, const Ty* to);
     // Whether converting e (of type from) to type to in a brace initialization narrows it
     // ([dcl.init.list] 7): a floating value to an integer; a floating one to a floating type of
     // fewer bits, or an integer to a floating type, unless e is a constant the target holds (and,
@@ -664,8 +668,6 @@
     // The error of braced list b given for a parameter of type to (p: as declared, or null for an implicit
     // constructor's), naming the fix: `T{...}`, `nullptr` or the value for a pointer.
     void refuseBracedArgument(BraceInitExpr* b, const Ty* to, ParamDecl* p);
-    // Whether a template's own walk leaves a call of these arguments to its instances (one is dependent).
-    bool undecidedInTemplate(const Span<Expr*>& args);
     // Whether braced list b, a function argument for a parameter of type to, must name its type: any but an
     // InitializerList parameter's (rule 1), and not the checker's own text lists.
     bool bracedArgumentNamesNoType(BraceInitExpr* b, const Ty* to);
@@ -674,6 +676,11 @@
     // no template arguments by its namespaces and classes; else empty (a printed type is not always kpp:
     // `int32`).
     std::string spelledParameterType(ParamDecl* p, const Ty* to);
+    // A type as kpp code writes it (`Pair<BlueprintRecordID, f32>`, `geo::Point*`), or empty where it cannot
+    // (a specialization's own arguments, a class template's member, a function type); and the namespaces and
+    // classes before a name declared in d (`CircuitNetworkHelper::`), none where they cannot be written.
+    std::string kppSpelling(const Ty* t, int depth = 0);
+    std::optional<std::string> scopePath(Decl* d);
     // An explicit check's error: as reportHere, and under --explicit-by-default in template code too, a
     // template's own walk reporting it at once (the check's types are not dependent: every instance would say
     // the same), an instance's walk as that instance's.

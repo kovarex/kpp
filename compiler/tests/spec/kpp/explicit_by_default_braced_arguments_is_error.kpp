@@ -3,7 +3,7 @@
 // error: explicit_by_default_braced_arguments_is_error.kpp:77: error: the braces of a function argument name their type: write `geo::Point{a, a}`, not `{a, a}` (design.md "Explicit by default")
 // error: explicit_by_default_braced_arguments_is_error.kpp:98: error: the braces of a function argument name their type: write `geo::Point{1, 2}`, not `{1, 2}` (design.md "Explicit by default")
 // error: explicit_by_default_braced_arguments_is_error.kpp:99: error: the braces of a function argument name their type: write `Spot{3, 4}`, not `{3, 4}` (design.md "Explicit by default")
-// error: explicit_by_default_braced_arguments_is_error.kpp:100: error: the braces of a function argument name their type: write `Outer::Inner{5, 6}`, not `{5, 6}` (design.md "Explicit by default")
+// error: explicit_by_default_braced_arguments_is_error.kpp:100: error: the braces of a function argument name their type: write `Outer::Alias{5, 6}`, not `{5, 6}` (design.md "Explicit by default")
 // error: explicit_by_default_braced_arguments_is_error.kpp:101: error: the braces of a function argument name their type: write `geo::Point{7, 8}`, not `{7, 8}` (design.md "Explicit by default")
 // error: explicit_by_default_braced_arguments_is_error.kpp:102: error: the braces of a function argument name their type: write `Pair2<int>{2, 3}`, not `{2, 3}` (design.md "Explicit by default")
 // error: explicit_by_default_braced_arguments_is_error.kpp:103: error: the braces of a function argument name their type: write `geo::Point{9, 9}`, not `{9, 9}` (design.md "Explicit by default")

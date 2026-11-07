@@ -1,0 +1,65 @@
+// spec: under --explicit-by-default the fix of a function argument's braces names a type the call can write (C's converter applies it): a member alias of a class or one declared in a namespace qualified by its classes and namespaces (`Replacer::Parameters{...}`, `net::Address{...}`), a class template's member alias or a template parameter by the type in kpp's spelling (`Pair2<i32>{...}`), a template's type as the parameter writes it; and where the type differs by instance (a specialization's parameter each) no fix, each instance naming its own
+// kppc: --explicit-by-default --no-std
+// error: explicit_by_default_braced_argument_types_is_error.kpp:54: error: the braces of a function argument name their type, here Inner{1, 2}, another in another instance, so no fix fits the line (design.md "Explicit by default")
+// error: explicit_by_default_braced_argument_types_is_error.kpp:54: error: the braces of a function argument name their type, here Point{1, 2}, another in another instance, so no fix fits the line (design.md "Explicit by default")
+// error: explicit_by_default_braced_argument_types_is_error.kpp:59: error: the braces of a function argument name their type: write `Replacer::Parameters{1, 2}`, not `{1, 2}` (design.md "Explicit by default")
+// error: explicit_by_default_braced_argument_types_is_error.kpp:60: error: the braces of a function argument name their type: write `net::Address{3, 4}`, not `{3, 4}` (design.md "Explicit by default")
+// error: explicit_by_default_braced_argument_types_is_error.kpp:61: error: the braces of a function argument name their type: write `Pair2<i32>{5, 6}`, not `{5, 6}` (design.md "Explicit by default")
+// error: explicit_by_default_braced_argument_types_is_error.kpp:62: error: the braces of a function argument name their type: write `Box<int>{7, 8}`, not `{7, 8}` (design.md "Explicit by default")
+struct Point
+{
+  int x, y;
+  Point(int x, int y) : x(x), y(y) {}
+};
+struct Inner
+{
+  int v;
+  Inner(int a, int b) : v(a + b) {}
+};
+struct Replacer
+{
+  using Parameters = Point;
+  int replace(const Parameters& p) { return p.x; }
+};
+namespace net
+{
+  using Address = Point;
+  int send(Address a) { return a.y; }
+}
+template <typename T> struct Pair2
+{
+  T a, b;
+  Pair2(T a, T b) : a(a), b(b) {}
+};
+template <typename K> struct Table
+{
+  using Entry = Pair2<K>;
+  int insert(const Entry& e) { return int(e.a); }
+};
+template <typename T> struct Box
+{
+  T a, b;
+  Box(T a, T b) : a(a), b(b) {}
+};
+int boxed(Box<int> b) { return b.a; }
+template <typename T> struct Helper;
+template <> struct Helper<int>
+{
+  static int select(Point p) { return p.x; }
+};
+template <> struct Helper<char>
+{
+  static int select(Inner i) { return i.v; }
+};
+template <typename T> int pick() { return Helper<T>::select({1, 2}); }
+int main()
+{
+  Replacer r;
+  Table<int> t;
+  int s = r.replace({1, 2});
+  s += net::send({3, 4});
+  s += t.insert({5, 6});
+  s += boxed({7, 8});
+  s += pick<int>() + pick<char>();
+  return s;
+}

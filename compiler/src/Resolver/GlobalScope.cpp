@@ -528,13 +528,41 @@ std::vector<std::string> GlobalScope::checkerErrors(size_t instancesChecked)
     if (impl->emitted(f))
       for (const CheckerError& e : errors)
         all.insert(e.text());
+  // A function argument's braces in template code, which its instances decide: one error where they agree on the fix
+  // (no instance named, as the same at every thread count); where it differs by instance
+  // (`ScriptObjectHelper<T>::SelectAction({a, b})`, a specialization's parameter in each) no one fix fits the line, so
+  // none is offered, each instance naming its type (the editor's fix and C's converter wrote one instance's type).
+  static const std::string bracedFix = "the braces of a function argument name their type: write `";
+  std::map<std::pair<const ParsedFile*, uint32_t>, std::set<std::string>> bracedFixes;
+  for (const auto& [f, errors] : impl->instanceNameErrors)
+    if (impl->emitted(f))
+      for (const CheckerError& e : errors)
+        if (size_t at = e.message.find(bracedFix); at != std::string::npos)
+          if (size_t end = e.message.find('`', at + bracedFix.size()); end != std::string::npos)
+            bracedFixes[{e.file, e.token}].insert(e.message.substr(at + bracedFix.size(), end - at - bracedFix.size()));
   // (one the template's own walk reported at the definition already is that error, whichever walk
   // ran first)
   for (const auto& [f, errors] : impl->instanceNameErrors)
     if (impl->emitted(f))
       for (const CheckerError& e : errors)
-        if (std::string text = e.text(); !messages.count(text.substr(0, text.find(" (in "))))
+      {
+        CheckerError shown = e;
+        if (auto fixes = bracedFixes.find({e.file, e.token}); fixes != bracedFixes.end() && fixes->second.size() == 1)
+          if (size_t in = shown.message.find(" (in "); in != std::string::npos && shown.message.find(bracedFix) != std::string::npos)
+            shown.message.erase(in); // (every instance's: one error)
+        if (auto fixes = bracedFixes.find({e.file, e.token}); fixes != bracedFixes.end() && fixes->second.size() > 1)
+          if (size_t at = shown.message.find(bracedFix); at != std::string::npos)
+            if (size_t fixEnd = shown.message.find('`', at + bracedFix.size()); fixEnd != std::string::npos)
+              if (size_t oldStart = shown.message.find(", not `", fixEnd); oldStart == fixEnd + 1)
+                if (size_t oldEnd = shown.message.find('`', oldStart + 7); oldEnd != std::string::npos)
+                {
+                  std::string fix = shown.message.substr(at + bracedFix.size(), fixEnd - at - bracedFix.size());
+                  shown.message = shown.message.substr(0, at) + "the braces of a function argument name their type, here " + fix +
+                                  ", another in another instance, so no fix fits the line" + shown.message.substr(oldEnd + 1);
+                }
+        if (std::string text = shown.text(); !messages.count(text.substr(0, text.find(" (in "))))
           all.insert(std::move(text));
+      }
   std::vector<std::string> out(all.begin(), all.end());
   std::sort(out.begin(), out.end(), [&](const std::string& a, const std::string& b) { return key(a) < key(b); });
   return out;

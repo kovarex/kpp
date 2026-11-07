@@ -1,7 +1,6 @@
 // spec: under --explicit-by-default a requires-expression whose assignment or initialization needs an unmarked constructor is not satisfied, as in C++ with that constructor `explicit` ([expr.prim.req]: an expression that is ill-formed is a requirement not met): `assignable<Strict, int>` is false and `if constexpr (requires { t = u; })` takes the other branch, where a marked constructor (`implicit Loose(int)`) satisfies both (`0 1 2 1 7 8`)
 // factorio: checking the stdlib under --explicit-by-default with K's removal of `explicit` (7d9fd9ac), 2026-11-07: Vector's assign and insert test `requires { this->items[0] = *first; }` to choose between assigning and constructing, took the assignment for a Counted with an unmarked Counted(int), and failed with "copy-initialising Counted from int32" (vector_element_work_as_std)
 // kppc: --explicit-by-default --no-std
-// pending: the requirement is satisfied and the assignment in the taken branch is the error: copy-initialising Strict from int32 by its constructor (K, 2026-11-07; D)
 extern "C" import "stdio.h";
 struct Strict
 {
