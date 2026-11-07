@@ -333,6 +333,14 @@ GetExpression, which applies the natvis:
 Every one has its `[Raw View]` too. (tools\vs\vsix\natvis-check.ps1; not part of run_tests, which
 has no Visual Studio session.)
 
+**`this` in the watch window is C++'s pointer**, also once kpp's `this` is a reference (decided for
+this stage, readme's Planned). Visual Studio's expression evaluator takes `this` as its own keyword,
+the member function's object pointer: in a member function it shows `Shape *`, takes `this->width`,
+`*this` and a bare `width`, and `this.width` is an error ("class "Shape" has no member "width"",
+though `this.count` finds a static member). The debug information cannot change that: giving its
+`this` variable a reference type left all of it as it was (tried 2026-11-07 on kppc ac6731fd), so
+kppc writes `this` as a pointer, as clang does. In the watch window, write `this->x` or `x`.
+
 ## How kppc emits it
 
 The emitter writes a marker line `  ;@LINE` before each statement (`Emitter::debugLine`, not inside a
