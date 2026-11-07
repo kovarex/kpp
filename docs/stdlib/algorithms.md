@@ -255,10 +255,10 @@ the exception passes on; the storage is then as before the call.
 
 ## Random order
 
-`g` is a random number engine giving 64 random bits a call, as the library's DefaultRandomEngine
-and RandomDevice do; numbers are drawn from it with `UniformIntDistribution<i64>`, so a given seed
-gives the same order on every target (not the order std's implementations give, which differ from
-each other).
+`g` is a uniform random bit generator (`g()`, `g.min()`, `g.max()`, of any width), such as the
+library's DefaultRandomEngine and RandomDevice; numbers are drawn from it with
+`UniformIntDistribution<i64>`, so a given seed gives the same order on every target (not the order
+std's implementations give, which differ from each other).
 
 - `shuffle(first, last, g)` (random access): the elements in a random order, every order equally
   likely.

@@ -79,7 +79,15 @@ Optional<TimePoint<SystemClock>> fromCivilTime(const CivilTime& c)
       c.hour > 23 || c.minute < 0 || c.minute > 59 || c.second < 0 || c.second > 59 || c.nanosecond < 0 || c.nanosecond > 999999999)
     return Optional<TimePoint<SystemClock>>();
   i64 seconds = daysFromCivil(c.year, c.month, c.day) * 86400 + c.hour * 3600 + c.minute * 60 + c.second;
-  return Optional<TimePoint<SystemClock>>(TimePoint<SystemClock>(Duration<i64, Ratio<1, 10000000>>(seconds * 10000000 + c.nanosecond / 100)));
+  // SystemClock's 100 ns ticks since 1970 reach back into the year -27258 and on into 31197: a time
+  // outside them is none (the product would wrap).
+  i64 largest = Limits<i64>::max() / 10000000;
+  if (seconds < -largest || seconds > largest)
+    return Optional<TimePoint<SystemClock>>();
+  i64 ticks = seconds * 10000000;
+  if (ticks > Limits<i64>::max() - c.nanosecond / 100)
+    return Optional<TimePoint<SystemClock>>();
+  return Optional<TimePoint<SystemClock>>(TimePoint<SystemClock>(Duration<i64, Ratio<1, 10000000>>(ticks + c.nanosecond / 100)));
 }
 
 // --- text ---

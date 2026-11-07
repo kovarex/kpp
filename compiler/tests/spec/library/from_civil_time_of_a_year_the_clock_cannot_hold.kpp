@@ -1,5 +1,4 @@
 // spec: fromCivilTime is empty for a time SystemClock cannot hold: its 100 ns ticks since 1970 reach back into the year -27258, not to the -29000 time.md names (January 1 of -27258 is before them, of -27257 within them)
-// pending: Calendar.kpp's fromCivilTime takes every year from -29000 and multiplies the seconds by 10^7, which overflows before that: -29000-01-01 comes back as a time in the year 29455, a silent wrong answer (battery tm1 against C++20's year_month_day)
 int main()
 {
   for (int year : {-29000, -28000, -27258, -27257, -27000, 29000})

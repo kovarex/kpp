@@ -10,7 +10,8 @@ lowest terms with a positive denominator (`Ratio<2, -4>` has num -1 and den 2). 
 `Milli`, `Centi`, `Deci`, `Kilo`, `Mega` are the usual ones.
 
 Ratios combine at compile time: `RatioAdd<R1, R2>`, `RatioSubtract`, `RatioMultiply`,
-`RatioDivide` (each a Ratio in lowest terms) and `ratioEqual<R1, R2>`, `ratioNotEqual`,
+`RatioDivide` (each a Ratio in lowest terms, given whenever it fits: common factors are divided out
+before the products are formed, as std's) and `ratioEqual<R1, R2>`, `ratioNotEqual`,
 `ratioLess`, `ratioLessEqual`, `ratioGreater`, `ratioGreaterEqual` (std::ratio_add ... ratio_greater_equal_v).
 
 ## Duration<Rep, Period>
@@ -25,7 +26,8 @@ Ratio, `Ratio<1>` unless given). The usual durations count in `long long`: `Nano
   point, or the other Rep is an integer and the other period is a whole multiple of this one
   (`Nanoseconds ns = Milliseconds(5);`, `Duration<double> s = Milliseconds(1500);` is 1.5).
   Other conversions go through `durationCast<To>(d)`, which truncates toward zero for an integer
-  To; `floor<To>(d)` and `ceil<To>(d)` round down and up instead, and `round<To>(d)` (an integer
+  To (an integer count computed as std's, in a u64 when either rep is a 64-bit unsigned type and in
+  an i64 otherwise); `floor<To>(d)` and `ceil<To>(d)` round down and up instead, and `round<To>(d)` (an integer
   To) to the nearest, a tie to the even count; all three exact for any count (compared in the
   common duration).
 - The *common duration* of two durations is the one both convert to without loss: its rep is the
@@ -45,8 +47,11 @@ Ratio, `Ratio<1>` unless given). The usual durations count in `long long`: `Nano
 - `Weeks` (7 days), `Years` (365.2425 days, Ratio<31556952>) and `Months` (a twelfth of that,
   Ratio<2629746>), as std's weeks, years and months.
 - `HoursMinutesSeconds<D>(d)` (std::chrono::hh_mm_ss): d's absolute value taken apart:
-  `hours()`, `minutes()`, `seconds()`, `subseconds()` (a D below a second), `is_negative()`,
-  `to_duration()` (d again).
+  `hours()`, `minutes()`, `seconds()`, `subseconds()` (what is below a second), `is_negative()`,
+  `to_duration()` (d again). Its `precision`, the duration subseconds() and to_duration() give, is
+  std's: seconds when D's period is whole seconds, otherwise 10^-n seconds for the fewest n (up to 18)
+  that holds D's period exactly, or 6 digits (microseconds) when none does (a third of a second);
+  `fractional_width` is n.
 
 ## TimePoint<Clock, Dur>
 
@@ -94,7 +99,8 @@ timestamps need. `stdlib/core/Calendar.kpp`; the dates are Howard Hinnant's `day
   `nanosecond`, `weekday` (0 Sunday to 6 Saturday).
 - `toCivilTime(t)`: a SystemClock time point's fields (the nanoseconds a multiple of 100).
   `fromCivilTime(c)`: the time point, an `Optional` that is empty when a field is out of its range
-  (February 30, hour 24, second 60) or the year outside -29000 to 29000; `weekday` is not read.
+  (February 30, hour 24, second 60), the year outside -29000 to 29000, or the time outside what
+  SystemClock's 100 ns ticks hold (they reach back into the year -27258); `weekday` is not read.
 - `daysFromCivil(year, month, day)`: days since 1970-01-01, negative before it.
   `isLeapYear(year)`, `daysInMonth(year, month)`.
 - `formatRfc3339(t, fractionDigits = 0)`: `2026-11-01T10:31:07Z`, with 0 to 7 digits of the

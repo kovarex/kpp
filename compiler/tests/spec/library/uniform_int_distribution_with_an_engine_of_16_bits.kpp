@@ -1,5 +1,4 @@
 // spec: UniformIntDistribution works with any engine ([rand.dist.uni.int] takes a uniform random bit generator of any min() and max()): from an engine of 16 random bits, the range 0 to 2^20 - 1 is covered, and the full range of u64 is
-// pending: Random.kpp's operator() takes engine() as 64 random bits: with 16 bits every value is below 65536 (silent wrong answers), and for a range whose 2^64 mod range is 65536 or more (0 to 10^6) its rejection loop never ends (battery ra2 against MSVC's and libstdc++'s uniform_int_distribution)
 struct Small
 {
   using result_type = u32;

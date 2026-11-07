@@ -1,5 +1,4 @@
 // spec: RatioAdd and RatioSubtract give their result whenever it fits, as std::ratio_add and ratio_subtract do ([ratio.arithmetic]: the result is ill-formed only when it cannot be represented): two ratios of 1/10^12 add to 1/(5 * 10^11) and subtract to 0/1, though the product of their denominators, 10^24, is past i64
-// pending: Time.kpp's RatioAdd and RatioSubtract multiply the denominators before reducing: Ratio<1, 10^12> + Ratio<1, 10^12> wraps to 48828125/48920024541184, a silent wrong answer (and, as a function template's argument, a compile error naming codegen), battery tm1 against MSVC's and libstdc++'s <ratio>; the wrapping itself is language/static_constexpr_member_of_a_template_overflow_is_error
 extern "C" int printf(const char* format, ...);
 using Pico = Ratio<1, 1000000000000>;
 int main()

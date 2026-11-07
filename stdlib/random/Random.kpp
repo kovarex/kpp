@@ -68,6 +68,52 @@ private:
   u64 state[4];
 };
 
+// A number from 0 to top, every one equally likely ([rand.dist.uni.int]), from the engine's numbers
+// engine.min() to engine.max().
+template<typename Engine>
+u64 uniformUpTo(Engine& engine, u64 top)
+{
+  u64 low = (u64)engine.min();
+  u64 span = (u64)engine.max() - low; // a call gives 0 to span above low
+  if (span == ~0ull)
+  {
+    // 64 random bits a call: a range of every u64 takes each, others are reduced modulo the range,
+    // drawing again a raw value below 2^64 mod range, which would make the low part more likely.
+    u64 range = top + 1;
+    if (range == 0)
+      return (u64)engine() - low;
+    u64 rejectBelow = (0 - range) % range;
+    u64 raw = (u64)engine() - low;
+    while (raw < rejectBelow)
+      raw = (u64)engine() - low;
+    return raw % range;
+  }
+  if (span == top)
+    return (u64)engine() - low;
+  if (span > top)
+  {
+    // One call: the raw values in top + 1 buckets of one size, the partial bucket at the end drawn
+    // again.
+    u64 buckets = top + 1;
+    u64 scaling = span / buckets;
+    u64 past = buckets * scaling;
+    u64 raw = (u64)engine() - low;
+    while (raw >= past)
+      raw = (u64)engine() - low;
+    return raw / scaling;
+  }
+  // Several calls: the high part, a number up to top / (span + 1) drawn the same way, times span + 1,
+  // plus a call; drawn again when the sum is past top or wraps.
+  u64 perCall = span + 1;
+  while (true)
+  {
+    u64 high = perCall * uniformUpTo(engine, top / perCall);
+    u64 result = high + ((u64)engine() - low);
+    if (result <= top && result >= high)
+      return result;
+  }
+}
+
 template<typename IntType = i32>
 class UniformIntDistribution
 {
@@ -76,21 +122,12 @@ public:
   UniformIntDistribution() : low(0), high(Limits<IntType>::max()) {}
   UniformIntDistribution(IntType low, IntType high) : low(low), high(high) {}
 
+  // From any engine (a uniform random bit generator: engine.min() to engine.max(), of any width).
   template<typename Engine>
   IntType operator()(Engine& engine)
   {
-    // In u64, where the difference cannot wrap: a range of the type's every value is 2^64 there,
-    // which wraps to 0, and then every raw value is one (the engine gives 64 random bits).
-    u64 range = (u64)this->high - (u64)this->low + 1;
-    if (range == 0)
-      return (IntType)((u64)this->low + engine());
-    // Every value equally likely ([rand.dist.uni.int]): raw values below 2^64 mod range would make
-    // the low part of the range more likely under `raw % range`, so they are drawn again.
-    u64 rejectBelow = (0 - range) % range;
-    u64 raw = engine();
-    while (raw < rejectBelow)
-      raw = engine();
-    return (IntType)((u64)this->low + raw % range);
+    // In u64, where the difference cannot wrap.
+    return (IntType)((u64)this->low + uniformUpTo(engine, (u64)this->high - (u64)this->low));
   }
 
   IntType a() const { return this->low; }

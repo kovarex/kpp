@@ -1,5 +1,4 @@
 // spec: durationCast of a duration whose unsigned count is past i64's range converts the count as an unsigned number, as std::chrono::duration_cast computes in the common type of the reps and intmax_t ([time.duration.cast]: unsigned long long for an unsigned long long rep)
-// pending: Time.kpp's convertDuration computes every integer count as an i64: 2^64 - 1 microseconds is -1 there, and 0 milliseconds comes out, a silent wrong answer (battery tm1 against MSVC's and libstdc++'s chrono)
 int main()
 {
   using U64Micro = Duration<u64, Micro>;
