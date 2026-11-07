@@ -1602,6 +1602,7 @@ auto codegen::Emitter::argumentText(const Ty* pt, Expr* arg, Node* at) -> std::s
           return "ptr " + convert(o, types.unqualified(cls), at).text;
         unsupported(at, "binding an unrelated class to a reference (" + types.toString(o.ty, &symbols) + " to " + types.toString(pt, &symbols) + ")");
       }
+      requireSameClosure(o.ty, cls, true, at); // (`take(l2)` with `take(const decltype(l1)&)`)
       return "ptr " + addr;
     }
     const Ty* referenced = types.stripRef(pt);
@@ -1703,6 +1704,8 @@ auto codegen::Emitter::argumentText(const Ty* pt, Expr* arg, Node* at) -> std::s
     }
     if (isClass(v.ty) && isClass(pt) && classKey(v.ty) != classKey(pt))
       v = convert(v, types.unqualified(pt), at); // a base, or a conversion operator
+    if (isLambda(pt))
+      requireSameClosure(v.ty, pt, false, at); // (`take(l2)` with `take(decltype(l1))`: an error, never l2's bytes as l1's)
     if (isLambda(pt) && v.isTemporary)
     {
       // The closure the lambda expression built is the parameter (the callee destroys it).
@@ -1882,6 +1885,7 @@ auto codegen::Emitter::scalarReferenceTarget(const Ty* refTy, Expr* value, Node*
   const Ty* referenced = types.stripRef(refTy);
   const Ty* want = types.unqualified(referenced);
   const Ty* have = value->ty && value->ty->isKnown() && !types.isDependent(value->ty) ? types.unqualified(types.stripRef(value->ty)) : nullptr;
+  requireSameClosure(have, want, true, at); // (`const decltype(l1)& r = l2;`: an error, never l2 bound as l1)
   // A temporary of the referenced type holding the value, converted.
   auto temporary = [&]
   {

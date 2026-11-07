@@ -544,14 +544,7 @@ auto codegen::Emitter::initializeClosure(const std::string& addr, const Ty* t, E
   }
   if (!isLambda(v.ty))
     unsupported(at, "initialising a lambda variable from something else");
-  if (withCurrentArgs(types.unqualified(types.stripRef(v.ty))) != withCurrentArgs(types.unqualified(t)))
-  {
-    // Another lambda's closure (`decltype(l1) f = l2;`, which C++ rejects: each lambda's closure is a type
-    // of its own, with no conversion to another's). Until 2026-11-08 its bytes were taken for this
-    // closure's, and a call ran this lambda's body on the other one's captures.
-    fail(at, "a closure initialised from another lambda's closure (" + types.toString(v.ty, &symbols) + " to " +
-                 types.toString(t, &symbols) + "): each lambda's closure is a type of its own, with no conversion to another's");
-  }
+  requireSameClosure(v.ty, t, false, at); // (`decltype(l1) f = l2;`)
   if (v.isTemporary && relocatesBitwise(t, at))
   {
     // Its bytes are the closure now: the statement no longer destroys the temporary.
@@ -562,6 +555,22 @@ auto codegen::Emitter::initializeClosure(const std::string& addr, const Ty* t, E
     return;
   }
   copyClosure(addr, v.text, t, at, v.isTemporary || movable(init));
+}
+
+auto codegen::Emitter::requireSameClosure(const Ty* given, const Ty* closure, bool reference, Node* at) -> void
+{
+  // Another lambda's closure (`decltype(l1) f = l2;`, `take(l2)` with `take(decltype(l1))` or `take(const
+  // decltype(l1)&)`, `const decltype(l1)& r = l2;`, all of which C++ rejects: each lambda's closure is a type
+  // of its own, with no conversion to another's). Until 2026-11-08 its bytes were taken for this closure's,
+  // and a call ran this lambda's body on the other one's captures. The types compared after the current
+  // template arguments, as conditionalObject compares them.
+  const Ty* have = given ? withCurrentArgs(types.unqualified(types.stripRef(given))) : nullptr;
+  const Ty* want = closure ? withCurrentArgs(types.unqualified(types.stripRef(closure))) : nullptr;
+  if (!have || !want || !isLambda(have) || !isLambda(want) || have == want)
+    return;
+  fail(at, std::string(reference ? "a reference to a closure bound to" : "a closure initialised from") + " another lambda's closure (" +
+               types.toString(have, &symbols) + " to " + types.toString(want, &symbols) +
+               "): each lambda's closure is a type of its own, with no conversion to another's");
 }
 
 auto codegen::Emitter::makeClosure(LambdaExpr* l, const std::string& into) -> Value

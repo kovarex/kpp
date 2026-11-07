@@ -739,6 +739,7 @@ auto codegen::Emitter::bindReferenceMember(const std::string& fieldAddr, const T
       if (refTy && refTy->kind == TyKind::RRef && have == want && isLvalueExpression(one))
         fail(at, "the reference member of type " + types.toString(refTy, &symbols) +
                      " given an lvalue of its type: an rvalue reference binds only a temporary or what move() gives, never the object itself");
+      requireSameClosure(have, want, true, at); // (a `const decltype(l1)&` member given l2: an error, never l2 bound as l1)
       if (extended && !extendingStatic.empty() && want && !isAggregate(want))
       {
         // (a local's scalar temporary is the function's: it outlives the variable)

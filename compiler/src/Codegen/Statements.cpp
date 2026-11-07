@@ -961,6 +961,7 @@ auto codegen::Emitter::statement(Stmt* s) -> void
           const Ty* want = types.unqualified(types.stripRef(currentReturn));
           if (isClass(v.ty) && isClass(want) && classKey(v.ty) != classKey(want))
             v = convert(v, want, s);
+          requireSameClosure(v.ty, want, true, s); // (`const decltype(l1)& f() { return l2; }`: an error, never l2 as l1)
           retText = v.text;
         }
         else

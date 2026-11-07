@@ -107,6 +107,12 @@
     // for `move(f)`).
     void initializeClosure(const std::string& addr, const Ty* t, Expr* init, Node* at);
 
+    // Fails when given, a closure, is another lambda's than closure (the type a closure variable, a
+    // parameter or a reference wants): C++ has no conversion between two lambdas' closures, the
+    // checker lets one through, and taking one's bytes for the other's ran the wrong lambda's body.
+    // reference: closure is what a reference binds.
+    void requireSameClosure(const Ty* given, const Ty* closure, bool reference, Node* at);
+
     // Builds the closure object of a lambda expression in a fresh slot (into: in that object) and
     // emits its function. One in a fresh slot is a temporary: the statement destroys it unless it
     // is moved out (a parameter by value, a variable), when its captures need destruction.
