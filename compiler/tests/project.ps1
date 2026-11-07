@@ -180,6 +180,7 @@ if (Run 'basic')
 if (Run 'clibs')
 {
   $clibs = Join-Path $work 'clibs'
+  if (Test-Path $clibs) { cmd /c rd /s /q $clibs } # (an earlier run's objects, .res and data\second.bin, which its checks would take as this run's)
   New-Item -ItemType Directory -Force "$clibs\src" | Out-Null
   Push-Location $clibs
   try
@@ -232,10 +233,16 @@ void build(Project& project)
     $releaseLib = (Get-Item 'build\clib\plus.lib').LastWriteTimeUtc
     $flags = Get-Content 'build\clib\plus\flags.txt' -Raw
     if ($flags -notmatch '/GS-|-fno-stack-protector') { Fail "the C library is compiled with stack cookies: $flags" }
+    # A debug build's C libraries are unoptimized (/Od after kpp's /O2, kovarex 2026-11-07: "debug
+    # builds means everything debug"), in a directory of their flags' own; release's are optimized.
+    $debugDirectories = @(Get-ChildItem 'build\clib\flags-*\plus\flags.txt' -ErrorAction SilentlyContinue | Where-Object { (Get-Content $_.FullName -Raw) -match ' /Od' })
+    if ($debugDirectories.Count -ne 1) { Fail "the debug build's C library is not compiled with /Od in a directory of its own: $($debugDirectories.Count) such" }
+    if ($flags -match '/Od') { Fail "the release build's C library is compiled unoptimized: $flags" }
     Set-Content 'build.kpp' ($good -replace '\}\s*$', "  Configuration& whole = project.configuration(`"whole`", `"release`");`n  whole.argument(`"--lto`");`n  whole.argument(`"full`");`n  whole.cFlag(`"-flto`");`n  whole.cFlag(`"-DPLUS=2`");`n}`n")
     $output = Kpp @('game-tests', 'whole', '--no-server', '--set', "INCLUDE_ROOT=$root")
     $tests = if ($code -eq 0) { & '.\build\whole\game-tests.exe' } else { '' }
-    $objects = @(Get-ChildItem 'build\clib\flags-*\plus\*.obj' -ErrorAction SilentlyContinue)
+    $objects = @(Get-ChildItem 'build\clib\flags-*\plus\flags.txt' -ErrorAction SilentlyContinue | Where-Object { (Get-Content $_.FullName -Raw) -match '-flto' } |
+                 ForEach-Object { Get-ChildItem (Join-Path $_.DirectoryName '*.obj') })
     $notBitcode = @($objects | Where-Object { $b = [IO.File]::ReadAllBytes($_.FullName); -not ($b[0] -eq 0x42 -and $b[1] -eq 0x43 -and $b[2] -eq 0xC0 -and $b[3] -eq 0xDE) })
     $link = if (Test-Path 'build\whole\game-tests.exe.link.rsp') { @(Get-Content 'build\whole\game-tests.exe.link.rsp') } else { @() }
     if ($code -ne 0 -or "$tests" -ne 'tests 43') { Fail "kpp game-tests whole (--lto full, cFlag -DPLUS=2): exit $code, printed '$tests'`n$($output -join "`n")" }
@@ -265,15 +272,15 @@ void build(Project& project)
     Set-Content 'libs\plus\plus.rc' "1 RCDATA `"first.bin`"`n2 RCDATA `"../../data/second.bin`""
     Set-Content -LiteralPath 'libs\plus\first.bin' -Value 'KPP-FIRST' -NoNewline # (named: -NoNewline first swaps path and value)
     Set-Content 'build.kpp' ($good -replace 'plus\.define\("PLUS=1"\);', "plus.define(`"PLUS=1`");`n  plus.resource(`"libs/plus/plus.rc`");")
-    $res = 'build\clib\plus\plus.res'
-    $output = Kpp @('--debug', '--no-server', '--set', "INCLUDE_ROOT=$root")
+    $res = 'build\clib\plus\plus.res' # (release's: a debug build's libraries are in a directory of their flags')
+    $output = Kpp @('--release', '--no-server', '--set', "INCLUDE_ROOT=$root")
     if ($code -eq 0 -or ($output -join "`n") -notmatch 'plus\.rc: error: llvm-rc could not compile it') { Fail "a resource script naming a missing file: exit $code`n$($output -join "`n")" }
     elseif (Test-Path $res) { Fail "a resource script naming a missing file left $res ($((Get-Item $res).Length) bytes) for the next build" }
     New-Item -ItemType Directory -Force 'data' | Out-Null
     foreach ($marker in 'KPP-SECOND-ONE', 'KPP-SECOND-TWO')
     {
       Set-Content -LiteralPath 'data\second.bin' -Value $marker -NoNewline
-      $output = Kpp @('--debug', '--no-server', '--set', "INCLUDE_ROOT=$root")
+      $output = Kpp @('--release', '--no-server', '--set', "INCLUDE_ROOT=$root")
       $bytes = if (Test-Path $res) { [IO.File]::ReadAllText((Resolve-Path $res).Path, [Text.Encoding]::ASCII) } else { '' }
       if ($code -ne 0 -or -not $bytes.Contains($marker)) { Fail "the resource script's file outside its directory, now ${marker}: exit $code, in ${res}: $($bytes.Contains($marker))`n$($output -join "`n")" }
     }

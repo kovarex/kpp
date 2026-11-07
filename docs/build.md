@@ -537,9 +537,11 @@ void build(Project& project)
   by the hash of its source, its flags and the headers clang reports (-MD). It archives the
   objects into `build\<configuration>\<name>.lib` with llvm-lib. A library's error is reported
   at its file and line in the same Error List.
-- **Its configuration.** Version 1 compiles C libraries as the game's prebuilt ones are: /MT /O2
-  in both configurations, so that one CRT is linked. A per-library debug setting comes with a
-  real need.
+- **Its configuration.** C libraries are compiled as the game's prebuilt ones are, /MT (one CRT is
+  linked) and NDEBUG; an optimized configuration's at /O2, an unoptimized one's (debug) at /Od
+  since 2026-11-07 (kovarex: "debug builds means everything debug", as Factorio's C++ Debug build
+  compiles its libraries; libraryFlags in Project/CLibraryBuild.cpp), each in a directory of its
+  flags' own.
 - **The flags are a short list:** include, define, language, `warning(off)`. There is no
   free-form flag, so a library's build stays readable and the registry (library-registry.md, "C
   dependencies") can take the same list.
@@ -714,6 +716,7 @@ void configure(Cell& cell)
   | `optimize` | false: `-O0`, incremental link | true: `-O2` + ThinLTO, lld, a whole link |
   | `debugInfo` | true | true: line tables in a file beside the executable, the PDB (Linux, FreeBSD: NAME.debug), which it names without its directory; its code unchanged (kovarex 2026-11-07, question 1) |
   | kppc trivial-function inlining | on | on |
+  | its C libraries | unoptimized: `/Od` (`-O0` for clang's GNU driver) after kpp's `/O2`, in `build\clib\flags-HASH` (kovarex 2026-11-07: "debug builds means everything debug", as Factorio's C++ Debug build compiles its libraries) | `/O2`, in `build\clib` |
 - **config constants** are set for the project (`project.config`), for a configuration, for a
   target (`tests.config`) and for a cell (configure()); each later one overrides: project,
   configuration, target, cell. The command line's `kpp --config NAME=VALUE` overrides them all.

@@ -242,6 +242,7 @@ namespace projects
   LibraryTarget libraryTarget(const Program& p, const Request& request);
   std::vector<std::string> forPlatform(const std::vector<std::string>& entries, const std::string& platform);
   fs::path clibDirectory(const fs::path& root, const std::vector<std::string>& cFlags, const std::string& platform = "windows");
+  std::vector<std::string> libraryFlags(const Program& p, const Request& request);
   fs::path libraryDirectory(const fs::path& root, const CLibrary& c, const std::vector<std::string>& cFlags, const std::string& platform = "windows");
   std::vector<fs::path> libraryFiles(const fs::path& root, const CLibrary& c, const std::vector<std::string>& cFlags,
                                      const std::string& platform = "windows");

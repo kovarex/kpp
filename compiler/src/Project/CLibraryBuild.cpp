@@ -86,6 +86,23 @@ namespace projects
     return base / name;
   }
 
+  // The flags a program's C libraries are built with after kpp's own: an unoptimized program's are
+  // unoptimized too (kovarex 2026-11-07: "debug builds means everything debug", as Factorio's C++ Debug
+  // build compiles its libraries /Od; release and final keep -O2), then the configuration's cFlag
+  // ones. They key the libraries' directory (clibDirectory), so a debug build's objects and a
+  // release build's are each kept.
+  std::vector<std::string> libraryFlags(const Program& p, const Request& request)
+  {
+    std::vector<std::string> flags;
+    if (!p.optimize)
+    {
+      LibraryTarget target = libraryTarget(p, request);
+      flags.push_back(bundledToolchain() || target.gnu || target.posix() ? "-O0" : "/Od");
+    }
+    flags.insert(flags.end(), p.cFlags.begin(), p.cFlags.end());
+    return flags;
+  }
+
   fs::path libraryDirectory(const fs::path& root, const CLibrary& c, const std::vector<std::string>& cFlags, const std::string& platform)
   {
     return clibDirectory(root, cFlags, platform) / c.name;

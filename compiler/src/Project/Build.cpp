@@ -159,7 +159,7 @@ namespace projects
       args.push_back("--lib"), args.push_back("-l" + name);
     for (const std::string& name : p.links)
       if (const CLibrary* c = findLibrary(d, name))
-        for (const fs::path& file : libraryFiles(root, *c, p.cFlags, platform))
+        for (const fs::path& file : libraryFiles(root, *c, libraryFlags(p, request), platform))
           args.push_back("--lib"), args.push_back(file.string());
     // Their C++ files' library off MSVC's Windows (cppRuntimeLibraries: libstdc++ for Linux, libc++
     // for FreeBSD and windows-gnu), once, after them.
@@ -281,12 +281,13 @@ namespace projects
         // Each library checked on a thread of its own (the game's 18 took 0.10 to 0.12 s one after
         // another on a quiet machine), each with its own header times (upToDate's, once per header).
         std::vector<char> prepared(cLibraries.size(), 0);
+        std::vector<std::string> cFlags = libraryFlags(p, request); // (a debug build's -O0 first)
         std::vector<std::thread> checks;
         for (size_t i = 0; i < cLibraries.size(); ++i)
           checks.emplace_back([&, i]
           {
             std::unordered_map<std::string, fs::file_time_type> times;
-            prepared[i] = prepareLibrary(root, *cLibraries[i], p.cFlags, prefixMap, jobs[i], times, libTarget);
+            prepared[i] = prepareLibrary(root, *cLibraries[i], cFlags, prefixMap, jobs[i], times, libTarget);
           });
         for (std::thread& t : checks)
           t.join();
