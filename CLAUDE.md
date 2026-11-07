@@ -103,6 +103,8 @@ Decided by kovarex; every thread follows them.
   an isolated write dir; never write to %APPDATA%\Factorio.
 - Line endings: resolver.cpp and Resolver/ LF, Codegen/ CRLF.
 - Decisions go into docs/design.md; open questions stay listed there until kovarex answers.
+- A change that adds or removes a deliberate difference from C++ updates docs/differences-from-cpp.md
+  in the same commit, with its status (built, this stage, later, undecided).
 - Reports to kovarex give exact counts and commits and link docs on GitHub
   (https://github.com/kovarex/kpp/blob/master/docs/...). kovarex never edits the repos; "solve X"
   from him is an instruction.
