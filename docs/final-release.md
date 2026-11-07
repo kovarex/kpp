@@ -276,8 +276,9 @@ The all-in-one's rounds lie within 0.7% of each other, so all 5 rounds are the f
   kpp release (all 5 rounds each), but the two runs differ in two things: the kpp commit and the crash
   handler, now on in kpp's builds. The handler cost kpp final 4.2% by the sum of medians on 2026-11-06
   (below). If it costs the same now, kpp f8787782 is about 4% faster than e13691d3; if it costs C++ as
-  much, nothing changed. Neither is measured; one run of e13691d3's final against f8787782's, and of
-  the all-in-one with and without its handler, tells them apart. Map by map, kpp final's ratio moved
+  much, nothing changed. Which of the two it is stays open until one run of e13691d3's final against
+  f8787782's, and of the all-in-one with and without its handler, tells them apart (planned for the
+  next quiet window). Map by map, kpp final's ratio moved
   by a median of -0.4% (faster on 25 maps, slower on 20), single maps by up to 15% either way.
 - **The executables:** kpp final 70.1 MB (69.4 MB at e13691d3), kpp release 73.5 MB (72.1 MB), the
   all-in-one 49.4 MB.
