@@ -9381,6 +9381,11 @@ auto GlobalScope::Impl::Walker::walkExpr(Expr* e) -> const Ty*
       {
         bool declared = false;
         const Ty* cls = types.unqualified(p->inner);
+        // A class whose vtable an outside ABI fixes has no destructor there to call (design.md 23b).
+        if (const Ty* marked = impl.foreignVtableClass(cls); marked && file && !file->isImported && !probing)
+          reportHere(d->token, types.toString(cls, &symbols) + " has [[foreign_vtable]]" +
+                                   (marked != cls ? " (from " + types.toString(marked, &symbols) + ")" : std::string()) +
+                                   ": its vtable has no destructor, so delete cannot destroy it: release it the way its ABI says");
         d->deallocator = usualDeallocation(cls, d->token, d->sizedDeallocation, declared, d->isArray);
         std::string name = d->isArray ? "operator delete[]" : "operator delete";
         if (!d->deallocator && declared)

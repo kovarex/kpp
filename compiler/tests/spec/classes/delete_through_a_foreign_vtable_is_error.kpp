@@ -1,0 +1,18 @@
+// spec: a class with `[[foreign_vtable]]`, its own or a base's, has no destructor in its vtable, so `delete` through a pointer to it is an error: such an object is released the way its ABI says (design.md 23b)
+// error: delete_through_a_foreign_vtable_is_error.kpp:13: error: Device has [[foreign_vtable]] (from Unknown): its vtable has no destructor, so delete cannot destroy it: release it the way its ABI says
+class [[foreign_vtable]] Unknown
+{
+public:
+  virtual int release() = 0;
+};
+class Device : public Unknown
+{
+};
+void drop(Device* d)
+{
+  delete d;
+}
+int main()
+{
+  return 0;
+}

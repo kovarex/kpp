@@ -29,6 +29,7 @@ constexpr uint8_t ATTR_Packed = 64; // [[packed]] on a class: its members withou
 constexpr uint16_t ATTR_NoDiscard = 256;  // [[nodiscard]] on a function, class or enumeration: a call's result discarded is a warning (Walker::checkDiscarded)
 constexpr uint16_t ATTR_NoUniqueAddress = 1024; // [[no_unique_address]] on a data member: an empty one takes no storage (Emitter::buildStruct)
 constexpr uint16_t ATTR_Deprecated = 512; // [[deprecated]], [[deprecated("why")]]: a call of the function is a warning (ParsedFile::deprecations has why)
+constexpr uint16_t ATTR_ForeignVtable = 2048; // [[foreign_vtable]] on a class: an outside ABI (COM) fixes its vtable: no destructor in it, no delete, inherited (design.md 23b)
 constexpr uint8_t ATTR_MemberSpecialization = 128; // `template<> R UpdateBuffer::f()` through an alias of a class template's instance (finishIndex)
 constexpr uint8_t BUILTIN_EnumCount = 1, BUILTIN_EnumValues = 2, BUILTIN_EnumStr = 3, BUILTIN_EnumFromStr = 4; // Decl::builtin: generated enum members
 

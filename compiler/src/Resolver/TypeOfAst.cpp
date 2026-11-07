@@ -1271,11 +1271,28 @@ auto GlobalScope::Impl::hasVirtualDestructor(const Ty* t, int depth) -> bool
   return false;
 }
 
+auto GlobalScope::Impl::foreignVtableClass(const Ty* t, int depth) -> const Ty*
+{
+  if (!t || t->kind != TyKind::Class || depth > 16)
+    return nullptr;
+  ClassDecl* def = classDefinition(t);
+  if (!def)
+    return nullptr;
+  if (def->attributes & ATTR_ForeignVtable)
+    return t;
+  std::vector<const Ty*> bases;
+  if (directBases(t, def, bases))
+    for (const Ty* b : bases)
+      if (const Ty* marked = foreignVtableClass(b, depth + 1))
+        return marked;
+  return nullptr;
+}
+
 auto GlobalScope::Impl::noteNonVirtualDestructor(const Ty* t, ClassDecl* c) -> void
 {
   if (!c || !c->file || c->file->isImported || c->name.empty() || classDefinition(t) != c || polymorphicClass(t) != std::optional<bool>(true) ||
-      hasVirtualDestructor(t))
-    return;
+      hasVirtualDestructor(t) || foreignVtableClass(t))
+    return; // (an outside ABI's vtable gets no destructor: [[foreign_vtable]])
   Decl* destructor = nullptr;
   for (Decl* m : membersRead(c))
     if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Destructor))

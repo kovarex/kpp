@@ -456,6 +456,8 @@ namespace
               pendingAttributes |= ATTR_VectorCall;
             else if (a == "packed")
               pendingAttributes |= ATTR_Packed;
+            else if (a == "foreign_vtable")
+              pendingAttributes |= ATTR_ForeignVtable;
             else if (a == "nodiscard")
               pendingAttributes |= ATTR_NoDiscard;
             else if (a == "no_unique_address")
@@ -4390,7 +4392,7 @@ namespace
       pendingAlignment = nullptr;
       c->pack = pendingPack;
       pendingPack = 0;
-      c->attributes |= pendingAttributes & (ATTR_Packed | ATTR_NoDiscard | ATTR_Deprecated); // `struct [[packed]] Tile`, `[[packed]] struct Tile`
+      c->attributes |= pendingAttributes & (ATTR_Packed | ATTR_NoDiscard | ATTR_Deprecated | ATTR_ForeignVtable); // `struct [[packed]] Tile`, `[[packed]] struct Tile`
       noteDeprecation(c);
       c->templateParams = templ.params;
       c->isTemplate = templ.present;

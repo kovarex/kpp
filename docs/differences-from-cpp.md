@@ -417,6 +417,8 @@ Pinned make() { Pinned p; return p; }   // compiles: an error in C++
 - **kpp:** a class with a virtual function, its own or a base's, always has a virtual destructor, written
   or not (kovarex, 2026-11-07). `virtual ~X()` is allowed and redundant.
 - **Status:** `--override-warnings` lists the classes it changes ([design 23b](design.md)).
+- **`[[foreign_vtable]]`:** a class whose vtable an outside ABI fixes (a COM interface) says so, inherited:
+  it gets no destructor in its vtable, and `delete` through a pointer to it is an error.
 - **Why:** deleting through a base always runs the right destructor.
 
 ### Required `this.` and `This` (this stage, rules decided)

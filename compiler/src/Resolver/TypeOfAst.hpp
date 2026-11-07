@@ -244,6 +244,9 @@
   // and a non-virtual destructor, which becomes virtual"; its own vtable gains the slot when no base is
   // polymorphic.
   void noteNonVirtualDestructor(const Ty* t, ClassDecl* c);
+  // The class among t and its bases marked [[foreign_vtable]], whose vtable an outside ABI fixes (a COM
+  // interface, design.md 23b): t has no destructor in its vtable and cannot be deleted; null for none.
+  const Ty* foreignVtableClass(const Ty* t, int depth = 0);
   // The direct base whose noexcept virtual destructor t's, which may throw, overrides ([except.spec] 4); null
   // when there is none or it is not known.
   const Ty* destructorLoosens(const Ty* t);

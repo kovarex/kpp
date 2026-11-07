@@ -1,0 +1,38 @@
+// spec: `[[foreign_vtable]]` on a class says an outside ABI fixes its vtable (a COM interface): it gets no virtual destructor, which kpp gives every other class with a virtual function (design.md 23b), and the mark is inherited, so a COM interface's derived interfaces have it too
+// kppc: --override-warnings
+// no-warning: foreign_vtable_keeps_its_layout.kpp:7:
+// no-warning: foreign_vtable_keeps_its_layout.kpp:13:
+// no-warning: foreign_vtable_keeps_its_layout.kpp:23:
+// warning: foreign_vtable_keeps_its_layout.kpp:18: warning: Plain has a virtual function and an implicit destructor, which becomes virtual (its vtable gains the slot)
+class [[foreign_vtable]] Unknown
+{
+public:
+  virtual int addRef() = 0;
+  virtual int release() = 0;
+};
+class Device : public Unknown
+{
+public:
+  virtual int create() = 0;
+};
+class Plain
+{
+public:
+  virtual int value() { return 1; }
+};
+class Impl : public Device
+{
+public:
+  int count = 0;
+  int addRef() override { return ++this->count; }
+  int release() override { return --this->count; }
+  int create() override { return 7; }
+};
+int main()
+{
+  Impl impl;
+  Device* d = &impl;
+  Plain p;
+  println(d->addRef(), " ", d->create(), " ", d->release(), " ", p.value());
+  return 0;
+}

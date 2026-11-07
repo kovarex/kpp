@@ -2228,9 +2228,17 @@ an implicit destructor, 29 a protected one and 23 a public one; 48 gain the slot
 from them. Ours: none. One of the 48 is interop and would break: IUnknown, in the generated
 src/Graphics/DX11/ComInterfaces.kpp, the root of 112 COM interfaces the system's objects are called through
 (declared with no destructor, as COM objects are released): a slot in it moves every method of the 111
-derived interfaces. So the rule needs an exception for a vtable that is not kpp's, open with kovarex (a
-mark on the class, or interfaces of pure virtual functions only, which would bring the undefined delete back
-for them). The other 47 are the game's own (Freezable, Targetable, ThreadListener, ...).
+derived interfaces. The other 47 are the game's own (Freezable, Targetable, ThreadListener, ...).
+
+**`[[foreign_vtable]]`** (kovarex, 2026-11-07: an explicit mark; an exemption of pure interfaces and the
+COM types imported again were rejected): on a class it says an outside ABI fixes its vtable. It gets no
+destructor there, and `delete` through a pointer to it is an error ("Device has [[foreign_vtable]] (from
+Unknown): its vtable has no destructor, so delete cannot destroy it: release it the way its ABI says"), so
+the rule's safety holds. The mark is inherited, so generate_com.py writes it once, on IUnknown, and its 112
+interfaces have it (a kpp class implementing one too, which then is not deleted either). Built 2026-11-07:
+the attribute, the inherited lookup (Impl::foreignVtableClass), the delete error, and --override-warnings
+leaving such classes out; the vtable slot itself is B's, with the rule. Specs
+classes/foreign_vtable_keeps_its_layout, classes/delete_through_a_foreign_vtable_is_error.
 
 The rest of the count: the 13 functions are cxxopts' (abstract_value<T> : Value, a named base); no instance
 of a class template whose base is its parameter overrides without saying so or says `override` of nothing,
@@ -2269,8 +2277,10 @@ kovarex, 2026-11-07:
   this, to make it very clear what is meant by saying just speed"). `void setX(i32 x) { this.x = x; }` is
   the form, with no warning for the parameter beside the member. A bare name that would find only a member
   is the error "write `this.speed`, not `speed`" ("write `This::count`, not `count`" for a static). A bare name with a member and a global
-  of its spelling is the global: until the converter's count is 0 that case is an error too, as a missed
-  rewrite would change the meaning silently.
+  of its spelling is the global, and no error (kovarex, 2026-11-07: "I would say no error"), neither for
+  good nor during the conversion: its safety is --this-warnings reaching 0 on the game before required
+  `this.` becomes an error, as those warnings list each such name, "(a bare x will be the one around the
+  class)", the silent ones (21 in the game).
 - **Where it does not apply** (Q11: "the : constructor doesn't need this as it always means this"): the
   member a member initializer names (`: speed(speed)` is the member from the parameter), `using`
   declarations, and the types in declarations. The initializer's arguments, default member initializers,
