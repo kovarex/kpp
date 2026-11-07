@@ -1,0 +1,32 @@
+// spec: a function template's `T*` parameter takes a pointer, an array or a function and nothing else ([temp.deduct.call] 4): given nullptr, or a class that converts to a pointer, the template is no candidate even when another parameter deduces T, so the non-template overload is called; `const T*` given a function deduces nothing; a T the call gives explicitly takes nullptr. clang's and g++'s output
+// found by thread J's overload generator (2026-11-07): `both(nullptr, 'c')` called the template with T = char, converting nullptr, over both(const char*, short); `a(fun)` called the `const T*` template over the `T&` one
+extern "C" int printf(const char* format, ...);
+int fun(int x) { return x; }
+class ToPtr
+{
+public:
+  operator int*() const { return nullptr; }
+};
+template<class T> int both(T* p, T q) { return 1; }
+int both(const char* p, short q) { return 2; }
+template<class T> int convertible(T* p) { return 1; }
+int convertible(int* p, int extra = 0) { return 2; }
+template<class T> int a(const T* p) { return 80; }
+template<class T> int a(T& p) { return 81; }
+template<class T> int onlyConst(const T* p) { return 1; }
+int onlyConst(...) { return 2; }
+template<class T> int pointerToPointer(T** p) { return 1; }
+int pointerToPointer(void* p) { return 2; }
+template<class T> int given(T* p) { return p == nullptr ? 7 : 8; }
+int main()
+{
+  ToPtr top;
+  int x = 3;
+  int* px = &x;
+  printf("%d %d %d\n", both(nullptr, 'c'), both("s", 'c'), both(px, 4));
+  printf("%d %d\n", convertible(top), convertible(px));
+  printf("%d %d\n", a(fun), onlyConst(fun));
+  printf("%d %d\n", pointerToPointer(px), pointerToPointer(&px));
+  printf("%d\n", given<int>(nullptr));
+  return 0;
+}

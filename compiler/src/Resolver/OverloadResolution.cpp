@@ -2091,6 +2091,20 @@ auto GlobalScope::Impl::deductionsAgree(FunctionDecl* f, const Ty* ft, const std
     for (size_t k = 0; k < given && k < deduced.pairs.size(); ++k)
       one.pairs.push_back(deduced.pairs[k]);
     size_t from = one.pairs.size();
+    // A pointer parameter whose pointee deduces a template parameter takes a pointer, an array or
+    // a function and nothing else ([temp.deduct.call] 4: no conversion makes an argument match the
+    // pattern): `template<class T> f(T*, T)` given nullptr and a char is no candidate, rather than
+    // one with T = char that converts nullptr (thread J's overload generator: it beat
+    // `f(const char*, short)`). A pointee the given arguments name already deduces nothing.
+    if (const Ty* p = types.unqualified(types.stripRef(ft->args[i])); p->kind == TyKind::Pointer && types.isDependent(one.empty() ? p : substitute(p, one)))
+    {
+      const Ty* pointee = p->inner;
+      while (pointee && pointee->kind == TyKind::Pointer)
+        pointee = pointee->inner;
+      const Ty* a = types.stripRef(at);
+      if (pointee && pointee->kind != TyKind::DependentMember && a->kind != TyKind::Pointer && a->kind != TyKind::Array && a->kind != TyKind::Function)
+        return false;
+    }
     deduce(ft->args[i], at, one);
     for (size_t k = from; k < one.pairs.size(); ++k)
       if (const Ty* all = deduced.find(one.pairs[k].param); all && one.pairs[k].type && all != one.pairs[k].type)

@@ -2927,8 +2927,9 @@ auto GlobalScope::Impl::deduce(const Ty* pattern, const Ty* arg, Subst& out, int
         deduce(pattern->inner, a->inner, out, depth + 1);
       else if (a->kind == TyKind::Array)
         deduce(pattern->inner, a->inner, out, depth + 1);
-      else if (a->kind == TyKind::Function && pattern->inner && (pattern->inner->kind == TyKind::Function || depth == 0))
-        deduce(pattern->inner, a, out, depth + 1); // `StringType (*toString)(T)` or `T*` given a function: its pointer ([temp.deduct.call] 2)
+      else if (a->kind == TyKind::Function && pattern->inner &&
+               (pattern->inner->kind == TyKind::Function || (depth == 0 && !pattern->inner->isConst && !pattern->inner->isVolatile)))
+        deduce(pattern->inner, a, out, depth + 1); // `StringType (*toString)(T)` or `T*` given a function: its pointer ([temp.deduct.call] 2; `const T*` deduces nothing, as clang and g++ have it)
       break;
     case TyKind::Array:
       if (a->kind == TyKind::Array || a->kind == TyKind::Pointer)
