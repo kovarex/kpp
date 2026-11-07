@@ -520,6 +520,14 @@ auto codegen::Emitter::initializeClosure(const std::string& addr, const Ty* t, E
   }
   if (!isLambda(v.ty))
     unsupported(at, "initialising a lambda variable from something else");
+  if (withCurrentArgs(types.unqualified(types.stripRef(v.ty))) != withCurrentArgs(types.unqualified(t)))
+  {
+    // Another lambda's closure (`decltype(l1) f = l2;`, which C++ rejects: each lambda's closure is a type
+    // of its own, with no conversion to another's). Until 2026-11-08 its bytes were taken for this
+    // closure's, and a call ran this lambda's body on the other one's captures.
+    fail(at, "a closure initialised from another lambda's closure (" + types.toString(v.ty, &symbols) + " to " +
+                 types.toString(t, &symbols) + "): each lambda's closure is a type of its own, with no conversion to another's");
+  }
   if (v.isTemporary && relocatesBitwise(t, at))
   {
     // Its bytes are the closure now: the statement no longer destroys the temporary.
