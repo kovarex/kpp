@@ -1,0 +1,28 @@
+// spec: an aggregate's initializer may read the elements and members it has initialized already, in a constant expression too ([dcl.init.aggr] 7: each element is initialized in order, sequenced before the next): `int arr[3] = {b, arr[0] + 1, b}` and `P p{a, p.x * 2}` are constants when the function is evaluated at compile time, with the values the run time gives. clang's and g++'s output
+// pending: kpp's interpreter refuses both, `the constexpr variable c is no constant`, without the reason a required constant that fails states (found by thread J's constexpr generator, 2026-11-07)
+extern "C" int printf(const char* format, ...);
+class P
+{
+public:
+  int x;
+  int y;
+};
+constexpr int fromArray(int b)
+{
+  int arr[3] = {b, arr[0] + 1, b};
+  return arr[0] * 100 + arr[1] * 10 + arr[2];
+}
+constexpr int fromMember(int a)
+{
+  P p{a, p.x * 2};
+  return p.x * 10 + p.y;
+}
+int main()
+{
+  constexpr int c1 = fromArray(3);
+  constexpr int c2 = fromMember(4);
+  volatile int v3 = 3;
+  volatile int v4 = 4;
+  printf("%d %d %d %d\n", c1, fromArray(v3), c2, fromMember(v4));
+  return 0;
+}
