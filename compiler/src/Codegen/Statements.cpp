@@ -806,20 +806,14 @@ auto codegen::Emitter::statement(Stmt* s) -> void
         size_t common = 0;
         while (common < place->second.ids.size() && common < scopeIds.size() && place->second.ids[common] == scopeIds[common])
           ++common;
-        unwindRange(common, scopes.size());
-        if (common > 0 && common - 1 < place->second.counts.size())
-        {
-          std::vector<Object>& shared = scopes[common - 1];
-          for (size_t i = shared.size(); i-- > place->second.counts[common - 1];)
-            destroyOnExit(shared[i]); // (they stay listed: this path ends in the jump)
-        }
+        leaveScopes(common, common > 0 && common - 1 < place->second.counts.size() ? place->second.counts[common - 1] : size_t(-1));
         fn += "  br label %" + labelBlocks[symbol] + "\n";
       }
       else
       {
-        std::string trampoline = newLabel("goto.leave");
-        pendingGotos[symbol].push_back({trampoline, scopeIds, scopes, scopeInits, s});
-        fn += "  br label %" + trampoline + "\n";
+        PendingGoto g{{}, scopeIds, scopeInits, s};
+        leaveForward(g.stops);
+        pendingGotos[symbol].push_back(std::move(g));
       }
       blockTerminated = true;
       break;
@@ -830,8 +824,8 @@ auto codegen::Emitter::statement(Stmt* s) -> void
       if (!labelBlocks.count(symbol))
         labelBlocks[symbol] = newLabel("goto");
       emitBranch(labelBlocks[symbol]);
-      // The forward gotos to it: each one's trampoline destroys the objects of the scopes its jump
-      // leaves (those beyond the scopes it shares with the label), the innermost first.
+      // The forward gotos to it: each one left its scopes at the goto, down to every depth in turn
+      // (leaveForward); the stop at the depth it shares with the label goes on to the label.
       if (auto pending = pendingGotos.find(symbol); pending != pendingGotos.end())
       {
         for (const PendingGoto& g : pending->second)
@@ -839,14 +833,14 @@ auto codegen::Emitter::statement(Stmt* s) -> void
             fail(g.at, "the goto to " + sym(symbol) + " skips the initialization of a variable in scope at the label, which C++ makes ill-formed ([stmt.dcl] 3)");
         for (const PendingGoto& g : pending->second)
         {
-          startBlock(g.trampoline);
           size_t common = 0;
           while (common < g.ids.size() && common < scopeIds.size() && g.ids[common] == scopeIds[common])
             ++common;
-          for (size_t scope = g.objects.size(); scope-- > common;)
-            for (size_t i = g.objects[scope].size(); i-- > 0;)
-              destroyOnExit(g.objects[scope][i]);
-          emitBranch(labelBlocks[symbol]);
+          for (const GotoStop& stop : g.stops)
+          {
+            startBlock(stop.stop);
+            emitBranch(stop.low <= common && common <= stop.high ? labelBlocks[symbol] : stop.next);
+          }
         }
         pendingGotos.erase(pending);
       }
@@ -978,7 +972,26 @@ auto codegen::Emitter::statement(Stmt* s) -> void
         else
           retText = convert(rvalue(r->value), currentReturn, s).text;
       }
+      // The result, once built, is destroyed when a destructor the return runs throws, the last
+      // built first ([except.ctor] 2, CWG 2176; g++'s order; clang's MSVC target leaks it, as kpp did
+      // until 2026-11-07): listed with the statement's temporaries, which every cleanup pad destroys
+      // first, while they and the scopes are destroyed. A named return joins them as its scope is
+      // left (destroyOnExit).
+      bool resultListed = false;
+      if (returnsInMemory(currentReturn) && keptOnReturn.empty() && needsDestruction(currentReturn, s))
+      {
+        Object result{sretAddr, currentReturn};
+        result.unwindOnly = true;
+        statementTemps.insert(statementTemps.begin(), result);
+        resultListed = true;
+      }
       destroyTemps();
+      if (resultListed)
+      {
+        Object result{sretAddr, currentReturn};
+        result.unwindOnly = true;
+        statementTemps.push_back(result);
+      }
       std::string retLl = currentReturn->kind == TyKind::Void || returnsInMemory(currentReturn) ? std::string()
                           : currentReturn->isReference()                                ? std::string("ptr")
                                                                                          : llType(currentReturn, s);
@@ -994,6 +1007,7 @@ auto codegen::Emitter::statement(Stmt* s) -> void
       }
       else
         leaveScopes(0);
+      statementTemps.clear();
       keptOnReturn.clear();
       if (retLl.empty() && !returnLabel.empty())
         fn += "  br label %" + returnLabel + "\n"; // a destructor's: its members and bases are destroyed there

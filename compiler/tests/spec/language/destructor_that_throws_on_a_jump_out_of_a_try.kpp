@@ -1,0 +1,248 @@
+// spec: a return, break, continue or goto that leaves a try or a handler destroys the objects outside the try outside it: what their destructors throw goes past the try's handlers ([except.handle] 1, [stmt.jump] 2), and objects inside the try are still the try's. clang's and g++'s output
+// found by thread J's exceptions generator (genexc, 2026-11-07): the try's handler took the exception and the function destroyed its objects a second time; a forward goto destroyed what it left at the label, inside the label's handlers, and out of a handler did nothing on Windows
+extern "C" int printf(const char* format, ...);
+class E
+{
+public:
+  int id;
+  E(int i) : id(i) {}
+};
+class D
+{
+public:
+  int id;
+  D(int i) : id(i) { printf("+D%d ", id); }
+  ~D() noexcept(false)
+  {
+    printf("-D%d ", id);
+    if (uncaught_exceptions() == 0)
+      throw E(id);
+  }
+};
+class T
+{
+public:
+  int id;
+  T(int i) : id(i) { printf("+T%d ", id); }
+  ~T() { printf("-T%d ", id); }
+};
+int byReturn()
+{
+  D d(1);
+  T t(2);
+  try
+  {
+    T inner(3);
+    return 1;
+  }
+  catch (const E& e)
+  {
+    printf("inner%d ", e.id);
+  }
+  return 2;
+}
+int insideTheTry()
+{
+  T t(4);
+  try
+  {
+    D d(5);
+    return 3;
+  }
+  catch (const E& e)
+  {
+    printf("inner%d ", e.id);
+  }
+  return 4;
+}
+int byBreak()
+{
+  for (int i = 0; i < 3; i++)
+  {
+    D d(10 + i);
+    try
+    {
+      if (i == 0)
+        break;
+    }
+    catch (const E& e)
+    {
+      printf("inner%d ", e.id);
+    }
+    printf("after%d ", i);
+  }
+  return 5;
+}
+int byContinue()
+{
+  int n = 0;
+  for (int i = 0; i < 3; i++)
+  {
+    T t(20 + i);
+    try
+    {
+      D d(30 + i);
+      try
+      {
+        if (i < 2)
+          continue;
+      }
+      catch (const E& e)
+      {
+        printf("innermost%d ", e.id);
+      }
+    }
+    catch (const E& e)
+    {
+      printf("inner%d ", e.id);
+      n++;
+    }
+  }
+  return n;
+}
+int fromHandler()
+{
+  D d(40);
+  try
+  {
+    throw 1;
+  }
+  catch (int)
+  {
+    T t(41);
+    return 7;
+  }
+  return 8;
+}
+int byGotoForward()
+{
+  {
+    D d(50);
+    try
+    {
+      goto out;
+    }
+    catch (const E& e)
+    {
+      printf("inner%d ", e.id);
+    }
+    printf("after ");
+  }
+out:
+  return 9;
+}
+int byGotoBack()
+{
+  int round = 0;
+again:
+  if (round == 1)
+    return 10;
+  D d(60);
+  try
+  {
+    round++;
+    goto again;
+  }
+  catch (const E& e)
+  {
+    printf("inner%d ", e.id);
+  }
+  return 11;
+}
+int insideForward()
+{
+  try
+  {
+    T t(1);
+    D d(2);
+    goto out;
+  }
+  catch (const E& e)
+  {
+    printf("inner%d ", e.id);
+    return 1;
+  }
+out:
+  return 2;
+}
+int handlerForward(int k)
+{
+  T a(3);
+  try
+  {
+    throw k;
+  }
+  catch (int n)
+  {
+    T b(4);
+    if (n == 1)
+      goto out;
+    printf("stay ");
+  }
+  printf("after ");
+out:
+  return 3;
+}
+int handlerForwardThrows()
+{
+  D a(5);
+  try
+  {
+    throw 1;
+  }
+  catch (int n)
+  {
+    D b(6);
+    goto out;
+  }
+out:
+  return 4;
+}
+int handlerBack()
+{
+  int round = 0;
+again:
+  if (round == 2)
+    return 5;
+  try
+  {
+    throw round;
+  }
+  catch (int n)
+  {
+    T b(7 + n);
+    round++;
+    goto again;
+  }
+  return 6;
+}
+int handlerForward1() { return handlerForward(1); }
+int handlerForward2() { return handlerForward(2); }
+void run(int (*f)())
+{
+  try
+  {
+    int v = f();
+    printf("ret%d\n", v);
+  }
+  catch (const E& e)
+  {
+    printf("outer%d\n", e.id);
+  }
+}
+int main()
+{
+  run(byReturn);
+  run(insideTheTry);
+  run(byBreak);
+  run(byContinue);
+  run(fromHandler);
+  run(byGotoForward);
+  run(byGotoBack);
+  run(insideForward);
+  run(handlerForward1);
+  run(handlerForward2);
+  run(handlerForwardThrows);
+  run(handlerBack);
+  return 0;
+}

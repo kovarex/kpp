@@ -1,0 +1,110 @@
+// spec: when a destructor that a return runs throws, the result already built is destroyed too, with the objects not yet destroyed, the last built first ([except.ctor] 2, CWG 2176): a prvalue, a named return built in the result, a moved parameter, and in a try whose handler takes the exception. g++'s output (clang's MSVC target leaks the result)
+// found by thread J's exceptions generator (2026-11-07): the result was never destroyed
+extern "C" int printf(const char* format, ...);
+class E
+{
+public:
+  int id;
+  E(int i) : id(i) {}
+};
+class D
+{
+public:
+  int id;
+  D(int i) : id(i) { printf("+D%d ", id); }
+  ~D() noexcept(false)
+  {
+    printf("-D%d ", id);
+    if (uncaught_exceptions() == 0)
+      throw E(id);
+  }
+};
+class T
+{
+public:
+  int id;
+  T(int i) : id(i) { printf("+T%d ", id); }
+  T(const T& o) : id(o.id + 100) { printf("cT%d ", id); }
+  T(T&& o) : id(o.id + 200) { printf("mT%d ", id); }
+  ~T() { printf("-T%d ", id); }
+};
+T prvalue()
+{
+  D d(1);
+  return T(2);
+}
+T named()
+{
+  D d(3);
+  T t(4);
+  return t;
+}
+T fromParam(T p)
+{
+  D d(5);
+  return p;
+}
+T inTry()
+{
+  D d(6);
+  try
+  {
+    return T(7);
+  }
+  catch (const E& e)
+  {
+    printf("inner%d ", e.id);
+  }
+  return T(8);
+}
+T namedFirst()
+{
+  T t(13);
+  D d(14);
+  return t;
+}
+T namedAfterTwo()
+{
+  D d(15);
+  T u(16);
+  T t(17);
+  return t;
+}
+T insideTry()
+{
+  try
+  {
+    D d(9);
+    return T(10);
+  }
+  catch (const E& e)
+  {
+    printf("inner%d ", e.id);
+  }
+  return T(11);
+}
+void run(T (*f)())
+{
+  try
+  {
+    T t = f();
+    printf("got%d ", t.id);
+  }
+  catch (const E& e)
+  {
+    printf("outer%d", e.id);
+  }
+  printf("\n");
+}
+T passParam() { return fromParam(T(12)); }
+int main()
+{
+  run(prvalue);
+  run(named);
+  run(passParam);
+  run(inTry);
+  run(namedFirst);
+  run(namedAfterTwo);
+  run(insideTry);
+  return 0;
+}

@@ -1,0 +1,7 @@
++D1 +T2 -D1 -T2 outer1
++D3 +T4 -D3 -T4 outer3
++T12 +D5 mT212 -D5 -T212 -T12 outer5
++D6 +T7 -D6 -T7 outer6
++T13 +D14 -D14 -T13 outer14
++D15 +T16 +T17 -T16 -D15 -T17 outer15
++D9 +T10 -D9 -T10 inner9 +T11 got11 -T11 

@@ -69,7 +69,18 @@
     // leaves them while it is destroyed, and they are as they were after).
     void unwindRange(size_t low, size_t high);
 
-    // Destroys the scopes above depth for a `return`, `break` or `continue`, leaving the catch
-    // handlers in between through catchret: a funclet cannot branch out directly.
-    void leaveScopes(size_t depth);
+    // destroyRange without the restore: the scopes stay emptied of the objects destroyed.
+    void destroyRange(size_t low, size_t high);
+
+    // Destroys the scopes above depth for a `return`, `break`, `continue` or `goto`, leaving the
+    // tries and catch handlers in between, a handler through catchret (a funclet cannot branch out
+    // directly). sharedKept: a jump back to a label in scope depth - 1 also destroys the objects that
+    // scope built after the label, those past its first sharedKept.
+    void leaveScopes(size_t depth, size_t sharedKept = size_t(-1));
+
+    // A forward goto's way out, emitted at the goto, whose label's depth is not known yet: the
+    // scopes destroyed one by one, innermost first, each try and handler left once its scopes are
+    // (a handler through catchret), with a stop at each depth where something is left to do, in
+    // stops (the label branches each to itself or on). The last way on is unreachable.
+    void leaveForward(std::vector<GotoStop>& stops);
 

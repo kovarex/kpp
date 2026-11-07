@@ -99,8 +99,18 @@ auto codegen::Emitter::destroyObject(const Object& o) -> void
 
 auto codegen::Emitter::destroyOnExit(const Object& o) -> void
 {
-  if (!o.unwindOnly && !(!keptOnReturn.empty() && o.addr == keptOnReturn && !o.exception && !o.freeMemory))
-    destroyObject(o);
+  if (o.unwindOnly)
+    return;
+  if (!keptOnReturn.empty() && o.addr == keptOnReturn && !o.exception && !o.freeMemory)
+  {
+    // The named return, left by its return: the result, destroyed only when a destructor the
+    // return runs after it throws (ReturnStmt).
+    Object result = o;
+    result.unwindOnly = true;
+    statementTemps.push_back(result);
+    return;
+  }
+  destroyObject(o);
 }
 
 auto codegen::Emitter::subStatement(Stmt* s) -> void
@@ -147,6 +157,12 @@ auto codegen::Emitter::popScope() -> void
 auto codegen::Emitter::unwindRange(size_t low, size_t high) -> void
 {
   std::vector<std::vector<Object>> open(scopes.begin() + low, scopes.begin() + high);
+  destroyRange(low, high);
+  std::move(open.begin(), open.end(), scopes.begin() + low);
+}
+
+auto codegen::Emitter::destroyRange(size_t low, size_t high) -> void
+{
   for (size_t s = high; s-- > low;)
   {
     debugScopeEnd(s);
@@ -157,29 +173,102 @@ auto codegen::Emitter::unwindRange(size_t low, size_t high) -> void
       destroyOnExit(o);
     }
   }
-  std::move(open.begin(), open.end(), scopes.begin() + low);
 }
 
-auto codegen::Emitter::leaveScopes(size_t depth) -> void
+auto codegen::Emitter::leaveScopes(size_t depth, size_t sharedKept) -> void
 {
+  // Each try or handler the jump leaves is left once the objects of its own scopes are destroyed:
+  // an object outside a try is destroyed outside it, so what its destructor throws is not the try's
+  // to catch (until 2026-11-07 every frame but a handler's stayed open, and `D d; try { return 1; }
+  // catch (...) {}` caught d's exception in the function and destroyed d a second time). The scopes
+  // stay emptied until the end, so a destructor that throws unwinds through the objects not yet
+  // destroyed alone. A frame's `used` (a call unwinds to its dispatch) outlives the restore.
   std::vector<EHFrame> saved = ehFrames;
+  std::vector<std::vector<Object>> open(scopes.begin() + (depth > 0 ? depth - 1 : 0), scopes.end());
+  auto keepUsed = [&] {
+    for (size_t k = 0; k < ehFrames.size(); ++k)
+      saved[k].used = saved[k].used || ehFrames[k].used;
+  };
   size_t top = scopes.size();
   for (size_t i = ehFrames.size(); i-- > 0;)
   {
-    if (!ehFrames[i].isHandler)
-      continue;
     if (ehFrames[i].scopeDepth < depth)
-      break; // the target is inside this handler
-    unwindRange(ehFrames[i].scopeDepth, top);
+      break; // the target is inside this try or handler
+    destroyRange(ehFrames[i].scopeDepth, top);
     top = ehFrames[i].scopeDepth;
-    if (!ehFrames[i].funclet.empty()) // (off Windows a handler is plain code: nothing to leave)
+    if (ehFrames[i].isHandler && !ehFrames[i].funclet.empty()) // (off Windows a handler is plain code: nothing to leave)
     {
       std::string next = newLabel("catchret");
       fn += "  catchret from " + ehFrames[i].funclet + " to label %" + next + "\n";
       startBlock(next);
     }
+    keepUsed();
     ehFrames.resize(i);
   }
-  unwindRange(depth, top);
+  destroyRange(depth, top);
+  if (depth > 0 && sharedKept != size_t(-1))
+  {
+    std::vector<Object>& shared = scopes[depth - 1];
+    while (shared.size() > sharedKept)
+    {
+      Object o = shared.back();
+      shared.pop_back();
+      destroyOnExit(o);
+    }
+  }
+  keepUsed();
   ehFrames = saved;
+  std::move(open.begin(), open.end(), scopes.begin() + (depth > 0 ? depth - 1 : 0));
+}
+
+auto codegen::Emitter::leaveForward(std::vector<GotoStop>& stops) -> void
+{
+  // Until 2026-11-07 a trampoline at the label destroyed the objects there, inside the label's tries
+  // and handlers: a destructor that threw went to the label's handlers, past the objects the jump
+  // had not destroyed yet, and a goto out of a catch handler branched out of its funclet, which
+  // LLVM's Windows exception preparation dropped (the goto did nothing).
+  std::vector<EHFrame> saved = ehFrames;
+  std::vector<std::vector<Object>> open = scopes;
+  auto keepUsed = [&] {
+    for (size_t k = 0; k < ehFrames.size(); ++k)
+      saved[k].used = saved[k].used || ehFrames[k].used;
+  };
+  auto leaveFrames = [&](size_t depth) {
+    while (!ehFrames.empty() && ehFrames.back().scopeDepth >= depth)
+    {
+      if (ehFrames.back().isHandler && !ehFrames.back().funclet.empty())
+      {
+        std::string next = newLabel("catchret");
+        fn += "  catchret from " + ehFrames.back().funclet + " to label %" + next + "\n";
+        startBlock(next);
+      }
+      keepUsed();
+      ehFrames.pop_back();
+    }
+  };
+  auto stopHere = [&](size_t low, size_t high) {
+    GotoStop stop{low, high, newLabel("goto.stop"), newLabel("goto.leave")};
+    fn += "  br label %" + stop.stop + "\n";
+    blockTerminated = true;
+    startBlock(stop.next);
+    stops.push_back(std::move(stop));
+  };
+  size_t depth = scopes.size();
+  leaveFrames(depth);
+  size_t high = depth;
+  for (; depth > 0; --depth)
+  {
+    if (scopes[depth - 1].empty() && (ehFrames.empty() || ehFrames.back().scopeDepth < depth - 1))
+      continue; // (leaving the scope does nothing: the same stop)
+    stopHere(depth, high);
+    high = depth - 1;
+    destroyRange(depth - 1, depth);
+    leaveFrames(depth - 1);
+  }
+  stopHere(0, high);
+  fn += "  unreachable\n";
+  blockTerminated = true;
+  keepUsed();
+  ehFrames = saved;
+  scopes = std::move(open);
 }

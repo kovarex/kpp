@@ -91,11 +91,18 @@
       std::vector<size_t> counts;
       std::vector<uint32_t> inits; // scopeInits at the label
     };
+    // A point of a forward goto's way out (leaveForward): reaching it with the scopes from `low` to
+    // `high` still open, the jump goes on to the label (`stop` branches there) when the label's depth
+    // is among them, else to `next`, which destroys more.
+    struct GotoStop
+    {
+      size_t low, high;
+      std::string stop, next;
+    };
     struct PendingGoto
     {
-      std::string trampoline;
+      std::vector<GotoStop> stops;
       std::vector<uint32_t> ids;
-      std::vector<std::vector<Object>> objects;
       std::vector<uint32_t> inits; // scopeInits at the goto
       Node* at = nullptr;
     };

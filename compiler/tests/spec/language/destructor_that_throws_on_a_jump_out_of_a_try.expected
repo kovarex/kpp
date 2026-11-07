@@ -1,0 +1,12 @@
++D1 +T2 +T3 -T3 -T2 -D1 outer1
++T4 +D5 -D5 inner5 -T4 ret4
++D10 -D10 outer10
++T20 +D30 -D30 inner30 -T20 +T21 +D31 -D31 inner31 -T21 +T22 +D32 -D32 inner32 -T22 ret3
++D40 +T41 -T41 -D40 outer40
++D50 -D50 outer50
++D60 -D60 outer60
++T1 +D2 -D2 -T1 inner2 ret1
++T3 +T4 -T4 -T3 ret3
++T3 +T4 stay -T4 after -T3 ret3
++D5 +D6 -D6 -D5 outer6
++T7 -T7 +T8 -T8 ret5
