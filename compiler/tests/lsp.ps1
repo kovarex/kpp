@@ -8,7 +8,7 @@
 # nested: cells opened from below its build.kpp, as Visual Studio opens a generated solution.
 # inactive: the code the cell does not build (textDocument/inactiveRegions), debug then release.
 # refresh: workspace/semanticTokens/refresh after each check, to a client that takes it. colors:
-# Visual Studio's extension's semantic tokens (semanticColors, kpp/semanticTokensChanged).
+# Visual Studio's extension's semantic tokens (semanticColors, kpp/semanticTokensChanged), and kpp's own words (words.kpp).
 # navigation: tests\lsp\hierarchy, go to implementation and type definition, highlights, folding.
 # members: tests\lsp\members, completion after `this.`, `this->` and `This::`, and quick fixes.
 # -Update writes the expected files from this run (read them before committing). run_tests.cmd runs it.

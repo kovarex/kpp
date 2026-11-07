@@ -7,6 +7,7 @@
     { "include": "#comments" },
     { "include": "#strings" },
     { "include": "#numbers" },
+    { "include": "#kppWords" },
     { "include": "#keywords" },
     { "include": "#types" },
     { "include": "#functions" }
@@ -35,15 +36,42 @@
       "name": "constant.numeric.kpp",
       "match": "\\b(?:0[xX][0-9a-fA-F']+|0[bB][01']+|[0-9][0-9']*(?:\\.[0-9']*)?(?:[eE][+-]?[0-9]+)?)[uUlLfF]*\\b"
     },
+    "kppWords": {
+      "comment": "kpp's own words (docs/ide.md, Colors), where their neighbours say the parser takes them; the language server's semantic tokens (kppKeyword) are exact",
+      "patterns": [
+        {
+          "match": "(?:^|(?<=[;{})]|\\belse|\\bdo))\\s*\\b(check|require|fail|assert|release_assert)\\b(?=\\s*\\()",
+          "captures": { "1": { "name": "keyword.other.kpp-word.kpp" } }
+        },
+        { "name": "keyword.other.kpp-word.kpp", "match": "(?<![.>:])\\b(?:requireThrows|checkThrows)\\b(?=\\s*<)" },
+        { "name": "keyword.other.kpp-word.kpp", "match": "(?<![.>:])\\bnameof\\b(?=\\s*\\()" },
+        { "name": "keyword.other.kpp-word.kpp", "match": "\\bfallthrough\\b(?=\\s*;)" },
+        {
+          "match": "^\\s*(test|generate)\\b(?=\\s+[A-Za-z_])",
+          "captures": { "1": { "name": "keyword.other.kpp-word.kpp" } }
+        },
+        {
+          "begin": "^\\s*(suite)\\b(?=\\s+[A-Za-z_])", "end": "(?=\\{)|$",
+          "beginCaptures": { "1": { "name": "keyword.other.kpp-word.kpp" } },
+          "patterns": [{ "name": "keyword.other.kpp-word.kpp", "match": "\\b(?:depends|tags)\\b" }]
+        },
+        { "name": "keyword.other.kpp-word.kpp", "match": "\\b(?:implicit|both_const|class_const|accumulate|when|This)\\b" },
+        { "name": "keyword.other.kpp-word.kpp", "match": "\\bimport\\b(?=\\s*\")" },
+        {
+          "match": "(?<==)\\s*\\b(caller)\\b(?=\\s*[,)])",
+          "captures": { "1": { "name": "keyword.other.kpp-word.kpp" } }
+        }
+      ]
+    },
     "keywords": {
       "patterns": [
         {
           "name": "keyword.control.kpp",
-          "match": "\\b(?:if|else|for|while|do|switch|case|default|break|continue|return|goto|try|catch|throw|fallthrough|co_await|co_return|co_yield)\\b"
+          "match": "\\b(?:if|else|for|while|do|switch|case|default|break|continue|return|goto|try|catch|throw|co_await|co_return|co_yield)\\b"
         },
         {
           "name": "keyword.other.kpp",
-          "match": "\\b(?:class|struct|union|enum|namespace|using|typedef|template|typename|concept|requires|operator|new|delete|this|sizeof|alignof|alignas|decltype|static_assert|static_cast|dynamic_cast|const_cast|reinterpret_cast|noexcept|friend|public|protected|private|virtual|override|final|explicit|implicit|inline|extern|static|thread_local|mutable|volatile|const|constexpr|consteval|constinit|register|offsetof)\\b"
+          "match": "\\b(?:class|struct|union|enum|namespace|using|typedef|template|typename|concept|requires|operator|new|delete|this|sizeof|alignof|alignas|decltype|static_assert|static_cast|dynamic_cast|const_cast|reinterpret_cast|noexcept|friend|public|protected|private|virtual|override|final|explicit|inline|extern|static|thread_local|mutable|volatile|const|constexpr|consteval|constinit|register|offsetof)\\b"
         },
         { "name": "constant.language.kpp", "match": "\\b(?:true|false|nullptr)\\b" },
         { "name": "keyword.operator.kpp", "match": "\\?->|\\?:(?!:)" }
@@ -51,7 +79,7 @@
     },
     "types": {
       "name": "storage.type.kpp",
-      "match": "\\b(?:This|void|bool|char|char8_t|char16_t|char32_t|wchar_t|short|int|long|signed|unsigned|float|double|auto|int8_t|int16_t|int32_t|int64_t|uint8_t|uint16_t|uint32_t|uint64_t|size_t|ptrdiff_t|int8|int16|int32|int64|uint8|uint16|uint32|uint64)\\b"
+      "match": "\\b(?:void|bool|char|char8_t|char16_t|char32_t|wchar_t|short|int|long|signed|unsigned|float|double|auto|int8_t|int16_t|int32_t|int64_t|uint8_t|uint16_t|uint32_t|uint64_t|size_t|ptrdiff_t|int8|int16|int32|int64|uint8|uint16|uint32|uint64)\\b"
     },
     "functions": {
       "name": "entity.name.function.kpp",

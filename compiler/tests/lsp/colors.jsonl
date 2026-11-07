@@ -5,6 +5,11 @@
 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootUri":"$ROOT","capabilities":{},"initializationOptions":{"semanticColors":true}}}
 {"jsonrpc":"2.0","method":"initialized","params":{}}
 {"jsonrpc":"2.0","id":2,"method":"textDocument/semanticTokens/full","params":{"textDocument":{"uri":"$ROOT/shapes.kpp"}}}
+// words.kpp's tokens: kpp's own words are kppKeyword (12) where the parser takes them: `when`,
+// `implicit`, `This`, `fallthrough;`, `assert(`, `suite`, `depends`, `test`, and in the test (skipped
+// without --tests) the statements `check(`, `require(`, `fail(` and `requireThrows<`. The method
+// check stays a method (11) where it is called, `g.check(3)` and `g.check(kind)`.
+{"jsonrpc":"2.0","id":5,"method":"textDocument/semanticTokens/full","params":{"textDocument":{"uri":"$ROOT/words.kpp"}}}
 // The legend the extension maps the tokens by (kpp/semanticTokensLegend): the capability's.
 {"jsonrpc":"2.0","id":4,"method":"kpp/semanticTokensLegend","params":{}}
 {"jsonrpc":"2.0","id":3,"method":"shutdown"}

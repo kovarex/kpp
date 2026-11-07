@@ -1947,23 +1947,27 @@ namespace
       if (isKpp() && atIdent(kwTest) && (scope == Scope::Namespace || scope == Scope::Class) &&
           (at(TokenKind::String, 1) || (atIdent(1) && (at(P::LBrace, 2) || at(P::Colon, 2)))))
       {
+        noteWord(pos);
         parseTest(scope);
         return;
       }
       if (isKpp() && atIdent(kwTest) && (scope == Scope::Namespace || scope == Scope::Class) &&
           (at(TokenKind::Keyword, 1) || (atIdent(1) && (atIdent(2) || at(P::Star, 2) || at(P::Amp, 2) || at(P::ColonColon, 2) || at(P::Less, 2)))))
       {
+        noteWord(pos);
         parseTestDeclaration(scope);
         return;
       }
       if (isKpp() && atIdent(kwGenerate) && atIdent(1) && at(P::LBrace, 2) && scope == Scope::Namespace && (currentSuite || !testsEnabled()))
       {
+        noteWord(pos);
         parseGenerate();
         return;
       }
       if (isKpp() && atIdent(kwTestSuite) && atIdent(1) && scope == Scope::Namespace &&
           (at(P::LBrace, 2) || atIdent(kwDepends, 2) || atIdent(kwTags, 2)))
       {
+        noteWord(pos);
         parseSuite();
         return;
       }
@@ -2032,6 +2036,7 @@ namespace
         advance();
         if (atIdent(kwImport) && at(TokenKind::String, 1))
         {
+          noteWord(pos);
           ImportDecl* imp = decl<ImportDecl>(start);
           advance();
           imp->pathToken = pos;
@@ -2500,6 +2505,7 @@ namespace
         else if (atContextualSpecifier(kwImplicit) || atImplicitCondition())
         {
           uint32_t mark = pos;
+          noteWord(pos);
           advance();
           if (sawImplicit)
             out.diagnostics.push_back({mark, "implicit is written twice: remove `implicit`"});
@@ -2524,10 +2530,11 @@ namespace
             flags |= DF_Explicit;
           }
         }
-        else if (atContextualSpecifier(kwBothConst)) { advance(); flags |= DF_BothConst; }
-        else if (atContextualSpecifier(kwAccumulate)) { advance(); flags |= DF_Accumulate; }
+        else if (atContextualSpecifier(kwBothConst)) { noteWord(pos); advance(); flags |= DF_BothConst; }
+        else if (atContextualSpecifier(kwAccumulate)) { noteWord(pos); advance(); flags |= DF_Accumulate; }
         else if (atIdent(kwConditional) && at(P::LParen, 1))
         {
+          noteWord(pos);
           // conditional(expr): the function exists only while expr, a config constant, is true.
           advance();
           advance();
@@ -3055,6 +3062,7 @@ namespace
       {
         if (atIdent(kwCaller) && (at(P::Comma, 1) || at(P::RParen, 1)))
         {
+          noteWord(pos);
           p->defaultValue = node<CallerExpr>(pos); // the compiler fills in the call site
           advance();
         }
@@ -3970,6 +3978,56 @@ namespace
       pos = from;
     }
 
+    // kpp's own word at token `at`, where the parser takes it as one (ParsedFile::kppWords).
+    void noteWord(uint32_t at)
+    {
+      out.kppWords.push_back(toks[at].offset);
+    }
+
+    // Test code skipped without --tests, tokens [from, to]: its words where a --tests parse takes them,
+    // told by their neighbours (the parser reads none of it). In a suite, a declaration's `test` and
+    // `generate`; in any of it, the statements check, require, fail, assert, release_assert and
+    // fallthrough, and requireThrows<, checkThrows< and nameof( not after `.`, `->` or `::`.
+    void noteSkippedTestWords(uint32_t from, uint32_t to)
+    {
+      auto ident = [&](uint32_t i, uint32_t symbol) { return toks[i].getKind() == TokenKind::Identifier && toks[i].id == symbol; };
+      auto member = [&](uint32_t i) { return i > 0 && (toks[i - 1].is(P::Dot) || toks[i - 1].is(P::Arrow) || toks[i - 1].is(P::SafeArrow) || toks[i - 1].is(P::ColonColon)); };
+      // A statement or declaration starts at i: after `;`, a brace, `else`, `do`, or the `)` that closes
+      // the condition of an if, while, for or switch.
+      auto starts = [&](uint32_t i)
+      {
+        const Token& p = toks[i - 1];
+        if (p.is(P::Semi) || p.is(P::LBrace) || p.is(P::RBrace) || p.is(Kw::else_) || p.is(Kw::do_))
+          return true;
+        if (!p.is(P::RParen))
+          return false;
+        int level = 0;
+        for (uint32_t k = i - 1; k > from; --k)
+          if (toks[k].is(P::RParen))
+            ++level;
+          else if (toks[k].is(P::LParen) && --level == 0)
+            return toks[k - 1].is(Kw::if_) || toks[k - 1].is(Kw::while_) || toks[k - 1].is(Kw::for_) || toks[k - 1].is(Kw::switch_);
+        return false;
+      };
+      for (uint32_t i = from + 1; i < to && toks[i].getKind() != TokenKind::End; ++i)
+      {
+        if (toks[i].getKind() != TokenKind::Identifier)
+          continue;
+        const Token& next = toks[i + 1];
+        if ((ident(i, kwCheck) || ident(i, kwRequire) || ident(i, kwFail) || ident(i, kwAssert) || ident(i, kwReleaseAssert)) && next.is(P::LParen) && starts(i))
+          noteWord(i);
+        else if (ident(i, kwFallthrough) && next.is(P::Semi) && starts(i))
+          noteWord(i);
+        else if ((ident(i, kwRequireThrows) || ident(i, kwCheckThrows)) && next.is(P::Less) && !member(i))
+          noteWord(i);
+        else if (ident(i, kwNameof) && next.is(P::LParen) && !member(i))
+          noteWord(i);
+        else if ((ident(i, kwTest) || ident(i, kwGenerate)) && starts(i) && toks[i - 1].getKind() == TokenKind::Punctuator &&
+                 (next.getKind() == TokenKind::Identifier || next.getKind() == TokenKind::Keyword))
+          noteWord(i);
+      }
+    }
+
     // `test Name { ... }` and `test Name : Fixture(arguments) { ... }` (design.md 8.6, 8.7), at
     // namespace scope (in a suite or not) or in a class (no fixture there). Without --tests
     // (config::tests) it is skipped. With it the parser writes, in tokens it then reads:
@@ -4019,6 +4077,7 @@ namespace
       if (!testsEnabled())
       {
         pos = i;
+        noteSkippedTestWords(pos, closingToken(pos));
         skipBalanced();
         return;
       }
@@ -4116,6 +4175,7 @@ namespace
         {
           if (at(P::LBrace))
           {
+            noteSkippedTestWords(pos, closingToken(pos));
             skipBalanced();
             accept(P::Semi);
             return;
@@ -4149,6 +4209,7 @@ namespace
       if (!testsEnabled())
       {
         pos = open;
+        noteSkippedTestWords(pos, closingToken(pos));
         skipBalanced();
         return;
       }
@@ -4183,6 +4244,8 @@ namespace
       if (atIdent(kwDepends))
         do
         {
+          if (atIdent(kwDepends))
+            noteWord(pos);
           advance();
           if (!atIdent())
           {
@@ -4196,6 +4259,8 @@ namespace
       if (atIdent(kwTags))
         do
         {
+          if (atIdent(kwTags))
+            noteWord(pos);
           advance();
           if (!atIdent())
           {
@@ -4213,6 +4278,7 @@ namespace
       }
       if (!testsEnabled())
       {
+        noteSkippedTestWords(pos, closingToken(pos));
         skipBalanced();
         return;
       }
@@ -4360,6 +4426,7 @@ namespace
       }
       if (atIdent(kwClassConst))
       {
+        noteWord(pos);
         advance();
         c->isClassConst = true;
       }
@@ -5008,16 +5075,21 @@ namespace
       }
       if (atIdent(kwFallthrough) && at(P::Semi, 1))
       {
+        noteWord(pos);
         advance();
         advance();
         return node<FallthroughStmt>(start);
       }
       if (inTest && (atIdent(kwRequireThrows) || atIdent(kwCheckThrows)) && at(P::Less, 1))
+      {
+        noteWord(pos);
         spliceThrows(); // then an expression statement, below
+      }
       if (inTest && atIdent(kwFail) && at(P::LParen, 1))
       {
         // fail(arguments...); in a test (design.md 8.7): fails and ends it, the arguments its
         // message (the runner's __kppMessage, false); kpp_check_failed's kind 3.
+        noteWord(pos);
         AssertStmt* s = node<AssertStmt>(start);
         s->testKind = 3;
         advance();
@@ -5034,6 +5106,7 @@ namespace
         // the runner's __kppEqual (NotEqual, Less...), which keeps the operands for the message.
         // `check(cond, arguments...)` (8.7): `cond || __kppMessage(arguments...)`, the message made
         // only when cond fails.
+        noteWord(pos);
         AssertStmt* s = node<AssertStmt>(start);
         s->testKind = atIdent(kwCheck) ? 1 : 2;
         advance();
@@ -5068,6 +5141,7 @@ namespace
       }
       if ((atIdent(kwAssert) || atIdent(kwReleaseAssert)) && at(P::LParen, 1))
       {
+        noteWord(pos);
         AssertStmt* s = node<AssertStmt>(start);
         s->release = atIdent(kwReleaseAssert);
         advance();
@@ -6435,7 +6509,10 @@ namespace
         }
       }
       if (inTest && (atIdent(kwRequireThrows) || atIdent(kwCheckThrows)) && at(P::Less, 1))
+      {
+        noteWord(pos);
         spliceThrows();
+      }
       if (atIdent(kwKppText) && atIdent(1))
       {
         // `__kpp_text X`, which only the parser writes (synthesize): X's spelling as a string literal.
@@ -6448,6 +6525,7 @@ namespace
       }
       if (atIdent(kwNameof) && at(P::LParen, 1))
       {
+        noteWord(pos);
         NameofExpr* n = node<NameofExpr>(start);
         advance();
         advance();

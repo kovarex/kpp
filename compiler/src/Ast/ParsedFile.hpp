@@ -27,6 +27,13 @@ struct ParsedFile
   // Each [[deprecated]] declaration of the file with the token of its reason's string literal
   // (UINT32_MAX: none written), which a call's warning quotes (Walker::noteDeprecatedCall).
   std::vector<std::pair<const struct Decl*, uint32_t>> deprecations;
+  // The source offsets of kpp's own words where the parser takes them as such (the language server
+  // colors them: docs/ide.md): check, require, fail, requireThrows, checkThrows, assert,
+  // release_assert, fallthrough, nameof, test, suite, depends, tags, generate, implicit, both_const,
+  // class_const, accumulate, conditional, caller, import; in test code skipped without --tests, by
+  // their neighbours. Not sorted; a speculative parse may repeat one. Offsets, as a test's tokens
+  // are spliced.
+  std::vector<uint32_t> kppWords;
   bool isLibrary = false;  // The standard library's sources (set by the driver): the top-level names they claim are reserved.
   Scope* privateScope = nullptr; // Its `private` top-level names (design.md 15), set by the resolver's index.
   // The library it is a file of (design.md 16; set by the driver): its name, empty for the program's

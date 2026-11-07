@@ -448,7 +448,7 @@ name, found by token (`occurrencesIn`, one walk of the file, cached until the ne
 | `textDocument/signatureHelp` (`(`, `,`) | the overloads of the function called (a member after `.` and `->`, a scope's after `X::`), each parameter's range in the label, the argument the cursor is at |
 | `textDocument/prepareRename`, `textDocument/rename` | below |
 | `textDocument/codeAction` | below, "Quick fixes" |
-| `textDocument/semanticTokens/full` | every resolved name and declaration's own name by kind (namespace, type, class, enum, struct, typeParameter, parameter, variable, property, enumMember, function, method), `declaration` and `defaultLibrary` (the standard library's) as modifiers |
+| `textDocument/semanticTokens/full` | every resolved name and declaration's own name by kind (namespace, type, class, enum, struct, typeParameter, parameter, variable, property, enumMember, function, method), `declaration` and `defaultLibrary` (the standard library's) as modifiers; kppKeyword for kpp's own words where the parser takes them (`check(`, `require(`, `fail(`, `requireThrows<`, `checkThrows<`, `assert(`, `fallthrough;`, `nameof(`, `implicit`, `This`, `when`, `test`, `suite`, `depends`, `tags`, `generate`, `caller`, `import`...; in test code skipped without `--tests`, by their neighbours), drawn bold in a keyword's color (Visual Studio's "kpp Keyword", VS Code's `kppKeyword`), while a method `obj.check(x)` stays a method (tests/lsp/colors.jsonl) |
 
 **Rename never misses a use silently.** Every identifier spelled like the old name in the program's
 own files must be accounted for: a name the compiler resolved to the declaration (or to one of its

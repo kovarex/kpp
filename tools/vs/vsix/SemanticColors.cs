@@ -68,10 +68,12 @@ internal static class SemanticTokens
     /// <summary>
     /// The C++ classification a token is drawn as, by its type's and modifiers' names. A local is
     /// left as the grammar draws it, in the text's color (kovarex, 2026-11-04), and so are keywords,
-    /// literals and comments.
+    /// literals and comments. kpp's own words (check, require, fallthrough, implicit, This...), where
+    /// the parser takes them as such, are "kpp Keyword" (<see cref="KppKeywordFormat"/>).
     /// </summary>
     public static string? ClassificationOf(string type, bool isStatic, bool globalScope) => type switch
     {
+        "kppKeyword" => KppKeywordFormat.ClassificationName,
         "namespace" => "cppNamespace",
         "type" or "class" or "enum" or "struct" or "typeParameter" => "cppType",
         "parameter" => "cppParameter",
@@ -142,6 +144,34 @@ internal static class SemanticTokens
         Tokens[path] = tokens.ToArray();
         KppLanguageClient.Log($"kpp: semantic tokens in {path}: {tokens.Count}");
         Changed?.Invoke(path);
+    }
+}
+
+/// <summary>
+/// How kpp's own words are drawn (the server's kppKeyword, docs/ide.md): a keyword's color, bold, so
+/// that `check(...)` in a test reads as the statement it is, not a call (Tools > Options > Fonts and
+/// Colors, "kpp Keyword").
+/// </summary>
+[Export(typeof(EditorFormatDefinition))]
+[ClassificationType(ClassificationTypeNames = KppKeywordFormat.ClassificationName)]
+[Name(KppKeywordFormat.ClassificationName)]
+[UserVisible(true)]
+[Order(After = Priority.High)]
+internal sealed class KppKeywordFormat : ClassificationFormatDefinition
+{
+    public const string ClassificationName = "kpp keyword";
+
+#pragma warning disable CS0649 // MEF reads it.
+    [Export]
+    [Name(ClassificationName)]
+    [BaseDefinition("keyword")] // (PredefinedClassificationTypeNames.Keyword)
+    internal static ClassificationTypeDefinition? Type;
+#pragma warning restore CS0649
+
+    public KppKeywordFormat()
+    {
+        this.DisplayName = "kpp Keyword";
+        this.IsBold = true;
     }
 }
 

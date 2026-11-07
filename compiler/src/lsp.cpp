@@ -2708,9 +2708,11 @@ namespace
 
     // ---- semantic tokens ----
 
-    // The legend's token types, in order (semanticTokensProvider.legend).
+    // The legend's token types, in order (semanticTokensProvider.legend). kppKeyword: a word only kpp
+    // has, where it is one (docs/ide.md, "Colors"): ParsedFile::kppWords, `This` and `when`.
     static constexpr const char* tokenTypes[] = {"namespace", "type", "class", "enum", "struct", "typeParameter", "parameter", "variable",
-                                                 "property", "enumMember", "function", "method"};
+                                                 "property", "enumMember", "function", "method", "kppKeyword"};
+    enum : int { TypeKppKeyword = 12 };
 
     int tokenType(const Decl* d)
     {
@@ -2760,18 +2762,43 @@ namespace
         if (!f || !f->tokens)
           return;
         const LineStarts& starts = startsOf(f);
-        size_t previousLine = 0, previousStart = 0;
+        // Each token by its offset: (offset, length, type, modifiers). kpp's own words come first, so
+        // that a name the parser wrote at one (a test's call of __kppRequireThrows) is not drawn there.
+        struct Colored { uint32_t offset, length; int type, modifiers; };
+        std::vector<Colored> colored;
+        auto wordLength = [&](uint32_t offset)
+        {
+          uint32_t end = offset;
+          while (end < f->text.size() && (isalnum((unsigned char)f->text[end]) || f->text[end] == '_'))
+            ++end;
+          return end - offset;
+        };
+        for (uint32_t offset : f->kppWords)
+          colored.push_back({offset, wordLength(offset), TypeKppKeyword, 0});
+        if (!f->isImported) // (C code has `This` and `when` as names)
+          for (const Token& t : *f->tokens)
+            if (t.is(Kw::when_) || (t.getKind() == TokenKind::Identifier && f->text.substr(t.offset, t.length) == "This"))
+              colored.push_back({t.offset, t.length, TypeKppKeyword, 0});
         for (const Occurrence& o : occurrencesOf(f))
         {
           int type = tokenType(o.decl);
           if (type < 0)
             continue;
           const Token& t = (*f->tokens)[o.token];
-          size_t line = starts.index(t.offset);
-          size_t start = utf16Units(f->text, starts[line], t.offset);
           int modifiers = (o.declaration ? ModifierDeclaration : 0) | (o.decl->file && o.decl->file->isLibrary ? ModifierDefaultLibrary : 0) | scopeModifiers(program, o.decl);
+          colored.push_back({t.offset, t.length, type, modifiers});
+        }
+        std::stable_sort(colored.begin(), colored.end(), [](const Colored& a, const Colored& b) { return a.offset < b.offset; });
+        size_t previousLine = 0, previousStart = 0;
+        for (size_t k = 0; k < colored.size(); ++k)
+        {
+          const Colored& c = colored[k];
+          if (k > 0 && colored[k - 1].offset == c.offset)
+            continue;
+          size_t line = starts.index(c.offset);
+          size_t start = utf16Units(f->text, starts[line], c.offset);
           data.push(line - previousLine).push(line == previousLine ? start - previousStart : start)
-            .push(utf16Units(f->text, t.offset, size_t(t.offset) + t.length)).push(type).push(modifiers);
+            .push(utf16Units(f->text, c.offset, size_t(c.offset) + c.length)).push(c.type).push(c.modifiers);
           previousLine = line;
           previousStart = start;
         }

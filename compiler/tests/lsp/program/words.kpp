@@ -1,0 +1,42 @@
+// kpp's own words, colored as keywords where the parser takes them (tests\lsp\colors.jsonl), and a
+// method named check, which stays a method.
+struct Gauge
+{
+  i32 hits = 0;
+  when (config::tests) i32 probes = 0;
+
+  implicit Gauge(i32 h) : hits(h) {}
+  bool check(i32 x) const { return x == this->hits; }
+  bool same(const This& other) const { return this->hits == other.hits; }
+};
+
+i32 gaugeStep(i32 kind)
+{
+  switch (kind)
+  {
+  case 0:
+    fallthrough;
+  case 1:
+    return 1;
+  }
+  Gauge g = 3;
+  assert(g.check(3));
+  return g.check(kind) ? 2 : 0;
+}
+
+suite gaugeBasics
+{
+}
+
+suite gaugeWords depends gaugeBasics
+{
+  test checking
+  {
+    Gauge g = 3;
+    check(g.check(3));
+    require(g.hits == 3);
+    if (g.hits > 5)
+      fail("too many");
+    requireThrows<i32>(gaugeStep(9));
+  }
+}

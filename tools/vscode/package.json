@@ -22,8 +22,19 @@
     "grammars": [
       { "language": "kpp", "scopeName": "source.kpp", "path": "./syntaxes/kpp.tmLanguage.json" }
     ],
+    "semanticTokenTypes": [
+      {
+        "id": "kppKeyword",
+        "superType": "keyword",
+        "description": "A word only kpp has, where it is one: check, require, fail, requireThrows, checkThrows, fallthrough, implicit, This, when, test, suite, depends..."
+      }
+    ],
+    "semanticTokenScopes": [
+      { "language": "kpp", "scopes": { "kppKeyword": ["keyword.other.kpp-word.kpp"] } }
+    ],
     "configurationDefaults": {
-      "[kpp]": { "editor.semanticHighlighting.enabled": true }
+      "[kpp]": { "editor.semanticHighlighting.enabled": true },
+      "editor.semanticTokenColorCustomizations": { "rules": { "kppKeyword": { "bold": true } } }
     },
     "configuration": {
       "title": "kpp",
