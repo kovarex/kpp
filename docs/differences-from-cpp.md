@@ -448,8 +448,8 @@ Pinned make() { Pinned p; return p; }   // compiles: an error in C++
   function argument: `draw(Color(1, 0, 0))`, not `draw({1, 0, 0})`. In `return {x, y};` and `Color c =
   {1, 0, 0};` a list of two or more values takes any constructor, and `{a}` needs `implicit`. A default
   constructor is never a conversion; `if (x)` takes an unmarked `operator bool`, a `switch` a marked
-  conversion; `Box b = 5;` deduces from marked constructors only. The keyword is accepted today, and an
-  unmarked constructor still converts.
+  conversion; `Box b = 5;` deduces from marked constructors only. `implicit` and `implicit(cond)` are
+  built, and an unmarked constructor still converts.
 - **Why:** an implicit conversion should be something the author asked for, and a keyword that does
   nothing goes (kovarex, 2026-11-07).
 - **See:** [design 6][d6] and its "Explicit by default" entry; spec `kpp/implicit_constructors`.

@@ -126,6 +126,9 @@ struct FunctionDecl : Decl
   Expr* requiresClause = nullptr;
   Expr* condition = nullptr; // conditional(expr): calls compile to nothing while expr is false.
   Expr* explicitCondition = nullptr; // explicit(expr): explicit only while expr (a template parameter, usually) is true.
+  // The token of the `explicit` or `implicit` written on it (UINT32_MAX: neither), where a message's fix points
+  // (design.md 23e). `implicit(cond)` is kept as explicitCondition `!(cond)`, with DF_Implicit and DF_Explicit.
+  uint32_t conversionMark = UINT32_MAX;
   Expr* noexceptCondition = nullptr; // noexcept(expr): noexcept only while expr is true (`noexcept(false)`, `noexcept(isNothrowMoveConstructible<T>)`).
   // `Pair<int, Mode> five(a, m);` at namespace scope: the names as expressions. The resolver makes
   // the declaration an object constructed from them when they are variables (design.md rule 2).

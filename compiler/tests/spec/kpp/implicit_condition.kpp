@@ -1,0 +1,16 @@
+// spec: `implicit(cond)` (design.md "Explicit by default", Q3: the positive form replacing explicit(cond)): the constructor or conversion operator converts while the condition holds under the instance's arguments, and is explicit while it does not; direct initialization takes it either way
+template <typename T> struct Wrapper
+{
+  T value;
+  implicit(isIntegral<T>) Wrapper(T v) : value(v) {}
+  implicit(!isIntegral<T>) operator double() const { return double(value) / 2; }
+};
+int take(Wrapper<int> w) { return w.value; }
+double half(double d) { return d; }
+int main()
+{
+  Wrapper<int> a = 5;
+  Wrapper<double> c(1.5);
+  println(take(7), " ", a.value, " ", c.value, " ", half(c), " ", double(a));
+  return 0;
+}

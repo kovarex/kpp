@@ -1,0 +1,15 @@
+// spec: `implicit(cond)` false is explicit: copy-initialization does not take it; `implicit` written twice, or beside `explicit`, is an error whose fix names the word to remove (design.md 23e)
+// error: implicit_condition_errors_is_error.kpp:8: error: implicit is written twice: remove `implicit`
+// error: implicit_condition_errors_is_error.kpp:9: error: a function is implicit or explicit, not both: remove `explicit`
+// error: implicit_condition_errors_is_error.kpp:13: error: copy-initialising
+template <typename T> struct Wrapper
+{
+  T value;
+  implicit(isIntegral<T>) implicit Wrapper(T v) : value(v) {}
+  explicit implicit Wrapper(T a, T b) : value(a + b) {}
+};
+int main()
+{
+  Wrapper<double> b = 1.5;
+  return 0;
+}

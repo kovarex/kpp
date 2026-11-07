@@ -4642,7 +4642,9 @@ its IR for every spec snippet (1073) is byte-identical before and after.
      no candidate there; written guides are as in C++.
   6. Inherited constructors keep their base's mark; a copy or move constructor is never a conversion.
   The order: the counts and the marks first (the converter marks the game, C; the stdlib's `implicit(cond)`s and
-  Atomic's `operator T`), the warnings, then the flip with the errors, the headline staying 0.
+  Atomic's `operator T`), the warnings, then the flip with the errors, the headline staying 0. Built: `implicit(cond)`
+  (kept as the explicit condition `!(cond)`), and `implicit` twice or beside `explicit` an error naming the word to remove
+  (2026-11-07, specs kpp/implicit_condition, kpp/implicit_condition_errors_is_error).
 
 - **The noexcept operator** (D, 2026-11-06, [except.spec] 6) answers for any operand: what it names and what it
   calls without naming it (Walker::canThrow): a class's operators, constructions, implicit and defaulted

@@ -2453,8 +2453,28 @@ namespace
       return atIdent(keyword) && (at(TokenKind::Identifier, 1) || at(TokenKind::Keyword, 1));
     }
 
+    // At `implicit(` that is the specifier `implicit(cond)` (kovarex, 2026-11-07): after its balanced
+    // parentheses comes the rest of a declaration, a name or a keyword, never a call's `;` or operator.
+    bool atImplicitCondition() const
+    {
+      if (!atIdent(kwImplicit) || !at(P::LParen, 1))
+        return false;
+      int level = 0;
+      for (int ahead = 1;; ++ahead)
+      {
+        const Token& t = tok(ahead);
+        if (t.getKind() == TokenKind::End)
+          return false;
+        if (t.is(P::LParen))
+          ++level;
+        else if (t.is(P::RParen) && --level == 0)
+          return tok(ahead + 1).getKind() == TokenKind::Identifier || tok(ahead + 1).getKind() == TokenKind::Keyword;
+      }
+    }
+
     void parseDeclSpecifiers(uint32_t& flags)
     {
+      bool sawImplicit = false, sawExplicit = false;
       for (;;)
       {
         skipAttributes();
@@ -2477,7 +2497,33 @@ namespace
         else if (accept(Kw::typedef_)) flags |= DF_Typedef;
         else if (accept(Kw::register_)) flags |= DF_Register;
         else if (accept(Kw::export_)) flags |= DF_Export;
-        else if (atContextualSpecifier(kwImplicit)) { advance(); flags |= DF_Implicit; }
+        else if (atContextualSpecifier(kwImplicit) || atImplicitCondition())
+        {
+          uint32_t mark = pos;
+          advance();
+          if (sawImplicit)
+            out.diagnostics.push_back({mark, "implicit is written twice: remove `implicit`"});
+          else if (sawExplicit)
+            out.diagnostics.push_back({pendingConversionMark, "a function is implicit or explicit, not both: remove `explicit`"});
+          sawImplicit = true;
+          flags |= DF_Implicit;
+          pendingConversionMark = mark;
+          if (at(P::LParen))
+          {
+            // implicit(condition): it converts while the condition holds, C++'s explicit(!condition) (kovarex,
+            // 2026-11-07: the positive form replaces explicit(cond)); kept as that explicit condition.
+            advance();
+            Expr* condition = parseExpression();
+            expect(P::RParen, "expected ')' after the implicit condition");
+            UnaryExpr* no = node<UnaryExpr>(mark);
+            no->operand = condition;
+            no->op = uint32_t(P::Bang);
+            no->isKeyword = false;
+            no->postfix = false;
+            pendingExplicitCondition = no;
+            flags |= DF_Explicit;
+          }
+        }
         else if (atContextualSpecifier(kwBothConst)) { advance(); flags |= DF_BothConst; }
         else if (atContextualSpecifier(kwAccumulate)) { advance(); flags |= DF_Accumulate; }
         else if (atIdent(kwConditional) && at(P::LParen, 1))
@@ -2490,6 +2536,13 @@ namespace
         }
         else if (at(Kw::explicit_))
         {
+          if (sawImplicit)
+            out.diagnostics.push_back({pos, "a function is implicit or explicit, not both: remove `explicit`"});
+          else if (sawExplicit)
+            out.diagnostics.push_back({pos, "explicit is written twice: remove `explicit`"});
+          sawExplicit = true;
+          if (!sawImplicit)
+            pendingConversionMark = pos;
           advance();
           flags |= DF_Explicit;
           if (at(P::LParen))
@@ -3056,6 +3109,8 @@ namespace
       pendingCondition = nullptr;
       f->explicitCondition = pendingExplicitCondition;
       pendingExplicitCondition = nullptr;
+      f->conversionMark = pendingConversionMark;
+      pendingConversionMark = UINT32_MAX;
       f->noexceptCondition = d.noexceptCondition;
       f->refQualifier = d.refQualifier;
       if (pendingAttributes & ATTR_NoUniqueAddress)
@@ -7023,6 +7078,7 @@ namespace
     Expr* pendingAlignment = nullptr; // alignas(N) seen before the current class.
     Expr* pendingCondition = nullptr; // conditional(expr) seen in the current specifiers.
     Expr* pendingExplicitCondition = nullptr; // explicit(expr) seen in the current specifiers.
+    uint32_t pendingConversionMark = UINT32_MAX; // the token of the `explicit` or `implicit` seen in them
   private:
     std::vector<Token>& toks;
     const char* text;
