@@ -88,6 +88,42 @@ auto codegen::Emitter::debugType(const Ty* t) -> std::string
   return placeholder;
 }
 
+auto codegen::Emitter::debugSharedNode(const std::string& spelling, const std::function<std::string()>& make) -> std::string
+{
+  uint64_t key = 14695981039346656037ull;
+  for (unsigned char c : spelling)
+    key = (key ^ c) * 1099511628211ull;
+  std::string placeholder = debugTypePlaceholder(key);
+  {
+    auto lock = sharedLock();
+    auto [it, isNew] = sh.debugTypes.try_emplace(key);
+    if (!isNew && it->second.generation == sh.debugGeneration)
+      return placeholder; // (made, or being made)
+    it->second.generation = sh.debugGeneration;
+  }
+  std::string text = make();
+  auto lock = sharedLock();
+  Shared::DebugTypeText& made = sh.debugTypes[key];
+  made.text = std::move(text);
+  made.type = nullptr;
+  return placeholder;
+}
+
+auto codegen::Emitter::debugFileNode(const ParsedFile* file) -> std::string
+{
+  const std::string& node = debugFileOf(file);
+  if (!sh.fullDebugInfo)
+    return node; // (a build of line tables alone appends no shared nodes)
+  return debugSharedNode("file " + node, [&] { return debugId(0) + " = " + node + "\n"; });
+}
+
+auto codegen::Emitter::debugObjectPointer(const Ty* cls) -> std::string
+{
+  std::string pointee = debugType(cls);
+  return debugSharedNode("object pointer " + irString(cls), [&]
+  { return debugId(0) + " = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: " + pointee + ", size: 64, flags: DIFlagArtificial | DIFlagObjectPointer)\n"; });
+}
+
 auto codegen::Emitter::debuggerTypeName(std::string name) -> std::string
 {
   for (size_t i = name.find(">>"); i != std::string::npos; i = name.find(">>", i))
@@ -314,7 +350,7 @@ auto codegen::Emitter::debugGlobal(const std::string& name, VariableDecl* def, c
   char placeholder[24];
   snprintf(placeholder, sizeof placeholder, "!G%016llx", (unsigned long long)key);
   std::string text = debugId(0) + " = !DIGlobalVariableExpression(var: " + debugId(1) + ", expr: !DIExpression())\n" + debugId(1) +
-                     " = distinct !DIGlobalVariable(name: " + metadataString(debuggerTypeName(bare)) + ", scope: !0, file: " + debugFileOf(def->file) +
+                     " = distinct !DIGlobalVariable(name: " + metadataString(debuggerTypeName(bare)) + ", scope: !0, file: " + debugFileNode(def->file) +
                      ", line: " + std::to_string(lineOf(def, def->file)) + ", type: " + debugType(t) + ", isLocal: false, isDefinition: true)\n";
   auto lock = sharedLock();
   sh.debugGlobals[key] = std::move(text);
@@ -453,7 +489,7 @@ auto codegen::Emitter::debugMethodText(const Ty* cls, ClassDecl* c, FunctionDecl
     classType = debugType(cls);
     list = ft->inner && ft->inner->isKnown() && ft->inner->kind != TyKind::Void ? debugType(ft->inner) : std::string("null");
     if (!isStatic)
-      list += ", " + debugId(3);
+      list += ", " + debugObjectPointer(types.qualified(cls, m->flags & DF_Const, m->flags & DF_Volatile));
     for (const Ty* a : ft->args)
       list += ", " + (a && a->isKnown() && !types.isDependent(a) ? debugType(a) : std::string("null"));
   }
@@ -473,9 +509,6 @@ auto codegen::Emitter::debugMethodText(const Ty* cls, ClassDecl* c, FunctionDecl
                      debugId(1) + " = !DISubroutineType(" +
                      debugRefQualifier(m->refQualifier == FunctionDecl::RefQualifier::LValue, m->refQualifier == FunctionDecl::RefQualifier::RValue) +
                      "types: " + debugId(2) + ")\n" + debugId(2) + " = !{ " + list + " }\n";
-  if (!isStatic)
-    text += debugId(3) + " = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: " +
-            debugType(types.qualified(cls, m->flags & DF_Const, m->flags & DF_Volatile)) + ", size: 64, flags: DIFlagArtificial | DIFlagObjectPointer)\n";
   auto lock = sharedLock();
   Shared::DebugTypeText& made = sh.debugTypes[key];
   made.text = std::move(text);
@@ -722,7 +755,7 @@ auto codegen::Emitter::debugLines(std::string header, size_t declLine) -> std::s
   std::string out = std::move(header);
   out.reserve(out.size() + (allocas.size() + fn.size() + ehBlocks.size()) * 5 / 4);
   bool variables = !debugBlocks.empty() || !debugVariables.empty();
-  const uint32_t fileId = 1, blocksBase = 1, variablesBase = 2 + uint32_t(debugBlocks.size());
+  const uint32_t blocksBase = 1, variablesBase = 2 + uint32_t(debugBlocks.size()); // (1 unused: the file's node was there)
   const uint32_t firstLocation = variables ? variablesBase + uint32_t(debugVariables.size()) : 1;
   auto scope = [&](uint32_t block) { return debugId(block ? blocksBase + block : 0); };
   std::vector<std::pair<size_t, uint32_t>> locations; // id - firstLocation -> its line and block
@@ -800,7 +833,7 @@ auto codegen::Emitter::debugLines(std::string header, size_t declLine) -> std::s
           out += declare(i);
   }
   out += "}\n";
-  const std::string& file = debugFileOf(debugFile);
+  const std::string file = debugFileNode(debugFile);
   // A member function (one with `this`, its artificial first parameter) is its class's, as clang
   // declares one for CodeView: its scope the class's composite, its name without the class's, its type
   // a DISubroutineType whose first parameter is the object pointer (DIFlagArtificial |
@@ -826,7 +859,7 @@ auto codegen::Emitter::debugLines(std::string header, size_t declLine) -> std::s
       uint32_t extra = firstLocation + uint32_t(locations.size());
       std::string classType = debugType(cls);
       std::string list = currentReturn && currentReturn->isKnown() && currentReturn->kind != TyKind::Void ? debugType(currentReturn) : std::string("null");
-      list += ", " + debugId(extra + 2);
+      list += ", " + debugObjectPointer(cls);
       std::vector<const DebugVariable*> params;
       for (const DebugVariable& v : debugVariables)
         if (v.arg > 1)
@@ -834,9 +867,7 @@ auto codegen::Emitter::debugLines(std::string header, size_t declLine) -> std::s
       std::stable_sort(params.begin(), params.end(), [](const DebugVariable* a, const DebugVariable* b) { return a->arg < b->arg; });
       for (const DebugVariable* p : params)
         list += ", " + p->type;
-      typeNodes = debugId(extra) + " = !DISubroutineType(types: " + debugId(extra + 1) + ")\n" + debugId(extra + 1) + " = !{ " + list + "}\n" +
-                  debugId(extra + 2) + " = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: " + classType +
-                  ", size: 64, flags: DIFlagArtificial | DIFlagObjectPointer)\n";
+      typeNodes = debugId(extra) + " = !DISubroutineType(types: " + debugId(extra + 1) + ")\n" + debugId(extra + 1) + " = !{ " + list + "}\n";
       spName0 = spName.substr(prefix);
       spScope = classType;
       spType = debugId(extra);
@@ -867,15 +898,14 @@ auto codegen::Emitter::debugLines(std::string header, size_t declLine) -> std::s
   out += typeNodes;
   if (variables)
   {
-    out += debugId(fileId) + " = " + file + "\n";
     for (uint32_t b = 1; b <= debugBlocks.size(); ++b)
-      out += debugId(blocksBase + b) + " = distinct !DILexicalBlock(scope: " + scope(debugBlocks[b - 1].parent) + ", file: " + debugId(fileId) +
+      out += debugId(blocksBase + b) + " = distinct !DILexicalBlock(scope: " + scope(debugBlocks[b - 1].parent) + ", file: " + file +
              ", line: " + std::to_string(debugBlocks[b - 1].line ? debugBlocks[b - 1].line : declLine) + ")\n";
     for (size_t i = 0; i < debugVariables.size(); ++i)
     {
       const DebugVariable& v = debugVariables[i];
       out += debugId(variablesBase + uint32_t(i)) + " = !DILocalVariable(name: " + metadataString(v.name) +
-             (v.arg ? ", arg: " + std::to_string(v.arg) : std::string()) + ", scope: " + scope(v.block) + ", file: " + debugId(fileId) +
+             (v.arg ? ", arg: " + std::to_string(v.arg) : std::string()) + ", scope: " + scope(v.block) + ", file: " + file +
              ", line: " + std::to_string(v.line ? v.line : declLine) + ", type: " + v.type +
              (v.artificial ? ", flags: DIFlagArtificial | DIFlagObjectPointer" : "") + ")\n";
     }

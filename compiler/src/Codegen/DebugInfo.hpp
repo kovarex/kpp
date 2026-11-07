@@ -28,6 +28,20 @@
     // every type apart: a class's path, its template's arguments, where a local class is declared).
     std::string debugType(const Ty* t);
 
+    // --debug-info with variables: a node shared like a type's (its placeholder, Shared::debugTypes),
+    // made once a build by its spelling (make gives its text, node 0 the node), each module that names
+    // it holding it once (appendDebugTypes).
+    std::string debugSharedNode(const std::string& spelling, const std::function<std::string()>& make);
+    // file's DIFile: with variables a shared node, which every definition, block, variable and global of
+    // the file names (until 2026-11-07 each definition wrote the file twice in its DISubprogram and once
+    // more as a node of its own: 74 MB of the game's 662 MB of debug metadata); otherwise the node itself,
+    // written where it is named (debugFileOf).
+    std::string debugFileNode(const ParsedFile* file);
+    // The object pointer type of class cls's member functions (`this`, DIFlagArtificial |
+    // DIFlagObjectPointer), shared: one node for every function of cls (until 2026-11-07 one per
+    // member function declaration and definition, 529,000 nodes and 75 MB of the game's debug metadata).
+    std::string debugObjectPointer(const Ty* cls);
+
     // A type's name in the debug information (and so in the .natvis, which takes the classes' from
     // CodegenResult::debugClasses): kppc's (TypeTable::toString, qualified) with closing angle
     // brackets kept apart, `RbNode<Pair<String, int32> >`, as MSVC's PDBs write them. Visual Studio's
@@ -114,7 +128,7 @@
     // belong to the instruction they end with (`  ]`). With variables (Shared::fullDebugInfo) a marker
     // names its lexical block too (`  ;@LINE:BLOCK`, a location per line and block), and after the
     // allocas a #dbg_declare gives each variable its address. Ids: 0 the DISubprogram; with blocks or
-    // variables 1 the file's node, then the blocks (DILexicalBlock), then the variables
-    // (DILocalVariable, their types by placeholder); then the locations.
+    // variables 1 unused (the file's node is shared then: debugFileNode), then the blocks
+    // (DILexicalBlock), then the variables (DILocalVariable, their types by placeholder); then the locations.
     std::string debugLines(std::string header, size_t declLine);
 

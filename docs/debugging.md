@@ -355,10 +355,15 @@ an inline `!DIFile` with the source's absolute path.
 With variables (an unoptimized build): a block statement opens a lexical block (`openDebugBlock`),
 which the markers then name (`  ;@LINE:BLOCK`: a location per line and block); each parameter and
 local is recorded (`Emitter::debugVariable`) and gets a `#dbg_declare` after the allocas. A
-function's own ids are then 0 its DISubprogram, 1 its file, its blocks, its variables, its
-locations. A variable's type is a placeholder in the function's text, `!T` and 16 hex digits: the
-hash of the type's IR spelling (`Emitter::debugType`), whose metadata text is made once per build
-into Shared::debugTypes, its own ids from 0 as a function's. Module assembly (`appendDebugTypes`)
+function's own ids are then 0 its DISubprogram, its blocks from 2, its variables, its locations.
+A variable's type is a placeholder in the function's text, `!T` and 16 hex digits: the hash of the
+type's IR spelling (`Emitter::debugType`), whose metadata text is made once per build into
+Shared::debugTypes, its own ids from 0 as a function's. Two other nodes are shared the same way
+(`Emitter::debugSharedNode`): a file's DIFile, which every definition, block, variable and global
+of the file names (`debugFileNode`), and a class's object pointer type, which all its member
+functions' types name (`debugObjectPointer`). Until 2026-11-07 each definition wrote its file three
+times and each member function its own object pointer: the game's IR was 109 MB larger (1,668
+against 1,559 MB), its objects the same. Module assembly (`appendDebugTypes`)
 collects the placeholders its definitions name and the types those name, appends each type's text
 once in key order (so the text does not depend on the threads), renumbers it after the
 definitions' ids, and writes each placeholder's id over it in place, padded with blanks. Classes
