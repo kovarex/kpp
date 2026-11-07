@@ -707,7 +707,13 @@ void runCodegen(Build& build)
     return;
   }
   if (stop)
+  {
+    // What this build assembled is assembled again by the next, its objects compiled then (codegen's own
+    // errors assembled nothing: the session has them; a build in full's modules are all new).
+    if (build.codegen && (!rebuilt || std::count(cg.changedModules.begin(), cg.changedModules.end(), true)))
+      unassembledAgain(*build.codegen, rebuilt ? cg.changedModules : std::vector<bool>{});
     return; // (backEnd drops what it has not started)
+  }
   start = Clock::now();
   // Output module k's object: the last build's when rebuildLLVM did not assemble it again or its hash
   // file has its text, else compiled (by LLVM's back end in this process, or by clang).

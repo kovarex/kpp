@@ -1,0 +1,44 @@
+// spec: a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile server"): a build that fails with the checker's error after codegen assembled a changed module compiles no object, and the next build, whose module text is the failed build's, compiles it then: the program prints the new value, never the object from before the edit (an unchanged module keeps its object; the static_assert case from thread K's stale constant, 2026-11-07)
+//--- step: the program
+int shown() { return 2; }
+int main()
+{
+  static_assert(shown() == 2);
+  println(shown());
+  return 0;
+}
+// expect: 2
+//--- step: the value changed, the static_assert now fails
+int shown() { return 3; }
+int main()
+{
+  static_assert(shown() == 2);
+  println(shown());
+  return 0;
+}
+// error: static assertion failed
+//--- step: the static_assert taken out: main's code is the failed build's
+int shown() { return 3; }
+int main()
+{
+  println(shown());
+  return 0;
+}
+// expect: 3
+//--- step: a print changed beside an error elsewhere
+int shown() { return 3; }
+int broken() { return missing; }
+int main()
+{
+  println(shown() + 1);
+  return 0;
+}
+// error: 'missing' is not declared
+//--- step: the error taken out
+int shown() { return 3; }
+int main()
+{
+  println(shown() + 1);
+  return 0;
+}
+// expect: 4

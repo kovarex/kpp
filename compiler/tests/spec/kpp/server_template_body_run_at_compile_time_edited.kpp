@@ -1,0 +1,111 @@
+// spec: a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile server"): a template's body edited in another file, one no constexpr marks (kpp's evaluator runs any function), which a constant and a static_assert in main ran at compile time through a plain function of main's file: the constant's error goes once the body is fixed, and the static_assert that held fails once the body changes its answer (thread K's stale error with Vector::insert, 2026-11-07)
+//--- step: a function template's body that is no constant
+i32 viaScaled() { return scaled(3); }
+i32 viaBox(i32 v) { return Box<i32>{v}.twice(); }
+int main()
+{
+  constexpr i32 a = viaScaled();
+  println(a);
+  return 0;
+}
+// error: the constexpr variable a is no constant
+//--- file: lib.kpp
+template<class T> T scaled(T v)
+{
+  T zero = 0;
+  return v / zero;
+}
+template<class T> struct Box
+{
+  T value;
+  T twice() const { return this->value * 2; }
+};
+//--- step: the body fixed
+i32 viaScaled() { return scaled(3); }
+i32 viaBox(i32 v) { return Box<i32>{v}.twice(); }
+int main()
+{
+  constexpr i32 a = viaScaled();
+  println(a);
+  return 0;
+}
+// expect: 6
+//--- file: lib.kpp
+template<class T> T scaled(T v)
+{
+  T two = 2;
+  return v * two;
+}
+template<class T> struct Box
+{
+  T value;
+  T twice() const { return this->value * 2; }
+};
+//--- step: a class template's member function run by a static_assert that holds
+i32 viaScaled() { return scaled(3); }
+i32 viaBox(i32 v) { return Box<i32>{v}.twice(); }
+int main()
+{
+  constexpr i32 a = viaScaled();
+  static_assert(viaBox(3) == 6);
+  constexpr i32 c = viaBox(4);
+  println(a + c);
+  return 0;
+}
+// expect: 14
+//--- file: lib.kpp
+template<class T> T scaled(T v)
+{
+  T two = 2;
+  return v * two;
+}
+template<class T> struct Box
+{
+  T value;
+  T twice() const { return this->value * 2; }
+};
+//--- step: the member function's body changes its answer
+i32 viaScaled() { return scaled(3); }
+i32 viaBox(i32 v) { return Box<i32>{v}.twice(); }
+int main()
+{
+  constexpr i32 a = viaScaled();
+  static_assert(viaBox(3) == 6);
+  constexpr i32 c = viaBox(4);
+  println(a + c);
+  return 0;
+}
+// error: static assertion failed
+//--- file: lib.kpp
+template<class T> T scaled(T v)
+{
+  T two = 2;
+  return v * two;
+}
+template<class T> struct Box
+{
+  T value;
+  T twice() const { return this->value * 3; }
+};
+//--- step: the static_assert taken out: the constant has the new body's value
+i32 viaScaled() { return scaled(3); }
+i32 viaBox(i32 v) { return Box<i32>{v}.twice(); }
+int main()
+{
+  constexpr i32 a = viaScaled();
+  constexpr i32 c = viaBox(4);
+  println(a + c);
+  return 0;
+}
+// expect: 18
+//--- file: lib.kpp
+template<class T> T scaled(T v)
+{
+  T two = 2;
+  return v * two;
+}
+template<class T> struct Box
+{
+  T value;
+  T twice() const { return this->value * 3; }
+};

@@ -120,6 +120,13 @@ unsigned codegenOutputModules(unsigned moduleCount, bool debug, bool optimize);
 // polymorphic one, or one a destructor helper, a descriptor, a global or a lambda's capture holds).
 // instancesOf: templates one of whose instances read a change (the resolver checked it again or
 // took it out): all their instances, and the functions that inlined one, are emitted again.
+// A build that assembled modules and compiled none of them (it stopped at an error outside codegen: the
+// checker's): those modules (changedModules, a build's result; empty: all of them, a build in full)
+// are assembled again by the next build, whose own changes may leave their texts as this build had
+// them, which the objects never got (an unchanged module keeps its object: the server's build after a
+// fixed static_assert linked the object from before the edit, silently; thread K, 2026-11-07).
+void unassembledAgain(CodegenSession& session, const std::vector<bool>& changedModules);
+
 CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies, const std::vector<FunctionDecl*>& added,
                           const std::vector<FunctionDecl*>& removed, const std::vector<const Decl*>& changedLayouts,
                           const std::vector<const Decl*>& instancesOf, const std::vector<const Decl*>& changedGlobals,

@@ -57,7 +57,10 @@ server (`kppc --server --verify-incremental`, so each step's build is also compa
 scratch, and any difference fails it), the server stopped at the end. In a step, `// expect: TEXT`
 lines are what its program prints (none: nothing), `// error: TEXT` lines what its build must say
 instead (it must fail). The header above the first step applies to all (`kppc:`, `pending:`). Windows
-only (the server is).
+only (the server is). A step's `//--- file: NAME` lines start further files of its program, written into
+a directory beside it (given as a source); each step has all of them, and its expectations come before
+its first file, written into the program's file as empty lines (a step that edits only another file
+leaves that one unchanged).
 
 --out DIR and --snippets DIR replace build\\spec and compiler\\tests\\spec (tests\\specfiles.ps1 runs the
 runner itself on a snippet that passes and one that fails).
@@ -453,15 +456,36 @@ def run_steps(path, info, work, options, result):
     parts = re.split(r"^//--- step:?[ \t]*(.*)$", text, flags=re.M)
     source = os.path.join(work, os.path.basename(path))
     exe = os.path.join(work, "steps.exe")
-    arguments = ["--quiet", *EXTRA, *shlex.split(info["kppc"]), *options, "--exe", exe, source]
+    # (a step's `//--- file: NAME` sections: files of the program beside it, in a directory given as a source)
+    companions = os.path.join(work, os.path.splitext(os.path.basename(path))[0] + ".files")
+    has_files = re.search(r"^//--- file:", text, flags=re.M) is not None
+    arguments = ["--quiet", *EXTRA, *shlex.split(info["kppc"]), *options, "--exe", exe, source, *([companions] if has_files else [])]
     try:
         for i in range(1, len(parts), 2):
             title, body = parts[i].strip(), parts[i + 1]
             step = f"step {(i + 1) // 2} ({title})"
+            sections = re.split(r"^//--- file:[ \t]*(\S+)[ \t]*$", body, flags=re.M)
+            body, files = sections[0], {sections[k]: sections[k + 1] for k in range(1, len(sections), 2)}
             expect = re.findall(r"^//\s*expect:[ \t]?(.*)$", body, flags=re.M)
             errors = [e.strip() for e in re.findall(r"^//\s*error:(.*)$", body, flags=re.M)]
+            if has_files:
+                # (its expectations written as empty lines: a step that edits only a file leaves this one as it was)
+                body = re.sub(r"^//\s*(expect|error):.*$", "", body, flags=re.M)
             with open(source, "w", encoding="utf-8", newline="\n") as f:
                 f.write(body.lstrip("\n"))
+            if has_files:
+                # Each step's files are all of them: one a step leaves out is taken away, one it keeps is
+                # written only when its text changes (the server sees an edit where there is one).
+                os.makedirs(companions, exist_ok=True)
+                for name in os.listdir(companions):
+                    if name not in files:
+                        os.remove(os.path.join(companions, name))
+                for name, content in files.items():
+                    target = os.path.join(companions, name)
+                    content = content.lstrip("\n")
+                    if not os.path.exists(target) or open(target, encoding="utf-8", newline="").read() != content:
+                        with open(target, "w", encoding="utf-8", newline="\n") as f:
+                            f.write(content)
             try:
                 c = subprocess.run([KPPC, "--server", "--verify-incremental", *arguments], capture_output=True, text=True, encoding="utf-8",
                                    errors="replace", timeout=300)

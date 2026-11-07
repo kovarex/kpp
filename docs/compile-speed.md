@@ -1137,6 +1137,23 @@ The same edits with master d98f13b9's kppc, which builds a constexpr body edit f
 server: 12.8, 17.0, 19.9, 21.8 s (resolve 2.2 to 4.0 s, codegen 8.1 to 15.7 s), run one after the
 other on the shared machine.
 
+**Every template's body is one the evaluator may have run (fixed 2026-11-08).** kpp's evaluator runs any
+function, constexpr or not, so a changed body went through `invalidateReaders` only when marked
+constexpr: a template's body that is not (the stdlib's `Vector::insert`) had its instances checked
+again, but a walk of another file that ran it, through a plain function there, kept the old body's
+answer (thread K: after a stdlib edit, a constant's error stayed in every server build, and
+`--no-server` gave 916; the same path keeps a stale value). Every changed template body now takes
+the ran-readers path (`constantBodies`); a plain function's copies already did (`withBodyCopies`).
+Spec kpp/server_template_body_run_at_compile_time_edited, whose template is in a file of its own:
+the step runner takes `//--- file: NAME` sections, and writes a step's expectations as empty lines
+so that an edit of the other file leaves the program's file unchanged (else that file is walked
+again at every step, which hid this). Found with it: a build that fails with the checker's error
+after codegen assembled changed modules compiles none of them, and the next build, whose module
+text is the failed build's (a static_assert taken out again), kept the object from before the edit:
+the server's program printed 8 where 12 is right. Such a build's modules are now assembled again by
+the next (`unassembledAgain`, as codegen's own errors already did; their hash files decide which are
+compiled). Spec kpp/server_build_after_an_error_compiles_what_it_left.
+
 **A silent stale layout in the whole-function edits (fixed 2026-10-30).** `struct Holder {
 decltype(pick(1)) value; int after; }` and `pick`'s return type changed from int to long long: the
 server's build kept `Holder` as `{ i32, i32 }` and `sizeof(Holder)` 8, a build from scratch gives

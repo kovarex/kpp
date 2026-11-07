@@ -1449,6 +1449,19 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
   return out;
 }
 
+void unassembledAgain(CodegenSession& session, const std::vector<bool>& changedModules)
+{
+  if (!session.shared)
+    return;
+  Shared& sh = *session.shared;
+  sh.unassembled.resize(sh.moduleCount);
+  for (unsigned k = 0; k < sh.moduleCount; ++k)
+    if (changedModules.empty())
+      sh.unassembled[k] = true;
+    else if (changedModules[k] || (sh.splitPieces && k + sh.moduleCount < changedModules.size() && changedModules[k + sh.moduleCount]))
+      sh.unassembled[k] = true;
+}
+
 static CodegenResult rebuildModules(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies, const std::vector<FunctionDecl*>& added,
                                     const std::vector<FunctionDecl*>& removed, const std::vector<const Decl*>& changedLayouts,
                                     const std::vector<const Decl*>& instancesOf, const std::vector<const Decl*>& changedGlobals,

@@ -154,6 +154,12 @@ int runProgram(int argc, char** argv, int runIndex)
   bool noRun = noRunAt != options.end();
   if (noRun)
     options.erase(noRunAt);
+  // --stop-server: the compile server these arguments' build goes through is stopped, nothing built (its
+  // key is the build's arguments, the executable's path in them, which this option must not change).
+  auto stopAt = std::find(options.begin(), options.end(), "--stop-server");
+  bool stop = stopAt != options.end();
+  if (stop)
+    options.erase(stopAt);
   Target target = hostTarget();
   for (size_t k = 0; k + 1 < options.size(); ++k)
     if (options[k] == "--target")
@@ -165,7 +171,7 @@ int runProgram(int argc, char** argv, int runIndex)
         return 2;
       }
     }
-  if ((platformOf(target.os).name != std::string(host::platformName()) || target.arch != hostTarget().arch) && !noRun)
+  if ((platformOf(target.os).name != std::string(host::platformName()) || target.arch != hostTarget().arch) && !noRun && !stop)
   {
     fprintf(stderr, "kppc %s: a %s program does not run on this machine; --no-run builds it and names the executable\n",
             argv[runIndex], target.name.c_str());
@@ -224,6 +230,20 @@ int runProgram(int argc, char** argv, int runIndex)
     name += "-tests";
   std::filesystem::path root = std::filesystem::temp_directory_path(ec) / "kpp-run";
   std::filesystem::path dir = root / (name + "-" + hex);
+  if (stop)
+  {
+    std::vector<std::string> args;
+    for (const std::string& o : options)
+      args.push_back(o == "--server" ? "--stop-server" : o);
+    if (std::find(args.begin(), args.end(), "--stop-server") == args.end())
+      args.push_back("--stop-server"); // (--no-server: none runs, and the server says so)
+    for (const char* a : {"--quiet", "--exe"})
+      args.push_back(a);
+    args.push_back((dir / (name + (target.windows() ? ".exe" : ""))).string());
+    args.insert(args.end(), sources.begin(), sources.end());
+    int code = runAndWait(host::executablePath().string(), args);
+    return code < 0 ? 1 : code;
+  }
   host::FileLock lock = lockRunDirectory(dir);
   if (!lock.held())
   {

@@ -885,7 +885,12 @@ bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, double collec
     return what + " (" + (d->file ? kept.files[d->file->index].path.filename().string() : std::string("?")) + ")";
   };
   std::vector<FunctionDecl*> templateBodies; // changed bodies of templates: their instances are checked again
-  std::vector<const FunctionDecl*> constantBodies; // changed constexpr bodies: what the evaluator ran them for is checked again
+  // Changed bodies the evaluator may have run: what it ran them for is checked again. A constexpr one, and
+  // every template's: kpp's evaluator runs any function, a template's instance from a copy the
+  // template's record makes anew (recheckInstancesOf), and a walk that ran it (a constant, a
+  // static_assert in another file) kept the old body's answer (K, 2026-11-07: a stdlib Vector::insert
+  // edit kept a constant's error). A plain function's copies are found below (withBodyCopies).
+  std::vector<const FunctionDecl*> constantBodies;
   std::vector<FunctionDecl*> plainBodies; // changed bodies of the others: for withBodyCopies
   for (size_t n = 0; n < changed.size(); ++n)
   {
@@ -901,7 +906,7 @@ bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, double collec
         templateBodies.push_back(changed[n].oldBodies[k].f);
       else
         plainBodies.push_back(changed[n].oldBodies[k].f);
-      if (changed[n].oldBodies[k].constant)
+      if (changed[n].oldBodies[k].constant || changed[n].oldBodies[k].templated)
         constantBodies.push_back(changed[n].oldBodies[k].f);
     }
   }
