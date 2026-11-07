@@ -1701,13 +1701,9 @@ auto GlobalScope::Impl::Walker::noteImplicitMember(const NameExpr* n, const Look
       if (int via = reachThroughBases(s, l.foundIn, 0))
       {
         // What the scopes around the class have of the name: what a bare name means once it is never a
-        // member (Q10), and what C++ takes for a member of a dependent base, which it looks up where the
-        // template is written ([temp.dep] 3).
-        bool around = impl.lookupUnqualified(symbol, s->parent, nullptr, 0).found != Found::No;
-        if (via == 2)
-          message += around ? " (found in a dependent base, which C++ does not search: it takes the " + name + " around the class)"
-                            : " (found in a dependent base, which C++ does not search: an error there)";
-        else if (around)
+        // member (Q10). (A dependent base's member is no bare name's: lookupUnqualified skips them.)
+        (void)via;
+        if (impl.lookupUnqualified(symbol, s->parent, nullptr, 0).found != Found::No)
           message += " (a bare " + name + " will be the one around the class)";
         break;
       }

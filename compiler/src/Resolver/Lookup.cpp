@@ -195,14 +195,23 @@ auto GlobalScope::Impl::ensureBases(Scope* cls, int depth) -> void
     noteRelations(cls);
     cls->baseResolver = std::this_thread::get_id();
     std::vector<Scope*> bases;
+    std::vector<uint8_t> dependent;
     LocalStack params;
     for (Decl* p : cls->templateParams)
       params.push(static_cast<TemplateParamDecl*>(p)->name, p);
+    LocalStack allParams = params; // (and an enclosing template's: a nested class's base `B<T>` of the outer T)
+    if (cls->owner)
+      pushEnclosingTemplateParams(cls->owner->parent, allParams);
     for (Type* t : cls->baseTypes)
       if (Scope* s = scopeOfType(t, cls->parent, &params, depth + 1))
         if (s != cls)
+        {
           bases.push_back(s);
+          const Ty* bt = allParams.items.empty() ? nullptr : convertType(t, TypeContext{cls->parent, &allParams, nullptr}, depth + 1);
+          dependent.push_back(bt && types.isDependent(bt));
+        }
     cls->baseScopes = std::move(bases);
+    cls->baseScopeDependent = std::move(dependent);
     cls->baseState.store(2, std::memory_order_release);
     cls->baseState.notify_all();
     return;
@@ -270,7 +279,7 @@ auto GlobalScope::Impl::isInstanceMember(const Decl* d) -> bool
   return d->kind == NodeKind::FunctionDecl || (d->kind == NodeKind::VariableDecl && !(d->flags & DF_Typedef));
 }
 
-auto GlobalScope::Impl::lookupInScope(Scope* s, uint32_t symbol, Lookup& out, int depth, bool withUsing) -> bool
+auto GlobalScope::Impl::lookupInScope(Scope* s, uint32_t symbol, Lookup& out, int depth, bool withUsing, bool skipDependentBases) -> bool
 {
   if (depth > 24)
     return false;
@@ -331,8 +340,11 @@ auto GlobalScope::Impl::lookupInScope(Scope* s, uint32_t symbol, Lookup& out, in
       ensureBases(s, depth);
       bool any = false;
       Lookup absentInBase;
-      for (Scope* b : s->baseScopes)
+      for (size_t i = 0; i < s->baseScopes.size(); ++i)
       {
+        Scope* b = s->baseScopes[i];
+        if (skipDependentBases && i < s->baseScopeDependent.size() && s->baseScopeDependent[i])
+          continue; // (an unqualified name: never a dependent base's member, [temp.dep] 3)
         Lookup r;
         if (!lookupInScope(b, symbol, r, depth + 1))
         {
@@ -534,7 +546,11 @@ auto GlobalScope::Impl::lookupUnqualified(uint32_t symbol, Scope* context, const
     }
     if (s->kind != ScopeKind::Namespace)
     {
-      if (lookupInScope(s, symbol, out, depth) && found(out))
+      // A class around the name: its own members and its bases', but not those of a base that depends
+      // on its template parameters, which C++ looks for where the template is written ([temp.dep] 3;
+      // design.md 23c: `this->x` reaches them). (Until 2026-11-07 the primary template's member was
+      // taken, ahead of the global C++ takes: J's silent wrong answer.)
+      if (lookupInScope(s, symbol, out, depth, true, true) && found(out))
         return out;
       if (out.absent)
         return absentStop(out);

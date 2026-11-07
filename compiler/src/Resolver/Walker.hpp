@@ -340,8 +340,8 @@
     const Ty* memberThroughThis(const Lookup& l, const Ty* t);
 
     // --this-warnings (design.md 23c): an unqualified name that finds a data member or a member function
-    // of a class, which required `this.` writes `this.x` (a static one `This::x`). A name a dependent base
-    // gave (`struct D : B<T>`) says what C++ finds instead, which never searches such a base.
+    // of a class, which required `this.` writes `this.x` (a static one `This::x`). One beside a name of its
+    // spelling around the class says so: a bare name will be that one.
     void noteImplicitMember(const NameExpr* n, const Lookup& l);
     // The name of a scoped enum the scopes around declare with an enumerator spelled symbol, for "write
     // Direction::North"; empty when there is none.

@@ -44,7 +44,7 @@
   static bool isInstanceMember(const Decl* d);
 
   // Looks a symbol up in one scope: its own entries, template parameters, using-enums, bases.
-  bool lookupInScope(Scope* s, uint32_t symbol, Lookup& out, int depth, bool withUsing = true);
+  bool lookupInScope(Scope* s, uint32_t symbol, Lookup& out, int depth, bool withUsing = true, bool skipDependentBases = false);
 
   // The name in namespace s's inline namespaces (Scope::inlineScopes, and theirs), added to out: what
   // out found (found) and they find are one lookup, the functions of the name one overload set

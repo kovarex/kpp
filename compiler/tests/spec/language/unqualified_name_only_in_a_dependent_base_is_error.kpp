@@ -1,0 +1,16 @@
+// spec: an unqualified name that only a base depending on the template's parameters declares is not declared, as in C++ ([temp.dep] 3): write `this->` (design.md 23c)
+// error: unqualified_name_only_in_a_dependent_base_is_error.kpp:10: error: 'width' is not declared
+template<class T> struct Base
+{
+  int width() const { return 2; }
+};
+template<class T> struct Derived : Base<T>
+{
+  int get() const { return this->width(); }
+  int bare() const { return width(); }
+};
+int main()
+{
+  Derived<int> d;
+  return d.get() + d.bare();
+}

@@ -66,7 +66,7 @@ void noteOverrideWarning(const std::string& warning);
 std::vector<std::string> takeOverrideWarnings();
 // --this-warnings: an unqualified name that finds a data member or a member function, "PATH:LINE: warning:
 // NAME is a data member: write this.NAME" (a member function; a static member's `This::NAME`), each once per
-// place; one a dependent base gave says what C++ finds instead. The count before required `this.`
+// place; one beside a global of its spelling says so. The count before required `this.`
 // (the readme's Planned, design.md 23c) becomes an error.
 void setThisWarnings(bool on);
 bool thisWarningsOn();

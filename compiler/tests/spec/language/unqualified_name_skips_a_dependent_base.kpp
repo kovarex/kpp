@@ -1,0 +1,23 @@
+// spec: an unqualified name in a class template never finds a member of a base that depends on its parameters (`D<T> : B<T>`): it is what the scopes around have, the global here, as C++ looks it up where the template is written ([temp.dep] 3; kovarex, 2026-11-07: a bare name is never a member, design.md 23c); `this->` reaches the base's member, and a base that does not depend (`B<int>`) is searched as any base
+// factorio: J's battery found it: kpp took B<T>'s member where C++ takes the global (a silent wrong answer); the game has no such name (the --this-warnings count, design.md 23c)
+int shade() { return 9; }
+template<class T> struct Base
+{
+  int shade() const { return 4; }
+  int width() const { return 2; }
+};
+template<class T> struct Derived : Base<T>
+{
+  int get() const { return shade() + this->shade(); }
+};
+template<class T> struct Fixed : Base<int>
+{
+  int get() const { return width(); }
+};
+int main()
+{
+  Derived<long> d;
+  Fixed<char> f;
+  println(d.get(), " ", f.get());
+  return 0;
+}

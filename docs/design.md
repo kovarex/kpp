@@ -2286,11 +2286,14 @@ warned. Each name is listed once per line, whichever walks reached it (a class t
 instances'). Until `this` is a reference and `This` exists the fixes it names do not compile: today `this->x`
 and `C::x` are the spellings, and the warning counts the names either spelling needs.
 
-A name found in a dependent base (`template<class T> struct D : B<T>`, the base written with the class's
-parameters) says so: C++ looks such a name up where the template is written, never in that base
-([temp.dep] 3), and takes the name around the class or finds none. kpp takes the base's member there,
-where a base that is the parameter itself (`: T`) is not searched, as in C++. kovarex decides the rule
-with this count.
+**Dependent bases** (kovarex, 2026-11-07, decided and built): it follows from Q10. An unqualified name in a
+class template never finds a member of a base that depends on its parameters (`template<class T> struct
+D : B<T>`): it is what the scopes around the class have, the global, as in C++, which looks such a name up
+where the template is written ([temp.dep] 3); `this.size` (`this->size` today) reaches the base's member,
+and a base that does not depend (`B<int>`) is searched as any base. Until 2026-11-07 kpp took the primary
+template's member there, ahead of the global (J's silent wrong answer); a base that is the parameter
+itself (`: T`) was never searched. Specs language/unqualified_name_skips_a_dependent_base,
+language/unqualified_name_only_in_a_dependent_base_is_error.
 
 The counts (tests.cmd's whole-game build with --this-warnings --emit-llvm, places = a name on a line).
 The game (factorio-in-kpp's src, libraries and tests at Factorio 4c178a5b915): 282 places for `this.` (134
@@ -2305,9 +2308,8 @@ Ours (every library's tests, kppsite, kpplex, projectlib, each library's build.k
 members, 2 of them (`includes`) beside the stdlib's global includes; the libraries, kppsite, kpplex and the
 build.kpp files none, as the code style already writes `this->`.
 
-Dependent bases: no name in the game or in ours resolves through a dependent base, so C++'s rule (never
-search such a base) changes nothing in either and compiles both ways; the difference shows only in a spec
-(language/this_warnings_mode: `shadeOf()` in `D<T> : B<T>` is B's member in kpp, the global in C++).
+Dependent bases: no name in the game or in ours resolved through one, so the fix above changed nothing in
+either: the count stays a safety check, and converted code relying on the old lookup gets `this.` anyway.
 
 Spec: language/this_warnings_mode.
 

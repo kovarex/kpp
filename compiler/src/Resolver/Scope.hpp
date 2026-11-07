@@ -86,6 +86,9 @@ struct Scope
   // Lazily resolved relations (phase 2).
   std::vector<Type*> baseTypes;          // From the class definition.
   std::vector<Scope*> baseScopes;        // Resolved base class scopes.
+  // Of each of baseScopes: whether its base depends on the class's (or an enclosing class's) template
+  // parameters (`D<T> : B<T>`), which an unqualified name never searches ([temp.dep] 3, design.md 23c).
+  std::vector<uint8_t> baseScopeDependent;
   std::atomic<int> baseState{0};         // 0 untouched, 1 resolving, 2 done
   std::thread::id baseResolver;
   std::vector<UsingDirectiveDecl*> usingDirectives;
