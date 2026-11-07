@@ -917,15 +917,49 @@ auto codegen::Emitter::emitEntry(const std::string& mainName) -> bool
   // the program from the search, so the handler itself is never entered. (Off Windows, kpp_throw
   // reports and aborts itself.)
   bool reports = usesExceptions && sh.target.windows();
-  std::string text = "define i32 @" + entry + "(i32 %argc, ptr " + (utf8 ? "%wargv" : "%argv") + ") " +
-                     std::string(reports ? "personality ptr @__C_specific_handler " : "") + "{\nentry:\n" + (utf8 ? wideArguments() : "");
+  std::string code = utf8 ? wideArguments() : "";
   if (!reports)
-    text += "  %r = call " + call + "\n  ret i32 %r\n}\n\n";
+    code += "  %r = call " + call + "\n  ret i32 %r\n";
   else
-    text += "  %r = invoke " + call + " to label %done unwind label %dispatch\n"
+    code += "  %r = invoke " + call + " to label %done unwind label %dispatch\n"
             "done:\n  ret i32 %r\n"
             "dispatch:\n  %cs = catchswitch within none [label %handler] unwind to caller\n"
-            "handler:\n  %pad = catchpad within %cs [ptr @kpp.eh.filter.any]\n  unreachable\n}\n\n";
+            "handler:\n  %pad = catchpad within %cs [ptr @kpp.eh.filter.any]\n  unreachable\n";
+  // With debug information the entry is a function of it too, an artificial one at main's line, each
+  // instruction there: what the optimizer inlines into it (main and what main inlines) keeps its lines,
+  // inlined at the call. Without, a release build's crash report named every such frame wmain+N with no
+  // line (E's finding, 2026-11-07).
+  std::pair<std::string, size_t> at;
+  if (sh.debugInfo)
+  {
+    auto lock = sharedLock();
+    if (auto it = sh.entryDebug.find(mainName); it != sh.entryDebug.end())
+      at = it->second;
+  }
+  bool described = at.second != 0;
+  if (described)
+  {
+    std::string located;
+    for (size_t from = 0; from < code.size();)
+    {
+      size_t end = std::min(code.find('\n', from), code.size());
+      located.append(code, from, end - from);
+      if (code.compare(from, 2, "  ") == 0)
+        located += ", !dbg " + debugId(1);
+      located += '\n';
+      from = end + 1;
+    }
+    code = std::move(located);
+  }
+  std::string text = "define i32 @" + entry + "(i32 %argc, ptr " + (utf8 ? "%wargv" : "%argv") + ") " +
+                     std::string(reports ? "personality ptr @__C_specific_handler " : "") + (described ? "!dbg " + debugId(0) + " " : std::string()) +
+                     "{\nentry:\n" + code + "}\n";
+  if (described)
+    text += debugId(0) + " = distinct !DISubprogram(name: \"" + entry + "\", scope: " + at.first + ", file: " + at.first + ", line: " +
+            std::to_string(at.second) + ", type: !2, scopeLine: " + std::to_string(at.second) +
+            ", flags: DIFlagArtificial, spFlags: DISPFlagDefinition, unit: !0)\n" + debugId(1) + " = !DILocation(line: " + std::to_string(at.second) +
+            ", scope: " + debugId(0) + ")\n";
+  text += '\n';
   if (moduleCount <= 1)
     body += text;
   else

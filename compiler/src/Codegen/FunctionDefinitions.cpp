@@ -186,6 +186,14 @@ auto codegen::Emitter::emitFunction(FunctionDecl* original, const TemplateArgs& 
   sretAddr.clear();
   currentFunctionName = nameOverride.empty() ? functionName(original, args, classTy) : nameOverride;
   currentContext = displayFunctionName(original, args, classTy);
+  // The program's main (or wmain): its file and line, the entry's in the debug information (emitEntry).
+  if (sh.debugInfo && debugFile && (currentFunctionName == "@kpp.main" || currentFunctionName == "@kpp.wmain"))
+    if (size_t line = lineOf(debugAt, debugFile))
+    {
+      std::string file = debugFileOf(debugFile);
+      auto lock = sharedLock();
+      sh.entryDebug[currentFunctionName] = {file, line};
+    }
   struct OwnerScope
   {
     ~OwnerScope()

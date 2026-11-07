@@ -431,6 +431,9 @@ namespace codegen
     // (the caller's thread runs the first): homeDebugClasses' levels. Set by the session that made
     // the emitters, which outlive the build with this state; unset, the caller does the work alone.
     std::function<void(const std::function<void(Emitter&)>& work)> onEmitters;
+    // --debug-info: the program's main and wmain (their IR names), each with its DIFile and line, where
+    // the entry that calls it is in the debug information (Emitter::emitEntry).
+    std::unordered_map<std::string, std::pair<std::string, size_t>> entryDebug;
     std::unordered_map<std::string, std::string> stubMessages; // a stubbed function -> "qualified name at file:line"
   };
 

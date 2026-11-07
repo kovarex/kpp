@@ -1,0 +1,45 @@
+// spec: with debug information a release build's entry (kppc's main or wmain) is a function of the debug information too, so main, inlined into it, keeps its lines: the return address of a call in main is at that call's line in the PDB, the innermost inline frame's where the call is inlined into the entry (`from main`, `line 43`)
+// E's finding 2 with release debug information: every frame inlined into the entry was wmain+N with no line, the entry having no DISubprogram
+// kppc: --release --debug-info --lib -ldbghelp
+// target: windows-msvc (windows.h, dbghelp.h and the PDB)
+extern "C" import "windows.h";
+extern "C" import "dbghelp.h";
+[[noinline]] void whereFrom()
+{
+  void* frames[2] = {};
+  USHORT captured = RtlCaptureStackBackTrace(0, 2, frames, nullptr);
+  HANDLE process = GetCurrentProcess();
+  // The PDB beside the executable (a release build names it without a directory), as a crash report
+  // looks for it.
+  char directory[260] = {};
+  for (DWORD i = GetModuleFileNameA(nullptr, directory, 260); i > 0; --i)
+    if (directory[i - 1] == '\\')
+    {
+      directory[i - 1] = 0;
+      break;
+    }
+  SymSetOptions(SymGetOptions() | SYMOPT_LOAD_LINES);
+  SymInitialize(process, directory, TRUE);
+  DWORD64 address = reinterpret_cast<usize>(frames[1]) - 1; // (the call's last byte)
+  IMAGEHLP_LINE64 line = {};
+  line.SizeOfStruct = sizeof(IMAGEHLP_LINE64);
+  DWORD displacement = 0;
+  bool found = false;
+  // Inlined (main into the entry): the innermost inline frame's line; else the function's own.
+  DWORD context = 0;
+  DWORD frameIndex = 0;
+  if (captured == 2 && SymAddrIncludeInlineTrace(process, address) != 0 && SymQueryInlineTrace(process, address, 0, address, address, &context, &frameIndex))
+    found = SymGetLineFromInlineContext(process, address, context, 0, &displacement, &line);
+  if (captured == 2 && !found)
+    found = SymGetLineFromAddr64(process, address, &displacement, &line);
+  if (found)
+    println("line ", line.LineNumber);
+  else
+    println("no line");
+}
+int main()
+{
+  println("from main");
+  whereFrom();
+  return 0;
+}
