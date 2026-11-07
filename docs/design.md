@@ -658,7 +658,12 @@ suite DragBuildingBelt depends DragBuilding, TransportBelt
   destroyed it), as do an `InitializerList` and a value `__kppShow` cannot say, a null pointer shows `null`, an argument left
   to its default is not listed, and a `char*` is read as C text. A call of a function or a member
   function has them; a call through a pointer or of a closure has none. The checked call is not
-  inlined by kppc.
+  inlined by kppc. Its cost, measured on the game's tests (52,089 checks, 2026-11-07): kppc of
+  1dd08930 against the same with call values, one converted tree and stdlib, tests.cmd's build
+  command from scratch, interleaved, each run after 20 s of load under 10%: the build 19.5 s (19.8,
+  19.5, 19.5) against 19.2 s (19.3, 19.2, 19.2), factorio-test.exe 522,752 bytes larger (0.37%),
+  and the 9,501 tests in 16 shards (suites.py --shards 16) 67.4 s (67.4, 67.4) against 67.7 s
+  (68.4, 66.9): no difference beyond the noise.
 - **Integers in a check compare by value.** Inside `check` and `require`, a comparison of a signed
   and an unsigned integer compares their values (`std::cmp_equal`'s rule): `check(-1 ==
   4294967295u)` fails, which outside a check (design.md:1029, the signed side converted) is true.
