@@ -1,0 +1,39 @@
+// spec: `t.Leaf<char>::value` and `Leaf<char>::get()` with the bases Leaf<int> and Leaf<char> name the member of the base the qualifier names, its type and its function that instance's (silent wrong answer until 2026-11-07: Leaf<int>'s, an int read from the char's byte), in a class, a class derived from it and a class template; clang's output
+extern "C" int printf(const char* format, ...);
+template <typename T> struct Leaf
+{
+  T value;
+  Leaf(T v) : value(v) {}
+  T get() const { return value; }
+  int width() const { return int(sizeof(T)); }
+};
+
+struct Two : Leaf<int>, Leaf<char>
+{
+  Two() : Leaf<int>(3), Leaf<char>('a') {}
+  int both() const { return Leaf<int>::value * 1000 + this->Leaf<char>::value + Leaf<char>::width() * 100; }
+};
+
+struct Deeper : Two
+{
+  int sum() const { return Leaf<int>::get() + Leaf<char>::get(); }
+};
+
+template <typename X, typename Y> struct TwoOf : Leaf<X>, Leaf<Y>
+{
+  TwoOf(X x, Y y) : Leaf<X>(x), Leaf<Y>(y) {}
+  Y second() const { return Leaf<Y>::get(); }
+};
+
+int main()
+{
+  Two t;
+  printf("%d %c %c %d\n", int(sizeof(t.Leaf<char>::value)), t.Leaf<char>::value, t.Leaf<char>::get(), t.both());
+  t.Leaf<char>::value = 'z';
+  printf("%d %c %d\n", t.Leaf<int>::value, t.Leaf<char>::value, t.Leaf<char>::width());
+  Deeper d;
+  printf("%c %d %d\n", d.Leaf<char>::value, d.Leaf<int>::get(), d.sum());
+  TwoOf<long long, short> w(1LL << 40, 7);
+  printf("%d %d %d %d\n", int(sizeof(w.Leaf<short>::value)), int(w.Leaf<short>::value), int(w.second()), int(w.Leaf<long long>::get() >> 40));
+  return 0;
+}

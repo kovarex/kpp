@@ -1929,6 +1929,24 @@ auto GlobalScope::Impl::Walker::memberOf(const Ty* objectTy, uint32_t symbol, co
           l = inQualifier;
       }
     }
+    else if (l.foundIn && l.foundIn != cls && l.foundIn->kind == ScopeKind::Class && !types.isDependent(t))
+    {
+      // `m.Leaf<char>::value` with the bases Leaf<int> and Leaf<char>: the member of the class the
+      // qualifier names, of which every instance of Leaf shares the scope it was found in. (Until
+      // 2026-11-07 the first base of that scope's: an int read from the char's byte.)
+      QualifiedName qualifier = *name;
+      qualifier.parts.count -= 1;
+      NamedType written{};
+      written.kind = NodeKind::NamedType;
+      written.token = token;
+      written.name = qualifier;
+      const Ty* q = typeOf(&written);
+      q = q ? types.unqualified(types.stripRef(q)) : nullptr;
+      const Ty* object = types.unqualified(t);
+      if (q && q->kind == TyKind::Class && q->isKnown() && !types.isDependent(q) && (q == object || impl.derivesFrom(object, q)))
+        if (Scope* qs = impl.classScopeOf(q))
+          foundInBase = qs == l.foundIn ? q : instantiationOfBase(q, qs, l.foundIn, 0);
+    }
   }
   else
   {
