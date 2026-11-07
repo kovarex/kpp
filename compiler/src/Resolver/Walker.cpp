@@ -3679,8 +3679,20 @@ auto GlobalScope::Impl::Walker::checkExplicitCopy(const Ty* from, const Ty* to, 
       return;
     }
   }
-  // (A constructor template's `explicit(cond)` is decided with its own arguments deduced: not here.)
-  if (!ctor || ambiguous || (ctor->explicitCondition && !ctor->templateParams.empty()) || !impl.isExplicit(ctor, s.empty() ? nullptr : &s))
+  if (!ctor || ambiguous)
+    return;
+  // A constructor template's condition with its own arguments deduced from the value: `Box<OnlyExplicit> b = 6;` with
+  // `template<typename U> implicit(isConvertible<U, T>) Box(U&& u)`, as std::optional<E> o = 6 for an explicit
+  // E(int), is no copy-initialization (it took the constructor whatever its condition gave; K's spec).
+  Subst own = s;
+  if (ctor->explicitCondition && !ctor->templateParams.empty())
+  {
+    impl.deduceCall(ctor, impl.declaredTypeOf(ctor, s.empty() ? nullptr : &s, 0), {from}, own);
+    for (Decl* p : ctor->templateParams)
+      if (const Ty* bound = own.find(p); !bound || !bound->isKnown() || types.isDependent(bound))
+        return; // (not deduced: the instances, or another error, say)
+  }
+  if (!impl.isExplicit(ctor, own.empty() ? nullptr : &own))
     return;
   std::string name = types.toString(t, &symbols);
   if (explicitByDefaultOn() && !(ctor->flags & DF_Explicit))
