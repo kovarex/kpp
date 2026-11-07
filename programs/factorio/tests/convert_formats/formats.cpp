@@ -40,5 +40,9 @@ int main()
   printf("%*c{\n", depth, ' ');
   printf("[%-*s]\n", 6, "ab");
   printf("[%*d]\n", -4, 7);
+  // The # flag: C's 0x only for a value that is not 0, also aligned left (left as printf)
+  unsigned zero = 0, one = 1;
+  printf("[%#06x] [%#06x] [%#04X]\n", zero, 0x1fu, zero);
+  printf("[%-#6x] [%-#06x]\n", one, one);
   return 0;
 }

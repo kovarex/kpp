@@ -1287,7 +1287,9 @@
           unsupported = "precision on %" + std::string(1, c.conversion);
           return false;
         }
-        if (c.flags.find('#') != std::string::npos && !((c.conversion == 'x' || c.conversion == 'X') && c.flags.find('0') != std::string::npos && c.width > 2))
+        // (`#`: C's prefix depends on the value, none for 0 (`%#06x` of 0 is 000000), which a conversion
+        // could write only by reading the argument twice; printf prints it right)
+        if (c.flags.find('#') != std::string::npos)
         {
           unsupported = "the # flag";
           return false;
@@ -1398,9 +1400,7 @@
           valueClose = std::string(exact == type || literalInteger ? "" : ")");
           if (c.flags.find('0') != std::string::npos && c.width > 0 && c.flags.find('-') == std::string::npos)
           {
-            bool prefix = c.flags.find('#') != std::string::npos;
-            valueOpen = (prefix ? std::string(c.conversion == 'X' ? "\"0X\", " : "\"0x\", ") : std::string()) + valueOpen;
-            valueClose += ", " + std::to_string(prefix ? c.width - 2 : c.width) + ")";
+            valueClose += ", " + std::to_string(c.width) + ")";
             open = valueOpen, close = valueClose;
             return true;
           }
@@ -3452,7 +3452,18 @@
           i += 2;
           continue;
         }
-        if (t.is(Kw::typename_) && toks[i + 1].getKind() == TokenKind::Identifier && toks[i + 2].is(P::ColonColon))
+        // (kept where it starts a requires-expression's type requirement, `{ typename T::x; }`: without it
+        // the requirement is of an expression, false for a member type)
+        auto typeRequirement = [&]
+        {
+          if (i == 0 || !(toks[i - 1].is(P::LBrace) || toks[i - 1].is(P::Semi)))
+            return false;
+          size_t j = i + 1;
+          while (j + 1 < toks.size() && toks[j].getKind() == TokenKind::Identifier && toks[j + 1].is(P::ColonColon))
+            j += 2;
+          return j + 1 < toks.size() && toks[j].getKind() == TokenKind::Identifier && toks[j + 1].is(P::Semi);
+        };
+        if (t.is(Kw::typename_) && toks[i + 1].getKind() == TokenKind::Identifier && toks[i + 2].is(P::ColonColon) && !typeRequirement())
         {
           remove(t.offset, toks[i + 1].offset - t.offset); // `typename T::x` -> `T::x`
           counts.add("typename dropped");
@@ -3680,8 +3691,8 @@
                   "  using UnderlyingType = SmallBitset<value_count>::UnderlyingType;\n"
                   "\n"
                   "  constexpr " + bfName + "() = default;\n"
-                  "  constexpr " + bfName + "(InitializerList<Enum> values) : bits(" + bfName + "::toBits(values)) {}\n"
-                  "  constexpr " + bfName + "(Enum value) : bits(static_cast<uint64_t>(1ULL << static_cast<size_t>(value))) {}\n"
+                  "  implicit constexpr " + bfName + "(InitializerList<Enum> values) : bits(" + bfName + "::toBits(values)) {}\n"
+                  "  implicit constexpr " + bfName + "(Enum value) : bits(static_cast<uint64_t>(1ULL << static_cast<size_t>(value))) {}\n"
                   "\n"
                   "private:\n"
                   "  constexpr " + bfName + "(SmallBitset<value_count> bits) : bits(bits) {}\n"

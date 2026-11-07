@@ -125,6 +125,14 @@
           walkSwitchBody(sw->body, owner);
           break;
         }
+        // C++'s `[[fallthrough]];`, the statement kpp writes `fallthrough;`
+        case NodeKind::FallthroughStmt:
+          if (s->token + 5 < toks.size() && toks[s->token].is(P::LBracket))
+          {
+            replace(toks[s->token].offset, endOffset(s->token + 5) - toks[s->token].offset, "fallthrough;");
+            counts.add("[[fallthrough]] written as fallthrough");
+          }
+          break;
         case NodeKind::CaseStmt: walkExpr(static_cast<CaseStmt*>(s)->value, owner); break;
         case NodeKind::ReturnStmt: walkExpr(static_cast<ReturnStmt*>(s)->value, owner); break;
         case NodeKind::TryStmt:

@@ -255,6 +255,19 @@
             auto* f = static_cast<FunctionDecl*>(d);
             if (objectOfMacroArguments(f))
               break;
+            // (before markInlineBody: `override` goes before the mark on the declaration's `;`, which must
+            // stay right before it for the body to move in)
+            if (!(f->flags & (DF_Override | DF_Final | DF_Static | DF_Constructor | DF_Destructor | DF_Conversion)) && f->templateParams.empty())
+              if (Decl* owner = global.owningClass(f); owner && owner->kind == NodeKind::ClassDecl && overridesBaseVirtual(f, owner))
+              {
+                if (uint32_t at = overrideToken(f); at != UINT32_MAX)
+                {
+                  insert(endOffset(at - 1), " override");
+                  counts.add("override added");
+                }
+                else
+                  todo(toks[f->token].offset, "a function that overrides a virtual one, whose place for override was not found");
+              }
             markInlineBody(f);
             // (an interface header's function, defined in the library's files: listed in its file,
             // the interface's own record of it once the declaration goes)
@@ -1361,7 +1374,7 @@
       return false;
     }
 
-    static bool convertingConstructor(FunctionDecl* f)
+    bool convertingConstructor(FunctionDecl* f)
     {
       if (f->params.empty())
         return false;
@@ -1371,7 +1384,9 @@
       for (size_t i = 1; i < f->params.size(); ++i)
         if (!static_cast<ParamDecl*>(f->params[i])->defaultValue)
           return false;
-      // Copy and move constructors are not conversions: `T(const T&)` has the class's own name.
+      // Copy and move constructors are not conversions: `T(const T&)` takes the class itself. Another
+      // class of the same name is a conversion (the game's Color(const agui::Color&)), so the name decides
+      // only when the type is not resolved.
       Type* t = first->type;
       while (t && (t->kind == NodeKind::LRefType || t->kind == NodeKind::RRefType || t->kind == NodeKind::ConstType))
         t = t->kind == NodeKind::LRefType ? static_cast<LRefType*>(t)->referenced
@@ -1379,7 +1394,11 @@
                                           : static_cast<ConstType*>(t)->inner;
       if (t && t->kind == NodeKind::NamedType && !f->name.empty() && f->name.parts.size() >= 1)
       {
-        const QualifiedName& n = static_cast<NamedType*>(t)->name;
+        auto* named = static_cast<NamedType*>(t);
+        Decl* owner = global.owningClass(f);
+        if (named->resolved && owner && named->resolved->kind == NodeKind::ClassDecl)
+          return global.definitionOf(named->resolved) != global.definitionOf(owner);
+        const QualifiedName& n = named->name;
         if (!n.empty() && n.last().symbol == f->name.last().symbol)
           return false;
       }
@@ -1642,5 +1661,147 @@
       };
       collect(cls, 0);
       return names;
+    }
+
+    // Whether a base of cls, or one of theirs, declares f's name virtual with the same parameter types and
+    // constness: kpp requires `override` there (design.md 23b) and C++ libraries leave it out
+    // (cxxopts). A wrong answer is loud either way: `override` of nothing, or an unmarked override, is
+    // the compiler's error.
+    bool overridesBaseVirtual(FunctionDecl* f, Decl* cls)
+    {
+      if (f->name.parts.size() != 1 || f->name.parts[0].special != 0)
+        return false;
+      uint32_t name = f->name.parts[0].symbol;
+      std::function<bool(Decl*, int)> inBases = [&](Decl* d, int depth)
+      {
+        Decl* def = global.definitionOf(d);
+        if (!def || def->kind != NodeKind::ClassDecl || depth > 8)
+          return false;
+        auto* c = static_cast<ClassDecl*>(def);
+        for (const ClassDecl::Base& b : c->bases)
+        {
+          if (!b.type || b.type->kind != NodeKind::NamedType)
+            continue;
+          const Ty* bt = global.typeOfAst(b.type, c);
+          if (!bt || !bt->decl)
+          {
+            // (std::exception and its family, which the conversion's resolve does not know: their
+            // virtual function is `what() const`, the stdlib's Exception's)
+            static const std::set<std::string> exceptions = {"exception", "logic_error", "runtime_error", "out_of_range", "invalid_argument",
+                                                             "length_error", "domain_error", "range_error", "overflow_error", "underflow_error", "bad_alloc"};
+            const QualifiedName& bn = static_cast<NamedType*>(b.type)->name;
+            if (bn.parts.size() == 2 && symbols.name(bn.parts[0].symbol) == "std" && exceptions.count(std::string(symbols.name(bn.parts[1].symbol))) &&
+                symbols.name(name) == "what" && f->params.empty() && (f->flags & DF_Const))
+              return true;
+            continue;
+          }
+          Decl* baseDef = global.definitionOf(bt->decl);
+          if (baseDef && baseDef->kind == NodeKind::ClassDecl)
+            for (Decl* m : static_cast<ClassDecl*>(baseDef)->members)
+              if (m->kind == NodeKind::FunctionDecl && (m->flags & (DF_Virtual | DF_Override)))
+              {
+                auto* v = static_cast<FunctionDecl*>(m);
+                if (v->name.parts.size() == 1 && v->name.parts[0].special == 0 && v->name.parts[0].symbol == name &&
+                    v->params.size() == f->params.size() && (v->flags & DF_Const) == (f->flags & DF_Const) && sameParameters(v, f))
+                  return true;
+              }
+          if (inBases(bt->decl, depth + 1))
+            return true;
+        }
+        return false;
+      };
+      return inBases(cls, 0);
+    }
+
+    // A parameter's type as its file writes it, one space between tokens, without its name or default
+    // value: the tokens between the `(` or `,` before it and the `,`, `=` or `)` after it. Empty when its
+    // tokens are not at hand.
+    static std::string writtenParameterType(const ParamDecl* p)
+    {
+      if (!p->file || !p->file->tokens || p->token >= p->file->tokens->size())
+        return {};
+      const std::vector<Token>& ts = *p->file->tokens;
+      uint32_t start = p->token;
+      for (int depth = 0; start > 0; --start)
+      {
+        const Token& t = ts[start - 1];
+        if (t.is(P::RParen) || t.is(P::RBracket) || t.is(P::Greater))
+          ++depth;
+        else if ((t.is(P::LParen) || t.is(P::LBracket) || t.is(P::Less)) && depth > 0)
+          --depth;
+        else if (depth == 0 && (t.is(P::LParen) || t.is(P::Comma)))
+          break;
+        else if (t.is(P::Semi) || t.is(P::LBrace) || t.is(P::RBrace))
+          return {};
+      }
+      std::string out;
+      int depth = 0;
+      for (uint32_t k = start; k < ts.size(); ++k)
+      {
+        const Token& t = ts[k];
+        if (depth == 0 && (t.is(P::Assign) || t.is(P::Comma) || t.is(P::RParen)))
+          break;
+        if (t.is(P::LParen) || t.is(P::LBracket) || t.is(P::Less))
+          ++depth;
+        else if (t.is(P::RParen) || t.is(P::RBracket) || t.is(P::Greater))
+          --depth;
+        else if (t.is(P::Semi) || t.is(P::LBrace) || t.getKind() == TokenKind::End)
+          return {};
+        if (t.getKind() == TokenKind::Identifier && t.id == p->name)
+          continue;
+        out += (out.empty() ? "" : " ") + std::string(p->file->text.substr(t.offset, t.length));
+      }
+      return out;
+    }
+
+    // Whether two functions take the same parameter types (an overload of another type overrides
+    // nothing): the same resolved type, or the same type as written (std::string in cxxopts' class
+    // template and in its base resolve to two types in the conversion). A wrong yes is the compiler's
+    // error, `override` of nothing.
+    bool sameParameters(FunctionDecl* a, FunctionDecl* b)
+    {
+      if (a->params.size() != b->params.size() || ((a->flags ^ b->flags) & DF_Variadic))
+        return false;
+      const Ty* ta = global.typeOfDecl(a);
+      const Ty* tb = global.typeOfDecl(b);
+      bool typed = ta && tb && ta->kind == TyKind::Function && tb->kind == TyKind::Function && ta->args.size() == a->params.size() &&
+                   tb->args.size() == b->params.size();
+      for (size_t i = 0; i < a->params.size(); ++i)
+      {
+        if (typed && ta->args[i] && tb->args[i] && ta->args[i]->isKnown() && ta->args[i] == tb->args[i])
+          continue;
+        std::string wa = writtenParameterType(static_cast<ParamDecl*>(a->params[i]));
+        if (wa.empty() || wa != writtenParameterType(static_cast<ParamDecl*>(b->params[i])))
+          return false;
+      }
+      return true;
+    }
+
+    // Where `override` goes in f's declaration: before the `{`, `;` or `=` that follows its parameters,
+    // qualifiers and trailing return type; UINT32_MAX when the parameters' `(` is not found.
+    uint32_t overrideToken(FunctionDecl* f)
+    {
+      uint32_t name = f->name.last().symbol;
+      uint32_t end = std::min<uint32_t>(f->endToken, uint32_t(toks.size()));
+      for (uint32_t k = f->token; k + 1 < end; ++k)
+        if (toks[k].getKind() == TokenKind::Identifier && toks[k].id == name && toks[k + 1].is(P::LParen))
+        {
+          uint32_t close = closingParenToken(k + 1);
+          if (close == UINT32_MAX)
+            return UINT32_MAX;
+          int depth = 0;
+          for (uint32_t at = close + 1; at < end; ++at)
+          {
+            const Token& tk = toks[at];
+            if (tk.is(P::LParen))
+              ++depth;
+            else if (tk.is(P::RParen))
+              --depth;
+            else if (depth == 0 && (tk.is(P::LBrace) || tk.is(P::Semi) || tk.is(P::Assign)))
+              return at;
+          }
+          return end < toks.size() && toks[end].is(P::Semi) ? end : UINT32_MAX;
+        }
+      return UINT32_MAX;
     }
 

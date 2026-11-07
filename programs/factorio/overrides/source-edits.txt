@@ -1,7 +1,7 @@
 # Hand edits of the game's C++ before the converter reads it (Converter/SourceEdits.inl): `@ FILE: why`,
 # then the old text's lines after `- ` and the new text's after `+ `; every occurrence is replaced, and an
-# old text the file no longer has is an error. Each makes Windows' code what Linux's is, where kpp decided
-# one form for every platform.
+# old text the file no longer has is an error. Each writes what kpp decided where the C++ says it otherwise:
+# Windows' code as Linux's, where kpp has one form for every platform, and a constraint as `requires`.
 #
 # Strings are UTF-8 on every platform (kovarex, 2026-11-05; design.md 12, "One spelling on every
 # platform"): no wide literal, converted to wide only at the Windows API's boundaries. The game's
@@ -759,3 +759,26 @@
 @ tests/MetaTestRunner.hpp: the inner test through the game's testRun, as Test::Run's desync handling
 -       passed = runCaptured([this] { T fixture; this->testInstructions(fixture); });
 +       passed = runCaptured([this] { ::testRun([this] { T fixture; this->testInstructions(fixture); }); });
+
+# SFINAE is the imported C++'s alone (kovarex, 2026-11-07): kpp states a template's constraint with `requires`.
+
+@ src/ID/IDWithQualityFilter.hpp: the constraint as a requires-clause (std::enable_if without _t constrained nothing in C++: the constructor existed for every IDType)
+-   template <typename = std::enable_if<!std::is_same_v<IDTypeParameter, SignalIDBase> && !std::is_same_v<IDTypeParameter, UpgradeIDBase>>>
+-   explicit IDWithQualityFilter(std::string_view name) : baseID(IDType(name)), qualityCondition(CorePrototypes::normalQuality) {}
++   explicit IDWithQualityFilter(std::string_view name) requires (!std::is_same_v<IDTypeParameter, SignalIDBase> && !std::is_same_v<IDTypeParameter, UpgradeIDBase>)
++   : baseID(IDType(name)), qualityCondition(CorePrototypes::normalQuality) {}
+
+@ src/Info/ConfigItem.hpp: the class template's constraint as a requires-clause, not std::enable_if_t in its base
+- template <typename T>
+- class SimpleConfigItem : public StorageConfigItem<std::enable_if_t<std::is_integral_v<T>, T>>
++ template <typename T> requires std::is_integral_v<T>
++ class SimpleConfigItem : public StorageConfigItem<T>
+
+@ src/Util/SerialiserHelper.hpp: whether T has the member type, a requires-expression in place of std::void_t's specialization
+- template <class T, class = void>
+- constexpr bool force_memcpy_save = false;
+-
+- template <class T>
+- constexpr bool force_memcpy_save<T, std::void_t<typename T::force_memcpy_save>> = true;
++ template <class T>
++ constexpr bool force_memcpy_save = requires { typename T::force_memcpy_save; };
