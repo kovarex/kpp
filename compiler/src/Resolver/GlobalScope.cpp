@@ -401,6 +401,18 @@ std::vector<GlobalScope::LayoutStaticAssert> GlobalScope::layoutStaticAsserts()
       l.args.pairs.push_back({p.param, p.type});
     l.instance = a.instance;
   }
+  // (in a fixed order: checkInstanceStaticAsserts adds them from every thread)
+  std::sort(out.begin(), out.end(), [](const LayoutStaticAssert& a, const LayoutStaticAssert& b)
+  {
+    const std::string& pa = a.decl && a.decl->file ? a.decl->file->path : std::string();
+    const std::string& pb = b.decl && b.decl->file ? b.decl->file->path : std::string();
+    if (pa != pb)
+      return pa < pb;
+    uint32_t ta = a.decl ? a.decl->token : 0, tb = b.decl ? b.decl->token : 0;
+    if (ta != tb)
+      return ta < tb;
+    return a.instance < b.instance;
+  });
   return out;
 }
 
@@ -409,15 +421,15 @@ size_t GlobalScope::checkInstanceStaticAsserts(size_t from)
   // The static_asserts in the bodies of class templates, once per instance the program names (a
   // template's own walk leaves them to its instances).
   std::vector<const Ty*> instances = impl->types.classInstances(from);
-  for (const Ty* cls : instances)
+  auto checkOne = [&](const Ty* cls)
   {
     if (!cls->decl || cls->decl->kind != NodeKind::ClassDecl || cls->isConst || cls->isVolatile || !cls->isKnown() ||
         impl->types.isDependent(cls) || Impl::mentionsUnknown(cls))
-      continue;
+      return;
     // The primary's arguments that pick a specialisation (`Atomic<SharedPtr<Config>>`) instantiate
     // the specialisation's body, not the primary's: its own instance is walked by itself.
     if (impl->resolveSpecialization(cls, 0) != cls)
-      continue;
+      return;
     auto* c = static_cast<ClassDecl*>(cls->decl);
     // Required `override` per instance (design.md 23b, Q7): an instance overrides through a member nothing
     // calls by name, which no walk reaches (a virtual call does not), so each instance says what its members
@@ -428,8 +440,15 @@ size_t GlobalScope::checkInstanceStaticAsserts(size_t from)
       Impl::TokenScope tokenScope(c->file->tokens, c->file->text);
       if (overrideWarningsOn())
         impl->noteNonVirtualDestructor(cls, c);
+      // Only an instance with a virtual function, its own or a base's, or a member that says `override` (of
+      // nothing, a mixin over a plain base) has anything to check: most (Vector<int>) have neither, and the
+      // check's overrideKey types each member (0.7 s of a game build on one thread, B's profile 2026-11-07).
+      bool anySays = false;
       for (Decl* m : membersRead(c))
-        if (m->kind == NodeKind::FunctionDecl && m->templateParams.empty() && !(m->flags & (DF_Static | DF_Constructor)) &&
+        anySays = anySays || (m->kind == NodeKind::FunctionDecl && (m->flags & (DF_Override | DF_Final)));
+      bool check = anySays || impl->polymorphicClass(cls) == std::optional<bool>(true);
+      for (Decl* m : membersRead(c))
+        if (check && m->kind == NodeKind::FunctionDecl && m->templateParams.empty() && !(m->flags & (DF_Static | DF_Constructor)) &&
             (!(m->flags & DF_Destructor) || (m->flags & DF_Override))) // (a destructor need not say it, Q5, but one that does overrides)
         {
           bool says = (m->flags & (DF_Override | DF_Final)) != 0;
@@ -451,6 +470,8 @@ size_t GlobalScope::checkInstanceStaticAsserts(size_t from)
             impl->reportCheckerError(c->file, m->token, name + " overrides a virtual function in " + instance + ": write `" + old + " override`, not `" + old + "`");
         }
     }
+    if (std::none_of(membersRead(c).begin(), membersRead(c).end(), [](Decl* m) { return m->kind == NodeKind::StaticAssertDecl; }))
+      return; // (most have none: no substitution and context to build for them)
     Subst subst = impl->substFor(cls);
     LocalStack params;
     for (Decl* p : Impl::effectiveParams(c))
@@ -460,7 +481,23 @@ size_t GlobalScope::checkInstanceStaticAsserts(size_t from)
     for (Decl* m : membersRead(c))
       if (m->kind == NodeKind::StaticAssertDecl)
         impl->checkStaticAssert(static_cast<StaticAssertDecl*>(m), ctx, impl->types.toString(cls, &impl->symbols));
-  }
+  };
+  // On every thread (the code generator's levels are done when it runs: 87,252 instances in the game, 1.7 s on
+  // one thread, B's profile 2026-11-07): what an instance reports goes into sets and layoutAsserts, which
+  // layoutStaticAsserts puts in a fixed order, so nothing depends on which thread took which instance.
+  unsigned threads = unsigned(std::min<size_t>(std::max(1u, std::thread::hardware_concurrency()), std::max<size_t>(1, instances.size() / 256)));
+  std::atomic<size_t> next{0};
+  auto worker = [&]
+  {
+    for (size_t i; (i = next.fetch_add(1, std::memory_order_relaxed)) < instances.size();)
+      checkOne(instances[i]);
+  };
+  std::vector<std::thread> pool;
+  for (unsigned t = 1; t < threads; ++t)
+    pool.emplace_back(worker);
+  worker();
+  for (std::thread& t : pool)
+    t.join();
   return from + instances.size();
 }
 

@@ -33,7 +33,7 @@
 
   // The underlying type an enumeration type was declared with (`enum class Tag : uint8_t`), null
   // for one declared without, unknown when the written one cannot be converted.
-  std::mutex underlyingMutex;
+  std::shared_mutex underlyingMutex; // (a hit takes it shared: codegen's levels ask it from every thread)
   std::unordered_map<const Ty*, const Ty*> underlyingTypes;
   const Ty* declaredUnderlying(const Ty* t, const Subst* local = nullptr); // local: of a function's instance, for an enumeration in its body
   // ConstArith::enumRange: the range of values of an enumeration declared without an underlying

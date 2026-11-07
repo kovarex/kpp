@@ -187,7 +187,7 @@ auto GlobalScope::Impl::enumValueRange(const Ty* t) -> std::optional<std::pair<i
 auto GlobalScope::Impl::declaredUnderlying(const Ty* t, const Subst* local) -> const Ty*
 {
   {
-    std::lock_guard lock(underlyingMutex);
+    std::shared_lock lock(underlyingMutex);
     if (auto it = underlyingTypes.find(t); it != underlyingTypes.end())
       return it->second;
   }
@@ -238,7 +238,7 @@ auto GlobalScope::Impl::declaredUnderlying(const Ty* t, const Subst* local) -> c
     if (low < INT32_MIN || high > INT32_MAX)
       u = low >= 0 && high <= int64_t(UINT32_MAX) ? types.intType(32, true) : types.longType();
   }
-  std::lock_guard lock(underlyingMutex);
+  std::unique_lock lock(underlyingMutex);
   underlyingTypes.emplace(t, u);
   return u;
 }
