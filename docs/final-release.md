@@ -18,11 +18,13 @@ build with the same command line (the crash handler on):
 
 | build | 45 menu maps | performance.zip | modern_playthrough_155 |
 |---|---:|---:|---:|
-| **kpp final** (`kpp factorio final`: FinalRelease's configuration, full LTO) | **0.84x** | **0.96x** | **0.97x** |
+| **kpp final** (`kpp factorio final`: FinalRelease's configuration, full LTO) | **0.84x-0.87x** | **0.96x** | **0.97x** |
 | kpp release (ThinLTO) | 0.86x | 0.97x | 0.96x |
 
 The same configuration on both sides (FINAL_RELEASE, PACKAGED_BUILD and ALL_IN_ONE); no map slower than
-C++ on either ([the section below](#the-rerun-at-f8787782-2026-11-07)). The 2026-11-04 saves (0.95x and
+C++ on either ([the section below](#the-rerun-at-f8787782-2026-11-07)). kpp final's two menu map runs
+that day gave 0.841x and 0.867x: about 3% is the spread between runs. C++'s crash handler costs it
+nothing measurable. The 2026-11-04 saves (0.95x and
 0.97x for kpp final, [the fair benchmark](#the-fair-benchmark-kpp-final-against-the-all-in-one-2026-11-04))
 and the 2026-11-06 menu maps (0.84x, 0.86x, [below](#the-45-menu-maps-against-the-all-in-one-2026-11-06))
 ran kpp with `--no-crash-handler` and C++ without it. The first menu map
@@ -274,14 +276,36 @@ The all-in-one's rounds lie within 0.7% of each other, so all 5 rounds are the f
   faster than kpp release on 24 of the 45.
 - **Against e13691d3:** the totals barely moved, 0.845x to 0.841x for kpp final and 0.859x to 0.855x for
   kpp release (all 5 rounds each), but the two runs differ in two things: the kpp commit and the crash
-  handler, now on in kpp's builds. The handler cost kpp final 4.2% by the sum of medians on 2026-11-06
-  (below). If it costs the same now, kpp f8787782 is about 4% faster than e13691d3; if it costs C++ as
-  much, nothing changed. Which of the two it is stays open until one run of e13691d3's final against
-  f8787782's, and of the all-in-one with and without its handler, tells them apart (planned for the
-  next quiet window). Map by map, kpp final's ratio moved
-  by a median of -0.4% (faster on 25 maps, slower on 20), single maps by up to 15% either way.
+  handler, now on in kpp's builds. Map by map, kpp final's ratio moved by a median of -0.4% (faster on
+  25 maps, slower on 20), single maps by up to 15% either way. The split run below tells the two apart:
+  neither moved anything beyond the method's noise.
 - **The executables:** kpp final 70.1 MB (69.4 MB at e13691d3), kpp release 73.5 MB (72.1 MB), the
   all-in-one 49.4 MB.
+
+### The commits and the crash handler, apart (2026-11-07)
+
+One run, 45 maps, 3 rounds, under the quiet window (12:36:13 to 12:53:19 local, load before 4.0-4.9% on
+average by round, one map run again for other work of 10.7%), checksums equal: the all-in-one with its
+crash handler and the same executable with `--no-crash-handler` (its own root), and kpp final of
+e13691d3 and of f8787782, both with theirs.
+
+| build | sum of medians (ms) | vs all-in-one | per round |
+|---|---:|---:|---|
+| C++ all-in-one | 11,778 | 1.00x | 11,900, 11,912, 11,684 |
+| C++ all-in-one, `--no-crash-handler` | 11,975 | 1.017x | 12,100, 11,838, 11,972 |
+| kpp final, e13691d3 | 10,023 | 0.851x | 10,103, 10,091, 10,026 |
+| kpp final, f8787782 | 10,216 | 0.867x | 10,338, 10,069, 10,197 |
+
+- **C++'s handler costs nothing measurable:** without it the same executable ran 1.7% slower (slower on
+  30 of 45 maps), which can only be noise: about 2% is what this method cannot resolve within one run.
+- **The commits from e13691d3 to f8787782** (J's 89c13a5a and d632e2f5, D's 2d0f016a among them) made kpp
+  final 1.9% slower by the sum of medians, +2.3%, -0.2% and +1.7% by round, slower on 29 of the 45 maps
+  (single maps from 0.90x to 1.13x): at the same noise floor, so no gain and no clear loss. The "about 4%
+  faster" reading of the totals above is wrong.
+- **Between runs** the spread is larger: kpp final f8787782 was 0.841x of the all-in-one in the 5-round
+  run above and 0.867x here, the same executables both times. A difference under about 3% between two
+  runs, or 2% within one, is not shown by this method; the 4.2% the handler cost kpp on 2026-11-06 is
+  just above it.
 
 ## The 45 menu maps against the all-in-one (2026-11-06)
 
