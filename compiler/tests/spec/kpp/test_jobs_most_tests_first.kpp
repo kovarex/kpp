@@ -1,27 +1,13 @@
 // spec: under --jobs without --durations the suite with the most tests goes first: with one process what the tests print shows the order (the runner's own lines come in the suites' order)
 // test: --jobs 1
 // exit: 0
-const char* marker = "test_jobs_most_tests_first.marker";
-
 suite Few
 {
-  test Only
-  {
-    FILE* file = fopen(marker, "r");
-    check(file != nullptr);
-    if (file)
-      fclose(file);
-    remove(marker);
-    println("Few.Only");
-  }
+  test Only { println("Few.Only"); }
 }
 
 suite Many
 {
-  test First
-  {
-    fclose(fopen(marker, "w"));
-    println("Many.First");
-  }
+  test First { println("Many.First"); }
   test Second { println("Many.Second"); }
 }

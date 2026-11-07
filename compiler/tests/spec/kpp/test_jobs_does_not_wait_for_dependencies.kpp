@@ -1,32 +1,21 @@
-// spec: under --jobs (without --exit-on-failure) a suite does not wait for its dependencies, as Factorio's --fork: the processes share nothing
+// spec: under --jobs (without --exit-on-failure) a suite does not wait for its dependencies, as Factorio's --fork: the processes share nothing, so Base and Last, 5 s each, end together; one after the other they take at least 10 s, whatever the load, and together 5 s and the workers' start
 // test: --jobs 2
 // exit: 0
-const char* flag = "test_jobs_does_not_wait_for_dependencies.flag";
+auto started = SteadyClock::now();
 
 suite Base
 {
-  // (Last, which depends on Base, runs meanwhile in the other process)
-  test WaitsForLast
-  {
-    bool seen = false;
-    for (int i = 0; i < 1000 && !seen; ++i)
-    {
-      FILE* file = fopen(flag, "r");
-      seen = file != nullptr;
-      if (file)
-        fclose(file);
-      else
-        thisThread::sleepFor(Milliseconds(10));
-    }
-    remove(flag);
-    check(seen);
-  }
+  test Sleeps { thisThread::sleepFor(Seconds(5)); }
 }
 
 suite Last depends Base
 {
-  test Starts
-  {
-    fclose(fopen(flag, "w"));
-  }
+  test Sleeps { thisThread::sleepFor(Seconds(5)); }
+}
+
+// (the first process, once both workers have ended)
+void testsTeardown()
+{
+  if (testWorker() == 0)
+    println(StringView(SteadyClock::now() - started < Milliseconds(9500) ? "together" : "one after the other"));
 }

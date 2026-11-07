@@ -1,27 +1,10 @@
-// spec: under --jobs a worker that ends outside a test (here in its testsSetup) fails no test: another process takes its suite (the tests print nothing: what a test prints goes straight to the shared stdout, in the order the workers run, which was the expected output's order on one machine and not on another)
+// spec: under --jobs a worker that ends outside a test (here in its testsSetup, each time it is started again) fails no test: the other process runs them all (the tests print nothing: what a test prints goes straight to the shared stdout, in the order the workers run)
 // test: --jobs 2
 // exit: 0
-const char* marker = "test_jobs_worker_dies_outside_a_test.marker";
-
-// Worker 1 ends the first time, before any test; started again, it goes on.
 void testsSetup(const Vector<String>& arguments)
 {
-  if (testWorker() != 1)
-    return;
-  FILE* file = fopen(marker, "r");
-  if (file)
-  {
-    fclose(file);
-    return;
-  }
-  fclose(fopen(marker, "w"));
-  ::exit(3);
-}
-
-void testsTeardown()
-{
-  if (testWorker() == 0)
-    remove(marker);
+  if (testWorker() == 1)
+    ::exit(3);
 }
 
 suite First

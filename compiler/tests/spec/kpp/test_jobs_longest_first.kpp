@@ -1,42 +1,16 @@
 // spec: under --jobs the longest suite goes first, by --durations FILE (an earlier run's --report: each line's "suite" and "seconds"): with one process what the tests print shows the order (the runner's own lines come in the suites' order)
 // test: --jobs 1 --durations test_jobs_longest_first.jsonl
 // exit: 0
-const char* marker = "test_jobs_longest_first.marker";
 
-// (the first process writes the durations before it reads them, an earlier run's report as it would)
-void testsSetup(const Vector<String>& arguments)
-{
-  if (testWorker() != 0)
-    return;
-  FILE* file = fopen("test_jobs_longest_first.jsonl", "w");
-  fputs("{\"test\":\"Long.Runs\",\"suite\":\"Long\",\"file\":\"x.kpp\",\"line\":1,\"status\":\"pass\",\"seconds\":2.5,\"failures\":[]}\n", file);
-  fputs("{\"test\":\"Alpha.First\",\"suite\":\"Alpha\",\"seconds\":1.5e-3}\n", file);
-  fputs("{\"summary\":{\"tests\":2,\"failed\":0,\"notRun\":0}}\n", file);
-  fclose(file);
-}
-
-// More tests than Long, and first by name, but shorter.
+// More tests than Long, and first by name, but shorter (test_jobs_longest_first.jsonl).
 suite Alpha
 {
-  test First
-  {
-    FILE* file = fopen(marker, "r");
-    check(file != nullptr);
-    if (file)
-      fclose(file);
-    remove(marker);
-    remove("test_jobs_longest_first.jsonl");
-    println("Alpha.First");
-  }
+  test First { println("Alpha.First"); }
   test Second { println("Alpha.Second"); }
   test Third { println("Alpha.Third"); }
 }
 
 suite Long
 {
-  test Runs
-  {
-    fclose(fopen(marker, "w"));
-    println("Long.Runs");
-  }
+  test Runs { println("Long.Runs"); }
 }

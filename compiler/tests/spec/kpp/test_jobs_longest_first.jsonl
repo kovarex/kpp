@@ -1,0 +1,3 @@
+{"test":"Long.Runs","suite":"Long","file":"x.kpp","line":1,"status":"pass","seconds":2.5,"failures":[]}
+{"test":"Alpha.First","suite":"Alpha","seconds":1.5e-3}
+{"summary":{"tests":2,"failed":0,"notRun":0}}
