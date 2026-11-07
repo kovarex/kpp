@@ -1469,6 +1469,43 @@ int main(int argc, char** argv)
     });
   }
 
+  // A filter no test matches, or a suite or tag no suite has, is a mistake on the command line: it
+  // would run nothing and pass.
+  for (const char* filter : filters)
+  {
+    bool any = false;
+    for (const __KppTest& test : tests)
+      any = any || __kppMatches(test.fullName.c_str(), filter);
+    if (!any)
+    {
+      println("--filter: no test matches ", StringView(filter));
+      return 2;
+    }
+  }
+  for (int pass = 0; pass < 2; ++pass)
+    for (const char* name : pass == 0 ? onlySuites : skipSuites)
+    {
+      bool any = false;
+      for (const __KppSuite& suite : state.suites)
+        any = any || __kppSameName(suite.name.c_str(), name);
+      if (!any)
+      {
+        println(StringView(pass == 0 ? "--suite" : "--skip-suite"), ": no suite is called ", StringView(name));
+        return 2;
+      }
+    }
+  if (tag)
+  {
+    bool any = false;
+    for (const __KppSuite& suite : state.suites)
+      any = any || __kppHasTag(&suite, tag);
+    if (!any)
+    {
+      println("--tag: no suite is tagged ", StringView(tag));
+      return 2;
+    }
+  }
+
   auto skipped = [&](const __KppSuite* suite)
   {
     for (const char* name : skipSuites)

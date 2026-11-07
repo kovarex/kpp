@@ -1,0 +1,14 @@
+// spec: a --suite that names no suite is an error, nothing runs (it would run 0 tests and pass); names match case-insensitively
+// test: --suite parsing --suite Parse
+// exit: 2
+suite Parsing tags slow
+{
+  test Numbers { println("Parsing.Numbers"); }
+}
+
+suite Printing
+{
+  test Numbers { println("Printing.Numbers"); }
+}
+
+test alone { println("alone"); }

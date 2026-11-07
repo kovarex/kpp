@@ -351,6 +351,8 @@ kpp's runner follows this:
 - Factorio's `--test`, `--contains`, `--suite-contains` and `--test-contains` are all
   `--filter` with a pattern.
 - `-V` (invert) is left out unless someone needs it.
+- A `--filter` no test matches, a `--suite` or `--skip-suite` no suite has, and a `--tag` no suite
+  has are errors (exit code 2), not a run of nothing that passes.
 
 **Reporting:** the same lines as today. `--report` adds `"suite"` and `"skippedBecause"` fields and a
 per-test `"seconds"`. A test running longer than 5 minutes gets a warning line, as Factorio's

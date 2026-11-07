@@ -711,7 +711,8 @@ suite DragBuildingBelt depends DragBuilding, TransportBelt
   and `--shuffle [SEED]` (an unsigned number; without one the runner picks it; it prints `shuffle seed:
   N`, and one seed gives one order on every target). Names on the command line
   match case-insensitively (a convenience, as Factorio's command line has it); `--filter` matches
-  the full name. `--report` lines gain `"suite"`, `"seconds"` and `"status": "not run"`. A test that
+  the full name. A `--filter` no test matches, a `--suite` or `--skip-suite` no suite has, and a
+  `--tag` no suite has are errors, exit code 2: each would run nothing, or skip nothing, and pass. `--report` lines gain `"suite"`, `"seconds"` and `"status": "not run"`. A test that
   ran longer than 5 minutes gets a line when it ends, `slow test: Suite.Test ran longer than 300 s`
   (`--slow SECONDS` sets the limit).
 - **Hooks.** If the program defines them, the runner calls `void testsSetup(const Vector<String>&

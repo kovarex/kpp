@@ -1,0 +1,14 @@
+// spec: a --skip-suite that names no suite is an error, nothing runs (it would skip nothing)
+// test: --skip-suite Printng
+// exit: 2
+suite Parsing tags slow
+{
+  test Numbers { println("Parsing.Numbers"); }
+}
+
+suite Printing
+{
+  test Numbers { println("Printing.Numbers"); }
+}
+
+test alone { println("alone"); }

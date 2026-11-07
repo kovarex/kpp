@@ -49,9 +49,31 @@ if '--only' in args:
 exe = os.path.abspath(args[0]) if len(args) > 0 else os.path.join(here, 'kpp', 'tests-run', 'factorio-test.exe')
 out = os.path.abspath(args[1]) if len(args) > 1 else os.path.join(here, 'kpp', 'tests-suites')
 
+def live(text):
+    """text without its `#if 0` groups (up to their #else or #endif): two suites are there, which
+    the build does not have, and the runner refuses a --suite that names no suite."""
+    kept, depth, skipping = [], 0, 0
+    for line in text.splitlines():
+        directive = line.strip()
+        if directive.startswith('#'):
+            word = directive[1:].strip()
+            if word.startswith('if'):
+                depth += 1
+                if not skipping and re.match(r'if\s+0\b', word):
+                    skipping = depth
+            elif word.startswith('endif'):
+                if skipping == depth:
+                    skipping = 0
+                depth -= 1
+            elif (word.startswith('else') or word.startswith('elif')) and skipping == depth:
+                skipping = 0
+        if not skipping:
+            kept.append(line)
+    return '\n'.join(kept)
+
 suites = set()
 for f in glob.glob(os.path.join(FACTORIO, 'tests', '**', '*.cpp'), recursive=True):
-    text = open(f, encoding='utf-8', errors='replace').read()
+    text = live(open(f, encoding='utf-8', errors='replace').read())
     for m in re.finditer(r'^\s*SUITE\s*\(\s*(\w+)\s*\)', text, re.M):  # `SUITE (Movement)` too
         suites.add(m.group(1))
 if only:
