@@ -1,0 +1,32 @@
+// spec: a class's implicit move assignment that C++ defines as deleted, as its member's move assignment is deleted, is no candidate ([over.match.funcs] 8, [class.copy.assign] 7): an rvalue of the class is assigned by its implicit copy assignment, which copies the member, and so is one of a class holding it (`7 7 9`, clang's and g++'s)
+// found by thread D (2026-11-08), checking requirement probes of assignments against clang: kpp refused `a = static_cast<HoldsCopyOnly&&>(b)`, "HoldsCopyOnly is assigned by its implicit assignment, which C++ defines as deleted: its member held has a deleted move assignment"
+extern "C" import "stdio.h";
+struct CopyOnly
+{
+  i32 value = 0;
+  CopyOnly& operator=(const CopyOnly& other) = default;
+  CopyOnly& operator=(CopyOnly&& other) = delete;
+};
+struct HoldsCopyOnly
+{
+  CopyOnly held;
+  i32 count = 0;
+};
+struct Outer
+{
+  HoldsCopyOnly inner;
+};
+int main()
+{
+  HoldsCopyOnly a;
+  HoldsCopyOnly b;
+  b.held.value = 7;
+  b.count = 7;
+  a = static_cast<HoldsCopyOnly&&>(b);
+  Outer o;
+  Outer p;
+  p.inner.held.value = 9;
+  o = static_cast<Outer&&>(p);
+  printf("%d %d %d\n", a.held.value, a.count, o.inner.held.value);
+  return 0;
+}

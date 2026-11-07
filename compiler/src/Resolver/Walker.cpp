@@ -3076,6 +3076,11 @@ auto GlobalScope::Impl::Walker::returnTypeOfCall(FunctionDecl* f, const Subst* c
 {
   auto argTypes = [&] { return operands ? *operands : argTypesOf(args); };
   noteDeprecatedCall(f, call);
+  // A requirement's probe of a call of a deleted function (`requires { consume(v); }`, `requires(T& t, U u) { t = u; }`
+  // through a deleted operator=): no well-formed expression ([dcl.fct.def.delete] 2), so the requirement is not met.
+  // A template's is decided once its arguments are, as the explicit specialization for them is no deleted function.
+  if (probing && (f->flags & DF_Delete) && f->templateParams.empty())
+    return unknown(Why::Overload);
   if (f->body == nullptr && f->returnType == nullptr && !(f->flags & (DF_Constructor | DF_Destructor | DF_Conversion)))
     return unknown(Why::Unsupported);
   bool autoReturn = false;
@@ -3091,6 +3096,8 @@ auto GlobalScope::Impl::Walker::returnTypeOfCall(FunctionDecl* f, const Subst* c
         bindExplicitArgs(f, *namePart, args, s);
       impl.deduceCall(f, fnTy, argTypes(), s);
       impl.fillDefaultTemplateArgs(f, s);
+      if (probing && (f->flags & DF_Delete) && !impl.functionSpecializationFor(f, s))
+        return unknown(Why::Overload);
       if (call)
         recordTemplateArgs(call, f, s);
       if (const Ty* r = instantiateFunction(f, s, true, classSubst))
@@ -3130,6 +3137,8 @@ auto GlobalScope::Impl::Walker::returnTypeOfCall(FunctionDecl* f, const Subst* c
       bindExplicitArgs(f, *namePart, args, subst);
     impl.deduceCall(f, fnTy, argTypes(), subst);
     impl.fillDefaultTemplateArgs(f, subst);
+    if (probing && (f->flags & DF_Delete) && !impl.functionSpecializationFor(f, subst))
+      return unknown(Why::Overload);
     if (call)
       recordTemplateArgs(call, f, subst);
     {
@@ -6326,7 +6335,9 @@ auto GlobalScope::Impl::Walker::operatorFunction(P op, const Ty* lhs, const Ty* 
   }
   if (FunctionDecl* free = findFree(false, subst))
     return free;
-  if (constViolation)
+  // (A requirement's probe: none, as no operator takes a const object by a non-const member; `requires(const T& t, U u)
+  // { t = u; }` was met by T::operator=(U).)
+  if (constViolation && !probing)
   {
     // (no other operator takes it: the error, and the operator for the walk to go on with)
     checkConstObjectCall(constViolation, lhs, token);
@@ -6482,16 +6493,13 @@ auto GlobalScope::Impl::Walker::overloadedOperator(P op, const Ty* lhs, const Ty
   switch (op)
   {
     case P::Assign:                                   // implicit copy/move assignment
+      // A requirement's probe (`requires(T& t, U u) { t = u; }`): an assignment C++ refuses is no well-formed
+      // expression, so the requirement is not met ([expr.prim.req] 5). Elsewhere the checks below say why.
+      if (probing && !probedAssignment(l, lhsOperand, rhs))
+        return types.unknown();
       if (l && l->kind == TyKind::Class)
       {
-        // A requirement's probe (`requires { t = u; }`): an assignment the value reaches by no implicit conversion is
-        // no well-formed expression, so the requirement is not met ([expr.prim.req]; under --explicit-by-default an
-        // unmarked constructor converts nothing: Vector's assign took the assignment path for a Counted of an
-        // unmarked Counted(int)). Elsewhere checkExplicitCopy says why.
         const Ty* self = types.lref(types.qualified(l, true, false));
-        if (probing && rhs && rhs->isKnown() && !types.isDependent(rhs) && !rhs->isBraceList() && !Impl::mentionsUnknown(rhs) &&
-            !types.isDependent(l) && !Impl::mentionsUnknown(l) && impl.conversionRank(rhs, self, 0) >= NotViable)
-          return types.unknown();
         checkConstModification(token, l, "assignment to");
         checkExplicitCopy(rhs, self, token); // `s = 5;`: its operator=(const S&) given 5
       }
@@ -6513,7 +6521,7 @@ auto GlobalScope::Impl::Walker::overloadedOperator(P op, const Ty* lhs, const Ty
   return countFailure ? unknown(Why::Operator) : nullptr;
 }
 
-auto GlobalScope::Impl::Walker::deletedAssignment(const Ty* cls, bool move, int level, const std::string& prefix) -> std::string
+auto GlobalScope::Impl::Walker::deletedAssignment(const Ty* cls, bool move, int level, const std::string& prefix, bool defaulted) -> std::string
 {
   cls = cls ? types.unqualified(types.stripRef(cls)) : nullptr;
   ClassDecl* def = cls && cls->kind == TyKind::Class && cls->isKnown() && !types.isDependent(cls) && !Impl::mentionsUnknown(cls) && !Impl::lambdaOf(cls)
@@ -6552,8 +6560,15 @@ auto GlobalScope::Impl::Walker::deletedAssignment(const Ty* cls, bool move, int 
       (p->kind == TyKind::RRef ? moveAssign : copyAssign) = f;
   }
   if (level == 0 && (copyAssign || (moveAssign && move)))
-    return {}; // (an operator= of its own, the walk's choice or none: not the implicit one)
-  if (level == 0 && (moveConstructor || moveAssign))
+  {
+    // An operator= of its own, the walk's choice or none: not the implicit one. A defaulted one the walk calls
+    // (defaulted) assigns the bases and members as the implicit one would, below: a copy by copies, a move by moves.
+    FunctionDecl* own = moveAssign && move ? moveAssign : copyAssign;
+    if (!defaulted || !(own->flags & DF_Default))
+      return {};
+    move = own == moveAssign;
+  }
+  else if (level == 0 && (moveConstructor || moveAssign))
     return std::string("it declares a move ") + (moveConstructor ? "constructor" : "assignment") + ", so its copy assignment is deleted";
   if (level > 0)
   {
@@ -6571,33 +6586,115 @@ auto GlobalScope::Impl::Walker::deletedAssignment(const Ty* cls, bool move, int 
       return member + " declares a move " + (moveConstructor ? "constructor" : "assignment") + ", so its copy assignment is deleted";
   }
   // The implicit (or defaulted) one assigns the bases and members: each must be assignable.
-  std::vector<const Ty*> bases;
-  if (impl.directBases(cls, def, bases))
-    for (const Ty* b : bases)
-    {
-      std::string name = types.toString(types.unqualified(types.stripRef(b)), &impl.symbols);
-      if (std::string why = deletedAssignment(b, move, level + 1, "base " + name); !why.empty())
-        return why;
-    }
-  for (Decl* m : membersRead(def))
+  auto subobjects = [&]() -> std::string
   {
-    if (m->kind != NodeKind::VariableDecl || (m->flags & (DF_Static | DF_Typedef)) || static_cast<VariableDecl*>(m)->name.empty())
-      continue;
-    const Ty* t = impl.declaredTypeOf(m, sp, 0);
-    if (!t || !t->isKnown() || types.isDependent(t))
-      continue;
-    std::string name = (level > 0 ? prefix + "'s member " : "member ") + std::string(symbols.name(static_cast<VariableDecl*>(m)->name.last().symbol));
-    if (t->isReference())
-      return "its " + name + " is a reference";
-    if (Impl::isConstObject(t))
-      return "its " + name + " is const";
-    while (t->kind == TyKind::Array && t->inner)
-      t = t->inner;
-    if (t->kind == TyKind::Class)
-      if (std::string why = deletedAssignment(t, move, level + 1, name); !why.empty())
-        return why;
+    std::vector<const Ty*> bases;
+    if (impl.directBases(cls, def, bases))
+      for (const Ty* b : bases)
+      {
+        std::string name = types.toString(types.unqualified(types.stripRef(b)), &impl.symbols);
+        if (std::string why = deletedAssignment(b, move, level + 1, "base " + name); !why.empty())
+          return why;
+      }
+    for (Decl* m : membersRead(def))
+    {
+      if (m->kind != NodeKind::VariableDecl || (m->flags & (DF_Static | DF_Typedef)) || static_cast<VariableDecl*>(m)->name.empty())
+        continue;
+      const Ty* t = impl.declaredTypeOf(m, sp, 0);
+      if (!t || !t->isKnown() || types.isDependent(t))
+        continue;
+      std::string name = (level > 0 ? prefix + "'s member " : "member ") + std::string(symbols.name(static_cast<VariableDecl*>(m)->name.last().symbol));
+      if (t->isReference())
+        return "its " + name + " is a reference";
+      if (Impl::isConstObject(t))
+        return "its " + name + " is const";
+      while (t->kind == TyKind::Array && t->inner)
+        t = t->inner;
+      if (t->kind == TyKind::Class)
+        if (std::string why = deletedAssignment(t, move, level + 1, name); !why.empty())
+          return why;
+    }
+    return std::string();
+  };
+  std::string why = subobjects();
+  // A move that gets here is by the implicit or a defaulted move assignment (a user-provided or deleted one of its own
+  // returned above). C++ defines that one as deleted, and such a one is no candidate ([over.match.funcs] 8): the copy
+  // assignment takes the rvalue (`s = S()` of an S whose member's move assignment is deleted and copy assignment is
+  // not). For the defaulted one the walk calls, deletedDefaultedAssignment decides.
+  if (!why.empty() && move && !defaulted && deletedAssignment(cls, false, level, prefix).empty())
+    return {};
+  return why;
+}
+
+auto GlobalScope::Impl::Walker::deletedDefaultedAssignment(const Ty* cls, FunctionDecl* f) -> std::string
+{
+  const Ty* own = cls ? types.unqualified(types.stripRef(cls)) : nullptr;
+  ClassDecl* def = own && own->kind == TyKind::Class && own->isKnown() && !types.isDependent(own) && !Impl::mentionsUnknown(own) ? impl.classDefinition(own) : nullptr;
+  if (!def || f->params.empty())
+    return {};
+  bool move = impl.selfParameter(f->params[0], def) == 3;
+  std::string why = deletedAssignment(own, move, 0, {}, true);
+  if (why.empty() || !move)
+    return why;
+  // A defaulted move assignment C++ defines as deleted is no candidate ([over.match.funcs] 8): the copy assignment takes
+  // the rvalue, one of its own that is not deleted (none is left when it declares the move assignment).
+  FunctionDecl* copy = impl.specialMembersOf(def).copyAssign;
+  if (!copy || (copy->flags & DF_Delete))
+    return why;
+  if (!(copy->flags & DF_Default))
+    return {};
+  return deletedAssignment(own, false, 0, {}, true).empty() ? std::string() : why;
+}
+
+auto GlobalScope::Impl::Walker::probedAssignment(const Ty* l, const Ty* lhsOperand, const Ty* rhs) -> bool
+{
+  if (!l || !rhs || !l->isKnown() || !rhs->isKnown() || types.isDependent(l) || types.isDependent(rhs) || Impl::mentionsUnknown(l) || Impl::mentionsUnknown(rhs))
+    return true; // (decided once both are known)
+  const Ty* own = types.unqualified(l);
+  if (own->kind != TyKind::Class)
+  {
+    // A built-in assignment changes a modifiable lvalue ([expr.ass] 1).
+    if (!own->isArithmetic() && own->kind != TyKind::Enum && own->kind != TyKind::Pointer && own->kind != TyKind::MemberPointer)
+      return true;
+    return !l->isConst && (!lhsOperand || lhsOperand->kind == TyKind::LRef);
   }
-  return {};
+  // The implicit assignments are no const (nor volatile) members.
+  if (l->isConst || l->isVolatile)
+    return false;
+  ClassDecl* def = impl.classDefinition(own);
+  if (!def || def->isTypedUnion || (def->attributes & ATTR_Draft) || Impl::lambdaOf(own))
+    return true;
+  // A copy or move assignment of its own, none of which took the value (the walk calls the one that does), leaves no
+  // implicit one that may: a declared copy assignment suppresses both, a declared move assignment the move, and it
+  // deletes the copy ([class.copy.assign] 2, 4).
+  SpecialMembers special = impl.specialMembersOf(def);
+  if (special.copyAssign || special.copyAssignNonConst || special.moveAssign)
+    return false;
+  // The value converted to the class implicitly (under --explicit-by-default an unmarked constructor converts nothing:
+  // Vector's assign took the assignment path for a Counted of an unmarked Counted(int)).
+  if (!rhs->isBraceList() && impl.conversionRank(rhs, types.lref(types.qualified(own, true, false)), 0) >= NotViable)
+    return false;
+  // A copy from an lvalue of the class (or of one derived from it), else a move, by one C++ does not define as deleted.
+  const Ty* object = types.unqualified(types.stripRef(rhs));
+  bool copy = rhs->kind == TyKind::LRef && object && (object == own || (object->kind == TyKind::Class && impl.isBaseClass(own, object)));
+  return deletedAssignment(own, !copy, 0, {}).empty();
+}
+
+auto GlobalScope::Impl::Walker::probedScalarConversion(Expr* value, const Ty* given, const Ty* target) -> bool
+{
+  const Ty* to = target ? types.unqualified(types.stripRef(target)) : nullptr;
+  const Ty* from = given ? types.unqualified(types.stripRef(given)) : nullptr;
+  Expr* inner = value;
+  while (inner && inner->kind == NodeKind::ParenExpr)
+    inner = static_cast<ParenExpr*>(inner)->inner;
+  if (!to || !from || !inner || !to->isKnown() || !from->isKnown() || types.isDependent(to) || types.isDependent(from) || Impl::mentionsUnknown(to) ||
+      Impl::mentionsUnknown(from) || from->isBraceList() || inner->kind == NodeKind::LiteralExpr || inner->kind == NodeKind::BraceInitExpr)
+    return true;
+  bool scalarTo = to->isArithmetic() || to->kind == TyKind::Enum || (to->kind == TyKind::Pointer && to->inner && to->inner->kind != TyKind::Function);
+  bool scalarFrom = from->isArithmetic() || from->kind == TyKind::Enum || from->kind == TyKind::Pointer;
+  if (!scalarTo || !scalarFrom)
+    return true;
+  return impl.conversionRank(argumentType(value, given, types), to, 0) < NotViable;
 }
 
 auto GlobalScope::Impl::Walker::isAssignmentOp(P op) -> bool
@@ -6808,6 +6905,18 @@ auto GlobalScope::Impl::Walker::typeOfBinaryOperator(BinaryExpr* b, OperatorCall
             reportCheck(b->token, types.toString(types.unqualified(ls), &impl.symbols) +
                                       " is assigned by its implicit assignment, which C++ defines as deleted: " + why + " ([class.copy.assign] 2, 7)");
       }
+      // `a = b` by a defaulted operator= of the class's own (`S& operator=(const S&) = default;`): one C++ defines as
+      // deleted, as it would the implicit one, is an error, and a requirement's probe of it is not met (the probe was
+      // met, and the assignment compiled, a const member assigned).
+      if (op == P::Assign && ls->kind == TyKind::Class && operatorChosen && (operatorChosen->flags & DF_Default) &&
+          operatorChosen->parent == impl.classDefinition(types.unqualified(ls)))
+        if (std::string why = deletedDefaultedAssignment(ls, operatorChosen); !why.empty())
+        {
+          if (probing)
+            return unknown(Why::Overload);
+          reportCheck(b->token, types.toString(types.unqualified(ls), &impl.symbols) +
+                                    " is assigned by its defaulted operator=, which C++ defines as deleted: " + why + " ([class.copy.assign] 7)");
+        }
       call = operatorCall;
       callee = operatorChosen;
       member = operatorIsMember;
@@ -6875,6 +6984,10 @@ auto GlobalScope::Impl::Walker::typeOfBinaryOperator(BinaryExpr* b, OperatorCall
     case P::Assign: case P::PlusAssign: case P::MinusAssign: case P::StarAssign: case P::SlashAssign:
     case P::PercentAssign: case P::AmpAssign: case P::PipeAssign: case P::CaretAssign: case P::ShlAssign:
     case P::ShrAssign:
+      // (A requirement's probe of one C++ refuses: not met, as the two checks below and codegen refuse it elsewhere.)
+      if (probing && (!probedAssignment(ls, argumentType(b->lhs, l, types), argumentType(b->rhs, r, types)) ||
+                      (op == P::Assign && !probedScalarConversion(b->rhs, r, ls))))
+        return unknown(Why::Operator);
       checkConstModification(b->token, ls, "assignment to", b->lhs);
       checkAssignable(b->token, "the left operand of an assignment", b->lhs, l); // `f() = 5`, `x++ = 5`
       return l;

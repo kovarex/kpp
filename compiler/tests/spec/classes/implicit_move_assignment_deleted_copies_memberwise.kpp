@@ -1,0 +1,26 @@
+// spec: a class's implicit move assignment that C++ defines as deleted is no candidate, so an rvalue of the class is assigned by its implicit copy assignment ([over.match.funcs] 8, [class.copy.assign] 7), member by member where a member's copy assignment is user-provided: Holds's member c, whose move assignment is deleted, is copied by its operator=(const CopyOnly&), which adds 100 (`107`, clang's and g++'s)
+// pending: codegen moves the member, through its deleted move assignment: "codegen does not support assignment to CopyOnly through its deleted operator= yet" (D, 2026-11-08, beside classes/implicit_move_assignment_deleted_copies, whose class assigns bytewise; for the coordinator to give an owner)
+extern "C" import "stdio.h";
+struct CopyOnly
+{
+  i32 value = 0;
+  CopyOnly& operator=(const CopyOnly& other)
+  {
+    this->value = other.value + 100;
+    return *this;
+  }
+  CopyOnly& operator=(CopyOnly&& other) = delete;
+};
+struct Holds
+{
+  CopyOnly c;
+};
+int main()
+{
+  Holds a;
+  Holds b;
+  b.c.value = 7;
+  a = static_cast<Holds&&>(b);
+  printf("%d\n", a.c.value);
+  return 0;
+}

@@ -1,0 +1,68 @@
+// spec: a requires-expression's assignment is satisfied only when C++ allows it ([expr.ass], [class.copy.assign], [expr.prim.req] 5): not to a const object, a class's (its operator= is no const member) nor an i32's; not to an i32's value (`make<i32>() = v`; a class's value takes it, as its operator= has no ref-qualifier); not from a value of a type the target takes by no implicit conversion (an i32* from an i32, an i32 from an i32*, an enum class from an i32); not through an implicit assignment C++ defines as deleted (a reference member, a const member, a member whose copy assignment is deleted, a declared move constructor), nor a defaulted copy assignment it defines as deleted (a const member), nor the class's own deleted move assignment; and an rvalue of a class whose member's move assignment is deleted beside its copy assignment is assigned, by the implicit copy assignment, as the implicit move assignment C++ defines as deleted is no candidate ([over.match.funcs] 8): `0 0 0 1 0 0 0 0 0 0 0 1 1 0 1 0`, clang's and g++'s (every one was satisfied but the deleted ones of members)
+extern "C" import "stdio.h";
+enum class Color
+{
+  Red,
+  Green
+};
+struct Takes
+{
+  i32 value = 0;
+  Takes& operator=(i32 v)
+  {
+    this->value = v;
+    return *this;
+  }
+};
+struct HasReference
+{
+  i32& target;
+};
+struct HasConst
+{
+  const i32 fixed = 0;
+};
+struct NoCopyAssign
+{
+  i32 value = 0;
+  NoCopyAssign& operator=(const NoCopyAssign& other) = delete;
+};
+struct HoldsNoCopyAssign
+{
+  NoCopyAssign held;
+};
+struct DefaultedConst
+{
+  const i32 fixed = 0;
+  DefaultedConst& operator=(const DefaultedConst& other) = default;
+};
+struct CopyOnly
+{
+  i32 value = 0;
+  CopyOnly& operator=(const CopyOnly& other) = default;
+  CopyOnly& operator=(CopyOnly&& other) = delete;
+};
+struct HoldsCopyOnly
+{
+  CopyOnly held;
+};
+struct MoveOnly
+{
+  i32 value = 0;
+  MoveOnly() {}
+  MoveOnly(MoveOnly&& other) : value(other.value) {}
+};
+template<typename T> T make();
+template<typename T, typename V> constexpr bool assignable = requires(T& t, V v) { t = v; };
+template<typename T, typename V> constexpr bool assignableValue = requires(V v) { make<T>() = v; };
+template<typename T, typename V> constexpr bool assignableMoved = requires(T& t, V v) { t = static_cast<V&&>(v); };
+int main()
+{
+  printf("%d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d\n", (i32)assignable<const Takes, i32>, (i32)assignable<const i32, i32>,
+         (i32)assignableValue<i32, i32>, (i32)assignableValue<Takes, i32>, (i32)assignable<i32*, i32>, (i32)assignable<i32, i32*>,
+         (i32)assignable<Color, i32>, (i32)assignable<HasReference, HasReference>, (i32)assignable<HasConst, HasConst>,
+         (i32)assignable<HoldsNoCopyAssign, HoldsNoCopyAssign>, (i32)assignable<MoveOnly, MoveOnly>, (i32)assignable<i64, f64>,
+         (i32)assignable<Takes, Takes>, (i32)assignable<DefaultedConst, DefaultedConst>, (i32)assignableMoved<HoldsCopyOnly, HoldsCopyOnly>,
+         (i32)assignableMoved<CopyOnly, CopyOnly>);
+  return 0;
+}

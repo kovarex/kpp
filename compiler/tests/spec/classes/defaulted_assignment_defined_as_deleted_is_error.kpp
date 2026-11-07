@@ -1,0 +1,76 @@
+// spec: a class's defaulted copy or move assignment (`= default`) that C++ defines as deleted, as it would the implicit one ([class.copy.assign] 7: a const or reference member, a member whose copy assignment is deleted), is an error where an assignment calls it, never a copy that writes the const member or rebinds the reference; no error for one C++ does not delete: a defaulted copy assignment beside a declared move constructor (which deletes only the implicit one), and a defaulted move assignment defined as deleted, which leaves the rvalue to the defaulted copy assignment ([over.match.funcs] 8)
+// found by thread D (2026-11-08), checking requirement probes of assignments against clang: kpp called each defaulted operator=, writing the const member, and a requirement's probe of it was met
+// error: defaulted_assignment_defined_as_deleted_is_error.kpp:69: error: Fixed is assigned by its defaulted operator=, which C++ defines as deleted: its member c is const
+// error: defaulted_assignment_defined_as_deleted_is_error.kpp:70: error: Bound is assigned by its defaulted operator=, which C++ defines as deleted: its member r is a reference
+// error: defaulted_assignment_defined_as_deleted_is_error.kpp:71: error: HoldsNoCopy is assigned by its defaulted operator=, which C++ defines as deleted: its member n has a deleted copy assignment
+// error: defaulted_assignment_defined_as_deleted_is_error.kpp:72: error: MovedFixed is assigned by its defaulted operator=, which C++ defines as deleted: its member c is const
+struct Fixed
+{
+  const i32 c = 1;
+  i32 v = 0;
+  Fixed& operator=(const Fixed& other) = default;
+};
+struct Bound
+{
+  i32& r;
+  Bound& operator=(const Bound& other) = default;
+};
+struct NoCopy
+{
+  i32 v = 0;
+  NoCopy& operator=(const NoCopy& other) = delete;
+};
+struct HoldsNoCopy
+{
+  NoCopy n;
+  HoldsNoCopy& operator=(const HoldsNoCopy& other) = default;
+};
+struct MovedFixed
+{
+  const i32 c = 1;
+  MovedFixed() {}
+  MovedFixed& operator=(MovedFixed&& other) = default;
+};
+struct WithMove
+{
+  i32 v = 0;
+  WithMove() {}
+  WithMove(WithMove&& other) : v(other.v) {}
+  WithMove& operator=(const WithMove& other) = default;
+};
+struct CopyOnly
+{
+  i32 v = 0;
+  CopyOnly& operator=(const CopyOnly& other) = default;
+  CopyOnly& operator=(CopyOnly&& other) = delete;
+};
+struct Both
+{
+  CopyOnly c;
+  Both& operator=(const Both& other) = default;
+  Both& operator=(Both&& other) = default;
+};
+int main()
+{
+  i32 x = 1;
+  i32 y = 2;
+  Fixed a;
+  Fixed b;
+  Bound p{x};
+  Bound q{y};
+  HoldsNoCopy s;
+  HoldsNoCopy t;
+  MovedFixed m;
+  MovedFixed n;
+  WithMove w;
+  WithMove z;
+  Both e;
+  Both f;
+  a = b;
+  p = q;
+  s = t;
+  m = static_cast<MovedFixed&&>(n);
+  w = z;
+  e = static_cast<Both&&>(f);
+  return a.v + w.v + e.c.v;
+}

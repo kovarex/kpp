@@ -1,0 +1,24 @@
+// spec: a requires-expression's call of a deleted function is not satisfied ([dcl.fct.def.delete] 2, [expr.prim.req] 5): a free function's deleted overload (consume(i32) beside consume(f64)), a deleted member function (Box::put(i32)), a deleted operator+ (Box + i32), and a function template deleted for every argument but the one its explicit specialization takes (take<i32>): `0 1 0 1 0 1 1 0`, clang's and g++'s (every one was satisfied: the deleted function was the overload chosen, and only codegen refused its call)
+extern "C" import "stdio.h";
+void consume(i32 v) = delete;
+void consume(f64 v) {}
+struct Box
+{
+  i32 value = 0;
+  void put(i32 v) = delete;
+  void put(f64 v) { this->value = 1; }
+  i32 operator+(i32 v) const = delete;
+  i32 operator+(f64 v) const { return 2; }
+};
+template<typename T> void take(T v) = delete;
+template<> void take<i32>(i32 v) {}
+template<typename V> constexpr bool consumable = requires(V v) { consume(v); };
+template<typename V> constexpr bool puttable = requires(Box& b, V v) { b.put(v); };
+template<typename V> constexpr bool addable = requires(const Box& b, V v) { b + v; };
+template<typename V> constexpr bool takeable = requires(V v) { take(v); };
+int main()
+{
+  printf("%d %d %d %d %d %d %d %d\n", (i32)consumable<i32>, (i32)consumable<f64>, (i32)puttable<i32>, (i32)puttable<f64>, (i32)addable<i32>,
+         (i32)addable<f64>, (i32)takeable<i32>, (i32)takeable<f64>);
+  return 0;
+}

@@ -843,9 +843,27 @@
     // or member whose class's assignment is deleted, or one that declares a move constructor or a
     // move assignment and so has a deleted copy assignment (cls itself too: the walk found no
     // operator= of its own to take the operand). move: an assignment from an rvalue, which a class
-    // whose move assignment is declared or implicit moves by. level 0 is the assigned class; above
-    // it, prefix names the base or member in the reason (`its member f's member c is const`).
-    std::string deletedAssignment(const Ty* cls, bool move, int level, const std::string& prefix);
+    // whose move assignment is declared or implicit moves by, and copies by where that one is
+    // implicit or defaulted and C++ defines it as deleted. level 0 is the assigned class; above it,
+    // prefix names the base or member in the reason (`its member f's member c is const`).
+    // defaulted: cls's own operator= the walk calls is defaulted, and what it assigns is checked.
+    std::string deletedAssignment(const Ty* cls, bool move, int level, const std::string& prefix, bool defaulted = false);
+    // Why C++ defines cls's defaulted operator= f (`S& operator=(const S&) = default;`, the one an
+    // assignment calls) as deleted, as it would the implicit one ([class.copy.assign] 7), or nothing.
+    // A defaulted move assignment defined as deleted leaves the rvalue to the copy assignment.
+    std::string deletedDefaultedAssignment(const Ty* cls, FunctionDecl* f);
+    // A requirement's probe of `a = b` that no operator function takes (l: a's type without its reference; lhsOperand:
+    // a as an argument, a reference when an lvalue, or null): whether C++ allows it. A scalar must be a modifiable
+    // lvalue. A class assigns by its implicit copy or move assignment ([class.copy.assign]): none for a const object,
+    // none when it declares a copy or move assignment of its own (none of which took b), and only for a b that
+    // converts to the class implicitly and when C++ does not define it as deleted (deletedAssignment). True while
+    // either type is not known.
+    bool probedAssignment(const Ty* l, const Ty* lhsOperand, const Ty* rhs);
+    // A requirement's probe of `a = b` of a scalar a (target): whether b (value, of type given) converts to a's type
+    // ([expr.ass] 3), as an argument would: `requires(int*& p, int i) { p = i; }` is not met. A literal (`p = 0`, a null
+    // pointer constant), a braced list, a class's value (its conversion operators) and a function pointer target (an
+    // overload set's address) are not decided here: true.
+    bool probedScalarConversion(Expr* value, const Ty* given, const Ty* target);
 
     // C++'s built-in candidates for an operator no function defines: a class operand takes part
     // through its conversion operator to a non-class type (`area < smallBlueprintAreaSize` with a
