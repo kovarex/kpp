@@ -1,0 +1,37 @@
+// spec: at compile time a Vector is built from a pointer range and takes one by insert, as C++20's constexpr std::vector does: count copies inserted (7), another vector's elements inserted (6), a vector constructed from an array's pointers (2), and the vector's own elements inserted at its front, copied out first (`3416`: {3, 4, 1, 2, 3, 4})
+// factorio: K, 2026-11-07, writing a constant evaluation test for Vector's insert: insert(position, first, last) of pointers always copied the range under constant evaluation, which cannot order pointers into different objects, and the copy was built by the same insert, so it recursed until "calls nested more than 512 deep"; Vector(first, last) of pointers as well
+extern "C" import "stdio.h";
+constexpr i32 countCopies()
+{
+  Vector<i32> v = {1, 2, 3, 4};
+  v.insert(v.begin() + 1, (ContainerSize)3, 9);
+  return (i32)v.size();
+}
+constexpr i32 fromAnother()
+{
+  Vector<i32> v = {1, 2, 3, 4};
+  Vector<i32> w = {7, 8};
+  v.insert(v.begin() + 2, w.begin(), w.end());
+  return (i32)v.size();
+}
+constexpr i32 fromAnArray()
+{
+  i32 raw[] = {5, 6};
+  Vector<i32> v(raw, raw + 2);
+  return (i32)v.size();
+}
+constexpr i32 fromItself()
+{
+  Vector<i32> v = {1, 2, 3, 4};
+  v.insert(v.begin(), v.begin() + 2, v.end());
+  return v[0] * 1000 + v[1] * 100 + v[2] * 10 + (i32)v.size();
+}
+int main()
+{
+  constexpr i32 a = countCopies();
+  constexpr i32 b = fromAnother();
+  constexpr i32 c = fromAnArray();
+  constexpr i32 d = fromItself();
+  printf("%d %d %d %d\n", a, b, c, d);
+  return 0;
+}

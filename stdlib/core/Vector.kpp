@@ -342,12 +342,14 @@ public:
     ContainerSize index = ContainerSize(position - this->items);
     // Elements of this vector (`v.insert(v.begin(), v.begin() + 1, v.end())`) are copied out
     // first: opening the room moves them, and growing frees them. Constant evaluation cannot order
-    // pointers into different objects, so there the range is always copied.
+    // pointers into different objects, so there first is compared with each element.
     if constexpr (isPointer<InputIt> && isSame<RemoveConst<RemovePointer<InputIt>>, T>)
     {
-      bool inside = true;
+      bool inside = false;
       if consteval
       {
+        for (ContainerSize i = 0; i < this->length && !inside; ++i)
+          inside = first == this->items + i;
       }
       else
       {
