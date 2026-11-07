@@ -66,7 +66,7 @@ struct IntegralConstant
   using value_type = T;
   using type = IntegralConstant<T, V>;
   static constexpr T value = V;
-  constexpr operator T() const { return V; }
+  implicit constexpr operator T() const { return V; }
   constexpr T operator()() const { return V; }
 };
 

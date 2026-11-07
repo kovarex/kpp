@@ -278,7 +278,7 @@ class SharedFuture
 {
 public:
   SharedFuture() {}
-  SharedFuture(Future<T>&& f) noexcept : state(move(f.state)) {}
+  implicit SharedFuture(Future<T>&& f) noexcept : state(move(f.state)) {}
   SharedFuture(const SharedFuture<T>& other) : state(other.state) {}
 
   bool valid() const { return (bool)this->state; }

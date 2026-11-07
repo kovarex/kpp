@@ -984,7 +984,7 @@ struct Atomic
   T fetch_sub(T delta, MemoryOrder order = MemoryOrder::seq_cst) noexcept requires (!isPointer<T>) { return this->fetchSub(delta); }
   bool is_lock_free() const { return true; }
 
-  operator T() const { return this->load(); }
+  implicit operator T() const { return this->load(); }
 
   Atomic<T>& operator=(T v)
   {

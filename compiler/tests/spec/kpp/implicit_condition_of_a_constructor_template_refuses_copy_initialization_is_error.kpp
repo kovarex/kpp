@@ -1,0 +1,20 @@
+// spec: a constructor template whose `implicit(cond)` is false for the arguments deduced is explicit there, as one whose condition is on the class's parameters: copy-initialization does not take it (`Box<OnlyExplicit> b = 6;`, as std::optional<E> o = 6 for an explicit E(int)), while isConvertible already says false
+// pending: copy-initialization takes the constructor template, whatever its condition gives (and `explicit(cond)` before it alike): Optional<E> o = 6 compiles where C++ refuses it. Found checking the stdlib's implicit(cond) marks (K, 2026-11-07); D
+// error: implicit_condition_of_a_constructor_template_refuses_copy_initialization_is_error.kpp:18: error: copy-initialising
+struct OnlyExplicit
+{
+  int value;
+  implicit(false) OnlyExplicit(int value) : value(value) {}
+};
+template<typename T>
+struct Box
+{
+  T t;
+  template<typename U>
+  implicit(isConvertible<U, T>) Box(U&& u) : t(u) {}
+};
+int main()
+{
+  Box<OnlyExplicit> b = 6;
+  return 0;
+}

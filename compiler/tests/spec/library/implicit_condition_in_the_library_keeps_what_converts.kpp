@@ -1,0 +1,26 @@
+// spec: the library's `implicit(cond)` constructors convert exactly where their `explicit(!cond)` did: Optional<T> from a U and Pair<A, B> from two values or another Pair convert only when the members convert, so isConvertible gives what std's gives and copy-initialization from a value whose member takes it only explicitly does not compile
+// factorio: explicit by default (design.md), the stdlib's marks (C's handover to K, 2026-11-07)
+struct OnlyExplicit
+{
+  int value;
+  implicit(false) OnlyExplicit(int value) : value(value) {}
+};
+
+struct Converts
+{
+  int value;
+  implicit Converts(int value) : value(value) {}
+};
+
+int main()
+{
+  println(isConvertible<int, Optional<Converts>>, " ", isConvertible<int, Optional<OnlyExplicit>>);
+  println(isConvertible<Pair<int, int>, Pair<Converts, long>>, " ", isConvertible<Pair<int, int>, Pair<OnlyExplicit, long>>);
+  println(isConstructible<Optional<OnlyExplicit>, int>, " ", isConstructible<Pair<OnlyExplicit, long>, Pair<int, int>>);
+  Optional<Converts> a = 5;
+  Optional<OnlyExplicit> b(6);
+  Pair<Converts, long> c = Pair<int, int>(7, 8);
+  Pair<OnlyExplicit, long> d(Pair<int, int>(9, 10));
+  println(a->value, " ", b->value, " ", c.first.value, " ", d.first.value);
+  return 0;
+}

@@ -146,7 +146,7 @@ struct Pair
   // (`Pair<SharedStringKey, bool> emptyItem{StringView(), false}` with an explicit
   // SharedStringKey(StringView)); there only for arguments the members can be constructed from.
   template<typename U1, typename U2>
-  explicit(!isConvertible<U1, A> || !isConvertible<U2, B>) Pair(U1&& first, U2&& second)
+  implicit(isConvertible<U1, A> && isConvertible<U2, B>) Pair(U1&& first, U2&& second)
     requires(isConstructible<A, U1> && isConstructible<B, U2>)
     : first(forward<U1>(first)), second(forward<U2>(second))
   {
@@ -157,14 +157,14 @@ struct Pair
   // a Map<uint32, UniquePointer<Sound>> (ProcessionAudioCatalogue). The other's members are copied,
   // or moved from an rvalue Pair.
   template<typename U1, typename U2>
-  explicit(!isConvertible<const U1&, A> || !isConvertible<const U2&, B>) Pair(const Pair<U1, U2>& other)
+  implicit(isConvertible<const U1&, A> && isConvertible<const U2&, B>) Pair(const Pair<U1, U2>& other)
     requires(isConstructible<A, const U1&> && isConstructible<B, const U2&>)
     : first(other.first), second(other.second)
   {
   }
 
   template<typename U1, typename U2>
-  explicit(!isConvertible<U1, A> || !isConvertible<U2, B>) Pair(Pair<U1, U2>&& other)
+  implicit(isConvertible<U1, A> && isConvertible<U2, B>) Pair(Pair<U1, U2>&& other)
     requires(isConstructible<A, U1> && isConstructible<B, U2>)
     : first(forward<U1>(other.first)), second(forward<U2>(other.second))
   {

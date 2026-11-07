@@ -179,7 +179,7 @@ struct Optional : OptionalValue<T>
   // explicit when only an explicit constructor of T takes it:
   // `Optional<ActionData::SetupBlueprintData>(*parameters)` from a SetupBlueprintParameters.
   template<typename U = T>
-  explicit(!isConvertible<U, T>) Optional(U&& v)
+  implicit(isConvertible<U, T>) Optional(U&& v)
     requires(!isSame<RemoveCvRef<U>, T> && !isSame<RemoveCvRef<U>, InPlaceTag> && !isSame<RemoveCvRef<U>, NullOpt> &&
              !IsOptional<RemoveCvRef<U>>::value && isConstructible<T, U>)
   {

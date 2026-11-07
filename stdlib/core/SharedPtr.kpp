@@ -451,7 +451,7 @@ struct Atomic<SharedPtr<T>>
   bool compare_exchange_weak(SharedPtr<T>& expected, SharedPtr<T> desired) { return this->compareExchange(expected, move(desired)); }
   bool is_lock_free() const { return false; }
 
-  operator SharedPtr<T>() const { return this->load(); }
+  implicit operator SharedPtr<T>() const { return this->load(); }
 
   Atomic<SharedPtr<T>>& operator=(SharedPtr<T> desired)
   {
