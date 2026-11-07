@@ -434,7 +434,8 @@ is already convincing, but lets try for 5x for some time". So about 8.4 s for th
 a precompiled-header change), 9.2 s for the whole factorio.exe (46 s) and 12 s for the whole
 factorio-test.exe (60 s); the edits stay 10x or better (2.5 s and 5.5 s). 10x everywhere stays the
 long-term goal; release builds (their ThinLTO link) are a separate study. The target is worth real time,
-not a gate on stage 1. Where it stands, kovarex's `kpp measure` (the readme's method; for 0.2.937 the
+not a gate on stage 1. The whole builds stay cold builds: no object cache for the C libraries (kovarex,
+2026-11-07: incremental builds never rebuild them, and a full rebuild is mainly for measurements). Where it stands, kovarex's `kpp measure` (the readme's method; for 0.2.937 the
 machine's load at the time is not known):
 
 | | C++ | kpp 0.2.171 (readme) | kpp 0.2.937 (2026-11-07) | target |
