@@ -505,8 +505,9 @@ namespace projects
       std::string llvmRc = llvmTool("llvm-rc", c.name);
       if (llvmRc.empty())
         return false;
-      job.commands.push_back("cd /d " + quoteArg(script.parent_path().string()) + " && " + quoteArg(llvmRc) +
-                             " /nologo /fo " + quoteArg(res.string()) + " " + quoteArg(script.string()));
+      // (run in the script's directory, which its relative paths name: host::shell's `cd`, cmd's or the
+      // shell's; llvm-rc's options with its own `-`, which a Linux host does not take for a path)
+      job.commands.push_back(quoteArg(llvmRc) + " -nologo -fo " + quoteArg(res.string()) + " " + quoteArg(script.string()));
       job.scripts.push_back(script);
       job.resources.push_back(res);
     }
@@ -558,7 +559,7 @@ namespace projects
               continue;
             }
           }
-          if (host::shell(job.commands[k]) != 0)
+          if (host::shell(job.commands[k], k >= job.compiles ? job.scripts[k - job.compiles].parent_path() : fs::path()) != 0)
             job.failed[k] = true;
         }
       });

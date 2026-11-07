@@ -53,6 +53,7 @@ std::string linkFlags(const Options& options, bool wideEntry)
   {
     std::string flags = targetFlags(options).substr(1) + " -fuse-ld=lld -Wl,--gc-sections -luser32 -ladvapi32 -lshell32 -lole32 -lws2_32";
     flags += gnuRuntime(options);
+    flags += libraryCaseDirectory(clangPath(), options.target.triple);
     if (!options.sysroot.empty())
       flags += " \"--sysroot=" + options.sysroot + "\"";
     if (wideEntry)

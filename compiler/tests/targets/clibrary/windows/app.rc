@@ -1,0 +1,6 @@
+// A resource of the Windows build (build.kpp's resource(..., Platform::Windows)): llvm-rc compiles it in
+// this directory, on a Linux host too (CLibraryBuild.cpp: host::shell's directory, llvm-rc's `-` options).
+STRINGTABLE
+BEGIN
+  1 "kpp's C library project"
+END

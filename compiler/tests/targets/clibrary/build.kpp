@@ -21,6 +21,7 @@ void build(Project& project)
   // Windows' own library, its headers spelled <Windows.h> and <WinSock2.h> (a Linux host's case).
   CLibrary& windows = project.cLibrary("windows");
   windows.source("windows", Platform::Windows);
+  windows.resource("windows/app.rc", Platform::Windows);
   Executable& app = project.executable("app", {"src"});
   app.link("numbers");
   app.link("kernel");

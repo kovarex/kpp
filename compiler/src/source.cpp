@@ -919,6 +919,85 @@ std::string headerCaseOverlay(const std::string& clang, const std::string& tripl
   return flag;
 }
 
+// A Windows library named with case on a host whose file names have case (a Linux host's windows-gnu link):
+// MinGW-w64's import libraries are lower case (libcrypt32.a), and a library Visual Studio built names
+// its default libraries as Windows writes them (Logitech's LogitechLEDLib.lib: Crypt32, Wintrust,
+// Imagehlp, Version; lld looks for libCrypt32.a). A directory of links, made once per toolchain beside
+// headerCaseOverlay's, gives each of the toolchain's import libraries its first-letter-capital and
+// upper-case names too; " -L DIR" for the link, "" on a host without case or for another target.
+std::string libraryCaseDirectory(const std::string& clang, const std::string& triple)
+{
+  if (host::pathsIgnoreCase || clang.empty() || (triple.find("windows") == std::string::npos && triple.find("mingw") == std::string::npos))
+    return "";
+  static std::mutex mutex;
+  static std::map<std::string, std::string> made;
+  std::lock_guard lock(mutex);
+  std::string key = clang + "\n" + triple;
+  if (auto it = made.find(key); it != made.end())
+    return it->second;
+  std::error_code ec;
+  uint64_t hash = 1469598103934665603ull;
+  std::string stamp = key + "\n" + std::to_string(std::filesystem::last_write_time(clang, ec).time_since_epoch().count());
+  for (unsigned char c : "kpp library case 1\n" + stamp)
+    hash = (hash ^ c) * 1099511628211ull;
+  char hex[32];
+  snprintf(hex, sizeof hex, "%016llx", (unsigned long long)hash);
+  std::filesystem::path dir = std::filesystem::temp_directory_path(ec) / "kpp-imports" / ("libcase-" + std::string(hex));
+  std::string flag = " -L \"" + dir.string() + "\"";
+  if (!std::filesystem::exists(dir / "done", ec))
+  {
+    // clang's own library directories for the target (-print-search-dirs: "libraries: =A:B")
+    std::vector<std::string> libraries;
+    if (FILE* pipe = host::openPipe("\"" + clang + "\" --target=" + triple + " -print-search-dirs 2>&1", "r"))
+    {
+      char line[16384];
+      while (fgets(line, sizeof line, pipe))
+      {
+        std::string s = line;
+        while (!s.empty() && (s.back() == '\n' || s.back() == '\r'))
+          s.pop_back();
+        if (s.rfind("libraries: =", 0) != 0)
+          continue;
+        for (size_t at = 12; at <= s.size();)
+        {
+          size_t end = std::min(s.find(':', at), s.size());
+          if (end > at)
+            libraries.push_back(s.substr(at, end - at));
+          at = end + 1;
+        }
+      }
+      host::closePipe(pipe);
+    }
+    // (several links may make it at once: each in its own directory, renamed into place)
+    std::filesystem::path own = dir.string() + "." + std::to_string(host::processId());
+    std::filesystem::remove_all(own, ec);
+    std::filesystem::create_directories(own, ec);
+    for (const std::string& library : libraries)
+      for (const std::filesystem::directory_entry& e : std::filesystem::directory_iterator(library, ec))
+      {
+        std::string name = e.path().filename().string();
+        if (name.size() <= 5 || name.rfind("lib", 0) != 0 || name.substr(name.size() - 2) != ".a")
+          continue;
+        std::string stem = name.substr(3, name.size() - 5), capital = stem, upper = stem;
+        capital[0] = char(toupper((unsigned char)capital[0]));
+        for (char& c : upper)
+          c = char(toupper((unsigned char)c));
+        for (const std::string& variant : {capital, upper})
+          if (variant != stem && !std::filesystem::exists(own / ("lib" + variant + ".a"), ec))
+            std::filesystem::create_symlink(e.path(), own / ("lib" + variant + ".a"), ec);
+      }
+    if (FILE* f = host::openFile(own / "done", "wb"))
+      fclose(f);
+    std::filesystem::rename(own, dir, ec);
+    if (ec)
+      std::filesystem::remove_all(own, ec);
+    if (!std::filesystem::exists(dir / "done", ec))
+      flag = "";
+  }
+  made[key] = flag;
+  return flag;
+}
+
 std::string clangPath()
 {
   if (!chosenClang.empty())

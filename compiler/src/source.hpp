@@ -174,6 +174,9 @@ bool bundledToolchain();
 // <Windows.h> and <WinSock2.h>. Made once per toolchain and target, in the imports' cache; "" on a
 // Windows host or for another target.
 std::string headerCaseOverlay(const std::string& clang, const std::string& triple);
+// " -L DIR" of the toolchain's Windows import libraries under the names a Windows library may give them
+// (libCrypt32.a), on a host whose file names have case; "" elsewhere.
+std::string libraryCaseDirectory(const std::string& clang, const std::string& triple);
 // The toolchain a build takes, as --toolchain names it ("bundled", "msvc"), or "KPP_CLANG".
 std::string toolchainName();
 // Why the last selectToolchain's list did not take its toolchains before the one it took (`--toolchain
