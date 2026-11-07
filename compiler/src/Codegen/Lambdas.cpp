@@ -19,160 +19,9 @@ auto codegen::Emitter::functionLocal(const Decl* d) -> bool
 auto codegen::Emitter::captureNames(Node* n, std::unordered_set<Decl*>& inner, std::vector<Decl*>& used, bool& usesThis, std::unordered_map<Decl*, const Ty*>* useTypes, int depth, bool keptBranches,
                                     std::vector<BindingUse>* bindingUses) -> void
 {
-  if (!n || depth > 96)
-    return;
-  auto visit = [&](Node* c) { captureNames(c, inner, used, usesThis, useTypes, depth + 1, keptBranches, bindingUses); };
-  auto visitExprs = [&](Span<Expr*> es) { for (Expr* e : es) visit(e); };
-  // A variable declared in the body is no capture, nor are a tuple-like binding's hidden `auto&& a =
-  // get<i>(e)`, which the bindings' names name (Walker::tupleBindings) and no statement lists.
-  auto declared = [&](Decl* d)
-  {
-    inner.insert(d);
-    if (d->kind == NodeKind::VariableDecl)
-      for (Expr* b : static_cast<VariableDecl*>(d)->structuredBindings)
-        if (Decl* own = b && b->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(b)->resolved : nullptr;
-            own && own->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(own)->tupleBinding)
-          inner.insert(own);
-  };
-  switch (n->kind)
-  {
-    case NodeKind::NameExpr:
-    {
-      Decl* d = static_cast<NameExpr*>(n)->resolved;
-      if (!d)
-        break;
-      if (functionLocal(d))
-      {
-        if (!inner.count(d) && std::find(used.begin(), used.end(), d) == used.end())
-        {
-          used.push_back(d);
-          if (useTypes)
-            (*useTypes)[d] = static_cast<NameExpr*>(n)->ty;
-        }
-        // A structured binding (its hidden object has no name of its own: every name of it is a
-        // binding's): which one, for a capture of it alone.
-        auto* name = static_cast<NameExpr*>(n);
-        if (bindingUses && !inner.count(d) && d->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(d)->structuredBindings.empty() && !name->name.empty())
-        {
-          uint32_t symbol = name->name.last().symbol;
-          if (std::none_of(bindingUses->begin(), bindingUses->end(), [&](const BindingUse& b) { return b.object == d && b.name == symbol; }))
-            bindingUses->push_back({d, symbol, name->ty});
-        }
-      }
-      else if ((d->kind == NodeKind::VariableDecl || d->kind == NodeKind::FunctionDecl) && global.owningClass(d) && !(d->flags & DF_Static))
-        usesThis = true; // a member named without `this->`
-      break;
-    }
-    case NodeKind::VariableDecl: // a condition that declares (`if (auto* p = f())`)
-      declared(static_cast<Decl*>(n));
-      visit(static_cast<VariableDecl*>(n)->init);
-      break;
-    case NodeKind::DeclStmt:
-      for (Decl* d : static_cast<DeclStmt*>(n)->decls)
-        if (d->kind == NodeKind::VariableDecl && !(keptBranches && d->whenKnown == 0)) // (a `when` its instance decided false names nothing)
-        {
-          declared(d);
-          visit(static_cast<VariableDecl*>(d)->init);
-        }
-      break;
-    case NodeKind::ThisExpr: usesThis = true; break;
-    case NodeKind::CallExpr: visit(static_cast<CallExpr*>(n)->callee); visitExprs(static_cast<CallExpr*>(n)->args); break;
-    case NodeKind::IndexExpr: visit(static_cast<IndexExpr*>(n)->base); visitExprs(static_cast<IndexExpr*>(n)->args); break;
-    case NodeKind::MemberExpr: visit(static_cast<MemberExpr*>(n)->base); visit(static_cast<MemberExpr*>(n)->dynamicMember); break;
-    case NodeKind::UnaryExpr: visit(static_cast<UnaryExpr*>(n)->operand); break;
-    case NodeKind::BinaryExpr: visit(static_cast<BinaryExpr*>(n)->lhs); visit(static_cast<BinaryExpr*>(n)->rhs); break;
-    case NodeKind::ConditionalExpr:
-      visit(static_cast<ConditionalExpr*>(n)->cond);
-      visit(static_cast<ConditionalExpr*>(n)->then);
-      visit(static_cast<ConditionalExpr*>(n)->else_);
-      break;
-    case NodeKind::CastExpr: visit(static_cast<CastExpr*>(n)->operand); break;
-    case NodeKind::NamedCastExpr: visit(static_cast<NamedCastExpr*>(n)->operand); break;
-    case NodeKind::FunctionalCastExpr: visitExprs(static_cast<FunctionalCastExpr*>(n)->args); break;
-    case NodeKind::SizeofExpr: visit(static_cast<SizeofExpr*>(n)->operand); break;
-    case NodeKind::NewExpr: visitExprs(static_cast<NewExpr*>(n)->placement); visitExprs(static_cast<NewExpr*>(n)->args); break;
-    case NodeKind::DeleteExpr: visit(static_cast<DeleteExpr*>(n)->operand); break;
-    case NodeKind::BraceInitExpr: visitExprs(static_cast<BraceInitExpr*>(n)->args); break;
-    case NodeKind::ThrowExpr: visit(static_cast<ThrowExpr*>(n)->operand); break;
-    case NodeKind::ParenExpr: visit(static_cast<ParenExpr*>(n)->inner); break;
-    case NodeKind::FoldExpr: visit(static_cast<FoldExpr*>(n)->lhs); visit(static_cast<FoldExpr*>(n)->rhs); break; // (`(show(ts), ...)`)
-    case NodeKind::NameofExpr: visit(static_cast<NameofExpr*>(n)->operand); break;
-    case NodeKind::NoexceptExpr: break; // (its operand is not evaluated)
-    case NodeKind::LambdaExpr:
-    {
-      auto* l = static_cast<LambdaExpr*>(n);
-      for (const LambdaCapture& c : l->captures)
-      {
-        visit(c.init);
-        if (c.decl)
-          inner.insert(c.decl);
-      }
-      for (Decl* p : l->params)
-        inner.insert(p);
-      visit(l->body);
-      break;
-    }
-    case NodeKind::BlockStmt: for (Stmt* s : static_cast<BlockStmt*>(n)->stmts) visit(s); break;
-    case NodeKind::ExprStmt: visit(static_cast<ExprStmt*>(n)->expr); break;
-    case NodeKind::IfStmt:
-    {
-      auto* i = static_cast<IfStmt*>(n);
-      visit(i->init);
-      if (i->ifConsteval)
-      {
-        visit(i->ifConsteval == 1 ? i->else_ : i->then); // `if consteval`: the program's branch alone
-        break;
-      }
-      if (keptBranches && i->isConstexpr && i->constexprKnown >= 0)
-      {
-        // An instance's `if constexpr`: only the branch it keeps, as C++ captures what the
-        // instantiated body uses (FluidBox::findOtherUndergroundEnd<BlueprintSurface>'s lambda
-        // names `surface` only in the branch it discards, where nothing types it).
-        visit(i->constexprKnown ? i->then : i->else_);
-        break;
-      }
-      visit(i->cond);
-      visit(i->then);
-      visit(i->else_);
-      break;
-    }
-    case NodeKind::ForStmt:
-      visit(static_cast<ForStmt*>(n)->init);
-      visit(static_cast<ForStmt*>(n)->cond);
-      visit(static_cast<ForStmt*>(n)->step);
-      visit(static_cast<ForStmt*>(n)->body);
-      break;
-    case NodeKind::RangeForStmt:
-      visit(static_cast<RangeForStmt*>(n)->range);
-      if (Decl* v = static_cast<RangeForStmt*>(n)->var)
-        declared(v);
-      visit(static_cast<RangeForStmt*>(n)->body);
-      break;
-    case NodeKind::ForConstexprStmt: visit(static_cast<ForConstexprStmt*>(n)->body); break;
-    case NodeKind::WhileStmt: visit(static_cast<WhileStmt*>(n)->cond); visit(static_cast<WhileStmt*>(n)->body); break;
-    case NodeKind::DoStmt: visit(static_cast<DoStmt*>(n)->body); visit(static_cast<DoStmt*>(n)->cond); break;
-    case NodeKind::SwitchStmt:
-      visit(static_cast<SwitchStmt*>(n)->init);
-      visit(static_cast<SwitchStmt*>(n)->cond);
-      visit(static_cast<SwitchStmt*>(n)->body);
-      break;
-    case NodeKind::CaseStmt: visit(static_cast<CaseStmt*>(n)->value); break;
-    case NodeKind::ReturnStmt: visit(static_cast<ReturnStmt*>(n)->value); break;
-    case NodeKind::AssertStmt: visit(static_cast<AssertStmt*>(n)->cond); break;
-    case NodeKind::TryStmt:
-    {
-      auto* t = static_cast<TryStmt*>(n);
-      visit(t->body);
-      for (const TryStmt::Handler& h : t->handlers)
-      {
-        if (h.param)
-          inner.insert(h.param);
-        visit(h.body);
-      }
-      break;
-    }
-    default: break;
-  }
+  // The checker's (GlobalScope::lambdaNames): its view of what a closure holds by value, which its
+  // traits and destructor answers come from, is made from the same names (closureValueParts).
+  global.lambdaNames(n, inner, used, usesThis, useTypes, depth, keptBranches, bindingUses);
 }
 
 auto codegen::Emitter::captureList(LambdaExpr* l, std::unordered_map<Decl*, const Ty*>* useTypes) -> std::vector<CaptureSlot>
@@ -491,6 +340,32 @@ auto codegen::Emitter::layOutClosure(const Ty* t, Node* at) -> ClosureInfo&
     // `this`: a pointer field; the class it points to is the writer's (enclosingClass).
     // An element of a parameter pack: its own type (`Ts&... ts`: the object an element refers to).
     info.fieldTypes.push_back(s.element >= 0 ? s.elementType : s.decl ? captureType(s.decl, s.init, useTypes, l) : types.pointer(types.voidType()));
+  }
+  // The checker answers a closure's traits and whether its destructor may throw from what it holds
+  // by value as it sees it (GlobalScope::closureValueParts): the parts laid out here, or an error,
+  // never a trait of another class than the one built (isTriviallyCopyable choosing memcpy for a
+  // closure holding a String).
+  if (std::optional<std::vector<GlobalScope::ClosurePart>> seen = global.closureValueParts(t))
+  {
+    std::vector<const Ty*> built, told;
+    for (size_t i = 0; i < info.fieldTypes.size(); ++i)
+      if (!info.byRef[i])
+        built.push_back(info.fieldTypes[i]);
+    for (const GlobalScope::ClosurePart& p : *seen)
+      told.push_back(p.type);
+    std::sort(built.begin(), built.end());
+    std::sort(told.begin(), told.end());
+    if (built != told)
+    {
+      auto list = [&](const std::vector<const Ty*>& v)
+      {
+        std::string s;
+        for (const Ty* p : v)
+          s += (s.empty() ? "" : ", ") + types.toString(p, &symbols);
+        return s.empty() ? std::string("nothing") : s;
+      };
+      fail(l, "the checker sees this lambda holding " + list(told) + " by value, and its closure is laid out holding " + list(built));
+    }
   }
   std::string line = info.structName + " = type { ";
   for (size_t i = 0; i < info.fieldTypes.size(); ++i)

@@ -210,6 +210,20 @@
   };
   TrivialSubject trivialSubject(const Ty* t);
 
+  // GlobalScope::lambdaNames.
+  void lambdaNames(Node* n, std::unordered_set<Decl*>& inner, std::vector<Decl*>& used, bool& usesThis,
+                   std::unordered_map<Decl*, const Ty*>* useTypes = nullptr, int depth = 0, bool keptBranches = false,
+                   std::vector<GlobalScope::BindingUse>* bindingUses = nullptr);
+  // The variable `[symbol]` of lambda l captures: of those its body names (used, lambdaNames), else the
+  // one local of the name declared before the lambda in the function around it; null if none or several.
+  Decl* lambdaCaptured(LambdaExpr* l, uint32_t symbol, const std::vector<Decl*>& used);
+  // GlobalScope::closureValueParts.
+  std::optional<std::vector<GlobalScope::ClosurePart>> closureValueParts(const Ty* lambdaTy);
+  // The closure type t is, or holds as elements of an array, when its lambda has a lambda-capture
+  // (`[=]` with nothing to take counts, [expr.prim.lambda.closure] 13: no default constructor, a
+  // deleted copy assignment); null otherwise.
+  const Ty* closureWithCaptures(const Ty* t);
+
   // isTriviallyDestructible: no user-provided, deleted or virtual destructor, and every base and
   // member trivially destructible.
   std::optional<bool> triviallyDestructible(const Ty* t, int depth = 0);

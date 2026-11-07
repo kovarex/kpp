@@ -3306,7 +3306,14 @@ The smallest language that is still kpp, as the target of the first code generat
   Many : Leaf<A>...` ([temp.variadic] 5), whose `Leaf<A>(a)...` (or `Ts(ts)...`) initializes each
   base from the pattern's element (2026-11-07, templates/pack_expansion_pattern_as_base); a lambda's closure is such a base too,
   its captures its subobject (classes/lambda_closure_as_base), converting to it as to any base
-  (classes/conversion_to_closure_base). A closure type's call operator is a member function for
+  (classes/conversion_to_closure_base). A closure's traits and its destructor's exception specification
+  come from what it holds by value as the code generator lays it out (GlobalScope::closureValueParts,
+  the same capture analysis, which the layout checks against): with a lambda-capture (`[=]` taking
+  nothing included) no default constructor and a deleted copy assignment ([expr.prim.lambda.closure]
+  13), its copies, moves and destruction trivial, nothrow or potentially-throwing as its parts' (2026-11-07,
+  library/type_traits_of_closures; until then such a closure answered no trivially-* trait and every closure
+  default-constructed, J's battery), and a class holding one by value overrides a noexcept destructor by
+  what it holds (templates/destructor_loosening_noexcept_through_a_closure_member_is_error). A closure type's call operator is a member function for
   lookup and overload resolution, as in C++ ([expr.prim.lambda.closure] 4): `using Ts::operator()...;`
   names the closures' call operators, one overload set with the class's own, ranked by the one rule
   (rule 24; a generic lambda as a template), and a call through the class (`Overload o{[](int)
@@ -4589,8 +4596,10 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   unless it is a placement one), a dynamic_cast to a reference that needs a check, typeid through a pointer. In a
   template's own walk it stays undecided; a noexcept-specifier's `noexcept(noexcept(a = b))` is answered under
   the instance's arguments, by a copy of the expression typed under them (the evaluator's NoexceptExpr, as
-  typeOfSignatureExpression does for decltype). It still refuses, as not decided, what it cannot see: a comparison
-  C++ rewrites, a braced list as an argument, a closure capturing a class by value, a fold. Specs
+  typeOfSignatureExpression does for decltype). A lambda expression copies what it captures by copy where
+  it is made (a variable's copy from it as an lvalue, an init-capture from its initializer) and its closure,
+  a temporary, is destroyed (2026-11-07). It still refuses, as not decided, what it cannot see: a comparison
+  C++ rewrites, a braced list as an argument, a lambda whose captures are not known, a fold. Specs
   language/noexcept_operator_*, clang's output.
 
 - **A member function's qualifiers are part of its pointer's type** (D, 2026-11-06, as C++: a silent

@@ -1,0 +1,7 @@
+NoCopy       0000
+MoveOnly     0011
+PrivateCopy  0000
+Abstract     0000
+Plain        1111
+copyable     1111
+moveOnlyL    0011

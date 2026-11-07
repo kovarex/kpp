@@ -6784,35 +6784,35 @@ auto GlobalScope::Impl::Walker::canThrow(Expr* e, std::string& unsupported) -> b
     }
     case NodeKind::LambdaExpr:
     {
-      // Its captures by value are copied where it is made.
+      // What it holds by value is copy-initialized where it is made, a variable's copy from it as an
+      // lvalue and an init-capture from its initializer ([expr.prim.lambda.capture] 15); the closure, a
+      // temporary, is destroyed at the end of the expression. (Until 2026-11-07 a capture's copy was
+      // never asked: `noexcept([big] {})` was true with Big's copy constructor potentially-throwing.)
       auto* l = static_cast<LambdaExpr*>(e);
       bool any = false;
       for (const LambdaCapture& cap : l->captures)
         if (cap.init)
           any = canThrow(cap.init, unsupported) || any;
+      std::optional<std::vector<GlobalScope::ClosurePart>> parts = impl.closureValueParts(l->ty);
       std::optional<bool> mayThrow = impl.destructorMayThrow(l->ty);
-      if (!mayThrow)
+      if (!parts || !mayThrow)
       {
-        // (what a closure holds by value is the code generator's: its class types decide nothing here)
-        for (const LambdaCapture& cap : l->captures)
-          if (!cap.byRef && !cap.isThis && !cap.init)
-          {
-            const Ty* held = nullptr;
-            if (Decl* d = locals.find(cap.symbol))
-              held = impl.declaredTypeOf(d, activeSubst, 0);
-            if (!held || types.unqualified(types.stripRef(held))->kind == TyKind::Class)
-              unsupported = "a lambda capturing a class by value";
-          }
-        if (l->defaultCapture == 1 && l->body)
-          forEachNode(l->body, [&](Node* n)
-          {
-            if (n->kind == NodeKind::NameExpr)
-              if (Decl* d = static_cast<NameExpr*>(n)->resolved; d && (d->kind == NodeKind::VariableDecl || d->kind == NodeKind::ParamDecl))
-                if (const Ty* held = impl.declaredTypeOf(d, activeSubst, 0); held && types.unqualified(types.stripRef(held))->kind == TyKind::Class)
-                  unsupported = "a lambda capturing a class by value";
-          });
+        unsupported = "a lambda whose captures are not known here";
+        return any;
       }
-      return any;
+      for (const GlobalScope::ClosurePart& p : *parts)
+      {
+        const Ty* from = p.init ? (p.init->ty ? argumentType(p.init, p.init->ty, types) : nullptr) : types.lref(p.type);
+        if (!from)
+        {
+          unsupported = "a lambda whose captures are not known here";
+          continue;
+        }
+        if (p.init && !from->isReference() && types.unqualified(from) == types.unqualified(p.type))
+          continue; // `[s = make()]`: the prvalue is the capture
+        any = constructingThrows(p.type, {from}, unsupported) || any;
+      }
+      return any || *mayThrow;
     }
     case NodeKind::CallExpr:
     {

@@ -423,6 +423,11 @@ auto GlobalScope::Impl::traitValueUncached(std::string_view name, const std::vec
     const Ty* t = types.unqualified(types.stripRef(a[0]));
     std::vector<const Ty*> args(a.begin() + 1, a.end());
     bool copy = args.size() == 1 && types.unqualified(types.stripRef(args[0])) == t;
+    // A copy or a move of the class or closure itself: its copy or move constructor, implicit or
+    // declared, which a deleted or private one or an abstract class leaves out (until 2026-11-07 any
+    // class was: `isConstructible<NoCopy, const NoCopy&>` was true, J's battery's C(C&) aside).
+    if (copy && (t->kind == TyKind::Class || t->kind == TyKind::Lambda))
+      return constructibleFromSelf(t, args[0]->kind != TyKind::LRef && !types.stripRef(args[0])->isConst, TraitForm::Plain);
     if (t->kind == TyKind::Class)
     {
       Decl* def = t->decl && t->decl->ownScope ? t->decl : (classScopeOf(t) ? classScopeOf(t)->owner : nullptr);
@@ -524,7 +529,16 @@ auto GlobalScope::Impl::traitValueUncached(std::string_view name, const std::vec
   }
   if (name == "isMoveConstructible") return one() ? constructibleFromSelf(one(), true, TraitForm::Plain) : std::nullopt;
   if (name == "isCopyConstructible") return one() ? constructibleFromSelf(one(), false, TraitForm::Plain) : std::nullopt;
-  if (name == "isNothrowMoveConstructible") return one() ? constructibleFromSelf(one(), true, TraitForm::Nothrow) : std::nullopt;
+  if (name == "isNothrowMoveConstructible")
+  {
+    // As clang's and g++'s libraries answer it: the object made is destroyed too, so a destructor that may
+    // throw makes no nothrow construction (until 2026-11-07 the constructor alone was asked).
+    std::optional<bool> moves = one() ? constructibleFromSelf(one(), true, TraitForm::Nothrow) : std::nullopt;
+    if (!moves || !*moves || one()->isReference())
+      return moves;
+    std::optional<bool> throws = destructorMayThrow(one());
+    return throws ? std::optional<bool>(!*throws) : std::nullopt;
+  }
   if (name == "isTriviallyMoveConstructible")
   {
     std::optional<bool> constructs = one() ? constructibleFromSelf(one(), true, TraitForm::Trivially) : std::nullopt;
@@ -844,8 +858,19 @@ auto GlobalScope::Impl::constructibleFromSelf(const Ty* t, bool move, TraitForm 
       LambdaExpr* l = lambdaOf(u);
       if (!l)
         return std::nullopt;
-      if (form == TraitForm::Trivially && !l->captures.empty())
-        return std::nullopt;
+      if (form != TraitForm::Plain)
+      {
+        // Trivially or without throwing: as each part it holds by value ([expr.prim.lambda.closure] 15,
+        // its copy and move constructors are the implicit ones; a capture by reference holds a pointer).
+        // (Until 2026-11-07 a capture made it unknown trivially, and a nothrow copy ignored what `[x]`
+        // and `[=]` copy.)
+        std::optional<std::vector<GlobalScope::ClosurePart>> parts = closureValueParts(u);
+        if (!parts)
+          return std::nullopt;
+        for (const GlobalScope::ClosurePart& p : *parts)
+          if (std::optional<bool> ok = constructibleFromSelf(p.type, move, form, depth + 1); !ok || !*ok)
+            return ok;
+      }
       // A closure copies (moves) its captures by value: an init-capture of a type that cannot be
       // copied (`[buffer = move(buffer)]` of a UniquePtr) makes it move-only, as C++'s deleted
       // implicit copy constructor does, and the library's Function then never copies it. (A capture
@@ -1046,6 +1071,17 @@ auto GlobalScope::Impl::triviallyDestructible(const Ty* t, int depth) -> std::op
     return std::nullopt;
   if (t->isReference())
     return true;
+  if (const Ty* closure = closureWithCaptures(t))
+  {
+    // A closure: destroyed as the parts it holds by value are.
+    std::optional<std::vector<GlobalScope::ClosurePart>> parts = closureValueParts(closure);
+    if (!parts)
+      return std::nullopt;
+    for (const GlobalScope::ClosurePart& p : *parts)
+      if (std::optional<bool> r = triviallyDestructible(p.type, depth + 1); !r || !*r)
+        return r;
+    return true;
+  }
   TrivialSubject s = trivialSubject(t);
   if (!s.cls)
     return s.answer;
@@ -1084,9 +1120,21 @@ auto GlobalScope::Impl::destructorMayThrow(const Ty* t) -> std::optional<bool>
   {
     if (s.answer)
       return false; // (a scalar, a pointer, a closure holding nothing)
-    LambdaExpr* l = u->kind == TyKind::Lambda ? lambdaOf(u) : nullptr;
-    bool byReference = l && l->defaultCapture != 1 && std::all_of(l->captures.begin(), l->captures.end(), [](const LambdaCapture& c) { return c.byRef || c.isThis; });
-    return byReference ? std::optional<bool>(false) : std::nullopt;
+    // A closure: as the parts it holds by value (a capture by reference holds a pointer).
+    std::optional<std::vector<GlobalScope::ClosurePart>> parts = u->kind == TyKind::Lambda ? closureValueParts(u) : std::nullopt;
+    if (!parts)
+      return std::nullopt;
+    bool any = false;
+    for (const GlobalScope::ClosurePart& p : *parts)
+    {
+      ++depth;
+      std::optional<bool> r = destructorMayThrow(p.type);
+      --depth;
+      if (!r)
+        return std::nullopt;
+      any = any || *r;
+    }
+    return any;
   }
   ++depth;
   std::optional<bool> answer = traitValue("destructorMayThrow", {resolveSpecialization(s.cls, 0)});
@@ -1213,6 +1261,18 @@ auto GlobalScope::Impl::triviallyCopyable(const Ty* t) -> std::optional<bool>
     return std::nullopt;
   if (t->isReference())
     return false;
+  if (const Ty* closure = closureWithCaptures(t))
+  {
+    // A closure: copied, moved and destroyed as the parts it holds by value are (its assignment,
+    // deleted, is no copy of its own).
+    std::optional<std::vector<GlobalScope::ClosurePart>> parts = closureValueParts(closure);
+    if (!parts)
+      return std::nullopt;
+    for (const GlobalScope::ClosurePart& p : *parts)
+      if (std::optional<bool> r = triviallyCopyable(p.type); !r || !*r)
+        return r;
+    return true;
+  }
   TrivialSubject s = trivialSubject(t);
   if (!s.cls)
     return s.answer;
@@ -1268,6 +1328,14 @@ auto GlobalScope::Impl::defaultConstructible(const Ty* t, int depth) -> std::opt
     u = types.unqualified(u->inner);
   if (u->kind == TyKind::Void || u->kind == TyKind::Function)
     return false;
+  if (u->kind == TyKind::Lambda)
+  {
+    // [expr.prim.lambda.closure] 13: a defaulted default constructor without a lambda-capture, none
+    // with one (until 2026-11-07 every closure was default constructible here).
+    if (!lambdaOf(u))
+      return std::nullopt;
+    return !closureWithCaptures(u);
+  }
   if (u->kind != TyKind::Class)
     return true;
   ClassDecl* def = classDefinition(u);
@@ -1344,6 +1412,8 @@ auto GlobalScope::Impl::triviallyDefaultConstructible(const Ty* t, int depth) ->
     return std::nullopt;
   if (t->isReference())
     return false;
+  if (closureWithCaptures(t))
+    return false; // a closure of a lambda-capture has no default constructor
   TrivialSubject s = trivialSubject(t);
   if (!s.cls)
     return s.answer;
@@ -1724,4 +1794,365 @@ auto GlobalScope::Impl::forgetUnitsOf(const Decl* d) -> void
   if (Dependencies* type = d->typeDependencies.load(std::memory_order_acquire))
     units.insert(type);
   forgetErrorsOf(units);
+}
+
+auto GlobalScope::Impl::lambdaNames(Node* n, std::unordered_set<Decl*>& inner, std::vector<Decl*>& used, bool& usesThis, std::unordered_map<Decl*, const Ty*>* useTypes, int depth,
+                                     bool keptBranches, std::vector<GlobalScope::BindingUse>* bindingUses) -> void
+{
+  if (!n || depth > 96)
+    return;
+  // A variable of a function (a parameter, a local of automatic storage): what a lambda captures.
+  auto functionLocal = [](const Decl* d) {
+    return d && (d->kind == NodeKind::ParamDecl ||
+                 (d->kind == NodeKind::VariableDecl && !(d->flags & DF_Static) && d->parent && d->parent->kind == NodeKind::FunctionDecl));
+  };
+  auto visit = [&](Node* c) { lambdaNames(c, inner, used, usesThis, useTypes, depth + 1, keptBranches, bindingUses); };
+  auto visitExprs = [&](Span<Expr*> es) { for (Expr* e : es) visit(e); };
+  // A variable declared in the body is no capture, nor are a tuple-like binding's hidden `auto&& a =
+  // get<i>(e)`, which the bindings' names name (Walker::tupleBindings) and no statement lists.
+  auto declared = [&](Decl* d)
+  {
+    inner.insert(d);
+    if (d->kind == NodeKind::VariableDecl)
+      for (Expr* b : static_cast<VariableDecl*>(d)->structuredBindings)
+        if (Decl* own = b && b->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(b)->resolved : nullptr;
+            own && own->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(own)->tupleBinding)
+          inner.insert(own);
+  };
+  switch (n->kind)
+  {
+    case NodeKind::NameExpr:
+    {
+      Decl* d = static_cast<NameExpr*>(n)->resolved;
+      if (!d)
+        break;
+      if (functionLocal(d))
+      {
+        if (!inner.count(d) && std::find(used.begin(), used.end(), d) == used.end())
+        {
+          used.push_back(d);
+          if (useTypes)
+            (*useTypes)[d] = static_cast<NameExpr*>(n)->ty;
+        }
+        // A structured binding (its hidden object has no name of its own: every name of it is a
+        // binding's): which one, for a capture of it alone.
+        auto* name = static_cast<NameExpr*>(n);
+        if (bindingUses && !inner.count(d) && d->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(d)->structuredBindings.empty() && !name->name.empty())
+        {
+          uint32_t symbol = name->name.last().symbol;
+          if (std::none_of(bindingUses->begin(), bindingUses->end(), [&](const GlobalScope::BindingUse& b) { return b.object == d && b.name == symbol; }))
+            bindingUses->push_back({d, symbol, name->ty});
+        }
+      }
+      else if ((d->kind == NodeKind::VariableDecl || d->kind == NodeKind::FunctionDecl) && owningClassOf(d) && !(d->flags & DF_Static))
+        usesThis = true; // a member named without `this->`
+      break;
+    }
+    case NodeKind::VariableDecl: // a condition that declares (`if (auto* p = f())`)
+      declared(static_cast<Decl*>(n));
+      visit(static_cast<VariableDecl*>(n)->init);
+      break;
+    case NodeKind::DeclStmt:
+      for (Decl* d : static_cast<DeclStmt*>(n)->decls)
+        if (d->kind == NodeKind::VariableDecl && !(keptBranches && d->whenKnown == 0)) // (a `when` its instance decided false names nothing)
+        {
+          declared(d);
+          visit(static_cast<VariableDecl*>(d)->init);
+        }
+      break;
+    case NodeKind::ThisExpr: usesThis = true; break;
+    case NodeKind::CallExpr: visit(static_cast<CallExpr*>(n)->callee); visitExprs(static_cast<CallExpr*>(n)->args); break;
+    case NodeKind::IndexExpr: visit(static_cast<IndexExpr*>(n)->base); visitExprs(static_cast<IndexExpr*>(n)->args); break;
+    case NodeKind::MemberExpr: visit(static_cast<MemberExpr*>(n)->base); visit(static_cast<MemberExpr*>(n)->dynamicMember); break;
+    case NodeKind::UnaryExpr: visit(static_cast<UnaryExpr*>(n)->operand); break;
+    case NodeKind::BinaryExpr: visit(static_cast<BinaryExpr*>(n)->lhs); visit(static_cast<BinaryExpr*>(n)->rhs); break;
+    case NodeKind::ConditionalExpr:
+      visit(static_cast<ConditionalExpr*>(n)->cond);
+      visit(static_cast<ConditionalExpr*>(n)->then);
+      visit(static_cast<ConditionalExpr*>(n)->else_);
+      break;
+    case NodeKind::CastExpr: visit(static_cast<CastExpr*>(n)->operand); break;
+    case NodeKind::NamedCastExpr: visit(static_cast<NamedCastExpr*>(n)->operand); break;
+    case NodeKind::FunctionalCastExpr: visitExprs(static_cast<FunctionalCastExpr*>(n)->args); break;
+    case NodeKind::SizeofExpr: visit(static_cast<SizeofExpr*>(n)->operand); break;
+    case NodeKind::NewExpr: visitExprs(static_cast<NewExpr*>(n)->placement); visitExprs(static_cast<NewExpr*>(n)->args); break;
+    case NodeKind::DeleteExpr: visit(static_cast<DeleteExpr*>(n)->operand); break;
+    case NodeKind::BraceInitExpr: visitExprs(static_cast<BraceInitExpr*>(n)->args); break;
+    case NodeKind::ThrowExpr: visit(static_cast<ThrowExpr*>(n)->operand); break;
+    case NodeKind::ParenExpr: visit(static_cast<ParenExpr*>(n)->inner); break;
+    case NodeKind::FoldExpr: visit(static_cast<FoldExpr*>(n)->lhs); visit(static_cast<FoldExpr*>(n)->rhs); break; // (`(show(ts), ...)`)
+    case NodeKind::NameofExpr: visit(static_cast<NameofExpr*>(n)->operand); break;
+    case NodeKind::NoexceptExpr: break; // (its operand is not evaluated)
+    case NodeKind::LambdaExpr:
+    {
+      auto* l = static_cast<LambdaExpr*>(n);
+      for (const LambdaCapture& c : l->captures)
+      {
+        visit(c.init);
+        if (c.decl)
+          inner.insert(c.decl);
+      }
+      for (Decl* p : l->params)
+        inner.insert(p);
+      visit(l->body);
+      break;
+    }
+    case NodeKind::BlockStmt: for (Stmt* s : static_cast<BlockStmt*>(n)->stmts) visit(s); break;
+    case NodeKind::ExprStmt: visit(static_cast<ExprStmt*>(n)->expr); break;
+    case NodeKind::IfStmt:
+    {
+      auto* i = static_cast<IfStmt*>(n);
+      visit(i->init);
+      if (i->ifConsteval)
+      {
+        visit(i->ifConsteval == 1 ? i->else_ : i->then); // `if consteval`: the program's branch alone
+        break;
+      }
+      if (keptBranches && i->isConstexpr && i->constexprKnown >= 0)
+      {
+        // An instance's `if constexpr`: only the branch it keeps, as C++ captures what the
+        // instantiated body uses (FluidBox::findOtherUndergroundEnd<BlueprintSurface>'s lambda
+        // names `surface` only in the branch it discards, where nothing types it).
+        visit(i->constexprKnown ? i->then : i->else_);
+        break;
+      }
+      visit(i->cond);
+      visit(i->then);
+      visit(i->else_);
+      break;
+    }
+    case NodeKind::ForStmt:
+      visit(static_cast<ForStmt*>(n)->init);
+      visit(static_cast<ForStmt*>(n)->cond);
+      visit(static_cast<ForStmt*>(n)->step);
+      visit(static_cast<ForStmt*>(n)->body);
+      break;
+    case NodeKind::RangeForStmt:
+      visit(static_cast<RangeForStmt*>(n)->range);
+      if (Decl* v = static_cast<RangeForStmt*>(n)->var)
+        declared(v);
+      visit(static_cast<RangeForStmt*>(n)->body);
+      break;
+    case NodeKind::ForConstexprStmt: visit(static_cast<ForConstexprStmt*>(n)->body); break;
+    case NodeKind::WhileStmt: visit(static_cast<WhileStmt*>(n)->cond); visit(static_cast<WhileStmt*>(n)->body); break;
+    case NodeKind::DoStmt: visit(static_cast<DoStmt*>(n)->body); visit(static_cast<DoStmt*>(n)->cond); break;
+    case NodeKind::SwitchStmt:
+      visit(static_cast<SwitchStmt*>(n)->init);
+      visit(static_cast<SwitchStmt*>(n)->cond);
+      visit(static_cast<SwitchStmt*>(n)->body);
+      break;
+    case NodeKind::CaseStmt: visit(static_cast<CaseStmt*>(n)->value); break;
+    case NodeKind::ReturnStmt: visit(static_cast<ReturnStmt*>(n)->value); break;
+    case NodeKind::AssertStmt: visit(static_cast<AssertStmt*>(n)->cond); break;
+    case NodeKind::TryStmt:
+    {
+      auto* t = static_cast<TryStmt*>(n);
+      visit(t->body);
+      for (const TryStmt::Handler& h : t->handlers)
+      {
+        if (h.param)
+          inner.insert(h.param);
+        visit(h.body);
+      }
+      break;
+    }
+    default: break;
+  }
+}
+
+auto GlobalScope::Impl::lambdaCaptured(LambdaExpr* l, uint32_t symbol, const std::vector<Decl*>& used) -> Decl*
+{
+  auto localNamed = [](Decl* d, uint32_t s) {
+    if (d && d->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(d)->name.empty())
+      return static_cast<VariableDecl*>(d)->name.last().symbol == s;
+    return d && d->kind == NodeKind::ParamDecl && static_cast<ParamDecl*>(d)->name == s;
+  };
+  auto bindsName = [](Decl* d, uint32_t s) {
+    if (!d || d->kind != NodeKind::VariableDecl)
+      return false;
+    for (Node* b : static_cast<VariableDecl*>(d)->structuredBindings)
+      if (b && b->kind == NodeKind::NameExpr && !static_cast<NameExpr*>(b)->name.empty() && static_cast<NameExpr*>(b)->name.last().symbol == s)
+        return true;
+    return false;
+  };
+  for (Decl* u : used)
+    if (localNamed(u, symbol) || bindsName(u, symbol))
+      return u;
+  // One the body does not use (`[guard]` kept alive): the one local of the name declared before the
+  // lambda in the function around it (the code generator's unusedCapture, which refuses several).
+  Decl* f = l->closure ? l->closure->parent : nullptr;
+  while (f && f->kind != NodeKind::FunctionDecl)
+    f = f->parent;
+  if (!f)
+    return nullptr;
+  auto* fn = static_cast<FunctionDecl*>(f);
+  std::unordered_set<Decl*> declared(fn->params.begin(), fn->params.end());
+  std::vector<Decl*> ignored;
+  bool ignoredThis = false;
+  lambdaNames(fn->body, declared, ignored, ignoredThis);
+  Decl* only = nullptr;
+  for (Decl* d : declared)
+    if (localNamed(d, symbol) && d->token < l->token)
+    {
+      if (only)
+        return nullptr;
+      only = d;
+    }
+  return only;
+}
+
+auto GlobalScope::Impl::closureValueParts(const Ty* lambdaTy) -> std::optional<std::vector<GlobalScope::ClosurePart>>
+{
+  LambdaExpr* l = lambdaTy ? lambdaOf(types.unqualified(lambdaTy)) : nullptr;
+  if (!l)
+    return std::nullopt;
+  std::vector<GlobalScope::ClosurePart> out;
+  if (l->captures.empty() && !l->defaultCapture)
+    return out;
+  // The slots and their types as the code generator's capture list makes them (Codegen/Lambdas.cpp,
+  // captureList and captureType), which its layout of the closure checks against this.
+  std::unordered_set<Decl*> inner;
+  for (Decl* p : l->params)
+    inner.insert(p);
+  for (const LambdaCapture& cap : l->captures)
+    if (cap.decl)
+      inner.insert(cap.decl);
+  std::vector<Decl*> used;
+  bool usesThis = false;
+  std::unordered_map<Decl*, const Ty*> useTypes;
+  std::vector<GlobalScope::BindingUse> bindingUses;
+  lambdaNames(l->body, inner, used, usesThis, &useTypes, 0, l->templateParams.empty(), &bindingUses);
+  auto plain = [&](const Ty* x) { return x && x->isKnown() && !types.isDependent(x); };
+  auto exact = [&](const Ty* x) { return plain(x) && !containsAuto(x); };
+  bool known = true;
+  std::vector<std::pair<Decl*, uint32_t>> bindingsTaken;
+  std::vector<Decl*> variablesTaken;
+  auto bindingObject = [](Decl* d) { return d && d->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(d)->structuredBindings.empty(); };
+  auto binding = [&](Decl* d, uint32_t name, bool byRef)
+  {
+    if (std::find(bindingsTaken.begin(), bindingsTaken.end(), std::make_pair(d, name)) != bindingsTaken.end())
+      return;
+    bindingsTaken.push_back({d, name});
+    if (byRef)
+      return;
+    const Ty* bt = nullptr;
+    for (const GlobalScope::BindingUse& b : bindingUses)
+      if (!bt && b.object == d && b.name == name && b.type && b.type->isKnown())
+        bt = b.type;
+    if (!bt)
+      for (Expr* b : static_cast<VariableDecl*>(d)->structuredBindings)
+        if (b && b->kind == NodeKind::NameExpr && !static_cast<NameExpr*>(b)->name.empty() && static_cast<NameExpr*>(b)->name.last().symbol == name)
+          bt = b->ty;
+    if (!plain(bt))
+    {
+      known = false;
+      return;
+    }
+    out.push_back({types.stripRef(bt), nullptr});
+  };
+  auto variable = [&](Decl* d, Expr* init, bool byRef)
+  {
+    if (!d)
+    {
+      known = false;
+      return;
+    }
+    if (!init && d->kind == NodeKind::ParamDecl && static_cast<ParamDecl*>(d)->isPack)
+    {
+      // A parameter pack of the function around: a part per element (typeInInstanceOf).
+      const Subst* s = l->closure ? instanceSubstOf(l->closure) : nullptr;
+      const Ty* pack = s ? declaredTypeOf(d, s, 0) : nullptr;
+      if (!pack || pack->kind != TyKind::Pack || types.isDependent(pack))
+      {
+        known = false;
+        return;
+      }
+      if (!byRef)
+        for (const Ty* element : pack->args)
+          out.push_back({types.stripRef(element), nullptr});
+      return;
+    }
+    if (byRef)
+      return;
+    const Ty* held = nullptr;
+    if (const Ty* cached = d->cachedType.load(std::memory_order_acquire); exact(cached))
+      held = types.stripRef(cached);
+    else if (const Ty* declared = declaredTypeOf(d, nullptr, 0); exact(declared))
+      held = types.stripRef(declared);
+    else if (init && plain(init->ty))
+      held = types.decay(types.stripRef(init->ty));
+    else if (auto it = useTypes.find(d); it != useTypes.end() && plain(it->second))
+      held = types.stripRef(it->second);
+    if (!held)
+    {
+      known = false;
+      return;
+    }
+    out.push_back({held, init});
+  };
+  for (const LambdaCapture& cap : l->captures)
+  {
+    if (cap.init)
+    {
+      if (!cap.decl)
+        return std::nullopt;
+      if (cap.isPack)
+      {
+        // `[...w = v * 2]`: a part per element of the pack the pattern expands to.
+        const Ty* pack = cap.init->ty ? types.unqualified(cap.init->ty) : nullptr;
+        if (!pack || pack->kind != TyKind::Pack)
+          pack = declaredTypeOf(cap.decl, nullptr, 0);
+        if (!pack || pack->kind != TyKind::Pack || types.isDependent(pack))
+          return std::nullopt;
+        if (!cap.byRef)
+          for (const Ty* element : pack->args)
+          {
+            const Ty* e = types.stripRef(element);
+            out.push_back({e->kind == TyKind::Array ? types.pointer(e->inner) : types.unqualified(e), static_cast<UnaryExpr*>(cap.init)->operand});
+          }
+        continue;
+      }
+      variable(cap.decl, cap.init, cap.byRef);
+      continue;
+    }
+    if (cap.isThis)
+      continue; // a pointer
+    Decl* d = lambdaCaptured(l, cap.symbol, used);
+    if (bindingObject(d))
+    {
+      binding(d, cap.symbol, cap.byRef);
+      continue;
+    }
+    if (std::find(variablesTaken.begin(), variablesTaken.end(), d) != variablesTaken.end())
+      continue;
+    variablesTaken.push_back(d);
+    variable(d, nullptr, cap.byRef);
+  }
+  if (l->defaultCapture != 0)
+    for (Decl* d : used)
+    {
+      if (bindingObject(d))
+      {
+        for (const GlobalScope::BindingUse& b : bindingUses)
+          if (b.object == d)
+            binding(d, b.name, l->defaultCapture == 2);
+        continue;
+      }
+      if (std::find(variablesTaken.begin(), variablesTaken.end(), d) != variablesTaken.end())
+        continue;
+      variablesTaken.push_back(d);
+      variable(d, nullptr, l->defaultCapture == 2);
+    }
+  if (!known)
+    return std::nullopt;
+  return out;
+}
+
+auto GlobalScope::Impl::closureWithCaptures(const Ty* t) -> const Ty*
+{
+  const Ty* u = t ? types.unqualified(t) : nullptr;
+  while (u && u->kind == TyKind::Array)
+    u = types.unqualified(u->inner);
+  LambdaExpr* l = u ? lambdaOf(u) : nullptr;
+  return l && (!l->captures.empty() || l->defaultCapture) ? u : nullptr;
 }

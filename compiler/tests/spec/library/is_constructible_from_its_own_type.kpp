@@ -1,0 +1,47 @@
+// spec: isConstructible<T, const T&>, <T, T&>, <T, T&&> and <T, T> ask T's copy or move constructor, implicit or declared: a deleted copy, a move-only class, a private copy, an abstract class, a plain one, closures (one move-only by its init-capture); clang's output
+extern "C" int printf(const char* format, ...);
+struct NoCopy
+{
+  NoCopy() = default;
+  NoCopy(const NoCopy&) = delete;
+};
+struct MoveOnly
+{
+  MoveOnly() = default;
+  MoveOnly(const MoveOnly&) = delete;
+  MoveOnly(MoveOnly&&) = default;
+};
+class PrivateCopy
+{
+public:
+  PrivateCopy() {}
+private:
+  PrivateCopy(const PrivateCopy&);
+};
+class Abstract
+{
+public:
+  virtual void f() = 0;
+};
+struct Plain
+{
+  int v;
+};
+template <class T> void row(const char* name)
+{
+  printf("%-12s %d%d%d%d\n", name, isConstructible<T, const T&>, isConstructible<T, T&>, isConstructible<T, T&&>, isConstructible<T, T>);
+}
+int main()
+{
+  int n = 1;
+  auto copyable = [n] { return n; };
+  auto moveOnly = [m = MoveOnly()] { (void)m; };
+  row<NoCopy>("NoCopy");
+  row<MoveOnly>("MoveOnly");
+  row<PrivateCopy>("PrivateCopy");
+  row<Abstract>("Abstract");
+  row<Plain>("Plain");
+  row<decltype(copyable)>("copyable");
+  row<decltype(moveOnly)>("moveOnlyL");
+  return copyable() - 1;
+}

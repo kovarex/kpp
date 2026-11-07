@@ -463,12 +463,44 @@ public:
   Decl* strongOrderingDecl();                    // The library's strong_ordering class (what `a <=> b` yields), or null.
   bool isExplicit(FunctionDecl* f, const TemplateArgs& args); // `explicit`, or `explicit(cond)` with cond true under args.
   bool isNoexcept(FunctionDecl* f, const TemplateArgs& args); // `noexcept`, or `noexcept(cond)` with cond true under args.
-  // Whether moving a t (else copying one) cannot throw: isNothrowMoveConstructible<t>'s answer. False
-  // where it cannot be told.
+  // Whether moving a t (else copying one) cannot throw, its constructor alone (isNothrowMoveConstructible<t>
+  // asks its destructor too, as the libraries do). False where it cannot be told.
   bool constructsWithoutThrowing(const Ty* t, bool move);
-  // Whether t's destructor may throw ([except.spec] 8); unknown with a closure holding something by
-  // value among its parts, which the code generator lays out.
+  // Whether t's destructor may throw ([except.spec] 8); unknown where what a closure among its parts
+  // holds by value is not known here (closureValueParts).
   std::optional<bool> destructorMayThrow(const Ty* t);
+  // A structured binding a lambda's body names (lambdaNames): its hidden object, its name, the type
+  // of its first use.
+  struct BindingUse
+  {
+    Decl* object;
+    uint32_t name;
+    const Ty* type;
+  };
+  // What a lambda's body names, from its AST alone: the locals of the functions around it (each once,
+  // in the order first written: used) and whether it uses `this`. inner gathers what is declared
+  // inside it (its parameters, its locals, nested lambdas' own), which is no capture; C++ declares a
+  // name before its uses, so it is in inner before a use is reached. useTypes, when given, gets the
+  // type of each used local's first name expression. keptBranches: an `if constexpr` its instance
+  // decided names only what the kept branch names (not in a generic lambda, whose one closure serves
+  // every call's instance of the body). bindingUses, when given, gets each structured binding the
+  // body names, once, in the order first written. The code generator's capture list is made from it,
+  // and so is closureValueParts.
+  void lambdaNames(Node* n, std::unordered_set<Decl*>& inner, std::vector<Decl*>& used, bool& usesThis,
+                   std::unordered_map<Decl*, const Ty*>* useTypes = nullptr, int depth = 0, bool keptBranches = false,
+                   std::vector<BindingUse>* bindingUses = nullptr);
+  // A capture a closure holds by value: its type, and the initializer of an init-capture (null for a
+  // copy of a variable, made from it as an lvalue).
+  struct ClosurePart
+  {
+    const Ty* type;
+    Expr* init;
+  };
+  // What a closure of lambda type lambdaTy holds by value, as the code generator lays it out (a capture
+  // by reference holds a pointer, `this` too): each capture by copy, a structured binding's own, a
+  // pack's element by element. Null where one of them is not known here. The traits and the
+  // destructor's exception specification of a closure are made from it.
+  std::optional<std::vector<ClosurePart>> closureValueParts(const Ty* lambdaTy);
   // The direct base of t whose noexcept virtual destructor t's, which may throw, overrides; null: none.
   const Ty* destructorLoosens(const Ty* t);
   // The initializer of v (a data member's default initializer, a static member's or a variable

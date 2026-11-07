@@ -1,0 +1,22 @@
+// spec: isNothrowMoveConstructible asks the destructor too, as clang's and g++'s libraries answer it (the object made is destroyed): a class whose destructor may throw, one holding such a member, one with its own noexcept move constructor and such a destructor; the move assignments stay nothrow; clang's output
+extern "C" int printf(const char* format, ...);
+struct Throwing
+{
+  ~Throwing() noexcept(false) {}
+};
+struct Holds
+{
+  Throwing t;
+};
+struct OwnMove
+{
+  OwnMove() {}
+  OwnMove(OwnMove&&) noexcept {}
+  ~OwnMove() noexcept(false) {}
+};
+int main()
+{
+  printf("%d%d%d %d%d%d\n", isNothrowMoveConstructible<Throwing>, isNothrowMoveConstructible<Holds>, isNothrowMoveConstructible<OwnMove>,
+         isMoveConstructible<Throwing>, isNothrowMoveAssignable<Throwing>, isNothrowMoveAssignable<Holds>);
+  return 0;
+}

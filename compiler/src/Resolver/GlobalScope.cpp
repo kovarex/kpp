@@ -1950,6 +1950,17 @@ std::optional<bool> GlobalScope::destructorMayThrow(const Ty* t)
   return impl->destructorMayThrow(t);
 }
 
+void GlobalScope::lambdaNames(Node* n, std::unordered_set<Decl*>& inner, std::vector<Decl*>& used, bool& usesThis,
+                              std::unordered_map<Decl*, const Ty*>* useTypes, int depth, bool keptBranches, std::vector<BindingUse>* bindingUses)
+{
+  impl->lambdaNames(n, inner, used, usesThis, useTypes, depth, keptBranches, bindingUses);
+}
+
+std::optional<std::vector<GlobalScope::ClosurePart>> GlobalScope::closureValueParts(const Ty* lambdaTy)
+{
+  return impl->closureValueParts(lambdaTy);
+}
+
 const Ty* GlobalScope::destructorLoosens(const Ty* t)
 {
   return impl->destructorLoosens(t);

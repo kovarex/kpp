@@ -1,0 +1,28 @@
+// spec: a class holding by value a closure that holds something whose destructor may throw has a potentially-throwing implicit destructor ([except.spec] 8, what the closure holds as GlobalScope::closureValueParts sees it): overriding a base's noexcept virtual destructor so is an error in the instance ([except.spec] 4), as clang's Linux target says; one holding a closure of an int is none
+// error: destructor_loosening_noexcept_through_a_closure_member_is_error.kpp:26: error: the destructor of Holder<
+class Throwing
+{
+public:
+  ~Throwing() noexcept(false) {}
+};
+class Base
+{
+public:
+  virtual ~Base() noexcept {}
+};
+template <class F> class Holder : public Base
+{
+public:
+  F f;
+  Holder(F given) : f(given) {}
+};
+int main()
+{
+  Throwing t;
+  int n = 1;
+  auto quiet = [n] { return n; };
+  auto loud = [t] {};
+  Holder<decltype(quiet)> fine(quiet);
+  Holder<decltype(loud)> wrong(loud);
+  return fine.f();
+}

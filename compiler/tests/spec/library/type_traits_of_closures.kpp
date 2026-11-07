@@ -1,0 +1,58 @@
+// spec: a closure's traits are those of what it holds by value ([expr.prim.lambda.closure] 13 and 15): with a lambda-capture (`[=]` taking nothing included) no default constructor and a deleted copy assignment; its copies, moves and destruction trivial or nothrow as its captures' (an int, a class with its own copy and destructor, a move-only init-capture, a capture whose destructor may throw, by reference a pointer); and `noexcept([big] {})` asks the captures' copies and the closure's destruction; clang's output for the same program with <type_traits>
+extern "C" int printf(const char* format, ...);
+struct Big
+{
+  int v;
+  Big() : v(1) {}
+  Big(const Big& o) : v(o.v) {}
+  ~Big() {}
+};
+struct MoveOnly
+{
+  int v = 0;
+  MoveOnly() = default;
+  MoveOnly(const MoveOnly&) = delete;
+  MoveOnly(MoveOnly&&) = default;
+};
+struct Throwing
+{
+  ~Throwing() noexcept(false) {}
+};
+template <class T> void row(const char* name)
+{
+  printf("%-10s %d%d%d %d%d%d%d%d%d %d%d%d%d %d%d %d\n", name, isClass<T>, isConstructible<T>, isTriviallyDefaultConstructible<T>,
+         isTriviallyCopyable<T>, isTriviallyDestructible<T>, isTriviallyCopyConstructible<T>, isTriviallyMoveConstructible<T>, isTriviallyCopyAssignable<T>, isTriviallyMoveAssignable<T>,
+         isCopyConstructible<T>, isMoveConstructible<T>, isCopyAssignable<T>, isMoveAssignable<T>, isNothrowMoveConstructible<T>, isNothrowMoveAssignable<T>,
+         isConstructible<T, const T&>);
+}
+int main()
+{
+  int cap = 0;
+  Big big;
+  Throwing throwing;
+  auto none = [] { return 1; };
+  auto byCopy = [cap] { return cap; };
+  auto byRef = [&cap] { return cap; };
+  auto defaultCopy = [=] { return cap; };
+  auto defaultRef = [&] { return cap; };
+  auto bigCopy = [big] { return big.v; };
+  auto bigDefault = [=] { return big.v + cap; };
+  auto bigRef = [&big] { return big.v; };
+  auto moveOnly = [m = MoveOnly()] { return m.v; };
+  auto throwingCopy = [=] { (void)throwing; return 0; };
+  auto emptyDefault = [=] { return 2; };
+  row<decltype(none)>("none");
+  row<decltype(byCopy)>("byCopy");
+  row<decltype(byRef)>("byRef");
+  row<decltype(defaultCopy)>("defCopy");
+  row<decltype(defaultRef)>("defRef");
+  row<decltype(bigCopy)>("bigCopy");
+  row<decltype(bigDefault)>("bigDef");
+  row<decltype(bigRef)>("bigRef");
+  row<decltype(moveOnly)>("moveOnly");
+  row<decltype(throwingCopy)>("throwing");
+  row<decltype(emptyDefault)>("emptyDef");
+  printf("%d %d %d %d %d\n", noexcept([cap] { return cap; }), noexcept([big] { return big.v; }), noexcept([&big] { return big.v; }),
+         noexcept([t = Throwing()] { (void)t; }), noexcept([=] { return big.v; }));
+  return none() + byCopy() + byRef() + defaultCopy() + defaultRef() + bigCopy() + bigDefault() + bigRef() + moveOnly() + throwingCopy() + emptyDefault() - 8;
+}

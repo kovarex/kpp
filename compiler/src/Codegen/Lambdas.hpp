@@ -16,13 +16,9 @@
     // keptBranches: an `if constexpr` its instance decided names only what the kept branch names
     // (not in a generic lambda, whose one closure serves every call's instance of the body).
     // bindingUses, when given, gets each structured binding the body names (its hidden object, its
-    // name and the type of its first use), once, in the order first written.
-    struct BindingUse
-    {
-      Decl* object;
-      uint32_t name;
-      const Ty* type;
-    };
+    // name and the type of its first use), once, in the order first written. (The checker's
+    // GlobalScope::lambdaNames, which its view of what a closure holds is made from too.)
+    using BindingUse = GlobalScope::BindingUse;
     void captureNames(Node* n, std::unordered_set<Decl*>& inner, std::vector<Decl*>& used, bool& usesThis, std::unordered_map<Decl*, const Ty*>* useTypes = nullptr, int depth = 0, bool keptBranches = false,
                       std::vector<BindingUse>* bindingUses = nullptr);
 
