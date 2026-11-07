@@ -56,20 +56,107 @@ void relocateBackward(T* destination, T* source, i64 count)
   }
 }
 
-// As relocate, for a container's growth into a new block (std::vector's reallocation): each object
+// Objects built one at a time into unconstructed memory, from first up. Unless the builder keeps
+// them, the destructor destroys the ones built, so that a constructor that throws leaves no object
+// behind: the containers' exception safety, written with a destructor, which runs in constant
+// evaluation too, where a try does not.
+template<typename T>
+class BuiltObjects
+{
+public:
+  BuiltObjects(T* first) : first(first) {}
+  BuiltObjects(const BuiltObjects<T>&) = delete;
+  BuiltObjects<T>& operator=(const BuiltObjects<T>&) = delete;
+
+  ~BuiltObjects()
+  {
+    for (i64 i = 0; i < this->built; ++i)
+      this->first[i].~T();
+  }
+
+  // Builds the next object from args.
+  template<typename... Args>
+  void build(Args&&... args)
+  {
+    new (this->first + this->built) T(forward<Args>(args)...);
+    ++this->built;
+  }
+
+  i64 count() const { return this->built; }
+  // The objects built stay: the destructor leaves them.
+  void keep() { this->built = 0; }
+
+private:
+  T* first;
+  i64 built = 0;
+};
+
+// A block from allocateArray that is freed when the owner goes, unless it is released first: a
+// container's new block while the elements are built in it.
+template<typename T>
+class OwnedBlock
+{
+public:
+  OwnedBlock(T* block) : block(block) {}
+  OwnedBlock(const OwnedBlock<T>&) = delete;
+  OwnedBlock<T>& operator=(const OwnedBlock<T>&) = delete;
+
+  ~OwnedBlock()
+  {
+    if (this->block)
+      free(this->block);
+  }
+
+  T* get() const { return this->block; }
+
+  T* release()
+  {
+    T* result = this->block;
+    this->block = nullptr;
+    return result;
+  }
+
+private:
+  T* block;
+};
+
+// As relocate, into memory apart from the source (a new block). When the move constructor may
+// throw, every object is moved first and the originals are destroyed after: a throw leaves the
+// source whole (some objects moved from) and destroys what it built, where one pass would leave
+// the source with destroyed objects in it.
+template<typename T>
+void relocateApart(T* destination, T* source, i64 count)
+{
+  if constexpr (isNothrowMoveConstructible<T>)
+    relocate(destination, source, count);
+  else
+  {
+    BuiltObjects<T> built(destination);
+    for (i64 i = 0; i < count; ++i)
+      built.build(move(source[i]));
+    built.keep();
+    for (i64 i = 0; i < count; ++i)
+      source[i].~T();
+  }
+}
+
+// As relocateApart, for a container's growth that keeps std::vector's strong guarantee: each object
 // is moved only when its move constructor cannot throw or it cannot be copied, otherwise copied
-// (std::move_if_noexcept), so that a throw leaves the old block whole: Factorio's
-// `Sprite(Sprite&&) noexcept(false)` is copied.
+// (std::move_if_noexcept), and the originals are destroyed only once all are built, so that a throw
+// leaves the old block whole: Factorio's `Sprite(Sprite&&) noexcept(false)` is copied.
 template<typename T>
 void relocateIfNoexcept(T* destination, T* source, i64 count)
 {
-  for (i64 i = 0; i < count; ++i)
+  if constexpr (isNothrowMoveConstructible<T> || !isCopyConstructible<T>)
+    relocateApart(destination, source, count);
+  else
   {
-    if constexpr (!isNothrowMoveConstructible<T> && isCopyConstructible<T>)
-      new (destination + i) T(static_cast<const T&>(source[i]));
-    else
-      new (destination + i) T(move(source[i]));
-    source[i].~T();
+    BuiltObjects<T> built(destination);
+    for (i64 i = 0; i < count; ++i)
+      built.build(static_cast<const T&>(source[i]));
+    built.keep();
+    for (i64 i = 0; i < count; ++i)
+      source[i].~T();
   }
 }
 

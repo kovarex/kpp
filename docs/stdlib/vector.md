@@ -48,6 +48,12 @@ Size and capacity:
   exception guarantee) it is by move_if_noexcept: an element is moved when its move constructor
   cannot throw or it cannot be copied, and copied otherwise. For an insert before the end it is
   by move, as MSVC's std::vector does (the standard guarantees nothing there).
+- When an element's constructor or assignment throws, the vector stays whole, as std::vector's
+  does: it counts no element it did not build, and what it built before the throw is destroyed
+  again (the basic guarantee). An append, `reserve`, `resize` and an insert at the end leave the
+  elements as they were (the strong guarantee), unless the move constructor throws and there is no
+  copy. A constructor that throws destroys the elements it built and frees its block
+  (library/vector_stays_whole_when_an_element_throws).
 - `reserve(n)`: afterwards `capacity() >= n`. When n > capacity() the block is replaced by one
   with capacity exactly n and the elements are relocated; otherwise nothing happens. O(size()).
 - `resize(n)`, `resize(n, value)`: removes elements from the end, or appends default-constructed

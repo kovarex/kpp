@@ -22,7 +22,7 @@ public:
   Vector() {}
 
   // count default-constructed elements.
-  explicit Vector(ContainerSize count)
+  explicit Vector(ContainerSize count) : Vector()
   {
     // The elements are made in their place, so T needs no copy or move (as for std::vector(n)):
     // TypeAwareMemoryPool keeps Vectors of SpriteRegistration, which has neither.
@@ -37,22 +37,22 @@ public:
   }
 
   // `Vector<int> primes = {2, 3, 5, 7};`
-  implicit Vector(InitializerList<T> list)
+  implicit Vector(InitializerList<T> list) : Vector()
   {
     this->reserve(list.size());
     for (const T& item : list)
       this->push_back(item);
   }
 
-  Vector(const Vector<T>& other) { this->appendCopies(other.items, other.length); }
+  Vector(const Vector<T>& other) : Vector() { this->appendCopies(other.items, other.length); }
   // count copies of value.
-  Vector(ContainerSize count, const T& value) { this->assign(count, value); }
+  Vector(ContainerSize count, const T& value) : Vector() { this->assign(count, value); }
   // Copies of [first, last).
-  Vector(const T* first, const T* last) { this->appendCopies(first, checkedSize(last - first, "vector too long")); }
+  Vector(const T* first, const T* last) : Vector() { this->appendCopies(first, checkedSize(last - first, "vector too long")); }
   // The elements of [first, last), input iterators of any kind (`Vector<TransportLine*>
   // sorted(lines.begin(), lines.end())` from a HashSet), as insert(end(), first, last).
   template<typename InputIt> requires (!isIntegral<InputIt>)
-  Vector(InputIt first, InputIt last) { this->insert(this->items, first, last); }
+  Vector(InputIt first, InputIt last) : Vector() { this->insert(this->items, first, last); }
 
   Vector(Vector<T>&& other) noexcept : items(other.items), length(other.length), allocated(other.allocated)
   {
@@ -168,9 +168,8 @@ public:
       T copy(value);
       this->clear();
       this->reserve(count);
-      for (ContainerSize i = 0; i < count; ++i)
-        new (this->items + i) T(copy);
-      this->length = count;
+      for (; this->length < count; ++this->length)
+        new (this->items + this->length) T(copy);
       return;
     }
     ContainerSize common = count < this->length ? count : this->length;
@@ -214,26 +213,38 @@ public:
   // The value may be an element of this vector: v.push_back(v[0]) is fine.
   void push_back(const T& value)
   {
-    T* grown;
-    new (this->appendSlot(grown)) T(value);
-    this->finishAppend(grown);
+    if (this->length < this->allocated)
+    {
+      new (this->items + this->length) T(value);
+      ++this->length;
+      return;
+    }
+    this->appendGrown(value);
   }
 
   void push_back(T&& value)
   {
-    T* grown;
-    new (this->appendSlot(grown)) T(move(value));
-    this->finishAppend(grown);
+    if (this->length < this->allocated)
+    {
+      new (this->items + this->length) T(move(value));
+      ++this->length;
+      return;
+    }
+    this->appendGrown(move(value));
   }
 
   // Builds the new element in place from the arguments.
   template<typename... Args>
   T& emplace_back(Args&&... args)
   {
-    T* grown;
-    T* slot = this->appendSlot(grown);
-    new (slot) T(forward<Args>(args)...);
-    this->finishAppend(grown);
+    if (this->length < this->allocated)
+      new (this->items + this->length) T(forward<Args>(args)...);
+    else
+    {
+      this->appendGrown(forward<Args>(args)...);
+      return this->items[this->length - 1];
+    }
+    ++this->length;
     return this->items[this->length - 1];
   }
 
@@ -249,8 +260,10 @@ public:
       return;
     }
     this->ensureRoom(newLength);
-    for (ContainerSize i = this->length; i < newLength; ++i)
-      new (this->items + i) T();
+    BuiltObjects<T> built(this->items + this->length);
+    while (built.count() < i64(newLength - this->length))
+      built.build();
+    built.keep();
     this->length = newLength;
   }
 
@@ -264,8 +277,10 @@ public:
     }
     T copy(value); // value may be an element, and the elements may move
     this->ensureRoom(newLength);
-    for (ContainerSize i = this->length; i < newLength; ++i)
-      new (this->items + i) T(copy);
+    BuiltObjects<T> built(this->items + this->length);
+    while (built.count() < i64(newLength - this->length))
+      built.build(copy);
+    built.keep();
     this->length = newLength;
   }
 
@@ -321,14 +336,7 @@ public:
   {
     T copy(value);
     ContainerSize index = ContainerSize(position - this->items);
-    ContainerSize moved = this->openSlots(index, count);
-    for (ContainerSize i = 0; i < count; ++i)
-      if (i >= moved)
-        new (this->items + index + i) T(copy);
-      else if constexpr (isCopyAssignable<T>)
-        this->items[index + i] = copy;
-      else if constexpr (isMoveAssignable<T>)
-        this->items[index + i] = T(copy);
+    this->insertBuilt(index, Repeated(&copy), count);
     return this->items + index;
   }
 
@@ -363,18 +371,7 @@ public:
     }
     if constexpr (isBaseOf<ForwardIteratorTag, typename IteratorTraits<InputIt>::iterator_category>)
     {
-      ContainerSize count = checkedSize(distance(first, last), "vector too long");
-      ContainerSize moved = this->openSlots(index, count);
-      for (ContainerSize i = 0; i < count; ++i)
-      {
-        if (i >= moved)
-          new (this->items + index + i) T(*first);
-        else if constexpr (requires { this->items[0] = *first; })
-          this->items[index + i] = *first;
-        else if constexpr (isMoveAssignable<T>)
-          this->items[index + i] = T(*first); // a conversion that is only explicit
-        ++first;
-      }
+      this->insertBuilt(index, first, checkedSize(distance(first, last), "vector too long"));
     }
     else
     {
@@ -397,8 +394,8 @@ public:
       this->push_back(value);
       return;
     }
-    T copy(value); // value may be an element, which the opening moves
-    this->fillSlot(index, this->openSlots(index, 1), move(copy));
+    T copy(value); // value may be an element, which the insertion moves
+    this->insertBuilt(ContainerSize(index), MoveIterator<T*>(&copy), 1);
   }
 
   template<typename I> requires (isIntegral<I>)
@@ -409,7 +406,7 @@ public:
       this->push_back(move(value));
       return;
     }
-    this->fillSlot(index, this->openSlots(index, 1), move(value));
+    this->insertBuilt(ContainerSize(index), MoveIterator<T*>(&value), 1);
   }
 
   bool contains(const T& value) const
@@ -474,67 +471,170 @@ private:
     this->length = newLength;
   }
 
-  // Makes room for count elements at index: the elements from there on move up, as std's insert
-  // does it: into the room past the end by move construction, the others by move assignment, from
-  // the last one back (relocated when T has no move assignment); into a new block when the vector
-  // is full, each element moved once. Returns how many of the count slots, from index on, hold
-  // moved-from elements, to be assigned; the slots after them are unconstructed.
-  ContainerSize openSlots(ContainerSize index, ContainerSize count)
+  // One value given count times, as an iterator: the count form of insert.
+  class Repeated
   {
+  public:
+    Repeated(const T* value) : value(value) {}
+    const T& operator*() const { return *this->value; }
+    Repeated& operator++() { return *this; }
+
+  private:
+    const T* value;
+  };
+
+  // A hole the elements after it were relocated up past: unless the hole is filled, the destructor
+  // relocates them back down over it (an element type without move assignment whose move does not
+  // throw).
+  class Hole
+  {
+  public:
+    Hole(T* at, ContainerSize count, ContainerSize following) : at(at), count(count), following(following) {}
+    Hole(const Hole&) = delete;
+    Hole& operator=(const Hole&) = delete;
+
+    ~Hole()
+    {
+      if (this->at)
+        relocate(this->at, this->at + this->count, (i64)this->following);
+    }
+
+    void fill() { this->at = nullptr; }
+
+  private:
+    T* at;
+    ContainerSize count;
+    ContainerSize following;
+  };
+
+  // Inserts count elements before index, built from first, a forward iterator over count values
+  // that are not this vector's elements (copies, moves through MoveIterator, or one value
+  // Repeated), as std::vector's insert does it. With room the new elements past the end and the
+  // elements moved up there are constructed, the others assigned; without, everything is built in a
+  // new block, the new elements first, and the elements move over. Every step leaves the vector
+  // whole when a constructor or an assignment throws: nothing is counted that is not built, nothing
+  // built is left behind (std's basic guarantee, the strong one at the end).
+  template<typename It>
+  void insertBuilt(ContainerSize index, It first, ContainerSize count)
+  {
+    if (count == 0)
+      return;
     ContainerSize needed = sizeSum(this->length, count, "vector too long");
     ContainerSize following = this->length - index;
-    if (needed > this->allocated)
+    bool inPlace = needed <= this->allocated;
+    if constexpr (!isMoveAssignable<T> && !isNothrowMoveConstructible<T>)
+      inPlace = inPlace && following == 0; // relocating in place could throw half way
+    if (!inPlace)
     {
-      if (following == 0)
-        this->ensureRoom(needed); // only at the end the strong guarantee
-      else
-      {
-        ContainerSize newCapacity = this->capacityFor(needed);
-        T* block = allocateArray<T>(newCapacity);
-        relocate(block, this->items, index);
-        relocate(block + index + count, this->items + index, following);
+      ContainerSize newCapacity = needed > this->allocated ? this->capacityFor(needed) : this->allocated;
+      OwnedBlock<T> block(allocateArray<T>(newCapacity));
+      T* grown = block.get();
+      BuiltObjects<T> fresh(grown + index);
+      for (; fresh.count() < (i64)count; ++first)
+        fresh.build(*first);
+      // At the end std::vector's strong guarantee: the elements are copied where the move may
+      // throw (relocateIfNoexcept); before the end they move, as MSVC's do.
+      BuiltObjects<T> front(grown);
+      for (ContainerSize i = 0; i < index; ++i)
+        if constexpr (!isNothrowMoveConstructible<T> && isCopyConstructible<T>)
+        {
+          if (following == 0)
+            front.build(static_cast<const T&>(this->items[i]));
+          else
+            front.build(move(this->items[i]));
+        }
+        else
+          front.build(move(this->items[i]));
+      BuiltObjects<T> back(grown + index + count);
+      for (ContainerSize i = index; i < this->length; ++i)
+        back.build(move(this->items[i]));
+      fresh.keep();
+      front.keep();
+      back.keep();
+      for (ContainerSize i = 0; i < this->length; ++i)
+        this->items[i].~T();
+      if (this->items)
         free(this->items);
-        this->items = block;
-        this->allocated = newCapacity;
-      }
+      this->items = block.release();
+      this->allocated = newCapacity;
       this->length = needed;
-      return 0;
+      return;
     }
+    T* end = this->items + this->length;
     if constexpr (isMoveAssignable<T>)
     {
-      ContainerSize constructed = following < count ? following : count;
-      ContainerSize firstConstructed = this->length - constructed;
-      for (ContainerSize i = this->length; i-- > firstConstructed;)
-        new (this->items + i + count) T(move(this->items[i]));
-      for (ContainerSize i = firstConstructed; i-- > index;)
-        this->items[i + count] = move(this->items[i]);
-      this->length = needed;
-      return constructed;
+      if (following > count)
+      {
+        // The last count elements are moved up into the room past the end, the ones before them
+        // move-assigned up, the new values assigned in their place.
+        BuiltObjects<T> moved(end);
+        for (ContainerSize i = this->length - count; i < this->length; ++i)
+          moved.build(move(this->items[i]));
+        moved.keep();
+        this->length = needed;
+        moveBackward(this->items + index, end - count, end);
+        for (ContainerSize i = 0; i < count; ++i, ++first)
+          this->assignFrom(this->items[index + i], *first);
+      }
+      else
+      {
+        // The new values past the first `following` go into the room past the end, the elements
+        // from index after them, and the first `following` values are assigned over the elements.
+        It rest = first;
+        for (ContainerSize i = 0; i < following; ++i)
+          ++rest;
+        BuiltObjects<T> fresh(end);
+        for (; fresh.count() < (i64)(count - following); ++rest)
+          fresh.build(*rest);
+        BuiltObjects<T> moved(end + (count - following));
+        for (ContainerSize i = index; i < this->length; ++i)
+          moved.build(move(this->items[i]));
+        fresh.keep();
+        moved.keep();
+        this->length = needed;
+        for (ContainerSize i = 0; i < following; ++i, ++first)
+          this->assignFrom(this->items[index + i], *first);
+      }
     }
     else
     {
-      relocateBackward(this->items + index + count, this->items + index, following);
+      // No move assignment (a kpp addition: std::vector::insert requires it): the elements from
+      // index are relocated up (their move does not throw, or there are none), the new ones built in
+      // the hole; a throw relocates them back.
+      relocateBackward(this->items + index + count, this->items + index, (i64)following);
+      Hole hole(this->items + index, count, following);
+      BuiltObjects<T> fresh(this->items + index);
+      for (; fresh.count() < (i64)count; ++first)
+        fresh.build(*first);
+      fresh.keep();
+      hole.fill();
       this->length = needed;
-      return 0;
     }
   }
 
-  // Puts value in the slot at index, of the kind openSlots said (moved: it holds an element).
-  void fillSlot(ContainerSize index, ContainerSize moved, T&& value)
+  // An element assigned from a value of the inserted range (constructed first when the value
+  // converts to T only explicitly).
+  template<typename V>
+  void assignFrom(T& element, V&& value)
   {
-    if (moved == 0)
-      new (this->items + index) T(move(value));
-    else if constexpr (isMoveAssignable<T>)
-      this->items[index] = move(value);
+    if constexpr (requires { element = forward<V>(value); })
+      element = forward<V>(value);
+    else
+      element = T(forward<V>(value));
   }
 
   // Moves the elements into a new block for newCapacity elements.
-  void moveToBlock(ContainerSize newCapacity, bool strong = true) { this->adoptBlock(allocateArray<T>(newCapacity), newCapacity, strong); }
+  void moveToBlock(ContainerSize newCapacity, bool strong = true)
+  {
+    OwnedBlock<T> block(allocateArray<T>(newCapacity));
+    this->adoptBlock(block.get(), newCapacity, strong);
+    block.release();
+  }
 
   // Moves the elements into block, which has room for newCapacity, and frees the old one. strong
   // (an append, reserve, shrink_to_fit: std::vector's strong exception guarantee) copies them
-  // where the move may throw and a copy exists (move_if_noexcept); an insert before the end moves
-  // them, as MSVC's std::vector does (the standard guarantees nothing there).
+  // where the move may throw and a copy exists (move_if_noexcept); otherwise they move. A throw
+  // leaves the elements where they were and block as it came, to its owner.
   void adoptBlock(T* block, ContainerSize newCapacity, bool strong = true)
   {
     if (this->items)
@@ -542,7 +642,7 @@ private:
       if (strong)
         relocateIfNoexcept(block, this->items, this->length);
       else
-        relocate(block, this->items, this->length);
+        relocateApart(block, this->items, this->length);
       free(this->items);
     }
     this->items = block;
@@ -559,24 +659,18 @@ private:
       this->moveToBlock(this->capacityFor(needed), strong);
   }
 
-  // Where the next appended element goes. When the vector is full that is in grown, a new block:
-  // the new element's arguments may be elements, so they move over only in finishAppend, after
-  // the new element is constructed.
-  T* appendSlot(T*& grown)
+  // An append to a full vector: the new element is built in a new block first, as its arguments
+  // may be elements, and the elements move over after it. A throw leaves the vector as it was.
+  template<typename... Args>
+  void appendGrown(Args&&... args)
   {
-    if (this->length < this->allocated)
-    {
-      grown = nullptr;
-      return this->items + this->length;
-    }
-    grown = allocateArray<T>(this->capacityFor((u64)this->length + 1));
-    return grown + this->length;
-  }
-
-  void finishAppend(T* grown)
-  {
-    if (grown)
-      this->adoptBlock(grown, this->capacityFor((u64)this->length + 1));
+    ContainerSize newCapacity = this->capacityFor((u64)this->length + 1);
+    OwnedBlock<T> block(allocateArray<T>(newCapacity));
+    BuiltObjects<T> appended(block.get() + this->length);
+    appended.build(forward<Args>(args)...);
+    this->adoptBlock(block.get(), newCapacity);
+    appended.keep();
+    block.release();
     ++this->length;
   }
 
@@ -605,10 +699,8 @@ private:
   void appendCopies(const T* source, ContainerSize count)
   {
     this->reserve(sizeSum(this->length, count, "vector too long"));
-    T* target = this->items + this->length;
-    for (ContainerSize i = 0; i < count; ++i)
-      new (target + i) T(source[i]);
-    this->length += count;
+    for (ContainerSize i = 0; i < count; ++i, ++this->length)
+      new (this->items + this->length) T(source[i]);
   }
 
   T* items = nullptr;

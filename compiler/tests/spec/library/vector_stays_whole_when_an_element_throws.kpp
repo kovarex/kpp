@@ -1,0 +1,237 @@
+// spec: a Vector whose element's copy or move constructor throws stays whole, as std::vector does: nothing it counts is unbuilt, nothing it built is left alive, and an append, reserve or resize that throws leaves the elements as they were (std's strong guarantee); inserts before the end with room and grown, of a count, a range, one value moved and one emplaced, the constructors from a count, a value, a range and a copy, and an element type without move assignment
+// factorio: K's backlog (stdlib-conformance, 2026-11-06): an insert that opened its room counted the slots before the new elements were built in them, so a throwing copy left the vector destroying what it never built; growth copied an element and destroyed its original one at a time, so a throw left the old block with destroyed elements; a throwing element constructor leaked the block and the elements built (Vector(count), appendCopies, push_back into a full vector)
+extern "C" import "stdio.h";
+i32 live = 0;
+i32 neverBuilt = 0;
+i32 copiesLeft = 1000;
+i32 movesLeft = 1000;
+
+struct Item
+{
+  i32 value;
+  i32 mark;
+  Item(i32 value) : value(value), mark(12345) { ++live; }
+  Item(const Item& other) : value(other.value), mark(12345)
+  {
+    if (copiesLeft-- == 0)
+      throw 7;
+    ++live;
+  }
+  Item(Item&& other) : value(other.value), mark(12345)
+  {
+    if (movesLeft-- == 0)
+      throw 8;
+    ++live;
+  }
+  Item& operator=(const Item& other)
+  {
+    this->value = other.value;
+    return *this;
+  }
+  Item& operator=(Item&& other)
+  {
+    this->value = other.value;
+    return *this;
+  }
+  ~Item()
+  {
+    if (this->mark != 12345)
+      ++neverBuilt;
+    this->mark = 0;
+    --live;
+  }
+};
+
+// No assignment at all, a move that cannot throw.
+struct Fixed
+{
+  const i32 value;
+  i32 mark;
+  Fixed(i32 value) : value(value), mark(12345) { ++live; }
+  Fixed(const Fixed& other) : value(other.value), mark(12345)
+  {
+    if (copiesLeft-- == 0)
+      throw 7;
+    ++live;
+  }
+  Fixed(Fixed&& other) noexcept : value(other.value), mark(12345) { ++live; }
+  ~Fixed()
+  {
+    if (this->mark != 12345)
+      ++neverBuilt;
+    this->mark = 0;
+    --live;
+  }
+};
+
+template<typename V>
+i32 sum(const V& v)
+{
+  i32 total = 0;
+  for (const auto& item : v)
+    total += item.value;
+  return total;
+}
+
+void report(const char* name, bool thrown, const char* extra = "")
+{
+  printf("%s: %s, live %d, never built %d%s\n", name, thrown ? "thrown" : "not thrown", live, neverBuilt, extra);
+  live = 0;
+  neverBuilt = 0;
+  copiesLeft = 1000;
+  movesLeft = 1000;
+}
+
+// Inserts in the middle of a vector of `size` elements with room for `room`, the copy number
+// copyAt (or the move number moveAt) of the insertion throwing.
+void insertTrial(const char* name, i32 size, i32 room, i32 count, i32 copyAt, i32 moveAt, i32 form)
+{
+  bool thrown = false;
+  {
+    Vector<Item> v;
+    v.reserve((ContainerSize)room);
+    for (i32 i = 0; i < size; ++i)
+      v.emplace_back(i);
+    Item extra(100);
+    Vector<Item> source;
+    source.reserve((ContainerSize)count);
+    for (i32 i = 0; i < count; ++i)
+      source.emplace_back(200 + i);
+    copiesLeft = copyAt;
+    movesLeft = moveAt;
+    try
+    {
+      if (form == 0)
+        v.insert(v.begin() + 1, (ContainerSize)count, extra);
+      else if (form == 1)
+        v.insert(v.begin() + 1, source.begin(), source.end());
+      else if (form == 2)
+        v.insert(v.begin() + 1, move(extra));
+      else
+        v.emplace(v.begin() + 1, 300);
+    }
+    catch (i32)
+    {
+      thrown = true;
+    }
+    copiesLeft = 1000;
+    movesLeft = 1000;
+  }
+  report(name, thrown);
+}
+
+// An append, reserve or resize whose copy number copyAt throws: the elements stay as they were.
+void strongTrial(const char* name, i32 copyAt, i32 form)
+{
+  bool thrown = false;
+  bool same = false;
+  {
+    Vector<Item> v;
+    v.reserve(4);
+    for (i32 i = 0; i < 4; ++i)
+      v.emplace_back(i + 1);
+    Item extra(50);
+    copiesLeft = copyAt;
+    try
+    {
+      if (form == 0)
+        v.push_back(extra);
+      else if (form == 1)
+        v.reserve(10);
+      else if (form == 2)
+        v.resize(7, extra);
+      else
+        v.insert(v.end(), (ContainerSize)2, extra);
+    }
+    catch (i32)
+    {
+      thrown = true;
+    }
+    copiesLeft = 1000;
+    same = v.size() == 4 && sum(v) == 10;
+  }
+  report(name, thrown, same ? ", the elements as they were" : ", the elements changed");
+}
+
+void constructorTrial(const char* name, i32 copyAt, i32 form)
+{
+  bool thrown = false;
+  {
+    Item value(9);
+    Vector<Item> source;
+    source.reserve(5);
+    for (i32 i = 0; i < 5; ++i)
+      source.emplace_back(i);
+    copiesLeft = copyAt;
+    try
+    {
+      if (form == 0)
+      {
+        Vector<Item> v((ContainerSize)5, value);
+      }
+      else if (form == 1)
+      {
+        Vector<Item> v(source.begin(), source.end());
+      }
+      else
+      {
+        Vector<Item> v(source);
+      }
+    }
+    catch (i32)
+    {
+      thrown = true;
+    }
+    copiesLeft = 1000;
+  }
+  report(name, thrown);
+}
+
+void fixedTrial(const char* name, i32 room, i32 copyAt)
+{
+  bool thrown = false;
+  i32 total = 0;
+  {
+    Vector<Fixed> v;
+    v.reserve((ContainerSize)room);
+    for (i32 i = 0; i < 4; ++i)
+      v.emplace_back(i + 1);
+    Fixed extra(100);
+    copiesLeft = copyAt;
+    try
+    {
+      v.insert(v.begin() + 1, (ContainerSize)3, extra);
+    }
+    catch (i32)
+    {
+      thrown = true;
+    }
+    copiesLeft = 1000;
+    total = sum(v);
+  }
+  char extra[32];
+  snprintf(extra, 32, ", sum %d", total);
+  report(name, thrown, extra);
+}
+
+int main()
+{
+  insertTrial("count copies, room, past the end", 2, 16, 4, 2, 1000, 0);
+  insertTrial("count copies, room, inside", 5, 16, 3, 2, 1000, 0);
+  insertTrial("count copies, grown", 5, 5, 3, 2, 1000, 0);
+  insertTrial("range, room, past the end", 2, 16, 4, 2, 1000, 1);
+  insertTrial("range, grown", 5, 5, 3, 1, 1000, 1);
+  insertTrial("one moved, grown", 5, 5, 1, 1000, 4, 2);
+  insertTrial("emplaced, room", 5, 16, 1, 1000, 0, 3);
+  insertTrial("emplaced, grown", 5, 5, 1, 1000, 5, 3);
+  strongTrial("push_back, grown", 2, 0);
+  strongTrial("reserve", 2, 1);
+  strongTrial("resize", 2, 2);
+  strongTrial("insert at the end, grown", 3, 3);
+  constructorTrial("from a count of a value", 3, 0);
+  constructorTrial("from a range", 3, 1);
+  constructorTrial("a copy", 3, 2);
+  fixedTrial("no assignment, room", 16, 2);
+  fixedTrial("no assignment, grown", 4, 2);
+  return 0;
+}

@@ -1,0 +1,17 @@
+count copies, room, past the end: thrown, live 0, never built 0
+count copies, room, inside: not thrown, live 0, never built 0
+count copies, grown: thrown, live 0, never built 0
+range, room, past the end: thrown, live 0, never built 0
+range, grown: thrown, live 0, never built 0
+one moved, grown: thrown, live 0, never built 0
+emplaced, room: thrown, live 0, never built 0
+emplaced, grown: thrown, live 0, never built 0
+push_back, grown: thrown, live 0, never built 0, the elements as they were
+reserve: thrown, live 0, never built 0, the elements as they were
+resize: thrown, live 0, never built 0, the elements as they were
+insert at the end, grown: thrown, live 0, never built 0, the elements as they were
+from a count of a value: thrown, live 0, never built 0
+from a range: thrown, live 0, never built 0
+a copy: thrown, live 0, never built 0
+no assignment, room: thrown, live 0, never built 0, sum 10
+no assignment, grown: thrown, live 0, never built 0, sum 10
