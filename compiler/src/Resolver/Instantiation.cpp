@@ -1052,6 +1052,7 @@ auto GlobalScope::Impl::deduceFromGuides(ClassDecl* cls, const std::vector<const
   if (it == guidesOf.end())
     return nullptr;
   const Ty* best = nullptr;
+  FunctionDecl* bestGuide = nullptr;
   for (FunctionDecl* g : it->second)
   {
     if ((copyInit && (g->flags & DF_Explicit)) || !takesArgumentCount(g, argTypes.size()))
@@ -1077,9 +1078,14 @@ auto GlobalScope::Impl::deduceFromGuides(ClassDecl* cls, const std::vector<const
       r.push_back(conversionRank(argTypes[i], inst->args[i]));
     if (std::any_of(r.begin(), r.end(), [](int x) { return x >= NotViable; }))
       continue;
-    if (best && !strictlyBetter(r, ranks))
+    // Of two guides that match alike, the more specialized ([over.match.best] 2.5):
+    // `ScopedLock(AdoptLock, M&...)` over `ScopedLock(M&...)` given adoptLock and two mutexes
+    // (the first declared won, which the second took only while `M&...` decayed the const
+    // AdoptLock and could not bind it).
+    if (best && !strictlyBetter(r, ranks) && (strictlyBetter(ranks, r) || !moreSpecialized(g, bestGuide, argTypes.size(), nullptr)))
       continue;
     best = result;
+    bestGuide = g;
     ranks = std::move(r);
   }
   return best;
@@ -2910,8 +2916,8 @@ auto GlobalScope::Impl::deduce(const Ty* pattern, const Ty* arg, Subst& out, int
         const Ty* bound = pattern->inner->isConst ? types.unqualified(a) : a;
         if (bound->kind == TyKind::Array)
           bound = arrayQualifiersOff(bound, pattern->inner->isConst, pattern->inner->isVolatile);
-        if (forwarding && arg->kind == TyKind::LRef)
-          bound = types.lref(a);
+        if (forwarding && (arg->kind == TyKind::LRef || a->kind == TyKind::Function))
+          bound = types.lref(a); // (a function is an lvalue: T = int (&)(int) given fun)
         out.pairs.push_back({pattern->inner->decl, bound});
       }
       return;
@@ -3326,7 +3332,7 @@ auto GlobalScope::Impl::deduceParams(Span<Decl*> params, Span<const Ty*> pattern
               return; // `const Args&...` given `{a, b}`: a non-deduced context, the pack stays unbound
             if (!at)
               elems.push_back(types.unknown());
-            else if (forwarding && at->kind == TyKind::LRef)
+            else if (forwarding && (at->kind == TyKind::LRef || at->kind == TyKind::Function))
               elems.push_back(types.lref(types.stripRef(at))); // `emplace_back(name)`: Args = String&
             else if (forwarding)
             {
@@ -3336,6 +3342,16 @@ auto GlobalScope::Impl::deduceParams(Span<Decl*> params, Span<const Ty*> pattern
               if (at->kind != TyKind::RRef && e->kind != TyKind::Class && e->kind != TyKind::Array)
                 e = types.unqualified(e);
               elems.push_back(e);
+            }
+            else if (pattern->isReference())
+            {
+              // `const Ts&...`, `Ts&...`: each element as a single `const T&` or `T&` deduces, an
+              // array or a function as it is (it decayed: `sz(arr)` took sizeof of a pointer, and
+              // `const Ts&...` given a function lost to `Ts&&...`).
+              Subst one;
+              deduce(pattern, at, one);
+              const Ty* e = one.find(packDecl);
+              elems.push_back(e ? e : types.decay(at));
             }
             else
               elems.push_back(types.decay(at));

@@ -2797,10 +2797,12 @@ auto GlobalScope::Impl::chooseAmong(const std::vector<FunctionDecl*>& candidates
       // ([over.ics.rank] 3.2.3): `Holder(Holder&& other) : UniquePtr<Entity>(move(other))` takes
       // UniquePtr's move constructor, not its deleted copy; take(const T&) beside take(T&&) given
       // an Item* for T = const Item*, or an int32 for T = int64, takes T&&.
+      // A function lvalue the other way round: the `T&` binds it better (3.2.5), c(int (&)(int))
+      // over c(int (&&)(int)) given fun.
       if (a.ranks[i] == b.ranks[i] && i < a.params.size() && i < b.params.size() && a.params[i] && b.params[i] &&
           a.params[i]->kind != b.params[i]->kind && a.params[i]->isReference() && b.params[i]->isReference())
       {
-        if (a.params[i]->kind == TyKind::RRef)
+        if ((a.params[i]->kind == TyKind::RRef) != (argument && argument->kind == TyKind::Function))
           someBetter = true;
         else
           return false;

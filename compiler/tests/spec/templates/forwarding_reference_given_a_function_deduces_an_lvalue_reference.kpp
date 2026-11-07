@@ -1,0 +1,32 @@
+// spec: a function named as an argument is an lvalue: a forwarding reference `T&&` given it deduces T as a reference to the function ([temp.deduct.call] 3), alone and in a pack, so `const T&` and `T&&` bind it alike and partial ordering takes `const T&`; and of an lvalue and an rvalue reference to a function, the lvalue one binds it better ([over.ics.rank] 3.2.5); a `const Ts&...` or `Ts&...` pack takes an array or a function as it is, undecayed, as a single `const T&` does. clang's and g++'s output
+// found by thread J's overload generator (2026-11-07): T was the function type itself, `a(fun)` called the `T&&` template and c(fun) the `int (&&)(int)` overload; `sizes(arr)` gave sizeof of a pointer
+extern "C" int printf(const char* format, ...);
+int fun(int x) { return x + 1; }
+template<class T> struct IsRef
+{
+  static constexpr int v = 0;
+};
+template<class T> struct IsRef<T&>
+{
+  static constexpr int v = 1;
+};
+template<class T> int a(const T& x) { return 1; }
+template<class T> int a(T&& x) { return 2; }
+int c(int (&f)(int)) { return 1; }
+int c(int (&&f)(int)) { return 2; }
+template<class T> int whatT(T&& x) { return IsRef<T>::v * 10 + x(4); }
+template<class... Ts> int pack(const Ts&... x) { return 1; }
+template<class... Ts> int pack(Ts&&... x) { return 2; }
+template<class T, class... Ts> int headT(T&& h, Ts&&... x) { return IsRef<T>::v * 10 + (IsRef<Ts>::v + ...); }
+template<class... Ts> int sizes(const Ts&... x) { return (int(sizeof(x)) + ... + 0); }
+template<class... Ts> int sizesRef(Ts&... x) { return (int(sizeof(x)) + ... + 0); }
+int main()
+{
+  const int ci = 3;
+  printf("%d %d %d\n", a(ci), a(fun), c(fun));
+  printf("%d %d %d\n", whatT(fun), pack(fun, fun), headT(fun, fun));
+  int arr[3] = {1, 2, 3};
+  double d4[4] = {};
+  printf("%d %d %d\n", sizes(arr), sizes(arr, d4), sizesRef(arr, d4));
+  return 0;
+}

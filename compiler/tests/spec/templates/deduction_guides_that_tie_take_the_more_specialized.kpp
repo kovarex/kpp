@@ -1,0 +1,50 @@
+// spec: of two deduction guides whose parameters match the arguments alike, the more specialized one deduces the class ([over.match.best] 2.5, [temp.func.order]): `Box(Tag, M&...)` over `Box(M&...)` given a const Tag and two ints, whichever is declared first, and `Holder(T*)` over `Holder(T)` given a pointer. clang's and g++'s output
+// found by thread J (2026-11-07): the first guide declared won a tie; ScopedLock's `ScopedLock(AdoptLock, M&...)` was reached only because `M&...` decayed a const argument and could not bind it
+extern "C" int printf(const char* format, ...);
+struct Tag
+{
+};
+const Tag tag;
+template<class... M> struct Box
+{
+  int n = int(sizeof...(M));
+  Box(M&... m) {}
+  Box(Tag t, M&... m) : n(100 + int(sizeof...(M))) {}
+};
+template<class... M> Box(M&...) -> Box<M...>;
+template<class... M> Box(Tag, M&...) -> Box<M...>;
+template<class... M> struct Later
+{
+  int n = int(sizeof...(M));
+  Later(M&... m) {}
+  Later(Tag t, M&... m) : n(100 + int(sizeof...(M))) {}
+};
+template<class... M> Later(Tag, M&...) -> Later<M...>;
+template<class... M> Later(M&...) -> Later<M...>;
+template<class T> struct IsConstPointer
+{
+  static constexpr int v = 0;
+};
+template<class T> struct IsConstPointer<const T*>
+{
+  static constexpr int v = 1;
+};
+template<class T> struct Holder
+{
+  int kind;
+  Holder(T value, int k) : kind(k * 10 + IsConstPointer<T>::v) {}
+};
+template<class T> Holder(T, int) -> Holder<T>;
+template<class T> Holder(T*, int) -> Holder<const T*>;
+int main()
+{
+  int x = 1;
+  int y = 2;
+  Box b(tag, x, y);
+  Later l(tag, x, y);
+  Box c(x, y);
+  Holder h(&x, 7);
+  Holder v(x, 8);
+  printf("%d %d %d %d %d\n", b.n, l.n, c.n, h.kind, v.kind);
+  return 0;
+}
