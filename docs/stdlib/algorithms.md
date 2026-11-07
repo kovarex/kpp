@@ -223,6 +223,28 @@ unspecified.
 - `isHeap(first, last [, less])`: whether the range is a heap; `isHeapUntil(first, last [, less])`: the
   end of the longest prefix that is one.
 
+## Uninitialized storage
+
+What std's specialized memory algorithms convert to. Each takes iterators (input iterators for the
+sources, forward iterators for the storage) over storage whose elements are not alive yet, or, for
+the destroy functions, are. When a construction throws, the objects the call built are destroyed and
+the exception passes on; the storage is then as before the call.
+
+- `constructAt(p, args...)`: builds a T at the T* p from args (`T(args...)`); returns p.
+  `destroyAt(p)`: runs the destructor of the object at p.
+- `destroy(first, last)`, `destroyN(first, n)` (returns the position after the n).
+- `uninitializedCopy(first, last, dest)`, `uninitializedCopyN(first, n, dest)`: copies of the
+  sources built at dest; return the end of what was built.
+- `uninitializedMove(first, last, dest)`: the same with each source moved from (the sources stay
+  alive); `uninitializedMoveN(first, n, dest)` returns the Pair of the positions after the sources
+  and after what was built.
+- `uninitializedFill(first, last, value)`, `uninitializedFillN(first, n, value)`: copies of value;
+  the N form returns the end of what was built.
+- `uninitializedDefaultConstruct(first, last)`, `uninitializedDefaultConstructN(first, n)`: objects
+  default-initialized (`new (p) T`: a number is left unset); `uninitializedValueConstruct(first,
+  last)`, `uninitializedValueConstructN(first, n)`: value-initialized (`T()`: a number is 0). The N
+  forms return the end of what was built.
+
 ## Not specified yet
 
 shuffle, sample, shiftLeft and shiftRight; clamp with a less, min and max of a brace list with a less.

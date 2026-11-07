@@ -377,40 +377,207 @@ OutIt setIntersection(It1 first1, It1 last1, It2 first2, It2 last2, OutIt out, F
 template<typename It1, typename It2, typename OutIt>
 OutIt setIntersection(It1 first1, It1 last1, It2 first2, It2 last2, OutIt out) { return setIntersection(first1, last1, first2, last2, out, Less<>()); }
 
-// Memory construction/destruction for uninitialized storage.
+// --- Uninitialized storage (std's specialized memory algorithms) ---
+//
+// Each takes iterators to storage whose elements are not alive yet (or, for destroy, are). A
+// construction that throws destroys what the call had built, in order, and passes the exception on.
+
+// Builds a T at p from args (T(args...)); returns p.
+template<typename T, typename... Args>
+T* constructAt(T* p, Args&&... args) { return new (p) T(forward<Args>(args)...); }
+
 template<typename T>
-void destroy(T* first, T* last)
+void destroyAt(T* p) { p->~T(); }
+
+template<typename It>
+void destroy(It first, It last)
 {
   for (; first != last; ++first)
-    first->~T();
+    destroyAt(&*first);
 }
 
-template<typename T>
-void uninitializedDefaultConstruct(T* first, T* last)
+template<typename It, typename Size>
+It destroyN(It first, Size n)
 {
-  for (; first != last; ++first)
-    new (first) T();
+  for (; n > 0; --n, ++first)
+    destroyAt(&*first);
+  return first;
 }
 
+// (default-initialized, as `new (p) T`)
 template<typename T>
-void uninitializedMove(T* first, T* last, T* dest)
+void defaultConstructAt(T* p) { new (p) T; }
+
+template<typename It>
+void uninitializedDefaultConstruct(It first, It last)
 {
-  for (; first != last; ++first, ++dest)
-    new (dest) T(move(*first));
+  It built = first;
+  try
+  {
+    for (; built != last; ++built)
+      defaultConstructAt(&*built);
+  }
+  catch (...)
+  {
+    destroy(first, built);
+    throw;
+  }
 }
 
-template<typename T>
-void uninitializedValueConstruct(T* first, T* last)
+template<typename It, typename Size>
+It uninitializedDefaultConstructN(It first, Size n)
 {
-  for (; first != last; ++first)
-    new (first) T();
+  It built = first;
+  try
+  {
+    for (; n > 0; --n, ++built)
+      defaultConstructAt(&*built);
+  }
+  catch (...)
+  {
+    destroy(first, built);
+    throw;
+  }
+  return built;
 }
 
-template<typename T>
-void uninitializedCopy(const T* first, const T* last, T* dest)
+template<typename It>
+void uninitializedValueConstruct(It first, It last)
 {
-  for (; first != last; ++first, ++dest)
-    new (dest) T(*first);
+  It built = first;
+  try
+  {
+    for (; built != last; ++built)
+      constructAt(&*built);
+  }
+  catch (...)
+  {
+    destroy(first, built);
+    throw;
+  }
+}
+
+template<typename It, typename Size>
+It uninitializedValueConstructN(It first, Size n)
+{
+  It built = first;
+  try
+  {
+    for (; n > 0; --n, ++built)
+      constructAt(&*built);
+  }
+  catch (...)
+  {
+    destroy(first, built);
+    throw;
+  }
+  return built;
+}
+
+// Copies of [first, last) built at dest; returns the end of what was built.
+template<typename InIt, typename OutIt>
+OutIt uninitializedCopy(InIt first, InIt last, OutIt dest)
+{
+  OutIt built = dest;
+  try
+  {
+    for (; first != last; ++first, ++built)
+      constructAt(&*built, *first);
+  }
+  catch (...)
+  {
+    destroy(dest, built);
+    throw;
+  }
+  return built;
+}
+
+template<typename InIt, typename Size, typename OutIt>
+OutIt uninitializedCopyN(InIt first, Size n, OutIt dest)
+{
+  OutIt built = dest;
+  try
+  {
+    for (; n > 0; --n, ++first, ++built)
+      constructAt(&*built, *first);
+  }
+  catch (...)
+  {
+    destroy(dest, built);
+    throw;
+  }
+  return built;
+}
+
+// The elements of [first, last) moved into new ones at dest (the sources stay alive, moved from);
+// returns the end of what was built.
+template<typename InIt, typename OutIt>
+OutIt uninitializedMove(InIt first, InIt last, OutIt dest)
+{
+  OutIt built = dest;
+  try
+  {
+    for (; first != last; ++first, ++built)
+      constructAt(&*built, move(*first));
+  }
+  catch (...)
+  {
+    destroy(dest, built);
+    throw;
+  }
+  return built;
+}
+
+// Returns the positions after the n sources and after what was built.
+template<typename InIt, typename Size, typename OutIt>
+Pair<InIt, OutIt> uninitializedMoveN(InIt first, Size n, OutIt dest)
+{
+  OutIt built = dest;
+  try
+  {
+    for (; n > 0; --n, ++first, ++built)
+      constructAt(&*built, move(*first));
+  }
+  catch (...)
+  {
+    destroy(dest, built);
+    throw;
+  }
+  return Pair<InIt, OutIt>(first, built);
+}
+
+// Copies of value built over [first, last).
+template<typename It, typename T>
+void uninitializedFill(It first, It last, const T& value)
+{
+  It built = first;
+  try
+  {
+    for (; built != last; ++built)
+      constructAt(&*built, value);
+  }
+  catch (...)
+  {
+    destroy(first, built);
+    throw;
+  }
+}
+
+template<typename It, typename Size, typename T>
+It uninitializedFillN(It first, Size n, const T& value)
+{
+  It built = first;
+  try
+  {
+    for (; n > 0; --n, ++built)
+      constructAt(&*built, value);
+  }
+  catch (...)
+  {
+    destroy(first, built);
+    throw;
+  }
+  return built;
 }
 
 // The reverse of it (std::make_reverse_iterator).

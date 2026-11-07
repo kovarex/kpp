@@ -65,7 +65,7 @@ public:
   IotaIterator() : value() {}
   explicit IotaIterator(T value) : value(value) {}
 
-  const T& operator*() const { return this->value; }
+  T operator*() const { return this->value; } // a value, as std::views::iota's: a copy of the iterator may give it
   T operator[](i64 n) const { return (T)(this->value + n); }
 
   IotaIterator<T>& operator++()

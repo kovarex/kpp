@@ -1,5 +1,4 @@
 // spec: toWString of an unsigned long keeps its value where it is 64 bits wide
-// pending on linux freebsd: toWString(unsigned long) converts through i64 and writes -1, a silent wrong answer (battery un1 against std::to_wstring)
 int main()
 {
   for (wchar_t c : toWString(~(unsigned long)0))

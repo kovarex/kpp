@@ -1,5 +1,4 @@
 // spec: uninitializedCopy, uninitializedMove, uninitializedDefaultConstruct and uninitializedValueConstruct destroy the objects they built when a construction throws ([specialized.algorithms])
-// pending: their loops have no cleanup: the objects built before the throw are never destroyed (battery un1 against std::uninitialized_copy and its family)
 struct Tracked
 {
   static int live, ticks, throwAt;

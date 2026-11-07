@@ -10,7 +10,8 @@ access; a reverse view's bidirectional).
 
 - `Subrange<It>(first, last)`: the iterators [first, last) as a range (std::ranges::subrange).
 - `iotaView(first, last)`: the numbers first, first + 1, ... up to last, last excluded
-  (std::views::iota(first, last)); last is converted to first's type.
+  (std::views::iota(first, last)); last is converted to first's type. Its iterator's `*` gives the
+  number as a value, not a reference.
 - `transformView(range, f)`: f(x) for every element x of range, called each time an element is
   read (std::views::transform(range, f)). `range | transformView(f)` is the same. `front()` and
   `back()` (std's view_interface) are f of the first and the last element (the range not empty;

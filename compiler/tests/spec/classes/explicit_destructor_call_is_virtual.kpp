@@ -22,7 +22,6 @@ class Second : public Pad, public Middle
 public:
   ~Second() override { printf("~Second\n"); }
 };
-template<class T> void destroyAt(T* p) { p->~T(); }
 alignas(16) char place[64];
 int main()
 {

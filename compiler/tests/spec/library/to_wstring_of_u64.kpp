@@ -1,5 +1,4 @@
 // spec: toWString takes a u64, as std::to_wstring takes unsigned long long and toString takes a u64
-// pending: WStringConvert.kpp has no overload for it: the call is ambiguous (battery un1 against std::to_wstring)
 int main()
 {
   for (wchar_t c : toWString((u64)18446744073709551615ull))

@@ -122,19 +122,22 @@ Members, as String's of the same name but in units of wchar_t:
   `(const wchar_t*, count)`, from a `[first, last)` pair of `const wchar_t*`, `(count, c)`; copy
   and move; assignment from a WString or a `const wchar_t*`.
 - Access: `size()`, `length()`, `empty()`, `operator[](i)`, `at(i)` (throws OutOfRange), `front()`,
-  `back()`, `data()`, `c_str()`, `begin()`, `end()`, `rbegin()`, `rend()`.
+  `back()`, `data()`, `c_str()`, `begin()`, `end()`, `rbegin()`, `rend()`. `data()` and `c_str()`
+  are never null: an empty WString's point at its terminator.
 - Changing: `append(text, count)`, `append(text)`, `append(other)`, `append(count, c)` (each
   returns the WString), `push_back(c)`, `pop_back()`, `<<` (a WString, a `const wchar_t*` or a
   wchar_t; no `+=`, as String), `resize(n)`, `resize(n, c)`, `reserve(n)`, `clear()`, `erase(index, count)` (returns
   the WString). A text argument may point into this WString.
 - Searching: `find(text, from)`, `find(c, from)` (text: a WString or a `const wchar_t*`),
+  `find(text, from, count)` (the first count units of a `const wchar_t*`),
   `rfind(c, from)`, `find_first_of(set, from)`, `find_last_of(set)`, `find_last_of(c)`.
 - `substr(start, count)`: as String's. `a + b` for any two of WString, `const wchar_t*` (at least
   one WString) and wchar_t.
 - `compare(other)`, `==`, `!=` (also with a `const wchar_t*`), `<`, `>`, `<=`, `>=`: unit by unit,
   a proper prefix before the longer string.
 
-`toWString(number)` (std::to_wstring) writes a number as String's toString does. Conversions
+`toWString(number)` (std::to_wstring) writes a number as String's toString does: i32, u32, long,
+unsigned long, i64, u64 and double. Conversions
 between WString and UTF-8 Strings are not part of WString (StringUtil's widen and narrow in the
 game, and Filesystem's path).
 

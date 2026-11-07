@@ -331,11 +331,22 @@ struct Optional : OptionalValue<T>
     }
   }
 
+  // As std's: two values are swapped (swap of T), one is moved into the empty Optional and destroyed
+  // where it was.
   void swap(Optional<T>& other)
   {
-    Optional<T> held = move(*this);
-    *this = move(other);
-    other = move(held);
+    if (this->present && other.present)
+      ::swap(**this, *other);
+    else if (this->present)
+    {
+      other.emplace(move(**this));
+      this->reset();
+    }
+    else if (other.present)
+    {
+      this->emplace(move(*other));
+      other.reset();
+    }
   }
 
   // Kept from the game's own Optional (not in the specification): get() and operator~ are the

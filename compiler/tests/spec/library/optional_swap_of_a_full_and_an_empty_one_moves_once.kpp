@@ -1,5 +1,4 @@
 // spec: swapping a full Optional with an empty one builds the value in the empty one with one move and destroys the old value ([optional.swap])
-// pending: Optional::swap goes through a third Optional: two moves and two destructions (battery ov1 against MSVC's STL and libstdc++)
 struct Counted
 {
   static int moved, destroyed;

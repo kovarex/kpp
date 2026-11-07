@@ -1,5 +1,4 @@
 // spec: a reverseView of an iotaView gives its numbers: *it of a ReverseIterator goes through a copy of the iterator, whose value must outlive it
-// pending: IotaIterator's operator* returns a reference to its own member, std::views::iota's a value: ReverseIterator returns it from its local copy, and a release build prints garbage, a silent wrong answer (battery vw1 against std::views)
 // kppc: --release
 int main()
 {

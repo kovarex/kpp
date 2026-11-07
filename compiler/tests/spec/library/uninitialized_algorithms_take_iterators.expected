@@ -1,0 +1,15 @@
+copy: a b c (6 live)
+copyN: a b (5 live)
+true
+move: a b c (6 live)
+source after move: ''
+moveN: x y (8 live)
+source left at z
+fill: f f (8 live)
+fillN: g g g (9 live)
+valueN: - - (8 live)
+defaultN: - (7 live)
+constructAt: c (7 live)
+3 6
+0
+0

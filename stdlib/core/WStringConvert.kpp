@@ -1,24 +1,19 @@
 // toWString: number to wide string (what std::to_wstring converts to).
 
-WString toWString(i64 value)
+// The wide copy of ASCII text (what toString writes).
+WString widenAscii(const String& narrow)
 {
-  String narrow = toString(value);
   WString result;
   for (i32 i = 0; i < narrow.size(); ++i)
     result.push_back((wchar_t)narrow[i]);
   return result;
 }
 
+WString toWString(i64 value) { return widenAscii(toString(value)); }
+WString toWString(u64 value) { return widenAscii(toString(value)); }
 WString toWString(i32 value) { return toWString((i64)value); }
-WString toWString(u32 value) { return toWString((i64)value); }
+WString toWString(u32 value) { return toWString((u64)value); }
 WString toWString(long value) { return toWString((i64)value); }
-WString toWString(unsigned long value) { return toWString((i64)value); }
+WString toWString(unsigned long value) { return toWString((u64)value); }
 
-WString toWString(double value)
-{
-  String narrow = toString(value);
-  WString result;
-  for (i32 i = 0; i < narrow.size(); ++i)
-    result.push_back((wchar_t)narrow[i]);
-  return result;
-}
+WString toWString(double value) { return widenAscii(toString(value)); }

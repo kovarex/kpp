@@ -70,6 +70,13 @@ public:
     return *this;
   }
 
+  // The terminator of a WString that never held anything, writable as std's data()[size()] is.
+  static wchar_t* noChars()
+  {
+    static wchar_t terminator = 0;
+    return &terminator;
+  }
+
   static ContainerSize lengthOf(const wchar_t* text)
   {
     usize n = 0;
@@ -82,9 +89,9 @@ public:
   ContainerSize length() const { return this->unitCount; }
   bool empty() const { return this->unitCount == 0; }
   const wchar_t* c_str() const { return this->chars ? this->chars : L""; }
-  wchar_t* data() { return this->chars; }
+  wchar_t* data() { return this->chars ? this->chars : WString::noChars(); }
   const wchar_t* data() const { return this->c_str(); }
-  wchar_t& operator[](ContainerSize index) { return this->chars[index]; }
+  wchar_t& operator[](ContainerSize index) { return this->data()[index]; }
   const wchar_t& operator[](ContainerSize index) const { return this->c_str()[index]; }
 
   wchar_t& at(ContainerSize index)
@@ -286,7 +293,7 @@ public:
   }
 
   // Searching: each returns the index of the first match at or after from, or npos.
-  ContainerSize find(const wchar_t* needle, ContainerSize count, ContainerSize from) const
+  ContainerSize find(const wchar_t* needle, ContainerSize from, ContainerSize count) const
   {
     if (count > this->unitCount) // (unitCount - count would wrap)
       return npos;
@@ -301,11 +308,11 @@ public:
     return npos;
   }
 
-  ContainerSize find(const wchar_t* needle, ContainerSize from) const { return this->find(needle, WString::lengthOf(needle), from); }
+  ContainerSize find(const wchar_t* needle, ContainerSize from) const { return this->find(needle, from, WString::lengthOf(needle)); }
   ContainerSize find(const wchar_t* needle) const { return this->find(needle, 0); }
-  ContainerSize find(const WString& needle, ContainerSize from) const { return this->find(needle.c_str(), needle.unitCount, from); }
+  ContainerSize find(const WString& needle, ContainerSize from) const { return this->find(needle.c_str(), from, needle.unitCount); }
   ContainerSize find(const WString& needle) const { return this->find(needle, 0); }
-  ContainerSize find(wchar_t c, ContainerSize from) const { return this->find(&c, 1, from); }
+  ContainerSize find(wchar_t c, ContainerSize from) const { return this->find(&c, from, 1); }
   ContainerSize find(wchar_t c) const { return this->find(c, 0); }
 
   // The last c at or before from (anywhere when from is npos), or npos.
