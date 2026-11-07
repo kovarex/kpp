@@ -1,0 +1,34 @@
+// spec: a pack expansion over a type pack that names a static member of a class template takes each element's instance, its partial specialization where one matches: `(IsRef<Ts>::v + ...)` over <int&, int&> is 2, as `IsRef<int&>::v` is 1 ([temp.variadic] 8, [temp.spec.partial.match]); folds with and without an initial value, a brace list of the elements, a pack deduced from a call. clang's and g++'s output
+// pending: of two or more elements every element takes the primary template's member (0 0 0 for all of these, `cnt<int&>()` alone is right): a silent wrong answer, found by thread J while probing forwarding references (2026-11-07); a primary template alone is right (`Size<Ts>::v` sums the sizes)
+extern "C" int printf(const char* format, ...);
+template<class T> struct IsRef
+{
+  static constexpr int v = 0;
+};
+template<class T> struct IsRef<T&>
+{
+  static constexpr int v = 1;
+};
+template<class T> struct Size
+{
+  static constexpr int v = sizeof(T);
+};
+template<class... Ts> int cnt() { return (IsRef<Ts>::v + ...); }
+template<class... Ts> int cntInit() { return (IsRef<Ts>::v + ... + 0); }
+template<class... Ts> int sizes() { return (Size<Ts>::v + ...); }
+template<class... Ts> int list()
+{
+  int a[] = {IsRef<Ts>::v...};
+  int s = 0;
+  for (int x : a)
+    s = s * 10 + x;
+  return s;
+}
+template<class... Ts> int deduced(Ts&&... x) { return (IsRef<Ts>::v + ...); }
+int main()
+{
+  int i = 1;
+  printf("%d %d %d %d\n", cnt<int&, int&>(), cnt<int&, int, int&>(), cntInit<int&, int&>(), cnt<int&>());
+  printf("%d %d %d\n", list<int&, int, int&>(), sizes<char, int, double>(), deduced(i, 2, i));
+  return 0;
+}
