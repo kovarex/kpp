@@ -1,4 +1,4 @@
-// spec: of two conversions of a derived class (its pointer, a reference to it) to bases, the one to the nearer base is better, and one to a base better than one to void*, whatever const and volatile each target adds ([over.ics.rank] 4.4): pick(const D*) over pick(B*), pick(D&) over pick(const B&), pick(D*) over pick(const B* const&), pick(const B*) over pick(void*). clang's and g++'s output
+// spec: of two conversions of a derived class (its pointer, a reference to it) to bases, the one to the nearer base is better, and one to a base better than one to void*, whatever const and volatile each target adds ([over.ics.rank] 4.4): pick(const D*) over pick(B*), pick(D&) over pick(const B&), pick(D*) over pick(const B* const&), pick(const B*) over pick(void*), and a class taken by value as one by reference: m(D&) over m(B), m(D) over m(B). clang's and g++'s output
 // found by thread J's overload generator (2026-11-07): each call was ambiguous
 extern "C" int printf(const char* format, ...);
 class B
@@ -28,6 +28,16 @@ int w1(const B* a) { return 1; }
 int w1(void* a) { return 2; }
 int w2(B* a) { return 1; }
 int w2(const void* a) { return 2; }
+int m1(B a) { return 1; }
+int m1(D& a) { return 2; }
+int m2(D a) { return 1; }
+int m2(const B& a) { return 2; }
+int m3(B a) { return 1; }
+int m3(const D& a) { return 2; }
+int m4(D a) { return 1; }
+int m4(B& a) { return 2; }
+int m5(B a) { return 1; }
+int m5(D a) { return 2; }
 int same1(const D* a) { return 1; }
 int same1(D* a) { return 2; }
 int main()
@@ -38,5 +48,6 @@ int main()
   D* pd = &d;
   printf("%d %d %d %d %d %d\n", p1(pdd), p2(pdd), r1(dd), r2(dd), p3(pdd), v1(pdd));
   printf("%d %d %d\n", w1(pd), w2(pd), same1(pdd));
+  printf("%d %d %d %d %d\n", m1(dd), m2(dd), m3(dd), m4(dd), m5(dd));
   return 0;
 }

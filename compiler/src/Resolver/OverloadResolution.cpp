@@ -2758,6 +2758,8 @@ auto GlobalScope::Impl::chooseAmong(const std::vector<FunctionDecl*>& candidates
           ta = pa->inner, tb = pb->inner;
         else if (a.params[i]->isReference() && b.params[i]->isReference() && a.params[i]->kind == b.params[i]->kind)
           ta = types.stripRef(a.params[i]), tb = types.stripRef(b.params[i]);
+        else if (argument && argument->kind == TyKind::Class && pa->kind == TyKind::Class && pb->kind == TyKind::Class && pa != pb)
+          ta = pa, tb = pb; // a class by value beside another by value or by reference: the nearer base (m(D&) over m(B) given a DD)
         if (ta && tb && ta != tb)
         {
           bool aWeaker = (!ta->isConst || tb->isConst) && (!ta->isVolatile || tb->isVolatile); // a's target no more qualified
