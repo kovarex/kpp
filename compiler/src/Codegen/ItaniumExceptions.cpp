@@ -98,7 +98,22 @@ auto codegen::Emitter::itaniumLandingPad(const std::string& head) -> std::string
   cleanupPads[key] = block;
   ehBlocks += block + ":\n  " + lp + " = landingpad { ptr, i32 } cleanup" + clauses + "\n  " + exc + " = extractvalue { ptr, i32 } " + lp +
               ", 0\n  store ptr " + exc + ", ptr %eh.exc\n  " + sel + " = extractvalue { ptr, i32 } " + lp + ", 1\n  store i32 " + sel +
-              ", ptr %eh.sel\n  br label %" + head + "\n";
+              ", ptr %eh.sel\n";
+  if (!emittingNoexcept())
+  {
+    ehBlocks += "  br label %" + head + "\n";
+    return block;
+  }
+  // A noexcept function's pad: its empty filter, which the personality ends the program at in the
+  // search (`why` 2), and here a selector of that filter's going to abort, which never runs. Without
+  // it the pad of a function with nothing to destroy was `landingpad; resume`, which LLVM's optimizer
+  // deletes, its filter with it: inlined into a caller's try, the caller's catch took the exception
+  // (a release build off Windows: language/noexcept_lambda_terminates and nine others).
+  std::string negative = newTemp(), stop = newLabel("eh.noexcept");
+  if (declaredNames.claim("@abort"))
+    decls += "declare void @abort()\n";
+  ehBlocks += "  " + negative + " = icmp slt i32 " + sel + ", 0\n  br i1 " + negative + ", label %" + stop + ", label %" + head + "\n" + stop +
+              ":\n  call void @abort()\n  unreachable\n";
   return block;
 }
 

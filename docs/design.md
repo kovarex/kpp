@@ -4485,6 +4485,13 @@ its IR for every spec snippet (1073) is byte-identical before and after.
     (language/exception_leaving_a_thread_terminates, every target).
 - **The libraries' tests on Linux**: base64 (3), bcrypt (5), html (6), json (13), markdown (10),
   net (3), sha256 (6) and url (6) all pass. Each stopped at its first throw before.
+- **A noexcept function's pad in a release build (2026-11-07, thread I; a silent wrong answer until
+  then):** its landing pad with nothing to destroy was `landingpad cleanup filter [0 x ptr]` and a
+  resume, which LLVM's optimizer deletes as a pad that only resumes, the filter with it: inlined into a
+  caller's try, the caller's catch took the exception and noexcept said nothing (10 spec snippets,
+  release builds for Linux and FreeBSD, x86-64 and arm64). The pad now goes to abort on the filter's
+  selector, as clang's goes to `__cxa_call_unexpected`: the personality still ends the program in the
+  search, and the pad stays.
 - **Not yet:**
   - A thread a program starts itself through CreateThread with a function of its own (the
     converted game's threads that do not go through Thread) has no noexcept frame: an exception
