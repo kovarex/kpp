@@ -1,0 +1,74 @@
+// spec: an Optional is assigned from a value of another type T is built and assigned from, as std::optional's converting assignment is: an empty one builds its value from it (through an explicit constructor too), a full one assigns it; from an Optional<U> empty makes it empty, a value is assigned or built (`built 1, assigned 0 / built 1, assigned 1 / 7 / text more / 0 1 3 / 0 1 4 / x / 1 1`, clang's with MSVC's STL and g++'s with libstdc++). That a T assigned from but not built from has none waits on language/requires_assignment_checks_the_operator (pending)
+// factorio: D's fix of kpp/implicit_condition_of_a_constructor_template_refuses_copy_initialization_is_error (2026-11-07): the game's 8 `trainData.frontConnection = frontConnection;` (an Entity* to an Optional<Targeter<Entity>> whose Targeter(Entity*) is explicit) went through Optional's constructor template, as Optional had no converting assignment
+extern "C" import "stdio.h";
+i32 built = 0;
+i32 assigned = 0;
+
+struct Thing
+{
+  i32 id;
+};
+
+// Built only explicitly from a Thing*, and assigned from one (as Factorio's Targeter).
+struct Handle
+{
+  Thing* target;
+  explicit Handle(Thing* target) : target(target) { ++built; }
+  Handle(const Handle& other) : target(other.target) {}
+  Handle& operator=(const Handle& other)
+  {
+    this->target = other.target;
+    return *this;
+  }
+  Handle& operator=(Thing* target)
+  {
+    this->target = target;
+    ++assigned;
+    return *this;
+  }
+};
+
+template<typename O, typename V>
+constexpr bool assignable = requires(O& o, V v) { o = v; };
+
+int main()
+{
+  Thing a{1};
+  Thing b{2};
+  Optional<Handle> handle;
+  handle = &a;
+  printf("built %d, assigned %d", built, assigned);
+  handle = &b;
+  printf(" / built %d, assigned %d / ", built, assigned);
+
+  Optional<i64> wide;
+  wide = 7;
+  printf("%d / ", (i32)*wide);
+
+  Optional<String> text;
+  text = "text";
+  text = text->c_str();
+  *text << " more";
+  printf("%s / ", text->c_str());
+
+  Optional<i64> target;
+  Optional<i32> none;
+  Optional<i32> three(3);
+  target = none;
+  i32 first = target.hasValue() ? 1 : 0;
+  target = three;
+  i32 second = target.hasValue() ? 1 : 0;
+  printf("%d %d %d / ", first, second, (i32)*target);
+  target = Optional<i32>();
+  first = target.hasValue() ? 1 : 0;
+  target = Optional<i32>(4);
+  printf("%d %d %d / ", first, target.hasValue() ? 1 : 0, (i32)*target);
+
+  Optional<String> fromChars;
+  Optional<const char*> chars("x");
+  fromChars = chars;
+  printf("%s / ", fromChars->c_str());
+
+  printf("%d %d\n", (i32)assignable<Optional<i64>, i32>, (i32)assignable<Optional<Handle>, Thing*>);
+  return 0;
+}

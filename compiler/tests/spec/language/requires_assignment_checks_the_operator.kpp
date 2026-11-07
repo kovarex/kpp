@@ -1,0 +1,30 @@
+// spec: a requires-expression's assignment of a class object is satisfied only when an assignment operator takes the value, as C++'s: a class without one for an int (Plain), one whose copy assignment is deleted (NoCopyAssign, from an int it builds only explicitly and from itself), and one with operator=(int) (Takes): `0 0 0 1`, clang's and g++'s
+// factorio: K, writing library/optional_converting_assignment against std (2026-11-07): `requires(T& t, V v) { t = v; }` was satisfied for every class, so std::optional's converting assignment, constrained on is_assignable, cannot be told apart, nor Vector's `requires { this->items[0] = *first; }`; the assignment itself is refused, by codegen ("assigning a non-class to a class")
+// pending: every one is satisfied (`1 1 1 1`) (K, 2026-11-07; for the coordinator to give an owner)
+extern "C" import "stdio.h";
+struct Plain
+{
+  i32 value = 0;
+};
+struct NoCopyAssign
+{
+  i32 value;
+  explicit NoCopyAssign(i32 v) : value(v) {}
+  NoCopyAssign& operator=(const NoCopyAssign& other) = delete;
+};
+struct Takes
+{
+  i32 value = 0;
+  Takes& operator=(i32 v)
+  {
+    this->value = v;
+    return *this;
+  }
+};
+template<typename T, typename V>
+constexpr bool assignable = requires(T& t, V v) { t = v; };
+int main()
+{
+  printf("%d %d %d %d\n", (i32)assignable<Plain, i32>, (i32)assignable<NoCopyAssign, i32>, (i32)assignable<NoCopyAssign, NoCopyAssign>, (i32)assignable<Takes, i32>);
+  return 0;
+}

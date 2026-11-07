@@ -23,6 +23,11 @@ Members:
   holds a T constructed from other's value (`Optional<const T*>` from `Optional<T*>`).
 - `Optional(inPlace, args...)` (explicit): holds a T constructed from args in place (std::in_place).
 - `= nullopt`: empty; `= value` (copy or move): holds value.
+- `= u` for a value of another type T is constructed and assigned from (not an Optional or
+  nullopt; std::optional's converting assignment): u is assigned to the value held, or a T is
+  constructed from it when empty, through an explicit constructor too (an `Entity*` to an
+  `Optional<Targeter<Entity>>`). `= other` for an `Optional<U>` (const& or &&) whose value T is
+  constructed and assigned from: empty when other is, otherwise its value assigned or constructed.
 - `emplace(args...)`: destroys the value held, if any, then constructs T from args in place;
   returns a reference to it.
 - `reset()`: destroys the value held, if any; empty afterwards.

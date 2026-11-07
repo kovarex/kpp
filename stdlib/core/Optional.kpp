@@ -10,6 +10,17 @@ template<typename T>
 struct IsOptional { static constexpr bool value = false; };
 template<typename T>
 struct IsOptional<Optional<T>> { static constexpr bool value = true; };
+// Whether T is built, converted or assigned from an Optional<U> of any value category and constness
+// (std's converts-from-any-cvref and its is_assignable from each optional<U>): Optional's converting
+// assignments from an Optional<U> leave such a T to the assignment of the Optional<U> as a value.
+template<typename T, typename U>
+constexpr bool optionalTakesOptional =
+  isConstructible<T, Optional<U>&> || isConvertible<Optional<U>&, T> || isConstructible<T, Optional<U>&&> ||
+  isConvertible<Optional<U>&&, T> || isConstructible<T, const Optional<U>&> || isConvertible<const Optional<U>&, T> ||
+  isConstructible<T, const Optional<U>&&> || isConvertible<const Optional<U>&&, T> ||
+  requires(T& t, Optional<U>& o) { t = o; } || requires(T& t, Optional<U>&& o) { t = move(o); } ||
+  requires(T& t, const Optional<U>& o) { t = o; } || requires(T& t, const Optional<U>&& o) { t = move(o); };
+
 // What asks Optional's constructor to build the value in place (std::in_place).
 struct InPlaceTag {};
 const InPlaceTag inPlace;
@@ -232,6 +243,59 @@ struct Optional : OptionalValue<T>
     else
     {
       new (this->slot()) T(move(v));
+      this->present = true;
+    }
+    return *this;
+  }
+
+  // From a value of another type (std::optional's converting assignment, constrained as std's on T
+  // being built from it and assigned from it): assigned to the value when there is one, else the
+  // value is built from it. `trainData.frontConnection = entity` assigns an Entity* to an
+  // Optional<Targeter<Entity>> whose Targeter(Entity*) is explicit, as C++ does.
+  template<typename U = T>
+  Optional<T>& operator=(U&& v)
+    requires(!IsOptional<RemoveCvRef<U>>::value && !isSame<RemoveCvRef<U>, T> && !isSame<RemoveCvRef<U>, NullOpt> &&
+             isConstructible<T, U> && requires(T& t, U&& u) { t = forward<U>(u); })
+  {
+    if (this->present)
+      *this->slot() = forward<U>(v);
+    else
+    {
+      new (this->slot()) T(forward<U>(v));
+      this->present = true;
+    }
+    return *this;
+  }
+
+  // From an Optional of another type (std::optional's converting assignments): empty from empty,
+  // else the value assigned, or built when there is none.
+  template<typename U>
+  Optional<T>& operator=(const Optional<U>& other)
+    requires(!isSame<U, T> && isConstructible<T, const U&> && requires(T& t, const U& u) { t = u; } && !optionalTakesOptional<T, U>)
+  {
+    if (!other.hasValue())
+      this->reset();
+    else if (this->present)
+      *this->slot() = *other.slot();
+    else
+    {
+      new (this->slot()) T(*other.slot());
+      this->present = true;
+    }
+    return *this;
+  }
+
+  template<typename U>
+  Optional<T>& operator=(Optional<U>&& other)
+    requires(!isSame<U, T> && isConstructible<T, U> && requires(T& t, U&& u) { t = move(u); } && !optionalTakesOptional<T, U>)
+  {
+    if (!other.hasValue())
+      this->reset();
+    else if (this->present)
+      *this->slot() = move(*other.slot());
+    else
+    {
+      new (this->slot()) T(move(*other.slot()));
       this->present = true;
     }
     return *this;
