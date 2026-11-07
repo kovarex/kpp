@@ -141,6 +141,8 @@ namespace codegen
     std::string byContext; // by, as diagnostics show it (Emitter::currentContext)
   };
 
+  struct Emitter;
+
   // What the emitters of one program share, under `mutex` (recursive: laying out a class lays out
   // the classes of its fields): class layouts, closures, globals, the instantiations asked for,
   // and the output. Everything else an emitter has is its own (the function it is emitting, and
@@ -425,6 +427,10 @@ namespace codegen
     uint32_t debugGeneration = 0;
     std::vector<std::vector<uint64_t>> debugHomes; // per module, the classes it defines (their keys, in order)
     std::vector<DebugClass> debugClasses;          // those classes with their names (CodegenResult::debugClasses), made with debugHomes
+    // Work after the emission on every emitter of the build at once, each on a thread of its own
+    // (the caller's thread runs the first): homeDebugClasses' levels. Set by the session that made
+    // the emitters, which outlive the build with this state; unset, the caller does the work alone.
+    std::function<void(const std::function<void(Emitter&)>& work)> onEmitters;
     std::unordered_map<std::string, std::string> stubMessages; // a stubbed function -> "qualified name at file:line"
   };
 

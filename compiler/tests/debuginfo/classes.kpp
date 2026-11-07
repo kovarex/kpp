@@ -1,0 +1,1173 @@
+// --debug-info's classes defined on every emitter at once (homeDebugClasses' levels, 2026-11-07):
+// determinism.ps1 builds this with --debug-info at 8 modules, at -j 1 (one emitter defines every class)
+// and at -j 32 (each level's classes on every emitter at once), and compares every module's text by the
+// hash kppc keeps beside its object. 96 classes, more than homeDebugClasses leaves to one thread (64):
+// each with data members, an array, a member function and a pointer to the next; every fourth derived
+// from a polymorphic base. main's locals name every one, so the first level has them all.
+// (Written by a script: Part<i> for i in 0..95.)
+class Base
+{
+public:
+  virtual ~Base() {}
+  virtual i32 weight() const { return 1; }
+  i32 tag = 7;
+};
+
+class Part0 : public Base
+{
+public:
+  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 id = 0;
+  double scale = 0.5;
+  i32 pair[2] = {0, 1};
+  Part1* next = nullptr;
+};
+
+class Part1
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 1;
+  double scale = 1.5;
+  i32 pair[2] = {1, 2};
+  Part2* next = nullptr;
+};
+
+class Part2
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 2;
+  double scale = 2.5;
+  i32 pair[2] = {2, 3};
+  Part3* next = nullptr;
+};
+
+class Part3
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 3;
+  double scale = 3.5;
+  i32 pair[2] = {3, 4};
+  Part4* next = nullptr;
+};
+
+class Part4 : public Base
+{
+public:
+  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 id = 4;
+  double scale = 4.5;
+  i32 pair[2] = {4, 5};
+  Part5* next = nullptr;
+};
+
+class Part5
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 5;
+  double scale = 5.5;
+  i32 pair[2] = {5, 6};
+  Part6* next = nullptr;
+};
+
+class Part6
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 6;
+  double scale = 6.5;
+  i32 pair[2] = {6, 7};
+  Part7* next = nullptr;
+};
+
+class Part7
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 7;
+  double scale = 7.5;
+  i32 pair[2] = {7, 8};
+  Part8* next = nullptr;
+};
+
+class Part8 : public Base
+{
+public:
+  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 id = 8;
+  double scale = 8.5;
+  i32 pair[2] = {8, 9};
+  Part9* next = nullptr;
+};
+
+class Part9
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 9;
+  double scale = 9.5;
+  i32 pair[2] = {9, 10};
+  Part10* next = nullptr;
+};
+
+class Part10
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 10;
+  double scale = 10.5;
+  i32 pair[2] = {10, 11};
+  Part11* next = nullptr;
+};
+
+class Part11
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 11;
+  double scale = 11.5;
+  i32 pair[2] = {11, 12};
+  Part12* next = nullptr;
+};
+
+class Part12 : public Base
+{
+public:
+  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 id = 12;
+  double scale = 12.5;
+  i32 pair[2] = {12, 13};
+  Part13* next = nullptr;
+};
+
+class Part13
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 13;
+  double scale = 13.5;
+  i32 pair[2] = {13, 14};
+  Part14* next = nullptr;
+};
+
+class Part14
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 14;
+  double scale = 14.5;
+  i32 pair[2] = {14, 15};
+  Part15* next = nullptr;
+};
+
+class Part15
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 15;
+  double scale = 15.5;
+  i32 pair[2] = {15, 16};
+  Part16* next = nullptr;
+};
+
+class Part16 : public Base
+{
+public:
+  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 id = 16;
+  double scale = 16.5;
+  i32 pair[2] = {16, 17};
+  Part17* next = nullptr;
+};
+
+class Part17
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 17;
+  double scale = 17.5;
+  i32 pair[2] = {17, 18};
+  Part18* next = nullptr;
+};
+
+class Part18
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 18;
+  double scale = 18.5;
+  i32 pair[2] = {18, 19};
+  Part19* next = nullptr;
+};
+
+class Part19
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 19;
+  double scale = 19.5;
+  i32 pair[2] = {19, 20};
+  Part20* next = nullptr;
+};
+
+class Part20 : public Base
+{
+public:
+  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 id = 20;
+  double scale = 20.5;
+  i32 pair[2] = {20, 21};
+  Part21* next = nullptr;
+};
+
+class Part21
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 21;
+  double scale = 21.5;
+  i32 pair[2] = {21, 22};
+  Part22* next = nullptr;
+};
+
+class Part22
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 22;
+  double scale = 22.5;
+  i32 pair[2] = {22, 23};
+  Part23* next = nullptr;
+};
+
+class Part23
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 23;
+  double scale = 23.5;
+  i32 pair[2] = {23, 24};
+  Part24* next = nullptr;
+};
+
+class Part24 : public Base
+{
+public:
+  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 id = 24;
+  double scale = 24.5;
+  i32 pair[2] = {24, 25};
+  Part25* next = nullptr;
+};
+
+class Part25
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 25;
+  double scale = 25.5;
+  i32 pair[2] = {25, 26};
+  Part26* next = nullptr;
+};
+
+class Part26
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 26;
+  double scale = 26.5;
+  i32 pair[2] = {26, 27};
+  Part27* next = nullptr;
+};
+
+class Part27
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 27;
+  double scale = 27.5;
+  i32 pair[2] = {27, 28};
+  Part28* next = nullptr;
+};
+
+class Part28 : public Base
+{
+public:
+  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 id = 28;
+  double scale = 28.5;
+  i32 pair[2] = {28, 29};
+  Part29* next = nullptr;
+};
+
+class Part29
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 29;
+  double scale = 29.5;
+  i32 pair[2] = {29, 30};
+  Part30* next = nullptr;
+};
+
+class Part30
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 30;
+  double scale = 30.5;
+  i32 pair[2] = {30, 31};
+  Part31* next = nullptr;
+};
+
+class Part31
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 31;
+  double scale = 31.5;
+  i32 pair[2] = {31, 32};
+  Part32* next = nullptr;
+};
+
+class Part32 : public Base
+{
+public:
+  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 id = 32;
+  double scale = 32.5;
+  i32 pair[2] = {32, 33};
+  Part33* next = nullptr;
+};
+
+class Part33
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 33;
+  double scale = 33.5;
+  i32 pair[2] = {33, 34};
+  Part34* next = nullptr;
+};
+
+class Part34
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 34;
+  double scale = 34.5;
+  i32 pair[2] = {34, 35};
+  Part35* next = nullptr;
+};
+
+class Part35
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 35;
+  double scale = 35.5;
+  i32 pair[2] = {35, 36};
+  Part36* next = nullptr;
+};
+
+class Part36 : public Base
+{
+public:
+  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 id = 36;
+  double scale = 36.5;
+  i32 pair[2] = {36, 37};
+  Part37* next = nullptr;
+};
+
+class Part37
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 37;
+  double scale = 37.5;
+  i32 pair[2] = {37, 38};
+  Part38* next = nullptr;
+};
+
+class Part38
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 38;
+  double scale = 38.5;
+  i32 pair[2] = {38, 39};
+  Part39* next = nullptr;
+};
+
+class Part39
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 39;
+  double scale = 39.5;
+  i32 pair[2] = {39, 40};
+  Part40* next = nullptr;
+};
+
+class Part40 : public Base
+{
+public:
+  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 id = 40;
+  double scale = 40.5;
+  i32 pair[2] = {40, 41};
+  Part41* next = nullptr;
+};
+
+class Part41
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 41;
+  double scale = 41.5;
+  i32 pair[2] = {41, 42};
+  Part42* next = nullptr;
+};
+
+class Part42
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 42;
+  double scale = 42.5;
+  i32 pair[2] = {42, 43};
+  Part43* next = nullptr;
+};
+
+class Part43
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 43;
+  double scale = 43.5;
+  i32 pair[2] = {43, 44};
+  Part44* next = nullptr;
+};
+
+class Part44 : public Base
+{
+public:
+  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 id = 44;
+  double scale = 44.5;
+  i32 pair[2] = {44, 45};
+  Part45* next = nullptr;
+};
+
+class Part45
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 45;
+  double scale = 45.5;
+  i32 pair[2] = {45, 46};
+  Part46* next = nullptr;
+};
+
+class Part46
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 46;
+  double scale = 46.5;
+  i32 pair[2] = {46, 47};
+  Part47* next = nullptr;
+};
+
+class Part47
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 47;
+  double scale = 47.5;
+  i32 pair[2] = {47, 48};
+  Part48* next = nullptr;
+};
+
+class Part48 : public Base
+{
+public:
+  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 id = 48;
+  double scale = 48.5;
+  i32 pair[2] = {48, 49};
+  Part49* next = nullptr;
+};
+
+class Part49
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 49;
+  double scale = 49.5;
+  i32 pair[2] = {49, 50};
+  Part50* next = nullptr;
+};
+
+class Part50
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 50;
+  double scale = 50.5;
+  i32 pair[2] = {50, 51};
+  Part51* next = nullptr;
+};
+
+class Part51
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 51;
+  double scale = 51.5;
+  i32 pair[2] = {51, 52};
+  Part52* next = nullptr;
+};
+
+class Part52 : public Base
+{
+public:
+  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 id = 52;
+  double scale = 52.5;
+  i32 pair[2] = {52, 53};
+  Part53* next = nullptr;
+};
+
+class Part53
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 53;
+  double scale = 53.5;
+  i32 pair[2] = {53, 54};
+  Part54* next = nullptr;
+};
+
+class Part54
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 54;
+  double scale = 54.5;
+  i32 pair[2] = {54, 55};
+  Part55* next = nullptr;
+};
+
+class Part55
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 55;
+  double scale = 55.5;
+  i32 pair[2] = {55, 56};
+  Part56* next = nullptr;
+};
+
+class Part56 : public Base
+{
+public:
+  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 id = 56;
+  double scale = 56.5;
+  i32 pair[2] = {56, 57};
+  Part57* next = nullptr;
+};
+
+class Part57
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 57;
+  double scale = 57.5;
+  i32 pair[2] = {57, 58};
+  Part58* next = nullptr;
+};
+
+class Part58
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 58;
+  double scale = 58.5;
+  i32 pair[2] = {58, 59};
+  Part59* next = nullptr;
+};
+
+class Part59
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 59;
+  double scale = 59.5;
+  i32 pair[2] = {59, 60};
+  Part60* next = nullptr;
+};
+
+class Part60 : public Base
+{
+public:
+  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 id = 60;
+  double scale = 60.5;
+  i32 pair[2] = {60, 61};
+  Part61* next = nullptr;
+};
+
+class Part61
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 61;
+  double scale = 61.5;
+  i32 pair[2] = {61, 62};
+  Part62* next = nullptr;
+};
+
+class Part62
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 62;
+  double scale = 62.5;
+  i32 pair[2] = {62, 63};
+  Part63* next = nullptr;
+};
+
+class Part63
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 63;
+  double scale = 63.5;
+  i32 pair[2] = {63, 64};
+  Part64* next = nullptr;
+};
+
+class Part64 : public Base
+{
+public:
+  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 id = 64;
+  double scale = 64.5;
+  i32 pair[2] = {64, 65};
+  Part65* next = nullptr;
+};
+
+class Part65
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 65;
+  double scale = 65.5;
+  i32 pair[2] = {65, 66};
+  Part66* next = nullptr;
+};
+
+class Part66
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 66;
+  double scale = 66.5;
+  i32 pair[2] = {66, 67};
+  Part67* next = nullptr;
+};
+
+class Part67
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 67;
+  double scale = 67.5;
+  i32 pair[2] = {67, 68};
+  Part68* next = nullptr;
+};
+
+class Part68 : public Base
+{
+public:
+  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 id = 68;
+  double scale = 68.5;
+  i32 pair[2] = {68, 69};
+  Part69* next = nullptr;
+};
+
+class Part69
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 69;
+  double scale = 69.5;
+  i32 pair[2] = {69, 70};
+  Part70* next = nullptr;
+};
+
+class Part70
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 70;
+  double scale = 70.5;
+  i32 pair[2] = {70, 71};
+  Part71* next = nullptr;
+};
+
+class Part71
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 71;
+  double scale = 71.5;
+  i32 pair[2] = {71, 72};
+  Part72* next = nullptr;
+};
+
+class Part72 : public Base
+{
+public:
+  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 id = 72;
+  double scale = 72.5;
+  i32 pair[2] = {72, 73};
+  Part73* next = nullptr;
+};
+
+class Part73
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 73;
+  double scale = 73.5;
+  i32 pair[2] = {73, 74};
+  Part74* next = nullptr;
+};
+
+class Part74
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 74;
+  double scale = 74.5;
+  i32 pair[2] = {74, 75};
+  Part75* next = nullptr;
+};
+
+class Part75
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 75;
+  double scale = 75.5;
+  i32 pair[2] = {75, 76};
+  Part76* next = nullptr;
+};
+
+class Part76 : public Base
+{
+public:
+  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 id = 76;
+  double scale = 76.5;
+  i32 pair[2] = {76, 77};
+  Part77* next = nullptr;
+};
+
+class Part77
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 77;
+  double scale = 77.5;
+  i32 pair[2] = {77, 78};
+  Part78* next = nullptr;
+};
+
+class Part78
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 78;
+  double scale = 78.5;
+  i32 pair[2] = {78, 79};
+  Part79* next = nullptr;
+};
+
+class Part79
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 79;
+  double scale = 79.5;
+  i32 pair[2] = {79, 80};
+  Part80* next = nullptr;
+};
+
+class Part80 : public Base
+{
+public:
+  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 id = 80;
+  double scale = 80.5;
+  i32 pair[2] = {80, 81};
+  Part81* next = nullptr;
+};
+
+class Part81
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 81;
+  double scale = 81.5;
+  i32 pair[2] = {81, 82};
+  Part82* next = nullptr;
+};
+
+class Part82
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 82;
+  double scale = 82.5;
+  i32 pair[2] = {82, 83};
+  Part83* next = nullptr;
+};
+
+class Part83
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 83;
+  double scale = 83.5;
+  i32 pair[2] = {83, 84};
+  Part84* next = nullptr;
+};
+
+class Part84 : public Base
+{
+public:
+  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 id = 84;
+  double scale = 84.5;
+  i32 pair[2] = {84, 85};
+  Part85* next = nullptr;
+};
+
+class Part85
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 85;
+  double scale = 85.5;
+  i32 pair[2] = {85, 86};
+  Part86* next = nullptr;
+};
+
+class Part86
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 86;
+  double scale = 86.5;
+  i32 pair[2] = {86, 87};
+  Part87* next = nullptr;
+};
+
+class Part87
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 87;
+  double scale = 87.5;
+  i32 pair[2] = {87, 88};
+  Part88* next = nullptr;
+};
+
+class Part88 : public Base
+{
+public:
+  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 id = 88;
+  double scale = 88.5;
+  i32 pair[2] = {88, 89};
+  Part89* next = nullptr;
+};
+
+class Part89
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 89;
+  double scale = 89.5;
+  i32 pair[2] = {89, 90};
+  Part90* next = nullptr;
+};
+
+class Part90
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 90;
+  double scale = 90.5;
+  i32 pair[2] = {90, 91};
+  Part91* next = nullptr;
+};
+
+class Part91
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 91;
+  double scale = 91.5;
+  i32 pair[2] = {91, 92};
+  Part92* next = nullptr;
+};
+
+class Part92 : public Base
+{
+public:
+  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 id = 92;
+  double scale = 92.5;
+  i32 pair[2] = {92, 93};
+  Part93* next = nullptr;
+};
+
+class Part93
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 93;
+  double scale = 93.5;
+  i32 pair[2] = {93, 94};
+  Part94* next = nullptr;
+};
+
+class Part94
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 94;
+  double scale = 94.5;
+  i32 pair[2] = {94, 95};
+  Part95* next = nullptr;
+};
+
+class Part95
+{
+public:
+  i32 total() const { return this->id + this->pair[1]; }
+  i32 id = 95;
+  double scale = 95.5;
+  i32 pair[2] = {95, 96};
+  Part0* next = nullptr;
+};
+
+int main()
+{
+  Part0 p0;
+  Part1 p1;
+  Part2 p2;
+  Part3 p3;
+  Part4 p4;
+  Part5 p5;
+  Part6 p6;
+  Part7 p7;
+  Part8 p8;
+  Part9 p9;
+  Part10 p10;
+  Part11 p11;
+  Part12 p12;
+  Part13 p13;
+  Part14 p14;
+  Part15 p15;
+  Part16 p16;
+  Part17 p17;
+  Part18 p18;
+  Part19 p19;
+  Part20 p20;
+  Part21 p21;
+  Part22 p22;
+  Part23 p23;
+  Part24 p24;
+  Part25 p25;
+  Part26 p26;
+  Part27 p27;
+  Part28 p28;
+  Part29 p29;
+  Part30 p30;
+  Part31 p31;
+  Part32 p32;
+  Part33 p33;
+  Part34 p34;
+  Part35 p35;
+  Part36 p36;
+  Part37 p37;
+  Part38 p38;
+  Part39 p39;
+  Part40 p40;
+  Part41 p41;
+  Part42 p42;
+  Part43 p43;
+  Part44 p44;
+  Part45 p45;
+  Part46 p46;
+  Part47 p47;
+  Part48 p48;
+  Part49 p49;
+  Part50 p50;
+  Part51 p51;
+  Part52 p52;
+  Part53 p53;
+  Part54 p54;
+  Part55 p55;
+  Part56 p56;
+  Part57 p57;
+  Part58 p58;
+  Part59 p59;
+  Part60 p60;
+  Part61 p61;
+  Part62 p62;
+  Part63 p63;
+  Part64 p64;
+  Part65 p65;
+  Part66 p66;
+  Part67 p67;
+  Part68 p68;
+  Part69 p69;
+  Part70 p70;
+  Part71 p71;
+  Part72 p72;
+  Part73 p73;
+  Part74 p74;
+  Part75 p75;
+  Part76 p76;
+  Part77 p77;
+  Part78 p78;
+  Part79 p79;
+  Part80 p80;
+  Part81 p81;
+  Part82 p82;
+  Part83 p83;
+  Part84 p84;
+  Part85 p85;
+  Part86 p86;
+  Part87 p87;
+  Part88 p88;
+  Part89 p89;
+  Part90 p90;
+  Part91 p91;
+  Part92 p92;
+  Part93 p93;
+  Part94 p94;
+  Part95 p95;
+  i64 sum = 0;
+  sum += p0.weight();
+  sum += p1.total();
+  sum += p2.total();
+  sum += p3.total();
+  sum += p4.weight();
+  sum += p5.total();
+  sum += p6.total();
+  sum += p7.total();
+  sum += p8.weight();
+  sum += p9.total();
+  sum += p10.total();
+  sum += p11.total();
+  sum += p12.weight();
+  sum += p13.total();
+  sum += p14.total();
+  sum += p15.total();
+  sum += p16.weight();
+  sum += p17.total();
+  sum += p18.total();
+  sum += p19.total();
+  sum += p20.weight();
+  sum += p21.total();
+  sum += p22.total();
+  sum += p23.total();
+  sum += p24.weight();
+  sum += p25.total();
+  sum += p26.total();
+  sum += p27.total();
+  sum += p28.weight();
+  sum += p29.total();
+  sum += p30.total();
+  sum += p31.total();
+  sum += p32.weight();
+  sum += p33.total();
+  sum += p34.total();
+  sum += p35.total();
+  sum += p36.weight();
+  sum += p37.total();
+  sum += p38.total();
+  sum += p39.total();
+  sum += p40.weight();
+  sum += p41.total();
+  sum += p42.total();
+  sum += p43.total();
+  sum += p44.weight();
+  sum += p45.total();
+  sum += p46.total();
+  sum += p47.total();
+  sum += p48.weight();
+  sum += p49.total();
+  sum += p50.total();
+  sum += p51.total();
+  sum += p52.weight();
+  sum += p53.total();
+  sum += p54.total();
+  sum += p55.total();
+  sum += p56.weight();
+  sum += p57.total();
+  sum += p58.total();
+  sum += p59.total();
+  sum += p60.weight();
+  sum += p61.total();
+  sum += p62.total();
+  sum += p63.total();
+  sum += p64.weight();
+  sum += p65.total();
+  sum += p66.total();
+  sum += p67.total();
+  sum += p68.weight();
+  sum += p69.total();
+  sum += p70.total();
+  sum += p71.total();
+  sum += p72.weight();
+  sum += p73.total();
+  sum += p74.total();
+  sum += p75.total();
+  sum += p76.weight();
+  sum += p77.total();
+  sum += p78.total();
+  sum += p79.total();
+  sum += p80.weight();
+  sum += p81.total();
+  sum += p82.total();
+  sum += p83.total();
+  sum += p84.weight();
+  sum += p85.total();
+  sum += p86.total();
+  sum += p87.total();
+  sum += p88.weight();
+  sum += p89.total();
+  sum += p90.total();
+  sum += p91.total();
+  sum += p92.weight();
+  sum += p93.total();
+  sum += p94.total();
+  sum += p95.total();
+  println(sum);
+  return 0;
+}

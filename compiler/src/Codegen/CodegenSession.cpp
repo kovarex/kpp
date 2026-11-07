@@ -777,6 +777,16 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   for (unsigned i = 0; i < threads; ++i)
     emitters.push_back(std::make_unique<Emitter>(global, symbols, sh));
   session->threads = threads;
+  // (Each emitter where it is for as long as sh is: a kept session keeps both, and a build frees
+  // the emitters before sh.)
+  std::vector<Emitter*> each;
+  for (const std::unique_ptr<Emitter>& em : emitters)
+    each.push_back(em.get());
+  sh.onEmitters = [each](const std::function<void(Emitter&)>& work)
+  {
+    auto run = [&](unsigned i) { work(*each[i]); };
+    onThreads(unsigned(each.size()), run);
+  };
   // The emitters' and the shared state are freed on a thread of their own once the result is
   // returned (about 3 s for the game, on the build's critical path before): a build in its own
   // process exits without waiting for it, the compile server answers meanwhile. Their destructors

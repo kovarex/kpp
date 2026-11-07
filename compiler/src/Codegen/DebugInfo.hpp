@@ -102,9 +102,10 @@
     // Shared::debugTypes has: a debug build's program pieces are assembled, and their texts freed,
     // before this), and the classes their definitions name, each defined (debugComposite) for its
     // home module alone (Shared::debugHomes, the key's remainder by the module count: where it lands
-    // does not depend on who named it first); every other module declares it. A compile server's
-    // build makes the definitions of the classes it named itself (their types are its own) and keeps
-    // the others'.
+    // does not depend on who named it first); every other module declares it. Level by level (the
+    // classes named, then the ones their definitions name), each level's on every emitter at once
+    // (Shared::onEmitters). A compile server's build makes the definitions of the classes it named
+    // itself (their types are its own) and keeps the others'.
     void homeDebugClasses();
 
     // The definition with line information: every instruction gets the line of the statement whose

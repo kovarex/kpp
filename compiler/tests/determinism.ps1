@@ -107,26 +107,32 @@ foreach ($name in $groups.Keys)
 
 # --debug-info's variables and types in a build of 8 modules (debuginfo\values.kpp: each class defined
 # in its home module, declared in the others; the types appended in their keys' order): every
-# module's text, by the hash kppc keeps beside its object, the same at -j 1, -j 8 and -j 32.
-$src = Join-Path $PSScriptRoot 'debuginfo\values.kpp'
-$started = @(foreach ($j in $threadCounts)
+# module's text, by the hash kppc keeps beside its object, the same at -j 1, -j 8 and -j 32. And
+# debuginfo\classes.kpp's 96 classes, which homeDebugClasses defines on every emitter at once (one
+# emitter at -j 1).
+foreach ($program in @('values', 'classes'))
 {
-  $exe = Join-Path $work "values.j$j.exe"
-  Remove-Item "$exe*" -ErrorAction SilentlyContinue
-  [pscustomobject]@{ j = $j; exe = $exe; run = Start-Run @('--quiet', '-j', $j, '--debug-info', '--modules', '8', '--exe', $exe, $src) "values -j $j" }
-})
-$hashes = @{}
-foreach ($s in $started)
-{
-  $s.run.process.WaitForExit()
-  $hashes[$s.j] = @(Get-ChildItem "$($s.exe).*.hash" -ErrorAction SilentlyContinue | Sort-Object Name | ForEach-Object { "$($_.Name.Substring($s.exe.Length - $work.Length - 1)) $(Get-Content -Raw $_.FullName)".Trim() }) -join "`n"
-}
-if ($hashes['1'] -and @($threadCounts | Where-Object { $hashes[$_] -ne $hashes['1'] }).Count -eq 0) { "ok   determinism debuginfo modules" }
-else
-{
-  "FAIL determinism debuginfo modules: the module texts' hashes differ (or are missing)"
-  foreach ($j in $threadCounts) { "  -j ${j}:"; $hashes[$j] -split "`n" | ForEach-Object { "    $_" } }
-  $failed++
+  $src = Join-Path $PSScriptRoot "debuginfo\$program.kpp"
+  $started = @(foreach ($j in $threadCounts)
+  {
+    $exe = Join-Path $work "$program.j$j.exe"
+    Remove-Item "$exe*" -ErrorAction SilentlyContinue
+    [pscustomobject]@{ j = $j; exe = $exe; run = Start-Run @('--quiet', '-j', $j, '--debug-info', '--modules', '8', '--exe', $exe, $src) "$program -j $j" }
+  })
+  $hashes = @{}
+  foreach ($s in $started)
+  {
+    $s.run.process.WaitForExit()
+    $hashes[$s.j] = @(Get-ChildItem "$($s.exe).*.hash" -ErrorAction SilentlyContinue | Sort-Object Name | ForEach-Object { "$($_.Name.Substring($s.exe.Length - $work.Length - 1)) $(Get-Content -Raw $_.FullName)".Trim() }) -join "`n"
+  }
+  $label = if ($program -eq 'values') { 'modules' } else { $program }
+  if ($hashes['1'] -and @($threadCounts | Where-Object { $hashes[$_] -ne $hashes['1'] }).Count -eq 0) { "ok   determinism debuginfo $label" }
+  else
+  {
+    "FAIL determinism debuginfo ${label}: the module texts' hashes differ (or are missing)"
+    foreach ($j in $threadCounts) { "  -j ${j}:"; $hashes[$j] -split "`n" | ForEach-Object { "    $_" } }
+    $failed++
+  }
 }
 
 # The names in a program's IR, of a build started with Start-Run, once it has ended: every match of the pattern, each once.

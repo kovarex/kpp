@@ -364,7 +364,9 @@ once in key order (so the text does not depend on the threads), renumbers it aft
 definitions' ids, and writes each placeholder's id over it in place, padded with blanks. Classes
 are defined after the emission (`homeDebugClasses`, from prepareModuleTexts: then every layout the
 program has is laid out) for their home's instance piece (a debug build's program pieces are
-assembled earlier, so they declare every class). A compile server's build makes a type's text
+assembled earlier, so they declare every class): level by level, the classes named and then the ones
+their definitions name, each level's on every emitter at once and taken in key order after (on one
+thread until 2026-11-07, about 2.5 s of the game's clean build with the other cores idle). A compile server's build makes a type's text
 again when it first names the type (an edited enum's enumerators), and keeps the texts its kept
 definitions name.
 

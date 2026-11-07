@@ -620,51 +620,95 @@ auto codegen::Emitter::debugComposite(const Ty* ct, const StructInfo& info, uint
 
 auto codegen::Emitter::homeDebugClasses() -> void
 {
-  std::set<uint64_t> done;
-  for (bool more = true; more;)
+  // Level by level: the classes not defined this generation yet, each level's in key order, until a
+  // level has none (only a class's definition names new types).
+  for (;;)
   {
-    more = false;
-    std::vector<std::pair<uint64_t, Shared::DebugTypeText*>> entries;
+    // This level's classes, each defined once a generation, on every emitter at once (Shared::
+    // onEmitters; on one thread until 2026-11-07, 2.5 s of the game's debug build with every core
+    // but one idle): a definition depends on its class alone (its nodes numbered from its own 0,
+    // every other type by placeholder), so it is the same whichever emitter makes it and in
+    // whatever order, and the types the definitions name are the next level's. The definitions are
+    // taken in key order after, as one thread took them, and the first that failed is thrown there.
+    std::vector<std::pair<uint64_t, Shared::DebugTypeText*>> classes;
     {
       auto lock = sharedLock();
       for (auto& [key, entry] : sh.debugTypes)
-        if (!done.count(key))
-          entries.push_back({key, &entry}); // (an element stays where it is as others are added)
+        if (entry.type && entry.generation == sh.debugGeneration && entry.definitionGeneration != sh.debugGeneration)
+          classes.push_back({key, &entry}); // (an element stays where it is as others are added)
     }
-    std::sort(entries.begin(), entries.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
-    for (auto& [key, entry] : entries)
-    {
-      done.insert(key);
-      more = true;
-      if (!entry->type || entry->generation != sh.debugGeneration || entry->definitionGeneration == sh.debugGeneration)
-        continue;
+    if (classes.empty())
+      break;
+    std::sort(classes.begin(), classes.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+    for (auto& [key, entry] : classes)
       entry->definitionGeneration = sh.debugGeneration;
+    struct Made
+    {
       std::string definition;
-      if (const StructInfo* info = laidOutClass(entry->type))
+      std::exception_ptr failed;
+      std::vector<std::string> errors; // (what its emitter recorded as it failed)
+    };
+    std::vector<Made> made(classes.size());
+    std::atomic<size_t> nextClass{0};
+    auto define = [&](Emitter& em)
+    {
+      for (size_t i; (i = nextClass++) < classes.size();)
       {
-        std::string spelling = irString(entry->type);
-        uint32_t next = 1;
-        debugComposite(entry->type, *info, 0, &spelling, definition, next); // (the types its members name join debugTypes)
+        size_t errorsBefore = em.errors.size();
+        try
+        {
+          const Ty* type = classes[i].second->type;
+          if (const StructInfo* info = em.laidOutClass(type))
+          {
+            std::string spelling = em.irString(type);
+            uint32_t next = 1;
+            em.debugComposite(type, *info, 0, &spelling, made[i].definition, next); // (the types its members name join debugTypes)
+          }
+        }
+        catch (...)
+        {
+          made[i].failed = std::current_exception();
+          made[i].errors.assign(em.errors.begin() + errorsBefore, em.errors.end());
+          em.errors.resize(errorsBefore);
+        }
+      }
+    };
+    if (sh.onEmitters && classes.size() >= 64) // (a few: not worth the threads)
+      sh.onEmitters(define);
+    else
+      define(*this);
+    for (size_t i = 0; i < classes.size(); ++i)
+    {
+      auto& [key, entry] = classes[i];
+      if (made[i].failed)
+      {
+        errors.insert(errors.end(), made[i].errors.begin(), made[i].errors.end());
+        std::rethrow_exception(made[i].failed);
       }
       // (A compile server's build, rebuildLLVM's generation, assembles the modules it changed: a
       // class's new definition is its home's change too.)
-      if (sh.debugGeneration > 0 && definition != entry->definition && sh.moduleCount)
+      if (sh.debugGeneration > 0 && made[i].definition != entry->definition && sh.moduleCount)
       {
         sh.unassembled.resize(sh.moduleCount);
         sh.unassembled[key % sh.moduleCount] = true;
       }
-      entry->definition = std::move(definition);
+      entry->definition = std::move(made[i].definition);
     }
   }
+  // Every class defined (this generation or kept from an earlier one), in key order.
+  std::vector<std::pair<uint64_t, const Shared::DebugTypeText*>> defined;
+  for (const auto& [key, entry] : sh.debugTypes)
+    if (!entry.definition.empty())
+      defined.push_back({key, &entry});
+  std::sort(defined.begin(), defined.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
   sh.debugHomes.assign(std::max(1u, sh.moduleCount), {});
   sh.debugClasses.clear();
-  for (uint64_t key : done)
-    if (auto it = sh.debugTypes.find(key); it != sh.debugTypes.end() && !it->second.definition.empty())
-    {
-      sh.debugHomes[key % sh.debugHomes.size()].push_back(key);
-      if (it->second.type)
-        sh.debugClasses.push_back({it->second.type, debuggerClassName(it->second.type)});
-    }
+  for (const auto& [key, entry] : defined)
+  {
+    sh.debugHomes[key % sh.debugHomes.size()].push_back(key);
+    if (entry->type)
+      sh.debugClasses.push_back({entry->type, debuggerClassName(entry->type)});
+  }
   std::sort(sh.debugClasses.begin(), sh.debugClasses.end(), [](const DebugClass& a, const DebugClass& b) { return a.name < b.name; });
   sh.result.debugClasses = sh.debugClasses; // (a build from scratch's result; a compile server's rebuild takes them in rebuildLLVM)
 }
