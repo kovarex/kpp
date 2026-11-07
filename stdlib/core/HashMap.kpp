@@ -841,7 +841,7 @@ public:
       return false;
     for (const Pair<K, V>& entry : *this)
     {
-      HashIterator<Pair<K, V>, stable> found = other.find(entry.first);
+      HashIterator<const Pair<K, V>, stable> found = other.find(entry.first);
       if (found == other.end() || !(found->second == entry.second))
         return false;
     }
