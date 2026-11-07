@@ -460,6 +460,36 @@ nothing: step 2's row). A's 8e481d22 (the instance check on every thread) is in 
 
 The edits did not move: 2.3 to 2.5 s and 3.1 to 3.5 s on this machine, in every column.
 
+B's next window, 2026-11-08 00:10 to 00:15, split the clean build by phase and timed the whole builds on the
+current game: `kppc TARGET debug --verbose` with `KPP_STEP_TIMES=1` (B's whole.py), the same three kppcs in
+turn, two rounds, the machine 0 to 2% busy before each build. The clean builds, on d97dc7389 (medians, the
+rounds within 0.7 s):
+
+| | before | 8f48fb95 | b3d8abf5, d534c3b6 |
+|---|---:|---:|---:|
+| Wall | 15.9 s | 14.6 s | 12.4 s |
+| kppc | 13.6 s | 12.5 s | 10.8 s |
+| of it codegen, 120 of the 128 program pieces compiled during it | 9.0 s | 8.0 s | 6.2 s |
+| of it the back end after codegen | 2.5 s | 2.5 s | 2.6 s |
+| of it the rest (read, lex, imports, parse, index, resolve, check) | 2.0 s | 2.0 s | 2.0 s |
+| Link | 1.35 s | 1.2 s | 1.2 s |
+| Before the build (build.kpp and its libraries described) | 0.9 s | 0.9 s | 0.4 s |
+| The build's CPU | 285 s | 309 s | 257 s |
+
+The cuts were in codegen (9.0 -> 6.2 s; its IR 1.67 -> 1.56 GB); the back end after it stayed at 2.5 s. The
+first two kppcs described build.kpp again before each build (0.5 s of their walls), the third found its
+description kept, so kppc's own time is the comparison: 13.6 -> 10.8 s. The whole builds, on factorio-in-kpp
+5176c864e, whose SDL and curl have precompiled headers (d0ca6988), one value per round:
+
+| | before | b3d8abf5, d534c3b6 |
+|---|---:|---:|
+| Whole build of factorio.exe, libraries included | 18.3, 18.3 s | 14.8, 15.0 s |
+| Whole build of factorio-test.exe, libraries included | 21.9, 21.7 s | 18.7, 18.5 s |
+
+In a whole build kppc takes 13.1 to 13.3 s instead of 10.8 s: the C libraries, 6 to 7 s beside it and about
+100 s of CPU, slow it by 2.4 s. So against the targets, 12.4 / 14.9 / 18.6 s: codegen 6.2 s, the back end
+after it 2.6 s, the front end 2.0 s, the link 1.2 s, and in the whole builds the C libraries' 2.4 s.
+
 When this plan was written, a clean debug build of the game was 17.1 s, the leaf edit 1.4 to 1.5 s,
 and the wide edit 1.9 s. These were thread A's quiet numbers: kppc run directly, without debug info.
 The gains overlap; each line is against the line before. The status column is as of 2026-11-02.
