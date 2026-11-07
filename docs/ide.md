@@ -439,8 +439,8 @@ name, found by token (`occurrencesIn`, one walk of the file, cached until the ne
 | request | answer |
 |---|---|
 | `textDocument/hover` | the declaration as written (to its body or initializer), its kind and qualified name, an expression's type, the `//` comment above the declaration |
-| `textDocument/definition` | a class's definition, a member function's out-of-line definition, else the declaration |
-| `textDocument/declaration` | a definition's in-class declaration (one declaration for both: `canonical`) |
+| `textDocument/definition` | a class's definition, a member function's or a static data member's out-of-line definition, else the declaration; on `This` (alone or as `This::`), the class or enum it names, as hover does |
+| `textDocument/declaration` | a definition's in-class declaration (one declaration for both: `canonical`; the resolver links a static data member to its definition only, so the server keeps the way back) |
 | `textDocument/references` | every name in the program resolved to the declaration or its other declarations; an index of all files made on the first request after a check, on all threads |
 | `textDocument/documentSymbol` | the file's outline: namespaces, classes and their members, enums, functions, variables |
 | `workspace/symbol` | every declaration outside function bodies, exact names first, then prefixes, substrings and the query's letters in order; 200 at most |
@@ -452,18 +452,20 @@ name, found by token (`occurrencesIn`, one walk of the file, cached until the ne
 
 **Rename never misses a use silently.** Every identifier spelled like the old name in the program's
 own files must be accounted for: a name the compiler resolved to the declaration (or to one of its
-other declarations; a class's constructors and destructor count as the class), a qualifier naming
-it (`Shape` in `Shape::area`), a constructor's member initializer naming it, the same names in
-template instances' copies; or a name resolved to something else, which is left alone. A name the
-compiler did not resolve (a template's dependent name with no instance), a token that means the
-declaration in one instance and something else in another, or a use in the standard library makes
-the rename an error that names the place. It is refused too for an imported C or a standard library
-declaration, a constructor, destructor or operator, a virtual function (its overrides would keep the
-old name), C linkage, a new name that is no identifier or is a keyword, and a new name that would
-change what another name means: a member the class or a base already has, a name used anywhere in a
-local's function, and, for everything else, any declaration outside function bodies so named (one
-global scope). The edits are returned, not applied: the editor applies them, and the next check is
-the build that confirms them.
+other declarations; a class's constructors and destructor count as the class), a qualifier naming it
+(`Shape` in `Shape::area`, `Shape::count = 2` too), a constructor's member initializer naming it,
+the same names in template instances' copies; or a name resolved to something else, which is left
+alone. `This` is a keyword, not the class's name: renaming a class leaves each `This` as written,
+and a rename started on it is refused ("rename Shape at its name"); through `This::count` the member
+renames as through `Shape::count`. A name the compiler did not resolve (a template's dependent name
+with no instance), a token that means the declaration in one instance and something else in another,
+or a use in the standard library makes the rename an error that names the place. It is refused too
+for an imported C or a standard library declaration, a constructor, destructor or operator, a
+virtual function (its overrides would keep the old name), C linkage, a new name that is no
+identifier or is a keyword, and a new name that would change what another name means: a member the
+class or a base already has, a name used anywhere in a local's function, and, for everything else,
+any declaration outside function bodies so named (one global scope). The edits are returned, not
+applied: the editor applies them, and the next check is the build that confirms them.
 
 **Quick fixes** come from the diagnostic's message, so the compiler states each fix once, for the
 command line and the editor alike. A mechanical error ends, before any parenthesized note such as

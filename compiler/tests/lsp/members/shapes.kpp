@@ -1,5 +1,6 @@
 // The language server's members test (tests/lsp.ps1, members.jsonl): completion after `this.`,
-// `this->` and `This::`, and the quick fixes diagnostics name.
+// `this->` and `This::`, hover, definition and rename through `This`, and the quick fixes
+// diagnostics name.
 struct Shape
 {
   enum Kind { Round, Square };

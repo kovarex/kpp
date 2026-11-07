@@ -417,6 +417,62 @@ namespace
     return out;
   }
 
+  // The declarations a file's outline shows: namespaces, types, functions, variables, members.
+  Span<Decl*> childrenOf(Decl* d)
+  {
+    switch (d->kind)
+    {
+    case NodeKind::NamespaceDecl: return static_cast<NamespaceDecl*>(d)->decls;
+    case NodeKind::ClassDecl: return static_cast<ClassDecl*>(d)->members;
+    case NodeKind::EnumDecl: return static_cast<EnumDecl*>(d)->enumerators;
+    default: return {};
+    }
+  }
+
+  // The function whose tokens hold `token`, searched through namespaces and classes.
+  FunctionDecl* enclosingFunction(Span<Decl*> decls, uint32_t token)
+  {
+    for (Decl* d : decls)
+    {
+      if (token < d->token || (d->endToken && token >= d->endToken))
+        continue;
+      if (d->kind == NodeKind::FunctionDecl)
+        return static_cast<FunctionDecl*>(d);
+      if (d->kind == NodeKind::NamespaceDecl || d->kind == NodeKind::ClassDecl)
+        if (FunctionDecl* f = enclosingFunction(childrenOf(d), token))
+          return f;
+      if (d->kind == NodeKind::EnumDecl)
+        if (FunctionDecl* f = enclosingFunction(static_cast<EnumDecl*>(d)->members, token))
+          return f;
+    }
+    return nullptr;
+  }
+
+  // The class or enum `This` names at `token`: a member function's (one defined outside its class
+  // too), else the innermost one whose braces hold the token.
+  Decl* enclosingType(GlobalScope* global, Span<Decl*> decls, uint32_t token, FunctionDecl* function)
+  {
+    if (function && global)
+      if (Decl* c = global->owningClass(function))
+        return c;
+    for (Decl* d : decls)
+    {
+      if (token < d->token || (d->endToken && token >= d->endToken))
+        continue;
+      if (d->kind == NodeKind::NamespaceDecl)
+        if (Decl* inner = enclosingType(global, childrenOf(d), token, nullptr))
+          return inner;
+      if (d->kind == NodeKind::ClassDecl)
+      {
+        Decl* inner = enclosingType(global, childrenOf(d), token, nullptr);
+        return inner ? inner : d;
+      }
+      if (d->kind == NodeKind::EnumDecl)
+        return d;
+    }
+    return nullptr;
+  }
+
   // The namespace, class or enum a qualifier names: the nearest enclosing one of start so named.
   Decl* scopeNamed(Decl* start, uint32_t symbol)
   {
@@ -428,9 +484,11 @@ namespace
 
   // A qualified name's qualifiers as occurrences of the scopes they name (`Shape` in `Shape::area`),
   // the scopes found from the declaration the whole name is (and its class, for an out-of-line member).
-  void addQualifiers(std::vector<Occurrence>& out, const std::vector<Token>& tokens, const QualifiedName& name, Node* node, Decl* named,
-                     GlobalScope* global, uint32_t from, uint32_t end)
+  // A qualifier `This` (design.md 23c) is the class or enum around the code, wherever the rest is declared.
+  void addQualifiers(std::vector<Occurrence>& out, const ParsedFile& file, const QualifiedName& name, Node* node, Decl* named,
+                     GlobalScope* global, uint32_t from, uint32_t end, const std::unordered_map<const Decl*, Decl*>* statics = nullptr)
   {
+    const std::vector<Token>& tokens = *file.tokens;
     if (name.parts.size() < 2 || !named)
       return;
     std::vector<uint32_t> at = partTokens(tokens, name, from, end);
@@ -438,11 +496,18 @@ namespace
     if (global && (named->kind == NodeKind::FunctionDecl || named->kind == NodeKind::VariableDecl))
       if (Decl* cls = global->owningClass(named))
         start = cls;
+    // A static data member's out-of-line definition: its declaration's class.
+    if (statics)
+      if (auto found = statics->find(named); found != statics->end() && found->second->parent)
+        start = found->second->parent;
     for (size_t i = name.parts.size() - 1; i-- > 0;)
     {
       if (at[i] == UINT32_MAX)
         continue;
-      Decl* scope = scopeNamed(start, name.parts[i].symbol);
+      const Token& t = tokens[at[i]];
+      Decl* scope = file.text.substr(t.offset, t.length) == "This"
+                      ? enclosingType(global, file.decls, at[i], enclosingFunction(file.decls, at[i]))
+                      : scopeNamed(start, name.parts[i].symbol);
       if (!scope)
         break; // (an alias, a using: left to the rename's check, which refuses what it cannot account for)
       out.push_back({at[i], scope, node, false});
@@ -490,7 +555,7 @@ namespace
   }
 
   // Every name in a file the compiler resolved, and every declaration's own name, by token.
-  std::vector<Occurrence> occurrencesIn(const ParsedFile& file, GlobalScope* global)
+  std::vector<Occurrence> occurrencesIn(const ParsedFile& file, GlobalScope* global, const std::unordered_map<const Decl*, Decl*>* statics)
   {
     std::vector<Occurrence> out;
     if (!file.tokens)
@@ -506,7 +571,7 @@ namespace
           {
             out.push_back({t, d, n, true});
             if (const QualifiedName* q = qualifiedNameOf(d))
-              addQualifiers(out, tokens, *q, n, d, global, d->token, t + 1);
+              addQualifiers(out, file, *q, n, d, global, d->token, t + 1, statics);
           }
         if (d->kind == NodeKind::FunctionDecl && global && d->file == &file)
           memberInitializers(out, tokens, static_cast<FunctionDecl*>(d), *global);
@@ -529,7 +594,7 @@ namespace
         const QualifiedName& q = n->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(n)->name : static_cast<NamedType*>(n)->name;
         t = nameToken(tokens, q, n->token, n->token + 64);
         if (t != UINT32_MAX)
-          addQualifiers(out, tokens, q, n, d, global, n->token, t + 1);
+          addQualifiers(out, file, q, n, d, global, n->token, t + 1);
       }
       if (t != UINT32_MAX)
         out.push_back({t, d, n, false});
@@ -596,6 +661,9 @@ namespace
       std::vector<Symbol> symbols;
       bool symbolsKnown = false;
       bool derivedKnown = false;
+      // A static data member's out-of-line definition (`int Shape::count = 2;`) to its in-class declaration.
+      bool staticsKnown = false;
+      std::unordered_map<const Decl*, Decl*> staticDeclarations;
       std::unordered_map<const Decl*, std::vector<ClassDecl*>> derived; // direct derived classes, by the base's canonical declaration
     };
 
@@ -1161,8 +1229,10 @@ namespace
       withKeptProgram([&](const KeptProgram& program)
       {
         currentGlobal = program.global;
+        currentProgram = &program;
         f(program);
         currentGlobal = nullptr;
+        currentProgram = nullptr;
       });
     }
 
@@ -1178,7 +1248,7 @@ namespace
     {
       auto found = cache.occurrences.find(f);
       if (found == cache.occurrences.end())
-        found = cache.occurrences.emplace(f, occurrencesIn(*f, currentGlobal)).first;
+        found = cache.occurrences.emplace(f, occurrencesIn(*f, currentGlobal, &knowStatics())).first;
       return found->second;
     }
 
@@ -1228,10 +1298,40 @@ namespace
       return Json::object().set("uri", uriOf(overlayKey(d->file->path), d->file->path)).set("range", tokenRange(d->file, t));
     }
 
-    // One declaration for all of its declarations: a member function's in-class declaration for its
+    // Each class's static data members by their out-of-line definitions (the resolver links them the
+    // other way only: definitionOf).
+    const std::unordered_map<const Decl*, Decl*>& knowStatics()
+    {
+      if (cache.staticsKnown || !currentProgram)
+        return cache.staticDeclarations;
+      GlobalScope& global = *currentProgram->global;
+      std::function<void(Span<Decl*>)> walk = [&](Span<Decl*> decls)
+      {
+        for (Decl* d : decls)
+          if (d->kind == NodeKind::NamespaceDecl)
+            walk(static_cast<NamespaceDecl*>(d)->decls);
+          else if (d->kind == NodeKind::ClassDecl)
+          {
+            for (Decl* m : static_cast<ClassDecl*>(d)->members)
+              if (m->kind == NodeKind::VariableDecl && (m->flags & DF_Static))
+                if (Decl* defined = global.definitionOf(m); defined && defined != m)
+                  cache.staticDeclarations.emplace(defined, m);
+            walk(static_cast<ClassDecl*>(d)->members);
+          }
+      };
+      for (ParsedFile* f : currentProgram->files)
+        walk(f->decls);
+      cache.staticsKnown = true;
+      return cache.staticDeclarations;
+    }
+
+    // One declaration for all of its declarations: a member's in-class declaration for its
     // out-of-line definition, a class's definition for its forward declarations.
     Decl* canonical(GlobalScope& global, Decl* d)
     {
+      if (d->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(d)->name.parts.size() > 1)
+        if (auto found = knowStatics().find(d); found != knowStatics().end())
+          return found->second;
       if (d->kind == NodeKind::FunctionDecl)
         if (FunctionDecl* declared = global.declarationOf(static_cast<FunctionDecl*>(d)))
           return declared;
@@ -1453,8 +1553,9 @@ namespace
       std::vector<std::vector<Occurrence>> found(files.size());
       std::atomic<size_t> next{0};
       std::vector<std::thread> threads;
+      const std::unordered_map<const Decl*, Decl*>* statics = &knowStatics();
       for (unsigned t = 0; t < std::max(1u, std::thread::hardware_concurrency()); ++t)
-        threads.emplace_back([&] { for (size_t i; (i = next++) < files.size();) found[i] = occurrencesIn(*files[i], program.global); });
+        threads.emplace_back([&] { for (size_t i; (i = next++) < files.size();) found[i] = occurrencesIn(*files[i], program.global, statics); });
       for (std::thread& t : threads)
         t.join();
       for (size_t i = 0; i < files.size(); ++i)
@@ -1732,18 +1833,6 @@ namespace
       }
     }
 
-    // The declarations a file's outline shows: namespaces, types, functions, variables, members.
-    Span<Decl*> childrenOf(Decl* d)
-    {
-      switch (d->kind)
-      {
-      case NodeKind::NamespaceDecl: return static_cast<NamespaceDecl*>(d)->decls;
-      case NodeKind::ClassDecl: return static_cast<ClassDecl*>(d)->members;
-      case NodeKind::EnumDecl: return static_cast<EnumDecl*>(d)->enumerators;
-      default: return {};
-      }
-    }
-
     Json outline(const KeptProgram& program, const ParsedFile* f, Span<Decl*> decls)
     {
       Json list = Json::array();
@@ -1825,50 +1914,6 @@ namespace
     }
 
     // ---- completion ----
-
-    // The function whose tokens hold `token`, searched through namespaces and classes.
-    FunctionDecl* enclosingFunction(Span<Decl*> decls, uint32_t token)
-    {
-      for (Decl* d : decls)
-      {
-        if (token < d->token || (d->endToken && token >= d->endToken))
-          continue;
-        if (d->kind == NodeKind::FunctionDecl)
-          return static_cast<FunctionDecl*>(d);
-        if (d->kind == NodeKind::NamespaceDecl || d->kind == NodeKind::ClassDecl)
-          if (FunctionDecl* f = enclosingFunction(childrenOf(d), token))
-            return f;
-        if (d->kind == NodeKind::EnumDecl)
-          if (FunctionDecl* f = enclosingFunction(static_cast<EnumDecl*>(d)->members, token))
-            return f;
-      }
-      return nullptr;
-    }
-
-    // The class or enum `This` names at `token`: a member function's (one defined outside its class
-    // too), else the innermost one whose braces hold the token.
-    Decl* enclosingType(const KeptProgram& program, Span<Decl*> decls, uint32_t token, FunctionDecl* function)
-    {
-      if (function)
-        if (Decl* c = program.global->owningClass(function))
-          return c;
-      for (Decl* d : decls)
-      {
-        if (token < d->token || (d->endToken && token >= d->endToken))
-          continue;
-        if (d->kind == NodeKind::NamespaceDecl)
-          if (Decl* inner = enclosingType(program, childrenOf(d), token, nullptr))
-            return inner;
-        if (d->kind == NodeKind::ClassDecl)
-        {
-          Decl* inner = enclosingType(program, childrenOf(d), token, nullptr);
-          return inner ? inner : d;
-        }
-        if (d->kind == NodeKind::EnumDecl)
-          return d;
-      }
-      return nullptr;
-    }
 
     // What an object names (`this.x`): a data member or a member function, not a static one, a type
     // or an alias.
@@ -2135,7 +2180,7 @@ namespace
           // `This::`: the class's (or the enum's) statics, nested types and enumerators, its own first.
           if (program.symbols->name(tokens[k - 1].id) == "This" && !(k >= 2 && tokens[k - 2].is(P::ColonColon)))
           {
-            Decl* cls = enclosingType(program, f->decls, k, function);
+            Decl* cls = enclosingType(program.global, f->decls, k, function);
             std::vector<ClassDecl*> classes;
             classesOf(*program.global, cls, classes);
             for (size_t c = 0; c < classes.size(); ++c)
@@ -2479,12 +2524,17 @@ namespace
           return;
         }
         Decl* target = canonical(*program.global, o->decl);
+        const Token& t = (*file->tokens)[o->token];
+        if (file->text.substr(t.offset, t.length) == "This")
+        {
+          error = "cannot rename `This`: it is the keyword for the class the code is in; rename " + declarationName(target, *program.symbols) + " at its name";
+          return;
+        }
         if (std::string why = notRenameable(target); !why.empty())
         {
           error = "cannot rename " + declarationName(target, *program.symbols) + ": " + why;
           return;
         }
-        const Token& t = (*file->tokens)[o->token];
         result = Json::object().set("range", tokenRange(file, o->token)).set("placeholder", std::string(file->text.substr(t.offset, t.length)));
       });
       return error.empty() && result.kind != Json::Null;
@@ -2495,13 +2545,19 @@ namespace
       std::string newName = params["newName"].text;
       onProgram([&](const KeptProgram& program)
       {
-        const Occurrence* o = occurrenceAt(program, params);
+        const ParsedFile* file = nullptr;
+        const Occurrence* o = occurrenceAt(program, params, &file);
         if (!o)
         {
           error = "no name the compiler resolved is here";
           return;
         }
         Decl* target = canonical(*program.global, o->decl);
+        if (const Token& t = (*file->tokens)[o->token]; file->text.substr(t.offset, t.length) == "This")
+        {
+          error = "cannot rename `This`: it is the keyword for the class the code is in; rename " + declarationName(target, *program.symbols) + " at its name";
+          return;
+        }
         std::string oldName = std::string(program.symbols->name(symbolOf(target)));
         if (std::string why = notRenameable(target); !why.empty())
         {
@@ -3080,6 +3136,7 @@ namespace
     std::map<std::string, std::string> uris;      // the URI each published file goes by
     Cache cache;
     GlobalScope* currentGlobal = nullptr; // the kept program's, while a query runs on it
+    const KeptProgram* currentProgram = nullptr;
   };
 }
 
