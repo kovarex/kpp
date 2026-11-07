@@ -20,9 +20,10 @@
 // every test run passed, 1 otherwise, 2 for a bad argument.
 // --jobs N: N worker processes of the same executable (--kpp-worker), each started once and before the
 // first process's testsSetup, since a program's may take seconds. The first process, which runs no
-// test, gives them a suite at a time, the longest first (by --durations, an earlier run's --report,
-// else the most tests first); with --exit-on-failure a suite waits for its dependencies, so that a
-// failure in one stops the run before its dependents. They send back what each test said, and it
+// test, gives them a suite at a time, the most tests first; with --durations (an earlier run's
+// --report) a test at a time, the longest first, so that a long suite's tests run at once. With
+// --exit-on-failure suites stay whole and wait for their dependencies, so that a failure in one stops
+// the run before its dependents. They send back what each test said, and it
 // says it in the order of the suites, so the output does not depend on who was first. A worker that
 // dies fails the test it was in, and another takes the rest of the suite.
 std::string testRunnerSource()
@@ -1192,9 +1193,30 @@ private:
   char** argv = nullptr;
 };
 
-// --durations FILE: the seconds an earlier run's --report gives each suite (the lines with "suite"
-// and "seconds"), into seconds; false when it cannot be read.
-bool __kppReadDurations(const char* name, HashMap<String, double>& seconds)
+// --durations FILE: the seconds an earlier run's --report gives each test and each suite.
+struct __KppDurations
+{
+  HashMap<String, double> tests;
+  HashMap<String, double> suites;
+  HashMap<String, int> suiteTests; // the tests it names in each suite
+};
+
+// A JSON string's text from at, the character after its opening quote, to its closing one.
+String __kppJsonText(StringView line, size_t at)
+{
+  String text;
+  for (; at < line.size() && line[at] != '"'; ++at)
+  {
+    if (line[at] == '\\' && at + 1 < line.size())
+      ++at; // (\" and \\: the name's own character)
+    text.append(line[at]);
+  }
+  return text;
+}
+
+// The lines with "seconds", "test" and "suite" (the tests outside suites have none) into seconds;
+// false when the file cannot be read.
+bool __kppReadDurations(const char* name, __KppDurations& seconds)
 {
   FILE* file = fopen(name, "rb");
   if (!file)
@@ -1215,12 +1237,11 @@ bool __kppReadDurations(const char* name, HashMap<String, double>& seconds)
     auto end = rest.find('\n');
     StringView line = rest.substr(0, end);
     rest = end == StringView::npos ? StringView() : rest.substr(end + 1);
+    auto test = line.find("{\"test\":\"");
     auto suite = line.find("\"suite\":\"");
     auto took = line.find("\"seconds\":");
-    if (suite == StringView::npos || took == StringView::npos)
+    if (test == StringView::npos || took == StringView::npos)
       continue;
-    StringView name = line.substr(suite + 9);
-    name = name.substr(0, name.find('"'));
     // (a JSON number: digits, a fraction, an exponent)
     double value = 0, scale = 0;
     auto i = took + 10;
@@ -1249,24 +1270,34 @@ bool __kppReadDurations(const char* name, HashMap<String, double>& seconds)
       for (int k = 0; k < exponent; ++k)
         value = negative ? value / 10 : value * 10;
     }
-    seconds[String(name)] += value;
+    seconds.tests[__kppJsonText(line, test + 9)] = value;
+    if (suite != StringView::npos)
+    {
+      String name = __kppJsonText(line, suite + 9);
+      seconds.suites[name] += value;
+      ++seconds.suiteTests[name];
+    }
   }
   return true;
 }
 
 // Runs the selection over the workers; finished(position, test) says each test's end, in the order of
 // the selection. False when no worker could go on.
-template<typename Finished> bool __kppRunJobs(const Vector<const __KppTest*>& selected, __KppJobPool& pool, const HashMap<String, double>* durations,
+template<typename Finished> bool __kppRunJobs(const Vector<const __KppTest*>& selected, __KppJobPool& pool, const __KppDurations* durations,
                                               bool exitOnFailure, Finished finished)
 {
   __KppTestState& state = __kppTestState();
   Vector<__KppJobTest> results;
   results.resize(selected.size());
+  // A job is a suite, or with durations each test on its own, as Factorio's --fork splits by its
+  // cached test times: a long suite's tests run in several processes at once. With --exit-on-failure
+  // a suite waits for its dependencies, so it stays whole.
+  bool byTest = durations && !exitOnFailure;
   Vector<__KppJob> jobs;
   for (int i = 0; i < int(selected.size()); ++i)
   {
     const __KppSuite* suite = selected[i]->suite[0] != 0 ? __kppSuite(selected[i]->suite) : nullptr;
-    if (jobs.empty() || jobs.back().suite != suite)
+    if (jobs.empty() || jobs.back().suite != suite || byTest)
     {
       __KppJob job;
       job.suite = suite;
@@ -1281,15 +1312,20 @@ template<typename Finished> bool __kppRunJobs(const Vector<const __KppTest*>& se
     if (jobs[i].suite)
       __kppSuite(jobs[i].suite->name.c_str())->job = i;
 
-  // The order the jobs are given in: the longest first, by durations (a suite they do not name at
-  // their seconds per test), else the most tests first; with --exit-on-failure a job's own time and
-  // the longest chain of its dependents after it, as those wait for it. Ties in the suites' order.
+  // The order the jobs are given in: the longest first, by durations (a test they do not name at its
+  // suite's seconds per test they name, else as a suite they do not name, at their seconds per test),
+  // else the most tests first; with --exit-on-failure a job's own
+  // time and the longest chain of its dependents after it, as those wait for it. Ties in the order of
+  // the selection.
   auto secondsOf = [&](const __KppJob& job) -> const double*
   {
-    if (!durations || !job.suite)
+    if (!durations)
       return nullptr;
-    auto at = durations->find(job.suite->name);
-    return at == durations->end() ? nullptr : &at->second;
+    const HashMap<String, double>& known = byTest ? durations->tests : durations->suites;
+    if (!byTest && !job.suite)
+      return nullptr;
+    auto at = known.find(byTest ? selected[job.first]->fullName : job.suite->name);
+    return at == known.end() ? nullptr : &at->second;
   };
   double known = 0, knownTests = 0;
   for (const __KppJob& job : jobs)
@@ -1303,7 +1339,15 @@ template<typename Finished> bool __kppRunJobs(const Vector<const __KppTest*>& se
   for (const __KppJob& job : jobs)
   {
     const double* took = secondsOf(job);
-    weight.push_back(took ? *took : perTest * (job.last - job.first));
+    double each = perTest;
+    // (a test they do not name: its suite's seconds per test they name)
+    if (!took && byTest && job.suite)
+    {
+      auto count = durations->suiteTests.find(job.suite->name);
+      if (count != durations->suiteTests.end())
+        each = durations->suites.find(job.suite->name)->second / count->second;
+    }
+    weight.push_back(took ? *took : each * (job.last - job.first));
   }
   if (exitOnFailure)
   {
@@ -1524,7 +1568,7 @@ int main(int argc, char** argv)
   }
   else if (durations && jobs == 0)
   {
-    println("--durations orders the suites of --jobs: give --jobs N too");
+    println("--durations orders the tests of --jobs: give --jobs N too");
     return 2;
   }
   FILE* reportFile = nullptr;
@@ -1775,7 +1819,7 @@ int main(int argc, char** argv)
   bool jobsRan = true;
   if (jobs > 0)
   {
-    HashMap<String, double> seconds;
+    __KppDurations seconds;
     if (durations && !__kppReadDurations(durations, seconds))
     {
       println("--durations: cannot read ", StringView(durations));

@@ -1,0 +1,17 @@
+// spec: under --jobs with --durations FILE one suite's tests run in several processes at once: Long.First and Long.Second, 5 s each, end together; one after the other they take at least 10 s, whatever the load
+// test: --jobs 2 --durations test_jobs_splits_a_suite.jsonl
+// exit: 0
+auto started = SteadyClock::now();
+
+suite Long
+{
+  test First { thisThread::sleepFor(Seconds(5)); }
+  test Second { thisThread::sleepFor(Seconds(5)); }
+}
+
+// (the first process, once both workers have ended)
+void testsTeardown()
+{
+  if (testWorker() == 0)
+    println(StringView(SteadyClock::now() - started < Milliseconds(9500) ? "together" : "one after the other"));
+}

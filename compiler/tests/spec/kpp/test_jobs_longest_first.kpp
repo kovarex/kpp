@@ -1,8 +1,6 @@
-// spec: under --jobs the longest suite goes first, by --durations FILE (an earlier run's --report: each line's "suite" and "seconds"): with one process what the tests print shows the order (the runner's own lines come in the suites' order)
+// spec: under --jobs with --durations FILE (an earlier run's --report: each line's "test", "suite" and "seconds") each test is given on its own, the longest first, as Factorio's --fork splits by its cached test times: a long suite's tests run in several processes at once. A test the file does not name counts its suite's seconds per test the file names (Alpha.Third: 1.5 s). With one process what the tests print shows the order (the runner's own lines come in the suites' order)
 // test: --jobs 1 --durations test_jobs_longest_first.jsonl
 // exit: 0
-
-// More tests than Long, and first by name, but shorter (test_jobs_longest_first.jsonl).
 suite Alpha
 {
   test First { println("Alpha.First"); }

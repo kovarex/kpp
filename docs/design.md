@@ -3646,17 +3646,22 @@ statistics pass. `kpp --run hello.kpp a b` means the same in a project's directo
 - **Isolation and parallelism.** **Q3 is settled by 8.7** (2026-11-06; test-suites.md (d), and its
   question 2 decides how `--exit-on-failure` acts under `--jobs`): by default the tests run in one
   process, one after another (the fastest; a crash ends the run and is reported as that test's);
-  `--jobs N` schedules whole suites over N processes of the same executable, and a crash fails only
+  `--jobs N` schedules suites, or with `--durations` tests, over N processes of the same executable, and a crash fails only
   its test (the process is started again for the rest of its share), which is what `suites.py` does
   by hand for the converted UnitTest++. No threads inside one process: tests may use globals. A suite
   does not wait for its dependencies, as Factorio's `--fork` does not: the processes share nothing,
   and the output is said in the suites' order, so `(after failures in: A)` and the root failures
   come out the same; with `--exit-on-failure` it waits, so that a failure in a dependency stops the
   run before its dependents (2026-11-07: waiting always made the game's tests take the longest
-  chain, ManualBuilding to Simulations, 203 of 234 s of one run). The longest suite goes first: by
-  `--durations FILE`, an earlier run's `--report` (each line's `"suite"` and `"seconds"`; a suite it
-  does not name at its seconds per test), else the most tests first; with `--exit-on-failure` a
-  suite's own time and its longest chain of dependents. Measured on the game's 9,501 tests
+  chain, ManualBuilding to Simulations, 203 of 234 s of one run). Without `--durations` whole suites
+  go, the most tests first. With `--durations FILE`, an earlier run's `--report` (each line's
+  `"test"`, `"suite"` and `"seconds"`), each test goes on its own, the longest first, as Factorio's
+  `--fork` splits by its cached test times (ForkLogic::buildForkTasksFromCachedRuntimes), so a long
+  suite's tests run in several processes at once; a test the file does not name counts its suite's
+  seconds per test the file names, else the file's seconds per test (2026-11-07: whole suites stopped
+  at Simulations, the longest; by test the floor is the longest test, Migrations.EntityRemovals).
+  With `--exit-on-failure` suites stay whole, the longest first by the file's seconds for their tests
+  plus their longest chain of dependents. Measured before tests went on their own on the game's 9,501 tests
   (2026-11-07, factorio-in-kpp 9dae92d21, one binary, interleaved, each run after 20 s of load under
   10%): `--jobs 16 --durations` 61.5 and 61.2 s against suites.py `--shards 16` 67.8 and 69.8 s;
   at 32, 65.1 and 64.2 s against 61.6 and 64.8 s; without `--durations` (most tests first) 59.0 s at

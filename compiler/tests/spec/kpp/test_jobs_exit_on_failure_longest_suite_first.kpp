@@ -1,0 +1,15 @@
+// spec: under --jobs with --exit-on-failure and --durations FILE suites stay whole (they wait for their dependencies), the longest first by the seconds the file gives their tests: Alpha's 3 s before Long's 2.7 s, though Long has more tests and Long.Runs is the longest test (with one process what the tests print shows the order)
+// test: --jobs 1 --exit-on-failure --durations test_jobs_exit_on_failure_longest_suite_first.jsonl
+// exit: 0
+suite Long
+{
+  test Runs { println("Long.Runs"); }
+  test Walks { println("Long.Walks"); }
+  test Sits { println("Long.Sits"); }
+}
+
+suite Alpha
+{
+  test First { println("Alpha.First"); }
+  test Second { println("Alpha.Second"); }
+}

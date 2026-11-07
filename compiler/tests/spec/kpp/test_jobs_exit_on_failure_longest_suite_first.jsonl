@@ -1,0 +1,5 @@
+{"test":"Long.Runs","suite":"Long","seconds":2.5}
+{"test":"Long.Walks","suite":"Long","seconds":0.1}
+{"test":"Long.Sits","suite":"Long","seconds":0.1}
+{"test":"Alpha.First","suite":"Alpha","seconds":1.5}
+{"test":"Alpha.Second","suite":"Alpha","seconds":1.5}
