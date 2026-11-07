@@ -65,7 +65,8 @@ In a debug build (unoptimized) `--debug-info` describes the program's data too (
   passed by address is; a reference's type is the reference, its slot holding the pointer. A
   lambda's captures are its operator's variables by their names: one by value is its field of the
   closure, one by reference that field's reference (`int&`), a captured `this` the enclosing class's
-  pointer.
+  pointer, to const in a const member function as that function's own `this` (until 2026-11-08 it
+  dropped the const).
 - **Member functions** (CodeView): a function with `this` is its class's, as clang declares one: its
   scope the class, its name without the class's, its type one whose first parameter is the object
   pointer (DIFlagArtificial | DIFlagObjectPointer). The PDB has it as a member function (LF_MFUNC_ID,

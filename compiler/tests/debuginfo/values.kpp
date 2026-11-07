@@ -1,8 +1,8 @@
 // --debug-info's variables and types (docs/debugging.md, "Variables and types"): debuginfo.ps1 builds
 // this at one module and at 64, runs it, and checks what the PDB says of inspect's parameters (a class passed by
 // pointer, StringView, the debugger's through the pointer it keeps: `StringView&`, as clang has one), locals
-// and block, of its lambda's captures, of Square::area and Cell<Cell<int32>>::bump (member functions of
-// their classes, `this` the object pointer: Visual Studio evaluates `this` in them), of these classes (their members' access, a static member), this
+// and block, of its lambda's captures, of Square::area, Square::sideBy and its lambdas and Cell<Cell<int32>>::bump (member functions of
+// their classes, `this` the object pointer: Visual Studio evaluates `this` in them, a lambda's too), of these classes (their members' access, a static member), this
 // enum and this typed union (its tag and its alternatives' storage), of the library's Vector<int32>,
 // and of the globals (a static member's storage is one) against values.expected.
 namespace game
@@ -35,6 +35,15 @@ namespace game
   {
   public:
     int area() const override { return this->side * this->side; }
+    // The object in a lambda: by reference (`this` in its operator, the class's pointer) and copied by
+    // an init-capture (design.md 23d: once `this` is the object these are `[&this]`, `this.side` and
+    // `[held = this]`, and values.expected stays as it is).
+    int sideBy(int k) const
+    {
+      auto grow = [this](int by) { return this->side * by; };
+      auto copied = [held = *this](int by) { return held.side + by; };
+      return grow(k) + copied(k);
+    }
     int side = 3;
     Shape* next = nullptr;
 
@@ -106,7 +115,7 @@ int inspect(const game::Point& point, int scale, game::Mode mode, StringView lab
     game::Square square;
     Value value;
     value[Value::Real] = half;
-    sum += (int)half + (int)flags.level + square.area() + (int)mode + (value == Value::Real ? 1 : 0) + (mask == game::Mask::All ? 0 : 1);
+    sum += (int)half + (int)flags.level + square.area() + square.sideBy(1) * 0 + (int)mode + (value == Value::Real ? 1 : 0) + (mask == game::Mask::All ? 0 : 1);
   }
   return sum + (int)values.size();
 }

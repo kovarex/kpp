@@ -19,6 +19,18 @@ function functionTypes(int32)
 function game::Square::area
   member of game::Square
   parameter this const game::Square*
+function game::Square::sideBy
+  member of game::Square
+  parameter this const game::Square*
+  parameter k int
+  local grow game::Square::sideBy::__lambda_f...
+  local copied game::Square::sideBy::__lambda_f...
+function game::Square::sideBy::__lambda_f9e4fd6c_0::operator()(int32)
+  parameter by int
+  local this const game::Square*
+function game::Square::sideBy::__lambda_f9e4fd6c_1::operator()(int32)
+  parameter by int
+  local held game::Square
 function inspect(const game::Point&, int32, game::Mode, StringView)
   parameter point const game::Point&
   parameter scale int
@@ -26,7 +38,7 @@ function inspect(const game::Point&, int32, game::Mode, StringView)
   parameter label StringView&
   local sum int
   local mask game::Mask
-  local scaled inspect::__lambda_f9e4fd6c_0
+  local scaled inspect::__lambda_f9e4fd6c_2
   local values Vector<int32>
   local px const int&
   local py const int&
@@ -43,7 +55,7 @@ function inspect(const game::Point&, int32, game::Mode, StringView)
     local flags Flags
     local square game::Square
     local value Value
-function inspect::__lambda_f9e4fd6c_0::operator()(int32)
+function inspect::__lambda_f9e4fd6c_2::operator()(int32)
   parameter k int
   local sum int
   local mask game::Mask&

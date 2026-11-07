@@ -117,7 +117,7 @@ function Summary([string]$pdb)
     $line = $symbols[$i]
     if ($depth -eq 0)
     {
-      if ($line -match 'S_GPROC32 \[size = \d+\] `(inspect(\(.*\)|::__lambda_\w+::operator\(\)\(.*\))|game::Square::area|Qualified::bothOne|Qualified::leftOne|scoped\(int32\)|functionTypes\(int32\)|Cell<Cell<int32> >::bump\(int32\))`')
+      if ($line -match 'S_GPROC32 \[size = \d+\] `(inspect(\(.*\)|::__lambda_\w+::operator\(\)\(.*\))|game::Square::(area|sideBy)|game::Square::sideBy::__lambda_\w+::operator\(\)\(.*\)|Qualified::bothOne|Qualified::leftOne|scoped\(int32\)|functionTypes\(int32\)|Cell<Cell<int32> >::bump\(int32\))`')
       {
         $function = $Matches[1]
         $lines = New-Object System.Collections.Generic.List[string]

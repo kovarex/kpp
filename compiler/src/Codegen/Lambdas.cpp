@@ -859,8 +859,8 @@ auto codegen::Emitter::emitLambda(LambdaExpr* l, const Ty* t, const Ty* callTy, 
         fn += "  " + loaded + " = load ptr, ptr " + field + "\n";
         fn += "  store ptr " + loaded + ", ptr " + thisSlot + "\n";
         locals[nullptr] = {thisSlot, nullptr, false};
-        if (currentClassTy)
-          debugVariable("this", l, thisSlot, types.pointer(currentClassTy));
+        if (currentClassTy) // (const in a const member function's lambda, as that function's own `this`)
+          debugVariable("this", l, thisSlot, types.pointer(currentFunction ? types.qualified(currentClassTy, currentFunction->flags & DF_Const, currentFunction->flags & DF_Volatile) : currentClassTy));
         continue;
       }
       // (by value the capture is its field; by reference the field holds its address: a reference)
