@@ -270,10 +270,22 @@ kpp final of master 776d920a against the same all-in-one, with kpp final f878778
   1.10x), below the 2% this method resolves within one run, so not bisected. On no map is either kpp
   build slower than C++: 776d920a from 0.79x (train-station) to 0.95x (nuclear-power), f8787782 from
   0.74x (vulcanus-punishment) to 0.94x (early-smelting).
-- **Left open:** performance.zip, 3.3% behind f8787782 (rounds 6,826, 7,381, 7,263, 6,903, 7,014 against
-  6,805, 6,846, 6,597, 6,641, 6,790; bench.py does not run a loaded run again). Modern_playthrough is 1.4%
-  behind. A 10-round run of the two saves with the two kpp builds alone settles it; it waits for a quiet
-  window.
+- **performance.zip's 3.3%** behind f8787782 here (rounds 6,826, 7,381, 7,263, 6,903, 7,014 against 6,805,
+  6,846, 6,597, 6,641, 6,790; bench.py does not run a loaded run again) was noise, by the recheck below.
+
+The recheck (2026-11-08, 21:30:18 to 21:43:11 local, the coordinator's window): the two saves, 1000 ticks,
+10 rounds, kpp final f8787782 against kpp final 776d920a alone, checksums equal on every run. The window
+was not quiet: every run saw 4-9% other work (a stray `grep` over a session transcript took a core
+throughout), and the times fall into a fast group and one about 11% slower that both builds share, so
+the medians point either way:
+
+| save, 1000 ticks, 10 rounds | f8787782 median (ms) | 776d920a median (ms) | fast group: f8787782 | fast group: 776d920a |
+|---|---:|---:|---:|---:|
+| performance.zip | 8,156 | 7,406, 0.91x | 7,325 (4 runs) | 7,275 (6 runs), 0.99x |
+| kovarex_modern_playthrough_155.zip | 8,329 | 8,735, 1.05x | 8,248 (6 runs) | 8,252 (5 runs), 1.00x |
+
+(Fast group: the runs under 7,500 ms and 8,400 ms, their mean.) Like with like the two builds are equal
+within 1% on both saves, as on the menu maps: the day's codegen changes cost nothing this method shows.
 
 ## The rerun at f8787782 (2026-11-07)
 
