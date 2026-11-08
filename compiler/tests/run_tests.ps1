@@ -96,6 +96,10 @@ Add 'lower case' @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-F
 # kpp's code style (docs/code-style.md): the empty lines and line ends of the kpp code in the repository,
 # what `python tools\style\kppstyle.py --fix` corrects.
 Add 'code style' @('python', '-I', '..\tools\style\kppstyle.py', '--fixable', '--tracked', '..\stdlib', '..\libraries', '..\programs', '..\projectlib', '..\kppnet') -seconds 2 -note 'FAIL code style: python tools\style\kppstyle.py --fix PATH corrects it (docs/code-style.md)'
+# The formatter's test runner (tests\format\run_format.py) against a toy kpp format made wrong one way at
+# a time: each way is reported (tests\format\selftest\selftest.py). The formatter's own tests join once
+# `kpp format` exists.
+Add 'format runner' @('python', '-I', 'tests\format\selftest\selftest.py') -seconds 9
 # Code packages (tests\packages.ps1, docs/design.md): kpp --packages lists each directory as a package,
 # with its README.md's first paragraph and the names each file declares.
 Add 'packages' (PsCheck 'tests\packages.ps1') -seconds 1
