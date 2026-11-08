@@ -4219,8 +4219,10 @@ auto GlobalScope::Impl::Walker::reportExplicitError(uint32_t token, const std::s
 
 auto GlobalScope::Impl::Walker::checkConversionMark(FunctionDecl* f) -> void
 {
-  // (once, at the declaration that has the word: its walk as written, not an instance's)
-  if (!explicitByDefaultOn() || probing || activeSubst || retypingElements || !file || file->isImported || !file->tokens || !f ||
+  // (once, at the declaration that has the word: its walk as written, not an instance's). Not in the standard library's
+  // files while the flag is opt-in: they keep their `explicit`s until the flip, with which K's 7d9fd9ac removes them
+  // (the coordinator's decision (a), 2026-11-08), so that the converted game can be built with the flag before it.
+  if (!explicitByDefaultOn() || probing || activeSubst || retypingElements || !file || file->isImported || file->isLibrary || !file->tokens || !f ||
       f->conversionMark == UINT32_MAX || f->conversionMark >= file->tokens->size() || !(f->flags & DF_Explicit) || (f->flags & DF_Implicit) ||
       !(f->flags & (DF_Constructor | DF_Conversion)) || !(*file->tokens)[f->conversionMark].is(Kw::explicit_))
     return;

@@ -4887,9 +4887,11 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   `{a, b}` and `{}` do not. The explicit checks run in template code too (a template's own walk for what is not
   dependent, each instance for the rest), and a requirement's probe of an assignment the value reaches by no implicit
   conversion is not met (`requires { t = u; }`, which Vector's assign and insert ask). A switch on a class and class
-  template argument deduction by copy take marked conversions only. The stdlib alone gives 87 errors under it (72 plain `explicit` on
-  constructors, 11 on conversion operators, its 4 `explicit(cond)`), the stdlib owner's to fix before the game's
-  errors read clean. Not refused under the flag, for kovarex: a braced list as an operator's operand (`x = {..}`, 301
+  template argument deduction by copy take marked conversions only. The stdlib alone gave 87 errors under it (72 plain `explicit` on
+  constructors, 11 on conversion operators, its 4 `explicit(cond)`). While the flag is opt-in, the plain `explicit` and
+  `explicit(cond)` errors skip the standard library's files, which keep their words until the flip, with which K's
+  7d9fd9ac removes them (the coordinator's decision (a), 2026-11-08), so that the converted game is built with the
+  flag before the flip, C's converter push and the flip staying separate steps. Not refused under the flag, for kovarex: a braced list as an operator's operand (`x = {..}`, 301
   in the game; `m[{..}]`); `explicit` on a deduction guide stays, written guides being as in C++ (rule 5). Specs kpp/explicit_by_default, kpp/explicit_by_default_marks_is_error,
   kpp/explicit_by_default_braced_arguments_is_error, kpp/explicit_by_default_conversions_is_error. Two C++ rules it
   leans on were missing and hold without the flag too: class template argument deduction by copy takes no explicit
