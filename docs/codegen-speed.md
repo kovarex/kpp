@@ -532,7 +532,29 @@ Codegen's samples are 30% blocked, mostly on a global another thread builds (`gl
 `emitStartupGlobal`, 6%) and a mutex in the interpreter's `enumValueRange` (4.5%); of the rest the emitter is
 55%, LLVM's streamed pieces 36% (28% of them parsing the text), and at the leaf the heap and memory copies 7.5%
 each. The front end's leaf is TypeTable::intern (11%) and malloc (9%). So, largest first: the instantiation
-growth (being bisected), the IR in memory (a third of the back end after codegen), codegen's waits.
+growth, the IR in memory (a third of the back end after codegen), codegen's waits. The growth, bisected by
+the counts (deterministic, the front end alone on the same tree): K's 745dc03a, the Vector's exception-safety
+guards for every element type, 34,532 of the 35,015 function instantiations added and all 5,536 class ones;
+K is making them conditional on the element's nothrow construction.
+
+Codegen's waits, timed in B's window of 2026-11-08 (10:36 to 10:41): each column adds one commit to the one
+before it, every compiler with LLVM inside, on the same tree with the same command, three rounds in turned
+order, the machine 4 to 10% busy before each build (medians; each round's codegen in brackets; the wall
+without build.kpp's description, 0.53 s, which the last column's builds found cached and the others did again):
+
+| | master 5e550d72 | and 77dc0b11 (the startup globals on a quarter of the threads) | and 2293858f (the emitted functions in 64 shards) | and D's 07f330fb (the interpreter's caches per thread) |
+|---|---:|---:|---:|---:|
+| Wall | 14.09 s | 13.81 s | 13.88 s | 12.78 s |
+| kpp | 12.19 s | 12.03 s | 12.07 s | 11.02 s |
+| of it codegen | 6.84 s (6.66, 6.88, 6.84) | 6.62 s (6.57, 6.62, 13.04) | 6.70 s (6.70, 6.67, 7.05) | 5.69 s (5.69, 5.75, 5.38) |
+| of it the back end after codegen | 2.97 s | 3.04 s | 3.00 s | 2.94 s |
+
+D's commit takes 1.0 s off codegen and 0.1 s off the front end: the interpreter's `enumValueRange` and
+`declaredUnderlying` (under `constConverted`) answer from a thread's own copy of their caches, where every
+thread took one mutex (D's sampler: 6.75% and 8.19% of codegen's samples blocked there before, 0.36% and
+0.72% after). The startup globals' schedule and the shards measure nothing beyond master's own spread (6.66
+to 6.88 s), and one round of the schedule took 13.04 s in codegen, unexplained (the six other builds with it
+inside were normal); neither is on master on these numbers.
 
 When this plan was written, a clean debug build of the game was 17.1 s, the leaf edit 1.4 to 1.5 s,
 and the wide edit 1.9 s. These were thread A's quiet numbers: kpp run directly, without debug info.
