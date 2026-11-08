@@ -76,7 +76,25 @@ namespace host
   // A command line run by the shell to its end, its exit code (system's, the wait status decoded on
   // POSIX): on Windows cmd /c with the whole line quoted (so that one starting with a quoted program
   // path keeps its quotes), in directory first when given (cd /d DIR && ...; POSIX: cd DIR && ...).
-  int shell(const std::string& command, const std::filesystem::path& directory = {});
+  // lowered: the shell and what it starts in that group (a whole build's C library compiles beside kpp).
+  class PriorityGroup;
+  int shell(const std::string& command, const std::filesystem::path& directory = {}, PriorityGroup* lowered = nullptr);
+  // Processes shell starts below this process's threads, until raise() puts them all, running ones too,
+  // at the normal priority (a whole build's C library compiles: below kpp's threads while kpp builds,
+  // normal once it is done and the link waits for them). Windows: a job object's priority class (the
+  // below-normal class). POSIX: nothing yet, the processes at this process's priority (nice could not
+  // be raised again by an unprivileged process, so a compile could starve behind another load until
+  // its end; not measured there).
+  class PriorityGroup
+  {
+  public:
+    PriorityGroup();
+    ~PriorityGroup();
+    PriorityGroup(const PriorityGroup&) = delete;
+    PriorityGroup& operator=(const PriorityGroup&) = delete;
+    void raise();
+    void* job = nullptr; // (Windows: the job object's handle)
+  };
   // A command line as given (a build step build.kpp wrote): system's, the line not quoted again.
   int shellAsIs(const std::string& line);
 
@@ -109,6 +127,7 @@ namespace host
     std::filesystem::path directory;
     std::filesystem::path appendTo;
     std::function<void(int k, const char* data, size_t size)> seen;
+    PriorityGroup* group = nullptr; // (Windows: started in the group's job, which what it starts joins too)
   };
   int run(const std::string& program, const std::vector<std::string>& arguments, const Run& how, std::string& why);
   // A command line run as run runs a program: on Windows CreateProcess reads it (its first word the

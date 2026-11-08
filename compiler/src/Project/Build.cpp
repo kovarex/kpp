@@ -276,6 +276,15 @@ namespace projects
     // every build of the game before kpp started (2026-11-05).
     bool libraryWork = false, librariesBuilt = true;
     double prepareSeconds = 0, librarySeconds = 0;
+    // The C library compiles run below kpp's threads while kpp builds, and at the normal priority once
+    // it is done (the link then waits for them alone): factorio.exe's whole build 15.4 to 16.7 s -> 14.9
+    // to 15.2 s, kpp's part of it 14.1-14.9 -> 13.5-13.8 s, the CPU the same; below the whole time was no
+    // faster on a quiet machine and starved them under another load (one build waited 38.8 s for them
+    // after kpp), and 8 compiles at once left the link waiting 0.8 to 2.2 s (codegen-speed.md section 5,
+    // E's window of 2026-11-08). KPP_CLIB_PRIORITY=normal: as before, for a measurement.
+    std::unique_ptr<host::PriorityGroup> lowered;
+    if (const char* priority = getenv("KPP_CLIB_PRIORITY"); !priority || std::string(priority) != "normal")
+      lowered = std::make_unique<host::PriorityGroup>();
     std::thread libraries;
     if (!cLibraries.empty())
       libraries = std::thread([&]
@@ -301,13 +310,15 @@ namespace projects
         prepareSeconds = since(start);
         libraryWork = std::any_of(jobs.begin(), jobs.end(), [](const LibraryJob& j) { return j.archive || !j.commands.empty(); });
         if (libraryWork)
-          librariesBuilt = runLibraries(jobs);
+          librariesBuilt = runLibraries(jobs, lowered.get());
         librarySeconds = since(start);
       });
     std::vector<std::string> args = buildCommand(root, d, p, request);
     auto kppStart = Clock::now();
     int code = invoke(args, request.server, compile);
     double kppSeconds = since(kppStart);
+    if (lowered)
+      lowered->raise(); // (the link waits for them now: nothing of kpp's left to give way to)
     if (libraries.joinable())
       libraries.join();
     if (!librariesBuilt)

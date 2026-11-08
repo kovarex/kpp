@@ -253,7 +253,7 @@ namespace projects
   bool upToDate(const fs::path& object, const fs::path& dependencies, std::unordered_map<std::string, fs::file_time_type>& times);
   bool prepareLibrary(const fs::path& root, const CLibrary& c, const std::vector<std::string>& cFlags, const std::string& prefixMap, LibraryJob& job,
                       std::unordered_map<std::string, fs::file_time_type>& times, const LibraryTarget& target = {});
-  bool runLibraries(std::vector<LibraryJob>& jobs);
+  bool runLibraries(std::vector<LibraryJob>& jobs, host::PriorityGroup* lowered);
   // Build.cpp
   int invoke(std::vector<std::string> args, bool server, CompileFunction compile, bool stop = false);
   std::string withExe(std::string command, const fs::path& exe, const std::string& configuration);

@@ -515,9 +515,10 @@ namespace projects
     return true;
   }
 
-  // Every library's commands in one pool on all cores (none waits for another library), then each
-  // one's errors and archive; false when one did not build.
-  bool runLibraries(std::vector<LibraryJob>& jobs)
+  // Every library's commands in one pool on all cores (none waits for another library), in lowered's
+  // group when given (below kpp's threads until kpp is done: Build.cpp), then each one's errors and
+  // archive; false when one did not build.
+  bool runLibraries(std::vector<LibraryJob>& jobs, host::PriorityGroup* lowered)
   {
     // (job, command), a precompiled header's build as command SIZE_MAX - its index: those first, then the
     // compiles that use none, then the ones that do, each waiting for its header if it is not built yet
@@ -546,7 +547,7 @@ namespace projects
           if (k >= job.commands.size())
           {
             LibraryJob::Precompiled& p = job.pchs[SIZE_MAX - k];
-            p.state->store(host::shell(p.command) == 0 ? 1 : 2);
+            p.state->store(host::shell(p.command, fs::path(), lowered) == 0 ? 1 : 2);
             continue;
           }
           if (int p = usesPch(work[i].first, k); p >= 0)
@@ -559,7 +560,7 @@ namespace projects
               continue;
             }
           }
-          if (host::shell(job.commands[k], k >= job.compiles ? job.scripts[k - job.compiles].parent_path() : fs::path()) != 0)
+          if (host::shell(job.commands[k], k >= job.compiles ? job.scripts[k - job.compiles].parent_path() : fs::path(), lowered) != 0)
             job.failed[k] = true;
         }
       });

@@ -125,9 +125,16 @@ namespace host
       PROCESS_INFORMATION pi{};
       std::wstring line = wide(commandLine);
       std::wstring directory = how.directory.empty() ? std::wstring() : how.directory.wstring();
-      bool started = CreateProcessW(application.empty() ? nullptr : application.c_str(), line.data(), nullptr, nullptr, TRUE, 0, nullptr,
-                                    directory.empty() ? nullptr : directory.c_str(), &si, &pi);
+      // (in a group: started suspended and put in its job before it runs, so that what it starts is in the job too)
+      HANDLE job = how.group ? HANDLE(how.group->job) : nullptr;
+      bool started = CreateProcessW(application.empty() ? nullptr : application.c_str(), line.data(), nullptr, nullptr, TRUE, job ? CREATE_SUSPENDED : 0,
+                                    nullptr, directory.empty() ? nullptr : directory.c_str(), &si, &pi);
       DWORD startError = GetLastError();
+      if (started && job)
+      {
+        AssignProcessToJobObject(job, pi.hProcess); // (failing, it runs at this process's priority)
+        ResumeThread(pi.hThread);
+      }
       for (int k = 0; k < 2; ++k)
         if (writes[k])
         {
@@ -273,15 +280,55 @@ namespace host
   int closePipe(FILE* pipe) { return _pclose(pipe); }
   const char* nullDevice() { return "NUL"; }
 
-  int shell(const std::string& command, const fs::path& directory)
+  PriorityGroup::PriorityGroup()
   {
-    if (directory.empty())
-      return system(("\"" + command + "\"").c_str());
-    // (quoted as generate.cpp's quoteArg quotes an argument for cmd)
-    std::string dir = directory.string();
-    if (dir.empty() || dir.find_first_of(" \t&|<>^") != std::string::npos)
-      dir = "\"" + dir + "\"";
-    return system(("\"cd /d " + dir + " && " + command + "\"").c_str());
+    job = CreateJobObjectW(nullptr, nullptr);
+    JOBOBJECT_BASIC_LIMIT_INFORMATION limits{};
+    limits.LimitFlags = JOB_OBJECT_LIMIT_PRIORITY_CLASS;
+    limits.PriorityClass = BELOW_NORMAL_PRIORITY_CLASS;
+    if (job && !SetInformationJobObject(HANDLE(job), JobObjectBasicLimitInformation, &limits, sizeof limits))
+    {
+      CloseHandle(HANDLE(job));
+      job = nullptr; // (then shell starts its processes as without a group)
+    }
+  }
+
+  PriorityGroup::~PriorityGroup()
+  {
+    if (job)
+      CloseHandle(HANDLE(job)); // (its processes run on: no kill-on-close)
+  }
+
+  void PriorityGroup::raise()
+  {
+    JOBOBJECT_BASIC_LIMIT_INFORMATION limits{};
+    limits.LimitFlags = JOB_OBJECT_LIMIT_PRIORITY_CLASS;
+    limits.PriorityClass = NORMAL_PRIORITY_CLASS; // (the job's running processes take it at once)
+    if (job)
+      SetInformationJobObject(HANDLE(job), JobObjectBasicLimitInformation, &limits, sizeof limits);
+  }
+
+  int shell(const std::string& command, const fs::path& directory, PriorityGroup* lowered)
+  {
+    std::string line = command;
+    if (!directory.empty())
+    {
+      // (quoted as generate.cpp's quoteArg quotes an argument for cmd)
+      std::string dir = directory.string();
+      if (dir.empty() || dir.find_first_of(" \t&|<>^") != std::string::npos)
+        dir = "\"" + dir + "\"";
+      line = "cd /d " + dir + " && " + command;
+    }
+    if (!lowered || !lowered->job)
+      return system(("\"" + line + "\"").c_str());
+    // (cmd /c as system runs it, in the group's job, which cmd's children join)
+    wchar_t comspec[MAX_PATH];
+    DWORD n = GetEnvironmentVariableW(L"ComSpec", comspec, MAX_PATH);
+    std::wstring cmd = n > 0 && n < MAX_PATH ? std::wstring(comspec, n) : std::wstring(L"C:\\Windows\\System32\\cmd.exe");
+    Run how;
+    how.group = lowered;
+    std::string why;
+    return runProcess(cmd, "cmd /c \"" + line + "\"", how, why);
   }
 
   int shellAsIs(const std::string& line) { return system(line.c_str()); }
@@ -629,7 +676,11 @@ namespace host
     }
   }
 
-  int shell(const std::string& command, const fs::path& directory)
+  PriorityGroup::PriorityGroup() {}
+  PriorityGroup::~PriorityGroup() {}
+  void PriorityGroup::raise() {}
+
+  int shell(const std::string& command, const fs::path& directory, PriorityGroup*)
   {
     if (directory.empty())
       return exitCodeOf(system(command.c_str()));

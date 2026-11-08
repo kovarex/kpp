@@ -787,7 +787,11 @@ void configure(Cell& cell)
 A program's build is its C libraries and kpp's work at once, then the link:
 - Every library the program links has its changed files (and resources) compiled in **one pool**
   on all cores, no library waiting for another, while kpp builds the program (its front end,
-  code generation and modules need no library). Each library is archived once its files are.
+  code generation and modules need no library). Each library is archived once its files are. On
+  Windows the compiles run below kpp's threads until kpp is done, then at the normal priority (a job
+  object's priority class, raised for the ones still running): factorio.exe's whole build 0.7 s faster,
+  kpp's part of it 0.6 to 0.9 s longer than a clean build's instead of 2.4 s (codegen-speed.md section
+  5, 2026-11-08). KPP_CLIB_PRIORITY=normal builds as before.
 - kpp leaves the link to kpp (`--defer-link`): it writes the link command to `EXE.link.command`,
   and `EXE.link.pending` when its objects are new. kpp links once both are done, also when only a
   C library changed (a compile server replays an unchanged program's build, which does not link).

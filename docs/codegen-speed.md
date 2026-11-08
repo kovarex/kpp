@@ -490,6 +490,24 @@ In a whole build kpp takes 13.1 to 13.3 s instead of 10.8 s: the C libraries, 6 
 100 s of CPU, slow it by 2.4 s. So against the targets, 12.4 / 14.9 / 18.6 s: codegen 6.2 s, the back end
 after it 2.6 s, the front end 2.0 s, the link 1.2 s, and in the whole builds the C libraries' 2.4 s.
 
+E's window of 2026-11-08 (02:35 to 02:42) scheduled the C library compiles: B's whole.py (each build
+after three one-second samples under 10% load), `kpp factorio debug --verbose` on factorio-in-kpp 1aaa71668
+(kpp 696d72af plus the change), the variants of one kpp in turn, four rounds of whole builds, two of clean:
+
+| | whole build, wall | kpp's part | job CPU | clean build, wall |
+|---|---|---|---|---|
+| as before: the compiles at the normal priority, one per hardware thread | 16.75, 15.42, 15.70 (20.38: 522 s of CPU, disturbed) | 14.07-14.93 s | 375-380 s | 12.95, 12.95 |
+| below normal throughout (a job object's priority class) | 15.05, 14.82, 14.96, 14.97 | 13.43-13.67 s | 373-375 s | |
+| below normal until kpp is done, then normal (built) | 15.01, 14.90, 14.94, 15.15 | 13.49-13.78 s | 374-378 s | 12.90, 13.09 |
+| 8 at once | 15.80, 16.32, 16.59, 16.12 | 13.00-13.90 s | 358-370 s | |
+
+The whole build is 0.7 s faster (15.70 -> 14.97 s, the medians), and steadier; the C libraries now cost kpp
+0.6 to 0.9 s instead of 2.4 s. Below normal throughout was no faster on a quiet machine and starved the
+compiles under another load (a smoke round on the busy machine waited 38.8 s for them after kpp was done),
+so the job is raised to the normal class once kpp ends and the link waits for the libraries alone. Eight at
+once left the link waiting 0.8 to 2.2 s for them. A clean build compiles no C library: unchanged. Windows
+only (host::PriorityGroup); KPP_CLIB_PRIORITY=normal builds as before.
+
 When this plan was written, a clean debug build of the game was 17.1 s, the leaf edit 1.4 to 1.5 s,
 and the wide edit 1.9 s. These were thread A's quiet numbers: kpp run directly, without debug info.
 The gains overlap; each line is against the line before. The status column is as of 2026-11-02.
