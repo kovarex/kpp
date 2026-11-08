@@ -1482,7 +1482,13 @@ auto GlobalScope::Impl::typeOfTypeDecl(Decl* d, const Lookup& l, const NamePart&
         if (!entries.overloads && lastPart.hasTemplateArgs && (def->attributes & ATTR_Specialized) && lastPart.symbol != UINT32_MAX)
           if (Lookup home; lookupInScope(lexicalScopeOf(def), lastPart.symbol, home, depth + 1, false) && home.overloads)
             entries = home;
-        if (const Ty* spec = matchSpecialization(entries, args, depth))
+        // As if asked from the top, whoever asks from how deep (a type nested 20 deep picked the
+        // primary template: the match's own bounds counted from the asker's depth); a level as a
+        // cached computation is (CachedEvaluation), which bounds a recursion through matches.
+        CachedEvaluation level;
+        if (!level.ok)
+          return types.unknown();
+        if (const Ty* spec = matchSpecialization(entries, args, 1))
           return spec; // a full specialisation is its own class; a partial one keeps its own parameters' arguments
       }
       if (noPrimary && !argsDependent(args))
@@ -3510,11 +3516,13 @@ auto GlobalScope::Impl::deduceParams(Span<Decl*> params, Span<const Ty*> pattern
   }
 }
 
-auto GlobalScope::Impl::resolveSpecialization(const Ty* classTy, int depth) -> const Ty*
+// (whoever asks, from how deep: the match is computed as if asked from the top, CachedEvaluation;
+// a type nested 20 deep got the primary template from a bound here)
+auto GlobalScope::Impl::resolveSpecialization(const Ty* classTy, int /*depth*/) -> const Ty*
 {
   Decl* d = classTy ? classTy->decl : nullptr;
   if (!d || d->kind != NodeKind::ClassDecl || d->templateParams.empty() || (d->flags & DF_Specialization) || !(d->attributes & ATTR_Specialized) ||
-      classTy->args.empty() || depth > 24)
+      classTy->args.empty())
     return classTy;
   const QualifiedName& name = static_cast<ClassDecl*>(d)->name;
   if (name.empty())
@@ -3532,13 +3540,15 @@ auto GlobalScope::Impl::resolveSpecialization(const Ty* classTy, int depth) -> c
   }
   CollectUses collected;
   CachedEvaluation evaluation;
+  if (!evaluation.ok)
+    return classTy;
   Lookup l;
-  if (!lookupInScope(lexicalScopeOf(d), name.last().symbol, l, depth + 1) || !l.overloads)
+  if (!lookupInScope(lexicalScopeOf(d), name.last().symbol, l, 1) || !l.overloads)
     return classTy;
   std::vector<const Ty*> args(classTy->args.begin(), classTy->args.end());
-  const Ty* spec = matchSpecialization(l, args, depth + 1);
+  const Ty* spec = matchSpecialization(l, args, 1);
   const Ty* result = spec ? spec : classTy;
-  if (known && depth < 8 && !evaluation.tripped())
+  if (known && !evaluation.tripped())
   {
     std::lock_guard lock(specializationCacheMutex);
     specializationCache.emplace(classTy, Specialization{result, collected.uses, evaluation.needed()});

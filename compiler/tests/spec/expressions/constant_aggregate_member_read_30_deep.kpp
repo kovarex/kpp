@@ -1,0 +1,14 @@
+// spec: an aggregate's member read 30 operators deep in a constant: the class's layout is found whoever asks it from how deep (computed as if asked from the top and kept, CachedEvaluation), so the constant is one; C++'s constexpr evaluation has no such depth below its call depth
+// (master's kpp: "the constexpr variable v is no constant": the layout was refused to an asker more than 32 deep, and one computed by a deep asker was kept for every later one)
+struct P
+{
+  int x;
+  int y;
+};
+constexpr int v = 1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (P{ 3, 4 }.y))))))))))))))))))))))))))))));
+static_assert(v == 34);
+int main()
+{
+  println(v);
+  return 0;
+}

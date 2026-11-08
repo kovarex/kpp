@@ -3094,10 +3094,12 @@ auto GlobalScope::Impl::constFitBitFields(const ConstClassLayout& layout, std::v
       parts[nb + i] = constFitBits(parts[nb + i], layout.fieldTypes[i], layout.fieldBits[i]);
 }
 
-auto GlobalScope::Impl::constLayoutOf(const Ty* t, int depth) -> const ConstClassLayout*
+// (whoever asks, from how deep: computed as if asked from the top, CachedEvaluation; a layout a deep
+// asker computed first failed for every later asker, its members' types past that asker's bounds)
+auto GlobalScope::Impl::constLayoutOf(const Ty* t, int /*depth*/) -> const ConstClassLayout*
 {
   t = t ? types.unqualified(types.stripRef(t)) : nullptr;
-  if (!t || t->kind != TyKind::Class || types.isDependent(t) || mentionsUnknown(t) || depth > 32)
+  if (!t || t->kind != TyKind::Class || types.isDependent(t) || mentionsUnknown(t))
     return nullptr;
   {
     std::lock_guard lock(constLayoutsMutex);
@@ -3110,6 +3112,8 @@ auto GlobalScope::Impl::constLayoutOf(const Ty* t, int depth) -> const ConstClas
   auto layout = std::make_shared<ConstClassLayout>();
   CollectUses collected;
   CachedEvaluation evaluation;
+  if (!evaluation.ok)
+    return nullptr;
   Scope* s = classScopeOf(t);
   if (s && s->owner && s->owner->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(s->owner)->isDefinition)
   {
@@ -3122,7 +3126,7 @@ auto GlobalScope::Impl::constLayoutOf(const Ty* t, int depth) -> const ConstClas
     declContextFor(cls, dc);
     TypeContext bctx{dc.scope, &dc.params, sp, cls->file ? cls->file->tokens : nullptr, cls->file ? cls->file->text : std::string_view()};
     for (const ClassDecl::Base& b : cls->bases)
-      for (const Ty* bt : baseInstances(b.type, bctx, depth + 1)) // (a pack of bases: each element)
+      for (const Ty* bt : baseInstances(b.type, bctx, 1)) // (a pack of bases: each element)
       {
         bt = bt ? types.unqualified(bt) : nullptr;
         if (!bt || bt->kind != TyKind::Class || types.isDependent(bt))
@@ -3149,13 +3153,13 @@ auto GlobalScope::Impl::constLayoutOf(const Ty* t, int depth) -> const ConstClas
       }
       if (m->kind != NodeKind::VariableDecl || (m->flags & (DF_Static | DF_Typedef | DF_Friend)))
         continue;
-      const Ty* ft = declaredTypeOf(m, sp, depth + 1);
+      const Ty* ft = declaredTypeOf(m, sp, 1);
       if (!ft || !ft->isKnown() || types.isDependent(ft))
         layout->ok = false;
       uint8_t bits = 0;
       if (Expr* width = static_cast<VariableDecl*>(m)->bitfield)
       {
-        std::optional<int64_t> w = constEval(width, bctx, depth + 1);
+        std::optional<int64_t> w = constEval(width, bctx, 1);
         if (w && *w >= 0 && *w <= 64)
           bits = uint8_t(*w);
         else

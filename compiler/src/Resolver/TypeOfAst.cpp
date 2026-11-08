@@ -394,6 +394,8 @@ auto GlobalScope::Impl::traitValue(std::string_view name, const std::vector<cons
   }
   CollectUses collected;
   CachedEvaluation evaluation;
+  if (!evaluation.ok)
+    return std::nullopt;
   std::optional<bool> answer = traitValueUncached(name, a);
   if (evaluation.tripped())
     return std::nullopt; // (an answer an evaluation past a bound decided is none)

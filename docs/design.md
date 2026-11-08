@@ -2996,7 +2996,14 @@ declarations have no order and its threads no fixed one, so the count is the one
 before ([differences][diffnest]). Every thread kpp starts has the same stack, 1 GB reserved
 (host::compilerStack: /STACK on Windows, glibc's thread default and main on a thread of its own on a
 POSIX host; the compile server's build thread), so the bounds come before any thread's stack ends;
-running out of it anyway is a trip, never an answer. Before, an 8 MB thread's stack ended about 980
+running out of it anyway is a trip, never an answer. A cached computation (and a partial specialisation's match, cached or
+not) is computed as if asked from the top, whoever asks it from how deep, and cached computations
+nested in one another count as a third bound, 4096 (2026-11-08, second step): a class template's
+partial specialisation written 20 class templates deep was silently the primary template (the
+match's own depth bounds counted from where the type was written: sizeof 1 for 100), and a class's
+layout was refused to an evaluation more than 32 deep, or kept failed for every asker after a deep
+one. Specs templates/partial_specialisation_picked_for_a_type_written_20_deep and
+expressions/constant_aggregate_member_read_30_deep. Before, an 8 MB thread's stack ended about 980
 constants deep (a static_assert of one 1000 deep failed where a constexpr variable's passed), and
 which cached values a walk found decided whether a recursion past 1024 compiled (the same program
 had 10, 115 and 187 errors at -j 1, 8 and 32). Specs templates/constant_recursion_1024_constants_deep_on_every_thread

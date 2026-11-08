@@ -218,9 +218,14 @@
   // changed with -j; thread C's trial, an error whose instance changed with --jobs). Past a bound, or
   // past the stack's end, the evaluation trips (evaluationTrips, a count that only grows): no answer,
   // and nothing computed while it tripped is cached.
-  static constexpr int maxNestedNames = 1024, maxNestedCalls = 512;
-  static thread_local int nameEvaluations;
-  static thread_local int deepestNames, deepestCalls; // the most nested so far in the innermost CachedEvaluation
+  // A cached computation is computed as if asked from the top (its depth 0), whoever asks it from how
+  // deep: a partial specialisation's match asked by a type nested 20 deep picked the primary template
+  // (resolveSpecialization's own depth bound), and one cached by a deep asker stayed for every asker.
+  // Cached computations nested in one another are counted as names are (levels, 4096), which bounds a
+  // recursion through them that no name evaluation is part of.
+  static constexpr int maxNestedNames = 1024, maxNestedCalls = 512, maxNestedLevels = 4096;
+  static thread_local int nameEvaluations, cachedLevels;
+  static thread_local int deepestNames, deepestCalls, deepestLevels; // the most nested so far in the innermost CachedEvaluation
   static thread_local uint64_t evaluationTrips;
   static void evaluationTrip(const char* why);
   static bool enterName(); // ++nameEvaluations; false (a trip) past the bound or the stack
@@ -247,32 +252,41 @@
   struct CachedEvaluation
   {
     CachedEvaluation()
-      : names(nameEvaluations), calls(constCalls()), outerNames(deepestNames), outerCalls(deepestCalls), trips(evaluationTrips), steps(constSteps()),
-        made(constValuesMade())
+      : names(nameEvaluations), calls(constCalls()), levels(cachedLevels), outerNames(deepestNames), outerCalls(deepestCalls), outerLevels(deepestLevels),
+        trips(evaluationTrips), steps(constSteps()), made(constValuesMade())
     {
       deepestNames = names;
       deepestCalls = calls;
+      deepestLevels = ++cachedLevels;
+      ok = cachedLevels <= maxNestedLevels;
+      if (!ok)
+        evaluationTrip(levelsTooDeep());
       constSteps() = 0;
       constValuesMade() = 0;
       std::swap(globals, constGlobalValues());
     }
     ~CachedEvaluation()
     {
+      --cachedLevels;
       deepestNames = std::max(outerNames, deepestNames);
       deepestCalls = std::max(outerCalls, deepestCalls);
+      deepestLevels = std::max(outerLevels, deepestLevels);
       constSteps() = steps;
       constValuesMade() = made;
       std::swap(globals, constGlobalValues());
     }
     CachedEvaluation(const CachedEvaluation&) = delete;
 
-    Nesting needed() const { return {deepestNames - names, deepestCalls - calls}; }
+    Nesting needed() const { return {deepestNames - names, deepestCalls - calls, deepestLevels - levels}; }
     bool tripped() const { return evaluationTrips != trips; }
 
+    bool ok; // false: past the bound of levels (a trip); compute nothing
     int names;
     int calls;
+    int levels;
     int outerNames;
     int outerCalls;
+    int outerLevels;
     uint64_t trips;
     uint64_t steps;
     uint64_t made;
@@ -282,6 +296,7 @@
   // A cached answer whose computation nested `needed` deeper, asked here: false (a trip) when that
   // is past a bound, as computing it here would have been.
   static bool cachedNestingFits(Nesting needed);
+  static const char* levelsTooDeep();
 
   // A static member's value for a class instance's arguments, kept: a template recursion asks for
   // the same ones over and over. Not while a static_assert is checked (its class layouts are the

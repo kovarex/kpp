@@ -1174,7 +1174,10 @@ namespace
   const char* const namesTooDeep = "constants nested more than 1024 deep (each name's value needing the next one's, as a template recursion does)";
   const char* const callsTooDeep = "calls nested more than 512 deep";
   const char* const stackTooDeep = "an evaluation nested deeper than the compiler's stack";
+  const char* const cachedTooDeep = "class templates' specialisations, layouts, traits and static members nested more than 4096 deep";
 }
+
+auto GlobalScope::Impl::levelsTooDeep() -> const char* { return cachedTooDeep; }
 
 auto GlobalScope::Impl::enterName() -> bool
 {
@@ -1198,13 +1201,16 @@ auto GlobalScope::Impl::enterCall() -> bool
 
 auto GlobalScope::Impl::cachedNestingFits(Nesting needed) -> bool
 {
-  int names = nameEvaluations + needed.names, calls = constCalls() + needed.calls;
+  int names = nameEvaluations + needed.names, calls = constCalls() + needed.calls, levels = cachedLevels + needed.levels;
   deepestNames = std::max(deepestNames, names);
   deepestCalls = std::max(deepestCalls, calls);
+  deepestLevels = std::max(deepestLevels, levels);
   if (names > maxNestedNames)
     return evaluationTrip(namesTooDeep), false;
   if (calls > maxNestedCalls)
     return evaluationTrip(callsTooDeep), false;
+  if (levels > maxNestedLevels)
+    return evaluationTrip(cachedTooDeep), false;
   return true;
 }
 
@@ -1230,6 +1236,8 @@ auto GlobalScope::Impl::memberConstant(Decl* d, const TypeContext& ctx, const Su
   }
   CollectUses collected;
   CachedEvaluation evaluation;
+  if (!evaluation.ok)
+    return std::nullopt;
   std::optional<ConstValue> v = constValueOfDecl(d, ctx, 0, &classSubst);
   if (evaluation.tripped())
     return std::nullopt;

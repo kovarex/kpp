@@ -1,0 +1,13 @@
+// spec: a class template's partial specialisation is picked for its arguments however deep in another type they are written: Foo<char, int>, 20 class templates deep, is Foo's specialisation for <T, int> (100 bytes), in the type's layout, its members' types and a static member; the match is made as if asked from the top, not from the depth of the type it is written in
+// (master's kpp: the primary template there, sizeof 1 and `which` 1, silently: the match's own depth bounds counted from where the type was written)
+template<typename T> struct W { T inner; };
+template<typename T, typename U> struct Foo { char small; static constexpr int which = 1; };
+template<typename T> struct Foo<T, int> { char big[100]; static constexpr int which = 2; };
+using Deep = W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<Foo<char, int>>>>>>>>>>>>>>>>>>>>>;
+int main()
+{
+  Deep d;
+  auto& last = d.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner;
+  println(sizeof(Deep), " ", sizeof(last), " ", decltype(d.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner)::which, " ", Foo<char, int>::which);
+  return 0;
+}

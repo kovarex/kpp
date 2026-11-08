@@ -180,6 +180,7 @@ struct Nesting
 {
   int names = 0;
   int calls = 0;
+  int levels = 0; // cached computations, itself included
 };
 inline thread_local std::vector<CollectedUse>* usesCollector = nullptr;
 
