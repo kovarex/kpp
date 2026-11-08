@@ -575,7 +575,7 @@ auto GlobalScope::Impl::losesNoexcept(const Ty* from, const Ty* to) -> bool
   return from && to && from->isNoexcept() && !to->isNoexcept() && types.withNoexcept(from, false) == to;
 }
 
-auto GlobalScope::Impl::conversionRank(const Ty* arg, const Ty* param, int depth) -> int
+auto GlobalScope::Impl::conversionRank(const Ty* arg, const Ty* param, int depth, bool userDefined) -> int
 {
   if (!arg || !param || !arg->isKnown() || !param->isKnown() || types.isDependent(arg) || types.isDependent(param))
     return 2; // Unknown types never decide an overload.
@@ -607,12 +607,12 @@ auto GlobalScope::Impl::conversionRank(const Ty* arg, const Ty* param, int depth
       return 2;
     if (!a->inner || a->inner->kind != TyKind::Pack)
     {
-      int r = conversionRank(a->args[0], p->args[0], depth + 1);
+      int r = conversionRank(a->args[0], p->args[0], depth + 1, userDefined);
       return r >= NotViable ? NotViable : r;
     }
     int worst = 0;
     for (const Ty* e : a->inner->args)
-      if (int r = conversionRank(e, p->args[0], depth + 1); r >= NotViable)
+      if (int r = conversionRank(e, p->args[0], depth + 1, userDefined); r >= NotViable)
         return NotViable;
       else
         worst = std::max(worst, r);
@@ -630,7 +630,7 @@ auto GlobalScope::Impl::conversionRank(const Ty* arg, const Ty* param, int depth
     // whose conversion operator gives an lvalue of pt's type (of a class derived from pt's class)
     // binds a non-const `pt&` (a user-defined conversion), whatever the object's own value category;
     // a pointer's too (Agui's ValueComparePointer<Image> with `operator T*&()` for an `Image*&`).
-    if (param->kind == TyKind::LRef && !isConstObject(pt) && a->kind == TyKind::Class && types.unqualified(a) != types.unqualified(pt) &&
+    if (userDefined && param->kind == TyKind::LRef && !isConstObject(pt) && a->kind == TyKind::Class && types.unqualified(a) != types.unqualified(pt) &&
         !(pt->kind == TyKind::Class && isBaseClass(pt, a)) && convertsByOperator(a, param, depth + 1))
       return 4;
     if (param->kind == TyKind::LRef && !isConstObject(pt) && (!arg->isReference() || arg->kind == TyKind::RRef))
@@ -661,7 +661,7 @@ auto GlobalScope::Impl::conversionRank(const Ty* arg, const Ty* param, int depth
       return NotViable; // A non-const lvalue reference binds only to the same type.
     // The argument as it is (an lvalue stays one): a converting constructor taking `T&`
     // binds it (`implicit EntityAndIndex(T& entity)` given a Tower lvalue).
-    int r = conversionRank(arg, pt, depth + 1);
+    int r = conversionRank(arg, pt, depth + 1, userDefined);
     if (r >= NotViable)
       return NotViable;
     if (r >= 4 && param->kind == TyKind::LRef)
@@ -806,6 +806,8 @@ auto GlobalScope::Impl::conversionRank(const Ty* arg, const Ty* param, int depth
       }
       // User-defined: a non-explicit single-argument constructor of p accepting a, its own or
       // one a `using Base::Base;` inherits (not the base's copy or move constructor).
+      if (!userDefined)
+        return NotViable;
       if (Decl* def = p->decl && p->decl->ownScope ? p->decl : (classScopeOf(p) ? classScopeOf(p)->owner : nullptr))
       {
         auto converts = [&](ClassDecl* owner, const Ty* ownerTy, const Subst& s) -> bool
@@ -852,7 +854,8 @@ auto GlobalScope::Impl::conversionRank(const Ty* arg, const Ty* param, int depth
           const Ty* pt = declaredTypeOf(f->params[0], &d, 0);
           if (pt && types.stripRef(pt)->kind == TyKind::Class && types.unqualified(types.stripRef(pt)) == types.unqualified(ownerTy))
             continue; // The copy constructor is not a conversion (ReverseIterator<const T> from ReverseIterator<T> is).
-          if (conversionRank(arg, pt, depth + 1) < 4)
+          // (its argument by a standard conversion only: no second user-defined one, [over.best.ics] 4)
+          if (conversionRank(arg, pt, depth + 1, false) < 4)
             return true;
         }
         return false;
@@ -904,7 +907,7 @@ auto GlobalScope::Impl::conversionRank(const Ty* arg, const Ty* param, int depth
       break;
   }
   // Conversion operator of the argument's class, or one it inherits.
-  if (a->kind == TyKind::Class && convertsByOperator(a, param, depth))
+  if (userDefined && a->kind == TyKind::Class && convertsByOperator(a, param, depth))
     return 4;
   return NotViable;
 }

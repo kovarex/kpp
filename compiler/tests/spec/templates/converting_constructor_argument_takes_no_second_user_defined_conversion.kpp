@@ -1,0 +1,59 @@
+// spec: a converting constructor's argument takes a standard conversion only, never a second user-defined one ([over.best.ics] 4), and none is explored: Pos from a Chunk considers Pos(const Tile&), and a Chunk is no Tile through Tile(const MaybePos&) (a Chunk to a MaybePos is a user-defined conversion itself, through MaybePos(Wrap<Pos>)), so Wrap's converting constructor, whose requires clause asks isConstructible<Pos, U> again, is never tried; the answers are C++'s, at any thread count
+// found by thread C's explicit-by-default trial conversion of the game (MapPosition, TilePosition(const GameOptional<MapPosition>&), GameOptional(Optional<MapPosition>)): the recursion ran until the stack's end, its error ("the requires clause of Optional cannot be evaluated for U = ...") naming an instance that differed from run to run and between --jobs 8 and 32; this program's recursion overflowed kpp's stack (0xC00000FD)
+template<typename T> struct Wrap;
+template<typename T> struct IsWrap { static constexpr bool value = false; };
+template<typename T> struct IsWrap<Wrap<T>> { static constexpr bool value = true; };
+template<typename T>
+struct Wrap
+{
+  template<typename U>
+  Wrap(U&& v) requires(!IsWrap<RemoveCvRef<U>>::value && isConstructible<T, U>) : held(forward<U>(v)) {}
+
+  T held;
+};
+struct Pos;
+struct Chunk
+{
+  int c;
+};
+struct MaybePos
+{
+  MaybePos(Wrap<Pos> held);
+
+  int x;
+};
+struct Tile
+{
+  Tile(const MaybePos& position) : v(position.x) {}
+  Tile(int v) : v(v) {}
+
+  int v;
+};
+struct Pos
+{
+  Pos(const Chunk& chunk) : x(chunk.c) {}
+  Pos(const Tile& tile) : x(tile.v * 10) {}
+
+  int x;
+};
+MaybePos::MaybePos(Wrap<Pos> held) : x(held.held.x) {}
+struct Other
+{
+  int unrelated;
+};
+int main()
+{
+  Chunk chunk{7};
+  Wrap<Pos> fromChunk = chunk;
+  static_assert(isConstructible<Pos, Chunk&>);
+  static_assert(isConstructible<Pos, const Chunk&>);
+  static_assert(isConstructible<Pos, Chunk>);
+  static_assert(!isConstructible<Pos, Other&>);
+  static_assert(isConstructible<Wrap<Pos>, Chunk&>);
+  static_assert(isConstructible<Tile, const MaybePos&>);
+  static_assert(isConstructible<Tile, const Wrap<Pos>&>); // (one user-defined conversion, MaybePos's, at the outer level)
+  static_assert(!isConstructible<Tile, Chunk&>);          // (a Chunk to a MaybePos takes two)
+  Wrap<Pos> fromTile = Tile(4);
+  println(fromChunk.held.x, " ", fromTile.held.x, " ", Tile(MaybePos(fromChunk)).v);
+  return 0;
+}

@@ -67,7 +67,12 @@
 
   // Rank of converting an argument of type `arg` to a parameter of type `param`: 0 exact,
   // 1 qualification, 2 promotion, 3 standard conversion, 4 user-defined, NotViable.
-  int conversionRank(const Ty* arg, const Ty* param, int depth = 0);
+  // userDefined false: standard conversions only, as a converting constructor's argument takes
+  // ([over.best.ics] 4): no user-defined conversion is explored (thread C's explicit-by-default trial:
+  // MapPosition from X considered TilePosition(const Optional<MapPosition>&), whose argument tried
+  // Optional's converting constructor, whose requires clause asked isConstructible<MapPosition, X>
+  // again, a recursion only the stack's end stopped, its error different at each run).
+  int conversionRank(const Ty* arg, const Ty* param, int depth = 0, bool userDefined = true);
 
   // Whether an object of type t is const: t's own const, an array's its elements' ([basic.type.qualifier]
   // 3: `const int (&)[3]` is a reference to const, a brace list or a temporary binds it).
