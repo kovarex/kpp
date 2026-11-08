@@ -1,17 +1,64 @@
-// spec: under --jobs with --durations FILE one suite's tests run in several processes at once: Long.First and Long.Second, 5 s each, end together; one after the other they take at least 10 s, whatever the load
+// spec: under --jobs with --durations FILE one suite's tests run in several processes at once: Long.First and Long.Second each mark their start and wait for the other's, so each sees the other start only when both run at once; one after the other, the first never sees the second's (it gives up after 60 s), whatever the load (2026-11-08: timed, 5 s each ending within 9.5 s, it failed at 99% load)
 // test: --jobs 2 --durations test_jobs_splits_a_suite.jsonl
 // exit: 0
-auto started = SteadyClock::now();
+if constexpr (config::platform == Platform::Windows)
+{
+  extern "C" int _putenv_s(const char* name, const char* value);
+  extern "C" unsigned long GetCurrentProcessId();
+  void setVariable(const char* name, const char* value) { _putenv_s(name, value); }
+  u64 processId() { return GetCurrentProcessId(); }
+}
+else
+{
+  extern "C" int setenv(const char* name, const char* value, int overwrite);
+  extern "C" int getpid();
+  void setVariable(const char* name, const char* value) { setenv(name, value, 1); }
+  u64 processId() { return u64(getpid()); }
+}
+
+// This run's name: the first process makes it before it starts the workers, which inherit it, so
+// two runs of the snippet at once share no directory.
+String nameThisRun()
+{
+  const char* variable = "KPP_SPEC_TEST_JOBS_SPLITS_A_SUITE";
+  if (const char* inherited = getenv(variable); inherited && inherited[0] != 0)
+    return String(inherited);
+  String name;
+  name << "kpp-spec-test-jobs-splits-a-suite-" << processId() << "-" << SteadyClock::now().time_since_epoch().count();
+  setVariable(variable, name.c_str());
+  return name;
+}
+
+String runName = nameThisRun();
+
+filesystem::path runDirectory() { return filesystem::temp_directory_path() / runName; }
+
+// Marks this test's start, waits for the other's and marks that it saw it.
+void meet(const char* self, const char* other)
+{
+  filesystem::create_directories(runDirectory() / (String(self) << ".started"));
+  auto limit = SteadyClock::now() + Seconds(60);
+  while (!filesystem::exists(runDirectory() / (String(other) << ".started")))
+  {
+    if (SteadyClock::now() > limit)
+      return;
+    thisThread::sleepFor(Milliseconds(10));
+  }
+  filesystem::create_directory(runDirectory() / (String(self) << ".saw"));
+}
 
 suite Long
 {
-  test First { thisThread::sleepFor(Seconds(5)); }
-  test Second { thisThread::sleepFor(Seconds(5)); }
+  test First { meet("First", "Second"); }
+  test Second { meet("Second", "First"); }
 }
 
 // (the first process, once both workers have ended)
 void testsTeardown()
 {
-  if (testWorker() == 0)
-    println(StringView(SteadyClock::now() - started < Milliseconds(9500) ? "together" : "one after the other"));
+  if (testWorker() != 0)
+    return;
+  bool together = filesystem::exists(runDirectory() / "First.saw") && filesystem::exists(runDirectory() / "Second.saw");
+  filesystem::remove_all(runDirectory());
+  println(StringView(together ? "together" : "one after the other"));
 }
