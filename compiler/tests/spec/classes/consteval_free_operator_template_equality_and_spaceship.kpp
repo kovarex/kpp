@@ -1,0 +1,17 @@
+// spec: at compile time `a == b`, `a != b` and `a <=> b` call a free operator function template under what the operands deduce, as a rewritten relation (`a < b`) already does (classes/consteval_rewritten_comparison_through_free_operators): the containers' and Pair's operators, function templates as std's are; clang's output
+// pending: the interpreter's operator lookup for a non-rewritten operator (Interpreter.cpp, direct()) asks constFreeFunction without templates and runs it with no deduced arguments, so `Box<int>{1} == Box<int>{1}` is "no constant" while `operator==(a, b)` and `a < b` evaluate. Found moving the stdlib containers' comparisons out of the classes (K, 2026-11-08); D
+extern "C" int printf(const char* format, ...);
+template<typename T> struct Box { T v; };
+template<typename T> constexpr bool operator==(const Box<T>& a, const Box<T>& b) { return a.v == b.v; }
+template<typename T> constexpr strong_ordering operator<=>(const Box<T>& a, const Box<T>& b) { return a.v <=> b.v; }
+constexpr bool e1 = Box<int>{1} == Box<int>{1};
+constexpr bool e2 = Box<int>{1} != Box<int>{2};
+constexpr bool e3 = (Box<int>{1} <=> Box<int>{2}) < 0;
+constexpr bool e4 = Box<int>{1} < Box<int>{2};
+constexpr bool e5 = Box<int>{2} == Box<int>{1};
+constexpr bool e6 = (Box<int>{3} <=> Box<int>{2}) > 0;
+int main()
+{
+  printf("%d %d %d %d %d %d\n", e1, e2, e3, e4, e5, e6);
+  return 0;
+}
