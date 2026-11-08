@@ -642,7 +642,7 @@ jobs:
   # do not run one after the other behind the build (2026-11-07: build 2-3 min, the spec 4-6 min and
   # its release 8-15 min made linux_host 19-26 min, every other job ending by 9): linux_build builds
   # kpp once and hands it on as the artifact kpp-linux-compiler; linux_spec runs the spec in debug
-  # and in release, the release in 3 shards, at once; linux_host runs the smoke tests and packages
+  # in 2 shards and in release in 4, at once; linux_host runs the smoke tests and packages
   # kpp's Linux release. Their tools (clang 19, lld; SDL3's headers) are .github/actions/linux-tools.
   linux_build:
     runs-on: ubuntu-24.04
@@ -678,7 +678,8 @@ jobs:
 
   # The spec on a Linux host, in debug and in release (ThinLTO, lld's back ends, and code the optimizer
   # sees through: no other job ran it, and 12 snippets failed there on 2026-11-07, 10 noexcept snippets
-  # caught where they must terminate; I's fix, found by hand), the release in 3 shards.
+  # caught where they must terminate; I's fix, found by hand): debug in 2 shards, release in 4 (each
+  # took 4-6.5 min of spec in 1 and 3 shards on 2026-11-08, after linux_build's 2.7).
   linux_spec:
     needs: linux_build
     runs-on: ubuntu-24.04
@@ -688,10 +689,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { config: debug, shard: 1/1, flags: '' }
-          - { config: release, shard: 1/3, flags: '--release --shard 1/3' }
-          - { config: release, shard: 2/3, flags: '--release --shard 2/3' }
-          - { config: release, shard: 3/3, flags: '--release --shard 3/3' }
+          - { config: debug, shard: 1/2, flags: '--shard 1/2' }
+          - { config: debug, shard: 2/2, flags: '--shard 2/2' }
+          - { config: release, shard: 1/4, flags: '--release --shard 1/4' }
+          - { config: release, shard: 2/4, flags: '--release --shard 2/4' }
+          - { config: release, shard: 3/4, flags: '--release --shard 3/4' }
+          - { config: release, shard: 4/4, flags: '--release --shard 4/4' }
     steps:
       - uses: actions/checkout@v4
 

@@ -1215,7 +1215,7 @@ or on the runner named by the repository variable `KPP_CI_RUNNER`, as parallel j
   when all of them are.
 - **linux_build, linux_spec, linux_host:** kpp on a Linux host (ubuntu-24.04, 4 CPUs). linux_build
   builds kpp with clang 19 and hands it on as the artifact `kpp-linux-compiler`; after it, at once,
-  linux_spec runs the spec in debug and in `--release` (3 shards) and linux_host its smoke tests (hello
+  linux_spec runs the spec in debug (2 shards) and in `--release` (4 shards) and linux_host its smoke tests (hello
   world, the compile server, the language server, a project with C libraries, windows-gnu from Linux)
   and packages kpp's Linux release. Until 2026-11-08 one job ran the build, the spec and its release
   one after another, 19 to 26 minutes, every other job ending by 9. Their tools are
