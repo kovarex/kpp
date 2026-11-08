@@ -150,11 +150,19 @@ public:
     this->moveToBlock(this->length);
   }
 
+  // By hand, not by ::swap: kpp checks this member for every Vector<T>, and ::swap of the block pointer
+  // was swap<T*> and move<T*&> for every element type.
   void swap(Vector<T>& other)
   {
-    ::swap(this->items, other.items);
-    ::swap(this->length, other.length);
-    ::swap(this->allocated, other.allocated);
+    T* block = this->items;
+    this->items = other.items;
+    other.items = block;
+    ContainerSize count = this->length;
+    this->length = other.length;
+    other.length = count;
+    ContainerSize capacity = this->allocated;
+    this->allocated = other.allocated;
+    other.allocated = capacity;
   }
 
   // Replaces the contents with count copies of value (which may be an element) / with copies of

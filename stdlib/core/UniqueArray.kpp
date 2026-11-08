@@ -62,7 +62,13 @@ public:
     delete[] old;
   }
 
-  void swap(UniqueArray<T>& other) { ::swap(this->pointer, other.pointer); }
+  // (by hand: ::swap here was swap<T*> and move<T*&> for every element type)
+  void swap(UniqueArray<T>& other)
+  {
+    T* mine = this->pointer;
+    this->pointer = other.pointer;
+    other.pointer = mine;
+  }
 
 private:
   T* pointer = nullptr;
