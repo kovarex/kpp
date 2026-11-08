@@ -560,7 +560,11 @@ void runCodegen(Build& build)
     // (--check writes nothing: no IR assembled despite errors, so that a server keeps its session across them)
     bool despiteErrors = options.keepGoing && !options.check;
     PieceStream stream;
-    if (inProcess && outputModules != modules && !options.exe.empty() && options.emitLLVM.empty() && !options.check)
+    // (Not in a build the checker's errors fail already, --keep-going aside: it compiles no object, as a
+    // server's build that follows its kept session compiles none; a streamed piece's object was written
+    // and --verify-incremental found the two builds' outputs different.)
+    if (inProcess && outputModules != modules && !options.exe.empty() && options.emitLLVM.empty() && !options.check &&
+        (options.keepGoing || !global.hasCheckerErrors()))
     {
       backEnd = std::make_unique<BackEndPool>(options.threads);
       stream.piece = [&](unsigned k, std::string&& text)
