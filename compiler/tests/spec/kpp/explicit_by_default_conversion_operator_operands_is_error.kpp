@@ -1,0 +1,41 @@
+// spec: explicit by default (design.md "Explicit by default"), a class operand whose conversion operator to a scalar has no `implicit` gives a built-in operator nothing, as C++ takes no explicit conversion operator there: `1.0 + value`, `kind = result`, `index[values]`, `values[index]` and `caller(4)` through `operator Fn` are each the checker's error naming the operator that converts only when marked implicit and the direct-initialization (codegen said it did "not support an operator with a class on the right that no function defines", "OI has no operator[]", "S has no operator()"); with `double(value)` they build
+// kpp: --no-std
+// error: explicit_by_default_conversion_operator_operands_is_error.kpp:28: error: the built-in + takes Value only by its conversion operator to double, which converts only when marked implicit (design.md "Explicit by default"): double(...) takes it
+// error: explicit_by_default_conversion_operator_operands_is_error.kpp:29: error: the built-in = takes Result only by its conversion operator to Kind, which converts only when marked implicit (design.md "Explicit by default"): Kind(...) takes it
+// error: explicit_by_default_conversion_operator_operands_is_error.kpp:30: error: the built-in [] takes Index only by its conversion operator to int32, which converts only when marked implicit (design.md "Explicit by default"): int32(...) takes it
+// error: explicit_by_default_conversion_operator_operands_is_error.kpp:31: error: the built-in [] takes Index only by its conversion operator to int32, which converts only when marked implicit (design.md "Explicit by default"): int32(...) takes it
+// error: explicit_by_default_conversion_operator_operands_is_error.kpp:32: error: the call of an object of Caller takes it only by its conversion operator to int32(int32)*, which converts only when marked implicit (design.md "Explicit by default")
+enum class Kind { A, B };
+struct Value
+{
+  operator double() const { return 2.5; }
+};
+struct Result
+{
+  operator Kind() const { return Kind::B; }
+};
+struct Index
+{
+  operator int() const { return 1; }
+};
+int main()
+{
+  Value value;
+  Result result;
+  Index index;
+  int values[3] = {1, 2, 3};
+  Kind kind = Kind::A;
+  double sum = 1.0 + value;
+  kind = result;
+  int a = values[index];
+  int b = index[values];
+  Caller caller; int called = caller(4);
+  double fine = 1.0 + double(value);
+  return int(sum + fine) + a + b + called + (kind == Kind::B ? 1 : 0);
+}
+using Fn = int (*)(int);
+int twice(int v) { return v * 2; }
+struct Caller
+{
+  operator Fn() const { return twice; }
+};

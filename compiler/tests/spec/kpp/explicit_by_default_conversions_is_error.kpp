@@ -11,7 +11,7 @@
 // error: explicit_by_default_conversions_is_error.kpp:70: error: copy-initialising Box<double> from Box<int32> by its constructor, which converts only when marked implicit (design.md "Explicit by default"): Box<double>(...) takes it
 // error: explicit_by_default_conversions_is_error.kpp:71: error: copy-initialising Many from int32 by its constructor, which converts only when marked implicit (design.md "Explicit by default"): Many(...) takes it
 // error: explicit_by_default_conversions_is_error.kpp:72: error: copy-initialising Defaulted from int32 by its constructor, which converts only when marked implicit (design.md "Explicit by default"): Defaulted(...) takes it
-// error: explicit_by_default_conversions_is_error.kpp:77: error: a class (Flag) does not convert to int32: it has no implicit conversion operator to a scalar
+// error: explicit_by_default_conversions_is_error.kpp:77: error: copy-initialising int32 from Flag by its conversion operator, which converts only when marked implicit (design.md "Explicit by default"): int32(...) takes it
 // error: explicit_by_default_conversions_is_error.kpp:78: error: a switch on Flag needs its conversion operator to an integer or an enum, and Flag has none marked implicit (design.md "Explicit by default"): switch on the value it converts to
 // error: explicit_by_default_conversions_is_error.kpp:87: error: the arguments of Box are deduced from (int32) only by a constructor that converts only when marked implicit (design.md "Explicit by default"), which a copy-initialisation does not take: a direct-initialisation does, Box b(...)
 struct Strict

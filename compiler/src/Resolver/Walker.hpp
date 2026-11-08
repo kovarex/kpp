@@ -896,6 +896,13 @@
     // Const<float>). The operand's converted type, or null when it has no such conversion; an
     // operand that is no class stays as it is.
     const Ty* builtinOperand(const Ty* t);
+    // Explicit by default: a conversion operator of class t (or of a base) to a scalar that has no mark, which a built-in
+    // operator does not take (toFunction: to a pointer or reference to a function, which a call of a t does not take);
+    // scalar: what it gives, as declared. Null when there is none, or while converting.
+    FunctionDecl* unmarkedScalarConversion(const Ty* t, const Ty*& scalar, int depth = 0, bool toFunction = false);
+    // The built-in operator op (as written: `+`, `[]`) on a class operand side that converts only through such an
+    // operator: the rule's error naming it, true; false when side has none.
+    bool reportUnmarkedOperand(const Ty* side, const std::string& op, uint32_t token);
 
     // A user-defined operator on an enumeration operand (`Flags operator|(Flags, Flags)`) beats the
     // built-in one, which a scoped enum does not even have. Only a free non-template function whose

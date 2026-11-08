@@ -3683,6 +3683,19 @@ auto GlobalScope::Impl::Walker::checkClassToScalar(const Ty* from, const Ty* to,
   }
   if (ambiguousOnly)
     return;
+  // Explicit by default: an operator that converts only when marked implicit, which a direct-initialization takes.
+  const Ty* foundIn = nullptr;
+  Subst opArgs;
+  bool twoOperators = false;
+  if (FunctionDecl* op = impl.chooseConversion(f, t, GlobalScope::ConversionKind::ToType, true, &foundIn, &opArgs, false, &twoOperators);
+      op && !twoOperators && explicitByDefaultOn() && !(op->flags & DF_Explicit))
+  {
+    std::string name = types.toString(t, &symbols);
+    impl.reportCheckerError(file, token, "copy-initialising " + name + " from " + types.toString(f, &symbols) +
+                                           " by its conversion operator, which converts only when marked implicit (design.md \"Explicit by default\"): " + name +
+                                           "(...) takes it");
+    return;
+  }
   impl.reportCheckerError(file, token, "a class (" + types.toString(f, &symbols) + ") does not convert to " + types.toString(t, &symbols) +
                                          ": it has no implicit conversion operator to a scalar");
 }
@@ -3869,6 +3882,40 @@ auto GlobalScope::Impl::Walker::checkExplicitCopy(const Ty* from, const Ty* to, 
     return;
   const Ty* t = types.unqualified(types.stripRef(to));
   const Ty* f = types.unqualified(types.stripRef(from));
+  // The value's class's conversion operator that a direct-initialization takes and this one does not: one explicit by
+  // default (or marked `explicit` while converting), the rule's error (codegen said it did "not support" the
+  // constructor or the conversion). result: the type it gives must be (a non-const lvalue reference binds what an
+  // operator returning one gives, [dcl.init.ref] 5.1.2).
+  auto explicitOperator = [&](const Ty* target, bool lvalueResult) -> FunctionDecl*
+  {
+    if (f->kind != TyKind::Class || Impl::lambdaOf(f) || f->isBraceList())
+      return nullptr;
+    const Ty* foundIn = nullptr;
+    Subst opArgs;
+    bool ambiguous = false;
+    FunctionDecl* op = impl.chooseConversion(f, target, GlobalScope::ConversionKind::ToType, true, &foundIn, &opArgs, false, &ambiguous);
+    if (!op || ambiguous || !impl.isExplicit(op, opArgs.pairs.empty() ? nullptr : &opArgs))
+      return nullptr;
+    const Ty* fnTy = impl.declaredTypeOf(op, opArgs.pairs.empty() ? nullptr : &opArgs, 0);
+    if (lvalueResult && (!fnTy || fnTy->kind != TyKind::Function || !fnTy->inner || fnTy->inner->kind != TyKind::LRef))
+      return nullptr;
+    return op;
+  };
+  auto operatorError = [&](FunctionDecl* op, const std::string& what, const std::string& direct)
+  {
+    if (explicitByDefaultOn() && !(op->flags & DF_Explicit))
+      reportExplicitError(token, what + " by its conversion operator, which converts only when marked implicit (design.md \"Explicit by default\"): " + direct +
+                                     " takes it");
+    else
+      reportExplicitError(token, what + " by its explicit conversion operator, which only a direct-initialisation takes (" + direct + ")");
+  };
+  if (t->kind == TyKind::Class && to->kind == TyKind::LRef && !to->inner->isConst && f->kind == TyKind::Class && f != t && !impl.isBaseClass(t, f))
+  {
+    if (impl.conversionRank(from, to, 0) >= NotViable)
+      if (FunctionDecl* op = explicitOperator(to, true))
+        operatorError(op, "binding a " + types.toString(to, &symbols) + " to " + types.toString(f, &symbols), "static_cast<" + types.toString(to, &symbols) + ">(...)");
+    return;
+  }
   if (t->kind != TyKind::Class || f == t || f->isBraceList() || f->kind == TyKind::Pack || (t->decl && (t->decl->attributes & ATTR_Draft)) ||
       (to->kind == TyKind::LRef && !to->inner->isConst) || (f->kind == TyKind::Class && impl.isBaseClass(t, f)))
     return; // (a non-const lvalue reference binds no converted temporary: another error)
@@ -3897,6 +3944,13 @@ auto GlobalScope::Impl::Walker::checkExplicitCopy(const Ty* from, const Ty* to, 
       return;
     }
   }
+  if (!ctor && !ambiguous)
+    if (FunctionDecl* op = explicitOperator(t, false))
+    {
+      std::string name = types.toString(t, &symbols);
+      operatorError(op, "copy-initialising " + name + " from " + types.toString(f, &symbols), name + "(...)");
+      return;
+    }
   if (!ctor || ambiguous)
     return;
   // A constructor template's condition with its own arguments deduced from the value: `Box<OnlyExplicit> b = 6;` with
@@ -6449,6 +6503,11 @@ auto GlobalScope::Impl::Walker::callResultOfValue(const Ty* t, CallExpr* c, cons
     }
     if (const Ty* through = surrogateCall())
       return through;
+    // `fn(4)` through a conversion to a function that has no mark (explicit by default: no surrogate call, as C++ forms
+    // none of an explicit one): the rule's error (codegen said "S has no operator()").
+    if (const Ty* to = nullptr; !r.decl && c && !probing && unmarkedScalarConversion(t, to, 0, true))
+      reportExplicitError(c->token, "the call of an object of " + types.toString(types.unqualified(t), &impl.symbols) + " takes it only by its conversion operator to " +
+                                      types.toString(to, &impl.symbols) + ", which converts only when marked implicit (design.md \"Explicit by default\")");
     return r.why == Why::Member ? unknown(Why::Member) : types.unknown();
   }
   if (t->kind == TyKind::Param)
@@ -6846,6 +6905,8 @@ auto GlobalScope::Impl::Walker::overloadedOperator(P op, const Ty* lhs, const Ty
         checkConstModification(token, l, "assignment to");
         checkExplicitCopy(rhs, self, token); // `s = 5;`: its operator=(const S&) given 5
       }
+      else if (l && rhs && types.unqualified(types.stripRef(rhs))->kind == TyKind::Class && impl.conversionRank(rhs, l, 0) >= NotViable)
+        reportUnmarkedOperand(rhs, "=", token); // `kind = result;` through an operator explicit by default
       operatorCall = OperatorCall::Builtin;
       return lhs;
     case P::AndAnd: case P::OrOr: case P::Bang:
@@ -7058,6 +7119,71 @@ auto GlobalScope::Impl::Walker::builtinOperand(const Ty* t) -> const Ty*
   if (!s || s->kind != TyKind::Class)
     return t;
   return impl.scalarConversionOf(s);
+}
+
+auto GlobalScope::Impl::Walker::unmarkedScalarConversion(const Ty* t, const Ty*& scalar, int depth, bool toFunction) -> FunctionDecl*
+{
+  const Ty* c = t ? types.unqualified(types.stripRef(t)) : nullptr;
+  ClassDecl* def = c && c->kind == TyKind::Class && c->isKnown() && !types.isDependent(c) ? impl.classDefinition(c) : nullptr;
+  if (!def || depth > 8 || !explicitByDefaultOn())
+    return nullptr;
+  // None where the class (or a base) converts implicitly in some way, a template's or a condition's too: then what fails
+  // is not the mark (the game tests' DynamicEntityPointer, `template<typename T> implicit operator T()` beside an
+  // unmarked operator bool, assigned to a pointer).
+  std::function<bool(const Ty*, int)> convertsImplicitly = [&](const Ty* k, int level) -> bool
+  {
+    ClassDecl* kd = k && k->kind == TyKind::Class ? impl.classDefinition(k) : nullptr;
+    if (!kd || level > 8)
+      return false;
+    for (Decl* m : membersRead(kd))
+      if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Conversion) &&
+          ((m->flags & DF_Implicit) || static_cast<FunctionDecl*>(m)->explicitCondition))
+        return true;
+    std::vector<const Ty*> kb;
+    if (impl.directBases(k, kd, kb))
+      for (const Ty* b : kb)
+        if (convertsImplicitly(b, level + 1))
+          return true;
+    return false;
+  };
+  if (depth == 0 && convertsImplicitly(c, 0))
+    return nullptr;
+  Subst s = impl.substFor(c);
+  for (Decl* m : membersRead(def))
+  {
+    if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Conversion) || (m->flags & (DF_Implicit | DF_Explicit)) ||
+        static_cast<FunctionDecl*>(m)->explicitCondition || !m->templateParams.empty())
+      continue;
+    const Ty* fnTy = impl.declaredTypeOf(m, s.pairs.empty() ? nullptr : &s, 0);
+    const Ty* r = fnTy && fnTy->kind == TyKind::Function && fnTy->inner ? types.unqualified(types.stripRef(fnTy->inner)) : nullptr;
+    if (!r || !r->isKnown())
+      continue;
+    bool function = r->kind == TyKind::Function || (r->kind == TyKind::Pointer && r->inner && types.unqualified(r->inner)->kind == TyKind::Function);
+    if (toFunction ? function : !function && (r->isArithmetic() || r->kind == TyKind::Enum || r->kind == TyKind::Pointer))
+    {
+      scalar = toFunction ? fnTy->inner : r;
+      return static_cast<FunctionDecl*>(m);
+    }
+  }
+  std::vector<const Ty*> bases;
+  if (impl.directBases(c, def, bases))
+    for (const Ty* b : bases)
+      if (FunctionDecl* f = unmarkedScalarConversion(b, scalar, depth + 1, toFunction))
+        return f;
+  return nullptr;
+}
+
+auto GlobalScope::Impl::Walker::reportUnmarkedOperand(const Ty* side, const std::string& op, uint32_t token) -> bool
+{
+  const Ty* scalar = nullptr;
+  if (probing || !side || !unmarkedScalarConversion(side, scalar))
+    return false;
+  // (codegen said it did "not support an operator with a class on the right that no function defines" or "X has no operator[]")
+  std::string to = types.toString(scalar, &symbols);
+  reportExplicitError(token, "the built-in " + op + " takes " + types.toString(types.unqualified(types.stripRef(side)), &symbols) +
+                               " only by its conversion operator to " + to + ", which converts only when marked implicit (design.md \"Explicit by default\"): " + to +
+                               "(...) takes it");
+  return true;
 }
 
 auto GlobalScope::Impl::Walker::enumUnaryOperator(P op, bool postfix, const Ty* operand, uint32_t token, FunctionDecl** chosen) -> const Ty*
@@ -7294,7 +7420,14 @@ auto GlobalScope::Impl::Walker::typeOfBinaryOperator(BinaryExpr* b, OperatorCall
     const Ty* lc = isAssignmentOp(op) ? (ls->kind == TyKind::Class ? nullptr : l) : builtinOperand(l);
     const Ty* rc = builtinOperand(r);
     if (!lc || !rc)
+    {
+      // (an operand that converts only by an operator explicit by default: the rule's error; an assignment's left
+      // operand converts to nothing)
+      std::string text = file && file->tokens && b->token < file->tokens->size() ? Impl::spelledTokens(file, b->token, b->token) : std::string("operator");
+      if (!(!lc && !isAssignmentOp(op) && reportUnmarkedOperand(l, text, b->token)) && !rc)
+        reportUnmarkedOperand(r, text, b->token);
       return unknown(Why::Operator);
+    }
     l = lc;
     r = rc;
     ls = types.stripRef(l);
@@ -9923,6 +10056,9 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
       if (b->kind == TyKind::Pointer || b->kind == TyKind::Array)
       {
         later.judged = true;
+        // (an index of a class that converts to an integer only by an operator explicit by default: the rule's error)
+        if (firstIndex && i->args.size() == 1 && !builtinOperand(firstIndex))
+          reportUnmarkedOperand(firstIndex, "[]", i->token);
         return record(e, types.lref(b->inner));
       }
       if (b->kind == TyKind::Param)
@@ -9971,6 +10107,11 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
           if (FunctionDecl* f = pickOverload(r.decl, r.overloads, argTypesOf(i->args), &r.subst, b, ambiguous))
             return record(e, returnTypeOfCall(f, &r.subst, i->args, nullptr));
         }
+        // `oi[values]`: the built-in subscript of a pointer index, the class converting to an integer only by an operator
+        // explicit by default (the rule's error; codegen said "OI has no operator[]")
+        if (const Ty* index = firstIndex && i->args.size() == 1 ? types.unqualified(types.stripRef(firstIndex)) : nullptr;
+            !r.decl && index && (index->kind == TyKind::Pointer || index->kind == TyKind::Array))
+          reportUnmarkedOperand(b, "[]", i->token);
         return record(e, unknown(Why::Operator));
       }
       return record(e, unknown(Why::Operator));

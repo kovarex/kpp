@@ -1,0 +1,38 @@
+// spec: explicit by default (design.md "Explicit by default"), a conversion operator without `implicit` converts nothing in a copy-initialization, as a constructor without it does not: `Target t = s;`, an argument, a return, `int n = s;`, a scalar argument and a reference bound through `operator Base&` are each the checker's error naming the direct-initialization (codegen said it did "not support a constructor of Target taking 1 arguments", "a conversion from Holder to Base"); the direct-initialization takes the operator (`Target direct(s);`, `int(s)`, `static_cast<Base&>(h)`)
+// kpp: --no-std
+// error: explicit_by_default_conversion_operators_is_error.kpp:31: error: copy-initialising Target from Source by its conversion operator, which converts only when marked implicit (design.md "Explicit by default"): Target(...) takes it
+// error: explicit_by_default_conversion_operators_is_error.kpp:32: error: copy-initialising int32 from Source by its conversion operator, which converts only when marked implicit (design.md "Explicit by default"): int32(...) takes it
+// error: explicit_by_default_conversion_operators_is_error.kpp:33: error: copy-initialising Target from Source by its conversion operator, which converts only when marked implicit (design.md "Explicit by default"): Target(...) takes it
+// error: explicit_by_default_conversion_operators_is_error.kpp:34: error: copy-initialising int32 from Source by its conversion operator, which converts only when marked implicit (design.md "Explicit by default"): int32(...) takes it
+// error: explicit_by_default_conversion_operators_is_error.kpp:23: error: copy-initialising Target from Source by its conversion operator, which converts only when marked implicit (design.md "Explicit by default"): Target(...) takes it
+// error: explicit_by_default_conversion_operators_is_error.kpp:36: error: binding a Base& to Holder by its conversion operator, which converts only when marked implicit (design.md "Explicit by default"): static_cast<Base&>(...) takes it
+struct Target { int v; };
+struct Source
+{
+  operator Target() const { return Target{4}; }
+  operator int() const { return 5; }
+};
+struct Base { int b = 1; };
+struct Holder
+{
+  Base base;
+  operator Base&() { return this->base; }
+};
+int takeTarget(Target t) { return t.v; }
+int takeInt(int n) { return n; }
+Target give(const Source& s) { return s; }
+int main()
+{
+  Source s;
+  Holder h;
+  Target direct(s);
+  int m = int(s);
+  Base& bound = static_cast<Base&>(h);
+  Target t = s;
+  int n = s;
+  takeTarget(s);
+  takeInt(s);
+  give(s);
+  Base& b = h;
+  return direct.v + m + bound.b + t.v + n + b.b;
+}

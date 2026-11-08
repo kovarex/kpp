@@ -1,0 +1,25 @@
+// spec: explicit by default (design.md "Explicit by default"), a class with an implicit conversion operator template and an unmarked operator bool converts through the template wherever it takes the value (`e = pointer;`, `Entity* f = pointer;`, an argument), and none of these is an error (`1 1 1`; a condition through its operator bool: kpp/contextual_bool_prefers_an_operator_bool_to_a_conversion_template, pending)
+// factorio: the game's tests' DynamicEntityPointer, `this->roboport = this->scenario.addEntity(...)`: D's first check of a built-in operator's class operand (2026-11-08) took operator bool for its one conversion, 344 errors in convert.cmd's tests count
+struct Entity
+{
+  int id = 7;
+};
+struct Pointer
+{
+  implicit Pointer(Entity* entity) : entity(entity) {}
+  operator bool() const { return this->entity != nullptr; }
+  template<typename T>
+  implicit operator T() const { return static_cast<T>(this->entity); }
+  Entity* entity = nullptr;
+};
+int take(Entity* e) { return e ? 1 : 0; }
+int main()
+{
+  Entity entity;
+  Pointer pointer(&entity);
+  Entity* e = nullptr;
+  e = pointer;
+  Entity* f = pointer;
+  println(e == &entity ? 1 : 0, " ", f == &entity ? 1 : 0, " ", take(pointer));
+  return 0;
+}

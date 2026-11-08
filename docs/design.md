@@ -4942,7 +4942,15 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   files: the coordinator's decision (a), 2026-11-08, so that the converted game was built with the flag before the
   flip, C's converter push and the flip staying separate steps). The specs, the libraries, kppsite and the end-to-end
   tests lost their `explicit`s with it (`explicit(cond)` written `implicit(...)`), and gained `implicit` where they
-  convert on purpose. A function argument's braces for a parameter that is a reference to an array name a type C++
+  convert on purpose. A conversion through a conversion operator without `implicit` is the checker's error too, as
+  one through such a constructor (D, 2026-11-08, where codegen said it did "not support" the conversion, the
+  constructor or the operator): a copy-initialization (`Target t = s;`, an argument, a return, `int n = s;`) and a
+  non-const reference bound through `operator Base&` name the direct-initialization (`Target(...)`, `int32(...)`,
+  `static_cast<Base&>(...)`); a built-in operator's class operand (`1.0 + value`, `kind = result`, `values[index]`,
+  `index[values]`) "the built-in + takes Value only by its conversion operator to double"; a call of an object
+  through its conversion to a function (`caller(4)`) likewise. Spec kpp/explicit_by_default_conversion_operators_is_error,
+  kpp/explicit_by_default_conversion_operator_operands_is_error. An overloaded call that no candidate takes is still
+  codegen's "a call that did not resolve", whatever the arguments (`k(&c)` with `k(int*)` and `k(double*)` too). A function argument's braces for a parameter that is a reference to an array name a type C++
   cannot write as `T{...}` (`const int[3]{...}`): the error has no fix clause, and an alias's braces
   (`using Three = const int[3]; sum(Three{1, 2, 3})`) are the one way left to pass a temporary array, which codegen
   does not make yet (pending language/brace_list_binds_const_array_reference; an open question for kovarex whether

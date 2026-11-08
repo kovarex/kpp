@@ -1,0 +1,24 @@
+// spec: a condition (`if (pointer)`, `pointer ? 1 : 0`) of a class with an operator bool that converts only in a condition (unmarked: explicit by default; C++'s `explicit operator bool`) and an implicit conversion operator template takes the operator bool, the non-template, which overload resolution prefers to the template's bool where both convert equally well ([over.match.best] 2.4); clang's `1 1` (C++'s `explicit operator bool` beside `template<class T> operator T()`, as the game's tests' DynamicEntityPointer has them)
+// pending: codegen "does not support a conversion from Pointer to bool" for either condition (found by D, 2026-11-08, beside kpp/explicit_by_default_template_conversion_beside_an_unmarked_one); D
+struct Entity
+{
+  int id = 7;
+};
+struct Pointer
+{
+  operator bool() const { return this->entity != nullptr; }
+  template<typename T>
+  implicit operator T() const { return static_cast<T>(this->entity); }
+  Entity* entity = nullptr;
+};
+int main()
+{
+  Entity entity;
+  Pointer pointer;
+  pointer.entity = &entity;
+  int on = 0;
+  if (pointer)
+    on = 1;
+  println(on, " ", pointer ? 1 : 0);
+  return 0;
+}
