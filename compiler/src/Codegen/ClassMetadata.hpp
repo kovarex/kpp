@@ -446,6 +446,18 @@
     // usingOnly: only the latter.
     bool declaresAssignment(const Ty* t, Node* at, bool usingOnly = false);
 
+    // Whether assigning an object of class t from an rvalue (move) or a const lvalue resolves to a deleted
+    // operator=: its own deleted one, the implicit copy assignment a declared move member deletes, or an
+    // implicit (or defaulted) one whose base or member cannot be assigned so ([class.copy.assign] 7). An
+    // implicit or defaulted move assignment C++ defines as deleted is no candidate ([over.match.funcs] 8):
+    // the copy assignment takes the rvalue. (Reference and const members, which delete both, are the
+    // checker's errors: Walker::deletedAssignment decides the same rules for them.)
+    bool assignmentDeleted(const Ty* t, bool move, Node* at, int depth = 0);
+
+    // Whether a base or member (an array's element) of class t cannot be assigned from an rvalue (move) or
+    // a const lvalue (assignmentDeleted): what defines t's implicit move (copy) assignment as deleted.
+    bool partAssignmentDeleted(const Ty* t, bool move, Node* at, int depth = 0);
+
     // Assigns the object at src to the one at dst base by base and member by member.
     void memberwiseAssign(const std::string& dst, const std::string& src, const Ty* t, Node* at, bool move);
 

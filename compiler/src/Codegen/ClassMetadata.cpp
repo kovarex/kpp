@@ -2715,6 +2715,14 @@ auto codegen::Emitter::assignObject(const std::string& dst, const std::string& s
     restoreVptrs(vptrs);
     return;
   }
+  // An implicit move assignment C++ defines as deleted, as a base's or a member's move assignment is
+  // (`CopyOnly& operator=(CopyOnly&&) = delete`), is no candidate ([over.match.funcs] 8, [class.copy.assign]
+  // 7): the implicit copy assignment takes the rvalue, base by base and member by member, every one copied.
+  // Until 2026-11-08 the member was moved through its deleted operator=, an error (D's spec
+  // classes/implicit_move_assignment_deleted_copies_memberwise). After the bitwise case, which is the same
+  // either way.
+  if (move && !defaulted && partAssignmentDeleted(t, true, at))
+    move = false;
   // A destructor of its own leaves the class its implicit copy assignment (C++ only deprecates
   // it), a defaulted one is memberwise anyway (Trigger); a declared move constructor deletes the
   // implicit copy assignment.
@@ -2745,6 +2753,53 @@ auto codegen::Emitter::declaresAssignment(const Ty* t, Node* at, bool usingOnly)
         return true;
     }
   }
+  return false;
+}
+
+auto codegen::Emitter::assignmentDeleted(const Ty* t, bool move, Node* at, int depth) -> bool
+{
+  t = types.unqualified(types.stripRef(t));
+  while (t->kind == TyKind::Array && t->inner)
+    t = types.unqualified(t->inner);
+  if (!isClass(t) || isLambda(t) || depth > 16 || typedUnionOf(t, at))
+    return false;
+  const Ty* foundIn = nullptr;
+  std::vector<const Ty*> argTypes{move ? types.rref(t) : types.lref(types.qualified(t, true, false))};
+  FunctionDecl* op = declaresAssignment(t, at) ? findMemberFunction(t, "operator=", argTypes, t, at, &foundIn) : nullptr;
+  if (op && foundIn && foundIn != canonicalClass(t, at) && !declaresAssignment(t, at, true))
+    op = nullptr; // (a base's, which the implicit one hides: as assignObject)
+  if (op && !(op->flags & DF_Default))
+    return (op->flags & DF_Delete) != 0; // its own: deleted, or one that assigns as it is written
+  ClassDecl* c = classDef(t->decl, at);
+  bool movesParts = false; // the implicit or defaulted one that takes the value is a move assignment
+  if (op)
+  {
+    TemplateArgs args = global.classArgsOf(foundIn);
+    ArgsScope scope(*this, &args);
+    const Ty* pt = op->params.size() == 1 ? declType(op->params[0]) : nullptr;
+    movesParts = pt && pt->kind == TyKind::RRef;
+  }
+  else if (move && implicitCopyOrMoveTakes(c, t, types.rref(t), at))
+    movesParts = true;
+  else if (declaresMoveMember(c, t, false, at) || declaresMoveMember(c, t, true, at))
+    return true; // (a declared move constructor or move assignment deletes the implicit copy assignment)
+  if (!movesParts)
+    return partAssignmentDeleted(t, false, at, depth);
+  return partAssignmentDeleted(t, true, at, depth) && assignmentDeleted(t, false, at, depth + 1);
+}
+
+auto codegen::Emitter::partAssignmentDeleted(const Ty* t, bool move, Node* at, int depth) -> bool
+{
+  const StructInfo& info = structFor(t, at);
+  for (auto& [baseDef, index] : info.bases)
+    if (assignmentDeleted(info.fieldTypes[index], move, at, depth + 1))
+      return true;
+  if (info.isUnion)
+    return false;
+  for (Decl* d : info.fieldDecls)
+    if (d->kind == NodeKind::VariableDecl && !(global.typeOfDecl(d) && global.typeOfDecl(d)->isReference()) &&
+        assignmentDeleted(info.fieldTypes[fieldIndexOf(info, d)], move, at, depth + 1))
+      return true;
   return false;
 }
 

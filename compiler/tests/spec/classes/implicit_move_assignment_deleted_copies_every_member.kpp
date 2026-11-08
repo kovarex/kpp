@@ -1,0 +1,60 @@
+// spec: an implicit move assignment that C++ defines as deleted, as a member's move assignment is deleted, leaves the copy assignment to take the rvalue, which copies every member, a movable one too (`copy copy | 107`); a class holding such a class keeps its own move assignment, which assigns that member by its copy assignment and moves the others (`copy copy move |`) ([over.match.funcs] 8, [class.copy.assign] 7). clang's output
+extern "C" import "stdio.h";
+struct Traced
+{
+  i32 value = 0;
+  Traced& operator=(const Traced& other)
+  {
+    value = other.value;
+    printf("copy ");
+    return *this;
+  }
+  Traced& operator=(Traced&& other)
+  {
+    value = other.value;
+    printf("move ");
+    return *this;
+  }
+};
+struct CopyOnly
+{
+  i32 value = 0;
+  CopyOnly& operator=(const CopyOnly& other)
+  {
+    value = other.value + 100;
+    printf("copy ");
+    return *this;
+  }
+  CopyOnly& operator=(CopyOnly&& other) = delete;
+};
+struct Both
+{
+  Traced t;
+  CopyOnly c;
+};
+struct Movable
+{
+  Traced t;
+};
+struct Nested
+{
+  Both inner;
+  Traced t;
+};
+int main()
+{
+  Both a;
+  Both b;
+  b.c.value = 7;
+  a = static_cast<Both&&>(b);
+  printf("| %d\n", a.c.value);
+  Movable m;
+  Movable n;
+  m = static_cast<Movable&&>(n);
+  printf("|\n");
+  Nested x;
+  Nested y;
+  x = static_cast<Nested&&>(y);
+  printf("|\n");
+  return 0;
+}
