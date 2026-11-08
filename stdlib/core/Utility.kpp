@@ -56,10 +56,12 @@ void relocateBackward(T* destination, T* source, i64 count)
   }
 }
 
-// Objects built one at a time into unconstructed memory, from first up. Unless the builder keeps
-// them, the destructor destroys the ones built, so that a constructor that throws leaves no object
-// behind: the containers' exception safety, written with a destructor, which runs in constant
-// evaluation too, where a try does not.
+// Objects built one at a time into unconstructed memory, from first up, each by
+// `built.add(new (built.next()) T(args))`, counted once its constructor returned (the caller builds it,
+// so that no element type instantiates a function per argument list). Unless the builder keeps them,
+// the destructor destroys the ones built, so that a constructor that throws leaves no object behind:
+// the containers' exception safety, written with a destructor, which runs in constant evaluation
+// too, where a try does not.
 template<typename T>
 class BuiltObjects
 {
@@ -74,13 +76,10 @@ public:
       this->first[i].~T();
   }
 
-  // Builds the next object from args.
-  template<typename... Args>
-  void build(Args&&... args)
-  {
-    new (this->first + this->built) T(forward<Args>(args)...);
-    ++this->built;
-  }
+  // Where the next object goes.
+  T* next() const { return this->first + this->built; }
+  // The object just built at next() counts.
+  void add(T*) { ++this->built; }
 
   i64 count() const { return this->built; }
   // The objects built stay: the destructor leaves them.
@@ -92,14 +91,14 @@ private:
 };
 
 // A block from allocateArray that is freed when the owner goes, unless it is released first: a
-// container's new block while the elements are built in it.
-template<typename T>
+// container's new block while the elements are built in it. Not a template, so that no element
+// type instantiates it.
 class OwnedBlock
 {
 public:
-  OwnedBlock(T* block) : block(block) {}
-  OwnedBlock(const OwnedBlock<T>&) = delete;
-  OwnedBlock<T>& operator=(const OwnedBlock<T>&) = delete;
+  OwnedBlock(void* block) : block(block) {}
+  OwnedBlock(const OwnedBlock&) = delete;
+  OwnedBlock& operator=(const OwnedBlock&) = delete;
 
   ~OwnedBlock()
   {
@@ -107,17 +106,11 @@ public:
       free(this->block);
   }
 
-  T* get() const { return this->block; }
-
-  T* release()
-  {
-    T* result = this->block;
-    this->block = nullptr;
-    return result;
-  }
+  // The block stays: the destructor leaves it.
+  void release() { this->block = nullptr; }
 
 private:
-  T* block;
+  void* block;
 };
 
 // As relocate, into memory apart from the source (a new block). When the move constructor may
@@ -133,7 +126,7 @@ void relocateApart(T* destination, T* source, i64 count)
   {
     BuiltObjects<T> built(destination);
     for (i64 i = 0; i < count; ++i)
-      built.build(move(source[i]));
+      built.add(new (built.next()) T(move(source[i])));
     built.keep();
     for (i64 i = 0; i < count; ++i)
       source[i].~T();
@@ -147,13 +140,15 @@ void relocateApart(T* destination, T* source, i64 count)
 template<typename T>
 void relocateIfNoexcept(T* destination, T* source, i64 count)
 {
-  if constexpr (isNothrowMoveConstructible<T> || !isCopyConstructible<T>)
+  if constexpr (isNothrowMoveConstructible<T>)
+    relocate(destination, source, count);
+  else if constexpr (!isCopyConstructible<T>)
     relocateApart(destination, source, count);
   else
   {
     BuiltObjects<T> built(destination);
     for (i64 i = 0; i < count; ++i)
-      built.build(static_cast<const T&>(source[i]));
+      built.add(new (built.next()) T(static_cast<const T&>(source[i])));
     built.keep();
     for (i64 i = 0; i < count; ++i)
       source[i].~T();

@@ -53,7 +53,9 @@ Size and capacity:
   again (the basic guarantee). An append, `reserve`, `resize` and an insert at the end leave the
   elements as they were (the strong guarantee), unless the move constructor throws and there is no
   copy. A constructor that throws destroys the elements it built and frees its block
-  (library/vector_stays_whole_when_an_element_throws).
+  (library/vector_stays_whole_when_an_element_throws). Where nothing can throw (moves that cannot,
+  trivial copies and default constructions) the work takes a direct path that sets up none of
+  this, so such element types instantiate nothing for it.
 - `reserve(n)`: afterwards `capacity() >= n`. When n > capacity() the block is replaced by one
   with capacity exactly n and the elements are relocated; otherwise nothing happens. O(size()).
 - `resize(n)`, `resize(n, value)`: removes elements from the end, or appends default-constructed

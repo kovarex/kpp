@@ -269,11 +269,11 @@ public:
     if (index == 0 || index == this->length)
     {
       // Nothing moves before the new elements are built, so value may be an element.
-      this->insertBuilt(index, Repeated(&value), count);
+      this->insertBuilt(index, Copies(&value, 0), count);
       return this->iteratorAt(index);
     }
     T copy(value); // value may be an element
-    this->insertBuilt(index, Repeated(&copy), count);
+    this->insertBuilt(index, Copies(&copy, 0), count);
     return this->iteratorAt(index);
   }
 
@@ -286,10 +286,10 @@ public:
   DequeIterator<T> insert(const_iterator position, InputIt first, InputIt last)
   {
     ContainerSize index = this->indexOf(position);
-    if constexpr (isBaseOf<ForwardIteratorTag, typename IteratorTraits<InputIt>::iterator_category>)
-    {
+    if constexpr (isPointer<InputIt> && isSame<RemoveConst<RemovePointer<InputIt>>, T>)
+      this->insertBuilt(index, Copies(first, 1), checkedSize(last - first, "deque too long"));
+    else if constexpr (isBaseOf<ForwardIteratorTag, typename IteratorTraits<InputIt>::iterator_category>)
       this->insertBuilt(index, first, checkedSize(distance(first, last), "deque too long"));
-    }
     else
     {
       for (ContainerSize at = index; first != last; ++first)
@@ -439,16 +439,24 @@ private:
       this->pop_back();
   }
 
-  // One value given count times, as an iterator: the count form of insert.
-  class Repeated
+  // Values to copy, as an iterator: from a pointer, stepping by step (1: an array of them, 0: one value
+  // given count times, the count form of insert). One type for both, so that the count and the array
+  // forms of insert share one instance of insertBuilt.
+  class Copies
   {
   public:
-    Repeated(const T* value) : value(value) {}
+    Copies(const T* value, i64 step) : value(value), step(step) {}
     const T& operator*() const { return *this->value; }
-    Repeated& operator++() { return *this; }
+
+    Copies& operator++()
+    {
+      this->value += this->step;
+      return *this;
+    }
 
   private:
     const T* value;
+    i64 step;
   };
 
   // Elements built one at a time into unconstructed slots, from position first up: unless they are
@@ -467,12 +475,9 @@ private:
         this->deque->slotAt(this->first + i)->~T();
     }
 
-    template<typename... Args>
-    void build(Args&&... args)
-    {
-      new (this->deque->slotAt(this->first + this->built)) T(forward<Args>(args)...);
-      ++this->built;
-    }
+    // Where the next element goes; add counts the one just built there (BuiltObjects' next and add).
+    T* next() const { return this->deque->slotAt(this->first + this->built); }
+    void add(T*) { ++this->built; }
 
     ContainerSize count() const { return this->built; }
     void keep() { this->built = 0; }
@@ -484,7 +489,7 @@ private:
   };
 
   // Inserts count elements before index, built from first, a forward iterator over count values that
-  // are not this deque's elements (copies, or one value Repeated), moving the shorter side by count as
+  // are not this deque's elements (Copies), moving the shorter side by count as
   // std's does: the elements and values that land outside the old range are constructed, the others
   // assigned. Nothing moves at either end, so what refers to the elements stays. The slots are
   // counted only once built: a constructor or an assignment that throws leaves the deque whole,
@@ -506,14 +511,19 @@ private:
         // index move-assigned down after them, the new values assigned in their place.
         BuiltSlots moved(this, newStart);
         for (ContainerSize i = 0; i < count; ++i)
-          moved.build(move(*this->slotAt(this->start + i)));
+          moved.add(new (moved.next()) T(move(*this->slotAt(this->start + i))));
         moved.keep();
         this->start = newStart;
         this->length = newLength;
         for (ContainerSize i = count; i < index; ++i)
           *this->slotAt(newStart + i) = move(*this->slotAt(newStart + i + count));
         for (ContainerSize i = index; i < index + count; ++i, ++first)
-          this->assignFrom(*this->slotAt(newStart + i), *first);
+          {
+            if constexpr (requires { *this->slotAt(newStart + i) = *first; })
+              *this->slotAt(newStart + i) = *first;
+            else
+              *this->slotAt(newStart + i) = T(*first); // a conversion that is only explicit
+          }
       }
       else
       {
@@ -521,16 +531,21 @@ private:
         // values after them, and the other values are assigned over the elements' old slots.
         BuiltSlots moved(this, newStart);
         for (ContainerSize i = 0; i < index; ++i)
-          moved.build(move(*this->slotAt(this->start + i)));
+          moved.add(new (moved.next()) T(move(*this->slotAt(this->start + i))));
         BuiltSlots fresh(this, newStart + index);
         for (; fresh.count() < count - index; ++first)
-          fresh.build(*first);
+          fresh.add(new (fresh.next()) T(*first));
         moved.keep();
         fresh.keep();
         this->start = newStart;
         this->length = newLength;
         for (ContainerSize i = count; i < count + index; ++i, ++first)
-          this->assignFrom(*this->slotAt(newStart + i), *first);
+          {
+            if constexpr (requires { *this->slotAt(newStart + i) = *first; })
+              *this->slotAt(newStart + i) = *first;
+            else
+              *this->slotAt(newStart + i) = T(*first); // a conversion that is only explicit
+          }
       }
       return;
     }
@@ -542,14 +557,19 @@ private:
       // move-assigned up, the new values assigned in their place.
       BuiltSlots moved(this, end);
       for (ContainerSize i = this->length - count; i < this->length; ++i)
-        moved.build(move(*this->slotAt(this->start + i)));
+        moved.add(new (moved.next()) T(move(*this->slotAt(this->start + i))));
       moved.keep();
       ContainerSize oldLength = this->length;
       this->length = newLength;
       for (ContainerSize i = oldLength - count; i-- > index;)
         *this->slotAt(this->start + i + count) = move(*this->slotAt(this->start + i));
       for (ContainerSize i = index; i < index + count; ++i, ++first)
-        this->assignFrom(*this->slotAt(this->start + i), *first);
+        {
+          if constexpr (requires { *this->slotAt(this->start + i) = *first; })
+            *this->slotAt(this->start + i) = *first;
+          else
+            *this->slotAt(this->start + i) = T(*first); // a conversion that is only explicit
+        }
     }
     else
     {
@@ -560,27 +580,21 @@ private:
         ++rest;
       BuiltSlots fresh(this, end);
       for (; fresh.count() < count - following; ++rest)
-        fresh.build(*rest);
+        fresh.add(new (fresh.next()) T(*rest));
       BuiltSlots moved(this, end + (count - following));
       for (ContainerSize i = index; i < this->length; ++i)
-        moved.build(move(*this->slotAt(this->start + i)));
+        moved.add(new (moved.next()) T(move(*this->slotAt(this->start + i))));
       fresh.keep();
       moved.keep();
       this->length = newLength;
       for (ContainerSize i = index; i < index + following; ++i, ++first)
-        this->assignFrom(*this->slotAt(this->start + i), *first);
+        {
+          if constexpr (requires { *this->slotAt(this->start + i) = *first; })
+            *this->slotAt(this->start + i) = *first;
+          else
+            *this->slotAt(this->start + i) = T(*first); // a conversion that is only explicit
+        }
     }
-  }
-
-  // An element assigned from a value of the inserted range (constructed first when the value
-  // converts to T only explicitly).
-  template<typename V>
-  void assignFrom(T& element, V&& value)
-  {
-    if constexpr (requires { element = forward<V>(value); })
-      element = forward<V>(value);
-    else
-      element = T(forward<V>(value));
   }
 
   // Blocks for count more elements after the last one (count > 0).
