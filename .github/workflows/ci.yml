@@ -74,7 +74,12 @@ jobs:
           [Net.ServicePointManager]::SecurityProtocol = 'Tls12'
           $dir = "${{ runner.workspace }}\ccache-tool"
           New-Item -ItemType Directory -Force $dir | Out-Null
-          Invoke-WebRequest $env:CCACHE_URL -OutFile "$dir\ccache.zip" -UseBasicParsing
+          # Four tries, 15, 30 and 45 s apart: GitHub's release download answered 504 twice on 2026-11-08
+          # (11:47 and 12:03 UTC) and failed the build job of two pushes.
+          foreach ($try in 1..4) {
+            try { Invoke-WebRequest $env:CCACHE_URL -OutFile "$dir\ccache.zip" -UseBasicParsing; break }
+            catch { if ($try -eq 4) { throw } ; Write-Host "ccache download, try $try`: $($_.Exception.Message)"; Start-Sleep -Seconds (15 * $try) }
+          }
           $hash = (Get-FileHash -Algorithm SHA256 "$dir\ccache.zip").Hash.ToLowerInvariant()
           if ($hash -ne $env:CCACHE_SHA256) { throw "ccache's zip has SHA-256 $hash, not $env:CCACHE_SHA256" }
           Expand-Archive -Force "$dir\ccache.zip" $dir
