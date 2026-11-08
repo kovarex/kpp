@@ -687,23 +687,10 @@ auto codegen::Emitter::homeDebugClasses() -> void
     // every other type by placeholder), so it is the same whichever emitter makes it and in
     // whatever order, and the types the definitions name are the next level's. The definitions are
     // taken in key order after, as one thread took them, and the first that failed is thrown there.
-    // (The classes this generation named since the last level, each shard's classesNamed: those of every
-    // entry that a scan of them all took.)
-    std::vector<std::pair<uint64_t, Shared::DebugTypeText*>> classes;
-    for (Shared::DebugTypeShard& shard : sh.debugTypeShards)
-    {
-      std::lock_guard lock(shard.mutex);
-      for (uint64_t key : shard.classesNamed)
-        if (auto it = shard.types.find(key); it != shard.types.end())
-          if (Shared::DebugTypeText& entry = it->second;
-              entry.type && entry.generation == sh.debugGeneration && entry.definitionGeneration != sh.debugGeneration)
-            classes.push_back({key, &entry}); // (an element stays where it is as others are added)
-      shard.classesNamed.clear();
-    }
+    // (Most of a build's classes are defined during its levels already: earlyDebugClass.)
+    std::vector<std::pair<uint64_t, Shared::DebugTypeText*>> classes = takeNamedDebugClasses();
     if (classes.empty())
       break;
-    std::sort(classes.begin(), classes.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
-    classes.erase(std::unique(classes.begin(), classes.end(), [](const auto& a, const auto& b) { return a.first == b.first; }), classes.end());
     for (auto& [key, entry] : classes)
       entry->definitionGeneration = sh.debugGeneration;
     struct Made
@@ -779,6 +766,75 @@ auto codegen::Emitter::homeDebugClasses() -> void
   }
   std::sort(sh.debugClasses.begin(), sh.debugClasses.end(), [](const DebugClass& a, const DebugClass& b) { return a.name < b.name; });
   sh.result.debugClasses = sh.debugClasses; // (a build from scratch's result; a compile server's rebuild takes them in rebuildLLVM)
+}
+
+auto codegen::Emitter::takeNamedDebugClasses() -> std::vector<std::pair<uint64_t, Shared::DebugTypeText*>>
+{
+  // (The classes this generation named since the last time, each shard's classesNamed: those of every
+  // entry that a scan of them all took.)
+  std::vector<std::pair<uint64_t, Shared::DebugTypeText*>> classes;
+  for (Shared::DebugTypeShard& shard : sh.debugTypeShards)
+  {
+    std::lock_guard lock(shard.mutex);
+    for (uint64_t key : shard.classesNamed)
+      if (auto it = shard.types.find(key); it != shard.types.end())
+        if (Shared::DebugTypeText& entry = it->second;
+            entry.type && entry.generation == sh.debugGeneration && entry.definitionGeneration != sh.debugGeneration)
+          classes.push_back({key, &entry}); // (an element stays where it is as others are added)
+    shard.classesNamed.clear();
+  }
+  std::sort(classes.begin(), classes.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+  classes.erase(std::unique(classes.begin(), classes.end(), [](const auto& a, const auto& b) { return a.first == b.first; }), classes.end());
+  return classes;
+}
+
+auto codegen::Emitter::earlyDebugClass(const Ty* type, std::string& definition) -> bool
+{
+  // (As homeDebugClasses' define: its emitter's errors kept, none left behind by a failure.)
+  size_t errorsBefore = errors.size();
+  try
+  {
+    const StructInfo* info = laidOutClass(type);
+    if (!info)
+      return false;
+    std::string spelling = irString(type);
+    uint32_t next = 1;
+    debugComposite(type, *info, 0, &spelling, definition, next); // (the types its members name join Shared::debugTypeShards)
+    return true;
+  }
+  catch (...)
+  {
+    errors.resize(errorsBefore);
+    definition.clear();
+    return false;
+  }
+}
+
+auto codegen::Emitter::keepEarlyDebugClasses(std::vector<std::pair<uint64_t, Shared::DebugTypeText*>>& classes, std::vector<std::string>& made,
+                                             const std::vector<char>& defined) -> void
+{
+  for (size_t i = 0; i < classes.size(); ++i)
+  {
+    auto& [key, entry] = classes[i];
+    if (!defined[i] || entry->definitionGeneration == sh.debugGeneration)
+    {
+      // (named again: homeDebugClasses takes it, as a class it names now; or defined meanwhile, which cannot happen)
+      Shared::DebugTypeShard& shard = sh.debugTypeShard(key);
+      std::lock_guard lock(shard.mutex);
+      shard.classesNamed.push_back(key);
+      continue;
+    }
+    entry->definitionGeneration = sh.debugGeneration;
+    // (A compile server's build, rebuildLLVM's generation, assembles the modules it changed: a class's
+    // new definition is its home's change too.)
+    if (sh.debugGeneration > 0 && made[i] != entry->definition && sh.moduleCount)
+    {
+      sh.unassembled.resize(sh.moduleCount);
+      sh.unassembled[key % sh.moduleCount] = true;
+    }
+    entry->definition = std::move(made[i]);
+    sh.debugClassesDefined.insert(key);
+  }
 }
 
 auto codegen::Emitter::debugLines(std::string header, size_t declLine) -> std::string

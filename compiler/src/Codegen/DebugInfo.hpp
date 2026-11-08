@@ -132,6 +132,19 @@
     // (Shared::onEmitters). A compile server's build makes the definitions of the classes it named
     // itself (their types are its own) and keeps the others'.
     void homeDebugClasses();
+    // The classes named since the last time this was asked (each shard's classesNamed) and not defined
+    // this generation, in key order, each once: a level of homeDebugClasses, or what a build's next
+    // level of functions defines besides (earlyDebugClass).
+    std::vector<std::pair<uint64_t, Shared::DebugTypeText*>> takeNamedDebugClasses();
+    // During the emission's levels, on whichever emitter is done with its functions: the definition of
+    // a class named at an earlier level, as homeDebugClasses makes it (a definition depends on its class
+    // alone), or false where it would not be the same: a class with no complete layout yet (a closure
+    // its writer lays out at a later level) or whose definition failed, which homeDebugClasses defines
+    // (or reports) as before.
+    bool earlyDebugClass(const Ty* type, std::string& definition);
+    // On one thread after the level: each class earlyDebugClass defined kept as homeDebugClasses keeps
+    // it (defined this generation), each other one named again for homeDebugClasses.
+    void keepEarlyDebugClasses(std::vector<std::pair<uint64_t, Shared::DebugTypeText*>>& classes, std::vector<std::string>& made, const std::vector<char>& defined);
 
     // The definition with line information: every instruction gets the line of the statement whose
     // marker (`  ;@LINE`, from statement()) precedes it, those before the first the declaration's

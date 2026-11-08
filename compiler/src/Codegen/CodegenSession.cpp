@@ -912,21 +912,34 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
       std::atomic<size_t> next{0};
       size_t head = startupCount; // the startup globals, before level 0's functions (once)
       startupCount = 0;
+      // --debug-info with variables: the classes named so far, defined besides this level's functions
+      // by the threads done with theirs (earlyDebugClass), where the end's homeDebugClasses defined them
+      // all in a stretch of its own (0.8 s of the game's codegen, on every core); it defines what is left.
+      std::vector<std::pair<uint64_t, Shared::DebugTypeText*>> classes;
+      if (sh.fullDebugInfo)
+        classes = e.takeNamedDebugClasses();
+      std::vector<std::string> classDefinitions(classes.size());
+      std::vector<char> classDefined(classes.size());
+      const size_t functionsEnd = head + level.size();
       auto work = [&](unsigned i) {
         try
         {
-          for (size_t k; !outOfMemory && (k = next++) < head + level.size();)
+          for (size_t k; !outOfMemory && (k = next++) < functionsEnd + classes.size();)
             if (k < head)
               emitStartup(*emitters[i], k);
-            else
+            else if (k < functionsEnd)
               emitOne(*emitters[i], level[k - head]);
+            else
+              classDefined[k - functionsEnd] = emitters[i]->earlyDebugClass(classes[k - functionsEnd].second->type, classDefinitions[k - functionsEnd]);
         }
         catch (const std::bad_alloc&)
         {
           outOfMemory = true;
         }
       };
-      onThreads(head + level.size() < 64 ? 1 : threads, work);
+      onThreads(functionsEnd + classes.size() < 64 ? 1 : threads, work);
+      if (!classes.empty())
+        e.keepEarlyDebugClasses(classes, classDefinitions, classDefined);
       emitted += level.size();
       nextLevel();
       if (!sh.barrierTaken && sh.moduleCount > 1 && sh.importableModules == 0 && !outOfMemory)
