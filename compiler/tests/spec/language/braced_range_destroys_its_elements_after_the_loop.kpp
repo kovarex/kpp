@@ -1,0 +1,44 @@
+// spec: a range-for over a braced list of objects (`for (const Noisy& n : {Noisy(1), Noisy(2)})`, C++'s initializer_list, whose array `auto&& __range` keeps for the loop) destroys them after the loop, the last first ([stmt.ranged] 1, [dcl.init.list] 5 and 6, [class.temporary] 6), a loop left by break or return too; one whose construction throws leaves those built before it destroyed. clang's and g++'s output
+// found by thread B (2026-11-08) beside the temporary arrays of Emitter::arrayTemporary: the elements were built and never destroyed
+struct Noisy
+{
+  int v;
+  implicit Noisy(int v) : v(v)
+  {
+    if (v < 0)
+      throw Exception("bad");
+    println("make ", v);
+  }
+  Noisy(const Noisy& o) : v(o.v) { println("copy ", v); }
+  ~Noisy() { println("drop ", v); }
+};
+int firstOver(int limit)
+{
+  for (const Noisy& n : {Noisy(5), Noisy(6), Noisy(7)})
+    if (n.v > limit)
+      return n.v;
+  return 0;
+}
+int main()
+{
+  for (const Noisy& n : {Noisy(1), Noisy(2)})
+    println("loop ", n.v);
+  println("loop done");
+  for (const Noisy& n : {Noisy(3), Noisy(4)})
+  {
+    println("loop ", n.v);
+    break;
+  }
+  println("break done");
+  println("first ", firstOver(5));
+  try
+  {
+    for (const Noisy& n : {Noisy(8), Noisy(-1)})
+      println("loop ", n.v);
+  }
+  catch (const Exception& e)
+  {
+    println("caught");
+  }
+  return 0;
+}

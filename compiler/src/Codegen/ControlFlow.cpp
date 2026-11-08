@@ -223,14 +223,20 @@ auto codegen::Emitter::rangeFor(RangeForStmt* f) -> void
     std::string base;
     if (f->range->kind == NodeKind::BraceInitExpr)
     {
-      // `for (X* kids : {&a, &b})`: the elements in a temporary array.
+      // `for (X* kids : {&a, &b})`: the elements in a temporary array. Objects are destroyed after the
+      // loop, the last first, as C++'s initializer_list's array is ([dcl.init.list] 6), each kept by the
+      // loop's scope once built (one that throws leaves those before it destroyed). Until 2026-11-08
+      // they were never destroyed.
       auto* b = static_cast<BraceInitExpr*>(f->range);
       base = newObjectSlot(rt, f);
+      bool destroyed = needsDestruction(rt->inner, f);
       for (size_t i = 0; i < b->args.size(); ++i)
       {
         std::string slot = newTemp();
         fn += "  " + slot + " = getelementptr inbounds " + llType(rt, f) + ", ptr " + base + ", i64 0, i64 " + std::to_string(i) + "\n";
         initializeFrom(slot, rt->inner, b->args[i], f);
+        if (destroyed)
+          scopes.back().push_back({slot, rt->inner});
       }
     }
     else if (isArrayBraces(f->range))

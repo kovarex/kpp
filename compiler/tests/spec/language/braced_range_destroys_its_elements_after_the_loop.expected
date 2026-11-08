@@ -1,0 +1,23 @@
+make 1
+make 2
+loop 1
+loop 2
+drop 2
+drop 1
+loop done
+make 3
+make 4
+loop 3
+drop 4
+drop 3
+break done
+make 5
+make 6
+make 7
+drop 7
+drop 6
+drop 5
+first 6
+make 8
+drop 8
+caught
