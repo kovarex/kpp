@@ -56,37 +56,52 @@ void relocateBackward(T* destination, T* source, i64 count)
   }
 }
 
-// Objects built one at a time into unconstructed memory, from first up, each by
-// `built.add(new (built.next()) T(args))`, counted once its constructor returned (the caller builds it,
-// so that no element type instantiates a function per argument list). Unless the builder keeps them,
-// the destructor destroys the ones built, so that a constructor that throws leaves no object behind:
-// the containers' exception safety, written with a destructor, which runs in constant evaluation
-// too, where a try does not.
+// Destroys count objects of T from first: BuiltObjects' destroyer, the one function an element type
+// instantiates for it.
 template<typename T>
+void destroyObjects(void* first, i64 count)
+{
+  T* objects = static_cast<T*>(first);
+  for (i64 i = 0; i < count; ++i)
+    objects[i].~T();
+}
+
+// Objects built one at a time into unconstructed memory, in order, each by
+// `built.add(new (first + built.count()) T(args))`, counted once its constructor returned (the caller
+// builds it, so that no element type instantiates a function per argument list). Unless the builder
+// keeps them, the destructor destroys the ones built through destroy (destroyObjects<T>), so that a
+// constructor that throws leaves no object behind: the containers' exception safety, written with a
+// destructor, which runs in constant evaluation too, where a try does not. Not a template, so that an
+// element type instantiates only its destroyer (a class per element type was 1,616 of the game's
+// classes).
 class BuiltObjects
 {
 public:
-  BuiltObjects(T* first) : first(first) {}
-  BuiltObjects(const BuiltObjects<T>&) = delete;
-  BuiltObjects<T>& operator=(const BuiltObjects<T>&) = delete;
+  BuiltObjects(void (*destroy)(void*, i64)) : destroy(destroy) {}
+  BuiltObjects(const BuiltObjects&) = delete;
+  BuiltObjects& operator=(const BuiltObjects&) = delete;
 
   ~BuiltObjects()
   {
-    for (i64 i = 0; i < this->built; ++i)
-      this->first[i].~T();
+    if (this->built != 0)
+      this->destroy(this->first, this->built);
   }
 
-  // Where the next object goes.
-  T* next() const { return this->first + this->built; }
-  // The object just built at next() counts.
-  void add(T*) { ++this->built; }
+  // The object just built counts: the first one added is where they start, the others follow it.
+  void add(void* object)
+  {
+    if (this->built == 0)
+      this->first = object;
+    ++this->built;
+  }
 
   i64 count() const { return this->built; }
   // The objects built stay: the destructor leaves them.
   void keep() { this->built = 0; }
 
 private:
-  T* first;
+  void (*destroy)(void*, i64);
+  void* first = nullptr;
   i64 built = 0;
 };
 
@@ -124,9 +139,9 @@ void relocateApart(T* destination, T* source, i64 count)
     relocate(destination, source, count);
   else
   {
-    BuiltObjects<T> built(destination);
+    BuiltObjects built(destroyObjects<T>);
     for (i64 i = 0; i < count; ++i)
-      built.add(new (built.next()) T(move(source[i])));
+      built.add(new (destination + i) T(move(source[i])));
     built.keep();
     for (i64 i = 0; i < count; ++i)
       source[i].~T();
@@ -155,9 +170,9 @@ void relocateIfNoexcept(T* destination, T* source, i64 count)
   }
   else
   {
-    BuiltObjects<T> built(destination);
+    BuiltObjects built(destroyObjects<T>);
     for (i64 i = 0; i < count; ++i)
-      built.add(new (built.next()) T(static_cast<const T&>(source[i])));
+      built.add(new (destination + i) T(static_cast<const T&>(source[i])));
     built.keep();
     for (i64 i = 0; i < count; ++i)
       source[i].~T();

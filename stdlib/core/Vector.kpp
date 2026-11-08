@@ -296,9 +296,9 @@ public:
     }
     else
     {
-      BuiltObjects<T> built(this->items + this->length);
+      BuiltObjects built(destroyObjects<T>);
       while (built.count() < i64(newLength - this->length))
-        built.add(new (built.next()) T());
+        built.add(new (this->items + this->length + built.count()) T());
       built.keep();
       this->length = newLength;
     }
@@ -321,9 +321,9 @@ public:
     }
     else
     {
-      BuiltObjects<T> built(this->items + this->length);
+      BuiltObjects built(destroyObjects<T>);
       while (built.count() < i64(newLength - this->length))
-        built.add(new (built.next()) T(copy));
+        built.add(new (this->items + this->length + built.count()) T(copy));
       built.keep();
       this->length = newLength;
     }
@@ -670,25 +670,25 @@ private:
       ContainerSize newCapacity = needed > this->allocated ? this->capacityFor(needed) : this->allocated;
       T* grown = allocateArray<T>(newCapacity);
       OwnedBlock block(grown);
-      BuiltObjects<T> fresh(grown + index);
+      BuiltObjects fresh(destroyObjects<T>);
       for (; fresh.count() < (i64)count; ++first)
-        fresh.add(new (fresh.next()) T(*first));
+        fresh.add(new (grown + index + fresh.count()) T(*first));
       // At the end std::vector's strong guarantee: the elements are copied where the move may
       // throw (relocateIfNoexcept); before the end they move, as MSVC's do.
-      BuiltObjects<T> front(grown);
+      BuiltObjects front(destroyObjects<T>);
       for (ContainerSize i = 0; i < index; ++i)
         if constexpr (!isNothrowMoveConstructible<T> && isCopyConstructible<T>)
         {
           if (following == 0)
-            front.add(new (front.next()) T(static_cast<const T&>(this->items[i])));
+            front.add(new (grown + front.count()) T(static_cast<const T&>(this->items[i])));
           else
-            front.add(new (front.next()) T(move(this->items[i])));
+            front.add(new (grown + front.count()) T(move(this->items[i])));
         }
         else
-          front.add(new (front.next()) T(move(this->items[i])));
-      BuiltObjects<T> back(grown + index + count);
+          front.add(new (grown + front.count()) T(move(this->items[i])));
+      BuiltObjects back(destroyObjects<T>);
       for (ContainerSize i = index; i < this->length; ++i)
-        back.add(new (back.next()) T(move(this->items[i])));
+        back.add(new (grown + index + count + back.count()) T(move(this->items[i])));
       fresh.keep();
       front.keep();
       back.keep();
@@ -709,9 +709,9 @@ private:
       {
         // The last count elements are moved up into the room past the end, the ones before them
         // move-assigned up, the new values assigned in their place.
-        BuiltObjects<T> moved(end);
+        BuiltObjects moved(destroyObjects<T>);
         for (ContainerSize i = this->length - count; i < this->length; ++i)
-          moved.add(new (moved.next()) T(move(this->items[i])));
+          moved.add(new (end + moved.count()) T(move(this->items[i])));
         moved.keep();
         this->length = needed;
         for (ContainerSize i = ContainerSize(end - this->items) - count; i-- > index;)
@@ -731,12 +731,12 @@ private:
         It rest = first;
         for (ContainerSize i = 0; i < following; ++i)
           ++rest;
-        BuiltObjects<T> fresh(end);
+        BuiltObjects fresh(destroyObjects<T>);
         for (; fresh.count() < (i64)(count - following); ++rest)
-          fresh.add(new (fresh.next()) T(*rest));
-        BuiltObjects<T> moved(end + (count - following));
+          fresh.add(new (end + fresh.count()) T(*rest));
+        BuiltObjects moved(destroyObjects<T>);
         for (ContainerSize i = index; i < this->length; ++i)
-          moved.add(new (moved.next()) T(move(this->items[i])));
+          moved.add(new (end + (count - following) + moved.count()) T(move(this->items[i])));
         fresh.keep();
         moved.keep();
         this->length = needed;
@@ -756,9 +756,9 @@ private:
       // the hole; a throw relocates them back.
       relocateBackward(this->items + index + count, this->items + index, (i64)following);
       Hole hole(this->items + index, count, following);
-      BuiltObjects<T> fresh(this->items + index);
+      BuiltObjects fresh(destroyObjects<T>);
       for (; fresh.count() < (i64)count; ++first)
-        fresh.add(new (fresh.next()) T(*first));
+        fresh.add(new (this->items + index + fresh.count()) T(*first));
       fresh.keep();
       hole.fill();
       this->length = needed;
@@ -816,8 +816,8 @@ private:
     ContainerSize newCapacity = this->capacityFor((u64)this->length + 1);
     T* grown = allocateArray<T>(newCapacity);
     OwnedBlock block(grown);
-    BuiltObjects<T> appended(grown + this->length);
-    appended.add(new (appended.next()) T(forward<Args>(args)...));
+    BuiltObjects appended(destroyObjects<T>);
+    appended.add(new (grown + this->length) T(forward<Args>(args)...));
     this->adoptBlock(grown, newCapacity);
     appended.keep();
     block.release();

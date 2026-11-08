@@ -475,7 +475,7 @@ private:
         this->deque->slotAt(this->first + i)->~T();
     }
 
-    // Where the next element goes; add counts the one just built there (BuiltObjects' next and add).
+    // Where the next element goes; add counts the one just built there (as BuiltObjects' add).
     T* next() const { return this->deque->slotAt(this->first + this->built); }
     void add(T*) { ++this->built; }
 
