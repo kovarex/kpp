@@ -1,0 +1,37 @@
+// spec: a value two labels of a switch share (`case 1, 2:` beside `case 2:`), or one label lists twice (`case 3, 3:`), is an error at the later one naming the earlier, as C++'s duplicate case value ([stmt.switch] 2); an enum's values alike (until 2026-11-08 no one asked: codegen gave LLVM a switch of two cases of one value, which it refused, and the evaluator took the first)
+// error: case_label_list_duplicates_is_error.kpp:13: error: the case value 2 is a label of this switch already, at
+// error: case_label_list_duplicates_is_error.kpp:15: error: the case value 3 is a label of this switch already, at
+// error: case_label_list_duplicates_is_error.kpp:29: error: the case value 1 is a label of this switch already, at
+enum class Mode { Off, On, Auto };
+int f(int x)
+{
+  switch (x)
+  {
+    case 1, 2:
+      return 1;
+    case 4:
+    case 2:
+      return 2;
+    case 3, 3:
+      return 3;
+    default:
+      return 0;
+  }
+}
+int g(Mode m)
+{
+  switch (m)
+  {
+    case Mode::On, Mode::Auto:
+      return 1;
+    case Mode::Off:
+      return 0;
+    case Mode::On:
+      return 2;
+  }
+  return 3;
+}
+int main()
+{
+  return f(1) + g(Mode::On);
+}

@@ -998,6 +998,9 @@
     // That f, not noexcept, overrides no noexcept function (an error).
     void checkOverrideNoexcept(FunctionDecl* f);
     void checkCaseEnds(Stmt* body);
+    // A value two labels of a switch share, or one label lists twice (`case A, B, A:`), is an error, as in C++
+    // ([stmt.switch] 2): never two cases of one value. Of the body's own labels.
+    void checkCaseValues(Stmt* body);
     // A switch's body under --no-implicit-fallthrough: each group of statements after a label a scope of its own
     // (design.md "No implicit fallthrough", rule 4); else as any block.
     void walkSwitchBody(Stmt* body);

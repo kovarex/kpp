@@ -1,0 +1,58 @@
+// spec: under --no-implicit-fallthrough `case A, B, C:` is one label, its group the statements after it, which its values share (where labels side by side are cases of their own: kpp/no_implicit_fallthrough_labels_side_by_side_are_two_cases); the group breaks at its end, and `fallthrough;` after a list's statements runs on into the next group; a kpp enum's exhaustive switch through lists; the evaluator alike (kovarex, 2026-11-08; kpp/case_label_list has it without the flag)
+// kpp: --no-implicit-fallthrough
+enum class Direction : uint8_t
+{
+  { North, East, South, West }
+};
+int kind(int x)
+{
+  int r = 0;
+  switch (x)
+  {
+    case 1, 2, 3:
+      r = 10;
+    case 4:
+      r = 20;
+    case 5, 6:
+      r = 30;
+      fallthrough;
+    case 7:
+      r += 1;
+    default:
+      r = -1;
+  }
+  return r;
+}
+constexpr int folded(int x)
+{
+  switch (x)
+  {
+    case 1, 2:
+      x = 12;
+    case 3, 4:
+      x += 30;
+      fallthrough;
+    case 5:
+      x += 100;
+  }
+  return x;
+}
+static_assert(folded(1) == 12 && folded(3) == 133 && folded(5) == 105 && folded(9) == 9);
+StringView orientation(Direction d)
+{
+  switch (d)
+  {
+    case Direction::North, Direction::South:
+      return "vertical";
+    case Direction::East, Direction::West:
+      return "horizontal";
+  }
+}
+int main()
+{
+  println(kind(1), " ", kind(3), " ", kind(4), " ", kind(5), " ", kind(6), " ", kind(7), " ", kind(9));
+  int f1 = folded(1), f3 = folded(3), f5 = folded(5), f9 = folded(9);
+  println(f1, " ", f3, " ", f5, " ", f9);
+  println(orientation(Direction::North), " ", orientation(Direction::West));
+  return 0;
+}

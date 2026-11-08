@@ -1,0 +1,65 @@
+// spec: `case A, B, C:` is one label of several values, its statements theirs, as Go's and C#'s (kovarex, 2026-11-08; design.md "No implicit fallthrough"): integers, characters, a kpp enum's values (its exhaustive switch, without default, names every value through lists), default beside a list, and in a constant evaluation; without --no-implicit-fallthrough a label's statements run on into the next label's unless they end the case, as any label's (kpp/case_label_list_under_no_implicit_fallthrough has the flag)
+enum class Direction : uint8_t
+{
+  { North, East, South, West }
+  bool isVertical() const
+  {
+    switch (this)
+    {
+      case North, South: return true;
+      case East, West: return false;
+    }
+  }
+};
+int kind(int x)
+{
+  switch (x)
+  {
+    case 1, 2, 3:
+      return 10;
+    case 4:
+      return 20;
+    case 5, 6:
+    default:
+      return 30;
+  }
+}
+int vowels(StringView text)
+{
+  int n = 0;
+  for (char c : text)
+    switch (c)
+    {
+      case 'a', 'e', 'i', 'o', 'u':
+        ++n;
+        break;
+      default:
+        break;
+    }
+  return n;
+}
+constexpr int folded(int x)
+{
+  switch (x)
+  {
+    case 1, 2:
+      return 12;
+    case 3:
+      return 3;
+    default:
+      return 0;
+  }
+}
+static_assert(folded(1) == 12 && folded(2) == 12 && folded(3) == 3 && folded(4) == 0);
+int main()
+{
+  println(kind(1), " ", kind(2), " ", kind(3), " ", kind(4), " ", kind(5), " ", kind(6), " ", kind(9));
+  println(vowels("kpp language"));
+  String lines;
+  for (Direction d : Direction::values)
+    lines << StringView(d.isVertical() ? "|" : "-");
+  println(lines);
+  int f1 = folded(1), f2 = folded(2), f3 = folded(3), f4 = folded(4);
+  println(f1, " ", f2, " ", f3, " ", f4);
+  return 0;
+}

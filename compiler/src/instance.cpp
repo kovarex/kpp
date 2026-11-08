@@ -399,6 +399,7 @@ Stmt* InstanceCopier::stmt(const Stmt* s)
       auto* c = raw(static_cast<const CaseStmt*>(s));
       c->value = expr(c->value);
       c->rangeEnd = expr(c->rangeEnd);
+      c->moreValues = exprs(c->moreValues);
       return c;
     }
     case NodeKind::ReturnStmt:
@@ -847,7 +848,12 @@ void InstanceCopier::fixReferences(Node* root)
       case NodeKind::WhileStmt: push(static_cast<WhileStmt*>(n)->cond); push(static_cast<WhileStmt*>(n)->body); break;
       case NodeKind::DoStmt: push(static_cast<DoStmt*>(n)->body); push(static_cast<DoStmt*>(n)->cond); break;
       case NodeKind::SwitchStmt: push(static_cast<SwitchStmt*>(n)->init); push(static_cast<SwitchStmt*>(n)->cond); push(static_cast<SwitchStmt*>(n)->body); break;
-      case NodeKind::CaseStmt: push(static_cast<CaseStmt*>(n)->value); push(static_cast<CaseStmt*>(n)->rangeEnd); break;
+      case NodeKind::CaseStmt:
+        push(static_cast<CaseStmt*>(n)->value);
+        push(static_cast<CaseStmt*>(n)->rangeEnd);
+        for (Expr* v : static_cast<CaseStmt*>(n)->moreValues)
+          push(v);
+        break;
       case NodeKind::ReturnStmt: push(static_cast<ReturnStmt*>(n)->value); break;
       case NodeKind::TryStmt:
         push(static_cast<TryStmt*>(n)->body);

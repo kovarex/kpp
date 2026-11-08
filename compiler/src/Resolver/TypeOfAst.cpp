@@ -2423,7 +2423,11 @@ auto GlobalScope::Impl::lambdaNames(Node* n, std::unordered_set<Decl*>& inner, s
       visit(static_cast<SwitchStmt*>(n)->cond);
       visit(static_cast<SwitchStmt*>(n)->body);
       break;
-    case NodeKind::CaseStmt: visit(static_cast<CaseStmt*>(n)->value); break;
+    case NodeKind::CaseStmt:
+      visit(static_cast<CaseStmt*>(n)->value);
+      for (Expr* v : static_cast<CaseStmt*>(n)->moreValues)
+        visit(v);
+      break;
     case NodeKind::ReturnStmt: visit(static_cast<ReturnStmt*>(n)->value); break;
     case NodeKind::AssertStmt: visit(static_cast<AssertStmt*>(n)->cond); break;
     case NodeKind::TryStmt:

@@ -229,6 +229,8 @@ namespace
         case NodeKind::CaseStmt:
           expr(static_cast<CaseStmt*>(s)->value);
           expr(static_cast<CaseStmt*>(s)->rangeEnd);
+          for (Expr* v : static_cast<CaseStmt*>(s)->moreValues)
+            expr(v);
           break;
         case NodeKind::ReturnStmt: expr(static_cast<ReturnStmt*>(s)->value); break;
         case NodeKind::TryStmt:

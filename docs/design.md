@@ -4860,8 +4860,15 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   after a label ends with an implicit `break`:
   1. Each label begins a group of its own (kovarex, 2026-11-08, replacing 2026-11-07's "labels side by side share one
      group"): `case A: case B: build();` runs build() for B alone, and an empty `case A:` is a case that does nothing.
-     A body two labels share is written `case A: fallthrough; case B: build();` (rule 2), which C's converter writes
-     between C++'s labels side by side (3,690 in the game, in 941 runs); without the flag C++'s meaning stays.
+     A body several values share is one label, `case A, B, C: build();` (kovarex, 2026-11-08 21:15, as Go's and C#'s:
+     C++'s case takes a conditional-expression, so the comma is no comma operator), with the flag and without, each
+     value a case of the label's block, a kpp enum's exhaustive switch counting every value; C's converter writes each
+     of the game's 941 runs of labels side by side (3,690 labels) as one. `case A: fallthrough; case B: build();`
+     (rule 2) stays legal, and `fallthrough;` stays for a group with statements of its own running on. A value that
+     two labels of a switch share, or one label lists twice, is an error, as C++'s duplicate case value ([stmt.switch]
+     2; Walker::checkCaseValues: until then codegen gave LLVM a switch of two cases of one value, which it refused).
+     Without the flag C++'s meaning stays. Specs kpp/case_label_list, _under_no_implicit_fallthrough and
+     _duplicates_is_error.
   2. `fallthrough;` is the last statement of a group with another group after it (Go's rule), a group of `fallthrough;`
      alone too; anywhere else, inside an `if`, in the last group or outside a switch, it is an error. `case A: break;`
      loses its break (rule 5) and is an empty case.

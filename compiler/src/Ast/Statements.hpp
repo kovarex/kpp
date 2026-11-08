@@ -32,7 +32,9 @@ struct ForConstexprStmt : Stmt { Decl* var; Node* list; Stmt* body; };
 struct WhileStmt : Stmt { Node* cond; Stmt* body; };
 struct DoStmt : Stmt { Stmt* body; Expr* cond; };
 struct SwitchStmt : Stmt { Stmt* init = nullptr; Node* cond; Stmt* body; };
-struct CaseStmt : Stmt { Expr* value; Expr* rangeEnd = nullptr; };
+// moreValues: `case A, B, C:`'s values after the first (design.md "No implicit fallthrough", kovarex 2026-11-08): one
+// label of several values, its statements theirs.
+struct CaseStmt : Stmt { Expr* value; Expr* rangeEnd = nullptr; Span<Expr*> moreValues; };
 struct DefaultStmt : Stmt {};
 struct ReturnStmt : Stmt { Expr* value = nullptr; };
 struct BreakStmt : Stmt {};

@@ -5309,6 +5309,32 @@ auto GlobalScope::Impl::Walker::checkPlacedInSwitch(Stmt* s) -> void
                                                 "case ends with a break" + rule);
 }
 
+auto GlobalScope::Impl::Walker::checkCaseValues(Stmt* body) -> void
+{
+  // (Until 2026-11-08 no one asked: codegen gave LLVM a switch of two cases of one value, which it refuses, and the
+  // evaluator took the first. A `for constexpr`'s labels are its elements', codegen's to tell.)
+  if (probing || !file || file->isImported || !body || body->kind != NodeKind::BlockStmt || (inGenericTemplate() && !activeSubst))
+    return;
+  std::unordered_map<int64_t, uint32_t> seen; // a value, the token of its first label
+  for (Stmt* s : static_cast<BlockStmt*>(body)->stmts)
+  {
+    if (!s || s->kind != NodeKind::CaseStmt || static_cast<CaseStmt*>(s)->rangeEnd)
+      continue;
+    auto* c = static_cast<CaseStmt*>(s);
+    for (size_t k = 0; k <= c->moreValues.size(); ++k)
+    {
+      Expr* e = k == 0 ? c->value : c->moreValues[k - 1];
+      std::optional<int64_t> v = e ? impl.constEval(e, ctx()) : std::nullopt;
+      if (!v)
+        continue;
+      auto [first, fresh] = seen.emplace(*v, e->token);
+      if (!fresh)
+        reportCheck(e->token, "the case value " + std::to_string(*v) + " is a label of this switch already, at " + Impl::locationOf(file, first->second) +
+                                  ": each value is one label's ([stmt.switch] 2)");
+    }
+  }
+}
+
 auto GlobalScope::Impl::Walker::checkCaseEnds(Stmt* body) -> void
 {
   // The first step of no implicit fallthrough (design.md): what a case runs on into the next by is written, so
@@ -10044,6 +10070,7 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
       walkNode(w->cond);
       checkSwitchOnClass(w);
       walkSwitchBody(w->body);
+      checkCaseValues(w->body);
       locals.pop(mark);
       break;
     }
@@ -10051,6 +10078,8 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
       checkPlacedInSwitch(s);
       walkExpr(static_cast<CaseStmt*>(s)->value);
       walkExpr(static_cast<CaseStmt*>(s)->rangeEnd);
+      for (Expr* v : static_cast<CaseStmt*>(s)->moreValues)
+        walkExpr(v);
       break;
     case NodeKind::DefaultStmt:
     case NodeKind::FallthroughStmt:

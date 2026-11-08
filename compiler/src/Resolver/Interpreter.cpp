@@ -9207,12 +9207,16 @@ auto GlobalScope::Impl::constStatementIn(Stmt* s, const TypeContext& ctx, std::v
         auto* label = static_cast<CaseStmt*>(stmts[i]);
         if (label->rangeEnd)
           return ConstFlow::Failed; // `case 1 ... 3:`
-        std::optional<ConstValue> v = constValue(label->value, ctx, depth + 1);
-        std::optional<ConstValue> same = v ? constArith().binary(P::EqEq, *value, *v) : std::nullopt;
-        if (!same)
-          return ConstFlow::Failed;
-        if (same->truthy())
-          start = i;
+        // (`case A, B, C:`: any of its values picks it)
+        for (size_t k = 0; k <= label->moreValues.size() && start == stmts.size(); ++k)
+        {
+          std::optional<ConstValue> v = constValue(k == 0 ? label->value : label->moreValues[k - 1], ctx, depth + 1);
+          std::optional<ConstValue> same = v ? constArith().binary(P::EqEq, *value, *v) : std::nullopt;
+          if (!same)
+            return ConstFlow::Failed;
+          if (same->truthy())
+            start = i;
+        }
       }
       if (start == stmts.size())
         start = fallback;

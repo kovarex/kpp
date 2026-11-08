@@ -544,6 +544,18 @@ enum class Direction : u8
   `kpp/no_implicit_fallthrough` and its `_errors_is_error`, `_labels_side_by_side_are_two_cases`,
   `_shares_a_body_by_fallthrough`.
 
+### `case A, B, C:` (built)
+
+- **C++:** one value per `case`; a body several values share is labels side by side, `case A: case B:`.
+- **kpp:** `case A, B, C:` is one label of several values, its statements theirs, as in Go and C#, with
+  `--no-implicit-fallthrough` and without (where labels side by side are cases of their own under the
+  flag). C++'s `case` takes a conditional-expression, so the comma is no comma operator. A value two labels
+  share, or one label lists twice, is an error, as in C++.
+- **Why:** under no implicit fallthrough labels side by side no longer share a body; one label of a list
+  says it where 3,690 `fallthrough;`s would have (kovarex, 2026-11-08).
+- **See:** [design 6][d6]'s "No implicit fallthrough" entry; specs `kpp/case_label_list`,
+  `kpp/case_label_list_under_no_implicit_fallthrough`, `kpp/case_label_list_duplicates_is_error`.
+
 ### Typed unions (built)
 
 - **C++:** `std::variant`, a template read through `std::get` and `std::visit`.

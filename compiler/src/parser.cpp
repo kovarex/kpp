@@ -5000,6 +5000,15 @@ namespace
             s->value = parseTernaryNoColon();
             if (accept(P::Ellipsis))
               s->rangeEnd = parseTernaryNoColon();
+            else if (at(P::Comma))
+            {
+              // `case A, B, C:`: one label of several values, as Go's and C#'s (kovarex, 2026-11-08). C++'s case takes a
+              // conditional-expression, so a comma there is no comma operator.
+              std::vector<Expr*> more;
+              while (accept(P::Comma))
+                more.push_back(parseTernaryNoColon());
+              s->moreValues = makeSpanOf(more);
+            }
             expect(P::Colon, "expected ':' after case");
             return s;
           }

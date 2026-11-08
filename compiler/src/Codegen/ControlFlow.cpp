@@ -568,13 +568,21 @@ auto codegen::Emitter::switchStatement(SwitchStmt* sw) -> void
       auto* c = static_cast<CaseStmt*>(st);
       if (c->rangeEnd)
         unsupported(st, "case ranges");
-      auto v = evalConst(c->value);
-      if (!v)
-        unsupported(st, "a case label that is not a constant");
       std::string l = newLabel("case");
       caseLabels[{st, element}] = l;
-      covered.insert(*v);
-      cases += "    " + llType(ct, sw) + " " + std::to_string(*v) + ", label %" + l + "\n";
+      // (`case A, B, C:`: each value a case of the one block; a value twice is the checker's error, Walker::checkCaseValues)
+      auto addValue = [&](Expr* value)
+      {
+        auto v = evalConst(value);
+        if (!v)
+          unsupported(value, "a case label that is not a constant");
+        if (!covered.insert(*v).second)
+          fail(value, "the case value " + std::to_string(*v) + " is a label of this switch twice");
+        cases += "    " + llType(ct, sw) + " " + std::to_string(*v) + ", label %" + l + "\n";
+      };
+      addValue(c->value);
+      for (Expr* value : c->moreValues)
+        addValue(value);
     }
     else if (st->kind == NodeKind::DefaultStmt)
     {
