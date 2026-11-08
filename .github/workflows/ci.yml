@@ -634,63 +634,24 @@ jobs:
   # the spec's snippets built and run natively, and kpp's Linux release packaged
   # (tools/release/package-linux.sh), which publish uploads beside the Windows package (E, 2026-11-06;
   # it was linux-host.yml, a workflow of its own, while the Linux host was new).
-  linux_host:
+  # kpp on a Linux host (ubuntu-24.04, 4 CPUs) in three parts, so that the spec's two configurations
+  # do not run one after the other behind the build (2026-11-07: build 2-3 min, the spec 4-6 min and
+  # its release 8-15 min made linux_host 19-26 min, every other job ending by 9): linux_build builds
+  # kpp once and hands it on as the artifact kpp-linux-compiler; linux_spec runs the spec in debug
+  # and in release, the release in 3 shards, at once; linux_host runs the smoke tests and packages
+  # kpp's Linux release. Their tools (clang 19, lld; SDL3's headers) are .github/actions/linux-tools.
+  linux_build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    outputs:
-      sums: ${{ steps.package.outputs.sums }}
-    env:
-      # Upstream SDL 3.4.18's headers for the two interop snippets that import SDL3/SDL.h, as ci.yml's
-      # spec job has them: kpp.net's mirror, else SDL's release, checked by SHA-256.
-      SDL_NAME: SDL3-devel-3.4.18-VC.zip
-      SDL_SHA256: 78d84602ae616cfe26b33a73b7d3b9b6b56e8a6650e53d92c9c6ca938f747acd
-      SDL_FALLBACK: https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-devel-3.4.18-VC.zip
+    timeout-minutes: 45
     steps:
       # The whole history: kpp's version counts the commits since VERSION last changed.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # Clang 19, as the bundled toolchain's (kpp's IR names LLVM 19's intrinsics: clang 18, Ubuntu
-      # 24.04's default, links llvm.eh.typeid.for.p0 as an undefined symbol), and its lld; kpp takes
-      # it through KPP_CLANG, and clang-19's ld.lld is beside it.
-      # (apt with time limits, tried 3 times: on 2026-11-06 an Ubuntu mirror held apt-get for 40 minutes
-      # and the job hit its 45, run 42171827019, and gave 50 KB/s for two more runs, which hit the step's
-      # 20, 42206507772 and 42208289662. So the .deb files are kept by actions/cache and a hit installs
-      # them with no mirror. Any that no longer install, the image having moved on, go the mirror's
-      # way, and that run's files are saved under its own key, the newest being the one restored.
-      # dpkg, not apt-get: given the files, apt-get fetched all 16 from the mirror again on image
-      # 20261101.360 and timed out, run 42273619572.)
-      - name: Packages cache
-        uses: actions/cache/restore@v4
-        with:
-          path: ~/debs
-          key: linux-host-debs-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: linux-host-debs-
+      - uses: ./.github/actions/linux-tools
 
-      - name: Tools
-        timeout-minutes: 30
-        run: |
-          apt="-q -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o APT::Keep-Downloaded-Packages=true"
-          mkdir -p ~/debs
-          if ls ~/debs/*.deb >/dev/null 2>&1 && timeout 300 sudo dpkg -i ~/debs/*.deb; then
-            echo "installed from the cache: $(ls ~/debs | wc -l) packages"
-          else
-            for attempt in 1 2 3; do
-              if timeout 300 sudo apt-get update $apt && timeout 600 sudo apt-get install -y $apt clang-19 lld-19 ninja-build cmake; then break; fi
-              [ "$attempt" -lt 3 ] || { echo "apt-get failed 3 times"; exit 1; }
-              echo "apt-get attempt $attempt failed; again in 30 s"
-              sleep 30
-            done
-            rm -f ~/debs/*.deb
-            cp /var/cache/apt/archives/*.deb ~/debs/
-            echo "DEBS_FETCHED=1" >> "$GITHUB_ENV"
-          fi
-          echo "KPP_CLANG=/usr/bin/clang-19" >> "$GITHUB_ENV"
-          clang-19 --version | head -n 1
-          /usr/lib/llvm-19/bin/ld.lld --version
-          echo "CPUs: $(nproc)"
-
+      # Saved by this job alone: the key is the run's, which linux_spec's jobs would share.
       - name: Save the packages
         if: env.DEBS_FETCHED == '1'
         uses: actions/cache/save@v4
@@ -698,20 +659,72 @@ jobs:
           path: ~/debs
           key: linux-host-debs-${{ github.run_id }}-${{ github.run_attempt }}
 
-      - name: SDL3 headers
-        run: |
-          dir="$RUNNER_TEMP/sdl"
-          mkdir -p "$dir"
-          fetch() { curl -fsSL --retry 3 -o "$dir/$SDL_NAME" "$1" && echo "$SDL_SHA256  $dir/$SDL_NAME" | sha256sum -c -; }
-          fetch "https://kpp.net/registry/mirror/$SDL_SHA256/$SDL_NAME" || fetch "$SDL_FALLBACK"
-          unzip -q "$dir/$SDL_NAME" 'SDL3-3.4.18/include/*' -d "$dir"
-          test -f "$dir/SDL3-3.4.18/include/SDL3/SDL.h"
-          echo "KPP_SDL_INCLUDE=$dir/SDL3-3.4.18/include" >> "$GITHUB_ENV"
-
       - name: Build kpp
         run: |
           cmake -S compiler -B compiler/build -G Ninja -DCMAKE_C_COMPILER=clang-19 -DCMAKE_CXX_COMPILER=clang++-19 -DCMAKE_BUILD_TYPE=Release "-DCMAKE_EXE_LINKER_FLAGS=-static-libstdc++ -static-libgcc"
           cmake --build compiler/build
+          compiler/build/kpp --version
+
+      # (upload-artifact drops the executable bit: the jobs taking it set it again)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kpp-linux-compiler
+          path: compiler/build/kpp
+          if-no-files-found: error
+
+  # The spec on a Linux host, in debug and in release (ThinLTO, lld's back ends, and code the optimizer
+  # sees through: no other job ran it, and 12 snippets failed there on 2026-11-07, 10 noexcept snippets
+  # caught where they must terminate; I's fix, found by hand), the release in 3 shards.
+  linux_spec:
+    needs: linux_build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    name: linux_spec ${{ matrix.config }} ${{ matrix.shard }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { config: debug, shard: 1/1, flags: '' }
+          - { config: release, shard: 1/3, flags: '--release --shard 1/3' }
+          - { config: release, shard: 2/3, flags: '--release --shard 2/3' }
+          - { config: release, shard: 3/3, flags: '--release --shard 3/3' }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/linux-tools
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: kpp-linux-compiler
+          path: compiler/build
+
+      - name: spec on a Linux host
+        run: |
+          chmod +x compiler/build/kpp
+          python3 compiler/tests/spec/run_spec.py --jobs "$(nproc)" ${{ matrix.flags }}
+
+  linux_host:
+    needs: linux_build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    outputs:
+      sums: ${{ steps.package.outputs.sums }}
+    steps:
+      # The whole history, as linux_build's.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/linux-tools
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: kpp-linux-compiler
+          path: compiler/build
+
+      - name: kpp
+        run: |
+          chmod +x compiler/build/kpp
           compiler/build/kpp --version
 
       # The program's output, its arguments and its exit code through kpp --run.
@@ -800,15 +813,6 @@ jobs:
             file "build/$configuration/app.exe" | grep -q "PE32+ executable"
           done
           test -f build/release/app.pdb
-
-      - name: spec on a Linux host
-        run: python3 compiler/tests/spec/run_spec.py --jobs "$(nproc)"
-
-      # The spec in release on Linux too (ThinLTO, lld's back ends, and code the optimizer sees through):
-      # no other job ran it, and 12 snippets failed there on 2026-11-07 (10 noexcept snippets caught
-      # where they must terminate; I's fix), found by hand.
-      - name: spec on a Linux host, release
-        run: python3 compiler/tests/spec/run_spec.py --jobs "$(nproc)" --release
 
       # kpp's Linux release (tools/release/package-linux.sh: the tarball, its smoke test outside the
       # repository), kept as this run's artifact. libstdc++ and libgcc are linked into kpp (above), so
@@ -921,12 +925,12 @@ jobs:
         run: python3 compiler/tests/spec/run_spec.py --jobs "$(nproc)"
 
   # Publishes the package, only when the jobs it needs are green: run_tests' halves, every spec shard,
-  # package and linux_host. If one of them is red or cancelled it publishes nothing: no release, no
+  # package, linux_spec and linux_host. If one of them is red or cancelled it publishes nothing: no release, no
   # tag, no kpp.net upload, and Latest stays where it was. It does not wait for the FreeBSD jobs
   # (freebsd_build, freebsd_run, libraries_freebsd_build, libraries_freebsd_run): a red one of those
   # alone does not stop a release.
   publish:
-    needs: [run_tests, spec, package, linux_host]
+    needs: [run_tests, spec, package, linux_spec, linux_host]
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
     runs-on: ${{ vars.KPP_CI_RUNNER || 'windows-2022' }}
     timeout-minutes: 30

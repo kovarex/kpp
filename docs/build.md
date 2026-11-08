@@ -1213,10 +1213,17 @@ or on the runner named by the repository variable `KPP_CI_RUNNER`, as parallel j
   every 4th snippet of the sorted list (run_spec.py), so each gets a share of every area; each ends
   with its own `spec: ALL PASSED (...; shard I/4)` line and exit code, and the run is green only
   when all of them are.
+- **linux_build, linux_spec, linux_host:** kpp on a Linux host (ubuntu-24.04, 4 CPUs). linux_build
+  builds kpp with clang 19 and hands it on as the artifact `kpp-linux-compiler`; after it, at once,
+  linux_spec runs the spec in debug and in `--release` (3 shards) and linux_host its smoke tests (hello
+  world, the compile server, the language server, a project with C libraries, windows-gnu from Linux)
+  and packages kpp's Linux release. Until 2026-11-08 one job ran the build, the spec and its release
+  one after another, 19 to 26 minutes, every other job ending by 9. Their tools are
+  .github/actions/linux-tools.
 - **package:** on master only, after build and beside the tests (kovarex, 2026-11-02): the package
   (below), handed on as the artifact `package` (zip, installer, kpp-vscode.vsix, kpp-visualstudio.vsix). It publishes nothing.
 - **publish:** on master only, and only when the jobs it needs are green (run_tests' halves, every
-  spec shard, package, linux_host): the release and kpp.net (below). If one of them is red or
+  spec shard, package, linux_spec, linux_host): the release and kpp.net (below). If one of them is red or
   cancelled it publishes nothing: no release, no tag, no upload, and Latest stays where it was. It
   does not wait for the FreeBSD jobs, so a red one of those alone does not stop a release. It checks
   the artifacts it downloads against the SHA-256 their jobs wrote (`tools\release\check-files.ps1`),
@@ -1348,9 +1355,9 @@ Triggers (kovarex, 2026-10-31, chosen from the costs below):
   - **The SDL3 zip and headers**, keyed on `SDL_SHA256`.
   - **Debian 11's Linux sysroot** (compiler\build\sysroots\linux-x86_64, for targets.ps1), keyed on
     tools/sysroot/linux.ps1, which pins its packages' SHA-256.
-  - **linux_host's apt packages** (the 16 .deb files of clang 19, lld, ninja and cmake): a hit installs
+  - **The Linux jobs' apt packages** (the 16 .deb files of clang 19, lld, ninja and cmake): a hit installs
     them with dpkg, no Ubuntu mirror. Files that no longer install go to the mirror, and that run saves its
-    own under a new key (the run's id), the newest being restored.
+    own under a new key (the run's id; linux_build alone saves), the newest being restored.
   - kpp's import cache (%TEMP%\kpp-imports) is not worth one.
 - **Concurrency:** one run at a time per trigger and branch. A push run on master that has started
   finishes, so a green one publishes; of the pushes meanwhile, only the newest waits (GitHub
