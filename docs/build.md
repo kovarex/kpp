@@ -248,6 +248,17 @@ run_tests.cmd.
     project (a build with options of its own, `--verbose` or another `--toolchain`, has a server of
     its own), and says which it stopped; `--verbose` shows kpp's report of each build (its
     phases' times), which a project's builds otherwise keep quiet;
+  - `--rebuild` builds the cells asked for from scratch, and `--clean` only takes their kpp build
+    state away (kovarex 2026-11-08: Visual Studio's Rebuild only built, its Clean deleted the
+    executable alone, so the objects and the compile server's kept build survived both): every
+    compile server whose build writes the cell's executable stopped, then the executable and what kpp
+    and the link write beside it deleted: under its name (`EXE.N.o` and `.hash`, the modules'
+    objects; `.ll`; `.link.pending`, `.command`, `.inputs` and the response files; `.debug`) and
+    under its stem (`.pdb`, `.ilk`, `.natvis`, `.lib`, `.exp`). It says how many files went. The C
+    libraries' objects stay (`build\clib\`, shared by every cell: a Rebuild of one Visual Studio
+    project rebuilds no other project, and `kpp measure`'s clean build keeps them too), and so does
+    the opt-in shared object cache (KPP_OBJECT_CACHE: keyed by all an object is made of, the compiler
+    included, so it gives a rebuild nothing stale);
   - `kpp` alone in a console shows a menu of these, each with its command, and so in Git Bash
     (mintty) and Cygwin, whose terminals give programs a pipe, not a console (its name,
     `\msys-...-pty0-from-master`, says it is one; 2026-11-04). With input from a file or another
@@ -876,7 +887,11 @@ kpp --generate-visual-studio-files --generate-vs-code-files <build options> --ex
   source file is listed, in folders by source root and directory, the standard library as
   *Standard Library*, each used kpp library as *Libraries\NAME* (its roots' names below that when it
   has several; 2026-11-05: by its root's name alone, gorating's src and every library's src were one
-  folder).
+  folder). Each configuration's Build, Rebuild and Clean: a project's `kpp NAME CONFIGURATION
+  --msvc-diagnostics`, the same with `--rebuild`, and with `--clean`; a build of sources (no build.kpp)
+  has Clean stop its compile server (`kpp --stop-server` with the build's arguments) and delete the
+  files `--clean` deletes, and Rebuild do that, then build. Project files written before 2026-11-08
+  rebuild without cleaning: generate them again.
 - **VS Code:** `.vscode\tasks.json`, `launch.json` and `settings.json`. A `.vscode` file kpp
   did not write is never overwritten. A build task starts kpp itself (`"command"`: kpp's path,
   `"args"`, `"options": { "cwd" }`), no cmd between: VS Code quotes a process task's arguments
@@ -900,7 +915,13 @@ The code is `compiler/src/generate.cpp`; `tests/generate.ps1` (in run_tests.cmd)
 following:
 1. Generates both for tests/run/hello.kpp.
 2. Builds debug and release with MSBuild and runs each program.
-3. Checks that an error reaches MSBuild as `<absolute path>(line): error :`.
+3. Checks Debug's Clean and Rebuild command lines, then runs MSBuild's Clean (no `hello.*` left in
+   build\debug, Release's program kept) and Rebuild (the program built again).
+4. Checks that an error reaches MSBuild as `<absolute path>(line): error :`.
+
+tests/project.ps1's matrix section checks a project's three command lines in every configuration,
+that `kpp main --rebuild` compiles every module (a build after a build compiled none), and that
+`kpp main --clean` leaves no `main.*` in build\debug and the other cells' executables in place.
 
 Usage: [tools/vs/README.md](../tools/vs/README.md). programs/factorio's are written by
 `tools\vs\factorio\generate.cmd`. Measured on its generated solution, MSBuild from the command

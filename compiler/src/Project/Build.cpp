@@ -489,6 +489,53 @@ namespace projects
     return result;
   }
 
+  // --clean and --rebuild (a Visual Studio project's Clean and Rebuild, generate.cpp): a cell's kpp build
+  // state gone, so that its next build compiles every module. Every compile server whose build writes
+  // its executable is stopped (the cell's own, and one started with other options: --verbose), and the
+  // files go: the executable, what kpp and the link write beside it under its name (EXE.N.o and .hash,
+  // the modules' objects and hashes; .ll; .link.pending, .command, .inputs and the response files;
+  // .debug), and under its stem the .pdb, .ilk, .natvis, .lib and .exp. The C libraries' objects stay
+  // (build\clib\, shared by the cells: Visual Studio's Rebuild of one project rebuilds no other, and kpp
+  // measure's clean build is the same), and so does the opt-in shared object cache (KPP_OBJECT_CACHE,
+  // keyed by everything an object is made of). The files removed, and whether a server was stopped.
+  struct Cleaned
+  {
+    size_t files = 0;
+    bool server = false;
+  };
+  Cleaned cleanCell(const fs::path& root, const Program& p, const Request& request)
+  {
+    Cleaned cleaned;
+    fs::path exe = exeOf(root, p, request);
+    std::string key = host::pathKey(exe);
+    cleaned.server = !stopServers([&](const std::vector<std::string>& args)
+                      {
+                        for (size_t i = 0; i + 1 < args.size(); ++i)
+                          if (args[i] == "--exe" && host::pathKey(fs::path(args[i + 1])) == key)
+                            return true;
+                        return false;
+                      }).empty();
+    std::string name = exe.filename().string(), stem = exe.stem().string();
+    static const char* const beside[] = {".pdb", ".ilk", ".natvis", ".lib", ".exp"};
+    std::error_code ec;
+    std::vector<fs::path> doomed;
+    for (fs::directory_iterator it(exe.parent_path(), ec), end; !ec && it != end; it.increment(ec))
+    {
+      std::string file = it->path().filename().string();
+      bool ours = file == name || file.compare(0, name.size() + 1, name + ".") == 0;
+      for (const char* extension : beside)
+        ours = ours || file == stem + extension;
+      if (ours && it->is_regular_file(ec))
+        doomed.push_back(it->path());
+    }
+    for (const fs::path& f : doomed)
+      if (fs::remove(f, ec))
+        ++cleaned.files;
+      else if (ec)
+        fprintf(stderr, "warning: %s: %s could not be removed (%s)\n", p.name.c_str(), f.string().c_str(), ec.message().c_str());
+    return cleaned;
+  }
+
   int act(const fs::path& root, const Request& request, CompileFunction compile)
   {
     auto commandStart = std::chrono::steady_clock::now(); // (the whole command's time: build.kpp's description too)
@@ -642,6 +689,18 @@ namespace projects
         }
       }
       return 0;
+    }
+    if (request.clean || request.rebuild)
+    {
+      for (const Program* p : chosen)
+      {
+        Cleaned c = cleanCell(root, *p, request);
+        printf("kpp: cleaned %s (%s): %zu files removed%s\n", p->name.c_str(), p->configuration.c_str(), c.files,
+               c.server ? ", its compile server stopped" : "");
+      }
+      fflush(stdout);
+      if (!request.rebuild)
+        return 0;
     }
     if (request.run && chosen.size() != 1)
     {

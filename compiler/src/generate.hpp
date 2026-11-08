@@ -26,6 +26,9 @@ struct IdeConfiguration
   std::string name;             // "debug"
   std::filesystem::path exe;
   std::string buildCommand; // cmd's command line (Visual Studio's NMake runs it through a batch file)
+  // Visual Studio's Rebuild and Clean, cmd's too: the build from scratch (its kpp objects, incremental
+  // state and compile server gone first), and that state gone alone.
+  std::string rebuildCommand, cleanCommand;
   // The same build as a program VS Code starts itself, no cmd between: the program and its
   // arguments, in buildDirectory. Empty when the build needs cmd (before- and after-build steps).
   std::vector<std::string> buildProgram;

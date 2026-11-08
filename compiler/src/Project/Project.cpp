@@ -83,6 +83,10 @@ int runProject(int argc, char** argv, CompileFunction compile)
       request.verbose = true;
     else if (arg == "--stop-server")
       request.stop = true;
+    else if (arg == "--clean")
+      request.clean = true;
+    else if (arg == "--rebuild")
+      request.rebuild = true;
     else if (arg == "--msvc-diagnostics")
       request.msvc = true;
     else if (arg == "--set")

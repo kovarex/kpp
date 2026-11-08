@@ -142,6 +142,8 @@ namespace projects
     bool server = host::compileServer; // through the compile server (--no-server: not), where the host has one
     bool verbose = false; // --verbose: kpp's report of each build (its phases' times), not --quiet
     bool options = false; // kpp options: list the libraries' options of the cells asked for
+    bool clean = false;   // --clean: the cells' kpp build state gone (their compile servers, objects, executables)
+    bool rebuild = false; // --rebuild: the same, then the build from scratch (the C libraries' objects kept)
     std::vector<std::string> runArguments;   // --run's: the program's; --test's: the runner's
   };
 

@@ -627,6 +627,31 @@ void configure(Cell& cell)
       if (-not (Test-Path $copy)) { Fail "no ${copy}: the after-build step did not copy it" }
     }
     $matrixPath = (Resolve-Path $matrix).Path
+    # Visual Studio's Rebuild and Clean of each configuration: kpp's --rebuild and --clean of the cell
+    # (a Rebuild that only built kept every object and the compile server's build, kovarex 2026-11-08).
+    foreach ($configuration in 'Debug', 'Release', 'Fastdebug')
+    {
+      $group = [regex]::Match($project, "(?s)<PropertyGroup Condition=`"'\`$\(Configuration\)' == '$configuration'`">.*?</PropertyGroup>").Value
+      $cell = "main $($configuration.ToLower()) --msvc-diagnostics"
+      foreach ($line in @("<NMakeBuildCommandLine>[^<]*$cell</NMakeBuildCommandLine>", "<NMakeReBuildCommandLine>[^<]*$cell --rebuild</NMakeReBuildCommandLine>",
+                          "<NMakeCleanCommandLine>[^<]*$cell --clean</NMakeCleanCommandLine>"))
+      {
+        if ($group -notmatch $line) { Fail "main.vcxproj $configuration has no $line`n$group" }
+      }
+    }
+    # --rebuild compiles every module again (a build after a build compiled none), --clean leaves the
+    # cell's kpp state gone and the other cells' as they were.
+    $unchanged = { param($text) $m = [regex]::Match($text, '(\d+) modules on \d+ threads?, (\d+) unchanged'); if ($m.Success) { @([int]$m.Groups[1].Value, [int]$m.Groups[2].Value) } else { $null } }
+    $output = (Kpp @('main', '--no-server', '--verbose')) -join "`n"
+    $counts = & $unchanged $output
+    if ($code -ne 0 -or -not $counts -or $counts[1] -ne $counts[0]) { Fail "a build after a build compiled modules: exit $code`n$output" }
+    $output = (Kpp @('main', '--no-server', '--verbose', '--rebuild')) -join "`n"
+    $counts = & $unchanged $output
+    if ($code -ne 0 -or $output -notmatch 'kpp: cleaned main \(debug\): [1-9]\d* files removed' -or -not $counts -or $counts[1] -ne 0) { Fail "kpp main --rebuild did not compile every module: exit $code`n$output" }
+    $output = (Kpp @('main', '--no-server', '--clean')) -join "`n"
+    $left = @(Get-ChildItem 'build\debug' -File | Where-Object { $_.Name -like 'main.*' })
+    if ($code -ne 0 -or $output -notmatch 'kpp: cleaned main \(debug\): [1-9]\d* files removed' -or $left.Count -ne 0) { Fail "kpp main --clean left $($left.Name -join ', '): exit $code`n$output" }
+    if (-not (Test-Path 'build\release\main.exe') -or -not (Test-Path 'build\release\checks.exe')) { Fail 'kpp main --clean removed another cell''s executable' }
     foreach ($expected in @(
         @('main.vcxproj', 'Release', "<LocalDebuggerCommand>$([regex]::Escape("$matrixPath\bin\Releasex64\main.exe"))</LocalDebuggerCommand>"),
         @('main.vcxproj', 'Fastdebug', "<LocalDebuggerCommand>$([regex]::Escape("$matrixPath\bin\FastDebugx64\main.exe"))</LocalDebuggerCommand>"),

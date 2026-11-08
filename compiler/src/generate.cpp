@@ -201,8 +201,8 @@ namespace
       std::string exe = c.exe.string();
       project += "  <PropertyGroup Condition=\"'$(Configuration)' == '" + c.visualStudioName + "'\">\n"
                  "    <NMakeBuildCommandLine>" + xml(c.buildCommand) + "</NMakeBuildCommandLine>\n"
-                 "    <NMakeReBuildCommandLine>" + xml(c.buildCommand) + "</NMakeReBuildCommandLine>\n"
-                 "    <NMakeCleanCommandLine>" + xml("if exist " + quoteArg(exe) + " del " + quoteArg(exe)) + "</NMakeCleanCommandLine>\n"
+                 "    <NMakeReBuildCommandLine>" + xml(c.rebuildCommand) + "</NMakeReBuildCommandLine>\n"
+                 "    <NMakeCleanCommandLine>" + xml(c.cleanCommand) + "</NMakeCleanCommandLine>\n"
                  "    <NMakeOutput>" + xml(exe) + "</NMakeOutput>\n"
                  "    <LocalDebuggerCommand>" + xml(c.program.string()) + "</LocalDebuggerCommand>\n"
                  "    <LocalDebuggerCommandArguments>" + xml(c.arguments) + "</LocalDebuggerCommandArguments>\n"
@@ -514,6 +514,23 @@ int generateProjectFiles(int argc, char** argv)
     if (!g.afterBuild.empty())
       command += (keepGoing ? " & " : " && ") + step(g.afterBuild, ide.exe, ide.name);
     ide.buildCommand = command;
+    // Clean: the build's compile server stopped (kpp --stop-server with its arguments, nothing built) and
+    // the files kpp and the link write under the executable's name and stem deleted, as a project's
+    // --clean does; Rebuild: that, then the build.
+    {
+      std::string clean = "cd /d " + quoteArg(cwd.string()) + " && " + quoteArg(kpp.string()) + " --stop-server";
+      for (const std::string& arg : c.arguments)
+        clean += " " + arg;
+      for (const std::string& arg : g.arguments)
+        clean += " " + quoteArg(arg);
+      std::string exe = ide.exe.string(), stem = fs::path(ide.exe).replace_extension().string();
+      clean += " --exe " + quoteArg(exe) + " >nul & del /q " + quoteArg(exe) + " " + quoteArg(exe + ".*");
+      for (const char* extension : {".pdb", ".ilk", ".natvis", ".lib", ".exp"})
+        clean += " " + quoteArg(stem + extension);
+      clean += " 2>nul";
+      ide.cleanCommand = clean + " & exit /b 0";
+      ide.rebuildCommand = "(" + clean + ") & " + command;
+    }
     if (g.beforeBuild.empty() && g.afterBuild.empty())
     {
       ide.buildProgram = {kpp.string(), "--server", "--msvc-diagnostics", "--quiet"};

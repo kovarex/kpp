@@ -67,6 +67,10 @@ namespace projects
           c.buildProgram.push_back("--set");
           c.buildProgram.push_back(setting + "=" + value);
         }
+        // (Rebuild: kpp's own --rebuild, the cell's kpp objects, incremental state and compile server gone
+        // first, its C libraries' objects kept; Clean: that state gone alone, kpp's --clean)
+        c.rebuildCommand = c.buildCommand + " --rebuild";
+        c.cleanCommand = c.buildCommand + " --clean";
         Launch l = launchOf(root, *q, request);
         c.program = l.program;
         c.arguments = l.arguments;

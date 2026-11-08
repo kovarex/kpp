@@ -257,6 +257,7 @@ report every cross-file name as undefined.
 | | VS + E's integration | + LSP adapter (phase 1) | kpp IDE |
 |---|---|---|---|
 | build, errors after a build | yes | yes | yes |
+| Rebuild, Clean | yes, kpp's `--rebuild` and `--clean` (build.md; until 2026-11-08 Rebuild only built and Clean deleted the executable) | same | yes |
 | debugger | VS's, raw structs (natvis from the server: kpp values) | same | DbgEng + the server's types and interpreter |
 | go to definition, references, symbols, rename | no | yes | yes, plus package tree and `dependents` |
 | errors as you type | no | yes | yes |

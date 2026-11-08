@@ -41,6 +41,24 @@ try
     $output = & ".\build\$($configuration.ToLower())\hello.exe"
     if (($output -join "`n") -ne ($expected -join "`n")) { Fail "the $configuration program printed $output" }
   }
+  # Rebuild and Clean (a Rebuild that only built kept every object, kovarex 2026-11-08): Clean stops the
+  # build's compile server and deletes the executable and what kpp and the link wrote under its name;
+  # Rebuild does that, then the build.
+  $text = Get-Content 'build\visual-studio\hello.vcxproj' -Raw
+  $group = [regex]::Match($text, "(?s)<PropertyGroup Condition=`"'\`$\(Configuration\)' == 'Debug'`">.*?</PropertyGroup>").Value
+  $exe = [regex]::Escape((Join-Path $work 'build\debug\hello.exe'))
+  foreach ($line in @("<NMakeCleanCommandLine>[^<]*--stop-server [^<]*&gt;nul &amp; del /q $exe $exe\.\*[^<]*hello\.pdb[^<]*&amp; exit /b 0</NMakeCleanCommandLine>",
+                      "<NMakeReBuildCommandLine>\([^<]*--stop-server [^<]*del /q [^<]*\) &amp; [^<]*--server --msvc-diagnostics --quiet[^<]*</NMakeReBuildCommandLine>"))
+  {
+    if ($group -notmatch $line) { Fail "hello.vcxproj Debug has no $line`n$group" }
+  }
+  $log = & $msbuild -nologo -v:m -t:Clean -p:Configuration=Debug -p:Platform=x64 'build\visual-studio\hello.sln' 2>&1
+  $left = @(Get-ChildItem 'build\debug' -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'hello.*' })
+  if ($LASTEXITCODE -ne 0 -or $left.Count -ne 0) { Fail "MSBuild's Clean left $($left.Name -join ', ')`n$($log -join "`n")" }
+  if (-not (Test-Path 'build\release\hello.exe')) { Fail "Debug's Clean removed Release's hello.exe" }
+  $log = & $msbuild -nologo -v:m -t:Rebuild -p:Configuration=Debug -p:Platform=x64 'build\visual-studio\hello.sln' 2>&1
+  $output = if (Test-Path 'build\debug\hello.exe') { & '.\build\debug\hello.exe' } else { 'no build\debug\hello.exe' }
+  if ($LASTEXITCODE -ne 0 -or ($output -join "`n") -ne ($expected -join "`n")) { Fail "MSBuild's Rebuild: the program printed $output`n$($log -join "`n")" }
   # An error: the absolute path and the line, the form MSBuild puts in the Error List.
   Add-Content hello.kpp "`nint broken() { return undefinedThing; }"
   $log = & $msbuild -nologo -v:m -p:Configuration=Debug -p:Platform=x64 'build\visual-studio\hello.sln' 2>&1
