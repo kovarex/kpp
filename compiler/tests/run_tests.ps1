@@ -51,7 +51,7 @@ Add 'plain diagnostics' (Inline @('diagnostics', 'plain')) -seconds 2
 Add 'msvc diagnostics' (Inline @('diagnostics', 'msvc')) -seconds 2
 Add 'clashes' (Inline @('clashes')) -seconds 1
 Add 'missing input' (Inline @('missing')) -seconds 1
-Add 'runbuild' (Inline @('runbuild')) -seconds 2
+Add 'runbuild' (Inline @('runbuild')) -seconds 4
 Add 'clashes allowed' (Inline @('allowed')) -seconds 2
 Add 'rejected module' (Inline @('rejected')) -seconds 2
 # The same through LLVM's back end in kpp (tests\backend.ps1), when this kpp has it: an IR bug (the

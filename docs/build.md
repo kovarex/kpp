@@ -170,8 +170,16 @@ memory limits: Starlark's sandbox, without a second language.
 - **Inputs from outside come only from the command line.** `kpp --set FACTORIO=D:\snapshot` is
   read as `project.setting("FACTORIO", "C:/Factorio")`, so a build depends only on its files and
   its arguments. The arguments are part of the server's key.
-- **Its cost:** about 0.3 s for factorio-in-kpp's (below), and the result is kept until the file
-  changes.
+- **Its cost:** about 2 s for factorio-in-kpp's (2.2 s, best of four, `kpp --run-build` through
+  the compile server on 2026-11-08; a build.kpp of one executable 0.12 s), and the result is kept
+  until the file changes.
+- **Its budget:** `build()` and `describe()` run as one evaluation of at most 32 million steps and
+  32 million values made, where a constant expression has a million steps (the interpreter's
+  ConstBudget). factorio-in-kpp's takes about 2 million (a String's append is a hundred steps or
+  two), so it has sixteen times its room, and a loop that never ends stops at its line with "an
+  evaluation of more than 32 million steps" (a bare one within 2 s). Until 2026-11-08 each
+  statement of `build()` started a new count of a million, and one function of 2,000 `exclude()`
+  lines did not fit in it (run_tests' runbuild check describes that function now).
 
 ```cpp
 // build.kpp of programs/factorio

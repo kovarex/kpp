@@ -110,6 +110,20 @@ if errorlevel 1 (
   fc /w build\tests\runbuild.errors.txt tests\runbuild\errors.expected
   exit /b 1
 )
+rem A build description's budget (Interpreter.cpp, ConstBudget: 32 million steps over build() and describe()):
+rem 2,000 exclude() lines in one function of a build.kpp, with the real projectlib, are described to the last
+rem (until 2026-11-08 one call of build()'s took a million steps at most: "an evaluation of more than a million steps").
+%KPP% --quiet --run-build matrix ..\projectlib tests\runbuild\excludes.kpp tests\runbuild\settings.kpp > build\tests\runbuild.excludes.txt 2> build\tests\runbuild.excludes.errors.txt
+if errorlevel 1 (
+  echo FAIL runbuild excludes: kpp --run-build of tests\runbuild\excludes.kpp failed
+  type build\tests\runbuild.excludes.errors.txt
+  exit /b 1
+)
+findstr /x /c:"exclude linux libraries/big/src/module_199/file_1999.c" build\tests\runbuild.excludes.txt > nul
+if errorlevel 1 (
+  echo FAIL runbuild excludes: build\tests\runbuild.excludes.txt does not describe the 2,000th exclude
+  exit /b 1
+)
 echo ok   runbuild
 exit /b 0
 

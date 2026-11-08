@@ -623,6 +623,25 @@ auto GlobalScope::Impl::constSteps() -> uint64_t&
   return steps;
 }
 
+auto GlobalScope::Impl::constStepBudget() -> uint64_t&
+{
+  static thread_local uint64_t budget = 1000000;
+  return budget;
+}
+
+auto GlobalScope::Impl::constValueBudget() -> uint64_t&
+{
+  static thread_local uint64_t budget = 4000000;
+  return budget;
+}
+
+auto GlobalScope::Impl::constBudgetWhy(uint64_t budget, const char* what) -> std::string
+{
+  std::string number = budget == 1000000 ? "a million" : budget == 4000000 ? "four million"
+                     : budget % 1000000 == 0 ? std::to_string(budget / 1000000) + " million" : std::to_string(budget);
+  return "an evaluation of more than " + number + " " + what;
+}
+
 auto GlobalScope::Impl::constCalls() -> int&
 {
   static thread_local int calls = 0;
@@ -676,10 +695,10 @@ auto GlobalScope::Impl::constValueIn(Expr* e, const TypeContext& ctx, int depth)
     }
     ~Active() { --constActive(); }
   } active;
-  if (++constSteps() > 1000000)
+  if (++constSteps() > constStepBudget())
   {
     if (constWhy().empty())
-      constWhy() = "an evaluation of more than a million steps";
+      constWhy() = constBudgetWhy(constStepBudget(), "steps");
     return std::nullopt;
   }
   // An array of the run's own (a local, a part of one) where a value is wanted: the address of its
@@ -3045,10 +3064,10 @@ auto GlobalScope::Impl::constValuesMade() -> uint64_t&
 
 auto GlobalScope::Impl::constMayMake(size_t n) -> bool
 {
-  if ((constValuesMade() += n) <= 4000000)
+  if ((constValuesMade() += n) <= constValueBudget())
     return true;
   if (constWhy().empty())
-    constWhy() = "an evaluation of more than four million values";
+    constWhy() = constBudgetWhy(constValueBudget(), "values");
   return false;
 }
 
@@ -6258,7 +6277,7 @@ auto GlobalScope::Impl::constStrcmp(const ConstValue& a, const ConstValue& b, in
     return std::nullopt;
   for (int64_t i = 0;; ++i)
   {
-    if (++constSteps() > 1000000)
+    if (++constSteps() > constStepBudget())
       return std::nullopt;
     std::optional<int> ux = constByteAt(*pa, i, "strcmp", depth), uy = ux ? constByteAt(*pb, i, "strcmp", depth) : std::nullopt;
     if (!ux || !uy)
@@ -6831,6 +6850,7 @@ auto GlobalScope::Impl::runBuild(std::string_view configuration, std::string& er
   };
   std::string text;
   constWhy().clear();
+  ConstBudget budget(32000000, 32000000); // (build() and describe() together, never reset at their statements: ConstBudget)
   std::optional<ConstValue> done = constOutermost([&]() -> std::optional<ConstValue> {
     std::vector<ConstBinding> env;
     ConstFrame frame(&env);
@@ -8430,7 +8450,7 @@ auto GlobalScope::Impl::constRangeForIterators(RangeForStmt* r, const TypeContex
   }
   for (;;)
   {
-    if (++constSteps() > 1000000)
+    if (++constSteps() > constStepBudget())
       return ConstFlow::Failed;
     ConstOperand left{it, 1}, right{last, 1};
     std::optional<ConstValue> a = constRead(it), b = constRead(last);
@@ -8905,10 +8925,10 @@ auto GlobalScope::Impl::constStatementIn(Stmt* s, const TypeContext& ctx, std::v
     return ConstFlow::Failed;
   if (depth > 64 && !stackRoomLeft())
     return evaluationTrip("an evaluation nested deeper than the compiler's stack"), ConstFlow::Failed;
-  if (++constSteps() > 1000000)
+  if (++constSteps() > constStepBudget())
   {
     if (constWhy().empty())
-      constWhy() = "an evaluation of more than a million steps";
+      constWhy() = constBudgetWhy(constStepBudget(), "steps");
     return ConstFlow::Failed;
   }
   // (The locals a statement declares end with its scope: constStatement.)

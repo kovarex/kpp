@@ -5,7 +5,8 @@
   // Step 1: expressions with C++'s types (consteval.hpp computes them, for the code generator's
   // folding too), and function bodies of returns, if, if constexpr and locals initialized once.
   // A name's evaluation starts its calls' depth afresh (NameEvaluation); calls nest at most 512
-  // deep, an evaluation takes at most a million steps, and the stack left bounds both.
+  // deep, an evaluation takes at most a million steps (a build description 32 million: ConstBudget),
+  // and the stack left bounds both.
 
   // Why the last evaluation that failed stopped (a signed overflow, a division by zero): the first
   // reason since whoever reports it cleared it (checkStaticAssert).
@@ -106,6 +107,42 @@
   static uint64_t& constSteps();
   static int& constCalls();
   static int& constActive();
+  // What one evaluation may take, in steps (an expression or a statement run) and in values made (constMayMake):
+  // a million and four million, as a constant expression (clang's -fconstexpr-steps is about a million too).
+  // What a step is, a String's append costs a hundred or two of (its helpers' calls), never a byte each.
+  static uint64_t& constStepBudget();
+  static uint64_t& constValueBudget();
+  // Why an evaluation stopped at its budget: "an evaluation of more than a million steps" (what: "steps"
+  // or "values", the budget's number in words).
+  static std::string constBudgetWhy(uint64_t budget, const char* what);
+  // A build description's budget (runBuild): build() and describe() are one evaluation that may take 32
+  // million steps and make 32 million values, the description's total, never reset at each statement of
+  // theirs (until 2026-11-08 a statement of build() or describe() run at their top level started a new
+  // count of a million: a build that called one function of 2,000 exclude() lines stopped, the same lines
+  // written in build() itself did not; factorio-in-kpp's cLibraries took 956,516 of its million, about 3,000
+  // per exclude line). At the interpreter's 0.9 million steps a second, a build file of factorio-in-kpp's
+  // size (2 million steps) has sixteen times its room, and a loop that never ends stops within a minute.
+  struct ConstBudget
+  {
+    ConstBudget(uint64_t steps, uint64_t values) : steps(constStepBudget()), values(constValueBudget())
+    {
+      constStepBudget() = steps;
+      constValueBudget() = values;
+      if (constActive()++ == 0)
+      {
+        constSteps() = 0;
+        constValuesMade() = 0;
+      }
+    }
+    ~ConstBudget()
+    {
+      --constActive();
+      constStepBudget() = steps;
+      constValueBudget() = values;
+    }
+
+    uint64_t steps, values;
+  };
 
   // An expression's value at compile time under ctx, typed as C++ types it, or nullopt when it is
   // no constant the checker can evaluate.
