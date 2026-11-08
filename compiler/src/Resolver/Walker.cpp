@@ -544,14 +544,17 @@ auto GlobalScope::Impl::Walker::checkRefQualifiedCall(FunctionDecl* f, const Ty*
 }
 
 auto GlobalScope::Impl::Walker::checkConstObjectOverloads(Decl* primary, const std::vector<Entry>* overloads, const std::vector<const Ty*>& argTypes, const Subst* classSubst,
-                                                         const Ty* objectTy, const NamePart* namePart, Span<Expr*> callArgs, uint32_t token) -> void
+                                                         const Ty* objectTy, const NamePart* namePart, Span<Expr*> callArgs, uint32_t token) -> bool
 {
   const Ty* o = objectTy ? types.stripRef(objectTy) : nullptr;
   if (probing || !o || !o->isConst || o->kind != TyKind::Class || !o->isKnown())
-    return;
+    return false;
   bool ambiguous = false;
-  if (FunctionDecl* g = pickOverload(primary, overloads, argTypes, classSubst, types.unqualified(o), ambiguous, namePart, callArgs, nullptr); g && !ambiguous)
-    checkConstObjectCall(g, objectTy, token);
+  FunctionDecl* g = pickOverload(primary, overloads, argTypes, classSubst, types.unqualified(o), ambiguous, namePart, callArgs, nullptr);
+  if (!g || ambiguous)
+    return false;
+  checkConstObjectCall(g, objectTy, token);
+  return true;
 }
 
 auto GlobalScope::Impl::Walker::reportDeductionConflict(Decl* primary, const std::vector<Entry>* overloads, const std::vector<const Ty*>& argTypes,
@@ -648,6 +651,45 @@ auto GlobalScope::Impl::Walker::reportNoMatchingMember(Decl* primary, const std:
     list += (list.empty() ? "" : ", ") + types.toString(types.stripRef(a), &impl.symbols);
   }
   reportCheck(token, "no overload of " + types.toString(o, &impl.symbols) + "::" + std::string(impl.symbols.name(symbol)) + " takes (" + list + ")");
+}
+
+auto GlobalScope::Impl::Walker::reportNoMatchingFunction(Decl* primary, const std::vector<Entry>* overloads, const QualifiedName& name,
+                                                       const std::vector<const Ty*>& argTypes, Span<Expr*> callArgs, uint32_t token) -> void
+{
+  // (reportNoMatchingMember's conditions, and no explicit template arguments: a plain function takes none)
+  auto plain = [](const Decl* d) { return d && d->kind == NodeKind::FunctionDecl && d->templateParams.empty() && !d->isTemplate; };
+  if (!plain(primary) || name.parts.size() == 0 || name.last().hasTemplateArgs)
+    return;
+  if (overloads)
+    for (const Entry& e : *overloads)
+      if (e.decl->kind == NodeKind::FunctionDecl && !plain(e.decl))
+        return;
+  // (Nor where an argument is a pack or expands one: the walk of a fold's pattern, `(show(ts), ...)`, or of a `for
+  // constexpr` body over a pack's types, sees every element at once as the call's arguments, before the walks for
+  // each element.)
+  bool walked = walkedArgs && callArgs.data == walkedArgs && callArgs.size() == walkedArgTypes.size();
+  if (argTypes.size() != callArgs.size())
+    return;
+  for (size_t i = 0; i < callArgs.size(); ++i)
+  {
+    Expr* a = callArgs[i];
+    const Ty* t = walked ? walkedArgTypes[i] : a ? a->ty : nullptr;
+    if (!a || a->kind == NodeKind::BraceInitExpr || namesFunctionsWithoutTarget(a) || (t && t->kind == TyKind::Pack) ||
+        (a->kind == NodeKind::UnaryExpr && !static_cast<UnaryExpr*>(a)->isKeyword && static_cast<UnaryExpr*>(a)->postfix &&
+         P(static_cast<UnaryExpr*>(a)->op) == P::Ellipsis))
+      return;
+  }
+  std::string list;
+  for (const Ty* a : argTypes)
+  {
+    if (!a || !a->isKnown() || types.isDependent(a) || Impl::mentionsUnknown(a) || a->isBraceList())
+      return;
+    list += (list.empty() ? "" : ", ") + types.toString(types.stripRef(a), &impl.symbols);
+  }
+  std::string called;
+  for (size_t i = 0; i < name.parts.size(); ++i)
+    called += (i ? "::" : "") + impl.namePartText(name.parts[i]);
+  reportCheck(token, "no overload of " + called + " takes (" + list + ")");
 }
 
 // A function's body against its declarations (design.md 8.7). `test` is decided by the first
@@ -6135,7 +6177,7 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
         // template with the arguments an earlier walk of this call recorded (the generic
         // one's). A single plain candidate stays: the code generator converts the arguments
         // itself and says so when it cannot.
-        checkConstObjectOverloads(d, l.overloads, argTypes, classSubst, implicitObject, &n->name.last(), c->args, c->token); // `touch(1)` in a const member function
+        bool constObjectError = checkConstObjectOverloads(d, l.overloads, argTypes, classSubst, implicitObject, &n->name.last(), c->args, c->token); // `touch(1)` in a const member function
         c->templateArgCount = 0;
         // `holdsAlternative<int>(v)`, `get<int>(v)` on a typed union (E's report): std::variant's
         // functions take none; it is asked with `v == U::Name` and read with `v[Name]` (design.md 8.5).
@@ -6155,6 +6197,8 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
         if (!onlyPlainCandidate(d, l.overloads))
         {
           n->resolved = nullptr;
+          if (!constObjectError)
+            reportNoMatchingFunction(d, l.overloads, n->name, argTypes, c->args, c->token); // `k(&c)` with k(int*) and k(double*)
           reportDeductionConflict(d, l.overloads, argTypes, n->name.last(), nullptr, c->token); // `refConv(1, 2.0)` for `refConv(const T&, T)`
         }
         else // `takeInt(item)` with a UniquePtr<Item>: a class where a parameter is a scalar, the checker's error
@@ -6334,13 +6378,14 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
       }
       if (!f)
       {
-        checkConstObjectOverloads(r.decl, r.overloads, argTypes, &r.subst, object, &last, c->args, m->token); // `items.push_back(1)` on a const Vector
+        bool constObjectError = checkConstObjectOverloads(r.decl, r.overloads, argTypes, &r.subst, object, &last, c->args, m->token); // `items.push_back(1)` on a const Vector
         ++stats.membersBound;
         c->templateArgCount = 0; // as for a name
         if (!onlyPlainCandidate(r.decl, r.overloads))
         {
           m->resolved = nullptr;
-          reportNoMatchingMember(r.decl, r.overloads, object, symbol, argTypes, m->token); // `s.find("x", 0, 5)`: String has no find of three
+          if (!constObjectError) // (`items.push_back(1)` on a const Vector is that error alone, not "no overload" too)
+            reportNoMatchingMember(r.decl, r.overloads, object, symbol, argTypes, m->token); // `s.find("x", 0, 5)`: String has no find of three
           reportDeductionConflict(r.decl, r.overloads, argTypes, last, object, m->token); // `box.both(1, 'c')` for `both(T, T)`
         }
         else // `counter.add(item)` with a UniquePtr<Item>, as for a name

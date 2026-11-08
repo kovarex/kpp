@@ -1,0 +1,41 @@
+// spec: a call of a function none of whose overloads takes the arguments is the checker's error, naming the function as written and the argument types, as C++'s "no matching function for call" ([over.match.viable]; a member's is classes/member_call_without_a_matching_overload_is_error): a pointer of another type (`k(&c)` with k(int*) and k(double*)), the wrong argument count, an argument of no matching type, a namespace's function named with its namespace, one argument-dependent lookup finds, and a member function called by its name in another member of its class
+// found by D (2026-11-08, beside kpp/explicit_by_default_conversion_operators_is_error): codegen said "a call that did not resolve"
+// error: call_without_a_matching_overload_is_error.kpp:23: error: no overload of add takes (const char[3])
+// error: call_without_a_matching_overload_is_error.kpp:34: error: no overload of k takes (char*)
+// error: call_without_a_matching_overload_is_error.kpp:35: error: no overload of k takes (int32*, int32)
+// error: call_without_a_matching_overload_is_error.kpp:36: error: no overload of pick takes (const char[2])
+// error: call_without_a_matching_overload_is_error.kpp:38: error: no overload of shapes::area takes (Box)
+// error: call_without_a_matching_overload_is_error.kpp:39: error: no overload of describe takes (Box, int32)
+int k(int* p) { return *p; }
+int k(double* p) { return 2; }
+int pick(int a) { return a; }
+int pick(double a) { return 2; }
+namespace shapes
+{
+  struct Box { int w = 1; };
+  int area(int side) { return side * side; }
+  int area(double side) { return 3; }
+  int describe(const Box& box) { return box.w; }
+  int describe(const Box& box, const char* name) { return 2; }
+}
+struct Counter
+{
+  int total() { return add("no"); }
+  int add(int n) { return n; }
+  int add(double n) { return 2; }
+};
+int main()
+{
+  char c = 'a';
+  int i = 1;
+  int n = 0;
+  shapes::Box box;
+  Counter counter;
+  n += k(&c);
+  n += k(&i, 2);
+  n += pick("x");
+  n += counter.total();
+  n += shapes::area(box);
+  n += describe(box, 7);
+  return n;
+}

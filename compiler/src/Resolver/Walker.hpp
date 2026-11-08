@@ -167,8 +167,9 @@
     // A call on a const object (objectTy) whose overloads (pickOverload's arguments) took none: the
     // one a non-const object would have taken, a non-const member function, is the error
     // checkConstObjectCall reports (`items.push_back(1)` in a const member function, push_back's
-    // two overloads both non-const), where the call was left unresolved, codegen's error.
-    void checkConstObjectOverloads(Decl* primary, const std::vector<Entry>* overloads, const std::vector<const Ty*>& argTypes, const Subst* classSubst,
+    // two overloads both non-const), where the call was left unresolved, codegen's error. True when
+    // a non-const object's call would take one (the error is that one's).
+    bool checkConstObjectOverloads(Decl* primary, const std::vector<Entry>* overloads, const std::vector<const Ty*>& argTypes, const Subst* classSubst,
                                    const Ty* objectTy, const NamePart* namePart, Span<Expr*> callArgs, uint32_t token);
     // A member call none of whose overloads took the arguments, left unresolved (codegen could only
     // say it does not support it): "no overload of String::find takes (const char[7], int32, int32)",
@@ -182,6 +183,13 @@
                                  const Ty* objectTy, uint32_t token);
     void reportNoMatchingMember(Decl* primary, const std::vector<Entry>* overloads, const Ty* objectTy, uint32_t symbol,
                                 const std::vector<const Ty*>& argTypes, uint32_t token);
+    // The same for a function's call, by the name written (C++'s "no matching function for call"): `k(&c)` with
+    // k(int*) and k(double*) is "no overload of k takes (char*)", where it was codegen's "a call that did not
+    // resolve". Not where an argument is a brace list or names functions without a target (an overload set, a
+    // template), whose conversions the ranking may not see as codegen does, nor where one is a pack or expands one
+    // (a fold's pattern walked with every element at once).
+    void reportNoMatchingFunction(Decl* primary, const std::vector<Entry>* overloads, const QualifiedName& name, const std::vector<const Ty*>& argTypes,
+                                  Span<Expr*> callArgs, uint32_t token);
 
     // A function defined twice (two bodies of one function: `int f(int)` and `int f(int)`, or
     // `f(long)` beside `f(int)`, one function in kpp, design.md "Types") is an error at the later
