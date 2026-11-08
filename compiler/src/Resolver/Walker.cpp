@@ -3724,8 +3724,9 @@ auto GlobalScope::Impl::Walker::checkConstruction(const Ty* t, Span<Expr*> args,
 
 auto GlobalScope::Impl::Walker::checkExplicitCopy(const Ty* from, const Ty* to, uint32_t token) -> void
 {
-  // (under --explicit-by-default in template code too: reportExplicitError)
-  if (probing || (activeSubst && !explicitByDefaultOn()) || !file || !from || !to || !from->isKnown() || !to->isKnown() || types.isDependent(from) || types.isDependent(to) ||
+  // (in template code too, each instance: reportExplicitError; `It<T> m = this->find();` in a class template's member,
+  // through It's explicit constructor template, built until 2026-11-08 without --explicit-by-default, C's spec)
+  if (probing || !file || !from || !to || !from->isKnown() || !to->isKnown() || types.isDependent(from) || types.isDependent(to) ||
       Impl::mentionsUnknown(from) || Impl::mentionsUnknown(to))
     return;
   const Ty* t = types.unqualified(types.stripRef(to));
@@ -3785,7 +3786,7 @@ auto GlobalScope::Impl::Walker::checkExplicitCopy(const Ty* from, const Ty* to, 
 
 auto GlobalScope::Impl::Walker::checkUnmarkedListElements(BraceInitExpr* b, const Ty* to) -> void
 {
-  if (probing || (activeSubst && !explicitByDefaultOn()) || !file || !b || b->text || !b->designators.empty() || !to || !to->isKnown() ||
+  if (probing || !file || !b || b->text || !b->designators.empty() || !to || !to->isKnown() ||
       types.isDependent(to) || Impl::mentionsUnknown(to))
     return;
   const Ty* t = types.unqualified(types.stripRef(to));
@@ -3859,7 +3860,7 @@ auto GlobalScope::Impl::Walker::checkExplicitListCopy(BraceInitExpr* b, const Ty
   }
   if (explicitByDefaultOn() && b && b->args.empty())
     return; // (`{}`: a default constructor's, never a conversion, rule 2)
-  if (probing || (activeSubst && !explicitByDefaultOn()) || !file || !b || !b->designators.empty() || !to || !to->isKnown() || types.isDependent(to) || Impl::mentionsUnknown(to))
+  if (probing || !file || !b || !b->designators.empty() || !to || !to->isKnown() || types.isDependent(to) || Impl::mentionsUnknown(to))
     return;
   const Ty* t = types.unqualified(types.stripRef(to));
   if (t->kind != TyKind::Class || impl.isInitializerList(t))
