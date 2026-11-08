@@ -4882,6 +4882,9 @@ its IR for every spec snippet (1073) is byte-identical before and after.
     namespaces or classes qualify) the type in kpp's spelling (`Pair<BlueprintRecordID, f32>`, `Vector<i32>`,
     `Vector<agui::AreaAlign>` for a parameter's `Vector<AreaAlign>`; `Box<int>` stays as written);
   - a function's local class by its bare name in that function, where the name is visible (`UpgradeCount{...}`);
+  - for an aggregate of one part that is an aggregate itself, given two or more values, the braces brace elision
+    dropped (`Array<C, 5>({ {1, 2}, {3, 4} })`, C++20's parenthesized initialization of Array's member: write
+    `Array<C, 5>{{ {1, 2}, {3, 4} }}`, as `Array<C, 5>{ {1, 2}, {3, 4} }` has more values than Array has members);
   - for a pointer `nullptr`, or the value of `{p}`;
   - in template code, as its instances decide: one error where they agree, and where the type differs by instance
     (`ScriptObjectHelper<T>::SelectAction({a, b})`, a specialization's parameter each) no fix, each instance naming its

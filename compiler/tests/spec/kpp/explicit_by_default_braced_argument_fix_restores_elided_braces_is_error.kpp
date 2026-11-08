@@ -1,0 +1,26 @@
+// spec: under --explicit-by-default the fix of a function argument's braces writes the braces brace elision dropped, when the type it names is an aggregate of one part that is an aggregate itself and the list has two or more values (C's report: the game's TestSelectionToolPreSelectionLuaEvents, `Array<Combination, 5>({ {...}, {...} })`, the list C++20's parenthesized initialization of Array's member): `Array2<C, 2>{{ { 1, 2 }, { 3, 4 } }}` and `Wrap{{ 5, 6 }}`, never `Array2<C, 2>{ { 1, 2 }, { 3, 4 } }`, which has more values than Array2 has members (clang: "excess elements in struct initializer"; codegen: "more values than Array2 has fields"); an aggregate of two parts takes the list as written (`C{ 7, 8 }`)
+// kpp: --explicit-by-default --no-std
+// error: explicit_by_default_braced_argument_fix_restores_elided_braces_is_error.kpp:24: error: the braces of a function argument name their type: write `Array2<C, 2>{{ { 1, 2 }, { 3, 4 } }}`, not `{ { 1, 2 }, { 3, 4 } }` (design.md "Explicit by default")
+// error: explicit_by_default_braced_argument_fix_restores_elided_braces_is_error.kpp:25: error: the braces of a function argument name their type: write `Wrap{{ 5, 6 }}`, not `{ 5, 6 }` (design.md "Explicit by default")
+// error: explicit_by_default_braced_argument_fix_restores_elided_braces_is_error.kpp:25: error: the braces of a function argument name their type: write `C{ 7, 8 }`, not `{ 7, 8 }` (design.md "Explicit by default")
+struct C
+{
+  int a;
+  int b;
+};
+template<typename T, int N> struct Array2
+{
+  T elements[N];
+};
+struct Wrap
+{
+  C c;
+};
+int first(const Array2<C, 2>& v) { return v.elements[0].a; }
+int wrapped(Wrap w) { return w.c.b; }
+int plain(C c) { return c.a + c.b; }
+int main()
+{
+  Array2<C, 2> x = Array2<C, 2>({ { 1, 2 }, { 3, 4 } });
+  return first(x) + wrapped({ 5, 6 }) + plain({ 7, 8 });
+}

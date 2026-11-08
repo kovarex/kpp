@@ -4545,6 +4545,7 @@ auto GlobalScope::Impl::Walker::refuseBracedArgument(BraceInitExpr* b, const Ty*
   // which the editor's fix replaces as well.
   bool whole = !old.empty() && old.size() <= 80 && old.find('\n') == std::string::npos && old.find('`') == std::string::npos;
   std::string fix, replaced = whole ? old : std::string("{");
+  std::string unfixed = types.toString(t, &symbols) + "{...}"; // (what the message names when no fix fits)
   if (t->kind == TyKind::Pointer || t->kind == TyKind::MemberPointer || t->kind == TyKind::Nullptr)
   {
     // (a pointer's type is no prefix of braces: `nullptr` for `{}`, the value itself for `{p}`)
@@ -4557,12 +4558,36 @@ auto GlobalScope::Impl::Walker::refuseBracedArgument(BraceInitExpr* b, const Ty*
       fix = Impl::spelledTokens(file, b->token + 1, last);
   }
   else if (std::string type = !old.empty() ? spelledParameterType(p, to) : std::string(); !type.empty())
-    fix = type + replaced;
+  {
+    // An aggregate of one part that is an aggregate itself (Array's `T elements[N]`) given a list of two or more values:
+    // the list relies on brace elision, initializing that part (`Array<C, 5>({ {1, 2}, {3, 4} })`, C++20's parenthesized
+    // aggregate initialization of the member), so named it takes the braces elision dropped: `Array<C, 5>{{ ... }}`.
+    // `Array<C, 5>{ {1, 2}, {3, 4} }` has more values than Array has members (clang: "excess elements in struct
+    // initializer"; codegen's "more values than Array has fields"): the game's TestSelectionToolPreSelectionLuaEvents.
+    bool elided = false;
+    if (ClassDecl* def = t->kind == TyKind::Class && b->args.size() >= 2 && b->designators.empty() ? impl.classDefinition(t) : nullptr;
+        def && !def->isTypedUnion && impl.aggregateTakes(t, def, {}))
+    {
+      std::vector<const Ty*> parts;
+      if (impl.directBases(t, def, parts) && impl.fieldTypes(t, def, parts) && parts.size() == 1 && parts[0])
+      {
+        const Ty* part = types.unqualified(types.stripRef(parts[0]));
+        ClassDecl* inner = part->kind == TyKind::Class ? impl.classDefinition(part) : nullptr;
+        elided = part->kind == TyKind::Array || (inner && !inner->isTypedUnion && impl.aggregateTakes(part, inner, {}));
+      }
+    }
+    if (!elided)
+      fix = type + replaced;
+    else if (whole)
+      fix = type + "{" + old + "}";
+    else
+      unfixed = type + "{{...}}"; // (a long list's `{` alone has no fix: its `}` would need one more too)
+  }
   std::string message = "the braces of a function argument name their type";
   if (!fix.empty())
     message += ": write `" + fix + "`, not `" + replaced + "`";
   else
-    message += ": " + types.toString(t, &symbols) + "{...}";
+    message += ": " + unfixed;
   message += " (design.md \"Explicit by default\")";
   if (activeSubst)
     reportInInstance(b->token, message);
