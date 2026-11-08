@@ -1,6 +1,7 @@
-// spec: a lambda's closure is never initialised from another lambda's, which C++ rejects (each lambda's closure is a type of its own, with no conversion to another's, and two lambdas in one `?:` have no common type): `decltype(l1) f = l2;` and `auto f = c ? [a] { ... } : [b] { ... };` are errors. kpp took l2's bytes for l1's closure and called l1's body on them: f() gave 2, where l2's body gives 12
-// error: closure_from_another_lambda_is_error.kpp:9: error: a closure initialised from another lambda's closure
-// error: closure_from_another_lambda_is_error.kpp:14: error: a closure initialised from another lambda's closure
+// spec: a lambda's closure is never initialised from another lambda's, which C++ rejects (each lambda's closure is a type of its own, with no conversion to another's, and two lambdas in one `?:` have no common type): `decltype(l1) f = l2;` and `auto f = c ? [a] { ... } : [b] { ... };` are errors. kpp took l2's bytes for l1's closure and called l1's body on them: f() gave 2, where l2's body gives 12. So is `l1 = l2`. Each is the checker's error (since 2026-11-08, B's note for D), codegen's refusal (Emitter::requireSameClosure) behind it
+// error: closure_from_another_lambda_is_error.kpp:10: error: a closure initialised from another lambda's closure
+// error: closure_from_another_lambda_is_error.kpp:15: error: the branches of ?: are two lambdas' closures, which have no common type
+// error: closure_from_another_lambda_is_error.kpp:22: error: a closure assigned another lambda's closure
 extern "C" int printf(const char* format, ...);
 int fromDecltype(int a, int b)
 {
@@ -13,6 +14,13 @@ int fromConditional(bool c, int a, int b)
 {
   auto f = c ? [a]() { return a; } : [b]() { return b + 10; };
   return f();
+}
+int assigned()
+{
+  auto l1 = []() { return 1; };
+  auto l2 = []() { return 12; };
+  l1 = l2;
+  return l1();
 }
 int main(int argc, char** argv)
 {

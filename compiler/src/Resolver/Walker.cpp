@@ -4833,6 +4833,56 @@ auto GlobalScope::Impl::Walker::checkClosureTo(const Expr* value, const Ty* to, 
   reportTextError(token, "a lambda capturing a Text cannot be stored (design.md 14)");
 }
 
+auto GlobalScope::Impl::Walker::checkClosureConversion(const Expr* value, const Ty* to, uint32_t token, bool assigned) -> void
+{
+  // Codegen took l2's closure for l1's, a call running l1's body on l2's captures, until B's commits of 2026-11-08
+  // refused it there (Emitter::requireSameClosure, which stays behind this: B's note for D).
+  if (probing || !value || !to || !file || file->isImported)
+    return;
+  if (value->kind == NodeKind::BraceInitExpr && static_cast<const BraceInitExpr*>(value)->args.size() == 1)
+    value = static_cast<const BraceInitExpr*>(value)->args[0];
+  const Ty* given = value ? value->ty : nullptr;
+  if (!given || !given->isKnown() || !to->isKnown() || types.isDependent(given) || types.isDependent(to) || Impl::mentionsUnknown(given) ||
+      Impl::mentionsUnknown(to))
+    return;
+  const Ty* from = types.unqualified(types.stripRef(given));
+  const Ty* target = types.unqualified(types.stripRef(to));
+  if (from == target || !Impl::lambdaOf(from) || !Impl::lambdaOf(target))
+    return;
+  const std::string why = ": each lambda's closure is a type of its own, with no conversion to another's ([expr.prim.lambda.closure] 1)";
+  reportCheck(token, assigned             ? "a closure assigned another lambda's closure" + why
+                     : to->isReference() ? "a reference to a closure bound to another lambda's closure" + why
+                                         : "a closure initialised from another lambda's closure" + why);
+}
+
+auto GlobalScope::Impl::Walker::checkAggregateClosures(const BraceInitExpr* b, const Ty* to) -> void
+{
+  // Each element initializes the next member ([dcl.init.aggr] 4).
+  if (probing || !b || !to || b->text || !b->designators.empty())
+    return;
+  const Ty* t = types.unqualified(types.stripRef(to));
+  if (!t->isKnown() || t->kind != TyKind::Class || types.isDependent(t) || Impl::lambdaOf(t))
+    return;
+  ClassDecl* def = impl.classDefinition(t);
+  if (!def || def->isTypedUnion || !def->bases.empty() || def->keyword == Kw::union_)
+    return;
+  for (Decl* m : membersRead(def))
+    if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor))
+      return; // (no aggregate)
+  Subst s = impl.substFor(t);
+  size_t i = 0;
+  for (Decl* m : membersRead(def))
+  {
+    if (m->kind != NodeKind::VariableDecl || (m->flags & (DF_Static | DF_Typedef)) || static_cast<VariableDecl*>(m)->name.empty())
+      continue;
+    if (i >= b->args.size())
+      break;
+    if (const Ty* member = impl.declaredTypeOf(m, s.empty() ? nullptr : &s, 0); member && b->args[i])
+      checkClosureConversion(b->args[i], member, b->args[i]->token);
+    ++i;
+  }
+}
+
 auto GlobalScope::Impl::Walker::textStored(const std::string& as) -> std::string
 {
   return "a Text is valid only during the call that gives it, so it cannot be " + as + " (design.md 14)";
@@ -5456,7 +5506,10 @@ auto GlobalScope::Impl::Walker::typeOfCall(CallExpr* c) -> const Ty*
     if (const Ty* ft = impl.declaredTypeOf(f, nullptr, 0); ft && ft->kind == TyKind::Function)
     {
       for (size_t i = 0; i < c->args.size() && i < ft->args.size(); ++i)
+      {
         checkClosureTo(c->args[i], ft->args[i], c->args[i]->token);
+        checkClosureConversion(c->args[i], ft->args[i], c->args[i]->token); // `take(l2)` for take(decltype(l1))
+      }
       // A function template's parameters as this call's instance has them (`CountedFormat<sizeof...(A)>`
       // for A = int, String: CountedFormat<2>), its deduced arguments substituted, never as declared;
       // those before a parameter pack only (they are the arguments at their positions), and none
@@ -7011,6 +7064,9 @@ auto GlobalScope::Impl::Walker::typeOfBinaryOperator(BinaryExpr* b, OperatorCall
   const Ty* rs = types.stripRef(r);
   if (!ls || !rs)
     return types.unknown();
+  // `l1 = l2` of two lambdas' closures (a closure is no class here, TyKind::Lambda).
+  if (op == P::Assign && ls->kind == TyKind::Lambda)
+    checkClosureConversion(b->rhs, l, b->token, true);
   // (`obj->*k` with obj of a class that overloads operator->*: its call, below)
   if ((op == P::DotStar || op == P::ArrowStar) && (rs->kind == TyKind::MemberPointer || ls->kind != TyKind::Class))
     return rs->kind == TyKind::MemberPointer ? types.lref(rs->inner) : types.unknown();
@@ -8562,6 +8618,9 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
           if (target)
             checkListNarrowing(elements, target);
         }
+        // `: f(l2)` for a member `const decltype(l1)& f`.
+        if (!init.isPack && init.args.size() == 1 && l.decl && l.decl->kind == NodeKind::VariableDecl)
+          checkClosureConversion(init.args[0], impl.declaredTypeOf(l.decl, activeSubst, 0), init.args[0] ? init.args[0]->token : f->token);
         // `problem("bad ", point)` for a member (or base) constructed with a Text (design.md 14).
         if (!init.braced && !init.isPack && l.decl)
         {
@@ -8662,6 +8721,12 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
         noteZeroNull(v->init, declared); // `Node* a = 0;`
       if (v->init && declared && !impl.containsAuto(declared))
         checkClosureTo(v->init, declared, v->token); // `Function<void()> f = [&] { ... text ... };`
+      if (v->init && declared && !impl.containsAuto(declared))
+      {
+        checkClosureConversion(v->init, declared, v->init->token); // `decltype(l1) f = l2;`, `const decltype(l1)& r = l2;`
+        if (v->init->kind == NodeKind::BraceInitExpr)
+          checkAggregateClosures(static_cast<BraceInitExpr*>(v->init), declared); // `Holder h{l2};`
+      }
       // `int count = item;`, `Item* raw = item;`: a class copy-initializing a scalar (not `T x(args)` or a brace list,
       // which take explicit conversion operators too).
       if (v->init && declared && !impl.containsAuto(declared) && !v->bracedInit && v->init->kind != NodeKind::BraceInitExpr &&
@@ -9538,6 +9603,7 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
             else
             {
               checkExplicitCopy(t, ft->inner, value->token);
+              checkClosureConversion(value, ft->inner, value->token); // `return l2;` from a function returning `const decltype(l1)&`
               // `int& get() const { return this->v; }`: the result, a non-const reference, given a const object.
               if (ft->inner->isReference() && t)
                 if (uint32_t symbol = impl.functionSymbol(bodyOf->name); symbol != UINT32_MAX)
@@ -9788,6 +9854,15 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
       // branch, its type and value category ([expr.cond] 2); both throw: void.
       if (Expr* beside = branchBesideThrow(c))
         return record(e, beside == c->then ? then : other);
+      // Two lambdas' closures: no common type, neither converting to the other ([expr.cond] 4 to 6), as each lambda's
+      // closure is a type of its own (`c ? [a] { ... } : [b] { ... }`; codegen's backstop refused it).
+      if (types.unqualified(a) != types.unqualified(b) && Impl::lambdaOf(types.unqualified(a)) && Impl::lambdaOf(types.unqualified(b)) &&
+          !types.isDependent(a) && !types.isDependent(b))
+      {
+        reportCheck(c->token, "the branches of ?: are two lambdas' closures, which have no common type: each lambda's closure is a type of its "
+                              "own, with no conversion to another's ([expr.cond] 4)");
+        return record(e, then);
+      }
       // `target ? &target[i] : 0`: a literal 0 beside a pointer would be that pointer (design.md 4).
       noteZeroNull(c->else_, a->kind == TyKind::Array ? types.decay(a) : a);
       noteZeroNull(c->then, b->kind == TyKind::Array ? types.decay(b) : b);

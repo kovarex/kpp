@@ -730,6 +730,13 @@
     // parameter): it would be kept as that type, past the call (design.md 14). As its own type it
     // goes on (a template's parameter, a local), the rule following it.
     void checkClosureTo(const Expr* value, const Ty* to, uint32_t token);
+    // One lambda's closure given where another's is wanted (`decltype(l1) f = l2;`, `take(l2)` for take(decltype(l1)),
+    // a `const decltype(l1)&` bound to l2, `l1 = l2`; assigned for the last): no conversion, each lambda's closure being
+    // a type of its own ([expr.prim.lambda.closure] 1), an error. value may be a list of one (`decltype(l1) f{l2};`).
+    void checkClosureConversion(const Expr* value, const Ty* to, uint32_t token, bool assigned = false);
+    // An aggregate's list (`Holder h{l2};`): each element as its member's initialization (checkClosureConversion), for a
+    // class of no base, no constructor and a list of no designator.
+    void checkAggregateClosures(const BraceInitExpr* b, const Ty* to);
     static std::string textStored(const std::string& as);
     // The Text parameters of f: the last one, without a default, not from C; f's result holds none.
     void checkTextSignature(FunctionDecl* f);
