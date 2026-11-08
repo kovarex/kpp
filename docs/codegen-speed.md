@@ -596,6 +596,39 @@ The convoy moved onto the startup globals' definitions: two shared-lock acquisit
 known-check, then the definition), the fourth part of the lever, not done. Removing three waits did not make
 codegen faster, so that part's gain is not counted on.
 
+Lever 2 (the tail after codegen) began with two cuts, timed in B's window of 2026-11-08 (21:22 to 21:27):
+- **Early debug classes** (a125a943): the debug classes defined during the levels, by the threads done with a
+  level's functions, not by homeDebugClasses at the end.
+- **Largest first** (0fb10eff): the back end takes the largest modules first, and level 0's barrier hands the
+  program pieces over largest first.
+
+The compilers were master 64848340, that with the early classes, and that with both cuts, each with LLVM
+inside. Each made five clean builds of `kpp factorio debug --verbose` with `KPP_STEP_TIMES=1`, in turned
+order, on factorio-in-kpp converted from C:\Factorio 4c178a5b915, the machine 0 to 13% busy before each.
+Medians:
+
+| | master | and the early classes | and both cuts |
+|---|---:|---:|---:|
+| kpp | 9.70 s | 9.80 s | 9.80 s |
+| of it codegen | 5.17 s (5.11 to 5.19) | 5.25 s (5.24 to 5.29) | 5.29 s (5.25 to 5.29) |
+| of it the back end after codegen | 2.56 s | 2.57 s | 2.53 s |
+
+- **The early classes made codegen 0.08 s slower,** in every round, so they are reverted. homeDebugClasses
+  already ran on every core (about 23 thread-s). The work moved into level 1, whose 46,319 functions keep every
+  core busy. B's level timeline, with its own statistics made cheap, gives levels 6 to 17 about 0.3 s in all, so
+  there was little idle time to fill. (A first timeline whose per-level statistics hashed every definition had
+  made those levels ten times longer.)
+- **Largest first is neutral on a quiet machine** (2.57 to 2.53 s, inside the spread) and stays. In a run under
+  load, the 17.2 MB program piece of module 93 (ValueToWidget's generated functions), taken 93rd in module order,
+  had ended the build alone.
+- **The wall times mislead.** The both-cuts compiler found build.kpp's description cached (0.36 s before the
+  build, against 0.89 s for the others), as in the windows above.
+
+The tail itself is the instance pieces' work: 128 pieces, 938 MB of IR, 79 to 92 thread-s after codegen. What
+would move it is compiling instance code during codegen. Where codegen leaves cores idle (its end phase, about
+1.3 s, more than the late levels) is the measure of what that could gain (B-lever2-tail-2026-11-08.md in the
+coordinator's notes).
+
 When this plan was written, a clean debug build of the game was 17.1 s, the leaf edit 1.4 to 1.5 s,
 and the wide edit 1.9 s. These were thread A's quiet numbers: kpp run directly, without debug info.
 The gains overlap; each line is against the line before. The status column is as of 2026-11-02.
