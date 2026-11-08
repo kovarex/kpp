@@ -2305,7 +2305,11 @@ kovarex, 2026-11-07:
 
 `This` is an identifier nowhere in the game or our kpp (comments only), so the keyword breaks nothing. The
 converter writes `This::` for the statics named bare today, and cxxopts' `using Self = abstract_value<T>;`
-can become `This`. The parser's and resolver's part of `This` is not built yet.
+can become `This`. (`This` itself is built, above; thread J's spec
+language/this_names_the_class_in_nested_local_and_out_of_line_code covers nested and local classes, out-of-line
+members, member templates, operators, hidden friends and a static's initializer, 2026-11-09. Open: the class's own
+base clause, `class Widget : public Counter<This>` (CRTP), is no code in the class today, the error "this code is
+in none"; whether `This` names the class there is kovarex's.)
 
 It lands as `override` does: a warning under a flag, counted, then the converter, then an error.
 `--this-warnings` is the first step and changes nothing else: each

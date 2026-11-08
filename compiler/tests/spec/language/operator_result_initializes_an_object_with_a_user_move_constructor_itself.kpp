@@ -1,0 +1,25 @@
+// spec: `T a = b + c;` and `T a = -b;` of a class with a copy or move constructor of its own build the operator function's prvalue result in a itself (guaranteed elision, [dcl.init] 17.6.1), as a call's (`add(o, n)`, `o.operator+(n)`) does: no move or copy (and the local the operator returns is built there too, kpp's guaranteed named return elision, design.md 23). clang's and g++'s output
+// found by thread J (2026-11-09) beside `This`: the result was moved into the object (`move 102`) when the class had a trivial destructor and assignment
+extern "C" int printf(const char* format, ...);
+class Outer
+{
+public:
+  int v = 1;
+  Outer operator+(const Outer& o) const { Outer r; r.v = v + o.v; return r; }
+  Outer operator-() const { Outer r; r.v = -v; return r; }
+  Outer() = default;
+  Outer(Outer&& o) : v(o.v + 100) { printf("move "); }
+  Outer(const Outer& o) : v(o.v + 1000) { printf("copy "); }
+};
+Outer add(const Outer& a, const Outer& b) { Outer r; r.v = a.v + b.v; return r; }
+int main()
+{
+  Outer o;
+  Outer n;
+  Outer m = o + n;
+  Outer neg = -o;
+  Outer k = add(o, n);
+  Outer j = o.operator+(n);
+  printf("%d %d %d %d\n", m.v, neg.v, k.v, j.v);
+  return 0;
+}

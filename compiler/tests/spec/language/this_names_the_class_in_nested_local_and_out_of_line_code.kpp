@@ -1,0 +1,102 @@
+// spec: `This` (design.md 23c) in more places than language/this_names_the_class: a nested class's members (the nested class, also of a class template's nested class: `Box<T>::Node`), an out-of-line member's parameters and body (`int Outer::sum(const This&) const`), a member template, a trailing return type, operators and constructors (`Outer(This&&)`), `sizeof(This)` in a base's and a derived class's members (each its own), a hidden friend defined in the class, a static data member's out-of-line initializer (`const int Widget::limit = sizeof(This) * 10`) and a local class in a function. clang's and g++'s output (the C++ with each class's name for This)
+// (the class's own base clause, `class Widget : public Counter<This>`, is no code in the class: the error "this code is in none", an open question to kovarex)
+extern "C" int printf(const char* format, ...);
+class Outer
+{
+public:
+  int v = 1;
+  class Inner
+  {
+  public:
+    int w = 2;
+    static This make() { This i; i.w = 20; return i; }
+    int twice() const { This copy = *this; return copy.w * 2; }
+  };
+  This& self() { return *this; }
+  static int size() { return (int)sizeof(This); }
+  int sum(const This& other) const;
+  template<class U> U as() const { return U(this->v); }
+  auto next() const -> This { This n = *this; n.v += 1; return n; }
+  This* address() { return this; }
+  bool operator==(const This& o) const { return v == o.v; }
+  This operator+(const This& o) const { This r; r.v = v + o.v; return r; }
+  Outer() = default;
+  Outer(This&& o) : v(o.v + 100) {}
+  Outer(const This& o) = default;
+};
+int Outer::sum(const This& other) const { This mine = *this; return mine.v + other.v; }
+template<class T>
+class Box
+{
+public:
+  T value{};
+  class Node
+  {
+  public:
+    T held{};
+    This* next = nullptr;
+  };
+  Node node;
+  static This of(T x) { This b; b.value = x; return b; }
+  This with(T x) const { return of(x); }
+};
+class Base
+{
+public:
+  int kind() const { return sizeof(This) == sizeof(int) ? 1 : 2; }
+  int b = 0;
+};
+class Derived : public Base
+{
+public:
+  int d = 0;
+  int kinds() const { return kind() * 10 + (sizeof(This) == 2 * sizeof(int) ? 1 : 2); }
+};
+template<class D> class Counter
+{
+public:
+  static int made;
+  Counter() { ++made; }
+};
+template<class D> int Counter<D>::made = 0;
+class Widget : public Counter<Widget>
+{
+public:
+  int v = 3;
+  static const int limit;
+  friend int peek(const This& w) { return w.v + (int)sizeof(This); }
+};
+const int Widget::limit = (int)sizeof(This) * 10;
+int local()
+{
+  class Local
+  {
+  public:
+    int x = 7;
+    This doubled() const { This d; d.x = x * 2; return d; }
+  };
+  Local l;
+  return l.doubled().x;
+}
+int main()
+{
+  Outer o;
+  Outer::Inner i = Outer::Inner::make();
+  printf("%d %d %d %d\n", i.twice(), Outer::size(), o.sum(o), o.as<int>());
+  Outer n = o.next();
+  Outer m = o + n;
+  Outer moved(static_cast<Outer&&>(m));
+  printf("%d %d %d %d %d\n", n.v, m.v, moved.v, (int)(o == o), (int)(o.address() == &o));
+  Box<int> b = Box<int>::of(5);
+  Box<int> c = b.with(7);
+  Box<int>::Node node;
+  node.next = &node;
+  printf("%d %d %d\n", b.value, c.value, (int)(node.next == &node));
+  Derived d;
+  printf("%d %d\n", d.kinds(), o.self().v);
+  {
+    Widget a, b;
+    printf("%d %d %d %d\n", Counter<Widget>::made, peek(a), Widget::limit, local());
+  }
+  return 0;
+}
