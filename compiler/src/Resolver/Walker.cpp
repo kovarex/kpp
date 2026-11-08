@@ -2339,7 +2339,24 @@ auto GlobalScope::Impl::Walker::withUsingOverloads(const Lookup& l, const Ty* t,
       continue;
     }
     Lookup target = impl.lookupQualified(static_cast<UsingNameDecl*>(e.decl)->name, l.foundIn, nullptr, 0);
-    if (target.overloads)
+    // What the base's own using-declarations bring in too (`using B::g;` where B has `using A::g;`
+    // beside its g(long): A's g(char) and g(unsigned) as well, [namespace.udecl] 1; until 2026-11-08
+    // only B's own, so `c.g(4u)` called g(long)).
+    std::shared_ptr<std::vector<Entry>> nested;
+    static thread_local int usingDepth = 0;
+    if (target.overloads && usingDepth < 16)
+    {
+      ++usingDepth;
+      nested = withUsingOverloads(target, nullptr, nullptr, baseArgs);
+      --usingDepth;
+    }
+    if (nested)
+    {
+      for (const Entry& te : *nested)
+        if (te.decl && te.decl->kind == NodeKind::FunctionDecl && !hidden(static_cast<FunctionDecl*>(te.decl)))
+          merged->push_back(te);
+    }
+    else if (target.overloads)
     {
       for (const Entry& te : *target.overloads)
         if (te.decl && te.decl->kind == NodeKind::FunctionDecl && !hidden(static_cast<FunctionDecl*>(te.decl)))

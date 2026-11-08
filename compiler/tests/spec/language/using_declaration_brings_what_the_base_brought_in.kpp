@@ -1,0 +1,36 @@
+// spec: a using-declaration naming a base's member brings in what that base's own using-declarations brought in too ([namespace.udecl] 1): with `class B : public A { int g(long); using A::g; };`, `using B::g;` in C gives c the overload set g(long), g(char) and g(unsigned), so `c.g(4u)` calls A::g(unsigned); in D beside its own g(double) as well. clang's and g++'s output
+// found by thread J's inheritance generator (2026-11-08): only B's own g(long) came in, so `c.g(4u)` called it, and D's calls were "ambiguous between int32(double) and int32(long)"
+extern "C" int printf(const char* format, ...);
+class A
+{
+public:
+  int g(char x) { printf("A::g(char) "); return 1; }
+  int g(unsigned x) { printf("A::g(unsigned) "); return 2; }
+};
+class B : public A
+{
+public:
+  int g(long x) { printf("B::g(long) "); return 3; }
+  using A::g;
+};
+class C : public B
+{
+public:
+  using B::g;
+};
+class D : public B
+{
+public:
+  int g(double x) { printf("D::g(double) "); return 4; }
+  using B::g;
+};
+int main()
+{
+  B b;
+  C c;
+  D d;
+  printf("%d ", b.g(4u)); printf("%d ", b.g('c')); printf("%d\n", b.g(5L));
+  printf("%d ", c.g(4u)); printf("%d ", c.g('c')); printf("%d\n", c.g(5L));
+  printf("%d ", d.g(4u)); printf("%d ", d.g('c')); printf("%d ", d.g(5L)); printf("%d\n", d.g(2.5));
+  return 0;
+}
