@@ -174,6 +174,12 @@
     // say it does not support it): "no overload of String::find takes (const char[7], int32, int32)",
     // when the object's and the arguments' types are all known and none is dependent, and every
     // candidate is a plain function (a template's deduction pickOverload does not make, codegen may).
+    // A call no candidate takes because each is a function template whose deduction conflicts, one parameter deduced as
+    // two types by two arguments (`refConv(1, 2.0)` for `template<class T> int refConv(const T&, T)`): the checker's
+    // error, where it was codegen's "a call that did not resolve". Only where it is sure. objectTy: a member's object,
+    // whose class names the function in the error (null for a function's call).
+    void reportDeductionConflict(Decl* primary, const std::vector<Entry>* overloads, const std::vector<const Ty*>& argTypes, const NamePart& name,
+                                 const Ty* objectTy, uint32_t token);
     void reportNoMatchingMember(Decl* primary, const std::vector<Entry>* overloads, const Ty* objectTy, uint32_t symbol,
                                 const std::vector<const Ty*>& argTypes, uint32_t token);
 

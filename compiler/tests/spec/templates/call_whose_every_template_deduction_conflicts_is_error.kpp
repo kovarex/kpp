@@ -1,0 +1,28 @@
+// spec: a call no candidate takes because each is a function template one of whose parameters two arguments deduce as two types ([temp.deduct.call] 4, [temp.deduct.type] 2) is the checker's error naming them, for a function and a member function: `refConv(1, 2.0)` for `template<class T> int refConv(const T& a, T b)` and `box.both(1, 'c')` for `template<class T> int both(T a, T b)` (it was codegen's "a call that did not resolve", which named only the first); no error where a plain overload takes the arguments, where a class template's parameter is a member template's twice (the instance's, not deduced), or where a const lvalue deduces the type without its const
+// found by thread J's overload battery (c3-3, 2026-11-07)
+// error: call_whose_every_template_deduction_conflicts_is_error.kpp:22: error: no refConv takes (int32, double): T deduced as int32 from argument 1 and as double from argument 2
+// error: call_whose_every_template_deduction_conflicts_is_error.kpp:23: error: no Box::both takes (int32, char): T deduced as int32 from argument 1 and as char from argument 2
+template<class T> int refConv(const T& a, T b) { return 1; }
+struct Box
+{
+  template<class T> int both(T a, T b) { return 2; }
+};
+template<class T> int pick(T a, T b) { return 3; }
+int pick(int a, double b) { return 4; }
+template<class T> struct Holder
+{
+  template<class U> int put(const T& a, const T& b, U c) { return 5; }
+};
+template<class T> T larger(T a, T b) { return a < b ? b : a; }
+int main()
+{
+  Box box;
+  Holder<int> holder;
+  const int one = 1;
+  int r = refConv(1, 2.0);
+  r += box.both(1, 'c');
+  r += pick(1, 2.0);
+  r += holder.put(1, 2.0, 'x');
+  r += larger(one, 2);
+  return r;
+}

@@ -550,6 +550,76 @@ auto GlobalScope::Impl::Walker::checkConstObjectOverloads(Decl* primary, const s
     checkConstObjectCall(g, objectTy, token);
 }
 
+auto GlobalScope::Impl::Walker::reportDeductionConflict(Decl* primary, const std::vector<Entry>* overloads, const std::vector<const Ty*>& argTypes,
+                                                      const NamePart& name, const Ty* objectTy, uint32_t token) -> void
+{
+  // Only where C++ has the error surely: every argument's type known, no template argument given, and every candidate
+  // a function template one of whose parameters two arguments deduce as two types, each argument deduced alone
+  // ([temp.deduct.call] 4, [temp.deduct.type] 2). Any other candidate, or failure, is left as it was (codegen's).
+  if (probing || !file || file->isImported || (inGenericTemplate() && !activeSubst) || name.hasTemplateArgs)
+    return;
+  for (const Ty* a : argTypes)
+    if (!a || !a->isKnown() || types.isDependent(a) || Impl::mentionsUnknown(a) || a->isBraceList())
+      return;
+  std::vector<FunctionDecl*> candidates;
+  if (overloads)
+  {
+    for (const Entry& e : *overloads)
+      if (e.decl->kind == NodeKind::FunctionDecl)
+        candidates.push_back(static_cast<FunctionDecl*>(e.decl));
+  }
+  else if (primary && primary->kind == NodeKind::FunctionDecl)
+    candidates.push_back(static_cast<FunctionDecl*>(primary));
+  if (candidates.empty())
+    return;
+  std::string why;
+  for (FunctionDecl* f : candidates)
+  {
+    const Ty* ft = f->templateParams.empty() ? nullptr : impl.declaredTypeOf(f, nullptr, 0);
+    if (!ft || ft->kind != TyKind::Function)
+      return; // (a plain function, or one not typed: not this)
+    std::vector<std::pair<Decl*, std::pair<const Ty*, size_t>>> first;
+    std::string conflict;
+    for (size_t i = 0; i < argTypes.size() && i < f->params.size() && i < ft->args.size() && conflict.empty(); ++i)
+    {
+      if (static_cast<ParamDecl*>(f->params[i])->isPack)
+        break;
+      Subst one;
+      impl.deduceParams(Span<Decl*>{&f->params[i], 1}, Span<const Ty*>{&ft->args[i], 1}, {argTypes[i]}, one);
+      for (const Subst::Pair& q : one.pairs)
+      {
+        // (the function template's own parameters: a class template's, a member template's class's T, are the
+        // instance's, not deduced)
+        if (!q.type || !q.type->isKnown() || types.isDependent(q.type) || Impl::mentionsUnknown(q.type) || q.param->kind != NodeKind::TemplateParamDecl ||
+            std::find(f->templateParams.begin(), f->templateParams.end(), q.param) == f->templateParams.end())
+          continue;
+        auto seen = std::find_if(first.begin(), first.end(), [&](const auto& e) { return e.first == q.param; });
+        if (seen == first.end())
+          first.push_back({q.param, {q.type, i}});
+        else if (seen->second.first != q.type)
+        {
+          uint32_t pn = static_cast<TemplateParamDecl*>(q.param)->name;
+          conflict = std::string(pn == UINT32_MAX ? "a template parameter" : symbols.name(pn)) + " deduced as " +
+                     types.toString(seen->second.first, &symbols) + " from argument " + std::to_string(seen->second.second + 1) + " and as " +
+                     types.toString(q.type, &symbols) + " from argument " + std::to_string(i + 1);
+          break;
+        }
+      }
+    }
+    if (conflict.empty())
+      return; // (this one may be viable, or fail otherwise: not sure)
+    why += (why.empty() ? "" : "; ") + conflict;
+  }
+  std::string list;
+  for (const Ty* a : argTypes)
+    list += (list.empty() ? "" : ", ") + types.toString(types.stripRef(a), &symbols);
+  std::string called = name.symbol == UINT32_MAX ? std::string("the function") : std::string(symbols.name(name.symbol));
+  const Ty* o = objectTy ? types.unqualified(types.stripRef(objectTy)) : nullptr;
+  if (o && o->kind == TyKind::Class && o->isKnown() && !types.isDependent(o))
+    called = types.toString(o, &symbols) + "::" + called; // (a member's, as reportNoMatchingMember names it)
+  reportCheck(token, "no " + called + " takes (" + list + "): " + why + " ([temp.deduct.call])");
+}
+
 auto GlobalScope::Impl::Walker::reportNoMatchingMember(Decl* primary, const std::vector<Entry>* overloads, const Ty* objectTy, uint32_t symbol,
                                                      const std::vector<const Ty*>& argTypes, uint32_t token) -> void
 {
@@ -5743,7 +5813,10 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
             }
           }
         if (!onlyPlainCandidate(d, l.overloads))
+        {
           n->resolved = nullptr;
+          reportDeductionConflict(d, l.overloads, argTypes, n->name.last(), nullptr, c->token); // `refConv(1, 2.0)` for `refConv(const T&, T)`
+        }
         else // `takeInt(item)` with a UniquePtr<Item>: a class where a parameter is a scalar, the checker's error
         {
           checkScalarArguments(static_cast<FunctionDecl*>(d), impl.declaredTypeOf(d, classSubst, 0), c->args);
@@ -5928,6 +6001,7 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
         {
           m->resolved = nullptr;
           reportNoMatchingMember(r.decl, r.overloads, object, symbol, argTypes, m->token); // `s.find("x", 0, 5)`: String has no find of three
+          reportDeductionConflict(r.decl, r.overloads, argTypes, last, object, m->token); // `box.both(1, 'c')` for `both(T, T)`
         }
         else // `counter.add(item)` with a UniquePtr<Item>, as for a name
         {
