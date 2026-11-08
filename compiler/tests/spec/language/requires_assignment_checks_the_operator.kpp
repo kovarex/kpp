@@ -8,7 +8,7 @@ struct Plain
 struct NoCopyAssign
 {
   i32 value;
-  explicit NoCopyAssign(i32 v) : value(v) {}
+  NoCopyAssign(i32 v) : value(v) {}
   NoCopyAssign& operator=(const NoCopyAssign& other) = delete;
 };
 struct Takes

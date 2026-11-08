@@ -62,7 +62,7 @@ public:
 
   constexpr Duration() : ticks(Rep()) {}
   // From a count of ticks.
-  constexpr explicit Duration(Rep count) : ticks(count) {}
+  constexpr Duration(Rep count) : ticks(count) {}
   // From another duration, converted to this one's period: implicit when nothing is lost (this Rep
   // is floating point, or the other period is a whole multiple of this one), durationCast otherwise.
   template<typename Rep2, typename Period2> requires (isFloatingPoint<Rep> || (!isFloatingPoint<Rep2> && (Period2::num * Period::den) % (Period2::den * Period::num) == 0))
@@ -317,7 +317,7 @@ public:
   using period = typename Dur::period;
 
   constexpr TimePoint() {}
-  constexpr explicit TimePoint(const Dur& sinceEpoch) : sinceEpoch(sinceEpoch) {}
+  constexpr TimePoint(const Dur& sinceEpoch) : sinceEpoch(sinceEpoch) {}
   // From a time point of the same clock in another duration, when nothing is lost.
   template<typename Dur2>
   implicit TimePoint(const TimePoint<Clock, Dur2>& other) : sinceEpoch(other.sinceEpoch) {}
@@ -453,7 +453,7 @@ public:
 
   constexpr HoursMinutesSeconds() : HoursMinutesSeconds(D()) {}
 
-  constexpr explicit HoursMinutesSeconds(D d)
+  constexpr HoursMinutesSeconds(D d)
   {
     this->negative = d.count() < typename D::rep(0);
     precision whole = durationCast<precision>(this->negative ? D(-d.count()) : d);

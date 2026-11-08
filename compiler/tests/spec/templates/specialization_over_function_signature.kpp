@@ -7,7 +7,7 @@ struct is_std_function<Function<T>> : TrueType {};
 template <class Callback>
 struct Scoped
 {
-  explicit Scoped(Callback callback) : callback(::move(callback)) {}
+  Scoped(Callback callback) : callback(::move(callback)) {}
   Scoped(Scoped&& other) requires(is_std_function<Callback>::value) { ::swap(this->callback, other.callback); }
   Scoped(const Scoped&) = delete;
   ~Scoped() { if (this->callback) this->callback(); }

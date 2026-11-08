@@ -3,8 +3,8 @@
 struct Anim
 {
   Anim() = default;
-  explicit Anim(const Anim&) = delete;
-  explicit Anim(Anim&&) = default;
+  Anim(const Anim&) = delete;
+  Anim(Anim&&) = default;
   Vector<int> frames;
 };
 struct Element

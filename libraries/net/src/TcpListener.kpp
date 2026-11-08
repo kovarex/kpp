@@ -2,7 +2,7 @@
 struct TcpListener
 {
   TcpListener() {}
-  explicit TcpListener(i64 handle) : handle(handle) {}
+  TcpListener(i64 handle) : handle(handle) {}
   TcpListener(const TcpListener&) = delete;
   TcpListener& operator=(const TcpListener&) = delete;
   TcpListener(TcpListener&& other) : handle(other.handle) { other.handle = -1; }

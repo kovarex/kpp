@@ -20,7 +20,7 @@ class Strong
 {
 public:
   double value;
-  explicit Strong(double v) : value(v) {}
+  Strong(double v) : value(v) {}
   partial_ordering operator<=>(const Strong& other) const = default;
   partial_ordering operator<=>(const double& other) const { return this->value <=> other; }
 };

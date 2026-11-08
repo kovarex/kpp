@@ -3,7 +3,7 @@
 struct FromText
 {
   int isNull;
-  FromText(const char* p) : isNull(p == nullptr ? 1 : 0) {}
+  implicit FromText(const char* p) : isNull(p == nullptr ? 1 : 0) {}
 };
 enum E { E0, E1 };
 int f(E e) { return 1; }

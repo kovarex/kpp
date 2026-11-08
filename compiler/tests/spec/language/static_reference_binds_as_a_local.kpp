@@ -14,7 +14,7 @@ double doubleGlobal = 2.5;
 long long wide = 0x100000005LL;
 int garr[3] = {1, 2, 3};
 int fn(int x) { return x + 1; }
-struct Conv { int v = 41; B2 base; operator int&() { return v; } operator B2&() { return base; } };
+struct Conv { int v = 41; B2 base; implicit operator int&() { return v; } implicit operator B2&() { return base; } };
 Conv conv;
 const B2& r1 = d;
 B2& r2 = d;

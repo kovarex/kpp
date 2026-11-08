@@ -5,7 +5,7 @@ struct Proto { int value = 7; };
 template<class P, class I = uint16_t>
 class MyID
 {
-  explicit MyID(I index) : index(index) {}
+  MyID(I index) : index(index) {}
 public:
   using IndexType = I;
   MyID() {}

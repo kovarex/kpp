@@ -5,13 +5,13 @@
 // factorio: thread J's overload battery against clang (2026-11-06): only codegen refused them; clang: conversion from 'A' to 'long' is ambiguous
 struct A
 {
-  operator int() const { return 1; }
-  operator double() const { return 2; }
+  implicit operator int() const { return 1; }
+  implicit operator double() const { return 2; }
 };
 struct C
 {
-  operator int*() const { return nullptr; }
-  operator char*() const { return nullptr; }
+  implicit operator int*() const { return nullptr; }
+  implicit operator char*() const { return nullptr; }
 };
 int takeLong(long v) { return (int)v; }
 int takePointer(void* p) { return p ? 1 : 0; }

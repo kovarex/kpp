@@ -3,7 +3,7 @@
 struct Name
 {
   String value;
-  explicit Name(const char* v) : value(v) {}
+  Name(const char* v) : value(v) {}
   implicit operator const String&() const { return this->value; }
 };
 void take(const String& s) { print("const& ", s, "; "); }

@@ -4,7 +4,7 @@ template<typename T, bool Explicit>
 struct Fixed
 {
   T value;
-  explicit(Explicit) constexpr Fixed(double d) : value(T(d * 256)) {}
+  implicit(!Explicit) constexpr Fixed(double d) : value(T(d * 256)) {}
   Fixed operator-(const Fixed& other) const { return Fixed(double(this->value - other.value) / 256); }
   double toDouble() const { return this->value / 256.0; }
 };

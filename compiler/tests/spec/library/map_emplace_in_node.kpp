@@ -12,12 +12,12 @@ public:
 class RailNode : public ItemBase
 {
 public:
-  explicit RailNode(int rail) : rail(rail) {}
+  RailNode(int rail) : rail(rail) {}
   int rail;
 };
 struct Pinned
 {
-  explicit Pinned(int v) : v(v) {}
+  Pinned(int v) : v(v) {}
   Pinned(const Pinned&) = delete;
   bool operator<(const Pinned& other) const { return this->v < other.v; }
   int v;

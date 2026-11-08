@@ -8,7 +8,7 @@ class Boom : public Exception
 {
 public:
   Boom() : Exception("it went boom") {}
-  explicit Boom(const String& message) : Exception(message) {}
+  Boom(const String& message) : Exception(message) {}
 };
 
 int deep(int v, bool large)

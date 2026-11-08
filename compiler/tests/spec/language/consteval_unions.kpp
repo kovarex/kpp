@@ -23,10 +23,10 @@ struct Small
 class Zoom
 {
 public:
-  struct Scale { constexpr explicit Scale(int s) : s(s) {} int s; };
+  struct Scale { constexpr Scale(int s) : s(s) {} int s; };
   struct Distance { constexpr Distance(int near, int far) : near(near), far(far) {} int near; int far; };
-  explicit constexpr Zoom(Scale s) : data(s) {}
-  explicit constexpr Zoom(Distance d) : data(d) {}
+  constexpr Zoom(Scale s) : data(s) {}
+  constexpr Zoom(Distance d) : data(d) {}
   union enum Data
   {
     { {::Zoom::Scale, ByScale}, {::Zoom::Distance, ByDistance} }

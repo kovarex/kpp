@@ -11,9 +11,9 @@ template<class T, class Comparator = Less<T>>
 class Sorted
 {
 public:
-  explicit Sorted() = default;
+  Sorted() = default;
   Sorted(Sorted&& other) noexcept : data(::move(other.data)) {}
-  explicit Sorted(const Sorted& other) : data(other.data) {}
+  Sorted(const Sorted& other) : data(other.data) {}
   template<typename Iterator>
   Sorted(Iterator begin, Iterator end)
   {

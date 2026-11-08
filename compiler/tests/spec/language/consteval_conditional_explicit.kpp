@@ -3,7 +3,7 @@
 template<class T, bool Explicit>
 struct Fixed
 {
-  explicit(Explicit) constexpr Fixed(int n) : raw(T(n * 256)) {}
+  implicit(!Explicit) constexpr Fixed(int n) : raw(T(n * 256)) {}
   T raw;
 };
 constexpr Fixed<int, false> three = 3;

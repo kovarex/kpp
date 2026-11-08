@@ -12,12 +12,12 @@ auto lane0Of(T v) { return lane0(v); }
 
 struct Floats
 {
-  Floats(__m128 v) : value(v) {}
+  implicit Floats(__m128 v) : value(v) {}
   __m128 value;
 };
 struct Ints
 {
-  Ints(__m128i v) : value(v) {}
+  implicit Ints(__m128i v) : value(v) {}
   __m128i value;
 };
 StringView which(Floats) { return "floats"; }

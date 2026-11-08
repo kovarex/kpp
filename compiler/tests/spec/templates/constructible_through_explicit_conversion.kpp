@@ -5,7 +5,7 @@ struct Expr { int v = 0; };
 Expr theExpr;
 struct Parsed
 {
-  explicit operator const Expr*() const { return &theExpr; }
+  operator const Expr*() const { return &theExpr; }
 };
 int main()
 {

@@ -4,14 +4,14 @@ class RenderBase
 {
 public:
   virtual ~RenderBase() {}
-  virtual explicit operator bool() const = 0;
+  virtual operator bool() const = 0;
   virtual operator int() const { return 1; }
 };
 class Line : public RenderBase
 {
 public:
   bool valid = true;
-  explicit operator bool() const override { return this->valid; }
+  operator bool() const override { return this->valid; }
   operator int() const override { return 2; }
 };
 int check(const RenderBase& r) { return r ? int(r) * 10 : -1; }

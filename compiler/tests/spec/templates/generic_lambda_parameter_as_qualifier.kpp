@@ -4,7 +4,7 @@ template<class P, class I = uint16_t>
 class ID
 {
 public:
-  explicit ID(I index) : index(index) {}
+  ID(I index) : index(index) {}
   ID() = default;
   using IndexType = I;
   using PrototypeType = P;

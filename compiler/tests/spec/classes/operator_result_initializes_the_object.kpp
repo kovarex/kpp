@@ -8,7 +8,7 @@ struct T
   T(const T& o) : id(o.id + 100) { printf("c%d ", id); }
   T(T&& o) : id(o.id + 200) { printf("m%d ", id); }
   ~T() { printf("-%d ", id); }
-  explicit operator bool() const { return true; }
+  operator bool() const { return true; }
   T operator+(const T& o) const { return T(id + o.id); }
   T operator-() const { return T(-id); }
   T operator!() const { return T(id * 2); }

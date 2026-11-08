@@ -11,7 +11,7 @@ struct Targeter
 {
   T* target;
   Targeter(T* t) : target(t) {}
-  explicit operator bool() const { return this->target != nullptr; }
+  operator bool() const { return this->target != nullptr; }
   T* operator->() const { return this->target; }
 };
 

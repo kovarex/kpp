@@ -5,7 +5,7 @@ static int alive = 0;
 struct Counted
 {
   int value;
-  explicit Counted(int value) : value(value) { ++alive; }
+  Counted(int value) : value(value) { ++alive; }
   Counted(const Counted& other) : value(other.value) { ++alive; }
   Counted& operator=(const Counted& other)
   {

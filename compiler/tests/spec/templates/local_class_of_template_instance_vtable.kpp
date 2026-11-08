@@ -12,7 +12,7 @@ Base* make(F f)
   class Inner : public Base
   {
   public:
-    explicit Inner(F f) : f(f) {}
+    Inner(F f) : f(f) {}
     int run() override { return this->f(); }
     F f;
   };

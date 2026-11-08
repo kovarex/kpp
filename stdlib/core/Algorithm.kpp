@@ -906,7 +906,7 @@ public:
   using iterator_category = typename IteratorTraits<It>::iterator_category;
 
   ReverseIterator() : current() {}
-  explicit ReverseIterator(It it) : current(it) {}
+  ReverseIterator(It it) : current(it) {}
   // From the reverse of an iterator that converts to It (a const_reverse_iterator from a reverse_iterator).
   template<typename U>
   implicit ReverseIterator(const ReverseIterator<U>& other) : current(other.current) {}

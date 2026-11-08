@@ -17,7 +17,7 @@ class Filter
 {
 public:
   Filter() = default;
-  Filter(const WithQuality<IdType>& id) : baseId(id.baseId), quality(id.quality) {}
+  implicit Filter(const WithQuality<IdType>& id) : baseId(id.baseId), quality(id.quality) {}
   IdType baseId;
   int quality = 0;
 };
@@ -26,7 +26,7 @@ class SignalFilter : public Filter<SignalIdBase>
 public:
   using super = Filter<SignalIdBase>;
   using super::super;
-  explicit SignalFilter(int raw) { this->baseId.value = raw; }
+  SignalFilter(int raw) { this->baseId.value = raw; }
 };
 class Holder
 {

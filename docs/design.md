@@ -2396,7 +2396,7 @@ clauses, which the editor's quick fix reads: "write `NEW`, not `OLD`" ("write `t
 "write `Direction::North`, not `North`", "write `int g() const override`, not `int g() const`") or "remove `OLD`".
 OLD is the source's text as written, starting at the message's line and column: the server replaces it only
 when that exact text starts there. Notes go before the clause. So far: --this-warnings, --override-warnings,
-a bare enumerator of a scoped enum, `implicit` written twice or beside `explicit`, and --explicit-by-default's
+a bare enumerator of a scoped enum, `implicit` written twice or beside `explicit`, and explicit by default's
 plain `explicit`, `explicit(cond)` and braced argument ("Explicit by default").
 
 ### 24. The compiler's own sources: laid out as Factorio's (decided 2026-11-05)
@@ -4894,8 +4894,10 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   staying 0. Built: `implicit(cond)` (kept as the explicit condition `!(cond)`), and `implicit` twice or beside
   `explicit` an error naming the word to remove (2026-11-07, specs kpp/implicit_condition,
   kpp/implicit_condition_errors_is_error).
-  Built behind `--explicit-by-default` (D, 2026-11-07), every rule as an error exactly as it will be, so that the
-  converter and the stdlib are fixed against it: an unmarked constructor or conversion operator is explicit
+  Built (D): behind `--explicit-by-default` from 2026-11-07, every rule as an error exactly as it is now, so that the
+  converter and the stdlib were fixed against it; the default since 2026-11-08, after C's push of the game converted
+  for it (kpp 7a1fab3a). `--explicit-by-default` is still accepted and does nothing, until convert.cmd and the game's
+  build.kpp drop it; `--convert` reads its C++ as C++, an unmarked constructor converting. An unmarked constructor or conversion operator is explicit
   (isExplicit), a copy or move constructor (not a template, its one parameter a reference to the class itself) and
   one of no parameters never; plain `explicit` ("remove `explicit`") and `explicit(cond)` ("write `implicit(...)`",
   the condition turned round: a negation's operand, `a && b` for `!a || !b`, else `!cond`) at the word, an
@@ -4925,10 +4927,16 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   dependent, each instance for the rest), and a requirement's probe of an assignment the value reaches by no implicit
   conversion is not met (`requires { t = u; }`, which Vector's assign and insert ask). A switch on a class and class
   template argument deduction by copy take marked conversions only. The stdlib alone gave 87 errors under it (72 plain `explicit` on
-  constructors, 11 on conversion operators, its 4 `explicit(cond)`). While the flag is opt-in, the plain `explicit` and
-  `explicit(cond)` errors skip the standard library's files, which keep their words until the flip, with which K's
-  7d9fd9ac removes them (the coordinator's decision (a), 2026-11-08), so that the converted game is built with the
-  flag before the flip, C's converter push and the flip staying separate steps. Not refused under the flag, for kovarex: a braced list as an operator's operand (`x = {..}`, 301
+  constructors, 11 on conversion operators, its 4 `explicit(cond)`): its `explicit(cond)`s became `implicit(...)`, and
+  K's 7d9fd9ac removed its plain `explicit`s with the flip (until then those errors skipped the standard library's
+  files: the coordinator's decision (a), 2026-11-08, so that the converted game was built with the flag before the
+  flip, C's converter push and the flip staying separate steps). The specs, the libraries, kppsite and the end-to-end
+  tests lost their `explicit`s with it (`explicit(cond)` written `implicit(...)`), and gained `implicit` where they
+  convert on purpose. A function argument's braces for a parameter that is a reference to an array name a type C++
+  cannot write as `T{...}` (`const int[3]{...}`): the error has no fix clause, and an alias's braces
+  (`using Three = const int[3]; sum(Three{1, 2, 3})`) are the one way left to pass a temporary array, which codegen
+  does not make yet (pending language/brace_list_binds_const_array_reference; an open question for kovarex whether
+  such a parameter's braces stay unnamed, as an InitializerList's do). Not refused, for kovarex: a braced list as an operator's operand (`x = {..}`, 301
   in the game; `m[{..}]`); `explicit` on a deduction guide stays, written guides being as in C++ (rule 5). Specs kpp/explicit_by_default, kpp/explicit_by_default_marks_is_error,
   kpp/explicit_by_default_braced_arguments_is_error, kpp/explicit_by_default_conversions_is_error. Two C++ rules it
   leans on were missing and hold without the flag too: class template argument deduction by copy takes no explicit

@@ -11,7 +11,7 @@ suite Kinds
     ~Value() { check(v != 7, "dtor"); }
     bool operator==(const Value& o) const { check(v != 2, "operator=="); return v == o.v; }
     Value operator+(const Value& o) const { check(v != 3, "operator+"); return Value(v + o.v); }
-    explicit operator bool() const { check(v != 4, "conversion"); return true; }
+    operator bool() const { check(v != 4, "conversion"); return true; }
     int operator()(int a) { check(a != 5, "call operator"); return a; }
     virtual int virt() { check(v != 6, "virtual"); return v; }
     static int fixed(int a) { check(a != 8, "static"); return a; }

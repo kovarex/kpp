@@ -93,7 +93,7 @@ struct FunctionImpl
     return *this;
   }
 
-  explicit operator bool() const { return this->target != nullptr; }
+  operator bool() const { return this->target != nullptr; }
   bool operator!() const { return this->target == nullptr; }
   bool operator==(nullptr_t) const { return this->target == nullptr; }
   bool operator!=(nullptr_t) const { return this->target != nullptr; }

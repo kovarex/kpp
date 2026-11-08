@@ -3,7 +3,7 @@ struct Counted
 {
   static int moved, destroyed;
   int value;
-  explicit Counted(int value) : value(value) {}
+  Counted(int value) : value(value) {}
   Counted(Counted&& other) : value(other.value) { moved++; }
   ~Counted() { destroyed++; }
 };
@@ -13,7 +13,7 @@ int Counted::destroyed = 0;
 struct Pinned
 {
   int value;
-  explicit Pinned(int value) : value(value) {}
+  Pinned(int value) : value(value) {}
   Pinned(const Pinned&) = delete;
   Pinned(Pinned&&) = delete;
 };
@@ -21,7 +21,7 @@ struct Pinned
 struct Holder
 {
   Counted counted;
-  explicit Holder(int side) : counted((side, Counted(7))) {}
+  Holder(int side) : counted((side, Counted(7))) {}
 };
 
 Counted counted(int side) { return (side, Counted(4)); }

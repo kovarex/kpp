@@ -3,7 +3,7 @@ struct Counted
 {
   static int copied, moved, destroyed;
   int value;
-  explicit Counted(int value) : value(value) {}
+  Counted(int value) : value(value) {}
   Counted(const Counted& other) : value(other.value) { copied++; }
   Counted(Counted&& other) : value(other.value) { moved++; }
   ~Counted() { destroyed++; }

@@ -446,7 +446,7 @@ void runResolve(Build& build)
   setZeroNullWarnings(options.zeroNullWarnings); // (the walks' notes and codegen's)
   setOverrideWarnings(options.overrideWarnings);
   setThisWarnings(options.thisWarnings);
-  setExplicitByDefault(options.explicitByDefault);
+  setExplicitByDefault(options.convertDir.empty()); // (design.md "Explicit by default"; the C++ a conversion reads converts as C++)
   setThisReferenceWarnings(options.thisReferenceWarnings);
   setPlainEnumWarnings(options.plainEnumWarnings);
   setNoImplicitFallthrough(options.noImplicitFallthrough);

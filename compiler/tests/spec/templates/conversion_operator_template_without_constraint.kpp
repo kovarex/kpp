@@ -9,7 +9,7 @@ struct Value
 struct Strict
 {
   int v;
-  explicit Strict(int x) : v(x + 100) {}
+  Strict(int x) : v(x + 100) {}
 };
 int main()
 {

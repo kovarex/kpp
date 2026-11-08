@@ -1181,7 +1181,7 @@ namespace
   std::atomic<bool> overrideWarningsEnabled{false};
   std::set<std::string> overrideNotes; // (sorted, an instance's as its template's, once)
   std::atomic<bool> thisWarningsEnabled{false};
-  std::atomic<bool> explicitByDefaultEnabled{false};
+  std::atomic<bool> explicitByDefaultEnabled{true};
   std::atomic<bool> noImplicitFallthroughEnabled{false};
   std::set<std::string> thisNotes; // (sorted, each name once per place, whichever walks reached it)
   std::atomic<bool> thisReferenceWarningsEnabled{false};

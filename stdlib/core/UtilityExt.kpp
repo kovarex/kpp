@@ -20,7 +20,7 @@ template<typename R, typename C>
 struct MemFnWrapper
 {
   R C::*pmf;
-  explicit MemFnWrapper(R C::*pmf) : pmf(pmf) {}
+  MemFnWrapper(R C::*pmf) : pmf(pmf) {}
 
   template<typename... Args>
   auto operator()(C& obj, Args... args) -> decltype((obj.*pmf)(args...))

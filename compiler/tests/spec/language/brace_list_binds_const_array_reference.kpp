@@ -1,13 +1,18 @@
 // spec: a brace list binds a reference to a const array (`const int (&a)[3]`, an array's const being its elements'): a temporary array the list initializes, the elements it leaves out value-initialized, as C++ has it ([dcl.init.list] 3.10, [over.ics.list] 6); overload resolution counts it a standard conversion, so `near({1, 2})` with `near(const int (&)[2])` and `near(Point)` (an aggregate: a user-defined conversion) calls the array one, and `pick({1, 2, 3})` with `pick(const int (&)[3])` and `pick(InitializerList<int>)` the InitializerList one ([over.ics.rank] 3.1)
 // found by thread D (2026-11-05): overload resolution and the checker took `const int (&)[3]` for a non-const reference (the array type itself is not const), so the brace list bound none and `near({1, 2})` silently called near(Point); since D's fix the call is the array one, which codegen does not make yet
+// pending: explicit by default leaves one way to pass a temporary array, braces named by an alias of the array type (`Three{1, 2, 3}`, a function argument's braces naming their type; the error has no fix clause, as `const int[3]{...}` is no type C++ can write), and codegen does not make it: "codegen does not support the expression kind BraceInitExpr yet", for `const int (&r)[3] = {1, 2, 3};` too (D, 2026-11-08, with the flip)
 struct Point { int x; int y; };
 int sum(const int (&a)[3]) { return a[0] + a[1] + a[2]; }
 int near(const int (&a)[2]) { return 1; }
 int near(Point p) { return 2; }
 int pick(const int (&a)[3]) { return 1; }
 int pick(InitializerList<int> list) { return 2; }
+// (explicit by default, design.md: a function argument's braces name their type, an array type through an alias,
+// but an InitializerList parameter's)
+using Three = const int[3];
+using Two = const int[2];
 int main()
 {
-  println(sum({1, 2, 3}), " ", sum({4}), " ", near({1, 2}), " ", pick({1, 2, 3}));
+  println(sum(Three{1, 2, 3}), " ", sum(Three{4}), " ", near(Two{1, 2}), " ", pick({1, 2, 3}));
   return 0;
 }

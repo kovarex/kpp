@@ -8,7 +8,7 @@ int destroyed = 0;
 struct Counted
 {
   int value;
-  Counted(int v) : value(v) {}
+  implicit Counted(int v) : value(v) {}
   Counted(const Counted& other) : value(other.value) { ++copied; }
   Counted& operator=(const Counted& other) { value = other.value; ++copyAssigned; return *this; }
   ~Counted() { ++destroyed; }

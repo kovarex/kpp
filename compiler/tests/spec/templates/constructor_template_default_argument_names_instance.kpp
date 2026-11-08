@@ -5,7 +5,7 @@ struct Filter
 {
   int value = 0;
   template<typename = EnableIf<!isSame<Id, int>>>
-  explicit Filter(StringView name) : value(int(name.size())) {}
+  Filter(StringView name) : value(int(name.size())) {}
 };
 struct Item {};
 int main()

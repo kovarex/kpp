@@ -22,7 +22,7 @@ public:
   Vector() {}
 
   // count default-constructed elements.
-  explicit Vector(ContainerSize count) : Vector()
+  Vector(ContainerSize count) : Vector()
   {
     // The elements are made in their place, so T needs no copy or move (as for std::vector(n)):
     // TypeAwareMemoryPool keeps Vectors of SpriteRegistration, which has neither.

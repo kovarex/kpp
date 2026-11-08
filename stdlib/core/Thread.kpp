@@ -83,7 +83,7 @@ public:
     unsigned long value = 0;
 
     Id() {}
-    explicit Id(unsigned long value) : value(value) {}
+    Id(unsigned long value) : value(value) {}
     strong_ordering operator<=>(const Id& other) const = default;
   };
 
@@ -96,7 +96,7 @@ public:
   // A pointer to a member function takes the object, or a pointer to it, first. Throws SystemError
   // (resource_unavailable_try_again) when the system cannot start a thread.
   template<typename F, typename... Args>
-  explicit Thread(F function, Args... arguments)
+  Thread(F function, Args... arguments)
   {
     ThreadCall<F, Args...>* call = new ThreadCall<F, Args...>(move(function), move(arguments)...);
     unsigned long id = 0;
@@ -322,7 +322,7 @@ template<typename M>
 class LockGuard
 {
 public:
-  explicit LockGuard(M& mutex) : mutex(mutex) { mutex.lock(); }
+  LockGuard(M& mutex) : mutex(mutex) { mutex.lock(); }
   // Takes over a mutex the calling thread has locked.
   LockGuard(M& mutex, AdoptLock) : mutex(mutex) {}
   LockGuard(const LockGuard<M>&) = delete;
@@ -388,7 +388,7 @@ template<typename... M>
 class ScopedLock
 {
 public:
-  explicit ScopedLock(M&... mutexes)
+  ScopedLock(M&... mutexes)
   {
     this->take(mutexes...);
     lockWithoutDeadlock(this->held, sizeof...(M));
@@ -426,7 +426,7 @@ class ScopedLock<M>
 {
 public:
   using mutex_type = M;
-  explicit ScopedLock(M& mutex) : mutex(mutex) { mutex.lock(); }
+  ScopedLock(M& mutex) : mutex(mutex) { mutex.lock(); }
   ScopedLock(AdoptLock, M& mutex) : mutex(mutex) {}
   ScopedLock(const ScopedLock<M>&) = delete;
   ScopedLock<M>& operator=(const ScopedLock<M>&) = delete;
@@ -477,7 +477,7 @@ class UniqueLock
 {
 public:
   UniqueLock() {}
-  explicit UniqueLock(M& mutex) : mutex_(&mutex), owns(true) { mutex.lock(); }
+  UniqueLock(M& mutex) : mutex_(&mutex), owns(true) { mutex.lock(); }
   UniqueLock(M& mutex, DeferLock) : mutex_(&mutex) {}
   UniqueLock(M& mutex, TryToLock) : mutex_(&mutex) { this->owns = mutex.try_lock(); }
   UniqueLock(M& mutex, AdoptLock) : mutex_(&mutex), owns(true) {}
@@ -552,7 +552,7 @@ public:
   M* mutex() const { return this->mutex_; }
   bool ownsLock() const { return this->owns; }
   bool owns_lock() const { return this->owns; }
-  explicit operator bool() const { return this->owns; }
+  operator bool() const { return this->owns; }
 
   void checkLockable(const char* what) const
   {
@@ -574,7 +574,7 @@ class SharedLock
 {
 public:
   SharedLock() {}
-  explicit SharedLock(M& mutex) : mutex_(&mutex), owns(true) { mutex.lockShared(); }
+  SharedLock(M& mutex) : mutex_(&mutex), owns(true) { mutex.lockShared(); }
   SharedLock(M& mutex, DeferLock) : mutex_(&mutex) {}
   SharedLock(M& mutex, TryToLock) : mutex_(&mutex) { this->owns = mutex.tryLockShared(); }
   SharedLock(M& mutex, AdoptLock) : mutex_(&mutex), owns(true) {}
@@ -648,7 +648,7 @@ public:
   M* mutex() const { return this->mutex_; }
   bool ownsLock() const { return this->owns; }
   bool owns_lock() const { return this->owns; }
-  explicit operator bool() const { return this->owns; }
+  operator bool() const { return this->owns; }
 
   void checkLockable(const char* what) const
   {

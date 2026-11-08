@@ -6,7 +6,7 @@ template<typename Rep, typename Period>
 struct Dur
 {
   Rep ticks;
-  explicit Dur(Rep count) : ticks(count) {}
+  Dur(Rep count) : ticks(count) {}
 };
 template<typename R1, typename P1, typename R2, typename P2>
 auto finer(const Dur<R1, P1>& a, const Dur<R2, P2>& b)

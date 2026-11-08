@@ -15,7 +15,7 @@ class Heap
   {
   public:
     IteratorBase() = default;
-    explicit IteratorBase(HookType* current) : current(current) {}
+    IteratorBase(HookType* current) : current(current) {}
     Value& operator*() const { return *static_cast<Value*>(this->current); }
     IteratorBase& operator++()
     {

@@ -3,7 +3,7 @@
 struct Strict
 {
   int v;
-  explicit Strict(int x) : v(x) {}
+  Strict(int x) : v(x) {}
 };
 struct Counter
 {

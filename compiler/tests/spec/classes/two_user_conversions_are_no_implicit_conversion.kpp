@@ -6,12 +6,12 @@
 struct Inner
 {
   int v;
-  Inner(int x) : v(x) {}
+  implicit Inner(int x) : v(x) {}
 };
 struct Outer
 {
   Inner in;
-  Outer(Inner i) : in(i) {}
+  implicit Outer(Inner i) : in(i) {}
 };
 void take(Outer o) {}
 Outer make()

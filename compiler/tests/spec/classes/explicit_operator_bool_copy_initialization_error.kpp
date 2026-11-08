@@ -4,7 +4,7 @@
 struct Location
 {
   int slot = 9;
-  explicit operator bool() const { return slot != 0; }
+  operator bool() const { return slot != 0; }
 };
 int main()
 {

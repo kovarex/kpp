@@ -6,20 +6,20 @@ class Num
 {
 public:
   double v;
-  Num(double x) : v(x) {}
-  operator double() const { return v; }
+  implicit Num(double x) : v(x) {}
+  implicit operator double() const { return v; }
 };
 class Flag
 {
 public:
   bool on;
-  explicit operator bool() const { return on; }
+  operator bool() const { return on; }
 };
 class Other
 {
 public:
-  Other(const Num& n) {}
-  Other(const Flag& f) {}
+  implicit Other(const Num& n) {}
+  implicit Other(const Flag& f) {}
 };
 int operator-(const Other& o) { return 7; }
 bool operator!(const Other& o) { return true; }

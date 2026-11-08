@@ -7,7 +7,7 @@ struct Dur
 {
   Rep ticks;
   Dur() : ticks(0) {}
-  explicit Dur(Rep count) : ticks(count) {}
+  Dur(Rep count) : ticks(count) {}
 };
 template<typename R1, long long N1, long long D1, typename R2, long long N2, long long D2> requires (N1 * D2 <= N2 * D1)
 Dur<long long, Rat<N1, D1>> add(const Dur<R1, Rat<N1, D1>>& a, const Dur<R2, Rat<N2, D2>>& b) { return Dur<long long, Rat<N1, D1>>(a.ticks + b.ticks * (N2 * D1 / (D2 * N1))); }

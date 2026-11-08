@@ -1,8 +1,8 @@
 // spec: the noexcept operator counts what an expression calls without naming it: implicit and defaulted constructors by their parts and default member initializers, a by-value parameter's copy and conversion, a conversion operator, default arguments, a temporary's destructor; and inside a template, `noexcept(T())`, `noexcept(noexcept(a = b))` of a function template and of a member of a class template, answered under the instance's arguments; clang's output
 extern "C" int printf(const char* format, ...);
 template <typename T> T&& dv() noexcept;
-struct Quiet { Quiet() noexcept {} Quiet(int) noexcept {} Quiet(const Quiet&) noexcept {} Quiet(Quiet&&) noexcept {} Quiet& operator=(const Quiet&) noexcept { return *this; } };
-struct Loud { Loud() {} Loud(int) {} Loud(const Loud&) {} Loud(Loud&&) {} Loud& operator=(const Loud&) { return *this; } };
+struct Quiet { Quiet() noexcept {} implicit Quiet(int) noexcept {} Quiet(const Quiet&) noexcept {} Quiet(Quiet&&) noexcept {} Quiet& operator=(const Quiet&) noexcept { return *this; } };
+struct Loud { Loud() {} implicit Loud(int) {} Loud(const Loud&) {} Loud(Loud&&) {} Loud& operator=(const Loud&) { return *this; } };
 struct MoveQuiet { MoveQuiet() noexcept {} MoveQuiet(const MoveQuiet&) {} MoveQuiet(MoveQuiet&&) noexcept {} };
 struct ImplicitQuiet { Quiet q; int i = 1; };
 struct ImplicitLoud { Loud l; };
@@ -11,12 +11,12 @@ struct InitCall { int i = dv<int&>(); };
 struct Defaulted { Quiet q; Defaulted() = default; Defaulted(const Defaulted&) = default; };
 struct DefaultedLoud { Loud l; DefaultedLoud() = default; DefaultedLoud(const DefaultedLoud&) = default; };
 struct DeclaredNoexcept { Loud l; DeclaredNoexcept() noexcept = default; };
-struct FromInt { FromInt(int) noexcept {} };
-struct FromIntLoud { FromIntLoud(int) {} };
+struct FromInt { implicit FromInt(int) noexcept {} };
+struct FromIntLoud { implicit FromIntLoud(int) {} };
 struct Agg { int a; Quiet q; };
 struct AggLoud { int a; Loud l; };
-struct ToInt { operator int() const noexcept { return 1; } };
-struct ToIntLoud { operator int() const { return 2; } };
+struct ToInt { implicit operator int() const noexcept { return 1; } };
+struct ToIntLoud { implicit operator int() const { return 2; } };
 struct Holder { Quiet member; Holder(const Quiet& q) noexcept : member(q) {} };
 struct WithDefault { WithDefault(int x = 1, Quiet q = Quiet()) noexcept {} };
 int byValue(Quiet) noexcept;

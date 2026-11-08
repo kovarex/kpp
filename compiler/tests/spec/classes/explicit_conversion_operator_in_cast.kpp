@@ -2,14 +2,14 @@
 // factorio: StrongTypedef's `explicit operator const ValueType&()` (Scale, Zoom, DisplayDensity: 98 lines "a conversion from StrongTypedef<double, ScaleTag, PositiveDoubleValidator> to double")
 struct A
 {
-  explicit A(double v) : value(v) {}
-  explicit operator const double&() const { return this->value; }
+  A(double v) : value(v) {}
+  operator const double&() const { return this->value; }
   double value;
 };
 struct B
 {
-  explicit B(double v) : value(v) {}
-  explicit operator double() const { return this->value; }
+  B(double v) : value(v) {}
+  operator double() const { return this->value; }
   double value;
 };
 

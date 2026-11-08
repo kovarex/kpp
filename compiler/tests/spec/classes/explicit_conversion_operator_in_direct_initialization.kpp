@@ -21,8 +21,8 @@ class Parsed
 public:
   Parsed() = default;
   Parsed(Constant&& constant) : constant(move(constant)) {}
-  explicit operator bool() const { return this->constant.number != 0; }
-  explicit operator const Constant&() const { return this->constant; }
+  operator bool() const { return this->constant.number != 0; }
+  operator const Constant&() const { return this->constant; }
   Constant constant;
 };
 template<typename Value>
@@ -33,8 +33,8 @@ class Id
 {
 public:
   Id() = default;
-  explicit Id(int index) : index(index) {}
-  explicit operator bool() const { return this->index != 0; }
+  Id(int index) : index(index) {}
+  operator bool() const { return this->index != 0; }
   int index = 0;
 };
 struct AchievementPrototype {};
@@ -45,9 +45,9 @@ class ChooseElemId
 {
 public:
   ChooseElemId() = default;
-  explicit ChooseElemId(ItemId item) : item(item) {}
-  explicit operator AchievementId() const { return this->achievement; }
-  explicit operator ItemId() const { return this->item; }
+  ChooseElemId(ItemId item) : item(item) {}
+  operator AchievementId() const { return this->achievement; }
+  operator ItemId() const { return this->item; }
   AchievementId achievement;
   ItemId item;
 };
@@ -56,10 +56,10 @@ template<typename ValueType, class Tag>
 class StrongTypedef
 {
 public:
-  constexpr explicit StrongTypedef(const ValueType& value) : value(value) {}
-  constexpr explicit operator const ValueType&() const { return this->value; }
+  constexpr StrongTypedef(const ValueType& value) : value(value) {}
+  constexpr operator const ValueType&() const { return this->value; }
   template<typename CastType> requires (!isSame<CastType, ValueType>)
-  constexpr explicit operator CastType() const { return CastType(this->value); }
+  constexpr operator CastType() const { return CastType(this->value); }
 private:
   ValueType value;
 };

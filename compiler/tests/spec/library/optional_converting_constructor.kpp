@@ -8,7 +8,7 @@ struct SetupData
 {
   int size = 0;
   SetupData() = default;
-  explicit SetupData(const Parameters& p) : size(p.size * 2) {}
+  SetupData(const Parameters& p) : size(p.size * 2) {}
 };
 int main()
 {

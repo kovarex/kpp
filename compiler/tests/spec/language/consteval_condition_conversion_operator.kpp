@@ -4,7 +4,7 @@ struct Level
 {
   int value = 0;
   constexpr operator int() const { return value; }
-  constexpr explicit operator bool() const { return true; }
+  constexpr operator bool() const { return true; }
 };
 constexpr bool truth()
 {

@@ -3,7 +3,7 @@ int calls = 0;
 int counted(int v) { ++calls; return v; }
 int fallback() { println("fallback"); return 9; }
 namespace n { int x = 3; }
-struct B { int v; explicit operator bool() const { return v != 0; } };
+struct B { int v; operator bool() const { return v != 0; } };
 B make(int v) { ++calls; return B{v}; }
 int main()
 {

@@ -10,7 +10,7 @@ struct S
 };
 template<class T> T make(double d) { return T{d}; }
 int take(int v) { return v; }
-template<class T> int call(T t) { return take({t}); }
+template<class T> int call(T t) { return take(int{t}); }
 int main()
 {
   S s(1.5);

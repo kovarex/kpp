@@ -5,7 +5,7 @@ int moves = 0;
 struct Key
 {
   int v = 0;
-  explicit Key(int v) : v(v) {}
+  Key(int v) : v(v) {}
   Key(const Key& other) : v(other.v) { copies += 1; }
   Key(Key&& other) : v(other.v) { moves += 1; }
   bool operator<(const Key& other) const { return this->v < other.v; }
@@ -16,7 +16,7 @@ struct Value
 {
   int v = 0;
   Value() {}
-  explicit Value(int v) : v(v) {}
+  Value(int v) : v(v) {}
   Value(const Value& other) : v(other.v) { copies += 100; }
   Value(Value&& other) : v(other.v) { moves += 100; }
 };

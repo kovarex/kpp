@@ -716,7 +716,7 @@ namespace filesystem
   {
   public:
     file_status() {}
-    explicit file_status(file_type type, perms permissions = perms::unknown) : typeValue(type), permsValue(permissions) {}
+    file_status(file_type type, perms permissions = perms::unknown) : typeValue(type), permsValue(permissions) {}
     file_type type() const { return this->typeValue; }
     perms permissions() const { return this->permsValue; }
     void type(file_type type) { this->typeValue = type; }
@@ -1031,7 +1031,7 @@ namespace filesystem
   {
   public:
     directory_entry() {}
-    explicit directory_entry(const filesystem::path& p) : pathValue(p) {}
+    directory_entry(const filesystem::path& p) : pathValue(p) {}
 
     const filesystem::path& path() const { return this->pathValue; }
     implicit operator const filesystem::path&() const { return this->pathValue; }
@@ -1165,7 +1165,7 @@ namespace filesystem
 
     directory_iterator() {}
 
-    explicit directory_iterator(const path& p)
+    directory_iterator(const path& p)
     {
       ErrorCode ec;
       this->open(p, ec);
@@ -1265,7 +1265,7 @@ namespace filesystem
 
     recursive_directory_iterator() {}
 
-    explicit recursive_directory_iterator(const path& p) : recursive_directory_iterator(p, directory_options::none) {}
+    recursive_directory_iterator(const path& p) : recursive_directory_iterator(p, directory_options::none) {}
 
     recursive_directory_iterator(const path& p, directory_options options)
     {

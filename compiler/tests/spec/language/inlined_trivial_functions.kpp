@@ -18,7 +18,7 @@ struct Holder
   int length = 0;
   T& operator[](int i) { return this->items[i]; }
   T* operator->() { return this->items; }
-  explicit operator bool() const { return this->items != nullptr; }
+  operator bool() const { return this->items != nullptr; }
   int size() const { return length; }
   bool empty() const { return length == 0; }
   String describe() const { return String("holder"); }

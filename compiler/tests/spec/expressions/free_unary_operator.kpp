@@ -11,7 +11,7 @@ class Flag
 {
 public:
   bool on;
-  explicit operator bool() const { return on; }
+  operator bool() const { return on; }
 };
 bool operator!(const Flag& f) { return true; }
 int calls = 0;

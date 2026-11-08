@@ -5,7 +5,7 @@ struct Flags
 {
   enum class Enum { Forced, Mip };
   constexpr Flags() = default;
-  constexpr Flags(Enum value) : bits(1u << int(value)) {}
+  implicit constexpr Flags(Enum value) : bits(1u << int(value)) {}
   uint32_t bits = 0;
 };
 struct Option

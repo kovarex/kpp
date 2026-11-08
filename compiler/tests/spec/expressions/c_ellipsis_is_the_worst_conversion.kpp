@@ -2,7 +2,7 @@
 // factorio: found by the templates thread comparing overload choices against clang 19 on generated calls: the ellipsis ranked as a standard conversion, so `f(...)` won against a user-defined one and tied with the others (silent and loud)
 struct Base { int x = 1; };
 struct Derived : Base { int y = 2; };
-struct FromInt { FromInt(int v) {} };
+struct FromInt { implicit FromInt(int v) {} };
 int a(FromInt v) { return 1; }
 int a(...) { return 2; }
 int b(...) { return 1; }

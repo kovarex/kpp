@@ -332,11 +332,11 @@ public:
   using iterator_category = BidirectionalIteratorTag;
 
   RbIterator() {}
-  explicit RbIterator(RbNodeBase* node) : node(node) {}
+  RbIterator(RbNodeBase* node) : node(node) {}
   template<typename F> requires (isSame<F, RemoveConst<E>> && !isSame<F, E>)
   implicit RbIterator(const RbIterator<F>& other) : node(other.node) {}
   template<typename F> requires (isSame<E, RemoveConst<F>> && !isSame<F, E>)
-  explicit RbIterator(const RbIterator<F>& other) : node(other.node) {}
+  RbIterator(const RbIterator<F>& other) : node(other.node) {}
 
   E& operator*() const { return ((RbNode<RemoveConst<E>>*)this->node)->entry; }
   E* operator->() const { return &((RbNode<RemoveConst<E>>*)this->node)->entry; }
@@ -394,7 +394,7 @@ public:
   ContainerSize size() const { return this->count; }
   const Compare& keyCompare() const { return this->compare; }
   RbTree() { this->becomeEmpty(); }
-  explicit RbTree(const Compare& compare) : compare(compare) { this->becomeEmpty(); }
+  RbTree(const Compare& compare) : compare(compare) { this->becomeEmpty(); }
 
   RbTree(const RbTree<E, K, KeyOf, Compare>& other) : compare(other.compare)
   {
@@ -742,7 +742,7 @@ class MapNodeHandle
 {
 public:
   MapNodeHandle() {}
-  explicit MapNodeHandle(RbNode<Pair<K, V>>* node) : node(node) {}
+  MapNodeHandle(RbNode<Pair<K, V>>* node) : node(node) {}
   MapNodeHandle(MapNodeHandle<K, V>&& other) noexcept : node(other.node) { other.node = nullptr; }
   MapNodeHandle(const MapNodeHandle<K, V>& other) = delete;
   ~MapNodeHandle() { this->reset(); }
@@ -759,7 +759,7 @@ public:
   }
 
   bool empty() const { return this->node == nullptr; }
-  explicit operator bool() const { return this->node != nullptr; }
+  operator bool() const { return this->node != nullptr; }
   K& key() const { return this->node->entry.first; }
   V& mapped() const { return this->node->entry.second; }
 
@@ -783,7 +783,7 @@ class SetNodeHandle
 {
 public:
   SetNodeHandle() {}
-  explicit SetNodeHandle(RbNode<T>* node) : node(node) {}
+  SetNodeHandle(RbNode<T>* node) : node(node) {}
   SetNodeHandle(SetNodeHandle<T>&& other) noexcept : node(other.node) { other.node = nullptr; }
   SetNodeHandle(const SetNodeHandle<T>& other) = delete;
   ~SetNodeHandle() { this->reset(); }
@@ -800,7 +800,7 @@ public:
   }
 
   bool empty() const { return this->node == nullptr; }
-  explicit operator bool() const { return this->node != nullptr; }
+  operator bool() const { return this->node != nullptr; }
   T& value() const { return this->node->entry; }
 
   void reset()
@@ -860,7 +860,7 @@ public:
   using key_compare = Compare;
 
   Map() {}
-  explicit Map(const Compare& compare) : tree(compare) {}
+  Map(const Compare& compare) : tree(compare) {}
 
   // `Map<char, Kind> table = {{'+', Kind::Plus}, {'-', Kind::Minus}};`
   implicit Map(InitializerList<Pair<K, V>> items, const Compare& compare = Compare()) : tree(compare)
@@ -1214,7 +1214,7 @@ public:
   using key_compare = Compare;
 
   Set() {}
-  explicit Set(const Compare& compare) : tree(compare) {}
+  Set(const Compare& compare) : tree(compare) {}
 
   implicit Set(InitializerList<T> items, const Compare& compare = Compare()) : tree(compare)
   {
@@ -1426,7 +1426,7 @@ public:
   using key_compare = Compare;
 
   MultiMap() {}
-  explicit MultiMap(const Compare& compare) : tree(compare) {}
+  MultiMap(const Compare& compare) : tree(compare) {}
 
   implicit MultiMap(InitializerList<Pair<K, V>> items, const Compare& compare = Compare()) : tree(compare)
   {
@@ -1629,7 +1629,7 @@ public:
   using key_compare = Compare;
 
   MultiSet() {}
-  explicit MultiSet(const Compare& compare) : tree(compare) {}
+  MultiSet(const Compare& compare) : tree(compare) {}
 
   implicit MultiSet(InitializerList<T> items, const Compare& compare = Compare()) : tree(compare)
   {

@@ -83,7 +83,7 @@ int compile(int argc, char** argv)
     else if (arg == "--this-warnings")
       options.thisWarnings = true;
     else if (arg == "--explicit-by-default")
-      options.explicitByDefault = true;
+      ; // the default since the flip (design.md "Explicit by default"): accepted until convert.cmd and build.kpp drop it
     else if (arg == "--this-reference-warnings")
       options.thisReferenceWarnings = true;
     else if (arg == "--plain-enum-warnings")

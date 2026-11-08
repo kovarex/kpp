@@ -48,8 +48,8 @@ int sum(Args&&... args) { return (int(args) + ...); }
 int main()
 {
   Vector<Rect> rects;
-  rects.push_back({1, 2, true});
-  rects.push_back({3, 4, false});
+  rects.push_back(Rect{1, 2, true});
+  rects.push_back(Rect{3, 4, false});
   Flag flag;
   flag = Flag::True;
   Vector<int> a;

@@ -31,9 +31,9 @@ public:
 int main()
 {
   XmlReporter reporter;
-  reporter.list.push_back({true, 5});
-  reporter.list.push_back({false, 7});
-  reporter.list.push_back({true, 9});
+  reporter.list.push_back(Result{true, 5});
+  reporter.list.push_back(Result{false, 7});
+  reporter.list.push_back(Result{true, 9});
   println(reporter.failedIds());
   return 0;
 }

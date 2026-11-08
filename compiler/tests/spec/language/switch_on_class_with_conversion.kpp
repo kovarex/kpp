@@ -9,7 +9,7 @@ public:
     Y = 1,
   };
   using enum Enum;
-  constexpr Dimension(Enum dimension) : dimension(dimension) {}
+  implicit constexpr Dimension(Enum dimension) : dimension(dimension) {}
   implicit constexpr operator Enum() const { return this->dimension; }
 private:
   Enum dimension;

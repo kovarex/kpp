@@ -1,7 +1,7 @@
 // spec: isConstructible of an array, by C++20's parentheses: as many values as elements at most, each converting to an element (narrowing allowed, no braces elided), the rest value-initialized (an element with no default constructor needs every value), an array of no known bound none; clang's output
 extern "C" int printf(const char* format, ...);
 struct Agg { int a; double b; };
-struct NoDefault { NoDefault(int) {} };
+struct NoDefault { implicit NoDefault(int) {} };
 int main()
 {
   printf("%d%d%d%d %d%d%d%d %d%d%d\n", isConstructible<int[3], int>, isConstructible<int[3], int, int, int>, isConstructible<int[3], int, int, int, int>, isConstructible<int[3]>,

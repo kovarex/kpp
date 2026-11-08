@@ -10,7 +10,7 @@ struct Steps
 
   int* at = nullptr;
   Steps() {}
-  explicit Steps(int* at) : at(at) {}
+  Steps(int* at) : at(at) {}
   int& operator*() const { return *this->at; }
   int* operator->() const { return this->at; }
   Steps& operator++()

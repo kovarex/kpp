@@ -3866,7 +3866,7 @@ auto GlobalScope::Impl::Walker::checkSwitchOnClass(SwitchStmt* w) -> void
 
 auto GlobalScope::Impl::Walker::checkExplicitListCopy(BraceInitExpr* b, const Ty* to) -> void
 {
-  // Under --explicit-by-default a list of two or more values takes an unmarked constructor (`return {x, y};`,
+  // Explicit by default, a list of two or more values takes an unmarked constructor (`return {x, y};`,
   // `Color c = {1, 0, 0};`), and `{a}` an implicit one, as `= a` does (design.md "Explicit by default", rule 1);
   // `{}` any default one (rule 2); in template code too (reportExplicitError).
   if (explicitByDefaultOn() && b && b->args.size() >= 2)
@@ -4236,10 +4236,8 @@ auto GlobalScope::Impl::Walker::reportExplicitError(uint32_t token, const std::s
 
 auto GlobalScope::Impl::Walker::checkConversionMark(FunctionDecl* f) -> void
 {
-  // (once, at the declaration that has the word: its walk as written, not an instance's). Not in the standard library's
-  // files while the flag is opt-in: they keep their `explicit`s until the flip, with which K's 7d9fd9ac removes them
-  // (the coordinator's decision (a), 2026-11-08), so that the converted game can be built with the flag before it.
-  if (!explicitByDefaultOn() || probing || activeSubst || retypingElements || !file || file->isImported || file->isLibrary || !file->tokens || !f ||
+  // (once, at the declaration that has the word: its walk as written, not an instance's)
+  if (!explicitByDefaultOn() || probing || activeSubst || retypingElements || !file || file->isImported || !file->tokens || !f ||
       f->conversionMark == UINT32_MAX || f->conversionMark >= file->tokens->size() || !(f->flags & DF_Explicit) || (f->flags & DF_Implicit) ||
       !(f->flags & (DF_Constructor | DF_Conversion)) || !(*file->tokens)[f->conversionMark].is(Kw::explicit_))
     return;
@@ -6893,7 +6891,7 @@ auto GlobalScope::Impl::Walker::probedAssignment(const Ty* l, const Ty* lhsOpera
   SpecialMembers special = impl.specialMembersOf(def);
   if (special.copyAssign || special.copyAssignNonConst || special.moveAssign)
     return false;
-  // The value converted to the class implicitly (under --explicit-by-default an unmarked constructor converts nothing:
+  // The value converted to the class implicitly (explicit by default, an unmarked constructor converts nothing:
   // Vector's assign took the assignment path for a Counted of an unmarked Counted(int)).
   if (!rhs->isBraceList() && impl.conversionRank(rhs, types.lref(types.qualified(own, true, false)), 0) >= NotViable)
     return false;
@@ -8827,7 +8825,7 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
         if (!deduced && v->init && v->init->kind == NodeKind::BraceInitExpr)
           deduced = impl.deduceAggregateArgs(declared, argTypes);
         // `Box b = 7;` where only `Box b(7)` deduces: an explicit constructor's guide is none for a copy
-        // ([over.match.class.deduct] 3), and under --explicit-by-default an unmarked one's (rule 5).
+        // ([over.match.class.deduct] 3), and an unmarked one's too (rule 5).
         if (!deduced && !direct && !inGenericTemplate() && impl.deduceClassArgs(declared, argTypes, false))
         {
           std::string from;

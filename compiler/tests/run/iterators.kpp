@@ -25,7 +25,7 @@ struct Evens
     bool operator!=(const Iterator& other) const { return this->current != other.current; }
   };
 
-  explicit Evens(Vector<int>& values) : values(values) {}
+  Evens(Vector<int>& values) : values(values) {}
   Iterator begin() { return Iterator(this->values.begin(), this->values.end()); }
   Iterator end() { return Iterator(this->values.end(), this->values.end()); }
 };

@@ -12,7 +12,7 @@ static bool check(int x, int y)
   class Node : public Heap<Node>::ItemBase
   {
   public:
-    explicit Node(Pairish value) : value(value) {}
+    Node(Pairish value) : value(value) {}
     bool operator<(const Node& other) const { return this->value < other.value; }
     Pairish value;
   };

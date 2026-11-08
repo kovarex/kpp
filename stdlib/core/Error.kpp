@@ -28,7 +28,7 @@ class LengthError : public LogicError
 {
 public:
   LengthError() {}
-  explicit LengthError(const String& message) : LogicError(message) {}
+  LengthError(const String& message) : LogicError(message) {}
 };
 
 // An arithmetic result too large for its type (std::overflow_error): Bitset::to_ullong of bits
@@ -37,7 +37,7 @@ class OverflowError : public RuntimeError
 {
 public:
   OverflowError() {}
-  explicit OverflowError(const String& message) : RuntimeError(message) {}
+  OverflowError(const String& message) : RuntimeError(message) {}
 };
 
 // --- Error codes (std::error_code, std::errc, std::system_error); specified in docs/stdlib/filesystem.md ---
@@ -121,7 +121,7 @@ public:
 
   i32 value() const { return this->value_; }
   ErrorCategory category() const { return this->category_; }
-  explicit operator bool() const { return this->value_ != 0; }
+  operator bool() const { return this->value_ != 0; }
 
   void clear()
   {
@@ -168,7 +168,7 @@ public:
   ErrorCode code_;
 
   SystemError() {}
-  explicit SystemError(ErrorCode code) : RuntimeError(code.message()), code_(code) {}
+  SystemError(ErrorCode code) : RuntimeError(code.message()), code_(code) {}
   SystemError(ErrorCode code, const String& what) : RuntimeError(what + ": " + code.message()), code_(code) {}
   const ErrorCode& code() const { return this->code_; }
 };
@@ -188,7 +188,7 @@ class ExceptionHolder : public ExceptionHolderBase
 {
 public:
   E exception;
-  explicit ExceptionHolder(const E& exception) : exception(exception) {}
+  ExceptionHolder(const E& exception) : exception(exception) {}
   void rethrow() const override { throw this->exception; }
 };
 
@@ -197,7 +197,7 @@ class ExceptionPtr
 public:
   ExceptionPtr() {}
   implicit ExceptionPtr(nullptr_t) {}
-  explicit operator bool() const { return (bool)this->holder; }
+  operator bool() const { return (bool)this->holder; }
   bool operator==(const ExceptionPtr& other) const = default;
   bool operator!=(const ExceptionPtr& other) const { return this->holder != other.holder; }
 

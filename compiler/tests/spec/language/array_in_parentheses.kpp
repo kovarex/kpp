@@ -5,7 +5,7 @@ struct Counted
 {
   int v;
   Counted() : v(-1) {}
-  Counted(int x) : v(x) {}
+  implicit Counted(int x) : v(x) {}
 };
 struct Holder
 {

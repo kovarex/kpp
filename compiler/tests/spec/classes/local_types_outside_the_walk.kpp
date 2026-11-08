@@ -19,10 +19,10 @@ int migrate(int count)
     class Connection
     {
     public:
-      explicit Connection(int side) : side(side) {}
+      Connection(int side) : side(side) {}
       int side;
     };
-    explicit Migration(int count)
+    Migration(int count)
     {
       for (int i = 0; i < count; ++i)
         this->connections.emplace_back(i);

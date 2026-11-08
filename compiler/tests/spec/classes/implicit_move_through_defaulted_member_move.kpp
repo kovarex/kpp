@@ -10,9 +10,9 @@ struct Tree
 struct Animation
 {
   Animation() {}
-  explicit Animation(const Animation&) = delete;
-  explicit Animation(Animation&&) = default;
-  explicit Animation(const Tree& input) : speed(float(input.x)) {}
+  Animation(const Animation&) = delete;
+  Animation(Animation&&) = default;
+  Animation(const Tree& input) : speed(float(input.x)) {}
   Vector<int> frames;
   float speed = 1;
 };

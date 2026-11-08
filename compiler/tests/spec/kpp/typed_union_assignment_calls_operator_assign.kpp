@@ -4,7 +4,7 @@ class Noisy
 {
 public:
   Noisy() {}
-  Noisy(int value) : value(value) { println("construct ", value); }
+  implicit Noisy(int value) : value(value) { println("construct ", value); }
   Noisy(const Noisy& other) : value(other.value) { println("copy construct ", value); }
   Noisy(Noisy&& other) : value(other.value) { println("move construct ", value); }
   Noisy& operator=(const Noisy& other) { value = other.value; println("copy assign ", value); return *this; }

@@ -16,12 +16,12 @@ struct Builder
   Derived derived;
   Base base;
   int picked = 0;
-  operator Derived&()
+  implicit operator Derived&()
   {
     this->picked = 1;
     return this->derived;
   }
-  operator Base&()
+  implicit operator Base&()
   {
     this->picked = 2;
     return this->base;

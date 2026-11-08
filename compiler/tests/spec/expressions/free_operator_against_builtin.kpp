@@ -4,15 +4,15 @@ class Num
 {
 public:
   double v;
-  Num(double x) : v(x) {}
-  operator double() const { return v; }
+  implicit Num(double x) : v(x) {}
+  implicit operator double() const { return v; }
 };
 class Other
 {
 public:
   int tag;
-  Other(const Num& n) : tag(7) {}
-  Other(double d) : tag(8) {}
+  implicit Other(const Num& n) : tag(7) {}
+  implicit Other(double d) : tag(8) {}
 };
 int operator+(const Other& a, const Other& b) { return a.tag + b.tag; }
 int operator-(const Num& n) { return 42; }

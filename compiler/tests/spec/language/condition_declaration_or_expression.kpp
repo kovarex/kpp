@@ -4,7 +4,7 @@ struct Box
 {
   int v = 0;
   implicit Box(int v) : v(v) {}
-  explicit operator bool() const { return this->v != 0; }
+  operator bool() const { return this->v != 0; }
 };
 
 bool positive(int* p) { return *p > 0; }

@@ -13,7 +13,7 @@ template<typename Codecvt>
 struct WStringConvert
 {
   WStringConvert() {}
-  explicit WStringConvert(Codecvt* cvt) { delete cvt; }
+  WStringConvert(Codecvt* cvt) { delete cvt; }
 
   String to_bytes(const WString& wide)
   {

@@ -28,6 +28,6 @@ int main()
   Filter f{5};
   Destination d{6};
   Vector<Mapping> mappings({ {}, {}, {f, d} });
-  println(int(mappings.size()), " ", mappings[0].source.id, " ", mappings[2].destination.id, " ", pick({}), " ", clampOf(), " ", clampOf({{1.0, 2.0}, {3}}));
+  println(int(mappings.size()), " ", mappings[0].source.id, " ", mappings[2].destination.id, " ", pick(int{}), " ", clampOf(), " ", clampOf(Pair<Vector2D, Vector2D>{{1.0, 2.0}, {3}}));
   return 0;
 }

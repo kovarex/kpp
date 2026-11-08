@@ -9,7 +9,7 @@ struct ID
 {
   int value = 0;
   ID() = default;
-  explicit ID(int value) : value(value) {}
+  ID(int value) : value(value) {}
 };
 int main()
 {

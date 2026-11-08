@@ -19,6 +19,6 @@ uint64_t clear(int color, Caps targets = {Caps::Color, Caps::Depth}) { return ui
 int sum(Point p) { return p.x + p.y; }
 int main()
 {
-  println(take({Caps::Color, Caps::Light}), " ", clear(1), " ", clear(2, {Caps::Light}), " ", sum({3, 4}));
+  println(take(Caps{Caps::Color, Caps::Light}), " ", clear(1), " ", clear(2, Caps{Caps::Light}), " ", sum(Point{3, 4}));
   return 0;
 }

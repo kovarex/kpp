@@ -19,10 +19,10 @@ int Migration::load(int count)
     class PowerSwitchConnection
     {
     public:
-      explicit PowerSwitchConnection(int side) : side(side) {}
+      PowerSwitchConnection(int side) : side(side) {}
       int side;
     };
-    explicit ConnectorMigration(int count)
+    ConnectorMigration(int count)
     {
       for (int i = 0; i < count; ++i)
         this->connections.emplace_back(i);

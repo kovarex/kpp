@@ -321,7 +321,7 @@ void owningElements()
   printf("[%s][%s]\n", all[0].c_str(), all[1].c_str());
   stablePartition(all.begin(), all.end(), [](const String&) { return false; });
   printf("[%s][%s]\n", all[0].c_str(), all[1].c_str());
-  Vector<UniquePtr<int>> b = boxes({4, 1, 3, 2, 6, 5});
+  Vector<UniquePtr<int>> b = boxes(Vector<int>{4, 1, 3, 2, 6, 5});
   stablePartition(b.begin(), b.end(), [](const UniquePtr<int>& x) { return *x % 2 == 0; });
   showBoxes("stablePartition boxes", b);
   auto cut = partition(b.begin(), b.end(), [](const UniquePtr<int>& x) { return *x > 3; });
@@ -333,14 +333,14 @@ void owningElements()
   pushHeap(b.begin(), b.end(), lessBox);
   sortHeap(b.begin(), b.end(), lessBox);
   showBoxes("sortHeap boxes", b);
-  Vector<UniquePtr<int>> c = boxes({6, 2, 5, 1, 4, 3});
+  Vector<UniquePtr<int>> c = boxes(Vector<int>{6, 2, 5, 1, 4, 3});
   partialSort(c.begin(), c.begin() + 3, c.end(), lessBox);
   printf("partialSort boxes %d %d %d\n", *c[0], *c[1], *c[2]);
-  Vector<UniquePtr<int>> m = boxes({1, 3, 5, 2, 4, 6});
+  Vector<UniquePtr<int>> m = boxes(Vector<int>{1, 3, 5, 2, 4, 6});
   inplaceMerge(m.begin(), m.begin() + 3, m.end(), lessBox);
   showBoxes("inplaceMerge boxes", m);
-  Vector<UniquePtr<int>> x = boxes({1, 2});
-  Vector<UniquePtr<int>> y = boxes({3, 4});
+  Vector<UniquePtr<int>> x = boxes(Vector<int>{1, 2});
+  Vector<UniquePtr<int>> y = boxes(Vector<int>{3, 4});
   swapRanges(x.begin(), x.end(), y.begin());
   showBoxes("swapRanges boxes", x);
 }

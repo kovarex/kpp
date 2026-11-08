@@ -24,7 +24,7 @@ constexpr bool operator<(const Money& a, const Money& b) { return a.cents < b.ce
 struct Maybe
 {
   int value = -1;
-  constexpr explicit operator bool() const { return value >= 0; }
+  constexpr operator bool() const { return value >= 0; }
 };
 class Shape
 {

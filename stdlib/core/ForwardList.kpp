@@ -24,7 +24,7 @@ public:
   using iterator_category = ForwardIteratorTag;
 
   ForwardIterator() {}
-  explicit ForwardIterator(ForwardLinks* node) : node(node) {}
+  ForwardIterator(ForwardLinks* node) : node(node) {}
 
   T& operator*() const { return ((ForwardNode<T>*)this->node)->value; }
   T* operator->() const { return &((ForwardNode<T>*)this->node)->value; }
@@ -70,7 +70,7 @@ public:
   implicit ForwardList(InitializerList<T> items) { this->insert_after(this->before_begin(), items.begin(), items.end()); }
 
   // count value-initialized elements, or count copies of value.
-  explicit ForwardList(ContainerSize count) { this->resize(count); }
+  ForwardList(ContainerSize count) { this->resize(count); }
   ForwardList(ContainerSize count, const T& value) { this->insert_after(this->before_begin(), count, value); }
 
   // The elements of [first, last), input iterators of any kind, in order.

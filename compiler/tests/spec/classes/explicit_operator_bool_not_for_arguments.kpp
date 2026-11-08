@@ -4,7 +4,7 @@ enum class Kind { A };
 struct Location
 {
   int slot = 9;
-  constexpr explicit operator bool() const { return slot != 0; }
+  constexpr operator bool() const { return slot != 0; }
 };
 struct Action
 {

@@ -11,12 +11,12 @@ struct Derived : Base
 struct IntSource
 {
   int x = 5;
-  operator int*() { return &x; }
+  implicit operator int*() { return &x; }
 };
 struct DerivedSource
 {
   Derived d;
-  operator Derived*() { return &d; }
+  implicit operator Derived*() { return &d; }
 };
 int f(bool) { return 1; }
 int f(void*) { return 2; }

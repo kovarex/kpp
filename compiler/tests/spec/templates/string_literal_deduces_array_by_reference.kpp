@@ -12,7 +12,7 @@ struct Piece
 {
   int n = 0;
   template<typename T>
-  Piece(const T& value) : n(int(sizeof(T))) {}
+  implicit Piece(const T& value) : n(int(sizeof(T))) {}
 };
 int main()
 {

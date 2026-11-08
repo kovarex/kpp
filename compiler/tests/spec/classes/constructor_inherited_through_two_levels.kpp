@@ -8,7 +8,7 @@ class Handle
 {
 public:
   Handle() = default;
-  Handle(UniquePtr<PipelineStateObject> state) : state(move(state)) {}
+  implicit Handle(UniquePtr<PipelineStateObject> state) : state(move(state)) {}
   int id() const { return this->state ? this->state->id : -1; }
   UniquePtr<PipelineStateObject> state;
 };

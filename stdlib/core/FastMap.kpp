@@ -53,7 +53,7 @@ public:
   template<typename F> requires (isSame<F, RemoveConst<E>> && !isSame<F, E>)
   implicit BTreeIterator(const BTreeIterator<F>& other) : node(other.node), index(other.index) {}
   template<typename F> requires (isSame<E, RemoveConst<F>> && !isSame<F, E>)
-  explicit BTreeIterator(const BTreeIterator<F>& other) : node(other.node), index(other.index) {}
+  BTreeIterator(const BTreeIterator<F>& other) : node(other.node), index(other.index) {}
 
   E& operator*() const { return this->node->entries[this->index]; }
   E* operator->() const { return &this->node->entries[this->index]; }

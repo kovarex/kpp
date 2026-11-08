@@ -7,7 +7,7 @@ extern "C" import "intrin.h";
 struct Wide
 {
   Wide() : value(_mm_setzero_ps()) {}
-  Wide(__m128 v) : value(_mm_add_ps(v, _mm_set1_ps(10.0f))) {}
+  implicit Wide(__m128 v) : value(_mm_add_ps(v, _mm_set1_ps(10.0f))) {}
   float operator*(Wide right) { return _mm_cvtss_f32(_mm_mul_ps(value, right.value)); }
   __m128 value;
 };
@@ -20,28 +20,28 @@ struct Lanes
   Lanes(Lanes&& other) = default;
   Lanes& operator=(const Lanes&) = default;
   Lanes& operator=(Lanes&&) = default;
-  Lanes(__m128 v) : value(_mm_mul_ps(v, _mm_set1_ps(100.0f))) {}
+  implicit Lanes(__m128 v) : value(_mm_mul_ps(v, _mm_set1_ps(100.0f))) {}
   __m128 value;
 };
 
 // int32x4's: the lanes plus 100.
 struct Ints
 {
-  Ints(__m128i v) : value(_mm_add_epi32(v, _mm_set1_epi32(100))) {}
+  implicit Ints(__m128i v) : value(_mm_add_epi32(v, _mm_set1_epi32(100))) {}
   __m128i value;
 };
 
 // Built from a vector only explicitly, the lanes minus 1.
 struct Strict
 {
-  explicit Strict(__m128 v) : value(_mm_sub_ps(v, _mm_set1_ps(1.0f))) {}
+  Strict(__m128 v) : value(_mm_sub_ps(v, _mm_set1_ps(1.0f))) {}
   __m128 value;
 };
 
 struct HoldsStrict
 {
   Strict s;
-  HoldsStrict(__m128 a) : s(_mm_shuffle_ps(a, a, _MM_SHUFFLE(0, 1, 2, 3))) {}
+  implicit HoldsStrict(__m128 a) : s(_mm_shuffle_ps(a, a, _MM_SHUFFLE(0, 1, 2, 3))) {}
 };
 
 __m128 a = _mm_setr_ps(1.0f, 2.0f, 3.0f, 4.0f);

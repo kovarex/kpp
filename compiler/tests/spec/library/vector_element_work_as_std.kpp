@@ -11,7 +11,7 @@ int destroyed = 0;
 struct Counted
 {
   int value;
-  Counted(int v) : value(v) { ++constructed; }
+  implicit Counted(int v) : value(v) { ++constructed; }
   Counted(const Counted& other) : value(other.value) { ++copied; }
   Counted(Counted&& other) noexcept : value(other.value) { other.value = -1; ++moved; }
   Counted& operator=(const Counted& other) { value = other.value; ++copyAssigned; return *this; }
@@ -22,7 +22,7 @@ struct Counted
 struct Fixed
 {
   const int value;
-  Fixed(int v) : value(v) {}
+  implicit Fixed(int v) : value(v) {}
 };
 
 void reset()

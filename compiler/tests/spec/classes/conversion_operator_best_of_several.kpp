@@ -3,21 +3,21 @@
 enum class Mode : int { A = 2 };
 struct R
 {
-  operator Mode() const { return Mode::A; }
-  operator bool() const { return true; }
+  implicit operator Mode() const { return Mode::A; }
+  implicit operator bool() const { return true; }
 };
 struct M
 {
-  operator long long() const { return 7; }
-  operator short() const { return 3; }
+  implicit operator long long() const { return 7; }
+  implicit operator short() const { return 3; }
 };
 struct Base
 {
-  operator int() const { return 1; }
+  implicit operator int() const { return 1; }
 };
 struct Derived : Base
 {
-  operator int() const { return 4; }
+  implicit operator int() const { return 4; }
 };
 int main()
 {

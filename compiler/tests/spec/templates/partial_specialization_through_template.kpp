@@ -9,14 +9,14 @@ struct Owner
 {
   T* pointer = nullptr;
   D deleter;
-  explicit Owner(T* object) : pointer(object) {}
+  Owner(T* object) : pointer(object) {}
   int which() const { return 1; }
 };
 template<typename T>
 struct Owner<T, Del<T>>
 {
   T* pointer = nullptr;
-  explicit Owner(T* object) : pointer(object) {}
+  Owner(T* object) : pointer(object) {}
   Owner(Owner<T>&& other) : pointer(other.pointer) { other.pointer = nullptr; }
   int which() const { return 2; }
 };

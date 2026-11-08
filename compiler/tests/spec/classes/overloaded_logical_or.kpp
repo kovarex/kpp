@@ -4,7 +4,7 @@ struct Flag
 {
   bool value;
   static Flag fromBool(bool value) { return Flag{value}; }
-  explicit operator bool() const { return this->value; }
+  operator bool() const { return this->value; }
   Flag operator||(const Flag&& other) const { return Flag::fromBool(this->value || other.value); }
   Flag operator&&(const Flag& other) const { return Flag::fromBool(this->value && other.value); }
 };

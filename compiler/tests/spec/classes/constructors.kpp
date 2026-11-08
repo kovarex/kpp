@@ -5,7 +5,7 @@ struct Point
   int x, y;
   Point() : Point(0, 0) {}
   Point(int x, int y) : x(x), y(y) {}
-  explicit Point(int both) : Point(both, both) {}
+  Point(int both) : Point(both, both) {}
   Point(const Point&) = default;
   Point& operator=(const Point&) = default;
 };

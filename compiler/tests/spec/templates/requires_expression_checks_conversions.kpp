@@ -7,7 +7,7 @@ public:
 };
 struct WithBool
 {
-  explicit operator bool() const { return true; }
+  operator bool() const { return true; }
 };
 
 template<class T>

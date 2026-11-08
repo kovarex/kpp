@@ -12,7 +12,7 @@ struct Vec
   int operator[](int i) const { return i == 0 ? this->x : this->y; }
   int operator()(int scale) const { return (this->x + this->y) * scale; }
   Vec& operator++() { ++this->x; return *this; }
-  explicit operator bool() const { return this->x != 0 || this->y != 0; }
+  operator bool() const { return this->x != 0 || this->y != 0; }
 };
 Vec operator*(const Vec& v, int k) { return Vec(v.x * k, v.y * k); }
 int main()

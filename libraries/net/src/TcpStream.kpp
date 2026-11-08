@@ -2,7 +2,7 @@
 struct TcpStream
 {
   TcpStream() {}
-  explicit TcpStream(i64 handle) : handle(handle) {}
+  TcpStream(i64 handle) : handle(handle) {}
   TcpStream(const TcpStream&) = delete;
   TcpStream& operator=(const TcpStream&) = delete;
   TcpStream(TcpStream&& other) : handle(other.handle) { other.handle = -1; }

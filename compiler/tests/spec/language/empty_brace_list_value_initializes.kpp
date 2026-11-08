@@ -2,7 +2,7 @@
 // factorio: CommandProcessor's `std::vector<SavedSpecialItemReference> specialItemsInMessage = {}` (a default argument) and LightningGenerator's dummy constructor, `priorityCache({}, {})` for LightningPriorityCache(const std::vector<LightningPriorityRule>&, const std::vector<LightningRuleBase>&): both element types delete their copy constructors
 struct Reference
 {
-  explicit Reference(int id) : id(id) {}
+  Reference(int id) : id(id) {}
   Reference(const Reference&) = delete;
   Reference(Reference&&) = default;
   int id;
@@ -18,7 +18,7 @@ struct Cache
 };
 int main()
 {
-  Cache dummy({}, {});
+  Cache dummy(Vector<Reference>{}, Vector<int>{});
   Vector<Reference> some;
   some.push_back(Reference(1));
   println(countOf("ab"), " ", countOf("abc", move(some)), " ", dummy.count);

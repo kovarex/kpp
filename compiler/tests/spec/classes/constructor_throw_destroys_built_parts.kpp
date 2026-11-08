@@ -14,7 +14,7 @@ struct Member
 struct Derived : Base
 {
   Member member;
-  explicit Derived(bool fail)
+  Derived(bool fail)
   {
     if (fail)
       throw RuntimeError("no");
@@ -24,7 +24,7 @@ struct Later
 {
   Member first;
   Derived second;
-  explicit Later() : second(true) {}
+  Later() : second(true) {}
 };
 int main()
 {

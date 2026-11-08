@@ -14,7 +14,7 @@ public:
   using const_reference = const T&;
 
   PriorityQueue() {}
-  explicit PriorityQueue(const Compare& compare) : compare(compare) {}
+  PriorityQueue(const Compare& compare) : compare(compare) {}
   PriorityQueue(const Compare& compare, const Container& elements) : heap(elements), compare(compare) { this->makeHeap(); }
 
   // The elements of [first, last).

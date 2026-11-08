@@ -16,7 +16,7 @@ struct ViewedRange
   Range* range = nullptr;
 
   ViewedRange() {}
-  explicit ViewedRange(const Range& range) : range((Range*)&range) {}
+  ViewedRange(const Range& range) : range((Range*)&range) {}
   Range& get() const { return *this->range; }
 };
 
@@ -26,7 +26,7 @@ struct ViewedRange<Range, true>
   Range range;
 
   ViewedRange() {}
-  explicit ViewedRange(const Range& range) : range(range) {}
+  ViewedRange(const Range& range) : range(range) {}
   const Range& get() const { return this->range; }
 };
 
@@ -63,7 +63,7 @@ public:
   using iterator_category = RandomAccessIteratorTag;
 
   IotaIterator() : value() {}
-  explicit IotaIterator(T value) : value(value) {}
+  IotaIterator(T value) : value(value) {}
 
   T operator*() const { return this->value; } // a value, as std::views::iota's: a copy of the iterator may give it
   T operator[](i64 n) const { return (T)(this->value + n); }
@@ -242,7 +242,7 @@ public:
   using iterator_category = BidirectionalIteratorTag;
 
   ReverseViewIterator() {}
-  explicit ReverseViewIterator(It position) : position(position) {}
+  ReverseViewIterator(It position) : position(position) {}
 
   decltype(auto) operator*() const
   {
@@ -275,7 +275,7 @@ template<typename Range>
 class ReverseView : public ViewBase
 {
 public:
-  explicit ReverseView(const Range& range) : base(range) {}
+  ReverseView(const Range& range) : base(range) {}
 
   auto begin() const { return ReverseViewIterator<decltype(this->base.get().end())>(this->base.get().end()); }
   auto end() const { return ReverseViewIterator<decltype(this->base.get().end())>(this->base.get().begin()); }

@@ -11,8 +11,8 @@ struct Tracked
 struct Wrapper
 {
   Tracked held;
-  Wrapper(const Tracked& t) : held(t) {}
-  Wrapper(Tracked&& t) : held(static_cast<Tracked&&>(t)) {}
+  implicit Wrapper(const Tracked& t) : held(t) {}
+  implicit Wrapper(Tracked&& t) : held(static_cast<Tracked&&>(t)) {}
 };
 Tracked same()
 {

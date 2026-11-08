@@ -1,9 +1,9 @@
 // spec: class template argument deduction for a copy-initialization takes no explicit constructor's guide ([over.match.class.deduct] 3): `Box b = 7;` is an error naming the direct-initialization, which deduces Box<int> (it took the explicit constructor, and the copy-initialization through it went unchecked)
-// error: class_template_argument_deduction_by_copy_takes_no_explicit_constructor_is_error.kpp:12: error: the arguments of Box are deduced from (int32) only by a constructor that is explicit ([over.match.class.deduct] 3), which a copy-initialisation does not take: a direct-initialisation does, Box b(...)
+// error: class_template_argument_deduction_by_copy_takes_no_explicit_constructor_is_error.kpp:12: error: the arguments of Box are deduced from (int32) only by a constructor that converts only when marked implicit (design.md "Explicit by default"), which a copy-initialisation does not take: a direct-initialisation does, Box b(...)
 template <typename T> struct Box
 {
   T value;
-  explicit Box(T v) : value(v) {}
+  Box(T v) : value(v) {}
 };
 int main()
 {

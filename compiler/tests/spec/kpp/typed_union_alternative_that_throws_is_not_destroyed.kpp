@@ -6,7 +6,7 @@ int alive = 0;
 struct Counted
 {
   int v;
-  Counted(int x) : v(x)
+  implicit Counted(int x) : v(x)
   {
     if (x < 0)
       throw 7;

@@ -35,7 +35,7 @@ public:
   }
 
   // count value-initialized elements, or count copies of value.
-  explicit Deque(ContainerSize count) : Deque() { this->resize(count); }
+  Deque(ContainerSize count) : Deque() { this->resize(count); }
   Deque(ContainerSize count, const T& value) : Deque() { this->resize(count, value); }
 
   // The elements of [first, last), input iterators of any kind, in order.
@@ -712,7 +712,7 @@ public:
   template<typename F> requires (isSame<F, RemoveConst<T>> && !isSame<F, T>)
   implicit DequeIterator(const DequeIterator<F>& other) : blocks(other.blocks), position(other.position) {}
   template<typename F> requires (isSame<T, RemoveConst<F>> && !isSame<F, T>)
-  explicit DequeIterator(const DequeIterator<F>& other) : blocks(other.blocks), position(other.position) {}
+  DequeIterator(const DequeIterator<F>& other) : blocks(other.blocks), position(other.position) {}
 
   T& operator*() const { return *Deque<RemoveConst<T>>::slotIn(this->blocks, this->position); }
   T* operator->() const { return Deque<RemoveConst<T>>::slotIn(this->blocks, this->position); }

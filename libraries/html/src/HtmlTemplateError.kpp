@@ -3,5 +3,5 @@
 class HtmlTemplateError : public RuntimeError
 {
 public:
-  explicit HtmlTemplateError(const String& message) : RuntimeError(message) {}
+  HtmlTemplateError(const String& message) : RuntimeError(message) {}
 };

@@ -3,7 +3,7 @@
 struct Bits
 {
   constexpr Bits() = default;
-  explicit constexpr Bits(uint64_t v) : value(uint32_t(v)) {}
+  constexpr Bits(uint64_t v) : value(uint32_t(v)) {}
   uint32_t value = 0;
 };
 struct Flags

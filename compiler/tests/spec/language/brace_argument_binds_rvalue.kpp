@@ -10,7 +10,7 @@ struct Box
 int main()
 {
   Box box;
-  box.take({1, makeUnique<int>(5)});
+  box.take(Pair<int, UniquePtr<int>>{1, makeUnique<int>(5)});
   println(box.copies, " ", box.moves);
   return 0;
 }

@@ -5,7 +5,7 @@ struct Box
 {
   HeavyMode mode;
   int count = 0;
-  explicit Box(HeavyMode mode) : mode(mode) {}
+  Box(HeavyMode mode) : mode(mode) {}
   Box(HeavyMode mode, int count) : mode(mode), count(count) {}
 };
 namespace MainLoop

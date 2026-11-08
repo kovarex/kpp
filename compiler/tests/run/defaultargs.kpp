@@ -6,7 +6,7 @@ struct Style
 {
   const Style* parent;
   int width;
-  explicit Style(const Style* parent = nullptr, int width = 7) : parent(parent), width(width) {}
+  Style(const Style* parent = nullptr, int width = 7) : parent(parent), width(width) {}
 };
 struct Holder
 {

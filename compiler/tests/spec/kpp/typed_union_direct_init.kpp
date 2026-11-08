@@ -11,7 +11,7 @@ union enum Shape : uint8_t
 struct Holder
 {
   Shape shape;
-  explicit Holder(Square s) : shape(s) {}
+  Holder(Square s) : shape(s) {}
 };
 int main()
 {

@@ -35,8 +35,8 @@ constexpr int read()
 constexpr int looped()
 {
   Vector<Pair<int, int>> v;
-  v.push_back({1, 2});
-  v.push_back({3, 4});
+  v.push_back(Pair<i32, i32>{1, 2});
+  v.push_back(Pair<i32, i32>{3, 4});
   int t = 0;
   for (const auto& [a, b] : v)
     t += a * b;

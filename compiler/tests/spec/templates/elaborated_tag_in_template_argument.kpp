@@ -4,7 +4,7 @@ template<typename ValueType, class Tag>
 class Strong
 {
 public:
-  constexpr explicit Strong(const ValueType& value) : value(value) {}
+  constexpr Strong(const ValueType& value) : value(value) {}
   ValueType value;
 };
 

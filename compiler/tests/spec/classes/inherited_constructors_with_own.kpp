@@ -9,7 +9,7 @@ struct Base
 struct Derived : Base
 {
   using Base::Base;
-  explicit Derived(int both) : Base(both, both) {}
+  Derived(int both) : Base(both, both) {}
   int extra = 7;
 };
 int main()

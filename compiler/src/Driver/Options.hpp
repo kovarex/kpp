@@ -26,7 +26,6 @@
     bool zeroNullWarnings = false; // --zero-null-warnings
     bool overrideWarnings = false; // --override-warnings
     bool thisWarnings = false; // --this-warnings
-    bool explicitByDefault = false; // --explicit-by-default
     bool thisReferenceWarnings = false; // --this-reference-warnings
     bool plainEnumWarnings = false; // --plain-enum-warnings
     bool noImplicitFallthrough = false; // --no-implicit-fallthrough

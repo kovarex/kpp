@@ -25,7 +25,7 @@ public:
 
   UniquePtr() {}
   implicit UniquePtr(nullptr_t) {}
-  explicit UniquePtr(T* object) : held(object) {}
+  UniquePtr(T* object) : held(object) {}
   UniquePtr(const UniquePtr<T, D>& other) = delete;
   UniquePtr(UniquePtr<T, D>&& other) noexcept : held(other.held) { other.held = nullptr; }
   // From a UniquePtr to a type whose pointer converts to T* (a derived class, T const), with a
@@ -69,7 +69,7 @@ public:
   D get_deleter() const { return D(); }
   T& operator*() const { return *this->held; }
   T* operator->() const { return this->held; }
-  explicit operator bool() const { return this->held != nullptr; }
+  operator bool() const { return this->held != nullptr; }
   bool operator!() const { return this->held == nullptr; }
   bool operator==(const UniquePtr<T, D>& other) const { return this->held == other.held; }
   bool operator!=(const UniquePtr<T, D>& other) const { return this->held != other.held; }

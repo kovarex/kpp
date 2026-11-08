@@ -9,7 +9,7 @@ failed: Kinds.OperatorEquals
 test_called_from_kinds.kpp:13:45: check failed: v != 3 (3 != 3): operator+
 test_called_from_kinds.kpp:27:63: called from here
 failed: Kinds.OperatorPlus
-test_called_from_kinds.kpp:14:38: check failed: v != 4 (4 != 4): conversion
+test_called_from_kinds.kpp:14:29: check failed: v != 4 (4 != 4): conversion
 test_called_from_kinds.kpp:28:33: called from here
 failed: Kinds.Conversion
 test_called_from_kinds.kpp:15:29: check failed: a != 5 (5 != 5): call operator

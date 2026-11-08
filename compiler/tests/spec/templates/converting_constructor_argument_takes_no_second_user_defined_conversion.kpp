@@ -7,7 +7,7 @@ template<typename T>
 struct Wrap
 {
   template<typename U>
-  Wrap(U&& v) requires(!IsWrap<RemoveCvRef<U>>::value && isConstructible<T, U>) : held(forward<U>(v)) {}
+  implicit Wrap(U&& v) requires(!IsWrap<RemoveCvRef<U>>::value && isConstructible<T, U>) : held(forward<U>(v)) {}
 
   T held;
 };
@@ -18,21 +18,21 @@ struct Chunk
 };
 struct MaybePos
 {
-  MaybePos(Wrap<Pos> held);
+  implicit MaybePos(Wrap<Pos> held);
 
   int x;
 };
 struct Tile
 {
-  Tile(const MaybePos& position) : v(position.x) {}
-  Tile(int v) : v(v) {}
+  implicit Tile(const MaybePos& position) : v(position.x) {}
+  implicit Tile(int v) : v(v) {}
 
   int v;
 };
 struct Pos
 {
-  Pos(const Chunk& chunk) : x(chunk.c) {}
-  Pos(const Tile& tile) : x(tile.v * 10) {}
+  implicit Pos(const Chunk& chunk) : x(chunk.c) {}
+  implicit Pos(const Tile& tile) : x(tile.v * 10) {}
 
   int x;
 };

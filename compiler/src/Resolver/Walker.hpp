@@ -639,10 +639,10 @@
     // ([over.match.list]).
     void checkExplicitListCopy(BraceInitExpr* b, const Ty* to);
     // `switch (flag)` on a class: it converts implicitly to an integer or an enum ([stmt.switch] 2, the conversion
-    // codegen's chooseConversion takes; under --explicit-by-default a marked one, design.md "Explicit by default",
+    // codegen's chooseConversion takes; explicit by default, a marked one, design.md "Explicit by default",
     // rule 4). A typed union switches on its tag.
     void checkSwitchOnClass(SwitchStmt* w);
-    // Under --explicit-by-default, a list of two or more values copy-initializing a class no constructor takes, its
+    // Explicit by default, a list of two or more values copy-initializing a class no constructor takes, its
     // InitializerList constructor's for want of an element's conversion: each such conversion's error
     // (checkExplicitCopy), as C++'s `std::vector<Strict> v = {5, 6};` for an explicit Strict(int).
     void checkUnmarkedListElements(BraceInitExpr* b, const Ty* to);
@@ -664,7 +664,7 @@
     void checkListNarrowing(Span<Expr*> elements, const Ty* to, int depth = 0);
     // Each argument of a call of f (fnTy: its type) for a class parameter, checked (checkExplicitCopy).
     void checkExplicitArguments(FunctionDecl* f, const Ty* fnTy, const Span<Expr*>& args);
-    // --explicit-by-default (design.md "Explicit by default"), its errors. A constructor's or conversion
+    // Explicit by default (design.md "Explicit by default"), its errors. A constructor's or conversion
     // operator's plain `explicit` ("remove `explicit`") and `explicit(cond)` ("write `implicit(...)`, not
     // `explicit(cond)`", the condition turned round), at the word.
     void checkConversionMark(FunctionDecl* f);
@@ -691,7 +691,7 @@
     // classes before a name declared in d (`CircuitNetworkHelper::`), none where they cannot be written.
     std::string kppSpelling(const Ty* t, int depth = 0);
     std::optional<std::string> scopePath(Decl* d);
-    // An explicit check's error: as reportHere, and under --explicit-by-default in template code too, a
+    // An explicit check's error: as reportHere while converting, otherwise in template code too, a
     // template's own walk reporting it at once (the check's types are not dependent: every instance would say
     // the same), an instance's walk as that instance's.
     void reportExplicitError(uint32_t token, const std::string& message);

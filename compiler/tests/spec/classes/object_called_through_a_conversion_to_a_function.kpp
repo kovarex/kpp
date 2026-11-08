@@ -5,13 +5,13 @@ typedef double (*Dn)(double);
 int twice(int x) { return x * 2; }
 int thrice(int x) { return x * 3; }
 double half(double x) { return x / 2; }
-class S { public: int k; operator Fn() const { return k ? twice : thrice; } };
+class S { public: int k; implicit operator Fn() const { return k ? twice : thrice; } };
 class Derived : public S { public: int extra = 0; };
-class R { public: using F = int(int); operator F*() { return twice; } };
-class Q { public: using F = int(int); operator F&() const { return thrice; } };
-template<class T> class Conv { public: using P = T (*)(T); operator P() const { return [](T v) { return v + 1; }; } };
-class Two { public: operator Fn() { return twice; } int operator()(long) { return 100; } };
-class Both { public: operator Fn() { return twice; } operator Dn() { return half; } };
+class R { public: using F = int(int); implicit operator F*() { return twice; } };
+class Q { public: using F = int(int); implicit operator F&() const { return thrice; } };
+template<class T> class Conv { public: using P = T (*)(T); implicit operator P() const { return [](T v) { return v + 1; }; } };
+class Two { public: implicit operator Fn() { return twice; } int operator()(long) { return 100; } };
+class Both { public: implicit operator Fn() { return twice; } implicit operator Dn() { return half; } };
 int main()
 {
   S fn{1};

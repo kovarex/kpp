@@ -9,7 +9,7 @@ public:
   static constexpr Enum False = Enum::False;
   constexpr NamedBool() = default;
   implicit constexpr NamedBool(Enum value) : value(value == Enum::True) {}
-  constexpr explicit operator bool() const { return this->value; }
+  constexpr operator bool() const { return this->value; }
 private:
   bool value = false;
 };
@@ -17,7 +17,7 @@ using TooFar = NamedBool<class TooFarTag>;
 struct Strict
 {
   int v;
-  explicit Strict(int v) : v(v) {}
+  Strict(int v) : v(v) {}
 };
 template<typename T>
 struct Opt
@@ -25,7 +25,7 @@ struct Opt
   bool set = false;
   Opt() {}
   template<typename U = T>
-  explicit(!isConvertible<U, T>) Opt(U&& v) requires(!isSame<RemoveCvRef<U>, T> && isConstructible<T, U>) { this->set = true; }
+  implicit(isConvertible<U, T>) Opt(U&& v) requires(!isSame<RemoveCvRef<U>, T> && isConstructible<T, U>) { this->set = true; }
 };
 int take(Optional<TooFar> t) { return t.hasValue() ? (bool(*t) ? 2 : 1) : 0; }
 int pick(Opt<Strict> o) { return o.set ? 10 : 11; }

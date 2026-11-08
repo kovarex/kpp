@@ -16,7 +16,7 @@ class Failed
 {
 public:
   implicit Failed(T&& result) : result(::move(result)) {}
-  explicit operator bool() const { return this->result.failed(); }
+  operator bool() const { return this->result.failed(); }
   implicit operator T() { return this->result; }
   T result;
 };
@@ -25,7 +25,7 @@ class SelectList
 {
 public:
   Function<Result(IDType)> canSet;
-  explicit SelectList(Function<Result(IDType)> canSet) : canSet(canSet) {}
+  SelectList(Function<Result(IDType)> canSet) : canSet(canSet) {}
   int count(IDType n)
   {
     int failures = 0;

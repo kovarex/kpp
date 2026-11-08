@@ -42,7 +42,7 @@ public:
   using iterator_category = typename IteratorTraits<It>::iterator_category;
 
   MoveIterator() : current() {}
-  explicit MoveIterator(It it) : current(it) {}
+  MoveIterator(It it) : current(it) {}
 
   IteratorTraits<It>::value_type&& operator*() const { return move(*this->current); }
   IteratorTraits<It>::value_type&& operator[](i64 n) const { return move(this->current[n]); }
@@ -116,7 +116,7 @@ public:
   using reference = void;
   using iterator_category = OutputIteratorTag;
 
-  explicit BackInsertIterator(Container& c) : container(&c) {}
+  BackInsertIterator(Container& c) : container(&c) {}
 
   BackInsertIterator<Container>& operator=(const typename Container::value_type& value)
   {

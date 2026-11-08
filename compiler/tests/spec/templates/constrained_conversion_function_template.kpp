@@ -24,7 +24,7 @@ struct Owner
 {
   Owner() {}
   implicit Owner(nullptr_t) {}
-  explicit Owner(T* e) : e(e) {}
+  Owner(T* e) : e(e) {}
   T* e = nullptr;
 };
 Handle make(Entity* e) { return Handle(e); }

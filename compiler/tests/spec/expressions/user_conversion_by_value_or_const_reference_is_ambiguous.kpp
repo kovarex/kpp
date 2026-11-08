@@ -1,7 +1,7 @@
 // spec: one user-defined conversion to one class makes the same sequence whether the parameter takes the object by value or binds it to a `const T&` (only two reference bindings compare), so `f(FromInt)` beside `f(const FromInt&)` given a float or an int is ambiguous, as in C++ ([over.ics.rank] 3.3)
 // factorio: found by the templates thread comparing overload choices against clang 19 on generated calls: the by-value candidate won (silent)
 // error: user_conversion_by_value_or_const_reference_is_ambiguous.kpp:7: error: the call of f with (float&) is ambiguous
-struct FromInt { FromInt(int v) {} };
+struct FromInt { implicit FromInt(int v) {} };
 int f(FromInt v) { return 1; }
 int f(const FromInt& v) { return 2; }
 int fromFloat() { float x = 1.5f; return f(x); }

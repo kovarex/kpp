@@ -44,11 +44,11 @@ public:
   using iterator_category = BidirectionalIteratorTag;
 
   ListIterator() {}
-  explicit ListIterator(ListLinks* node) : node(node) {}
+  ListIterator(ListLinks* node) : node(node) {}
   template<typename F> requires (isSame<F, RemoveConst<T>> && !isSame<F, T>)
   implicit ListIterator(const ListIterator<F>& other) : node(other.node) {}
   template<typename F> requires (isSame<T, RemoveConst<F>> && !isSame<F, T>)
-  explicit ListIterator(const ListIterator<F>& other) : node(other.node) {}
+  ListIterator(const ListIterator<F>& other) : node(other.node) {}
 
   T& operator*() const { return ((ListNode<RemoveConst<T>>*)this->node)->value; }
   T* operator->() const { return &((ListNode<RemoveConst<T>>*)this->node)->value; }
@@ -118,7 +118,7 @@ public:
   }
 
   // count value-initialized elements, or count copies of value.
-  explicit List(ContainerSize count)
+  List(ContainerSize count)
   {
     this->becomeEmpty();
     this->resize(count);

@@ -5,8 +5,8 @@ class InFileStream
 {
 public:
   InFileStream() {}
-  explicit InFileStream(const char* filename) { this->open(filename); }
-  explicit InFileStream(const String& filename) { this->open(filename.c_str()); }
+  InFileStream(const char* filename) { this->open(filename); }
+  InFileStream(const String& filename) { this->open(filename.c_str()); }
   InFileStream(const InFileStream&) = delete;
   InFileStream(InFileStream&& other) : handle(other.handle) { other.handle = nullptr; }
 
@@ -166,8 +166,8 @@ public:
   void writeBytes(const char* data, ContainerSize count) override { this->write(data, count); }
 
   OutFileStream() {}
-  explicit OutFileStream(const char* filename) { this->open(filename); }
-  explicit OutFileStream(const String& filename) { this->open(filename.c_str()); }
+  OutFileStream(const char* filename) { this->open(filename); }
+  OutFileStream(const String& filename) { this->open(filename.c_str()); }
   OutFileStream(const OutFileStream&) = delete;
   OutFileStream(OutFileStream&& other) : handle(other.handle) { other.handle = nullptr; }
 

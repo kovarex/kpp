@@ -196,9 +196,9 @@ public:
   template<typename U> requires (Extent == dynamicExtent && isConvertible<const U*, T*>)
   implicit Span(const Vector<U>& values) : items(values.data()), length(values.size()) {}
   template<typename U> requires (Extent != dynamicExtent && isConvertible<U*, T*>)
-  explicit Span(Vector<U>& values) : items(values.data()), length(values.size()) {}
+  Span(Vector<U>& values) : items(values.data()), length(values.size()) {}
   template<typename U> requires (Extent != dynamicExtent && isConvertible<const U*, T*>)
-  explicit Span(const Vector<U>& values) : items(values.data()), length(values.size()) {}
+  Span(const Vector<U>& values) : items(values.data()), length(values.size()) {}
   template<typename U, ContainerSize N> requires ((Extent == dynamicExtent || N == Extent) && isConvertible<U*, T*>)
   implicit Span(Array<U, N>& values) : items(values.data()), length(N) {}
   template<typename U, ContainerSize N> requires ((Extent == dynamicExtent || N == Extent) && isConvertible<const U*, T*>)
@@ -208,13 +208,13 @@ public:
   template<typename U> requires (Extent == dynamicExtent && isConvertible<U*, T*>)
   implicit Span(const Subrange<U*>& range) : items(range.begin()), length(checkedSize(range.end() - range.begin(), "span too long")) {}
   template<typename U> requires (Extent != dynamicExtent && isConvertible<U*, T*>)
-  explicit Span(const Subrange<U*>& range) : items(range.begin()), length(checkedSize(range.end() - range.begin(), "span too long")) {}
+  Span(const Subrange<U*>& range) : items(range.begin()), length(checkedSize(range.end() - range.begin(), "span too long")) {}
   // From a span of other elements (T const) or another extent: implicit when the length is sure
   // to fit, explicit from a span of any length to a fixed extent.
   template<typename U, ContainerSize N> requires (!(isSame<U, T> && N == Extent) && isConvertible<U*, T*> && (Extent == dynamicExtent || N == Extent))
   implicit Span(const Span<U, N>& other) : items(other.items), length(other.length) {}
   template<typename U, ContainerSize N> requires (Extent != dynamicExtent && N == dynamicExtent && isConvertible<U*, T*>)
-  explicit Span(const Span<U, N>& other) : items(other.items), length(other.length) {}
+  Span(const Span<U, N>& other) : items(other.items), length(other.length) {}
 
   ContainerSize size() const { return this->length; }
   usize size_bytes() const { return (usize)this->length * sizeof(T); }

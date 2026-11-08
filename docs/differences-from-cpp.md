@@ -451,7 +451,7 @@ Pinned make() { Pinned p; return p; }   // compiles: an error in C++
 - **Why:** one meaning of `this` in every place, and `*this` gone from the code.
 - **See:** [design 6][d6]; the readme's Planned.
 
-### Explicit by default (this stage)
+### Explicit by default (built)
 
 - **C++:** a constructor or conversion operator converts implicitly unless marked `explicit`.
 - **kpp:** it converts implicitly only when marked `implicit`, and `explicit` is gone: plain `explicit`
@@ -461,13 +461,13 @@ Pinned make() { Pinned p; return p; }   // compiles: an error in C++
   of two or more values takes any constructor, and `{a}` needs `implicit`. A default
   constructor is never a conversion; `if (x)` takes an unmarked `operator bool`, a `switch` a marked
   conversion; `Box b = 5;` deduces from marked constructors only.
-- **Status:** `implicit` and `implicit(cond)` are built. The rest is built behind `--explicit-by-default`, with
-  every rule's error; it becomes the default once the game, the stdlib, the libraries and the specs build with
-  it, and until then an unmarked constructor converts.
+- **Status:** built, with every rule's error: the default since 2026-11-08 (behind `--explicit-by-default` from
+  2026-11-07 until the game, the stdlib, the libraries and the specs built with it). An unmarked constructor
+  converts only in the C++ that `--convert` reads.
 - **Why:** an implicit conversion should be something the author asked for, and a keyword that does
   nothing goes (kovarex, 2026-11-07).
 - **See:** [design 6][d6] and its "Explicit by default" entry; specs `kpp/implicit_constructors`,
-  `kpp/implicit_condition`, `kpp/explicit_by_default` and its three `_is_error` ones.
+  `kpp/implicit_condition`, `kpp/explicit_by_default` and its `_is_error` ones.
 
 ```cpp
 struct Celsius { implicit Celsius(double degrees); };

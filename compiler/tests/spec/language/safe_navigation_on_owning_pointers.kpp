@@ -17,7 +17,7 @@ public:
   Handle(Item* i) : item(i) {}
   ~Handle() { println("handle gone"); }
   Item* operator->() const { return this->item; }
-  explicit operator bool() const { return this->item != nullptr; }
+  operator bool() const { return this->item != nullptr; }
 };
 Handle make(Item* i)
 {

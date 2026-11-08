@@ -44,7 +44,7 @@ public:
   implicit HashIterator(const HashIterator<F, stable>& other)
     : tags(other.tags), slots(other.slots), index(other.index), capacity(other.capacity), node(other.node) {}
   template<typename F> requires (isSame<E, RemoveConst<F>> && !isSame<F, E>)
-  explicit HashIterator(const HashIterator<F, stable>& other)
+  HashIterator(const HashIterator<F, stable>& other)
     : tags(other.tags), slots(other.slots), index(other.index), capacity(other.capacity), node((E*)other.node) {}
 
   // (The node is found here and in skipFree, not in a function of its own: a call more per lookup
@@ -597,7 +597,7 @@ public:
 
   HashMap() {}
   // An empty map with room for n entries before it grows.
-  explicit HashMap(ContainerSize n, const Hasher& hasher = Hasher(), const KeyEqual& equal = KeyEqual()) : table(hasher, equal) { this->table.reserve(n); }
+  HashMap(ContainerSize n, const Hasher& hasher = Hasher(), const KeyEqual& equal = KeyEqual()) : table(hasher, equal) { this->table.reserve(n); }
 
   implicit HashMap(InitializerList<Pair<K, V>> items)
   {
@@ -892,7 +892,7 @@ public:
 
   HashSet() {}
   // An empty set with room for n values before it grows.
-  explicit HashSet(ContainerSize n, const Hasher& hasher = Hasher(), const KeyEqual& equal = KeyEqual()) : table(hasher, equal) { this->table.reserve(n); }
+  HashSet(ContainerSize n, const Hasher& hasher = Hasher(), const KeyEqual& equal = KeyEqual()) : table(hasher, equal) { this->table.reserve(n); }
 
   implicit HashSet(InitializerList<T> items)
   {

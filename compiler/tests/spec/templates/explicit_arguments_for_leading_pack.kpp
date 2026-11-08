@@ -33,7 +33,7 @@ template <typename... Ts>
 struct Dummy
 {
   template <typename InputT>
-  explicit Dummy(InputT& input) { dummyLoad<Ts...>(input); }
+  Dummy(InputT& input) { dummyLoad<Ts...>(input); }
 };
 int main()
 {

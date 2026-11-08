@@ -13,7 +13,7 @@ struct Thing
 struct Handle
 {
   Thing* target;
-  explicit Handle(Thing* target) : target(target) { ++built; }
+  Handle(Thing* target) : target(target) { ++built; }
   Handle(const Handle& other) : target(other.target) {}
   Handle& operator=(const Handle& other)
   {

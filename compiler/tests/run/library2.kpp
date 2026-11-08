@@ -15,7 +15,7 @@ struct ScopedSetter
   T& target;
   T old;
   ScopedSetter(T& target, T value) : target(target), old(target) { target = value; }
-  explicit ScopedSetter(T& target) : target(target), old(target) {}
+  ScopedSetter(T& target) : target(target), old(target) {}
   ~ScopedSetter() { this->target = this->old; }
 };
 struct Widget

@@ -3,8 +3,8 @@
 // factorio: D's review of 1514538a (overload ranking by the one conversion rule, design.md 24)
 struct X
 {
-  operator long long() const { return 1; }
-  operator long double() const { return 2; }
+  implicit operator long long() const { return 1; }
+  implicit operator long double() const { return 2; }
 };
 void f(int v) { println("int ", v); }
 int main()

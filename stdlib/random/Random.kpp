@@ -32,7 +32,7 @@ public:
 
   DefaultRandomEngine() { this->seed(This::default_seed); }
 
-  explicit DefaultRandomEngine(u64 seed)
+  DefaultRandomEngine(u64 seed)
   {
     this->state[0] = seed;
     this->state[1] = seed * 6364136223846793005ull + 1;

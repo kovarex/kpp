@@ -4,8 +4,8 @@ int live = 0;
 struct Tracked
 {
   int id = 0;
-  explicit Tracked(int id) : id(id) { live += 1; }
-  explicit Tracked(const Tracked& other) : id(other.id) { live += 1; }
+  Tracked(int id) : id(id) { live += 1; }
+  Tracked(const Tracked& other) : id(other.id) { live += 1; }
   ~Tracked() { live -= 1; }
 };
 struct Patrolling
@@ -15,7 +15,7 @@ struct Patrolling
 struct Attacking
 {
   Tracked target;
-  explicit Attacking(int id) : target(id) {}
+  Attacking(int id) : target(id) {}
 };
 union enum State : uint8_t
 {

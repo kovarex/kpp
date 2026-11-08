@@ -212,7 +212,7 @@ struct Optional : OptionalValue<T>
 
   // The value built from the arguments, in place (std::optional's in_place_t constructor).
   template<typename... Args>
-  explicit Optional(InPlaceTag, Args&&... args)
+  Optional(InPlaceTag, Args&&... args)
   {
     new (this->slot()) T(forward<Args>(args)...);
     this->present = true;
@@ -340,7 +340,7 @@ struct Optional : OptionalValue<T>
 
   bool hasValue() const { return this->present; }
   bool has_value() const { return this->present; }
-  explicit operator bool() const { return this->present; }
+  operator bool() const { return this->present; }
   bool operator!() const { return !this->present; }
 
   T& value()

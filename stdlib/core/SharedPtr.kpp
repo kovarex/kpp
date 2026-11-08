@@ -75,7 +75,7 @@ public:
   implicit SharedPtr(nullptr_t) {}
 
   // Takes ownership of an object made with new (makeShared does both).
-  explicit SharedPtr(T* object)
+  SharedPtr(T* object)
   {
     if (object)
       this->own(object);
@@ -188,7 +188,7 @@ public:
   T* get() const { return this->pointer; }
   T& operator*() const { return *this->pointer; }
   T* operator->() const { return this->pointer; }
-  explicit operator bool() const { return this->pointer != nullptr; }
+  operator bool() const { return this->pointer != nullptr; }
   bool operator!() const { return this->pointer == nullptr; }
   bool operator==(const SharedPtr<T>& other) const { return this->pointer == other.pointer; }
   bool operator!=(const SharedPtr<T>& other) const { return this->pointer != other.pointer; }

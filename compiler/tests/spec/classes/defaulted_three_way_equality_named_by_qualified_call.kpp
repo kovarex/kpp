@@ -6,7 +6,7 @@ public:
   Base() = default;
   Base(int a, int b) : a(a), b(b) {}
   strong_ordering operator<=>(const Base&) const = default;
-  explicit operator bool() const { return this->a != 0; }
+  operator bool() const { return this->a != 0; }
   int a = 0;
   int b = 0;
 };

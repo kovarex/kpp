@@ -9,7 +9,7 @@ struct C
   int how = 0;
   constexpr C() {}
   constexpr C(const C&) : how(1) {}
-  constexpr C(const U& u) : how(u.v) {}
+  implicit constexpr C(const U& u) : how(u.v) {}
 };
 struct Holder
 {

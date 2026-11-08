@@ -3,7 +3,7 @@
 class Reference
 {
 public:
-  explicit Reference(int id) : id(id) {}
+  Reference(int id) : id(id) {}
   Reference(const Reference&) = delete;
   Reference(Reference&&) = default;
   Reference& operator=(Reference&&) = default;

@@ -20,7 +20,7 @@ public:
 
   IstreambufIterator() {}
 
-  explicit IstreambufIterator(InFileStream& s) : stream(&s)
+  IstreambufIterator(InFileStream& s) : stream(&s)
   {
     this->current = s.get();
   }

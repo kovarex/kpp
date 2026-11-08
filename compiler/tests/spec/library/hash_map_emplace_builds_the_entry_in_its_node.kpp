@@ -4,7 +4,7 @@ struct Fixed
 {
   static int built, destroyed;
   int value;
-  explicit Fixed(int value) : value(value) { built++; }
+  Fixed(int value) : value(value) { built++; }
   Fixed(const Fixed&) = delete;
   Fixed(Fixed&&) = delete;
   ~Fixed() { destroyed++; }

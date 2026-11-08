@@ -7,7 +7,7 @@
 // error: sse_macro_operation_explicit_constructor_copy_is_error.kpp:19: error:
 // error: sse_macro_operation_explicit_constructor_copy_is_error.kpp:20: error:
 extern "C" import "intrin.h";
-struct Strict { explicit Strict(__m128 v) : value(v) {} __m128 value; };
+struct Strict { Strict(__m128 v) : value(v) {} __m128 value; };
 __m128 a = _mm_setr_ps(1.0f, 2.0f, 3.0f, 4.0f);
 float lane0(Strict s) { return _mm_cvtss_f32(s.value); }
 float lane0OfRef(const Strict& s) { return _mm_cvtss_f32(s.value); }

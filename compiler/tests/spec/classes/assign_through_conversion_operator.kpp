@@ -5,14 +5,14 @@ struct ID
 {
   I index = 0;
   ID() = default;
-  explicit ID(I i) : index(i) {}
+  ID(I i) : index(i) {}
   bool operator==(const ID& other) const { return this->index == other.index; }
 };
 template<class IDType>
 class Connector
 {
 public:
-  explicit Connector(IDType id) : id(id) {}
+  Connector(IDType id) : id(id) {}
   implicit inline operator IDType() const { return this->id; }
 protected:
   IDType id;

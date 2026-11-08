@@ -93,7 +93,7 @@ const char* siteSearchScript = R"(document.getElementById("search").addEventList
 // One run's state: the pages to write, the problems found.
 struct Site
 {
-  explicit Site(const SiteOptions& options) : options(options) {}
+  Site(const SiteOptions& options) : options(options) {}
 
   String path(StringView repositoryPath) const { return this->options.repository + "/" + repositoryPath; }
 

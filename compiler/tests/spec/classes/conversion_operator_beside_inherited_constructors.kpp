@@ -7,15 +7,15 @@ public:
   int base = 0;
   int quality = 1;
   WithQuality() = default;
-  explicit WithQuality(int b) : base(b) {}
-  explicit WithQuality(StringView name) : base(int(name.size())) {}
+  WithQuality(int b) : base(b) {}
+  WithQuality(StringView name) : base(int(name.size())) {}
 };
 class Signal : public WithQuality<char>
 {
 public:
   using super = WithQuality<char>;
   using super::super;
-  explicit Signal(const char* name) : super(StringView(name)) {}
+  Signal(const char* name) : super(StringView(name)) {}
 };
 class Connector
 {

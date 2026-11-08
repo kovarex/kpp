@@ -9,7 +9,7 @@ struct Target
   int tag = 1;
   int value = 0;
   Target() {}
-  Target(Source&& s) : tag(42), value(s.value) {}
+  implicit Target(Source&& s) : tag(42), value(s.value) {}
 };
 Source make() { return Source(); }
 Target returned() { return make(); }

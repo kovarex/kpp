@@ -5,7 +5,7 @@ namespace UnitTest
   class TestRunner
   {
   public:
-    explicit TestRunner(int& reporter) : reporter(&reporter) {}
+    TestRunner(int& reporter) : reporter(&reporter) {}
   protected:
     int* reporter;
   };

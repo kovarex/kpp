@@ -7,7 +7,7 @@ public:
   int base = 0;
   int quality = 1;
   WithQuality() = default;
-  explicit WithQuality(int b) : base(b) {}
+  WithQuality(int b) : base(b) {}
   bool operator==(const WithQuality& other) const = default;
 };
 class Signal : public WithQuality<char>

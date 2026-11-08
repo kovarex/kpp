@@ -14,7 +14,7 @@ class FutureError : public LogicError
 {
 public:
   FutureErrc code;
-  explicit FutureError(FutureErrc code) : LogicError(String(code == FutureErrc::brokenPromise ? "broken promise" : "future error")), code(code) {}
+  FutureError(FutureErrc code) : LogicError(String(code == FutureErrc::brokenPromise ? "broken promise" : "future error")), code(code) {}
 };
 
 template<typename T>

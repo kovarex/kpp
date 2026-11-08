@@ -337,7 +337,7 @@ auto GlobalScope::Impl::derivesFrom(const Ty* derived, const Ty* base, int depth
 
 auto GlobalScope::Impl::isExplicit(FunctionDecl* f, const Subst* subst) -> bool
 {
-  // Explicit by default (--explicit-by-default until it is the default): what converts says so, `implicit` or
+  // Explicit by default (but in the C++ a conversion reads): what converts says so, `implicit` or
   // `implicit(cond)` (kept as an explicit condition, below); a copy, a move and a default constructor are never
   // conversions (design.md "Explicit by default", rules 2 and 6). An `explicit(cond)` not yet written as
   // `implicit` keeps its condition beside its error (checkConversionMark): the game's FixedPointNumberTemplate's

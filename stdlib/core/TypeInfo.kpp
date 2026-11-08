@@ -8,7 +8,7 @@ struct TypeInfo
   const void* classIdentity = nullptr;
 
   TypeInfo() {}
-  explicit TypeInfo(const char* typeName) : typeName(typeName) {}
+  TypeInfo(const char* typeName) : typeName(typeName) {}
 
   const char* name() const { return this->typeName; }
 

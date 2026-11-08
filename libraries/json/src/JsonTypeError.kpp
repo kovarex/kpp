@@ -3,5 +3,5 @@ class JsonTypeError : public RuntimeError
 {
 public:
   JsonTypeError() {}
-  explicit JsonTypeError(const String& message) : RuntimeError(message) {}
+  JsonTypeError(const String& message) : RuntimeError(message) {}
 };

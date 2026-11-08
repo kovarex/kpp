@@ -552,7 +552,7 @@ class Exception
 public:
   String message;
   Exception() {}
-  explicit Exception(const String& message) : message(message) {}
+  Exception(const String& message) : message(message) {}
   virtual ~Exception() {}
   virtual const char* what() const noexcept { return this->message.c_str(); }
 };
@@ -561,21 +561,21 @@ class RuntimeError : public Exception
 {
 public:
   RuntimeError() {}
-  explicit RuntimeError(const String& message) : Exception(message) {}
+  RuntimeError(const String& message) : Exception(message) {}
 };
 
 class LogicError : public Exception
 {
 public:
   LogicError() {}
-  explicit LogicError(const String& message) : Exception(message) {}
+  LogicError(const String& message) : Exception(message) {}
 };
 
 class OutOfRange : public LogicError
 {
 public:
   OutOfRange() {}
-  explicit OutOfRange(const String& message) : LogicError(message) {}
+  OutOfRange(const String& message) : LogicError(message) {}
 };
 
 // What the checked accessors (at(), substr()) throw for an index or key that is not there. Out of
@@ -586,7 +586,7 @@ class InvalidArgument : public LogicError
 {
 public:
   InvalidArgument() {}
-  explicit InvalidArgument(const String& message) : LogicError(message) {}
+  InvalidArgument(const String& message) : LogicError(message) {}
 };
 
 // The byte order of scalar types (std::endian): every target kpp builds for (x64 Windows) is

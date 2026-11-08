@@ -19,6 +19,6 @@ using Segment = Pair<Vec, Vec>;
 double f(Segment s, Segment t) { return s.first.x + s.second.y + t.first.y; }
 int main()
 {
-  println(f({{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}));
+  println(f(Segment{{1, 2}, {3, 4}}, Segment{{5, 6}, {7, 8}}));
   return 0;
 }

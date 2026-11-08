@@ -3,5 +3,5 @@ class SiteError : public RuntimeError
 {
 public:
   SiteError() {}
-  explicit SiteError(const String& message) : RuntimeError(message) {}
+  SiteError(const String& message) : RuntimeError(message) {}
 };

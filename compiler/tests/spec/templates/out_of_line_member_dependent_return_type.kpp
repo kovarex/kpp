@@ -13,7 +13,7 @@ struct Id
   static IndexType loadIndex(int v);
   const LoaderType* getLoader() const;
   I index = 0;
-  explicit Id(I index) : index(index) {}
+  Id(I index) : index(index) {}
 };
 template<typename T, typename I>
 typename Id<T, I>::IndexType Id<T, I>::loadIndex(int v) { return I(v * 2); }

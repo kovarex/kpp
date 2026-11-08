@@ -4,14 +4,14 @@ struct Signal
 {
   int id = 0;
   Signal() = default;
-  explicit Signal(int id) : id(id) {}
+  Signal(int id) : id(id) {}
 };
 class Icons
 {
 public:
   Icons() = default;
   Icons(const Icons& other) : icons(other.icons) {}
-  explicit Icons(Icons&& other) : icons(::move(other.icons)) {}
+  Icons(Icons&& other) : icons(::move(other.icons)) {}
   implicit Icons(const Vector<Signal>& icons) : icons(icons) {}
   implicit Icons(InitializerList<Signal> icons) : icons(icons) {}
   Icons& operator=(const Icons& other) = default;

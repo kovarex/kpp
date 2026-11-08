@@ -10,7 +10,7 @@ public:
     AdminsOnly = 3
   };
   constexpr AllowedCommands(Enum value) : value(value) {}
-  explicit constexpr operator uint8_t() const { return static_cast<uint8_t>(this->value); }
+  constexpr operator uint8_t() const { return static_cast<uint8_t>(this->value); }
   constexpr operator Enum() const { return this->value; }
   Enum value;
 };
@@ -18,7 +18,7 @@ template<typename TargetType, int type>
 class Targeter
 {
 public:
-  explicit operator bool() const { return this->target != nullptr; }
+  operator bool() const { return this->target != nullptr; }
   TargetType* target = nullptr;
 };
 template<typename TargetType, typename Owner, int type>
@@ -34,7 +34,7 @@ class PortTargeter : private TargeterWithOwner<Entity, Robot, 7>
   using super = TargeterWithOwner;
 public:
   void aim(Entity* entity) { this->target = entity; }
-  explicit operator bool() const { return super::operator bool(); }
+  operator bool() const { return super::operator bool(); }
 };
 int main()
 {

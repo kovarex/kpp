@@ -6,7 +6,7 @@ namespace signals
   class Value
   {
   public:
-    explicit operator bool() const { return true; }
+    operator bool() const { return true; }
   };
 
   bool check(const Value& value, int expected) { return false; }
