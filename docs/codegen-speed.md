@@ -508,6 +508,32 @@ so the job is raised to the normal class once kpp ends and the link waits for th
 once left the link waiting 0.8 to 2.2 s for them. A clean build compiles no C library: unchanged. Windows
 only (host::PriorityGroup); KPP_CLIB_PRIORITY=normal builds as before.
 
+B's window of 2026-11-08 (03:20 to 03:22) compared master with A's 8e481d22 (53f9b819, LLVM inside) and the
+third column's compiler above, on the clean build of factorio-in-kpp 5176c864e: `kpp factorio debug --verbose`
+with `KPP_STEP_TIMES=1`, each in turn, two rounds, the machine 2 to 9% busy before each build (medians):
+
+| | b3d8abf5, d534c3b6 | master 53f9b819 |
+|---|---:|---:|
+| Wall | 12.6 s | 14.0 s |
+| kpp | 11.0 s | 11.8 s |
+| of it codegen | 6.3 s | 6.6 s |
+| of it the back end after codegen | 2.7 s | 2.8 s |
+| of it the rest | 2.0 s | 2.4 s |
+| Link | 1.25 s | 1.45 s |
+| Before the build | 0.4 s | 0.8 s (0.4 s of it build.kpp described again: the window alternated compilers) |
+
+Master is about 1.0 s slower, for more work on the same game: 40% more function template instantiations
+(87,117 -> 122,132), 28% more class ones (19,521 -> 25,057), the instantiations' CPU 18.8 -> 24.7 s, 15% more
+distinct types, and in codegen 4.5% more functions and IR (1.56 -> 1.63 GB) and 17% more structs. 8e481d22's
+gain does not show beside that. Thread D's sampler on master's compile alone (the command its project driver
+runs, from its first line to the back end's last): the back end after codegen is 97% LLVM, a third of it
+parsing the IR text (13% its debug information's metadata), half the machine passes, 15% writing the object.
+Codegen's samples are 30% blocked, mostly on a global another thread builds (`globalFor` under
+`emitStartupGlobal`, 6%) and a mutex in the interpreter's `enumValueRange` (4.5%); of the rest the emitter is
+55%, LLVM's streamed pieces 36% (28% of them parsing the text), and at the leaf the heap and memory copies 7.5%
+each. The front end's leaf is TypeTable::intern (11%) and malloc (9%). So, largest first: the instantiation
+growth (being bisected), the IR in memory (a third of the back end after codegen), codegen's waits.
+
 When this plan was written, a clean debug build of the game was 17.1 s, the leaf edit 1.4 to 1.5 s,
 and the wide edit 1.9 s. These were thread A's quiet numbers: kpp run directly, without debug info.
 The gains overlap; each line is against the line before. The status column is as of 2026-11-02.
