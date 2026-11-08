@@ -1,0 +1,26 @@
+// spec: a bool a declaration initializes from a class with an operator bool that converts only where C++ takes an explicit one (unmarked: explicit by default) and an implicit operator int takes the operator int where it copy-initializes (a default member initializer `bool m = f;`, a static's and a global's `= f`) and the operator bool where it direct-initializes (`bool m{f};`, a member initializer `m(f)` and `m{f}`, a static's and a global's `{f}`), [dcl.init] 15 and 16; clang's output (until 2026-11-08 codegen said it did not know which a default member initializer, a static's and a global's braces are: language/copy_initialization_of_a_bool_takes_no_explicit_operator_bool has the statements' forms); the copy-list forms (an aggregate's member, an array's element, `= {f}`) narrow the int to bool, an error in C++
+struct Flag
+{
+  operator bool() const { return false; }
+  implicit operator int() const { return 5; }
+};
+Flag flag;
+bool globalCopied = flag;
+bool globalListed{flag};
+struct Holder
+{
+  bool copied = flag;
+  bool listed{flag};
+  bool initialized;
+  bool initializedListed;
+  Holder() : initialized(flag), initializedListed{flag} {}
+};
+int main()
+{
+  Holder h;
+  static bool staticCopied = flag;
+  static bool staticListed{flag};
+  println(h.copied ? 1 : 0, " ", h.listed ? 1 : 0, " ", h.initialized ? 1 : 0, " ", h.initializedListed ? 1 : 0);
+  println(globalCopied ? 1 : 0, " ", globalListed ? 1 : 0, " ", staticCopied ? 1 : 0, " ", staticListed ? 1 : 0);
+  return 0;
+}

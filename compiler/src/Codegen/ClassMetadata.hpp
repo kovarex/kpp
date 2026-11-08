@@ -512,6 +512,13 @@
     // a class's conversion to a scalar t; Direct: `T x{init}`, whose conversion to bool takes an
     // explicit operator bool (ConversionContext).
     void initializeFrom(const std::string& addr, const Ty* t, Expr* init, Node* at, ConversionContext context = ConversionContext::Unknown);
+    // The context of an initialization of a scalar of type t by its form: direct (`T x{v}`, a member initializer) or a
+    // copy (`T x = v;`, `T x = {v};`, a default member initializer with `=`); Unknown for a class or a closure, whose
+    // constructors' choice stays initializeFrom's default.
+    ConversionContext scalarContext(const Ty* t, bool direct)
+    {
+      return isAggregate(types.stripRef(t)) ? ConversionContext::Unknown : direct ? ConversionContext::Direct : ConversionContext::Copy;
+    }
 
     // t with the template parameters of the instantiation being emitted replaced by their
     // arguments, for an expression the type checker typed with a parameter left in.

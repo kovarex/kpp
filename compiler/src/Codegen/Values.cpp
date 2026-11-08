@@ -1166,7 +1166,7 @@ auto codegen::Emitter::emitGlobalConstructor(VariableDecl* v, const std::string&
     else if (builds && init && (isClass(t) || (t->kind == TyKind::Array && init->kind == NodeKind::BraceInitExpr)))
       initializeExtending(name, t, v, init, name, perThread);
     else if (builds && init)
-      initializeFrom(name, t, init, at);
+      initializeFrom(name, t, init, at, scalarContext(t, def->bracedInit)); // (`bool g = x;` copies, `bool g{x};` does not)
     else if (builds && isClass(t))
       defaultConstruct(name, t, at);
     else if (builds && t->kind == TyKind::Array)

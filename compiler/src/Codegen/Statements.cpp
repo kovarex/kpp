@@ -290,7 +290,7 @@ auto codegen::Emitter::staticLocal(VariableDecl* v, const Ty* t) -> void
   else if (v->init && (isClass(t) || (t->kind == TyKind::Array && v->init->kind == NodeKind::BraceInitExpr)))
     initializeExtending(name, t, v, v->init, name, (v->flags & DF_ThreadLocal) != 0);
   else if (v->init)
-    initializeFrom(name, t, v->init, v);
+    initializeFrom(name, t, v->init, v, scalarContext(t, v->bracedInit)); // (`static bool b = x;` copies, `static bool b{x};` does not)
   else if (isClass(t))
     defaultConstruct(name, t, v);
   else if (t->kind == TyKind::Array && needsConstruction(t, v))
@@ -833,7 +833,7 @@ auto codegen::Emitter::declareLocal(VariableDecl* v) -> void
   else if (v->init && (isClass(t) || (t->kind == TyKind::Array && v->init->kind == NodeKind::BraceInitExpr))) // (`Holder hs[2] = {{T(1)}, {T(2)}}` keeps its T's too, as clang and g++ do; until 2026-11-08 they died with the declaration)
     initializeExtending(slot, t, v, v->init, "", false, v->bracedInit ? ConversionContext::Direct : ConversionContext::Copy);
   else if (v->init)
-    initializeFrom(slot, t, v->init, v, v->bracedInit ? ConversionContext::Direct : ConversionContext::Copy); // (`T x = v;` and `T x = {v};` copy-initialize, `T x{v}` does not; `T x(v)` is a cast)
+    initializeFrom(slot, t, v->init, v, scalarContext(t, v->bracedInit)); // (`T x = v;` and `T x = {v};` copy-initialize, `T x{v}` does not; `T x(v)` is a cast)
   else if (isClass(t))
     defaultConstruct(slot, t, v);
   else if (t->kind == TyKind::Array && needsConstruction(t, v))

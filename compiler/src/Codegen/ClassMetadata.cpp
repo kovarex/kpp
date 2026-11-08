@@ -1031,7 +1031,7 @@ auto codegen::Emitter::initializeMembers(const std::string& addr, const Ty* t, S
             else if (init->args.empty())
               storeZero(ft, addr, at); // `: raw()`: value-initialized
             else if (init->args.size() == 1)
-              withSingleElement(init->args[0], at, [&](Expr* one) { initializeFrom(addr, ft, one, at); });
+              withSingleElement(init->args[0], at, [&](Expr* one) { initializeFrom(addr, ft, one, at, scalarContext(ft, true)); });
             else
               unsupported(at, "a union member initializer of several values");
             break;
@@ -1043,7 +1043,7 @@ auto codegen::Emitter::initializeMembers(const std::string& addr, const Ty* t, S
           auto* v = static_cast<VariableDecl*>(d);
           const Ty* ft = unionMemberType(t, d, at);
           if (const Ty* declared = global.typeOfDecl(v); !ft->isReference() && !(declared && declared->isReference()))
-            withMemberInitializer(addr, t, v, [&](Expr* value) { initializeFrom(addr, ft, value, v); });
+            withMemberInitializer(addr, t, v, [&](Expr* value) { initializeFrom(addr, ft, value, v, scalarContext(ft, v->bracedInit)); });
           break;
         }
     return;
@@ -1125,7 +1125,7 @@ auto codegen::Emitter::initializeMembers(const std::string& addr, const Ty* t, S
         unsupported(at, "this member initializer");
     }
     else if (v->init)
-      withMemberInitializer(addr, t, v, [&](Expr* value) { initializeFrom(fieldAddr, ft, value, v); });
+      withMemberInitializer(addr, t, v, [&](Expr* value) { initializeFrom(fieldAddr, ft, value, v, scalarContext(ft, v->bracedInit)); });
     else if (isClass(ft) && hasUserConstructors(classDef(ft->decl, at)))
       defaultConstruct(fieldAddr, ft, at);
     else if (isClass(ft))
@@ -1202,7 +1202,7 @@ auto codegen::Emitter::initializeAnonymous(const std::string& addr, const Ty* t,
     unsupported(at, "a reference member of an anonymous union");
   if (!init)
   {
-    withMemberInitializer(addr, t, v, [&](Expr* value) { initializeFrom(addr, mt, value, v); });
+    withMemberInitializer(addr, t, v, [&](Expr* value) { initializeFrom(addr, mt, value, v, scalarContext(mt, v->bracedInit)); });
     return;
   }
   if (isClass(mt))
@@ -1210,7 +1210,7 @@ auto codegen::Emitter::initializeAnonymous(const std::string& addr, const Ty* t,
   else if (size_t values = expandedCount(init->args, at); values == 0)
     storeZero(mt, addr, at);
   else if (values == 1)
-    forEachExpanded(init->args, at, [&](Expr* one) { initializeFrom(addr, mt, one, at); });
+    forEachExpanded(init->args, at, [&](Expr* one) { initializeFrom(addr, mt, one, at, scalarContext(mt, true)); });
   else
     unsupported(at, "this member initializer");
 }
@@ -1885,7 +1885,7 @@ auto codegen::Emitter::initializeAggregateMember(const std::string& addr, const 
   if (v->init && reference)
     withMemberInitializer(addr, t, v, [&](Expr* value) { bindReferenceMember(fieldAddr, ft->isReference() ? ft : declared, value, v); });
   else if (v->init)
-    withMemberInitializer(addr, t, v, [&](Expr* value) { initializeFrom(fieldAddr, ft, value, v); });
+    withMemberInitializer(addr, t, v, [&](Expr* value) { initializeFrom(fieldAddr, ft, value, v, scalarContext(ft, v->bracedInit)); });
   else if (isClass(ft))
     defaultConstruct(fieldAddr, ft, at);
   else if (ft->kind == TyKind::Array && (needsDestruction(ft, at) || needsConstruction(ft, at))) // elements with constructors or default member initializers
