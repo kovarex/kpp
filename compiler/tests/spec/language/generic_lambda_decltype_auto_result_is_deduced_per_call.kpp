@@ -1,0 +1,22 @@
+// spec: a generic lambda's `-> decltype(auto)` and `-> auto&` results are deduced for each call, as a lambda's that is not generic and a function template's are: `[](auto&& x) -> decltype(auto) { return (x); }` gives an int& for an int lvalue (assignable), `return x;` of an `auto&&` parameter its declared type (int& for an lvalue), `[](auto& x) -> auto& { return x; }` a reference, and a prvalue `return x + 1;` an int. clang's and g++'s output
+// found by thread J's lambda generator (2026-11-08): the call operator's type stayed the placeholder, so every such call was "a generic lambda whose body could not be typed for this call"
+extern "C" int printf(const char* format, ...);
+int main()
+{
+  int w = 1;
+  auto paren = [](auto&& x) -> decltype(auto) { return (x); };
+  paren(w) = 2;
+  auto plain = [](auto&& x) -> decltype(auto) { return x; };
+  plain(w) += 3;
+  int r = plain(w);
+  auto ref = [](auto& x) -> auto& { return x; };
+  ref(w) *= 2;
+  auto value = [](auto x) -> decltype(auto) { return x + 1; };
+  int v = value(w);
+  double d = value(1.5);
+  auto pick = [](auto& a, auto& b) -> decltype(auto) { return a < b ? (a) : (b); };
+  int p = 9, q = 4;
+  pick(p, q) = 0;
+  printf("%d %d %d %.1f %d %d\n", w, r, v, d, p, q);
+  return 0;
+}

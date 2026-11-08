@@ -1192,11 +1192,15 @@
     if (l->returnType)
       result = sub.typeOf(l->returnType);
     sub.returnFrames.push_back(nullptr);
+    sub.decltypeReturns.push_back(l->returnType && l->returnType->kind == NodeKind::AutoType && static_cast<AutoType*>(l->returnType)->isDecltypeAuto);
     sub.walkStmt(l->body);
     const Ty* deduced = sub.returnFrames.back();
     sub.returnFrames.pop_back();
+    sub.decltypeReturns.pop_back();
     if (!result)
       result = deduced ? types.decay(deduced) : types.voidType();
+    else if (containsAuto(result))
+      result = deduced ? deducedShape(result, deduced) : types.voidType(); // `-> decltype(auto)`, `-> auto&`, as the walk of a lambda that is not generic has it
     local.instExprsTyped += local.exprsTyped;
     local.instExprsDependent += local.exprsDependent;
     local.instExprsUnknown += local.exprsUnknown;
