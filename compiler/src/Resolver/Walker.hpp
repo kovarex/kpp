@@ -324,6 +324,10 @@
     // specialized: ambiguous, a compile error as C++ has it ([temp.spec.partial.match] 1); the first
     // declared was taken.
     void checkSpecializationTie(NamedType* t, const Lookup& l);
+    // Each part of a name's qualifier that names a class template's specialization (`S<const int,
+    // int*>::v()`, `S<A, B>::Inner::f`): its partial specializations' tie, as checkSpecializationTie
+    // checks a type name. A call's callee reached none: it was taken silently, the first declared.
+    void checkQualifierTies(const QualifiedName& name, uint32_t token);
 
     // Converts a type written in the current context.
     const Ty* typeOf(Type* t) { return impl.convertType(t, ctx(), 0); }

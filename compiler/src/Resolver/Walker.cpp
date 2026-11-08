@@ -1334,6 +1334,8 @@ auto GlobalScope::Impl::Walker::resolveTypeName(NamedType* t) -> void
   checkTemplateArgumentCount(t, l);
   checkClassConstraints(t, l);
   checkSpecializationTie(t, l);
+  if (!inGenericTemplate())
+    checkQualifierTies(t->name, t->token); // `S<const long, long*>::Inner x;`
   for (const NamePart& part : t->name.parts)
     for (Node* arg : part.templateArgs)
       walkNode(arg);
@@ -1371,6 +1373,21 @@ auto GlobalScope::Impl::Walker::checkSpecializationTie(NamedType* t, const Looku
   }
   const Ty* named = types.classType(primary, Span<const Ty*>{args.data(), uint32_t(args.size())});
   impl.reportCheckerError(file, t->token, "the partial specializations of " + types.toString(named, &symbols) + " are ambiguous: " + between);
+}
+
+auto GlobalScope::Impl::Walker::checkQualifierTies(const QualifiedName& name, uint32_t token) -> void
+{
+  for (size_t i = 0; i + 1 < name.parts.size(); ++i)
+  {
+    if (!name.parts[i].hasTemplateArgs)
+      continue;
+    NamedType qualifier{};
+    qualifier.kind = NodeKind::NamedType;
+    qualifier.token = token;
+    qualifier.name = name;
+    qualifier.name.parts.count = uint32_t(i + 1);
+    checkSpecializationTie(&qualifier, lookupHere(qualifier.name));
+  }
 }
 
 auto GlobalScope::Impl::Walker::checkClassConstraints(NamedType* t, const Lookup& l) -> void
@@ -1705,8 +1722,7 @@ auto GlobalScope::Impl::Walker::resolveName(NameExpr* e) -> const Ty*
     tmp.kind = NodeKind::NamedType;
     tmp.name = qualifier;
     tmp.token = e->token;
-    if (!qualifier.parts.empty() && qualifier.last().hasTemplateArgs) // `S<Box<int>, int>::v`: its specialization's tie too
-      checkSpecializationTie(&tmp, lookupHere(qualifier));
+    checkQualifierTies(e->name, e->token); // `S<Box<int>, int>::v`: its specialization's tie too
     const Ty* q = qualifier.parts.empty() ? typeOf(e->name.typeQualifier) : typeOf(&tmp);
     q = q ? types.unqualified(types.stripRef(q)) : types.unknown();
     // `IsSmall::value` with `struct IsSmall : Constant<bool, true> {}`: a member of a template
@@ -5631,6 +5647,7 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
     for (const NamePart& part : n->name.parts)
       for (Node* arg : part.templateArgs)
         walkNode(arg);
+    checkQualifierTies(n->name, n->token); // `S<const int, int*>::v()`
     Lookup l = lookupHere(n->name);
     Impl::preferValue(l); // (`stat("/", &s)`: the function, not the struct's aggregate initialisation)
     if (!whenLookup(l, n))

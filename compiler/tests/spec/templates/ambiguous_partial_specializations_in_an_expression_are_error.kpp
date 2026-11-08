@@ -1,0 +1,19 @@
+// spec: a qualifier naming a specialization whose partial specializations both match and neither is more specialized is ambiguous wherever it is written, a compile error as C++ has it ([temp.spec.partial.match] 1; clang: "ambiguous partial specializations"): the callee of a call `S<const int, int*>::v()`, a nested qualifier `S<...>::Inner::w()`, a member function's address `&S<...>::v`, a type through one `S<...>::Inner x;`, and a call in a function template's instance
+// error: ambiguous_partial_specializations_in_an_expression_are_error.kpp:11: error: the partial specializations of S<const int32, int32*> are ambiguous: S<const T, U>
+// error: ambiguous_partial_specializations_in_an_expression_are_error.kpp:14: error: the partial specializations of S<const int32, int32*> are ambiguous: S<const T, U>
+// error: ambiguous_partial_specializations_in_an_expression_are_error.kpp:15: error: the partial specializations of S<const char, char*> are ambiguous: S<const T, U>
+// error: ambiguous_partial_specializations_in_an_expression_are_error.kpp:16: error: the partial specializations of S<const int32, char*> are ambiguous: S<const T, U>
+// error: ambiguous_partial_specializations_in_an_expression_are_error.kpp:17: error: the partial specializations of S<const long, long*> are ambiguous: S<const T, U>
+// found by thread J's template generator (2026-11-07): only a name's last qualifier outside a call was checked, so a call's callee took the first declared silently (S<const int, int*>::v() was 1)
+template<class T, class U> struct S { static int v() { return 0; } struct Inner { static int w() { return 0; } }; };
+template<class T, class U> struct S<const T, U> { static int v() { return 1; } struct Inner { static int w() { return 1; } }; };
+template<class T, class U> struct S<T, U*> { static int v() { return 2; } struct Inner { static int w() { return 2; } }; };
+template<class T> int g() { return S<const T, T*>::v(); }
+int main()
+{
+  int a = S<const int, int*>::v();
+  int b = S<const char, char*>::Inner::w();
+  int (*f)() = &S<const int, char*>::v;
+  S<const long, long*>::Inner x;
+  return a + b + f() + g<int>();
+}
