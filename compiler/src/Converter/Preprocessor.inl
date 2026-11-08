@@ -441,9 +441,9 @@
       "\n"
       "    " + name + "() = delete;\n"
       "    implicit constexpr " + name + "(Enum value) : value(value) {}\n"
-      "    constexpr explicit " + name + "(" + type + " value) : value(static_cast<Enum>(value)) { this->validate(); }\n"
+      "    constexpr " + name + "(" + type + " value) : value(static_cast<Enum>(value)) { this->validate(); }\n"
       "\n"
-      "    explicit constexpr operator " + type + "() const { return static_cast<" + type + ">(this->value); }\n"
+      "    constexpr operator " + type + "() const { return static_cast<" + type + ">(this->value); }\n"
       "    implicit constexpr operator Enum() const { return this->value; }\n"
       "    constexpr " + type + " asType() const { return static_cast<" + type + ">(this->value); }\n"
       "    constexpr Enum asEnum() const { return this->value; }\n"
@@ -480,8 +480,8 @@
       }
       out +=
         "  public:\n"
-        "    explicit " + name + "(const String& str) : " + name + "(str.c_str()) {}\n"
-        "    explicit " + name + "(const char* str) : value(" + name + "::findValue(str)) {}\n"
+        "    " + name + "(const String& str) : " + name + "(str.c_str()) {}\n"
+        "    " + name + "(const char* str) : value(" + name + "::findValue(str)) {}\n"
         "\n"
         "    String str() const\n"
         "    {\n"

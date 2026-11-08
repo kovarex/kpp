@@ -787,3 +787,83 @@
 @ src/Graphics/DX11/GraphicsInterfaceDX11.cpp: MONITORINFOEX passed as the MONITORINFO it starts with, as SDLWindow.cpp casts it: MinGW-w64's (the bundled toolchain) does not derive from MONITORINFO
 -     GetMonitorInfo(hMonitor, &monitorInfo);
 +     GetMonitorInfo(hMonitor, (LPMONITORINFO)&monitorInfo);
+
+@ src/Gui/MapEditor/ScriptingEditorGui.cpp: a function argument's braces name their type (explicit by default), and in a template whose instances take two types the name is the template's own: each specialization says its SelectAction's, RenameAction's and SetColorAction's
+-   static inline EditorAction SelectAction(ActionData::SelectScriptRectangleData&& data)
++   using SelectData = ActionData::SelectScriptRectangleData;
++   using RenameData = ActionData::SetScriptRectangleNameData;
++   using ColorData = ActionData::SetScriptRectangleColorData;
++   static inline EditorAction SelectAction(ActionData::SelectScriptRectangleData&& data)
+
+@ src/Gui/MapEditor/ScriptingEditorGui.cpp: the same for ScriptPosition
+-   static inline EditorAction SelectAction(ActionData::SelectScriptPositionData&& data)
++   using SelectData = ActionData::SelectScriptPositionData;
++   using RenameData = ActionData::SetScriptPositionNameData;
++   using ColorData = ActionData::SetScriptPositionColorData;
++   static inline EditorAction SelectAction(ActionData::SelectScriptPositionData&& data)
+
+@ src/Gui/MapEditor/ScriptingEditorGui.cpp: the call names it
+-       this->player.sendToListenersLocalOnlyNoReplay(ScriptObjectHelper<T>::SelectAction({ result.first, result.second }));
++       this->player.sendToListenersLocalOnlyNoReplay(ScriptObjectHelper<T>::SelectAction(typename ScriptObjectHelper<T>::SelectData{ result.first, result.second }));
+
+@ src/Gui/MapEditor/ScriptingEditorGui.cpp: the rename names it
+-       this->player.sendToListenersLocalOnlyNoReplay(ScriptObjectHelper<T>::RenameAction({ result.first, result.second, this->objectName.getText() }));
++       this->player.sendToListenersLocalOnlyNoReplay(ScriptObjectHelper<T>::RenameAction(typename ScriptObjectHelper<T>::RenameData{ result.first, result.second, this->objectName.getText() }));
+
+@ src/Gui/MapEditor/ScriptingEditorGui.cpp: the colour names it
+-     this->player.sendToListenersLocalOnlyNoReplay(ScriptObjectHelper<T>::SetColorAction({ result.first, result.second, byteColor.toColor() }));
++     this->player.sendToListenersLocalOnlyNoReplay(ScriptObjectHelper<T>::SetColorAction(typename ScriptObjectHelper<T>::ColorData{ result.first, result.second, byteColor.toColor() }));
+
+@ tests/TestSelectionToolPreSelectionLuaEvents.cpp: a function argument's braces name their type (explicit by default), and std::array's list of elements counts on brace elision, so its type is written with the list in braces of its own, `std::array<T, N>{ { ... } }` (no fix written by the compiler: the list is long)
+-     const std::array<Combination, 5> combinations = std::array<Combination, 5>(
+-     {
++     const std::array<Combination, 5> combinations = std::array<Combination, 5>{
++     {
+
+@ tests/TestSelectionToolPreSelectionLuaEvents.cpp: the list's end
+-     });
+-   };
++     }};
++   };
+
+@ tests/TestSelectionToolPreSelectionLuaEvents.cpp: the same for spidertronCombinations
+-     const std::array<Combination, 2> spidertronCombinations(
+-     {
++     const std::array<Combination, 2> spidertronCombinations{
++     {
+
+@ tests/TestSelectionToolPreSelectionLuaEvents.cpp: its end
+-     });
+-     for (const Combination& combination : spidertronCombinations)
++     }};
++     for (const Combination& combination : spidertronCombinations)
+
+@ src/Graphics/DrawCommandBatch.cpp: a function argument's braces name their type (explicit by default); a std::array's list too long for the compiler's fix, written as its type with the list in braces of its own, `std::array<T, N>{{ ... }}`
+-                             sprite.samplingMode,
+-                             {
+-                               std::pair(spriteMaskTexture(0), spriteMaskSamplingMode(0)),
++                             sprite.samplingMode,
++                             std::array<std::pair<const VideoBitmap*, SamplingMode>, 4>{{
++                               std::pair(spriteMaskTexture(0), spriteMaskSamplingMode(0)),
+
+@ src/Graphics/DrawCommandBatch.cpp: its end
+-                               std::pair(spriteMaskTexture(3), spriteMaskSamplingMode(3))
+-                             });
++                               std::pair(spriteMaskTexture(3), spriteMaskSamplingMode(3))
++                             }});
+
+@ src/Net/PingPongServers.cpp: the same for the member `servers`
+-   : servers({ NamedSocketAddress(pingpong1, SocketType::Socket),
++   : servers(std::array<NamedSocketAddress, 4>{{ NamedSocketAddress(pingpong1, SocketType::Socket),
+
+@ src/Net/PingPongServers.cpp: its end
+-               NamedSocketAddress(pingpong4, SocketType::Socket) })
++               NamedSocketAddress(pingpong4, SocketType::Socket) }})
+
+@ tests/TestInserterGui.cpp: the same for a long list
+-     CHECK_EQUAL(inserter->getFilters(), (std::array<ItemFilter, Inserter::maxFilterCount>({ ItemWithQualityID("iron-plate"), ItemWithQualityID("copper-plate"), ItemFilter(), ItemFilter(), ItemFilter() })));
++     CHECK_EQUAL(inserter->getFilters(), (std::array<ItemFilter, Inserter::maxFilterCount>{{ ItemWithQualityID("iron-plate"), ItemWithQualityID("copper-plate"), ItemFilter(), ItemFilter(), ItemFilter() }}));
+
+@ tests/TestLoaderGui.cpp: the same for a long list
+-     CHECK_EQUAL(loader->filter, (std::array<ItemFilter, Loader::maxFilterCount>({ ItemWithQualityID("iron-plate"), ItemWithQualityID("copper-plate"), ItemFilter(), ItemFilter(), ItemFilter() })));
++     CHECK_EQUAL(loader->filter, (std::array<ItemFilter, Loader::maxFilterCount>{{ ItemWithQualityID("iron-plate"), ItemWithQualityID("copper-plate"), ItemFilter(), ItemFilter(), ItemFilter() }}));

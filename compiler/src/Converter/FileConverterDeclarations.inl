@@ -317,6 +317,8 @@
               insert(toks[f->token].offset, "implicit ");
               counts.add("implicit added");
             }
+            if ((f->flags & (DF_Constructor | DF_Conversion)) && ((f->flags & DF_Explicit) || f->explicitCondition) && f->name.parts.size() == 1)
+              writeExplicitByDefault(f);
             if (f->body)
             {
               Decl* owner = global.owningClass(f);
@@ -1378,12 +1380,18 @@
     {
       if (f->params.empty())
         return false;
+      // (a pack takes one argument too: OutputInventories(Args&&...) converted the inventory it was given
+      // in C++, `return {inventory};`)
       auto* first = static_cast<ParamDecl*>(f->params[0]);
       if (first->isPack)
-        return false;
+        return true;
       for (size_t i = 1; i < f->params.size(); ++i)
-        if (!static_cast<ParamDecl*>(f->params[i])->defaultValue)
+        if (!static_cast<ParamDecl*>(f->params[i])->defaultValue && !static_cast<ParamDecl*>(f->params[i])->isPack)
           return false;
+      // A template is never a copy or move constructor ([class.copy.ctor] 1): FixedPointNumberTemplate's
+      // from another precision's value, BasicWireEnd's from another targeter's, convert.
+      if (!f->templateParams.empty())
+        return true;
       // Copy and move constructors are not conversions: `T(const T&)` takes the class itself. Another
       // class of the same name is a conversion (the game's Color(const agui::Color&)), so the name decides
       // only when the type is not resolved.
@@ -1396,6 +1404,23 @@
       {
         auto* named = static_cast<NamedType*>(t);
         Decl* owner = global.owningClass(f);
+        // In a class template, the class with arguments other than its own parameters (BasicWireEnd's
+        // `BasicWireEnd(const BasicWireEnd<Targeter<Entity>>&)`) is another instance: a conversion in all
+        // but that one.
+        if (owner && !owner->templateParams.empty() && !named->name.empty() && named->name.last().hasTemplateArgs &&
+            named->name.last().symbol == f->name.last().symbol)
+        {
+          const Span<Node*>& args = named->name.last().templateArgs;
+          bool own = args.size() == owner->templateParams.size();
+          for (size_t i = 0; own && i < args.size(); ++i)
+          {
+            auto* p = static_cast<TemplateParamDecl*>(owner->templateParams[i]);
+            auto* a = static_cast<NamedType*>(args[i]);
+            own = args[i] && args[i]->kind == NodeKind::NamedType && a->name.parts.size() == 1 && !a->name.last().hasTemplateArgs &&
+                  a->name.last().symbol == p->name;
+          }
+          return !own;
+        }
         if (named->resolved && owner && named->resolved->kind == NodeKind::ClassDecl)
           return global.definitionOf(named->resolved) != global.definitionOf(owner);
         const QualifiedName& n = named->name;
@@ -1661,6 +1686,95 @@
       };
       collect(cls, 0);
       return names;
+    }
+
+    // The `explicit` among f's specifiers, or UINT32_MAX: back from its name, past an `explicit(cond)`'s
+    // parentheses, to the end of what precedes the declaration.
+    uint32_t explicitToken(FunctionDecl* f)
+    {
+      // (forward from the declaration's first token to its name or `operator`)
+      for (uint32_t k = f->token; k < toks.size() && k < f->token + 16; ++k)
+      {
+        if (toks[k].is(Kw::explicit_))
+          return k;
+        if (toks[k].is(Kw::operator_) || toks[k].is(P::LParen) || toks[k].is(P::Semi) || toks[k].is(P::LBrace))
+          break;
+      }
+      for (uint32_t k = f->token; k > 0 && f->token - k < 64;)
+      {
+        --k;
+        const Token& t = toks[k];
+        if (t.is(Kw::explicit_))
+          return k;
+        if (t.is(P::RParen))
+        {
+          for (int depth = 0;; --k)
+          {
+            if (toks[k].is(P::RParen))
+              ++depth;
+            else if (toks[k].is(P::LParen) && --depth == 0)
+              break;
+            if (k == 0)
+              return UINT32_MAX;
+          }
+          continue;
+        }
+        if (t.is(P::Semi) || t.is(P::LBrace) || t.is(P::RBrace) || t.is(P::Colon) || t.is(P::Greater) || t.is(P::Shr))
+          return UINT32_MAX;
+      }
+      return UINT32_MAX;
+    }
+
+    // Explicit by default (design.md, kovarex 2026-11-07): kpp has no `explicit`. The plain word goes, as an
+    // unmarked constructor or conversion operator is what it said; `explicit(cond)` is `implicit(...)` of
+    // the condition turned round, as the compiler's fix writes it: a negation's operand, else `!cond`.
+    void writeExplicitByDefault(FunctionDecl* f)
+    {
+      uint32_t at = explicitToken(f);
+      if (at == UINT32_MAX || at + 1 >= toks.size())
+      {
+        todo(toks[f->token].offset, "an explicit constructor or conversion whose `explicit` was not found");
+        return;
+      }
+      if (!toks[at + 1].is(P::LParen))
+      {
+        remove(toks[at].offset, toks[at + 1].offset - toks[at].offset);
+        counts.add("explicit removed");
+        return;
+      }
+      uint32_t close = closingParenToken(at + 1);
+      if (close == UINT32_MAX)
+      {
+        todo(toks[at].offset, "an explicit(condition) whose `)` was not found");
+        return;
+      }
+      std::string condition(text.substr(endOffset(at + 1), toks[close].offset - endOffset(at + 1)));
+      while (!condition.empty() && isspace((unsigned char)condition.front()))
+        condition.erase(0, 1);
+      while (!condition.empty() && isspace((unsigned char)condition.back()))
+        condition.pop_back();
+      // (an operand: no space, operator or `?` outside brackets, `isSame<A, B>` and `f(x)` included)
+      auto operand = [](std::string_view s)
+      {
+        if (s.empty())
+          return false;
+        int depth = 0;
+        for (char c : s)
+        {
+          if (c == '(' || c == '[' || c == '<')
+            ++depth;
+          else if (c == ')' || c == ']' || c == '>')
+            --depth;
+          else if (depth == 0 && !isIdentChar(c) && c != ':')
+            return false;
+        }
+        return depth == 0;
+      };
+      std::string turned = condition.size() > 1 && condition[0] == '!' && operand(std::string_view(condition).substr(1)) ? condition.substr(1)
+                         : operand(condition)                                                                     ? "!" + condition
+                                                                                                                   : "!(" + condition + ")";
+      replace(toks[at].offset, endOffset(close) - toks[at].offset, "implicit(" + turned + ")");
+      counts.add("explicit(condition) written as implicit(!condition)");
     }
 
     // Whether a base of cls, or one of theirs, declares f's name virtual with the same parameter types and

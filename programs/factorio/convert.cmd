@@ -180,6 +180,34 @@ if exist kpp\Util rd /s /q kpp\Util
 if exist kpp\src\Util xcopy /s /y /q /i kpp\src\Util kpp\Util >nul
 rem Copy stubs for types that are outside the converted subset but needed for codegen.
 if exist stubs\kpp xcopy /s /y /q stubs\kpp kpp\ >nul
+rem Explicit by default (design.md "Explicit by default", kovarex 2026-11-07): an unmarked constructor or
+rem conversion operator is explicit, and a function argument's braces name their type. The converter drops
+rem C++'s `explicit` and marks what converts; the types of braced arguments, which it cannot spell in kpp
+rem reading C++, kpp's error names: "write `Vector2D{x, y}`, not `{x, y}`". apply-fixes.py writes them, in
+rem kpp\ and in the checkout, from each configuration's check: Windows' debug, release and final, the
+rem checkout's with its tests, Linux's; a build through codegen where templates' instances are walked. Twice:
+rem a fix can show the next. Every build below takes the flag,
+rem until it is kpp's default (D's flip).
+set STEP=the explicit-by-default pass
+set CINC=%CINC% --explicit-by-default
+set EBD=--std ..\..\stdlib %CINC% --diagnostic-columns --errors 0 --unresolved 0
+set L=%WHOLE%\libraries
+set GAMESYSROOT=..\..\compiler\build\sysroots\linux-x86_64-factorio
+for %%r in (1 2) do (
+  %KPP% %EBD% --emit-llvm kpp\ebd.ll kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\crc32fast %CLIBKPP% kpp\src > nul 2> kpp\ebd-%%r-debug.txt
+  %KPP% %EBD% --check --release kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\crc32fast %CLIBKPP% kpp\src > nul 2> kpp\ebd-%%r-release.txt
+  %KPP% %EBD% --check --release --config finalRelease=true kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\crc32fast %CLIBKPP% kpp\src > nul 2> kpp\ebd-%%r-final.txt
+  %KPP% %EBD% --emit-llvm kpp\ebd-whole.ll --ext .kpp --tests %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests > nul 2> kpp\ebd-%%r-whole.txt
+  %KPP% %EBD% --check --ext .kpp --release %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %WHOLE%\src > nul 2> kpp\ebd-%%r-whole-release.txt
+  %KPP% %EBD% --check --ext .kpp --release --config finalRelease=true %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %WHOLE%\src > nul 2> kpp\ebd-%%r-whole-final.txt
+  type nul > kpp\ebd-%%r-linux.txt
+  if not "%CONVERT_LINUX%"=="0" if exist %GAMESYSROOT%\kpp-sysroot.txt %KPP% %EBD% --cinclude %FACTORIO%\libraries\libbacktrace --target linux --sysroot %GAMESYSROOT% --emit-llvm kpp\ebd-linux.ll --ext .kpp --tests %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests > nul 2> kpp\ebd-%%r-linux.txt
+  python -I apply-fixes.py kpp\ebd-%%r-debug.txt kpp\ebd-%%r-release.txt kpp\ebd-%%r-final.txt kpp\ebd-%%r-whole.txt kpp\ebd-%%r-whole-release.txt kpp\ebd-%%r-whole-final.txt kpp\ebd-%%r-linux.txt || goto :failed
+)
+for %%f in (kpp\ebd.ll kpp\ebd-whole.ll kpp\ebd-linux.ll) do if exist %%f del %%f
+rem (kpp\Util is a copy of kpp\src\Util, made before the fixes: again)
+if exist kpp\Util rd /s /q kpp\Util
+if exist kpp\src\Util xcopy /s /y /q /i kpp\src\Util kpp\Util >nul
 rem The nullptr pass (kovarex, 2026-11-04): each literal 0 that converts to a pointer or member pointer,
 rem as kpp's --zero-null-warnings finds it with kpp's own types, written nullptr (fix-null.py), in kpp\
 rem and in the checkout (a build through codegen, where `return 0;` is reported too). The headline and the
@@ -289,34 +317,39 @@ set "STEP=size widths"
 echo == size widths: tests\convert_sizes\sizes.cpp, converted and run, writes the bytes C++ writes for each std container size a serialiser takes (tests\convert_sizes.expected, from the C++ build of the same file)
 if exist kpp\convert_sizes rd /s /q kpp\convert_sizes
 %KPP% --no-std --quiet --convert kpp\convert_sizes --ext .cpp tests\convert_sizes || goto :failed
-%KPP% --std ..\..\stdlib --quiet --exe kpp\convert_sizes.exe kpp\convert_sizes || goto :failed
+call :ebdfix kpp\convert_sizes || goto :failed
+%KPP% --std ..\..\stdlib --explicit-by-default --quiet --exe kpp\convert_sizes.exe kpp\convert_sizes || goto :failed
 kpp\convert_sizes.exe > kpp\convert_sizes.out.txt
 fc /w kpp\convert_sizes.out.txt tests\convert_sizes.expected > nul && (echo size widths: output as expected& set /a SMOKES+=1) || (echo size widths: OUTPUT DIFFERS & fc /w kpp\convert_sizes.out.txt tests\convert_sizes.expected & goto :failed)
 set "STEP=variants"
 echo == variants: tests\convert_variant\variant.cpp, std::variant as the game uses it, converted to a typed union and run, prints what its C++ build prints (tests\convert_variant.expected)
 if exist kpp\convert_variant rd /s /q kpp\convert_variant
 %KPP% --no-std --quiet --convert kpp\convert_variant --ext .cpp tests\convert_variant || goto :failed
-%KPP% --std ..\..\stdlib --quiet --exe kpp\convert_variant.exe kpp\convert_variant || goto :failed
+call :ebdfix kpp\convert_variant || goto :failed
+%KPP% --std ..\..\stdlib --explicit-by-default --quiet --exe kpp\convert_variant.exe kpp\convert_variant || goto :failed
 kpp\convert_variant.exe > kpp\convert_variant.out.txt
 fc /w kpp\convert_variant.out.txt tests\convert_variant.expected > nul && (echo variants: output as expected& set /a SMOKES+=1) || (echo variants: OUTPUT DIFFERS & fc /w kpp\convert_variant.out.txt tests\convert_variant.expected & goto :failed)
 set "STEP=printf formats"
 echo == printf formats: tests\convert_formats\formats.cpp, Factorio's own 64-bit arguments read as 32 bits and extra arguments, converted and run, prints what its C++ build prints (tests\convert_formats.expected) and passes the format check
 if exist kpp\convert_formats rd /s /q kpp\convert_formats
 %KPP% --no-std --quiet --convert kpp\convert_formats --ext .cpp tests\convert_formats || goto :failed
-%KPP% --std ..\..\stdlib --quiet --exe kpp\convert_formats.exe kpp\convert_formats || goto :failed
+call :ebdfix kpp\convert_formats || goto :failed
+%KPP% --std ..\..\stdlib --explicit-by-default --quiet --exe kpp\convert_formats.exe kpp\convert_formats || goto :failed
 kpp\convert_formats.exe > kpp\convert_formats.out.txt
 fc /w kpp\convert_formats.out.txt tests\convert_formats.expected > nul && (echo printf formats: output as expected& set /a SMOKES+=1) || (echo printf formats: OUTPUT DIFFERS & fc /w kpp\convert_formats.out.txt tests\convert_formats.expected & goto :failed)
 echo == namespace-scope objects: tests\convert_init\init.cpp, objects initialized by parentheses at namespace and class scope, converted to braces or `= T(args)` (kpp reads `T f(...)` there as a function) and run, prints what its C++ build prints (tests\convert_init.expected)
 if exist kpp\convert_init rd /s /q kpp\convert_init
 %KPP% --no-std --quiet --convert kpp\convert_init --ext .cpp tests\convert_init || goto :failed
-%KPP% --std ..\..\stdlib --quiet --exe kpp\convert_init.exe kpp\convert_init || goto :failed
+call :ebdfix kpp\convert_init || goto :failed
+%KPP% --std ..\..\stdlib --explicit-by-default --quiet --exe kpp\convert_init.exe kpp\convert_init || goto :failed
 kpp\convert_init.exe > kpp\convert_init.out.txt
 fc /w kpp\convert_init.out.txt tests\convert_init.expected > nul && (echo namespace-scope objects: output as expected& set /a SMOKES+=1) || (echo namespace-scope objects: OUTPUT DIFFERS & fc /w kpp\convert_init.out.txt tests\convert_init.expected & goto :failed)
 set "STEP=asserts"
 echo == asserts: tests\convert_asserts\asserts.cpp, the game's release_assert written as kpp's release_assert statement (its file, line and text taken where it stands; the macro's handler called through kpp_assert_failed) and a do/while statement macro without its wrapper, converted and run, prints what its C++ build prints (tests\convert_asserts.expected), and its text has no do/while
 if exist kpp\convert_asserts rd /s /q kpp\convert_asserts
 %KPP% --no-std --quiet --convert kpp\convert_asserts --ext .cpp tests\convert_asserts || goto :failed
-%KPP% --std ..\..\stdlib --quiet --exe kpp\convert_asserts.exe kpp\convert_asserts || goto :failed
+call :ebdfix kpp\convert_asserts || goto :failed
+%KPP% --std ..\..\stdlib --explicit-by-default --quiet --exe kpp\convert_asserts.exe kpp\convert_asserts || goto :failed
 kpp\convert_asserts.exe > kpp\convert_asserts.out.txt
 findstr /c:"while (false)" kpp\convert_asserts\convert_asserts\asserts.kpp > nul && (echo asserts: A DO/WHILE IS LEFT& goto :failed)
 findstr /c:"release_assert(this->value == 3);" kpp\convert_asserts\convert_asserts\asserts.kpp > nul || (echo asserts: RELEASE_ASSERT NOT WRITTEN AS KPP'S& goto :failed)
@@ -324,7 +357,8 @@ fc /w kpp\convert_asserts.out.txt tests\convert_asserts.expected > nul && (echo 
 echo == member function bodies: tests\convert_inline, Widget.hpp and Widget.cpp converted into one Widget.kpp whose class holds each body at its declaration (no out-of-class Widget::area; Widget::renamed with its declaration taking the definition's parameter names, Widget::shadowed outside, as a default argument names its parameter's name; Widget::padded, declared over two lines, with its body and comment indented from the declaration's first line, tests\convert_inline.padded.txt), and run, prints what its C++ build prints (tests\convert_inline.expected)
 if exist kpp\convert_inline rd /s /q kpp\convert_inline
 %KPP% --no-std --quiet --convert kpp\convert_inline --ext .cpp,.hpp tests\convert_inline || goto :failed
-%KPP% --std ..\..\stdlib --quiet --exe kpp\convert_inline.exe kpp\convert_inline || goto :failed
+call :ebdfix kpp\convert_inline || goto :failed
+%KPP% --std ..\..\stdlib --explicit-by-default --quiet --exe kpp\convert_inline.exe kpp\convert_inline || goto :failed
 findstr /s /c:"Widget::area(" kpp\convert_inline\*.kpp > nul && (echo member function bodies: Widget::area is still defined outside its class& goto :failed)
 findstr /s /c:"Widget::renamed(" kpp\convert_inline\*.kpp > nul && (echo member function bodies: Widget::renamed, a parameter named otherwise in its declaration, is still defined outside its class& goto :failed)
 findstr /s /c:"Widget::shadowed(" kpp\convert_inline\*.kpp > nul || (echo member function bodies: Widget::shadowed moved into its class, where its parameter would hide what its default argument names& goto :failed)
@@ -342,17 +376,18 @@ set LINUXCONVERT=--convert-platform linux --convert-predefines linux-predefines.
 %KPP% --convert-merge-platform kpp\cplat\wd kpp\cplat\ld kpp\cplat\d > nul || goto :failed
 %KPP% --convert-merge-platform kpp\cplat\wr kpp\cplat\lr kpp\cplat\r > nul || goto :failed
 %KPP% --convert-merge kpp\cplat\d kpp\cplat\r kpp\cplat\out > nul || goto :failed
-%KPP% --std ..\..\stdlib --quiet --exe kpp\cplat\platform.exe kpp\cplat\out || goto :failed
-%KPP% --std ..\..\stdlib --quiet --target linux --sysroot ..\..\compiler\build\sysroots\linux-x86_64 --exe kpp\cplat\platform kpp\cplat\out || goto :failed
+call :ebdfix kpp\cplat\out || goto :failed
+%KPP% --std ..\..\stdlib --explicit-by-default --quiet --exe kpp\cplat\platform.exe kpp\cplat\out || goto :failed
+%KPP% --std ..\..\stdlib --explicit-by-default --quiet --target linux --sysroot ..\..\compiler\build\sysroots\linux-x86_64 --exe kpp\cplat\platform kpp\cplat\out || goto :failed
 kpp\cplat\platform.exe > kpp\cplat\windows.txt
 wsl.exe -e kpp/cplat/platform > kpp\cplat\linux.txt 2>&1 || (echo platforms: the Linux build did not run under WSL ^(kpp\cplat\linux.txt^)& goto :failed)
 fc /w kpp\cplat\windows.txt tests\convert_platform.expected > nul || (echo platforms: WINDOWS OUTPUT DIFFERS & fc /w kpp\cplat\windows.txt tests\convert_platform.expected & goto :failed)
 fc /w kpp\cplat\linux.txt tests\convert_platform.linux.expected > nul && (echo platforms: output as expected on Windows and Linux& set /a SMOKES+=1) || (echo platforms: LINUX OUTPUT DIFFERS & fc /w kpp\cplat\linux.txt tests\convert_platform.linux.expected & goto :failed)
 set "STEP=configurations check"
 echo == configurations: the game's DEBUG code is config::debug's (docs/design.md 12): tests\configurations.kpp with the converted BuildConstants prints IsDebug, IsFinalRelease and IsPackagedBuild in debug, release and final, and debug-only.py finds TransportLine's referenceSet and Rcu's writeLockCount only where config::debug is true, in a when (config::debug) declaration or an if constexpr (config::debug), and IsDebug chosen by config::debug (tests\configurations.expected)
-%KPP% --std ..\..\stdlib --quiet --exe kpp\configurations-debug.exe kpp\CommonUtil\FinalRelease.kpp kpp\src\BuildConstants.kpp tests\configurations.kpp || goto :failed
-%KPP% --std ..\..\stdlib --quiet --release --exe kpp\configurations-release.exe kpp\CommonUtil\FinalRelease.kpp kpp\src\BuildConstants.kpp tests\configurations.kpp || goto :failed
-%KPP% --std ..\..\stdlib --quiet --release --config finalRelease=true --exe kpp\configurations-final.exe kpp\CommonUtil\FinalRelease.kpp kpp\src\BuildConstants.kpp tests\configurations.kpp || goto :failed
+%KPP% --std ..\..\stdlib --explicit-by-default --quiet --exe kpp\configurations-debug.exe kpp\CommonUtil\FinalRelease.kpp kpp\src\BuildConstants.kpp tests\configurations.kpp || goto :failed
+%KPP% --std ..\..\stdlib --explicit-by-default --quiet --release --exe kpp\configurations-release.exe kpp\CommonUtil\FinalRelease.kpp kpp\src\BuildConstants.kpp tests\configurations.kpp || goto :failed
+%KPP% --std ..\..\stdlib --explicit-by-default --quiet --release --config finalRelease=true --exe kpp\configurations-final.exe kpp\CommonUtil\FinalRelease.kpp kpp\src\BuildConstants.kpp tests\configurations.kpp || goto :failed
 kpp\configurations-debug.exe > kpp\configurations.out.txt
 kpp\configurations-release.exe >> kpp\configurations.out.txt
 kpp\configurations-final.exe >> kpp\configurations.out.txt
@@ -390,6 +425,14 @@ exit /b 0
 :countsfailed
 echo convert: FAILED: %SUMMARY%
 exit /b 1
+:ebdfix
+rem (explicit by default for a converted program, %1: its braced arguments' fixes, as the game's, twice)
+for %%r in (1 2) do (
+  %KPP% --std ..\..\stdlib --explicit-by-default --diagnostic-columns --errors 0 --unresolved 0 --emit-llvm %1.ebd.ll %1 > nul 2> %1.ebd-%%r.txt
+  python -I apply-fixes.py %1.ebd-%%r.txt > nul || exit /b 1
+)
+if exist %1.ebd.ll del %1.ebd.ll
+goto :eof
 :libraryUses
 rem (LIBUSE: the --convert-library options of the scoped libraries C library %1 uses,
 rem c-libraries\%1\uses.txt, converted before it: minizip's zlib)

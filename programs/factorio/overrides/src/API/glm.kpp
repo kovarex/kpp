@@ -20,7 +20,7 @@ namespace glm
     float y = 0.0f;
 
     vec2() {}
-    explicit vec2(float scalar) : x(scalar), y(scalar) {}
+    vec2(float scalar) : x(scalar), y(scalar) {}
     vec2(float x, float y) : x(x), y(y) {}
     // The first two components (glm's conversions between sizes are implicit).
     implicit vec2(const vec3& v);
@@ -60,7 +60,7 @@ namespace glm
     float z = 0.0f;
 
     vec3() {}
-    explicit vec3(float scalar) : x(scalar), y(scalar), z(scalar) {}
+    vec3(float scalar) : x(scalar), y(scalar), z(scalar) {}
     vec3(float x, float y, float z) : x(x), y(y), z(z) {}
     vec3(const vec2& xy, float z) : x(xy.x), y(xy.y), z(z) {}
     vec3(float x, const vec2& yz) : x(x), y(yz.x), z(yz.y) {}
@@ -101,7 +101,7 @@ namespace glm
     float w = 0.0f;
 
     vec4() {}
-    explicit vec4(float scalar) : x(scalar), y(scalar), z(scalar), w(scalar) {}
+    vec4(float scalar) : x(scalar), y(scalar), z(scalar), w(scalar) {}
     vec4(float x, float y, float z, float w) : x(x), y(y), z(z), w(w) {}
     vec4(const vec3& xyz, float w) : x(xyz.x), y(xyz.y), z(xyz.z), w(w) {}
     vec4(const vec2& xy, float z, float w) : x(xy.x), y(xy.y), z(z), w(w) {}
@@ -159,7 +159,7 @@ namespace glm
 
     mat4() {}
 
-    explicit mat4(float s)
+    mat4(float s)
     {
       this->value[0] = vec4(s, 0, 0, 0);
       this->value[1] = vec4(0, s, 0, 0);

@@ -16,7 +16,7 @@ extern "C" import "oleauto.h";
 class _com_error
 {
 public:
-  explicit _com_error(HRESULT result) : result(result) {}
+  _com_error(HRESULT result) : result(result) {}
   HRESULT Error() const { return this->result; }
   _bstr_t Description() const { return _bstr_t(); }
 
