@@ -182,18 +182,38 @@ static std::string resolveInlineBodies(std::string text, Counts& counts)
   {
     size_t idEnd = text.find("*/", at);
     std::string id = text.substr(at + 13, idEnd - at - 13);
+    size_t copied = from;
     out.append(text, from, at - from);
     from = idEnd + 2;
     auto body = bodies.find(id);
     if (body == bodies.end() || from >= text.size() || text[from] != ';' || inGroup(at))
       continue; // (the `;` stays)
     ++from; // (the `;` goes: the body follows the declarator)
-    std::string indent = lineIndent(at);
+    // The declaration's first line, whose indentation the body takes and above which its comment goes: the
+    // mark is on the line of its `;`, which for a declaration over several lines is a continuation line
+    // (`int padded(int left,` / `             int right = 1) const;`). Each `(` left open before a line's start
+    // takes the search to its own line.
+    size_t lineStart = text.rfind('\n', at);
+    lineStart = lineStart == std::string::npos ? 0 : lineStart + 1;
+    for (size_t k = at, open = 0; k > copied;)
+    {
+      --k;
+      if (text[k] == ')')
+        ++open;
+      else if (text[k] == '(' && open > 0)
+        --open;
+      else if (text[k] == '\n' && open == 0)
+        break;
+      if (open > 0 && k < lineStart)
+      {
+        size_t previous = k == 0 ? std::string::npos : text.rfind('\n', k - 1);
+        lineStart = previous == std::string::npos || previous < copied ? copied : previous + 1;
+      }
+    }
+    std::string indent = lineIndent(lineStart);
     if (const std::vector<std::string>& comment = comments[id]; !comment.empty())
     {
-      // (above the declaration's line, after the comment it may have of its own)
-      size_t lineStart = text.rfind('\n', at);
-      lineStart = lineStart == std::string::npos ? 0 : lineStart + 1;
+      // (above the declaration's first line, after the comment it may have of its own)
       std::string lines;
       for (const std::string& line : comment)
         lines += indent + line + "\n";

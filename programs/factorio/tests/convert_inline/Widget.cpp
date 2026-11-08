@@ -14,6 +14,13 @@ Widget::~Widget()
   --Widget::instances;
 }
 
+// The width with the padding.
+int Widget::padded(int left, int right) const
+{
+  int total = this->width + left + right;
+  return total;
+}
+
 // The area, in square units.
 int Widget::area() const
 {

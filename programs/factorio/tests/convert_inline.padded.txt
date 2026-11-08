@@ -1,0 +1,8 @@
+  // Over two lines: the body moved here is indented from the declaration's first line, not its last
+  // The width with the padding.
+  i32 padded(i32 left,
+             i32 right = 1) const
+  {
+    i32 total = this->width + left + right;
+    return total;
+  }

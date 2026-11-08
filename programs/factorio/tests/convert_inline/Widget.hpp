@@ -20,6 +20,9 @@ public:
   int shadowed(int value = instances) const;
   template<typename T> T as() const;
   int inHeader() const;
+  // Over two lines: the body moved here is indented from the declaration's first line, not its last
+  int padded(int left,
+             int right = 1) const;
 
 private:
   int width;

@@ -321,13 +321,14 @@ kpp\convert_asserts.exe > kpp\convert_asserts.out.txt
 findstr /c:"while (false)" kpp\convert_asserts\convert_asserts\asserts.kpp > nul && (echo asserts: A DO/WHILE IS LEFT& goto :failed)
 findstr /c:"release_assert(this->value == 3);" kpp\convert_asserts\convert_asserts\asserts.kpp > nul || (echo asserts: RELEASE_ASSERT NOT WRITTEN AS KPP'S& goto :failed)
 fc /w kpp\convert_asserts.out.txt tests\convert_asserts.expected > nul && (echo asserts: output as expected& set /a SMOKES+=1) || (echo asserts: OUTPUT DIFFERS & fc /w kpp\convert_asserts.out.txt tests\convert_asserts.expected & goto :failed)
-echo == member function bodies: tests\convert_inline, Widget.hpp and Widget.cpp converted into one Widget.kpp whose class holds each body at its declaration (no out-of-class Widget::area; Widget::renamed with its declaration taking the definition's parameter names, Widget::shadowed outside, as a default argument names its parameter's name), and run, prints what its C++ build prints (tests\convert_inline.expected)
+echo == member function bodies: tests\convert_inline, Widget.hpp and Widget.cpp converted into one Widget.kpp whose class holds each body at its declaration (no out-of-class Widget::area; Widget::renamed with its declaration taking the definition's parameter names, Widget::shadowed outside, as a default argument names its parameter's name; Widget::padded, declared over two lines, with its body and comment indented from the declaration's first line, tests\convert_inline.padded.txt), and run, prints what its C++ build prints (tests\convert_inline.expected)
 if exist kpp\convert_inline rd /s /q kpp\convert_inline
 %KPP% --no-std --quiet --convert kpp\convert_inline --ext .cpp,.hpp tests\convert_inline || goto :failed
 %KPP% --std ..\..\stdlib --quiet --exe kpp\convert_inline.exe kpp\convert_inline || goto :failed
 findstr /s /c:"Widget::area(" kpp\convert_inline\*.kpp > nul && (echo member function bodies: Widget::area is still defined outside its class& goto :failed)
 findstr /s /c:"Widget::renamed(" kpp\convert_inline\*.kpp > nul && (echo member function bodies: Widget::renamed, a parameter named otherwise in its declaration, is still defined outside its class& goto :failed)
 findstr /s /c:"Widget::shadowed(" kpp\convert_inline\*.kpp > nul || (echo member function bodies: Widget::shadowed moved into its class, where its parameter would hide what its default argument names& goto :failed)
+python -I -c "import sys; sys.exit(0 if open(r'tests\convert_inline.padded.txt', encoding='utf-8').read() in open(r'kpp\convert_inline\convert_inline\Widget.kpp', encoding='utf-8').read() else 1)" || (echo member function bodies: Widget::padded's body and comment are not where tests\convert_inline.padded.txt has them, indented from its declaration's first line& goto :failed)
 kpp\convert_inline.exe > kpp\convert_inline.out.txt
 fc /w kpp\convert_inline.out.txt tests\convert_inline.expected > nul && (echo member function bodies: output as expected& set /a SMOKES+=1) || (echo member function bodies: OUTPUT DIFFERS & fc /w kpp\convert_inline.out.txt tests\convert_inline.expected & goto :failed)
 set "STEP=platforms check"
