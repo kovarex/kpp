@@ -1,0 +1,38 @@
+// spec: a direct- or list-initialization of A from an object of another class B takes B's conversion function to A, which builds the object itself, over a constructor of A that needs a user-defined conversion of the object (CWG2327, as clang and g++ do: the function's object is an exact match): `A x(b);`, `A x{b};`, `A x = {b};`, `A x(B{});` take `operator A()` over A(char) through `operator char()`; a ref-qualified `operator A() &&` converts a temporary only, an lvalue taking `operator int() &` and A(int, double = 0.5). clang's output (g++ 13 calls `A x = {b};` ambiguous; the C++ with no `implicit`)
+// found by thread J's conversion generator (2026-11-08): A(char) was called through b's operator char()
+extern "C" int printf(const char* format, ...);
+struct A
+{
+  int v;
+  A() : v(0) { printf("A() "); }
+  A(const A& o) : v(o.v) { printf("A(c) "); }
+  A(A&& o) : v(o.v) { printf("A(m) "); }
+  implicit A(char c) : v(c) { printf("A(char) "); }
+  implicit A(int a, double b = 0.5) : v(a + 100) { printf("A(int;double) "); }
+};
+struct B
+{
+  int v = 1;
+  implicit operator A() const { printf("B>A "); A t; t.v = 20; return t; }
+  implicit operator char() { printf("B>char "); return 'x'; }
+};
+struct C
+{
+  int v = 2;
+  implicit operator A() && { printf("C>A "); A t; t.v = 30; return t; }
+  implicit operator int() & { printf("C>int "); return 7; }
+};
+int main()
+{
+  B b;
+  { A x(b); printf("[%d]\n", x.v); }
+  { A x{b}; printf("[%d]\n", x.v); }
+  { A x = {b}; printf("[%d]\n", x.v); }
+  { A x = b; printf("[%d]\n", x.v); }
+  { A x(B{}); printf("[%d]\n", x.v); }
+  C c;
+  { A x(c); printf("[%d]\n", x.v); }
+  { A x(C{}); printf("[%d]\n", x.v); }
+  { A x{move(c)}; printf("[%d]\n", x.v); }
+  return 0;
+}

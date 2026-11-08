@@ -1638,7 +1638,11 @@ auto codegen::Emitter::argumentText(const Ty* pt, Expr* arg, Node* at) -> std::s
     {
       const Ty* owner = nullptr;
       TemplateArgs opArgs;
-      if (FunctionDecl* op = conversionOperator(argTy, types.unqualified(referenced), at, &owner, false, &opArgs))
+      // (of the operators giving a non-const lvalue, the argument as it is: `f(b)` for an f(int&) takes `operator int&()`
+      // beside `operator int() &`)
+      const Ty* given = argumentType(arg, arg->ty, types);
+      if (FunctionDecl* op = conversionOf(given && given->isReference() ? given : given ? types.rref(given) : argTy, types.unqualified(referenced),
+                                          GlobalScope::ConversionKind::ToLvalue, false, at, &owner, &opArgs))
       {
         const Ty* returned = conversionReturns(op, owner);
         if (returned && returned->kind == TyKind::LRef && !types.stripRef(returned)->isConst &&
@@ -1753,15 +1757,16 @@ auto codegen::Emitter::argumentText(const Ty* pt, Expr* arg, Node* at) -> std::s
   Value a = pt && types.unqualified(pt)->kind == TyKind::Pointer && arg->kind == NodeKind::FunctionalCastExpr && isArrayBraces(arg)
               ? load(arrayTemporary(arg, types.stripRef(arg->ty), at), types.stripRef(arg->ty), at)
               : rvalue(arg);
-  if (isClass(a.ty) && pt && !isAggregate(pt) && conversionOperator(a.ty, types.unqualified(pt), at, nullptr, false, nullptr, ConversionContext::Copy))
-    a = convert(a, types.unqualified(pt), at, false, ConversionContext::Copy); // `draw(image)` with `operator const Image*()` (an argument copy-initializes its parameter)
+  // (an argument copy-initializes its parameter: no explicit operator bool, `f(object)` for an f(bool) takes `operator long()`)
+  if (isClass(a.ty) && pt && !isAggregate(pt) && conversionOperator(conversionObject(a), types.unqualified(pt), at, nullptr, false, nullptr, ConversionContext::Copy))
+    a = convert(a, types.unqualified(pt), at, false, ConversionContext::Copy); // `draw(image)` with `operator const Image*()`
   if (isLambda(a.ty) && pt && pt->kind == TyKind::Pointer && pt->inner && pt->inner->kind == TyKind::Function)
     a = convert(a, pt, at); // a lambda without captures as a pointer to function
   if (isAggregate(a.ty) && !pt)
   {
     // Variadic C argument with no declared type: try the class's implicit conversion operator
     // to a scalar (e.g. String's operator const char*() for lua_pushstring(L, str)).
-    FunctionDecl* conv = conversionOperator(a.ty, types.intType(32), at);
+    FunctionDecl* conv = conversionOperator(conversionObject(a), types.intType(32), at);
     if (conv)
     {
       const Ty* ft = declType(conv);
@@ -1867,12 +1872,16 @@ auto codegen::Emitter::conversionReturns(FunctionDecl* op, const Ty* owner) -> c
   return fnTy ? fnTy->inner : nullptr;
 }
 
-auto codegen::Emitter::lvalueByConversion(Expr* value, const Ty* have, const Ty* referenced, Node* at) -> std::optional<std::string>
+auto codegen::Emitter::lvalueByConversion(Expr* value, const Ty* have, const Ty* referenced, Node* at, bool explicitCast) -> std::optional<std::string>
 {
   const Ty* owner = nullptr;
   TemplateArgs opArgs;
   const Ty* want = types.unqualified(referenced);
-  FunctionDecl* op = conversionOperator(have, want, at, &owner, false, &opArgs);
+  const Ty* given = argumentType(value, value->ty, types);
+  // (a non-const reference binds only what an operator giving a non-const lvalue gives: `int& r(b);` takes `operator int&()`
+  // beside `operator int()`)
+  FunctionDecl* op = conversionOf(given && given->isReference() ? given : given ? types.rref(given) : have, want,
+                                  referenced->isConst ? GlobalScope::ConversionKind::ToType : GlobalScope::ConversionKind::ToLvalue, explicitCast, at, &owner, &opArgs);
   const Ty* returned = op ? conversionReturns(op, owner) : nullptr;
   if (!returned || returned->kind != TyKind::LRef || (types.stripRef(returned)->isConst && !referenced->isConst) ||
       types.unqualified(types.stripRef(returned)) != want)
@@ -1880,7 +1889,8 @@ auto codegen::Emitter::lvalueByConversion(Expr* value, const Ty* have, const Ty*
   return callConversion(op, have, owner, rvalue(value).text, at, &opArgs, true).text;
 }
 
-auto codegen::Emitter::scalarReferenceTarget(const Ty* refTy, Expr* value, Node* at, const std::function<std::string(const Ty*)>& makeSlot) -> std::string
+auto codegen::Emitter::scalarReferenceTarget(const Ty* refTy, Expr* value, Node* at, const std::function<std::string(const Ty*)>& makeSlot, bool listInit,
+                                             bool directList) -> std::string
 {
   auto scalar = [](const Ty* t)
   {
@@ -1894,10 +1904,17 @@ auto codegen::Emitter::scalarReferenceTarget(const Ty* refTy, Expr* value, Node*
   // (the object as it is: a const one calls a const conversion function only, `const int& r(k);`
   // never k's non-const `operator int&()`; until 2026-11-08 the object was taken as non-const)
   const Ty* object = have && isClass(have) ? types.stripRef(value->ty) : have;
-  // A temporary of the referenced type holding the value, converted.
+  // (and its value category, which a ref-qualified one tells apart: `int&& r(b);` of an lvalue b never calls `operator double() &&`)
+  const Ty* chooser = object;
+  if (have && isClass(have))
+    if (const Ty* a = argumentType(value, value->ty, types))
+      chooser = a->isReference() ? a : types.rref(a);
+  // A temporary of the referenced type holding the value, converted (`const double& r{object};` by an explicit
+  // `operator double()` too, as clang does).
+  bool explicitToo = directList && have && isClass(have);
   auto temporary = [&]
   {
-    Value converted = convert(rvalue(value), want, at);
+    Value converted = convert(rvalue(value), want, at, explicitToo);
     std::string slot = makeSlot ? makeSlot(want) : newObjectSlot(want, at);
     fn += "  store " + llType(want, at) + " " + converted.text + ", ptr " + slot + "\n";
     return slot;
@@ -1914,11 +1931,13 @@ auto codegen::Emitter::scalarReferenceTarget(const Ty* refTy, Expr* value, Node*
     // An rvalue reference binds no lvalue a conversion function gives: of a class with `operator
     // int&()` and `operator float()`, `int&& r(object);` binds a temporary of the float made an int,
     // as clang does (until 2026-11-08 the int& one's object).
+    // A list's element initializes a temporary as `int t = object;` would, by any conversion function.
     if (refTy->kind == TyKind::RRef && scalar(want))
     {
       const Ty* owner = nullptr;
       TemplateArgs opArgs;
-      if (FunctionDecl* op = conversionOf(object, want, GlobalScope::ConversionKind::ToValue, false, at, &owner, &opArgs))
+      if (FunctionDecl* op = conversionOf(chooser, want, listInit ? GlobalScope::ConversionKind::ToType : GlobalScope::ConversionKind::ToValue, explicitToo, at, &owner,
+                                          &opArgs))
       {
         Value converted = convert(callConversion(op, object, owner, rvalue(value).text, at, &opArgs), want, at);
         std::string slot = makeSlot ? makeSlot(want) : newObjectSlot(want, at);
@@ -1926,7 +1945,7 @@ auto codegen::Emitter::scalarReferenceTarget(const Ty* refTy, Expr* value, Node*
         return slot;
       }
     }
-    if (std::optional<std::string> bound = lvalueByConversion(value, object, referenced, at))
+    if (std::optional<std::string> bound = lvalueByConversion(value, object, referenced, at, explicitToo))
       return *bound;
     if (scalar(want) && (refTy->kind == TyKind::RRef || referenced->isConst))
       return temporary();
@@ -1945,6 +1964,12 @@ auto codegen::Emitter::scalarReferenceTarget(const Ty* refTy, Expr* value, Node*
                    ": its pointer is a temporary, which only a const or an rvalue reference binds");
     return temporary();
   }
+  // A class object no conversion function binds a reference to a scalar through is no such object (`int& r(object);`
+  // with no `operator int&()` it takes): an error, never the reference bound to the object itself (until 2026-11-08
+  // `int& x(a);` with an explicit `operator int&()` bound x to a, the bytes of its first member read as the int).
+  if (have && isClass(have) && want->isKnown() && !types.isDependent(want) && scalar(want))
+    fail(at, "the reference of type " + types.toString(refTy, &symbols) + " given an object of " + types.toString(have, &symbols) +
+                 ": none of its conversion functions gives what the reference binds");
   if (!have || have == want || !have->isKnown() || !want->isKnown() || types.isDependent(want) || !scalar(want) || !scalar(have))
     return lvalue(value);
   if (refTy->kind == TyKind::LRef && !referenced->isConst)
@@ -1969,7 +1994,8 @@ auto codegen::Emitter::convertedTemporary(const Ty* cls, Expr* arg, Node* at) ->
   if (typedUnionOf(cls, at) && arg->kind != NodeKind::BraceInitExpr)
     initializeFrom(tmp, cls, arg, at); // a typed union from an alternative's value (design.md 8.5)
   else
-    constructInto(tmp, cls, Span<Expr*>{&one, 1}, at);
+    constructInto(tmp, cls, Span<Expr*>{&one, 1}, at, false, arg->kind != NodeKind::BraceInitExpr); // (a copy-initialization: `f(2.5)` for an f(C&&)
+  // takes `implicit C(int)` over `C(double)`; until 2026-11-08 the best of every constructor)
   if (needsDestruction(cls, at))
     statementTemps.push_back({tmp, cls});
   return tmp;

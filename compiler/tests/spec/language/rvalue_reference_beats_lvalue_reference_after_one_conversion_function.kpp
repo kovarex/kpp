@@ -1,0 +1,45 @@
+// spec: of two candidates taking an argument through one conversion function with conversions of one rank after it, an rvalue reference binding the converted value beats an lvalue reference ([over.ics.rank] 3.2.3 within 3.3): f(double&&) over f(const long&) through `operator bool()`, g(double&&) over g(const int&) through `operator unsigned() const`; a reference to a class bound to an lvalue of another through `implicit B(A&)` (`B&& x = a;`, `const B& x = a;`), the explicit B(int, double) never. clang's and g++'s output (the C++ with `explicit` where kpp marks none)
+// found by thread J's conversion generator (2026-11-08): the calls were ambiguous, `B&& x = a;` codegen's "a conversion from A to B" and the checker's explicit-by-default error
+extern "C" int printf(const char* format, ...);
+struct E
+{
+  int v = 1;
+  implicit operator bool() { printf("E>bool "); return true; }
+};
+struct U
+{
+  int v = 2;
+  operator int&() { printf("U>int& "); return v; }
+  implicit operator unsigned() const { printf("U>unsigned "); return 3u; }
+};
+struct A
+{
+  int v = 4;
+  implicit operator bool() const { printf("A>bool "); return true; }
+};
+struct B
+{
+  int v;
+  implicit B(long x) : v((int)x + 1) { printf("B(long) "); }
+  implicit B(A& a) : v(a.v + 10) { printf("B(A&) "); }
+  B(int a, double b = 0.5) : v(a + 100) { printf("B(int;double) "); }
+  ~B() { printf("~B "); }
+};
+int f(double&&) { return 1; }
+int f(const long&) { return 2; }
+int g(const long&, const long&) { return 1; }
+int g(const int&) { return 2; }
+int g(double&&) { return 3; }
+int main()
+{
+  E e;
+  printf("=%d\n", f(e));
+  U u;
+  printf("=%d\n", g(move(u)));
+  A a;
+  { B&& x = a; printf("[%d] ", x.v); }
+  printf("\n");
+  { const B& x = a; printf("[%d] ", x.v); }
+  printf("\n");
+  return 0;
+}

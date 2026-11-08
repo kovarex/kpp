@@ -10,7 +10,8 @@ auto codegen::Emitter::conversionOf(const Ty* from, const Ty* to, GlobalScope::C
                                     TemplateArgs* opArgs, ConversionContext context) -> FunctionDecl*
 {
   const Ty* in = nullptr;
-  FunctionDecl* op = isClass(from) ? global.chooseConversion(from, to, kind, explicitCast, &in, opArgs, context != ConversionContext::Copy) : nullptr;
+  FunctionDecl* op = from && isClass(types.stripRef(from)) ? global.chooseConversion(from, to, kind, explicitCast, &in, opArgs, context != ConversionContext::Copy)
+                                                           : nullptr;
   // A conversion to bool whose context the caller does not say: a condition's operator (an explicit
   // operator bool) and a copy's (an implicit one) must be the same one (ConversionContext).
   if (op && context == ConversionContext::Unknown && !explicitCast && to && types.unqualified(types.stripRef(to))->kind == TyKind::Bool &&
@@ -26,6 +27,13 @@ auto codegen::Emitter::conversionOf(const Ty* from, const Ty* to, GlobalScope::C
   if (foundIn)
     *foundIn = op ? canonicalClass(in, at) : nullptr;
   return op;
+}
+
+auto codegen::Emitter::conversionObject(const Value& v) -> const Ty*
+{
+  if (!isClass(v.ty) || v.category == Value::Category::Unknown)
+    return v.ty;
+  return v.category == Value::Category::Lvalue ? types.lref(v.ty) : types.rref(v.ty);
 }
 
 auto codegen::Emitter::conversionOperator(const Ty* from, const Ty* to, Node* at, const Ty** foundIn, bool explicitCast, TemplateArgs* opArgs,
@@ -157,7 +165,7 @@ auto codegen::Emitter::convert(Value v, const Ty* to, Node* at, bool explicitCas
     {
       const Ty* owner = nullptr;
       TemplateArgs opArgs;
-      if (FunctionDecl* op = conversionOperator(from, to, at, &owner, explicitCast, &opArgs, context))
+      if (FunctionDecl* op = conversionOperator(conversionObject(v), to, at, &owner, explicitCast, &opArgs, context))
         return convert(callConversion(op, from, owner, v.text, at, &opArgs), to, at);
     }
     // (A class without a conversion to bool is no condition: never its address compared with null.)

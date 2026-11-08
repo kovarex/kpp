@@ -1,0 +1,42 @@
+// spec: a reference to a scalar bound to a class object through a conversion function: `int&& x{a}` and `const double& x{B{}}` direct-list-initialize a temporary of the referenced type ([dcl.init.list] 3.10, CWG2267), which takes an explicit conversion function to that type too (`explicit operator int&()`, `explicit operator double()`); `int&& x(d)` of an lvalue never calls `operator double() &&` (D>long), of a temporary it does; a reference parameter's temporary is copy-initialized, `takeC(2.5)` for a C&& by `implicit C(int)`, never the explicit C(double). clang's output (g++ 13 copy-initializes the first two temporaries, A>unsigned and B>int; the C++ with `explicit` where kpp marks none)
+// found by thread J's conversion generator (2026-11-08): `operator unsigned()`, `operator int() const`, `operator double() &&` and C(double) were called
+extern "C" int printf(const char* format, ...);
+struct A
+{
+  int v = 4;
+  implicit operator unsigned() { printf("A>unsigned "); return v + 2; }
+  operator int&() { printf("A>int& "); return v; }
+};
+struct B
+{
+  int v = 0;
+  implicit operator int() const { printf("B>int "); return v + 2; }
+  operator double() { printf("B>double "); return v + 2.5; }
+};
+struct D
+{
+  int v = 1;
+  implicit operator long() const { printf("D>long "); return v + 2; }
+  operator double() & { printf("D>double& "); return v + 2.5; }
+  implicit operator double() && { printf("D>>double "); return v + 3.5; }
+};
+struct C
+{
+  int v;
+  implicit C(int x) : v(x + 1) { printf("C(int) "); }
+  C(double x) : v((int)x + 100) { printf("C(double) "); }
+};
+int takeC(C&& c) { return c.v; }
+int takeConstC(const C& c) { return c.v; }
+int main()
+{
+  A a;
+  { int&& x{a}; printf("%d\n", x); }
+  { const double& x{B{}}; printf("%.2f\n", x); }
+  D d;
+  { int&& x(d); printf("%d\n", x); }
+  { int&& x(D{}); printf("%d\n", x); }
+  printf("%d\n", takeC(2.5));
+  printf("%d\n", takeConstC(3.5));
+  return 0;
+}

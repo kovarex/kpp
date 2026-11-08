@@ -749,8 +749,12 @@ auto codegen::Emitter::declareLocal(VariableDecl* v) -> void
         std::vector<std::pair<std::string, uint32_t>> path;
         const Ty* owner = nullptr;
         TemplateArgs opArgs;
-        bool converts = isClass(initTy) && (basePath(initTy, target, path, v) || conversionOperator(initTy, target, v, &owner, false, &opArgs));
-        if (!converts && isClass(target) && findConstructor(target, {init->ty}, v))
+        // (the value as it is, an lvalue or an rvalue: `B&& r = a;` of an lvalue a takes `implicit B(A&)`; until
+        // 2026-11-08 the constructor was looked for given an rvalue, "a conversion from A to B")
+        const Ty* given = argumentType(init, init->ty, types);
+        const Ty* object = given && !given->isReference() && isClass(given) ? types.rref(given) : given;
+        bool converts = isClass(initTy) && (basePath(initTy, target, path, v) || conversionOperator(object, target, v, &owner, false, &opArgs));
+        if (!converts && isClass(target) && findConstructor(target, {given}, v))
         {
           std::string tmp = newObjectSlot(target, v);
           Expr* one = init;
@@ -812,7 +816,8 @@ auto codegen::Emitter::declareLocal(VariableDecl* v) -> void
         }
     }
     else
-      addr = scalarReferenceTarget(t, init, v);
+      addr = scalarReferenceTarget(t, init, v, {}, v->init && v->init->kind == NodeKind::BraceInitExpr && init != v->init,
+                                   v->bracedInit || (v->init && v->init->kind == NodeKind::FunctionalCastExpr && init != v->init));
     extendTemporaryBase();
     fn += "  store ptr " + addr + ", ptr " + slot + "\n";
     return;

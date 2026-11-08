@@ -1,0 +1,69 @@
+// spec: a direct-initialization takes an explicit conversion function to its type, a copy-initialization none ([over.match.copy] 1.2, [over.match.conv] 1.1, [over.match.ref] 1.1): `A x(kb);`, `A x{b};`, `A x(b);` call `explicit operator A() const` (its prvalue builds x, no move), `float x{f}` `explicit operator float()` where `float x = f;` takes `operator char()`, `int x{I{}}` `explicit operator int&()` (the object first), `const double& x(D{})` `explicit operator double()` where `= D{}` takes `operator bool()`; an argument or `bool x = L{};` never an explicit operator bool (L>long); a const object only its const operators (`bool x = ks;` no ambiguity). clang's output (g++ 13 binds `const double& x(D{})` through operator bool; the C++ with `explicit` where kpp marks none)
+// found by thread J's conversion generator (2026-11-08): the implicit conversions were taken, the explicit A one moved into x, an explicit operator bool converted an argument, and the checker took ks as non-const ("the conversion of S to bool is ambiguous")
+extern "C" int printf(const char* format, ...);
+struct A
+{
+  int v = 0;
+  A() { printf("A() "); }
+  A(const A& o) : v(o.v) { printf("A(c) "); }
+  A(A&& o) : v(o.v) { printf("A(m) "); }
+  implicit A(char c) : v(c) { printf("A(char) "); }
+};
+struct B
+{
+  int v = 1;
+  implicit operator char() { printf("B>char "); return 'x'; }
+  operator A() const { printf("B>A "); A t; t.v = 20; return t; }
+};
+struct F
+{
+  int v = 2;
+  operator float() const { printf("F>float "); return 2.5f; }
+  implicit operator char() const { printf("F>char "); return 'c'; }
+};
+struct I
+{
+  int v = 3;
+  implicit operator int() const { printf("I>int "); return 4; }
+  operator int&() { printf("I>int& "); return v; }
+};
+struct D
+{
+  int v = 4;
+  implicit operator bool() const { printf("D>bool "); return true; }
+  operator double() const { printf("D>double "); return 6.5; }
+};
+struct L
+{
+  int v = 5;
+  operator bool() const { printf("L>bool "); return true; }
+  implicit operator long() const& { printf("L>long "); return 7; }
+};
+struct S
+{
+  int v = 6;
+  implicit operator short() const { printf("S>short "); return 8; }
+  implicit operator int() { printf("S>int "); return 9; }
+  implicit operator char() { printf("S>char "); return 'z'; }
+};
+int takeBool(bool b) { return b ? 1 : 0; }
+int main()
+{
+  B b;
+  const B kb;
+  { A x(kb); printf("[%d]\n", x.v); }
+  { A x{b}; printf("[%d]\n", x.v); }
+  { A x(b); printf("[%d]\n", x.v); }
+  F f;
+  { float x{f}; printf("%.2f\n", (double)x); }
+  { float x = f; printf("%.2f\n", (double)x); }
+  { int x{I{}}; printf("%d\n", x); }
+  { const double& x(D{}); printf("%.2f\n", x); }
+  { const double& x = D{}; printf("%.2f\n", x); }
+  { int r = takeBool(L{}); printf("=%d\n", r); }
+  { bool x = L{}; printf("%d\n", (int)x); }
+  const S ks;
+  { bool x = ks; printf("%d\n", (int)x); }
+  { char x = ks; printf("%d\n", (int)x); }
+  return 0;
+}

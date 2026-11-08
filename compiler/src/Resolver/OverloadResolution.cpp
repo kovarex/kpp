@@ -192,7 +192,8 @@ auto GlobalScope::Impl::chooseConversion(const Ty* from, const Ty* to, Conversio
   const Ty* object = from ? types.stripRef(from) : nullptr; // (its const: a const object calls const operators only)
   const Ty* start = object ? types.unqualified(object) : nullptr;
   const Ty* target = to ? types.unqualified(types.stripRef(to)) : nullptr;
-  if (!start || start->kind != TyKind::Class || types.isDependent(start) || ((kind == ConversionKind::ToType || kind == ConversionKind::ToValue) && !target))
+  bool toType = kind == ConversionKind::ToType || kind == ConversionKind::ToValue || kind == ConversionKind::ToLvalue;
+  if (!start || start->kind != TyKind::Class || types.isDependent(start) || (toType && !target))
     return nullptr;
   bool constObject = object->isConst;
   // Every conversion operator of the class and its bases (C++ [class.conv.fct]: a base's is hidden by
@@ -254,20 +255,35 @@ auto GlobalScope::Impl::chooseConversion(const Ty* from, const Ty* to, Conversio
         if (b && b->kind == TyKind::Class && !types.isDependent(b))
           classes.push_back(types.unqualified(b));
   }
-  // Each candidate's rank, lower better, or NotViable: for a pointer or an integral type the first
-  // one of that kind (rank 0); to a type, the standard conversion from its result to the target (an
-  // exact match 0, a class derived from the target 1, then C++'s ranking of the scalar
-  // conversions), the better of two equal ones the one whose constness matches the object.
-  const Candidate* best = nullptr;
-  int bestRank = NotViable;
-  bool bestConstMatch = false;
-  bool bestTemplate = false;
-  bool ambiguous = false;
+  // The object's value category where the caller gives it (an lvalue as T&, an rvalue as T&&;
+  // a plain T: not known, every candidate as for both): its implicit object parameter binds an
+  // lvalue for `operator T() &`, an rvalue for `operator T() &&`, and a non-const `&` binds no
+  // rvalue ([over.match.funcs] 5); `operator int() &` beside `operator int() &&` (until
+  // 2026-11-08 ambiguous to every caller).
+  bool objectLvalue = from->kind == TyKind::LRef, objectRvalue = from->kind == TyKind::RRef;
+  // Each viable candidate with its rank, lower better: for a pointer or an integral type 0 (the
+  // first of them taken); to a type, the standard conversion from its result to the target (an
+  // exact match 0, a class derived from the target 1, then C++'s ranking of the scalar conversions).
+  struct Viable
+  {
+    const Candidate* c;
+    int rank;
+    bool constMatch; // the operator's constness the object's
+    bool refQualified;
+    bool rvalueBinding; // its implicit object parameter an rvalue reference binding the object
+    bool isTemplate;    // a conversion function template's specialization
+  };
+  std::vector<Viable> viable;
   for (const Candidate& c : candidates)
   {
     bool constOp = (c.f->flags & DF_Const) != 0;
     if (constObject && !constOp)
       continue; // a const object calls a const operator only
+    auto qualifier = FunctionDecl::RefQualifier(c.f->refQualifier);
+    if (objectLvalue && qualifier == FunctionDecl::RefQualifier::RValue)
+      continue;
+    if (objectRvalue && qualifier == FunctionDecl::RefQualifier::LValue && !constOp)
+      continue;
     bool isExplicitOne = isExplicit(c.f, c.args.empty() ? nullptr : &c.args);
     const Ty* ret = types.unqualified(types.stripRef(c.result));
     int rank = NotViable;
@@ -280,7 +296,8 @@ auto GlobalScope::Impl::chooseConversion(const Ty* from, const Ty* to, Conversio
         rank = !isExplicitOne && (ret->kind == TyKind::Enum || ret->kind == TyKind::Int || ret->kind == TyKind::Char || ret->kind == TyKind::Bool) ? 0 : NotViable;
         break;
       case ConversionKind::ToValue:
-        if (c.result->kind == TyKind::LRef)
+      case ConversionKind::ToLvalue:
+        if (kind == ConversionKind::ToValue ? c.result->kind == TyKind::LRef : (c.result->kind != TyKind::LRef || types.stripRef(c.result)->isConst))
           break;
         [[fallthrough]];
       case ConversionKind::ToType:
@@ -308,28 +325,57 @@ auto GlobalScope::Impl::chooseConversion(const Ty* from, const Ty* to, Conversio
     }
     if (rank >= NotViable)
       continue;
-    // The implicit object parameter first, then the result's conversion ([over.match.best] 2.1 before
-    // 2.2): of a non-const object, a non-const operator beats a const one whatever their results
-    // (`operator int&()` over `operator bool() const` in `if (x)`; until 2026-11-08 the result first).
-    // Then a function that is no template's specialization beats one that is ([over.match.best] 2.4):
-    // `operator bool()` over `template<class T> operator T()` with T = bool in `if (x)` (until
-    // 2026-11-08 the two were ambiguous, codegen's "a conversion from X to bool").
-    bool constMatch = constOp == constObject;
-    bool isTemplate = !c.f->templateParams.empty();
-    bool tied = constMatch == bestConstMatch && rank == bestRank;
-    if (!best || (constMatch && !bestConstMatch) || (constMatch == bestConstMatch && rank < bestRank) || (tied && !isTemplate && bestTemplate))
-    {
-      best = &c;
-      bestRank = rank;
-      bestConstMatch = constMatch;
-      bestTemplate = isTemplate;
-      ambiguous = false;
-    }
-    else if (tied && isTemplate == bestTemplate && c.f != best->f && (kind == ConversionKind::ToType || kind == ConversionKind::ToValue))
-      ambiguous = true;
+    viable.push_back({&c, rank, constOp == constObject, qualifier != FunctionDecl::RefQualifier::None,
+                      objectRvalue && qualifier == FunctionDecl::RefQualifier::RValue, !c.f->templateParams.empty()});
   }
+  // The implicit object parameter first, then the result's conversion ([over.match.best] 2.1 before
+  // 2.2): of two reference bindings of the object, an rvalue one to an rvalue where both functions are
+  // ref-qualified ([over.ics.rank] 3.2.3: `operator long() &&` over `operator long() const&` for a
+  // temporary), then the one adding no const (3.2.6: of a non-const object a non-const operator beats a
+  // const one whatever their results, `operator int&()` over `operator bool() const` in `if (x)`; until
+  // 2026-11-08 the result first), then the result's standard conversion, then a function that is no
+  // template's specialization beats one that is ([over.match.best] 2.4: `operator bool()` over
+  // `template<class T> operator T()` with T = bool in `if (x)`). -1: a better, 1: b better.
+  auto compare = [](const Viable& a, const Viable& b) -> int {
+    if (a.refQualified && b.refQualified && a.rvalueBinding != b.rvalueBinding)
+      return a.rvalueBinding ? -1 : 1;
+    if (a.constMatch != b.constMatch)
+      return a.constMatch ? -1 : 1;
+    if (a.rank != b.rank)
+      return a.rank < b.rank ? -1 : 1;
+    return a.isTemplate == b.isTemplate ? 0 : a.isTemplate ? 1 : -1;
+  };
+  // The best: better than every other (two indistinguishable ones C++'s ambiguity; for a pointer or an
+  // integral type the first of the best taken).
+  const Viable* chosen = nullptr;
+  bool ambiguous = false;
+  for (const Viable& v : viable)
+  {
+    bool beatsAll = true, tiesOnly = true;
+    for (const Viable& w : viable)
+      if (w.c->f != v.c->f) // (one operator reached through two bases is one candidate)
+      {
+        int c = compare(v, w);
+        beatsAll = beatsAll && c < 0;
+        tiesOnly = tiesOnly && c <= 0;
+      }
+    if (beatsAll)
+    {
+      chosen = &v;
+      ambiguous = false;
+      break;
+    }
+    if (tiesOnly && !chosen)
+    {
+      chosen = &v;
+      ambiguous = toType;
+    }
+  }
+  if (!chosen && !viable.empty())
+    ambiguous = true; // (no candidate at least as good as every other)
+  const Candidate* best = chosen ? chosen->c : nullptr;
   if (ambiguousOut)
-    *ambiguousOut = best && ambiguous;
+    *ambiguousOut = ambiguous;
   if (!best || ambiguous)
     return nullptr; // (none, or two equally good: C++'s ambiguity, which codegen reports as no conversion)
   if (foundIn)
@@ -648,7 +694,7 @@ auto GlobalScope::Impl::conversionRank(const Ty* arg, const Ty* param, int depth
     // binds a non-const `pt&` (a user-defined conversion), whatever the object's own value category;
     // a pointer's too (Agui's ValueComparePointer<Image> with `operator T*&()` for an `Image*&`).
     if (userDefined && param->kind == TyKind::LRef && !isConstObject(pt) && a->kind == TyKind::Class && types.unqualified(a) != types.unqualified(pt) &&
-        !(pt->kind == TyKind::Class && isBaseClass(pt, a)) && convertsByOperator(a, param, depth + 1))
+        !(pt->kind == TyKind::Class && isBaseClass(pt, a)) && convertsByOperator(conversionObject(arg), param, depth + 1))
       return 4;
     if (param->kind == TyKind::LRef && !isConstObject(pt) && (!arg->isReference() || arg->kind == TyKind::RRef))
       return NotViable; // `T&` binds no rvalue (a temporary, a lambda, `move(x)`): lvalues present themselves as `T&` (argumentType)
@@ -687,8 +733,8 @@ auto GlobalScope::Impl::conversionRank(const Ty* arg, const Ty* param, int depth
     // itself nor a copy of it (C++ [over.ics.ref] 3, as clang applies it): take(String&&) given
     // a class whose conversion is `operator const String&()` is no candidate, take(const
     // String&) is called (UnitTest's names, moved out of their objects through try_emplace).
-    if (r >= 4 && param->kind == TyKind::RRef && a->kind == TyKind::Class && convertsByOperator(a, pt, depth + 1) &&
-        !convertsByOperator(a, pt, depth + 1, 0, false, true))
+    if (r >= 4 && param->kind == TyKind::RRef && a->kind == TyKind::Class && convertsByOperator(conversionObject(arg), pt, depth + 1) &&
+        !convertsByOperator(conversionObject(arg), pt, depth + 1, 0, false, true))
       return NotViable;
     return std::max(r, 2);
   }
@@ -923,8 +969,9 @@ auto GlobalScope::Impl::conversionRank(const Ty* arg, const Ty* param, int depth
     default:
       break;
   }
-  // Conversion operator of the argument's class, or one it inherits.
-  if (userDefined && a->kind == TyKind::Class && convertsByOperator(a, param, depth))
+  // Conversion operator of the argument's class, or one it inherits (the object as it is, an lvalue
+  // or an rvalue: `operator int() &` converts no temporary).
+  if (userDefined && a->kind == TyKind::Class && convertsByOperator(conversionObject(arg), param, depth))
     return 4;
   return NotViable;
 }
@@ -979,6 +1026,195 @@ auto GlobalScope::Impl::builtinOperatorTakes(P op, const Ty* l, const Ty* r) -> 
     case P::AndAnd: case P::OrOr: return truth(l) && truth(r);
     default: return true;
   }
+}
+
+auto GlobalScope::Impl::builtinOperands(P op, const Ty* l, const Ty* r, const Ty** lc, const Ty** rc, bool* ambiguousOut) -> bool
+{
+  if (ambiguousOut)
+    *ambiguousOut = false;
+  bool integralOnly = false;
+  switch (op)
+  {
+    case P::Plus: case P::Minus:
+      break;
+    case P::Star: case P::Slash: case P::Less: case P::Greater: case P::LessEq: case P::GreaterEq: case P::EqEq: case P::NotEq: case P::Spaceship:
+      if (!r)
+        return false; // (unary *: a pointer's)
+      break;
+    case P::Percent: case P::Amp: case P::Pipe: case P::Caret: case P::Shl: case P::Shr:
+      if (!r)
+        return false;
+      integralOnly = true;
+      break;
+    case P::Tilde:
+      if (r)
+        return false;
+      integralOnly = true;
+      break;
+    default:
+      return false;
+  }
+  const Ty* operands[2] = {l, r};
+  size_t count = r ? 2 : 1;
+  bool anyClass = false;
+  for (size_t i = 0; i < count; ++i)
+  {
+    const Ty* t = operands[i] ? types.unqualified(types.stripRef(operands[i])) : nullptr;
+    if (!t || !t->isKnown() || types.isDependent(t))
+      return false;
+    if (t->kind == TyKind::Class)
+    {
+      // (A class converting to a pointer or an enumeration, or by an operator template: candidates
+      // not taken here.)
+      bool other = false;
+      std::function<void(const Ty*, int)> scan = [&](const Ty* k, int level) {
+        ClassDecl* kd = k && k->kind == TyKind::Class ? classDefinition(k) : nullptr;
+        if (!kd || level > 8)
+          return;
+        Subst ks = substFor(k);
+        for (Decl* m : membersRead(kd))
+        {
+          if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Conversion))
+            continue;
+          if (!static_cast<FunctionDecl*>(m)->templateParams.empty())
+          {
+            other = true;
+            continue;
+          }
+          const Ty* ft = declaredTypeOf(m, ks.empty() ? nullptr : &ks, 0);
+          const Ty* res = ft && ft->kind == TyKind::Function && ft->inner ? types.unqualified(types.stripRef(ft->inner)) : nullptr;
+          if (!res || !res->isKnown() || types.isDependent(res))
+            other = true;
+          else if (!(res->isArithmetic() && res->kind != TyKind::Vector) && res->kind != TyKind::Class)
+            other = true; // (a class result converts the operand to no scalar)
+        }
+        std::vector<const Ty*> bases;
+        if (directBases(k, kd, bases))
+          for (const Ty* b : bases)
+            scan(b, level + 1);
+      };
+      scan(t, 0);
+      if (other)
+        return false;
+      anyClass = true;
+    }
+    else if (!(t->isArithmetic() && t->kind != TyKind::Vector) && !(t->kind == TyKind::Enum && !(t->decl && static_cast<EnumDecl*>(t->decl)->isClass)))
+      return false;
+  }
+  if (!anyClass)
+    return false;
+  // The promoted arithmetic types ([over.built] 2), the integral ones first.
+  std::vector<const Ty*> promoted{types.intType(32), types.intType(32, true), types.longType(), types.longType(true), types.intType(64), types.intType(64, true)};
+  if (!integralOnly)
+  {
+    promoted.push_back(types.floatType(32));
+    promoted.push_back(types.floatType(64));
+  }
+  // An operand's implicit conversion sequence to a parameter: a standard one (rank: exact 0 ...
+  // conversion 3) or a user-defined one (by f, then its second standard conversion's rank; an
+  // ambiguous one, f null, indistinguishable from any other user-defined one, [over.best.ics] 10).
+  struct Sequence
+  {
+    bool userDefined = false;
+    FunctionDecl* f = nullptr;
+    int rank = 0;
+  };
+  auto sequence = [&](const Ty* operand, const Ty* param, Sequence& out) -> bool
+  {
+    const Ty* t = types.unqualified(types.stripRef(operand));
+    if (t->kind != TyKind::Class)
+    {
+      int rank = conversionRank(t, param, 0, false);
+      if (rank >= 4)
+        return false;
+      out = {false, nullptr, rank};
+      return true;
+    }
+    Subst opArgs;
+    const Ty* foundIn = nullptr;
+    bool ambiguous = false;
+    FunctionDecl* f = chooseConversion(operand, param, GlobalScope::ConversionKind::ToType, false, &foundIn, &opArgs, false, &ambiguous);
+    if (ambiguous)
+    {
+      out = {true, nullptr, 0};
+      return true;
+    }
+    if (!f)
+      return false;
+    const Ty* ft = declaredTypeOf(f, opArgs.empty() ? nullptr : &opArgs, 0);
+    const Ty* res = ft && ft->kind == TyKind::Function && ft->inner ? types.unqualified(types.stripRef(ft->inner)) : nullptr;
+    int rank = res ? conversionRank(res, param, 0, false) : NotViable;
+    if (rank >= 4)
+      return false;
+    out = {true, f, rank};
+    return true;
+  };
+  // -1: a better, 1: b better, 0: neither ([over.ics.rank] 2, 3.2, 3.3).
+  auto compare = [](const Sequence& a, const Sequence& b) -> int {
+    if (a.userDefined != b.userDefined)
+      return a.userDefined ? 1 : -1;
+    if (a.userDefined && (!a.f || a.f != b.f))
+      return 0;
+    return a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0;
+  };
+  struct Candidate
+  {
+    const Ty* params[2];
+    Sequence sequences[2];
+  };
+  std::vector<Candidate> viable;
+  for (const Ty* p0 : promoted)
+    for (size_t j = 0; j < (r ? promoted.size() : 1); ++j)
+    {
+      Candidate c{{p0, r ? promoted[j] : nullptr}, {}};
+      bool ok = true;
+      for (size_t i = 0; i < count && ok; ++i)
+        ok = sequence(operands[i], c.params[i], c.sequences[i]);
+      if (ok)
+        viable.push_back(c);
+    }
+  const Candidate* best = nullptr;
+  for (const Candidate& c : viable)
+  {
+    bool beatsAll = true;
+    for (const Candidate& d : viable)
+    {
+      if (&d == &c)
+        continue;
+      bool better = false, worse = false;
+      for (size_t i = 0; i < count; ++i)
+      {
+        int k = compare(c.sequences[i], d.sequences[i]);
+        better = better || k < 0;
+        worse = worse || k > 0;
+      }
+      if (!better || worse)
+      {
+        beatsAll = false;
+        break;
+      }
+    }
+    if (beatsAll)
+    {
+      best = &c;
+      break;
+    }
+  }
+  // (none better than all: ambiguous; an ambiguous conversion in the best candidate too, [over.best.ics] 10)
+  bool ambiguousConversion = false;
+  for (size_t i = 0; best && i < count; ++i)
+    ambiguousConversion = ambiguousConversion || (best->sequences[i].userDefined && !best->sequences[i].f);
+  if (!best || ambiguousConversion)
+  {
+    if (ambiguousOut)
+      *ambiguousOut = !viable.empty();
+    return false;
+  }
+  if (lc)
+    *lc = best->params[0];
+  if (rc)
+    *rc = best->params[1];
+  return true;
 }
 
 auto GlobalScope::Impl::freeOperatorAgainstBuiltin(FunctionDecl* f, const Subst* subst, P op, const std::vector<const Ty*>& operands) -> int
@@ -1076,6 +1312,8 @@ auto GlobalScope::Impl::convertsByOperator(const Ty* a, const Ty* param, int dep
 {
   (void)depth;
   (void)baseDepth;
+  const Ty* object = a; // (an lvalue as T&, an rvalue as T&&, for a ref-qualified operator; chooseConversion)
+  a = a ? types.stripRef(a) : nullptr;
   if (!a || a->kind != TyKind::Class)
     return false;
   if (!param || !param->isKnown() || types.isDependent(param))
@@ -1103,12 +1341,15 @@ auto GlobalScope::Impl::convertsByOperator(const Ty* a, const Ty* param, int dep
   // which an operator returning an lvalue reference does not give.
   Subst args;
   bool ambiguous = false;
-  FunctionDecl* f = chooseConversion(a, param, GlobalScope::ConversionKind::ToType, allowExplicit, nullptr, &args, allowExplicit, &ambiguous);
+  bool lvalue = param->kind == TyKind::LRef && param->inner && !param->inner->isConst; // a non-const `T&`
+  // (which binds only what an operator giving a non-const lvalue gives: `int f(int&)` given a class with `operator float() &`
+  // and `operator unsigned() &` is no candidate, never an ambiguous one)
+  FunctionDecl* f = chooseConversion(object, param, lvalue ? GlobalScope::ConversionKind::ToLvalue : GlobalScope::ConversionKind::ToType, allowExplicit, nullptr,
+                                     &args, allowExplicit, &ambiguous);
   if (ambiguous)
     return true; // (C++: an ambiguous conversion is still a user-defined one, the overload viable; a call that chooses it is an error)
   if (!f)
     return false;
-  bool lvalue = param->kind == TyKind::LRef && param->inner && !param->inner->isConst; // a non-const `T&`
   if (rvalues || lvalue)
   {
     const Ty* ft = declaredTypeOf(f, args.empty() ? nullptr : &args, 0);
@@ -2696,8 +2937,25 @@ auto GlobalScope::Impl::chooseAmong(const std::vector<FunctionDecl*>& candidates
         const Ty* from = types.unqualified(types.stripRef(argTypes[i]));
         const Ty* pa = types.unqualified(types.stripRef(a.params[i]));
         const Ty* pb = types.unqualified(types.stripRef(b.params[i]));
-        if (from->kind == TyKind::Class && !from->isBraceList() && pa != pb && pa->kind != TyKind::Class && pb->kind != TyKind::Class)
-          if (const Ty* result = scalarConversionOf(from))
+        // (the conversion function each takes, the object as the argument is, an lvalue or an rvalue: one
+        // conversion function to both, its result's conversions compare; until 2026-11-08 only for a class
+        // converting to one scalar type, so that of `operator int&()` beside `operator double()` A5(int, double
+        // = 0.5) and A5(long) given the int& tied, and A5(long) was called)
+        auto viaFunction = [&](const Ty* param, FunctionDecl*& f) -> const Ty* {
+          Subst opArgs;
+          bool twoOperators = false;
+          f = chooseConversion(conversionObject(argTypes[i]), param, GlobalScope::ConversionKind::ToType, false, nullptr, &opArgs, false, &twoOperators);
+          const Ty* ft = f && !twoOperators ? declaredTypeOf(f, opArgs.empty() ? nullptr : &opArgs, 0) : nullptr;
+          if (ft && ft->kind == TyKind::Function && ft->inner && !f->templateParams.empty())
+            return substitute(ft->inner, opArgs);
+          return ft && ft->kind == TyKind::Function ? ft->inner : nullptr;
+        };
+        FunctionDecl* fa = nullptr, *fb = nullptr;
+        const Ty* resultA = from->kind == TyKind::Class && !from->isBraceList() && pa != pb && pa->kind != TyKind::Class && pb->kind != TyKind::Class
+                              ? viaFunction(pa, fa) : nullptr;
+        const Ty* resultB = resultA ? viaFunction(pb, fb) : nullptr;
+        if (resultA && resultB && fa == fb && resultA->isKnown() && !types.isDependent(resultA))
+          if (const Ty* result = resultA)
           {
             result = types.unqualified(types.stripRef(result));
             int ra = conversionRank(result, pa), rb = conversionRank(result, pb);
@@ -2741,6 +2999,18 @@ auto GlobalScope::Impl::chooseAmong(const std::vector<FunctionDecl*>& candidates
                   continue;
                 }
               }
+            }
+            // Of one rank, an rvalue reference binding the converted value beats an lvalue reference
+            // ([over.ics.rank] 3.2.3 in the second standard conversion, 3.3): `operator bool()` given
+            // f(double&&) and f(const long&) calls f(double&&) (it was ambiguous: thread J's battery).
+            bool aRvalue = a.params[i]->kind == TyKind::RRef, bRvalue = b.params[i]->kind == TyKind::RRef;
+            bool aLvalue = a.params[i]->kind == TyKind::LRef, bLvalue = b.params[i]->kind == TyKind::LRef;
+            if ((aRvalue && bLvalue) || (aLvalue && bRvalue))
+            {
+              if (aLvalue)
+                return false;
+              someBetter = true;
+              continue;
             }
           }
       }

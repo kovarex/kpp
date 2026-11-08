@@ -1,0 +1,45 @@
+// spec: a built-in operator whose class operand converts to several scalar types takes the best of the built-in candidates ([over.match.oper] 3.3, [over.built] 13-14, 24): each candidate's parameters reached by the conversion function chooseConversion takes (the object first: of a non-const M `operator int()` over `operator double() const`, a const M the double one), the candidates ranked by those sequences (`s * 2` operator*(int, int) through `operator short()`, `ks * 2` operator*(long long, int)); binary, unary and comparison operators. clang's output (the C++ with no `implicit`)
+// found by thread J's conversion generator (2026-11-08): codegen's "M has no operator+", "an operator with a class on the right that no function defines" (only a class converting to one scalar type took part)
+extern "C" int printf(const char* format, ...);
+struct M
+{
+  int v = 3;
+  implicit operator int() { printf("M>int "); return v; }
+  implicit operator double() const { printf("M>double "); return v + 0.5; }
+};
+struct S
+{
+  int v = 5;
+  implicit operator short() { printf("S>short "); return (short)v; }
+  implicit operator long long() const { printf("S>LL "); return v + 100; }
+};
+void show(int v) { printf("i%d\n", v); }
+void show(long long v) { printf("L%lld\n", v); }
+void show(double v) { printf("d%.2f\n", v); }
+void show(bool v) { printf("b%d\n", (int)v); }
+int main()
+{
+  M m;
+  const M km;
+  show(m + 0.25);
+  show(km + 0.25);
+  show(m * 2);
+  show(km * 2);
+  show(3 - m);
+  show(m < 3.5);
+  show(km < 3.75);
+  show(m == km);
+  show(-m);
+  show(-km);
+  S s;
+  const S ks;
+  show(s * 2);
+  show(ks * 2);
+  show(s % 3);
+  show(~s);
+  show(~ks);
+  show(s << 1);
+  show(s != ks);
+  show(1 + +s);
+  return 0;
+}

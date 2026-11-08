@@ -74,6 +74,9 @@ namespace codegen
       std::string text;         // IR operand; for class types the object's address
       const Ty* ty;             // Value type (never a reference)
       bool isTemporary = false; // Class temporary owned by the current full-expression
+      // A class object's value category where rvalue knew it (Lvalue, Rvalue), for a ref-qualified
+      // conversion operator (`operator int() &` converts no temporary; conversionObject).
+      enum class Category : uint8_t { Unknown, Lvalue, Rvalue } category = Category::Unknown;
     };
 
     // Where a class converts to bool, which decides whether its explicit operator bool (kpp's unmarked

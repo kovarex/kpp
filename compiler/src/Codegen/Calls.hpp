@@ -269,10 +269,16 @@
 
     // makeSlot: where a temporary of the referenced type goes (a reference of static storage's lives
     // as long as it, staticReferenceTarget), by default a slot of this function.
-    std::string scalarReferenceTarget(const Ty* refTy, Expr* value, Node* at, const std::function<std::string(const Ty*)>& makeSlot = {});
+    // listInit: `int&& r{object};`, `int&& r = {object};`, whose one element initializes a temporary of the referenced
+    // type ([dcl.init.list] 3.10), by any conversion function (`operator int&()` too); direct: `r{object}` or
+    // `r(object)`, a direct-initialization, which takes an explicit conversion function to the referenced type as well
+    // ([over.match.ref] 1.1, [dcl.init.list] 3.10).
+    std::string scalarReferenceTarget(const Ty* refTy, Expr* value, Node* at, const std::function<std::string(const Ty*)>& makeSlot = {}, bool listInit = false,
+                                      bool directList = false);
     // The lvalue of `referenced` a class's conversion operator gives (`operator int&()`, [dcl.init.ref]
     // 5.1.2), called on value, an object of the class `have`; none when no operator gives one.
-    std::optional<std::string> lvalueByConversion(Expr* value, const Ty* have, const Ty* referenced, Node* at);
+    // explicitCast: a direct-initialization's (`int& r(object);`), which takes an explicit `operator int&()` too.
+    std::optional<std::string> lvalueByConversion(Expr* value, const Ty* have, const Ty* referenced, Node* at, bool explicitCast = false);
     // What a conversion operator returns, in terms of the class that declares it.
     const Ty* conversionReturns(FunctionDecl* op, const Ty* owner);
 

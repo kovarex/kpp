@@ -1,0 +1,47 @@
+// spec: a non-const lvalue reference to a scalar binds what a conversion function giving a non-const lvalue gives, and only that ([over.match.ref] 1.1, [dcl.init.ref] 5.2.1.2): `int& x(e);` calls `explicit operator int&()` (a direct-initialization) and refers to e.v; f(int&) is no candidate for a class whose operators give values (f(double) called, never ambiguous); g(int&) and `int& x(move(h))` take `operator int&()` beside `operator int() &` or `operator int()`. clang's and g++'s output (the C++ with `explicit` where kpp marks none)
+// found by thread J's conversion generator (2026-11-08): `int& x(e);` bound x to e itself (its first member read as the int, a silent wrong answer), the calls were "ambiguous" and `int& x(move(h))` "the conversion of H to int32 is ambiguous"
+extern "C" int printf(const char* format, ...);
+struct E
+{
+  int pad = 100;
+  int v = 1;
+  operator int&() { printf("E>int& "); return v; }
+};
+struct F
+{
+  int v = 2;
+  implicit operator float() & { printf("F>float "); return 2.5f; }
+  implicit operator unsigned() & { printf("F>unsigned "); return 3u; }
+};
+struct G
+{
+  int pad = 200;
+  int v = 4;
+  implicit operator int&() { printf("G>int& "); return v; }
+  implicit operator int() & { printf("G>int "); return 5; }
+};
+struct H
+{
+  int pad = 300;
+  int v = 6;
+  implicit operator bool() const { printf("H>bool "); return true; }
+  implicit operator int&() { printf("H>int& "); return v; }
+  implicit operator int() { printf("H>int "); return 7; }
+};
+int f(double) { return 1; }
+int f(int&) { return 2; }
+int g(int& r) { r += 10; return r; }
+int main()
+{
+  E e;
+  { int& x(e); x += 1; printf("%d %d\n", x, e.v); }
+  F fv;
+  printf("=%d\n", f(fv));
+  G gv;
+  printf("=%d\n", g(gv));
+  printf("%d\n", gv.v);
+  H h;
+  { int& x(move(h)); printf("%d\n", x); }
+  { int& x = h; x = 9; printf("%d\n", h.v); }
+  return 0;
+}

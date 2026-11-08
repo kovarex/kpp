@@ -3728,9 +3728,15 @@ auto GlobalScope::Impl::Walker::checkClassToScalar(const Ty* from, const Ty* to,
   if (!t->isArithmetic() && t->kind != TyKind::Enum && t->kind != TyKind::Pointer)
     return;
   // The one rule codegen converts by (design.md 24, chooseConversion): an error exactly where it
-  // finds no operator.
+  // finds no operator. (The object an lvalue or an rvalue as from says, argumentType's: `operator
+  // int() &` beside `operator int() &&` converts either.)
+  // (its const too: a const object calls a const operator only, `bool x = kb;` of `operator short() const` beside a
+  // non-const `operator int()` is no ambiguity)
+  const Ty* object = from->kind == TyKind::LRef ? types.lref(types.stripRef(from)) : types.rref(types.stripRef(from));
+  // (a non-const lvalue reference binds what an operator giving one gives: `operator int&()` beside `operator int() &`)
+  auto kind = to->kind == TyKind::LRef && !to->inner->isConst ? GlobalScope::ConversionKind::ToLvalue : GlobalScope::ConversionKind::ToType;
   bool ambiguous = false;
-  if (impl.chooseConversion(f, t, GlobalScope::ConversionKind::ToType, false, nullptr, nullptr, false, &ambiguous))
+  if (impl.chooseConversion(object, t, kind, false, nullptr, nullptr, false, &ambiguous))
     return; // (an explicit operator bool converts a condition, never an argument or a copy-initialization)
   if (ambiguous)
   {
@@ -3746,7 +3752,7 @@ auto GlobalScope::Impl::Walker::checkClassToScalar(const Ty* from, const Ty* to,
   const Ty* foundIn = nullptr;
   Subst opArgs;
   bool twoOperators = false;
-  if (FunctionDecl* op = impl.chooseConversion(f, t, GlobalScope::ConversionKind::ToType, true, &foundIn, &opArgs, false, &twoOperators);
+  if (FunctionDecl* op = impl.chooseConversion(object, t, kind, true, &foundIn, &opArgs, false, &twoOperators);
       op && !twoOperators && explicitByDefaultOn() && !(op->flags & DF_Explicit))
   {
     std::string name = types.toString(t, &symbols);
@@ -7176,6 +7182,29 @@ auto GlobalScope::Impl::Walker::isAssignmentOp(P op) -> bool
   }
 }
 
+auto GlobalScope::Impl::Walker::builtinOperandsOf(P op, Expr* le, const Ty* l, Expr* re, const Ty* r, uint32_t token) -> std::pair<const Ty*, const Ty*>
+{
+  if (!l || (re && !r))
+    return {nullptr, nullptr};
+  const Ty* lc = nullptr, *rc = nullptr;
+  bool ambiguous = false;
+  if (impl.builtinOperands(op, impl.conversionObject(argumentType(le, l, types)), re ? impl.conversionObject(argumentType(re, r, types)) : nullptr, &lc, &rc,
+                           &ambiguous))
+    return {lc, rc};
+  // Two built-in candidates equally good (`a + 1` of a class converting to int and to double: operator+(int, int) and
+  // operator+(double, int)), or the best one's operand converting ambiguously: C++'s ambiguous operator (codegen said
+  // "A has no operator+").
+  if (ambiguous && !probing && !activeSubst && file)
+  {
+    std::string text = file->tokens && token < file->tokens->size() ? Impl::spelledTokens(file, token, token) : std::string("operator");
+    std::string operands = types.toString(types.unqualified(types.stripRef(l)), &impl.symbols) +
+                           (re ? " and " + types.toString(types.unqualified(types.stripRef(r)), &impl.symbols) : std::string());
+    reportCheck(token, "the built-in " + text + " of " + operands + " is ambiguous: more than one of the built-in candidates takes the operands'"
+                       " conversions equally well ([over.match.oper] 3.3, [over.built])");
+  }
+  return {nullptr, nullptr};
+}
+
 auto GlobalScope::Impl::Walker::builtinOperand(const Ty* t) -> const Ty*
 {
   const Ty* s = types.stripRef(t);
@@ -7482,6 +7511,8 @@ auto GlobalScope::Impl::Walker::typeOfBinaryOperator(BinaryExpr* b, OperatorCall
     // assignment's left operand is the object itself and converts to nothing).
     const Ty* lc = isAssignmentOp(op) ? (ls->kind == TyKind::Class ? nullptr : l) : builtinOperand(l);
     const Ty* rc = builtinOperand(r);
+    if ((!lc || !rc) && !isAssignmentOp(op))
+      std::tie(lc, rc) = builtinOperandsOf(op, b->lhs, l, b->rhs, r, b->token); // (a class converting to several scalar types)
     if (!lc || !rc)
     {
       // (an operand that converts only by an operator explicit by default: the rule's error; an assignment's left
@@ -7709,6 +7740,8 @@ auto GlobalScope::Impl::Walker::typeOfUnaryOperator(UnaryExpr* u, OperatorCall& 
     // No operator function: the built-in one on the operand's scalar conversion (`-speed`
     // with a Const<double>); ++ and -- change the object itself.
     const Ty* c = op == P::PlusPlus || op == P::MinusMinus ? nullptr : builtinOperand(t);
+    if (!c && (op == P::Minus || op == P::Plus || op == P::Tilde))
+      c = builtinOperandsOf(op, u->operand, t, nullptr, nullptr, u->token).first; // (a class converting to several scalar types)
     if (!c)
       return unknown(Why::Operator);
     t = c;
@@ -8060,7 +8093,8 @@ auto GlobalScope::Impl::Walker::convertingThrows(Expr* from, const Ty* to, bool 
   const Ty* foundIn = nullptr;
   Subst opArgs;
   bool ambiguous = false;
-  FunctionDecl* op = impl.chooseConversion(a, t, GlobalScope::ConversionKind::ToType, explicitCast, &foundIn, &opArgs, explicitCast, &ambiguous);
+  FunctionDecl* op = impl.chooseConversion(impl.conversionObject(argumentType(from, from->ty, types)), t, GlobalScope::ConversionKind::ToType, explicitCast, &foundIn,
+                                          &opArgs, explicitCast, &ambiguous);
   if (!op || ambiguous)
   {
     unsupported = "a conversion of a class to a scalar";
@@ -9089,8 +9123,8 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
       if (v->init && declared && !impl.containsAuto(declared) && !v->bracedInit && v->init->kind != NodeKind::BraceInitExpr &&
           !(v->init->kind == NodeKind::FunctionalCastExpr && static_cast<FunctionalCastExpr*>(v->init)->type == v->type))
       {
-        checkClassToScalar(initTy, declared, v->init->token);
-        checkExplicitCopy(initTy, declared, v->init->token); // `Strict s = 5;`
+        checkClassToScalar(argumentType(v->init, initTy, types), declared, v->init->token);
+        checkExplicitCopy(argumentType(v->init, initTy, types), declared, v->init->token); // `Strict s = 5;` (an lvalue as one: `B&& x = a;` takes `implicit B(A&)`)
       }
       if (v->init && declared && !impl.containsAuto(declared) && !v->bracedInit && v->init->kind == NodeKind::BraceInitExpr)
         checkExplicitListCopy(static_cast<BraceInitExpr*>(v->init), declared); // `Strict s = {5};`

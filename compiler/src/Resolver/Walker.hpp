@@ -904,6 +904,11 @@
     // Const<float>). The operand's converted type, or null when it has no such conversion; an
     // operand that is no class stays as it is.
     const Ty* builtinOperand(const Ty* t);
+    // Where a class operand converts to several scalar types (builtinOperand none): the types the
+    // best built-in candidate takes the operands as (GlobalScope::builtinOperands; re null for a unary
+    // operator), the operands' value categories from their expressions; nulls when no candidate is
+    // best, an error where C++'s operator is ambiguous.
+    std::pair<const Ty*, const Ty*> builtinOperandsOf(P op, Expr* le, const Ty* l, Expr* re, const Ty* r, uint32_t token);
     // Explicit by default: a conversion operator of class t (or of a base) to a scalar that has no mark, which a built-in
     // operator does not take (toFunction: to a pointer or reference to a function, which a call of a t does not take);
     // scalar: what it gives, as declared. Null when there is none, or while converting.

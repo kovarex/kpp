@@ -13,6 +13,10 @@
     FunctionDecl* conversionOperator(const Ty* from, const Ty* to, Node* at, const Ty** foundIn = nullptr, bool explicitCast = false, TemplateArgs* opArgs = nullptr,
                                      ConversionContext context = ConversionContext::Unknown);
 
+    // A class value as conversionOperator takes it: T& for an lvalue, T&& for an rvalue, T when its
+    // value category is not known (Value::category; chooseConversion).
+    const Ty* conversionObject(const Value& v);
+
     // A class value through its (non-explicit) conversion operator to a pointer, own or inherited,
     // or nothing when it has none: what `*` and `delete` of such an object work on.
     std::optional<Value> toPointer(const Value& object, Node* at);

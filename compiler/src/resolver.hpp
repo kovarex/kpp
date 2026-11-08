@@ -673,9 +673,11 @@ public:
   // char or bool (a switch). foundIn: the class declaring it; opArgs: what it is called with.
   // ToValue: as ToType, no conversion function giving an lvalue reference (an rvalue reference to a
   // scalar bound to what a class object converts to: `int&& r(object);` never takes `operator int&()`).
+  // ToLvalue: as ToType, only those giving a non-const lvalue reference (a non-const `int&` bound to what
+  // it converts to: `operator int&()`, never `operator int()` beside it, [over.match.ref] 1.1).
   // contextualBool: an explicit operator bool converts to bool (a condition, a direct-initialization);
   // false for a copy-initialization, which takes only implicit ones (C++ [class.conv.fct] 2).
-  enum class ConversionKind : uint8_t { ToType, ToPointer, ToIntegral, ToValue };
+  enum class ConversionKind : uint8_t { ToType, ToPointer, ToIntegral, ToValue, ToLvalue };
   FunctionDecl* chooseConversion(const Ty* from, const Ty* to, ConversionKind kind, bool explicitCast = false, const Ty** foundIn = nullptr,
                                  TemplateArgs* opArgs = nullptr, bool contextualBool = true);
   // The free function `operator<punctuator>(lhs[, rhs])` visible from context (the namespaces of
@@ -695,6 +697,16 @@ public:
   // conversion operator to a non-class type, its own or inherited; null when it has none or
   // several. The resolver types such operators by this.
   const Ty* scalarConversionOf(const Ty* classType);
+  // The built-in operator `l op r` (r null: `op l`) takes when a class operand converts to several
+  // scalar types (scalarConversionOf none), as C++ chooses it among the built-in candidates
+  // ([over.built] 13-14, 24: every pair of promoted arithmetic types, of promoted integral ones for
+  // % & | ^ << >>): each class operand converted to the candidate's parameter by chooseConversion,
+  // the best candidate by the conversion sequences ([over.match.best], [over.ics.rank]). l, r: a
+  // class object as T& for an lvalue, T&& for an rvalue (chooseConversion), a scalar as it is. lc,
+  // rc: the parameter types of the candidate chosen, which each operand converts to. False when no
+  // candidate takes them, when two are equally good (ambiguousOut), and where a class converts to
+  // a pointer or an enumeration, whose candidates are not here.
+  bool builtinOperands(uint32_t op, const Ty* l, const Ty* r, const Ty** lc, const Ty** rc, bool* ambiguousOut = nullptr);
   // The class instances the explicit instantiations of a file name (`template struct
   // Registry<int>;`, ParsedFile::explicitInstantiations), in order, each with the token it is
   // written at; one naming no instance of a class template is left out.

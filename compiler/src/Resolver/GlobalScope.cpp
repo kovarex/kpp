@@ -870,6 +870,10 @@ const Ty* GlobalScope::hiddenFriendClass(FunctionDecl* f, const std::vector<cons
 }
 
 const Ty* GlobalScope::scalarConversionOf(const Ty* classType) { return impl->scalarConversionOf(classType); }
+bool GlobalScope::builtinOperands(uint32_t op, const Ty* l, const Ty* r, const Ty** lc, const Ty** rc, bool* ambiguousOut)
+{
+  return impl->builtinOperands(P(op), l, r, lc, rc, ambiguousOut);
+}
 
 std::vector<std::pair<const Ty*, uint32_t>> GlobalScope::explicitInstantiationsOf(ParsedFile& file)
 {

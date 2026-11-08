@@ -1,0 +1,28 @@
+// spec: a built-in operator with no best candidate is an error ([over.match.oper] 3.3, [over.built]): of a class converting to int and to double, `a + 1`, `a < 2` and `-a` are taken as well by operator+(int, int) as by operator+(double, int), as clang rejects them; of a class converting to unsigned and to bool, `u + 1u` reaches float only by an ambiguous conversion, which ties with every other user-defined one ([over.best.ics] 10)
+// found by thread J's conversion generator (2026-11-08): codegen's "A has no operator+"
+// error: builtin_operator_with_equally_good_candidates_is_error.kpp:19: error: the built-in + of A and int32 is ambiguous: more than one of the built-in candidates takes the operands' conversions equally well ([over.match.oper] 3.3, [over.built])
+// error: builtin_operator_with_equally_good_candidates_is_error.kpp:20: error: the built-in < of A and int32 is ambiguous: more than one of the built-in candidates takes the operands' conversions equally well ([over.match.oper] 3.3, [over.built])
+// error: builtin_operator_with_equally_good_candidates_is_error.kpp:21: error: the built-in - of A is ambiguous: more than one of the built-in candidates takes the operands' conversions equally well ([over.match.oper] 3.3, [over.built])
+// error: builtin_operator_with_equally_good_candidates_is_error.kpp:22: error: the built-in + of U and uint32 is ambiguous: more than one of the built-in candidates takes the operands' conversions equally well ([over.match.oper] 3.3, [over.built])
+struct A
+{
+  implicit operator int() const { return 1; }
+  implicit operator double() const { return 2.5; }
+};
+struct U
+{
+  implicit operator unsigned() const { return 7; }
+  implicit operator bool() const { return true; }
+};
+int f(A a, U u)
+{
+  int x = a + 1;
+  bool y = a < 2;
+  int z = -a;
+  int w = u + 1u;
+  return x + y + z + w;
+}
+int main()
+{
+  return f(A{}, U{});
+}

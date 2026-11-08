@@ -84,6 +84,10 @@
   // with a Const<float>): the result of its one non-explicit conversion operator to a non-class
   // type, its own or inherited (under its arguments); null when it has none or several.
   const Ty* scalarConversionOf(const Ty* cls);
+  // A class object as chooseConversion takes it, from the type an argument presents to overload
+  // resolution (argumentType's: an lvalue T&, an xvalue T&&, a prvalue T): an lvalue as T&, an
+  // rvalue as T&&, which a ref-qualified conversion operator tells apart.
+  const Ty* conversionObject(const Ty* arg) { return !arg || arg->isReference() || !arg->isKnown() ? arg : types.rref(arg); }
   // Whether a built-in operator op ([over.built]) takes operands of these types (no class: a class
   // operand is what it converts to; r null for a unary operator): arithmetic types and unscoped
   // enumerations for the arithmetic operators, integral ones for %, the bitwise and the shift
@@ -91,6 +95,8 @@
   // two pointers for a comparison, what converts to bool for ! && and ||. A scoped enumeration has
   // no built-in `|` (Factorio's `status | EntityStatus::Working`, the member operator| alone).
   bool builtinOperatorTakes(P op, const Ty* l, const Ty* r);
+  // GlobalScope::builtinOperands says what it does.
+  bool builtinOperands(P op, const Ty* l, const Ty* r, const Ty** lc, const Ty** rc, bool* ambiguousOut);
   // A free operator function f (subst: its class's arguments, for a friend of an instance) against
   // the built-in operator on the class operands' conversions to scalars, as C++ ranks the two
   // ([over.match.oper]; the class has no member operator): operand by operand, the one that takes

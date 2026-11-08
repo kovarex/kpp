@@ -116,6 +116,9 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
   if (v.ty && !v.ty->isConst && isClass(v.ty) && e->ty && e->ty->isKnown() && !types.isDependent(e->ty))
     if (const Ty* declared = types.stripRef(e->ty); declared->isConst && isClass(declared) && classKey(declared) == classKey(v.ty))
       v.ty = types.qualified(v.ty, true, v.ty->isVolatile);
+  // (an lvalue: a name, a member, a call or cast giving T&; an rvalue: a temporary, `move(x)`, a call giving T or T&&)
+  if (isClass(v.ty) && e->ty && e->ty->isKnown() && !types.isDependent(e->ty))
+    v.category = isLvalueExpression(e) || e->ty->kind == TyKind::LRef ? Value::Category::Lvalue : Value::Category::Rvalue;
   return v;
 }
 
@@ -1969,7 +1972,12 @@ auto codegen::Emitter::unary(UnaryExpr* u) -> Value
     // (`-limit` with a Const<double>), as the resolver typed it.
     const Ty* scalar = nullptr;
     if (operatorLooked ? noOperator : !findMemberFunction(v.ty, operatorName(op), {}, v.ty, u, &in))
+    {
       scalar = global.scalarConversionOf(v.ty);
+      // (a class converting to several scalar types: the best built-in candidate's, as the resolver typed it)
+      if (!scalar && (op == P::Minus || op == P::Plus || op == P::Tilde))
+        global.builtinOperands(uint32_t(op), conversionObject(v), nullptr, &scalar, nullptr);
+    }
     if (!scalar)
       return callRvalue(operatorCall(withCheckedConst(v, u->operand), operatorName(op), {}, u, true, operatorResult(u)), u);
     verifyOperatorCall(u, OperatorCall::Builtin);
@@ -2291,6 +2299,18 @@ auto codegen::Emitter::binary(BinaryExpr* b) -> Value
     {
       const Ty* lc = isClass(lt) ? global.scalarConversionOf(lt) : lt;
       const Ty* rc = isClass(rt) ? global.scalarConversionOf(rt) : rt;
+      // A class converting to several scalar types (`q + 0.25` of `operator int() &` and `operator
+      // double() const`): the types the best built-in candidate takes, as the resolver typed it
+      // (until 2026-11-08 "Q has no operator+").
+      if ((!lc || !rc) && b->lhs->ty && b->rhs->ty && b->lhs->ty->isKnown() && b->rhs->ty->isKnown())
+      {
+        auto object = [&](Expr* e) {
+          const Ty* a = argumentType(e, e->ty, types);
+          return a && !a->isReference() && isClass(a) ? types.rref(a) : a;
+        };
+        if (!global.builtinOperands(uint32_t(op), object(b->lhs), object(b->rhs), &lc, &rc))
+          lc = rc = nullptr;
+      }
       if (lc && rc && lc->isKnown() && rc->isKnown())
       {
         verifyOperatorCall(b, OperatorCall::Builtin);

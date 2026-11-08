@@ -1,0 +1,43 @@
+// spec: of two candidates taking an argument through one conversion function, the standard conversion after it decides ([over.ics.rank] 3.3), also of a class converting to several scalar types: of `operator int&()` beside `operator double() const` P(int, double = 0.5) beats P(long) given a K (int's identity over a conversion), take(int) beats take(long long), pick(int&&) beats pick(const long&); of `operator char() &&` beside `operator unsigned() const&` a temporary H calls Q(int) (char's promotion) over Q(long). clang's and g++'s output (the C++ with no `implicit`)
+// found by thread J's conversion generator (2026-11-08): only a class converting to one scalar type compared them, P(long) was called
+extern "C" int printf(const char* format, ...);
+struct K
+{
+  int v = 9;
+  implicit operator int&() { printf("K>int& "); return v; }
+  implicit operator double() const { printf("K>double "); return v + 0.5; }
+};
+struct P
+{
+  int v;
+  implicit P(int a, double b = 0.5) : v(a * 10) { printf("P(int;double) "); }
+  implicit P(long x) : v((int)x + 1) { printf("P(long) "); }
+};
+struct H
+{
+  int v = 4;
+  implicit operator char() && { printf("H>>char "); return 'a'; }
+  implicit operator unsigned() const& { printf("H>unsigned "); return 5u; }
+};
+struct Q
+{
+  int v;
+  implicit Q(int x) : v(x) { printf("Q(int) "); }
+  implicit Q(long x) : v((int)x + 1000) { printf("Q(long) "); }
+};
+int take(int) { return 1; }
+int take(long long) { return 2; }
+int pick(const long&) { return 1; }
+int pick(int&&) { return 2; }
+int main()
+{
+  K k;
+  { P p{k}; printf("[%d]\n", p.v); }
+  { P p(k); printf("[%d]\n", p.v); }
+  { Q q{H{}}; printf("[%d]\n", q.v); }
+  { Q q(H{}); printf("[%d]\n", q.v); }
+  { int r = take(k); printf("=%d\n", r); }
+  { int r = take(H{}); printf("=%d\n", r); }
+  { int r = pick(k); printf("=%d\n", r); }
+  return 0;
+}

@@ -493,9 +493,13 @@ auto codegen::Emitter::condition(Node* cond, Node* at) -> Value
       std::string object = newTemp();
       fn += "  " + object + " = load ptr, ptr " + l.addr + "\n";
       const Ty* objectTy = types.stripRef(l.ty);
-      return convert(isAggregate(objectTy) ? Value{object, objectTy} : load(object, objectTy, at), types.boolType(), at, false, ConversionContext::Direct);
+      return convert(isAggregate(objectTy) ? Value{object, objectTy, false, Value::Category::Lvalue} : load(object, objectTy, at), types.boolType(), at, false,
+                     ConversionContext::Direct);
     }
-    return convert(load(l.addr, l.ty, at), types.boolType(), at, false, ConversionContext::Direct);
+    Value variable = load(l.addr, l.ty, at);
+    if (isClass(variable.ty))
+      variable.category = Value::Category::Lvalue; // (the variable: `if (Guard g = make())` calls an `operator bool() &`)
+    return convert(variable, types.boolType(), at, false, ConversionContext::Direct);
   }
   return convert(rvalue(static_cast<Expr*>(cond)), types.boolType(), at, false, ConversionContext::Direct);
 }

@@ -1302,6 +1302,13 @@ auto codegen::Emitter::directInitialize(const std::string& addr, const Ty* t, Sp
     const Ty* value = types.unqualified(t);
     const Ty* reference = types.lref(types.qualified(value, true, false));
     const Ty* target = conversionOperator(argTy, value, at, nullptr, true) ? value : conversionOperator(argTy, reference, at, nullptr, true) ? reference : nullptr;
+    // (one giving the class itself, a prvalue, builds the object where it is: constructInto, C++17's guaranteed
+    // elision; until 2026-11-08 `A x(kb);` with `explicit operator A() const` moved a temporary into x)
+    if (target && target == value && returnsInMemory(value))
+    {
+      constructInto(addr, t, args, at, listElements);
+      return;
+    }
     if (target)
     {
       Value converted = convert(rvalue(arg), target, at, true);
@@ -1426,8 +1433,15 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
   bool copyLike = args.size() == 1 && args[0]->ty && isClass(types.stripRef(args[0]->ty)) && classKey(types.stripRef(args[0]->ty)) == classKey(t);
   // (A value whose class converts to t itself takes that conversion: `return connector;` for a
   // SignalID through SignalIDConnector's `operator SignalID()`, not a base's constructors.)
+  // (the value as it is, an lvalue or an rvalue: `operator T() &&` converts a temporary only)
+  auto valueObject = [&](Expr* e) {
+    const Ty* a = argumentType(e, e->ty, types);
+    return a && !a->isReference() && isClass(a) ? types.rref(a) : a;
+  };
   bool converts = args.size() == 1 && !copyLike && args[0]->ty && isClass(types.stripRef(args[0]->ty)) &&
-                  !types.isDependent(types.stripRef(args[0]->ty)) && conversionOperator(types.stripRef(args[0]->ty), t, at);
+                  !types.isDependent(types.stripRef(args[0]->ty)) && conversionOperator(valueObject(args[0]), t, at, nullptr, !copyInit);
+  // (a direct-initialization's an explicit one too, `A x(b);` with `explicit operator A()`, as clang and g++ take it;
+  // a list's as well, as clang does, where g++ takes none for `A x = {b};`)
   if (!copyLike && !converts && (!hasUserConstructors(c) || !constructorFor(t, args, at, copyInit)))
     if (std::optional<QualifiedName> base = inheritedConstructorBase(c))
     {
@@ -1545,27 +1559,31 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
   }
   if (ctor && (ctor->flags & DF_Delete))
     unsupported(at, "constructing " + types.toString(t, &symbols) + " with a deleted constructor (copying a move-only object?)");
-  if (ctor && firstTy && isClass(types.stripRef(firstTy)) && classKey(firstTy) != classKey(t) && ctor->params.size() == 1)
+  if (firstTy && isClass(types.stripRef(firstTy)) && classKey(firstTy) != classKey(t) && ((ctor && !ctor->params.empty()) || converts))
   {
-    TemplateArgs classArgs = global.classArgsOf(canonicalClass(t, at));
-    const Ty* pt;
+    const Ty* pt = nullptr;
+    if (ctor && !ctor->params.empty())
     {
+      TemplateArgs classArgs = global.classArgsOf(canonicalClass(t, at));
       ArgsScope scope(*this, &classArgs);
       pt = declType(ctor->params[0]);
     }
     // A copy-initialization's converting constructor takes no user-defined conversion of its
     // argument ([over.best.ics] 4): `A x = b;` with `A(int)` beside b's `operator int()` and
     // `operator A()` is the conversion function's, never b made an int (until 2026-11-08 two
-    // conversions, the constructor's).
+    // conversions, the constructor's). A direct- or list-initialization takes the conversion function
+    // as well over a constructor that needs a user-defined conversion of b (CWG2327, as clang and g++
+    // do: the function's object an exact match): `A x(b);`, `A x{b};`, `A x = {b};` (until 2026-11-08
+    // A(char) called through b's `operator char()`; g++ calls `A x = {b};` ambiguous).
     bool secondConversion = false;
-    if (copyInit && converts && pt)
+    if (converts)
     {
-      const Ty* p = types.unqualified(types.stripRef(pt));
+      const Ty* p = pt ? types.unqualified(types.stripRef(pt)) : nullptr;
       const Ty* a = withCurrentArgs(types.unqualified(types.stripRef(firstTy)));
       std::vector<std::pair<std::string, uint32_t>> through;
-      secondConversion = !types.isDependent(a) && !(isClass(p) && (classKey(p) == classKey(a) || basePath(a, p, through, at)));
+      secondConversion = !types.isDependent(a) && !(p && isClass(p) && (classKey(p) == classKey(a) || basePath(a, p, through, at)));
     }
-    if (pt && ((isClass(types.stripRef(pt)) && classKey(pt) == classKey(t)) || secondConversion))
+    if ((pt && ctor->params.size() == 1 && isClass(types.stripRef(pt)) && classKey(pt) == classKey(t)) || secondConversion)
     {
       // The copy constructor, chosen for a value of another class: that class converts to t
       // first (a base, or its conversion operator), the constructor is not called with it.
@@ -1579,7 +1597,7 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
       if (!types.isDependent(fromTy) && !basePath(types.unqualified(fromTy), t, path, at))
       {
         Value object = rvalue(args[0]);
-        if (FunctionDecl* op = conversionOperator(object.ty, types.unqualified(t), at, &owner, false, &opArgs); op && returnsInMemory(types.unqualified(t)))
+        if (FunctionDecl* op = conversionOperator(conversionObject(object), types.unqualified(t), at, &owner, !copyInit, &opArgs); op && returnsInMemory(types.unqualified(t)))
         {
           const Ty* result;
           {
@@ -1595,7 +1613,7 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
             return;
           }
         }
-        Value src = convert(object, types.unqualified(t), at);
+        Value src = convert(object, types.unqualified(t), at, !copyInit);
         if (src.isTemporary)
           moveTemporary(addr, src, t, at);
         else if (movable(args[0]))
@@ -3065,10 +3083,16 @@ auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr
   }
   // `[callback{::move(callback)}]`, `int x{5}`: one value in braces initialises what is not a
   // class as the value itself would.
+  // A direct-list-initialization's (`float x{object};`, not a copy-initialization) takes an explicit conversion
+  // function to t too, as a direct-initialization does ([over.match.conv] 1.1; until 2026-11-08 only the implicit ones).
+  bool directList = false;
   if (init && init->kind == NodeKind::BraceInitExpr && !isClass(t) && t->kind != TyKind::Array)
     if (auto* list = static_cast<BraceInitExpr*>(init); list->args.size() == 1 && list->designators.empty() &&
                                                         list->args[0]->kind != NodeKind::BraceInitExpr)
+    {
       init = list->args[0];
+      directList = context == ConversionContext::Direct && init->ty && init->ty->isKnown() && isClass(types.stripRef(init->ty));
+    }
   // A literal 0 for a pointer (an error in kpp, design.md 4; a warning under --zero-null-warnings),
   // here where the walk does not see it: a brace list's member (`Heap hh = { 0, 0, 0 };`). Reported
   // at the 0 itself, the null stored as C++ would.
@@ -3318,6 +3342,11 @@ auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr
     if (bi->args.size() != 1)
       unsupported(at, "this brace initializer");
     init = bi->args[0];
+  }
+  if (directList)
+  {
+    store(convert(rvalue(init), t, at, true, ConversionContext::Direct), addr, t, at);
+    return;
   }
   Value value = rvalue(init);
   if (context != ConversionContext::Unknown && isClass(value.ty))

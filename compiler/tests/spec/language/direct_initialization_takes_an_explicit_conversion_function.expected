@@ -1,0 +1,12 @@
+B>A A() [20]
+B>A A() [20]
+B>A A() [20]
+F>float 2.50
+F>char 99.00
+I>int& 3
+D>double 6.50
+D>bool 1.00
+L>long =1
+L>long 1
+S>short 1
+S>short 8
