@@ -1,0 +1,13 @@
+// spec: a pointer to a variable as a template argument (`template<int* P>` given &g): `*P` reads the variable, in the class's members and in a function template that deduces P from `Pp<P>` (`fp(Pp<&g>())`), and `P == &g` compares the addresses. clang's and g++'s output
+// found by thread J's template battery (2026-11-08): codegen's "a template parameter whose value is not known here", in the class too
+extern "C" int printf(const char* format, ...);
+int g = 5;
+int h = 7;
+template<int* P> struct Pp { int get() const { return *P; } };
+template<int* P> int fp(Pp<P> p) { return *P * 10 + p.get(); }
+template<int* P> int which(Pp<P>) { return P == &g ? 1 : 2; }
+int main()
+{
+  printf("%d %d %d\n", fp(Pp<&g>()), fp(Pp<&h>()), which(Pp<&h>()));
+  return 0;
+}

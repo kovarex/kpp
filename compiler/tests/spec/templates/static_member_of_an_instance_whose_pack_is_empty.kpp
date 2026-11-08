@@ -1,0 +1,13 @@
+// spec: `V<>::v()` calls the static member of V's instance whose pack is empty (`template<class... Ts>`, `template<int... Ns>`), as `V<int, char>::v()` does that of its own: sizeof...(Ts) 0, an empty fold's 100. clang's and g++'s output
+// found by thread J's template battery (2026-11-08): codegen's "emitting V::v of the class template V without its argument Ts" (a qualifier with no arguments was taken for no instance)
+extern "C" int printf(const char* format, ...);
+template<class... Ts> struct V { static int v() { return sizeof...(Ts); } };
+template<int... Ns> struct W { static int w() { return (0 + ... + Ns) + 100; } };
+template<class... Ts> struct X { int count = sizeof...(Ts); };
+int main()
+{
+  printf("%d %d %d\n", V<>::v(), V<int, char>::v(), W<>::w());
+  X<> x;
+  printf("%d %d\n", x.count, W<1, 2>::w());
+  return 0;
+}

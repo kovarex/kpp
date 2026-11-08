@@ -207,6 +207,11 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
               refuseCAddress(static_cast<FunctionDecl*>(bound->decl), e);
               return {useFunction(static_cast<FunctionDecl*>(bound->decl), {}, nullptr, e), bound->inner};
             }
+            // `template<int* P>` given &g: the variable's address (until 2026-11-08 "a template parameter whose value is
+            // not known here", in the class's members and in a function template, deduced or not).
+            if (p == d && bound && bound->kind == TyKind::Value && bound->decl && bound->decl->kind == NodeKind::VariableDecl && bound->inner &&
+                types.unqualified(types.stripRef(bound->inner))->kind == TyKind::Pointer)
+              return {addressOfDecl(bound->decl, e), types.unqualified(types.stripRef(bound->inner))};
             if (p == d && bound && bound->kind == TyKind::Value && bound->decl && bound->decl->kind == NodeKind::VariableDecl && bound->inner &&
                 types.unqualified(types.stripRef(bound->inner))->kind == TyKind::MemberPointer)
             {

@@ -1,0 +1,11 @@
+// spec: a floating-point value as a template argument (C++20: `template<double D>` given 1.25, `template<float F>` given 0.5f, `template<auto A>` given 2.5): the instance's constant, its type's size. clang's and g++'s output
+// pending: codegen does not support emitting the function template twice (sizeOfAuto) without its argument: a floating-point argument is no value the instance is emitted with. Found beside sizeof of a value template parameter (J, 2026-11-08); D
+extern "C" int printf(const char* format, ...);
+template<auto A> int sizeOfAuto() { return (int)sizeof(A); }
+template<double D> double twice() { return D * 2; }
+template<float F> struct Scaled { static float apply(float x) { return x * F; } };
+int main()
+{
+  printf("%d %.2f %.2f\n", sizeOfAuto<2.5>(), twice<1.25>(), (double)Scaled<0.5f>::apply(3.0f));
+  return 0;
+}

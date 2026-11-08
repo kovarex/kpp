@@ -1,0 +1,13 @@
+// spec: `sizeof(V)` of a value template parameter is its type's size (`template<int V>` 4, `template<long long V>` 8, `template<auto A>` given 'q' 1 and 7LL 8), in a function, a static member's initializer and an array bound of a class template (`int arr[sizeof(C) + 1]`). clang's and g++'s output
+// found by thread J's template battery (2026-11-08): codegen's "sizeof 3", and the array bound "no constant the compiler could evaluate"
+extern "C" int printf(const char* format, ...);
+template<int V> int sizeOfValue() { return (int)sizeof(V); }
+template<long long V> int sizeOfLong() { return (int)sizeof(V); }
+template<char C> struct S { static constexpr int size = sizeof(C); int arr[sizeof(C) + 1]; };
+template<auto A> int sizeOfAuto() { return (int)sizeof(A); }
+int main()
+{
+  S<'x'> s;
+  printf("%d %d %d %d %d %d\n", sizeOfValue<3>(), sizeOfLong<4>(), S<'y'>::size, (int)(sizeof(s.arr) / sizeof(int)), sizeOfAuto<'q'>(), sizeOfAuto<7LL>());
+  return 0;
+}

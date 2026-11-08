@@ -654,10 +654,25 @@ auto codegen::Emitter::callValue(CallExpr* c, const std::string& sret) -> Value
         // `T::computeHash(args...)` with T a class deriving from the template that declares it
         // (ComplexExpressionWithOperation<BasisNoise> from ComplexExpression<BasisNoise, 2, 6>):
         // the member of that base instance, with its arguments.
+        // (An instance with no arguments is one too: `V<>::v()` of `template<class... Ts> struct V`, its pack empty;
+        // until 2026-11-08 "V::v of the class template V without its argument Ts".)
+        auto instance = [&](const Ty* t) {
+          if (!t || !isClass(t))
+            return false;
+          if (!t->args.empty())
+            return true;
+          ClassDecl* cd = t->decl && t->decl->kind == NodeKind::ClassDecl ? static_cast<ClassDecl*>(t->decl) : nullptr;
+          if (!cd || cd->templateParams.empty())
+            return false;
+          for (Decl* p : cd->templateParams)
+            if (!static_cast<TemplateParamDecl*>(p)->isPack)
+              return false;
+          return true;
+        };
         const Ty* declaring = q && isClass(q) ? instantiationIn(q, global.owningClass(f), c) : nullptr;
-        if (declaring && !declaring->args.empty())
+        if (instance(declaring))
           classTy = declaring;
-        else if (q && isClass(q) && !q->args.empty())
+        else if (instance(q))
           classTy = canonicalClass(q, c);
         else if (enumInstance(q))
           classTy = enumInstance(q); // `S<short>::Dir::fromStr(text)`

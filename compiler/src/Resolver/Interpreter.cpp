@@ -1079,6 +1079,10 @@ auto GlobalScope::Impl::constValueIn(Expr* e, const TypeContext& ctx, int depth)
       }
       if (!t && s->operand && s->operand->ty)
         t = s->operand->ty;
+      // `sizeof(V)` of a value template parameter (the name read as a type, bound to a value): its type's (until
+      // 2026-11-08 no constant: `int arr[sizeof(C) + 1]` in a class template was "no constant").
+      if (t && types.stripRef(t)->kind == TyKind::Value && types.stripRef(t)->inner && types.stripRef(t)->inner->kind != TyKind::Value)
+        t = types.stripRef(t)->inner;
       if (!t || !t->isKnown() || types.isDependent(t))
         return std::nullopt;
       std::optional<int64_t> n = s->sizeofKind == Kw::alignof_ ? constAlignOf(types.stripRef(t), depth + 1) : constSizeOf(types.stripRef(t), depth + 1);

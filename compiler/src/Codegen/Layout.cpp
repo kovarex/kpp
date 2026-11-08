@@ -38,6 +38,11 @@ auto codegen::Emitter::sizeOf(const Ty* t, Node* at) -> uint64_t
     case TyKind::Vector: return t->count * sizeOf(t->inner, at);
     case TyKind::Enum: return sizeOf(enumUnderlying(t), at);
     case TyKind::Class: return classSizeAndAlign(t, at).first;
+    case TyKind::Value:
+      // `sizeof(V)` of a value template parameter: its type's (until 2026-11-08 "sizeof 3").
+      if (t->inner && t->inner->kind != TyKind::Value)
+        return sizeOf(types.stripRef(t->inner), at);
+      unsupported(at, "sizeof " + types.toString(t, &symbols));
     default:
       unsupported(at, "sizeof " + types.toString(t, &symbols));
   }
