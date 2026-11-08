@@ -1,0 +1,25 @@
+// spec: template template parameters in partial specializations and function templates: one is deduced from an instance of a class template that has an explicit specialization (Q<One<int>> with `template<> struct One<int>` takes `Q<TT<T>>`, TT One, T int), and partial ordering deduces one template template pattern from another: `S<TT<int>>` is more specialized than `S<TT<T>>`, `S<TT<T>>` than `S<TT<Ts...>>`, `S<TT<T, T>>` than `S<TT<A, B>>`, a fixed-arity one than a variadic one in a call too; `const TT<Ts...>&` binds an instance of the template it deduces. clang's and g++'s output
+// found by thread J's template generator (2026-11-08): Q<One<int>> took the primary (TT was the explicit specialization itself, with no arguments), and every ordering of two template template patterns was called ambiguous; a call through `const TT<Ts...>&` failed in codegen (Two<{int, int}>, not Two<int, int>)
+extern "C" int printf(const char* format, ...);
+template<class T> struct Box {};
+template<class A, class B> struct Two {};
+template<class T> struct One {};
+template<> struct One<int> {};
+template<class X> struct Q { static constexpr int v = 0; };
+template<template<class> class TT, class T> struct Q<TT<T>> { static constexpr int v = 1; };
+template<class X> struct S { static constexpr int v = 0; };
+template<template<class> class TT> struct S<TT<int>> { static constexpr int v = 1; };
+template<template<class> class TT, class T> struct S<TT<T>> { static constexpr int v = 2; };
+template<template<class...> class TT, class... Ts> struct S<TT<Ts...>> { static constexpr int v = 3; };
+template<template<class, class> class TT, class T> struct S<TT<T, T>> { static constexpr int v = 4; };
+template<template<class, class> class TT, class A, class B> struct S<TT<A, B>> { static constexpr int v = 5; };
+template<template<class...> class TT, class... Ts> int f(const TT<Ts...>&) { return 10 + (int)sizeof...(Ts); }
+template<template<class> class TT, class T> int f(const TT<T>&) { return 20; }
+template<class X> int f(const X&) { return 1; }
+int main()
+{
+  printf("%d %d %d\n", Q<One<int>>::v, Q<One<char>>::v, Q<int>::v);
+  printf("%d %d %d %d %d %d\n", S<Box<int>>::v, S<Box<char>>::v, S<One<int>>::v, S<Two<int, int>>::v, S<Two<int, char>>::v, S<int>::v);
+  printf("%d %d %d %d\n", f(Box<int>{}), f(Two<int, int>{}), f(One<int>{}), f(3));
+  return 0;
+}

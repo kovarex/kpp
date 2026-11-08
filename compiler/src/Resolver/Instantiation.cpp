@@ -1777,7 +1777,15 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
           Span<const Ty*> span{args.data(), uint32_t(args.size())};
           if (ctx.subst)
             if (const Ty* sub = ctx.subst->find(l.decl); sub && sub->kind == TyKind::Class && sub->decl)
-              return resolveSpecialization(types.classType(sub->decl, span), depth + 1);
+            {
+              // (`TT<Ts...>`: the pack's elements, as substitute gives them: Two<int, int>, not
+              // Two<{int, int}>, which codegen could not bind a Two<int, int> to.)
+              std::vector<const Ty*> spliced;
+              for (const Ty* a : args)
+                if (!spliceIfPack(a, spliced))
+                  spliced.push_back(a);
+              return resolveSpecialization(types.classType(sub->decl, Span<const Ty*>{spliced.data(), uint32_t(spliced.size())}), depth + 1);
+            }
           return types.param(l.decl, span);
         }
         if (ctx.subst)
@@ -2886,8 +2894,51 @@ auto GlobalScope::Impl::deduce(const Ty* pattern, const Ty* arg, Subst& out, int
     // parameter binds to the template itself (its class type without arguments), its written
     // arguments to the instantiation's.
     const Ty* a = types.unqualified(types.stripRef(arg));
+    // Partial ordering's argument, another template template parameter applied (`UU<int>` of
+    // `S<UU<int>>` against `S<TT<T>>`): TT is UU, T int. Until 2026-11-08 nothing deduced from it,
+    // so neither of `S<TT<int>>` and `S<TT<T>>` was at least as specialized as the other: ambiguous.
+    if (a->kind == TyKind::Param && a->decl && !a->args.empty())
+    {
+      if (!out.find(pattern->decl))
+        out.pairs.push_back({pattern->decl, types.param(a->decl)});
+      for (size_t i = 0; i < pattern->args.size(); ++i)
+      {
+        const Ty* p = pattern->args[i];
+        if (i + 1 == pattern->args.size() && isPackParam(p))
+        {
+          if (!out.find(p->decl))
+          {
+            std::vector<const Ty*> rest(a->args.begin() + std::min(i, size_t(a->args.size())), a->args.end());
+            out.pairs.push_back({p->decl, types.pack(Span<const Ty*>{rest.data(), uint32_t(rest.size())})});
+          }
+          break;
+        }
+        // ([temp.deduct.type] 9: a pattern that is no expansion against one that is fails.)
+        if (i < a->args.size() && isPackParam(a->args[i]))
+        {
+          out.failed = true;
+          return;
+        }
+        if (i < a->args.size())
+          deduce(p, a->args[i], out, depth + 1);
+      }
+      return;
+    }
     if (a->kind != TyKind::Class || !a->decl)
       return;
+    // An instance of an explicit or partial specialization (`One<int>` with `template<> struct
+    // One<int>`): the template is the primary, its arguments the primary's. Until 2026-11-08 the
+    // parameter was the specialization's own declaration with its own arguments (none), so
+    // `Q<TT<T>>` did not match Q<One<int>> and `Q<TT<Ts...>>` matched it with Ts empty.
+    if (a->decl->kind == NodeKind::ClassDecl && (a->decl->flags & DF_Specialization) && !static_cast<ClassDecl*>(a->decl)->name.empty())
+    {
+      auto* c = static_cast<ClassDecl*>(a->decl);
+      Lookup l;
+      if (lookupInScope(lexicalScopeOf(c), c->name.last().symbol, l, 0) && l.overloads)
+        if (Decl* primary = primaryOf(*l.overloads); primary && primary != c)
+          if (std::vector<const Ty*> args = primaryArgumentsOf(a, primary, depth + 1); !args.empty())
+            a = types.classType(primary, Span<const Ty*>{args.data(), uint32_t(args.size())});
+    }
     if (!out.find(pattern->decl))
       out.pairs.push_back({pattern->decl, types.classType(a->decl, {})});
     std::vector<const Ty*> given; // the instance's arguments, a pack among them by its elements
@@ -3534,6 +3585,16 @@ auto GlobalScope::Impl::substitute(const Ty* t, const Subst& s, int depth) -> co
               args.push_back(sub);
           const Ty* applied = resolveSpecialization(types.classType(r->decl, Span<const Ty*>{args.data(), uint32_t(args.size())}), depth + 1);
           return types.qualified(applied, t->isConst, t->isVolatile);
+        }
+        if (!t->args.empty() && r->kind == TyKind::Param && r->decl && r->args.empty())
+        {
+          // `TT<T>` with TT bound to another template template parameter (partial ordering): that
+          // one applied to the arguments (a pack's elements for `TT<Ts...>`).
+          std::vector<const Ty*> args;
+          for (const Ty* a : t->args)
+            if (const Ty* sub = substitute(a, s, depth + 1); !spliceIfPack(sub, args))
+              args.push_back(sub);
+          return types.qualified(types.param(r->decl, Span<const Ty*>{args.data(), uint32_t(args.size())}), t->isConst, t->isVolatile);
         }
         return types.qualified(r, t->isConst || r->isConst, t->isVolatile || r->isVolatile); // T = const int keeps its const
       }
