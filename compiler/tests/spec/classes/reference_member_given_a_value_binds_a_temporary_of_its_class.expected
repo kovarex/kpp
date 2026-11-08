@@ -1,0 +1,14 @@
+name 5
+held 5
+drop name 5
+value done
+name 6
+held 6
+drop name 6
+list done
+name 7
+held 7 same 1
+element done
+same array 1
+end
+drop name 7

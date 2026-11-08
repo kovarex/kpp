@@ -1,0 +1,38 @@
+// spec: an aggregate's class reference member given a value of no class (`W w{5}` with `const Name& name`) or a list (`W v{{6}}`) binds a temporary of its class copy-initialized from it ([dcl.init.ref] 5.4, [dcl.init.list] 3.10), which lives as long as the aggregate ([class.temporary] 6); a list of one element of its class (`P p{{kept}, 1}`) or of an array of its type (`A a{{arr}}`) binds that element itself, no copy ([dcl.init.list] 3.9). clang's and g++'s output
+// found by thread B (2026-11-08) beside language/temporary_array_outside_a_reference: `W w{5}` bound the int itself, its bytes read as a Name, whose constructor and destructor never ran; the lists were "the expression kind BraceInitExpr"
+struct Name
+{
+  int n;
+  implicit Name(int v) : n(v) { println("name ", n); }
+  Name(const Name& o) : n(o.n + 100) { println("copy ", n); }
+  ~Name() { println("drop name ", n); }
+};
+struct W { const Name& name; };
+struct A { const int (&r)[3]; };
+struct P { const Name& p; int k; };
+int main()
+{
+  {
+    W w{5};
+    println("held ", w.name.n);
+  }
+  println("value done");
+  {
+    W v{{6}};
+    println("held ", v.name.n);
+  }
+  println("list done");
+  Name kept(7);
+  {
+    P p{{kept}, 1};
+    println("held ", p.p.n, " same ", &p.p == &kept ? 1 : 0);
+  }
+  println("element done");
+  const int arr[3] = {1, 2, 3};
+  {
+    A a{{arr}};
+    println("same array ", &a.r[0] == &arr[0] ? 1 : 0);
+  }
+  println("end");
+  return 0;
+}

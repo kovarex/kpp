@@ -1,0 +1,26 @@
+// spec: a temporary array made by braces naming its type, given a pointer parameter, is materialized and its first element's address passed ([conv.array]): an int array for `const int*` and `const void*`, an array of objects whose elements are destroyed after the full-expression ([class.temporary] 4), and an array of a class with two bases for a pointer to its second base, the address adjusted to that base ([conv.ptr] 3). clang's and MSVC's output; g++ 13 refuses such a pointer ("taking address of temporary array")
+// codegen refused each until 2026-11-08 ("does not support a temporary array ... other than for a reference to an array"), found with language/temporary_array_outside_a_reference
+struct Noisy
+{
+  int v;
+  implicit Noisy(int v) : v(v) { println("make ", v); }
+  ~Noisy() { println("drop ", v); }
+};
+struct First { int a; };
+struct Second { int b; };
+struct Both : First, Second { };
+int first(const int* p) { return p[0] * 10 + p[2]; }
+int bytes(const void* p) { return *static_cast<const int*>(p); }
+int value(const Noisy* p) { println("value ", p[0].v + p[1].v); return 0; }
+int second(const Second* p) { return p[0].b * 10 + p[1].b; }
+using Three = const int[3];
+using Two = const Noisy[2];
+using Duo = const Both[2];
+int main()
+{
+  println(first(Three{1, 2, 3}));
+  println(bytes(Three{4, 5, 6}));
+  println(value(Two{Noisy(7), Noisy(8)}), " after");
+  println(second(Duo{{{1}, {2}}, {{3}, {4}}}));
+  return 0;
+}

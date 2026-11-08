@@ -1,0 +1,9 @@
+13
+4
+make 7
+make 8
+value 15
+0 after
+drop 8
+drop 7
+23

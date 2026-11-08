@@ -1746,7 +1746,13 @@ auto codegen::Emitter::argumentText(const Ty* pt, Expr* arg, Node* at) -> std::s
   }
   if (pt && pt->kind == TyKind::Pointer && nullPointerConstant(arg))
     return "ptr null"; // `Entity* secondaryEntity = 0`
-  Value a = rvalue(arg);
+  // `first(Three{1, 2, 3})` with `first(const int*)` (`using Three = const int[3]`): the temporary array
+  // the braces make (the array-to-pointer conversion materializes it, [conv.array]), its first
+  // element's address passed, the array destroyed with the statement's temporaries ([class.temporary]
+  // 4). (Until 2026-11-08 "a temporary array ... other than for a reference to an array".)
+  Value a = pt && types.unqualified(pt)->kind == TyKind::Pointer && arg->kind == NodeKind::FunctionalCastExpr && isArrayBraces(arg)
+              ? load(arrayTemporary(arg, types.stripRef(arg->ty), at), types.stripRef(arg->ty), at)
+              : rvalue(arg);
   if (isClass(a.ty) && pt && !isAggregate(pt) && conversionOperator(a.ty, types.unqualified(pt), at, nullptr, false, nullptr, ConversionContext::Copy))
     a = convert(a, types.unqualified(pt), at, false, ConversionContext::Copy); // `draw(image)` with `operator const Image*()` (an argument copy-initializes its parameter)
   if (isLambda(a.ty) && pt && pt->kind == TyKind::Pointer && pt->inner && pt->inner->kind == TyKind::Function)

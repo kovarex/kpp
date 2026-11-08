@@ -1,0 +1,36 @@
+globals 6 15
+locals 24 33
+make 1
+make 2
+held 6
+drop 2
+drop 1
+named done
+make 4
+make 5
+held 15
+drop 5
+drop 4
+braces done
+held 93
+drop point 30
+point done
+make 7
+make 8
+held 98
+drop point 40
+drop 8
+drop 7
+outer done
+make 10
+make 11
+show 33
+drop 11
+drop 10
+argument done
+make 20
+make 21
+static 41
+static 41
+drop 21
+drop 20

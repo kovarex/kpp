@@ -1,0 +1,14 @@
+// spec: a constructor's member initializer that binds a reference member to a temporary array (`C() : r(Three{1, 2, 3}) {}`) is an error, as C++ makes it ill-formed ([class.base.init] 11: the array would be destroyed when the constructor returns), never a member referring to a destroyed array. clang: "reference member 'r' binds to a temporary object whose lifetime would be shorter than the lifetime of the constructed object"
+// error: reference_member_bound_to_a_temporary_array_in_a_constructor_is_error.kpp:7: error: the reference member of type const int32[3]& bound to a temporary array outside an aggregate's braces
+using Three = const int[3];
+struct C
+{
+  const int (&r)[3];
+  C() : r(Three{1, 2, 3}) {}
+};
+int main()
+{
+  C c;
+  println(c.r[0]);
+  return 0;
+}

@@ -51,13 +51,16 @@
     std::string textTemporary(BraceInitExpr* b, Node* at);
 
     // Braces that make a temporary array for a reference to an array (a function argument, a
-    // reference variable, a range-for's range): a list given the array type (`{1, 2, 3}`), or one
+    // reference variable, a range-for's range, an aggregate's reference member) or a pointer
+    // parameter (its first element's address): a list given the array type (`{1, 2, 3}`), or one
     // naming it (`Three{1, 2, 3}` with `using Three = const int[3]`). Nowhere else is a temporary
     // array made: elsewhere `Three{...}` is an error (what would keep it alive is not written yet).
     bool isArrayBraces(Expr* e);
     // Such a temporary: the list's elements, those it leaves out value-initialized ([dcl.init.list]
-    // 3.10), destroyed with the statement's temporaries unless the caller keeps it longer.
-    std::string arrayTemporary(Expr* braces, const Ty* array, Node* at);
+    // 3.10), destroyed with the statement's temporaries unless the caller keeps it longer; built
+    // into `into` instead when given (an object of static storage, staticTemporary), which nothing
+    // here destroys.
+    std::string arrayTemporary(Expr* braces, const Ty* array, Node* at, const std::string& into = std::string());
 
     // The parts of an object built inline (no constructor function of their own: an implicit
     // constructor's bases and members, a memberwise copy's, a braced aggregate's, a closure's
@@ -201,8 +204,10 @@
 
     // A reference member (of type refTy) bound to what source names: the field holds its address, of
     // its base subobject for a reference to a base (EntityAndIndex's `UpdatableEntity& entity` from an
-    // InfinityContainer, whose UpdatableEntity comes after its LogisticContainer).
-    void bindReferenceMember(const std::string& fieldAddr, const Ty* refTy, Expr* source, Node* at);
+    // InfinityContainer, whose UpdatableEntity comes after its LogisticContainer). listElement: source
+    // is an element of an aggregate's braces, not a constructor's member initializer or a default
+    // member initializer (which bind no temporary made by braces).
+    void bindReferenceMember(const std::string& fieldAddr, const Ty* refTy, Expr* source, Node* at, bool listElement = false);
 
     // Points the vtable pointer of the object at addr at its class's vtable: once its bases are
     // built (their constructors pointed it at theirs), and after its bytes were copied from an

@@ -1,0 +1,16 @@
+// spec: an aggregate's non-const lvalue reference member given a temporary array (`Noisy (&r)[2]` from `Two{Noisy(1), Noisy(2)}`) is an error, as in C++ ([dcl.init.ref] 5: such a reference binds no temporary), never a member referring to an array its initializer could change
+// error: non_const_reference_member_given_a_temporary_array_is_error.kpp:13: error: the reference member of type Noisy[2]& given a temporary array: a non-const lvalue reference binds only an object, never a temporary made for it
+struct Noisy
+{
+  int v;
+  implicit Noisy(int v) : v(v) { println("make ", v); }
+  ~Noisy() { println("drop ", v); }
+};
+struct N { Noisy (&r)[2]; };
+using Two = Noisy[2];
+int main()
+{
+  N n{Two{Noisy(1), Noisy(2)}};
+  println(n.r[0].v);
+  return 0;
+}

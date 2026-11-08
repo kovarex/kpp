@@ -576,8 +576,8 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
         statementTemps.push_back({addr, t});
         return {addr, t, true};
       }
-      if (t->kind == TyKind::Array) // (arrayTemporary makes one for a reference to an array: a function argument, a reference variable, a range-for's range)
-        unsupported(e, "a temporary array (`" + types.toString(t, &symbols) + "{...}`) other than for a reference to an array");
+      if (t->kind == TyKind::Array) // (arrayTemporary makes one for a reference to an array, an aggregate's reference member and a pointer parameter: isArrayBraces)
+        unsupported(e, "a temporary array (`" + types.toString(t, &symbols) + "{...}`) other than for a reference to an array or a pointer parameter");
       // `value_type{forward<Args>(args)...}` with a scalar value_type: as `T(...)` below.
       Span<Expr*> args = c->args;
       if (args.size() == 1 && args[0]->kind == NodeKind::BraceInitExpr && !static_cast<BraceInitExpr*>(args[0])->text && static_cast<BraceInitExpr*>(args[0])->args.size() == 1 &&

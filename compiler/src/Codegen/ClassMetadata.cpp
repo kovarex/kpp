@@ -156,7 +156,7 @@ auto codegen::Emitter::isArrayBraces(Expr* e) -> bool
   return c->braced && c->args.size() == 1 && c->args[0]->kind == NodeKind::BraceInitExpr && !static_cast<BraceInitExpr*>(c->args[0])->text;
 }
 
-auto codegen::Emitter::arrayTemporary(Expr* braces, const Ty* array, Node* at) -> std::string
+auto codegen::Emitter::arrayTemporary(Expr* braces, const Ty* array, Node* at, const std::string& into) -> std::string
 {
   Expr* list = braces;
   if (braces->kind == NodeKind::FunctionalCastExpr)
@@ -167,9 +167,11 @@ auto codegen::Emitter::arrayTemporary(Expr* braces, const Ty* array, Node* at) -
       unsupported(at, "a " + types.toString(named, &symbols) + " bound to a reference to " + types.toString(array, &symbols));
     list = static_cast<FunctionalCastExpr*>(braces)->args[0];
   }
-  std::string addr = newObjectSlot(array, at);
+  if (array->count == 0)
+    unsupported(at, "a temporary array of no length the compiler could evaluate (" + types.toString(array, &symbols) + ")");
+  std::string addr = into.empty() ? newObjectSlot(array, at) : into;
   initializeFrom(addr, array, list, at);
-  if (needsDestruction(array, at))
+  if (into.empty() && needsDestruction(array, at))
     statementTemps.push_back({addr, array});
   return addr;
 }
@@ -737,15 +739,88 @@ auto codegen::Emitter::packInitializerOf(const Ty* t, const Ty* baseTy, Span<Fun
   return nullptr;
 }
 
-auto codegen::Emitter::bindReferenceMember(const std::string& fieldAddr, const Ty* refTy, Expr* source, Node* at) -> void
+auto codegen::Emitter::bindReferenceMember(const std::string& fieldAddr, const Ty* refTy, Expr* source, Node* at, bool listElement) -> void
 {
   withSingleElement(source, at, [&](Expr* one)
   {
     std::string target;
+    // A list of one element binds that element itself when it is of the referenced class or one derived
+    // from it, or an array of the referenced array's type ([dcl.init.list] 3.9: `P p{{point}}`, `A
+    // a{{arr}}`), never a copy; a scalar reference's list is its one value. Any other list makes the
+    // temporary below.
+    if (const Ty* bound = refTy ? types.stripRef(refTy) : nullptr; bound && one->kind == NodeKind::BraceInitExpr && !static_cast<BraceInitExpr*>(one)->text &&
+                                                                   static_cast<BraceInitExpr*>(one)->args.size() == 1 && static_cast<BraceInitExpr*>(one)->designators.empty())
+    {
+      Expr* only = static_cast<BraceInitExpr*>(one)->args[0];
+      const Ty* given = only->kind != NodeKind::BraceInitExpr && only->ty && only->ty->isKnown() ? withCurrentArgs(types.stripRef(only->ty)) : nullptr;
+      if (given && types.isDependent(given))
+        given = nullptr;
+      const Ty* referenced = types.unqualified(bound);
+      std::vector<std::pair<std::string, uint32_t>> path;
+      if (bound->kind == TyKind::Array ? given && given->kind == TyKind::Array && given->count == bound->count && llType(given, at) == llType(bound, at)
+          : isClass(referenced) ? given && isClass(types.unqualified(given)) &&
+                                    (canonicalClass(types.unqualified(given), at) == canonicalClass(referenced, at) || basePath(types.unqualified(given), referenced, path, at))
+                                : only->kind != NodeKind::BraceInitExpr)
+        one = only;
+    }
     // An element of a variable's brace list that makes a temporary: it lives as long as the
     // variable (initializeExtending), one of static storage's in static storage of its own.
-    bool extended = extendingElements && std::find(extendingElements->begin(), extendingElements->end(), one) != extendingElements->end() &&
-                    !isLvalueExpression(one) && !(one->ty && one->ty->isReference());
+    bool listed = extendingElements && std::find(extendingElements->begin(), extendingElements->end(), one) != extendingElements->end();
+    bool extended = listed && !isLvalueExpression(one) && !(one->ty && one->ty->isReference());
+    // A temporary made for the member: by braces (`Holder h{{1, 2}}` with `const Point& p`, `Holder
+    // h{Two{T(1), T(2)}}` and `{T(1), T(2)}` with `const T (&r)[2]`: the list initializes it,
+    // [dcl.init.list] 3.10, an array as for a reference to an array, arrayTemporary) or of the
+    // referenced class from a value of no class (`Named n{5}` with `const Name& name`: copy-initialized
+    // from it, [dcl.init.ref] 5.4); kept as long as the variable when it is an element of the
+    // variable's lists, an object of static storage of its own for a static's; else (a temporary
+    // Holder's: `show(Holder{Two{...}})`) destroyed with the statement. Only an aggregate's braces bind
+    // one here. (Until 2026-11-08 "a temporary array ... other than for a reference to an array" and
+    // "the expression kind BraceInitExpr", and a value of no class was bound itself, its bytes taken
+    // for the class's, the constructor never run.)
+    const Ty* valueTy = one->kind != NodeKind::BraceInitExpr && one->ty && one->ty->isKnown() ? withCurrentArgs(types.unqualified(types.stripRef(one->ty))) : nullptr;
+    if (valueTy && types.isDependent(valueTy))
+      valueTy = nullptr;
+    bool braces = one->kind == NodeKind::BraceInitExpr && !static_cast<BraceInitExpr*>(one)->text;
+    if (const Ty* bound = refTy ? types.stripRef(refTy) : nullptr;
+        bound && (bound->kind == TyKind::Array ? isArrayBraces(one)
+                                               : isClass(types.unqualified(bound)) && !types.isDependent(bound) &&
+                                                   (braces || (valueTy && !isClass(valueTy) && !isLambda(valueTy) && valueTy->kind != TyKind::Function))))
+    {
+      std::string what = bound->kind == TyKind::Array ? "a temporary array"
+                         : braces                     ? "a temporary made by braces"
+                                                      : "a temporary " + types.toString(types.unqualified(bound), &symbols) + " made from a value of type " + types.toString(valueTy, &symbols);
+      if (!listElement)
+        fail(at, "the reference member of type " + types.toString(refTy, &symbols) + " bound to " + what +
+                     " outside an aggregate's braces: in a constructor's member initializer C++ rejects it ([class.base.init] 11), and a default member initializer's temporary is not kept as long as the aggregate yet");
+      const Ty* element = bound;
+      while (element->kind == TyKind::Array)
+        element = element->inner;
+      if (refTy->kind != TyKind::RRef && !bound->isConst && !element->isConst)
+        fail(at, "the reference member of type " + types.toString(refTy, &symbols) + " given " + what +
+                     ": a non-const lvalue reference binds only an object, never a temporary made for it");
+      const Ty* made = bound->kind == TyKind::Array ? bound : withCurrentArgs(types.unqualified(bound));
+      if (listed && !extendingStatic.empty())
+      {
+        target = staticTemporary(made, at);
+        if (made->kind == TyKind::Array)
+          arrayTemporary(one, made, at, target);
+        else
+          initializeFrom(target, made, one, at, braces ? ConversionContext::Unknown : ConversionContext::Copy);
+      }
+      else if (made->kind == TyKind::Array)
+        target = arrayTemporary(one, made, at);
+      else
+      {
+        target = newObjectSlot(made, at);
+        initializeFrom(target, made, one, at, braces ? ConversionContext::Unknown : ConversionContext::Copy);
+        if (needsDestruction(made, at))
+          statementTemps.push_back({target, made});
+      }
+      if (listed && extendingStatic.empty())
+        extendedTemporaries.push_back(target);
+      fn += "  store ptr " + target + ", ptr " + fieldAddr + "\n";
+      return;
+    }
     if (isClass(types.stripRef(one->ty)))
     {
       Value object;
@@ -1777,7 +1852,7 @@ auto codegen::Emitter::initializeAggregateMember(const std::string& addr, const 
   if (value)
   {
     if (reference)
-      bindReferenceMember(fieldAddr, ft->isReference() ? ft : declared, value, at); // `Ref r{x}`: the member refers to x
+      bindReferenceMember(fieldAddr, ft->isReference() ? ft : declared, value, at, true); // `Ref r{x}`: the member refers to x
     else
     {
       initializeFrom(fieldAddr, ft, value, at);
