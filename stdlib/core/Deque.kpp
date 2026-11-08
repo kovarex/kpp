@@ -179,9 +179,6 @@ public:
   reverse_iterator rend() { return reverse_iterator(this->begin()); }
   const_reverse_iterator rbegin() const { return const_reverse_iterator(this->end()); }
   const_reverse_iterator rend() const { return const_reverse_iterator(this->begin()); }
-  // Equal with the same elements in the same order, ordered lexicographically (common.md).
-  bool operator==(const Deque<T>& other) const { return this->length == other.length && equal(this->begin(), this->end(), other.begin()); }
-  strong_ordering operator<=>(const Deque<T>& other) const { return lexicographicalCompareThreeWay(this->begin(), this->end(), other.begin(), other.end()); }
 
   void swap(Deque<T>& other)
   {
@@ -690,6 +687,14 @@ protected: // a derived class may see the blocks (tests/run/deque.kpp)
   ContainerSize start = 0;       // the position of element 0 in the map's space
   ContainerSize length = 0;
 };
+
+// Equal with the same elements in the same order, ordered lexicographically (common.md). Function
+// templates, as std's are: only a comparison that is written instantiates them, never every element
+// type.
+template<typename T>
+bool operator==(const Deque<T>& a, const Deque<T>& b) { return a.size() == b.size() && equal(a.begin(), a.end(), b.begin()); }
+template<typename T>
+strong_ordering operator<=>(const Deque<T>& a, const Deque<T>& b) { return lexicographicalCompareThreeWay(a.begin(), a.end(), b.begin(), b.end()); }
 
 // A position in a Deque: the map of its blocks and the position in the map's space, the element's
 // own (Deque: start + index), not its index: it stays on its element through removals at the ends,

@@ -834,20 +834,6 @@ public:
   // Moves the entries of other whose keys are not here into this map; the rest stay in other.
   void merge(HashMap<K, V, Hasher, KeyEqual, stable>& other) { this->table.mergeFrom(other.table); }
 
-  // Equal with the same keys, each with an equal value, in any order (common.md).
-  bool operator==(const HashMap<K, V, Hasher, KeyEqual, stable>& other) const
-  {
-    if (this->size() != other.size())
-      return false;
-    for (const Pair<K, V>& entry : *this)
-    {
-      HashIterator<const Pair<K, V>, stable> found = other.find(entry.first);
-      if (found == other.end() || !(found->second == entry.second))
-        return false;
-    }
-    return true;
-  }
-
   void swap(HashMap<K, V, Hasher, KeyEqual, stable>& other) { this->table.swap(other.table); }
   void clear() { this->table.clear(); }
   void reserve(ContainerSize n) { this->table.reserve(n); }
@@ -871,6 +857,22 @@ public:
 protected: // a derived class may see the table (tests/run/containers2.kpp)
   HashTable<Pair<K, V>, K, HashMapKey<K, V>, Hasher, KeyEqual, stable> table;
 };
+
+// Equal with the same keys, each with an equal value, in any order (common.md). A function template, as
+// std's is: only a comparison that is written instantiates it.
+template<typename K, typename V, typename Hasher, typename KeyEqual, bool stable>
+bool operator==(const HashMap<K, V, Hasher, KeyEqual, stable>& a, const HashMap<K, V, Hasher, KeyEqual, stable>& b)
+{
+  if (a.size() != b.size())
+    return false;
+  for (const Pair<K, V>& entry : a)
+  {
+    HashIterator<const Pair<K, V>, stable> found = b.find(entry.first);
+    if (found == b.end() || !(found->second == entry.second))
+      return false;
+  }
+  return true;
+}
 
 // An unordered set of unique values. `stable` false is FastHashSet.
 template<typename T, typename Hasher = Hash<T>, typename KeyEqual = EqualTo<T>, bool stable = true>
@@ -1002,17 +1004,6 @@ public:
 
   void merge(HashSet<T, Hasher, KeyEqual, stable>& other) { this->table.mergeFrom(other.table); }
 
-  // Equal with the same values, in any order (common.md).
-  bool operator==(const HashSet<T, Hasher, KeyEqual, stable>& other) const
-  {
-    if (this->size() != other.size())
-      return false;
-    for (const T& value : *this)
-      if (!other.contains(value))
-        return false;
-    return true;
-  }
-
   void swap(HashSet<T, Hasher, KeyEqual, stable>& other) { this->table.swap(other.table); }
   void clear() { this->table.clear(); }
   void reserve(ContainerSize n) { this->table.reserve(n); }
@@ -1024,6 +1015,19 @@ public:
 private:
   HashTable<T, T, HashSetKey<T>, Hasher, KeyEqual, stable> table;
 };
+
+// Equal with the same values, in any order (common.md). A function template, as std's is: only a
+// comparison that is written instantiates it.
+template<typename T, typename Hasher, typename KeyEqual, bool stable>
+bool operator==(const HashSet<T, Hasher, KeyEqual, stable>& a, const HashSet<T, Hasher, KeyEqual, stable>& b)
+{
+  if (a.size() != b.size())
+    return false;
+  for (const T& value : a)
+    if (!b.contains(value))
+      return false;
+  return true;
+}
 
 // The faster tables, whose entries move when the table grows (docs/stdlib/hashmap.md).
 template<typename K, typename V, typename Hasher = Hash<K>, typename KeyEqual = EqualTo<K>>

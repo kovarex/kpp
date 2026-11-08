@@ -321,25 +321,30 @@ struct Pair
     ::swap(this->first, other.first);
     ::swap(this->second, other.second);
   }
-
-  bool operator==(const Pair<A, B>& other) const { return this->first == other.first && this->second == other.second; }
-
-  bool operator<(const Pair<A, B>& other) const
-  {
-    if (this->first < other.first)
-      return true;
-    if (other.first < this->first)
-      return false;
-    return this->second < other.second;
-  }
-
-  // first decides, then second (each by <=>, or by < where it has none): gives >, <= and >=.
-  strong_ordering operator<=>(const Pair<A, B>& other) const
-  {
-    strong_ordering byFirst = synthThreeWay(this->first, other.first);
-    return byFirst != 0 ? byFirst : synthThreeWay(this->second, other.second);
-  }
 };
+
+// Pair's comparisons, function templates as std's are: only a comparison that is written instantiates
+// them, never every Pair. Equal with both equal; < by first's <, then second's.
+template<typename A, typename B>
+bool operator==(const Pair<A, B>& a, const Pair<A, B>& b) { return a.first == b.first && a.second == b.second; }
+
+template<typename A, typename B>
+bool operator<(const Pair<A, B>& a, const Pair<A, B>& b)
+{
+  if (a.first < b.first)
+    return true;
+  if (b.first < a.first)
+    return false;
+  return a.second < b.second;
+}
+
+// first decides, then second (each by <=>, or by < where it has none): gives >, <= and >=.
+template<typename A, typename B>
+strong_ordering operator<=>(const Pair<A, B>& a, const Pair<A, B>& b)
+{
+  strong_ordering byFirst = synthThreeWay(a.first, b.first);
+  return byFirst != 0 ? byFirst : synthThreeWay(a.second, b.second);
+}
 
 // Deduction (std::pair's guide): each value as a by-value argument, so `Pair{"name", 3}` holds a
 // const char*, not the literal's array.

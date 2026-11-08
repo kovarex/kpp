@@ -164,9 +164,6 @@ public:
   ForwardIterator<T> cbefore_begin() const { return this->before_begin(); }
   ForwardIterator<T> cbegin() const { return this->begin(); }
   ForwardIterator<T> cend() const { return this->end(); }
-  // Equal with the same elements in the same order, ordered lexicographically (common.md).
-  bool operator==(const ForwardList<T>& other) const { return equal(this->begin(), this->end(), other.begin(), other.end()); }
-  strong_ordering operator<=>(const ForwardList<T>& other) const { return lexicographicalCompareThreeWay(this->begin(), this->end(), other.begin(), other.end()); }
 
   void push_front(const T& value) { this->insert_after(this->before_begin(), value); }
   void push_front(T&& value) { this->insert_after(this->before_begin(), move(value)); }
@@ -429,3 +426,11 @@ private:
 
   ForwardLinks beforeHead; // its next is the first node; end() is null
 };
+
+// Equal with the same elements in the same order, ordered lexicographically (common.md). Function
+// templates, as std's are: only a comparison that is written instantiates them, never every element
+// type.
+template<typename T>
+bool operator==(const ForwardList<T>& a, const ForwardList<T>& b) { return equal(a.begin(), a.end(), b.begin(), b.end()); }
+template<typename T>
+strong_ordering operator<=>(const ForwardList<T>& a, const ForwardList<T>& b) { return lexicographicalCompareThreeWay(a.begin(), a.end(), b.begin(), b.end()); }

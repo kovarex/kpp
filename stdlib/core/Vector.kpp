@@ -107,19 +107,6 @@ public:
   T& operator[](ContainerSize index) { return this->items[index]; }
   const T& operator[](ContainerSize index) const { return this->items[index]; }
 
-  // Equal when of the same length with every element equal.
-  bool operator==(const Vector& other) const
-  {
-    if (this->length != other.length)
-      return false;
-    for (ContainerSize i = 0; i < this->length; ++i)
-      if (!(this->items[i] == other.items[i]))
-        return false;
-    return true;
-  }
-
-  // Ordered lexicographically by the elements (common.md): gives <, >, <= and >=.
-  strong_ordering operator<=>(const Vector& other) const { return lexicographicalCompareThreeWay(this->begin(), this->end(), other.begin(), other.end()); }
   T& back() { return this->items[this->length - 1]; }
   const T& back() const { return this->items[this->length - 1]; }
   T* begin() { return this->items; }
@@ -870,3 +857,22 @@ private:
   ContainerSize length = 0;
   ContainerSize allocated = 0; // the capacity: elements that fit in the block
 };
+
+// Equal when of the same length with every element equal; ordered lexicographically by the elements
+// (common.md), which gives <, >, <= and >=. Function templates, as std's are: only a comparison that is
+// written instantiates them, never every element type.
+template<typename T>
+bool operator==(const Vector<T>& a, const Vector<T>& b)
+{
+  if (a.size() != b.size())
+    return false;
+  const T* x = a.data();
+  const T* y = b.data();
+  for (ContainerSize i = 0; i < a.size(); ++i)
+    if (!(x[i] == y[i]))
+      return false;
+  return true;
+}
+
+template<typename T>
+strong_ordering operator<=>(const Vector<T>& a, const Vector<T>& b) { return lexicographicalCompareThreeWay(a.begin(), a.end(), b.begin(), b.end()); }

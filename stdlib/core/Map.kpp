@@ -1184,15 +1184,20 @@ public:
     }
   }
 
-  // Equal with equal entries in the same order, ordered lexicographically by them (common.md).
-  bool operator==(const Map<K, V, Compare>& other) const { return this->size() == other.size() && equal(this->begin(), this->end(), other.begin()); }
-  strong_ordering operator<=>(const Map<K, V, Compare>& other) const { return lexicographicalCompareThreeWay(this->begin(), this->end(), other.begin(), other.end()); }
   void swap(Map<K, V, Compare>& other) { this->tree.swap(other.tree); }
   void clear() { this->tree.clear(); }
 
 private:
   RbTree<Pair<K, V>, K, MapKey<K, V>, Compare> tree;
 };
+
+// Equal with equal entries in the same order, ordered lexicographically by them (common.md). Function
+// templates, as std's are: only a comparison that is written instantiates them, never every element
+// type.
+template<typename K, typename V, typename Compare>
+bool operator==(const Map<K, V, Compare>& a, const Map<K, V, Compare>& b) { return a.size() == b.size() && equal(a.begin(), a.end(), b.begin()); }
+template<typename K, typename V, typename Compare>
+strong_ordering operator<=>(const Map<K, V, Compare>& a, const Map<K, V, Compare>& b) { return lexicographicalCompareThreeWay(a.begin(), a.end(), b.begin(), b.end()); }
 
 // An ordered set of unique values, ordered by Compare.
 template<typename T, typename Compare = Less<T>>
@@ -1395,15 +1400,20 @@ public:
     }
   }
 
-  // Equal with equal entries in the same order, ordered lexicographically by them (common.md).
-  bool operator==(const Set<T, Compare>& other) const { return this->size() == other.size() && equal(this->begin(), this->end(), other.begin()); }
-  strong_ordering operator<=>(const Set<T, Compare>& other) const { return lexicographicalCompareThreeWay(this->begin(), this->end(), other.begin(), other.end()); }
   void swap(Set<T, Compare>& other) { this->tree.swap(other.tree); }
   void clear() { this->tree.clear(); }
 
 private:
   RbTree<T, T, SetKey<T>, Compare> tree;
 };
+
+// Equal with equal entries in the same order, ordered lexicographically by them (common.md). Function
+// templates, as std's are: only a comparison that is written instantiates them, never every element
+// type.
+template<typename T, typename Compare>
+bool operator==(const Set<T, Compare>& a, const Set<T, Compare>& b) { return a.size() == b.size() && equal(a.begin(), a.end(), b.begin()); }
+template<typename T, typename Compare>
+strong_ordering operator<=>(const Set<T, Compare>& a, const Set<T, Compare>& b) { return lexicographicalCompareThreeWay(a.begin(), a.end(), b.begin(), b.end()); }
 
 // An ordered map that allows equivalent keys, kept in insertion order among themselves.
 template<typename K, typename V, typename Compare = Less<K>>
@@ -1599,15 +1609,20 @@ public:
     }
   }
 
-  // Equal with equal entries in the same order, ordered lexicographically by them (common.md).
-  bool operator==(const MultiMap<K, V, Compare>& other) const { return this->size() == other.size() && equal(this->begin(), this->end(), other.begin()); }
-  strong_ordering operator<=>(const MultiMap<K, V, Compare>& other) const { return lexicographicalCompareThreeWay(this->begin(), this->end(), other.begin(), other.end()); }
   void swap(MultiMap<K, V, Compare>& other) { this->tree.swap(other.tree); }
   void clear() { this->tree.clear(); }
 
 private:
   RbTree<Pair<K, V>, K, MapKey<K, V>, Compare> tree;
 };
+
+// Equal with equal entries in the same order, ordered lexicographically by them (common.md). Function
+// templates, as std's are: only a comparison that is written instantiates them, never every element
+// type.
+template<typename K, typename V, typename Compare>
+bool operator==(const MultiMap<K, V, Compare>& a, const MultiMap<K, V, Compare>& b) { return a.size() == b.size() && equal(a.begin(), a.end(), b.begin()); }
+template<typename K, typename V, typename Compare>
+strong_ordering operator<=>(const MultiMap<K, V, Compare>& a, const MultiMap<K, V, Compare>& b) { return lexicographicalCompareThreeWay(a.begin(), a.end(), b.begin(), b.end()); }
 
 // An ordered set that allows equivalent values, kept in insertion order among themselves.
 template<typename T, typename Compare = Less<T>>
@@ -1779,12 +1794,17 @@ public:
     }
   }
 
-  // Equal with equal entries in the same order, ordered lexicographically by them (common.md).
-  bool operator==(const MultiSet<T, Compare>& other) const { return this->size() == other.size() && equal(this->begin(), this->end(), other.begin()); }
-  strong_ordering operator<=>(const MultiSet<T, Compare>& other) const { return lexicographicalCompareThreeWay(this->begin(), this->end(), other.begin(), other.end()); }
   void swap(MultiSet<T, Compare>& other) { this->tree.swap(other.tree); }
   void clear() { this->tree.clear(); }
 
 private:
   RbTree<T, T, SetKey<T>, Compare> tree;
 };
+
+// Equal with equal entries in the same order, ordered lexicographically by them (common.md). Function
+// templates, as std's are: only a comparison that is written instantiates them, never every element
+// type.
+template<typename T, typename Compare>
+bool operator==(const MultiSet<T, Compare>& a, const MultiSet<T, Compare>& b) { return a.size() == b.size() && equal(a.begin(), a.end(), b.begin()); }
+template<typename T, typename Compare>
+strong_ordering operator<=>(const MultiSet<T, Compare>& a, const MultiSet<T, Compare>& b) { return lexicographicalCompareThreeWay(a.begin(), a.end(), b.begin(), b.end()); }

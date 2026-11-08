@@ -796,10 +796,6 @@ public:
     other = move(rest);
   }
 
-  // Equal with equal entries in the same order, ordered lexicographically by them (common.md).
-  bool operator==(const FastMap<K, V>& other) const { return this->size() == other.size() && equal(this->begin(), this->end(), other.begin()); }
-  strong_ordering operator<=>(const FastMap<K, V>& other) const { return lexicographicalCompareThreeWay(this->begin(), this->end(), other.begin(), other.end()); }
-
   void swap(FastMap<K, V>& other)
   {
     FastMap<K, V> held(move(other));
@@ -812,6 +808,14 @@ public:
 private:
   BTree<Pair<K, V>, K, FastMapKey<K, V>> tree;
 };
+
+// Equal with equal entries in the same order, ordered lexicographically by them (common.md). Function
+// templates, as std's are: only a comparison that is written instantiates them, never every element
+// type.
+template<typename K, typename V>
+bool operator==(const FastMap<K, V>& a, const FastMap<K, V>& b) { return a.size() == b.size() && equal(a.begin(), a.end(), b.begin()); }
+template<typename K, typename V>
+strong_ordering operator<=>(const FastMap<K, V>& a, const FastMap<K, V>& b) { return lexicographicalCompareThreeWay(a.begin(), a.end(), b.begin(), b.end()); }
 
 // An ordered set of unique values, with Set's interface (only the invalidation rules differ).
 template<typename T>
@@ -924,10 +928,6 @@ public:
     other = move(rest);
   }
 
-  // Equal with equal entries in the same order, ordered lexicographically by them (common.md).
-  bool operator==(const FastSet<T>& other) const { return this->size() == other.size() && equal(this->begin(), this->end(), other.begin()); }
-  strong_ordering operator<=>(const FastSet<T>& other) const { return lexicographicalCompareThreeWay(this->begin(), this->end(), other.begin(), other.end()); }
-
   void swap(FastSet<T>& other)
   {
     FastSet<T> held(move(other));
@@ -940,3 +940,11 @@ public:
 private:
   BTree<T, T, FastSetKey<T>> tree;
 };
+
+// Equal with equal entries in the same order, ordered lexicographically by them (common.md). Function
+// templates, as std's are: only a comparison that is written instantiates them, never every element
+// type.
+template<typename T>
+bool operator==(const FastSet<T>& a, const FastSet<T>& b) { return a.size() == b.size() && equal(a.begin(), a.end(), b.begin()); }
+template<typename T>
+strong_ordering operator<=>(const FastSet<T>& a, const FastSet<T>& b) { return lexicographicalCompareThreeWay(a.begin(), a.end(), b.begin(), b.end()); }

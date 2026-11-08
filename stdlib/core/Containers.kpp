@@ -73,18 +73,24 @@ struct Array
       other.items[i] = move(held);
     }
   }
-
-  bool operator==(const Array<T, N>& other) const
-  {
-    for (ContainerSize i = 0; i < N; ++i)
-      if (!(this->items[i] == other.items[i]))
-        return false;
-    return true;
-  }
-
-  // Ordered lexicographically by the elements (common.md): gives <, >, <= and >=.
-  strong_ordering operator<=>(const Array<T, N>& other) const { return lexicographicalCompareThreeWay(this->items, this->items + N, other.items, other.items + N); }
 };
+
+// Equal with every element equal, ordered lexicographically by the elements (common.md), which gives <, >,
+// <= and >=; two Arrays of no elements are equal. Function templates, as std's are: only a comparison
+// that is written instantiates them, never every element type.
+template<typename T, ContainerSize N>
+bool operator==(const Array<T, N>& a, const Array<T, N>& b)
+{
+  const T* x = a.begin();
+  const T* y = b.begin();
+  for (ContainerSize i = 0; i < N; ++i)
+    if (!(x[i] == y[i]))
+      return false;
+  return true;
+}
+
+template<typename T, ContainerSize N>
+strong_ordering operator<=>(const Array<T, N>& a, const Array<T, N>& b) { return lexicographicalCompareThreeWay(a.begin(), a.end(), b.begin(), b.end()); }
 
 // An Array of no elements (std::array<T, 0>, as the noise expressions' constant arrays of
 // operations without constants): no storage, so T needs no constructor; begin() == end(), at()
@@ -140,8 +146,6 @@ struct Array<T, 0>
   const T& back() const { return *this->data(); }
   void fill(const T& value) {}
   void swap(Array<T, 0>& other) {}
-  bool operator==(const Array<T, 0>& other) const { return true; }
-  strong_ordering operator<=>(const Array<T, 0>& other) const { return strong_ordering::equal; }
 };
 
 // The extent of a Span whose length is known only when the program runs (std::dynamic_extent).

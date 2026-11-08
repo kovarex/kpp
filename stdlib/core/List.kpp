@@ -239,9 +239,6 @@ public:
   reverse_iterator rend() { return reverse_iterator(this->begin()); }
   const_reverse_iterator rbegin() const { return const_reverse_iterator(this->end()); }
   const_reverse_iterator rend() const { return const_reverse_iterator(this->begin()); }
-  // Equal with the same elements in the same order, ordered lexicographically (common.md).
-  bool operator==(const List<T>& other) const { return this->length == other.length && equal(this->begin(), this->end(), other.begin()); }
-  strong_ordering operator<=>(const List<T>& other) const { return lexicographicalCompareThreeWay(this->begin(), this->end(), other.begin(), other.end()); }
 
   void swap(List<T>& other)
   {
@@ -541,3 +538,11 @@ private:
   ListLinks sentinel;
   ContainerSize length = 0;
 };
+
+// Equal with the same elements in the same order, ordered lexicographically (common.md). Function
+// templates, as std's are: only a comparison that is written instantiates them, never every element
+// type.
+template<typename T>
+bool operator==(const List<T>& a, const List<T>& b) { return a.size() == b.size() && equal(a.begin(), a.end(), b.begin()); }
+template<typename T>
+strong_ordering operator<=>(const List<T>& a, const List<T>& b) { return lexicographicalCompareThreeWay(a.begin(), a.end(), b.begin(), b.end()); }

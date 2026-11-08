@@ -1,0 +1,92 @@
+// spec: the containers' and Pair's == and <=> are function templates beside them, as std's are: a container of a type with no == and no < builds and is used (Vector, Deque, List, ForwardList, Array, Map, Set with a comparator, HashMap, Pair); the comparisons give the same answers with a const and a non-const operand either way round, between objects of classes derived from a container (as the game's ScheduleRecords : Vector<ScheduleRecord>), through a class's defaulted == and <=> over container members, and in constant evaluation; clang's output with std's containers (std::set is no constexpr: its line by a run-time call there)
+// the stdlib: as members, every instance of a container checked them, so every element type instantiated lexicographicalCompareThreeWay and synthThreeWay whether or not it was ever compared (K, 2026-11-08: 9,241 such instances in the game)
+struct Opaque
+{
+  int v = 0;
+};
+struct ByV
+{
+  bool operator()(const Opaque& a, const Opaque& b) const { return a.v < b.v; }
+};
+struct Records : Vector<int>
+{
+};
+struct Holder
+{
+  Vector<int> values;
+  Pair<int, String> named;
+  bool operator==(const Holder&) const = default;
+  strong_ordering operator<=>(const Holder&) const = default;
+};
+
+constexpr bool vectorsAtCompileTime()
+{
+  Vector<int> a = {1, 2, 3};
+  const Vector<int> b = {1, 2, 4};
+  return a < b && b > a && a != b && a == Vector<int>{1, 2, 3} && (a <=> b) < 0;
+}
+constexpr bool arraysAndPairsAtCompileTime()
+{
+  Array<int, 3> a = {1, 2, 3};
+  const Array<int, 3> b = {1, 2, 3};
+  Pair<int, int> p(1, 2);
+  const Pair<int, int> q(1, 3);
+  return a == b && !(a < b) && b <= a && p < q && q != p && (q <=> p) > 0;
+}
+constexpr bool setsAtCompileTime()
+{
+  Set<int> a = {1, 2};
+  const Set<int> b = {1, 3};
+  return a < b && a != b && b >= a;
+}
+static_assert(vectorsAtCompileTime());
+static_assert(arraysAndPairsAtCompileTime());
+static_assert(setsAtCompileTime());
+
+int main()
+{
+  Vector<Opaque> v = {Opaque{1}, Opaque{2}};
+  v.push_back(Opaque{3});
+  Deque<Opaque> d;
+  d.push_back(Opaque{4});
+  List<Opaque> l;
+  l.push_back(Opaque{5});
+  ForwardList<Opaque> f;
+  f.push_front(Opaque{6});
+  Array<Opaque, 2> a = {Opaque{7}, Opaque{8}};
+  Map<int, Opaque> m;
+  m[1] = Opaque{9};
+  Set<Opaque, ByV> s;
+  s.insert(Opaque{10});
+  HashMap<int, Opaque> h;
+  h[2] = Opaque{11};
+  Pair<int, Opaque> p(3, Opaque{12});
+  println(v.size(), " ", v[2].v, " ", d.front().v, " ", l.front().v, " ", f.front().v, " ", a[1].v, " ", m[1].v, " ", s.begin()->v, " ", h[2].v, " ", p.second.v);
+
+  Vector<int> x = {1, 2, 3};
+  const Vector<int> y = {1, 2, 4};
+  println(x < y, " ", y < x, " ", x == y, " ", y != x, " ", x <= y, " ", y >= x, " ", (x <=> y) < 0, " ", (y <=> x) > 0);
+  const Deque<int> cd(2, 5);
+  Deque<int> nd(3, 5);
+  println(cd < nd, " ", nd == cd, " ", nd > cd);
+  const Map<int, int> cm = {{1, 2}};
+  Map<int, int> nm = {{1, 3}};
+  println(cm < nm, " ", nm != cm, " ", cm == cm);
+  const HashMap<int, int> ch = {{1, 2}, {2, 3}};
+  HashMap<int, int> nh = {{2, 3}, {1, 2}};
+  println(ch == nh, " ", nh != ch);
+  const Pair<int, int> cp(1, 2);
+  Pair<int, int> np(1, 1);
+  println(np < cp, " ", cp > np, " ", np == cp, " ", cp != np);
+
+  Records r1, r2;
+  r1.push_back(1);
+  r2.push_back(2);
+  println(r1 < r2, " ", r1 == r2, " ", r2 >= r1, " ", r1 != r2);
+
+  Holder h1{{1, 2}, Pair<int, String>(1, String("a"))};
+  Holder h2{{1, 2}, Pair<int, String>(1, String("b"))};
+  println(h1 < h2, " ", h1 == h2, " ", h1 == h1, " ", h2 > h1);
+  println(vectorsAtCompileTime(), " ", arraysAndPairsAtCompileTime(), " ", setsAtCompileTime());
+  return 0;
+}
