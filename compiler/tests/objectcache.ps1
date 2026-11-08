@@ -57,16 +57,20 @@ if ($release2.code -ne 0 -or $release2.printed -ne 'area 15 sides 1' -or $releas
 { Fail "a second release build: exit $($release2.code), $($release2.shared) of $($release2.modules) modules from the cache, printed '$($release2.printed)'`n$($release2.text)" }
 
 # Six builds at once into six directories, sharing a cache none of them found anything in.
+# Each through cmd (for its files) by Process.Start, whose process holds its handle from the start:
+# Start-Process's holds none until .Handle is read, and one that ended before that reports no exit
+# code (D's gate, 2026-11-08: "build 2 of six at once: exit , printed ''", read after all six started).
 $together = "$work\together"
 New-Item -ItemType Directory -Force "$work\out" | Out-Null
-$env:KPP_OBJECT_CACHE = $together
 $running = foreach ($i in 1..6)
 {
-  Start-Process -FilePath $KppExe -ArgumentList '--quiet', '--modules', '4', '--exe', "`"$work\out\together$i.exe`"", "`"$work\src`"" -PassThru -NoNewWindow `
-    -RedirectStandardOutput "$work\together$i.txt" -RedirectStandardError "$work\together$i.err.txt"
+  $info = New-Object System.Diagnostics.ProcessStartInfo $env:ComSpec
+  $info.Arguments = "/d /c `"`"$KppExe`" --quiet --modules 4 --exe `"$work\out\together$i.exe`" `"$work\src`" > `"$work\together$i.txt`" 2> `"$work\together$i.err.txt`"`""
+  $info.UseShellExecute = $false
+  $info.CreateNoWindow = $true
+  $info.EnvironmentVariables['KPP_OBJECT_CACHE'] = $together
+  [System.Diagnostics.Process]::Start($info)
 }
-Remove-Item Env:KPP_OBJECT_CACHE
-foreach ($p in $running) { $null = $p.Handle }
 $i = 0
 foreach ($p in $running)
 {
