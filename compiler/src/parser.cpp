@@ -123,7 +123,15 @@ namespace
           {
             auto* f = static_cast<FunctionDecl*>(scratch[i]);
             if (f->name.parts.size() == 1 && f->name.parts[0].symbol == kwMain && !f->name.global)
+            {
               f->name.parts[0].symbol = symbols.intern("__kpp_program_main");
+              for (uint32_t k = f->token; k < toks.size() && k < f->token + 64; ++k)
+                if (toks[k].getKind() == TokenKind::Identifier && toks[k].id == kwMain)
+                {
+                  out.programMainOffset = toks[k].offset;
+                  break;
+                }
+            }
           }
       out.decls = makeSpan<Decl*>(mark);
     }
@@ -1950,6 +1958,7 @@ namespace
           (at(TokenKind::String, 1) || (atIdent(1) && (at(P::LBrace, 2) || at(P::Colon, 2)))))
       {
         noteWord(pos);
+        out.hasTestCode = true;
         parseTest(scope);
         return;
       }
@@ -1970,6 +1979,7 @@ namespace
           (at(P::LBrace, 2) || atIdent(kwDepends, 2) || atIdent(kwTags, 2)))
       {
         noteWord(pos);
+        out.hasTestCode = true;
         parseSuite();
         return;
       }

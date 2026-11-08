@@ -1,0 +1,13 @@
+// spec: in a --tests build an error in the program's main names main, not the name the build gives it to make room for the test runner's (__kpp_program_main)
+// kpp: --tests
+// error: does not convert to int32 without a cast (in main())
+test runs
+{
+  check(1 + 1 == 2);
+}
+
+int main()
+{
+  int n = "text";
+  return n;
+}

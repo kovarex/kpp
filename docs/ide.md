@@ -380,6 +380,19 @@ check always adds
 `--quiet --diagnostic-columns --check` and the standard library; `--exe`, `--emit-llvm` and
 `--server` given are left out (logged). `--lsp-log FILE` writes the log to a file too.
 
+**Test code is checked** (2026-11-08): when the program's own files (not the standard library's or a
+library's) have a test or a suite, the cell is checked with `--tests`
+(a library's cell has it already), so a test body's names have their errors, colors, hover and
+navigation (`g.check(3)` in a test is a method). The first check of such a cell runs again with it
+(`testsChanged`, compiler/src/lsp.cpp; ParsedFile::hasTestCode, set whether the parser parsed the test
+or skipped it); once no test is left, it is checked without. A
+test declaration alone (`test void helper()`) does not count: the game's `factorio` cell has one in
+src/Util/ReleaseAssert.kpp and no test, and stays a build without tests (factorio-test is its tests' cell). The editor then sees the code as a
+`--tests` build does: `config::tests` is true, `when (config::tests)` code is active, and an error in
+main still names main, which such a build renames for the test runner's. A name the parser made in
+the test machinery (a suite's registration) sits at the place of the token it was made from, and is
+no occurrence: its text there is not its name.
+
 **Cells** (kovarex, 2026-11-01: the configuration selected in the IDE "is the context of editing
 the code"). A cell is a target and a configuration of build.kpp's (`projectCells`, compiler/src/Project/Project.cpp);
 the server checks one at a time, the one the client selected: initializationOptions,
@@ -448,7 +461,7 @@ name, found by token (`occurrencesIn`, one walk of the file, cached until the ne
 | `textDocument/signatureHelp` (`(`, `,`) | the overloads of the function called (a member after `.` and `->`, a scope's after `X::`), each parameter's range in the label, the argument the cursor is at |
 | `textDocument/prepareRename`, `textDocument/rename` | below |
 | `textDocument/codeAction` | below, "Quick fixes" |
-| `textDocument/semanticTokens/full` | every resolved name and declaration's own name by kind (namespace, type, class, enum, struct, typeParameter, parameter, variable, property, enumMember, function, method), `declaration` and `defaultLibrary` (the standard library's) as modifiers; kppKeyword for kpp's own words where the parser takes them (`check(`, `require(`, `fail(`, `requireThrows<`, `checkThrows<`, `assert(`, `fallthrough;`, `nameof(`, `implicit`, `This`, `when`, `test`, `suite`, `depends`, `tags`, `generate`, `caller`, `import`...; in test code skipped without `--tests`, by their neighbours), drawn bold in a keyword's color (Visual Studio's "kpp Keyword", VS Code's `kppKeyword`), while a method `obj.check(x)` stays a method (tests/lsp/colors.jsonl) |
+| `textDocument/semanticTokens/full` | every resolved name and declaration's own name by kind (namespace, type, class, enum, struct, typeParameter, parameter, variable, property, enumMember, function, method), `declaration` and `defaultLibrary` (the standard library's) as modifiers; kppKeyword for kpp's own words where the parser takes them (`check(`, `require(`, `fail(`, `requireThrows<`, `checkThrows<`, `assert(`, `fallthrough;`, `nameof(`, `implicit`, `This`, `when`, `test`, `suite`, `depends`, `tags`, `generate`, `caller`, `import`...; in test code skipped without `--tests`, as a check of a program without tests saw it before 2026-11-08, by their neighbours), drawn bold in a keyword's color (Visual Studio's "kpp Keyword", VS Code's `kppKeyword`), while a method `obj.check(x)` stays a method (tests/lsp/colors.jsonl) |
 
 **Rename never misses a use silently.** Every identifier spelled like the old name in the program's
 own files must be accounted for: a name the compiler resolved to the declaration (or to one of its

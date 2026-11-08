@@ -8,6 +8,7 @@
 #include "LineStarts.hpp"
 #include <chrono>
 #include <algorithm>
+#include <set>
 #include <atomic>
 #include <cctype>
 #include <condition_variable>
@@ -354,6 +355,10 @@ namespace
     uint32_t end = d->endToken > d->token ? d->endToken : uint32_t(tokens.size());
     if (d->kind == NodeKind::FunctionDecl && static_cast<const FunctionDecl*>(d)->body)
       end = std::min(end, static_cast<const FunctionDecl*>(d)->body->token);
+    if (d->kind == NodeKind::FunctionDecl && d->file->programMainOffset != UINT32_MAX)
+      for (uint32_t k = d->token; k < end; ++k)
+        if (tokens[k].offset == d->file->programMainOffset)
+          return k; // (main, which a --tests build renames: ParsedFile::programMainOffset)
     if (const QualifiedName* q = qualifiedNameOf(d))
       return q->empty() ? UINT32_MAX : nameToken(tokens, *q, d->token, end);
     return symbolToken(tokens, symbolOf(d), d->token, end);
@@ -555,7 +560,8 @@ namespace
   }
 
   // Every name in a file the compiler resolved, and every declaration's own name, by token.
-  std::vector<Occurrence> occurrencesIn(const ParsedFile& file, GlobalScope* global, const std::unordered_map<const Decl*, Decl*>* statics)
+  std::vector<Occurrence> occurrencesIn(const ParsedFile& file, GlobalScope* global, const std::unordered_map<const Decl*, Decl*>* statics,
+                                        const SymbolTable* symbols)
   {
     std::vector<Occurrence> out;
     if (!file.tokens)
@@ -599,6 +605,15 @@ namespace
       if (t != UINT32_MAX)
         out.push_back({t, d, n, false});
     });
+    // A name the parser made (a suite's registration, a test's function) is at the place of the token
+    // it was made like: its text there is not its name, so it is no occurrence (the suite's name was
+    // a variable's, the registration's).
+    if (symbols)
+      out.erase(std::remove_if(out.begin(), out.end(), [&](const Occurrence& o)
+      {
+        const Token& token = tokens[o.token];
+        return token.getKind() == TokenKind::Identifier && file.text.substr(token.offset, token.length) != symbols->name(token.id);
+      }), out.end());
     std::sort(out.begin(), out.end(), [](const Occurrence& a, const Occurrence& b) { return a.token != b.token ? a.token < b.token : a.declaration > b.declaration; });
     out.erase(std::unique(out.begin(), out.end(), [](const Occurrence& a, const Occurrence& b) { return a.token == b.token; }), out.end());
     return out;
@@ -916,6 +931,9 @@ namespace
         kept.insert(kept.begin() + 1, {"--std", defaultStdlib(compilerPath()).string()});
       // --check: codegen's errors too (the checker's type errors are reported by codegen), nothing written.
       kept.insert(kept.begin() + 1, {"--quiet", "--diagnostic-columns", "--check"});
+      // A program whose own files have test code is checked with --tests (testsChanged).
+      if (testCells.count(key) && std::find(kept.begin(), kept.end(), "--tests") == kept.end())
+        kept.push_back("--tests");
       checkArguments = kept;
       std::string line;
       for (const std::string& a : checkArguments)
@@ -1035,6 +1053,15 @@ namespace
       int code = buildInThisProcess(compile, checkArguments, out, err, &notes);
       double seconds = std::chrono::duration<double>(Clock::now() - start).count();
       ++checks;
+      if (!checkingAgain && testsChanged())
+      {
+        // (this check's results, of the program without its tests or with them, are not published)
+        log("check %zu: %.3f s, exit %d, checked again %s --tests", checks, seconds, code, testCells.count(activeCell) ? "with" : "without");
+        checkingAgain = true;
+        check();
+        checkingAgain = false;
+        return;
+      }
       auto found = diagnosticsOf(err + out);
       size_t count = 0;
       std::map<std::string, std::string> now;
@@ -1096,6 +1123,39 @@ namespace
         send(Json::object().set("jsonrpc", "2.0").set("id", "kpp-refresh-" + std::to_string(++refreshes)).set("method", "workspace/semanticTokens/refresh"));
       if (semanticColors)
         notify("kpp/semanticTokensChanged", Json::object());
+    }
+
+    // Test code is checked too (docs/ide.md): when the program's own files have a test or a suite
+    // (ParsedFile::hasTestCode, set whether --tests parsed it or skipped it) and the cell was checked
+    // without --tests, it is checked with it from now on; once none is left, without it again. A cell
+    // given --tests itself (a library's) stays as it is. True when the cell's arguments changed, to be
+    // checked again.
+    bool testsChanged()
+    {
+      bool added = testCells.count(activeCell) != 0;
+      if (!added && std::find(checkArguments.begin(), checkArguments.end(), "--tests") != checkArguments.end())
+        return false;
+      bool want = false;
+      if (!withKeptProgram([&](const KeptProgram& program)
+          {
+            for (const ParsedFile* f : program.files)
+              want = want || (f->hasTestCode && !f->isLibrary && !f->isImported && f->library.empty());
+          }))
+        return false;
+      if (want == added)
+        return false;
+      if (want)
+      {
+        testCells.insert(activeCell);
+        checkArguments.push_back("--tests");
+      }
+      else
+      {
+        testCells.erase(activeCell);
+        checkArguments.erase(std::find(checkArguments.begin(), checkArguments.end(), "--tests"));
+      }
+      enterCell(activeCell);
+      return true;
     }
 
     // ---- inactive code (docs/editors.md, "Inactive code") ----
@@ -1248,7 +1308,7 @@ namespace
     {
       auto found = cache.occurrences.find(f);
       if (found == cache.occurrences.end())
-        found = cache.occurrences.emplace(f, occurrencesIn(*f, currentGlobal, &knowStatics())).first;
+        found = cache.occurrences.emplace(f, occurrencesIn(*f, currentGlobal, &knowStatics(), currentProgram ? currentProgram->symbols : nullptr)).first;
       return found->second;
     }
 
@@ -1555,7 +1615,7 @@ namespace
       std::vector<std::thread> threads;
       const std::unordered_map<const Decl*, Decl*>* statics = &knowStatics();
       for (unsigned t = 0; t < std::max(1u, std::thread::hardware_concurrency()); ++t)
-        threads.emplace_back([&] { for (size_t i; (i = next++) < files.size();) found[i] = occurrencesIn(*files[i], program.global, statics); });
+        threads.emplace_back([&] { for (size_t i; (i = next++) < files.size();) found[i] = occurrencesIn(*files[i], program.global, statics, program.symbols); });
       for (std::thread& t : threads)
         t.join();
       for (size_t i = 0; i < files.size(); ++i)
@@ -3137,6 +3197,8 @@ namespace
 
     CompileFunction compile = nullptr;
     std::vector<std::string> explicitArguments; // `kpp --lsp OPTIONS SOURCES`
+    std::set<std::string> testCells;            // the cells checked with --tests for their test code (testsChanged)
+    bool checkingAgain = false;                 // check() runs itself once more after testsChanged
     fs::path workspace;                         // the editor's root folder
     fs::path projectFolder;                     // build.kpp's folder: the workspace or one above it
     ProjectCheck project;                       // the cell checked: initializationOptions, workspace/didChangeConfiguration, kpp/selectCell (docs/editors.md)

@@ -34,6 +34,13 @@ struct ParsedFile
   // their neighbours. Not sorted; a speculative parse may repeat one. Offsets, as a test's tokens
   // are spliced.
   std::vector<uint32_t> kppWords;
+  // A test or a suite in it, parsed (--tests) or skipped: the language server checks a program whose
+  // own files have one with --tests (docs/ide.md). A test declaration alone is none (the game's
+  // ReleaseAssert.kpp has one, and its cell is no test build).
+  bool hasTestCode = false;
+  // A --tests build renames the program's main (__kpp_program_main): its name's source offset, where
+  // the language server finds the declaration's name.
+  uint32_t programMainOffset = UINT32_MAX;
   bool isLibrary = false;  // The standard library's sources (set by the driver): the top-level names they claim are reserved.
   Scope* privateScope = nullptr; // Its `private` top-level names (design.md 15), set by the resolver's index.
   // The library it is a file of (design.md 16; set by the driver): its name, empty for the program's

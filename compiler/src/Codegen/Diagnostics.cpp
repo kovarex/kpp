@@ -58,6 +58,8 @@ auto codegen::Emitter::fail(Node* at, const std::string& message, bool shown) ->
     where = " (in " + currentContext + (currentRequestedByContext.empty() ? "" : ", requested by " + currentRequestedByContext) + ")";
   else if (!currentFunctionName.empty())
     where = " (in " + currentFunctionName + (currentRequestedBy.empty() ? "" : ", requested by " + currentRequestedBy) + ")";
+  if (where.rfind(" (in __kpp_program_main(", 0) == 0)
+    where.replace(5, 18, "main"); // (a --tests build renames the program's main, parser.cpp: to the reader it is main)
   // A value of unknown type in a function the checker reported an error in (`auto v = p.size()`
   // on an undeclared type's p) follows from that error too; and so does any failure on an
   // expression that holds an error the checker reported (`undefinedName(1)`, a call given
