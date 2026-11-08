@@ -32,16 +32,22 @@
   ConstArith constArith();
 
   // The underlying type an enumeration type was declared with (`enum class Tag : uint8_t`), null
-  // for one declared without, unknown when the written one cannot be converted.
-  std::shared_mutex underlyingMutex; // (a hit takes it shared: codegen's levels ask it from every thread)
+  // for one declared without, unknown when the written one cannot be converted. Each answer kept
+  // is kept for this GlobalScope's life: none is ever removed, so a thread keeps its own copy of
+  // what it has asked (threadCopy) and takes no lock again for it.
+  std::shared_mutex underlyingMutex;
   std::unordered_map<const Ty*, const Ty*> underlyingTypes;
   const Ty* declaredUnderlying(const Ty* t, const Subst* local = nullptr); // local: of a function's instance, for an enumeration in its body
   // ConstArith::enumRange: the range of values of an enumeration declared without an underlying
   // type, from its enumerators' values; nullopt for one declared with, an instance's (a class
   // template's member enum), or one whose enumerators are being evaluated or do not evaluate.
+  // Kept as declaredUnderlying's answers are.
   std::mutex enumRangeMutex;
   std::unordered_map<const Ty*, std::optional<std::pair<int64_t, int64_t>>> enumRanges;
   std::optional<std::pair<int64_t, int64_t>> enumValueRange(const Ty* t);
+  // This GlobalScope among those of the process, for the threads' copies of its caches: an id, never
+  // its address, which a later one may be given.
+  const uint64_t cacheOwner = []() { static std::atomic<uint64_t> next{1}; return next.fetch_add(1, std::memory_order_relaxed); }();
 
   // depth: nesting of the evaluation, calls included (`ratioGcd(b, a % b)` recursing a few times
   // inside a static member's initializer inside a requires clause).

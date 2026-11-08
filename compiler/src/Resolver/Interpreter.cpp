@@ -113,6 +113,29 @@ auto GlobalScope::Impl::replayUses(const std::vector<CollectedUse>& uses) -> voi
   replayCollected(uses);
 }
 
+namespace
+{
+// A thread's own copy of a cache whose shared map keeps each answer for its GlobalScope's life (none is
+// ever removed): enumValueRange's and declaredUnderlying's, which codegen's levels ask from every
+// thread. A hit here takes no lock; their mutexes were 4.5% and 8% of codegen's samples, blocked (B's
+// sampler on master's clean game build, 2026-11-08). It holds only what the shared map holds, so the
+// answers are the same.
+template<typename V> struct ThreadCopy
+{
+  uint64_t owner = 0; // the GlobalScope's cacheOwner the copy is of
+  std::unordered_map<const Ty*, V> map;
+  std::unordered_map<const Ty*, V>& of(uint64_t id)
+  {
+    if (owner != id)
+    {
+      map.clear();
+      owner = id;
+    }
+    return map;
+  }
+};
+} // namespace
+
 auto GlobalScope::Impl::constArith() -> ConstArith
 {
   auto range = [this](const Ty* e) { return enumValueRange(e); };
@@ -126,10 +149,30 @@ auto GlobalScope::Impl::enumValueRange(const Ty* t) -> std::optional<std::pair<i
   t = t ? types.unqualified(t) : nullptr;
   if (!t || t->kind != TyKind::Enum || !t->decl)
     return std::nullopt;
+  using Range = std::optional<std::pair<int64_t, int64_t>>;
+  static thread_local ThreadCopy<Range> copy;
+  std::unordered_map<const Ty*, Range>& mine = copy.of(cacheOwner);
+  if (auto it = mine.find(t); it != mine.end())
+    return it->second;
+  // (this call's answer; a later one's the shared map's, another thread's when it kept one first)
+  auto keep = [&](const Range& range) -> Range
+  {
+    Range kept;
+    {
+      std::lock_guard lock(enumRangeMutex);
+      kept = enumRanges.emplace(t, range).first->second;
+    }
+    mine.emplace(t, kept);
+    return range;
+  };
   {
     std::lock_guard lock(enumRangeMutex);
     if (auto it = enumRanges.find(t); it != enumRanges.end())
-      return it->second;
+    {
+      Range kept = it->second;
+      mine.emplace(t, kept);
+      return kept;
+    }
   }
   Decl* def = t->decl;
   if (!def->ownScope)
@@ -142,8 +185,11 @@ auto GlobalScope::Impl::enumValueRange(const Ty* t) -> std::optional<std::pair<i
     return std::nullopt;
   auto* e = static_cast<EnumDecl*>(def);
   // A fixed underlying type (written, or an enum class's int) takes every value of it; an
-  // instance's enumeration (`Flag<A>::Enum`) is left unchecked.
-  if (e->underlying || e->isClass || !e->isDefinition || t != types.enumType(e))
+  // instance's enumeration (`Flag<A>::Enum`) is left unchecked. Both for good, so kept: each
+  // conversion to an enum class asked the shared map under its mutex.
+  if (e->underlying || e->isClass || (e->isDefinition && t != types.enumType(e)))
+    return keep(std::nullopt);
+  if (!e->isDefinition)
     return std::nullopt;
   // Its enumerators are being evaluated on this thread (`B = A | 4` converts to the enumeration
   // while its range is unknown): no range yet, and none kept.
@@ -179,17 +225,23 @@ auto GlobalScope::Impl::enumValueRange(const Ty* t) -> std::optional<std::pair<i
     int m = std::max(bitsFor(high) + 1, bitsFor(~low) + 1);
     range = m >= 64 ? std::pair<int64_t, int64_t>{INT64_MIN, INT64_MAX} : std::pair<int64_t, int64_t>{-(int64_t(1) << (m - 1)), (int64_t(1) << (m - 1)) - 1};
   }
-  std::lock_guard lock(enumRangeMutex);
-  enumRanges.emplace(t, range);
-  return range;
+  return keep(range);
 }
 
 auto GlobalScope::Impl::declaredUnderlying(const Ty* t, const Subst* local) -> const Ty*
 {
+  static thread_local ThreadCopy<const Ty*> copy;
+  std::unordered_map<const Ty*, const Ty*>& mine = copy.of(cacheOwner);
+  if (auto it = mine.find(t); it != mine.end())
+    return it->second;
   {
     std::shared_lock lock(underlyingMutex);
     if (auto it = underlyingTypes.find(t); it != underlyingTypes.end())
-      return it->second;
+    {
+      const Ty* kept = it->second;
+      mine.emplace(t, kept);
+      return kept;
+    }
   }
   Decl* def = t ? t->decl : nullptr;
   if (def && !def->ownScope)
@@ -238,8 +290,13 @@ auto GlobalScope::Impl::declaredUnderlying(const Ty* t, const Subst* local) -> c
     if (low < INT32_MIN || high > INT32_MAX)
       u = low >= 0 && high <= int64_t(UINT32_MAX) ? types.intType(32, true) : types.longType();
   }
-  std::unique_lock lock(underlyingMutex);
-  underlyingTypes.emplace(t, u);
+  // (this call's answer; a later one's the shared map's, another thread's when it kept one first)
+  const Ty* kept;
+  {
+    std::unique_lock lock(underlyingMutex);
+    kept = underlyingTypes.emplace(t, u).first->second;
+  }
+  mine.emplace(t, kept);
   return u;
 }
 
