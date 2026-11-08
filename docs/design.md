@@ -2848,16 +2848,6 @@ reach), peak memory 1.94 GB against 1.34 (the copies of every member of every in
 as measured above). Next: per-instance member initializers and statics, pack expansions and
 generic lambdas (codegen still re-types those in place), then the parallel codegen driver.
 
-**Member bodies where they are used (2026-11-08, coordinator and D).** A class instance's member
-bodies are copied and typed where they are used, as C++ instantiates a member function's definition
-([temp.inst] 11): a call, an operator, range-for's begin/end, argument-dependent lookup's hidden
-friend, or codegen's own request (instanceBody); with the class only its virtual member functions
-and destructor (the vtable), its member specializations, and every member of an explicit
-instantiation definition ([temp.explicit] 10). An error in a member nobody uses is no error, as in
-C++ (most were shown only for emitted bodies already: reportCheck in an instance); the count
-"static_assert: N failed in template instances' functions never emitted" counts the bodies walked,
-fewer now. Numbers in compile-speed.md, "Step 4".
-
 **The shape it has now (2026-10-29).** Everything typed for an instantiation is a copy owned by
 it, built once under a claim-once record keyed by (declaration, arguments in any order, `this`
 type), by whichever thread asks first:
