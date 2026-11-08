@@ -8769,6 +8769,22 @@ auto GlobalScope::Impl::constDeclare(VariableDecl* v, const TypeContext& ctx, st
     env[at].writable = writable;
     return named(at);
   }
+  // `bool b{x}` of a class: direct-list-initialization, whose conversion takes an explicit operator bool as a
+  // condition's does (constTruth), where `bool b = x;` takes only an implicit one (constInitialize: until 2026-11-08
+  // also `bool b{x}`, beside an implicit `operator int()` true where the run and C++ say false).
+  if (v->init && v->bracedInit && type && types.unqualified(types.stripRef(type))->kind == TyKind::Bool && v->init->kind == NodeKind::BraceInitExpr)
+    if (auto* b = static_cast<BraceInitExpr*>(v->init); b->args.size() == 1 && b->designators.empty() && b->args[0] && b->args[0]->ty &&
+                                                         b->args[0]->kind != NodeKind::BraceInitExpr && !types.isDependent(b->args[0]->ty) &&
+                                                         types.unqualified(types.stripRef(b->args[0]->ty))->kind == TyKind::Class)
+    {
+      std::optional<ConstValue> object = constValue(b->args[0], ctx, depth + 1);
+      std::optional<bool> truth = object && object->isObject() ? constTruth(*object, depth + 1) : std::nullopt;
+      if (!truth)
+        return ConstFlow::Failed;
+      env.push_back(constBinding(symbol, ConstValue::integer(*truth, types.boolType()), type));
+      env.back().owns = true;
+      return named(env.size() - 1);
+    }
   // `T x;`: default-initialized (a scalar unset until assigned, a class from its defaults).
   std::optional<ConstValue> value = v->init ? constInitialize(type, v->init, ctx, depth + 1) : type ? constEmpty(type, false, depth + 1) : std::nullopt;
   if (!value)

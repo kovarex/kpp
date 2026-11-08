@@ -502,9 +502,11 @@
     // that calls the comma operator of a class the checker chose.
     BinaryExpr* builtinComma(Expr* e) const;
 
-    // copyInit: `T x = init;`, an argument, a return, a reference's temporary: a converting
-    // constructor that makes t of init's value is no explicit one (direct-initialization's are).
-    void initializeFrom(const std::string& addr, const Ty* t, Expr* init, Node* at, bool copyInit = false);
+    // context Copy: `T x = init;`, an argument, a return, a reference's temporary: a converting
+    // constructor that makes t of init's value is no explicit one (direct-initialization's are), nor is
+    // a class's conversion to a scalar t; Direct: `T x{init}`, whose conversion to bool takes an
+    // explicit operator bool (ConversionContext).
+    void initializeFrom(const std::string& addr, const Ty* t, Expr* init, Node* at, ConversionContext context = ConversionContext::Unknown);
 
     // t with the template parameters of the instantiation being emitted replaced by their
     // arguments, for an expression the type checker typed with a parameter left in.

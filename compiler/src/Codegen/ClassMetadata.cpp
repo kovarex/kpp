@@ -2973,8 +2973,9 @@ auto codegen::Emitter::builtinComma(Expr* e) const -> BinaryExpr*
   return b && !b->isKeyword && P(b->op) == P::Comma && (verifyDecisions() || !recordedOperator(b)) ? b : nullptr;
 }
 
-auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr* init, Node* at, bool copyInit) -> void
+auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr* init, Node* at, ConversionContext context) -> void
 {
+  bool copyInit = context == ConversionContext::Copy;
   t = types.stripRef(t);
   if (init && init->kind == NodeKind::DefaultValueExpr)
   {
@@ -3015,7 +3016,7 @@ auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr
     // ran, so a prvalue there builds the object itself ([expr.comma] 1, guaranteed elision), as a
     // class that cannot move needs. Until 2026-11-07 it was built in a temporary and moved.
     rvalue(comma->lhs); // (its temporaries live to the end of the full-expression)
-    initializeFrom(addr, t, comma->rhs, at, copyInit);
+    initializeFrom(addr, t, comma->rhs, at, context);
     return;
   }
   if (isLambda(t))
@@ -3036,14 +3037,14 @@ auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr
     // moved from (guaranteed elision, [expr.cond]/7 and [dcl.init]/17.6.1); `c ? make() : b`
     // copies b into it, the prvalue's conversion of the lvalue branch.
     auto* c = static_cast<ConditionalExpr*>(init);
-    Value cond = convert(rvalue(c->cond), types.boolType(), at);
+    Value cond = convert(rvalue(c->cond), types.boolType(), at, false, ConversionContext::Direct);
     std::string tL = newLabel("cond.then"), eL = newLabel("cond.else"), jL = newLabel("cond.end");
     fn += "  br i1 " + cond.text + ", label %" + tL + ", label %" + eL + "\n";
     for (int branch = 0; branch < 2; ++branch)
     {
       startBlock(branch == 0 ? tL : eL);
       size_t temps = statementTemps.size();
-      initializeFrom(addr, t, branch == 0 ? c->then : c->else_, at, copyInit);
+      initializeFrom(addr, t, branch == 0 ? c->then : c->else_, at, context);
       keepOperandTemps(temps); // (a branch's own temporaries, built only when it ran)
       emitBranch(jL);
     }
@@ -3109,7 +3110,7 @@ auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr
     }
     if (init->kind == NodeKind::ParenExpr)
     {
-      initializeFrom(addr, t, static_cast<ParenExpr*>(init)->inner, at, copyInit);
+      initializeFrom(addr, t, static_cast<ParenExpr*>(init)->inner, at, context);
       return;
     }
     // A call the checker could not type, evaluated once: an SSE operation clang's intrin.h has as a
@@ -3243,7 +3244,10 @@ auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr
       unsupported(at, "this brace initializer");
     init = bi->args[0];
   }
-  store(rvalue(init), addr, t, at);
+  Value value = rvalue(init);
+  if (context != ConversionContext::Unknown && isClass(value.ty))
+    value = convert(value, t, at, false, context); // (`bool b = x;` takes no explicit operator bool, `bool b{x}` does)
+  store(value, addr, t, at);
 }
 
 auto codegen::Emitter::withCurrentArgs(const Ty* t, int depth) -> const Ty*

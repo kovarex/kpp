@@ -702,7 +702,7 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
         eachOperand([&](Expr* x)
         {
           size_t temps = statementTemps.size();
-          Value v = convert(rvalue(x), types.boolType(), e);
+          Value v = convert(rvalue(x), types.boolType(), e, false, ConversionContext::Direct);
           keepOperandTemps(temps); // an operand runs only when the ones before did not decide
           std::string next = newLabel("fold.next");
           fn += "  br i1 " + v.text + ", label %" + (isAnd ? next : endL) + ", label %" + (isAnd ? endL : next) + "\n";
@@ -816,9 +816,9 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
         if (Expr* beside = enterBranchBesideThrow(c))
         {
           Value v = rvalue(beside);
-          return isClass(t) || isLambda(t) || v.ty == t ? v : convert(v, t, e);
+          return isClass(t) || isLambda(t) || v.ty == t ? v : convert(v, t, e, false, ConversionContext::Copy);
         }
-      Value cond = convert(rvalue(c->cond), types.boolType(), e);
+      Value cond = convert(rvalue(c->cond), types.boolType(), e, false, ConversionContext::Direct);
       std::string tL = newLabel("cond.then"), eL = newLabel("cond.else"), jL = newLabel("cond.end");
       fn += "  br i1 " + cond.text + ", label %" + tL + ", label %" + eL + "\n";
       // A closure is an object as a class is (`c ? make(1) : make(2)` of one lambda's type): until
@@ -867,12 +867,12 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
       }
       size_t temps = statementTemps.size();
       startBlock(tL);
-      Value a = t->kind == TyKind::Void ? rvalue(c->then) : convert(rvalue(c->then), t, e);
+      Value a = t->kind == TyKind::Void ? rvalue(c->then) : convert(rvalue(c->then), t, e, false, ConversionContext::Copy); // (a branch converts implicitly, [expr.cond] 4)
       keepOperandTemps(temps); // `number(isNumber ? strtodouble(String(data, length)) : 0)`: the String exists only when this branch ran
       std::string aEnd = currentBlock;
       emitBranch(jL);
       startBlock(eL);
-      Value b = t->kind == TyKind::Void ? rvalue(c->else_) : convert(rvalue(c->else_), t, e);
+      Value b = t->kind == TyKind::Void ? rvalue(c->else_) : convert(rvalue(c->else_), t, e, false, ConversionContext::Copy);
       keepOperandTemps(temps);
       std::string bEnd = currentBlock;
       emitBranch(jL);
@@ -1240,7 +1240,7 @@ auto codegen::Emitter::enterBranchBesideThrow(ConditionalExpr* c) -> Expr*
   Expr* beside = branchBesideThrow(c);
   if (!beside)
     return nullptr;
-  Value cond = convert(rvalue(c->cond), types.boolType(), c);
+  Value cond = convert(rvalue(c->cond), types.boolType(), c, false, ConversionContext::Direct);
   std::string on = newLabel("cond.on"), leaves = newLabel("cond.throw");
   bool thenThrows = beside == c->else_;
   fn += "  br i1 " + cond.text + ", label %" + (thenThrows ? leaves : on) + ", label %" + (thenThrows ? on : leaves) + "\n";
@@ -1255,7 +1255,7 @@ auto codegen::Emitter::enterBranchBesideThrow(ConditionalExpr* c) -> Expr*
 
 auto codegen::Emitter::conditionalOfBranches(ConditionalExpr* c) -> Value
 {
-  Value cond = convert(rvalue(c->cond), types.boolType(), c);
+  Value cond = convert(rvalue(c->cond), types.boolType(), c, false, ConversionContext::Direct);
   std::string tL = newLabel("cond.then"), eL = newLabel("cond.else"), jL = newLabel("cond.end");
   fn += "  br i1 " + cond.text + ", label %" + tL + ", label %" + eL + "\n";
   size_t temps = statementTemps.size();
@@ -1639,7 +1639,7 @@ auto codegen::Emitter::unary(UnaryExpr* u) -> Value
   {
     if (Kw(u->op) == Kw::not_)
     {
-      Value v = convert(rvalue(u->operand), types.boolType(), u);
+      Value v = convert(rvalue(u->operand), types.boolType(), u, false, ConversionContext::Direct);
       std::string r = newTemp();
       fn += "  " + r + " = xor i1 " + v.text + ", true\n";
       return {r, types.boolType()};
@@ -1960,7 +1960,7 @@ auto codegen::Emitter::unary(UnaryExpr* u) -> Value
     {
       // No operator!: the class's conversion to bool, negated.
       verifyOperatorCall(u, OperatorCall::Builtin);
-      Value b = convert(v, types.boolType(), u);
+      Value b = convert(v, types.boolType(), u, false, ConversionContext::Direct);
       std::string r = newTemp();
       fn += "  " + r + " = xor i1 " + b.text + ", true\n";
       return {r, types.boolType()};
@@ -1979,7 +1979,7 @@ auto codegen::Emitter::unary(UnaryExpr* u) -> Value
   {
     case P::Bang:
     {
-      Value b = convert(v, types.boolType(), u);
+      Value b = convert(v, types.boolType(), u, false, ConversionContext::Direct);
       std::string r = newTemp();
       fn += "  " + r + " = xor i1 " + b.text + ", true\n";
       return {r, types.boolType()};
@@ -2220,7 +2220,7 @@ auto codegen::Emitter::binary(BinaryExpr* b) -> Value
   // the right operand's conversion to a scalar; `recipeCopied = setupForCrafting(...)`, an
   // ActionResult converting to bool and to its Enum: the conversion to the left side's type.
   bool scalarAssignment = isAssignment(op) && lt && lt->isKnown() && !isClass(lt) && isClass(rt) &&
-                          (global.scalarConversionOf(rt) || (op == P::Assign && conversionOperator(rt, lt, b))) &&
+                          (global.scalarConversionOf(rt) || (op == P::Assign && conversionOperator(rt, lt, b, nullptr, false, nullptr, ConversionContext::Copy))) &&
                           !global.findFreeOperator(uint32_t(op), argumentType(b->lhs, b->lhs->ty, types), argumentType(b->rhs, b->rhs->ty, types), currentFunction);
   if ((isClass(lt) || isClass(rt)) && !scalarAssignment)
   {
@@ -2407,7 +2407,7 @@ auto codegen::Emitter::binary(BinaryExpr* b) -> Value
     if (scalarAssignment)
       verifyOperatorCall(b, OperatorCall::Builtin);
     if (scalarAssignment)
-      rhs = convert(rhs, global.scalarConversionOf(rhs.ty) ? global.scalarConversionOf(rhs.ty) : t, b);
+      rhs = convert(rhs, global.scalarConversionOf(rhs.ty) ? global.scalarConversionOf(rhs.ty) : t, b, false, ConversionContext::Copy);
     std::string addr = lvalue(b->lhs);
     const BitfieldInfo* bits = bitfieldNamed(b->lhs);
     assignedAt = bits ? nullptr : b; // (a bit field has no place to refer to)
@@ -2521,8 +2521,8 @@ auto codegen::Emitter::orderOfObjects(const std::string& a, const std::string& b
     // C++'s synthesized three-way comparison (what a defaulted <=> declaring its order type does
     // with a member that has no <=>): equal by ==, else less by <, else greater; a Direction
     // compares by its conversion to its Enum.
-    Value equal = convert(comparedAt(P::EqEq, a, b, t, at), types.boolType(), at);
-    Value less = convert(comparedAt(P::Less, a, b, t, at), types.boolType(), at);
+    Value equal = convert(comparedAt(P::EqEq, a, b, t, at), types.boolType(), at, false, ConversionContext::Direct);
+    Value less = convert(comparedAt(P::Less, a, b, t, at), types.boolType(), at, false, ConversionContext::Direct);
     std::string ordered = newTemp(), order = newTemp();
     fn += "  " + ordered + " = select i1 " + less.text + ", i8 -1, i8 1\n";
     fn += "  " + order + " = select i1 " + equal.text + ", i8 0, i8 " + ordered + "\n";
@@ -2793,7 +2793,7 @@ auto codegen::Emitter::rewrittenComparison(BinaryExpr* b, P op, const Ty* lt, co
       if (!eq)
         return std::nullopt;
       std::string r = newTemp();
-      fn += "  " + r + " = xor i1 " + convert(*eq, types.boolType(), b).text + ", true\n";
+      fn += "  " + r + " = xor i1 " + convert(*eq, types.boolType(), b, false, ConversionContext::Direct).text + ", true\n";
       return Value{r, types.boolType()};
     }
     case P::EqEq:
@@ -2873,7 +2873,7 @@ auto codegen::Emitter::memberPointerAddress(BinaryExpr* b) -> std::string
 
 auto codegen::Emitter::logical(bool isAnd, Expr* lhs, Expr* rhs, Node* at) -> Value
 {
-  Value l = convert(rvalue(lhs), types.boolType(), at);
+  Value l = convert(rvalue(lhs), types.boolType(), at, false, ConversionContext::Direct);
   std::string rL = newLabel(isAnd ? "and.rhs" : "or.rhs"), eL = newLabel(isAnd ? "and.end" : "or.end");
   std::string lEnd = currentBlock;
   if (isAnd)
@@ -2882,7 +2882,7 @@ auto codegen::Emitter::logical(bool isAnd, Expr* lhs, Expr* rhs, Node* at) -> Va
     fn += "  br i1 " + l.text + ", label %" + eL + ", label %" + rL + "\n";
   startBlock(rL);
   size_t temps = statementTemps.size();
-  Value r = convert(rvalue(rhs), types.boolType(), at);
+  Value r = convert(rvalue(rhs), types.boolType(), at, false, ConversionContext::Direct);
   keepOperandTemps(temps); // `flag && Noisy(2).value() > 5`: the Noisy exists only when this operand ran
   std::string rEnd = currentBlock;
   emitBranch(eL);

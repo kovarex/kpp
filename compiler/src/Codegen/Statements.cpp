@@ -327,7 +327,7 @@ auto codegen::Emitter::initializeExtending(const std::string& slot, const Ty* t,
     collect(collect, init);
   if (elements.empty())
   {
-    initializeFrom(slot, t, init, v, true); // (`T x = v;`; `T x(v)` and `T x{v}` are a cast and a list, each its own path)
+    initializeFrom(slot, t, init, v, ConversionContext::Copy); // (`T x = v;`; `T x(v)` and `T x{v}` are a cast and a list, each its own path)
     return;
   }
   const std::vector<const Expr*>* outerElements = extendingElements;
@@ -733,7 +733,7 @@ auto codegen::Emitter::declareLocal(VariableDecl* v) -> void
   else if (v->init && isClass(t))
     initializeExtending(slot, t, v, v->init, "", false);
   else if (v->init)
-    initializeFrom(slot, t, v->init, v);
+    initializeFrom(slot, t, v->init, v, v->bracedInit ? ConversionContext::Direct : ConversionContext::Copy); // (`T x = v;` and `T x = {v};` copy-initialize, `T x{v}` does not; `T x(v)` is a cast)
   else if (isClass(t))
     defaultConstruct(slot, t, v);
   else if (t->kind == TyKind::Array && needsConstruction(t, v))
@@ -982,10 +982,10 @@ auto codegen::Emitter::statement(Stmt* s) -> void
           moved.castKind = Kw::static_cast_;
           moved.operand = r->value;
           moved.ty = types.rref(local);
-          initializeFrom(sretAddr, currentReturn, &moved, s, true);
+          initializeFrom(sretAddr, currentReturn, &moved, s, ConversionContext::Copy);
         }
         else
-          initializeFrom(sretAddr, currentReturn, r->value, s, true); // (a return copy-initializes its result)
+          initializeFrom(sretAddr, currentReturn, r->value, s, ConversionContext::Copy); // (a return copy-initializes its result)
       }
       else if (currentReturn->isReference())
       {
@@ -1027,7 +1027,7 @@ auto codegen::Emitter::statement(Stmt* s) -> void
         if (r->value->kind == NodeKind::BraceInitExpr)
           retText = braceScalar(static_cast<BraceInitExpr*>(r->value), currentReturn, s).text; // `return {};` of an enum
         else
-          retText = convert(rvalue(r->value), currentReturn, s).text;
+          retText = convert(rvalue(r->value), currentReturn, s, false, ConversionContext::Copy).text; // (a return copy-initializes its result)
       }
       // The result, once built, is destroyed when a destructor the return runs throws, the last
       // built first ([except.ctor] 2, CWG 2176; g++'s order; clang's MSVC target leaks it, as kpp did
@@ -1186,7 +1186,7 @@ auto codegen::Emitter::statement(Stmt* s) -> void
       emitBranch(cL);
       startBlock(cL);
       debugLine(d->cond);
-      Value cond = convert(rvalue(d->cond), types.boolType(), s);
+      Value cond = convert(rvalue(d->cond), types.boolType(), s, false, ConversionContext::Direct);
       destroyTemps();
       fn += "  br i1 " + cond.text + ", label %" + bL + ", label %" + eL + "\n";
       startBlock(eL);

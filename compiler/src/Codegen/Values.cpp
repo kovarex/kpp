@@ -7,18 +7,31 @@
 // chooseConversion), which the interpreter and the checker follow too; here as codegen's types have
 // it (the class declaring it canonical, for callConversion's base address).
 auto codegen::Emitter::conversionOf(const Ty* from, const Ty* to, GlobalScope::ConversionKind kind, bool explicitCast, Node* at, const Ty** foundIn,
-                                    TemplateArgs* opArgs) -> FunctionDecl*
+                                    TemplateArgs* opArgs, ConversionContext context) -> FunctionDecl*
 {
   const Ty* in = nullptr;
-  FunctionDecl* op = isClass(from) ? global.chooseConversion(from, to, kind, explicitCast, &in, opArgs) : nullptr;
+  FunctionDecl* op = isClass(from) ? global.chooseConversion(from, to, kind, explicitCast, &in, opArgs, context != ConversionContext::Copy) : nullptr;
+  // A conversion to bool whose context the caller does not say: a condition's operator (an explicit
+  // operator bool) and a copy's (an implicit one) must be the same one (ConversionContext).
+  if (op && context == ConversionContext::Unknown && !explicitCast && to && types.unqualified(types.stripRef(to))->kind == TyKind::Bool &&
+      (kind == GlobalScope::ConversionKind::ToType || kind == GlobalScope::ConversionKind::ToValue))
+  {
+    const Ty* copyIn = nullptr;
+    TemplateArgs copyArgs;
+    FunctionDecl* copied = global.chooseConversion(from, to, kind, false, &copyIn, &copyArgs, false);
+    if (copied && (copied != op || copyIn != in))
+      unsupported(at, "a conversion of " + types.toString(from, &symbols) + " to bool where a condition (or a direct-initialization) would take " +
+                          qualifiedName(op) + " and a copy-initialization " + qualifiedName(copied) + ", and codegen does not know which this is");
+  }
   if (foundIn)
     *foundIn = op ? canonicalClass(in, at) : nullptr;
   return op;
 }
 
-auto codegen::Emitter::conversionOperator(const Ty* from, const Ty* to, Node* at, const Ty** foundIn, bool explicitCast, TemplateArgs* opArgs) -> FunctionDecl*
+auto codegen::Emitter::conversionOperator(const Ty* from, const Ty* to, Node* at, const Ty** foundIn, bool explicitCast, TemplateArgs* opArgs,
+                                          ConversionContext context) -> FunctionDecl*
 {
-  return conversionOf(from, to, GlobalScope::ConversionKind::ToType, explicitCast, at, foundIn, opArgs);
+  return conversionOf(from, to, GlobalScope::ConversionKind::ToType, explicitCast, at, foundIn, opArgs, context);
 }
 
 auto codegen::Emitter::toPointer(const Value& object, Node* at) -> std::optional<Value>
@@ -85,7 +98,7 @@ auto codegen::Emitter::zeroIsNoPointer(Node* at) -> bool
   return true;
 }
 
-auto codegen::Emitter::convert(Value v, const Ty* to, Node* at, bool explicitCast) -> Value
+auto codegen::Emitter::convert(Value v, const Ty* to, Node* at, bool explicitCast, ConversionContext context) -> Value
 {
   const Ty* from = v.ty;
   to = types.stripRef(to);
@@ -144,7 +157,7 @@ auto codegen::Emitter::convert(Value v, const Ty* to, Node* at, bool explicitCas
     {
       const Ty* owner = nullptr;
       TemplateArgs opArgs;
-      if (FunctionDecl* op = conversionOperator(from, to, at, &owner, explicitCast, &opArgs))
+      if (FunctionDecl* op = conversionOperator(from, to, at, &owner, explicitCast, &opArgs, context))
         return convert(callConversion(op, from, owner, v.text, at, &opArgs), to, at);
     }
     // (A class without a conversion to bool is no condition: never its address compared with null.)
@@ -1023,7 +1036,7 @@ auto codegen::Emitter::lvalue(Expr* e) -> std::string
       if (thenObject && elseObject)
       {
         // `first ? a : b` with two lvalues is an lvalue: the address of the chosen one.
-        Value cond = convert(rvalue(c->cond), types.boolType(), e);
+        Value cond = convert(rvalue(c->cond), types.boolType(), e, false, ConversionContext::Direct);
         std::string tL = newLabel("cond.then"), eL = newLabel("cond.else"), jL = newLabel("cond.end");
         fn += "  br i1 " + cond.text + ", label %" + tL + ", label %" + eL + "\n";
         size_t temps = statementTemps.size();

@@ -519,7 +519,7 @@ auto codegen::Emitter::initializeClosure(const std::string& addr, const Ty* t, E
     // `auto f = c ? make(1) : make(2);`, `return c ? make(3) : make(4);`: the chosen branch builds
     // the closure in the object itself (guaranteed elision, [expr.cond] 7 and [dcl.init] 17.6.1), as
     // initializeFrom does for a class (conditionalOfPrvalues); an lvalue branch is copied into it.
-    Value cond = convert(rvalue(c->cond), types.boolType(), at);
+    Value cond = convert(rvalue(c->cond), types.boolType(), at, false, ConversionContext::Direct);
     std::string tL = newLabel("cond.then"), eL = newLabel("cond.else"), jL = newLabel("cond.end");
     fn += "  br i1 " + cond.text + ", label %" + tL + ", label %" + eL + "\n";
     for (int branch = 0; branch < 2; ++branch)

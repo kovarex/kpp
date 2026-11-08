@@ -4895,7 +4895,9 @@ its IR for every spec snippet (1073) is byte-identical before and after.
      `explicit(cond)` is written `implicit(cond)`, the positive form: `implicit(isConvertible<U, T>) Optional(U&& v)`.
      `implicit` twice, or `implicit(cond)` beside a plain `implicit`, is an error.
   4. A contextual conversion (`if`, `while`, `!`, `&&`, `||`, `?:`) takes an unmarked `operator bool`, as C++'s
-     `explicit operator bool`; `switch` on a class needs a marked conversion, as C++ needs a non-explicit one.
+     `explicit operator bool`; `switch` on a class needs a marked conversion, as C++ needs a non-explicit one. A copy
+     (`bool b = x;`, an argument, a return, an assignment) takes only a marked one (an `implicit operator int()` beside
+     it gives the bool; until 2026-11-08 codegen took the unmarked operator bool in every conversion to bool).
   5. Class template argument deduction by copy (`Box b = 5;`) takes marked constructors only, as C++'s explicit guide is
      no candidate there; written guides are as in C++.
   6. Inherited constructors keep their base's mark; a copy or move constructor is never a conversion.

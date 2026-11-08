@@ -261,6 +261,7 @@ auto GlobalScope::Impl::chooseConversion(const Ty* from, const Ty* to, Conversio
   const Candidate* best = nullptr;
   int bestRank = NotViable;
   bool bestConstMatch = false;
+  bool bestTemplate = false;
   bool ambiguous = false;
   for (const Candidate& c : candidates)
   {
@@ -310,15 +311,21 @@ auto GlobalScope::Impl::chooseConversion(const Ty* from, const Ty* to, Conversio
     // The implicit object parameter first, then the result's conversion ([over.match.best] 2.1 before
     // 2.2): of a non-const object, a non-const operator beats a const one whatever their results
     // (`operator int&()` over `operator bool() const` in `if (x)`; until 2026-11-08 the result first).
+    // Then a function that is no template's specialization beats one that is ([over.match.best] 2.4):
+    // `operator bool()` over `template<class T> operator T()` with T = bool in `if (x)` (until
+    // 2026-11-08 the two were ambiguous, codegen's "a conversion from X to bool").
     bool constMatch = constOp == constObject;
-    if (!best || (constMatch && !bestConstMatch) || (constMatch == bestConstMatch && rank < bestRank))
+    bool isTemplate = !c.f->templateParams.empty();
+    bool tied = constMatch == bestConstMatch && rank == bestRank;
+    if (!best || (constMatch && !bestConstMatch) || (constMatch == bestConstMatch && rank < bestRank) || (tied && !isTemplate && bestTemplate))
     {
       best = &c;
       bestRank = rank;
       bestConstMatch = constMatch;
+      bestTemplate = isTemplate;
       ambiguous = false;
     }
-    else if (rank == bestRank && constMatch == bestConstMatch && c.f != best->f && (kind == ConversionKind::ToType || kind == ConversionKind::ToValue))
+    else if (tied && isTemplate == bestTemplate && c.f != best->f && (kind == ConversionKind::ToType || kind == ConversionKind::ToValue))
       ambiguous = true;
   }
   if (ambiguousOut)

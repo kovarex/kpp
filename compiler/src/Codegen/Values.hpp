@@ -5,12 +5,13 @@
 
     // The class's `operator T()` converting to `to` (exactly, or any scalar one when none is exact),
     // its own or inherited (`operator bool` of a BoolConstant base); explicit ones for bool, where
-    // conditions allow them, and in an explicit cast when they yield the type itself
+    // conditions allow them (context), and in an explicit cast when they yield the type itself
     // (`double(b)`, `static_cast<double>(b)` with `explicit operator const double&()`: direct
     // initialisation's rule). foundIn: the class (or base) declaring it.
     // opArgs: the arguments to call it with (the class's, and for an operator template the one its
     // result is deduced to: `template<class T> operator T()` converting to double has T = double).
-    FunctionDecl* conversionOperator(const Ty* from, const Ty* to, Node* at, const Ty** foundIn = nullptr, bool explicitCast = false, TemplateArgs* opArgs = nullptr);
+    FunctionDecl* conversionOperator(const Ty* from, const Ty* to, Node* at, const Ty** foundIn = nullptr, bool explicitCast = false, TemplateArgs* opArgs = nullptr,
+                                     ConversionContext context = ConversionContext::Unknown);
 
     // A class value through its (non-explicit) conversion operator to a pointer, own or inherited,
     // or nothing when it has none: what `*` and `delete` of such an object work on.
@@ -23,7 +24,7 @@
     // The conversion operator the one rule chooses (GlobalScope::chooseConversion, design.md 24), the
     // class declaring it canonical.
     FunctionDecl* conversionOf(const Ty* from, const Ty* to, GlobalScope::ConversionKind kind, bool explicitCast, Node* at, const Ty** foundIn,
-                               TemplateArgs* opArgs);
+                               TemplateArgs* opArgs, ConversionContext context = ConversionContext::Unknown);
 
     // Calls a conversion operator found in `owner` (the object's class or one of its bases) on
     // the object at addr.
@@ -47,7 +48,8 @@
       t = t ? types.unqualified(t) : nullptr;
       return t && t->kind == TyKind::Enum && t->decl && t->decl->kind == NodeKind::EnumDecl && static_cast<EnumDecl*>(t->decl)->isClass;
     }
-    Value convert(Value v, const Ty* to, Node* at, bool explicitCast = false);
+    // context: a class's conversion to bool, a condition's or a copy's (conversionOperator).
+    Value convert(Value v, const Ty* to, Node* at, bool explicitCast = false, ConversionContext context = ConversionContext::Unknown);
 
     // Address of the `base` subobject inside the `derived` object at addr (false if not a base).
     // An explicit cast: what convert does, plus the downcast to a derived class (pointer or

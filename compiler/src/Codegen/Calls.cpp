@@ -816,7 +816,7 @@ auto codegen::Emitter::inlinedBody(FunctionDecl* f, const TemplateArgs& args, co
         result = {isAggregate(types.stripRef(ret)) ? rvalue(e).text : lvalue(e), ret, false};
       }
       else
-        result = {convert(rvalue(e), ret, e).text, ret, false};
+        result = {convert(rvalue(e), ret, e, false, ConversionContext::Copy).text, ret, false}; // (a return copy-initializes its result)
     }
   });
   return result;
@@ -1452,7 +1452,7 @@ auto codegen::Emitter::objectsEqual(const std::string& a, const std::string& b, 
   }
   if (!op)
     if (const Ty* operand = types.lref(types.qualified(t, true, false)); global.findFreeOperator(uint32_t(P::EqEq), operand, operand, currentFunction))
-      return convert(comparedAt(P::EqEq, a, b, t, at), types.boolType(), at); // SHA1Digest's `operator==(const SHA1Digest&, const SHA1Digest&)`
+      return convert(comparedAt(P::EqEq, a, b, t, at), types.boolType(), at, false, ConversionContext::Direct); // SHA1Digest's `operator==(const SHA1Digest&, const SHA1Digest&)`
   if (ClassDecl* u = typedUnionOf(t, at))
     return typedUnionEqual(u, a, b, t, at); // the alternative held, then its values (design.md 8.5)
   return memberwiseEqual(a, b, t, at);
@@ -1747,8 +1747,8 @@ auto codegen::Emitter::argumentText(const Ty* pt, Expr* arg, Node* at) -> std::s
   if (pt && pt->kind == TyKind::Pointer && nullPointerConstant(arg))
     return "ptr null"; // `Entity* secondaryEntity = 0`
   Value a = rvalue(arg);
-  if (isClass(a.ty) && pt && !isAggregate(pt) && conversionOperator(a.ty, types.unqualified(pt), at))
-    a = convert(a, types.unqualified(pt), at); // `draw(image)` with `operator const Image*()`
+  if (isClass(a.ty) && pt && !isAggregate(pt) && conversionOperator(a.ty, types.unqualified(pt), at, nullptr, false, nullptr, ConversionContext::Copy))
+    a = convert(a, types.unqualified(pt), at, false, ConversionContext::Copy); // `draw(image)` with `operator const Image*()` (an argument copy-initializes its parameter)
   if (isLambda(a.ty) && pt && pt->kind == TyKind::Pointer && pt->inner && pt->inner->kind == TyKind::Function)
     a = convert(a, pt, at); // a lambda without captures as a pointer to function
   if (isAggregate(a.ty) && !pt)

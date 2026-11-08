@@ -76,6 +76,15 @@ namespace codegen
       bool isTemporary = false; // Class temporary owned by the current full-expression
     };
 
+    // Where a class converts to bool, which decides whether its explicit operator bool (kpp's unmarked
+    // one) converts ([over.match.conv] 1.1, [conv] 4): Direct, a condition (`if (x)`, `!x`, `x && y`,
+    // `x ? a : b`) or a direct-initialization, takes it; Copy (`bool b = x;`, an argument, a return,
+    // an assignment) takes only the implicit conversions. Unknown, where the caller does not say: the
+    // two must choose the same operator, else an error, never one of them by chance (until 2026-11-08
+    // every conversion took it as a condition does: `bool b = x;` called the explicit operator bool
+    // where C++ calls an implicit `operator int()`).
+    enum class ConversionContext : uint8_t { Unknown, Direct, Copy };
+
     static bool isLambda(const Ty* t) { return t && t->kind == TyKind::Lambda && t->decl; }
     static bool isAggregate(const Ty* t) { return isClass(t) || isLambda(t); }
     // A result that comes back through the caller's hidden result slot: a class, and a closure (a

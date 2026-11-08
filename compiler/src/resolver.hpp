@@ -673,9 +673,11 @@ public:
   // char or bool (a switch). foundIn: the class declaring it; opArgs: what it is called with.
   // ToValue: as ToType, no conversion function giving an lvalue reference (an rvalue reference to a
   // scalar bound to what a class object converts to: `int&& r(object);` never takes `operator int&()`).
+  // contextualBool: an explicit operator bool converts to bool (a condition, a direct-initialization);
+  // false for a copy-initialization, which takes only implicit ones (C++ [class.conv.fct] 2).
   enum class ConversionKind : uint8_t { ToType, ToPointer, ToIntegral, ToValue };
   FunctionDecl* chooseConversion(const Ty* from, const Ty* to, ConversionKind kind, bool explicitCast = false, const Ty** foundIn = nullptr,
-                                 TemplateArgs* opArgs = nullptr);
+                                 TemplateArgs* opArgs = nullptr, bool contextualBool = true);
   // The free function `operator<punctuator>(lhs[, rhs])` visible from context (the namespaces of
   // the operand classes and enums and context's own), chosen by overload ranking; null if none.
   FunctionDecl* findFreeOperator(uint32_t punctuator, const Ty* lhs, const Ty* rhs, Decl* context);
