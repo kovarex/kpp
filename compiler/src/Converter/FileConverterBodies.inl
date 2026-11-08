@@ -40,8 +40,10 @@
       Stmt* last = nullptr; // last statement since the previous label
       // a label with nothing after it so far: in C++ it shares the next label's statements, in kpp it would run none
       Stmt* bareLabel = nullptr;
-      // such labels and the label after each, given `fallthrough;` once the statements they share show its indentation
-      std::vector<std::pair<Stmt*, Stmt*>> shared;
+      bool writtenFallthrough = false; // and whether the label's only statement is C++'s `[[fallthrough]];`
+      // such labels and the label after each, joined into one label (or given `fallthrough;`, which the statements
+      // they share indent) by shareLabels
+      std::vector<SharedLabel> shared;
       for (Stmt* s : b->stmts)
       {
         // A label, or a macro's use that writes one (stb_image's `STBI__CASE(1,2) { ... } break;`, Agui's
@@ -51,8 +53,9 @@
         if (label || macroLabel)
         {
           if (bareLabel && !last)
-            shared.push_back({bareLabel, s});
+            shared.push_back({bareLabel, s, writtenFallthrough});
           bareLabel = label ? s : nullptr;
+          writtenFallthrough = false;
           removeTrailingBreak(last);
           moveFallthroughOutOfBlock(last);
           if (last && !terminates(last))
@@ -96,14 +99,22 @@
           continue;
         }
         walkStmt(s, owner);
+        if (s->kind == NodeKind::FallthroughStmt && bareLabel && !last && !writtenFallthrough)
+        {
+          // (`case A: [[fallthrough]]; case B:` is labels side by side too: joined, the statement goes with the text
+          // between them)
+          writtenFallthrough = true;
+          continue;
+        }
         if (s->kind != NodeKind::EmptyStmt) // (`default: { ...; break; };`: the block is its last statement)
         {
           last = s;
           bareLabel = nullptr;
-          fallthroughAfterLabels(shared, s);
+          writtenFallthrough = false;
+          shareLabels(shared, s);
         }
       }
-      fallthroughAfterLabels(shared, nullptr);
+      shareLabels(shared, nullptr);
       removeTrailingBreak(last); // (the last group's)
     }
 
@@ -142,11 +153,18 @@
     }
 
     // A label directly followed by another (C++'s `case A: case B: build();`, comments between too) shares that
-    // label's statements in C++; in kpp a label runs only what follows it (kovarex 2026-11-08), so it gets
-    // `fallthrough;`: after its `:` when the next label is on its line (`case A: fallthrough; case B:`), else on a
-    // line of its own after the label's, indented as the statements they share (`statement`, the first, if it
-    // starts its line; else the label's indentation and two spaces).
-    void fallthroughAfterLabels(std::vector<std::pair<Stmt*, Stmt*>>& labels, Stmt* statement)
+    // label's statements in C++; in kpp a label runs only what follows it (kovarex 2026-11-08), so a run of such
+    // `case` labels becomes one label listing their values, `case A, B: build();` (kovarex 2026-11-08, 21:15): the
+    // text from a label's `:` to the next one's value is `, `, and the comments in it go on lines of their own above
+    // the run's first label, in their order. Where the two cannot be one label, the first gets `fallthrough;` (after
+    // its `:` when the next label is on its line, else on a line of its own after the label's, indented as the
+    // statements they share, `statement`, the first, if it starts its line, else as the label and two spaces): a
+    // `default` on either side (`case A: fallthrough; default:`), a macro's use writing the next label, a range
+    // (`case 1 ... 5:`), a preprocessor line between them (an `#if` the conversion may drop with what follows).
+    // A label whose only statement is C++'s `[[fallthrough]];` is one of them too: joined, the statement goes with
+    // the text between; not joined, it is kpp's `fallthrough;` already.
+    struct SharedLabel { Stmt* label; Stmt* next; bool writtenFallthrough; };
+    void shareLabels(std::vector<SharedLabel>& labels, Stmt* statement)
     {
       auto lineStartOf = [&](uint32_t at)
       {
@@ -155,6 +173,13 @@
         return at;
       };
       auto blank = [&](uint32_t from, uint32_t to) { return text.substr(from, to - from).find_first_not_of(" \t") == std::string_view::npos; };
+      auto leadingSpace = [&](uint32_t lineStart)
+      {
+        uint32_t k = lineStart;
+        while (k < text.size() && (text[k] == ' ' || text[k] == '\t'))
+          ++k;
+        return std::string(text.substr(lineStart, k - lineStart));
+      };
       std::string statementIndent;
       if (statement)
       {
@@ -162,8 +187,39 @@
         if (blank(lineStart, at))
           statementIndent = text.substr(lineStart, at - lineStart);
       }
-      for (auto [label, next] : labels)
+      Stmt* runStart = nullptr; // the first label of the run being joined, and the comments moved above it
+      std::vector<std::string> comments;
+      auto endRun = [&]()
       {
+        if (runStart && !comments.empty())
+        {
+          uint32_t at = toks[runStart->token].offset, lineStart = lineStartOf(at);
+          std::string moved;
+          if (blank(lineStart, at))
+          {
+            // (at the label, after a `fallthrough;` the case before it gets there)
+            for (const std::string& c : comments)
+              moved += c + "\n" + std::string(text.substr(lineStart, at - lineStart));
+            insert(at, moved);
+          }
+          else
+          {
+            // (after other text on its line, `{ case A: // x`: as block comments before the label)
+            for (const std::string& c : comments)
+              moved += (c.compare(0, 2, "//") == 0 && c.find("*/") == std::string::npos ? "/*" + c.substr(2) + " */" : c) + " ";
+            insert(at, moved);
+          }
+          counts.add("comment between labels joined into one moved above the label", int(comments.size()));
+        }
+        runStart = nullptr;
+        comments.clear();
+      };
+      Stmt* previousNext = nullptr;
+      for (auto [label, next, written] : labels)
+      {
+        if (label != previousNext)
+          endRun();
+        previousNext = next;
         uint32_t t = label->token + 1;
         for (int depth = 0, questions = 0; t < toks.size(); ++t)
           if (toks[t].is(P::LParen) || toks[t].is(P::LBracket) || toks[t].is(P::LBrace))
@@ -175,30 +231,66 @@
           else if (depth == 0 && toks[t].is(P::Colon) && questions-- == 0)
             break;
         if (t >= toks.size())
+        {
+          endRun();
           continue;
-        uint32_t colonEnd = endOffset(t);
+        }
+        uint32_t colonEnd = endOffset(t), nextAt = toks[next->token].offset;
+        bool preprocessorLine = false;
+        for (size_t line = text.find('\n', colonEnd); line != std::string_view::npos && line < nextAt; line = text.find('\n', line + 1))
+        {
+          size_t first = text.find_first_not_of(" \t", line + 1);
+          preprocessorLine = preprocessorLine || (first != std::string_view::npos && first < nextAt && text[first] == '#');
+        }
+        bool join = label->kind == NodeKind::CaseStmt && next->kind == NodeKind::CaseStmt && !static_cast<CaseStmt*>(label)->rangeEnd &&
+                    !static_cast<CaseStmt*>(next)->rangeEnd && !preprocessorLine && next->token + 1 < toks.size();
+        if (join)
+        {
+          // (only blanks and comments between the `:` and the next `case`, and a `[[fallthrough]];` that goes)
+          for (uint32_t k = colonEnd; k < nextAt;)
+            if (text.compare(k, 2, "//") == 0)
+            {
+              size_t end = std::min<size_t>(text.find('\n', k), nextAt);
+              while (end > k && (text[end - 1] == '\r' || text[end - 1] == ' ' || text[end - 1] == '\t'))
+                --end;
+              comments.push_back(std::string(text.substr(k, end - k)));
+              k = uint32_t(end);
+            }
+            else if (text.compare(k, 2, "/*") == 0)
+            {
+              size_t close = text.find("*/", k + 2);
+              size_t end = close == std::string_view::npos ? nextAt : std::min<size_t>(close + 2, nextAt);
+              comments.push_back(std::string(text.substr(k, end - k)));
+              k = uint32_t(end);
+            }
+            else
+              ++k;
+          if (!runStart)
+            runStart = label;
+          replace(toks[t].offset, toks[next->token + 1].offset - toks[t].offset, ", ");
+          counts.add(written ? "labels joined into one label listing their values, C++'s [[fallthrough]] between them gone"
+                             : "labels joined into one label listing their values");
+          continue;
+        }
+        endRun();
+        counts.add(next->kind == NodeKind::DefaultStmt || label->kind == NodeKind::DefaultStmt ? "labels not joined: a default"
+                   : next->kind != NodeKind::CaseStmt                                        ? "labels not joined: a macro writes the next"
+                   : preprocessorLine                                                         ? "labels not joined: a preprocessor line between"
+                                                                                              : "labels not joined: a range");
+        if (written)
+          continue; // (C++'s `[[fallthrough]];` says it: rewritten as `fallthrough;`)
         size_t lineEnd = text.find('\n', colonEnd);
         // (on the label's line also before a preprocessor line, `#if`/`#endif` around the next label, which the
         // conversion may drop with what is inserted at its start: trio's `case QUALIFIER_SIZE_T_UPPER:`)
         size_t nextLine = lineEnd == std::string_view::npos ? lineEnd : text.find_first_not_of(" \t", lineEnd + 1);
-        if (lineEnd == std::string_view::npos || lineEnd >= toks[next->token].offset ||
-            (nextLine != std::string_view::npos && text[nextLine] == '#'))
+        if (lineEnd == std::string_view::npos || lineEnd >= nextAt || (nextLine != std::string_view::npos && text[nextLine] == '#'))
           insert(colonEnd, " fallthrough;");
         else
-        {
-          uint32_t labelLine = lineStartOf(toks[label->token].offset);
-          std::string indent = statementIndent;
-          if (indent.empty())
-          {
-            uint32_t k = labelLine;
-            while (k < text.size() && (text[k] == ' ' || text[k] == '\t'))
-              ++k;
-            indent = std::string(text.substr(labelLine, k - labelLine)) + "  ";
-          }
-          insert(uint32_t(lineEnd + 1), indent + "fallthrough;\n");
-        }
+          insert(uint32_t(lineEnd + 1), (statementIndent.empty() ? leadingSpace(lineStartOf(toks[label->token].offset)) + "  " : statementIndent) +
+                                            "fallthrough;\n");
         counts.add("fallthrough added after a label sharing the next one's statements");
       }
+      endRun();
       labels.clear();
     }
 
@@ -234,7 +326,9 @@
     // never `)`, `else` or `do`, whose statement it would be), and after it at that level a label, the closing
     // brace of a switch's body, or the end of the expansion where the use is followed by a label or its switch's
     // closing brace (`labelAfterUse`). Anything else keeps it: an error under the flag, never a break dropped from
-    // a loop. A label right after another (`case A: case B:`) gets `fallthrough;`, as walkSwitchBody's do.
+    // a loop. A `case` label right after another is one label with it, `case A: case B:` `case A, B:`, the text
+    // from the first's `:` to the second's `case` (comments too) a `,`; beside a `default`, the first gets
+    // `fallthrough;` (as walkSwitchBody's shareLabels).
     // A case's block right after its label ends with the case's break too (InputAction's `case X: { ...; break; }`),
     // and the expansion's last `break` may take its `;` from the use (Agui's `HANDLE_CASE(...);`, whose body ends
     // `break`): `semicolonAfterUse` says the use is followed by one, `takesSemicolon` that the use's `;` goes too.
@@ -295,11 +389,14 @@
         // the last statement at this level is a return, throw, continue, goto or break (or a block standing as a
         // statement whose last one is: `case X: { ...; return nullptr; }`), and whether this level is such a block
         bool jumps = false, statementBlock = false;
-        uint32_t labelEnd = UINT32_MAX; // the end of the last label's `:` at this level
+        uint32_t labelEnd = UINT32_MAX, labelColon = 0; // the last label's `:` at this level, its end and its start
+        bool labelIsCase = false; // and whether the label is a `case`'s
       };
       std::vector<Frame> frames(1);
       std::vector<std::pair<uint32_t, uint32_t>> drop;
-      std::vector<uint32_t> fallthroughs; // after a label's `:` that the next label follows (`case A: case B:`)
+      // a label's `:` and the next label's `case` it is joined to ([from, to) is `,`), or after a `:` that a `default`
+      // follows or that follows a `default` (`fallthrough;` at from, to UINT32_MAX)
+      std::vector<std::pair<uint32_t, uint32_t>> joins;
       int parens = 0;
       bool switchHead = false;
       bool droppedBare = false;
@@ -382,10 +479,13 @@
           if (j >= ts.size())
             return e; // (not a label this reads: the expansion as it is)
           if (f.prev == ':' && k > 0 && ts[k - 1].end == f.labelEnd)
-            fallthroughs.push_back(f.labelEnd);
+            joins.push_back(f.labelIsCase && t.word == "case" ? std::pair<uint32_t, uint32_t>{f.labelColon, t.end}
+                                                               : std::pair<uint32_t, uint32_t>{f.labelEnd, UINT32_MAX});
           decide(f, true);
           f.label = true;
           f.labelEnd = ts[j].end;
+          f.labelColon = ts[j].begin;
+          f.labelIsCase = t.word == "case";
           f.prev = ':';
           f.jumps = false;
           k = j;
@@ -415,23 +515,34 @@
         *endsCase = drop.size() > dropped || (frames.size() == 1 && frames.back().jumps);
       if (takesSemicolon)
         *takesSemicolon = droppedBare;
-      if (drop.empty() && fallthroughs.empty())
+      if (drop.empty() && joins.empty())
         return e;
-      // (both in the text's order: a removal [from, to), or an insertion at `from` where to is UINT32_MAX)
-      std::vector<std::pair<uint32_t, uint32_t>> changes = drop;
-      for (uint32_t at : fallthroughs)
-        changes.push_back({at, UINT32_MAX});
-      std::sort(changes.begin(), changes.end());
+      // (all in the text's order: a break's removal [from, to), a join's `,` or a `fallthrough;`)
+      struct Change { uint32_t from, to; int kind; }; // 0 a break removed, 1 labels joined, 2 a fallthrough
+      std::vector<Change> changes;
+      for (auto [from, to] : drop)
+        changes.push_back({from, to, 0});
+      for (auto [from, to] : joins)
+        changes.push_back({from, to, to == UINT32_MAX ? 2 : 1});
+      std::sort(changes.begin(), changes.end(), [](const Change& a, const Change& b) { return a.from < b.from; });
       std::string out;
       uint32_t at = 0;
-      for (auto [from, to] : changes)
+      for (auto [from, to, kind] : changes)
       {
-        if (to == UINT32_MAX)
+        if (kind == 2)
         {
           out.append(e, at, from - at);
           out += " fallthrough;";
           at = from;
           counts.add("fallthrough added after a label sharing the next one's statements in a macro's expansion");
+          continue;
+        }
+        if (kind == 1)
+        {
+          out.append(e, at, from - at);
+          out += ",";
+          at = to;
+          counts.add("labels joined into one label listing their values in a macro's expansion");
           continue;
         }
         while (from > at && (e[from - 1] == ' ' || e[from - 1] == '\t'))

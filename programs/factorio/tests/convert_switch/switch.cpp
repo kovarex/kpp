@@ -3,11 +3,13 @@
 // own, after a statement on the label's line, as a block's last statement (also before a stray `;`) and before
 // a comment (which stays), also as a group's only statement (`case 4: break;` becomes `case 4:`, which runs
 // nothing); a `break;` that leaves early (in an if, in a loop of the case) stays; C++'s running on into the next
-// case is `fallthrough;`, after the block's brace when it ends a block; a label right after another, which shares
-// its statements in C++, gets `fallthrough;` (each label runs only its own in kpp). Converted and run, it prints
-// what its C++ build prints (tests\convert_switch.expected), and convert.cmd counts the `break;`s left in its text
-// (4: cases 6 and 7, the loops' macros' two) and its `fallthrough;`s (10: classify's cases 8, 10 and 13, and
-// shared's 0, 2, 4, PAIR's, 8, 11 and 12).
+// case is `fallthrough;`, after the block's brace when it ends a block; labels side by side, which share their
+// statements in C++, are one label listing their values (`case 0, 1:`, each label runs only its own in kpp), the
+// comments between them above it, and a label that cannot be joined to the next (a default, a label a macro
+// writes, #if lines between) gets `fallthrough;`. Converted and run, it prints what its C++ build prints
+// (tests\convert_switch.expected), and convert.cmd counts the `break;`s left in its text (4: cases 6 and 7, the
+// loops' macros' two) and its `fallthrough;`s (8: classify's cases 8, 10 and 13, shared's 8, 11 and 12, and
+// joined's default and case 60).
 #include <cstdio>
 
 int classify(int x)
@@ -242,6 +244,34 @@ int shared(int x)
   return r;
 }
 
+// Runs of labels joined: three, with comments of both kinds after their labels; C++'s [[fallthrough]] between two
+// (joined, it goes) and before default (kept); default before labels; a run after the switch's `{` on its line.
+int joined(int x)
+{
+  int r = -1;
+  switch (x)
+  {
+    case 20: // twenty
+    case 21: /* twenty-one */ case 22:
+    // twenty-three
+    case 23:
+      r = 23;
+      break;
+    case 50:
+      [[fallthrough]];
+    case 51:
+      r = 51;
+      break;
+    default:
+    case 30:
+    case 31:
+      r = 31;
+  }
+  switch (x) { case 40: // forty
+    case 41: r = 41; break; case 60: [[fallthrough]]; default: if (x == 60) r = 60; }
+  return r;
+}
+
 int main()
 {
   for (int x = 0; x <= 15; ++x)
@@ -257,5 +287,8 @@ int main()
   printf("listed %d %d %d %d\n", listed(0), listed(1), listed(2), listed(3));
   for (int x = 0; x <= 12; ++x)
     printf("shared %d %d\n", x, shared(x));
+  int joins[] = {20, 21, 22, 23, 24, 30, 31, 40, 41, 50, 51, 60};
+  for (int x : joins)
+    printf("joined %d %d\n", x, joined(x));
   return 0;
 }

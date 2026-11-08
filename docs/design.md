@@ -4862,8 +4862,8 @@ its IR for every spec snippet (1073) is byte-identical before and after.
      group"): `case A: case B: build();` runs build() for B alone, and an empty `case A:` is a case that does nothing.
      A body several values share is one label, `case A, B, C: build();` (kovarex, 2026-11-08 21:15, as Go's and C#'s:
      C++'s case takes a conditional-expression, so the comma is no comma operator), with the flag and without, each
-     value a case of the label's block, a kpp enum's exhaustive switch counting every value; C's converter writes each
-     of the game's 941 runs of labels side by side (3,690 labels) as one. `case A: fallthrough; case B: build();`
+     value a case of the label's block, a kpp enum's exhaustive switch counting every value; C's converter writes the
+     game's runs of labels side by side as such labels (903 of them, joining 3,631 labels). `case A: fallthrough; case B: build();`
      (rule 2) stays legal, and `fallthrough;` stays for a group with statements of its own running on. A value that
      two labels of a switch share, or one label lists twice, is an error, as C++'s duplicate case value ([stmt.switch]
      2; Walker::checkCaseValues: until then codegen gave LLVM a switch of two cases of one value, which it refused).
@@ -4902,18 +4902,26 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   flip, as step 1 refuses a case that runs on without the flag; so the
   converted game builds with the flag before the flip, as it did for explicit by default (7ab51b62). The program's
   own trailing `break;` is still the error. Spec kpp/no_implicit_fallthrough_keeps_the_standard_library_breaks.
-  Labels side by side, which mean one case each under the flag, are written with `fallthrough;` between them where
-  code builds with it: the stdlib's 12 (Error.kpp's errcOfWindowsError) by C, as `case 2: fallthrough;`, the same
-  with the flag and without; the game's 3,690 (in 941 runs) by C's converter.
+  Labels side by side, which mean one case each under the flag, are written as one label of their values where code
+  builds with it: the stdlib's 12 (Error.kpp's errcOfWindowsError, `case 2, 3, 15, 53, 67, 123, 161:`) by C, the same
+  with the flag and without; the game's by C's converter.
   The converter's step (C, 2026-11-08; FileConverterBodies.inl's walkSwitchBody): a group's trailing `break;` goes, also
   as a block's last statement and as a group's only statement (`case A: break;` becomes the empty `case A:`), and so
   does one a macro's expansion writes where the text proves it ends a case (dropTrailingBreaksInExpansion); C++'s running
   on into the next case is written `fallthrough;`, moved after the brace of a block that ends the case, and none follows
-  a macro's use whose expansion ends its case; a label directly followed by another (comments between too) gets
-  `fallthrough;`, on its line when the next label is on it or the next line is a preprocessor line, else on a line of
-  its own indented as the statements the labels share. In the game: 3,176 trailing breaks removed and 2,044 in macros'
-  expansions (one conversion's counts); 278 labels are left empty, each a `case A: break;`. convert.cmd builds every
-  configuration with the flag, and its switch test (tests\convert_switch) runs the converted cases against C++'s output.
+  a macro's use whose expansion ends its case; a `case` label directly followed by another (comments between too, and
+  C++'s `[[fallthrough]];` as its only statement) is one label with it (shareLabels, kovarex 2026-11-08 21:15): the text
+  from its `:` to the next one's value is `, `, the comments in it go on lines of their own above the label, and in a
+  macro's expansion `case a: case b:` is `case a, b:`. Two labels stay apart, the first given `fallthrough;`, beside a
+  `default` (`case A: fallthrough; default:`, as `default: fallthrough; case B:`), where a macro's use writes the next,
+  for a range (`case 1 ... 5:`), and where a preprocessor line is between them (an `#if` the conversion may drop with
+  what follows). In the game's tree (converted from C:\Factorio 4c178a5b915): 903 labels listing 4,534 values, 3,631
+  labels joined into them (Permissions.kpp's longest, 297 values on one line); 51 labels keep a `fallthrough;` before
+  the next label (23 before a default, 24 after one, 4 across preprocessor lines, trio's and lstrlib's); 278 labels are
+  left empty, each a `case A: break;`. One conversion's counts: 3,555 trailing breaks removed and 2,044 in macros'
+  expansions, 277 `fallthrough;`s for C++'s running on (164 withdrawn after macros' uses), 43 comments moved above a
+  joined label. convert.cmd builds every configuration with the flag, and its switch test (tests\convert_switch) runs
+  the converted cases against C++'s output.
 
 - **Explicit by default** (readme's Planned; decided by kovarex 2026-11-07 on thread D's questions, Q1 and Q3 reshaped;
   D's survey in the coordinator's notes). A constructor or a conversion operator converts implicitly only when marked
