@@ -4834,6 +4834,12 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   `fallthrough;` elsewhere (inside another statement, in the last group, outside a switch) and a label nested in
   another statement are errors; step 1's "runs on into it" is off. Specs kpp/no_implicit_fallthrough and
   kpp/no_implicit_fallthrough_errors_is_error, built with `--no-std` until the stdlib's trailing breaks are gone.
+  While the flag is opt-in, a trailing `break;` in the standard library's files is no error under it (the
+  coordinator, 2026-11-08, for C's converter step): its 7 (Time.kpp's parseTime; the switches of Error.kpp, Variant.kpp
+  and FilesPosix.kpp end every case with a return) mean the same with the flag and without, and can go only with the
+  flip, as step 1 refuses a case that runs on without the flag; so the
+  converted game builds with the flag before the flip, as it did for explicit by default (7ab51b62). The program's
+  own trailing `break;` is still the error. Spec kpp/no_implicit_fallthrough_keeps_the_standard_library_breaks.
 
 - **Explicit by default** (readme's Planned; decided by kovarex 2026-11-07 on thread D's questions, Q1 and Q3 reshaped;
   D's survey in the coordinator's notes). A constructor or a conversion operator converts implicitly only when marked

@@ -5024,12 +5024,15 @@ auto GlobalScope::Impl::Walker::checkCaseEnds(Stmt* body) -> void
   {
     // Step 2 (--no-implicit-fallthrough): every case ends with a break. Its last `break;` (also as the last
     // statement of a block that ends it) is an error naming its removal; `fallthrough;` ending a case with
-    // another after it runs on into it (rules 2 and 5).
+    // another after it runs on into it (rules 2 and 5). Not in the standard library's files while the flag is
+    // opt-in: their trailing `break;`s (parseTime's 7) mean the same with it and without, and go with the flip,
+    // since without the flag step 1 refuses a case that runs on (the coordinator, 2026-11-08, for C's converter
+    // step; the explicit-by-default errors skipped them so until their flip, 7ab51b62).
     auto trailingBreak = [&](Stmt* last)
     {
       while (last && last->kind == NodeKind::BlockStmt && !static_cast<BlockStmt*>(last)->stmts.empty())
         last = static_cast<BlockStmt*>(last)->stmts[static_cast<BlockStmt*>(last)->stmts.size() - 1];
-      if (last && last->kind == NodeKind::BreakStmt && file->tokens && last->token + 1 < file->tokens->size())
+      if (last && last->kind == NodeKind::BreakStmt && !file->isLibrary && file->tokens && last->token + 1 < file->tokens->size())
         impl.reportCheckerError(file, last->token, "every case ends with a break: remove `" + Impl::spelledTokens(file, last->token, last->token + 1) +
                                                        "` (design.md \"No implicit fallthrough\")");
     };
