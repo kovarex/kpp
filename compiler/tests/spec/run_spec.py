@@ -616,6 +616,8 @@ def main():
     ap.add_argument("--snippets", default="")
     # --only A,B: just these snippets, each its path under the snippets' directory (area/name.kpp), as
     # --filter takes a part of one (gate.cmd builds the snippets a change adds or edits for FreeBSD).
+    # --only @FILE reads them from FILE, one per line or comma-separated: gate.ps1's list of a change
+    # that edits 150 snippets is longer than cmd's 8191-character line (D's gate, 2026-11-08).
     ap.add_argument("--only", default="")
     args = ap.parse_args()
     global OUT, TARGET, C_TARGET_FLAGS, SNIPPETS, NATIVE
@@ -696,11 +698,17 @@ def main():
     if not os.path.exists(KPP):
         print("no compiler at", KPP)
         print("spec: FAILED: no compiler"); return 2
+    if args.only.startswith("@"):
+        listed = args.only[1:]
+        with open(listed, encoding="utf-8-sig") as f:
+            args.only = f.read().replace("\n", ",")
+        if not args.only.strip(", \r"):
+            print("spec: FAILED: --only @%s names no snippet" % listed); return 2
     os.makedirs(OUT, exist_ok=True)
     # Files directly in OUT are an earlier run's: the FreeBSD bundle, or every build's objects from
     # before the builds had a directory each. A whole run also clears the directories it leaves (a
     # snippet since removed or renamed); one with --filter or --shard clears its own snippets' only.
-    only = {s.strip().replace("\\", "/") for s in args.only.split(",") if s.strip()}
+    only ={s.strip().replace("\\", "/") for s in args.only.split(",") if s.strip()}
     whole = not args.filter and not shard and not only
     for entry in os.listdir(OUT):
         if os.path.isfile(os.path.join(OUT, entry)):

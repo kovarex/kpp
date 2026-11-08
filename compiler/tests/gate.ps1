@@ -26,14 +26,38 @@ if ($newest.LastWriteTime -gt (Get-Item $kpp).LastWriteTime)
   "gate: FAILED (build\kpp.exe, $((Get-Item $kpp).LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss')), is older than $($newest.FullName.Substring($compiler.Length + 1)), $($newest.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss')): run compiler\build.cmd first)"
   exit 1
 }
+# Each run's log is deleted before it starts: a run that never started (a command line over cmd's 8191
+# characters) left the previous gate's log, read as this one's (D's gate, 2026-11-08).
 function Start-Logged([string]$command, [string]$log)
 {
+  Remove-Item -LiteralPath $log -Force -ErrorAction SilentlyContinue
+  if (Test-Path -LiteralPath $log) { throw "gate: cannot delete the previous $log" }
   $info = New-Object System.Diagnostics.ProcessStartInfo
   $info.FileName = $env:ComSpec
   $info.Arguments = "/d /s /c `"$command > `"$log`" 2>&1`""
   $info.WorkingDirectory = $compiler
   $info.UseShellExecute = $false
   return [System.Diagnostics.Process]::Start($info)
+}
+# A list of snippets for run_spec.py's --only, in a file (--only @FILE): a change that adds or edits 150
+# snippets makes a list longer than cmd's line.
+function Write-OnlyList([string]$name, [string[]]$snippets)
+{
+  $path = Join-Path $out $name
+  [IO.File]::WriteAllLines($path, $snippets)
+  return "--only `"@$path`""
+}
+# A spec run's summary: its last line, which says `spec: ...`. A run that wrote none (no log, or a log
+# without it: it did not start, or died) fails, naming the run and its first lines.
+function Get-SpecSummary([System.Diagnostics.Process]$run, [string]$log, [string]$label)
+{
+  $lines = @(Get-Content -LiteralPath $log -ErrorAction SilentlyContinue | Where-Object { $_ })
+  if ($lines.Count -and $lines[-1] -match '^spec: ')
+  {
+    return [pscustomobject]@{ Ok = $run.ExitCode -eq 0 -and $lines[-1] -match 'ALL PASSED'; Last = $lines[-1] -replace '^spec: ', "$label`: "; Lines = $lines }
+  }
+  $what = if (-not (Test-Path -LiteralPath $log)) { 'no log' } elseif ($lines.Count) { "its log: $(($lines | Select-Object -First 3) -join ' / ')" } else { 'an empty log' }
+  return [pscustomobject]@{ Ok = $false; Last = "$label`: FAILED, the run did not start or ended without its summary (exit $($run.ExitCode), $what)"; Lines = $lines }
 }
 $rtLog = Join-Path $out 'run_tests.log'
 $specLog = Join-Path $out 'spec.log'
@@ -58,7 +82,7 @@ if ($changed.Count)
     $made = Start-Logged "powershell -NoProfile -ExecutionPolicy Bypass -File ..\tools\sysroot\freebsd.ps1" (Join-Path $out 'freebsd-sysroot.log')
     $made.WaitForExit()
   }
-  $bsd = Start-Logged "python -X utf8 -I tests\spec\run_spec.py --target freebsd --no-doc --only $($changed -join ',')" $bsdLog
+  $bsd = Start-Logged "python -X utf8 -I tests\spec\run_spec.py --target freebsd --no-doc $(Write-OnlyList 'only-freebsd.txt' $changed)" $bsdLog
 }
 # And with --debug-info: the whole spec when the change touches the code that writes debug information
 # (a file or a line naming it: DebugInfo, DIBuilder, CodeView, DW_), else the snippets it adds or edits.
@@ -73,7 +97,7 @@ $dbg = $null
 $dbgLog = Join-Path $out 'spec-debug-info.log'
 $dbgWhat = if ($touchesDebugInfo) { 'the whole spec, the change touching debug information' } elseif ($changed.Count) { "$($changed.Count) snippets" } else { $null }
 if ($touchesDebugInfo) { $dbg = Start-Logged "python -X utf8 -I tests\spec\run_spec.py --debug-info --no-doc" $dbgLog }
-elseif ($changed.Count) { $dbg = Start-Logged "python -X utf8 -I tests\spec\run_spec.py --debug-info --no-doc --only $($changed -join ',')" $dbgLog }
+elseif ($changed.Count) { $dbg = Start-Logged "python -X utf8 -I tests\spec\run_spec.py --debug-info --no-doc $(Write-OnlyList 'only-debug-info.txt' $changed)" $dbgLog }
 # And the release snippets (*_release.kpp, a few seconds) built for Linux and run under WSL: 0ef4abd1
 # (2026-11-06) made every throw crash in a Linux or FreeBSD release build, its ThinLTO dropping what
 # the C runtime's personality reaches, and only CI's linux_host and freebsd_run saw it. A WSL that does
@@ -103,26 +127,27 @@ if (Get-Command $WslExe -ErrorAction SilentlyContinue)
       $made.WaitForExit()
     }
     $releaseSnippets = @(Get-ChildItem -Recurse -File (Join-Path $compiler 'tests\spec') -Filter '*_release.kpp' | ForEach-Object { $_.FullName.Substring((Join-Path $compiler 'tests\spec\').Length) -replace '\\', '/' })
-    $lnx = Start-Logged "python -X utf8 -I tests\spec\run_spec.py --target linux --no-doc --only $($releaseSnippets -join ',')" $lnxLog
+    $lnx = Start-Logged "python -X utf8 -I tests\spec\run_spec.py --target linux --no-doc $(Write-OnlyList 'only-release.txt' $releaseSnippets)" $lnxLog
   }
 }
 $rt.WaitForExit()
-Get-Content $rtLog
+$rtLines = @(Get-Content -LiteralPath $rtLog -ErrorAction SilentlyContinue)
+$rtLines
 $spec.WaitForExit()
-$specLines = @(Get-Content $specLog)
+$specLines = @(Get-Content -LiteralPath $specLog -ErrorAction SilentlyContinue)
 $specLines | Where-Object { $_ -match '^(FAIL|FAILED|error)' }
-$rtLast = @(Get-Content $rtLog | Where-Object { $_ })[-1]
-$specLast = @($specLines | Where-Object { $_ })[-1]
+$rtLast = if (@($rtLines | Where-Object { $_ }).Count) { @($rtLines | Where-Object { $_ })[-1] } else { 'run_tests: FAILED, it did not start (no log)' }
+$specLast = if (@($specLines | Where-Object { $_ }).Count) { @($specLines | Where-Object { $_ })[-1] } else { 'spec: FAILED, it did not start (no log)' }
 $specLast
 $bsdLast = "spec freebsd: no snippet added or edited"
 $bsdOk = $true
 if ($bsd)
 {
   $bsd.WaitForExit()
-  $bsdLines = @(Get-Content $bsdLog -ErrorAction SilentlyContinue)
-  $bsdLines | Where-Object { $_ -match '^(FAIL|no FreeBSD)' }
-  $bsdLast = (@($bsdLines | Where-Object { $_ })[-1]) -replace '^spec: ', "spec freebsd ($($changed.Count) snippets): "
-  $bsdOk = $bsd.ExitCode -eq 0 -and $bsdLast -match 'ALL PASSED'
+  $summary = Get-SpecSummary $bsd $bsdLog "spec freebsd ($($changed.Count) snippets)"
+  $summary.Lines | Where-Object { $_ -match '^(FAIL|no FreeBSD)' }
+  $bsdLast = $summary.Last
+  $bsdOk = $summary.Ok
   $bsdLast
 }
 $dbgLast = "spec debug-info: no snippet added or edited, no debug information touched"
@@ -130,10 +155,10 @@ $dbgOk = $true
 if ($dbg)
 {
   $dbg.WaitForExit()
-  $dbgLines = @(Get-Content $dbgLog -ErrorAction SilentlyContinue)
-  $dbgLines | Where-Object { $_ -match '^FAIL' }
-  $dbgLast = (@($dbgLines | Where-Object { $_ })[-1]) -replace '^spec: ', "spec debug-info ($dbgWhat): "
-  $dbgOk = $dbg.ExitCode -eq 0 -and $dbgLast -match 'ALL PASSED'
+  $summary = Get-SpecSummary $dbg $dbgLog "spec debug-info ($dbgWhat)"
+  $summary.Lines | Where-Object { $_ -match '^FAIL' }
+  $dbgLast = $summary.Last
+  $dbgOk = $summary.Ok
   $dbgLast
 }
 if ($lnx)
@@ -147,14 +172,14 @@ if ($lnx)
   }
   else
   {
-    $lnxLines = @(Get-Content $lnxLog -ErrorAction SilentlyContinue)
-    $lnxFails = @($lnxLines | Where-Object { $_ -match '^FAIL' })
+    $summary = Get-SpecSummary $lnx $lnxLog 'spec linux release'
+    $lnxFails = @($summary.Lines | Where-Object { $_ -match '^FAIL' })
     if ($lnxFails.Count -and -not @($lnxFails | Where-Object { $_ -notmatch 'program timed out' }).Count) { $lnxLast = "spec linux release: skipped, $($lnxFails.Count) timed out under WSL" }
     else
     {
       $lnxFails
-      $lnxLast = (@($lnxLines | Where-Object { $_ })[-1]) -replace '^spec: ', 'spec linux release: '
-      $lnxOk = $lnx.ExitCode -eq 0 -and $lnxLast -match 'ALL PASSED'
+      $lnxLast = $summary.Last
+      $lnxOk = $summary.Ok
     }
   }
 }
