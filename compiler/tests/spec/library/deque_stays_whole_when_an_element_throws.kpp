@@ -1,0 +1,153 @@
+// spec: a Deque inserts as std::deque does and stays whole when an element's constructor throws: the four ways an insert moves the shorter side (towards the front with more or fewer elements before the position than inserted, towards the back with more or fewer after it) give std's elements, and a throwing copy or move in each leaves nothing counted that was not built and nothing built alive; at either end a throw leaves the elements as they were (std's strong guarantee); the constructors from a count of a value, a range, a list and a copy destroy what they built (clang's with MSVC's STL and g++'s with libstdc++)
+// factorio: K's backlog after the Vector's (745dc03a): Deque's openSlots counted the slots before the new elements were built in them, as Vector's did, and its constructors leaked the blocks and elements built when an element's constructor threw
+extern "C" import "stdio.h";
+i32 live = 0;
+i32 neverBuilt = 0;
+i32 buildsLeft = 1000; // copies and moves before one throws
+
+struct Item
+{
+  i32 value;
+  i32 mark;
+  Item(i32 value) : value(value), mark(12345) { ++live; }
+  Item(const Item& other) : value(other.value), mark(12345)
+  {
+    if (buildsLeft-- == 0)
+      throw 7;
+    ++live;
+  }
+  Item(Item&& other) : value(other.value), mark(12345)
+  {
+    if (buildsLeft-- == 0)
+      throw 8;
+    ++live;
+  }
+  Item& operator=(const Item& other)
+  {
+    this->value = other.value;
+    return *this;
+  }
+  Item& operator=(Item&& other)
+  {
+    this->value = other.value;
+    return *this;
+  }
+  ~Item()
+  {
+    if (this->mark != 12345)
+      ++neverBuilt;
+    this->mark = 0;
+    --live;
+  }
+};
+
+void report(const char* name, bool thrown, const char* extra)
+{
+  printf("%s: %s, live %d, never built %d%s\n", name, thrown ? "thrown" : "not thrown", live, neverBuilt, extra);
+  live = 0;
+  neverBuilt = 0;
+  buildsLeft = 1000;
+}
+
+// Inserts count values before index in a deque of size elements (0, 1, ...), as a count of one value
+// (form 0) or a range (form 1), the copy or move number throwAt throwing (an insert builds at least count
+// elements, so one below count throws in every implementation); prints the elements afterwards.
+void trial(const char* name, i32 size, i32 index, i32 count, i32 throwAt, i32 form)
+{
+  bool thrown = false;
+  char elements[256];
+  elements[0] = 0;
+  {
+    Deque<Item> d;
+    for (i32 i = 0; i < size; ++i)
+      d.emplace_back(i);
+    Item extra(100);
+    Deque<Item> source;
+    for (i32 i = 0; i < count; ++i)
+      source.emplace_back(200 + i);
+    buildsLeft = throwAt;
+    try
+    {
+      if (form == 0)
+        d.insert(d.begin() + index, (ContainerSize)count, extra);
+      else
+        d.insert(d.begin() + index, source.begin(), source.end());
+    }
+    catch (i32)
+    {
+      thrown = true;
+    }
+    buildsLeft = 1000;
+    // (After a throw in the middle std leaves the elements unspecified: the basic guarantee.)
+    if (!thrown || index == 0 || index == size)
+    {
+      i32 used = snprintf(elements, 256, ", size %d:", (i32)d.size());
+      for (const Item& item : d)
+        used += snprintf(elements + used, (usize)(256 - used), " %d", item.value);
+    }
+  }
+  report(name, thrown, elements);
+}
+
+void constructorTrial(const char* name, i32 throwAt, i32 form)
+{
+  bool thrown = false;
+  {
+    Item value(9);
+    Deque<Item> source;
+    for (i32 i = 0; i < 40; ++i)
+      source.emplace_back(i);
+    buildsLeft = throwAt;
+    try
+    {
+      if (form == 0)
+      {
+        Deque<Item> d((ContainerSize)40, value);
+      }
+      else if (form == 1)
+      {
+        Deque<Item> d(source.begin(), source.end());
+      }
+      else if (form == 2)
+      {
+        Deque<Item> d(source);
+      }
+      else
+      {
+        Deque<Item> d = {Item(1), Item(2), Item(3)};
+      }
+    }
+    catch (i32)
+    {
+      thrown = true;
+    }
+    buildsLeft = 1000;
+  }
+  report(name, thrown, "");
+}
+
+int main()
+{
+  // Towards the front: 6 before the position, 3 inserted; 2 before it, 3 inserted.
+  trial("front, more before", 20, 6, 3, 1000, 0);
+  trial("front, more before, the second built throws", 20, 6, 3, 1, 1);
+  trial("front, more before, the third built throws", 20, 6, 3, 2, 0);
+  trial("front, fewer before", 20, 2, 3, 1000, 1);
+  trial("front, fewer before, the second built throws", 20, 2, 3, 1, 0);
+  trial("front, fewer before, the third built throws", 20, 2, 3, 2, 1);
+  // Towards the back: 6 after the position, 3 inserted; 2 after it, 3 inserted.
+  trial("back, more after", 20, 14, 3, 1000, 1);
+  trial("back, more after, the second built throws", 20, 14, 3, 1, 0);
+  trial("back, more after, the third built throws", 20, 14, 3, 2, 1);
+  trial("back, fewer after", 20, 18, 3, 1000, 0);
+  trial("back, fewer after, the second built throws", 20, 18, 3, 1, 1);
+  trial("back, fewer after, the third built throws", 20, 18, 3, 2, 0);
+  // At the ends nothing moves: a throw leaves the elements as they were.
+  trial("at the front, the fourth built throws", 20, 0, 5, 3, 0);
+  trial("at the back, the fourth built throws", 20, 20, 5, 3, 1);
+  constructorTrial("from a count of a value", 30, 0);
+  constructorTrial("from a range", 30, 1);
+  constructorTrial("a copy", 30, 2);
+  constructorTrial("from a list", 2, 3);
+  return 0;
+}

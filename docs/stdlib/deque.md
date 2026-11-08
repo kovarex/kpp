@@ -36,6 +36,13 @@ returning the position of the element after them; `resize(n)`, `resize(n, value)
 nothing: a block is freed when removals empty it, and elements never move); `==` and `<=>`
 (common.md).
 
+When an element's constructor or assignment throws, the deque stays whole, as std::deque's does: it
+counts no element it did not build, and what it built before the throw is destroyed again (the basic
+guarantee); a push, and an insert of one element, of a count of one value or of a forward range at
+either end leave the elements as they were (the strong one; std promises it for one element). A
+constructor that throws destroys the elements it built and frees its blocks
+(library/deque_stays_whole_when_an_element_throws).
+
 ## Queue
 
 `Queue<T, Container>`: first in, first out, over a Container (`Deque<T>` unless given):

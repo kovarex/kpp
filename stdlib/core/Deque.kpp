@@ -28,25 +28,25 @@ public:
 
   Deque() {}
 
-  implicit Deque(InitializerList<T> items)
+  implicit Deque(InitializerList<T> items) : Deque()
   {
     for (const T& item : items)
       this->push_back(item);
   }
 
   // count value-initialized elements, or count copies of value.
-  explicit Deque(ContainerSize count) { this->resize(count); }
-  Deque(ContainerSize count, const T& value) { this->resize(count, value); }
+  explicit Deque(ContainerSize count) : Deque() { this->resize(count); }
+  Deque(ContainerSize count, const T& value) : Deque() { this->resize(count, value); }
 
   // The elements of [first, last), input iterators of any kind, in order.
   template<typename InputIt> requires (!isIntegral<InputIt>)
-  Deque(InputIt first, InputIt last)
+  Deque(InputIt first, InputIt last) : Deque()
   {
     for (; first != last; ++first)
       this->push_back(*first);
   }
 
-  Deque(const Deque<T>& other)
+  Deque(const Deque<T>& other) : Deque()
   {
     for (ContainerSize i = 0; i < other.length; ++i)
       this->push_back(other[i]);
@@ -268,19 +268,12 @@ public:
   {
     if (index == 0 || index == this->length)
     {
-      // Nothing moves, so value may be an element.
-      this->openSlots(index, count);
-      for (ContainerSize i = index; i < index + count; ++i)
-        new (this->slotAt(this->start + i)) T(value);
+      // Nothing moves before the new elements are built, so value may be an element.
+      this->insertBuilt(index, Repeated(&value), count);
       return this->iteratorAt(index);
     }
     T copy(value); // value may be an element
-    Pair<ContainerSize, ContainerSize> moved = this->openSlots(index, count);
-    for (ContainerSize i = index; i < index + count; ++i)
-      if (i >= moved.first && i < moved.second)
-        (*this)[i] = copy;
-      else
-        new (this->slotAt(this->start + i)) T(copy);
+    this->insertBuilt(index, Repeated(&copy), count);
     return this->iteratorAt(index);
   }
 
@@ -295,17 +288,7 @@ public:
     ContainerSize index = this->indexOf(position);
     if constexpr (isBaseOf<ForwardIteratorTag, typename IteratorTraits<InputIt>::iterator_category>)
     {
-      ContainerSize count = checkedSize(distance(first, last), "deque too long");
-      Pair<ContainerSize, ContainerSize> moved = this->openSlots(index, count);
-      for (ContainerSize i = index; i < index + count; ++i, ++first)
-      {
-        if (i < moved.first || i >= moved.second)
-          new (this->slotAt(this->start + i)) T(*first);
-        else if constexpr (requires { (*this)[0] = *first; })
-          (*this)[i] = *first;
-        else
-          (*this)[i] = T(*first); // a conversion that is only explicit
-      }
+      this->insertBuilt(index, first, checkedSize(distance(first, last), "deque too long"));
     }
     else
     {
@@ -456,39 +439,148 @@ private:
       this->pop_back();
   }
 
-  // Makes room for count elements at index, moving the shorter side by count, as std's: the elements
-  // that land outside the old range by move construction, the others by move assignment. Nothing
-  // moves at either end, so what refers to the elements stays. Returns the indices [first, second)
-  // of the new slots that hold moved-from elements, to be assigned; the others are unconstructed.
-  Pair<ContainerSize, ContainerSize> openSlots(ContainerSize index, ContainerSize count)
+  // One value given count times, as an iterator: the count form of insert.
+  class Repeated
+  {
+  public:
+    Repeated(const T* value) : value(value) {}
+    const T& operator*() const { return *this->value; }
+    Repeated& operator++() { return *this; }
+
+  private:
+    const T* value;
+  };
+
+  // Elements built one at a time into unconstructed slots, from position first up: unless they are
+  // kept, the destructor destroys the ones built (BuiltObjects for a deque's slots, which are not
+  // contiguous).
+  class BuiltSlots
+  {
+  public:
+    BuiltSlots(const Deque<T>* deque, ContainerSize first) : deque(deque), first(first) {}
+    BuiltSlots(const BuiltSlots&) = delete;
+    BuiltSlots& operator=(const BuiltSlots&) = delete;
+
+    ~BuiltSlots()
+    {
+      for (ContainerSize i = 0; i < this->built; ++i)
+        this->deque->slotAt(this->first + i)->~T();
+    }
+
+    template<typename... Args>
+    void build(Args&&... args)
+    {
+      new (this->deque->slotAt(this->first + this->built)) T(forward<Args>(args)...);
+      ++this->built;
+    }
+
+    ContainerSize count() const { return this->built; }
+    void keep() { this->built = 0; }
+
+  private:
+    const Deque<T>* deque;
+    ContainerSize first;
+    ContainerSize built = 0;
+  };
+
+  // Inserts count elements before index, built from first, a forward iterator over count values that
+  // are not this deque's elements (copies, or one value Repeated), moving the shorter side by count as
+  // std's does: the elements and values that land outside the old range are constructed, the others
+  // assigned. Nothing moves at either end, so what refers to the elements stays. The slots are
+  // counted only once built: a constructor or an assignment that throws leaves the deque whole,
+  // nothing built left behind (the basic guarantee; at either end the strong one).
+  template<typename It>
+  void insertBuilt(ContainerSize index, It first, ContainerSize count)
   {
     if (count == 0)
-      return Pair<ContainerSize, ContainerSize>(index, index);
+      return;
     ContainerSize newLength = sizeSum(this->length, count, "deque too long");
     ContainerSize following = this->length - index;
     if (index < following)
     {
       this->reserveFront(count);
       ContainerSize newStart = this->start - count;
-      ContainerSize constructed = index < count ? index : count;
-      for (ContainerSize i = 0; i < constructed; ++i)
-        new (this->slotAt(newStart + i)) T(move(*this->slotAt(this->start + i)));
-      for (ContainerSize i = constructed; i < index; ++i)
-        *this->slotAt(newStart + i) = move(*this->slotAt(this->start + i));
-      this->start = newStart;
-      this->length = newLength;
-      return Pair<ContainerSize, ContainerSize>(index > count ? index : count, index + count);
+      if (index > count)
+      {
+        // The first count elements are moved down into the room before the start, the ones up to
+        // index move-assigned down after them, the new values assigned in their place.
+        BuiltSlots moved(this, newStart);
+        for (ContainerSize i = 0; i < count; ++i)
+          moved.build(move(*this->slotAt(this->start + i)));
+        moved.keep();
+        this->start = newStart;
+        this->length = newLength;
+        for (ContainerSize i = count; i < index; ++i)
+          *this->slotAt(newStart + i) = move(*this->slotAt(newStart + i + count));
+        for (ContainerSize i = index; i < index + count; ++i, ++first)
+          this->assignFrom(*this->slotAt(newStart + i), *first);
+      }
+      else
+      {
+        // The elements before index go into the room before the start, the first count - index
+        // values after them, and the other values are assigned over the elements' old slots.
+        BuiltSlots moved(this, newStart);
+        for (ContainerSize i = 0; i < index; ++i)
+          moved.build(move(*this->slotAt(this->start + i)));
+        BuiltSlots fresh(this, newStart + index);
+        for (; fresh.count() < count - index; ++first)
+          fresh.build(*first);
+        moved.keep();
+        fresh.keep();
+        this->start = newStart;
+        this->length = newLength;
+        for (ContainerSize i = count; i < count + index; ++i, ++first)
+          this->assignFrom(*this->slotAt(newStart + i), *first);
+      }
+      return;
     }
     this->reserveBack(count);
-    ContainerSize constructed = following < count ? following : count;
-    ContainerSize firstConstructed = this->length - constructed;
-    for (ContainerSize i = this->length; i-- > firstConstructed;)
-      new (this->slotAt(this->start + i + count)) T(move(*this->slotAt(this->start + i)));
-    for (ContainerSize i = firstConstructed; i-- > index;)
-      *this->slotAt(this->start + i + count) = move(*this->slotAt(this->start + i));
-    ContainerSize oldLength = this->length;
-    this->length = newLength;
-    return Pair<ContainerSize, ContainerSize>(index, index + count < oldLength ? index + count : oldLength);
+    ContainerSize end = this->start + this->length;
+    if (following > count)
+    {
+      // The last count elements are moved up into the room past the end, the ones from index
+      // move-assigned up, the new values assigned in their place.
+      BuiltSlots moved(this, end);
+      for (ContainerSize i = this->length - count; i < this->length; ++i)
+        moved.build(move(*this->slotAt(this->start + i)));
+      moved.keep();
+      ContainerSize oldLength = this->length;
+      this->length = newLength;
+      for (ContainerSize i = oldLength - count; i-- > index;)
+        *this->slotAt(this->start + i + count) = move(*this->slotAt(this->start + i));
+      for (ContainerSize i = index; i < index + count; ++i, ++first)
+        this->assignFrom(*this->slotAt(this->start + i), *first);
+    }
+    else
+    {
+      // The values past the first `following` go into the room past the end, the elements from index
+      // after them, and the first `following` values are assigned over the elements.
+      It rest = first;
+      for (ContainerSize i = 0; i < following; ++i)
+        ++rest;
+      BuiltSlots fresh(this, end);
+      for (; fresh.count() < count - following; ++rest)
+        fresh.build(*rest);
+      BuiltSlots moved(this, end + (count - following));
+      for (ContainerSize i = index; i < this->length; ++i)
+        moved.build(move(*this->slotAt(this->start + i)));
+      fresh.keep();
+      moved.keep();
+      this->length = newLength;
+      for (ContainerSize i = index; i < index + following; ++i, ++first)
+        this->assignFrom(*this->slotAt(this->start + i), *first);
+    }
+  }
+
+  // An element assigned from a value of the inserted range (constructed first when the value
+  // converts to T only explicitly).
+  template<typename V>
+  void assignFrom(T& element, V&& value)
+  {
+    if constexpr (requires { element = forward<V>(value); })
+      element = forward<V>(value);
+    else
+      element = T(forward<V>(value));
   }
 
   // Blocks for count more elements after the last one (count > 0).

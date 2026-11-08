@@ -1,0 +1,18 @@
+front, more before: not thrown, live 0, never built 0, size 23: 0 1 2 3 4 5 100 100 100 6 7 8 9 10 11 12 13 14 15 16 17 18 19
+front, more before, the second built throws: thrown, live 0, never built 0
+front, more before, the third built throws: thrown, live 0, never built 0
+front, fewer before: not thrown, live 0, never built 0, size 23: 0 1 200 201 202 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19
+front, fewer before, the second built throws: thrown, live 0, never built 0
+front, fewer before, the third built throws: thrown, live 0, never built 0
+back, more after: not thrown, live 0, never built 0, size 23: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 200 201 202 14 15 16 17 18 19
+back, more after, the second built throws: thrown, live 0, never built 0
+back, more after, the third built throws: thrown, live 0, never built 0
+back, fewer after: not thrown, live 0, never built 0, size 23: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 100 100 100 18 19
+back, fewer after, the second built throws: thrown, live 0, never built 0
+back, fewer after, the third built throws: thrown, live 0, never built 0
+at the front, the fourth built throws: thrown, live 0, never built 0, size 20: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19
+at the back, the fourth built throws: thrown, live 0, never built 0, size 20: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19
+from a count of a value: thrown, live 0, never built 0
+from a range: thrown, live 0, never built 0
+a copy: thrown, live 0, never built 0
+from a list: thrown, live 0, never built 0
