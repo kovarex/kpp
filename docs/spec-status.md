@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**1897 pass, 1 pending, 0 failing, 0 fixed** (1898 snippets, 167.4 s).
+**1898 pass, 1 pending, 0 failing, 0 fixed** (1899 snippets, 175.5 s).
 
 ## Language: statements, expressions, declarations
 
@@ -535,6 +535,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `language/reference_from_non_class_value.kpp` | a const reference to a class initialised from a value that is no class (`const String& s = "text";`) binds to a temporary the converting constructor makes, which lives as long as the reference | pass |  |  |
 | `language/reference_of_other_type_bound_outside_call_is_error.kpp` | a reference bound to an object of another scalar type outside a call's arguments is an error, as in C++: a range-for's non-const loop variable (`for (double& d : ints)`), a reference member given another type (a const one too: its temporary would die with the constructor, [class.base.init] 8), a function's reference result returning another type (its temporary would die with the return), and a local rvalue reference given an lvalue of its type (language/rvalue_reference_given_lvalue_is_error for a parameter) | pass |  |  |
 | `language/reference_through_conversion_operator.kpp` | a reference bound through a conversion operator is what the operator gives ([dcl.init.ref] 5): the lvalue its reference result names (`int& r = object;` with `operator int&()`), else a temporary of its value (`const long long& r = object;`, `const int& r = withDouble`). Before, the reference bound the object itself and read its first bytes as the type: 1 for 41, 4.9e-324 for 2.5, a silent wrong answer. clang's output | pass |  |  |
+| `language/reference_through_member_pointer_of_temporary_extends_it.kpp` | a reference bound to a data member of a temporary reached through `.*` keeps the temporary alive, as `.member` does ([class.temporary] 6): `const T& x = Wrap{T(1)}.*(&Wrap::t);`, through a member pointer variable, of a call's result, an int member bound by `const int&` and by `int&&`; the temporary is destroyed when the reference goes out of scope, not at the end of its declaration. clang's and g++'s output | pass |  |  |
 | `language/reference_to_a_function_pointer_declarators.kpp` | `int (*&r)(int)`, `int (*const& r)(int)`, `int (*&&r)(int)`, `int (&&r)(int)` declare what they say in a body | pass |  |  |
 | `language/reference_to_a_pointer_binds_a_decayed_array_or_function.kpp` | a const or rvalue reference to a pointer given an array or a function binds a temporary holding the pointer, in a body, at namespace scope and for a static local | pass |  |  |
 | `language/reference_to_a_pointer_given_an_array_is_error.kpp` | a non-const lvalue reference to a pointer binds no array or function: their pointer is a temporary ([dcl.init.ref] 5) | pass |  |  |

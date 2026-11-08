@@ -1,0 +1,28 @@
+// spec: a reference bound to a data member of a temporary reached through `.*` keeps the temporary alive, as `.member` does ([class.temporary] 6): `const T& x = Wrap{T(1)}.*(&Wrap::t);`, through a member pointer variable, of a call's result, an int member bound by `const int&` and by `int&&`; the temporary is destroyed when the reference goes out of scope, not at the end of its declaration. clang's and g++'s output
+// found by thread J's lifetime generator (2026-11-08): the temporary was destroyed at the end of the declaration and the reference left dangling
+extern "C" int printf(const char* format, ...);
+struct T
+{
+  int id;
+  T(int i) : id(i) { printf("+%d ", id); }
+  T(const T& o) : id(o.id + 100) { printf("c%d ", id); }
+  ~T() { printf("-%d ", id); }
+};
+struct Wrap { T t; int n; };
+Wrap makeWrap(int i) { return Wrap{T(i), i * 10}; }
+int main()
+{
+  { const T& x = Wrap{T(1), 0}.*(&Wrap::t); printf("| %d ; ", x.id); }
+  printf("\n");
+  T Wrap::* pm = &Wrap::t;
+  int Wrap::* pn = &Wrap::n;
+  { const T& y = makeWrap(2).*pm; printf("| %d ; ", y.id); }
+  printf("\n");
+  { const int& n = makeWrap(3).*pn; printf("| %d ; ", n); }
+  printf("\n");
+  { int&& m = (makeWrap(4).*pn); m += 1; printf("| %d ; ", m); }
+  printf("\n");
+  { const T& z = (Wrap{T(5), 0}).*pm; const T& w = Wrap{T(6), 0}.t; printf("| %d %d ; ", z.id, w.id); }
+  printf("\nend\n");
+  return 0;
+}

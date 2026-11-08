@@ -401,6 +401,10 @@ auto codegen::Emitter::temporaryOfSubobject(Expr* init) const -> Expr*
     else if (e->kind == NodeKind::NamedCastExpr && e->ty && e->ty->isReference() &&
              (static_cast<NamedCastExpr*>(e)->castKind == Kw::static_cast_ || static_cast<NamedCastExpr*>(e)->castKind == Kw::const_cast_))
       e = static_cast<NamedCastExpr*>(e)->operand;
+    else if (auto* b = e->kind == NodeKind::BinaryExpr ? static_cast<BinaryExpr*>(e) : nullptr;
+             b && !b->isKeyword && P(b->op) == P::DotStar && b->rhs && b->rhs->ty && types.stripRef(b->rhs->ty)->kind == TyKind::MemberPointer &&
+             e->ty && types.stripRef(e->ty)->kind != TyKind::Function)
+      part = true, e = b->lhs; // `Wrap{T(1)}.*(&Wrap::t)`, a data member's pointer ([class.temporary] 6; until 2026-11-08 it dangled)
     else
       break;
   }
