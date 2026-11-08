@@ -264,6 +264,18 @@ void build(Project& project)
     $tests = if ($code -eq 0) { & '.\build\release\game-tests.exe' } else { '' }
     if ($code -ne 0 -or "$tests" -ne 'tests 42') { Fail "kpp --release after a build failed under other flags: exit $code, printed '$tests' (46: the failed build's plus.c object linked)`n$($output -join "`n")" }
     Remove-Item 'libs\plus\other.c'
+    # A source left out with nothing else to compile leaves the archive (2026-11-08: the archive was
+    # made again only when something compiled, so extra.c's object stayed in plus.lib, and the link
+    # could still take it): its symbol is in plus.lib, then excluded, not.
+    Set-Content 'libs\plus\extra.c' 'int extra_value_in_the_archive(void) { return 7; }'
+    $inArchive = { [IO.File]::ReadAllText((Resolve-Path 'build\clib\plus.lib').Path, [Text.Encoding]::ASCII).Contains('extra_value_in_the_archive') }
+    $output = Kpp @('--release', '--no-server', '--set', "INCLUDE_ROOT=$root")
+    if ($code -ne 0 -or -not (& $inArchive)) { Fail "kpp --release with extra.c: exit $code, its symbol in plus.lib: $(& $inArchive)`n$($output -join "`n")" }
+    Set-Content 'build.kpp' ($good -replace 'plus\.define\("PLUS=1"\);', "plus.define(`"PLUS=1`");`n  plus.exclude(`"libs/plus/extra.c`");")
+    $output = Kpp @('--release', '--no-server', '--set', "INCLUDE_ROOT=$root")
+    if ($code -ne 0 -or (& $inArchive)) { Fail "kpp --release with extra.c excluded: exit $code, its symbol still in plus.lib: $(& $inArchive)`n$($output -join "`n")" }
+    Set-Content 'build.kpp' $good
+    Remove-Item 'libs\plus\extra.c'
     # A C library's resource script (llvm-rc) naming a file next to it and one outside its directory, as
     # factorio-in-kpp's names its icon in ..\..\data. With the outside one missing the build fails, and
     # what llvm-rc wrote before it failed is no .res that the next build takes as made (it was linked,

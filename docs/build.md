@@ -550,8 +550,11 @@ void build(Project& project)
 - **Building one.** kpp compiles each source with the clang it already uses (clang-cl driver
   mode), in parallel, with the library's includes, defines and language. It caches each object
   by the hash of its source, its flags and the headers clang reports (-MD). It archives the
-  objects into `build\<configuration>\<name>.lib` with llvm-lib. A library's error is reported
-  at its file and line in the same Error List.
+  objects into `build\<configuration>\<name>.lib` with llvm-lib, again whenever an object was
+  compiled or the objects are not the ones the archive was made of (`objects.rsp` beside it: a source
+  removed or excluded with nothing else to compile left its object in the archive, where the link
+  could still take it, until 2026-11-08). A library's error is reported at its file and line in the
+  same Error List.
 - **Its configuration.** C libraries are compiled as the game's prebuilt ones are, /MT (one CRT is
   linked) and NDEBUG; an optimized configuration's at /O2, an unoptimized one's (debug) at /Od
   since 2026-11-07 (kovarex: "debug builds means everything debug", as Factorio's C++ Debug build

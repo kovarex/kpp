@@ -204,6 +204,16 @@ namespace projects
     return inputs;
   }
 
+  // The archive's response file (objects.rsp): its objects, one per line. Kept beside the archive, so
+  // that a later build sees whether the library's objects are still these.
+  std::string objectsResponse(const LibraryJob& job)
+  {
+    std::string response;
+    for (const fs::path& object : job.objects)
+      response += quoteArg(object.string()) + "\n";
+    return response;
+  }
+
   // Whether object depends only on files older than itself: the source and the headers clang
   // named in its dependency file (-MD). times keeps each file's time for the build: the 641 objects of
   // factorio-in-kpp's libraries name the same headers (the SDK's, SDL's) about 100,000 times in all.
@@ -484,7 +494,10 @@ namespace projects
       }
       job.compiles = job.commands.size();
       job.lib = clibDirectory(root, cFlags, platform) / (c.name + (target.posix() ? ".a" : ".lib"));
-      job.archive = !job.commands.empty() || !fs::exists(job.lib, ec);
+      // Also when its objects are not the ones its archive was made of (objects.rsp, written with it): a
+      // source removed or left out with nothing else to compile kept its object in the archive, which
+      // the link still took (2026-11-08).
+      job.archive = !job.commands.empty() || !fs::exists(job.lib, ec) || readText(job.directory / "objects.rsp") != objectsResponse(job);
       std::string dialect = target.posix() ? platform + ": clang for " + target.triple + " with the target's sysroot"
                             : gnu          ? "Windows' GNU dialect, llvm-mingw's clang for " + target.triple
                                            : std::string("clang-cl, MSVC's dialect");
@@ -618,9 +631,7 @@ namespace projects
       FILE* file = host::openFile(job.directory / "flags.txt", "wb");
       if (file)
         fwrite(job.stamp.data(), 1, job.stamp.size(), file), fclose(file);
-      std::string response;
-      for (const fs::path& object : job.objects)
-        response += quoteArg(object.string()) + "\n";
+      std::string response = objectsResponse(job);
       FILE* rsp = host::openFile(job.directory / "objects.rsp", "wb");
       if (rsp)
         fwrite(response.data(), 1, response.size(), rsp), fclose(rsp);
