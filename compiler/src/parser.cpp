@@ -4987,6 +4987,7 @@ namespace
           {
             advance();
             SwitchStmt* s = node<SwitchStmt>(start);
+            s->cRules = !isKpp();
             expect(P::LParen, "expected '('");
             parseCondition(s->init, s->cond);
             expect(P::RParen, "expected ')'");

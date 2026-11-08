@@ -31,7 +31,10 @@ struct RangeForStmt : Stmt { Decl* var; Expr* range; Stmt* body; FunctionDecl* b
 struct ForConstexprStmt : Stmt { Decl* var; Node* list; Stmt* body; };
 struct WhileStmt : Stmt { Node* cond; Stmt* body; };
 struct DoStmt : Stmt { Stmt* body; Expr* cond; };
-struct SwitchStmt : Stmt { Stmt* init = nullptr; Node* cond; Stmt* body; };
+// cRules: a switch of C or C++ text (an imported C header's inline function, the C++ a conversion reads): labels side by
+// side share statements and a case runs on into the next, as C's do, whatever kpp code's rule (design.md "No implicit
+// fallthrough").
+struct SwitchStmt : Stmt { Stmt* init = nullptr; Node* cond; Stmt* body; bool cRules = false; };
 // moreValues: `case A, B, C:`'s values after the first (design.md "No implicit fallthrough", kovarex 2026-11-08): one
 // label of several values, its statements theirs.
 struct CaseStmt : Stmt { Expr* value; Expr* rangeEnd = nullptr; Span<Expr*> moreValues; };

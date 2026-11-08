@@ -10069,7 +10069,10 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
       walkStmt(w->init);
       walkNode(w->cond);
       checkSwitchOnClass(w);
-      walkSwitchBody(w->body);
+      if (w->cRules)
+        walkStmt(w->body); // (a C header's switch: one scope, C's)
+      else
+        walkSwitchBody(w->body);
       checkCaseValues(w->body);
       locals.pop(mark);
       break;

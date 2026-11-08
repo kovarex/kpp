@@ -9240,7 +9240,8 @@ auto GlobalScope::Impl::constStatementIn(Stmt* s, const TypeContext& ctx, std::v
       // Under --no-implicit-fallthrough each label begins a group of its own, and a group whose end is reached breaks
       // unless it ends with `fallthrough;` (design.md "No implicit fallthrough", step 2): `case A: case B: x();` runs
       // nothing for A.
-      bool implicitBreaks = noImplicitFallthroughOn();
+      // (Not a C header's: C's switch is C's, SwitchStmt::cRules.)
+      bool implicitBreaks = noImplicitFallthroughOn() && !sw->cRules;
       enum class Last { Label, Fallthrough, Statement } last = Last::Label;
       for (size_t i = start; i < stmts.size(); ++i)
       {

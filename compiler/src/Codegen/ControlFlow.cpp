@@ -642,7 +642,8 @@ auto codegen::Emitter::switchStatement(SwitchStmt* sw) -> void
   // group whose end is reached breaks unless it ends with `fallthrough;`, and each top-level group is a scope of its
   // own (rule 4: its objects are destroyed at its end). `case A: case B: x();` runs x() for B alone: A's group is
   // empty and does nothing (kovarex, 2026-11-08; until then labels side by side shared one group).
-  bool implicitBreaks = noImplicitFallthroughOn();
+  // (Not a C header's: C's switch is C's, SwitchStmt::cRules.)
+  bool implicitBreaks = noImplicitFallthroughOn() && !sw->cRules;
   enum class Last { Nothing, Label, Fallthrough, Statement } last = Last::Nothing;
   bool groupScope = false;
   auto emitLabelled = [&](Stmt* st, size_t element)

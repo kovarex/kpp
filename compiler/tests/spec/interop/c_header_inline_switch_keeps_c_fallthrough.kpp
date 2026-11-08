@@ -1,0 +1,8 @@
+// spec: a C header's inline function, which kpp compiles from the header, keeps C's switch: labels side by side share their statements and a case runs on into the next, also under kpp's no implicit fallthrough, which is kpp code's rule (design.md "No implicit fallthrough"); C's `11 11 10 -1`
+// kpp: --no-implicit-fallthrough
+extern "C" import "c_header_inline_switch_keeps_c_fallthrough.h";
+int main()
+{
+  println(specCaseRuns(0), " ", specCaseRuns(1), " ", specCaseRuns(2), " ", specCaseRuns(3));
+  return 0;
+}
