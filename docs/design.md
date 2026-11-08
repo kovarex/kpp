@@ -4843,9 +4843,13 @@ its IR for every spec snippet (1073) is byte-identical before and after.
 - **No implicit fallthrough** (readme's Planned; rules decided by kovarex 2026-11-07 on thread D's questions, Q5 and Q6
   changed on his rule "no keyword that does nothing"; the steps are C's plan of 2026-11-06). Every group of statements
   after a label ends with an implicit `break`:
-  1. Labels side by side share their statements: `case A: case B: x();` is one group (2,956 in the game).
-  2. `fallthrough;` is the last statement of a group with another group after it (Go's rule); anywhere else, inside an
-     `if`, in the last group or outside a switch, it is an error.
+  1. Each label begins a group of its own (kovarex, 2026-11-08, replacing 2026-11-07's "labels side by side share one
+     group"): `case A: case B: build();` runs build() for B alone, and an empty `case A:` is a case that does nothing.
+     A body two labels share is written `case A: fallthrough; case B: build();` (rule 2), which C's converter writes
+     between C++'s labels side by side (about 270 in the game, C counting); without the flag C++'s meaning stays.
+  2. `fallthrough;` is the last statement of a group with another group after it (Go's rule), a group of `fallthrough;`
+     alone too; anywhere else, inside an `if`, in the last group or outside a switch, it is an error. `case A: break;`
+     loses its break (rule 5) and is an empty case.
   3. A label nested in another statement (Duff's device) is an error: it means nothing with implicit breaks (J's held item
      closes as refused).
   4. Each group is a scope of its own: `case 1: Foo f; ...` needs no braces, and two groups may declare one name.
@@ -4861,7 +4865,9 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   switch_case_ends_written.
   Step 2 built behind `--no-implicit-fallthrough` (D, 2026-11-07), every rule as an error exactly as it will be, so
   that the converter and the stdlib are fixed against it. In the code generator and the evaluator a group whose end
-  is reached breaks; `fallthrough;` as its last statement runs on into the next; labels side by side share one group.
+  is reached breaks; `fallthrough;` as its last statement runs on into the next; each label begins a group, an empty
+  one doing nothing (labels side by side shared one group until 2026-11-08; specs
+  kpp/no_implicit_fallthrough_labels_side_by_side_are_two_cases and kpp/no_implicit_fallthrough_shares_a_body_by_fallthrough).
   Each group is a scope of its own: the walker's names, and codegen's objects, destroyed at the group's end; a
   `for constexpr`'s element is its group. The errors: a group's last `break;` (also as the last statement of a block
   that ends it) ends "remove `break;`"; `[[fallthrough]];` ends "write `fallthrough;`, not `[[fallthrough]];`";
@@ -4874,6 +4880,9 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   flip, as step 1 refuses a case that runs on without the flag; so the
   converted game builds with the flag before the flip, as it did for explicit by default (7ab51b62). The program's
   own trailing `break;` is still the error. Spec kpp/no_implicit_fallthrough_keeps_the_standard_library_breaks.
+  Labels side by side, which mean one case each under the flag, are written with `fallthrough;` between them where
+  code builds with it: the stdlib's 12 (Error.kpp's errcOfWindowsError) by C, as `case 2: fallthrough;`, the same
+  with the flag and without; the game's 3,690 (in 941 runs) by C's converter.
 
 - **Explicit by default** (readme's Planned; decided by kovarex 2026-11-07 on thread D's questions, Q1 and Q3 reshaped;
   D's survey in the coordinator's notes). A constructor or a conversion operator converts implicitly only when marked

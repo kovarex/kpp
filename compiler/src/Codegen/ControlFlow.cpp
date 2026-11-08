@@ -626,21 +626,22 @@ auto codegen::Emitter::switchStatement(SwitchStmt* sw) -> void
   loops.push_back({endL, "", scopes.size()});
   pushScope();
   size_t bodyScope = scopeInits.size() - 1;
-  // --no-implicit-fallthrough (design.md "No implicit fallthrough", step 2): a group whose end is reached breaks,
-  // unless it ends with `fallthrough;`; labels side by side share one group, and each top-level group is a scope of
-  // its own (rule 4: its objects are destroyed at its end).
+  // --no-implicit-fallthrough (design.md "No implicit fallthrough", step 2): each label begins a group of its own, a
+  // group whose end is reached breaks unless it ends with `fallthrough;`, and each top-level group is a scope of its
+  // own (rule 4: its objects are destroyed at its end). `case A: case B: x();` runs x() for B alone: A's group is
+  // empty and does nothing (kovarex, 2026-11-08; until then labels side by side shared one group).
   bool implicitBreaks = noImplicitFallthroughOn();
   enum class Last { Nothing, Label, Fallthrough, Statement } last = Last::Nothing;
   bool groupScope = false;
   auto emitLabelled = [&](Stmt* st, size_t element)
   {
-    if (implicitBreaks && (st->kind == NodeKind::CaseStmt || st->kind == NodeKind::DefaultStmt) && last != Last::Label)
+    if (implicitBreaks && (st->kind == NodeKind::CaseStmt || st->kind == NodeKind::DefaultStmt))
     {
       if (groupScope)
         popScope(); // (the group before it ends: its objects with it)
       groupScope = false;
       if (last != Last::Nothing)
-        emitBranch(last == Last::Fallthrough ? caseLabels[{st, element}] : endL); // (nothing when its end is not reached)
+        emitBranch(last == Last::Fallthrough ? caseLabels[{st, element}] : endL); // (an empty group's too; nothing when its end is not reached)
     }
     if (st->kind == NodeKind::CaseStmt || st->kind == NodeKind::DefaultStmt)
     {

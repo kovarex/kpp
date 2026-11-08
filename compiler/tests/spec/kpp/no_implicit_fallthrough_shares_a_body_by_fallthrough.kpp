@@ -1,0 +1,55 @@
+// spec: under --no-implicit-fallthrough a body two labels share is written `case 1: fallthrough; case 2: x();` (design.md "No implicit fallthrough" rules 1 and 2, kovarex 2026-11-08): 1's group of `fallthrough;` alone runs on into 2's, so both run x(), a chain of several labels and `default:` too, at run time and in the evaluator; the converter writes it for C++'s labels side by side
+// kpp: --no-implicit-fallthrough --no-std
+int calls = 0;
+void x() { ++calls; }
+int pick(int v)
+{
+  calls = 0;
+  switch (v)
+  {
+    case 1:
+      fallthrough;
+    case 2:
+      x();
+    case 3:
+      fallthrough;
+    case 4:
+      fallthrough;
+    default:
+      x();
+      x();
+  }
+  return calls;
+}
+constexpr int folded(int v)
+{
+  int r = 0;
+  switch (v)
+  {
+    case 1:
+      fallthrough;
+    case 2:
+      r = 2;
+    case 3:
+      fallthrough;
+    default:
+      r += 30;
+  }
+  return r;
+}
+static_assert(folded(1) == 2);
+static_assert(folded(2) == 2);
+static_assert(folded(3) == 30);
+static_assert(folded(4) == 30);
+int main()
+{
+  int wrong = 0;
+  wrong += pick(1) != 1;
+  wrong += pick(2) != 1;
+  wrong += pick(3) != 2;
+  wrong += pick(4) != 2;
+  wrong += pick(9) != 2;
+  int f1 = folded(1), f3 = folded(3);
+  wrong += f1 != 2 || f3 != 30;
+  return wrong;
+}

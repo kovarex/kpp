@@ -1,13 +1,15 @@
-// spec: under --no-implicit-fallthrough (design.md "No implicit fallthrough", rules 2, 3, 5 and 6) a case's last `break;` (also ending a block that ends the case) is an error naming its removal, `[[fallthrough]];` one naming `fallthrough;` (F's form, design.md 23e), `fallthrough;` inside another statement, in the last case or outside a switch an error, and so is a label nested in another statement (Duff's device); a case whose end is reached is no error any more (step 1's "runs on into it"): it breaks
+// spec: under --no-implicit-fallthrough (design.md "No implicit fallthrough", rules 2, 3, 5 and 6) a case's last `break;` (also ending a block that ends the case) is an error naming its removal, `[[fallthrough]];` one naming `fallthrough;` (F's form, design.md 23e), `fallthrough;` inside another statement, in the last case or outside a switch an error, and so is a label nested in another statement (Duff's device); a case whose end is reached is no error any more (step 1's "runs on into it"): it breaks; nor is an empty case (`case 7:` beside `case 8:`), each label beginning a group of its own that does nothing when empty, or a group of `fallthrough;` alone, which shares the next group's body (kovarex, 2026-11-08)
 // kpp: --no-implicit-fallthrough --no-std
-// error: no_implicit_fallthrough_errors_is_error.kpp:18: error: every case ends with a break: remove `break;` (design.md "No implicit fallthrough")
-// error: no_implicit_fallthrough_errors_is_error.kpp:22: error: every case ends with a break: remove `break;` (design.md "No implicit fallthrough")
-// error: no_implicit_fallthrough_errors_is_error.kpp:25: error: a case runs on into the next by `fallthrough;` alone: write `fallthrough;`, not `[[fallthrough]];` (design.md "No implicit fallthrough")
-// error: no_implicit_fallthrough_errors_is_error.kpp:28: error: fallthrough; is the last statement of a case with another case after it, which it runs on into: not inside another statement, in the last case or outside a switch (design.md "No implicit fallthrough")
-// error: no_implicit_fallthrough_errors_is_error.kpp:35: error: a case label is a statement of its switch's body: nested in another statement it means nothing where every case ends with a break (design.md "No implicit fallthrough")
-// error: no_implicit_fallthrough_errors_is_error.kpp:40: error: fallthrough; is the last statement of a case with another case after it, which it runs on into: not inside another statement, in the last case or outside a switch (design.md "No implicit fallthrough")
+// error: no_implicit_fallthrough_errors_is_error.kpp:20: error: every case ends with a break: remove `break;` (design.md "No implicit fallthrough")
+// error: no_implicit_fallthrough_errors_is_error.kpp:24: error: every case ends with a break: remove `break;` (design.md "No implicit fallthrough")
+// error: no_implicit_fallthrough_errors_is_error.kpp:27: error: a case runs on into the next by `fallthrough;` alone: write `fallthrough;`, not `[[fallthrough]];` (design.md "No implicit fallthrough")
+// error: no_implicit_fallthrough_errors_is_error.kpp:30: error: fallthrough; is the last statement of a case with another case after it, which it runs on into: not inside another statement, in the last case or outside a switch (design.md "No implicit fallthrough")
+// error: no_implicit_fallthrough_errors_is_error.kpp:37: error: a case label is a statement of its switch's body: nested in another statement it means nothing where every case ends with a break (design.md "No implicit fallthrough")
 // error: no_implicit_fallthrough_errors_is_error.kpp:42: error: fallthrough; is the last statement of a case with another case after it, which it runs on into: not inside another statement, in the last case or outside a switch (design.md "No implicit fallthrough")
+// error: no_implicit_fallthrough_errors_is_error.kpp:44: error: fallthrough; is the last statement of a case with another case after it, which it runs on into: not inside another statement, in the last case or outside a switch (design.md "No implicit fallthrough")
 // no-warning: runs on into it
+// no-warning: no_implicit_fallthrough_errors_is_error.kpp:52:
+// no-warning: no_implicit_fallthrough_errors_is_error.kpp:56:
 int f(int x)
 {
   int r = 0;
@@ -42,7 +44,22 @@ int f(int x)
   fallthrough;
   return r;
 }
+int g(int x)
+{
+  int r = 0;
+  switch (x)
+  {
+    case 7:
+    case 8:
+      r = 8;
+    case 9:
+      fallthrough;
+    case 10:
+      r = 10;
+  }
+  return r;
+}
 int main()
 {
-  return f(0);
+  return f(0) + g(7);
 }

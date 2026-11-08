@@ -528,10 +528,11 @@ enum class Direction : u8
 ### No implicit fallthrough (this stage)
 
 - **C++:** a `case` runs into the next without `break`.
-- **kpp:** every group of statements after a label ends with an implicit `break`; labels side by side
-  share one group, and falling through is `fallthrough;` as a group's last statement. A `break;` that
-  ends a group, `[[fallthrough]];` and a label nested in another statement are errors, and each group
-  is a scope of its own.
+- **kpp:** each label begins a group of statements of its own, which ends with an implicit `break`: an
+  empty one does nothing (`case A: case B: x();` runs `x()` for B alone). Falling through, and a body
+  two labels share, is `fallthrough;` as a group's last statement (`case A: fallthrough; case B: x();`).
+  A `break;` that ends a group, `[[fallthrough]];` and a label nested in another statement are errors,
+  and each group is a scope of its own.
 - **Status:** step 1 is built: a case that can reach the next label without `break;`, `fallthrough;`,
   `return`, `continue`, `goto` or `throw` is an error, and `switch` keeps C++'s meaning. The flip is built
   behind `--no-implicit-fallthrough`, with every rule's error. It becomes the default once the game, the
@@ -540,7 +541,8 @@ enum class Direction : u8
   2026-11-07).
 - **See:** [design 6][d6] and its "No implicit fallthrough" entry; specs
   `language/switch_case_running_on_is_error`, `language/switch_case_ends_written`,
-  `kpp/no_implicit_fallthrough` and its `_errors_is_error`.
+  `kpp/no_implicit_fallthrough` and its `_errors_is_error`, `_labels_side_by_side_are_two_cases`,
+  `_shares_a_body_by_fallthrough`.
 
 ### Typed unions (built)
 

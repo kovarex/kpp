@@ -1,0 +1,48 @@
+// spec: under --no-implicit-fallthrough each label begins a group of its own (design.md "No implicit fallthrough" rule 1, kovarex 2026-11-08): `case 1: case 2: x();` runs x() for 2 alone, 1's group empty and doing nothing, and `case 3: default:` likewise, at run time and in the evaluator; a body two labels share is written with `fallthrough;` (kpp/no_implicit_fallthrough_shares_a_body_by_fallthrough); without the flag C++'s meaning stays (language/switch_case_ends_written)
+// kpp: --no-implicit-fallthrough --no-std
+int calls = 0;
+void x() { ++calls; }
+int pick(int v)
+{
+  calls = 0;
+  switch (v)
+  {
+    case 1:
+    case 2:
+      x();
+    case 3:
+    default:
+      x();
+      x();
+  }
+  return calls;
+}
+constexpr int folded(int v)
+{
+  int r = 0;
+  switch (v)
+  {
+    case 1:
+    case 2:
+      r = 2;
+    case 3:
+    default:
+      r += 30;
+  }
+  return r;
+}
+static_assert(folded(1) == 0);
+static_assert(folded(2) == 2);
+static_assert(folded(3) == 0);
+static_assert(folded(4) == 30);
+int main()
+{
+  int wrong = 0;
+  wrong += pick(1) != 0;
+  wrong += pick(2) != 1;
+  wrong += pick(3) != 0;
+  wrong += pick(9) != 2;
+  int f1 = folded(1), f2 = folded(2), f3 = folded(3), f4 = folded(4);
+  wrong += f1 != 0 || f2 != 2 || f3 != 0 || f4 != 30;
+  return wrong;
+}

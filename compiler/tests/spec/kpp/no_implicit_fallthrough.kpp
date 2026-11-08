@@ -1,4 +1,4 @@
-// spec: --no-implicit-fallthrough (design.md "No implicit fallthrough", step 2 behind a flag until the code builds with it): every group of statements after a label ends with an implicit break; labels side by side share their statements; `fallthrough;` as a group's last statement runs on into the next; `break;` still leaves early; each group is a scope of its own (a declaration needs no braces, two groups may declare one name, an object is destroyed at its group's end); a `for constexpr`'s elements are groups too; the evaluator alike
+// spec: --no-implicit-fallthrough (design.md "No implicit fallthrough", step 2 behind a flag until the code builds with it): every group of statements after a label ends with an implicit break; each label begins a group of its own, an empty one doing nothing (`case 1: case 2:` runs nothing for 1; kovarex 2026-11-08, where labels side by side shared one group until then: kpp/no_implicit_fallthrough_labels_side_by_side_are_two_cases); `fallthrough;` as a group's last statement runs on into the next; `break;` still leaves early; each group is a scope of its own (a declaration needs no braces, two groups may declare one name, an object is destroyed at its group's end); a `for constexpr`'s elements are groups too; the evaluator alike
 // kpp: --no-implicit-fallthrough --no-std
 int destroyed = 0;
 struct Noisy
@@ -89,6 +89,9 @@ constexpr int folded(int x)
       fallthrough;
     case 4:
       x += 10;
+    case 6:
+    case 7:
+      x = 70;
   }
   return x;
 }
@@ -96,11 +99,13 @@ static_assert(folded(1) == 1);
 static_assert(folded(2) == 5);
 static_assert(folded(3) == 14);
 static_assert(folded(4) == 14);
+static_assert(folded(6) == 6);
+static_assert(folded(7) == 70);
 int main()
 {
   int wrong = 0;
   wrong += classify(0) != 10;
-  wrong += classify(1) != 20;
+  wrong += classify(1) != 0;                  // case 1's group is empty: nothing runs
   wrong += classify(2) != 20;
   wrong += classify(3) != 31;
   wrong += classify(4) != 1;
@@ -116,7 +121,7 @@ int main()
   wrong += valueOf(0) != 5;
   wrong += destroyed != 7;                    // n(4) destroyed at its group's end
   wrong += valueOf(9) != 1000;
-  int f2 = folded(2), f3 = folded(3);
-  wrong += f2 != 5 || f3 != 14;
+  int f2 = folded(2), f3 = folded(3), f6 = folded(6);
+  wrong += f2 != 5 || f3 != 14 || f6 != 6;
   return wrong;
 }
