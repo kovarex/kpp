@@ -840,7 +840,17 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols, bool qu
           s += "f";
       }
       else
+      {
+        // In the IR's names (qualified), an integer of another type than int's with its type: `V<(uint32)0>` beside
+        // `V<0>`, `V<(char8)97>` beside `V<97>`, an auto parameter's two arguments ([temp.type] 2.1) and two names, one
+        // function each (until 2026-11-08 one name, one function for both: its static shared, its sizeof(A) the first
+        // one's). A message keeps the number alone.
+        bool plainInt = !t->inner || t->inner->kind == TyKind::Bool ||
+                        (t->inner->kind == TyKind::Int && t->inner->bits == 32 && !t->inner->isUnsigned && !t->inner->isLong());
+        if (qualified && !plainInt)
+          s += "(" + toString(t->inner, symbols, qualified) + ")";
         s += t->inner && t->inner->kind == TyKind::Bool ? (t->value ? "true" : "false") : std::to_string(t->value);
+      }
       break;
     case TyKind::Member:
       s += "member " + (t->decl ? declName(t->decl) : std::string("?"));

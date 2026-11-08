@@ -1,0 +1,21 @@
+// spec: of an `auto` template parameter, values of two types are two arguments and two instances, however equal their numbers ([temp.type] 2.1): `V<0>` and `V<0u>`, `V<'a'>` and `V<97>`, each instance its own function-local static and its own `sizeof(A)`; clang's output (until 2026-11-08 kpp made one instance of each pair, its static shared and its size the first one's: an integer argument's text, which names instances in the IR, named no type; found beside templates/floating_point_template_argument_identity, D)
+template<auto A>
+struct V
+{
+  static int bump()
+  {
+    static int n = 0;
+    return ++n;
+  }
+  static int size() { return (int)sizeof(A); }
+};
+int main()
+{
+  int a = V<0>::bump();
+  int b = V<0u>::bump();
+  int c = V<'a'>::bump();
+  int d = V<97>::bump();
+  int e = V<0>::bump();
+  println(a, " ", b, " ", c, " ", d, " ", e, " ", V<'a'>::size(), " ", V<97>::size(), " ", V<0ll>::size());
+  return 0;
+}
