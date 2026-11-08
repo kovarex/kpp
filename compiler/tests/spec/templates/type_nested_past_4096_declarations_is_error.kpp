@@ -1,0 +1,11 @@
+// spec: a type reached through more than 4096 declarations nested in one another (S<5000>::T, each instance's member alias naming the next one's) is an error saying so, at the variable it types; S<100>::T compiles (templates/types_named_however_deep_they_are_written_or_reached), and so does S<4000>::T; clang's bound is its 1024 nested instantiations ("recursive template instantiation exceeded maximum depth of 1024")
+// (master's kpp: "the layout of W<?<<unknown>>>: the member inner (`T inner`) names 'W', which is not declared" from S<8>::T on)
+// error: the type of d: declarations' types, class templates' specialisations, layouts, traits and static members nested more than 4096 deep
+template<typename T> struct W { T inner; };
+template<int N> struct S { using T = W<typename S<N - 1>::T>; };
+template<> struct S<0> { using T = int; };
+int main()
+{
+  S<5000>::T d;
+  return 0;
+}

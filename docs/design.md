@@ -3003,7 +3003,22 @@ partial specialisation written 20 class templates deep was silently the primary 
 match's own depth bounds counted from where the type was written: sizeof 1 for 100), and a class's
 layout was refused to an evaluation more than 32 deep, or kept failed for every asker after a deep
 one. Specs templates/partial_specialisation_picked_for_a_type_written_20_deep and
-expressions/constant_aggregate_member_read_30_deep. Before, an 8 MB thread's stack ended about 980
+expressions/constant_aggregate_member_read_30_deep. So is a declaration's type, and an alias
+template's type under its arguments (2026-11-08, third step), and a written type's own parts (a
+pointee, a template argument) take no step of depth, only a name leading to another declaration's
+text does (the parser bounds how deep a written type nests): a type written 21 class templates deep,
+an alias of an alias 8 deep, a member alias naming its class's next instance's 8 times and a type
+behind 30 pointers each named a class "not declared" (each step counted the asker's depth on, cut at
+40); a declaration keeps how much deeper its type's computation nested beside the type
+(Decl::typeNeeded), and a type under a substitution, kept in no declaration, is computed once within
+the outermost such computation (SubstTypeMemo: `using A2 = P<A1, A1>;` in a class template doubled
+the time per alias). A declaration whose type is asked while it is being computed (a C struct's
+member `UOW UOW;`, the name finding the member before the typedef) has no type there, at once, and
+the computation takes the name's other meaning; a computation a cycle was cut through from outside
+it is not kept (it holds for the way in, not for every asker). Past 4096 levels the variable whose type it is gets the error "the type of d:
+... nested more than 4096 deep" (clang's bound is 1024 nested instantiations). Specs
+templates/types_named_however_deep_they_are_written_or_reached and
+templates/type_nested_past_4096_declarations_is_error. Before, an 8 MB thread's stack ended about 980
 constants deep (a static_assert of one 1000 deep failed where a constexpr variable's passed), and
 which cached values a walk found decided whether a recursion past 1024 compiled (the same program
 had 10, 115 and 187 errors at -j 1, 8 and 32). Specs templates/constant_recursion_1024_constants_deep_on_every_thread

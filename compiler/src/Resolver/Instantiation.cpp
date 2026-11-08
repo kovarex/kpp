@@ -531,10 +531,10 @@ auto GlobalScope::Impl::templateArgument(Node* arg, Decl* param, const TypeConte
       // itself (its class without arguments, as deduction binds such a parameter).
       return types.classType(l.scope && l.scope->owner ? l.scope->owner : l.decl, {});
     else
-      return convertType(static_cast<Type*>(arg), ctx, depth + 1);
+      return convertType(static_cast<Type*>(arg), ctx, depth); // (a written type's parts keep the depth: convertType)
   }
   else if (uint8_t(arg->kind) <= uint8_t(NodeKind::PackType))
-    return convertType(static_cast<Type*>(arg), ctx, depth + 1);
+    return convertType(static_cast<Type*>(arg), ctx, depth);
   else if (arg->kind == NodeKind::UnaryExpr && !static_cast<UnaryExpr*>(arg)->isKeyword && P(static_cast<UnaryExpr*>(arg)->op) == P::Amp &&
            static_cast<UnaryExpr*>(arg)->operand && static_cast<UnaryExpr*>(arg)->operand->kind == NodeKind::NameExpr)
   {
@@ -1441,7 +1441,7 @@ auto GlobalScope::Impl::typeOfTypeDecl(Decl* d, const Lookup& l, const NamePart&
             own.push(static_cast<TemplateParamDecl*>(params[k])->name, params[k]);
           }
           TypeContext dctx{lexicalScopeOf(def), &own, &s, def->file ? def->file->tokens : nullptr, def->file ? def->file->text : std::string_view()};
-          args.push_back(templateArgument(p->defaultArg, p, dctx, depth));
+          args.push_back(templateArgument(p->defaultArg, p, dctx, depth + 1)); // (another declaration's: a step of depth, as a hop through a name is)
         }
       }
       // `Signal<>` of `template<typename... Args>`: written, its pack empty (no arguments at all).
@@ -1543,14 +1543,18 @@ auto GlobalScope::Impl::typeOfTypeDecl(Decl* d, const Lookup& l, const NamePart&
           if (!p->defaultArg)
             break;
           TypeContext dctx{lexicalScopeOf(u), &own, &s, u->file ? u->file->tokens : nullptr, u->file ? u->file->text : std::string_view()};
-          args.push_back(templateArgument(p->defaultArg, p, dctx, depth)); // `= Less<K>`: K is an earlier parameter, bound in s
+          args.push_back(templateArgument(p->defaultArg, p, dctx, depth + 1)); // `= Less<K>`: K is an earlier parameter, bound in s
           s.pairs.push_back({params[i], args.back()});
         }
         if (ctx.subst)
           for (const Subst::Pair& p : ctx.subst->pairs)
             s.pairs.push_back(p);
         TypeContext actx{lexicalScopeOf(u), &own, &s, u->file ? u->file->tokens : nullptr, u->file ? u->file->text : std::string_view()};
-        return convertType(u->type, actx, depth + 1);
+        // As a declared type is (declaredTypeOf): as if asked from the top, a level of its own.
+        CachedEvaluation level;
+        if (!level.ok)
+          return types.unknown();
+        return convertType(u->type, actx, 0);
       }
       // An alias local to a function body, named as a qualifier (`PrototypeType::IDType` after
       // `using PrototypeType = ListType::ThePrototypeType;` in a generic lambda): its type where
@@ -1592,6 +1596,10 @@ auto GlobalScope::Impl::typeOfTypeDecl(Decl* d, const Lookup& l, const NamePart&
   }
 }
 
+// The depth steps where a name leads to another declaration's text, never for a written type's own
+// parts (a pointee, an argument: the parser bounds how deep they nest), and a declaration's type is
+// converted from depth 0 (declaredTypeOf): a type written 21 class templates deep, `W<W<...>>`, named
+// its innermost class 'not declared'.
 auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) -> const Ty*
 {
   if (!t || depth > 40)
@@ -1864,13 +1872,13 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
       }
       return typeOfTypeDecl(l.decl, l, n->name.last(), ctx, depth);
     }
-    case NodeKind::PointerType: return types.pointer(convertType(static_cast<PointerType*>(t)->pointee, ctx, depth + 1));
-    case NodeKind::LRefType: return types.lref(convertType(static_cast<LRefType*>(t)->referenced, ctx, depth + 1));
-    case NodeKind::RRefType: return types.rref(convertType(static_cast<RRefType*>(t)->referenced, ctx, depth + 1));
+    case NodeKind::PointerType: return types.pointer(convertType(static_cast<PointerType*>(t)->pointee, ctx, depth));
+    case NodeKind::LRefType: return types.lref(convertType(static_cast<LRefType*>(t)->referenced, ctx, depth));
+    case NodeKind::RRefType: return types.rref(convertType(static_cast<RRefType*>(t)->referenced, ctx, depth));
     case NodeKind::ConstType:
     {
       auto* c = static_cast<ConstType*>(t);
-      return types.qualified(convertType(c->inner, ctx, depth + 1), c->isConst, c->isVolatile);
+      return types.qualified(convertType(c->inner, ctx, depth), c->isConst, c->isVolatile);
     }
     case NodeKind::ArrayType:
     {
@@ -1895,7 +1903,7 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
         }
       }
       auto n = constEval(a->size, ctx);
-      const Ty* element = convertType(a->element, ctx, depth + 1);
+      const Ty* element = convertType(a->element, ctx, depth);
       if (!n && a->size && a->size->kind == NodeKind::NameExpr)
       {
         // `const T (&array)[N]` with N a constant parameter not yet bound: the bound is N.
@@ -1912,7 +1920,7 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
       std::vector<const Ty*> params;
       for (Decl* p : f->params)
       {
-        const Ty* pt = convertType(static_cast<ParamDecl*>(p)->type, ctx, depth + 1);
+        const Ty* pt = convertType(static_cast<ParamDecl*>(p)->type, ctx, depth);
         // As a function's own (FunctionDecl): an array parameter is a pointer to its element
         // (`unsigned (*)(unsigned rep[3])` is `unsigned (*)(unsigned*)`), a top-level const is no
         // part of the type.
@@ -1943,7 +1951,7 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
       uint8_t memberQualifiers = (f->isConst ? TypeTable::MemberConst : 0) | (f->isVolatile ? TypeTable::MemberVolatile : 0) |
                                  (f->refQualifier == uint8_t(FunctionDecl::RefQualifier::LValue) ? TypeTable::MemberLValue : 0) |
                                  (f->refQualifier == uint8_t(FunctionDecl::RefQualifier::RValue) ? TypeTable::MemberRValue : 0);
-      return types.function(convertType(f->result, ctx, depth + 1), Span<const Ty*>{params.data(), uint32_t(params.size())}, f->isVariadic, false, isNoexcept, noexceptParam, memberQualifiers);
+      return types.function(convertType(f->result, ctx, depth), Span<const Ty*>{params.data(), uint32_t(params.size())}, f->isVariadic, false, isNoexcept, noexceptParam, memberQualifiers);
     }
     case NodeKind::AutoType: return static_cast<AutoType*>(t)->isDecltypeAuto ? types.decltypeAutoType() : types.autoType();
     case NodeKind::DecltypeType:
@@ -2084,9 +2092,9 @@ auto GlobalScope::Impl::declContextFor(Decl* d, DeclContext& out) -> void
         collectVisibleLocalAliases(body, d->token, out.params);
 }
 
-auto GlobalScope::Impl::declaredTypeOf(Decl* d, const Subst* subst, int depth) -> const Ty*
+auto GlobalScope::Impl::declaredTypeOf(Decl* d, const Subst* subst, int /*depth*/) -> const Ty*
 {
-  if (!d || depth > 40)
+  if (!d)
     return types.unknown();
   // A closure type's call operator (closureCall): the closure type's signature, under any
   // substitution (a class derived from the closure asks with its own arguments, which name none of
@@ -2098,24 +2106,113 @@ auto GlobalScope::Impl::declaredTypeOf(Decl* d, const Subst* subst, int depth) -
   bool useCache = !subst || subst->empty();
   if (useCache)
     if (const Ty* cached = d->cachedType.load(std::memory_order_acquire))
-      return cached;
+      return cachedNestingFits(unpackNesting(d->typeNeeded.load(std::memory_order_relaxed))) ? cached : types.unknown();
   // What computing it reads belongs to the declaration's type, which any later asker shares;
   // seen through a substitution it is the asker's own (and not cached).
   std::optional<RecordInto> into;
   if (useCache && recordingDependencies)
     into.emplace(typeDependenciesOf(d));
-  const Ty* result = computeDeclaredType(d, subst, depth);
+  // A declaration whose type this thread is computing already (a C struct's member `UOW UOW;`, whose
+  // type's name finds the member first, then the typedef): no type from here, at once, and the way
+  // past it is taken (a name's other meaning); it ran on to the bound of 40 before, and the bound of
+  // levels now. Not kept by what it was cut through from (cycleCutAt).
+  if (useCache)
+    for (const TypeInProgress& p : typesInProgress)
+      if (p.decl == d)
+      {
+        cycleCutAt = std::min(cycleCutAt, p.level);
+        return types.unknown();
+      }
+  // Under a substitution, one computed earlier in the outermost such computation (SubstTypeMemo).
+  std::optional<SubstTypeMemo> ownMemo;
+  std::vector<const void*> memoKey;
+  if (!useCache && !substTypeMemo)
+  {
+    ownMemo.emplace(); // the outermost one under a substitution: what it computes inside is kept there
+    ownMemo->rootLevel = cachedLevels + 1;
+  }
+  else if (!useCache && cachedLevels + 1 - substTypeMemo->rootLevel >= SubstTypeMemo::fromLevel)
+  {
+    memoKey.push_back(d);
+    for (const Subst::Pair& p : subst->pairs)
+    {
+      memoKey.push_back(p.param);
+      memoKey.push_back(p.type);
+    }
+    if (substTypeMemo->types)
+      if (auto it = substTypeMemo->types->find(memoKey); it != substTypeMemo->types->end())
+        return cachedNestingFits(it->second.needed) ? it->second.type : types.unknown();
+  }
+  struct MemoScope
+  {
+    explicit MemoScope(std::optional<SubstTypeMemo>& own) : active(own.has_value())
+    {
+      if (active)
+        substTypeMemo = &*own;
+    }
+    ~MemoScope()
+    {
+      if (active)
+        substTypeMemo = nullptr;
+    }
+    MemoScope(const MemoScope&) = delete;
+    MemoScope& operator=(const MemoScope&) = delete;
+
+    bool active;
+  } memoScope(ownMemo);
+  // As if asked from the top, whoever asks from how deep: a level of its own (CachedEvaluation),
+  // which bounds a recursion through declarations (`using A2 = W<A1>;`, a member alias naming
+  // its class's next instance's) and keeps how much deeper it nested beside the type it keeps.
+  // (Each declaration counted the depth of its asker on, cut at 40: an alias of an alias of ... 8
+  // deep, or a type written 21 class templates deep, named a class 'not declared'.)
+  CachedEvaluation level;
+  if (!level.ok)
+    return types.unknown();
+  struct InProgress
+  {
+    InProgress(Decl* d, bool own) : outerCut(cycleCutAt), own(own)
+    {
+      cycleCutAt = INT_MAX;
+      if (own)
+        typesInProgress.push_back({d, cachedLevels});
+    }
+    ~InProgress()
+    {
+      if (own)
+        typesInProgress.pop_back();
+      cycleCutAt = std::min(outerCut, cycleCutAt);
+    }
+    InProgress(const InProgress&) = delete;
+    InProgress& operator=(const InProgress&) = delete;
+
+    int outerCut;
+    bool own;
+  } inProgress(d, useCache);
+  const Ty* result = computeDeclaredType(d, subst, 0);
+  // A cycle cut through an outer computation's declaration: this answer holds for the way in this
+  // asker came, not for every asker (kept, it would answer by which came first).
+  bool cutFromOutside = cycleCutAt < cachedLevels;
   // C's calling convention on what a C header declares (its functions' types, its typedefs', fields'
   // and parameters' function pointers) and on an extern "C" function's own type (withCConvention).
   if (result && result->isKnown() && d->file && d->file->isImported)
     result = withCConvention(result, true);
   else if (result && d->kind == NodeKind::FunctionDecl && (d->flags & DF_ExternC) && result->kind == TyKind::Function)
     result = withCConvention(result, false);
-  // Only a known type, auto-free: an unknown one may come from the depth limit of whoever asked
-  // first (or a deduction not possible yet), and kept it would answer every later asker, so
-  // later uses were typed or not by which thread asked first.
-  if (useCache && result->isKnown() && !containsAuto(result))
-    d->cachedType.store(result, std::memory_order_release);
+  // Only a known type, auto-free, computed without a trip: an unknown one may come from a deduction
+  // not possible yet, and kept it would answer every later asker, so later uses were typed or not by
+  // which thread asked first; one computed past a bound may hold unknown parts (W<?>).
+  if (!memoKey.empty() && !level.tripped() && !cutFromOutside)
+  {
+    if (!substTypeMemo->types)
+      substTypeMemo->types.emplace();
+    substTypeMemo->types->emplace(std::move(memoKey), SubstTypeMemo::Entry{result, level.needed()});
+  }
+  if (useCache && result->isKnown() && !containsAuto(result) && !level.tripped() && !cutFromOutside)
+    if (std::optional<uint32_t> needed = packNesting(level.needed()))
+    {
+      d->typeNeeded.store(*needed, std::memory_order_relaxed);
+      d->cachedType.store(result, std::memory_order_release);
+    }
   return result;
 }
 
@@ -3594,6 +3691,10 @@ auto GlobalScope::Impl::spliceIfPack(const Ty* sub, std::vector<const Ty*>& out)
   return false;
 }
 
+// A type's own parts (arguments, a pointee) keep the depth, as a written type's do (convertType): a
+// type 17 class templates deep kept its parameters past the bound (a function template's return type
+// `W<W<...<T>...>>` was unknown). What leads to another declaration (resolveSpecialization,
+// memberTypeOf) takes a step.
 auto GlobalScope::Impl::substitute(const Ty* t, const Subst& s, int depth) -> const Ty*
 {
   if (!t || s.empty() || depth > 16)
@@ -3609,7 +3710,7 @@ auto GlobalScope::Impl::substitute(const Ty* t, const Subst& s, int depth) -> co
           // arguments (a pack's elements for `Spec<Args...>`).
           std::vector<const Ty*> args;
           for (const Ty* a : t->args)
-            if (const Ty* sub = substitute(a, s, depth + 1); !spliceIfPack(sub, args))
+            if (const Ty* sub = substitute(a, s, depth); !spliceIfPack(sub, args))
               args.push_back(sub);
           const Ty* applied = resolveSpecialization(types.classType(r->decl, Span<const Ty*>{args.data(), uint32_t(args.size())}), depth + 1);
           return types.qualified(applied, t->isConst, t->isVolatile);
@@ -3620,7 +3721,7 @@ auto GlobalScope::Impl::substitute(const Ty* t, const Subst& s, int depth) -> co
           // one applied to the arguments (a pack's elements for `TT<Ts...>`).
           std::vector<const Ty*> args;
           for (const Ty* a : t->args)
-            if (const Ty* sub = substitute(a, s, depth + 1); !spliceIfPack(sub, args))
+            if (const Ty* sub = substitute(a, s, depth); !spliceIfPack(sub, args))
               args.push_back(sub);
           return types.qualified(types.param(r->decl, Span<const Ty*>{args.data(), uint32_t(args.size())}), t->isConst, t->isVolatile);
         }
@@ -3630,7 +3731,7 @@ auto GlobalScope::Impl::substitute(const Ty* t, const Subst& s, int depth) -> co
       {
         std::vector<const Ty*> args;
         for (const Ty* a : t->args)
-          args.push_back(substitute(a, s, depth + 1));
+          args.push_back(substitute(a, s, depth));
         return types.qualified(types.param(t->decl, Span<const Ty*>{args.data(), uint32_t(args.size())}), t->isConst, t->isVolatile);
       }
       return t;
@@ -3638,7 +3739,7 @@ auto GlobalScope::Impl::substitute(const Ty* t, const Subst& s, int depth) -> co
     {
       // `T::Unit` with T now a class, `Num<I>::Type` with I now known: the member type inside
       // it (inside the specialisation the arguments pick, when there is one).
-      const Ty* sub = substitute(t->inner, s, depth + 1);
+      const Ty* sub = substitute(t->inner, s, depth);
       if (sub && sub->kind == TyKind::Class && !types.isDependent(sub))
         sub = resolveSpecialization(sub, depth + 1);
       // (Also the current instantiation, the class with its own parameters: `typename ID<T,
@@ -3651,31 +3752,31 @@ auto GlobalScope::Impl::substitute(const Ty* t, const Subst& s, int depth) -> co
           return types.qualified(r, t->isConst || r->isConst, t->isVolatile);
       return sub == t->inner ? t : types.qualified(types.dependentMember(sub, uint32_t(t->value)), t->isConst, t->isVolatile);
     }
-    case TyKind::Pointer: return types.qualified(types.pointer(substitute(t->inner, s, depth + 1)), t->isConst, t->isVolatile);
-    case TyKind::LRef: return types.lref(substitute(t->inner, s, depth + 1));
-    case TyKind::RRef: return types.rref(substitute(t->inner, s, depth + 1));
+    case TyKind::Pointer: return types.qualified(types.pointer(substitute(t->inner, s, depth)), t->isConst, t->isVolatile);
+    case TyKind::LRef: return types.lref(substitute(t->inner, s, depth));
+    case TyKind::RRef: return types.rref(substitute(t->inner, s, depth));
     case TyKind::Array:
       if (t->decl) // `T[N]`: N's value once bound
       {
         const Ty* bound = s.find(t->decl);
         if (bound && bound->kind == TyKind::Value && !bound->decl && bound->value > 0)
-          return types.array(substitute(t->inner, s, depth + 1), uint32_t(bound->value));
+          return types.array(substitute(t->inner, s, depth), uint32_t(bound->value));
         if (bound && bound->kind == TyKind::Param && bound->decl && bound->args.empty())
-          return types.dependentArray(substitute(t->inner, s, depth + 1), bound->decl); // N bound to another parameter M: `T[M]`
-        return types.dependentArray(substitute(t->inner, s, depth + 1), t->decl);
+          return types.dependentArray(substitute(t->inner, s, depth), bound->decl); // N bound to another parameter M: `T[M]`
+        return types.dependentArray(substitute(t->inner, s, depth), t->decl);
       }
-      return types.array(substitute(t->inner, s, depth + 1), t->count);
+      return types.array(substitute(t->inner, s, depth), t->count);
     case TyKind::MemberPointer:
-      return types.memberPointer(substitute(t->inner, s, depth + 1), t->args.empty() ? nullptr : substitute(t->args[0], s, depth + 1));
+      return types.memberPointer(substitute(t->inner, s, depth), t->args.empty() ? nullptr : substitute(t->args[0], s, depth));
     case TyKind::Member:
-      return types.member(substitute(t->inner, s, depth + 1), t->decl, t->args.empty() ? nullptr : substitute(t->args[0], s, depth + 1));
+      return types.member(substitute(t->inner, s, depth), t->decl, t->args.empty() ? nullptr : substitute(t->args[0], s, depth));
     case TyKind::Enum:
     {
       if (t->args.empty())
         return t;
       std::vector<const Ty*> args; // `Flag<Tag>::Enum` with Tag bound: that instance's enum
       for (const Ty* a : t->args)
-        if (const Ty* sub = substitute(a, s, depth + 1); !spliceIfPack(sub, args))
+        if (const Ty* sub = substitute(a, s, depth); !spliceIfPack(sub, args))
           args.push_back(sub);
       return types.qualified(types.enumType(t->decl, Span<const Ty*>{args.data(), uint32_t(args.size())}), t->isConst, t->isVolatile);
     }
@@ -3687,7 +3788,7 @@ auto GlobalScope::Impl::substitute(const Ty* t, const Subst& s, int depth) -> co
       std::vector<const Ty*> args;
       for (const Ty* a : t->args)
       {
-        const Ty* sub = substitute(a, s, depth + 1);
+        const Ty* sub = substitute(a, s, depth);
         if (t->kind != TyKind::Pack && spliceIfPack(sub, args))
           continue;
         args.push_back(sub);
@@ -3706,10 +3807,10 @@ auto GlobalScope::Impl::substitute(const Ty* t, const Subst& s, int depth) -> co
         }
         else if (n && n->kind == TyKind::Param)
           noexceptParam = n->decl;
-        return types.function(substitute(t->inner, s, depth + 1), span, t->variadic, t->isCConvention(), isNoexcept, noexceptParam, t->memberQualifiers());
+        return types.function(substitute(t->inner, s, depth), span, t->variadic, t->isCConvention(), isNoexcept, noexceptParam, t->memberQualifiers());
       }
       if (t->kind == TyKind::Lambda)
-        return types.lambda(substitute(t->inner, s, depth + 1), span, t->decl, t->value);
+        return types.lambda(substitute(t->inner, s, depth), span, t->decl, t->value);
       if (args.size() == 1 && args[0] && args[0]->kind == TyKind::Function && isLibraryFunction(t->decl, false))
         if (const Ty* f = functionOfSignature(args[0]))
           return types.qualified(f, t->isConst, t->isVolatile); // `Function<T>` with T = void(): FunctionImpl<void>

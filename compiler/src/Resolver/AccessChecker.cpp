@@ -1174,7 +1174,7 @@ namespace
   const char* const namesTooDeep = "constants nested more than 1024 deep (each name's value needing the next one's, as a template recursion does)";
   const char* const callsTooDeep = "calls nested more than 512 deep";
   const char* const stackTooDeep = "an evaluation nested deeper than the compiler's stack";
-  const char* const cachedTooDeep = "class templates' specialisations, layouts, traits and static members nested more than 4096 deep";
+  const char* const cachedTooDeep = "declarations' types, class templates' specialisations, layouts, traits and static members nested more than 4096 deep";
 }
 
 auto GlobalScope::Impl::levelsTooDeep() -> const char* { return cachedTooDeep; }

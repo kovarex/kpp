@@ -9128,7 +9128,15 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
       if ((impl.accessWarnings || impl.accessErrors) && !probing && !retypingElements && !bodyOf && returnFrames.empty())
         impl.checkAccessIn(v); // (a local, also a lambda's in a member initializer: with the function it is in)
       // Deduce `auto` now that the initializer is typed, and cache it on the declaration.
+      // A type past a bound of nesting (`S<5000>::T` with S's member alias naming S<N - 1>'s, 4096
+      // levels) is an error saying so, where codegen said only that a type could not be resolved.
+      uint64_t tripsBefore = Impl::evaluationTrips;
+      std::string savedWhy = std::move(Impl::constWhy());
+      Impl::constWhy().clear();
       const Ty* declared = impl.declaredTypeOf(v, activeSubst, 0);
+      if (Impl::evaluationTrips != tripsBefore && !probing && !Impl::constWhy().empty() && !v->name.empty())
+        impl.reportCheckerError(file, v->token, "the type of " + std::string(impl.symbols.name(v->name.last().symbol)) + ": " + Impl::constWhy());
+      Impl::constWhy() = std::move(savedWhy);
       // A retype with no arguments (a plain function's walk again after one per element of a `for
       // constexpr` in its body or a lambda's there) deduces an `auto` local again: the type cached on
       // it is the last element's walk's (a lambda's closure of that element, whose call operator

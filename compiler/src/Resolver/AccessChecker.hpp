@@ -245,10 +245,10 @@
     bool ok;
   };
   // A cached answer's computation (memberConstant, constLayoutOf, resolveSpecialization,
-  // traitValue): how much deeper it nested (needed), whether it tripped (then it is not cached), and
-  // its own budget of steps and values and its own const globals' values (constGlobalValues), as if
-  // nothing had been evaluated before it: an answer, and what it needed, are the same whoever asked
-  // first.
+  // traitValue, declaredTypeOf, an alias template's type): how much deeper it nested (needed),
+  // whether it tripped (then it is not cached), and its own budget of steps and values and its own
+  // const globals' values (constGlobalValues), as if nothing had been evaluated before it: an answer,
+  // and what it needed, are the same whoever asked first.
   struct CachedEvaluation
   {
     CachedEvaluation()
@@ -263,7 +263,11 @@
         evaluationTrip(levelsTooDeep());
       constSteps() = 0;
       constValuesMade() = 0;
-      std::swap(globals, constGlobalValues());
+      if (!constGlobalValues().empty()) // (an empty map is no allocation: most computations evaluate no global)
+      {
+        globals.emplace();
+        std::swap(*globals, constGlobalValues());
+      }
     }
     ~CachedEvaluation()
     {
@@ -273,7 +277,10 @@
       deepestLevels = std::max(outerLevels, deepestLevels);
       constSteps() = steps;
       constValuesMade() = made;
-      std::swap(globals, constGlobalValues());
+      if (globals)
+        std::swap(*globals, constGlobalValues());
+      else
+        constGlobalValues().clear();
     }
     CachedEvaluation(const CachedEvaluation&) = delete;
 
@@ -290,13 +297,51 @@
     uint64_t trips;
     uint64_t steps;
     uint64_t made;
-    std::map<std::pair<Decl*, std::vector<const Ty*>>, ConstValue> globals;
+    std::optional<std::map<std::pair<Decl*, std::vector<const Ty*>>, ConstValue>> globals; // the asker's, none when it had none
     CachedEvaluation& operator=(const CachedEvaluation&) = delete;
   };
   // A cached answer whose computation nested `needed` deeper, asked here: false (a trip) when that
   // is past a bound, as computing it here would have been.
   static bool cachedNestingFits(Nesting needed);
+  // A Nesting in 32 bits, for a cache kept in a declaration (Decl::typeNeeded): names in 11 bits,
+  // calls in 10, levels in 11; none when it does not fit (an answer that needed more levels is not
+  // kept, and computed anew is counted as it is).
+  static std::optional<uint32_t> packNesting(Nesting n)
+  {
+    if (n.names < 0 || n.names >= 2048 || n.calls < 0 || n.calls >= 1024 || n.levels < 0 || n.levels >= 2048)
+      return std::nullopt;
+    return uint32_t(n.names) | uint32_t(n.calls) << 11 | uint32_t(n.levels) << 21;
+  }
+  static Nesting unpackNesting(uint32_t p) { return {int(p & 2047), int(p >> 11 & 1023), int(p >> 21)}; }
   static const char* levelsTooDeep();
+  // Declared types under a substitution (a class template's member alias given its instance's
+  // arguments) are not kept in their declaration; within one outermost such computation each one
+  // is computed once (`using A2 = P<A1, A1>;` in a class template computed A1 twice per level: time
+  // doubling with each alias), and an asker it answers nests as much deeper as it did.
+  struct SubstTypeMemo
+  {
+    struct Entry
+    {
+      const Ty* type;
+      Nesting needed;
+    };
+    std::optional<std::map<std::vector<const void*>, Entry>> types; // made at the first entry (most computations keep none)
+    int rootLevel = 0; // the outermost computation's level
+    // Kept from this many levels below it: a hit answers as computing it again would (its nesting
+    // included), so which are kept changes no answer; shallow ones are rarely asked again (the game:
+    // 1.8 million nested computations, a tenth of them asked twice) and cost a key and an entry each.
+    static constexpr int fromLevel = 4;
+  };
+  static thread_local SubstTypeMemo* substTypeMemo; // the outermost computation's, none outside one
+  // Declarations whose types this thread is computing (without a substitution), each with its
+  // computation's level, and the lowest level a cycle was cut at inside the current computation.
+  struct TypeInProgress
+  {
+    Decl* decl;
+    int level;
+  };
+  static thread_local std::vector<TypeInProgress> typesInProgress;
+  static thread_local int cycleCutAt;
 
   // A static member's value for a class instance's arguments, kept: a template recursion asks for
   // the same ones over and over. Not while a static_assert is checked (its class layouts are the

@@ -42,6 +42,9 @@ struct Decl : Node
   Access access = Access::Default;
   Span<Decl*> templateParams; // TemplateParamDecl*. Non-empty for templates.
   bool isTemplate = false;    // `template<...>` was present (possibly empty for specializations).
+  // How much deeper computing cachedType nested (the resolver's Nesting, packed: packNesting), stored
+  // before cachedType (in the padding after isTemplate: no larger a Decl).
+  std::atomic<uint32_t> typeNeeded{0};
   Decl* parent = nullptr;     // Lexically enclosing declaration, set by the parser.
   Scope* ownScope = nullptr;  // Set by the resolver for namespaces, classes and enums.
   std::atomic<const Ty*> cachedType{nullptr}; // Declared type, filled lazily by the type checker (non-dependent only).

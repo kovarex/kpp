@@ -1,0 +1,70 @@
+// spec: a type names its classes however deep it is written or reached: Foo<char, int> 30 class templates deep (W<W<...>>), as deep in a class template's member alias given it as its argument, at the end of 40 aliases each naming the last (`using A2 = W<A1>;`), at the end of a member alias naming its class's next instance's 100 times (S<100>::T, S<0> specialised), behind 60 pointers, and substituted 30 deep in a function template's return type and in a member alias its caller reads (`typename B::Y`); each declaration's type is converted as if asked from the top, whoever asks from how deep, and a type's own parts take no step of depth
+// (master's kpp: "the layout of W<?<...>>: the member inner (`T inner`) names 'W', which is not declared" from 21 class templates deep, 8 aliases, 8 instances; "the type 'Foo' is not declared" behind 30 pointers; "a local of unknown type" for a return type 17 deep: each step of a type and each declaration counted the asker's depth on, cut at 40, and a substitution 16 deep kept the parameters)
+template<typename T> struct W { T inner; };
+template<typename T, typename U> struct Foo { char small; static constexpr int which = 1; };
+template<typename T> struct Foo<T, int> { char big[100]; static constexpr int which = 2; };
+using Deep = W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<Foo<char, int>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>;
+template<typename T> struct Hold { using X = W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<T>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>; };
+using A0 = Foo<char, int>;
+using A1 = W<A0>;
+using A2 = W<A1>;
+using A3 = W<A2>;
+using A4 = W<A3>;
+using A5 = W<A4>;
+using A6 = W<A5>;
+using A7 = W<A6>;
+using A8 = W<A7>;
+using A9 = W<A8>;
+using A10 = W<A9>;
+using A11 = W<A10>;
+using A12 = W<A11>;
+using A13 = W<A12>;
+using A14 = W<A13>;
+using A15 = W<A14>;
+using A16 = W<A15>;
+using A17 = W<A16>;
+using A18 = W<A17>;
+using A19 = W<A18>;
+using A20 = W<A19>;
+using A21 = W<A20>;
+using A22 = W<A21>;
+using A23 = W<A22>;
+using A24 = W<A23>;
+using A25 = W<A24>;
+using A26 = W<A25>;
+using A27 = W<A26>;
+using A28 = W<A27>;
+using A29 = W<A28>;
+using A30 = W<A29>;
+using A31 = W<A30>;
+using A32 = W<A31>;
+using A33 = W<A32>;
+using A34 = W<A33>;
+using A35 = W<A34>;
+using A36 = W<A35>;
+using A37 = W<A36>;
+using A38 = W<A37>;
+using A39 = W<A38>;
+using A40 = W<A39>;
+template<int N> struct S { using T = W<typename S<N - 1>::T>; };
+template<> struct S<0> { using T = Foo<char, int>; };
+template<typename T> auto make(T) -> W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<T>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> { return {}; }
+template<typename B> typename B::X viaMember(B) { return {}; }
+int main()
+{
+  Deep a;
+  Hold<Foo<char, int>>::X b;
+  A40 c;
+  S<100>::T d;
+  Foo<char, int>************************************************************ p = nullptr;
+  auto e = make(Foo<char, int>{});
+  auto f = viaMember(Hold<Foo<char, int>>{});
+  println(sizeof(a), " ", sizeof(a.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner), " ", decltype(a.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner)::which);
+  println(sizeof(b), " ", sizeof(b.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner), " ", decltype(b.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner)::which);
+  println(sizeof(c), " ", sizeof(c.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner), " ", decltype(c.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner)::which);
+  println(sizeof(d), " ", sizeof(d.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner), " ", decltype(d.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner)::which);
+  println(sizeof(e), " ", sizeof(e.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner), " ", decltype(e.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner)::which);
+  println(sizeof(f), " ", sizeof(f.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner), " ", decltype(f.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner)::which);
+  println(sizeof(p), " ", sizeof(************************************************************p), " ", sizeof(decltype(***********************************************************p)));
+  return 0;
+}

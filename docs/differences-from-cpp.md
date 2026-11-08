@@ -625,7 +625,10 @@ static_assert(twice(4) == 8);
 - **kpp:** constants whose values need each other nest at most 1024 deep (the one asked included)
   and calls 512, counted as if
   nothing had been evaluated before: a cached value keeps how deep its own computation went.
-  `Sum<1100>::value` is no constant wherever it is asked.
+  `Sum<1100>::value` is no constant wherever it is asked. Declarations' types, specialisations,
+  layouts and traits nested in one another count as levels, at most 4096: a member alias naming
+  its class's next instance's (`using T = W<typename S<N - 1>::T>;`) compiles 4000 deep, where clang
+  stops at 1024 nested instantiations; past 4096 it is an error saying so.
 - **Why:** kpp's declarations have no order and its threads take work in no fixed one: counting
   what happened to be made first would make an answer depend on which thread asked first.
 - **See:** [compile-time evaluation][dconst].

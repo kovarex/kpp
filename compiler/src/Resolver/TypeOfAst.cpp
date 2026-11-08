@@ -169,7 +169,7 @@ auto GlobalScope::Impl::traitArgs(const NamePart& part, const TypeContext& ctx, 
   {
     if (!isTypeNode(a))
       return {};
-    const Ty* t = convertType(static_cast<Type*>(a), ctx, depth + 1);
+    const Ty* t = convertType(static_cast<Type*>(a), ctx, depth);
     if (t && t->kind == TyKind::Pack)
     {
       for (const Ty* element : t->args)
