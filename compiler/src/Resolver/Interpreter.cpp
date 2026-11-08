@@ -2769,11 +2769,30 @@ auto GlobalScope::Impl::constBinaryValues(P op, const ConstValue& l, const Const
           return nullptr;
     return f;
   };
+  // A free operator function template's arguments, as the operands deduce them (the rewritten relation's way
+  // below): a call of the two operands' expressions, in the order the operator takes them (`b == a` for `a != b`
+  // reversed), bound by constBindTemplate. False where it does not deduce, or where the operands have no
+  // expressions here (an evaluation's own comparison, no node). A function takes none: true.
+  auto bindFree = [&](FunctionDecl* free, const ConstValue& a, const ConstValue& b, const ConstOperand* ao, const ConstOperand* bo, Subst& deduced) -> bool {
+    if (free->templateParams.empty())
+      return true;
+    if (!node || !lo || !ro || lo == ro || !((ao == lo && bo == ro) || (ao == ro && bo == lo)))
+      return false;
+    CallExpr call{};
+    call.kind = NodeKind::CallExpr;
+    call.token = node->token;
+    Expr* operands[2] = {ao == lo ? node->lhs : node->rhs, ao == lo ? node->rhs : node->lhs};
+    call.args = Span<Expr*>{operands, 2};
+    LocalStack own;
+    std::vector<uint8_t> categories{ao->category, bo->category};
+    return constBindTemplate(free, {}, &call, {a, b}, ctx, depth, deduced, own, &categories);
+  };
   auto direct = [&](P o, const ConstValue& a, const ConstValue& b, const ConstOperand* ao = nullptr,
                     const ConstOperand* bo = nullptr) -> std::optional<std::optional<ConstValue>> {
     FunctionDecl* chosen = recorded(o, ao, bo);
     bool chosenFree = chosen && !node->calleeMember;
     FunctionDecl* ranked = nullptr; // a free operator taking the operands better than the class's member
+    Subst freeArgs;                 // a free operator function template's, as the operands deduce them (bindFree)
     if (!chosenFree && a.isObject() && a.type && types.unqualified(a.type)->kind == TyKind::Class)
     {
       Subst subst;
@@ -2786,9 +2805,12 @@ auto GlobalScope::Impl::constBinaryValues(P op, const ConstValue& l, const Const
         // (freeOperatorBeatsMember): a free one taking the operands strictly better is called.
         const Ty* at = constOperandType(a, ao);
         const Ty* bt = constOperandType(b, bo);
-        if (FunctionDecl* free = constFreeFunction(opSymbols[uint32_t(o)], {at, bt}, ctx.scope); free && freeOperatorBeatsMember(free, Subst{}, f, subst, at, bt, 2))
+        Subst deduced;
+        if (FunctionDecl* free = constFreeFunction(opSymbols[uint32_t(o)], {at, bt}, ctx.scope, true);
+            free && bindFree(free, a, b, ao, bo, deduced) && freeOperatorBeatsMember(free, deduced, f, subst, at, bt, 2))
         {
           ranked = free;
+          freeArgs = deduced;
           f = nullptr;
         }
       }
@@ -2817,7 +2839,21 @@ auto GlobalScope::Impl::constBinaryValues(P op, const ConstValue& l, const Const
         return constCallOn(f, subst, {b}, &self, depth + 1);
       }
     }
-    FunctionDecl* free = chosenFree ? chosen : ranked ? ranked : constFreeFunction(opSymbols[uint32_t(o)], {constOperandType(a, ao), constOperandType(b, bo)}, ctx.scope);
+    // A free operator, a function template's under what the operands deduce (`Box<int>{1} == Box<int>{1}` for
+    // `template<class T> bool operator==(const Box<T>&, const Box<T>&)`; until 2026-11-08 only a function was
+    // looked up here, a template's never called but in a rewritten relation); one that does not deduce here, the
+    // functions alone as before.
+    FunctionDecl* free = chosenFree ? chosen : ranked;
+    if (!free)
+    {
+      std::vector<const Ty*> operandTypes{constOperandType(a, ao), constOperandType(b, bo)};
+      free = constFreeFunction(opSymbols[uint32_t(o)], operandTypes, ctx.scope, true);
+      if (free && !bindFree(free, a, b, ao, bo, freeArgs))
+      {
+        freeArgs = Subst{};
+        free = constFreeFunction(opSymbols[uint32_t(o)], operandTypes, ctx.scope);
+      }
+    }
     if (ao == lo && bo == ro)
       verify(o, free, false);
     if (FunctionDecl* f = free)
@@ -2826,11 +2862,11 @@ auto GlobalScope::Impl::constBinaryValues(P op, const ConstValue& l, const Const
       {
         std::vector<std::optional<ConstPlace>> places{ao->place, bo->place};
         std::vector<uint8_t> categories{ao->category, bo->category};
-        if (returned && constReturnsLRef(f, Subst{}))
-          return constReferred(constCallOn(f, Subst{}, {a, b}, nullptr, depth + 1, nullptr, &places, &categories, returned), *returned);
-        return constCallOn(f, Subst{}, {a, b}, nullptr, depth + 1, nullptr, &places, &categories);
+        if (returned && constReturnsLRef(f, freeArgs))
+          return constReferred(constCallOn(f, freeArgs, {a, b}, nullptr, depth + 1, nullptr, &places, &categories, returned), *returned);
+        return constCallOn(f, freeArgs, {a, b}, nullptr, depth + 1, nullptr, &places, &categories);
       }
-      return constCallOn(f, Subst{}, {a, b}, nullptr, depth + 1);
+      return constCallOn(f, freeArgs, {a, b}, nullptr, depth + 1);
     }
     return std::nullopt; // no such operator
   };
