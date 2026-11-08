@@ -1,0 +1,17 @@
+// spec: a variable template's partial specialization takes its arguments as template arguments, as a class template's does: `T` keeps an array, a reference or a function type (W<int[3], int*>, W<int&, int*>, W<int(char), int*> take `W<T, U*>`), a parameter two arguments deduce must come out the same from both (`W2<T, const T>` not W2<const int, const int>), and `const T` never matches a function type. clang's and g++'s output
+// found by thread J's template generator (2026-11-08): the arguments were deduced as a call's, decayed (T int* for int[3], int for int&), so none of them matched and the primary was taken
+extern "C" int printf(const char* format, ...);
+template<class A, class B> constexpr int W = 0;
+template<class T, class U> constexpr int W<T, U*> = 2;
+template<class R, class A> constexpr int W<R(A), R> = 3;
+template<class A, class B> constexpr int W2 = 0;
+template<class T> constexpr int W2<T, const T> = 1;
+template<class T> constexpr int W2<T&, T> = 2;
+template<class T> constexpr int W2<T[2], T> = 3;
+int main()
+{
+  printf("%d %d %d %d %d\n", W<int[3], int*>, W<int&, int*>, W<int, int*>, W<int(char), int*>, W<int(char), int>);
+  printf("%d %d %d %d\n", W2<const int, const int>, W2<int, const int>, W2<int(char), int(char)>, W2<int&, int>);
+  printf("%d %d\n", W2<char[2], char>, W2<char[3], char>);
+  return 0;
+}

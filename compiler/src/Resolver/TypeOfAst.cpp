@@ -73,8 +73,21 @@ auto GlobalScope::Impl::variableSpecialization(VariableDecl* primary, const std:
         ok = false;
       else if (types.isDependent(pattern))
       {
-        deduce(pattern, args[i], m.s);
-        ok = substitute(pattern, m.s) == args[i];
+        // As a class template's partial specialization (matchPatterns): a template argument, not a
+        // call's (`T` keeps int[3], int& and int(char), which a call's decays: W<int[3], int*> matched
+        // no `W<T, U*>` until 2026-11-08), each argument on its own, a parameter two deduce the
+        // same from both.
+        Subst one;
+        deduceArgument(pattern, args[i], one, 1);
+        ok = !one.failed;
+        for (const Subst::Pair& q : one.pairs)
+        {
+          if (const Ty* had = m.s.find(q.param))
+            ok = ok && sameArgument(had, q.type);
+          else
+            m.s.pairs.push_back(q);
+        }
+        ok = ok && sameArgument(substitute(pattern, m.s), args[i]);
       }
       else
         ok = pattern == args[i];
@@ -103,8 +116,21 @@ auto GlobalScope::Impl::variableSpecialization(VariableDecl* primary, const std:
           return false;
         continue;
       }
-      deduce(b.patterns[i], a.patterns[i], t);
-      if (substitute(b.patterns[i], t) != a.patterns[i])
+      Subst one;
+      deduceArgument(b.patterns[i], a.patterns[i], one, 1);
+      if (one.failed)
+        return false;
+      for (const Subst::Pair& q : one.pairs)
+      {
+        if (const Ty* had = t.find(q.param))
+        {
+          if (!sameArgument(had, q.type))
+            return false;
+        }
+        else
+          t.pairs.push_back(q);
+      }
+      if (!sameArgument(substitute(b.patterns[i], t), a.patterns[i]))
         return false;
     }
     return true;
