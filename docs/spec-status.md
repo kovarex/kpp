@@ -6,13 +6,13 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**1955 pass, 1 pending, 0 failing, 0 fixed** (1956 snippets, 217.8 s).
+**1955 pass, 1 pending, 0 failing, 0 fixed** (1956 snippets, 337.2 s).
 
 ## Language: statements, expressions, declarations
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
-| `language/address_of_an_overload_set_with_a_template_takes_the_function_the_target_needs.kpp` | a function's name passed to a pointer to function picks, from its overload set, the function whose type the target needs, a function template among them or not ([over.over]): here the plain function, whose type the pointer names (`5`) | pending |  | codegen does not support taking the address of a function template without all its arguments: the template is taken for the address. Found with the library's sample(first, last, out, n, g) beside the imgui smoke test's own `static float sample(void*, int)` (K, 2026-11-07); D; C:\kpp\.claude\worktrees\quizzical-thompson-530e04\compiler\tests\spec\language\address_of_an_overload_set_with_a_template_takes_the_function_the_target_needs.kpp:13: error: codegen does not support taking the address of a function template without all its arguments yet (in main()) |
+| `language/address_of_an_overload_set_with_a_template_takes_the_function_the_target_needs.kpp` | a function's name passed to a pointer to function picks, from its overload set, the function whose type the target needs, a function template among them or not ([over.over]): here the plain function, whose type the pointer names (`5`) | pending |  | codegen does not support taking the address of a function template without all its arguments: the template is taken for the address. Found with the library's sample(first, last, out, n, g) beside the imgui smoke test's own `static float sample(void*, int)` (K, 2026-11-07); D; C:\kpp-sandbox\worktrees\codegen\compiler\tests\spec\language\address_of_an_overload_set_with_a_template_takes_the_function_the_target_needs.kpp:13: error: codegen does not support taking the address of a function template without all its arguments yet (in main()) |
 | `language/abstract_declarators_nest.kpp` | a declarator with no name takes the forms a named one does: `int (**)(int)`, `int (*const *)(int)`, `int (*&)(int)`, `int (*(*)(bool))(int)`, `int (*[2])(int)`, `int (**)[3]`, in parameters, aliases, typedefs, sizeof, casts and template arguments | pass |  |  |
 | `language/adjacent_invokes_cleanup_once_release.kpp` | a call that throws runs only its own scope's cleanups, even when the next call's scope starts at its return address (release) | pass |  |  |
 | `language/alias_array_function_types.kpp` | aliases of array and function types: `using Row = int[3]`, `using Grid = size_t[2][3]`, `using Unary = double(double)` | pass |  |  |
