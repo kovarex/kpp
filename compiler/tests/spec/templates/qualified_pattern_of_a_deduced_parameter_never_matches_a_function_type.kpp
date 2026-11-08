@@ -1,0 +1,18 @@
+// spec: a parameter that one argument of a partial specialization deduces does not make another argument's `const T` or `volatile T` match a function type ([temp.deduct.type] 2: deducing `const T` from a function fails, which fails the whole match): `S<T, const T>` and `S<T, volatile T>` do not match S<int(char), int(char)>, `S<T, Box<const T>>` not S<int(char), Box<int(char)>>, `S<T, const T*>` not S<int(char), int(*)(char)>; S<int, const int> still takes `S<T, const T>`. clang's and g++'s output
+// found by thread J's template generator (2026-11-08): T was deduced from the first argument and `const T` substituted back to the function type, so S<int(char), int(char)> took `S<T, const T>`
+extern "C" int printf(const char* format, ...);
+template<class T> struct Box {};
+template<class A, class B> struct S { static int v() { return 0; } };
+template<class T> struct S<T, const T> { static int v() { return 100; } };
+template<class T> struct S<T, volatile T> { static int v() { return 200; } };
+template<class T> struct S<T, Box<const T>> { static int v() { return 300; } };
+template<class T> struct S<T, const T*> { static int v() { return 400; } };
+template<class A, class B> struct R { static int v() { return 0; } };
+template<class T> struct R<const T, T> { static int v() { return 1; } };
+int main()
+{
+  printf("%d %d %d\n", S<int(char), int(char)>::v(), S<void(), void()>::v(), S<int(char), Box<int(char)>>::v());
+  printf("%d %d %d\n", S<int(char), int(*)(char)>::v(), S<int, const int>::v(), S<int, Box<const int>>::v());
+  printf("%d %d %d\n", S<int, const int*>::v(), R<int(char), int(char)>::v(), R<const int, int>::v());
+  return 0;
+}

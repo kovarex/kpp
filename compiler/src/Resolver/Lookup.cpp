@@ -1093,7 +1093,7 @@ auto GlobalScope::Impl::matchPatterns(ClassDecl* c, Decl* primary, const std::ve
             if (!isPack(q.param))
               one.pairs.push_back(q);
           deduceArgument(pattern, args[j], one, 1);
-          if (!sameArgument(substitute(pattern, one), args[j]))
+          if (one.failed || !sameArgument(substitute(pattern, one), args[j]))
             return false;
           for (size_t k = 0; k < packs.size(); ++k)
           {
@@ -1140,6 +1140,10 @@ auto GlobalScope::Impl::matchPatterns(ClassDecl* c, Decl* primary, const std::ve
       // substitution was compared, which a const already there absorbed.
       Subst one;
       deduceArgument(pattern, args[i], one, 1);
+      // `S<T, const T>` given S<int(char), int(char)>: deducing `const T` from the function fails,
+      // though T from the first argument substitutes back to it (const on a function is dropped).
+      if (one.failed)
+        return false;
       for (const Subst::Pair& q : one.pairs)
       {
         if (const Ty* had = s.find(q.param))

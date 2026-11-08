@@ -2915,7 +2915,10 @@ auto GlobalScope::Impl::deduce(const Ty* pattern, const Ty* arg, Subst& out, int
     // qualifier, so none is `const T` (S<const T, U> matched S<int(char), U>, T the function; clang
     // and g++ have it so, as for `const T*` given a function below).
     if (depth > 0 && (pattern->isConst || pattern->isVolatile) && types.stripRef(arg)->kind == TyKind::Function)
+    {
+      out.failed = true;
       return;
+    }
     // `T value` takes the decayed argument; inside a pointer or a class (`T*`, `Vector<T>`) T
     // keeps the argument's qualifiers: `const int*` against `T*` makes T `const int`, but
     // against `const T*` int (the pattern's own qualifiers come off, as C++ deduces).

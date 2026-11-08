@@ -356,6 +356,9 @@ namespace resolver_detail
     bool empty() const { return pairs.empty(); }
 
     InlineVector<Pair, 4> pairs;
+    // A pattern that cannot match its argument at all (`const T` given a function type), as
+    // against one that deduces nothing from it: partial specialization matching fails on it.
+    bool failed = false;
   };
 
   inline bool isAllCaps(std::string_view s)
