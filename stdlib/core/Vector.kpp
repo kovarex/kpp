@@ -447,24 +447,8 @@ public:
     if constexpr (isBaseOf<ForwardIteratorTag, typename IteratorTraits<InputIt>::iterator_category>)
     {
       ContainerSize count = checkedSize(distance(first, last), "vector too long");
-      if constexpr (isPointer<InputIt> && isSame<RemoveConst<RemovePointer<InputIt>>, T> && isNothrowCopyConstructible<T> && isNothrowMoveConstructible<T> && (isNothrowMoveAssignable<T> || !isMoveAssignable<T>))
-      {
-        ContainerSize moved = this->openSlots(index, count);
-        InputIt rest = first;
-        for (ContainerSize i = 0; i < moved; ++i)
-          ++rest;
-        for (ContainerSize i = moved; i < count; ++i, ++rest)
-          new (this->items + index + i) T(*rest);
-        for (ContainerSize i = 0; i < moved; ++i, ++first)
-        {
-          if constexpr (requires { this->items[0] = *first; })
-            this->items[index + i] = *first;
-          else if constexpr (isMoveAssignable<T>)
-            this->items[index + i] = T(*first); // a conversion that is only explicit
-        }
-      }
-      else if constexpr (isPointer<InputIt> && isSame<RemoveConst<RemovePointer<InputIt>>, T>)
-        this->insertBuilt(index, Copies(first, 1), count);
+      if constexpr (isPointer<InputIt> && isSame<RemoveConst<RemovePointer<InputIt>>, T>)
+        this->insertCopies(index, first, count);
       else
         this->insertBuilt(index, first, count);
     }
@@ -476,8 +460,36 @@ public:
     return this->items + index;
   }
 
-  // `v.insert(position, {a, b, c})`.
-  T* insert(const T* position, InitializerList<T> list) { return this->insert(position, list.begin(), list.end()); }
+  // `v.insert(position, {a, b, c})`: the list's elements are copies, never this vector's.
+  T* insert(const T* position, InitializerList<T> list)
+  {
+    ContainerSize index = ContainerSize(position - this->items);
+    this->insertCopies(index, list.begin(), list.size());
+    return this->items + index;
+  }
+
+  // Copies of the count elements from first, which are not this vector's, before index: the work of
+  // insert(position, first, last) for pointers to elements and of insert(position, {...}). Not a
+  // template: insert(position, {...}) is a member kpp checks for every Vector<T>, and through the range
+  // insert it was insert<const T*> and distance<const T*> for every element type.
+  void insertCopies(ContainerSize index, const T* first, ContainerSize count)
+  {
+    if constexpr (isNothrowCopyConstructible<T> && isNothrowMoveConstructible<T> && (isNothrowMoveAssignable<T> || !isMoveAssignable<T>))
+    {
+      ContainerSize moved = this->openSlots(index, count);
+      for (ContainerSize i = moved; i < count; ++i)
+        new (this->items + index + i) T(first[i]);
+      for (ContainerSize i = 0; i < moved; ++i)
+      {
+        if constexpr (requires { this->items[0] = *first; })
+          this->items[index + i] = first[i];
+        else if constexpr (isMoveAssignable<T>)
+          this->items[index + i] = T(first[i]); // a conversion that is only explicit
+      }
+    }
+    else
+      this->insertBuilt(index, Copies(first, 1), count);
+  }
 
   // The index forms take any integer type, so that a literal 0 is the index, not a null position
   // (with a ContainerSize parameter `v.insert(0, x)` would be ambiguous between the two).
