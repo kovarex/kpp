@@ -1,0 +1,20 @@
+// spec: an explicit instantiation definition (`template struct Box<int>;`) instantiates every member of the instance, used or not ([temp.explicit] 10): a member whose body is no valid code for it is an error, as clang says ("cannot initialize a variable of type 'int' with an lvalue of type 'const char[5]'") (a guard for thread A's lazy instance members, D's review of 2026-11-08)
+// pending: kpp's explicit instantiation builds the instance's static data members only, and an unused member function's errors are shown only when it is emitted, so the program builds (found by D reviewing A's lazy instance members, 2026-11-08); D
+// error: explicit_instantiation_instantiates_every_member_is_error.kpp:11: error: a pointer (const char*) does not convert to int32 without a cast
+template<typename T>
+struct Box
+{
+  T value{};
+  int get() const { return 1; }
+  int bad() const
+  {
+    T x = "text";
+    return 2;
+  }
+};
+template struct Box<int>;
+int main()
+{
+  Box<int> b;
+  return b.get();
+}

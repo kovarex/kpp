@@ -1,0 +1,20 @@
+// spec: a member function of a class template's instance that nothing uses is not instantiated ([temp.inst] 11): its body, no valid code for this instance (`T x = "text";` and `this->value.size()` with T = int), compiles, and the members used run; clang's `1 5` (a guard for thread A's lazy instance members, D's review of 2026-11-08); templates/used_member_of_an_instance_is_error has the members used
+template<typename T>
+struct Box
+{
+  T value{};
+  int get() const { return 1; }
+  T add(T more) const { return this->value + more; }
+  int bad() const
+  {
+    T x = "text";
+    return 2;
+  }
+  int badSize() const { return this->value.size(); }
+};
+int main()
+{
+  Box<int> b;
+  println(b.get(), " ", b.add(5));
+  return 0;
+}

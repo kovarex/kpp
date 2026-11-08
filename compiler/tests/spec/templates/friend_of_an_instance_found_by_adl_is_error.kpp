@@ -1,0 +1,18 @@
+// spec: a friend function defined in a class template is instantiated with the instance whose argument argument-dependent lookup finds it through, when it is called ([temp.inst] 11, [basic.lookup.argdep] 4): what its body is no valid code for in that instance is an error, as clang says (a guard for thread A's lazy instance members, D's review of 2026-11-08)
+// error: friend_of_an_instance_found_by_adl_is_error.kpp:9: error: a pointer (const char*) does not convert to int32 without a cast
+template<typename T>
+struct Box
+{
+  T value{};
+  friend int measure(const Box& b)
+  {
+    T x = "text";
+    return 2;
+  }
+};
+int main()
+{
+  Box<int> b;
+  println(measure(b));
+  return 0;
+}

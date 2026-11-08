@@ -1,0 +1,28 @@
+// spec: the destructor of a class template's instance that a local's end calls, and no written call names, is instantiated: what its body is no valid code for in that instance is an error, as clang says, two instances' at their lines (templates/destructor_of_an_instance_used_implicitly_one_thread_is_error: the same at -j 1) (a guard for thread A's lazy instance members, D's review of 2026-11-08)
+// error: destructor_of_an_instance_used_implicitly_is_error.kpp:10: error: a pointer (const char*) does not convert to int32 without a cast
+// error: destructor_of_an_instance_used_implicitly_is_error.kpp:19: error: a pointer (const char*) does not convert to long without a cast
+template<typename T>
+struct Holder
+{
+  T value{};
+  ~Holder()
+  {
+    T x = "text";
+  }
+};
+template<typename T>
+struct Keeper
+{
+  T value{};
+  ~Keeper()
+  {
+    T y = "other";
+  }
+};
+int main()
+{
+  Holder<int> h;
+  Keeper<long> k;
+  println(h.value, " ", k.value);
+  return 0;
+}

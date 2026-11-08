@@ -1,0 +1,29 @@
+// spec: templates/destructor_of_an_instance_used_implicitly_is_error built at -j 1: the same two errors whatever the threads, where codegen alone asks for the destructors (a guard for thread A's lazy instance members, D's review of 2026-11-08)
+// kpp: -j 1
+// error: destructor_of_an_instance_used_implicitly_one_thread_is_error.kpp:11: error: a pointer (const char*) does not convert to int32 without a cast
+// error: destructor_of_an_instance_used_implicitly_one_thread_is_error.kpp:20: error: a pointer (const char*) does not convert to long without a cast
+template<typename T>
+struct Holder
+{
+  T value{};
+  ~Holder()
+  {
+    T x = "text";
+  }
+};
+template<typename T>
+struct Keeper
+{
+  T value{};
+  ~Keeper()
+  {
+    T y = "other";
+  }
+};
+int main()
+{
+  Holder<int> h;
+  Keeper<long> k;
+  println(h.value, " ", k.value);
+  return 0;
+}

@@ -1,0 +1,17 @@
+// spec: a member function of a class template's instance that is used is instantiated, and what its body is no valid code for in that instance is an error at its line ([temp.inst] 11; clang: "cannot initialize a variable of type 'int' with an lvalue of type 'const char[5]'") (a guard for thread A's lazy instance members, D's review of 2026-11-08)
+// error: used_member_of_an_instance_is_error.kpp:9: error: a pointer (const char*) does not convert to int32 without a cast
+template<typename T>
+struct Box
+{
+  T value{};
+  int bad() const
+  {
+    T x = "text";
+    return 2;
+  }
+};
+int main()
+{
+  Box<int> b;
+  return b.bad();
+}

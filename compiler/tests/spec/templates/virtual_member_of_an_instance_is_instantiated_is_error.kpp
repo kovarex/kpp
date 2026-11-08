@@ -1,0 +1,20 @@
+// spec: a virtual member function of a class template's instance whose object is made is instantiated with the vtable, called or not ([temp.inst] 11 leaves it unspecified; clang, MSVC and kpp instantiate it): what its body is no valid code for in that instance is an error, as clang says (a guard for thread A's lazy instance members, D's review of 2026-11-08)
+// error: virtual_member_of_an_instance_is_instantiated_is_error.kpp:10: error: a pointer (const char*) does not convert to int32 without a cast
+template<typename T>
+class Shape
+{
+public:
+  virtual ~Shape() {}
+  virtual int area() const
+  {
+    T x = "text";
+    return 2;
+  }
+  int sides() const { return 4; }
+};
+int main()
+{
+  Shape<int> s;
+  println(s.sides());
+  return 0;
+}

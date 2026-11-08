@@ -1,0 +1,26 @@
+// spec: a member function of a base class template's instance is one function however it is reached (a derived object, the base's own, a cast to the base, a const reference to the derived): its function-local static is one variable, `1 2 3 4` as clang's, never one per way in (a guard for thread A's lazy instance members, D's review of 2026-11-08)
+template<typename T>
+struct Base
+{
+  int next() const
+  {
+    static int n = 0;
+    return ++n;
+  }
+};
+template<typename T>
+struct Derived : Base<T>
+{
+};
+int main()
+{
+  Derived<int> d;
+  Base<int> b;
+  const Derived<int>& c = d;
+  int first = d.next();
+  int second = b.next();
+  int third = static_cast<Base<int>&>(d).next();
+  int fourth = c.next();
+  println(first, " ", second, " ", third, " ", fourth);
+  return 0;
+}
