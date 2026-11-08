@@ -993,11 +993,23 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
             sh.barrierPieces.assign(sh.moduleCount, {});
           if (streaming)
             sh.streamedPieces.assign(sh.moduleCount, {});
+          // The largest pieces first, as the stream compiles them (BackEndPool): by the text of the
+          // definitions each module has at the barrier, nearly all of them the program functions'.
+          std::vector<unsigned> order(sh.moduleCount);
+          std::vector<size_t> written(sh.moduleCount);
+          for (unsigned k = 0; k < sh.moduleCount; ++k)
+          {
+            order[k] = k;
+            for (const Shared::Definition& d : sh.definitions[k])
+              written[k] += d.text.size();
+          }
+          std::stable_sort(order.begin(), order.end(), [&](unsigned a, unsigned b) { return written[a] > written[b]; });
           std::atomic<unsigned> nextPiece{0};
           auto assemblePieces = [&](unsigned)
           {
-            for (unsigned k; (k = nextPiece++) < sh.moduleCount;)
+            for (unsigned i; (i = nextPiece++) < sh.moduleCount;)
             {
+              unsigned k = order[i];
               bool complete = true;
               std::string errors; // (the end assembles the piece again and reports them)
               std::string text = programPieceText(sh, k, prefix, sources, &errors, &complete);

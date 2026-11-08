@@ -4,7 +4,9 @@
   // Step 4's P2 (docs/codegen-speed.md): the back end's threads in a build that streams. They compile the
   // program pieces codegen hands over at level 0's barrier while it emits the instances, below normal
   // priority so that codegen keeps the cores it uses; then (raise) the rest of the build's modules at
-  // normal priority.
+  // normal priority. The largest task queued first (its weight: a module's text size), those of one
+  // weight in the order they came: a large piece taken last ends the build alone (the game's 17 MB
+  // program piece of ValueToWidget, taken 93rd of 128 at the barrier, compiled 5.4 s past codegen's end).
   class BackEndPool
   {
   public:
@@ -26,11 +28,12 @@
         t.join();
     }
     // streamed: a program piece handed over at the barrier (waitStreamed).
-    void push(std::function<void()> task, bool streamed)
+    void push(std::function<void()> task, bool streamed, size_t weight)
     {
       {
         std::lock_guard lock(mutex);
-        queue.push_back({std::move(task), streamed});
+        queue.push_back({std::move(task), streamed, weight, nextOrder++});
+        std::push_heap(queue.begin(), queue.end(), lighter);
         ++pending;
         streamedPending += streamed;
       }
@@ -56,7 +59,11 @@
     {
       std::function<void()> run;
       bool streamed = false;
+      size_t weight = 0;
+      size_t order = 0;
     };
+    // The heap's order: the heaviest on top, of one weight the first pushed.
+    static bool lighter(const Task& a, const Task& b) { return a.weight != b.weight ? a.weight < b.weight : a.order > b.order; }
     void work()
     {
       bool lowered = false;
@@ -68,8 +75,9 @@
           ready.wait(lock, [&] { return closing || !queue.empty(); });
           if (queue.empty())
             return;
-          task = std::move(queue.front());
-          queue.pop_front();
+          std::pop_heap(queue.begin(), queue.end(), lighter);
+          task = std::move(queue.back());
+          queue.pop_back();
         }
         if (lowered != below)
         {
@@ -91,8 +99,8 @@
     std::vector<std::thread> workers;
     std::mutex mutex;
     std::condition_variable ready, done;
-    std::deque<Task> queue;
-    size_t pending = 0, streamedPending = 0, endedBelow = 0;
+    std::vector<Task> queue; // (a heap: lighter)
+    size_t pending = 0, streamedPending = 0, endedBelow = 0, nextOrder = 0;
     bool closing = false;
     std::atomic<bool> below{true};
   };

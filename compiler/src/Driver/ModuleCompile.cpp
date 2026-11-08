@@ -570,12 +570,13 @@ void runCodegen(Build& build)
       stream.piece = [&](unsigned k, std::string&& text)
       {
         handedOver[k] = 1;
+        size_t weight = text.size(); // (the largest first: BackEndPool)
         backEnd->push([&, k, text = std::move(text)]() mutable
         {
           std::string hashText;
           if (!unchangedObject(k, text, level, hashText))
             compileInProcess(k, text, hashText);
-        }, true);
+        }, true, weight);
       };
     }
     CodegenOptions codegenOptions{.debug = options.debug,
@@ -770,7 +771,7 @@ void runCodegen(Build& build)
       else if (handedOver[k])
         again.push_back(k);
       else
-        backEnd->push([&, k] { compileEnd(k); }, false);
+        backEnd->push([&, k] { compileEnd(k); }, false, cg.modules[k].size());
     if (!again.empty())
     {
       backEnd->waitStreamed();
@@ -788,7 +789,7 @@ void runCodegen(Build& build)
               ++f;
       }
       for (size_t k : again)
-        backEnd->push([&, k] { compileEnd(k); }, false);
+        backEnd->push([&, k] { compileEnd(k); }, false, cg.modules[k].size());
     }
     backEnd->wait();
   }
