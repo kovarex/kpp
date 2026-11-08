@@ -21,6 +21,9 @@ build with the same command line (the crash handler on):
 | **kpp final** (`kpp factorio final`: FinalRelease's configuration, full LTO) | **0.84x-0.87x** | **0.96x** | **0.97x** |
 | kpp release (ThinLTO) | 0.86x | 0.97x | 0.96x |
 
+Checked again on 2026-11-08 at master 776d920a, after the day's codegen changes: kpp final 0.86x on the
+menu maps, 0.98x and 0.96x on the saves, inside the same spread ([the section below](#the-check-at-master-776d920a-2026-11-08)).
+
 The same configuration on both sides (FINAL_RELEASE, PACKAGED_BUILD and ALL_IN_ONE); no map slower than
 C++ on either ([the section below](#the-rerun-at-f8787782-2026-11-07)). kpp final's two menu map runs
 that day gave 0.841x and 0.867x: about 3% is the spread between runs. C++'s crash handler costs it
@@ -230,6 +233,47 @@ the factorio-run.exe above.
 The benchmark root copies it as `bench\cppaio\bin\FinalReleasex64\factorio-run.exe`. The bench runs a
 factorio-run.exe as C++ (without kpp's `--no-crash-handler`), and the game finds its paths from its
 folder, not its name.
+
+## The check at master 776d920a (2026-11-08)
+
+Whether the day's codegen changes moved the run speed: B's 836b979f (`uwtable` on every function in
+release), I's 1e5822f3 (noexcept landing pads), the parallel debug classes and shared debug nodes, and the
+game converted for explicit by default (factorio-in-kpp bbb78e124's build.kpp, `--explicit-by-default`).
+kpp final of master 776d920a against the same all-in-one, with kpp final f8787782 beside it as the pair.
+
+- **The builds:** the game converted at 776d920a from Factorio 4c178a5b915 (batch: convert ALL PASSED,
+  548 s; game tests ALL PASSED, 84 s; CI green); `kpp factorio final`, exit 0, 70.4 MB (f8787782's
+  70.1 MB). f8787782's and the all-in-one's executables are the ones above.
+- **The method:** as below, one command line for all three, 5 rounds, in the coordinator's quiet window
+  (10:47:04 to 11:21:06 local). Five maps were run again for other work of 10.5-16.4% of the machine
+  (burner-city, platform-science and vulcanus-punishment in round 1, brutal-defeat in round 2,
+  oil-pumpjacks in round 4). The saves: `bench.py SAVE 1000 5`, load before 1.5% at most, other work 3.2%
+  at most (one run, kpp final 776d920a's round 2 of performance.zip).
+- **Checksums:** equal on all 45 maps between the builds and rounds; performance.zip 21933964 and
+  modern_playthrough_155 816201650 on every run.
+
+| build | sum of medians (ms) | vs all-in-one | per round |
+|---|---:|---:|---|
+| C++ FinalRelease all-in-one | 11,894 | 1.00x | 12,220, 11,950, 11,812, 11,923, 11,639 |
+| kpp final, f8787782 | 10,124 | 0.851x | 10,329, 10,208, 10,119, 10,026, 9,932 |
+| **kpp final, 776d920a** | 10,248 | **0.862x** | 10,472, 10,230, 10,326, 10,161, 10,077 |
+
+| save, 1000 ticks (median of 5) | all-in-one (ms) | kpp final f8787782 | kpp final 776d920a |
+|---|---:|---:|---:|
+| performance.zip | 7,149 | 6,790, 0.950x | 7,014, **0.981x** |
+| kovarex_modern_playthrough_155.zip | 8,163 | 7,692, 0.942x | 7,802, **0.956x** |
+
+- **The readme's figure holds:** 0.86x on the menu maps, 0.98x and 0.96x on the saves, inside the spread
+  of the earlier runs (0.84x-0.87x, 0.96x, 0.97x).
+- **776d920a against f8787782**, in the same run: 1.2% slower on the menu maps (by round +1.4%, +0.2%,
+  +2.0%, +1.3%, +1.5%; slower on 29 of the 45 maps, the median map +0.7%, single maps from 0.93x to
+  1.10x), below the 2% this method resolves within one run, so not bisected. On no map is either kpp
+  build slower than C++: 776d920a from 0.79x (train-station) to 0.95x (nuclear-power), f8787782 from
+  0.74x (vulcanus-punishment) to 0.94x (early-smelting).
+- **Left open:** performance.zip, 3.3% behind f8787782 (rounds 6,826, 7,381, 7,263, 6,903, 7,014 against
+  6,805, 6,846, 6,597, 6,641, 6,790; bench.py does not run a loaded run again). Modern_playthrough is 1.4%
+  behind. A 10-round run of the two saves with the two kpp builds alone settles it; it waits for a quiet
+  window.
 
 ## The rerun at f8787782 (2026-11-07)
 
