@@ -554,7 +554,14 @@ D's commit takes 1.0 s off codegen and 0.1 s off the front end: the interpreter'
 thread took one mutex (D's sampler: 6.75% and 8.19% of codegen's samples blocked there before, 0.36% and
 0.72% after). The startup globals' schedule and the shards measure nothing beyond master's own spread (6.66
 to 6.88 s), and one round of the schedule took 13.04 s in codegen, unexplained (the six other builds with it
-inside were normal); neither is on master on these numbers.
+inside were normal); neither is on master on these numbers. The schedule's stacks show why (B's sampled
+compiles of 2026-11-08, 11:22 to 11:37: ten each with and without it, on master with D's commit, compilers with
+PDBs, the machine 75 to 100% busy, so no timing): it moves the convoy at codegen's start instead of removing
+it. In codegen's first second the threads waiting in `globalFor` under `emitStartupGlobal` fall from 27.8% of
+the samples to 4.1%, and those waiting in `needsDestruction` rise from 3.6% to 16.4%: every one of them waits
+for the shared lock, under which each emitter computes its first answers while the shared caches are empty.
+Waiting in all of codegen: 39% without it, 41% with it. Both are dropped. What would remove the convoy is the
+first answers computed outside the shared lock and published once, as D's commit does for the interpreter.
 
 When this plan was written, a clean debug build of the game was 17.1 s, the leaf edit 1.4 to 1.5 s,
 and the wide edit 1.9 s. These were thread A's quiet numbers: kpp run directly, without debug info.
