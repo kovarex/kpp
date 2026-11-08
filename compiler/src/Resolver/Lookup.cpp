@@ -1212,22 +1212,39 @@ auto GlobalScope::Impl::matchPatterns(ClassDecl* c, Decl* primary, const std::ve
   return true;
 }
 
+// The number of arguments a partial specialization writes when the last is a pack expansion
+// (`V<T*, Ts...>`: 2), else 0.
+static size_t trailingExpansionAt(ClassDecl* c)
+{
+  const NamePart& part = c->name.last();
+  size_t written = part.templateArgs.size();
+  return written > 0 && part.templateArgs[written - 1] && part.templateArgs[written - 1]->kind == NodeKind::PackType ? written : 0;
+}
+
 auto GlobalScope::Impl::atLeastAsSpecialized(ClassDecl* a, ClassDecl* b, Decl* primary, int depth) -> bool
 {
   std::vector<const Ty*> patterns;
   if (!specializationPatterns(a, primary, patterns, depth))
     return false;
+  // a's last argument a pack expansion that nothing of b's corresponds to (`V<T*, Us...>` against
+  // `V<T>`): it is ignored ([temp.deduct.type] 9), so `V<T*, Ts...>` is at least as specialized as
+  // `V<T>` (and more: V<int**> takes it, as clang has it; g++ calls it ambiguous). Until 2026-11-08
+  // neither was at least as specialized as the other and the first declared was taken.
+  if (size_t at = trailingExpansionAt(a); at && at == patterns.size() && !trailingExpansionAt(b))
+  {
+    std::vector<const Ty*> own;
+    if (specializationPatterns(b, primary, own, depth) && own.size() == at - 1)
+    {
+      patterns.pop_back();
+      std::vector<const Ty*> deduced;
+      return matchPatterns(b, primary, patterns, deduced, depth);
+    }
+  }
   // a's last argument a pack expansion around its packs (`V<Box<Us>...>`): its pattern stands for
   // any number of arguments, so only an expansion of b at the same place matches it (`V<Ts...>`,
   // `V<Box<Ts>...>`); b's fixed arguments there never do ([temp.deduct.type] 9: a P that is no
   // expansion against an A that is one fails), so `V<T, Ts...>` and `V<Box<Us>...>` stay unordered.
-  auto expansionAt = [](ClassDecl* c) -> size_t
-  {
-    const NamePart& part = c->name.last();
-    size_t written = part.templateArgs.size();
-    return written > 0 && part.templateArgs[written - 1] && part.templateArgs[written - 1]->kind == NodeKind::PackType ? written : 0;
-  };
-  if (size_t at = expansionAt(a); at && !isPackParam(patterns[at - 1]) && expansionAt(b) != at)
+  if (size_t at = trailingExpansionAt(a); at && !isPackParam(patterns[at - 1]) && trailingExpansionAt(b) != at)
     return false;
   std::vector<const Ty*> deduced;
   return matchPatterns(b, primary, patterns, deduced, depth);
@@ -1334,6 +1351,12 @@ auto GlobalScope::Impl::matchSpecialization(const Lookup& l, const std::vector<c
     bool ab = this->atLeastAsSpecialized(a, b, p, d);
     if (!ab || !this->atLeastAsSpecialized(b, a, p, d))
       return ab;
+    // Each at least as specialized as the other: the one without a trailing pack expansion, when
+    // the other has one ([temp.func.order] 5 as clang and g++ apply it to partial specializations:
+    // A<int> takes `A<T>` over `A<T, Ts...>`), then the constraints.
+    bool aExpands = trailingExpansionAt(a) != 0;
+    if (aExpands != (trailingExpansionAt(b) != 0))
+      return !aExpands;
     return constraintsSubsume(a, b);
   };
   // The most specialised: at least as specialised as every other match (`<T, T, R...>` over

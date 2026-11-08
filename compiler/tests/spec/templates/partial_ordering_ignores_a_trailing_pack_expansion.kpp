@@ -1,0 +1,32 @@
+// spec: in partial ordering, an argument that was a trailing pack expansion with nothing to correspond to in the other specialization's arguments is ignored ([temp.deduct.type] 9), and of two specializations each at least as specialized as the other, the one without a trailing pack expansion is the more specialized: V<int**> takes `V<T*, Ts...>` over `V<T>`, W<Box<Box<int>>> `W<Box<T>, Ts...>` over `W<T>`, C<int*, char> `C<T*, U, Ts...>` over `C<T, U>`; A<int> still takes `A<T>` over `A<T, Ts...>`, B<int*> `B<T*>` over `B<T, Ts...>`, D<int> `D<T>` over `D<T, Box<Ts>...>`, E<int*> `E<T*>` over `E<T*, Box<Ts>...>`. clang's output (g++ calls V<int**>, W<Box<Box<int>>> and C<int*, char> ambiguous)
+// found by thread J's template generator (2026-11-08): neither of V<T> and V<T*, Ts...> came out at least as specialized as the other, and the first declared was taken silently (V<int**> was 1)
+extern "C" int printf(const char* format, ...);
+template<class T> struct Box {};
+template<class... Ts> struct V { static int v() { return 0; } };
+template<class T> struct V<T> { static int v() { return 1; } };
+template<class T, class... Ts> struct V<T*, Ts...> { static int v() { return 2; } };
+template<class... Ts> struct W { static int v() { return 0; } };
+template<class T> struct W<T> { static int v() { return 1; } };
+template<class T, class... Ts> struct W<Box<T>, Ts...> { static int v() { return 2; } };
+template<class... Ts> struct C { static int v() { return 0; } };
+template<class T, class U> struct C<T, U> { static int v() { return 1; } };
+template<class T, class U, class... Ts> struct C<T*, U, Ts...> { static int v() { return 2; } };
+template<class... Ts> struct A { static int v() { return 0; } };
+template<class T> struct A<T> { static int v() { return 1; } };
+template<class T, class... Ts> struct A<T, Ts...> { static int v() { return 2; } };
+template<class... Ts> struct B { static int v() { return 0; } };
+template<class T> struct B<T*> { static int v() { return 1; } };
+template<class T, class... Ts> struct B<T, Ts...> { static int v() { return 2; } };
+template<class... Ts> struct D { static int v() { return 0; } };
+template<class T> struct D<T> { static int v() { return 1; } };
+template<class T, class... Ts> struct D<T, Box<Ts>...> { static int v() { return 2; } };
+template<class... Ts> struct E { static int v() { return 0; } };
+template<class T> struct E<T*> { static int v() { return 1; } };
+template<class T, class... Ts> struct E<T*, Box<Ts>...> { static int v() { return 2; } };
+int main()
+{
+  printf("%d %d %d %d %d\n", V<int**>::v(), V<int>::v(), V<int*, char>::v(), W<Box<Box<int>>>::v(), W<Box<int>, char>::v());
+  printf("%d %d %d\n", C<int*, char>::v(), C<int, char>::v(), C<int*, char, int>::v());
+  printf("%d %d %d %d %d %d\n", A<int>::v(), A<int, char>::v(), B<int*>::v(), B<int, int>::v(), D<int>::v(), E<int*>::v());
+  return 0;
+}
