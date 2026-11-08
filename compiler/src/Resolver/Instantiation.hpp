@@ -188,6 +188,9 @@
   // better conversions (C++'s ranking), the first on a tie. An explicit guide is none for
   // copy-initialisation (`Overload o = {f, g};`).
   const Ty* deduceFromGuides(ClassDecl* cls, const std::vector<const Ty*>& argTypes, bool copyInit, std::vector<int>& ranks);
+  // Whether the constraints of class template cls (its parameters' and its requires clause) hold for
+  // the arguments d gives; true where they cannot be told (dependent arguments).
+  bool classConstraintsHold(ClassDecl* cls, const Subst& d);
 
   // Whether conversions a are better than b: better for one argument, worse for none.
   static bool strictlyBetter(const std::vector<int>& a, const std::vector<int>& b);

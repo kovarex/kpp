@@ -1114,6 +1114,17 @@ auto GlobalScope::Impl::deduceFromGuides(ClassDecl* cls, const std::vector<const
   return best;
 }
 
+auto GlobalScope::Impl::classConstraintsHold(ClassDecl* cls, const Subst& d) -> bool
+{
+  for (Decl* p : cls->templateParams)
+    if (std::optional<bool> holds = typeConstraintHolds(static_cast<TemplateParamDecl*>(p), cls, d, 1); holds && !*holds)
+      return false;
+  if (!cls->requiresClause)
+    return true;
+  std::optional<bool> holds = constraintValue(cls->requiresClause, cls, d);
+  return !holds || *holds;
+}
+
 auto GlobalScope::Impl::strictlyBetter(const std::vector<int>& a, const std::vector<int>& b) -> bool
 {
   bool better = false;
@@ -1214,6 +1225,11 @@ auto GlobalScope::Impl::deduceClassArgs(const Ty* primary, const std::vector<con
     // 3; an unmarked one's too, design.md "Explicit by default", rule 5). (After the
     // class's defaults are in d: an explicit(cond) may read them.)
     if (copyInit && isExplicit(ctor, &d))
+      continue;
+    // The guide's constraints, the class template's and the constructor's ([over.match.class.deduct]
+    // 1.1: `template<class T> requires Small<T> struct W { W(T); };` deduces nothing from a double);
+    // until 2026-11-08 neither was checked.
+    if (!classConstraintsHold(cls, d) || !constraintsHold(ctor, d))
       continue;
     bool ok = true;
     std::vector<int> ranks;

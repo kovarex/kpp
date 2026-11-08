@@ -769,11 +769,16 @@
 +   explicit IDWithQualityFilter(std::string_view name) requires (!std::is_same_v<IDTypeParameter, SignalIDBase> && !std::is_same_v<IDTypeParameter, UpgradeIDBase>)
 +   : baseID(IDType(name)), qualityCondition(CorePrototypes::normalQuality) {}
 
-@ src/Info/ConfigItem.hpp: the class template's constraint as a requires-clause, not std::enable_if_t in its base
+@ src/Info/ConfigItem.hpp: the integral definition's condition as a static_assert, not std::enable_if_t in its base (a requires-clause there would constrain the class template, whose explicit specializations for std::string, float, double and others it refuses: clang's "constraints not satisfied for class template")
 - template <typename T>
 - class SimpleConfigItem : public StorageConfigItem<std::enable_if_t<std::is_integral_v<T>, T>>
-+ template <typename T> requires std::is_integral_v<T>
+- {
+- public:
++ template <typename T>
 + class SimpleConfigItem : public StorageConfigItem<T>
++ {
++   static_assert(std::is_integral_v<T>);
++ public:
 
 @ src/Util/SerialiserHelper.hpp: whether T has the member type, a requires-expression in place of std::void_t's specialization
 - template <class T, class = void>

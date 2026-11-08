@@ -1,0 +1,34 @@
+// spec: a requires clause on a class template is checked wherever a specialization of it is named, as its constrained parameters are ([temp.names] 8; clang: "constraints not satisfied for class template 'S'"): `S<double>` with `template<class T> requires (sizeof(T) <= 4) struct S` and `R<char>` with `requires Small<T> && (sizeof(T) > 1)` are compile errors, `S<int>` and `R<short>` are not; also as a qualifier, the callee's `S<long long>::v()`, `S<double>::Inner::w()`, a constrained parameter's `C<double>::v()`, in a function template's instance, also where an explicit specialization is named (`E<double>` with `template<> struct E<double>`: the primary's arguments, clang also refuses the specialization's declaration), and in class template argument deduction, whose guides from constructors carry the class's constraints ([over.match.class.deduct] 1.1: `W w2(2.5);` deduces nothing). clang's and g++'s errors
+// error: requires_clause_of_a_primary_class_template_is_checked.kpp:19: error: S<double>: the requires clause of S is not satisfied
+// error: requires_clause_of_a_primary_class_template_is_checked.kpp:24: error: S<double>: the requires clause of S is not satisfied
+// error: requires_clause_of_a_primary_class_template_is_checked.kpp:25: error: R<char>: the requires clause of R is not satisfied
+// error: requires_clause_of_a_primary_class_template_is_checked.kpp:26: error: S<int64>: the requires clause of S is not satisfied
+// error: requires_clause_of_a_primary_class_template_is_checked.kpp:27: error: S<double>: the requires clause of S is not satisfied
+// error: requires_clause_of_a_primary_class_template_is_checked.kpp:28: error: C<double>: T = double does not satisfy Small
+// error: requires_clause_of_a_primary_class_template_is_checked.kpp:30: error: no constructor or deduction guide of W deduces its arguments from (double)
+// error: requires_clause_of_a_primary_class_template_is_checked.kpp:32: error: E<double>: the requires clause of E is not satisfied
+// found by thread J's template generator (2026-11-08): the clause was parsed and never checked, a qualifier's constrained parameters were not checked either, and deduction from constructors checked no constraint
+template<class T> concept Small = sizeof(T) <= 4;
+template<class T> requires (sizeof(T) <= 4) struct S { static int v() { return 1; } struct Inner { static int w() { return 2; } }; T t; };
+template<class T> requires Small<T> && (sizeof(T) > 1) struct R { T t; };
+template<Small T> struct C { static int v() { return 3; } };
+template<class T> requires Small<T> struct W { T t; W(T x) : t(x) {} };
+template<class T> requires Small<T> struct E { int v = 1; };
+template<> struct E<char> { int v = 2; };
+template<> struct E<double> { int v = 3; };
+template<class T> int g() { return S<T>::v(); }
+int main()
+{
+  S<int> ok;
+  R<short> ok2;
+  S<double> bad;
+  R<char> bad2;
+  int a = S<long long>::v();
+  int b = S<double>::Inner::w();
+  int c = C<double>::v();
+  W w1(1);
+  W w2(2.5);
+  E<char> e1;
+  E<double> e2;
+  return a + b + c + g<double>() + ok.t + ok2.t + w1.t + e1.v;
+}

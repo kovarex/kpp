@@ -1386,7 +1386,9 @@ auto GlobalScope::Impl::Walker::checkQualifierTies(const QualifiedName& name, ui
     qualifier.token = token;
     qualifier.name = name;
     qualifier.name.parts.count = uint32_t(i + 1);
-    checkSpecializationTie(&qualifier, lookupHere(qualifier.name));
+    Lookup l = lookupHere(qualifier.name);
+    checkClassConstraints(&qualifier, l); // `C<double>::v()`, `S<double>::Inner::w()`
+    checkSpecializationTie(&qualifier, l);
   }
 }
 
@@ -1401,7 +1403,8 @@ auto GlobalScope::Impl::Walker::checkClassConstraints(NamedType* t, const Lookup
       def = primary;
   if (def->kind != NodeKind::ClassDecl)
     return;
-  bool constrained = false;
+  auto* klass = static_cast<ClassDecl*>(def);
+  bool constrained = klass->requiresClause;
   for (Decl* p : def->templateParams)
     constrained = constrained || impl.typeConstraintOf(static_cast<TemplateParamDecl*>(p), def);
   if (!constrained)
@@ -1409,7 +1412,29 @@ auto GlobalScope::Impl::Walker::checkClassConstraints(NamedType* t, const Lookup
   const Ty* ty = typeOf(t);
   if (!ty || ty->kind != TyKind::Class || types.isDependent(ty) || Impl::mentionsUnknown(ty))
     return;
-  Subst s = impl.substFor(ty);
+  // The primary's parameters with the arguments written (a partial or explicit specialization's type
+  // names its own: `template<> class S<String>` has none, its arguments the primary's String).
+  Subst s;
+  const Ty* shown = ty;
+  if (ty->decl == def)
+    s = impl.substFor(ty);
+  else
+  {
+    std::vector<const Ty*> args = impl.primaryArgumentsOf(ty, def, 0);
+    if (args.empty())
+      return;
+    shown = types.classType(def, Span<const Ty*>{args.data(), uint32_t(args.size())});
+    for (size_t i = 0; i < def->templateParams.size() && i < args.size(); ++i)
+    {
+      auto* tp = static_cast<TemplateParamDecl*>(def->templateParams[i]);
+      if (tp->isPack)
+      {
+        s.pairs.push_back({tp, types.pack(Span<const Ty*>{args.data() + i, uint32_t(args.size() - i)})});
+        break;
+      }
+      s.pairs.push_back({tp, args[i]});
+    }
+  }
   for (Decl* p : def->templateParams)
   {
     auto* tp = static_cast<TemplateParamDecl*>(p);
@@ -1423,12 +1448,27 @@ auto GlobalScope::Impl::Walker::checkClassConstraints(NamedType* t, const Lookup
     if (!holds && (!arg || !arg->isKnown() || types.isDependent(arg) || Impl::mentionsUnknown(arg)))
       continue;
     std::string param(symbols.name(tp->name));
-    std::string named = types.toString(ty, &symbols);
+    std::string named = types.toString(shown, &symbols);
     std::string concept_name = concept_->name.empty() ? std::string("its concept") : impl.debugName(concept_->name.last().symbol);
     impl.reportCheckerError(file, t->token, holds ? named + ": " + param + " = " + types.toString(arg, &symbols) + " does not satisfy " + concept_name
                                                   : named + ": the constraint " + concept_name + " on " + param + " cannot be evaluated for " +
                                                       types.toString(arg, &symbols));
+    return;
   }
+  // Its requires clause (`template<class T> requires (sizeof(T) <= 4) struct S`), conjoined after the
+  // parameters' constraints ([temp.constr.decl] 3); until 2026-11-08 it was never checked: S<double>
+  // compiled where clang says "constraints not satisfied for class template 'S'".
+  if (!klass->requiresClause)
+    return;
+  std::optional<bool> holds = impl.constraintValue(klass->requiresClause, def, s);
+  if (holds && *holds)
+    return;
+  for (const auto& pair : s.pairs)
+    if (!holds && (!pair.type || !pair.type->isKnown() || types.isDependent(pair.type) || Impl::mentionsUnknown(pair.type)))
+      return;
+  std::string named = types.toString(shown, &symbols);
+  impl.reportCheckerError(file, t->token, holds ? named + ": the requires clause of " + impl.debugName(klass->name.last().symbol) + " is not satisfied"
+                                                : named + ": the requires clause of " + impl.debugName(klass->name.last().symbol) + " cannot be evaluated");
 }
 
 auto GlobalScope::Impl::Walker::checkTemplateArgumentCount(NamedType* t, const Lookup& l) -> void
@@ -8840,6 +8880,21 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
                                                           : "is explicit ([over.match.class.deduct] 3)") +
                                    ", which a copy-initialisation does not take: a direct-initialisation does, " + name + " " +
                                    (v->name.empty() || v->name.last().symbol == UINT32_MAX ? std::string("x") : std::string(symbols.name(v->name.last().symbol))) + "(...)");
+        }
+        // No guide at all (`W b(2.5);` where W's requires clause refuses a double, or no constructor
+        // takes the arguments): an error here, as clang's "no viable constructor or deduction guide",
+        // never codegen's local of unknown type.
+        else if (!deduced && !inGenericTemplate() &&
+                 std::all_of(argTypes.begin(), argTypes.end(), [&](const Ty* a) { return a && a->isKnown() && !types.isDependent(a) && !Impl::mentionsUnknown(a); }))
+        {
+          std::string from;
+          for (const Ty* a : argTypes)
+            from += (from.empty() ? "" : ", ") + types.toString(a, &symbols);
+          std::string name = types.toString(declared, &symbols);
+          if (Scope* cs = impl.classScopeOf(declared); cs && cs->owner && cs->owner->kind == NodeKind::ClassDecl)
+            if (const QualifiedName& n = static_cast<ClassDecl*>(cs->owner)->name; !n.empty() && n.last().symbol != UINT32_MAX)
+              name = std::string(symbols.name(n.last().symbol));
+          reportHere(v->token, "no constructor or deduction guide of " + name + " deduces its arguments from (" + from + ")");
         }
         // `constexpr Array names = {...}` is const, and `const Box b{1};` is a const Box<int> as
         // `const Box<int>` is: the declaration's qualifiers stay (until 2026-11-06 a const one
