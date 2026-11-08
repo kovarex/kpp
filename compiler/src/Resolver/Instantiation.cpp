@@ -334,7 +334,15 @@ auto GlobalScope::Impl::normalizeValueArgs(Span<Decl*> params, std::vector<const
                      def->file ? def->file->text : std::string_view()};
     const Ty* of = types.unqualified(convertType(p->valueType, vctx, depth + 1));
     if (of && of->isKnown() && !types.isDependent(of) && of != a->inner)
-      args[i] = types.valueType(of, of->kind == TyKind::Bool ? int64_t(a->value != 0) : a->value);
+    {
+      // (a floating one by its value, its bits in the parameter's type: a float's 0.5f for a double parameter is 0.5)
+      bool floatingArg = a->inner && types.unqualified(a->inner)->kind == TyKind::Float;
+      if (of->kind == TyKind::Float)
+        args[i] = types.valueType(of, TypeTable::floatBits(floatingArg ? TypeTable::floatOfBits(a->value, types.unqualified(a->inner)->bits)
+                                                                          : a->inner && a->inner->isUnsigned ? double(uint64_t(a->value)) : double(a->value), of->bits));
+      else if (!floatingArg)
+        args[i] = types.valueType(of, of->kind == TyKind::Bool ? int64_t(a->value != 0) : a->value);
+    }
   }
 }
 
@@ -628,8 +636,24 @@ auto GlobalScope::Impl::templateArgument(Node* arg, Decl* param, const TypeConte
     const Ty* object = objectArgument(*v);
     return object ? object : types.unknown();
   }
-  if (!v || v->isFloat())
-    return types.unknown(); // a floating argument: no constant parameter holds one yet
+  if (!v)
+    return types.unknown();
+  if (v->isFloat())
+  {
+    // `twice<1.25>()`, `Scaled<0.5f>`, `sizeOfAuto<2.5>()` (C++20, [temp.arg.nontype]): converted to the parameter's
+    // floating type, an auto parameter's the value's own, and kept by its bits (TypeTable::floatBits). Until 2026-11-08
+    // no argument, codegen's "a template parameter whose value is not known here".
+    const Ty* of = nullptr;
+    if (param && param->kind == NodeKind::TemplateParamDecl)
+      if (auto* p = static_cast<TemplateParamDecl*>(param); !p->isType && p->valueType)
+        of = convertType(p->valueType, TypeContext{lexicalScopeOf(param), nullptr, nullptr}, depth + 1);
+    const Ty* u = of ? types.unqualified(types.stripRef(of)) : nullptr;
+    if (!u || !u->isKnown() || u->kind == TyKind::Auto)
+      u = v->type ? types.unqualified(types.stripRef(v->type)) : nullptr;
+    if (!u || u->kind != TyKind::Float)
+      return types.unknown(); // (a floating value for an integer parameter: no converted constant expression gives it)
+    return types.valueType(u, TypeTable::floatBits(v->f, u->bits));
+  }
   if (v->isAddress())
   {
     // `Holder<&table>`, a function pointer a constant holds: the declaration's address, as an

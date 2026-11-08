@@ -1,4 +1,5 @@
 #include "TypeTable.hpp"
+#include <charconv>
 #include <cstring>
 #include <memory>
 #include <mutex>
@@ -412,6 +413,35 @@ const Ty* TypeTable::valueType(const Ty* of, int64_t value)
   return intern(t);
 }
 
+int64_t TypeTable::floatBits(double value, uint8_t bits)
+{
+  if (bits == 32)
+  {
+    float f = float(value);
+    uint32_t u;
+    memcpy(&u, &f, sizeof u);
+    return int64_t(u);
+  }
+  uint64_t u;
+  memcpy(&u, &value, sizeof u);
+  return int64_t(u);
+}
+
+double TypeTable::floatOfBits(int64_t raw, uint8_t bits)
+{
+  if (bits == 32)
+  {
+    uint32_t u = uint32_t(raw);
+    float f;
+    memcpy(&f, &u, sizeof f);
+    return double(f);
+  }
+  uint64_t u = uint64_t(raw);
+  double d;
+  memcpy(&d, &u, sizeof d);
+  return d;
+}
+
 const Ty* TypeTable::functionValue(const Ty* of, Decl* function)
 {
   Ty t{TyKind::Value};
@@ -788,6 +818,26 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols, bool qu
         // (a member of a class template's instance: the declaration is every instance's)
         if (t->inner && t->inner->kind == TyKind::MemberPointer && !t->inner->args.empty() && t->inner->args[0] && !t->inner->args[0]->args.empty())
           s += " of " + toString(t->inner->args[0], symbols, qualified);
+      }
+      else if (t->inner && t->inner->kind == TyKind::Float)
+      {
+        // A floating value by its shortest text that reads back as it, always with its point (`V<0.5>`, `V<-0.0>`,
+        // `V<2.0>`), a float's with its f (`V<0.5f>`), a NaN by its bits: two arguments of other bits, or a floating
+        // one and an integer, never one text (the text names instances in the IR, where one name is one function).
+        double d = floatOfBits(t->value, t->inner->bits);
+        char buf[64];
+        if (d != d)
+          snprintf(buf, sizeof buf, "nan(0x%llX)", (unsigned long long)t->value);
+        else
+        {
+          auto r = t->inner->bits == 32 ? std::to_chars(buf, buf + sizeof buf - 8, float(d)) : std::to_chars(buf, buf + sizeof buf - 8, d);
+          *r.ptr = 0;
+          if (!strpbrk(buf, ".eEin"))
+            strcat(buf, ".0");
+        }
+        s += buf;
+        if (t->inner->bits == 32)
+          s += "f";
       }
       else
         s += t->inner && t->inner->kind == TyKind::Bool ? (t->value ? "true" : "false") : std::to_string(t->value);

@@ -939,7 +939,11 @@ auto GlobalScope::Impl::sameArgument(const Ty* a, const Ty* b) -> bool
 {
   if (a == b)
     return true;
-  return a && b && a->kind == TyKind::Value && b->kind == TyKind::Value && a->value == b->value && a->decl == b->decl;
+  if (!a || !b || a->kind != TyKind::Value || b->kind != TyKind::Value || a->value != b->value || a->decl != b->decl)
+    return false;
+  // (a floating value's bits (TypeTable::floatBits) are one with another's of its type only: 0.0's are 0's)
+  bool floatA = a->inner && a->inner->kind == TyKind::Float, floatB = b->inner && b->inner->kind == TyKind::Float;
+  return floatA == floatB && (!floatA || a->inner->bits == b->inner->bits);
 }
 
 auto GlobalScope::Impl::primaryOf(const std::vector<Entry>& entries) -> Decl*

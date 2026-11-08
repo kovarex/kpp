@@ -490,6 +490,8 @@ auto GlobalScope::Impl::constValueOfDecl(Decl* d, const TypeContext& ctx, int de
       {
         if (t->isObjectValue())
           return argumentObject(t); // `template<Fixed F>`: the object given, by its parts
+        if (!t->decl && t->inner && types.unqualified(t->inner)->kind == TyKind::Float)
+          return ConstValue::floating(TypeTable::floatOfBits(t->value, types.unqualified(t->inner)->bits), t->inner); // (`template<double D>`: its bits)
         if (!t->decl)
           return ConstValue::integer(t->value, t->inner);
         // `Expr<add, 3>`'s fold: the address of the function (or variable) given, never the null

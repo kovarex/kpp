@@ -1,0 +1,37 @@
+// spec: two floating-point template arguments are one instance exactly when they are the same value bit for bit (C++20 [temp.type] 2.3, as clang compares them): `Counter<0.5>`, `Counter<0.50>` and `Counter<0.25 * 2>` are one, their function-local static one variable; `Counter<0.0>` and `Counter<-0.0>` are two; a NaN is one with the NaN of its own bits; of an `auto` parameter a double's 0.0, a float's 0.0f and an int's 0 are three; clang's output (D, 2026-11-08, beside templates/floating_point_template_argument)
+template<double D>
+struct Counter
+{
+  static int bump()
+  {
+    static int n = 0;
+    return ++n;
+  }
+};
+template<auto A>
+struct Any
+{
+  static int bump()
+  {
+    static int n = 0;
+    return ++n;
+  }
+};
+int main()
+{
+  int a = Counter<0.5>::bump();
+  int b = Counter<0.50>::bump();
+  int c = Counter<0.25 * 2>::bump();
+  int e = Counter<0.0>::bump();
+  int f = Counter<-0.0>::bump();
+  int g = Counter<0.0>::bump();
+  int h = Counter<Limits<double>::quiet_NaN()>::bump();
+  int i = Counter<Limits<double>::quiet_NaN()>::bump();
+  println(a, " ", b, " ", c, " ", e, " ", f, " ", g, " ", h, " ", i);
+  int j = Any<0.0>::bump();
+  int k = Any<0.0f>::bump();
+  int l = Any<0>::bump();
+  int m = Any<0.0>::bump();
+  println(j, " ", k, " ", l, " ", m);
+  return 0;
+}

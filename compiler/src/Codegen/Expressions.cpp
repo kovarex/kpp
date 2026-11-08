@@ -226,6 +226,24 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
               return {r, mp};
             }
           }
+        // `template<double D>` given 1.25 (C++20): the exact constant its bits are (TypeTable::floatBits); of a pack of
+        // them (`(Ds + ... + 0.0)`), the element bound now (forEachPackElement).
+        if (currentArgs)
+          for (auto& [p, bound] : currentArgs->pairs)
+          {
+            const Ty* one = p == d ? bound : nullptr;
+            if (one && one->kind == TyKind::Pack)
+            {
+              const std::vector<Decl*>& element = currentArgs->elementPacks;
+              bool expanding = std::find(element.begin(), element.end(), d) != element.end();
+              one = expanding && currentArgs->elementIndex < one->args.size() ? one->args[currentArgs->elementIndex] : nullptr;
+            }
+            if (one && one->kind == TyKind::Value && !one->decl && !one->isObjectValue() && one->inner && types.unqualified(one->inner)->kind == TyKind::Float)
+            {
+              const Ty* ft = types.unqualified(one->inner);
+              return {floatConstant(TypeTable::floatOfBits(one->value, ft->bits), ft->bits), ft};
+            }
+          }
         std::optional<int64_t> v = evalConst(e);
         const Ty* t = e->ty ? types.stripRef(e->ty) : nullptr;
         if (t && t->kind == TyKind::Value && t->inner)

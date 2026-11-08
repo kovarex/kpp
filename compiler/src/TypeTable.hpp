@@ -97,6 +97,12 @@ public:
   const Ty* param(Decl* decl, Span<const Ty*> args); // `Container<T>`: a template template parameter applied to arguments
   const Ty* dependentMember(const Ty* of, uint32_t symbol); // `T::Unit`
   const Ty* valueType(const Ty* of, int64_t value); // a non-type template argument
+  // A floating value as a non-type template argument (C++20, [temp.arg.nontype]): valueType's value is its bits in
+  // its own type, a float's 32 (zero-extended), a double's 64, so that two arguments are one exactly when they are
+  // the same bits ([temp.type] 2.3, as clang compares them): 0.5 and 0.50 one instance, -0.0 and 0.0 two, a NaN one
+  // with a NaN of its own bits only.
+  static int64_t floatBits(double value, uint8_t bits);
+  static double floatOfBits(int64_t raw, uint8_t bits);
   const Ty* functionValue(const Ty* of, Decl* function); // a function as one (`template<float (*func)(float, float)>`): decl = the function
   // A class object as one (`scaled<Fixed{3, 14}>`, C++20's class-type parameter): inner the class,
   // args each part's value as ConstValue's Object has them (its bases, then its data members, each a
