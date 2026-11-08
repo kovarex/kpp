@@ -1,4 +1,4 @@
-// spec: a read of a volatile object happens each time it is written, in an optimized build too ([intro.abstract] 6): through its name, a pointer, a reference, a member of a volatile object, an element, a volatile member. Each loop ends when the other thread's write is seen; a read moved out of the loop leaves it at once, its count at the limit
+// spec: a read of a volatile object happens each time it is written, in an optimized build too ([intro.abstract] 6): through its name, a pointer, a reference, a member of a volatile object, an element, a volatile member. Each loop ends when the other thread's write is seen; a read moved out of the loop runs it to the limit. Each write waits until its loop has started (and 50 ms more), so a read moved out of the loop always reads 0 (2026-11-08: written all at once, the writes could come before the loops, and such reads see them)
 // kpp: --release
 extern "C" int printf(const char* format, ...);
 class Box
@@ -18,40 +18,60 @@ volatile int referred = 0;
 volatile Box box;
 volatile int elements[3];
 HasVolatile holder;
-const long long limit = 1000000000000000ll;
+volatile int stage = 0;
+const long long limit = 2000000000ll;
+void awaitLoop(int loop)
+{
+  while (stage < loop)
+  {
+  }
+  thisThread::sleepFor(Milliseconds(50));
+}
 int main()
 {
   volatile int* pointer = &pointed;
   volatile int& reference = referred;
   Thread writer([]() {
+    awaitLoop(1);
     named = 1;
+    awaitLoop(2);
     pointed = 1;
+    awaitLoop(3);
     referred = 1;
+    awaitLoop(4);
     box.n = 1;
+    awaitLoop(5);
     elements[2] = 1;
+    awaitLoop(6);
     holder.n = 1;
   });
   long long i = 0;
+  stage = 1;
   while (i < limit && named == 0)
     ++i;
   printf("%d\n", (int)(i < limit));
   i = 0;
+  stage = 2;
   while (i < limit && *pointer == 0)
     ++i;
   printf("%d\n", (int)(i < limit));
   i = 0;
+  stage = 3;
   while (i < limit && reference == 0)
     ++i;
   printf("%d\n", (int)(i < limit));
   i = 0;
+  stage = 4;
   while (i < limit && box.n == 0)
     ++i;
   printf("%d\n", (int)(i < limit));
   i = 0;
+  stage = 5;
   while (i < limit && elements[2] == 0)
     ++i;
   printf("%d\n", (int)(i < limit));
   i = 0;
+  stage = 6;
   while (i < limit && holder.n == 0)
     ++i;
   printf("%d\n", (int)(i < limit));

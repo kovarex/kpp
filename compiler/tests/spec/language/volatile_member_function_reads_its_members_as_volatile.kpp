@@ -1,12 +1,14 @@
-// spec: in a volatile member function `this` points at a volatile object, so a member is read each time, in an optimized build too. Its loop ends when the other thread's write is seen; a read moved out of the loop runs to the limit
+// spec: in a volatile member function `this` points at a volatile object, so a member is read each time, in an optimized build too. Its loop ends when the other thread's write is seen; a read moved out of the loop runs to the limit. The write waits until the loop has started (and 50 ms more), so a read moved out of the loop always reads 0 (2026-11-08: written at once, the write could come first and such a read see it, which passed a pending snippet once)
 // kpp: --release
 extern "C" int printf(const char* format, ...);
 class Flag
 {
 public:
   int n = 0;
+  int started = 0;
   bool seen() volatile
   {
+    started = 1;
     long long i = 0;
     while (i < 2000000000ll && n == 0)
       ++i;
@@ -16,7 +18,13 @@ public:
 volatile Flag flag;
 int main()
 {
-  Thread writer([]() { flag.n = 1; });
+  Thread writer([]() {
+    while (flag.started == 0)
+    {
+    }
+    thisThread::sleepFor(Milliseconds(50));
+    flag.n = 1;
+  });
   printf("%d\n", (int)flag.seen());
   writer.join();
   return 0;

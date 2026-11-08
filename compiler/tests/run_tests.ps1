@@ -85,7 +85,7 @@ Add 'object cache' (PsCheck 'tests\objectcache.ps1') -seconds 6
 Add 'direct link' (PsCheck 'tests\directlink.ps1') -seconds 10
 Add 'checkout' @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', '..\programs\factorio\tests\checkout.ps1') -seconds 8
 # Part 2.
-Add 'determinism' ((PsCheck 'tests\determinism.ps1') + @(if ($Full) { '-Full' })) -part 2 -seconds 144 -note 'FAIL determinism: the output depends on the thread count'
+Add 'determinism' ((PsCheck 'tests\determinism.ps1') + @(if ($Full) { '-Full' })) -part 2 -seconds 144 -note 'FAIL determinism: the output depends on the thread count, unless a line above says its input changed during the check'
 Add 'concurrency' (PsCheck 'tests\concurrency.ps1') -part 2 -seconds 39 -fullOnly $true -note 'FAIL concurrency: the output depends on timing'
 Add 'generate' (PsCheck 'tests\generate.ps1') -part 2 -seconds 11
 Add 'project' (PsCheck 'tests\project.ps1') -part 2 -seconds 133

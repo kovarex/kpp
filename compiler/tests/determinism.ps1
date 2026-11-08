@@ -47,6 +47,18 @@ function Wait-Run($started)
   return [pscustomobject]@{ label = $started.label; out = @(Normalize (Get-Content $started.outFile)); err = @(Normalize (Get-Content $started.errFile)) }
 }
 
+# What a tree's files are (their count, total size and newest write), to tell a tree that changed while
+# its builds ran from builds that differ: convert.cmd rewrites programs\factorio\kpp, and run beside a
+# gate in the same worktree it made "headline -j 8 and -j 32 differ" look like a compiler bug
+# (2026-11-05 and 2026-11-06, threads B and K).
+function Tree-Stamp([string]$root)
+{
+  $files = @(Get-ChildItem -LiteralPath $root -Recurse -File -ErrorAction SilentlyContinue)
+  $bytes = ($files | Measure-Object -Property Length -Sum).Sum
+  $newest = ($files | Measure-Object -Property LastWriteTimeUtc -Maximum).Maximum
+  return "$($files.Count) files, $bytes bytes, the newest written $(if ($newest) { $newest.ToString('yyyy-MM-dd HH:mm:ss') })"
+}
+
 function Compare-Runs($runs, [string]$what, [string[]]$irFiles)
 {
   $ok = $true
@@ -219,6 +231,7 @@ if (Test-Path (Join-Path $tree 'src'))
   # The whole IR too (--emit-llvm), byte for byte: a name the code generator gives one of two
   # classes that print alike must not depend on which thread reached it first. The quick gate's: the
   # front end's report alone, at -j 8 and -j 32.
+  $stampBefore = Tree-Stamp $tree
   $started = @()
   $irs = @()
   $n = 0
@@ -230,7 +243,13 @@ if (Test-Path (Join-Path $tree 'src'))
     $irs += $ir
   }
   $runs = @($started | ForEach-Object { Wait-Run $_ })
-  if (Compare-Runs $runs "headline" $(if ($Full) { $irs } else { $null })) { "ok   determinism headline ($(if ($Full) { 'front end and IR' } else { 'front end at -j 8 and -j 32; run_tests --full for -j 1 and the IR' }))" } else { $failed++ }
+  $stampAfter = Tree-Stamp $tree
+  if ($stampAfter -ne $stampBefore)
+  {
+    "FAIL determinism headline: programs\factorio\kpp changed during the check ($stampBefore before, $stampAfter after): did convert.cmd run beside it? Run it again alone"
+    $failed++
+  }
+  elseif (Compare-Runs $runs "headline" $(if ($Full) { $irs } else { $null })) { "ok   determinism headline ($(if ($Full) { 'front end and IR' } else { 'front end at -j 8 and -j 32; run_tests --full for -j 1 and the IR' }))" } else { $failed++ }
   $irs | ForEach-Object { Remove-Item $_ -ErrorAction SilentlyContinue }
 }
 else { "skip determinism headline front end: programs\factorio\kpp missing (run convert.cmd)" }
