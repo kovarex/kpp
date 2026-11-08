@@ -20,8 +20,8 @@ int main()
   Derived d;
   switch (d)
   {
-    case Mode::Off: println("off"); break;
-    case Mode::On: println("on"); break;
+    case Mode::Off: println("off");
+    case Mode::On: println("on");
   }
   return 0;
 }

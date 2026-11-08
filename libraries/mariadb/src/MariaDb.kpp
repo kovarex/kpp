@@ -36,13 +36,13 @@ String mariaDbQuote(StringView text)
     char c = text[i];
     switch (c)
     {
-    case 0: out << "\\0"; break;
-    case '\n': out << "\\n"; break;
-    case '\r': out << "\\r"; break;
-    case '\\': out << "\\\\"; break;
-    case '\'': out << "\\'"; break;
-    case '"': out << "\\\""; break;
-    case 26: out << "\\Z"; break;
+    case 0: out << "\\0";
+    case '\n': out << "\\n";
+    case '\r': out << "\\r";
+    case '\\': out << "\\\\";
+    case '\'': out << "\\'";
+    case '"': out << "\\\"";
+    case 26: out << "\\Z";
     default: out << c;
     }
   }

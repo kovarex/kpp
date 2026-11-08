@@ -1,4 +1,4 @@
-// spec: `case A, B, C:` is one label of several values, its statements theirs, as Go's and C#'s (kovarex, 2026-11-08; design.md "No implicit fallthrough"): integers, characters, a kpp enum's values (its exhaustive switch, without default, names every value through lists), default beside a list, and in a constant evaluation; without --no-implicit-fallthrough a label's statements run on into the next label's unless they end the case, as any label's (kpp/case_label_list_under_no_implicit_fallthrough has the flag)
+// spec: `case A, B, C:` is one label of several values, its statements theirs, as Go's and C#'s (kovarex, 2026-11-08; design.md "No implicit fallthrough"): integers, characters, a kpp enum's values (its exhaustive switch, without default, names every value through lists), default beside a list, and in a constant evaluation; a list's statements end with an implicit break, `fallthrough;` running on into default, as any label's (no implicit fallthrough, kpp's rule since its flip; kpp/case_label_list_under_no_implicit_fallthrough was the flag's)
 enum class Direction : uint8_t
 {
   { North, East, South, West }
@@ -20,6 +20,7 @@ int kind(int x)
     case 4:
       return 20;
     case 5, 6:
+      fallthrough;
     default:
       return 30;
   }
@@ -32,9 +33,7 @@ int vowels(StringView text)
     {
       case 'a', 'e', 'i', 'o', 'u':
         ++n;
-        break;
       default:
-        break;
     }
   return n;
 }

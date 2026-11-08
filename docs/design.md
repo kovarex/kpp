@@ -4893,9 +4893,9 @@ takes).
   funclets' UnwindHelp on Windows). Specs language/destructor_*, language/noexcept_*destructor*,
   templates/destructor_*.
 
-- **No implicit fallthrough** (readme's Planned; rules decided by kovarex 2026-11-07 on thread D's questions, Q5 and Q6
-  changed on his rule "no keyword that does nothing"; the steps are C's plan of 2026-11-06). Every group of statements
-  after a label ends with an implicit `break`:
+- **No implicit fallthrough** (built: kpp's default since C's flip of 2026-11-09; rules decided by kovarex 2026-11-07 on
+  thread D's questions, Q5 and Q6 changed on his rule "no keyword that does nothing"; the steps are C's plan of
+  2026-11-06). Every group of statements after a label ends with an implicit `break`:
   1. Each label begins a group of its own (kovarex, 2026-11-08, replacing 2026-11-07's "labels side by side share one
      group"): `case A: case B: build();` runs build() for B alone, and an empty `case A:` is a case that does nothing.
      A body several values share is one label, `case A, B, C: build();` (kovarex, 2026-11-08 21:15, as Go's and C#'s:
@@ -4905,7 +4905,7 @@ takes).
      (rule 2) stays legal, and `fallthrough;` stays for a group with statements of its own running on. A value that
      two labels of a switch share, or one label lists twice, is an error, as C++'s duplicate case value ([stmt.switch]
      2; Walker::checkCaseValues: until then codegen gave LLVM a switch of two cases of one value, which it refused).
-     Without the flag C++'s meaning stays. Specs kpp/case_label_list, _under_no_implicit_fallthrough and
+     The C++ a conversion reads keeps C++'s meaning. Specs kpp/case_label_list, _under_no_implicit_fallthrough and
      _duplicates_is_error.
   2. `fallthrough;` is the last statement of a group with another group after it (Go's rule), a group of `fallthrough;`
      alone too; anywhere else, inside an `if`, in the last group or outside a switch, it is an error. `case A: break;`
@@ -4921,8 +4921,9 @@ takes).
   or both branches of an `if` ending so), so what every case does is written before the meaning changes. Then: the count
   of trailing `break;`s in the game and in kpp's own code, the converter's removal of them (C; it writes `fallthrough;`
   alone), kpp's stdlib, libraries and programs cleaned, and step 2, the flip with the errors above, the game's IR
-  byte-identical across it, the evaluator flipped by the specs. Specs language/switch_case_running_on_is_error,
-  switch_case_ends_written.
+  byte-identical across it, the evaluator flipped by the specs. Since the flip step 1 runs only on C++ text (the
+  C++ a conversion reads, a C++ corpus given to kpp); its spec language/switch_case_running_on_is_error is gone, and
+  language/switch_case_ends_written shows kpp's rule.
   Step 2 built behind `--no-implicit-fallthrough` (D, 2026-11-07), every rule as an error exactly as it will be, so
   that the converter and the stdlib are fixed against it. In the code generator and the evaluator a group whose end
   is reached breaks; `fallthrough;` as its last statement runs on into the next; each label begins a group, an empty
@@ -4934,12 +4935,13 @@ takes).
   `fallthrough;` elsewhere (inside another statement, in the last group, outside a switch) and a label nested in
   another statement are errors; step 1's "runs on into it" is off. Specs kpp/no_implicit_fallthrough and
   kpp/no_implicit_fallthrough_errors_is_error, built with `--no-std` until the stdlib's trailing breaks are gone.
-  While the flag is opt-in, a trailing `break;` in the standard library's files is no error under it (the
+  While the flag was opt-in, a trailing `break;` in the standard library's files was no error under it (the
   coordinator, 2026-11-08, for C's converter step): its 7 (Time.kpp's parseTime; the switches of Error.kpp, Variant.kpp
   and FilesPosix.kpp end every case with a return) mean the same with the flag and without, and can go only with the
   flip, as step 1 refuses a case that runs on without the flag; so the
   converted game builds with the flag before the flip, as it did for explicit by default (7ab51b62). The program's
-  own trailing `break;` is still the error. Spec kpp/no_implicit_fallthrough_keeps_the_standard_library_breaks.
+  own trailing `break;` was still the error. Gone with the flip, with the 7 breaks (spec
+  kpp/no_implicit_fallthrough_standard_library_switches, until then _keeps_the_standard_library_breaks).
   Labels side by side, which mean one case each under the flag, are written as one label of their values where code
   builds with it: the stdlib's 12 (Error.kpp's errcOfWindowsError, `case 2, 3, 15, 53, 67, 123, 161:`) by C, the same
   with the flag and without; the game's by C's converter.
@@ -4958,8 +4960,24 @@ takes).
   the next label (23 before a default, 24 after one, 4 across preprocessor lines, trio's and lstrlib's); 278 labels are
   left empty, each a `case A: break;`. One conversion's counts: 3,555 trailing breaks removed and 2,044 in macros'
   expansions, 277 `fallthrough;`s for C++'s running on (164 withdrawn after macros' uses), 43 comments moved above a
-  joined label. convert.cmd builds every configuration with the flag, and its switch test (tests\convert_switch) runs
-  the converted cases against C++'s output.
+  joined label. convert.cmd builds every configuration with kpp's rule, and its switch test (tests\convert_switch)
+  runs the converted cases against C++'s output.
+  The flip (C, 2026-11-09; the game converted for it, kpp f6ca09d2 and factorio-in-kpp f6343cedb): no implicit fallthrough
+  is on (source.cpp) except while converting (FrontEnd.cpp: the C++ a conversion reads is C++). `--no-implicit-fallthrough`
+  is accepted and does nothing (Compile.cpp), as `--explicit-by-default` is. A switch of C or C++ text keeps C's meaning
+  whatever the rule (SwitchStmt::cRules, set by the parser: an imported C header's inline function, whose switch got
+  implicit breaks under the flag until 59e65d9c, a silent wrong answer the game's IR shows it never had; the walker's
+  rules and scopes skip it too, so a C++ corpus keeps step 1). The standard library's exemption from the trailing-break
+  error goes with its 7 breaks (Time.kpp's parseTime). kpp's own code cleaned with it: libraries/ (mariadb's 7 and
+  markdown's 36 trailing breaks; markdown's 3 runs of labels side by side and json's 1 written `case A, B:`, where
+  json's tests failed on the meaning they took), programs/kpplex (25 breaks; its 9 single-character punctuators, each
+  a `case 'x': break;`, one empty label `case '{', '}', ...:`), 13 specs and 3 test inputs (a `break;` gone, run/control's labels joined; where
+  a test reads line numbers, debuginfo/values.kpp, its line left blank; lsp/members' `break;`, its quick fix's
+  subject, is a published error now).
+  language/jump_past_initialization_is_error loses its case labels past a declaration, and
+  language/static_local_constant_initialized_from_the_start its static read through a later case: each case is a
+  scope of its own now (rule 4). Found by a temporary error for an empty group before a label over every library,
+  program, spec and test (none kept: an empty case is the rule's, the game's 278 among them).
 
 - **Explicit by default** (readme's Planned; decided by kovarex 2026-11-07 on thread D's questions, Q1 and Q3 reshaped;
   D's survey in the coordinator's notes). A constructor or a conversion operator converts implicitly only when marked

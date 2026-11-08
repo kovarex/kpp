@@ -89,7 +89,7 @@ int compile(int argc, char** argv)
     else if (arg == "--plain-enum-warnings")
       options.plainEnumWarnings = true;
     else if (arg == "--no-implicit-fallthrough")
-      options.noImplicitFallthrough = true;
+      ; // the default since the flip (design.md "No implicit fallthrough"): accepted until scripts drop it
     else if (arg == "--struct-rule")
       options.structRule = true;
     else if (arg == "--c-type-warnings")

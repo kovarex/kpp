@@ -16,16 +16,13 @@ int cases(int x)
       int k;
       k = 10;
       r = k;
-      break;
     case 1:
     {
       Noisy n(1);
       r = n.id;
-      break;
     }
     case 2:
       r = 20;
-      break;
     default:
       r = -1;
   }

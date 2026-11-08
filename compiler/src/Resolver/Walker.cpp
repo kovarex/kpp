@@ -5290,7 +5290,8 @@ auto GlobalScope::Impl::Walker::walkSwitchBody(Stmt* body) -> void
 
 auto GlobalScope::Impl::Walker::checkPlacedInSwitch(Stmt* s) -> void
 {
-  if (!noImplicitFallthroughOn() || activeSubst || probing || !file || file->isImported || !file->tokens || !s || s->token >= file->tokens->size())
+  if (!noImplicitFallthroughOn() || cSwitchBodies || activeSubst || probing || !file || file->isImported || !file->tokens || !s ||
+      s->token >= file->tokens->size())
     return;
   const std::string rule = " (design.md \"No implicit fallthrough\")";
   if (s->kind == NodeKind::FallthroughStmt)
@@ -5335,27 +5336,25 @@ auto GlobalScope::Impl::Walker::checkCaseValues(Stmt* body) -> void
   }
 }
 
-auto GlobalScope::Impl::Walker::checkCaseEnds(Stmt* body) -> void
+auto GlobalScope::Impl::Walker::checkCaseEnds(Stmt* body, bool kppRules) -> void
 {
   // The first step of no implicit fallthrough (design.md): what a case runs on into the next by is written, so
   // that the flip to an implicit break changes the meaning of nothing. Whether its end is reached, by the
   // statements alone, as the converter says it when it writes `fallthrough;`.
   if (activeSubst || probing || !file || file->isImported || !body || body->kind != NodeKind::BlockStmt)
     return;
-  if (noImplicitFallthroughOn())
+  if (noImplicitFallthroughOn() && kppRules)
   {
-    // Step 2 (--no-implicit-fallthrough): every case ends with a break, each label beginning a group of its own (an
-    // empty one does nothing). Its last `break;` (also as the last statement of a block that ends it) is an error
-    // naming its removal; `fallthrough;` ending a group with another after it, a group of `fallthrough;` alone too,
-    // runs on into it (rules 2 and 5). The trailing `break;` is no error in the standard library's files while the
-    // flag is opt-in: theirs (parseTime's 7) mean the same with it and without, and go with the flip, since without
-    // the flag step 1 refuses a case that runs on (the coordinator, 2026-11-08, for C's converter step; the
-    // explicit-by-default errors skipped them so until their flip, 7ab51b62).
+    // Step 2, kpp's rule since the flip (no implicit fallthrough; off while converting, and C++ text's switches keep
+    // step 1): every case ends with a break, each label beginning a group of its own (an empty one does nothing). Its
+    // last `break;` (also as the last statement of a block that ends it) is an error naming its removal;
+    // `fallthrough;` ending a group with another after it, a group of `fallthrough;` alone too, runs on into it
+    // (rules 2 and 5).
     auto trailingBreak = [&](Stmt* last)
     {
       while (last && last->kind == NodeKind::BlockStmt && !static_cast<BlockStmt*>(last)->stmts.empty())
         last = static_cast<BlockStmt*>(last)->stmts[static_cast<BlockStmt*>(last)->stmts.size() - 1];
-      if (last && last->kind == NodeKind::BreakStmt && !file->isLibrary && file->tokens && last->token + 1 < file->tokens->size())
+      if (last && last->kind == NodeKind::BreakStmt && file->tokens && last->token + 1 < file->tokens->size())
         impl.reportCheckerError(file, last->token, "every case ends with a break: remove `" + Impl::spelledTokens(file, last->token, last->token + 1) +
                                                        "` (design.md \"No implicit fallthrough\")");
     };
@@ -10064,13 +10063,17 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
     case NodeKind::SwitchStmt:
     {
       auto* w = static_cast<SwitchStmt*>(s);
-      checkCaseEnds(w->body);
+      checkCaseEnds(w->body, !w->cRules);
       size_t mark = locals.mark();
       walkStmt(w->init);
       walkNode(w->cond);
       checkSwitchOnClass(w);
       if (w->cRules)
-        walkStmt(w->body); // (a C header's switch: one scope, C's)
+      {
+        ++cSwitchBodies;
+        walkStmt(w->body); // (C's or C++'s switch: one scope, its labels and `[[fallthrough]];` C++'s)
+        --cSwitchBodies;
+      }
       else
         walkSwitchBody(w->body);
       checkCaseValues(w->body);

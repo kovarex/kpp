@@ -153,8 +153,7 @@ struct MarkdownBlockParser
   {
     switch (container->type)
     {
-      case MarkdownType::document:
-      case MarkdownType::list:
+      case MarkdownType::document, MarkdownType::list:
         return 0;
       case MarkdownType::blockQuote:
         if (!this->indented && this->peek(this->nextNonspace) == '>')
@@ -180,8 +179,7 @@ struct MarkdownBlockParser
           return 0;
         }
         return 1;
-      case MarkdownType::heading:
-      case MarkdownType::thematicBreak:
+      case MarkdownType::heading, MarkdownType::thematicBreak:
         return 1;
       case MarkdownType::codeBlock:
         if (container->fenced)
@@ -571,7 +569,6 @@ struct MarkdownBlockParser
           if (onlySpace)
             block->unlink();
         }
-        break;
       }
       case MarkdownType::codeBlock:
       {
@@ -589,13 +586,11 @@ struct MarkdownBlockParser
           block->literal << '\n';
         }
         block->content = String();
-        break;
       }
       case MarkdownType::htmlBlock:
       {
         block->literal = String(StringView(block->content).substr(0, markdownEndWithoutBlankLines(block->content)));
         block->content = String();
-        break;
       }
       case MarkdownType::list:
       {
@@ -621,13 +616,10 @@ struct MarkdownBlockParser
         }
         if (block->lastChild)
           block->endLine = block->lastChild->endLine;
-        break;
       }
       case MarkdownType::item:
         block->endLine = block->lastChild ? block->lastChild->endLine : block->startLine;
-        break;
       default:
-        break;
     }
     this->tip = above;
   }

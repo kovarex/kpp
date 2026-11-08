@@ -1,24 +1,21 @@
-// spec: what ends a case without a word: labels side by side share their statements, `break`, `return`, `continue`, a `throw`, `goto`, `fallthrough;` and `[[fallthrough]];`, a block or both branches of an `if` ending so, a statement after a closed case's block that is empty; clang's output for the same program without `fallthrough;`
+// spec: what ends a case under no implicit fallthrough, kpp's rule (design.md "No implicit fallthrough"; until its flip this snippet showed step 1's, C++'s meaning with every case's end written): its end reached (an implicit break), a block ending so, `return`, `continue`, a `throw`, `goto`; `fallthrough;` runs on into the next, also after a block; one label of two values shares their statements; a statement after a case's block that is empty; clang's output for the same program written in C++, `case 0: case 1:` and each case's `break;`
 int run(int n)
 {
   int acc = 0;
   for (int i = 0; i < 2; ++i)
     switch (n)
     {
-      case 0:
-      case 1:
+      case 0, 1:
         acc += 1;
-        break;
       case 2:
         acc += 2;
         fallthrough;
       case 3:
         acc += 3;
-        [[fallthrough]];
+        fallthrough;
       case 4:
         {
           acc += 4;
-          break;
         };
       case 5:
         if (acc > 0)

@@ -80,7 +80,7 @@ struct MarkdownRenderer
   {
     switch (node->type)
     {
-      case MarkdownType::document: this->children(node); break;
+      case MarkdownType::document: this->children(node);
       case MarkdownType::paragraph:
       {
         MarkdownNode* grandparent = node->parent ? node->parent->parent : nullptr;
@@ -94,7 +94,6 @@ struct MarkdownRenderer
         this->children(node);
         this->literal("</p>");
         this->newline();
-        break;
       }
       case MarkdownType::heading:
       {
@@ -111,13 +110,11 @@ struct MarkdownRenderer
         this->children(node);
         this->literal("</" + tag + ">");
         this->newline();
-        break;
       }
       case MarkdownType::thematicBreak:
         this->newline();
         this->literal("<hr />");
         this->newline();
-        break;
       case MarkdownType::blockQuote:
         this->newline();
         this->literal("<blockquote>");
@@ -126,7 +123,6 @@ struct MarkdownRenderer
         this->newline();
         this->literal("</blockquote>");
         this->newline();
-        break;
       case MarkdownType::list:
       {
         const char* tag = node->ordered ? "ol" : "ul";
@@ -140,14 +136,12 @@ struct MarkdownRenderer
         this->newline();
         this->literal(toString("</", StringView(tag), ">"));
         this->newline();
-        break;
       }
       case MarkdownType::item:
         this->literal("<li>");
         this->children(node);
         this->literal("</li>");
         this->newline();
-        break;
       case MarkdownType::codeBlock:
       {
         this->newline();
@@ -165,13 +159,11 @@ struct MarkdownRenderer
         this->escaped(node->literal);
         this->literal("</code></pre>");
         this->newline();
-        break;
       }
       case MarkdownType::htmlBlock:
         this->newline();
         this->literal(node->literal);
         this->newline();
-        break;
       case MarkdownType::table:
       {
         this->newline();
@@ -214,29 +206,24 @@ struct MarkdownRenderer
         }
         this->literal("</table>");
         this->newline();
-        break;
       }
-      case MarkdownType::text: this->escaped(node->literal); break;
-      case MarkdownType::softBreak: this->literal("\n"); break;
+      case MarkdownType::text: this->escaped(node->literal);
+      case MarkdownType::softBreak: this->literal("\n");
       case MarkdownType::lineBreak:
         this->literal("<br />");
         this->newline();
-        break;
       case MarkdownType::code:
         this->literal("<code>");
         this->escaped(node->literal);
         this->literal("</code>");
-        break;
       case MarkdownType::emphasis:
         this->literal("<em>");
         this->children(node);
         this->literal("</em>");
-        break;
       case MarkdownType::strong:
         this->literal("<strong>");
         this->children(node);
         this->literal("</strong>");
-        break;
       case MarkdownType::link:
         this->literal("<a href=\"");
         this->escaped(this->destination(node));
@@ -248,7 +235,6 @@ struct MarkdownRenderer
         this->literal("\">");
         this->children(node);
         this->literal("</a>");
-        break;
       case MarkdownType::image:
       {
         this->literal("<img src=\"");
@@ -263,10 +249,9 @@ struct MarkdownRenderer
           this->escaped(node->title);
         }
         this->literal("\" />");
-        break;
       }
-      case MarkdownType::htmlInline: this->literal(node->literal); break;
-      default: break;
+      case MarkdownType::htmlInline: this->literal(node->literal);
+      default:
     }
   }
 

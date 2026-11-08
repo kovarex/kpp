@@ -28,8 +28,7 @@ void jsonWrite(String& out, const JsonValue& value, i32 indent, i32 level)
     case JsonType::integer: out << value.integerValue; return;
     case JsonType::number: jsonWriteNumber(out, value.numberValue); return;
     case JsonType::string: jsonWriteString(out, value.stringValue); return;
-    case JsonType::array:
-    case JsonType::object:
+    case JsonType::array, JsonType::object:
     {
       bool object = value.type == JsonType::object;
       out << (object ? '{' : '[');

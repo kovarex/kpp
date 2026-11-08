@@ -8,7 +8,6 @@ int main()
   switch (derived)
   {
     case DERIVED:
-      break;
     default:
       return 1;
   }

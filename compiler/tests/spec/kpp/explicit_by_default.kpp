@@ -108,7 +108,6 @@ int main()
   {
     case 10:
       ok += 1000;
-      break;
     default:
       ok += 5000;
   }

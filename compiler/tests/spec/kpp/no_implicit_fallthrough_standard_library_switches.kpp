@@ -1,0 +1,29 @@
+// spec: the standard library's switches under no implicit fallthrough, kpp's rule since its flip (design.md "No implicit fallthrough"): parseTime's cases without their 7 trailing `break;`s (no errors of the stdlib's are skipped any more; until the flip this snippet showed them skipped under the opt-in flag), errcOfWindowsError's lists of values, `case 2, 3, 15, 53, 67, 123, 161:`, each value mapped (as labels side by side before C's 9c32275b only each run's last, 161, 82, 183, 112 and 30, the others to 0: `0 0 2 0 13 0 17 0 28 0 5 18 0`); the program's own switch alike, each group ending with an implicit break and `fallthrough;` running on (`one two`, `two`, `three`, `1 2026 11 8 12 34`, `2 2 2 13 13 17 17 28 28 5 5 18 0`)
+extern "C" import "time.h";
+
+int main()
+{
+  for (int i = 1; i <= 3; ++i)
+  {
+    switch (i)
+    {
+      case 1:
+        print("one ");
+        fallthrough;
+      case 2:
+        println("two");
+      case 3:
+        println("three");
+    }
+  }
+  tm t = {};
+  bool parsed = parseTime("2026-11-08 12:34", "%Y-%m-%d %H:%M", &t);
+  println(parsed ? 1 : 0, " ", t.tm_year + 1900, " ", t.tm_mon + 1, " ", t.tm_mday, " ", t.tm_hour, " ", t.tm_min);
+  // (Windows errors: file and path not found, ..., bad network name; access denied, ..., cannot make; file exists twice;
+  // disk full twice; write and read fault; not same device; one it does not map)
+  int errors[] = {2, 3, 161, 5, 82, 80, 183, 39, 112, 29, 30, 17, 999};
+  for (int k = 0; k < 13; ++k)
+    print(k == 0 ? StringView("") : StringView(" "), errcOfWindowsError(errors[k]));
+  println();
+  return 0;
+}

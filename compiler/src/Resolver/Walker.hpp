@@ -32,6 +32,7 @@
     // Under --no-implicit-fallthrough, of the switches checkCaseEnds saw: their labels (any other is nested in a
     // statement) and each `fallthrough;` ending a group with another after it (any other is misplaced).
     std::unordered_set<const Stmt*> switchLabels, placedFallthroughs;
+    int cSwitchBodies = 0; // inside a switch of C or C++ text (SwitchStmt::cRules): C++'s labels, no rule of kpp's
     // The code generator's re-typing of an instance's copy with a type pack bound to one element
     // (a fold over the pack, GlobalScope::retypeFor): its static_asserts were checked with the
     // whole pack, and a fold over the pack cannot be evaluated against one element.
@@ -997,7 +998,7 @@
 
     // That f, not noexcept, overrides no noexcept function (an error).
     void checkOverrideNoexcept(FunctionDecl* f);
-    void checkCaseEnds(Stmt* body);
+    void checkCaseEnds(Stmt* body, bool kppRules);
     // A value two labels of a switch share, or one label lists twice (`case A, B, A:`), is an error, as in C++
     // ([stmt.switch] 2): never two cases of one value. Of the body's own labels.
     void checkCaseValues(Stmt* body);

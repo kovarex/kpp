@@ -27,17 +27,16 @@ struct MarkdownInlineParser
     bool done = false;
     switch (c)
     {
-      case '\n': done = this->parseNewline(block); break;
-      case '\\': done = this->parseBackslash(block); break;
-      case '`': done = this->parseBackticks(block); break;
-      case '*':
-      case '_': done = this->handleDelimiter(c, block); break;
-      case '[': done = this->parseOpenBracket(block); break;
-      case '!': done = this->parseBang(block); break;
-      case ']': done = this->parseCloseBracket(block); break;
-      case '<': done = this->parseAutolink(block) || this->parseHtmlTag(block); break;
-      case '&': done = this->parseEntity(block); break;
-      default: done = this->parseString(block); break;
+      case '\n': done = this->parseNewline(block);
+      case '\\': done = this->parseBackslash(block);
+      case '`': done = this->parseBackticks(block);
+      case '*', '_': done = this->handleDelimiter(c, block);
+      case '[': done = this->parseOpenBracket(block);
+      case '!': done = this->parseBang(block);
+      case ']': done = this->parseCloseBracket(block);
+      case '<': done = this->parseAutolink(block) || this->parseHtmlTag(block);
+      case '&': done = this->parseEntity(block);
+      default: done = this->parseString(block);
     }
     if (!done)
     {

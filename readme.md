@@ -77,6 +77,8 @@ what is decided but not built yet is under [Planned](#planned). Every rule that 
 - **Explicit by default.** A constructor or conversion operator converts implicitly only when marked
   `implicit` (`implicit Celsius(double degrees)`), and the keyword `explicit` is gone. A function
   argument's braces name their type: `draw(Color{1, 0, 0})`, not `draw({1, 0, 0})`.
+- **No implicit fallthrough.** Every `case` ends with an implicit `break`; falling through is written
+  `fallthrough;`, and a body several values share is one label, `case North, South:`.
 
 ### Less boilerplate
 
@@ -235,9 +237,6 @@ kpp.net and other things.
 
 Decided, and not built yet:
 
-- **No implicit fallthrough.** Every `case` ends with an implicit `break`; falling through is
-  written `fallthrough;` (accepted today as C++'s `[[fallthrough]];`, while `switch` keeps C++'s
-  rules).
 - **Required `this.`**: a member is written `this.x` and a static one `This::count`, so that adding a
   local or a global never changes what an existing line means; a bare name is never a member.
   `This` names the class the code is in (`Vector<T>` inside Vector). Outside a scoped enum its values

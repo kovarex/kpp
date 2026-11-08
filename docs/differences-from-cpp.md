@@ -525,7 +525,7 @@ enum class Direction : u8
 - **Why:** adding a value finds every switch, and a corrupted byte stops the program where it is seen.
 - **See:** [design 8.4][d8]; spec `kpp/typed_unions_switch_copy`.
 
-### No implicit fallthrough (this stage)
+### No implicit fallthrough (built)
 
 - **C++:** a `case` runs into the next without `break`.
 - **kpp:** each label begins a group of statements of its own, which ends with an implicit `break`: an
@@ -533,23 +533,21 @@ enum class Direction : u8
   two labels share, is `fallthrough;` as a group's last statement (`case A: fallthrough; case B: x();`).
   A `break;` that ends a group, `[[fallthrough]];` and a label nested in another statement are errors,
   and each group is a scope of its own.
-- **Status:** step 1 is built: a case that can reach the next label without `break;`, `fallthrough;`,
-  `return`, `continue`, `goto` or `throw` is an error, and `switch` keeps C++'s meaning. The flip is built
-  behind `--no-implicit-fallthrough`, with every rule's error, and the converted game and the stdlib build
-  with it (2026-11-08). It becomes the default once the libraries and the specs do too.
+- **Status:** built, kpp's default since 2026-11-09 (`--no-implicit-fallthrough` is accepted and does
+  nothing). A switch in an imported C header, and the C++ the converter reads, keep C's meaning.
 - **Why:** falling through by accident is a bug class; a keyword that does nothing goes (kovarex,
   2026-11-07).
 - **See:** [design 6][d6] and its "No implicit fallthrough" entry; specs
-  `language/switch_case_running_on_is_error`, `language/switch_case_ends_written`,
+  `language/switch_case_ends_written`, `interop/c_header_inline_switch_keeps_c_fallthrough`,
   `kpp/no_implicit_fallthrough` and its `_errors_is_error`, `_labels_side_by_side_are_two_cases`,
   `_shares_a_body_by_fallthrough`.
 
 ### `case A, B, C:` (built)
 
 - **C++:** one value per `case`; a body several values share is labels side by side, `case A: case B:`.
-- **kpp:** `case A, B, C:` is one label of several values, its statements theirs, as in Go and C#, with
-  `--no-implicit-fallthrough` and without (where labels side by side are cases of their own under the
-  flag). C++'s `case` takes a conditional-expression, so the comma is no comma operator. A value two labels
+- **kpp:** `case A, B, C:` is one label of several values, its statements theirs, as in Go and C# (labels
+  side by side are cases of their own). C++'s `case` takes a conditional-expression, so the comma is no
+  comma operator. A value two labels
   share, or one label lists twice, is an error, as in C++.
 - **Why:** under no implicit fallthrough labels side by side no longer share a body; one label of a list
   says it where 3,690 `fallthrough;`s would have (kovarex, 2026-11-08).

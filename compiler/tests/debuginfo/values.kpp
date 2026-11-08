@@ -137,7 +137,7 @@ int scoped(int x)
   {
     case 0:
       total += s;
-      break;
+
     default:
       total -= s;
   }

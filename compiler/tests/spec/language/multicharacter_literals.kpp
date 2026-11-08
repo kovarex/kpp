@@ -16,6 +16,6 @@ int main()
   printf("%d\n", '\\\'');
   printf("%d\n", 'ab' == 0x6162);
   printf("%d\n", inConstant);
-  switch (0x41424344) { case 'ABCD': printf("hit\n"); break; default: printf("miss\n"); }
+  switch (0x41424344) { case 'ABCD': printf("hit\n"); default: printf("miss\n"); }
   return 0;
 }

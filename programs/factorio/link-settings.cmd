@@ -12,10 +12,6 @@ rem The C libraries converted to kpp (c-libraries.cmd) are compiled with the gam
 rem as convert.cmd writes them), not linked, and their headers imported.
 call "%~dp0c-libraries.cmd"
 set CINC=%CINC% %CLIBINC%
-rem The game is converted for no implicit fallthrough (design.md "No implicit fallthrough"), so every build
-rem of it takes --no-implicit-fallthrough until that is kpp's default: link.cmd, run.cmd, tests.cmd, the
-rem Visual Studio project and determinism.ps1's headline build, all through CINC.
-set CINC=%CINC% --no-implicit-fallthrough
 for %%l in (%CLIBRARIES%) do call set CINC=%%CINC%% --cinclude kpp\%%l
 rem (a scoped one, CLIBSCOPED, as the library it is: --library-root, design.md 16)
 set CLIBKPP=

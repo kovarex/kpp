@@ -1,4 +1,4 @@
-// spec: a static local whose initializer is a constant expression is constant-initialized, as C++'s [basic.start.static] has it, const or not: it holds its value from the program's start, so a goto past its declaration reads 5 and a case label past one reads 7, and it is written as any variable (`8 8`); one whose initializer is no constant (a non-const global's value, a call with a side effect) is initialized when its declaration first runs, from the values then (`21`, `101`); clang prints the same
+// spec: a static local whose initializer is a constant expression is constant-initialized, as C++'s [basic.start.static] has it, const or not: it holds its value from the program's start, so a goto past its declaration reads 5, and it is written as any variable (`6 6`; a case label past one, which read 7 until each case became a scope of its own in kpp, design.md "No implicit fallthrough" rule 4, reaches none); one whose initializer is no constant (a non-const global's value, a call with a side effect) is initialized when its declaration first runs, from the values then (`21`, `101`); clang prints the same
 // found by thread B (2026-11-05), comparing kpp with clang: a non-const one was zero until its declaration ran (`0 0 8 8`), with a guard checked on every pass
 int skipStatic(int x)
 {
@@ -8,19 +8,6 @@ int skipStatic(int x)
   ++counter;
 after:
   return counter;
-}
-int inSwitch(int x)
-{
-  switch (x)
-  {
-    case 0:
-      static int c = 7;
-      ++c;
-      return c;
-    case 1:
-      return c;
-  }
-  return -1;
 }
 int base = 10;
 int calls = 0;
@@ -37,7 +24,7 @@ int fromCall()
 }
 int main()
 {
-  println(skipStatic(1), " ", inSwitch(1), " ", inSwitch(0), " ", inSwitch(1));
+  println(skipStatic(1), " ", skipStatic(0), " ", skipStatic(1));
   base = 20;
   calls = 100;
   int first = constFromGlobal();

@@ -14,8 +14,8 @@ int main()
   int sum = Green + 1;
   switch (m)
   {
-    case Mode::Off: println("off"); break;
-    case Mode::On: println("on"); break;
+    case Mode::Off: println("off");
+    case Mode::On: println("on");
   }
   println(x, " ", c == Green, " ", on, " ", fromMode, " ", back == Mode::Off, " ", fromInt == Green, " ", sum, " ", Red < Green);
   return 0;

@@ -43,7 +43,6 @@ constexpr int classify(int x)
       fallthrough;
     case 2:
       r += 10;
-      break;
     case 3:
       return 300;
     default:

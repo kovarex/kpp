@@ -73,11 +73,11 @@ std::vector<std::string> takeOverrideWarnings();
 // argument of a constructor). On but while converting (--convert: the C++ a conversion reads converts as C++).
 void setExplicitByDefault(bool on);
 bool explicitByDefaultOn();
-// --no-implicit-fallthrough (design.md "No implicit fallthrough", step 2 behind the flag): each label of a switch
-// begins a group of its own, which ends with an implicit break (an empty one does nothing), `fallthrough;` runs on
-// into the next, each group is a scope, and the rules' errors are on (a trailing `break;`, `[[fallthrough]];`,
-// `fallthrough;` elsewhere, a nested label). The default once the game, the stdlib, the libraries and the specs build
-// with it.
+// No implicit fallthrough (design.md "No implicit fallthrough"): each label of a kpp switch begins a group of its own,
+// which ends with an implicit break (an empty one does nothing), `fallthrough;` runs on into the next, each group is a
+// scope, and the rules' errors are on (a trailing `break;`, `[[fallthrough]];`, `fallthrough;` elsewhere, a nested
+// label). On but while converting (--convert: the C++ a conversion reads is C++); a switch of C or C++ text keeps C's
+// meaning either way (SwitchStmt::cRules).
 void setNoImplicitFallthrough(bool on);
 bool noImplicitFallthroughOn();
 void setThisWarnings(bool on);

@@ -372,43 +372,30 @@ struct Lexer
         if (n == '=' && this->p[2] == '>') length = 3;
         else if (n == '<' && this->p[2] == '=') length = 3;
         else if (n == '<' || n == '=') length = 2;
-        break;
       case '>':
         if (n == '>' && this->p[2] == '=') length = 3;
         else if (n == '>' || n == '=') length = 2;
-        break;
       case '-':
         if (n == '>' && this->p[2] == '*') length = 3;
         else if (n == '>' || n == '-' || n == '=') length = 2;
-        break;
       case '.':
         if (n == '.' && this->p[2] == '.') length = 3;
         else if (n == '*') length = 2;
-        break;
-      case ':': if (n == ':') length = 2; break;
-      case '+': if (n == '+' || n == '=') length = 2; break;
-      case '=': if (n == '=') length = 2; break;
-      case '!': if (n == '=') length = 2; break;
-      case '&': if (n == '&' || n == '=') length = 2; break;
-      case '|': if (n == '|' || n == '=') length = 2; break;
-      case '*': if (n == '=') length = 2; break;
-      case '/': if (n == '=') length = 2; break;
-      case '%': if (n == '=') length = 2; break;
-      case '^': if (n == '=') length = 2; break;
-      case '#': if (n == '#') length = 2; break;
+      case ':': if (n == ':') length = 2;
+      case '+': if (n == '+' || n == '=') length = 2;
+      case '=': if (n == '=') length = 2;
+      case '!': if (n == '=') length = 2;
+      case '&': if (n == '&' || n == '=') length = 2;
+      case '|': if (n == '|' || n == '=') length = 2;
+      case '*': if (n == '=') length = 2;
+      case '/': if (n == '=') length = 2;
+      case '%': if (n == '=') length = 2;
+      case '^': if (n == '=') length = 2;
+      case '#': if (n == '#') length = 2;
       case '?':
         if (n == '-' && this->p[2] == '>') length = 3;
         else if (n == ':') length = 2;
-        break;
-      case '{': break;
-      case '}': break;
-      case '[': break;
-      case ']': break;
-      case '(': break;
-      case ')': break;
-      case ';': break;
-      case ',': break;
-      case '~': break;
+      case '{', '}', '[', ']', '(', ')', ';', ',', '~': // (single-character punctuators: length 1)
       default:
         ++this->p;
         this->error(start);

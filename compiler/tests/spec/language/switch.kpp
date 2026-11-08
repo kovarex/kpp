@@ -1,13 +1,12 @@
-// spec: switch with fallthrough and default
+// spec: switch with fallthrough and default (one label of two values, `fallthrough;`, and every case ending with an implicit break: design.md "No implicit fallthrough")
 // factorio: 1682 uses in 697 files
 const char* describe(int n)
 {
   switch (n)
   {
     case 0: return "zero";
-    case 1:
-    case 2: return "small";
-    case 3: [[fallthrough]];
+    case 1, 2: return "small";
+    case 3: fallthrough;
     case 4: return "medium";
     default: return "large";
   }
@@ -24,9 +23,9 @@ int main()
   for (int i = 0; i < 4; ++i)
     switch (i)
     {
-      case 1: acc += 10; break;
+      case 1: acc += 10;
       case 2: acc += 100; fallthrough;
-      case 3: acc += 1000; break;
+      case 3: acc += 1000;
     }
   println(out, acc);
   return 0;

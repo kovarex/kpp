@@ -26,8 +26,8 @@ int main()
   printf("%d %d\n", (int)(B::yes > B::no), +pt);
   switch (a)
   {
-    case B::no: printf("no\n"); break;
-    case B::yes: printf("yes\n"); break;
+    case B::no: printf("no\n");
+    case B::yes: printf("yes\n");
   }
   return 0;
 }
