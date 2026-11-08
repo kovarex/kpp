@@ -4875,9 +4875,13 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   `Point{1, 2}`, not `{1, 2}`", or for a long or multi-line list "write `Point{`, not `{`"). The type is one the
   call can write, for C's converter applies the fixes:
   - as the parameter writes it, a name declared in a namespace or a class qualified by them
-    (`CircuitNetworkHelper::VectorOfSignalValues`, `LocaleStringReplacer::Parameters`);
-  - else (a class template's member alias, a template parameter) the type in kpp's spelling
-    (`Pair<BlueprintRecordID, f32>`, `Vector<i32>`);
+    (`CircuitNetworkHelper::VectorOfSignalValues`, `LocaleStringReplacer::Parameters`), each name found from the
+    parameter's own scope, so that the fix is the same whatever file is walked first (2026-11-08: a call in an
+    out-of-class member definition got the bare name when its callee's class was walked after it);
+  - else (a class template's member alias, a template parameter, a template argument written by a name its
+    namespaces or classes qualify) the type in kpp's spelling (`Pair<BlueprintRecordID, f32>`, `Vector<i32>`,
+    `Vector<agui::AreaAlign>` for a parameter's `Vector<AreaAlign>`; `Box<int>` stays as written);
+  - a function's local class by its bare name in that function, where the name is visible (`UpgradeCount{...}`);
   - for a pointer `nullptr`, or the value of `{p}`;
   - in template code, as its instances decide: one error where they agree, and where the type differs by instance
     (`ScriptObjectHelper<T>::SelectAction({a, b})`, a specialization's parameter each) no fix, each instance naming its

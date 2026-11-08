@@ -1,0 +1,61 @@
+// spec: under --explicit-by-default the fix of a function argument's braces names a type the call can write, wherever the call and the declarations are (C's converter applies it; C's report of the game's 34 errors, 2026-11-08): a call in an out-of-class member definition, walked before the class it calls (-j 1, the file's order), gets the parameter's type qualified by its class (`Holder::Info{1, 2}`; it was the bare `Info{1, 2}` when the declaring class was walked after the call, and qualified when before: the fix changed with the order of the walk); a template argument written by a name its namespace qualifies is qualified (`Pair2<ns::Align>{...}`, not `Pair2<Align>{...}`); and a function's local struct is named bare in its function, where the name is visible (`Local{1, 2}`; there was no fix)
+// kpp: --explicit-by-default --no-std -j 1
+// error: explicit_by_default_braced_argument_fix_names_the_type_from_anywhere_is_error.kpp:24: error: the braces of a function argument name their type: write `Holder::Info{1, 2}`, not `{1, 2}` (design.md "Explicit by default")
+// error: explicit_by_default_braced_argument_fix_names_the_type_from_anywhere_is_error.kpp:24: error: the braces of a function argument name their type: write `Pair2<ns::Align>{ns::Align::Left, ns::Align::Right}`, not `{ns::Align::Left, ns::Align::Right}` (design.md "Explicit by default")
+// error: explicit_by_default_braced_argument_fix_names_the_type_from_anywhere_is_error.kpp:54: error: the braces of a function argument name their type: write `Local{1, 2}`, not `{1, 2}` (design.md "Explicit by default")
+template<typename T> struct Pair2
+{
+  T a, b;
+  Pair2(T a, T b) : a(a), b(b) {}
+};
+template<typename T> struct Keeper
+{
+  int count = 0;
+  void keep(const T& v) { this->count += v.a; }
+};
+class Caller
+{
+public:
+  int run(int x) const;
+};
+int Caller::run(int x) const
+{
+  Holder h;
+  return h.g({1, 2}) + ns::count({ns::Align::Left, ns::Align::Right}) + x;
+}
+class Holder
+{
+public:
+  class Info
+  {
+  public:
+    Info(int a, int b) : a(a), b(b) {}
+    int a, b;
+  };
+  int g(Info info) const { return info.a + info.b; }
+};
+namespace ns
+{
+enum class Align
+{
+  Left,
+  Right
+};
+int count(const Pair2<Align>& p) { return int(p.a) + int(p.b); }
+}
+int local()
+{
+  struct Local
+  {
+    int a, b;
+    Local(int a, int b) : a(a), b(b) {}
+  };
+  Keeper<Local> k;
+  k.keep({1, 2});
+  return k.count;
+}
+int main()
+{
+  Caller c;
+  return c.run(1) + local();
+}

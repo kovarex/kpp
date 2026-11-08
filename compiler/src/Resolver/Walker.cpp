@@ -4333,8 +4333,17 @@ auto GlobalScope::Impl::Walker::scopePath(Decl* d) -> std::optional<std::string>
         return std::nullopt; // (an unnamed class)
       path = std::string(symbols.name(n.last().symbol)) + "::" + path;
     }
+    else if (d->kind == NodeKind::FunctionDecl)
+    {
+      // A function's local class: its bare name where the walk is in that function's body (a lambda's in it too), as
+      // the name is visible there (`v.push_back(UpgradeCount{...})` of a local struct); outside, nothing names it.
+      for (Decl* f = bodyOf; f; f = f->parent)
+        if (f == d)
+          return path;
+      return std::nullopt;
+    }
     else
-      return std::nullopt; // (a class template's member needs its arguments; a function's local, no name outside)
+      return std::nullopt; // (a class template's member needs its arguments)
   return path;
 }
 
@@ -4419,7 +4428,9 @@ auto GlobalScope::Impl::Walker::spelledParameterType(ParamDecl* p, const Ty* to)
   }
   // As the parameter writes it, when that names no template parameter: an unqualified name declared in a
   // namespace or a class qualified so, for the call may be outside it (`CircuitNetworkHelper::VectorOfSignalValues`,
-  // `LocaleStringReplacer::Parameters`).
+  // `LocaleStringReplacer::Parameters`). Each name found from the parameter's own scope, as its type is: never the
+  // walk's resolution of it (named->resolved), which another file's walk may not have made yet (the fix was
+  // `Info{1, 2}` or `Holder::Info{1, 2}` by which file was walked first, for a call in an out-of-class member).
   if (core && core->kind == NodeKind::NamedType && p->file)
   {
     auto* named = static_cast<NamedType*>(core);
@@ -4428,10 +4439,47 @@ auto GlobalScope::Impl::Walker::spelledParameterType(ParamDecl* p, const Ty* to)
       if (uint32_t end = qualifiedNameEnd(p->file, named->token); end != UINT32_MAX)
       {
         std::string text = Impl::spelledTokens(p->file, named->token, end);
-        if (named->name.parts.size() > 1 || named->name.global || !named->resolved)
-          return text;
-        if (std::optional<std::string> path = scopePath(named->resolved->parent))
-          return *path + text;
+        DeclContext dc;
+        impl.declContextFor(p, dc);
+        // A template argument written by a name its namespaces or classes qualify (`Vector<AreaAlign>` in agui's
+        // namespace) leaves the type to kpp's spelling below, which qualifies each (`Vector<agui::AreaAlign>`);
+        // `Box<int>` and `Pair2<i32>` stay as written.
+        std::function<bool(const QualifiedName&, int)> unqualifiedArgument = [&](const QualifiedName& name, int depth)
+        {
+          for (const NamePart& part : name.parts)
+            for (Node* a : part.templateArgs)
+            {
+              while (a && (a->kind == NodeKind::PointerType || a->kind == NodeKind::ConstType || a->kind == NodeKind::LRefType ||
+                           a->kind == NodeKind::RRefType))
+                a = a->kind == NodeKind::PointerType ? static_cast<Node*>(static_cast<PointerType*>(a)->pointee)
+                    : a->kind == NodeKind::ConstType ? static_cast<Node*>(static_cast<ConstType*>(a)->inner)
+                    : a->kind == NodeKind::LRefType  ? static_cast<Node*>(static_cast<LRefType*>(a)->referenced)
+                                                     : static_cast<Node*>(static_cast<RRefType*>(a)->referenced);
+              if (!a || a->kind != NodeKind::NamedType)
+                continue; // (a built-in type, a value)
+              auto* argument = static_cast<NamedType*>(a);
+              if (argument->name.parts.size() == 1 && !argument->name.global)
+              {
+                Decl* d = impl.lookupQualified(argument->name, dc.scope, &dc.params, 0).decl;
+                std::optional<std::string> path = d ? scopePath(d->parent) : std::nullopt;
+                if (!path || !path->empty())
+                  return true;
+              }
+              if (depth < 8 && unqualifiedArgument(argument->name, depth + 1))
+                return true;
+            }
+          return false;
+        };
+        if (!unqualifiedArgument(named->name, 0))
+        {
+          if (named->name.parts.size() > 1 || named->name.global)
+            return text;
+          Decl* found = impl.lookupQualified(named->name, dc.scope, &dc.params, 0).decl;
+          if (!found)
+            return text;
+          if (std::optional<std::string> path = scopePath(found->parent))
+            return *path + text;
+        }
       }
   }
   // Else the type itself in kpp's spelling: `Pair<BlueprintRecordID, f32>` for Map::insert's value_type,
