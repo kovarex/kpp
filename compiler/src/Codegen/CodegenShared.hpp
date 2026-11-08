@@ -131,6 +131,25 @@ namespace codegen
 #include "NameSet.hpp"
 
 #include "FinalAnswers.hpp"
+  // A defined global as its uses name it (Emitter::globalFor): its IR name, and the function that
+  // builds a thread_local one per thread (empty for any other global).
+  struct GlobalAnswer
+  {
+    std::string name;
+    std::string threadLocalInit;
+  };
+  // A global's key (the variable, and the class instance of a template's static member), hashed
+  // for FinalAnswers' shards, which take the top bits.
+  struct GlobalKeyHash
+  {
+    size_t operator()(const std::pair<Decl*, const Ty*>& k) const
+    {
+      uint64_t h = uint64_t(uintptr_t(k.first)) * 0x9E3779B97F4A7C15ull ^ uint64_t(uintptr_t(k.second));
+      h = (h ^ (h >> 30)) * 0xBF58476D1CE4E5B9ull; // (splitmix64's finalizer)
+      h = (h ^ (h >> 27)) * 0x94D049BB133111EBull;
+      return size_t(h ^ (h >> 31));
+    }
+  };
 
   // A request for an instantiation: by which function (its IR name), and the instantiation depth
   // through it (the requested one included).
@@ -271,7 +290,8 @@ namespace codegen
       bodies.resize(moduleCount);
       moduleDecls.resize(moduleCount);
       vtablesIn.resize(moduleCount);
-      moduleLiterals.resize(moduleCount);
+      for (LiteralShard& s : literals)
+        s.modules.resize(moduleCount);
       definitions.resize(moduleCount);
       ownedEntries.resize(moduleCount);
       keptModuleEntries.resize(moduleCount);
@@ -302,10 +322,18 @@ namespace codegen
     std::unordered_map<std::string, const Ty*> irTypeNames; // irTypeName(): a struct type's IR name -> its type
     SpinMutex irTypeNamesMutex;                              // (irTypeNames' own: taken without the shared lock)
     // String literals (constantName): each name's contents, one name per contents for the whole
-    // program; the names the shared declarations define, and those each module defines itself.
-    std::unordered_map<std::string, std::string> literalContents;
-    std::unordered_set<std::string> sharedLiterals;
-    std::vector<std::unordered_set<std::string>> moduleLiterals;
+    // program; the names the shared declarations define, and those each module defines itself. In
+    // shards by the name, a lock each (the emitters queued on one lock for them all).
+    struct LiteralShard
+    {
+      SpinMutex mutex;
+      std::unordered_map<std::string, std::string> contents;
+      std::unordered_set<std::string> shared;
+      std::vector<std::unordered_set<std::string>> modules;
+    };
+    LiteralShard literals[64];
+    LiteralShard& literalShard(const std::string& name) { return literals[(std::hash<std::string>()(name) >> 58) % std::size(literals)]; }
+    const LiteralShard& literalShard(const std::string& name) const { return literals[(std::hash<std::string>()(name) >> 58) % std::size(literals)]; }
     // The layouts, published whole (vtables included) by the emitter that built one first: each
     // builds a layout without the shared lock, as its own copy (Emitter::structFor), and the first
     // copy published is the class's. Under structsMutex, held only to look up and publish.
@@ -339,6 +367,8 @@ namespace codegen
     FinalAnswers<const Ty*, std::pair<uint64_t, uint64_t>> finalSizes; // classSizeAndAlign
     FinalAnswers<const Ty*, bool> finalDestruction;      // needsDestruction of a class
     FinalAnswers<const Ty*, ClosureInfo*> finalClosures; // laid-out closures (closureFor)
+    // Globals defined for good (globalFor; never dropped, as `globals` keeps their names).
+    FinalAnswers<std::pair<Decl*, const Ty*>, GlobalAnswer, GlobalKeyHash> finalGlobals;
     bool mallocDeclared = false;
     std::atomic<bool> usesAssert{false};                 // some assert was emitted: the module needs kpp_assert_failed
     std::atomic<bool> usesProgramExit{false};            // an object of static storage is destroyed at the program's end: kpp_atexit
@@ -401,7 +431,7 @@ namespace codegen
     std::vector<std::vector<std::string_view>> movedOut;     // per module: its declarations' lines placed in another (static locals)
     // Held to add a definition (definitions, definedIn, declareLines: only added to while functions
     // are emitted, read once they all are), and to name a constant (constantName).
-    SpinMutex definitionsMutex, constantsMutex;
+    SpinMutex definitionsMutex;
     std::vector<std::vector<OwnedEntry>> ownedEntries;   // per module
     std::vector<std::vector<std::string>> keptModuleEntries; // KPP_CHECK_REBUILD: the module declarations, before they were finished
     std::unordered_set<std::string> sharedDeclared;      // functions with a declare line in `decls`, found once

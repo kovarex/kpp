@@ -192,7 +192,8 @@ static void dropSharedLiterals(Shared& sh, std::vector<std::string>& entries)
   std::erase_if(entries, [&](const std::string& e) {
     if (!e.starts_with("$.str.") && !e.starts_with("$.wstr.") && !e.starts_with("$.data."))
       return false;
-    return sh.sharedLiterals.count("@" + e.substr(1, e.find(" = comdat") - 1)) != 0;
+    std::string name = "@" + e.substr(1, e.find(" = comdat") - 1);
+    return sh.literalShard(name).shared.count(name) != 0;
   });
 }
 
@@ -595,7 +596,8 @@ static std::string programPieceText(const Shared& sh, unsigned k, const std::str
     if (name.size() < 2 || !seen.insert(name).second || defined.count(name.substr(1)))
       continue;
     std::string key(name);
-    if (auto literal = sh.literalContents.find(key); literal != sh.literalContents.end())
+    const Shared::LiteralShard& literals = sh.literalShard(key);
+    if (auto literal = literals.contents.find(key); literal != literals.contents.end())
     {
       std::string_view text = made.emplace_back(Emitter::literalDefinition(key, literal->second));
       lines.push_back(text.substr(0, text.size() - 1)); // (its comdat and its definition)

@@ -480,16 +480,19 @@ auto codegen::Emitter::constantName(const char* prefix, const std::string& conte
   char hex[17];
   snprintf(hex, sizeof hex, "%016llx", (unsigned long long)h);
   std::string base = std::string(prefix) + hex, name = base;
-  std::lock_guard lock(sh.constantsMutex);
+  bool isNew = false;
   for (int n = 2;; ++n)
   {
-    auto [it, inserted] = sh.literalContents.emplace(name, contents);
+    Shared::LiteralShard& s = sh.literalShard(name);
+    std::lock_guard lock(s.mutex);
+    auto [it, inserted] = s.contents.try_emplace(name, contents);
     if (inserted || it->second == contents)
+    {
+      isNew = emittingShared ? s.shared.insert(name).second : !s.shared.count(name) && s.modules[currentModule].insert(name).second;
       break;
+    }
     name = base + "." + std::to_string(n); // two contents with one hash (which takes the suffix is the emission order's)
   }
-  bool isNew = emittingShared ? sh.sharedLiterals.insert(name).second
-                              : !sh.sharedLiterals.count(name) && sh.moduleLiterals[currentModule].insert(name).second;
   constantCache.emplace(std::move(key), name);
   return {name, isNew};
 }

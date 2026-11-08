@@ -20,7 +20,6 @@ struct StructInfo
   // Its last data member is a flexible array member (`T items[];`, C99's): a `[0 x T]` field, so
   // the size ends where the array starts (rounded up to the alignment); the elements are past it.
   bool flexible = false;
-  std::optional<bool> needsDestruction;
   // Virtual functions: a polymorphic class has a vtable pointer at offset 0 (its own, or its
   // primary base's: the first polymorphic one), whose slots extend the primary base's in
   // declaration order, and one in each other polymorphic base's subobject (vtables[1] and on).

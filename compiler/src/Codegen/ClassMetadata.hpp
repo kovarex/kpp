@@ -83,8 +83,9 @@
     bool needsConstruction(const Ty* t, Node* at, int depth = 0);
 
     bool needsDestruction(const Ty* t, Node* at);
-    std::unordered_map<const Ty*, bool> destructionCache; // this emitter's view of the answers above
-    int destructionDepth = 0;
+    std::unordered_map<const Ty*, bool> destructionCache; // this emitter's final answers (its copy of sh.finalDestruction's)
+    std::unordered_set<const Ty*> destructionPending;     // the classes whose answers this emitter is computing
+    bool destructionGuessed = false;                      // one of them was reached again inside its own answer
 
     // Destroys the object at addr: user destructor if any (it destroys members itself), else
     // members and bases that need it, in reverse order.

@@ -343,36 +343,49 @@ auto codegen::Emitter::needsDestruction(const Ty* t, Node* at) -> bool
     return mine->second;
   if (bool known; sh.finalDestruction.find(t, known))
     return destructionCache.emplace(t, known).first->second;
-  StructInfo& info = structFor(t, at); // (laid out first: structFor takes the lock it needs)
-  auto lock = sharedLock(); // remembered in the shared layout, computed under the lock
-  if (info.needsDestruction)
+  // Computed by this emitter without the shared lock: the answer is the class's destructor's and
+  // its complete layout's fields' (a typed union's alternatives'), the same whichever emitter
+  // computes it, so two may compute it at once and either publishes it. (Computed under the shared
+  // lock, the emitters' first answers queued there at codegen's start: codegen-speed.md section 5.)
+  const StructInfo& info = structFor(t, at); // (laid out first: structFor takes the locks it needs)
+  if (!destructionPending.insert(t).second)
   {
-    // Final unless this emitter is in the middle of computing it (the recursion guard below), or
-    // the layout is its own copy still being built: nobody else computes while the lock is held.
-    if (destructionDepth == 0 && info.complete)
-    {
-      destructionCache.emplace(t, *info.needsDestruction);
-      if (mayPublish())
-        sh.finalDestruction.publish(t, *info.needsDestruction);
-    }
-    return *info.needsDestruction;
+    destructionGuessed = true; // reached again inside its own answer: false for now, and nothing final until the outermost answer
+    return false;
   }
-  info.needsDestruction = false; // Guard against recursion.
-  struct Depth { Depth(int& d) : d(d) { ++d; } ~Depth() { --d; } int& d; } depth(destructionDepth);
+  struct Pending
+  {
+    ~Pending()
+    {
+      e.destructionPending.erase(t);
+      if (e.destructionPending.empty())
+        e.destructionGuessed = false;
+    }
+
+    Emitter& e;
+    const Ty* t;
+  } pending{*this, t};
   ClassDecl* c = classDef(t->decl, at);
+  bool result = false;
   if (c->isTypedUnion)
   {
     // A typed union destroys whichever alternative it holds.
-    bool any = false;
-    for (size_t i = 0; i < c->alternatives.size(); ++i)
-      any = any || needsDestruction(alternativeType(c, t, i, at), at);
-    structFor(t, at).needsDestruction = any;
-    return any;
+    for (size_t i = 0; i < c->alternatives.size() && !result; ++i)
+      result = needsDestruction(alternativeType(c, t, i, at), at);
   }
-  bool result = findDestructor(c) != nullptr;
-  for (const Ty* ft : std::vector<const Ty*>(info.fieldTypes))
-    result = result || (!ft->isReference() && needsDestruction(ft, at)); // a reference member owns nothing
-  structFor(t, at).needsDestruction = result;
+  else
+  {
+    result = findDestructor(c) != nullptr;
+    for (size_t i = 0; i < info.fieldTypes.size() && !result; ++i)
+      result = !info.fieldTypes[i]->isReference() && needsDestruction(info.fieldTypes[i], at); // a reference member owns nothing
+  }
+  // Final when the layout is complete (this emitter's own copy still being built may not be yet)
+  // and no class was reached again inside its own answer.
+  if (info.complete && !destructionGuessed)
+  {
+    destructionCache.emplace(t, result);
+    sh.finalDestruction.publish(t, result);
+  }
   return result;
 }
 

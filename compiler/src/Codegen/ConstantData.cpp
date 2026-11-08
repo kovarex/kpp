@@ -687,6 +687,16 @@ auto codegen::Emitter::globalFor(VariableDecl* v, Node* at, const Ty* classTy) -
     buildThreadLocal(mine->second);
     return mine->second;
   }
+  // Defined for good by another emitter (or by this one): its published answer, without the shared
+  // lock, which a global's definition holds (the emitters' first uses of each global queued behind
+  // the startup globals' definitions: codegen-speed.md section 5).
+  if (GlobalAnswer known; sh.finalGlobals.find({v, classTy}, known))
+  {
+    threadLocalCache.emplace(known.name, known.threadLocalInit);
+    const std::string& mine = globalCache.emplace(std::pair<Decl*, const Ty*>{v, classTy}, std::move(known.name)).first->second;
+    buildThreadLocal(mine);
+    return mine;
+  }
   std::string name;
   // Not yet defined (and not under the lock already): its initializer evaluated first, the lock
   // not held. What that noted and numbered is taken back unless globalForOnce takes the values.
@@ -769,6 +779,13 @@ auto codegen::Emitter::globalFor(VariableDecl* v, Node* at, const Ty* classTy) -
       if (!pre.used && inlinedNow.size() > inlinedBefore)
         inlinedNow.resize(inlinedBefore);
       fail(at, why);
+    }
+    if (mayPublish()) // (not while another global's definition is under way: one used inside its own is not built yet)
+    {
+      auto init = threadLocalInits.find(name);
+      GlobalAnswer answer{name, init == threadLocalInits.end() ? std::string() : init->second};
+      threadLocalCache.emplace(name, answer.threadLocalInit);
+      sh.finalGlobals.publish(key, answer);
     }
   }
   claim.reset(); // defined (or failed): another emitter waiting for it goes on
