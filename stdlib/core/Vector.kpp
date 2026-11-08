@@ -345,18 +345,28 @@ public:
   }
 
   // Inserts before the element position points at (begin()/end() and what find functions return,
-  // const or not).
+  // const or not). The work is here, not in the index forms, which are templates: a member that called
+  // one instantiated it for every element type.
   T* insert(const T* position, const T& value)
   {
     ContainerSize index = ContainerSize(position - this->items);
-    this->insert(index, value);
+    if (index == this->length)
+      this->push_back(value);
+    else
+    {
+      T copy(value); // value may be an element, which the insertion moves
+      this->insertOne(index, copy);
+    }
     return this->items + index;
   }
 
   T* insert(const T* position, T&& value)
   {
     ContainerSize index = ContainerSize(position - this->items);
-    this->insert(index, move(value));
+    if (index == this->length)
+      this->push_back(move(value));
+    else
+      this->insertOne(index, value);
     return this->items + index;
   }
 
@@ -453,7 +463,7 @@ public:
     else
     {
       for (ContainerSize at = index; first != last; ++first)
-        this->insert(at++, T(*first));
+        this->insert(this->items + at++, T(*first));
     }
     return this->items + index;
   }
@@ -464,27 +474,10 @@ public:
   // The index forms take any integer type, so that a literal 0 is the index, not a null position
   // (with a ContainerSize parameter `v.insert(0, x)` would be ambiguous between the two).
   template<typename I> requires (isIntegral<I>)
-  void insert(I index, const T& value)
-  {
-    if (ContainerSize(index) == this->length)
-    {
-      this->push_back(value);
-      return;
-    }
-    T copy(value); // value may be an element, which the insertion moves
-    this->insertOne(ContainerSize(index), copy);
-  }
+  void insert(I index, const T& value) { this->insert(this->items + ContainerSize(index), value); }
 
   template<typename I> requires (isIntegral<I>)
-  void insert(I index, T&& value)
-  {
-    if (ContainerSize(index) == this->length)
-    {
-      this->push_back(move(value));
-      return;
-    }
-    this->insertOne(ContainerSize(index), value);
-  }
+  void insert(I index, T&& value) { this->insert(this->items + ContainerSize(index), move(value)); }
 
   bool contains(const T& value) const
   {
