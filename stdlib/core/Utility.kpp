@@ -144,6 +144,15 @@ void relocateIfNoexcept(T* destination, T* source, i64 count)
     relocate(destination, source, count);
   else if constexpr (!isCopyConstructible<T>)
     relocateApart(destination, source, count);
+  else if constexpr (isNothrowCopyConstructible<T>)
+  {
+    // (nothing throws: one pass, and no guard to instantiate)
+    for (i64 i = 0; i < count; ++i)
+    {
+      new (destination + i) T(static_cast<const T&>(source[i]));
+      source[i].~T();
+    }
+  }
   else
   {
     BuiltObjects<T> built(destination);

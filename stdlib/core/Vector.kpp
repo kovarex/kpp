@@ -215,7 +215,7 @@ public:
   {
     if (this->length < this->allocated)
       new (this->items + this->length) T(value);
-    else if constexpr (isNothrowMoveConstructible<T>)
+    else if constexpr (isNothrowMoveConstructible<T> || isNothrowCopyConstructible<T>)
     {
       ContainerSize newCapacity = this->capacityFor((u64)this->length + 1);
       T* grown = allocateArray<T>(newCapacity);
@@ -236,7 +236,7 @@ public:
   {
     if (this->length < this->allocated)
       new (this->items + this->length) T(move(value));
-    else if constexpr (isNothrowMoveConstructible<T>)
+    else if constexpr (isNothrowMoveConstructible<T> || isNothrowCopyConstructible<T>)
     {
       ContainerSize newCapacity = this->capacityFor((u64)this->length + 1);
       T* grown = allocateArray<T>(newCapacity);
@@ -259,7 +259,7 @@ public:
   {
     if (this->length < this->allocated)
       new (this->items + this->length) T(forward<Args>(args)...);
-    else if constexpr (isNothrowMoveConstructible<T>)
+    else if constexpr (isNothrowMoveConstructible<T> || isNothrowCopyConstructible<T>)
     {
       ContainerSize newCapacity = this->capacityFor((u64)this->length + 1);
       T* grown = allocateArray<T>(newCapacity);
@@ -289,7 +289,7 @@ public:
       return;
     }
     this->ensureRoom(newLength);
-    if constexpr (isTriviallyDefaultConstructible<T>)
+    if constexpr (isNothrowDefaultConstructible<T>)
     {
       for (; this->length < newLength; ++this->length)
         new (this->items + this->length) T();
@@ -314,7 +314,7 @@ public:
     }
     T copy(value); // value may be an element, and the elements may move
     this->ensureRoom(newLength);
-    if constexpr (isTriviallyCopyConstructible<T>)
+    if constexpr (isNothrowCopyConstructible<T>)
     {
       for (; this->length < newLength; ++this->length)
         new (this->items + this->length) T(copy);
@@ -381,7 +381,7 @@ public:
   {
     T copy(value);
     ContainerSize index = ContainerSize(position - this->items);
-    if constexpr (isTriviallyCopyConstructible<T> && isNothrowMoveConstructible<T> && (isNothrowMoveAssignable<T> || !isMoveAssignable<T>))
+    if constexpr (isNothrowCopyConstructible<T> && isNothrowMoveConstructible<T> && (isNothrowMoveAssignable<T> || !isMoveAssignable<T>))
     {
       ContainerSize moved = this->openSlots(index, count);
       for (ContainerSize i = moved; i < count; ++i)
@@ -429,7 +429,7 @@ public:
     if constexpr (isBaseOf<ForwardIteratorTag, typename IteratorTraits<InputIt>::iterator_category>)
     {
       ContainerSize count = checkedSize(distance(first, last), "vector too long");
-      if constexpr (isPointer<InputIt> && isSame<RemoveConst<RemovePointer<InputIt>>, T> && isTriviallyCopyConstructible<T> && isNothrowMoveConstructible<T> && (isNothrowMoveAssignable<T> || !isMoveAssignable<T>))
+      if constexpr (isPointer<InputIt> && isSame<RemoveConst<RemovePointer<InputIt>>, T> && isNothrowCopyConstructible<T> && isNothrowMoveConstructible<T> && (isNothrowMoveAssignable<T> || !isMoveAssignable<T>))
       {
         ContainerSize moved = this->openSlots(index, count);
         InputIt rest = first;
@@ -766,33 +766,31 @@ private:
   }
 
   // Moves the elements into a new block for newCapacity elements.
-  void moveToBlock(ContainerSize newCapacity, bool strong = true)
+  void moveToBlock(ContainerSize newCapacity)
   {
     T* grown = allocateArray<T>(newCapacity);
-    if constexpr (isNothrowMoveConstructible<T>)
-      this->adoptBlock(grown, newCapacity, strong);
+    if constexpr (isNothrowMoveConstructible<T> || isNothrowCopyConstructible<T>)
+      this->adoptBlock(grown, newCapacity);
     else
     {
       OwnedBlock block(grown);
-      this->adoptBlock(grown, newCapacity, strong);
+      this->adoptBlock(grown, newCapacity);
       block.release();
     }
   }
 
-  // Moves the elements into block, which has room for newCapacity, and frees the old one. strong
-  // (an append, reserve, shrink_to_fit: std::vector's strong exception guarantee) copies them
-  // where the move may throw and a copy exists (move_if_noexcept); otherwise they move. A throw
+  // Moves the elements into block, which has room for newCapacity, and frees the old one, keeping
+  // std::vector's strong exception guarantee (an append, reserve, resize, shrink_to_fit): they are
+  // copied where the move may throw and a copy exists (move_if_noexcept), otherwise moved. A throw
   // leaves the elements where they were and block as it came, to its owner.
-  void adoptBlock(T* block, ContainerSize newCapacity, bool strong = true)
+  void adoptBlock(T* block, ContainerSize newCapacity)
   {
     if (this->items)
     {
       if constexpr (isNothrowMoveConstructible<T>)
         relocate(block, this->items, this->length);
-      else if (strong)
-        relocateIfNoexcept(block, this->items, this->length);
       else
-        relocateApart(block, this->items, this->length);
+        relocateIfNoexcept(block, this->items, this->length);
       free(this->items);
     }
     this->items = block;
@@ -803,14 +801,14 @@ private:
   // moves in total. LengthError when needed is past maxContainerSize (core/Sizes.kpp).
   ContainerSize capacityFor(u64 needed) const { return grownCapacity(this->allocated, needed, 4, "vector too long"); }
 
-  void ensureRoom(ContainerSize needed, bool strong = true)
+  void ensureRoom(ContainerSize needed)
   {
     if (needed > this->allocated)
-      this->moveToBlock(this->capacityFor(needed), strong);
+      this->moveToBlock(this->capacityFor(needed));
   }
 
-  // An append to a full vector whose elements' move may throw (push_back and emplace_back build the
-  // others' themselves): the new element is built in a new block first, as its arguments may be
+  // An append to a full vector whose elements' relocation may throw, a move that may throw without a
+  // copy that cannot (push_back and emplace_back build the others' themselves): the new element is built in a new block first, as its arguments may be
   // elements, and the elements move over after it. A throw leaves the vector as it was.
   template<typename... Args>
   void appendGrown(Args&&... args)
