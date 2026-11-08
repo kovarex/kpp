@@ -1066,17 +1066,27 @@ auto GlobalScope::Impl::Walker::argsConcrete(TypeTable& types, const Ty* t) -> b
   return true;
 }
 
-auto GlobalScope::Impl::Walker::checkMemberBody(Walker& sub, FunctionDecl* f, const Subst& classSubst) -> void
+auto GlobalScope::Impl::Walker::memberInstanceSubst(FunctionDecl* f, Decl* cls, const Subst& classSubst) -> Subst
 {
   // Out-of-line members carry their own template parameter list; map it positionally.
   Subst merged = classSubst;
-  Decl* cls = sub.scope->owner;
   if (cls && f->templateParams.size() == cls->templateParams.size() && f->parent != cls)
     for (size_t i = 0; i < f->templateParams.size(); ++i)
       if (const Ty* t = classSubst.find(cls->templateParams[i]))
         merged.pairs.push_back({f->templateParams[i], t});
-  bool producer;
-  Impl::InstanceRecord* inst = impl.claimInstance(f, merged, sub.thisType, producer);
+  return merged;
+}
+
+auto GlobalScope::Impl::Walker::checkMemberBody(Walker& sub, FunctionDecl* f, const Subst& classSubst, Impl::InstanceRecord* claimed) -> void
+{
+  Decl* cls = sub.scope->owner;
+  Subst merged = memberInstanceSubst(f, cls, classSubst);
+  bool producer = claimed != nullptr;
+  Impl::InstanceRecord* inst = claimed;
+  if (claimed)
+    claimed->owner = std::this_thread::get_id(); // (claimed by the walk that used it: typed here)
+  else
+    inst = impl.claimInstance(f, merged, sub.thisType, producer);
   if (!producer)
     return;
   RecordInto into(&inst->deps); // what typing the instance reads is its own
@@ -1140,7 +1150,7 @@ auto GlobalScope::Impl::Walker::checkMemberBody(Walker& sub, FunctionDecl* f, co
   inst->state.notify_all();
 }
 
-auto GlobalScope::Impl::Walker::instantiateClass(const Ty* classTy) -> void
+auto GlobalScope::Impl::Walker::instantiateClass(const Ty* classTy, bool allMembers) -> void
 {
   if (instantiationDepth > 16 || !argsConcrete(types, classTy) || !classTy->decl || !classTy->decl->ownScope)
     return;
@@ -1156,9 +1166,12 @@ auto GlobalScope::Impl::Walker::instantiateClass(const Ty* classTy) -> void
     return;
   bool producer;
   Impl::Instantiation* inst = impl.claimClass(classTy, producer);
-  if (!producer)
+  if (!producer && !allMembers)
     return; // Done or being done by someone else; nothing here needs its result.
-  RecordInto into(&inst->deps); // what checking the instance reads is its own
+  // (An explicit instantiation of an instance made already: its other members now, each body once.)
+  std::optional<RecordInto> into;
+  if (producer)
+    into.emplace(&inst->deps); // what checking the instance reads is its own
   Scope* cls = classTy->decl->ownScope;
   if (impl.queueMemberBodies.load(std::memory_order_relaxed))
   {
@@ -1169,26 +1182,97 @@ auto GlobalScope::Impl::Walker::instantiateClass(const Ty* classTy) -> void
     Impl::MemberTask task{classTy, nullptr, askedIn, askedAt, instantiationDepth};
     task.rootFile = activeSubst ? rootFile : askedIn;
     task.rootToken = activeSubst ? rootToken : askedAt;
+    task.allMembers = allMembers;
     impl.queueMemberBody(task);
-    inst->state.store(2, std::memory_order_release);
-    inst->state.notify_all();
+    if (producer)
+    {
+      inst->state.store(2, std::memory_order_release);
+      inst->state.notify_all();
+    }
     return;
   }
   auto start = std::chrono::steady_clock::now();
   Subst subst = impl.substFor(classTy);
-  subCheck(classTy->decl, subst, cls, types.pointer(classTy), [&](Walker& sub)
-  {
-    auto* c = static_cast<ClassDecl*>(classTy->decl);
-    for (Decl* m : membersRead(c))
-      if (m->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(m)->body && m->templateParams.empty())
-        checkMemberBody(sub, static_cast<FunctionDecl*>(m), subst);
-    for (FunctionDecl* f : cls->outOfLineMembers)
-      if (f->body && (!Impl::isMemberSpecialization(f) || impl.memberSpecializationIsFor(f, classTy)))
-        checkMemberBody(sub, f, subst); // `template<> R Button<RecipeID>::f()`: for its instantiation only
-  });
+  subCheck(classTy->decl, subst, cls, types.pointer(classTy), [&](Walker& sub) { checkClassMembers(sub, classTy, subst, allMembers); });
   impl.instNanos += uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - start).count());
-  inst->state.store(2, std::memory_order_release);
-  inst->state.notify_all();
+  if (producer)
+  {
+    inst->state.store(2, std::memory_order_release);
+    inst->state.notify_all();
+  }
+}
+
+auto GlobalScope::Impl::Walker::checkedWithClass(Impl& impl, Decl* m, const Ty* classTy, bool allMembers) -> bool
+{
+  if (m->kind != NodeKind::FunctionDecl || !static_cast<FunctionDecl*>(m)->body || !m->templateParams.empty())
+    return false;
+  if (Impl::isMemberSpecialization(static_cast<FunctionDecl*>(m)))
+    return impl.memberSpecializationIsFor(static_cast<FunctionDecl*>(m), classTy); // `template<> R Button<RecipeID>::f()`: for its instantiation only
+  return allMembers || (m->flags & (DF_Virtual | DF_Override | DF_Final | DF_Destructor));
+}
+
+auto GlobalScope::Impl::Walker::checkClassMembers(Walker& sub, const Ty* classTy, const Subst& subst, bool allMembers) -> void
+{
+  auto* c = static_cast<ClassDecl*>(classTy->decl);
+  for (Decl* m : membersRead(c))
+    if (checkedWithClass(impl, m, classTy, allMembers))
+      checkMemberBody(sub, static_cast<FunctionDecl*>(m), subst);
+  for (FunctionDecl* f : c->ownScope->outOfLineMembers)
+    if (checkedWithClass(impl, f, classTy, allMembers))
+      checkMemberBody(sub, f, subst);
+}
+
+auto GlobalScope::Impl::Walker::demandMember(FunctionDecl* f, const Subst* classSubst) -> void
+{
+  if (!f || !classSubst || classSubst->empty() || probing || !f->templateParams.empty() || instantiationDepth > 16)
+    return;
+  Decl* cls = f->parent && f->parent->kind == NodeKind::ClassDecl ? f->parent : impl.owningClassOf(f);
+  if (!cls || cls->kind != NodeKind::ClassDecl || !cls->isTemplate || cls->templateParams.empty() || !cls->ownScope)
+    return;
+  const Ty* classTy = impl.substitute(impl.selfType(cls), *classSubst);
+  if (!classTy || classTy->kind != TyKind::Class || classTy->decl != cls || !argsConcrete(types, classTy))
+    return;
+  FunctionDecl* def = impl.constDefinition(f); // its body: its own, or its out-of-line definition's
+  if (!def || !def->body || Impl::isMemberSpecialization(def))
+    return;
+  // An `auto` member is typed where its type is read, by instantiateFunction, as before.
+  if (f->returnType && !f->trailingReturn && Impl::astMentionsAuto(f->returnType))
+    return;
+  instantiateClass(classTy); // (its class-level checks and the members checked with it, once)
+  if (checkedWithClass(impl, def, classTy, false))
+    return;
+  // Claimed here, by the walk that uses it, with the key the class's check uses (checkMemberBody):
+  // the walk records its use of the record (a compile server's rewalk finds it so), and a body
+  // claimed before answers at once.
+  Subst subst = impl.substFor(classTy);
+  bool producer;
+  Impl::InstanceRecord* record = impl.claimInstance(def, memberInstanceSubst(def, cls, subst), types.pointer(classTy), producer);
+  if (!producer)
+    return;
+  if (impl.queueMemberBodies.load(std::memory_order_relaxed))
+  {
+    // Queued for whichever worker is free; a walk that needs it first (a constant evaluation of
+    // the member, instantiateFunction) takes it over by its queued flag, never waits for a task
+    // no worker may reach (each worker could be the one waiting).
+    const ParsedFile* askedIn = current && file ? file : nullptr;
+    uint32_t askedAt = askedIn ? current->token : UINT32_MAX;
+    record->memberOf = classTy;
+    record->queued.store(1);
+    Impl::MemberTask task{classTy, def, askedIn, askedAt, instantiationDepth};
+    task.rootFile = activeSubst ? rootFile : askedIn;
+    task.rootToken = activeSubst ? rootToken : askedAt;
+    task.claimedMember = record;
+    impl.queueMemberBody(task);
+    return;
+  }
+  checkDemandedMember(def, classTy, record);
+}
+
+auto GlobalScope::Impl::Walker::checkDemandedMember(FunctionDecl* def, const Ty* classTy, Impl::InstanceRecord* record) -> void
+{
+  Decl* cls = classTy->decl;
+  Subst subst = impl.substFor(classTy);
+  subCheck(cls, subst, cls->ownScope, types.pointer(classTy), [&](Walker& sub) { checkMemberBody(sub, def, subst, record); });
 }
 
 auto GlobalScope::Impl::Walker::instantiateFunction(FunctionDecl* f, const Subst& subst, bool needReturn, const Subst* classSubst, const Ty* objectType, Impl::InstanceRecord** record) -> const Ty*
@@ -1261,7 +1345,12 @@ auto GlobalScope::Impl::Walker::instantiateFunction(FunctionDecl* f, const Subst
       // Queued and not started (by this thread or another): its result is needed now, so
       // this walk takes the check over (never waits for a task no worker may have reached).
       if (inst->queued.exchange(0) == 1)
-        return runFunctionInstance(inst, *inst->task);
+      {
+        if (inst->task)
+          return runFunctionInstance(inst, *inst->task);
+        checkDemandedMember(const_cast<FunctionDecl*>(static_cast<const FunctionDecl*>(inst->of)), inst->memberOf, inst); // a member a use queued (demandMember)
+        return inst->deducedReturn;
+      }
       if (inst->owner.load() == std::this_thread::get_id())
         return nullptr; // Recursive auto function.
       ++impl.instWaits;
@@ -3351,6 +3440,7 @@ auto GlobalScope::Impl::Walker::returnTypeOfCall(FunctionDecl* f, const Subst* c
 {
   auto argTypes = [&] { return operands ? *operands : argTypesOf(args); };
   noteDeprecatedCall(f, call);
+  demandMember(f, classSubst); // a class template instance's member called: its body checked (not every member's with the class)
   // A requirement's probe of a call of a deleted function (`requires { consume(v); }`, `requires(T& t, U u) { t = u; }`
   // through a deleted operator=): no well-formed expression ([dcl.fct.def.delete] 2), so the requirement is not met.
   // A template's is decided once its arguments are, as the explicit specialization for them is no deleted function.

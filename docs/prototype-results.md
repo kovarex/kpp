@@ -161,7 +161,10 @@ arguments) pair; the first thread that needs it claims it in a shared registry a
 bodies, any other thread finds it done or in progress and only waits if it needs a result (the
 deduced return type of an `auto` function). Class template instantiations check every member
 function body, including out-of-line `void Foo<T>::f()` definitions, which the indexer now
-attaches to their class. Function template instantiations check the body with the deduced
+attaches to their class. (Since 2026-11-08 only the members used, as C++ instantiates them, with
+virtual members, destructors and explicit instantiations checked with the class:
+docs/compile-speed.md, "Step 4". The instantiation counts in this file before that date counted
+every member: the game's member bodies 437,140 then, 114,815 after.) Function template instantiations check the body with the deduced
 arguments plus the class arguments of the object they were called on.
 
 | | |

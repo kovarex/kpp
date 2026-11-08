@@ -429,6 +429,7 @@
     const ParsedFile* rootFile = nullptr;
     uint32_t rootToken = UINT32_MAX;
     std::unique_ptr<FunctionInstanceTask> task;
+    const Ty* memberOf = nullptr; // a member's queued check (no task): its class instance (demandMember)
     FunctionDecl* body = nullptr;
     const Ty* deducedReturn = nullptr; // what the body's returns deduced, for an `auto` function
     Expr* init = nullptr;              // for a variable: its initializer's copy (GlobalScope::instanceInitializer)

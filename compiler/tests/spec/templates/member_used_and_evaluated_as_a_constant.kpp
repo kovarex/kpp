@@ -1,0 +1,22 @@
+// spec: a class template instance's constexpr members, called at run time (checked where they are used, queued for any worker) and evaluated in constants of their own (the evaluation needs the checked body now): clang's `9 10 7 6 10 3 5`; the evaluation takes a queued check over and never waits for a task no worker may reach (a guard for thread A's lazy instance members: the game's -j 8 build hung on it, 2026-11-09)
+template<typename T, int N>
+struct Arr
+{
+  T items[N]{};
+  constexpr int size() const { return N; }
+  constexpr int twice() const { return size() * 2; }
+  constexpr T first() const { return items[0]; }
+};
+int useInt() { Arr<int, 3> a; return a.twice() + a.size(); }
+int useChar() { Arr<char, 5> a; return a.twice() + int(a.first()); }
+int useLong() { Arr<long, 7> a; return a.size(); }
+constexpr int intTwice = Arr<int, 3>{}.twice();
+constexpr int charTwice = Arr<char, 5>{}.twice();
+static_assert(Arr<long, 7>{}.size() == 7);
+int main()
+{
+  int local = Arr<int, 3>{}.size();
+  constexpr int inside = Arr<char, 5>{}.size();
+  println(useInt(), " ", useChar(), " ", useLong(), " ", intTwice, " ", charTwice, " ", local, " ", inside);
+  return 0;
+}

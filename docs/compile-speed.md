@@ -2026,6 +2026,26 @@ Done so far (numbered as landed: step 1 = item 1, step 2 = items 3 and 4):
   runs: resolve median **1.57 -> 1.25 s** (min 1.55 -> 1.25 s), CPU about the same. A first version
   that queued only class instances' member bodies, and drained them after the files, was 0.15 s
   slower: the files' own function instances kept a few threads busy while the rest waited.
+- Step 4 (2026-11-08, thread A; D's review in the notes folder): a class instance's member bodies
+  are checked where they are used, as C++ instantiates a member function's definition
+  ([temp.inst] 11), no longer all of them with the class. Checked with the class: its virtual
+  member functions and destructor (the vtable), its member specializations, and every member of an
+  explicit instantiation definition (`template struct Box<int>;`, [temp.explicit] 10, at the end
+  of its file's walk). The others: where a call, an operator, range-for's begin/end or argument-
+  dependent lookup's hidden friend picks them (Walker::demandMember, from returnTypeOfCall: the
+  declaring instance's record, the one the class's check would make), and whatever codegen asks for
+  through instanceBody. Measured before it: of 353 k member bodies checked before codegen, codegen
+  used about 25%; of 86 k checked during codegen, about 15%. The game's IR is byte-identical (1.25
+  GB with debug information) and its errors are the same lines.
+  `kpp factorio debug --check --verbose --no-server` on factorio-in-kpp, both kpps built with
+  KPP_LLVM_DIR (the same allocator: rpmalloc), 10 rounds alternating, a quiet window, medians:
+  resolve **0.887 -> 0.704 s**, instance CPU **18.5 -> 7.4 s**, wall 2.45 -> 1.99 s (minimums
+  0.849 -> 0.681 s, 17.9 -> 7.3 s, 2.16 -> 1.83 s). The statistics change meaning here: member
+  bodies checked inside instantiations 437,140 -> 114,815, function template instantiations
+  83,534 -> 48,646 (those only unused members called), class instances 19,657 -> 17,193, distinct
+  types 542,535 -> 425,627; a comparison of these counts across this step compares different work.
+  The members codegen still checks itself (about 10 k plain members, 3 k static ones, 1.5 k
+  operators, no constructors: down from about 80 k) print an error in them after codegen's own line.
 
 ## Parallel codegen, first step (2026-10-29)
 

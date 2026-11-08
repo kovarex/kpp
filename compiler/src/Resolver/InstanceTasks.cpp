@@ -50,6 +50,9 @@ auto GlobalScope::Impl::runMemberTask(const MemberTask& t) -> void
     w.runFunctionInstance(inst, ft);
     return;
   }
+  // A member a use claimed and queued (demandMember), unless a walk that needed it took it over first.
+  if (t.claimedMember && t.claimedMember->queued.exchange(0) != 1)
+    return;
   auto* c = static_cast<ClassDecl*>(t.classTy->decl);
   if (!c->file || !c->file->tokens)
     return;
@@ -69,17 +72,12 @@ auto GlobalScope::Impl::runMemberTask(const MemberTask& t) -> void
     sub.rootToken = t.rootToken;
     if (t.f)
     {
-      w.checkMemberBody(sub, t.f, subst);
+      w.checkMemberBody(sub, t.f, subst, t.claimedMember);
       return;
     }
-    // The whole instance (one task per class instance: per member, the tasks' own setup cost
-    // more than they spread).
-    for (Decl* m : membersRead(c))
-      if (m->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(m)->body && m->templateParams.empty())
-        w.checkMemberBody(sub, static_cast<FunctionDecl*>(m), subst);
-    for (FunctionDecl* f : c->ownScope->outOfLineMembers)
-      if (f->body && (!isMemberSpecialization(f) || memberSpecializationIsFor(f, t.classTy)))
-        w.checkMemberBody(sub, f, subst);
+    // The instance's members checked with the class (one task per class instance: per member, the
+    // tasks' own setup cost more than they spread); the others where they are used (demandMember).
+    w.checkClassMembers(sub, t.classTy, subst, t.allMembers);
   });
   instNanos += uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - start).count());
 }

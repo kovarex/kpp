@@ -302,10 +302,29 @@
     // Types the instantiation of member f for the class's arguments, in a copy of f's nodes kept
     // as that instantiation's body (unless it exists already: an `auto` member asked for its
     // return type first).
-    void checkMemberBody(Walker& sub, FunctionDecl* f, const Subst& classSubst);
+    // claimed: the record a use claimed already (demandMember), typed here.
+    void checkMemberBody(Walker& sub, FunctionDecl* f, const Subst& classSubst, Impl::InstanceRecord* claimed = nullptr);
+    // The substitution a member's instance record is keyed with: its class's, and an out-of-line
+    // definition's own template parameter list mapped to it positionally.
+    static Subst memberInstanceSubst(FunctionDecl* f, Decl* cls, const Subst& classSubst);
 
-    // Checks every member function body of a class template for one instantiation, once.
-    void instantiateClass(const Ty* classTy);
+    // Makes one instantiation of a class template, once: its class-level checks and the member
+    // bodies checked with the class (checkedWithClass); every member for an explicit
+    // instantiation definition (allMembers, [temp.explicit] 10).
+    void instantiateClass(const Ty* classTy, bool allMembers = false);
+    // The members of a class template instance checked when the instance is made, used or not: its
+    // virtual member functions and destructor (the vtable), its member specializations; every one
+    // for allMembers. The others are checked where they are used (demandMember), as C++
+    // instantiates a member function's definition only where it is used ([temp.inst] 11).
+    static bool checkedWithClass(Impl& impl, Decl* m, const Ty* classTy, bool allMembers);
+    void checkClassMembers(Walker& sub, const Ty* classTy, const Subst& subst, bool allMembers);
+    // A non-template member function (or a friend defined in the class) of a class template instance
+    // used here, classSubst its class's arguments: its body checked once, by the record its class's
+    // check would make (claimInstance under the declaring instance's `this`, checkMemberBody).
+    void demandMember(FunctionDecl* f, const Subst* classSubst);
+    // The check of def, a member of the class instance classTy, whose record (claimed by a use) is
+    // record: queued by demandMember, or taken over by a walk that needs it now (instantiateFunction).
+    void checkDemandedMember(FunctionDecl* def, const Ty* classTy, Impl::InstanceRecord* record);
 
     // Checks a function template body for one set of deduced arguments, once. Returns the
     // deduced return type when the function returns `auto` (waiting for another producer).

@@ -27,6 +27,8 @@
     std::shared_ptr<DeclWalk> declWalk;         // or a template function's own walk
     const ParsedFile* rootFile = nullptr;       // Walker::rootFile
     uint32_t rootToken = UINT32_MAX;
+    bool allMembers = false;                    // the whole instance: every member (an explicit instantiation), not those checked with the class
+    InstanceRecord* claimedMember = nullptr;    // f's record, claimed by the use that queued it (Walker::demandMember)
   };
   // The statistics of the queued walks, added to their files' once every worker is done (adding is
   // order-independent: the counts sum, a first occurrence is the earliest place).
