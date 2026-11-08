@@ -406,7 +406,7 @@ auto codegen::Emitter::rangeFor(RangeForStmt* f) -> void
     }
     allocas += "  " + slot + " = alloca ptr\n";
     fn += "  store ptr " + target + ", ptr " + slot + "\n";
-    locals[v] = {slot, vt, true};
+    locals[v] = {slot, vt, true, scopes.size()};
     if (!v->name.empty())
       debugVariable(sym(v->name.last().symbol), v, slot, vt); // the loop variable, each iteration's
   }
@@ -431,7 +431,7 @@ auto codegen::Emitter::rangeFor(RangeForStmt* f) -> void
     }
     else
       store(load(element, elementTy, v), slot, vt, v);
-    locals[v] = {slot, vt, false};
+    locals[v] = {slot, vt, false, scopes.size()};
     if (!v->name.empty())
       debugVariable(sym(v->name.last().symbol), v, slot, vt); // the loop variable, each iteration's
     if (needsDestruction(vt, v))

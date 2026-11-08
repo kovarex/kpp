@@ -6929,9 +6929,41 @@ auto GlobalScope::Impl::constOwnLocal(Expr* e, const TypeContext& ctx) -> bool
     if ((*ctx.env)[i].symbol == n->name.parts[0].symbol)
     {
       const ConstBinding& b = (*ctx.env)[i];
-      return !b.aliasEnv && !b.pack && b.type && !b.type->isReference();
+      if (b.aliasEnv || b.pack || !b.type || b.type->isReference())
+        return false;
+      // (a reference parameter bound to a temporary holds the temporary's value, typed as it: still a
+      // reference, whose `return r;` copies a `const C&` and a `const C&&`; until 2026-11-08 it moved)
+      Decl* d = n->resolved;
+      if (d && (d->kind == NodeKind::ParamDecl || d->kind == NodeKind::VariableDecl))
+        if (const Ty* t = declaredTypeOf(d, ctx.subst, 0); t && t->isReference())
+          return false;
+      return true;
     }
   return false;
+}
+
+auto GlobalScope::Impl::constRvalueReferenceLocal(Expr* e, const TypeContext& ctx) -> const Ty*
+{
+  while (e && e->kind == NodeKind::ParenExpr)
+    e = static_cast<ParenExpr*>(e)->inner;
+  if (!e || e->kind != NodeKind::NameExpr || !ctx.env)
+    return nullptr;
+  auto* n = static_cast<NameExpr*>(e);
+  if (n->name.parts.size() != 1 || n->name.global || n->name.parts[0].hasTemplateArgs)
+    return nullptr;
+  // (by the declaration: a parameter bound to a temporary holds the temporary's value, typed as it)
+  Decl* d = n->resolved;
+  if (!d || (d->kind != NodeKind::ParamDecl && d->kind != NodeKind::VariableDecl) || (d->flags & (DF_Static | DF_ThreadLocal | DF_Extern)))
+    return nullptr;
+  for (size_t i = ctx.env->size(); i-- > 0;)
+    if ((*ctx.env)[i].symbol == n->name.parts[0].symbol)
+    {
+      if ((*ctx.env)[i].pack)
+        return nullptr;
+      const Ty* t = declaredTypeOf(d, ctx.subst, 0);
+      return t && t->kind == TyKind::RRef ? t : nullptr;
+    }
+  return nullptr;
 }
 
 auto GlobalScope::Impl::constThisPlace(const TypeContext& ctx) -> std::optional<ConstPlace>
@@ -8957,6 +8989,16 @@ auto GlobalScope::Impl::constStatementIn(Stmt* s, const TypeContext& ctx, std::v
           result = *moved;
           return result ? ConstFlow::Returned : ConstFlow::Failed;
         }
+      // `return r;` of `C&& r` moves from what r refers to, as the program does; of `const C&& r` it
+      // copies (the implicit move's `const C&&` binds the copy constructor; until 2026-11-08 a move).
+      if (ctx.returnType && !ctx.returnType->isReference())
+        if (const Ty* ref = constRvalueReferenceLocal(static_cast<ReturnStmt*>(s)->value, ctx))
+          if (std::optional<std::optional<ConstValue>> made =
+                constCopyInit(static_cast<ReturnStmt*>(s)->value, ctx.returnType, ctx, depth + 1, !types.stripRef(ref)->isConst))
+          {
+            result = *made;
+            return result ? ConstFlow::Returned : ConstFlow::Failed;
+          }
       result = ctx.returnType ? constInitialize(ctx.returnType, static_cast<ReturnStmt*>(s)->value, ctx, depth + 1)
                               : constValue(static_cast<ReturnStmt*>(s)->value, ctx, depth + 1);
       return result ? ConstFlow::Returned : ConstFlow::Failed;

@@ -1,0 +1,9 @@
+move 1 caught 1
+move 2 caught 2
+move 3 caught 3
+move 4 caught 4
+copy 5 inner 5 5 caught 50
+move 6 inner 6 caught 60
+copy 7 caught 7
+copy 8 move 8 caught 8
+copy 9 copy 9 caught 9

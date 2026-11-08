@@ -1,0 +1,31 @@
+// spec: a constant evaluation's `return name;` moves what the program's moves and copies what it copies ([class.copy.elision] 3): a local, a parenthesized one and an rvalue reference parameter `C&& c` are moved; a `const C&&` and a `const C&` parameter, given a temporary or an object, and an lvalue reference are copied. clang's and g++'s output
+// found by thread J (2026-11-08): a reference parameter bound to a temporary was moved, `const C&` and `const C&&` alike (the binding holds the temporary's value)
+extern "C" int printf(const char* format, ...);
+struct C
+{
+  int v;
+  bool moved = false;
+  constexpr C(int x) : v(x) {}
+  constexpr C(const C& o) : v(o.v) {}
+  constexpr C(C&& o) : v(o.v), moved(true) {}
+};
+constexpr C fromRvalue(C&& c) { return c; }
+constexpr C fromConstRvalue(const C&& c) { return c; }
+constexpr C fromConstRef(const C& c) { return c; }
+constexpr C fromRef(C& c) { return c; }
+constexpr C twoLocals(bool which) { C a(1); C b(2); if (which) return (a); return b; }
+constexpr bool constRvalueOfObject() { C a(1); return fromConstRvalue(static_cast<const C&&>(a)).moved; }
+constexpr bool refOfObject() { C a(1); return fromRef(a).moved; }
+static_assert(fromRvalue(C(1)).moved);
+static_assert(!fromConstRvalue(C(2)).moved);
+static_assert(!fromConstRef(C(3)).moved);
+static_assert(!constRvalueOfObject());
+static_assert(!refOfObject());
+static_assert(twoLocals(true).moved);
+static_assert(twoLocals(false).moved);
+int main()
+{
+  constexpr bool a = fromRvalue(C(1)).moved, b = fromConstRvalue(C(2)).moved, c = fromConstRef(C(3)).moved;
+  printf("%d %d %d\n", a, b, c);
+  return 0;
+}

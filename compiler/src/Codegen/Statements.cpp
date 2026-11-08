@@ -596,7 +596,7 @@ auto codegen::Emitter::declareLocal(VariableDecl* v) -> void
     slot = "%v" + std::to_string(temp++);
     allocas += "  " + slot + " = alloca " + (isRef ? std::string("ptr") : llType(t, v) + alignSuffix(t, variableAlignment(v, typingContext(), v), v)) + "\n";
   }
-  locals[v] = {slot, t, isRef};
+  locals[v] = {slot, t, isRef, scopes.size()};
   if (!v->name.empty())
     debugVariable(sym(v->name.last().symbol), v, slot, t);
   if (isRef)
@@ -610,15 +610,9 @@ auto codegen::Emitter::declareLocal(VariableDecl* v) -> void
     // An rvalue reference binds no lvalue of its type (C++'s [dcl.init.ref] 5.4.4, as for a parameter:
     // argumentText). Until 2026-11-05 `S&& r = a;` bound a itself, and a move from r moved a.
     // (`auto&& value = this->state;` is an lvalue reference since D's cee07bff, as in C++.)
-    if (t->kind == TyKind::RRef && isLvalueExpression(init) && init->ty && init->ty->isKnown() && !types.isDependent(init->ty))
-    {
-      const Ty* given = types.unqualified(types.stripRef(init->ty)), *bound = types.unqualified(types.stripRef(t));
-      std::vector<std::pair<std::string, uint32_t>> path;
-      if (given->kind != TyKind::Function &&
-          (given == bound || (isClass(given) && isClass(bound) && (classKey(given) == classKey(bound) || basePath(given, bound, path, v)))))
-        fail(v, "the " + types.toString(t, &symbols) +
-                    " variable given an lvalue of its type: an rvalue reference binds only a temporary or what move() gives, never the object itself");
-    }
+    if (rvalueReferenceGivenLvalue(t, init, v))
+      fail(v, "the " + types.toString(t, &symbols) +
+                  " variable given an lvalue of its type: an rvalue reference binds only a temporary or what move() gives, never the object itself");
     // A member of a temporary (`const M& m = wrap(5).inner;`): the whole temporary lives as long as
     // the reference ([class.temporary] 6), never only to the end of the statement, which left the
     // reference dangling (until 2026-11-05). The temporary the member chain starts from is the last
@@ -954,6 +948,7 @@ auto codegen::Emitter::statement(Stmt* s) -> void
       {
         if (!r->value)
           unsupported(s, "return without a value in a function returning a reference");
+        checkRvalueReferenceResult(currentReturn, r->value);
         if (isAggregate(types.stripRef(currentReturn)))
         {
           Value v = rvalue(r->value);

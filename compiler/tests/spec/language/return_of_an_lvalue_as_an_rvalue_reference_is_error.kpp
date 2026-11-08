@@ -1,0 +1,30 @@
+// spec: a function returning an rvalue reference given an lvalue of its type is a compile error, as a variable or a parameter given one is ([dcl.init.ref] 5.4.4, C++20; clang: "rvalue reference to type 'int' cannot bind to lvalue of type 'int'"): the parameter `x` of `int&& plain(int&& x) { return x; }` (a named rvalue reference is an lvalue), a class's `M&& member(M&& m) { return m; }`, a generic lambda's `[](auto&& x) -> decltype(auto) { return x; }` given an rvalue (decltype(x) is int&&), a function template's `decltype(auto) fwd(T&& x) { return x; }` and `T&& pass(T&& x) { return x; }` (both inlined into their callers, never emitted themselves); not `return static_cast<int&&>(x);` or `(x)` as decltype(auto)'s int&. clang's and g++'s errors
+// error: return_of_an_lvalue_as_an_rvalue_reference_is_error.kpp:9: error: a function returning int32&& returns an lvalue of its type: an rvalue reference binds only a temporary or what move() gives, never the object itself
+// error: return_of_an_lvalue_as_an_rvalue_reference_is_error.kpp:10: error: a function returning M&& returns an lvalue of its type: an rvalue reference binds only a temporary or what move() gives, never the object itself
+// error: return_of_an_lvalue_as_an_rvalue_reference_is_error.kpp:12: error: a function returning int32&& returns an lvalue of its type: an rvalue reference binds only a temporary or what move() gives, never the object itself
+// error: return_of_an_lvalue_as_an_rvalue_reference_is_error.kpp:13: error: a function returning int32&& returns an lvalue of its type: an rvalue reference binds only a temporary or what move() gives, never the object itself
+// error: return_of_an_lvalue_as_an_rvalue_reference_is_error.kpp:16: error: a function returning int32&& returns an lvalue of its type: an rvalue reference binds only a temporary or what move() gives, never the object itself
+// found by thread J (2026-11-08): the lvalue itself was returned
+struct M { int v; };
+int&& plain(int&& x) { return x; }
+M&& member(M&& m) { return m; }
+int&& moved(int&& x) { return static_cast<int&&>(x); }
+template<class T> decltype(auto) fwd(T&& x) { return x; }
+template<class T> T&& pass(T&& x) { return x; }
+int useLambda()
+{
+  auto id = [](auto&& x) -> decltype(auto) { return x; };
+  int a = 1;
+  int& r = id(a);
+  int b = id(2);
+  return r + b;
+}
+int useFwd() { return fwd(3); }
+int usePass() { return pass(4); }
+int main()
+{
+  auto paren = [](auto&& x) -> decltype(auto) { return (x); };
+  int& q = paren(2);
+  int d = plain(4) + moved(5) + member(M{6}).v;
+  return q + d + useLambda() + useFwd() + usePass();
+}

@@ -1,0 +1,57 @@
+// spec: `throw name;` takes a local as an rvalue first, as `return name;` does ([class.copy.elision] 3, C++20): a local object, a by-value parameter, an rvalue reference parameter, a parenthesized name, a local declared inside the try block that holds the throw, a catch parameter thrown again; not a local declared outside that try block (its scope holds the try block: copied), a const one, or a lambda's capture. clang's output (g++ 13 copies the parenthesized name, which [class.copy.elision] 3 moves as clang does; its output is otherwise the same)
+// found by thread J (2026-11-08): every one was copied
+extern "C" int printf(const char* format, ...);
+struct M
+{
+  int v;
+  M(int x) : v(x) {}
+  M(const M& o) : v(o.v) { printf("copy %d ", v); }
+  M(M&& o) : v(o.v) { o.v = -1; printf("move %d ", v); }
+};
+void local() { M m(1); throw m; }
+void byValue(M m) { throw m; }
+void byRvalue(M&& m) { throw m; }
+void paren() { M m(4); throw (m); }
+void outsideTry()
+{
+  M m(5);
+  try { throw m; }
+  catch (M& c) { printf("inner %d %d ", c.v, m.v); }
+  throw M(50);
+}
+void insideTry()
+{
+  try { M m(6); throw m; }
+  catch (M& c) { printf("inner %d ", c.v); }
+  throw M(60);
+}
+void constLocal() { const M m(7); throw m; }
+void rethrowByName()
+{
+  try { throw M(8); }
+  catch (M e) { throw e; }
+}
+void capture()
+{
+  M m(9);
+  auto l = [m]() { throw m; };
+  l();
+}
+template<class F> void run(F f)
+{
+  try { f(); }
+  catch (M& c) { printf("caught %d\n", c.v); }
+}
+int main()
+{
+  run([] { local(); });
+  run([] { byValue(M(2)); });
+  run([] { M m(3); byRvalue(static_cast<M&&>(m)); printf("source %d ", m.v); });
+  run([] { paren(); });
+  run([] { outsideTry(); });
+  run([] { insideTry(); });
+  run([] { constLocal(); });
+  run([] { rethrowByName(); });
+  run([] { capture(); });
+  return 0;
+}

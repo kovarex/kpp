@@ -55,6 +55,9 @@
       std::string addr; // Address of the variable (or of the pointer slot for references).
       const Ty* ty;
       bool isRef;
+      // scopes.size() where a block's variable, a loop variable or a catch parameter was declared, 0 for
+      // a parameter: whether a try block lies between it and a `throw name;` (implicitlyMovableLocal).
+      size_t scopeDepth = 0;
     };
     // An argument of the call a check tests (design.md 8.7): its address, or a scalar's value and
     // LLVM type. No type: it has no value to show.
@@ -174,6 +177,9 @@
     // value, by reference the place (isRef). A use of the binding reads it (bindingPlace), never the
     // hidden object, which the closure does not hold.
     std::map<std::pair<Decl*, uint32_t>, Local> bindingCaptures;
+    // In a lambda's call operator, the variables its closure captured (their locals are its fields): a
+    // `return name;` of one is no implicit move, the name being the closure's member ([class.copy.elision] 3).
+    std::unordered_set<Decl*> capturedLocals;
     std::unordered_map<uint32_t, std::string> labelBlocks; // goto labels of the current function -> their blocks
     std::vector<std::vector<Object>> scopes; // Objects to destroy, per open scope.
     // Each open scope's id (pushScope), and the goto labels' places: the scopes' ids and their

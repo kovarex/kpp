@@ -944,6 +944,9 @@
   // Whether e names, alone, an object of the running function itself: a local or a by-value
   // parameter, not a reference (what `return e;` moves).
   bool constOwnLocal(Expr* e, const TypeContext& ctx);
+  // The type of the rvalue reference local or parameter e names (`C&& r`, possibly parenthesized),
+  // null for anything else: `return r;` moves from it unless it refers to a const object.
+  const Ty* constRvalueReferenceLocal(Expr* e, const TypeContext& ctx);
 
   std::optional<ConstPlace> constThisPlace(const TypeContext& ctx);
 

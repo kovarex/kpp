@@ -926,6 +926,7 @@ auto codegen::Emitter::emitLambda(LambdaExpr* l, const Ty* t, const Ty* callTy, 
         continue;
       }
       locals[d] = {field, capturedTy, info.byRef[i]};
+      capturedLocals.insert(d);
       if (std::string name = debugName(d); !name.empty())
         debugVariable(name, d, field, capturedTy, 0, false, true);
     }

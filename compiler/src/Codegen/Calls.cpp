@@ -811,7 +811,10 @@ auto codegen::Emitter::inlinedBody(FunctionDecl* f, const TemplateArgs& args, co
       if (ret->kind == TyKind::Void)
         rvalue(e);
       else if (ret->isReference())
+      {
+        checkRvalueReferenceResult(ret, e); // (`template<class T> T&& g(T&& x) { return x; }`, inlined: never emitted itself)
         result = {isAggregate(types.stripRef(ret)) ? rvalue(e).text : lvalue(e), ret, false};
+      }
       else
         result = {convert(rvalue(e), ret, e).text, ret, false};
     }

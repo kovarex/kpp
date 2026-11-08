@@ -1,0 +1,72 @@
+// spec: `return name;` takes as an rvalue first, C++'s implicit move ([class.copy.elision] 3, C++20), also an rvalue reference to an object (a by-value parameter `M m`, a parameter `M&& m`, a local `M&& r`, a forwarding reference given an rvalue) and a parenthesized name `return (a);`, also into another class's converting constructor (`Box(M&&)`); not a const one (`const M&&`: copied), an lvalue reference, or a lambda's capture (`[m]() { return m; }`: the closure's member, copied). clang's and g++'s output (the C++ without `implicit`)
+// found by thread J (2026-11-08): an rvalue reference and a parenthesized name were copied, a by-copy capture moved
+extern "C" int printf(const char* format, ...);
+struct M
+{
+  int v;
+  M(int x) : v(x) {}
+  M(const M& o) : v(o.v) { printf("copy %d\n", v); }
+  M(M&& o) : v(o.v) { o.v = -1; printf("move %d\n", v); }
+};
+struct Box
+{
+  int v;
+  implicit Box(const M& m) : v(m.v) { printf("box copy %d\n", v); }
+  implicit Box(M&& m) : v(m.v) { m.v = -2; printf("box move %d\n", v); }
+};
+M fromValue(M m) { return m; }
+M fromParam(M&& m) { return m; }
+M fromParen(M&& m) { return (m); }
+M fromConst(const M&& m) { return m; }
+M fromLvalue(M& m) { return m; }
+M fromLocalRef(int k) { M&& r = M(k); return r; }
+M twoLocals(bool which)
+{
+  M a(10);
+  M b(20);
+  if (which)
+    return (a);
+  return ((b));
+}
+Box boxed(M&& m) { return m; }
+template<class T> T forwarded(T&& t) { return t; }
+int main()
+{
+  M v = fromValue(M(0));
+  printf("%d\n", v.v);
+  M a(1);
+  M b = fromParam(static_cast<M&&>(a));
+  printf("%d %d\n", a.v, b.v);
+  M c(2);
+  M d = fromParen(static_cast<M&&>(c));
+  printf("%d %d\n", c.v, d.v);
+  M e(3);
+  M f = fromConst(static_cast<const M&&>(e));
+  printf("%d %d\n", e.v, f.v);
+  M g(4);
+  M h = fromLvalue(g);
+  printf("%d %d\n", g.v, h.v);
+  M i = fromLocalRef(5);
+  printf("%d\n", i.v);
+  M j = twoLocals(true);
+  M k = twoLocals(false);
+  printf("%d %d\n", j.v, k.v);
+  M l(6);
+  Box m = boxed(static_cast<M&&>(l));
+  printf("%d %d\n", l.v, m.v);
+  M n(7);
+  M o = forwarded(static_cast<M&&>(n));
+  printf("%d %d\n", n.v, o.v);
+  M p(8);
+  M q = forwarded(p);
+  printf("%d %d\n", p.v, q.v);
+  M r(9);
+  auto byCopy = [r]() { return r; };
+  M s = byCopy();
+  auto byCopyMutable = [r]() mutable { return r; };
+  M t = byCopyMutable();
+  auto byRef = [&r]() { return r; };
+  M u = byRef();
+  printf("%d %d %d %d\n", r.v, s.v, t.v, u.v);
+  return 0;
+}

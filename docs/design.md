@@ -2153,9 +2153,12 @@ costs, and whether it runs a constructor, does not depend on the optimizer or th
   lambda or a local class in the body are their own functions'. A function with no return of it, or
   one that can fall off its end, has none. Every return naming the variable lies in its scope, so
   that scope covers them all.
-- **Otherwise** `return name;` of a local or by-value parameter is C++'s implicit move
-  ([class.copy.elision]/3): the name is an rvalue first, so the object is moved, never copied when it
-  can be moved. A const local returned as another class binds the copy constructor through
+- **Otherwise** `return name;` of a local, a by-value parameter or an rvalue reference (`M&& m`), the
+  name possibly parenthesized, is C++'s implicit move ([class.copy.elision]/3): the name is an rvalue
+  first, so the object is moved, never copied when it can be moved; a lambda's capture is the
+  closure's member and is copied. `throw name;` moves likewise when no try block lies between the
+  throw and the variable's scope. A function returning an rvalue reference given an lvalue of its
+  type (`int&& f(int&& x) { return x; }`) is an error, as in C++20 (C++23's P2266 is not taken). A const local returned as another class binds the copy constructor through
   `const T&&`, as in C++ (WireAddedUndoAction::getWire's `const Wire` returned as `Optional<Wire>`).
   `--return-copy-warnings` (off by default) names each return that copies or moves, and why.
 - **Lifetime.** The variable's object is the caller's: leaving its scope without returning (a loop's

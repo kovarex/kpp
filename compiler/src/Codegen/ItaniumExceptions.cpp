@@ -338,7 +338,29 @@ auto codegen::Emitter::emitThrow(ThrowExpr* t) -> void
     ensureMalloc();
     std::string obj = newTemp();
     emitCall(obj + " = ", "ptr @malloc(i64 " + std::to_string(sizeOf(ty, t)) + ")", false);
-    if (isClass(ty))
+    // `throw m;` with m a local, as `return m;`: C++'s implicit move ([class.copy.elision] 3), when no
+    // try block lies between the throw and m's scope (m declared inside the innermost try's body that
+    // holds the throw, or outside every try). Until 2026-11-08 a copy.
+    const Ty* movable = nullptr;
+    if (isClass(ty) && implicitlyMovableLocal(t->operand, movable) && classKey(movable) == classKey(ty))
+    {
+      Expr* e = t->operand;
+      while (e->kind == NodeKind::ParenExpr)
+        e = static_cast<ParenExpr*>(e)->inner;
+      size_t declared = locals[static_cast<NameExpr*>(e)->resolved].scopeDepth;
+      for (size_t i = ehFrames.size(); i-- > 0;)
+        if (!ehFrames[i].isHandler)
+        {
+          if (declared <= ehFrames[i].scopeDepth)
+            movable = nullptr;
+          break;
+        }
+    }
+    else
+      movable = nullptr;
+    if (movable)
+      moveConstruct(obj, lvalue(t->operand), ty, t);
+    else if (isClass(ty))
       initializeFrom(obj, ty, t->operand, t);
     else
       store(convert(rvalue(t->operand), ty, t), obj, ty, t);
@@ -522,6 +544,7 @@ auto codegen::Emitter::catchHandlers(TryStmt* t, const std::string& slot, const 
         fn += "  " + loaded + " = load " + llType(pt, h.param) + ", ptr " + obj + "\n  store " + llType(pt, h.param) + " " + loaded + ", ptr " + v + "\n";
         locals[h.param] = {v, pt, false};
       }
+      locals[h.param].scopeDepth = scopes.size();
       if (uint32_t name = static_cast<ParamDecl*>(h.param)->name; name != UINT32_MAX)
         debugVariable(sym(name), h.param, locals[h.param].addr, pt);
     }

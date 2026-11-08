@@ -2067,36 +2067,48 @@ auto codegen::Emitter::constructFromVector(const std::string& addr, const Ty* cl
   constructInto(addr, cls, Span<Expr*>{&one, 1}, at);
 }
 
-auto codegen::Emitter::localObjectOfOtherClass(Expr* e) -> const Ty*
+auto codegen::Emitter::implicitlyMovableLocal(Expr* e, const Ty*& cls) -> Decl*
 {
+  while (e && e->kind == NodeKind::ParenExpr)
+    e = static_cast<ParenExpr*>(e)->inner; // `return (result);` (until 2026-11-08 a copy)
   if (!e || e->kind != NodeKind::NameExpr)
     return nullptr;
   Decl* d = static_cast<NameExpr*>(e)->resolved;
-  if (!d || (d->kind != NodeKind::VariableDecl && d->kind != NodeKind::ParamDecl) || (d->flags & DF_Static))
+  if (!d || (d->kind != NodeKind::VariableDecl && d->kind != NodeKind::ParamDecl) || (d->flags & (DF_Static | DF_ThreadLocal | DF_Extern)))
     return nullptr;
+  if (d->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(d)->structuredBindings.empty())
+    return nullptr;
+  if (capturedLocals.count(d))
+    return nullptr; // `[m]() { return m; }`: the closure's member, copied
   auto it = locals.find(d);
-  if (it == locals.end() || it->second.isRef || !isClass(it->second.ty) || classKey(it->second.ty) == classKey(currentReturn))
+  if (it == locals.end() || !isClass(types.stripRef(it->second.ty)))
     return nullptr;
-  if (const Ty* declared = declType(d); declared && declared->isConst)
-    return nullptr; // (a const local converts as an lvalue: copied, as returnedLocalObject's)
-  return types.unqualified(it->second.ty);
+  // An rvalue reference is moved from as its object is (`M f(M&& m) { return m; }`; until 2026-11-08
+  // a copy, where C++20 moves), an lvalue reference never.
+  const Ty* declared = declType(d);
+  if (it->second.isRef && (!declared || declared->kind != TyKind::RRef))
+    return nullptr;
+  // A const one is copied (`const T t; return t;`: the implicit move's `const T&&` binds the copy
+  // constructor, never the move constructor).
+  if (declared && types.stripRef(declared)->isConst)
+    return nullptr;
+  cls = types.unqualified(types.stripRef(it->second.ty));
+  return d;
+}
+
+auto codegen::Emitter::localObjectOfOtherClass(Expr* e) -> const Ty*
+{
+  const Ty* cls = nullptr;
+  if (!implicitlyMovableLocal(e, cls) || classKey(cls) == classKey(currentReturn))
+    return nullptr;
+  return cls;
 }
 
 auto codegen::Emitter::returnedLocalObject(Expr* e) -> Decl*
 {
-  if (!e || e->kind != NodeKind::NameExpr)
-    return nullptr;
-  Decl* d = static_cast<NameExpr*>(e)->resolved;
-  if (!d || (d->kind != NodeKind::VariableDecl && d->kind != NodeKind::ParamDecl) || (d->flags & DF_Static))
-    return nullptr;
-  if (d->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(d)->structuredBindings.empty())
-    return nullptr;
-  auto it = locals.find(d);
-  if (it == locals.end() || it->second.isRef || !isClass(it->second.ty) || classKey(it->second.ty) != classKey(currentReturn))
-    return nullptr;
-  // A const local is copied (`const T t; return t;`: the implicit move's `const T&&` binds the
-  // copy constructor, never the move constructor).
-  if (const Ty* declared = declType(d); declared && declared->isConst)
+  const Ty* cls = nullptr;
+  Decl* d = implicitlyMovableLocal(e, cls);
+  if (!d || classKey(cls) != classKey(currentReturn))
     return nullptr;
   return d;
 }
@@ -2116,6 +2128,26 @@ auto codegen::Emitter::builtInResult(VariableDecl* v, Node* at) -> VariableDecl*
     return nullptr;
   }
   return v;
+}
+
+auto codegen::Emitter::rvalueReferenceGivenLvalue(const Ty* t, Expr* init, Node* at) -> bool
+{
+  if (!t || t->kind != TyKind::RRef || !isLvalueExpression(init) || !init->ty || !init->ty->isKnown() || types.isDependent(init->ty))
+    return false;
+  const Ty* given = types.unqualified(types.stripRef(init->ty)), *bound = types.unqualified(types.stripRef(t));
+  std::vector<std::pair<std::string, uint32_t>> path;
+  return given->kind != TyKind::Function &&
+         (given == bound || (isClass(given) && isClass(bound) && (classKey(given) == classKey(bound) || basePath(given, bound, path, at))));
+}
+
+auto codegen::Emitter::checkRvalueReferenceResult(const Ty* ret, Expr* value) -> void
+{
+  // An rvalue reference result binds no lvalue of its type, as a variable does not: `int&& f(int&& x)
+  // { return x; }` is an error, x being an lvalue (C++20's [dcl.init.ref] 5.4.4; C++23's P2266 would
+  // make it an xvalue). Until 2026-11-08 x itself was returned.
+  if (rvalueReferenceGivenLvalue(ret, value, value))
+    fail(value, "a function returning " + types.toString(ret, &symbols) +
+                    " returns an lvalue of its type: an rvalue reference binds only a temporary or what move() gives, never the object itself");
 }
 
 auto codegen::Emitter::returnsNamedReturn(Expr* e) -> bool

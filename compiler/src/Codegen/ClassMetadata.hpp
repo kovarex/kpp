@@ -303,11 +303,25 @@
     // constructor: a silent wrong value where it does more than store.
     void constructFromVector(const std::string& addr, const Ty* cls, Value v, bool copyInit, Node* at);
 
-    // The class of the local object (not a reference) e names, when it is not the function's
-    // result class (whose own `return obj;` is a move: returnedLocalObject); null otherwise.
+    // The local e names that `return e;` takes as an rvalue first, C++'s implicit move
+    // ([class.copy.elision] 3): a (possibly parenthesized) name of an automatic object of class type
+    // or of an rvalue reference to one, declared in the function (not a lambda's capture), not const
+    // (its `const T&&` binds the copy constructor); null otherwise. Its class in cls.
+    Decl* implicitlyMovableLocal(Expr* e, const Ty*& cls);
+
+    // The class of that local when it is not the function's result class (whose own `return obj;`
+    // is a move: returnedLocalObject); null otherwise.
     const Ty* localObjectOfOtherClass(Expr* e);
 
     Decl* returnedLocalObject(Expr* e);
+
+    // Whether init, an lvalue of the type t refers to (or of a class derived from it), is given to the
+    // rvalue reference t ([dcl.init.ref] 5.4.4: an error, never the object itself bound).
+    bool rvalueReferenceGivenLvalue(const Ty* t, Expr* init, Node* at);
+
+    // `return value;` in a function returning ret, an rvalue reference: an error where value is an
+    // lvalue of its type, in the function's own body and in a call inlined from it (inlinedBody).
+    void checkRvalueReferenceResult(const Ty* ret, Expr* value);
 
     // Named return elision, guaranteed (design.md 23, kovarex 2026-11-04): the variable every return of
     // the function returns, by the resolver's rule (GlobalScope::namedReturnVariable, given the body,
