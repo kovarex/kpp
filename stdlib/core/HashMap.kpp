@@ -670,7 +670,7 @@ public:
 
   const V& at(const K& key) const
   {
-    HashIterator<Pair<K, V>, stable> at = this->find(key);
+    HashIterator<const Pair<K, V>, stable> at = this->find(key);
     if (at == this->end())
       throwOutOfRange("HashMap::at: key not found");
     return at->second;

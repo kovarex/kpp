@@ -1,0 +1,21 @@
+// spec: a const HashMap's at() (std::unordered_map::at() const) finds the entry with a const iterator, as find() const gives one, never through HashIterator's explicit const-removing constructor, and throws OutOfRange for a missing key (`5 7 out of range`)
+// factorio: convert.cmd under --explicit-by-default, 2026-11-08: HashMap's at() const kept find()'s const iterator in a mutable one, HashIterator's explicit const-removing constructor (a copy-initialisation a class template's member took without the flag: pending templates/explicit_constructor_copy_initialisation_in_a_class_template_member_is_error): "copy-initialising HashIterator<Pair<StateName, uint32>, true> from HashIterator<const Pair<StateName, uint32>, true>" for three of the game's maps
+extern "C" import "stdio.h";
+int lookup(const HashMap<int, int>& map, int key) { return map.at(key); }
+int main()
+{
+  HashMap<int, int> map;
+  map[1] = 5;
+  map[2] = 7;
+  printf("%d %d", lookup(map, 1), lookup(map, 2));
+  try
+  {
+    lookup(map, 3);
+  }
+  catch (const OutOfRange&)
+  {
+    printf(" out of range");
+  }
+  printf("\n");
+  return 0;
+}

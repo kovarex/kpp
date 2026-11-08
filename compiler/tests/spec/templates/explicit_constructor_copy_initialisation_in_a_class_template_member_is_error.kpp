@@ -1,0 +1,27 @@
+// spec: copy-initialisation through an explicit constructor template is an error in a class template's member as it is elsewhere ([dcl.init] 17.6.2, [over.match.copy]: an explicit constructor is no candidate for `T x = y;`): `It<T> m = this->find();` with find() const giving an It<const T>, whose only constructor from it is explicit
+// pending: a class template's member body takes the explicit constructor and builds (prints 1); the same line in a function is "copy-initialising It<int32> from It<const int32> by its explicit constructor" (C, 2026-11-08, for the coordinator to give an owner)
+// factorio: convert.cmd under --explicit-by-default, 2026-11-08: the stdlib's HashMap::at() const copy-initialised a mutable HashIterator from find() const's const one through HashIterator's explicit const-removing constructor and built without the flag
+// error: copy-initialising It<int32> from It<const int32> by its explicit constructor
+extern "C" import "stdio.h";
+template<typename E> struct It
+{
+  E* p = nullptr;
+  It() {}
+  template<typename F> requires (isSame<E, RemoveConst<F>> && !isSame<F, E>)
+  explicit It(const It<F>& other) : p((E*)other.p) {}
+};
+template<typename T> struct Box
+{
+  It<const T> find() const { return It<const T>(); }
+  int at() const
+  {
+    It<T> m = this->find();
+    return m.p == nullptr;
+  }
+};
+int main()
+{
+  const Box<int> b;
+  printf("%d\n", b.at());
+  return 0;
+}
