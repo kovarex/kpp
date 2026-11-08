@@ -535,8 +535,8 @@ enum class Direction : u8
   and each group is a scope of its own.
 - **Status:** step 1 is built: a case that can reach the next label without `break;`, `fallthrough;`,
   `return`, `continue`, `goto` or `throw` is an error, and `switch` keeps C++'s meaning. The flip is built
-  behind `--no-implicit-fallthrough`, with every rule's error. It becomes the default once the game, the
-  stdlib, the libraries and the specs build with it.
+  behind `--no-implicit-fallthrough`, with every rule's error, and the converted game and the stdlib build
+  with it (2026-11-08). It becomes the default once the libraries and the specs do too.
 - **Why:** falling through by accident is a bug class; a keyword that does nothing goes (kovarex,
   2026-11-07).
 - **See:** [design 6][d6] and its "No implicit fallthrough" entry; specs

@@ -4846,7 +4846,7 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   1. Each label begins a group of its own (kovarex, 2026-11-08, replacing 2026-11-07's "labels side by side share one
      group"): `case A: case B: build();` runs build() for B alone, and an empty `case A:` is a case that does nothing.
      A body two labels share is written `case A: fallthrough; case B: build();` (rule 2), which C's converter writes
-     between C++'s labels side by side (about 270 in the game, C counting); without the flag C++'s meaning stays.
+     between C++'s labels side by side (3,690 in the game, in 941 runs); without the flag C++'s meaning stays.
   2. `fallthrough;` is the last statement of a group with another group after it (Go's rule), a group of `fallthrough;`
      alone too; anywhere else, inside an `if`, in the last group or outside a switch, it is an error. `case A: break;`
      loses its break (rule 5) and is an empty case.
@@ -4883,6 +4883,15 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   Labels side by side, which mean one case each under the flag, are written with `fallthrough;` between them where
   code builds with it: the stdlib's 12 (Error.kpp's errcOfWindowsError) by C, as `case 2: fallthrough;`, the same
   with the flag and without; the game's 3,690 (in 941 runs) by C's converter.
+  The converter's step (C, 2026-11-08; FileConverterBodies.inl's walkSwitchBody): a group's trailing `break;` goes, also
+  as a block's last statement and as a group's only statement (`case A: break;` becomes the empty `case A:`), and so
+  does one a macro's expansion writes where the text proves it ends a case (dropTrailingBreaksInExpansion); C++'s running
+  on into the next case is written `fallthrough;`, moved after the brace of a block that ends the case, and none follows
+  a macro's use whose expansion ends its case; a label directly followed by another (comments between too) gets
+  `fallthrough;`, on its line when the next label is on it or the next line is a preprocessor line, else on a line of
+  its own indented as the statements the labels share. In the game: 3,176 trailing breaks removed and 2,044 in macros'
+  expansions (one conversion's counts); 278 labels are left empty, each a `case A: break;`. convert.cmd builds every
+  configuration with the flag, and its switch test (tests\convert_switch) runs the converted cases against C++'s output.
 
 - **Explicit by default** (readme's Planned; decided by kovarex 2026-11-07 on thread D's questions, Q1 and Q3 reshaped;
   D's survey in the coordinator's notes). A constructor or a conversion operator converts implicitly only when marked

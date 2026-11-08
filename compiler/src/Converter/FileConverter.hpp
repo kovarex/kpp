@@ -967,6 +967,17 @@
                     counts.add("do/while statement macros written without the wrapper");
                   }
                 }
+              if (level == 0)
+              {
+                bool endsCase = false, takesSemicolon = false;
+                size_t next = text.find_first_not_of(" \t\r\n", end);
+                bool semicolonAfter = end == use.end && next != std::string_view::npos && text[next] == ';';
+                expansion = dropTrailingBreaksInExpansion(expansion, labelAfterUse(end), semicolonAfter, &endsCase, &takesSemicolon);
+                if (endsCase)
+                  withdrawFallthrough(use.begin);
+                if (takesSemicolon)
+                  end = uint32_t(next + 1); // (`HANDLE_CASE(...);`: the use's `;` was its break's)
+              }
               // (marked: the macro may be defined otherwise in the other configuration, Lua's api_check
               // an assert in one and a check that aborts in the other; the use's offset is its id)
               if (convertMarks)
@@ -991,7 +1002,14 @@
             args.push_back(applyEdits(edits, b, e));
             spellings.push_back(std::string(text.substr(b, e - b)));
           }
-          edits.push_back({use.begin, use.end - use.begin, rewritePrintfText(expandArguments(*use.replacement, args, spellings))});
+          bool endsCase = false, takesSemicolon = false;
+          size_t next = text.find_first_not_of(" \t\r\n", use.end);
+          bool semicolonAfter = next != std::string_view::npos && text[next] == ';';
+          std::string expansion = dropTrailingBreaksInExpansion(rewritePrintfText(expandArguments(*use.replacement, args, spellings)), labelAfterUse(use.end),
+                                                                semicolonAfter, &endsCase, &takesSemicolon);
+          if (endsCase)
+            withdrawFallthrough(use.begin);
+          edits.push_back({use.begin, (takesSemicolon ? uint32_t(next + 1) : use.end) - use.begin, expansion});
         }
         std::stable_sort(edits.begin(), edits.end(), byOffset);
       }
@@ -1485,6 +1503,9 @@
     std::vector<Edit> edits;
     std::vector<ArgumentMacroUse> argumentMacroUses;
     std::vector<LocalMacroUse> localMacroUses;
+    // The `fallthrough;` walkSwitchBody inserted before a label (its offset) after the statement at an offset: a
+    // macro's use there ends its case when its expansion ends with the case's break (see withdrawFallthrough).
+    std::map<uint32_t, uint32_t> fallthroughAfterUse;
     std::vector<ClassDecl*> classStack; // the classes whose members convertDecls is in, outermost first
     // The identifiers of allocator arguments dropped from std container types (convertTokens), by
     // offset: a template parameter used only there goes from its header too (dropAllocatorParameters).

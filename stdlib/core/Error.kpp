@@ -93,19 +93,34 @@ i32 errcOfWindowsError(i32 error)
 {
   switch (error)
   {
-    case 2: case 3: case 15: case 53: case 67: case 123: case 161: return i32(Errc::no_such_file_or_directory); // file, path not found; bad drive, network path, name
-    case 5: case 19: case 32: case 82: return i32(Errc::permission_denied); // access denied, write protected, sharing violation, cannot make
+    // (labels side by side run one body by `fallthrough;`, design.md "No implicit fallthrough")
+    // file, path not found; bad drive, network path, name
+    case 2: fallthrough;
+    case 3: fallthrough;
+    case 15: fallthrough;
+    case 53: fallthrough;
+    case 67: fallthrough;
+    case 123: fallthrough;
+    case 161: return i32(Errc::no_such_file_or_directory);
+    // access denied, write protected, sharing violation, cannot make
+    case 5: fallthrough;
+    case 19: fallthrough;
+    case 32: fallthrough;
+    case 82: return i32(Errc::permission_denied);
     case 17: return i32(Errc::cross_device_link);
-    case 80: case 183: return i32(Errc::file_exists);
+    case 80: fallthrough;
+    case 183: return i32(Errc::file_exists);
     case 145: return i32(Errc::directory_not_empty);
     case 267: return i32(Errc::not_a_directory);
     case 87: return i32(Errc::invalid_argument);
-    case 39: case 112: return i32(Errc::no_space_on_device);
+    case 39: fallthrough;
+    case 112: return i32(Errc::no_space_on_device);
     case 170: return i32(Errc::device_or_resource_busy);
     case 206: return i32(Errc::filename_too_long);
     case 50: return i32(Errc::not_supported);
     case 4: return i32(Errc::too_many_files_open);
-    case 29: case 30: return i32(Errc::io_error); // write fault, read fault
+    case 29: fallthrough; // write fault
+    case 30: return i32(Errc::io_error); // read fault
     default: return 0;
   }
 }

@@ -38,28 +38,525 @@
       }
       auto* b = static_cast<BlockStmt*>(body);
       Stmt* last = nullptr; // last statement since the previous label
+      // a label with nothing after it so far: in C++ it shares the next label's statements, in kpp it would run none
+      Stmt* bareLabel = nullptr;
+      // such labels and the label after each, given `fallthrough;` once the statements they share show its indentation
+      std::vector<std::pair<Stmt*, Stmt*>> shared;
       for (Stmt* s : b->stmts)
       {
-        if (s->kind == NodeKind::CaseStmt || s->kind == NodeKind::DefaultStmt)
+        // A label, or a macro's use that writes one (stb_image's `STBI__CASE(1,2) { ... } break;`, Agui's
+        // `HANDLE_CASE(Type::X, member);`, Lua's vmcase): the case before it ends there.
+        bool label = s->kind == NodeKind::CaseStmt || s->kind == NodeKind::DefaultStmt;
+        bool macroLabel = !label && writesLabel(s);
+        if (label || macroLabel)
         {
+          if (bareLabel && !last)
+            shared.push_back({bareLabel, s});
+          bareLabel = label ? s : nullptr;
+          removeTrailingBreak(last);
+          moveFallthroughOutOfBlock(last);
           if (last && !terminates(last))
           {
-            // Indent like the label.
+            // Indented as the case's last statement (its line's), before the label (which keeps its own).
             uint32_t at = toks[s->token].offset;
             uint32_t lineStart = at;
             while (lineStart > 0 && text[lineStart - 1] != '\n')
               --lineStart;
-            insert(at, "fallthrough;\n" + std::string(text.substr(lineStart, at - lineStart)));
-            counts.add("fallthrough added");
+            std::string labelIndent(text.substr(lineStart, at - lineStart)), indent;
+            uint32_t lastLine = toks[last->token].offset;
+            while (lastLine > 0 && text[lastLine - 1] != '\n')
+              --lastLine;
+            for (uint32_t k = lastLine; k < text.size() && (text[k] == ' ' || text[k] == '\t'); ++k)
+              indent += text[k];
+            std::string deeper = indent.size() > labelIndent.size() && indent.compare(0, labelIndent.size(), labelIndent) == 0
+                                     ? indent.substr(labelIndent.size())
+                                     : std::string();
+            // (before a macro's use at its line's start: an insertion at the use is inside the use's replacement)
+            uint32_t where = macroLabel ? lineStart : at;
+            if (macroLabel && labelIndent.find_first_not_of(" \t") != std::string::npos)
+              todo(at, "a case runs on into the one a macro writes after it on its line: write fallthrough; before the macro's use");
+            else
+            {
+              insert(where, macroLabel ? labelIndent + deeper + "fallthrough;\n" : deeper + "fallthrough;\n" + labelIndent);
+              counts.add("fallthrough added");
+              // (after a macro's use, `vmcase(4, ...)`, whose expansion the parse does not see: withdrawn when its
+              // expansion ends with the case's break, which dropTrailingBreaksInExpansion drops)
+              fallthroughAfterUse[toks[last->token].offset] = where;
+            }
           }
           last = nullptr;
           if (s->kind == NodeKind::CaseStmt)
             walkExpr(static_cast<CaseStmt*>(s)->value, owner);
+          if (label)
+            continue;
+          // (the use itself: what it writes after its label is its case's, its arguments rewritten as any
+          // statement's; it counts as no statement, so `STBI__CASE(1,2) break;` keeps a break that may be a loop's)
+          walkStmt(s, owner);
+          last = s;
           continue;
         }
         walkStmt(s, owner);
-        last = s;
+        if (s->kind != NodeKind::EmptyStmt) // (`default: { ...; break; };`: the block is its last statement)
+        {
+          last = s;
+          bareLabel = nullptr;
+          fallthroughAfterLabels(shared, s);
+        }
       }
+      fallthroughAfterLabels(shared, nullptr);
+      removeTrailingBreak(last); // (the last group's)
+    }
+
+    // Whether the statement is a macro's use whose expansion starts with a label (`case`, `default`).
+    bool writesLabel(Stmt* s)
+    {
+      if (!s || s->token + 1 >= toks.size() || toks[s->token].getKind() != TokenKind::Identifier || !toks[s->token + 1].is(P::LParen))
+        return false;
+      const LocalMacro* m = localMacroAt(std::string(spelling(s->token)), toks[s->token].offset);
+      if (!m)
+        return false;
+      size_t start = m->body.find_first_not_of(" \t\r\n\\");
+      size_t end = start;
+      while (end != std::string::npos && end < m->body.size() && isIdentChar(m->body[end]))
+        ++end;
+      std::string first = start == std::string::npos ? std::string() : m->body.substr(start, end - start);
+      return first == "case" || first == "default";
+    }
+
+    // No implicit fallthrough (design.md): every group of statements after a label ends with a break, so the
+    // `break;` C++ ends one with goes, also as the last statement of a block that ends it, and also when it is the
+    // group's only statement: `case A: break;` becomes `case A:`, which runs nothing (labels side by side share no
+    // statements, kovarex 2026-11-08).
+    void removeTrailingBreak(Stmt* last)
+    {
+      Stmt* end = last;
+      while (end && end->kind == NodeKind::BlockStmt && !static_cast<BlockStmt*>(end)->stmts.empty())
+        end = static_cast<BlockStmt*>(end)->stmts[static_cast<BlockStmt*>(end)->stmts.size() - 1];
+      if (!end || end->kind != NodeKind::BreakStmt)
+        return;
+      uint32_t t = end->token;
+      if (t + 1 >= toks.size() || !toks[t + 1].is(P::Semi) || text.substr(toks[t].offset, toks[t].length) != "break")
+        return; // (not written as `break;` in this file)
+      removeStatementText(toks[t].offset, endOffset(t + 1));
+      counts.add("trailing break removed");
+    }
+
+    // A label directly followed by another (C++'s `case A: case B: build();`, comments between too) shares that
+    // label's statements in C++; in kpp a label runs only what follows it (kovarex 2026-11-08), so it gets
+    // `fallthrough;`: after its `:` when the next label is on its line (`case A: fallthrough; case B:`), else on a
+    // line of its own after the label's, indented as the statements they share (`statement`, the first, if it
+    // starts its line; else the label's indentation and two spaces).
+    void fallthroughAfterLabels(std::vector<std::pair<Stmt*, Stmt*>>& labels, Stmt* statement)
+    {
+      auto lineStartOf = [&](uint32_t at)
+      {
+        while (at > 0 && text[at - 1] != '\n')
+          --at;
+        return at;
+      };
+      auto blank = [&](uint32_t from, uint32_t to) { return text.substr(from, to - from).find_first_not_of(" \t") == std::string_view::npos; };
+      std::string statementIndent;
+      if (statement)
+      {
+        uint32_t at = toks[statement->token].offset, lineStart = lineStartOf(at);
+        if (blank(lineStart, at))
+          statementIndent = text.substr(lineStart, at - lineStart);
+      }
+      for (auto [label, next] : labels)
+      {
+        uint32_t t = label->token + 1;
+        for (int depth = 0, questions = 0; t < toks.size(); ++t)
+          if (toks[t].is(P::LParen) || toks[t].is(P::LBracket) || toks[t].is(P::LBrace))
+            ++depth;
+          else if (toks[t].is(P::RParen) || toks[t].is(P::RBracket) || toks[t].is(P::RBrace))
+            --depth;
+          else if (depth == 0 && toks[t].is(P::Question))
+            ++questions;
+          else if (depth == 0 && toks[t].is(P::Colon) && questions-- == 0)
+            break;
+        if (t >= toks.size())
+          continue;
+        uint32_t colonEnd = endOffset(t);
+        size_t lineEnd = text.find('\n', colonEnd);
+        // (on the label's line also before a preprocessor line, `#if`/`#endif` around the next label, which the
+        // conversion may drop with what is inserted at its start: trio's `case QUALIFIER_SIZE_T_UPPER:`)
+        size_t nextLine = lineEnd == std::string_view::npos ? lineEnd : text.find_first_not_of(" \t", lineEnd + 1);
+        if (lineEnd == std::string_view::npos || lineEnd >= toks[next->token].offset ||
+            (nextLine != std::string_view::npos && text[nextLine] == '#'))
+          insert(colonEnd, " fallthrough;");
+        else
+        {
+          uint32_t labelLine = lineStartOf(toks[label->token].offset);
+          std::string indent = statementIndent;
+          if (indent.empty())
+          {
+            uint32_t k = labelLine;
+            while (k < text.size() && (text[k] == ' ' || text[k] == '\t'))
+              ++k;
+            indent = std::string(text.substr(labelLine, k - labelLine)) + "  ";
+          }
+          insert(uint32_t(lineEnd + 1), indent + "fallthrough;\n");
+        }
+        counts.add("fallthrough added after a label sharing the next one's statements");
+      }
+      labels.clear();
+    }
+
+    // A case's `[[fallthrough]];` as the last statement of the block that ends the case (RepathData's `case
+    // State::StopRenamed: { ...; [[fallthrough]]; }`): kpp's `fallthrough;` is the case's own last statement, so
+    // it goes after the block's closing brace, on a line of its own indented as the brace.
+    void moveFallthroughOutOfBlock(Stmt* last)
+    {
+      if (!last || last->kind != NodeKind::BlockStmt || !static_cast<BlockStmt*>(last)->endToken)
+        return;
+      uint32_t close = static_cast<BlockStmt*>(last)->endToken;
+      Stmt* end = last;
+      while (end && end->kind == NodeKind::BlockStmt && !static_cast<BlockStmt*>(end)->stmts.empty())
+        end = static_cast<BlockStmt*>(end)->stmts[static_cast<BlockStmt*>(end)->stmts.size() - 1];
+      if (!end || end->kind != NodeKind::FallthroughStmt || close >= toks.size() || !toks[close].is(P::RBrace))
+        return;
+      uint32_t t = end->token;
+      uint32_t endToken = toks[t].is(P::LBracket) ? t + 5 : t + 1; // `[[fallthrough]];` or `fallthrough;`
+      if (endToken >= toks.size() || !toks[endToken].is(P::Semi))
+        return;
+      removeStatementText(toks[t].offset, endOffset(endToken)); // (cancels walkStmt's rewrite of it, inside)
+      uint32_t lineStart = toks[close].offset;
+      while (lineStart > 0 && (text[lineStart - 1] == ' ' || text[lineStart - 1] == '\t'))
+        --lineStart;
+      insert(endOffset(close), "\n" + std::string(text.substr(lineStart, toks[close].offset - lineStart)) + "fallthrough;");
+      counts.add("fallthrough moved out of the block ending its case");
+    }
+
+    // No implicit fallthrough in a macro's expansion (the parse sees the use, not the cases it writes: Lua's
+    // `vmcase(l, b) case l: {b} break;`, an X-macro's `case Type::X: ...; break;`, DrawQueue's switch inside a
+    // do/while): a `break;` goes when the text proves it ends a case: a label before it at its brace level with
+    // only statements between (it follows a `;`, a `}`, the label's `:` or the `{` of a block right after it,
+    // never `)`, `else` or `do`, whose statement it would be), and after it at that level a label, the closing
+    // brace of a switch's body, or the end of the expansion where the use is followed by a label or its switch's
+    // closing brace (`labelAfterUse`). Anything else keeps it: an error under the flag, never a break dropped from
+    // a loop. A label right after another (`case A: case B:`) gets `fallthrough;`, as walkSwitchBody's do.
+    // A case's block right after its label ends with the case's break too (InputAction's `case X: { ...; break; }`),
+    // and the expansion's last `break` may take its `;` from the use (Agui's `HANDLE_CASE(...);`, whose body ends
+    // `break`): `semicolonAfterUse` says the use is followed by one, `takesSemicolon` that the use's `;` goes too.
+    // `endsCase`: set when the expansion's last statement was such a break, or is a jump (return, throw, continue,
+    // goto, a break kept): the use ends its case, and no `fallthrough;` follows it.
+    std::string dropTrailingBreaksInExpansion(const std::string& e, bool labelAfterUse, bool semicolonAfterUse = false, bool* endsCase = nullptr,
+                                              bool* takesSemicolon = nullptr)
+    {
+      struct Tok { uint32_t begin, end; char punct; std::string_view word; };
+      std::vector<Tok> ts;
+      for (uint32_t i = 0; i < e.size();)
+      {
+        char c = e[i];
+        if (isspace((unsigned char)c) || c == '\\')
+          ++i;
+        else if (c == '/' && i + 1 < e.size() && e[i + 1] == '/')
+          while (i < e.size() && e[i] != '\n')
+            ++i;
+        else if (c == '/' && i + 1 < e.size() && e[i + 1] == '*')
+        {
+          size_t close = e.find("*/", i + 2);
+          i = close == std::string::npos ? uint32_t(e.size()) : uint32_t(close + 2);
+        }
+        else if (c == '"' || c == '\'')
+        {
+          uint32_t b = i++;
+          while (i < e.size() && e[i] != c)
+            i += e[i] == '\\' ? 2 : 1;
+          i = std::min<uint32_t>(i + 1, uint32_t(e.size()));
+          ts.push_back({b, i, 'L', {}});
+        }
+        else if (isIdentChar(c))
+        {
+          uint32_t b = i;
+          while (i < e.size() && (isIdentChar(e[i]) || (isdigit((unsigned char)e[b]) && e[i] == '.')))
+            ++i;
+          ts.push_back({b, i, 'w', std::string_view(e).substr(b, i - b)});
+        }
+        else if (c == ':' && i + 1 < e.size() && e[i + 1] == ':')
+        {
+          ts.push_back({i, i + 2, 'q', {}});
+          i += 2;
+        }
+        else
+        {
+          ts.push_back({i, i + 1, c, {}});
+          ++i;
+        }
+      }
+      struct Frame
+      {
+        bool switchBody = false, caseBlock = false, label = false;
+        char prev = 0; // the last token's kind at this level: a punctuator, 'w' a word, ':' a label's end
+        // a `break` that ends its case if a label or the switch's end follows: its text [begin, end), and whether it
+        // is the expansion's last token without its `;`
+        uint32_t candidateBegin = UINT32_MAX, candidateEnd = 0;
+        bool bare = false;
+        // the last statement at this level is a return, throw, continue, goto or break (or a block standing as a
+        // statement whose last one is: `case X: { ...; return nullptr; }`), and whether this level is such a block
+        bool jumps = false, statementBlock = false;
+        uint32_t labelEnd = UINT32_MAX; // the end of the last label's `:` at this level
+      };
+      std::vector<Frame> frames(1);
+      std::vector<std::pair<uint32_t, uint32_t>> drop;
+      std::vector<uint32_t> fallthroughs; // after a label's `:` that the next label follows (`case A: case B:`)
+      int parens = 0;
+      bool switchHead = false;
+      bool droppedBare = false;
+      auto statementStart = [](char prev) { return prev == 0 || prev == ';' || prev == '}' || prev == ':' || prev == '{'; };
+      auto decide = [&](Frame& f, bool ends)
+      {
+        if (f.candidateBegin != UINT32_MAX && ends)
+        {
+          drop.push_back({f.candidateBegin, f.candidateEnd});
+          droppedBare = droppedBare || f.bare;
+        }
+        f.candidateBegin = UINT32_MAX;
+        f.bare = false;
+      };
+      for (size_t k = 0; k < ts.size(); ++k)
+      {
+        const Tok& t = ts[k];
+        Frame& f = frames.back();
+        if (parens == 0 && statementStart(f.prev) && t.punct != '{' && t.punct != '}') // (a statement's first token)
+          f.jumps = t.word == "return" || t.word == "throw" || t.word == "continue" || t.word == "goto" || t.word == "break";
+        if (t.punct == '(' || t.punct == '[')
+          ++parens;
+        else if (t.punct == ')' || t.punct == ']')
+          --parens;
+        else if (t.punct == '{')
+        {
+          decide(f, false);
+          bool afterLabel = f.prev == ':' && parens == 0;
+          bool standsAlone = statementStart(f.prev) && parens == 0;
+          f.jumps = false;
+          f.prev = '{';
+          frames.push_back({});
+          frames.back().switchBody = switchHead && parens == 0;
+          frames.back().caseBlock = frames.back().label = afterLabel && !frames.back().switchBody;
+          frames.back().statementBlock = standsAlone && !frames.back().switchBody;
+          switchHead = false;
+          continue;
+        }
+        else if (t.punct == '}')
+        {
+          Frame closed = f;
+          if (closed.caseBlock && frames.size() > 1)
+          {
+            // (the block's break ends the case when what follows the block does)
+            frames.pop_back();
+            frames.back().candidateBegin = closed.candidateBegin;
+            frames.back().candidateEnd = closed.candidateEnd;
+            frames.back().prev = '}';
+            frames.back().jumps = closed.jumps;
+            continue;
+          }
+          decide(f, f.switchBody);
+          if (frames.size() > 1)
+            frames.pop_back();
+          frames.back().prev = '}';
+          frames.back().jumps = closed.statementBlock && closed.jumps;
+          continue;
+        }
+        if (parens > 0 || (parens == 0 && (t.punct == ')' || t.punct == ']')))
+        {
+          if (t.punct == ')' || t.punct == ']')
+            f.prev = ')';
+          continue;
+        }
+        if (t.word == "switch")
+          switchHead = true;
+        if (t.word == "case" || (t.word == "default" && k + 1 < ts.size() && ts[k + 1].punct == ':')) // (not `= default;`)
+        {
+          // the label: up to its `:` (a `?`'s `:` is the conditional's)
+          size_t j = k + 1;
+          for (int questions = 0, depth = 0; j < ts.size(); ++j)
+            if (ts[j].punct == '(' || ts[j].punct == '[')
+              ++depth;
+            else if (ts[j].punct == ')' || ts[j].punct == ']')
+              --depth;
+            else if (depth == 0 && ts[j].punct == '?')
+              ++questions;
+            else if (depth == 0 && ts[j].punct == ':' && questions-- == 0)
+              break;
+          if (j >= ts.size())
+            return e; // (not a label this reads: the expansion as it is)
+          if (f.prev == ':' && k > 0 && ts[k - 1].end == f.labelEnd)
+            fallthroughs.push_back(f.labelEnd);
+          decide(f, true);
+          f.label = true;
+          f.labelEnd = ts[j].end;
+          f.prev = ':';
+          f.jumps = false;
+          k = j;
+          continue;
+        }
+        bool semicolon = k + 1 < ts.size() && ts[k + 1].punct == ';';
+        bool bare = k + 1 == ts.size() && frames.size() == 1 && semicolonAfterUse;
+        // (also a group's only statement, `case A: break;` and `case A: { break; }`: kpp's `case A:` runs nothing)
+        bool afterLabel = (f.prev == ':' && k > 0 && ts[k - 1].end == f.labelEnd) || (f.prev == '{' && f.caseBlock);
+        if (t.word == "break" && (semicolon || bare) && f.label && (f.prev == ';' || f.prev == '}' || afterLabel))
+        {
+          decide(f, false);
+          f.candidateBegin = t.begin;
+          f.candidateEnd = semicolon ? ts[k + 1].end : t.end;
+          f.bare = bare;
+          f.prev = ';';
+          f.jumps = true;
+          k += semicolon ? 1 : 0;
+          continue;
+        }
+        decide(f, false);
+        f.prev = t.punct ? t.punct : 'w';
+      }
+      size_t dropped = drop.size();
+      decide(frames.back(), frames.size() == 1 && labelAfterUse);
+      if (endsCase)
+        *endsCase = drop.size() > dropped || (frames.size() == 1 && frames.back().jumps);
+      if (takesSemicolon)
+        *takesSemicolon = droppedBare;
+      if (drop.empty() && fallthroughs.empty())
+        return e;
+      // (both in the text's order: a removal [from, to), or an insertion at `from` where to is UINT32_MAX)
+      std::vector<std::pair<uint32_t, uint32_t>> changes = drop;
+      for (uint32_t at : fallthroughs)
+        changes.push_back({at, UINT32_MAX});
+      std::sort(changes.begin(), changes.end());
+      std::string out;
+      uint32_t at = 0;
+      for (auto [from, to] : changes)
+      {
+        if (to == UINT32_MAX)
+        {
+          out.append(e, at, from - at);
+          out += " fallthrough;";
+          at = from;
+          counts.add("fallthrough added after a label sharing the next one's statements in a macro's expansion");
+          continue;
+        }
+        while (from > at && (e[from - 1] == ' ' || e[from - 1] == '\t'))
+          --from;
+        out.append(e, at, from - at);
+        at = to;
+        counts.add("trailing break removed in a macro's expansion");
+      }
+      out.append(e, at, std::string::npos);
+      return out;
+    }
+
+    // A macro's use whose expansion ends its case: the `fallthrough;` walkSwitchBody inserted after it goes.
+    void withdrawFallthrough(uint32_t useBegin)
+    {
+      auto inserted = fallthroughAfterUse.find(useBegin);
+      if (inserted == fallthroughAfterUse.end())
+        return;
+      for (Edit& edit : edits)
+        if (edit.offset == inserted->second && edit.length == 0 && edit.text.find("fallthrough;") != std::string::npos)
+        {
+          edit.text.clear();
+          counts.add("fallthrough after a macro's use withdrawn: its expansion ends the case");
+        }
+    }
+
+    // Whether a label or the closing brace of a switch's body follows the text at `at` (after a `;` and comments):
+    // a macro use's next statement, for dropTrailingBreaksInExpansion.
+    bool labelAfterUse(uint32_t at)
+    {
+      for (;;)
+      {
+        while (at < text.size() && (isspace((unsigned char)text[at]) || text[at] == ';' || text[at] == '\\'))
+          ++at;
+        if (text.compare(at, 2, "//") == 0 || (text[at] == '#' && (at == 0 || text.find_last_not_of(" \t", at - 1) == std::string::npos ||
+                                                                   text[text.find_last_not_of(" \t", at - 1)] == '\n')))
+          at = uint32_t(std::min(text.find('\n', at), text.size())); // (a comment, or a line `#undef CALL_DESTRUCTOR`)
+        else if (text.compare(at, 2, "/*") == 0)
+        {
+          size_t close = text.find("*/", at + 2);
+          at = close == std::string::npos ? uint32_t(text.size()) : uint32_t(close + 2);
+        }
+        else
+          break;
+      }
+      if (at >= text.size())
+        return false;
+      uint32_t wordEnd = at;
+      while (wordEnd < text.size() && isIdentChar(text[wordEnd]))
+        ++wordEnd;
+      std::string word(text.substr(at, wordEnd - at));
+      if (word == "case" || word == "default")
+        return true;
+      if (!word.empty())
+      {
+        // the next use of a macro whose expansion starts with a label (lvm.c's vmcase after vmcase)
+        const LocalMacro* next = localMacroAt(word, at);
+        if (!next)
+          return false;
+        size_t start = next->body.find_first_not_of(" \t\r\n\\");
+        size_t end = start;
+        while (end != std::string::npos && end < next->body.size() && isIdentChar(next->body[end]))
+          ++end;
+        std::string first = start == std::string::npos ? std::string() : next->body.substr(start, end - start);
+        return first == "case" || first == "default";
+      }
+      if (text[at] != '}')
+        return false;
+      // the switch's own closing brace: its `{` follows `switch (...)`
+      auto close = std::lower_bound(toks.begin(), toks.end(), at, [](const Token& t, uint32_t o) { return t.offset < o; });
+      if (close == toks.end() || close->offset != at || !close->is(P::RBrace))
+        return false;
+      int depth = 0;
+      for (auto k = close; k != toks.begin();)
+      {
+        --k;
+        if (k->is(P::RBrace))
+          ++depth;
+        else if (k->is(P::LBrace) && depth-- == 0)
+        {
+          if (k == toks.begin() || !(k - 1)->is(P::RParen))
+            return false;
+          int parens = 0;
+          for (auto p = k - 1;; --p)
+          {
+            if (p->is(P::RParen))
+              ++parens;
+            else if (p->is(P::LParen) && --parens == 0)
+            {
+              if (p == toks.begin())
+                return false;
+              // `switch (...)`, or a macro's that writes it (lvm.c's `vmdispatch(o) switch(o)`)
+              std::string head(spelling(uint32_t(p - 1 - toks.begin())));
+              if (head == "switch")
+                return true;
+              const LocalMacro* m = localMacroAt(head, (p - 1)->offset);
+              size_t start = m ? m->body.find_first_not_of(" \t\r\n\\") : std::string::npos;
+              return start != std::string::npos && m->body.compare(start, 6, "switch") == 0 &&
+                     (start + 6 == m->body.size() || !isIdentChar(m->body[start + 6]));
+            }
+            if (p == toks.begin())
+              return false;
+          }
+        }
+      }
+      return false;
+    }
+
+    // Removes the statement text [from, to): with its line when it stands alone on it, before a comment keeping
+    // the comment where the statement was, else with the space before it.
+    void removeStatementText(uint32_t from, uint32_t to)
+    {
+      uint32_t lineStart = from;
+      while (lineStart > 0 && (text[lineStart - 1] == ' ' || text[lineStart - 1] == '\t'))
+        --lineStart;
+      uint32_t lineEnd = to;
+      while (lineEnd < text.size() && (text[lineEnd] == ' ' || text[lineEnd] == '\t' || text[lineEnd] == '\r'))
+        ++lineEnd;
+      bool aloneBefore = lineStart == 0 || text[lineStart - 1] == '\n';
+      if (aloneBefore && (lineEnd == text.size() || text[lineEnd] == '\n'))
+        remove(lineStart, lineEnd + (lineEnd < text.size() ? 1 : 0) - lineStart); // (the line it stands on alone)
+      else if (aloneBefore)
+        remove(from, lineEnd - from); // (`break; // why`: the comment stays, indented as the break was)
+      else
+        remove(lineStart, to - lineStart); // (`case A: x(); break;`, `{ x(); break; }`)
     }
 
     void walkStmt(Stmt* s, Decl* owner)
