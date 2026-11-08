@@ -3712,6 +3712,84 @@ auto GlobalScope::Impl::Walker::checkParenthesizedArray(Span<Expr*> args, const 
                              " has no default constructor");
 }
 
+auto GlobalScope::Impl::Walker::missingDefaultConstructor(const Ty* t) -> std::string
+{
+  const Ty* c = t ? types.unqualified(t) : nullptr;
+  if (!c || c->kind != TyKind::Class || !c->isKnown() || types.isDependent(c) || Impl::lambdaOf(c) || Impl::mentionsUnknown(c))
+    return {};
+  ClassDecl* def = impl.classDefinition(c);
+  if (!def || def->isTypedUnion || def->keyword == Kw::union_)
+    return {}; // (a union's variant members delete its default constructor by rules of their own: [class.default.ctor] 2)
+  bool declared = false;
+  for (Decl* m : membersRead(def))
+  {
+    if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Constructor))
+      continue;
+    declared = true;
+    auto* f = static_cast<FunctionDecl*>(m);
+    bool takesNone = true;
+    for (Decl* p : f->params)
+      takesNone = takesNone && (static_cast<ParamDecl*>(p)->defaultValue || static_cast<ParamDecl*>(p)->isPack);
+    if (!takesNone)
+      continue;
+    if (f->flags & DF_Delete)
+      return "its default constructor is deleted";
+    if (!(f->flags & DF_Default))
+      return {}; // a user-provided one
+    declared = false; // `= default`: as the implicit one, below
+    break;
+  }
+  if (declared)
+  {
+    // (a default constructor inherited from a base, `using Base::Base;`, serves: C++17 inherits it, and codegen takes it)
+    std::vector<const Ty*> inherited;
+    impl.inheritedConstructorSources(def, c, inherited, 0);
+    bool inheritsDefault = false;
+    for (const Ty* b : inherited)
+      inheritsDefault = inheritsDefault || impl.defaultConstructible(b, 1) != std::optional<bool>(false);
+    if (!inheritsDefault)
+      return "every constructor it declares takes an argument";
+  }
+  // The implicit (or defaulted) one is deleted by a part that cannot be default-initialized ([class.default.ctor] 2).
+  std::vector<const Ty*> bases;
+  if (!impl.directBases(c, def, bases))
+    return {};
+  for (const Ty* b : bases)
+    if (impl.defaultConstructible(b, 1) == std::optional<bool>(false))
+      return "its base " + types.toString(b, &symbols) + " has none";
+  Subst s = impl.substFor(c);
+  for (Decl* m : membersRead(def))
+  {
+    if (m->kind != NodeKind::VariableDecl || (m->flags & (DF_Static | DF_Typedef | DF_Friend)) || static_cast<VariableDecl*>(m)->init)
+      continue;
+    const Ty* mt = impl.declaredTypeOf(m, s.pairs.empty() ? nullptr : &s, 0);
+    if (!mt || !mt->isKnown() || types.isDependent(mt))
+      return {};
+    std::string name = "'" + std::string(symbols.name(static_cast<VariableDecl*>(m)->name.last().symbol)) + "'";
+    if (mt->isReference())
+      return "its member " + name + ", a reference, has no initializer";
+    const Ty* mu = mt;
+    while (mu->kind == TyKind::Array)
+      mu = mu->inner;
+    if (mu->isConst && mu->kind != TyKind::Class)
+      return "its const member " + name + " has no initializer";
+    if (ClassDecl* md = mu->kind == TyKind::Class ? impl.classDefinition(types.unqualified(mu)) : nullptr; md && md->keyword == Kw::union_)
+      continue; // (an anonymous union's members: its own rules)
+    if (impl.defaultConstructible(mt, 1) == std::optional<bool>(false))
+      return "its member " + name + " (" + types.toString(mt, &symbols) + ") has none";
+  }
+  return {};
+}
+
+auto GlobalScope::Impl::Walker::checkDefaultConstruction(const Ty* t, uint32_t token) -> void
+{
+  if (probing || !file || file->isImported || !t || inGenericTemplate())
+    return;
+  std::string why = missingDefaultConstructor(t);
+  if (!why.empty())
+    reportCheck(token, types.toString(types.unqualified(t), &symbols) + " has no default constructor: " + why);
+}
+
 auto GlobalScope::Impl::Walker::checkConstruction(const Ty* t, Span<Expr*> args, uint32_t token) -> void
 {
   checkBracedConstruction(t, args); // (before the exit below: an instance's construction too)
@@ -7687,9 +7765,18 @@ auto GlobalScope::Impl::Walker::defaultMembersThrow(const Ty* t, size_t given, s
       continue;
     auto* v = static_cast<VariableDecl*>(m);
     if (v->init)
+    {
       any = canThrow(v->init, unsupported) || any;
-    else
-      any = constructingThrows(impl.declaredTypeOf(v, subst.pairs.empty() ? nullptr : &subst, 0), {}, unsupported, depth + 1) || any;
+      continue;
+    }
+    // A reference member without an initializer constructs nothing: it deletes the default constructor, the
+    // construction's own error (checkDefaultConstruction). It was followed into the class it refers to, and
+    // through the references back (the game's InitializerList<ChartBundleChunkRenderRequest>: no end but the
+    // depth, after hours, K's spec language/noexcept_operator_of_a_construction_without_a_constructor_is_error).
+    const Ty* mt = impl.declaredTypeOf(v, subst.pairs.empty() ? nullptr : &subst, 0);
+    if (mt && mt->isReference())
+      continue;
+    any = constructingThrows(mt, {}, unsupported, depth + 1) || any;
   }
   return any;
 }
@@ -7727,6 +7814,10 @@ auto GlobalScope::Impl::Walker::constructingThrows(const Ty* t, const std::vecto
     impl.deduceCall(f, impl.declaredTypeOf(f, &subst, 0), argTypes, subst);
   if (f && (!(f->flags & DF_Default) || (f->flags & DF_Noexcept)))
     return functionThrows(f, subst.pairs.empty() ? nullptr : &subst, unsupported);
+  // No default constructor (constructors declared, none taking no argument, or a deleted one): no construction
+  // to ask about, the construction's own error (checkDefaultConstruction), not the parts' of an implicit one.
+  if (!f && argTypes.empty() && !missingDefaultConstructor(u).empty())
+    return false;
   // No constructor written: an implicit one, or an aggregate's elements each to its part in order.
   bool any = false;
   if (!f && !argTypes.empty())
@@ -10093,6 +10184,13 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
       }
       else
         checkListNarrowing(n->args, t);
+      if (!n->braced && n->args.empty())
+      {
+        // `new T`, `new (p) T()`, `new T[n]`: the element's (a requirement's probe of it not met)
+        if (probing && !missingDefaultConstructor(t).empty())
+          return record(e, unknown(Why::Overload));
+        checkDefaultConstruction(t, n->token);
+      }
       chooseAllocation(n, t, array);
       return record(e, t->isKnown() ? types.pointer(t) : t);
     }

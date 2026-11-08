@@ -1,5 +1,4 @@
 // spec: the noexcept operator over a construction the class has no constructor for is an error, as the construction is ([except.spec] 6 asks about a well-formed operand; clang: "no matching constructor for initialization of 'NoDefault'"), never an answer: here `noexcept(new (slot) T())` with T a class whose only constructor takes an i32
-// pending: the noexcept operator answers 1 (no throw) for `new (slot) NoDefault()`, and the checker lets a plain `new (space) NoDefault()` through to codegen ("codegen does not support default construction of NoDefault"). Found with Vector::resize's `if constexpr (noexcept(new (this->items) T()))` (K, 2026-11-08), which also made the game's front end hang (scratch\quality\inst\std-hang); D
 // error: has no default constructor
 extern "C" import "stdio.h";
 

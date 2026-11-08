@@ -1490,7 +1490,27 @@ auto GlobalScope::Impl::defaultConstructible(const Ty* t, int depth) -> std::opt
     break;
   }
   if (anyConstructor)
-    return false; // constructors declared, none takes no argument: no implicit one
+  {
+    // Constructors declared, none takes no argument: no implicit one, but a default constructor inherited
+    // (`using Base::Base;`: C++17 inherits every constructor of the base, a default one too, as the game's SignalID
+    // and Vector2D have it), the class's other parts then as for the implicit one, below.
+    std::vector<const Ty*> inherited;
+    inheritedConstructorSources(def, u, inherited, 0);
+    std::optional<bool> inheritsDefault = false;
+    for (const Ty* b : inherited)
+    {
+      std::optional<bool> r = defaultConstructible(b, depth + 1);
+      if (r && *r)
+      {
+        inheritsDefault = true;
+        break;
+      }
+      if (!r)
+        inheritsDefault = std::nullopt;
+    }
+    if (!inheritsDefault || !*inheritsDefault)
+      return inheritsDefault;
+  }
   Subst s = substFor(u);
   if (def->isTypedUnion)
   {

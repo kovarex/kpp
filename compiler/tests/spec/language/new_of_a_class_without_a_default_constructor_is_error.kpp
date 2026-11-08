@@ -1,0 +1,30 @@
+// spec: `new T`, `new T()`, `new (p) T()` and `new T[n]` of a class without a default constructor are the checker's error naming why ([class.default.ctor]; clang: "no matching constructor for initialization of 'NoDefault'", "call to implicitly-deleted default constructor of 'Holder'"): constructors declared and none takes no argument, a deleted one, an implicit one that a reference member without an initializer deletes. Codegen said it "does not support default construction" (K's report beside language/noexcept_operator_of_a_construction_without_a_constructor_is_error; an instance's: language/new_of_a_class_without_a_default_constructor_in_an_instance_is_error)
+// error: new_of_a_class_without_a_default_constructor_is_error.kpp:25: error: NoDefault has no default constructor: every constructor it declares takes an argument
+// error: new_of_a_class_without_a_default_constructor_is_error.kpp:26: error: Deleted has no default constructor: its default constructor is deleted
+// error: new_of_a_class_without_a_default_constructor_is_error.kpp:27: error: Holder has no default constructor: its member 'target', a reference, has no initializer
+// error: new_of_a_class_without_a_default_constructor_is_error.kpp:28: error: NoDefault has no default constructor: every constructor it declares takes an argument
+struct NoDefault
+{
+  NoDefault(i32 v) : v(v) {}
+  i32 v;
+};
+struct Deleted
+{
+  Deleted() = delete;
+  Deleted(i32 v) : v(v) {}
+  i32 v;
+};
+struct Holder
+{
+  i32& target;
+};
+int main()
+{
+  u8 space[16];
+  i32 n = 2;
+  new (space) NoDefault();
+  new Deleted();
+  new Holder;
+  new NoDefault[n];
+  return 0;
+}

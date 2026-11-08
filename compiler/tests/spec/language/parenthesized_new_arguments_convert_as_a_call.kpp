@@ -1,0 +1,31 @@
+// spec: the arguments of a parenthesized new-expression (`new Box(n)`, `new (slot) T(forward<U>(v))`, `new Vector<bool>(count)`) convert as a call's do, narrowing allowed ([dcl.init.general] 16.6: no list-initialization), only braces checking narrowing (`new Box{n}` is the error, language/brace_initialization_narrows_nothing_in_members_and_instances); in a template's instance too (`T(forward<U>(v))` with T uint32 and an int) (`4294967295 1 3 1 7`)
+// factorio: D's first form of the default-construction check for `new T()` (2026-11-08) took every parenthesized new's arguments for a brace list: convert.cmd's headline 17, "a brace initialization narrows uint64, which is no constant, to bool" at `new Vector<bool>(request.toEnds.size())` and Optional's `new (this->slot()) T(forward<U>(v))`
+struct Box
+{
+  Box(u32 v) : v(v) {}
+  u32 v;
+};
+template<typename T>
+struct Slot
+{
+  template<typename U>
+  void set(U&& v) { this->item = new T(forward<U>(v)); }
+  T* item = nullptr;
+};
+int main()
+{
+  i32 n = -1;
+  Box* box = new Box(n);
+  u64 count = 3;
+  Vector<bool>* flags = new Vector<bool>(count);
+  Slot<u32> slot;
+  slot.set(n);
+  Slot<bool> on;
+  on.set(7);
+  println(box->v, " ", *slot.item == box->v ? 1 : 0, " ", flags->size(), " ", *on.item ? 1 : 0, " ", 7);
+  delete box;
+  delete flags;
+  delete slot.item;
+  delete on.item;
+  return 0;
+}

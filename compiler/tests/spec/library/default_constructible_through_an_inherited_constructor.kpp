@@ -1,0 +1,34 @@
+// spec: a class that declares constructors, none taking no argument, and inherits its base's (`using Base::Base;`) is default constructible by the base's default constructor, which C++17 inherits with the others: `isConstructible<Derived>` says so (it said no), and `new Derived()`, `Derived d;` and Vector<Derived>::resize(count) build it; a base without one gives none (`isConstructible<Other>`); clang's output (`1 0 1 2 5 5`)
+// factorio: SignalID and Vector2D (their bases' constructors inherited) in Vector<SignalID>::resize(count): D's first check of `new T()` without a default constructor (2026-11-08) took them for classes without one, convert.cmd's headline 5 such errors; the trait answered no for them since it was built
+extern "C" import "stdio.h";
+struct Base
+{
+  Base() : v(5) {}
+  Base(int v) : v(v) {}
+  int v;
+};
+struct Derived : Base
+{
+  using Base::Base;
+  Derived(double d) : Base(int(d)) {}
+};
+struct NoDefaultBase
+{
+  NoDefaultBase(int v) : v(v) {}
+  int v;
+};
+struct Other : NoDefaultBase
+{
+  using NoDefaultBase::NoDefaultBase;
+  Other(double d) : NoDefaultBase(int(d)) {}
+};
+int main()
+{
+  Derived* p = new Derived();
+  Derived d;
+  Vector<Derived> many;
+  many.resize(2);
+  printf("%d %d %d %d %d %d\n", isConstructible<Derived> ? 1 : 0, isConstructible<Other> ? 1 : 0, isConstructible<Derived, int> ? 1 : 0, int(many.size()), p->v, d.v);
+  delete p;
+  return 0;
+}

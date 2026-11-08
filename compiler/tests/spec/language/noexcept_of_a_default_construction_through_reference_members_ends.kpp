@@ -1,0 +1,37 @@
+// spec: the noexcept operator over the default construction of a class whose reference members refer to classes whose reference members refer back ends at once: a class template's member nothing calls asks `noexcept(new (this->slot) T())` of such a T, and the program builds and runs (`made 7`). The construction has no constructor (the member's own error, which only a call of it shows), and canThrow followed each reference member into the class it refers to as if it were built there, two references a class making 2^32 calls before the depth stopped it: the game's front end with K's Vector::resize ran past 300 s where it takes 12 (InitializerList<ChartBundleChunkRenderRequest>, a reference member and no default constructor)
+extern "C" import "stdio.h";
+
+struct Right;
+struct Left
+{
+  Left(Right& a, Right& b) : a(a), b(b) {}
+  Right& a;
+  Right& b;
+};
+struct Right
+{
+  Right(Left& a, Left& b) : a(a), b(b) {}
+  Left& a;
+  Left& b;
+};
+
+template<typename T>
+struct Slots
+{
+  void fill()
+  {
+    if constexpr (noexcept(new (this->slot) T()))
+      printf("nothrow\n");
+    else
+      printf("may throw\n");
+  }
+  T* slot = nullptr;
+  i32 count = 7;
+};
+
+int main()
+{
+  Slots<Left> s;
+  printf("made %d\n", s.count);
+  return 0;
+}
