@@ -838,6 +838,21 @@ argument-dependent lookup and hidden friends, class template argument deduction,
 of a function's type, concepts and `requires`, multiple inheritance, `dynamic_cast` and `typeid`,
 destruction of globals at exit, and `friend`.
 
+Where clang and g++ disagree on a conversion, kpp follows the standard's reading, rejecting where it
+rejects (thread J's conversion battery, 2026-11-08; the specs say which compiler's output they hold):
+
+- `const double& r = c;` (and `f(const long&)` given such an object) of a class with `operator int&()`
+  beside `operator double()`: clang binds the int& one's value, g++ and kpp take `operator double()`;
+  of `operator int&()` beside `operator double() &&`, clang takes the int& one for the parameter and
+  calls `long x = A{};` ambiguous, g++ and kpp call both ambiguous.
+- `A x = {b};` of a class B with an explicit `operator A()` beside a constructor of A reached through
+  another conversion: clang calls the explicit operator, as kpp does; g++ calls it ambiguous.
+  `A x(b);` and `A x{b};` take the conversion function in both (CWG2327; spec
+  `language/direct_init_takes_the_conversion_function_over_a_constructor`).
+- `const double& x(D{})` and `int&& x{a}` take an explicit conversion function to the referenced type
+  (a direct-initialization, [over.match.ref] 1.1, [dcl.init.list] 3.10), as clang; g++ 13 takes only
+  the implicit ones (spec `language/reference_to_a_scalar_bound_through_a_conversion_function`).
+
 [d2]: design.md#2-compilation-model
 [d3]: design.md#3-simple-templates
 [d4]: design.md#4-our-own-standard-library

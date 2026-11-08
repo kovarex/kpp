@@ -671,7 +671,8 @@
     // for an integer, gives back); an integer to an integer type that cannot hold all its type's
     // values unless e is a constant that fits; a pointer to bool. why: what the message says. A
     // value the evaluator cannot tell is taken to fit unless e is surely no constant.
-    bool narrows(Expr* e, const Ty* from, const Ty* to, std::string& why);
+    // notConstant: e's value is surely none (a conversion function's result that is not constexpr).
+    bool narrows(Expr* e, const Ty* from, const Ty* to, std::string& why, bool notConstant = false);
     // Whether e's value is surely no constant: it reads a parameter, a variable that is neither
     // const nor constexpr, a data member, or calls a function that is not constexpr.
     bool surelyNotConstant(const Expr* e, int depth = 0);

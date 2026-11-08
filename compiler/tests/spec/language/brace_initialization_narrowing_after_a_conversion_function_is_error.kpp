@@ -1,0 +1,33 @@
+// spec: a brace initialization of a scalar from a class object narrows when the conversion function's result does, a function that is not constexpr giving no constant ([dcl.init.list] 3.9, 7): `int&& x = {a};` and `int y{a}` through `operator unsigned()`, `float w{d}` through `operator double()` are errors, as clang's; `long long fine{a}`, `double alsoFine{d}` and a constexpr conversion's constant that fits (`short s{c}`, 3) are none
+// found by thread J's conversion generator (2026-11-08): kpp built them
+// error: brace_initialization_narrowing_after_a_conversion_function_is_error.kpp:21: error: a brace initialization narrows uint32, which is no constant, to int32 ([dcl.init.list] 7), after A's conversion function: C++ refuses it, a cast says it is meant
+// error: brace_initialization_narrowing_after_a_conversion_function_is_error.kpp:22: error: a brace initialization narrows uint32, which is no constant, to int32 ([dcl.init.list] 7), after A's conversion function: C++ refuses it, a cast says it is meant
+// error: brace_initialization_narrowing_after_a_conversion_function_is_error.kpp:23: error: a brace initialization narrows double, which is no constant, to float ([dcl.init.list] 7), after D's conversion function: C++ refuses it, a cast says it is meant
+struct A
+{
+  int v = 4;
+  implicit operator unsigned() { return v + 2; }
+};
+struct D
+{
+  implicit operator double() const { return 2.5; }
+};
+struct C
+{
+  constexpr implicit operator int() const { return 3; }
+};
+int f(A a, D d)
+{
+  int&& x = {a};
+  int y{a};
+  float w{d};
+  long long fine{a};
+  double alsoFine{d};
+  constexpr C c{};
+  short s{c};
+  return x + y + (int)w + (int)fine + (int)alsoFine + s;
+}
+int main()
+{
+  return f(A{}, D{}) > 0 ? 0 : 1;
+}

@@ -4234,7 +4234,7 @@ auto GlobalScope::Impl::Walker::surelyNotConstant(const Expr* e, int depth) -> b
   }
 }
 
-auto GlobalScope::Impl::Walker::narrows(Expr* e, const Ty* from, const Ty* to, std::string& why) -> bool
+auto GlobalScope::Impl::Walker::narrows(Expr* e, const Ty* from, const Ty* to, std::string& why, bool notConstant) -> bool
 {
   const Ty* f = from ? types.unqualified(types.stripRef(from)) : nullptr;
   const Ty* t = to ? types.unqualified(types.stripRef(to)) : nullptr;
@@ -4277,11 +4277,11 @@ auto GlobalScope::Impl::Walker::narrows(Expr* e, const Ty* from, const Ty* to, s
     return false;
   // The exception: a constant the target holds.
   std::string savedWhy = Impl::constWhy();
-  std::optional<ConstValue> v = probesSharedNodes() ? std::nullopt : impl.constValue(e, ctx());
+  std::optional<ConstValue> v = probesSharedNodes() || notConstant ? std::nullopt : impl.constValue(e, ctx());
   Impl::constWhy() = savedWhy;
   if (!v || !v->isScalar())
   {
-    if (!surelyNotConstant(e))
+    if (!notConstant && !surelyNotConstant(e))
       return false;
     why = source + ", which is no constant, to " + target;
     return true;
@@ -4337,6 +4337,33 @@ auto GlobalScope::Impl::Walker::checkListNarrowing(Span<Expr*> elements, const T
     if (!e->ty || !e->ty->isKnown() || e->ty->kind == TyKind::Pack || types.isDependent(e->ty) || Impl::mentionsUnknown(e->ty))
       return;
     std::string why;
+    // A class object converting to a scalar target: the conversion function's result narrowed after it, a function
+    // that is not constexpr giving no constant (`int&& x = {a};` with `operator unsigned()`, clang's error; until
+    // 2026-11-08 built). Where a copy-list-initialization and a direct-list-initialization would take different
+    // functions (an explicit one to the target beside an implicit one), not told here: no check.
+    const Ty* given = types.unqualified(types.stripRef(e->ty));
+    const Ty* scalarTarget = types.unqualified(types.stripRef(target));
+    if (given->kind == TyKind::Class && (scalarTarget->isArithmetic() || scalarTarget->kind == TyKind::Enum))
+    {
+      const Ty* object = impl.conversionObject(argumentType(e, e->ty, types));
+      Subst opArgs, directArgs;
+      FunctionDecl* op = impl.chooseConversion(object, scalarTarget, GlobalScope::ConversionKind::ToType, false, nullptr, &opArgs, false);
+      FunctionDecl* direct = impl.chooseConversion(object, scalarTarget, GlobalScope::ConversionKind::ToType, true, nullptr, &directArgs, true);
+      if (op != direct)
+        op = op ? nullptr : direct; // (only an explicit one: what a direct-list-initialization takes, a copy's error is another check's)
+      if (op == direct && !op)
+        return;
+      if (op == direct)
+        opArgs = directArgs;
+      const Ty* fnTy = op ? impl.declaredTypeOf(op, opArgs.empty() ? nullptr : &opArgs, 0) : nullptr;
+      const Ty* result = fnTy && fnTy->kind == TyKind::Function && fnTy->inner ? fnTy->inner : nullptr;
+      if (result && !op->templateParams.empty())
+        result = impl.substitute(result, opArgs);
+      if (result && !(op->flags & DF_Constexpr) && narrows(e, result, target, why, true))
+        reportCheck(e->token, "a brace initialization narrows " + why + " ([dcl.init.list] 7), after " + types.toString(given, &impl.symbols) +
+                                  "'s conversion function: C++ refuses it, a cast says it is meant");
+      return;
+    }
     if (narrows(e, e->ty, target, why))
       reportCheck(e->token, "a brace initialization narrows " + why + " ([dcl.init.list] 7): C++ refuses it, a cast says it is meant");
   };
