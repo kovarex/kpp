@@ -276,6 +276,20 @@
 
   std::optional<bool> triviallyDefaultConstructible(const Ty* t, int depth = 0);
 
+  // Whether T(), for a t defaultConstructible says is built, throws nothing ([except.spec] 8, the
+  // destruction aside): a class by its declared default constructor's noexcept and its default
+  // arguments, else by the implicit one's parts, the bases and members it builds and the default
+  // member initializers (nothrowDefaultConstruction caches it per type). nullopt where an
+  // initializer is more than initializerNothrow decides.
+  std::optional<bool> nothrowDefaultConstructionUncached(const Ty* t);
+  // Whether initializing a part of type `part` from e throws nothing: false when e calls a function
+  // that is not noexcept or throws, true when it reads only constants and variables of scalar
+  // types through built-in operators, or value-initializes the part (`{}`, `T()`); nullopt otherwise.
+  std::optional<bool> initializerNothrow(Expr* e, const Ty* part);
+  // initializerNothrow of a class part: an aggregate's list member by member, else the constructor
+  // overload resolution chooses, noexcept with scalar arguments to scalar parameters.
+  std::optional<bool> classInitializerNothrow(Expr* e, const Ty* part);
+
   // isInvocable: whether a value of type f can be called with arguments of these types (each a
   // reference type for an lvalue, as in C++'s declval). result, when given, is the call's type
   // where it is known without typing a body.

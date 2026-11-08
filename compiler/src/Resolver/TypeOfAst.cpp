@@ -588,6 +588,23 @@ auto GlobalScope::Impl::traitValueUncached(std::string_view name, const std::vec
     std::optional<bool> throws = destructorMayThrow(one());
     return throws ? std::optional<bool>(!*throws) : std::nullopt;
   }
+  if (name == "isNothrowCopyConstructible" || name == "isNothrowDefaultConstructible")
+  {
+    // As isNothrowMoveConstructible, the destructor asked too.
+    std::optional<bool> builds;
+    if (!one())
+      builds = std::nullopt;
+    else if (name == "isNothrowCopyConstructible")
+      builds = constructibleFromSelf(one(), false, TraitForm::Nothrow);
+    else if (builds = defaultConstructible(one()); builds && *builds)
+      builds = traitValue("nothrowDefaultConstruction", {one()});
+    if (!builds || !*builds || one()->isReference())
+      return builds;
+    std::optional<bool> throws = destructorMayThrow(one());
+    return throws ? std::optional<bool>(!*throws) : std::nullopt;
+  }
+  if (name == "nothrowDefaultConstruction") return one() ? nothrowDefaultConstructionUncached(one()) : std::nullopt; // (no trait of the language: its cache)
+  if (name == "isNothrowCopyAssignable") return one() ? assignableFromSelf(one(), false, TraitForm::Nothrow) : std::nullopt;
   if (name == "isTriviallyMoveConstructible")
   {
     std::optional<bool> constructs = one() ? constructibleFromSelf(one(), true, TraitForm::Trivially) : std::nullopt;
@@ -642,6 +659,7 @@ auto GlobalScope::Impl::isBoolTraitName(uint32_t symbol) -> bool
          n == "isConstructible" || n == "isFundamental" || n == "isTriviallyDestructible" || n == "isTriviallyCopyAssignable" ||
          n == "isTriviallyCopyConstructible" || n == "isTriviallyDefaultConstructible" || n == "isPolymorphic" || n == "isAbstract" ||
          n == "isFinal" || n == "isMoveConstructible" || n == "isCopyConstructible" || n == "isNothrowMoveConstructible" ||
+         n == "isNothrowCopyConstructible" || n == "isNothrowDefaultConstructible" || n == "isNothrowCopyAssignable" ||
          n == "isTriviallyMoveConstructible" || n == "isMoveAssignable" || n == "isCopyAssignable" || n == "isNothrowMoveAssignable" ||
          n == "isTriviallyMoveAssignable" || n == "isMemberPointer" || n == "isMemberFunctionPointer" || n == "isMemberObjectPointer" ||
          n == "isInvocable" || n == "isInvocableR";
@@ -1561,6 +1579,345 @@ auto GlobalScope::Impl::triviallyDefaultConstructible(const Ty* t, int depth) ->
       return r;
   }
   return true;
+}
+
+auto GlobalScope::Impl::nothrowDefaultConstructionUncached(const Ty* t) -> std::optional<bool>
+{
+  if (!t || !t->isKnown() || types.isDependent(t))
+    return std::nullopt;
+  const Ty* u = types.unqualified(types.stripRef(t));
+  while (u->kind == TyKind::Array)
+    u = types.unqualified(u->inner);
+  if (u->kind != TyKind::Class)
+    return true; // a scalar, a pointer, an enum, a closure without captures: nothing runs
+  ClassDecl* def = classDefinition(u);
+  if (!def)
+    return std::nullopt;
+  Subst s = substFor(u);
+  const Subst* sp = s.pairs.empty() ? nullptr : &s;
+  for (Decl* m : membersRead(def))
+  {
+    if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Constructor))
+      continue;
+    auto* f = static_cast<FunctionDecl*>(m);
+    bool takesNone = true;
+    for (Decl* p : f->params)
+      takesNone = takesNone && (static_cast<ParamDecl*>(p)->defaultValue || static_cast<ParamDecl*>(p)->isPack);
+    if (!takesNone)
+      continue;
+    if ((f->flags & DF_Default) && !(f->flags & DF_Noexcept))
+      break; // `= default`: as the implicit one, below
+    // Declared: as its noexcept says, and its default arguments, evaluated by the call.
+    std::optional<bool> nothrow = isNoexcept(f, sp);
+    for (Decl* p : f->params)
+      if (auto* param = static_cast<ParamDecl*>(p); nothrow && *nothrow && param->defaultValue)
+        nothrow = initializerNothrow(param->defaultValue, declaredTypeOf(param, sp, 0));
+    return nothrow;
+  }
+  // The implicit one builds the bases and the members ([except.spec] 8), a typed union its first
+  // alternative, a union only a member with a default member initializer.
+  std::vector<const Ty*> bases;
+  if (def->isTypedUnion)
+  {
+    if (!def->alternatives.empty())
+      bases.push_back(declaredTypeOf(def->alternatives[0], sp, 0));
+  }
+  else if (!directBases(u, def, bases))
+    return std::nullopt;
+  for (const Ty* b : bases)
+    if (std::optional<bool> r = traitValue("nothrowDefaultConstruction", {b}); !r || !*r)
+      return r;
+  if (def->isTypedUnion)
+    return true;
+  bool plainUnion = def->keyword == Kw::union_;
+  std::optional<bool> answer = true;
+  for (Decl* m : membersRead(def))
+  {
+    if (m->kind != NodeKind::VariableDecl || (m->flags & (DF_Static | DF_Typedef | DF_Friend)))
+      continue;
+    auto* v = static_cast<VariableDecl*>(m);
+    if (plainUnion && !v->init)
+      continue;
+    const Ty* mt = declaredTypeOf(m, sp, 0);
+    std::optional<bool> r = v->init ? initializerNothrow(v->init, mt) : traitValue("nothrowDefaultConstruction", {mt});
+    if (r && !*r)
+      return false; // (one part that may throw decides it, whatever the others)
+    if (!r)
+      answer = std::nullopt;
+  }
+  return answer;
+}
+
+auto GlobalScope::Impl::initializerNothrow(Expr* e, const Ty* part) -> std::optional<bool>
+{
+  auto bare = [](Expr* x) {
+    while (x && x->kind == NodeKind::ParenExpr)
+      x = static_cast<ParenExpr*>(x)->inner;
+    return x;
+  };
+  e = bare(e);
+  if (!e || !part || !part->isKnown() || types.isDependent(part))
+    return std::nullopt;
+  auto known = [&](const Expr* x) -> const Ty* {
+    return x && x->ty && x->ty->isKnown() && !types.isDependent(x->ty) ? types.unqualified(types.stripRef(x->ty)) : nullptr;
+  };
+  auto scalar = [&](const Expr* x) {
+    const Ty* t = known(x);
+    return t && t->kind != TyKind::Class && t->kind != TyKind::Lambda;
+  };
+  // `T value{}`, `T value = {}`, `T value = T()`: value-initialized, as its default constructor builds it.
+  const Ty* barePart = types.unqualified(types.stripRef(part));
+  auto names = [&](Expr* callee) {
+    Decl* d = callee && callee->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(callee)->resolved : nullptr;
+    return d && (d->kind == NodeKind::ClassDecl || d->kind == NodeKind::UsingAliasDecl || (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef)) ||
+                 (d->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(d)->isType));
+  };
+  bool valueInit = (e->kind == NodeKind::BraceInitExpr && static_cast<BraceInitExpr*>(e)->args.size() == 0) ||
+                   (e->kind == NodeKind::FunctionalCastExpr && static_cast<FunctionalCastExpr*>(e)->args.size() == 0 && known(e) == barePart) ||
+                   (e->kind == NodeKind::CallExpr && static_cast<CallExpr*>(e)->args.size() == 0 && names(bare(static_cast<CallExpr*>(e)->callee)) && known(e) == barePart);
+  if (valueInit && !part->isReference())
+    return traitValue("nothrowDefaultConstruction", {part});
+  // A reference bound to a variable.
+  if (part->isReference() && e->kind == NodeKind::NameExpr && static_cast<NameExpr*>(e)->resolved &&
+      (static_cast<NameExpr*>(e)->resolved->kind == NodeKind::VariableDecl || static_cast<NameExpr*>(e)->resolved->kind == NodeKind::ParamDecl))
+    return true;
+  const Ty* element = barePart;
+  while (element->kind == TyKind::Array)
+    element = types.unqualified(element->inner);
+  if (part->isReference() || element->kind == TyKind::Lambda)
+    return std::nullopt;
+  if (element->kind == TyKind::Class)
+    return classInitializerNothrow(e, barePart);
+  // A scalar part (or an array of them): built-in operations on scalars throw nothing, a call throws
+  // unless its function is noexcept, a throw throws.
+  auto builtinScalarName = [&](const QualifiedName& n) {
+    if (n.parts.size() != 1 || n.parts[0].hasTemplateArgs)
+      return false;
+    for (const BuiltinName& b : builtinNames)
+      if (b.symbol == n.parts[0].symbol)
+        return true;
+    return false;
+  };
+  std::optional<bool> answer = true;
+  auto combine = [&](std::optional<bool> r) {
+    if (r && !*r)
+      answer = false;
+    else if (!r && answer.value_or(false))
+      answer = std::nullopt;
+  };
+  auto walk = [&](auto& self, Expr* x, bool top) -> void {
+    x = bare(x);
+    if (!x)
+      return combine(std::nullopt);
+    switch (x->kind)
+    {
+      case NodeKind::LiteralExpr: case NodeKind::SizeofExpr: case NodeKind::NoexceptExpr: return; // (an unevaluated operand)
+      case NodeKind::NameExpr:
+      {
+        Decl* d = static_cast<NameExpr*>(x)->resolved;
+        if (!d || (d->kind != NodeKind::EnumeratorDecl && d->kind != NodeKind::VariableDecl && d->kind != NodeKind::ParamDecl) || !scalar(x))
+          return combine(std::nullopt);
+        return;
+      }
+      case NodeKind::UnaryExpr: case NodeKind::BinaryExpr:
+      {
+        bool unary = x->kind == NodeKind::UnaryExpr;
+        OperatorCall call = unary ? static_cast<UnaryExpr*>(x)->call : static_cast<BinaryExpr*>(x)->call;
+        if (call != OperatorCall::Builtin || !scalar(x))
+          return combine(std::nullopt);
+        if (unary)
+          return self(self, static_cast<UnaryExpr*>(x)->operand, false);
+        self(self, static_cast<BinaryExpr*>(x)->lhs, false);
+        return self(self, static_cast<BinaryExpr*>(x)->rhs, false);
+      }
+      case NodeKind::ConditionalExpr:
+      {
+        auto* c = static_cast<ConditionalExpr*>(x);
+        if (!scalar(x))
+          return combine(std::nullopt);
+        self(self, c->cond, false);
+        if (c->then)
+          self(self, c->then, false);
+        return self(self, c->else_, false);
+      }
+      case NodeKind::CastExpr:
+        if (!scalar(x))
+          return combine(std::nullopt);
+        return self(self, static_cast<CastExpr*>(x)->operand, false);
+      case NodeKind::NamedCastExpr:
+        if (!scalar(x) || static_cast<NamedCastExpr*>(x)->castKind == Kw::dynamic_cast_)
+          return combine(std::nullopt);
+        return self(self, static_cast<NamedCastExpr*>(x)->operand, false);
+      case NodeKind::FunctionalCastExpr:
+        if (!scalar(x) || static_cast<FunctionalCastExpr*>(x)->args.size() > 1)
+          return combine(std::nullopt);
+        for (Expr* a : static_cast<FunctionalCastExpr*>(x)->args)
+          self(self, a, false);
+        return;
+      case NodeKind::BraceInitExpr:
+        if (!top && !scalar(x))
+          return combine(std::nullopt); // (`int a[3] = {1, 2, 3}`: the part's own list)
+        for (Expr* a : static_cast<BraceInitExpr*>(x)->args)
+          self(self, a, false);
+        return;
+      case NodeKind::ThrowExpr: return combine(false);
+      case NodeKind::CallExpr:
+      {
+        auto* call = static_cast<CallExpr*>(x);
+        Expr* callee = bare(call->callee);
+        Decl* f = !callee ? nullptr
+                  : callee->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(callee)->resolved
+                  : callee->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(callee)->resolved : nullptr;
+        // `u16(-1)`, `Index(3)`: a conversion to a scalar type, spelled as a call (a builtin
+        // type's name declares nothing).
+        if (callee && callee->kind == NodeKind::NameExpr && call->args.size() <= 1 && scalar(x) &&
+            (names(callee) || (!f && builtinScalarName(static_cast<NameExpr*>(callee)->name))))
+        {
+          for (Expr* a : call->args)
+            self(self, a, false);
+          return;
+        }
+        if (!f || f->kind != NodeKind::FunctionDecl || (f->flags & DF_Constructor))
+          return combine(std::nullopt);
+        if (!(f->flags & DF_Noexcept))
+          return combine(false); // potentially-throwing, whatever the overload ([except.spec] 6)
+        // A noexcept function (its condition decided outside a template): its arguments, scalars
+        // only, which convert to the parameters by built-in conversions, and a scalar result.
+        std::optional<bool> nothrow = f->templateParams.empty() ? isNoexcept(static_cast<FunctionDecl*>(f), nullptr) : std::nullopt;
+        combine(nothrow);
+        if (!nothrow || !*nothrow)
+          return;
+        if (!scalar(x) || callee->kind != NodeKind::NameExpr || call->args.size() != static_cast<FunctionDecl*>(f)->params.size())
+          return combine(std::nullopt);
+        for (Expr* a : call->args)
+          self(self, a, false);
+        return;
+      }
+      default: return combine(std::nullopt);
+    }
+  };
+  walk(walk, e, true);
+  return answer;
+}
+
+auto GlobalScope::Impl::classInitializerNothrow(Expr* e, const Ty* part) -> std::optional<bool>
+{
+  if (part->kind != TyKind::Class)
+    return std::nullopt; // (an array of classes from a list: not decided here)
+  ClassDecl* def = classDefinition(part);
+  if (!def)
+    return std::nullopt;
+  const Ty* given = e->ty && e->ty->isKnown() && !types.isDependent(e->ty) ? types.unqualified(types.stripRef(e->ty)) : nullptr;
+  // `T{a, b}`, `{a, b}`, `T(a, b)`: these arguments; `= a`: a copy-initialization from a.
+  Span<Expr*> list;
+  bool braced = false, copyInit = false;
+  Expr* single = e;
+  if (e->kind == NodeKind::BraceInitExpr)
+  {
+    if (!static_cast<BraceInitExpr*>(e)->designators.empty())
+      return std::nullopt;
+    list = static_cast<BraceInitExpr*>(e)->args;
+    braced = true;
+  }
+  else if (e->kind == NodeKind::FunctionalCastExpr && given == part)
+    list = static_cast<FunctionalCastExpr*>(e)->args;
+  else if (e->kind == NodeKind::CallExpr && given == part && static_cast<CallExpr*>(e)->callee &&
+           static_cast<CallExpr*>(e)->callee->kind == NodeKind::NameExpr && static_cast<NameExpr*>(static_cast<CallExpr*>(e)->callee)->resolved &&
+           static_cast<NameExpr*>(static_cast<CallExpr*>(e)->callee)->resolved->kind != NodeKind::FunctionDecl)
+    list = static_cast<CallExpr*>(e)->args;
+  else
+  {
+    list = Span<Expr*>{&single, 1};
+    copyInit = true;
+  }
+  // A copy from a variable of the class (`Foo f = other;`, `Foo f{other}`): its copy constructor.
+  if (list.size() == 1 && list[0] && list[0]->kind == NodeKind::NameExpr && list[0]->ty && list[0]->ty->isKnown() &&
+      types.unqualified(types.stripRef(list[0]->ty)) == part)
+  {
+    Decl* d = static_cast<NameExpr*>(list[0])->resolved;
+    if (!d || (d->kind != NodeKind::VariableDecl && d->kind != NodeKind::ParamDecl))
+      return std::nullopt;
+    return constructibleFromSelf(part, false, TraitForm::Nothrow);
+  }
+  std::vector<const Ty*> argTypes;
+  for (Expr* a : list)
+  {
+    if (!a || !a->ty || !a->ty->isKnown() || types.isDependent(a->ty) || a->kind == NodeKind::BraceInitExpr)
+      argTypes.push_back(nullptr);
+    else
+      argTypes.push_back(argumentType(a, a->ty, types));
+  }
+  bool unknownArgument = false;
+  for (const Ty* a : argTypes)
+    unknownArgument = unknownArgument || !a;
+  bool anyConstructor = false;
+  for (Decl* m : membersRead(def))
+    anyConstructor = anyConstructor || (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor));
+  if (!anyConstructor && braced)
+  {
+    // An aggregate: the list's elements initialize the members in order, the rest by their default
+    // member initializers or their default construction.
+    std::vector<const Ty*> bases;
+    if (!directBases(part, def, bases) || !bases.empty() || def->keyword == Kw::union_)
+      return std::nullopt;
+    Subst s = substFor(part);
+    std::optional<bool> answer = true;
+    size_t next = 0;
+    for (Decl* m : membersRead(def))
+    {
+      if (m->kind != NodeKind::VariableDecl || (m->flags & (DF_Static | DF_Typedef | DF_Friend)))
+        continue;
+      auto* v = static_cast<VariableDecl*>(m);
+      const Ty* mt = declaredTypeOf(m, s.pairs.empty() ? nullptr : &s, 0);
+      std::optional<bool> r = next < list.size() ? initializerNothrow(list[next], mt)
+                              : v->init        ? initializerNothrow(v->init, mt)
+                                               : traitValue("nothrowDefaultConstruction", {mt});
+      ++next;
+      if (r && !*r)
+        return false;
+      if (!r)
+        answer = std::nullopt;
+    }
+    return next >= list.size() ? answer : std::nullopt;
+  }
+  if (unknownArgument)
+    return std::nullopt;
+  // By the constructor overload resolution chooses, its arguments scalars that convert to scalar
+  // parameters (a class parameter built from one runs its own constructor).
+  bool ambiguous = false;
+  FunctionDecl* f = chooseConstructor(part, argTypes, nullptr, nullptr, copyInit, &ambiguous);
+  if (!f || ambiguous)
+    return std::nullopt;
+  if (!(f->flags & DF_Noexcept) && !(f->flags & DF_Default))
+    return false; // potentially-throwing
+  if (!f->templateParams.empty() || (f->flags & DF_Default))
+    return std::nullopt;
+  Subst s = substFor(part);
+  const Subst* sp = s.pairs.empty() ? nullptr : &s;
+  std::optional<bool> answer = isNoexcept(f, sp);
+  if (!answer || !*answer)
+    return answer;
+  for (size_t i = 0; i < f->params.size(); ++i)
+  {
+    auto* param = static_cast<ParamDecl*>(f->params[i]);
+    const Ty* pt = declaredTypeOf(param, sp, 0);
+    if (i >= list.size())
+    {
+      if (!param->defaultValue)
+        return std::nullopt;
+      std::optional<bool> r = initializerNothrow(param->defaultValue, pt);
+      if (!r || !*r)
+        return r;
+      continue;
+    }
+    const Ty* bare = pt && pt->isKnown() && !types.isDependent(pt) ? types.unqualified(types.stripRef(pt)) : nullptr;
+    if (!bare || bare->kind == TyKind::Class || bare->kind == TyKind::Lambda || param->isPack)
+      return std::nullopt;
+    std::optional<bool> r = initializerNothrow(list[i], pt->isReference() ? bare : pt);
+    if (!r || !*r)
+      return r;
+  }
+  return list.size() <= f->params.size() ? answer : std::nullopt;
 }
 
 auto GlobalScope::Impl::invocable(const Ty* f, const std::vector<const Ty*>& args, const Ty** result) -> std::optional<bool>
