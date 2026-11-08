@@ -542,7 +542,7 @@ auto codegen::Emitter::constantData(const Ty* t, Expr* value, VariableDecl* def,
 
 auto codegen::Emitter::referenceConstant(const Ty* t, Expr* value, VariableDecl* def, const TemplateArgs& args, Node* at) -> std::optional<std::string>
 {
-  Expr* init = referenceInitializer(def, value);
+  Expr* init = referenceInitializer(def, value, t);
   const Ty* target = types.unqualified(types.stripRef(t));
   const Ty* given = init->ty && init->ty->isKnown() && !types.isDependent(init->ty) ? withCurrentArgs(types.unqualified(types.stripRef(init->ty))) : nullptr;
   std::vector<std::pair<std::string, uint32_t>> path;

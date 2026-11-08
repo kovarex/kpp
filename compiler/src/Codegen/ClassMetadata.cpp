@@ -145,6 +145,34 @@ auto codegen::Emitter::initializerListTemporary(const Ty* listTy, BraceInitExpr*
   return list;
 }
 
+auto codegen::Emitter::isArrayBraces(Expr* e) -> bool
+{
+  if (e->kind == NodeKind::BraceInitExpr)
+    return !static_cast<BraceInitExpr*>(e)->text; // (a Text's packed arguments are no list)
+  if (e->kind != NodeKind::FunctionalCastExpr || !e->ty || types.stripRef(e->ty)->kind != TyKind::Array)
+    return false;
+  auto* c = static_cast<FunctionalCastExpr*>(e);
+  return c->braced && c->args.size() == 1 && c->args[0]->kind == NodeKind::BraceInitExpr && !static_cast<BraceInitExpr*>(c->args[0])->text;
+}
+
+auto codegen::Emitter::arrayTemporary(Expr* braces, const Ty* array, Node* at) -> std::string
+{
+  Expr* list = braces;
+  if (braces->kind == NodeKind::FunctionalCastExpr)
+  {
+    // The type the braces name, the one the reference refers to (the checker matched them).
+    const Ty* named = types.stripRef(braces->ty);
+    if (named->count != array->count || llType(named, at) != llType(array, at))
+      unsupported(at, "a " + types.toString(named, &symbols) + " bound to a reference to " + types.toString(array, &symbols));
+    list = static_cast<FunctionalCastExpr*>(braces)->args[0];
+  }
+  std::string addr = newObjectSlot(array, at);
+  initializeFrom(addr, array, list, at);
+  if (needsDestruction(array, at))
+    statementTemps.push_back({addr, array});
+  return addr;
+}
+
 auto codegen::Emitter::textTemporary(BraceInitExpr* b, Node* at) -> std::string
 {
   const Ty* textTy = b->ty ? types.unqualified(types.stripRef(b->ty)) : nullptr;

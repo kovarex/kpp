@@ -367,14 +367,26 @@ auto codegen::Emitter::staticTemporary(const Ty* type, Node* at) -> std::string
   return name;
 }
 
-auto codegen::Emitter::referenceInitializer(VariableDecl* v, Expr* init) -> Expr*
+auto codegen::Emitter::referenceInitializer(VariableDecl* v, Expr* init, const Ty* refTy) -> Expr*
 {
   if (init->kind == NodeKind::FunctionalCastExpr && static_cast<FunctionalCastExpr*>(init)->type == v->type &&
       static_cast<FunctionalCastExpr*>(init)->args.size() == 1)
     init = static_cast<FunctionalCastExpr*>(init)->args[0];
   if (init->kind == NodeKind::BraceInitExpr && !static_cast<BraceInitExpr*>(init)->text && static_cast<BraceInitExpr*>(init)->args.size() == 1 &&
       static_cast<BraceInitExpr*>(init)->designators.empty())
-    init = static_cast<BraceInitExpr*>(init)->args[0];
+  {
+    // A reference to an array given one value that is no such array (`const int (&r)[3] = {9};`):
+    // the list makes a temporary array, the value its first element and the others zero, never the
+    // reference bound to the value ([dcl.init.list] 3.9 and 3.10: one element binds directly only
+    // what it is related to). Until 2026-11-08 the reference was bound to a lone 9, and r[1] read
+    // past it.
+    Expr* only = static_cast<BraceInitExpr*>(init)->args[0];
+    const Ty* array = refTy ? types.stripRef(refTy) : nullptr;
+    const Ty* given = only->kind != NodeKind::BraceInitExpr && only->ty && only->ty->isKnown() ? types.stripRef(only->ty) : nullptr;
+    if (!array || array->kind != TyKind::Array ||
+        (given && given->kind == TyKind::Array && given->count == array->count && llType(given, init) == llType(array, init)))
+      init = only;
+  }
   return init;
 }
 
@@ -413,7 +425,7 @@ auto codegen::Emitter::temporaryOfSubobject(Expr* init) const -> Expr*
 
 auto codegen::Emitter::staticReferenceTarget(VariableDecl* v, const std::string& name, const Ty* t, Expr* init, Node* at, bool perThread) -> std::string
 {
-  init = referenceInitializer(v, init);
+  init = referenceInitializer(v, init, t);
   {
     // A member of a temporary (`const int& n = make().id;`) would keep the whole temporary.
     if (temporaryOfSubobject(init))
@@ -606,7 +618,7 @@ auto codegen::Emitter::declareLocal(VariableDecl* v) -> void
     // `const Sprite& s(expr);`, `T& r{expr};`: a reference initialised directly binds to the one
     // value, as `= expr` does (a copy into a temporary needs a copy constructor, Sprite's is
     // deleted).
-    Expr* init = referenceInitializer(v, v->init);
+    Expr* init = referenceInitializer(v, v->init, t);
     // An rvalue reference binds no lvalue of its type (C++'s [dcl.init.ref] 5.4.4, as for a parameter:
     // argumentText). Until 2026-11-05 `S&& r = a;` bound a itself, and a move from r moved a.
     // (`auto&& value = this->state;` is an lvalue reference since D's cee07bff, as in C++.)
@@ -672,6 +684,24 @@ auto codegen::Emitter::declareLocal(VariableDecl* v) -> void
             statementTemps.erase(statementTemps.begin() + i);
         scopes.back().push_back({addr, types.stripRef(t)});
       }
+    }
+    else if (types.stripRef(t)->kind == TyKind::Array && isArrayBraces(init))
+    {
+      // `const int (&r)[3] = {1, 2, 3};`, `const auto& r = Three{1, 2, 3};`: a temporary array, which
+      // lives as long as the reference ([class.temporary] 6). A non-const lvalue reference binds none.
+      const Ty* array = types.stripRef(t);
+      const Ty* element = array;
+      while (element->kind == TyKind::Array)
+        element = element->inner;
+      if (t->kind != TyKind::RRef && !array->isConst && !element->isConst)
+        fail(v, "the " + types.toString(t, &symbols) + " variable given a temporary array: a non-const lvalue reference binds only an array, never a temporary made for it");
+      addr = arrayTemporary(init, array, v);
+      for (size_t i = statementTemps.size(); i-- > tempsBefore;)
+        if (statementTemps[i].addr == addr)
+        {
+          scopes.back().push_back(statementTemps[i]); // (the reference's scope destroys it)
+          statementTemps.erase(statementTemps.begin() + i);
+        }
     }
     else
       addr = scalarReferenceTarget(t, init, v);

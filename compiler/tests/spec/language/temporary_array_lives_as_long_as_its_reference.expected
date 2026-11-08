@@ -1,0 +1,28 @@
+make 1
+make 2
+total
+drop 2
+drop 1
+after 3
+make 3
+make 4
+bound 7
+drop 4
+drop 3
+scope done
+make 5
+make 6
+bound 11
+drop 6
+drop 5
+scope done
+make 7
+make 8
+loop 7
+loop 8
+drop 8
+drop 7
+loop done
+9 0 0 11 14
+[7][8][0]
+15

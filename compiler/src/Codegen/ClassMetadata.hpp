@@ -47,6 +47,15 @@
     // that appends it (resolver: textPieceOf); the Text a pointer to them and their count.
     std::string textTemporary(BraceInitExpr* b, Node* at);
 
+    // Braces that make a temporary array for a reference to an array (a function argument, a
+    // reference variable, a range-for's range): a list given the array type (`{1, 2, 3}`), or one
+    // naming it (`Three{1, 2, 3}` with `using Three = const int[3]`). Nowhere else is a temporary
+    // array made: elsewhere `Three{...}` is an error (what would keep it alive is not written yet).
+    bool isArrayBraces(Expr* e);
+    // Such a temporary: the list's elements, those it leaves out value-initialized ([dcl.init.list]
+    // 3.10), destroyed with the statement's temporaries unless the caller keeps it longer.
+    std::string arrayTemporary(Expr* braces, const Ty* array, Node* at);
+
     // The parts of an object built inline (no constructor function of their own: an implicit
     // constructor's bases and members, a memberwise copy's, a braced aggregate's, a closure's
     // captures, an array's elements), each destroyed if a later part's construction throws

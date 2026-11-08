@@ -1,0 +1,22 @@
+// spec: a temporary array made by braces naming its type (`Three{1, 2, 3}` with `using Three = const int[3]`) where no reference to an array binds it: a `const int*` parameter takes its first element's address, the array living to the end of the full-expression ([conv.array], [class.temporary] 4), and an aggregate's reference member bound to one by braces keeps it as long as the aggregate ([class.temporary] 6). clang's and g++'s output
+// pending: codegen makes a temporary array only for a reference to an array (a function argument, a reference variable, a range-for's range: Emitter::arrayTemporary) and refuses one anywhere else ("does not support a temporary array ... other than for a reference to an array"); its first version made one everywhere, and the aggregate's array was destroyed at the end of its statement, before the members were read (B, 2026-11-08)
+struct Noisy
+{
+  int v;
+  implicit Noisy(int v) : v(v) { println("make ", v); }
+  ~Noisy() { println("drop ", v); }
+};
+struct Holder { const Noisy (&r)[2]; };
+int first(const int* p) { return p[0] * 10 + p[2]; }
+using Three = const int[3];
+using Two = const Noisy[2];
+int main()
+{
+  println(first(Three{1, 2, 3}));
+  {
+    Holder h{Two{Noisy(3), Noisy(4)}};
+    println("held ", h.r[0].v + h.r[1].v);
+  }
+  println("holder done");
+  return 0;
+}

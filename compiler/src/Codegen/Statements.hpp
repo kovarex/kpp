@@ -83,8 +83,9 @@
     // part, a conversion operator's lvalue, or a temporary of static storage of its own, which
     // lives as long as the reference ([class.temporary] 6) and is never destroyed.
     std::string staticReferenceTarget(VariableDecl* v, const std::string& name, const Ty* t, Expr* init, Node* at, bool perThread);
-    // The one value a reference's `(expr)` or `{expr}` initializer binds, as `= expr` does.
-    static Expr* referenceInitializer(VariableDecl* v, Expr* init);
+    // The one value a reference's `(expr)` or `{expr}` initializer binds, as `= expr` does; refTy is
+    // the reference's type (a reference to an array keeps `{9}`, its array's first element).
+    Expr* referenceInitializer(VariableDecl* v, Expr* init, const Ty* refTy);
     // The temporary of class type a reference bound to a subobject of it keeps alive
     // ([class.temporary] 6): what `make().inner`, `make().items[1]` and
     // `static_cast<const T&>(make().t)` designate a part of, through `.`, a built-in subscript of an

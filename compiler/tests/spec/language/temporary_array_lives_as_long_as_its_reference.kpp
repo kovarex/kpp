@@ -1,0 +1,53 @@
+// spec: a temporary array made by braces (`Two{Noisy(1), Noisy(2)}` with `using Two = const Noisy[2]`, or a list given a reference to an array) lives as C++'s temporaries do ([class.temporary] 4, 6): a function argument's to the end of the full-expression; a reference variable's (`const auto& r = Two{...}`, `const Noisy (&q)[2] = {...}`) as long as the reference; a range-for's range's for the whole loop ([stmt.ranged] 1: `auto&& __range`); an rvalue reference's elements can be changed; the elements it leaves out are value-initialized ([dcl.init.list] 3.10). clang's and g++'s output
+// codegen refused all of them until 2026-11-08 ("does not support the expression kind BraceInitExpr", D's pending language/brace_list_binds_const_array_reference); before its narrowing, B's first version destroyed a range's array before the loop and an aggregate's reference member's at the end of its statement (language/temporary_array_outside_a_reference, pending)
+struct Noisy
+{
+  int v;
+  implicit Noisy(int v) : v(v) { println("make ", v); }
+  Noisy(const Noisy& o) : v(o.v) { println("copy ", v); }
+  ~Noisy() { println("drop ", v); }
+};
+int total(const Noisy (&a)[2])
+{
+  println("total");
+  return a[0].v + a[1].v;
+}
+template<typename T, int N> T sumOf(const T (&a)[N])
+{
+  T s{};
+  for (const T& x : a)
+    s += x;
+  return s;
+}
+int corner(const int (&m)[2][2]) { return m[0][0] * 10 + m[1][1]; }
+using Two = const Noisy[2];
+using Four = const double[4];
+using Three = const int[3];
+using Square = const int[2][2];
+int main()
+{
+  int t = total(Two{Noisy(1), Noisy(2)});
+  println("after ", t);
+  {
+    const auto& r = Two{Noisy(3), Noisy(4)};
+    println("bound ", r[0].v + r[1].v);
+  }
+  println("scope done");
+  {
+    const Noisy (&q)[2] = {Noisy(5), Noisy(6)};
+    println("bound ", q[0].v + q[1].v);
+  }
+  println("scope done");
+  for (const Noisy& n : Two{Noisy(7), Noisy(8)})
+    println("loop ", n.v);
+  println("loop done");
+  const int (&left)[3] = {9};
+  println(left[0], " ", left[1], " ", left[2], " ", sumOf(Four{1.5, 2.5, 3, 4}), " ", corner(Square{{1, 2}, {3, 4}}));
+  for (int x : Three{7, 8})
+    print("[", x, "]");
+  println();
+  int (&&changed)[3] = {1, 2, 3};
+  changed[0] = 10;
+  println(changed[0] + changed[1] + changed[2]);
+  return 0;
+}

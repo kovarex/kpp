@@ -233,6 +233,19 @@ auto codegen::Emitter::rangeFor(RangeForStmt* f) -> void
         initializeFrom(slot, rt->inner, b->args[i], f);
       }
     }
+    else if (isArrayBraces(f->range))
+    {
+      // `for (const Noisy& n : Two{Noisy(1), Noisy(2)})`: the temporary array lives for the loop, as
+      // C++'s `auto&& __range` keeps it ([stmt.ranged] 1), never only to the end of the range's
+      // expression.
+      base = arrayTemporary(f->range, rt, f);
+      for (size_t i = statementTemps.size(); i-- > tempsBefore;)
+        if (statementTemps[i].addr == base)
+        {
+          scopes.back().push_back(statementTemps[i]);
+          statementTemps.erase(statementTemps.begin() + i);
+        }
+    }
     else
       base = lvalue(f->range);
     if (temporaryBase)
