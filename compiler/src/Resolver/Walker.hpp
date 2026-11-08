@@ -186,10 +186,12 @@
     // The same for a function's call, by the name written (C++'s "no matching function for call"): `k(&c)` with
     // k(int*) and k(double*) is "no overload of k takes (char*)", where it was codegen's "a call that did not
     // resolve". Not where an argument is a brace list or names functions without a target (an overload set, a
-    // template), whose conversions the ranking may not see as codegen does, nor where one is a pack or expands one
-    // (a fold's pattern walked with every element at once).
+    // template), whose conversions the ranking may not see as codegen does, nor where one expands a pack (`f(ts...)`).
+    // An argument typed as a whole pack (a fold's pattern, a `for constexpr` body over a pack's types, walked with
+    // every element at once): each element's call chosen alone (classSubst, objectTy: pickOverload's), the error the
+    // first element's that no overload takes, "no overload of show takes (C)", where it was codegen's.
     void reportNoMatchingFunction(Decl* primary, const std::vector<Entry>* overloads, const QualifiedName& name, const std::vector<const Ty*>& argTypes,
-                                  Span<Expr*> callArgs, uint32_t token);
+                                  Span<Expr*> callArgs, const Subst* classSubst, const Ty* objectTy, uint32_t token);
 
     // A function defined twice (two bodies of one function: `int f(int)` and `int f(int)`, or
     // `f(long)` beside `f(int)`, one function in kpp, design.md "Types") is an error at the later

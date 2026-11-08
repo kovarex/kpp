@@ -654,7 +654,8 @@ auto GlobalScope::Impl::Walker::reportNoMatchingMember(Decl* primary, const std:
 }
 
 auto GlobalScope::Impl::Walker::reportNoMatchingFunction(Decl* primary, const std::vector<Entry>* overloads, const QualifiedName& name,
-                                                       const std::vector<const Ty*>& argTypes, Span<Expr*> callArgs, uint32_t token) -> void
+                                                       const std::vector<const Ty*>& argTypes, Span<Expr*> callArgs, const Subst* classSubst,
+                                                       const Ty* objectTy, uint32_t token) -> void
 {
   // (reportNoMatchingMember's conditions, and no explicit template arguments: a plain function takes none)
   auto plain = [](const Decl* d) { return d && d->kind == NodeKind::FunctionDecl && d->templateParams.empty() && !d->isTemplate; };
@@ -664,32 +665,61 @@ auto GlobalScope::Impl::Walker::reportNoMatchingFunction(Decl* primary, const st
     for (const Entry& e : *overloads)
       if (e.decl->kind == NodeKind::FunctionDecl && !plain(e.decl))
         return;
-  // (Nor where an argument is a pack or expands one: the walk of a fold's pattern, `(show(ts), ...)`, or of a `for
-  // constexpr` body over a pack's types, sees every element at once as the call's arguments, before the walks for
-  // each element.)
+  std::string called;
+  for (size_t i = 0; i < name.parts.size(); ++i)
+    called += (i ? "::" : "") + impl.namePartText(name.parts[i]);
+  auto report = [&](const std::vector<const Ty*>& given)
+  {
+    std::string list;
+    for (const Ty* a : given)
+    {
+      if (!a || !a->isKnown() || types.isDependent(a) || Impl::mentionsUnknown(a) || a->isBraceList())
+        return;
+      list += (list.empty() ? "" : ", ") + types.toString(types.stripRef(a), &impl.symbols);
+    }
+    reportCheck(token, "no overload of " + called + " takes (" + list + ")");
+  };
+  // An argument typed as a whole pack (the walk of a fold's pattern, `(show(ts), ...)`, or of a `for constexpr` body
+  // over a pack's types, `show(E{5})`, sees every element at once as the call's arguments, argTypes): each element's
+  // call is its own, the error the first element's that no overload takes. Not where an argument expands a pack
+  // itself (`f(ts...)`).
   bool walked = walkedArgs && callArgs.data == walkedArgs && callArgs.size() == walkedArgTypes.size();
-  if (argTypes.size() != callArgs.size())
-    return;
+  std::vector<const Ty*> own;
+  size_t elements = SIZE_MAX;
   for (size_t i = 0; i < callArgs.size(); ++i)
   {
     Expr* a = callArgs[i];
     const Ty* t = walked ? walkedArgTypes[i] : a ? a->ty : nullptr;
-    if (!a || a->kind == NodeKind::BraceInitExpr || namesFunctionsWithoutTarget(a) || (t && t->kind == TyKind::Pack) ||
+    if (!a || a->kind == NodeKind::BraceInitExpr || namesFunctionsWithoutTarget(a) ||
         (a->kind == NodeKind::UnaryExpr && !static_cast<UnaryExpr*>(a)->isKeyword && static_cast<UnaryExpr*>(a)->postfix &&
          P(static_cast<UnaryExpr*>(a)->op) == P::Ellipsis))
       return;
+    if (t && t->kind == TyKind::Pack)
+    {
+      if (elements != SIZE_MAX && elements != t->args.size())
+        return;
+      elements = t->args.size();
+    }
+    own.push_back(t);
   }
-  std::string list;
-  for (const Ty* a : argTypes)
+  if (elements == SIZE_MAX)
   {
-    if (!a || !a->isKnown() || types.isDependent(a) || Impl::mentionsUnknown(a) || a->isBraceList())
-      return;
-    list += (list.empty() ? "" : ", ") + types.toString(types.stripRef(a), &impl.symbols);
+    if (argTypes.size() == callArgs.size())
+      report(argTypes);
+    return;
   }
-  std::string called;
-  for (size_t i = 0; i < name.parts.size(); ++i)
-    called += (i ? "::" : "") + impl.namePartText(name.parts[i]);
-  reportCheck(token, "no overload of " + called + " takes (" + list + ")");
+  for (size_t k = 0; k < elements; ++k)
+  {
+    std::vector<const Ty*> one;
+    for (size_t i = 0; i < callArgs.size(); ++i)
+      one.push_back(own[i] && own[i]->kind == TyKind::Pack ? argumentType(callArgs[i], own[i]->args[k], types) : argumentType(callArgs[i], own[i], types));
+    bool ambiguous = false;
+    if (!pickOverload(primary, overloads, one, classSubst, objectTy, ambiguous, &name.last(), callArgs, nullptr))
+    {
+      report(one);
+      return;
+    }
+  }
 }
 
 // A function's body against its declarations (design.md 8.7). `test` is decided by the first
@@ -6205,7 +6235,8 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
         {
           n->resolved = nullptr;
           if (!constObjectError)
-            reportNoMatchingFunction(d, l.overloads, n->name, argTypes, c->args, c->token); // `k(&c)` with k(int*) and k(double*)
+            reportNoMatchingFunction(d, l.overloads, n->name, argTypes, c->args, classSubst, implicitObject ? types.lref(implicitObject) : nullptr,
+                                     c->token); // `k(&c)` with k(int*) and k(double*)
           reportDeductionConflict(d, l.overloads, argTypes, n->name.last(), nullptr, c->token); // `refConv(1, 2.0)` for `refConv(const T&, T)`
         }
         else // `takeInt(item)` with a UniquePtr<Item>: a class where a parameter is a scalar, the checker's error

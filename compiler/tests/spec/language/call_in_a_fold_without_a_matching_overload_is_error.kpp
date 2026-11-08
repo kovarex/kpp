@@ -1,0 +1,24 @@
+// spec: a call in a fold's pattern (`(show(ts), ...)`) or in a `for constexpr` body over a pack's types (`show(E{5})`) that no overload takes for one element of the pack is the checker's error at the call, naming that element's type, as C++'s "no matching function for call" in the instantiation ([temp.variadic] 9, [over.match.viable]); the elements an overload takes are no error (found by D, 2026-11-08: it was codegen's "a call that did not resolve"; language/call_without_a_matching_overload_is_error has the calls of no pack)
+// error: call_in_a_fold_without_a_matching_overload_is_error.kpp:11: error: no overload of show takes (C)
+// error: call_in_a_fold_without_a_matching_overload_is_error.kpp:17: error: no overload of show takes (C)
+struct A { int v; };
+struct C { int w = 0; };
+inline void show(int x) { println(x); }
+inline void show(const A& a) { println("A", a.v); }
+template<typename... Ts>
+void each(Ts... ts)
+{
+  (show(ts), ...);
+}
+template<typename... Ts>
+void eachType()
+{
+  for constexpr (typename E : types<Ts...>)
+    show(E{5});
+}
+int main()
+{
+  each(7, A{8}, C{});
+  eachType<int, C>();
+  return 0;
+}
