@@ -27,7 +27,10 @@
 
     // Calls a conversion operator found in `owner` (the object's class or one of its bases) on
     // the object at addr.
-    Value callConversion(FunctionDecl* op, const Ty* objectTy, const Ty* owner, const std::string& addr, Node* at, const TemplateArgs* opArgs = nullptr, bool keepReference = false);
+    // sret: where a class result is built (an object the conversion initializes, C++17's guaranteed
+    // elision), "" for a temporary.
+    Value callConversion(FunctionDecl* op, const Ty* objectTy, const Ty* owner, const std::string& addr, Node* at, const TemplateArgs* opArgs = nullptr, bool keepReference = false,
+                         const std::string& sret = "");
 
     // explicitCast: the conversion an explicit cast asks for, which may use explicit conversion
     // operators.

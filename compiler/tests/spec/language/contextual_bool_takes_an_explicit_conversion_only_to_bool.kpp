@@ -1,0 +1,27 @@
+// spec: a condition (contextual conversion to bool) takes an explicit conversion function only where it gives bool itself, as C++ has it ([over.match.conv] 1.1): beside an implicit `operator short()` an explicit `operator float() const&` is no candidate for `if (x)`, `!x` or `bool b(x)`, so short converts (both were, an ambiguity); an explicit `operator bool()` beside an implicit `operator int()` is the condition's, and the int one copy-initialization's. Conversion functions to two types are not overloads of each other: one with a ref qualifier beside one without is no error. clang's and g++'s output (the C++ with `explicit` where kpp marks none)
+// found by thread J's conversion generator (2026-11-08): "a conversion from X to bool" was a codegen error, and `operator float() const&` beside `operator short() const` the checker's "has a ref qualifier and another overload of the same parameters has none"
+extern "C" int printf(const char* format, ...);
+struct X
+{
+  int v = 3;
+  implicit operator short() const { printf("X>short "); return (short)(v + 2); }
+  operator float() const& { printf("X>float "); return (float)(v + 2); }
+};
+struct Z
+{
+  int v = 0;
+  operator bool() const { printf("Z>bool "); return v != 0; }
+  implicit operator int() const { printf("Z>int "); return v + 1; }
+};
+int main()
+{
+  if (X{}) printf("yes\n");
+  printf("%d\n", (int)!X{});
+  bool b(X{});
+  printf("%d\n", (int)b);
+  if (Z{}) printf("yes\n"); else printf("no\n");
+  printf("%d\n", Z{} ? 1 : 2);
+  int i = Z{};
+  printf("%d\n", i);
+  return 0;
+}

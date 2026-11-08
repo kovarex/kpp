@@ -327,7 +327,7 @@ auto codegen::Emitter::initializeExtending(const std::string& slot, const Ty* t,
     collect(collect, init);
   if (elements.empty())
   {
-    initializeFrom(slot, t, init, v);
+    initializeFrom(slot, t, init, v, true); // (`T x = v;`; `T x(v)` and `T x{v}` are a cast and a list, each its own path)
     return;
   }
   const std::vector<const Expr*>* outerElements = extendingElements;
@@ -648,6 +648,19 @@ auto codegen::Emitter::declareLocal(VariableDecl* v) -> void
     const Ty* initClass = init->ty ? types.unqualified(types.stripRef(init->ty)) : nullptr;
     if (isClass(types.stripRef(t)) || (isLambda(types.stripRef(t)) && isClass(initClass))) // (a class derived from a closure type binds its base subobject)
     {
+      // `const P& x = {6, 1};`, `P&& y = {7, 2};`: the list initializes a temporary of the referenced
+      // class, which lives as long as the reference ([dcl.init.ref] 5.4, [class.temporary] 6; until
+      // 2026-11-08 codegen refused the list).
+      if (init->kind == NodeKind::BraceInitExpr && isClass(types.stripRef(t)))
+      {
+        const Ty* target = types.unqualified(types.stripRef(t));
+        std::string tmp = newObjectSlot(target, v);
+        initializeFrom(tmp, target, init, v);
+        if (needsDestruction(target, v))
+          scopes.back().push_back({tmp, target});
+        fn += "  store ptr " + tmp + ", ptr " + slot + "\n";
+        return;
+      }
       // `const Sorted& r = path;`, `const String& s = "text";`: a value of another type that is
       // neither of a derived class nor converts by an operator binds to a temporary the class's
       // converting constructor makes, which lives as long as the reference.
@@ -663,7 +676,7 @@ auto codegen::Emitter::declareLocal(VariableDecl* v) -> void
         {
           std::string tmp = newObjectSlot(target, v);
           Expr* one = init;
-          constructInto(tmp, target, Span<Expr*>{&one, 1}, v);
+          constructInto(tmp, target, Span<Expr*>{&one, 1}, v, false, true); // (`const P& r = 5;` copy-initializes the temporary)
           if (needsDestruction(target, v))
             scopes.back().push_back({tmp, target});
           fn += "  store ptr " + tmp + ", ptr " + slot + "\n";
@@ -969,10 +982,10 @@ auto codegen::Emitter::statement(Stmt* s) -> void
           moved.castKind = Kw::static_cast_;
           moved.operand = r->value;
           moved.ty = types.rref(local);
-          initializeFrom(sretAddr, currentReturn, &moved, s);
+          initializeFrom(sretAddr, currentReturn, &moved, s, true);
         }
         else
-          initializeFrom(sretAddr, currentReturn, r->value, s);
+          initializeFrom(sretAddr, currentReturn, r->value, s, true); // (a return copy-initializes its result)
       }
       else if (currentReturn->isReference())
       {

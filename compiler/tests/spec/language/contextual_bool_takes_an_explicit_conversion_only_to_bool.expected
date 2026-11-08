@@ -1,0 +1,6 @@
+X>short yes
+X>short 0
+X>short 1
+Z>bool no
+Z>bool 2
+Z>int 1

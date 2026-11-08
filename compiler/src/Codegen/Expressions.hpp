@@ -19,7 +19,11 @@
     // initializes (inPlaceOperator), else nowhere yet ("": a temporary).
     std::string operatorResult(const Node* e) const { return e == inPlaceOperator ? inPlaceSlot : ""; }
 
+    // e's value: rvalueOf's, a class object keeping the const of e's type, so that what it is
+    // converted by is chosen for a const object (`float f = ks;` with ks const calls `operator float()
+    // const`, never a non-const `operator short()`; until 2026-11-08 the object was taken as non-const).
     Value rvalue(Expr* e);
+    Value rvalueOf(Expr* e);
 
     // The bit-field an lvalue names, or null: `x.f`, `this->data.f`, `f` in a member function, in
     // parentheses or not (what an assignment, a compound assignment or an increment writes, its own

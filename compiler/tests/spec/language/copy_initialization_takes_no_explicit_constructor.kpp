@@ -1,0 +1,41 @@
+// spec: a copy-initialization takes no constructor that is not marked implicit (C++'s explicit ones; [over.match.copy], [over.match.ctor]): `B b = 11LL;`, `const B& r = 12LL;` and `B&& q = 13LL;` take `implicit B(int)` over `B(bool)` and `B(unsigned)`, an argument `takeF('a')` `implicit F(float)` over `F(int)`, `takeC(5u)` and `return 5u;` `implicit C(int, double = 0.5)` over `C(char)`; a direct-initialization `B direct(true)` takes B(bool). clang's and g++'s output (the C++ with `explicit` where kpp marks none)
+// found by thread J's conversion generator (2026-11-08): codegen chose among every constructor, the checker among the implicit ones, so each of those ran the other constructor
+extern "C" int printf(const char* format, ...);
+struct B
+{
+  int v;
+  B(bool x) : v((int)x + 1) { printf("B(bool) "); }
+  implicit B(int x) : v(x + 1) { printf("B(int) "); }
+  B(unsigned x) : v((int)x + 1) { printf("B(unsigned) "); }
+  ~B() {}
+};
+struct F
+{
+  int v;
+  implicit F(float x) : v((int)x + 1) { printf("F(float) "); }
+  F(int x) : v(x + 1) { printf("F(int) "); }
+};
+struct C
+{
+  int v;
+  C(char x) : v((int)x + 1) { printf("C(char) "); }
+  implicit C(int a, double b = 0.5) : v(a + (int)(b * 10)) { printf("C(int,double) "); }
+};
+int takeF(F f) { return f.v; }
+int takeC(C c) { return c.v; }
+C makeC() { return 5u; }
+int main()
+{
+  B b = 11LL;
+  printf("%d\n", b.v);
+  const B& r = 12LL;
+  printf("%d\n", r.v);
+  B&& q = 13LL;
+  printf("%d\n", q.v);
+  printf("%d\n", takeF('a'));
+  printf("%d\n", takeC(5u));
+  printf("%d\n", makeC().v);
+  B direct(true);
+  printf("%d\n", direct.v);
+  return 0;
+}

@@ -1,0 +1,26 @@
+// spec: an object initialized from a conversion function's prvalue of its own class is that result, no temporary moved or copied from (C++17's guaranteed elision, [dcl.init] 17.6): `A x = kb;`, `A x{b};`, `A x(B{});` and `A x = {b};`, with `operator A() const`. clang's and g++'s output
+// found by thread J's conversion generator (2026-11-08): the result was a temporary, moved (or copied) into the object
+extern "C" int printf(const char* format, ...);
+struct A
+{
+  int v;
+  A() : v(0) { printf("A() "); }
+  A(const A& o) : v(o.v) { printf("A(c%d) ", v); }
+  A(A&& o) : v(o.v) { o.v = -o.v; printf("A(m%d) ", v); }
+  ~A() { printf("~A%d ", v); }
+};
+struct B
+{
+  int v = 5;
+  implicit operator A() const { printf("B>A "); A t; t.v = v + 20; return t; }
+};
+int main()
+{
+  const B kb;
+  B b;
+  { A x = kb; printf("[%d]\n", x.v); }
+  { A x{b}; printf("[%d]\n", x.v); }
+  { A x(B{}); printf("[%d]\n", x.v); }
+  { A x = {b}; printf("[%d]\n", x.v); }
+  return 0;
+}

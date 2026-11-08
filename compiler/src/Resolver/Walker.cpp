@@ -521,6 +521,10 @@ auto GlobalScope::Impl::Walker::checkRefQualifierMix(FunctionDecl* f) -> void
     if (!ft || !gt || ft->kind != TyKind::Function || gt->kind != TyKind::Function || ft->args.size() != gt->args.size() || ft->variadic != gt->variadic ||
         !std::equal(ft->args.begin(), ft->args.end(), gt->args.begin()))
       continue;
+    // (Conversion functions to two types are two names, `operator short() const` and `operator float()
+    // const&` no overloads of each other: until 2026-11-08 this error.)
+    if ((f->flags & DF_Conversion) && ft->inner != gt->inner)
+      continue;
     impl.reportCheckerError(file, f->token, "the member function " + impl.namePartText(f->name.last()) +
                                               " has a ref qualifier and another overload of the same parameters has none");
     return;

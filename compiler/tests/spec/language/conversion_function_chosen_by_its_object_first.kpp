@@ -1,0 +1,31 @@
+// spec: of two conversion functions the implicit object parameter decides first, the result's conversion second ([over.match.best] 2.1 before 2.2): for a non-const object a non-const `operator int&()` beats `operator bool() const` in a condition (`if (a)`, `!A{}`) and `operator short()` beats `operator float() const` for `1.5f && s`; a const object calls the const one only (`ka ? 1 : 2`, `1.5f && ks`, `float f = ks;`). clang's and g++'s output (the C++ with `explicit` where kpp marks none)
+// found by thread J's conversion generator (2026-11-08): the result's conversion decided first, and codegen took a const object as non-const, calling its non-const operator
+extern "C" int printf(const char* format, ...);
+struct A
+{
+  int v = 0;
+  implicit operator int&() { printf("A>int& "); return v; }
+  operator bool() const { printf("A>bool "); return v != 0; }
+};
+struct S
+{
+  int v = 1;
+  implicit operator short() { printf("S>short "); return (short)(v + 2); }
+  implicit operator float() const { printf("S>float "); return (float)(v + 2); }
+};
+int main()
+{
+  A a;
+  const A ka;
+  if (a) printf("yes "); else printf("no ");
+  printf("%d ", (int)!A{});
+  printf("%d\n", ka ? 1 : 2);
+  S s;
+  const S ks;
+  printf("%d ", (int)(1.5f && s));
+  printf("%d ", (int)(1.5f && ks));
+  short h = s;
+  float f = ks;
+  printf("%d %d\n", (int)h, (int)f);
+  return 0;
+}

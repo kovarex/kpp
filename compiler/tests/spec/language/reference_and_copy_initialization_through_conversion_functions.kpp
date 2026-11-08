@@ -1,0 +1,43 @@
+// spec: a reference or an object bound to a class object through its conversion functions takes the ones clang does: `int&& x(a);` takes no conversion function giving an lvalue reference (A's `operator float()`, made an int, over `operator int&()`), a const object only a const one (`const int& y(k);` calls `operator unsigned() const`, never k's non-const `operator int&()`), a non-const lvalue reference the int& one; a copy-initialization from another class takes its conversion function to the class, never a constructor of the class given a second conversion (`N n = m;` and `return m;` take `operator N()`, not `operator int()` and then `N(int)`: [over.best.ics] 4). clang's output; g++ 13 rejects `int&& x(a);` (its reading of [dcl.init.ref] 5.4.1: the best conversion gives an lvalue, which an rvalue reference does not bind, so arguably an error kpp should give) and `const int& y(k);` (the non-const operator not viable for the const k), and gives the same output for the rest
+// found by thread J's conversion generator (2026-11-08): x was bound to the int& operator's object, y called the non-const operator on the const k, n was two conversions
+extern "C" int printf(const char* format, ...);
+struct A
+{
+  int v = 4;
+  implicit operator int&() { printf("A>int& "); return v; }
+  implicit operator float() const { printf("A>float "); return (float)(v + 2); }
+};
+struct K
+{
+  int v = 0;
+  implicit operator int&() { printf("K>int& "); return v; }
+  implicit operator unsigned() const { printf("K>unsigned "); return (unsigned)(v + 2); }
+};
+struct N
+{
+  int v;
+  implicit N(int x) : v(x) { printf("N(int) "); }
+};
+struct M
+{
+  int v = 7;
+  implicit operator int() const { printf("M>int "); return v; }
+  implicit operator N() const { printf("M>N "); return N(v + 20); }
+};
+N give(const M& m) { return m; }
+int main()
+{
+  A a;
+  int&& x(a);
+  printf("%d\n", x);
+  const K k;
+  const int& y(k);
+  printf("%d\n", y);
+  K mk;
+  int& z = mk;
+  printf("%d\n", z);
+  M m;
+  N n = m;
+  printf("%d %d\n", n.v, give(m).v);
+  return 0;
+}

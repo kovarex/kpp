@@ -112,6 +112,15 @@ auto codegen::Emitter::callRvalue(Value v, Node* at) -> Value
 
 auto codegen::Emitter::rvalue(Expr* e) -> Value
 {
+  Value v = rvalueOf(e);
+  if (v.ty && !v.ty->isConst && isClass(v.ty) && e->ty && e->ty->isKnown() && !types.isDependent(e->ty))
+    if (const Ty* declared = types.stripRef(e->ty); declared->isConst && isClass(declared) && classKey(declared) == classKey(v.ty))
+      v.ty = types.qualified(v.ty, true, v.ty->isVolatile);
+  return v;
+}
+
+auto codegen::Emitter::rvalueOf(Expr* e) -> Value
+{
   if (e->kind == NodeKind::BraceInitExpr && static_cast<BraceInitExpr*>(e)->text)
     return {textTemporary(static_cast<BraceInitExpr*>(e), e), types.unqualified(types.stripRef(e->ty)), false}; // (design.md 14)
   if (++recursionDepth > 128)

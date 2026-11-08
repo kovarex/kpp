@@ -1681,7 +1681,7 @@ auto codegen::Emitter::argumentText(const Ty* pt, Expr* arg, Node* at) -> std::s
       if (typedUnionOf(pt, at))
         initializeFrom(copy, pt, arg, at);
       else
-        constructInto(copy, pt, Span<Expr*>{&one, 1}, at);
+        constructInto(copy, pt, Span<Expr*>{&one, 1}, at, false, true); // (an argument copy-initializes its parameter)
       return "ptr " + copy;
     }
     Value v = rvalue(arg);
@@ -1885,6 +1885,9 @@ auto codegen::Emitter::scalarReferenceTarget(const Ty* refTy, Expr* value, Node*
   const Ty* want = types.unqualified(referenced);
   const Ty* have = value->ty && value->ty->isKnown() && !types.isDependent(value->ty) ? types.unqualified(types.stripRef(value->ty)) : nullptr;
   requireSameClosure(have, want, true, at); // (`const decltype(l1)& r = l2;`: an error, never l2 bound as l1)
+  // (the object as it is: a const one calls a const conversion function only, `const int& r(k);`
+  // never k's non-const `operator int&()`; until 2026-11-08 the object was taken as non-const)
+  const Ty* object = have && isClass(have) ? types.stripRef(value->ty) : have;
   // A temporary of the referenced type holding the value, converted.
   auto temporary = [&]
   {
@@ -1902,7 +1905,22 @@ auto codegen::Emitter::scalarReferenceTarget(const Ty* refTy, Expr* value, Node*
   // int: its first member's value, or the bytes of a double.)
   if (have && isClass(have) && want->isKnown() && !types.isDependent(want))
   {
-    if (std::optional<std::string> bound = lvalueByConversion(value, have, referenced, at))
+    // An rvalue reference binds no lvalue a conversion function gives: of a class with `operator
+    // int&()` and `operator float()`, `int&& r(object);` binds a temporary of the float made an int,
+    // as clang does (until 2026-11-08 the int& one's object).
+    if (refTy->kind == TyKind::RRef && scalar(want))
+    {
+      const Ty* owner = nullptr;
+      TemplateArgs opArgs;
+      if (FunctionDecl* op = conversionOf(object, want, GlobalScope::ConversionKind::ToValue, false, at, &owner, &opArgs))
+      {
+        Value converted = convert(callConversion(op, object, owner, rvalue(value).text, at, &opArgs), want, at);
+        std::string slot = makeSlot ? makeSlot(want) : newObjectSlot(want, at);
+        fn += "  store " + llType(want, at) + " " + converted.text + ", ptr " + slot + "\n";
+        return slot;
+      }
+    }
+    if (std::optional<std::string> bound = lvalueByConversion(value, object, referenced, at))
       return *bound;
     if (scalar(want) && (refTy->kind == TyKind::RRef || referenced->isConst))
       return temporary();

@@ -1,0 +1,16 @@
+// spec: a reference bound to a brace list binds a temporary the list initializes, of the referenced class, living as long as the reference ([dcl.init.ref] 5.4, [class.temporary] 6): `const P& x = {6, 1};` and `P&& y = {7, 2};` by P's constructor, `const Q& q = {3, 4};` an aggregate, `const int& i = {5};`. clang's and g++'s output
+// found by thread J's conversion generator (2026-11-08): "codegen does not support the expression kind BraceInitExpr"
+extern "C" int printf(const char* format, ...);
+struct P { int v; implicit P(int a, int b) : v(a * 10 + b) { printf("P(%d,%d) ", a, b); } ~P() { printf("~P%d ", v); } };
+struct Q { int a; int b; };
+int main()
+{
+  { const P& x = {6, 1}; printf("[%d] ", x.v); }
+  printf("\n");
+  { P&& y = {7, 2}; printf("[%d] ", y.v); }
+  printf("\n");
+  { const Q& q = {3, 4}; printf("[%d %d] ", q.a, q.b); }
+  printf("\n");
+  { const int& i = {5}; printf("[%d]\n", i); }
+  return 0;
+}

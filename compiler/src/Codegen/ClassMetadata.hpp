@@ -9,6 +9,7 @@
       const Ty* classTy;
       std::vector<const Ty*> argTypes;
       std::vector<bool> nulls;
+      bool implicitOnly = false;
       bool operator==(const ConstructorKey&) const = default;
     };
     struct ConstructorKeyHash
@@ -18,17 +19,19 @@
         size_t h = std::hash<const void*>()(k.classTy);
         for (const Ty* a : k.argTypes)
           h = (h * 1000003) ^ std::hash<const void*>()(a);
-        return h ^ std::hash<std::vector<bool>>()(k.nulls);
+        return h ^ std::hash<std::vector<bool>>()(k.nulls) ^ (k.implicitOnly ? 0x9e3779b9u : 0u);
       }
     };
     std::unordered_map<ConstructorKey, FunctionDecl*, ConstructorKeyHash> constructors;
 
     // The constructor for these arguments: their types, and which are the literal 0 (a null pointer
     // constant, which reaches `FromText(const char*)` as the checker ranks it).
-    FunctionDecl* constructorFor(const Ty* classTy, Span<Expr*> args, Node* at);
+    // implicitOnly: for a copy-initialization, which takes no explicit constructor (chooseConstructor).
+    FunctionDecl* constructorFor(const Ty* classTy, Span<Expr*> args, Node* at, bool implicitOnly = false);
 
     // nulls: per argument, whether it is the literal 0; empty when none is.
-    FunctionDecl* findConstructor(const Ty* classTy, const std::vector<const Ty*>& argTypes, Node* at, const std::vector<bool>& nulls = {});
+    FunctionDecl* findConstructor(const Ty* classTy, const std::vector<const Ty*>& argTypes, Node* at, const std::vector<bool>& nulls = {},
+                                  bool implicitOnly = false);
 
     std::vector<const Ty*> argTypesOf(Span<Expr*> args);
 
@@ -265,7 +268,9 @@
     void directInitialize(const std::string& addr, const Ty* t, Span<Expr*> args, bool braced, Node* at, bool listElements);
 
     // listElements: args are a brace list's elements (the list taken apart once already).
-    void constructInto(const std::string& addr, const Ty* t, Span<Expr*> args, Node* at, bool listElements = false);
+    // copyInit: the construction is a copy-initialization's (`T x = v;`, an argument, a return), whose
+    // constructor is no explicit one; the arguments' own constructions are not.
+    void constructInto(const std::string& addr, const Ty* t, Span<Expr*> args, Node* at, bool listElements = false, bool copyInit = false);
 
     // `auto [a, b] = pair;`: e names a binding of the hidden local v; out gets the address of the
     // matching data member (or array element). False when e is not one of v's bindings (the
@@ -497,7 +502,9 @@
     // that calls the comma operator of a class the checker chose.
     BinaryExpr* builtinComma(Expr* e) const;
 
-    void initializeFrom(const std::string& addr, const Ty* t, Expr* init, Node* at);
+    // copyInit: `T x = init;`, an argument, a return, a reference's temporary: a converting
+    // constructor that makes t of init's value is no explicit one (direct-initialization's are).
+    void initializeFrom(const std::string& addr, const Ty* t, Expr* init, Node* at, bool copyInit = false);
 
     // t with the template parameters of the instantiation being emitted replaced by their
     // arguments, for an expression the type checker typed with a parameter left in.

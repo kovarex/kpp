@@ -1859,9 +1859,9 @@ const Ty* GlobalScope::closureOfCallOperator(const FunctionDecl* f)
 }
 
 FunctionDecl* GlobalScope::chooseConstructor(const Ty* classType, const std::vector<const Ty*>& argTypes,
-                                            const std::vector<bool>* nullConstants, const Ty** inheritedFrom)
+                                            const std::vector<bool>* nullConstants, const Ty** inheritedFrom, bool implicitOnly)
 {
-  return impl->chooseConstructor(classType, argTypes, nullConstants, inheritedFrom);
+  return impl->chooseConstructor(classType, argTypes, nullConstants, inheritedFrom, implicitOnly);
 }
 
 FunctionDecl* GlobalScope::chooseConversion(const Ty* from, const Ty* to, ConversionKind kind, bool explicitCast, const Ty** foundIn, TemplateArgs* opArgs)

@@ -37,7 +37,7 @@ auto codegen::Emitter::integralConversionOperator(const Ty* from, Node* at, cons
 }
 
 auto codegen::Emitter::callConversion(FunctionDecl* op, const Ty* objectTy, const Ty* owner, const std::string& addr, Node* at, const TemplateArgs* opArgs,
-                                      bool keepReference) -> Value
+                                      bool keepReference, const std::string& sret) -> Value
 {
   std::string self = addr;
   if (owner != canonicalClass(objectTy, at) && !baseAddress(objectTy, owner, addr, self, at))
@@ -49,7 +49,7 @@ auto codegen::Emitter::callConversion(FunctionDecl* op, const Ty* objectTy, cons
   if (op->templateParams.empty() && isClass(owner) && structFor(owner, at).polymorphic)
     if (int slot = slotOf(owner, op, at); slot >= 0)
       indirect = loadSlot(self, slot);
-  Value result = callFunction(op, opArgs && !op->templateParams.empty() ? *opArgs : global.classArgsOf(owner), owner, self, "", {}, at, indirect);
+  Value result = callFunction(op, opArgs && !op->templateParams.empty() ? *opArgs : global.classArgsOf(owner), owner, self, sret, {}, at, indirect);
   return keepReference ? result : callRvalue(result, at); // (keepReference: a reference's address, for a reference to bind)
 }
 

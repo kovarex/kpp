@@ -4,24 +4,25 @@
 // change.
 #include "Emitter.hpp"
 
-auto codegen::Emitter::constructorFor(const Ty* classTy, Span<Expr*> args, Node* at) -> FunctionDecl*
+auto codegen::Emitter::constructorFor(const Ty* classTy, Span<Expr*> args, Node* at, bool implicitOnly) -> FunctionDecl*
 {
   std::vector<bool> nulls;
   bool anyNull = false;
   for (Expr* a : args)
   {
     if (a && isPackExpansion(a))
-      return findConstructor(classTy, argTypesOf(args), at); // (the elements are no literals)
+      return findConstructor(classTy, argTypesOf(args), at, {}, implicitOnly); // (the elements are no literals)
     nulls.push_back(nullPointerConstant(a));
     anyNull = anyNull || nulls.back();
   }
-  return findConstructor(classTy, argTypesOf(args), at, anyNull ? nulls : std::vector<bool>{});
+  return findConstructor(classTy, argTypesOf(args), at, anyNull ? nulls : std::vector<bool>{}, implicitOnly);
 }
 
-auto codegen::Emitter::findConstructor(const Ty* classTy, const std::vector<const Ty*>& argTypes, Node* at, const std::vector<bool>& nulls) -> FunctionDecl*
+auto codegen::Emitter::findConstructor(const Ty* classTy, const std::vector<const Ty*>& argTypes, Node* at, const std::vector<bool>& nulls,
+                                       bool implicitOnly) -> FunctionDecl*
 {
   const Ty* canonical = canonicalClass(classTy, at);
-  ConstructorKey key{canonical, argTypes, nulls};
+  ConstructorKey key{canonical, argTypes, nulls, implicitOnly};
   if (auto it = constructors.find(key); it != constructors.end())
     return it->second;
   // The one rule (design.md 24, GlobalScope::chooseConstructor), for the interpreter and the checker
@@ -30,7 +31,7 @@ auto codegen::Emitter::findConstructor(const Ty* classTy, const std::vector<cons
   // arguments (`MoveOnly direct("abc")` takes Text(const char*), not the move constructor through
   // a conversion by it).
   const Ty* inheritedFrom = nullptr;
-  FunctionDecl* chosen = global.chooseConstructor(canonical, argTypes, nulls.empty() ? nullptr : &nulls, &inheritedFrom);
+  FunctionDecl* chosen = global.chooseConstructor(canonical, argTypes, nulls.empty() ? nullptr : &nulls, &inheritedFrom, implicitOnly);
   if (inheritedFrom)
     chosen = nullptr;
   constructors.emplace(std::move(key), chosen);
@@ -1239,7 +1240,7 @@ auto codegen::Emitter::directInitialize(const std::string& addr, const Ty* t, Sp
   constructInto(addr, t, args, at, listElements);
 }
 
-auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<Expr*> args, Node* at, bool listElements) -> void
+auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<Expr*> args, Node* at, bool listElements, bool copyInit) -> void
 {
   ClassDecl* c = classDef(t->decl, at);
   if (args.empty())
@@ -1352,7 +1353,7 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
   // SignalID through SignalIDConnector's `operator SignalID()`, not a base's constructors.)
   bool converts = args.size() == 1 && !copyLike && args[0]->ty && isClass(types.stripRef(args[0]->ty)) &&
                   !types.isDependent(types.stripRef(args[0]->ty)) && conversionOperator(types.stripRef(args[0]->ty), t, at);
-  if (!copyLike && !converts && (!hasUserConstructors(c) || !constructorFor(t, args, at)))
+  if (!copyLike && !converts && (!hasUserConstructors(c) || !constructorFor(t, args, at, copyInit)))
     if (std::optional<QualifiedName> base = inheritedConstructorBase(c))
     {
       // Inherited constructors: the arguments build that base, everything else is default.
@@ -1443,7 +1444,9 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
     }
   }
   const Ty* firstTy = args.size() == 1 ? args[0]->ty : nullptr;
-  FunctionDecl* ctor = constructorFor(t, args, at);
+  // (A copy-initialization's: no explicit one, `B4 x = 11LL;` takes `implicit B4(int)` over `B4(bool)`;
+  // until 2026-11-08 it took the best of all, which the checker had refused.)
+  FunctionDecl* ctor = constructorFor(t, args, at, copyInit);
   if (ctor && firstTy && isClass(types.stripRef(firstTy)) && classKey(firstTy) == classKey(t) && !ctor->params.empty())
   {
     // The same class: a copy, unless the chosen constructor is a copy constructor itself (a
@@ -1475,10 +1478,57 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
       ArgsScope scope(*this, &classArgs);
       pt = declType(ctor->params[0]);
     }
-    if (pt && isClass(types.stripRef(pt)) && classKey(pt) == classKey(t))
+    // A copy-initialization's converting constructor takes no user-defined conversion of its
+    // argument ([over.best.ics] 4): `A x = b;` with `A(int)` beside b's `operator int()` and
+    // `operator A()` is the conversion function's, never b made an int (until 2026-11-08 two
+    // conversions, the constructor's).
+    bool secondConversion = false;
+    if (copyInit && converts && pt)
+    {
+      const Ty* p = types.unqualified(types.stripRef(pt));
+      const Ty* a = withCurrentArgs(types.unqualified(types.stripRef(firstTy)));
+      std::vector<std::pair<std::string, uint32_t>> through;
+      secondConversion = !types.isDependent(a) && !(isClass(p) && (classKey(p) == classKey(a) || basePath(a, p, through, at)));
+    }
+    if (pt && ((isClass(types.stripRef(pt)) && classKey(pt) == classKey(t)) || secondConversion))
     {
       // The copy constructor, chosen for a value of another class: that class converts to t
       // first (a base, or its conversion operator), the constructor is not called with it.
+      // A conversion function giving t itself, a prvalue, builds the object where it is
+      // (`A x = b;`, `A x{b}` with `operator A()`: C++17's guaranteed elision; until 2026-11-08 a
+      // temporary moved or copied from).
+      std::vector<std::pair<std::string, uint32_t>> path;
+      const Ty* fromTy = withCurrentArgs(types.stripRef(firstTy));
+      const Ty* owner = nullptr;
+      TemplateArgs opArgs;
+      if (!types.isDependent(fromTy) && !basePath(types.unqualified(fromTy), t, path, at))
+      {
+        Value object = rvalue(args[0]);
+        if (FunctionDecl* op = conversionOperator(object.ty, types.unqualified(t), at, &owner, false, &opArgs); op && returnsInMemory(types.unqualified(t)))
+        {
+          const Ty* result;
+          {
+            TemplateArgs ownerArgs = opArgs.pairs.empty() || op->templateParams.empty() ? global.classArgsOf(owner) : opArgs;
+            ArgsScope scope(*this, &ownerArgs);
+            result = declType(op) ? declType(op)->inner : nullptr;
+          }
+          if (result && !result->isReference() && isClass(result) && classKey(result) == classKey(t))
+          {
+            Value made = callConversion(op, object.ty, owner, object.text, at, &opArgs, false, addr);
+            if (made.text != addr)
+              unsupported(at, "a conversion function's " + types.toString(t, &symbols) + " result built somewhere else than the object it initializes");
+            return;
+          }
+        }
+        Value src = convert(object, types.unqualified(t), at);
+        if (src.isTemporary)
+          moveTemporary(addr, src, t, at);
+        else if (movable(args[0]))
+          moveConstruct(addr, src.text, t, at);
+        else
+          copyConstruct(addr, src.text, t, at);
+        return;
+      }
       Value src = convert(rvalue(args[0]), types.unqualified(t), at);
       if (src.isTemporary)
         moveTemporary(addr, src, t, at);
@@ -2923,7 +2973,7 @@ auto codegen::Emitter::builtinComma(Expr* e) const -> BinaryExpr*
   return b && !b->isKeyword && P(b->op) == P::Comma && (verifyDecisions() || !recordedOperator(b)) ? b : nullptr;
 }
 
-auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr* init, Node* at) -> void
+auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr* init, Node* at, bool copyInit) -> void
 {
   t = types.stripRef(t);
   if (init && init->kind == NodeKind::DefaultValueExpr)
@@ -2965,7 +3015,7 @@ auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr
     // ran, so a prvalue there builds the object itself ([expr.comma] 1, guaranteed elision), as a
     // class that cannot move needs. Until 2026-11-07 it was built in a temporary and moved.
     rvalue(comma->lhs); // (its temporaries live to the end of the full-expression)
-    initializeFrom(addr, t, comma->rhs, at);
+    initializeFrom(addr, t, comma->rhs, at, copyInit);
     return;
   }
   if (isLambda(t))
@@ -2993,7 +3043,7 @@ auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr
     {
       startBlock(branch == 0 ? tL : eL);
       size_t temps = statementTemps.size();
-      initializeFrom(addr, t, branch == 0 ? c->then : c->else_, at);
+      initializeFrom(addr, t, branch == 0 ? c->then : c->else_, at, copyInit);
       keepOperandTemps(temps); // (a branch's own temporaries, built only when it ran)
       emitBranch(jL);
     }
@@ -3059,7 +3109,7 @@ auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr
     }
     if (init->kind == NodeKind::ParenExpr)
     {
-      initializeFrom(addr, t, static_cast<ParenExpr*>(init)->inner, at);
+      initializeFrom(addr, t, static_cast<ParenExpr*>(init)->inner, at, copyInit);
       return;
     }
     // A call the checker could not type, evaluated once: an SSE operation clang's intrin.h has as a
@@ -3079,7 +3129,7 @@ auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr
     {
       // A non-class value: through a converting constructor (`String s = "text"`).
       Expr* one = init;
-      constructInto(addr, t, Span<Expr*>{&one, 1}, at);
+      constructInto(addr, t, Span<Expr*>{&one, 1}, at, false, copyInit);
       return;
     }
     if (!evaluated && initIsClass && !dependent && !sameClass)
@@ -3087,7 +3137,7 @@ auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr
       // Another class: through a converting constructor, a base, or its conversion operator
       // (`String text = vec;` with `operator String()`), never by copying it as a t.
       Expr* one = init;
-      constructInto(addr, t, Span<Expr*>{&one, 1}, at);
+      constructInto(addr, t, Span<Expr*>{&one, 1}, at, false, copyInit);
       return;
     }
     // `T a = b + c;` and `T a = -b;`, an operator function's prvalue, builds the object itself, as a

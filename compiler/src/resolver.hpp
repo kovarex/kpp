@@ -659,8 +659,10 @@ public:
   // aside, and one with an own constructor's parameters hidden by it), chosen by overload
   // resolution; null if none is viable. nullConstants as for chooseOverload. inheritedFrom, when
   // given: the base class whose constructor won, else null.
+  // implicitOnly: a copy-initialization (`T x = v;`, an argument, a return), which no explicit
+  // constructor (under explicit by default: none not marked implicit) makes.
   FunctionDecl* chooseConstructor(const Ty* classType, const std::vector<const Ty*>& argTypes,
-                                  const std::vector<bool>* nullConstants = nullptr, const Ty** inheritedFrom = nullptr);
+                                  const std::vector<bool>* nullConstants = nullptr, const Ty** inheritedFrom = nullptr, bool implicitOnly = false);
   // Which conversion operator of class `from` (own or a base's, the class first, then each base
   // level) a conversion runs (design.md 24: one rule for codegen, the interpreter and the checker), or
   // null. ToType: to `to` (implicit, or an explicit cast with explicitCast): the operator to `to`
@@ -669,7 +671,9 @@ public:
   // template `operator T()` takes T = to when its constraints hold. ToPointer: a non-explicit one to a
   // pointer (`*object`, `delete object`). ToIntegral: a non-explicit one to an enumeration, integer,
   // char or bool (a switch). foundIn: the class declaring it; opArgs: what it is called with.
-  enum class ConversionKind : uint8_t { ToType, ToPointer, ToIntegral };
+  // ToValue: as ToType, no conversion function giving an lvalue reference (an rvalue reference to a
+  // scalar bound to what a class object converts to: `int&& r(object);` never takes `operator int&()`).
+  enum class ConversionKind : uint8_t { ToType, ToPointer, ToIntegral, ToValue };
   FunctionDecl* chooseConversion(const Ty* from, const Ty* to, ConversionKind kind, bool explicitCast = false, const Ty** foundIn = nullptr,
                                  TemplateArgs* opArgs = nullptr);
   // The free function `operator<punctuator>(lhs[, rhs])` visible from context (the namespaces of

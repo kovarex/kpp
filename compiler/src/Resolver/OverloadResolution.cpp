@@ -192,7 +192,7 @@ auto GlobalScope::Impl::chooseConversion(const Ty* from, const Ty* to, Conversio
   const Ty* object = from ? types.stripRef(from) : nullptr; // (its const: a const object calls const operators only)
   const Ty* start = object ? types.unqualified(object) : nullptr;
   const Ty* target = to ? types.unqualified(types.stripRef(to)) : nullptr;
-  if (!start || start->kind != TyKind::Class || types.isDependent(start) || (kind == ConversionKind::ToType && !target))
+  if (!start || start->kind != TyKind::Class || types.isDependent(start) || ((kind == ConversionKind::ToType || kind == ConversionKind::ToValue) && !target))
     return nullptr;
   bool constObject = object->isConst;
   // Every conversion operator of the class and its bases (C++ [class.conv.fct]: a base's is hidden by
@@ -278,11 +278,18 @@ auto GlobalScope::Impl::chooseConversion(const Ty* from, const Ty* to, Conversio
       case ConversionKind::ToIntegral:
         rank = !isExplicitOne && (ret->kind == TyKind::Enum || ret->kind == TyKind::Int || ret->kind == TyKind::Char || ret->kind == TyKind::Bool) ? 0 : NotViable;
         break;
+      case ConversionKind::ToValue:
+        if (c.result->kind == TyKind::LRef)
+          break;
+        [[fallthrough]];
       case ConversionKind::ToType:
       {
         bool exact = ret == target;
         bool derived = !exact && ret->kind == TyKind::Class && target->kind == TyKind::Class && !types.isDependent(ret) && isBaseClass(target, ret);
-        if (isExplicitOne && !(target->kind == TyKind::Bool && (contextualBool || explicitCast)) && (!explicitCast || !(exact || derived)))
+        // An explicit one only in a direct-initialization (a cast; a condition, contextually to bool) and
+        // only where it gives the type itself ([over.match.conv] 1.1): `explicit operator float()` is no
+        // way to bool beside an implicit `operator short()` (until 2026-11-08 both were, ambiguous).
+        if (isExplicitOne && !((explicitCast || (contextualBool && target->kind == TyKind::Bool)) && (exact || derived)))
           break;
         if (exact)
           rank = 0;
@@ -300,15 +307,18 @@ auto GlobalScope::Impl::chooseConversion(const Ty* from, const Ty* to, Conversio
     }
     if (rank >= NotViable)
       continue;
+    // The implicit object parameter first, then the result's conversion ([over.match.best] 2.1 before
+    // 2.2): of a non-const object, a non-const operator beats a const one whatever their results
+    // (`operator int&()` over `operator bool() const` in `if (x)`; until 2026-11-08 the result first).
     bool constMatch = constOp == constObject;
-    if (rank < bestRank || (rank == bestRank && constMatch && !bestConstMatch))
+    if (!best || (constMatch && !bestConstMatch) || (constMatch == bestConstMatch && rank < bestRank))
     {
       best = &c;
       bestRank = rank;
       bestConstMatch = constMatch;
       ambiguous = false;
     }
-    else if (rank == bestRank && constMatch == bestConstMatch && c.f != best->f && kind == ConversionKind::ToType)
+    else if (rank == bestRank && constMatch == bestConstMatch && c.f != best->f && (kind == ConversionKind::ToType || kind == ConversionKind::ToValue))
       ambiguous = true;
   }
   if (ambiguousOut)
