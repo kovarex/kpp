@@ -295,8 +295,20 @@
     // return type first).
     void checkMemberBody(Walker& sub, FunctionDecl* f, const Subst& classSubst);
 
-    // Checks every member function body of a class template for one instantiation, once.
-    void instantiateClass(const Ty* classTy);
+    // Makes one instantiation of a class template, once: its class-level checks and the member
+    // bodies checked with the class (checkedWithClass); every member for an explicit
+    // instantiation definition (allMembers, [temp.explicit] 10).
+    void instantiateClass(const Ty* classTy, bool allMembers = false);
+    // The members of a class template instance checked when the instance is made, used or not: its
+    // virtual member functions and destructor (the vtable), its member specializations; every one
+    // for allMembers. The others are checked where they are used (demandMember), as C++
+    // instantiates a member function's definition only where it is used ([temp.inst] 11).
+    static bool checkedWithClass(Impl& impl, Decl* m, const Ty* classTy, bool allMembers);
+    void checkClassMembers(Walker& sub, const Ty* classTy, const Subst& subst, bool allMembers);
+    // A non-template member function (or a friend defined in the class) of a class template instance
+    // used here, classSubst its class's arguments: its body checked once, by the record its class's
+    // check would make (claimInstance under the declaring instance's `this`, checkMemberBody).
+    void demandMember(FunctionDecl* f, const Subst* classSubst);
 
     // Checks a function template body for one set of deduced arguments, once. Returns the
     // deduced return type when the function returns `auto` (waiting for another producer).

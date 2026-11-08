@@ -687,6 +687,8 @@ bool GlobalScope::undeclaredReported(const std::string& name)
 void GlobalScope::resolveAll(size_t count, unsigned threads, const std::function<void(size_t)>& resolveOne)
 {
   Impl& im = *impl;
+  for (Impl::DemandShard& shard : im.demandShards)
+    shard.seen.clear(); // (a compile server's earlier build: its records may have gone since)
   im.queueMemberBodies.store(true);
   std::atomic<size_t> next{0};
   // Running work: files being resolved and tasks being checked; either may queue tasks. A
@@ -762,6 +764,10 @@ void GlobalScope::resolveFile(ParsedFile& file, const std::vector<Token>& tokens
   walker.walkDecls(file.decls);
   for (Decl* a : file.absentDecls) // (a false `when`'s dropped declarations: their condition's names resolve too)
     walker.walkWhenCondition(a);
+  // `template struct Registry<int>;`: every member of the instance, used or not ([temp.explicit] 10),
+  // where other instances check the members used (Walker::demandMember).
+  for (auto& [cls, token] : explicitInstantiationsOf(file))
+    walker.instantiateClass(cls, true);
 }
 
 TypeTable& GlobalScope::types() { return impl->types; }

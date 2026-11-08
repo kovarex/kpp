@@ -25,7 +25,27 @@
     int depth;
     InstanceRecord* functionInstance = nullptr; // or a function instance's queued check (its record holds the task)
     std::shared_ptr<DeclWalk> declWalk;         // or a template function's own walk
+    bool allMembers = false;                    // the whole instance: every member (an explicit instantiation), not those checked with the class
   };
+  // The members a use asked for (Walker::demandMember), by body and class instance: a member's check
+  // is queued once, not once per call (claimInstance would answer the others, after a task each).
+  // Emptied at each resolve (resolveAll): a compile server's later build asks again.
+  struct DemandedMember
+  {
+    const void* body;
+    const void* classTy;
+    bool operator==(const DemandedMember&) const = default;
+  };
+  struct DemandedMemberHash
+  {
+    size_t operator()(const DemandedMember& m) const { return std::hash<const void*>()(m.body) * 31 + std::hash<const void*>()(m.classTy); }
+  };
+  struct DemandShard
+  {
+    std::mutex mutex;
+    std::unordered_set<DemandedMember, DemandedMemberHash> seen;
+  };
+  DemandShard demandShards[64];
   // The statistics of the queued walks, added to their files' once every worker is done (adding is
   // order-independent: the counts sum, a first occurrence is the earliest place).
   std::mutex deferredStatsMutex;
