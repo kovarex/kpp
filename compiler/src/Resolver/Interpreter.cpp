@@ -2911,7 +2911,20 @@ auto GlobalScope::Impl::constBinaryValues(P op, const ConstValue& l, const Const
           if (!constBindTemplate(free, {}, &call, {a, b}, ctx, depth, deduced, own, &categories))
             return std::nullopt;
         }
-        std::optional<ConstValue> ordering = constCallOn(free, deduced, {a, b}, nullptr, depth + 1);
+        // (the operands as the objects they are, their places and categories, as direct() and the member's branch
+        // below pass them: an operator reading their addresses, the stdlib's List and Map reaching their nodes; until
+        // 2026-11-08 their values alone, "cannot evaluate")
+        const ConstOperand* ao = reversed ? ro : lo;
+        const ConstOperand* bo = reversed ? lo : ro;
+        std::optional<ConstValue> ordering;
+        if (ao && bo)
+        {
+          std::vector<std::optional<ConstPlace>> places{ao->place, bo->place};
+          std::vector<uint8_t> categories{ao->category, bo->category};
+          ordering = constCallOn(free, deduced, {a, b}, nullptr, depth + 1, nullptr, &places, &categories);
+        }
+        else
+          ordering = constCallOn(free, deduced, {a, b}, nullptr, depth + 1);
         if (!ordering)
           return std::nullopt;
         return constBinaryValues(reversed ? mirrored : op, *ordering, zero, ctx, depth + 1);

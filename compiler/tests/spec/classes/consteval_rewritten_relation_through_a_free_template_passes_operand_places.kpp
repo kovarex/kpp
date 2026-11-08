@@ -1,0 +1,28 @@
+// spec: at compile time a relation rewritten through a free operator<=> function template (`a < b` as `(a <=> b) < 0`, `a >= b`, reversed or not) gives the operator its operands as the objects they are, whose addresses it may read (`a.self()`, `&a == &b`), as a direct call and a member operator do: the stdlib's List, Map and Set reach their nodes so; clang's `1 1 1 1` (until 2026-11-08 the interpreter called the operator on the operands' values alone, "cannot evaluate", K's case from moving the containers' comparisons out of the classes)
+extern "C" int printf(const char* format, ...);
+template<typename T> struct Ring
+{
+  T value;
+  constexpr const Ring* self() const { return this; }
+};
+template<typename T> constexpr strong_ordering operator<=>(const Ring<T>& a, const Ring<T>& b)
+{
+  if (&a == &b)
+    return strong_ordering::equal;
+  return a.self()->value <=> b.self()->value;
+}
+constexpr bool locals()
+{
+  Ring<int> x{1};
+  Ring<int> y{2};
+  return x < y && y >= x && !(x > x) && x <= x;
+}
+constexpr bool r1 = Ring<int>{1} < Ring<int>{2};
+constexpr bool r2 = Ring<int>{3} >= Ring<int>{2};
+constexpr bool r3 = !(Ring<int>{2} > Ring<int>{2});
+constexpr bool r4 = locals();
+int main()
+{
+  printf("%d %d %d %d\n", r1, r2, r3, r4);
+  return 0;
+}
