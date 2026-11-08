@@ -1208,10 +1208,10 @@ or on the runner named by the repository variable `KPP_CI_RUNNER`, as parallel j
   (2026-11-05). Beside them it builds the `*_release.kpp` snippets for Linux and runs them under WSL
   (a few seconds; skipped with a notice when WSL does not answer). What it leaves out runs here on
   every push.
-- **spec:** `compiler\tests\spec.cmd --no-doc --shard I/4`, in debug, `--release` and `--debug-info`:
-  12 jobs, after build. A shard is
-  every 4th snippet of the sorted list (run_spec.py), so each gets a share of every area; each ends
-  with its own `spec: ALL PASSED (...; shard I/4)` line and exit code, and the run is green only
+- **spec:** `compiler\tests\spec.cmd --no-doc --shard I/N`, in debug (2 shards), `--release`,
+  `--debug-info` and windows-gnu (4 each): 14 jobs, after build. A shard is
+  every Nth snippet of the sorted list (run_spec.py), so each gets a share of every area; each ends
+  with its own `spec: ALL PASSED (...; shard I/N)` line and exit code, and the run is green only
   when all of them are.
 - **linux_build, linux_spec, linux_host:** kpp on a Linux host (ubuntu-24.04, 4 CPUs). linux_build
   builds kpp with clang 19 and hands it on as the artifact `kpp-linux-compiler`; after it, at once,

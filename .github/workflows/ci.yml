@@ -182,13 +182,14 @@ jobs:
         shell: cmd
         run: compiler\tests\run_tests.cmd --full --part ${{ matrix.part }}
 
-  # The spec in 4 shards (run_spec.py --shard I/4), in debug, --release and --debug-info on every run:
-  # 12 jobs at once.
+  # The spec in shards (run_spec.py --shard I/N), in debug, --release, --debug-info and windows-gnu on
+  # every run: debug in 2 (1.2-1.9 min a shard in 4, 2026-11-08), the others in 4; 14 jobs at once,
+  # leaving more of GitHub's 20 jobs at a time to the Linux jobs, which waited for them.
   spec:
     needs: build
     runs-on: ${{ vars.KPP_CI_RUNNER || 'windows-2022' }}
     timeout-minutes: 60
-    name: spec ${{ matrix.config }} ${{ matrix.shard }}/4
+    name: spec ${{ matrix.config }} ${{ matrix.shard }}/${{ matrix.config == 'debug' && 2 || 4 }}
     strategy:
       fail-fast: false
       matrix:
@@ -197,6 +198,9 @@ jobs:
         # configuration, and its globals were built in reverse for four days)
         config: [debug, release, debug-info, windows-gnu]
         shard: [1, 2, 3, 4]
+        exclude:
+          - { config: debug, shard: 3 }
+          - { config: debug, shard: 4 }
     env:
       # Upstream SDL 3.4.18's headers stand in for C:\Factorio\libraries\SDL3\include (the same release;
       # the game's copy adds one function) for the two interop snippets that import SDL3/SDL.h. The zip
@@ -281,7 +285,7 @@ jobs:
 
       - name: spec
         shell: cmd
-        run: compiler\tests\spec.cmd --no-doc --shard ${{ matrix.shard }}/4 ${{ matrix.config == 'windows-gnu' && '--target windows-gnu --release' || matrix.config != 'debug' && format('--{0}', matrix.config) || '' }}
+        run: compiler\tests\spec.cmd --no-doc --shard ${{ matrix.shard }}/${{ matrix.config == 'debug' && 2 || 4 }} ${{ matrix.config == 'windows-gnu' && '--target windows-gnu --release' || matrix.config != 'debug' && format('--{0}', matrix.config) || '' }}
 
   # FreeBSD (docs/design.md, "Targets and hosts", stage 6): the spec built and linked for FreeBSD 14.3
   # here (run_spec.py --target freebsd, against tools\sysroot\freebsd.ps1's sysroot), then run in a
