@@ -660,14 +660,19 @@ auto GlobalScope::Impl::constNamedReturns() -> std::unordered_map<const Stmt*, V
 
 auto GlobalScope::Impl::constValueIn(Expr* e, const TypeContext& ctx, int depth) -> std::optional<ConstValue>
 {
-  if (!e || depth > 512 || (depth > 64 && !stackRoomLeft()))
+  if (!e || depth > 512)
     return std::nullopt;
+  if (depth > 64 && !stackRoomLeft())
+    return evaluationTrip("an evaluation nested deeper than the compiler's stack"), std::nullopt;
   struct Active
   {
     Active()
     {
       if (constActive()++ == 0)
+      {
         constSteps() = 0;
+        constValuesMade() = 0; // (per evaluation, as the steps: a thread's earlier ones count for nothing)
+      }
     }
     ~Active() { --constActive(); }
   } active;
@@ -3099,11 +3104,12 @@ auto GlobalScope::Impl::constLayoutOf(const Ty* t, int depth) -> const ConstClas
     if (auto it = constLayouts.find(t); it != constLayouts.end())
     {
       replayUses(it->second->uses);
-      return it->second->ok ? it->second.get() : nullptr;
+      return it->second->ok && cachedNestingFits(it->second->needed) ? it->second.get() : nullptr;
     }
   }
   auto layout = std::make_shared<ConstClassLayout>();
   CollectUses collected;
+  CachedEvaluation evaluation;
   Scope* s = classScopeOf(t);
   if (s && s->owner && s->owner->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(s->owner)->isDefinition)
   {
@@ -3161,6 +3167,9 @@ auto GlobalScope::Impl::constLayoutOf(const Ty* t, int depth) -> const ConstClas
     }
   }
   layout->uses = collected.uses;
+  layout->needed = evaluation.needed();
+  if (evaluation.tripped())
+    return nullptr;
   std::lock_guard lock(constLayoutsMutex);
   auto it = constLayouts.emplace(t, layout).first;
   return it->second->ok ? it->second.get() : nullptr;
@@ -5090,12 +5099,7 @@ auto GlobalScope::Impl::constCallClosure(LambdaExpr* l, const ConstValue& closur
   std::vector<uint8_t> categories;
   if (!constArguments(c->args, ctx, depth, values, &places, &categories))
     return std::nullopt;
-  struct Call
-  {
-    ~Call() { --constCalls(); }
-
-    bool ok = ++constCalls() <= 512 && stackRoomLeft();
-  } call;
+  EvaluationCall call;
   if (!call.ok)
     return std::nullopt;
   std::vector<ConstBinding> env;
@@ -5224,12 +5228,7 @@ auto GlobalScope::Impl::constCallLambda(LambdaExpr* l, CallExpr* c, const TypeCo
       return std::nullopt;
     values.push_back(*v);
   }
-  struct Call
-  {
-    ~Call() { --constCalls(); }
-
-    bool ok = ++constCalls() <= 512 && stackRoomLeft();
-  } call;
+  EvaluationCall call;
   if (!call.ok)
     return std::nullopt;
   std::vector<ConstBinding> env;
@@ -5326,18 +5325,9 @@ auto GlobalScope::Impl::constRangeEnd(const ConstValue& range, uint32_t symbol, 
 auto GlobalScope::Impl::constRunConstructor(FunctionDecl* ctor, const Ty* t, const std::vector<ConstValue>& args, int depth, const Subst* own, FunctionDecl* declared, const std::vector<std::optional<ConstPlace>>* places, const ConstPlace* target,
                                              const std::vector<uint8_t>* categories) -> std::optional<ConstValue>
 {
-  struct Call
-  {
-    ~Call() { --constCalls(); }
-
-    bool ok = ++constCalls() <= 512 && stackRoomLeft();
-  } call;
+  EvaluationCall call; // (past the bound: its why is set)
   if (!call.ok)
-  {
-    if (constWhy().empty())
-      constWhy() = "calls nested more than 512 deep";
     return std::nullopt;
-  }
   depth = 0; // as a function's body (constRun): the call guard bounds the chain
   const ConstClassLayout* layout = constLayoutOf(t, depth);
   if (!layout)
@@ -7928,18 +7918,9 @@ auto GlobalScope::Impl::constRun(FunctionDecl* f, const std::vector<ConstValue>&
       Subst subst = memberSubst(types.unqualified((*self)->type), g->parent ? g->parent->ownScope : nullptr, 0);
       return constCallOn(g, subst, args, self, depth + 1, selfPlace, places, categories, returnPlace);
     }
-  struct Call
-  {
-    ~Call() { --constCalls(); }
-
-    bool ok = ++constCalls() <= 512 && stackRoomLeft();
-  } call;
+  EvaluationCall call; // (past the bound: its why is set)
   if (!call.ok)
-  {
-    if (constWhy().empty())
-      constWhy() = "calls nested more than 512 deep";
     return std::nullopt;
-  }
   // The body counts its own nesting from here: the calls that reached it are the call guard's to
   // bound, and a type written in it converts as deep as it is written, not as deep as the chain
   // (`sizeof(T)` in Limits<T>::max(), six calls into BoundingBox::emptyValue()).
@@ -8868,8 +8849,10 @@ auto GlobalScope::Impl::constStatement(Stmt* s, const TypeContext& ctx, std::vec
 
 auto GlobalScope::Impl::constStatementIn(Stmt* s, const TypeContext& ctx, std::vector<ConstBinding>& env, std::optional<ConstValue>& result, int depth) -> ConstFlow
 {
-  if (depth > 512 || (depth > 64 && !stackRoomLeft()))
+  if (depth > 512)
     return ConstFlow::Failed;
+  if (depth > 64 && !stackRoomLeft())
+    return evaluationTrip("an evaluation nested deeper than the compiler's stack"), ConstFlow::Failed;
   if (++constSteps() > 1000000)
   {
     if (constWhy().empty())

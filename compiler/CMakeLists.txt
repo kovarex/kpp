@@ -106,10 +106,12 @@ if (MSVC)
     target_compile_options(kpp PRIVATE -Wno-missing-field-initializers -Wno-logical-op-parentheses)
   endif()
   target_compile_definitions(kpp PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX WIN32_LEAN_AND_MEAN)
-  target_link_options(kpp PRIVATE /STACK:8388608)  # 8 MB stack for deep ASTs
+  # 1 GB reserved, committed as used: the main thread's and every thread's default (host::compilerStack).
+  target_link_options(kpp PRIVATE /STACK:1073741824)
 else()
   # A POSIX host (design.md, "Targets and hosts", 5): clang or g++ with libstdc++, POSIX threads; the
-  # main thread's stack is the system's (8 MB on Linux, as /STACK gives it on Windows).
+  # main thread's stack is the system's (8 MB on Linux): main.cpp runs the compiler on a thread of
+  # host::compilerStack, every other thread's default (host::useCompilerStackForThreads).
   find_package(Threads REQUIRED)
   target_link_libraries(kpp PRIVATE Threads::Threads ${CMAKE_DL_LIBS})
   # -rdynamic: the compile server's crash report names each frame's function (dladdr reads the

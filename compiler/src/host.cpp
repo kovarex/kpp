@@ -273,6 +273,9 @@ namespace host
     thread.handle = nullptr;
   }
 
+  void useCompilerStackForThreads() {} // (the executable's /STACK is every thread's default)
+  int runOnCompilerStack(int (*fn)(int, char**), int argc, char** argv) { return fn(argc, argv); }
+
   FILE* openFile(const fs::path& path, const char* mode) { return _wfopen(path.c_str(), wide(mode).c_str()); }
   // (cmd /c takes the first and the last quote off a command line that starts with one: the whole is
   // quoted, so that one starting with a quoted program path keeps its quotes)
@@ -650,6 +653,37 @@ namespace host
     pthread_join(*t, nullptr);
     delete t;
     thread.handle = nullptr;
+  }
+
+  void useCompilerStackForThreads()
+  {
+#if defined(__GLIBC__)
+    pthread_attr_t attributes;
+    pthread_attr_init(&attributes);
+    pthread_attr_setstacksize(&attributes, compilerStack);
+    pthread_setattr_default_np(&attributes);
+    pthread_attr_destroy(&attributes);
+#endif
+  }
+
+  int runOnCompilerStack(int (*fn)(int, char**), int argc, char** argv)
+  {
+    struct Run
+    {
+      int (*fn)(int, char**);
+      int argc;
+      char** argv;
+      int result;
+    } run{fn, argc, argv, 0};
+    LargeStackThread thread;
+    if (!startOnLargeStack(compilerStack, [](void* p)
+    {
+      Run* r = static_cast<Run*>(p);
+      r->result = r->fn(r->argc, r->argv);
+    }, &run, thread))
+      return fn(argc, argv); // (no thread: the main one's stack, which the evaluator's stack check still guards)
+    joinThread(thread);
+    return run.result;
   }
 
   FILE* openFile(const fs::path& path, const char* mode) { return fopen(path.c_str(), mode); }

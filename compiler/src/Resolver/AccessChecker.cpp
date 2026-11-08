@@ -1162,6 +1162,52 @@ auto GlobalScope::Impl::stackRoomLeft() -> bool
 #endif
 }
 
+auto GlobalScope::Impl::evaluationTrip(const char* why) -> void
+{
+  if (constWhy().empty())
+    constWhy() = why;
+  ++evaluationTrips;
+}
+
+namespace
+{
+  const char* const namesTooDeep = "constants nested more than 1024 deep (each name's value needing the next one's, as a template recursion does)";
+  const char* const callsTooDeep = "calls nested more than 512 deep";
+  const char* const stackTooDeep = "an evaluation nested deeper than the compiler's stack";
+}
+
+auto GlobalScope::Impl::enterName() -> bool
+{
+  deepestNames = std::max(deepestNames, ++nameEvaluations);
+  if (nameEvaluations > maxNestedNames)
+    return evaluationTrip(namesTooDeep), false;
+  if (!stackRoomLeft())
+    return evaluationTrip(stackTooDeep), false;
+  return true;
+}
+
+auto GlobalScope::Impl::enterCall() -> bool
+{
+  deepestCalls = std::max(deepestCalls, ++constCalls());
+  if (constCalls() > maxNestedCalls)
+    return evaluationTrip(callsTooDeep), false;
+  if (!stackRoomLeft())
+    return evaluationTrip(stackTooDeep), false;
+  return true;
+}
+
+auto GlobalScope::Impl::cachedNestingFits(Nesting needed) -> bool
+{
+  int names = nameEvaluations + needed.names, calls = constCalls() + needed.calls;
+  deepestNames = std::max(deepestNames, names);
+  deepestCalls = std::max(deepestCalls, calls);
+  if (names > maxNestedNames)
+    return evaluationTrip(namesTooDeep), false;
+  if (calls > maxNestedCalls)
+    return evaluationTrip(callsTooDeep), false;
+  return true;
+}
+
 auto GlobalScope::Impl::memberConstant(Decl* d, const TypeContext& ctx, const Subst& classSubst) -> std::optional<ConstValue>
 {
   if (exactLayoutOnly)
@@ -1177,15 +1223,20 @@ auto GlobalScope::Impl::memberConstant(Decl* d, const TypeContext& ctx, const Su
     if (auto it = memberConstants.find(key); it != memberConstants.end())
     {
       replayUses(it->second.uses);
+      if (!cachedNestingFits(it->second.needed))
+        return std::nullopt;
       return it->second.value;
     }
   }
   CollectUses collected;
+  CachedEvaluation evaluation;
   std::optional<ConstValue> v = constValueOfDecl(d, ctx, 0, &classSubst);
+  if (evaluation.tripped())
+    return std::nullopt;
   if (v)
   {
     std::lock_guard lock(memberConstantsMutex);
-    memberConstants.emplace(std::move(key), MemberConstant{*v, collected.uses});
+    memberConstants.emplace(std::move(key), MemberConstant{*v, collected.uses, evaluation.needed()});
   }
   return v;
 }

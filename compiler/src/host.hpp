@@ -46,6 +46,17 @@ namespace host
   bool startOnLargeStack(size_t bytes, void (*fn)(void*), void* arg, LargeStackThread& thread);
   void joinThread(LargeStackThread& thread);
 
+  // The stack of every thread of kpp's (reserved, committed as used): the front end's evaluator and
+  // the code generator recurse as deep as the code they read, and the evaluator's bounds (1024
+  // nested constants, 512 calls, GlobalScope::Impl::enterName) must come before any thread's stack
+  // ends, the same on each: an answer never depends on which thread computed it. On Windows the
+  // executable's own (/STACK, CMakeLists.txt), the main thread's and every thread's default; on a
+  // POSIX host the threads' default from useCompilerStackForThreads on (glibc's), and main runs on
+  // one of its own (runOnCompilerStack).
+  constexpr size_t compilerStack = size_t(1) << 30;
+  void useCompilerStackForThreads();
+  int runOnCompilerStack(int (*fn)(int, char**), int argc, char** argv);
+
   // Whether the host's file names ignore case (Windows'), and the key two spellings of one path share
   // (lower-cased there; its text as it is on POSIX).
 #ifdef _WIN32

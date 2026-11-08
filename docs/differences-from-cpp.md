@@ -615,6 +615,19 @@ static_assert(twice(4) == 8);
 - **Why:** templates as computation are dropped, and a runaway template gets slower with each step.
 - **See:** [design 3][d3].
 
+### Constants nest 1024 deep, counted with nothing made before (built)
+
+- **C++:** about 1024 nested instantiations, counted as the compiler meets them: an instantiation
+  already made costs nothing, so `Sum<1100>::value` compiles after `Sum<25>`, `Sum<50>`, ... were
+  used, and not alone (clang 19).
+- **kpp:** constants whose values need each other nest at most 1024 deep (the one asked included)
+  and calls 512, counted as if
+  nothing had been evaluated before: a cached value keeps how deep its own computation went.
+  `Sum<1100>::value` is no constant wherever it is asked.
+- **Why:** kpp's declarations have no order and its threads take work in no fixed one: counting
+  what happened to be made first would make an answer depend on which thread asked first.
+- **See:** [compile-time evaluation][dconst].
+
 ### Compile-time loops and reflection (built)
 
 - **C++:** recursion over packs, macros, or C++26's reflection.

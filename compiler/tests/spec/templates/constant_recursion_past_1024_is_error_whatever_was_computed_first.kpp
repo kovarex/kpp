@@ -1,0 +1,102 @@
+// spec: how deep constants nest is counted as if nothing had been computed before: Sum<1100>::value is no constant (1100 nested, past the bound of 1024) though Sum<25>, Sum<50>, ... Sum<1075> are asked first, each 25 deeper than the last, and Sum<1000>::value is one; a cached value keeps how deep its own computation went, and an asker nests that much deeper, so no answer depends on what another walk or thread happened to compute first. C++ compilers count only instantiations not made yet: clang compiles this file in this order, not in the reverse one; kpp's declarations have no order
+// (master's kpp at -j 1: Sum<1100>'s own value checked as a constant, read from its cache; its errors at -j 1, 8 and 32 were 10, 115 and 187 for the same functions in the reverse order)
+// kpp: -j 1
+// error: the constexpr variable value of Sum<1100> is no constant
+// error: the constexpr variable value of Sum<1025> is no constant
+// error: the constexpr variable value of Sum<1024> is no constant
+template<int N> struct Sum { static constexpr int value = N + Sum<N - 1>::value; };
+template<> struct Sum<0> { static constexpr int value = 0; };
+int f1() { constexpr int v = Sum<25>::value; return v % 1000; }
+int f2() { constexpr int v = Sum<50>::value; return v % 1000; }
+int f3() { constexpr int v = Sum<75>::value; return v % 1000; }
+int f4() { constexpr int v = Sum<100>::value; return v % 1000; }
+int f5() { constexpr int v = Sum<125>::value; return v % 1000; }
+int f6() { constexpr int v = Sum<150>::value; return v % 1000; }
+int f7() { constexpr int v = Sum<175>::value; return v % 1000; }
+int f8() { constexpr int v = Sum<200>::value; return v % 1000; }
+int f9() { constexpr int v = Sum<225>::value; return v % 1000; }
+int f10() { constexpr int v = Sum<250>::value; return v % 1000; }
+int f11() { constexpr int v = Sum<275>::value; return v % 1000; }
+int f12() { constexpr int v = Sum<300>::value; return v % 1000; }
+int f13() { constexpr int v = Sum<325>::value; return v % 1000; }
+int f14() { constexpr int v = Sum<350>::value; return v % 1000; }
+int f15() { constexpr int v = Sum<375>::value; return v % 1000; }
+int f16() { constexpr int v = Sum<400>::value; return v % 1000; }
+int f17() { constexpr int v = Sum<425>::value; return v % 1000; }
+int f18() { constexpr int v = Sum<450>::value; return v % 1000; }
+int f19() { constexpr int v = Sum<475>::value; return v % 1000; }
+int f20() { constexpr int v = Sum<500>::value; return v % 1000; }
+int f21() { constexpr int v = Sum<525>::value; return v % 1000; }
+int f22() { constexpr int v = Sum<550>::value; return v % 1000; }
+int f23() { constexpr int v = Sum<575>::value; return v % 1000; }
+int f24() { constexpr int v = Sum<600>::value; return v % 1000; }
+int f25() { constexpr int v = Sum<625>::value; return v % 1000; }
+int f26() { constexpr int v = Sum<650>::value; return v % 1000; }
+int f27() { constexpr int v = Sum<675>::value; return v % 1000; }
+int f28() { constexpr int v = Sum<700>::value; return v % 1000; }
+int f29() { constexpr int v = Sum<725>::value; return v % 1000; }
+int f30() { constexpr int v = Sum<750>::value; return v % 1000; }
+int f31() { constexpr int v = Sum<775>::value; return v % 1000; }
+int f32() { constexpr int v = Sum<800>::value; return v % 1000; }
+int f33() { constexpr int v = Sum<825>::value; return v % 1000; }
+int f34() { constexpr int v = Sum<850>::value; return v % 1000; }
+int f35() { constexpr int v = Sum<875>::value; return v % 1000; }
+int f36() { constexpr int v = Sum<900>::value; return v % 1000; }
+int f37() { constexpr int v = Sum<925>::value; return v % 1000; }
+int f38() { constexpr int v = Sum<950>::value; return v % 1000; }
+int f39() { constexpr int v = Sum<975>::value; return v % 1000; }
+int f40() { constexpr int v = Sum<1000>::value; return v % 1000; }
+int f41() { constexpr int v = Sum<1025>::value; return v % 1000; }
+int f42() { constexpr int v = Sum<1050>::value; return v % 1000; }
+int f43() { constexpr int v = Sum<1075>::value; return v % 1000; }
+int f44() { constexpr int v = Sum<1100>::value; return v % 1000; }
+int main()
+{
+  int s = 0;
+  s += f1();
+  s += f2();
+  s += f3();
+  s += f4();
+  s += f5();
+  s += f6();
+  s += f7();
+  s += f8();
+  s += f9();
+  s += f10();
+  s += f11();
+  s += f12();
+  s += f13();
+  s += f14();
+  s += f15();
+  s += f16();
+  s += f17();
+  s += f18();
+  s += f19();
+  s += f20();
+  s += f21();
+  s += f22();
+  s += f23();
+  s += f24();
+  s += f25();
+  s += f26();
+  s += f27();
+  s += f28();
+  s += f29();
+  s += f30();
+  s += f31();
+  s += f32();
+  s += f33();
+  s += f34();
+  s += f35();
+  s += f36();
+  s += f37();
+  s += f38();
+  s += f39();
+  s += f40();
+  s += f41();
+  s += f42();
+  s += f43();
+  s += f44();
+  println(s);
+  return 0;
+}

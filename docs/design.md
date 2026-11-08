@@ -2977,6 +2977,30 @@ a check for stack room), and static members'
 values are memoised per class instance (specs templates/pack_recursion_depth and
 templates/variadic_partial_specialisation).
 
+*Nesting is counted as if nothing were cached* (2026-11-08, the coordinator for kovarex: "an answer
+must never depend on which thread does the work or how deep its stack already is"). Constants nest
+1024 deep, the one asked included (a name's value needing the next one's: a template recursion;
+`constexpr int v = Sum<1022>::value;` nests 1024, v then Sum<1022> down to Sum<0>), and calls 512 deep,
+[implimits]' recommended limits and clang's defaults. A cached answer (a static member's value, a
+trait's answer, a class's layout, a partial specialisation's match) keeps how much deeper its own
+computation nested, and an asker it answers nests that much deeper; past a bound the evaluation
+trips: no answer, why "constants nested more than 1024 deep", and nothing computed while it tripped
+is cached. Each cached computation also has its own budget of steps and values and its own const
+globals' values, and the values budget is per evaluation (it was a thread's for the whole build). C++
+compilers count only the instantiations not made yet, so whether a deep recursion compiles depends on
+the order things are asked (clang compiles Sum<1100> after Sum<25>, Sum<50>, ... and not alone); kpp's
+declarations have no order and its threads no fixed one, so the count is the one with nothing made
+before ([differences][diffnest]). Every thread kpp starts has the same stack, 1 GB reserved
+(host::compilerStack: /STACK on Windows, glibc's thread default and main on a thread of its own on a
+POSIX host; the compile server's build thread), so the bounds come before any thread's stack ends;
+running out of it anyway is a trip, never an answer. Before, an 8 MB thread's stack ended about 980
+constants deep (a static_assert of one 1000 deep failed where a constexpr variable's passed), and
+which cached values a walk found decided whether a recursion past 1024 compiled (the same program
+had 10, 115 and 187 errors at -j 1, 8 and 32). Specs templates/constant_recursion_1024_constants_deep_on_every_thread
+and templates/constant_recursion_past_1024_is_error_whatever_was_computed_first.
+
+[diffnest]: differences-from-cpp.md#constants-nest-1024-deep-counted-with-nothing-made-before-built
+
 *Step 1, done 2026-10-29.* compiler/src/consteval.cpp holds the values (ConstValue: an integer
 normalised to its type's width and signedness, an enumeration with the underlying type it was
 declared with, bool, char, float or double) and C++'s arithmetic on them (ConstArith: literals

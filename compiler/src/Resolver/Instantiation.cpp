@@ -3510,20 +3510,22 @@ auto GlobalScope::Impl::resolveSpecialization(const Ty* classTy, int depth) -> c
     if (auto it = specializationCache.find(classTy); it != specializationCache.end())
     {
       replayUses(it->second.uses);
-      return it->second.type;
+      // (past a bound, no specialization was matched: as computing it here would have tripped)
+      return cachedNestingFits(it->second.needed) ? it->second.type : classTy;
     }
   }
   CollectUses collected;
+  CachedEvaluation evaluation;
   Lookup l;
   if (!lookupInScope(lexicalScopeOf(d), name.last().symbol, l, depth + 1) || !l.overloads)
     return classTy;
   std::vector<const Ty*> args(classTy->args.begin(), classTy->args.end());
   const Ty* spec = matchSpecialization(l, args, depth + 1);
   const Ty* result = spec ? spec : classTy;
-  if (known && depth < 8)
+  if (known && depth < 8 && !evaluation.tripped())
   {
     std::lock_guard lock(specializationCacheMutex);
-    specializationCache.emplace(classTy, Specialization{result, collected.uses});
+    specializationCache.emplace(classTy, Specialization{result, collected.uses, evaluation.needed()});
   }
   return result;
 }

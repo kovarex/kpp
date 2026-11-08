@@ -387,17 +387,22 @@ auto GlobalScope::Impl::traitValue(std::string_view name, const std::vector<cons
       if (recordingDependencies)
         if (auto u = shard.uses.find(key); u != shard.uses.end())
           replayUses(u->second);
-      return it->second;
+      if (!cachedNestingFits(it->second.needed))
+        return std::nullopt;
+      return it->second.value;
     }
   }
   CollectUses collected;
+  CachedEvaluation evaluation;
   std::optional<bool> answer = traitValueUncached(name, a);
+  if (evaluation.tripped())
+    return std::nullopt; // (an answer an evaluation past a bound decided is none)
   if (answer)
   {
     std::unique_lock lock(shard.mutex);
     if (!collected.uses.empty())
       shard.uses.emplace(key, collected.uses);
-    shard.answers.emplace(std::move(key), *answer);
+    shard.answers.emplace(std::move(key), TraitShard::Answer{*answer, evaluation.needed()});
   }
   return answer;
 }

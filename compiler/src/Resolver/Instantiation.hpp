@@ -413,6 +413,7 @@
   {
     const Ty* type;
     std::vector<CollectedUse> uses; // what matching it read (a constant argument's bodies run, ...)
+    Nesting needed;                 // how much deeper matching it nested (CachedEvaluation)
   };
   std::unordered_map<const Ty*, Specialization> specializationCache; // resolveSpecialization's answers for known arguments
 

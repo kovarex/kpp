@@ -89,7 +89,7 @@ int optionError(const std::string& arg)
   return 2;
 }
 
-int main(int argc, char** argv)
+static int compilerMain(int argc, char** argv)
 {
   setvbuf(stdout, nullptr, _IONBF, 0); // progress lines survive a crash
   std::set_terminate([]
@@ -158,4 +158,12 @@ int main(int argc, char** argv)
       return stop ? stopServer(argc - 1, rest.data()) : runClient(argc - 1, rest.data(), compile);
     }
   return compile(argc, argv);
+}
+
+// On the compiler's stack, as every thread kpp starts is (host::compilerStack: the evaluator's bounds
+// come before any thread's stack ends).
+int main(int argc, char** argv)
+{
+  host::useCompilerStackForThreads();
+  return host::runOnCompilerStack(compilerMain, argc, argv);
 }

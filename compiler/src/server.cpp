@@ -946,12 +946,12 @@ namespace
   };
 
   // One build, on a thread of its own: thread-local state (the resolver's, the evaluator's) starts
-  // fresh as in a new process, and the stack is the 8 MB the executable is linked with.
+  // fresh as in a new process, and the stack is the compiler's (host::compilerStack), as every thread's.
   // When the build has answered its client (buildDone), what is left is freeing what it built
   // (about 10 s on the full game): the next request is served meanwhile, the thread finishing on
   // its own. Whoever of the two lets go of the job last deletes it.
 #ifndef _WIN32
-  // POSIX: a pthread of an 8 MB stack; the build's end and answer() each signal the session.
+  // POSIX: a pthread of the compiler's stack; the build's end and answer() each signal the session.
   int runBuild(CompileFunction compile, std::vector<std::string> args, Session& s)
   {
     struct Run
@@ -965,7 +965,7 @@ namespace
     auto* run = new Run{job, s.done, finished};
     pthread_attr_t attributes;
     pthread_attr_init(&attributes);
-    pthread_attr_setstacksize(&attributes, size_t(8) << 20);
+    pthread_attr_setstacksize(&attributes, host::compilerStack);
     pthread_attr_setdetachstate(&attributes, PTHREAD_CREATE_DETACHED);
     pthread_t thread;
     int error = pthread_create(&thread, &attributes, [](void* p) -> void*
@@ -1009,7 +1009,7 @@ namespace
   int runBuild(CompileFunction compile, std::vector<std::string> args, Session& s)
   {
     BuildJob* job = new BuildJob{compile, std::move(args)};
-    HANDLE thread = CreateThread(nullptr, size_t(8) << 20, [](void* p) -> DWORD
+    HANDLE thread = CreateThread(nullptr, host::compilerStack, [](void* p) -> DWORD
     {
       BuildJob* j = static_cast<BuildJob*>(p);
       std::vector<char*> argv;

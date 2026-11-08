@@ -119,7 +119,12 @@
   struct TraitShard
   {
     std::shared_mutex mutex;
-    std::unordered_map<std::string, bool, PointerKeyHash> answers;
+    struct Answer
+    {
+      bool value;
+      Nesting needed; // how much deeper computing it nested (CachedEvaluation)
+    };
+    std::unordered_map<std::string, Answer, PointerKeyHash> answers;
     // What computing an answer read (a recording build's, when it read anything): replayed to each
     // asker it answers.
     std::unordered_map<std::string, std::vector<CollectedUse>, PointerKeyHash> uses;

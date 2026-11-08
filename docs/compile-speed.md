@@ -880,7 +880,7 @@ set (they are in its key, or hashed and checked per build).
   sent first), a u32 count and the bytes, ending with the exit code's frame. The build's stdout and stderr (the CRT streams, descriptors
   1 and 2, and the standard handles clang inherits through system()) are pipes that two threads
   forward as frames, so clang's own messages reach the client too.
-- **One build at a time,** on a new thread with the executable's 8 MB stack, so that thread-local
+- **One build at a time,** on a new thread with the compiler's stack (1 GB reserved, as every thread's), so that thread-local
   state (the resolver's, the evaluator's) starts as in a new process. When the build is done
   (where a process now exits without freeing), the server sends the exit code and lets the client
   go, then frees what the build made; a client arriving meanwhile waits for the pipe.

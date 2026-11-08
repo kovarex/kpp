@@ -1,0 +1,16 @@
+// spec: constants whose values need each other nest 1024 deep, the one asked included: `Sum<1022>::value` asked by a static_assert or a constexpr variable nests 1024 (the asker's constant, then Sum<1022> down to Sum<0>, as `N + Sum<N - 1>::value` asks), a constant wherever it is asked: at namespace scope and in a function, which different threads check; every thread has the compiler's stack (host::compilerStack), so the bound decides, never the stack a thread has left (one more, Sum<1023>, is no constant anywhere: templates/constant_recursion_past_1024_is_error_whatever_was_computed_first)
+// (master's kpp: "static assertion whose condition the compiler cannot evaluate yet" from about 980 deep on, where the thread checking it ran out of its 8 MB stack, while the same recursion in an instance's check went past 1000)
+template<int N> struct Sum { static constexpr int value = N + Sum<N - 1>::value; };
+template<> struct Sum<0> { static constexpr int value = 0; };
+static_assert(Sum<1000>::value == 500500);
+static_assert(Sum<1022>::value == 522753);
+int deepest()
+{
+  constexpr int v = Sum<1022>::value;
+  return v;
+}
+int main()
+{
+  println(Sum<1000>::value, " ", deepest());
+  return 0;
+}

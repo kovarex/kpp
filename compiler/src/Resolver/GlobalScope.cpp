@@ -1190,6 +1190,9 @@ thread_local const std::vector<Token>* GlobalScope::Impl::fallbackTokens = nullp
 thread_local bool GlobalScope::Impl::exactLayoutOnly = false;
 thread_local bool GlobalScope::Impl::layoutNeeded = false;
 thread_local int GlobalScope::Impl::nameEvaluations = 0;
+thread_local int GlobalScope::Impl::deepestNames = 0;
+thread_local int GlobalScope::Impl::deepestCalls = 0;
+thread_local uint64_t GlobalScope::Impl::evaluationTrips = 0;
 thread_local bool GlobalScope::Impl::constCallPlaceRan = false;
 thread_local const GlobalScope::Impl::EnumeratorValues* GlobalScope::Impl::enumeratorValues = nullptr;
 thread_local std::string_view GlobalScope::Impl::fallbackText;

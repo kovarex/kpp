@@ -173,6 +173,14 @@ using namespace resolver_detail;
 // A cached computation's reads, collected (CollectUses): kind 0 is a name (its RecordedName in
 // what's bits), else a use.
 using CollectedUse = std::pair<uint8_t, const void*>;
+
+// How much deeper a cached answer's computation nested its evaluations: names, calls
+// (Impl::CachedEvaluation).
+struct Nesting
+{
+  int names = 0;
+  int calls = 0;
+};
 inline thread_local std::vector<CollectedUse>* usesCollector = nullptr;
 
 // A lookup visits a chain of scopes with one symbol, and a walk asks for one declaration's type

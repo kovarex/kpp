@@ -380,6 +380,7 @@
     // members reached through it (constFieldPath). No aggregate initialization goes through one.
     bool anonymous = false;
     std::vector<CollectedUse> uses; // what computing it read (a recording build's): replayed to each asker
+    Nesting needed;                 // how much deeper computing it nested (CachedEvaluation)
   };
 
   // A field no initializer of an aggregate names: an unnamed bit field (`int : 0;`), padding.

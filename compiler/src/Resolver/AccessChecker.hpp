@@ -202,21 +202,86 @@
 
   std::optional<ConstValue> constCastValue(Type* type, Expr* operand, const TypeContext& ctx, int depth);
 
-  // Whether this thread's stack has room for more nested evaluation (a megabyte kept spare).
+  // Whether this thread's stack has room for more nested evaluation (a megabyte kept spare). Every
+  // thread of the front end has the same large stack (host::compilerStack), so the bounds below
+  // come first; running out of it anyway is a trip of its own (evaluationTrip), never an answer.
   static bool stackRoomLeft();
 
-  // A name's value can need another constant evaluated, which can need another: a template
-  // recursion (`1 + IndexInTemplateList<T, R...>::value` in a base's argument, once per type of
-  // an 80-type list) nests evaluations once per level. Each name's evaluation starts its calls'
-  // depth afresh; how many nest is bounded here, and by the stack left.
+  // Evaluations nest: a name's value can need another constant's, a template recursion (`N +
+  // Sum<N - 1>::value`, `1 + IndexInTemplateList<T, R...>::value` in a base's argument) once per
+  // level, and a call another call. Each name's evaluation starts its expressions' depth afresh; how
+  // many names and calls nest is bounded: 1024 and 512 ([implimits]' nested template instantiations
+  // and constexpr calls, clang's defaults). Counted as if nothing were cached: a cached answer
+  // (CachedEvaluation) keeps how much deeper its computation nested, and an asker it answers nests
+  // that much deeper (cachedNestingFits). So what another thread happened to compute first changes
+  // no answer (a template recursion 1100 deep compiled or not by the order of the walks, its errors
+  // changed with -j; thread C's trial, an error whose instance changed with --jobs). Past a bound, or
+  // past the stack's end, the evaluation trips (evaluationTrips, a count that only grows): no answer,
+  // and nothing computed while it tripped is cached.
+  static constexpr int maxNestedNames = 1024, maxNestedCalls = 512;
   static thread_local int nameEvaluations;
+  static thread_local int deepestNames, deepestCalls; // the most nested so far in the innermost CachedEvaluation
+  static thread_local uint64_t evaluationTrips;
+  static void evaluationTrip(const char* why);
+  static bool enterName(); // ++nameEvaluations; false (a trip) past the bound or the stack
+  static bool enterCall(); // ++constCalls(); likewise
   struct NameEvaluation
   {
-    NameEvaluation() : ok(++nameEvaluations <= 1024 && stackRoomLeft()) {}
+    NameEvaluation() : ok(enterName()) {}
     ~NameEvaluation() { --nameEvaluations; }
 
     bool ok;
   };
+  struct EvaluationCall
+  {
+    EvaluationCall() : ok(enterCall()) {}
+    ~EvaluationCall() { --constCalls(); }
+
+    bool ok;
+  };
+  // A cached answer's computation (memberConstant, constLayoutOf, resolveSpecialization,
+  // traitValue): how much deeper it nested (needed), whether it tripped (then it is not cached), and
+  // its own budget of steps and values and its own const globals' values (constGlobalValues), as if
+  // nothing had been evaluated before it: an answer, and what it needed, are the same whoever asked
+  // first.
+  struct CachedEvaluation
+  {
+    CachedEvaluation()
+      : names(nameEvaluations), calls(constCalls()), outerNames(deepestNames), outerCalls(deepestCalls), trips(evaluationTrips), steps(constSteps()),
+        made(constValuesMade())
+    {
+      deepestNames = names;
+      deepestCalls = calls;
+      constSteps() = 0;
+      constValuesMade() = 0;
+      std::swap(globals, constGlobalValues());
+    }
+    ~CachedEvaluation()
+    {
+      deepestNames = std::max(outerNames, deepestNames);
+      deepestCalls = std::max(outerCalls, deepestCalls);
+      constSteps() = steps;
+      constValuesMade() = made;
+      std::swap(globals, constGlobalValues());
+    }
+    CachedEvaluation(const CachedEvaluation&) = delete;
+
+    Nesting needed() const { return {deepestNames - names, deepestCalls - calls}; }
+    bool tripped() const { return evaluationTrips != trips; }
+
+    int names;
+    int calls;
+    int outerNames;
+    int outerCalls;
+    uint64_t trips;
+    uint64_t steps;
+    uint64_t made;
+    std::map<std::pair<Decl*, std::vector<const Ty*>>, ConstValue> globals;
+    CachedEvaluation& operator=(const CachedEvaluation&) = delete;
+  };
+  // A cached answer whose computation nested `needed` deeper, asked here: false (a trip) when that
+  // is past a bound, as computing it here would have been.
+  static bool cachedNestingFits(Nesting needed);
 
   // A static member's value for a class instance's arguments, kept: a template recursion asks for
   // the same ones over and over. Not while a static_assert is checked (its class layouts are the
@@ -226,6 +291,7 @@
   {
     ConstValue value;
     std::vector<CollectedUse> uses; // what computing it read: an asker it answers read it too
+    Nesting needed;
   };
   std::map<std::vector<const void*>, MemberConstant> memberConstants;
   std::optional<ConstValue> memberConstant(Decl* d, const TypeContext& ctx, const Subst& classSubst);
