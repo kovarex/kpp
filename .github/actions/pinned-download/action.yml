@@ -1,0 +1,72 @@
+# A pinned file (a release zip CI needs: ccache's, SDL3's) kept by actions/cache under its SHA-256, so
+# that a job downloads it only on a cache miss: GitHub's release downloads answered 503 and 504 for over
+# an hour on 2026-11-08 and turned three master runs red. On a miss it is downloaded (four tries, 15, 30
+# and 45 s apart), checked against the SHA-256 and saved to the cache at once, so that a later failure
+# of the job does not lose it. A cached file is checked too. Linux and Windows runners (bash: Git's on
+# Windows). Sets the output `file`, the file's path.
+name: pinned-download
+description: a release file by its SHA-256, from actions/cache or downloaded and checked
+inputs:
+  url:
+    description: where to download it on a cache miss
+    required: true
+  sha256:
+    description: its SHA-256, lower case
+    required: true
+  name:
+    description: its file name
+    required: true
+outputs:
+  file:
+    description: the checked file's path
+    value: ${{ steps.fetch.outputs.file }}
+runs:
+  using: composite
+  steps:
+    - name: Restore ${{ inputs.name }}
+      id: restore
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ runner.temp }}/pinned/${{ inputs.sha256 }}
+        key: pinned-${{ inputs.sha256 }}
+
+    - name: Fetch ${{ inputs.name }}
+      id: fetch
+      shell: bash
+      env:
+        PINNED_URL: ${{ inputs.url }}
+        PINNED_SHA256: ${{ inputs.sha256 }}
+        PINNED_DIR: ${{ runner.temp }}/pinned/${{ inputs.sha256 }}
+        PINNED_NAME: ${{ inputs.name }}
+      run: |
+        # (Git's bash on Windows: the runner's D:\a\_temp as /d/a/_temp)
+        dir="$PINNED_DIR"
+        if command -v cygpath >/dev/null; then dir="$(cygpath -u "$dir")"; fi
+        file="$dir/$PINNED_NAME"
+        digest() { sha256sum "$file" | cut -d' ' -f1 | tr -d '\\*'; }
+        check() { [ -f "$file" ] && [ "$(digest)" = "$PINNED_SHA256" ]; }
+        if check; then
+          echo "$PINNED_NAME from the cache (SHA-256 checked)"
+        else
+          mkdir -p "$dir"
+          for try in 1 2 3 4; do
+            if curl -fsSL -S -o "$file" "$PINNED_URL"; then
+              if check; then echo "$PINNED_NAME downloaded from $PINNED_URL (SHA-256 checked)"; break; fi
+              echo "$PINNED_NAME from $PINNED_URL has SHA-256 $(digest), not $PINNED_SHA256"
+            fi
+            rm -f "$file"
+            [ "$try" -lt 4 ] || { echo "no $PINNED_NAME with SHA-256 $PINNED_SHA256 from $PINNED_URL after 4 tries"; exit 1; }
+            echo "$PINNED_NAME, try $try failed; again in $((15 * try)) s"
+            sleep $((15 * try))
+          done
+          echo "fetched=1" >> "$GITHUB_OUTPUT"
+        fi
+        if command -v cygpath >/dev/null; then file="$(cygpath -w "$file")"; fi
+        echo "file=$file" >> "$GITHUB_OUTPUT"
+
+    - name: Save ${{ inputs.name }}
+      if: steps.fetch.outputs.fetched == '1'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ runner.temp }}/pinned/${{ inputs.sha256 }}
+        key: pinned-${{ inputs.sha256 }}

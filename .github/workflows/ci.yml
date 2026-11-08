@@ -66,23 +66,24 @@ jobs:
           key: ccache-${{ hashFiles('compiler/src/**', 'compiler/CMakeLists.txt', 'compiler/*.cmake') }}
           restore-keys: ccache-
 
+      # (its zip kept by actions/cache under its SHA-256: GitHub's release download answered 504 on
+      # 2026-11-08 and failed the build job of three pushes)
+      - name: ccache's zip
+        id: ccache-zip
+        uses: ./.github/actions/pinned-download
+        with:
+          url: ${{ env.CCACHE_URL }}
+          sha256: ${{ env.CCACHE_SHA256 }}
+          name: ccache-4.10.2-windows-x86_64.zip
+
       - name: ccache
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $ProgressPreference = 'SilentlyContinue'
-          [Net.ServicePointManager]::SecurityProtocol = 'Tls12'
           $dir = "${{ runner.workspace }}\ccache-tool"
           New-Item -ItemType Directory -Force $dir | Out-Null
-          # Four tries, 15, 30 and 45 s apart: GitHub's release download answered 504 twice on 2026-11-08
-          # (11:47 and 12:03 UTC) and failed the build job of two pushes.
-          foreach ($try in 1..4) {
-            try { Invoke-WebRequest $env:CCACHE_URL -OutFile "$dir\ccache.zip" -UseBasicParsing; break }
-            catch { if ($try -eq 4) { throw } ; Write-Host "ccache download, try $try`: $($_.Exception.Message)"; Start-Sleep -Seconds (15 * $try) }
-          }
-          $hash = (Get-FileHash -Algorithm SHA256 "$dir\ccache.zip").Hash.ToLowerInvariant()
-          if ($hash -ne $env:CCACHE_SHA256) { throw "ccache's zip has SHA-256 $hash, not $env:CCACHE_SHA256" }
-          Expand-Archive -Force "$dir\ccache.zip" $dir
+          Expand-Archive -Force "${{ steps.ccache-zip.outputs.file }}" $dir
           $exe = (Resolve-Path "$dir\ccache-4.10.2-windows-x86_64\ccache.exe").Path
           "KPP_CCACHE=$exe" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
           "CCACHE_DIR=${{ runner.workspace }}\ccache" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
@@ -209,11 +210,10 @@ jobs:
     env:
       # Upstream SDL 3.4.18's headers stand in for C:\Factorio\libraries\SDL3\include (the same release;
       # the game's copy adds one function) for the two interop snippets that import SDL3/SDL.h. The zip
-      # comes from kpp.net's mirror (kppnet/registry/layout.md), named by its SHA-256, or from SDL's
-      # release on github.com until it is mirrored there; actions/cache keeps it under its SHA-256.
+      # is SDL's release on github.com, kept by actions/cache under its SHA-256 (pinned-download).
       SDL_NAME: SDL3-devel-3.4.18-VC.zip
       SDL_SHA256: 78d84602ae616cfe26b33a73b7d3b9b6b56e8a6650e53d92c9c6ca938f747acd
-      SDL_FALLBACK: https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-devel-3.4.18-VC.zip
+      SDL_URL: https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-devel-3.4.18-VC.zip
     steps:
       - uses: actions/checkout@v4
 
@@ -222,47 +222,23 @@ jobs:
           name: kpp
           path: compiler/build
 
-      - name: SDL3 cache
-        uses: actions/cache@v4
+      - name: SDL3's zip
+        id: sdl-zip
+        uses: ./.github/actions/pinned-download
         with:
-          path: ${{ runner.workspace }}\sdl
-          key: sdl-${{ env.SDL_SHA256 }}
+          url: ${{ env.SDL_URL }}
+          sha256: ${{ env.SDL_SHA256 }}
+          name: ${{ env.SDL_NAME }}
 
-      # kpp.net's registry store is written over SSH by tools/release/publish.ps1 (docs/build.md,
-      # "Continuous integration"), only in the steps that need it: the secret KPP_NET_SSH_KEY (a
-      # private key kovarex authorises in NFS's keychain), the repository variables KPP_NET_SSH
-      # (user@host) and KPP_NET_KNOWN_HOSTS (the server's host key line). Without the secret, nothing
-      # goes to kpp.net and the step says so.
       - name: SDL3 headers
         shell: powershell
-        env:
-          KPP_NET_SSH_KEY: ${{ secrets.KPP_NET_SSH_KEY }}
-          KPP_NET_KNOWN_HOSTS: ${{ vars.KPP_NET_KNOWN_HOSTS }}
         run: |
           $ErrorActionPreference = 'Stop'
           $dir = "${{ runner.workspace }}\sdl"
+          Expand-Archive -Force "${{ steps.sdl-zip.outputs.file }}" $dir
           $env:KPP_SDL_INCLUDE = "$dir\SDL3-3.4.18\include"
-          "KPP_SDL_INCLUDE=$env:KPP_SDL_INCLUDE" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
-          if (-not (Test-Path "$env:KPP_SDL_INCLUDE\SDL3\SDL.h")) {
-            New-Item -ItemType Directory -Force $dir | Out-Null
-            [Net.ServicePointManager]::SecurityProtocol = 'Tls12'
-            $zip = "$dir\$env:SDL_NAME"
-            function Fetch([string]$url) {
-              try { Invoke-WebRequest $url -OutFile $zip -UseBasicParsing } catch { Write-Host "not at $url ($($_.Exception.Message))"; return $false }
-              $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
-              if ($hash -ne $env:SDL_SHA256) { Write-Host "$url has SHA-256 $hash, not $env:SDL_SHA256"; return $false }
-              Write-Host "SDL3 from $url"; return $true
-            }
-            if (-not (Fetch "https://kpp.net/registry/mirror/$env:SDL_SHA256/$env:SDL_NAME")) {
-              if (-not (Fetch $env:SDL_FALLBACK)) { throw 'no SDL3 zip with the expected SHA-256' }
-              # Not mirrored yet: a master run with kpp.net's key puts it there (once, from one job).
-              if ('${{ github.event_name }}' -ne 'pull_request' -and '${{ github.ref }}' -eq 'refs/heads/master' -and '${{ matrix.config }}/${{ matrix.shard }}' -eq 'debug/1') {
-                tools\release\publish.ps1 -Mirror -KppNet "${{ vars.KPP_NET_SSH }}" -Files $zip
-              }
-            }
-            Expand-Archive -Force $zip $dir
-          }
           if (-not (Test-Path "$env:KPP_SDL_INCLUDE\SDL3\SDL.h")) { throw "no SDL3\SDL.h in $env:KPP_SDL_INCLUDE" }
+          "KPP_SDL_INCLUDE=$env:KPP_SDL_INCLUDE" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
 
       - name: Tools
         shell: powershell
@@ -305,11 +281,10 @@ jobs:
     permissions:
       contents: read
     env:
-      # The two interop snippets that import SDL3/SDL.h, as the spec job has them (its SDL3 steps,
-      # without their upload to kpp.net's mirror).
+      # The two interop snippets that import SDL3/SDL.h, as the spec job has them (its SDL3 steps).
       SDL_NAME: SDL3-devel-3.4.18-VC.zip
       SDL_SHA256: 78d84602ae616cfe26b33a73b7d3b9b6b56e8a6650e53d92c9c6ca938f747acd
-      SDL_FALLBACK: https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-devel-3.4.18-VC.zip
+      SDL_URL: https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-devel-3.4.18-VC.zip
     steps:
       - uses: actions/checkout@v4
 
@@ -318,35 +293,23 @@ jobs:
           name: kpp
           path: compiler/build
 
-      - name: SDL3 cache
-        uses: actions/cache@v4
+      - name: SDL3's zip
+        id: sdl-zip
+        uses: ./.github/actions/pinned-download
         with:
-          path: ${{ runner.workspace }}\sdl
-          key: sdl-${{ env.SDL_SHA256 }}
+          url: ${{ env.SDL_URL }}
+          sha256: ${{ env.SDL_SHA256 }}
+          name: ${{ env.SDL_NAME }}
 
       - name: SDL3 headers
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $dir = "${{ runner.workspace }}\sdl"
+          Expand-Archive -Force "${{ steps.sdl-zip.outputs.file }}" $dir
           $env:KPP_SDL_INCLUDE = "$dir\SDL3-3.4.18\include"
-          "KPP_SDL_INCLUDE=$env:KPP_SDL_INCLUDE" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
-          if (-not (Test-Path "$env:KPP_SDL_INCLUDE\SDL3\SDL.h")) {
-            New-Item -ItemType Directory -Force $dir | Out-Null
-            [Net.ServicePointManager]::SecurityProtocol = 'Tls12'
-            $zip = "$dir\$env:SDL_NAME"
-            function Fetch([string]$url) {
-              try { Invoke-WebRequest $url -OutFile $zip -UseBasicParsing } catch { Write-Host "not at $url ($($_.Exception.Message))"; return $false }
-              $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
-              if ($hash -ne $env:SDL_SHA256) { Write-Host "$url has SHA-256 $hash, not $env:SDL_SHA256"; return $false }
-              Write-Host "SDL3 from $url"; return $true
-            }
-            if (-not (Fetch "https://kpp.net/registry/mirror/$env:SDL_SHA256/$env:SDL_NAME")) {
-              if (-not (Fetch $env:SDL_FALLBACK)) { throw 'no SDL3 zip with the expected SHA-256' }
-            }
-            Expand-Archive -Force $zip $dir
-          }
           if (-not (Test-Path "$env:KPP_SDL_INCLUDE\SDL3\SDL.h")) { throw "no SDL3\SDL.h in $env:KPP_SDL_INCLUDE" }
+          "KPP_SDL_INCLUDE=$env:KPP_SDL_INCLUDE" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
 
       # The sysroot, kept under the script's hash (which pins base.txz's SHA-256): a cache hit
       # downloads nothing from FreeBSD's archive.
@@ -854,7 +817,7 @@ jobs:
     env:
       SDL_NAME: SDL3-devel-3.4.18-VC.zip
       SDL_SHA256: 78d84602ae616cfe26b33a73b7d3b9b6b56e8a6650e53d92c9c6ca938f747acd
-      SDL_FALLBACK: https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-devel-3.4.18-VC.zip
+      SDL_URL: https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-devel-3.4.18-VC.zip
     steps:
       - uses: actions/checkout@v4
         with:
@@ -897,13 +860,20 @@ jobs:
           path: ~/debs
           key: linux-arm64-debs-${{ github.run_id }}-${{ github.run_attempt }}
 
+      - name: SDL3's zip
+        id: sdl-zip
+        uses: ./.github/actions/pinned-download
+        with:
+          url: ${{ env.SDL_URL }}
+          sha256: ${{ env.SDL_SHA256 }}
+          name: ${{ env.SDL_NAME }}
+
       - name: SDL3 headers
         run: |
           dir="$RUNNER_TEMP/sdl"
           mkdir -p "$dir"
-          fetch() { curl -fsSL --retry 3 -o "$dir/$SDL_NAME" "$1" && echo "$SDL_SHA256  $dir/$SDL_NAME" | sha256sum -c -; }
-          fetch "https://kpp.net/registry/mirror/$SDL_SHA256/$SDL_NAME" || fetch "$SDL_FALLBACK"
-          unzip -q "$dir/$SDL_NAME" 'SDL3-3.4.18/include/*' -d "$dir"
+          unzip -q "${{ steps.sdl-zip.outputs.file }}" 'SDL3-3.4.18/include/*' -d "$dir"
+          test -f "$dir/SDL3-3.4.18/include/SDL3/SDL.h"
           echo "KPP_SDL_INCLUDE=$dir/SDL3-3.4.18/include" >> "$GITHUB_ENV"
 
       - name: Build kpp

@@ -1306,10 +1306,15 @@ Triggers (kovarex, 2026-10-31, chosen from the costs below):
   C:\Factorio, private source that is not on the runner; factorio-in-kpp's own CI is the game's check.
 - **SDL3 headers:** the two interop snippets that import SDL3/SDL.h get upstream SDL 3.4.18's headers
   through `KPP_SDL_INCLUDE` (run_spec.py). That is the game's release; the game's copy adds only
-  `SDL_GetDisplayInternalDriverData`. The zip comes from kpp.net's mirror,
-  `https://kpp.net/registry/mirror/<sha256>/SDL3-devel-3.4.18-VC.zip`, or from SDL's release on
-  github.com until it is there. Either copy must have the SHA-256 in ci.yml (`SDL_SHA256`), or the
-  step fails. A master run that had to fall back mirrors the zip, when it has kpp.net's key.
+  `SDL_GetDisplayInternalDriverData`. The zip is SDL's release on github.com, with the SHA-256 in
+  ci.yml (`SDL_SHA256`), or the step fails.
+- **Pinned downloads:** the release files CI takes from github.com (SDL3's zip, ccache's) go through
+  `.github/actions/pinned-download`: actions/cache keeps each under its SHA-256 (`pinned-<sha256>`), so
+  a job downloads it only on a cache miss, four tries 15, 30 and 45 s apart, and saves it at once,
+  before the job's later steps can fail. A cached copy is checked against the SHA-256 too. GitHub's
+  release downloads answered 503 and 504 for over an hour on 2026-11-08 and turned three master runs
+  red; the cache replaced kpp.net's mirror of the SDL3 zip, which needed CI to write to kovarex's
+  server (kovarex 2026-11-08, through the coordinator).
 - **Clang for the snippets' C sources:** clang comes from vswhere through `KPP_CLANG`, because the
   runner's Visual Studio is Enterprise. Node.js must be on the runner, for run_tests' LSP smoke test
   and the package's VS Code extension; the step fails without it.
@@ -1432,8 +1437,8 @@ The repositories' home is to be a Forgejo forge on kpp.net, with GitHub as a mir
     its Clang component, Node.js and Python runs `forgejo-runner` in host mode.
   - **`concurrency`:** GitHub's one run at a time, with one waiting (and a pull request's older run
     cancelled). Forgejo Actions may not honour it; there, every push runs, side by side.
-  - **The SDL3 headers** come from kpp.net's mirror, with libsdl-org's release on github.com
-    (`SDL_FALLBACK`) as the fallback until the zip is mirrored.
+  - **The SDL3 headers** come from libsdl-org's release on github.com (`SDL_URL`), kept by the
+    cache (pinned-download); whether Forgejo's actions/cache keeps them has not been checked.
   - **The job's token:** `github.token` on both. On Forgejo it must be allowed to write releases.
 
 Cost, estimated before any runner run. These are measured on PC-PRACOVNA pinned to 2 logical CPUs

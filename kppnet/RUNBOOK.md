@@ -113,7 +113,7 @@ Put the `.htaccess` from [registry/layout.md](registry/layout.md) into `/home/pu
 Libraries (stage 1) are published by a maintainer's `kpp publish`.
 
 ## 8. CI's access to kpp.net (kovarex)
-CI writes kpp's packages to `registry/kpp/` and mirrored files to `registry/mirror/` with
+CI writes kpp's packages to `registry/kpp/` with
 `tools/release/publish.ps1`, over OpenSSH (ci.yml; docs/build.md "Continuous integration").
 Without these settings it skips kpp.net and says so.
 1. On PC-PRACOVNA, make a key for CI only, without a passphrase:
@@ -129,9 +129,8 @@ Without these settings it skips kpp.net and says so.
 
    Then delete the local copy of `kppnet-ci`.
 5. Check: run ci on master by hand (Actions > ci > Run workflow). Its log says it published to
-   kpp.net, and https://kpp.net/registry/kpp/latest.json names the run's version. The first such
-   run also mirrors the SDL3 zip to `registry/mirror/<sha256>/`, and later runs fetch it from
-   there.
+   kpp.net, and https://kpp.net/registry/kpp/latest.json names the run's version. (CI no longer
+   mirrors the SDL3 zip: actions/cache keeps it, 2026-11-08.)
 
 ## Running it
 - **Realm upgrades:** NFS's "late" setting upgrades about every six months. Before switching, run
