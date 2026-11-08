@@ -1,0 +1,46 @@
+// spec: a reference bound to an aggregate temporary (`const H& h = H{Point{1}};`, `H&& r = ...`, `const H& b = {Point{3}};`, `const auto& a = ...`, a global's, a static local's) keeps the temporaries the aggregate's reference members bind as long as itself, destroyed after the aggregate, the last made first ([class.temporary] 6: they are bound to the members of an object whose lifetime the reference extends); a global's and a static's at the program's end. clang's and g++'s output
+// found by thread B (2026-11-08) beside language/temporary_array_outside_a_reference: each such temporary died with the declaration (a global's and a static's with their initializer, before main), and the members referred to destroyed objects; `const H& b = {Point{3}};` was "a conversion from Point to H"
+struct Point
+{
+  int x;
+  ~Point() { println("drop ", x); }
+};
+struct H { const Point& p; };
+struct Two { const Point& a; const Point& b; };
+const H& g = H{Point{5}};
+int fromStatic()
+{
+  static const H& s = H{Point{6}};
+  return s.p.x;
+}
+int main()
+{
+  println("g ", g.p.x);
+  println("s ", fromStatic());
+  {
+    const H& h = H{Point{1}};
+    println("held ", h.p.x);
+  }
+  println("reference done");
+  {
+    H&& r = H{Point{2}};
+    println("held ", r.p.x);
+  }
+  println("rvalue done");
+  {
+    const H& b = {Point{3}};
+    println("held ", b.p.x);
+  }
+  println("list done");
+  {
+    const Two& t = Two{Point{7}, Point{8}};
+    println("held ", t.a.x + t.b.x);
+  }
+  println("two done");
+  {
+    const auto& a = H{Point{9}};
+    println("held ", a.p.x);
+  }
+  println("auto done");
+  return 0;
+}

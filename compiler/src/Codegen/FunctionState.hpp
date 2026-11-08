@@ -198,10 +198,12 @@
     std::vector<Object> statementTemps;       // Temporaries of the current full-expression.
     Node* checkedCall = nullptr;              // The call a check statement tests, and its arguments.
     std::vector<CheckedArgument> checkedArguments;
-    // While a variable is initialised with braces (`Holder h{T(1)}`, `= {...}`, `auto h = Holder{...}`):
-    // the elements of its brace lists, nested ones included. A temporary one of them makes that a
-    // reference member binds lives as long as the variable ([class.temporary] 6), never only to the
-    // end of the declaration (bindReferenceMember records it in extendedTemporaries).
+    // While a variable is initialised with braces (`Holder h{T(1)}`, `= {...}`, `auto h = Holder{...}`,
+    // a reference's aggregate temporary `const Holder& r = Holder{...}`): the elements of its brace
+    // lists, nested lists and their elements included (extendedElementsOf, ExtendingScope). A
+    // temporary one of them makes that a reference member binds lives as long as the variable
+    // ([class.temporary] 6), never only to the end of the declaration (bindReferenceMember records
+    // it in extendedTemporaries).
     const std::vector<const Expr*>* extendingElements = nullptr;
     std::vector<std::string> extendedTemporaries;
     // A variable of static storage so initialised (a global, a static local): such a temporary is an

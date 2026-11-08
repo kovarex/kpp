@@ -287,7 +287,7 @@ auto codegen::Emitter::staticLocal(VariableDecl* v, const Ty* t) -> void
     ; // (its value is there)
   else if (isRef)
     fn += "  store ptr " + staticReferenceTarget(v, name, t, v->init, v, perThread) + ", ptr " + name + "\n";
-  else if (v->init && isClass(t))
+  else if (v->init && (isClass(t) || (t->kind == TyKind::Array && v->init->kind == NodeKind::BraceInitExpr)))
     initializeExtending(name, t, v, v->init, name, (v->flags & DF_ThreadLocal) != 0);
   else if (v->init)
     initializeFrom(name, t, v->init, v);
@@ -306,55 +306,105 @@ auto codegen::Emitter::staticLocal(VariableDecl* v, const Ty* t) -> void
   startBlock(done);
 }
 
-auto codegen::Emitter::initializeExtending(const std::string& slot, const Ty* t, VariableDecl* v, Expr* init, const std::string& staticName, bool threadLocal) -> void
+auto codegen::Emitter::extendedElementsOf(Expr* init, const Ty* cls, Node* at) -> std::vector<const Expr*>
 {
-  // The elements of its brace lists (`Outer o{{T(3)}, 4}`), not those of a list inside an element
-  // (a call's argument `f(Holder{T(2)})`, whose temporary dies with the statement).
   std::vector<const Expr*> elements;
+  while (init && init->kind == NodeKind::ParenExpr)
+    init = static_cast<ParenExpr*>(init)->inner;
+  if (init && init->kind == NodeKind::FunctionalCastExpr)
+  {
+    // A list naming the class (`Holder h = Holder{T(3)}`, `auto h = ...`, `const Holder& r = ...`):
+    // the prvalue initializes the object itself ([dcl.init.general] 17.6.1, [expr.type.conv] 2), its
+    // list as the variable's own would, when the class is an aggregate (a constructor's arguments
+    // are its parameters'). Until 2026-11-08 such temporaries died with the declaration, as clang 19
+    // has them; g++ 13 and MSVC keep them, as the standard says.
+    auto* c = static_cast<FunctionalCastExpr*>(init);
+    const Ty* named = init->ty ? withCurrentArgs(types.unqualified(types.stripRef(init->ty))) : nullptr;
+    if (!c->braced || c->args.size() != 1 || c->args[0]->kind != NodeKind::BraceInitExpr || !cls || !named || !isClass(named) || !isClass(cls) ||
+        types.isDependent(named) || types.isDependent(cls) || canonicalClass(named, at) != canonicalClass(cls, at) || hasUserConstructors(classDef(named->decl, at)))
+      return elements;
+    init = c->args[0];
+  }
+  if (!init || init->kind != NodeKind::BraceInitExpr || static_cast<BraceInitExpr*>(init)->text)
+    return elements;
+  // A class with constructors takes its list as a constructor's arguments, whose temporaries die with
+  // the statement (a parameter's); an aggregate's and an array's elements initialize its parts.
+  if (cls && isClass(cls) && !types.isDependent(cls) && hasUserConstructors(classDef(cls->decl, at)))
+    return elements;
+  // The elements of its lists (`Outer o{{T(3)}, 4}`, `Holder hs[2] = {{T(1)}, {T(2)}}`) and the nested
+  // lists themselves (`Holder h{{1, 2}}`: the list a reference member binds makes the temporary), not
+  // those of a list inside an element (a call's argument `f(Holder{T(2)})`, whose temporary dies with
+  // the statement).
   auto collect = [&](auto& self, Expr* e) -> void
   {
     while (e && e->kind == NodeKind::ParenExpr)
       e = static_cast<ParenExpr*>(e)->inner;
     if (!e)
       return;
+    elements.push_back(e);
     if (e->kind == NodeKind::BraceInitExpr && !static_cast<BraceInitExpr*>(e)->text)
       for (Expr* a : static_cast<BraceInitExpr*>(e)->args)
         self(self, a);
-    else
-      elements.push_back(e);
   };
-  if (init->kind == NodeKind::BraceInitExpr)
-    collect(collect, init);
-  if (elements.empty())
-  {
-    initializeFrom(slot, t, init, v, ConversionContext::Copy); // (`T x = v;`; `T x(v)` and `T x{v}` are a cast and a list, each its own path)
-    return;
-  }
-  const std::vector<const Expr*>* outerElements = extendingElements;
-  std::vector<std::string> outerExtended = std::move(extendedTemporaries);
-  std::string outerStatic = std::move(extendingStatic);
-  bool outerThreadLocal = extendingThreadLocal;
-  uint32_t outerCount = extendingCount;
-  extendedTemporaries.clear();
-  extendingElements = &elements;
-  extendingStatic = staticName;
-  extendingThreadLocal = threadLocal;
-  extendingCount = 0;
-  initializeFrom(slot, t, init, v);
-  extendingElements = outerElements;
-  extendingStatic = std::move(outerStatic);
-  extendingThreadLocal = outerThreadLocal;
-  extendingCount = outerCount;
-  // A local's: destroyed when its scope ends, after v (pushed after them).
-  for (const std::string& addr : extendedTemporaries)
-    for (size_t i = statementTemps.size(); i-- > 0;)
-      if (statementTemps[i].addr == addr && !statementTemps[i].unwindOnly && !statementTemps[i].freeMemory && !statementTemps[i].exception)
+  for (Expr* a : static_cast<BraceInitExpr*>(init)->args)
+    collect(collect, a);
+  return elements;
+}
+
+codegen::Emitter::ExtendingScope::ExtendingScope(Emitter& e, const std::vector<const Expr*>& elements, const std::string& staticName, bool threadLocal, uint32_t count)
+  : e(e)
+  , outerElements(e.extendingElements)
+  , outerExtended(std::move(e.extendedTemporaries))
+  , outerStatic(std::move(e.extendingStatic))
+  , outerThreadLocal(e.extendingThreadLocal)
+  , outerCount(e.extendingCount)
+{
+  e.extendedTemporaries.clear();
+  e.extendingElements = &elements;
+  e.extendingStatic = staticName;
+  e.extendingThreadLocal = threadLocal;
+  e.extendingCount = count;
+}
+
+codegen::Emitter::ExtendingScope::~ExtendingScope()
+{
+  e.extendingElements = outerElements;
+  e.extendedTemporaries = std::move(outerExtended);
+  e.extendingStatic = std::move(outerStatic);
+  e.extendingThreadLocal = outerThreadLocal;
+  e.extendingCount = outerCount;
+}
+
+auto codegen::Emitter::ExtendingScope::keepInScope() -> void
+{
+  for (const std::string& addr : e.extendedTemporaries)
+    for (size_t i = e.statementTemps.size(); i-- > 0;)
+      if (e.statementTemps[i].addr == addr && !e.statementTemps[i].unwindOnly && !e.statementTemps[i].freeMemory && !e.statementTemps[i].exception)
       {
-        scopes.back().push_back(statementTemps[i]);
-        statementTemps.erase(statementTemps.begin() + i);
+        e.scopes.back().push_back(e.statementTemps[i]);
+        e.statementTemps.erase(e.statementTemps.begin() + i);
         break;
       }
-  extendedTemporaries = std::move(outerExtended);
+  e.extendedTemporaries.clear();
+}
+
+auto codegen::Emitter::initializeExtending(const std::string& slot, const Ty* t, VariableDecl* v, Expr* init, const std::string& staticName, bool threadLocal,
+                                           ConversionContext arrayContext) -> void
+{
+  std::vector<const Expr*> elements = extendedElementsOf(init, t, v);
+  // A class's `T x = v;` and `= Holder{...}` copy-initialize (`T x(v)` and `T x{v}` are a cast and a
+  // list, each its own path); an array as its caller says.
+  ConversionContext context = !isClass(t) ? arrayContext
+                              : elements.empty() || init->kind != NodeKind::BraceInitExpr ? ConversionContext::Copy
+                                                                                         : ConversionContext::Unknown;
+  if (elements.empty())
+  {
+    initializeFrom(slot, t, init, v, context);
+    return;
+  }
+  ExtendingScope extending(*this, elements, staticName, threadLocal, 0);
+  initializeFrom(slot, t, init, v, context);
+  extending.keepInScope(); // (a local's: destroyed when its scope ends, after v, pushed after them)
 }
 
 auto codegen::Emitter::staticTemporary(const Ty* type, Node* at) -> std::string
@@ -383,8 +433,19 @@ auto codegen::Emitter::referenceInitializer(VariableDecl* v, Expr* init, const T
     Expr* only = static_cast<BraceInitExpr*>(init)->args[0];
     const Ty* array = refTy ? types.stripRef(refTy) : nullptr;
     const Ty* given = only->kind != NodeKind::BraceInitExpr && only->ty && only->ty->isKnown() ? types.stripRef(only->ty) : nullptr;
-    if (!array || array->kind != TyKind::Array ||
-        (given && given->kind == TyKind::Array && given->count == array->count && llType(given, init) == llType(array, init)))
+    // So does one to an aggregate class given a list or one value of an unrelated type (`const Holder&
+    // r = {T(1)};`): the list aggregate-initializes a temporary of the class (3.10), its reference
+    // members' temporaries living as long as it (declareLocal), never the value bound or converted
+    // (until 2026-11-08 "a conversion from T to Holder").
+    const Ty* referenced = array ? types.unqualified(array) : nullptr;
+    const Ty* givenClass = given ? withCurrentArgs(types.unqualified(given)) : nullptr;
+    std::vector<std::pair<std::string, uint32_t>> path;
+    bool aggregateList = referenced && isClass(referenced) && !types.isDependent(referenced) && !typedUnionOf(referenced, init) &&
+                         !hasUserConstructors(classDef(referenced->decl, init)) && (only->kind == NodeKind::BraceInitExpr || given) &&
+                         !(givenClass && isClass(givenClass) && !types.isDependent(givenClass) &&
+                           (canonicalClass(givenClass, init) == canonicalClass(referenced, init) || basePath(givenClass, referenced, path, init)));
+    if (!aggregateList && (!array || array->kind != TyKind::Array ||
+                           (given && given->kind == TyKind::Array && given->count == array->count && llType(given, init) == llType(array, init))))
       init = only;
   }
   return init;
@@ -471,7 +532,17 @@ auto codegen::Emitter::staticReferenceTarget(VariableDecl* v, const std::string&
   }
   const Ty* made = derived ? given : target;
   std::string object = temporary(made);
-  initializeFrom(object, made, init, at);
+  // (an aggregate's: the temporaries its reference members bind of static storage too, numbered after
+  // it, `static const Holder& r = Holder{T(1)};`, as a static so initialised keeps them; until
+  // 2026-11-08 they died at the end of the initializer)
+  std::vector<const Expr*> elements = extendedElementsOf(init, made, at);
+  if (elements.empty())
+    initializeFrom(object, made, init, at);
+  else
+  {
+    ExtendingScope extending(*this, elements, name, perThread, temporaries);
+    initializeFrom(object, made, init, at);
+  }
   return derived ? convert(Value{object, made}, target, at).text : object;
 }
 
@@ -655,7 +726,14 @@ auto codegen::Emitter::declareLocal(VariableDecl* v) -> void
       {
         const Ty* target = types.unqualified(types.stripRef(t));
         std::string tmp = newObjectSlot(target, v);
-        initializeFrom(tmp, target, init, v);
+        // (and the temporaries its reference members bind with it: `const Two& r = {T(1), T(2)};`,
+        // destroyed after it, as below)
+        std::vector<const Expr*> elements = extendedElementsOf(init, target, v);
+        {
+          ExtendingScope extending(*this, elements, std::string(), false, 0);
+          initializeFrom(tmp, target, init, v);
+          extending.keepInScope();
+        }
         if (needsDestruction(target, v))
           scopes.back().push_back({tmp, target});
         fn += "  store ptr " + tmp + ", ptr " + slot + "\n";
@@ -683,7 +761,24 @@ auto codegen::Emitter::declareLocal(VariableDecl* v) -> void
           return;
         }
       }
+      // An aggregate temporary it binds (`const Holder& r = Holder{T(1)};`, `Holder&& r = ...`, a derived
+      // one for a base's reference): the temporaries its reference members bind live as long as it,
+      // destroyed after it, as a variable so initialised keeps them (extendedElementsOf). Until
+      // 2026-11-08 they died with the declaration, and r's members referred to destroyed objects.
+      std::vector<const Expr*> elements;
+      std::vector<std::pair<std::string, uint32_t>> basePathOfInit;
+      if (initTy && isClass(initTy) && isClass(target) && !types.isDependent(initTy) &&
+          (canonicalClass(initTy, v) == canonicalClass(target, v) || basePath(initTy, target, basePathOfInit, v)))
+        elements = extendedElementsOf(init, initTy, v);
+      std::optional<ExtendingScope> extending;
+      if (!elements.empty())
+        extending.emplace(*this, elements, std::string(), false, 0);
       Value o = rvalue(init);
+      if (extending)
+      {
+        extending->keepInScope();
+        extending.reset();
+      }
       // `const Label& l = wrapper;`: an object of another class is converted, to its base or
       // through its conversion operator (reference_wrapper's `operator T&()`), never bound as
       // if it were the referenced class.
@@ -730,8 +825,8 @@ auto codegen::Emitter::declareLocal(VariableDecl* v) -> void
     constant = staticConstant(v, t);
   if (constant)
     fn += "  store " + llType(t, v) + " " + *constant + ", ptr " + slot + "\n";
-  else if (v->init && isClass(t))
-    initializeExtending(slot, t, v, v->init, "", false);
+  else if (v->init && (isClass(t) || (t->kind == TyKind::Array && v->init->kind == NodeKind::BraceInitExpr))) // (`Holder hs[2] = {{T(1)}, {T(2)}}` keeps its T's too, as clang and g++ do; until 2026-11-08 they died with the declaration)
+    initializeExtending(slot, t, v, v->init, "", false, v->bracedInit ? ConversionContext::Direct : ConversionContext::Copy);
   else if (v->init)
     initializeFrom(slot, t, v->init, v, v->bracedInit ? ConversionContext::Direct : ConversionContext::Copy); // (`T x = v;` and `T x = {v};` copy-initialize, `T x{v}` does not; `T x(v)` is a cast)
   else if (isClass(t))

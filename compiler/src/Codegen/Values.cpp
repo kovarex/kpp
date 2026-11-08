@@ -1155,7 +1155,7 @@ auto codegen::Emitter::emitGlobalConstructor(VariableDecl* v, const std::string&
       // (temporaries of static storage, never destroyed: staticReferenceTarget)
       fn += "  store ptr " + staticReferenceTarget(v, name, t, init, at, perThread) + ", ptr " + name + "\n";
     }
-    else if (builds && init && isClass(t))
+    else if (builds && init && (isClass(t) || (t->kind == TyKind::Array && init->kind == NodeKind::BraceInitExpr)))
       initializeExtending(name, t, v, init, name, perThread);
     else if (builds && init)
       initializeFrom(name, t, init, at);

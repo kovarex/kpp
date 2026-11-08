@@ -69,12 +69,42 @@
     // module or piece), which names it too (staticLocalElsewhere); the guard stays the function's.
     void staticLocal(VariableDecl* v, const Ty* t);
 
-    // Variable v of class type t initialised from init at slot, a temporary that a reference member
+    // Variable v of class or array type t initialised from init at slot, a temporary that a reference member
     // binds in its brace lists kept as long as v ([class.temporary] 6: `Holder h{T(1)}`, `= {...}`,
-    // nested; not through `Holder{...}`, as clang has it): a local's destroyed when v's scope ends,
-    // after v; one of a variable of static storage (staticName: v's global) an object of static
-    // storage of its own (staticTemporary).
-    void initializeExtending(const std::string& slot, const Ty* t, VariableDecl* v, Expr* init, const std::string& staticName, bool threadLocal);
+    // nested, `= Holder{...}`: extendedElementsOf): a local's destroyed when v's scope ends, after v;
+    // one of a variable of static storage (staticName: v's global) an object of static storage of its
+    // own (staticTemporary).
+    // An array's initialization takes arrayContext (its caller's: a local's `T a[2]{...}` is direct).
+    void initializeExtending(const std::string& slot, const Ty* t, VariableDecl* v, Expr* init, const std::string& staticName, bool threadLocal,
+                             ConversionContext arrayContext = ConversionContext::Unknown);
+    // The elements of init's brace lists whose temporaries a reference member binds and that live as
+    // long as the object of class cls init initializes ([class.temporary] 6): its own list's
+    // (`Holder h{T(1)}`, `= {...}`), or those of a list naming cls, an aggregate (`Holder h =
+    // Holder{T(1)}`, `auto h = Holder{...}`, a reference's `const Holder& r = Holder{T(1)}`: the
+    // prvalue initializes the object itself, [dcl.init.general] 17.6.1); a nested list and its
+    // elements too (`Holder h{{1, 2}}`: the list a reference member binds), never those of a list
+    // inside an element (a call's argument `f(Holder{T(2)})`, whose temporary dies with the
+    // statement). Empty for any other initializer.
+    std::vector<const Expr*> extendedElementsOf(Expr* init, const Ty* cls, Node* at);
+    // While an object is initialised from a list whose elements' temporaries live as long as it
+    // (extendedElementsOf): those elements (extendingElements), and how such a temporary of static
+    // storage is named (staticName's ".temp<n>", n from count on, thread_local for one per thread:
+    // staticTemporary); what was there before back at the end. keepInScope moves the temporaries a
+    // local's initializer made that live as long as it from the statement's to the scope's, where
+    // they are destroyed after whatever is pushed there next (the object itself).
+    struct ExtendingScope
+    {
+      ExtendingScope(Emitter& e, const std::vector<const Expr*>& elements, const std::string& staticName, bool threadLocal, uint32_t count);
+      ~ExtendingScope();
+      void keepInScope();
+
+      Emitter& e;
+      const std::vector<const Expr*>* outerElements;
+      std::vector<std::string> outerExtended;
+      std::string outerStatic;
+      bool outerThreadLocal;
+      uint32_t outerCount;
+    };
     // An object of static storage for a temporary that a reference of static storage keeps
     // (extendingStatic's name and a number), zero-initialised, never destroyed.
     std::string staticTemporary(const Ty* type, Node* at);

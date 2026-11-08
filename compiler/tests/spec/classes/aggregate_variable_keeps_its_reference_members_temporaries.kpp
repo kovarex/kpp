@@ -1,0 +1,45 @@
+// spec: an aggregate variable copy-initialized from a list naming its class keeps the temporaries its reference members bind (`H h = H{Point{1}};`, `auto a = H{Point{2}};`: the prvalue initializes the variable itself, [dcl.init.general] 17.6.1, [class.temporary] 6), and so does an array of aggregates given braces for its elements' (`H hs[2] = {{Point{3}}, {Point{4}}}`, a global's and a static local's too, destroyed at the program's end); a class with a constructor takes its list as the constructor's arguments, whose temporaries die with the declaration (`Widget w{{Point{7}}}`). g++'s output (MSVC's for the first two too); clang 19 destroys the first two's temporaries with the declaration (`drop 1` before `held 1`), against the standard's wording
+// found by thread B (2026-11-08) beside language/temporary_array_outside_a_reference: the arrays' temporaries died with the declaration (a global array's with its initializer: it printed garbage), the copies' too (as clang), and Widget's lived to the end of its scope
+struct Point
+{
+  int x;
+  ~Point() { println("drop ", x); }
+};
+struct H { const Point& p; };
+struct Widget
+{
+  const Point& p;
+  implicit Widget(const H& h) : p(h.p) {}
+};
+H globalHs[2] = {{Point{5}}, {Point{6}}};
+int fromStatic()
+{
+  static H hs[2] = {{Point{8}}, {Point{9}}};
+  return hs[0].p.x + hs[1].p.x;
+}
+int main()
+{
+  println("global ", globalHs[0].p.x + globalHs[1].p.x);
+  {
+    H h = H{Point{1}};
+    println("held ", h.p.x);
+  }
+  println("copy done");
+  {
+    auto a = H{Point{2}};
+    println("held ", a.p.x);
+  }
+  println("auto done");
+  {
+    H hs[2] = {{Point{3}}, {Point{4}}};
+    println("held ", hs[0].p.x + hs[1].p.x);
+  }
+  println("array done");
+  {
+    Widget w{{Point{7}}};
+    println("widget made");
+  }
+  println("widget done");
+  println("static ", fromStatic());
+  return 0;
+}
