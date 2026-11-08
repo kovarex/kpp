@@ -563,6 +563,39 @@ for the shared lock, under which each emitter computes its first answers while t
 Waiting in all of codegen: 39% without it, 41% with it. Both are dropped. What would remove the convoy is the
 first answers computed outside the shared lock and published once, as D's commit does for the interpreter.
 
+That lever, B's 2399dea7, does three things, each now without the shared lock:
+- needsDestruction is computed by the emitter that asks;
+- a defined global's name and thread_local building function are published once;
+- string literals are kept in 64 shards.
+
+B timed it in a window on 2026-11-08 (17:39 to 17:42):
+- **Compilers:** master ba6d1906 against the lever on it, both with LLVM inside.
+- **Tree:** factorio-in-kpp converted from C:\Factorio 4c178a5b915.
+- **Command:** `kpp factorio debug --verbose` with `KPP_STEP_TIMES=1`, five clean builds each in turned order.
+- **Load:** the machine 3 to 14% busy before each build, but one at 85%.
+
+The table gives medians, with each round's codegen in brackets. The wall leaves out build.kpp's
+description: master's builds did it again (0.54 to 0.76 s each) and the lever's found it cached, as in the
+windows above.
+
+| | master ba6d1906 | and the lever |
+|---|---:|---:|
+| kpp | 10.10 s | 9.90 s |
+| of it codegen | 5.33 s (5.35, 5.39, 5.33, 5.29, 5.29) | 5.30 s (5.08, 5.38, 5.10, 5.30, 5.74) |
+| of it the back end after codegen | 2.67 s | 2.67 s |
+| of it the rest | 2.00 s | 2.03 s |
+
+Codegen does not move beyond the spread, and neither does kpp (9.70 to 10.90 s against 9.90 to 10.20 s).
+The waits did move. One sampled compile each with D's sampler, in codegen's first second:
+- The waiting samples fall from 48% to 35% (over all of codegen, 23% to 19%).
+- The waits the lever targets are gone: in needsDestruction (5.0% of that second's samples), buildThreadLocal
+  (2.7%) and the literals (1.3%).
+- Those in `globalFor` under `emitStartupGlobal` rise from 16.6% to 21.4%.
+
+The convoy moved onto the startup globals' definitions: two shared-lock acquisitions per new global (the
+known-check, then the definition), the fourth part of the lever, not done. Removing three waits did not make
+codegen faster, so that part's gain is not counted on.
+
 When this plan was written, a clean debug build of the game was 17.1 s, the leaf edit 1.4 to 1.5 s,
 and the wide edit 1.9 s. These were thread A's quiet numbers: kpp run directly, without debug info.
 The gains overlap; each line is against the line before. The status column is as of 2026-11-02.
