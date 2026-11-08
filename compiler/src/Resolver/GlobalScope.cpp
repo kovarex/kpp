@@ -249,6 +249,7 @@ void GlobalScope::finishIndex()
     f->name = g->name;
     f->params = g->params;
     f->trailingReturn = g->target;
+    f->requiresClause = g->requiresClause; // `template<class U> requires Small<U> G(U) -> G<char>;`
     impl->guidesOf[cls].push_back(f.get());
     impl->guideFunctions.push_back(std::move(f));
   }

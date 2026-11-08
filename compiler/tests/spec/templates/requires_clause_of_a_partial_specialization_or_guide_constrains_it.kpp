@@ -1,0 +1,27 @@
+// spec: a requires clause on a class template's partial specialization or on a deduction guide constrains it, as one on a function template does ([temp.spec.partial.match] 2, [over.match.class.deduct]): `template<class T> requires (sizeof(T) <= 4) struct S<T>` matches S<char> and not S<double>; of `template<Small T> struct P<T>` and `template<class T> requires Small<T> && Deref<T*> struct P<T>`, P<int> takes the second (its constraints subsume the first's), P<double> neither; `template<class U> requires (sizeof(U) <= 4) G(U) -> G<char>;` and `template<Small U> H(U) -> H<char>;` are no candidates for a double, and given a short each wins over the unconstrained `template<class U> ...(U) -> ...<double>;` (more constrained). clang's and g++'s output
+// found by thread J's template generator (2026-11-08): neither clause was checked (S<double> took the specialization, G(2.5) the char guide), and a constrained guide did not win over an unconstrained one
+extern "C" int printf(const char* format, ...);
+template<class T> concept Small = sizeof(T) <= 4;
+template<class T> concept Deref = requires(T t) { *t; };
+template<class T> struct S { static constexpr int v = 0; };
+template<class T> requires (sizeof(T) <= 4) struct S<T> { static constexpr int v = 1; };
+template<class T> struct P { static constexpr int v = 0; };
+template<Small T> struct P<T> { static constexpr int v = 1; };
+template<class T> requires Small<T> && Deref<T*> struct P<T> { static constexpr int v = 2; };
+template<class T> struct Q { static constexpr int v = 0; };
+template<class T> requires Small<T> struct Q<T*> { static constexpr int v = 1; };
+template<class T> struct G { int k; template<class U> G(U) : k(sizeof(T)) {} };
+template<class U> requires (sizeof(U) <= 4) G(U) -> G<char>;
+template<class U> G(U) -> G<double>;
+template<class T> struct H { int k; template<class U> H(U) : k(sizeof(T)) {} };
+template<Small U> H(U) -> H<char>;
+template<class U> H(U) -> H<double>;
+int main()
+{
+  printf("%d %d %d\n", S<char>::v, S<double>::v, S<long long>::v);
+  printf("%d %d %d %d\n", P<int>::v, P<short>::v, P<double>::v, P<int*>::v);
+  printf("%d %d %d\n", Q<int*>::v, Q<double*>::v, Q<int>::v);
+  printf("%d %d %d %d\n", G(1).k, G(2.5).k, G((short)3).k, G(1LL).k);
+  printf("%d %d %d\n", H(1).k, H(2.5).k, H('c').k);
+  return 0;
+}

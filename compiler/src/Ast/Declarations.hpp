@@ -73,6 +73,9 @@ struct ClassDecl : Decl
   bool isClosure = false;         // Synthetic class standing for a lambda's closure type.
   uint8_t pack = 0;               // C: the #pragma pack(n) in force at its definition, 0 for none.
   Expr* alignment = nullptr;      // `struct alignas(16) X`: the alignment written.
+  // `template<class T> requires Small<T> struct S<T>`: a partial specialization matches only where it
+  // holds ([temp.spec.partial.match] 2), and it takes part in the constraints' subsumption.
+  Expr* requiresClause = nullptr;
   // An imported C struct or union whose body the import could not read in full (a member in a
   // construct the C parser does not read): the parser's message and the symbol of the token it
   // stopped at. A use that needs its layout is an error (codegen's classDef), never a layout without
@@ -185,7 +188,7 @@ struct ErrorDecl : Decl { uint32_t endToken; };
 struct EmptyDecl : Decl {};
 // `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;`: class template argument deduction
 // from arguments of these parameter types gives target (DF_Explicit: not for copy-initialisation).
-struct DeductionGuideDecl : Decl { QualifiedName name; Span<Decl*> params; Type* target = nullptr; };
+struct DeductionGuideDecl : Decl { QualifiedName name; Span<Decl*> params; Type* target = nullptr; Expr* requiresClause = nullptr; };
 struct AsmDecl : Decl {};
 struct FriendDecl : Decl { Type* type; Decl* decl; };
 struct ImportDecl : Decl { uint32_t pathToken; }; // extern "C" import "header.h"; (the string token)

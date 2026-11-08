@@ -1338,6 +1338,20 @@ auto GlobalScope::Impl::matchSpecialization(const Lookup& l, const std::vector<c
         }
       }
     }
+    // Its requires clause (`template<class T> requires Small<T> struct S<T>`), which C++ conjoins after
+    // them ([temp.constr.decl] 3); until 2026-11-08 it was never checked: S<double> took it.
+    if (satisfied && c->requiresClause)
+    {
+      std::optional<bool> holds = constraintValue(c->requiresClause, c, own);
+      if (holds && !*holds)
+        satisfied = false;
+      else if (!holds && !argsDependent(m.deduced))
+      {
+        reportCheckerError(c->file, c->requiresClause->token, "the requires clause of a partial specialization of " + debugName(c->name.last().symbol) +
+                                                                   " cannot be evaluated for its arguments");
+        satisfied = false;
+      }
+    }
     if (satisfied)
       partials.push_back(std::move(m));
   }

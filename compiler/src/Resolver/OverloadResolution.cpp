@@ -1966,6 +1966,8 @@ auto GlobalScope::Impl::associatedConstraints(NormalConstraint& n, Decl* f, cons
   }
   if (f->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(f)->requiresClause)
     conjoin(normalizeConstraint(n, static_cast<FunctionDecl*>(f)->requiresClause, f, s, 1));
+  else if (f->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(f)->requiresClause)
+    conjoin(normalizeConstraint(n, static_cast<ClassDecl*>(f)->requiresClause, f, s, 1));
   return root;
 }
 

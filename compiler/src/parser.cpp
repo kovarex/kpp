@@ -2332,6 +2332,8 @@ namespace
             g->name = name;
             g->templateParams = templ.params;
             g->isTemplate = templ.present;
+            g->requiresClause = templ.requiresClause;
+            adoptRequiresParams(g->requiresClause, g);
             g->flags |= flags & DF_Explicit;
             Declarator d;
             d.name = name;
@@ -4406,6 +4408,8 @@ namespace
       noteDeprecation(c);
       c->templateParams = templ.params;
       c->isTemplate = templ.present;
+      c->requiresClause = templ.requiresClause;
+      adoptRequiresParams(c->requiresClause, c);
       if (templ.present && templ.params.empty())
         c->flags |= DF_Specialization;
       if (atIdent() || at(P::ColonColon))

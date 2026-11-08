@@ -1077,6 +1077,11 @@ auto GlobalScope::Impl::deduceFromGuides(ClassDecl* cls, const std::vector<const
       all = all && d.find(p);
     if (!all)
       continue;
+    // Its constraints (`template<Small U> G(U) -> G<Box<U>>;`, a requires clause): a guide whose
+    // constraints do not hold is no candidate ([over.match.class.deduct] 1 as [over.match.viable] 3);
+    // until 2026-11-08 they were never checked, G(2.5) took it.
+    if (!constraintsHold(g, d))
+      continue;
     const Ty* inst = substitute(ft, d);
     const Ty* result = inst ? types.unqualified(inst->inner) : nullptr;
     // (The class's arguments may pick a specialization: `Box<M...>` with one M is `Box<M>`'s instance.)
@@ -1092,7 +1097,15 @@ auto GlobalScope::Impl::deduceFromGuides(ClassDecl* cls, const std::vector<const
     // `ScopedLock(AdoptLock, M&...)` over `ScopedLock(M&...)` given adoptLock and two mutexes
     // (the first declared won, which the second took only while `M&...` decayed the const
     // AdoptLock and could not bind it).
-    if (best && !strictlyBetter(r, ranks) && (strictlyBetter(ranks, r) || !moreSpecialized(g, bestGuide, argTypes.size(), nullptr)))
+    // Of two alike either way, the one whose constraints subsume the other's ([over.match.best] 2.6):
+    // `template<Small U> G(U)` over `template<class U> G(U)` given a short.
+    auto beats = [&](FunctionDecl* a, FunctionDecl* b)
+    {
+      if (moreSpecialized(a, b, argTypes.size(), nullptr))
+        return true;
+      return !moreSpecialized(b, a, argTypes.size(), nullptr) && constraintsSubsume(a, b) && !constraintsSubsume(b, a);
+    };
+    if (best && !strictlyBetter(r, ranks) && (strictlyBetter(ranks, r) || !beats(g, bestGuide)))
       continue;
     best = result;
     bestGuide = g;
