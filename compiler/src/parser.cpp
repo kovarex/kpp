@@ -85,7 +85,7 @@ namespace
     void parseTranslationUnit()
     {
       size_t mark = scratch.size();
-      if (config && at(Kw::requires_))
+      if ((config || roles) && at(Kw::requires_))
       {
         // `requires config::platform == Platform::Windows;` first in a file: the file exists only
         // when the condition holds.
@@ -93,14 +93,14 @@ namespace
         Expr* cond = parseExpression();
         expect(P::Semi, "expected ';' after the file's requires condition");
         std::optional<ConfigValue> value = configValue(cond);
-        if (!value || !value->isNumber)
+        if (!roles && (!value || !value->isNumber)) // (format mode reads the whole file)
         {
           if (const char* undeclared = undeclaredConfig(cond))
             out.diagnostics.push_back({cond->token, undeclared}); // (at the name, as a when's)
           else
             error("a file's requires condition needs config constants and literals");
         }
-        else if (value->number == 0)
+        else if (!roles && value->number == 0)
         {
           out.decls = makeSpan<Decl*>(mark);
           return;
@@ -144,6 +144,9 @@ namespace
     // Backtracks to a saved position, undoing any token splits made after it.
     void restore(uint32_t save)
     {
+      if (roles) // (format mode: what the abandoned reading made is no role)
+        for (uint32_t i = save; i < pos && i < toks.size(); ++i)
+          (*roles)[toks[i].offset] = 0;
       pos = save;
       while (!splits.empty() && splits.back().first >= save)
       {
@@ -397,6 +400,8 @@ namespace
       T* n = arena.make<T>();
       n->kind = nodeKindOf<T>();
       n->token = token;
+      if (roles)
+        noteRole(token, uint8_t(uint8_t(nodeKindOf<T>()) + 1), true);
       if constexpr (std::is_same_v<T, LiteralExpr> || std::is_same_v<T, DecltypeType>)
         n->file = &out;
       ++out.nodeCount;
@@ -830,6 +835,7 @@ namespace
       }
       size_t splitsBefore = splits.size();
       bool insideArguments = noGreater; // (where the `<` is: inside another list's argument, whose `>` the rest of a `>>` may be)
+      uint32_t closeAt = pos;
       if (ok && !acceptTemplateClose())
         ok = false;
       // The list's `>` the first half of a `>>` (or `>>=`): `x < y >> 2`.
@@ -883,6 +889,8 @@ namespace
       }
       part.hasTemplateArgs = true;
       part.templateArgs = makeSpan<Node*>(mark);
+      noteRole(save, FormatTemplateOpen);
+      noteRole(closeAt, FormatTemplateClose);
     }
 
     Node* parseTemplateArgument(bool& sawLogical)
@@ -1706,7 +1714,7 @@ namespace
       }
       std::optional<bool> holds;
       bool perInstance = false; // a class template's member, decided per instance
-      if (scope != Scope::Local)
+      if (scope != Scope::Local && !roles) // (format mode reads every declaration)
       {
         std::optional<ConfigValue> value = configValue(cond);
         if (value && value->isNumber)
@@ -1815,7 +1823,7 @@ namespace
       Expr* cond = parseExpression();
       expect(P::RParen, "expected ')'");
       std::optional<ConfigValue> value = configValue(cond);
-      if (!value || !value->isNumber)
+      if (!roles && (!value || !value->isNumber)) // (format mode reads every branch)
       {
         if (const char* undeclared = undeclaredConfig(cond))
           out.diagnostics.push_back({cond->token, undeclared}); // (at the name, as a when's)
@@ -1823,13 +1831,13 @@ namespace
           error("if constexpr at declaration scope needs a condition made of config constants and literals");
       }
       bool take = !alreadyTaken && value && value->isNumber && value->number != 0;
-      parseStaticIfBranch(scope, take);
+      parseStaticIfBranch(scope, take || roles);
       if (accept(Kw::else_))
       {
         if (at(Kw::if_) && at(Kw::constexpr_, 1))
           parseStaticIf(scope, alreadyTaken || take);
         else
-          parseStaticIfBranch(scope, !alreadyTaken && !take);
+          parseStaticIfBranch(scope, (!alreadyTaken && !take) || roles);
       }
     }
 
@@ -3005,6 +3013,7 @@ namespace
         else if (atIdent(0) && spelling() == "final") { advance(); d.flags |= DF_Final; }
         else if (at(P::Arrow))
         {
+          noteRole(pos, FormatTrailingArrow);
           advance();
           d.trailingReturn = parseType();
           if (!d.trailingReturn)
@@ -3240,7 +3249,7 @@ namespace
       {
         Decl* savedParent = currentParent;
         currentParent = f;
-        if (inTest || testBodies.count(pos))
+        if (!roles && (inTest || testBodies.count(pos)))
           markTestFunction(f);
         f->body = parseBlock();
         currentParent = savedParent;
@@ -3521,6 +3530,7 @@ namespace
       header.present = true;
       if (at(P::Less))
       {
+        noteRole(pos, FormatTemplateOpen);
         advance();
         size_t mark = scratch.size();
         while (!at(P::Greater) && !at(P::Shr) && !at(TokenKind::End))
@@ -3533,6 +3543,7 @@ namespace
             break;
         }
         header.params = makeSpan<Decl*>(mark);
+        noteRole(pos, FormatTemplateClose);
         if (!acceptTemplateClose())
         {
           error("expected '>' after template parameters");
@@ -3664,6 +3675,7 @@ namespace
         advance();
         if (at(P::Less))
         {
+          noteRole(pos, FormatTemplateOpen);
           advance();
           size_t mark = scratch.size();
           while (!at(P::Greater) && !at(TokenKind::End))
@@ -3676,6 +3688,7 @@ namespace
               break;
           }
           p->innerParams = makeSpan<Decl*>(mark);
+          noteRole(pos, FormatTemplateClose);
           acceptTemplateClose();
         }
         if (!accept(Kw::class_))
@@ -3992,6 +4005,22 @@ namespace
       pos = from;
     }
 
+    // Format mode: token i's role (ParsedFile::formatRoles), on a token of the source (a synthesized
+    // token, at another token's place, has none). A node's (first) keeps the first node made at the
+    // token: what the parser makes there afterwards (a check's comparison call, a generic lambda's
+    // invented type at its `&`) is no role of the token's.
+    void noteRole(uint32_t i, uint8_t role, bool first = false)
+    {
+      if (!roles || i >= toks.size())
+        return;
+      const Token& t = toks[i];
+      std::string_view written(text + t.offset, t.length);
+      if ((t.getKind() == TokenKind::Punctuator && written == punctuatorSpelling(P(t.id))) ||
+          (t.getKind() == TokenKind::Keyword && written == keywordSpelling(Kw(t.id))))
+        if (!first || (*roles)[t.offset] == 0)
+          (*roles)[t.offset] = role;
+    }
+
     // kpp's own word at token `at`, where the parser takes it as one (ParsedFile::kppWords).
     void noteWord(uint32_t at)
     {
@@ -4086,6 +4115,16 @@ namespace
         pos = i;
         error(fixtureFrom ? "expected a fixture's class and then the test's '{'" : "expected '{' to begin the test");
         recover();
+        return;
+      }
+      if (roles)
+      {
+        // Format mode: the body as written, no function around it.
+        pos = i;
+        bool savedInTest = inTest;
+        inTest = true;
+        parseBlock();
+        inTest = savedInTest;
         return;
       }
       if (!testsEnabled())
@@ -4183,7 +4222,7 @@ namespace
     void parseTestDeclaration(Scope scope)
     {
       advance();
-      if (!testsEnabled())
+      if (!testsEnabled() && !roles)
       {
         while (!at(TokenKind::End))
         {
@@ -4220,6 +4259,16 @@ namespace
       uint32_t from = pos;
       std::string name(symbols.name(tok(1).id));
       uint32_t open = pos + 2;
+      if (roles)
+      {
+        // Format mode: the body as written, no class around it.
+        pos = open;
+        bool savedInTest = inTest;
+        inTest = true;
+        parseBlock();
+        inTest = savedInTest;
+        return;
+      }
       if (!testsEnabled())
       {
         pos = open;
@@ -4288,6 +4337,18 @@ namespace
       {
         error("expected '{' to begin the suite");
         recover();
+        return;
+      }
+      if (roles)
+      {
+        // Format mode: the declarations as written, no namespace or registration.
+        advance();
+        bool savedInTest = inTest;
+        inTest = true;
+        while (!at(P::RBrace) && !at(TokenKind::End))
+          parseDeclaration(Scope::Namespace);
+        inTest = savedInTest;
+        expect(P::RBrace, "expected '}' to close the suite");
         return;
       }
       if (!testsEnabled())
@@ -5106,7 +5167,7 @@ namespace
         advance();
         return node<FallthroughStmt>(start);
       }
-      if (inTest && (atIdent(kwRequireThrows) || atIdent(kwCheckThrows)) && at(P::Less, 1))
+      if (inTest && !roles && (atIdent(kwRequireThrows) || atIdent(kwCheckThrows)) && at(P::Less, 1))
       {
         noteWord(pos);
         spliceThrows(); // then an expression statement, below
@@ -6167,10 +6228,12 @@ namespace
             NamedCastExpr* c = node<NamedCastExpr>(start);
             c->castKind = Kw(tok().id);
             advance();
+            noteRole(pos, FormatTemplateOpen);
             expect(P::Less, "expected '<' after cast");
             c->type = parseType();
             if (!c->type)
               error("expected type in cast");
+            noteRole(pos, FormatTemplateClose);
             if (!acceptTemplateClose())
               error("expected '>' after cast type");
             expect(P::LParen, "expected '(' in cast");
@@ -6223,6 +6286,8 @@ namespace
                   expect(P::RBrace, "expected '}' after the compound requirement");
                   accept(Kw::noexcept_); // (not checked: kpp's exceptions say nothing of noexcept to a requirement)
                   Type* constraint = nullptr;
+                  if (at(P::Arrow))
+                    noteRole(pos, FormatTrailingArrow);
                   if (accept(P::Arrow))
                   {
                     // `-> Integral`, `-> SameAs<int>`: the result's type-constraint, checked as
@@ -6534,7 +6599,7 @@ namespace
           return n;
         }
       }
-      if (inTest && (atIdent(kwRequireThrows) || atIdent(kwCheckThrows)) && at(P::Less, 1))
+      if (inTest && !roles && (atIdent(kwRequireThrows) || atIdent(kwCheckThrows)) && at(P::Less, 1))
       {
         noteWord(pos);
         spliceThrows();
@@ -6969,6 +7034,7 @@ namespace
       l->closure = closure;
       if (at(P::Less))
       {
+        noteRole(pos, FormatTemplateOpen);
         advance();
         size_t mark = scratch.size();
         while (!at(P::Greater) && !at(TokenKind::End))
@@ -6981,6 +7047,7 @@ namespace
             break;
         }
         l->templateParams = makeSpan<Decl*>(mark);
+        noteRole(pos, FormatTemplateClose);
         acceptTemplateClose();
       }
       if (at(P::LParen))
@@ -7030,6 +7097,7 @@ namespace
         }
         if (at(P::Arrow))
         {
+          noteRole(pos, FormatTrailingArrow);
           advance();
           l->returnType = parseType();
           continue;
@@ -7048,7 +7116,9 @@ namespace
         error("expected lambda body");
         return l;
       }
+      uint32_t bodyAt = pos;
       l->body = parseBlock();
+      noteRole(bodyAt, FormatLambdaBody);
       return l;
     }
 
@@ -7206,6 +7276,7 @@ namespace
     bool typedefDeclarators = false; // the declarators being parsed are a typedef's (design.md 22)
     std::vector<ParenExpr*> safeHolders; // the `?->`s of the postfix chains being parsed (parsePostfix)
     const ConfigValues* config = nullptr; // Build configuration, for declaration-scope if constexpr.
+    std::vector<uint8_t>* roles = nullptr; // format mode (ParsedFile::formatRoles)
   private:
     std::unordered_set<uint32_t> cTypedefNames; // in C: the typedef names declared so far (what `(Name)` casts to)
     size_t classMembersMark = 0; // where the members of the class being parsed start in scratch
@@ -7502,5 +7573,6 @@ void parseFile(std::vector<Token>& tokens, std::string_view text, SymbolTable& s
   parser.externC = dialect == Dialect::C;
   parser.dialect = dialect;
   parser.config = config;
+  parser.roles = out.formatRoles;
   parser.parseTranslationUnit();
 }

@@ -1,5 +1,6 @@
 // kpp: the kpp compiler. Currently the speed-test prototype: parallel lexing of a file tree.
 #include "Driver/Driver.hpp"
+#include "format.hpp"
 
 // The driver is namespace driver's (Driver/, translation units of their own since the main.cpp split's
 // stage 2): this file keeps the kept-state functions, compile's options table and main().
@@ -137,6 +138,9 @@ static int compilerMain(int argc, char** argv)
   for (int i = 1; i < argc; ++i)
     if (std::string(argv[i]) == "--lsp")
       return runLanguageServer(argc, argv, compile);
+  // The formatter (format.hpp): `kpp format [--check] PATH...`.
+  if (argc >= 2 && std::string(argv[1]) == "format")
+    return runFormat(argc, argv);
   // A project's build.kpp (project.hpp): `kpp` with no sources in its directory, `kpp new`.
   if (int code = runProject(argc, argv, compile); code >= 0)
     return code;

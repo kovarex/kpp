@@ -104,6 +104,9 @@ Add 'format runner' @('python', '-I', 'tests\format\selftest\selftest.py') -seco
 # with its README.md's first paragraph and the names each file declares.
 Add 'packages' (PsCheck 'tests\packages.ps1') -seconds 1
 Add 'lsp' (PsCheck 'tests\lsp.ps1') -seconds 9
+# kpp format (docs/format.md): files in the style stay as they are, tests\format\fix\ files format to
+# their .expected, and formatting the result again changes nothing.
+Add 'format' (PsCheck 'tests\format.ps1') -seconds 2
 # The release's publish step against a fake GitHub that fails a call of each kind once
 # (tools\release\publish-test.ps1): every one tried again, the release whole.
 Add 'publish' @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', '..\tools\release\publish-test.ps1') -seconds 2

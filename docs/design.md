@@ -4762,6 +4762,35 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   it is missing or wrong, kpp says what to have, where it comes from and how to give it (stage 8's M0,
   below).
 
+## kpp format (decided 2026-11-08, kovarex's answers to thread F's design)
+
+`kpp format` lays out kpp source in kpp's style, built on the compiler's lexer and parser (the parser's
+format mode, ParsedFile::formatRoles). Its rules, each numbered with its count on the converted game and
+on our own code, are in [format.md](format.md). Decided:
+- Only whitespace changes: the output is lexed again and must have the input's tokens and comments,
+  else the file is left as it is and reported. A file with a parse error is left untouched, whole (Q6).
+- The project's style is a `.kppstyle` file beside build.kpp, `key = value` lines (Q1); without one,
+  kpp's default. 13 settings (indent, columns, braces, case-indent, namespace-indent, access-label,
+  wrap-operator, continuation, pointer, braced-list-spaces, template-space, initializer-commas,
+  blank-lines-between-functions), each with a closed set of values; an unknown name or value is an error.
+- The default writes braced lists `{1, 2}` (Q2) and `template<typename T>` (Q3).
+- One-liner or expanded is the writer's choice, kept by every style (Q4).
+- The formatter wraps long lines itself; the writer's breaks inside a statement are not kept (Q5). A
+  function's parameters are all on one line or one per line, never in between, and call arguments
+  likewise (no greedy filling); each nested list decides on its own, an argument that is a call staying
+  whole on its line or wrapping its own arguments one per line, aligned after its `(`.
+- The git filter lets a file that does not parse through as written (Q7).
+- The formatter changes only what its rules cover, starting with the obvious ones and extended as
+  nuances are found (Q8).
+- Tests: not every combination of the 13 settings. Each setting has its own golden files (one input,
+  an expected file per value), plus the few combinations that interact (indent tab with continuation,
+  braces with one-liners, columns with wrap-operator); the round-trip, idempotence and perturbation
+  checks run per configuration tested.
+
+Open: Q9 (when our code and the game are reformatted), Q10 (whether `kpp format --check` replaces
+kppstyle.py's layout rules in run_tests), Q11 (line ends kept per file), Q13 (which widths `columns`
+takes).
+
 ## Open questions
 - **Syntax must be parseable without name lookup.** C++ needs to know whether a name is a type
   or a template to parse `a * b;` or `f < a > (b)`. In the index-then-resolve model the parser
@@ -4784,6 +4813,11 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   language server as built"). **Decided 2026-11-06 (kovarex): an own editor comes later, only when kpp
   is fully mature with all features implemented.** No editor work until then; ide.md's decisions 3 to
   8 that depend on the editor are parked with it.
+
+- **kpp format** (the section above, 2026-11-08): Q9 when our code and the converted game are
+  reformatted (thread F recommends after wrapping lands, the counts shown first), Q10 `kpp format
+  --check` in place of kppstyle.py's layout rules, Q11 line ends kept per file, Q13 the widths
+  `columns` takes (thread F: 130, 100, 80 and 160 only, for now).
 
 - **Running and testing kpp code** (the section above, 2026-10-30): Q1 an implicit `--run` (decided
   2026-11-06: none). Q2 (`--filter`), Q3 (the runner's isolation and parallelism) and Q4 (native

@@ -1,6 +1,10 @@
 #pragma once
 // A file's parse (Ast.hpp includes it, after the nodes it holds).
 
+// The roles format mode records that are no node's (ParsedFile::formatRoles): a template argument or
+// parameter list's brackets, a trailing return type's `->` and a lambda's body.
+enum FormatRole : uint8_t { FormatTemplateOpen = 200, FormatTemplateClose, FormatTrailingArrow, FormatLambdaBody };
+
 struct ParsedFile
 {
   struct NamespaceDecl* libraryNamespace = nullptr;
@@ -41,6 +45,11 @@ struct ParsedFile
   // A --tests build renames the program's main (__kpp_program_main): its name's source offset, where
   // the language server finds the declaration's name.
   uint32_t programMainOffset = UINT32_MAX;
+  // Format mode (kpp format, format.cpp; null in every other parse): the role of each punctuator and
+  // keyword token, at its source offset: the kind of the node the parser made at it plus one, or a
+  // FormatRole. The parser then reads both sides of a `when` and of a declaration-scope `if
+  // constexpr`, and test code as written, with no token spliced in.
+  std::vector<uint8_t>* formatRoles = nullptr;
   bool isLibrary = false;  // The standard library's sources (set by the driver): the top-level names they claim are reserved.
   Scope* privateScope = nullptr; // Its `private` top-level names (design.md 15), set by the resolver's index.
   // The library it is a file of (design.md 16; set by the driver): its name, empty for the program's

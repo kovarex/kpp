@@ -1,0 +1,15 @@
+i32 combine(i32 firstArgumentWithALongName, i32 secondArgumentWithALongName, i32 thirdArgumentWithALongName, i32 fourth)
+{
+  return firstArgumentWithALongName +
+         secondArgumentWithALongName;
+}
+
+bool check(bool functionThatReturnsBoolAndHasAVeryLongName, bool condition1, bool condition2, bool condition3, bool condition4)
+{
+  if (functionThatReturnsBoolAndHasAVeryLongName || condition1 && condition2 || condition3 && condition4 && condition1 && condition2)
+    return true;
+  i32 value = combine(1000000000, combine(2000000000, 3000000000, 4000000000, 5000000000), combine(6, 7, 8, 9), 1000000000 + 2000000000);
+  bool picked = condition1 ? functionThatReturnsBoolAndHasAVeryLongName && condition2 && condition3 : condition4 || condition1 && condition2;
+  return value > 0 &&
+    picked;
+}

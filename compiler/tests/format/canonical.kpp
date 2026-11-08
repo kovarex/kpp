@@ -1,0 +1,98 @@
+// A file in kpp's style: kpp format leaves it as it is (tests\format.ps1).
+extern "C" import "stdio.h";
+
+config bool fast = false;
+
+namespace game
+{
+  enum class Direction : u8
+  {
+    North,
+    East,
+    South,
+    West
+  };
+
+  enum class Small { A, B };
+
+  template<typename T>
+  struct Box
+  {
+    T value;
+    Box(T value) : value(value) {}
+  };
+
+  // A class with several bases and an initializer list one member to a line.
+  class Inserter
+    : public Box<i32>
+    , public Box<f64>
+  {
+  public:
+    Inserter(i32 a, f64 b)
+      : Box<i32>(a)
+      , Box<f64>(b)
+    {}
+
+    i32 getX() const { return this.x; }
+    i32 getY() const { return this.y; }
+
+    i32 sum(const Vector<i32>& values) const
+    {
+      i32 total = 0;
+      for (const i32& v : values)
+        total += v * 2 - -v;
+      return total;
+    }
+
+  private:
+    i32 x = 0, y = 0;
+    u32* pointer = nullptr;
+    Point^ owned;
+  };
+
+  i32 classify(i32 kind, bool flag)
+  {
+    switch (kind)
+    {
+      case 0:
+        fallthrough;
+      case 1: return 1;
+      default:
+        break;
+    }
+    if (flag && kind < 3 || !flag)
+      return kind > 2 ? kind : -kind;
+    else if (kind == 7)
+    {
+      i32 a = kind << 2;
+      return a;
+    }
+    else
+      return 0;
+  }
+
+  void lambdas(Vector<i32>& values)
+  {
+    auto twice = [&](i32 x) { return x * 2; };
+    values.forEach([&](i32& v)
+    {
+      v = twice(v);
+    });
+    i32 table[] = {1, 2, 3};
+    Vector<Vector<i32>> nested = {{1, 2}, {3}};
+    do
+    {
+      values.pop();
+    } while (!values.empty());
+  }
+}
+
+suite boxes
+{
+  test making
+  {
+    game::Box<i32> b = 3;
+    check(b.value == 3);
+    requireThrows<i32>(game::classify(1, true));
+  }
+}

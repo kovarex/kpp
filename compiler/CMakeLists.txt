@@ -24,6 +24,7 @@ add_executable(kpp
   src/Driver/Options.cpp
   src/Driver/Runtime.cpp
   src/convert.cpp
+  src/format.cpp
   src/lexer.cpp
   src/SymbolTable.cpp
   src/parser.cpp

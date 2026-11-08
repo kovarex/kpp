@@ -1,0 +1,23 @@
+namespace game
+{
+  int f(int a, int b)
+  {
+    if (a < b)
+      return a + b;
+    else
+    {
+      return a * b;
+    }
+  }
+
+  struct Point { i32 x; i32 y; };
+
+  class A : public Point
+  {
+  public:
+    A() {}
+    i32* p; // trailing
+    const i32& r = x;
+    template<typename T> T get() const { return T(x); }
+  };
+}
