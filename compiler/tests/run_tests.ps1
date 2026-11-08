@@ -64,6 +64,8 @@ Add 'lto' (PsCheck 'tests\lto.ps1') -seconds 8
 Add 'sections' (PsCheck 'tests\sections.ps1') -seconds 2
 Add 'debug info' (PsCheck 'tests\debuginfo.ps1') -seconds 8
 Add 'natvis' (PsCheck 'tests\natvis.ps1') -seconds 2
+# Paths near MAX_PATH: kpp's error for a too long --exe, the spec runner's short names (tests\longpaths.ps1).
+Add 'long paths' (PsCheck 'tests\longpaths.ps1') -seconds 9
 # --target (tests\targets.ps1): Linux run under WSL, skipped without it (3) or when it does not answer
 # in 30 s (4); the rest passed.
 Add 'targets' ((PsCheck 'tests\targets.ps1') + @(if (-not $Full) { '-NoLinux' })) -seconds 20 -counted $true -skip @{ 3 = 'linux targets (no WSL)'; 4 = 'linux targets (WSL did not answer in 30 s)'; 5 = 'linux targets (left to the full run)' }

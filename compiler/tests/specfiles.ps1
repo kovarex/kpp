@@ -20,7 +20,7 @@ $last = @($log)[-1]
 if ($code -ne 1 -or $last -notlike 'spec: 1 FAILED: check/fails *') { Fail "the run: exit $code, '$last', not exit 1 and 'spec: 1 FAILED: check/fails ...'" }
 if (-not ($log -match '^FAIL +check/fails +-- line 1: got `fails 42`, expected `fails 43`$')) { Fail "no FAIL line for check/fails: $($log -join ' | ')" }
 if (Test-Path (Join-Path $out 'check.passes')) { Fail 'check/passes passed and its build directory is still there' }
-if (-not (Test-Path (Join-Path $out 'check.fails\check.fails.exe'))) { Fail 'check/fails failed and its build (check.fails\check.fails.exe) is gone' }
+if (-not (Test-Path (Join-Path $out 'check.fails\program.exe'))) { Fail 'check/fails failed and its build (check.fails\program.exe) is gone' }
 foreach ($left in 'gone.snippet', 'check.passes.exe.0.o')
 {
   if (Test-Path (Join-Path $out $left)) { Fail "the whole run left $left, which no snippet of it built" }

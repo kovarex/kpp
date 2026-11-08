@@ -43,10 +43,11 @@ directory: a `// run:` snippet then runs from that copy, for what a command does
 
     python compiler\\tests\\spec\\run_spec.py [--filter TEXT] [--jobs N] [--no-doc] [--release] [--debug-info] [--shard I/N]
 
-Each snippet is built in a directory of its own, build\\spec\\<area>.<name>\\, deleted as soon as the snippet
-passes: what a run leaves is the failing and pending snippets' builds (and the FreeBSD bundle). A
-snippet is built with --modules 4 unless its `kpp:` line says --modules: cross-module code and a
-release build's ThinLTO are still exercised, in about 12 files of objects and IR where kpp's default
+Each snippet is built in a directory of its own, build\\spec\\<area>.<name>\\ (a name of more than 40 characters
+cut to 32 and a hash, as Windows' tools open no path of 260 characters or more: work_name), its program
+program.exe, deleted as soon as the snippet passes: what a run leaves is the failing and pending
+snippets' builds (and the FreeBSD bundle). A snippet is built with --modules 4 unless its `kpp:` line
+says --modules: cross-module code and a release build's ThinLTO are still exercised, in about 12 files of objects and IR where kpp's default
 (4 modules per thread) made about 385. Every build of a whole run kept in the worktree, 380 to 600 files a
 snippet, came to 2.6 million files in one worktree, and the kernel kept a record of each in its pool
 (2026-11-03).
@@ -102,7 +103,7 @@ FreeBSD (run.sh there compares each program's output with its expected output, w
 <name>.freebsd.expected, else <name>.linux.expected (LP64, a C library that is not the UCRT), else
 <name>.expected). Skipped as for Linux.
 """
-import argparse, os, platform, re, shlex, shutil, subprocess, sys, concurrent.futures, time
+import argparse, hashlib, os, platform, re, shlex, shutil, subprocess, sys, concurrent.futures, time
 
 # Streaming's barrier check in codegen (KPP_CHECK_BARRIER, docs/codegen-speed.md), on for every
 # snippet built here, spec.cmd's or not, until program pieces rely on it.
@@ -269,12 +270,23 @@ def remove_tree(directory):
         time.sleep(0.2)
 
 
+def work_name(area, name):
+    """A snippet's build directory's name: <area>.<name>, a name of more than 40 characters cut to 32 and
+    its SHA-256's first 8 hex digits. Windows' tools open no path of 260 characters or more (MAX_PATH),
+    kpp and link.exe whatever LongPathsEnabled says, Python without it: a worktree under
+    C:\\kpp\\.claude\\worktrees made build\\spec-debug-info\\<area>.<name>\\<area>.<name>.exe.link.rsp
+    260 characters for an 80-character name (thread K, 2026-11-08)."""
+    if len(name) <= 40:
+        return f"{area}.{name}"
+    return f"{area}.{name[:32]}-{hashlib.sha256(name.encode('utf-8')).hexdigest()[:8]}"
+
+
 def run_one(path):
     """Builds and runs a snippet in its own directory, which goes once the snippet passes (or, for
     FreeBSD, once its program and expected output are in the bundle)."""
     area = os.path.basename(os.path.dirname(path))
     name = os.path.splitext(os.path.basename(path))[0]
-    work = os.path.join(OUT, f"{area}.{name}")
+    work = os.path.join(OUT, work_name(area, name))
     remove_tree(work)
     result = build_and_run(path, area, name, work)
     if result["status"] in ("pass", "built", "skip"):
@@ -286,7 +298,8 @@ def build_and_run(path, area, name, work):
     info = header(path)
     # (`{here}` in a `kpp:` line is the snippet's directory: a path beside it, as a fake SDK)
     info["kpp"] = info["kpp"].replace("{here}", os.path.dirname(os.path.abspath(path)).replace("\\", "/"))
-    exe = os.path.join(work, f"{area}.{name}.exe")
+    # (the directory's name says whose; kpp writes files beside it with up to 21 more characters)
+    exe = os.path.join(work, "program.exe")
     # (a snippet's own --modules wins: the ones about splitting a program ask for 64 or 128)
     modules = [] if "--modules" in shlex.split(info["kpp"]) else ["--modules", "4"]
     expected_path = os.path.splitext(path)[0] + ".expected"
@@ -320,7 +333,7 @@ def build_and_run(path, area, name, work):
     libs = []
     c_source = os.path.splitext(path)[0] + ".c"
     if os.path.exists(c_source):
-        obj = os.path.join(work, f"{area}.{name}.c.obj")
+        obj = os.path.join(work, "program.c.obj")
         cc = subprocess.run([CLANG, *C_TARGET_FLAGS, "-c", "-O1", "-o", obj, c_source], capture_output=True, text=True, encoding="utf-8", errors="replace")
         if cc.returncode != 0:
             result["status"] = "FAIL"; result["note"] = f"its C source did not compile: {first_complaint(cc.stderr)}"; return finish(result)
@@ -360,7 +373,8 @@ def build_and_run(path, area, name, work):
         return finish(result)
     if c.returncode != 0 or not os.path.exists(exe):
         result["status"] = "FAIL"
-        if c.returncode not in (0, 1):
+        # (exit 2: kpp refused its command line, as an --exe path too long for Windows' tools; it says why)
+        if c.returncode not in (0, 1, 2):
             result["note"] = f"the compiler crashed (exit 0x{c.returncode & 0xFFFFFFFF:X})"
         else:
             result["note"] = first_complaint(c.stdout + c.stderr) or "compilation failed"

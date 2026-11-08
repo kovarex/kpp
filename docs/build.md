@@ -87,6 +87,20 @@ only the form a diagnostic's place is printed in, which the client gives it (the
 place), so a Visual Studio build and the command line's share one server and its kept build, each
 reading its errors in its own form.
 
+**Long paths (2026-11-08).** Windows' tools open no path of 260 characters or more (MAX_PATH),
+whatever the system's LongPathsEnabled says: kpp has no long-path manifest, and link.exe (MSVC
+14.51) cannot open its output there even when given it as a `\\?\` path (LNK1104); lld-link and
+clang can. The longest name kpp writes beside the executable is `NAME.failed-functions.txt`, so on a
+Windows host an `--exe` whose full path is longer than 238 characters is a command-line error
+before any work (exit 2, naming the limit); it used to fail with "cannot write" for each module's
+file. kpp does not rewrite its paths as `\\?\` ones: the MSVC toolchain's link would still fail, and
+every file kpp touches would need it. The spec runner keeps its paths short instead: a snippet's
+build directory is `<area>.<name>`, a name of more than 40 characters cut to 32 and its SHA-256's
+first 8 hex digits, and its program is `program.exe` (an 80-character name in a worktree under
+`C:\kpp\.claude\worktrees` made `<area>.<name>\<area>.<name>.exe.link.rsp` 260 characters).
+tests\longpaths.ps1 builds an executable at 238 characters, expects the error at 239, and runs that
+snippet under a 140-character output directory.
+
 **Programs describe their builds in .cmd scripts.** `programs/factorio/link-settings.cmd` sets
 `KPP`, `CINC` (8 `--cinclude`) and `LIBS` (19 libraries of the game's C++ build, 21 Windows
 libraries, the shims and the resource file). `link.cmd` and `run.cmd` both call it and then each

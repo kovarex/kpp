@@ -545,6 +545,27 @@ int compile(int argc, char** argv)
                       "links whole): add --toolchain msvc\n");
       return 2;
     }
+#ifdef _WIN32
+    // Windows' tools open no path of MAX_PATH (260) characters or more: kpp's own writes, and
+    // link.exe's output even given as a \\?\ path (LNK1104), whatever LongPathsEnabled says, so a
+    // build there fails file by file. Said once, before any work: the longest name kpp writes beside
+    // the executable is NAME.failed-functions.txt (docs/build.md, "Long paths").
+    if (!options.exe.empty())
+    {
+      const char* longest = ".failed-functions.txt";
+      std::error_code ec;
+      std::string exe = std::filesystem::absolute(options.exe, ec).string();
+      if (exe.size() + strlen(longest) >= 260)
+      {
+        fprintf(stderr,
+                "--exe %s: its path is %zu characters, and kpp writes files beside it with up to %zu more (%s); Windows' tools, kpp "
+                "and link.exe, open no path of 260 characters or more (MAX_PATH), whatever LongPathsEnabled says: an output path of at "
+                "most %zu characters\n",
+                exe.c_str(), exe.size(), strlen(longest), longest, 259 - strlen(longest));
+        return 2;
+      }
+    }
+#endif
     // config::platform is the target's.
     const char* platform = platformOf(options.target.os).enumerator;
     if (!options.configValues.count("platform"))
