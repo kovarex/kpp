@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**1955 pass, 1 pending, 0 failing, 0 fixed** (1956 snippets, 337.2 s).
+**1955 pass, 2 pending, 0 failing, 0 fixed** (1957 snippets, 800.9 s).
 
 ## Language: statements, expressions, declarations
 
@@ -737,6 +737,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
+| `classes/consteval_free_operator_template_equality_and_spaceship.kpp` | at compile time `a == b`, `a != b` and `a <=> b` call a free operator function template under what the operands deduce, as a rewritten relation (`a < b`) already does (classes/consteval_rewritten_comparison_through_free_operators): the containers' and Pair's operators, function templates as std's are; clang's output | pending |  | the interpreter's operator lookup for a non-rewritten operator (Interpreter.cpp, direct()) asks constFreeFunction without templates and runs it with no deduced arguments, so `Box<int>{1} == Box<int>{1}` is "no constant" while `operator==(a, b)` and `a < b` evaluate. Found moving the stdlib containers' comparisons out of the classes (K, 2026-11-08); D; C:\kpp-sandbox\worktrees\codegen\compiler\tests\spec\classes\consteval_free_operator_template_equality_and_spaceship.kpp:7: error: the constexpr variable e1 is no constant |
 | `classes/abstract_class_global_and_member_are_errors.kpp` | a global or a data member whose class is abstract (a pure virtual function of it or of a base that nothing overrides) is an error, as an abstract local is (classes/abstract_class_object_is_error): the check of a declaration outside a function body records nothing of what it reads, so that a compile server's edit of the class does not emit the declaration again (incremental 44: a layout edit of Shape built the program in full for `Frame`'s `Shape inner;`) | pass |  |  |
 | `classes/abstract_class_object_is_error.kpp` | an object of a class whose pure virtual function nothing overrides (it is abstract) is an error, as in C++: here Derived's write(int) does not override Base's write(unsigned), so `Derived d;` makes an object of an abstract class | pass | found with classes/override_of_nothing_is_error: a stream deriving from OutStream whose old writeBytes(const char*, int) no longer overrode the pure writeBytes(const char*, ContainerSize) was still made, and writing to it called the pure virtual function (an access violation) |  |
 | `classes/access_violation_is_error.kpp` | a use of a private or protected member its code may not name is an error (design.md "struct and class": access checks, the default once the converted game has none): a private data member read outside its class, a protected member named outside its class and the classes deriving from it, a private function called; a friend, the class itself and a derived class (protected) may name them | pass | none left (the game's 2,071 uses were each a friend's, now kept as written; 0 over the game and its tests) |  |
