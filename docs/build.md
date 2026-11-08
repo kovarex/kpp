@@ -259,6 +259,10 @@ run_tests.cmd.
     project rebuilds no other project, and `kpp measure`'s clean build keeps them too), and so does
     the opt-in shared object cache (KPP_OBJECT_CACHE: keyed by all an object is made of, the compiler
     included, so it gives a rebuild nothing stale);
+  - `--check` runs kpp's check of each cell (its front end, which writes no executable) and nothing
+    else: no C library compiles, no link, no after-build step; it says `kpp: checked NAME
+    (CONFIGURATION, ...)` and exits 0 when the check found no error (`kpp factorio --check` said
+    "factorio.exe was not written" after 0 errors before, 2026-11-08);
   - `kpp` alone in a console shows a menu of these, each with its command, and so in Git Bash
     (mintty) and Cygwin, whose terminals give programs a pipe, not a console (its name,
     `\msys-...-pty0-from-master`, says it is one; 2026-11-04). With input from a file or another
@@ -921,7 +925,8 @@ following:
 
 tests/project.ps1's matrix section checks a project's three command lines in every configuration,
 that `kpp main --rebuild` compiles every module (a build after a build compiled none), and that
-`kpp main --clean` leaves no `main.*` in build\debug and the other cells' executables in place.
+`kpp main --clean` leaves no `main.*` in build\debug and the other cells' executables in place, and
+that `kpp main --check` succeeds without writing the executable.
 
 Usage: [tools/vs/README.md](../tools/vs/README.md). programs/factorio's are written by
 `tools\vs\factorio\generate.cmd`. Measured on its generated solution, MSBuild from the command

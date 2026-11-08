@@ -652,6 +652,10 @@ void configure(Cell& cell)
     $left = @(Get-ChildItem 'build\debug' -File | Where-Object { $_.Name -like 'main.*' })
     if ($code -ne 0 -or $output -notmatch 'kpp: cleaned main \(debug\): [1-9]\d* files removed' -or $left.Count -ne 0) { Fail "kpp main --clean left $($left.Name -join ', '): exit $code`n$output" }
     if (-not (Test-Path 'build\release\main.exe') -or -not (Test-Path 'build\release\checks.exe')) { Fail 'kpp main --clean removed another cell''s executable' }
+    # --check: kpp's check alone, a success that writes no executable (`kpp factorio --check` failed after
+    # 0 errors with "factorio.exe was not written", 2026-11-08); with the compile server, as a plain build.
+    $output = (Kpp @('main', '--check')) -join "`n"
+    if ($code -ne 0 -or $output -notmatch 'kpp: checked main \(debug, ' -or (Test-Path 'build\debug\main.exe')) { Fail "kpp main --check: exit $code`n$output" }
     foreach ($expected in @(
         @('main.vcxproj', 'Release', "<LocalDebuggerCommand>$([regex]::Escape("$matrixPath\bin\Releasex64\main.exe"))</LocalDebuggerCommand>"),
         @('main.vcxproj', 'Fastdebug', "<LocalDebuggerCommand>$([regex]::Escape("$matrixPath\bin\FastDebugx64\main.exe"))</LocalDebuggerCommand>"),

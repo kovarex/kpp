@@ -253,6 +253,21 @@ namespace projects
     using Clock = std::chrono::steady_clock;
     auto since = [](Clock::time_point t) { return std::chrono::duration<double>(Clock::now() - t).count(); };
     auto start = Clock::now();
+    // --check (build.kpp's arguments or the command line's): kpp's front end alone, which writes no
+    // executable, so neither the C libraries nor the link nor the after-build step run. Reported as the
+    // check it is: `kpp factorio --check` said "factorio.exe was not written" after 0 errors (2026-11-08).
+    bool checkOnly = false;
+    for (const std::vector<std::string>* list : {&p.arguments, &request.passed})
+      checkOnly = checkOnly || std::find(list->begin(), list->end(), "--check") != list->end();
+    if (checkOnly)
+    {
+      int code = invoke(buildCommand(root, d, p, request), request.server, compile);
+      if (code == 0)
+        printf("kpp: checked %s (%s, total %.1f s)\n", p.name.c_str(), p.configuration.c_str(), since(start));
+      else
+        fprintf(stderr, "kpp: %s (%s) failed its check after %.1f s\n", p.name.c_str(), p.configuration.c_str(), since(start));
+      return code;
+    }
     double beforeSeconds = std::chrono::duration<double>(start - kppStarted).count();
     std::vector<LibraryJob> jobs(p.links.size());
     // (Linux and FreeBSD libraries are compiled by clang's GNU driver, as the bundled toolchain's are)
