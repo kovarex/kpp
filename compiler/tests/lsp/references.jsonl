@@ -11,5 +11,13 @@
 {"jsonrpc":"2.0","id":4,"method":"textDocument/references","params":{"textDocument":{"uri":"$ROOT/shape.kpp"},"position":{"line":21,"character":8},"context":{"includeDeclaration":true}}}
 // A member: its declaration and two calls, one in a test.
 {"jsonrpc":"2.0","id":5,"method":"textDocument/references","params":{"textDocument":{"uri":"$ROOT/shape.kpp"},"position":{"line":25,"character":6},"context":{"includeDeclaration":true}}}
-{"jsonrpc":"2.0","id":6,"method":"shutdown"}
+// Dog::say: Speaker's and its call through Speaker, its own, Puppy's; no Cat's, no say(i32).
+{"jsonrpc":"2.0","id":6,"method":"textDocument/references","params":{"textDocument":{"uri":"$ROOT/speak.kpp"},"position":{"line":13,"character":14},"context":{"includeDeclaration":true}}}
+// Speaker::say: all four overrides and their calls.
+{"jsonrpc":"2.0","id":7,"method":"textDocument/references","params":{"textDocument":{"uri":"$ROOT/speak.kpp"},"position":{"line":6,"character":14},"context":{"includeDeclaration":true}}}
+// Cat::say: Speaker's and its own; no Dog's, no Puppy's.
+{"jsonrpc":"2.0","id":8,"method":"textDocument/references","params":{"textDocument":{"uri":"$ROOT/speak.kpp"},"position":{"line":25,"character":14},"context":{"includeDeclaration":true}}}
+// The overload say(i32): itself and its call.
+{"jsonrpc":"2.0","id":9,"method":"textDocument/references","params":{"textDocument":{"uri":"$ROOT/speak.kpp"},"position":{"line":7,"character":14},"context":{"includeDeclaration":true}}}
+{"jsonrpc":"2.0","id":10,"method":"shutdown"}
 {"jsonrpc":"2.0","method":"exit"}

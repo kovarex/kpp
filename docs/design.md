@@ -3976,6 +3976,8 @@ statistics pass. `kpp --run hello.kpp a b` means the same in a project's directo
   format, filtering) gets its spec snippet first, as every feature does.
 
 ### (c) Visual Studio (thread E) and the IDE (thread F)
+
+Find All References on a virtual function lists its own uses, those of what it overrides and those of what overrides it, so a call through the base is listed on an override; a sibling's override and an overload are not (kovarex, 2026-11-09).
 Both drive the same command line and read the same machine-readable report; neither parses the
 human output.
 - **Discovery**: `kpp --test ROOTS -- --list --report -` writes one JSON object per line,

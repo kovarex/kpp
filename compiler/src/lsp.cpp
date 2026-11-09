@@ -1756,17 +1756,24 @@ namespace
         knowReferences(program);
         bool withDeclarations = params["context"]["includeDeclaration"].boolean;
         std::set<std::pair<const ParsedFile*, uint32_t>> listed;
-        auto found = cache.references.find(d);
-        if (found != cache.references.end())
-          for (const auto& [f, token] : found->second)
-          {
-            const std::vector<Occurrence>& list = cache.occurrences[f];
-            auto it = std::lower_bound(list.begin(), list.end(), token, [](const Occurrence& x, uint32_t t) { return x.token < t; });
-            if (!withDeclarations && it != list.end() && it->token == token && it->declaration)
-              continue;
-            if (listed.insert({f, token}).second)
-              result.push(Json::object().set("uri", uriOf(overlayKey(f->path), f->path)).set("range", tokenRange(f, token)));
-          }
+        // A virtual function's are also those of what it overrides and of what overrides it (overrideFamily).
+        std::vector<Decl*> family = overrideFamily(program, d);
+        std::vector<std::pair<const ParsedFile*, uint32_t>> named;
+        for (Decl* member : family)
+          if (auto found = cache.references.find(member); found != cache.references.end())
+            for (const auto& [f, token] : found->second)
+            {
+              const std::vector<Occurrence>& list = cache.occurrences[f];
+              auto it = std::lower_bound(list.begin(), list.end(), token, [](const Occurrence& x, uint32_t t) { return x.token < t; });
+              if (!withDeclarations && it != list.end() && it->token == token && it->declaration)
+                continue;
+              if (listed.insert({f, token}).second)
+                named.push_back({f, token});
+            }
+        if (family.size() > 1)
+          std::sort(named.begin(), named.end(), [](const auto& a, const auto& b) { return a.first->path != b.first->path ? a.first->path < b.first->path : a.second < b.second; });
+        for (const auto& [f, token] : named)
+          result.push(Json::object().set("uri", uriOf(overlayKey(f->path), f->path)).set("range", tokenRange(f, token)));
         // A constructor's uses are the constructions overload resolution gives it (knowConstructions),
         // written with the class's name or none (a conversion, a library's `new T(...)` for an emplace).
         if (d->kind == NodeKind::FunctionDecl && (d->flags & DF_Constructor))
@@ -2184,6 +2191,112 @@ namespace
       cache.derivedKnown = true;
     }
 
+    // A class's derived classes, through every level, by file and place.
+    std::vector<ClassDecl*> derivedOf(const KeptProgram& program, Decl* cls)
+    {
+      knowDerived(program);
+      std::vector<ClassDecl*> derived;
+      std::unordered_set<const Decl*> seen{canonical(*program.global, cls)};
+      std::vector<const Decl*> pending{canonical(*program.global, cls)};
+      while (!pending.empty())
+      {
+        const Decl* c = pending.back();
+        pending.pop_back();
+        if (auto found = cache.derived.find(c); found != cache.derived.end())
+          for (ClassDecl* x : found->second)
+            if (seen.insert(x).second)
+            {
+              derived.push_back(x);
+              pending.push_back(x);
+            }
+      }
+      std::sort(derived.begin(), derived.end(), [](const ClassDecl* x, const ClassDecl* y)
+                { return std::make_pair(x->file ? x->file->index : 0, x->token) < std::make_pair(y->file ? y->file->index : 0, y->token); });
+      return derived;
+    }
+
+    // Whether two member functions of related classes are one virtual function: the name, const, and the
+    // parameters' types (a template's dependent parameter type takes any: `f(T)` and `f(i32)` of B<i32>).
+    bool sameVirtualFunction(GlobalScope& global, FunctionDecl* a, FunctionDecl* b)
+    {
+      if (a->name.parts.empty() || b->name.parts.empty())
+        return false;
+      const NamePart& x = a->name.last();
+      const NamePart& y = b->name.last();
+      if (x.symbol != y.symbol || x.special != y.special || x.opToken != y.opToken || a->params.size() != b->params.size() || (a->flags & DF_Const) != (b->flags & DF_Const))
+        return false;
+      TypeTable& types = global.types();
+      const Ty* first = global.typeOfDecl(a);
+      const Ty* second = global.typeOfDecl(b);
+      if (!first || !second || first->kind != TyKind::Function || second->kind != TyKind::Function || first->args.size() != second->args.size())
+        return true;
+      for (size_t i = 0; i < first->args.size(); ++i)
+      {
+        const Ty* l = types.unqualified(first->args[i]);
+        const Ty* r = types.unqualified(second->args[i]);
+        if (l != r && !types.isDependent(l) && !types.isDependent(r))
+          return false;
+      }
+      return true;
+    }
+
+    // What references list for a virtual function, kovarex's rule (2026-11-09): the function, what it
+    // overrides (a call through those can run it) and what overrides it. A sibling's override and an
+    // overload are not. Anything else: itself alone.
+    std::vector<Decl*> overrideFamily(const KeptProgram& program, Decl* d)
+    {
+      std::vector<Decl*> family{d};
+      if (d->kind != NodeKind::FunctionDecl || (d->flags & (DF_Constructor | DF_Static)))
+        return family;
+      auto* f = static_cast<FunctionDecl*>(d);
+      if (f->name.parts.empty() || f->name.last().special == 1 || f->name.last().special == 3)
+        return family;
+      GlobalScope& global = *program.global;
+      Decl* cls = global.owningClass(f);
+      if (!cls)
+        return family;
+      cls = canonical(global, cls);
+      auto add = [&](Decl* m)
+      {
+        Decl* one = canonical(global, m);
+        if (std::find(family.begin(), family.end(), one) == family.end())
+          family.push_back(one);
+      };
+      bool overrides = false;
+      std::unordered_set<const Decl*> seen{cls};
+      std::vector<Decl*> pending{cls};
+      while (!pending.empty())
+      {
+        Decl* c = pending.back();
+        pending.pop_back();
+        if (c->kind != NodeKind::ClassDecl)
+          continue;
+        for (const ClassDecl::Base& b : static_cast<ClassDecl*>(c)->bases)
+        {
+          Decl* base = b.type && b.type->kind == NodeKind::NamedType ? static_cast<NamedType*>(b.type)->resolved : nullptr;
+          if (!base || base->kind != NodeKind::ClassDecl)
+            continue;
+          base = canonical(global, base);
+          if (!seen.insert(base).second)
+            continue;
+          pending.push_back(base);
+          for (Decl* m : static_cast<ClassDecl*>(base)->members)
+            if (m->kind == NodeKind::FunctionDecl && (m->flags & (DF_Virtual | DF_Override)) && sameVirtualFunction(global, f, static_cast<FunctionDecl*>(m)))
+            {
+              add(m);
+              overrides = true;
+            }
+        }
+      }
+      if (!overrides && !(d->flags & (DF_Virtual | DF_Override)))
+        return family; // (a function of a base's name that is not virtual hides it)
+      for (ClassDecl* x : derivedOf(program, cls))
+        for (Decl* m : x->members)
+          if (m->kind == NodeKind::FunctionDecl && sameVirtualFunction(global, f, static_cast<FunctionDecl*>(m)))
+            add(m);
+      return family;
+    }
+
     // implementation: a class's derived classes (all of them, through every level); a member
     // function's overrides in them (a function of its name and number of parameters), at their
     // definitions; anything else's definition.
@@ -2204,24 +2317,7 @@ namespace
             result.push(std::move(at));
           return;
         }
-        knowDerived(program);
-        std::vector<ClassDecl*> derived;
-        std::unordered_set<const Decl*> seen{canonical(*program.global, cls)};
-        std::vector<const Decl*> pending{canonical(*program.global, cls)};
-        while (!pending.empty())
-        {
-          const Decl* c = pending.back();
-          pending.pop_back();
-          if (auto found = cache.derived.find(c); found != cache.derived.end())
-            for (ClassDecl* x : found->second)
-              if (seen.insert(x).second)
-              {
-                derived.push_back(x);
-                pending.push_back(x);
-              }
-        }
-        std::sort(derived.begin(), derived.end(), [](const ClassDecl* x, const ClassDecl* y)
-                  { return std::make_pair(x->file ? x->file->index : 0, x->token) < std::make_pair(y->file ? y->file->index : 0, y->token); });
+        std::vector<ClassDecl*> derived = derivedOf(program, cls);
         if (d->kind == NodeKind::ClassDecl)
         {
           for (ClassDecl* x : derived)

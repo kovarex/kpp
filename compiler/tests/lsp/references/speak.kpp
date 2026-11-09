@@ -1,0 +1,27 @@
+// tests/lsp.ps1's "references": a virtual function's references are its own, what it overrides and what
+// overrides it (a call through any of those can run it, or is the same slot); not a sibling's, not an overload's.
+class Speaker
+{
+public:
+  virtual ~Speaker() = default;
+  virtual i32 say() const { return 1; }
+  virtual i32 say(i32 times) const { return times; }
+};
+
+class Dog : public Speaker
+{
+public:
+  virtual i32 say() const override { return 2; }
+};
+
+class Puppy : public Dog
+{
+public:
+  virtual i32 say() const override { return 3; }
+};
+
+class Cat : public Speaker
+{
+public:
+  virtual i32 say() const override { return 4; }
+};

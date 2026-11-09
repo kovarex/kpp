@@ -1,0 +1,4 @@
+i32 through(const Speaker& any, const Dog& dog, const Puppy& puppy, const Cat& cat)
+{
+  return any.say() + dog.say() + puppy.say() + cat.say() + any.say(2);
+}

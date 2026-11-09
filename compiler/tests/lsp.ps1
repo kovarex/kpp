@@ -15,6 +15,7 @@
 # it, written or not, an instance's (an emplace's) at the program's call that asked for it.
 # references: tests\lsp\references, a class used across files, through an alias, a member's qualifier and a
 # base's base in an initializer, in a program whose test code is checked (a clean first check, checked again with --tests).
+# And a virtual function's: its own, what it overrides and what overrides it, no sibling's and no overload's.
 # -Update writes the expected files from this run (read them before committing). run_tests.cmd runs it.
 param([string]$KppExe = "$PSScriptRoot\..\build\kpp.exe", [switch]$Update)
 $ErrorActionPreference = 'Stop'
