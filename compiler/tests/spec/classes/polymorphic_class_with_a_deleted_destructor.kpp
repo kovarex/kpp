@@ -1,0 +1,19 @@
+// spec: a polymorphic class whose destructor is deleted (an object made once and never destroyed) builds and runs: its destructor, virtual by kpp's rule (design.md 23b), takes a vtable slot that holds no function, as a pure one's, since no call can reach it
+class Registry
+{
+public:
+  virtual int count() const { return 3; }
+  ~Registry() = delete;
+};
+class Larger : public Registry
+{
+public:
+  int count() const override { return 4; }
+};
+int main()
+{
+  Registry* r = new Registry();
+  Registry* l = new Larger();
+  println(r->count(), " ", l->count());
+  return 0;
+}

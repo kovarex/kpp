@@ -439,8 +439,6 @@ size_t GlobalScope::checkInstanceStaticAsserts(size_t from)
     if (c->file && !c->file->isImported)
     {
       Impl::TokenScope tokenScope(c->file->tokens, c->file->text);
-      if (overrideWarningsOn())
-        impl->noteNonVirtualDestructor(cls, c);
       // Only an instance with a virtual function, its own or a base's, or a member that says `override` (of
       // nothing, a mixin over a plain base) has anything to check: most (Vector<int>) have neither, and the
       // check's overrideKey types each member (0.7 s of a game build on one thread, B's profile 2026-11-07).
@@ -2084,6 +2082,11 @@ std::optional<std::vector<GlobalScope::ClosurePart>> GlobalScope::closureValuePa
 const Ty* GlobalScope::destructorLoosens(const Ty* t)
 {
   return impl->destructorLoosens(t);
+}
+
+bool GlobalScope::hasVirtualDestructor(const Ty* t)
+{
+  return impl->hasVirtualDestructor(t);
 }
 
 Expr* GlobalScope::instanceInitializer(VariableDecl* v, const TemplateArgs& args)

@@ -1,9 +1,4 @@
-// spec: `[[foreign_vtable]]` on a class says an outside ABI fixes its vtable (a COM interface): it gets no virtual destructor, which kpp gives every other class with a virtual function (design.md 23b), and the mark is inherited, so a COM interface's derived interfaces have it too
-// kpp: --override-warnings
-// no-warning: foreign_vtable_keeps_its_layout.kpp:7:
-// no-warning: foreign_vtable_keeps_its_layout.kpp:13:
-// no-warning: foreign_vtable_keeps_its_layout.kpp:23:
-// warning: foreign_vtable_keeps_its_layout.kpp:18: warning: Plain has a virtual function and an implicit destructor, which becomes virtual (its vtable gains the slot)
+// spec: `[[foreign_vtable]]` on a class says an outside ABI fixes its vtable (a COM interface): it gets no virtual destructor, which kpp gives every other class with a virtual function (design.md 23b), and the mark is inherited, so a COM interface's derived interfaces have it too; calls through them reach the overrides in the slots C's table has them (interop/c_object_with_a_foreign_vtable_keeps_its_slots)
 class [[foreign_vtable]] Unknown
 {
 public:

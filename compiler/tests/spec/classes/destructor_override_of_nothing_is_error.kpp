@@ -1,0 +1,28 @@
+// spec: `override` on a destructor whose bases have no virtual destructor is an error: a base with no virtual function, or one whose vtable an outside ABI fixes ([[foreign_vtable]], which gets no destructor there: design.md 23b), has none, written or by kpp's rule
+// error: destructor_override_of_nothing_is_error.kpp:12: error: the destructor says override and overrides no virtual function: remove `override`
+// error: destructor_override_of_nothing_is_error.kpp:23: error: the destructor says override and overrides no virtual function: remove `override`
+class Plain
+{
+public:
+  int f() const { return 1; }
+};
+class Over : public Plain
+{
+public:
+  ~Over() override {}
+};
+class [[foreign_vtable]] Unknown
+{
+public:
+  virtual int release() = 0;
+};
+class Impl : public Unknown
+{
+public:
+  int release() override { return 0; }
+  ~Impl() override {}
+};
+int main()
+{
+  return 0;
+}

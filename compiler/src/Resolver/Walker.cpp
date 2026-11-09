@@ -9444,8 +9444,6 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
     case NodeKind::ClassDecl:
     {
       auto* c = static_cast<ClassDecl*>(d);
-      if (overrideWarningsOn() && Impl::effectiveParams(c).empty() && !activeSubst && !probing && file && !file->isImported)
-        impl.noteNonVirtualDestructor(impl.selfType(c), c); // (a class template's, per instance: checkInstanceStaticAsserts)
       Scope* saved = scope;
       const Ty* savedThis = thisType;
       // The bases are named from where the class is (its scope's parent: `class A::B : Base`
@@ -11058,8 +11056,10 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
       {
         bool declared = false;
         const Ty* cls = types.unqualified(p->inner);
-        // A class whose vtable an outside ABI fixes has no destructor there to call (design.md 23b).
-        if (const Ty* marked = impl.foreignVtableClass(cls); marked && file && !file->isImported && !probing)
+        // A class whose vtable an outside ABI fixes has no destructor there to call (design.md 23b), unless it
+        // declares a virtual one, its own or a base's below the mark, whose slot follows the interface's functions
+        // (the game's WindowsWriteStream, an IStream whose Release does `delete this`).
+        if (const Ty* marked = impl.foreignVtableClass(cls); marked && !impl.hasVirtualDestructor(cls) && file && !file->isImported && !probing)
           reportHere(d->token, types.toString(cls, &symbols) + " has [[foreign_vtable]]" +
                                    (marked != cls ? " (from " + types.toString(marked, &symbols) + ")" : std::string()) +
                                    ": its vtable has no destructor, so delete cannot destroy it: release it the way its ABI says");

@@ -1196,6 +1196,8 @@ auto GlobalScope::Impl::triviallyDestructible(const Ty* t, int depth) -> std::op
     if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Destructor) &&
         ((m->flags & DF_Delete) || !(m->flags & DF_Default) || (m->flags & (DF_Virtual | DF_Override))))
       return false;
+  if (hasVirtualDestructor(s.cls))
+    return false; // (a polymorphic class's, virtual by kpp's rule: design.md 23b)
   std::vector<const Ty*> parts;
   if (!directBases(s.cls, def, parts) || !fieldTypes(s.cls, def, parts))
     return std::nullopt;
@@ -1317,6 +1319,10 @@ auto GlobalScope::Impl::hasVirtualDestructor(const Ty* t, int depth) -> bool
   for (Decl* m : membersRead(def))
     if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Destructor) && (m->flags & (DF_Virtual | DF_Override)))
       return true;
+  // kovarex's rule (design.md 23b): a class with a virtual function, its own or a base's, has a virtual
+  // destructor, written or not; not one whose vtable an outside ABI fixes ([[foreign_vtable]], inherited).
+  if (polymorphicClass(t) == std::optional<bool>(true) && !foreignVtableClass(t))
+    return true;
   if (directBases(t, def, bases))
     for (const Ty* b : bases)
       if (hasVirtualDestructor(b, depth + 1))
@@ -1339,29 +1345,6 @@ auto GlobalScope::Impl::foreignVtableClass(const Ty* t, int depth) -> const Ty*
       if (const Ty* marked = foreignVtableClass(b, depth + 1))
         return marked;
   return nullptr;
-}
-
-auto GlobalScope::Impl::noteNonVirtualDestructor(const Ty* t, ClassDecl* c) -> void
-{
-  if (!c || !c->file || c->file->isImported || c->name.empty() || classDefinition(t) != c || polymorphicClass(t) != std::optional<bool>(true) ||
-      hasVirtualDestructor(t) || foreignVtableClass(t))
-    return; // (an outside ABI's vtable gets no destructor: [[foreign_vtable]])
-  Decl* destructor = nullptr;
-  for (Decl* m : membersRead(c))
-    if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Destructor))
-      destructor = m;
-  bool rootOfVtable = true;
-  std::vector<const Ty*> bases;
-  if (directBases(t, c, bases))
-    for (const Ty* b : bases)
-      if (polymorphicClass(b) == std::optional<bool>(true))
-        rootOfVtable = false;
-  std::string kind = !destructor                                   ? "an implicit destructor"
-                     : destructor->access == Access::Protected ? "a protected non-virtual destructor"
-                     : destructor->access == Access::Private   ? "a private non-virtual destructor"
-                                                                 : "a non-virtual destructor";
-  noteOverrideWarning(locationOf(c->file, c->token) + ": warning: " + debugName(c->name.last().symbol) + " has a virtual function and " + kind +
-                      ", which becomes virtual" + (rootOfVtable ? " (its vtable gains the slot)" : ""));
 }
 
 auto GlobalScope::Impl::destructorLoosens(const Ty* t) -> const Ty*

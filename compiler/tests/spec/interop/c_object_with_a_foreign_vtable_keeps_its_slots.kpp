@@ -1,0 +1,40 @@
+// spec: a class marked [[foreign_vtable]] (a COM interface) gets no destructor in its vtable, which kpp gives every other class with a virtual function (design.md 23b), and neither do the classes deriving from it, which inherit the mark: an interface deriving from another keeps its functions in the slots C's table has them, so kpp calls a C object's third function through it, and C a kpp object's (without the mark, the base's destructor slot would move `create` to the fourth slot); a kpp class implementing one may declare a virtual destructor, whose slot follows the interface's functions, and delete itself through its own class (`delete this` in its release, as COM objects do)
+extern "C" import "c_object_with_a_foreign_vtable_keeps_its_slots.h";
+class [[foreign_vtable]] Unknown
+{
+public:
+  virtual int addRef() = 0;
+  virtual int release() = 0;
+};
+class Device : public Unknown
+{
+public:
+  virtual int create(int kind) = 0;
+};
+class Impl : public Device
+{
+public:
+  int count = 2;
+  virtual ~Impl() { println("~Impl ", this->count); }
+  int addRef() override { return ++this->count; }
+  int release() override
+  {
+    int left = --this->count;
+    if (left == 0)
+      delete this;
+    return left;
+  }
+  int create(int kind) override { return 1000 * this->count + kind; }
+};
+int main()
+{
+  Device* fromC = reinterpret_cast<Device*>(specMakeDevice());
+  fromC->addRef();
+  int created = fromC->create(7);
+  Impl* impl = new Impl();
+  int byC = specCallCreate(reinterpret_cast<SpecDevice*>(impl), 3);
+  int released = specCallRelease(reinterpret_cast<SpecDevice*>(impl));
+  println(created, " ", byC, " ", released, " ", fromC->release());
+  specCallRelease(reinterpret_cast<SpecDevice*>(impl));
+  return 0;
+}

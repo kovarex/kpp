@@ -2254,22 +2254,41 @@ is its parameter, a mixin over polymorphic or plain bases, each instance overrid
 and the error is at the instance that overrides without saying so or says `override` of nothing, naming
 it: "g says override and overrides no virtual function in Mixin<Bare>: remove `override`". An unmarked one
 is "g overrides a virtual function: write `int g() const override`, not `int g() const`" (", in Over<Base>"
-for an instance's). `virtual` beside `override` stays allowed (Q8). `--override-warnings` now lists only
-the classes whose destructor becomes virtual. Specs language/override_is_required,
+for an instance's). `virtual` beside `override` stays allowed (Q8). `--override-warnings` then listed only
+the classes whose destructor would become virtual, and went when that rule was built (2026-11-09). Specs language/override_is_required,
 classes/override_of_nothing_is_error, classes/override_of_nothing_in_an_instance_is_error.
 
-**A polymorphic class's destructor is virtual** (kovarex, 2026-11-07, Q5; decided, not built). A class with
+**A polymorphic class's destructor is virtual** (kovarex, 2026-11-07, Q5; built 2026-11-09). A class with
 a virtual function, its own or a base's, has a virtual destructor, written or not; `virtual ~X()` stays
 allowed and says nothing more. "What is the point of a non-virtual destructor": `delete` through a base
 of such a class is no longer undefined behaviour, and a destructor needs no `override`. A deliberate
-difference from C++. Before it lands, `--override-warnings` lists each class it changes, "X has a virtual
-function and a non-virtual destructor, which becomes virtual" ("an implicit destructor", "a protected
-non-virtual destructor"), with "(its vtable gains the slot)" where no base is polymorphic: there the
-layout changes by a new slot (where it goes is the code generator's to settle), which matters to a class
-whose vtable C or COM code reads (the vtable section's interop/c_object_with_vtable). Spec
-language/override_warnings_virtual_destructor.
+difference from C++. Built (D, from A's queue):
+- One test, Impl::hasVirtualDestructor: written so, a base's, or the class polymorphic and not marked
+  [[foreign_vtable]] (its own or a base's). The checker reads it (`~X() override` over such a base overrides,
+  an override's noexcept, the traits), the evaluator's `delete`, and codegen's vtable (collectVtables).
+- The slot, where no base has one: a declared destructor takes it where it is declared, as one written
+  `virtual` does, so the word changes no layout; an implicit one after the class's own virtual functions.
+  The functions declared before it keep their slots, so a C table of them still matches
+  (interop/c_object_with_vtable, whose Counter gained the slot after its two functions).
+- Such a destructor is not trivial ([class.dtor] 8: no virtual one is): isTriviallyDestructible<Shape> is
+  false where C++ answers true, as for `virtual ~Shape() = default`.
+- An override that may throw of such a destructor, noexcept as its class's parts make it, is an error
+  ([except.spec] 4), as for one written virtual (kovarex, 2026-11-09, of three options: the check for
+  written virtual destructors alone, with an exception through such a base propagating or terminating,
+  were the others): the base says `noexcept(false)`, or the override does not throw. In the game, three
+  test fixtures holding a TestScenario (whose destructor may throw) under GameViewControl and
+  LatencyInputActionQueueInterface; the converter's edits make them comply (C). Marking those two bases
+  `noexcept(false)` spreads through multiple inheritance (NetworkInputListener has InputListener's
+  written virtual destructor beside LatencyInputActionQueueInterface's).
+- `--override-warnings`, which listed each class the rule would change ("X has a virtual function and an
+  implicit destructor, which becomes virtual (its vtable gains the slot)"), went with it.
+Specs classes/polymorphic_class_destructor_is_virtual (implicit, declared without `virtual`, protected, a
+second base, an instance, UniquePtr, `p->~Base()`), classes/polymorphic_class_destructor_is_not_trivial,
+classes/destructor_says_override_of_a_polymorphic_base, classes/destructor_override_of_nothing_is_error,
+classes/polymorphic_class_with_a_deleted_destructor (its slot null, as a pure function's, a derived class's too),
+classes/destructor_that_may_throw_under_a_polymorphic_base_is_error.
 
-The count (the same build, 2026-11-07): 942 classes of the game change (243 in src, 699 in tests), 890 with
+The count before it was built (2026-11-07, with --override-warnings): 942 classes of the game change (243 in src, 699 in tests), 890 with
 an implicit destructor, 29 a protected one and 23 a public one; 48 gain the slot, every other one deriving
 from them. Ours: none. One of the 48 is interop and would break: IUnknown, in the generated
 src/Graphics/DX11/ComInterfaces.kpp, the root of 112 COM interfaces the system's objects are called through
@@ -2281,10 +2300,13 @@ COM types imported again were rejected): on a class it says an outside ABI fixes
 destructor there, and `delete` through a pointer to it is an error ("Device has [[foreign_vtable]] (from
 Unknown): its vtable has no destructor, so delete cannot destroy it: release it the way its ABI says"), so
 the rule's safety holds. The mark is inherited, so generate_com.py writes it once, on IUnknown, and its 112
-interfaces have it (a kpp class implementing one too, which then is not deleted either). Built 2026-11-07:
-the attribute, the inherited lookup (Impl::foreignVtableClass), the delete error, and --override-warnings
-leaving such classes out; the vtable slot itself is B's, with the rule. Specs
-classes/foreign_vtable_keeps_its_layout, classes/delete_through_a_foreign_vtable_is_error.
+interfaces have it (2026-11-09, with the rule), and so does a kpp class implementing one. Such a class may
+declare a virtual destructor, its slot after the interface's functions, and then be deleted through itself:
+the game's WindowsWriteStream (GDIPlus.cpp, an IStream for GDI+) declares one and its Release does `delete
+this`. Built 2026-11-07: the attribute, the inherited lookup (Impl::foreignVtableClass), the delete error,
+and --override-warnings leaving such classes out. Specs classes/foreign_vtable_keeps_its_layout,
+classes/delete_through_a_foreign_vtable_is_error, interop/c_object_with_a_foreign_vtable_keeps_its_slots
+(C's table of an interface deriving from another, called both ways, and an implementation deleting itself).
 
 The rest of the count: the 13 functions are cxxopts' (abstract_value<T> : Value, a named base); no instance
 of a class template whose base is its parameter overrides without saying so or says `override` of nothing,
@@ -2299,7 +2321,7 @@ their static_asserts), as no walk reaches a member only a virtual call reaches. 
 any walk, as those static_asserts are, so a compile server walks a file with one again from scratch
 (BodyGraft's unitlessErrorIn) rather than keep it after its fix.
 
-Specs: language/override_is_required, language/override_warnings_virtual_destructor, classes/override_of_nothing_is_error.
+Specs: language/override_is_required, classes/override_of_nothing_is_error.
 
 ### 23c. Required `this.` and `This` (warning built 2026-11-07, rules decided 2026-11-07)
 A member is named through the class, so that a new local or global never changes an existing line.
@@ -2485,7 +2507,7 @@ An error or warning whose fix is mechanical ends, before any " (design.md N)", w
 clauses, which the editor's quick fix reads: "write `NEW`, not `OLD`" ("write `this.width`, not `width`",
 "write `Direction::North`, not `North`", "write `int g() const override`, not `int g() const`") or "remove `OLD`".
 OLD is the source's text as written, starting at the message's line and column: the server replaces it only
-when that exact text starts there. Notes go before the clause. So far: --this-warnings, --override-warnings,
+when that exact text starts there. Notes go before the clause. So far: --this-warnings, required `override`,
 a bare enumerator of a scoped enum, `implicit` written twice or beside `explicit`, and explicit by default's
 plain `explicit`, `explicit(cond)` and braced argument ("Explicit by default").
 

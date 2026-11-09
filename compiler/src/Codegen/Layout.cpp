@@ -1093,6 +1093,11 @@ auto codegen::Emitter::collectVtables(const Ty* key, ClassDecl* c, const Templat
       tables[0].slots.push_back(slot);
   };
   bool declaresDestructor = false;
+  // A polymorphic class's destructor is virtual, written or not (kovarex's rule, design.md 23b), but one marked
+  // [[foreign_vtable]]'s: a declared one takes its slot where it is declared, as one written virtual does, an
+  // implicit one after the class's own virtual functions (where no base has the slot), so that the slots of
+  // the functions declared before it stay where C's table of them has them (interop/c_object_with_vtable).
+  bool virtualByRule = global.hasVirtualDestructor(key);
   {
     ArgsScope scope(*this, &args);
     for (Decl* m : c->members)
@@ -1116,7 +1121,7 @@ auto codegen::Emitter::collectVtables(const Ty* key, ClassDecl* c, const Templat
             s.result = callersExpect;
             overrides = true;
           }
-      if (overrides || (f->flags & (DF_Virtual | DF_Override)))
+      if (overrides || (f->flags & (DF_Virtual | DF_Override)) || ((f->flags & DF_Destructor) && virtualByRule))
       {
         bool pointer = false;
         own.result = resultClassOf(f, key, pointer);
@@ -1136,15 +1141,19 @@ auto codegen::Emitter::collectVtables(const Ty* key, ClassDecl* c, const Templat
     // A class that declares no destructor has an implicit one, virtual when a base's is: it
     // destroys this class's members too, so it takes the destructor slots.
     VtableSlot implicit{"~", nullptr, key, {}};
-    bool virtualDestructor = false;
+    bool virtualDestructor = false, deletedBase = false;
+    for (const Vtable& t : tables)
+      for (const VtableSlot& s : t.slots)
+        deletedBase = deletedBase || (s.key == "~" && s.function && (s.function->flags & DF_Delete));
+    // (a base's deleted destructor makes this one deleted, [class.dtor] 7: its slots stay the deleted one's)
     for (Vtable& t : tables)
       for (VtableSlot& s : t.slots)
-        if (s.key == "~")
+        if (s.key == "~" && !deletedBase)
         {
           s = implicit;
           virtualDestructor = true;
         }
-    if (virtualDestructor)
+    if ((virtualDestructor || virtualByRule) && !deletedBase)
       addToPrimary(implicit);
   }
   // An instance's destructor against its bases' ([except.spec] 4; a class of no template: the checker's).
@@ -1207,7 +1216,7 @@ auto codegen::Emitter::emitVtables(const Ty* key, StructInfo& info, Node* at) ->
     for (size_t s = 0; s < table.slots.size(); ++s)
     {
       const VtableSlot& slot = table.slots[s];
-      if (slot.function && (slot.function->flags & DF_Pure))
+      if (slot.function && (slot.function->flags & (DF_Pure | DF_Delete))) // (a deleted one, `~Registry() = delete`: no call reaches it)
       {
         entries += ", ptr null";
         continue;

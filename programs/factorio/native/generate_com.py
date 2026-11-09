@@ -8,7 +8,9 @@ definitions (the `typedef struct IFooVtbl { ... }` each interface has for C), th
 C++ definitions (`MIDL_INTERFACE("...") IFoo : public IBar`), and writes:
 
 - overrides/added/src/Graphics/DX11/ComInterfaces.kpp: one class per interface, its own methods
-  as pure virtual functions (no destructor: COM objects are released, not deleted).
+  as pure virtual functions (no destructor: COM objects are released, not deleted). IUnknown says
+  [[foreign_vtable]], which every interface inherits: kpp gives a class with a virtual function a
+  virtual destructor, whose slot would move every derived interface's methods (design.md 23b).
 - native/include/kpp_directx.h: the header the converter imports for the DirectX includes; it
   defines each generated interface's __IFoo_INTERFACE_DEFINED__ guard first, so that the import
   keeps the SDK's types, functions and constants but not the C structs of these interfaces (their
@@ -225,8 +227,9 @@ def main():
              '// The COM interfaces the converted game calls (the DirectX backend, DXGI, WIC, IStream), as kpp classes with',
              '// virtual functions in vtable order: kpp\'s single-inheritance vtables are MSVC\'s, so an object the system',
              '// hands out is called through them directly. Each has only its own methods (the base\'s come first in the',
-             '// vtable) and no destructor (COM objects are released). __uuidof(IFoo) is &IID_IFoo, which kpp_directx.h',
-             '// declares (dxguid.lib, uuid.lib).',
+             '// vtable) and no destructor (COM objects are released): IUnknown says [[foreign_vtable]], which every',
+             '// interface inherits, so that kpp gives none of them a virtual destructor (design.md 23b). __uuidof(IFoo)',
+             '// is &IID_IFoo, which kpp_directx.h declares (dxguid.lib, uuid.lib).',
              '']
     for name in order:
         base, methods = interfaces[name]
@@ -236,7 +239,7 @@ def main():
             if [m[1] for m in methods[:inherited]] != [m[1] for m in interfaces[base][1]]:
                 raise SystemExit(f'{name}: its vtable does not start with {base}\'s')
             own = methods[inherited:]
-        lines.append(f'class {name}' + (f' : public {base}' if base else ''))
+        lines.append('class ' + ('[[foreign_vtable]] ' if name == 'IUnknown' else '') + name + (f' : public {base}' if base else ''))
         lines.append('{')
         lines.append('public:')
         # __uuidof(IFoo) as IFoo::iid(), for IUnknown's QueryInterface template; a template itself, so

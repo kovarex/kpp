@@ -3,10 +3,11 @@ requires config::platform == Platform::Windows; // (Windows' alone: the game's W
 // The COM interfaces the converted game calls (the DirectX backend, DXGI, WIC, IStream), as kpp classes with
 // virtual functions in vtable order: kpp's single-inheritance vtables are MSVC's, so an object the system
 // hands out is called through them directly. Each has only its own methods (the base's come first in the
-// vtable) and no destructor (COM objects are released). __uuidof(IFoo) is &IID_IFoo, which kpp_directx.h
-// declares (dxguid.lib, uuid.lib).
+// vtable) and no destructor (COM objects are released): IUnknown says [[foreign_vtable]], which every
+// interface inherits, so that kpp gives none of them a virtual destructor (design.md 23b). __uuidof(IFoo)
+// is &IID_IFoo, which kpp_directx.h declares (dxguid.lib, uuid.lib).
 
-class IUnknown
+class [[foreign_vtable]] IUnknown
 {
 public:
   template<int = 0>

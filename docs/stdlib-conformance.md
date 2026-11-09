@@ -9,6 +9,12 @@ compile, loudly) last. State of 2026-10-29.
 
 ## Behaviour that differs
 
+**isTriviallyDestructible of a polymorphic class** (the compiler's trait, 2026-11-09): false for a class
+with a virtual function, its own or a base's, where std::is_trivially_destructible_v is true when its
+destructor is implicit or defaulted: kpp makes that destructor virtual (design.md 23b), and no virtual
+destructor is trivial, as for `virtual ~X() = default` in C++. A class marked [[foreign_vtable]] keeps
+C++'s answer. Optional of such a class keeps its value as an object (classes/polymorphic_class_destructor_is_not_trivial).
+
 **`::operator new` in an optimized build** (core/Sizes.kpp, 2026-11-06): it is malloc, which an
 optimizer may remove when the block does not escape, and its BadAlloc with it: `::operator new(huge)`
 whose block nothing keeps returns where C++ (which never elides a call of operator new by name)

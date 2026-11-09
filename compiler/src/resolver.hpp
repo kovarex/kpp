@@ -538,6 +538,9 @@ public:
   std::optional<std::vector<ClosurePart>> closureValueParts(const Ty* lambdaTy);
   // The direct base of t whose noexcept virtual destructor t's, which may throw, overrides; null: none.
   const Ty* destructorLoosens(const Ty* t);
+  // t's destructor is virtual: written so, a base's, or a class's with a virtual function, its own or a base's
+  // (kovarex's rule, design.md 23b), unless t is marked [[foreign_vtable]], its own or a base's.
+  bool hasVirtualDestructor(const Ty* t);
   // The initializer of v (a data member's default initializer, a static member's or a variable
   // template's) for one instantiation: a copy typed under args once and kept, as instanceBody's
   // copies of function bodies are; v's own initializer when args is empty. Thread-safe.

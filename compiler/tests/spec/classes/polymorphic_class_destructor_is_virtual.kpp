@@ -1,0 +1,90 @@
+// spec: a class with a virtual function, its own or a base's, has a virtual destructor, written or not (kovarex, 2026-11-07, design.md 23b): `delete` through a base runs the whole object's destructor, whether the base's is implicit, declared without `virtual` or protected, the base at an offset (a second base), an instance of a class template, through UniquePtr and an explicit `p->~Base()` too; C++ runs the base's alone, undefined behaviour
+class Named
+{
+public:
+  const char* name;
+  Named(const char* name) : name(name) {}
+  ~Named() { print("~", StringView(this->name), ";"); }
+};
+class Shape
+{
+public:
+  virtual int sides() const { return 0; }
+};
+class Square : public Shape
+{
+public:
+  Named label{"label"};
+  int sides() const override { return 4; }
+  ~Square() { print("~Square;"); }
+};
+class Declared
+{
+public:
+  virtual int f() const { return 1; }
+  ~Declared() { print("~Declared;"); }
+};
+class FromDeclared : public Declared
+{
+public:
+  Named n{"n"};
+};
+class Guarded
+{
+public:
+  virtual int f() const { return 2; }
+  static void destroy(Guarded* g) { delete g; }
+protected:
+  ~Guarded() { print("~Guarded;"); }
+};
+class FromGuarded : public Guarded
+{
+public:
+  ~FromGuarded() { print("~FromGuarded;"); }
+};
+class Plain
+{
+public:
+  int x = 0;
+};
+class Second : public Plain, public Shape
+{
+public:
+  Named n{"second"};
+};
+template<class T> class Holder
+{
+public:
+  virtual T get() const { return T(5); }
+};
+class IntHolder : public Holder<int>
+{
+public:
+  Named n{"holder"};
+};
+int main()
+{
+  Shape* s = new Square();
+  delete s;
+  println();
+  Declared* d = new FromDeclared();
+  delete d;
+  println();
+  Guarded::destroy(new FromGuarded());
+  println();
+  Shape* second = new Second();
+  delete second;
+  println();
+  Holder<int>* h = new IntHolder();
+  println(h->get());
+  delete h;
+  println();
+  {
+    UniquePtr<Shape> owned(new Square());
+  }
+  println();
+  Shape* placed = new Square();
+  placed->~Shape();
+  println();
+  return 0;
+}

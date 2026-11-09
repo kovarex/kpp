@@ -1,0 +1,19 @@
+// spec: a destructor may say `override` when its base has a virtual function and no destructor written virtual, as kpp makes the base's destructor virtual (design.md 23b), and the override runs through the base; `override` on the destructor of a class whose base has no virtual function, or one marked [[foreign_vtable]], still overrides nothing (classes/destructor_override_of_nothing_is_error)
+class Shape
+{
+public:
+  virtual int sides() const { return 0; }
+};
+class Square : public Shape
+{
+public:
+  int sides() const override { return 4; }
+  ~Square() override { println("~Square"); }
+};
+int main()
+{
+  Shape* s = new Square();
+  println(s->sides());
+  delete s;
+  return 0;
+}

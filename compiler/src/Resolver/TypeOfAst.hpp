@@ -231,8 +231,8 @@
   // deleted copy assignment); null otherwise.
   const Ty* closureWithCaptures(const Ty* t);
 
-  // isTriviallyDestructible: no user-provided, deleted or virtual destructor, and every base and
-  // member trivially destructible.
+  // isTriviallyDestructible: no user-provided, deleted or virtual destructor (a polymorphic class's is virtual:
+  // hasVirtualDestructor), and every base and member trivially destructible.
   std::optional<bool> triviallyDestructible(const Ty* t, int depth = 0);
 
   // A destructor's exception specification ([except.spec] 8): what a noexcept-specifier says, defaulted or
@@ -242,13 +242,9 @@
   std::optional<bool> destructorMayThrow(const Ty* t);
   std::optional<bool> destructorMayThrowUncached(const Ty* t);
   std::optional<bool> destructorPartsMayThrow(const Ty* t);
-  // t's destructor is virtual, declared so or by a base's.
+  // t's destructor is virtual: declared so, a base's, or by kovarex's rule (design.md 23b, Q5) a class's with a
+  // virtual function, its own or a base's, unless an outside ABI fixes its vtable (foreignVtableClass).
   bool hasVirtualDestructor(const Ty* t, int depth = 0);
-  // --override-warnings: a class t (c its definition) with a virtual function whose destructor is not
-  // virtual, which kovarex's rule makes virtual (design.md 23b, Q5), as "warning: X has a virtual function
-  // and a non-virtual destructor, which becomes virtual"; its own vtable gains the slot when no base is
-  // polymorphic.
-  void noteNonVirtualDestructor(const Ty* t, ClassDecl* c);
   // The class among t and its bases marked [[foreign_vtable]], whose vtable an outside ABI fixes (a COM
   // interface, design.md 23b): t has no destructor in its vtable and cannot be deleted; null for none.
   const Ty* foreignVtableClass(const Ty* t, int depth = 0);

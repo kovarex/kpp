@@ -1,0 +1,34 @@
+// spec: a polymorphic class's destructor, virtual by kpp's rule (design.md 23b), is noexcept as its parts make it, and an override of it that may throw is an error ([except.spec] 4), as for one written virtual: a class holding a member whose destructor may throw needs its base's destructor to say noexcept(false), and then compiles (the game's GameViewControl, under fixtures holding a TestScenario)
+// error: destructor_that_may_throw_under_a_polymorphic_base_is_error.kpp:13: error: the destructor of Fixture may throw and overrides the noexcept destructor of Control
+class Scenario
+{
+public:
+  ~Scenario() noexcept(false) {}
+};
+class Control
+{
+public:
+  virtual int update() { return 0; }
+};
+class Fixture : public Control
+{
+public:
+  Scenario scenario;
+  int update() override { return 1; }
+};
+class SaysSo
+{
+public:
+  virtual ~SaysSo() noexcept(false) {}
+  virtual int update() { return 0; }
+};
+class FixtureOfSaysSo : public SaysSo
+{
+public:
+  Scenario scenario;
+  int update() override { return 2; }
+};
+int main()
+{
+  return 0;
+}

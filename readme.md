@@ -79,6 +79,9 @@ what is decided but not built yet is under [Planned](#planned). Every rule that 
   argument's braces name their type: `draw(Color{1, 0, 0})`, not `draw({1, 0, 0})`.
 - **No implicit fallthrough.** Every `case` ends with an implicit `break`; falling through is written
   `fallthrough;`, and a body several values share is one label, `case North, South:`.
+- **A class with a virtual function has a virtual destructor**, written or not, so `delete` through a
+  base runs the whole object's destructor. A COM interface, whose vtable is not kpp's to change, says
+  `[[foreign_vtable]]` and cannot be deleted.
 
 ### Less boilerplate
 
@@ -242,7 +245,7 @@ Decided, and not built yet:
   `This` names the class the code is in (`Vector<T>` inside Vector). Outside a scoped enum its values
   are `Direction::North`, in case labels too.
 - **Required `override`** on every function that overrides a virtual one (or says `final`): an error
-  today. Next, a class with a virtual function always has a virtual destructor.
+  today.
 - **`this` is a reference** everywhere: `this.x`, `return this;`, `&this` for the pointer. (Inside an
   enum's methods `this` already is the value.)
 - **macOS as a target**, built on Windows and Linux ([design.md](docs/design.md), "Targets and

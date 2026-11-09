@@ -412,16 +412,23 @@ Pinned make() { Pinned p; return p; }   // compiles: an error in C++
 - **Why:** a change in a base cannot silently unhook an override.
 - **See:** [design 6][d6]; the readme's Planned.
 
-### A polymorphic class's destructor is virtual (this stage, decided, not built)
+### A polymorphic class's destructor is virtual (built)
 
 - **C++:** a destructor is virtual only when declared so, its own or a base's; `delete` through a base
   whose destructor is not virtual is undefined behaviour.
 - **kpp:** a class with a virtual function, its own or a base's, always has a virtual destructor, written
-  or not (kovarex, 2026-11-07). `virtual ~X()` is allowed and redundant.
-- **Status:** `--override-warnings` lists the classes it changes ([design 23b](design.md)).
+  or not (kovarex, 2026-11-07). `virtual ~X()` is allowed and redundant, and so is `~X() override` over a
+  base whose destructor is virtual by the rule. Such a destructor is not trivial, as no virtual one is:
+  `isTriviallyDestructible<Shape>` is false where C++ answers true. A derived class's destructor that may
+  throw needs the base's to say `noexcept(false)`, as C++ requires of a virtual one.
+- **Status:** built 2026-11-09 ([design 23b](design.md)); 942 classes of the game change (counted 2026-11-07), 48 gaining
+  the slot (an implicit destructor's after the class's own virtual functions, a declared one's where it is
+  declared). `--override-warnings`, which listed them, is gone.
 - **`[[foreign_vtable]]`:** a class whose vtable an outside ABI fixes (a COM interface) says so, inherited:
   it gets no destructor in its vtable, and `delete` through a pointer to it is an error.
 - **Why:** deleting through a base always runs the right destructor.
+- **See:** specs `classes/polymorphic_class_destructor_is_virtual`, `classes/polymorphic_class_destructor_is_not_trivial`,
+  `interop/c_object_with_a_foreign_vtable_keeps_its_slots`.
 
 ### Required `this.` and `This` (this stage, rules decided)
 

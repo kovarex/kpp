@@ -1,0 +1,42 @@
+// spec: a polymorphic class's destructor, virtual by kpp's rule (design.md 23b), is not trivial ([class.dtor] 8: no virtual destructor is): isTriviallyDestructible is false for a class with a virtual function and no destructor written, its own or a base's, as for one written `virtual ~X() = default`; a class marked [[foreign_vtable]], which gets no virtual destructor, keeps its trivial one, and a class with no virtual function is unchanged (C++ answers true for Shape and Square), and Optional of a polymorphic class destroys its value
+class Shape
+{
+public:
+  virtual int sides() const { return 0; }
+};
+class Square : public Shape
+{
+public:
+  int sides() const override { return 4; }
+};
+class Written
+{
+public:
+  virtual ~Written() = default;
+  virtual int f() const { return 1; }
+};
+class [[foreign_vtable]] Unknown
+{
+public:
+  virtual int release() = 0;
+};
+class Device : public Unknown
+{
+public:
+  virtual int create() = 0;
+};
+class Plain
+{
+public:
+  int f() const { return 2; }
+};
+static_assert(!isTriviallyDestructible<Shape>);
+static_assert(isTriviallyDestructible<Device>);
+int main()
+{
+  println(isTriviallyDestructible<Shape>, " ", isTriviallyDestructible<Square>, " ", isTriviallyDestructible<Written>, " ", isTriviallyDestructible<Unknown>, " ",
+          isTriviallyDestructible<Device>, " ", isTriviallyDestructible<Plain>);
+  Optional<Square> square = Square();
+  println(square->sides(), " ", square.hasValue());
+  return 0;
+}

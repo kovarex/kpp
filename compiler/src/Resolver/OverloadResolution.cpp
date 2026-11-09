@@ -19,6 +19,8 @@ auto GlobalScope::Impl::overridesVirtual(const Ty* t, const std::string& key, in
       unknown = true;
       continue;
     }
+    if (key == "~" && hasVirtualDestructor(b))
+      return true; // (a base's destructor, virtual by kpp's rule too: design.md 23b)
     // A virtual function of the base itself, or (not marked: an override of its own) of a base of it.
     for (Decl* m : membersRead(bd))
       if (m->kind == NodeKind::FunctionDecl && (m->flags & (DF_Virtual | DF_Override | DF_Pure)) && !(m->flags & (DF_Static | DF_Constructor)) &&
