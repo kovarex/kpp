@@ -1,0 +1,61 @@
+// spec: a compile server's next build still reports C++'s forms of `this` in code the edit did not touch: the walker repairs what it reported so that one mistake says one error, and the repaired tree is what the server walks again
+//--- step: an error in the edited function and the old forms beside it
+int main()
+{
+  constexpr i32 a = scaled(3);
+  println(a);
+  return 0;
+}
+// error: the constexpr variable a is no constant
+//--- file: lib.kpp
+template<class T> T scaled(T v)
+{
+  T zero = 0;
+  return v / zero;
+}
+struct Old
+{
+  i32 value = 0;
+  i32 viaArrow() const { return this->value; }
+  Old copy() const { return *this; }
+  bool isNull() const { return this == nullptr; }
+  bool chosen() const { return this ? true : false; }
+  void gone() { delete this; }
+};
+template<class T> struct OldBox
+{
+  T value = 0;
+  T viaArrow() const { return this->value; }
+};
+i32 instance = OldBox<i32>{}.viaArrow();
+//--- step: the other function's body fixed: the old forms are still written
+int main()
+{
+  constexpr i32 a = scaled(3);
+  println(a);
+  return 0;
+}
+// error: write `this.`, not `this->`
+// error: write `this`, not `*this`
+// error: this is a reference, never null
+// error: write `&this`, not `this`
+//--- file: lib.kpp
+template<class T> T scaled(T v)
+{
+  return v * 2;
+}
+struct Old
+{
+  i32 value = 0;
+  i32 viaArrow() const { return this->value; }
+  Old copy() const { return *this; }
+  bool isNull() const { return this == nullptr; }
+  bool chosen() const { return this ? true : false; }
+  void gone() { delete this; }
+};
+template<class T> struct OldBox
+{
+  T value = 0;
+  T viaArrow() const { return this->value; }
+};
+i32 instance = OldBox<i32>{}.viaArrow();

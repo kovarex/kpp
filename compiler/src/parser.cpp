@@ -6760,6 +6760,7 @@ namespace
               u->op = uint32_t(P::Star);
               u->isKeyword = false;
               u->postfix = false;
+              u->implicitThis = true;
               u->operand = t;
               return u;
             }

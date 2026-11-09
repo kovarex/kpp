@@ -10,7 +10,7 @@ struct NameExpr : Expr { QualifiedName name; Decl* resolved = nullptr; };
 // expression may be evaluated in another file's context: a default argument, a template's)
 struct LiteralExpr : Expr { TokenKind literalKind; Kw keyword; ParsedFile* file = nullptr; };
 // form: 0 C++'s `this`, the pointer; under --this-reference (design.md 23d) 1 the object, which the parser
-// writes as an implicit `*this` around it (a UnaryExpr), and 2 `&this`, the pointer written so.
+// writes as an implicit `*this` around it (a UnaryExpr, implicitThis), and 2 `&this`, the pointer written so.
 struct ThisExpr : Expr { uint8_t form = 0; };
 struct CallExpr : Expr
 {
@@ -31,7 +31,7 @@ struct MemberExpr : Expr { Expr* base; QualifiedName member; P op; Decl* resolve
 // operand's class when calleeMember. Rewritten: a comparison C++ rewrites (`a != b` as `!(a == b)`,
 // reversed operands, `<=>`), its function not recorded yet.
 enum class OperatorCall : uint8_t { Undecided, Builtin, Function, Rewritten };
-struct UnaryExpr : Expr { Expr* operand; uint32_t op; bool isKeyword; bool postfix; OperatorCall call = OperatorCall::Undecided; bool calleeMember = false; FunctionDecl* callee = nullptr; };
+struct UnaryExpr : Expr { Expr* operand; uint32_t op; bool isKeyword : 1; bool postfix : 1; bool implicitThis : 1 = false; OperatorCall call = OperatorCall::Undecided; bool calleeMember = false; FunctionDecl* callee = nullptr; };
 struct BinaryExpr : Expr { Expr* lhs; Expr* rhs; uint32_t op; bool isKeyword; OperatorCall call = OperatorCall::Undecided; bool calleeMember = false; FunctionDecl* callee = nullptr; };
 struct ConditionalExpr : Expr { Expr* cond; Expr* then; Expr* else_; }; // then == null for Elvis.
 struct CastExpr : Expr { Type* type; Expr* operand; };

@@ -2181,7 +2181,26 @@ auto GlobalScope::Impl::Walker::objectThisError(Expr* e) -> void
     if (!probing && !activeSubst) // (the code's own walk says it once, not each instance's)
       impl.reportCheckerError(file, token, message);
   };
-  auto pointer = [](Expr* objectThis) { return static_cast<UnaryExpr*>(objectThis)->operand; }; // its ThisExpr
+  // One mistake says one error: the tree is repaired to the old pointer's form. Never a template's own tree, which other threads
+  // copy for its instances (each instance repairs its copy, and the answers must not depend on who came first). A compile server
+  // walks a repaired tree again in a later build (the source still has the mistake): a form 1 ThisExpr out of the parser's implicit
+  // `*` is a repair, and says its error again.
+  auto repair = [&](Expr*& objectThis)
+  {
+    if (inGenericTemplate())
+      return;
+    Expr* t = static_cast<UnaryExpr*>(objectThis)->operand;
+    thisUsesNoted.insert(t);
+    objectThis = t;
+  };
+  auto repeated = [&](Expr* x, uint32_t token, const std::string& message)
+  {
+    if (!x || x->kind != NodeKind::ThisExpr || static_cast<ThisExpr*>(x)->form != 1)
+      return false;
+    if (thisUsesNoted.insert(x).second)
+      fail(token, message);
+    return true;
+  };
   auto classHas = [&](P op)
   {
     if (!thisType || thisType->kind != TyKind::Pointer || !thisType->inner)
@@ -2204,12 +2223,14 @@ auto GlobalScope::Impl::Walker::objectThisError(Expr* e) -> void
       auto* u = static_cast<UnaryExpr*>(e);
       if (u->isKeyword || u->postfix || P(u->op) != P::Star)
         return;
+      if (!u->implicitThis && repeated(u->operand, u->token, "this is a reference (the object): write `this`, not `*this`"))
+        return;
       if (isObjectThis(u) && thisType && thisType->kind != TyKind::Pointer)
         fail(u->token, "`this` of an enum's method defined outside the enum is not supported with --this-reference yet");
       else if (isObjectThis(u->operand) && !classHas(P::Star))
       {
         fail(u->token, "this is a reference (the object): write `this`, not `*this`");
-        u->operand = pointer(u->operand); // (`this`)
+        repair(u->operand); // (`this`)
       }
       return;
     }
@@ -2219,10 +2240,12 @@ auto GlobalScope::Impl::Walker::objectThisError(Expr* e) -> void
       auto* m = e->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(e) : nullptr;
       if (auto* c = e->kind == NodeKind::CallExpr ? static_cast<CallExpr*>(e) : nullptr; c && c->callee && c->callee->kind == NodeKind::MemberExpr)
         m = static_cast<MemberExpr*>(c->callee); // (`this->f()`: a member call walks its callee's object itself, not the MemberExpr)
+      if (m && P(m->op) == P::Arrow && repeated(m->base, m->base->token, "this is a reference (the object): write `this.`, not `this->`"))
+        return;
       if (m && P(m->op) == P::Arrow && isObjectThis(m->base) && !classHas(P::Arrow))
       {
         fail(m->base->token, "this is a reference (the object): write `this.`, not `this->`");
-        m->op = P::Dot; // (`this.x`)
+        repair(m->base); // (`->` on the pointer, which the walk types as it did)
       }
       return;
     }
@@ -2232,37 +2255,39 @@ auto GlobalScope::Impl::Walker::objectThisError(Expr* e) -> void
       if (b->isKeyword)
         return;
       P op = P(b->op);
+      if (repeated(b->lhs, b->lhs->token, never) || repeated(b->rhs, b->rhs->token, never))
+        return;
       bool nullTest = ((op == P::EqEq || op == P::NotEq) && ((isObjectThis(b->lhs) && isNull(b->rhs)) || (isObjectThis(b->rhs) && isNull(b->lhs)))) ||
                       ((op == P::AndAnd || op == P::OrOr) && (isObjectThis(b->lhs) || isObjectThis(b->rhs)));
       if (!nullTest)
         return;
       fail(isObjectThis(b->lhs) ? b->lhs->token : b->rhs->token, never);
       if (isObjectThis(b->lhs)) // (the pointer's test, which the walk types as it did)
-        b->lhs = pointer(b->lhs);
+        repair(b->lhs);
       if (isObjectThis(b->rhs))
-        b->rhs = pointer(b->rhs);
+        repair(b->rhs);
       return;
     }
     case NodeKind::ConditionalExpr:
-      if (auto* c = static_cast<ConditionalExpr*>(e); isObjectThis(c->cond))
+      if (auto* c = static_cast<ConditionalExpr*>(e); !repeated(c->cond, c->cond->token, never) && isObjectThis(c->cond))
       {
         fail(c->cond->token, never);
-        c->cond = pointer(c->cond);
+        repair(c->cond);
       }
       return;
     case NodeKind::DeleteExpr: // `delete this`: delete takes the address
-      if (auto* d = static_cast<DeleteExpr*>(e); isObjectThis(d->operand))
+      if (auto* d = static_cast<DeleteExpr*>(e); !repeated(d->operand, d->operand->token, "this is a reference (the object): write `&this`, not `this`") && isObjectThis(d->operand))
       {
         fail(d->operand->token, "this is a reference (the object): write `&this`, not `this`");
-        d->operand = pointer(d->operand);
+        repair(d->operand);
       }
       return;
     case NodeKind::NewExpr: // `new (this) T`: the place is an address
       for (Expr*& place : static_cast<NewExpr*>(e)->placement)
-        if (isObjectThis(place))
+        if (!repeated(place, place->token, "this is a reference (the object): write `&this`, not `this`") && isObjectThis(place))
         {
           fail(place->token, "this is a reference (the object): write `&this`, not `this`");
-          place = pointer(place);
+          repair(place);
         }
       return;
     default:
