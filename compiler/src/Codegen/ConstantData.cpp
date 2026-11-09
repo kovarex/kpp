@@ -525,6 +525,12 @@ auto codegen::Emitter::constantData(const Ty* t, Expr* value, VariableDecl* def,
     v = pre->data; // evaluated before the lock was taken (globalFor)
     notConstantWhy = pre->why;
     takePreEvaluated(*pre);
+    if (v && pre->text)
+    {
+      if (evaluated)
+        *evaluated = true;
+      return pre->text; // (and its text made then: numbers alone, pureData)
+    }
   }
   else
   {
@@ -646,6 +652,8 @@ auto codegen::Emitter::preEvaluateGlobal(VariableDecl* v, Node* at, const Ty* cl
     pre.data = global.evaluateInitializer(st, nullptr, def->file, def, classArgs, foldHooks(at, layoutFailed));
     pre.why = pre.data ? std::string() : GlobalScope::constantReason();
     pre.evaluated = true;
+    if (pre.data && pureData(st, at))
+      pre.text = constantText(*pre.data, st, at);
     return;
   }
   pre.value = value;
@@ -671,6 +679,36 @@ auto codegen::Emitter::preEvaluateGlobal(VariableDecl* v, Node* at, const Ty* cl
     pre.data = global.evaluateInitializer(st, value, def->file, def, classArgs, foldHooks(at, layoutFailed));
     pre.why = pre.data ? std::string() : GlobalScope::constantReason();
     pre.evaluated = true;
+    if (pre.data && pureData(st, at))
+      pre.text = constantText(*pre.data, st, at);
+  }
+}
+
+auto codegen::Emitter::pureData(const Ty* t, Node* at, int depth) -> bool
+{
+  if (!t || depth > 16)
+    return false;
+  t = types.unqualified(t);
+  switch (t->kind)
+  {
+    case TyKind::Bool: case TyKind::Char: case TyKind::Int: case TyKind::Enum: case TyKind::Float:
+      return true;
+    case TyKind::Array:
+      return pureData(t->inner, at, depth + 1);
+    case TyKind::Class:
+    {
+      if (!isClass(t) || types.isDependent(t))
+        return false;
+      const StructInfo& info = structFor(t, at);
+      if (info.polymorphic || info.isUnion)
+        return false;
+      for (const Ty* field : info.fieldTypes)
+        if (!pureData(field, at, depth + 1))
+          return false;
+      return true;
+    }
+    default:
+      return false;
   }
 }
 
@@ -741,7 +779,7 @@ auto codegen::Emitter::globalFor(VariableDecl* v, Node* at, const Ty* classTy) -
       {
         pre = PreEvaluated{}; // globalForOnce evaluates (and fails) as before
       }
-      if (pre.value)
+      if (pre.value || pre.evaluated)
         pre.errors.assign(errors.begin() + errorsBefore, errors.end()); // (reported if globalForOnce takes the values)
       errors.resize(errorsBefore);
       if (fn.size() == fnBefore && allocas.size() == allocasBefore)
@@ -749,7 +787,10 @@ auto codegen::Emitter::globalFor(VariableDecl* v, Node* at, const Ty* classTy) -
     }
   }
   Restore<PreEvaluated*> preRestore(preEvaluated);
-  preEvaluated = pre.value ? &pre : nullptr;
+  // (a global without an initializer too: its default initialization's value, constantData's; until
+  // 2026-11-09 evaluated before the lock and then again under it, the game's 65,536-entry tables of
+  // Tile with them)
+  preEvaluated = pre.value || pre.evaluated ? &pre : nullptr;
   {
     auto lock = sharedLock(); // a global is defined (and its startup function emitted) once
     std::pair<Decl*, const Ty*> key{v, classTy};
@@ -789,7 +830,7 @@ auto codegen::Emitter::globalFor(VariableDecl* v, Node* at, const Ty* classTy) -
     }
   }
   claim.reset(); // defined (or failed): another emitter waiting for it goes on
-  if (!pre.used && inlinedNow.size() > inlinedBefore && pre.value)
+  if (!pre.used && inlinedNow.size() > inlinedBefore && (pre.value || pre.evaluated))
     inlinedNow.resize(inlinedBefore); // (another emitter defined it meanwhile: nothing of it is this function's)
   globalCache.emplace(std::pair<Decl*, const Ty*>{v, classTy}, name);
   buildThreadLocal(name);

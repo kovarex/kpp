@@ -81,6 +81,10 @@
       std::optional<ConstValue> scalar;
       bool evaluated = false; // the object's value (constantData)
       std::optional<ConstValue> data;
+      // The data's constant text, made before the lock too where it is numbers alone (pureData): the
+      // game's 65,536-entry tables (Tile::waterEffectTints, 8.7 MB of text each) were written under the
+      // shared lock, every emitter's first uses of globals waiting (codegen-speed.md section 5).
+      std::optional<std::string> text;
       std::string why; // the interpreter's reason when data is none
       bool used = false;
       // The errors the evaluation recorded (a layout it asked for failed: the evaluator's hook
@@ -95,6 +99,11 @@
     // The values globalForOnce computes from v's initializer, computed as it does (its arguments,
     // class, file and declaration context), without the shared lock.
     void preEvaluateGlobal(VariableDecl* v, Node* at, const Ty* classTy, PreEvaluated& pre);
+    // Whether a constant of type t is numbers alone (an integer, a floating value, an enumeration,
+    // a bool; an array or a class without virtual functions of them; no union): its text names no
+    // global, function, vtable or string, and constantText makes it from the value and the layouts
+    // alone, the same whether or not the shared lock is held.
+    bool pureData(const Ty* t, Node* at, int depth = 0);
 
     // An emitter's claim on a global it evaluates before the lock (sh.evaluating), given up once the
     // global is defined (or failed).
