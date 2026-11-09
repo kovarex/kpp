@@ -1196,6 +1196,8 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
       text += '\n';
     }
     text = resolveInlineBodies(std::move(text), total);
+    std::vector<std::string> notEqualReview;
+    text = withNotEqualsDropped(text, total, notEqualReview);
     text = withSuiteHeadersResolved(std::move(text), total);
     if (convertNativeTests && key.rfind("tests/", 0) == 0)
       text = withTestNamesRestored(withTestDeclarationsMarked(withLocalChecksRenamed(std::move(text), total), total));
@@ -1238,6 +1240,8 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
       for (const std::string& t : p.todos)
         report += "  - TODO " + t + "\n";
     }
+    for (const std::string& t : notEqualReview)
+      report += "- TODO " + t + "\n";
   }
   // Hand-written files with no C++ counterpart (overrides/added/...), written into the output at
   // their path below added/: the DirectX backend's COM interfaces and CComPtr.

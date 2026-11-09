@@ -193,6 +193,19 @@ builds win less unless machine code is cached per function.
   kpp/operator_not_equal_returning_bool_is_error). An `operator!=` returning another type stays allowed
   (kovarex, 2026-11-09): a SIMD mask or an expression object, where C++'s rewrite does not apply; the
   converted game has six, in src/Util/SSE.hpp (float32x4, float64x2 and int32x4 give their mask).
+  The converter's step (C, 2026-11-09; ProgramPasses.inl's withNotEqualsDropped, on each output file after the
+  out-of-line bodies join their declarations): a bool `operator!=` goes where it is provably the negation of its
+  scope's `==` of the same parameters: `= default`; `!(*this == p)`, `!(p1 == p2)`, `!operator==(...)`; a body
+  `x != y || ...` (or `|` between parenthesized terms) whose `==` is `x == y && ...` over the same pairs; or each
+  data member's term beside a defaulted `==` in a class without bases and arrays. With no `==` of its parameters it
+  becomes that `==`, its body negated (`x != y || ...` as `x == y && ...`, `!x` as `x`, anything else `!(...)`).
+  Kept, each a TODO line in CONVERSION.md: virtual ones (ModSetting and its five settings, whose chain spans
+  files), a body of more than one return (asserts, early returns), one with no body in its output file, an `==`
+  written through `!=`. In the game (from C:\Factorio 4c178a5b915): 170 dropped (21 defaulted, 54 negations, 95
+  by their terms), 42 made the `==`, 18 kept for review besides SSE's six. Its IR before and after: every function
+  only before is an `operator!=` (and one `==` instance now inlined everywhere), every one only after an
+  `operator==`, and no call reaches another function than the `==` of a dropped `!=` (24 differ by that `==`
+  inlined). tests\convert_notequal checks each form against C++'s output.
 - Structured bindings are tuple-like through the library's `TupleSize` and `get` (std::tuple_size,
   std::get), as in C++: when `TupleSize<E>` has a member named `value` (a full or partial
   specialization for E; the primary `TupleSize` is empty), `auto [a, b] = e` names exactly

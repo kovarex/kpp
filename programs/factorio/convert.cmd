@@ -373,6 +373,14 @@ python -I -c "import sys; n = sum(l.count('break;') for l in open(r'kpp\convert_
 python -I -c "import sys; n = sum(l.count('fallthrough;') for l in open(r'kpp\convert_switch\convert_switch\switch.kpp', encoding='utf-8') if not l.lstrip().startswith('//')); print('switch:', n, 'fallthrough;'); sys.exit(0 if n == 8 else 1)" || (echo switch: NOT 8 FALLTHROUGHS IN kpp\convert_switch\convert_switch\switch.kpp& goto :failed)
 kpp\convert_switch.exe > kpp\convert_switch.out.txt
 fc /w kpp\convert_switch.out.txt tests\convert_switch.expected > nul && (echo switch: output as expected& set /a SMOKES+=1) || (echo switch: OUTPUT DIFFERS & fc /w kpp\convert_switch.out.txt tests\convert_switch.expected & goto :failed)
+echo == not-equal operators: tests\convert_notequal\notequal.cpp, a class's not-equal operator dropped where it is the negation of its == (its negation written, defaulted, free, terms negated, out of its class, a template with a requires-clause), made the == where the class has none, kept for review otherwise (another field, virtual, an == written through it), converted and run, prints what its C++ build prints (tests\convert_notequal.expected), and 3 are left in its text
+if exist kpp\convert_notequal rd /s /q kpp\convert_notequal
+%KPP% --no-std --quiet --convert kpp\convert_notequal --ext .cpp tests\convert_notequal || goto :failed
+call :ebdfix kpp\convert_notequal || goto :failed
+%KPP% --std ..\..\stdlib --quiet --exe kpp\convert_notequal.exe kpp\convert_notequal || goto :failed
+python -I -c "import sys; w = 'operator' + chr(33) + '='; n = sum(l.count(w) for l in open(r'kpp\convert_notequal\convert_notequal\notequal.kpp', encoding='utf-8') if not l.lstrip().startswith('//')); print('not-equal operators:', n, 'left'); sys.exit(0 if n == 3 else 1)" || (echo not-equal operators: NOT 3 LEFT IN kpp\convert_notequal\convert_notequal\notequal.kpp& goto :failed)
+kpp\convert_notequal.exe > kpp\convert_notequal.out.txt
+fc /w kpp\convert_notequal.out.txt tests\convert_notequal.expected > nul && (echo not-equal operators: output as expected& set /a SMOKES+=1) || (echo not-equal operators: OUTPUT DIFFERS & fc /w kpp\convert_notequal.out.txt tests\convert_notequal.expected & goto :failed)
 set "STEP=platforms check"
 echo == platforms: tests\convert_platform\platform.cpp converted for Windows and for Linux ^(--convert-platform linux, clang's predefines in linux-predefines.txt^) in debug and release, each configuration's two made one by config::platform ^(--convert-merge-platform^), then the configurations by config::debug; built and run for Windows ^(tests\convert_platform.expected^) and for Linux under WSL ^(tests\convert_platform.linux.expected^)
 if exist kpp\cplat rd /s /q kpp\cplat
@@ -423,7 +431,7 @@ set STEP=the converted text (a source line or a needless forward declaration)
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\converted-text.ps1 -Checkout "%WHOLE%" || goto :failed
 rem The one line that says whether everything passed: the headline, the release and final checks and
 rem the tests' count are gates (0).
-set SUMMARY=headline %HEADLINE%, release errors %RELEASEERRORS%, final errors %FINALERRORS%, tests errors %TESTSERRORS%, smoke tests %SMOKES%/17, C rules %CRULES%
+set SUMMARY=headline %HEADLINE%, release errors %RELEASEERRORS%, final errors %FINALERRORS%, tests errors %TESTSERRORS%, smoke tests %SMOKES%/18, C rules %CRULES%
 if not "%HEADLINE%"=="0" goto :countsfailed
 if not "%RELEASEERRORS%"=="0" goto :countsfailed
 if not "%FINALERRORS%"=="0" goto :countsfailed

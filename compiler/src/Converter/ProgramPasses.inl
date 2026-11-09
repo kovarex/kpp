@@ -64,6 +64,445 @@ static void collectBraceableClasses(Span<Decl*> decls, GlobalScope& global, cons
     }
 }
 
+// `a != b` is only ever `!(a == b)` (design.md 4, kovarex 2026-11-09): a declared operator!= that returns bool goes
+// where it provably is the negation of the class's ==, so that the checker's coming error finds none and no call
+// changes meaning. On an output file's text, after resolveInlineBodies (an out-of-line body is at its declaration):
+// - dropped: `= default`; a body `return !(*this == p);`, `!(p1 == p2)`, `!operator==(...)`, `!this->operator==(p)`
+//   (whatever == it calls is what kpp's `!(a == b)` calls); a body `return x != y || ...;` (`|` between
+//   parenthesized terms too) whose scope's == with the same parameter types is `return x == y && ...;` over the same
+//   pairs (each `x != y` of a bool comparison is `!(x == y)`, IEEE's NaN too);
+// - made the ==, where the scope has no == of those parameter types: `!=` written `==` and its body negated,
+//   `return !x;` as `return x;`, `return x != y || ...;` as `return x == y && ...;` (an iterator's
+//   `position != other.position`, a sentinel's `!this->ended()`);
+// - kept, each a TODO line in CONVERSION.md for review: a virtual or override one (its chain spans files), one
+//   whose == is written through !=, one with no body here, one returning another type than bool, and any other body.
+// Single `&` and `|` count only between parenthesized terms (`(x != o.x) | (y != o.y)`), never a type's `&`.
+static std::string withNotEqualsDropped(const std::string& text, Counts& counts, std::vector<std::string>& review)
+{
+  if (text.find("operator!=") == std::string::npos)
+    return text;
+  SymbolTable symbols;
+  LexResult lexed = lex(text, symbols);
+  const std::vector<Token>& toks = lexed.tokens;
+  ParsedFile parsed;
+  parseFile(lexed.tokens, text, symbols, parsed, Dialect::KppSource);
+  auto spell = [&](uint32_t t) { return std::string_view(text).substr(toks[t].offset, toks[t].length); };
+  // the tokens [from, to) as text without spaces (an operand's identity)
+  auto joined = [&](uint32_t from, uint32_t to)
+  {
+    std::string s;
+    for (uint32_t t = from; t < to; ++t)
+      s += spell(t);
+    return s;
+  };
+  // An expression of the return statement, read as a tree of the operators that matter here.
+  struct Node { char kind; uint32_t from, to, op; std::vector<Node> kids; }; // kind: '|' or, '&' and, '!' not, '=' ==, 'n' !=, 'a' atom
+  std::function<bool(uint32_t, uint32_t, Node&)> parse = [&](uint32_t from, uint32_t to, Node& out) -> bool
+  {
+    while (from + 1 < to && toks[from].is(P::LParen))
+    {
+      // (strip parentheses around the whole)
+      int depth = 0;
+      uint32_t t = from;
+      for (; t < to; ++t)
+      {
+        if (toks[t].is(P::LParen) || toks[t].is(P::LBracket) || toks[t].is(P::LBrace))
+          ++depth;
+        else if (toks[t].is(P::RParen) || toks[t].is(P::RBracket) || toks[t].is(P::RBrace))
+          --depth;
+        if (depth == 0)
+          break;
+      }
+      if (t != to - 1)
+        break;
+      ++from;
+      --to;
+    }
+    if (from >= to)
+      return false;
+    // the lowest-precedence top-level operator: || then && then | then & then == !=, a leading ! last
+    auto find = [&](auto test) -> uint32_t
+    {
+      int depth = 0;
+      uint32_t found = UINT32_MAX;
+      for (uint32_t t = from; t < to; ++t)
+      {
+        if (toks[t].is(P::LParen) || toks[t].is(P::LBracket) || toks[t].is(P::LBrace))
+          ++depth;
+        else if (toks[t].is(P::RParen) || toks[t].is(P::RBracket) || toks[t].is(P::RBrace))
+          --depth;
+        else if (depth == 0 && test(t) && !(t > 0 && toks[t - 1].is(Kw::operator_)))
+          found = t; // (the last: left associative)
+      }
+      return found;
+    };
+    auto bitwise = [&](uint32_t t, P p) { return toks[t].is(p) && t > from && t + 1 < to && toks[t - 1].is(P::RParen) && toks[t + 1].is(P::LParen); };
+    for (auto [kind, test] : std::initializer_list<std::pair<char, std::function<bool(uint32_t)>>>{
+           {'|', [&](uint32_t t) { return toks[t].is(P::OrOr); }}, {'&', [&](uint32_t t) { return toks[t].is(P::AndAnd); }},
+           {'|', [&](uint32_t t) { return bitwise(t, P::Pipe); }}, {'&', [&](uint32_t t) { return bitwise(t, P::Amp); }}})
+      if (uint32_t t = find(test); t != UINT32_MAX)
+      {
+        out = {kind, from, to, t, {}};
+        Node l, r;
+        if (!parse(from, t, l) || !parse(t + 1, to, r))
+          return false;
+        out.kids = {l, r};
+        return true;
+      }
+    // (a top-level `?`, `<`, `,`, an assignment: no form this reads)
+    if (find([&](uint32_t t) { return toks[t].is(P::Question) || toks[t].is(P::Comma) || toks[t].is(P::Less) || toks[t].is(P::Greater) || toks[t].is(P::Assign); }) !=
+        UINT32_MAX)
+    {
+      out = {'a', from, to, 0, {}};
+      return true;
+    }
+    if (uint32_t t = find([&](uint32_t t) { return toks[t].is(P::EqEq) || toks[t].is(P::NotEq); }); t != UINT32_MAX)
+    {
+      out = {toks[t].is(P::EqEq) ? '=' : 'n', from, to, t, {}};
+      Node l, r;
+      if (!parse(from, t, l) || !parse(t + 1, to, r) || l.kind != 'a' || r.kind != 'a')
+        return false;
+      out.kids = {l, r};
+      return true;
+    }
+    if (toks[from].is(P::Bang))
+    {
+      out = {'!', from, to, from, {}};
+      Node x;
+      if (!parse(from + 1, to, x))
+        return false;
+      out.kids = {x};
+      return true;
+    }
+    out = {'a', from, to, 0, {}};
+    return true;
+  };
+  // The terms of an or-tree of != (kind '|') or an and-tree of == (kind '&'), each an unordered operand pair.
+  std::function<bool(const Node&, char, char, std::multiset<std::pair<std::string, std::string>>&)> terms =
+    [&](const Node& n, char tree, char comparison, std::multiset<std::pair<std::string, std::string>>& out) -> bool
+  {
+    if (n.kind == tree)
+      return terms(n.kids[0], tree, comparison, out) && terms(n.kids[1], tree, comparison, out);
+    if (n.kind != comparison)
+      return false;
+    std::string a = joined(n.kids[0].from, n.kids[0].to), b = joined(n.kids[1].from, n.kids[1].to);
+    out.insert(a < b ? std::make_pair(a, b) : std::make_pair(b, a));
+    return true;
+  };
+  struct Function { FunctionDecl* f; Decl* scope; std::string params; bool isConst; };
+  std::vector<Function> equals, notEquals;
+  auto paramText = [&](FunctionDecl* f)
+  {
+    std::string s;
+    for (Decl* p : f->params)
+    {
+      auto* pd = static_cast<ParamDecl*>(p);
+      // (the type: from its first token up to the name, or the parameter's end, a `,` or `)` outside brackets)
+      uint32_t from = pd->type ? std::min(pd->type->token, pd->token) : pd->token;
+      std::string t;
+      int depth = 0;
+      for (uint32_t k = from; k < toks.size(); ++k)
+      {
+        if (toks[k].getKind() == TokenKind::Identifier && pd->name != UINT32_MAX && toks[k].id == pd->name && depth == 0)
+          break;
+        if (toks[k].is(P::LParen) || toks[k].is(P::LBracket) || toks[k].is(P::Less))
+          ++depth;
+        else if (toks[k].is(P::RParen) || toks[k].is(P::RBracket) || toks[k].is(P::Greater))
+        {
+          if (depth == 0)
+            break;
+          --depth;
+        }
+        else if (depth == 0 && (toks[k].is(P::Comma) || toks[k].is(P::Assign)))
+          break;
+        t += spell(k);
+      }
+      s += t + ",";
+    }
+    return s;
+  };
+  std::function<void(Span<Decl*>, Decl*)> collect = [&](Span<Decl*> decls, Decl* scope)
+  {
+    for (Decl* d : decls)
+    {
+      if (d->kind == NodeKind::NamespaceDecl)
+        collect(static_cast<NamespaceDecl*>(d)->decls, d);
+      else if (d->kind == NodeKind::ClassDecl)
+        collect(static_cast<ClassDecl*>(d)->members, d);
+      else if (d->kind == NodeKind::FunctionDecl)
+      {
+        auto* f = static_cast<FunctionDecl*>(d);
+        if (f->name.parts.size() != 1 || f->name.last().special != 2)
+          continue;
+        uint32_t op = f->name.last().opToken;
+        if (op == uint32_t(P::NotEq) || op == uint32_t(P::EqEq))
+          (op == uint32_t(P::NotEq) ? notEquals : equals).push_back({f, scope, paramText(f), bool(f->flags & DF_Const)});
+      }
+    }
+  };
+  collect(parsed.decls, nullptr);
+  if (notEquals.empty())
+    return text;
+  struct Edit { uint32_t offset, length; std::string text; };
+  std::vector<Edit> edits;
+  auto declStart = [&](FunctionDecl* f)
+  {
+    // back from the return type to just after what ends the declaration before it (`;`, a brace, an access label):
+    // its specifiers, attributes, template header and requires-clause with it
+    uint32_t t = f->returnType ? f->returnType->token : f->token;
+    while (t > 0)
+    {
+      uint32_t p = t - 1;
+      if (toks[p].is(P::Semi) || toks[p].is(P::LBrace) || toks[p].is(P::RBrace) ||
+          (toks[p].is(P::Colon) && p > 0 && (toks[p - 1].is(Kw::public_) || toks[p - 1].is(Kw::private_) || toks[p - 1].is(Kw::protected_))))
+        break;
+      t = p;
+    }
+    return t;
+  };
+  // the `!=` of `operator!=` (f->endToken when not found)
+  auto operatorToken = [&](FunctionDecl* f)
+  {
+    uint32_t t = declStart(f);
+    while (t + 1 < f->endToken && !(toks[t].is(Kw::operator_) && toks[t + 1].is(P::NotEq)))
+      ++t;
+    return t + 1 < f->endToken ? t + 1 : f->endToken;
+  };
+  auto removeDeclaration = [&](FunctionDecl* f)
+  {
+    uint32_t start = toks[declStart(f)].offset;
+    uint32_t end = toks[f->endToken - 1].offset + toks[f->endToken - 1].length;
+    uint32_t lineStart = start;
+    while (lineStart > 0 && (text[lineStart - 1] == ' ' || text[lineStart - 1] == '\t'))
+      --lineStart;
+    uint32_t lineEnd = end;
+    while (lineEnd < text.size() && (text[lineEnd] == ' ' || text[lineEnd] == '\t' || text[lineEnd] == '\r'))
+      ++lineEnd;
+    if ((lineStart == 0 || text[lineStart - 1] == '\n') && (lineEnd == text.size() || text[lineEnd] == '\n'))
+      edits.push_back({lineStart, uint32_t(lineEnd + (lineEnd < text.size() ? 1 : 0) - lineStart), ""});
+    else
+      edits.push_back({start, end - start, ""});
+  };
+  auto keep = [&](const Function& n, const std::string& why)
+  {
+    // (its class, and its declaration as written up to its body, blanks collapsed)
+    std::string owner;
+    if (n.scope && n.scope->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(n.scope)->name.empty())
+      owner = std::string(symbols.name(static_cast<ClassDecl*>(n.scope)->name.last().symbol)) + ": ";
+    uint32_t from = toks[declStart(n.f)].offset, to = toks[n.f->endToken - 1].offset + toks[n.f->endToken - 1].length;
+    std::string written;
+    for (uint32_t k = from; k < to && written.size() < 160; ++k)
+      if (!isspace((unsigned char)text[k]))
+        written += text[k];
+      else if (!written.empty() && written.back() != ' ')
+        written += ' ';
+    review.push_back("operator!= kept (" + why + "): " + owner + "`" + written + "`");
+    counts.add("operator!= kept for review: " + why);
+  };
+  for (const Function& n : notEquals)
+  {
+    FunctionDecl* f = n.f;
+    if (f->returnType && spell(f->returnType->token) != "bool")
+    {
+      keep(n, "it returns " + std::string(spell(f->returnType->token)) + ", not bool");
+      continue;
+    }
+    if (f->flags & (DF_Virtual | DF_Override))
+    {
+      keep(n, "virtual");
+      continue;
+    }
+    const Function* eq = nullptr;
+    for (const Function& e : equals)
+      if (e.scope == n.scope && e.params == n.params && e.isConst == n.isConst)
+        eq = &e;
+    if (f->flags & DF_Default)
+    {
+      removeDeclaration(f);
+      counts.add("operator!= dropped: defaulted");
+      continue;
+    }
+    auto onlyReturn = [&](FunctionDecl* g, uint32_t& from, uint32_t& to) -> bool
+    {
+      if (!g->body || g->body->kind != NodeKind::BlockStmt)
+        return false;
+      auto* b = static_cast<BlockStmt*>(g->body);
+      if (b->stmts.size() != 1 || !b->stmts[0] || b->stmts[0]->kind != NodeKind::ReturnStmt)
+        return false;
+      from = b->stmts[0]->token + 1;
+      int depth = 0;
+      for (to = from; to < toks.size(); ++to)
+      {
+        if (toks[to].is(P::LParen) || toks[to].is(P::LBracket) || toks[to].is(P::LBrace))
+          ++depth;
+        else if (toks[to].is(P::RParen) || toks[to].is(P::RBracket) || toks[to].is(P::RBrace))
+          --depth;
+        else if (depth == 0 && toks[to].is(P::Semi))
+          break;
+      }
+      return to < toks.size() && from < to;
+    };
+    uint32_t from = 0, to = 0;
+    if (!f->body)
+    {
+      keep(n, "no body here");
+      continue;
+    }
+    Node e;
+    if (!onlyReturn(f, from, to) || !parse(from, to, e))
+    {
+      keep(n, "a body other than one return");
+      continue;
+    }
+    // the names `*this` and the parameters, whose == is the class's or the pair's
+    std::set<std::string> selves;
+    if (f->parent && f->parent->kind == NodeKind::ClassDecl && !(f->flags & (DF_Static | DF_Friend)))
+      selves.insert("*this");
+    for (Decl* p : f->params)
+      if (static_cast<ParamDecl*>(p)->name != UINT32_MAX)
+        selves.insert(std::string(symbols.name(static_cast<ParamDecl*>(p)->name)));
+    auto isSelfPair = [&](const Node& c)
+    {
+      std::string a = joined(c.kids[0].from, c.kids[0].to), b = joined(c.kids[1].from, c.kids[1].to);
+      return a != b && selves.count(a) && selves.count(b);
+    };
+    // == written through != (`return !(*this != other);`): this != is the real one
+    bool eqThroughNotEqual = false;
+    if (eq)
+    {
+      uint32_t ef = 0, et = 0;
+      Node ee;
+      if (eq->f->body && onlyReturn(eq->f, ef, et))
+      {
+        std::string body = joined(ef, et);
+        eqThroughNotEqual = body.find("operator!=") != std::string::npos ||
+                            (parse(ef, et, ee) && ee.kind == '!' && ee.kids[0].kind == 'n' && isSelfPair(ee.kids[0]));
+      }
+    }
+    if (eqThroughNotEqual)
+    {
+      keep(n, "its == is written through !=");
+      continue;
+    }
+    if (e.kind == '!')
+    {
+      const Node& x = e.kids[0];
+      std::string inner = joined(x.from, x.to);
+      bool callsEquals = (x.kind == '=' && isSelfPair(x)) || inner.rfind("operator==(", 0) == 0 || inner.rfind("this->operator==(", 0) == 0;
+      if (callsEquals)
+      {
+        removeDeclaration(f);
+        counts.add("operator!= dropped: the negation of ==");
+        continue;
+      }
+      if (!eq)
+      {
+        // (made the ==: `return !x;` is `return x;`)
+        uint32_t opTok = operatorToken(f);
+        if (opTok >= f->endToken)
+        {
+          keep(n, "its operator token not found");
+          continue;
+        }
+        edits.push_back({toks[opTok].offset, toks[opTok].length, "=="});
+        edits.push_back({toks[e.from].offset, toks[e.from].length, ""});
+        counts.add("operator!= made the == it negates: no == of its parameters");
+        continue;
+      }
+      keep(n, "a negation of something else than its ==");
+      continue;
+    }
+    std::multiset<std::pair<std::string, std::string>> ne;
+    if (terms(e, '|', 'n', ne))
+    {
+      if (eq)
+      {
+        uint32_t ef = 0, et = 0;
+        Node ee;
+        std::multiset<std::pair<std::string, std::string>> eqTerms;
+        if (eq->f->body && onlyReturn(eq->f, ef, et) && parse(ef, et, ee) && terms(ee, '&', '=', eqTerms) && eqTerms == ne)
+        {
+          removeDeclaration(f);
+          counts.add("operator!= dropped: its terms the negation of =='s");
+          continue;
+        }
+        // (a defaulted == compares the bases and each data member: the same when the class has no base and the terms
+        // are `this->m != p.m`, each data member once)
+        if ((eq->f->flags & DF_Default) && n.scope && n.scope->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(n.scope)->bases.empty() &&
+            f->params.size() == 1 && static_cast<ParamDecl*>(f->params[0])->name != UINT32_MAX)
+        {
+          std::string other(symbols.name(static_cast<ParamDecl*>(f->params[0])->name));
+          std::multiset<std::pair<std::string, std::string>> members;
+          for (Decl* m : static_cast<ClassDecl*>(n.scope)->members)
+            if (m->kind == NodeKind::VariableDecl && !(m->flags & DF_Static) && static_cast<VariableDecl*>(m)->name.parts.size() == 1)
+            {
+              // (an array member: a defaulted == compares its elements, `this->a != other.a` its addresses)
+              for (uint32_t k = m->token; k < m->endToken && k < toks.size(); ++k)
+                if (toks[k].is(P::LBracket))
+                  members.insert({"[", "array"});
+              std::string name(symbols.name(static_cast<VariableDecl*>(m)->name.last().symbol));
+              std::string a = "this->" + name, b = other + "." + name;
+              members.insert(a < b ? std::make_pair(a, b) : std::make_pair(b, a));
+            }
+          if (!members.empty() && members == ne)
+          {
+            removeDeclaration(f);
+            counts.add("operator!= dropped: its terms the negation of the defaulted =='s");
+            continue;
+          }
+        }
+        keep(n, "its terms are not its =='s negated");
+        continue;
+      }
+      // (made the ==: each != written ==, each || &&, each | &)
+      uint32_t opTok = operatorToken(f);
+      if (opTok >= f->endToken)
+      {
+        keep(n, "its operator token not found");
+        continue;
+      }
+      edits.push_back({toks[opTok].offset, toks[opTok].length, "=="});
+      std::function<void(const Node&)> flip = [&](const Node& x)
+      {
+        if (x.kind == 'n')
+          edits.push_back({toks[x.op].offset, toks[x.op].length, "=="});
+        else if (x.kind == '|')
+        {
+          edits.push_back({toks[x.op].offset, toks[x.op].length, toks[x.op].is(P::OrOr) ? "&&" : "&"});
+          flip(x.kids[0]);
+          flip(x.kids[1]);
+        }
+      };
+      flip(e);
+      counts.add("operator!= made the == it negates: no == of its parameters");
+      continue;
+    }
+    if (!eq)
+    {
+      // (made the ==: `return x;` is `return !(x);`)
+      uint32_t opTok = operatorToken(f);
+      if (opTok >= f->endToken)
+      {
+        keep(n, "its operator token not found");
+        continue;
+      }
+      edits.push_back({toks[opTok].offset, toks[opTok].length, "=="});
+      edits.push_back({toks[from].offset, 0, "!("});
+      edits.push_back({toks[to - 1].offset + toks[to - 1].length, 0, ")"});
+      counts.add("operator!= made the == it negates: no == of its parameters");
+      continue;
+    }
+    keep(n, "a body of another form");
+  }
+  if (edits.empty())
+    return text;
+  std::sort(edits.begin(), edits.end(), [](const Edit& a, const Edit& b) { return a.offset > b.offset; });
+  std::string out = text;
+  for (const Edit& e : edits)
+    out.replace(e.offset, e.length, e.text);
+  return out;
+}
+
 // The marks markInlineBody left in an output file's text, resolved: each marked definition's body
 // (from where its declarator ends) replaces its declaration's `;`, indented as the declaration is,
 // and the definition goes. A declaration whose definition this text has not (it is in a part a
