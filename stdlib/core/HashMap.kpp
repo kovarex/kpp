@@ -122,7 +122,8 @@ public:
   HashTable() {}
   HashTable(const Hasher& hasher, const KeyEqual& equal) : hasher(hasher), equal(equal) {}
   HashTable(const HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>& other) : hasher(other.hasher), equal(other.equal) { this->copyFrom(other); }
-  HashTable(HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>&& other) : hasher(other.hasher), equal(other.equal) { this->take(other); }
+  HashTable(HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>&& other) noexcept(isNothrowCopyConstructible<Hasher> && isNothrowCopyConstructible<KeyEqual>)
+    : hasher(other.hasher), equal(other.equal) { this->take(other); }
   ~HashTable() { this->clear(); }
 
   HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>& operator=(const HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>& other)
@@ -137,7 +138,7 @@ public:
     return *this;
   }
 
-  HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>& operator=(HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>&& other) noexcept
+  HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>& operator=(HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>&& other) noexcept(isNothrowCopyAssignable<Hasher> && isNothrowCopyAssignable<KeyEqual>)
   {
     if (this != &other)
     {
@@ -383,7 +384,7 @@ public:
     --this->count;
   }
 
-  void swap(HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>& other) noexcept(isNothrowCopyConstructible<Hasher> && isNothrowCopyConstructible<KeyEqual>)
+  void swap(HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>& other) noexcept(isNothrowCopyConstructible<Hasher> && isNothrowCopyConstructible<KeyEqual> && isNothrowCopyAssignable<Hasher> && isNothrowCopyAssignable<KeyEqual>)
   {
     HashTable<E, K, KeyOf, Hasher, KeyEqual, stable> held(move(other));
     other = move(*this);
@@ -834,7 +835,7 @@ public:
   // Moves the entries of other whose keys are not here into this map; the rest stay in other.
   void merge(HashMap<K, V, Hasher, KeyEqual, stable>& other) { this->table.mergeFrom(other.table); }
 
-  void swap(HashMap<K, V, Hasher, KeyEqual, stable>& other) noexcept(isNothrowCopyConstructible<Hasher> && isNothrowCopyConstructible<KeyEqual>) { this->table.swap(other.table); }
+  void swap(HashMap<K, V, Hasher, KeyEqual, stable>& other) noexcept(isNothrowCopyConstructible<Hasher> && isNothrowCopyConstructible<KeyEqual> && isNothrowCopyAssignable<Hasher> && isNothrowCopyAssignable<KeyEqual>) { this->table.swap(other.table); }
   void clear() { this->table.clear(); }
   void reserve(ContainerSize n) { this->table.reserve(n); }
   // std's rehash(n): at least n slots and room for the entries; it may shrink the table.
@@ -1004,7 +1005,7 @@ public:
 
   void merge(HashSet<T, Hasher, KeyEqual, stable>& other) { this->table.mergeFrom(other.table); }
 
-  void swap(HashSet<T, Hasher, KeyEqual, stable>& other) noexcept(isNothrowCopyConstructible<Hasher> && isNothrowCopyConstructible<KeyEqual>) { this->table.swap(other.table); }
+  void swap(HashSet<T, Hasher, KeyEqual, stable>& other) noexcept(isNothrowCopyConstructible<Hasher> && isNothrowCopyConstructible<KeyEqual> && isNothrowCopyAssignable<Hasher> && isNothrowCopyAssignable<KeyEqual>) { this->table.swap(other.table); }
   void clear() { this->table.clear(); }
   void reserve(ContainerSize n) { this->table.reserve(n); }
   // std's rehash(n): at least n slots and room for the entries; it may shrink the table.

@@ -147,7 +147,7 @@ public:
   BTree() {}
   BTree(const BTree<E, K, KeyOf>& other) { this->copyFrom(other); }
 
-  BTree(BTree<E, K, KeyOf>&& other) : root(other.root), rightmost(other.rightmost), count(other.count)
+  BTree(BTree<E, K, KeyOf>&& other) noexcept : root(other.root), rightmost(other.rightmost), count(other.count)
   {
     other.root = nullptr;
     other.rightmost = nullptr;

@@ -402,7 +402,7 @@ public:
     this->copyFrom(other);
   }
 
-  RbTree(RbTree<E, K, KeyOf, Compare>&& other) : compare(other.compare)
+  RbTree(RbTree<E, K, KeyOf, Compare>&& other) noexcept(isNothrowCopyConstructible<Compare>) : compare(other.compare)
   {
     this->becomeEmpty();
     this->take(other);
@@ -421,7 +421,7 @@ public:
     return *this;
   }
 
-  RbTree<E, K, KeyOf, Compare>& operator=(RbTree<E, K, KeyOf, Compare>&& other) noexcept
+  RbTree<E, K, KeyOf, Compare>& operator=(RbTree<E, K, KeyOf, Compare>&& other) noexcept(isNothrowCopyAssignable<Compare>)
   {
     if (this != &other)
     {
@@ -626,7 +626,7 @@ public:
     return (RbNode<E>*)position.node;
   }
 
-  void swap(RbTree<E, K, KeyOf, Compare>& other) noexcept(isNothrowCopyConstructible<Compare>)
+  void swap(RbTree<E, K, KeyOf, Compare>& other) noexcept(isNothrowCopyConstructible<Compare> && isNothrowCopyAssignable<Compare>)
   {
     RbTree<E, K, KeyOf, Compare> held(move(other));
     other = move(*this);
@@ -1184,7 +1184,7 @@ public:
     }
   }
 
-  void swap(Map<K, V, Compare>& other) noexcept(isNothrowCopyConstructible<Compare>) { this->tree.swap(other.tree); }
+  void swap(Map<K, V, Compare>& other) noexcept(isNothrowCopyConstructible<Compare> && isNothrowCopyAssignable<Compare>) { this->tree.swap(other.tree); }
   void clear() { this->tree.clear(); }
 
 private:
@@ -1400,7 +1400,7 @@ public:
     }
   }
 
-  void swap(Set<T, Compare>& other) noexcept(isNothrowCopyConstructible<Compare>) { this->tree.swap(other.tree); }
+  void swap(Set<T, Compare>& other) noexcept(isNothrowCopyConstructible<Compare> && isNothrowCopyAssignable<Compare>) { this->tree.swap(other.tree); }
   void clear() { this->tree.clear(); }
 
 private:
@@ -1609,7 +1609,7 @@ public:
     }
   }
 
-  void swap(MultiMap<K, V, Compare>& other) noexcept(isNothrowCopyConstructible<Compare>) { this->tree.swap(other.tree); }
+  void swap(MultiMap<K, V, Compare>& other) noexcept(isNothrowCopyConstructible<Compare> && isNothrowCopyAssignable<Compare>) { this->tree.swap(other.tree); }
   void clear() { this->tree.clear(); }
 
 private:
@@ -1794,7 +1794,7 @@ public:
     }
   }
 
-  void swap(MultiSet<T, Compare>& other) noexcept(isNothrowCopyConstructible<Compare>) { this->tree.swap(other.tree); }
+  void swap(MultiSet<T, Compare>& other) noexcept(isNothrowCopyConstructible<Compare> && isNothrowCopyAssignable<Compare>) { this->tree.swap(other.tree); }
   void clear() { this->tree.clear(); }
 
 private:

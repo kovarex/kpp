@@ -52,7 +52,7 @@ public:
       this->push_back(other[i]);
   }
 
-  Deque(Deque<T>&& other) : map(other.map), mapLength(other.mapLength), start(other.start), length(other.length)
+  Deque(Deque<T>&& other) noexcept : map(other.map), mapLength(other.mapLength), start(other.start), length(other.length)
   {
     other.map = nullptr;
     other.mapLength = 0;

@@ -139,8 +139,13 @@ answer as C++'s (`noexcept(T(move(x)))` is T's move constructor's answer):
   when T's move construction and the assignment from v do.
 - A container's `swap(other)`: a sequence's (Vector, Deque, List, ForwardList), String's,
   StringView's, FastMap's, FastSet's and the smart pointers' always; Map's, Set's, MultiMap's and
-  MultiSet's when a copy of the comparator throws nothing, HashMap's and HashSet's when copies of the
-  hasher and the key equality do; Array's, Optional's and Pair's when the elements' move construction
+  MultiSet's when the comparator's copy construction and copy assignment throw nothing, HashMap's and
+  HashSet's when the hasher's and the key equality's do; Array's, Optional's and Pair's when the elements' move construction
   and move assignment do, PriorityQueue's when its container's and comparator's do.
+- A container's move constructor and move assignment (none allocates): always, but Map's, Set's,
+  MultiMap's and MultiSet's when the comparator's copy construction (for the constructor) or copy
+  assignment (for the assignment) throws nothing, HashMap's and HashSet's when the hasher's and the key
+  equality's do. So a Vector of containers grows by moving them (vector.md). std leaves these to the
+  implementation (MSVC's STL allocates in a list's, a map's and a deque's move constructor).
 - A Tuple's move assignment when each element's does (a reference element's: the assignment of what
   it refers to, a copy for an lvalue reference).

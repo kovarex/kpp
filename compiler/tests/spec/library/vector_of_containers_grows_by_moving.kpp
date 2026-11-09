@@ -1,0 +1,87 @@
+// spec: a Vector of containers grows by moving them, not copying (the move constructor is noexcept, vector.md's move_if_noexcept): Deque, List, ForwardList, Map, Set, MultiMap, FastMap, HashMap and String allocate nothing when moved, so no element is copied however often the Vector grows; a Map whose comparator's copy may throw, and a HashMap whose hasher's may, have a move constructor that may throw, so the Vector copies them (and their elements) as C++ does; isNothrowMoveConstructible and isNothrowMoveAssignable say so
+// std leaves these moves to the implementation (MSVC's STL copies a list, a map and a deque here, libstdc++ a deque and a map); kpp's allocate nothing, so they are noexcept (common.md "What throws nothing"); Factorio has Vectors of Lists, Deques and Maps (K, 2026-11-09, the coordinator's ask)
+extern "C" int printf(const char* format, ...);
+
+int copies = 0;
+
+struct Counted
+{
+  int v = 0;
+  Counted() = default;
+  Counted(int v) : v(v) {}
+  Counted(const Counted& other) : v(other.v) { ++copies; }
+  Counted(Counted&& other) noexcept : v(other.v) {}
+
+  Counted& operator=(const Counted& other)
+  {
+    this->v = other.v;
+    ++copies;
+    return *this;
+  }
+
+  Counted& operator=(Counted&& other) noexcept
+  {
+    this->v = other.v;
+    return *this;
+  }
+
+  bool operator==(const Counted& other) const { return this->v == other.v; }
+  bool operator<(const Counted& other) const { return this->v < other.v; }
+};
+
+struct ThrowingLess
+{
+  ThrowingLess() = default;
+  ThrowingLess(const ThrowingLess&) {}
+  ThrowingLess& operator=(const ThrowingLess&) = default;
+  bool operator()(int a, int b) const { return a < b; }
+};
+
+struct ThrowingHash
+{
+  ThrowingHash() = default;
+  ThrowingHash(const ThrowingHash&) {}
+  ThrowingHash& operator=(const ThrowingHash&) = default;
+  usize operator()(int a) const { return usize(a); }
+};
+
+void fill(Deque<Counted>& c, int i) { c.push_back(Counted(i)); }
+void fill(List<Counted>& c, int i) { c.push_back(Counted(i)); }
+void fill(ForwardList<Counted>& c, int i) { c.push_front(Counted(i)); }
+void fill(Map<int, Counted>& c, int i) { c[i] = Counted(i); }
+void fill(Set<Counted>& c, int i) { c.insert(Counted(i)); }
+void fill(MultiMap<int, Counted>& c, int i) { c.insert(Pair<int, Counted>(i, Counted(i))); }
+void fill(FastMap<int, Counted>& c, int i) { c[i] = Counted(i); }
+void fill(HashMap<int, Counted>& c, int i) { c[i] = Counted(i); }
+void fill(Map<int, Counted, ThrowingLess>& c, int i) { c[i] = Counted(i); }
+void fill(HashMap<int, Counted, ThrowingHash>& c, int i) { c[i] = Counted(i); }
+
+// How many elements were copied while a Vector of 40 containers of 3 elements each was built and grew.
+template<typename C>
+int grow()
+{
+  Vector<C> containers;
+  copies = 0;
+  for (int i = 0; i < 40; ++i)
+  {
+    C c;
+    for (int k = 0; k < 3; ++k)
+      fill(c, k);
+    containers.push_back(move(c));
+  }
+  return copies;
+}
+
+int main()
+{
+  printf("%d %d %d %d %d %d %d %d\n", grow<Deque<Counted>>(), grow<List<Counted>>(), grow<ForwardList<Counted>>(), grow<Map<int, Counted>>(), grow<Set<Counted>>(),
+         grow<MultiMap<int, Counted>>(), grow<FastMap<int, Counted>>(), grow<HashMap<int, Counted>>());
+  printf("%d %d\n", int(grow<Map<int, Counted, ThrowingLess>>() > 0), int(grow<HashMap<int, Counted, ThrowingHash>>() > 0));
+  static_assert(isNothrowMoveConstructible<Deque<String>> && isNothrowMoveConstructible<List<String>> && isNothrowMoveConstructible<Map<int, String>> &&
+                isNothrowMoveConstructible<Set<int>> && isNothrowMoveConstructible<FastSet<int>> && isNothrowMoveConstructible<HashSet<int>> &&
+                isNothrowMoveConstructible<MultiSet<int>> && isNothrowMoveConstructible<String>);
+  static_assert(isNothrowMoveAssignable<Deque<String>> && isNothrowMoveAssignable<List<String>> && isNothrowMoveAssignable<Map<int, String>> &&
+                isNothrowMoveAssignable<HashMap<int, String>> && isNothrowMoveAssignable<FastMap<int, String>>);
+  static_assert(!isNothrowMoveConstructible<Map<int, int, ThrowingLess>> && !isNothrowMoveConstructible<HashMap<int, int, ThrowingHash>>);
+  return 0;
+}
