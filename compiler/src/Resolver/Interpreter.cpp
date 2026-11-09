@@ -8161,16 +8161,21 @@ auto GlobalScope::Impl::constBindParameter(ParamDecl* p, const Ty* type, size_t 
   {
     // `const Text& t` given `Text("a")`, or a StringView where a `const String&` is wanted: a
     // temporary of the caller's full expression, which the function refers to (and may move
-    // from), destroyed when that ends.
-    std::optional<ConstValue> v = constConvertTo(args[i], types.unqualified(type->inner), depth + 1);
-    std::optional<ConstPlace> at = v && v->isObject() && v->type && constDestroyRunsCode(v->type) ? constMaterialize(*v, type->inner) : std::nullopt;
+    // from), destroyed when that ends. One of a class derived from the reference's
+    // (`trackedSidesOf(TrackedSquare{&log})` of `const Tracked&`) is the whole object and the
+    // reference its base part: converted to the base, its virtual calls ran the base's functions and
+    // its end the base's destructor alone (until 2026-11-09, a silent wrong answer).
+    std::optional<ConstValue> v = basePart ? std::optional<ConstValue>(args[i]) : constConvertTo(args[i], types.unqualified(type->inner), depth + 1);
+    std::optional<ConstPlace> at = v && v->isObject() && v->type && constDestroyRunsCode(v->type) ? constMaterialize(*v, basePart ? v->type : type->inner) : std::nullopt;
     if (at)
     {
       ConstBinding alias{p->name, ConstValue::unset(type)};
-      alias.type = at->type;
+      alias.type = basePart && !basePart->empty() ? types.unqualified(type->inner) : at->type;
       alias.writable = !(type->inner && type->inner->isConst);
       alias.aliasEnv = at->env;
       alias.aliasIndex = at->index;
+      if (basePart)
+        alias.aliasPath = *basePart;
       env.push_back(std::move(alias));
       env.back().decl = p;
       return true;
@@ -8808,6 +8813,30 @@ auto GlobalScope::Impl::constDeclare(VariableDecl* v, const TypeContext& ctx, st
     }
     if (!((type->inner && type->inner->isConst) || type->kind == TyKind::RRef) || !v->init)
       return ConstFlow::Failed; // a reference to no place the run holds
+    // `const Shape& s = Square{};`: the temporary is the whole object, which lives as long as s, and s
+    // its base part. Kept as a value of the reference's type it was a Shape, whose functions s.sides()
+    // then ran, and its end ran Shape's destructor alone (until 2026-11-09, a silent wrong answer).
+    if (const Ty* want = type->inner ? types.unqualified(type->inner) : nullptr; want && want->kind == TyKind::Class && v->init->ty)
+      if (const Ty* have = types.unqualified(types.stripRef(v->init->ty)); have != want && have->kind == TyKind::Class)
+        if (std::optional<std::vector<size_t>> basePart = constBasePath(have, want, 0); basePart && !basePart->empty())
+          if (Expr* source = nullptr; constCategory(v->init, source) == 0)
+          {
+            std::optional<ConstValue> whole = constInitialize(have, v->init, ctx, depth + 1);
+            if (!whole)
+              return ConstFlow::Failed;
+            bool writable = type->kind == TyKind::RRef && !type->inner->isConst;
+            env.push_back(constBinding(constHiddenSymbol, *whole, have)); // (no name: the reference names it)
+            env.back().owns = true;
+            env.back().writable = writable;
+            ConstBinding alias{symbol, ConstValue::unset(type)};
+            alias.type = want;
+            alias.writable = writable;
+            alias.aliasEnv = &env;
+            alias.aliasIndex = env.size() - 1;
+            alias.aliasPath = *basePart;
+            env.push_back(std::move(alias));
+            return named(env.size() - 1);
+          }
     std::optional<ConstValue> value = constInitialize(type, v->init, ctx, depth + 1);
     if (!value)
       return ConstFlow::Failed;

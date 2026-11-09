@@ -1,0 +1,84 @@
+// spec: at compile time a temporary of a derived class bound to a reference to its base, a parameter's (`sidesOf(Square{})`) or a local's (`const Shape& s = Square{};`), is the whole object, the reference its base part, a second base's at its offset too, as at run time: a virtual call through the reference runs the derived class's override, and the whole object is destroyed, its own destructor first, when the full expression ends (a parameter's) or with the reference (a local's); the evaluator converted it to the base, a parameter's when its class had a destructor to run and every local's, so the call ran the base's function, 0 where C++ gives 4
+class Shape
+{
+public:
+  constexpr virtual int sides() const { return 0; }
+};
+class Square : public Shape
+{
+public:
+  constexpr int sides() const override { return 4; }
+};
+class Tracked
+{
+public:
+  int* log;
+  constexpr Tracked(int* log) : log(log) {}
+  constexpr virtual int sides() const { return 0; }
+  constexpr virtual ~Tracked() { *this->log = *this->log * 10 + 1; }
+};
+class TrackedSquare : public Tracked
+{
+public:
+  constexpr TrackedSquare(int* log) : Tracked(log) {}
+  constexpr int sides() const override { return 4; }
+  constexpr ~TrackedSquare() override { *this->log = *this->log * 10 + 2; }
+};
+class Plain
+{
+public:
+  int x = 7;
+};
+class Both : public Plain, public Tracked
+{
+public:
+  constexpr Both(int* log) : Tracked(log) {}
+  constexpr int sides() const override { return 5; }
+  constexpr ~Both() override { *this->log = *this->log * 10 + 3; }
+};
+constexpr int sidesOf(const Shape& s) { return s.sides(); }
+constexpr int trackedSidesOf(const Tracked& t) { return t.sides(); }
+constexpr int parameter() { return sidesOf(Square{}); }
+constexpr int trackedParameter()
+{
+  int log = 0;
+  int sides = trackedSidesOf(TrackedSquare{&log});
+  return sides * 100 + log;
+}
+constexpr int local()
+{
+  const Shape& s = Square{};
+  return s.sides();
+}
+constexpr int trackedLocal()
+{
+  int log = 0;
+  {
+    const Tracked& t = TrackedSquare{&log};
+    if (t.sides() != 4 || log != 0)
+      return -1;
+  }
+  return log;
+}
+constexpr int secondBase()
+{
+  int log = 0;
+  {
+    const Tracked& t = Both{&log};
+    if (t.sides() != 5 || log != 0)
+      return -1;
+  }
+  return log + 100 * trackedSidesOf(Both{&log});
+}
+static_assert(parameter() == 4 && trackedParameter() == 421 && local() == 4 && trackedLocal() == 21 && secondBase() == 531);
+int main()
+{
+  constexpr int p = parameter();
+  constexpr int tp = trackedParameter();
+  constexpr int l = local();
+  constexpr int tl = trackedLocal();
+  constexpr int sb = secondBase();
+  println(p, " ", tp, " ", l, " ", tl, " ", sb);
+  println(parameter(), " ", trackedParameter(), " ", local(), " ", trackedLocal(), " ", secondBase());
+  return 0;
+}

@@ -786,15 +786,26 @@ auto codegen::Emitter::declareLocal(VariableDecl* v) -> void
       // `const Label& l = wrapper;`: an object of another class is converted, to its base or
       // through its conversion operator (reference_wrapper's `operator T&()`), never bound as
       // if it were the referenced class.
+      Value whole = o;
+      bool toBase = false;
       if (const Ty* target = types.unqualified(types.stripRef(t)); isClass(o.ty) && !types.isDependent(o.ty) && canonicalClass(o.ty, v) != canonicalClass(target, v))
+      {
+        std::vector<std::pair<std::string, uint32_t>> path;
+        toBase = basePath(o.ty, target, path, v);
         o = convert(o, target, v);
+      }
       addr = o.text;
-      if (o.isTemporary)
+      // The temporary lives as long as the reference ([class.temporary] 6), one of a derived class too
+      // (`const Tracked& t = TrackedSquare{&log};`), destroyed then as the object it is: its base part's
+      // address is no temporary, and until 2026-11-09 it died with the statement, the reference referring
+      // to a destroyed object (its virtual calls the base's). (Through a conversion operator the reference
+      // binds what it gives, never the object it was called on.)
+      if (const Value& bound = toBase ? whole : o; bound.isTemporary)
       {
         for (size_t i = statementTemps.size(); i-- > 0;)
-          if (statementTemps[i].addr == addr)
+          if (statementTemps[i].addr == bound.text)
             statementTemps.erase(statementTemps.begin() + i);
-        scopes.back().push_back({addr, types.stripRef(t)});
+        scopes.back().push_back({bound.text, toBase ? types.stripRef(whole.ty) : types.stripRef(t)});
       }
     }
     else if (types.stripRef(t)->kind == TyKind::Array && isArrayBraces(init))
