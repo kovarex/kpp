@@ -26,7 +26,7 @@ extension no way to send the server a request of its own, so it cannot serve go 
 declaration. Installing it therefore needs a restart of Visual Studio.
 
 - **The server:** `KPP_LSP_SERVER` when that is set, else `kpp.exe` on the PATH (the installer puts
-  it there), else `kpp.exe`. Its log goes to `%LOCALAPPDATA%\kpp\visual-studio-lsp.log`. When no
+  it there), else `kpp.exe`. Its log goes to `%LOCALAPPDATA%\kpp\visual-studio-lsp.log`. (`visual-studio-lsp-PID.log` when another Visual Studio holds that one.) When no
   server is found, Visual Studio's info bar says so.
 - **Build:** `build.cmd` writes `tools\vs\kpp-visualstudio.vsix`. It needs the .NET 8 SDK (`winget install
   --id Microsoft.DotNet.SDK.8 -e`) and Visual Studio's MSBuild; the "Visual Studio extension

@@ -13,6 +13,8 @@
 # members: tests\lsp\members, completion after `this.`, `this->` and `This::`, and quick fixes.
 # constructors: tests\lsp\constructors, a constructor's references: every construction overload resolution gives
 # it, written or not, an instance's (an emplace's) at the program's call that asked for it.
+# references: tests\lsp\references, a class used across files, through an alias, a member's qualifier and a
+# base's base in an initializer, in a program whose test code is checked (a clean first check, checked again with --tests).
 # -Update writes the expected files from this run (read them before committing). run_tests.cmd runs it.
 param([string]$KppExe = "$PSScriptRoot\..\build\kpp.exe", [switch]$Update)
 $ErrorActionPreference = 'Stop'
@@ -29,7 +31,8 @@ foreach ($session in @(@{ Name = 'session'; Program = 'program'; Args = '--stdio
                       @{ Name = 'colors'; Program = 'program'; Args = '--stdio' },
                       @{ Name = 'navigation'; Program = 'hierarchy'; Args = '--stdio' },
                       @{ Name = 'members'; Program = 'members'; Args = '--stdio' },
-                      @{ Name = 'constructors'; Program = 'constructors'; Args = '--stdio' }))
+                      @{ Name = 'constructors'; Program = 'constructors'; Args = '--stdio' },
+                      @{ Name = 'references'; Program = 'references'; Args = '--stdio' }))
 {
   $name = $session.Name
   $program = Join-Path $work $session.Program

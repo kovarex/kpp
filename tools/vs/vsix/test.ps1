@@ -55,6 +55,13 @@ param(
   [switch]$NavigateBack
 )
 $ErrorActionPreference = 'Stop'
+
+# The server's log: the newest, as a Visual Studio finding the usual one held writes visual-studio-lsp-PID.log.
+function ServerLog
+{
+  $newest = Get-ChildItem "$env:LOCALAPPDATA\kpp\visual-studio-lsp*.log" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime | Select-Object -Last 1
+  if ($newest) { $newest.FullName } else { "$env:LOCALAPPDATA\kpp\visual-studio-lsp.log" }
+}
 $checkout = (Resolve-Path "$PSScriptRoot\..\..\..").Path
 if (-not $KppExe) { $KppExe = "$checkout\compiler\build\kpp.exe" }
 if (-not $Vsix) { $Vsix = "$checkout\tools\vs\kpp-visualstudio.vsix" }
@@ -308,7 +315,7 @@ try
   # Find All References: the server's answer (its log line) and the rows of the window Visual Studio shows.
   if ($ReferencesAt)
   {
-    $log = Join-Path $env:LOCALAPPDATA 'kpp\visual-studio-lsp.log'
+    $log = ServerLog
     $before = @(Get-Content $log -ErrorAction SilentlyContinue | Where-Object { $_ -match 'references: ' }).Count
     $p = Position $ReferencesAt
     $t = [Diagnostics.Stopwatch]::StartNew()
@@ -430,7 +437,7 @@ try
     function InactiveNow
     {
       $now = $null
-      foreach ($l in (Get-Content "$env:LOCALAPPDATA\kpp\visual-studio-lsp.log" -ErrorAction SilentlyContinue))
+      foreach ($l in (Get-Content (ServerLog) -ErrorAction SilentlyContinue))
       {
           if ($l -match "^kpp: inactive regions in .*\\$([regex]::Escape($leaf)): ?(.*)$") { $now = $Matches[1] }
       }
@@ -492,7 +499,7 @@ finally
   $dte.Quit()
   if (-not $devenv.WaitForExit(60000)) { "test.ps1: Visual Studio $($devenv.Id) did not quit" }
 }
-$log = "$env:LOCALAPPDATA\kpp\visual-studio-lsp.log"
+$log = ServerLog
 # The colors (docs/editors.md, "Colors"): the extension took -File's semantic tokens after a check.
 $leaf = Split-Path $File -Leaf
 $colored = @(Get-Content $log -ErrorAction SilentlyContinue | Where-Object { $_ -match "^kpp: semantic tokens in .*\\$([regex]::Escape($leaf)): ([0-9]+)$" -and [int]$Matches[1] -gt 0 })

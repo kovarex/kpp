@@ -47,9 +47,12 @@ internal static class KppContentType
 internal sealed class KppLanguageClient : ILanguageClient, ILanguageClientCustomMessage2
 {
     /// <summary>
-    /// The server's stderr (its log) goes here, written again at each start.
+    /// The server's stderr (its log) goes here, written again at each start; in a file named with this
+    /// process's id when another Visual Studio holds that one.
     /// </summary>
-    public static string LogPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "kpp", "visual-studio-lsp.log");
+    public static string LogPath { get; private set; } = Path.Combine(LogDirectory, "visual-studio-lsp.log");
+
+    private static string LogDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "kpp");
 
     /// <summary>
     /// The running server's connection, null while none runs.
@@ -128,7 +131,18 @@ internal sealed class KppLanguageClient : ILanguageClient, ILanguageClientCustom
         }
 
         Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!);
-        var log = new StreamWriter(LogPath, append: false) { AutoFlush = true };
+        StreamWriter log;
+        try
+        {
+            log = new StreamWriter(LogPath, append: false) { AutoFlush = true };
+        }
+        catch (IOException)
+        {
+            // Another Visual Studio writes it (or one that was killed and still holds it): the log must not
+            // be what keeps the language server from starting.
+            LogPath = Path.Combine(LogDirectory, $"visual-studio-lsp-{Process.GetCurrentProcess().Id}.log");
+            log = new StreamWriter(LogPath, append: false) { AutoFlush = true };
+        }
         logWriter = log;
         await log.WriteLineAsync($"kpp: {server} --lsp");
         var info = new ProcessStartInfo

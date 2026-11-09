@@ -35,6 +35,7 @@ std::shared_ptr<KeptState> takeKeptState()
   state->build = std::move(keptBuild);
   state->importStamps = std::move(lastImportStamps);
   lastImportStamps.clear();
+  forgetReplay();
   return state;
 }
 
@@ -46,6 +47,7 @@ void putKeptState(std::shared_ptr<KeptState> state)
     previous = std::move(keptBuild);
     keptBuild = state ? std::move(state->build) : nullptr;
     lastImportStamps = state ? std::move(state->importStamps) : std::string();
+    forgetReplay();
   }
 }
 

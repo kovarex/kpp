@@ -467,7 +467,8 @@ name, found by token (`occurrencesIn`, one walk of the file, cached until the ne
 **Rename never misses a use silently.** Every identifier spelled like the old name in the program's
 own files must be accounted for: a name the compiler resolved to the declaration (or to one of its
 other declarations; a class's constructors and destructor count as the class), a qualifier naming it
-(`Shape` in `Shape::area`, `Shape::count = 2` too), a constructor's member initializer naming it,
+(`Shape` in `Shape::area`, `Shape::count = 2` too, `this.Shape::area()`, `Shape::Alias::value` through an
+alias), a constructor's member initializer naming it (or naming a base of a base),
 the same names in template instances' copies; or a name resolved to something else, which is left
 alone. `This` is a keyword, not the class's name: renaming a class leaves each `This` as written,
 and a rename started on it is refused ("rename Shape at its name"); through `This::count` the member

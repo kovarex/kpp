@@ -58,6 +58,11 @@ int buildInThisProcess(CompileFunction compile, std::vector<std::string> args, s
 bool replayBuild(uint64_t fingerprint, const std::vector<std::string>& outputs, const std::function<std::vector<std::string>()>& left,
                  bool headersUnchanged, int& exitCode);
 
+// Forgets the build replayBuild would send again: the kept program went (kpp --lsp changes a cell's
+// arguments, or its cell: replaying what another's arguments printed would be no check of these, and
+// would leave no program).
+void forgetReplay();
+
 // Whether path, a file this server's last kept build left (replayBuild's left), is still as that
 // build left it: not removed, not written since. False for any other file, and outside a server.
 // Another server of the same outputs (Visual Studio's builds have --msvc-diagnostics, a terminal's do

@@ -1,0 +1,5 @@
+i32 Shape::count() { return 1; }
+
+i32 twice(const Shape& shape) { return shape.area() * 2; }
+
+Shape* make(i32 size) { return new Shape(size); }

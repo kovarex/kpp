@@ -498,11 +498,15 @@ namespace
     return nullptr;
   }
 
+  // The namespaces, classes, enums and type aliases of a program by name: for a qualifier that names an
+  // alias, whose target's parents do not lead back to it.
+  using ScopesByName = std::unordered_map<uint32_t, std::vector<Decl*>>;
+
   // A qualified name's qualifiers as occurrences of the scopes they name (`Shape` in `Shape::area`),
   // the scopes found from the declaration the whole name is (and its class, for an out-of-line member).
   // A qualifier `This` (design.md 23c) is the class or enum around the code, wherever the rest is declared.
   void addQualifiers(std::vector<Occurrence>& out, const ParsedFile& file, const QualifiedName& name, Node* node, Decl* named,
-                     GlobalScope* global, uint32_t from, uint32_t end, const std::unordered_map<const Decl*, Decl*>* statics = nullptr)
+                     GlobalScope* global, uint32_t from, uint32_t end, const std::unordered_map<const Decl*, Decl*>* statics, const ScopesByName* scopes)
   {
     const std::vector<Token>& tokens = *file.tokens;
     if (name.parts.size() < 2 || !named)
@@ -524,8 +528,21 @@ namespace
       Decl* scope = file.text.substr(t.offset, t.length) == "This"
                       ? enclosingType(global, file.decls, at[i], enclosingFunction(file.decls, at[i]))
                       : scopeNamed(start, name.parts[i].symbol);
+      // Through an alias (`Shape::Confirm::yes`, Confirm naming a template's instance) the target's parents
+      // do not lead to the qualifier: the one scope of that name, in the scope the next qualifier names.
+      if (!scope && scopes)
+        if (auto found = scopes->find(name.parts[i].symbol); found != scopes->end())
+        {
+          Decl* only = nullptr;
+          size_t matching = 0;
+          for (Decl* candidate : found->second)
+            if (i == 0 ? !candidate->parent || candidate->parent->kind == NodeKind::NamespaceDecl : candidate->parent && symbolOf(candidate->parent) == name.parts[i - 1].symbol)
+              only = candidate, ++matching;
+          if (matching == 1)
+            scope = only;
+        }
       if (!scope)
-        break; // (an alias, a using: left to the rename's check, which refuses what it cannot account for)
+        break; // (a using, an ambiguous name: left to the rename's check, which refuses what it cannot account for)
       out.push_back({at[i], scope, node, false});
       start = scope->parent;
     }
@@ -553,10 +570,28 @@ namespace
       for (Decl* m : c->members)
         if (!named && m->kind == NodeKind::VariableDecl && symbolOf(m) == symbol)
           named = m;
-      for (const ClassDecl::Base& b : c->bases)
-        if (!named && b.type && b.type->kind == NodeKind::NamedType)
-          if (Decl* base = static_cast<NamedType*>(b.type)->resolved; base && symbolOf(base) == symbol)
-            named = base;
+      // (a base's name, its bases' too: `Wakeable(&this)` in a class whose base is StaticWakeable<3>)
+      std::function<Decl*(ClassDecl*, int)> baseNamed = [&](ClassDecl* of, int depth) -> Decl*
+      {
+        for (const ClassDecl::Base& b : of->bases)
+          if (b.type && b.type->kind == NodeKind::NamedType)
+            if (Decl* base = static_cast<NamedType*>(b.type)->resolved; base && symbolOf(base) == symbol)
+              return base;
+        if (depth < 32)
+          for (const ClassDecl::Base& b : of->bases)
+            if (b.type && b.type->kind == NodeKind::NamedType)
+              if (Decl* base = static_cast<NamedType*>(b.type)->resolved)
+              {
+                Decl* defined = global.definitionOf(base);
+                defined = defined ? defined : base;
+                if (defined->kind == NodeKind::ClassDecl)
+                  if (Decl* found = baseNamed(static_cast<ClassDecl*>(defined), depth + 1))
+                    return found;
+              }
+        return nullptr;
+      };
+      if (!named)
+        named = baseNamed(c, 0);
       // Searched from the `:` on: the parameters come first and may be named as the members.
       uint32_t colon = from;
       while (colon < end && !(tokens[colon].is(P::Colon) && colon + 1 < tokens.size() && tokens[colon + 1].getKind() == TokenKind::Identifier))
@@ -572,7 +607,7 @@ namespace
 
   // Every name in a file the compiler resolved, and every declaration's own name, by token.
   std::vector<Occurrence> occurrencesIn(const ParsedFile& file, GlobalScope* global, const std::unordered_map<const Decl*, Decl*>* statics,
-                                        const SymbolTable* symbols)
+                                        const SymbolTable* symbols, const ScopesByName* scopes)
   {
     std::vector<Occurrence> out;
     if (!file.tokens)
@@ -588,7 +623,7 @@ namespace
           {
             out.push_back({t, d, n, true});
             if (const QualifiedName* q = qualifiedNameOf(d))
-              addQualifiers(out, file, *q, n, d, global, d->token, t + 1, statics);
+              addQualifiers(out, file, *q, n, d, global, d->token, t + 1, statics, scopes);
           }
         if (d->kind == NodeKind::FunctionDecl && global && d->file == &file)
           memberInitializers(out, tokens, static_cast<FunctionDecl*>(d), *global);
@@ -605,13 +640,15 @@ namespace
         if (m->base)
           forEachNode(m->base, [&](Node* b) { after = std::max(after, b->token); });
         t = nameToken(tokens, m->member, after + 1, after + 64);
+        if (t != UINT32_MAX)
+          addQualifiers(out, file, m->member, n, d, global, after + 1, t + 1, nullptr, scopes); // (`this.Base::f()`)
       }
       else
       {
         const QualifiedName& q = n->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(n)->name : static_cast<NamedType*>(n)->name;
         t = nameToken(tokens, q, n->token, n->token + 64);
         if (t != UINT32_MAX)
-          addQualifiers(out, file, q, n, d, global, n->token, t + 1);
+          addQualifiers(out, file, q, n, d, global, n->token, t + 1, nullptr, scopes);
       }
       if (t != UINT32_MAX)
         out.push_back({t, d, n, false});
@@ -722,6 +759,8 @@ namespace
       bool derivedKnown = false;
       // A static data member's out-of-line definition (`int Shape::count = 2;`) to its in-class declaration.
       bool staticsKnown = false;
+      bool scopesKnown = false;
+      ScopesByName scopes;
       std::unordered_map<const Decl*, Decl*> staticDeclarations;
       std::unordered_map<const Decl*, std::vector<ClassDecl*>> derived; // direct derived classes, by the base's canonical declaration
     };
@@ -1352,7 +1391,7 @@ namespace
     {
       auto found = cache.occurrences.find(f);
       if (found == cache.occurrences.end())
-        found = cache.occurrences.emplace(f, occurrencesIn(*f, currentGlobal, &knowStatics(), currentProgram ? currentProgram->symbols : nullptr)).first;
+        found = cache.occurrences.emplace(f, occurrencesIn(*f, currentGlobal, &knowStatics(), currentProgram ? currentProgram->symbols : nullptr, &knowScopes())).first;
       return found->second;
     }
 
@@ -1427,6 +1466,34 @@ namespace
         walk(f->decls);
       cache.staticsKnown = true;
       return cache.staticDeclarations;
+    }
+
+    // The program's namespaces, classes, enums and type aliases by name (ScopesByName).
+    const ScopesByName& knowScopes()
+    {
+      if (cache.scopesKnown || !currentProgram)
+        return cache.scopes;
+      std::function<void(Span<Decl*>)> walk = [&](Span<Decl*> decls)
+      {
+        for (Decl* d : decls)
+        {
+          if (d->kind != NodeKind::NamespaceDecl && d->kind != NodeKind::ClassDecl && d->kind != NodeKind::EnumDecl && d->kind != NodeKind::UsingAliasDecl)
+            continue;
+          if (uint32_t symbol = symbolOf(d); symbol != UINT32_MAX)
+          {
+            Decl* one = canonical(*currentProgram->global, d);
+            std::vector<Decl*>& list = cache.scopes[symbol];
+            if (std::find(list.begin(), list.end(), one) == list.end())
+              list.push_back(one);
+          }
+          if (d->kind != NodeKind::UsingAliasDecl)
+            walk(childrenOf(d));
+        }
+      };
+      for (ParsedFile* f : currentProgram->files)
+        walk(f->decls);
+      cache.scopesKnown = true;
+      return cache.scopes;
     }
 
     // One declaration for all of its declarations: a member's in-class declaration for its
@@ -1658,8 +1725,9 @@ namespace
       std::atomic<size_t> next{0};
       std::vector<std::thread> threads;
       const std::unordered_map<const Decl*, Decl*>* statics = &knowStatics();
+      const ScopesByName* scopes = &knowScopes();
       for (unsigned t = 0; t < std::max(1u, std::thread::hardware_concurrency()); ++t)
-        threads.emplace_back([&] { for (size_t i; (i = next++) < files.size();) found[i] = occurrencesIn(*files[i], program.global, statics, program.symbols); });
+        threads.emplace_back([&] { for (size_t i; (i = next++) < files.size();) found[i] = occurrencesIn(*files[i], program.global, statics, program.symbols, scopes); });
       for (std::thread& t : threads)
         t.join();
       for (size_t i = 0; i < files.size(); ++i)

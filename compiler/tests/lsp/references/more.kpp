@@ -1,0 +1,21 @@
+class Square : public Shape
+{
+public:
+  Square(i32 side) : Shape(side) {}
+};
+
+i32 confirmed() { return Shape::Confirm::yes; }
+
+Shape::Kind kindOf(const Figure& figure) { return figure.size > 0 ? Shape::Kind::Round : Shape::Kind::Flat; }
+
+i32 main()
+{
+  Square square(3);
+  return twice(square) + confirmed() + Shape::count() - 19;
+}
+
+test area
+{
+  Shape shape(2);
+  check(shape.area() == 4);
+}

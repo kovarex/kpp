@@ -1386,6 +1386,8 @@ bool replayBuild(uint64_t fingerprint, const std::vector<std::string>& outputs, 
   return true;
 }
 
+void forgetReplay() { kept.valid = false; }
+
 bool leftAsKept(const std::string& path)
 {
   if (!kept.valid)

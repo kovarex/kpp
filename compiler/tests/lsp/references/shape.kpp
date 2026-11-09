@@ -1,0 +1,33 @@
+// tests/lsp.ps1's "references": a class used across the files of a program with a test.
+template<class Tag>
+class Named
+{
+public:
+  static constexpr i32 yes = 1;
+};
+
+class Listener
+{
+public:
+  implicit Listener(i32 first) : first(first) {}
+  i32 heard() const { return this->first; }
+
+private:
+  i32 first = 0;
+};
+
+class Shape : public Listener
+{
+public:
+  using Confirm = Named<class ConfirmTag>;
+  enum class Kind { Round, Flat };
+
+  Shape(i32 size) : Listener(size), size(size) {}
+  i32 area() const { return this->size * this->size; }
+  i32 heard() const { return this->Listener::heard(); }
+  static i32 count();
+
+  i32 size = 0;
+};
+
+using Figure = Shape;
