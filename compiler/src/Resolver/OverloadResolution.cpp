@@ -1939,7 +1939,7 @@ auto GlobalScope::Impl::requirementsExtraHold(RequiresExpr* r, const std::vector
   return unknownYet ? std::nullopt : std::optional<bool>(true);
 }
 
-auto GlobalScope::Impl::typeOfSignatureExpression(Expr* e, const TypeContext& ctx, Expr** typed) -> const Ty*
+auto GlobalScope::Impl::typeOfSignatureExpression(Expr* e, const TypeContext& ctx, Expr** typed, const ParsedFile* lookupFile, const Ty* objectType) -> const Ty*
 {
   static thread_local int nesting = 0;
   FunctionDecl* f = ctx.function;
@@ -1954,9 +1954,18 @@ auto GlobalScope::Impl::typeOfSignatureExpression(Expr* e, const TypeContext& ct
   ResolveStats scratch;
   Walker probe(*this, scratch, *tokens, text);
   probe.file = f ? f->file : nullptr;
-  FileOfLookups walkedFile(f ? f->file : nullptr);
+  FileOfLookups walkedFile(f ? f->file : lookupFile);
   probe.scope = ctx.scope;
   probe.activeSubst = ctx.subst;
+  if (objectType)
+    probe.thisType = types.pointer(objectType);
+  if (ctx.elementPacks && !ctx.elementPacks->empty())
+  {
+    // One element of a pack expansion's pattern: the packs' mentions name it, ctx.subst binding them whole.
+    probe.elementPacks = ctx.elementPacks;
+    probe.elementIndex = ctx.elementIndex;
+    probe.retypingElements = true;
+  }
   if (ctx.locals)
     probe.locals = *ctx.locals;
   if (f)

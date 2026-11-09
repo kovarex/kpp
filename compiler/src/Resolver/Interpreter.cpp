@@ -1410,7 +1410,9 @@ auto GlobalScope::Impl::constName(NameExpr* n, const TypeContext& ctx) -> std::o
   auto boolean = [this](std::optional<bool> b) {
     return b ? std::optional<ConstValue>(ConstValue::integer(*b, types.boolType())) : std::nullopt;
   };
-  Lookup l = lookupQualified(n->name, ctx.scope, ctx.locals, 1, ctx.subst, ctx.elementPacks, ctx.elementIndex);
+  // (required `this.`, design.md 23c: a bare name means here what it means to the walk, a global of its spelling over
+  // a member: the member's value at compile time and the global's at run time until 2026-11-09)
+  Lookup l = bareNameOutside(n, lookupQualified(n->name, ctx.scope, ctx.locals, 1, ctx.subst, ctx.elementPacks, ctx.elementIndex), ctx.scope);
   if (l.found == Found::No && !n->resolved && n->name.parts.size() == 1 && n->name.parts[0].hasTemplateArgs &&
       isBoolTraitName(n->name.parts[0].symbol))
   {
@@ -1514,7 +1516,7 @@ auto GlobalScope::Impl::constNamesIn(Node* n, std::vector<uint32_t>& out, int de
   }
 }
 
-auto GlobalScope::Impl::constExpand(Expr* pattern, const TypeContext& ctx, int depth, std::vector<std::optional<ConstPlace>>* places, std::vector<uint8_t>* categories) -> std::optional<std::vector<ConstValue>>
+auto GlobalScope::Impl::constExpand(Expr* pattern, const TypeContext& ctx, int depth, std::vector<std::optional<ConstPlace>>* places, std::vector<uint8_t>* categories, std::vector<const Ty*>* elementTypes) -> std::optional<std::vector<ConstValue>>
 {
   if (!pattern || depth > 512)
     return std::nullopt;
@@ -1560,9 +1562,30 @@ auto GlobalScope::Impl::constExpand(Expr* pattern, const TypeContext& ctx, int d
   }
   if (!count || !constMayMake(*count))
     return std::nullopt;
+  // The pattern typed for each element, as the code generator retypes it (forEachPackElement): a call's overload, a
+  // constructor, a member function chosen by that element's types. The walk typed the pattern once with the whole pack,
+  // each argument a Pack of every element's type, and recorded one choice for every element: `code(forward<Args>(args))...`
+  // ran code(int&&) for each (3333 at compile time, 1323 at run time, until 2026-11-09). The run's parameters and locals
+  // are in scope for it, the pack's among them.
+  std::vector<Decl*> elementPacks;
+  for (const auto& [pack, bound] : typePacks)
+    elementPacks.push_back(pack);
+  bool retype = !elementPacks.empty() && ctx.subst && constChoosesPerElement(pattern);
+  LocalStack runLocals;
+  if (retype)
+  {
+    if (ctx.locals)
+      runLocals = *ctx.locals;
+    if (ctx.env)
+      for (const ConstBinding& b : *ctx.env)
+        if (b.decl)
+          runLocals.push(b.symbol, b.decl);
+  }
+  Expr* const written = pattern;
   std::vector<ConstValue> out;
   for (size_t k = 0; k < *count; ++k)
   {
+    pattern = retype ? constPatternFor(written, ctx, runLocals, elementPacks, uint32_t(k)) : written;
     Subst one = ctx.subst ? *ctx.subst : Subst{};
     for (const auto& [pack, bound] : typePacks)
       for (Subst::Pair& q : one.pairs)
@@ -1633,11 +1656,48 @@ auto GlobalScope::Impl::constExpand(Expr* pattern, const TypeContext& ctx, int d
     if (!v)
       return std::nullopt;
     out.push_back(*v);
+    if (elementTypes)
+    {
+      // What this element presents to deduction: the pattern as typed for it (`forward<U>(x)`: U&& collapsed), a
+      // parameter pack's name an lvalue of its element's type.
+      const Ty* t = nullptr;
+      if (pattern != written && pattern->ty && pattern->ty->isKnown() && !types.isDependent(pattern->ty))
+        t = argumentType(pattern, pattern->ty, types);
+      else if (pattern->kind == NodeKind::NameExpr && elementType && elementType->isKnown() && !types.isDependent(elementType))
+        t = types.lref(types.stripRef(elementType));
+      elementTypes->push_back(t);
+    }
   }
   return out;
 }
 
-auto GlobalScope::Impl::constArguments(Span<Expr*> args, const TypeContext& ctx, int depth, std::vector<ConstValue>& values, std::vector<std::optional<ConstPlace>>* places, std::vector<uint8_t>* categories) -> bool
+auto GlobalScope::Impl::constChoosesPerElement(Expr* pattern) -> bool
+{
+  bool chooses = false, lambda = false;
+  forEachNode(pattern, [&](Node* n)
+  {
+    lambda = lambda || n->kind == NodeKind::LambdaExpr;
+    chooses = chooses || n->kind == NodeKind::CallExpr || n->kind == NodeKind::FunctionalCastExpr || n->kind == NodeKind::BraceInitExpr;
+  });
+  return chooses && !lambda;
+}
+
+auto GlobalScope::Impl::constPatternFor(Expr* pattern, const TypeContext& ctx, const LocalStack& runLocals, const std::vector<Decl*>& elementPacks, uint32_t k) -> Expr*
+{
+  TypeContext pctx = ctx;
+  pctx.locals = &runLocals;
+  pctx.elementPacks = &elementPacks;
+  pctx.elementIndex = k;
+  // (`put(forward<Args>(args))` in a member function: `this` the running object, a const one's const)
+  const Ty* object = nullptr;
+  if (std::optional<ConstPlace> self = constThisPlace(ctx); self && self->type)
+    object = self->readOnly ? types.qualified(self->type, true, self->type->isVolatile) : self->type;
+  Expr* typed = nullptr;
+  const Ty* t = typeOfSignatureExpression(pattern, pctx, &typed, constRunningFile(), object);
+  return t && t->isKnown() && typed ? typed : pattern;
+}
+
+auto GlobalScope::Impl::constArguments(Span<Expr*> args, const TypeContext& ctx, int depth, std::vector<ConstValue>& values, std::vector<std::optional<ConstPlace>>* places, std::vector<uint8_t>* categories, std::vector<const Ty*>* elementTypes) -> bool
 {
   for (Expr* a : args)
   {
@@ -1645,7 +1705,8 @@ auto GlobalScope::Impl::constArguments(Span<Expr*> args, const TypeContext& ctx,
     {
       std::vector<std::optional<ConstPlace>> elementPlaces;
       std::vector<uint8_t> elementCategories;
-      std::optional<std::vector<ConstValue>> expanded = constExpand(static_cast<UnaryExpr*>(a)->operand, ctx, depth, &elementPlaces, &elementCategories);
+      std::vector<const Ty*> expandedTypes;
+      std::optional<std::vector<ConstValue>> expanded = constExpand(static_cast<UnaryExpr*>(a)->operand, ctx, depth, &elementPlaces, &elementCategories, &expandedTypes);
       if (!expanded)
         return false;
       for (size_t k = 0; k < expanded->size(); ++k)
@@ -1655,6 +1716,8 @@ auto GlobalScope::Impl::constArguments(Span<Expr*> args, const TypeContext& ctx,
           places->push_back(k < elementPlaces.size() ? elementPlaces[k] : std::nullopt);
         if (categories)
           categories->push_back(k < elementCategories.size() ? elementCategories[k] : 0);
+        if (elementTypes)
+          elementTypes->push_back(k < expandedTypes.size() ? expandedTypes[k] : nullptr);
       }
       continue;
     }
@@ -1674,6 +1737,23 @@ auto GlobalScope::Impl::constArguments(Span<Expr*> args, const TypeContext& ctx,
       if (!called && !calledValue && constCallPlaceRan)
         return false; // it ran, and its result is no place the run holds: never run twice
     }
+    // An argument with a side effect (`inc(values[i++])`, `swap(values[i++], values[j++])`) is evaluated once: its place
+    // where it designates an object (`move(x)` and `static_cast<T&&>(x)` designate x), which a reference parameter refers
+    // to and its value is read from, else its value alone. Evaluated for its value and again for its place, its side
+    // effect happened twice: i was 2 after the call and the parameter referred to values[1], at run time 1 and values[0]
+    // (until 2026-11-09, a silent wrong answer).
+    if (elementTypes)
+      elementTypes->push_back(nullptr); // (written alone: its own type, constBindTemplate's)
+    Expr* source = nullptr;
+    uint8_t category = places || categories ? constCategory(a, source) : 0;
+    bool once = places && !called && !calledValue && !constPure(a);
+    if (once)
+    {
+      constCallPlaceRan = false;
+      called = constPlaceOf(category == 2 && source && source != a ? source : a, ctx, depth + 1, false, &calledValue); // (no call run for a place: a reference's is above)
+      if (!called && !calledValue && constCallPlaceRan)
+        return false; // evaluated, and its result is no place the run holds: never a second time
+    }
     std::optional<ConstValue> v = called ? constPartOrUnset(*called) : calledValue ? calledValue : constValue(a, ctx, depth + 1);
     if (!v && places && constPure(a))
       if (std::optional<ConstPlace> at = constPlaceOf(a, ctx, depth + 1); at && !constRead(*at))
@@ -1682,20 +1762,20 @@ auto GlobalScope::Impl::constArguments(Span<Expr*> args, const TypeContext& ctx,
       return false;
     values.push_back(*v);
     if (places)
-      places->push_back(called ? called : constPlaceOf(a, ctx, depth + 1));
+      places->push_back(called ? called : once ? std::nullopt : constPlaceOf(a, ctx, depth + 1));
     if (categories)
     {
-      Expr* source = nullptr;
-      categories->push_back(constCategory(a, source));
-      if (places && source != a && categories->back() == 2)
-        places->back() = constPlaceOf(source, ctx, depth + 1); // `move(x)`: x
+      categories->push_back(category);
+      // `move(x)`: x (a call's own place is already x's; one with a side effect has run)
+      if (places && !called && !calledValue && source != a && category == 2 && constPure(source))
+        places->back() = constPlaceOf(source, ctx, depth + 1);
     }
   }
   return true;
 }
 
 auto GlobalScope::Impl::constBindTemplate(FunctionDecl* f, const std::vector<const Ty*>& given, CallExpr* c, const std::vector<ConstValue>& values, const TypeContext& ctx, int depth, Subst& bound, LocalStack& params,
-                                          const std::vector<uint8_t>* categories) -> bool
+                                          const std::vector<uint8_t>* categories, const std::vector<const Ty*>* elementTypes) -> bool
 {
   bool variadic = !f->params.empty() && static_cast<ParamDecl*>(f->params[f->params.size() - 1])->isPack;
   Subst fromArgs; // `max(sizeof(Key) + 1u, 2 * sizeof(void*) - 1)`: the parameters not written, deduced from the arguments' types
@@ -1745,6 +1825,10 @@ auto GlobalScope::Impl::constBindTemplate(FunctionDecl* f, const std::vector<con
       // makes another closure type, which the closure made from it is not of).
       if (values[i].isObject() && values[i].type && types.unqualified(values[i].type)->kind == TyKind::Lambda)
         argTy = values[i].type;
+      // An expansion's element as its pattern was typed for it (`forward<Args>(args)...`: an lvalue of a scalar deduced
+      // the scalar, so `forward<Args>` made every element an rvalue: until 2026-11-09, at compile time only).
+      if (!a && elementTypes && i < elementTypes->size() && (*elementTypes)[i])
+        argTy = (*elementTypes)[i];
       // An expansion's element (`forward<Args>(args)...`) by its value category: a class object
       // that is an lvalue deduces a reference, so that forward copies it (Map's emplace moved the
       // caller's key out of it, at compile time only).
@@ -1886,7 +1970,7 @@ auto GlobalScope::Impl::constCall(CallExpr* c, const TypeContext& ctx, int depth
   bool ofThePrimary = d && d->kind == NodeKind::FunctionDecl && callee->name.parts.size() > 1 && ctx.subst && d->parent && (d->parent->attributes & ATTR_Specialized);
   if (!d || d->kind == NodeKind::TemplateParamDecl || ofThePrimary)
   {
-    Lookup l = lookupQualified(callee->name, ctx.scope, ctx.locals, depth + 1, ctx.subst, ctx.elementPacks, ctx.elementIndex);
+    Lookup l = bareNameOutside(callee, lookupQualified(callee->name, ctx.scope, ctx.locals, depth + 1, ctx.subst, ctx.elementPacks, ctx.elementIndex), ctx.scope);
     d = l.decl || !ofThePrimary ? l.decl : d;
     // Not typed where it is written (a template argument, `Imm<max(a, b)>`): of the
     // functions of the name, the one whose parameters the arguments fill, when one does.
@@ -2085,7 +2169,8 @@ auto GlobalScope::Impl::constCall(CallExpr* c, const TypeContext& ctx, int depth
   std::vector<ConstValue> values;
   std::vector<std::optional<ConstPlace>> places; // what reference parameters refer to
   std::vector<uint8_t> categories;               // how by-value parameters are initialised
-  if (!constArguments(c->args, ctx, depth, values, &places, &categories))
+  std::vector<const Ty*> elementTypes;           // what an expansion's elements present to deduction
+  if (!constArguments(c->args, ctx, depth, values, &places, &categories, &elementTypes))
     return std::nullopt;
   bool variadic = !f->params.empty() && static_cast<ParamDecl*>(f->params[f->params.size() - 1])->isPack;
   if (values.size() > f->params.size() && !variadic)
@@ -2099,7 +2184,7 @@ auto GlobalScope::Impl::constCall(CallExpr* c, const TypeContext& ctx, int depth
     bound = qualifierSubst(callee->name, ctx, depth + 1, lexicalScopeOf(f));
   for (const Subst::Pair& p : bound.pairs)
     params.push(static_cast<TemplateParamDecl*>(p.param)->name, p.param);
-  if (!constBindTemplate(f, given, c, values, ctx, depth, bound, params, &categories))
+  if (!constBindTemplate(f, given, c, values, ctx, depth, bound, params, &categories, &elementTypes))
     return std::nullopt;
   if (ctx.subst) // called from inside an instance: its class's arguments stay
     for (const Subst::Pair& p : ctx.subst->pairs)
@@ -2224,7 +2309,8 @@ auto GlobalScope::Impl::constMemberCall(CallExpr* c, const TypeContext& ctx, int
   std::vector<ConstValue> values;
   std::vector<std::optional<ConstPlace>> places; // what reference parameters refer to
   std::vector<uint8_t> categories;               // how by-value parameters are initialised
-  if (!constArguments(c->args, ctx, depth, values, &places, &categories))
+  std::vector<const Ty*> elementTypes;           // what an expansion's elements present to deduction
+  if (!constArguments(c->args, ctx, depth, values, &places, &categories, &elementTypes))
     return std::nullopt;
   Subst bound = memberSubst(object, qualified ? (f->parent ? f->parent->ownScope : nullptr) : l.foundIn, depth + 1);
   LocalStack params;
@@ -2246,7 +2332,7 @@ auto GlobalScope::Impl::constMemberCall(CallExpr* c, const TypeContext& ctx, int
       else
         given.push_back(t);
     }
-  if (!f->templateParams.empty() && !constBindTemplate(f, given, c, values, ctx, depth, bound, params, &categories))
+  if (!f->templateParams.empty() && !constBindTemplate(f, given, c, values, ctx, depth, bound, params, &categories, &elementTypes))
     return std::nullopt; // a member function template (`emplace_back(Args&&...)`, `value_or(U&&)`): its own parameters deduced
   TypeContext fctx{lexicalScopeOf(f), params.items.empty() ? nullptr : &params, bound.empty() ? nullptr : &bound,
                    f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
@@ -4832,7 +4918,7 @@ auto GlobalScope::Impl::constDesignated(Expr* x, const TypeContext& ctx, int dep
       }
       Decl* d = n->resolved;
       if (!d || d->kind == NodeKind::TemplateParamDecl)
-        d = lookupQualified(n->name, ctx.scope, ctx.locals, depth + 1, ctx.subst, ctx.elementPacks, ctx.elementIndex).decl;
+        d = bareNameOutside(n, lookupQualified(n->name, ctx.scope, ctx.locals, depth + 1, ctx.subst, ctx.elementPacks, ctx.elementIndex), ctx.scope).decl;
       if (!constStaticStorage(d))
         return std::nullopt;
       ConstDesignated a;
@@ -4958,7 +5044,7 @@ auto GlobalScope::Impl::constAddressOf(Expr* operand, const TypeContext& ctx, in
     Lookup l;
     if (!d || d->kind == NodeKind::TemplateParamDecl)
     {
-      l = lookupQualified(n->name, ctx.scope, ctx.locals, depth + 1, ctx.subst, ctx.elementPacks, ctx.elementIndex);
+      l = bareNameOutside(n, lookupQualified(n->name, ctx.scope, ctx.locals, depth + 1, ctx.subst, ctx.elementPacks, ctx.elementIndex), ctx.scope);
       d = l.decl;
       if (d && d->kind == NodeKind::FunctionDecl && l.overloads)
       {
@@ -5305,7 +5391,8 @@ auto GlobalScope::Impl::constCallClosure(LambdaExpr* l, const ConstValue& closur
   std::vector<ConstValue> values;
   std::vector<std::optional<ConstPlace>> places; // what reference parameters refer to
   std::vector<uint8_t> categories;
-  if (!constArguments(c->args, ctx, depth, values, &places, &categories))
+  std::vector<const Ty*> elementTypes;
+  if (!constArguments(c->args, ctx, depth, values, &places, &categories, &elementTypes))
     return std::nullopt;
   EvaluationCall call;
   if (!call.ok)
@@ -5491,7 +5578,8 @@ auto GlobalScope::Impl::constCallThrough(const ConstValue& fn, CallExpr* c, cons
   std::vector<ConstValue> values;
   std::vector<std::optional<ConstPlace>> places;
   std::vector<uint8_t> categories;
-  if (!constArguments(c->args, ctx, depth, values, &places, &categories))
+  std::vector<const Ty*> elementTypes;
+  if (!constArguments(c->args, ctx, depth, values, &places, &categories, &elementTypes))
     return std::nullopt;
   Subst bound = fn.target->owner ? substFor(fn.target->owner) : Subst{};
   for (const auto& [param, arg] : fn.target->args)
@@ -7324,7 +7412,8 @@ auto GlobalScope::Impl::constCallObjectValue(const ConstValue& object, std::opti
   std::vector<ConstValue> values;
   std::vector<std::optional<ConstPlace>> places;
   std::vector<uint8_t> categories;
-  if (!constArguments(c->args, ctx, depth, values, &places, &categories))
+  std::vector<const Ty*> elementTypes;
+  if (!constArguments(c->args, ctx, depth, values, &places, &categories, &elementTypes))
     return std::nullopt;
   std::vector<const Ty*> argTypes;
   for (size_t i = 0; i < values.size(); ++i)
@@ -7341,7 +7430,7 @@ auto GlobalScope::Impl::constCallObjectValue(const ConstValue& object, std::opti
     // `less(a, b)` of a Less<>, sort's default comparator: an operator() template, its own
     // parameters deduced from the arguments (it was run unbound, so sort was no constant).
     LocalStack own;
-    if (!constBindTemplate(call, {}, c, values, ctx, depth, subst, own, &categories))
+    if (!constBindTemplate(call, {}, c, values, ctx, depth, subst, own, &categories, &elementTypes))
       return std::nullopt;
   }
   return constCallOn(call, subst, values, &self, depth + 1, place ? &*place : nullptr, &places, &categories);
@@ -7753,7 +7842,8 @@ auto GlobalScope::Impl::constPlaceOf(Expr* e, const TypeContext& ctx, int depth,
     std::vector<ConstValue> args;
     std::vector<std::optional<ConstPlace>> places;
     std::vector<uint8_t> categories;
-    bool argued = constArguments(c->args, ctx, depth, args, &places, &categories);
+    std::vector<const Ty*> elementTypes;
+    bool argued = constArguments(c->args, ctx, depth, args, &places, &categories, &elementTypes);
     for (Expr* a : c->args)
       if (!constPure(a))
         constCallPlaceRan = true; // (an argument with a side effect evaluated: never a second time)
@@ -7771,7 +7861,7 @@ auto GlobalScope::Impl::constPlaceOf(Expr* e, const TypeContext& ctx, int depth,
         else
           given.push_back(t);
       }
-    if (!f->templateParams.empty() && !constBindTemplate(f, given, c, args, ctx, depth, subst, own, &categories))
+    if (!f->templateParams.empty() && !constBindTemplate(f, given, c, args, ctx, depth, subst, own, &categories, &elementTypes))
       return std::nullopt; // `all.emplace_back().roots`: a member function template's own parameters
     return constCallPlace(f, subst, args, *base, depth + 1, &places, &categories, ran, c->ty);
   }
@@ -8106,6 +8196,16 @@ auto GlobalScope::Impl::constRun(FunctionDecl* f, const std::vector<ConstValue>&
   bool qualified = std::exchange(constQualifiedCall(), false); // (read first: no other run takes it)
   if (int which = intrinsicOf(f))
     return constIntrinsic(which, f, args, fctx.subst, depth);
+  // The library's move, forward and asConst (design.md 25): the casts they are, the argument's value and, as a
+  // reference, the object its parameter refers to; never a body run through an instance, which the walk no longer
+  // makes for them (0a52de89; the evaluator's runs made the game's last 42). A prvalue's (`move(3)` wanting a place)
+  // runs as before.
+  if (callIntrinsicOf(f) != CallIntrinsic::None && args.size() == 1 && (!returnPlace || (places && !places->empty() && (*places)[0])))
+  {
+    if (returnPlace)
+      *returnPlace = (*places)[0];
+    return args[0];
+  }
   // A call of a function taking a Text the walk left as written (a template's own nodes): its
   // arguments from the Text parameter's position on packed here (design.md 14).
   if (size_t k = f->params.size() - 1; namesTextLast(f) && args.size() >= k && !(args.size() == k + 1 && isText(args[k].type)))

@@ -1,0 +1,77 @@
+// spec: an argument with a side effect is evaluated once at compile time, as at run time: its place where a reference parameter refers to it, else its value; `inc(values[i++])` left i at 2 and changed values[1] (until 2026-11-09, a silent wrong answer), by value too; a reference, a const reference, a by-value parameter, two arguments, a nested call giving a reference, move and forward of one. clang's and g++'s output for the C++ with std::move, std::forward and std::swap
+constexpr int& same(int& x) { return x; }
+constexpr int byValue(int x) { return x; }
+constexpr int byConstRef(const int& x) { return x; }
+constexpr void inc(int& x) { ++x; }
+constexpr int& pick(int* values, int& i) { return values[i++]; }
+
+constexpr int reference()
+{
+  int values[3] = {10, 20, 30};
+  int i = 0;
+  inc(values[i++]);
+  return values[0] * 10000 + values[1] * 10 + i;
+}
+
+constexpr int result()
+{
+  int values[3] = {10, 20, 30};
+  int i = 0;
+  int a = same(values[i++]);
+  return a * 10 + i;
+}
+
+constexpr int value()
+{
+  int values[3] = {10, 20, 30};
+  int i = 0;
+  int a = byValue(values[i++]);
+  return a * 10 + i;
+}
+
+constexpr int constReference()
+{
+  int values[3] = {10, 20, 30};
+  int i = 0;
+  int a = byConstRef(values[i++]);
+  return a * 10 + i;
+}
+
+constexpr int two()
+{
+  int values[4] = {10, 20, 30, 40};
+  int i = 0, j = 2;
+  swap(values[i++], values[j++]);
+  return values[0] * 1000 + values[2] * 10 + i + j * 100;
+}
+
+constexpr int nested()
+{
+  int values[3] = {10, 20, 30};
+  int i = 0;
+  inc(pick(values, i));
+  return values[0] * 1000 + values[1] * 10 + i;
+}
+
+constexpr int moved()
+{
+  int values[3] = {10, 20, 30};
+  int i = 0;
+  int a = move(values[i++]);
+  int b = forward<int&>(values[i++]);
+  return a + b + i * 100;
+}
+
+static_assert(reference() == 110201);
+static_assert(result() == 101);
+static_assert(value() == 101);
+static_assert(constReference() == 101);
+static_assert(two() == 30401);
+static_assert(nested() == 11201);
+static_assert(moved() == 230);
+
+int main()
+{
+  println(reference(), " ", result(), " ", value(), " ", constReference(), " ", two(), " ", nested(), " ", moved());
+  return 0;
+}

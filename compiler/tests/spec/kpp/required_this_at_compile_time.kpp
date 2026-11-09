@@ -1,0 +1,30 @@
+// spec: required `this.` holds at compile time as at run time (design.md 23c, Q10): a bare name that is a member and a global is the global for the evaluator too, in a function run at compile time, a static member's initializer and a default member initializer. Until 2026-11-09 the evaluator took the member: 2 at compile time, 1 at run time
+// kpp: --this-reference
+constexpr int limit = 1;
+constexpr int scale = 10;
+constexpr int twice(int x) { return 2 * x; }
+
+class C
+{
+public:
+  static constexpr int limit = 2;
+  static constexpr int bareTwiceLimit = limit * 2;
+  int field = limit;
+  int scale = 3;
+  constexpr int twice(int x) const { return 3 * x; }
+  static constexpr int get(int k) { return limit + k; }
+  constexpr int times(int k) const { return scale * k; }
+  constexpr int run() const { return twice(5); }
+};
+
+static_assert(C::get(0) == 1);
+static_assert(C::bareTwiceLimit == 2);
+static_assert(C().times(1) == 10);
+static_assert(C().run() == 10);
+
+int main(int argc, char** argv)
+{
+  C c;
+  println(C::get(argc - 1), " ", C::bareTwiceLimit, " ", c.field, " ", c.times(argc), " ", c.run());
+  return 0;
+}

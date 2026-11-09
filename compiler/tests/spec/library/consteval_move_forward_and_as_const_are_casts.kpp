@@ -1,0 +1,79 @@
+// spec: the evaluator runs the library's move, forward and asConst as the casts they are (design.md 25), the argument's value and as a reference its place, with no instance of their bodies: a move constructor run at compile time moves from the object itself, move(move(x)), `move(values[i++])` evaluates its operand once, forward through a pack expansion, a move of a prvalue, forward<int&>(x) and move(x) written through, asConst's const member function, swap. clang's and g++'s output for the C++ with std::move, std::forward, std::as_const and std::swap
+struct Tracked
+{
+  int value;
+  int moves = 0;
+
+  constexpr Tracked(int value) : value(value) {}
+
+  constexpr Tracked(Tracked&& other) : value(other.value), moves(other.moves + 1) { other.value = -1; }
+
+  constexpr int which() { return 1; }
+  constexpr int which() const { return 2; }
+};
+
+constexpr int code(int&) { return 1; }
+constexpr int code(const int&) { return 2; }
+constexpr int code(int&&) { return 3; }
+
+template<typename... Args>
+constexpr int codes(Args&&... args)
+{
+  int digits = 0;
+  ((digits = digits * 10 + code(forward<Args>(args))), ...);
+  return digits;
+}
+
+constexpr int movedObject()
+{
+  Tracked t(5);
+  Tracked m = move(t);
+  Tracked n = move(move(m));
+  return (t.value == -1) * 1000 + (m.value == -1) * 100 + n.value * 10 + n.moves;
+}
+
+constexpr int onceEach()
+{
+  int values[3] = {10, 20, 30};
+  int i = 0;
+  int a = move(values[i++]);
+  int b = forward<int&>(values[i++]);
+  return a + b + i * 100;
+}
+
+constexpr int throughReferences()
+{
+  int x = 1;
+  forward<int&>(x) = 7;
+  int&& r = move(x);
+  r += 2;
+  int y = move(3) + asConst(x);
+  return x * 100 + y;
+}
+
+constexpr int constAndSwap()
+{
+  Tracked t(1);
+  int a = 1, b = 2;
+  swap(a, b);
+  return t.which() * 1000 + asConst(t).which() * 100 + a * 10 + b;
+}
+
+constexpr int packed()
+{
+  int a = 1;
+  const int c = 2;
+  return codes(a, 3, c, move(a));
+}
+
+static_assert(movedObject() == 1152);
+static_assert(onceEach() == 230);
+static_assert(throughReferences() == 912);
+static_assert(constAndSwap() == 1221);
+static_assert(packed() == 1323);
+
+int main()
+{
+  println(movedObject(), " ", onceEach(), " ", throughReferences(), " ", constAndSwap(), " ", packed());
+  return 0;
+}

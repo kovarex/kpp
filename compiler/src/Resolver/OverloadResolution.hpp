@@ -251,7 +251,10 @@
   // An expression in a function's signature (`decltype(callable())` in its trailing return type)
   // typed under ctx's substitution, with the function's parameters in scope: a copy of it is
   // walked, so that the template's own nodes keep their generic types. Null when it cannot be.
-  const Ty* typeOfSignatureExpression(Expr* e, const TypeContext& ctx, Expr** typed = nullptr);
+  // Under ctx's elementPacks, typed for that element of them, as the code generator retypes a pack
+  // expansion's pattern (constExpand's). lookupFile: whose private names it sees where ctx names no
+  // function (the file of the function the evaluator runs); objectType: the object `this` is there, if any.
+  const Ty* typeOfSignatureExpression(Expr* e, const TypeContext& ctx, Expr** typed = nullptr, const ParsedFile* lookupFile = nullptr, const Ty* objectType = nullptr);
 
   // The first name in a requires clause that names nothing (`requires (noSuchTrait<T>)`), or "".
   std::string undeclaredNameIn(Expr* e, Decl* f, const LocalStack& own, int depth = 0);

@@ -240,11 +240,18 @@
   // pattern once per element, each template parameter pack it names bound to that element's type
   // and each function parameter pack (a pack binding of the run) to that element's value. nullopt
   // when it names no pack, or packs of different lengths.
-  std::optional<std::vector<ConstValue>> constExpand(Expr* pattern, const TypeContext& ctx, int depth, std::vector<std::optional<ConstPlace>>* places = nullptr, std::vector<uint8_t>* categories = nullptr);
+  std::optional<std::vector<ConstValue>> constExpand(Expr* pattern, const TypeContext& ctx, int depth, std::vector<std::optional<ConstPlace>>* places = nullptr, std::vector<uint8_t>* categories = nullptr, std::vector<const Ty*>* elementTypes = nullptr);
+  // Whether a pattern chooses a function by its arguments' types (a call, a functional cast, a brace list), which the
+  // walk typed once with the whole pack: constExpand types it for each element (constPatternFor). Not one with a
+  // lambda, whose copy would be a closure type of its own.
+  static bool constChoosesPerElement(Expr* pattern);
+  // pattern typed for element k of elementPacks (ctx.subst binding them whole), with runLocals in scope, as the code
+  // generator retypes it: a copy, the template's nodes untouched. pattern itself when the copy is not typed.
+  Expr* constPatternFor(Expr* pattern, const TypeContext& ctx, const LocalStack& runLocals, const std::vector<Decl*>& elementPacks, uint32_t k);
 
   // The values of an argument list, pack expansions expanded; false when one is no constant.
   // places (when given) gets, for each value, the place of an argument written alone.
-  bool constArguments(Span<Expr*> args, const TypeContext& ctx, int depth, std::vector<ConstValue>& values, std::vector<std::optional<ConstPlace>>* places = nullptr, std::vector<uint8_t>* categories = nullptr);
+  bool constArguments(Span<Expr*> args, const TypeContext& ctx, int depth, std::vector<ConstValue>& values, std::vector<std::optional<ConstPlace>>* places = nullptr, std::vector<uint8_t>* categories = nullptr, std::vector<const Ty*>* elementTypes = nullptr);
 
   // A function template's own parameters bound for a call (constCall's, constMemberCall's): the
   // written arguments (given), then what the arguments' types deduce, a pack the arguments from its
@@ -252,7 +259,7 @@
   // categories: the arguments' value categories (constArguments'), which deduce a class object an
   // expansion gives as an lvalue where it is one (`forward<Args>(args)...` of an lvalue: Args a reference).
   bool constBindTemplate(FunctionDecl* f, const std::vector<const Ty*>& given, CallExpr* c, const std::vector<ConstValue>& values, const TypeContext& ctx, int depth, Subst& bound, LocalStack& params,
-                         const std::vector<uint8_t>* categories = nullptr);
+                         const std::vector<uint8_t>* categories = nullptr, const std::vector<const Ty*>* elementTypes = nullptr);
 
   // A call at compile time: a type's name converting a value (`size_t(5)`, `Tag(0)`), a trait
   // object as bool (`isOptional<T>()`), or a function run with its arguments bound (constRun).

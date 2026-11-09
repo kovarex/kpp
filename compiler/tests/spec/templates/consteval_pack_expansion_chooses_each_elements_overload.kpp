@@ -1,0 +1,84 @@
+// spec: a pack expansion's pattern evaluated at compile time chooses for each element, as at run time ([temp.variadic] 8): `code(forward<Args>(args))...` took the one overload the walk of the pattern recorded for the whole pack, code(int&&) for every element, and an expansion's scalar lvalue deduced the scalar in the next call (until 2026-11-09, a silent wrong answer: 3333 at compile time, 1323 at run time); a function, a member function, one called through this, a constructor, forwarded through a second expansion. clang's and g++'s output for the C++ with std::move and std::forward
+constexpr int code(int&) { return 1; }
+constexpr int code(const int&) { return 2; }
+constexpr int code(int&&) { return 3; }
+
+struct Sink
+{
+  int digits = 0;
+  constexpr void put(int&) { digits = digits * 10 + 1; }
+  constexpr void put(const int&) { digits = digits * 10 + 2; }
+  constexpr void put(int&&) { digits = digits * 10 + 3; }
+
+  template<typename... Args>
+  constexpr int all(Args&&... args)
+  {
+    (put(forward<Args>(args)), ...);
+    return digits;
+  }
+};
+
+struct Tag
+{
+  int v;
+  constexpr Tag(int&) : v(1) {}
+  constexpr Tag(const int&) : v(2) {}
+  constexpr Tag(int&&) : v(3) {}
+};
+
+template<typename... Args>
+constexpr int functions(Args&&... args)
+{
+  int digits = 0;
+  ((digits = digits * 10 + code(forward<Args>(args))), ...);
+  return digits;
+}
+
+template<typename... Args>
+constexpr int members(Args&&... args)
+{
+  Sink s;
+  (s.put(forward<Args>(args)), ...);
+  return s.digits;
+}
+
+template<typename... Args>
+constexpr int throughThis(Args&&... args)
+{
+  Sink s;
+  return s.all(forward<Args>(args)...);
+}
+
+template<typename... Args>
+constexpr int constructors(Args&&... args)
+{
+  int digits = 0;
+  ((digits = digits * 10 + Tag(forward<Args>(args)).v), ...);
+  return digits;
+}
+
+template<typename... Args>
+constexpr int forwarded(Args&&... args) { return functions(forward<Args>(args)...); }
+
+constexpr int run(int which)
+{
+  int a = 1;
+  const int c = 2;
+  return which == 0 ? functions(a, 3, c, move(a))
+       : which == 1 ? members(a, 3, c, move(a))
+       : which == 2 ? throughThis(a, 3, c, move(a))
+       : which == 3 ? constructors(a, 3, c, move(a))
+                    : forwarded(a, 3, c, move(a));
+}
+
+static_assert(run(0) == 1323);
+static_assert(run(1) == 1323);
+static_assert(run(2) == 1323);
+static_assert(run(3) == 1323);
+static_assert(run(4) == 1323);
+
+int main()
+{
+  println(run(0), " ", run(1), " ", run(2), " ", run(3), " ", run(4));
+  return 0;
+}
