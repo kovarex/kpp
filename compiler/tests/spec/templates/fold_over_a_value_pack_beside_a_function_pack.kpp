@@ -1,0 +1,36 @@
+// spec: a pack expansion whose pattern names a function parameter pack and a template parameter pack beside it (the index-sequence idiom, `(0 + ... + (args * (Is + 1)))`), or two template parameter packs, takes element i of each together: in folds of every kind, a call's arguments, a class's and an array's braces, a subscript, and at compile time
+// found by thread J's pack generator (2026-11-09): codegen bound the function pack's own template pack alone, "a template parameter whose value is not known here"; clang's output
+extern "C" int printf(const char* format, ...);
+template<int... Is> struct Seq {};
+template<int... Is, typename... Ts> constexpr auto weigh(Seq<Is...>, Ts... args) { return (0 + ... + (args * (Is + 1))); }
+template<int... Is, int... Js> constexpr int dots(Seq<Is...>, Seq<Js...>) { return (0 + ... + (Is * Js)); }
+template<int... Is, typename... Ts> int picks(Seq<Is...>, Ts... args) { return (0 + ... + args[Is]); }
+int addTo(int x, int y) { return x + y; }
+template<int... Is, typename... Ts> int commaFold(Seq<Is...>, Ts... args) { int s = 0; ((s = s * 10 + addTo(args, Is)), ...); return s; }
+template<int... Is, typename... Ts> bool allAbove(Seq<Is...>, Ts... args) { return ((args > Is) && ...); }
+template<int... Is, typename... Ts> bool anyAbove(Seq<Is...>, Ts... args) { return (... || (args > Is)); }
+int sum3(int a, int b, int c) { return a * 100 + b * 10 + c; }
+template<int... Is, typename... Ts> int expandCall(Seq<Is...>, Ts... args) { return sum3((args + Is)...); }
+struct Three { int a, b, c; };
+template<int... Is, typename... Ts> int expandBrace(Seq<Is...>, Ts... args) { Three t{(args * Is)...}; return t.a * 100 + t.b * 10 + t.c; }
+template<int... Is, typename... Ts> int expandArray(Seq<Is...>, Ts... args) { int a[] = {(args + Is)...}; return a[0] * 10 + a[1]; }
+template<typename T> constexpr int width() { return sizeof(T); }
+template<int... Is, typename... Ts> int typesAndValues(Seq<Is...>, Ts... args) { return (0 + ... + (width<Ts>() * Is)); }
+template<typename... Ts> struct Holder { template<typename... Us> static int twoTypePacks() { return (0 + ... + int(sizeof(Ts) * sizeof(Us))); } };
+
+int main()
+{
+  constexpr auto c = weigh(Seq<0, 1, 2>{}, 5, 6, 7);
+  printf("%d %d\n", c, weigh(Seq<0, 1, 2>{}, 5, 6, 7));
+  constexpr int d = dots(Seq<1, 2, 3>{}, Seq<4, 5, 6>{});
+  printf("%d %d\n", d, dots(Seq<1, 2, 3>{}, Seq<4, 5, 6>{}));
+  int a0[] = {1, 2, 3};
+  int a1[] = {4, 5, 6};
+  printf("%d\n", picks(Seq<2, 0>{}, a0, a1));
+  printf("%d\n", commaFold(Seq<1, 2>{}, 1, 2));
+  printf("%d %d %d %d\n", allAbove(Seq<1, 2>{}, 2, 3), allAbove(Seq<1, 2>{}, 2, 2), anyAbove(Seq<5, 6>{}, 2, 3), anyAbove(Seq<5, 6>{}, 2, 7));
+  printf("%d %d %d\n", expandCall(Seq<1, 2, 3>{}, 1, 2, 3), expandBrace(Seq<1, 2, 3>{}, 1, 2, 3), expandArray(Seq<1, 2>{}, 1, 2));
+  printf("%d\n", typesAndValues(Seq<1, 2>{}, 'a', 7));
+  printf("%d\n", Holder<char, int>::twoTypePacks<short, double>());
+  return 0;
+}

@@ -52,6 +52,10 @@ auto codegen::Emitter::packsIn(Node* n, std::vector<Decl*>& out, int depth) -> v
       for (Expr* a : static_cast<FunctionalCastExpr*>(n)->args)
         packsIn(a, out, depth + 1);
       return;
+    case NodeKind::BraceInitExpr: // (`Box{args}`)
+      for (Expr* a : static_cast<BraceInitExpr*>(n)->args)
+        packsIn(a, out, depth + 1);
+      return;
     case NodeKind::ConditionalExpr:
       packsIn(static_cast<ConditionalExpr*>(n)->cond, out, depth + 1);
       packsIn(static_cast<ConditionalExpr*>(n)->then, out, depth + 1);
@@ -198,91 +202,122 @@ auto codegen::Emitter::boundPack(Decl* pack) -> const Ty*
 
 auto codegen::Emitter::typePackIn(Node* n, int depth) -> Decl*
 {
+  std::vector<Decl*> all;
+  typePacksIn(n, all, depth);
+  return all.empty() ? nullptr : all[0];
+}
+
+auto codegen::Emitter::addNamedPacks(Node* pattern, std::vector<Decl*>& packs, size_t count) -> bool
+{
+  std::vector<Decl*> named;
+  typePacksIn(pattern, named);
+  bool added = false;
+  for (Decl* d : named)
+    if (std::find(packs.begin(), packs.end(), d) == packs.end())
+      if (const Ty* bound = boundPack(d); bound && bound->args.size() == count)
+      {
+        packs.push_back(d);
+        added = true;
+      }
+  return added;
+}
+
+auto codegen::Emitter::typePacksIn(Node* n, std::vector<Decl*>& out, int depth) -> void
+{
   if (!n || depth > 32 || !currentArgs)
-    return nullptr;
-  auto inName = [&](const QualifiedName& name) -> Decl*
+    return;
+  auto inName = [&](const QualifiedName& name)
   {
     for (const NamePart& part : name.parts)
       for (Node* a : part.templateArgs)
-        if (Decl* d = typePackIn(a, depth + 1))
-          return d;
-    return nullptr;
+        typePacksIn(a, out, depth + 1);
   };
-  auto either = [&](Node* a, Node* b) -> Decl* { Decl* d = typePackIn(a, depth + 1); return d ? d : typePackIn(b, depth + 1); };
+  auto named = [&](Decl* d)
+  {
+    if (d && d->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(d)->isPack)
+      for (auto& [p, a] : currentArgs->pairs)
+        if (p == d && a && a->kind == TyKind::Pack)
+        {
+          if (std::find(out.begin(), out.end(), d) == out.end())
+            out.push_back(d);
+          return true;
+        }
+    return false;
+  };
+  auto visit = [&](Node* x) { typePacksIn(x, out, depth + 1); };
   switch (n->kind)
   {
     case NodeKind::NamedType:
     {
       auto* t = static_cast<NamedType*>(n);
-      if (Decl* d = t->resolved; d && d->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(d)->isPack)
-        for (auto& [p, a] : currentArgs->pairs)
-          if (p == d && a && a->kind == TyKind::Pack)
-            return d;
-      return inName(t->name);
+      if (!named(t->resolved))
+        inName(t->name);
+      return;
     }
-    case NodeKind::PointerType: return typePackIn(static_cast<PointerType*>(n)->pointee, depth + 1);
-    case NodeKind::LRefType: return typePackIn(static_cast<LRefType*>(n)->referenced, depth + 1);
-    case NodeKind::RRefType: return typePackIn(static_cast<RRefType*>(n)->referenced, depth + 1);
-    case NodeKind::ConstType: return typePackIn(static_cast<ConstType*>(n)->inner, depth + 1);
+    case NodeKind::PointerType: visit(static_cast<PointerType*>(n)->pointee); return;
+    case NodeKind::LRefType: visit(static_cast<LRefType*>(n)->referenced); return;
+    case NodeKind::RRefType: visit(static_cast<RRefType*>(n)->referenced); return;
+    case NodeKind::ConstType: visit(static_cast<ConstType*>(n)->inner); return;
     case NodeKind::NameExpr:
-    {
-      // `Args()` parsed as a call of the name Args.
-      if (Decl* d = static_cast<NameExpr*>(n)->resolved; d && d->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(d)->isPack)
-        for (auto& [p, a] : currentArgs->pairs)
-          if (p == d && a && a->kind == TyKind::Pack)
-            return d;
-      return inName(static_cast<NameExpr*>(n)->name);
-    }
-    case NodeKind::ParenExpr: return typePackIn(static_cast<ParenExpr*>(n)->inner, depth + 1);
-    case NodeKind::UnaryExpr: return typePackIn(static_cast<UnaryExpr*>(n)->operand, depth + 1);
+      // (`Args()` parsed as a call of the name Args)
+      if (!named(static_cast<NameExpr*>(n)->resolved))
+        inName(static_cast<NameExpr*>(n)->name);
+      return;
+    case NodeKind::ParenExpr: visit(static_cast<ParenExpr*>(n)->inner); return;
+    case NodeKind::UnaryExpr:
+      if (!isPackExpansion(static_cast<UnaryExpr*>(n))) // (an expansion inside the pattern expands its own packs, whole)
+        visit(static_cast<UnaryExpr*>(n)->operand);
+      return;
     case NodeKind::MemberExpr:
-    {
-      // `this->Leaf<A>::value` of a pack of bases: the member's qualifier names the pack too.
-      auto* m = static_cast<MemberExpr*>(n);
-      if (Decl* d = typePackIn(m->base, depth + 1))
-        return d;
-      return inName(m->member);
-    }
+      // (`this->Leaf<A>::value` of a pack of bases: the member's qualifier names the pack too)
+      visit(static_cast<MemberExpr*>(n)->base);
+      inName(static_cast<MemberExpr*>(n)->member);
+      return;
     case NodeKind::IndexExpr:
-    {
-      auto* i = static_cast<IndexExpr*>(n);
-      if (Decl* d = typePackIn(i->base, depth + 1))
-        return d;
-      for (Expr* a : i->args)
-        if (Decl* d = typePackIn(a, depth + 1))
-          return d;
-      return nullptr;
-    }
-    case NodeKind::CastExpr: return either(static_cast<CastExpr*>(n)->type, static_cast<CastExpr*>(n)->operand);
-    case NodeKind::NamedCastExpr: return either(static_cast<NamedCastExpr*>(n)->type, static_cast<NamedCastExpr*>(n)->operand);
-    case NodeKind::BinaryExpr: return either(static_cast<BinaryExpr*>(n)->lhs, static_cast<BinaryExpr*>(n)->rhs);
+      visit(static_cast<IndexExpr*>(n)->base);
+      for (Expr* a : static_cast<IndexExpr*>(n)->args)
+        visit(a);
+      return;
+    case NodeKind::CastExpr:
+      visit(static_cast<CastExpr*>(n)->type);
+      visit(static_cast<CastExpr*>(n)->operand);
+      return;
+    case NodeKind::NamedCastExpr:
+      visit(static_cast<NamedCastExpr*>(n)->type);
+      visit(static_cast<NamedCastExpr*>(n)->operand);
+      return;
+    case NodeKind::BinaryExpr:
+      visit(static_cast<BinaryExpr*>(n)->lhs);
+      visit(static_cast<BinaryExpr*>(n)->rhs);
+      return;
+    case NodeKind::ConditionalExpr:
+      visit(static_cast<ConditionalExpr*>(n)->cond);
+      visit(static_cast<ConditionalExpr*>(n)->then);
+      visit(static_cast<ConditionalExpr*>(n)->else_);
+      return;
     case NodeKind::SizeofExpr:
-    {
-      auto* s = static_cast<SizeofExpr*>(n);
-      return s->isPack ? nullptr : either(s->type, s->operand); // `sizeof...(Args)` counts the pack, it expands nothing
-    }
+      if (auto* s = static_cast<SizeofExpr*>(n); !s->isPack) // (`sizeof...(Args)` counts the pack, it expands nothing)
+      {
+        visit(s->type);
+        visit(s->operand);
+      }
+      return;
     case NodeKind::FunctionalCastExpr:
-    {
-      auto* c = static_cast<FunctionalCastExpr*>(n);
-      if (Decl* d = typePackIn(c->type, depth + 1))
-        return d;
-      for (Expr* a : c->args)
-        if (Decl* d = typePackIn(a, depth + 1))
-          return d;
-      return nullptr;
-    }
+      visit(static_cast<FunctionalCastExpr*>(n)->type);
+      for (Expr* a : static_cast<FunctionalCastExpr*>(n)->args)
+        visit(a);
+      return;
+    case NodeKind::BraceInitExpr:
+      for (Expr* a : static_cast<BraceInitExpr*>(n)->args)
+        visit(a);
+      return;
     case NodeKind::CallExpr:
-    {
-      auto* c = static_cast<CallExpr*>(n);
-      if (Decl* d = typePackIn(c->callee, depth + 1))
-        return d;
-      for (Expr* a : c->args)
-        if (Decl* d = typePackIn(a, depth + 1))
-          return d;
-      return nullptr;
-    }
+      visit(static_cast<CallExpr*>(n)->callee);
+      for (Expr* a : static_cast<CallExpr*>(n)->args)
+        visit(a);
+      return;
     default:
-      return nullptr;
+      return;
   }
 }
 

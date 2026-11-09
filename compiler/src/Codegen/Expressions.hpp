@@ -15,6 +15,17 @@
 
     // Value of a call result for use as an rvalue (reference results are loaded).
     Value callRvalue(Value v, Node* at);
+    // What the operator function called for `step` returned, as callRvalue was given it: a fold's next step takes the
+    // object a returned reference refers to, its const and its category kept (foldOverOperators).
+    struct OperatorWatch
+    {
+      const Node* step = nullptr;
+      bool seen = false;
+      Value returned{};
+    };
+    OperatorWatch* operatorWatch = nullptr;
+    // A fold with an operand of a class, a closure or an enumeration, step by step.
+    Value foldOverOperators(FoldExpr* f, Expr* pattern, Expr* init, bool right, Decl* typePack);
     // Where the operator function called for expression e builds its result: the object it
     // initializes (inPlaceOperator), else nowhere yet ("": a temporary).
     std::string operatorResult(const Node* e) const { return e == inPlaceOperator ? inPlaceSlot : ""; }

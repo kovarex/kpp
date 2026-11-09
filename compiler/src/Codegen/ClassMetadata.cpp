@@ -3254,9 +3254,9 @@ auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr
     // `T a = b + c;` and `T a = -b;`, an operator function's prvalue, builds the object itself, as a
     // call does (guaranteed elision): no temporary moved from, which a class with a copy or
     // destructor of its own sees, or a copy or move constructor of its own (`Outer m = o + n;` with a user
-    // move constructor moved the result into m until 2026-11-09, found beside `This`). (Other classes keep
-    // the call the inliner can take.)
-    bool operatorInPlace = !evaluated && sameClass && (init->kind == NodeKind::BinaryExpr || init->kind == NodeKind::UnaryExpr) && !init->ty->isReference() &&
+    // move constructor moved the result into m until 2026-11-09, found beside `This`); so does a fold's
+    // last step (foldOverOperators). (Other classes keep the call the inliner can take.)
+    bool operatorInPlace = !evaluated && sameClass && (init->kind == NodeKind::BinaryExpr || init->kind == NodeKind::UnaryExpr || init->kind == NodeKind::FoldExpr) && !init->ty->isReference() &&
                            !isLvalueExpression(init) && (needsDestruction(t, at) || !assignsBitwise(t, at) || !relocatesBitwise(t, at));
     const Node* outerOperator = inPlaceOperator;
     std::string outerSlot = inPlaceSlot;

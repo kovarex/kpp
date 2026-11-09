@@ -101,6 +101,11 @@ auto codegen::Emitter::addressedTemplateArgs(FunctionDecl* f, NameExpr* n, Expr*
 
 auto codegen::Emitter::callRvalue(Value v, Node* at) -> Value
 {
+  if (operatorWatch && at == operatorWatch->step)
+  {
+    operatorWatch->seen = true;
+    operatorWatch->returned = v;
+  }
   if (v.ty && v.ty->isReference())
   {
     if (isClass(types.stripRef(v.ty)))
@@ -122,6 +127,178 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
   if (isClass(v.ty) && e->ty && e->ty->isKnown() && !types.isDependent(e->ty))
     v.category = isLvalueExpression(e) || e->ty->kind == TyKind::LRef ? Value::Category::Lvalue : Value::Category::Rvalue;
   return v;
+}
+
+// A fold with an operand of a class, a closure or an enumeration ([expr.prim.fold], [temp.variadic] 10): an operator
+// function may be called at any step, so each step is `a op b` as binary() emits it, the operator its operands' types
+// choose (the fold's one node records no choice for each element). `((init op E0) op E1) op E2` calls each operator
+// before the next element is evaluated, as `<<` sequences them; `E0 op (E1 op (E2 op init))` evaluates every element,
+// then calls the innermost operator first. Each operand is what it is in C++: a step takes the expression itself where
+// it can (init, and the element whose pass it is), an lvalue or an xvalue stands as the place it designates, and a
+// prvalue is kept as it was made, for a by-value parameter to take. Until 2026-11-09 every element was evaluated first
+// and a scalar's value copied into a slot of its own: `(a << ... << forward<Args>(args))` called operator<<(Acc&, int&&)
+// for an int&, a const int& and an int&& alike (3333 where C++ gives 1323), an int& parameter was "no operator<<", and
+// the elements of a `<<` fold all ran before its first operator.
+auto codegen::Emitter::foldOverOperators(FoldExpr* f, Expr* pattern, Expr* init, bool right, Decl* typePack) -> Value
+{
+  std::deque<PlaceName> places;
+  std::deque<NamedCastExpr> casts;
+  std::deque<ParenExpr> holders;
+  std::deque<HeldExpr> held;
+  std::deque<BinaryExpr> steps;
+  ErrorExpr noObject{}; // (what a held value's parenthesis holds: never an lvalue, whatever the pattern it came from)
+  noObject.kind = NodeKind::ErrorExpr;
+  struct Forget
+  {
+    ~Forget()
+    {
+      for (const ParenExpr& p : holders)
+        heldValues.erase(&p);
+    }
+
+    std::unordered_map<const ParenExpr*, HeldValue>& heldValues;
+    std::deque<ParenExpr>& holders;
+  } forget{heldValues, holders};
+  auto place = [&](const std::string& at, const Ty* t, bool xvalue) -> Expr*
+  {
+    PlaceName& named = places.emplace_back(*this, at, t, f->token);
+    if (!xvalue)
+      return &named.name;
+    NamedCastExpr& cast = casts.emplace_back();
+    cast.kind = NodeKind::NamedCastExpr;
+    cast.token = f->token;
+    cast.castKind = Kw::static_cast_;
+    cast.operand = &named.name;
+    cast.ty = types.rref(t);
+    return &cast;
+  };
+  auto value = [&](const Value& v) -> Expr*
+  {
+    ParenExpr& holder = holders.emplace_back();
+    holder.kind = NodeKind::ParenExpr;
+    holder.token = f->token;
+    holder.ty = v.ty;
+    holder.inner = &noObject;
+    heldValues[&holder] = HeldValue{v, std::string()};
+    HeldExpr& one = held.emplace_back();
+    one.kind = NodeKind::HeldExpr;
+    one.token = f->token;
+    one.ty = v.ty;
+    one.holder = &holder;
+    return &one;
+  };
+  // An operand evaluated now that a later step takes, in its element's pass, where the pattern means that element.
+  auto operand = [&](Expr* x) -> Expr*
+  {
+    if (!x->ty || !x->ty->isKnown())
+      unsupported(f, "a fold over an operator with an operand of unknown type");
+    const Ty* t = types.stripRef(x->ty);
+    if (bindsBitField(x))
+    {
+      // (no address of its own: its value in a place of its own, const so that no T& binds it)
+      const Ty* plain = types.unqualified(t);
+      std::string slot = newObjectSlot(plain, x);
+      store(rvalue(x), slot, plain, x);
+      return place(slot, types.qualified(plain, true, false), false);
+    }
+    if (isLvalueExpression(x) || x->ty->kind == TyKind::LRef)
+      return place(lvalue(x), t, false);
+    if (isXvalue(x))
+      return place(lvalue(x), t, true);
+    return value(rvalue(x));
+  };
+  // One operand and no step, where the fold initializes an object: the operand initializes it, as it would alone.
+  auto alone = [&](Expr* x) -> std::optional<Value>
+  {
+    if (inPlaceOperator != f || !x->ty || !x->ty->isKnown())
+      return std::nullopt;
+    const Ty* t = types.unqualified(types.stripRef(f->ty));
+    Restore restoreOperator(inPlaceOperator, inPlaceOperator);
+    std::string slot = inPlaceSlot;
+    inPlaceOperator = nullptr;
+    initializeFrom(slot, t, x, f);
+    return Value{slot, t};
+  };
+  Expr* last = nullptr; // what the next step takes: init, the first element, the result of the step before
+  Value made;
+  auto step = [&](Expr* lhs, Expr* rhs, bool lastStep)
+  {
+    BinaryExpr& b = steps.emplace_back();
+    b.kind = NodeKind::BinaryExpr;
+    b.token = f->token;
+    b.op = f->op;
+    b.lhs = lhs;
+    b.rhs = rhs;
+    OperatorWatch watch{&b};
+    {
+      Restore restoreWatch(operatorWatch);
+      Restore restoreOperator(inPlaceOperator);
+      operatorWatch = &watch;
+      if (lastStep && inPlaceOperator == f)
+        inPlaceOperator = &b; // (the fold's value: built in the object the fold initializes)
+      made = binary(&b);
+    }
+    // (an operator function's reference is the object it refers to, its const and its category kept for the next step)
+    const Ty* returned = watch.seen ? watch.returned.ty : nullptr;
+    last = returned && returned->isReference() ? place(watch.returned.text, types.stripRef(returned), returned->kind == TyKind::RRef) : value(made);
+  };
+  auto eachElement = [&](auto&& visit)
+  {
+    if (typePack)
+      forEachTypePackElement(typePack, [&](size_t) { visit(pattern); }, pattern);
+    else
+      forEachPackElement(pattern, f, [&](size_t) { visit(pattern); });
+  };
+  size_t count = typePack ? boundPack(typePack)->args.size() : packElementCount(pattern, f);
+  if (count == 0)
+  {
+    if (!init)
+      unsupported(f, "a fold over an empty pack without an initial value");
+    if (std::optional<Value> whole = alone(init))
+      return *whole;
+    return rvalue(init);
+  }
+  if (count == 1 && !init)
+  {
+    eachElement([&](Expr* x)
+    {
+      std::optional<Value> whole = alone(x);
+      made = whole ? *whole : rvalue(x);
+    });
+    return made;
+  }
+  if (!right)
+  {
+    size_t done = 0;
+    last = init;
+    eachElement([&](Expr* x)
+    {
+      if (last)
+        step(last, x, ++done + (init ? 0 : 1) == count);
+      else
+        last = operand(x);
+    });
+  }
+  else
+  {
+    std::vector<Expr*> lefts;
+    eachElement([&](Expr* x)
+    {
+      if (lefts.size() + 1 < count)
+        lefts.push_back(operand(x));
+      else if (init)
+        step(x, init, lefts.empty());
+      else
+      {
+        Expr* lhs = lefts.back();
+        lefts.pop_back();
+        step(lhs, x, lefts.empty());
+      }
+    });
+    for (; !lefts.empty(); lefts.pop_back())
+      step(lefts.back(), last, lefts.size() == 1);
+  }
+  return made;
 }
 
 auto codegen::Emitter::rvalueOf(Expr* e) -> Value
@@ -709,7 +886,7 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
         if (init && !right)
           visit(init);
         if (typePack)
-          forEachTypePackElement(typePack, [&](size_t) { visit(pattern); });
+          forEachTypePackElement(typePack, [&](size_t) { visit(pattern); }, pattern);
         else
           forEachPackElement(pattern, e, [&](size_t) { visit(pattern); });
         if (init && right)
@@ -744,77 +921,24 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
         fn += "  " + r + " = phi i1 " + phi + "\n";
         return {r, types.boolType()};
       }
+      // A class, a closure or an enumeration among the operands: a step may call an operator function
+      // (foldOverOperators). Scalars alone: the built-in operator, step by step.
+      bool operators = false;
+      eachOperand([&](Expr* x)
+      {
+        const Ty* t = x->ty ? types.stripRef(x->ty) : nullptr;
+        operators = operators || (t && (isClass(t) || isLambda(t) || t->kind == TyKind::Enum));
+      });
+      if (operators)
+        return foldOverOperators(f, pattern, init, right, typePack);
       std::vector<Value> values;
       eachOperand([&](Expr* x) { values.push_back(rvalue(x)); });
       if (values.empty())
         unsupported(e, "a fold over an empty pack without an initial value");
-      // A step whose operand is of a class, or of an enumeration with an operator of its own, is
-      // `a op b` as binary() emits it, the two values standing in as operands (an object as itself,
-      // a temporary as an xvalue, a scalar as its value): the operator the operands' types choose,
-      // per step (the fold's one node records no choice for each element).
-      std::deque<VariableDecl> standVars;
-      std::deque<NameExpr> standNames;
-      std::deque<NamedCastExpr> standCasts;
-      std::deque<BinaryExpr> steps;
-      struct Forget
-      {
-        ~Forget()
-        {
-          for (VariableDecl& v : vars)
-            locals.erase(&v);
-        }
-
-        std::unordered_map<Decl*, Local>& locals;
-        std::deque<VariableDecl>& vars;
-      } forget{locals, standVars};
-      auto standIn = [&](const Value& v) -> Expr*
-      {
-        const Ty* t = types.unqualified(types.stripRef(v.ty));
-        VariableDecl& var = standVars.emplace_back();
-        var.kind = NodeKind::VariableDecl;
-        var.token = e->token;
-        std::string at = v.text;
-        if (!isClass(t))
-        {
-          at = newObjectSlot(t, e);
-          store(v, at, t, e);
-        }
-        locals[&var] = {at, t, false};
-        NameExpr& name = standNames.emplace_back();
-        name.kind = NodeKind::NameExpr;
-        name.token = e->token;
-        name.resolved = &var;
-        name.ty = t;
-        if (isClass(t) && !v.isTemporary)
-          return &name;
-        NamedCastExpr& cast = standCasts.emplace_back();
-        cast.kind = NodeKind::NamedCastExpr;
-        cast.token = e->token;
-        cast.castKind = Kw::static_cast_;
-        cast.operand = &name;
-        cast.ty = isClass(t) ? types.rref(t) : t;
-        return &cast;
-      };
-      auto userOperator = [&](const Value& a, const Value& b)
-      {
-        const Ty* at = types.unqualified(types.stripRef(a.ty));
-        const Ty* bt = types.unqualified(types.stripRef(b.ty));
-        if (isClass(at) || isClass(bt))
-          return true;
-        return (at->kind == TyKind::Enum || bt->kind == TyKind::Enum) && global.enumOperator(uint32_t(op), at, bt, currentFunction);
-      };
       auto combine = [&](const Value& a, const Value& b)
       {
-        if (userOperator(a, b))
-        {
-          BinaryExpr& step = steps.emplace_back();
-          step.kind = NodeKind::BinaryExpr;
-          step.token = e->token;
-          step.op = f->op;
-          step.lhs = standIn(a);
-          step.rhs = standIn(b);
-          return binary(&step);
-        }
+        if (isClass(a.ty) || isClass(b.ty))
+          unsupported(e, "a fold over an operand of a class the checker did not type");
         if (op == P::EqEq || op == P::NotEq || op == P::Less || op == P::LessEq || op == P::Greater || op == P::GreaterEq)
           return compare(op, a, b, e);
         return arithmetic(op, a, b, e);

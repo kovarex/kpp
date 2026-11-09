@@ -83,7 +83,7 @@
         {
           // `values[I]...` over a template parameter pack (`int... I` of the index-sequence idiom):
           // the pattern once per element, with I bound to that element.
-          forEachTypePackElement(pack, body);
+          forEachTypePackElement(pack, body, pattern);
           return;
         }
       if (!param)
@@ -104,6 +104,10 @@
         if (packLocals[p].size() != count)
           unsupported(at, "a pack expansion over parameter packs of different lengths");
       boundPacks(packs, count, at); // (each as long as the parameter pack)
+      // A template parameter pack the pattern names beside them (`args * Is`, the index-sequence idiom):
+      // element i of it too, its arguments in effect for the pattern's value. Until 2026-11-09 "a template
+      // parameter whose value is not known here".
+      bool namedBeside = addNamedPacks(pattern, packs, count);
       TemplateArgs original = *currentArgs;
       for (size_t i = 0; i < count; ++i)
       {
@@ -114,7 +118,13 @@
         retypeForElement(elementArgs, true);
         for (Decl* p : params)
           locals[p] = packLocals[p][i];
-        body(i);
+        if (namedBeside)
+        {
+          ArgsScope scope(*this, &elementArgs);
+          body(i);
+        }
+        else
+          body(i);
       }
       for (Decl* p : params)
         locals.erase(p);
@@ -181,12 +191,17 @@
     // A template type pack that a pattern names in a type (`(func(Args()), ...)`,
     // `(... || isSame<T, Args>)`, `sizeof(Args)`) and the instantiation binds to a pack, or null.
     Decl* typePackIn(Node* n, int depth = 0);
+    // Every such pack the pattern names, in order, each once; never one an expansion inside it expands.
+    void typePacksIn(Node* n, std::vector<Decl*>& out, int depth = 0);
+    // Adds to packs those the pattern names beside them that are bound to `count` elements (one of another
+    // length is no part of this expansion: C++ requires one length, [temp.variadic] 7). Whether it added any.
+    bool addNamedPacks(Node* pattern, std::vector<Decl*>& packs, size_t count);
 
     // Runs body once per element of the type pack `pack` (typePackIn), the function re-typed with
     // the pack bound to that element (a private copy: retypedPerElement), and the element's
-    // arguments in effect.
+    // arguments in effect; with a pattern, so are the other packs it names (`Is * Js`).
     template<class F>
-    void forEachTypePackElement(Decl* pack, F&& body)
+    void forEachTypePackElement(Decl* pack, F&& body, Node* pattern = nullptr)
     {
       TemplateArgs original = *currentArgs;
       const Ty* bound = nullptr;
@@ -200,6 +215,8 @@
         TemplateArgs elementArgs = original;
         elementArgs.elementPacks = {pack};
         elementArgs.elementIndex = uint32_t(i);
+        if (pattern)
+          addNamedPacks(pattern, elementArgs.elementPacks, bound->args.size());
         retypeForElement(elementArgs, true);
         ArgsScope scope(*this, &elementArgs);
         body(i);

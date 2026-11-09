@@ -1,0 +1,166 @@
+// spec: a fold over a class's or an enumeration's operators is the chain of steps C++ writes it as, each operand what it is: an int&, a const int& and an int&& each take their own overload (`(a << ... << forward<Args>(args))` of a, 3, c and move(a) gives 1323), of a class, for the first element of a unary fold and for the left operands of a right fold too; an operator that changes its int& changes the argument; a reference an operator returns keeps its const and its category for the next step; a by-value parameter takes a prvalue itself and the last step's result builds the object the fold initializes (no copy, no move); `<<` runs each operator before the next element is evaluated, a right fold every element first; temporaries live to the end of the full-expression
+// found by thread D (2026-11-09, scratch\templates\casts\opfold): codegen made every element a prvalue, so the int&& overload took them all (3333 where clang gives 1323), an int& parameter was "no operator<<", and the elements of a `<<` fold all ran before its first operator; clang's output throughout
+extern "C" int printf(const char* format, ...);
+struct Acc { int digits = 0; };
+Acc& operator<<(Acc& a, int&) { a.digits = a.digits * 10 + 1; return a; }
+Acc& operator<<(Acc& a, const int&) { a.digits = a.digits * 10 + 2; return a; }
+Acc& operator<<(Acc& a, int&&) { a.digits = a.digits * 10 + 3; return a; }
+template<typename... Args> int forwarded(Args&&... args) { Acc a; (a << ... << forward<Args>(args)); return a.digits; }
+template<typename... Args> int comma(Args&&... args) { Acc a; ((a << forward<Args>(args)), ...); return a.digits; }
+template<typename... Args> int named(Args&&... args) { Acc a; (a << ... << args); return a.digits; }
+template<typename... Args> int byValue(Args... args) { Acc a; (a << ... << args); return a.digits; }
+template<typename... Args> int constRefs(const Args&... args) { Acc a; (a << ... << args); return a.digits; }
+template<typename... Args> int temporaries(Args... args) { Acc a; (a << ... << (args + 1)); return a.digits; }
+struct Note { int v; };
+struct Log { int digits = 0; };
+Log& operator<<(Log& l, Note&) { l.digits = l.digits * 10 + 1; return l; }
+Log& operator<<(Log& l, const Note&) { l.digits = l.digits * 10 + 2; return l; }
+Log& operator<<(Log& l, Note&&) { l.digits = l.digits * 10 + 3; return l; }
+template<typename... Args> int classes(Args&&... args) { Log l; (l << ... << forward<Args>(args)); return l.digits; }
+struct Sink { int digits = 0; };
+Sink& operator>>(int&, Sink& s) { s.digits = s.digits * 10 + 1; return s; }
+Sink& operator>>(const int&, Sink& s) { s.digits = s.digits * 10 + 2; return s; }
+Sink& operator>>(int&&, Sink& s) { s.digits = s.digits * 10 + 3; return s; }
+Sink& operator>>(Note&, Sink& s) { s.digits = s.digits * 10 + 4; return s; }
+Sink& operator>>(const Note&, Sink& s) { s.digits = s.digits * 10 + 5; return s; }
+Sink& operator>>(Note&&, Sink& s) { s.digits = s.digits * 10 + 6; return s; }
+template<typename... Args> int rightFold(Args&&... args) { Sink s; (forward<Args>(args) >> ... >> s); return s.digits; }
+struct Stamp { int v = 0; };
+int digitsOf = 0;
+void mark(int d) { digitsOf = digitsOf * 10 + d; }
+Stamp operator*(Stamp&, Stamp&) { mark(1); return Stamp{}; }
+Stamp operator*(const Stamp&, Stamp&) { mark(2); return Stamp{}; }
+Stamp operator*(Stamp&&, Stamp&) { mark(3); return Stamp{}; }
+Stamp operator*(Stamp&, Stamp&&) { mark(4); return Stamp{}; }
+Stamp operator*(const Stamp&, Stamp&&) { mark(5); return Stamp{}; }
+Stamp operator*(Stamp&&, Stamp&&) { mark(6); return Stamp{}; }
+Stamp operator*(Stamp&, const Stamp&) { mark(7); return Stamp{}; }
+Stamp operator*(const Stamp&, const Stamp&) { mark(8); return Stamp{}; }
+Stamp operator*(Stamp&&, const Stamp&) { mark(9); return Stamp{}; }
+template<typename... Args> int unaryLeft(Args&&... args) { digitsOf = 0; (... * forward<Args>(args)); return digitsOf; }
+template<typename... Args> int unaryRight(Args&&... args) { digitsOf = 0; (forward<Args>(args) * ...); return digitsOf; }
+struct Changing { int seen = 0; };
+Changing& operator<<(Changing& c, int& x) { c.seen = c.seen * 10 + x; x = 7; return c; }
+template<typename... Args> int changesThem(Args&... args) { Changing c; (c << ... << args); return c.seen; }
+Changing& operator>>(int& x, Changing& c) { c.seen = c.seen * 10 + x; x = 8; return c; }
+template<typename... Args> int changesFromRight(Args&... args) { Changing c; (args >> ... >> c); return c.seen; }
+int& operator<<(int& i, const Note& n) { i = i * 10 + n.v; return i; }
+template<typename... Args> void firstElementLvalue(Args&&... args) { (... << forward<Args>(args)); }
+struct Stage { int digits = 0; };
+const Stage& operator<<(Stage& s, char) { s.digits = s.digits * 10 + 1; return s; }
+const Stage& operator<<(const Stage& s, char) { const_cast<Stage&>(s).digits = s.digits * 10 + 2; return s; }
+template<typename... Args> int constResult(Args... args) { Stage s; (s << ... << args); return s.digits; }
+struct Gate { int digits = 0; };
+Gate&& operator<<(Gate&& g, char) { g.digits = g.digits * 10 + 3; return move(g); }
+Gate&& operator<<(Gate& g, char) { g.digits = g.digits * 10 + 1; return move(g); }
+Gate&& operator<<(const Gate& g, char) { const_cast<Gate&>(g).digits = g.digits * 10 + 2; return move(const_cast<Gate&>(g)); }
+template<typename... Args> int xvalueResult(Args... args) { Gate g; (g << ... << args); return g.digits; }
+int copies = 0;
+
+class Token
+{
+public:
+  int v;
+  Token(int v) : v(v) {}
+  Token(const Token& o) : v(o.v) { ++copies; }
+  Token(Token&& o) : v(o.v) { ++copies; }
+};
+
+Token operator*(Token a, Token b) { return Token(a.v * 10 + b.v); }
+template<typename... Args> int prvalueRight(Args... args) { copies = 0; Token t = (Token(args) * ... * Token(9)); return t.v * 10 + copies; }
+template<typename... Args> int prvalueLeft(Args... args) { copies = 0; Token t = (Token(9) * ... * Token(args)); return t.v * 10 + copies; }
+template<typename... Args> int prvalueUnaryLeft(Args... args) { copies = 0; Token t = (... * Token(args)); return t.v * 10 + copies; }
+template<typename... Args> int prvalueUnaryRight(Args... args) { copies = 0; Token t = (Token(args) * ...); return t.v * 10 + copies; }
+template<typename... Args> int onePrvalue(Args... args) { copies = 0; Token t = (... * Token(args)); return t.v * 10 + copies; }
+void event(char kind, int v) { printf("%c%d,", kind, v); }
+struct Seq { };
+Seq& operator<<(Seq& s, int v) { event('c', v); return s; }
+int next(int v) { event('e', v); return v; }
+template<typename... Args> void leftOrder(Args... args) { Seq s; (s << ... << next(args)); }
+Seq& operator<<(int v, Seq& s) { event('c', v); return s; }
+template<typename... Args> void rightOrder(Args... args) { Seq s; (next(args) << ... << s); }
+
+class Chain
+{
+public:
+  int digits = 0;
+  Chain& operator<<(int&) { digits = digits * 10 + 1; return *this; }
+  Chain& operator<<(const int&) { digits = digits * 10 + 2; return *this; }
+  Chain& operator<<(int&&) { digits = digits * 10 + 3; return *this; }
+};
+
+template<typename... Args> int members(Args&&... args) { Chain c; (c << ... << forward<Args>(args)); return c.digits; }
+template<typename... Args> int emptyPack(Args&&... args) { Acc a; a.digits = 5; return (a << ... << forward<Args>(args)).digits; }
+template<typename... Args> int oneElement(Args&&... args) { return (... * forward<Args>(args)).v; }
+template<typename... Ts> int typePackFold() { Acc a; int x = 1; (a << ... << Ts(x)); return a.digits; }
+
+class Lifetime
+{
+public:
+  int v;
+  Lifetime(int v) : v(v) {}
+  ~Lifetime() { event('~', v); }
+};
+
+int valueOf(const Lifetime& l) { return l.v; }
+template<typename... Args> void lifetimes(Args... args) { Seq s; (s << ... << valueOf(Lifetime(args))); printf("|,"); }
+template<typename... Ts> int inner(Ts... ts) { return (0 + ... + ts); }
+template<typename... Args> int nestedScalar(Args... args) { Acc a; (a << ... << inner(args, args)); return a.digits; }
+template<typename... As> Acc& innerUser(Acc& a, As&&... as) { return (a << ... << forward<As>(as)); }
+struct Ledger { int digits = 0; };
+Ledger& operator<<(Ledger& l, Acc& a) { l.digits = l.digits * 100 + a.digits; return l; }
+template<typename... Args> int nestedUser(Args&&... args) { Ledger l; Acc a; int x = 1; (l << ... << innerUser(a, x, forward<Args>(args))); return l.digits; }
+template<typename... Args> int valueOfResult(Args&&... args) { Acc a; Acc b = (a << ... << forward<Args>(args)); b.digits += 1; return a.digits * 100 + b.digits; }
+struct Box { int v; };
+Box operator+(const Box& a, const Box& b) { return Box{a.v * 10 + b.v}; }
+template<typename... Args> int braced(Args... args) { return (... + Box{args}).v; }
+
+template<typename T> class Holder
+{
+public:
+  T acc;
+  template<typename... Args> int total(Args&&... args) { (acc << ... << forward<Args>(args)); return acc.digits; }
+};
+
+int main()
+{
+  int a = 1;
+  const int c = 2;
+  printf("%d %d\n", forwarded(a, 3, c, move(a)), comma(a, 3, c, move(a)));
+  printf("%d %d %d %d\n", named(a, 3, c, move(a)), byValue(a, 3, c), constRefs(a, 3, c), temporaries(a, 3));
+  Note n{1};
+  const Note cn{2};
+  printf("%d\n", classes(n, Note{1}, cn, move(n)));
+  printf("%d\n", rightFold(a, 3, c, n, Note{1}, cn));
+  Stamp s1, s2;
+  const Stamp cs;
+  int l1 = unaryLeft(s1, s2), l2 = unaryLeft(cs, s2), l3 = unaryLeft(Stamp{}, s2), l4 = unaryLeft(s1, s2, s1);
+  printf("%d %d %d %d\n", l1, l2, l3, l4);
+  int r1 = unaryRight(s1, s2), r2 = unaryRight(cs, Stamp{}), r3 = unaryRight(Stamp{}, cs), r4 = unaryRight(s1, s2, s1);
+  printf("%d %d %d %d\n", r1, r2, r3, r4);
+  int x = 1, y = 2;
+  int v1 = changesThem(x, y);
+  printf("%d %d %d ", v1, x, y);
+  x = 3;
+  y = 4;
+  int v2 = changesFromRight(x, y);
+  printf("%d %d %d\n", v2, x, y);
+  int i = 5;
+  firstElementLvalue(i, Note{1}, Note{2});
+  printf("%d\n", i);
+  printf("%d %d\n", constResult('a', 'b', 'c'), xvalueResult('a', 'b', 'c'));
+  printf("%d %d %d %d %d\n", prvalueRight(1, 2), prvalueLeft(1, 2), prvalueUnaryLeft(1, 2, 3), prvalueUnaryRight(1, 2, 3), onePrvalue(4));
+  leftOrder(1, 2, 3);
+  printf("\n");
+  rightOrder(1, 2, 3);
+  printf("\n");
+  printf("%d %d %d %d\n", members(a, 3, c, move(a)), emptyPack(), oneElement(Note{4}), typePackFold<int, short>());
+  lifetimes(1, 2);
+  printf("\n");
+  auto lambda = [](auto&&... xs) { Acc acc; (acc << ... << forward<decltype(xs)>(xs)); return acc.digits; };
+  printf("%d\n", lambda(a, 3, c, move(a)));
+  printf("%d %d %d %d\n", nestedScalar(1, 2), nestedUser(a, 3, c), valueOfResult(a, 3), braced(1, 2, 3));
+  Holder<Acc> h;
+  printf("%d\n", h.total(a, 3, c, move(a)));
+  return 0;
+}
