@@ -41,7 +41,12 @@ A snippet's header says what it is about:
                                                   passes every configuration fails the run: remove the line)
 
     python compiler\\tests\\format\\run_format.py [--corpus snippets|ours|DIR]... [--filter TEXT]
-        [--jobs N] [--shard I/N] [--perturbations N] [--update] [--kpp EXE] [--out DIR]
+        [--configuration NAME]... [--allow-refused TEXT] [--jobs N] [--shard I/N] [--perturbations N] [--update] [--kpp EXE] [--out DIR]
+
+--allow-refused TEXT: a file the first formatting refuses with TEXT in its message leaves the corpus, listed
+and counted, and is no failure (a line splice between tokens: format.md, never formatted by design).
+--configuration limits the run to the default and the configurations named, as the failures name them
+(`indent=4`, `combination kr`): programs\\factorio\\format-check.cmd's round trip on the converted game.
 
 What the runner asks of kpp format (F's side):
     kpp format --list-settings                     one setting a line: `NAME DEFAULT VALUE...`
@@ -65,6 +70,7 @@ diff; it never runs in a gate. The last line says `format: ALL PASSED (...)` or 
 import argparse
 import concurrent.futures
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -258,30 +264,23 @@ def write_style(path, style):
         f.write("".join(f"{key} = {value}\n" for key, value in style.items()))
 
 
-def names(line, source, rel):
-    """Whether a line of stderr names the file rel under source: its full path, or rel itself not as
-    the end of a longer path (crlf.kpp is not settings/crlf.kpp)."""
-    line = line.replace("\\", "/").lower()
-    rel = rel.lower()
-    if (source.replace("\\", "/").rstrip("/") + "/" + rel).lower() in line:
-        return True
-    start = 0
-    while (i := line.find(rel, start)) >= 0:
-        end = i + len(rel)
-        if (i == 0 or line[i - 1] not in "/._-" and not line[i - 1].isalnum()) and (end == len(line) or not (line[end].isalnum() or line[end] in "/._-")):
-            return True
-        start = i + 1
-    return False
+def named_files(lines, source, rels):
+    """{rel: the first line naming it}: a line names a file by its path, under source or relative to it,
+    as a whole word (crlf.kpp is not settings/crlf.kpp). Linear in the lines: the game has 4,574 files."""
+    wanted = {rel.lower(): rel for rel in rels}
+    prefix = source.replace("\\", "/").rstrip("/").lower() + "/"
+    result = {}
+    for line in lines:
+        for word in re.split(r"[\s:'\"`,()]+", line.replace("\\", "/").lower().replace(prefix, " ")):
+            if word in wanted:
+                result.setdefault(wanted[word], line)
+    return result
 
 
 def refusals(stderr, source, missing):
-    """Each missing file's lines of stderr (the formatter names the file in its errors)."""
-    lines = stderr.splitlines()
-    result = {}
-    for rel in missing:
-        said = [line for line in lines if names(line, source, rel)]
-        result[rel] = said[0][:300] if said else "refused, and stderr does not name it"
-    return result
+    """Each missing file's line of stderr (the formatter names the file in its errors)."""
+    said = named_files(stderr.splitlines(), source, missing)
+    return {rel: said[rel][:300] if rel in said else "refused, and stderr does not name it" for rel in missing}
 
 
 def line_ends(text):
@@ -407,7 +406,7 @@ def run_configuration(args, kpp, index, name, style, golden, xdir, rels, default
         if code not in (0, 1):
             raise Failure(f"{name} check: kpp format --check exit code {code & 0xFFFFFFFF}: {first_line(r.stderr)}")
         lines = stderr.splitlines()
-        named = {rel for rel in formatted if any(names(line, source, rel) for line in lines)}
+        named = named_files(lines, source, formatted)
         for rel in sorted(formatted):
             changed = formatted[rel] != read_bytes(os.path.join(source, rel))
             if changed and rel not in named:
@@ -444,6 +443,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--corpus", action="append", default=[])
     ap.add_argument("--filter", default="")
+    ap.add_argument("--configuration", action="append", default=[])
+    ap.add_argument("--allow-refused", default="")
     ap.add_argument("--jobs", type=int, default=4)
     ap.add_argument("--shard", default="")
     ap.add_argument("--perturbations", type=int, default=3)
@@ -467,6 +468,13 @@ def main():
         return 1
     for problem in problems:
         print(f"FAIL    {problem}")
+    if args.configuration:
+        unknown = sorted(set(args.configuration) - {name for name, _, _ in configs})
+        if unknown:
+            print(f"format: FAILED: --configuration {unknown[0]}: not a configuration of this kpp format")
+            return 1
+        chosen = {"default", *args.configuration}
+        configs = [c for c in configs if c[0] in chosen]
     if args.shard:
         part, count = (int(n) for n in args.shard.split("/"))
         configs = [c for i, c in enumerate(configs) if i % count == part - 1]
@@ -485,6 +493,7 @@ def main():
     write_style(default_style, {})
     xdir = sdir
     failures = []
+    allowed = []
     if not all(as_is for _, _, as_is in files):
         xdir = os.path.join(args.out, "x")
         try:
@@ -497,8 +506,17 @@ def main():
             shutil.copyfile(os.path.join(sdir, rel), os.path.join(xdir, rel))
         missing = [rel for rel, _, _ in files if not os.path.isfile(os.path.join(xdir, rel))]
         for rel, said in refusals(stderr, sdir, missing).items():
-            failures.append(("default, first", rel, "format", f"refused: {said}"))
+            if args.allow_refused and args.allow_refused in said:
+                allowed.append(rel)
+                print(f"refused {rel}: {said}")
+            else:
+                failures.append(("default, first", rel, "format", f"refused: {said}"))
         files = [f for f in files if f[0] not in missing]
+        if not files:
+            for name, rel, check, detail in failures:
+                print(f"FAIL    {rel}  [{name}] {check}: {detail}")
+            print("format: FAILED: no file is left after the first formatting")
+            return 1
     rels = [rel for rel, _, _ in files]
     # the perturbed copies of x, made once for every configuration
     perturbed = []
@@ -558,6 +576,8 @@ def main():
             print(f"pending {rel}: {why}")
     count = len(shown) + len(fixed) + len(problems)
     summary = f"{len(files)} files x {len(configs)} configurations, {args.perturbations} perturbed copies each, {len(pending)} pending, {time.time() - started:.1f} s"
+    if allowed:
+        summary += f", {len(allowed)} refused as allowed"
     if args.update:
         summary += ", golden files written"
     if count == 0:

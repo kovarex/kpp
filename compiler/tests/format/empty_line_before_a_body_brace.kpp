@@ -1,0 +1,6 @@
+// format: pending an empty line before a body's own-line brace is kept in the default style, and braces = end-of-line has nowhere to keep it: the round trip loses it (6 files of the converted game; thread F)
+void update(i32 ticks)
+
+{
+  run(ticks);
+}

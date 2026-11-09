@@ -11,6 +11,9 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(HERE, ".."))
+sys.dont_write_bytecode = True
+import run_format  # (its named_files, tested directly)
 ROOT = os.path.normpath(os.path.join(HERE, "..", "..", "..", ".."))
 RUNNER = os.path.join(HERE, "..", "run_format.py")
 STANDIN = os.path.join(HERE, "standin.py")
@@ -77,6 +80,11 @@ def messy(directory):
     write(os.path.join(directory + ".messy", "a.kpp"), "void   f() {\n      g();\n}\n\n\n\nvoid k() {}   \n")
 
 
+def messy_refused(directory):
+    write(os.path.join(directory + ".messy", "messy-refused.kpp"), "// refuse-me\nvoid h() {}\n")
+    messy(directory)
+
+
 # (what, change to the snippets before the run, the runner's options, STANDIN_BREAK, exit code, texts the output must have)
 CASES = [
     ("the right formatter passes", None, [], "", 0, ["17 files x 20 configurations, 1 perturbed copies each"]),
@@ -95,6 +103,14 @@ CASES = [
      ["[unlisted] settings: `columns = 79` accepted", "`columns = 161` accepted", "`columns = 81` accepted"]),
     ("--check that names nothing", None, [], "check", 1, ["] check: the first perturbed copy: not named, yet formatting changes it"]),
     ("--check that names every file", None, [], "checkall", 1, ["] check: the formatted files: named, yet formatting leaves it as it is"]),
+    ("the default and chosen configurations", None, ["--configuration", "indent=4", "--configuration", "combination tabs-end"], "", 0,
+     ["17 files x 3 configurations"]),
+    ("a chosen configuration that does not exist", None, ["--configuration", "indent=3"], "", 1,
+     ["--configuration indent=3: not a configuration"]),
+    ("a refusal allowed by its message", messy_refused, ["corpus", "--allow-refused", "tokens differ"], "refuse", 0,
+     ["1 files x 20 configurations", "1 refused as allowed", "messy-refused.kpp: "]),
+    ("a refusal not allowed by its message", messy_refused, ["corpus", "--allow-refused", "something else"], "refuse", 1,
+     ["[default, first] format: refused:"]),
     ("a filtered run", None, ["--filter", "crlf"], "", 0, ["1 files x 20 configurations"]),
     ("a shard", None, ["--shard", "2/4"], "", 0, ["17 files x 5 configurations"]),
     ("a missing golden file", lambda d: remove(d, os.path.join("settings", "pointer.both.expected")), [], "", 1,
@@ -117,6 +133,11 @@ def main():
     base = os.path.join(WORK, "base")
     make_snippets(base)
     failed = []
+    # a line names a whole path: crlf.kpp is not settings/crlf.kpp, written with either slash, under the source or not
+    named = run_format.named_files(["C:\\out\\A\\settings\\crlf.kpp: not formatted", "other: sub/b.kpp", "ab/c.kpp"], "C:/out/A", ["crlf.kpp", "settings/crlf.kpp", "sub/b.kpp", "c.kpp"])
+    if sorted(named) != ["settings/crlf.kpp", "sub/b.kpp"]:
+        failed.append("named_files")
+        print(f"FAIL    named_files: {sorted(named)}")
 
     def expect(what, code, output, want_code, texts):
         last = output.strip().splitlines()[-1] if output.strip() else ""
@@ -138,8 +159,8 @@ def main():
         shutil.copytree(base, directory)
         if change:
             change(directory)
-        corpus = [directory + ".messy"] if extra == ["corpus"] else []
-        code, output = run(directory, [] if corpus else extra, env_break, corpus)
+        corpus = [directory + ".messy"] if extra[:1] == ["corpus"] else []
+        code, output = run(directory, extra[1:] if corpus else extra, env_break, corpus)
         return expect(what, code, output, want_code, texts)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=16) as pool:
