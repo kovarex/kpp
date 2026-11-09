@@ -12,6 +12,8 @@ namespace codegen
   // How deep a class is followed through its bases and members, as the front end does (GlobalScope::Impl::maxNestedLevels), and an
   // operator-> returning a class with an operator-> (its maxArrowChain).
   inline constexpr int maxClassNesting = 4096, maxArrowChain = 256;
+  // A class template's instances being laid out inside one another (buildStruct; the front end's maxInstanceBases).
+  inline constexpr int maxInstancesBuilding = 1024;
   // Expressions and statements in one another, each rvalue and lvalue a level: a member chain counts two levels a member (1 GB stacks).
   inline constexpr int maxExpressionNesting = 2048;
 #include "FunctionState.hpp"
@@ -201,6 +203,7 @@ namespace codegen
     Decl* constContext = nullptr; // The declaration whose initializer evalConst is folding (a variable template's): the context of the traits in it.
     ParsedFile* currentFile = nullptr;
     int recursionDepth = 0; // guards rvalue/lvalue/statement against stack overflow
+    int instancesBuilding = 0; // buildStruct's nesting of class template instances
 
     // Template arguments in effect: of the instantiation being emitted, or temporarily of a class
     // whose constructors/fields are being inspected.

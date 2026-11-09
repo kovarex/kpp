@@ -539,6 +539,12 @@ auto codegen::Emitter::buildStruct(const Ty* key, Node* at, StructInfo& info, st
     return;
   }
   ClassDecl* c = static_cast<ClassDecl*>(key->decl);
+  // `template<int N> struct G : G<N + 1> {}`: a class is laid out after its bases, so the end is reached here first, before any question of
+  // the front end's that would meet its limit, and each instance would ask again on the way back.
+  struct InstanceNesting { int& count; bool counted; ~InstanceNesting() { count -= counted; } } nesting{instancesBuilding, !key->args.empty()};
+  instancesBuilding += nesting.counted;
+  if (instancesBuilding > maxInstancesBuilding)
+    fail(at, "instances of " + sym(c->name.last().symbol) + " are nested more than " + std::to_string(maxInstancesBuilding) + " deep through their bases or members");
   auto layoutError = [&](const std::string& why) { unsupported(at, "the layout of " + types.toString(key, &symbols) + ": " + why); };
   // A member as written (`Tick lastCheck`), for the error naming what has no known type.
   auto memberName = [&](Decl* m)

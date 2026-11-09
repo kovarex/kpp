@@ -1,0 +1,24 @@
+// spec: a compile server's build after endless template bases are fixed builds every class template: the limit's stop of code generation is that build's alone
+//--- step: endless template bases
+template<int N> struct G : G<N + 1> { };
+template<class T> struct Box { T v = 7; };
+int main()
+{
+  G<0> g;
+  Box<int> b;
+  println(b.v);
+  return 0;
+}
+// error: instances of G are nested more than 1024 deep
+//--- step: the end of the chain written
+template<int N> struct G : G<N + 1> { };
+template<> struct G<3> { };
+template<class T> struct Box { T v = 7; };
+int main()
+{
+  G<0> g;
+  Box<int> b;
+  println(b.v);
+  return 0;
+}
+// expect: 7
