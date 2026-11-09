@@ -82,7 +82,12 @@ function Start-KppExe([string]$arguments)
   $info.RedirectStandardError = $false
   return [System.Diagnostics.Process]::Start($info)
 }
-function Start-Build([string]$src, [string]$ir, [string]$j) { return Start-KppExe "--quiet -j $j --emit-llvm `"$ir`" `"$src`"" }
+# (a spec snippet is written with `this` the object, as run_spec.py builds it)
+function Start-Build([string]$src, [string]$ir, [string]$j)
+{
+  $option = if ($src -like '*\spec\*') { '--this-reference ' } else { '' }
+  return Start-KppExe "--quiet -j $j $option--emit-llvm `"$ir`" `"$src`""
+}
 
 $failed = 0
 $reference = @{}
