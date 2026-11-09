@@ -444,7 +444,19 @@ auto GlobalScope::Impl::lookupTypeName(const NamedType* t, Scope* context, const
 {
   if (t->elaborated && t->name.parts.size() == 1 && !t->name.global && !t->name.parts[0].hasTemplateArgs)
     return lookupUnqualified(t->name.parts[0].symbol, context, locals, depth, true);
-  return lookupQualified(t->name, context, locals, depth, subst, elementPacks, elementIndex); // (`typename IsRef<Ts>::Type` in a pattern)
+  Lookup l = lookupQualified(t->name, context, locals, depth, subst, elementPacks, elementIndex); // (`typename IsRef<Ts>::Type` in a pattern)
+  // `This` in a class's own base clause (`class Widget : public Counter<This>`), which the indexer marked with the
+  // class (markThisInBaseClause): the class, as the lookup inside it would have it (a class template's current
+  // instance).
+  if (l.found == Found::No && t->resolved && t->resolved->kind == NodeKind::ClassDecl && t->name.parts.size() == 1 && !t->name.global &&
+      t->name.parts[0].symbol == symThisType && static_cast<ClassDecl*>(t->resolved)->ownScope)
+  {
+    l.decl = t->resolved;
+    l.scope = static_cast<ClassDecl*>(t->resolved)->ownScope;
+    l.found = Found::Member;
+    l.foundIn = l.scope;
+  }
+  return l;
 }
 
 auto GlobalScope::Impl::lookupUnqualified(uint32_t symbol, Scope* context, const LocalStack* locals, int depth, bool qualifierOnly) -> Lookup

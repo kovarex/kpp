@@ -2314,9 +2314,11 @@ kovarex, 2026-11-07:
 converter writes `This::` for the statics named bare today, and cxxopts' `using Self = abstract_value<T>;`
 can become `This`. (`This` itself is built, above; thread J's spec
 language/this_names_the_class_in_nested_local_and_out_of_line_code covers nested and local classes, out-of-line
-members, member templates, operators, hidden friends and a static's initializer, 2026-11-09. Open: the class's own
-base clause, `class Widget : public Counter<This>` (CRTP), is no code in the class today, the error "this code is
-in none"; whether `This` names the class there is kovarex's.)
+members, member templates, operators, hidden friends and a static's initializer, 2026-11-09.) In the class's own base
+clause `This` names the class too (kovarex, 2026-11-09: CRTP, `class Widget : public Counter<This>`; a class
+template's current instance, `Counter<Gadget<T>>`): the base clause is looked up outside the class, so the indexer
+marks each `This` written there with the class and the type lookup takes it (built 2026-11-09, spec
+language/this_names_the_class_in_its_own_base_clause). The converter writes `This` nowhere else (kovarex).
 
 It lands as `override` does: a warning under a flag, counted, then the converter, then an error.
 `--this-warnings` is the first step and changes nothing else: each

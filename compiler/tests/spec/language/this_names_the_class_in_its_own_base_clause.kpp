@@ -1,0 +1,51 @@
+// spec: `This` in a class's own base clause names the class (kovarex, 2026-11-09, design.md 23c), as its name would in C++'s CRTP: `class Widget : public Counter<This>, public Named<This>`, a class template's current instance (`template<class T> class Gadget : public Counter<This>` is Counter<Gadget<T>>), and a nested class's (`Pair2<This*, const This&>` in Outer::Inner's). clang's and g++'s output (the C++ with each class's name for This)
+// built by thread J (2026-11-09): it was "`This` names the class the code is in, and this code is in none"
+extern "C" int printf(const char* format, ...);
+template<class D> class Counter
+{
+public:
+  static int made;
+  Counter() { ++made; }
+  static int count() { return made; }
+};
+template<class D> int Counter<D>::made = 0;
+template<class D> class Named
+{
+public:
+  const char* name() const { return static_cast<const D*>(this)->label(); }
+};
+template<class A, class B> class Pair2
+{
+public:
+  int sizes() const { return (int)(sizeof(A) * 10 + (sizeof(B) == sizeof(*A()) ? 1 : 0)); }
+};
+class Widget : public Counter<This>, public Named<This>
+{
+public:
+  int v = 3;
+  const char* label() const { return "widget"; }
+};
+template<class T> class Gadget : public Counter<This>, public Named<This>
+{
+public:
+  T value{};
+  const char* label() const { return "gadget"; }
+};
+class Outer
+{
+public:
+  class Inner : public Counter<This>, public Pair2<This*, const This&>
+  {
+  public:
+    int x = 1;
+  };
+};
+int main()
+{
+  Widget a, b;
+  Gadget<double> g;
+  Gadget<int> h1, h2, h3;
+  Outer::Inner i;
+  printf("%d %s %d %s %d %d %d\n", Counter<Widget>::count(), a.name(), Counter<Gadget<double>>::count(), g.name(), Counter<Gadget<int>>::count(), Counter<Outer::Inner>::count(), i.sizes());
+  return 0;
+}

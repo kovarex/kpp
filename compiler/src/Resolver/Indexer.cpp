@@ -98,6 +98,49 @@ auto GlobalScope::Impl::absentName(const Decl* d) -> uint32_t
   }
 }
 
+// `This` written in a class's own base clause (`class Widget : public Counter<This>`, CRTP; kovarex,
+// 2026-11-09): the class itself, as `This` is in its body (design.md 23c). The base clause is looked up
+// outside the class, so each such `This` is marked with it here (NamedType::resolved), which
+// lookupTypeName takes where the lookup around the class finds no class (until 2026-11-09 "this code is
+// in none").
+static void markThisInBaseClause(Type* t, ClassDecl* c, uint32_t thisSymbol, int depth = 0)
+{
+  if (!t || depth > 32)
+    return;
+  switch (t->kind)
+  {
+    case NodeKind::NamedType:
+    {
+      auto* n = static_cast<NamedType*>(t);
+      if (n->name.parts.size() == 1 && !n->name.global && n->name.parts[0].symbol == thisSymbol && !n->name.parts[0].hasTemplateArgs)
+        n->resolved = c;
+      for (const NamePart& part : n->name.parts)
+        for (Node* a : part.templateArgs)
+          if (a && (a->kind == NodeKind::NamedType || a->kind == NodeKind::PointerType || a->kind == NodeKind::LRefType || a->kind == NodeKind::RRefType ||
+                    a->kind == NodeKind::ConstType || a->kind == NodeKind::ArrayType || a->kind == NodeKind::FunctionType || a->kind == NodeKind::PackType))
+            markThisInBaseClause(static_cast<Type*>(a), c, thisSymbol, depth + 1);
+      return;
+    }
+    case NodeKind::PointerType: markThisInBaseClause(static_cast<PointerType*>(t)->pointee, c, thisSymbol, depth + 1); return;
+    case NodeKind::LRefType: markThisInBaseClause(static_cast<LRefType*>(t)->referenced, c, thisSymbol, depth + 1); return;
+    case NodeKind::RRefType: markThisInBaseClause(static_cast<RRefType*>(t)->referenced, c, thisSymbol, depth + 1); return;
+    case NodeKind::ConstType: markThisInBaseClause(static_cast<ConstType*>(t)->inner, c, thisSymbol, depth + 1); return;
+    case NodeKind::ArrayType: markThisInBaseClause(static_cast<ArrayType*>(t)->element, c, thisSymbol, depth + 1); return;
+    case NodeKind::PackType: markThisInBaseClause(static_cast<PackType*>(t)->pattern, c, thisSymbol, depth + 1); return;
+    case NodeKind::FunctionType:
+    {
+      auto* f = static_cast<FunctionType*>(t);
+      markThisInBaseClause(f->result, c, thisSymbol, depth + 1);
+      for (Decl* p : f->params)
+        if (p && p->kind == NodeKind::ParamDecl)
+          markThisInBaseClause(static_cast<ParamDecl*>(p)->type, c, thisSymbol, depth + 1);
+      return;
+    }
+    default:
+      return;
+  }
+}
+
 auto GlobalScope::Impl::indexDecls(Span<Decl*> decls, Scope* scope) -> void
 {
   for (Decl* d : decls)
@@ -155,7 +198,11 @@ auto GlobalScope::Impl::indexDecl(Decl* d, Scope* scope) -> void
         own = new Scope(ScopeKind::Class, scope, c, 1);
         own->templateParams = c->templateParams;
         for (const ClassDecl::Base& b : c->bases)
+        {
           own->baseTypes.push_back(b.type);
+          if (!(c->file && c->file->isImported))
+            markThisInBaseClause(b.type, c, symThisType);
+        }
         c->ownScope = own;
         ++scopes;
         indexDecls(c->members, own);
@@ -537,7 +584,11 @@ auto GlobalScope::Impl::indexLocalType(Decl* d, Scope* scope) -> Scope*
     own = new Scope(ScopeKind::Class, scope, c, 1);
     own->templateParams = c->templateParams;
     for (const ClassDecl::Base& b : c->bases)
+    {
       own->baseTypes.push_back(b.type);
+      if (!(c->file && c->file->isImported))
+        markThisInBaseClause(b.type, c, symThisType);
+    }
     c->ownScope = own;
     // The class's name inside it (`bool operator<(const Key&) const`): the enclosing scope does
     // not have it.

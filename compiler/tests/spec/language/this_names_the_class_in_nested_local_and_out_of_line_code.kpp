@@ -1,5 +1,5 @@
 // spec: `This` (design.md 23c) in more places than language/this_names_the_class: a nested class's members (the nested class, also of a class template's nested class: `Box<T>::Node`), an out-of-line member's parameters and body (`int Outer::sum(const This&) const`), a member template, a trailing return type, operators and constructors (`Outer(This&&)`), `sizeof(This)` in a base's and a derived class's members (each its own), a hidden friend defined in the class, a static data member's out-of-line initializer (`const int Widget::limit = sizeof(This) * 10`) and a local class in a function. clang's and g++'s output (the C++ with each class's name for This)
-// (the class's own base clause, `class Widget : public Counter<This>`, is no code in the class: the error "this code is in none", an open question to kovarex)
+// (the class's own base clause: language/this_names_the_class_in_its_own_base_clause)
 extern "C" int printf(const char* format, ...);
 class Outer
 {

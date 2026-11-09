@@ -427,7 +427,8 @@ Pinned make() { Pinned p; return p; }   // compiles: an error in C++
 - **kpp:** an instance's member is written `this.x`, so adding a local or a global never changes an
   existing line (kovarex, 2026-11-07: `this` is a reference everywhere, so the readme's "required
   `this->`" is `this.`). `This` is a type keyword for the class around the code, the current instance of a
-  class template (`This` for `Vector<T>`), and inside an enum's methods the enum (`This::North`); a
+  class template (`This` for `Vector<T>`), in the class's own base clause too (CRTP: `class Widget : public
+  Counter<This>`), and inside an enum's methods the enum (`This::North`); a
   static is `This::count` or `Train::count`, never `this.count`; nested types and enumerators stay bare.
   `This` is built, and reserved in kpp code (not in imported C, where it stays a name): C++ that names
   something `This` must rename it; the game and our kpp have no such name. A bare name is a local, a parameter or a global, never a
