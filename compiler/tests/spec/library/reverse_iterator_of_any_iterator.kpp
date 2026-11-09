@@ -24,7 +24,6 @@ struct Steps
     return this;
   }
   bool operator==(const Steps& other) const { return this.at == other.at; }
-  bool operator!=(const Steps& other) const { return this.at != other.at; }
 };
 struct Point
 {

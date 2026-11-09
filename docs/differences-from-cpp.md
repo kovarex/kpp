@@ -607,7 +607,7 @@ p[Property::Text] = String("hello");
   result, a NaN's, compares false with 0 every way, as in C++.
 - **See:** [design 4][d4]; spec `expressions/three_way_comparison_with_nan_is_unordered`.
 
-### `!=` is always `!(a == b)` (this stage, decided, not built)
+### `!=` is always `!(a == b)` (built)
 
 - **C++:** a class may declare its own `operator!=`, which can do anything; since C++20 a class with only
   `==` gets `a != b` as `!(a == b)`.
@@ -620,11 +620,12 @@ p[Property::Text] = String("hello");
   to one and not the other); no use for a different answer is known. The error stops people and machines
   from writing it by habit: the converted game has about 290 `operator!=(` lines, about 50 of them
   `!(*this == other)`.
-- **Status:** our code has none since 2026-11-09 (the stdlib had 33, libraries/ 2); before the error, the
-  converter drops the game's. Declaring a `!=` also turns off C++20's reversed `==` candidates, so dropping one
+- **Status:** an error since 2026-11-09 ("operator!= returning bool is not declared in kpp: write only ==;
+  a != b is !(a == b)"), after our code lost its own (the stdlib's 33, libraries' 2) and the converter
+  dropped the game's. Declaring a `!=` also turns off C++20's reversed `==` candidates, so dropping one
   can change which `==` a call picks in rare cases; the converted game building with headline 0 shows it
   does not there.
-- **See:** [design 4][d4]; pending spec `kpp/operator_not_equal_returning_bool_is_error`.
+- **See:** [design 4][d4]; spec `kpp/operator_not_equal_returning_bool_is_error`.
 
 ### `move` of a const object is a warning (built)
 

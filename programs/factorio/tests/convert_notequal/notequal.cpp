@@ -3,10 +3,8 @@
 // the free ==, terms the negation of =='s terms, `|` between parenthesized terms, each data member's term beside a
 // defaulted ==, one defined out of its class, a template with a requires-clause, which goes with it), made the ==
 // where the class has none (an iterator's `position != other.position`, a sentinel's `!ended()` and its
-// `index < count`, negated), kept for review otherwise
-// (another field than ==, a virtual one, an == written through !=). Converted and run, it prints what its C++ build
-// prints (tests\convert_notequal.expected), and convert.cmd counts the `operator!=` left in its text (3: Other's,
-// Shape's, Through's).
+// `index < count`, negated). Converted and run, it prints what its C++ build prints (tests\convert_notequal.expected),
+// and convert.cmd checks that no `operator!=` is left in its text. The ones the converter keeps are in kept.cpp.
 #include <cstdio>
 #include <cstddef>
 
@@ -98,27 +96,6 @@ struct Sentinel
   bool operator!=(std::nullptr_t) const { return !ended(); }
 };
 
-struct Other
-{
-  int x, y;
-  bool operator==(const Other& other) const { return x == other.x; }
-  bool operator!=(const Other& other) const { return y != other.y; }
-};
-
-struct Shape
-{
-  int sides;
-  virtual ~Shape() {}
-  virtual bool operator!=(const Shape& other) const { return sides != other.sides; }
-};
-
-struct Through
-{
-  int v;
-  bool operator==(const Through& other) const { return !(*this != other); }
-  bool operator!=(const Through& other) const { return v != other.v; }
-};
-
 int main()
 {
   Negated n1{1}, n2{2};
@@ -129,11 +106,6 @@ int main()
   OutOfLine o1{7}, o2{7};
   Iterator i1{3}, i2{4};
   Sentinel s1{2}, s2{0};
-  Other x1{1, 2}, x2{1, 3};
-  Shape h1, h2;
-  h1.sides = 3;
-  h2.sides = 4;
-  Through t1{8}, t2{8};
   Box<int> b1{1}, b2{2};
   AfterBox after{9};
   Called c1{1}, c2{1};
@@ -147,9 +119,6 @@ int main()
   printf("outofline %d\n", o1 != o2);
   printf("iterator %d %d\n", i1 != i2, i1 != i1);
   printf("sentinel %d %d\n", s1 != nullptr, s2 != nullptr);
-  printf("other %d %d\n", x1 != x2, x1 == x2);
-  printf("shape %d\n", h1 != h2);
-  printf("through %d %d\n", t1 != t2, t1 == t2);
   printf("box %d %d %d\n", b1 != b2, b1 != b1, after.z);
   printf("called %d members %d %d counted %d %d\n", c1 != c2, e1 != e2, e1 != e1, k1 != nullptr, k2 != nullptr);
   return 0;

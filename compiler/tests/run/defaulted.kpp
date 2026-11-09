@@ -26,7 +26,6 @@ struct Rect
   Rect& operator=(const Rect&) = default;
   Rect& operator=(Rect&&) = default;
   bool operator==(const Rect& other) const = default;
-  bool operator!=(const Rect& other) const = default;
   ~Rect() = default;
 };
 struct Named

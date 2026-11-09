@@ -1,4 +1,4 @@
-// Range-for over containers whose begin()/end() return iterator objects (operator!=, operator++,
+// Range-for over containers whose begin()/end() return iterator objects (operator==, operator++,
 // operator*), including a filtering view, a temporary range, and references to the elements.
 extern "C" int printf(const char* format, ...);
 
@@ -22,7 +22,7 @@ struct Evens
       ++this->current;
       this->skip();
     }
-    bool operator!=(const Iterator& other) const { return this->current != other.current; }
+    bool operator==(const Iterator& other) const { return this->current == other.current; }
   };
 
   Evens(Vector<int>& values) : values(values) {}

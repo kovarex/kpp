@@ -15,7 +15,6 @@ struct Countdown
     return this;
   }
   bool operator==(const Countdown& other) const { return this.left == other.left; }
-  bool operator!=(const Countdown& other) const { return this.left != other.left; }
 };
 int main()
 {

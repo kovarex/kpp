@@ -1150,6 +1150,26 @@
 +   return strcmp(s1, s2) == 0;
 + }
 
+@ src/Util/SHA1.hpp: the != is its == negated
+- bool operator == (const SHA1Digest& lhs, const SHA1Digest& rhs);
+- bool operator != (const SHA1Digest& lhs, const SHA1Digest& rhs);
++ bool operator == (const SHA1Digest& lhs, const SHA1Digest& rhs);
+
+@ src/Util/SHA1.cpp: the != is its == negated
+-   return lhs.bytes == rhs.bytes;
+- }
+-
+- bool operator != (const SHA1Digest& lhs, const SHA1Digest& rhs)
+- {
+-   return !operator == (lhs, rhs);
+- }
++   return lhs.bytes == rhs.bytes;
++ }
+
+@ tests/CreatableEntityTypeIterator.hpp: the iterator equals its end, where it differed from it
+-     bool operator !=(const Iterator& other) const { return this->it != other.it; }
++     bool operator ==(const Iterator& other) const { return this->it == other.it; }
+
 # A move of a const object copies it (its result is a const rvalue): the game's ten, which kpp's warning lists,
 # written as the copies they are, or, in InputAction's move constructor, given the non-const getter the
 # macro's other types have.

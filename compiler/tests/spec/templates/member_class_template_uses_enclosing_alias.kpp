@@ -22,7 +22,7 @@ class Heap
       this.current = this.current->next;
       return this;
     }
-    bool operator!=(IteratorBase other) { return this.current != other.current; }
+    bool operator==(IteratorBase other) const { return this.current == other.current; }
   private:
     HookType* current = nullptr;
   };

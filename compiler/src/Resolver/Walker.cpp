@@ -5893,6 +5893,31 @@ auto GlobalScope::Impl::Walker::checkOverride(FunctionDecl* f) -> void
     impl.reportCheckerError(file, overrideToken != UINT32_MAX ? overrideToken : f->token, name + " says override and overrides no virtual function: remove `override`");
 }
 
+auto GlobalScope::Impl::Walker::checkNotEqualOperator(FunctionDecl* f) -> void
+{
+  // `a != b` is only ever `!(a == b)`, C++20's rewrite, which kpp does for a class with only == (kovarex,
+  // 2026-11-09, design.md 4): a written one returning bool can only repeat == or disagree with it. One returning
+  // another type (a SIMD mask, an expression object) stays, decided so. Once per function, as written, never an
+  // instance's: a member at its declaration in its class (an out-of-line definition is that one's), a free one or
+  // a friend at its definition (a declaration without a body is the definition's).
+  if (probing || retypingElements || activeSubst || !file || file->isImported || f->name.parts.size() != 1)
+    return;
+  const NamePart& n = f->name.last();
+  if (n.special != 2 || n.opToken >= uint32_t(P::Count) || P(n.opToken) != P::NotEq)
+    return;
+  Decl* cls = impl.owningClassOf(f);
+  bool member = cls && cls->kind == NodeKind::ClassDecl && !(f->flags & DF_Friend);
+  if (!member && !f->body && !(f->flags & DF_Default))
+    return;
+  Type* written = f->trailingReturn ? f->trailingReturn : f->returnType;
+  bool returnsBool = written && written->kind == NodeKind::BuiltinType && static_cast<BuiltinType*>(written)->keyword == Kw::bool_;
+  if (!returnsBool && written && !Impl::astMentionsAuto(written))
+    if (const Ty* ft = impl.declaredTypeOf(f, nullptr, 0); ft && ft->kind == TyKind::Function && ft->inner && ft->inner->isKnown())
+      returnsBool = types.unqualified(types.stripRef(ft->inner))->kind == TyKind::Bool; // (a bool by another name)
+  if (returnsBool)
+    impl.reportCheckerError(file, f->token, "operator!= returning bool is not declared in kpp: write only ==; a != b is !(a == b)");
+}
+
 auto GlobalScope::Impl::Walker::checkAbstractObject(VariableDecl* v, const Ty* declared) -> void
 {
   // (factorio: a stream whose writeBytes no longer overrode the pure one was made, and writing to it
@@ -9658,6 +9683,7 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
       checkRefQualifierMix(f);
       checkTextSignature(f);
       checkOverride(f);
+      checkNotEqualOperator(f);
       checkConversionMark(f);
       Decl* initialized = f->ctorInits.empty() ? nullptr : impl.owningClassOf(f);
       for (FunctionDecl::CtorInit& init : f->ctorInits)

@@ -859,6 +859,9 @@
     // A member function marked override must override a virtual function of a base (C++
     // [class.virtual]): an error where it overrides none, in a class or a class template's instance.
     void checkOverride(FunctionDecl* f);
+    // `a != b` is only ever `!(a == b)` (kovarex, 2026-11-09): a declared operator!= that returns bool is an error
+    // at its declaration, a member or a free function, written, defaulted or a template, used or not.
+    void checkNotEqualOperator(FunctionDecl* f);
     // A variable whose type is an abstract class (or an array of one): an error, as in C++.
     void checkAbstractObject(VariableDecl* v, const Ty* declared);
     // A variable holding a Text: a parameter's local copy only, never a data member or a global.

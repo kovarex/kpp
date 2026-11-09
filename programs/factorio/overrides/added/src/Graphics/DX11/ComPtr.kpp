@@ -80,7 +80,6 @@ public:
 
   bool operator!() const { return this->p == nullptr; }
   bool operator==(T* other) const { return this->p == other; }
-  bool operator!=(T* other) const { return this->p != other; }
 
   // Releases the interface and holds none.
   void Release()

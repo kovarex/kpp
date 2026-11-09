@@ -8,7 +8,7 @@ struct Opt
 template<typename B>
 constexpr bool operator==(const B& lhs, const Opt<B>& rhs) { return lhs == rhs.base; }
 template<typename B, typename E>
-constexpr bool operator!=(const Opt<B, E>& lhs, const Opt<B, E>& rhs) { return lhs.base != rhs.base; }
+constexpr bool operator==(const Opt<B, E>& lhs, const Opt<B, E>& rhs) { return lhs.base == rhs.base; }
 int main()
 {
   Opt<int> a;

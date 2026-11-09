@@ -37,14 +37,14 @@ struct G
   int v;
   G(int x) : v(x) {}
   bool operator==(const G& o) const { return this.v == o.v; }
-  template<class U> bool operator!=(const U&) const { return true; }
+  template<class U> int operator!=(const U&) const { return 1; }
 };
 
 struct H
 {
   int v;
   H(int x) : v(x) {}
-  bool operator!=(const H&) const { return true; }
+  int operator!=(const H&) const { return 1; }
   bool operator==(const int& i) const { return this.v == i; }
 };
 
