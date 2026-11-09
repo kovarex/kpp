@@ -20,6 +20,7 @@
     // (env null: nowhere the run holds), which a reference element refers to.
     bool pack = false;
     std::vector<ConstPlace> packPlaces;
+    bool packElement = false; // one element of a pack, over the pack while a pattern runs (constExpand)
     // Its address was taken (`&x`): the serial an Address names it by (constStorage).
     uint64_t serial = 0;
     // An object the run made and destroys when the binding ends (constEndLocals): a local, a

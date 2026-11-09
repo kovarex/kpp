@@ -1,5 +1,4 @@
 // spec: at compile time a delegating constructor makes the object where it lives, as at run time (C++ [class.base.init] 6: the target constructor initializes this object): a pointer the target constructor stores to `this` points at the local the delegating one makes, so `self == this` holds after it (`5 6`, clang's)
-// pending: the evaluation makes the delegated object elsewhere: "a comparison of an object of the evaluation, whose lifetime ended". Found by K (2026-11-09): List's constructors could not delegate to List() for their exception safety, its sentinel pointing at itself (they build in a local List instead); D
 extern "C" import "stdio.h";
 struct Ring
 {

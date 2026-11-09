@@ -241,11 +241,18 @@
   // pattern once per element, each template parameter pack it names bound to that element's type
   // and each function parameter pack (a pack binding of the run) to that element's value. nullopt
   // when it names no pack, or packs of different lengths.
-  std::optional<std::vector<ConstValue>> constExpand(Expr* pattern, const TypeContext& ctx, int depth, std::vector<std::optional<ConstPlace>>* places = nullptr, std::vector<uint8_t>* categories = nullptr, std::vector<const Ty*>* elementTypes = nullptr);
+  std::optional<std::vector<ConstValue>> constExpand(Expr* pattern, const TypeContext& ctx, int depth, std::vector<std::optional<ConstPlace>>* places = nullptr, std::vector<uint8_t>* categories = nullptr, std::vector<const Ty*>* elementTypes = nullptr, bool backwards = false);
   // Whether a pattern chooses a function by its arguments' types (a call, a functional cast, a brace list), which the
   // walk typed once with the whole pack: constExpand types it for each element (constPatternFor). Not one with a
   // lambda, whose copy would be a closure type of its own.
+  // Whether e names a pack ctx binds: a template parameter pack of its substitution or a parameter pack of the run
+  // (a lambda's body has no substitution of its own for the packs it captured).
+  bool constNamesPack(Expr* e, const TypeContext& ctx);
   static bool constChoosesPerElement(Expr* pattern);
+  // Whether a template argument the caller has in effect (param: its parameter) stays for a call of f: only one f or
+  // what encloses f declares (`alt(rest...)` from `handOn<Ts...>`: handOn's Ts is no pack of alt's body, and counted
+  // as one the expansion had two lengths).
+  static bool constCallerArgumentStays(const Decl* param, const FunctionDecl* f);
   // pattern typed for element k of elementPacks (ctx.subst binding them whole), with runLocals in scope, as the code
   // generator retypes it: a copy, the template's nodes untouched. pattern itself when the copy is not typed.
   Expr* constPatternFor(Expr* pattern, const TypeContext& ctx, const LocalStack& runLocals, const std::vector<Decl*>& elementPacks, uint32_t k);
@@ -716,8 +723,12 @@
     bool isThis;
     Expr* init; // an init-capture's
     Decl* decl; // an init-capture's variable
+    bool isPack = false; // `[...xs = e]`
   };
   bool constClosureCaptures(LambdaExpr* l, std::vector<ConstCapture>& out);
+  // A capture of a parameter pack of the run (`[args...]`, `[&args...]`): a part of Pack type with its elements, a
+  // copy of each or each one's address; nullopt when c names none.
+  std::optional<ConstValue> constCapturedPack(const ConstCapture& c, const TypeContext& ctx, int depth);
   // A lambda as a value (`auto twice = [k](int v) { return v * k; };`): its closure, of type type,
   // whose parts are the captures (a copy, or for one by reference and `this` the place's address).
   std::optional<ConstValue> constClosure(LambdaExpr* l, const Ty* type, const TypeContext& ctx, int depth);

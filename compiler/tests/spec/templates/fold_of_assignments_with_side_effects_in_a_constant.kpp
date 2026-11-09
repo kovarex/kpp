@@ -1,5 +1,4 @@
 // spec: a fold of assignments whose operands have side effects at compile time: `(r += ... += next(i, a))` evaluates them from the last one back, `(place(a) *= ...)` assigns through a call
-// pending: the evaluator takes only a pack named alone or a side-effect-free pattern (constFoldOfAssignments): "no constant", an error, never another order; the run-time form is right (fold_of_assignments_order_and_result)
 extern "C" int printf(const char* format, ...);
 constexpr int next(int& i, int v) { i = i * 10 + v; return v; }
 constexpr int& place(int& v) { return v; }

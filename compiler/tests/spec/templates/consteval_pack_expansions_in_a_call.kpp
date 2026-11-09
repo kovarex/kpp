@@ -1,5 +1,4 @@
 // spec: the compile-time evaluator runs what codegen runs over packs: a nested expansion (`sumAll(sumAll(args, args...)...)`), a generic lambda's pack (`[](auto... xs)`), lambda captures of a pack (`[args...]`, `[&args...]`, `[...xs = args * 2]`), a pack handed on to a function with a leading parameter (`alt(args...)` of `alt(T a, Ts... rest)`), and pointers to the pack's elements (`deref(&args...)`); each constant beside its run-time value
-// pending: each is "no constant" (the captures "a lambda's capture the evaluator cannot make"), found by thread J's pack generator (2026-11-09); the run-time values are right; the owner is the coordinator's to name
 extern "C" int printf(const char* format, ...);
 template<typename... Ts> constexpr int sumAll(Ts... a) { return (0 + ... + a); }
 template<typename... Ts> constexpr int cross(Ts... args) { return sumAll(sumAll(args, args...)...); }
