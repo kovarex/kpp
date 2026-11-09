@@ -11,7 +11,8 @@ set CINC=--cinclude %FACTORIO%\libraries\SDL3\include --cinclude %FACTORIO%\libr
 rem The C libraries converted to kpp (c-libraries.cmd) are compiled with the game (CLIBKPP, kpp\NAME,
 rem as convert.cmd writes them), not linked, and their headers imported.
 call "%~dp0c-libraries.cmd"
-set CINC=%CINC% %CLIBINC%
+rem (the converted game writes `this` as a reference, design.md 23d)
+set CINC=%CINC% %CLIBINC% --this-reference
 for %%l in (%CLIBRARIES%) do call set CINC=%%CINC%% --cinclude kpp\%%l
 rem (a scoped one, CLIBSCOPED, as the library it is: --library-root, design.md 16)
 set CLIBKPP=

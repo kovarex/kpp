@@ -2053,11 +2053,38 @@ auto GlobalScope::Impl::Walker::bareMemberRule(const Node* n, const QualifiedNam
     std::string name(symbols.name(symbol));
     std::string old = !part.special ? name
                                     : Impl::spelledTokens(where, n->token, n->token + (P(part.opToken) == P::LParen || P(part.opToken) == P::LBracket ? 2 : 1));
-    bool isStatic = (d->flags & DF_Static) != 0;
-    impl.reportCheckerError(where, n->token, name + " is a " + (isStatic ? "static member" : d->kind == NodeKind::FunctionDecl ? "member function" : "data member") +
-                                                ": write `" + (isStatic ? "This::" : "this.") + old + "`, not `" + old + "` (design.md 23c)");
+    bool isStatic = false;
+    std::string qualifier = bareMemberQualifier(d, l, isStatic);
+    if (name != "__tag") // (what the parser wrote for a union enum)
+      impl.reportCheckerError(where, n->token, name + " is a " + (isStatic ? "static member" : d->kind == NodeKind::FunctionDecl ? "member function" : "data member") +
+                                                  ": write `" + qualifier + old + "`, not `" + old + "` (design.md 23c)");
   }
   return outside;
+}
+
+// What a bare member's fix writes before it (design.md 23c): `this.`; for a static, `This::`, or the name of the
+// class around that has it where that is not the innermost one (a nested class's `This` is the nested class). A
+// function named in a static function is the static one, whichever overload the name found first.
+auto GlobalScope::Impl::Walker::bareMemberQualifier(const Decl* d, const Lookup& l, bool& isStatic) -> std::string
+{
+  isStatic = (d->flags & DF_Static) != 0 || (d->kind == NodeKind::FunctionDecl && !thisType);
+  if (!isStatic)
+    return "this.";
+  Scope* innermost = nullptr;
+  for (Scope* s = scope; s; s = s->parent)
+    if (s->kind == ScopeKind::Class)
+    {
+      if (!innermost)
+        innermost = s;
+      if (reachThroughBases(s, l.foundIn, 0))
+      {
+        if (s == innermost || !s->owner || s->owner->kind != NodeKind::ClassDecl || static_cast<ClassDecl*>(s->owner)->name.empty() ||
+            static_cast<ClassDecl*>(s->owner)->name.last().symbol == UINT32_MAX)
+          return "This::";
+        return std::string(symbols.name(static_cast<ClassDecl*>(s->owner)->name.last().symbol)) + "::";
+      }
+    }
+  return "This::";
 }
 
 auto GlobalScope::Impl::Walker::noteImplicitMember(const Node* n, const QualifiedName& qualified, const Lookup& l) -> void
@@ -2082,7 +2109,10 @@ auto GlobalScope::Impl::Walker::noteImplicitMember(const Node* n, const Qualifie
                                   : Impl::spelledTokens(where, n->token, n->token + (P(part.opToken) == P::LParen || P(part.opToken) == P::LBracket ? 2 : 1));
   if (old.empty())
     return;
-  bool isStatic = (d->flags & DF_Static) != 0;
+  bool isStatic = false;
+  std::string qualifier = bareMemberQualifier(d, l, isStatic);
+  if (name == "__tag") // (what the parser wrote for a union enum)
+    return;
   std::string message = Impl::locationOf(where, n->token) + ": warning: " + name + " is a " +
                         (isStatic ? "static member" : d->kind == NodeKind::FunctionDecl ? "member function" : "data member");
   for (Scope* s = scope; s; s = s->parent)
@@ -2097,7 +2127,7 @@ auto GlobalScope::Impl::Walker::noteImplicitMember(const Node* n, const Qualifie
         break;
       }
   // The fix last, the form an editor's quick fix reads: a static is no value of the object (design.md 23c).
-  noteThisWarning(message + ": write `" + (isStatic ? "This::" : "this.") + old + "`, not `" + old + "`");
+  noteThisWarning(message + ": write `" + qualifier + old + "`, not `" + old + "`");
 }
 
 auto GlobalScope::Impl::Walker::safeNavigationOptional(const Ty* value, const Expr* at) -> const Ty*

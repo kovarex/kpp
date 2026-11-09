@@ -2504,6 +2504,21 @@ converted. Specs language/this_is_a_reference, this_is_a_reference_through_bases
 this_reference_old_forms_is_error, this_reference_address_uses_is_error,
 this_reference_capture_of_this_is_error and this_reference_keeps_the_pointer_in_the_standard_library.
 
+The converter's step (C, 2026-11-09; convert.cmd's `this` pass, last before the headline's builds): first required
+`this.`'s fixes, from `--this-warnings` of each configuration and platform, applied once (apply-fixes.py --this) while
+a bare name still finds the member, as under `--this-reference` one with a global of its spelling would be the global
+silently; then `kpp --convert-this-reference DIR...` by each file's tokens: `this->x` as `this.x`, `this->*p` as
+`this.*p`, `*this` as `this`, `(*this).x` as `this.x`, `*this.*p` as `this.*p`, a `*this` used as a condition as
+`bool(this)` (`if (this)` is the error "never null"), and every other `this` as `&this` (`[this]` as `[&this]`). The
+game builds with the option, build.kpp's and the scripts'. In the game (from C:\Factorio 4c178a5b915, the checkout's
+files): 218,766 `this.`, 4,857 `this`, 10,896 `&this`; bare members 331 `this.x`, 4,585 `This::x` and 15 by the name of
+the class around (a static of an enclosing class: a nested class's `This` is itself). The game's IR, Windows debug,
+before and after: the same but for names and numbers that carry a token or a column (a local's or a local class's,
+a specialization's, an assert's column, `source_location`'s), the assert texts themselves, one constant read as a
+constant (`This::EXPRESSION_OFFSET`, loaded as a global before), and two adjacent startup initializers of two
+files in the other order (Frame's and TabbedPane's default styles, which neither reads; across files the order is
+unspecified). tests\convert_this checks each form against C++'s output.
+
 ### 23e. A fix in a message (F, 2026-11-07)
 An error or warning whose fix is mechanical ends, before any " (design.md N)", with exactly one of two
 clauses, which the editor's quick fix reads: "write `NEW`, not `OLD`" ("write `this.width`, not `width`",

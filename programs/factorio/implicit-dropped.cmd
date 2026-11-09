@@ -38,7 +38,7 @@ for %%l in (%CLIBRARIES%) do (
 set CINC=--cinclude %FACTORIO%\libraries\SDL3\include --cinclude %FACTORIO%\libraries\SDL_Mixer\include --cinclude %FACTORIO%\libraries\Lua --cinclude %FACTORIO%\libraries --cinclude %FACTORIO%\libraries\curl\include --cinclude %FACTORIO%\libraries\glad\include --cinclude %FACTORIO%\libraries\trio --cinclude native\include %CLIBINC%
 for %%l in (%CLIBRARIES%) do call set CINC=%%CINC%% --cinclude kpp\%%l
 set L=%WHOLE%\libraries
-set BASE=--std ..\..\stdlib %CINC% --ext .kpp --errors 0 --unresolved 0 --emit-llvm kpp\implicit-uses.ll
+set BASE=--std ..\..\stdlib %CINC% --this-reference --ext .kpp --errors 0 --unresolved 0 --emit-llvm kpp\implicit-uses.ll
 set WINDOWS=
 set LINUX=--cinclude %FACTORIO%\libraries\libbacktrace --target linux --sysroot ..\..\compiler\build\sysroots\linux-x86_64-factorio
 set FREEBSD=--cinclude %FACTORIO%\libraries\libbacktrace --target freebsd --sysroot ..\..\compiler\build\sysroots\freebsd-x86_64

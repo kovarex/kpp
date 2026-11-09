@@ -229,6 +229,31 @@ if not "%CONVERT_LINUX%"=="0" (
   %KPP% --std ..\..\stdlib %CINC% --cinclude %FACTORIO%\libraries\libbacktrace --target linux --sysroot %GAMESYSROOT% --ext .kpp --tests --zero-null-warnings --diagnostic-columns --emit-llvm kpp\zero-null-linux.ll %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests 2> kpp\zero-null-linux.txt
   python -I fix-null.py kpp\zero-null-linux.txt "%WHOLE%" || goto :failed
 )
+rem `this` is a reference (design.md 23d): required this.'s fixes (--this-warnings, in each configuration, applied
+rem once: a member with a global of its spelling is only a warning here, and would be the global silently under
+rem --this-reference), then kpp --convert-this-reference writes every other `this` in kpp\ and the checkout, and
+rem the builds below take --this-reference.
+set STEP=the this pass
+set THISW=--std ..\..\stdlib %CINC% --this-warnings --diagnostic-columns --errors 0 --unresolved 0
+%KPP% %THISW% --emit-llvm kpp\this.ll kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\crc32fast %CLIBKPP% kpp\src > nul 2> kpp\this-debug.txt
+%KPP% %THISW% --check --release kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\crc32fast %CLIBKPP% kpp\src > nul 2> kpp\this-release.txt
+%KPP% %THISW% --check --release --config finalRelease=true kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\crc32fast %CLIBKPP% kpp\src > nul 2> kpp\this-final.txt
+%KPP% %THISW% --emit-llvm kpp\this.ll --ext .kpp --tests %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests > nul 2> kpp\this-whole.txt
+%KPP% %THISW% --check --ext .kpp --release %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %WHOLE%\src > nul 2> kpp\this-whole-release.txt
+%KPP% %THISW% --check --ext .kpp --release --config finalRelease=true %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %WHOLE%\src > nul 2> kpp\this-whole-final.txt
+set THISFILES=kpp\this-debug.txt kpp\this-release.txt kpp\this-final.txt kpp\this-whole.txt kpp\this-whole-release.txt kpp\this-whole-final.txt
+if not "%CONVERT_LINUX%"=="0" %KPP% %THISW% --cinclude %FACTORIO%\libraries\libbacktrace --target linux --sysroot %GAMESYSROOT% --emit-llvm kpp\this.ll --ext .kpp --tests %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests > nul 2> kpp\this-linux.txt
+if not "%CONVERT_LINUX%"=="0" %KPP% %THISW% --cinclude %FACTORIO%\libraries\libbacktrace --target linux --sysroot %GAMESYSROOT% --check --release --config finalRelease=true --ext .kpp %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\Lua %L%\crc32fast %CLIBWHOLE% %WHOLE%\src > nul 2> kpp\this-linux-final.txt
+if not "%CONVERT_LINUX%"=="0" %KPP% %THISW% --cinclude %FACTORIO%\libraries\libbacktrace --target freebsd --sysroot ..\..\compiler\build\sysroots\freebsd-x86_64 --emit-llvm kpp\this.ll --ext .kpp --tests %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests > nul 2> kpp\this-freebsd.txt
+if not "%CONVERT_LINUX%"=="0" set THISFILES=%THISFILES% kpp\this-linux.txt kpp\this-linux-final.txt kpp\this-freebsd.txt
+if exist kpp\this.ll del kpp\this.ll
+python -I apply-fixes.py --this %THISFILES% || goto :failed
+%KPP% --convert-this-reference kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\crc32fast kpp\src || goto :failed
+rem (kpp\Util is a copy of kpp\src\Util, made before the fixes: again)
+if exist kpp\Util rd /s /q kpp\Util
+if exist kpp\src\Util xcopy /s /y /q /i kpp\src\Util kpp\Util >nul
+%KPP% --convert-this-reference %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests || goto :failed
+set CINC=%CINC% --this-reference
 rem The headline number (docs/path-to-factorio.md, "The headline number: how it is measured"):
 rem stderr lines of the full build of exactly CommonUtil, Agui, cxxopts, StackWalker, Lua, crc32fast, the C
 rem libraries and src, not the kpp\Util copy.
@@ -383,6 +408,18 @@ call :ebdfix kpp\convert_notequal || goto :failed
 python -I -c "import sys; w = 'operator' + chr(33) + '='; n = sum(l.count(w) for l in open(r'kpp\convert_notequal\convert_notequal\notequal.kpp', encoding='utf-8') if not l.lstrip().startswith('//')); print('not-equal operators:', n, 'left'); sys.exit(0 if n == 3 else 1)" || (echo not-equal operators: NOT 3 LEFT IN kpp\convert_notequal\convert_notequal\notequal.kpp& goto :failed)
 kpp\convert_notequal.exe > kpp\convert_notequal.out.txt
 fc /w kpp\convert_notequal.out.txt tests\convert_notequal.expected > nul && (echo not-equal operators: output as expected& set /a SMOKES+=1) || (echo not-equal operators: OUTPUT DIFFERS & fc /w kpp\convert_notequal.out.txt tests\convert_notequal.expected & goto :failed)
+set "STEP=this check"
+echo == this: tests\convert_this\this.cpp, each C++ spelling of the object, converted, written as a reference (kpp --convert-this-reference) and run with --this-reference, prints what its C++ build prints (tests\convert_this.expected)
+if exist kpp\convert_this rd /s /q kpp\convert_this
+%KPP% --no-std --quiet --convert kpp\convert_this --ext .cpp tests\convert_this || goto :failed
+call :ebdfix kpp\convert_this || goto :failed
+%KPP% --std ..\..\stdlib --this-warnings --diagnostic-columns --errors 0 --unresolved 0 --emit-llvm kpp\convert_this.ll kpp\convert_this > nul 2> kpp\convert_this.warnings.txt
+python -I apply-fixes.py --this kpp\convert_this.warnings.txt > nul || goto :failed
+del kpp\convert_this.ll
+%KPP% --convert-this-reference kpp\convert_this > nul || goto :failed
+%KPP% --std ..\..\stdlib --quiet --this-reference --exe kpp\convert_this.exe kpp\convert_this || goto :failed
+kpp\convert_this.exe > kpp\convert_this.out.txt
+fc /w kpp\convert_this.out.txt tests\convert_this.expected > nul && (echo this: output as expected& set /a SMOKES+=1) || (echo this: OUTPUT DIFFERS & fc /w kpp\convert_this.out.txt tests\convert_this.expected & goto :failed)
 set "STEP=platforms check"
 echo == platforms: tests\convert_platform\platform.cpp converted for Windows and for Linux ^(--convert-platform linux, clang's predefines in linux-predefines.txt^) in debug and release, each configuration's two made one by config::platform ^(--convert-merge-platform^), then the configurations by config::debug; built and run for Windows ^(tests\convert_platform.expected^) and for Linux under WSL ^(tests\convert_platform.linux.expected^)
 if exist kpp\cplat rd /s /q kpp\cplat
@@ -433,7 +470,7 @@ set STEP=the converted text (a source line or a needless forward declaration)
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\converted-text.ps1 -Checkout "%WHOLE%" || goto :failed
 rem The one line that says whether everything passed: the headline, the release and final checks and
 rem the tests' count are gates (0).
-set SUMMARY=headline %HEADLINE%, release errors %RELEASEERRORS%, final errors %FINALERRORS%, tests errors %TESTSERRORS%, smoke tests %SMOKES%/18, C rules %CRULES%
+set SUMMARY=headline %HEADLINE%, release errors %RELEASEERRORS%, final errors %FINALERRORS%, tests errors %TESTSERRORS%, smoke tests %SMOKES%/19, C rules %CRULES%
 if not "%HEADLINE%"=="0" goto :countsfailed
 if not "%RELEASEERRORS%"=="0" goto :countsfailed
 if not "%FINALERRORS%"=="0" goto :countsfailed

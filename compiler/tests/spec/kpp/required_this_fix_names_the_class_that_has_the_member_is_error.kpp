@@ -1,0 +1,37 @@
+// spec: required `this.`'s fix (design.md 23c): a static of the class around a nested class is named by that class, as a nested class's `This` is the nested class itself; a function named in a static function is the static one, whichever overload the name found first; the union enum's tag the parser reads is no bare name of the program's.
+// kpp: --this-reference
+// error: required_this_fix_names_the_class_that_has_the_member_is_error.kpp:16: error: shared is a static member: write `Outer::shared`, not `shared` (design.md 23c)
+// error: required_this_fix_names_the_class_that_has_the_member_is_error.kpp:18: error: own is a static member: write `This::own`, not `own` (design.md 23c)
+// error: required_this_fix_names_the_class_that_has_the_member_is_error.kpp:23: error: helper is a static member: write `This::helper`, not `helper` (design.md 23c)
+class Outer
+{
+public:
+  static int shared;
+  class Inner
+  {
+  public:
+    static int own;
+    int read() const
+    {
+      return shared
+             +
+             own;
+    }
+  };
+  int helper(int value, int more) const { return value + more; }
+  static int helper(int value) { return value + 1; }
+  static int make() { return helper(1); }
+};
+int Outer::shared = 1;
+int Outer::Inner::own = 2;
+struct Filled { int amount; };
+struct Empty { int unused; };
+union enum Held : uint8_t
+{
+  { {Filled, Full}, {Empty, Nothing} }
+};
+int main()
+{
+  Held held = Empty{0};
+  return (int)held.tag() + Outer::make() + Outer::Inner().read();
+}

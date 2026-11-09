@@ -137,6 +137,7 @@ void usage(FILE* out)
           "  --convert-platform windows|linux  with --convert: preprocess as the game's build for that platform\n"
           "  --convert-predefines FILE  with --convert-platform linux: the compiler's predefined macros (clang -dM -E)\n"
           "  --convert-merge-platform W L OUT  one configuration's marked Windows and Linux conversions as one, by config::platform\n"
+          "  --convert-this-reference DIR...  write `this` as a reference in the .kpp files below each directory\n"
           "  --convert-merge D R OUT [CHOICES [F]]  the configurations' marked conversions D and R (and the final F) as one, into OUT\n"
           "                root's name (B\\libraries\\Lua\\lapi.c as D\\libraries\\Lua\\lapi.kpp)\n"
           "  --c-sources   with --convert: the inputs are C (a C library), converted by C's rules\n"

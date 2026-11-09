@@ -97,6 +97,8 @@ bool setConvertPredefines(const std::filesystem::path& file);
 // starts `requires config::platform == Platform::X;`. Returns 1 when they differ outside a group.
 int convertMergePlatform(const std::filesystem::path& windowsDir, const std::filesystem::path& linuxDir, const std::filesystem::path& outDir,
                          const std::string& firstPlatforms = "Windows", const std::string& secondPlatforms = "Linux");
+// kpp --convert-this-reference DIR...: `this` as a reference (design.md 23d) in the .kpp files below each directory.
+int convertThisReference(const std::vector<std::filesystem::path>& directories);
 // kpp --convert-merge DEBUG RELEASE OUT: the two configurations' marked conversions made one into
 // OUT, each #if group whose texts differ written as `if constexpr (config::debug)` (design.md 12).
 // Returns 1 when they differ where no group can say so (reported, with the debug text written).

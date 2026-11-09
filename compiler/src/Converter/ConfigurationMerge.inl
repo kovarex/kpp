@@ -1823,3 +1823,119 @@ int convertMergePlatform(const std::filesystem::path& windowsDir, const std::fil
     fprintf(stderr, "convert-merge-platform: %s\n", problem.c_str());
   return report.problems.empty() ? 0 : 1;
 }
+
+// `this` is a reference (design.md 23d; kpp --convert-this-reference DIR...): C++'s spellings of the object written
+// kpp's, in a converted file's text, by its tokens (never a comment or a string), as the option's meaning takes
+// them: `this->x` as `this.x`, `this->*p` as `this.*p`; `*this` as `this` (C++'s never calls a class's operator*),
+// `(*this).x` as `this.x`, `*this` as a condition as `bool(this)` (a class's conversion to bool); any other `this` is C++'s pointer, written `&this` (passed, returned, stored, compared,
+// deleted, `[this]`). `this.x` and `&this`, which required `this.`'s fixes and hand-written text may have, stay.
+static std::string withThisAsReference(const std::string& text, size_t counts[3])
+{
+  if (text.find("this") == std::string::npos)
+    return text;
+  SymbolTable symbols;
+  LexResult lexed = lex(text, symbols);
+  const std::vector<Token>& toks = lexed.tokens;
+  auto spell = [&](int64_t t)
+  {
+    return t < 0 || size_t(t) >= toks.size() ? std::string_view() : std::string_view(text).substr(toks[size_t(t)].offset, toks[size_t(t)].length);
+  };
+  // (what is before a `(` that makes it no call's: a statement's word, an operator)
+  auto calls = [&](int64_t t)
+  {
+    std::string_view s = spell(t);
+    if (s.empty() || s == "return" || s == "case" || s == "throw" || s == "else" || s == "co_return" || s == "co_yield" || s == "co_await")
+      return false;
+    return s == ")" || s == "]" || s == ">" || isalnum((unsigned char)s[0]) || s[0] == '_';
+  };
+  struct Edit
+  {
+    size_t offset, length;
+    std::string text;
+  };
+  std::vector<Edit> edits;
+  for (int64_t t = 0; t < int64_t(toks.size()); ++t)
+  {
+    if (spell(t) != "this")
+      continue;
+    std::string_view next = spell(t + 1), previous = spell(t - 1);
+    if (next == "->" || next == "->*")
+    {
+      edits.push_back({toks[size_t(t + 1)].offset, next.size(), next == "->" ? "." : ".*"});
+      ++counts[0];
+    }
+    else if ((next == "." || next == ".*" || previous == "&") && !(previous == "*" && next == ".*"))
+      continue;
+    else if (previous == "*")
+    {
+      bool parenthesized = spell(t - 2) == "(" && next == ")" && spell(t + 2) == "." && !calls(t - 3);
+      // (a class's conversion to bool as a condition: `if (this)` is the error "never null", design.md 23d)
+      std::string_view before = spell(t - 2);
+      auto oneOf = [](std::string_view x, std::initializer_list<std::string_view> list) { return std::find(list.begin(), list.end(), x) != list.end(); };
+      bool condition = (oneOf(next, {"?", "&&", "||"}) && !oneOf(before, {"==", "!=", "<", ">", "<=", ">=", "<=>", "+", "-", "*", "/", "%", "&", "|", "^", "<<", ">>", "!", "~"})) ||
+                       (oneOf(before, {"&&", "||"}) && oneOf(next, {")", ";", ","})) ||
+                       (before == "(" && next == ")" && (spell(t - 3) == "if" || spell(t - 3) == "while"));
+      if (condition)
+        edits.push_back({toks[size_t(t - 1)].offset, toks[size_t(t)].offset + toks[size_t(t)].length - toks[size_t(t - 1)].offset, "bool(this)"});
+      else if (parenthesized)
+      {
+        edits.push_back({toks[size_t(t - 2)].offset, toks[size_t(t)].offset - toks[size_t(t - 2)].offset, ""});
+        edits.push_back({toks[size_t(t + 1)].offset, 1, ""});
+      }
+      else
+        edits.push_back({toks[size_t(t - 1)].offset, toks[size_t(t)].offset - toks[size_t(t - 1)].offset, ""});
+      ++counts[1];
+    }
+    else
+    {
+      if (next == "[")
+      {
+        edits.push_back({toks[size_t(t)].offset, 0, "(&"});
+        edits.push_back({toks[size_t(t)].offset + toks[size_t(t)].length, 0, ")"});
+      }
+      else
+        edits.push_back({toks[size_t(t)].offset, 0, "&"});
+      ++counts[2];
+    }
+  }
+  if (edits.empty())
+    return text;
+  std::sort(edits.begin(), edits.end(), [](const Edit& a, const Edit& b) { return a.offset > b.offset; });
+  std::string out = text;
+  for (const Edit& e : edits)
+    out.replace(e.offset, e.length, e.text);
+  return out;
+}
+
+int convertThisReference(const std::vector<std::filesystem::path>& directories)
+{
+  size_t files = 0, counts[3] = {0, 0, 0};
+  for (const std::filesystem::path& directory : directories)
+  {
+    std::error_code ec;
+    if (!std::filesystem::is_directory(directory, ec))
+    {
+      fprintf(stderr, "convert-this-reference: %s is no directory\n", directory.generic_string().c_str());
+      return 1;
+    }
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(directory))
+    {
+      if (!entry.is_regular_file() || entry.path().extension() != ".kpp")
+        continue;
+      std::string text;
+      if (!readFile(entry.path(), text))
+      {
+        fprintf(stderr, "convert-this-reference: cannot read %s\n", entry.path().generic_string().c_str());
+        return 1;
+      }
+      std::string written = withThisAsReference(text, counts);
+      if (written != text)
+      {
+        writeConvertedFile(entry.path(), written);
+        ++files;
+      }
+    }
+  }
+  printf("convert-this-reference: %zu files: this-> written this. %zu, *this written this %zu, this written &this %zu\n", files, counts[0], counts[1], counts[2]);
+  return 0;
+}

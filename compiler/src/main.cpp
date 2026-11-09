@@ -134,6 +134,9 @@ static int compilerMain(int argc, char** argv)
     return convertMergePlatform(argv[2], argv[3], argv[4]);
   if (argc == 7 && std::string(argv[1]) == "--convert-merge-platform")
     return convertMergePlatform(argv[2], argv[3], argv[4], argv[5], argv[6]);
+  // `this` written as a reference in converted files (convert.hpp): `kpp --convert-this-reference DIR...`.
+  if (argc >= 3 && std::string(argv[1]) == "--convert-this-reference")
+    return convertThisReference(std::vector<std::filesystem::path>(argv + 2, argv + argc));
   // The language server (lsp.hpp): `kpp --lsp`, started by an editor, JSON-RPC on stdin and stdout.
   for (int i = 1; i < argc; ++i)
     if (std::string(argv[i]) == "--lsp")
