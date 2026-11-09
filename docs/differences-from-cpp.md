@@ -593,6 +593,25 @@ p[Property::Text] = String("hello");
   result, a NaN's, compares false with 0 every way, as in C++.
 - **See:** [design 4][d4]; spec `expressions/three_way_comparison_with_nan_is_unordered`.
 
+### `!=` is always `!(a == b)` (this stage, decided, not built)
+
+- **C++:** a class may declare its own `operator!=`, which can do anything; since C++20 a class with only
+  `==` gets `a != b` as `!(a == b)`.
+- **kpp:** declaring an `operator!=` that returns bool is an error, a member or a free function, written,
+  defaulted or a template (kovarex, 2026-11-09): `a != b` is always `!(a == b)`, which kpp already does
+  for a class with only `==`. An `operator!=` returning another type stays allowed (kovarex,
+  2026-11-09): a SIMD mask or an expression object, where `!(a == b)` does not apply, as the game's
+  float32x4, float64x2 and int32x4 in src/Util/SSE.hpp.
+- **Why:** a written `!=` returning bool can only repeat `==` or disagree with it by mistake (a field added
+  to one and not the other); no use for a different answer is known. The error stops people and machines
+  from writing it by habit: the converted game has about 290 `operator!=(` lines, about 50 of them
+  `!(*this == other)`.
+- **Status:** before the error, our code loses its own (the stdlib's 33, libraries' 2) and the converter
+  drops the game's. Declaring a `!=` also turns off C++20's reversed `==` candidates, so dropping one
+  can change which `==` a call picks in rare cases; the converted game building with headline 0 shows it
+  does not there.
+- **See:** [design 4][d4]; pending spec `kpp/operator_not_equal_returning_bool_is_error`.
+
 ## Templates and compile time
 
 ### Any function can run at compile time (built)

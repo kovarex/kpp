@@ -186,6 +186,13 @@ builds win less unless machine code is cached per function.
   C++20 hold: a class with `operator<=>` has `<`, `>`, `<=` and `>=`; a defaulted one orders by
   its bases and members in turn and gives `==`; `a != b` is `!(a == b)` for every class.
   (Done 2026-10-25.)
+- `a != b` is only ever `!(a == b)`: declaring an `operator!=` that returns bool is an error, a member or
+  a free function, written, defaulted or a template (kovarex, 2026-11-09: it stops people and machines
+  from writing bloat by habit; a written one can only repeat `==` or disagree with it). The converter
+  drops the game's, the stdlib and libraries lose theirs, then the checker refuses them (pending spec
+  kpp/operator_not_equal_returning_bool_is_error). An `operator!=` returning another type stays allowed
+  (kovarex, 2026-11-09): a SIMD mask or an expression object, where C++'s rewrite does not apply; the
+  converted game has six, in src/Util/SSE.hpp (float32x4, float64x2 and int32x4 give their mask).
 - Structured bindings are tuple-like through the library's `TupleSize` and `get` (std::tuple_size,
   std::get), as in C++: when `TupleSize<E>` has a member named `value` (a full or partial
   specialization for E; the primary `TupleSize` is empty), `auto [a, b] = e` names exactly

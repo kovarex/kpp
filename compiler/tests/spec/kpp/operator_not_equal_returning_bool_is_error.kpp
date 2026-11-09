@@ -1,0 +1,72 @@
+// spec: a declared operator!= that returns bool is an error, a member or a free function, written, defaulted or a template, used or not (kovarex, 2026-11-09): `a != b` is always `!(a == b)` (C++20's rewrite, which kpp does), so a written one can only repeat == or disagree with it; an operator!= returning another type (a SIMD mask) stays allowed; a class with only == still compares with != (docs/differences-from-cpp.md, "`!=` is always `!(a == b)`")
+// pending: kpp takes these declarations as C++ does. Before the error: the converter drops the converted game's (about 290 `operator!=(` lines in factorio-in-kpp, about 50 of them `!(*this == other)`) (the stdlib's 33 and libraries' 2 went, K 2026-11-09); the owner is the coordinator's to name
+// error: operator_not_equal_returning_bool_is_error.kpp:12: error: operator!= returning bool is not declared in kpp: a != b is !(a == b)
+// error: operator_not_equal_returning_bool_is_error.kpp:19: error: operator!= returning bool is not declared in kpp: a != b is !(a == b)
+// error: operator_not_equal_returning_bool_is_error.kpp:26: error: operator!= returning bool is not declared in kpp: a != b is !(a == b)
+// error: operator_not_equal_returning_bool_is_error.kpp:34: error: operator!= returning bool is not declared in kpp: a != b is !(a == b)
+// error: operator_not_equal_returning_bool_is_error.kpp:44: error: operator!= returning bool is not declared in kpp: a != b is !(a == b)
+struct Negating
+{
+  i32 x = 0;
+  bool operator==(const Negating& other) const { return this->x == other.x; }
+  bool operator!=(const Negating& other) const { return !(*this == other); }
+};
+
+struct FieldByField
+{
+  i32 x = 0;
+  bool operator==(const FieldByField& other) const { return this->x == other.x; }
+  bool operator!=(const FieldByField& other) const { return this->x != other.x; }
+};
+
+struct Defaulted
+{
+  i32 x = 0;
+  bool operator==(const Defaulted& other) const = default;
+  bool operator!=(const Defaulted& other) const = default;
+};
+
+struct Free
+{
+  i32 x = 0;
+};
+bool operator==(const Free& a, const Free& b) { return a.x == b.x; }
+bool operator!=(const Free& a, const Free& b) { return a.x != b.x; }
+
+template<typename T>
+struct Box
+{
+  T value;
+};
+template<typename T>
+bool operator==(const Box<T>& a, const Box<T>& b) { return a.value == b.value; }
+template<typename T>
+bool operator!=(const Box<T>& a, const Box<T>& b) { return !(a == b); }
+
+// Another result type: allowed (the game's SSE masks).
+struct Mask
+{
+  i32 bits = 0;
+};
+struct Lanes
+{
+  i32 x = 0;
+  Mask operator==(const Lanes& other) const { return Mask{this->x == other.x ? -1 : 0}; }
+  Mask operator!=(const Lanes& other) const { return Mask{this->x != other.x ? -1 : 0}; }
+};
+
+// Only ==: != is its negation.
+struct OnlyEquality
+{
+  i32 x = 0;
+  bool operator==(const OnlyEquality& other) const = default;
+};
+
+int main()
+{
+  OnlyEquality a{1};
+  OnlyEquality b{2};
+  Lanes l{1};
+  Mask m = l != Lanes{2};
+  return a != b && m.bits == -1 ? 0 : 1;
+}
