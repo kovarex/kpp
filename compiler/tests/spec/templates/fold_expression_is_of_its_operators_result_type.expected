@@ -1,0 +1,18 @@
+1 + 2.5 double 3.5
+1 + 2.5 left double 3.5
+-1 + 2u unsigned 1
+1 + 2ll + 3u ll 6
+'a' + 'b' int 195
+'a' char 97
+true + true int 2
+1 < 2 < 3 bool 0
+char << ll int 8
+ll << int ll 8
+&& of -10 int -10
+&& of 2, 3 bool 1
+-2.5f && none float -2.5
+last of 1, 2.5 double 2.5
+constexpr 1 + 2.5 double 3.5
+constexpr 'a' + 'b' int 195
+constexpr && of -10 int -10
+constexpr -2.5f && none float -2.5

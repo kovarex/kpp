@@ -894,11 +894,29 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
       };
       if (op == P::Comma)
       {
-        eachOperand([&](Expr* x) { rvalue(x); }); // (its temporaries live to the end of the full-expression)
-        return {"", types.voidType()};
+        // Its value is the last operand's, where the walk typed it so (operands of no class).
+        Value last{"", types.voidType()};
+        eachOperand([&](Expr* x) { last = rvalue(x); }); // (its temporaries live to the end of the full-expression)
+        const Ty* t = e->ty ? types.stripRef(e->ty) : nullptr;
+        if (!t || t->kind == TyKind::Void || !last.ty || types.stripRef(last.ty)->kind == TyKind::Void)
+          return {"", types.voidType()};
+        return isClass(t) || types.unqualified(types.stripRef(last.ty)) == types.unqualified(t) ? last : convert(last, t, e, false, ConversionContext::Copy);
       }
       if (op == P::AndAnd || op == P::OrOr)
       {
+        // One operand, the only element or init beside an empty pack: the fold is that operand itself,
+        // not its truth ([temp.variadic] 10: `(... && args)` of the int -10 is -10, `(init && ... && args)`
+        // of none is init; until 2026-11-09 a bool, 1, as the walk now types it too).
+        const Ty* bound = typePack ? boundPack(typePack) : nullptr;
+        size_t elements = typePack ? (bound ? bound->args.size() : 2) : packElementCount(pattern, e);
+        if (elements + (init ? 1 : 0) == 1)
+        {
+          Value only{"", types.voidType()};
+          eachOperand([&](Expr* x) { only = rvalue(x); });
+          const Ty* t = e->ty ? types.stripRef(e->ty) : nullptr;
+          return !t || !t->isKnown() || isClass(t) || types.unqualified(types.stripRef(only.ty)) == types.unqualified(t)
+                   ? only : convert(only, t, e, false, ConversionContext::Copy);
+        }
         // Short-circuit: each operand that decides the result ends the fold (an empty pack
         // without init is true for &&, false for ||).
         bool isAnd = op == P::AndAnd;

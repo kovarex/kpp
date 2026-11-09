@@ -1,0 +1,21 @@
+// spec: folds of `,` beside the unary right one: `(... , note(args))`, `(note(0) , ... , note(args))` and `(note(args) , ... , note(9))` visit their operands left to right, a parenthesized pattern `(... , (note(args)))` too; the value is the last operand's, `(args , ... , init)` of an empty pack init, at run time and at compile time
+// pending: kpp's parser reads `(... , x)` as an error ("unexpected '...'") and `(i , ... , args)`, `(args , ... , i)` as a comma expression around a unary fold, so codegen finds no pack in `(note(0) , ... , note(args))` and the evaluator no value in the empty unary fold; found by thread J's pack generator (2026-11-09); the owner is the coordinator's to name
+extern "C" int printf(const char* format, ...);
+int note(int i) { printf("visit %d ", i); return i * 10; }
+template<typename... Ts> int left(Ts... args) { return (... , note(args)); }
+template<typename... Ts> int leftParenthesized(Ts... args) { return (... , (note(args))); }
+template<typename... Ts> int leftInit(Ts... args) { return (note(0) , ... , note(args)); }
+template<typename... Ts> int rightInit(Ts... args) { return (note(args) , ... , note(9)); }
+template<typename I, typename... Ts> constexpr auto lastOr(I init, Ts... args) { return (args , ... , init); }
+template<typename I, typename... Ts> constexpr auto firstThen(I init, Ts... args) { return (init , ... , args); }
+int main()
+{
+  printf("= %d\n", left(1, 2, 3));
+  printf("= %d\n", leftParenthesized(1, 2));
+  printf("= %d\n", leftInit(1, 2));
+  printf("= %d\n", rightInit(1, 2));
+  constexpr auto a = lastOr(5u);
+  constexpr auto b = firstThen(5u, 2.5, 7);
+  printf("%u %d %u\n", a, b, lastOr(6u, 1, 2));
+  return 0;
+}

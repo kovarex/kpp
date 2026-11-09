@@ -1226,6 +1226,8 @@ auto GlobalScope::Impl::constFold(FoldExpr* f, const TypeContext& ctx, int depth
   auto operand = [&](int k) { return k < 0 ? constValue(init, ctx, depth + 1) : element(size_t(k)); };
   if (*op == P::AndAnd || *op == P::OrOr)
   {
+    if (order.size() == 1)
+      return operand(order[0]); // one operand: the fold is that operand, not its truth ([temp.variadic] 10)
     for (int k : order)
     {
       std::optional<ConstValue> v = operand(k);

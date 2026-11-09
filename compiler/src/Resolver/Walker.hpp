@@ -53,6 +53,14 @@
     // activeSubst binding them whole; null otherwise.
     const std::vector<Decl*>* elementPacks = nullptr;
     uint32_t elementIndex = 0;
+    // The pattern the code generator emits for that element (TemplateArgs::elementPattern), and whether
+    // the walk is inside a pattern typed for the element: an expansion or fold there takes its packs
+    // whole, its elementPacks set aside while it is walked (an expansion in an expansion's pattern).
+    const Node* elementPattern = nullptr;
+    bool inElementPattern = false;
+    // While an expansion's pattern is typed for one of its elements (typeOfExpansion): the substitution
+    // binding the packs whole, which an expansion inside the pattern expands; null outside.
+    const Subst* expansionWhole = nullptr;
     // Return statements inside lambdas / auto functions record their type here.
     std::vector<const Ty*> returnFrames;
     // Set on the scratch walkers that probe a requires-expression's requirements: an explicit
@@ -526,6 +534,31 @@
     // Lvalues present themselves as lvalue references (argumentType).
     // The parameter pack an expansion pattern expands (the first pack parameter named in it), or null.
     Decl* packParamIn(Node* n, int depth = 0);
+    // Whether an expansion's or a fold's pattern is typed for the one element the code generator
+    // emits: the pattern it names (elementPattern), or any outside such a pattern.
+    bool typedForElement(const Node* pattern) const;
+    // A fold's type from its elements' and its initial value's (null: the walk's older rule decides).
+    const Ty* foldType(FoldExpr* f, const Ty* l, const Ty* r);
+    // While an expansion inside a pattern typed for one element is walked: its packs whole.
+    struct ElementPacksAside
+    {
+      ElementPacksAside(Walker& w, bool aside) : walker(w), packs(w.elementPacks), flag(w.inElementPattern)
+      {
+        if (aside)
+        {
+          w.elementPacks = nullptr;
+          w.inElementPattern = false;
+        }
+      }
+      ~ElementPacksAside()
+      {
+        walker.elementPacks = packs;
+        walker.inElementPattern = flag;
+      }
+      Walker& walker;
+      const std::vector<Decl*>* packs;
+      bool flag;
+    };
 
     // `f(forward<Args>(args)...)` under an instantiation with an empty Args: no argument at all.
     bool isEmptyExpansion(Expr* a);
@@ -1324,6 +1357,7 @@
       {
         sub.elementPacks = &element->elementPacks;
         sub.elementIndex = element->elementIndex;
+        sub.elementPattern = element->elementPattern;
       }
     }
     for (const LambdaCapture& cap : l->captures)

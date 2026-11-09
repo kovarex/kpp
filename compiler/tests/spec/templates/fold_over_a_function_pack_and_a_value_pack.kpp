@@ -1,0 +1,10 @@
+// spec: a fold whose pattern names a function parameter pack and a non-type template parameter pack of one length (the index-sequence idiom, `(0 + ... + (args * Is))`) takes element i of each together, at run time and at compile time
+extern "C" int printf(const char* format, ...);
+template<int... Is> struct Seq {};
+template<int... Is, typename... Ts> constexpr auto weigh(Seq<Is...>, Ts... args) { return (0 + ... + (args * (Is + 1))); }
+int main()
+{
+  constexpr auto c = weigh(Seq<0, 1, 2>{}, 5, 6, 7);
+  printf("%d %d %g\n", c, weigh(Seq<0, 1, 2>{}, 5, 6, 7), weigh(Seq<3, 1>{}, 0.5, 2));
+  return 0;
+}

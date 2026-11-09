@@ -172,6 +172,9 @@
     // written in (the function's locals are other IR names: a lambda that read them printed its
     // own parameters, templates/lambda_uses_parameter_pack_of_its_function).
     std::unordered_map<Decl*, std::vector<Local>> packLocals;
+    // While an expansion's pattern is emitted for one element (forEachPackElement): that element's
+    // arguments, which an expansion inside the pattern retypes the body back to when it is done.
+    const TemplateArgs* elementInEffect = nullptr;
     // In a lambda's call operator, the structured bindings its closure captured, each on its own
     // (CaptureSlot::binding): the field per hidden object and binding name, by copy holding the
     // value, by reference the place (isRef). A use of the binding reads it (bindingPlace), never the

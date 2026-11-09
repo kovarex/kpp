@@ -8005,13 +8005,29 @@ auto GlobalScope::Impl::Walker::typeOfBinaryOperator(BinaryExpr* b, OperatorCall
 
 auto GlobalScope::Impl::Walker::typeOfExpansion(UnaryExpr* u) -> const Ty*
 {
-  Decl* pd = activeSubst ? packParamIn(u->operand) : nullptr;
-  const Ty* pt = pd ? impl.declaredTypeOf(pd, activeSubst, 0) : nullptr;
+  // Inside another expansion's pattern, typed for one of its elements: this expansion expands its
+  // packs whole (`sumAll(args, args...)...`, [temp.variadic] 5), from the substitution that binds them
+  // whole (expansionWhole), not the element's (until 2026-11-09 the inner `args...` was that one
+  // element, sumAll(args, args...) of two arguments, which instantiated sumAll<uint32, uint32>).
+  const Subst* whole = expansionWhole ? expansionWhole : activeSubst;
+  Decl* pd = whole ? packParamIn(u->operand) : nullptr;
+  const Ty* pt = pd ? impl.declaredTypeOf(pd, whole, 0) : nullptr;
   if (!pt || pt->kind != TyKind::Pack)
     return nullptr;
+  const Subst* caller = activeSubst;
+  activeSubst = whole;
+  struct Restore
+  {
+    ~Restore() { walker.activeSubst = caller; }
+    Walker& walker;
+    const Subst* caller;
+  } restore{*this, caller};
   // An expansion of the packs whose one element the code generator emits (elementPacks): its
-  // pattern typed once, for that element, as typeOfUnary types an expansion of no pack.
-  if (elementPacks && !elementPacks->empty() && pd->kind == NodeKind::ParamDecl)
+  // pattern typed once, for that element, as typeOfUnary types an expansion of no pack. Not one
+  // inside such a pattern (`sumAll(args, args...)...`): that one takes its packs whole, as C++ expands
+  // the innermost expansion of a pack first ([temp.variadic] 5; until 2026-11-09 it was typed for the
+  // element too, sumAll(args, args...) a call of two arguments, 9 where C++ gives 24).
+  if (elementPacks && !elementPacks->empty() && pd->kind == NodeKind::ParamDecl && typedForElement(u->operand))
   {
     std::vector<Decl*> packs;
     impl.packsNamedIn(static_cast<ParamDecl*>(pd)->type, *activeSubst, packs);
@@ -8019,6 +8035,7 @@ auto GlobalScope::Impl::Walker::typeOfExpansion(UnaryExpr* u) -> const Ty*
       if (std::find(elementPacks->begin(), elementPacks->end(), p) != elementPacks->end())
         return nullptr;
   }
+  ElementPacksAside aside(*this, inElementPattern && !typedForElement(u->operand));
   size_t n = pt->args.size();
   if (n == 0)
   {
@@ -8047,11 +8064,122 @@ auto GlobalScope::Impl::Walker::typeOfExpansion(UnaryExpr* u) -> const Ty*
       one.pairs.push_back({p.param, pack && p.type && p.type->kind == TyKind::Pack && p.type->args.size() == n ? p.type->args[i] : p.type});
     }
     activeSubst = &one;
+    const Subst* enclosing = expansionWhole;
+    expansionWhole = outer; // (an expansion inside the pattern: its packs whole)
     const Ty* e = walkExpr(u->operand);
+    expansionWhole = enclosing;
     activeSubst = outer;
     elements.push_back(e ? e : types.unknown());
   }
   return types.pack(Span<const Ty*>{elements.data(), uint32_t(elements.size())});
+}
+
+auto GlobalScope::Impl::Walker::typedForElement(const Node* pattern) const -> bool
+{
+  return pattern && (pattern == elementPattern || !inElementPattern);
+}
+
+auto GlobalScope::Impl::Walker::foldType(FoldExpr* f, const Ty* l, const Ty* r) -> const Ty*
+{
+  // The type of the operators' chain over the elements, each typed as its own element (a probe
+  // expansion of the pattern), as C++ instantiates `E1 op (E2 op (... op En))` ([temp.variadic] 10):
+  // `(args + ...)` of an int and a double is a double, `(... << args)` the first operand's promoted
+  // type, a comparison or a logical operator a bool, a comma its last operand. Until 2026-11-09 the
+  // first element's type: an int 3 for 1 + 2.5, a char -61 for 'a' + 'b' (thread J's pack generator).
+  // Null for operands of a class or an enumeration (an operator of their own decides), pointer
+  // arithmetic and the empty pack: the caller's rules.
+  if (!activeSubst)
+    return nullptr;
+  UnaryExpr probe;
+  probe.kind = NodeKind::UnaryExpr;
+  probe.token = f->token;
+  probe.op = uint32_t(P::Ellipsis);
+  probe.postfix = true;
+  const Ty* elements = nullptr;
+  Expr* init = nullptr;
+  const Ty* initType = nullptr;
+  bool right = false;
+  if (f->lhs && packParamIn(f->lhs))
+  {
+    probe.operand = f->lhs;
+    elements = typeOfExpansion(&probe);
+    right = true;
+    init = f->rhs;
+    initType = r;
+  }
+  else if (f->rhs && packParamIn(f->rhs))
+  {
+    probe.operand = f->rhs;
+    elements = typeOfExpansion(&probe);
+    init = f->lhs;
+    initType = l;
+  }
+  if (!elements || elements->kind != TyKind::Pack || (init && !initType))
+    return nullptr;
+  P op = P(f->op);
+  if (elements->args.empty())
+  {
+    // No element: a binary fold is its initial value, a unary && or || true or false, a unary comma
+    // void() ([temp.variadic] 10; `(pr(args) && ...)` of none was of no type).
+    if (init)
+      return initType;
+    if (op == P::AndAnd || op == P::OrOr)
+      return types.boolType();
+    return op == P::Comma ? types.voidType() : nullptr;
+  }
+  bool arithmeticOp = op == P::Plus || op == P::Minus || op == P::Star || op == P::Slash || op == P::Percent || op == P::Amp ||
+                      op == P::Pipe || op == P::Caret || op == P::Shl || op == P::Shr;
+  bool boolOp = op == P::EqEq || op == P::NotEq || op == P::Less || op == P::LessEq || op == P::Greater || op == P::GreaterEq ||
+                op == P::AndAnd || op == P::OrOr;
+  if (!arithmeticOp && !boolOp && op != P::Comma)
+    return nullptr;
+  std::vector<const Ty*> operands;
+  for (const Ty* t : elements->args)
+    operands.push_back(t);
+  if (init)
+    operands.push_back(operandType(init, initType)); // (a bit field promotes by its width)
+  for (const Ty*& t : operands)
+  {
+    if (!t)
+      return nullptr;
+    t = types.unqualified(types.stripRef(t));
+    if (!t->isKnown() || types.isDependent(t))
+      return nullptr;
+    bool scalar = t->kind == TyKind::Bool || t->kind == TyKind::Char || t->kind == TyKind::Int || t->kind == TyKind::Float;
+    if (arithmeticOp ? !scalar : (t->kind == TyKind::Class || t->kind == TyKind::Lambda || t->kind == TyKind::Enum || t->kind == TyKind::Void))
+      return nullptr;
+  }
+  const Ty* initOperand = init ? operands.back() : nullptr;
+  if (init)
+    operands.pop_back();
+  auto step = [&](const Ty* a, const Ty* b) -> const Ty*
+  {
+    if (boolOp)
+      return types.boolType();
+    if (op == P::Comma)
+      return b;
+    if (op == P::Shl || op == P::Shr)
+      return promote(a);
+    return arithmetic(a, b);
+  };
+  const Ty* acc = nullptr;
+  if (right)
+  {
+    // E1 op (E2 op (... op (En op init)))
+    size_t i = operands.size();
+    acc = initOperand ? initOperand : operands[--i];
+    while (i-- > 0)
+      acc = step(operands[i], acc);
+  }
+  else
+  {
+    // (((init op E1) op E2) op ...) op En
+    size_t i = 0;
+    acc = initOperand ? initOperand : operands[i++];
+    for (; i < operands.size(); ++i)
+      acc = step(acc, operands[i]);
+  }
+  return acc;
 }
 
 auto GlobalScope::Impl::Walker::typeOfUnary(UnaryExpr* u) -> const Ty*
@@ -8067,8 +8195,20 @@ auto GlobalScope::Impl::Walker::typeOfUnary(UnaryExpr* u) -> const Ty*
 auto GlobalScope::Impl::Walker::typeOfUnaryOperator(UnaryExpr* u, OperatorCall& call, FunctionDecl*& callee, bool& member) -> const Ty*
 {
   if (!u->isKeyword && P(u->op) == P::Ellipsis && u->postfix)
+  {
     if (const Ty* pack = typeOfExpansion(u))
       return pack;
+    if (elementPacks && !elementPacks->empty())
+    {
+      // Typed once, for the element the code generator emits: an expansion inside the pattern takes
+      // its packs whole (typeOfExpansion).
+      bool was = inElementPattern;
+      inElementPattern = true;
+      const Ty* t = walkExpr(u->operand);
+      inElementPattern = was;
+      return t;
+    }
+  }
   const Ty* t = walkExpr(u->operand);
   const Ty* s = types.stripRef(t);
   if (u->isKeyword)
@@ -11151,8 +11291,21 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
     case NodeKind::FoldExpr:
     {
       auto* f = static_cast<FoldExpr*>(e);
+      // The fold the code generator emits for one element (or another fold while it does): its pattern
+      // typed once, for that element; the fold's own type is the whole fold's, typed again after.
+      bool once = elementPacks && !elementPacks->empty() && (typedForElement(f->lhs) || typedForElement(f->rhs));
+      bool was = inElementPattern;
+      if (once)
+        inElementPattern = true;
+      std::optional<ElementPacksAside> aside;
+      if (!once)
+        aside.emplace(*this, inElementPattern); // (a fold inside such a pattern: its packs whole)
       const Ty* l = walkExpr(f->lhs);
       const Ty* r = walkExpr(f->rhs);
+      inElementPattern = was;
+      if (!once)
+        if (const Ty* folded = foldType(f, l, r))
+          return record(e, folded);
       if (f->op == uint32_t(P::Comma))
         return record(e, types.voidType());
       const Ty* pattern = l ? l : r;

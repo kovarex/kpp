@@ -109,13 +109,23 @@
       // parameter whose value is not known here".
       bool namedBeside = addNamedPacks(pattern, packs, count);
       TemplateArgs original = *currentArgs;
+      // Inside another expansion's pattern (`sumAll(args, args...)...`): its element's bindings and
+      // typing again when this one is done, for the rest of that pattern.
+      const TemplateArgs* outer = elementInEffect;
+      std::vector<std::pair<Decl*, Local>> outerLocals;
+      for (Decl* p : params)
+        if (auto l = locals.find(p); l != locals.end())
+          outerLocals.push_back({p, l->second});
       for (size_t i = 0; i < count; ++i)
       {
-        // The pattern's mentions of the packs name element i; the rest of the body keeps them whole.
+        // The pattern's mentions of the packs name element i; the rest of the body keeps them whole,
+        // and so does an expansion inside the pattern (elementPattern).
         TemplateArgs elementArgs = original;
         elementArgs.elementPacks = packs;
         elementArgs.elementIndex = uint32_t(i);
+        elementArgs.elementPattern = pattern;
         retypeForElement(elementArgs, true);
+        elementInEffect = &elementArgs;
         for (Decl* p : params)
           locals[p] = packLocals[p][i];
         if (namedBeside)
@@ -125,10 +135,16 @@
         }
         else
           body(i);
+        elementInEffect = outer;
       }
       for (Decl* p : params)
         locals.erase(p);
-      retypeForElement(original);
+      for (auto& [p, l] : outerLocals)
+        locals[p] = l;
+      if (outer)
+        retypeForElement(*outer, true);
+      else
+        retypeForElement(original);
     }
 
     // Runs body with element k of the packs args name bound, as forEachPackElement's pass k: the

@@ -1,0 +1,5 @@
+visit 1 visit 2 visit 3 = 30
+visit 1 visit 2 = 20
+visit 0 visit 1 visit 2 = 20
+visit 1 visit 2 visit 9 = 90
+5 7 6

@@ -1,0 +1,44 @@
+// spec: a fold expression is of the type its chain of operators gives ([temp.variadic] 10, as `E1 op (E2 op (... op En))` written out): `(args + ...)` of an int and a double is a double, of two chars an int, `(... << args)` its first operand's promoted type, a comparison and a logical operator a bool, a comma its last operand; with one operand (the only element, or init beside an empty pack) the fold is that operand itself, `(... && args)` of the int -10 the int -10; at run time and at compile time; the type shown through an overload set and through auto
+// found by thread J's pack generator (2026-11-09): kpp typed every fold as its first element, so `auto` deduced an int 3 for 1 + 2.5, a char -61 for 'a' + 'b', and && of one int was its truth, 1
+extern "C" int printf(const char* format, ...);
+void show(const char* what, int v) { printf("%s int %d\n", what, v); }
+void show(const char* what, unsigned v) { printf("%s unsigned %u\n", what, v); }
+void show(const char* what, long long v) { printf("%s ll %lld\n", what, v); }
+void show(const char* what, double v) { printf("%s double %g\n", what, v); }
+void show(const char* what, float v) { printf("%s float %g\n", what, (double)v); }
+void show(const char* what, bool v) { printf("%s bool %d\n", what, (int)v); }
+void show(const char* what, char v) { printf("%s char %d\n", what, (int)v); }
+template<typename... Ts> constexpr auto rightSum(Ts... a) { return (a + ...); }
+template<typename... Ts> constexpr auto leftSum(Ts... a) { return (... + a); }
+template<typename I, typename... Ts> constexpr auto initSum(I i, Ts... a) { return (i + ... + a); }
+template<typename... Ts> constexpr auto less(Ts... a) { return (a < ...); }
+template<typename... Ts> constexpr auto shifted(Ts... a) { return (... << a); }
+template<typename... Ts> constexpr auto all(Ts... a) { return (... && a); }
+template<typename I, typename... Ts> constexpr auto allFrom(I i, Ts... a) { return (i && ... && a); }
+template<typename... Ts> constexpr auto last(Ts... a) { return (a , ...); }
+int main()
+{
+  show("1 + 2.5", rightSum(1, 2.5));
+  show("1 + 2.5 left", leftSum(1, 2.5));
+  show("-1 + 2u", rightSum(-1, 2u));
+  show("1 + 2ll + 3u", leftSum(1, 2ll, 3u));
+  show("'a' + 'b'", initSum('a', 'b'));
+  show("'a'", rightSum('a'));
+  show("true + true", rightSum(true, true));
+  show("1 < 2 < 3", less(1, 2, 3));
+  show("char << ll", shifted((char)1, 3ll));
+  show("ll << int", shifted(1ll, 3));
+  show("&& of -10", all(-10));
+  show("&& of 2, 3", all(2, 3));
+  show("-2.5f && none", allFrom(-2.5f));
+  show("last of 1, 2.5", last(1, 2.5));
+  constexpr auto c1 = rightSum(1, 2.5);
+  constexpr auto c2 = initSum('a', 'b');
+  constexpr auto c3 = all(-10);
+  constexpr auto c4 = allFrom(-2.5f);
+  show("constexpr 1 + 2.5", c1);
+  show("constexpr 'a' + 'b'", c2);
+  show("constexpr && of -10", c3);
+  show("constexpr -2.5f && none", c4);
+  return 0;
+}

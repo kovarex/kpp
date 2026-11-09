@@ -1949,6 +1949,7 @@ const Ty* GlobalScope::typeFunctionFor(FunctionDecl* f, FunctionDecl* nodes, con
   {
     w.elementPacks = &args.elementPacks;
     w.elementIndex = args.elementIndex;
+    w.elementPattern = args.elementPattern;
   }
   for (Decl* p = f; p; p = p->parent)
     for (Decl* tp : p->templateParams)

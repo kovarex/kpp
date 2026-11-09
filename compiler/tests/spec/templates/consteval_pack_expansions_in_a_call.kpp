@@ -1,0 +1,26 @@
+// spec: the compile-time evaluator runs what codegen runs over packs: a nested expansion (`sumAll(sumAll(args, args...)...)`), a generic lambda's pack (`[](auto... xs)`), lambda captures of a pack (`[args...]`, `[&args...]`, `[...xs = args * 2]`), a pack handed on to a function with a leading parameter (`alt(args...)` of `alt(T a, Ts... rest)`), and pointers to the pack's elements (`deref(&args...)`); each constant beside its run-time value
+// pending: each is "no constant" (the captures "a lambda's capture the evaluator cannot make"), found by thread J's pack generator (2026-11-09); the run-time values are right; the owner is the coordinator's to name
+extern "C" int printf(const char* format, ...);
+template<typename... Ts> constexpr int sumAll(Ts... a) { return (0 + ... + a); }
+template<typename... Ts> constexpr int cross(Ts... args) { return sumAll(sumAll(args, args...)...); }
+template<typename... Ts> constexpr int product(Ts... args) { auto g = [](auto... xs) { return (xs * ... * 1); }; return g(args...); }
+template<typename... Ts> constexpr int byValue(Ts... args) { auto l = [args...]() { return (args + ... + 0); }; return l(); }
+template<typename... Ts> constexpr int byReference(Ts... args) { auto l = [&args...]() { ((args = args + 1), ...); }; l(); return sumAll(args...); }
+template<typename... Ts> constexpr int initCaptures(Ts... args) { auto l = [...xs = args * 2]() { return sumAll(xs...); }; return l(); }
+template<typename T, typename... Ts> constexpr int alt(T a, Ts... rest) { if constexpr (sizeof...(rest) == 0) return a; else return a - alt(rest...); }
+template<typename... Ts> constexpr int handOn(Ts... args) { return alt(args...); }
+template<typename... Ts> constexpr int deref(Ts*... ps) { return (*ps + ...); }
+template<typename... Ts> constexpr int viaPointers(Ts... args) { return deref(&args...); }
+int main()
+{
+  constexpr int a = cross(1, 2, 3);
+  constexpr int b = product(2, 3, 4);
+  constexpr int c = byValue(1, 2, 3);
+  constexpr int d = byReference(1, 2, 3);
+  constexpr int e = initCaptures(1, 2, 3);
+  constexpr int f = handOn(10, 3, 2);
+  constexpr int g = viaPointers(4, 5);
+  printf("%d %d %d %d %d %d %d\n", a, b, c, d, e, f, g);
+  printf("%d %d %d %d %d %d %d\n", cross(1, 2, 3), product(2, 3, 4), byValue(1, 2, 3), byReference(1, 2, 3), initCaptures(1, 2, 3), handOn(10, 3, 2), viaPointers(4, 5));
+  return 0;
+}

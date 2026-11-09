@@ -1,0 +1,43 @@
+// spec: a pack expansion inside another expansion's pattern expands its packs whole ([temp.variadic] 5): `sumAll(sumAll(args, args...)...)` calls sumAll once per element with that element and all of them, over a pack of mixed types (each inner call its own instance, an auto result); `h(a, b...)...` over two packs expands b whole for each element of a, and a pack named after the inner expansion is still the element; each inner call's arguments printed
+// found by thread J's pack generator (2026-11-09): the inner `args...` was the outer's one element, so sumAll(args, args...) took two arguments: 9 where C++ gives 24 (with mixed types the wrong instances, sumAll<uint32, uint32>, converted the results)
+extern "C" int printf(const char* format, ...);
+void show(int v) { printf("i%d ", v); }
+void show(unsigned v) { printf("u%u ", v); }
+void show(short v) { printf("s%d ", (int)v); }
+void show(double v) { printf("d%g ", v); }
+template<typename... Ts> auto sumAll(Ts... a)
+{
+  printf("(");
+  (show(a), ...);
+  printf(") ");
+  return (0 + ... + a);
+}
+template<typename... Ts> auto quietSum(Ts... a) { return (0 + ... + a); }
+// (the inner calls in a brace list, which runs them in order; the outer one prints nothing)
+template<typename... Ts> double cross(Ts... args)
+{
+  double parts[] = {(double)sumAll(args, args...)...};
+  printf("[");
+  for (double p : parts)
+    printf("%g ", p);
+  printf("] ");
+  return quietSum(quietSum(args, args...)...);
+}
+template<typename... Ts> int crossAfter(Ts... args)
+{
+  int parts[] = {sumAll(args..., args * 10)...};
+  return parts[0] * 1000 + quietSum(quietSum(args..., args * 10)...);
+}
+template<typename A> int count(A a, int n) { return a * 100 + n; }
+template<typename... As> struct Outer
+{
+  template<typename... Bs> static int pairs(As... a, Bs... b) { return (0 + ... + count(a, (int)sizeof...(b) + (0 + ... + b))); }
+};
+int main()
+{
+  printf("= %g\n", cross(1, 2, 3));
+  printf("= %g\n", cross(5u, (short)-6, 17.5));
+  printf("= %d\n", crossAfter(1, 2));
+  printf("= %d\n", Outer<int, int>::pairs<int, int, int>(1, 2, 10, 20, 30));
+  return 0;
+}

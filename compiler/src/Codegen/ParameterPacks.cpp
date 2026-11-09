@@ -24,7 +24,12 @@ auto codegen::Emitter::packsIn(Node* n, std::vector<Decl*>& out, int depth) -> v
       return;
     }
     case NodeKind::ParenExpr: packsIn(static_cast<ParenExpr*>(n)->inner, out, depth + 1); return;
-    case NodeKind::UnaryExpr: packsIn(static_cast<UnaryExpr*>(n)->operand, out, depth + 1); return;
+    case NodeKind::UnaryExpr:
+      // (not the packs of an expansion inside the pattern, `h(a, b...)...`, which expands them itself)
+      if (depth > 0 && isPackExpansion(static_cast<UnaryExpr*>(n)))
+        return;
+      packsIn(static_cast<UnaryExpr*>(n)->operand, out, depth + 1);
+      return;
     case NodeKind::CastExpr: packsIn(static_cast<CastExpr*>(n)->operand, out, depth + 1); return;
     case NodeKind::NamedCastExpr: packsIn(static_cast<NamedCastExpr*>(n)->operand, out, depth + 1); return;
     case NodeKind::MemberExpr: packsIn(static_cast<MemberExpr*>(n)->base, out, depth + 1); return;

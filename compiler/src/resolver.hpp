@@ -30,6 +30,10 @@ struct TemplateArgs
   // `Array<Entry, sizeof...(Ts)>&`).
   std::vector<Decl*> elementPacks;
   uint32_t elementIndex = 0;
+  // The pattern of that expansion (the instance's copy's node): it is typed for the element, and an
+  // expansion inside it takes its packs whole (`sumAll(args, args...)...`: each element and all of
+  // them, [temp.variadic] 5); null where the code generator names no pattern.
+  const Node* elementPattern = nullptr;
 };
 
 // Whether an expression names an object that outlives the expression (an lvalue): a variable or
