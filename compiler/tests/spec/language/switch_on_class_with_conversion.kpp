@@ -10,7 +10,7 @@ public:
   };
   using enum Enum;
   implicit constexpr Dimension(Enum dimension) : dimension(dimension) {}
-  implicit constexpr operator Enum() const { return this->dimension; }
+  implicit constexpr operator Enum() const { return this.dimension; }
 private:
   Enum dimension;
 };

@@ -5,7 +5,7 @@ class MyID
 {
 public:
   using PrototypeType = P;
-  const P* getPrototype() const { return this->p; }
+  const P* getPrototype() const { return this.p; }
   const P* p = nullptr;
 };
 
@@ -18,12 +18,12 @@ class WithQuality
 public:
   using IDType = IDTypeParameter;
   const IDType::PrototypeType* getPrototype() const;
-  const IDType::PrototypeType* operator->() const { return this->getPrototype(); }
+  const IDType::PrototypeType* operator->() const { return this.getPrototype(); }
   IDType id;
 };
 
 template<class IDTypeParameter>
-const IDTypeParameter::PrototypeType* WithQuality<IDTypeParameter>::getPrototype() const { return this->id.getPrototype(); }
+const IDTypeParameter::PrototypeType* WithQuality<IDTypeParameter>::getPrototype() const { return this.id.getPrototype(); }
 
 using ItemWithQ = WithQuality<ItemID>;
 

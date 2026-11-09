@@ -8,7 +8,7 @@ template<typename T>
 struct Holder
 {
   T* p = nullptr;
-  T** operator&() { return &this->p; }
+  T** operator&() { return &this.p; }
 };
 Thing shared;
 template<typename Q>

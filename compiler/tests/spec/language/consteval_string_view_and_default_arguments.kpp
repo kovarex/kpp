@@ -6,7 +6,7 @@ constexpr int pick(StringView name, int fallback = 3) { return name == "debug" ?
 struct Settings
 {
   int level = 2;
-  constexpr int get(int add = 1) const { return this->level + add; }
+  constexpr int get(int add = 1) const { return this.level + add; }
 };
 static_assert(mode == "release" && mode != other && StringView("abc") == StringView("abc"));
 static_assert(pick("debug") == 1 && pick("x") == 3 && Settings().get() == 3);

@@ -8,9 +8,9 @@ public:
   {
   public:
     implicit const_iterator(const Grid& grid) : grid(&grid) {}
-    const T& value() const { return this->grid->cells[this->index]; }
-    bool ended() const { return this->index >= 3; }
-    const_iterator& operator++() { ++this->index; return *this; }
+    const T& value() const { return this.grid->cells[this.index]; }
+    bool ended() const { return this.index >= 3; }
+    const_iterator& operator++() { ++this.index; return this; }
     const Grid* grid;
     int index = 0;
   };

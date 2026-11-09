@@ -4,7 +4,7 @@ struct Counter
 {
   int* hits;
   Counter(int* h) : hits(h) {}
-  ~Counter() { ++*this->hits; }
+  ~Counter() { ++*this.hits; }
 };
 constexpr int single()
 {

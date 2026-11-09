@@ -8,7 +8,7 @@ struct Binder
   static PtFunc reader;
   static int registerRead(String&& name, PtFunc f)
   {
-    reader = f;
+    This::reader = f;
     return int(name.size());
   }
 };
@@ -18,7 +18,7 @@ class Base
 {
 public:
   int x = 4;
-  int32_t read(lua_State* L) { return this->x * 10; }
+  int32_t read(lua_State* L) { return this.x * 10; }
 protected:
   template<class T>
   static int setUp()

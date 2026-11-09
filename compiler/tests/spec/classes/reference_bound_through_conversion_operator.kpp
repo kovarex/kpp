@@ -9,7 +9,7 @@ struct LabelRef
 {
   Label* pointer;
   implicit LabelRef(Label& label) : pointer(&label) {}
-  implicit operator Label&() const { return *this->pointer; }
+  implicit operator Label&() const { return *this.pointer; }
 };
 
 int main()

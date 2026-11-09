@@ -1,7 +1,7 @@
 // spec: a try none of whose handlers takes the exception is passed over: the search goes on to the try around it, the inner handler's body never runs, and the objects of both scopes are destroyed innermost first before the outer handler runs (C++'s two-phase search finds the handler before unwinding: design.md, "Targets and hosts", stage 3)
 class Boom : public Exception { public: Boom() : Exception("boom") {} };
 class Other : public Exception { public: Other() : Exception("other") {} };
-struct Note { const char* text; Note(const char* t) : text(t) {} ~Note() { println("~", StringView(this->text)); } };
+struct Note { const char* text; Note(const char* t) : text(t) {} ~Note() { println("~", StringView(this.text)); } };
 void inner()
 {
   Note n("inner local");

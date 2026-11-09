@@ -5,11 +5,11 @@ class Countdown
 public:
   int left;
   Countdown(int n) : left(n) {}
-  Countdown& begin() { return *this; }
+  Countdown& begin() { return this; }
   nullptr_t end() const { return nullptr; }
-  bool operator!=(nullptr_t) const { return this->left > 0; }
-  void operator++() { --this->left; }
-  int operator*() const { return this->left; }
+  bool operator!=(nullptr_t) const { return this.left > 0; }
+  void operator++() { --this.left; }
+  int operator*() const { return this.left; }
 };
 int main()
 {

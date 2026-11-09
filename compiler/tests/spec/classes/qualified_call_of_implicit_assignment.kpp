@@ -12,8 +12,8 @@ struct Derived : Base
   Derived& operator=(const Derived& other)
   {
     super::operator=(other);
-    this->b = other.b + 100;
-    return *this;
+    this.b = other.b + 100;
+    return this;
   }
   void assignFromBase(const Base& other) { Base::operator=(other); }
 };

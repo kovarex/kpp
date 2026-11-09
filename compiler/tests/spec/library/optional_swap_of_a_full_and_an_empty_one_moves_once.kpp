@@ -4,13 +4,13 @@ struct Counted
   static int moved, destroyed;
   int value;
   Counted(int value) : value(value) {}
-  Counted(Counted&& other) : value(other.value) { moved++; }
+  Counted(Counted&& other) : value(other.value) { This::moved++; }
   Counted& operator=(Counted&& other)
   {
-    this->value = other.value;
-    return *this;
+    this.value = other.value;
+    return this;
   }
-  ~Counted() { destroyed++; }
+  ~Counted() { This::destroyed++; }
 };
 int Counted::moved = 0;
 int Counted::destroyed = 0;

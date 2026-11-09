@@ -15,9 +15,9 @@ struct Holder<T, false>
   void load(int v);
 };
 template<typename T>
-void Holder<T, true>::load(int v) { this->value = T(v); }
+void Holder<T, true>::load(int v) { this.value = T(v); }
 template<typename T>
-void Holder<T, false>::load(int v) { this->value = T(v * 10); }
+void Holder<T, false>::load(int v) { this.value = T(v * 10); }
 int main()
 {
   Holder<int, true> a;

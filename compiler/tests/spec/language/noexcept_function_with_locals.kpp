@@ -5,7 +5,7 @@ struct Noisy
 {
   const char* name;
   Noisy(const char* name) : name(name) {}
-  ~Noisy() { println("destroyed ", StringView(name)); }
+  ~Noisy() { println("destroyed ", StringView(this.name)); }
 };
 bool armed = false;
 void mayThrow() { Noisy inner("inner"); if (armed) throw Boom(); }

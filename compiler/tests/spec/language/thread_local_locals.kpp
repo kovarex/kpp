@@ -4,7 +4,7 @@ struct Cache
 {
   Vector<int> values;
   int builds = 0;
-  Cache() { this->builds = 1; }
+  Cache() { this.builds = 1; }
 };
 Cache& cacheOf()
 {

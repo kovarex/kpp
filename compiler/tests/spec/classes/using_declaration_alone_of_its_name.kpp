@@ -12,12 +12,12 @@ class B : private A
 public:
   using A::f;
   using A::x;
-  int inside() { return f() + x; }
+  int inside() { return this.f() + this.x; }
 };
 class C : public B
 {
 public:
-  int derived() { return f() * 10 + x; }
+  int derived() { return this.f() * 10 + this.x; }
 };
 int main()
 {

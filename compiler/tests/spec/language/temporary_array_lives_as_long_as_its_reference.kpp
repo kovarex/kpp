@@ -4,8 +4,8 @@ struct Noisy
 {
   int v;
   implicit Noisy(int v) : v(v) { println("make ", v); }
-  Noisy(const Noisy& o) : v(o.v) { println("copy ", v); }
-  ~Noisy() { println("drop ", v); }
+  Noisy(const Noisy& o) : v(o.v) { println("copy ", this.v); }
+  ~Noisy() { println("drop ", this.v); }
 };
 int total(const Noisy (&a)[2])
 {

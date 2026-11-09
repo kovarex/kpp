@@ -6,7 +6,7 @@ struct Machine
   struct Stats { int cycles = 0; int errors = 0; };
   State state = State::Off;
   Stats stats;
-  void run() { this->state = State::On; this->stats.cycles += 1; }
+  void run() { this.state = State::On; this.stats.cycles += 1; }
 };
 int main()
 {

@@ -18,7 +18,7 @@ constexpr int enumerators()
 
 constexpr int counted()
 {
-  struct Counter { int n = 0; constexpr int next() { return ++n; } };
+  struct Counter { int n = 0; constexpr int next() { return ++this.n; } };
   Counter c;
   c.next();
   c.next();

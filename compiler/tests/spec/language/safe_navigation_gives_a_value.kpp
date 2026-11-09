@@ -5,7 +5,7 @@ public:
   int id = 9;
   Tag() { println("made"); }
   Tag(const Tag& other) : id(other.id + 1) { println("copied"); }
-  ~Tag() { println("gone ", this->id); }
+  ~Tag() { println("gone ", this.id); }
 };
 class Holder
 {
@@ -16,8 +16,8 @@ public:
   double ratio = 0.5;
   String name = "engine";
   Holder* self = nullptr;
-  Tag& ref() { return this->tag; }
-  int& count() { return this->number; }
+  Tag& ref() { return this.tag; }
+  int& count() { return this.number; }
 };
 int main()
 {

@@ -4,20 +4,20 @@ extern "C" int printf(const char* format, ...);
 struct R
 {
   int v = 1;
-  implicit operator int() & { printf("R>int& "); return v; }
-  implicit operator int() && { printf("R>int&& "); return v + 10; }
+  implicit operator int() & { printf("R>int& "); return this.v; }
+  implicit operator int() && { printf("R>int&& "); return this.v + 10; }
 };
 struct Q
 {
   int v = 2;
-  implicit operator int() & { printf("Q>int& "); return v; }
-  implicit operator double() const { printf("Q>double "); return v + 0.5; }
+  implicit operator int() & { printf("Q>int& "); return this.v; }
+  implicit operator double() const { printf("Q>double "); return this.v + 0.5; }
 };
 struct P
 {
   int v = 3;
-  implicit operator long() const& { printf("P>long-c& "); return v; }
-  implicit operator long() && { printf("P>long&& "); return v + 10; }
+  implicit operator long() const& { printf("P>long-c& "); return this.v; }
+  implicit operator long() && { printf("P>long&& "); return this.v + 10; }
 };
 struct B
 {

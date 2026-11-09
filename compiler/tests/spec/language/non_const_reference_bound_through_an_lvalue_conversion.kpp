@@ -5,7 +5,7 @@ struct E
 {
   int pad = 100;
   int v = 1;
-  operator int&() { printf("E>int& "); return v; }
+  operator int&() { printf("E>int& "); return this.v; }
 };
 struct F
 {
@@ -17,7 +17,7 @@ struct G
 {
   int pad = 200;
   int v = 4;
-  implicit operator int&() { printf("G>int& "); return v; }
+  implicit operator int&() { printf("G>int& "); return this.v; }
   implicit operator int() & { printf("G>int "); return 5; }
 };
 struct H
@@ -25,7 +25,7 @@ struct H
   int pad = 300;
   int v = 6;
   implicit operator bool() const { printf("H>bool "); return true; }
-  implicit operator int&() { printf("H>int& "); return v; }
+  implicit operator int&() { printf("H>int& "); return this.v; }
   implicit operator int() { printf("H>int "); return 7; }
 };
 int f(double) { return 1; }

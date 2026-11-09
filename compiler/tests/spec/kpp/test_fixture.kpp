@@ -4,25 +4,25 @@
 class Counter
 {
 public:
-  Counter(int start = 0) : value(start) { println("built ", value); }
-  ~Counter() { println("destroyed ", value); }
+  Counter(int start = 0) : value(start) { println("built ", this.value); }
+  ~Counter() { println("destroyed ", this.value); }
 protected:
   int value;
-  void bump() { ++value; }
+  void bump() { ++this.value; }
 };
 
 suite Counting
 {
   test Plain : Counter
   {
-    bump();
-    require(value == 1);
+    this.bump();
+    require(this.value == 1);
   }
 
   test WithStart : Counter(10)
   {
-    bump();
-    require(value == 12);
+    this.bump();
+    require(this.value == 12);
     println("not reached");
   }
 }

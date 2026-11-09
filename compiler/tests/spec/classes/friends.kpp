@@ -6,7 +6,7 @@ class Account
   friend int peek(const Account& a);
   friend class Auditor;
 public:
-  void deposit(int n) { this->balance += n; }
+  void deposit(int n) { this.balance += n; }
 };
 int peek(const Account& a) { return a.balance; }
 class Auditor

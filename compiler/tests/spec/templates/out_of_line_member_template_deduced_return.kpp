@@ -14,7 +14,7 @@ public:
   template<bool forLogistics>
   int countOn(int chunk) const
   {
-    auto* list = this->maybeGetList<forLogistics>(chunk);
+    auto* list = this.maybeGetList<forLogistics>(chunk);
     return list ? list->count : -1;
   }
   template<bool forLogistics>
@@ -30,13 +30,13 @@ auto* Network::maybeGetList(int chunk) const
   if constexpr (forLogistics)
   {
     if (chunk > 0)
-      return &this->logistic;
+      return &this.logistic;
     return (const LogisticList*) nullptr;
   }
   else
   {
     if (chunk > 0)
-      return &this->construction;
+      return &this.construction;
     return (const ConstructionList*) nullptr;
   }
 }

@@ -6,7 +6,7 @@ struct Derived : Other, Base { int b = 2; };
 int twice(int x) { return 2 * x; }
 struct Label
 {
-  int same(const Label& other) const { return int(this == &other); }
+  int same(const Label& other) const { return int(&this == &other); }
 };
 int main()
 {

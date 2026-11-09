@@ -7,7 +7,7 @@ int dispatch(int count, Func fn)
   {
     int item;
     int order;
-    bool operator<(const ToCall& other) const { return this->order < other.order; }
+    bool operator<(const ToCall& other) const { return this.order < other.order; }
     static Vector<ToCall> collect(int count)
     {
       Vector<ToCall> result;

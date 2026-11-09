@@ -12,7 +12,7 @@ struct Ops
   int operator[](int) const noexcept { return 3; }
   int operator()(int) const noexcept { return 4; }
   int operator*() const { return 5; }
-  Ops& operator=(const Ops&) noexcept { return *this; }
+  Ops& operator=(const Ops&) noexcept { return this; }
   operator int() const noexcept { return 6; }
   operator bool() const { return true; }
 };

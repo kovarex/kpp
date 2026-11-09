@@ -13,6 +13,6 @@ struct Box
   int width = 0;
   int height = 0;
   constexpr Box(int w, int h) : width(w), height(h) {}
-  constexpr bool isSquare() const { return this->width == this->height; }
-  constexpr int area() const { return width * height; }
+  constexpr bool isSquare() const { return this.width == this.height; }
+  constexpr int area() const { return this.width * this.height; }
 };

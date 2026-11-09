@@ -17,7 +17,7 @@ public:
     : UnitTest::TestRunner(reporter)
     , exitOnFailure(exitOnFailure)
   {}
-  int value() const { return *this->reporter; }
+  int value() const { return *this.reporter; }
   bool exitOnFailure;
 };
 int main()

@@ -8,13 +8,13 @@ namespace money
     static int made;
   public:
     using Amount = int;
-    Coin(int c) : cents(c) { ++made; }
+    Coin(int c) : cents(c) { ++This::made; }
     friend Amount valueOf(const Coin& c) { return c.cents; }
-    friend int madeSoFar(const Coin&) { return made; }
+    friend int madeSoFar(const Coin&) { return This::made; }
     friend Coin operator-(const Coin& c) { return Coin(-c.cents); }
     friend Coin& operator+=(Coin& a, const Coin& b) { a.cents += b.cents; return a; }
     friend int describe(const Coin&) { return 1; }
-    int twice() const { return valueOf(*this) * 2; }
+    int twice() const { return valueOf(this) * 2; }
   };
   int Coin::made = 0;
   int describe(long) { return 2; }
@@ -32,7 +32,7 @@ public:
   Box(T t) : item(t) {}
   friend Box operator+(const Box& a, const Box& b) { return Box(a.item + b.item); }
   friend T get(const Box& b) { return b.item; }
-  T viaFriend() const { return get(*this); }
+  T viaFriend() const { return get(this); }
 };
 template<class T>
 T sum(const Box<T>& a, const Box<T>& b) { return get(a + b); }

@@ -4,8 +4,8 @@ struct Noisy
 {
   int id;
   Noisy(int i) : id(i) {}
-  Noisy(const Noisy& o) : id(o.id + 10) { print("copy", id, " "); }
-  ~Noisy() { print("~", id, " "); }
+  Noisy(const Noisy& o) : id(o.id + 10) { print("copy", this.id, " "); }
+  ~Noisy() { print("~", this.id, " "); }
 };
 
 template<class... Ts>

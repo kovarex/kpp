@@ -8,14 +8,14 @@ struct L
   L(int i) : id(i) {}
   L(const L& o) : id(o.id) { printf("copy "); }
   L(L&& o) : id(o.id) { o.id = -1; printf("move "); }
-  L& operator=(const L& o) { id = o.id; printf("copy= "); return *this; }
-  L& operator=(L&& o) { id = o.id; o.id = -1; printf("move= "); return *this; }
+  L& operator=(const L& o) { this.id = o.id; printf("copy= "); return this; }
+  L& operator=(L&& o) { this.id = o.id; o.id = -1; printf("move= "); return this; }
 };
 struct Dtor { L l; Dtor(int i) : l(i) {} ~Dtor() { printf("~ "); } };
 struct DefaultedDtor { L l; DefaultedDtor(int i) : l(i) {} ~DefaultedDtor() = default; };
 struct CopyDefaulted { L l; CopyDefaulted(int i) : l(i) {} CopyDefaulted(const CopyDefaulted&) = default; };
 struct AssignDefaulted { L l; AssignDefaulted(int i) : l(i) {} AssignDefaulted& operator=(const AssignDefaulted&) = default; };
-struct OtherAssign { L l; OtherAssign(int i) : l(i) {} OtherAssign& operator=(int i) { l.id = i; return *this; } };
+struct OtherAssign { L l; OtherAssign(int i) : l(i) {} OtherAssign& operator=(int i) { this.l.id = i; return this; } };
 struct Plain { L l; Plain(int i) : l(i) {} };
 struct Outer { Dtor d; Plain p; Outer(int i) : d(i), p(i) {} };
 struct DerivedDtor : public Dtor { L m; DerivedDtor(int i) : Dtor(i), m(i) {} };

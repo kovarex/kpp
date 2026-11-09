@@ -4,14 +4,14 @@ template<typename T>
 struct V
 {
   T x;
-  V<T> operator-() const { return V<T>{-this->x}; }
+  V<T> operator-() const { return V<T>{-this.x}; }
 };
 template<typename T>
 V<T> operator-(const V<T>& a, const V<T>& b) { return V<T>{a.x - b.x}; }
 struct P
 {
   int x;
-  P operator+() const { return *this; }
+  P operator+() const { return this; }
 };
 P operator+(const P& a, const P& b) { return P{a.x + b.x}; }
 int main()

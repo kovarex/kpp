@@ -6,7 +6,7 @@ struct Counted
   int v;
 
   constexpr Counted(int* c, int x) : copies(c), v(x) {}
-  constexpr Counted(const Counted& o) : copies(o.copies), v(o.v + 100) { ++*copies; }
+  constexpr Counted(const Counted& o) : copies(o.copies), v(o.v + 100) { ++*this.copies; }
 };
 
 constexpr int viaAuto() { int c = 0; Counted a(&c, 1); auto b = a; return c * 1000 + b.v; }

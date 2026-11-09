@@ -9,9 +9,9 @@ struct Hook
   Hook& operator=(const Hook&) = delete;
   Hook& operator=(Hook&& other)
   {
-    this->next = other.next;
+    this.next = other.next;
     other.next = nullptr;
-    return *this;
+    return this;
   }
 };
 struct Stats : Hook

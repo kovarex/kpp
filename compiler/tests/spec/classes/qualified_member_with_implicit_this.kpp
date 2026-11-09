@@ -2,14 +2,14 @@
 // found by thread J's inheritance battery (h1, h5, 2026-11-06)
 extern "C" int printf(const char* format, ...);
 struct Left { int pad = 7; };
-struct Right { int pad = 8; int twice() { return pad * 2; } };
+struct Right { int pad = 8; int twice() { return this.pad * 2; } };
 struct Both : Left, Right
 {
   int right() { return Right::pad; }
   int left() { return Left::pad; }
   void set() { Right::pad = 80; Right::pad += 1; ++Left::pad; }
   int callRight() { return Right::twice(); }
-  int inLambda() { auto l = [this] { return Right::pad; }; return l(); }
+  int inLambda() { auto l = [&this] { return Right::pad; }; return l(); }
   int* place() { return &(Right::pad); }
 };
 struct Tagged : Both
@@ -21,8 +21,8 @@ template<class T> class Slot
 public:
   T value;
   Slot(T v) : value(v) {}
-  T get() { return value; }
-  void put(T v) { value = v; }
+  T get() { return this.value; }
+  void put(T v) { this.value = v; }
 };
 class Two : public Slot<int>, public Slot<double>
 {
@@ -45,8 +45,8 @@ public:
   int id;
   Id(int v) : id(v) {}
   virtual ~Id() {}
-  virtual int who() { return id; }
-  int plain() { return id + 10; }
+  virtual int who() { return this.id; }
+  int plain() { return this.id + 10; }
 };
 class P : public Id { public: P() : Id(1) {} };
 class Q : public Id { public: Q() : Id(2) {} };
@@ -59,15 +59,15 @@ public:
 };
 // a virtual function named with a qualifier does not dispatch, in a second base too
 class V1 { public: int a = 1; virtual ~V1() {} };
-class V2 { public: int b = 2; virtual ~V2() {} virtual int f() { return b; } };
+class V2 { public: int b = 2; virtual ~V2() {} virtual int f() { return this.b; } };
 class V3 : public V1, public V2 { public: int f() override { return 50 + V2::f(); } };
 // the implicit assignment and an operator of a second base by name
 class O2
 {
 public:
   int v = 0;
-  O2& operator=(const O2& o) { v = o.v + 1; return *this; }
-  int operator()(int x) { return v + x; }
+  O2& operator=(const O2& o) { this.v = o.v + 1; return this; }
+  int operator()(int x) { return this.v + x; }
 };
 class O3 : public Left, public O2
 {
@@ -77,7 +77,7 @@ public:
 };
 // at compile time
 struct CL { int pad = 7; };
-struct CR { int pad = 8; constexpr int get() const { return pad; } };
+struct CR { int pad = 8; constexpr int get() const { return this.pad; } };
 struct CB : CL, CR
 {
   constexpr int right() const { return CR::pad; }

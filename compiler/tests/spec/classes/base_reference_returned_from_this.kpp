@@ -23,9 +23,9 @@ public:
 class Robot : public Polymorphic, public Plain, public Hook<Robot, TagA>, public Hook<Robot, TagB>
 {
 public:
-  Plain& asPlain() { return *this; }
-  Hook<Robot, TagA>& asA() { return *this; }
-  const Hook<Robot, TagB>& asB() const { return *this; }
+  Plain& asPlain() { return this; }
+  Hook<Robot, TagA>& asA() { return this; }
+  const Hook<Robot, TagB>& asB() const { return this; }
 };
 Plain& plainOf(Robot& robot)
 {

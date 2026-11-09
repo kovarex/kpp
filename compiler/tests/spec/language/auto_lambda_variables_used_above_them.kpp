@@ -3,7 +3,7 @@ int useTwice() { return twice(4) + twice(1); }
 struct Counter
 {
   int n = 0;
-  void bump() { n = add(n, 3); }
+  void bump() { this.n = add(this.n, 3); }
 };
 auto twice = [](int x) { return x * 2; };
 auto add = [](auto a, auto b) { return a + b; };

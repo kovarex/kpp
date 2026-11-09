@@ -5,12 +5,12 @@ struct Box
   int v;
 
   constexpr Box(double d) : v((int)d) {}
-  constexpr bool operator<(const Box& other) const { return v < other.v; }
+  constexpr bool operator<(const Box& other) const { return this.v < other.v; }
 
   template<typename U>
   constexpr strong_ordering operator<=>(const U& u) const
   {
-    return v < u ? strong_ordering::less : v > u ? strong_ordering::greater : strong_ordering::equal;
+    return this.v < u ? strong_ordering::less : this.v > u ? strong_ordering::greater : strong_ordering::equal;
   }
 };
 

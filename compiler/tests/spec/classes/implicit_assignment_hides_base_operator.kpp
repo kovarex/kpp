@@ -4,8 +4,8 @@ struct Base
 {
   Base& operator=(const Base& other)
   {
-    copies = other.copies + 1;
-    return *this;
+    this.copies = other.copies + 1;
+    return this;
   }
   int copies = 0;
 };
@@ -17,8 +17,8 @@ struct Mixed : Base
 {
   Mixed& operator=(int v)
   {
-    value = v;
-    return *this;
+    this.value = v;
+    return this;
   }
   int value = 3;
 };

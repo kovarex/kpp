@@ -6,7 +6,7 @@ struct Table
   int run()
   {
     Vector<int> memo(4);
-    auto rowBottom = [&](uint32_t i) -> int { return this->base + int(i) + memo[i]; };
+    auto rowBottom = [&](uint32_t i) -> int { return this.base + int(i) + memo[i]; };
     auto findFirstRow = [](uint32_t lower, uint32_t upper, auto predicate) -> uint32_t
     {
       while (lower < upper)

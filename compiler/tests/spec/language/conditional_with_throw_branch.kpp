@@ -2,7 +2,7 @@
 struct Name
 {
   int id;
-  ~Name() { println("name ", id, " gone"); }
+  ~Name() { println("name ", this.id, " gone"); }
 };
 int positive(int x) { return x > 0 ? x : throw x; }
 int doubled(int x) { int r = x < 0 ? throw 1.5 : x * 2; return r; }

@@ -8,10 +8,10 @@ public:
   Counted(int v) : value(v) { ++constructions; }
   Counted(const Counted& o) : value(o.value) { ++copies; }
   Counted(Counted&& o) noexcept : value(o.value) { ++moves; }
-  Counted& operator=(const Counted& o) { value = o.value; ++copyAssigns; return *this; }
-  Counted& operator=(Counted&& o) noexcept { value = o.value; ++moveAssigns; return *this; }
+  Counted& operator=(const Counted& o) { this.value = o.value; ++copyAssigns; return this; }
+  Counted& operator=(Counted&& o) noexcept { this.value = o.value; ++moveAssigns; return this; }
   ~Counted() { ++destructions; }
-  bool operator==(const Counted& o) const { return value == o.value; }
+  bool operator==(const Counted& o) const { return this.value == o.value; }
 };
 void RESET() { constructions = copies = moves = copyAssigns = moveAssigns = destructions = 0; }
 void REPORT(const char* what)

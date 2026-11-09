@@ -7,7 +7,7 @@ struct Box
   T value;
   bool operator==(const Box& other) const requires Comparable<T>
   {
-    return this->value == other.value;
+    return this.value == other.value;
   }
 };
 int main()

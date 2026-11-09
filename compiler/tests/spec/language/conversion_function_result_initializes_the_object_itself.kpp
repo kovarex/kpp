@@ -5,14 +5,14 @@ struct A
 {
   int v;
   A() : v(0) { printf("A() "); }
-  A(const A& o) : v(o.v) { printf("A(c%d) ", v); }
-  A(A&& o) : v(o.v) { o.v = -o.v; printf("A(m%d) ", v); }
-  ~A() { printf("~A%d ", v); }
+  A(const A& o) : v(o.v) { printf("A(c%d) ", this.v); }
+  A(A&& o) : v(o.v) { o.v = -o.v; printf("A(m%d) ", this.v); }
+  ~A() { printf("~A%d ", this.v); }
 };
 struct B
 {
   int v = 5;
-  implicit operator A() const { printf("B>A "); A t; t.v = v + 20; return t; }
+  implicit operator A() const { printf("B>A "); A t; t.v = this.v + 20; return t; }
 };
 int main()
 {

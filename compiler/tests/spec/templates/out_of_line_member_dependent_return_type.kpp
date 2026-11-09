@@ -21,7 +21,7 @@ template<typename T, typename I>
 const Loader<T>* Id<T, I>::getLoader() const
 {
   static Loader<T> loader;
-  loader.code = int(this->index) + 1;
+  loader.code = int(this.index) + 1;
   return &loader;
 }
 struct Item {};

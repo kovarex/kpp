@@ -17,7 +17,7 @@ struct Guard : Base
   Member b;
   ~Guard()
   {
-    if (this->early)
+    if (this.early)
       return;
     destroyed += 100;
   }

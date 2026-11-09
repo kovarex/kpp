@@ -8,7 +8,7 @@ struct Counted
   constexpr Counted() {}
   constexpr Counted(const Counted& o) : copies(o.copies + 1), moves(o.moves) {}
   constexpr Counted(Counted&& o) : copies(o.copies), moves(o.moves + 1) { o.movedFrom = 1; }
-  constexpr Counted& operator=(const Counted& o) { copies = o.copies + 10; moves = o.moves; return *this; }
+  constexpr Counted& operator=(const Counted& o) { this.copies = o.copies + 10; this.moves = o.moves; return this; }
 };
 struct Holder
 {

@@ -8,8 +8,8 @@ class Noisy
 {
 public:
   int id;
-  Noisy(int i) : id(i) { println("+", id); }
-  ~Noisy() { println("-", id); }
+  Noisy(int i) : id(i) { println("+", this.id); }
+  ~Noisy() { println("-", this.id); }
 };
 int forward(int x)
 {

@@ -16,9 +16,9 @@ struct Holder
   Vector<Item> items;
   Handle add()
   {
-    Item& i = items.emplace_back();
+    Item& i = this.items.emplace_back();
     i.name = "a";
-    return Handle{&items, items.size() - 1};
+    return Handle{&this.items, this.items.size() - 1};
   }
 };
 int added()

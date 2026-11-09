@@ -6,7 +6,7 @@ template<typename R, typename... A> R call(R (*f)(A...), A... args) { return f(a
 struct Counter
 {
   int base = 7;
-  int add(int a, short b) const { return base + a + b; }
+  int add(int a, short b) const { return this.base + a + b; }
 };
 template<typename R, typename C, typename... A> int memberArity(R (C::*)(A...) const) { return int(sizeof...(A)) * 10 + int(sizeof(R)); }
 short two() { return 2; }

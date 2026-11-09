@@ -22,7 +22,7 @@ public:
   int v = 7;
   Connector() {}
   Connector(const Connector&) = delete;
-  implicit operator Signal() const { return Signal(this->v); }
+  implicit operator Signal() const { return Signal(this.v); }
 };
 struct Prototype { Connector defaultSignal; };
 int main()

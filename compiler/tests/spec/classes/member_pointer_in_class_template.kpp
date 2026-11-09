@@ -7,7 +7,7 @@ template<typename T, Kind K, typename ID>
 struct Proto : public Base<T, K>
 {
   int count = 3;
-  int read(int x) { return x + this->base + int(K); }
+  int read(int x) { return x + this.base + int(K); }
   static int call(int x)
   {
     Proto self;

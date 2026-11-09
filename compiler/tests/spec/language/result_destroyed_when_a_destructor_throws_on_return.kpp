@@ -11,22 +11,22 @@ class D
 {
 public:
   int id;
-  D(int i) : id(i) { printf("+D%d ", id); }
+  D(int i) : id(i) { printf("+D%d ", this.id); }
   ~D() noexcept(false)
   {
-    printf("-D%d ", id);
+    printf("-D%d ", this.id);
     if (uncaught_exceptions() == 0)
-      throw E(id);
+      throw E(this.id);
   }
 };
 class T
 {
 public:
   int id;
-  T(int i) : id(i) { printf("+T%d ", id); }
-  T(const T& o) : id(o.id + 100) { printf("cT%d ", id); }
-  T(T&& o) : id(o.id + 200) { printf("mT%d ", id); }
-  ~T() { printf("-T%d ", id); }
+  T(int i) : id(i) { printf("+T%d ", this.id); }
+  T(const T& o) : id(o.id + 100) { printf("cT%d ", this.id); }
+  T(T&& o) : id(o.id + 200) { printf("mT%d ", this.id); }
+  ~T() { printf("-T%d ", this.id); }
 };
 T prvalue()
 {

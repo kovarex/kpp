@@ -19,7 +19,7 @@ struct Pinned
 {
   Pinned(int v) : v(v) {}
   Pinned(const Pinned&) = delete;
-  bool operator<(const Pinned& other) const { return this->v < other.v; }
+  bool operator<(const Pinned& other) const { return this.v < other.v; }
   int v;
 };
 int main()

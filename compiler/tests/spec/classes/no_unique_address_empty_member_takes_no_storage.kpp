@@ -9,7 +9,7 @@ struct Noisy
 {
   Noisy() { println("Noisy()"); }
   Noisy(const Noisy&) { println("Noisy(const Noisy&)"); }
-  Noisy& operator=(const Noisy&) { println("Noisy::operator="); return *this; }
+  Noisy& operator=(const Noisy&) { println("Noisy::operator="); return this; }
   ~Noisy() { println("~Noisy()"); }
 };
 

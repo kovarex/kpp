@@ -8,7 +8,7 @@ struct Wrapper
   using reference = typename Container::reference;
   using pointer = typename Container::pointer;
   Container items;
-  size_type count() const { return this->items.size(); }
+  size_type count() const { return this.items.size(); }
 };
 struct ByDistance
 {

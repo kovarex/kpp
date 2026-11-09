@@ -3,7 +3,7 @@ template<class T> class Box
 {
 public:
   T value{};
-  T read() const { return this->value; }
+  T read() const { return this.value; }
 };
 template<class T> T readOf(Box<T>* box)
 {

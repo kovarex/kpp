@@ -20,7 +20,7 @@ struct Slots
 {
   void fill()
   {
-    if constexpr (noexcept(new (this->slot) T()))
+    if constexpr (noexcept(new (this.slot) T()))
       printf("nothrow\n");
     else
       printf("may throw\n");

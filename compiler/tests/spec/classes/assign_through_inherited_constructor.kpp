@@ -16,7 +16,7 @@ class SpriteState : public Handle
 {
 public:
   using Handle::Handle;
-  int get() const { return this->object ? this->object->value : -1; }
+  int get() const { return this.object ? this.object->value : -1; }
 };
 UniquePtr<Object> make() { return makeUnique<Object>(); }
 int main()

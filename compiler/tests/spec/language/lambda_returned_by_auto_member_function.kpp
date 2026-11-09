@@ -8,7 +8,7 @@ public:
   int scale = 2;
   auto screenPositionFunction() const
   {
-    return [shift = this->shift, scale = this->scale](Position p) { return Position{p.x * scale - shift, p.y * scale - shift}; };
+    return [shift = this.shift, scale = this.scale](Position p) { return Position{p.x * scale - shift, p.y * scale - shift}; };
   }
 };
 int drawFirst(const Parameters& parameters)

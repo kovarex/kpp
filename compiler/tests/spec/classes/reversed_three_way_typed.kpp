@@ -5,8 +5,8 @@ struct StrongTypedef
 {
   T value;
   StrongTypedef(T v) : value(v) {}
-  auto operator<=>(const T& other) const { return this->value <=> other; }
-  bool operator==(const T& other) const { return this->value == other; }
+  auto operator<=>(const T& other) const { return this.value <=> other; }
+  bool operator==(const T& other) const { return this.value == other; }
   auto operator<=>(const StrongTypedef& other) const = default;
 };
 struct ScaleTag {};

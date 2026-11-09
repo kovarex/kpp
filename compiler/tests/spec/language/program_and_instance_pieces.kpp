@@ -17,8 +17,8 @@ class Square : public Shape, public Named
 {
 public:
   int side;
-  Square(int s) : side(s) { this->sides = 4; }
-  int area() const override { return this->side * this->side; }
+  Square(int s) : side(s) { this.sides = 4; }
+  int area() const override { return this.side * this.side; }
   const char* name() const override { return "square"; }
 };
 

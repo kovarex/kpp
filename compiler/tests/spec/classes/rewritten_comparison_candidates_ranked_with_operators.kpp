@@ -8,14 +8,14 @@ struct C
   int v;
   C(int x) : v(x) {}
   bool operator<(const C&) const { return false; }
-  SO operator<=>(const int& i) const { return v <=> i; }
+  SO operator<=>(const int& i) const { return this.v <=> i; }
 };
 
 struct D
 {
   int v;
   template<typename U> bool operator<(const U&) const { return false; }
-  SO operator<=>(const D& o) const { return v <=> o.v; }
+  SO operator<=>(const D& o) const { return this.v <=> o.v; }
 };
 
 struct E
@@ -29,14 +29,14 @@ SO operator<=>(const E& a, const E& b) { return a.v <=> b.v; }
 struct F
 {
   int v;
-  bool operator==(int i) const { return v == i; }
+  bool operator==(int i) const { return this.v == i; }
 };
 
 struct G
 {
   int v;
   G(int x) : v(x) {}
-  bool operator==(const G& o) const { return v == o.v; }
+  bool operator==(const G& o) const { return this.v == o.v; }
   template<class U> bool operator!=(const U&) const { return true; }
 };
 
@@ -45,14 +45,14 @@ struct H
   int v;
   H(int x) : v(x) {}
   bool operator!=(const H&) const { return true; }
-  bool operator==(const int& i) const { return v == i; }
+  bool operator==(const int& i) const { return this.v == i; }
 };
 
 struct K
 {
   int v;
   template<class U> bool operator==(const U&) const { return false; }
-  bool operator==(const K& o) const { return v == o.v; }
+  bool operator==(const K& o) const { return this.v == o.v; }
 };
 
 int main()

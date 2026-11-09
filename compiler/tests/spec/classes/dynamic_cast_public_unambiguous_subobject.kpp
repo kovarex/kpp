@@ -34,10 +34,10 @@ void crossToRepeatedBase()
 }
 class H0 { public: int h = 1; virtual ~H0() {} };
 class H1 { public: int k = 2; virtual ~H1() {} };
-class Hd : public H0, private H1 { public: H1* hidden() { return this; } H0* shown() { return this; } };
-class Hp : protected H0, public H1 { public: H0* hidden() { return this; } };
-class Hc : private H0 { public: H0* base() { return this; } };
-class Hs : H0 { public: H0* base() { return this; } };
+class Hd : public H0, private H1 { public: H1* hidden() { return &this; } H0* shown() { return &this; } };
+class Hp : protected H0, public H1 { public: H0* hidden() { return &this; } };
+class Hc : private H0 { public: H0* base() { return &this; } };
+class Hs : H0 { public: H0* base() { return &this; } };
 void nonPublicBases()
 {
   Hd d;
@@ -54,7 +54,7 @@ void nonPublicBases()
 }
 class P0 { public: int a = 1; virtual ~P0() {} };
 class P1 : public P0 { public: int b = 2; };
-class Pm : private P1 { public: P0* up() { return this; } P1* mid() { return this; } };
+class Pm : private P1 { public: P0* up() { return &this; } P1* mid() { return &this; } };
 class Pt : public Pm { public: int c = 3; };
 class O1 { public: virtual ~O1() {} };
 class Pn : public Pm, public O1 {};
@@ -92,7 +92,7 @@ class C0 { public: C0(); virtual ~C0() {} };
 class C1 : public C0 {};
 class C2 : public C0 {};
 class C3 : public C1, public C2 {};
-C0::C0() { printf("%d %d\n", is<C1>(this), is<C3>(this)); }
+C0::C0() { printf("%d %d\n", is<C1>(&this), is<C3>(&this)); }
 int main()
 {
   repeatedBase();

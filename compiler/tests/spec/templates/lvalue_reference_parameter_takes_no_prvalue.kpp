@@ -3,7 +3,7 @@
 struct Gui
 {
   int filled = 0;
-  void fill(int v) { this->filled = v; }
+  void fill(int v) { this.filled = v; }
 };
 
 template<class T>
@@ -11,8 +11,8 @@ struct Targeter
 {
   T* target;
   Targeter(T* t) : target(t) {}
-  operator bool() const { return this->target != nullptr; }
-  T* operator->() const { return this->target; }
+  operator bool() const { return this.target != nullptr; }
+  T* operator->() const { return this.target; }
 };
 
 struct Helper
@@ -23,13 +23,13 @@ struct Helper
   void tryDownload(T& gui)
   {
     Targeter<T> targeter(&gui);
-    this->tryDownload([=](const Helper& helper) mutable
+    this.tryDownload([=](const Helper& helper) mutable
     {
       if (targeter)
         targeter->fill(helper.value);
     });
   }
-  void tryDownload(Request request) { request(*this); }
+  void tryDownload(Request request) { request(this); }
 };
 
 struct Point

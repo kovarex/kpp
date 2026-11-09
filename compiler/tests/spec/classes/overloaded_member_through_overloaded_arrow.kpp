@@ -3,25 +3,25 @@
 struct Counter
 {
   int count = 0;
-  void set(int n) { this->count = n; }
-  void set(int n, bool twice) { this->count = twice ? 2 * n : n; }
-  void reset() { this->count = 0; }
+  void set(int n) { this.count = n; }
+  void set(int n, bool twice) { this.count = twice ? 2 * n : n; }
+  void reset() { this.count = 0; }
 };
 struct Wrapper
 {
   Counter* value = new Counter();
-  ~Wrapper() { delete this->value; }
-  const Counter* operator->() const { return this->value; }
-  Counter* operator->() { return this->value; }
+  ~Wrapper() { delete this.value; }
+  const Counter* operator->() const { return this.value; }
+  Counter* operator->() { return this.value; }
 };
 template<typename InnerType>
 class OnHeap
 {
 public:
   OnHeap() : value(new InnerType()) {}
-  ~OnHeap() { delete this->value; }
-  const InnerType* operator->() const { return this->value; }
-  InnerType* operator->() { return this->value; }
+  ~OnHeap() { delete this.value; }
+  const InnerType* operator->() const { return this.value; }
+  InnerType* operator->() { return this.value; }
 private:
   InnerType* value;
 };

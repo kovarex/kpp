@@ -8,7 +8,7 @@ class Item
   friend bool operator==(const Item& a, const Item& b);
 public:
   Item(int value) : value(value) {}
-  int get() const { return this->value; }
+  int get() const { return this.value; }
 private:
   int value;
 };

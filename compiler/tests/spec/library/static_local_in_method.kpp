@@ -14,8 +14,8 @@ struct Tokenizer
     static const Map<char, Token::Type> first = {{'+', Token::Type::Plus}, {'-', Token::Type::Minus}};
     if (auto it = first.find(c); it != first.end())
     {
-      this->current.type = it->second;
-      this->position += 1;
+      this.current.type = it->second;
+      this.position += 1;
       return true;
     }
     return false;

@@ -11,13 +11,13 @@ class Context
 public:
   int line = 42;
   virtual ~Context() {}
-  virtual int where() const { return this->line; }
+  virtual int where() const { return this.line; }
 };
 class ParseError : public Error, public Context
 {
 public:
-  ParseError() { this->line = 7; }
-  int where() const override { return this->line * 10; }
+  ParseError() { this.line = 7; }
+  int where() const override { return this.line * 10; }
 };
 int main()
 {

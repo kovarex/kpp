@@ -2328,6 +2328,8 @@ auto GlobalScope::Impl::Walker::noteDefaultCaptureOfThis(LambdaExpr* l) -> void
 
 auto GlobalScope::Impl::Walker::noteThisUse(Expr* e) -> void
 {
+  if (!thisType || thisType->kind != TyKind::Pointer) // (an enumeration's method: `this` is its value, in both meanings)
+    return;
   auto isThis = [](const Expr* x) { return x && x->kind == NodeKind::ThisExpr; };
   auto isNull = [&](const Expr* x)
   {

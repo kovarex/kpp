@@ -18,7 +18,7 @@ template<class T> T scaled(T v)
 template<class T> struct Box
 {
   T value;
-  T twice() const { return this->value * 2; }
+  T twice() const { return this.value * 2; }
 };
 //--- step: the body fixed
 i32 viaScaled() { return scaled(3); }
@@ -39,7 +39,7 @@ template<class T> T scaled(T v)
 template<class T> struct Box
 {
   T value;
-  T twice() const { return this->value * 2; }
+  T twice() const { return this.value * 2; }
 };
 //--- step: a class template's member function run by a static_assert that holds
 i32 viaScaled() { return scaled(3); }
@@ -62,7 +62,7 @@ template<class T> T scaled(T v)
 template<class T> struct Box
 {
   T value;
-  T twice() const { return this->value * 2; }
+  T twice() const { return this.value * 2; }
 };
 //--- step: the member function's body changes its answer
 i32 viaScaled() { return scaled(3); }
@@ -85,7 +85,7 @@ template<class T> T scaled(T v)
 template<class T> struct Box
 {
   T value;
-  T twice() const { return this->value * 3; }
+  T twice() const { return this.value * 3; }
 };
 //--- step: the static_assert taken out: the constant has the new body's value
 i32 viaScaled() { return scaled(3); }
@@ -107,5 +107,5 @@ template<class T> T scaled(T v)
 template<class T> struct Box
 {
   T value;
-  T twice() const { return this->value * 3; }
+  T twice() const { return this.value * 3; }
 };

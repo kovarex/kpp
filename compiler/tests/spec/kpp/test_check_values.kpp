@@ -2,7 +2,7 @@
 // test:
 // exit: 1
 enum class Dir : u8 { { North, East } };
-struct Opaque { int x; bool operator==(const Opaque& o) const { return x == o.x; } };
+struct Opaque { int x; bool operator==(const Opaque& o) const { return this.x == o.x; } };
 
 test fails
 {

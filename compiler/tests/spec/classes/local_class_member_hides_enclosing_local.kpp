@@ -7,7 +7,7 @@ int unchanged()
   {
   public:
     int value = 7;
-    int get() { return value; }
+    int get() { return this.value; }
   };
   return Local().get() + value * 0;
 }
@@ -19,7 +19,7 @@ int assigned()
   {
   public:
     int value = 7;
-    int get() { return value; }
+    int get() { return this.value; }
   };
   return Local().get() + value * 0;
 }
@@ -31,7 +31,7 @@ int computed()
   {
   public:
     int value = 7;
-    int get() { return value; }
+    int get() { return this.value; }
   };
   return Local().get() + value * 0;
 }
@@ -42,7 +42,7 @@ int parameter(int value)
   public:
     int value;
     Local(int v) : value(v) {}
-    int get() { return value * 10; }
+    int get() { return this.value * 10; }
   };
   return Local(value + 2).get();
 }
@@ -57,7 +57,7 @@ int inherited()
   class Local : public Base
   {
   public:
-    int get() { return value; }
+    int get() { return this.value; }
   };
   return Local().get() + value * 0;
 }
@@ -75,7 +75,7 @@ int nested()
       {
       public:
         int value = 8;
-        int get() { return value; }
+        int get() { return this.value; }
       };
       return Inner().get() + value * 0;
     }

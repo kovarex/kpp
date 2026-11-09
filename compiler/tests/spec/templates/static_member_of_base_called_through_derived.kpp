@@ -12,7 +12,7 @@ public:
 template<class Expression, int variableCount, int constantCount, int expressionCount>
 int ComplexExpression<Expression, variableCount, constantCount, expressionCount>::computeHash(const Vector<int>& args)
 {
-  release_assert(args.size() == N);
+  release_assert(args.size() == This::N);
   int hash = Expression::TYPE;
   for (int arg : args)
     hash = hash * 31 + arg;

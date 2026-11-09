@@ -15,8 +15,8 @@ struct Item
     if (throwing)
       throw 7;
   }
-  bool operator<(const Item& other) const { return this->value < other.value; }
-  bool operator==(const Item& other) const { return this->value == other.value; }
+  bool operator<(const Item& other) const { return this.value < other.value; }
+  bool operator==(const Item& other) const { return this.value == other.value; }
 };
 
 struct ItemHash

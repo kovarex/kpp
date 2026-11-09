@@ -12,10 +12,10 @@ struct Builder
 {
   TrainStop* lastStation = nullptr;
   Rail* lastRail = nullptr;
-  Builder& station() { return *this; }
-  implicit operator TrainStop&() { return *this->lastStation; }
-  implicit operator TrainStop*() { return this->lastStation; }
-  implicit operator Rail&() { return *this->lastRail; }
+  Builder& station() { return this; }
+  implicit operator TrainStop&() { return *this.lastStation; }
+  implicit operator TrainStop*() { return this.lastStation; }
+  implicit operator Rail&() { return *this.lastRail; }
 };
 int main()
 {

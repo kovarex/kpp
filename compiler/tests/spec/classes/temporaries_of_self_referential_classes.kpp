@@ -8,9 +8,9 @@ Keeper keeper;
 struct Registered
 {
   int id;
-  Registered(int id) : id(id) { keeper.where = this; }
-  Registered(Registered&& other) : id(other.id) { keeper.where = this; }
-  Registered(const Registered& other) : id(other.id) { keeper.where = this; }
+  Registered(int id) : id(id) { keeper.where = &this; }
+  Registered(Registered&& other) : id(other.id) { keeper.where = &this; }
+  Registered(const Registered& other) : id(other.id) { keeper.where = &this; }
   ~Registered() {}
 };
 Registered make(int id) { return Registered(id); }

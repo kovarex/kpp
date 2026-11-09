@@ -8,7 +8,7 @@ public:
   constexpr Kind() : value(COUNT) {}
   implicit constexpr Kind(Enum value) : value(value) {}
   constexpr strong_ordering operator<=>(const Kind&) const = default;
-  constexpr strong_ordering operator<=>(const Enum& other) const { return this->value <=> other; }
+  constexpr strong_ordering operator<=>(const Enum& other) const { return this.value <=> other; }
   Enum value;
 };
 int main()

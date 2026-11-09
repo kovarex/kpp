@@ -10,9 +10,9 @@ struct Item
   Item& operator=(Item&& o)
   {
     ++assigned;
-    v = o.v;
+    this.v = o.v;
     o.v = -1;
-    return *this;
+    return this;
   }
 };
 int main()

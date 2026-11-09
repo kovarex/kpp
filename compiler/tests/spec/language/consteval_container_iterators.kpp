@@ -2,7 +2,7 @@
 // factorio: build.kpp (design.md 12): projectlib's describe() walks Project's containers
 extern "C" import "stdio.h";
 constexpr int deque() { Deque<int> d; d.push_back(1); d.push_front(2); for (int& v : d) v *= 10; int t = 0; for (int v : d) t = t * 100 + v; return t; }
-struct Hashing { Hash<int> hasher; constexpr int low() const { return (int)(this->hasher(5) & 3); } };
+struct Hashing { Hash<int> hasher; constexpr int low() const { return (int)(this.hasher(5) & 3); } };
 constexpr int hashed() { Hashing h; return h.low() == (int)(hashOf(5) & 3) ? 4 : 0; }
 constexpr int results[] = {deque(), hashed()};
 int main()

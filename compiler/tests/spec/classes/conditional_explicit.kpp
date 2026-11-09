@@ -5,8 +5,8 @@ struct Fixed
 {
   T value;
   implicit(!Explicit) constexpr Fixed(double d) : value(T(d * 256)) {}
-  Fixed operator-(const Fixed& other) const { return Fixed(double(this->value - other.value) / 256); }
-  double toDouble() const { return this->value / 256.0; }
+  Fixed operator-(const Fixed& other) const { return Fixed(double(this.value - other.value) / 256); }
+  double toDouble() const { return this.value / 256.0; }
 };
 double diff(Fixed<int, false> a, Fixed<int, false> b) { return (a - b).toDouble(); }
 int main()

@@ -3,7 +3,7 @@ class Item
 {
 public:
   int v = 3;
-  int get() const { return this->v; }
+  int get() const { return this.v; }
 };
 class Owner
 {
@@ -16,8 +16,8 @@ public:
   Item* item;
   Handle(Item* i) : item(i) {}
   ~Handle() { println("handle gone"); }
-  Item* operator->() const { return this->item; }
-  operator bool() const { return this->item != nullptr; }
+  Item* operator->() const { return this.item; }
+  operator bool() const { return this.item != nullptr; }
 };
 Handle make(Item* i)
 {

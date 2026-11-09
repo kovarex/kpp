@@ -5,7 +5,7 @@ struct Noisy
   int id = 0;
   bool built = false;
   Noisy(int id) : id(id), built(true) { print("+", id, " "); }
-  ~Noisy() { print("-", this->id, StringView(this->built ? "" : "(never built)"), " "); }
+  ~Noisy() { print("-", this.id, StringView(this.built ? "" : "(never built)"), " "); }
 };
 void choose(int which)
 {

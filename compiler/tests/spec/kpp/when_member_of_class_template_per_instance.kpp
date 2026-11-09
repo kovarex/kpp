@@ -15,7 +15,7 @@ struct Slot
   void save()
   {
     if constexpr (isTriviallyCopyable<T>)
-      backup = value;
+      this.backup = this.value;
   }
 };
 

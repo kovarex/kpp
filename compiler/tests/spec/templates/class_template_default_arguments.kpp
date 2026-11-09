@@ -5,7 +5,7 @@ template<typename K, typename C = DefaultLess<K>>
 struct Sorted
 {
   C cmp;
-  bool less(const K& a, const K& b) const { return this->cmp(a, b); }
+  bool less(const K& a, const K& b) const { return this.cmp(a, b); }
 };
 template<typename K, typename C>
 int countLess(const Sorted<K, C>& s, const K& a, const K& b) { return s.less(a, b) ? 1 : 0; }

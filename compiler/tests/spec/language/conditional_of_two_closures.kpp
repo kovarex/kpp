@@ -3,10 +3,10 @@ extern "C" int printf(const char* format, ...);
 struct T
 {
   int id;
-  T(int i = 0) : id(i) { printf("+%d ", id); }
-  T(const T& o) : id(o.id + 100) { printf("c%d ", id); }
-  T(T&& o) : id(o.id + 200) { o.id = -o.id; printf("m%d ", id); }
-  ~T() { printf("-%d ", id); }
+  T(int i = 0) : id(i) { printf("+%d ", this.id); }
+  T(const T& o) : id(o.id + 100) { printf("c%d ", this.id); }
+  T(T&& o) : id(o.id + 200) { o.id = -o.id; printf("m%d ", this.id); }
+  ~T() { printf("-%d ", this.id); }
 };
 auto make(int i) { return [u = T(i)]() { return u.id; }; }
 template<class F> int use(F f) { return f(); }

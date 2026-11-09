@@ -3,12 +3,12 @@
 struct Log
 {
   long long digits = 0;
-  constexpr void add(int d) { digits = digits * 10 + d; }
+  constexpr void add(int d) { this.digits = this.digits * 10 + d; }
 };
 struct Holder
 {
   Log* log;
-  constexpr void put() { log->add(4); }
+  constexpr void put() { this.log->add(4); }
 };
 constexpr void bump(int* p) { *p += 5; }
 constexpr void addTo(Log* l) { l->add(3); }

@@ -6,7 +6,7 @@ struct Direction
   Enum value;
   Direction() : value(North) {}
   implicit Direction(Enum v) : value(v) {}
-  bool operator!=(const Direction& o) const { return this->value != o.value; }
+  bool operator!=(const Direction& o) const { return this.value != o.value; }
 };
 
 template<class B>
@@ -15,7 +15,7 @@ struct Opt
   B base;
   Opt() {}
   implicit Opt(const B& b) : base(b) {}
-  bool operator!=(const B& rhs) const { return this->base != rhs; }
+  bool operator!=(const B& rhs) const { return this.base != rhs; }
 };
 
 template<class B>

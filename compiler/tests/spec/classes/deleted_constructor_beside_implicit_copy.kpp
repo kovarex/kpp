@@ -5,7 +5,7 @@ struct Ref
   const int* pointer;
   implicit Ref(const int& value) : pointer(&value) {}
   Ref(const int&& value) = delete;
-  implicit operator const int&() const { return *this->pointer; }
+  implicit operator const int&() const { return *this.pointer; }
 };
 
 int main()

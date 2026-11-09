@@ -3,7 +3,7 @@ extern "C" int printf(const char* format, ...);
 template<typename T> struct Ring
 {
   T value;
-  constexpr const Ring* self() const { return this; }
+  constexpr const Ring* self() const { return &this; }
 };
 template<typename T> constexpr strong_ordering operator<=>(const Ring<T>& a, const Ring<T>& b)
 {

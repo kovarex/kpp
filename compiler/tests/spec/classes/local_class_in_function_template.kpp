@@ -14,7 +14,7 @@ int describe(T value)
   class Provider : public Holder<T>
   {
   public:
-    int get() const override { return int(this->value) * 2; }
+    int get() const override { return int(this.value) * 2; }
     T value;
   };
   static Provider provider;

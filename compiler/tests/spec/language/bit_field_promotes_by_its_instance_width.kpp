@@ -7,10 +7,10 @@ struct Bits
   uint32_t b : 32 - N;
   int64_t below() const
   {
-    auto d = a - 4;
+    auto d = this.a - 4;
     return d;
   }
-  bool negative() const { return a - 4 < 0; }
+  bool negative() const { return this.a - 4 < 0; }
 };
 template<int N>
 struct Wrapped : Bits<N>

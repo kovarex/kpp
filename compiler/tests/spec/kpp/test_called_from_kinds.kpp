@@ -8,14 +8,14 @@ suite Kinds
   public:
     int v = 0;
     Value(int x) : v(x) { require(x != 1, "ctor"); }
-    ~Value() { check(v != 7, "dtor"); }
-    bool operator==(const Value& o) const { check(v != 2, "operator=="); return v == o.v; }
-    Value operator+(const Value& o) const { check(v != 3, "operator+"); return Value(v + o.v); }
-    operator bool() const { check(v != 4, "conversion"); return true; }
+    ~Value() { check(this.v != 7, "dtor"); }
+    bool operator==(const Value& o) const { check(this.v != 2, "operator=="); return this.v == o.v; }
+    Value operator+(const Value& o) const { check(this.v != 3, "operator+"); return Value(this.v + o.v); }
+    operator bool() const { check(this.v != 4, "conversion"); return true; }
     int operator()(int a) { check(a != 5, "call operator"); return a; }
-    virtual int virt() { check(v != 6, "virtual"); return v; }
+    virtual int virt() { check(this.v != 6, "virtual"); return this.v; }
     static int fixed(int a) { check(a != 8, "static"); return a; }
-    template<typename T> T generic(T a) { check(v != 9, "template member"); return a; }
+    template<typename T> T generic(T a) { check(this.v != 9, "template member"); return a; }
   };
 
   template<typename T> T freeTemplate(T a) { check(a != 10, "free template"); return a; }

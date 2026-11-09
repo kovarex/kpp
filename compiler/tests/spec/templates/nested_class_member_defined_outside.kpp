@@ -14,7 +14,7 @@ struct Outer
 template<class K, class V>
 void Outer<K, V>::Inner::set(K key, V value)
 {
-  this->stored = value + V(key);
+  this.stored = value + V(key);
 }
 template<class K, class V>
 int Outer<K, V>::Inner::load() const

@@ -6,17 +6,17 @@ struct It
 {
   SurfaceT* s = nullptr;
   int i = 0;
-  int operator*() const { return s->entities[i]; }
-  void operator++() { ++i; }
-  bool operator!=(const It& o) const { return i != o.i; }
+  int operator*() const { return this.s->entities[this.i]; }
+  void operator++() { ++this.i; }
+  bool operator!=(const It& o) const { return this.i != o.i; }
 };
 template<class SurfaceT>
 struct Search
 {
   using Iterator = It<SurfaceT>;
   Search(SurfaceT& surface, int start) : iterator{&surface, start}, endIterator{&surface, 3} {}
-  Iterator& begin() { return this->iterator; }
-  const Iterator& end() { return this->endIterator; }
+  Iterator& begin() { return this.iterator; }
+  const Iterator& end() { return this.endIterator; }
   Iterator iterator;
   Iterator endIterator;
 };

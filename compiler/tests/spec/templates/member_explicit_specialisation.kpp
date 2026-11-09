@@ -23,13 +23,13 @@ template<class IDType, class ElemType>
 const char* Button<IDType, ElemType>::tooltip() { return "generic"; }
 
 template<class IDType, class ElemType>
-int Button<IDType, ElemType>::describe() const { return this->id.value; }
+int Button<IDType, ElemType>::describe() const { return this.id.value; }
 
 template<>
 const char* Button<RecipeID>::tooltip() { return "recipe"; }
 
 template<>
-int Button<RecipeID, void>::describe() const { return this->id.value * 100; }
+int Button<RecipeID, void>::describe() const { return this.id.value * 100; }
 
 int main()
 {

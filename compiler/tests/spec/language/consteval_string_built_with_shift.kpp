@@ -28,9 +28,9 @@ struct Holes
   {
     for (const char* p = pattern; *p != 0; ++p)
       if (p[0] == '{' && p[1] == '}')
-        ++holes;
+        ++this.holes;
   }
-  consteval void checkPieces(ContainerSize pieces) const { check(holes, int(pieces)); }
+  consteval void checkPieces(ContainerSize pieces) const { check(this.holes, int(pieces)); }
 };
 int count(Holes pattern, Text pieces) { return int(pieces.count); }
 static_assert(chainedLength() == 5);

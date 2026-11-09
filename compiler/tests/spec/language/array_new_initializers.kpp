@@ -5,13 +5,13 @@ extern "C" import "intrin.h";
 struct Item
 {
   int value = 7;
-  ~Item() { println("drop ", this->value); }
+  ~Item() { println("drop ", this.value); }
 };
 struct Wide
 {
   __m128 v;
   int tag = 5;
-  ~Wide() { println("wide ", this->tag); }
+  ~Wide() { println("wide ", this.tag); }
 };
 int main()
 {

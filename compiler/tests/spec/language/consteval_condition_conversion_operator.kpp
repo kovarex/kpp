@@ -3,7 +3,7 @@
 struct Level
 {
   int value = 0;
-  constexpr operator int() const { return value; }
+  constexpr operator int() const { return this.value; }
   constexpr operator bool() const { return true; }
 };
 constexpr bool truth()

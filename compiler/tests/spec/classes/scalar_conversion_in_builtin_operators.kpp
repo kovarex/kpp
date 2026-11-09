@@ -4,7 +4,7 @@ template<class T>
 struct Value
 {
   Value() {}
-  implicit operator const T&() const { return this->storage; }
+  implicit operator const T&() const { return this.storage; }
   T storage{};
 };
 

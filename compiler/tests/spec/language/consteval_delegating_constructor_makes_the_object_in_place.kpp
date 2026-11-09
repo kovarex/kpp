@@ -4,9 +4,9 @@ struct Ring
 {
   Ring* self;
   i32 v = 0;
-  constexpr Ring() : self(this) {}
-  constexpr Ring(i32 v) : Ring() { this->v = v; }
-  constexpr i32 check() const { return this->self == this ? this->v : -1; }
+  constexpr Ring() : self(&this) {}
+  constexpr Ring(i32 v) : Ring() { this.v = v; }
+  constexpr i32 check() const { return this.self == &this ? this.v : -1; }
 };
 constexpr i32 made()
 {

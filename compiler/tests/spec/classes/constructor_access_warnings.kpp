@@ -12,7 +12,7 @@ class Secret
   friend class Keeper;
 public:
   static Secret make(int x) { return Secret(x); }
-  int value() const { return v; }
+  int value() const { return this.v; }
 };
 class Keeper
 {

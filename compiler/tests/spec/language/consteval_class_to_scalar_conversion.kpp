@@ -5,8 +5,8 @@ struct Result
 {
   Mode m = Mode::B;
   bool ok = true;
-  implicit operator Mode() const { return this->m; }
-  implicit operator bool() const { return this->ok; }
+  implicit operator Mode() const { return this.m; }
+  implicit operator bool() const { return this.ok; }
 };
 struct Mixed
 {
@@ -17,7 +17,7 @@ struct Value
 {
   int stored = 3;
   template<class T>
-  implicit operator T() const { return T(this->stored * 2); }
+  implicit operator T() const { return T(this.stored * 2); }
 };
 struct Nine
 {

@@ -19,7 +19,7 @@ struct C
   bool operator==(const B& b) const
   {
     print("[C==B] ");
-    return v == b.w;
+    return this.v == b.w;
   }
 };
 template<typename T>

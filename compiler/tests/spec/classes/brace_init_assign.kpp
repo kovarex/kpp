@@ -6,8 +6,8 @@ class Wrapper
 {
 public:
   Point p;
-  void reset() { this->p = {}; }
-  void set(int a, int b) { this->p = {a, b}; }
+  void reset() { this.p = {}; }
+  void set(int a, int b) { this.p = {a, b}; }
 };
 
 int main()

@@ -7,7 +7,7 @@ struct ScopedSetter
   T& target;
   T saved;
   ScopedSetter(T& target, T value) : target(target), saved(target) { target = value; }
-  ~ScopedSetter() { target = saved; }
+  ~ScopedSetter() { this.target = this.saved; }
 };
 
 namespace agui

@@ -4,7 +4,7 @@ struct Noisy
 {
   int v;
   implicit Noisy(int v) : v(v) { println("make ", v); }
-  ~Noisy() { println("drop ", v); }
+  ~Noisy() { println("drop ", this.v); }
 };
 struct Holder { const Noisy (&r)[2]; };
 int first(const int* p) { return p[0] * 10 + p[2]; }

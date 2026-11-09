@@ -18,7 +18,7 @@ struct Expression
 };
 struct Negated : Expression
 {
-  implicit Negated(const Expression& operand) { this->value = -operand.value; }
+  implicit Negated(const Expression& operand) { this.value = -operand.value; }
 };
 struct Undo
 {

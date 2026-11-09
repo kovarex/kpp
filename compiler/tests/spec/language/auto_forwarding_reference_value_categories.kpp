@@ -5,15 +5,15 @@ struct Unit
   String state = "patrolling";
   String taken()
   {
-    auto&& value = this->state;
+    auto&& value = this.state;
     return forward<decltype(value)>(value);
   }
   String takenConst() const
   {
-    auto&& value = this->state;
+    auto&& value = this.state;
     return forward<decltype(value)>(value);
   }
-  auto&& member() { return this->state; }
+  auto&& member() { return this.state; }
 };
 String global = "global";
 constexpr int lengths()

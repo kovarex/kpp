@@ -7,9 +7,9 @@ void note(int step) { order = order * 10 + step; }
 struct Box
 {
   int value = 0;
-  Box& operator=(int v) { this->value = v; return *this; }
-  Box& operator+=(int v) { this->value += v; return *this; }
-  Box& operator<<(int v) { this->value = v; return *this; }
+  Box& operator=(int v) { this.value = v; return this; }
+  Box& operator+=(int v) { this.value += v; return this; }
+  Box& operator<<(int v) { this.value = v; return this; }
   int operator[](int i) { return i; }
   int get(int v) { return v; }
 };

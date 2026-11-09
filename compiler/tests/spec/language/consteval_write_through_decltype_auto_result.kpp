@@ -6,8 +6,8 @@ struct Leaf
 };
 struct Holder : Leaf
 {
-  decltype(auto) viaDecltype() { return (value); }
-  decltype(auto) viaBase() { return (static_cast<Leaf&>(*this).value); }
+  decltype(auto) viaDecltype() { return (this.value); }
+  decltype(auto) viaBase() { return (static_cast<Leaf&>(this).value); }
 };
 constexpr int members()
 {

@@ -4180,7 +4180,8 @@ namespace
       std::string suffix = testSuffix();
       std::string isStatic = scope == Scope::Class ? "static " : "";
       std::string suite = currentSuite ? std::string(symbols.name(currentSuite->name)) : std::string();
-      std::string registration = isStatic + "int __kpp_test_registered_" + suffix + " = __kppRegisterTest(&__kpp_test_" + suffix +
+      // (`This::` in a class: a bare name is never a member under --this-reference, design.md 23c)
+      std::string registration = isStatic + "int __kpp_test_registered_" + suffix + " = __kppRegisterTest(&" + (scope == Scope::Class ? "This::" : "") + "__kpp_test_" + suffix +
                                  ", __kpp_text __kpp_text_slot, __kpp_text __kpp_text_slot);";
       std::vector<Token> head, tail;
       if (!fixtureFrom)
@@ -6678,11 +6679,8 @@ namespace
         if (own.special == 0 && own.symbol != UINT32_MAX)
         {
           NameofExpr* n = node<NameofExpr>(start);
-          NameExpr* name = node<NameExpr>(start);
-          NamePart part;
-          part.symbol = own.symbol;
-          name->name.parts = makeSpanOf(std::vector<NamePart>{part});
-          n->operand = name;
+          n->operand = nullptr;
+          n->text = own.symbol;
           advance();
           return n;
         }

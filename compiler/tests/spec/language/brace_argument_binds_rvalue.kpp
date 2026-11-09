@@ -4,8 +4,8 @@ struct Box
 {
   int copies = 0;
   int moves = 0;
-  void take(const Pair<int, UniquePtr<int>>& entry) { ++this->copies; }
-  void take(Pair<int, UniquePtr<int>>&& entry) { ++this->moves; }
+  void take(const Pair<int, UniquePtr<int>>& entry) { ++this.copies; }
+  void take(Pair<int, UniquePtr<int>>&& entry) { ++this.moves; }
 };
 int main()
 {

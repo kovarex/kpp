@@ -11,7 +11,7 @@ class Line : public RenderBase
 {
 public:
   bool valid = true;
-  operator bool() const override { return this->valid; }
+  operator bool() const override { return this.valid; }
   operator int() const override { return 2; }
 };
 int check(const RenderBase& r) { return r ? int(r) * 10 : -1; }

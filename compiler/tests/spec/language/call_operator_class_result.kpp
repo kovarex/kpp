@@ -4,7 +4,7 @@ struct Chunk { int x, y; };
 struct Maker
 {
   int w;
-  Chunk operator()(int i) const { return Chunk{i % this->w, i / this->w}; }
+  Chunk operator()(int i) const { return Chunk{i % this.w, i / this.w}; }
 };
 int main()
 {

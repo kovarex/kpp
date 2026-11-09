@@ -84,9 +84,9 @@ class Chain
 {
 public:
   int digits = 0;
-  Chain& operator<<(int&) { digits = digits * 10 + 1; return *this; }
-  Chain& operator<<(const int&) { digits = digits * 10 + 2; return *this; }
-  Chain& operator<<(int&&) { digits = digits * 10 + 3; return *this; }
+  Chain& operator<<(int&) { this.digits = this.digits * 10 + 1; return this; }
+  Chain& operator<<(const int&) { this.digits = this.digits * 10 + 2; return this; }
+  Chain& operator<<(int&&) { this.digits = this.digits * 10 + 3; return this; }
 };
 
 template<typename... Args> int members(Args&&... args) { Chain c; (c << ... << forward<Args>(args)); return c.digits; }
@@ -99,7 +99,7 @@ class Lifetime
 public:
   int v;
   Lifetime(int v) : v(v) {}
-  ~Lifetime() { event('~', v); }
+  ~Lifetime() { event('~', this.v); }
 };
 
 int valueOf(const Lifetime& l) { return l.v; }
@@ -119,7 +119,7 @@ template<typename T> class Holder
 {
 public:
   T acc;
-  template<typename... Args> int total(Args&&... args) { (acc << ... << forward<Args>(args)); return acc.digits; }
+  template<typename... Args> int total(Args&&... args) { (this.acc << ... << forward<Args>(args)); return this.acc.digits; }
 };
 
 int main()

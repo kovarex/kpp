@@ -4,15 +4,15 @@ class Noisy
 {
 public:
   int id;
-  Noisy(int i) : id(i) { print("+", id, " "); }
-  Noisy(const Noisy& o) : id(o.id + 100) { print("c", id, " "); }
+  Noisy(int i) : id(i) { print("+", this.id, " "); }
+  Noisy(const Noisy& o) : id(o.id + 100) { print("c", this.id, " "); }
   ~Noisy()
   {
-    print("-", id, " ");
-    id = -999;
+    print("-", this.id, " ");
+    this.id = -999;
   }
-  const Noisy* self() const { return this; }
-  bool odd() const { return id % 2 == 1; }
+  const Noisy* self() const { return &this; }
+  bool odd() const { return this.id % 2 == 1; }
 };
 int read(const Noisy* p)
 {

@@ -4,7 +4,7 @@ template<class T>
 struct Binder
 {
   using PtFunc = int (T::*)();
-  static void registerRead(PtFunc f) { reader = f; }
+  static void registerRead(PtFunc f) { This::reader = f; }
   static PtFunc reader;
 };
 template<class T>
@@ -20,7 +20,7 @@ template<class Self>
 class ProtoBase
 {
 public:
-  int read() { return this->x * 10; }
+  int read() { return this.x * 10; }
   static void setUp() { Binder<Self>::registerRead(&Self::read); }
   int x = 4;
 };

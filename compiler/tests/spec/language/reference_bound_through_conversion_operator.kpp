@@ -5,7 +5,7 @@ class Slot
 public:
   int first = 0;
   int second = 7;
-  implicit operator int&() { return this->second; }
+  implicit operator int&() { return this.second; }
 };
 void increment(int& value) { value += 1; }
 int main()

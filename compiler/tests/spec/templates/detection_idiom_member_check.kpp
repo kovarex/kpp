@@ -20,7 +20,7 @@ class has_get_quality_id_impl
   template<class>
   static constexpr FalseType check(...);
 public:
-  static constexpr bool value = decltype(check<T>(nullptr))::value;
+  static constexpr bool value = decltype(This::check<T>(nullptr))::value;
 };
 template<class T>
 constexpr bool has_get_quality_id = has_get_quality_id_impl<T>::value;

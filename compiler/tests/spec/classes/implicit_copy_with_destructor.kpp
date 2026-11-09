@@ -7,7 +7,7 @@ public:
   int count = 0;
   Named(const char* n, int c) : name(n), count(c) {}
   virtual ~Named() {}
-  Named* clone() const { return new Named(*this); }
+  Named* clone() const { return new Named(this); }
 };
 struct Holder
 {

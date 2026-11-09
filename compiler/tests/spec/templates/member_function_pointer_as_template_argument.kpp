@@ -2,7 +2,7 @@
 extern "C" import "stdio.h";
 class A { public: int x = 1; virtual int f() { return 10; } int g() const { return 11; } virtual ~A() {} };
 class Other { public: int y = 2; virtual int h() { return 20; } virtual ~Other() {} };
-class B : public Other, public A { public: int f() override { return 30; } int own() { return x + 40; } };
+class B : public Other, public A { public: int f() override { return 30; } int own() { return this.x + 40; } };
 template <int (A::*M)()> int call(A& a) { return (a.*M)(); }
 template <int (A::*M)() const> int callC(const A& a) { return (a.*M)(); }
 template <int (B::*M)()> int callB(B& b) { return (b.*M)(); }

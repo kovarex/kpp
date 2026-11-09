@@ -18,13 +18,13 @@ struct Builder
   int picked = 0;
   implicit operator Derived&()
   {
-    this->picked = 1;
-    return this->derived;
+    this.picked = 1;
+    return this.derived;
   }
   implicit operator Base&()
   {
-    this->picked = 2;
-    return this->base;
+    this.picked = 2;
+    return this.base;
   }
 };
 int main()

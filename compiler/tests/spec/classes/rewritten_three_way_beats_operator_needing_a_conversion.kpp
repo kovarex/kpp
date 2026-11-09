@@ -5,9 +5,9 @@ struct Box
 {
   int v;
   Box(double d) : v((int)d) {}
-  bool operator<(const Box& other) const { return v < other.v; }
+  bool operator<(const Box& other) const { return this.v < other.v; }
   template <typename U>
-  strong_ordering operator<=>(const U& u) const { return v < u ? strong_ordering::less : v > u ? strong_ordering::greater : strong_ordering::equal; }
+  strong_ordering operator<=>(const U& u) const { return this.v < u ? strong_ordering::less : this.v > u ? strong_ordering::greater : strong_ordering::equal; }
 };
 int main()
 {

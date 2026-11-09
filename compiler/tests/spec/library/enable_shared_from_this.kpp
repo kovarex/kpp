@@ -3,8 +3,8 @@
 struct Session : EnableSharedFromThis<Session>
 {
   int id = 0;
-  SharedPtr<Session> self() { return shared_from_this(); }
-  ~Session() { println("~Session ", this->id); }
+  SharedPtr<Session> self() { return this.shared_from_this(); }
+  ~Session() { println("~Session ", this.id); }
 };
 struct Special : Session {};
 struct Base { int b = 1; };

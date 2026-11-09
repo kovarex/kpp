@@ -5,12 +5,12 @@ struct S
   int k = 5;
   int run() const
   {
-    auto f = [this](int v) { return v * this->k; };
+    auto f = [&this](int v) { return v * this.k; };
     return f(2);
   }
   int implicitThis() const
   {
-    auto f = [=](int v) { return v * k; };
+    auto f = [=, &this](int v) { return v * this.k; };
     return f(3);
   }
 };

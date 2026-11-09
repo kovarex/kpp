@@ -10,7 +10,7 @@ public:
   constexpr NamedBool() = default;
   implicit constexpr NamedBool(Enum value) : value(value == Enum::True) {}
   static constexpr NamedBool fromBool(bool value) { return value ? NamedBool::True : NamedBool::False; }
-  constexpr bool asBool() const { return this->value; }
+  constexpr bool asBool() const { return this.value; }
 private:
   bool value = false;
 };

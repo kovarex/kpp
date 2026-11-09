@@ -9,7 +9,7 @@ struct Derived : Plain { int c; };
 struct HoldsUserDtor { UserDtor inner; };
 class Virtual { public: virtual void f() {} };
 struct FromInt { int v; implicit FromInt(int v) : v(v) {} };
-struct ToInt { int v; implicit operator int() const { return this->v; } };
+struct ToInt { int v; implicit operator int() const { return this.v; } };
 enum class Scoped { A };
 
 template<typename T> bool copyable() { return isTriviallyCopyable<T>; }

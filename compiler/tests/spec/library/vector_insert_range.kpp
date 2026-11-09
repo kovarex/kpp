@@ -8,14 +8,14 @@ struct Countdown
   using reference = int;
   using iterator_category = InputIteratorTag;
   int left;
-  int operator*() const { return this->left; }
+  int operator*() const { return this.left; }
   Countdown& operator++()
   {
-    --this->left;
-    return *this;
+    --this.left;
+    return this;
   }
-  bool operator==(const Countdown& other) const { return this->left == other.left; }
-  bool operator!=(const Countdown& other) const { return this->left != other.left; }
+  bool operator==(const Countdown& other) const { return this.left == other.left; }
+  bool operator!=(const Countdown& other) const { return this.left != other.left; }
 };
 int main()
 {

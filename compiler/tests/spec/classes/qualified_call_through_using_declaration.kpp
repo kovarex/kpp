@@ -29,7 +29,7 @@ template<typename T>
 struct Store
 {
   T stored = T();
-  void put(const T& value) { this->stored = value; }
+  void put(const T& value) { this.stored = value; }
 };
 template<typename T>
 struct LabelledStore : Store<T>

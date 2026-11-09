@@ -4,10 +4,10 @@ struct Fixed
 {
   static int built, destroyed;
   int value;
-  Fixed(int value) : value(value) { built++; }
+  Fixed(int value) : value(value) { This::built++; }
   Fixed(const Fixed&) = delete;
   Fixed(Fixed&&) = delete;
-  ~Fixed() { destroyed++; }
+  ~Fixed() { This::destroyed++; }
 };
 
 int Fixed::built = 0;
@@ -19,8 +19,8 @@ struct Key
   int id;
   Key(int id) : id(id) {}
   Key(const Key& other) : id(other.id) {}
-  Key(Key&& other) : id(other.id) { moved++; }
-  bool operator==(const Key& other) const { return this->id == other.id; }
+  Key(Key&& other) : id(other.id) { This::moved++; }
+  bool operator==(const Key& other) const { return this.id == other.id; }
 };
 
 int Key::moved = 0;

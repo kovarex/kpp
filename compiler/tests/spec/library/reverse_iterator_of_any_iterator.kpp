@@ -11,20 +11,20 @@ struct Steps
   int* at = nullptr;
   Steps() {}
   Steps(int* at) : at(at) {}
-  int& operator*() const { return *this->at; }
-  int* operator->() const { return this->at; }
+  int& operator*() const { return *this.at; }
+  int* operator->() const { return this.at; }
   Steps& operator++()
   {
-    ++this->at;
-    return *this;
+    ++this.at;
+    return this;
   }
   Steps& operator--()
   {
-    --this->at;
-    return *this;
+    --this.at;
+    return this;
   }
-  bool operator==(const Steps& other) const { return this->at == other.at; }
-  bool operator!=(const Steps& other) const { return this->at != other.at; }
+  bool operator==(const Steps& other) const { return this.at == other.at; }
+  bool operator!=(const Steps& other) const { return this.at != other.at; }
 };
 struct Point
 {

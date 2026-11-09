@@ -6,7 +6,7 @@ struct Holder
   T value{};
   int kind() const requires isIntegral<T> { return 1; }
   int kind() const requires (!isIntegral<T>) { return 2; }
-  int describe() const { return kind() * 10; }
+  int describe() const { return this.kind() * 10; }
 };
 int main()
 {

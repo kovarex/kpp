@@ -16,7 +16,7 @@ struct Box
 {
   T stored;
   template<typename... Args>
-  void emplace(Args&&... args) { stored = T(forward<Args>(args)...); }
+  void emplace(Args&&... args) { this.stored = T(forward<Args>(args)...); }
 };
 
 int main()

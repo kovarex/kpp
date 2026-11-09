@@ -15,16 +15,16 @@ class Impl : public Device
 {
 public:
   int count = 2;
-  virtual ~Impl() { println("~Impl ", this->count); }
-  int addRef() override { return ++this->count; }
+  virtual ~Impl() { println("~Impl ", this.count); }
+  int addRef() override { return ++this.count; }
   int release() override
   {
-    int left = --this->count;
+    int left = --this.count;
     if (left == 0)
-      delete this;
+      delete &this;
     return left;
   }
-  int create(int kind) override { return 1000 * this->count + kind; }
+  int create(int kind) override { return 1000 * this.count + kind; }
 };
 int main()
 {

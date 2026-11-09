@@ -1,0 +1,12 @@
+// spec: a noexcept condition of a class template's member that names a member through `this` is decided for the instance, as the bare name's is (clang 19 for `this->v = x`: 1 0)
+// pending: the noexcept operator does not decide an assignment of a class that has none here yet (the member's type stays T in the condition's walk; `this->v` as well, without the option)
+template <typename T> struct Box { T v; void set(const T& x) noexcept(noexcept(this.v = x)) { this.v = x; } };
+struct Loud { Loud& operator=(const Loud&) { return this; } };
+int main()
+{
+  Box<int> a;
+  Box<Loud> b;
+  Loud l;
+  println(noexcept(a.set(1)) ? 1 : 0, " ", noexcept(b.set(l)) ? 1 : 0);
+  return 0;
+}

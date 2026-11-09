@@ -5,7 +5,7 @@ class Num
 public:
   double v;
   implicit Num(double x) : v(x) {}
-  implicit operator double() const { return v; }
+  implicit operator double() const { return this.v; }
 };
 class Other
 {

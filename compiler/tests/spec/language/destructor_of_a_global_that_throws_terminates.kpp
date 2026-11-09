@@ -3,8 +3,8 @@ extern "C" int printf(const char* format, ...);
 struct Tr
 {
   const char* n;
-  Tr(const char* name) : n(name) { printf("ctor %s\n", n); }
-  ~Tr() { printf("dtor %s\n", n); }
+  Tr(const char* name) : n(name) { printf("ctor %s\n", this.n); }
+  ~Tr() { printf("dtor %s\n", this.n); }
 };
 struct Throws
 {

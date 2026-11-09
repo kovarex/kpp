@@ -18,9 +18,9 @@ class Square : public Shape, public Printable
 {
 public:
   int side = 3;
-  Square() { this->sides = 4; }
+  Square() { this.sides = 4; }
   ~Square() override { println("~Square"); }
-  int print() const override { return this->side * this->side; }
+  int print() const override { return this.side * this.side; }
 };
 class Circle : public Shape
 {

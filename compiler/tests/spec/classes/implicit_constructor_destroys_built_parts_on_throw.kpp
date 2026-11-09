@@ -4,8 +4,8 @@ class M
 {
 public:
   int id;
-  M(int i) : id(i) { print("M", id, " "); }
-  ~M() { print("~M", id, " "); }
+  M(int i) : id(i) { print("M", this.id, " "); }
+  ~M() { print("~M", this.id, " "); }
 };
 int fail(int x) { if (x > 0) throw RuntimeError("no"); return x; }
 class Implicit

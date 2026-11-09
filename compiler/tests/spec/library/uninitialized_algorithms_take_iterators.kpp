@@ -4,11 +4,11 @@ struct Named
 {
   static int live;
   String text;
-  Named() : text("-") { live++; }
-  implicit Named(const char* text) : text(text) { live++; }
-  Named(const Named& other) : text(other.text) { live++; }
-  Named(Named&& other) : text(move(other.text)) { live++; }
-  ~Named() { live--; }
+  Named() : text("-") { This::live++; }
+  implicit Named(const char* text) : text(text) { This::live++; }
+  Named(const Named& other) : text(other.text) { This::live++; }
+  Named(Named&& other) : text(move(other.text)) { This::live++; }
+  ~Named() { This::live--; }
 };
 
 int Named::live = 0;

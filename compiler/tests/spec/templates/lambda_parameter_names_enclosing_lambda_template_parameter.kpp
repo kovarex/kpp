@@ -8,7 +8,7 @@ struct Control
 {
   int clicks = 0;
   template<class T>
-  void clickSelect(Function<bool(T*)> selector = nullptr, int button = 1) { T probe{}; if (selector && selector(&probe)) clicks += button; }
+  void clickSelect(Function<bool(T*)> selector = nullptr, int button = 1) { T probe{}; if (selector && selector(&probe)) this.clicks += button; }
 };
 int main()
 {

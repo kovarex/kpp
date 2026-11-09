@@ -12,18 +12,18 @@ class Second
 public:
   int b = 2;
   virtual ~Second() {}
-  virtual Second* self() { return this; }
-  virtual Second* none() { return this; }
-  virtual Second& ref() { return *this; }
+  virtual Second* self() { return &this; }
+  virtual Second* none() { return &this; }
+  virtual Second& ref() { return this; }
   virtual int which() const { return 2; }
 };
 class Both : public First, public Second
 {
 public:
   int c = 3;
-  Both* self() override { return this; }
+  Both* self() override { return &this; }
   Both* none() override { return nullptr; }
-  Both& ref() override { return *this; }
+  Both& ref() override { return this; }
   int which() const override { return 3; }
 };
 int main()

@@ -7,7 +7,7 @@ struct Label
   int* hits;
   int id;
   Label(int* h, int i) : hits(h), id(i) {}
-  ~Label() { ++*this->hits; }
+  ~Label() { ++*this.hits; }
 };
 constexpr int grow()
 {

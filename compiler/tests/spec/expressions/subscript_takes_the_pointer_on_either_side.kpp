@@ -1,6 +1,6 @@
 // spec: the built-in subscript takes the pointer on either side ([expr.sub] 1): `2[a]`, an lvalue, a string literal, a class that converts to an integer, an unscoped enumeration, the left operand evaluated first (clang's and g++'s output)
 extern "C" int printf(const char* format, ...);
-class OI { public: int v; implicit operator int() const { return v; } };
+class OI { public: int v; implicit operator int() const { return this.v; } };
 enum E { two = 2 };
 int order = 0;
 int first() { order = order * 10 + 1; return 1; }

@@ -15,7 +15,7 @@ class Holder
 {
 public:
   Result result;
-  implicit operator Result() { return this->result; }
+  implicit operator Result() { return this.result; }
 };
 int main()
 {

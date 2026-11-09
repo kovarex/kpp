@@ -4,7 +4,7 @@
 struct Counter
 {
   int n = 0;
-  void bump() { ++this->n; }
+  void bump() { ++this.n; }
 };
 Counter& bumped(Counter& c)
 {

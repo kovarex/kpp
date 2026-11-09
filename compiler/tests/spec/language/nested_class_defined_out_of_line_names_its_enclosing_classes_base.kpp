@@ -13,7 +13,7 @@ public:
 class Outer::Inner : public Base
 {
 public:
-  int twice() const { return 2 * this->value(); }
+  int twice() const { return 2 * this.value(); }
 };
 int main()
 {

@@ -14,8 +14,8 @@ suite Dependent
   public:
     void go()
     {
-      check(this->value == 1, "one");
-      require(this->value == 2, "two");
+      check(this.value == 1, "one");
+      require(this.value == 2, "two");
     }
   };
 

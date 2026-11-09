@@ -2,8 +2,8 @@
 struct Part
 {
   int id;
-  Part(int i) : id(i) { if (i == 13) throw i; println("part ", id); }
-  ~Part() { println("part ", id, " gone"); }
+  Part(int i) : id(i) { if (i == 13) throw i; println("part ", this.id); }
+  ~Part() { println("part ", this.id, " gone"); }
 };
 struct Widget
 {

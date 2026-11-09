@@ -4,7 +4,7 @@ struct E
 {
   int id;
   E(int i) : id(i) { if (i == 3) throw i; println("E", i); }
-  ~E() { println("~E", id); }
+  ~E() { println("~E", this.id); }
 };
 int main()
 {

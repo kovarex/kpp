@@ -10,7 +10,7 @@ public:
     if constexpr (config::debug)
       this->debugOnlyCounter += 1;
     else
-      ++this->count;
+      ++this.count;
   }
 };
 template<class T>

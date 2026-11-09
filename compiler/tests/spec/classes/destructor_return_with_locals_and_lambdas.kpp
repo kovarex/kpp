@@ -16,7 +16,7 @@ struct Guard
   ~Guard()
   {
     Local l;
-    if (this->early)
+    if (this.early)
       return;
     destroyed += 100;
   }

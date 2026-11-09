@@ -22,7 +22,7 @@ namespace ui
 class ChartTooltip : public ui::ToolTip
 {
 public:
-  int labelStyle() const { return ToolTip::defaultLabelStyle + this->ToolTip::style; }
+  int labelStyle() const { return ToolTip::defaultLabelStyle + this.ToolTip::style; }
 };
 
 class Doubles : public ui::Holder<double>

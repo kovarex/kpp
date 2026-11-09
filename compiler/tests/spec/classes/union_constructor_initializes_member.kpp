@@ -16,7 +16,7 @@ class Wrapper
 public:
   Wrapper() : value() {}
   Wrapper(Thing& t) : value(t) {}
-  int get() const { return this->value.thing ? this->value.thing->x : -1; }
+  int get() const { return this.value.thing ? this.value.thing->x : -1; }
 private:
   const Value value;
 };

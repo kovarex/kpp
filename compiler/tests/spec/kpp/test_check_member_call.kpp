@@ -10,14 +10,14 @@ public:
 
   bool check(int value)
   {
-    ++this->calls;
+    ++this.calls;
     return value > 0;
   }
 
   void twice(int value)
   {
-    require(this->check(value));
-    require(this->check(value + 1));
+    require(this.check(value));
+    require(this.check(value + 1));
   }
 };
 

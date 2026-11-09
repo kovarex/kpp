@@ -14,11 +14,11 @@ public:
   Loaded(const Loaded& other) : value(other.value) { println("copied"); }
   Loaded& operator=(Loaded&& other)
   {
-    value = other.value;
+    this.value = other.value;
     println("assigned");
-    return *this;
+    return this;
   }
-  ~Loaded() { println("destroyed ", value); }
+  ~Loaded() { println("destroyed ", this.value); }
 };
 union enum Slot : uint8_t
 {
@@ -30,9 +30,9 @@ union enum Slot : uint8_t
     for constexpr (auto a : alternatives(Slot))
       if constexpr (isSame<a.type, T>)
       {
-        this->~Slot();
-        new (this) Slot(a.tag, T(forward<Args>(args)...));
-        return (*this)[a];
+        this.~Slot();
+        new (&this) Slot(a.tag, T(forward<Args>(args)...));
+        return (this)[a];
       }
   }
 };

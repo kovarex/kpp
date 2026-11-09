@@ -14,19 +14,19 @@ struct Counted
 
   Counted& operator=(const Counted& other)
   {
-    this->v = other.v;
+    this.v = other.v;
     ++copies;
-    return *this;
+    return this;
   }
 
   Counted& operator=(Counted&& other) noexcept
   {
-    this->v = other.v;
-    return *this;
+    this.v = other.v;
+    return this;
   }
 
-  bool operator==(const Counted& other) const { return this->v == other.v; }
-  bool operator<(const Counted& other) const { return this->v < other.v; }
+  bool operator==(const Counted& other) const { return this.v == other.v; }
+  bool operator<(const Counted& other) const { return this.v < other.v; }
 };
 
 struct ThrowingLess

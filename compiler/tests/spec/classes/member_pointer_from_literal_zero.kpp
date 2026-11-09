@@ -3,7 +3,7 @@ struct Base
 {
   int first = 1;
   int second = 2;
-  int get() const { return first; }
+  int get() const { return this.first; }
 };
 int readOr(const Base& b, int Base::*member, int fallback) { return member ? b.*member : fallback; }
 int callOr(const Base& b, int (Base::*method)() const, int fallback) { return method ? (b.*method)() : fallback; }

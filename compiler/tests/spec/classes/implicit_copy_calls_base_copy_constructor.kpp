@@ -4,7 +4,7 @@ struct Targetable
 {
   Targetable() = default;
   Targetable(const Targetable&) : Targetable() {}
-  Targetable& operator=(const Targetable&) { return *this; }
+  Targetable& operator=(const Targetable&) { return this; }
   int* first = nullptr;
 };
 struct Widget : Targetable

@@ -5,14 +5,14 @@ struct Dir
   enum class Enum : uint8_t { North, East, South };
   implicit constexpr Dir(Enum v) : value(uint8_t(v)) {}
   constexpr bool operator==(const Dir& other) const = default;
-  implicit operator Enum() const { return Enum(this->value); }
+  implicit operator Enum() const { return Enum(this.value); }
   uint8_t value = 0;
 };
 struct Index
 {
   uint32_t index = 0;
-  bool operator<(Index b) const { return this->index < b.index; }
-  bool operator==(Index b) const { return this->index == b.index; }
+  bool operator<(Index b) const { return this.index < b.index; }
+  bool operator==(Index b) const { return this.index == b.index; }
 };
 struct Digest
 {

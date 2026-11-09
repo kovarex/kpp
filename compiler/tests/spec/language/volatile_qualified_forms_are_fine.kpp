@@ -2,15 +2,15 @@
 struct S
 {
   int x = 1;
-  int vget() volatile { return x + 1; }
-  int cvget() const volatile { return x + 2; }
+  int vget() volatile { return this.x + 1; }
+  int cvget() const volatile { return this.x + 2; }
 };
 struct V
 {
   int n;
   V(int n) : n(n) {}
   V(const volatile V& o) : n(o.n + 10) {}
-  void operator=(const V& o) volatile { n = o.n + 20; }
+  void operator=(const V& o) volatile { this.n = o.n + 20; }
 };
 volatile int v = 1;
 volatile S s;

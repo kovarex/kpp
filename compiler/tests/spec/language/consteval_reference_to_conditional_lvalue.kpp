@@ -4,7 +4,7 @@ struct Two
 {
   int a = 7;
   int b = 8;
-  const int& at(int i) const { return i == 0 ? this->a : this->b; }
+  const int& at(int i) const { return i == 0 ? this.a : this.b; }
 };
 constexpr int local()
 {

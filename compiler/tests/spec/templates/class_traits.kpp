@@ -2,7 +2,7 @@
 // factorio: static_assert(isMoveConstructible<T>) on 20 message types, FlatMap's requires (isClass<K>), if constexpr (isInvocable<F, Args>) in SaveLoadHelper and PtreeUtil, isPolymorphic in the prototype explorer
 struct Plain { int x; double y; };
 class Shape { public: virtual ~Shape() {} virtual double area() const = 0; };
-class Square : public Shape { public: double side = 1; double area() const override { return this->side * this->side; } };
+class Square : public Shape { public: double side = 1; double area() const override { return this.side * this.side; } };
 class Flat final : public Square { public:};
 template<typename T> class Source { public: virtual T next(T seed) = 0; };
 class Counter : public Source<int> { public: int next(int seed) override { return seed + 1; } };
@@ -10,7 +10,7 @@ class Half : public Source<int> { public: double next(double seed) { return seed
 struct NoMove { NoMove() {} NoMove(NoMove&&) = delete; };
 struct CopyOnly { CopyOnly() {} CopyOnly(const CopyOnly&) {} }; // no implicit move: the copy constructor moves
 struct Holder { NoMove inner; };
-struct Logged { Logged() {} ~Logged() {} Logged(Logged&&) noexcept {} Logged& operator=(Logged&&) { return *this; } };
+struct Logged { Logged() {} ~Logged() {} Logged(Logged&&) noexcept {} Logged& operator=(Logged&&) { return this; } };
 struct WithRef { int& r; };
 struct WithConst { const int c = 1; };
 struct Adder { int operator()(int a, int b) const { return a + b; } };

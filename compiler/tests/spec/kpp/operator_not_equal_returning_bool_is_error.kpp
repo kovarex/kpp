@@ -8,15 +8,15 @@
 struct Negating
 {
   i32 x = 0;
-  bool operator==(const Negating& other) const { return this->x == other.x; }
-  bool operator!=(const Negating& other) const { return !(*this == other); }
+  bool operator==(const Negating& other) const { return this.x == other.x; }
+  bool operator!=(const Negating& other) const { return !(this == other); }
 };
 
 struct FieldByField
 {
   i32 x = 0;
-  bool operator==(const FieldByField& other) const { return this->x == other.x; }
-  bool operator!=(const FieldByField& other) const { return this->x != other.x; }
+  bool operator==(const FieldByField& other) const { return this.x == other.x; }
+  bool operator!=(const FieldByField& other) const { return this.x != other.x; }
 };
 
 struct Defaulted
@@ -51,8 +51,8 @@ struct Mask
 struct Lanes
 {
   i32 x = 0;
-  Mask operator==(const Lanes& other) const { return Mask{this->x == other.x ? -1 : 0}; }
-  Mask operator!=(const Lanes& other) const { return Mask{this->x != other.x ? -1 : 0}; }
+  Mask operator==(const Lanes& other) const { return Mask{this.x == other.x ? -1 : 0}; }
+  Mask operator!=(const Lanes& other) const { return Mask{this.x != other.x ? -1 : 0}; }
 };
 
 // Only ==: != is its negation.

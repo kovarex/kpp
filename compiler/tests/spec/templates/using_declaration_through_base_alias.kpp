@@ -4,7 +4,7 @@ template<class T>
 class Store
 {
 public:
-  T& front() { return this->items[0]; }
+  T& front() { return this.items[0]; }
   T items[4];
 };
 
@@ -14,7 +14,7 @@ class Ring : Store<T>
   using super = Store<T>;
 public:
   using super::front;
-  void put(T value) { this->items[0] = value; }
+  void put(T value) { this.items[0] = value; }
 };
 
 struct Point { int x = 0; int y = 0; };

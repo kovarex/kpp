@@ -8,17 +8,17 @@ struct Counter
   int& get()
   {
     if constexpr (I == 0)
-      return a;
+      return this.a;
     else
-      return b;
+      return this.b;
   }
   template<int I>
   const int& get() const
   {
     if constexpr (I == 0)
-      return a;
+      return this.a;
     else
-      return b;
+      return this.b;
   }
 };
 template<>

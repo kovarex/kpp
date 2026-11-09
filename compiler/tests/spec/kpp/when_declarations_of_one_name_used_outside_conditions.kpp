@@ -3,7 +3,7 @@
 struct DebugTimer
 {
   int ticks = 0;
-  void tick() { this->ticks = this->ticks + 1; }
+  void tick() { this.ticks = this.ticks + 1; }
   const char* kind() const { return "debug"; }
 };
 struct NullTimer

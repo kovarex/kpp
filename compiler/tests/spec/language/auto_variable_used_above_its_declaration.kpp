@@ -4,7 +4,7 @@ class Settings
 {
 public:
   int distance = 7;
-  void migrate() { migrateValue(this->distance, 7, 5); }
+  void migrate() { migrateValue(this.distance, 7, 5); }
 };
 
 auto migrateValue = [](auto& value, auto oldDefault, auto newDefault)

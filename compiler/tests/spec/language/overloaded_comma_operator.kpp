@@ -2,7 +2,7 @@
 struct Digits
 {
   int v;
-  Digits operator,(Digits o) const { return {v * 10 + o.v}; }
+  Digits operator,(Digits o) const { return {this.v * 10 + o.v}; }
 };
 struct Plain { int v; };
 int main()

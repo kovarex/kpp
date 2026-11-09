@@ -2,7 +2,7 @@
 struct Parser
 {
   int base = 10;
-  int parse(int x) try { if (x < 0) throw x; return base + x; } catch (int e) { return base - e; }
+  int parse(int x) try { if (x < 0) throw x; return this.base + x; } catch (int e) { return this.base - e; }
 };
 int twice(int x) try { if (x > 5) throw 1.5; return x * 2; } catch (double) { return -1; } catch (...) { return -2; }
 void note(int x) try { if (x) throw x; println("no throw"); } catch (int e) { println("caught ", e); }

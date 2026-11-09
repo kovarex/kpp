@@ -5,8 +5,8 @@ struct P
   double x;
   auto operator<=>(const P&) const = default;
   bool operator==(const P&) const = default;
-  auto operator<=>(double d) const { return x <=> d; }
-  bool operator==(double d) const { return x == d; }
+  auto operator<=>(double d) const { return this.x <=> d; }
+  bool operator==(double d) const { return this.x == d; }
 };
 
 int r(bool b) { return b ? 1 : 0; }

@@ -3,7 +3,7 @@ template <typename T> struct Wrapper
 {
   T value;
   implicit(isIntegral<T>) Wrapper(T v) : value(v) {}
-  implicit(!isIntegral<T>) operator double() const { return double(value) / 2; }
+  implicit(!isIntegral<T>) operator double() const { return double(this.value) / 2; }
 };
 int take(Wrapper<int> w) { return w.value; }
 double half(double d) { return d; }

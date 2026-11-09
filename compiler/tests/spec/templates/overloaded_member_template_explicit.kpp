@@ -11,14 +11,14 @@ struct Reader
   T load(Args&&... args)
   {
     T result;
-    this->load(result, forward<Args>(args)...);
+    this.load(result, forward<Args>(args)...);
     return result;
   }
 
   template<class T, typename... Args>
   void load(T& result, Args&&... args)
   {
-    result = T(this->next++);
+    result = T(this.next++);
   }
 };
 

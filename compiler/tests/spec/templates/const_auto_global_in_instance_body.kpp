@@ -4,7 +4,7 @@ template<typename T>
 struct Turn
 {
   T value;
-  T fraction() const { return T(this->value * HALF_TURN_INVERSE); }
+  T fraction() const { return T(this.value * HALF_TURN_INVERSE); }
 };
 int main()
 {

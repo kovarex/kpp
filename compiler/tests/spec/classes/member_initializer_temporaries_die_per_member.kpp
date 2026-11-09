@@ -4,8 +4,8 @@ struct Noisy
 {
   int id;
   Noisy(int i) : id(i) {}
-  ~Noisy() { println("~Noisy ", this->id); }
-  int value() const { return this->id; }
+  ~Noisy() { println("~Noisy ", this.id); }
+  int value() const { return this.id; }
 };
 struct Logged
 {

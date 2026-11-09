@@ -4,9 +4,9 @@ class M
 {
 public:
   int id;
-  M(int i) : id(i) { print("M", id, " "); }
-  M(const M& o) : id(o.id + 100) { print("C", id, " "); }
-  ~M() { print("~", id, " "); }
+  M(int i) : id(i) { print("M", this.id, " "); }
+  M(const M& o) : id(o.id + 100) { print("C", this.id, " "); }
+  ~M() { print("~", this.id, " "); }
 };
 struct Wrap
 {

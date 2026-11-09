@@ -4,8 +4,8 @@ class A
 {
 public:
   int v = 1;
-  virtual int f() const { return this->v; }
-  virtual void bump() { this->v += 1; }
+  virtual int f() const { return this.v; }
+  virtual void bump() { this.v += 1; }
   virtual ~A() {}
 };
 class B : public A
@@ -16,13 +16,13 @@ public:
   void bump() override
   {
     super::bump();
-    this->v *= 10;
+    this.v *= 10;
   }
 };
 class C : public A
 {
 public:
-  int f() const override { return this->A::f() + 100; }
+  int f() const override { return this.A::f() + 100; }
 };
 struct Base
 {

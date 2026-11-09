@@ -4,7 +4,7 @@ class First
 {
 public:
   virtual ~First() = default;
-  int first() { return this->a; }
+  int first() { return this.a; }
   int a = 1;
 };
 
@@ -12,15 +12,15 @@ class Second
 {
 public:
   virtual ~Second() = default;
-  int get() { return this->b; }
-  virtual int twice() { return 2 * this->b; }
+  int get() { return this.b; }
+  virtual int twice() { return 2 * this.b; }
   int b = 2;
 };
 
 class Both : public First, public Second
 {
 public:
-  int twice() override { return 20 * this->b + this->c; }
+  int twice() override { return 20 * this.b + this.c; }
   int c = 3;
 };
 

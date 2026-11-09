@@ -3,7 +3,7 @@
 struct MapVersion
 {
   MapVersion(int major, int minor) : value(major * 100 + minor) {}
-  bool operator<(const MapVersion& other) const { return this->value < other.value; }
+  bool operator<(const MapVersion& other) const { return this.value < other.value; }
   int value;
 };
 int load(MapVersion input)

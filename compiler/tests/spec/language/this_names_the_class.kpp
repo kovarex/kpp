@@ -8,15 +8,15 @@ public:
   State state = Moving;
   This& faster()
   {
-    this->speed += 1;
-    return *this;
+    this.speed += 1;
+    return this;
   }
   static int total() { return This::count; }
-  bool moving() const { return this->state == This::Moving; }
-  This copy() const { return *this; }
+  bool moving() const { return this.state == This::Moving; }
+  This copy() const { return this; }
   int later() const
   {
-    auto f = [this]() { return This::count + this->speed; };
+    auto f = [&this]() { return This::count + this.speed; };
     return f();
   }
 };

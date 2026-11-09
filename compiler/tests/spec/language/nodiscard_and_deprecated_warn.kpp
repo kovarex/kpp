@@ -26,11 +26,11 @@ struct Box
 
   int refresh()
   {
-    t.fetch();
+    this.t.fetch();
     return 1;
   }
 
-  void touch() { t.fetch(); }
+  void touch() { this.t.fetch(); }
 };
 
 template<typename T> void fetchInto(T& t) { t.fetch(); }

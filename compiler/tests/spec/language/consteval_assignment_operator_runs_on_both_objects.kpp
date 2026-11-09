@@ -7,11 +7,11 @@ struct Counted
   Counted() {}
   Counted& operator=(Counted&& other)
   {
-    if (this == &other)
-      return *this;
+    if (&this == &other)
+      return this;
     other.moved = 1;
-    this->assigned = other.assigned + 1;
-    return *this;
+    this.assigned = other.assigned + 1;
+    return this;
   }
 };
 constexpr int source()

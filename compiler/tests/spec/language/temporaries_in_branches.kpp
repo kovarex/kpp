@@ -4,8 +4,8 @@ struct Noisy
 {
   int id;
   Noisy(int id) : id(id) { println("+", id); }
-  ~Noisy() { println("-", this->id); }
-  int value() const { return this->id * 10; }
+  ~Noisy() { println("-", this.id); }
+  int value() const { return this.id * 10; }
 };
 int pick(bool flag) { return flag ? Noisy(1).value() : 0; }
 bool both(bool flag) { return flag && Noisy(2).value() > 5; }

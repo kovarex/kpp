@@ -8,9 +8,9 @@ public:
   {
   public:
     implicit const_iterator(const Grid& grid) : grid(&grid) {}
-    const T& operator*() const { return this->grid->cells[this->index]; }
-    bool ended() const { return this->index >= 3; }
-    const_iterator& operator++() { ++this->index; return *this; }
+    const T& operator*() const { return this.grid->cells[this.index]; }
+    bool ended() const { return this.index >= 3; }
+    const_iterator& operator++() { ++this.index; return this; }
     const Grid* grid;
     int index = 0;
   };
@@ -23,9 +23,9 @@ public:
   int sum() const
   {
     int total = 0;
-    for (auto it = const_iterator(*this); !it.ended(); ++it)
+    for (auto it = const_iterator(this); !it.ended(); ++it)
       total += *it;
-    const_iterator again(*this);
+    const_iterator again(this);
     return total + *again;
   }
 };

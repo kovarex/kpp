@@ -4,9 +4,9 @@
 class Counter
 {
   int count = 0;
-  void bump() { ++count; }
+  void bump() { ++this.count; }
 public:
-  int value() const { return count; }
+  int value() const { return this.count; }
 
   test bumpCounts
   {

@@ -2485,7 +2485,10 @@ an enum's methods keep `this` as the value. --this-reference-warnings says nothi
 written the new way (required `this.`'s fix), whose `&this` fix would be wrong. All 11 libraries of libraries/
 pass their tests with the option once both warning modes' fixes are applied (1,377 in 24 files, 2026-11-09).
 That is step 3 of the plan, on master for libraries/: each library's build.kpp sets `thisReference` (docs/build.md),
-so a library's files take the meaning whoever uses it (`--this-reference-library NAME`), and its own tests with it. The old and new
+so a library's files take the meaning whoever uses it (`--this-reference-library NAME`), and its own tests with it.
+kpplex and kppsite build with the option, and every spec snippet does (the runner passes it), but those about the old
+meaning or the warnings that convert from it (`// this: pointer`). projectlib, the stdlib's neighbour next to the compiler, and
+the tests outside the spec (tests\run and the tools' inputs) convert with the default, step 4. The old and new
 meanings collide (`return this;`, `f(this)`, `auto c = this;` and `this == other` each mean the pointer in
 one and the object in the other), so a file takes one meaning whole, never both. The parser writes `this`
 as an implicit `*this` around C++'s pointer (ThisExpr::form 1), so the walk, constant evaluation and codegen

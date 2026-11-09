@@ -5,7 +5,7 @@ struct Loud
   int id = 0;
   Loud() {}
   Loud(int id) : id(id) {}
-  ~Loud() { if (this->id) println("-", this->id); }
+  ~Loud() { if (this.id) println("-", this.id); }
 };
 int main()
 {

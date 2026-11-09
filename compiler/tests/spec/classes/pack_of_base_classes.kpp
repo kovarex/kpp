@@ -3,13 +3,13 @@
 struct Name
 {
   int id = 1;
-  int tag() const { return id * 10; }
+  int tag() const { return this.id * 10; }
 };
 
 struct Size
 {
   double w = 2.5;
-  double area() const { return w * w; }
+  double area() const { return this.w * this.w; }
 };
 
 template<class... Ts>

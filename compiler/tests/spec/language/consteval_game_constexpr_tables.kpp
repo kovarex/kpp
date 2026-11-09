@@ -6,7 +6,7 @@ class Vec2
 public:
   constexpr Vec2() = default;
   constexpr Vec2(T x, T y) : x(x), y(y) {}
-  constexpr V operator*(T scalar) const { return V(this->x * scalar, this->y * scalar); }
+  constexpr V operator*(T scalar) const { return V(this.x * scalar, this.y * scalar); }
   T x = 0;
   T y = 0;
 };

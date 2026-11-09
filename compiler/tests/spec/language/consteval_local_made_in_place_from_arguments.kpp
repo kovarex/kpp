@@ -11,13 +11,13 @@ struct Ring
   int n;
   Ring(int n) : n(n)
   {
-    this->s.prev = &this->s;
-    this->s.next = &this->s;
+    this.s.prev = &this.s;
+    this.s.next = &this.s;
   }
   ~Ring()
   {
-    Links* p = this->s.next;
-    while (p != &this->s)
+    Links* p = this.s.next;
+    while (p != &this.s)
       p = p->next;
   }
 };

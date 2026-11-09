@@ -8,8 +8,8 @@ struct Moved
   Moved(int v) : value(v) {}
   Moved(const Moved& other) : value(other.value) { printf("copy\n"); }
   Moved(Moved&& other) noexcept : value(other.value) { other.value = -1; printf("move\n"); }
-  Moved& operator=(const Moved& other) { value = other.value; printf("copy=\n"); return *this; }
-  Moved& operator=(Moved&& other) noexcept { value = other.value; other.value = -1; printf("move=\n"); return *this; }
+  Moved& operator=(const Moved& other) { this.value = other.value; printf("copy=\n"); return this; }
+  Moved& operator=(Moved&& other) noexcept { this.value = other.value; other.value = -1; printf("move=\n"); return this; }
 };
 
 struct Base

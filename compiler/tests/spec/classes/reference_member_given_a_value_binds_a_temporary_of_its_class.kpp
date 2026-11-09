@@ -3,9 +3,9 @@
 struct Name
 {
   int n;
-  implicit Name(int v) : n(v) { println("name ", n); }
-  Name(const Name& o) : n(o.n + 100) { println("copy ", n); }
-  ~Name() { println("drop name ", n); }
+  implicit Name(int v) : n(v) { println("name ", this.n); }
+  Name(const Name& o) : n(o.n + 100) { println("copy ", this.n); }
+  ~Name() { println("drop name ", this.n); }
 };
 struct W { const Name& name; };
 struct A { const int (&r)[3]; };

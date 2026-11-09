@@ -4,9 +4,9 @@ class T
 {
 public:
   int v;
-  T(int x) : v(x) { printf("ctor %d\n", v); }
-  T(const T& o) : v(o.v + 10) { printf("copy %d\n", v); }
-  ~T() { printf("dtor %d\n", v); }
+  T(int x) : v(x) { printf("ctor %d\n", this.v); }
+  T(const T& o) : v(o.v + 10) { printf("copy %d\n", this.v); }
+  ~T() { printf("dtor %d\n", this.v); }
 };
 int main()
 {

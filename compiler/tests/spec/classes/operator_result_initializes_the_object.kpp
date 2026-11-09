@@ -4,14 +4,14 @@ extern "C" int printf(const char* format, ...);
 struct T
 {
   int id;
-  T(int i = 0) : id(i) { printf("+%d ", id); }
-  T(const T& o) : id(o.id + 100) { printf("c%d ", id); }
-  T(T&& o) : id(o.id + 200) { printf("m%d ", id); }
-  ~T() { printf("-%d ", id); }
+  T(int i = 0) : id(i) { printf("+%d ", this.id); }
+  T(const T& o) : id(o.id + 100) { printf("c%d ", this.id); }
+  T(T&& o) : id(o.id + 200) { printf("m%d ", this.id); }
+  ~T() { printf("-%d ", this.id); }
   operator bool() const { return true; }
-  T operator+(const T& o) const { return T(id + o.id); }
-  T operator-() const { return T(-id); }
-  T operator!() const { return T(id * 2); }
+  T operator+(const T& o) const { return T(this.id + o.id); }
+  T operator-() const { return T(-this.id); }
+  T operator!() const { return T(this.id * 2); }
 };
 T operator*(const T& a, const T& b) { return T(a.id * b.id); }
 T operator~(const T& a) { return T(~a.id); }

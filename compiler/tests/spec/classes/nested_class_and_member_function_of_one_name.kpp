@@ -5,7 +5,7 @@ struct Probe
   {
     int value;
   };
-  int Reading(int scale) { return base * scale; }
+  int Reading(int scale) { return this.base * scale; }
   int base = 7;
 };
 int main()

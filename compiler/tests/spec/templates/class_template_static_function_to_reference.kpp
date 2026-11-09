@@ -14,7 +14,7 @@ public:
     int depth;
   };
   static bool depthOrder(const Location& a, const Location& b) { return a.depth < b.depth; }
-  static void sortAll(Vector<Location>& all) { sortWith(all, depthOrder); }
+  static void sortAll(Vector<Location>& all) { sortWith(all, This::depthOrder); }
 };
 struct AmmoTag;
 int main()

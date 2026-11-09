@@ -8,7 +8,7 @@ int countPairs(int a, int b)
     strong_ordering operator<=>(const Key&) const = default;
     int x;
     int y;
-    int sum() const { return this->x + this->y; }
+    int sum() const { return this.x + this.y; }
   };
   Map<Key, int> seen;
   seen[Key{a, b}] = 1;

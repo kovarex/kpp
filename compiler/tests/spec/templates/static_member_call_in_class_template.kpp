@@ -9,8 +9,8 @@ struct Base
 template<class E>
 struct Item : Base<E>
 {
-  Item(E value) : Base<E>(listOptions()) {}
-  Item(E value, E after) : Base<E>(listOptions(after)) {}
+  Item(E value) : Base<E>(This::listOptions()) {}
+  Item(E value, E after) : Base<E>(This::listOptions(after)) {}
   static String listOptions(Optional<E> endAfter = nullopt) { return endAfter ? String("bounded") : String("all"); }
 };
 enum class Mode { A, B };

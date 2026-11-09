@@ -6,7 +6,7 @@ struct Ordered
   T a;
   T b;
   Comp comp;
-  bool ordered() const { return this->comp(this->a, this->b); }
+  bool ordered() const { return this.comp(this.a, this.b); }
 };
 int main()
 {

@@ -3,7 +3,7 @@
 struct Log
 {
   long long digits = 0;
-  constexpr void add(int d) { digits = digits * 10 + d; }
+  constexpr void add(int d) { this.digits = this.digits * 10 + d; }
 };
 struct Noisy
 {
@@ -11,19 +11,19 @@ struct Noisy
   int id;
   constexpr Noisy(Log* l, int i) : log(l), id(i) {}
   constexpr Noisy(const Noisy& o) : log(o.log), id(o.id + 5) {}
-  constexpr ~Noisy() { log->add(id); }
+  constexpr ~Noisy() { this.log->add(this.id); }
 };
 struct Base
 {
   Log* log;
   constexpr Base(Log* l) : log(l) {}
-  constexpr ~Base() { log->add(9); }
+  constexpr ~Base() { this.log->add(9); }
 };
 struct Whole : Base
 {
   Noisy member;
   constexpr Whole(Log* l) : Base(l), member(l, 8) {}
-  constexpr ~Whole() { log->add(7); }
+  constexpr ~Whole() { this.log->add(7); }
 };
 constexpr int early(Log* log, bool leave)
 {

@@ -5,15 +5,15 @@ struct Traced
   i32 value = 0;
   Traced& operator=(const Traced& other)
   {
-    value = other.value;
+    this.value = other.value;
     printf("copy ");
-    return *this;
+    return this;
   }
   Traced& operator=(Traced&& other)
   {
-    value = other.value;
+    this.value = other.value;
     printf("move ");
-    return *this;
+    return this;
   }
 };
 struct CopyOnly
@@ -21,9 +21,9 @@ struct CopyOnly
   i32 value = 0;
   CopyOnly& operator=(const CopyOnly& other)
   {
-    value = other.value + 100;
+    this.value = other.value + 100;
     printf("copy ");
-    return *this;
+    return this;
   }
   CopyOnly& operator=(CopyOnly&& other) = delete;
 };

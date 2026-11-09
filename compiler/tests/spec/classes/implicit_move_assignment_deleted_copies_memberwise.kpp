@@ -5,8 +5,8 @@ struct CopyOnly
   i32 value = 0;
   CopyOnly& operator=(const CopyOnly& other)
   {
-    this->value = other.value + 100;
-    return *this;
+    this.value = other.value + 100;
+    return this;
   }
   CopyOnly& operator=(CopyOnly&& other) = delete;
 };

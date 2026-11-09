@@ -10,8 +10,8 @@ struct Takes
   i32 value = 0;
   Takes& operator=(i32 v)
   {
-    this->value = v;
-    return *this;
+    this.value = v;
+    return this;
   }
 };
 struct HasReference

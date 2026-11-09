@@ -18,9 +18,9 @@ struct Holder
   decltype(Definition::migrations)::const_iterator it = nullptr;
   int size() const
   {
-    using mapped_type = decltype(this->inventories)::mapped_type;
+    using mapped_type = decltype(this.inventories)::mapped_type;
     mapped_type result = "abc";
-    return int(result.size()) + decltype(this->deviation)::CoordinateType::FractionalBits;
+    return int(result.size()) + decltype(this.deviation)::CoordinateType::FractionalBits;
   }
 };
 int main()

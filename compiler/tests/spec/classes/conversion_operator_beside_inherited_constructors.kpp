@@ -23,8 +23,8 @@ public:
   int v = 7;
   Connector() {}
   Connector(const Connector&) = delete;
-  Signal get() const { return Signal(this->v); }
-  implicit operator Signal() const { return this->get(); }
+  Signal get() const { return Signal(this.v); }
+  implicit operator Signal() const { return this.get(); }
 };
 struct Prototype { Connector output; };
 Signal defaultOutput(const Prototype* p) { return p->output; }

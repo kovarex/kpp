@@ -7,16 +7,16 @@ struct Point
   void appendTo(String& out) const
   {
     out << "(";
-    out << char('0' + x);
+    out << char('0' + this.x);
     out << ",";
-    out << char('0' + y);
+    out << char('0' + this.y);
     out << ")";
   }
 };
 struct Color
 {
   bool green = false;
-  void appendTo(String& out) const { out << StringView(green ? "green" : "red"); }
+  void appendTo(String& out) const { out << StringView(this.green ? "green" : "red"); }
 };
 void show(Text text)
 {
@@ -38,7 +38,7 @@ struct Logger
   int lines = 0;
   void log(Text text)
   {
-    ++lines;
+    ++this.lines;
     show(text);
   }
 };

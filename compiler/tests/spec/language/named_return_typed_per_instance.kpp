@@ -6,7 +6,7 @@ const void* built = nullptr;
 struct Tracked
 {
   int value = 0;
-  Tracked() { built = this; }
+  Tracked() { built = &this; }
   Tracked(const Tracked& o) : value(o.value) { ++copies; }
   Tracked(Tracked&& o) : value(o.value) { ++moves; }
 };
@@ -14,7 +14,7 @@ template<typename T>
 struct Box
 {
   T inner{};
-  Box() { built = this; }
+  Box() { built = &this; }
   Box(const Box& o) : inner(o.inner) { ++copies; }
   Box(Box&& o) : inner(o.inner) { ++moves; }
 };

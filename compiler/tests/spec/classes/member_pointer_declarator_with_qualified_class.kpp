@@ -5,7 +5,7 @@ namespace game
   class Square
   {
   public:
-    int area() const { return this->side * this->side; }
+    int area() const { return this.side * this.side; }
     int side = 2;
   };
 }

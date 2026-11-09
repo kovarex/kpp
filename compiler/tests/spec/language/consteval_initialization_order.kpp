@@ -3,12 +3,12 @@
 struct L
 {
   int* log;
-  L(int* l, int v) : log(l) { *log = *log * 10 + v; }
+  L(int* l, int v) : log(l) { *this.log = *this.log * 10 + v; }
 };
 struct M
 {
   int* log;
-  M(int* l, int v) : log(l) { *log = *log * 10 + v; }
+  M(int* l, int v) : log(l) { *this.log = *this.log * 10 + v; }
 };
 struct Y : L
 {

@@ -1,6 +1,6 @@
 // spec: atomic access to a SharedPtr: atomicLoad, atomicStore and atomicExchange on a plain SharedPtr (std::atomic_load and friends), and Atomic<SharedPtr<T>> with load, store, assignment and compare-exchange; an object whose last owner is replaced is destroyed then, not before
 // factorio: Util/Rcu.hpp (std::atomic_load/atomic_store of a shared_ptr, and std::atomic<std::shared_ptr<T>> in the branch the Windows build compiles)
-struct Config { int version; String name; Config(int v, const char* n) : version(v), name(n) {} ~Config() { println("~Config ", this->version); } };
+struct Config { int version; String name; Config(int v, const char* n) : version(v), name(n) {} ~Config() { println("~Config ", this.version); } };
 struct Holder { SharedPtr<Config> data; Atomic<SharedPtr<Config>> current; };
 int main()
 {

@@ -4,7 +4,7 @@ struct Input {};
 struct Thing
 {
   int v = 0;
-  void load(Input& in) { v = 7; }
+  void load(Input& in) { this.v = 7; }
 };
 struct Other
 {
@@ -13,7 +13,7 @@ struct Other
 struct WithArg
 {
   int v = 0;
-  void load(Input& in, int extra) { v = extra; }
+  void load(Input& in, int extra) { this.v = extra; }
 };
 template<typename T, typename DeserialiserType, typename... Args>
 concept has_load = requires(T& result, DeserialiserType& input, Args&&... args) { result.load(input, ::forward<Args>(args)...); };

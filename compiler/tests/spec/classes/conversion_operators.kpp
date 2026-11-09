@@ -3,8 +3,8 @@
 struct Vec
 {
   int x, y;
-  operator bool() const { return this->x != 0 || this->y != 0; }
-  implicit operator String() const { return format("({}, {})", this->x, this->y); }
+  operator bool() const { return this.x != 0 || this.y != 0; }
+  implicit operator String() const { return format("({}, {})", this.x, this.y); }
 };
 int main()
 {

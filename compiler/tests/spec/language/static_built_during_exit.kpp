@@ -5,8 +5,8 @@ extern "C" int atexit(void (*f)());
 struct Tr
 {
   const char* n;
-  Tr(const char* name) : n(name) { printf("ctor %s\n", n); }
-  ~Tr() { printf("dtor %s\n", n); }
+  Tr(const char* name) : n(name) { printf("ctor %s\n", this.n); }
+  ~Tr() { printf("dtor %s\n", this.n); }
 };
 void h3() { printf("atexit h3\n"); }
 struct LateStatic { ~LateStatic() { static Tr t("static built in a destructor"); atexit(h3); printf("LateStatic done\n"); } };

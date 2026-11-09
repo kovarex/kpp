@@ -11,7 +11,7 @@ struct ByNumber
 struct Modulo
 {
   int m = 10;
-  bool operator()(int a, int b) const { return a % this->m < b % this->m; }
+  bool operator()(int a, int b) const { return a % this.m < b % this.m; }
 };
 int main()
 {

@@ -6,7 +6,7 @@ struct RGB
   RGB operator+(RGB o) const
   {
     RGB s;
-    s.r = this->r + o.r;
+    s.r = this.r + o.r;
     return s;
   }
 };

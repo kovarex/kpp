@@ -10,25 +10,25 @@ struct Tracked
   Tracked(Tracked&& other) : data(other.data) { other.data = nullptr; }
   Tracked& operator=(const Tracked& other)
   {
-    if (this != &other)
+    if (&this != &other)
     {
-      delete this->data;
-      this->data = other.data ? new int(*other.data) : nullptr;
+      delete this.data;
+      this.data = other.data ? new int(*other.data) : nullptr;
     }
     ++copies;
-    return *this;
+    return this;
   }
   Tracked& operator=(Tracked&& other)
   {
-    if (this != &other)
+    if (&this != &other)
     {
-      delete this->data;
-      this->data = other.data;
+      delete this.data;
+      this.data = other.data;
       other.data = nullptr;
     }
-    return *this;
+    return this;
   }
-  ~Tracked() { delete this->data; }
+  ~Tracked() { delete this.data; }
 };
 struct Three { Tracked items[3]; };
 struct Grid { Tracked cells[2][2]; };

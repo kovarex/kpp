@@ -10,15 +10,15 @@ struct Box
   Vec low, high;
   constexpr Box(int x0, int y0, int x1, int y1) : low{x0, y0}, high{x1, y1} {}
   static constexpr Box empty() { return Box(0, 0, 0, 0); }
-  constexpr int width() const { return this->high.x - this->low.x; }
-  constexpr bool isZeroSize() const { return width() == 0 && high.y == low.y; }
+  constexpr int width() const { return this.high.x - this.low.x; }
+  constexpr bool isZeroSize() const { return this.width() == 0 && this.high.y == this.low.y; }
 };
 class Counter
 {
 public:
-  constexpr Counter(int start) : count(start) { count += 1; }
-  constexpr void add(int n) { count += n; }
-  constexpr int get() const { return count; }
+  constexpr Counter(int start) : count(start) { this.count += 1; }
+  constexpr void add(int n) { this.count += n; }
+  constexpr int get() const { return this.count; }
 private:
   int count;
 };

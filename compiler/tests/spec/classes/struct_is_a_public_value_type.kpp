@@ -11,18 +11,18 @@ struct Box : public Base
   struct Inner { int depth = 2; };
   Box(T v) : value(v) {}
   ~Box() {}
-  T get() const { return this->value; }
-  bool operator==(const Box& other) const { return this->value == other.value; }
+  T get() const { return this.value; }
+  bool operator==(const Box& other) const { return this.value == other.value; }
   friend int peekId(const Box<int>& b);
 public:
-  Kind kind() const { return this->value > 10 ? Kind::Large : Kind::Small; }
+  Kind kind() const { return this.value > 10 ? Kind::Large : Kind::Small; }
 };
 template<class T>
 int Box<T>::count = 3;
 int peekId(const Box<int>& b) { return b.id; }
 int main()
 {
-  struct Local { int a = 5; int twice() const { return this->a * 2; } };
+  struct Local { int a = 5; int twice() const { return this.a * 2; } };
   Box<int> a(4), b(4);
   Box<int>::Inner inner;
   Local local;

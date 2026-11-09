@@ -6,21 +6,21 @@ struct Throwing
 {
   Throwing() = default;
   Throwing(Throwing&&) {}
-  Throwing& operator=(Throwing&&) { return *this; }
+  Throwing& operator=(Throwing&&) { return this; }
 };
 
 struct Quiet
 {
   Quiet() = default;
   Quiet(Quiet&&) noexcept {}
-  Quiet& operator=(Quiet&&) noexcept { return *this; }
+  Quiet& operator=(Quiet&&) noexcept { return this; }
 };
 
 struct AssignThrows
 {
   AssignThrows() = default;
   AssignThrows(AssignThrows&&) noexcept {}
-  AssignThrows& operator=(AssignThrows&&) { return *this; }
+  AssignThrows& operator=(AssignThrows&&) { return this; }
 };
 
 struct ThrowingLess

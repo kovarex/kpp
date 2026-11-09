@@ -13,24 +13,24 @@ struct Point
 struct Money
 {
   int cents = 0;
-  constexpr bool operator==(const Money& o) const { return cents == o.cents; }
+  constexpr bool operator==(const Money& o) const { return this.cents == o.cents; }
   constexpr Money& operator+=(const Money& o)
   {
-    cents += o.cents;
-    return *this;
+    this.cents += o.cents;
+    return this;
   }
 };
 constexpr bool operator<(const Money& a, const Money& b) { return a.cents < b.cents; }
 struct Maybe
 {
   int value = -1;
-  constexpr operator bool() const { return value >= 0; }
+  constexpr operator bool() const { return this.value >= 0; }
 };
 class Shape
 {
 public:
   constexpr virtual int sides() const { return 0; }
-  constexpr int doubled() const { return sides() * 2; }
+  constexpr int doubled() const { return this.sides() * 2; }
 };
 class Square : public Shape
 {

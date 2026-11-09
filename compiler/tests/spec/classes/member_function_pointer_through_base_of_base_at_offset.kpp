@@ -9,7 +9,7 @@ public:
 class C
 {
 public:
-  int f() { return this->c; }
+  int f() { return this.c; }
   int c = 7;
 };
 
@@ -22,7 +22,7 @@ public:
 class D : public B
 {
 public:
-  void hit() { this->d += 10; }
+  void hit() { this.d += 10; }
   int d = 4;
   void (D::*callback)() = nullptr;
 };

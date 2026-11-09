@@ -6,7 +6,7 @@ public:
   virtual ~Shape() { println("~Shape"); }
   virtual int area() const = 0;
   virtual const char* name() const { return "shape"; }
-  int doubled() const { return this->area() * 2; }
+  int doubled() const { return this.area() * 2; }
 };
 class Square : public Shape
 {
@@ -14,7 +14,7 @@ public:
   int side;
   Square(int side) : side(side) {}
   ~Square() override { println("~Square"); }
-  int area() const override { return this->side * this->side; }
+  int area() const override { return this.side * this.side; }
   const char* name() const override { return "square"; }
 };
 class Unit : public Square

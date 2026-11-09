@@ -5,7 +5,7 @@ public:
   int value = 0;
   Tracked() = default;
   Tracked(const Tracked& other) : value(other.value) {}
-  when (config::debug) Tracked& operator=(const Tracked& other) { this->value = other.value + 100; return *this; }
+  when (config::debug) Tracked& operator=(const Tracked& other) { this.value = other.value + 100; return this; }
 };
 
 class Moved
@@ -13,8 +13,8 @@ class Moved
 public:
   int value = 0;
   Moved() = default;
-  when (config::debug) Moved& operator=(const Moved& other) { this->value = other.value + 100; return *this; }
-  when (config::debug) Moved& operator=(Moved&& other) noexcept { this->value = other.value + 200; return *this; }
+  when (config::debug) Moved& operator=(const Moved& other) { this.value = other.value + 100; return this; }
+  when (config::debug) Moved& operator=(Moved&& other) noexcept { this.value = other.value + 200; return this; }
 };
 
 class Derived : public Tracked

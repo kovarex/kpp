@@ -4,21 +4,21 @@ extern "C" int printf(const char* format, ...);
 struct A
 {
   int v = 4;
-  implicit operator unsigned() { printf("A>unsigned "); return v + 2; }
-  operator int&() { printf("A>int& "); return v; }
+  implicit operator unsigned() { printf("A>unsigned "); return this.v + 2; }
+  operator int&() { printf("A>int& "); return this.v; }
 };
 struct B
 {
   int v = 0;
-  implicit operator int() const { printf("B>int "); return v + 2; }
-  operator double() { printf("B>double "); return v + 2.5; }
+  implicit operator int() const { printf("B>int "); return this.v + 2; }
+  operator double() { printf("B>double "); return this.v + 2.5; }
 };
 struct D
 {
   int v = 1;
-  implicit operator long() const { printf("D>long "); return v + 2; }
-  operator double() & { printf("D>double& "); return v + 2.5; }
-  implicit operator double() && { printf("D>>double "); return v + 3.5; }
+  implicit operator long() const { printf("D>long "); return this.v + 2; }
+  operator double() & { printf("D>double& "); return this.v + 2.5; }
+  implicit operator double() && { printf("D>>double "); return this.v + 3.5; }
 };
 struct C
 {

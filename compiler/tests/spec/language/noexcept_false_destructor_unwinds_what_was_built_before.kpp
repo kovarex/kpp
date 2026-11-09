@@ -4,13 +4,13 @@ struct Noisy
 {
   int id;
   Noisy(int i) : id(i) {}
-  ~Noisy() { println("~Noisy ", id); }
+  ~Noisy() { println("~Noisy ", this.id); }
 };
 struct Thrower
 {
   int code;
   Thrower(int c) : code(c) {}
-  ~Thrower() noexcept(false) { if (code) throw code; }
+  ~Thrower() noexcept(false) { if (this.code) throw this.code; }
 };
 struct Holder
 {

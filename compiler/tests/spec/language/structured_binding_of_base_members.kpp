@@ -5,14 +5,14 @@ struct Vector2
 {
   T x = 0;
   T y = 0;
-  Derived operator*(T s) const { return Derived(this->x * s, this->y * s); }
+  Derived operator*(T s) const { return Derived(this.x * s, this.y * s); }
 };
 struct Vector2D : Vector2<double, Vector2D>
 {
   Vector2D() = default;
-  Vector2D(double x, double y) { this->x = x; this->y = y; }
+  Vector2D(double x, double y) { this.x = x; this.y = y; }
 };
-struct Sprite { Vector2D shift{1.5, -2.0}; const Vector2D& getShift() const { return this->shift; } };
+struct Sprite { Vector2D shift{1.5, -2.0}; const Vector2D& getShift() const { return this.shift; } };
 int main()
 {
   Sprite s;

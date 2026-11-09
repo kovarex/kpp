@@ -12,7 +12,7 @@ public:
   template<class T>
   static MyID fromIndex(T) = delete;
   static MyID fromIndex(IndexType index) { return MyID(index); }
-  const P* getPrototype(const P* table) const { return table + this->index; }
+  const P* getPrototype(const P* table) const { return table + this.index; }
   IndexType index = 0;
 };
 

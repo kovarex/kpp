@@ -19,7 +19,7 @@ public:
     }
     return 0;
   }
-  constexpr bool asBool() const { return this->value; }
+  constexpr bool asBool() const { return this.value; }
 private:
   bool value = false;
 };
@@ -32,7 +32,7 @@ public:
   static constexpr Enum False = Enum::False;
   implicit constexpr OldBool(Enum value) : value(value == Enum::True) {}
   static OldBool fromBool(bool value) { return value ? OldBool::True : OldBool::False; }
-  bool asBool() const { return this->value; }
+  bool asBool() const { return this.value; }
 private:
   bool value = false;
 };

@@ -4,13 +4,13 @@ struct Noisy
 {
   int v;
   implicit Noisy(int v) : v(v) { println("make ", v); }
-  ~Noisy() { println("drop ", v); }
+  ~Noisy() { println("drop ", this.v); }
 };
 struct Point
 {
   int x;
   int y;
-  ~Point() { println("drop point ", x); }
+  ~Point() { println("drop point ", this.x); }
 };
 struct A { const int (&r)[3]; };
 struct N { const Noisy (&r)[2]; int k; };

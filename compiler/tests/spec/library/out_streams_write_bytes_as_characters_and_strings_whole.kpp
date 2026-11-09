@@ -5,7 +5,7 @@ class Collected : public OutStream
 {
 public:
   String text;
-  void writeBytes(const char* data, ContainerSize count) override { this->text.append(data, count); }
+  void writeBytes(const char* data, ContainerSize count) override { this.text.append(data, count); }
 };
 // The file's bytes, a NUL as '.' and a newline as '/'.
 void showFile(const char* label, const char* path)

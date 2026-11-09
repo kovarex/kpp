@@ -25,12 +25,12 @@ int Migration::load(int count)
     ConnectorMigration(int count)
     {
       for (int i = 0; i < count; ++i)
-        this->connections.emplace_back(i);
+        this.connections.emplace_back(i);
     }
     virtual int setup() override
     {
       int sum = 0;
-      for (const PowerSwitchConnection& connection : this->connections)
+      for (const PowerSwitchConnection& connection : this.connections)
         sum += connection.side;
       return sum;
     }

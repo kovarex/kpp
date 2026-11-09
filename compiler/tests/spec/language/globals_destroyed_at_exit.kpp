@@ -5,16 +5,16 @@ extern "C" void exit(int code);
 struct Tr
 {
   const char* n;
-  Tr(const char* name) : n(name) { printf("ctor %s\n", n); }
-  ~Tr() { printf("dtor %s\n", n); }
+  Tr(const char* name) : n(name) { printf("ctor %s\n", this.n); }
+  ~Tr() { printf("dtor %s\n", this.n); }
 };
 struct Cd
 {
   int v;
   constexpr Cd(int x) : v(x) {}
-  ~Cd() { printf("dtor Cd %d\n", v); }
+  ~Cd() { printf("dtor Cd %d\n", this.v); }
 };
-struct Base { const char* n; Base(const char* x) : n(x) {} ~Base() { printf("dtor base of %s\n", n); } };
+struct Base { const char* n; Base(const char* x) : n(x) {} ~Base() { printf("dtor base of %s\n", this.n); } };
 struct Mem { Tr a; Tr b; Mem() : a("mem a"), b("mem b") {} ~Mem() { printf("dtor Mem\n"); } };
 struct Der : Base { Tr t; Der() : Base("der"), t("der member") {} ~Der() { printf("dtor Der\n"); } };
 class Virt { public: Virt() {} virtual ~Virt() { printf("dtor Virt\n"); } };
@@ -53,7 +53,7 @@ struct UsesOther
 {
   Tr& other;
   UsesOther(Tr& o) : other(o) {}
-  ~UsesOther() { printf("uses other: %s\n", other.n); }
+  ~UsesOther() { printf("uses other: %s\n", this.other.n); }
 };
 Tr used{"used by later"};
 UsesOther uses{used};

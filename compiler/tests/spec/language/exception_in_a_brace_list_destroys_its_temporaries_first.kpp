@@ -5,10 +5,10 @@ int ticks = 0, limit = 0;
 struct T
 {
   int id;
-  T(int i) : id(i) { if (++ticks == limit) { printf("!throw "); throw 1; } printf("+%d ", id); }
-  T(const T& o) : id(o.id + 100) { printf("c%d ", id); }
-  ~T() { printf("-%d ", id); }
-  operator bool() const { return id % 2 != 0; }
+  T(int i) : id(i) { if (++ticks == limit) { printf("!throw "); throw 1; } printf("+%d ", this.id); }
+  T(const T& o) : id(o.id + 100) { printf("c%d ", this.id); }
+  ~T() { printf("-%d ", this.id); }
+  operator bool() const { return this.id % 2 != 0; }
 };
 struct H
 {

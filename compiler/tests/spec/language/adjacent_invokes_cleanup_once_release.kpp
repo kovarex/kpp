@@ -5,7 +5,7 @@ struct Item
   int id;
   Item(int id) : id(id) {}
   Item(Item&& other) : id(other.id) { other.id = 0; }
-  ~Item() { println("~Item ", this->id); }
+  ~Item() { println("~Item ", this.id); }
 };
 // Recursive, not in tail position, to a depth -O2 cannot know: both calls stay out of line.
 Item make(int depth, bool fail)

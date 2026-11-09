@@ -12,7 +12,7 @@ struct Net
     double sum = 0;
     auto check = [&](int p)
     {
-      auto* list = this->maybeGet<ForLogistics>(p);
+      auto* list = this.maybeGet<ForLogistics>(p);
       if (list)
         sum += *list;
     };
@@ -24,9 +24,9 @@ template<bool ForLogistics>
 auto* Net::maybeGet(int x) const
 {
   if constexpr (ForLogistics)
-    return &this->a;
+    return &this.a;
   else
-    return &this->b;
+    return &this.b;
 }
 int main()
 {

@@ -6,8 +6,8 @@ struct Base
 };
 struct Derived : Base
 {
-  int fromMutable() { return 10 * Base::get() + get(); }
-  int fromConst() const { return 10 * Base::get() + get(); }
+  int fromMutable() { return 10 * Base::get() + this.get(); }
+  int fromConst() const { return 10 * Base::get() + this.get(); }
 };
 int main()
 {

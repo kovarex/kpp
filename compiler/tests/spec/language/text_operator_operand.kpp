@@ -6,14 +6,14 @@ struct Point
   void appendTo(String& out) const
   {
     out << "(";
-    out << char('0' + x);
+    out << char('0' + this.x);
     out << ")";
   }
 };
 struct Color
 {
   bool green = false;
-  void appendTo(String& out) const { out << StringView(green ? "green" : "red"); }
+  void appendTo(String& out) const { out << StringView(this.green ? "green" : "red"); }
 };
 struct Out
 {

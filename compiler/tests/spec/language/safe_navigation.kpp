@@ -3,7 +3,7 @@ class Leaf
 {
 public:
   int value = 7;
-  int twice() { return this->value * 2; }
+  int twice() { return this.value * 2; }
   void touch() { println("touched"); }
 };
 class Node
@@ -11,7 +11,7 @@ class Node
 public:
   Leaf* leaf = nullptr;
   Node* next = nullptr;
-  Leaf* get() { return this->leaf; }
+  Leaf* get() { return this.leaf; }
 };
 int evaluated = 0;
 Node* once(Node* n)

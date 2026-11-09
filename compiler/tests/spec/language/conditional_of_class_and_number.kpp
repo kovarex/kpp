@@ -5,7 +5,7 @@ class Modifier
 public:
   Modifier() = delete;
   Modifier(int base, int type) : value(base * 0.5 + type) {}
-  implicit operator double() const { return this->value; }
+  implicit operator double() const { return this.value; }
   double value;
 };
 struct ForceData
@@ -16,7 +16,7 @@ template<class T>
 struct Value
 {
   implicit Value(T value) : storage(value) {}
-  implicit operator const T&() const { return this->storage; }
+  implicit operator const T&() const { return this.storage; }
   T storage;
 };
 template<class T>
@@ -32,7 +32,7 @@ class ConfigItem
 {
 public:
   ConfigItem(T value) : value(value) {}
-  implicit operator const T&() const { return this->value; }
+  implicit operator const T&() const { return this.value; }
 private:
   T value;
 };

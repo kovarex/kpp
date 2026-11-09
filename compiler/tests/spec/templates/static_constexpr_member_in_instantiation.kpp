@@ -5,8 +5,8 @@ struct Fixed
 {
   static constexpr T ValuesPerOne = T(1) << Bits;
   T value;
-  constexpr Fixed(double d) : value(T(d * ValuesPerOne)) {}
-  double toDouble() const { return double(this->value) / ValuesPerOne; }
+  constexpr Fixed(double d) : value(T(d * This::ValuesPerOne)) {}
+  double toDouble() const { return double(this.value) / This::ValuesPerOne; }
 };
 int scaled(double d) { return int(d * Fixed<int, 8>::ValuesPerOne); }
 int main()

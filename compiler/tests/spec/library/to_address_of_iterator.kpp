@@ -3,13 +3,13 @@
 struct Holder
 {
   int* value;
-  int* operator->() const { return this->value; }
-  int& operator*() const { return *this->value; }
+  int* operator->() const { return this.value; }
+  int& operator*() const { return *this.value; }
 };
 struct Outer
 {
   Holder inner;
-  Holder operator->() const { return this->inner; }
+  Holder operator->() const { return this.inner; }
 };
 int main()
 {

@@ -9,24 +9,24 @@ class Base
 public:
   virtual ~Base() {}
   Target* target = nullptr;
-  Target* operator*() const { return this->target; }
+  Target* operator*() const { return this.target; }
 };
 template<typename T>
 class Holder : public Base
 {
 public:
-  T* operator*() const { return static_cast<T*>(this->target); }
+  T* operator*() const { return static_cast<T*>(this.target); }
 };
 struct Plain
 {
   Target* target;
-  Target* operator*() const { return this->target; }
+  Target* operator*() const { return this.target; }
 };
 struct Tens
 {
   int values[4] = {0, 0, 0, 0};
   int operator[](int i) const { return i * 10; }
-  int& operator*() { return this->values[1]; }
+  int& operator*() { return this.values[1]; }
 };
 bool same(Target* const& key, Target* expected)
 {

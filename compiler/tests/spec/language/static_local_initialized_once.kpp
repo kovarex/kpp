@@ -21,7 +21,7 @@ public:
   {
     built.fetchAdd(1);
     thisThread::sleepFor(Milliseconds(50));
-    value = 42;
+    this.value = 42;
   }
 };
 int slow()

@@ -6,7 +6,7 @@ template<typename T> constexpr int which(T v) { return pick(v); }
 template<typename T> struct Holder
 {
   T value;
-  constexpr int kind() const { return pick(this->value); }
+  constexpr int kind() const { return pick(this.value); }
 };
 static_assert(which(1.5) == 2);
 static_assert(which(1) == 1);

@@ -4,13 +4,13 @@ struct Box
 {
   T value{};
   int get() const { return 1; }
-  T add(T more) const { return this->value + more; }
+  T add(T more) const { return this.value + more; }
   int bad() const
   {
     T x = "text";
     return 2;
   }
-  int badSize() const { return this->value.size(); }
+  int badSize() const { return this.value.size(); }
 };
 int main()
 {

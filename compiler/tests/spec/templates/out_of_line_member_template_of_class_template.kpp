@@ -13,13 +13,13 @@ template<typename S>
 template<class F>
 void Frame<S>::merged(F op) const
 {
-  op(this->base);
+  op(this.base);
 }
 template<typename S>
 template<class U>
 S Frame<S>::scaled(U factor) const
 {
-  return S(this->base * factor);
+  return S(this.base * factor);
 }
 int main()
 {

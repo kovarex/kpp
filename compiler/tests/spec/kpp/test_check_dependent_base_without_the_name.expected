@@ -1,4 +1,4 @@
-test_check_dependent_base_without_the_name.kpp:18:7: check failed: this->value == 2 (1 == 2): two
+test_check_dependent_base_without_the_name.kpp:18:7: check failed: this.value == 2 (1 == 2): two
 test_check_dependent_base_without_the_name.kpp:25:12: called from here
 failed: Dependent.Uses
 1 test, 1 failed

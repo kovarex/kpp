@@ -3,12 +3,12 @@ class T
 {
 public:
   int id;
-  T(int i) : id(i) { println("ctor ", id); }
-  T(const T& o) : id(o.id + 100) { println("copy ", id); }
-  virtual ~T() { println("dtor ", id); }
-  virtual int get() const { return id; }
+  T(int i) : id(i) { println("ctor ", this.id); }
+  T(const T& o) : id(o.id + 100) { println("copy ", this.id); }
+  virtual ~T() { println("dtor ", this.id); }
+  virtual int get() const { return this.id; }
 };
-class D : public T { public: int extra; D(int i) : T(i), extra(i * 10) {} int get() const override { return id + extra; } };
+class D : public T { public: int extra; D(int i) : T(i), extra(i * 10) {} int get() const override { return this.id + this.extra; } };
 struct Holder { const T& ref; int n; };
 int seven() { return 7; }
 const T& one = T(1);

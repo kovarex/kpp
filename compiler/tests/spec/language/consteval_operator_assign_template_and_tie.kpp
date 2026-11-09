@@ -10,8 +10,8 @@ struct Box
   template<typename U>
   Box<A>& operator=(const Pair<U, U>& p)
   {
-    this->r = p.first;
-    return *this;
+    this.r = p.first;
+    return this;
   }
 };
 

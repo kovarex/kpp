@@ -4,7 +4,7 @@
 struct Page
 {
   char bytes[4096];
-  Page() { bytes[0] = 'p'; println("constructed"); } // (the block written and read below: an optimizer may not drop an unused one)
+  Page() { this.bytes[0] = 'p'; println("constructed"); } // (the block written and read below: an optimizer may not drop an unused one)
 };
 
 int main(int argc, char** argv)

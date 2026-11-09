@@ -7,18 +7,18 @@ struct Id
 struct Container
 {
   Id stored;
-  Id& operator[](int) { return this->stored; }
-  Id operator[](int) const { return this->stored; }
-  Id& at(int) { return this->stored; }
-  Id at(int) const { return this->stored; }
+  Id& operator[](int) { return this.stored; }
+  Id operator[](int) const { return this.stored; }
+  Id& at(int) { return this.stored; }
+  Id at(int) const { return this.stored; }
 };
 struct Holder
 {
   Container& container;
   Holder(Container& c) : container(c) {}
-  void put(Id id) const { this->container[0] = id; }
-  void putMember(int v) const { this->container[0].v = v; }
-  void putThroughAt(Id id) const { this->container.at(0) = id; }
+  void put(Id id) const { this.container[0] = id; }
+  void putMember(int v) const { this.container[0].v = v; }
+  void putThroughAt(Id id) const { this.container.at(0) = id; }
 };
 int main()
 {

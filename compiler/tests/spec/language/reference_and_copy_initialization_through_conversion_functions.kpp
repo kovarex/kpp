@@ -4,14 +4,14 @@ extern "C" int printf(const char* format, ...);
 struct A
 {
   int v = 4;
-  implicit operator int&() { printf("A>int& "); return v; }
-  implicit operator float() const { printf("A>float "); return (float)(v + 2); }
+  implicit operator int&() { printf("A>int& "); return this.v; }
+  implicit operator float() const { printf("A>float "); return (float)(this.v + 2); }
 };
 struct K
 {
   int v = 0;
-  implicit operator int&() { printf("K>int& "); return v; }
-  implicit operator unsigned() const { printf("K>unsigned "); return (unsigned)(v + 2); }
+  implicit operator int&() { printf("K>int& "); return this.v; }
+  implicit operator unsigned() const { printf("K>unsigned "); return (unsigned)(this.v + 2); }
 };
 struct N
 {
@@ -21,8 +21,8 @@ struct N
 struct M
 {
   int v = 7;
-  implicit operator int() const { printf("M>int "); return v; }
-  implicit operator N() const { printf("M>N "); return N(v + 20); }
+  implicit operator int() const { printf("M>int "); return this.v; }
+  implicit operator N() const { printf("M>N "); return N(this.v + 20); }
 };
 N give(const M& m) { return m; }
 int main()

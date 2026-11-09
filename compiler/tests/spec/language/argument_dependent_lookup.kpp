@@ -19,7 +19,7 @@ int measure(int x) { return -x; }
 struct Holder
 {
   int measure(int x) const { return x + 1000; }
-  int use(const StringUtil::Piece& piece) const { return measure(7); } // a member: no argument-dependent lookup
+  int use(const StringUtil::Piece& piece) const { return this.measure(7); } // a member: no argument-dependent lookup
 };
 int main()
 {

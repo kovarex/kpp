@@ -11,11 +11,11 @@ struct Tracked
   Probe* probe;
 
   Tracked(int value, Probe* probe) : value(value), probe(probe) {}
-  Tracked(const Tracked& other) : value(other.value), probe(other.probe) { ++probe->copies; }
+  Tracked(const Tracked& other) : value(other.value), probe(other.probe) { ++this.probe->copies; }
 
   Tracked(Tracked&& other) : value(other.value), probe(other.probe)
   {
-    ++probe->moves;
+    ++this.probe->moves;
     other.value = -1;
   }
 };

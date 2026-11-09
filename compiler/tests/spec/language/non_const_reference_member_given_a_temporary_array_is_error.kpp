@@ -4,7 +4,7 @@ struct Noisy
 {
   int v;
   implicit Noisy(int v) : v(v) { println("make ", v); }
-  ~Noisy() { println("drop ", v); }
+  ~Noisy() { println("drop ", this.v); }
 };
 struct N { Noisy (&r)[2]; };
 using Two = Noisy[2];

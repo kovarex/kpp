@@ -9,7 +9,7 @@ public:
 class Middle : public Base
 {
 public:
-  int value() const override { return 10 + this->Base::value(); }
+  int value() const override { return 10 + this.Base::value(); }
 };
 class Leaf : public Middle
 {

@@ -13,7 +13,7 @@ static bool check(int x, int y)
   {
   public:
     Node(Pairish value) : value(value) {}
-    bool operator<(const Node& other) const { return this->value < other.value; }
+    bool operator<(const Node& other) const { return this.value < other.value; }
     Pairish value;
   };
   return Heap<Node>::compare(Node(makePair(x, 1)), Node(makePair(y, 1)));

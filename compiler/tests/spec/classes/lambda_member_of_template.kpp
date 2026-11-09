@@ -4,7 +4,7 @@ template<typename F>
 struct Holder
 {
   F f;
-  int call(int x) const { return this->f(x); }
+  int call(int x) const { return this.f(x); }
 };
 template<typename F>
 Holder<F> hold(F f) { return Holder<F>{f}; }

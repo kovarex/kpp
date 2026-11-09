@@ -13,7 +13,7 @@ public:
   constexpr Kind() : value(Count) {}
   implicit constexpr Kind(Enum value) : value(value) {}
   constexpr strong_ordering operator<=>(const Kind&) const = default;
-  constexpr strong_ordering operator<=>(const Enum& other) const { return this->value <=> other; }
+  constexpr strong_ordering operator<=>(const Enum& other) const { return this.value <=> other; }
   Enum value;
 };
 class Strong
@@ -22,7 +22,7 @@ public:
   double value;
   Strong(double v) : value(v) {}
   partial_ordering operator<=>(const Strong& other) const = default;
-  partial_ordering operator<=>(const double& other) const { return this->value <=> other; }
+  partial_ordering operator<=>(const double& other) const { return this.value <=> other; }
 };
 int main()
 {

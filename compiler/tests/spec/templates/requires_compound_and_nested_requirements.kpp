@@ -35,7 +35,7 @@ concept SmallAndSized = HasSize<T> && requires { requires sizeof(T) <= 4; };
 struct Sized
 {
   int n;
-  int size() const noexcept { return n; }
+  int size() const noexcept { return this.n; }
 };
 struct SizedWrong
 {

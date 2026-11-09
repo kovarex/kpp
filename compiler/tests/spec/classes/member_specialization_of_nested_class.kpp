@@ -10,7 +10,7 @@ struct Outer
   };
   int g();
 };
-template<class T> int Outer<T>::Inner::f() { return this->value.size(); } // no int has a size()
+template<class T> int Outer<T>::Inner::f() { return this.value.size(); } // no int has a size()
 template<> int Outer<int>::Inner::f() { return 2; }
 template<class T> int Outer<T>::g() { return 10; }
 template<> int Outer<int>::g() { return 20; }

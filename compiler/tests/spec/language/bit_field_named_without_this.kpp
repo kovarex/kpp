@@ -6,14 +6,14 @@ struct TreeData
   uint8_t progress : 4;
   uint8_t color : 4;
   uint8_t greyProgress : 4;
-  void implicitAssign() { progress = 3; }
-  void implicitCompound() { greyProgress += 2; }
+  void implicitAssign() { this.progress = 3; }
+  void implicitCompound() { this.greyProgress += 2; }
   void implicitIncrement()
   {
-    greyProgress++;
-    ++progress;
+    this.greyProgress++;
+    ++this.progress;
   }
-  int implicitRead() { return progress; }
+  int implicitRead() { return this.progress; }
 };
 struct Signed
 {

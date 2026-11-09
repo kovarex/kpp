@@ -6,7 +6,7 @@ struct OrderList
   static constexpr size_t size = sizeof...(Ts);
   template<class T> static constexpr size_t getIndex() { return sizeof(T); }
   template<class T> static void one(int& slot) { slot += int(sizeof(T)); }
-  static void update(Array<int, size>& lists) { (OrderList::one<Ts>(lists[OrderList::getIndex<Ts>() % size]), ...); }
+  static void update(Array<int, size>& lists) { (OrderList::one<Ts>(lists[OrderList::getIndex<Ts>() % This::size]), ...); }
 };
 using Order = OrderList<int, double, char>;
 int main()

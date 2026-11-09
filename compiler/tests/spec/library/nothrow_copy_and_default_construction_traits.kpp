@@ -15,14 +15,14 @@ struct CopyThrows
 {
   CopyThrows() = default;
   CopyThrows(const CopyThrows&) {}
-  CopyThrows& operator=(const CopyThrows&) { return *this; }
+  CopyThrows& operator=(const CopyThrows&) { return this; }
 };
 struct HoldsCopyThrows { CopyThrows c; int n = 2; };
 struct NoexceptCopy
 {
   NoexceptCopy() = default;
   NoexceptCopy(const NoexceptCopy&) noexcept {}
-  NoexceptCopy& operator=(const NoexceptCopy&) noexcept { return *this; }
+  NoexceptCopy& operator=(const NoexceptCopy&) noexcept { return this; }
 };
 struct ThrowingDestructor { ~ThrowingDestructor() noexcept(false) {} };
 struct NoDefault { NoDefault(int) {} };

@@ -4,7 +4,7 @@
 struct Counter
 {
   int count = 0;
-  Function<void()> bump() { return [this]() { this->count += 1; }; }
+  Function<void()> bump() { return [&this]() { this.count += 1; }; }
 };
 
 int main()

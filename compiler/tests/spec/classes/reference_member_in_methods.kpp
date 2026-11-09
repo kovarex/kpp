@@ -4,9 +4,9 @@ struct Ref
 {
   int& r;
   Ref(int& x) : r(x) {}
-  void set(int v) { r = v; }
-  void add(int v) { this->r += v; }
-  int get() const { return r; }
+  void set(int v) { this.r = v; }
+  void add(int v) { this.r += v; }
+  int get() const { return this.r; }
 };
 template<typename A, typename B>
 struct Two
@@ -14,8 +14,8 @@ struct Two
   A first;
   B second;
   Two(A a, B b) : first(a), second(b) {}
-  void bump() { first += 10; this->second += 1; }
-  A& firstRef() { return this->first; }
+  void bump() { this.first += 10; this.second += 1; }
+  A& firstRef() { return this.first; }
 };
 int main()
 {

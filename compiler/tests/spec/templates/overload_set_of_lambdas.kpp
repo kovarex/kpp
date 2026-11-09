@@ -13,7 +13,7 @@ struct Tagged : Ts...
 {
   using Ts::operator()...;
   int tag = 7;
-  int operator()(double d) const { return tag + int(d * 10); }
+  int operator()(double d) const { return this.tag + int(d * 10); }
 };
 template<class... Ts>
 Tagged(Ts...) -> Tagged<Ts...>;
@@ -21,7 +21,7 @@ Tagged(Ts...) -> Tagged<Ts...>;
 struct Counter
 {
   int base;
-  int operator()(long x) const { return base + int(x); }
+  int operator()(long x) const { return this.base + int(x); }
 };
 
 template<class F, class A>

@@ -4,7 +4,7 @@ class Named
 public:
   const char* name;
   Named(const char* name) : name(name) {}
-  ~Named() { print("~", StringView(this->name), ";"); }
+  ~Named() { print("~", StringView(this.name), ";"); }
 };
 class Shape
 {

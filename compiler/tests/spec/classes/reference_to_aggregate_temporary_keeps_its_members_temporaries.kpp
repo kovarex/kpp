@@ -3,7 +3,7 @@
 struct Point
 {
   int x;
-  ~Point() { println("drop ", x); }
+  ~Point() { println("drop ", this.x); }
 };
 struct H { const Point& p; };
 struct Two { const Point& a; const Point& b; };

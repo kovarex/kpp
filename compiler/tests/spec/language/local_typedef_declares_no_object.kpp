@@ -2,8 +2,8 @@
 // factorio: `typedef Function<void (Scenario* scenario, ...)> ...` in a member function of ServerMultiplayerManager built and destroyed an empty Function
 struct Tracked
 {
-  Tracked() { ++made; }
-  ~Tracked() { ++gone; }
+  Tracked() { ++This::made; }
+  ~Tracked() { ++This::gone; }
   static int made;
   static int gone;
 };

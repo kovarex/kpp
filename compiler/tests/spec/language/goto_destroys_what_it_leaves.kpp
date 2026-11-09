@@ -4,8 +4,8 @@ class M
 {
 public:
   int id;
-  M(int i) : id(i) { print("M", id, " "); }
-  ~M() { print("~", id, " "); }
+  M(int i) : id(i) { print("M", this.id, " "); }
+  ~M() { print("~", this.id, " "); }
 };
 int forward(int k)
 {

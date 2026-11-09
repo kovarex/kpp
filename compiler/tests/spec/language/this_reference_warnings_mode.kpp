@@ -1,16 +1,17 @@
 // spec: --this-reference-warnings (design.md 23d): each use of `this` that changes once it is a reference is a warning in the editor's fix form: `this->` (write `this.`), `*this` (write `this`, noting a class whose operator* `*this` will call), its address passed, returned, compared or deleted (write `&this`), a `[this]` capture (write `&this`), a `[=]` lambda that uses the object, and a null test, which has no fix to write
+// this: pointer
 // kpp: --this-reference-warnings
-// warning: this_reference_warnings_mode.kpp:19: warning: this is a reference (the object's address): write `&this`, not `this`
-// warning: this_reference_warnings_mode.kpp:20: warning: this is a reference: write `this.`, not `this->`
-// warning: this_reference_warnings_mode.kpp:21: warning: this is a reference: write `this`, not `*this`
-// warning: this_reference_warnings_mode.kpp:22: warning: this is a reference (a comparison of the object's address): write `&this`, not `this`
-// warning: this_reference_warnings_mode.kpp:23: warning: this is a reference, never null (design.md 23d)
-// warning: this_reference_warnings_mode.kpp:26: warning: this is a reference, never null (design.md 23d)
-// warning: this_reference_warnings_mode.kpp:30: warning: this is a reference (the object's address): write `&this`, not `this`
-// warning: this_reference_warnings_mode.kpp:33: warning: this is a reference (a capture by reference): write `&this`, not `this`
-// warning: this_reference_warnings_mode.kpp:38: warning: [=] will not capture the object (design.md 23d): write `=, &this`, not `=`
-// warning: this_reference_warnings_mode.kpp:41: warning: this is a reference (delete takes its address): write `&this`, not `this`
-// warning: this_reference_warnings_mode.kpp:48: warning: this is a reference (its class has an operator*, which `*this` will call): write `this`, not `*this`
+// warning: this_reference_warnings_mode.kpp:20: warning: this is a reference (the object's address): write `&this`, not `this`
+// warning: this_reference_warnings_mode.kpp:21: warning: this is a reference: write `this.`, not `this->`
+// warning: this_reference_warnings_mode.kpp:22: warning: this is a reference: write `this`, not `*this`
+// warning: this_reference_warnings_mode.kpp:23: warning: this is a reference (a comparison of the object's address): write `&this`, not `this`
+// warning: this_reference_warnings_mode.kpp:24: warning: this is a reference, never null (design.md 23d)
+// warning: this_reference_warnings_mode.kpp:27: warning: this is a reference, never null (design.md 23d)
+// warning: this_reference_warnings_mode.kpp:31: warning: this is a reference (the object's address): write `&this`, not `this`
+// warning: this_reference_warnings_mode.kpp:34: warning: this is a reference (a capture by reference): write `&this`, not `this`
+// warning: this_reference_warnings_mode.kpp:39: warning: [=] will not capture the object (design.md 23d): write `=, &this`, not `=`
+// warning: this_reference_warnings_mode.kpp:42: warning: this is a reference (delete takes its address): write `&this`, not `this`
+// warning: this_reference_warnings_mode.kpp:49: warning: this is a reference (its class has an operator*, which `*this` will call): write `this`, not `*this`
 class Node
 {
 public:

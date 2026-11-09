@@ -10,7 +10,7 @@ struct Leaf
 };
 struct Last : Leaf, Empty
 {
-  Last(double v) : Leaf(), Empty() { this->value = v; }
+  Last(double v) : Leaf(), Empty() { this.value = v; }
 };
 int main()
 {

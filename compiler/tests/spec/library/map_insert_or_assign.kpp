@@ -11,15 +11,15 @@ struct Value
   Value(Value&& o) : v(o.v) { o.v = -1; }
   Value& operator=(const Value& o)
   {
-    v = o.v;
-    return *this;
+    this.v = o.v;
+    return this;
   }
   Value& operator=(Value&& o)
   {
-    v = o.v;
+    this.v = o.v;
     o.v = -1;
-    ++assignedByMove;
-    return *this;
+    ++this.assignedByMove;
+    return this;
   }
 };
 int main()

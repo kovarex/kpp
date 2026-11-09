@@ -8,7 +8,7 @@ struct Timer
 {
   int interval;
   Timer(int interval = 60) : interval(interval) {}
-  int ticks(int seconds, int perSecond = 60) const { return seconds * perSecond / this->interval; }
+  int ticks(int seconds, int perSecond = 60) const { return seconds * perSecond / this.interval; }
 };
 
 int main()

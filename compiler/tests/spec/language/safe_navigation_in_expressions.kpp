@@ -8,18 +8,18 @@ public:
   static constexpr int fixed = 11;
   enum class Kind { Small, Big };
   Kind kind = Kind::Big;
-  bool ok() const { return this->value > 0; }
-  int add(int x) const { return this->value + x; }
-  const int& ref() const { return this->value; }
-  Leaf* me() { return this; }
+  bool ok() const { return this.value > 0; }
+  int add(int x) const { return this.value + x; }
+  const int& ref() const { return this.value; }
+  Leaf* me() { return &this; }
 };
 class Tag
 {
 public:
   int id = 1;
   ~Tag() { println("tag gone"); }
-  Tag& self() { return *this; }
-  int get() { return this->id; }
+  Tag& self() { return this; }
+  int get() { return this.id; }
 };
 Tag makeTag() { return Tag(); }
 template<class T> auto call(T* p) { return p?->ok(); }

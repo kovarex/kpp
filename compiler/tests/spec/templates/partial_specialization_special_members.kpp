@@ -22,9 +22,9 @@ struct Holder<T, false>
   Holder(Holder<T, false>&& other) : present(other.present)
   {
     if (other.present)
-      new (&this->storage.value) T(move(other.storage.value));
+      new (&this.storage.value) T(move(other.storage.value));
   }
-  ~Holder() { if (this->present) this->storage.value.~T(); }
+  ~Holder() { if (this.present) this.storage.value.~T(); }
 };
 template<typename T>
 struct Opt : Holder<T, false>
@@ -32,8 +32,8 @@ struct Opt : Holder<T, false>
   Opt() {}
   implicit Opt(T&& v)
   {
-    new (&this->storage.value) T(move(v));
-    this->present = true;
+    new (&this.storage.value) T(move(v));
+    this.present = true;
   }
 };
 int main()

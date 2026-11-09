@@ -19,8 +19,8 @@ class Impl : public Device
 {
 public:
   int count = 0;
-  int addRef() override { return ++this->count; }
-  int release() override { return --this->count; }
+  int addRef() override { return ++this.count; }
+  int release() override { return --this.count; }
   int create() override { return 7; }
 };
 int main()

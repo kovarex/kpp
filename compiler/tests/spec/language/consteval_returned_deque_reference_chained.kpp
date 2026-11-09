@@ -8,8 +8,8 @@ struct Dep
   Dep& config(StringView n)
   {
     String s = n;
-    configs.push_back(s);
-    return *this;
+    this.configs.push_back(s);
+    return this;
   }
 };
 Dep& add(Deque<Dep>& to, StringView name)
@@ -21,7 +21,7 @@ Dep& add(Deque<Dep>& to, StringView name)
 struct Uses
 {
   Deque<Dep> uses;
-  Dep& use(StringView name) { return add(uses, name); }
+  Dep& use(StringView name) { return add(this.uses, name); }
 };
 int chained()
 {

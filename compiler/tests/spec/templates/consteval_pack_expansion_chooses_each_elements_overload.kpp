@@ -6,15 +6,15 @@ constexpr int code(int&&) { return 3; }
 struct Sink
 {
   int digits = 0;
-  constexpr void put(int&) { digits = digits * 10 + 1; }
-  constexpr void put(const int&) { digits = digits * 10 + 2; }
-  constexpr void put(int&&) { digits = digits * 10 + 3; }
+  constexpr void put(int&) { this.digits = this.digits * 10 + 1; }
+  constexpr void put(const int&) { this.digits = this.digits * 10 + 2; }
+  constexpr void put(int&&) { this.digits = this.digits * 10 + 3; }
 
   template<typename... Args>
   constexpr int all(Args&&... args)
   {
-    (put(forward<Args>(args)), ...);
-    return digits;
+    (this.put(forward<Args>(args)), ...);
+    return this.digits;
   }
 };
 

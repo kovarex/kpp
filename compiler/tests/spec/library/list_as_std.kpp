@@ -10,7 +10,7 @@ struct Counted
   int value;
   implicit Counted(int v) : value(v) {}
   Counted(const Counted& other) : value(other.value) { ++copied; }
-  Counted& operator=(const Counted& other) { value = other.value; ++copyAssigned; return *this; }
+  Counted& operator=(const Counted& other) { this.value = other.value; ++copyAssigned; return this; }
   ~Counted() { ++destroyed; }
 };
 

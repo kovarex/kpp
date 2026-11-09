@@ -8,7 +8,7 @@ struct PairList
   implicit PairList(InitializerList<value_type> data)
   {
     for (auto& [key, value] : data)
-      this->sum += key * value;
+      this.sum += key * value;
   }
 };
 int main()

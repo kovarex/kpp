@@ -4,14 +4,14 @@ template <typename T> struct Leaf
 {
   T value;
   Leaf(T v) : value(v) {}
-  T get() const { return value; }
+  T get() const { return this.value; }
   int width() const { return int(sizeof(T)); }
 };
 
 struct Two : Leaf<int>, Leaf<char>
 {
   Two() : Leaf<int>(3), Leaf<char>('a') {}
-  int both() const { return Leaf<int>::value * 1000 + this->Leaf<char>::value + Leaf<char>::width() * 100; }
+  int both() const { return Leaf<int>::value * 1000 + this.Leaf<char>::value + Leaf<char>::width() * 100; }
 };
 
 struct Deeper : Two

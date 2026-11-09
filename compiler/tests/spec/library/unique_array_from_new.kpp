@@ -3,7 +3,7 @@
 struct Item
 {
   int value = 0;
-  ~Item() { println("drop ", this->value); }
+  ~Item() { println("drop ", this.value); }
 };
 int main()
 {

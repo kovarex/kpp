@@ -9,7 +9,7 @@ struct Resource
   ~Resource()
   {
     ++destroyed;
-    println("destroyed ", id);
+    println("destroyed ", this.id);
   }
 };
 Resource open(bool fail)

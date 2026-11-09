@@ -4,18 +4,18 @@ template <typename T> struct Spec { int v = 1; int kind() { return 0; } };
 template <typename T> struct Spec<T*>
 {
   int v = 3;
-  Spec* self() { return this; }
+  Spec* self() { return &this; }
   Spec copy() { Spec s; s.v = 4; return s; }
-  int kind() { Spec other = *this; return other.v * 100 + copy().v * 10 + self()->v; }
+  int kind() { Spec other = this; return other.v * 100 + this.copy().v * 10 + this.self()->v; }
   static int size() { return sizeof(Spec); }
   int other() { Spec<int> primary; return primary.v; }
 };
 template <> struct Spec<int&>
 {
   int v = 5;
-  Spec* self() { return this; }
+  Spec* self() { return &this; }
   Spec copy() { Spec s; s.v = 6; return s; }
-  int kind() { Spec other = *this; return other.v * 100 + copy().v * 10 + self()->v; }
+  int kind() { Spec other = this; return other.v * 100 + this.copy().v * 10 + this.self()->v; }
   int other() { Spec<int> primary; return primary.v; }
 };
 int main()

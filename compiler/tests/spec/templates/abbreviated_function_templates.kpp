@@ -11,7 +11,7 @@ class Belt : public Prototype
 public:
   static constexpr int Kind = 1;
   int speed = 15;
-  Belt() { this->kind = Kind; }
+  Belt() { this.kind = This::Kind; }
 };
 class Inserter : public Prototype
 {
@@ -19,7 +19,7 @@ public:
   static constexpr int Kind = 2;
   int speed = 7;
   double reach = 1.5;
-  Inserter() { this->kind = Kind; }
+  Inserter() { this.kind = This::Kind; }
 };
 
 struct Reader
@@ -29,9 +29,9 @@ struct Reader
   template<class T, class M>
   bool maybeGet(M T::* member) const
   {
-    if (this->prototype->kind != T::Kind)
+    if (this.prototype->kind != T::Kind)
       return false;
-    println(static_cast<const T*>(this->prototype)->*member);
+    println(static_cast<const T*>(this.prototype)->*member);
     return true;
   }
 
@@ -44,7 +44,7 @@ struct Reader
   template<typename... PrototypeT>
   int get(auto PrototypeT::*... members) const
   {
-    (this->maybeGet(members) || ... || this->pushNil());
+    (this.maybeGet(members) || ... || this.pushNil());
     return int(sizeof...(members));
   }
 };

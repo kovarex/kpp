@@ -5,7 +5,7 @@ typedef double (*Dn)(double);
 int twice(int x) { return x * 2; }
 int thrice(int x) { return x * 3; }
 double half(double x) { return x / 2; }
-class S { public: int k; implicit operator Fn() const { return k ? twice : thrice; } };
+class S { public: int k; implicit operator Fn() const { return this.k ? twice : thrice; } };
 class Derived : public S { public: int extra = 0; };
 class R { public: using F = int(int); implicit operator F*() { return twice; } };
 class Q { public: using F = int(int); implicit operator F&() const { return thrice; } };

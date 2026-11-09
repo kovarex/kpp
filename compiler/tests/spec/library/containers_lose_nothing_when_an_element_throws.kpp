@@ -36,19 +36,19 @@ struct Bomb
   Bomb& operator=(const Bomb& o)
   {
     tick();
-    value = o.value;
-    return *this;
+    this.value = o.value;
+    return this;
   }
   ~Bomb() { --live; }
-  bool operator<(const Bomb& o) const { return value < o.value; }
-  bool operator==(const Bomb& o) const { return value == o.value; }
+  bool operator<(const Bomb& o) const { return this.value < o.value; }
+  bool operator==(const Bomb& o) const { return this.value == o.value; }
 };
 
 struct Callable
 {
   Bomb bomb;
   Callable(int v) : bomb(v) {}
-  int operator()() const { return bomb.value; }
+  int operator()() const { return this.bomb.value; }
 };
 
 template <typename C> Vector<int> values(const C& c)

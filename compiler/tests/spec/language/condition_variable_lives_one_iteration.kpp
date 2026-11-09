@@ -4,10 +4,10 @@ extern "C" int printf(const char* format, ...);
 struct T
 {
   int id;
-  T(int i) : id(i) { printf("+%d ", id); }
-  T(const T& o) : id(o.id) { printf("c%d ", id); }
-  ~T() { printf("-%d ", id); }
-  operator bool() const { return id % 2 != 0; }
+  T(int i) : id(i) { printf("+%d ", this.id); }
+  T(const T& o) : id(o.id) { printf("c%d ", this.id); }
+  ~T() { printf("-%d ", this.id); }
+  operator bool() const { return this.id % 2 != 0; }
 };
 T make(int i) { return T(i); }
 int firstOdd(int n)

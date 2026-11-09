@@ -9,8 +9,8 @@ struct Tracked
   Tracked() {}
   Tracked(int v) : value(v) {}
   Tracked(const Tracked& o) : value(o.value) {}
-  Tracked& operator=(const Tracked& o) { this->value = o.value; this->how = 1; return *this; }
-  Tracked& operator=(Tracked&& o) { this->value = o.value; this->how = 2; return *this; }
+  Tracked& operator=(const Tracked& o) { this.value = o.value; this.how = 1; return this; }
+  Tracked& operator=(Tracked&& o) { this.value = o.value; this.how = 2; return this; }
 };
 struct Sum { int total = 0; };
 Sum& operator+=(Sum& s, int v) { s.total += v; return s; }
@@ -27,11 +27,11 @@ struct Table
   int count = 0;
   double& insertFront(double v)
   {
-    for (int i = this->count; i > 0; --i)
-      this->items[i] = this->items[i - 1];
-    this->items[0] = v;
-    ++this->count;
-    return this->items[0];
+    for (int i = this.count; i > 0; --i)
+      this.items[i] = this.items[i - 1];
+    this.items[0] = v;
+    ++this.count;
+    return this.items[0];
   }
 };
 Tracked source{7};

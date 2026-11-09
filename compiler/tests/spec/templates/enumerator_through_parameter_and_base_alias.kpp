@@ -23,8 +23,8 @@ class GuiState
 public:
   using GuiType = T;
   T* gui = nullptr;
-  bool done() const { return this->gui->result != GuiType::ResultType::Nothing; }
-  void reset() { this->gui->result = GuiType::ResultType::Nothing; }
+  bool done() const { return this.gui->result != GuiType::ResultType::Nothing; }
+  void reset() { this.gui->result = GuiType::ResultType::Nothing; }
 };
 
 int main()

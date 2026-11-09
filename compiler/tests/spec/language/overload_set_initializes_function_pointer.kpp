@@ -4,7 +4,7 @@ class Shape
 {
 public:
   int size = 2;
-  int scaled(int k) const { return size * k; }
+  int scaled(int k) const { return this.size * k; }
   int scaled(const char* name) const { return 100; }
   static int area(int side) { return side * side; }
   static int area(const char* name) { return 5; }

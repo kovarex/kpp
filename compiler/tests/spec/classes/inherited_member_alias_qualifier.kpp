@@ -19,7 +19,7 @@ class Layer : public Prototype<LayerID>
 public:
   static constexpr IDType::IndexType IDLimit = 64;
   IDType::IndexType index = 7;
-  IDType::IndexType next() const { return IDType::IndexType(this->index + 1); }
+  IDType::IndexType next() const { return IDType::IndexType(this.index + 1); }
 };
 template<class P>
 int limitOf() { return int(P::IDLimit); }

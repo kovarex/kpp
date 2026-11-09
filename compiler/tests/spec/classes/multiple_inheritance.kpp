@@ -1,7 +1,7 @@
 // spec: multiple inheritance (one polymorphic base), access to both bases, pointer conversions
 // factorio: 264 uses in 261 files
 struct Named { String name; Named(const char* n) : name(n) {} };
-struct Counted { int count = 0; void bump() { ++this->count; } };
+struct Counted { int count = 0; void bump() { ++this.count; } };
 class Widget : public Named, public Counted
 {
 public:

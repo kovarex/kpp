@@ -7,8 +7,8 @@ struct Tracker
   Tracker() {}
   Tracker(const Tracker& o) : data(o.data) { ++Tracker::copies; }
   Tracker(Tracker&& o) : data(::move(o.data)) { ++Tracker::moves; }
-  Tracker& operator=(const Tracker& o) { this->data = o.data; ++Tracker::copies; return *this; }
-  Tracker& operator=(Tracker&& o) { this->data = ::move(o.data); ++Tracker::moves; return *this; }
+  Tracker& operator=(const Tracker& o) { this.data = o.data; ++Tracker::copies; return this; }
+  Tracker& operator=(Tracker&& o) { this.data = ::move(o.data); ++Tracker::moves; return this; }
 };
 int Tracker::copies = 0;
 int Tracker::moves = 0;

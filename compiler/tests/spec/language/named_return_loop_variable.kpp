@@ -11,7 +11,7 @@ struct Item
   Item(const Item& o) : id(o.id)
   {
     ++copies;
-    last = this;
+    last = &this;
   }
   Item(Item&& o) : id(o.id) { ++moves; }
 };

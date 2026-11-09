@@ -14,7 +14,7 @@ class Thing : public Base
 {
 public:
   Thing(const Params& p, int input) : v(p.scale * input) {}
-  int value() const override { return this->v; }
+  int value() const override { return this.v; }
   int v;
 };
 using LoadFunction = Base*(*)(const Params&, int);

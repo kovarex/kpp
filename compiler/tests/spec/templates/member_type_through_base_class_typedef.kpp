@@ -9,7 +9,7 @@ class Reporter
 {
 public:
   typedef Vector<Result> ResultList;
-  ResultList& results() { return this->list; }
+  ResultList& results() { return this.list; }
   ResultList list;
 };
 class XmlReporter : public Reporter
@@ -18,7 +18,7 @@ public:
   int failedIds()
   {
     int sum = 0;
-    ResultList const& all = this->results();
+    ResultList const& all = this.results();
     for (ResultList::const_iterator i = all.begin(); i != all.end(); ++i)
     {
       Result const& result = *i;

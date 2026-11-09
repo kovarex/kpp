@@ -3,7 +3,7 @@
 struct Flag
 {
   bool value = false;
-  implicit operator bool() const { return this->value; }
+  implicit operator bool() const { return this.value; }
 };
 void push(const uint8_t&) { print("uint8 "); }
 void push(const uint32_t&) { print("uint32 "); }

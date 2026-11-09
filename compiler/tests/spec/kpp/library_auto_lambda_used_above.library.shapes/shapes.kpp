@@ -1,6 +1,6 @@
 struct Square
 {
   int side = 0;
-  int area() { return sq(side); }
+  int area() { return sq(this.side); }
 };
 auto sq = [](auto x) { return x * x; };

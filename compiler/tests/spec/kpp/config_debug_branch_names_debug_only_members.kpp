@@ -6,15 +6,15 @@ public:
   if constexpr (config::debug)
   {
     int references = 0;
-    void check() const { println("checked ", this->references); }
+    void check() const { println("checked ", this.references); }
   }
   void connect()
   {
     if constexpr (config::debug)
     {
-      ++this->references;
-      this->check();
-      debugOnlyCount(this->references);
+      ++this.references;
+      this.check();
+      debugOnlyCount(this.references);
     }
     else
       println("release");

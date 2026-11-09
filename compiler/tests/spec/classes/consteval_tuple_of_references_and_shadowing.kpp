@@ -91,7 +91,7 @@ constexpr int shadowedInABlock()
 constexpr int shadowedByAParameter(Tuple<int, char> t2) { return get<0>(t2) + 1; }
 template <typename T> constexpr auto firstOf(const T& v) { return get<0>(v); }
 constexpr int shadowedThroughATemplate() { Tuple<int, char> t2(6, 'c'); return firstOf(t2); }
-struct Holder { long t2 = 11; constexpr int local() const { Tuple<int, char> t2(7, 'd'); return get<0>(t2) + int(this->t2); } };
+struct Holder { long t2 = 11; constexpr int local() const { Tuple<int, char> t2(7, 'd'); return get<0>(t2) + int(this.t2); } };
 constexpr int theGlobalBesideALocal() { Tuple<int, char> local(1, 'e'); return get<0>(local) + int(t2); }
 constexpr int lambdaShadow() { Tuple<int, char> t2(8, 'f'); auto l = [&] { return get<0>(t2); }; return l(); }
 constexpr int get0 = 3;

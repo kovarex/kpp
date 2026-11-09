@@ -4,7 +4,7 @@ struct Input
 {
   int loaded = 0;
   template <class T>
-  void load() { this->loaded = this->loaded * 10 + int(sizeof(T)); }
+  void load() { this.loaded = this.loaded * 10 + int(sizeof(T)); }
 };
 template <typename... Ts>
 struct Helper;

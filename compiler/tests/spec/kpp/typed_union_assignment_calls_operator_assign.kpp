@@ -5,11 +5,11 @@ class Noisy
 public:
   Noisy() {}
   implicit Noisy(int value) : value(value) { println("construct ", value); }
-  Noisy(const Noisy& other) : value(other.value) { println("copy construct ", value); }
-  Noisy(Noisy&& other) : value(other.value) { println("move construct ", value); }
-  Noisy& operator=(const Noisy& other) { value = other.value; println("copy assign ", value); return *this; }
-  Noisy& operator=(Noisy&& other) { value = other.value; println("move assign ", value); return *this; }
-  ~Noisy() { println("destroy ", value); }
+  Noisy(const Noisy& other) : value(other.value) { println("copy construct ", this.value); }
+  Noisy(Noisy&& other) : value(other.value) { println("move construct ", this.value); }
+  Noisy& operator=(const Noisy& other) { this.value = other.value; println("copy assign ", this.value); return this; }
+  Noisy& operator=(Noisy&& other) { this.value = other.value; println("move assign ", this.value); return this; }
+  ~Noisy() { println("destroy ", this.value); }
 
   int value = 0;
 };

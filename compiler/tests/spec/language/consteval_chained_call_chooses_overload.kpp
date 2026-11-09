@@ -8,21 +8,21 @@ struct Two
   int c = 0;
   Two& set(StringView name, i32 value)
   {
-    a = value;
-    return *this;
+    this.a = value;
+    return this;
   }
   Two& set(StringView name, bool value)
   {
-    b = value ? 1 : 0;
-    return *this;
+    this.b = value ? 1 : 0;
+    return this;
   }
   Two& set(StringView name, StringView value)
   {
-    c = int(value.size());
-    return *this;
+    this.c = int(value.size());
+    return this;
   }
-  int& operator[](i32 i) { return a; }
-  int& operator[](StringView name) { return c; }
+  int& operator[](i32 i) { return this.a; }
+  int& operator[](StringView name) { return this.c; }
 };
 int chained()
 {

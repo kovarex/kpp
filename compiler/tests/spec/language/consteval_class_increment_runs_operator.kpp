@@ -5,19 +5,19 @@ struct Counter
   int i = 0;
   Counter& operator++()
   {
-    this->i += 1;
-    return *this;
+    this.i += 1;
+    return this;
   }
   Counter operator++(int)
   {
-    Counter old = *this;
-    this->i += 10;
+    Counter old = this;
+    this.i += 10;
     return old;
   }
   Counter& operator--()
   {
-    this->i -= 5;
-    return *this;
+    this.i -= 5;
+    return this;
   }
 };
 constexpr int steps()

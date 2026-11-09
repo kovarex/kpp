@@ -10,8 +10,8 @@ struct Counter
   Counter(int v) : value(v) {}
   Counter operator++(int)
   {
-    Counter old = *this;
-    value++;
+    Counter old = this;
+    this.value++;
     return old;
   }
 };

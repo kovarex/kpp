@@ -8,7 +8,7 @@ struct Ref
 struct Box
 {
   int v = 1;
-  const int& get() const { return this->v; }
+  const int& get() const { return this.v; }
 };
 constexpr int iterators()
 {

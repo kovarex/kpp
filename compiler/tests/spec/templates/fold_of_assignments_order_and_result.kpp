@@ -29,8 +29,8 @@ class Acc
 public:
   int v;
   Acc(int v) : v(v) {}
-  Acc& operator+=(int x) { printf("acc+%d ", x); v += x; return *this; }
-  Acc& operator*=(const Acc& o) { printf("acc*%d ", o.v); v *= o.v; return *this; }
+  Acc& operator+=(int x) { printf("acc+%d ", x); this.v += x; return this; }
+  Acc& operator*=(const Acc& o) { printf("acc*%d ", o.v); this.v *= o.v; return this; }
 };
 template<typename... Ts> int classLeft(Ts... a) { Acc s(1); (s += ... += a); return s.v; }
 template<typename... Ts> int classRight(Ts... a) { (a *= ...); return (0 + ... + a.v); }

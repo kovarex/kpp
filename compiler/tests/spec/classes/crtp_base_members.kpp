@@ -6,14 +6,14 @@ struct Vector2
   T x = 0, y = 0;
   constexpr Vector2() = default;
   constexpr Vector2(T x, T y) : x(x), y(y) {}
-  V scaled(T k) const { return V(this->x * k, this->y * k); }
-  T dot(const V& other) const { return this->x * other.x + this->y * other.y; }
+  V scaled(T k) const { return V(this.x * k, this.y * k); }
+  T dot(const V& other) const { return this.x * other.x + this.y * other.y; }
 };
 struct Vec : Vector2<double, Vec>
 {
   constexpr Vec() = default;
   constexpr Vec(double x, double y) : Vector2(x, y) {}
-  Vec flipped() const { return Vec(-this->x, this->y); }
+  Vec flipped() const { return Vec(-this.x, this.y); }
 };
 double sum(const Vec& v) { return v.x + v.y; }
 int main()

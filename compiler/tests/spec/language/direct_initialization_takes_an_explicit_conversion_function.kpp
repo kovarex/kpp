@@ -25,7 +25,7 @@ struct I
 {
   int v = 3;
   implicit operator int() const { printf("I>int "); return 4; }
-  operator int&() { printf("I>int& "); return v; }
+  operator int&() { printf("I>int& "); return this.v; }
 };
 struct D
 {

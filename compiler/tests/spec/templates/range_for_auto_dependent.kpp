@@ -7,7 +7,7 @@ struct Dialog
   int keys()
   {
     int s = 0;
-    for (auto& item : this->resultMapping)
+    for (auto& item : this.resultMapping)
       s += item.first;
     return s;
   }

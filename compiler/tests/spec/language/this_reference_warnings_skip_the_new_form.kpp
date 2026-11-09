@@ -1,9 +1,10 @@
 // spec: --this-reference-warnings says nothing of a `this.x` already written the new way (by required `this.`'s fix, or an earlier pass of these): a fix of it, `&this.x`, would be wrong; without --this-reference the old meaning's `this.x` stays codegen's error
+// this: pointer
 // kpp: --this-reference-warnings
-// error: this_reference_warnings_skip_the_new_form.kpp:12: error:
-// no-warning: this_reference_warnings_skip_the_new_form.kpp:12: warning
+// error: this_reference_warnings_skip_the_new_form.kpp:13: error:
 // no-warning: this_reference_warnings_skip_the_new_form.kpp:13: warning
-// warning: this_reference_warnings_skip_the_new_form.kpp:14: warning: this is a reference: write `this.`, not `this->`
+// no-warning: this_reference_warnings_skip_the_new_form.kpp:14: warning
+// warning: this_reference_warnings_skip_the_new_form.kpp:15: warning: this is a reference: write `this.`, not `this->`
 class Node
 {
 public:

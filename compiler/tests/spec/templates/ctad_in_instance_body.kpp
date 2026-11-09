@@ -7,7 +7,7 @@ public:
   using enum Enum;
   Result() : result(Undefined) {}
   implicit Result(Enum result) : result(result) {}
-  bool failed() const { return this->result == Fail; }
+  bool failed() const { return this.result == Fail; }
 private:
   Enum result;
 };
@@ -16,8 +16,8 @@ class Failed
 {
 public:
   implicit Failed(T&& result) : result(::move(result)) {}
-  operator bool() const { return this->result.failed(); }
-  implicit operator T() { return this->result; }
+  operator bool() const { return this.result.failed(); }
+  implicit operator T() { return this.result; }
   T result;
 };
 template<class IDType>
@@ -30,7 +30,7 @@ public:
   {
     int failures = 0;
     for (IDType i = 0; i < n; ++i)
-      if (Failed result = this->canSet(i))
+      if (Failed result = this.canSet(i))
         ++failures;
     return failures;
   }

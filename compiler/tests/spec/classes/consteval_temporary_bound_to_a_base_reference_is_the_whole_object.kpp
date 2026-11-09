@@ -15,14 +15,14 @@ public:
   int* log;
   constexpr Tracked(int* log) : log(log) {}
   constexpr virtual int sides() const { return 0; }
-  constexpr virtual ~Tracked() { *this->log = *this->log * 10 + 1; }
+  constexpr virtual ~Tracked() { *this.log = *this.log * 10 + 1; }
 };
 class TrackedSquare : public Tracked
 {
 public:
   constexpr TrackedSquare(int* log) : Tracked(log) {}
   constexpr int sides() const override { return 4; }
-  constexpr ~TrackedSquare() override { *this->log = *this->log * 10 + 2; }
+  constexpr ~TrackedSquare() override { *this.log = *this.log * 10 + 2; }
 };
 class Plain
 {
@@ -34,7 +34,7 @@ class Both : public Plain, public Tracked
 public:
   constexpr Both(int* log) : Tracked(log) {}
   constexpr int sides() const override { return 5; }
-  constexpr ~Both() override { *this->log = *this->log * 10 + 3; }
+  constexpr ~Both() override { *this.log = *this.log * 10 + 3; }
 };
 constexpr int sidesOf(const Shape& s) { return s.sides(); }
 constexpr int trackedSidesOf(const Tracked& t) { return t.sides(); }

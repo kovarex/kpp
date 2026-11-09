@@ -16,7 +16,7 @@ struct Loader
   {
     assert(this->checked);
     assert(isChecked());
-    return value;
+    return this.value;
   }
 };
 

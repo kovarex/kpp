@@ -1,6 +1,6 @@
 // spec: HashMap and HashSet with a hasher and a key equality argument (std::unordered_map<K, V, Hash, KeyEqual>), the default Hash<K> through hashOf for doubles, enums and SharedPtr keys, and FastHashMap with the same parameters
 // factorio: 6 unordered containers with a hasher (RailLocation::Hasher, CoordinateHash, NoiseRegisterIndexHash), keys of type double, enum and shared_ptr
-struct Point { int x, y; bool operator==(const Point& o) const { return x == o.x && y == o.y; } };
+struct Point { int x, y; bool operator==(const Point& o) const { return this.x == o.x && this.y == o.y; } };
 struct PointHash { size_t operator()(const Point& p) const { return (size_t)(p.x * 1000 + p.y); } };
 struct SameX { bool operator()(const Point& a, const Point& b) const { return a.x == b.x; } };
 enum class Color { Red, Green };

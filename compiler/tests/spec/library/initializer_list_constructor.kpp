@@ -1,5 +1,5 @@
 // spec: a constructor taking InitializerList, called with a brace list
-struct Poly { Vector<int> xs; Poly(InitializerList<int> list) { for (int v : list) this->xs.push_back(v); } };
+struct Poly { Vector<int> xs; Poly(InitializerList<int> list) { for (int v : list) this.xs.push_back(v); } };
 int main()
 {
   Poly p({1, 2, 3, 4});

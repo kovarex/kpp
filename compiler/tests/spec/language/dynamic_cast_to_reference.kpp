@@ -5,13 +5,13 @@ class Standard : public Value
 {
 public:
   int stored = 42;
-  const int& get() const { return this->stored; }
+  const int& get() const { return this.stored; }
 };
 struct Option
 {
   Value* value;
-  const int& as() const { return dynamic_cast<const Standard&>(*this->value).get(); }
-  int viaPointer() const { return dynamic_cast<const Standard*>(this->value)->get(); }
+  const int& as() const { return dynamic_cast<const Standard&>(*this.value).get(); }
+  int viaPointer() const { return dynamic_cast<const Standard*>(this.value)->get(); }
 };
 int main()
 {

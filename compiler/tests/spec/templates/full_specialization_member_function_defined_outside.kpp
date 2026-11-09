@@ -12,9 +12,9 @@ struct Flag<true>
   int extra = 5;
   int value();
 };
-int Flag<true>::value() { return this->extra + 1; }
+int Flag<true>::value() { return this.extra + 1; }
 template<bool B>
-int Flag<B>::value() { return this->base; }
+int Flag<B>::value() { return this.base; }
 
 int main()
 {

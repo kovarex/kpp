@@ -4,8 +4,8 @@ template<class E, int variableCount, int constantCount, int expressionCount = 0>
 struct Complex
 {
   static constexpr int OFFSET = variableCount + expressionCount;
-  static constexpr int N = OFFSET + constantCount;
-  static int computeHash(int seed) { return seed * 100 + N; }
+  static constexpr int N = This::OFFSET + constantCount;
+  static int computeHash(int seed) { return seed * 100 + This::N; }
 };
 struct Basis { static constexpr int V = 2; static constexpr int C = 6; };
 template<class Op, int variableCount = Op::V, int constantCount = Op::C>

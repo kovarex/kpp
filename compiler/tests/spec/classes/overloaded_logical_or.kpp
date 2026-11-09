@@ -4,9 +4,9 @@ struct Flag
 {
   bool value;
   static Flag fromBool(bool value) { return Flag{value}; }
-  operator bool() const { return this->value; }
-  Flag operator||(const Flag&& other) const { return Flag::fromBool(this->value || other.value); }
-  Flag operator&&(const Flag& other) const { return Flag::fromBool(this->value && other.value); }
+  operator bool() const { return this.value; }
+  Flag operator||(const Flag&& other) const { return Flag::fromBool(this.value || other.value); }
+  Flag operator&&(const Flag& other) const { return Flag::fromBool(this.value && other.value); }
 };
 int asked = 0;
 Flag ask(bool value)

@@ -8,6 +8,9 @@ snippet says what it is about:
     // factorio: 32235 uses in 4539 files        (from the construct survey, optional)
     // pending: no generic lambdas yet           (a known gap: the snippet is expected to fail)
     // pending on windows linux: why            (a known gap of those targets alone: windows, windows-gnu, linux, freebsd)
+    // this: pointer                            (`this` keeps C++'s pointer here: the snippet is about that or
+                                                 the warnings that convert from it; every other snippet builds with
+                                                 --this-reference until that is the only meaning)
     // kpp: --release                           (kpp options this snippet is always built with: a
                                                   gap that only one configuration shows; {here} is the
                                                   snippet's directory)
@@ -139,6 +142,12 @@ SDL_INCLUDE = os.environ.get("KPP_SDL_INCLUDE", r"C:\Factorio\libraries\SDL3\inc
 EXTRA = ["--cinclude", SDL_INCLUDE] if os.path.isdir(SDL_INCLUDE) else []
 # Headers written for the interop snippets themselves (C constructs the system headers lack).
 EXTRA += ["--cinclude", os.path.join(HERE, "interop")]
+# `this` is the object in every snippet (design.md 23d), until that is the language's only meaning: but for those
+# about the old meaning or the warnings that convert from it (`// this: pointer`).
+THIS_REFERENCE = ["--this-reference"]
+
+def extra_for(info):
+    return EXTRA + ([] if info["this"] == "pointer" else THIS_REFERENCE)
 OUT = os.path.join(COMPILER, "build", "spec")
 SNIPPETS = HERE
 DOC = os.path.join(ROOT, "docs", "spec-status.md")
@@ -245,12 +254,12 @@ AREA_TITLES = {
 
 def header(path):
     info = {"spec": os.path.splitext(os.path.basename(path))[0], "factorio": "", "pending": None, "errors": [], "warnings": [], "no-warnings": [], "run": None, "test": None,
-            "exit": None, "kpp": "", "target": None, "arch": None}
+            "exit": None, "kpp": "", "target": None, "arch": None, "this": ""}
     with open(path, encoding="utf-8") as f:
         for line in f:
             if line.startswith("//--- step"):
                 break # (a snippet of steps: each step's own expect and error lines are its own)
-            m = re.match(r"//\s*(spec|factorio|pending(?: on [\w -]+?)?|error|warning|no-warning|run|test|exit|kpp|target|arch):\s*(.*)", line.strip())
+            m = re.match(r"//\s*(spec|factorio|pending(?: on [\w -]+?)?|error|warning|no-warning|run|test|exit|kpp|target|arch|this):\s*(.*)", line.strip())
             if not m:
                 if line.strip() and not line.startswith("//"):
                     break
@@ -374,7 +383,7 @@ def build_and_run(path, area, name, work):
     # (macOS with the stand-in SDK: the link deferred, unless the snippet names its own SDK)
     defer = ["--defer-link"] if TARGET in MACOS_TARGETS and MACOS_STAND_IN and "--sysroot" not in info["kpp"] else []
     try:
-        c = subprocess.run([KPP, "--quiet", *EXTRA, *shlex.split(info["kpp"]), *modules, *libs, *defer, "--exe", exe, *sources], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
+        c = subprocess.run([KPP, "--quiet", *extra_for(info), *shlex.split(info["kpp"]), *modules, *libs, *defer, "--exe", exe, *sources], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
     except subprocess.TimeoutExpired:
         result["status"] = "FAIL"; result["note"] = "compiler timed out"; return finish(result)
     if info["errors"]:
@@ -482,7 +491,7 @@ def run_command(path, info, libs, expected_path, result, work):
     """A `// run:` snippet: `kpp --run` builds and runs it in one step; its exit code is the program's.
     With a <name>.project directory it runs from a copy of that project.
     A `// test:` snippet: `kpp --test` builds its tests and runs them, from the snippet's directory."""
-    extra = EXTRA + shlex.split(info["kpp"])
+    extra = extra_for(info) + shlex.split(info["kpp"])
     if info["test"] is not None:
         command, cwd = [KPP, *extra, *libs, "--no-server", "--test", os.path.basename(path), "--", *shlex.split(info["test"])], os.path.dirname(path)
     else:
@@ -522,7 +531,7 @@ def run_steps(path, info, work, options, result):
     # (a step's `//--- file: NAME` sections: files of the program beside it, in a directory given as a source)
     companions = os.path.join(work, os.path.splitext(os.path.basename(path))[0] + ".files")
     has_files = re.search(r"^//--- file:", text, flags=re.M) is not None
-    arguments = ["--quiet", *EXTRA, *shlex.split(info["kpp"]), *options, "--exe", exe, source, *([companions] if has_files else [])]
+    arguments = ["--quiet", *extra_for(info), *shlex.split(info["kpp"]), *options, "--exe", exe, source, *([companions] if has_files else [])]
     try:
         for i in range(1, len(parts), 2):
             title, body = parts[i].strip(), parts[i + 1]

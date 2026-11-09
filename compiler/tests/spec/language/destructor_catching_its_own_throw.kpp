@@ -4,7 +4,7 @@ struct S
   int n = 0;
   ~S()
   {
-    try { n = 1; throw 5; }
+    try { this.n = 1; throw 5; }
     catch (int e) { println("caught inside ", e); }
     println("left");
   }

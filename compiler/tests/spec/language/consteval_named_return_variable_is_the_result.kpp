@@ -37,7 +37,7 @@ struct Tracker
 {
   int* destroyed = nullptr;
   constexpr Tracker(int* d) : destroyed(d) {}
-  constexpr ~Tracker() { ++*destroyed; }
+  constexpr ~Tracker() { ++*this.destroyed; }
 };
 constexpr Tracker track(int* d)
 {

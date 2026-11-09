@@ -9,9 +9,9 @@ public:
   Counted(Counted&& other) noexcept : value(other.value) { ++constructions; }
   Counted& operator=(Counted&& other) noexcept
   {
-    value = other.value;
+    this.value = other.value;
     ++assignments;
-    return *this;
+    return this;
   }
   Counted& operator=(const Counted& other) = default;
   ~Counted() { ++destructions; }

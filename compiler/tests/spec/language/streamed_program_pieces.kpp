@@ -7,7 +7,7 @@ template<typename F> int applyTwice(F f, int x)
 template<typename T> struct Box
 {
   T value;
-  template<typename F> T apply(F f) const { return f(this->value); }
+  template<typename F> T apply(F f) const { return f(this.value); }
 };
 
 int main()

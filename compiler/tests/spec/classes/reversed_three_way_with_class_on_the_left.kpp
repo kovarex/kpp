@@ -12,17 +12,17 @@ struct ModVersion : Version
 struct Holder
 {
   int held = 0;
-  strong_ordering operator<=>(const ModVersion& v) const { return this->held <=> v.major; }
-  bool operator==(const ModVersion& v) const { return this->held == v.major; }
+  strong_ordering operator<=>(const ModVersion& v) const { return this.held <=> v.major; }
+  bool operator==(const ModVersion& v) const { return this.held == v.major; }
 };
 template<typename T>
 struct Box
 {
   int held = 0;
   template<typename U>
-  strong_ordering operator<=>(const U& v) const { return this->held <=> v.major; }
+  strong_ordering operator<=>(const U& v) const { return this.held <=> v.major; }
   template<typename U>
-  bool operator==(const U& v) const { return this->held == v.major; }
+  bool operator==(const U& v) const { return this.held == v.major; }
 };
 ModVersion version(int major, int minor)
 {

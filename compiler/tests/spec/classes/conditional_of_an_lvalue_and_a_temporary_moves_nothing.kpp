@@ -4,9 +4,9 @@ struct Counted
   static int copied, moved, destroyed;
   int value;
   Counted(int value) : value(value) {}
-  Counted(const Counted& other) : value(other.value) { copied++; }
-  Counted(Counted&& other) : value(other.value) { moved++; }
-  ~Counted() { destroyed++; }
+  Counted(const Counted& other) : value(other.value) { This::copied++; }
+  Counted(Counted&& other) : value(other.value) { This::moved++; }
+  ~Counted() { This::destroyed++; }
 };
 int Counted::copied = 0;
 int Counted::moved = 0;

@@ -9,7 +9,7 @@ struct E
 struct U
 {
   int v = 2;
-  operator int&() { printf("U>int& "); return v; }
+  operator int&() { printf("U>int& "); return this.v; }
   implicit operator unsigned() const { printf("U>unsigned "); return 3u; }
 };
 struct A

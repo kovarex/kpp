@@ -5,14 +5,14 @@ template<class D> class Counter
 {
 public:
   static int made;
-  Counter() { ++made; }
-  static int count() { return made; }
+  Counter() { ++This::made; }
+  static int count() { return This::made; }
 };
 template<class D> int Counter<D>::made = 0;
 template<class D> class Named
 {
 public:
-  const char* name() const { return static_cast<const D*>(this)->label(); }
+  const char* name() const { return static_cast<const D*>(&this)->label(); }
 };
 template<class A, class B> class Pair2
 {

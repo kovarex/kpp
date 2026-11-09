@@ -7,9 +7,9 @@ struct Entity
 struct Pointer
 {
   implicit Pointer(Entity* entity) : entity(entity) {}
-  operator bool() const { return this->entity != nullptr; }
+  operator bool() const { return this.entity != nullptr; }
   template<typename T>
-  implicit operator T() const { return static_cast<T>(this->entity); }
+  implicit operator T() const { return static_cast<T>(this.entity); }
   Entity* entity = nullptr;
 };
 int take(Entity* e) { return e ? 1 : 0; }

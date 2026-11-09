@@ -5,19 +5,19 @@ class Prototype
 public:
   int power = 10;
   virtual ~Prototype() {}
-  virtual int maximumPower() const { return this->power; }
-  int plain() const { return this->power + 1; }
+  virtual int maximumPower() const { return this.power; }
+  int plain() const { return this.power + 1; }
 };
 class Accumulator : public Prototype
 {
 public:
-  int maximumPower() const override { return this->power * 3; }
+  int maximumPower() const override { return this.power * 3; }
 };
 class Named
 {
 public:
   int id = 4;
-  int getId() const { return this->id; }
+  int getId() const { return this.id; }
 };
 class Both : public Prototype, public Named
 {

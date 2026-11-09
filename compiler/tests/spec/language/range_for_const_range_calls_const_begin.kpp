@@ -5,10 +5,10 @@ struct Triple
   int values[3] = {1, 2, 3};
   mutable int constCalls = 0;
   int mutableCalls = 0;
-  int* begin() { ++mutableCalls; return values; }
-  int* end() { ++mutableCalls; return values + 3; }
-  const int* begin() const { ++constCalls; return values; }
-  const int* end() const { ++constCalls; return values + 3; }
+  int* begin() { ++this.mutableCalls; return this.values; }
+  int* end() { ++this.mutableCalls; return this.values + 3; }
+  const int* begin() const { ++this.constCalls; return this.values; }
+  const int* end() const { ++this.constCalls; return this.values + 3; }
 };
 int sumOf(const Triple& numbers)
 {

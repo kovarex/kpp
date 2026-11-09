@@ -21,7 +21,7 @@ struct Fixed
 {
   int whole;
   int fraction;
-  constexpr int total() const { return whole * 100 + fraction; }
+  constexpr int total() const { return this.whole * 100 + this.fraction; }
 };
 template<Fixed F>
 int scaled() { return F.whole * 100 + F.fraction; }

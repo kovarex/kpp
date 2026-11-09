@@ -10,21 +10,21 @@ public:
   public:
     int w = 2;
     static This make() { This i; i.w = 20; return i; }
-    int twice() const { This copy = *this; return copy.w * 2; }
+    int twice() const { This copy = this; return copy.w * 2; }
   };
-  This& self() { return *this; }
+  This& self() { return this; }
   static int size() { return (int)sizeof(This); }
   int sum(const This& other) const;
-  template<class U> U as() const { return U(this->v); }
-  auto next() const -> This { This n = *this; n.v += 1; return n; }
-  This* address() { return this; }
-  bool operator==(const This& o) const { return v == o.v; }
-  This operator+(const This& o) const { This r; r.v = v + o.v; return r; }
+  template<class U> U as() const { return U(this.v); }
+  auto next() const -> This { This n = this; n.v += 1; return n; }
+  This* address() { return &this; }
+  bool operator==(const This& o) const { return this.v == o.v; }
+  This operator+(const This& o) const { This r; r.v = this.v + o.v; return r; }
   Outer() = default;
   Outer(This&& o) : v(o.v + 100) {}
   Outer(const This& o) = default;
 };
-int Outer::sum(const This& other) const { This mine = *this; return mine.v + other.v; }
+int Outer::sum(const This& other) const { This mine = this; return mine.v + other.v; }
 template<class T>
 class Box
 {
@@ -38,7 +38,7 @@ public:
   };
   Node node;
   static This of(T x) { This b; b.value = x; return b; }
-  This with(T x) const { return of(x); }
+  This with(T x) const { return This::of(x); }
 };
 class Base
 {
@@ -50,13 +50,13 @@ class Derived : public Base
 {
 public:
   int d = 0;
-  int kinds() const { return kind() * 10 + (sizeof(This) == 2 * sizeof(int) ? 1 : 2); }
+  int kinds() const { return this.kind() * 10 + (sizeof(This) == 2 * sizeof(int) ? 1 : 2); }
 };
 template<class D> class Counter
 {
 public:
   static int made;
-  Counter() { ++made; }
+  Counter() { ++This::made; }
 };
 template<class D> int Counter<D>::made = 0;
 class Widget : public Counter<Widget>
@@ -73,7 +73,7 @@ int local()
   {
   public:
     int x = 7;
-    This doubled() const { This d; d.x = x * 2; return d; }
+    This doubled() const { This d; d.x = this.x * 2; return d; }
   };
   Local l;
   return l.doubled().x;

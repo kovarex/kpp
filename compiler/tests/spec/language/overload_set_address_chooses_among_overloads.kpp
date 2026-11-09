@@ -15,8 +15,8 @@ struct Handlers
 {
   int controllerCount = 0;
   int commonCount = 0;
-  void add(int, ControllerAction) { this->controllerCount += 1; }
-  void add(int, CommonAction) { this->commonCount += 1; }
+  void add(int, ControllerAction) { this.controllerCount += 1; }
+  void add(int, CommonAction) { this.commonCount += 1; }
 };
 struct Handler
 {

@@ -3,12 +3,12 @@
 struct A
 {
   int a = 1;
-  int fa() { return this->a; }
+  int fa() { return this.a; }
 };
 struct B
 {
   int b = 2;
-  int fb() { return this->b; }
+  int fb() { return this.b; }
 };
 struct C : A, B
 {

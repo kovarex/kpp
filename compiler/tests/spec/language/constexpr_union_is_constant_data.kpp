@@ -34,7 +34,7 @@ struct Packed
     };
     char chars[12];
   };
-  constexpr Packed(int n) { this->length = n; this->capacity = 5; this->flag = -1; }
+  constexpr Packed(int n) { this.length = n; this.capacity = 5; this.flag = -1; }
 };
 
 int zero = 0; // (no constant: the globals that read it are built at startup, in this file's order)

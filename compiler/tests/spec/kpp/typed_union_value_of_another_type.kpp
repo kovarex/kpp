@@ -9,18 +9,18 @@ public:
       throw RuntimeError("no");
     println("constructed ", raw);
   }
-  Fixed(Fixed&& other) noexcept : raw(other.raw) { println("moved ", raw); }
+  Fixed(Fixed&& other) noexcept : raw(other.raw) { println("moved ", this.raw); }
   Fixed& operator=(Fixed&& other) noexcept
   {
-    raw = other.raw;
-    println("move assigned ", raw);
-    return *this;
+    this.raw = other.raw;
+    println("move assigned ", this.raw);
+    return this;
   }
   Fixed& operator=(int whole)
   {
-    raw = whole * 100;
+    this.raw = whole * 100;
     println("assigned ", whole);
-    return *this;
+    return this;
   }
   int raw;
 };

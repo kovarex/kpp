@@ -101,7 +101,7 @@ template<class T> struct Box
 {
   T value = 1;
   when (config::tracing) int extra = 0;
-  int get() { return value + 1; }
+  int get() { return this.value + 1; }
 };
 int shown() { return 5; }
 int main()
@@ -123,7 +123,7 @@ template<class T> struct Box
 {
   T value = 1;
   when (config::tracing) int extra = 0;
-  int get() { return value + 10; }
+  int get() { return this.value + 10; }
 };
 int shown() { return 5; }
 int main()
@@ -145,7 +145,7 @@ template<class T> struct Box
 {
   T value = 1;
   when (config::tracing) int extra = 0;
-  int get() { return value + 10; }
+  int get() { return this.value + 10; }
 };
 int shown() { return 5; }
 int main()

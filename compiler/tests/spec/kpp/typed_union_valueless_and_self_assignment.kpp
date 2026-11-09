@@ -6,11 +6,11 @@ struct Noisy
   Noisy(const char* t) : s(t) {}
   Noisy(const Noisy& o) : s(o.s)
   {
-    if (s == "boom")
+    if (this.s == "boom")
       throw 1;
   }
-  bool operator==(const Noisy& o) const { return s == o.s; }
-  bool operator<(const Noisy& o) const { return s < o.s; }
+  bool operator==(const Noisy& o) const { return this.s == o.s; }
+  bool operator<(const Noisy& o) const { return this.s < o.s; }
 };
 union enum U : u8
 {

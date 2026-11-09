@@ -16,7 +16,7 @@ class Handle
 public:
   implicit Handle(Entity* entity) : entity(entity) {}
   template <class T> requires isPointer<T>
-  implicit operator T() const { return dynamic_cast<T>(this->entity); }
+  implicit operator T() const { return dynamic_cast<T>(this.entity); }
   Entity* entity = nullptr;
 };
 template <class T>

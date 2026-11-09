@@ -11,12 +11,12 @@ public:
   {
     if (i == failAt)
       throw i;
-    print("+", id, " ");
+    print("+", this.id, " ");
     ++built;
   }
   ~Piece()
   {
-    print("-", id, " ");
+    print("-", this.id, " ");
     --built;
   }
 };

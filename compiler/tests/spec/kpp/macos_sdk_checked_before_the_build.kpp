@@ -2,9 +2,9 @@
 // target: macos (a Mach-O program: built, not run, by run_spec.py --target macos)
 // kpp: --no-std --target arm64-apple-macosx12.0 --sysroot {here}/macos_sdk_checked_before_the_build.sdk
 extern "C" int printf(const char* format, ...);
-template<class T> struct Box { T v; T twice() const { return v * 2; } };
+template<class T> struct Box { T v; T twice() const { return this.v * 2; } };
 class Shape { public: virtual int area() const { return 0; } virtual ~Shape() {} };
-class Square : public Shape { public: int s = 3; int area() const override { return s * s; } };
+class Square : public Shape { public: int s = 3; int area() const override { return this.s * this.s; } };
 thread_local int counter = 4;
 int main()
 {

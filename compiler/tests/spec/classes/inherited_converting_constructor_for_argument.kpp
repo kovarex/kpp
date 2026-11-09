@@ -26,7 +26,7 @@ class SignalFilter : public Filter<SignalIdBase>
 public:
   using super = Filter<SignalIdBase>;
   using super::super;
-  SignalFilter(int raw) { this->baseId.value = raw; }
+  SignalFilter(int raw) { this.baseId.value = raw; }
 };
 class Holder
 {

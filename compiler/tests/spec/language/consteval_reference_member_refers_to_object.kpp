@@ -5,8 +5,8 @@ struct View
 {
   const int& ref;
   View(const int& r) : ref(r) {}
-  int get() const { return this->ref; }
-  int alone() const { return ref; }
+  int get() const { return this.ref; }
+  int alone() const { return this.ref; }
 };
 struct Aggregate
 {
@@ -21,7 +21,7 @@ struct Writer
 {
   int& r;
   Writer(int& x) : r(x) {}
-  void set() { this->r = 8; }
+  void set() { this.r = 8; }
 };
 struct PointerRef
 {

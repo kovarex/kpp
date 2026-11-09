@@ -4,11 +4,11 @@ struct Bits
 {
   uint32_t a : N;
   uint32_t b : 32 - N;
-  uint32_t sum() const { return a + b; }
+  uint32_t sum() const { return this.a + this.b; }
   void bump()
   {
-    ++a;
-    b += 2;
+    ++this.a;
+    this.b += 2;
   }
 };
 

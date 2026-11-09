@@ -11,9 +11,9 @@ enum class Mode : uint8_t { Normal, Forced };
 struct Parameters
 {
   template<typename... Args>
-  Parameters(Args&&... args) { (this->load(args), ...); }
-  void load(DragInfo info) { this->start = info.start; this->on = info.drag.on; }
-  void load(Mode mode) { this->mode = mode; }
+  Parameters(Args&&... args) { (this.load(args), ...); }
+  void load(DragInfo info) { this.start = info.start; this.on = info.drag.on; }
+  void load(Mode mode) { this.mode = mode; }
   int start = 0;
   bool on = false;
   Mode mode = Mode::Normal;

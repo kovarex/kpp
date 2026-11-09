@@ -4,8 +4,8 @@ struct Arr
 {
   T items[N]{};
   constexpr int size() const { return N; }
-  constexpr int twice() const { return size() * 2; }
-  constexpr T first() const { return items[0]; }
+  constexpr int twice() const { return this.size() * 2; }
+  constexpr T first() const { return this.items[0]; }
 };
 int useInt() { Arr<int, 3> a; return a.twice() + a.size(); }
 int useChar() { Arr<char, 5> a; return a.twice() + int(a.first()); }

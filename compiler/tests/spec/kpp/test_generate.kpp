@@ -9,7 +9,7 @@ suite Saves
   {
     Vector<String> names{"tutorial", "space-age"};
     for (const String& name : names)
-      addTest(name, [name] { check(name.size() > 0); });
+      this.addTest(name, [name] { check(name.size() > 0); });
   }
 
   test Last { check(true); }

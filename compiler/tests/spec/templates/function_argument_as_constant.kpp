@@ -6,7 +6,7 @@ template<int (*fold)(int, int), int Scale>
 struct Expr
 {
   static constexpr auto FOLD = fold;
-  static constexpr int apply(int a, int b) { return FOLD(a, b) * Scale; }
+  static constexpr int apply(int a, int b) { return This::FOLD(a, b) * Scale; }
 };
 static_assert(Expr<add, 3>::FOLD == &add && Expr<mul, 1>::FOLD != &add);
 static_assert(Expr<add, 3>::apply(2, 3) == 15 && Expr<mul, 2>::apply(2, 3) == 12);

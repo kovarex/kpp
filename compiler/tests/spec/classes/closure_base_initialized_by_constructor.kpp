@@ -8,7 +8,7 @@ struct First
 template<class F> struct ByValue : F
 {
   ByValue(F f) : F(f) {}
-  int twice() { return (*this)() * 2; }
+  int twice() { return (this)() * 2; }
 };
 template<class F> struct ByReference : First, F
 {

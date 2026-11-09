@@ -5,13 +5,13 @@ struct Counter
   int value = 0;
   Counter& operator++()
   {
-    ++this->value;
-    return *this;
+    ++this.value;
+    return this;
   }
   Counter operator++(int)
   {
-    Counter before = *this;
-    ++this->value;
+    Counter before = this;
+    ++this.value;
     return before;
   }
 };

@@ -16,7 +16,7 @@ struct TrivialSized
 struct Destructed
 {
   int v = 1;
-  ~Destructed() { println("~", v); }
+  ~Destructed() { println("~", this.v); }
   void* operator new[](size_t size) { println("destructed new[] ", size); return malloc(size); }
   void operator delete[](void* p, size_t size) { println("destructed delete[] ", size); free(p); }
 };

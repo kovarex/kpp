@@ -1,0 +1,23 @@
+// spec: `--this-reference-warnings` says nothing about `this` in an enumeration's method: it is the enumeration's value in both meanings, and `&this` would not compile
+// kpp: --this-reference-warnings
+// this: pointer
+// no-warning: this_reference_warnings_skip_an_enum_method.kpp:
+enum class Direction
+{
+  { North, South }
+  bool isNorth() const { return this == Direction::North; }
+  int number() const
+  {
+    switch (this)
+    {
+      case Direction::North: return 1;
+      default: return 2;
+    }
+  }
+};
+int main()
+{
+  Direction d = Direction::North;
+  println(d.isNorth(), " ", d.number());
+  return 0;
+}

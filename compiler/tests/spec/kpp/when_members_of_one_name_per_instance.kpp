@@ -11,8 +11,8 @@ struct Store
 {
   when (isTriviallyCopyable<T>) T copy;
   when (!isTriviallyCopyable<T>) short copy;
-  int width() const { return int(sizeof(copy)); }
-  void set(int v) { copy = v; }
+  int width() const { return int(sizeof(this.copy)); }
+  void set(int v) { this.copy = v; }
 };
 
 int main()

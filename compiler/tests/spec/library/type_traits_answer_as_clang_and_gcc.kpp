@@ -15,9 +15,9 @@ struct UserDtor { int a; ~UserDtor() {} };
 struct DefDtor { int a; ~DefDtor() = default; };
 struct UserCopy { int a; UserCopy() {} UserCopy(const UserCopy& o) : a(o.a) {} };
 struct DefCopy { int a; DefCopy() = default; DefCopy(const DefCopy&) = default; };
-struct UserAssign { int a; UserAssign& operator=(const UserAssign& o) { a = o.a; return *this; } };
+struct UserAssign { int a; UserAssign& operator=(const UserAssign& o) { this.a = o.a; return this; } };
 struct UserMove { int a; UserMove() {} UserMove(UserMove&& o) : a(o.a) {} };
-struct NoexMove { int a; NoexMove() {} NoexMove(NoexMove&& o) noexcept : a(o.a) {} NoexMove& operator=(NoexMove&& o) noexcept { a = o.a; return *this; } };
+struct NoexMove { int a; NoexMove() {} NoexMove(NoexMove&& o) noexcept : a(o.a) {} NoexMove& operator=(NoexMove&& o) noexcept { this.a = o.a; return this; } };
 struct MoveOnly { int a; MoveOnly() = default; MoveOnly(const MoveOnly&) = delete; MoveOnly(MoveOnly&&) = default; MoveOnly& operator=(const MoveOnly&) = delete; MoveOnly& operator=(MoveOnly&&) = default; };
 struct NoCopy { int a; NoCopy() = default; NoCopy(const NoCopy&) = delete; NoCopy& operator=(const NoCopy&) = delete; };
 struct NoDefault { int a; NoDefault() = delete; };
@@ -52,7 +52,7 @@ struct CopyFromNonConst { CopyFromNonConst() {} CopyFromNonConst(CopyFromNonCons
 struct ConvOp { implicit operator int() const { return 1; } };
 struct ExplicitConv { operator int() const { return 1; } };
 struct NoexDefault { int a; NoexDefault() noexcept {} };
-struct AssignOnlyInt { int a; AssignOnlyInt& operator=(int x) { a = x; return *this; } };
+struct AssignOnlyInt { int a; AssignOnlyInt& operator=(int x) { this.a = x; return this; } };
 template<class T> struct Tmpl { T t; };
 template<class T> void row(const char* n)
 {

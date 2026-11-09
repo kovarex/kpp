@@ -6,8 +6,8 @@ extern "C" void exit(int code);
 struct Tr
 {
   const char* n;
-  Tr(const char* name) : n(name) { printf("ctor %s\n", n); }
-  ~Tr() { printf("dtor %s\n", n); }
+  Tr(const char* name) : n(name) { printf("ctor %s\n", this.n); }
+  ~Tr() { printf("dtor %s\n", this.n); }
 };
 Tr g1{"g1"};
 Tr& fnStatic() { static Tr t("fn static"); return t; }

@@ -16,7 +16,7 @@ template<typename T, typename U> struct P { using type = char; static constexpr 
 template<typename T> struct P<T, T*> { using type = double; static constexpr int k = 20; };
 template<int N> struct G : E<N>
 {
-  int viaThis() const { return this->k * 1000 + this->kk; }
+  int viaThis() const { return this.k * 1000 + this.kk; }
   int viaClass() const { return int(sizeof(typename G::type)) * 10 + G::k; }
   int viaBase() const { return int(sizeof(typename E<N>::type)) * 10 + E<N>::k; }
 };

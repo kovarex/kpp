@@ -10,15 +10,15 @@ struct Connector : Mask
   bool setup = false;
   Connector& operator=(const Mask& other)
   {
-    this->Mask::operator=(other);
-    this->setup = true;
-    return *this;
+    this.Mask::operator=(other);
+    this.setup = true;
+    return this;
   }
   Connector& operator=(const Connector& other)
   {
-    this->Mask::operator=(other);
-    this->setup = other.setup;
-    return *this;
+    this.Mask::operator=(other);
+    this.setup = other.setup;
+    return this;
   }
 };
 int main()

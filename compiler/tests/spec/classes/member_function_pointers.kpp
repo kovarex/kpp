@@ -3,8 +3,8 @@
 struct Calc
 {
   int base = 10;
-  int add(int x) const { return this->base + x; }
-  int mul(int x) const { return this->base * x; }
+  int add(int x) const { return this.base + x; }
+  int mul(int x) const { return this.base * x; }
 };
 int main()
 {

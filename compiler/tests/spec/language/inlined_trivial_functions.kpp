@@ -2,12 +2,12 @@
 struct Counter
 {
   int count = 0;
-  int get() const { return this->count; }
-  void bump() { ++this->count; }
-  void set(int v) { this->count = v; }
-  int& ref() { return this->count; }
-  double half() const { return this->count / 2.0; }
-  bool same(const Counter& other) const { return this->count == other.count; }
+  int get() const { return this.count; }
+  void bump() { ++this.count; }
+  void set(int v) { this.count = v; }
+  int& ref() { return this.count; }
+  double half() const { return this.count / 2.0; }
+  bool same(const Counter& other) const { return this.count == other.count; }
 };
 class Other { public: int pad = 7; virtual ~Other() {} };
 class Both : public Other, public Counter { public: };
@@ -16,11 +16,11 @@ struct Holder
 {
   T* items = nullptr;
   int length = 0;
-  T& operator[](int i) { return this->items[i]; }
-  T* operator->() { return this->items; }
-  operator bool() const { return this->items != nullptr; }
-  int size() const { return length; }
-  bool empty() const { return length == 0; }
+  T& operator[](int i) { return this.items[i]; }
+  T* operator->() { return this.items; }
+  operator bool() const { return this.items != nullptr; }
+  int size() const { return this.length; }
+  bool empty() const { return this.length == 0; }
   String describe() const { return String("holder"); }
 };
 int order = 0;

@@ -3,10 +3,10 @@
 struct T
 {
   int id;
-  T(int i) : id(i) { println("ctor ", id); }
-  T(const T& o) : id(o.id + 100) { println("copy ", id); }
-  ~T() { println("dtor ", id); }
-  int get() const { return id; }
+  T(int i) : id(i) { println("ctor ", this.id); }
+  T(const T& o) : id(o.id + 100) { println("copy ", this.id); }
+  ~T() { println("dtor ", this.id); }
+  int get() const { return this.id; }
 };
 struct Holder { const T& ref; };
 struct Outer { Holder h; int n; };

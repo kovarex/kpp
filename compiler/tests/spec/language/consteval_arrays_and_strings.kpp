@@ -4,7 +4,7 @@ enum class Variant { Inner, Outer, Side, Count };
 struct Names
 {
   constexpr static inline Array<StringView, size_t(Variant::Count)> names = {"inner", "outer", "side"};
-  static_assert(!names[size_t(Variant::Count) - 1].empty());
+  static_assert(!This::names[size_t(Variant::Count) - 1].empty());
 };
 constexpr int primes[] = {2, 3, 5, 7, 11};
 constexpr Array<int, 4> squares = {1, 4, 9, 16};

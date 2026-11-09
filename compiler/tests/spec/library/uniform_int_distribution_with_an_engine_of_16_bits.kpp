@@ -7,8 +7,8 @@ struct Small
   static constexpr u32 max() { return 0xFFFF; }
   u32 operator()()
   {
-    this->state = this->state * 1103515245u + 12345u;
-    return (this->state >> 8) & 0xFFFF;
+    this.state = this.state * 1103515245u + 12345u;
+    return (this.state >> 8) & 0xFFFF;
   }
 };
 int main()

@@ -12,8 +12,8 @@ struct Named
 struct Bag
 {
   int items[2] = {1, 2};
-  const int* begin() const { return this->items; }
-  const int* end() const { return this->items + 2; }
+  const int* begin() const { return this.items; }
+  const int* end() const { return this.items + 2; }
 };
 
 template<class T> requires has_str<T>

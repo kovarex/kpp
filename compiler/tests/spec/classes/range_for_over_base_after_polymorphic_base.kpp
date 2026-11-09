@@ -13,11 +13,11 @@ public:
   int sum()
   {
     int s = 0;
-    for (T v : *this)
+    for (T v : this)
       s += v;
     return s;
   }
-  void clearBase() override { this->clear(); }
+  void clearBase() override { this.clear(); }
 };
 int main()
 {

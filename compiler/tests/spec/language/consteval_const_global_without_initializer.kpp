@@ -3,7 +3,7 @@
 extern "C" import "stdio.h";
 struct Tag {};
 struct Defaults { int a = 4; int b = 5; };
-struct Counted { int a; Counted() { a = 7; } };
+struct Counted { int a; Counted() { this.a = 7; } };
 const Tag tag;
 const Defaults defaults;
 const Counted counted;

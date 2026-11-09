@@ -11,7 +11,7 @@ int twice(const Vector<T>& values, int scale = 1)
 template int twice<int>(const Vector<int>& values, int scale);
 template int twice<double>(const Vector<double>& values, int scale);
 template<class T>
-struct Box { T value; T get() const { return this->value; } };
+struct Box { T value; T get() const { return this.value; } };
 template struct Box<int>;
 int main()
 {

@@ -13,13 +13,13 @@ public:
   {
   public:
     void* p = nullptr;
-    void* parent() const { return this->p; }
+    void* parent() const { return this.p; }
   };
   using HookParentHolder = Conditional<ParentAware, Normal, Empty>;
   class Hook : public HookParentHolder
   {
   public:
-    bool linked() const { return this->parent() != nullptr; }
+    bool linked() const { return this.parent() != nullptr; }
   };
   class DirectHook : public Conditional<ParentAware, Normal, Empty> {};
 };

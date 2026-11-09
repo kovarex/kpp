@@ -4,7 +4,7 @@ struct Chunk
 {
   int x = 0;
   Chunk(int x) : x(x) {}
-  bool operator<(const Chunk& other) const { return this->x < other.x; }
+  bool operator<(const Chunk& other) const { return this.x < other.x; }
 };
 int main()
 {

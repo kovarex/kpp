@@ -7,10 +7,10 @@ struct T
   constexpr T(const T&) : how(1) {}
   constexpr T& operator=(const T& o)
   {
-    how = this == &o ? 50 : o.how + 100;
-    return *this;
+    this.how = &this == &o ? 50 : o.how + 100;
+    return this;
   }
-  constexpr bool operator==(const T& o) const { return this == &o; }
+  constexpr bool operator==(const T& o) const { return &this == &o; }
 };
 constexpr Vector<T> nine()
 {

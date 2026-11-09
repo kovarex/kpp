@@ -6,7 +6,7 @@ public:
   Base() = default;
   Base(int a, int b) : a(a), b(b) {}
   strong_ordering operator<=>(const Base&) const = default;
-  operator bool() const { return this->a != 0; }
+  operator bool() const { return this.a != 0; }
   int a = 0;
   int b = 0;
 };
@@ -16,13 +16,13 @@ class Derived : public Base
 public:
   Derived(int a, int b, int source) : Base(a, b), source(source) {}
   bool operator==(const Derived& other) const;
-  bool operator==(const Base& other) const { return *(const Base*)(this) == other; }
+  bool operator==(const Base& other) const { return *(const Base*)(&this) == other; }
   bool operator<(const Derived& other) const;
   int source = 0;
 };
 bool Derived::operator==(const Derived& other) const
 {
-  return super::operator==(other) && this->source == other.source;
+  return super::operator==(other) && this.source == other.source;
 }
 bool Derived::operator<(const Derived& other) const
 {

@@ -19,7 +19,7 @@ T* Provider::allocate()
 template<>
 inline B* Provider::allocate()
 {
-  return &this->b;
+  return &this.b;
 }
 int main()
 {

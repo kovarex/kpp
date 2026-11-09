@@ -12,7 +12,7 @@ namespace ext
 {
   struct Wrapped : base::Text
   {
-    Wrapped() { kind = 2; }
+    Wrapped() { this.kind = 2; }
   };
   Wrapped operator/(const base::Text& a, const Wrapped& b) { return Wrapped(); }
 }

@@ -13,7 +13,7 @@ Rect::Rect() : width(7), height(1) {}
 Rect::Rect(int x, int y, int w, int h) : width(w), height(h), left(x) {}
 int Rect::area() const
 {
-  return this->width * this->height;
+  return this.width * this.height;
 }
 constexpr Rect full = Rect(-1, 0, 3);
 constexpr Rect fresh = Rect();

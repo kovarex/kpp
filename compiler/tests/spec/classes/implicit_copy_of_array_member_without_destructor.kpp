@@ -9,15 +9,15 @@ struct Counted
   Counted(Counted&& o) : copies(o.copies), moves(o.moves + 1) {}
   Counted& operator=(const Counted& o)
   {
-    copies = o.copies + 10;
-    moves = o.moves;
-    return *this;
+    this.copies = o.copies + 10;
+    this.moves = o.moves;
+    return this;
   }
   Counted& operator=(Counted&& o)
   {
-    copies = o.copies;
-    moves = o.moves + 1;
-    return *this;
+    this.copies = o.copies;
+    this.moves = o.moves + 1;
+    return this;
   }
 };
 struct Arr { Counted cs[2]; };

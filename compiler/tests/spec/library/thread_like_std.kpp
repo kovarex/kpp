@@ -4,7 +4,7 @@ struct Worker
 {
   int base = 10;
   Atomic<int> result;
-  void loop(int a, int b) { this->result.store(this->base + a + b); }
+  void loop(int a, int b) { this.result.store(this.base + a + b); }
 };
 Atomic<int> sum;
 Atomic<Thread::Id> seen;

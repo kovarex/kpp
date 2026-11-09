@@ -4,7 +4,7 @@ struct Item
 {
   int value = 7;
   Item() { println("make"); }
-  ~Item() { println("drop ", this->value); }
+  ~Item() { println("drop ", this.value); }
 };
 int main()
 {

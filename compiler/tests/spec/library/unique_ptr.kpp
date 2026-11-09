@@ -9,7 +9,7 @@ struct Closer
   int* counter = &closed;
   void operator()(Res* r) const
   {
-    ++*this->counter;
+    ++*this.counter;
     delete r;
   }
 };

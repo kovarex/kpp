@@ -17,7 +17,7 @@ struct Used
 struct Converts
 {
   int v = 3;
-  implicit operator int() const { return v; }
+  implicit operator int() const { return this.v; }
 };
 struct Asked
 {
@@ -33,7 +33,7 @@ struct Never
 {
   int v;
   implicit Never(char c) : v(c) {}
-  implicit operator bool() const { return v != 0; }
+  implicit operator bool() const { return this.v != 0; }
 };
 template<class T> struct Box
 {

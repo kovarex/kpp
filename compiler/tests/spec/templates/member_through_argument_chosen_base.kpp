@@ -4,7 +4,7 @@ template<class T>
 struct Value
 {
   Value() {}
-  const T& value() const { return this->storage; }
+  const T& value() const { return this.storage; }
   T storage{};
 };
 

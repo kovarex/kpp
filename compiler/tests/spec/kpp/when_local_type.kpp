@@ -7,7 +7,7 @@ int main()
   when (config::debug) struct Stats
   {
     int hits = 0;
-    int doubled() const { return checkedTwice(hits); }
+    int doubled() const { return checkedTwice(this.hits); }
   };
   when (config::debug) Stats stats;
   for (int i = 0; i < 3; ++i)

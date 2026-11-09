@@ -1,9 +1,9 @@
 // spec: a reference bound through a conversion operator is what the operator gives ([dcl.init.ref] 5): the lvalue its reference result names (`int& r = object;` with `operator int&()`), else a temporary of its value (`const long long& r = object;`, `const int& r = withDouble`). Before, the reference bound the object itself and read its first bytes as the type: 1 for 41, 4.9e-324 for 2.5, a silent wrong answer. clang's output
 // found comparing kpp with clang (thread I's static initialization batteries)
 extern "C" int printf(const char* format, ...);
-struct C1 { int pad = 1; int v = 41; implicit operator int&() { return v; } };
+struct C1 { int pad = 1; int v = 41; implicit operator int&() { return this.v; } };
 struct C2 { int pad = 1; implicit operator int() const { return 5; } };
-struct C3 { int pad = 1; double d = 2.5; implicit operator double&() { return d; } };
+struct C3 { int pad = 1; double d = 2.5; implicit operator double&() { return this.d; } };
 struct Bx { int v; implicit Bx(int x) : v(x + 1) {} };
 int main()
 {

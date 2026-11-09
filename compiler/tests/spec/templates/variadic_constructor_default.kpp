@@ -6,10 +6,10 @@ class OnHeap
 public:
   template<typename... Args>
   OnHeap(Args&&... args) : value(new InnerType(::forward<Args>(args)...)) {}
-  ~OnHeap() { delete this->value; }
+  ~OnHeap() { delete this.value; }
   OnHeap(const OnHeap&) = delete;
   OnHeap(OnHeap&& other) : value(other.value) { other.value = nullptr; }
-  InnerType& operator*() { return *this->value; }
+  InnerType& operator*() { return *this.value; }
 private:
   InnerType* value;
 };

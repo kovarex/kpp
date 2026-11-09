@@ -6,7 +6,7 @@ struct Pos
   int y = 0;
   Pos() = default;
   Pos(int x, int y) : x(x), y(y) {}
-  Pos operator+(const Pos& o) const { return Pos(this->x + o.x, this->y + o.y); }
+  Pos operator+(const Pos& o) const { return Pos(this.x + o.x, this.y + o.y); }
 };
 struct Box
 {
@@ -26,7 +26,7 @@ struct Unit
   Box box;
   bool check(int wanted) const
   {
-    return anyOf(scan(this->box), [wanted](const Pos& p) { return p.x + p.y * 10 == wanted; });
+    return anyOf(scan(this.box), [wanted](const Pos& p) { return p.x + p.y * 10 == wanted; });
   }
 };
 inline auto scan(const Pos& leftTop, const Pos& rightBottom)

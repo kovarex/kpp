@@ -4,8 +4,8 @@ template<typename... Args>
 struct Sig
 {
   Vector<Function<void(Args...)>> handlers;
-  void connect(Function<void(Args...)> f) { this->handlers.push_back(move(f)); }
-  void operator()(Args... args) { for (auto& f : this->handlers) f(args...); }
+  void connect(Function<void(Args...)> f) { this.handlers.push_back(move(f)); }
+  void operator()(Args... args) { for (auto& f : this.handlers) f(args...); }
 };
 struct Holder
 {

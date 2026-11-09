@@ -16,13 +16,13 @@ class Derived : public Base
 {
 public:
   void (*call)(int) = nullptr;
-  void run() override { call(-1); }
+  void run() override { this.call(-1); }
 };
 
 class Implicit : public Derived
 {
 public:
-  void run() override { call(-2); } // (its base's is no test function; `override` is required, design.md 23b)
+  void run() override { this.call(-2); } // (its base's is no test function; `override` is required, design.md 23b)
 };
 
 int thrower()
@@ -42,7 +42,7 @@ test class Initialized
 {
 public:
   int value;
-  Initialized(int v) : value(checked(v)) { check(v != 2, "in the body"); }
+  Initialized(int v) : value(this.checked(v)) { check(v != 2, "in the body"); }
   int checked(int v) { check(v != 1, "in the initializer"); return v; }
 };
 

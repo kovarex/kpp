@@ -14,7 +14,7 @@ class Proto : public Template<Proto, int>
 public:
   using super = Template;
   using super::super;
-  int viaSuper() { super* s = this; return s->id; }
+  int viaSuper() { super* s = &this; return s->id; }
 };
 int main()
 {

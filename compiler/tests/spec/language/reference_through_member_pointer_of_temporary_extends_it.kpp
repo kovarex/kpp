@@ -4,9 +4,9 @@ extern "C" int printf(const char* format, ...);
 struct T
 {
   int id;
-  T(int i) : id(i) { printf("+%d ", id); }
-  T(const T& o) : id(o.id + 100) { printf("c%d ", id); }
-  ~T() { printf("-%d ", id); }
+  T(int i) : id(i) { printf("+%d ", this.id); }
+  T(const T& o) : id(o.id + 100) { printf("c%d ", this.id); }
+  ~T() { printf("-%d ", this.id); }
 };
 struct Wrap { T t; int n; };
 Wrap makeWrap(int i) { return Wrap{T(i), i * 10}; }

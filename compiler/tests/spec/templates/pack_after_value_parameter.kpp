@@ -30,7 +30,7 @@ public:
   template<class T, typename ... Args>
   static void loadValue(DeserialiserType& input, UniquePtr<T>& target, Args&&... args)
   {
-    loadUnique<T, ZeroHandling::KeepZeros>(input, target, ::forward<Args>(args)...);
+    This::loadUnique<T, ZeroHandling::KeepZeros>(input, target, ::forward<Args>(args)...);
   }
 };
 int main()

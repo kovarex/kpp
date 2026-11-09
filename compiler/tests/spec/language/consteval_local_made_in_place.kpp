@@ -9,22 +9,22 @@ struct Ring
 {
   Links sentinel;
   int length = 0;
-  Ring() { this->reset(); }
-  ~Ring() { this->clear(); }
+  Ring() { this.reset(); }
+  ~Ring() { this.clear(); }
   void reset()
   {
-    this->sentinel.prev = &this->sentinel;
-    this->sentinel.next = &this->sentinel;
-    this->length = 0;
+    this.sentinel.prev = &this.sentinel;
+    this.sentinel.next = &this.sentinel;
+    this.length = 0;
   }
   void clear()
   {
-    Links* node = this->sentinel.next;
-    while (node != &this->sentinel)
+    Links* node = this.sentinel.next;
+    while (node != &this.sentinel)
       node = node->next;
-    this->reset();
+    this.reset();
   }
-  bool empty() const { return this->sentinel.next == &this->sentinel; }
+  bool empty() const { return this.sentinel.next == &this.sentinel; }
 };
 constexpr int made()
 {

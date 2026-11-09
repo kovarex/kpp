@@ -5,7 +5,7 @@ struct Status
 {
   Tag tag;
   implicit Status(Tag t) : tag(t) {}
-  implicit operator Tag() const { return this->tag; }
+  implicit operator Tag() const { return this.tag; }
 };
 Status operator|(const Status& a, const Status& b) { return a.tag == Tag::B ? a : b; }
 Status operator~(const Status& a) { return a.tag == Tag::A ? Status(Tag::B) : Status(Tag::A); }

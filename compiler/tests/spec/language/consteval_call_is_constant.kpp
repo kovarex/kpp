@@ -16,7 +16,7 @@ struct Pattern
   int holes = 0;
   consteval implicit Pattern(const char* text) : text(text), holes(countBraces(text))
   {
-    if (holes > 3)
+    if (this.holes > 3)
       throw "too many holes";
   }
 };

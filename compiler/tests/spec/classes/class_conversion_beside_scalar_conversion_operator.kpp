@@ -9,8 +9,8 @@ public:
   constexpr Direction() : value(uint8_t(Direction::None)) {}
   implicit Direction(const RealOrientation& orientation) = delete;
   implicit constexpr Direction(Enum value) : value(uint8_t(value)) {}
-  implicit operator Enum() const { return Enum(this->value); }
-  operator bool() const { return this->value != uint8_t(Enum::None); }
+  implicit operator Enum() const { return Enum(this.value); }
+  operator bool() const { return this.value != uint8_t(Enum::None); }
   uint8_t value;
 };
 class RealOrientation
@@ -22,7 +22,7 @@ public:
   implicit RealOrientation(const Direction& direction) : orientation(float(direction.value) / 16.0f) {}
 };
 float use(RealOrientation o) { return o.orientation; }
-struct Collector { Direction direction = Direction::East; Direction getDirection() const { return this->direction; } };
+struct Collector { Direction direction = Direction::East; Direction getDirection() const { return this.direction; } };
 int main()
 {
   Collector c;

@@ -5,11 +5,11 @@ struct Version
   int major, minor;
   strong_ordering operator<=>(const Version& other) const
   {
-    if (this->major != other.major)
-      return this->major < other.major ? strong_ordering::less : strong_ordering::greater;
-    return this->minor <=> other.minor;
+    if (this.major != other.major)
+      return this.major < other.major ? strong_ordering::less : strong_ordering::greater;
+    return this.minor <=> other.minor;
   }
-  bool operator==(const Version& other) const { return (*this <=> other) == 0; }
+  bool operator==(const Version& other) const { return (this <=> other) == 0; }
 };
 struct Release
 {

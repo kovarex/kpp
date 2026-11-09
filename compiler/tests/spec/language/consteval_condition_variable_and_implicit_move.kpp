@@ -5,9 +5,9 @@ struct T
 {
   int id;
   int* log;
-  constexpr T(int i, int* l) : id(i), log(l) { *log = *log * 10 + 1; }
-  constexpr ~T() { *log = *log * 10 + 2; }
-  constexpr operator bool() const { return id % 2 != 0; }
+  constexpr T(int i, int* l) : id(i), log(l) { *this.log = *this.log * 10 + 1; }
+  constexpr ~T() { *this.log = *this.log * 10 + 2; }
+  constexpr operator bool() const { return this.id % 2 != 0; }
 };
 constexpr int whileBreaks() { int log = 0; int n = 1; while (T w = T(n, &log)) { n += 2; if (n > 3) break; } return log; }
 constexpr int whileEnds() { int log = 0; int n = 1; while (T w = T(n, &log)) n += 1; return log; }
@@ -19,8 +19,8 @@ struct L
   constexpr L(int i) : id(i) {}
   constexpr L(const L& o) : id(o.id) {}
   constexpr L(L&& o) : id(o.id) { o.id = -1; }
-  constexpr L& operator=(const L& o) { id = o.id; return *this; }
-  constexpr L& operator=(L&& o) { id = o.id; o.id = -1; return *this; }
+  constexpr L& operator=(const L& o) { this.id = o.id; return this; }
+  constexpr L& operator=(L&& o) { this.id = o.id; o.id = -1; return this; }
 };
 struct WithDestructor { L l; constexpr WithDestructor(int i) : l(i) {} constexpr ~WithDestructor() {} };
 struct WithCopy { L l; constexpr WithCopy(int i) : l(i) {} constexpr WithCopy(const WithCopy&) = default; constexpr WithCopy& operator=(const WithCopy&) = default; };

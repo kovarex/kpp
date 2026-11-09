@@ -1,23 +1,24 @@
 // spec: --this-warnings: an unqualified name that finds a data member or a member function is a warning, in a body, a lambda in it, an out-of-line member, a member initializer's argument, a default member initializer and a default argument, a static member's fix `This::x`, a member beside a global of its spelling says so; a dependent base's member is no bare name's (the global here); `this->x`, `C::x`, a local, an enumerator, a type, a member initializer's name and a parameter's or data member's type are not
+// this: pointer
 // kpp: --this-warnings
-// warning: this_warnings_mode.kpp:28: warning: value is a data member: write `this.value`, not `value`
-// no-warning: this_warnings_mode.kpp:31:
-// warning: this_warnings_mode.kpp:32: warning: created is a static member: write `This::created`, not `created`
-// warning: this_warnings_mode.kpp:33: warning: value is a data member: write `this.value`, not `value`
-// warning: this_warnings_mode.kpp:34: warning: current is a member function: write `this.current`, not `current`
-// no-warning: this_warnings_mode.kpp:35:
+// warning: this_warnings_mode.kpp:29: warning: value is a data member: write `this.value`, not `value`
+// no-warning: this_warnings_mode.kpp:32:
+// warning: this_warnings_mode.kpp:33: warning: created is a static member: write `This::created`, not `created`
+// warning: this_warnings_mode.kpp:34: warning: value is a data member: write `this.value`, not `value`
+// warning: this_warnings_mode.kpp:35: warning: current is a member function: write `this.current`, not `current`
 // no-warning: this_warnings_mode.kpp:36:
 // no-warning: this_warnings_mode.kpp:37:
-// warning: this_warnings_mode.kpp:38: warning: value is a data member: write `this.value`, not `value`
-// warning: this_warnings_mode.kpp:39: warning: created is a static member: write `This::created`, not `created`
-// warning: this_warnings_mode.kpp:43: warning: created is a static member: write `This::created`, not `created`
-// no-warning: this_warnings_mode.kpp:44:
+// no-warning: this_warnings_mode.kpp:38:
+// warning: this_warnings_mode.kpp:39: warning: value is a data member: write `this.value`, not `value`
+// warning: this_warnings_mode.kpp:40: warning: created is a static member: write `This::created`, not `created`
+// warning: this_warnings_mode.kpp:44: warning: created is a static member: write `This::created`, not `created`
 // no-warning: this_warnings_mode.kpp:45:
-// warning: this_warnings_mode.kpp:49: warning: value is a data member: write `this.value`, not `value`
-// no-warning: this_warnings_mode.kpp:57:
-// warning: this_warnings_mode.kpp:42: warning: levelOf is a member function (a bare levelOf will be the one around the class): write `this.levelOf`, not `levelOf`
-// warning: this_warnings_mode.kpp:63: warning: operator= is a member function: write `this.operator=`, not `operator=`
-// warning: this_warnings_mode.kpp:66: warning: fromPlain is a member function: write `this.fromPlain`, not `fromPlain`
+// no-warning: this_warnings_mode.kpp:46:
+// warning: this_warnings_mode.kpp:50: warning: value is a data member: write `this.value`, not `value`
+// no-warning: this_warnings_mode.kpp:58:
+// warning: this_warnings_mode.kpp:43: warning: levelOf is a member function (a bare levelOf will be the one around the class): write `this.levelOf`, not `levelOf`
+// warning: this_warnings_mode.kpp:64: warning: operator= is a member function: write `this.operator=`, not `operator=`
+// warning: this_warnings_mode.kpp:67: warning: fromPlain is a member function: write `this.fromPlain`, not `fromPlain`
 int shadeOf() { return 9; }
 int levelOf() { return 7; }
 class Counter

@@ -18,7 +18,7 @@ class Handle
   T* p;
 public:
   Handle(T* t) : p(t) {}
-  T* operator->() const { return p; }
+  T* operator->() const { return this.p; }
 };
 class Associated
 {

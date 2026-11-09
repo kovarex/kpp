@@ -18,9 +18,9 @@ static int pick(Loud) { return 2; }
 struct Settings
 {
   template<typename... Args>
-  Settings(Args&&... args) { (this->load(args), ...); }
-  void load(Fast fast) { this->fast = fast.value; }
-  void load(Loud loud) { this->loud = loud.value; }
+  Settings(Args&&... args) { (this.load(args), ...); }
+  void load(Fast fast) { this.fast = fast.value; }
+  void load(Loud loud) { this.loud = loud.value; }
   bool fast = false;
   bool loud = false;
 };

@@ -14,7 +14,7 @@ struct Fixed
     double local = d * 2;
     return twice(local);
   }
-  constexpr Fixed(double d) : value(T(check(d) * 64)) {}
+  constexpr Fixed(double d) : value(T(This::check(d) * 64)) {}
   T value;
 };
 static_assert(Fixed<int>(1.5).value == 384);

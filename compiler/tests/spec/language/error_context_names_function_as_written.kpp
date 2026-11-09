@@ -13,7 +13,7 @@ struct Probe
   {
     int* place = nullptr;
     int value = place;
-    return value * scale + this->base;
+    return value * scale + this.base;
   }
 };
 int owned(Item^& item)

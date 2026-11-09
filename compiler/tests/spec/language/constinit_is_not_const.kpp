@@ -2,7 +2,7 @@
 struct Config
 {
   static constexpr int base = 5;
-  static inline constinit int counter = base * 2;
+  static inline constinit int counter = This::base * 2;
 };
 constinit int global = 7;
 int main()

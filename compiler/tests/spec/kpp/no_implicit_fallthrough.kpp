@@ -5,7 +5,7 @@ struct Noisy
 {
   int v;
   Noisy(int v) : v(v) {}
-  ~Noisy() { destroyed += v; }
+  ~Noisy() { destroyed += this.v; }
 };
 int classify(int x)
 {

@@ -5,7 +5,7 @@ struct Id
 {
   int id;
   constexpr Id(int v) : id(v) {}
-  constexpr int get() const { return id; }
+  constexpr int get() const { return this.id; }
 };
 struct P : Id { constexpr P() : Id(1) {} };
 struct Q : Id { constexpr Q() : Id(2) {} };
@@ -13,7 +13,7 @@ struct Both : P, Q
 {
   constexpr int fields() const { return P::id * 10 + Q::id; }
   constexpr int calls() const { return P::get() * 10 + Q::get(); }
-  constexpr int arrow() const { return this->Q::id; }
+  constexpr int arrow() const { return this.Q::id; }
 };
 constexpr int atCompileTimeFields = Both{}.fields();
 constexpr int atCompileTimeCalls = Both{}.calls();

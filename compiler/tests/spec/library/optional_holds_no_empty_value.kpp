@@ -9,8 +9,8 @@ struct Counted
   Counted(const Counted& other) : value(other.value) { ++alive; }
   Counted& operator=(const Counted& other)
   {
-    this->value = other.value * 10;
-    return *this;
+    this.value = other.value * 10;
+    return this;
   }
   ~Counted() { --alive; }
 };

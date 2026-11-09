@@ -6,7 +6,7 @@ struct Point
   void appendTo(String& out) const
   {
     out << "(";
-    out << char('0' + x);
+    out << char('0' + this.x);
     out << ")";
   }
 };

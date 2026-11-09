@@ -10,20 +10,20 @@ struct Str
   implicit Str(Args&&... args);
   void setInternal(Str&& other)
   {
-    this->copies = other.copies;
-    this->moves = other.moves + 1;
+    this.copies = other.copies;
+    this.moves = other.moves + 1;
   }
   void setInternal(const Str& other)
   {
-    this->copies = other.copies + 1;
-    this->moves = other.moves;
+    this.copies = other.copies + 1;
+    this.moves = other.moves;
   }
 };
 Str::Str(const Str& other) : copies(other.copies + 1), moves(other.moves) {}
 template<typename... Args>
 Str::Str(Args&&... args)
 {
-  this->setInternal(forward<Args>(args)...);
+  this.setInternal(forward<Args>(args)...);
 }
 int main()
 {

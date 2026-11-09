@@ -5,7 +5,7 @@ struct Territory { int id; };
 struct ToChunk
 {
   int width;
-  Chunk operator()(const int& index) const { return Chunk{index % this->width, index / this->width}; }
+  Chunk operator()(const int& index) const { return Chunk{index % this.width, index / this.width}; }
 };
 struct Deref
 {
@@ -14,7 +14,7 @@ struct Deref
 struct Manager
 {
   Vector<UniquePtr<Territory>> territories;
-  TransformView<Vector<UniquePtr<Territory>>, Deref> all() const { return transformView(this->territories, Deref()); }
+  TransformView<Vector<UniquePtr<Territory>>, Deref> all() const { return transformView(this.territories, Deref()); }
 };
 int main()
 {

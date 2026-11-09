@@ -10,8 +10,8 @@ struct Counter
   int get()
   {
     if constexpr (config::debug)
-      ++lookups;
-    return value;
+      ++this.lookups;
+    return this.value;
   }
 };
 

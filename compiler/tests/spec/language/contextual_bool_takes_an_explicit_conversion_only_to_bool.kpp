@@ -4,14 +4,14 @@ extern "C" int printf(const char* format, ...);
 struct X
 {
   int v = 3;
-  implicit operator short() const { printf("X>short "); return (short)(v + 2); }
-  operator float() const& { printf("X>float "); return (float)(v + 2); }
+  implicit operator short() const { printf("X>short "); return (short)(this.v + 2); }
+  operator float() const& { printf("X>float "); return (float)(this.v + 2); }
 };
 struct Z
 {
   int v = 0;
-  operator bool() const { printf("Z>bool "); return v != 0; }
-  implicit operator int() const { printf("Z>int "); return v + 1; }
+  operator bool() const { printf("Z>bool "); return this.v != 0; }
+  implicit operator int() const { printf("Z>int "); return this.v + 1; }
 };
 int main()
 {

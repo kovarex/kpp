@@ -12,7 +12,7 @@ class Prototype
 public:
   using IDType = IDTypeParameter;
   IDType id;
-  IDType getID() const { return this->id; }
+  IDType getID() const { return this.id; }
 };
 
 class ItemPrototype : public Prototype<ItemID>

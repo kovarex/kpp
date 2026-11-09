@@ -16,13 +16,13 @@ class Heap
   public:
     IteratorBase() = default;
     IteratorBase(HookType* current) : current(current) {}
-    Value& operator*() const { return *static_cast<Value*>(this->current); }
+    Value& operator*() const { return *static_cast<Value*>(this.current); }
     IteratorBase& operator++()
     {
-      this->current = this->current->next;
-      return *this;
+      this.current = this.current->next;
+      return this;
     }
-    bool operator!=(IteratorBase other) { return this->current != other.current; }
+    bool operator!=(IteratorBase other) { return this.current != other.current; }
   private:
     HookType* current = nullptr;
   };
@@ -31,10 +31,10 @@ public:
   using iterator = IteratorBase<ValueType>;
   void push(ValueType& value)
   {
-    value.next = this->root;
-    this->root = &value;
+    value.next = this.root;
+    this.root = &value;
   }
-  iterator begin() { return iterator(this->root); }
+  iterator begin() { return iterator(this.root); }
   iterator end() { return iterator(); }
 private:
   HookType* root = nullptr;

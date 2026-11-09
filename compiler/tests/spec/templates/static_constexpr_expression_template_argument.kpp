@@ -4,7 +4,7 @@ template<typename T>
 struct Bits
 {
   static constexpr int count = int(sizeof(T)) * 8;
-  static constexpr int valueBits = isSigned<T> ? count - 1 : count;
+  static constexpr int valueBits = isSigned<T> ? This::count - 1 : This::count;
 };
 int main()
 {

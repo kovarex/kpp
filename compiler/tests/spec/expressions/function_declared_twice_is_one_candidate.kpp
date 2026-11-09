@@ -8,7 +8,7 @@ struct Box
   int size = 3;
   int scaled(int by) const;
 };
-int Box::scaled(int by) const { return this->size * by; }
+int Box::scaled(int by) const { return this.size * by; }
 extern "C" size_t strlen(const char* s);
 int main()
 {

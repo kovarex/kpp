@@ -4,7 +4,7 @@ struct Tracked
 {
   int id;
   Tracked(int id) : id(id) {}
-  ~Tracked() { println("~Tracked ", this->id); }
+  ~Tracked() { println("~Tracked ", this.id); }
 };
 Tracked make(bool fail)
 {

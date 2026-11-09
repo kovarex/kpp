@@ -4,7 +4,7 @@ struct Value
 {
   int stored = 3;
   template<class T>
-  implicit operator T() const { return T(this->stored * 2); }
+  implicit operator T() const { return T(this.stored * 2); }
 };
 struct Strict
 {

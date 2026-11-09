@@ -5,18 +5,18 @@ struct Tracked
   int id;
   Tracked(int id) : id(id) {}
   Tracked(const Tracked& other) : id(other.id) {}
-  ~Tracked() { println("~", this->id); }
+  ~Tracked() { println("~", this.id); }
 };
 union enum Value : uint8_t
 {
   { {int, Number}, {String, Text}, {Tracked, Owned} }
   String describe() const
   {
-    switch (*this)
+    switch (this)
     {
-      case Number: return format("number {}", (*this)[Number]);
-      case Text: return format("text {}", (*this)[Text]);
-      case Owned: return format("owned {}", (*this)[Owned].id);
+      case Number: return format("number {}", (this)[Number]);
+      case Text: return format("text {}", (this)[Text]);
+      case Owned: return format("owned {}", (this)[Owned].id);
     }
   }
 };

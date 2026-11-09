@@ -4,11 +4,11 @@ struct Cache
 {
   mutable int hits = 0;
   int value = 7;
-  int get() const { ++this->hits; return this->value; }
+  int get() const { ++this.hits; return this.value; }
   const char* which() const { return "const"; }
   const char* which() { return "mutable"; }
-  int& ref() { return this->value; }
-  const int& ref() const { return this->value; }
+  int& ref() { return this.value; }
+  const int& ref() const { return this.value; }
 };
 int main()
 {

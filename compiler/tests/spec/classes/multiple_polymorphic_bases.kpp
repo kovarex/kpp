@@ -4,30 +4,30 @@ class A
 {
 public:
   int a = 1;
-  virtual int fa() const { return this->a; }
+  virtual int fa() const { return this.a; }
 };
 class B
 {
 public:
   int b = 2;
-  virtual int fb() const { return this->b; }
+  virtual int fb() const { return this.b; }
 };
 class C
 {
 public:
   int c = 3;
-  virtual int fc() const { return this->c; }
+  virtual int fc() const { return this.c; }
 };
 class BC : public B, public C
 {
 public:
-  int fc() const override { return this->c + 100; }
+  int fc() const override { return this.c + 100; }
 };
 class All : public A, public BC
 {
 public:
   int own = 9;
-  int fb() const override { return this->b + 1000 + this->own; }
+  int fb() const override { return this.b + 1000 + this.own; }
 };
 class Plain
 {
@@ -37,7 +37,7 @@ public:
 class Mixed : public Plain, public A
 {
 public:
-  int fa() const override { return this->a + this->p * 10; }
+  int fa() const override { return this.a + this.p * 10; }
 };
 int callB(const B& x) { return x.fb(); }
 int callC(const C& x) { return x.fc(); }

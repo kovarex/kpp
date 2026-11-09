@@ -4,14 +4,14 @@ struct Tracked
   static int live, ticks, throwAt;
   static void tick()
   {
-    if (++ticks == throwAt)
+    if (++This::ticks == This::throwAt)
       throw 42;
   }
   int value = 0;
-  Tracked() { tick(); live++; }
-  Tracked(const Tracked& other) : value(other.value) { tick(); live++; }
-  Tracked(Tracked&& other) : value(other.value) { tick(); live++; }
-  ~Tracked() { live--; }
+  Tracked() { This::tick(); This::live++; }
+  Tracked(const Tracked& other) : value(other.value) { This::tick(); This::live++; }
+  Tracked(Tracked&& other) : value(other.value) { This::tick(); This::live++; }
+  ~Tracked() { This::live--; }
 };
 int Tracked::live = 0;
 int Tracked::ticks = 0;

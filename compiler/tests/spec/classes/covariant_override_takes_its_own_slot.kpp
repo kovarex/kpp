@@ -5,7 +5,7 @@ class X
 public:
   int x = 1;
   virtual ~X() {}
-  virtual int id() { return x; }
+  virtual int id() { return this.x; }
 };
 class Pad
 {
@@ -17,13 +17,13 @@ class W : public Pad, public X
 {
 public:
   int w = 5;
-  int id() override { return x + w + 100; }
+  int id() override { return this.x + this.w + 100; }
 };
 class V : public Pad, public W
 {
 public:
   int v = 7;
-  int id() override { return x + w + v + 200; }
+  int id() override { return this.x + this.w + this.v + 200; }
 };
 class A
 {
@@ -81,7 +81,7 @@ class Self : public P, public X
 {
 public:
   int mine = 4;
-  Self* self() override { return this; }
+  Self* self() override { return &this; }
 };
 void base()
 {

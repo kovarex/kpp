@@ -5,14 +5,14 @@ struct Bits
 {
   unsigned int bits = 0;
   template<size_t position>
-  bool test() const { return (this->bits & (1u << position)) != 0; }
+  bool test() const { return (this.bits & (1u << position)) != 0; }
 };
 struct Flags
 {
   enum class Enum { OutputClosed, InputClosed, Third };
   Bits<3> bits;
   template<Enum value>
-  bool contains() const { return this->bits.test<static_cast<size_t>(value)>(); }
+  bool contains() const { return this.bits.test<static_cast<size_t>(value)>(); }
 };
 template<int N> int narrow() { return N; }
 int main()

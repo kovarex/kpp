@@ -4,7 +4,7 @@ struct M
 {
   unsigned a : 3;
   mutable unsigned b : 5;
-  void touch() const { b = b + 1; }
+  void touch() const { this.b = this.b + 1; }
 };
 
 const M global{1, 2};

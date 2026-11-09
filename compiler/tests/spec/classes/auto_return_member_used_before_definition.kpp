@@ -14,6 +14,6 @@ struct Offset { int x = 0; int y = 0; };
 struct Params
 {
   int shift = 0;
-  auto getOffset() const { return Offset{this->shift, this->shift * 3}; }
+  auto getOffset() const { return Offset{this.shift, this.shift * 3}; }
   auto twice(int x) const { return x * 2; }
 };

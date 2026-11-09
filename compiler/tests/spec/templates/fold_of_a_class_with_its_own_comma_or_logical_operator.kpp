@@ -21,7 +21,7 @@ class Truth
 public:
   int v;
   Truth(int v) : v(v) {}
-  operator bool() const { event('t', v); return v != 0; }
+  operator bool() const { event('t', this.v); return this.v != 0; }
 };
 
 template<typename... Args> bool builtinAnd(Args... args) { return (args && ...); }

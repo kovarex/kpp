@@ -12,15 +12,15 @@ union enum AIState
 {
   { {::Patrolling, Patrolling}, {::Attacking, Attacking} }
   template<typename T>
-  T& get() { for constexpr (auto a : alternatives(AIState)) if constexpr (isSame<a.type, T>) return (*this)[a]; }
+  T& get() { for constexpr (auto a : alternatives(AIState)) if constexpr (isSame<a.type, T>) return (this)[a]; }
   template<typename T>
-  const T& get() const { for constexpr (auto a : alternatives(AIState)) if constexpr (isSame<a.type, T>) return (*this)[a]; }
+  const T& get() const { for constexpr (auto a : alternatives(AIState)) if constexpr (isSame<a.type, T>) return (this)[a]; }
   template<typename T>
-  bool holds() const { for constexpr (auto a : alternatives(AIState)) if constexpr (isSame<a.type, T>) return *this == a.tag; return false; }
+  bool holds() const { for constexpr (auto a : alternatives(AIState)) if constexpr (isSame<a.type, T>) return this == a.tag; return false; }
   template<typename T>
-  T* getIf() { for constexpr (auto a : alternatives(AIState)) if constexpr (isSame<a.type, T>) return *this == a.tag ? &(*this)[a] : nullptr; return nullptr; }
+  T* getIf() { for constexpr (auto a : alternatives(AIState)) if constexpr (isSame<a.type, T>) return this == a.tag ? &(this)[a] : nullptr; return nullptr; }
   template<typename T>
-  const T* getIf() const { for constexpr (auto a : alternatives(AIState)) if constexpr (isSame<a.type, T>) return *this == a.tag ? &(*this)[a] : nullptr; return nullptr; }
+  const T* getIf() const { for constexpr (auto a : alternatives(AIState)) if constexpr (isSame<a.type, T>) return this == a.tag ? &(this)[a] : nullptr; return nullptr; }
 };
 int main()
 {

@@ -13,7 +13,7 @@ struct S
   int64_t i20 : 20;
   Level level : 3;
   bool on : 1;
-  int64_t fromMember() const { return u3 - 2; }
+  int64_t fromMember() const { return this.u3 - 2; }
 };
 
 constexpr int64_t viaConstant()

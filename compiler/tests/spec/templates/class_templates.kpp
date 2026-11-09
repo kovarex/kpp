@@ -5,8 +5,8 @@ struct Ring
   using Value = T;
   T items[N];
   int head = 0;
-  void push(const T& v) { this->items[this->head] = v; this->head = (this->head + 1) % N; }
-  T& at(int i) { return this->items[(this->head + i) % N]; }
+  void push(const T& v) { this.items[this.head] = v; this.head = (this.head + 1) % N; }
+  T& at(int i) { return this.items[(this.head + i) % N]; }
   static constexpr int capacity() { return N; }
 };
 int main()

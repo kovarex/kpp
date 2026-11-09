@@ -11,11 +11,11 @@ struct Proto { Sprite horizontal; };
 struct Holder
 {
   Proto proto;
-  const Proto* getPrototype() const { return &this->proto; }
+  const Proto* getPrototype() const { return &this.proto; }
   int one() const
   {
-    const Sprite& s(this->getPrototype()->horizontal);
-    const Sprite& t{this->proto.horizontal};
+    const Sprite& s(this.getPrototype()->horizontal);
+    const Sprite& t{this.proto.horizontal};
     return s.v + t.v;
   }
 };
@@ -23,8 +23,8 @@ template<class T>
 struct InfiniteVector
 {
   T data[4];
-  T& operator[](int32_t i) { return this->data[i]; }
-  T* operator[](int32_t i) const { return const_cast<T*>(&this->data[i]); }
+  T& operator[](int32_t i) { return this.data[i]; }
+  T* operator[](int32_t i) const { return const_cast<T*>(&this.data[i]); }
 };
 struct Territory { int id = 9; };
 struct Manager
@@ -32,10 +32,10 @@ struct Manager
   InfiniteVector<Territory> byChunk;
   int save() const
   {
-    const Territory* column = this->byChunk[1];
+    const Territory* column = this.byChunk[1];
     return column->id;
   }
-  int load() { return this->byChunk[2].id + 1; }
+  int load() { return this.byChunk[2].id + 1; }
 };
 int main()
 {

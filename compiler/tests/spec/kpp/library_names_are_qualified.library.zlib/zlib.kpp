@@ -2,7 +2,7 @@
 struct Stream
 {
   int total = 0;
-  void feed(int n) { total += checksum(n); }
+  void feed(int n) { this.total += checksum(n); }
 };
 int checksum(int n) { return n * 3 + level; }
 const int level = 1;

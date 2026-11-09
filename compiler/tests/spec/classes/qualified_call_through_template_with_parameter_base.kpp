@@ -6,7 +6,7 @@ namespace agui
   {
   public:
     virtual ~Widget() {}
-    virtual void paintBackgroundGlow(int amount) { this->glow += amount; }
+    virtual void paintBackgroundGlow(int amount) { this.glow += amount; }
     int glow = 0;
   };
   class VerticalFlow : public Widget

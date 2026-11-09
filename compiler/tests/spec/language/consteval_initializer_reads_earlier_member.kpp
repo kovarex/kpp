@@ -4,12 +4,12 @@ struct Sum
 {
   int a;
   int b;
-  Sum() : a(1), b(a + 1) {}
+  Sum() : a(1), b(this.a + 1) {}
 };
 struct Defaults
 {
   int a = 3;
-  int b = a * 2;
+  int b = this.a * 2;
 };
 struct Base
 {
@@ -19,14 +19,14 @@ struct Derived : Base
 {
   int w;
   int x;
-  int twice() const { return this->w * 2; }
-  Derived() : w(v * 2), x(twice()) {}
+  int twice() const { return this.w * 2; }
+  Derived() : w(this.v * 2), x(this.twice()) {}
 };
 struct Self
 {
   int a;
   int* p;
-  Self() : a(5), p(&a) {}
+  Self() : a(5), p(&this.a) {}
 };
 constexpr int sum()
 {

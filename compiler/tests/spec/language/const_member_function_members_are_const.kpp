@@ -22,20 +22,20 @@ struct Counter : Base
   int* target = nullptr;
   int read() const
   {
-    ++this->reads;
-    *this->target = 3;
-    return this->v + this->count + this->cells[0] + Base::b + int(this->items.size());
+    ++this.reads;
+    *this.target = 3;
+    return this.v + this.count + this.cells[0] + Base::b + int(this.items.size());
   }
   void set() const
   {
-    v = 1;
-    ++count;
-    items.push_back(1);
+    this.v = 1;
+    ++this.count;
+    this.items.push_back(1);
     Base::b = 2;
-    this->cells[0] = 5;
-    cells[1] = 6;
-    [this]() { v = 4; }();
-    [&]() { count = 4; }();
+    this.cells[0] = 5;
+    this.cells[1] = 6;
+    [&this]() { this.v = 4; }();
+    [&]() { this.count = 4; }();
   }
 };
 int main()

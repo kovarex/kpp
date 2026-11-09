@@ -11,6 +11,6 @@ int Node::id() const { return counter + version(); }
 template<typename T> struct Box
 {
   T value;
-  T get() const { return value + T(version()); }
+  T get() const { return this.value + T(version()); }
 };
 int fromAlpha() { return alpha::version() * 1000; }

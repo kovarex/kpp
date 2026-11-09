@@ -3,7 +3,7 @@ template<typename T>
 struct MyStack
 {
   Vector<T> items;
-  template<typename U> void add(const U& u) { this->items.push_back(T(u)); }
+  template<typename U> void add(const U& u) { this.items.push_back(T(u)); }
 };
 int main()
 {

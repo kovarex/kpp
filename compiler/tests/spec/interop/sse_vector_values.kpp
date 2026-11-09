@@ -17,8 +17,8 @@ struct Wide
   Wide& operator=(const Wide&) = default;
   Wide& operator=(Wide&&) = default;
   implicit Wide(__m128 v) : value(v) {}
-  implicit operator __m128() { return this->value; }
-  Wide& operator&=(Wide right) { return *this = _mm_and_ps(*this, right); }
+  implicit operator __m128() { return this.value; }
+  Wide& operator&=(Wide right) { return this = _mm_and_ps(this, right); }
   __m128 value;
 };
 

@@ -9,7 +9,7 @@ struct Holder
 {
   Items items;
   mutable Items cache;
-  int viaThis() const { return this->items.begin() * 10 + this->cache.begin(); }
+  int viaThis() const { return this.items.begin() * 10 + this.cache.begin(); }
 };
 int main()
 {

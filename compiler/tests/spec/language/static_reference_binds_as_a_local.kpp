@@ -3,7 +3,7 @@
 extern "C" int printf(const char* format, ...);
 int say(const char* what, int v) { printf("init %s = %d\n", what, v); return v; }
 struct B1 { int a = 1; };
-struct B2 { int b = 2; int get() const { return b; } };
+struct B2 { int b = 2; int get() const { return this.b; } };
 struct D : B1, B2 { int c = 3; };
 D d;
 D* dp = &d;
@@ -14,7 +14,7 @@ double doubleGlobal = 2.5;
 long long wide = 0x100000005LL;
 int garr[3] = {1, 2, 3};
 int fn(int x) { return x + 1; }
-struct Conv { int v = 41; B2 base; implicit operator int&() { return v; } implicit operator B2&() { return base; } };
+struct Conv { int v = 41; B2 base; implicit operator int&() { return this.v; } implicit operator B2&() { return this.base; } };
 Conv conv;
 const B2& r1 = d;
 B2& r2 = d;

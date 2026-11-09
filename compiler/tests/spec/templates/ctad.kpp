@@ -10,7 +10,7 @@ struct Guard
 {
   T& slot; T saved;
   Guard(T& slot, T value) : slot(slot), saved(slot) { slot = value; }
-  ~Guard() { this->slot = this->saved; }
+  ~Guard() { this.slot = this.saved; }
 };
 int main()
 {

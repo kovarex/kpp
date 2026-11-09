@@ -6,7 +6,7 @@ class Hook
 public:
   void* parent = nullptr;
   int id = 0;
-  int getId() const { return this->id; }
+  int getId() const { return this.id; }
 };
 class TagA;
 class TagB;
@@ -24,8 +24,8 @@ public:
 class Robot : public Polymorphic, public Hook<Robot, TagA>, public Middle
 {
 public:
-  int idOfB() const { return this->Hook<Robot, TagB>::id; }
-  int callB() const { return this->HookB::getId(); }
+  int idOfB() const { return this.Hook<Robot, TagB>::id; }
+  int callB() const { return this.HookB::getId(); }
 };
 int main()
 {

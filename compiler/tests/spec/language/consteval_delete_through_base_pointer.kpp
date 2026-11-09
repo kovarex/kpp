@@ -6,8 +6,8 @@ public:
   int* log = nullptr;
   virtual ~A()
   {
-    if (this->log)
-      *this->log = *this->log * 10 + 1;
+    if (this.log)
+      *this.log = *this.log * 10 + 1;
   }
 };
 class B : public A
@@ -15,8 +15,8 @@ class B : public A
 public:
   ~B() override
   {
-    if (this->log)
-      *this->log = *this->log * 10 + 2;
+    if (this.log)
+      *this.log = *this.log * 10 + 2;
   }
 };
 constexpr int deleted()

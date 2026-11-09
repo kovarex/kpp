@@ -17,9 +17,9 @@ class Tree
 {
 public:
   TreeData treeData;
-  void grey() { this->treeData.greyProgress++; }
-  void progressUp() { ++this->treeData.progress; }
-  void colorDown() { this->treeData.color--; }
+  void grey() { this.treeData.greyProgress++; }
+  void progressUp() { ++this.treeData.progress; }
+  void colorDown() { this.treeData.color--; }
 };
 void show(const char* what, const TreeData& data)
 {

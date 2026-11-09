@@ -3,13 +3,13 @@
 struct A
 {
   A(double v) : value(v) {}
-  operator const double&() const { return this->value; }
+  operator const double&() const { return this.value; }
   double value;
 };
 struct B
 {
   B(double v) : value(v) {}
-  operator double() const { return this->value; }
+  operator double() const { return this.value; }
   double value;
 };
 

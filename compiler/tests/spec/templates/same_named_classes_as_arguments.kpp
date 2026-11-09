@@ -23,7 +23,7 @@ int first()
 }
 int second()
 {
-  struct Local { int g = 7; int f() { return 200 + g; } };
+  struct Local { int g = 7; int f() { return 200 + this.g; } };
   Vector<Local> v;
   v.push_back(Local());
   return v[0].f();
@@ -34,7 +34,7 @@ T sumTwice(T a)
   struct Doubler
   {
     T value;
-    T twice() const { return this->value + this->value; }
+    T twice() const { return this.value + this.value; }
   };
   Doubler d{a};
   return d.twice();

@@ -8,7 +8,7 @@ struct Holder
   int count() const
   {
     int n = 0;
-    for (const auto& typeItem : this->mapping)
+    for (const auto& typeItem : this.mapping)
     {
       n += typeItem.second.size();
       for (const auto& item : typeItem.second)
@@ -20,7 +20,7 @@ struct Holder
   int keys() const
   {
     int n = 0;
-    for (const auto& [name, inner] : this->mapping)
+    for (const auto& [name, inner] : this.mapping)
       n += name.size() + inner.size();
     return n;
   }

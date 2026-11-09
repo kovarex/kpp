@@ -25,18 +25,18 @@ struct Item
   }
   Item& operator=(const Item& other)
   {
-    this->value = other.value;
-    return *this;
+    this.value = other.value;
+    return this;
   }
   ~Item()
   {
-    if (this->mark != 12345)
+    if (this.mark != 12345)
       ++neverBuilt;
-    this->mark = 0;
+    this.mark = 0;
     --live;
   }
-  bool operator<(const Item& other) const { return this->value < other.value; }
-  bool operator==(const Item& other) const { return this->value == other.value; }
+  bool operator<(const Item& other) const { return this.value < other.value; }
+  bool operator==(const Item& other) const { return this.value == other.value; }
 };
 
 // FastMap's and FastSet's entries: a copy may throw, a move does not (fastmap_entry_that_may_throw_when_moved_is_error).
@@ -54,17 +54,17 @@ struct Entry
   Entry(Entry&& other) noexcept : value(other.value), mark(12345) { ++live; }
   Entry& operator=(const Entry& other)
   {
-    this->value = other.value;
-    return *this;
+    this.value = other.value;
+    return this;
   }
   ~Entry()
   {
-    if (this->mark != 12345)
+    if (this.mark != 12345)
       ++neverBuilt;
-    this->mark = 0;
+    this.mark = 0;
     --live;
   }
-  bool operator<(const Entry& other) const { return this->value < other.value; }
+  bool operator<(const Entry& other) const { return this.value < other.value; }
 };
 
 struct ItemHash

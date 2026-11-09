@@ -3,7 +3,7 @@
 struct Connector
 {
   int id = 0;
-  constexpr operator bool() const { return this->id != 0; }
+  constexpr operator bool() const { return this.id != 0; }
 };
 struct Proto { Connector spoil; };
 int follow(const Proto& p)

@@ -3,7 +3,7 @@
 struct Id
 {
   int value;
-  bool operator==(int other) const { return this->value == other; }
+  bool operator==(int other) const { return this.value == other; }
 };
 int main()
 {

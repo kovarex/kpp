@@ -25,19 +25,19 @@ struct Item
   }
   Item& operator=(const Item& other)
   {
-    this->value = other.value;
-    return *this;
+    this.value = other.value;
+    return this;
   }
   Item& operator=(Item&& other)
   {
-    this->value = other.value;
-    return *this;
+    this.value = other.value;
+    return this;
   }
   ~Item()
   {
-    if (this->mark != 12345)
+    if (this.mark != 12345)
       ++neverBuilt;
-    this->mark = 0;
+    this.mark = 0;
     --live;
   }
 };
@@ -57,9 +57,9 @@ struct Fixed
   Fixed(Fixed&& other) noexcept : value(other.value), mark(12345) { ++live; }
   ~Fixed()
   {
-    if (this->mark != 12345)
+    if (this.mark != 12345)
       ++neverBuilt;
-    this->mark = 0;
+    this.mark = 0;
     --live;
   }
 };

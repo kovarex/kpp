@@ -5,8 +5,8 @@ class Outer
 {
 public:
   int v = 1;
-  Outer operator+(const Outer& o) const { Outer r; r.v = v + o.v; return r; }
-  Outer operator-() const { Outer r; r.v = -v; return r; }
+  Outer operator+(const Outer& o) const { Outer r; r.v = this.v + o.v; return r; }
+  Outer operator-() const { Outer r; r.v = -this.v; return r; }
   Outer() = default;
   Outer(Outer&& o) : v(o.v + 100) { printf("move "); }
   Outer(const Outer& o) : v(o.v + 1000) { printf("copy "); }

@@ -8,7 +8,7 @@ public:
   constexpr Caps(InitializerList<Enum> values)
   {
     for (auto v : values)
-      this->bits |= 1ULL << size_t(v);
+      this.bits |= 1ULL << size_t(v);
   }
   using enum Enum;
   uint64_t bits = 0;

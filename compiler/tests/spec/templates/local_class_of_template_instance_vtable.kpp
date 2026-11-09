@@ -13,7 +13,7 @@ Base* make(F f)
   {
   public:
     Inner(F f) : f(f) {}
-    int run() override { return this->f(); }
+    int run() override { return this.f(); }
     F f;
   };
   return new Inner(f);

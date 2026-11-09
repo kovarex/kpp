@@ -8,11 +8,11 @@ template<class T> struct Base
 };
 template<class T> struct Derived : Base<T>
 {
-  int get() const { return shade() + this->shade(); }
+  int get() const { return shade() + this.shade(); }
 };
 template<class T> struct Fixed : Base<int>
 {
-  int get() const { return width(); }
+  int get() const { return this.width(); }
 };
 int main()
 {

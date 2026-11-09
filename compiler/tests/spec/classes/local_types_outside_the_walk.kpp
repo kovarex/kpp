@@ -6,7 +6,7 @@ struct Layer
   Layer(int base)
   {
     enum class Row : uint8_t { Straight = 0, Curved = 1, Ending = 2 };
-    auto loadRow = [this](int scale, Row row) { this->total += scale * (int(row) + 1); };
+    auto loadRow = [&this](int scale, Row row) { this.total += scale * (int(row) + 1); };
     loadRow(base, Row::Curved);
     loadRow(base, Row::Ending);
   }
@@ -25,7 +25,7 @@ int migrate(int count)
     Migration(int count)
     {
       for (int i = 0; i < count; ++i)
-        this->connections.emplace_back(i);
+        this.connections.emplace_back(i);
     }
     Vector<Connection> connections;
   };

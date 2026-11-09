@@ -2,7 +2,7 @@
 struct Ptr
 {
   int* p;
-  int operator->*(int k) const { return *p + k; }
+  int operator->*(int k) const { return *this.p + k; }
 };
 struct M { int v; };
 int main()

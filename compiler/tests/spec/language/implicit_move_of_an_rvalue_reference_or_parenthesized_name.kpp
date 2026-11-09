@@ -5,14 +5,14 @@ struct M
 {
   int v;
   M(int x) : v(x) {}
-  M(const M& o) : v(o.v) { printf("copy %d\n", v); }
-  M(M&& o) : v(o.v) { o.v = -1; printf("move %d\n", v); }
+  M(const M& o) : v(o.v) { printf("copy %d\n", this.v); }
+  M(M&& o) : v(o.v) { o.v = -1; printf("move %d\n", this.v); }
 };
 struct Box
 {
   int v;
-  implicit Box(const M& m) : v(m.v) { printf("box copy %d\n", v); }
-  implicit Box(M&& m) : v(m.v) { m.v = -2; printf("box move %d\n", v); }
+  implicit Box(const M& m) : v(m.v) { printf("box copy %d\n", this.v); }
+  implicit Box(M&& m) : v(m.v) { m.v = -2; printf("box move %d\n", this.v); }
 };
 M fromValue(M m) { return m; }
 M fromParam(M&& m) { return m; }

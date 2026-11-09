@@ -6,7 +6,7 @@ struct Context
   int threshold = 2;
   auto filter() const
   {
-    return [&shown = this->shown, &limit = this->threshold](int v) { return v > limit && shown.size() > 0; };
+    return [&shown = this.shown, &limit = this.threshold](int v) { return v > limit && shown.size() > 0; };
   }
 };
 int main()

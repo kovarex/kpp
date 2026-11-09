@@ -16,8 +16,8 @@ struct Vec2D : public Vec2<double, Vec2D>
   void save(Tree& output, const String& key) const { output.n += int(key.size()); }
   void saveBoth(Tree& t, Serialiser& s) const
   {
-    save(t);
-    save(s);
+    this.save(t);
+    this.save(s);
   }
 };
 struct Spec
@@ -25,9 +25,9 @@ struct Spec
   Vec2D center;
   void save(Tree& tree, Serialiser& s) const
   {
-    this->center.save(tree, "center");
-    this->center.save(tree);
-    this->center.save(s);
+    this.center.save(tree, "center");
+    this.center.save(tree);
+    this.center.save(s);
   }
 };
 int main()

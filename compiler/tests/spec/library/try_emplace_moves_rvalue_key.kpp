@@ -8,8 +8,8 @@ struct Key
   Key(int v) : v(v) {}
   Key(const Key& other) : v(other.v) { copies += 1; }
   Key(Key&& other) noexcept : v(other.v) { moves += 1; } // (noexcept: FastMap's entries move without throwing)
-  bool operator<(const Key& other) const { return this->v < other.v; }
-  bool operator==(const Key& other) const { return this->v == other.v; }
+  bool operator<(const Key& other) const { return this.v < other.v; }
+  bool operator==(const Key& other) const { return this.v == other.v; }
 };
 size_t hashOf(const Key& key) { return hashOf(key.v); }
 struct Value

@@ -17,14 +17,14 @@ struct Handle
   Handle(const Handle& other) : target(other.target) {}
   Handle& operator=(const Handle& other)
   {
-    this->target = other.target;
-    return *this;
+    this.target = other.target;
+    return this;
   }
   Handle& operator=(Thing* target)
   {
-    this->target = target;
+    this.target = target;
     ++assigned;
-    return *this;
+    return this;
   }
 };
 

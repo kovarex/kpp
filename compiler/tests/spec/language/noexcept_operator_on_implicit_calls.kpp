@@ -1,4 +1,5 @@
 // spec: the noexcept operator counts what an expression calls without naming it: implicit and defaulted constructors by their parts and default member initializers, a by-value parameter's copy and conversion, a conversion operator, default arguments, a temporary's destructor; and inside a template, `noexcept(T())`, `noexcept(noexcept(a = b))` of a function template and of a member of a class template, answered under the instance's arguments; clang's output
+// this: pointer
 extern "C" int printf(const char* format, ...);
 template <typename T> T&& dv() noexcept;
 struct Quiet { Quiet() noexcept {} implicit Quiet(int) noexcept {} Quiet(const Quiet&) noexcept {} Quiet(Quiet&&) noexcept {} Quiet& operator=(const Quiet&) noexcept { return *this; } };

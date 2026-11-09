@@ -7,8 +7,8 @@ struct Tracked
   Tracked() {}
   Tracked(const Tracked& o) : value(o.value), how(1) {}
   Tracked(Tracked&& o) : value(o.value), how(2) { o.value = -1; }
-  Tracked& operator=(const Tracked& o) { value = o.value; how = 3; return *this; }
-  Tracked& operator=(Tracked&& o) { value = o.value; how = 4; o.value = -1; return *this; }
+  Tracked& operator=(const Tracked& o) { this.value = o.value; this.how = 3; return this; }
+  Tracked& operator=(Tracked&& o) { this.value = o.value; this.how = 4; o.value = -1; return this; }
 };
 struct Holder { Tracked t; };
 int byValue(Tracked t) { return t.how; }

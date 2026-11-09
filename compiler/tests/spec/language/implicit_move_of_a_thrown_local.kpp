@@ -5,8 +5,8 @@ struct M
 {
   int v;
   M(int x) : v(x) {}
-  M(const M& o) : v(o.v) { printf("copy %d ", v); }
-  M(M&& o) : v(o.v) { o.v = -1; printf("move %d ", v); }
+  M(const M& o) : v(o.v) { printf("copy %d ", this.v); }
+  M(M&& o) : v(o.v) { o.v = -1; printf("move %d ", this.v); }
 };
 void local() { M m(1); throw m; }
 void byValue(M m) { throw m; }

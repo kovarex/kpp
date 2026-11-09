@@ -6,7 +6,7 @@ struct Holder
   int base;
   F f;
   Holder(int base, F f) : base(base), f(f) {}
-  int call(int x) const { return this->f(x) + this->base; }
+  int call(int x) const { return this.f(x) + this.base; }
 };
 int main()
 {

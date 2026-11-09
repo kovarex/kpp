@@ -3,8 +3,8 @@
 struct Sink
 {
   int got = 0;
-  Sink& operator=(const char& c) { this->got = 1; return *this; }
-  Sink& operator=(char&& c) { this->got = c == 'x' ? 2 : 3; return *this; }
+  Sink& operator=(const char& c) { this.got = 1; return this; }
+  Sink& operator=(char&& c) { this.got = c == 'x' ? 2 : 3; return this; }
 };
 struct Source
 {

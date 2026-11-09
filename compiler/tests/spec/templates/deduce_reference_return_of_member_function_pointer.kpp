@@ -5,8 +5,8 @@ struct Desc
 {
   Name name;
   int count = 3;
-  const Name& getName() const { return this->name; }
-  int getCount() const { return this->count; }
+  const Name& getName() const { return this.name; }
+  int getCount() const { return this.count; }
 };
 template <class ValueType>
 int check(const Desc& d, ValueType (Desc::*getter)() const)

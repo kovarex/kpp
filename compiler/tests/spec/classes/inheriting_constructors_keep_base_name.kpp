@@ -8,7 +8,7 @@ public:
   static int registered;
 protected:
   template<class T>
-  static void staticInit() { registered += T::weight; }
+  static void staticInit() { This::registered += T::weight; }
 };
 int Base::registered = 0;
 struct Derived : public Base

@@ -17,8 +17,8 @@ struct Small
     };
     char chars[16];
   };
-  constexpr Small() { this->chars[15] = 3; }
-  constexpr Small(int n) { this->length = n; this->capacity = 21; }
+  constexpr Small() { this.chars[15] = 3; }
+  constexpr Small(int n) { this.length = n; this.capacity = 21; }
 };
 class Zoom
 {

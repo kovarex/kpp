@@ -4,15 +4,15 @@ struct Vec
 {
   int x, y;
   Vec(int x, int y) : x(x), y(y) {}
-  Vec operator+(const Vec& o) const { return Vec(this->x + o.x, this->y + o.y); }
-  Vec operator-() const { return Vec(-this->x, -this->y); }
-  Vec& operator+=(const Vec& o) { this->x += o.x; this->y += o.y; return *this; }
-  bool operator==(const Vec& o) const { return this->x == o.x && this->y == o.y; }
-  bool operator<(const Vec& o) const { return this->x < o.x || (this->x == o.x && this->y < o.y); }
-  int operator[](int i) const { return i == 0 ? this->x : this->y; }
-  int operator()(int scale) const { return (this->x + this->y) * scale; }
-  Vec& operator++() { ++this->x; return *this; }
-  operator bool() const { return this->x != 0 || this->y != 0; }
+  Vec operator+(const Vec& o) const { return Vec(this.x + o.x, this.y + o.y); }
+  Vec operator-() const { return Vec(-this.x, -this.y); }
+  Vec& operator+=(const Vec& o) { this.x += o.x; this.y += o.y; return this; }
+  bool operator==(const Vec& o) const { return this.x == o.x && this.y == o.y; }
+  bool operator<(const Vec& o) const { return this.x < o.x || (this.x == o.x && this.y < o.y); }
+  int operator[](int i) const { return i == 0 ? this.x : this.y; }
+  int operator()(int scale) const { return (this.x + this.y) * scale; }
+  Vec& operator++() { ++this.x; return this; }
+  operator bool() const { return this.x != 0 || this.y != 0; }
 };
 Vec operator*(const Vec& v, int k) { return Vec(v.x * k, v.y * k); }
 int main()

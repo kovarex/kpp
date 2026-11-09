@@ -6,11 +6,11 @@ public:
   Safe(int value) : value(value) {}
   Safe(const Safe& other) : value(other.value)
   {
-    println("copied ", value);
-    if (value < 0)
+    println("copied ", this.value);
+    if (this.value < 0)
       throw 1;
   }
-  Safe(Safe&& other) noexcept : value(other.value) { println("moved ", value); }
+  Safe(Safe&& other) noexcept : value(other.value) { println("moved ", this.value); }
   int value;
 };
 
@@ -20,8 +20,8 @@ public:
   Risky(int value) : value(value) {}
   Risky(const Risky& other) : value(other.value)
   {
-    println("copied ", value);
-    if (value < 0)
+    println("copied ", this.value);
+    if (this.value < 0)
       throw 2;
   }
   int value;

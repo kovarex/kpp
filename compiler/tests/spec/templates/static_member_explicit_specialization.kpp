@@ -5,7 +5,7 @@ class Stats
 {
 public:
   static const uint32_t smoothingTicks;
-  uint32_t ticks() const { return smoothingTicks; }
+  uint32_t ticks() const { return This::smoothingTicks; }
   class Precision
   {
   public:

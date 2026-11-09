@@ -10,7 +10,7 @@ struct Couple
   int a = 0;
   int b = 0;
   constexpr Couple(int x, int y) : a(x), b(y) {}
-  constexpr int sum() const { return this->a + this->b; }
+  constexpr int sum() const { return this.a + this.b; }
 };
 constexpr int d0() { return Wrap<long long>::bytes() + Couple(1, 2).sum(); }
 constexpr int d1() { return d0(); }

@@ -4,18 +4,18 @@ struct Point
 {
   int x;
   int y;
-  int sum() const { return x + y; }
-  void grow() { x = x * 10; }
+  int sum() const { return this.x + this.y; }
+  void grow() { this.x = this.x * 10; }
 };
 struct Handle
 {
   Point* p;
-  Point* operator->() const { return p; }
+  Point* operator->() const { return this.p; }
 };
 struct Outer
 {
   Handle h;
-  Handle operator->() const { return h; } // a class: its own operator-> runs in turn
+  Handle operator->() const { return this.h; } // a class: its own operator-> runs in turn
 };
 constexpr long long optional()
 {

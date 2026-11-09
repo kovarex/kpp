@@ -9,7 +9,7 @@ template<typename T>
 struct Slot
 {
   template<typename U>
-  void set(U&& v) { this->item = new T(forward<U>(v)); }
+  void set(U&& v) { this.item = new T(forward<U>(v)); }
   T* item = nullptr;
 };
 int main()

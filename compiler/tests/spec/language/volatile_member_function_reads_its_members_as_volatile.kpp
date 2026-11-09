@@ -8,9 +8,9 @@ public:
   int started = 0;
   bool seen() volatile
   {
-    started = 1;
+    this.started = 1;
     long long i = 0;
-    while (i < 2000000000ll && n == 0)
+    while (i < 2000000000ll && this.n == 0)
       ++i;
     return i < 2000000000ll;
   }

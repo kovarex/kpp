@@ -21,7 +21,7 @@ class EditForceGui
 public:
   using ActionConstructor = EditorAction(*)(ForceIdsAndBool&& data);
   EditForceGui(int context, ActionConstructor actionConstructor, String&& title) : actionConstructor(actionConstructor), title(move(title)) {}
-  EditorAction apply(int forces) { return this->actionConstructor(ForceIdsAndBool{forces, true}); }
+  EditorAction apply(int forces) { return this.actionConstructor(ForceIdsAndBool{forces, true}); }
   ActionConstructor actionConstructor;
   String title;
 };

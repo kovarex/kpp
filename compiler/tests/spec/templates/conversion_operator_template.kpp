@@ -5,9 +5,9 @@ struct Value
   double stored = 2.5;
   template<class T>
     requires (isIntegral<T> || isFloatingPoint<T>)
-  implicit operator T() const { return T(this->stored * 2); }
+  implicit operator T() const { return T(this.stored * 2); }
   template<class T>
-  T as() const { return *this; }
+  T as() const { return this; }
 };
 int main()
 {

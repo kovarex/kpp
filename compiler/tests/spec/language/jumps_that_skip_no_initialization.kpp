@@ -4,8 +4,8 @@ class Noisy
 {
 public:
   int id;
-  Noisy(int i) : id(i) { print("+", id, " "); }
-  ~Noisy() { print("-", id, " "); }
+  Noisy(int i) : id(i) { print("+", this.id, " "); }
+  ~Noisy() { print("-", this.id, " "); }
 };
 int cases(int x)
 {
