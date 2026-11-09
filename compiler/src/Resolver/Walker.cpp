@@ -3753,8 +3753,15 @@ auto GlobalScope::Impl::Walker::returnTypeOfCall(FunctionDecl* f, const Subst* c
     // The library's move, forward and asConst: the cast the declaration's type is for the argument,
     // never an instance (design.md 25; the game's 8,448 checked instances of move and 4,822 of forward
     // were the most of any function template's). The call keeps f and its argument for codegen.
-    if (impl.callIntrinsicOf(f) != CallIntrinsic::None)
+    if (CallIntrinsic which = impl.callIntrinsicOf(f); which != CallIntrinsic::None)
+    {
+      // `move` of a const object: a const rvalue, which the copy constructor takes (kovarex, 2026-11-09). Not
+      // in a template's instance, whose argument may be what made it const.
+      if (const Ty* moved = types.stripRef(result);
+          which == CallIntrinsic::Move && moved && moved->isConst && call && !activeSubst && !probing && file && !file->isImported && !retypingElements)
+        reportWarning(call->token, "move of a const object (" + types.toString(moved, &impl.symbols) + "): its result is a const rvalue, so it is copied, not moved");
       return result;
+    }
     if (!types.isDependent(result))
       instantiateFunction(f, subst, false, classSubst);
     return result;

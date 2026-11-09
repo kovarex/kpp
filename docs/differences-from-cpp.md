@@ -626,6 +626,15 @@ p[Property::Text] = String("hello");
   does not there.
 - **See:** [design 4][d4]; pending spec `kpp/operator_not_equal_returning_bool_is_error`.
 
+### `move` of a const object is a warning (built)
+
+- **C++:** `std::move(x)` of a const `x` compiles silently: the result is a const rvalue, which the copy
+  constructor takes, so `x` is copied. Only a linter says so (clang-tidy's performance-move-const-arg).
+- **kpp:** the same meaning, and a warning at the call. Not in a template's instance, whose argument may be
+  what made the object const, and not for `forward` or `asConst`.
+- **Why:** the code says move and does a copy (kovarex, 2026-11-09). The game had ten.
+- **See:** spec `kpp/move_of_a_const_object_is_a_warning`.
+
 ## Templates and compile time
 
 ### Any function can run at compile time (built)

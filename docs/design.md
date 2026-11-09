@@ -2582,10 +2582,10 @@ clang has worked this way since version 15 for std::move, std::forward, std::as_
 
   The game's IR is byte-identical apart from its one asConst call, now the identity cast instead of an
   inlined trivial body.
-- **Not built.**
-  - addressof: the library declares none, and the game uses none.
-  - A warning for `move` of a const object (kovarex: a warning) finds 9 sites in the converted game, whose
-    headline counts warnings. It waits for those to be handled.
+- **`move` of a const object is a warning** (kovarex, 2026-11-09): its result is a const rvalue, which the
+  copy constructor takes, so the object is copied. It keeps C++'s meaning and says so, except in a template's
+  instance, whose argument may be what made the object const. Spec kpp/move_of_a_const_object_is_a_warning.
+- **Not built.** addressof: the library declares none, and the game uses none.
 
 ## Code packages (proposed 2026-10-27, decided 2026-11-04)
 

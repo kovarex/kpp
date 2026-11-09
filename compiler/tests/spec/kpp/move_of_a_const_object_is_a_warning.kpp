@@ -1,0 +1,33 @@
+// spec: the library's move of a const object is a warning (kovarex 2026-11-09): its result is a const rvalue, which the copy constructor takes, so the object is copied, not moved (clang-tidy's performance-move-const-arg); the program builds and runs (a warning is no error); in a template's instance whose argument made the object const (copiesOf<const Tracked&>), none, since the template's own code moves what it is given; forward of a const object and asConst say nothing
+// warning: move_of_a_const_object_is_a_warning.kpp:24: warning: move of a const object (const Tracked): its result is a const rvalue, so it is copied, not moved
+// warning: move_of_a_const_object_is_a_warning.kpp:26: warning: move of a const object (const int32): its result is a const rvalue, so it is copied, not moved
+struct Tracked
+{
+  int copies = 0;
+  int moves = 0;
+
+  Tracked() {}
+  Tracked(const Tracked& other) : copies(other.copies + 1), moves(other.moves) {}
+  Tracked(Tracked&& other) : copies(other.copies), moves(other.moves + 1) {}
+};
+
+template<typename T>
+int copiesOf(T&& value)
+{
+  RemoveReference<T> local = move(value);
+  return local.copies;
+}
+
+int main()
+{
+  const Tracked kept;
+  Tracked copied = move(kept);
+  const int limit = 3;
+  int n = move(limit);
+  Tracked plain;
+  Tracked moved = move(plain);
+  Tracked forwarded = forward<const Tracked&>(kept);
+  const Tracked& viewed = asConst(plain);
+  println(copied.copies, " ", copied.moves, " ", n, " ", moved.moves, " ", copiesOf(kept), " ", copiesOf(Tracked()), " ", forwarded.copies, " ", viewed.moves);
+  return 0;
+}

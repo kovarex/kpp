@@ -1150,7 +1150,7 @@
 +   return strcmp(s1, s2) == 0;
 + }
 
-# A move of a const object copies it (its result is a const rvalue): the game's nine, which kpp's warning lists,
+# A move of a const object copies it (its result is a const rvalue): the game's ten, which kpp's warning lists,
 # written as the copies they are, or, in InputAction's move constructor, given the non-const getter the
 # macro's other types have.
 
@@ -1192,3 +1192,7 @@
 @ src/Player.cpp: item is const
 -     entry.localisedString = std::move(item.second);
 +     entry.localisedString = item.second;
+
+@ tests/TestLuaEventFilters.cpp: script is const
+-     return [&scenario, script = std::move(script)] (const std::string& filter) -> void
++     return [&scenario, script = script] (const std::string& filter) -> void
