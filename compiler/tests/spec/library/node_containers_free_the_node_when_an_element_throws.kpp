@@ -1,0 +1,213 @@
+// spec: a node container frees the node it allocated for an element whose constructor throws, as std's do: List's push_back and insert, ForwardList's push_front, Map's emplace and try_emplace, MultiMap's emplace, HashMap's emplace and try_emplace, and HashSet's emplace when the hasher throws leave the C runtime heap with no more blocks in use than before (clang's with MSVC's STL)
+// factorio: K's backlog (stdlib-conformance.md, 2026-11-07): each of these leaked one node per throw
+// target: windows (the UCRT's and MinGW-w64's _heapwalk counts the blocks in use)
+extern "C" import "stdio.h";
+extern "C" import "malloc.h";
+bool throwing = false;
+bool hashThrows = false;
+
+struct Item
+{
+  i32 value;
+  Item(i32 value) : value(value) {}
+  Item(const Item& other) : value(other.value)
+  {
+    if (throwing)
+      throw 7;
+  }
+  bool operator<(const Item& other) const { return this->value < other.value; }
+  bool operator==(const Item& other) const { return this->value == other.value; }
+};
+
+struct ItemHash
+{
+  usize operator()(const Item& item) const
+  {
+    if (hashThrows)
+      throw 9;
+    return (usize)item.value;
+  }
+};
+
+// The C runtime heap's blocks in use.
+i64 usedBlocks()
+{
+  _HEAPINFO info;
+  info._pentry = nullptr;
+  i64 used = 0;
+  while (_heapwalk(&info) == _HEAPOK)
+    if (info._useflag == _USEDENTRY)
+      ++used;
+  return used;
+}
+
+template<typename C>
+i32 forwardSize(const C& c)
+{
+  i32 n = 0;
+  for (auto it = c.begin(); it != c.end(); ++it)
+    ++n;
+  return n;
+}
+
+i64 before = 0;
+i32 thrown = 0;
+
+void start()
+{
+  thrown = 0;
+  before = usedBlocks();
+  throwing = true;
+}
+
+void report(const char* name)
+{
+  throwing = false;
+  hashThrows = false;
+  i64 after = usedBlocks();
+  // (a block or two may come and go with the runtime's own bookkeeping; a leaked node is one per throw)
+  printf("%s: thrown %d, leaked blocks %s\n", name, thrown, after - before >= 50 ? "one per throw" : "none");
+  fflush(nullptr);
+}
+
+int main()
+{
+  Item item(1);
+  List<Item> list;
+  list.push_back(item);
+  start();
+  for (i32 i = 0; i < 100; ++i)
+    try
+    {
+      list.push_back(item);
+    }
+    catch (i32)
+    {
+      ++thrown;
+    }
+  report("List push_back");
+  start();
+  for (i32 i = 0; i < 100; ++i)
+    try
+    {
+      list.insert(list.begin(), item);
+    }
+    catch (i32)
+    {
+      ++thrown;
+    }
+  report("List insert");
+  ForwardList<Item> forward;
+  start();
+  for (i32 i = 0; i < 100; ++i)
+    try
+    {
+      forward.push_front(item);
+    }
+    catch (i32)
+    {
+      ++thrown;
+    }
+  report("ForwardList push_front");
+  Map<i32, Item> map;
+  map.emplace(0, item);
+  start();
+  for (i32 i = 0; i < 100; ++i)
+    try
+    {
+      map.emplace(i + 1, item);
+    }
+    catch (i32)
+    {
+      ++thrown;
+    }
+  report("Map emplace");
+  start();
+  for (i32 i = 0; i < 100; ++i)
+    try
+    {
+      map.try_emplace(i + 1, item);
+    }
+    catch (i32)
+    {
+      ++thrown;
+    }
+  report("Map try_emplace");
+  Set<Item> set;
+  start();
+  for (i32 i = 0; i < 100; ++i)
+    try
+    {
+      set.insert(item);
+    }
+    catch (i32)
+    {
+      ++thrown;
+    }
+  report("Set insert");
+  MultiMap<i32, Item> multimap;
+  start();
+  for (i32 i = 0; i < 100; ++i)
+    try
+    {
+      multimap.emplace(1, item);
+    }
+    catch (i32)
+    {
+      ++thrown;
+    }
+  report("MultiMap emplace");
+  MultiSet<Item> multiset;
+  start();
+  for (i32 i = 0; i < 100; ++i)
+    try
+    {
+      multiset.insert(item);
+    }
+    catch (i32)
+    {
+      ++thrown;
+    }
+  report("MultiSet insert");
+  HashMap<i32, Item> hashMap;
+  hashMap.emplace(0, item);
+  start();
+  for (i32 i = 0; i < 100; ++i)
+    try
+    {
+      hashMap.emplace(i + 1, item);
+    }
+    catch (i32)
+    {
+      ++thrown;
+    }
+  report("HashMap emplace");
+  start();
+  for (i32 i = 0; i < 100; ++i)
+    try
+    {
+      hashMap.try_emplace(i + 1, item);
+    }
+    catch (i32)
+    {
+      ++thrown;
+    }
+  report("HashMap try_emplace");
+  HashSet<Item, ItemHash> hashSet;
+  hashSet.emplace(0);
+  start();
+  throwing = false;
+  hashThrows = true;
+  for (i32 i = 0; i < 100; ++i)
+    try
+    {
+      hashSet.emplace(i + 1);
+    }
+    catch (i32)
+    {
+      ++thrown;
+    }
+  report("HashSet emplace, the hash throws");
+  printf("sizes %d %d %d %d %d %d %d %d %d\n", (i32)list.size(), forwardSize(forward), (i32)map.size(), (i32)set.size(), (i32)multimap.size(), (i32)multiset.size(), (i32)hashMap.size(), (i32)hashSet.size(), item.value);
+  return 0;
+}

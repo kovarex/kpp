@@ -1,0 +1,346 @@
+// spec: List, ForwardList, Map, Set, MultiMap, MultiSet, HashMap, HashSet, FastMap and FastSet free what they built when an element's copy throws: a copy constructor, a copy assignment (which leaves the target as it was), List's constructors from a range, a count of a value and a list, and an insert or emplace leave every element built destroyed, and only the source's (and the target's) alive; a hasher that throws in HashSet's emplace destroys the element built for it (clang's with MSVC's STL, FastMap and FastSet as std::map and std::set)
+// factorio: K's backlog (stdlib-conformance.md, 2026-11-07): the constructors leaked every element built before the one that threw (a constructor's own destructor does not run), and HashMap's copy assignment then crashed (the copied tags marked entries never built)
+extern "C" import "stdio.h";
+i32 live = 0;
+i32 neverBuilt = 0;
+i32 buildsLeft = 1000; // copies and moves before one throws
+i32 hashesLeft = 1000; // hashes before one throws
+
+struct Item
+{
+  i32 value;
+  i32 mark;
+  Item(i32 value) : value(value), mark(12345) { ++live; }
+  Item(const Item& other) : value(other.value), mark(12345)
+  {
+    if (buildsLeft-- == 0)
+      throw 7;
+    ++live;
+  }
+  Item(Item&& other) : value(other.value), mark(12345)
+  {
+    if (buildsLeft-- == 0)
+      throw 8;
+    ++live;
+  }
+  Item& operator=(const Item& other)
+  {
+    this->value = other.value;
+    return *this;
+  }
+  ~Item()
+  {
+    if (this->mark != 12345)
+      ++neverBuilt;
+    this->mark = 0;
+    --live;
+  }
+  bool operator<(const Item& other) const { return this->value < other.value; }
+  bool operator==(const Item& other) const { return this->value == other.value; }
+};
+
+// FastMap's and FastSet's entries: a copy may throw, a move does not (fastmap_entry_that_may_throw_when_moved_is_error).
+struct Entry
+{
+  i32 value;
+  i32 mark;
+  Entry(i32 value) : value(value), mark(12345) { ++live; }
+  Entry(const Entry& other) : value(other.value), mark(12345)
+  {
+    if (buildsLeft-- == 0)
+      throw 7;
+    ++live;
+  }
+  Entry(Entry&& other) noexcept : value(other.value), mark(12345) { ++live; }
+  Entry& operator=(const Entry& other)
+  {
+    this->value = other.value;
+    return *this;
+  }
+  ~Entry()
+  {
+    if (this->mark != 12345)
+      ++neverBuilt;
+    this->mark = 0;
+    --live;
+  }
+  bool operator<(const Entry& other) const { return this->value < other.value; }
+};
+
+struct ItemHash
+{
+  usize operator()(const Item& item) const
+  {
+    if (hashesLeft-- == 0)
+      throw 9;
+    return (usize)item.value;
+  }
+};
+
+void report(const char* name, bool thrown, i32 size)
+{
+  printf("%s: %s, size %d, live %d, never built %d\n", name, thrown ? "thrown" : "not thrown", size, live, neverBuilt);
+  fflush(nullptr);
+  neverBuilt = 0;
+  buildsLeft = 1000;
+  hashesLeft = 1000;
+}
+
+template<typename C>
+i32 sizeOf(const C& c)
+{
+  i32 n = 0;
+  for (auto it = c.begin(); it != c.end(); ++it)
+    ++n;
+  return n;
+}
+
+// Copies source with the third element's copy throwing, then assigns it over a container of two.
+template<typename C>
+void copies(const char* name, const C& source, const C& two)
+{
+  bool thrown = false;
+  buildsLeft = 2;
+  try
+  {
+    C copy(source);
+  }
+  catch (i32)
+  {
+    thrown = true;
+  }
+  printf("%s ", name);
+  report("copy", thrown, sizeOf(source));
+  thrown = false;
+  {
+    C target(two);
+    buildsLeft = 2;
+    try
+    {
+      target = source;
+    }
+    catch (i32)
+    {
+      thrown = true;
+    }
+  }
+  printf("%s ", name);
+  report("assignment", thrown, sizeOf(source));
+}
+
+int main()
+{
+  {
+    List<Item> source;
+    for (i32 i = 0; i < 5; ++i)
+      source.emplace_back(i);
+    List<Item> two;
+    two.emplace_back(10);
+    two.emplace_back(11);
+    copies("List", source, two);
+    bool thrown = false;
+    buildsLeft = 2;
+    try
+    {
+      List<Item> range(source.begin(), source.end());
+    }
+    catch (i32)
+    {
+      thrown = true;
+    }
+    report("List range", thrown, sizeOf(source));
+    thrown = false;
+    {
+      Item one(1);
+      buildsLeft = 2;
+      try
+      {
+        List<Item> repeated(4, one);
+      }
+      catch (i32)
+      {
+        thrown = true;
+      }
+      report("List repeated", thrown, sizeOf(source));
+    }
+    thrown = false;
+    buildsLeft = 2;
+    try
+    {
+      List<Item> listed{Item(1), Item(2), Item(3), Item(4)};
+    }
+    catch (i32)
+    {
+      thrown = true;
+    }
+    report("List listed", thrown, sizeOf(source));
+    thrown = false;
+    buildsLeft = 0;
+    try
+    {
+      source.push_back(source.front());
+    }
+    catch (i32)
+    {
+      thrown = true;
+    }
+    report("List push_back", thrown, sizeOf(source));
+  }
+  report("List gone", false, 0);
+  live = 0;
+  {
+    ForwardList<Item> source;
+    for (i32 i = 5; i-- > 0;)
+      source.emplace_front(i);
+    ForwardList<Item> two;
+    two.emplace_front(11);
+    two.emplace_front(10);
+    copies("ForwardList", source, two);
+    bool thrown = false;
+    buildsLeft = 2;
+    try
+    {
+      ForwardList<Item> range(source.begin(), source.end());
+    }
+    catch (i32)
+    {
+      thrown = true;
+    }
+    report("ForwardList range", thrown, sizeOf(source));
+  }
+  report("ForwardList gone", false, 0);
+  live = 0;
+  {
+    Map<i32, Item> source;
+    for (i32 i = 0; i < 9; ++i)
+      source.emplace(i, Item(i));
+    Map<i32, Item> two;
+    two.emplace(10, Item(10));
+    two.emplace(11, Item(11));
+    copies("Map", source, two);
+    bool thrown = false;
+    buildsLeft = 0;
+    try
+    {
+      source.emplace(20, source.at(0));
+    }
+    catch (i32)
+    {
+      thrown = true;
+    }
+    report("Map emplace", thrown, sizeOf(source));
+  }
+  report("Map gone", false, 0);
+  live = 0;
+  {
+    Set<Item> source;
+    for (i32 i = 0; i < 9; ++i)
+      source.emplace(i);
+    Set<Item> two;
+    two.emplace(10);
+    two.emplace(11);
+    copies("Set", source, two);
+  }
+  report("Set gone", false, 0);
+  live = 0;
+  {
+    MultiMap<i32, Item> source;
+    for (i32 i = 0; i < 9; ++i)
+      source.emplace(i % 3, Item(i));
+    MultiMap<i32, Item> two;
+    two.emplace(10, Item(10));
+    two.emplace(10, Item(11));
+    copies("MultiMap", source, two);
+  }
+  report("MultiMap gone", false, 0);
+  live = 0;
+  {
+    MultiSet<Item> source;
+    for (i32 i = 0; i < 9; ++i)
+      source.emplace(i % 3);
+    MultiSet<Item> two;
+    two.emplace(10);
+    two.emplace(10);
+    copies("MultiSet", source, two);
+  }
+  report("MultiSet gone", false, 0);
+  live = 0;
+  {
+    HashMap<i32, Item> source;
+    for (i32 i = 0; i < 9; ++i)
+      source.emplace(i, Item(i));
+    HashMap<i32, Item> two;
+    two.emplace(10, Item(10));
+    two.emplace(11, Item(11));
+    copies("HashMap", source, two);
+    bool thrown = false;
+    buildsLeft = 0;
+    try
+    {
+      source.emplace(20, source.at(0));
+    }
+    catch (i32)
+    {
+      thrown = true;
+    }
+    report("HashMap emplace", thrown, sizeOf(source));
+    thrown = false;
+    buildsLeft = 0;
+    try
+    {
+      source.try_emplace(21, source.at(0));
+    }
+    catch (i32)
+    {
+      thrown = true;
+    }
+    report("HashMap try_emplace", thrown, sizeOf(source));
+  }
+  report("HashMap gone", false, 0);
+  live = 0;
+  {
+    HashSet<Item, ItemHash> source;
+    for (i32 i = 0; i < 9; ++i)
+      source.emplace(i);
+    HashSet<Item, ItemHash> two;
+    two.emplace(10);
+    two.emplace(11);
+    copies("HashSet", source, two);
+    bool thrown = false;
+    hashesLeft = 0;
+    try
+    {
+      source.emplace(30);
+    }
+    catch (i32)
+    {
+      thrown = true;
+    }
+    report("HashSet hash throws", thrown, sizeOf(source));
+  }
+  report("HashSet gone", false, 0);
+  live = 0;
+  {
+    FastMap<i32, Entry> source;
+    for (i32 i = 0; i < 40; ++i)
+      source.emplace(i, Entry(i));
+    FastMap<i32, Entry> two;
+    two.emplace(10, Entry(10));
+    two.emplace(11, Entry(11));
+    copies("FastMap", source, two);
+  }
+  report("FastMap gone", false, 0);
+  live = 0;
+  {
+    FastSet<Entry> source;
+    for (i32 i = 0; i < 40; ++i)
+      source.emplace(i);
+    FastSet<Entry> two;
+    two.emplace(10);
+    two.emplace(11);
+    copies("FastSet", source, two);
+  }
+  report("FastSet gone", false, 0);
+  live = 0;
+  return 0;
+}

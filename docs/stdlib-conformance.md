@@ -95,11 +95,6 @@ The edges are specified in library/size_limits_string, size_limits_vector and si
 stableSort throws BadAlloc when malloc cannot give its buffer. std's stable_sort falls back to
 sorting in place instead; that fallback comes when a use needs it.
 
-**A node whose element's constructor throws is not freed** (List, ForwardList, Map, Set, MultiMap,
-MultiSet, HashMap and HashSet, 2026-11-07): the container is left as it was, as std's, but the
-node's block leaks, where std's deallocates it. Freeing it needs a try, which constant evaluation does not run, and the
-containers work at compile time (language/consteval_node_containers).
-
 **Optional** (docs/stdlib/optional.md): not in the specification, kept from the game's own
 Optional until nothing uses them: get(), set(), clear(), operator~, emptyValue().
 

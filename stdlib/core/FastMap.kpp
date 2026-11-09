@@ -142,10 +142,16 @@ private:
 template<typename E, typename K, typename KeyOf>
 class BTree
 {
+  // Entries move between nodes on every insert and erase. A move that threw midway would leave a
+  // node with a hole in it and the keys out of order, which nothing could undo (a move back may
+  // throw too), so an entry that may throw when moved is a compile error, not a broken tree.
+  static_assert(isNothrowMoveConstructible<E>, "FastMap and FastSet move their entries between nodes: an entry's move constructor must be noexcept (Map and Set never move theirs)");
+
 public:
   ContainerSize size() const { return this->count; }
   BTree() {}
-  BTree(const BTree<E, K, KeyOf>& other) { this->copyFrom(other); }
+  // Delegates, so that the destructor frees the nodes copied when an entry's copy throws.
+  BTree(const BTree<E, K, KeyOf>& other) : BTree() { this->copyFrom(other); }
 
   BTree(BTree<E, K, KeyOf>&& other) noexcept : root(other.root), rightmost(other.rightmost), count(other.count)
   {
@@ -156,13 +162,11 @@ public:
 
   ~BTree() { this->clear(); }
 
+  // A copy taken over: an entry's copy that throws leaves this as it was.
   BTree<E, K, KeyOf>& operator=(const BTree<E, K, KeyOf>& other)
   {
     if (this != &other)
-    {
-      this->clear();
-      this->copyFrom(other);
-    }
+      *this = BTree<E, K, KeyOf>(other);
     return *this;
   }
 
@@ -564,34 +568,47 @@ private:
     free(old);
   }
 
+  // (A copy that threw leaves an interior node's children not copied yet null: clone.)
   void destroy(BTreeNode<E>* node)
   {
     if (!node->leaf)
       for (i32 i = 0; i <= node->count; ++i)
-        this->destroy(bTreeChildren(node)[i]);
+        if (bTreeChildren(node)[i])
+          this->destroy(bTreeChildren(node)[i]);
     for (i32 i = 0; i < node->count; ++i)
       node->entries[i].~E();
     free(node);
   }
 
-  BTreeNode<E>* clone(const BTreeNode<E>* source)
+  // Copies source into link, a child of parent at index (the root: parent null). Each node is
+  // linked as soon as it is made, counts each entry once it is built, and has its children null
+  // until they are copied, so that when an entry's copy throws, clear() reaches every node and
+  // entry built (the tree's count is set after).
+  void clone(const BTreeNode<E>* source, BTreeNode<E>* parent, i32 index, BTreeNode<E>*& link)
   {
     BTreeNode<E>* node = this->newNode(source->leaf);
-    for (i32 i = 0; i < source->count; ++i)
-      new (node->entries + i) E(source->entries[i]);
-    node->count = source->count;
+    node->parent = parent;
+    node->parentIndex = index;
     if (!source->leaf)
       for (i32 i = 0; i <= source->count; ++i)
-        this->setChild(node, i, this->clone(bTreeChildren((BTreeNode<E>*)source)[i]));
+        bTreeChildren(node)[i] = nullptr;
+    link = node;
+    for (i32 i = 0; i < source->count; ++i)
+    {
+      new (node->entries + i) E(source->entries[i]);
+      ++node->count;
+    }
+    if (!source->leaf)
+      for (i32 i = 0; i <= source->count; ++i)
+        this->clone(bTreeChildren((BTreeNode<E>*)source)[i], node, i, bTreeChildren(node)[i]);
     else
       this->rightmost = node; // leaves are cloned left to right: the last one is the rightmost
-    return node;
   }
 
   void copyFrom(const BTree<E, K, KeyOf>& other)
   {
     if (other.root)
-      this->root = this->clone(other.root);
+      this->clone(other.root, nullptr, 0, this->root);
     this->count = other.count;
   }
 

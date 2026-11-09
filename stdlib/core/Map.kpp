@@ -393,11 +393,8 @@ public:
   RbTree() { this->becomeEmpty(); }
   RbTree(const Compare& compare) : compare(compare) { this->becomeEmpty(); }
 
-  RbTree(const RbTree<E, K, KeyOf, Compare>& other) : compare(other.compare)
-  {
-    this->becomeEmpty();
-    this->copyFrom(other);
-  }
+  // Delegates, so that the destructor frees the nodes copied when an entry's copy throws.
+  RbTree(const RbTree<E, K, KeyOf, Compare>& other) : RbTree(other.compare) { this->copyFrom(other); }
 
   RbTree(RbTree<E, K, KeyOf, Compare>&& other) noexcept(isNothrowCopyConstructible<Compare>) : compare(other.compare)
   {
@@ -407,14 +404,11 @@ public:
 
   ~RbTree() { this->clear(); }
 
+  // A copy taken over: an entry's copy that throws leaves this as it was.
   RbTree<E, K, KeyOf, Compare>& operator=(const RbTree<E, K, KeyOf, Compare>& other)
   {
     if (this != &other)
-    {
-      this->clear();
-      this->compare = other.compare;
-      this->copyFrom(other);
-    }
+      *this = RbTree<E, K, KeyOf, Compare>(other);
     return *this;
   }
 
@@ -604,7 +598,9 @@ public:
     if (this->count == maxContainerSize) // its count is a size (core/Sizes.kpp)
       throwLengthError("map/set too long");
     RbNode<E>* node = (RbNode<E>*)allocateBytes(sizeof(RbNode<E>));
+    OwnedBlock block(node); // freed when the entry's constructor throws
     new (&node->entry) E(forward<Args>(args)...);
+    block.release();
     return node;
   }
 
@@ -684,22 +680,31 @@ private:
     }
   }
 
-  RbNodeBase* clone(const RbNodeBase* source, RbNodeBase* parent)
+  // Copies source's subtree under parent, into link. Each node is linked once its entry is built
+  // and before its children are copied, so that when an entry's copy throws, clear() reaches every
+  // node built (the count and the ends are set after).
+  void clone(const RbNodeBase* source, RbNodeBase* parent, RbNodeBase*& link)
   {
     RbNode<E>* node = (RbNode<E>*)allocateBytes(sizeof(RbNode<E>));
+    OwnedBlock block(node);
     new (&node->entry) E(((const RbNode<E>*)source)->entry);
+    block.release();
     node->red = source->red;
     node->parent = parent;
-    node->left = source->left ? this->clone(source->left, node) : nullptr;
-    node->right = source->right ? this->clone(source->right, node) : nullptr;
-    return node;
+    node->left = nullptr;
+    node->right = nullptr;
+    link = node;
+    if (source->left)
+      this->clone(source->left, node, node->left);
+    if (source->right)
+      this->clone(source->right, node, node->right);
   }
 
   void copyFrom(const RbTree<E, K, KeyOf, Compare>& other)
   {
     if (!other.header.parent)
       return;
-    this->header.parent = this->clone(other.header.parent, &this->header);
+    this->clone(other.header.parent, &this->header, this->header.parent);
     this->header.left = rbMinimum(this->header.parent);
     this->header.right = rbMaximum(this->header.parent);
     this->count = other.count;

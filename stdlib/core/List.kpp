@@ -107,24 +107,35 @@ public:
 
   List() { this->becomeEmpty(); }
 
+  // The constructors that build elements build them in a local List and take its nodes, so that
+  // its destructor frees the elements built when one's constructor throws (this one's would not
+  // run). Not by delegating to List(): at compile time the delegated object is not made where this
+  // one lives, and the sentinel would point at it (pending spec
+  // language/consteval_delegating_constructor_makes_the_object_in_place).
   implicit List(InitializerList<T> items)
   {
     this->becomeEmpty();
+    List<T> built;
     for (const T& item : items)
-      this->push_back(item);
+      built.push_back(item);
+    this->take(built);
   }
 
   // count value-initialized elements, or count copies of value.
   List(ContainerSize count)
   {
     this->becomeEmpty();
-    this->resize(count);
+    List<T> built;
+    built.resize(count);
+    this->take(built);
   }
 
   List(ContainerSize count, const T& value)
   {
     this->becomeEmpty();
-    this->resize(count, value);
+    List<T> built;
+    built.resize(count, value);
+    this->take(built);
   }
 
   // The elements of [first, last), input iterators of any kind, in order.
@@ -132,8 +143,10 @@ public:
   List(InputIt first, InputIt last)
   {
     this->becomeEmpty();
+    List<T> built;
     for (; first != last; ++first)
-      this->push_back(*first);
+      built.push_back(*first);
+    this->take(built);
   }
 
   // `= {...}`: the listed elements, replacing the contents.
@@ -146,8 +159,10 @@ public:
   List(const List<T>& other)
   {
     this->becomeEmpty();
+    List<T> built;
     for (const T& value : other)
-      this->push_back(value);
+      built.push_back(value);
+    this->take(built);
   }
 
   List(List<T>&& other) noexcept
@@ -289,7 +304,9 @@ public:
   ListIterator<T> emplace(const_iterator position, Args&&... args)
   {
     ListNode<T>* node = this->allocateNode();
+    OwnedBlock block(node); // freed when the element's constructor throws
     new (&node->value) T(forward<Args>(args)...);
+    block.release();
     return this->linkNode(iterator(position), node);
   }
 

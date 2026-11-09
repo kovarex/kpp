@@ -241,6 +241,11 @@ builds win less unless machine code is cached per function.
   named type (FastMap next to Map). The rules are written out, self-contained, in docs/stdlib/
   (the specification); docs/stdlib-conformance.md lists where the code does not meet it yet.
   (kovarex 2026-10-28.)
+- FastMap's and FastSet's entries move without throwing: an entry whose move constructor may throw
+  is a compile error (a static_assert in BTree), since a move that threw while entries shift would
+  leave the tree with a hole and its keys out of order, past repair (K, 2026-11-09, from the
+  coordinator's go-ahead; spec library/fastmap_entry_that_may_throw_when_moved_is_error,
+  docs/stdlib/fastmap.md). Map and Set take any entry.
 - Containers move elements as the C++ ones do: when Vector grows or shifts, HashMap rehashes or
   stableSort merges, each element is move-constructed at its new place and the old one destroyed
   (`relocate` in Utility.kpp), so a type that keeps its own address can fix it in its move

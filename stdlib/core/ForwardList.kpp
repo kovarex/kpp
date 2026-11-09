@@ -66,15 +66,17 @@ public:
 
   ForwardList() {}
 
-  implicit ForwardList(InitializerList<T> items) { this->insert_after(this->before_begin(), items.begin(), items.end()); }
+  // The constructors that build elements delegate to ForwardList(), so that the destructor frees
+  // the elements built when one's constructor throws.
+  implicit ForwardList(InitializerList<T> items) : ForwardList() { this->insert_after(this->before_begin(), items.begin(), items.end()); }
 
   // count value-initialized elements, or count copies of value.
-  ForwardList(ContainerSize count) { this->resize(count); }
-  ForwardList(ContainerSize count, const T& value) { this->insert_after(this->before_begin(), count, value); }
+  ForwardList(ContainerSize count) : ForwardList() { this->resize(count); }
+  ForwardList(ContainerSize count, const T& value) : ForwardList() { this->insert_after(this->before_begin(), count, value); }
 
   // The elements of [first, last), input iterators of any kind, in order.
   template<typename InputIt> requires (!isIntegral<InputIt>)
-  ForwardList(InputIt first, InputIt last) { this->insert_after(this->before_begin(), first, last); }
+  ForwardList(InputIt first, InputIt last) : ForwardList() { this->insert_after(this->before_begin(), first, last); }
 
   // `= {...}`: the listed elements, replacing the contents.
   ForwardList<T>& operator=(InitializerList<T> items)
@@ -83,7 +85,7 @@ public:
     return *this;
   }
 
-  ForwardList(const ForwardList<T>& other) { this->insert_after(this->before_begin(), other.begin(), other.end()); }
+  ForwardList(const ForwardList<T>& other) : ForwardList() { this->insert_after(this->before_begin(), other.begin(), other.end()); }
 
   ForwardList(ForwardList<T>&& other) noexcept
   {
@@ -197,7 +199,9 @@ public:
   ForwardIterator<T> emplace_after(ForwardIterator<T> position, Args&&... args)
   {
     ForwardNode<T>* node = (ForwardNode<T>*)allocateBytes(sizeof(ForwardNode<T>));
+    OwnedBlock block(node); // freed when the element's constructor throws
     new (&node->value) T(forward<Args>(args)...);
+    block.release();
     node->next = position.node->next;
     position.node->next = node;
     return ForwardIterator<T>(node);

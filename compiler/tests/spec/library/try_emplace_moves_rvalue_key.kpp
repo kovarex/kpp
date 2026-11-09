@@ -7,7 +7,7 @@ struct Key
   int v = 0;
   Key(int v) : v(v) {}
   Key(const Key& other) : v(other.v) { copies += 1; }
-  Key(Key&& other) : v(other.v) { moves += 1; }
+  Key(Key&& other) noexcept : v(other.v) { moves += 1; } // (noexcept: FastMap's entries move without throwing)
   bool operator<(const Key& other) const { return this->v < other.v; }
   bool operator==(const Key& other) const { return this->v == other.v; }
 };
@@ -18,7 +18,7 @@ struct Value
   Value() {}
   Value(int v) : v(v) {}
   Value(const Value& other) : v(other.v) { copies += 100; }
-  Value(Value&& other) : v(other.v) { moves += 100; }
+  Value(Value&& other) noexcept : v(other.v) { moves += 100; }
 };
 template<typename M>
 void tryEmplace(const char* name)

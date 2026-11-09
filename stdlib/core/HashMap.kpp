@@ -118,20 +118,17 @@ public:
   bool slotUsed(ContainerSize i) const { return this->tags[i] >= 0x80; }
   HashTable() {}
   HashTable(const Hasher& hasher, const KeyEqual& equal) : hasher(hasher), equal(equal) {}
-  HashTable(const HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>& other) : hasher(other.hasher), equal(other.equal) { this->copyFrom(other); }
+  // Delegates, so that the destructor frees the entries copied when one's copy throws.
+  HashTable(const HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>& other) : HashTable(other.hasher, other.equal) { this->copyFrom(other); }
   HashTable(HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>&& other) noexcept(isNothrowCopyConstructible<Hasher> && isNothrowCopyConstructible<KeyEqual>)
     : hasher(other.hasher), equal(other.equal) { this->take(other); }
   ~HashTable() { this->clear(); }
 
+  // A copy taken over: an entry's copy that throws leaves this as it was.
   HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>& operator=(const HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>& other)
   {
     if (this != &other)
-    {
-      this->clear();
-      this->hasher = other.hasher;
-      this->equal = other.equal;
-      this->copyFrom(other);
-    }
+      *this = HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>(other);
     return *this;
   }
 
@@ -249,7 +246,9 @@ public:
     if constexpr (stable)
     {
       entry = (E*)allocateBytes(sizeof(E));
+      OwnedBlock block(entry); // freed when the entry's constructor throws
       new (entry) E(forward<Args>(args)...);
+      block.release();
       ((E**)this->slots)[slot] = entry;
     }
     else
@@ -274,8 +273,12 @@ public:
     bool found;
     if constexpr (stable)
     {
+      // The node is freed, and the entry destroyed, when its constructor, the hasher, the key
+      // equality or growing throws, and when the key is here already.
       E* entry = (E*)allocateBytes(sizeof(E));
-      new (entry) E(forward<Args>(args)...);
+      OwnedBlock block(entry);
+      BuiltObjects built(destroyObjects<E>);
+      built.add(new (entry) E(forward<Args>(args)...));
       usize hash = this->hashKey(KeyOf::of(*entry));
       ContainerSize slot = this->place(KeyOf::of(*entry), hash, found);
       if (slot == hashNoSlot)
@@ -285,11 +288,9 @@ public:
       }
       placed = !found;
       if (found)
-      {
-        entry->~E();
-        free(entry);
         return slot;
-      }
+      built.keep();
+      block.release();
       if (this->tags[slot] == hashSlotEmpty)
         ++this->used;
       ((E**)this->slots)[slot] = entry;
@@ -521,22 +522,31 @@ private:
   {
     if (other.count == 0)
       return;
+    // An entry's tag is copied, and it is counted, once it is built: when a copy throws, the table
+    // holds the entries built so far (and the deleted markers), which clear() destroys.
     this->allocate(other.capacity);
-    memcpy(this->tags, other.tags, (usize)other.capacity);
     for (ContainerSize i = 0; i < other.capacity; ++i)
       if (other.tags[i] >= 0x80)
       {
         if constexpr (stable)
         {
           E* entry = (E*)allocateBytes(sizeof(E));
+          OwnedBlock block(entry);
           new (entry) E(*other.entryAt(i));
+          block.release();
           ((E**)this->slots)[i] = entry;
         }
         else
           new ((E*)this->slots + i) E(*other.entryAt(i));
+        this->tags[i] = other.tags[i];
+        ++this->count;
+        ++this->used;
       }
-    this->count = other.count;
-    this->used = other.used;
+      else if (other.tags[i] != hashSlotEmpty)
+      {
+        this->tags[i] = other.tags[i];
+        ++this->used;
+      }
   }
 
   void take(HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>& other)

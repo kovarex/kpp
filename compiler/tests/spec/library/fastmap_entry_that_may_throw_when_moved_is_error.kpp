@@ -1,0 +1,15 @@
+// spec: FastMap and FastSet move their entries between nodes on every insert and erase, so an entry whose move constructor may throw is a compile error: a move that threw midway would leave a node with a hole and the keys out of order, past undoing; Map and Set never move theirs (docs/stdlib/fastmap.md)
+// factorio: K's backlog (stdlib-conformance.md): FastMap shifted entries with relocate and relocateBackward, which a throwing move left with a destroyed entry counted and a built one past the count
+// error: static assertion failed: "FastMap and FastSet move their entries between nodes: an entry's move constructor must be noexcept
+struct Throwing
+{
+  i32 v = 0;
+  Throwing() {}
+  Throwing(Throwing&& other) : v(other.v) {}
+};
+int main()
+{
+  FastMap<i32, Throwing> m;
+  m[1].v = 2;
+  return 0;
+}

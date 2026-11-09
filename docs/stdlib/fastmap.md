@@ -7,6 +7,13 @@ lines), and it is why they are separate types: code that keeps iterators, pointe
 across modifications must use Map or Set. The converter never produces them; choosing one is a
 decision made in kpp code.
 
+An entry's move constructor must be noexcept (isNothrowMoveConstructible): FastMap<K, V> and
+FastSet<T> of an entry that may throw when moved are a compile error. Inserts and erases shift
+entries within nodes and between them, and a move that threw midway would leave a node with a
+hole and the keys out of order, which no move back (it may throw too) could repair. Map and Set
+never move an entry, so they take any. Copying an entry may throw: a copy constructor or assignment
+that throws destroys what it built and leaves the target as it was.
+
 ## Invalidation
 
 | operation | iterators, pointers and references |

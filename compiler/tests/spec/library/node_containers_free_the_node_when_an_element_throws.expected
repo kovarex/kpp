@@ -1,0 +1,12 @@
+List push_back: thrown 100, leaked blocks none
+List insert: thrown 100, leaked blocks none
+ForwardList push_front: thrown 100, leaked blocks none
+Map emplace: thrown 100, leaked blocks none
+Map try_emplace: thrown 100, leaked blocks none
+Set insert: thrown 100, leaked blocks none
+MultiMap emplace: thrown 100, leaked blocks none
+MultiSet insert: thrown 100, leaked blocks none
+HashMap emplace: thrown 100, leaked blocks none
+HashMap try_emplace: thrown 100, leaked blocks none
+HashSet emplace, the hash throws: thrown 100, leaked blocks none
+sizes 1 0 1 0 0 0 1 1 1

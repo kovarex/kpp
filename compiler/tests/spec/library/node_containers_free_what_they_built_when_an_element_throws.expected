@@ -1,0 +1,39 @@
+List copy: thrown, size 5, live 7, never built 0
+List assignment: thrown, size 5, live 7, never built 0
+List range: thrown, size 5, live 7, never built 0
+List repeated: thrown, size 5, live 8, never built 0
+List listed: thrown, size 5, live 7, never built 0
+List push_back: thrown, size 5, live 7, never built 0
+List gone: not thrown, size 0, live 0, never built 0
+ForwardList copy: thrown, size 5, live 7, never built 0
+ForwardList assignment: thrown, size 5, live 7, never built 0
+ForwardList range: thrown, size 5, live 7, never built 0
+ForwardList gone: not thrown, size 0, live 0, never built 0
+Map copy: thrown, size 9, live 11, never built 0
+Map assignment: thrown, size 9, live 11, never built 0
+Map emplace: thrown, size 9, live 11, never built 0
+Map gone: not thrown, size 0, live 0, never built 0
+Set copy: thrown, size 9, live 11, never built 0
+Set assignment: thrown, size 9, live 11, never built 0
+Set gone: not thrown, size 0, live 0, never built 0
+MultiMap copy: thrown, size 9, live 11, never built 0
+MultiMap assignment: thrown, size 9, live 11, never built 0
+MultiMap gone: not thrown, size 0, live 0, never built 0
+MultiSet copy: thrown, size 9, live 11, never built 0
+MultiSet assignment: thrown, size 9, live 11, never built 0
+MultiSet gone: not thrown, size 0, live 0, never built 0
+HashMap copy: thrown, size 9, live 11, never built 0
+HashMap assignment: thrown, size 9, live 11, never built 0
+HashMap emplace: thrown, size 9, live 11, never built 0
+HashMap try_emplace: thrown, size 9, live 11, never built 0
+HashMap gone: not thrown, size 0, live 0, never built 0
+HashSet copy: thrown, size 9, live 11, never built 0
+HashSet assignment: thrown, size 9, live 11, never built 0
+HashSet hash throws: thrown, size 9, live 11, never built 0
+HashSet gone: not thrown, size 0, live 0, never built 0
+FastMap copy: thrown, size 40, live 42, never built 0
+FastMap assignment: thrown, size 40, live 42, never built 0
+FastMap gone: not thrown, size 0, live 0, never built 0
+FastSet copy: thrown, size 40, live 42, never built 0
+FastSet assignment: thrown, size 40, live 42, never built 0
+FastSet gone: not thrown, size 0, live 0, never built 0
