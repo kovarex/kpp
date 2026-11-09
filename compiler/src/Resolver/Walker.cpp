@@ -10490,6 +10490,11 @@ auto GlobalScope::Impl::Walker::whenHolds(Decl* d) -> bool
 
 auto GlobalScope::Impl::Walker::walkLocalDecl(Decl* d) -> void
 {
+  // The body is instantiated once per element (design.md 8.2), so each element has its own such variable, which is not
+  // built yet: an error, never one variable shared by the elements.
+  if (d->kind == NodeKind::VariableDecl && (d->flags & (DF_Static | DF_ThreadLocal)) && !(d->flags & DF_Typedef) && forConstexprDepth > 0 && !activeSubst && !probing &&
+      !retypingElements && file && !file->isImported)
+    impl.reportCheckerError(file, d->token, "a static or thread_local variable in a `for constexpr` body: one variable per element is not built yet");
   if (!whenHolds(d))
   {
     // Declared all the same, absent (whenKnown 0): a use of its name finds it, never a name of an
