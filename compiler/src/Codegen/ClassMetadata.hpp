@@ -430,10 +430,15 @@
 
     // Whether an expression is an xvalue: an rvalue reference to an object that may be moved from
     // (`move(x)`); a named rvalue reference is an lvalue.
-    static bool isXvalue(Expr* e) { return e && e->ty && e->ty->kind == TyKind::RRef && !isLvalueExpression(e); }
+    static bool isXvalue(Expr* e) { return e && e->ty && ((e->ty->kind == TyKind::RRef && !isLvalueExpression(e)) || isXvalueMember(e)); }
     // An xvalue a move may take: not a const one (`move(constObject)`), which a `T&&` does not bind,
     // so the copy constructor or copy assignment takes it and the source keeps its value.
-    static bool movable(Expr* e) { return isXvalue(e) && e->ty->inner && !e->ty->inner->isConst; }
+    static bool movable(Expr* e)
+    {
+      if (isXvalueMember(e))
+        return !e->ty->isConst; // (`make().b`: its type the member's, not an rvalue reference)
+      return isXvalue(e) && e->ty->inner && !e->ty->inner->isConst;
+    }
 
     // Move-constructs the object at src into dst: through the move constructor where the class has
     // one, as a copy otherwise.

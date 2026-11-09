@@ -51,6 +51,30 @@ inline Expr* branchBesideThrow(const ConditionalExpr* c)
   return !c->then || throws(c->then) == throws(c->else_) ? nullptr : throws(c->then) ? c->else_ : c->then;
 }
 
+inline bool isLvalueExpression(const Expr* e);
+
+// A non-static data member that is no reference, of an object that is an rvalue (`make().b`, `move(h).b`,
+// `Holder{...}.a`): an xvalue ([expr.ref] 6.2), which a `T&&` binds and a by-value parameter moves from (until
+// 2026-11-08 an lvalue: copied, and f(const T&) chosen over f(T&&); thread J's expression generator).
+inline bool isXvalueMember(const Expr* e)
+{
+  if (!e || e->kind != NodeKind::MemberExpr)
+    return false;
+  auto* m = static_cast<const MemberExpr*>(e);
+  Decl* d = m->resolved;
+  if (!d || d->kind != NodeKind::VariableDecl || (d->flags & (DF_Static | DF_Typedef)) || !m->base || P(m->op) != P::Dot)
+    return false;
+  const Type* declared = static_cast<const VariableDecl*>(d)->type;
+  if ((declared && (declared->kind == NodeKind::LRefType || declared->kind == NodeKind::RRefType)) || (e->ty && e->ty->isReference()))
+    return false;
+  const Expr* b = m->base;
+  while (b && b->kind == NodeKind::ParenExpr)
+    b = static_cast<const ParenExpr*>(b)->inner;
+  if (!b || !b->ty || !b->ty->isKnown() || b->ty->kind == TyKind::LRef || b->ty->kind == TyKind::Pointer)
+    return false;
+  return !isLvalueExpression(b);
+}
+
 inline bool isLvalueExpression(const Expr* e)
 {
   if (!e)
@@ -88,7 +112,7 @@ inline bool isLvalueExpression(const Expr* e)
     case NodeKind::MemberExpr:
     {
       Decl* d = static_cast<const MemberExpr*>(e)->resolved;
-      return d && d->kind == NodeKind::VariableDecl;
+      return d && d->kind == NodeKind::VariableDecl && !isXvalueMember(e);
     }
     case NodeKind::IndexExpr:
     {
@@ -156,6 +180,8 @@ inline const Ty* argumentType(const Expr* e, const Ty* t, TypeTable& types)
   if (e && t && t->kind == TyKind::Pointer && (e->kind == NodeKind::LiteralExpr || e->kind == NodeKind::ParenExpr))
     if (const Ty* array = stringLiteralArray(e, t, types))
       return types.lref(array);
+  if (t && t->isKnown() && t->kind != TyKind::Pack && !t->isReference() && isXvalueMember(e))
+    return types.rref(t); // (an xvalue: `make().b` binds a T&& and no T&)
   if (!t || !t->isKnown() || t->kind == TyKind::Pack || !isLvalueExpression(e))
     return t;
   if (t->kind == TyKind::RRef)

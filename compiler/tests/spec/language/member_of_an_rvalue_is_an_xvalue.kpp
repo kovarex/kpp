@@ -1,0 +1,44 @@
+// spec: a non-static data member that is no reference, of an rvalue object (`hold(1).b`, `H{T(7), T(8)}.a`), is an xvalue ([expr.ref] 6.2): a by-value parameter and `T x = ...` move from it, take(T&&) is chosen over take(const T&); a const member is copied, a reference member and a member of an lvalue stay lvalues. clang's output (g++ destroys the by-value parameter at the end of the full-expression, the Itanium ABI's place)
+// found by thread J's expression generator (2026-11-08): kpp copied it and chose take(const T&)
+extern "C" int printf(const char* format, ...);
+struct T
+{
+  int id;
+  T(int i) : id(i) { printf("+%d ", id); }
+  T(const T& o) : id(o.id + 100) { printf("c%d ", id); }
+  T(T&& o) : id(o.id + 200) { o.id = -o.id; printf("m%d ", id); }
+  ~T() { printf("-%d ", id); }
+};
+struct H
+{
+  T a;
+  T b;
+};
+struct HC
+{
+  const T a;
+};
+struct HR
+{
+  T& r;
+};
+H hold(int i) { return H{T(i), T(i + 1)}; }
+int byval(T t) { return t.id; }
+int take(T&&) { return 1; }
+int take(const T&) { return 2; }
+int main()
+{
+  printf("[%d]\n", byval(hold(1).b));
+  printf("[%d]\n", take(hold(3).a));
+  {
+    T x = hold(5).b;
+    printf("[%d]\n", x.id);
+  }
+  printf("[%d]\n", byval(H{T(7), T(8)}.a));
+  printf("[%d]\n", byval(HC{T(9)}.a));
+  T t(11);
+  printf("[%d %d]\n", take(HR{t}.r), byval(HR{t}.r));
+  H h = hold(13);
+  printf("[%d]\n", take(h.a));
+  return 0;
+}
