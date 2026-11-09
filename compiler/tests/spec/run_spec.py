@@ -102,6 +102,16 @@ runs FreeBSD here: a snippet that links is "built", and build\\spec-freebsd is a
 FreeBSD (run.sh there compares each program's output with its expected output, which is
 <name>.freebsd.expected, else <name>.linux.expected (LP64, a C library that is not the UCRT), else
 <name>.expected). Skipped as for Linux.
+
+--target macos and --target macos-x64 build every snippet for macOS arm64 and x86-64 (design.md,
+"Targets and hosts", stage 8) against a macOS SDK (KPP_SDK_MACOS, else the stand-in SDK beside
+kpp/macos_sdk_checked_before_the_build.kpp: its SDKSettings.json, stdio.h and libSystem.tbd, enough
+for kpp's check and nothing more, so that a snippet importing C headers is skipped with it), into build\\spec-macos or build\\spec-macos-x64, writing no
+spec-status.md. kpp links no Mach-O program yet (M3): a snippet whose modules all compile to Mach-O
+objects and whose build stops at that link, with no other error, is "built"; macos-known-failures.txt
+lists those that do not build yet, as freebsd-known-failures.txt does (`build area/name  why`), for
+both targets. Nothing runs (macOS runs on CI's macOS runners once kpp links, design.md Q5). Skipped
+as for FreeBSD.
 """
 import argparse, hashlib, os, platform, re, shlex, shutil, subprocess, sys, concurrent.futures, time
 
@@ -145,6 +155,16 @@ SYSROOT_FREEBSD = os.environ.get("KPP_SYSROOT_FREEBSD", os.path.join(COMPILER, "
 # failure is reported as known, not as a failure; a known one that works fails the run (its line must
 # go), and so does a line naming no snippet. The pending snippets are known failures of their own.
 KNOWN_FREEBSD = os.path.join(HERE, "freebsd-known-failures.txt")
+# macOS (--target macos, macos-x64): the SDK, and the snippets known not to build for it yet (the
+# stand-in SDK has no C headers but stdio.h's stand-in: a snippet that imports one is known).
+SDK_MACOS = os.environ.get("KPP_SDK_MACOS", os.path.join(HERE, "kpp", "macos_sdk_checked_before_the_build.sdk"))
+KNOWN_MACOS = os.path.join(HERE, "macos-known-failures.txt")
+MACOS_TARGETS = ("macos", "macos-x64")
+# Without KPP_SDK_MACOS a snippet that imports C headers, or has a C source, is skipped: the stand-in
+# has none.
+MACOS_STAND_IN = "KPP_SDK_MACOS" not in os.environ
+# What kpp says where a Mach-O program's link would be (ModuleCompile.cpp's refuseMachOLink).
+MACOS_NO_LINK = "kpp links no Mach-O program yet"
 # run.sh, written into the FreeBSD bundle: on FreeBSD, `sh run.sh` runs every built snippet (60 s and
 # 4 GB of address space each), compares its output, normalised as normalise() does, with its .expected, and ends with one
 # summary line; its exit code says the same. A program's exit code above 1 fails, as here. known.txt
@@ -327,8 +347,10 @@ def build_and_run(path, area, name, work):
         result["status"] = "skip"; return result
     if not TARGET and target not in (None, "windows", "windows-msvc"):
         result["status"] = "skip"; return result
-    if info["arch"] and info["arch"].split()[0] != ("arm64" if TARGET == "linux-arm64" else "x86_64"):
+    if info["arch"] and info["arch"].split()[0] != ("arm64" if TARGET in ("linux-arm64", "macos") else "x86_64"):
         result["status"] = "skip"; return result
+    if TARGET in MACOS_TARGETS and MACOS_STAND_IN and imports_c(path):
+        result["status"] = "skip"; return result # (the stand-in SDK has no C headers)
     os.makedirs(work, exist_ok=True)
     libs = []
     c_source = os.path.splitext(path)[0] + ".c"
@@ -371,6 +393,12 @@ def build_and_run(path, area, name, work):
         else:
             result["status"] = "pass"
         return finish(result)
+    if TARGET in MACOS_TARGETS and c.returncode == 1:
+        # The build stops at the link (M3): built, when that is its one error.
+        errors = [l.strip() for l in (c.stdout + c.stderr).splitlines() if "error:" in l]
+        if errors and all(MACOS_NO_LINK in e for e in errors):
+            result["status"] = "built"
+            return result
     if c.returncode != 0 or not os.path.exists(exe):
         result["status"] = "FAIL"
         # (exit 2: kpp refused its command line, as an --exe path too long for Windows' tools; it says why)
@@ -411,6 +439,18 @@ def build_and_run(path, area, name, work):
         return finish(result)
     compare(r.stdout, expected_path, result)
     return finish(result)
+
+
+def imports_c(path):
+    """Whether a snippet imports C headers (`import "NAME"`), in itself, its .files or its libraries,
+    or has a C source of its own."""
+    stem = os.path.splitext(path)[0]
+    if os.path.exists(stem + ".c"):
+        return True
+    folder, base = os.path.split(stem)
+    files = [path] + [os.path.join(dp, f) for entry in os.listdir(folder) if entry.startswith(base + ".") and os.path.isdir(os.path.join(folder, entry))
+                      for dp, dn, fn in os.walk(os.path.join(folder, entry)) for f in fn if f.endswith(".kpp")]
+    return any(re.search(r'\bimport\s+"', open(f, encoding="utf-8", errors="replace").read()) for f in files)
 
 
 def library_roots(path):
@@ -589,13 +629,13 @@ def write_doc(results, elapsed):
         f.write("\n".join(lines))
 
 
-def apply_known_freebsd(results, whole):
-    """FreeBSD's known failures: a known build failure becomes "known", a known one that builds
-    "fixed"; known.txt in the bundle lists the run lines and the pending snippets that built. Returns
-    the lines naming no snippet (checked on a whole run only)."""
+def apply_known_freebsd(results, whole, path=KNOWN_FREEBSD, bundle=True):
+    """FreeBSD's known failures (macOS's too, path): a known build failure becomes "known", a known one
+    that builds "fixed"; known.txt in the bundle (FreeBSD's) lists the run lines and the pending
+    snippets that built. Returns the lines naming no snippet (checked on a whole run only)."""
     known = {}
-    if os.path.exists(KNOWN_FREEBSD):
-        for line in open(KNOWN_FREEBSD, encoding="utf-8"):
+    if os.path.exists(path):
+        for line in open(path, encoding="utf-8"):
             line = line.split("#", 1)[0].strip()
             if line:
                 kind, name, *why = line.split(None, 2)
@@ -609,11 +649,12 @@ def apply_known_freebsd(results, whole):
         if kind == "build" and r["status"] == "FAIL":
             r["status"] = "known"; r["note"] = why + (f"; {r['note']}" if r["note"] else "")
         elif kind == "build" and r["status"] in ("built", "pass"):
-            r["status"] = "fixed"; r["note"] = "builds now: remove its build line from freebsd-known-failures.txt"
+            r["status"] = "fixed"; r["note"] = f"builds now: remove its build line from {os.path.basename(path)}"
         if r["status"] == "built" and (kind == "run" or r["info"]["pending"] is not None):
             runs.append(f"{r['area']}.{r['name']}")
-    with open(os.path.join(OUT, "known.txt"), "w", encoding="utf-8", newline="\n") as f:
-        f.write("".join(name + "\n" for name in sorted(runs)))
+    if bundle:
+        with open(os.path.join(OUT, "known.txt"), "w", encoding="utf-8", newline="\n") as f:
+            f.write("".join(name + "\n" for name in sorted(runs)))
     return sorted(name for name in known if name not in seen) if whole else []
 
 
@@ -624,7 +665,7 @@ def main():
     ap.add_argument("--no-doc", action="store_true")
     ap.add_argument("--release", action="store_true")
     ap.add_argument("--debug-info", action="store_true")
-    ap.add_argument("--target", choices=["linux", "linux-arm64", "freebsd", "windows-gnu"])
+    ap.add_argument("--target", choices=["linux", "linux-arm64", "freebsd", "windows-gnu", "macos", "macos-x64"])
     ap.add_argument("--shard", default="")
     ap.add_argument("--out", default="")
     ap.add_argument("--snippets", default="")
@@ -676,6 +717,15 @@ def main():
             print("spec: FAILED: no FreeBSD sysroot"); return 2
         EXTRA.extend(["--target", "freebsd", "--sysroot", SYSROOT_FREEBSD])
         C_TARGET_FLAGS = ["--target=x86_64-unknown-freebsd14", "--sysroot=" + SYSROOT_FREEBSD]
+        OUT += "-" + TARGET
+        args.no_doc = True
+    elif args.target in MACOS_TARGETS:
+        TARGET = args.target
+        if not os.path.exists(os.path.join(SDK_MACOS, "SDKSettings.json")):
+            print("no macOS SDK at", SDK_MACOS, "(KPP_SDK_MACOS names one)")
+            print("spec: FAILED: no macOS SDK"); return 2
+        EXTRA.extend(["--target", TARGET, "--sysroot", SDK_MACOS])
+        C_TARGET_FLAGS = ["--target=" + ("arm64-apple-macosx11.0" if TARGET == "macos" else "x86_64-apple-macosx10.15"), "-isysroot", SDK_MACOS]
         OUT += "-" + TARGET
         args.no_doc = True
     elif args.target == "linux-arm64":
@@ -747,6 +797,8 @@ def main():
     stale = []
     if TARGET == "freebsd":
         stale = apply_known_freebsd(results, not args.filter and not only)
+    elif TARGET in MACOS_TARGETS:
+        stale = apply_known_freebsd(results, not args.filter and not only, KNOWN_MACOS, bundle=False)
     for r in results:
         tag = {"pass": "ok     ", "built": "built  ", "known": "known  ", "pending": "pending", "FAIL": "FAIL   ", "fixed": "FIXED  "}[r["status"]]
         line = f"{tag} {r['area']}/{r['name']}"
@@ -755,8 +807,9 @@ def main():
         print(line)
     counts = {s: sum(1 for r in results if r["status"] == s) for s in ("pass", "built", "known", "pending", "FAIL", "fixed")}
     for entry in stale:
-        print(f"FAIL    {entry}  -- freebsd-known-failures.txt names no such snippet")
-    print((f"{counts['built']} built (run.sh runs them on FreeBSD: {os.path.relpath(OUT, ROOT)}), {counts['known']} known not to build, " if TARGET == "freebsd" else "") + f"{counts['pass']} pass, {counts['pending']} pending, {counts['FAIL']} failing, {counts['fixed']} fixed" +
+        print(f"FAIL    {entry}  -- {os.path.basename(KNOWN_MACOS if TARGET in MACOS_TARGETS else KNOWN_FREEBSD)} names no such snippet")
+    print((f"{counts['built']} built (run.sh runs them on FreeBSD: {os.path.relpath(OUT, ROOT)}), {counts['known']} known not to build, " if TARGET == "freebsd" else
+           f"{counts['built']} built to Mach-O objects (kpp links no Mach-O program yet), {counts['known']} known not to build, " if TARGET in MACOS_TARGETS else "") + f"{counts['pass']} pass, {counts['pending']} pending, {counts['FAIL']} failing, {counts['fixed']} fixed" +
           (f", {skipped} skipped for {TARGET or 'windows'}" if skipped else "") + f" ({elapsed:.1f} s)")
     if not args.no_doc and not args.filter and not only:
         write_doc(results, elapsed)
@@ -765,7 +818,7 @@ def main():
     # mark must go), and the exit code says the same:
     #   spec: ALL PASSED (898 pass, 2 pending)
     #   spec: 2 FAILED: types/enum_size, fixed lambdas/capture (897 pass, 1 pending, 1 failing, 1 fixed)
-    summary = (f"{counts['built']} built, {counts['known']} known not to build, " if TARGET == "freebsd" else "") + f"{counts['pass']} pass, {counts['pending']} pending" + (f", {skipped} skipped for {TARGET or 'windows'}" if skipped else "") + \
+    summary = (f"{counts['built']} built, {counts['known']} known not to build, " if TARGET in ("freebsd", *MACOS_TARGETS) else "") + f"{counts['pass']} pass, {counts['pending']} pending" + (f", {skipped} skipped for {TARGET or 'windows'}" if skipped else "") + \
               (f"; shard {args.shard}" if shard else "")
     bad = [f"{r['area']}/{r['name']}" for r in results if r["status"] == "FAIL"] + \
           [f"fixed {r['area']}/{r['name']}" for r in results if r["status"] == "fixed"] + \

@@ -406,6 +406,43 @@ jobs:
           { echo '### spec on FreeBSD 14.3'; echo; echo "    $last"; grep -E '^(FAIL|FIXED)' "$log" 2>/dev/null | sed 's/^/    /' || true; } >> "$GITHUB_STEP_SUMMARY"
           case "$last" in "spec freebsd: ALL PASSED"*) ;; *) exit 1 ;; esac
 
+  # macOS (docs/design.md, "Targets and hosts", stage 8): every snippet built for macos and macos-x64
+  # here (run_spec.py --target macos, macos-x64) against the stand-in SDK beside the spec's
+  # kpp/macos_sdk_checked_before_the_build.kpp, until CI has a real one (the macOS plan's M10, for
+  # kovarex): its modules compiled to Mach-O objects, the build stopping where the link would be (kpp
+  # links no Mach-O program yet, M3). A snippet that imports C headers is skipped (the stand-in has
+  # none); compiler\tests\spec\macos-known-failures.txt lists those known not to build. Fails on a new
+  # failure and on a known one that builds. publish does not wait for it.
+  macos_build:
+    needs: build
+    runs-on: ${{ vars.KPP_CI_RUNNER || 'windows-2022' }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: kpp
+          path: compiler/build
+
+      - name: spec built for macOS
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue' # (Actions' 'stop' would end the step on python's stderr)
+          $failed = @()
+          foreach ($target in @('macos', 'macos-x64'))
+          {
+            $out = & python -X utf8 -I compiler\tests\spec\run_spec.py --target $target 2>&1 | ForEach-Object { "$_" }
+            $code = $LASTEXITCODE
+            $out
+            $crashes = @($out | Where-Object { $_ -match 'crashed|timed out' })
+            @("### spec built for $target (Mach-O objects)", '', '    ' + ($out | Select-Object -Last 1)) + @($crashes | ForEach-Object { "    $_" }) | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+            if ($code -ne 0) { $failed += "$target (exit $code)" }
+          }
+          if ($failed.Count) { throw "run_spec.py failed for $($failed -join ', ')" }
+
   # The libraries' tests and kppsite's on FreeBSD (libraries/targets.md; kovarex, 2026-11-04: "If we
   # want to make sure freeBSD binaries are correct, it should be part of kpp workflow testing"): each
   # project's tests built for FreeBSD 14.3 here (libraries\target-tests.ps1: kpp --target freebsd
@@ -909,8 +946,8 @@ jobs:
   # Publishes the package, only when the jobs it needs are green: run_tests' halves, every spec shard,
   # package, linux_spec and linux_host. If one of them is red or cancelled it publishes nothing: no release, no
   # tag, no kpp.net upload, and Latest stays where it was. It does not wait for the FreeBSD jobs
-  # (freebsd_build, freebsd_run, libraries_freebsd_build, libraries_freebsd_run): a red one of those
-  # alone does not stop a release.
+  # (freebsd_build, freebsd_run, libraries_freebsd_build, libraries_freebsd_run) or macos_build: a red
+  # one of those alone does not stop a release.
   publish:
     needs: [run_tests, spec, package, linux_spec, linux_host]
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'

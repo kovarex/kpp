@@ -1,0 +1,7 @@
+# macOS's known failures: the spec built for macos and macos-x64 (run_spec.py --target macos,
+# macos-x64; CI's macos_build, ci.yml): every snippet's modules compiled to Mach-O objects, the build
+# stopping where the link would be (kpp links no Mach-O program yet, M3). One line each, for both:
+#   build area/name  why   the snippet does not build for macOS yet
+# A known failure is reported as "known"; one that starts working fails the run until its line goes,
+# and so does a line naming no snippet. With the stand-in SDK (no KPP_SDK_MACOS) a snippet that imports
+# C headers is skipped. None on 2026-11-09: 1430 built for each target, 289 skipped.

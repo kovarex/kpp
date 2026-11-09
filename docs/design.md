@@ -4716,6 +4716,14 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   the aarch64 Linux triples `Platform::Linux`. Until then a project's cell.platform said Windows for
   them, and kpp refused the build (its check that projectlib reads a name as kpp does). run_tests'
   project test builds a cell for each.
+- **The spec for macOS, until kpp links (2026-11-09, thread E):** `run_spec.py --target macos` and
+  `--target macos-x64` build every snippet against a macOS SDK (KPP_SDK_MACOS, else the stand-in
+  beside kpp/macos_sdk_checked_before_the_build.kpp, with which a snippet that imports C headers is
+  skipped); a snippet is "built" when its modules compile to Mach-O objects and its only error is
+  where the link would be. compiler/tests/spec/macos-known-failures.txt lists those that do not build
+  (none: 1430 built for each target, 289 skipped). CI's macos_build job runs both on every push, so
+  M2's and M7's objects cannot regress unseen before M3. With M3 and M10 it becomes a bundle run on
+  GitHub's macOS runners, as the FreeBSD jobs do.
 - **M2, Mach-O objects (2026-11-07):** a build for macos or macos-x64 compiles its modules into Mach-O
   objects and stops at the link with an error that says so (ld64.lld is M3), never another target's
   link. Mach-O has no COMDATs and LLVM refuses a module that names one: each module's text loses its
