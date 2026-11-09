@@ -481,6 +481,11 @@ public:
   // Which of the library's compiler intrinsics f is (Text.kpp: 1 kppEnumeratorName, 2
   // kppEnumTypeName), 0 for none: code generation computes their calls.
   int intrinsicOf(const FunctionDecl* f);
+  // Which of the library's move, forward and asConst f is (stdlib/core/Utility.kpp, UtilityExt.kpp), by
+  // declaration: a call of one is typed as the cast it is and never instantiated, and code generation
+  // emits it as the cast (design.md, "move, forward and asConst are casts"). None for any other function.
+  enum class CallIntrinsic : uint8_t { None, Move, Forward, AsConst };
+  CallIntrinsic callIntrinsicOf(const FunctionDecl* f);
   // How an argument of type t (e: the expression, for a string literal) packed into a Text appends
   // itself (TextPieceKind): by its type alone, wherever the call is.
   TextPieceKind textPieceOf(const Expr* e, const Ty* t);

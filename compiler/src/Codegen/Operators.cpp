@@ -677,19 +677,15 @@ auto codegen::Emitter::callValue(CallExpr* c, const std::string& sret) -> Value
         else if (enumInstance(q))
           classTy = enumInstance(q); // `S<short>::Dir::fromStr(text)`
       }
-      // move(x) and forward(x): identity casts (lref -> rref in the type system,
-      // but both are just a pointer in LLVM IR).
-      if (!classTy && f->params.size() == 1 && c->args.size() == 1 &&
-          !f->templateParams.empty() && c->templateArgCount != f->templateParams.size())
+      // The library's move(x), forward(x) and asConst(x) (GlobalScope::callIntrinsicOf, by declaration):
+      // identity casts (lref -> rref in the type system, but both are just a pointer in LLVM IR).
+      if (!classTy && c->args.size() == 1 && c->templateArgCount != f->templateParams.size() &&
+          global.callIntrinsicOf(f) != GlobalScope::CallIntrinsic::None)
       {
-        std::string_view fname = f->name.empty() ? "" : symbols.name(f->name.last().symbol);
-        if (fname == "move" || fname == "forward")
-        {
-          std::string addr = lvalue(c->args[0]);
-          const Ty* argTy = c->args[0]->ty;
-          if (argTy) argTy = types.stripRef(argTy);
-          return {addr, argTy ? argTy : types.unknown(), false};
-        }
+        std::string addr = lvalue(c->args[0]);
+        const Ty* argTy = c->args[0]->ty;
+        if (argTy) argTy = types.stripRef(argTy);
+        return {addr, argTy ? argTy : types.unknown(), false};
       }
       if (!classTy && (f->flags & DF_Friend) && (f->flags & DF_Static))
         classTy = friendClass(f, argTypesOf(c->args), c); // `unwrap(holder)`: Holder<int>'s friend

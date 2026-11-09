@@ -804,6 +804,37 @@ auto GlobalScope::Impl::intrinsicOf(const FunctionDecl* f) -> int
   return n == "kppEnumeratorName" ? 1 : n == "kppEnumTypeName" ? 2 : 0;
 }
 
+auto GlobalScope::Impl::callIntrinsicOf(const FunctionDecl* f) -> CallIntrinsic
+{
+  if (!f || !f->file || !f->file->isLibrary || f->templateParams.size() != 1 || f->params.size() != 1)
+    return CallIntrinsic::None;
+  std::call_once(callIntrinsicsOnce, [this]
+  {
+    auto isReference = [](const Type* t) { return t && (t->kind == NodeKind::LRefType || t->kind == NodeKind::RRefType); };
+    // (the root scope's entries as indexed, read directly: no walk's lookup, whose dependencies this would join)
+    for (auto [name, which] : {std::pair<const char*, CallIntrinsic>{"move", CallIntrinsic::Move}, {"forward", CallIntrinsic::Forward},
+                               {"asConst", CallIntrinsic::AsConst}})
+      if (const std::vector<Entry>* entries = root.find(symbols.intern(name)))
+        for (const Entry& e : *entries)
+        {
+          if (!e.decl || e.decl->kind != NodeKind::FunctionDecl)
+            continue;
+          auto* d = static_cast<const FunctionDecl*>(e.decl);
+          if (!d->file || !d->file->isLibrary || d->templateParams.size() != 1 || d->params.size() != 1 || d->trailingReturn ||
+              d->templateParams[0]->kind != NodeKind::TemplateParamDecl)
+            continue;
+          auto* parameter = static_cast<const TemplateParamDecl*>(d->templateParams[0]);
+          if (parameter->isType && !parameter->isPack && d->params[0]->kind == NodeKind::ParamDecl &&
+              isReference(static_cast<const ParamDecl*>(d->params[0])->type) && isReference(d->returnType))
+            callIntrinsics.push_back({d, which});
+        }
+  });
+  for (const auto& [d, which] : callIntrinsics)
+    if (d == f)
+      return which;
+  return CallIntrinsic::None;
+}
+
 auto GlobalScope::Impl::constIntrinsic(int which, FunctionDecl* f, const std::vector<ConstValue>& args, const Subst* subst, int depth) -> std::optional<ConstValue>
 {
   const Ty* charPointer = types.pointer(types.qualified(types.charType(8, false), true, false));

@@ -1262,6 +1262,7 @@ TemplateArgs GlobalScope::definitionArgs(Decl* def, const TemplateArgs& classArg
 Decl* GlobalScope::initializerListDecl() { return impl->initializerListDecl(); }
 const Ty* GlobalScope::textType() { return impl->textType(); }
 int GlobalScope::intrinsicOf(const FunctionDecl* f) { return impl->intrinsicOf(f); }
+GlobalScope::CallIntrinsic GlobalScope::callIntrinsicOf(const FunctionDecl* f) { return impl->callIntrinsicOf(f); }
 TextPieceKind GlobalScope::textPieceOf(const Expr* e, const Ty* t) { return impl->textPieceOf(e, t); }
 Decl* GlobalScope::typeInfoDecl() { return impl->typeInfoDecl(); }
 Decl* GlobalScope::enumFromStrDecl() { return impl->enumFromStrDecl(); }

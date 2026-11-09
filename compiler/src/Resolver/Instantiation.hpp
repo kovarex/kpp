@@ -132,6 +132,12 @@
   // 1 `kppEnumeratorName(E value)`, the name of the enumerator value is (null for a value that is
   // none); 2 `kppEnumTypeName<E>()`, the enumeration's name (design.md 14: an enum's appendTo).
   int intrinsicOf(const FunctionDecl* f);
+  // The library's move, both forwards and asConst (GlobalScope::callIntrinsicOf): its top-level function
+  // templates of those names with one type parameter and one reference parameter, returning a reference,
+  // found in the root scope once (never by a call's name: a namespace's own move is its function).
+  CallIntrinsic callIntrinsicOf(const FunctionDecl* f);
+  std::once_flag callIntrinsicsOnce;
+  std::vector<std::pair<const FunctionDecl*, CallIntrinsic>> callIntrinsics;
   // An intrinsic's value at compile time: args the call's, subst binding E.
   std::optional<ConstValue> constIntrinsic(int which, FunctionDecl* f, const std::vector<ConstValue>& args, const Subst* subst, int depth);
 

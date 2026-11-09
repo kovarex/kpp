@@ -537,12 +537,10 @@ auto codegen::Emitter::atomicBuiltin(FunctionDecl* f, Span<Expr*> callArgs, Node
 
 auto codegen::Emitter::inlinedIdentity(FunctionDecl* f, const TemplateArgs& args, Span<Expr*> callArgs, Node* at) -> std::optional<Value>
 {
-  if (!f->file || !f->file->isLibrary || f->name.empty() || f->name.parts.size() != 1 || f->templateParams.empty() || f->params.size() != 1 ||
-      callArgs.size() != 1 || !callArgs[0] || isPackExpansion(callArgs[0]) || global.owningClass(f))
+  // (the library's move, forward and asConst, by declaration: GlobalScope::callIntrinsicOf)
+  if (callArgs.size() != 1 || !callArgs[0] || isPackExpansion(callArgs[0]) || global.callIntrinsicOf(f) == GlobalScope::CallIntrinsic::None)
     return std::nullopt;
   std::string_view name = symbols.name(f->name.last().symbol);
-  if (name != "move" && name != "forward")
-    return std::nullopt;
   Signature s;
   const Ty* ret;
   {

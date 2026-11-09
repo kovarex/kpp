@@ -486,6 +486,11 @@
   // object itself), 1 an lvalue (copied), 2 an xvalue (moved). source: what `move(x)`, a
   // `forward<T>(x)` of an rvalue or `static_cast<T&&>(x)` names, else e itself.
   uint8_t constCategory(Expr* e, Expr*& source);
+  // Which of the library's move, forward and asConst a call of one argument calls (callIntrinsicOf): its
+  // callee's declaration, as the walk chose it; by name only in a template's own nodes, whose call each
+  // instance resolves (the walk leaves the callee unrecorded there) and the evaluator evaluates under a
+  // substitution.
+  CallIntrinsic constIntrinsicCall(CallExpr* c);
 
   // An object of class t copied (moving: moved) from value v, whose place (if any) is at: t's own copy
   // or move constructor run, the source's place given to it (a move empties its source); an implicit

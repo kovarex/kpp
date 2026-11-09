@@ -1,0 +1,99 @@
+// spec: the library's move, forward and asConst are typed at their calls as the casts they are, never instantiated (kovarex 2026-11-09, thread D's design; clang has done so for std::move, std::forward and std::as_const since 15): move(x) is an xvalue of x's type, forward<T>(x) is T&& with the references collapsed (an lvalue for T = U&), asConst(x) is a const lvalue of x; overloads, constructors and member functions choose on the result as on the functions' results, in a template's instance and through a pack expansion as outside, and at compile time; a call with its template argument written is the same cast; a namespace's own move and forward are its functions, ADL's non-template move chosen over the library's template as in C++, at compile time too
+struct Probe
+{
+  int copies = 0;
+  int moves = 0;
+};
+
+struct Tracked
+{
+  int value;
+  Probe* probe;
+
+  Tracked(int value, Probe* probe) : value(value), probe(probe) {}
+  Tracked(const Tracked& other) : value(other.value), probe(other.probe) { ++probe->copies; }
+
+  Tracked(Tracked&& other) : value(other.value), probe(other.probe)
+  {
+    ++probe->moves;
+    other.value = -1;
+  }
+};
+
+struct Box
+{
+  int get() { return 1; }
+  int get() const { return 2; }
+};
+
+int code(int&) { return 1; }
+int code(const int&) { return 2; }
+int code(int&&) { return 3; }
+
+template<typename T>
+int relay(T&& value) { return code(forward<T>(value)); }
+
+template<typename... Args>
+int codes(Args&&... args)
+{
+  int digits = 0;
+  ((digits = digits * 10 + code(forward<Args>(args))), ...);
+  return digits;
+}
+
+namespace physics
+{
+  struct Point
+  {
+    int x;
+  };
+
+  constexpr Point move(Point p) { return Point{p.x + 10}; }
+
+  template<typename T>
+  constexpr T forward(T value) { return value + 1; }
+}
+
+constexpr int atCompileTime()
+{
+  int x = 4;
+  int y = move(x);
+  int& z = forward<int&>(x);
+  z += 1;
+  physics::Point p{1};
+  auto&& q = move(p);
+  return y + asConst(x) + forward<int>(x) + q.x + physics::forward<int>(2);
+}
+
+static_assert(atCompileTime() == 4 + 5 + 5 + 11 + 3);
+
+int main()
+{
+  int a = 1;
+  const int c = 2;
+  static_assert(isSame<decltype(move(a)), int&&>);
+  static_assert(isSame<decltype(asConst(a)), const int&>);
+  static_assert(isSame<decltype(forward<int&>(a)), int&>);
+  static_assert(isSame<decltype(forward<int>(a)), int&&>);
+  println(code(move(a)), code(a), code(asConst(a)), code(c), " ", relay(a), relay(3), relay(c), relay(move(a)), " ", codes(a, 3, c, move(a)));
+  println(code(move<int&>(a)), " ", atCompileTime());
+
+  Probe probe;
+  Tracked t(5, &probe);
+  Tracked m = move(t);
+  Tracked k = asConst(m);
+  Tracked f = forward<Tracked&>(k);
+  Tracked g = forward<Tracked>(k);
+  println(probe.copies, " ", probe.moves, " ", t.value, " ", m.value, " ", k.value, " ", f.value, " ", g.value);
+
+  Box b;
+  int x = 1, y = 2;
+  swap(x, y);
+  println(b.get(), " ", asConst(b).get(), " ", x, " ", y);
+
+  physics::Point p{1};
+  physics::Point q = physics::move(p);
+  physics::Point r = move(p);
+  println(q.x, " ", r.x, " ", physics::forward<int>(4));
+  return 0;
+}

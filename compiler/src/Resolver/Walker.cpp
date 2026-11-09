@@ -3546,6 +3546,11 @@ auto GlobalScope::Impl::Walker::returnTypeOfCall(FunctionDecl* f, const Subst* c
     }
     if (impl.dependsOn(result, f->templateParams))
       return unknown(Why::Deduction);
+    // The library's move, forward and asConst: the cast the declaration's type is for the argument,
+    // never an instance (design.md 25; the game's 8,448 checked instances of move and 4,822 of forward
+    // were the most of any function template's). The call keeps f and its argument for codegen.
+    if (impl.callIntrinsicOf(f) != CallIntrinsic::None)
+      return result;
     if (!types.isDependent(result))
       instantiateFunction(f, subst, false, classSubst);
     return result;

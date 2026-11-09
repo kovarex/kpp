@@ -1499,13 +1499,9 @@ auto GlobalScope::Impl::constExpand(Expr* pattern, const TypeContext& ctx, int d
     {
       // `forward<Args>(args)...`: an rvalue (moved from) unless Args is an lvalue reference;
       // `move(args)...` an rvalue; `args...` an lvalue. Its place: its argument's, if any.
-      if (category == 2 && pattern->kind == NodeKind::CallExpr && elementType && elementType->kind == TyKind::LRef)
-      {
-        auto* call = static_cast<CallExpr*>(pattern);
-        if (call->callee && call->callee->kind == NodeKind::NameExpr && !static_cast<NameExpr*>(call->callee)->name.empty() &&
-            symbols.name(static_cast<NameExpr*>(call->callee)->name.last().symbol) == "forward")
-          category = 1;
-      }
+      if (category == 2 && pattern->kind == NodeKind::CallExpr && elementType && elementType->kind == TyKind::LRef &&
+          constIntrinsicCall(static_cast<CallExpr*>(pattern)) == CallIntrinsic::Forward)
+        category = 1;
       std::optional<ConstPlace> at;
       if (category != 0 && (called || constPure(source)))
         if (std::optional<ConstPlace> p = called ? called : constPlaceOf(source, ectx, depth + 1))
@@ -3581,6 +3577,17 @@ auto GlobalScope::Impl::constCopyRunsCode(const Ty* t) -> bool
   return runs;
 }
 
+auto GlobalScope::Impl::constIntrinsicCall(CallExpr* c) -> CallIntrinsic
+{
+  if (!c || c->args.size() != 1 || !c->callee || c->callee->kind != NodeKind::NameExpr)
+    return CallIntrinsic::None;
+  auto* n = static_cast<NameExpr*>(c->callee);
+  if (n->resolved)
+    return n->resolved->kind == NodeKind::FunctionDecl ? callIntrinsicOf(static_cast<FunctionDecl*>(n->resolved)) : CallIntrinsic::None;
+  std::string_view name = n->name.empty() ? std::string_view() : symbols.name(n->name.last().symbol);
+  return name == "move" ? CallIntrinsic::Move : name == "forward" ? CallIntrinsic::Forward : CallIntrinsic::None;
+}
+
 auto GlobalScope::Impl::constCategory(Expr* e, Expr*& source) -> uint8_t
 {
   while (e && e->kind == NodeKind::ParenExpr)
@@ -3605,18 +3612,13 @@ auto GlobalScope::Impl::constCategory(Expr* e, Expr*& source) -> uint8_t
   if (e->kind == NodeKind::CallExpr)
   {
     auto* c = static_cast<CallExpr*>(e);
-    if (c->args.size() == 1 && c->callee && c->callee->kind == NodeKind::NameExpr)
+    // (`forward<T&>(x)` is x, an lvalue: its source is x too, whose place the result is; an
+    // expansion of `forward<U>(u)...` with U an lvalue reference handed its element on as a copy,
+    // which a reference then referred to, D 2026-11-06)
+    if (CallIntrinsic which = constIntrinsicCall(c); which == CallIntrinsic::Move || which == CallIntrinsic::Forward)
     {
-      const QualifiedName& n = static_cast<NameExpr*>(c->callee)->name;
-      std::string_view name = n.empty() ? std::string_view() : symbols.name(n.last().symbol);
-      // (`forward<T&>(x)` is x, an lvalue: its source is x too, whose place the result is; an
-      // expansion of `forward<U>(u)...` with U an lvalue reference handed its element on as a copy,
-      // which a reference then referred to, D 2026-11-06)
-      if (name == "move" || name == "forward")
-      {
-        source = c->args[0];
-        return name == "forward" && e->ty && e->ty->kind == TyKind::LRef ? 1 : 2;
-      }
+      source = c->args[0];
+      return which == CallIntrinsic::Forward && e->ty && e->ty->kind == TyKind::LRef ? 1 : 2;
     }
   }
   if (isLvalueExpression(e) || (e->ty && e->ty->kind == TyKind::LRef))

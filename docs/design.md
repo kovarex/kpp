@@ -2443,6 +2443,44 @@ capital letters, like LinkHelper.cpp", and refactorings that are clear wins are 
   instance, and codegen and the interpreter read it instead of deciding again. The refactoring list
   and its evidence: the 2026-11-05 survey (items 1 to 14, tests T1 to T7).
 
+### 25. move, forward and asConst are casts (decided 2026-11-09, built the same day)
+kovarex approved thread D's design on 2026-11-09, with asConst and addressof besides move and forward.
+clang has worked this way since version 15 for std::move, std::forward, std::as_const and std::addressof.
+- **The decision.** A call of the library's `move`, `forward` or `asConst` is typed as the cast it is:
+  - `move(x)` is an xvalue of x's type;
+  - `forward<T>(x)` is T&& with the references collapsed, an lvalue for T = U&;
+  - `asConst(x)` is a const lvalue of x.
+
+  The type checker makes no instance for such a call: no record, no copy of the body, no walk. Code
+  generation emits the operand's address (`GlobalScope::callIntrinsicOf`).
+- **Keyed on declarations, never on a name.** The intrinsics are the library's own top-level function
+  templates of those names, of the shape stdlib/core/Utility.kpp and UtilityExt.kpp declare: one type
+  parameter, one reference parameter, a reference returned.
+  - Lookup and overload resolution run as for any call. So a namespace's own `move` is its function,
+    and ADL's non-template `move` beats the library's template.
+  - The evaluator's value categories read the callee's declaration as well. Only in a template's own
+    nodes, where the walk leaves a dependent call's callee unrecorded, do they fall back to the name.
+- **What stays a function.**
+  - The declarations stay in the library, for go to definition and documentation.
+  - A pointer to one is a function's, though codegen does not take a template's address yet.
+  - A call codegen does not inline (`--no-inline`) is a call: codegen instantiates the body then
+    (`GlobalScope::instanceBody`).
+  - The compile-time evaluator still runs a body through its instance. That leaves 42 instances in the
+    game, a follow-up for the evaluator.
+- **noexcept.** It follows the declarations, which are noexcept since thread C's 11009967, as std's are:
+  `noexcept(move(x))` is true.
+- **Measured.** One debug-info build of the game at -j 32, master 7bcca232 against the change:
+  - instance records of move 8,478 -> 4, of forward 4,822 -> 38, of asConst 1 -> 0;
+  - function template instantiations 65,200 -> 52,077;
+  - instance requests 1,445,386 -> 1,361,953.
+
+  The game's IR is byte-identical apart from its one asConst call, now the identity cast instead of an
+  inlined trivial body.
+- **Not built.**
+  - addressof: the library declares none, and the game uses none.
+  - A warning for `move` of a const object (kovarex: a warning) finds 9 sites in the converted game, whose
+    headline counts warnings. It waits for those to be handled.
+
 ## Code packages (proposed 2026-10-27, decided 2026-11-04)
 
 **Decided** (kovarex, 2026-11-04): a directory is a package, named after the directory; an optional
