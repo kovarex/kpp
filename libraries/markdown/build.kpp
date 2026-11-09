@@ -5,6 +5,7 @@ void build(Project& project)
   markdown.version = "0.1.0";
   markdown.license = "Apache-2.0 WITH LLVM-exception AND BSD-2-Clause AND MIT"; // a port of commonmark.js
   markdown.minimumKpp = "0.1.0";
+  markdown.thisReference = true;
   markdown.root("src");
   markdown.test("tests");
 }

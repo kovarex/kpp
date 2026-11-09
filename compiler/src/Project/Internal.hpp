@@ -85,6 +85,7 @@ namespace projects
     std::vector<Use> uses;
     std::vector<ProjectOption> options; // after resolveUses: its libraries' options, with their values
     std::vector<ProjectLibrary> kppLibraries; // after resolveUses: the kpp libraries it uses
+    bool thisReference = false; // a library's own program, its sources `this` the object (Library::thisReference)
   };
 
   // A kpp library the project is (Project.kpp's Library). After resolveUses, kppLibraries holds the
@@ -93,6 +94,7 @@ namespace projects
   {
     std::string name, version, license, minimumKpp;
     bool unscoped = false; // its names bare everywhere (design.md 16)
+    bool thisReference = false; // its sources written with `this` the object (design.md 23d), whoever uses it
     std::vector<std::string> roots, testRoots;
     std::vector<std::string> systemLibraries; // NAME or PLATFORM NAME (Library::systemLibrary)
     std::vector<ProjectLibrary> kppLibraries;

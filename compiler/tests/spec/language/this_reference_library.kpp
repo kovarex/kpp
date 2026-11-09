@@ -1,0 +1,17 @@
+// spec: --this-reference-library NAME: one library's sources are written with `this` the object (design.md 23d) beside a program and a standard library that keep the pointer: a library's build.kpp says so (Library::thisReference), whoever uses it
+// kpp: --this-reference-library counter --library-root counter {here}/../../this_reference_library
+class Program
+{
+public:
+  int value = 2;
+  int get() const { return this->value; }
+  const Program* self() const { return this; }
+};
+int main()
+{
+  counter::Counter c;
+  c.add(2).add(3);
+  Program p;
+  println(c.count, " ", c.address() == &c, " ", p.get(), " ", p.self() == &p);
+  return 0;
+}

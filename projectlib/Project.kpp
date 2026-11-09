@@ -263,6 +263,8 @@ struct Library
   // Its names are qualified by its name for its users (zlib::compress), bare inside it; unscoped:
   // bare everywhere, sharing the one global scope (the stdlib is). design.md 16.
   bool unscoped = false;
+  // Its sources (and tests) are written with `this` the object (design.md 23d), whoever uses it: until that is the default.
+  bool thisReference = false;
   Vector<String> systemLibraries; // systemLibrary()'s: NAME, or PLATFORM NAME (windows, linux, freebsd)
 
   void root(StringView path) { roots.push_back(path); }
@@ -743,6 +745,8 @@ String describe(const Project& project)
     kppLine(out, "minimum-kpp", l.minimumKpp);
     if (l.unscoped)
       kppLine(out, "unscoped", "1");
+    if (l.thisReference)
+      kppLine(out, "this-reference", "1");
     if (l.roots.empty())
       kppLine(out, "root", "src");
     kppLines(out, "root", l.roots);

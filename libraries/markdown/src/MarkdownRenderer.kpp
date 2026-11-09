@@ -2,8 +2,8 @@ struct MarkdownRenderer
 {
   void literal(StringView text)
   {
-    this->out << text;
-    this->lastWasNewline = text.size() == 1 && text[0] == '\n';
+    this.out << text;
+    this.lastWasNewline = text.size() == 1 && text[0] == '\n';
   }
 
   void escaped(StringView text)
@@ -22,24 +22,24 @@ struct MarkdownRenderer
       else
         e << c;
     }
-    this->literal(e);
+    this.literal(e);
   }
 
   void newline()
   {
-    if (!this->lastWasNewline)
-      this->literal("\n");
+    if (!this.lastWasNewline)
+      this.literal("\n");
   }
 
   String destination(MarkdownNode* node) const
   {
-    return this->options.rewriteLink ? this->options.rewriteLink(node->destination) : node->destination;
+    return this.options.rewriteLink ? this.options.rewriteLink(node->destination) : node->destination;
   }
 
   void children(MarkdownNode* node)
   {
     for (MarkdownNode* child = node->firstChild; child; child = child->next)
-      this->render(child);
+      this.render(child);
   }
 
   // GitHub's heading id: lowercase, letters, digits, '-' and '_' kept, spaces as '-', the rest
@@ -65,14 +65,14 @@ struct MarkdownRenderer
     for (i32 n = 1;; ++n)
     {
       bool used = false;
-      for (const String& existing : this->ids)
+      for (const String& existing : this.ids)
         if (existing == unique)
           used = true;
       if (!used)
         break;
       unique = id + "-" + toString(n);
     }
-    this->ids.push_back(unique);
+    this.ids.push_back(unique);
     return unique;
   }
 
@@ -80,177 +80,177 @@ struct MarkdownRenderer
   {
     switch (node->type)
     {
-      case MarkdownType::document: this->children(node);
+      case MarkdownType::document: this.children(node);
       case MarkdownType::paragraph:
       {
         MarkdownNode* grandparent = node->parent ? node->parent->parent : nullptr;
         if (grandparent && grandparent->type == MarkdownType::list && grandparent->tight)
         {
-          this->children(node);
+          this.children(node);
           break;
         }
-        this->newline();
-        this->literal("<p>");
-        this->children(node);
-        this->literal("</p>");
-        this->newline();
+        this.newline();
+        this.literal("<p>");
+        this.children(node);
+        this.literal("</p>");
+        this.newline();
       }
       case MarkdownType::heading:
       {
         String tag = "h" + toString(node->level);
-        this->newline();
-        if (this->options.headingIds)
+        this.newline();
+        if (this.options.headingIds)
         {
-          this->literal("<" + tag + " id=\"");
-          this->escaped(this->headingId(node));
-          this->literal("\">");
+          this.literal("<" + tag + " id=\"");
+          this.escaped(this.headingId(node));
+          this.literal("\">");
         }
         else
-          this->literal("<" + tag + ">");
-        this->children(node);
-        this->literal("</" + tag + ">");
-        this->newline();
+          this.literal("<" + tag + ">");
+        this.children(node);
+        this.literal("</" + tag + ">");
+        this.newline();
       }
       case MarkdownType::thematicBreak:
-        this->newline();
-        this->literal("<hr />");
-        this->newline();
+        this.newline();
+        this.literal("<hr />");
+        this.newline();
       case MarkdownType::blockQuote:
-        this->newline();
-        this->literal("<blockquote>");
-        this->newline();
-        this->children(node);
-        this->newline();
-        this->literal("</blockquote>");
-        this->newline();
+        this.newline();
+        this.literal("<blockquote>");
+        this.newline();
+        this.children(node);
+        this.newline();
+        this.literal("</blockquote>");
+        this.newline();
       case MarkdownType::list:
       {
         const char* tag = node->ordered ? "ol" : "ul";
-        this->newline();
+        this.newline();
         if (node->ordered && node->start != 1)
-          this->literal(toString("<ol start=\"", node->start, "\">"));
+          this.literal(toString("<ol start=\"", node->start, "\">"));
         else
-          this->literal(toString("<", StringView(tag), ">"));
-        this->newline();
-        this->children(node);
-        this->newline();
-        this->literal(toString("</", StringView(tag), ">"));
-        this->newline();
+          this.literal(toString("<", StringView(tag), ">"));
+        this.newline();
+        this.children(node);
+        this.newline();
+        this.literal(toString("</", StringView(tag), ">"));
+        this.newline();
       }
       case MarkdownType::item:
-        this->literal("<li>");
-        this->children(node);
-        this->literal("</li>");
-        this->newline();
+        this.literal("<li>");
+        this.children(node);
+        this.literal("</li>");
+        this.newline();
       case MarkdownType::codeBlock:
       {
-        this->newline();
+        this.newline();
         i32 end = 0;
         while (end < node->info.size() && !markdownIsUnicodeWhitespace((u8)node->info[end]))
           ++end;
         if (end > 0)
         {
-          this->literal("<pre><code class=\"language-");
-          this->escaped(StringView(node->info).substr(0, end));
-          this->literal("\">");
+          this.literal("<pre><code class=\"language-");
+          this.escaped(StringView(node->info).substr(0, end));
+          this.literal("\">");
         }
         else
-          this->literal("<pre><code>");
-        this->escaped(node->literal);
-        this->literal("</code></pre>");
-        this->newline();
+          this.literal("<pre><code>");
+        this.escaped(node->literal);
+        this.literal("</code></pre>");
+        this.newline();
       }
       case MarkdownType::htmlBlock:
-        this->newline();
-        this->literal(node->literal);
-        this->newline();
+        this.newline();
+        this.literal(node->literal);
+        this.newline();
       case MarkdownType::table:
       {
-        this->newline();
-        this->literal("<table>");
-        this->newline();
+        this.newline();
+        this.literal("<table>");
+        this.newline();
         bool body = false;
         for (MarkdownNode* row = node->firstChild; row; row = row->next)
         {
           if (row->header)
-            this->literal("<thead>");
+            this.literal("<thead>");
           else if (!body)
           {
-            this->literal("<tbody>");
+            this.literal("<tbody>");
             body = true;
           }
-          this->newline();
-          this->literal("<tr>");
-          this->newline();
+          this.newline();
+          this.literal("<tr>");
+          this.newline();
           for (MarkdownNode* cell = row->firstChild; cell; cell = cell->next)
           {
             const char* tag = row->header ? "th" : "td";
             const char* align[] = {"", " align=\"left\"", " align=\"center\"", " align=\"right\""};
-            this->literal(toString("<", StringView(tag), StringView(align[cell->alignment]), ">"));
-            this->children(cell);
-            this->literal(toString("</", StringView(tag), ">"));
-            this->newline();
+            this.literal(toString("<", StringView(tag), StringView(align[cell->alignment]), ">"));
+            this.children(cell);
+            this.literal(toString("</", StringView(tag), ">"));
+            this.newline();
           }
-          this->literal("</tr>");
-          this->newline();
+          this.literal("</tr>");
+          this.newline();
           if (row->header)
           {
-            this->literal("</thead>");
-            this->newline();
+            this.literal("</thead>");
+            this.newline();
           }
         }
         if (body)
         {
-          this->literal("</tbody>");
-          this->newline();
+          this.literal("</tbody>");
+          this.newline();
         }
-        this->literal("</table>");
-        this->newline();
+        this.literal("</table>");
+        this.newline();
       }
-      case MarkdownType::text: this->escaped(node->literal);
-      case MarkdownType::softBreak: this->literal("\n");
+      case MarkdownType::text: this.escaped(node->literal);
+      case MarkdownType::softBreak: this.literal("\n");
       case MarkdownType::lineBreak:
-        this->literal("<br />");
-        this->newline();
+        this.literal("<br />");
+        this.newline();
       case MarkdownType::code:
-        this->literal("<code>");
-        this->escaped(node->literal);
-        this->literal("</code>");
+        this.literal("<code>");
+        this.escaped(node->literal);
+        this.literal("</code>");
       case MarkdownType::emphasis:
-        this->literal("<em>");
-        this->children(node);
-        this->literal("</em>");
+        this.literal("<em>");
+        this.children(node);
+        this.literal("</em>");
       case MarkdownType::strong:
-        this->literal("<strong>");
-        this->children(node);
-        this->literal("</strong>");
+        this.literal("<strong>");
+        this.children(node);
+        this.literal("</strong>");
       case MarkdownType::link:
-        this->literal("<a href=\"");
-        this->escaped(this->destination(node));
+        this.literal("<a href=\"");
+        this.escaped(this.destination(node));
         if (node->title.size() > 0)
         {
-          this->literal("\" title=\"");
-          this->escaped(node->title);
+          this.literal("\" title=\"");
+          this.escaped(node->title);
         }
-        this->literal("\">");
-        this->children(node);
-        this->literal("</a>");
+        this.literal("\">");
+        this.children(node);
+        this.literal("</a>");
       case MarkdownType::image:
       {
-        this->literal("<img src=\"");
-        this->escaped(this->destination(node));
-        this->literal("\" alt=\"");
+        this.literal("<img src=\"");
+        this.escaped(this.destination(node));
+        this.literal("\" alt=\"");
         String alt;
         markdownPlainText(alt, node);
-        this->escaped(alt);
+        this.escaped(alt);
         if (node->title.size() > 0)
         {
-          this->literal("\" title=\"");
-          this->escaped(node->title);
+          this.literal("\" title=\"");
+          this.escaped(node->title);
         }
-        this->literal("\" />");
+        this.literal("\" />");
       }
-      case MarkdownType::htmlInline: this->literal(node->literal);
+      case MarkdownType::htmlInline: this.literal(node->literal);
       default:
     }
   }

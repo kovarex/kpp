@@ -5,6 +5,7 @@ void build(Project& project)
   mariadb.version = "0.1.0";
   mariadb.license = "Apache-2.0 WITH LLVM-exception";
   mariadb.minimumKpp = "0.1.0";
+  mariadb.thisReference = true;
   mariadb.root("src");
   mariadb.test("tests");
   mariadb.use("net");

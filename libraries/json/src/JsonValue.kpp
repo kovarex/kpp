@@ -25,131 +25,131 @@ struct JsonValue
     return value;
   }
 
-  bool isNull() const { return this->type == JsonType::null; }
-  bool isBool() const { return this->type == JsonType::boolean; }
-  bool isInteger() const { return this->type == JsonType::integer; }
+  bool isNull() const { return this.type == JsonType::null; }
+  bool isBool() const { return this.type == JsonType::boolean; }
+  bool isInteger() const { return this.type == JsonType::integer; }
   // An integer or a number.
-  bool isNumber() const { return this->type == JsonType::integer || this->type == JsonType::number; }
-  bool isString() const { return this->type == JsonType::string; }
-  bool isArray() const { return this->type == JsonType::array; }
-  bool isObject() const { return this->type == JsonType::object; }
+  bool isNumber() const { return this.type == JsonType::integer || this.type == JsonType::number; }
+  bool isString() const { return this.type == JsonType::string; }
+  bool isArray() const { return this.type == JsonType::array; }
+  bool isObject() const { return this.type == JsonType::object; }
 
   // The value as the type asked for; any other type throws JsonTypeError.
   bool asBool() const
   {
-    this->expect(JsonType::boolean, "a boolean");
-    return this->booleanValue;
+    this.expect(JsonType::boolean, "a boolean");
+    return this.booleanValue;
   }
 
   i64 asInteger() const
   {
-    this->expect(JsonType::integer, "an integer");
-    return this->integerValue;
+    this.expect(JsonType::integer, "an integer");
+    return this.integerValue;
   }
 
   // An integer converted to double, or a number.
   double asNumber() const
   {
-    if (this->type == JsonType::integer)
-      return double(this->integerValue);
-    this->expect(JsonType::number, "a number");
-    return this->numberValue;
+    if (this.type == JsonType::integer)
+      return double(this.integerValue);
+    this.expect(JsonType::number, "a number");
+    return this.numberValue;
   }
 
   const String& asString() const
   {
-    this->expect(JsonType::string, "a string");
-    return this->stringValue;
+    this.expect(JsonType::string, "a string");
+    return this.stringValue;
   }
 
   // An array's elements or an object's members; 0 for anything else.
-  i32 size() const { return this->items.size(); }
+  i32 size() const { return this.items.size(); }
 
   // An array's element; out of range or not an array throws.
   const JsonValue& operator[](i32 index) const
   {
-    this->expect(JsonType::array, "an array");
-    if (index < 0 || index >= this->items.size())
-      throw JsonTypeError(toString("JSON array index ", index, " out of range (size ", this->items.size(), ")"));
-    return this->items[index];
+    this.expect(JsonType::array, "an array");
+    if (index < 0 || index >= this.items.size())
+      throw JsonTypeError(toString("JSON array index ", index, " out of range (size ", this.items.size(), ")"));
+    return this.items[index];
   }
 
   JsonValue& operator[](i32 index)
   {
-    this->expect(JsonType::array, "an array");
-    if (index < 0 || index >= this->items.size())
-      throw JsonTypeError(toString("JSON array index ", index, " out of range (size ", this->items.size(), ")"));
-    return this->items[index];
+    this.expect(JsonType::array, "an array");
+    if (index < 0 || index >= this.items.size())
+      throw JsonTypeError(toString("JSON array index ", index, " out of range (size ", this.items.size(), ")"));
+    return this.items[index];
   }
 
   // An object's member, or nullptr when it has none of that name; not an object throws.
   const JsonValue* find(StringView key) const
   {
-    this->expect(JsonType::object, "an object");
-    for (i32 i = 0; i < this->keys.size(); ++i)
-      if (StringView(this->keys[i]) == key)
-        return &this->items[i];
+    this.expect(JsonType::object, "an object");
+    for (i32 i = 0; i < this.keys.size(); ++i)
+      if (StringView(this.keys[i]) == key)
+        return &this.items[i];
     return nullptr;
   }
 
   JsonValue* find(StringView key)
   {
-    this->expect(JsonType::object, "an object");
-    for (i32 i = 0; i < this->keys.size(); ++i)
-      if (StringView(this->keys[i]) == key)
-        return &this->items[i];
+    this.expect(JsonType::object, "an object");
+    for (i32 i = 0; i < this.keys.size(); ++i)
+      if (StringView(this.keys[i]) == key)
+        return &this.items[i];
     return nullptr;
   }
 
-  bool contains(StringView key) const { return this->find(key) != nullptr; }
+  bool contains(StringView key) const { return this.find(key) != nullptr; }
 
   // An object's member; a missing one throws.
   const JsonValue& operator[](StringView key) const
   {
-    const JsonValue* member = this->find(key);
+    const JsonValue* member = this.find(key);
     if (!member)
       throw JsonTypeError(toString("JSON object has no member \"", key, "\""));
     return *member;
   }
 
-  const JsonValue& operator[](const char* key) const { return (*this)[StringView(key)]; }
+  const JsonValue& operator[](const char* key) const { return (this)[StringView(key)]; }
 
   // Appends to an array; a null value becomes an empty array first.
   JsonValue& push(const JsonValue& value)
   {
-    if (this->type == JsonType::null)
-      this->type = JsonType::array;
-    this->expect(JsonType::array, "an array");
-    this->items.push_back(value);
-    return this->items.back();
+    if (this.type == JsonType::null)
+      this.type = JsonType::array;
+    this.expect(JsonType::array, "an array");
+    this.items.push_back(value);
+    return this.items.back();
   }
 
   // Sets an object's member, replacing the value of an existing key in its place; a null value
   // becomes an empty object first.
   JsonValue& set(StringView key, const JsonValue& value)
   {
-    if (this->type == JsonType::null)
-      this->type = JsonType::object;
-    JsonValue* member = this->find(key);
+    if (this.type == JsonType::null)
+      this.type = JsonType::object;
+    JsonValue* member = this.find(key);
     if (member)
     {
       *member = value;
       return *member;
     }
-    this->keys.push_back(String(key));
-    this->items.push_back(value);
-    return this->items.back();
+    this.keys.push_back(String(key));
+    this.items.push_back(value);
+    return this.items.back();
   }
 
   // Removes an object's member; false when there was none.
   bool remove(StringView key)
   {
-    this->expect(JsonType::object, "an object");
-    for (i32 i = 0; i < this->keys.size(); ++i)
-      if (StringView(this->keys[i]) == key)
+    this.expect(JsonType::object, "an object");
+    for (i32 i = 0; i < this.keys.size(); ++i)
+      if (StringView(this.keys[i]) == key)
       {
-        this->keys.erase(this->keys.begin() + i);
-        this->items.erase(this->items.begin() + i);
+        this.keys.erase(this.keys.begin() + i);
+        this.items.erase(this.items.begin() + i);
         return true;
       }
     return false;
@@ -159,24 +159,24 @@ struct JsonValue
   // differently); objects are equal with the same members in any order.
   bool operator==(const JsonValue& other) const
   {
-    if (this->type != other.type)
+    if (this.type != other.type)
       return false;
-    switch (this->type)
+    switch (this.type)
     {
       case JsonType::null: return true;
-      case JsonType::boolean: return this->booleanValue == other.booleanValue;
-      case JsonType::integer: return this->integerValue == other.integerValue;
-      case JsonType::number: return jsonSameNumber(this->numberValue, other.numberValue);
-      case JsonType::string: return this->stringValue == other.stringValue;
-      case JsonType::array: return this->items == other.items;
+      case JsonType::boolean: return this.booleanValue == other.booleanValue;
+      case JsonType::integer: return this.integerValue == other.integerValue;
+      case JsonType::number: return jsonSameNumber(this.numberValue, other.numberValue);
+      case JsonType::string: return this.stringValue == other.stringValue;
+      case JsonType::array: return this.items == other.items;
       case JsonType::object:
       {
-        if (this->keys.size() != other.keys.size())
+        if (this.keys.size() != other.keys.size())
           return false;
-        for (i32 i = 0; i < this->keys.size(); ++i)
+        for (i32 i = 0; i < this.keys.size(); ++i)
         {
-          const JsonValue* member = other.find(this->keys[i]);
-          if (!member || !(this->items[i] == *member))
+          const JsonValue* member = other.find(this.keys[i]);
+          if (!member || !(this.items[i] == *member))
             return false;
         }
         return true;
@@ -186,12 +186,12 @@ struct JsonValue
   }
 
   // The value as compact JSON, for messages and the test runner's check values.
-  String str() const { return writeJson(*this); }
+  String str() const { return writeJson(this); }
 
   void expect(JsonType wanted, const char* what) const
   {
-    if (this->type != wanted)
-      throw JsonTypeError(toString("JSON value is ", StringView(jsonTypeName(this->type)), ", not ", StringView(what)));
+    if (this.type != wanted)
+      throw JsonTypeError(toString("JSON value is ", StringView(jsonTypeName(this.type)), ", not ", StringView(what)));
   }
 
   JsonType type = JsonType::null;

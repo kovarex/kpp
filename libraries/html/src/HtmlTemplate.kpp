@@ -25,18 +25,18 @@ public:
   constexpr HtmlTemplate(const char* text) : text(text)
   {
     i32 i = 0;
-    while (this->text[i])
+    while (this.text[i])
     {
-      if (this->isHole(i))
-        i = this->hole(i, HtmlHole::text);
-      else if (this->text[i] == '<')
-        i = this->markup(i);
+      if (this.isHole(i))
+        i = this.hole(i, HtmlHole::text);
+      else if (this.text[i] == '<')
+        i = this.markup(i);
       else
         ++i;
     }
-    if (this->depth > 0)
-      this->fail(this->openStart[this->depth - 1] - 1, "an element that is never closed");
-    this->addLiteral(i);
+    if (this.depth > 0)
+      this.fail(this.openStart[this.depth - 1] - 1, "an element that is never closed");
+    this.addLiteral(i);
   }
 
   // Renders the template with a value for each hole; a hole without a value, or a value no hole
@@ -44,7 +44,7 @@ public:
   SafeHtml render(InitializerList<HtmlArgument> arguments) const
   {
     String out;
-    this->renderTo(out, arguments);
+    this.renderTo(out, arguments);
     return SafeHtml::trusted(out);
   }
 
@@ -52,10 +52,10 @@ public:
   {
     i32 count = i32(arguments.size());
     Vector<bool> used(count, false);
-    for (i32 p = 0; p < this->partCount; ++p)
+    for (i32 p = 0; p < this.partCount; ++p)
     {
-      const HtmlTemplatePart& part = this->parts[p];
-      StringView name(this->text + part.start, part.length);
+      const HtmlTemplatePart& part = this.parts[p];
+      StringView name(this.text + part.start, part.length);
       if (part.kind == HtmlHole::literal)
       {
         out << name;
@@ -80,7 +80,7 @@ public:
       if (part.kind == HtmlHole::flag)
       {
         if (argument->on)
-          out << ' ' << StringView(this->text + part.attributeStart, part.attributeLength);
+          out << ' ' << StringView(this.text + part.attributeStart, part.attributeLength);
         continue;
       }
       if (argument->kind == HtmlArgumentKind::safe && part.kind != HtmlHole::text)
@@ -109,61 +109,61 @@ public:
   }
 
   // How many parts the template was read into: its literal texts and holes.
-  constexpr i32 countParts() const { return this->partCount; }
+  constexpr i32 countParts() const { return this.partCount; }
 
   // The holes' names, in order, with repeats.
   Vector<String> holes() const
   {
     Vector<String> names;
-    for (i32 p = 0; p < this->partCount; ++p)
-      if (this->parts[p].kind != HtmlHole::literal)
-        names.push_back(String(this->text + this->parts[p].start, this->parts[p].length));
+    for (i32 p = 0; p < this.partCount; ++p)
+      if (this.parts[p].kind != HtmlHole::literal)
+        names.push_back(String(this.text + this.parts[p].start, this.parts[p].length));
     return names;
   }
 
 private:
   // --- reading the template ---
 
-  void fail(i32 offset, const char* what) const { htmlTemplateFail(this->text, offset, what); }
+  void fail(i32 offset, const char* what) const { htmlTemplateFail(this.text, offset, what); }
 
-  bool isHole(i32 i) const { return this->text[i] == '{' && this->text[i + 1] == '{'; }
+  bool isHole(i32 i) const { return this.text[i] == '{' && this.text[i + 1] == '{'; }
 
   void add(i32 start, i32 length, HtmlHole kind)
   {
-    if (this->partCount == htmlTemplateMaxParts)
-      this->fail(start, "a template of more than 256 parts (split it)");
-    this->parts[this->partCount] = HtmlTemplatePart{start, length, kind};
-    ++this->partCount;
+    if (this.partCount == htmlTemplateMaxParts)
+      this.fail(start, "a template of more than 256 parts (split it)");
+    this.parts[this.partCount] = HtmlTemplatePart{start, length, kind};
+    ++this.partCount;
   }
 
   // Adds the literal text before end.
   void addLiteral(i32 end)
   {
-    if (end > this->literalStart)
-      this->add(this->literalStart, end - this->literalStart, HtmlHole::literal);
+    if (end > this.literalStart)
+      this.add(this.literalStart, end - this.literalStart, HtmlHole::literal);
   }
 
   // The hole at i; returns where its text ends.
   i32 hole(i32 i, HtmlHole kind)
   {
-    this->addLiteral(i);
+    this.addLiteral(i);
     i32 start = i + 2;
     i32 end = start;
-    while (this->text[end] && !(this->text[end] == '}' && this->text[end + 1] == '}'))
+    while (this.text[end] && !(this.text[end] == '}' && this.text[end + 1] == '}'))
       ++end;
-    if (!this->text[end])
-      this->fail(i, "a '{{' without its '}}'");
+    if (!this.text[end])
+      this.fail(i, "a '{{' without its '}}'");
     if (end == start)
-      this->fail(i, "a hole without a name");
+      this.fail(i, "a hole without a name");
     for (i32 k = start; k < end; ++k)
     {
-      char c = this->text[k];
+      char c = this.text[k];
       bool letter = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
       if (!letter && !(k > start && c >= '0' && c <= '9'))
-        this->fail(k, "a hole's name is letters, digits and '_', not starting with a digit");
+        this.fail(k, "a hole's name is letters, digits and '_', not starting with a digit");
     }
-    this->add(start, end - start, kind);
-    this->literalStart = end + 2;
+    this.add(start, end - start, kind);
+    this.literalStart = end + 2;
     return end + 2;
   }
 
@@ -179,7 +179,7 @@ private:
     if (n != length)
       return false;
     for (i32 k = 0; k < n; ++k)
-      if (htmlLower(this->text[start + k]) != word[k])
+      if (htmlLower(this.text[start + k]) != word[k])
         return false;
     return true;
   }
@@ -187,7 +187,7 @@ private:
   bool startsWith(i32 i, const char* word) const
   {
     for (i32 k = 0; word[k]; ++k)
-      if (htmlLower(this->text[i + k]) != word[k])
+      if (htmlLower(this.text[i + k]) != word[k])
         return false;
     return true;
   }
@@ -196,7 +196,7 @@ private:
   i32 holeIn(i32 from, i32 to) const
   {
     for (i32 k = from; k + 1 < to; ++k)
-      if (this->isHole(k))
+      if (this.isHole(k))
         return k;
     return -1;
   }
@@ -205,7 +205,7 @@ private:
   {
     const char* voids[] = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"};
     for (const char* v : voids)
-      if (this->is(start, length, v))
+      if (this.is(start, length, v))
         return true;
     return false;
   }
@@ -213,72 +213,72 @@ private:
   // The markup at i ('<'); returns where it ends.
   i32 markup(i32 i)
   {
-    if (this->startsWith(i, "<!--"))
+    if (this.startsWith(i, "<!--"))
     {
       i32 k = i + 4;
-      while (this->text[k] && !this->startsWith(k, "-->"))
+      while (this.text[k] && !this.startsWith(k, "-->"))
         ++k;
-      if (!this->text[k])
-        this->fail(i, "a comment without its '-->'");
-      if (this->holeIn(i, k) >= 0)
-        this->fail(this->holeIn(i, k), "a hole in a comment");
+      if (!this.text[k])
+        this.fail(i, "a comment without its '-->'");
+      if (this.holeIn(i, k) >= 0)
+        this.fail(this.holeIn(i, k), "a hole in a comment");
       return k + 3;
     }
-    if (this->text[i + 1] == '!')
+    if (this.text[i + 1] == '!')
     {
       i32 k = i + 2;
-      while (this->text[k] && this->text[k] != '>')
+      while (this.text[k] && this.text[k] != '>')
         ++k;
-      if (!this->text[k])
-        this->fail(i, "a '<!' without its '>'");
-      if (this->holeIn(i, k) >= 0)
-        this->fail(this->holeIn(i, k), "a hole in a <!DOCTYPE>");
+      if (!this.text[k])
+        this.fail(i, "a '<!' without its '>'");
+      if (this.holeIn(i, k) >= 0)
+        this.fail(this.holeIn(i, k), "a hole in a <!DOCTYPE>");
       return k + 1;
     }
-    if (this->text[i + 1] == '/')
+    if (this.text[i + 1] == '/')
     {
       i32 nameStart = i + 2;
       i32 k = nameStart;
-      while (HtmlTemplate::isNameChar(this->text[k]))
+      while (HtmlTemplate::isNameChar(this.text[k]))
         ++k;
       i32 nameLength = k - nameStart;
-      while (HtmlTemplate::isSpace(this->text[k]))
+      while (HtmlTemplate::isSpace(this.text[k]))
         ++k;
-      if (nameLength == 0 || this->text[k] != '>')
-        this->fail(i, "an end tag that is not </name>");
-      if (this->depth == 0)
-        this->fail(i, "an end tag without its start tag");
-      i32 top = this->depth - 1;
-      bool same = this->openLength[top] == nameLength;
+      if (nameLength == 0 || this.text[k] != '>')
+        this.fail(i, "an end tag that is not </name>");
+      if (this.depth == 0)
+        this.fail(i, "an end tag without its start tag");
+      i32 top = this.depth - 1;
+      bool same = this.openLength[top] == nameLength;
       for (i32 c = 0; same && c < nameLength; ++c)
-        same = htmlLower(this->text[this->openStart[top] + c]) == htmlLower(this->text[nameStart + c]);
+        same = htmlLower(this.text[this.openStart[top] + c]) == htmlLower(this.text[nameStart + c]);
       if (!same)
-        this->fail(i, "an end tag that does not close the element open here (every element but the void ones is closed explicitly)");
-      --this->depth;
+        this.fail(i, "an end tag that does not close the element open here (every element but the void ones is closed explicitly)");
+      --this.depth;
       return k + 1;
     }
-    char first = this->text[i + 1];
+    char first = this.text[i + 1];
     if (!((first >= 'a' && first <= 'z') || (first >= 'A' && first <= 'Z')))
-      this->fail(i, "a '<' that starts no tag (write &lt;)");
+      this.fail(i, "a '<' that starts no tag (write &lt;)");
     i32 nameStart = i + 1;
     i32 k = nameStart;
-    while (HtmlTemplate::isNameChar(this->text[k]))
+    while (HtmlTemplate::isNameChar(this.text[k]))
       ++k;
     i32 nameLength = k - nameStart;
     bool selfClosed = false;
     while (true)
     {
       i32 spaceStart = k;
-      while (HtmlTemplate::isSpace(this->text[k]))
+      while (HtmlTemplate::isSpace(this.text[k]))
         ++k;
-      char c = this->text[k];
+      char c = this.text[k];
       if (!c)
-        this->fail(i, "a tag without its '>'");
-      if (this->isHole(k))
-        this->fail(k, "a hole in a tag outside a quoted attribute value (a boolean attribute is ?name=\"{{hole}}\")");
+        this.fail(i, "a tag without its '>'");
+      if (this.isHole(k))
+        this.fail(k, "a hole in a tag outside a quoted attribute value (a boolean attribute is ?name=\"{{hole}}\")");
       if (c == '?')
       {
-        k = this->flag(spaceStart, k);
+        k = this.flag(spaceStart, k);
         continue;
       }
       if (c == '>')
@@ -286,33 +286,33 @@ private:
         ++k;
         break;
       }
-      if (c == '/' && this->text[k + 1] == '>')
+      if (c == '/' && this.text[k + 1] == '>')
       {
         selfClosed = true;
         k += 2;
         break;
       }
-      k = this->attribute(k);
+      k = this.attribute(k);
     }
-    if (this->is(nameStart, nameLength, "script") || this->is(nameStart, nameLength, "style"))
+    if (this.is(nameStart, nameLength, "script") || this.is(nameStart, nameLength, "style"))
     {
       // Raw text up to its end tag: no holes, since escaping for JavaScript or CSS is not HTML's.
       i32 end = k;
-      while (this->text[end] && !(this->text[end] == '<' && this->text[end + 1] == '/' && this->startsWith(end + 2, this->is(nameStart, nameLength, "script") ? "script" : "style")))
+      while (this.text[end] && !(this.text[end] == '<' && this.text[end + 1] == '/' && this.startsWith(end + 2, this.is(nameStart, nameLength, "script") ? "script" : "style")))
         ++end;
-      if (!this->text[end])
-        this->fail(i, "a <script> or <style> without its end tag");
-      if (this->holeIn(k, end) >= 0)
-        this->fail(this->holeIn(k, end), "a hole in <script> or <style> (pass the data in an attribute or a separate file)");
+      if (!this.text[end])
+        this.fail(i, "a <script> or <style> without its end tag");
+      if (this.holeIn(k, end) >= 0)
+        this.fail(this.holeIn(k, end), "a hole in <script> or <style> (pass the data in an attribute or a separate file)");
       k = end;
     }
-    if (!selfClosed && !this->isVoid(nameStart, nameLength))
+    if (!selfClosed && !this.isVoid(nameStart, nameLength))
     {
-      if (this->depth == htmlTemplateMaxDepth)
-        this->fail(i, "elements nested more than 64 deep");
-      this->openStart[this->depth] = nameStart;
-      this->openLength[this->depth] = nameLength;
-      ++this->depth;
+      if (this.depth == htmlTemplateMaxDepth)
+        this.fail(i, "elements nested more than 64 deep");
+      this.openStart[this.depth] = nameStart;
+      this.openLength[this.depth] = nameLength;
+      ++this.depth;
     }
     return k;
   }
@@ -323,20 +323,20 @@ private:
   {
     i32 nameStart = i + 1;
     i32 k = nameStart;
-    while (HtmlTemplate::isNameChar(this->text[k]))
+    while (HtmlTemplate::isNameChar(this.text[k]))
       ++k;
     i32 nameLength = k - nameStart;
-    if (nameLength == 0 || this->text[k] != '=' || this->text[k + 1] != '"' || !this->isHole(k + 2))
-      this->fail(i, "a boolean attribute is ?name=\"{{hole}}\"");
-    this->addLiteral(spaceStart);
-    this->literalStart = k + 2;
-    i32 end = this->hole(k + 2, HtmlHole::flag);
-    if (this->text[end] != '"')
-      this->fail(end, "a boolean attribute's value is its hole alone");
-    HtmlTemplatePart& part = this->parts[this->partCount - 1];
+    if (nameLength == 0 || this.text[k] != '=' || this.text[k + 1] != '"' || !this.isHole(k + 2))
+      this.fail(i, "a boolean attribute is ?name=\"{{hole}}\"");
+    this.addLiteral(spaceStart);
+    this.literalStart = k + 2;
+    i32 end = this.hole(k + 2, HtmlHole::flag);
+    if (this.text[end] != '"')
+      this.fail(end, "a boolean attribute's value is its hole alone");
+    HtmlTemplatePart& part = this.parts[this.partCount - 1];
     part.attributeStart = nameStart;
     part.attributeLength = nameLength;
-    this->literalStart = end + 1;
+    this.literalStart = end + 1;
     return end + 1;
   }
 
@@ -344,30 +344,30 @@ private:
   i32 attribute(i32 k)
   {
     i32 nameStart = k;
-    while (this->text[k] && !HtmlTemplate::isSpace(this->text[k]) && this->text[k] != '=' && this->text[k] != '>' && this->text[k] != '/' &&
-           this->text[k] != '"' && this->text[k] != '\'')
+    while (this.text[k] && !HtmlTemplate::isSpace(this.text[k]) && this.text[k] != '=' && this.text[k] != '>' && this.text[k] != '/' &&
+           this.text[k] != '"' && this.text[k] != '\'')
     {
-      if (this->isHole(k))
-        this->fail(k, "a hole in an attribute's name");
+      if (this.isHole(k))
+        this.fail(k, "a hole in an attribute's name");
       ++k;
     }
     i32 nameLength = k - nameStart;
     if (nameLength == 0)
-      this->fail(k, "a character that starts no attribute");
-    while (HtmlTemplate::isSpace(this->text[k]))
+      this.fail(k, "a character that starts no attribute");
+    while (HtmlTemplate::isSpace(this.text[k]))
       ++k;
-    if (this->text[k] != '=')
+    if (this.text[k] != '=')
       return k;
     ++k;
-    while (HtmlTemplate::isSpace(this->text[k]))
+    while (HtmlTemplate::isSpace(this.text[k]))
       ++k;
-    char quote = this->text[k];
+    char quote = this.text[k];
     if (quote != '"' && quote != '\'')
     {
-      while (this->text[k] && !HtmlTemplate::isSpace(this->text[k]) && this->text[k] != '>')
+      while (this.text[k] && !HtmlTemplate::isSpace(this.text[k]) && this.text[k] != '>')
       {
-        if (this->isHole(k))
-          this->fail(k, "a hole in an unquoted attribute value (quote it)");
+        if (this.isHole(k))
+          this.fail(k, "a hole in an unquoted attribute value (quote it)");
         ++k;
       }
       return k;
@@ -377,24 +377,24 @@ private:
     bool url = false;
     const char* urls[] = {"href", "src", "action", "formaction", "cite", "poster"};
     for (const char* u : urls)
-      if (this->is(nameStart, nameLength, u))
+      if (this.is(nameStart, nameLength, u))
         url = true;
-    bool forbidden = this->is(nameStart, nameLength, "style") || this->is(nameStart, nameLength, "srcset") || this->is(nameStart, nameLength, "srcdoc") ||
-                     (nameLength > 2 && htmlLower(this->text[nameStart]) == 'o' && htmlLower(this->text[nameStart + 1]) == 'n');
+    bool forbidden = this.is(nameStart, nameLength, "style") || this.is(nameStart, nameLength, "srcset") || this.is(nameStart, nameLength, "srcdoc") ||
+                     (nameLength > 2 && htmlLower(this.text[nameStart]) == 'o' && htmlLower(this.text[nameStart + 1]) == 'n');
     bool query = false;
-    while (this->text[k] != quote)
+    while (this.text[k] != quote)
     {
-      if (!this->text[k])
-        this->fail(valueStart - 1, "an attribute value without its closing quote");
-      if (this->isHole(k))
+      if (!this.text[k])
+        this.fail(valueStart - 1, "an attribute value without its closing quote");
+      if (this.isHole(k))
       {
         if (forbidden)
-          this->fail(k, "a hole in a style, srcset, srcdoc or event handler attribute");
+          this.fail(k, "a hole in a style, srcset, srcdoc or event handler attribute");
         HtmlHole kind = !url ? HtmlHole::attribute : k == valueStart ? HtmlHole::urlStart : query ? HtmlHole::urlQuery : HtmlHole::urlPath;
-        k = this->hole(k, kind);
+        k = this.hole(k, kind);
         continue;
       }
-      if (this->text[k] == '?' || this->text[k] == '#')
+      if (this.text[k] == '?' || this.text[k] == '#')
         query = true;
       ++k;
     }

@@ -8,17 +8,17 @@ void urlFail(i32 offset, const char* what) { throw UrlError(toString(offset, ": 
 // component from a missing one: "http://a?" has an empty query, "http://a" none.
 struct Url
 {
-  bool isRelative() const { return this->scheme.empty(); }
+  bool isRelative() const { return this.scheme.empty(); }
 
   // The port as a number, or -1 when there is none or it is empty.
   i32 portNumber() const
   {
-    if (this->port.empty())
+    if (this.port.empty())
       return -1;
     i64 value = 0;
-    for (char c : this->port)
+    for (char c : this.port)
       if ((value = value * 10 + (c - '0')) > 65535)
-        throw UrlError(toString("port ", this->port, " is out of range"), 0);
+        throw UrlError(toString("port ", this.port, " is out of range"), 0);
     return i32(value);
   }
 
@@ -26,41 +26,41 @@ struct Url
   String str() const
   {
     String out;
-    if (!this->scheme.empty())
+    if (!this.scheme.empty())
     {
-      out << (this->scheme);
+      out << (this.scheme);
       out << ':';
     }
-    if (this->hasAuthority)
+    if (this.hasAuthority)
     {
       out << "//";
-      if (this->hasUserInfo)
+      if (this.hasUserInfo)
       {
-        out << (this->userInfo);
+        out << (this.userInfo);
         out << '@';
       }
-      out << (this->host);
-      if (this->hasPort)
+      out << (this.host);
+      if (this.hasPort)
       {
         out << ':';
-        out << (this->port);
+        out << (this.port);
       }
     }
-    out << (this->path);
-    if (this->hasQuery)
+    out << (this.path);
+    if (this.hasQuery)
     {
       out << '?';
-      out << (this->query);
+      out << (this.query);
     }
-    if (this->hasFragment)
+    if (this.hasFragment)
     {
       out << '#';
-      out << (this->fragment);
+      out << (this.fragment);
     }
     return out;
   }
 
-  bool operator==(const Url& other) const { return this->str() == other.str(); }
+  bool operator==(const Url& other) const { return this.str() == other.str(); }
 
   String scheme; // without ':'; empty for a relative reference
   bool hasAuthority = false;

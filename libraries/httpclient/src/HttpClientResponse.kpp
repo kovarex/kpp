@@ -3,7 +3,7 @@ struct HttpClientResponse
   // The first header of that name (any case), or nullptr.
   const String* header(StringView name) const
   {
-    for (const HttpClientHeader& h : this->headers)
+    for (const HttpClientHeader& h : this.headers)
       if (httpClientEqualIgnoringCase(h.name, name))
         return &h.value;
     return nullptr;

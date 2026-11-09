@@ -5,6 +5,7 @@ void build(Project& project)
   url.version = "0.1.0";
   url.license = "Apache-2.0 WITH LLVM-exception";
   url.minimumKpp = "0.1.0";
+  url.thisReference = true;
   url.root("src");
   url.test("tests");
 }

@@ -4,19 +4,19 @@ struct HttpRequest
   const String* header(StringView name) const
   {
     String lower = httpLower(name);
-    for (const HttpHeader& h : this->headers)
+    for (const HttpHeader& h : this.headers)
       if (h.name == lower)
         return &h.value;
     return nullptr;
   }
 
   // The query's first parameter of that name, or nullptr.
-  const String* parameter(StringView name) const { return url::findUrlQueryParameter(this->parameters, name); }
+  const String* parameter(StringView name) const { return url::findUrlQueryParameter(this.parameters, name); }
 
   // The value of the cookie of that name, or nullptr.
   Optional<String> cookie(StringView name) const
   {
-    const String* header = this->header("cookie");
+    const String* header = this.header("cookie");
     if (header == nullptr)
       return Optional<String>();
     for (const HttpHeader& c : httpParseCookies(*header))
@@ -29,13 +29,13 @@ struct HttpRequest
   // left out: multipart() has them); another body throws HttpError (415).
   Vector<url::UrlQueryParameter> form() const
   {
-    String type = this->contentType();
+    String type = this.contentType();
     if (type == "application/x-www-form-urlencoded")
-      return url::parseUrlQuery(this->body);
+      return url::parseUrlQuery(this.body);
     if (type == "multipart/form-data")
     {
       Vector<url::UrlQueryParameter> fields;
-      for (const HttpPart& part : this->multipart())
+      for (const HttpPart& part : this.multipart())
         if (!part.filename.has_value())
         {
           url::UrlQueryParameter p;
@@ -45,7 +45,7 @@ struct HttpRequest
         }
       return fields;
     }
-    if (this->body.empty())
+    if (this.body.empty())
       return Vector<url::UrlQueryParameter>();
     throw HttpError(toString("a form cannot be read from a body of type \"", type, "\""), 415);
   }
@@ -53,16 +53,16 @@ struct HttpRequest
   // The parts of a multipart/form-data body; another type throws HttpError (415).
   Vector<HttpPart> multipart() const
   {
-    const String* header = this->header("content-type");
-    if (header == nullptr || this->contentType() != "multipart/form-data")
+    const String* header = this.header("content-type");
+    if (header == nullptr || this.contentType() != "multipart/form-data")
       throw HttpError("the body is not multipart/form-data", 415);
-    return httpParseMultipart(this->body, httpBoundary(*header));
+    return httpParseMultipart(this.body, httpBoundary(*header));
   }
 
   // The Content-Type's media type in lower case, without its parameters; empty without one.
   String contentType() const
   {
-    const String* header = this->header("content-type");
+    const String* header = this.header("content-type");
     if (header == nullptr)
       return String();
     StringView type = *header;

@@ -6,6 +6,7 @@ void build(Project& project)
   httpclient.version = "0.1.0";
   httpclient.license = "Apache-2.0 WITH LLVM-exception";
   httpclient.minimumKpp = "0.1.0";
+  httpclient.thisReference = true;
   httpclient.root("src");
   httpclient.test("tests");
   // FreeBSD's client is HTTP/1.1 over net's sockets (its tests answer over the loopback with net too),

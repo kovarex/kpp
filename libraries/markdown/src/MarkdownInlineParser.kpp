@@ -2,69 +2,69 @@ struct MarkdownInlineParser
 {
   MarkdownInlineParser(MarkdownNodes* nodes, MarkdownBlockParser* blocks) : nodes(nodes), blocks(blocks) {}
 
-  i32 peek() const { return this->position < this->subject.size() ? (u8)this->subject[this->position] : -1; }
-  i32 peekAt(i32 at) const { return at < this->subject.size() ? (u8)this->subject[at] : -1; }
+  i32 peek() const { return this.position < this.subject.size() ? (u8)this.subject[this.position] : -1; }
+  i32 peekAt(i32 at) const { return at < this.subject.size() ? (u8)this.subject[at] : -1; }
 
   void parse(MarkdownNode* block)
   {
     String content = String(markdownTrim(block->content));
-    this->subject = content;
-    this->position = 0;
-    this->delimiters = nullptr;
-    this->brackets = nullptr;
-    while (this->parseInline(block))
+    this.subject = content;
+    this.position = 0;
+    this.delimiters = nullptr;
+    this.brackets = nullptr;
+    while (this.parseInline(block))
     {
     }
     block->content = String();
-    this->processEmphasis(nullptr);
+    this.processEmphasis(nullptr);
   }
 
   bool parseInline(MarkdownNode* block)
   {
-    i32 c = this->peek();
+    i32 c = this.peek();
     if (c == -1)
       return false;
     bool done = false;
     switch (c)
     {
-      case '\n': done = this->parseNewline(block);
-      case '\\': done = this->parseBackslash(block);
-      case '`': done = this->parseBackticks(block);
-      case '*', '_': done = this->handleDelimiter(c, block);
-      case '[': done = this->parseOpenBracket(block);
-      case '!': done = this->parseBang(block);
-      case ']': done = this->parseCloseBracket(block);
-      case '<': done = this->parseAutolink(block) || this->parseHtmlTag(block);
-      case '&': done = this->parseEntity(block);
-      default: done = this->parseString(block);
+      case '\n': done = this.parseNewline(block);
+      case '\\': done = this.parseBackslash(block);
+      case '`': done = this.parseBackticks(block);
+      case '*', '_': done = this.handleDelimiter(c, block);
+      case '[': done = this.parseOpenBracket(block);
+      case '!': done = this.parseBang(block);
+      case ']': done = this.parseCloseBracket(block);
+      case '<': done = this.parseAutolink(block) || this.parseHtmlTag(block);
+      case '&': done = this.parseEntity(block);
+      default: done = this.parseString(block);
     }
     if (!done)
     {
-      this->position += 1;
-      block->appendChild(this->nodes->text(this->subject.substr(this->position - 1, 1)));
+      this.position += 1;
+      block->appendChild(this.nodes->text(this.subject.substr(this.position - 1, 1)));
     }
     return true;
   }
 
   bool parseString(MarkdownNode* block)
   {
-    i32 start = this->position;
-    while (this->position < this->subject.size())
+    i32 start = this.position;
+    while (this.position < this.subject.size())
     {
-      char c = this->subject[this->position];
+      char c = this.subject[this.position];
       if (c == '\n' || c == '`' || c == '[' || c == ']' || c == '\\' || c == '!' || c == '<' || c == '&' || c == '*' || c == '_')
         break;
-      ++this->position;
+      ++this.position;
     }
-    if (this->position == start)
+    if (this.position == start)
       return false;
-    block->appendChild(this->nodes->text(this->subject.substr(start, this->position - start)));
+    block->appendChild(this.nodes->text(this.subject.substr(start, this.position - start)));
     return true;
   }
 
   bool parseNewline(MarkdownNode* block)
   {
-    this->position += 1;
+    this.position += 1;
     MarkdownNode* last = block->lastChild;
     if (last && last->type == MarkdownType::text && last->literal.size() > 0 && last->literal.back() == ' ')
     {
@@ -73,85 +73,85 @@ struct MarkdownInlineParser
       while (end > 0 && last->literal[end - 1] == ' ')
         --end;
       last->literal = String(StringView(last->literal).substr(0, end));
-      block->appendChild(this->nodes->make(hard ? MarkdownType::lineBreak : MarkdownType::softBreak));
+      block->appendChild(this.nodes->make(hard ? MarkdownType::lineBreak : MarkdownType::softBreak));
     }
     else
-      block->appendChild(this->nodes->make(MarkdownType::softBreak));
-    while (markdownIsSpaceOrTab(this->peek()))
-      ++this->position;
+      block->appendChild(this.nodes->make(MarkdownType::softBreak));
+    while (markdownIsSpaceOrTab(this.peek()))
+      ++this.position;
     return true;
   }
 
   bool parseBackslash(MarkdownNode* block)
   {
-    this->position += 1;
-    if (this->peek() == '\n')
+    this.position += 1;
+    if (this.peek() == '\n')
     {
-      this->position += 1;
-      block->appendChild(this->nodes->make(MarkdownType::lineBreak));
+      this.position += 1;
+      block->appendChild(this.nodes->make(MarkdownType::lineBreak));
     }
-    else if (markdownIsAsciiPunctuation(this->peek()))
+    else if (markdownIsAsciiPunctuation(this.peek()))
     {
-      block->appendChild(this->nodes->text(this->subject.substr(this->position, 1)));
-      this->position += 1;
+      block->appendChild(this.nodes->text(this.subject.substr(this.position, 1)));
+      this.position += 1;
     }
     else
-      block->appendChild(this->nodes->text("\\"));
+      block->appendChild(this.nodes->text("\\"));
     return true;
   }
 
   bool parseBackticks(MarkdownNode* block)
   {
-    i32 start = this->position;
-    while (this->peek() == '`')
-      ++this->position;
-    i32 ticks = this->position - start;
-    i32 afterOpen = this->position;
+    i32 start = this.position;
+    while (this.peek() == '`')
+      ++this.position;
+    i32 ticks = this.position - start;
+    i32 afterOpen = this.position;
     // The next run of exactly as many backticks.
     i32 k = afterOpen;
-    while (k < this->subject.size())
+    while (k < this.subject.size())
     {
-      if (this->subject[k] != '`')
+      if (this.subject[k] != '`')
       {
         ++k;
         continue;
       }
       i32 runStart = k;
-      while (k < this->subject.size() && this->subject[k] == '`')
+      while (k < this.subject.size() && this.subject[k] == '`')
         ++k;
       if (k - runStart == ticks)
       {
         String contents;
         for (i32 i = afterOpen; i < runStart; ++i)
-          contents << (this->subject[i] == '\n' ? ' ' : this->subject[i]);
+          contents << (this.subject[i] == '\n' ? ' ' : this.subject[i]);
         bool allSpace = true;
         for (char c : contents)
           if (c != ' ')
             allSpace = false;
-        MarkdownNode* code = this->nodes->make(MarkdownType::code);
+        MarkdownNode* code = this.nodes->make(MarkdownType::code);
         if (contents.size() > 0 && !allSpace && contents[0] == ' ' && contents.back() == ' ')
           code->literal = String(StringView(contents).substr(1, contents.size() - 2));
         else
           code->literal = contents;
         block->appendChild(code);
-        this->position = k;
+        this.position = k;
         return true;
       }
     }
-    this->position = afterOpen;
-    block->appendChild(this->nodes->text(this->subject.substr(start, ticks)));
+    this.position = afterOpen;
+    block->appendChild(this.nodes->text(this.subject.substr(start, ticks)));
     return true;
   }
 
   bool handleDelimiter(i32 c, MarkdownNode* block)
   {
-    i32 start = this->position;
+    i32 start = this.position;
     i32 count = 0;
-    while (this->peekAt(start + count) == c)
+    while (this.peekAt(start + count) == c)
       ++count;
-    i32 before = start == 0 ? '\n' : markdownDecodeBefore(this->subject, start);
+    i32 before = start == 0 ? '\n' : markdownDecodeBefore(this.subject, start);
     i32 afterLength = 0;
-    i32 after = start + count >= this->subject.size() ? '\n' : markdownDecode(this->subject, start + count, &afterLength);
+    i32 after = start + count >= this.subject.size() ? '\n' : markdownDecode(this.subject, start + count, &afterLength);
     bool afterSpace = markdownIsUnicodeWhitespace(after);
     bool afterPunctuation = markdownIsUnicodePunctuation(after);
     bool beforeSpace = markdownIsUnicodeWhitespace(before);
@@ -165,21 +165,21 @@ struct MarkdownInlineParser
       canOpen = leftFlanking && (!rightFlanking || beforePunctuation);
       canClose = rightFlanking && (!leftFlanking || afterPunctuation);
     }
-    this->position += count;
-    MarkdownNode* node = this->nodes->text(this->subject.substr(start, count));
+    this.position += count;
+    MarkdownNode* node = this.nodes->text(this.subject.substr(start, count));
     block->appendChild(node);
-    MarkdownDelimiter& d = this->delimiterStore.emplace_back();
+    MarkdownDelimiter& d = this.delimiterStore.emplace_back();
     d.character = c;
     d.count = count;
     d.originalCount = count;
     d.node = node;
-    d.previous = this->delimiters;
+    d.previous = this.delimiters;
     d.next = nullptr;
     d.canOpen = canOpen;
     d.canClose = canClose;
     if (d.previous)
       d.previous->next = &d;
-    this->delimiters = &d;
+    this.delimiters = &d;
     return true;
   }
 
@@ -188,7 +188,7 @@ struct MarkdownInlineParser
     if (d->previous)
       d->previous->next = d->next;
     if (!d->next)
-      this->delimiters = d->previous;
+      this.delimiters = d->previous;
     else
       d->next->previous = d->previous;
   }
@@ -198,7 +198,7 @@ struct MarkdownInlineParser
     MarkdownDelimiter* openersBottom[14];
     for (i32 i = 0; i < 14; ++i)
       openersBottom[i] = stackBottom;
-    MarkdownDelimiter* closer = this->delimiters;
+    MarkdownDelimiter* closer = this.delimiters;
     while (closer && closer->previous != stackBottom)
       closer = closer->previous;
     while (closer)
@@ -233,7 +233,7 @@ struct MarkdownInlineParser
         closer->count -= used;
         openerNode->literal = String(StringView(openerNode->literal).substr(0, openerNode->literal.size() - used));
         closerNode->literal = String(StringView(closerNode->literal).substr(0, closerNode->literal.size() - used));
-        MarkdownNode* emphasis = this->nodes->make(used == 1 ? MarkdownType::emphasis : MarkdownType::strong);
+        MarkdownNode* emphasis = this.nodes->make(used == 1 ? MarkdownType::emphasis : MarkdownType::strong);
         MarkdownNode* node = openerNode->next;
         while (node && node != closerNode)
         {
@@ -251,13 +251,13 @@ struct MarkdownInlineParser
         if (opener->count == 0)
         {
           openerNode->unlink();
-          this->removeDelimiter(opener);
+          this.removeDelimiter(opener);
         }
         if (closer->count == 0)
         {
           closerNode->unlink();
           MarkdownDelimiter* next = closer->next;
-          this->removeDelimiter(closer);
+          this.removeDelimiter(closer);
           closer = next;
         }
       }
@@ -265,77 +265,77 @@ struct MarkdownInlineParser
       {
         openersBottom[bottomIndex] = oldCloser->previous;
         if (!oldCloser->canOpen)
-          this->removeDelimiter(oldCloser);
+          this.removeDelimiter(oldCloser);
       }
     }
-    while (this->delimiters && this->delimiters != stackBottom)
-      this->removeDelimiter(this->delimiters);
+    while (this.delimiters && this.delimiters != stackBottom)
+      this.removeDelimiter(this.delimiters);
   }
 
   void addBracket(MarkdownNode* node, i32 index, bool image)
   {
-    if (this->brackets)
-      this->brackets->bracketAfter = true;
-    MarkdownBracket& b = this->bracketStore.emplace_back();
+    if (this.brackets)
+      this.brackets->bracketAfter = true;
+    MarkdownBracket& b = this.bracketStore.emplace_back();
     b.node = node;
-    b.previous = this->brackets;
-    b.previousDelimiter = this->delimiters;
+    b.previous = this.brackets;
+    b.previousDelimiter = this.delimiters;
     b.index = index;
     b.image = image;
     b.active = true;
     b.bracketAfter = false;
-    this->brackets = &b;
+    this.brackets = &b;
   }
 
   bool parseOpenBracket(MarkdownNode* block)
   {
-    i32 start = this->position;
-    this->position += 1;
-    MarkdownNode* node = this->nodes->text("[");
+    i32 start = this.position;
+    this.position += 1;
+    MarkdownNode* node = this.nodes->text("[");
     block->appendChild(node);
-    this->addBracket(node, start, false);
+    this.addBracket(node, start, false);
     return true;
   }
 
   bool parseBang(MarkdownNode* block)
   {
-    i32 start = this->position;
-    this->position += 1;
-    if (this->peek() == '[')
+    i32 start = this.position;
+    this.position += 1;
+    if (this.peek() == '[')
     {
-      this->position += 1;
-      MarkdownNode* node = this->nodes->text("![");
+      this.position += 1;
+      MarkdownNode* node = this.nodes->text("![");
       block->appendChild(node);
-      this->addBracket(node, start + 1, true);
+      this.addBracket(node, start + 1, true);
     }
     else
-      block->appendChild(this->nodes->text("!"));
+      block->appendChild(this.nodes->text("!"));
     return true;
   }
 
   // Spaces or tabs, at most one line end, spaces or tabs.
   void skipSpacesAndNewline()
   {
-    while (markdownIsSpaceOrTab(this->peek()))
-      ++this->position;
-    if (this->peek() == '\n')
+    while (markdownIsSpaceOrTab(this.peek()))
+      ++this.position;
+    if (this.peek() == '\n')
     {
-      ++this->position;
-      while (markdownIsSpaceOrTab(this->peek()))
-        ++this->position;
+      ++this.position;
+      while (markdownIsSpaceOrTab(this.peek()))
+        ++this.position;
     }
   }
 
   // A link label's length with its brackets at the position, or 0.
   i32 parseLinkLabel()
   {
-    if (this->peek() != '[')
+    if (this.peek() != '[')
       return 0;
-    i32 k = this->position + 1;
-    while (k < this->subject.size())
+    i32 k = this.position + 1;
+    while (k < this.subject.size())
     {
-      char c = this->subject[k];
-      if (c == '\\' && k + 1 < this->subject.size())
+      char c = this.subject[k];
+      if (c == '\\' && k + 1 < this.subject.size())
       {
         k += 2;
         continue;
@@ -344,10 +344,10 @@ struct MarkdownInlineParser
         return 0;
       if (c == ']')
       {
-        if (k - this->position - 1 > 999)
+        if (k - this.position - 1 > 999)
           return 0;
-        i32 length = k + 1 - this->position;
-        this->position = k + 1;
+        i32 length = k + 1 - this.position;
+        this.position = k + 1;
         return length;
       }
       ++k;
@@ -358,13 +358,13 @@ struct MarkdownInlineParser
   // A link destination, decoded and percent-encoded, or false.
   bool parseLinkDestination(String& out)
   {
-    if (this->peek() == '<')
+    if (this.peek() == '<')
     {
-      i32 k = this->position + 1;
-      while (k < this->subject.size())
+      i32 k = this.position + 1;
+      while (k < this.subject.size())
       {
-        char c = this->subject[k];
-        if (c == '\\' && k + 1 < this->subject.size())
+        char c = this.subject[k];
+        if (c == '\\' && k + 1 < this.subject.size())
         {
           k += 2;
           continue;
@@ -373,70 +373,70 @@ struct MarkdownInlineParser
           return false;
         if (c == '>')
         {
-          out = markdownNormalizeUri(markdownUnescape(this->subject.substr(this->position + 1, k - this->position - 1)));
-          this->position = k + 1;
+          out = markdownNormalizeUri(markdownUnescape(this.subject.substr(this.position + 1, k - this.position - 1)));
+          this.position = k + 1;
           return true;
         }
         ++k;
       }
       return false;
     }
-    i32 start = this->position;
+    i32 start = this.position;
     i32 depth = 0;
-    i32 c = this->peek();
+    i32 c = this.peek();
     while (c != -1)
     {
-      if (c == '\\' && markdownIsAsciiPunctuation(this->peekAt(this->position + 1)))
-        this->position += 2;
+      if (c == '\\' && markdownIsAsciiPunctuation(this.peekAt(this.position + 1)))
+        this.position += 2;
       else if (c == '(')
       {
-        ++this->position;
+        ++this.position;
         ++depth;
       }
       else if (c == ')')
       {
         if (depth < 1)
           break;
-        ++this->position;
+        ++this.position;
         --depth;
       }
       else if (c <= ' ' || c == 0x7F)
         break;
       else
-        ++this->position;
-      c = this->peek();
+        ++this.position;
+      c = this.peek();
     }
-    if (this->position == start && c != ')')
+    if (this.position == start && c != ')')
       return false;
     if (depth != 0)
     {
-      this->position = start;
+      this.position = start;
       return false;
     }
-    out = markdownNormalizeUri(markdownUnescape(this->subject.substr(start, this->position - start)));
+    out = markdownNormalizeUri(markdownUnescape(this.subject.substr(start, this.position - start)));
     return true;
   }
 
   // A link title in "", '' or (), unescaped, or false.
   bool parseLinkTitle(String& out)
   {
-    i32 open = this->peek();
+    i32 open = this.peek();
     i32 close = open == '(' ? ')' : open;
     if (open != '"' && open != '\'' && open != '(')
       return false;
-    i32 k = this->position + 1;
-    while (k < this->subject.size())
+    i32 k = this.position + 1;
+    while (k < this.subject.size())
     {
-      char c = this->subject[k];
-      if (c == '\\' && k + 1 < this->subject.size())
+      char c = this.subject[k];
+      if (c == '\\' && k + 1 < this.subject.size())
       {
         k += 2;
         continue;
       }
       if (c == close)
       {
-        out = markdownUnescape(this->subject.substr(this->position + 1, k - this->position - 1));
-        this->position = k + 1;
+        out = markdownUnescape(this.subject.substr(this.position + 1, k - this.position - 1));
+        this.position = k + 1;
         return true;
       }
       if (open == '(' && c == '(')
@@ -448,71 +448,71 @@ struct MarkdownInlineParser
 
   bool parseCloseBracket(MarkdownNode* block)
   {
-    this->position += 1;
-    i32 start = this->position;
-    MarkdownBracket* opener = this->brackets;
+    this.position += 1;
+    i32 start = this.position;
+    MarkdownBracket* opener = this.brackets;
     if (!opener)
     {
-      block->appendChild(this->nodes->text("]"));
+      block->appendChild(this.nodes->text("]"));
       return true;
     }
     if (!opener->active)
     {
-      block->appendChild(this->nodes->text("]"));
-      this->brackets = opener->previous;
+      block->appendChild(this.nodes->text("]"));
+      this.brackets = opener->previous;
       return true;
     }
     bool image = opener->image;
-    i32 save = this->position;
+    i32 save = this.position;
     bool matched = false;
     String destination;
     String title;
-    if (this->peek() == '(')
+    if (this.peek() == '(')
     {
-      this->position += 1;
-      this->skipSpacesAndNewline();
-      if (this->parseLinkDestination(destination))
+      this.position += 1;
+      this.skipSpacesAndNewline();
+      if (this.parseLinkDestination(destination))
       {
-        i32 beforeTitle = this->position;
-        this->skipSpacesAndNewline();
-        bool spaced = this->position > beforeTitle;
-        if (!(spaced && this->parseLinkTitle(title)))
-          this->position = this->position;
-        this->skipSpacesAndNewline();
-        if (this->peek() == ')')
+        i32 beforeTitle = this.position;
+        this.skipSpacesAndNewline();
+        bool spaced = this.position > beforeTitle;
+        if (!(spaced && this.parseLinkTitle(title)))
+          this.position = this.position;
+        this.skipSpacesAndNewline();
+        if (this.peek() == ')')
         {
-          this->position += 1;
+          this.position += 1;
           matched = true;
         }
       }
       if (!matched)
       {
-        this->position = save;
+        this.position = save;
         destination = String();
         title = String();
       }
     }
     if (!matched)
     {
-      i32 beforeLabel = this->position;
-      i32 n = this->parseLinkLabel();
+      i32 beforeLabel = this.position;
+      i32 n = this.parseLinkLabel();
       String label;
       bool hasLabel = false;
       if (n > 2)
       {
-        label = String(this->subject.substr(beforeLabel, n));
+        label = String(this.subject.substr(beforeLabel, n));
         hasLabel = true;
       }
       else if (!opener->bracketAfter)
       {
-        label = String(this->subject.substr(opener->index, start - opener->index));
+        label = String(this.subject.substr(opener->index, start - opener->index));
         hasLabel = true;
       }
       if (n == 0)
-        this->position = save;
+        this.position = save;
       if (hasLabel)
       {
-        const MarkdownReference* reference = this->findReference(label);
+        const MarkdownReference* reference = this.findReference(label);
         if (reference)
         {
           destination = reference->destination;
@@ -523,12 +523,12 @@ struct MarkdownInlineParser
     }
     if (!matched)
     {
-      this->brackets = opener->previous;
-      this->position = start;
-      block->appendChild(this->nodes->text("]"));
+      this.brackets = opener->previous;
+      this.position = start;
+      block->appendChild(this.nodes->text("]"));
       return true;
     }
-    MarkdownNode* link = this->nodes->make(image ? MarkdownType::image : MarkdownType::link);
+    MarkdownNode* link = this.nodes->make(image ? MarkdownType::image : MarkdownType::link);
     link->destination = destination;
     link->title = title;
     MarkdownNode* node = opener->node->next;
@@ -539,11 +539,11 @@ struct MarkdownInlineParser
       node = next;
     }
     block->appendChild(link);
-    this->processEmphasis(opener->previousDelimiter);
-    this->brackets = opener->previous;
+    this.processEmphasis(opener->previousDelimiter);
+    this.brackets = opener->previous;
     opener->node->unlink();
     if (!image)
-      for (MarkdownBracket* b = this->brackets; b; b = b->previous)
+      for (MarkdownBracket* b = this.brackets; b; b = b->previous)
         if (!b->image)
           b->active = false;
     return true;
@@ -552,7 +552,7 @@ struct MarkdownInlineParser
   const MarkdownReference* findReference(StringView label)
   {
     String normalized = markdownNormalizeLabel(label);
-    for (const MarkdownReference& r : this->blocks->references)
+    for (const MarkdownReference& r : this.blocks->references)
       if (r.label == normalized)
         return &r;
     return nullptr;
@@ -560,12 +560,12 @@ struct MarkdownInlineParser
 
   bool parseAutolink(MarkdownNode* block)
   {
-    i32 k = this->position + 1;
+    i32 k = this.position + 1;
     // An email address.
     i32 local = k;
-    while (k < this->subject.size() && (markdownIsAlphanumeric((u8)this->subject[k]) || markdownContains(".!#$%&'*+/=?^_`{|}~-", this->subject[k])))
+    while (k < this.subject.size() && (markdownIsAlphanumeric((u8)this.subject[k]) || markdownContains(".!#$%&'*+/=?^_`{|}~-", this.subject[k])))
       ++k;
-    if (k > local && k < this->subject.size() && this->subject[k] == '@')
+    if (k > local && k < this.subject.size() && this.subject[k] == '@')
     {
       ++k;
       bool ok = true;
@@ -573,110 +573,110 @@ struct MarkdownInlineParser
       while (ok)
       {
         i32 labelStart = k;
-        while (k < this->subject.size() && (markdownIsAlphanumeric((u8)this->subject[k]) || this->subject[k] == '-'))
+        while (k < this.subject.size() && (markdownIsAlphanumeric((u8)this.subject[k]) || this.subject[k] == '-'))
           ++k;
         i32 length = k - labelStart;
-        if (length == 0 || length > 63 || this->subject[labelStart] == '-' || this->subject[k - 1] == '-')
+        if (length == 0 || length > 63 || this.subject[labelStart] == '-' || this.subject[k - 1] == '-')
           ok = false;
         ++labels;
-        if (k < this->subject.size() && this->subject[k] == '.')
+        if (k < this.subject.size() && this.subject[k] == '.')
           ++k;
         else
           break;
       }
-      if (ok && k < this->subject.size() && this->subject[k] == '>')
+      if (ok && k < this.subject.size() && this.subject[k] == '>')
       {
-        StringView address = this->subject.substr(this->position + 1, k - this->position - 1);
-        MarkdownNode* link = this->nodes->make(MarkdownType::link);
+        StringView address = this.subject.substr(this.position + 1, k - this.position - 1);
+        MarkdownNode* link = this.nodes->make(MarkdownType::link);
         link->destination = markdownNormalizeUri(toString("mailto:", address));
-        link->appendChild(this->nodes->text(address));
+        link->appendChild(this.nodes->text(address));
         block->appendChild(link);
-        this->position = k + 1;
+        this.position = k + 1;
         return true;
       }
     }
     // A URI: a scheme of 2 to 32 characters, ':', no spaces, '<' or '>'.
-    k = this->position + 1;
-    if (k >= this->subject.size() || !markdownIsLetter((u8)this->subject[k]))
+    k = this.position + 1;
+    if (k >= this.subject.size() || !markdownIsLetter((u8)this.subject[k]))
       return false;
     i32 schemeStart = k;
     ++k;
-    while (k < this->subject.size() && (markdownIsAlphanumeric((u8)this->subject[k]) || this->subject[k] == '.' || this->subject[k] == '+' ||
-                                       this->subject[k] == '-'))
+    while (k < this.subject.size() && (markdownIsAlphanumeric((u8)this.subject[k]) || this.subject[k] == '.' || this.subject[k] == '+' ||
+                                       this.subject[k] == '-'))
       ++k;
     i32 schemeLength = k - schemeStart;
-    if (schemeLength < 2 || schemeLength > 32 || k >= this->subject.size() || this->subject[k] != ':')
+    if (schemeLength < 2 || schemeLength > 32 || k >= this.subject.size() || this.subject[k] != ':')
       return false;
     ++k;
-    while (k < this->subject.size() && (u8)this->subject[k] > ' ' && this->subject[k] != '<' && this->subject[k] != '>')
+    while (k < this.subject.size() && (u8)this.subject[k] > ' ' && this.subject[k] != '<' && this.subject[k] != '>')
       ++k;
-    if (k >= this->subject.size() || this->subject[k] != '>')
+    if (k >= this.subject.size() || this.subject[k] != '>')
       return false;
-    StringView uri = this->subject.substr(this->position + 1, k - this->position - 1);
-    MarkdownNode* link = this->nodes->make(MarkdownType::link);
+    StringView uri = this.subject.substr(this.position + 1, k - this.position - 1);
+    MarkdownNode* link = this.nodes->make(MarkdownType::link);
     link->destination = markdownNormalizeUri(uri);
-    link->appendChild(this->nodes->text(uri));
+    link->appendChild(this.nodes->text(uri));
     block->appendChild(link);
-    this->position = k + 1;
+    this.position = k + 1;
     return true;
   }
 
   bool parseHtmlTag(MarkdownNode* block)
   {
-    i32 length = markdownHtmlInline(this->subject, this->position);
+    i32 length = markdownHtmlInline(this.subject, this.position);
     if (length == 0)
       return false;
-    MarkdownNode* html = this->nodes->make(MarkdownType::htmlInline);
-    html->literal = String(this->subject.substr(this->position, length));
+    MarkdownNode* html = this.nodes->make(MarkdownType::htmlInline);
+    html->literal = String(this.subject.substr(this.position, length));
     block->appendChild(html);
-    this->position += length;
+    this.position += length;
     return true;
   }
 
   bool parseEntity(MarkdownNode* block)
   {
     String decoded;
-    i32 length = markdownEntity(this->subject, this->position, decoded);
+    i32 length = markdownEntity(this.subject, this.position, decoded);
     if (length == 0)
       return false;
-    block->appendChild(this->nodes->text(decoded));
-    this->position += length;
+    block->appendChild(this.nodes->text(decoded));
+    this.position += length;
     return true;
   }
 
   // A link reference definition at the start of text: adds it and returns its length, or 0.
   i32 parseReference(StringView text)
   {
-    this->subject = text;
-    this->position = 0;
-    i32 labelLength = this->parseLinkLabel();
+    this.subject = text;
+    this.position = 0;
+    i32 labelLength = this.parseLinkLabel();
     if (labelLength == 0)
       return 0;
     StringView rawLabel = text.substr(0, labelLength);
-    if (this->peek() != ':')
+    if (this.peek() != ':')
       return 0;
-    this->position += 1;
-    this->skipSpacesAndNewline();
+    this.position += 1;
+    this.skipSpacesAndNewline();
     String destination;
-    if (!this->parseLinkDestination(destination))
+    if (!this.parseLinkDestination(destination))
       return 0;
-    i32 beforeTitle = this->position;
-    this->skipSpacesAndNewline();
+    i32 beforeTitle = this.position;
+    this.skipSpacesAndNewline();
     String title;
     bool hasTitle = false;
-    if (this->position != beforeTitle)
-      hasTitle = this->parseLinkTitle(title);
+    if (this.position != beforeTitle)
+      hasTitle = this.parseLinkTitle(title);
     if (!hasTitle)
     {
       title = String();
-      this->position = beforeTitle;
+      this.position = beforeTitle;
     }
-    bool atLineEnd = this->atLineEnd();
+    bool atLineEnd = this.atLineEnd();
     if (!atLineEnd && hasTitle)
     {
       title = String();
-      this->position = beforeTitle;
-      atLineEnd = this->atLineEnd();
+      this.position = beforeTitle;
+      atLineEnd = this.atLineEnd();
     }
     if (!atLineEnd)
       return 0;
@@ -684,28 +684,28 @@ struct MarkdownInlineParser
     if (label.size() == 0)
       return 0;
     bool known = false;
-    for (const MarkdownReference& r : this->blocks->references)
+    for (const MarkdownReference& r : this.blocks->references)
       if (r.label == label)
         known = true;
     if (!known)
-      this->blocks->references.push_back(MarkdownReference{label, destination, title});
-    return this->position;
+      this.blocks->references.push_back(MarkdownReference{label, destination, title});
+    return this.position;
   }
 
   // Spaces or tabs, then the end of a line or of the text; moves past them when so.
   bool atLineEnd()
   {
-    i32 k = this->position;
-    while (markdownIsSpaceOrTab(this->peekAt(k)))
+    i32 k = this.position;
+    while (markdownIsSpaceOrTab(this.peekAt(k)))
       ++k;
-    if (this->peekAt(k) == -1)
+    if (this.peekAt(k) == -1)
     {
-      this->position = k;
+      this.position = k;
       return true;
     }
-    if (this->peekAt(k) == '\n')
+    if (this.peekAt(k) == '\n')
     {
-      this->position = k + 1;
+      this.position = k + 1;
       return true;
     }
     return false;

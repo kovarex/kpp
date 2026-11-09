@@ -62,7 +62,7 @@ namespace
     {"--toolchain", 1}, {"--debug-info", 0}, {"--optimize", 0}, {"--no-optimize", 0}, {"--target", 1},
     {"--sysroot", 1}, {"--keep-going", 0}, {"--stub-missing", 0}, {"--no-inline", 0}, {"--clang-flags", 1}, {"--lto", 1}, {"--lto-partitions", 1},
     {"--opt-level", 1},
-    {"--codegen-threads", 1}, {"--lib", 1}, {"--keep-symbol", 1}, {"--exclude", 1}, {"--file-prefix-map", 1},{"--library-root", 2}, {"--unscoped-library-root", 2},
+    {"--codegen-threads", 1}, {"--lib", 1}, {"--keep-symbol", 1}, {"--exclude", 1}, {"--file-prefix-map", 1},{"--this-reference-library", 1}, {"--library-root", 2}, {"--unscoped-library-root", 2},
     {"--config", 1}, {"--release", 0}, {"--tests", 0}, {"--modules", 1}, {"--convert", 1},
     {"--verify-incremental", 0}, {"--overrides", 1}, {"--convert-base", 1}, {"--c-sources", 0}, {"--convert-library", 2},
     {"--convert-release", 0}, {"--convert-final", 0}, {"--convert-marks", 0}, {"--convert-native-tests", 0}, {"--convert-platform", 1}, {"--convert-predefines", 1},

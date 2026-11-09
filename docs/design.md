@@ -2451,7 +2451,9 @@ language/this_reference_warnings_mode.
 when it is converted with the switch, and so does what kpp generates (a test build's runner, `<tests>.kpp`);
 an enum's methods keep `this` as the value. --this-reference-warnings says nothing of a `this.x` already
 written the new way (required `this.`'s fix), whose `&this` fix would be wrong. All 11 libraries of libraries/
-pass their tests with the option once both warning modes' fixes are applied (1,377 in 24 files, 2026-11-09). The old and new
+pass their tests with the option once both warning modes' fixes are applied (1,377 in 24 files, 2026-11-09).
+That is step 3 of the plan, on master for libraries/: each library's build.kpp sets `thisReference` (docs/build.md),
+so a library's files take the meaning whoever uses it (`--this-reference-library NAME`), and its own tests with it. The old and new
 meanings collide (`return this;`, `f(this)`, `auto c = this;` and `this == other` each mean the pointer in
 one and the object in the other), so a file takes one meaning whole, never both. The parser writes `this`
 as an implicit `*this` around C++'s pointer (ThisExpr::form 1), so the walk, constant evaluation and codegen

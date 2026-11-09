@@ -476,6 +476,7 @@ namespace projects
       found.push_back({use.name, directory, user, library->options, configs});
       ProjectLibrary& used = libraries.emplace_back(ProjectLibrary{use.name, {}, library->unscoped});
       used.systemLibraries = library->systemLibraries;
+      used.thisReference = library->thisReference;
       fs::path buildFile = directory / "build.kpp";
       for (const std::string& r : library->roots)
       {
@@ -669,6 +670,7 @@ namespace projects
     p.roots.insert(p.roots.end(), l.testRoots.begin(), l.testRoots.end());
     p.kppLibraries = l.kppLibraries;
     p.systemLibraries = l.systemLibraries; // its own, which its tests link as its users do
+    p.thisReference = l.thisReference;
     std::vector<std::string> allUsed;
     for (const Found& f : l.used)
       allUsed.push_back(f.name);

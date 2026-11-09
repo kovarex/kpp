@@ -178,8 +178,12 @@ namespace projects
       args.push_back("--exclude"), args.push_back(rooted(root, e).string());
     // The kpp libraries it uses, root by root with their names and scopes (design.md 16), before --exe:
     // kpp --test takes what follows it as the sources.
+    if (p.thisReference)
+      args.push_back("--this-reference");
     for (const ProjectLibrary& l : p.kppLibraries)
     {
+      if (l.thisReference)
+        args.push_back("--this-reference-library"), args.push_back(l.name);
       for (const std::string& r : l.roots)
         args.push_back(l.unscoped ? "--unscoped-library-root" : "--library-root"), args.push_back(l.name), args.push_back(r);
       for (const std::string& e : l.excluded)

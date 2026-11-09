@@ -9,37 +9,37 @@ struct TcpStream
 
   TcpStream& operator=(TcpStream&& other)
   {
-    if (this != &other)
+    if (&this != &other)
     {
-      this->close();
-      this->handle = other.handle;
+      this.close();
+      this.handle = other.handle;
       other.handle = -1;
     }
-    return *this;
+    return this;
   }
 
-  ~TcpStream() { this->close(); }
+  ~TcpStream() { this.close(); }
 
   // Connects to host (a name or an address) at port, trying each address the name has.
   static TcpStream connect(StringView host, i32 port) { return TcpStream(netConnect(host, port)); }
 
-  bool isOpen() const { return this->handle != -1; }
+  bool isOpen() const { return this.handle != -1; }
 
   // Sends all the bytes, or throws.
   void write(StringView data)
   {
-    this->checkOpen();
+    this.checkOpen();
     i64 sent = 0;
     while (sent < (i64)data.size())
-      sent += netSend(this->handle, data.data() + sent, (i64)data.size() - sent);
+      sent += netSend(this.handle, data.data() + sent, (i64)data.size() - sent);
   }
 
   // Reads what has arrived, up to capacity bytes, waiting for at least one; 0 when the other side
   // has closed the connection.
   i64 read(char* buffer, i64 capacity)
   {
-    this->checkOpen();
-    return netReceive(this->handle, buffer, capacity);
+    this.checkOpen();
+    return netReceive(this.handle, buffer, capacity);
   }
 
   // Reads exactly n bytes; the connection closing first throws.
@@ -50,7 +50,7 @@ struct TcpStream
     while ((i64)out.size() < n)
     {
       i64 want = n - (i64)out.size();
-      i64 got = this->read(buffer, want < 4096 ? want : 4096);
+      i64 got = this.read(buffer, want < 4096 ? want : 4096);
       if (got == 0)
         throw NetError(toString("the connection closed after ", (i64)out.size(), " of ", n, " bytes"));
       out << StringView(buffer, (ContainerSize)got);
@@ -65,7 +65,7 @@ struct TcpStream
     char buffer[4096];
     for (;;)
     {
-      i64 got = this->read(buffer, 4096);
+      i64 got = this.read(buffer, 4096);
       if (got == 0)
         return out;
       out << StringView(buffer, (ContainerSize)got);
@@ -75,27 +75,27 @@ struct TcpStream
   // A read or a write that waits longer than this throws NetError; 0 waits forever (the default).
   void setTimeout(i32 milliseconds)
   {
-    this->checkOpen();
-    netSetTimeout(this->handle, milliseconds);
+    this.checkOpen();
+    netSetTimeout(this.handle, milliseconds);
   }
 
   // Tells the other side nothing more will be written; reading goes on.
   void shutdownWrite()
   {
-    this->checkOpen();
-    netShutdownWrite(this->handle);
+    this.checkOpen();
+    netShutdownWrite(this.handle);
   }
 
   void close()
   {
-    if (this->handle != -1)
-      netClose(this->handle);
-    this->handle = -1;
+    if (this.handle != -1)
+      netClose(this.handle);
+    this.handle = -1;
   }
 
   void checkOpen() const
   {
-    if (this->handle == -1)
+    if (this.handle == -1)
       throw NetError("the TcpStream is closed");
   }
 

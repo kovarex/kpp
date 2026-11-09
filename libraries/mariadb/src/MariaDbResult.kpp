@@ -2,25 +2,25 @@
 // Optional, which is what PHP's mysqli gives), or the counts of a statement that has no rows.
 struct MariaDbResult
 {
-  ContainerSize size() const { return this->rows.size(); }
-  bool empty() const { return this->rows.empty(); }
+  ContainerSize size() const { return this.rows.size(); }
+  bool empty() const { return this.rows.empty(); }
 
   // The index of the column named name; a name the result does not have throws.
   ContainerSize column(StringView name) const
   {
-    for (ContainerSize i = 0; i < this->columns.size(); ++i)
-      if (this->columns[i] == name)
+    for (ContainerSize i = 0; i < this.columns.size(); ++i)
+      if (this.columns[i] == name)
         return i;
     throw MariaDbError(toString("the result has no column ", name), 0, String());
   }
 
   // Row row's value of column name (empty for NULL).
-  const Optional<String>& at(ContainerSize row, StringView name) const { return this->rows[row][this->column(name)]; }
+  const Optional<String>& at(ContainerSize row, StringView name) const { return this.rows[row][this.column(name)]; }
 
   // Row row's value of column name; NULL throws.
   const String& text(ContainerSize row, StringView name) const
   {
-    const Optional<String>& value = this->at(row, name);
+    const Optional<String>& value = this.at(row, name);
     if (!value.has_value())
       throw MariaDbError(toString("the column ", name, " is NULL"), 0, String());
     return *value;

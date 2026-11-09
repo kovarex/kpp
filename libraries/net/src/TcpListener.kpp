@@ -9,32 +9,32 @@ struct TcpListener
 
   TcpListener& operator=(TcpListener&& other)
   {
-    if (this != &other)
+    if (&this != &other)
     {
-      this->close();
-      this->handle = other.handle;
+      this.close();
+      this.handle = other.handle;
       other.handle = -1;
     }
-    return *this;
+    return this;
   }
 
-  ~TcpListener() { this->close(); }
+  ~TcpListener() { this.close(); }
 
   void close()
   {
-    if (this->handle != -1)
-      netClose(this->handle);
-    this->handle = -1;
+    if (this.handle != -1)
+      netClose(this.handle);
+    this.handle = -1;
   }
 
   // Listens on address ("127.0.0.1", "0.0.0.0", "::1"...) at port; port 0 picks a free one
   // (port() says which).
   static TcpListener listen(StringView address, i32 port) { return TcpListener(netListen(address, port)); }
 
-  i32 port() const { return netLocalPort(this->handle); }
+  i32 port() const { return netLocalPort(this.handle); }
 
   // Waits for the next connection.
-  TcpStream accept() { return TcpStream(netAccept(this->handle)); }
+  TcpStream accept() { return TcpStream(netAccept(this.handle)); }
 
   i64 handle = -1;
 };

@@ -227,7 +227,7 @@ else
   # The libraries kpp.net's programs use (their FreeBSD side: BSD sockets, environ), with FreeBSD's
   # own headers.
   $libraries = Join-Path $PSScriptRoot '..\..\libraries'
-  $roots = @('net', 'url', 'http', 'mariadb') | ForEach-Object { '--library-root', $_, (Join-Path $libraries "$_\src") }
+  $roots = @('net', 'url', 'http', 'mariadb') | ForEach-Object { '--this-reference-library', $_, '--library-root', $_, (Join-Path $libraries "$_\src") }
   $elf = Join-Path $work 'cgi.freebsd.elf'
   if (Build (@('--target', 'freebsd', '--sysroot', $freebsdSysroot, '--exe', $elf) + $roots + @((Join-Path $src 'cgi.kpp'))))
   {

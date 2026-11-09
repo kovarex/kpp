@@ -6,17 +6,17 @@ struct HttpClientReader
   // Reads more; false when the connection has closed.
   bool more()
   {
-    if (this->closed)
+    if (this.closed)
       return false;
     char buffer[16384];
     *platform::errnoLocation() = 0;
-    i64 got = this->connection->read(buffer, 16384);
+    i64 got = this.connection->read(buffer, 16384);
     if (got == 0)
     {
-      this->closed = true;
+      this.closed = true;
       return false;
     }
-    this->data << StringView(buffer, (ContainerSize)got);
+    this.data << StringView(buffer, (ContainerSize)got);
     return true;
   }
 
@@ -25,38 +25,38 @@ struct HttpClientReader
   {
     for (;;)
     {
-      ContainerSize end = this->data.find('\n', this->at);
+      ContainerSize end = this.data.find('\n', this.at);
       if (end != String::npos)
       {
-        ContainerSize stop = end > this->at && this->data[end - 1] == '\r' ? end - 1 : end;
-        String text = this->data.substr(this->at, stop - this->at);
-        this->at = end + 1;
+        ContainerSize stop = end > this.at && this.data[end - 1] == '\r' ? end - 1 : end;
+        String text = this.data.substr(this.at, stop - this.at);
+        this.at = end + 1;
         return text;
       }
-      if (!this->more())
-        throw HttpClientError(toString("the response of ", this->connection->url, " ends in the middle of a line"));
+      if (!this.more())
+        throw HttpClientError(toString("the response of ", this.connection->url, " ends in the middle of a line"));
     }
   }
 
   // The next n bytes.
   String take(ContainerSize n)
   {
-    while (this->data.size() - this->at < n)
-      if (!this->more())
-        throw HttpClientError(toString("the response of ", this->connection->url, " ends ", (i64)(n - (this->data.size() - this->at)), " bytes early"));
-    String text = this->data.substr(this->at, n);
-    this->at += n;
+    while (this.data.size() - this.at < n)
+      if (!this.more())
+        throw HttpClientError(toString("the response of ", this.connection->url, " ends ", (i64)(n - (this.data.size() - this.at)), " bytes early"));
+    String text = this.data.substr(this.at, n);
+    this.at += n;
     return text;
   }
 
   // Everything until the server closes the connection.
   String rest()
   {
-    while (this->more())
+    while (this.more())
     {
     }
-    String text = this->data.substr(this->at);
-    this->at = this->data.size();
+    String text = this.data.substr(this.at);
+    this.at = this.data.size();
     return text;
   }
 

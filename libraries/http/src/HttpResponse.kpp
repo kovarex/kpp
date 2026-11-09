@@ -1,19 +1,19 @@
 struct HttpResponse
 {
-  HttpResponse() { this->setHeader("Content-Type", "text/html; charset=utf-8"); }
+  HttpResponse() { this.setHeader("Content-Type", "text/html; charset=utf-8"); }
 
   // Sets the header, replacing any of that name (any case).
   void setHeader(StringView name, StringView value)
   {
     httpCheckHeader(name, value);
     String lower = httpLower(name);
-    for (ContainerSize i = 0; i < this->headers.size(); ++i)
-      if (httpLower(this->headers[i].name) == lower)
+    for (ContainerSize i = 0; i < this.headers.size(); ++i)
+      if (httpLower(this.headers[i].name) == lower)
       {
-        this->headers[i].value = String(value);
+        this.headers[i].value = String(value);
         return;
       }
-    this->addHeader(name, value);
+    this.addHeader(name, value);
   }
 
   // Adds the header, keeping others of that name (Set-Cookie).
@@ -23,13 +23,13 @@ struct HttpResponse
     HttpHeader h;
     h.name = String(name);
     h.value = String(value);
-    this->headers.push_back(h);
+    this.headers.push_back(h);
   }
 
   const String* header(StringView name) const
   {
     String lower = httpLower(name);
-    for (const HttpHeader& h : this->headers)
+    for (const HttpHeader& h : this.headers)
       if (httpLower(h.name) == lower)
         return &h.value;
     return nullptr;
@@ -49,7 +49,7 @@ struct HttpResponse
       header << "; Secure";
     if (!options.sameSite.empty())
       header << "; SameSite=" << options.sameSite;
-    this->addHeader("Set-Cookie", header);
+    this.addHeader("Set-Cookie", header);
   }
 
   // Tells the browser to forget the cookie (at that path).
@@ -58,24 +58,24 @@ struct HttpResponse
     HttpCookieOptions options;
     options.maxAgeSeconds = Optional<i64>(0);
     options.path = String(path);
-    this->setCookie(name, "", options);
+    this.setCookie(name, "", options);
   }
 
   // A redirect to location: 303 See Other (after a form's POST, the browser GETs it) unless said.
   void redirect(StringView location, i32 status = 303)
   {
-    this->status = status;
-    this->setHeader("Location", location);
-    this->body.clear();
+    this.status = status;
+    this.setHeader("Location", location);
+    this.body.clear();
   }
 
   // The status line's text and the headers, each line ending in CRLF, as CGI writes them
   // ("Status: 200 OK") or HTTP/1.1 ("HTTP/1.1 200 OK"); the blank line and the body follow.
   String head(bool cgi) const
   {
-    String out = cgi ? toString("Status: ", this->status, " ", httpStatusText(this->status), "\r\n")
-                     : toString("HTTP/1.1 ", this->status, " ", httpStatusText(this->status), "\r\n");
-    for (const HttpHeader& h : this->headers)
+    String out = cgi ? toString("Status: ", this.status, " ", httpStatusText(this.status), "\r\n")
+                     : toString("HTTP/1.1 ", this.status, " ", httpStatusText(this.status), "\r\n");
+    for (const HttpHeader& h : this.headers)
       out << h.name + ": " + h.value + "\r\n";
     return out;
   }

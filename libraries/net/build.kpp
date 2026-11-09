@@ -5,6 +5,7 @@ void build(Project& project)
   net.version = "0.1.0";
   net.license = "Apache-2.0 WITH LLVM-exception";
   net.minimumKpp = "0.1.0";
+  net.thisReference = true;
   net.root("src");
   net.test("tests");
 }

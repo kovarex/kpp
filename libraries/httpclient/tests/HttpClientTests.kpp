@@ -12,9 +12,9 @@ struct HttpClientTestServer
   {
     try
     {
-      for (const String& answer : this->answers)
+      for (const String& answer : this.answers)
       {
-        net::TcpStream stream = this->listener.accept();
+        net::TcpStream stream = this.listener.accept();
         stream.setTimeout(5000);
         String received;
         char buffer[4096];
@@ -38,13 +38,13 @@ struct HttpClientTestServer
             break;
           received << StringView(buffer, (ContainerSize)got);
         }
-        this->requests.push_back(received);
+        this.requests.push_back(received);
         stream.write(answer);
       }
     }
     catch (const Exception& e)
     {
-      this->failure = String(StringView(e.what()));
+      this.failure = String(StringView(e.what()));
     }
   }
 };

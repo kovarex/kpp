@@ -5,6 +5,7 @@ void build(Project& project)
   json.version = "0.1.0";
   json.license = "Apache-2.0 WITH LLVM-exception";
   json.minimumKpp = "0.1.0";
+  json.thisReference = true;
   json.root("src");
   json.test("tests");
 }

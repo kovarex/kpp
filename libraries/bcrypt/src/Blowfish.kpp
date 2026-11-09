@@ -6,20 +6,20 @@ struct Blowfish
   Blowfish()
   {
     for (i32 i = 0; i < 18; ++i)
-      this->p[i] = blowfishInitialP[i];
+      this.p[i] = blowfishInitialP[i];
     for (i32 i = 0; i < 256; ++i)
     {
-      this->s[i] = blowfishInitialS0[i];
-      this->s[256 + i] = blowfishInitialS1[i];
-      this->s[512 + i] = blowfishInitialS2[i];
-      this->s[768 + i] = blowfishInitialS3[i];
+      this.s[i] = blowfishInitialS0[i];
+      this.s[256 + i] = blowfishInitialS1[i];
+      this.s[512 + i] = blowfishInitialS2[i];
+      this.s[768 + i] = blowfishInitialS3[i];
     }
   }
 
   u32 f(u32 x) const
   {
-    return ((this->s[x >> 24] + this->s[256 + ((x >> 16) & 255)]) ^ this->s[512 + ((x >> 8) & 255)]) +
-           this->s[768 + (x & 255)];
+    return ((this.s[x >> 24] + this.s[256 + ((x >> 16) & 255)]) ^ this.s[512 + ((x >> 8) & 255)]) +
+           this.s[768 + (x & 255)];
   }
 
   void encrypt(u32& left, u32& right) const
@@ -28,13 +28,13 @@ struct Blowfish
     u32 r = right;
     for (i32 i = 0; i < 16; i += 2)
     {
-      l ^= this->p[i];
-      r ^= this->f(l);
-      r ^= this->p[i + 1];
-      l ^= this->f(r);
+      l ^= this.p[i];
+      r ^= this.f(l);
+      r ^= this.p[i + 1];
+      l ^= this.f(r);
     }
-    left = r ^ this->p[17];
-    right = l ^ this->p[16];
+    left = r ^ this.p[17];
+    right = l ^ this.p[16];
   }
 
   // The next 4 bytes of data, cycling, big-endian.
@@ -54,7 +54,7 @@ struct Blowfish
   {
     i32 keyPosition = 0;
     for (i32 i = 0; i < 18; ++i)
-      this->p[i] ^= Blowfish::word(key, keyLength, keyPosition);
+      this.p[i] ^= Blowfish::word(key, keyLength, keyPosition);
     u32 l = 0;
     u32 r = 0;
     i32 saltPosition = 0;
@@ -65,16 +65,16 @@ struct Blowfish
         l ^= Blowfish::word(salt, saltLength, saltPosition);
         r ^= Blowfish::word(salt, saltLength, saltPosition);
       }
-      this->encrypt(l, r);
+      this.encrypt(l, r);
       if (i < 18)
       {
-        this->p[i] = l;
-        this->p[i + 1] = r;
+        this.p[i] = l;
+        this.p[i + 1] = r;
       }
       else
       {
-        this->s[i - 18] = l;
-        this->s[i - 17] = r;
+        this.s[i - 18] = l;
+        this.s[i - 17] = r;
       }
     }
   }

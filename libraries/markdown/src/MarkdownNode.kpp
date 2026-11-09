@@ -9,46 +9,46 @@ struct MarkdownNode
   void appendChild(MarkdownNode* child)
   {
     child->unlink();
-    child->parent = this;
-    if (this->lastChild)
+    child->parent = &this;
+    if (this.lastChild)
     {
-      this->lastChild->next = child;
-      child->previous = this->lastChild;
-      this->lastChild = child;
+      this.lastChild->next = child;
+      child->previous = this.lastChild;
+      this.lastChild = child;
     }
     else
     {
-      this->firstChild = child;
-      this->lastChild = child;
+      this.firstChild = child;
+      this.lastChild = child;
     }
   }
 
   void insertAfter(MarkdownNode* sibling)
   {
     sibling->unlink();
-    sibling->next = this->next;
+    sibling->next = this.next;
     if (sibling->next)
       sibling->next->previous = sibling;
-    sibling->previous = this;
-    this->next = sibling;
-    sibling->parent = this->parent;
+    sibling->previous = &this;
+    this.next = sibling;
+    sibling->parent = this.parent;
     if (!sibling->next && sibling->parent)
       sibling->parent->lastChild = sibling;
   }
 
   void unlink()
   {
-    if (this->previous)
-      this->previous->next = this->next;
-    else if (this->parent)
-      this->parent->firstChild = this->next;
-    if (this->next)
-      this->next->previous = this->previous;
-    else if (this->parent)
-      this->parent->lastChild = this->previous;
-    this->parent = nullptr;
-    this->next = nullptr;
-    this->previous = nullptr;
+    if (this.previous)
+      this.previous->next = this.next;
+    else if (this.parent)
+      this.parent->firstChild = this.next;
+    if (this.next)
+      this.next->previous = this.previous;
+    else if (this.parent)
+      this.parent->lastChild = this.previous;
+    this.parent = nullptr;
+    this.next = nullptr;
+    this.previous = nullptr;
   }
 
   MarkdownType type = MarkdownType::document;

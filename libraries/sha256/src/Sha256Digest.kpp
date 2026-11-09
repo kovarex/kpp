@@ -8,20 +8,20 @@ struct Sha256Digest
     String out;
     for (i32 i = 0; i < 32; ++i)
     {
-      out << digits[this->bytes[i] >> 4];
-      out << digits[this->bytes[i] & 15];
+      out << digits[this.bytes[i] >> 4];
+      out << digits[this.bytes[i] & 15];
     }
     return out;
   }
 
   // The 32 bytes as a String.
-  String data() const { return String((const char*)this->bytes, 32); }
-  String str() const { return this->hex(); }
+  String data() const { return String((const char*)this.bytes, 32); }
+  String str() const { return this.hex(); }
 
   // In constant time: how long it takes says nothing about where two digests differ.
-  bool operator==(const Sha256Digest& other) const { return Sha256::constantTimeEqual(this->view(), other.view()); }
+  bool operator==(const Sha256Digest& other) const { return Sha256::constantTimeEqual(this.view(), other.view()); }
 
-  StringView view() const { return StringView((const char*)this->bytes, 32); }
+  StringView view() const { return StringView((const char*)this.bytes, 32); }
 
   u8 bytes[32];
 };

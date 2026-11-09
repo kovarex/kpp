@@ -105,6 +105,7 @@ namespace projects
       {"license", InLibrary, [](Reading& r, const std::string& v) { r.d.libraries.back().license = v; }},
       {"minimum-kpp", InLibrary, [](Reading& r, const std::string& v) { r.d.libraries.back().minimumKpp = v; }},
       {"unscoped", InLibrary, [](Reading& r, const std::string& v) { r.d.libraries.back().unscoped = v == "1"; }},
+      {"this-reference", InLibrary, [](Reading& r, const std::string& v) { r.d.libraries.back().thisReference = v == "1"; }},
       {"test-root", InLibrary, [](Reading& r, const std::string& v) { r.d.libraries.back().testRoots.push_back(v); }},
       {"option", InLibrary, [](Reading& r, const std::string& v) { r.d.libraries.back().options.push_back({v}); }},
       {"option-type", InLibrary, [](Reading& r, const std::string& v) { if (Option* o = lastOf(r.d.libraries.back().options, r, "option")) o->type = v; }},

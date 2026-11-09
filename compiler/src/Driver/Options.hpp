@@ -50,6 +50,7 @@
       bool scoped = true;
     };
     std::vector<LibraryRoot> libraryRoots;
+    std::vector<std::string> thisReferenceLibraries; // --this-reference-library NAME: that library's sources are --this-reference's (design.md 23d)
     std::vector<std::string> cIncludeDirs; // --cinclude DIR, for imported C headers
     std::vector<std::string> libs;         // --lib FILE: libraries linked into the executable
     std::vector<std::string> natvisFiles;  // --natvis FILE: the program's own .natvis, linked into the PDB

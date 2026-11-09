@@ -6,12 +6,12 @@ struct HttpClientHandles
   ~HttpClientHandles()
   {
     const WinHttp& w = winHttp();
-    if (this->request != nullptr)
-      w.closeHandle(this->request);
-    if (this->connection != nullptr)
-      w.closeHandle(this->connection);
-    if (this->session != nullptr)
-      w.closeHandle(this->session);
+    if (this.request != nullptr)
+      w.closeHandle(this.request);
+    if (this.connection != nullptr)
+      w.closeHandle(this.connection);
+    if (this.session != nullptr)
+      w.closeHandle(this.session);
   }
 
   HttpClientHandle session = nullptr;

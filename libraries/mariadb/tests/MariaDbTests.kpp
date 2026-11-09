@@ -117,7 +117,7 @@ struct MariaDbFakeServer
   {
     try
     {
-      net::TcpStream stream = this->listener.accept();
+      net::TcpStream stream = this.listener.accept();
       String greeting;
       greeting << char(10);
       greeting << "5.5.5-11.7.2-MariaDB";
@@ -139,14 +139,14 @@ struct MariaDbFakeServer
 
       String response = mariaDbTestRead(stream);
       MariaDbReader reader(response, 32);
-      this->user = reader.nulTerminated();
-      this->auth = reader.lengthEncodedString();
-      this->database = reader.nulTerminated();
+      this.user = reader.nulTerminated();
+      this.auth = reader.lengthEncodedString();
+      this.database = reader.nulTerminated();
       mariaDbTestWrite(stream, 2, String("\x00\x00\x00\x02\x00\x00\x00", 7));
 
       // A SELECT: two columns, two rows, a NULL.
       String query = mariaDbTestRead(stream);
-      this->queries.push_back(String(StringView(query).substr(1)));
+      this.queries.push_back(String(StringView(query).substr(1)));
       String count;
       count << char(2);
       mariaDbTestWrite(stream, 1, count);
@@ -169,22 +169,22 @@ struct MariaDbFakeServer
 
       // An UPDATE: 3 rows, insert id 300.
       query = mariaDbTestRead(stream);
-      this->queries.push_back(String(StringView(query).substr(1)));
+      this.queries.push_back(String(StringView(query).substr(1)));
       mariaDbTestWrite(stream, 1, String("\x00\x03\xfc\x2c\x01\x02\x00\x00\x00", 9));
 
       // An error.
       query = mariaDbTestRead(stream);
-      this->queries.push_back(String(StringView(query).substr(1)));
+      this.queries.push_back(String(StringView(query).substr(1)));
       String error("\xff\x7a\x04#42S02", 9);
       error << "Table 'gorating.nope' doesn't exist";
       mariaDbTestWrite(stream, 1, error);
 
       String last = mariaDbTestRead(stream);
-      this->quit = last.size() == 1 && last[0] == 0x01;
+      this.quit = last.size() == 1 && last[0] == 0x01;
     }
     catch (const Exception& e)
     {
-      this->failure = String(StringView(e.what()));
+      this.failure = String(StringView(e.what()));
     }
   }
 };

@@ -1,0 +1,11 @@
+class Counter
+{
+public:
+  int count = 1;
+  Counter& add(int n)
+  {
+    this.count += n;
+    return this;
+  }
+  const Counter* address() const { return &this; }
+};

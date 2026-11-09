@@ -3,14 +3,14 @@ struct MarkdownNodes
 {
   MarkdownNode* make(MarkdownType type)
   {
-    MarkdownNode& node = this->nodes.emplace_back();
+    MarkdownNode& node = this.nodes.emplace_back();
     node.type = type;
     return &node;
   }
 
   MarkdownNode* text(StringView literal)
   {
-    MarkdownNode* node = this->make(MarkdownType::text);
+    MarkdownNode* node = this.make(MarkdownType::text);
     node->literal = String(literal);
     return node;
   }

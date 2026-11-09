@@ -286,6 +286,8 @@ void runParse(Build& build)
       {
         const Options::LibraryRoot& root = options.libraryRoots[size_t(build.fileLibrary[i])];
         parsed[i]->library = root.name;
+        if (std::find(options.thisReferenceLibraries.begin(), options.thisReferenceLibraries.end(), root.name) != options.thisReferenceLibraries.end())
+          parsed[i]->thisReference = !parsed[i]->isLibrary;
         if (root.scoped)
           parsed[i]->libraryScope = symbols.intern(root.name);
       }

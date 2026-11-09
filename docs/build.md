@@ -541,6 +541,9 @@ util.unscoped = true;                       // its names are bare everywhere, as
   name is the qualifier, so it must be an identifier: `project.library("te-xt")` is an error, and so
   is a library name that is also a C++ namespace or a top-level name of the program (`zlib::x` would
   be ambiguous; thread A's check).
+- **`lib.thisReference = true`:** the library's sources and tests are written with `this` the object
+  (`this.x`, `&this`, [design 23d](design.md)), whoever uses it; a program that keeps the pointer can use
+  it. kpp's options: `--this-reference-library NAME`. It goes away when that meaning becomes the default.
 - **`lib.unscoped = true`:** its names are reachable only bare, never as `NAME::x` (its name is for
   diagnostics only), and share the one global scope with the
   program, the other unscoped libraries and the C imports; a clash is a compile error. The

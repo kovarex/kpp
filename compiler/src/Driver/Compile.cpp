@@ -84,6 +84,8 @@ int compile(int argc, char** argv)
       options.thisWarnings = true;
     else if (arg == "--this-reference")
       options.thisReference = true;
+    else if (arg == "--this-reference-library" && i + 1 < argc)
+      options.thisReferenceLibraries.push_back(argv[++i]);
     else if (arg == "--explicit-by-default")
       ; // the default since the flip (design.md "Explicit by default"): accepted until convert.cmd and build.kpp drop it
     else if (arg == "--this-reference-warnings")

@@ -23,12 +23,12 @@ public:
   // Appends more HTML, as `<<` appends to a String.
   SafeHtml& operator<<(const SafeHtml& more)
   {
-    this->html << more.html;
-    return *this;
+    this.html << more.html;
+    return this;
   }
 
-  bool empty() const { return this->html.empty(); }
-  const String& str() const { return this->html; }
+  bool empty() const { return this.html.empty(); }
+  const String& str() const { return this.html; }
   bool operator==(const SafeHtml& other) const = default;
 
 private:
