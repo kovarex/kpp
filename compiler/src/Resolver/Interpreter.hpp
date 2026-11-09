@@ -335,6 +335,8 @@
   // A call the evaluator cannot run, the reason kept (why): the function has no body it sees (a C
   // function: `printf`, `puts`; one declared and defined nowhere in the program).
   std::optional<ConstValue> constNoBody(FunctionDecl* f);
+  // Whether a function's body is one the evaluator runs: a block, or a function-try-block's try.
+  static bool constRunnableBody(const Stmt* body) { return body && (body->kind == NodeKind::BlockStmt || body->kind == NodeKind::TryStmt); }
 
   FunctionDecl* constDefinition(FunctionDecl* f);
 

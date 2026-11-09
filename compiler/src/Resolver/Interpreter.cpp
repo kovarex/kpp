@@ -2176,7 +2176,7 @@ auto GlobalScope::Impl::constCall(CallExpr* c, const TypeContext& ctx, int depth
       bound.pairs.push_back({f->templateParams[0], e});
     return constIntrinsic(which, f, values, &bound, depth);
   }
-  if (FunctionDecl* def = constDefinition(f); !def || def->body->kind != NodeKind::BlockStmt)
+  if (FunctionDecl* def = constDefinition(f); !def || !constRunnableBody(def->body))
     return constNoBody(f);
   std::vector<ConstValue> values;
   std::vector<std::optional<ConstPlace>> places; // what reference parameters refer to
@@ -2316,7 +2316,7 @@ auto GlobalScope::Impl::constMemberCall(CallExpr* c, const TypeContext& ctx, int
   }
   else if (fills(l.decl))
     f = static_cast<FunctionDecl*>(l.decl);
-  if (!f || constDefinition(f)->body->kind != NodeKind::BlockStmt)
+  if (!f || !constRunnableBody(constDefinition(f)->body))
     return std::nullopt;
   std::vector<ConstValue> values;
   std::vector<std::optional<ConstPlace>> places; // what reference parameters refer to
@@ -5711,7 +5711,7 @@ auto GlobalScope::Impl::constCallThrough(const ConstValue& fn, CallExpr* c, cons
   if (!fn.isAddress() || !fn.target->decl || fn.target->decl->kind != NodeKind::FunctionDecl)
     return std::nullopt;
   auto* f = static_cast<FunctionDecl*>(fn.target->decl);
-  if (!constDefinition(f) || constDefinition(f)->body->kind != NodeKind::BlockStmt || c->args.size() > f->params.size())
+  if (!constDefinition(f) || !constRunnableBody(constDefinition(f)->body) || c->args.size() > f->params.size())
     return std::nullopt;
   std::vector<ConstValue> values;
   std::vector<std::optional<ConstPlace>> places;
@@ -9688,6 +9688,10 @@ auto GlobalScope::Impl::constStatementIn(Stmt* s, const TypeContext& ctx, std::v
     }
     case NodeKind::EmptyStmt:
       return ConstFlow::Next;
+    case NodeKind::TryStmt:
+      // Its block, as any block: a throw reached in it is no constant (C++20; it fails the evaluation
+      // saying what is thrown), so no handler is ever entered here.
+      return constStatement(static_cast<TryStmt*>(s)->body, ctx, env, result, depth + 1);
     default:
       return ConstFlow::Failed;
   }

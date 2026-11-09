@@ -1,0 +1,123 @@
+// spec: a constant evaluation runs a try statement's block, as any block: a return, break or continue goes out through it, its locals are destroyed at its end, and a handler is never entered, because a throw is no constant (C++20, [dcl.constexpr]); a function-try-block too, a constructor's as well. At run time the same code throws and catches. What clang prints.
+// factorio: none; found by thread I, for the library's own checks (the evaluator said "no constant" for any try)
+constexpr int blockOf(int x)
+{
+  int r = 1;
+  try
+  {
+    r += x;
+    if (x > 100)
+      throw 1;
+  }
+  catch (int e)
+  {
+    return e + 1000;
+  }
+  return r;
+}
+
+constexpr int returnsFromTheBlock(int x)
+{
+  try
+  {
+    return x * 2;
+  }
+  catch (...)
+  {
+    return -1;
+  }
+}
+
+constexpr int loopsThroughIt()
+{
+  int total = 0;
+  for (int i = 0; i < 5; ++i)
+    try
+    {
+      if (i == 1)
+        continue;
+      if (i == 4)
+        break;
+      total += i;
+    }
+    catch (...)
+    {
+      total = -1;
+    }
+  return total;
+}
+
+constexpr int functionTryBlock(int x)
+try
+{
+  return x + 1;
+}
+catch (...)
+{
+  return -1;
+}
+
+struct Built
+{
+  int v;
+  constexpr Built(int x)
+  try : v(x * 3)
+  {
+  }
+  catch (...)
+  {
+  }
+};
+
+struct Marks
+{
+  int* out;
+  constexpr ~Marks() { *this.out += 10; }
+};
+
+constexpr int destroysItsLocals()
+{
+  int seen = 1;
+  try
+  {
+    Marks m{&seen};
+  }
+  catch (...)
+  {
+  }
+  return seen;
+}
+
+constexpr int nested(int x)
+{
+  try
+  {
+    try
+    {
+      return x + 7;
+    }
+    catch (int)
+    {
+      return -2;
+    }
+  }
+  catch (...)
+  {
+    return -3;
+  }
+}
+
+static_assert(blockOf(2) == 3);
+static_assert(returnsFromTheBlock(4) == 8);
+static_assert(loopsThroughIt() == 5);
+static_assert(functionTryBlock(2) == 3);
+static_assert(Built(2).v == 6);
+static_assert(destroysItsLocals() == 11);
+static_assert(nested(1) == 8);
+
+int main()
+{
+  int r = blockOf(200);
+  println(blockOf(2), " ", returnsFromTheBlock(4), " ", loopsThroughIt(), " ", functionTryBlock(2), " ", Built(2).v, " ", destroysItsLocals(), " ", nested(1), " ", r);
+  return 0;
+}

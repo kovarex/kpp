@@ -1,0 +1,21 @@
+// spec: a throw reached in a constant evaluation is no constant even inside a try whose handler would catch it (C++20: a throw-expression is no core constant expression), an error that says what is thrown; a handler is never run at compile time.
+// error: consteval_throw_in_a_try_is_error.kpp:17: error: the constexpr variable caught is no constant: it throws "too big" (consteval_throw_in_a_try_is_error.kpp:9)
+// factorio: none
+constexpr int f(int x)
+{
+  try
+  {
+    if (x > 1)
+      throw "too big";
+    return x;
+  }
+  catch (const char*)
+  {
+    return -1;
+  }
+}
+constexpr int caught = f(2);
+int main()
+{
+  return 0;
+}
