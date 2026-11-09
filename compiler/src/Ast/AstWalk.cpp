@@ -1,5 +1,6 @@
 #include "AstWalk.hpp"
 #include <unordered_set>
+#include <vector>
 
 namespace
 {
@@ -367,6 +368,42 @@ void forEachNode(Node* root, const std::function<void(Node*)>& each)
 {
   Walk w{each, {}};
   w.node(root);
+}
+
+void markRequiredThis(Span<Decl*> decls)
+{
+  std::vector<Node*> declaredTypes;
+  forEachNode(decls, [&](Node* n)
+  {
+    switch (n->kind)
+    {
+      case NodeKind::NameExpr:
+      {
+        QualifiedName& name = static_cast<NameExpr*>(n)->name;
+        name.requiresThis = name.parts.size() == 1 && !name.global && !name.typeQualifier;
+        break;
+      }
+      case NodeKind::ParamDecl:
+        declaredTypes.push_back(static_cast<ParamDecl*>(n)->type);
+        break;
+      case NodeKind::FunctionDecl:
+        declaredTypes.push_back(static_cast<FunctionDecl*>(n)->returnType); // (a trailing one is code: `this` is in scope there)
+        break;
+      case NodeKind::ClassDecl:
+        for (Decl* member : static_cast<ClassDecl*>(n)->members)
+          if (member->kind == NodeKind::VariableDecl)
+            declaredTypes.push_back(static_cast<VariableDecl*>(member)->type);
+        break;
+      default:
+        break;
+    }
+  });
+  for (Node* type : declaredTypes)
+    forEachNode(type, [](Node* n)
+    {
+      if (n->kind == NodeKind::NameExpr)
+        static_cast<NameExpr*>(n)->name.requiresThis = false;
+    });
 }
 
 void remapNodeTokens(Node* n, const std::function<uint32_t(uint32_t)>& remap)

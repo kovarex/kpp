@@ -1,0 +1,17 @@
+// spec: required `this.` (design.md 23c, under --this-reference): a bare name in a requires-expression that finds only a member is the error naming the fix, as in the code around it, never a requirement silently unmet
+// kpp: --this-reference
+// error: required_this_bare_member_in_a_requires_expression_is_error.kpp:10: error: speed is a data member: write `this.speed`, not `speed` (design.md 23c)
+class Gauge
+{
+public:
+  int speed = 3;
+  bool test() const
+  {
+    return requires { speed + 1; };
+  }
+};
+int main()
+{
+  Gauge g;
+  return g.test() ? 0 : 1;
+}

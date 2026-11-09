@@ -2319,6 +2319,14 @@ kovarex, 2026-11-07:
   member a member initializer names (`: speed(speed)` is the member from the parameter), `using`
   declarations, and the types in declarations. The initializer's arguments, default member initializers,
   default arguments and lambda bodies are code and need `this.` or `This::`.
+  "The types in declarations" are those where `this` is no value: a parameter's type, a data member's type and a
+  function's leading return type keep a bare name as the member (`char bytes[limit];`, `decltype(limit) f();`). A trailing
+  return type is code, where `this` is in scope: a bare name there follows the rule, as in the body. A requires-expression
+  follows the rule too, as the code around it does: the global, or the error, never a requirement silently unmet. Which
+  names the rule takes is a mark the parser's last step sets (QualifiedName::requiresThis, markRequiredThis, 2026-11-09,
+  D's review), because the evaluator meets a name in an array bound or a template argument before the walk has been there.
+  Specs kpp/required_this_types_in_declarations_keep_the_member, kpp/required_this_in_a_requires_expression,
+  kpp/required_this_bare_member_in_a_requires_expression_is_error.
 - **Whose code** (Q12): all kpp code, the game, the stdlib, the official libraries and the programs.
   Imported C and C++ headers are exempt, "so we can actually use C++ libraries, which we will have for a
   long time".

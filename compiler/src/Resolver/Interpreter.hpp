@@ -213,6 +213,11 @@
   // A template parameter pack s binds that n names (`Ts` in `isFundamental<RemoveReference<Ts>>`,
   // `Ns` in `Ns * 2`), or null.
   Decl* packNamedIn(Node* n, const Subst& s, int depth = 0);
+  // Required `this.` (design.md 23c, Q10) of a bare name lookup found as l, from scope: l unless the name carries the mark
+  // (QualifiedName::requiresThis) and l is a data member, a member function or a static member of a class around the code;
+  // then what the name finds outside every class around it, or l with *onlyMember set to the member when that is nothing
+  // (the walk's error). The walk and the evaluator both read it.
+  Lookup bareNameOutside(const NameExpr* n, const Lookup& l, Scope* scope, Decl** onlyMember = nullptr);
 
   // `(isFundamental<RemoveReference<Ts>> && ...)`, `(Ns + ... + 0)`, `(0 + ... + Ns)`: the pattern,
   // the side that names a pack ctx binds (the two binary folds parse alike), evaluated once per

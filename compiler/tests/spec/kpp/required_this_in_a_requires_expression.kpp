@@ -1,0 +1,21 @@
+// spec: required `this.` (design.md 23c, under --this-reference) holds in a requires-expression as in the code around it: a bare `only(1)` beside a member `only()` and a global `only(int)` is the global, so the requirement is met, where the member would not take the argument; `this.only()` is the member, and a declared parameter's own type is one of the types in declarations, whose names stay the member's
+// found by thread D's review of bf890184 (2026-11-09): a probe kept the member, so one expression meant the member in the requirement and the global in the code
+// kpp: --this-reference
+extern "C" int printf(const char* format, ...);
+int only(int x) { return x + 1; }
+class Gauge
+{
+public:
+  static constexpr int size = 3;
+  int only() const { return 5; }
+  bool bareIsTheGlobal() const { return requires { only(1); }; }
+  bool noArgumentIsUnmet() const { return requires { only(); }; }
+  bool throughThis() const { return requires { this.only(); }; }
+  bool typeOfAParameter() const { return requires(char (&a)[size]) { a[0]; }; }
+};
+int main()
+{
+  Gauge g;
+  printf("%d %d %d %d\n", (int)g.bareIsTheGlobal(), (int)g.noArgumentIsUnmet(), (int)g.throughThis(), (int)g.typeOfAParameter());
+  return 0;
+}

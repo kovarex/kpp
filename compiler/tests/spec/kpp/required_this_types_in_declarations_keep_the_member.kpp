@@ -1,0 +1,21 @@
+// spec: required `this.` (design.md 23c, under --this-reference): the types in declarations where `this` is no value keep a bare name as the member: a parameter's type, a data member's type and a function's leading return type (`decltype(limit)` beside a global `limit` of another type, an array bound); a trailing return type is code, where `this` is in scope, so a bare name there is the global (Q10)
+// kpp: --this-reference
+extern "C" int printf(const char* format, ...);
+const char limit = 'x';
+class Gauge
+{
+public:
+  static constexpr long long limit = 2;
+  char bytes[limit] = {};
+  decltype(limit) member = 4;
+  decltype(limit) leading() const { return 5; }
+  auto trailing() const -> decltype(limit) { return 'y'; }
+  static int parameter(decltype(limit) a, char (&b)[limit]) { return (int)sizeof(a) * 10 + (int)sizeof(b); }
+};
+int main()
+{
+  Gauge g;
+  char two[2];
+  printf("%d %d %d %d %d\n", (int)sizeof(g.bytes), (int)sizeof(g.member), (int)sizeof(g.leading()), (int)sizeof(g.trailing()), Gauge::parameter(1, two));
+  return 0;
+}

@@ -16,6 +16,7 @@
     const Subst* activeSubst = nullptr; // Set while checking a template body for an instantiation.
     int instantiationDepth = 0;
     const ParsedFile* file = nullptr; // The file the tokens belong to (for --why sites).
+    const ParsedFile* probedFile = nullptr; // A requires-expression's probe, which has no file: the code's, for required `this.`'s error.
     Expr* current = nullptr;          // The expression being typed (for --why sites).
     // Of an instance's walk: where it was first asked for (the asking walk's expression), for the
     // messages about it.

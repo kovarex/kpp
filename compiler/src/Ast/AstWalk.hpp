@@ -10,6 +10,9 @@
 void forEachNode(Span<Decl*> decls, const std::function<void(Node*)>& each);
 void forEachNode(Node* root, const std::function<void(Node*)>& each);
 
+// Sets QualifiedName::requiresThis on the bare names of a file under --this-reference (its parser's last step).
+void markRequiredThis(Span<Decl*> decls);
+
 // The token indexes a node holds (its first token, a declaration's end, an assert's text, ...),
 // each passed to remap and replaced by what it returns.
 void remapNodeTokens(Node* n, const std::function<uint32_t(uint32_t)>& remap);

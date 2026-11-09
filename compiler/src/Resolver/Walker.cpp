@@ -1990,19 +1990,18 @@ auto GlobalScope::Impl::Walker::reachThroughBases(Scope* cls, Scope* target, int
   return reached;
 }
 
-auto GlobalScope::Impl::Walker::bareMemberRule(const NameExpr* n, const Lookup& l) -> Lookup
+auto GlobalScope::Impl::bareNameOutside(const NameExpr* n, const Lookup& l, Scope* scope, Decl** onlyMember) -> Lookup
 {
-  // (the program's own files: the stdlib keeps the old meaning until --this-reference is the default, A's plan step 4)
-  if (!thisReferenceOn() || l.found != Found::Member || n->name.parts.size() != 1 || n->name.global || n->name.typeQualifier || !file ||
-      file->isImported || file->isLibrary || probing || declaredTypes > 0 || !l.foundIn || l.foundIn->kind != ScopeKind::Class || !l.foundIn->owner)
+  // (the mark is the program's own files only: the stdlib keeps the old meaning until --this-reference is the default, A's plan step 4)
+  if (!n->name.requiresThis || l.found != Found::Member || !l.foundIn || l.foundIn->kind != ScopeKind::Class || !l.foundIn->owner)
     return l;
   Decl* d = l.decl;
   if (d && d->kind == NodeKind::UsingNameDecl && !static_cast<UsingNameDecl*>(d)->isEnum) // (`using Base::f;`, then `f()`)
-    d = impl.lookupQualified(static_cast<UsingNameDecl*>(d)->name, impl.lexicalScopeOf(d), nullptr, 0).decl;
+    d = lookupQualified(static_cast<UsingNameDecl*>(d)->name, lexicalScopeOf(d), nullptr, 0).decl;
   if (!d || (d->kind != NodeKind::VariableDecl && d->kind != NodeKind::FunctionDecl) || (d->flags & (DF_Typedef | DF_Constructor | DF_Destructor)))
     return l; // (types, enumerators and nested classes need no `this.`)
   const NamePart& part = n->name.parts[0];
-  uint32_t symbol = !part.special ? part.symbol : part.special == 2 && part.opToken < uint32_t(P::Count) ? impl.opSymbols[part.opToken] : UINT32_MAX;
+  uint32_t symbol = !part.special ? part.symbol : part.special == 2 && part.opToken < uint32_t(P::Count) ? opSymbols[part.opToken] : UINT32_MAX;
   if (symbol == UINT32_MAX)
     return l;
   // Outside every class around the code (a nested class's outer classes too; a local class's function's locals are no
@@ -2012,24 +2011,38 @@ auto GlobalScope::Impl::Walker::bareMemberRule(const NameExpr* n, const Lookup& 
     if (s->kind == ScopeKind::Class)
       outside = s->parent;
   if (outside)
-    if (Lookup global = impl.lookupUnqualified(symbol, outside, nullptr, 0); global.found != Found::No && global.decl)
+    if (Lookup global = lookupUnqualified(symbol, outside, nullptr, 0); global.found != Found::No && global.decl)
       return global; // (a member and a global of one spelling: the global, Q10)
-  if (!activeSubst && thisRuleNoted.insert(n).second)
+  if (onlyMember)
+    *onlyMember = d;
+  return l;
+}
+
+auto GlobalScope::Impl::Walker::bareMemberRule(const NameExpr* n, const Lookup& l) -> Lookup
+{
+  Decl* d = nullptr;
+  Lookup outside = impl.bareNameOutside(n, l, scope, &d);
+  // (a requires-expression's probe too: an error, never a requirement silently unmet)
+  const ParsedFile* where = file ? file : probedFile;
+  if (d && where && !activeSubst && thisRuleNoted.insert(n).second)
   {
+    const NamePart& part = n->name.parts[0];
+    uint32_t symbol = !part.special ? part.symbol : impl.opSymbols[part.opToken];
     std::string name(symbols.name(symbol));
     std::string old = !part.special ? name
-                                    : Impl::spelledTokens(file, n->token, n->token + (P(part.opToken) == P::LParen || P(part.opToken) == P::LBracket ? 2 : 1));
+                                    : Impl::spelledTokens(where, n->token, n->token + (P(part.opToken) == P::LParen || P(part.opToken) == P::LBracket ? 2 : 1));
     bool isStatic = (d->flags & DF_Static) != 0;
-    impl.reportCheckerError(file, n->token, name + " is a " + (isStatic ? "static member" : d->kind == NodeKind::FunctionDecl ? "member function" : "data member") +
+    impl.reportCheckerError(where, n->token, name + " is a " + (isStatic ? "static member" : d->kind == NodeKind::FunctionDecl ? "member function" : "data member") +
                                                 ": write `" + (isStatic ? "This::" : "this.") + old + "`, not `" + old + "` (design.md 23c)");
   }
-  return l;
+  return outside;
 }
 
 auto GlobalScope::Impl::Walker::noteImplicitMember(const NameExpr* n, const Lookup& l) -> void
 {
-  if (!thisWarningsOn() || l.found != Found::Member || n->name.parts.size() != 1 || n->name.global || n->name.typeQualifier || !file ||
-      file->isImported || probing || declaredTypes > 0 || !l.foundIn || l.foundIn->kind != ScopeKind::Class || !l.foundIn->owner)
+  const ParsedFile* where = file ? file : probedFile; // (a requires-expression's probe too: what the rule will take)
+  if (!thisWarningsOn() || l.found != Found::Member || n->name.parts.size() != 1 || n->name.global || n->name.typeQualifier || !where ||
+      where->isImported || declaredTypes > 0 || !l.foundIn || l.foundIn->kind != ScopeKind::Class || !l.foundIn->owner)
     return;
   Decl* d = l.decl;
   if (d && d->kind == NodeKind::UsingNameDecl && !static_cast<UsingNameDecl*>(d)->isEnum) // (`using Base::f;`, then `f()`)
@@ -2044,11 +2057,11 @@ auto GlobalScope::Impl::Walker::noteImplicitMember(const NameExpr* n, const Look
   std::string name(symbols.name(symbol));
   // As written (`operator ==`): the operator's tokens, `()` and `[]` two of them.
   std::string old = !part.special ? name
-                                  : Impl::spelledTokens(file, n->token, n->token + (P(part.opToken) == P::LParen || P(part.opToken) == P::LBracket ? 2 : 1));
+                                  : Impl::spelledTokens(where, n->token, n->token + (P(part.opToken) == P::LParen || P(part.opToken) == P::LBracket ? 2 : 1));
   if (old.empty())
     return;
   bool isStatic = (d->flags & DF_Static) != 0;
-  std::string message = Impl::locationOf(file, n->token) + ": warning: " + name + " is a " +
+  std::string message = Impl::locationOf(where, n->token) + ": warning: " + name + " is a " +
                         (isStatic ? "static member" : d->kind == NodeKind::FunctionDecl ? "member function" : "data member");
   for (Scope* s = scope; s; s = s->parent)
     if (s->kind == ScopeKind::Class)
@@ -11169,6 +11182,7 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
       probe.activeSubst = activeSubst;
       probe.thisType = thisType;
       probe.probing = true;
+      probe.probedFile = file ? file : probedFile;
       for (Decl* p : r->params)
       {
         // As the walk sees its type (`requires(const T& value)` in `[]<class T>(T) { ... }`, or

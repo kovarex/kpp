@@ -81,5 +81,9 @@ struct QualifiedName
 
   Span<NamePart> parts;
   bool global = false; // Leading `::`.
+  // Required `this.` (design.md 23c, a NameExpr's name, markRequiredThis): this bare name is never a member. Not in the
+  // stdlib or imported C, nor in the types in declarations where `this` is no value (a parameter's, a data member's, a
+  // leading return type); the walk and the evaluator read this one mark, wherever they meet the name first.
+  bool requiresThis = false;
   Type* typeQualifier = nullptr; // `decltype(x)::member`: the parts are looked up in the class this type names.
 };

@@ -6,6 +6,7 @@
 #include "config.hpp"
 #include "tests.hpp"
 #include "Restore.hpp"
+#include "Ast/AstWalk.hpp"
 #include <algorithm>
 #include <atomic>
 #include <cstring>
@@ -7619,4 +7620,6 @@ void parseFile(std::vector<Token>& tokens, std::string_view text, SymbolTable& s
   parser.config = config;
   parser.roles = out.formatRoles;
   parser.parseTranslationUnit();
+  if (out.thisReference)
+    markRequiredThis(out.decls); // (design.md 23c)
 }
