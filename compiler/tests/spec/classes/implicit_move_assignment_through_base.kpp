@@ -16,12 +16,12 @@ struct Hook
 };
 struct Stats : Hook
 {
-  Vector<float> history;
+  std::Vector<float> history;
   double current = 0;
 };
 int main()
 {
-  Vector<Stats> v;
+  std::Vector<Stats> v;
   v.emplace_back();
   v.emplace_back();
   v.emplace_back();
@@ -29,8 +29,8 @@ int main()
   v[1].current = 2;
   v[2].current = 3;
   v[1].history.push_back(5.0f);
-  Stats moved = move(v[2]);
-  v[0] = move(v[1]);
-  println(v[0].current, " ", v[0].history.size(), " ", moved.current, " ", isMoveAssignable<Stats>);
+  Stats moved = std::move(v[2]);
+  v[0] = std::move(v[1]);
+  std::println(v[0].current, " ", v[0].history.size(), " ", moved.current, " ", std::isMoveAssignable<Stats>);
   return 0;
 }

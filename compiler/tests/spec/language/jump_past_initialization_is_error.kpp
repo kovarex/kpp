@@ -8,8 +8,8 @@ class Noisy
 {
 public:
   int id;
-  Noisy(int i) : id(i) { println("+", this.id); }
-  ~Noisy() { println("-", this.id); }
+  Noisy(int i) : id(i) { std::println("+", this.id); }
+  ~Noisy() { std::println("-", this.id); }
 };
 int forward(int x)
 {
@@ -18,7 +18,7 @@ int forward(int x)
   {
     Noisy n(1);
   inside:
-    println("inside");
+    std::println("inside");
   }
   return 0;
 }

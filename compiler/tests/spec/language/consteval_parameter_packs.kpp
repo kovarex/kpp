@@ -8,14 +8,14 @@ constexpr int sum(Ts... values)
 template<typename... Args>
 constexpr int forwardSum(Args&&... args)
 {
-  return sum(forward<Args>(args)...) * int(sizeof...(Args));
+  return sum(std::forward<Args>(args)...) * int(sizeof...(Args));
 }
 template<typename T>
 struct Holder
 {
   T value;
   template<typename... Args>
-  constexpr Holder(int, Args&&... args) : value(forward<Args>(args)...) {}
+  constexpr Holder(int, Args&&... args) : value(std::forward<Args>(args)...) {}
 };
 struct Point
 {
@@ -33,6 +33,6 @@ static_assert(Holder<int>(0).value == 0 && Holder<int>(0, 5).value == 5);
 static_assert(make(3, 4).y == 4 && make(3).y == 0);
 int main()
 {
-  println(sum(1, 2, 3), " ", forwardSum(4, 5), " ", Holder<int>(0, 7).value, " ", make(1, 2).x);
+  std::println(sum(1, 2, 3), " ", forwardSum(4, 5), " ", Holder<int>(0, 7).value, " ", make(1, 2).x);
   return 0;
 }

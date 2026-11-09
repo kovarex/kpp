@@ -1,16 +1,16 @@
 // spec: an exception nobody catches ends the program through the terminate handler setTerminate installed (C++'s std::terminate, [except.terminate]), from the search with the throw site still on the stack (no destructor between the throw and main runs); kpp's report of the exception comes first, on stderr
-class Boom : public Exception { public: Boom() : Exception("boom") {} };
-struct Noisy { ~Noisy() { println("destroyed before the terminate handler"); } };
+class Boom : public std::Exception { public: Boom() : Exception("boom") {} };
+struct Noisy { ~Noisy() { std::println("destroyed before the terminate handler"); } };
 void thrower() { Noisy n; throw Boom(); }
 void onTerminate()
 {
-  println("terminate");
+  std::println("terminate");
   fflush(nullptr);
   exit(0);
 }
 int main()
 {
-  setTerminate(onTerminate);
+  std::setTerminate(onTerminate);
   thrower();
   return 0;
 }

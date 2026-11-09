@@ -5,7 +5,7 @@ const char* fluidName() { return "steam"; }
 
 test fluidNames
 {
-  require(StringView(fluidName()) == "steam");
+  require(std::StringView(fluidName()) == "steam");
   require(fluidName() == "steam");
 }
 

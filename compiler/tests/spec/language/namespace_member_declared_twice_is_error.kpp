@@ -16,6 +16,6 @@ namespace Inflate::Window
 int main()
 {
   Inflate::Mode m = Inflate::COPY;
-  println((int)m, " ", Inflate::Window::LIMIT);
+  std::println((int)m, " ", Inflate::Window::LIMIT);
   return 0;
 }

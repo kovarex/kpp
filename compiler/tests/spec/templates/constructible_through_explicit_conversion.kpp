@@ -12,8 +12,8 @@ int main()
   Reg reg;
   reg.index = 3;
   theExpr.v = 7;
-  Vector<Pair<Reg*, const Expr*>> pairs;
+  std::Vector<std::Pair<Reg*, const Expr*>> pairs;
   pairs.emplace_back(&reg, Parsed());
-  println(pairs[0].first->index, " ", pairs[0].second->v);
+  std::println(pairs[0].first->index, " ", pairs[0].second->v);
   return 0;
 }

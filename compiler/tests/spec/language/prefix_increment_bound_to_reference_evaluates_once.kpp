@@ -8,8 +8,8 @@ int show(int* const& p) { return *p; }
 int main()
 {
   int& a = ++element();
-  println(a, " ", calls);
+  std::println(a, " ", calls);
   calls = 0;
-  println(show(++first()), " ", calls);
+  std::println(show(++first()), " ", calls);
   return 0;
 }

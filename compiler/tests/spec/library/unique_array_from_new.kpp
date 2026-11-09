@@ -3,28 +3,28 @@
 struct Item
 {
   int value = 0;
-  ~Item() { println("drop ", this.value); }
+  ~Item() { std::println("drop ", this.value); }
 };
 int main()
 {
   {
-    UniqueArray<Item> items(new Item[3]);
+    std::UniqueArray<Item> items(new Item[3]);
     items[0].value = 1;
     items[1].value = 2;
     items[2].value = 3;
     items.reset(new Item[2]);
     items[1].value = 5;
-    println((bool)items, " ", items != nullptr);
+    std::println((bool)items, " ", items != nullptr);
   }
-  UniqueArray<float> values(new float[4]());
+  std::UniqueArray<float> values(new float[4]());
   values[3] = 2.5f;
-  println(values[0], " ", values[3]);
+  std::println(values[0], " ", values[3]);
   values = nullptr;
-  println(values == nullptr);
-  UniqueArray<Item> made = makeUniqueArray<Item>(2);
+  std::println(values == nullptr);
+  std::UniqueArray<Item> made = std::makeUniqueArray<Item>(2);
   made[0].value = 7;
   Item* raw = made.release();
-  println(made == nullptr);
+  std::println(made == nullptr);
   delete[] raw;
   return 0;
 }

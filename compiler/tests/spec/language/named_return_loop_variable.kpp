@@ -23,7 +23,7 @@ Item find(int id)
       return item;
   throw 0;
 }
-Item findIn(const Vector<Item>& list, int id)
+Item findIn(const std::Vector<Item>& list, int id)
 {
   for (Item item : list)
     if (item.id == id)
@@ -32,7 +32,7 @@ Item findIn(const Vector<Item>& list, int id)
 }
 int main()
 {
-  Vector<Item> list;
+  std::Vector<Item> list;
   list.push_back(Item(5));
   list.push_back(Item(6));
   copies = 0;
@@ -41,6 +41,6 @@ int main()
   bool sameA = last == &a;
   Item b = findIn(list, 6);
   bool sameB = last == &b;
-  println(a.id, " ", b.id, " ", copies, " copies, ", moves, " moves, ", sameA, " ", sameB);
+  std::println(a.id, " ", b.id, " ", copies, " copies, ", moves, " moves, ", sameA, " ", sameB);
   return 0;
 }

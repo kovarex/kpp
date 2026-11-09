@@ -23,7 +23,7 @@ int readBoth(Base&& x, long&& n) { return x.b + int(n); }
 int main()
 {
   Derived d;
-  take(move(d));
+  take(std::move(d));
   take(Derived());
   int i = 3;
   int sum = readBoth(Base(), i);

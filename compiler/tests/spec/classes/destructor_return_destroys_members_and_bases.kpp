@@ -27,12 +27,12 @@ int main()
   {
     Guard g;
   }
-  print(destroyed, " ");
+  std::print(destroyed, " ");
   destroyed = 0;
   {
     Guard g;
     g.early = true;
   }
-  println(destroyed);
+  std::println(destroyed);
   return 0;
 }

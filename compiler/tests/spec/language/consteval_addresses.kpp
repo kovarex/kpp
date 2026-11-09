@@ -22,6 +22,6 @@ static_assert(apply(ops[0], 5) == 10 && apply(ops[1], 5) == 15 && ops[0] != ops[
 static_assert(origin.*member == 4);
 int main()
 {
-  println(where->y, " ", *second, " ", apply(ops[1], 2), " ", origin.*member);
+  std::println(where->y, " ", *second, " ", apply(ops[1], 2), " ", origin.*member);
   return 0;
 }

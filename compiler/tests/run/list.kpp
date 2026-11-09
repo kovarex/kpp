@@ -13,15 +13,15 @@ int nextInt(int range)
 
 int main()
 {
-  List<String> list;
-  Vector<String> reference;
-  list.push_back(String("anchor that stays where it is"));
-  reference.push_back(String("anchor that stays where it is"));
-  String* anchor = &list.front();
+  std::List<std::String> list;
+  std::Vector<std::String> reference;
+  list.push_back(std::String("anchor that stays where it is"));
+  reference.push_back(std::String("anchor that stays where it is"));
+  std::String* anchor = &list.front();
   int errors = 0;
   for (int step = 0; step < 5000; ++step)
   {
-    String value = toString(step);
+    std::String value = std::toString(step);
     int action = nextInt(4);
     if (action == 0)
     {
@@ -45,7 +45,7 @@ int main()
     else if (reference.size() > 1)
     {
       int at = nextInt(reference.size());
-      if (reference[at] == String("anchor that stays where it is"))
+      if (reference[at] == std::String("anchor that stays where it is"))
         continue;
       auto it = list.begin();
       for (int i = 0; i < at; ++i)
@@ -55,7 +55,7 @@ int main()
     }
   }
   int i = 0;
-  for (String& s : list)
+  for (std::String& s : list)
     errors += s == reference[i++] ? 0 : 1;
   int backwards = 0;
   for (auto it = list.end(); it != list.begin();)
@@ -63,15 +63,15 @@ int main()
     --it;
     ++backwards;
   }
-  bool anchorKept = *anchor == String("anchor that stays where it is");
+  bool anchorKept = *anchor == std::String("anchor that stays where it is");
 
   // Stable sort by the first digit only; elements keep their addresses.
-  List<int> numbers = {35, 12, 31, 17, 22, 19, 38};
+  std::List<int> numbers = {35, 12, 31, 17, 22, 19, 38};
   int* thirtyFive = &numbers.front();
   numbers.sort([](int a, int b) { return a / 10 < b / 10; });
   for (int n : numbers)
     printf("%d ", n);
-  List<int> more = {11, 20, 33};
+  std::List<int> more = {11, 20, 33};
   numbers.sort();
   numbers.merge(more);
   numbers.push_back(38);
@@ -80,13 +80,13 @@ int main()
   numbers.reverse();
   for (int n : numbers)
     printf("%d ", n);
-  List<int> spliced = {1, 2};
-  List<int> source = {3, 4, 5};
+  std::List<int> spliced = {1, 2};
+  std::List<int> source = {3, 4, 5};
   spliced.splice(spliced.end(), source, ++source.begin());
   spliced.splice(spliced.begin(), source);
   for (int n : spliced)
     printf("%d ", n);
-  List<int> movedList = move(spliced);
+  std::List<int> movedList = std::move(spliced);
   printf("| %d %d %d %d %d %zu %zu %zu\n", errors, list.size() == reference.size() ? 1 : 0, backwards == list.size() ? 1 : 0, anchorKept ? 1 : 0,
          *thirtyFive, source.size(), spliced.size(), movedList.size());
   return 0;

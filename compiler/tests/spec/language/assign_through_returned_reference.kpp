@@ -5,6 +5,6 @@ int main()
   int x = 1, y = 2;
   pick(x, y, false) = 20;
   pick(x, y, true) += 5;
-  println(x, " ", y);
+  std::println(x, " ", y);
   return 0;
 }

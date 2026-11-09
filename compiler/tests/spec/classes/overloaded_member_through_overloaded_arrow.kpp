@@ -33,11 +33,11 @@ int main()
   w->set(3, true);
   int six = w->count;
   w->reset();
-  OnHeap<Bitset<64>> bits;
+  OnHeap<std::Bitset<64>> bits;
   bits->set(5);
   bits->set(7);
   int set = int(bits->count());
   bits->reset();
-  println(four, " ", six, " ", w->count, " ", set, " ", int(bits->count()));
+  std::println(four, " ", six, " ", w->count, " ", set, " ", int(bits->count()));
   return 0;
 }

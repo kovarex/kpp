@@ -27,7 +27,7 @@ int sizeOfBraces(const T& value)
 }
 int main()
 {
-  Vector<int> v = {1, 2, 3};
-  println(sizeOf(v), " ", sizeOf(2.5), " ", sizeOfBraces(v), " ", sizeOfBraces(2.5), " ", HasSize<char>::value);
+  std::Vector<int> v = {1, 2, 3};
+  std::println(sizeOf(v), " ", sizeOf(2.5), " ", sizeOfBraces(v), " ", sizeOfBraces(2.5), " ", HasSize<char>::value);
   return 0;
 }

@@ -5,8 +5,8 @@ struct Box
 {
   T value;
   Box(T v) : value(v) {}
-  void* operator new(size_t size) { println("box new ", size); return malloc(size); }
-  void operator delete(void* p, size_t size) { println("box delete ", size); free(p); }
+  void* operator new(size_t size) { std::println("box new ", size); return std::malloc(size); }
+  void operator delete(void* p, size_t size) { std::println("box delete ", size); std::free(p); }
 };
 template<typename T>
 T* make(T v) { return new T(v); }
@@ -14,7 +14,7 @@ int main()
 {
   Box<int>* a = new Box<int>(1);
   Box<double>* b = make(Box<double>(2.5));
-  println(a->value, " ", b->value);
+  std::println(a->value, " ", b->value);
   delete a;
   delete b;
   auto f = [] { return new Box<char>('x'); };

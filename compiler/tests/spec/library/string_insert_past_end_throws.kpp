@@ -1,27 +1,27 @@
 // spec: String::insert at an index past the end throws OutOfRange and leaves the string as it was, as std::string::insert throws out_of_range when index > size(); inserting at size() appends (`abcX / insert: String::insert: index out of range, abc / fill: String::insert: index out of range, abc`)
 int main()
 {
-  String s("abc");
-  String t = s;
+  std::String s("abc");
+  std::String t = s;
   t.insert(3, "X");
-  print(t, " / ");
+  std::print(t, " / ");
   try
   {
     s.insert(4, "X");
-    print("inserted ", s, " / ");
+    std::print("inserted ", s, " / ");
   }
-  catch (const OutOfRange& e)
+  catch (const std::OutOfRange& e)
   {
-    print("insert: ", StringView(e.what()), ", ", s, " / ");
+    std::print("insert: ", std::StringView(e.what()), ", ", s, " / ");
   }
   try
   {
     s.insert(9, 2, '-');
-    println("inserted ", s);
+    std::println("inserted ", s);
   }
-  catch (const OutOfRange& e)
+  catch (const std::OutOfRange& e)
   {
-    println("fill: ", StringView(e.what()), ", ", s);
+    std::println("fill: ", std::StringView(e.what()), ", ", s);
   }
   return 0;
 }

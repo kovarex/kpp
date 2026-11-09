@@ -9,7 +9,7 @@ template<typename T>
 struct Slot
 {
   template<typename U>
-  void set(U&& v) { this.item = new T(forward<U>(v)); }
+  void set(U&& v) { this.item = new T(std::forward<U>(v)); }
   T* item = nullptr;
 };
 int main()
@@ -17,12 +17,12 @@ int main()
   i32 n = -1;
   Box* box = new Box(n);
   u64 count = 3;
-  Vector<bool>* flags = new Vector<bool>(count);
+  std::Vector<bool>* flags = new std::Vector<bool>(count);
   Slot<u32> slot;
   slot.set(n);
   Slot<bool> on;
   on.set(7);
-  println(box->v, " ", *slot.item == box->v ? 1 : 0, " ", flags->size(), " ", *on.item ? 1 : 0, " ", 7);
+  std::println(box->v, " ", *slot.item == box->v ? 1 : 0, " ", flags->size(), " ", *on.item ? 1 : 0, " ", 7);
   delete box;
   delete flags;
   delete slot.item;

@@ -3,19 +3,19 @@ extern "C" import "stdio.h";
 struct Digit
 {
   int d = 0;
-  void appendTo(String& out) const { out << char('0' + this.d); }
+  void appendTo(std::String& out) const { out << char('0' + this.d); }
 };
-void show(Text text)
+void show(std::Text text)
 {
-  String s;
+  std::String s;
   text.appendTo(s);
   printf("[%s]", s.c_str());
 }
 template<typename F>
 void call(F f) { f(); }
-void each(Text text)
+void each(std::Text text)
 {
-  Text copy = text;
+  std::Text copy = text;
   auto twice = [&] { show(copy); show(text); };
   twice();
   call([=] { show(text); });

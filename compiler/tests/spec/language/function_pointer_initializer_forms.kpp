@@ -11,8 +11,8 @@ int main()
   int (*d)(int) = {twice};
   int (*e)(int) = nullptr, (*f)(int) = twice;
   S s;
-  println(a == nullptr, " ", b(1), " ", c(2), " ", d(3), " ", e == nullptr, " ", f(4), " ", s.m == nullptr, " ", s.n(5), " ", g0 == nullptr);
+  std::println(a == nullptr, " ", b(1), " ", c(2), " ", d(3), " ", e == nullptr, " ", f(4), " ", s.m == nullptr, " ", s.n(5), " ", g0 == nullptr);
   auto (*t)(int) -> int = twice;
-  println(t(6));
+  std::println(t(6));
   return 0;
 }

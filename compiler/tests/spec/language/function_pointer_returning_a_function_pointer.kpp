@@ -7,11 +7,11 @@ int (*(*chooser)(bool))(int) = pick;
 int (*(*chooser2(int))(bool))(int) { return pick; }
 int main()
 {
-  println(chooser(true)(4), " ", chooser(false)(4));
-  println(chooser2(1)(false)(5));
+  std::println(chooser(true)(4), " ", chooser(false)(4));
+  std::println(chooser2(1)(false)(5));
   int (*(*local)(bool))(int) = pick;
-  println(local(true)(6));
+  std::println(local(true)(6));
   int (*(**lp)(bool))(int) = &local;
-  println((*lp)(false)(6));
+  std::println((*lp)(false)(6));
   return 0;
 }

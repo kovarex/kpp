@@ -48,6 +48,6 @@ int main()
   Box<Probe> box;
   Probe probe;
   fetchInto(probe);
-  println(v, " ", kept, " ", box.refresh());
+  std::println(v, " ", kept, " ", box.refresh());
   return 0;
 }

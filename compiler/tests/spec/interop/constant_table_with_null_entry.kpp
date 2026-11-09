@@ -13,9 +13,9 @@ int main()
   for (const Reg* r = loadedlibs; r->open; ++r)
   {
     if (r != loadedlibs)
-      print(" ");
-    print(StringView(r->name), " ", r->open(1));
+      std::print(" ");
+    std::print(std::StringView(r->name), " ", r->open(1));
   }
-  println();
+  std::println();
   return 0;
 }

@@ -34,13 +34,13 @@ int Migration::load(int count)
         sum += connection.side;
       return sum;
     }
-    Vector<PowerSwitchConnection> connections;
+    std::Vector<PowerSwitchConnection> connections;
   };
   ConnectorMigration m(count);
   return m.setup();
 }
 int main()
 {
-  println(Migration::load(4));
+  std::println(Migration::load(4));
   return 0;
 }

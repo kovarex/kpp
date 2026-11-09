@@ -3,7 +3,7 @@
 extern "C" int printf(const char* format, ...);
 int main()
 {
-  printf("%d %d %u %lld\n", Limits<int>::max(), Limits<int>::min(), Limits<unsigned>::max(), Limits<long long>::max());
-  printf("%d %.1f %.1f %.1f %.1f %.1f %d %d\n", ::abs(-3), ::abs(-2.5), ::sqrt(16.0), ::floor(2.7), ::ceil(2.1), ::pow(2.0, 10.0), ::isnan(0.0 / 0.0), ::isinf(1.0 / 0.0));
+  printf("%d %d %u %lld\n", std::Limits<int>::max(), std::Limits<int>::min(), std::Limits<unsigned>::max(), std::Limits<long long>::max());
+  printf("%d %.1f %.1f %.1f %.1f %.1f %d %d\n", std::abs(-3), std::abs(-2.5), std::sqrt(16.0), std::floor(2.7), std::ceil(2.1), std::pow(2.0, 10.0), std::isnan(0.0 / 0.0), std::isinf(1.0 / 0.0));
   return 0;
 }

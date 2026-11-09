@@ -22,6 +22,6 @@ int main()
   G<5>::type c = 1;
   G<0> g;
   D<3> d;
-  println(sizeof(a), " ", sizeof(b), " ", sizeof(c), " ", G<0>::k, " ", D<3>::k, " ", G<5>::k, " ", kOf<G<0>>(), " ", g.f(), " ", d.f());
+  std::println(sizeof(a), " ", sizeof(b), " ", sizeof(c), " ", G<0>::k, " ", D<3>::k, " ", G<5>::k, " ", kOf<G<0>>(), " ", g.f(), " ", d.f());
   return 0;
 }

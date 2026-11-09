@@ -4,10 +4,10 @@ const char* which(int&) { return "mutable"; }
 const char* which(const int&) { return "const"; }
 int main()
 {
-  Array<int, 3> a = {1, 2, 3};
-  const Array<int, 3>& c = a;
+  std::Array<int, 3> a = {1, 2, 3};
+  const std::Array<int, 3>& c = a;
   a.front() = 10;
   a.back() = 30;
-  println(StringView(which(c.front())), " ", StringView(which(c.back())), " ", StringView(which(a.front())), " ", StringView(which(a.back())), " ", c.front(), " ", c.back());
+  std::println(std::StringView(which(c.front())), " ", std::StringView(which(c.back())), " ", std::StringView(which(a.front())), " ", std::StringView(which(a.back())), " ", c.front(), " ", c.back());
   return 0;
 }

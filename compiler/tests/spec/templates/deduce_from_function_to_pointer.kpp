@@ -4,10 +4,10 @@ enum class Counter { Total, Same };
 struct Widgets
 {
   int sum = 0;
-  template<class T, class StringType> requires isEnum<T>
-  void add(const T& value, const String& name, StringType (*toString)(T))
+  template<class T, class StringType> requires std::isEnum<T>
+  void add(const T& value, const std::String& name, StringType (*toString)(T))
   {
-    this.sum += int(String(toString(value)).size()) + int(name.size());
+    this.sum += int(std::String(toString(value)).size()) + int(name.size());
   }
 };
 struct Beacon
@@ -25,6 +25,6 @@ struct Beacon
 int main()
 {
   Beacon b;
-  println(b.describe());
+  std::println(b.describe());
   return 0;
 }

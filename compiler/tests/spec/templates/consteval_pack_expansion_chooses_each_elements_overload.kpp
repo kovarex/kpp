@@ -13,7 +13,7 @@ struct Sink
   template<typename... Args>
   constexpr int all(Args&&... args)
   {
-    (this.put(forward<Args>(args)), ...);
+    (this.put(std::forward<Args>(args)), ...);
     return this.digits;
   }
 };
@@ -30,7 +30,7 @@ template<typename... Args>
 constexpr int functions(Args&&... args)
 {
   int digits = 0;
-  ((digits = digits * 10 + code(forward<Args>(args))), ...);
+  ((digits = digits * 10 + code(std::forward<Args>(args))), ...);
   return digits;
 }
 
@@ -38,7 +38,7 @@ template<typename... Args>
 constexpr int members(Args&&... args)
 {
   Sink s;
-  (s.put(forward<Args>(args)), ...);
+  (s.put(std::forward<Args>(args)), ...);
   return s.digits;
 }
 
@@ -46,29 +46,29 @@ template<typename... Args>
 constexpr int throughThis(Args&&... args)
 {
   Sink s;
-  return s.all(forward<Args>(args)...);
+  return s.all(std::forward<Args>(args)...);
 }
 
 template<typename... Args>
 constexpr int constructors(Args&&... args)
 {
   int digits = 0;
-  ((digits = digits * 10 + Tag(forward<Args>(args)).v), ...);
+  ((digits = digits * 10 + Tag(std::forward<Args>(args)).v), ...);
   return digits;
 }
 
 template<typename... Args>
-constexpr int forwarded(Args&&... args) { return functions(forward<Args>(args)...); }
+constexpr int forwarded(Args&&... args) { return functions(std::forward<Args>(args)...); }
 
 constexpr int run(int which)
 {
   int a = 1;
   const int c = 2;
-  return which == 0 ? functions(a, 3, c, move(a))
-       : which == 1 ? members(a, 3, c, move(a))
-       : which == 2 ? throughThis(a, 3, c, move(a))
-       : which == 3 ? constructors(a, 3, c, move(a))
-                    : forwarded(a, 3, c, move(a));
+  return which == 0 ? functions(a, 3, c, std::move(a))
+       : which == 1 ? members(a, 3, c, std::move(a))
+       : which == 2 ? throughThis(a, 3, c, std::move(a))
+       : which == 3 ? constructors(a, 3, c, std::move(a))
+                    : forwarded(a, 3, c, std::move(a));
 }
 
 static_assert(run(0) == 1323);
@@ -79,6 +79,6 @@ static_assert(run(4) == 1323);
 
 int main()
 {
-  println(run(0), " ", run(1), " ", run(2), " ", run(3), " ", run(4));
+  std::println(run(0), " ", run(1), " ", run(2), " ", run(3), " ", run(4));
   return 0;
 }

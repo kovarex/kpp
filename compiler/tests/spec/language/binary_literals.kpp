@@ -3,6 +3,6 @@ int main()
 {
   int bin = 0b1010;
   unsigned mask = 0b1111'0000u;
-  println(bin, " ", mask);
+  std::println(bin, " ", mask);
   return 0;
 }

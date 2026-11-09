@@ -40,12 +40,12 @@ extern "C" int checkKppCallables();
 
 int main()
 {
-  println(checkKppCallables());
+  std::println(checkKppCallables());
   S12 s12;
   s12.a = 1;
   s12.b = 2;
   s12.c = 3;
   D2 d2 = kppMakeD2(0.5);
-  println(kppTakeS12(s12), " ", int(kppTakeD2(d2) * 10), " ", int(kppMakeS3(4).c), " ", kppMakeS24(7).c);
+  std::println(kppTakeS12(s12), " ", int(kppTakeD2(d2) * 10), " ", int(kppMakeS3(4).c), " ", kppMakeS24(7).c);
   return 0;
 }

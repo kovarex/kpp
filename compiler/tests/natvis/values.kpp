@@ -9,56 +9,56 @@ struct Point
 
 union enum Property : uint8_t
 {
-  { {int, Integer}, {double, Real}, {String, Text} }
+  { {int, Integer}, {double, Real}, {std::String, Text} }
 };
 
 int main()
 {
-  Vector<int> numbers;
+  std::Vector<int> numbers;
   numbers.push_back(2);
   numbers.push_back(3);
-  String small = "kpp";
-  String large = "a string longer than thirty characters, on the heap";
-  StringView view = large;
-  HashMap<String, int> ages;
+  std::String small = "kpp";
+  std::String large = "a string longer than thirty characters, on the heap";
+  std::StringView view = large;
+  std::HashMap<std::String, int> ages;
   ages["ada"] = 36;
   ages["alan"] = 41;
-  HashSet<int> seen;
+  std::HashSet<int> seen;
   seen.insert(7);
-  Optional<int> some = 5;
-  Optional<int> none;
-  Point^ point = makeUnique<Point>(); // (UniquePtr<Point>, named Point^ in the PDB)
+  std::Optional<int> some = 5;
+  std::Optional<int> none;
+  Point^ point = std::makeUnique<Point>(); // (UniquePtr<Point>, named Point^ in the PDB)
   point->x = 4;
   Property count;
   count[Property::Integer] = 12;
   Property name;
-  name[Property::Text] = String("gear");
-  Deque<int> queue;
+  name[Property::Text] = std::String("gear");
+  std::Deque<int> queue;
   for (int i = 0; i < 20; ++i)
     queue.push_back(i);
   for (int i = 1; i <= 20; ++i)
     queue.push_front(-i);
-  List<String> words;
+  std::List<std::String> words;
   words.push_back("cog");
   words.push_front("belt");
-  ForwardList<int> stack;
+  std::ForwardList<int> stack;
   stack.push_front(8);
   stack.push_front(9);
-  Map<String, int> heights;
+  std::Map<std::String, int> heights;
   heights["inserter"] = 3;
   heights["chest"] = 1;
   heights["assembler"] = 2;
-  HashMap<int, Vector<int>> groups; // (an entry type ending in >>)
+  std::HashMap<int, std::Vector<int>> groups; // (an entry type ending in >>)
   groups[1].push_back(5);
-  Set<int> ids;
+  std::Set<int> ids;
   ids.insert(30);
   ids.insert(10);
   ids.insert(20);
-  SharedPtr<Point> shared = makeShared<Point>();
+  std::SharedPtr<Point> shared = std::makeShared<Point>();
   shared->y = 6;
-  SharedPtr<Point> again = shared;
-  WeakPtr<Point> weak = shared;
-  println(numbers.size(), " ", small, " ", view.size(), " ", ages.size(), " ", seen.size(), " ", *some, " ", none.has_value(), " ", point->x, " ",
+  std::SharedPtr<Point> again = shared;
+  std::WeakPtr<Point> weak = shared;
+  std::println(numbers.size(), " ", small, " ", view.size(), " ", ages.size(), " ", seen.size(), " ", *some, " ", none.has_value(), " ", point->x, " ",
           count[Property::Integer], " ", name[Property::Text], " ", queue.size(), " ", queue[0], " ", words.size(), " ", stack.front(), " ",
           heights.size(), " ", groups.size(), " ", ids.size(), " ", again.use_count(), " ", weak.expired(), " ", shared->y);
   return 0;

@@ -8,12 +8,12 @@ struct NoDefault
 template<int C>
 struct Expression
 {
-  Array<NoDefault, C> constants;
+  std::Array<NoDefault, C> constants;
 };
 int main()
 {
   Expression<0> e;
-  Array<int, 0> a, b;
+  std::Array<int, 0> a, b;
   int visited = 0;
   for (NoDefault& c : e.constants)
     visited += c.v;
@@ -22,10 +22,10 @@ int main()
   {
     a.at(0);
   }
-  catch (const OutOfRange&)
+  catch (const std::OutOfRange&)
   {
     threw = true;
   }
-  println(e.constants.size(), " ", a.empty(), " ", a.begin() == a.end(), " ", visited, " ", threw, " ", a == b);
+  std::println(e.constants.size(), " ", a.empty(), " ", a.begin() == a.end(), " ", visited, " ", threw, " ", a == b);
   return 0;
 }

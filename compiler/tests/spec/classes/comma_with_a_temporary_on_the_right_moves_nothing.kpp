@@ -31,11 +31,11 @@ int main()
 {
   {
     Counted result = counted(1);
-    println(result.value);
+    std::println(result.value);
   }
-  println(Counted::moved, " moved, ", Counted::destroyed, " destroyed");
+  std::println(Counted::moved, " moved, ", Counted::destroyed, " destroyed");
   Pinned result = pinned(1);
-  println(result.value);
+  std::println(result.value);
   {
     int side = 1;
     Counted local = (side, Counted(6));
@@ -43,9 +43,9 @@ int main()
     Counted chosen = side ? (side, Counted(8)) : Counted(9);
     auto lambda = (side, [kept = Counted(10)] { return kept.value; });
     Counted* made = new Counted((side, Counted(11)));
-    println(local.value, " ", holder.counted.value, " ", chosen.value, " ", lambda(), " ", made->value);
+    std::println(local.value, " ", holder.counted.value, " ", chosen.value, " ", lambda(), " ", made->value);
     delete made;
   }
-  println(Counted::moved, " moved, ", Counted::destroyed, " destroyed");
+  std::println(Counted::moved, " moved, ", Counted::destroyed, " destroyed");
   return 0;
 }

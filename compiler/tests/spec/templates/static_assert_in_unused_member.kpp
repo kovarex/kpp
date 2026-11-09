@@ -3,7 +3,7 @@
 template<class T>
 T parse(int raw)
 {
-  static_assert(isArithmetic<T>, "parse needs a number");
+  static_assert(std::isArithmetic<T>, "parse needs a number");
   return T(raw);
 }
 struct Point
@@ -15,7 +15,7 @@ template<class T>
 struct Holder
 {
   T value;
-  void save() const { static_assert(!isClass<T>, "only scalars are saved"); }
+  void save() const { static_assert(!std::isClass<T>, "only scalars are saved"); }
   static T fromRaw(int raw) { return parse<T>(raw); }
   int size() const { return int(sizeof(T)); }
 };
@@ -24,6 +24,6 @@ int main()
   Holder<Point> h{Point{3, 4}};
   Holder<int> n{parse<int>(5)};
   n.save();
-  println(h.value.y, " ", h.size(), " ", n.value);
+  std::println(h.value.y, " ", h.size(), " ", n.value);
   return 0;
 }

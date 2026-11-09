@@ -2,7 +2,7 @@
 // factorio: tests/TestNoiseProgram.cpp's `for (const auto& testCase : InitializerList<OperationTestCase<...>>{{...}, ...})` (and TestUpgradeItem.cpp), tests/TestPump.cpp's `const Vector<FluidID> fluids{ { FluidID("water"), FluidID("crude-oil"), FluidID("lubricant") } };`
 struct Case
 {
-  String name;
+  std::String name;
   int value = 0;
 };
 struct ID
@@ -14,16 +14,16 @@ struct ID
 int main()
 {
   int sum = 0;
-  String names;
-  for (const auto& c : InitializerList<Case>{{"a", 1}, {"bb", 20}, {"ccc", 300}})
+  std::String names;
+  for (const auto& c : std::InitializerList<Case>{{"a", 1}, {"bb", 20}, {"ccc", 300}})
   {
     sum += c.value;
     names << c.name;
   }
-  for (int n : InitializerList<int>{4})
+  for (int n : std::InitializerList<int>{4})
     sum += n;
-  const Vector<ID> ids{ { ID(1), ID(2), ID(3) } };
-  Vector<int> plain{ { 4, 5 } };
-  println(sum, " ", names, " ", int(ids.size()), " ", ids[2].value, " ", int(plain.size()));
+  const std::Vector<ID> ids{ { ID(1), ID(2), ID(3) } };
+  std::Vector<int> plain{ { 4, 5 } };
+  std::println(sum, " ", names, " ", int(ids.size()), " ", ids[2].value, " ", int(plain.size()));
   return 0;
 }

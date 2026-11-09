@@ -3,10 +3,10 @@
 extern "C" import "stdio.h";
 struct Serialiser
 {
-  String out;
+  std::String out;
   struct TagWriter
   {
-    TagWriter(Serialiser& serialiser, const char* tag) : tag(tag), serialiser(serialiser) { this.serialiser.out << format("<{}>", StringView(tag)); }
+    TagWriter(Serialiser& serialiser, const char* tag) : tag(tag), serialiser(serialiser) { this.serialiser.out << std::format("<{}>", std::StringView(tag)); }
     TagWriter(Serialiser& serialiser, const char* tag, const char* fmt, ...) : tag(tag), serialiser(serialiser)
     {
       char buffer[64];
@@ -14,9 +14,9 @@ struct Serialiser
       va_start(args, fmt);
       vsnprintf(buffer, sizeof(buffer), fmt, args);
       va_end(args);
-      this.serialiser.out << format("<{} {}>", StringView(tag), StringView(buffer));
+      this.serialiser.out << std::format("<{} {}>", std::StringView(tag), std::StringView(buffer));
     }
-    ~TagWriter() { this.serialiser.out << format("</{}>", StringView(this.tag)); }
+    ~TagWriter() { this.serialiser.out << std::format("</{}>", std::StringView(this.tag)); }
     const char* tag;
     Serialiser& serialiser;
   };
@@ -31,6 +31,6 @@ int main()
 {
   Serialiser output;
   save(output, 7);
-  println(output.out);
+  std::println(output.out);
   return 0;
 }

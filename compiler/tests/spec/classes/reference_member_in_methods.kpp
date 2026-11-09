@@ -30,6 +30,6 @@ int main()
   two.firstRef() += 5;
   Two<int&, int> copy = two;
   copy.first += 1;
-  println(a, " ", ref.get(), " ", b, " ", two.second, " ", c, " ", copy.second);
+  std::println(a, " ", ref.get(), " ", b, " ", two.second, " ", c, " ", copy.second);
   return 0;
 }

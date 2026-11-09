@@ -3,7 +3,7 @@
 extern "C" import "stdio.h";
 struct Named
 {
-  String name;
+  std::String name;
 };
 struct Made
 {

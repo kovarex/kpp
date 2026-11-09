@@ -5,36 +5,36 @@ int alive = 0;
 struct UNode
 {
   int v;
-  UniquePtr<UNode> next;
+  std::UniquePtr<UNode> next;
   UNode(int x) : v(x) { ++alive; }
   ~UNode() { --alive; }
 };
 struct SNode
 {
   int v;
-  SharedPtr<SNode> next;
+  std::SharedPtr<SNode> next;
   SNode(int x) : v(x) { ++alive; }
   ~SNode() { --alive; }
 };
 int main()
 {
   {
-    UniquePtr<UNode> head = makeUnique<UNode>(1);
-    head->next = makeUnique<UNode>(2);
-    head->next->next = makeUnique<UNode>(3);
-    head = move(head->next);
+    std::UniquePtr<UNode> head = std::makeUnique<UNode>(1);
+    head->next = std::makeUnique<UNode>(2);
+    head->next->next = std::makeUnique<UNode>(3);
+    head = std::move(head->next);
     printf("%d %d %d,", alive, head->v, head->next->v);
   }
   {
-    SharedPtr<SNode> head = makeShared<SNode>(1);
-    head->next = makeShared<SNode>(2);
-    head->next->next = makeShared<SNode>(3);
+    std::SharedPtr<SNode> head = std::makeShared<SNode>(1);
+    head->next = std::makeShared<SNode>(2);
+    head->next->next = std::makeShared<SNode>(3);
     head = head->next;
     printf(" %d %d %d %d,", alive, head->v, head->next->v, (int)head.use_count());
-    head = move(head->next);
+    head = std::move(head->next);
     printf(" %d %d %d,", alive, head->v, (int)head.use_count());
-    WeakPtr<SNode> weak = head;
-    head->next = makeShared<SNode>(4);
+    std::WeakPtr<SNode> weak = head;
+    head->next = std::makeShared<SNode>(4);
     weak = head->next;
     head = weak.lock();
     printf(" %d %d %d\n", alive, head->v, (int)weak.use_count());

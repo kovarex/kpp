@@ -12,7 +12,7 @@ class Container
   constexpr static TypeID typeIndex() { return 0; }
 
   template <class TypeToFind, class Head, class... Tail>
-  constexpr static TypeID typeIndex() { return isSame<TypeToFind, Head> ? TypeID(sizeof...(Tail) + 1) : Container::typeIndex<TypeToFind, Tail...>(); }
+  constexpr static TypeID typeIndex() { return std::isSame<TypeToFind, Head> ? TypeID(sizeof...(Tail) + 1) : Container::typeIndex<TypeToFind, Tail...>(); }
 
 public:
   template <class T>
@@ -26,6 +26,6 @@ public:
 int main()
 {
   Container<A, B, C> c;
-  println(c.get<A>(), " ", c.get<B>(), " ", c.get<C>());
+  std::println(c.get<A>(), " ", c.get<B>(), " ", c.get<C>());
   return 0;
 }

@@ -2,7 +2,7 @@
 // found in the converted game: FlowDataFrame::buildTable, GuiContext::getShouldShowItem, Pin::makeCamera, Factoriopedia and others ("a by-reference init-capture", 12 closures)
 struct Context
 {
-  Vector<int> shown;
+  std::Vector<int> shown;
   int threshold = 2;
   auto filter() const
   {
@@ -19,6 +19,6 @@ int main()
   bump(3);
   bump(4);
   c.threshold = 5;
-  println(f(3), " ", f(6), " ", counter);
+  std::println(f(3), " ", f(6), " ", counter);
   return 0;
 }

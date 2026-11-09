@@ -5,7 +5,7 @@ class Prototype
 {
 public:
   using IDType = IDTypeParameter;
-  static constexpr IDType::IndexType limit = Limits<IDType::IndexType>::max();
+  static constexpr IDType::IndexType limit = std::Limits<IDType::IndexType>::max();
   static int instances;
 };
 template<class IDTypeParameter>
@@ -19,6 +19,6 @@ int limitOf() { return int(PrototypeType::limit) + PrototypeType::instances; }
 int main()
 {
   Item::instances = 10;
-  println(int(Layer::limit), " ", int(Item::limit), " ", limitOf<Layer>(), " ", limitOf<Item>());
+  std::println(int(Layer::limit), " ", int(Item::limit), " ", limitOf<Layer>(), " ", limitOf<Item>());
   return 0;
 }

@@ -12,7 +12,7 @@ constexpr int length(const char* name)
 {
   if (name[0])
     return 1;
-  throw LogicError(String("an empty name"));
+  throw std::LogicError(std::String("an empty name"));
 }
 static_assert(digit(12) == 12);
 static_assert(length("") == 1);

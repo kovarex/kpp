@@ -32,6 +32,6 @@ int main()
   Derived der;
   der.bits = 8;
   Derived derCopy = der;
-  println(f.bits, " ", t.value, " ", s.b, " ", d.v, " ", int(last - first), " ", copy.bits, " ", derCopy.bits, " ", derCopy.more);
+  std::println(f.bits, " ", t.value, " ", s.b, " ", d.v, " ", int(last - first), " ", copy.bits, " ", derCopy.bits, " ", derCopy.more);
   return 0;
 }

@@ -7,13 +7,13 @@ void hello(int& x)
 int main()
 {
   bool on = false;
-  Function<void(int&)> f = on ? hello : nullptr;
+  std::Function<void(int&)> f = on ? hello : nullptr;
   void (*p)(int&) = nullptr;
-  Function<void(int&)> g = p;
-  Function<void(int&)> h = hello;
+  std::Function<void(int&)> g = p;
+  std::Function<void(int&)> h = hello;
   int x = 0;
   if (h)
     h(x);
-  println(bool(f), " ", bool(g), " ", bool(h), " ", x);
+  std::println(bool(f), " ", bool(g), " ", bool(h), " ", x);
   return 0;
 }

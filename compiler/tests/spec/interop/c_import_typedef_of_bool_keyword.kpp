@@ -6,6 +6,6 @@ int main()
 {
   const bool* flags = bool_flags();
   bool second = bool_flag(1);
-  println(flags[0], " ", flags[1], " ", flags[2], " ", second, " ", sizeof(flags[0]));
+  std::println(flags[0], " ", flags[1], " ", flags[2], " ", second, " ", sizeof(flags[0]));
   return 0;
 }

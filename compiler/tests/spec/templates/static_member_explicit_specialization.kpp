@@ -11,7 +11,7 @@ public:
   public:
     uint32_t historySize(uint32_t interval) const
     {
-      return uint32_t(300 + Stats<T, Tag>::smoothingTicks / sqrt(double(interval)));
+      return uint32_t(300 + Stats<T, Tag>::smoothingTicks / std::sqrt(double(interval)));
     }
   };
 };
@@ -28,6 +28,6 @@ int main()
   Electric::Precision electric;
   Items i;
   Electric e;
-  println(Items::smoothingTicks, " ", Electric::smoothingTicks, " ", items.historySize(1), " ", electric.historySize(1), " | ", i.ticks(), " ", e.ticks(), " | ", twice);
+  std::println(Items::smoothingTicks, " ", Electric::smoothingTicks, " ", items.historySize(1), " ", electric.historySize(1), " | ", i.ticks(), " ", e.ticks(), " | ", twice);
   return 0;
 }

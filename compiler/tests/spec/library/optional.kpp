@@ -3,22 +3,22 @@
 struct Built
 {
   int a;
-  String b;
+  std::String b;
   Built(int a, const char* b) : a(a), b(b) {}
 };
-Optional<int> parse(const char* s) { return s[0] == 'x' ? Optional<int>() : Optional<int>(s[0] - '0'); }
+std::Optional<int> parse(const char* s) { return s[0] == 'x' ? std::Optional<int>() : std::Optional<int>(s[0] - '0'); }
 int main()
 {
-  Optional<int> a = parse("7"), b = parse("x");
-  Optional<String> name;
-  name = String("n");
+  std::Optional<int> a = parse("7"), b = parse("x");
+  std::Optional<std::String> name;
+  name = std::String("n");
   int sum = a.valueOr(0) + b.valueOr(100);
   if (a)
     sum += *a;
-  bool cleared = (b = nullopt, !b.hasValue());
-  println(a.hasValue(), " ", b.hasValue(), " ", sum, " ", name->size(), " ", a == 7, " ", cleared, " ", name.value());
-  Optional<Built> built = makeOptional<Built>(3, "x");
-  Optional<int> seven = makeOptional(7);
-  println(built->a, " ", built->b, " ", *seven, " ", *makeOptional<uint32_t>(5000000000ll / 10));
+  bool cleared = (b = std::nullopt, !b.hasValue());
+  std::println(a.hasValue(), " ", b.hasValue(), " ", sum, " ", name->size(), " ", a == 7, " ", cleared, " ", name.value());
+  std::Optional<Built> built = std::makeOptional<Built>(3, "x");
+  std::Optional<int> seven = std::makeOptional(7);
+  std::println(built->a, " ", built->b, " ", *seven, " ", *std::makeOptional<uint32_t>(5000000000ll / 10));
   return 0;
 }

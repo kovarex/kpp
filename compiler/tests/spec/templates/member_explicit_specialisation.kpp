@@ -36,7 +36,7 @@ int main()
   Button<ItemID> item;
   Button<RecipeID> recipe;
   Widget* widgets[2] = {&item, &recipe};
-  println(StringView(widgets[0]->tooltip()), " ", StringView(widgets[1]->tooltip()));
-  println(item.describe(), " ", recipe.describe());
+  std::println(std::StringView(widgets[0]->tooltip()), " ", std::StringView(widgets[1]->tooltip()));
+  std::println(item.describe(), " ", recipe.describe());
   return 0;
 }

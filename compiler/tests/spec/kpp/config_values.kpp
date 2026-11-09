@@ -2,6 +2,6 @@
 // the suite builds without flags, so config::debug is true and the platform is Windows
 int main()
 {
-  println(config::debug, " ", config::platform == Platform::Windows);
+  std::println(config::debug, " ", config::platform == Platform::Windows);
   return 0;
 }

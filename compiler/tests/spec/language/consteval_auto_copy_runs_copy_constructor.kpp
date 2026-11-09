@@ -24,7 +24,7 @@ constexpr int viaAutoRef()
 constexpr int viaPair()
 {
   int c = 0;
-  Pair<int, Counted> p(1, Counted(&c, 1));
+  std::Pair<int, Counted> p(1, Counted(&c, 1));
   int before = c;
   auto q = p;
   return (c - before) * 1000 + q.second.v;
@@ -32,7 +32,7 @@ constexpr int viaPair()
 
 constexpr int strings()
 {
-  Pair<int, String> p(1, "ab");
+  std::Pair<int, std::String> p(1, "ab");
   auto q = p;
   q.second << "c";
   return int(p.second.size()) * 10 + int(q.second.size());
@@ -46,7 +46,7 @@ constexpr int a5 = strings();
 
 int main()
 {
-  println(a1, " ", a2, " ", a3, " ", a4, " ", a5, " /");
-  println(viaAuto(), " ", viaTyped(), " ", viaAutoRef(), " ", viaPair(), " ", strings());
+  std::println(a1, " ", a2, " ", a3, " ", a4, " ", a5, " /");
+  std::println(viaAuto(), " ", viaTyped(), " ", viaAutoRef(), " ", viaPair(), " ", strings());
   return 0;
 }

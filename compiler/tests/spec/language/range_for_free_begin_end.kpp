@@ -10,10 +10,10 @@ template<typename T>
 Backwards<T> backwards(T& iterable) { return Backwards<T>{&iterable}; }
 int main()
 {
-  Vector<int> v = {1, 2, 3};
-  String order;
+  std::Vector<int> v = {1, 2, 3};
+  std::String order;
   for (int x : backwards(v))
-    order << toString(x);
-  println(order);
+    order << std::toString(x);
+  std::println(order);
   return 0;
 }

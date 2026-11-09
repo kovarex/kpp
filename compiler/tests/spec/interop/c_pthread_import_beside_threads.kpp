@@ -3,22 +3,22 @@
 // target: linux (glibc's pthread.h)
 extern "C" import "pthread.h";
 
-Mutex mutex;
-ConditionVariable ready;
-SharedMutex shared;
+std::Mutex mutex;
+std::ConditionVariable ready;
+std::SharedMutex shared;
 int counter = 0;
 bool started = false;
 
 void work(int times)
 {
   {
-    UniqueLock<Mutex> lock(mutex);
+    std::UniqueLock<std::Mutex> lock(mutex);
     started = true;
     ready.notifyAll();
   }
   for (int i = 0; i < times; ++i)
   {
-    LockGuard<Mutex> lock(mutex);
+    std::LockGuard<std::Mutex> lock(mutex);
     ++counter;
   }
   shared.lockShared();
@@ -32,16 +32,16 @@ int main()
   pthread_mutex_lock(&own);
   pthread_mutex_unlock(&own);
   pthread_mutex_destroy(&own);
-  Thread a(work, 1000);
+  std::Thread a(work, 1000);
   {
-    UniqueLock<Mutex> lock(mutex);
+    std::UniqueLock<std::Mutex> lock(mutex);
     ready.wait(lock, []() { return started; });
   }
-  Thread b(work, 1000);
-  println(a.getId() != b.getId(), " ", a.getId() != thisThread::getId());
+  std::Thread b(work, 1000);
+  std::println(a.getId() != b.getId(), " ", a.getId() != std::thisThread::getId());
   a.join();
   b.join();
-  println(counter);
-  println(Thread::Id((unsigned long)pthread_self()) == thisThread::getId());
+  std::println(counter);
+  std::println(std::Thread::Id((unsigned long)pthread_self()) == std::thisThread::getId());
   return 0;
 }

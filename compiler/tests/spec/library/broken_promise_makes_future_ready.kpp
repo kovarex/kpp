@@ -3,12 +3,12 @@
 extern "C" import "stdio.h";
 int main()
 {
-  Future<int> orphan;
+  std::Future<int> orphan;
   {
-    Promise<int> broken;
+    std::Promise<int> broken;
     orphan = broken.get_future();
   }
-  if (orphan.wait_for(Milliseconds(0)) != FutureStatus::ready)
+  if (orphan.wait_for(std::Milliseconds(0)) != std::FutureStatus::ready)
   {
     printf("not ready\n");
     return 0;

@@ -36,6 +36,6 @@ constexpr int chained()
 template<int N> struct Show { static constexpr int value = N; };
 int main()
 {
-  println(Show<source()>::value, " ", Show<self()>::value, " ", Show<chained()>::value);
+  std::println(Show<source()>::value, " ", Show<self()>::value, " ", Show<chained()>::value);
   return 0;
 }

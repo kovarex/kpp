@@ -31,7 +31,7 @@ struct B
   ~B() { --live; }
 };
 
-int total(InitializerList<B> items)
+int total(std::InitializerList<B> items)
 {
   int sum = 0;
   for (const B& x : items)
@@ -63,7 +63,7 @@ int main()
     fuse = f;
     try
     {
-      InitializerList<B> items = {a, b, c};
+      std::InitializerList<B> items = {a, b, c};
       int s = 0;
       for (const B& x : items)
         s += x.v;
@@ -81,7 +81,7 @@ int main()
     fuse = f;
     try
     {
-      Vector<B> built = {a, b, c};
+      std::Vector<B> built = {a, b, c};
       printf("constructor, fuse %d: size %d", f, (int)built.size());
     }
     catch (int e)

@@ -31,13 +31,13 @@ struct Reader
   {
     if (this.prototype->kind != T::Kind)
       return false;
-    println(static_cast<const T*>(this.prototype)->*member);
+    std::println(static_cast<const T*>(this.prototype)->*member);
     return true;
   }
 
   bool pushNil() const
   {
-    println("nil");
+    std::println("nil");
     return true;
   }
 
@@ -57,9 +57,9 @@ int main()
   Belt belt;
   Inserter inserter;
   Reader a{&belt}, b{&inserter};
-  println(a.get(&Belt::speed, &Inserter::speed));
+  std::println(a.get(&Belt::speed, &Inserter::speed));
   b.get(&Belt::speed, &Inserter::reach);
   b.get(&Belt::speed);
-  println(twice(21), " ", anyOf(4, [](int v) { return v > 3; }));
+  std::println(twice(21), " ", anyOf(4, [](int v) { return v > 3; }));
   return 0;
 }

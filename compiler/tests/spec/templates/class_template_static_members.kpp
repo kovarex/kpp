@@ -9,7 +9,7 @@ template<typename T> int Counted<T>::instances = 0;
 int main()
 {
   Counted<int> a, b;
-  Counted<String> c;
-  println(Counted<int>::instances, " ", Counted<String>::instances);
+  Counted<std::String> c;
+  std::println(Counted<int>::instances, " ", Counted<std::String>::instances);
   return 0;
 }

@@ -13,7 +13,7 @@ int main()
 {
   Target a = make();
   Source s;
-  Target b = move(s);
-  println(a.tag, " ", a.v, " ", b.tag, " ", b.v);
+  Target b = std::move(s);
+  std::println(a.tag, " ", a.v, " ", b.tag, " ", b.v);
   return 0;
 }

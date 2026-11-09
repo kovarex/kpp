@@ -4,8 +4,8 @@ class M
 {
 public:
   int id;
-  M(int i) : id(i) { print("M", this.id, " "); }
-  ~M() { print("~", this.id, " "); }
+  M(int i) : id(i) { std::print("M", this.id, " "); }
+  ~M() { std::print("~", this.id, " "); }
 };
 int forward(int k)
 {
@@ -14,10 +14,10 @@ int forward(int k)
     M b(2);
     if (k > 0)
       goto out;
-    print("not jumped ");
+    std::print("not jumped ");
   }
 out:
-  print("at out ");
+  std::print("at out ");
   return k;
 }
 int backOutOfBlock()
@@ -46,10 +46,10 @@ again:
 int main()
 {
   int f = forward(1);
-  println("| ", f);
+  std::println("| ", f);
   int b = backOutOfBlock();
-  println("| ", b);
+  std::println("| ", b);
   int w = backWithinScope();
-  println("| ", w);
+  std::println("| ", w);
   return 0;
 }

@@ -14,6 +14,6 @@ int main()
   Box<int> b{3, 4};
   int Box<int>::* local = &Box<int>::v;
   Two<int, Two<int, char>> t{5, {6, 'x'}};
-  println(read(b, local), " ", Box<int>::get(b, chosen), " ", t.*first);
+  std::println(read(b, local), " ", Box<int>::get(b, chosen), " ", t.*first);
   return 0;
 }

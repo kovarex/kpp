@@ -3,9 +3,9 @@
 struct Name
 {
   int n;
-  implicit Name(int v) : n(v) { println("name ", this.n); }
-  Name(const Name& o) : n(o.n + 100) { println("copy ", this.n); }
-  ~Name() { println("drop name ", this.n); }
+  implicit Name(int v) : n(v) { std::println("name ", this.n); }
+  Name(const Name& o) : n(o.n + 100) { std::println("copy ", this.n); }
+  ~Name() { std::println("drop name ", this.n); }
 };
 struct W { const Name& name; };
 struct A { const int (&r)[3]; };
@@ -14,25 +14,25 @@ int main()
 {
   {
     W w{5};
-    println("held ", w.name.n);
+    std::println("held ", w.name.n);
   }
-  println("value done");
+  std::println("value done");
   {
     W v{{6}};
-    println("held ", v.name.n);
+    std::println("held ", v.name.n);
   }
-  println("list done");
+  std::println("list done");
   Name kept(7);
   {
     P p{{kept}, 1};
-    println("held ", p.p.n, " same ", &p.p == &kept ? 1 : 0);
+    std::println("held ", p.p.n, " same ", &p.p == &kept ? 1 : 0);
   }
-  println("element done");
+  std::println("element done");
   const int arr[3] = {1, 2, 3};
   {
     A a{{arr}};
-    println("same array ", &a.r[0] == &arr[0] ? 1 : 0);
+    std::println("same array ", &a.r[0] == &arr[0] ? 1 : 0);
   }
-  println("end");
+  std::println("end");
   return 0;
 }

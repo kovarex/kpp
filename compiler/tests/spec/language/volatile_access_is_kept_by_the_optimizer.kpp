@@ -25,13 +25,13 @@ void awaitLoop(int loop)
   while (stage < loop)
   {
   }
-  thisThread::sleepFor(Milliseconds(50));
+  std::thisThread::sleepFor(std::Milliseconds(50));
 }
 int main()
 {
   volatile int* pointer = &pointed;
   volatile int& reference = referred;
-  Thread writer([]() {
+  std::Thread writer([]() {
     awaitLoop(1);
     named = 1;
     awaitLoop(2);

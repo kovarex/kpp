@@ -4,10 +4,10 @@ int main()
 {
   float a = 5.5f;
   float b = 2.0f;
-  auto r = fmod(a, b);
-  auto mixed = fmod(a, 2);
-  auto both = fmod(5.5, 2.0);
-  float next = nextafter(2147483520.0f, 3.0e38f);
-  println(sizeof(r), " ", r, " ", sizeof(mixed), " ", sizeof(both), " ", next == 2147483648.0f, " ", sizeof(nextafter(1.0, 2.0)));
+  auto r = std::fmod(a, b);
+  auto mixed = std::fmod(a, 2);
+  auto both = std::fmod(5.5, 2.0);
+  float next = std::nextafter(2147483520.0f, 3.0e38f);
+  std::println(sizeof(r), " ", r, " ", sizeof(mixed), " ", sizeof(both), " ", next == 2147483648.0f, " ", sizeof(std::nextafter(1.0, 2.0)));
   return 0;
 }

@@ -15,6 +15,6 @@ int main()
 {
   Registry a, b;
   Registry& i = Registry::instance();
-  println(Registry::created, " ", Registry::limit, " ", Registry::version, " ", a.id, " ", b.id, " ", i.id);
+  std::println(Registry::created, " ", Registry::limit, " ", Registry::version, " ", a.id, " ", b.id, " ", i.id);
   return 0;
 }

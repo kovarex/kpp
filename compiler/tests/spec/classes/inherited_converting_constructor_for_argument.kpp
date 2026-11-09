@@ -32,7 +32,7 @@ class Holder
 {
 public:
   Holder(SignalFilter filter, int count) : filter(filter), count(count) {}
-  Holder(StringView name, int count) : count(-1) {}
+  Holder(std::StringView name, int count) : count(-1) {}
   SignalFilter filter;
   int count;
 };
@@ -43,8 +43,8 @@ int main()
   base.value = 4;
   SignalFilter direct = SignalId(base, 1);
   Holder holder(SignalId(base, 2), 3);
-  Array<SignalFilter, 2> filters;
+  std::Array<SignalFilter, 2> filters;
   filters[1] = SignalId(base, 6);
-  println(direct.quality, " ", holder.filter.baseId.value, " ", holder.filter.quality, " ", holder.count, " ", quality(SignalId(base, 5)), " ", filters[1].quality);
+  std::println(direct.quality, " ", holder.filter.baseId.value, " ", holder.filter.quality, " ", holder.count, " ", quality(SignalId(base, 5)), " ", filters[1].quality);
   return 0;
 }

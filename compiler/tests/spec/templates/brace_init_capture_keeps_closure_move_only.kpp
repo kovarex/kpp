@@ -7,15 +7,15 @@ struct Instance
 struct Task
 {
   int done = 0;
-  void finish(UniquePtr<Instance> properties) { this.done = properties->value; }
+  void finish(std::UniquePtr<Instance> properties) { this.done = properties->value; }
   void start()
   {
-    auto properties = makeUnique<Instance>();
-    auto f = [&this, properties { move(properties) }]() mutable { this.finish(move(properties)); };
-    auto g = [&this, properties = makeUnique<Instance>()]() mutable { this.finish(move(properties)); };
-    print(isCopyConstructible<decltype(f)>, " ", isCopyConstructible<decltype(g)>, " ");
+    auto properties = std::makeUnique<Instance>();
+    auto f = [&this, properties { std::move(properties) }]() mutable { this.finish(std::move(properties)); };
+    auto g = [&this, properties = std::makeUnique<Instance>()]() mutable { this.finish(std::move(properties)); };
+    std::print(std::isCopyConstructible<decltype(f)>, " ", std::isCopyConstructible<decltype(g)>, " ");
     f();
-    println(this.done);
+    std::println(this.done);
   }
 };
 int main()

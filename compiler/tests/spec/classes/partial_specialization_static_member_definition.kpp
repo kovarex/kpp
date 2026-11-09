@@ -40,8 +40,8 @@ static_assert(Cap<int>::bits == 1 && Cap<double*>::bits == 80);
 int main()
 {
   Box<double>::made++;
-  println(Box<double>::made, " ", Box<char>::made, " ", Box<double*>::made, " ", Box<char*>::made);
-  println(Box<double>::size, " ", Box<char>::size, " ", Box<double*>::size, " ", Box<char*>::size);
-  println(Cap<int>::bits, " ", Cap<double*>::bits);
+  std::println(Box<double>::made, " ", Box<char>::made, " ", Box<double*>::made, " ", Box<char*>::made);
+  std::println(Box<double>::size, " ", Box<char>::size, " ", Box<double*>::size, " ", Box<char*>::size);
+  std::println(Cap<int>::bits, " ", Cap<double*>::bits);
   return 0;
 }

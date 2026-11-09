@@ -5,9 +5,9 @@ int main()
 {
   zlib::Stream s;
   s.feed(2);
-  println(zlib::compress(5), " ", compress(5), " ", s.total);
-  println(zlib::level, " ", int(zlib::Mode::best), " ", zlib::twice<int>(21));
-  println(zlib::withHelper(), " ", zlib::detail::depth(), " ", zlib::depthOf());
-  println(describe(s));
+  std::println(zlib::compress(5), " ", compress(5), " ", s.total);
+  std::println(zlib::level, " ", int(zlib::Mode::best), " ", zlib::twice<int>(21));
+  std::println(zlib::withHelper(), " ", zlib::detail::depth(), " ", zlib::depthOf());
+  std::println(describe(s));
   return 0;
 }

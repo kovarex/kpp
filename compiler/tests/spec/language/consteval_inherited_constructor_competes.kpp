@@ -15,6 +15,6 @@ static_assert(built.v == 50);
 int main()
 {
   int five = 5;
-  println(built.v, " ", Derived(five).v);
+  std::println(built.v, " ", Derived(five).v);
   return 0;
 }

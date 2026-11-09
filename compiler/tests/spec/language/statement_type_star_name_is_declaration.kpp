@@ -9,6 +9,6 @@ int main()
   Box * b;
   b = &box;
   Box * c = &box;
-  println(b->v, " ", c->v);
+  std::println(b->v, " ", c->v);
   return 0;
 }

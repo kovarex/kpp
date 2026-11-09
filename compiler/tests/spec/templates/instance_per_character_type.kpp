@@ -3,11 +3,11 @@
 extern "C" import "stdio.h";
 template <typename T> const char* which()
 {
-  if constexpr (isSame<T, wchar_t>)
+  if constexpr (std::isSame<T, wchar_t>)
     return "wchar_t";
-  else if constexpr (isSame<T, char16_t>)
+  else if constexpr (std::isSame<T, char16_t>)
     return "char16_t";
-  else if constexpr (isSame<T, char32_t>)
+  else if constexpr (std::isSame<T, char32_t>)
     return "char32_t";
   else
     return "other";

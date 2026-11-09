@@ -20,7 +20,7 @@ int Tracked::throwAt = 0;
 long long storage[16];
 
 template<typename F>
-void throwing(StringView name, F call)
+void throwing(std::StringView name, F call)
 {
   int before = Tracked::live;
   Tracked::ticks = 0;
@@ -28,11 +28,11 @@ void throwing(StringView name, F call)
   try
   {
     call();
-    println(name, " did not throw");
+    std::println(name, " did not throw");
   }
   catch (int)
   {
-    println(name, " left ", Tracked::live - before);
+    std::println(name, " left ", Tracked::live - before);
   }
   Tracked::throwAt = 0;
 }
@@ -41,9 +41,9 @@ int main()
 {
   Tracked source[4];
   Tracked* room = (Tracked*)storage;
-  throwing("copy", [&] { uninitializedCopy(source, source + 4, room); });
-  throwing("move", [&] { uninitializedMove(source, source + 4, room); });
-  throwing("default", [&] { uninitializedDefaultConstruct(room, room + 4); });
-  throwing("value", [&] { uninitializedValueConstruct(room, room + 4); });
+  throwing("copy", [&] { std::uninitializedCopy(source, source + 4, room); });
+  throwing("move", [&] { std::uninitializedMove(source, source + 4, room); });
+  throwing("default", [&] { std::uninitializedDefaultConstruct(room, room + 4); });
+  throwing("value", [&] { std::uninitializedValueConstruct(room, room + 4); });
   return 0;
 }

@@ -1,10 +1,10 @@
 // spec: RecursiveMutex (std::recursive_mutex): the owning thread locks it again without blocking, each lock needs an unlock, and another thread waits until the last one
 // factorio: the library's guarantee for converted code that re-enters a locked section (std::recursive_mutex)
-RecursiveMutex m;
+std::RecursiveMutex m;
 int depthSeen = 0;
 void nested(int level)
 {
-  LockGuard<RecursiveMutex> lock(m);
+  std::LockGuard<std::RecursiveMutex> lock(m);
   depthSeen = level;
   if (level < 3)
     nested(level + 1);
@@ -16,12 +16,12 @@ int main()
   bool again = m.tryLock();
   m.unlock();
   m.unlock();
-  Atomic<int> counter(0);
-  Vector<Thread> threads;
+  std::Atomic<int> counter(0);
+  std::Vector<std::Thread> threads;
   for (int i = 0; i < 4; ++i)
-    threads.emplace_back([&]() { for (int k = 0; k < 1000; ++k) { LockGuard<RecursiveMutex> outer(m); LockGuard<RecursiveMutex> inner(m); counter += 1; } });
-  for (Thread& t : threads)
+    threads.emplace_back([&]() { for (int k = 0; k < 1000; ++k) { std::LockGuard<std::RecursiveMutex> outer(m); std::LockGuard<std::RecursiveMutex> inner(m); counter += 1; } });
+  for (std::Thread& t : threads)
     t.join();
-  println(depthSeen, " ", again, " ", counter.load());
+  std::println(depthSeen, " ", again, " ", counter.load());
   return 0;
 }

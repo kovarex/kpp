@@ -2,6 +2,6 @@
 // factorio: LuaHelper's `printf("%*c{\n", depth, ' ')`, written alignRight(char(' '), depth) by the printf rewrite (design.md 14)
 int main()
 {
-  println("[", alignRight(7, -4), "] [", alignRight(7, 4), "] [", alignLeft("ab", -6, '.'), "] [", alignRight(' ', 3), "{]");
+  std::println("[", std::alignRight(7, -4), "] [", std::alignRight(7, 4), "] [", std::alignLeft("ab", -6, '.'), "] [", std::alignRight(' ', 3), "{]");
   return 0;
 }

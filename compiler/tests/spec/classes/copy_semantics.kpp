@@ -3,12 +3,12 @@ struct Tracker
 {
   static int copies;
   static int moves;
-  Vector<int> data;
+  std::Vector<int> data;
   Tracker() {}
   Tracker(const Tracker& o) : data(o.data) { ++Tracker::copies; }
-  Tracker(Tracker&& o) : data(::move(o.data)) { ++Tracker::moves; }
+  Tracker(Tracker&& o) : data(std::move(o.data)) { ++Tracker::moves; }
   Tracker& operator=(const Tracker& o) { this.data = o.data; ++Tracker::copies; return this; }
-  Tracker& operator=(Tracker&& o) { this.data = ::move(o.data); ++Tracker::moves; return this; }
+  Tracker& operator=(Tracker&& o) { this.data = std::move(o.data); ++Tracker::moves; return this; }
 };
 int Tracker::copies = 0;
 int Tracker::moves = 0;
@@ -19,9 +19,9 @@ int main()
   Tracker a = make();
   Tracker b = a;
   byValue(a);
-  byValue(::move(b));
-  Vector<Tracker> v;
-  v.push_back(::move(a));
-  println(Tracker::copies, " ", Tracker::moves >= 2, " ", v[0].data.size(), " ", a.data.size());
+  byValue(std::move(b));
+  std::Vector<Tracker> v;
+  v.push_back(std::move(a));
+  std::println(Tracker::copies, " ", Tracker::moves >= 2, " ", v[0].data.size(), " ", a.data.size());
   return 0;
 }

@@ -25,6 +25,6 @@ const char* name(Dimension dimension)
 }
 int main()
 {
-  println(StringView(name(Dimension::X)), " ", StringView(name(Dimension(Dimension::Y))));
+  std::println(std::StringView(name(Dimension::X)), " ", std::StringView(name(Dimension(Dimension::Y))));
   return 0;
 }

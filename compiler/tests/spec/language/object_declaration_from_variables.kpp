@@ -4,7 +4,7 @@ enum class Mode : uint8_t { Slow, Fast };
 struct Point { int x = 0; int y = 0; };
 constexpr int a = 5;
 constexpr Mode m = Mode::Fast;
-constexpr Pair<int, Mode> five{a, m}; // (braces at namespace scope: design.md 22)
+constexpr std::Pair<int, Mode> five{a, m}; // (braces at namespace scope: design.md 22)
 Point origin{a, a};
 Point makePoint(Point, Point);
 Point makePoint(Point first, Point second) { return Point{first.x + second.x, first.y + second.y}; }
@@ -12,6 +12,6 @@ static_assert(five.first == 5);
 int main()
 {
   Point p = makePoint(origin, origin);
-  println(five.first, " ", int(five.second), " ", origin.y, " ", p.x);
+  std::println(five.first, " ", int(five.second), " ", origin.y, " ", p.x);
   return 0;
 }

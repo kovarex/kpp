@@ -14,7 +14,7 @@ namespace Tools
 int main()
 {
   Gauge g;
-  println(LIMIT, " ", describe(), " ", sizeof(Item), " ", g.read(), " ", Tools::twice(), " ", ::describe());
-  println(fromOther());
+  std::println(LIMIT, " ", describe(), " ", sizeof(Item), " ", g.read(), " ", Tools::twice(), " ", ::describe());
+  std::println(fromOther());
   return 0;
 }

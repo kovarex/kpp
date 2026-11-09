@@ -33,6 +33,6 @@ int main()
   Base& asBase = first;
   Builder second;
   Derived& asDerived = second;
-  println(first.picked, " ", second.picked, " ", &asBase == &first.base && &asDerived == &second.derived);
+  std::println(first.picked, " ", second.picked, " ", &asBase == &first.base && &asDerived == &second.derived);
   return 0;
 }

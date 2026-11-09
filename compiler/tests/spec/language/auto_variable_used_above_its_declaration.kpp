@@ -16,8 +16,8 @@ auto migrateValue = [](auto& value, auto oldDefault, auto newDefault)
 int main()
 {
   Settings s;
-  print(s.distance, " ");
+  std::print(s.distance, " ");
   s.migrate();
-  println(s.distance);
+  std::println(s.distance);
   return 0;
 }

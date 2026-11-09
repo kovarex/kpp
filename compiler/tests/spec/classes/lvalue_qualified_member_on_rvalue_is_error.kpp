@@ -11,7 +11,7 @@ public:
 int main()
 {
   Box b;
-  println(b.get(), " ", Box().look(), " ", Box().plain());
-  println(Box().get());
+  std::println(b.get(), " ", Box().look(), " ", Box().plain());
+  std::println(Box().get());
   return 0;
 }

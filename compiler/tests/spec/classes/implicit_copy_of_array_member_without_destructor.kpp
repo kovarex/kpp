@@ -25,11 +25,11 @@ int main()
 {
   Arr r;
   Arr r2 = r;
-  Arr r3 = move(r);
+  Arr r3 = std::move(r);
   Arr r4;
   r4 = r2;
   Arr r5;
-  r5 = move(r3);
-  println(r2.cs[1].copies, " ", r3.cs[1].moves, " ", r4.cs[1].copies, " ", r5.cs[1].moves);
+  r5 = std::move(r3);
+  std::println(r2.cs[1].copies, " ", r3.cs[1].moves, " ", r4.cs[1].copies, " ", r5.cs[1].moves);
   return 0;
 }

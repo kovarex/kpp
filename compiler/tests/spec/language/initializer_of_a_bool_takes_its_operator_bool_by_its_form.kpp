@@ -20,7 +20,7 @@ int main()
   Holder h;
   static bool staticCopied = flag;
   static bool staticListed{flag};
-  println(h.copied ? 1 : 0, " ", h.listed ? 1 : 0, " ", h.initialized ? 1 : 0, " ", h.initializedListed ? 1 : 0);
-  println(globalCopied ? 1 : 0, " ", globalListed ? 1 : 0, " ", staticCopied ? 1 : 0, " ", staticListed ? 1 : 0);
+  std::println(h.copied ? 1 : 0, " ", h.listed ? 1 : 0, " ", h.initialized ? 1 : 0, " ", h.initializedListed ? 1 : 0);
+  std::println(globalCopied ? 1 : 0, " ", globalListed ? 1 : 0, " ", staticCopied ? 1 : 0, " ", staticListed ? 1 : 0);
   return 0;
 }

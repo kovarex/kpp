@@ -30,6 +30,6 @@ int main()
   S64 h = (S64)bool(3);
   S64 i = (S64)long(-12);
   S64 j = (S64)alignof(double);
-  println(a, " ", b, " ", c, " ", d, " ", e, " ", f, " ", g, " ", h, " ", i, " ", j, " ", widen<Box>(13));
+  std::println(a, " ", b, " ", c, " ", d, " ", e, " ", f, " ", g, " ", h, " ", i, " ", j, " ", widen<Box>(13));
   return 0;
 }

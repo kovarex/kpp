@@ -1,28 +1,28 @@
 // spec: std::chrono's pieces kpp's Time.kpp had not (E's chrono battery): ratio arithmetic and comparison (RatioAdd ... ratioGreaterEqual), abs of a duration, treatAsFloatingPoint, the Weeks, Years and Months durations, and HoursMinutesSeconds (hh_mm_ss) of negative, zero and sub-second durations, as MSVC's std::chrono gives them (thread I's battery ch2)
 extern "C" int printf(const char* format, ...);
-using DoubleSeconds = Duration<double>;
-template <typename D> D absD(D d) { return abs(d); }
-template <typename D> using Hms = HoursMinutesSeconds<D>;
+using DoubleSeconds = std::Duration<double>;
+template <typename D> D absD(D d) { return std::abs(d); }
+template <typename D> using Hms = std::HoursMinutesSeconds<D>;
 int main()
 {
-  using R1 = Ratio<1, 6>;
-  using R2 = Ratio<3, 4>;
-  printf("ratio %lld/%lld %lld/%lld %lld/%lld %lld/%lld\n", (long long)RatioAdd<R1, R2>::num, (long long)RatioAdd<R1, R2>::den, (long long)RatioSubtract<R1, R2>::num,
-         (long long)RatioSubtract<R1, R2>::den, (long long)RatioMultiply<R1, R2>::num, (long long)RatioMultiply<R1, R2>::den, (long long)RatioDivide<R1, R2>::num,
-         (long long)RatioDivide<R1, R2>::den);
-  printf("compare %d %d %d %d\n", (int)ratioLess<R1, R2>, (int)ratioEqual<Ratio<2, 4>, Ratio<1, 2>>, (int)ratioGreaterEqual<R1, R1>, (int)ratioNotEqual<R1, R2>);
-  printf("abs %lld %lld %g\n", (long long)absD(Seconds(-5)).count(), (long long)absD(Milliseconds(7)).count(), absD(DoubleSeconds(-2.5)).count());
-  printf("float %d %d\n", (int)treatAsFloatingPoint<double>, (int)treatAsFloatingPoint<long long>);
-  printf("calendar %lld %lld %lld %lld\n", (long long)durationCast<Seconds>(Weeks(1)).count(), (long long)durationCast<Seconds>(Years(1)).count(),
-         (long long)durationCast<Seconds>(Months(1)).count(), (long long)durationCast<Days>(Years(4)).count());
+  using R1 = std::Ratio<1, 6>;
+  using R2 = std::Ratio<3, 4>;
+  printf("ratio %lld/%lld %lld/%lld %lld/%lld %lld/%lld\n", (long long)std::RatioAdd<R1, R2>::num, (long long)std::RatioAdd<R1, R2>::den, (long long)std::RatioSubtract<R1, R2>::num,
+         (long long)std::RatioSubtract<R1, R2>::den, (long long)std::RatioMultiply<R1, R2>::num, (long long)std::RatioMultiply<R1, R2>::den, (long long)std::RatioDivide<R1, R2>::num,
+         (long long)std::RatioDivide<R1, R2>::den);
+  printf("compare %d %d %d %d\n", (int)std::ratioLess<R1, R2>, (int)std::ratioEqual<std::Ratio<2, 4>, std::Ratio<1, 2>>, (int)std::ratioGreaterEqual<R1, R1>, (int)std::ratioNotEqual<R1, R2>);
+  printf("abs %lld %lld %g\n", (long long)absD(std::Seconds(-5)).count(), (long long)absD(std::Milliseconds(7)).count(), absD(DoubleSeconds(-2.5)).count());
+  printf("float %d %d\n", (int)std::treatAsFloatingPoint<double>, (int)std::treatAsFloatingPoint<long long>);
+  printf("calendar %lld %lld %lld %lld\n", (long long)std::durationCast<std::Seconds>(std::Weeks(1)).count(), (long long)std::durationCast<std::Seconds>(std::Years(1)).count(),
+         (long long)std::durationCast<std::Seconds>(std::Months(1)).count(), (long long)std::durationCast<std::Days>(std::Years(4)).count());
   long long values[] = {-1, 0, 3661005, -90061001, 86399999};
   for (long long v : values)
   {
-    Hms<Milliseconds> t{Milliseconds(v)};
+    Hms<std::Milliseconds> t{std::Milliseconds(v)};
     printf("hms %d %lld %lld %lld %lld %lld\n", (int)t.is_negative(), (long long)t.hours().count(), (long long)t.minutes().count(), (long long)t.seconds().count(),
            (long long)t.subseconds().count(), (long long)t.to_duration().count());
   }
-  Hms<Seconds> whole{Seconds(-7322)};
+  Hms<std::Seconds> whole{std::Seconds(-7322)};
   printf("hms s %lld %lld %lld %lld\n", (long long)whole.hours().count(), (long long)whole.minutes().count(), (long long)whole.seconds().count(), (long long)whole.to_duration().count());
   return 0;
 }

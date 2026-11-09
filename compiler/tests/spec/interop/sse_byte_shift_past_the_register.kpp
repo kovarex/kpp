@@ -5,9 +5,9 @@ int low(__m128i v) { return _mm_cvtsi128_si32(v); }
 int main()
 {
   __m128i a = _mm_setr_epi32(1, 2, 3, 4);
-  println(low(_mm_srli_si128(a, 4)), " ", low(_mm_srli_si128(a, 12)));
-  println(low(_mm_srli_si128(a, 16)), " ", low(_mm_srli_si128(a, 17)), " ", low(_mm_srli_si128(a, 255)));
-  println(low(_mm_srli_si128(a, 256 + 4)));
-  println(low(_mm_slli_si128(a, 16)), " ", low(_mm_slli_si128(a, 20)), " ", low(_mm_slli_si128(a, 256)));
+  std::println(low(_mm_srli_si128(a, 4)), " ", low(_mm_srli_si128(a, 12)));
+  std::println(low(_mm_srli_si128(a, 16)), " ", low(_mm_srli_si128(a, 17)), " ", low(_mm_srli_si128(a, 255)));
+  std::println(low(_mm_srli_si128(a, 256 + 4)));
+  std::println(low(_mm_slli_si128(a, 16)), " ", low(_mm_slli_si128(a, 20)), " ", low(_mm_slli_si128(a, 256)));
   return 0;
 }

@@ -29,7 +29,7 @@ static const int numbers[4] = {10, 20, 30, 40};
 static const int* const third = &numbers[2];
 int main()
 {
-  println(origin.x, " ", origin.y, " ", flags.a, " ", flags.b, " ", flags.on);
-  println(table.corners[1].y, " ", StringView(table.name), " ", table.scale, " ", *counterAddress + doubler(5) + *third);
+  std::println(origin.x, " ", origin.y, " ", flags.a, " ", flags.b, " ", flags.on);
+  std::println(table.corners[1].y, " ", std::StringView(table.name), " ", table.scale, " ", *counterAddress + doubler(5) + *third);
   return 0;
 }

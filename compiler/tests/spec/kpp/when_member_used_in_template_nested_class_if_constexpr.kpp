@@ -27,6 +27,6 @@ int main()
   Rcu<int>::WriteLock second(rcu);
   if constexpr (config::debug)
     println("locks ", rcu.writeLockCount);
-  println("done");
+  std::println("done");
   return 0;
 }

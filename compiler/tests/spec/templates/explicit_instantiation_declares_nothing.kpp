@@ -1,7 +1,7 @@
 // spec: an explicit instantiation (`template int twice<double>(const Vector<double>&, int);`, `template struct Box<int>;`) declares nothing: calls reach the template's instance, which the whole-program compile makes when used
 // found in src/Util/Gui.kpp: its explicit instantiations of countsAsButtons and createButton were functions of their own without bodies that calls chose over the template, so the instances were never emitted (12 unresolved externals of the link, with getSortedCounts)
 template<class T>
-int twice(const Vector<T>& values, int scale = 1)
+int twice(const std::Vector<T>& values, int scale = 1)
 {
   int sum = 0;
   for (const T& v : values)
@@ -15,11 +15,11 @@ struct Box { T value; T get() const { return this.value; } };
 template struct Box<int>;
 int main()
 {
-  Vector<int> a;
+  std::Vector<int> a;
   a.push_back(3);
-  Vector<double> b;
+  std::Vector<double> b;
   b.push_back(1.5);
   Box<int> box{4};
-  println(twice(a), " ", twice(b, 2), " ", box.get());
+  std::println(twice(a), " ", twice(b, 2), " ", box.get());
   return 0;
 }

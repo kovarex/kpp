@@ -20,12 +20,12 @@ struct Holder
 int main()
 {
   Target a = make();
-  println("variable ", a.tag, " ", a.value);
+  std::println("variable ", a.tag, " ", a.value);
   Target r = returned();
-  println("return ", r.tag, " ", r.value);
+  std::println("return ", r.tag, " ", r.value);
   Holder h;
-  println("member ", h.member.tag, " ", h.member.value);
+  std::println("member ", h.member.tag, " ", h.member.value);
   Target cast = Source();
-  println("cast ", cast.tag, " ", cast.value);
+  std::println("cast ", cast.tag, " ", cast.value);
   return 0;
 }

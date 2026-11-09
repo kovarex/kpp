@@ -13,16 +13,16 @@ struct Outer
 };
 int main()
 {
-  Vector<int> list;
+  std::Vector<int> list;
   list.push_back(7);
   list.push_back(9);
-  Vector<int>::iterator it = list.begin();
-  int* fromVector = toAddress(it);
+  std::Vector<int>::iterator it = list.begin();
+  int* fromVector = std::toAddress(it);
   int number = 11;
   Holder holder{&number};
-  int* fromClass = toAddress(holder);
+  int* fromClass = std::toAddress(holder);
   Outer outer{holder};
-  int* fromChain = toAddress(outer);
-  println(*fromVector, " ", *(it + 1), " ", *fromClass, " ", *fromChain, " ", *holder);
+  int* fromChain = std::toAddress(outer);
+  std::println(*fromVector, " ", *(it + 1), " ", *fromClass, " ", *fromChain, " ", *holder);
   return 0;
 }

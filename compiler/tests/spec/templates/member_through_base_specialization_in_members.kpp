@@ -29,6 +29,6 @@ int main()
   G<0> g;
   G<1> g1;
   H<int> h;
-  println(g.viaThis(), " ", g.viaClass(), " ", g.viaBase(), " ", g1.viaThis(), " ", g1.viaClass(), " ", g1.viaBase(), " ", h.viaClass());
+  std::println(g.viaThis(), " ", g.viaClass(), " ", g.viaBase(), " ", g1.viaThis(), " ", g1.viaClass(), " ", g1.viaBase(), " ", h.viaClass());
   return 0;
 }

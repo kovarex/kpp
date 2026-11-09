@@ -21,7 +21,7 @@ struct Holder
   operator bool() const { return this.items != nullptr; }
   int size() const { return this.length; }
   bool empty() const { return this.length == 0; }
-  String describe() const { return String("holder"); }
+  std::String describe() const { return std::String("holder"); }
 };
 int order = 0;
 int next() { return ++order; }
@@ -47,7 +47,7 @@ int main()
   hc->set(9);
   int target = 0;
   store(target, h[2]);
-  println(c.get(), " ", c.half(), " ", both.get(), " ", both.pad, " ", h[1] + h.size(), " ", bool(h), " ", h.empty(), " ", cs[0].count, " ", target);
-  println(pick(next(), next()), " ", c.same(both), " ", h.describe());
+  std::println(c.get(), " ", c.half(), " ", both.get(), " ", both.pad, " ", h[1] + h.size(), " ", bool(h), " ", h.empty(), " ", cs[0].count, " ", target);
+  std::println(pick(next(), next()), " ", c.same(both), " ", h.describe());
   return 0;
 }

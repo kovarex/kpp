@@ -17,7 +17,7 @@ int use(Pattern pattern) { return 0; }
 int main()
 {
   int n = atoi("3");
-  const char* text = getenv("PATH");
+  const char* text = std::getenv("PATH");
   int a = square(n);
   int b = use(text);
   int c = use("!");

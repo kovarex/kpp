@@ -1,6 +1,6 @@
 // spec: a HashMap or HashSet iterator still reaches its entry after the table grows: `auto [it, created] = memo.try_emplace(n); it->second = compute();` where compute inserts more entries (std::unordered_map's iterators are its nodes, and code relies on it)
 // factorio: NoiseProgramBuilder::compileExpression's `auto [it, created] = this->compiledExpressions.try_emplace(&expression); if (created) it->second = expression.compile(*this);`, whose compile compiles the subexpressions into the same map: once it grew, `it` read the freed slot array, and the compiled constants were garbage ("Unknown enum value: 5" while loading the main menu's map)
-HashMap<int, int64_t> memo;
+std::HashMap<int, int64_t> memo;
 int64_t fibonacci(int n)
 {
   auto [it, created] = memo.try_emplace(n);
@@ -10,10 +10,10 @@ int64_t fibonacci(int n)
 }
 int main()
 {
-  HashSet<int> seen;
+  std::HashSet<int> seen;
   auto first = seen.insert(-1).first;
   for (int i = 0; i < 1000; ++i)
     seen.insert(i);
-  println(fibonacci(80), " ", memo.size(), " ", *first);
+  std::println(fibonacci(80), " ", memo.size(), " ", *first);
   return 0;
 }

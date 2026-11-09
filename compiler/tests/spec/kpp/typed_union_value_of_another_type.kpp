@@ -6,20 +6,20 @@ public:
   Fixed(int raw) : raw(raw)
   {
     if (raw < 0)
-      throw RuntimeError("no");
-    println("constructed ", raw);
+      throw std::RuntimeError("no");
+    std::println("constructed ", raw);
   }
-  Fixed(Fixed&& other) noexcept : raw(other.raw) { println("moved ", this.raw); }
+  Fixed(Fixed&& other) noexcept : raw(other.raw) { std::println("moved ", this.raw); }
   Fixed& operator=(Fixed&& other) noexcept
   {
     this.raw = other.raw;
-    println("move assigned ", this.raw);
+    std::println("move assigned ", this.raw);
     return this;
   }
   Fixed& operator=(int whole)
   {
     this.raw = whole * 100;
-    println("assigned ", whole);
+    std::println("assigned ", whole);
     return this;
   }
   int raw;
@@ -27,12 +27,12 @@ public:
 
 union enum Held : u8
 {
-  { {String, Words}, {Fixed, Number} }
+  { {std::String, Words}, {Fixed, Number} }
 };
 
 int twice(int value)
 {
-  println("evaluated once");
+  std::println("evaluated once");
   return value * 2;
 }
 
@@ -40,25 +40,25 @@ int main()
 {
   Held h;
   h[Words] = "a text long enough to be held outside the object";
-  println("-- another alternative");
+  std::println("-- another alternative");
   h[Number] = 5;
-  println(h[Number].raw);
-  println("-- the alternative held");
+  std::println(h[Number].raw);
+  std::println("-- the alternative held");
   h[Number] = twice(5);
-  println(h[Number].raw);
-  println("-- a value of its class");
+  std::println(h[Number].raw);
+  std::println("-- a value of its class");
   h[Number] = Fixed(7);
-  println(h[Number].raw);
-  println("-- the value throws, the union keeps what it holds");
+  std::println(h[Number].raw);
+  std::println("-- the value throws, the union keeps what it holds");
   Held text;
   text[Words] = "a text long enough to be held outside the object";
   try
   {
     text[Number] = -1;
   }
-  catch (const RuntimeError& e)
+  catch (const std::RuntimeError& e)
   {
-    println(StringView(e.what()), " ", text[Words].size());
+    std::println(std::StringView(e.what()), " ", text[Words].size());
   }
   return 0;
 }

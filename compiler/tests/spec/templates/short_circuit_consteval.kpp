@@ -17,11 +17,11 @@ int main()
   // Short-circuit in if constexpr
   if constexpr (true || unknownTrait<int>)
   {
-    println("short-circuit or: ok");
+    std::println("short-circuit or: ok");
   }
   if constexpr (!(false && unknownTrait<int>))
   {
-    println("short-circuit and: ok");
+    std::println("short-circuit and: ok");
   }
   return 0;
 }

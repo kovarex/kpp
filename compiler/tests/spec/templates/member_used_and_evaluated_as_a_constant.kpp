@@ -17,6 +17,6 @@ int main()
 {
   int local = Arr<int, 3>{}.size();
   constexpr int inside = Arr<char, 5>{}.size();
-  println(useInt(), " ", useChar(), " ", useLong(), " ", intTwice, " ", charTwice, " ", local, " ", inside);
+  std::println(useInt(), " ", useChar(), " ", useLong(), " ", intTwice, " ", charTwice, " ", local, " ", inside);
   return 0;
 }

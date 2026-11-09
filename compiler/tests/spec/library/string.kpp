@@ -2,16 +2,16 @@
 // factorio: 11491 uses in 2434 files
 int main()
 {
-  String s = "hello";
+  std::String s = "hello";
   s << ' ';
-  s << String("world");
-  String t = s + "!";
+  s << std::String("world");
+  std::String t = s + "!";
   int spaces = 0;
   for (char c : t)
     if (c == ' ')
       ++spaces;
-  String sub(t.c_str() + 6, 5);
-  println(t, " ", t.size(), " ", t.find("world"), " ", s == "hello world", " ", sub, " ", spaces);
-  println(t.endsWith(String("!")), " ", String("b") < String("c"), " ", t[0], " ", toString(42) + "x");
+  std::String sub(t.c_str() + 6, 5);
+  std::println(t, " ", t.size(), " ", t.find("world"), " ", s == "hello world", " ", sub, " ", spaces);
+  std::println(t.endsWith(std::String("!")), " ", std::String("b") < std::String("c"), " ", t[0], " ", std::toString(42) + "x");
   return 0;
 }

@@ -3,6 +3,6 @@
 requires config::platform == Platform::Windows;
 int main()
 {
-  println("windows file");
+  std::println("windows file");
   return 0;
 }

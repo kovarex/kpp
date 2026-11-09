@@ -28,6 +28,6 @@ struct Item {};
 int main()
 {
   Id<Item, unsigned short> id(Id<Item, unsigned short>::loadIndex(21));
-  println(id.index, " ", id.getLoader()->code);
+  std::println(id.index, " ", id.getLoader()->code);
   return 0;
 }

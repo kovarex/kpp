@@ -73,6 +73,6 @@ static_assert(classify(1) == 11 && classify(2) == 10 && classify(3) == 300 && cl
 static_assert(wrapAdd(250, 10) == 4);
 int main()
 {
-  println(Show<gcdLoop(1071, 462)>::value, " ", Show<sumTo(20)>::value, " ", Show<digits(4000000000u)>::value);
+  std::println(Show<gcdLoop(1071, 462)>::value, " ", Show<sumTo(20)>::value, " ", Show<digits(4000000000u)>::value);
   return 0;
 }

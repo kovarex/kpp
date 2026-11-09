@@ -1,51 +1,51 @@
 // Files and paths for kppsite. Paths inside the repository are relative, with '/', as git names
 // them: docs/stdlib/time.md.
 
-String siteReadFile(const String& path)
+std::String siteReadFile(const std::String& path)
 {
   FILE* file = fopen(path.c_str(), "rb");
   if (!file)
-    throw SiteError(toString("cannot read ", path));
-  String text;
+    throw SiteError(std::toString("cannot read ", path));
+  std::String text;
   char buffer[65536];
   while (true)
   {
     usize n = fread(buffer, 1, 65536, file);
     if (n == 0)
       break;
-    text << StringView(buffer, n);
+    text << std::StringView(buffer, n);
   }
   fclose(file);
   return text;
 }
 
 // Writes the file, making its directories first.
-void siteWriteFile(const String& path, StringView content)
+void siteWriteFile(const std::String& path, std::StringView content)
 {
   i32 slash = path.rfind('/');
-  if (slash != String::npos && slash > 0)
-    filesystem::create_directories(filesystem::path(String(StringView(path).substr(0, slash))));
+  if (slash != std::String::npos && slash > 0)
+    std::filesystem::create_directories(std::filesystem::path(std::String(std::StringView(path).substr(0, slash))));
   FILE* file = fopen(path.c_str(), "wb");
   if (!file)
-    throw SiteError(toString("cannot write ", path));
+    throw SiteError(std::toString("cannot write ", path));
   bool written = fwrite(content.data(), 1, content.size(), file) == usize(content.size());
   if (fclose(file) != 0 || !written)
-    throw SiteError(toString("cannot write ", path));
+    throw SiteError(std::toString("cannot write ", path));
 }
 
-bool siteIsFile(const String& path) { return filesystem::is_regular_file(filesystem::path(path)); }
-bool siteIsDirectory(const String& path) { return filesystem::is_directory(filesystem::path(path)); }
+bool siteIsFile(const std::String& path) { return std::filesystem::is_regular_file(std::filesystem::path(path)); }
+bool siteIsDirectory(const std::String& path) { return std::filesystem::is_directory(std::filesystem::path(path)); }
 
 // The .md files under the repository's directory, as repository paths, sorted.
-void siteFindMarkdown(const String& repository, const String& directory, Vector<String>& out)
+void siteFindMarkdown(const std::String& repository, const std::String& directory, std::Vector<std::String>& out)
 {
-  Vector<String> names;
-  for (const filesystem::directory_entry& entry : filesystem::directory_iterator(filesystem::path(repository + "/" + directory)))
+  std::Vector<std::String> names;
+  for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(std::filesystem::path(repository + "/" + directory)))
     names.push_back(entry.path().filename().string());
-  sort(names.begin(), names.end());
-  for (const String& name : names)
+  std::sort(names.begin(), names.end());
+  for (const std::String& name : names)
   {
-    String relative = directory + "/" + name;
+    std::String relative = directory + "/" + name;
     if (siteIsDirectory(repository + "/" + relative))
     {
       if (name != "build" && name[0] != '.')
@@ -57,22 +57,22 @@ void siteFindMarkdown(const String& repository, const String& directory, Vector<
 }
 
 // The directory part of a repository path, with its '/': "docs/stdlib/" for docs/stdlib/time.md.
-StringView siteDirectoryOf(StringView path)
+std::StringView siteDirectoryOf(std::StringView path)
 {
   i32 slash = path.rfind('/');
-  return slash == StringView::npos ? StringView() : path.substr(0, slash + 1);
+  return slash == std::StringView::npos ? std::StringView() : path.substr(0, slash + 1);
 }
 
 // A relative link from the page at `from` to the file at `to`, both repository paths:
 // docs/stdlib/time.md to docs/design.html is ../design.html.
-String siteRelativeLink(StringView from, StringView to)
+std::String siteRelativeLink(std::StringView from, std::StringView to)
 {
-  StringView fromDirectory = siteDirectoryOf(from);
+  std::StringView fromDirectory = siteDirectoryOf(from);
   i32 common = 0;
   for (i32 i = 0; i < fromDirectory.size() && i < to.size() && fromDirectory[i] == to[i]; ++i)
     if (fromDirectory[i] == '/')
       common = i + 1;
-  String link;
+  std::String link;
   for (i32 i = common; i < fromDirectory.size(); ++i)
     if (fromDirectory[i] == '/')
       link << "../";
@@ -81,9 +81,9 @@ String siteRelativeLink(StringView from, StringView to)
 }
 
 // The way from a page up to the site's root: "" for index.html, "../../" for docs/stdlib/time.html.
-String siteRootOf(StringView page)
+std::String siteRootOf(std::StringView page)
 {
-  String up;
+  std::String up;
   for (char c : page)
     if (c == '/')
       up << "../";
@@ -91,4 +91,4 @@ String siteRootOf(StringView page)
 }
 
 // The page a Markdown file becomes: docs/design.md is docs/design.html.
-String siteHtmlPath(StringView markdownPath) { return String(markdownPath.substr(0, markdownPath.size() - 3)) + ".html"; }
+std::String siteHtmlPath(std::StringView markdownPath) { return std::String(markdownPath.substr(0, markdownPath.size() - 3)) + ".html"; }

@@ -15,7 +15,7 @@ struct Box
 {
   T* p = nullptr;
   Box() = default;
-  template<typename U> requires (isConvertible<U*, T*>)
+  template<typename U> requires (std::isConvertible<U*, T*>)
   implicit Box(U* other) : p(other) {}
 };
 
@@ -26,6 +26,6 @@ int main()
 {
   Derived d;
   Other o;
-  println(use(&d), " ", use(&o));
+  std::println(use(&d), " ", use(&o));
   return 0;
 }

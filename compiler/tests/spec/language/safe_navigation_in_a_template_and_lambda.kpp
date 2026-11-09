@@ -9,7 +9,7 @@ template<class T> T readOf(Box<T>* box)
 {
   return box?->read() ?: T();
 }
-template<class T> Optional<T> maybeOf(Box<T>* box)
+template<class T> std::Optional<T> maybeOf(Box<T>* box)
 {
   return box?->read();
 }
@@ -21,10 +21,10 @@ int main()
   b.value = 1.5;
   Box<int>* none = nullptr;
   Box<int>* set = &a;
-  println(readOf(&a), " ", readOf(&b), " ", readOf<int>(nullptr));
-  println(*maybeOf(&b), " ", bool(maybeOf<double>(nullptr)));
+  std::println(readOf(&a), " ", readOf(&b), " ", readOf<int>(nullptr));
+  std::println(*maybeOf(&b), " ", bool(maybeOf<double>(nullptr)));
   auto look = [&]() { return set?->value; };
   auto miss = [none]() { return none?->value; };
-  println(look() ?: 0, " ", bool(miss()));
+  std::println(look() ?: 0, " ", bool(miss()));
   return 0;
 }

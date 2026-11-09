@@ -18,6 +18,6 @@ Highlights::Type const Highlights::types[] = {Highlights::Regular, Highlights::S
 int main()
 {
   Highlights h;
-  println(h.countTypes(), " ", sizeof(Highlights::types), " ", (int)Highlights::types[2]);
+  std::println(h.countTypes(), " ", sizeof(Highlights::types), " ", (int)Highlights::types[2]);
   return 0;
 }

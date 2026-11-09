@@ -6,19 +6,19 @@ class Engine
 {
 public:
   int power = 70;
-  String name = "steam";
+  std::String name = "steam";
 };
 class Train
 {
 public:
   Engine* engine = nullptr;
   int x = 0;
-  String label;
+  std::String label;
 };
 void write(Train* t)
 {
   t?->x = 3;
-  t?->label = String("x");
+  t?->label = std::String("x");
 }
 int read(Train* t)
 {

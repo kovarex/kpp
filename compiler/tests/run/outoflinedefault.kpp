@@ -11,7 +11,7 @@ namespace gui
   class Flow : public Widget
   {
   public:
-    String name;
+    std::String name;
     virtual ~Flow();
     int kind() override { return 1; }
   };

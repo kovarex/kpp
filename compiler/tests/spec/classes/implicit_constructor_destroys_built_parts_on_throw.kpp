@@ -4,10 +4,10 @@ class M
 {
 public:
   int id;
-  M(int i) : id(i) { print("M", this.id, " "); }
-  ~M() { print("~M", this.id, " "); }
+  M(int i) : id(i) { std::print("M", this.id, " "); }
+  ~M() { std::print("~M", this.id, " "); }
 };
-int fail(int x) { if (x > 0) throw RuntimeError("no"); return x; }
+int fail(int x) { if (x > 0) throw std::RuntimeError("no"); return x; }
 class Implicit
 {
 public:
@@ -47,11 +47,11 @@ public:
 };
 int main()
 {
-  try { Implicit i; } catch (...) { println("| implicit"); }
-  try { UserEmpty u; } catch (...) { println("| user empty"); }
-  try { Defaulted d; } catch (...) { println("| defaulted"); }
-  try { MemInit m; } catch (...) { println("| mem-init"); }
-  try { FromBase f; } catch (...) { println("| from base"); }
-  try { Implicit* p = new Implicit(); } catch (...) { println("| new implicit"); }
+  try { Implicit i; } catch (...) { std::println("| implicit"); }
+  try { UserEmpty u; } catch (...) { std::println("| user empty"); }
+  try { Defaulted d; } catch (...) { std::println("| defaulted"); }
+  try { MemInit m; } catch (...) { std::println("| mem-init"); }
+  try { FromBase f; } catch (...) { std::println("| from base"); }
+  try { Implicit* p = new Implicit(); } catch (...) { std::println("| new implicit"); }
   return 0;
 }

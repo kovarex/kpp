@@ -7,9 +7,9 @@ struct Value
   Value(const T& v) : value(v) {}
 };
 template<typename T>
-struct Const : Conditional<isClass<T>, T, Value<T>>
+struct Const : std::Conditional<std::isClass<T>, T, Value<T>>
 {
-  using super = Conditional<isClass<T>, T, Value<T>>;
+  using super = Conditional<std::isClass<T>, T, Value<T>>;
   Const(const T& v) : super(v) {}
 };
 struct Point
@@ -21,6 +21,6 @@ int main()
 {
   Const<int> number(7);
   Const<Point> point(Point(3));
-  println(number.value, " ", point.x);
+  std::println(number.value, " ", point.x);
   return 0;
 }

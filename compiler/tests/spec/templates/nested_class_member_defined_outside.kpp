@@ -19,7 +19,7 @@ void Outer<K, V>::Inner::set(K key, V value)
 template<class K, class V>
 int Outer<K, V>::Inner::load() const
 {
-  if constexpr (isSame<K, int> || isSame<K, char>)
+  if constexpr (std::isSame<K, int> || std::isSame<K, char>)
     return 1;
   else
     return 2;
@@ -29,6 +29,6 @@ int main()
   Outer<int, float> a;
   Outer<double, float> b;
   a.inner.set(2, 0.5f);
-  println(a.inner.load(), " ", b.inner.load(), " ", a.inner.stored);
+  std::println(a.inner.load(), " ", b.inner.load(), " ", a.inner.stored);
   return 0;
 }

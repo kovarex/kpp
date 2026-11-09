@@ -8,6 +8,6 @@ int main()
 {
   Deep d;
   auto& last = d.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner;
-  println(sizeof(Deep), " ", sizeof(last), " ", decltype(d.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner)::which, " ", Foo<char, int>::which);
+  std::println(sizeof(Deep), " ", sizeof(last), " ", decltype(d.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner.inner)::which, " ", Foo<char, int>::which);
   return 0;
 }

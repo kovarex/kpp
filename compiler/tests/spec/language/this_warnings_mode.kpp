@@ -70,6 +70,6 @@ int main()
   Counter c;
   Derived<int> d;
   Mid m;
-  println(c.twice(), " ", c.lambda(), " ", Counter::make(), " ", c.outside(), " ", m.mid(), " ", c.doubled, " ", c.defaulted(), " ", c.level());
+  std::println(c.twice(), " ", c.lambda(), " ", Counter::make(), " ", c.outside(), " ", m.mid(), " ", c.doubled, " ", c.defaulted(), " ", c.level());
   return 0;
 }

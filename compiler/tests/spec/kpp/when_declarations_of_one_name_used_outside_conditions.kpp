@@ -19,6 +19,6 @@ int main()
   when (!config::debug) NullTimer timer;
   timer.tick();
   timer.tick();
-  println(StringView(timer.kind()), " ", timer.ticks);
+  std::println(std::StringView(timer.kind()), " ", timer.ticks);
   return 0;
 }

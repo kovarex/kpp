@@ -17,14 +17,14 @@ int main()
   Second& s = h;
   First& f = h;
   const Second& cs = h;
-  println(s(1000), " ", f(1000), " ", cs(2000), " ", h.tag);
+  std::println(s(1000), " ", f(1000), " ", cs(2000), " ", h.tag);
   const Second* p = &h;
-  println((*p)(5));
+  std::println((*p)(5));
   Second copy = h;
-  println(copy(7));
-  println(static_cast<Second&>(h)(6));
+  std::println(copy(7));
+  std::println(static_cast<Second&>(h)(6));
   Holder<First, Second>* hp = &h;
   Second* sp = hp;
-  println((*sp)(8));
+  std::println((*sp)(8));
   return 0;
 }

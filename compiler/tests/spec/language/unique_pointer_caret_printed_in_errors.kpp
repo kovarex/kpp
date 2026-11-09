@@ -11,6 +11,6 @@ int read(const Item^& owner)
 }
 int main()
 {
-  Item^ owner = makeUnique<Item>();
+  Item^ owner = std::makeUnique<Item>();
   return read(owner);
 }

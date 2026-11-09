@@ -2,6 +2,6 @@
 // factorio: none; projectlib's Project.kpp names a platform's system libraries with it
 int main()
 {
-  println(StringView(config::platformName(config::platform)), " ", StringView(config::platformName(Platform::FreeBSD)), " ", StringView(config::platformName(Platform::Mac)));
+  std::println(std::StringView(config::platformName(config::platform)), " ", std::StringView(config::platformName(Platform::FreeBSD)), " ", std::StringView(config::platformName(Platform::Mac)));
   return 0;
 }

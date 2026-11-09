@@ -15,6 +15,6 @@ int main()
   Converter<int> ci{41};
   Converter<double> cd{2.5};
   Converter<char> cc{'a'};
-  println(ci.kind(), " ", cd.kind(), " ", cc.kind());
+  std::println(ci.kind(), " ", cd.kind(), " ", cc.kind());
   return 0;
 }

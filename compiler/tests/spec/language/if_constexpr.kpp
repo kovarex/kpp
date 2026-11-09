@@ -1,18 +1,18 @@
 // spec: if constexpr on type traits
 // factorio: 411 uses in 107 files
 template<typename T>
-String describe(const T& value)
+std::String describe(const T& value)
 {
-  if constexpr (isSame<T, int>)
-    return format("int {}", value);
-  else if constexpr (isPointer<T>)
-    return String("pointer");
+  if constexpr (std::isSame<T, int>)
+    return std::format("int {}", value);
+  else if constexpr (std::isPointer<T>)
+    return std::String("pointer");
   else
-    return String("other");
+    return std::String("other");
 }
 int main()
 {
   int n = 3;
-  println(describe(n), " / ", describe(&n), " / ", describe(2.5));
+  std::println(describe(n), " / ", describe(&n), " / ", describe(2.5));
   return 0;
 }

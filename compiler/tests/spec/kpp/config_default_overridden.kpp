@@ -15,6 +15,6 @@ else
 }
 int main()
 {
-  println(StringView(build()), " ", config::level, " ", config::mode, " ", config::home == Platform::Windows);
+  std::println(std::StringView(build()), " ", config::level, " ", config::mode, " ", config::home == Platform::Windows);
   return 0;
 }

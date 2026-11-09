@@ -19,6 +19,6 @@ int main()
   auto [x, y] = s.getShift();
   auto& [rx, ry] = s.shift;
   ry = 4;
-  println(x, " ", y, " ", rx, " ", s.shift.y);
+  std::println(x, " ", y, " ", rx, " ", s.shift.y);
   return 0;
 }

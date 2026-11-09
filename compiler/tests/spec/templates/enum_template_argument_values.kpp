@@ -22,6 +22,6 @@ int main()
   Targeter<int> a;
   Targeter<int, Flags::BOTH> b;
   Targeter<int, Flags::SAME> c;
-  println(a.flags(), " ", b.flags(), " ", c.flags(), " ", int(Targeter<char, Flags::TWO>::FLAGS));
+  std::println(a.flags(), " ", b.flags(), " ", c.flags(), " ", int(Targeter<char, Flags::TWO>::FLAGS));
   return 0;
 }

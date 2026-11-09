@@ -2,13 +2,13 @@
 // found by thread D (2026-11-05), comparing Optional<String> at compile time and run time: the evaluator made every member of a union, of which it kept none, so a String member's block was allocated and never freed ("memory allocated at String.kpp:657 is never freed"), and a union holding a String was no constant
 union U
 {
-  String s;
+  std::String s;
   U() {}
   ~U() {}
 };
 union V
 {
-  String s;
+  std::String s;
   int i;
   V() : i(3) {}
   ~V() {}
@@ -16,7 +16,7 @@ union V
 constexpr long long made()
 {
   U u;
-  new (&u.s) String("abc");
+  new (&u.s) std::String("abc");
   long long r = (long long)u.s.size();
   u.s.~String();
   return r;
@@ -30,6 +30,6 @@ int main()
 {
   constexpr long long a = made();
   constexpr long long b = other();
-  println(a, " ", made(), " ", b, " ", other());
+  std::println(a, " ", made(), " ", b, " ", other());
   return 0;
 }

@@ -14,15 +14,15 @@ int main()
   const int* const& c = local;
   int (*const& f)(int) = thrice;
   int (*&& h)(int) = twice;
-  println(*p, " ", q[1], " ", *c, " ", f(2), " ", h(2), " ", *g, " ", gf(3));
+  std::println(*p, " ", q[1], " ", *c, " ", f(2), " ", h(2), " ", *g, " ", gf(3));
   q = block;
-  println(*q, " ", *p);
+  std::println(*q, " ", *p);
   for (int i = 0; i < 2; ++i)
   {
     int (*const& each)(int) = i ? twice : thrice;
-    println(each(1));
+    std::println(each(1));
   }
   static int* const& s = block;
-  println(s[1]);
+  std::println(s[1]);
   return 0;
 }

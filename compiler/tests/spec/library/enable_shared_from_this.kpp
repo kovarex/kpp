@@ -1,37 +1,37 @@
 // spec: EnableSharedFromThis (std::enable_shared_from_this), and SharedPtr from a derived class and from a UniquePtr
 // factorio: HttpSharedState hands shared_from_this() to the curl thread
-struct Session : EnableSharedFromThis<Session>
+struct Session : std::EnableSharedFromThis<Session>
 {
   int id = 0;
-  SharedPtr<Session> self() { return this.shared_from_this(); }
-  ~Session() { println("~Session ", this.id); }
+  std::SharedPtr<Session> self() { return this.shared_from_this(); }
+  ~Session() { std::println("~Session ", this.id); }
 };
 struct Special : Session {};
 struct Base { int b = 1; };
-struct Derived : Base { ~Derived() { println("~Derived"); } }; // no virtual destructor: deleted as created
+struct Derived : Base { ~Derived() { std::println("~Derived"); } }; // no virtual destructor: deleted as created
 int main()
 {
-  SharedPtr<Session> s = makeShared<Session>();
+  std::SharedPtr<Session> s = std::makeShared<Session>();
   s->id = 7;
-  SharedPtr<Session> t = s->self();
-  WeakPtr<Session> w = s->weak_from_this();
-  println("owners ", s.use_count(), " same ", s == t);
+  std::SharedPtr<Session> t = s->self();
+  std::WeakPtr<Session> w = s->weak_from_this();
+  std::println("owners ", s.use_count(), " same ", s == t);
   t = nullptr;
   Session alone;
   bool threw = false;
-  try { alone.self(); } catch (const BadWeakPtr& e) { threw = true; }
-  println("not owned: throws ", threw);
-  SharedPtr<Special> special = makeShared<Special>();
+  try { alone.self(); } catch (const std::BadWeakPtr& e) { threw = true; }
+  std::println("not owned: throws ", threw);
+  std::SharedPtr<Special> special = std::makeShared<Special>();
   special->id = 9;
-  SharedPtr<Session> viaBase = special->self();
-  println("derived: owners ", special.use_count());
+  std::SharedPtr<Session> viaBase = special->self();
+  std::println("derived: owners ", special.use_count());
   {
-    SharedPtr<Base> base(SharedPtr<Derived>(new Derived()));
-    println("as base: ", base->b, " owners ", base.use_count());
+    std::SharedPtr<Base> base(std::SharedPtr<Derived>(new Derived()));
+    std::println("as base: ", base->b, " owners ", base.use_count());
   }
-  SharedPtr<Derived> fromUnique(makeUnique<Derived>()); // `= makeUnique<Derived>()`: spec language/copy_init_converting_from_prvalue
-  println("from unique: owners ", fromUnique.use_count());
+  std::SharedPtr<Derived> fromUnique(std::makeUnique<Derived>()); // `= makeUnique<Derived>()`: spec language/copy_init_converting_from_prvalue
+  std::println("from unique: owners ", fromUnique.use_count());
   s = nullptr;
-  println("expired ", w.expired());
+  std::println("expired ", w.expired());
   return 0;
 }

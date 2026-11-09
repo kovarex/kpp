@@ -6,6 +6,6 @@ int main()
 {
   const char* text = "local a = 1;\
    local b = 2";
-  println("[", StringView(text), "] ", strlen(text), " [", StringView(constant), "] ", strlen(constant));
+  std::println("[", std::StringView(text), "] ", std::strlen(text), " [", std::StringView(constant), "] ", std::strlen(constant));
   return 0;
 }

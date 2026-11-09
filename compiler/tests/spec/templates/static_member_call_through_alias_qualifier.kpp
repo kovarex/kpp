@@ -23,6 +23,6 @@ int main()
   Proto table[3];
   table[2].value = 42;
   uint8_t i = 2;
-  println(ProtoID::fromIndex(i).getPrototype(table)->value, " ", int(MyID<Proto, uint8_t>::fromIndex(i).index));
+  std::println(ProtoID::fromIndex(i).getPrototype(table)->value, " ", int(MyID<Proto, uint8_t>::fromIndex(i).index));
   return 0;
 }

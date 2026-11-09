@@ -1,7 +1,7 @@
 // A file or directory that should be there and is not, a file that cannot be written.
-class SiteError : public RuntimeError
+class SiteError : public std::RuntimeError
 {
 public:
   SiteError() {}
-  SiteError(const String& message) : RuntimeError(message) {}
+  SiteError(const std::String& message) : RuntimeError(message) {}
 };

@@ -12,10 +12,10 @@ template<typename... Args>
 Types<UnwrappedOf<Args>...> viaAlias(Args... args) { return Types<UnwrappedOf<Args>...>(); }
 int main()
 {
-  static_assert(isSame<Types<typename Unwrapped<int>::Type, typename Unwrapped<double>::Type>, Types<int, double>>);
-  static_assert(isSame<decltype(viaMember(1, 2.5)), Types<int, double>>);
-  static_assert(isSame<decltype(viaAlias(1, 2.5)), Types<int, double>>);
+  static_assert(std::isSame<Types<typename Unwrapped<int>::Type, typename Unwrapped<double>::Type>, Types<int, double>>);
+  static_assert(std::isSame<decltype(viaMember(1, 2.5)), Types<int, double>>);
+  static_assert(std::isSame<decltype(viaAlias(1, 2.5)), Types<int, double>>);
   Types<int, double> both = viaAlias(1, 2.5);
-  println(both.count, " ", viaMember('a').count);
+  std::println(both.count, " ", viaMember('a').count);
   return 0;
 }

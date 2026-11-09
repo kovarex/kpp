@@ -7,7 +7,7 @@ template<typename T>
 struct Wrap
 {
   template<typename U>
-  implicit Wrap(U&& v) requires(!IsWrap<RemoveCvRef<U>>::value && isConstructible<T, U>) : held(forward<U>(v)) {}
+  implicit Wrap(U&& v) requires(!IsWrap<std::RemoveCvRef<U>>::value && std::isConstructible<T, U>) : held(std::forward<U>(v)) {}
 
   T held;
 };
@@ -45,15 +45,15 @@ int main()
 {
   Chunk chunk{7};
   Wrap<Pos> fromChunk = chunk;
-  static_assert(isConstructible<Pos, Chunk&>);
-  static_assert(isConstructible<Pos, const Chunk&>);
-  static_assert(isConstructible<Pos, Chunk>);
-  static_assert(!isConstructible<Pos, Other&>);
-  static_assert(isConstructible<Wrap<Pos>, Chunk&>);
-  static_assert(isConstructible<Tile, const MaybePos&>);
-  static_assert(isConstructible<Tile, const Wrap<Pos>&>); // (one user-defined conversion, MaybePos's, at the outer level)
-  static_assert(!isConstructible<Tile, Chunk&>);          // (a Chunk to a MaybePos takes two)
+  static_assert(std::isConstructible<Pos, Chunk&>);
+  static_assert(std::isConstructible<Pos, const Chunk&>);
+  static_assert(std::isConstructible<Pos, Chunk>);
+  static_assert(!std::isConstructible<Pos, Other&>);
+  static_assert(std::isConstructible<Wrap<Pos>, Chunk&>);
+  static_assert(std::isConstructible<Tile, const MaybePos&>);
+  static_assert(std::isConstructible<Tile, const Wrap<Pos>&>); // (one user-defined conversion, MaybePos's, at the outer level)
+  static_assert(!std::isConstructible<Tile, Chunk&>);          // (a Chunk to a MaybePos takes two)
   Wrap<Pos> fromTile = Tile(4);
-  println(fromChunk.held.x, " ", fromTile.held.x, " ", Tile(MaybePos(fromChunk)).v);
+  std::println(fromChunk.held.x, " ", fromTile.held.x, " ", Tile(MaybePos(fromChunk)).v);
   return 0;
 }

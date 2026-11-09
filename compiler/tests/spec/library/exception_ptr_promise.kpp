@@ -2,14 +2,14 @@
 // factorio: SteamContext hands "Couldn't get Steam auth ticket" errors to the waiting thread this way
 int main()
 {
-  Promise<int> p;
-  Future<int> f = p.getFuture();
-  p.set_exception(makeExceptionPtr(RuntimeError(String("no ticket"))));
-  try { f.get(); } catch (const RuntimeError& e) { println("caught ", StringView(e.what())); }
-  Promise<int> q;
-  Future<int> g = q.getFuture();
+  std::Promise<int> p;
+  std::Future<int> f = p.getFuture();
+  p.set_exception(std::makeExceptionPtr(std::RuntimeError(std::String("no ticket"))));
+  try { f.get(); } catch (const std::RuntimeError& e) { std::println("caught ", std::StringView(e.what())); }
+  std::Promise<int> q;
+  std::Future<int> g = q.getFuture();
   q.setValue(5);
-  ExceptionPtr empty;
-  println(g.get(), " ", (bool)empty);
+  std::ExceptionPtr empty;
+  std::println(g.get(), " ", (bool)empty);
   return 0;
 }

@@ -3,14 +3,14 @@
 struct Noisy
 {
   int v;
-  implicit Noisy(int v) : v(v) { println("make ", v); }
-  ~Noisy() { println("drop ", this.v); }
+  implicit Noisy(int v) : v(v) { std::println("make ", v); }
+  ~Noisy() { std::println("drop ", this.v); }
 };
 struct N { Noisy (&r)[2]; };
 using Two = Noisy[2];
 int main()
 {
   N n{Two{Noisy(1), Noisy(2)}};
-  println(n.r[0].v);
+  std::println(n.r[0].v);
   return 0;
 }

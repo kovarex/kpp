@@ -17,6 +17,6 @@ int main()
 {
   Dur<long long, Rat<1, 1000>> ms(1500);
   Dur<long long, Rat<1>> s(2);
-  println(add(ms, s).ticks, " ", add(s, ms).ticks);
+  std::println(add(ms, s).ticks, " ", add(s, ms).ticks);
   return 0;
 }

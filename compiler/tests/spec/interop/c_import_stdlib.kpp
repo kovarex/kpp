@@ -9,6 +9,6 @@ int main()
   char buffer[16];
   strcpy(buffer, "ab");
   strcat(buffer, "cd");
-  println(values[0], " ", values[3], " ", buffer, " ", (int)strlen(buffer));
+  std::println(values[0], " ", values[3], " ", buffer, " ", (int)strlen(buffer));
   return 0;
 }

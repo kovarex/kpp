@@ -1,17 +1,17 @@
 // spec: Bitset::to_ulong throws OverflowError only when the value does not fit the target's unsigned long, as std::bitset::to_ulong: 32 bits on Windows (`0x1ffffffff`: overflow), 64 on Linux and FreeBSD (`8589934591`); to_ullong takes 64 bits everywhere (`4294967295 / overflow / 8589934591`, Linux `4294967295 / 8589934591 / 8589934591`)
 int main()
 {
-  Bitset<64> small(0xFFFFFFFFull);
-  Bitset<64> big(0x1FFFFFFFFull);
-  print((u64)small.to_ulong(), " / ");
+  std::Bitset<64> small(0xFFFFFFFFull);
+  std::Bitset<64> big(0x1FFFFFFFFull);
+  std::print((u64)small.to_ulong(), " / ");
   try
   {
-    print((u64)big.to_ulong(), " / ");
+    std::print((u64)big.to_ulong(), " / ");
   }
-  catch (const OverflowError&)
+  catch (const std::OverflowError&)
   {
-    print("overflow / ");
+    std::print("overflow / ");
   }
-  println(big.to_ullong());
+  std::println(big.to_ullong());
   return 0;
 }

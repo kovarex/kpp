@@ -13,6 +13,6 @@ struct Box
 int main()
 {
   Box<int> b;
-  println(measure(b));
+  std::println(measure(b));
   return 0;
 }

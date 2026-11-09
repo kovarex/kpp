@@ -17,7 +17,7 @@ struct Derived : Base
   Derived(bool fail)
   {
     if (fail)
-      throw RuntimeError("no");
+      throw std::RuntimeError("no");
   }
 };
 struct Later
@@ -32,25 +32,25 @@ int main()
   {
     Derived d(true);
   }
-  catch (const Exception&)
+  catch (const std::Exception&)
   {
   }
-  print("local ", live, "; ");
+  std::print("local ", live, "; ");
   try
   {
-    UniquePtr<Derived> p(new Derived(true));
+    std::UniquePtr<Derived> p(new Derived(true));
   }
-  catch (const Exception&)
+  catch (const std::Exception&)
   {
   }
-  print("new ", live, "; ");
+  std::print("new ", live, "; ");
   try
   {
     Later later;
   }
-  catch (const Exception&)
+  catch (const std::Exception&)
   {
   }
-  println("member ", live);
+  std::println("member ", live);
   return 0;
 }

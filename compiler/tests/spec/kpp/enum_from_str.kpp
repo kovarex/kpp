@@ -6,8 +6,8 @@ enum class Direction : uint8_t
 };
 int main()
 {
-  Optional<Direction> d = Direction::fromStr("South");
-  Optional<Direction> none = Direction::fromStr("Up");
-  println(d.hasValue() && *d == Direction::South, " ", none.hasValue());
+  std::Optional<Direction> d = Direction::fromStr("South");
+  std::Optional<Direction> none = Direction::fromStr("Up");
+  std::println(d.hasValue() && *d == Direction::South, " ", none.hasValue());
   return 0;
 }

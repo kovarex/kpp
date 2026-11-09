@@ -24,6 +24,6 @@ int constrained(T value) { return int(sizeof(T)); }
 
 int main()
 {
-  println(direct<Kind::B>(), " ", direct<Kind::C>(), " ", StringView(deduced<Kind::A>()), " ", constrained(7));
+  std::println(direct<Kind::B>(), " ", direct<Kind::C>(), " ", std::StringView(deduced<Kind::A>()), " ", constrained(7));
   return 0;
 }

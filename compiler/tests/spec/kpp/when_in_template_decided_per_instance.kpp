@@ -11,8 +11,8 @@ struct Handle
 template<typename T>
 int bytesKept(const T& value)
 {
-  when (isTriviallyCopyable<T>) T copy = value;
-  if constexpr (isTriviallyCopyable<T>)
+  when (std::isTriviallyCopyable<T>) T copy = value;
+  if constexpr (std::isTriviallyCopyable<T>)
     return int(sizeof(copy));
   return 0;
 }
@@ -20,6 +20,6 @@ int bytesKept(const T& value)
 int main()
 {
   Handle handle;
-  println(bytesKept(3.0), " ", bytesKept(handle), " ", bytesKept('x'));
+  std::println(bytesKept(3.0), " ", bytesKept(handle), " ", bytesKept('x'));
   return 0;
 }

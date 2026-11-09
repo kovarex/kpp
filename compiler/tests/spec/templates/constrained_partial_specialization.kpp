@@ -52,6 +52,6 @@ struct Plain
 };
 int main()
 {
-  println(Traits<unsigned>::id, " ", Traits<long long>::id, " ", Traits<double>::id, " ", Traits<Plain>::id, " ", Traits<bool>::id, " ", Traits<int*>::id);
+  std::println(Traits<unsigned>::id, " ", Traits<long long>::id, " ", Traits<double>::id, " ", Traits<Plain>::id, " ", Traits<bool>::id, " ", Traits<int*>::id);
   return 0;
 }

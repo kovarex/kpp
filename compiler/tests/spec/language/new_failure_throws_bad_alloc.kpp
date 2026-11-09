@@ -4,7 +4,7 @@
 struct Page
 {
   char bytes[4096];
-  Page() { this.bytes[0] = 'p'; println("constructed"); } // (the block written and read below: an optimizer may not drop an unused one)
+  Page() { this.bytes[0] = 'p'; std::println("constructed"); } // (the block written and read below: an optimizer may not drop an unused one)
 };
 
 int main(int argc, char** argv)
@@ -13,21 +13,21 @@ int main(int argc, char** argv)
   try
   {
     Page* pages = new Page[count];
-    println("allocated ", pages != nullptr, " ", pages[count - 1].bytes[0]);
+    std::println("allocated ", pages != nullptr, " ", pages[count - 1].bytes[0]);
   }
-  catch (const BadAlloc& e)
+  catch (const std::BadAlloc& e)
   {
-    println("pages: ", StringView(e.what()));
+    std::println("pages: ", std::StringView(e.what()));
   }
   long long wrapping = 0x4000000000000000LL + argc; // 2^62 + 1 ints: 4 * that wraps to 4 bytes
   try
   {
     int* ints = new int[wrapping];
-    println("allocated ", ints != nullptr);
+    std::println("allocated ", ints != nullptr);
   }
-  catch (const BadAlloc& e)
+  catch (const std::BadAlloc& e)
   {
-    println("ints: ", StringView(e.what()));
+    std::println("ints: ", std::StringView(e.what()));
   }
   return 0;
 }

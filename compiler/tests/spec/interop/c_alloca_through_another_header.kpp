@@ -22,6 +22,6 @@ int misalignment(int count)
 
 int main()
 {
-  println(sumOfFirst(38), " ", misalignment(5));
+  std::println(sumOfFirst(38), " ", misalignment(5));
   return 0;
 }

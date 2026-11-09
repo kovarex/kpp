@@ -5,12 +5,12 @@ class Noisy
 public:
   int id;
   Noisy(int id) : id(id) {}
-  ~Noisy() { println("~Noisy ", this.id); }
+  ~Noisy() { std::println("~Noisy ", this.id); }
 };
 class Base
 {
 public:
-  virtual ~Base() { println("~Base"); }
+  virtual ~Base() { std::println("~Base"); }
 };
 class Derived : public Base
 {

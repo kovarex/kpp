@@ -19,6 +19,6 @@ int apply(int (*f)(int), int v) { return f(v); }
 int noArgs() { return 11; }
 int main()
 {
-  println(copied.w, " ", fresh.w, " ", NOWHERE == nullptr, " ", counter, " ", apply(twice, 4), " ", noArgs());
+  std::println(copied.w, " ", fresh.w, " ", NOWHERE == nullptr, " ", counter, " ", apply(twice, 4), " ", noArgs());
   return 0;
 }

@@ -6,7 +6,7 @@ int main()
   const char16_t u[] = u"hi";
   const char32_t U[] = U"xyz!";
   const wchar_t local[] = L"de";
-  println(sizeof(w) / sizeof(wchar_t), " ", sizeof(u) / sizeof(char16_t), " ", sizeof(U) / sizeof(char32_t), " ", sizeof(local) / sizeof(wchar_t), " ", int(w[2]), " ", int(U[3]));
-  println(second(L"ef"));
+  std::println(sizeof(w) / sizeof(wchar_t), " ", sizeof(u) / sizeof(char16_t), " ", sizeof(U) / sizeof(char32_t), " ", sizeof(local) / sizeof(wchar_t), " ", int(w[2]), " ", int(U[3]));
+  std::println(second(L"ef"));
   return 0;
 }

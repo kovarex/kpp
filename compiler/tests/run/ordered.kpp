@@ -17,7 +17,7 @@ const int keyRange = 3000;
 
 // Checks map against reference (value + 1 per present key, 0 for absent); returns the mismatches.
 template<typename M>
-int compare(M& map, Vector<int>& reference)
+int compare(M& map, std::Vector<int>& reference)
 {
   int errors = 0, expected = 0;
   for (int k = 0; k < keyRange; ++k)
@@ -27,7 +27,7 @@ int compare(M& map, Vector<int>& reference)
     ++errors;
   // In order, every entry present in the reference.
   int previous = -1, seen = 0;
-  for (Pair<int, int>& entry : map)
+  for (std::Pair<int, int>& entry : map)
   {
     if (entry.first <= previous || reference[entry.first] != entry.second + 1)
       ++errors;
@@ -50,10 +50,10 @@ int compare(M& map, Vector<int>& reference)
   for (int k = -1; k <= keyRange; k += 7)
   {
     int lower = -1, upper = -1;
-    for (int j = max(k, 0); j < keyRange && lower < 0; ++j)
+    for (int j = std::max(k, 0); j < keyRange && lower < 0; ++j)
       if (reference[j] != 0)
         lower = j;
-    for (int j = max(k + 1, 0); j < keyRange && upper < 0; ++j)
+    for (int j = std::max(k + 1, 0); j < keyRange && upper < 0; ++j)
       if (reference[j] != 0)
         upper = j;
     auto l = map.lowerBound(k);
@@ -72,7 +72,7 @@ int compare(M& map, Vector<int>& reference)
 template<typename M>
 void randomized(M& map)
 {
-  Vector<int> reference;
+  std::Vector<int> reference;
   reference.resize(keyRange);
   int errors = 0, inserts = 0, erases = 0;
   for (int round = 0; round < 40; ++round)
@@ -123,51 +123,51 @@ void randomized(M& map)
 
 int main()
 {
-  Map<int, int> map;
+  std::Map<int, int> map;
   randomized(map);
-  FastMap<int, int> btree;
+  std::FastMap<int, int> btree;
   randomized(btree);
 
   // Inserting and erasing other entries leaves pointers to an entry valid.
-  Map<int, String> stable;
-  stable[500] = String("the entry that stays where it is");
-  String* kept = &stable[500];
+  std::Map<int, std::String> stable;
+  stable[500] = std::String("the entry that stays where it is");
+  std::String* kept = &stable[500];
   auto keptAt = stable.find(500);
   for (int i = 0; i < 1000; ++i)
-    stable[i * 3] = toString(i);
+    stable[i * 3] = std::toString(i);
   for (int i = 0; i < 1000; i += 2)
     stable.erase(i * 3);
   stable.erase(stable.begin());
   printf("%d %d %s\n", kept == &stable[500] ? 1 : 0, &keptAt->second == kept ? 1 : 0, kept->c_str());
 
-  MultiMap<int, String> multi;
-  multi.insert(2, String("b1"));
-  multi.insert(1, String("a"));
-  multi.insert(2, String("b2"));
-  multi.insert(Pair<int, String>(2, String("b3")));
-  MultiSet<int> bag = {3, 1, 3, 2, 3};
+  std::MultiMap<int, std::String> multi;
+  multi.insert(2, std::String("b1"));
+  multi.insert(1, std::String("a"));
+  multi.insert(2, std::String("b2"));
+  multi.insert(std::Pair<int, std::String>(2, std::String("b3")));
+  std::MultiSet<int> bag = {3, 1, 3, 2, 3};
   auto range = multi.equal_range(2);
   for (auto it = range.first; it != range.second; ++it)
     printf("%s ", it->second.c_str());
   printf("%zu %zu %zu %zu %zu\n", multi.count(2), multi.erase(2), multi.size(), bag.count(3), bag.erase(3));
   // String keys and a Set; copies are independent, moves leave the source empty.
-  Map<String, String> names;
+  std::Map<std::String, std::String> names;
   for (int i = 0; i < 500; ++i)
-    names[toString(i * 37 % 500)] = String("value number ") + toString(i) + String(" long enough to allocate");
-  Map<String, String> namesCopy = names;
+    names[std::toString(i * 37 % 500)] = std::String("value number ") + std::toString(i) + std::String(" long enough to allocate");
+  std::Map<std::String, std::String> namesCopy = names;
   for (int i = 0; i < 500; i += 2)
-    names.erase(toString(i));
-  Map<String, String> moved = move(names);
-  Set<String> keys;
+    names.erase(std::toString(i));
+  std::Map<std::String, std::String> moved = std::move(names);
+  std::Set<std::String> keys;
   for (auto& entry : namesCopy)
     keys.insert(entry.first);
   for (auto& entry : moved)
     keys.erase(entry.first);
-  String first = *keys.begin();
+  std::String first = *keys.begin();
   printf("%zu %zu %zu %zu %s %s %d\n", namesCopy.size(), moved.size(), names.size(), keys.size(), first.c_str(),
-         namesCopy.find(String("7"))->second.c_str(), keys.contains(String("9")) ? 1 : 0);
+         namesCopy.find(std::String("7"))->second.c_str(), keys.contains(std::String("9")) ? 1 : 0);
 
-  Set<int> small = {5, 3, 9, 1};
+  std::Set<int> small = {5, 3, 9, 1};
   small.insert(3);
   small.erase(9);
   for (int v : small)

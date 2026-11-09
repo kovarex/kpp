@@ -23,6 +23,6 @@ static const TValue dummy = {{nullptr}, 3};
 int main()
 {
   TValue local = {{nullptr}, 5};
-  println(nilObject.value_.gc == nullptr, " ", nilObject.tt_, " ", dummy.tt_, " ", local.tt_);
+  std::println(nilObject.value_.gc == nullptr, " ", nilObject.tt_, " ", dummy.tt_, " ", local.tt_);
   return 0;
 }

@@ -5,14 +5,14 @@ struct Fluid { int f = 0; };
 class Entity
 {
 public:
-  virtual void transfer(TransferData data) { println("entity ", data.x); }
+  virtual void transfer(TransferData data) { std::println("entity ", data.x); }
   virtual ~Entity() {}
 };
 class Vehicle : public Entity { public:};
 class RollingStock : public Vehicle
 {
 public:
-  virtual void transfer(Fluid&) { println("fluid"); }
+  virtual void transfer(Fluid&) { std::println("fluid"); }
   using Vehicle::transfer;
 };
 class FluidWagon : public RollingStock
@@ -21,8 +21,8 @@ public:
   using super = RollingStock;
   void transfer(TransferData data) override
   {
-    println("wagon");
-    super::transfer(::move(data));
+    std::println("wagon");
+    super::transfer(std::move(data));
   }
 };
 template<typename T>
@@ -34,7 +34,7 @@ struct Store
 template<typename T>
 struct LabelledStore : Store<T>
 {
-  void put(const char* label) { println("label ", StringView(label)); }
+  void put(const char* label) { std::println("label ", std::StringView(label)); }
   using Store<T>::put;
 };
 struct IntStore : LabelledStore<int>
@@ -56,6 +56,6 @@ int main()
   r.transfer(f);
   IntStore s;
   s.put(21);
-  println(s.stored);
+  std::println(s.stored);
   return 0;
 }

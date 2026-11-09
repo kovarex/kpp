@@ -4,16 +4,16 @@ extern "C" import "stdio.h";
 struct Plain { int a; };
 template<typename... T> constexpr int countOf = sizeof...(T);
 template<typename T> constexpr bool hasBegin = requires (T& t) { t.begin(); };
-void show(Text text)
+void show(std::Text text)
 {
-  String s;
+  std::String s;
   text.appendTo(s);
   printf("%s\n", s.c_str());
 }
 int main()
 {
-  show(isSame<int, int>, " ", isSame<int, long>, " ", isTriviallyCopyable<Plain>, " ", countOf<int, char, double>);
-  show(hasBegin<Vector<int>>, " ", hasBegin<int>);
+  show(std::isSame<int, int>, " ", std::isSame<int, long>, " ", std::isTriviallyCopyable<Plain>, " ", countOf<int, char, double>);
+  show(hasBegin<std::Vector<int>>, " ", hasBegin<int>);
   show(config::zlib::debug, " ", config::zlib::level);
   return 0;
 }

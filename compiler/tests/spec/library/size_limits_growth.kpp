@@ -2,63 +2,63 @@
 // factorio: none known; sizeSum and grownCapacity are what every container's growth path uses (core/Sizes.kpp)
 int main()
 {
-  println(grownCapacity(0, 1, 4), " ", grownCapacity(100, 101, 4), " ", grownCapacity(100, 500, 4));
-  println(grownCapacity(maxContainerSize / 2 + 2, maxContainerSize / 2 + 3, 4) == maxContainerSize, " ", grownCapacity(maxContainerSize - 1, maxContainerSize, 4) == maxContainerSize);
-  println(sizeSum(maxContainerSize - 1, 1, "sum") == maxContainerSize);
+  std::println(std::grownCapacity(0, 1, 4), " ", std::grownCapacity(100, 101, 4), " ", std::grownCapacity(100, 500, 4));
+  std::println(std::grownCapacity(std::maxContainerSize / 2 + 2, std::maxContainerSize / 2 + 3, 4) == std::maxContainerSize, " ", std::grownCapacity(std::maxContainerSize - 1, std::maxContainerSize, 4) == std::maxContainerSize);
+  std::println(std::sizeSum(std::maxContainerSize - 1, 1, "sum") == std::maxContainerSize);
   try
   {
-    println(sizeSum(maxContainerSize, 1, "sum too long"));
+    std::println(std::sizeSum(std::maxContainerSize, 1, "sum too long"));
   }
-  catch (const LengthError& e)
+  catch (const std::LengthError& e)
   {
-    println("sum: ", StringView(e.what()));
+    std::println("sum: ", std::StringView(e.what()));
   }
   try
   {
-    println(grownCapacity(maxContainerSize, maxContainerSize + 1, 4));
+    std::println(std::grownCapacity(std::maxContainerSize, std::maxContainerSize + 1, 4));
   }
-  catch (const LengthError& e)
+  catch (const std::LengthError& e)
   {
-    println("grow: ", StringView(e.what()));
+    std::println("grow: ", std::StringView(e.what()));
   }
-  HashMap<int, int> map;
+  std::HashMap<int, int> map;
   try
   {
-    map.reserve(maxContainerSize);
-    println("reserved");
+    map.reserve(std::maxContainerSize);
+    std::println("reserved");
   }
-  catch (const LengthError& e)
+  catch (const std::LengthError& e)
   {
-    println("hash map: ", StringView(e.what()), ", ", map.size());
+    std::println("hash map: ", std::StringView(e.what()), ", ", map.size());
   }
-  HashSet<int> set;
+  std::HashSet<int> set;
   try
   {
     set.reserve(0x7000000000000000); // more than 3/4 of 2^63 slots
-    println("reserved");
+    std::println("reserved");
   }
-  catch (const LengthError& e)
+  catch (const std::LengthError& e)
   {
-    println("hash set: ", StringView(e.what()));
+    std::println("hash set: ", std::StringView(e.what()));
   }
-  WString wide = L"wide";
+  std::WString wide = L"wide";
   try
   {
-    wide.reserve(maxContainerSize);
-    println("reserved");
+    wide.reserve(std::maxContainerSize);
+    std::println("reserved");
   }
-  catch (const LengthError& e)
+  catch (const std::LengthError& e)
   {
-    println("wstring: ", StringView(e.what()), ", ", wide.size());
+    std::println("wstring: ", std::StringView(e.what()), ", ", wide.size());
   }
   try
   {
-    wide.reserve(WString::npos);
-    println("reserved");
+    wide.reserve(std::WString::npos);
+    std::println("reserved");
   }
-  catch (const LengthError& e)
+  catch (const std::LengthError& e)
   {
-    println("wstring npos: ", StringView(e.what()), ", ", wide.size());
+    std::println("wstring npos: ", std::StringView(e.what()), ", ", wide.size());
   }
   return 0;
 }

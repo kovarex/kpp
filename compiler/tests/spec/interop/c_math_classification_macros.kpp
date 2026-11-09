@@ -4,8 +4,8 @@ extern "C" import "math.h";
 int main()
 {
   double z = -0.0, one = 1.0, sub = 4.9e-324, inf = 1e308 * 10.0;
-  println(signbit(z) != 0, " ", signbit(one) != 0, " ", isnan(inf - inf) != 0, " ", isinf(inf) != 0);
-  println(FP_NAN, " ", FP_INFINITE, " ", FP_ZERO, " ", FP_NORMAL, " ", FP_SUBNORMAL);
-  println(fpclassify(z), " ", fpclassify(one), " ", fpclassify(sub), " ", fpclassify(inf));
+  std::println(std::signbit(z) != 0, " ", std::signbit(one) != 0, " ", std::isnan(inf - inf) != 0, " ", std::isinf(inf) != 0);
+  std::println(FP_NAN, " ", FP_INFINITE, " ", FP_ZERO, " ", FP_NORMAL, " ", FP_SUBNORMAL);
+  std::println(fpclassify(z), " ", fpclassify(one), " ", fpclassify(sub), " ", fpclassify(inf));
   return 0;
 }

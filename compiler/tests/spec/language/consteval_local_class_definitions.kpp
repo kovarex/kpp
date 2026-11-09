@@ -32,6 +32,6 @@ static_assert(build() == 1309 && enumerators() == 254 && counted() == 3);
 
 int main()
 {
-  println(b, " ", e, " ", c, " ", build(), " ", enumerators(), " ", counted());
+  std::println(b, " ", e, " ", c, " ", build(), " ", enumerators(), " ", counted());
   return 0;
 }

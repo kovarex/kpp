@@ -24,6 +24,6 @@ int main()
   for (int& v : n)
     v *= 2;
   int b = sumOf(n);
-  println(a, " ", n.constCalls, " ", n.mutableCalls, " ", b);
+  std::println(a, " ", n.constCalls, " ", n.mutableCalls, " ", b);
   return 0;
 }

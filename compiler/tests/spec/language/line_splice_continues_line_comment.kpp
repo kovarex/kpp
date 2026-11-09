@@ -5,6 +5,6 @@ int main()
   int x = 1;
   // the next line is in this comment \
   x = 2;
-  println(x);
+  std::println(x);
   return 0;
 }

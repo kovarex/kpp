@@ -24,7 +24,7 @@ void REPORT(const char* what)
 int main()
 {
   {
-    HashMap<int, Counted> h;
+    std::HashMap<int, Counted> h;
     h.reserve(16);
     RESET();
     h.emplace(1, Counted(10));
@@ -35,7 +35,7 @@ int main()
     REPORT("hashmap try_emplace existing");
   }
   {
-    Map<int, Counted> m;
+    std::Map<int, Counted> m;
     m.emplace(1, Counted(10));
     RESET();
     m.emplace(1, Counted(20));
@@ -44,7 +44,7 @@ int main()
     REPORT("map try_emplace existing");
   }
   {
-    List<Counted> l;
+    std::List<Counted> l;
     l.push_back(Counted(1));
     l.push_back(Counted(2));
     l.push_back(Counted(1));
@@ -53,7 +53,7 @@ int main()
     REPORT("list remove");
   }
   {
-    Vector<Counted> v;
+    std::Vector<Counted> v;
     v.reserve(8);
     for (int i = 0; i < 4; ++i)
       v.emplace_back(i);

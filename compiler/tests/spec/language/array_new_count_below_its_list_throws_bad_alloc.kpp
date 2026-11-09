@@ -7,24 +7,24 @@ int main()
   try
   {
     int* p = new int[elements]{1, 2, 3};
-    println("not reached ", p[2]);
+    std::println("not reached ", p[2]);
   }
-  catch (const BadAlloc&)
+  catch (const std::BadAlloc&)
   {
-    println("below the list: bad allocation");
+    std::println("below the list: bad allocation");
   }
   try
   {
     int n = -elements;
     int* p = new int[n];
-    println("not reached either ", p == nullptr ? 1 : 0);
+    std::println("not reached either ", p == nullptr ? 1 : 0);
   }
-  catch (const BadAlloc&)
+  catch (const std::BadAlloc&)
   {
-    println("negative: bad allocation");
+    std::println("negative: bad allocation");
   }
   int* p = new int[elements + 2]{3, 4, 5};
-  println(p[0], " ", p[1], " ", p[2], " ", p[3]);
+  std::println(p[0], " ", p[1], " ", p[2], " ", p[3]);
   delete[] p;
   return 0;
 }

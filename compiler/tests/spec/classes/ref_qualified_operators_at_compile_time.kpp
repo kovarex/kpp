@@ -79,7 +79,7 @@ constexpr int movedOf()
 {
   Ops o;
   OnlyTwo t;
-  return move(o)(0) * 10000 + make()(0) * 100 + t(0);
+  return std::move(o)(0) * 10000 + make()(0) * 100 + t(0);
 }
 constexpr int a = callOf(), b = indexOf(), c = starOf(), d = plusOf(), e = minusOf(), f = notOf(), g = equalOf(), h = movedOf();
 constexpr int i = global(0), j = global[0], k = *global, l = two(0), m = Ops()(0), n = *Ops(), p = !Ops();

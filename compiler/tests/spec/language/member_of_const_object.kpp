@@ -16,6 +16,6 @@ int main()
   Holder h;
   const Holder& c = h;
   const Holder* p = &h;
-  println(h.items.begin(), " ", c.items.begin(), " ", p->items.begin(), " ", h.viaThis());
+  std::println(h.items.begin(), " ", c.items.begin(), " ", p->items.begin(), " ", h.viaThis());
   return 0;
 }

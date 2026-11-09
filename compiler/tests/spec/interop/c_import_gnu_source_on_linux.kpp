@@ -12,6 +12,6 @@ int main()
   pthread_getname_np(pthread_self(), name, sizeof(name));
   char buffer[64] = {};
   const char* text = strerror_r(ENOENT, buffer, sizeof(buffer)); // (GNU's: the text, in buffer or not)
-  println(set, " ", StringView(name), " ", text != nullptr && text[0] != 0);
+  std::println(set, " ", std::StringView(name), " ", text != nullptr && text[0] != 0);
   return 0;
 }

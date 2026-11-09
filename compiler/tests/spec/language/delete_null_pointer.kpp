@@ -6,17 +6,17 @@ struct Plain
 };
 struct WithDestructor
 {
-  ~WithDestructor() { println("destroyed"); }
+  ~WithDestructor() { std::println("destroyed"); }
 };
 class Virtual
 {
 public:
-  virtual ~Virtual() { println("virtual destroyed"); }
+  virtual ~Virtual() { std::println("virtual destroyed"); }
 };
 class Derived : public Virtual
 {
 public:
-  ~Derived() { println("derived destroyed"); }
+  ~Derived() { std::println("derived destroyed"); }
 };
 int main()
 {
@@ -28,6 +28,6 @@ int main()
   delete c;
   Virtual* d = new Derived();
   delete d;
-  println("done");
+  std::println("done");
   return 0;
 }

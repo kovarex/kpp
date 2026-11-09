@@ -22,7 +22,7 @@ constexpr int loops()
 }
 constexpr int strings()
 {
-  String names[2] = {"ab", "cde"};
+  std::String names[2] = {"ab", "cde"};
   auto [n0, n1] = names; // copied by String's copy constructor
   n0 = "z";
   return (int)(names[0].size() * 100 + n0.size() * 10 + n1.size());
@@ -38,7 +38,7 @@ int main()
   constexpr int k1 = copied();
   constexpr int k2 = loops();
   constexpr int k3 = strings();
-  println(arr[0], " ", arr[1], " ", arr[2], " ", a, " ", b, " ", c, " ", x, " ", z, " ", p + q + r);
-  println(k1, " ", copied(), " ", k2, " ", loops(), " ", k3, " ", strings());
+  std::println(arr[0], " ", arr[1], " ", arr[2], " ", a, " ", b, " ", c, " ", x, " ", z, " ", p + q + r);
+  std::println(k1, " ", copied(), " ", k2, " ", loops(), " ", k3, " ", strings());
   return 0;
 }

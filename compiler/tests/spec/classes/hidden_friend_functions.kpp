@@ -21,6 +21,6 @@ int main()
 {
   Coin a(1), b(2);
   Holder<int> h(3), g(3), k(4);
-  println(valueOf(b), " ", a < b, " ", b < a, " ", unwrap(k), " ", h == g, " ", h == k);
+  std::println(valueOf(b), " ", a < b, " ", b < a, " ", unwrap(k), " ", h == g, " ", h == k);
   return 0;
 }

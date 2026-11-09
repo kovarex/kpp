@@ -10,6 +10,6 @@ template<int V> struct Take { static constexpr int v = V; };
 using Three = int[3];
 int main()
 {
-  println(K<int>::v, " ", K<int[3]>::v, " ", K<char[5]>::v, " ", K<int[]>::v, " ", K<int[2][4]>::v, " ", K<Three>::v, " ", Size<int[3]>::v, " ", Take<table[1]>::v);
+  std::println(K<int>::v, " ", K<int[3]>::v, " ", K<char[5]>::v, " ", K<int[]>::v, " ", K<int[2][4]>::v, " ", K<Three>::v, " ", Size<int[3]>::v, " ", Take<table[1]>::v);
   return 0;
 }

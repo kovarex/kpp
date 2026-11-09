@@ -21,6 +21,6 @@ int main()
   Turret turret;
   const Turret& view = turret;
   Entity& base = turret;
-  println(turret.inventory(0), " ", view.inventory(0), " ", base.inventory(0), " ", turret.name(1), " ", turret.name("a"));
+  std::println(turret.inventory(0), " ", view.inventory(0), " ", base.inventory(0), " ", turret.name(1), " ", turret.name("a"));
   return 0;
 }

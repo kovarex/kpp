@@ -2,11 +2,11 @@
 // factorio: the tests' MultilingualStringHelpers writes its 104 words as `L"\u0054\u0048..."` (TestStringUtil's NonEnglishCaseCasting and TestLuaHelpersObject's MultilingualToLower: "Expected 55 but was 53"), and StringUtil::stringToUnicodeWString replaces a byte that is no UTF-8 with `wc = L'\uFFFD';` (TestStringUtil's AnsiTextToUTF8); Lua's LUA_SIGNATURE is `"\033Lua"`, whose first byte was 0, so every precompiled chunk counted as text (TestLua's 11 bytecode tests: "attempt to load a text chunk")
 int main()
 {
-  WString word = L"\u0054\u00d6";
-  String narrow = "\u00e9";
+  std::WString word = L"\u0054\u00d6";
+  std::String narrow = "\u00e9";
   wchar_t letter = L'\u00d6';
   wchar_t replacement = L'\uFFFD';
-  String octal = "\101\60";
-  println(word.size(), " ", (int)word[0], " ", (int)word[1], " ", narrow.size(), " | ", (int)(unsigned char)narrow[0], " ", (int)letter, " ", (int)replacement, " | ", (int)octal[0], " ", (int)octal[1]);
+  std::String octal = "\101\60";
+  std::println(word.size(), " ", (int)word[0], " ", (int)word[1], " ", narrow.size(), " | ", (int)(unsigned char)narrow[0], " ", (int)letter, " ", (int)replacement, " | ", (int)octal[0], " ", (int)octal[1]);
   return 0;
 }

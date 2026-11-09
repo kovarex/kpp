@@ -15,13 +15,13 @@ int byValue(Tracked t) { return t.how; }
 int main()
 {
   const Tracked source;
-  Tracked a(move(source));
+  Tracked a(std::move(source));
   Tracked b;
-  b = move(source);
+  b = std::move(source);
   const Holder h;
-  Holder hc(move(h));
+  Holder hc(std::move(h));
   Holder ha;
-  ha = move(h);
-  println(a.how, " ", b.how, " ", source.value, " ", hc.t.how, " ", ha.t.how, " ", byValue(move(source)));
+  ha = std::move(h);
+  std::println(a.how, " ", b.how, " ", source.value, " ", hc.t.how, " ", ha.t.how, " ", byValue(std::move(source)));
   return 0;
 }

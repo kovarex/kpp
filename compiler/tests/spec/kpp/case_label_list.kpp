@@ -25,7 +25,7 @@ int kind(int x)
       return 30;
   }
 }
-int vowels(StringView text)
+int vowels(std::StringView text)
 {
   int n = 0;
   for (char c : text)
@@ -52,13 +52,13 @@ constexpr int folded(int x)
 static_assert(folded(1) == 12 && folded(2) == 12 && folded(3) == 3 && folded(4) == 0);
 int main()
 {
-  println(kind(1), " ", kind(2), " ", kind(3), " ", kind(4), " ", kind(5), " ", kind(6), " ", kind(9));
-  println(vowels("kpp language"));
-  String lines;
+  std::println(kind(1), " ", kind(2), " ", kind(3), " ", kind(4), " ", kind(5), " ", kind(6), " ", kind(9));
+  std::println(vowels("kpp language"));
+  std::String lines;
   for (Direction d : Direction::values)
-    lines << StringView(d.isVertical() ? "|" : "-");
-  println(lines);
+    lines << std::StringView(d.isVertical() ? "|" : "-");
+  std::println(lines);
   int f1 = folded(1), f2 = folded(2), f3 = folded(3), f4 = folded(4);
-  println(f1, " ", f2, " ", f3, " ", f4);
+  std::println(f1, " ", f2, " ", f3, " ", f4);
   return 0;
 }

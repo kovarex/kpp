@@ -4,10 +4,10 @@ extern "C" long long strtoll(const char* text, char** end, int base);
 extern "C" double strtod(const char* text, char** end);
 int main()
 {
-  String s = toString(255) + "/" + toString(true) + "/" + toString(-1.5);
+  std::String s = std::toString(255) + "/" + std::toString(true) + "/" + std::toString(-1.5);
   long long n = strtoll("1234", nullptr, 10);
   long long hex = strtoll("ff", nullptr, 16);
   double d = strtod("2.5", nullptr);
-  println(s, " ", n, " ", hex, " ", d == 2.5);
+  std::println(s, " ", n, " ", hex, " ", d == 2.5);
   return 0;
 }

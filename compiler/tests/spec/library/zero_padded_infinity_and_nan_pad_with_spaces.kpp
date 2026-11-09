@@ -5,9 +5,9 @@ int main()
 {
   volatile double one = 1.0, zero = 0.0;
   double inf = one / zero, nan = zero / zero;
-  String out;
-  out << "[" << zeroPadded(fixed(inf, 2), 12) << "] [" << zeroPadded(fixed(-inf, 2), 12) << "] [" << zeroPadded(withSign(fixed(inf, 2)), 12) << "] ["
-      << zeroPadded(fixed(nan, 2), 12) << "] [" << zeroPadded(fixed(-1.5, 2), 11) << "]";
+  std::String out;
+  out << "[" << std::zeroPadded(std::fixed(inf, 2), 12) << "] [" << std::zeroPadded(std::fixed(-inf, 2), 12) << "] [" << std::zeroPadded(std::withSign(std::fixed(inf, 2)), 12) << "] ["
+      << std::zeroPadded(std::fixed(nan, 2), 12) << "] [" << std::zeroPadded(std::fixed(-1.5, 2), 11) << "]";
   printf("%s\n", out.c_str());
   return 0;
 }

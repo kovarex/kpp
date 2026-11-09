@@ -2,21 +2,21 @@
 // factorio: the tests' ForkLogic.cpp reads a fork's XML report whole: `std::copy(std::istreambuf_iterator<char>(in), {}, std::back_inserter(buffer));`
 int main()
 {
-  const char* temp = getenv("TEMP");
-  String path = String(temp ? temp : ".") + "/kpp_istreambuf_iterator.txt";
+  const char* temp = std::getenv("TEMP");
+  std::String path = std::String(temp ? temp : ".") + "/kpp_istreambuf_iterator.txt";
   {
-    OutFileStream out(path);
+    std::OutFileStream out(path);
     out << "<report tests=\"6\"/>";
   }
-  String buffer;
+  std::String buffer;
   {
-    InFileStream in(path);
-    copy(IstreambufIterator<char>(in), {}, backInserter(buffer));
+    std::InFileStream in(path);
+    std::copy(std::IstreambufIterator<char>(in), {}, std::backInserter(buffer));
   }
-  InFileStream again(path);
-  ptrdiff_t count = distance(IstreambufIterator<>(again), IstreambufIterator<>());
+  std::InFileStream again(path);
+  ptrdiff_t count = std::distance(std::IstreambufIterator<>(again), std::IstreambufIterator<>());
   again.close();
   remove(path.c_str());
-  println(buffer, " ", buffer.size(), " ", count);
+  std::println(buffer, " ", buffer.size(), " ", count);
   return 0;
 }

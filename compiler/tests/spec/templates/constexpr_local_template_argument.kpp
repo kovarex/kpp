@@ -13,20 +13,20 @@ const char* describe(Flag<false>) { return "unsigned"; }
 template<typename T>
 const char* bySign(T value)
 {
-  constexpr bool sign = isSigned<T>;
+  constexpr bool sign = std::isSigned<T>;
   return describe(Flag<sign>());
 }
 
 template<typename T>
 int byCode(T value)
 {
-  constexpr bool sign = isSigned<T>;
+  constexpr bool sign = std::isSigned<T>;
   Flag<sign> flag;
   return flag.code();
 }
 
 int main()
 {
-  println(StringView(bySign(-1)), " ", StringView(bySign(1u)), " ", byCode(-1), " ", byCode(1u));
+  std::println(std::StringView(bySign(-1)), " ", std::StringView(bySign(1u)), " ", byCode(-1), " ", byCode(1u));
   return 0;
 }

@@ -31,6 +31,6 @@ int callThrough(T& object)
 int main()
 {
   Accumulator a;
-  println(callThrough(a));
+  std::println(callThrough(a));
   return 0;
 }

@@ -2,15 +2,15 @@
 // design.md 8.3; replaces the serialisation and GUI macros
 struct Settings { int width = 640; bool fullscreen = false; };
 template<typename T>
-String describe(const T& object)
+std::String describe(const T& object)
 {
-  String result;
+  std::String result;
   for constexpr (auto m : members(T))
-    result << format("{}={} ", StringView(m.name), object.[m]);
+    result << std::format("{}={} ", std::StringView(m.name), object.[m]);
   return result;
 }
 int main()
 {
-  println(describe(Settings()));
+  std::println(describe(Settings()));
   return 0;
 }

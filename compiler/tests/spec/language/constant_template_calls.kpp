@@ -8,12 +8,12 @@ struct Buffer
 template<class T>
 const T& biggest(const T& a, const T& b) { return a < b ? b : a; }
 using Small = Buffer<biggest(5, 15)>;
-using Sized = Buffer<max(sizeof(int) + 1u, 2 * sizeof(const char*) - 1)>;
-using Cast = Buffer<max(size_t(3), size_t(2))>;
+using Sized = Buffer<std::max(sizeof(int) + 1u, 2 * sizeof(const char*) - 1)>;
+using Cast = Buffer<std::max(size_t(3), size_t(2))>;
 constexpr size_t limit = biggest(size_t(7), sizeof(short));
 static_assert(limit == 7 && uint8_t(300) == 44);
 int main()
 {
-  println(sizeof(Small), " ", sizeof(Sized), " ", sizeof(Cast), " ", limit);
+  std::println(sizeof(Small), " ", sizeof(Sized), " ", sizeof(Cast), " ", limit);
   return 0;
 }

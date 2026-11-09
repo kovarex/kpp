@@ -12,20 +12,20 @@ struct Pattern
       if (p[0] == '{' && p[1] == '}')
         ++holes;
   }
-  consteval void checkPieces(ContainerSize pieces) const
+  consteval void checkPieces(std::ContainerSize pieces) const
   {
-    if (pieces != ContainerSize(holes))
+    if (pieces != std::ContainerSize(holes))
     {
-      String message("format: ");
-      message.append(toString(holes));
+      std::String message("format: ");
+      message.append(std::toString(holes));
       message.append(" {} for ");
-      message.append(toString(int(pieces)));
+      message.append(std::toString(int(pieces)));
       message.append(" pieces");
-      throw LogicError(message);
+      throw std::LogicError(message);
     }
   }
 };
-int fill(Pattern pattern, Text pieces)
+int fill(Pattern pattern, std::Text pieces)
 {
   return int(pieces.count);
 }

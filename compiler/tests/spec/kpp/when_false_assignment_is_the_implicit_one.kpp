@@ -27,23 +27,23 @@ int main()
   Tracked b;
   b.value = 3;
   a = b;
-  println(a.value);
+  std::println(a.value);
   Moved c;
   Moved d;
   d.value = 4;
   c = d;
-  println(c.value);
-  c = move(d);
-  println(c.value);
+  std::println(c.value);
+  c = std::move(d);
+  std::println(c.value);
   Derived e;
   Derived f;
   f.value = 5;
   e = f;
-  println(e.value);
-  Vector<Tracked> list;
+  std::println(e.value);
+  std::Vector<Tracked> list;
   list.push_back(b);
   list.push_back(a);
   list.assign(1, b); // (Vector's own assignment of its elements)
-  println(list.size(), " ", list[0].value);
+  std::println(list.size(), " ", list[0].value);
   return 0;
 }

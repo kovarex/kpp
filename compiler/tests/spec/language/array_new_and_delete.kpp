@@ -3,8 +3,8 @@
 struct Item
 {
   int value = 7;
-  Item() { println("make"); }
-  ~Item() { println("drop ", this.value); }
+  Item() { std::println("make"); }
+  ~Item() { std::println("drop ", this.value); }
 };
 int main()
 {
@@ -13,7 +13,7 @@ int main()
   int sum = numbers[0] + numbers[1] + numbers[2];
   for (int i = 0; i < n; ++i)
     numbers[i] = i * 10;
-  println(sum, " ", numbers[1], " ", numbers[2]);
+  std::println(sum, " ", numbers[1], " ", numbers[2]);
   delete[] numbers;
   Item* items = new Item[n];
   items[0].value = 1;

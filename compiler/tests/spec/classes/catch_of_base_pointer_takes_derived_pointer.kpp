@@ -53,27 +53,27 @@ int which(int kind)
   }
   catch (B*& exact)
   {
-    print("exact ", exact ? exact->b : -1, " ");
+    std::print("exact ", exact ? exact->b : -1, " ");
     return 1;
   }
   catch (B* const& p)
   {
-    print("B* const& ", p ? p->b : -1, " ", p == static_cast<B*>(&plain) ? 1 : 0, " ");
+    std::print("B* const& ", p ? p->b : -1, " ", p == static_cast<B*>(&plain) ? 1 : 0, " ");
     return 2;
   }
   catch (char* p)
   {
-    print("char* ");
+    std::print("char* ");
     return 3;
   }
   catch (const void* p)
   {
-    print("const void* ", p == static_cast<const void*>(&plain) ? 1 : 0, " ");
+    std::print("const void* ", p == static_cast<const void*>(&plain) ? 1 : 0, " ");
     return 4;
   }
   catch (...)
   {
-    print("any ");
+    std::print("any ");
     return 5;
   }
 }
@@ -85,11 +85,11 @@ int main()
   }
   catch (Second* p)
   {
-    println(p->b, " ", p->which());
+    std::println(p->b, " ", p->which());
   }
   catch (...)
   {
-    println("other");
+    std::println("other");
   }
   try
   {
@@ -97,11 +97,11 @@ int main()
   }
   catch (const Both* p)
   {
-    println(p->c);
+    std::println(p->c);
   }
   catch (...)
   {
-    println("other");
+    std::println("other");
   }
   try
   {
@@ -109,13 +109,13 @@ int main()
   }
   catch (void* p)
   {
-    println(p == static_cast<void*>(&object) ? 1 : 0);
+    std::println(p == static_cast<void*>(&object) ? 1 : 0);
   }
   catch (...)
   {
-    println("other");
+    std::println("other");
   }
   for (int kind = 0; kind <= 6; ++kind)
-    println("| ", which(kind));
+    std::println("| ", which(kind));
   return 0;
 }

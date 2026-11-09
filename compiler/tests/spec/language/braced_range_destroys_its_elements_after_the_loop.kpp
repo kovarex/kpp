@@ -6,11 +6,11 @@ struct Noisy
   implicit Noisy(int v) : v(v)
   {
     if (v < 0)
-      throw Exception("bad");
-    println("make ", v);
+      throw std::Exception("bad");
+    std::println("make ", v);
   }
-  Noisy(const Noisy& o) : v(o.v) { println("copy ", this.v); }
-  ~Noisy() { println("drop ", this.v); }
+  Noisy(const Noisy& o) : v(o.v) { std::println("copy ", this.v); }
+  ~Noisy() { std::println("drop ", this.v); }
 };
 int firstOver(int limit)
 {
@@ -22,23 +22,23 @@ int firstOver(int limit)
 int main()
 {
   for (const Noisy& n : {Noisy(1), Noisy(2)})
-    println("loop ", n.v);
-  println("loop done");
+    std::println("loop ", n.v);
+  std::println("loop done");
   for (const Noisy& n : {Noisy(3), Noisy(4)})
   {
-    println("loop ", n.v);
+    std::println("loop ", n.v);
     break;
   }
-  println("break done");
-  println("first ", firstOver(5));
+  std::println("break done");
+  std::println("first ", firstOver(5));
   try
   {
     for (const Noisy& n : {Noisy(8), Noisy(-1)})
-      println("loop ", n.v);
+      std::println("loop ", n.v);
   }
-  catch (const Exception& e)
+  catch (const std::Exception& e)
   {
-    println("caught");
+    std::println("caught");
   }
   return 0;
 }

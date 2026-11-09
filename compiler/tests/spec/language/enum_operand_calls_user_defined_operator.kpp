@@ -65,7 +65,7 @@ int main()
   Flags all = Flags::All;
   Flags a = Flags::A;
   Plain one = P1, two = P2;
-  println(!all, " ", int(~a), " ", -one, " ", prefixed(), " ", postfixed(), " ", decremented(), " ", one + two, " ", compound());
-  println(ca, " ", cb, " ", cc, " ", cd, " ", ce, " ", cf, " ", cg, " ", ch);
+  std::println(!all, " ", int(~a), " ", -one, " ", prefixed(), " ", postfixed(), " ", decremented(), " ", one + two, " ", compound());
+  std::println(ca, " ", cb, " ", cc, " ", cd, " ", ce, " ", cf, " ", cg, " ", ch);
   return 0;
 }

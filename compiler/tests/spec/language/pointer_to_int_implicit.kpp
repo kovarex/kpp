@@ -29,6 +29,6 @@ int cast()
 }
 int main()
 {
-  println(direct(), " ", aggregate(), " ", braced(), " ", cast());
+  std::println(direct(), " ", aggregate(), " ", braced(), " ", cast());
   return 0;
 }

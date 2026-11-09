@@ -2,7 +2,7 @@
 // found by H (2026-11-09): the game's src/ChildProcessAgent.kpp:113 (POSIX only, so no Windows gate built it) has `volatile Atomic<::sig_atomic_t> signalOccured` (C++ `volatile std::atomic<std::sig_atomic_t>`) and calls exchange(bool) on it, "no overload of Atomic<int32>::exchange takes (bool)" since volatile objects need volatile member functions (8c3a1243); Atomic had none (K)
 extern "C" int printf(const char* format, ...);
 
-volatile Atomic<i32> signalled = false;
+volatile std::Atomic<i32> signalled = false;
 
 void handler() { signalled = true; }
 
@@ -12,22 +12,22 @@ int main()
   i32 was = signalled.exchange(false);
   printf("%d %d\n", was, (i32)signalled.load());
 
-  volatile Atomic<i32> v = 5;
+  volatile std::Atomic<i32> v = 5;
   v.store(7);
-  v.store(8, MemoryOrder::seq_cst);
+  v.store(8, std::MemoryOrder::seq_cst);
   i32 a = v.load();
-  i32 b = v.load(MemoryOrder::seq_cst);
+  i32 b = v.load(std::MemoryOrder::seq_cst);
   i32 c = v.exchange(9);
-  i32 d = v.exchange(10, MemoryOrder::seq_cst);
+  i32 d = v.exchange(10, std::MemoryOrder::seq_cst);
   i32 expected = 10;
   bool e = v.compare_exchange_strong(expected, 11);
   expected = 3;
   bool f = v.compare_exchange_strong(expected, 12);
   i32 g = expected;
   expected = 11;
-  bool h = v.compare_exchange_weak(expected, 13, MemoryOrder::seq_cst);
+  bool h = v.compare_exchange_weak(expected, 13, std::MemoryOrder::seq_cst);
   expected = 13;
-  bool i = v.compare_exchange_strong(expected, 14, MemoryOrder::seq_cst, MemoryOrder::seq_cst);
+  bool i = v.compare_exchange_strong(expected, 14, std::MemoryOrder::seq_cst, std::MemoryOrder::seq_cst);
   printf("%d %d %d %d %d %d %d %d %d %d\n", a, b, c, d, (i32)e, (i32)f, g, (i32)h, (i32)i, (i32)v);
 
   i32 j = v.fetch_add(6);
@@ -47,12 +47,12 @@ int main()
   i32 y = (v = 77);
   printf("%d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d\n", j, k, l, m, n, o, p, q, r, s, t, u, w, x, y, (i32)v.load());
 
-  volatile Atomic<bool> flag = false;
+  volatile std::Atomic<bool> flag = false;
   bool before = flag.exchange(true);
   printf("%d %d %d\n", (i32)before, (i32)flag.load(), (i32)flag.is_lock_free());
 
   i32 cells[4] = {10, 20, 30, 40};
-  volatile Atomic<i32*> at = cells;
+  volatile std::Atomic<i32*> at = cells;
   i32* first = at.fetch_add(2);
   i32* third = at.load();
   i32* back = (at -= 1);
@@ -60,7 +60,7 @@ int main()
   at--;
   printf("%d %d %d %d\n", *first, *third, *back, *at.load());
 
-  volatile Atomic<double> real = 1.5;
+  volatile std::Atomic<double> real = 1.5;
   double before2 = real.fetch_add(2.25);
   real += 0.25;
   printf("%.2f %.2f\n", before2, real.load());

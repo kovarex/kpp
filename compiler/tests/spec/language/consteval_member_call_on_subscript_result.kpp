@@ -3,17 +3,17 @@
 extern "C" import "stdio.h";
 struct Item
 {
-  String name;
-  Vector<String> names;
+  std::String name;
+  std::Vector<std::String> names;
 };
 struct Handle
 {
-  Vector<Item>* items;
+  std::Vector<Item>* items;
   u64 index;
 };
 struct Holder
 {
-  Vector<Item> items;
+  std::Vector<Item> items;
   Handle add()
   {
     Item& i = this.items.emplace_back();
@@ -25,7 +25,7 @@ int added()
 {
   Holder h;
   h.add();
-  String s("x");
+  std::String s("x");
   h.items[0].names.push_back(s);
   return int(h.items[0].names.size());
 }
@@ -33,7 +33,7 @@ constexpr int atCompileTime()
 {
   Holder h;
   h.add();
-  String s("x");
+  std::String s("x");
   h.items[0].names.push_back(s);
   return int(h.items[0].names.size());
 }

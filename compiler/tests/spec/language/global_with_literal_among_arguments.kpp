@@ -14,9 +14,9 @@ struct Grid
 };
 Box box{Mode::On, 4}; // (braces at namespace scope: design.md 22)
 Grid grid{Mode::Off, 9};
-Array<int, 2> pair;
+std::Array<int, 2> pair;
 int main()
 {
-  println(int(box.mode), " ", box.count, " ", grid.cells, " ", pair.size());
+  std::println(int(box.mode), " ", box.count, " ", grid.cells, " ", pair.size());
   return 0;
 }

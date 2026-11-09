@@ -2,9 +2,9 @@
 // factorio: 354 pair uses in 199 files, 51 tuple
 int main()
 {
-  Pair<String, int> p = makePair(String("a"), 1);
-  Pair<int, int> q(2, 3);
-  Tuple<int, String, double> t = makeTuple(1, String("two"), 3.0);
-  println(p.first, " ", p.second + q.first * q.second, " ", get<0>(t), " ", get<1>(t), " ", q < Pair<int, int>(2, 4));
+  std::Pair<std::String, int> p = std::makePair(std::String("a"), 1);
+  std::Pair<int, int> q(2, 3);
+  std::Tuple<int, std::String, double> t = std::makeTuple(1, std::String("two"), 3.0);
+  std::println(p.first, " ", p.second + q.first * q.second, " ", std::get<0>(t), " ", std::get<1>(t), " ", q < std::Pair<int, int>(2, 4));
   return 0;
 }

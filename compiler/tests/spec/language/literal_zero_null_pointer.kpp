@@ -8,6 +8,6 @@ int main()
 {
   Entity* none = nullptr;
   Entity one;
-  println(pick(none), " ", take(0), " ", take(none), " ", none == nullptr ? 1 : 0, " ", pick(&one));
+  std::println(pick(none), " ", take(0), " ", take(none), " ", none == nullptr ? 1 : 0, " ", pick(&one));
   return 0;
 }

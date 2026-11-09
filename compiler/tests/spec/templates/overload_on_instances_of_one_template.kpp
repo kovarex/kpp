@@ -14,11 +14,11 @@ template<typename T> struct IsPtr<T*> : Yes {};
 const char* pick(Yes) { return "yes"; }
 const char* pick(No) { return "no"; }
 template<typename T>
-const char* bySign(T) { return pick(Constant<bool, isSigned<T>>()); }
+const char* bySign(T) { return pick(Constant<bool, std::isSigned<T>>()); }
 int main()
 {
-  println(StringView(pick(Yes())), " ", StringView(pick(No())), " ", StringView(pick(IsSmall())));
-  println(StringView(pick(IsPtr<int>())), " ", StringView(pick(IsPtr<int*>())));
-  println(StringView(bySign(-1)), " ", StringView(bySign(1u)));
+  std::println(std::StringView(pick(Yes())), " ", std::StringView(pick(No())), " ", std::StringView(pick(IsSmall())));
+  std::println(std::StringView(pick(IsPtr<int>())), " ", std::StringView(pick(IsPtr<int*>())));
+  std::println(std::StringView(bySign(-1)), " ", std::StringView(bySign(1u)));
   return 0;
 }

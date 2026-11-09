@@ -37,7 +37,7 @@ int main()
   Holder h;
   bool none = !h.action && !h.field;
   h.field = &Named::id;
-  println(describe(&a, &Prototype::maximumPower), " ", describe(&a, &Prototype::plain), " ", (both.*viaBase)(), " ", both.*idField);
-  println(none, " ", h.field ? 1 : 0);
+  std::println(describe(&a, &Prototype::maximumPower), " ", describe(&a, &Prototype::plain), " ", (both.*viaBase)(), " ", both.*idField);
+  std::println(none, " ", h.field ? 1 : 0);
   return 0;
 }

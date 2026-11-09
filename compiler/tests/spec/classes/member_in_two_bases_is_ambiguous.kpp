@@ -6,6 +6,6 @@ class P : public Bindable, public Other { };
 int main()
 {
   P p;
-  println(p.toText());
+  std::println(p.toText());
   return 0;
 }

@@ -5,6 +5,6 @@ int main()
   void* direct = (void*)-1;
   long long wide = -1;
   void* throughWide = (void*)wide;
-  println(direct == throughWide, " ", (unsigned long long)direct == 18446744073709551615ull);
+  std::println(direct == throughWide, " ", (unsigned long long)direct == 18446744073709551615ull);
   return 0;
 }

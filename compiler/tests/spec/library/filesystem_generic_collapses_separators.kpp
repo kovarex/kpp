@@ -1,6 +1,6 @@
 // spec: a path's generic forms are those of the target's C++ library: on Linux and FreeBSD runs of `/` are one separator in generic_string() (libstdc++ 13: `a//b` is "a/b", `//server/x//y` "/server/x/y"), on Windows the text with `/` for `\`, runs kept (MSVC's STL: "a//b"); string() is the text as written everywhere (`a//b //server/x//y / a//b`, Linux `a/b /server/x/y / a//b`)
 int main()
 {
-  println(filesystem::path("a//b").generic_string(), " ", filesystem::path("//server/x//y").generic_string(), " / ", filesystem::path("a//b").string());
+  std::println(std::filesystem::path("a//b").generic_string(), " ", std::filesystem::path("//server/x//y").generic_string(), " / ", std::filesystem::path("a//b").string());
   return 0;
 }

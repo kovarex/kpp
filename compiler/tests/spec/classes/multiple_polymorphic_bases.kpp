@@ -48,18 +48,18 @@ int main()
   B* pb = &x;
   A* pa = &x;
   BC* pbc = &x;
-  println(pc->fc(), " ", pb->fb(), " ", pa->fa(), " ", pbc->fb(), " ", pbc->fc());
-  println(x.fa(), " ", x.fb(), " ", x.fc(), " ", callB(x) + callC(x));
+  std::println(pc->fc(), " ", pb->fb(), " ", pa->fa(), " ", pbc->fb(), " ", pbc->fc());
+  std::println(x.fa(), " ", x.fb(), " ", x.fc(), " ", callB(x) + callC(x));
   All* back = static_cast<All*>(pbc);
   BC* fromC = static_cast<BC*>(pc);
-  println(back == &x, " ", fromC == pbc, " ", (void*)pc != (void*)&x);
+  std::println(back == &x, " ", fromC == pbc, " ", (void*)pc != (void*)&x);
   All y = x;
   y.c = 4;
   const C& rc = y;
-  println(rc.fc(), " ", callB(y));
+  std::println(rc.fc(), " ", callB(y));
   Mixed m;
   Plain* asPlain = &m;
   A* asA = &m;
-  println(asA->fa(), " ", asPlain->p, " ", (void*)asA == (void*)&m);
+  std::println(asA->fa(), " ", asPlain->p, " ", (void*)asA == (void*)&m);
   return 0;
 }

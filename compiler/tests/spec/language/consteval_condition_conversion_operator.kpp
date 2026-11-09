@@ -20,6 +20,6 @@ int main()
   bool atRunTime = false;
   if (level)
     atRunTime = true;
-  println(truth(), " ", atRunTime);
+  std::println(truth(), " ", atRunTime);
   return 0;
 }

@@ -25,6 +25,6 @@ int main()
   Loader loader;
   loader.value = 7;
   loader.check();
-  println(loader.read());
+  std::println(loader.read());
   return 0;
 }

@@ -8,7 +8,7 @@ void writeFile(const char* path, const char* data, int count)
   fclose(f);
 }
 
-void state(const char* label, InFileStream& in)
+void state(const char* label, std::InFileStream& in)
 {
   bool asBool = false;
   if (in)
@@ -16,7 +16,7 @@ void state(const char* label, InFileStream& in)
   printf("%-36s bool %d not %d good %d eof %d\n", label, (int)asBool, (int)!in, (int)in.good(), (int)in.eof());
 }
 
-void outState(const char* label, OutFileStream& out)
+void outState(const char* label, std::OutFileStream& out)
 {
   bool asBool = false;
   if (out)
@@ -24,7 +24,7 @@ void outState(const char* label, OutFileStream& out)
   printf("%-36s bool %d good %d open %d\n", label, (int)asBool, (int)out.good(), (int)out.is_open());
 }
 
-void showLine(const char* label, bool ok, const String& line)
+void showLine(const char* label, bool ok, const std::String& line)
 {
   printf("%-36s result %d line [%s]\n", label, (int)ok, line.c_str());
 }
@@ -33,11 +33,11 @@ const char* path = "file_stream_state_follows_std.bin";
 
 void missing()
 {
-  InFileStream in("file_stream_state_follows_std_missing.bin");
+  std::InFileStream in("file_stream_state_follows_std_missing.bin");
   state("missing: after open", in);
-  String line = "kept";
+  std::String line = "kept";
   bool ok = false;
-  if (getline(in, line))
+  if (std::getline(in, line))
     ok = true;
   showLine("missing: getline", ok, line);
   int c = in.get();
@@ -49,25 +49,25 @@ void missing()
 void lines()
 {
   writeFile(path, "ab\ncd", 5);
-  InFileStream in(path);
-  String line = "start";
+  std::InFileStream in(path);
+  std::String line = "start";
   bool ok = false;
-  if (getline(in, line))
+  if (std::getline(in, line))
     ok = true;
   showLine("no last newline: getline 1", ok, line);
   state("no last newline: after 1", in);
   ok = false;
-  if (getline(in, line))
+  if (std::getline(in, line))
     ok = true;
   showLine("no last newline: getline 2", ok, line);
   state("no last newline: after 2", in);
   ok = false;
-  if (getline(in, line))
+  if (std::getline(in, line))
     ok = true;
   showLine("no last newline: getline 3 (at end)", ok, line);
   state("no last newline: after 3", in);
   ok = false;
-  if (getline(in, line))
+  if (std::getline(in, line))
     ok = true;
   showLine("no last newline: getline 4", ok, line);
 }
@@ -75,20 +75,20 @@ void lines()
 void linesNewline()
 {
   writeFile(path, "ab\n", 3);
-  InFileStream in(path);
-  String line = "start";
+  std::InFileStream in(path);
+  std::String line = "start";
   bool ok = false;
-  if (getline(in, line))
+  if (std::getline(in, line))
     ok = true;
   showLine("last newline: getline 1", ok, line);
   state("last newline: after 1", in);
   ok = false;
-  if (getline(in, line))
+  if (std::getline(in, line))
     ok = true;
   showLine("last newline: getline 2 (at end)", ok, line);
   state("last newline: after 2", in);
   ok = false;
-  if (getline(in, line))
+  if (std::getline(in, line))
     ok = true;
   showLine("last newline: getline 3", ok, line);
   state("last newline: after 3", in);
@@ -97,7 +97,7 @@ void linesNewline()
 void getsToEnd()
 {
   writeFile(path, "xy", 2);
-  InFileStream in(path);
+  std::InFileStream in(path);
   int a = in.get();
   state("get: after 1", in);
   int b = in.get();
@@ -113,7 +113,7 @@ void ignores()
 {
   writeFile(path, "abcde", 5);
   {
-    InFileStream in(path);
+    std::InFileStream in(path);
     in.ignore(100);
     state("ignore past the end", in);
     int c = in.get();
@@ -121,7 +121,7 @@ void ignores()
     state("ignore past the end: after get", in);
   }
   {
-    InFileStream in(path);
+    std::InFileStream in(path);
     in.ignore(5);
     state("ignore to the last byte", in);
     int c = in.get();
@@ -129,7 +129,7 @@ void ignores()
     state("ignore to the last byte: after get", in);
   }
   {
-    InFileStream in(path);
+    std::InFileStream in(path);
     in.ignore(100, 'c');
     state("ignore through a delimiter", in);
     int c = in.get();
@@ -138,7 +138,7 @@ void ignores()
     state("ignore, no such delimiter", in);
   }
   {
-    InFileStream in(path);
+    std::InFileStream in(path);
     in.ignore();
     int c = in.get();
     printf("ignore one: next %c\n", (char)c);
@@ -150,14 +150,14 @@ void reads()
   writeFile(path, "abcde", 5);
   char buffer[16];
   {
-    InFileStream in(path);
+    std::InFileStream in(path);
     in.read(buffer, 5);
     state("read all exactly", in);
     in.read(buffer, 1);
     state("read past the end", in);
   }
   {
-    InFileStream in(path);
+    std::InFileStream in(path);
     for (int i = 0; i < 16; ++i)
       buffer[i] = '.';
     in.read(buffer, 10);
@@ -168,7 +168,7 @@ void reads()
     state("read after a short read", in);
   }
   {
-    InFileStream in(path);
+    std::InFileStream in(path);
     in.read(buffer, 0);
     state("read nothing", in);
   }
@@ -178,7 +178,7 @@ void seeks()
 {
   writeFile(path, "abcde", 5);
   {
-    InFileStream in(path);
+    std::InFileStream in(path);
     in.seekg(3);
     state("seekg 3", in);
     int at = (int)in.tellg();
@@ -186,7 +186,7 @@ void seeks()
     printf("seekg 3: tellg %d, next %c\n", at, following);
   }
   {
-    InFileStream in(path);
+    std::InFileStream in(path);
     in.ignore(100);
     state("seekg after eof alone: before", in);
     in.seekg(1);
@@ -195,7 +195,7 @@ void seeks()
     printf("seekg after eof alone: next %d\n", c);
   }
   {
-    InFileStream in(path);
+    std::InFileStream in(path);
     while (in.get() != -1)
     {
     }
@@ -207,14 +207,14 @@ void seeks()
     state("seekg after a failed get: end", in);
   }
   {
-    InFileStream in(path);
+    std::InFileStream in(path);
     in.ignore(100);
     int t = (int)in.tellg();
     printf("tellg at eof alone: %d\n", t);
     state("tellg at eof alone: after", in);
   }
   {
-    InFileStream in(path);
+    std::InFileStream in(path);
     while (in.get() != -1)
     {
     }
@@ -227,7 +227,7 @@ void closes()
 {
   writeFile(path, "ab", 2);
   {
-    InFileStream in(path);
+    std::InFileStream in(path);
     state("input: open", in);
     in.close();
     state("input: closed", in);
@@ -240,7 +240,7 @@ void closes()
     printf("input: next %c\n", (char)in.get());
   }
   {
-    OutFileStream out("file_stream_state_follows_std_out.bin");
+    std::OutFileStream out("file_stream_state_follows_std_out.bin");
     outState("output: open", out);
     out.close();
     outState("output: closed", out);
@@ -250,30 +250,30 @@ void closes()
     outState("output: closed again", out);
   }
   {
-    OutFileStream out("file_stream_state_follows_std_no_directory/x.bin");
+    std::OutFileStream out("file_stream_state_follows_std_no_directory/x.bin");
     outState("output: cannot open", out);
   }
 }
 
 void defaults()
 {
-  InFileStream in;
+  std::InFileStream in;
   state("default input", in);
   printf("default input: open %d\n", (int)in.is_open());
   int c = in.get();
   printf("default input: get %d\n", c);
   state("default input: after get", in);
-  InFileStream closing;
+  std::InFileStream closing;
   closing.close();
   state("default input: closed", closing);
-  OutFileStream out;
+  std::OutFileStream out;
   outState("default output", out);
   out << "x";
   outState("default output: after a write", out);
-  OutFileStream writing;
+  std::OutFileStream writing;
   writing.write("ab", 2);
   outState("default output: after write()", writing);
-  OutFileStream shutting;
+  std::OutFileStream shutting;
   shutting.close();
   outState("default output: closed", shutting);
 }
@@ -281,9 +281,9 @@ void defaults()
 void iterators()
 {
   writeFile(path, "abc", 3);
-  InFileStream in(path);
-  String all;
-  copy(IstreambufIterator<char>(in), IstreambufIterator<char>(), backInserter(all));
+  std::InFileStream in(path);
+  std::String all;
+  std::copy(std::IstreambufIterator<char>(in), std::IstreambufIterator<char>(), std::backInserter(all));
   printf("iterator: read [%s]\n", all.c_str());
   state("iterator: after reading all", in);
   int c = in.get();
@@ -295,7 +295,7 @@ void reopened()
 {
   writeFile(path, "ab", 2);
   writeFile("file_stream_state_follows_std_other.bin", "xy", 2);
-  InFileStream in(path);
+  std::InFileStream in(path);
   in.open("file_stream_state_follows_std_other.bin");
   state("open while open", in);
   printf("open while open: file open %d\n", (int)in.is_open());
@@ -316,7 +316,7 @@ void reopened()
 void outputs()
 {
   {
-    OutFileStream out("file_stream_state_follows_std_out.bin");
+    std::OutFileStream out("file_stream_state_follows_std_out.bin");
     out << "text";
     out.close();
     outState("write then close", out);
@@ -333,13 +333,13 @@ void outputs()
     outState("closed twice", out);
   }
   {
-    OutFileStream out("file_stream_state_follows_std_out.bin");
+    std::OutFileStream out("file_stream_state_follows_std_out.bin");
     out.open("file_stream_state_follows_std_out2.bin");
     outState("output: open while open", out);
     out << "lost";
     out.close();
     outState("output: closed after that", out);
-    InFileStream written("file_stream_state_follows_std_out.bin");
+    std::InFileStream written("file_stream_state_follows_std_out.bin");
     int c = written.get();
     printf("output: first byte %d\n", c);
   }

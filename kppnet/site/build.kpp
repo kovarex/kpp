@@ -4,6 +4,6 @@ void build(Project& project)
 {
   Executable& site = project.executable("kppsite", {"src"});
   site.argument("--this-reference"); // `this` is the object, written `this.x` and `&this` (kpp's design.md 23d)
-  for (StringView name : {"json", "markdown", "html", "url"})
-    site.use(name, local(String("../../libraries/") + name));
+  for (std::StringView name : {"json", "markdown", "html", "url"})
+    site.use(name, local(std::String("../../libraries/") + name));
 }

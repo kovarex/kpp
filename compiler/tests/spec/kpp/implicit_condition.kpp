@@ -11,6 +11,6 @@ int main()
 {
   Wrapper<int> a = 5;
   Wrapper<double> c(1.5);
-  println(take(7), " ", a.value, " ", c.value, " ", half(c), " ", double(a));
+  std::println(take(7), " ", a.value, " ", c.value, " ", half(c), " ", double(a));
   return 0;
 }

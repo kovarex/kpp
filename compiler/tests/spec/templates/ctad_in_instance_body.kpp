@@ -15,7 +15,7 @@ template<typename T = Result>
 class Failed
 {
 public:
-  implicit Failed(T&& result) : result(::move(result)) {}
+  implicit Failed(T&& result) : result(std::move(result)) {}
   operator bool() const { return this.result.failed(); }
   implicit operator T() { return this.result; }
   T result;
@@ -24,8 +24,8 @@ template<class IDType>
 class SelectList
 {
 public:
-  Function<Result(IDType)> canSet;
-  SelectList(Function<Result(IDType)> canSet) : canSet(canSet) {}
+  std::Function<Result(IDType)> canSet;
+  SelectList(std::Function<Result(IDType)> canSet) : canSet(canSet) {}
   int count(IDType n)
   {
     int failures = 0;
@@ -38,6 +38,6 @@ public:
 int main()
 {
   SelectList<int> list([](int id) -> Result { return id > 2 ? Result::Fail : Result::Success; });
-  println(list.count(5));
+  std::println(list.count(5));
   return 0;
 }

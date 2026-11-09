@@ -18,6 +18,6 @@ int main()
 {
   Derived<long> d;
   Fixed<char> f;
-  println(d.get(), " ", f.get());
+  std::println(d.get(), " ", f.get());
   return 0;
 }

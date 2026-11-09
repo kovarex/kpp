@@ -2,23 +2,23 @@
 extern "C" int printf(const char* format, ...);
 consteval int chainedLength()
 {
-  String s;
+  std::String s;
   s << "ab" << 12 << 'c';
   return int(s.size());
 }
 consteval int throughReference()
 {
-  String s;
-  String& r = s << "ab";
+  std::String s;
+  std::String& r = s << "ab";
   r << "cd";
   return int(s.size());
 }
 consteval int check(int holes, int pieces)
 {
-  String message("format: ");
-  message << holes << " {} for " << pieces << StringView(pieces == 1 ? " piece" : " pieces");
+  std::String message("format: ");
+  message << holes << " {} for " << pieces << std::StringView(pieces == 1 ? " piece" : " pieces");
   if (holes != pieces)
-    throw LogicError(message);
+    throw std::LogicError(message);
   return holes;
 }
 struct Holes
@@ -30,18 +30,18 @@ struct Holes
       if (p[0] == '{' && p[1] == '}')
         ++this.holes;
   }
-  consteval void checkPieces(ContainerSize pieces) const { check(this.holes, int(pieces)); }
+  consteval void checkPieces(std::ContainerSize pieces) const { check(this.holes, int(pieces)); }
 };
-int count(Holes pattern, Text pieces) { return int(pieces.count); }
+int count(Holes pattern, std::Text pieces) { return int(pieces.count); }
 static_assert(chainedLength() == 5);
 static_assert(throughReference() == 4);
 static_assert(check(2, 2) == 2);
 int main()
 {
-  String s;
+  std::String s;
   s << "ab" << 12 << 'c';
-  String t;
-  String& r = t << "ab";
+  std::String t;
+  std::String& r = t << "ab";
   r << "cd";
   printf("%s %d / %s %d\n", s.c_str(), chainedLength(), t.c_str(), count("{} {} {} {}", 1, 2, 3, 4));
   return 0;

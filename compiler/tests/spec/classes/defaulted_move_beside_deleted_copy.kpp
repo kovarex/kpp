@@ -5,7 +5,7 @@ struct Anim
   Anim() = default;
   Anim(const Anim&) = delete;
   Anim(Anim&&) = default;
-  Vector<int> frames;
+  std::Vector<int> frames;
 };
 struct Element
 {
@@ -14,14 +14,14 @@ struct Element
 };
 int main()
 {
-  Vector<Element> v;
+  std::Vector<Element> v;
   for (int i = 0; i < 20; ++i)
   {
     v.emplace_back();
     v.back().id = i;
     v.back().anim.frames.push_back(i * 2);
   }
-  Element moved = move(v[19]);
-  println(v.size(), " ", v[18].id, " ", v[18].anim.frames[0], " ", moved.anim.frames[0]);
+  Element moved = std::move(v[19]);
+  std::println(v.size(), " ", v[18].id, " ", v[18].anim.frames[0], " ", moved.anim.frames[0]);
   return 0;
 }

@@ -6,6 +6,6 @@ D<int> fine;
 D<M>* onlyNamed = nullptr;
 int main()
 {
-  println(onlyNamed == nullptr);
+  std::println(onlyNamed == nullptr);
   return 0;
 }

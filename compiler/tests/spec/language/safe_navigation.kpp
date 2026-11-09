@@ -4,7 +4,7 @@ class Leaf
 public:
   int value = 7;
   int twice() { return this.value * 2; }
-  void touch() { println("touched"); }
+  void touch() { std::println("touched"); }
 };
 class Node
 {
@@ -27,17 +27,17 @@ int main()
   Node empty;
   Node* none = nullptr;
   Node* set = &full;
-  println(none?->leaf?->twice() ?: 0, " ", set?->leaf?->twice() ?: 0, " ", empty.leaf?->value ?: 0, " ", set?->leaf?->value ?: 0);
-  Optional<int> missing = none?->leaf?->value;
-  Optional<int> found = set?->leaf?->value;
-  println(bool(missing), " ", bool(found), " ", *found);
-  println(none?->leaf == nullptr, " ", set?->leaf == &leaf);
-  println(set?->get()?->value ?: -1, " ", none?->get()?->value ?: -1);
+  std::println(none?->leaf?->twice() ?: 0, " ", set?->leaf?->twice() ?: 0, " ", empty.leaf?->value ?: 0, " ", set?->leaf?->value ?: 0);
+  std::Optional<int> missing = none?->leaf?->value;
+  std::Optional<int> found = set?->leaf?->value;
+  std::println(bool(missing), " ", bool(found), " ", *found);
+  std::println(none?->leaf == nullptr, " ", set?->leaf == &leaf);
+  std::println(set?->get()?->value ?: -1, " ", none?->get()?->value ?: -1);
   none?->leaf?->touch();
   set?->leaf?->touch();
-  println(once(set)?->leaf?->value ?: 0, " ", evaluated);
-  println(once(none)?->leaf?->value ?: 0, " ", evaluated);
+  std::println(once(set)?->leaf?->value ?: 0, " ", evaluated);
+  std::println(once(none)?->leaf?->value ?: 0, " ", evaluated);
   int total = (set?->leaf?->value ?: 0) + 1;
-  println(total);
+  std::println(total);
   return 0;
 }

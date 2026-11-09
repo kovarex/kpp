@@ -12,6 +12,6 @@ int main()
   S8 s;
   s.a = 4;
   s.b = 5;
-  println(callIt(cTake, s), " ", callAny(&cTake, s), " ", callAny([](S8 x) { return x.a; }, s));
+  std::println(callIt(cTake, s), " ", callAny(&cTake, s), " ", callAny([](S8 x) { return x.a; }, s));
   return 0;
 }

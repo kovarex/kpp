@@ -1,19 +1,19 @@
 // spec: a Text parameter that takes no pieces ranks below an overload taking the same arguments without one: make(String) beside make(String&&, Text) given one String takes make(String) (C++ would call that pair ambiguous; design.md 14 decides it), and a Text taking pieces ranks as C's `...` per piece, so an exact overload wins and the Text one takes what no other does (`String String Exact Text IntText`)
 // factorio: PropertyItem's makeProperty(String value) beside makeProperty(String&& type, Text text), formerly (std::string&& type, const char* format, ...), after the converter's printf rewrite
 extern "C" import "stdio.h";
-void make(String value) { printf("String "); }
-void make(String&& type, Text text) { printf("Text "); }
-void put(String&& name, int value) { printf("Exact "); }
-void put(String&& name, Text text) { printf("Text "); }
-void pair(Text text) { printf("Text "); }
-void pair(int value, Text text) { printf("IntText "); }
+void make(std::String value) { printf("String "); }
+void make(std::String&& type, std::Text text) { printf("Text "); }
+void put(std::String&& name, int value) { printf("Exact "); }
+void put(std::String&& name, std::Text text) { printf("Text "); }
+void pair(std::Text text) { printf("Text "); }
+void pair(int value, std::Text text) { printf("IntText "); }
 int main()
 {
-  make(String("a"));
-  String s = "b";
-  make(move(s));
-  put(String("n"), 5);
-  put(String("n"), 5, 6);
+  make(std::String("a"));
+  std::String s = "b";
+  make(std::move(s));
+  put(std::String("n"), 5);
+  put(std::String("n"), 5, 6);
   pair(1);
   printf("\n");
   return 0;

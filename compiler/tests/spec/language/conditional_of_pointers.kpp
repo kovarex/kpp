@@ -16,12 +16,12 @@ int main()
   auto text = on ? buffer : fallback;
   Shape* base = on ? &square : &shape;
   void* anything = on ? &square : (void*)&shape;
-  static_assert(isSame<decltype(name), char*>);
-  static_assert(isSame<decltype(text), const char*>);
-  static_assert(isSame<decltype(on ? &square : &shape), Shape*>);
+  static_assert(std::isSame<decltype(name), char*>);
+  static_assert(std::isSame<decltype(text), const char*>);
+  static_assert(std::isSame<decltype(on ? &square : &shape), Shape*>);
   char other[8] = {'o', 0};
   auto& sameType = on ? other : buffer;
   static_assert(sizeof(sameType) == 8);
-  println(StringView(name), " ", StringView(text), " ", StringView((const char*)sameType), " ", base->sides, " ", anything == (void*)&square);
+  std::println(std::StringView(name), " ", std::StringView(text), " ", std::StringView((const char*)sameType), " ", base->sides, " ", anything == (void*)&square);
   return 0;
 }

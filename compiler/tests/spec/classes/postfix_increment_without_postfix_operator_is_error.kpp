@@ -23,6 +23,6 @@ int decrement()
 }
 int main()
 {
-  println(increment(), " ", decrement());
+  std::println(increment(), " ", decrement());
   return 0;
 }

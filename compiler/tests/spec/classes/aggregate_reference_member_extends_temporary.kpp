@@ -3,9 +3,9 @@
 struct T
 {
   int id;
-  T(int i) : id(i) { println("ctor ", this.id); }
-  T(const T& o) : id(o.id + 100) { println("copy ", this.id); }
-  ~T() { println("dtor ", this.id); }
+  T(int i) : id(i) { std::println("ctor ", this.id); }
+  T(const T& o) : id(o.id + 100) { std::println("copy ", this.id); }
+  ~T() { std::println("dtor ", this.id); }
   int get() const { return this.id; }
 };
 struct Holder { const T& ref; };
@@ -15,12 +15,12 @@ struct Wrapped { int v; };
 int read(Holder h) { return h.ref.get(); }
 int main()
 {
-  { Holder h{T(1)}; println("use ", h.ref.get()); }
-  { Holder h = {T(2)}; println("use ", h.ref.get()); }
-  { Outer o{{T(3)}, 4}; println("use ", o.h.ref.get(), " ", o.n); }
-  { Two t{T(4), T(5)}; println("use ", t.a.get(), " ", t.b.get()); }
-  { Wrapped w{read(Holder{T(6)})}; println("use ", w.v); }
-  { auto h = Holder{T(7)}; println("made"); }
-  println("end");
+  { Holder h{T(1)}; std::println("use ", h.ref.get()); }
+  { Holder h = {T(2)}; std::println("use ", h.ref.get()); }
+  { Outer o{{T(3)}, 4}; std::println("use ", o.h.ref.get(), " ", o.n); }
+  { Two t{T(4), T(5)}; std::println("use ", t.a.get(), " ", t.b.get()); }
+  { Wrapped w{read(Holder{T(6)})}; std::println("use ", w.v); }
+  { auto h = Holder{T(7)}; std::println("made"); }
+  std::println("end");
   return 0;
 }

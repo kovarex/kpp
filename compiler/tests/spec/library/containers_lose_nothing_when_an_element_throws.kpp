@@ -51,34 +51,34 @@ struct Callable
   int operator()() const { return this.bomb.value; }
 };
 
-template <typename C> Vector<int> values(const C& c)
+template <typename C> std::Vector<int> values(const C& c)
 {
-  Vector<int> result;
+  std::Vector<int> result;
   for (const auto& b : c)
     result.push_back(b.value);
   return result;
 }
 
-template <typename M> Vector<int> keys(const M& m)
+template <typename M> std::Vector<int> keys(const M& m)
 {
-  Vector<int> result;
+  std::Vector<int> result;
   for (const auto& e : m)
     result.push_back(e.first.value);
   return result;
 }
 
-template <typename M> Vector<int> mapped(const M& m)
+template <typename M> std::Vector<int> mapped(const M& m)
 {
-  Vector<int> result;
+  std::Vector<int> result;
   for (const auto& e : m)
     result.push_back(e.first);
-  sort(result.begin(), result.end());
+  std::sort(result.begin(), result.end());
   for (const auto& e : m)
     result.push_back(1000 + e.second.value);
   return result;
 }
 
-int sumOf(const Vector<int>& v)
+int sumOf(const std::Vector<int>& v)
 {
   int sum = 0;
   for (int x : v)
@@ -104,7 +104,7 @@ template <typename Make, typename Snap, typename Op> void inject(const char* lab
       int liveOutside = live;
       {
         auto c = make(n);
-        Vector<int> before = snap(c);
+        std::Vector<int> before = snap(c);
         int liveBefore = live;
         fuse = f;
         try
@@ -122,7 +122,7 @@ template <typename Make, typename Snap, typename Op> void inject(const char* lab
           ++violations;
         if (!threw)
         {
-          Vector<int> after = snap(c);
+          std::Vector<int> after = snap(c);
           finalSum += sumOf(after);
           finalSize += (int)after.size();
         }
@@ -140,74 +140,74 @@ template <typename Make, typename Snap, typename Op> void inject(const char* lab
   fflush(nullptr);
 }
 
-List<Bomb> makeList(int n)
+std::List<Bomb> makeList(int n)
 {
-  List<Bomb> c;
+  std::List<Bomb> c;
   for (int i = 0; i < n; ++i)
     c.emplace_back(i * 2);
   return c;
 }
 
-ForwardList<Bomb> makeForward(int n)
+std::ForwardList<Bomb> makeForward(int n)
 {
-  ForwardList<Bomb> c;
+  std::ForwardList<Bomb> c;
   for (int i = 0; i < n; ++i)
     c.emplace_front(i * 2);
   return c;
 }
 
-Vector<Bomb> makeVector(int n)
+std::Vector<Bomb> makeVector(int n)
 {
-  Vector<Bomb> c;
+  std::Vector<Bomb> c;
   for (int i = 0; i < n; ++i)
     c.emplace_back(i * 2);
   c.shrink_to_fit();
   return c;
 }
 
-Deque<Bomb> makeDeque(int n)
+std::Deque<Bomb> makeDeque(int n)
 {
-  Deque<Bomb> c;
+  std::Deque<Bomb> c;
   for (int i = 0; i < n; ++i)
     c.emplace_back(i * 2);
   return c;
 }
 
-Set<Bomb> makeSet(int n)
+std::Set<Bomb> makeSet(int n)
 {
-  Set<Bomb> c;
+  std::Set<Bomb> c;
   for (int i = 0; i < n; ++i)
     c.emplace(i * 2);
   return c;
 }
 
-MultiSet<Bomb> makeMultiSet(int n)
+std::MultiSet<Bomb> makeMultiSet(int n)
 {
-  MultiSet<Bomb> c;
+  std::MultiSet<Bomb> c;
   for (int i = 0; i < n; ++i)
     c.emplace(i / 2);
   return c;
 }
 
-Map<Bomb, int> makeMap(int n)
+std::Map<Bomb, int> makeMap(int n)
 {
-  Map<Bomb, int> c;
+  std::Map<Bomb, int> c;
   for (int i = 0; i < n; ++i)
     c.emplace(i * 2, i);
   return c;
 }
 
-MultiMap<Bomb, int> makeMultiMap(int n)
+std::MultiMap<Bomb, int> makeMultiMap(int n)
 {
-  MultiMap<Bomb, int> c;
+  std::MultiMap<Bomb, int> c;
   for (int i = 0; i < n; ++i)
     c.emplace(i / 2, i);
   return c;
 }
 
-HashMap<int, Bomb> makeHashMap(int n)
+std::HashMap<int, Bomb> makeHashMap(int n)
 {
-  HashMap<int, Bomb> c;
+  std::HashMap<int, Bomb> c;
   for (int i = 0; i < n; ++i)
     c.emplace(i * 2, i);
   return c;
@@ -217,7 +217,7 @@ int main()
 {
   const Bomb seven(7);
   const Bomb eight(8);
-  Vector<Bomb> three;
+  std::Vector<Bomb> three;
   three.reserve(3);
   three.emplace_back(101);
   three.emplace_back(102);
@@ -226,97 +226,97 @@ int main()
   auto k = [](const auto& c) { return keys(c); };
   auto m = [](const auto& c) { return mapped(c); };
 
-  inject("list push_back", makeList, v, [&](List<Bomb>& c) { c.push_back(seven); }, true);
-  inject("list push_front", makeList, v, [&](List<Bomb>& c) { c.push_front(seven); }, true);
-  inject("list emplace_back", makeList, v, [&](List<Bomb>& c) { c.emplace_back(9); }, true);
-  inject("list emplace_front", makeList, v, [&](List<Bomb>& c) { c.emplace_front(9); }, true);
-  inject("list insert one", makeList, v, [&](List<Bomb>& c) { c.insert(c.end(), seven); }, true);
-  inject("list insert three copies", makeList, v, [&](List<Bomb>& c) { c.insert(c.begin(), 3, seven); }, true);
-  inject("list insert a range", makeList, v, [&](List<Bomb>& c) { c.insert(c.end(), three.begin(), three.end()); }, true);
-  inject("list emplace", makeList, v, [&](List<Bomb>& c) { c.emplace(c.begin(), 9); }, true);
-  inject("list copy", makeList, v, [&](List<Bomb>& c) { List<Bomb> copy = c; }, true);
-  inject("list assign (no leak)", makeList, v, [&](List<Bomb>& c) { const List<Bomb> source = makeList(5); c = source; }, false);
-  inject("forward_list push_front", makeForward, v, [&](ForwardList<Bomb>& c) { c.push_front(seven); }, true);
-  inject("forward_list emplace_front", makeForward, v, [&](ForwardList<Bomb>& c) { c.emplace_front(9); }, true);
-  inject("forward_list insert_after", makeForward, v, [&](ForwardList<Bomb>& c) { c.insert_after(c.before_begin(), seven); }, true);
-  inject("forward_list insert_after three", makeForward, v, [&](ForwardList<Bomb>& c) { c.insert_after(c.before_begin(), 3, seven); }, true);
-  inject("forward_list insert_after a range", makeForward, v, [&](ForwardList<Bomb>& c) { c.insert_after(c.before_begin(), three.begin(), three.end()); }, true);
-  inject("forward_list copy", makeForward, v, [&](ForwardList<Bomb>& c) { ForwardList<Bomb> copy = c; }, true);
-  inject("vector copy", makeVector, v, [&](Vector<Bomb>& c) { Vector<Bomb> copy = c; }, true);
-  inject("vector assign (no leak)", makeVector, v, [&](Vector<Bomb>& c) { const Vector<Bomb> source = makeVector(5); c = source; }, false);
-  inject("deque copy", makeDeque, v, [&](Deque<Bomb>& c) { Deque<Bomb> copy = c; }, true);
-  inject("deque assign (no leak)", makeDeque, v, [&](Deque<Bomb>& c) { const Deque<Bomb> source = makeDeque(5); c = source; }, false);
-  inject("set insert new", makeSet, v, [&](Set<Bomb>& c) { c.insert(seven); }, true);
-  inject("set insert present", makeSet, v, [&](Set<Bomb>& c) { Bomb two(2); c.insert(two); }, true);
-  inject("set emplace new", makeSet, v, [&](Set<Bomb>& c) { c.emplace(9); }, true);
-  inject("set emplace present", makeSet, v, [&](Set<Bomb>& c) { c.emplace(2); }, true);
-  inject("set copy", makeSet, v, [&](Set<Bomb>& c) { Set<Bomb> copy = c; }, true);
-  inject("set assign (no leak)", makeSet, v, [&](Set<Bomb>& c) { const Set<Bomb> source = makeSet(5); c = source; }, false);
-  inject("multiset insert", makeMultiSet, v, [&](MultiSet<Bomb>& c) { c.insert(seven); }, true);
-  inject("multiset emplace", makeMultiSet, v, [&](MultiSet<Bomb>& c) { c.emplace(1); }, true);
-  inject("multiset copy", makeMultiSet, v, [&](MultiSet<Bomb>& c) { MultiSet<Bomb> copy = c; }, true);
-  inject("map insert new", makeMap, k, [&](Map<Bomb, int>& c) { Pair<const Bomb, int> kv(seven, 1); c.insert(kv); }, true);
-  inject("map emplace new", makeMap, k, [&](Map<Bomb, int>& c) { c.emplace(9, 1); }, true);
-  inject("map emplace present", makeMap, k, [&](Map<Bomb, int>& c) { c.emplace(2, 1); }, true);
-  inject("map operator[] new", makeMap, k, [&](Map<Bomb, int>& c) { c[seven] = 1; }, true);
-  inject("map try_emplace new", makeMap, k, [&](Map<Bomb, int>& c) { c.try_emplace(seven, 1); }, true);
-  inject("map insert_or_assign new", makeMap, k, [&](Map<Bomb, int>& c) { c.insert_or_assign(seven, 1); }, true);
-  inject("map copy", makeMap, k, [&](Map<Bomb, int>& c) { Map<Bomb, int> copy = c; }, true);
-  inject("map assign (no leak)", makeMap, k, [&](Map<Bomb, int>& c) { const Map<Bomb, int> source = makeMap(5); c = source; }, false);
-  inject("multimap insert", makeMultiMap, k, [&](MultiMap<Bomb, int>& c) { Pair<const Bomb, int> kv(seven, 1); c.insert(kv); }, true);
-  inject("multimap emplace", makeMultiMap, k, [&](MultiMap<Bomb, int>& c) { c.emplace(1, 1); }, true);
-  inject("multimap copy", makeMultiMap, k, [&](MultiMap<Bomb, int>& c) { MultiMap<Bomb, int> copy = c; }, true);
-  inject("hash map emplace new", makeHashMap, m, [&](HashMap<int, Bomb>& c) { c.emplace(9, 1); }, true);
-  inject("hash map emplace present", makeHashMap, m, [&](HashMap<int, Bomb>& c) { c.emplace(2, 1); }, true);
-  inject("hash map insert new", makeHashMap, m, [&](HashMap<int, Bomb>& c) { Pair<const int, Bomb> kv(9, seven); c.insert(kv); }, true);
-  inject("hash map try_emplace new", makeHashMap, m, [&](HashMap<int, Bomb>& c) { c.try_emplace(9, 1); }, true);
-  inject("hash map insert_or_assign new", makeHashMap, m, [&](HashMap<int, Bomb>& c) { c.insert_or_assign(9, seven); }, true);
-  inject("hash map copy", makeHashMap, m, [&](HashMap<int, Bomb>& c) { HashMap<int, Bomb> copy = c; }, true);
-  inject("hash map assign (no leak)", makeHashMap, m, [&](HashMap<int, Bomb>& c) { const HashMap<int, Bomb> source = makeHashMap(5); c = source; }, false);
+  inject("list push_back", makeList, v, [&](std::List<Bomb>& c) { c.push_back(seven); }, true);
+  inject("list push_front", makeList, v, [&](std::List<Bomb>& c) { c.push_front(seven); }, true);
+  inject("list emplace_back", makeList, v, [&](std::List<Bomb>& c) { c.emplace_back(9); }, true);
+  inject("list emplace_front", makeList, v, [&](std::List<Bomb>& c) { c.emplace_front(9); }, true);
+  inject("list insert one", makeList, v, [&](std::List<Bomb>& c) { c.insert(c.end(), seven); }, true);
+  inject("list insert three copies", makeList, v, [&](std::List<Bomb>& c) { c.insert(c.begin(), 3, seven); }, true);
+  inject("list insert a range", makeList, v, [&](std::List<Bomb>& c) { c.insert(c.end(), three.begin(), three.end()); }, true);
+  inject("list emplace", makeList, v, [&](std::List<Bomb>& c) { c.emplace(c.begin(), 9); }, true);
+  inject("list copy", makeList, v, [&](std::List<Bomb>& c) { std::List<Bomb> copy = c; }, true);
+  inject("list assign (no leak)", makeList, v, [&](std::List<Bomb>& c) { const std::List<Bomb> source = makeList(5); c = source; }, false);
+  inject("forward_list push_front", makeForward, v, [&](std::ForwardList<Bomb>& c) { c.push_front(seven); }, true);
+  inject("forward_list emplace_front", makeForward, v, [&](std::ForwardList<Bomb>& c) { c.emplace_front(9); }, true);
+  inject("forward_list insert_after", makeForward, v, [&](std::ForwardList<Bomb>& c) { c.insert_after(c.before_begin(), seven); }, true);
+  inject("forward_list insert_after three", makeForward, v, [&](std::ForwardList<Bomb>& c) { c.insert_after(c.before_begin(), 3, seven); }, true);
+  inject("forward_list insert_after a range", makeForward, v, [&](std::ForwardList<Bomb>& c) { c.insert_after(c.before_begin(), three.begin(), three.end()); }, true);
+  inject("forward_list copy", makeForward, v, [&](std::ForwardList<Bomb>& c) { std::ForwardList<Bomb> copy = c; }, true);
+  inject("vector copy", makeVector, v, [&](std::Vector<Bomb>& c) { std::Vector<Bomb> copy = c; }, true);
+  inject("vector assign (no leak)", makeVector, v, [&](std::Vector<Bomb>& c) { const std::Vector<Bomb> source = makeVector(5); c = source; }, false);
+  inject("deque copy", makeDeque, v, [&](std::Deque<Bomb>& c) { std::Deque<Bomb> copy = c; }, true);
+  inject("deque assign (no leak)", makeDeque, v, [&](std::Deque<Bomb>& c) { const std::Deque<Bomb> source = makeDeque(5); c = source; }, false);
+  inject("set insert new", makeSet, v, [&](std::Set<Bomb>& c) { c.insert(seven); }, true);
+  inject("set insert present", makeSet, v, [&](std::Set<Bomb>& c) { Bomb two(2); c.insert(two); }, true);
+  inject("set emplace new", makeSet, v, [&](std::Set<Bomb>& c) { c.emplace(9); }, true);
+  inject("set emplace present", makeSet, v, [&](std::Set<Bomb>& c) { c.emplace(2); }, true);
+  inject("set copy", makeSet, v, [&](std::Set<Bomb>& c) { std::Set<Bomb> copy = c; }, true);
+  inject("set assign (no leak)", makeSet, v, [&](std::Set<Bomb>& c) { const std::Set<Bomb> source = makeSet(5); c = source; }, false);
+  inject("multiset insert", makeMultiSet, v, [&](std::MultiSet<Bomb>& c) { c.insert(seven); }, true);
+  inject("multiset emplace", makeMultiSet, v, [&](std::MultiSet<Bomb>& c) { c.emplace(1); }, true);
+  inject("multiset copy", makeMultiSet, v, [&](std::MultiSet<Bomb>& c) { std::MultiSet<Bomb> copy = c; }, true);
+  inject("map insert new", makeMap, k, [&](std::Map<Bomb, int>& c) { std::Pair<const Bomb, int> kv(seven, 1); c.insert(kv); }, true);
+  inject("map emplace new", makeMap, k, [&](std::Map<Bomb, int>& c) { c.emplace(9, 1); }, true);
+  inject("map emplace present", makeMap, k, [&](std::Map<Bomb, int>& c) { c.emplace(2, 1); }, true);
+  inject("map operator[] new", makeMap, k, [&](std::Map<Bomb, int>& c) { c[seven] = 1; }, true);
+  inject("map try_emplace new", makeMap, k, [&](std::Map<Bomb, int>& c) { c.try_emplace(seven, 1); }, true);
+  inject("map insert_or_assign new", makeMap, k, [&](std::Map<Bomb, int>& c) { c.insert_or_assign(seven, 1); }, true);
+  inject("map copy", makeMap, k, [&](std::Map<Bomb, int>& c) { std::Map<Bomb, int> copy = c; }, true);
+  inject("map assign (no leak)", makeMap, k, [&](std::Map<Bomb, int>& c) { const std::Map<Bomb, int> source = makeMap(5); c = source; }, false);
+  inject("multimap insert", makeMultiMap, k, [&](std::MultiMap<Bomb, int>& c) { std::Pair<const Bomb, int> kv(seven, 1); c.insert(kv); }, true);
+  inject("multimap emplace", makeMultiMap, k, [&](std::MultiMap<Bomb, int>& c) { c.emplace(1, 1); }, true);
+  inject("multimap copy", makeMultiMap, k, [&](std::MultiMap<Bomb, int>& c) { std::MultiMap<Bomb, int> copy = c; }, true);
+  inject("hash map emplace new", makeHashMap, m, [&](std::HashMap<int, Bomb>& c) { c.emplace(9, 1); }, true);
+  inject("hash map emplace present", makeHashMap, m, [&](std::HashMap<int, Bomb>& c) { c.emplace(2, 1); }, true);
+  inject("hash map insert new", makeHashMap, m, [&](std::HashMap<int, Bomb>& c) { std::Pair<const int, Bomb> kv(9, seven); c.insert(kv); }, true);
+  inject("hash map try_emplace new", makeHashMap, m, [&](std::HashMap<int, Bomb>& c) { c.try_emplace(9, 1); }, true);
+  inject("hash map insert_or_assign new", makeHashMap, m, [&](std::HashMap<int, Bomb>& c) { c.insert_or_assign(9, seven); }, true);
+  inject("hash map copy", makeHashMap, m, [&](std::HashMap<int, Bomb>& c) { std::HashMap<int, Bomb> copy = c; }, true);
+  inject("hash map assign (no leak)", makeHashMap, m, [&](std::HashMap<int, Bomb>& c) { const std::HashMap<int, Bomb> source = makeHashMap(5); c = source; }, false);
 
-  inject("forward_list assign (no leak)", makeForward, v, [&](ForwardList<Bomb>& c) { const ForwardList<Bomb> source = makeForward(5); c = source; }, false);
-  inject("multimap assign (no leak)", makeMultiMap, k, [&](MultiMap<Bomb, int>& c) { const MultiMap<Bomb, int> source = makeMultiMap(5); c = source; }, false);
-  inject("multiset assign (no leak)", makeMultiSet, v, [&](MultiSet<Bomb>& c) { const MultiSet<Bomb> source = makeMultiSet(5); c = source; }, false);
+  inject("forward_list assign (no leak)", makeForward, v, [&](std::ForwardList<Bomb>& c) { const std::ForwardList<Bomb> source = makeForward(5); c = source; }, false);
+  inject("multimap assign (no leak)", makeMultiMap, k, [&](std::MultiMap<Bomb, int>& c) { const std::MultiMap<Bomb, int> source = makeMultiMap(5); c = source; }, false);
+  inject("multiset assign (no leak)", makeMultiSet, v, [&](std::MultiSet<Bomb>& c) { const std::MultiSet<Bomb> source = makeMultiSet(5); c = source; }, false);
 
-  inject("list from count", makeList, v, [&](List<Bomb>& c) { List<Bomb> x(4); }, true);
-  inject("list from count and value", makeList, v, [&](List<Bomb>& c) { List<Bomb> x(4, seven); }, true);
-  inject("list from a range", makeList, v, [&](List<Bomb>& c) { List<Bomb> x(three.begin(), three.end()); }, true);
-  inject("list from a brace list", makeList, v, [&](List<Bomb>& c) { List<Bomb> x = {seven, eight, seven}; }, true);
-  inject("forward_list from count", makeForward, v, [&](ForwardList<Bomb>& c) { ForwardList<Bomb> x(4); }, true);
-  inject("forward_list from count and value", makeForward, v, [&](ForwardList<Bomb>& c) { ForwardList<Bomb> x(4, seven); }, true);
-  inject("forward_list from a range", makeForward, v, [&](ForwardList<Bomb>& c) { ForwardList<Bomb> x(three.begin(), three.end()); }, true);
-  inject("forward_list from a brace list", makeForward, v, [&](ForwardList<Bomb>& c) { ForwardList<Bomb> x = {seven, eight, seven}; }, true);
-  inject("vector from count", makeVector, v, [&](Vector<Bomb>& c) { Vector<Bomb> x(4); }, true);
-  inject("vector from count and value", makeVector, v, [&](Vector<Bomb>& c) { Vector<Bomb> x(4, seven); }, true);
-  inject("vector from a range", makeVector, v, [&](Vector<Bomb>& c) { Vector<Bomb> x(three.begin(), three.end()); }, true);
-  inject("vector from a brace list", makeVector, v, [&](Vector<Bomb>& c) { Vector<Bomb> x = {seven, eight, seven}; }, true);
-  inject("deque from count", makeDeque, v, [&](Deque<Bomb>& c) { Deque<Bomb> x(4); }, true);
-  inject("deque from count and value", makeDeque, v, [&](Deque<Bomb>& c) { Deque<Bomb> x(4, seven); }, true);
-  inject("deque from a range", makeDeque, v, [&](Deque<Bomb>& c) { Deque<Bomb> x(three.begin(), three.end()); }, true);
-  inject("deque from a brace list", makeDeque, v, [&](Deque<Bomb>& c) { Deque<Bomb> x = {seven, eight, seven}; }, true);
-  inject("set from a range", makeSet, v, [&](Set<Bomb>& c) { Set<Bomb> x(three.begin(), three.end()); }, true);
-  inject("set from a brace list", makeSet, v, [&](Set<Bomb>& c) { Set<Bomb> x = {seven, eight, seven}; }, true);
-  inject("multiset from a range", makeMultiSet, v, [&](MultiSet<Bomb>& c) { MultiSet<Bomb> x(three.begin(), three.end()); }, true);
-  inject("map from a brace list", makeMap, k, [&](Map<Bomb, int>& c) { Pair<const Bomb, int> kv(seven, 1); Map<Bomb, int> x = {kv, kv}; }, true);
-  inject("hash map from a brace list", makeHashMap, m, [&](HashMap<int, Bomb>& c) { Pair<const int, Bomb> kv(1, seven); HashMap<int, Bomb> x = {kv, kv}; }, true);
-  inject("list resize (no leak)", makeList, v, [&](List<Bomb>& c) { c.resize(c.size() + 3, seven); }, false);
-  inject("list assign range (no leak)", makeList, v, [&](List<Bomb>& c) { c.assign(three.begin(), three.end()); }, false);
-  inject("list assign count (no leak)", makeList, v, [&](List<Bomb>& c) { c.assign(5, seven); }, false);
-  inject("forward_list resize (no leak)", makeForward, v, [&](ForwardList<Bomb>& c) { c.resize(40, seven); }, false);
-  inject("forward_list assign range (no leak)", makeForward, v, [&](ForwardList<Bomb>& c) { c.assign(three.begin(), three.end()); }, false);
-  inject("forward_list assign count (no leak)", makeForward, v, [&](ForwardList<Bomb>& c) { c.assign(5, seven); }, false);
-  inject("vector insert three (no leak)", makeVector, v, [&](Vector<Bomb>& c) { c.insert(c.begin(), 3, seven); }, false);
-  inject("vector insert range (no leak)", makeVector, v, [&](Vector<Bomb>& c) { c.insert(c.begin(), three.begin(), three.end()); }, false);
-  inject("vector resize (no leak)", makeVector, v, [&](Vector<Bomb>& c) { c.resize(c.size() + 3, seven); }, false);
-  inject("vector assign count (no leak)", makeVector, v, [&](Vector<Bomb>& c) { c.assign(40, seven); }, false);
-  inject("deque insert three (no leak)", makeDeque, v, [&](Deque<Bomb>& c) { c.insert(c.begin() + c.size() / 2, 3, seven); }, false);
-  inject("deque insert range (no leak)", makeDeque, v, [&](Deque<Bomb>& c) { c.insert(c.begin() + c.size() / 2, three.begin(), three.end()); }, false);
-  inject("deque resize (no leak)", makeDeque, v, [&](Deque<Bomb>& c) { c.resize(c.size() + 3, seven); }, false);
-  inject("deque assign count (no leak)", makeDeque, v, [&](Deque<Bomb>& c) { c.assign(40, seven); }, false);
-  inject("set insert a range (no leak)", makeSet, v, [&](Set<Bomb>& c) { c.insert(three.begin(), three.end()); }, false);
+  inject("list from count", makeList, v, [&](std::List<Bomb>& c) { std::List<Bomb> x(4); }, true);
+  inject("list from count and value", makeList, v, [&](std::List<Bomb>& c) { std::List<Bomb> x(4, seven); }, true);
+  inject("list from a range", makeList, v, [&](std::List<Bomb>& c) { std::List<Bomb> x(three.begin(), three.end()); }, true);
+  inject("list from a brace list", makeList, v, [&](std::List<Bomb>& c) { std::List<Bomb> x = {seven, eight, seven}; }, true);
+  inject("forward_list from count", makeForward, v, [&](std::ForwardList<Bomb>& c) { std::ForwardList<Bomb> x(4); }, true);
+  inject("forward_list from count and value", makeForward, v, [&](std::ForwardList<Bomb>& c) { std::ForwardList<Bomb> x(4, seven); }, true);
+  inject("forward_list from a range", makeForward, v, [&](std::ForwardList<Bomb>& c) { std::ForwardList<Bomb> x(three.begin(), three.end()); }, true);
+  inject("forward_list from a brace list", makeForward, v, [&](std::ForwardList<Bomb>& c) { std::ForwardList<Bomb> x = {seven, eight, seven}; }, true);
+  inject("vector from count", makeVector, v, [&](std::Vector<Bomb>& c) { std::Vector<Bomb> x(4); }, true);
+  inject("vector from count and value", makeVector, v, [&](std::Vector<Bomb>& c) { std::Vector<Bomb> x(4, seven); }, true);
+  inject("vector from a range", makeVector, v, [&](std::Vector<Bomb>& c) { std::Vector<Bomb> x(three.begin(), three.end()); }, true);
+  inject("vector from a brace list", makeVector, v, [&](std::Vector<Bomb>& c) { std::Vector<Bomb> x = {seven, eight, seven}; }, true);
+  inject("deque from count", makeDeque, v, [&](std::Deque<Bomb>& c) { std::Deque<Bomb> x(4); }, true);
+  inject("deque from count and value", makeDeque, v, [&](std::Deque<Bomb>& c) { std::Deque<Bomb> x(4, seven); }, true);
+  inject("deque from a range", makeDeque, v, [&](std::Deque<Bomb>& c) { std::Deque<Bomb> x(three.begin(), three.end()); }, true);
+  inject("deque from a brace list", makeDeque, v, [&](std::Deque<Bomb>& c) { std::Deque<Bomb> x = {seven, eight, seven}; }, true);
+  inject("set from a range", makeSet, v, [&](std::Set<Bomb>& c) { std::Set<Bomb> x(three.begin(), three.end()); }, true);
+  inject("set from a brace list", makeSet, v, [&](std::Set<Bomb>& c) { std::Set<Bomb> x = {seven, eight, seven}; }, true);
+  inject("multiset from a range", makeMultiSet, v, [&](std::MultiSet<Bomb>& c) { std::MultiSet<Bomb> x(three.begin(), three.end()); }, true);
+  inject("map from a brace list", makeMap, k, [&](std::Map<Bomb, int>& c) { std::Pair<const Bomb, int> kv(seven, 1); std::Map<Bomb, int> x = {kv, kv}; }, true);
+  inject("hash map from a brace list", makeHashMap, m, [&](std::HashMap<int, Bomb>& c) { std::Pair<const int, Bomb> kv(1, seven); std::HashMap<int, Bomb> x = {kv, kv}; }, true);
+  inject("list resize (no leak)", makeList, v, [&](std::List<Bomb>& c) { c.resize(c.size() + 3, seven); }, false);
+  inject("list assign range (no leak)", makeList, v, [&](std::List<Bomb>& c) { c.assign(three.begin(), three.end()); }, false);
+  inject("list assign count (no leak)", makeList, v, [&](std::List<Bomb>& c) { c.assign(5, seven); }, false);
+  inject("forward_list resize (no leak)", makeForward, v, [&](std::ForwardList<Bomb>& c) { c.resize(40, seven); }, false);
+  inject("forward_list assign range (no leak)", makeForward, v, [&](std::ForwardList<Bomb>& c) { c.assign(three.begin(), three.end()); }, false);
+  inject("forward_list assign count (no leak)", makeForward, v, [&](std::ForwardList<Bomb>& c) { c.assign(5, seven); }, false);
+  inject("vector insert three (no leak)", makeVector, v, [&](std::Vector<Bomb>& c) { c.insert(c.begin(), 3, seven); }, false);
+  inject("vector insert range (no leak)", makeVector, v, [&](std::Vector<Bomb>& c) { c.insert(c.begin(), three.begin(), three.end()); }, false);
+  inject("vector resize (no leak)", makeVector, v, [&](std::Vector<Bomb>& c) { c.resize(c.size() + 3, seven); }, false);
+  inject("vector assign count (no leak)", makeVector, v, [&](std::Vector<Bomb>& c) { c.assign(40, seven); }, false);
+  inject("deque insert three (no leak)", makeDeque, v, [&](std::Deque<Bomb>& c) { c.insert(c.begin() + c.size() / 2, 3, seven); }, false);
+  inject("deque insert range (no leak)", makeDeque, v, [&](std::Deque<Bomb>& c) { c.insert(c.begin() + c.size() / 2, three.begin(), three.end()); }, false);
+  inject("deque resize (no leak)", makeDeque, v, [&](std::Deque<Bomb>& c) { c.resize(c.size() + 3, seven); }, false);
+  inject("deque assign count (no leak)", makeDeque, v, [&](std::Deque<Bomb>& c) { c.assign(40, seven); }, false);
+  inject("set insert a range (no leak)", makeSet, v, [&](std::Set<Bomb>& c) { c.insert(three.begin(), three.end()); }, false);
 
   // Optional: what each failed step leaves.
-  auto showOptional = [](const char* label, const Optional<Bomb>& o) {
+  auto showOptional = [](const char* label, const std::Optional<Bomb>& o) {
     if (o.has_value())
       printf("%s: holds %d, live %d\n", label, o->value, live);
     else
@@ -324,7 +324,7 @@ int main()
   };
   int outside = live;
   {
-    Optional<Bomb> o;
+    std::Optional<Bomb> o;
     o.emplace(5);
     fuse = 0;
     try
@@ -339,7 +339,7 @@ int main()
   }
   printf("optional 1 left %d\n", live - outside);
   {
-    Optional<Bomb> o;
+    std::Optional<Bomb> o;
     fuse = 0;
     try
     {
@@ -353,7 +353,7 @@ int main()
   }
   printf("optional 2 left %d\n", live - outside);
   {
-    Optional<Bomb> o;
+    std::Optional<Bomb> o;
     o.emplace(5);
     fuse = 0;
     try
@@ -368,9 +368,9 @@ int main()
   }
   printf("optional 3 left %d\n", live - outside);
   {
-    Optional<Bomb> o;
+    std::Optional<Bomb> o;
     o.emplace(5);
-    Optional<Bomb> other;
+    std::Optional<Bomb> other;
     other.emplace(6);
     fuse = 0;
     try
@@ -386,8 +386,8 @@ int main()
   }
   printf("optional 4 left %d\n", live - outside);
   {
-    Optional<Bomb> empty;
-    Optional<Bomb> other;
+    std::Optional<Bomb> empty;
+    std::Optional<Bomb> other;
     other.emplace(6);
     fuse = 0;
     try
@@ -402,13 +402,13 @@ int main()
   }
   printf("optional 5 left %d\n", live - outside);
   {
-    Optional<Bomb> o;
+    std::Optional<Bomb> o;
     o.emplace(5);
     fuse = 0;
     bool threw = false;
     try
     {
-      Optional<Bomb> copy = o;
+      std::Optional<Bomb> copy = o;
     }
     catch (int)
     {
@@ -426,7 +426,7 @@ int main()
     fuse = 0;
     try
     {
-      SharedPtr<Bomb> p = makeShared<Bomb>(5);
+      std::SharedPtr<Bomb> p = std::makeShared<Bomb>(5);
     }
     catch (int)
     {
@@ -437,13 +437,13 @@ int main()
   }
   {
     Callable callable(11);
-    Function<int()> f = callable;
+    std::Function<int()> f = callable;
     int before = live;
     bool threw = false;
     fuse = 0;
     try
     {
-      Function<int()> g = f;
+      std::Function<int()> g = f;
       printf("not reached %d\n", g());
     }
     catch (int)

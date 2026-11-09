@@ -13,7 +13,7 @@ namespace Util
   template<class ContainerType, class Pred>
   void sort(ContainerType& container, const Pred& pred)
   {
-    ::sort(container.begin(), container.end(), pred);
+    std::sort(container.begin(), container.end(), pred);
   }
 }
 int main()
@@ -22,12 +22,12 @@ int main()
   a.index = 3;
   b.index = 1;
   c.index = 2;
-  Vector<Group*> v;
+  std::Vector<Group*> v;
   v.push_back(&a);
   v.push_back(&b);
   v.push_back(&c);
   Util::sort(v, Group::ascending);
-  println(byRef(less), " ", byValue(less));
-  println(v[0]->index, " ", v[1]->index, " ", v[2]->index);
+  std::println(byRef(less), " ", byValue(less));
+  std::println(v[0]->index, " ", v[1]->index, " ", v[2]->index);
   return 0;
 }

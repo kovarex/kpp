@@ -26,6 +26,6 @@ int main()
 {
   constexpr int atCompileTime = sizeof(Pmf);
   int atRunTime = sizeof(Pmf);
-  println(Size<sizeof(Pmf)>::value, " ", atCompileTime, " ", atRunTime, " ", Size<sizeof(int (A::*)())>::value);
+  std::println(Size<sizeof(Pmf)>::value, " ", atCompileTime, " ", atRunTime, " ", Size<sizeof(int (A::*)())>::value);
   return 0;
 }

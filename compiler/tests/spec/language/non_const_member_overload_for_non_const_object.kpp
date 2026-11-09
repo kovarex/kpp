@@ -3,14 +3,14 @@
 class History
 {
 public:
-  const int& operator[](StringView key) const
+  const int& operator[](std::StringView key) const
   {
-    println("lookup ", key);
+    std::println("lookup ", key);
     return this.value;
   }
-  int& operator[](const String& key)
+  int& operator[](const std::String& key)
   {
-    println("insert ", key);
+    std::println("insert ", key);
     return this.value;
   }
   int value = 0;
@@ -21,7 +21,7 @@ public:
   History history;
   static const char* const type;
   void add() { this.history[Manager::type] = 1; }
-  void read() const { println(this.history[Manager::type]); }
+  void read() const { std::println(this.history[Manager::type]); }
 };
 const char* const Manager::type = "font";
 int main()

@@ -12,22 +12,22 @@ struct CountedFormat
       if (p[0] == '{' && p[1] == '}')
         ++holes;
     if (holes != N)
-      throw LogicError("format: the {} and the pieces do not pair up");
+      throw std::LogicError("format: the {} and the pieces do not pair up");
   }
 };
-String formatPieces(const char* pattern, Text args)
+std::String formatPieces(const char* pattern, std::Text args)
 {
-  String out;
+  std::String out;
   args.appendTo(out);
   return out;
 }
 template<typename... A>
-String myFormat(CountedFormat<sizeof...(A)> pattern, const A&... args)
+std::String myFormat(CountedFormat<sizeof...(A)> pattern, const A&... args)
 {
   return formatPieces(pattern.pattern, args...);
 }
 int main()
 {
-  puts(myFormat("{} and {}", 1, String("x")).c_str());
+  puts(myFormat("{} and {}", 1, std::String("x")).c_str());
   return 0;
 }

@@ -1,21 +1,21 @@
 // spec: atomic access to a SharedPtr: atomicLoad, atomicStore and atomicExchange on a plain SharedPtr (std::atomic_load and friends), and Atomic<SharedPtr<T>> with load, store, assignment and compare-exchange; an object whose last owner is replaced is destroyed then, not before
 // factorio: Util/Rcu.hpp (std::atomic_load/atomic_store of a shared_ptr, and std::atomic<std::shared_ptr<T>> in the branch the Windows build compiles)
-struct Config { int version; String name; Config(int v, const char* n) : version(v), name(n) {} ~Config() { println("~Config ", this.version); } };
-struct Holder { SharedPtr<Config> data; Atomic<SharedPtr<Config>> current; };
+struct Config { int version; std::String name; Config(int v, const char* n) : version(v), name(n) {} ~Config() { std::println("~Config ", this.version); } };
+struct Holder { std::SharedPtr<Config> data; std::Atomic<std::SharedPtr<Config>> current; };
 int main()
 {
   Holder h;
-  h.data = makeShared<Config>(1, "one");
-  SharedPtr<Config> seen = atomicLoad(&h.data);
-  atomicStore(&h.data, makeShared<Config>(2, "two"));
-  println(seen->version, " ", atomicLoad(&h.data)->version, " ", seen.use_count());
-  SharedPtr<Config> old = atomicExchange(&h.data, SharedPtr<Config>());
-  println(old->version, " ", h.data == nullptr);
-  h.current = makeShared<Config>(3, "three");
-  SharedPtr<Config> expected = h.current.load();
-  bool swapped = h.current.compareExchange(expected, makeShared<Config>(4, "four"));
-  SharedPtr<Config> other = makeShared<Config>(5, "five");
-  bool notSwapped = h.current.compareExchange(other, SharedPtr<Config>());
-  println(swapped, " ", notSwapped, " ", other->version, " ", h.current.load()->version);
+  h.data = std::makeShared<Config>(1, "one");
+  std::SharedPtr<Config> seen = std::atomicLoad(&h.data);
+  std::atomicStore(&h.data, std::makeShared<Config>(2, "two"));
+  std::println(seen->version, " ", std::atomicLoad(&h.data)->version, " ", seen.use_count());
+  std::SharedPtr<Config> old = std::atomicExchange(&h.data, std::SharedPtr<Config>());
+  std::println(old->version, " ", h.data == nullptr);
+  h.current = std::makeShared<Config>(3, "three");
+  std::SharedPtr<Config> expected = h.current.load();
+  bool swapped = h.current.compareExchange(expected, std::makeShared<Config>(4, "four"));
+  std::SharedPtr<Config> other = std::makeShared<Config>(5, "five");
+  bool notSwapped = h.current.compareExchange(other, std::SharedPtr<Config>());
+  std::println(swapped, " ", notSwapped, " ", other->version, " ", h.current.load()->version);
   return 0;
 }

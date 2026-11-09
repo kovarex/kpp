@@ -8,20 +8,20 @@ struct Box
   constexpr bool operator<(const Box& other) const { return this.v < other.v; }
 
   template<typename U>
-  constexpr strong_ordering operator<=>(const U& u) const
+  constexpr std::strong_ordering operator<=>(const U& u) const
   {
-    return this.v < u ? strong_ordering::less : this.v > u ? strong_ordering::greater : strong_ordering::equal;
+    return this.v < u ? std::strong_ordering::less : this.v > u ? std::strong_ordering::greater : std::strong_ordering::equal;
   }
 };
 
 constexpr bool c1 = Box(1.0) < 1.5;
 constexpr bool c2 = Box(1.0) < Box(1.5);
 constexpr bool c3 = Box(2.0) <= 1.5;
-constexpr bool c4 = Optional<int>(1) < 1.5;
+constexpr bool c4 = std::Optional<int>(1) < 1.5;
 static_assert(c1 && !c2 && !c3 && c4);
 
 int main()
 {
-  println(c1, " ", c2, " ", c3, " ", c4, " ", Box(1.0) < 1.5, " ", Box(2.0) <= 1.5);
+  std::println(c1, " ", c2, " ", c3, " ", c4, " ", Box(1.0) < 1.5, " ", Box(2.0) <= 1.5);
   return 0;
 }

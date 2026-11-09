@@ -38,6 +38,6 @@ int main()
 {
   int a = runA();
   int b = runB();
-  println(a, " ", b);
+  std::println(a, " ", b);
   return 0;
 }

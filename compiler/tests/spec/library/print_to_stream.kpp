@@ -3,16 +3,16 @@
 int main()
 {
   FILE* f = fopen("print_to_stream.txt", "wb");
-  print(f, "a ", 1, " ");
-  println(f, fixed(2.5, 1), " b");
+  std::print(f, "a ", 1, " ");
+  std::println(f, std::fixed(2.5, 1), " b");
   fclose(f);
   f = fopen("print_to_stream.txt", "rb");
   char line[32] = {};
   fread(line, 1, sizeof(line) - 1, f);
   fclose(f);
   remove("print_to_stream.txt");
-  print(stdout, StringView(line));
-  println(stdout, "to stdout ", 3);
-  println("plain ", 4);
+  std::print(stdout, std::StringView(line));
+  std::println(stdout, "to stdout ", 3);
+  std::println("plain ", 4);
   return 0;
 }

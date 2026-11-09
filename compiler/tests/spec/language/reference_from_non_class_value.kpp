@@ -2,8 +2,8 @@
 // found with language/reference_to_converted_temporary: the reference was bound to the literal's chars as if they were a String (`s.size()` read -1), silently
 int main()
 {
-  const String& s = "text";
-  const String& t = s;
-  println(s.size(), " ", s, " ", t.size());
+  const std::String& s = "text";
+  const std::String& t = s;
+  std::println(s.size(), " ", s, " ", t.size());
   return 0;
 }

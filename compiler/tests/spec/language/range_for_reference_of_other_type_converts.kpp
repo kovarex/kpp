@@ -2,7 +2,7 @@
 // found by thread B (2026-11-05): kpp bound the element's own bytes, an int read as a double, and summed garbage (`4.2439915834e-314`)
 int main()
 {
-  Vector<int> v;
+  std::Vector<int> v;
   v.push_back(1);
   v.push_back(2);
   double sum = 0;
@@ -12,11 +12,11 @@ int main()
   double halves = 0;
   for (const double& d : arr)
     halves += d + 0.5 * (d == 3);
-  Vector<uint8_t> bytes;
+  std::Vector<uint8_t> bytes;
   bytes.push_back(200);
   bytes.push_back(255);
   for (const int64_t& b : bytes)
-    print(b, " ");
-  println(sum, " ", halves);
+    std::print(b, " ");
+  std::println(sum, " ", halves);
   return 0;
 }

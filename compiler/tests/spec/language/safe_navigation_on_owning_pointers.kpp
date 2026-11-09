@@ -8,14 +8,14 @@ public:
 class Owner
 {
 public:
-  SharedPtr<Item> shared = makeShared<Item>();
+  std::SharedPtr<Item> shared = std::makeShared<Item>();
 };
 class Handle
 {
 public:
   Item* item;
   Handle(Item* i) : item(i) {}
-  ~Handle() { println("handle gone"); }
+  ~Handle() { std::println("handle gone"); }
   Item* operator->() const { return this.item; }
   operator bool() const { return this.item != nullptr; }
 };
@@ -26,18 +26,18 @@ Handle make(Item* i)
 int main()
 {
   Item item;
-  Item^ owned = makeUnique<Item>();
+  Item^ owned = std::makeUnique<Item>();
   Item^ empty;
-  Optional<Item> some = Item();
-  Optional<Item> nothing;
-  println(owned?->get() ?: 0, " ", empty?->get() ?: 0, " ", some?->v ?: 0, " ", nothing?->v ?: 0);
-  println(make(&item)?->get() ?: 0);
-  println(make(nullptr)?->get() ?: 0);
+  std::Optional<Item> some = Item();
+  std::Optional<Item> nothing;
+  std::println(owned?->get() ?: 0, " ", empty?->get() ?: 0, " ", some?->v ?: 0, " ", nothing?->v ?: 0);
+  std::println(make(&item)?->get() ?: 0);
+  std::println(make(nullptr)?->get() ?: 0);
   Owner owner;
   Owner* set = &owner;
   Owner* none = nullptr;
-  SharedPtr<Item> got = set?->shared;
-  SharedPtr<Item> lost = none?->shared;
-  println(bool(got), " ", bool(lost), " ", got->v);
+  std::SharedPtr<Item> got = set?->shared;
+  std::SharedPtr<Item> lost = none?->shared;
+  std::println(bool(got), " ", bool(lost), " ", got->v);
   return 0;
 }

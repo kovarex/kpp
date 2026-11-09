@@ -11,12 +11,12 @@ int main()
   unsigned char packet[17] = {3, 'w', 'w', 'w', 7, 'e', 'x', 'a', 'm', 'p', 'l', 'e', 3, 'c', 'o', 'm', 0};
   char name[64];
   int used = dn_expand(packet, packet + 17, packet, name, 64);
-  println(used, " ", StringView(name));
-  println(sysconf(_SC_PAGE_SIZE) > 0, " ", sysconf(_SC_PAGE_SIZE) == sysconf(_SC_PAGESIZE));
+  std::println(used, " ", std::StringView(name));
+  std::println(sysconf(_SC_PAGE_SIZE) > 0, " ", sysconf(_SC_PAGE_SIZE) == sysconf(_SC_PAGESIZE));
   __res_state state;
   bool initialized = res_ninit(&state) == 0;
   if (initialized)
     res_nclose(&state);
-  println(initialized);
+  std::println(initialized);
   return 0;
 }

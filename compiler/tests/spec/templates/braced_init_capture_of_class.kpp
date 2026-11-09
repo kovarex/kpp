@@ -1,16 +1,16 @@
 // spec: an init-capture whose braced initializer is one value of a class type (`[callback{::move(callback)}]`, a closure; `[names{::move(names)}]`, a Vector) is initialised from that value (C++ DR 1467: a single element of the class's own type copies or moves it, before initializer-list constructors are considered)
 // factorio: FloatingGuiWindow::setDetachingCallback, PrototypeFilterHelpers::make_string_multi_equality_builder, ModPortalJob::processResult (7 lines)
 template<class Callback>
-Function<int()> wrap(Callback callback)
+std::Function<int()> wrap(Callback callback)
 {
-  return [callback{::move(callback)}] { return callback() * 2; };
+  return [callback{std::move(callback)}] { return callback() * 2; };
 }
 int main()
 {
-  Vector<String> names;
-  names.push_back(String("a"));
-  names.push_back(String("bc"));
-  auto count = [names{::move(names)}](int extra) { return int(names.size()) + extra; };
-  println(wrap([] { return 21; })(), " ", count(1));
+  std::Vector<std::String> names;
+  names.push_back(std::String("a"));
+  names.push_back(std::String("bc"));
+  auto count = [names{std::move(names)}](int extra) { return int(names.size()) + extra; };
+  std::println(wrap([] { return 21; })(), " ", count(1));
   return 0;
 }

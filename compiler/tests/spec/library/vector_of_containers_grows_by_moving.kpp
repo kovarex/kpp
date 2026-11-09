@@ -45,43 +45,43 @@ struct ThrowingHash
   usize operator()(int a) const { return usize(a); }
 };
 
-void fill(Deque<Counted>& c, int i) { c.push_back(Counted(i)); }
-void fill(List<Counted>& c, int i) { c.push_back(Counted(i)); }
-void fill(ForwardList<Counted>& c, int i) { c.push_front(Counted(i)); }
-void fill(Map<int, Counted>& c, int i) { c[i] = Counted(i); }
-void fill(Set<Counted>& c, int i) { c.insert(Counted(i)); }
-void fill(MultiMap<int, Counted>& c, int i) { c.insert(Pair<int, Counted>(i, Counted(i))); }
-void fill(FastMap<int, Counted>& c, int i) { c[i] = Counted(i); }
-void fill(HashMap<int, Counted>& c, int i) { c[i] = Counted(i); }
-void fill(Map<int, Counted, ThrowingLess>& c, int i) { c[i] = Counted(i); }
-void fill(HashMap<int, Counted, ThrowingHash>& c, int i) { c[i] = Counted(i); }
+void fill(std::Deque<Counted>& c, int i) { c.push_back(Counted(i)); }
+void fill(std::List<Counted>& c, int i) { c.push_back(Counted(i)); }
+void fill(std::ForwardList<Counted>& c, int i) { c.push_front(Counted(i)); }
+void fill(std::Map<int, Counted>& c, int i) { c[i] = Counted(i); }
+void fill(std::Set<Counted>& c, int i) { c.insert(Counted(i)); }
+void fill(std::MultiMap<int, Counted>& c, int i) { c.insert(std::Pair<int, Counted>(i, Counted(i))); }
+void fill(std::FastMap<int, Counted>& c, int i) { c[i] = Counted(i); }
+void fill(std::HashMap<int, Counted>& c, int i) { c[i] = Counted(i); }
+void fill(std::Map<int, Counted, ThrowingLess>& c, int i) { c[i] = Counted(i); }
+void fill(std::HashMap<int, Counted, ThrowingHash>& c, int i) { c[i] = Counted(i); }
 
 // How many elements were copied while a Vector of 40 containers of 3 elements each was built and grew.
 template<typename C>
 int grow()
 {
-  Vector<C> containers;
+  std::Vector<C> containers;
   copies = 0;
   for (int i = 0; i < 40; ++i)
   {
     C c;
     for (int k = 0; k < 3; ++k)
       fill(c, k);
-    containers.push_back(move(c));
+    containers.push_back(std::move(c));
   }
   return copies;
 }
 
 int main()
 {
-  printf("%d %d %d %d %d %d %d %d\n", grow<Deque<Counted>>(), grow<List<Counted>>(), grow<ForwardList<Counted>>(), grow<Map<int, Counted>>(), grow<Set<Counted>>(),
-         grow<MultiMap<int, Counted>>(), grow<FastMap<int, Counted>>(), grow<HashMap<int, Counted>>());
-  printf("%d %d\n", int(grow<Map<int, Counted, ThrowingLess>>() > 0), int(grow<HashMap<int, Counted, ThrowingHash>>() > 0));
-  static_assert(isNothrowMoveConstructible<Deque<String>> && isNothrowMoveConstructible<List<String>> && isNothrowMoveConstructible<Map<int, String>> &&
-                isNothrowMoveConstructible<Set<int>> && isNothrowMoveConstructible<FastSet<int>> && isNothrowMoveConstructible<HashSet<int>> &&
-                isNothrowMoveConstructible<MultiSet<int>> && isNothrowMoveConstructible<String>);
-  static_assert(isNothrowMoveAssignable<Deque<String>> && isNothrowMoveAssignable<List<String>> && isNothrowMoveAssignable<Map<int, String>> &&
-                isNothrowMoveAssignable<HashMap<int, String>> && isNothrowMoveAssignable<FastMap<int, String>>);
-  static_assert(!isNothrowMoveConstructible<Map<int, int, ThrowingLess>> && !isNothrowMoveConstructible<HashMap<int, int, ThrowingHash>>);
+  printf("%d %d %d %d %d %d %d %d\n", grow<std::Deque<Counted>>(), grow<std::List<Counted>>(), grow<std::ForwardList<Counted>>(), grow<std::Map<int, Counted>>(), grow<std::Set<Counted>>(),
+         grow<std::MultiMap<int, Counted>>(), grow<std::FastMap<int, Counted>>(), grow<std::HashMap<int, Counted>>());
+  printf("%d %d\n", int(grow<std::Map<int, Counted, ThrowingLess>>() > 0), int(grow<std::HashMap<int, Counted, ThrowingHash>>() > 0));
+  static_assert(std::isNothrowMoveConstructible<std::Deque<std::String>> && std::isNothrowMoveConstructible<std::List<std::String>> && std::isNothrowMoveConstructible<std::Map<int, std::String>> &&
+                std::isNothrowMoveConstructible<std::Set<int>> && std::isNothrowMoveConstructible<std::FastSet<int>> && std::isNothrowMoveConstructible<std::HashSet<int>> &&
+                std::isNothrowMoveConstructible<std::MultiSet<int>> && std::isNothrowMoveConstructible<std::String>);
+  static_assert(std::isNothrowMoveAssignable<std::Deque<std::String>> && std::isNothrowMoveAssignable<std::List<std::String>> && std::isNothrowMoveAssignable<std::Map<int, std::String>> &&
+                std::isNothrowMoveAssignable<std::HashMap<int, std::String>> && std::isNothrowMoveAssignable<std::FastMap<int, std::String>>);
+  static_assert(!std::isNothrowMoveConstructible<std::Map<int, int, ThrowingLess>> && !std::isNothrowMoveConstructible<std::HashMap<int, int, ThrowingHash>>);
   return 0;
 }

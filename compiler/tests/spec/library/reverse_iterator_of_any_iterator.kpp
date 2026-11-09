@@ -6,7 +6,7 @@ struct Steps
   using difference_type = ptrdiff_t;
   using pointer = int*;
   using reference = int&;
-  using iterator_category = BidirectionalIteratorTag;
+  using iterator_category = std::BidirectionalIteratorTag;
 
   int* at = nullptr;
   Steps() {}
@@ -32,29 +32,29 @@ struct Point
 int main()
 {
   int values[4] = {1, 2, 3, 4};
-  using Back = ReverseIterator<Steps>;
-  String walked;
+  using Back = std::ReverseIterator<Steps>;
+  std::String walked;
   for (Back it = Back(Steps(values + 4)); it != Back(Steps(values)); ++it)
-    walked << toString(*it);
+    walked << std::toString(*it);
   Back last(Steps(values + 4));
   *last = 40;
   Back second = last;
   ++second;
   --second;
-  println(walked, " ", values[3], " ", second == last && second.base() == Steps(values + 4));
-  Vector<int> v = {5, 6, 7, 8};
-  Vector<int>::reverse_iterator r = v.rbegin();
-  Vector<int>::const_reverse_iterator cr = r;
-  println(*r, " ", r[1], " ", *(r + 2), " ", v.rend() - r, " ", r < r + 1, " ", cr == r);
-  Vector<Point> points = {Point{3}, Point{9}};
-  println(points.rbegin()->x, " ", makeReverseIterator(points.end())->x);
-  Deque<int> d = {1, 2, 3};
+  std::println(walked, " ", values[3], " ", second == last && second.base() == Steps(values + 4));
+  std::Vector<int> v = {5, 6, 7, 8};
+  std::Vector<int>::reverse_iterator r = v.rbegin();
+  std::Vector<int>::const_reverse_iterator cr = r;
+  std::println(*r, " ", r[1], " ", *(r + 2), " ", v.rend() - r, " ", r < r + 1, " ", cr == r);
+  std::Vector<Point> points = {Point{3}, Point{9}};
+  std::println(points.rbegin()->x, " ", std::makeReverseIterator(points.end())->x);
+  std::Deque<int> d = {1, 2, 3};
   auto dr = d.rbegin();
-  println(*dr, " ", dr[2], " ", d.rend() - d.rbegin());
-  List<int> l = {7, 8, 9};
-  String back;
+  std::println(*dr, " ", dr[2], " ", d.rend() - d.rbegin());
+  std::List<int> l = {7, 8, 9};
+  std::String back;
   for (auto it = l.rbegin(); it != l.rend(); ++it)
-    back << toString(*it);
-  println(back);
+    back << std::toString(*it);
+  std::println(back);
   return 0;
 }

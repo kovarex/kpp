@@ -38,7 +38,7 @@ int first()
 int main()
 {
   Packet* p = make();
-  println(bytes(p), " ", sum(p), " ", first());
+  std::println(bytes(p), " ", sum(p), " ", first());
   free(p);
   return 0;
 }

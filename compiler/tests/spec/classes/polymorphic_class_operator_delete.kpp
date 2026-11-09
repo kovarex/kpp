@@ -4,15 +4,15 @@ class Base
 {
 public:
   int a = 1;
-  virtual ~Base() { println("~Base"); }
+  virtual ~Base() { std::println("~Base"); }
 };
 class Pooled : public Base
 {
 public:
   long long b = 2;
-  ~Pooled() override { println("~Pooled"); }
-  void* operator new(size_t size) { println("pooled new ", size); return malloc(size); }
-  void operator delete(void* p, size_t size) { println("pooled delete ", size); free(p); }
+  ~Pooled() override { std::println("~Pooled"); }
+  void* operator new(size_t size) { std::println("pooled new ", size); return std::malloc(size); }
+  void operator delete(void* p, size_t size) { std::println("pooled delete ", size); std::free(p); }
 };
 class MorePooled : public Pooled
 {
@@ -23,13 +23,13 @@ class Other
 {
 public:
   int o = 4;
-  virtual ~Other() { println("~Other"); }
+  virtual ~Other() { std::println("~Other"); }
 };
 class Second : public Other, public Pooled
 {
 public:
-  ~Second() override { println("~Second"); }
-  void operator delete(void* p) { println("second delete"); free(p); }
+  ~Second() override { std::println("~Second"); }
+  void operator delete(void* p) { std::println("second delete"); std::free(p); }
 };
 int main()
 {

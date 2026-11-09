@@ -17,10 +17,10 @@ int main()
     };
   };
   a = 65;
-  println(a, " ", int(b), " ", &a == (int*)&b);
+  std::println(a, " ", int(b), " ", &a == (int*)&b);
   a = 0x00020001;
-  println(low, " ", high);
+  std::println(low, " ", high);
   whole = 0x01020304;
-  println(int(bytes[0]), " ", int(bytes[3]));
+  std::println(int(bytes[0]), " ", int(bytes[3]));
   return 0;
 }

@@ -26,21 +26,21 @@ int sumActions(const OneState& state, int count)
 
 int main()
 {
-  println((int)sizeof(OneState), " ", (int)offsetof(OneState, action));
-  println((int)sizeof(Named), " ", (int)offsetof(Named, values));
+  std::println((int)sizeof(OneState), " ", (int)offsetof(OneState, action));
+  std::println((int)sizeof(Named), " ", (int)offsetof(Named, values));
   int count = 5;
   OneState* state = (OneState*)malloc(sizeof(OneState) + count * sizeof(unsigned int));
   state->matchcond = 7;
   for (int i = 0; i < count; ++i)
     state->action[i] = (unsigned int)(i * 10);
-  println(state->matchcond, " ", state->action[4], " ", sumActions(*state, count));
-  println((int)((char*)&state->action[0] - (char*)state));
+  std::println(state->matchcond, " ", state->action[4], " ", sumActions(*state, count));
+  std::println((int)((char*)&state->action[0] - (char*)state));
   free(state);
   Named* named = (Named*)malloc(sizeof(Named) + 3 * sizeof(short));
   named->tag = 'x';
   named->values[0] = -1;
   named->values[2] = 300;
-  println(named->tag, " ", named->values[0], " ", named->values[2]);
+  std::println(named->tag, " ", named->values[0], " ", named->values[2]);
   free(named);
   return 0;
 }

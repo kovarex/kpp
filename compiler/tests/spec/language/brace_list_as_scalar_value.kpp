@@ -21,6 +21,6 @@ int main()
   int values[3] = {1, 2, 3};
   values[1] = {};
   values[2] = {9};
-  println(m.crc, " ", d, " ", int(loadPlayFor(false)), " ", pick(1, &e, nullptr, Flags{}), " ", pick(2), " ", values[1], " ", values[2]);
+  std::println(m.crc, " ", d, " ", int(loadPlayFor(false)), " ", pick(1, &e, nullptr, Flags{}), " ", pick(2), " ", values[1], " ", values[2]);
   return 0;
 }

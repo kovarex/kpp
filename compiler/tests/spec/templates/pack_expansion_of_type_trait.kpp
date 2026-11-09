@@ -5,16 +5,16 @@ struct Types { static constexpr int count = int(sizeof...(T)); };
 template<typename... Args>
 Types<Args...> asIs(Args&&... args) { return Types<Args...>(); }
 template<typename... Args>
-Types<RemoveReference<Args>...> stripped(Args&&... args) { return Types<RemoveReference<Args>...>(); }
+Types<std::RemoveReference<Args>...> stripped(Args&&... args) { return Types<std::RemoveReference<Args>...>(); }
 template<typename... Args>
-Types<Decay<Args>...> decayed(Args&&... args) { return Types<Decay<Args>...>(); }
+Types<std::Decay<Args>...> decayed(Args&&... args) { return Types<std::Decay<Args>...>(); }
 int main()
 {
   int i = 3;
   const char text[4] = "abc";
-  static_assert(isSame<decltype(asIs(i, 2.5)), Types<int&, double>>);
-  static_assert(isSame<decltype(stripped(i, 2.5)), Types<int, double>>);
-  static_assert(isSame<decltype(decayed(i, text)), Types<int, const char*>>);
-  println(stripped(i, 2.5, 'c').count, " ", decayed(text).count);
+  static_assert(std::isSame<decltype(asIs(i, 2.5)), Types<int&, double>>);
+  static_assert(std::isSame<decltype(stripped(i, 2.5)), Types<int, double>>);
+  static_assert(std::isSame<decltype(decayed(i, text)), Types<int, const char*>>);
+  std::println(stripped(i, 2.5, 'c').count, " ", decayed(text).count);
   return 0;
 }

@@ -20,16 +20,16 @@ class EditForceGui
 {
 public:
   using ActionConstructor = EditorAction(*)(ForceIdsAndBool&& data);
-  EditForceGui(int context, ActionConstructor actionConstructor, String&& title) : actionConstructor(actionConstructor), title(move(title)) {}
+  EditForceGui(int context, ActionConstructor actionConstructor, std::String&& title) : actionConstructor(actionConstructor), title(std::move(title)) {}
   EditorAction apply(int forces) { return this.actionConstructor(ForceIdsAndBool{forces, true}); }
   ActionConstructor actionConstructor;
-  String title;
+  std::String title;
 };
 int main()
 {
-  EditForceGui* gui = new EditForceGui(0, &EditorAction::SetForceFriend, String("friends"));
+  EditForceGui* gui = new EditForceGui(0, &EditorAction::SetForceFriend, std::String("friends"));
   EditorAction action = gui->apply(5);
-  println(action.kind, " ", action.forces, " ", gui->title);
+  std::println(action.kind, " ", action.forces, " ", gui->title);
   delete gui;
   return 0;
 }

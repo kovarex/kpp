@@ -2,12 +2,12 @@
 // factorio: ProcessionGraphicCatalogue's animationCatalogue.emplace(std::make_pair(index, Animation(...))) and spriteCatalogue.emplace(std::make_pair(index, UniquePointer<Sprite>(new Sprite(...)))), whose values can only be moved
 int main()
 {
-  UniquePtr<int> p(new int(4));
-  Pair<int, UniquePtr<int>> a = makePair(1, move(p));
-  String s("text");
-  Pair<String, const char*> b = makePair(s, "literal");
+  std::UniquePtr<int> p(new int(4));
+  std::Pair<int, std::UniquePtr<int>> a = std::makePair(1, std::move(p));
+  std::String s("text");
+  std::Pair<std::String, const char*> b = std::makePair(s, "literal");
   int x = 1;
-  static_assert(isSame<decltype(makePair(ref(x), 2)), Pair<int&, int>>);
-  println(a.first, " ", *a.second, " ", p == nullptr, " ", b.first, " ", StringView(b.second), " ", s);
+  static_assert(std::isSame<decltype(std::makePair(std::ref(x), 2)), std::Pair<int&, int>>);
+  std::println(a.first, " ", *a.second, " ", p == nullptr, " ", b.first, " ", std::StringView(b.second), " ", s);
   return 0;
 }

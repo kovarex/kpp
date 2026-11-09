@@ -1,12 +1,12 @@
 // spec: at compile time a relation Optional has no operator for runs its operator<=>, with a NaN unordered, as std::optional's answers
 extern "C" import "stdio.h";
-constexpr double nan = Limits<double>::quiet_NaN();
-constexpr bool a = Optional<double>(nan) <= Optional<double>(1.0);
-constexpr bool b = Optional<double>(1.0) <= Optional<double>(2.0);
-constexpr bool c = Optional<double>(2.0) >= Optional<double>(2.0);
-constexpr bool d = Optional<int>(1) < 1.5;
-constexpr bool e = Optional<int>() < Optional<int>(1);
-constexpr bool f = Optional<int>(1) > Optional<int>(2);
+constexpr double nan = std::Limits<double>::quiet_NaN();
+constexpr bool a = std::Optional<double>(nan) <= std::Optional<double>(1.0);
+constexpr bool b = std::Optional<double>(1.0) <= std::Optional<double>(2.0);
+constexpr bool c = std::Optional<double>(2.0) >= std::Optional<double>(2.0);
+constexpr bool d = std::Optional<int>(1) < 1.5;
+constexpr bool e = std::Optional<int>() < std::Optional<int>(1);
+constexpr bool f = std::Optional<int>(1) > std::Optional<int>(2);
 int main()
 {
   printf("%d %d %d %d %d %d\n", a, b, c, d, e, f);

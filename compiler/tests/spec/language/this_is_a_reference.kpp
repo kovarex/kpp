@@ -56,13 +56,13 @@ int main()
   auto frozen = c.frozen();
   auto bump = c.bump();
   bump();
-  println(c.get(), " ", c.doubled, " ", c.self() == &c ? 1 : 0, " ", c.same(&c) ? 1 : 0, " ", c.same(&other) ? 1 : 0);
-  println(c.twice(), " ", c.sum(other), " ", live(), " ", frozen());
+  std::println(c.get(), " ", c.doubled, " ", c.self() == &c ? 1 : 0, " ", c.same(&c) ? 1 : 0, " ", c.same(&other) ? 1 : 0);
+  std::println(c.twice(), " ", c.sum(other), " ", live(), " ", frozen());
   Handle h{&c};
-  println(h.viaArrow(), " ", h.ownValue());
+  std::println(h.viaArrow(), " ", h.ownValue());
   Wrapped w;
-  println(w.star());
+  std::println(w.star());
   Box<int> b;
-  println(b.set(9).get());
+  std::println(b.set(9).get());
   return 0;
 }

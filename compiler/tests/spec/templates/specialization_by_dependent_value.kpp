@@ -3,21 +3,21 @@
 template<bool B>
 struct Flag { static constexpr int value = 0; };
 template<>
-struct Flag<true> : TrueType {};
+struct Flag<true> : std::TrueType {};
 template<>
-struct Flag<false> : FalseType {};
-const char* pick(TrueType) { return "signed"; }
-const char* pick(FalseType) { return "unsigned"; }
+struct Flag<false> : std::FalseType {};
+const char* pick(std::TrueType) { return "signed"; }
+const char* pick(std::FalseType) { return "unsigned"; }
 template<typename T>
 const char* bySign(T value)
 {
-  constexpr bool sign = isSigned<T>;
+  constexpr bool sign = std::isSigned<T>;
   return pick(Flag<sign>());
 }
 template<typename T>
-const char* byTrait(T value) { return pick(IntegralConstant<bool, isSigned<T>>()); }
+const char* byTrait(T value) { return pick(std::IntegralConstant<bool, std::isSigned<T>>()); }
 int main()
 {
-  println(StringView(bySign(-1)), " ", StringView(bySign(1u)), " ", StringView(byTrait(-1)), " ", StringView(byTrait(1u)));
+  std::println(std::StringView(bySign(-1)), " ", std::StringView(bySign(1u)), " ", std::StringView(byTrait(-1)), " ", std::StringView(byTrait(1u)));
   return 0;
 }

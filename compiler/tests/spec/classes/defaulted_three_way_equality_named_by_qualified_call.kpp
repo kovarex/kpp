@@ -5,7 +5,7 @@ class Base
 public:
   Base() = default;
   Base(int a, int b) : a(a), b(b) {}
-  strong_ordering operator<=>(const Base&) const = default;
+  std::strong_ordering operator<=>(const Base&) const = default;
   operator bool() const { return this.a != 0; }
   int a = 0;
   int b = 0;
@@ -33,6 +33,6 @@ int main()
   Derived x(4, 0, 4);
   Derived y(4, 1, 4);
   Base base(4, 1);
-  println(x == y ? 1 : 0, " ", x == x ? 1 : 0, " ", y == base ? 1 : 0, " ", x < y ? 1 : 0, " ", Base(4, 0) == Base(4, 1) ? 1 : 0);
+  std::println(x == y ? 1 : 0, " ", x == x ? 1 : 0, " ", y == base ? 1 : 0, " ", x < y ? 1 : 0, " ", Base(4, 0) == Base(4, 1) ? 1 : 0);
   return 0;
 }

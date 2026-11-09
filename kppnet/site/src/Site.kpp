@@ -95,33 +95,33 @@ struct Site
 {
   Site(const SiteOptions& options) : options(options) {}
 
-  String path(StringView repositoryPath) const { return this.options.repository + "/" + repositoryPath; }
+  std::String path(std::StringView repositoryPath) const { return this.options.repository + "/" + repositoryPath; }
 
-  void write(StringView sitePath, StringView content)
+  void write(std::StringView sitePath, std::StringView content)
   {
     siteWriteFile(this.options.out + "/" + sitePath, content);
     ++this.written;
   }
 
-  void warn(StringView page, StringView what) { this.warnings.push_back(toString(String(page), ": ", String(what))); }
+  void warn(std::StringView page, std::StringView what) { this.warnings.push_back(std::toString(std::String(page), ": ", std::String(what))); }
 
-  bool isPage(StringView repositoryPath) const
+  bool isPage(std::StringView repositoryPath) const
   {
-    for (const String& p : this.pages)
-      if (StringView(p) == repositoryPath)
+    for (const std::String& p : this.pages)
+      if (std::StringView(p) == repositoryPath)
         return true;
     return false;
   }
 
   // A link in the Markdown file at page, as the page's HTML gets it: to another page's .html, to
   // the source of a file that is not a page, or unchanged (a URL, an anchor in this page).
-  String rewriteLink(StringView page, const String& destination)
+  std::String rewriteLink(std::StringView page, const std::String& destination)
   {
     if (destination.empty())
       return destination;
     if (destination[0] == '#')
     {
-      this.anchorLinks.push_back(SiteAnchorLink{String(page), siteHtmlPath(page), url::urlDecode(StringView(destination).substr(1))});
+      this.anchorLinks.push_back(SiteAnchorLink{std::String(page), siteHtmlPath(page), url::urlDecode(std::StringView(destination).substr(1))});
       return destination;
     }
     url::Url reference;
@@ -131,64 +131,64 @@ struct Site
     }
     catch (const url::UrlError& e)
     {
-      this.warn(page, toString("a link that is not a URL, kept as it is: ", destination, " (", e.message, ")"));
+      this.warn(page, std::toString("a link that is not a URL, kept as it is: ", destination, " (", e.message, ")"));
       return destination;
     }
     if (!reference.isRelative() || reference.hasAuthority || reference.path.empty())
       return destination;
     url::Url target = url::resolveUrl(url::parseUrl("file:///" + url::urlEncodePath(page)), reference);
-    String file = url::urlDecode(StringView(target.path).substr(1));
-    String fragment = reference.hasFragment ? "#" + reference.fragment : String();
-    String trimmed = file.endsWith("/") ? String(StringView(file).substr(0, file.size() - 1)) : file;
+    std::String file = url::urlDecode(std::StringView(target.path).substr(1));
+    std::String fragment = reference.hasFragment ? "#" + reference.fragment : std::String();
+    std::String trimmed = file.endsWith("/") ? std::String(std::StringView(file).substr(0, file.size() - 1)) : file;
     if (this.isPage(trimmed))
     {
       if (reference.hasFragment)
-        this.anchorLinks.push_back(SiteAnchorLink{String(page), siteHtmlPath(trimmed), url::urlDecode(reference.fragment)});
+        this.anchorLinks.push_back(SiteAnchorLink{std::String(page), siteHtmlPath(trimmed), url::urlDecode(reference.fragment)});
       return url::urlEncodePath(siteRelativeLink(page, siteHtmlPath(trimmed))) + fragment;
     }
     if (siteIsFile(this.path(trimmed)))
       return this.options.sourceUrl + "/blob/master/" + url::urlEncodePath(trimmed) + fragment;
     if (trimmed.empty() || siteIsDirectory(this.path(trimmed)))
       return this.options.sourceUrl + "/tree/master/" + url::urlEncodePath(trimmed) + fragment;
-    this.warn(page, toString("a link to ", file, ", which is not in the repository"));
+    this.warn(page, std::toString("a link to ", file, ", which is not in the repository"));
     return destination;
   }
 
-  String pageHtml(StringView sitePath, StringView title, const html::SafeHtml& content)
+  std::String pageHtml(std::StringView sitePath, std::StringView title, const html::SafeHtml& content)
   {
     return sitePage
-      .render({{"title", String(title) + " - kpp"},
+      .render({{"title", std::String(title) + " - kpp"},
                {"root", siteRootOf(sitePath)},
                {"source", this.options.sourceUrl},
                {"content", content},
-               {"commit", this.options.commit.empty() ? String("the working tree") : this.options.commit}})
+               {"commit", this.options.commit.empty() ? std::String("the working tree") : this.options.commit}})
       .str();
   }
 
-  html::SafeHtml renderMarkdown(StringView page, StringView text)
+  html::SafeHtml renderMarkdown(std::StringView page, std::StringView text)
   {
     markdown::MarkdownOptions markdown;
     markdown.tables = true;
     markdown.headingIds = true;
-    markdown.rewriteLink = [&this, page](const String& destination) -> String { return this.rewriteLink(page, destination); };
+    markdown.rewriteLink = [&this, page](const std::String& destination) -> std::String { return this.rewriteLink(page, destination); };
     return html::SafeHtml::trusted(markdown::markdownToHtml(text, markdown));
   }
 
   void run()
   {
-    for (const String& root : this.options.pageRoots)
+    for (const std::String& root : this.options.pageRoots)
     {
       if (!siteIsDirectory(this.path(root)))
-        throw SiteError(toString(root, " is not a directory of the repository ", this.options.repository));
+        throw SiteError(std::toString(root, " is not a directory of the repository ", this.options.repository));
       siteFindMarkdown(this.options.repository, root, this.pages);
     }
     html::SafeHtml documents;
-    for (const String& page : this.pages)
+    for (const std::String& page : this.pages)
     {
-      String text = siteReadFile(this.path(page));
-      String title = siteTitle(text, page);
-      String html = siteHtmlPath(page);
-      String pageHtml = this.pageHtml(html, title, this.renderMarkdown(page, text));
+      std::String text = siteReadFile(this.path(page));
+      std::String title = siteTitle(text, page);
+      std::String html = siteHtmlPath(page);
+      std::String pageHtml = this.pageHtml(html, title, this.renderMarkdown(page, text));
       this.write(html, pageHtml);
       this.htmlPaths.push_back(html);
       this.htmlTexts.push_back(pageHtml);
@@ -206,15 +206,15 @@ struct Site
   {
     for (const SiteAnchorLink& link : this.anchorLinks)
     {
-      const String* html = nullptr;
+      const std::String* html = nullptr;
       for (i32 i = 0; i < this.htmlPaths.size(); ++i)
         if (this.htmlPaths[i] == link.target)
           html = &this.htmlTexts[i];
       if (!html)
         continue;
-      String id = " id=\"" + html::htmlEscape(link.anchor) + "\"";
-      if (html->find(id) == String::npos)
-        this.warn(link.page, toString("a link to #", link.anchor, " in ", link.target, ", which has no such heading"));
+      std::String id = " id=\"" + html::htmlEscape(link.anchor) + "\"";
+      if (html->find(id) == std::String::npos)
+        this.warn(link.page, std::toString("a link to #", link.anchor, " in ", link.target, ", which has no such heading"));
     }
   }
 
@@ -222,48 +222,48 @@ struct Site
   // libraries and the registry's, by name.
   void libraries()
   {
-    Vector<String> names;
+    std::Vector<std::String> names;
     if (siteIsDirectory(this.path("libraries")))
-      for (const filesystem::directory_entry& entry : filesystem::directory_iterator(filesystem::path(this.path("libraries"))))
+      for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(std::filesystem::path(this.path("libraries"))))
         if (entry.is_directory() && siteIsFile(this.path("libraries/" + entry.path().filename().string() + "/build.kpp")))
           names.push_back(entry.path().filename().string());
-    Vector<json::JsonValue> index;
+    std::Vector<json::JsonValue> index;
     if (!this.options.registry.empty())
     {
-      String directory = this.options.registry + "/index";
+      std::String directory = this.options.registry + "/index";
       if (!siteIsDirectory(directory))
-        throw SiteError(toString(directory, " is not a directory: --registry names a copy of the registry's store"));
-      for (const filesystem::directory_entry& entry : filesystem::directory_iterator(filesystem::path(directory)))
+        throw SiteError(std::toString(directory, " is not a directory: --registry names a copy of the registry's store"));
+      for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(std::filesystem::path(directory)))
       {
-        String file = entry.path().filename().string();
+        std::String file = entry.path().filename().string();
         if (!file.endsWith(".json") || file == "config.json")
           continue;
         json::JsonValue library = json::parseJson(siteReadFile(directory + "/" + file));
-        String name = library["name"].asString();
-        if (StringView(file) != StringView(name + ".json"))
-          throw SiteError(toString(directory, "/", file, " names the library ", name));
+        std::String name = library["name"].asString();
+        if (std::StringView(file) != std::StringView(name + ".json"))
+          throw SiteError(std::toString(directory, "/", file, " names the library ", name));
         index.push_back(library);
         bool known = false;
-        for (const String& n : names)
+        for (const std::String& n : names)
           known = known || n == name;
         if (!known)
           names.push_back(name);
       }
     }
-    sort(names.begin(), names.end());
+    std::sort(names.begin(), names.end());
     html::SafeHtml rows;
     json::JsonValue search = json::JsonValue::array();
-    for (const String& name : names)
+    for (const std::String& name : names)
     {
       const json::JsonValue* entry = nullptr;
       for (const json::JsonValue& library : index)
         if (library["name"].asString() == name)
           entry = &library;
-      String latest = entry ? siteLatestVersion(*entry) : String();
-      String readme = this.path("libraries/" + name + "/README.md");
-      String summary = siteIsFile(readme) ? siteSummary(siteReadFile(readme)) : String();
-      String page = "libraries/" + name + ".html";
-      rows << siteLibraryItem.render({{"link", url::urlEncode(name) + ".html"}, {"name", name}, {"version", latest.empty() ? String("not published") : latest}, {"summary", summary}});
+      std::String latest = entry ? siteLatestVersion(*entry) : std::String();
+      std::String readme = this.path("libraries/" + name + "/README.md");
+      std::String summary = siteIsFile(readme) ? siteSummary(siteReadFile(readme)) : std::String();
+      std::String page = "libraries/" + name + ".html";
+      rows << siteLibraryItem.render({{"link", url::urlEncode(name) + ".html"}, {"name", name}, {"version", latest.empty() ? std::String("not published") : latest}, {"summary", summary}});
       json::JsonValue item;
       item.set("name", name);
       item.set("version", latest);
@@ -291,22 +291,22 @@ struct Site
                                      {"kpp", r["kpp"].asString()},
                                      {"archive", this.options.registryUrl + r["archive"].asString()},
                                      {"tree", r["tree"].asString()},
-                                     {"yanked", yanked && !yanked->isNull() ? yanked->asString() : String()}});
+                                     {"yanked", yanked && !yanked->isNull() ? yanked->asString() : std::String()}});
     }
     return siteReleaseTable.render({{"rows", rows}});
   }
 
   SiteOptions options;
-  Vector<String> pages; // the .md files that become pages, repository paths
-  Vector<String> warnings;
-  Vector<SiteAnchorLink> anchorLinks;
-  Vector<String> htmlPaths; // the pages written, and their HTML, for the anchor check
-  Vector<String> htmlTexts;
+  std::Vector<std::String> pages; // the .md files that become pages, repository paths
+  std::Vector<std::String> warnings;
+  std::Vector<SiteAnchorLink> anchorLinks;
+  std::Vector<std::String> htmlPaths; // the pages written, and their HTML, for the anchor check
+  std::Vector<std::String> htmlTexts;
   i32 written = 0;
 };
 
 // The newest release that is not yanked, or "".
-String siteLatestVersion(const json::JsonValue& library)
+std::String siteLatestVersion(const json::JsonValue& library)
 {
   const json::JsonValue& releases = library["releases"];
   for (i32 i = releases.size() - 1; i >= 0; --i)
@@ -315,11 +315,11 @@ String siteLatestVersion(const json::JsonValue& library)
     if (!yanked || yanked->isNull())
       return releases[i]["version"].asString();
   }
-  return String();
+  return std::String();
 }
 
 // A page's title: its first "# " heading's text, or its path.
-String siteTitle(StringView text, StringView path)
+std::String siteTitle(std::StringView text, std::StringView path)
 {
   i32 at = 0;
   while (at < text.size())
@@ -327,10 +327,10 @@ String siteTitle(StringView text, StringView path)
     i32 end = at;
     while (end < text.size() && text[end] != '\n' && text[end] != '\r')
       ++end;
-    StringView line = text.substr(at, end - at);
+    std::StringView line = text.substr(at, end - at);
     if (line.startsWith("# "))
     {
-      String title;
+      std::String title;
       for (char c : line.substr(2))
         if (c != '`' && c != '*')
           title << c;
@@ -338,13 +338,13 @@ String siteTitle(StringView text, StringView path)
     }
     at = end + 1;
   }
-  return String(path);
+  return std::String(path);
 }
 
 // A README's first paragraph after its title, as plain text: the library's summary.
-String siteSummary(StringView text)
+std::String siteSummary(std::StringView text)
 {
-  String summary;
+  std::String summary;
   i32 at = 0;
   bool started = false;
   while (at < text.size())
@@ -352,11 +352,11 @@ String siteSummary(StringView text)
     i32 end = at;
     while (end < text.size() && text[end] != '\n' && text[end] != '\r')
       ++end;
-    StringView line = text.substr(at, end - at);
+    std::StringView line = text.substr(at, end - at);
     at = end + 1;
     if (line.startsWith("#"))
       continue;
-    if (line.empty() || line == StringView("\r"))
+    if (line.empty() || line == std::StringView("\r"))
     {
       if (started)
         break;
@@ -387,7 +387,7 @@ i32 main(i32 argc, char** argv)
   SiteOptions options;
   for (i32 i = 1; i < argc; ++i)
   {
-    String arg = argv[i];
+    std::String arg = argv[i];
     if (i + 1 < argc && arg == "--out")
       options.out = argv[++i];
     else if (i + 1 < argc && arg == "--repository")
@@ -423,12 +423,12 @@ i32 main(i32 argc, char** argv)
   {
     Site site(options);
     site.run();
-    for (const String& w : site.warnings)
+    for (const std::String& w : site.warnings)
       fprintf(stderr, "kppsite: warning: %s\n", w.c_str());
-    println("kppsite: ", site.written, " files in ", options.out, " (", site.pages.size(), " pages), ", site.warnings.size(), " warnings");
+    std::println("kppsite: ", site.written, " files in ", options.out, " (", site.pages.size(), " pages), ", site.warnings.size(), " warnings");
     return 0;
   }
-  catch (const Exception& e)
+  catch (const std::Exception& e)
   {
     fprintf(stderr, "kppsite: error: %s\n", e.what());
     return 1;

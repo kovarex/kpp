@@ -5,18 +5,18 @@ struct Tracked
   int id;
   Tracked(int id) : id(id) {}
   Tracked(const Tracked& other) : id(other.id) {}
-  ~Tracked() { println("~", this.id); }
+  ~Tracked() { std::println("~", this.id); }
 };
 union enum Value : uint8_t
 {
-  { {int, Number}, {String, Text}, {Tracked, Owned} }
-  String describe() const
+  { {int, Number}, {std::String, Text}, {Tracked, Owned} }
+  std::String describe() const
   {
     switch (this)
     {
-      case Number: return format("number {}", (this)[Number]);
-      case Text: return format("text {}", (this)[Text]);
-      case Owned: return format("owned {}", (this)[Owned].id);
+      case Number: return std::format("number {}", (this)[Number]);
+      case Text: return std::format("text {}", (this)[Text]);
+      case Owned: return std::format("owned {}", (this)[Owned].id);
     }
   }
 };
@@ -24,13 +24,13 @@ int main()
 {
   Tracked t(7);
   Value a;
-  a[Value::Text] = String("hello");
+  a[Value::Text] = std::String("hello");
   Value b = a;
   a[Value::Owned] = t;
-  println(a.describe(), " | ", b.describe(), " | ", a != Value::Text);
+  std::println(a.describe(), " | ", b.describe(), " | ", a != Value::Text);
   b = a;
-  println(b.describe());
+  std::println(b.describe());
   a[Value::Number] = 1;
-  println(a.describe());
+  std::println(a.describe());
   return 0;
 }

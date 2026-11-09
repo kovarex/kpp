@@ -12,7 +12,7 @@ struct HorizontalPolicy
 template<typename Policy>
 struct ScrollBar
 {
-  Function<void(Point)> onDown;
+  std::Function<void(Point)> onDown;
   int downMousePos = 0;
   int thumbPos = 0;
   ScrollBar();

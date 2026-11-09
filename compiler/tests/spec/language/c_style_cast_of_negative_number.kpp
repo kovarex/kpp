@@ -7,6 +7,6 @@ int main()
 {
   HANDLE h = invalid();
   DWORD all = (DWORD) -1;
-  println(h == (HANDLE) -1 ? 1 : 0, " ", all, " ", (long long)(HANDLE) -2);
+  std::println(h == (HANDLE) -1 ? 1 : 0, " ", all, " ", (long long)(HANDLE) -2);
   return 0;
 }

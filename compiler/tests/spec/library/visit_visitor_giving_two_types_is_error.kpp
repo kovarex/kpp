@@ -24,7 +24,7 @@ int main()
 {
   Shape<2> v;
   v.held = 1;
-  auto got = visit(Mixed(), v);
-  println(got);
+  auto got = std::visit(Mixed(), v);
+  std::println(got);
   return 0;
 }

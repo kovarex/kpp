@@ -1,9 +1,9 @@
 int missing(int value); // tests\stubs.ps1: declared, never defined; --stub-missing makes a stub of it
 int main(int argc, char**)
 {
-  println("before");
+  std::println("before");
   if (argc > 1)
     return missing(argc);
-  println("after");
+  std::println("after");
   return 0;
 }

@@ -10,6 +10,6 @@ int main()
   int *(*r) = (int**)q;
   const int (*(*s)) = (const int**)q;
   int (&w) = x;
-  println(*p, " ", **q, " ", *v, " ", **r, " ", **s, " ", w);
+  std::println(*p, " ", **q, " ", *v, " ", **r, " ", **s, " ", w);
   return 0;
 }

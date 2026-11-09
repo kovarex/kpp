@@ -3,13 +3,13 @@
 class Named
 {
 public:
-  Named(const String& name) : name(name) {}
-  String name;
+  Named(const std::String& name) : name(name) {}
+  std::String name;
 };
 
 union enum Held : u8
 {
-  { {int, Count}, {String, Words}, {Named, Object} }
+  { {int, Count}, {std::String, Words}, {Named, Object} }
 };
 
 int main()
@@ -17,6 +17,6 @@ int main()
   Held h;
   h[Words] = "a text long enough to be held outside the object";
   h[Object] = Named(h[Words]);
-  println(h[Object].name);
+  std::println(h[Object].name);
   return 0;
 }

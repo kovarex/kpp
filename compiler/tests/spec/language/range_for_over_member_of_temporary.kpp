@@ -4,15 +4,15 @@ int moves = 0;
 struct T
 {
   int id;
-  T(int v) : id(v) { println("T", this.id); }
-  T(const T& o) : id(o.id * 10) { println("T", this.id, " copy"); }
-  T(T&& o) : id(o.id * 100) { ++moves; println("T", this.id, " move"); }
-  ~T() { println("~T", this.id); }
+  T(int v) : id(v) { std::println("T", this.id); }
+  T(const T& o) : id(o.id * 10) { std::println("T", this.id, " copy"); }
+  T(T&& o) : id(o.id * 100) { ++moves; std::println("T", this.id, " move"); }
+  ~T() { std::println("~T", this.id); }
 };
 struct Duo { T a[2]; };
 int main()
 {
   for (const T& t : Duo{{T(1), T(2)}}.a)
-    println("it", t.id);
+    std::println("it", t.id);
   return 0;
 }

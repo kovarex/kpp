@@ -7,7 +7,7 @@ struct Checked
   constexpr Checked(int v) : value(v)
   {
     if (v < 0)
-      throw RuntimeError(String("a negative value"));
+      throw std::RuntimeError(std::String("a negative value"));
   }
 };
 

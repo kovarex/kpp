@@ -2,7 +2,7 @@
 // found in the game's LuaPrototypeTemplate::get (`(this->maybeGet(members) || ... || this->pushNil())`, 366 calls): the init was dropped and || had no short circuit
 bool note(int i, bool value)
 {
-  println("visit ", i);
+  std::println("visit ", i);
   return value;
 }
 template<typename... Args> int rightMinus(Args... args) { return (args - ...); }
@@ -13,11 +13,11 @@ template<typename... Args> bool anyTrue(Args... args) { return (note(args, args 
 template<typename... Args> bool allTrue(Args... args) { return (note(args, args > 0) && ...); }
 int main()
 {
-  println(rightMinus(10, 3, 2), " ", leftMinus(10, 3, 2));
-  println(rightInit(10, 3), " ", leftInit(10, 3));
-  println(anyTrue(1, 2, 3));
-  println(anyTrue(0, 1));
-  println(allTrue(1, 0, 5));
-  println(allTrue());
+  std::println(rightMinus(10, 3, 2), " ", leftMinus(10, 3, 2));
+  std::println(rightInit(10, 3), " ", leftInit(10, 3));
+  std::println(anyTrue(1, 2, 3));
+  std::println(anyTrue(0, 1));
+  std::println(allTrue(1, 0, 5));
+  std::println(allTrue());
   return 0;
 }

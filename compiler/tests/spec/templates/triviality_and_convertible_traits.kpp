@@ -1,7 +1,7 @@
 // spec: isTriviallyCopyable, isTriviallyDestructible, isTriviallyDefaultConstructible through members and bases, and isConvertible through converting constructors and conversion operators
 // factorio: is_memcpy_saveable and the serialiser's memcpy paths ask isTriviallyCopyable of every saved type; requires-clauses and enable-ifs ask isConvertible
 struct Plain { int a; float b; };
-struct WithString { int a; String s; };
+struct WithString { int a; std::String s; };
 struct WithInit { int a = 5; };
 struct UserCopy { int a; UserCopy() {} UserCopy(const UserCopy& o) : a(o.a) {} };
 struct UserDtor { int a; ~UserDtor() {} };
@@ -12,13 +12,13 @@ struct FromInt { int v; implicit FromInt(int v) : v(v) {} };
 struct ToInt { int v; implicit operator int() const { return this.v; } };
 enum class Scoped { A };
 
-template<typename T> bool copyable() { return isTriviallyCopyable<T>; }
+template<typename T> bool copyable() { return std::isTriviallyCopyable<T>; }
 
 int main()
 {
-  println("copyable ", copyable<int>(), " ", copyable<Plain>(), " ", copyable<WithString>(), " ", copyable<WithInit>(), " ", copyable<UserCopy>(), " ", copyable<UserDtor>(), " ", copyable<Derived>(), " ", copyable<HoldsUserDtor>(), " ", copyable<Virtual>());
-  println("destructible ", isTriviallyDestructible<Plain>, " ", isTriviallyDestructible<WithString>, " ", isTriviallyDestructible<HoldsUserDtor>);
-  println("default ", isTriviallyDefaultConstructible<Plain>, " ", isTriviallyDefaultConstructible<WithInit>, " ", isTriviallyDefaultConstructible<WithString>);
-  println("convertible ", isConvertible<int, FromInt>, " ", isConvertible<ToInt, int>, " ", isConvertible<const char*, String>, " ", isConvertible<Scoped, int>, " ", isConvertible<Derived*, Plain*>, " ", isConvertible<int, int&>);
+  std::println("copyable ", copyable<int>(), " ", copyable<Plain>(), " ", copyable<WithString>(), " ", copyable<WithInit>(), " ", copyable<UserCopy>(), " ", copyable<UserDtor>(), " ", copyable<Derived>(), " ", copyable<HoldsUserDtor>(), " ", copyable<Virtual>());
+  std::println("destructible ", std::isTriviallyDestructible<Plain>, " ", std::isTriviallyDestructible<WithString>, " ", std::isTriviallyDestructible<HoldsUserDtor>);
+  std::println("default ", std::isTriviallyDefaultConstructible<Plain>, " ", std::isTriviallyDefaultConstructible<WithInit>, " ", std::isTriviallyDefaultConstructible<WithString>);
+  std::println("convertible ", std::isConvertible<int, FromInt>, " ", std::isConvertible<ToInt, int>, " ", std::isConvertible<const char*, std::String>, " ", std::isConvertible<Scoped, int>, " ", std::isConvertible<Derived*, Plain*>, " ", std::isConvertible<int, int&>);
   return 0;
 }

@@ -10,66 +10,66 @@ struct Page
 void use(const void* block)
 {
   char text[32];
-  snprintf(text, sizeof(text), "%p", block);
+  std::snprintf(text, sizeof(text), "%p", block);
 }
 
 int main()
 {
-  Vector<int> numbers = {1, 2, 3};
+  std::Vector<int> numbers = {1, 2, 3};
   try
   {
-    numbers.insert(numbers.begin() + 1, maxContainerSize, 7);
-    println("inserted");
+    numbers.insert(numbers.begin() + 1, std::maxContainerSize, 7);
+    std::println("inserted");
   }
-  catch (const LengthError& e)
+  catch (const std::LengthError& e)
   {
-    println("insert: ", StringView(e.what()), ", ", numbers.size(), " ", numbers[0], " ", numbers[2]);
+    std::println("insert: ", std::StringView(e.what()), ", ", numbers.size(), " ", numbers[0], " ", numbers[2]);
   }
   // A range that runs backwards: its length is negative, checked before an element is read.
   const char* first = "abc";
   try
   {
-    Vector<char> range(first + 3, first);
-    println("constructed ", range.size());
+    std::Vector<char> range(first + 3, first);
+    std::println("constructed ", range.size());
   }
-  catch (const LengthError& e)
+  catch (const std::LengthError& e)
   {
-    println("range: ", StringView(e.what()));
+    std::println("range: ", std::StringView(e.what()));
   }
   // 2^40 elements of 4 KB: 4 PB, which no malloc returns; 2^64 - 2 of them, more bytes than a
   // size_t counts.
   try
   {
-    Vector<Page> huge;
-    huge.reserve(ContainerSize(1) << 40);
+    std::Vector<Page> huge;
+    huge.reserve(std::ContainerSize(1) << 40);
     use(huge.data());
-    println("reserved");
+    std::println("reserved");
   }
-  catch (const BadAlloc& e)
+  catch (const std::BadAlloc& e)
   {
-    println("reserve: ", StringView(e.what()));
+    std::println("reserve: ", std::StringView(e.what()));
   }
   try
   {
-    Vector<Page> huge;
-    huge.reserve(maxContainerSize);
+    std::Vector<Page> huge;
+    huge.reserve(std::maxContainerSize);
     use(huge.data());
-    println("reserved");
+    std::println("reserved");
   }
-  catch (const BadAlloc& e)
+  catch (const std::BadAlloc& e)
   {
-    println("reserve: ", StringView(e.what()));
+    std::println("reserve: ", std::StringView(e.what()));
   }
   try
   {
-    Vector<Page> huge(maxContainerSize);
+    std::Vector<Page> huge(std::maxContainerSize);
     use(huge.data());
-    println("constructed");
+    std::println("constructed");
   }
-  catch (const BadAlloc& e)
+  catch (const std::BadAlloc& e)
   {
-    println("construct: ", StringView(e.what()));
+    std::println("construct: ", std::StringView(e.what()));
   }
-  println(numbers.size());
+  std::println(numbers.size());
   return 0;
 }

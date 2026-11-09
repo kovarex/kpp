@@ -23,6 +23,6 @@ int callSuper(const T* object) { return object->Super::value(); }
 int main()
 {
   Leaf leaf;
-  println(callSuper<Middle>(&leaf), " ", callSuper<Base>(&leaf), " ", leaf.value());
+  std::println(callSuper<Middle>(&leaf), " ", callSuper<Base>(&leaf), " ", leaf.value());
   return 0;
 }

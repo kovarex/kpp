@@ -11,14 +11,14 @@ struct Helper
   template<class T>
   static int loadEnum(T& target)
   {
-    static_assert(sizeof(UnderlyingType<T>) == sizeof(uint8_t), "Unsafe enum loading.");
-    UnderlyingType<T> raw = UnderlyingType<T>(target);
+    static_assert(sizeof(std::UnderlyingType<T>) == sizeof(uint8_t), "Unsafe enum loading.");
+    std::UnderlyingType<T> raw = std::UnderlyingType<T>(target);
     return int(sizeof(raw)) * 10 + int(raw);
   }
 };
 int main()
 {
   AlertType::Enum e = AlertType::Enum::B;
-  println(Helper<int>::loadEnum(e));
+  std::println(Helper<int>::loadEnum(e));
   return 0;
 }

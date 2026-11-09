@@ -1,11 +1,11 @@
 // spec: deducing `const T*` from a `const X*` makes T X: the pattern's own qualifiers come off the argument's (`T*` from the same makes T `const X`), so a trait on T sees what C++ does
 // found in the game's LuaPrototypeTemplate::castTo<ResultType, SourceType>(const SourceType*): SourceType came out `const AsteroidChunkPrototype`, `isConvertible<SourceType*, ResultType*>` was false and the `ResultType::caster` branch was compiled (7 headline lines)
 struct Proto { int id = 3; static const Proto* caster(const Proto* p) { return p; } };
-template<class T> const char* kind() { return isConst<T> ? "const" : "plain"; }
+template<class T> const char* kind() { return std::isConst<T> ? "const" : "plain"; }
 template<typename ResultType, typename SourceType>
 const ResultType* castTo(const SourceType* prototype)
 {
-  if constexpr (isConvertible<SourceType*, ResultType*>)
+  if constexpr (std::isConvertible<SourceType*, ResultType*>)
     return prototype;
   else
     return ResultType::caster(prototype);
@@ -16,6 +16,6 @@ int main()
 {
   const Proto p;
   Proto q;
-  println(castTo<Proto>(&p)->id, " ", StringView(which(&p)), " ", StringView(which(&q)), " ", StringView(which2(&p)));
+  std::println(castTo<Proto>(&p)->id, " ", std::StringView(which(&p)), " ", std::StringView(which(&q)), " ", std::StringView(which2(&p)));
   return 0;
 }

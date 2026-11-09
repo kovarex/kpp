@@ -4,7 +4,7 @@ struct Noisy
 {
   int id;
   Noisy(int i) : id(i) {}
-  ~Noisy() { println("~Noisy ", this.id); }
+  ~Noisy() { std::println("~Noisy ", this.id); }
 };
 struct Thrower
 {
@@ -31,14 +31,14 @@ struct BodyThrows
 int make(const Thrower& t) { return t.code; }
 int main()
 {
-  try { Noisy a{10}; Thrower t{5}; Noisy b{11}; } catch (int v) { println("caught ", v); }
-  try { Holder h; } catch (int v) { println("caught ", v); }
-  try { Derived d; } catch (int v) { println("caught ", v); }
-  try { int x = make(Thrower(6)); println("x ", x); } catch (int v) { println("caught ", v); }
-  try { Thrower* p = new Thrower(12); delete p; } catch (int v) { println("caught ", v); }
-  try { BodyThrows b; } catch (int v) { println("caught ", v); }
-  try { for (int i = 0; i < 2; ++i) { Thrower t{i}; Noisy n{20 + i}; } } catch (int v) { println("caught ", v); }
-  try { try { throw 1; } catch (int v) { println("inner ", v); Thrower t{13}; } } catch (int v) { println("outer ", v); }
-  println("end");
+  try { Noisy a{10}; Thrower t{5}; Noisy b{11}; } catch (int v) { std::println("caught ", v); }
+  try { Holder h; } catch (int v) { std::println("caught ", v); }
+  try { Derived d; } catch (int v) { std::println("caught ", v); }
+  try { int x = make(Thrower(6)); std::println("x ", x); } catch (int v) { std::println("caught ", v); }
+  try { Thrower* p = new Thrower(12); delete p; } catch (int v) { std::println("caught ", v); }
+  try { BodyThrows b; } catch (int v) { std::println("caught ", v); }
+  try { for (int i = 0; i < 2; ++i) { Thrower t{i}; Noisy n{20 + i}; } } catch (int v) { std::println("caught ", v); }
+  try { try { throw 1; } catch (int v) { std::println("inner ", v); Thrower t{13}; } } catch (int v) { std::println("outer ", v); }
+  std::println("end");
   return 0;
 }

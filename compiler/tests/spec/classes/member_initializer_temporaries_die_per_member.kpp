@@ -4,18 +4,18 @@ struct Noisy
 {
   int id;
   Noisy(int i) : id(i) {}
-  ~Noisy() { println("~Noisy ", this.id); }
+  ~Noisy() { std::println("~Noisy ", this.id); }
   int value() const { return this.id; }
 };
 struct Logged
 {
   int v;
-  Logged(int x) : v(x) { println("built ", x); }
+  Logged(int x) : v(x) { std::println("built ", x); }
 };
 struct Base
 {
   int b;
-  Base(int x) : b(x) { println("base ", x); }
+  Base(int x) : b(x) { std::println("base ", x); }
 };
 struct Defaults
 {
@@ -32,6 +32,6 @@ int main()
 {
   Defaults x;
   Listed y;
-  println(x.a.v + x.b.v + y.b + y.c.v + y.d.v);
+  std::println(x.a.v + x.b.v + y.b + y.c.v + y.d.v);
   return 0;
 }

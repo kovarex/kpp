@@ -12,7 +12,7 @@ template<class T> struct K<const T> { static constexpr int v = 1; };
 template<class T, int N> struct K<T[N]> { static constexpr int v = 4; };
 int main()
 {
-  println(S<Box<int>, int>::v, " ", K<const int[3]>::v);
+  std::println(S<Box<int>, int>::v, " ", K<const int[3]>::v);
   S<Box<int>, int> s;
   return 0;
 }

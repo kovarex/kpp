@@ -3,7 +3,7 @@
 template<class T, bool exclude = false>
 struct Const : T
 {
-  Const(T value) : T(move(value)) {}
+  Const(T value) : T(std::move(value)) {}
 };
 template<typename Container, typename Key>
 typename Container::mapped_type getMapOrDefault(const Container& theMap, const Key& keyToFind)
@@ -15,9 +15,9 @@ typename Container::mapped_type getMapOrDefault(const Container& theMap, const K
 }
 int main()
 {
-  Const<Map<String, int>> shifts(Map<String, int>{{"inserter", 4}});
+  Const<std::Map<std::String, int>> shifts(std::Map<std::String, int>{{"inserter", 4}});
   int shift = 0;
   shift = getMapOrDefault(shifts, "inserter");
-  println(shift);
+  std::println(shift);
   return 0;
 }

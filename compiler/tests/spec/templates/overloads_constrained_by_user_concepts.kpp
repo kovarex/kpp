@@ -7,7 +7,7 @@ concept has_begin = requires(const T& value) { value.begin(); };
 
 struct Named
 {
-  String str() const { return "named"; }
+  std::String str() const { return "named"; }
 };
 struct Bag
 {
@@ -17,9 +17,9 @@ struct Bag
 };
 
 template<class T> requires has_str<T>
-String describe(const T& value) { return value.str(); }
+std::String describe(const T& value) { return value.str(); }
 template<class T> requires (has_begin<T> && !has_str<T>)
-String describe(const T& value)
+std::String describe(const T& value)
 {
   int sum = 0;
   for (int x : value)
@@ -40,6 +40,6 @@ int main()
 {
   Named named;
   Bag bag;
-  println(describe(named), " ", describe(bag), " ", StringView(kind(named)), " ", StringView(kind(bag)));
+  std::println(describe(named), " ", describe(bag), " ", std::StringView(kind(named)), " ", std::StringView(kind(bag)));
   return 0;
 }

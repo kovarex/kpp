@@ -88,13 +88,13 @@ void insertTrial(const char* name, i32 size, i32 room, i32 count, i32 copyAt, i3
 {
   bool thrown = false;
   {
-    Vector<Item> v;
-    v.reserve((ContainerSize)room);
+    std::Vector<Item> v;
+    v.reserve((std::ContainerSize)room);
     for (i32 i = 0; i < size; ++i)
       v.emplace_back(i);
     Item extra(100);
-    Vector<Item> source;
-    source.reserve((ContainerSize)count);
+    std::Vector<Item> source;
+    source.reserve((std::ContainerSize)count);
     for (i32 i = 0; i < count; ++i)
       source.emplace_back(200 + i);
     copiesLeft = copyAt;
@@ -102,11 +102,11 @@ void insertTrial(const char* name, i32 size, i32 room, i32 count, i32 copyAt, i3
     try
     {
       if (form == 0)
-        v.insert(v.begin() + 1, (ContainerSize)count, extra);
+        v.insert(v.begin() + 1, (std::ContainerSize)count, extra);
       else if (form == 1)
         v.insert(v.begin() + 1, source.begin(), source.end());
       else if (form == 2)
-        v.insert(v.begin() + 1, move(extra));
+        v.insert(v.begin() + 1, std::move(extra));
       else
         v.emplace(v.begin() + 1, 300);
     }
@@ -126,7 +126,7 @@ void strongTrial(const char* name, i32 copyAt, i32 form)
   bool thrown = false;
   bool same = false;
   {
-    Vector<Item> v;
+    std::Vector<Item> v;
     v.reserve(4);
     for (i32 i = 0; i < 4; ++i)
       v.emplace_back(i + 1);
@@ -141,7 +141,7 @@ void strongTrial(const char* name, i32 copyAt, i32 form)
       else if (form == 2)
         v.resize(7, extra);
       else
-        v.insert(v.end(), (ContainerSize)2, extra);
+        v.insert(v.end(), (std::ContainerSize)2, extra);
     }
     catch (i32)
     {
@@ -158,7 +158,7 @@ void constructorTrial(const char* name, i32 copyAt, i32 form)
   bool thrown = false;
   {
     Item value(9);
-    Vector<Item> source;
+    std::Vector<Item> source;
     source.reserve(5);
     for (i32 i = 0; i < 5; ++i)
       source.emplace_back(i);
@@ -167,15 +167,15 @@ void constructorTrial(const char* name, i32 copyAt, i32 form)
     {
       if (form == 0)
       {
-        Vector<Item> v((ContainerSize)5, value);
+        std::Vector<Item> v((std::ContainerSize)5, value);
       }
       else if (form == 1)
       {
-        Vector<Item> v(source.begin(), source.end());
+        std::Vector<Item> v(source.begin(), source.end());
       }
       else
       {
-        Vector<Item> v(source);
+        std::Vector<Item> v(source);
       }
     }
     catch (i32)
@@ -192,15 +192,15 @@ void fixedTrial(const char* name, i32 room, i32 copyAt)
   bool thrown = false;
   i32 total = 0;
   {
-    Vector<Fixed> v;
-    v.reserve((ContainerSize)room);
+    std::Vector<Fixed> v;
+    v.reserve((std::ContainerSize)room);
     for (i32 i = 0; i < 4; ++i)
       v.emplace_back(i + 1);
     Fixed extra(100);
     copiesLeft = copyAt;
     try
     {
-      v.insert(v.begin() + 1, (ContainerSize)3, extra);
+      v.insert(v.begin() + 1, (std::ContainerSize)3, extra);
     }
     catch (i32)
     {

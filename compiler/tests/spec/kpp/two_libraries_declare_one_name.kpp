@@ -9,10 +9,10 @@ int main()
   const beta::Node* pb = &b;
   alpha::Box<int> x{5};
   beta::Box<int> y{5};
-  println(alpha::version(), " ", beta::version(), " ", version());
-  println(a.id(), " ", b.id(), " ", pa->kind(), " ", pb->kind());
-  println(x.get(), " ", y.get(), " ", beta::fromAlpha());
+  std::println(alpha::version(), " ", beta::version(), " ", version());
+  std::println(a.id(), " ", b.id(), " ", pa->kind(), " ", pb->kind());
+  std::println(x.get(), " ", y.get(), " ", beta::fromAlpha());
   alpha::counter += 1;
-  println(alpha::counter, " ", beta::counter);
+  std::println(alpha::counter, " ", beta::counter);
   return 0;
 }

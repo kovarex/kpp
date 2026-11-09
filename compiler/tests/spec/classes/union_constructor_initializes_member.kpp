@@ -30,6 +30,6 @@ int main()
   Value local(t);
   Wrapper member(t);
   Wrapper none;
-  println(local.thing == &t ? 1 : 0, " ", member.get(), " ", wrap(t).get(), " ", none.get());
+  std::println(local.thing == &t ? 1 : 0, " ", member.get(), " ", wrap(t).get(), " ", none.get());
   return 0;
 }

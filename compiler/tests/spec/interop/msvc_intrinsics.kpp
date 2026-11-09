@@ -5,16 +5,16 @@ extern "C" import "intrin.h";
 extern "C" import "stdlib.h";
 int main()
 {
-  println(_byteswap_ushort(0x1234), " ", _byteswap_ulong(0x12345678), " ", _byteswap_uint64(0x0102030405060708ULL));
+  std::println(_byteswap_ushort(0x1234), " ", _byteswap_ulong(0x12345678), " ", _byteswap_uint64(0x0102030405060708ULL));
   unsigned int x = 0x80000001u;
   int big = 33, minus = -1;
-  println(_rotl(x, 1), " ", _rotr(x, 1), " ", _rotl(x, big), " ", _rotl(x, minus), " ", _rotr(x, 0));
+  std::println(_rotl(x, 1), " ", _rotr(x, 1), " ", _rotl(x, big), " ", _rotl(x, minus), " ", _rotr(x, 0));
   unsigned long long y = 0x8000000000000001ULL;
-  println(_rotl64(y, 4), " ", _rotr64(y, 4), " ", _rotl64(y, 65), " ", _lrotl(0x80000001ul, 4), " ", _lrotr(0x80000001ul, 4));
+  std::println(_rotl64(y, 4), " ", _rotr64(y, 4), " ", _rotl64(y, 65), " ", _lrotl(0x80000001ul, 4), " ", _lrotr(0x80000001ul, 4));
   unsigned char b = 0x81;
   unsigned short w = 0x8001;
-  println(_rotl8(b, 1), " ", _rotr8(b, 9), " ", _rotl16(w, 4), " ", _rotr16(w, 20));
-  println(__popcnt16(0xFFFF), " ", __popcnt(0xF0F0F0F0u), " ", __popcnt64(~0ULL), " ", __popcnt(0));
+  std::println(_rotl8(b, 1), " ", _rotr8(b, 9), " ", _rotl16(w, 4), " ", _rotr16(w, 20));
+  std::println(__popcnt16(0xFFFF), " ", __popcnt(0xF0F0F0F0u), " ", __popcnt64(~0ULL), " ", __popcnt(0));
   unsigned long index = 77;
   unsigned char found = _BitScanForward(&index, 0x00F0);
   unsigned long kept = 77;
@@ -22,11 +22,11 @@ int main()
   unsigned long high = 0, low = 0;
   unsigned char found64 = _BitScanReverse64(&high, 0x8000000000000010ULL);
   _BitScanForward64(&low, 0x8000000000000000ULL);
-  println((unsigned)found, " ", index, " ", (unsigned)none, " ", kept, " ", (unsigned)found64, " ", high, " ", low);
+  std::println((unsigned)found, " ", index, " ", (unsigned)none, " ", kept, " ", (unsigned)found64, " ", high, " ", low);
   int info[4] = {0, 0, 0, 0};
   __cpuidex(info, 0, 0);
   int vendor[4] = {0, 0, 0, 0};
   __cpuid(vendor, 0);
-  println(info[0] > 0 && info[0] == vendor[0], " ", info[1] == vendor[1]);
+  std::println(info[0] > 0 && info[0] == vendor[0], " ", info[1] == vendor[1]);
   return 0;
 }

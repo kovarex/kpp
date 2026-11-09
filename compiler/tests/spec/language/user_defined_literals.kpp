@@ -14,6 +14,6 @@ int main()
 {
   double half = (double)0.5_km;
   unsigned long long two = 2_km;
-  println(half, " ", two, " ", 7_twice, " ", 'a'_code, " ", "hey"_len, " ", 1e3_km > 999999.0);
+  std::println(half, " ", two, " ", 7_twice, " ", 'a'_code, " ", "hey"_len, " ", 1e3_km > 999999.0);
   return 0;
 }

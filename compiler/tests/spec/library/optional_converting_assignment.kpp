@@ -35,40 +35,40 @@ int main()
 {
   Thing a{1};
   Thing b{2};
-  Optional<Handle> handle;
+  std::Optional<Handle> handle;
   handle = &a;
   printf("built %d, assigned %d", built, assigned);
   handle = &b;
   printf(" / built %d, assigned %d / ", built, assigned);
 
-  Optional<i64> wide;
+  std::Optional<i64> wide;
   wide = 7;
   printf("%d / ", (i32)*wide);
 
-  Optional<String> text;
+  std::Optional<std::String> text;
   text = "text";
   text = text->c_str();
   *text << " more";
   printf("%s / ", text->c_str());
 
-  Optional<i64> target;
-  Optional<i32> none;
-  Optional<i32> three(3);
+  std::Optional<i64> target;
+  std::Optional<i32> none;
+  std::Optional<i32> three(3);
   target = none;
   i32 first = target.hasValue() ? 1 : 0;
   target = three;
   i32 second = target.hasValue() ? 1 : 0;
   printf("%d %d %d / ", first, second, (i32)*target);
-  target = Optional<i32>();
+  target = std::Optional<i32>();
   first = target.hasValue() ? 1 : 0;
-  target = Optional<i32>(4);
+  target = std::Optional<i32>(4);
   printf("%d %d %d / ", first, target.hasValue() ? 1 : 0, (i32)*target);
 
-  Optional<String> fromChars;
-  Optional<const char*> chars("x");
+  std::Optional<std::String> fromChars;
+  std::Optional<const char*> chars("x");
   fromChars = chars;
   printf("%s / ", fromChars->c_str());
 
-  printf("%d %d\n", (i32)assignable<Optional<i64>, i32>, (i32)assignable<Optional<Handle>, Thing*>);
+  printf("%d %d\n", (i32)assignable<std::Optional<i64>, i32>, (i32)assignable<std::Optional<Handle>, Thing*>);
   return 0;
 }

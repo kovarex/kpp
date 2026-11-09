@@ -5,19 +5,19 @@ struct Flag
   bool value = false;
   implicit operator bool() const { return this.value; }
 };
-void push(const uint8_t&) { print("uint8 "); }
-void push(const uint32_t&) { print("uint32 "); }
-void push(uint64_t) { print("uint64 "); }
-void push(const bool&) { print("bool "); }
-void push(const int32_t&) { print("int32 "); }
-void push(const double&) { print("double "); }
-void take(int64_t) { print("int64 "); }
-void take(bool) { print("bool "); }
+void push(const uint8_t&) { std::print("uint8 "); }
+void push(const uint32_t&) { std::print("uint32 "); }
+void push(uint64_t) { std::print("uint64 "); }
+void push(const bool&) { std::print("bool "); }
+void push(const int32_t&) { std::print("int32 "); }
+void push(const double&) { std::print("double "); }
+void take(int64_t) { std::print("int64 "); }
+void take(bool) { std::print("bool "); }
 int main()
 {
   Flag flag;
   push(flag);
   take(flag);
-  println("");
+  std::println("");
   return 0;
 }

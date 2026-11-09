@@ -12,6 +12,6 @@ int main()
 {
   int base = 10;
   auto h = hold([base](int x) { return base + x; });
-  println(h.call(5));
+  std::println(h.call(5));
   return 0;
 }

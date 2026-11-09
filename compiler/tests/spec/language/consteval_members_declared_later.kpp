@@ -5,7 +5,7 @@ static_assert(Box(2, 3).area() == 6);
 int main()
 {
   static_assert(!Box(2, 3).isSquare());
-  println(Box(2, 3).area());
+  std::println(Box(2, 3).area());
   return 0;
 }
 struct Box

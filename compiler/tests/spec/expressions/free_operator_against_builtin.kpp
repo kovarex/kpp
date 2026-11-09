@@ -19,6 +19,6 @@ int operator-(const Num& n) { return 42; }
 int main()
 {
   Num n(2.5);
-  println(n + 1.0, " ", -n);
+  std::println(n + 1.0, " ", -n);
   return 0;
 }

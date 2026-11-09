@@ -15,7 +15,7 @@ class Handle
 {
 public:
   implicit Handle(Entity* entity) : entity(entity) {}
-  template <class T> requires isPointer<T>
+  template <class T> requires std::isPointer<T>
   implicit operator T() const { return dynamic_cast<T>(this.entity); }
   Entity* entity = nullptr;
 };
@@ -34,8 +34,8 @@ int main()
   Belt belt;
   belt.id = 5;
   Owner<Entity> owner(make(&belt));
-  UniquePtr<Entity> owned(make(new Belt()));
+  std::UniquePtr<Entity> owned(make(new Belt()));
   Entity* plain = make(&belt);
-  println(owner.e->id, " ", owned ? 1 : 0, " ", plain->id, " ", speedOf(make(&belt)));
+  std::println(owner.e->id, " ", owned ? 1 : 0, " ", plain->id, " ", speedOf(make(&belt)));
   return 0;
 }

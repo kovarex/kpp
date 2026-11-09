@@ -10,7 +10,7 @@ struct Box
 };
 int main()
 {
-  String s("hello world");
+  std::String s("hello world");
   Box b;
   int n = 0;
   n += int(s.find("worldX", 0, 5, 1));

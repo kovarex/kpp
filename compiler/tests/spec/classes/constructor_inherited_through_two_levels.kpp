@@ -8,9 +8,9 @@ class Handle
 {
 public:
   Handle() = default;
-  implicit Handle(UniquePtr<PipelineStateObject> state) : state(move(state)) {}
+  implicit Handle(std::UniquePtr<PipelineStateObject> state) : state(std::move(state)) {}
   int id() const { return this.state ? this.state->id : -1; }
-  UniquePtr<PipelineStateObject> state;
+  std::UniquePtr<PipelineStateObject> state;
 };
 class MipmapState : public Handle
 {
@@ -22,9 +22,9 @@ class CompressionState : public MipmapState
 public:
   using MipmapState::MipmapState;
 };
-UniquePtr<PipelineStateObject> create(int id)
+std::UniquePtr<PipelineStateObject> create(int id)
 {
-  UniquePtr<PipelineStateObject> result = makeUnique<PipelineStateObject>();
+  std::UniquePtr<PipelineStateObject> result = std::makeUnique<PipelineStateObject>();
   result->id = id;
   return result;
 }
@@ -35,6 +35,6 @@ int main()
   CompressionState compression;
   compression = create(5);
   CompressionState direct = create(3);
-  println(mipmap.id(), " ", compression.id(), " ", direct.id());
+  std::println(mipmap.id(), " ", compression.id(), " ", direct.id());
   return 0;
 }

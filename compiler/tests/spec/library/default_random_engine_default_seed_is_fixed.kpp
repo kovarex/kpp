@@ -3,7 +3,7 @@
 extern "C" import "stdio.h";
 int main()
 {
-  DefaultRandomEngine a, b;
+  std::DefaultRandomEngine a, b;
   int same = 0;
   for (int i = 0; i < 10; ++i)
     same += a() == b();

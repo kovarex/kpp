@@ -30,6 +30,6 @@ int main()
   Base source;
   source.a = 9;
   z.assignFromBase(source);
-  println(x.a, " ", x.b, " ", z.a, " ", x.list[1]);
+  std::println(x.a, " ", x.b, " ", z.a, " ", x.list[1]);
   return 0;
 }

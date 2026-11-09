@@ -27,6 +27,6 @@ int main()
   Coin a(1), b(2);
   Range s(1, 2), t(1, 3);
   Single<int> p(1), q(1);
-  println(a == b, " ", a == a, " ", a != b, " ", s < t, " ", s == s, " ", s == t, " ", p == q, " ", p != q);
+  std::println(a == b, " ", a == a, " ", a != b, " ", s < t, " ", s == s, " ", s == t, " ", p == q, " ", p != q);
   return 0;
 }

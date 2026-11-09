@@ -15,6 +15,6 @@ int main()
   auto b = no ? small : negative;
   auto c = no ? one : half;
   auto d = p ? p->index : (unsigned short)(-1);
-  println(int(sizeof(a)), " ", a, " ", int(sizeof(b)), " ", int(b), " ", int(sizeof(c)), " ", c, " ", int(sizeof(d)), " ", int(d));
+  std::println(int(sizeof(a)), " ", a, " ", int(sizeof(b)), " ", int(b), " ", int(sizeof(c)), " ", c, " ", int(sizeof(d)), " ", int(d));
   return 0;
 }

@@ -4,9 +4,9 @@ int main()
 {
   try
   {
-    try { throw RuntimeError(String("inner")); }
-    catch (const RuntimeError&) { println("rethrowing"); throw; }
+    try { throw std::RuntimeError(std::String("inner")); }
+    catch (const std::RuntimeError&) { std::println("rethrowing"); throw; }
   }
-  catch (const Exception& e) { println("outer ", StringView(e.what())); }
+  catch (const std::Exception& e) { std::println("outer ", std::StringView(e.what())); }
   return 0;
 }

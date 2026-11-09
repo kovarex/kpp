@@ -27,7 +27,7 @@ struct Widget
 };
 struct Item
 {
-  UniquePtr<int> value;
+  std::UniquePtr<int> value;
   Item(int v) : value(new int(v)) {}
 };
 int main()
@@ -47,31 +47,31 @@ int main()
   w.resize(true).resize(true);
   Widget& same = w.resize(false);
   same.size += 100;
-  using Match = Pair<int, unsigned int>;
-  Pair<int, unsigned int> best = Pair<int, unsigned int>(-1, 0u);
+  using Match = std::Pair<int, unsigned int>;
+  std::Pair<int, unsigned int> best = std::Pair<int, unsigned int>(-1, 0u);
   best = Match(3, 7u);
-  StringView parts[2];
+  std::StringView parts[2];
   parts[1] = "second";
-  int m = max({4, 9, 2, 7});
-  int n = min({4, 9, 2, 7});
-  Vector<int> v;
+  int m = std::max({4, 9, 2, 7});
+  int n = std::min({4, 9, 2, 7});
+  std::Vector<int> v;
   for (int i = 0; i < 6; ++i)
     v.push_back(i % 3);
-  v.erase(remove(v.begin(), v.end(), 1), v.end());
-  Vector<Item> items;
+  v.erase(std::remove(v.begin(), v.end(), 1), v.end());
+  std::Vector<Item> items;
   items.emplace_back(1);
   items.emplace_back(3);
   items.insert(items.begin() + 1, Item(2));
   Item* next = items.erase(items.begin());
   printf("%d %d %d %d %zu %zu %d %d %zu %d %zu\n", d.count, w.size, best.first, best.second, parts[1].size(), parts[0].size(), m, n, v.size(), *next->value, items.size());
-  String s("abcdef");
-  String middle(s.c_str() + 1, s.c_str() + 4);
-  Optional<int> maybe;
+  std::String s("abcdef");
+  std::String middle(s.c_str() + 1, s.c_str() + 4);
+  std::Optional<int> maybe;
   bool absentDiffers = maybe != 0;
   maybe = 5;
-  UniquePtr<Widget> owner(new Widget());
+  std::UniquePtr<Widget> owner(new Widget());
   Widget* raw = owner.get();
-  UniqueArray<bool> flags = makeUniqueArray<bool>(4);
+  std::UniqueArray<bool> flags = std::makeUniqueArray<bool>(4);
   flags[2] = true;
   int trues = 0;
   for (int i = 0; i < 4; ++i)

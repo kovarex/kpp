@@ -9,8 +9,8 @@ struct Handle
 template<typename T>
 struct Store
 {
-  when (isTriviallyCopyable<T>) T copy;
-  when (!isTriviallyCopyable<T>) short copy;
+  when (std::isTriviallyCopyable<T>) T copy;
+  when (!std::isTriviallyCopyable<T>) short copy;
   int width() const { return int(sizeof(this.copy)); }
   void set(int v) { this.copy = v; }
 };
@@ -21,9 +21,9 @@ int main()
   a.copy = 1234567890123;
   Store<Handle> b;
   b.copy = 12;
-  println(a.copy, " ", b.copy, " ", sizeof(Store<long long>), " ", sizeof(Store<Handle>));
+  std::println(a.copy, " ", b.copy, " ", sizeof(Store<long long>), " ", sizeof(Store<Handle>));
   a.set(5);
   b.set(6);
-  println(a.width(), " ", b.width(), " ", a.copy, " ", b.copy);
+  std::println(a.width(), " ", b.width(), " ", a.copy, " ", b.copy);
   return 0;
 }

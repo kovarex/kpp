@@ -8,7 +8,7 @@ struct Heap
 };
 static bool check(int x, int y)
 {
-  using Pairish = Pair<int, int>;
+  using Pairish = std::Pair<int, int>;
   class Node : public Heap<Node>::ItemBase
   {
   public:
@@ -16,10 +16,10 @@ static bool check(int x, int y)
     bool operator<(const Node& other) const { return this.value < other.value; }
     Pairish value;
   };
-  return Heap<Node>::compare(Node(makePair(x, 1)), Node(makePair(y, 1)));
+  return Heap<Node>::compare(Node(std::makePair(x, 1)), Node(std::makePair(y, 1)));
 }
 int main()
 {
-  println(check(1, 2), " ", check(3, 2));
+  std::println(check(1, 2), " ", check(3, 2));
   return 0;
 }

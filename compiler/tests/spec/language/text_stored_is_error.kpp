@@ -8,19 +8,19 @@
 // error: text_stored_is_error.kpp:24: error: a Text is made only by passing arguments to a Text parameter (design.md 14)
 struct Message
 {
-  Text text;
+  std::Text text;
 };
-Text kept;
-Text again(Text text) { return text; }
-Function<void()> later;
-void keep(Text text)
+std::Text kept;
+std::Text again(std::Text text) { return text; }
+std::Function<void()> later;
+void keep(std::Text text)
 {
-  Vector<Text> all;
-  Text* pointer = &text;
-  later = [=] { Text inner = text; };
+  std::Vector<std::Text> all;
+  std::Text* pointer = &text;
+  later = [=] { std::Text inner = text; };
 }
 int main()
 {
-  Text made = {"a"};
+  std::Text made = {"a"};
   return 0;
 }

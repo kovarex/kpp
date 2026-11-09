@@ -19,11 +19,11 @@ constexpr int notWhere()
   }
   return 1;
 }
-constexpr int asked() { return isConstantEvaluated() ? 1 : 2; }
+constexpr int asked() { return std::isConstantEvaluated() ? 1 : 2; }
 template<int N> struct Show { static constexpr int value = N; };
 static_assert(where() == 1 && notWhere() == 1 && asked() == 1);
 int main()
 {
-  println(Show<where()>::value, " ", where(), " ", Show<notWhere()>::value, " ", notWhere(), " ", asked(), " ", Show<asked()>::value);
+  std::println(Show<where()>::value, " ", where(), " ", Show<notWhere()>::value, " ", notWhere(), " ", asked(), " ", Show<asked()>::value);
   return 0;
 }

@@ -12,6 +12,6 @@ struct Derived : Base
 int main()
 {
   Derived d;
-  println(d.fromMutable(), " ", d.fromConst());
+  std::println(d.fromMutable(), " ", d.fromConst());
   return 0;
 }

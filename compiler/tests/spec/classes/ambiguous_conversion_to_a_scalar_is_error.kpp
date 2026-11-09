@@ -22,6 +22,6 @@ int main()
   int fromVariable = takeLong(a);
   int fromTemporary = takeLong(A{});
   int fromPointer = takePointer(c);
-  println(fromVariable + fromTemporary + fromPointer);
+  std::println(fromVariable + fromTemporary + fromPointer);
   return 0;
 }

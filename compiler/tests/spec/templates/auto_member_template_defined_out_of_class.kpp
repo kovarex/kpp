@@ -32,6 +32,6 @@ int main()
 {
   Net n;
   auto* direct = n.maybeGet<false>(3);
-  println(n.find<true>(), " ", n.find<false>(), " ", *direct);
+  std::println(n.find<true>(), " ", n.find<false>(), " ", *direct);
   return 0;
 }

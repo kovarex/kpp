@@ -28,6 +28,6 @@ int main()
   Impl impl;
   Device* d = &impl;
   Plain p;
-  println(d->addRef(), " ", d->create(), " ", d->release(), " ", p.value());
+  std::println(d->addRef(), " ", d->create(), " ", d->release(), " ", p.value());
   return 0;
 }

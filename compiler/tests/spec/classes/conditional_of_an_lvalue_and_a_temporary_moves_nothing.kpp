@@ -16,7 +16,7 @@ Counted choose(bool first, const Counted& given) { return first ? given : Counte
 
 void report()
 {
-  println(Counted::copied, " copied, ", Counted::moved, " moved, ", Counted::destroyed, " destroyed");
+  std::println(Counted::copied, " copied, ", Counted::moved, " moved, ", Counted::destroyed, " destroyed");
   Counted::copied = Counted::moved = Counted::destroyed = 0;
 }
 
@@ -25,13 +25,13 @@ int main()
   {
     Counted given(1);
     Counted chosen = choose(true, given);
-    println(chosen.value);
+    std::println(chosen.value);
   }
   report();
   {
     Counted given(1);
     Counted chosen = choose(false, given);
-    println(chosen.value);
+    std::println(chosen.value);
   }
   report();
   return 0;

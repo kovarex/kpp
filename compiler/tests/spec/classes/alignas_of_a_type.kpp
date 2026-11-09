@@ -9,7 +9,7 @@ struct T
 {
   int v;
   T() : v(7) {}
-  ~T() { println("dtor"); }
+  ~T() { std::println("dtor"); }
 };
 
 constexpr int Eight = 8;
@@ -45,7 +45,7 @@ int main()
   alignas(unsigned long long) char other = 2;
   int t = placed<T>();
   int w = placed<Wide>();
-  println(t, " ", w, " ", aligned<64>(), " ", ((uintptr_t)&local % 32) == 0, " ", ((uintptr_t)&other % 8) == 0, " ", local + other);
-  println(alignof(Members), " ", sizeof(Members), " ", offsetof(Members, d), " ", offsetof(Members, w), " ", offsetof(Members, e));
+  std::println(t, " ", w, " ", aligned<64>(), " ", ((uintptr_t)&local % 32) == 0, " ", ((uintptr_t)&other % 8) == 0, " ", local + other);
+  std::println(alignof(Members), " ", sizeof(Members), " ", offsetof(Members, d), " ", offsetof(Members, w), " ", offsetof(Members, e));
   return 0;
 }

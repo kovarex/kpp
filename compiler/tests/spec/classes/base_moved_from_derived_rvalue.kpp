@@ -4,16 +4,16 @@ struct Entity
 {
   int id = 3;
 };
-class Holder : public UniquePtr<Entity>
+class Holder : public std::UniquePtr<Entity>
 {
 public:
-  Holder() : UniquePtr<Entity>(makeUnique<Entity>()) {}
-  Holder(Holder&& other) : UniquePtr<Entity>(::move(other)) {}
+  Holder() : UniquePtr<Entity>(std::makeUnique<Entity>()) {}
+  Holder(Holder&& other) : UniquePtr<Entity>(std::move(other)) {}
 };
 int main()
 {
   Holder a;
-  Holder b(::move(a));
-  println(a == nullptr, " ", b->id);
+  Holder b(std::move(a));
+  std::println(a == nullptr, " ", b->id);
   return 0;
 }

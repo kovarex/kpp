@@ -20,6 +20,6 @@ int main()
 {
   Vec v(1.5, 2.0);
   Vec w = v.scaled(2);
-  println(w.x, " ", w.y, " ", v.flipped().x, " ", v.dot(w), " ", sum(w));
+  std::println(w.x, " ", w.y, " ", v.flipped().x, " ", v.dot(w), " ", sum(w));
   return 0;
 }

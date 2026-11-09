@@ -18,11 +18,11 @@ public:
 volatile Flag flag;
 int main()
 {
-  Thread writer([]() {
+  std::Thread writer([]() {
     while (flag.started == 0)
     {
     }
-    thisThread::sleepFor(Milliseconds(50));
+    std::thisThread::sleepFor(std::Milliseconds(50));
     flag.n = 1;
   });
   printf("%d\n", (int)flag.seen());

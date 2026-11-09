@@ -3,13 +3,13 @@ int main()
 {
   for (int year : {-29000, -28000, -27258, -27257, -27000, 29000})
   {
-    CivilTime c;
+    std::CivilTime c;
     c.year = year;
-    auto t = fromCivilTime(c);
+    auto t = std::fromCivilTime(c);
     if (!t.hasValue())
-      println(year, ": empty");
+      std::println(year, ": empty");
     else
-      println(year, ": ", StringView(toCivilTime(*t).year == year ? "the same year back" : "ANOTHER YEAR"));
+      std::println(year, ": ", std::StringView(std::toCivilTime(*t).year == year ? "the same year back" : "ANOTHER YEAR"));
   }
   return 0;
 }

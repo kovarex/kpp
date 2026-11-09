@@ -21,8 +21,8 @@ int main()
   Der der{{1}};
   Grid g{{{Q(3)}}};
   Q m[2][2] = {{Q(1)}};
-  println(q1[0].v, " ", q1[1].v, " ", q1[2].v, " ", q2[0].v, " ", q2[1].v, " ", r1[0].v, " ", r1[1].v, " ", r1[2].v, " ", r2[0].v, " ", r2[1].v);
-  println(a.r[0].v, " ", a.r[1].v, " ", a.r[2].v, " ", a.n, " ", c.r[0].v, " ", c.r[1].v, " ", c.r[2].v, " ", c.n, " ", d.r[2].v, " ", d.n);
-  println(arr.items[0].v, " ", arr.items[2].v, " ", der.b, " ", der.c, " ", der.d, " ", g.cells[0][0].v, " ", g.cells[0][1].v, " ", g.cells[1][1].v, " ", m[0][1].v, " ", m[1][0].v);
+  std::println(q1[0].v, " ", q1[1].v, " ", q1[2].v, " ", q2[0].v, " ", q2[1].v, " ", r1[0].v, " ", r1[1].v, " ", r1[2].v, " ", r2[0].v, " ", r2[1].v);
+  std::println(a.r[0].v, " ", a.r[1].v, " ", a.r[2].v, " ", a.n, " ", c.r[0].v, " ", c.r[1].v, " ", c.r[2].v, " ", c.n, " ", d.r[2].v, " ", d.n);
+  std::println(arr.items[0].v, " ", arr.items[2].v, " ", der.b, " ", der.c, " ", der.d, " ", g.cells[0][0].v, " ", g.cells[0][1].v, " ", g.cells[1][1].v, " ", m[0][1].v, " ", m[1][0].v);
   return 0;
 }

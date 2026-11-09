@@ -19,8 +19,8 @@ int main()
 {
   Counter counter(3);
   int sum = counter.get() + counter.get();
-  println(sum, " ", sizeof(Counter));
+  std::println(sum, " ", sizeof(Counter));
   if constexpr (config::debug)
-    println("lookups ", counter.lookups);
+    std::println("lookups ", counter.lookups);
   return 0;
 }

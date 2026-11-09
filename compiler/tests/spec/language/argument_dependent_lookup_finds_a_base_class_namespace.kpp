@@ -27,6 +27,6 @@ int main()
   d.value = 3;
   Further f;
   f.value = 7;
-  println(measure(d), " ", measure(f), " ", d < f);
+  std::println(measure(d), " ", measure(f), " ", d < f);
   return 0;
 }

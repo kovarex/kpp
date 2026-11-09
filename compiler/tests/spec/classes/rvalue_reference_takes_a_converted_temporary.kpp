@@ -6,8 +6,8 @@ struct Item
 template<class T>
 struct Sink
 {
-  void take(const T& v) { print("copy "); }
-  void take(T&& v) { print("move "); }
+  void take(const T& v) { std::print("copy "); }
+  void take(T&& v) { std::print("move "); }
 };
 int main()
 {
@@ -21,6 +21,6 @@ int main()
   Sink<double> reals;
   float f = 1.5f;
   reals.take(f);
-  println("");
+  std::println("");
   return 0;
 }

@@ -27,8 +27,8 @@ int main()
   Both o;
   Pair2<A, B> p;
   G<F1, F2> g;
-  println(o(4), " ", o(3.0), " ", p(5), " ", p(1.0), " ", g.f(1), " ", g.f(0.5));
+  std::println(o(4), " ", o(3.0), " ", p(5), " ", p(1.0), " ", g.f(1), " ", g.f(0.5));
   Overloaded<A, B> visit;
-  println(visit(1), " ", visit(1.5));
+  std::println(visit(1), " ", visit(1.5));
   return 0;
 }

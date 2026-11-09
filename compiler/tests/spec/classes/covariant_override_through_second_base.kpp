@@ -31,13 +31,13 @@ int main()
   Both object;
   Second* s = &object;
   Second* again = s->self();
-  println(again == s ? 1 : 0, " ", again->b, " ", again->which());
+  std::println(again == s ? 1 : 0, " ", again->b, " ", again->which());
   Second& r = s->ref();
-  println(&r == s ? 1 : 0, " ", r.b);
-  println(s->none() == nullptr ? 1 : 0);
+  std::println(&r == s ? 1 : 0, " ", r.b);
+  std::println(s->none() == nullptr ? 1 : 0);
   Second* (Second::*pointer)() = &Second::self;
-  println((s->*pointer)() == s ? 1 : 0);
+  std::println((s->*pointer)() == s ? 1 : 0);
   Both* whole = object.self();
-  println(whole == &object ? 1 : 0, " ", whole->c);
+  std::println(whole == &object ? 1 : 0, " ", whole->c);
   return 0;
 }

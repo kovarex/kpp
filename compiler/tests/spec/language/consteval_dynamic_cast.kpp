@@ -42,7 +42,7 @@ int main()
   constexpr long long e = reference();
   constexpr long long f = complete();
   constexpr long long g = null();
-  println(a, " ", b, " ", c, " ", d, " ", e, " ", f, " ", g);
-  println(found(), " ", notFound(), " ", derivedObject(), " ", crossCast(), " ", reference(), " ", complete(), " ", null());
+  std::println(a, " ", b, " ", c, " ", d, " ", e, " ", f, " ", g);
+  std::println(found(), " ", notFound(), " ", derivedObject(), " ", crossCast(), " ", reference(), " ", complete(), " ", null());
   return 0;
 }

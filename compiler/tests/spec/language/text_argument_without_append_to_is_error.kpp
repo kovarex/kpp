@@ -12,7 +12,7 @@ struct Plain
 struct Meters
 {
   int m = 0;
-  void appendTo(String& out) const { out << "m"; }
+  void appendTo(std::String& out) const { out << "m"; }
 };
 struct Feet
 {
@@ -20,8 +20,8 @@ struct Feet
   operator Meters() const { return Meters{f / 3}; }
 };
 struct Inches { int i = 0; };
-void appendTo(const Inches& value, String& out) {}
-void show(Text text) {}
+void appendTo(const Inches& value, std::String& out) {}
+void show(std::Text text) {}
 int main()
 {
   int x = 0;

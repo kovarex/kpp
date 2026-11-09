@@ -23,14 +23,14 @@ Str::Str(const Str& other) : copies(other.copies + 1), moves(other.moves) {}
 template<typename... Args>
 Str::Str(Args&&... args)
 {
-  this.setInternal(forward<Args>(args)...);
+  this.setInternal(std::forward<Args>(args)...);
 }
 int main()
 {
   Str a;
-  Str b = move(a);
+  Str b = std::move(a);
   Str c = Str(b);
   Str d(b);
-  println(b.copies, " ", b.moves, " ", c.copies, " ", c.moves, " ", d.copies, " ", d.moves);
+  std::println(b.copies, " ", b.moves, " ", c.copies, " ", c.moves, " ", d.copies, " ", d.moves);
   return 0;
 }

@@ -7,6 +7,6 @@ struct SpecTagContext { int x; };
 struct SpecBothContext { int y; };
 int main()
 {
-  println(sizeof(SpecTagContext), " ", sizeof(SpecBothContext));
+  std::println(sizeof(SpecTagContext), " ", sizeof(SpecBothContext));
   return 0;
 }

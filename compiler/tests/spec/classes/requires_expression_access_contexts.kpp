@@ -79,7 +79,7 @@ concept HasOpen = requires(T t) { t.open(); };
 
 int main()
 {
-  println(Outside<Box>::secret(), " ", Outside<Box>::open(), " ", Inspector::secretCheck<Box>(), " ", Box::selfCheck(), " ", Derived::guardedCheck(), " ",
+  std::println(Outside<Box>::secret(), " ", Outside<Box>::open(), " ", Inspector::secretCheck<Box>(), " ", Box::selfCheck(), " ", Derived::guardedCheck(), " ",
           HasSecret<Box> ? 1 : 0, " ", HasOpen<Box> ? 1 : 0, " ", Outside<Box>::inner(), " ", Outside<Derived>::open());
   return 0;
 }

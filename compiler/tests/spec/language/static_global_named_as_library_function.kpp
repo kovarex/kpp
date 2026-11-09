@@ -4,6 +4,6 @@ static int empty = 3;
 namespace { int size = 4; }
 int main()
 {
-  println(empty, " ", size);
+  std::println(empty, " ", size);
   return 0;
 }

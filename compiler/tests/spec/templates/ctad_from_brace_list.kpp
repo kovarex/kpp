@@ -6,22 +6,22 @@ struct Record { int update = 3; int render = 4; };
 
 int main()
 {
-  static constexpr Array mapping =
+  static constexpr std::Array mapping =
   {
-    Pair { "autonomous", AttackType::Autonomous },
-    Pair { "distraction", AttackType::Distraction },
-    Pair { "scripted", AttackType::Scripted }
+    std::Pair { "autonomous", AttackType::Autonomous },
+    std::Pair { "distraction", AttackType::Distraction },
+    std::Pair { "scripted", AttackType::Scripted }
   };
-  String value = "scripted";
+  std::String value = "scripted";
   int found = -1;
   for (size_t i = 0; i < mapping.size(); ++i)
     if (value == mapping[i].first)
       found = int(mapping[i].second);
   Record r;
-  Array fields = { Pair { "update", &Record::update }, Pair { "render", &Record::render } };
+  std::Array fields = { std::Pair { "update", &Record::update }, std::Pair { "render", &Record::render } };
   int sum = 0;
   for (size_t i = 0; i < fields.size(); ++i)
     sum += r.*fields[i].second;
-  println(mapping.size(), " ", found, " ", sum);
+  std::println(mapping.size(), " ", found, " ", sum);
   return 0;
 }

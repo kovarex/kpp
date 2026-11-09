@@ -6,10 +6,10 @@ int main()
 {
   S s;
   const struct S* p = &s;
-  static_assert(isSame<decltype(p), const S*>, "const struct S*");
-  static_assert(isSame<decltype(name), const char*>, "const static char*");
+  static_assert(std::isSame<decltype(p), const S*>, "const struct S*");
+  static_assert(std::isSame<decltype(name), const char*>, "const static char*");
   p = nullptr;
   name = "y";
-  println(int(p == nullptr), " ", StringView(name));
+  std::println(int(p == nullptr), " ", std::StringView(name));
   return 0;
 }

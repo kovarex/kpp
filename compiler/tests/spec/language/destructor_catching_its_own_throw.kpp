@@ -5,16 +5,16 @@ struct S
   ~S()
   {
     try { this.n = 1; throw 5; }
-    catch (int e) { println("caught inside ", e); }
-    println("left");
+    catch (int e) { std::println("caught inside ", e); }
+    std::println("left");
   }
 };
 void thrower() { throw 7; }
-struct Q { ~Q() { try { thrower(); } catch (...) { println("any"); } } };
+struct Q { ~Q() { try { thrower(); } catch (...) { std::println("any"); } } };
 int main()
 {
   { S s; }
   { Q q; }
-  println("end");
+  std::println("end");
   return 0;
 }

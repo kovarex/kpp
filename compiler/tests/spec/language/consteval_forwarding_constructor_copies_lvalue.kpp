@@ -10,18 +10,18 @@ struct M
 template<class A> struct Box
 {
   A held;
-  template<class U> Box(U&& u) : held(forward<U>(u)) {}
+  template<class U> Box(U&& u) : held(std::forward<U>(u)) {}
 };
 struct H
 {
   M held;
   H(const M& m) : held(m) {}
-  H(M&& m) : held(move(m)) {}
+  H(M&& m) : held(std::move(m)) {}
 };
 struct G
 {
   M held;
-  G(M&& m) : held(move(m)) {}
+  G(M&& m) : held(std::move(m)) {}
 };
 int take(int&& x)
 {
@@ -33,14 +33,14 @@ constexpr int lvalues()
   M m(5);
   M n(6);
   Box<M> b(m);
-  Pair<M, M> p(m, n);
+  std::Pair<M, M> p(m, n);
   H h(m);
   return m.v * 1000 + n.v * 100 + b.held.v * 10 + h.held.v;
 }
 constexpr int rvalues()
 {
   M m(5);
-  H h(move(m));
+  H h(std::move(m));
   G g(M(8));
   return m.v * 1000 + h.held.v * 100 + g.held.v * 10 + take(3);
 }
@@ -48,6 +48,6 @@ constexpr int l = lvalues();
 constexpr int r = rvalues();
 int main()
 {
-  println(l, " ", lvalues(), " ", r, " ", rvalues());
+  std::println(l, " ", lvalues(), " ", r, " ", rvalues());
   return 0;
 }

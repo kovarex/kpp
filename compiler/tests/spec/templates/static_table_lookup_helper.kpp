@@ -15,18 +15,18 @@ struct Table
   {
     int weight;
   };
-  static const Map<StringView, Entry> ENTRIES;
-  int lookup(StringView name) const
+  static const std::Map<std::StringView, Entry> ENTRIES;
+  int lookup(std::StringView name) const
   {
     if (const Entry* e = Util::getMapOrNull(This::ENTRIES, name))
       return e->weight;
     return -1;
   }
 };
-const Map<StringView, Table::Entry> Table::ENTRIES = {{"abs", Entry{1}}, {"log", Entry{2}}};
+const std::Map<std::StringView, Table::Entry> Table::ENTRIES = {{"abs", Entry{1}}, {"log", Entry{2}}};
 int main()
 {
   Table t;
-  println(t.lookup("abs"), " ", t.lookup("log"), " ", t.lookup("sin"));
+  std::println(t.lookup("abs"), " ", t.lookup("log"), " ", t.lookup("sin"));
   return 0;
 }

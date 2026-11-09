@@ -13,6 +13,6 @@ int main()
   unsigned* tail = values + 1;
   unsigned (*f)(unsigned*) = sum;
   Summer g = sum;
-  println(sum(values), " ", f(tail), " ", g(tail));
+  std::println(sum(values), " ", f(tail), " ", g(tail));
   return 0;
 }

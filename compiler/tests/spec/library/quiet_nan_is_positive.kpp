@@ -2,12 +2,12 @@
 // factorio: Train::lastSpeed starts as quiet_NaN(); computed as 0.0 / 0.0 it was the processor's negative default NaN in a debug build and the folded positive one in a release build, so a debug build's save right after a load differed from the C++ build's (the train junction menu map's 0-tick checksum)
 int main()
 {
-  double d = Limits<double>::quiet_NaN();
-  float f = Limits<float>::quiet_NaN();
+  double d = std::Limits<double>::quiet_NaN();
+  float f = std::Limits<float>::quiet_NaN();
   uint64_t db;
   uint32_t fb;
-  memcpy(&db, &d, 8);
-  memcpy(&fb, &f, 4);
-  println(StringView(db == 0x7FF8000000000000ull ? "double ok" : "double negative"), " ", StringView(fb == 0x7FC00000u ? "float ok" : "float negative"), " ", StringView(d != d ? "nan" : "not nan"));
+  std::memcpy(&db, &d, 8);
+  std::memcpy(&fb, &f, 4);
+  std::println(std::StringView(db == 0x7FF8000000000000ull ? "double ok" : "double negative"), " ", std::StringView(fb == 0x7FC00000u ? "float ok" : "float negative"), " ", std::StringView(d != d ? "nan" : "not nan"));
   return 0;
 }

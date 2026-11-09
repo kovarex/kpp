@@ -9,13 +9,13 @@ struct Fail { static constexpr int v = 0; };
 int plainFunction()
 {
   for constexpr (typename E : types<int, double>)
-    static_assert(isSame<E, int>, "not int");
+    static_assert(std::isSame<E, int>, "not int");
   for constexpr (int v : {1, 2})
     static_assert(v == 1, "only one");
   for constexpr (typename E : types<Pass, Fail>)
   {
     if constexpr (E::v == 1)
-      println("one");
+      std::println("one");
     else
       static_assert(E::v == 1, "has one");
   }
@@ -26,7 +26,7 @@ auto openReturn()
 {
   for constexpr (typename E : types<Ts...>)
   {
-    static_assert(isSame<E, int>, "after the return");
+    static_assert(std::isSame<E, int>, "after the return");
     return 1;
   }
   return 2;

@@ -2,10 +2,10 @@
 // factorio: 10 std::async(std::launch::async, ...) in AppManagerStates, 1 deferred in SpotNoiseCache
 int main()
 {
-  Future<int> now = async(Launch::async, []() -> int { return 6; });
+  std::Future<int> now = std::async(std::Launch::async, []() -> int { return 6; });
   int ran = 0;
-  Future<int> later = async(Launch::deferred, [&ran]() -> int { ++ran; return 7; });
-  println("before get: ", ran);
-  println(now.get(), " ", later.get(), " ", ran);
+  std::Future<int> later = std::async(std::Launch::deferred, [&ran]() -> int { ++ran; return 7; });
+  std::println("before get: ", ran);
+  std::println(now.get(), " ", later.get(), " ", ran);
   return 0;
 }

@@ -15,7 +15,7 @@ int add3(int a, short b, char c) { return a + b + c; }
 int main()
 {
   short (*p)() = two;
-  println(arity(add3), " ", arity(two), " ", arity(&half), " ", arity(p), " ", afterFirst(add3), " ", afterFirst(half));
-  println(call(add3, 1, short(2), char(3)), " ", call(two), " ", memberArity(&Counter::add));
+  std::println(arity(add3), " ", arity(two), " ", arity(&half), " ", arity(p), " ", afterFirst(add3), " ", afterFirst(half));
+  std::println(call(add3, 1, short(2), char(3)), " ", call(two), " ", memberArity(&Counter::add));
   return 0;
 }

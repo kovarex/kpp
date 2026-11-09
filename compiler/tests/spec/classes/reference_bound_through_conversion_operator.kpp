@@ -2,7 +2,7 @@
 // factorio: std::reference_wrapper elements read as references (PrototypeExplorerGuiLine::searchLabels over `initializer_list<reference_wrapper<Label>>`, the fonts of WrappedFont)
 struct Label
 {
-  String text;
+  std::String text;
 };
 
 struct LabelRef
@@ -17,10 +17,10 @@ int main()
   Label x{"x"};
   LabelRef w = x;
   const Label& direct = w;
-  println("[", direct.text, "]");
-  Vector<LabelRef> all;
+  std::println("[", direct.text, "]");
+  std::Vector<LabelRef> all;
   all.push_back(w);
   for (const Label& l : all)
-    println("[", l.text, "]");
+    std::println("[", l.text, "]");
   return 0;
 }

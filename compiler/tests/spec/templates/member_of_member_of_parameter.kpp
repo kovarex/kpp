@@ -6,7 +6,7 @@ namespace Filters
   struct Option
   {
     using DataType = D;
-    using BuilderMapping = Map<String, D>;
+    using BuilderMapping = std::Map<std::String, D>;
   };
 }
 
@@ -38,6 +38,6 @@ int main()
 {
   ClonedFilters::Option::BuilderMapping result;
   CommonFilters::registerOptions<ClonedFilters>(result);
-  println(result["ghost"].first, " ", result["ghost"].second);
+  std::println(result["ghost"].first, " ", result["ghost"].second);
   return 0;
 }

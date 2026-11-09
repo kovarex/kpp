@@ -11,7 +11,7 @@ template<typename T>
 struct Slot
 {
   T value;
-  when (isTriviallyCopyable<T>) T backup;
+  when (std::isTriviallyCopyable<T>) T backup;
 };
 
 int main()

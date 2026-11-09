@@ -4,7 +4,7 @@ struct Point
 {
   int x = 0;
   int y = 0;
-  void appendTo(String& out) const
+  void appendTo(std::String& out) const
   {
     out << "(";
     out << char('0' + this.x);
@@ -16,27 +16,27 @@ struct Point
 struct Color
 {
   bool green = false;
-  void appendTo(String& out) const { out << StringView(this.green ? "green" : "red"); }
+  void appendTo(std::String& out) const { out << std::StringView(this.green ? "green" : "red"); }
 };
-void show(Text text)
+void show(std::Text text)
 {
-  String s;
+  std::String s;
   text.appendTo(s);
   printf("[%s]", s.c_str());
 }
-void forward(Text text) { show(text); }
-void framed(Text text) { show(text, "!"); }
-void tagged(int level, Text text)
+void forward(std::Text text) { show(text); }
+void framed(std::Text text) { show(text, "!"); }
+void tagged(int level, std::Text text)
 {
   printf("[%d: ", level);
-  String s;
+  std::String s;
   text.appendTo(s);
   printf("%s]", s.c_str());
 }
 struct Logger
 {
   int lines = 0;
-  void log(Text text)
+  void log(std::Text text)
   {
     ++this.lines;
     show(text);

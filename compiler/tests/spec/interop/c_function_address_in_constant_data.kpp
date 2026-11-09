@@ -19,6 +19,6 @@ int main()
   int sum = 0;
   for (const Reg& r : regs)
     sum = sum * 100 + r.fn(10);
-  println(sum, " ", single.fn(21), " ", pointer(41));
+  std::println(sum, " ", single.fn(21), " ", pointer(41));
   return 0;
 }

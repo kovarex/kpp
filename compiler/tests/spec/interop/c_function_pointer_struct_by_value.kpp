@@ -10,23 +10,23 @@ int main()
   auto take = &take_s8;
   TakeS8 typed = take_s8;
   Ops o = ops();
-  println(take(s), " ", typed(s), " ", o.take(s));
+  std::println(take(s), " ", typed(s), " ", o.take(s));
   auto make = &make_s8;
   S8 m = make(6, 7);
   S8 n = o.make(6, 7);
-  println(m.a, " ", m.b, " ", n.a, " ", n.b);
+  std::println(m.a, " ", m.b, " ", n.a, " ", n.b);
   F16 v;
   v.x = 1.5;
   v.y = 2.5;
   auto scale = &scale_f16;
   F16 w = scale(v, 2.0);
   F16 z = o.scale(v, 3.0);
-  println(w.x, " ", w.y, " ", z.y);
+  std::println(w.x, " ", w.y, " ", z.y);
   S24 t;
   t.a = 1;
   t.b = 3;
   t.c = 8;
   auto sum = &sum_s24;
-  println(sum(t, 2), " ", sum(t, 4));
+  std::println(sum(t, 2), " ", sum(t, 4));
   return 0;
 }

@@ -14,26 +14,26 @@ b
 constexpr const char* constant = R"(c
 d)";
 static_assert(constant[1] == '\n' && constant[2] == 'd');
-String bytes(const char* s)
+std::String bytes(const char* s)
 {
-  String out;
+  std::String out;
   for (int i = 0; s[i]; ++i)
-    out = out + format("{} ", int((unsigned char)s[i]));
+    out = out + std::format("{} ", int((unsigned char)s[i]));
   return out;
 }
 int main()
 {
-  println(bytes(R"(a
+  std::println(bytes(R"(a
 b)"));
-  println(bytes(R"--(1\
+  std::println(bytes(R"--(1\
 2
 )--"));
-  println(bytes(constant));
+  std::println(bytes(constant));
   const wchar_t* w = LR"(e
 f)";
-  String wide;
+  std::String wide;
   for (int i = 0; w[i]; ++i)
-    wide = wide + format("{} ", int(w[i]));
-  println(wide);
+    wide = wide + std::format("{} ", int(w[i]));
+  std::println(wide);
   return 0;
 }

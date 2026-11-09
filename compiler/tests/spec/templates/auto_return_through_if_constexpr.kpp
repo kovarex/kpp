@@ -22,6 +22,6 @@ int main()
   Dur<long long, Rat<1>> s(2);
   auto x = finer(ms, s);
   auto y = finer(s, ms);
-  println(x.ticks, " ", y.ticks);
+  std::println(x.ticks, " ", y.ticks);
   return 0;
 }

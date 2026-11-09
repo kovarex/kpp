@@ -2,9 +2,9 @@
 // error: text_parameter_placement_is_error.kpp:5: error: the Text parameter text takes the remaining arguments, so it must be the last parameter (design.md 14)
 // error: text_parameter_placement_is_error.kpp:6: error: the Text parameter text takes the remaining arguments, so it has no default argument; no arguments make an empty Text (design.md 14)
 // error: text_parameter_placement_is_error.kpp:7: error: a Text parameter cannot be passed from C: logText is extern "C" (design.md 14)
-void first(Text text, int level) {}
-void defaulted(Text text = {}) {}
-extern "C" void logText(Text text) {}
+void first(std::Text text, int level) {}
+void defaulted(std::Text text = {}) {}
+extern "C" void logText(std::Text text) {}
 int main()
 {
   return 0;

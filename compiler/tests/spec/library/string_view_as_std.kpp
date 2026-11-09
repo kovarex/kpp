@@ -3,7 +3,7 @@
 extern "C" int printf(const char* format, ...);
 int asInt(unsigned long long x) { return x == (unsigned long long)-1 ? -1 : (int)x; }
 
-void text(const char* what, StringView v)
+void text(const char* what, std::StringView v)
 {
   printf("%s[%d]:", what, (int)v.size());
   for (char c : v)
@@ -16,12 +16,12 @@ int sign(int x) { return x < 0 ? -1 : x > 0 ? 1 : 0; }
 int main()
 {
   const char raw[] = "hello world, hello there";
-  StringView v(raw);
-  StringView empty;
-  StringView none("");
-  StringView part(raw + 6, 5);
-  String owned = "owned text";
-  StringView fromString(owned);
+  std::StringView v(raw);
+  std::StringView empty;
+  std::StringView none("");
+  std::StringView part(raw + 6, 5);
+  std::String owned = "owned text";
+  std::StringView fromString(owned);
   text("v", v);
   text("part", part);
   text("fromString", fromString);
@@ -40,7 +40,7 @@ int main()
     part.at(5);
     printf("no throw\n");
   }
-  catch (const OutOfRange&)
+  catch (const std::OutOfRange&)
   {
     printf("at past the end throws\n");
   }
@@ -49,16 +49,16 @@ int main()
   printf("rbegin %c %c\n", *part.rbegin(), *(part.rend() - 1));
   printf("crbegin %c\n", *part.crbegin());
   printf("max_size %d\n", (int)(v.max_size() > 1000000));
-  printf("npos %d\n", (int)(StringView::npos == (unsigned long long)-1));
-  StringView moved = v;
+  printf("npos %d\n", (int)(std::StringView::npos == (unsigned long long)-1));
+  std::StringView moved = v;
   moved.remove_prefix(6);
   text("remove_prefix", moved);
   moved.remove_suffix(13);
   text("remove_suffix", moved);
   moved.remove_prefix(5);
   text("remove all", moved);
-  StringView a("first");
-  StringView b("second thing");
+  std::StringView a("first");
+  std::StringView b("second thing");
   a.swap(b);
   text("swapped a", a);
   text("swapped b", b);
@@ -72,7 +72,7 @@ int main()
     v.substr(v.size() + 1);
     printf("no throw\n");
   }
-  catch (const OutOfRange&)
+  catch (const std::OutOfRange&)
   {
     printf("substr past the end throws\n");
   }
@@ -85,7 +85,7 @@ int main()
     v.copy(buffer, 1, v.size() + 1);
     printf("no throw\n");
   }
-  catch (const OutOfRange&)
+  catch (const std::OutOfRange&)
   {
     printf("copy past the end throws\n");
   }
@@ -93,14 +93,14 @@ int main()
   printf("find %d %d %d\n", asInt(v.find("hello")), asInt(v.find("hello", 1)), asInt(v.find("hello", 14)));
   printf("find char %d %d %d\n", asInt(v.find('o')), asInt(v.find('o', 5)), asInt(v.find('z')));
   printf("find count %d %d\n", asInt(v.find("hello there", 1, 5)), asInt(v.find("xyz", 0, 0)));
-  printf("find view %d\n", asInt(v.find(StringView("world"))));
-  printf("find string %d\n", asInt(v.find(String("world"))));
+  printf("find view %d\n", asInt(v.find(std::StringView("world"))));
+  printf("find string %d\n", asInt(v.find(std::String("world"))));
   printf("find empty %d %d %d %d\n", asInt(v.find("")), asInt(v.find("", 5)), asInt(v.find("", v.size())), asInt(v.find("", v.size() + 1)));
   printf("find past %d %d\n", asInt(v.find('h', 100)), asInt(v.find("h", 100)));
   printf("find on empty %d %d\n", asInt(empty.find("")), asInt(empty.find("a")));
   printf("rfind %d %d %d\n", asInt(v.rfind("hello")), asInt(v.rfind("hello", 12)), asInt(v.rfind("hello", 0)));
   printf("rfind char %d %d %d\n", asInt(v.rfind('o')), asInt(v.rfind('o', 8)), asInt(v.rfind('z')));
-  printf("rfind count %d\n", asInt(v.rfind("hello there", StringView::npos, 5)));
+  printf("rfind count %d\n", asInt(v.rfind("hello there", std::StringView::npos, 5)));
   printf("rfind empty %d %d %d\n", asInt(v.rfind("")), asInt(v.rfind("", 3)), asInt(v.rfind("", 100)));
   printf("rfind on empty %d %d\n", asInt(empty.rfind("")), asInt(empty.rfind('a')));
   printf("find_first_of %d %d %d\n", asInt(v.find_first_of("wxyz")), asInt(v.find_first_of("lo", 5)), asInt(v.find_first_of("qz")));
@@ -110,7 +110,7 @@ int main()
   printf("find_first_of past %d\n", asInt(v.find_first_of("h", 100)));
   printf("find_last_of %d %d %d\n", asInt(v.find_last_of("wxyz")), asInt(v.find_last_of("lo", 5)), asInt(v.find_last_of("qz")));
   printf("find_last_of char %d %d\n", asInt(v.find_last_of('w')), asInt(v.find_last_of('l', 4)));
-  printf("find_last_of count %d\n", asInt(v.find_last_of("lwxyz", StringView::npos, 1)));
+  printf("find_last_of count %d\n", asInt(v.find_last_of("lwxyz", std::StringView::npos, 1)));
   printf("find_last_of empty %d %d\n", asInt(v.find_last_of("")), asInt(empty.find_last_of("a")));
   printf("find_first_not_of %d %d %d\n", asInt(v.find_first_not_of("hel")), asInt(v.find_first_not_of("lo", 2)), asInt(v.find_first_not_of(v)));
   printf("find_first_not_of char %d %d\n", asInt(v.find_first_not_of('h')), asInt(v.find_first_not_of('l', 2)));
@@ -119,50 +119,50 @@ int main()
   printf("find_first_not_of past %d\n", asInt(v.find_first_not_of("h", 100)));
   printf("find_last_not_of %d %d %d\n", asInt(v.find_last_not_of("ther")), asInt(v.find_last_not_of("lo", 4)), asInt(v.find_last_not_of(v)));
   printf("find_last_not_of char %d %d\n", asInt(v.find_last_not_of('e')), asInt(v.find_last_not_of('l', 3)));
-  printf("find_last_not_of count %d\n", asInt(v.find_last_not_of("ether", StringView::npos, 1)));
+  printf("find_last_not_of count %d\n", asInt(v.find_last_not_of("ether", std::StringView::npos, 1)));
   printf("find_last_not_of empty %d %d\n", asInt(v.find_last_not_of("")), asInt(empty.find_last_not_of("a")));
 
-  StringView x("apple");
+  std::StringView x("apple");
   printf("compare %d %d %d\n", sign(x.compare("apple")), sign(x.compare("apples")), sign(x.compare("app")));
-  printf("compare view %d %d\n", sign(x.compare(StringView("banana"))), sign(StringView("banana").compare(x)));
+  printf("compare view %d %d\n", sign(x.compare(std::StringView("banana"))), sign(std::StringView("banana").compare(x)));
   printf("compare sub %d %d\n", sign(x.compare(0, 3, "app")), sign(x.compare(1, 2, "pp")));
-  printf("compare sub sub %d\n", sign(x.compare(1, 2, StringView("xppx"), 1, 2)));
+  printf("compare sub sub %d\n", sign(x.compare(1, 2, std::StringView("xppx"), 1, 2)));
   printf("compare sub count %d\n", sign(x.compare(0, 3, "apricot", 3)));
   printf("compare empty %d %d %d\n", sign(empty.compare(none)), sign(empty.compare("a")), sign(x.compare("")));
-  printf("compare bytes %d\n", sign(StringView("\xff").compare("a")));
+  printf("compare bytes %d\n", sign(std::StringView("\xff").compare("a")));
   try
   {
     x.compare(6, 1, "a");
     printf("no throw\n");
   }
-  catch (const OutOfRange&)
+  catch (const std::OutOfRange&)
   {
     printf("compare past the end throws\n");
   }
   printf("starts_with %d %d %d %d\n", (int)x.starts_with("app"), (int)x.starts_with('a'), (int)x.starts_with("b"), (int)x.starts_with(""));
-  printf("starts_with view %d\n", (int)x.starts_with(StringView("apple pie")));
+  printf("starts_with view %d\n", (int)x.starts_with(std::StringView("apple pie")));
   printf("ends_with %d %d %d %d\n", (int)x.ends_with("ple"), (int)x.ends_with('e'), (int)x.ends_with("b"), (int)x.ends_with(""));
-  printf("ends_with view %d\n", (int)x.ends_with(StringView("an apple")));
+  printf("ends_with view %d\n", (int)x.ends_with(std::StringView("an apple")));
   printf("contains %d %d %d\n", (int)x.contains("ppl"), (int)x.contains('l'), (int)x.contains("z"));
-  printf("== %d %d %d %d\n", (int)(x == "apple"), (int)("apple" == x), (int)(x == String("apple")), (int)(x == StringView("apples")));
+  printf("== %d %d %d %d\n", (int)(x == "apple"), (int)("apple" == x), (int)(x == std::String("apple")), (int)(x == std::StringView("apples")));
   printf("!= %d %d\n", (int)(x != "apple"), (int)(x != "pear"));
-  printf("< %d %d %d %d\n", (int)(x < "apples"), (int)(x < "app"), (int)("app" < x), (int)(x < String("b")));
+  printf("< %d %d %d %d\n", (int)(x < "apples"), (int)(x < "app"), (int)("app" < x), (int)(x < std::String("b")));
   printf("> <= >= %d %d %d\n", (int)(x > "app"), (int)(x <= "apple"), (int)(x >= "b"));
-  printf("<=> %d %d\n", (int)((x <=> StringView("apple")) == 0), (int)((x <=> StringView("b")) < 0));
-  printf("byte order %d\n", (int)(StringView("\xff") > StringView("a")));
-  StringView zero("a\0b", 3);
-  printf("embedded zero %d %d %d\n", (int)zero.size(), asInt(zero.find('b')), (int)(zero == StringView("a")));
-  printf("embedded zero find %d\n", asInt(zero.find(StringView("\0b", 2))));
-  printf("hash %d\n", (int)(Hash<StringView>()(StringView("abc")) == Hash<String>()(String("abc"))));
-  String made(x);
-  String added = String(x) + "!";
+  printf("<=> %d %d\n", (int)((x <=> std::StringView("apple")) == 0), (int)((x <=> std::StringView("b")) < 0));
+  printf("byte order %d\n", (int)(std::StringView("\xff") > std::StringView("a")));
+  std::StringView zero("a\0b", 3);
+  printf("embedded zero %d %d %d\n", (int)zero.size(), asInt(zero.find('b')), (int)(zero == std::StringView("a")));
+  printf("embedded zero find %d\n", asInt(zero.find(std::StringView("\0b", 2))));
+  printf("hash %d\n", (int)(std::Hash<std::StringView>()(std::StringView("abc")) == std::Hash<std::String>()(std::String("abc"))));
+  std::String made(x);
+  std::String added = std::String(x) + "!";
   printf("to string %s %s\n", made.c_str(), added.c_str());
-  Map<String, int> keys;
-  keys[String(x)] = 1;
-  printf("map find %d\n", keys.find(String(StringView("apple"))) != keys.end() ? 1 : 0);
-  Vector<StringView> views = {"pear", "apple", "fig"};
-  sort(views.begin(), views.end());
-  for (StringView s : views)
+  std::Map<std::String, int> keys;
+  keys[std::String(x)] = 1;
+  printf("map find %d\n", keys.find(std::String(std::StringView("apple"))) != keys.end() ? 1 : 0);
+  std::Vector<std::StringView> views = {"pear", "apple", "fig"};
+  std::sort(views.begin(), views.end());
+  for (std::StringView s : views)
     text("sorted", s);
   return 0;
 }

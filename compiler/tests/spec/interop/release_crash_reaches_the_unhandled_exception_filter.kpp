@@ -6,7 +6,7 @@ extern "C" import "windows.h";
 extern "C" import "stdlib.h";
 LONG filter(EXCEPTION_POINTERS* e)
 {
-  println("filter reached: ", int(e->ExceptionRecord->ExceptionCode == 0xC0000005u)); // (EXCEPTION_ACCESS_VIOLATION)
+  std::println("filter reached: ", int(e->ExceptionRecord->ExceptionCode == 0xC0000005u)); // (EXCEPTION_ACCESS_VIOLATION)
   exit(0); // (the C library's exit: the output flushed)
   return EXCEPTION_EXECUTE_HANDLER;
 }
@@ -28,6 +28,6 @@ int main(int argc, char** argv)
   i32 kept = 7;
   i32* target = argc > 5 ? &kept : (i32*)(usize)(argc - 1); // (null, which the optimizer cannot know)
   i32 (*step)(i32*, i32) = argc > 9 ? other : crashHere;
-  println("before the crash");
+  std::println("before the crash");
   return step(target, argc * 3);
 }

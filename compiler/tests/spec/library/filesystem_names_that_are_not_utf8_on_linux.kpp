@@ -7,10 +7,10 @@ int main()
 {
   char base[64];
   snprintf(base, 64, "/tmp/kpp-spec-not-utf8-%d", (int)getpid());
-  filesystem::path directory(base);
-  ErrorCode error;
-  filesystem::remove_all(directory, error);
-  filesystem::create_directory(directory);
+  std::filesystem::path directory(base);
+  std::ErrorCode error;
+  std::filesystem::remove_all(directory, error);
+  std::filesystem::create_directory(directory);
   const char* names[] = {"/\xff\xfe.txt", "/a\xc0\xaf" "b", "/\xc5\xbe.txt"};
   for (const char* n : names)
   {
@@ -20,16 +20,16 @@ int main()
     fwrite("abc", 1, 3, f);
     fclose(f);
   }
-  Vector<filesystem::path> listed;
-  for (const auto& entry : filesystem::directory_iterator(directory))
+  std::Vector<std::filesystem::path> listed;
+  for (const auto& entry : std::filesystem::directory_iterator(directory))
     listed.push_back(entry.path());
   int found = 0, sized = 0, removed = 0;
-  Vector<String> texts;
+  std::Vector<std::String> texts;
   for (const auto& p : listed)
   {
-    found += filesystem::exists(p, error) ? 1 : 0;
-    sized += filesystem::file_size(p, error) == 3 ? 1 : 0;
-    String t;
+    found += std::filesystem::exists(p, error) ? 1 : 0;
+    sized += std::filesystem::file_size(p, error) == 3 ? 1 : 0;
+    std::String t;
     for (char c : p.filename().string())
     {
       char hex[4];
@@ -39,14 +39,14 @@ int main()
     texts.push_back(t);
   }
   for (const auto& p : listed)
-    removed += filesystem::remove(p, error) ? 1 : 0;
+    removed += std::filesystem::remove(p, error) ? 1 : 0;
   int left = 0;
-  for (const auto& entry : filesystem::directory_iterator(directory, error))
+  for (const auto& entry : std::filesystem::directory_iterator(directory, error))
     ++left;
-  filesystem::remove_all(directory, error);
-  sort(texts.begin(), texts.end());
+  std::filesystem::remove_all(directory, error);
+  std::sort(texts.begin(), texts.end());
   printf("%d %d %d %d %d", (int)listed.size(), found, sized, removed, left);
-  for (const String& t : texts)
+  for (const std::String& t : texts)
     printf(" %s", t.c_str());
   printf("\n");
   return 0;

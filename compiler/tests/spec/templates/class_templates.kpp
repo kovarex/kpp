@@ -12,11 +12,11 @@ struct Ring
 int main()
 {
   Ring<int, 3> a, b;
-  Ring<String, 2> s;
+  Ring<std::String, 2> s;
   for (int i = 0; i < 4; ++i)
     a.push(i * 10);
-  s.push(String("x"));
+  s.push(std::String("x"));
   Ring<int, 3>::Value v = a.at(0);
-  println(Ring<int, 3>::capacity(), " ", v, " ", a.items[0], " ", s.items[0]);
+  std::println(Ring<int, 3>::capacity(), " ", v, " ", a.items[0], " ", s.items[0]);
   return 0;
 }

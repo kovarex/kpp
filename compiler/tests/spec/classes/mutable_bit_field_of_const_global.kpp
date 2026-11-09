@@ -13,6 +13,6 @@ int main()
 {
   global.b = 7;
   global.touch();
-  println(global.a, " ", global.b);
+  std::println(global.a, " ", global.b);
   return 0;
 }

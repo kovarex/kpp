@@ -4,6 +4,6 @@ extern "C" import "c_macro_cast_to_imported_typedef.h";
 
 int main()
 {
-  println(ANY_ADDRESS, " ", LOOPBACK_ADDRESS, " ", SHORT_MASK, " ", sizeof(SHORT_MASK));
+  std::println(ANY_ADDRESS, " ", LOOPBACK_ADDRESS, " ", SHORT_MASK, " ", sizeof(SHORT_MASK));
   return 0;
 }

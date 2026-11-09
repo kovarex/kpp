@@ -4,8 +4,8 @@ struct Noisy
 {
   int id;
   Noisy(int i) : id(i) {}
-  Noisy(const Noisy& o) : id(o.id + 10) { print("copy", this.id, " "); }
-  ~Noisy() { print("~", this.id, " "); }
+  Noisy(const Noisy& o) : id(o.id + 10) { std::print("copy", this.id, " "); }
+  ~Noisy() { std::print("~", this.id, " "); }
 };
 
 template<class... Ts>
@@ -23,14 +23,14 @@ int main()
   decltype(add)& asBase = h;
   Holder<decltype(none)> n{none};
   decltype(none)& noneBase = n;
-  println(asBase(10), " ", h.tag, " ", sizeof(h), " | ", noneBase(4), " ", n.tag, " ", sizeof(n));
+  std::println(asBase(10), " ", h.tag, " ", sizeof(h), " | ", noneBase(4), " ", n.tag, " ", sizeof(n));
   {
     Noisy noisy(1);
     auto show = [noisy](int x) { return noisy.id + x; };
     Holder<decltype(show)> held{show};
     decltype(show)& base = held;
-    println("| ", base(100));
+    std::println("| ", base(100));
   }
-  println("| done");
+  std::println("| done");
   return 0;
 }

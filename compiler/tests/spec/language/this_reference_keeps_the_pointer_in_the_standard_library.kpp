@@ -8,8 +8,8 @@ enum class Dir
 class Bag
 {
 public:
-  Vector<int> items;
-  String name = "bag";
+  std::Vector<int> items;
+  std::String name = "bag";
   Bag& put(int x)
   {
     this.items.push_back(x);
@@ -21,6 +21,6 @@ int main()
 {
   Bag b;
   b.put(1).put(2);
-  println(b.count(), " ", Dir::North.opposite() == Dir::South ? 1 : 0);
+  std::println(b.count(), " ", Dir::North.opposite() == Dir::South ? 1 : 0);
   return 0;
 }

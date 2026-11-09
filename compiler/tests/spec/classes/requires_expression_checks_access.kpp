@@ -24,6 +24,6 @@ public:
 
 int main()
 {
-  println(Binder<Hidden>::registered(), " ", Binder<Shown>::registered());
+  std::println(Binder<Hidden>::registered(), " ", Binder<Shown>::registered());
   return 0;
 }

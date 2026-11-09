@@ -5,6 +5,6 @@ extern "C" import "windows.h";
 
 int main()
 {
-  println(HRESULT_FROM_WIN32(ERROR_ACCESS_DENIED), " ", HRESULT_FROM_WIN32(0), " ", HRESULT_FROM_WIN32(-5));
+  std::println(HRESULT_FROM_WIN32(ERROR_ACCESS_DENIED), " ", HRESULT_FROM_WIN32(0), " ", HRESULT_FROM_WIN32(-5));
   return 0;
 }

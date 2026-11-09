@@ -34,8 +34,8 @@ int main()
   B b;
   A* a = &b;
   X* part = a->get();
-  println(part == static_cast<X*>(&shared) ? 1 : 0, " ", part->x);
+  std::println(part == static_cast<X*>(&shared) ? 1 : 0, " ", part->x);
   Y* whole = b.get();
-  println(whole == &shared ? 1 : 0, " ", whole->y);
+  std::println(whole == &shared ? 1 : 0, " ", whole->y);
   return 0;
 }

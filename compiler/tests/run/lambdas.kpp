@@ -9,7 +9,7 @@ int apply(int x, F f)
 }
 
 template<typename T, typename F>
-void forEach(Vector<T>& v, F f)
+void forEach(std::Vector<T>& v, F f)
 {
   for (T& item : v)
     f(item);
@@ -36,7 +36,7 @@ int main()
     return base;
   };
   int sum = 0;
-  Vector<int> v;
+  std::Vector<int> v;
   for (int i = 1; i <= 4; ++i)
     v.push_back(i);
   forEach(v, [&](int& item)

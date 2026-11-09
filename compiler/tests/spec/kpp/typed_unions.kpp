@@ -2,14 +2,14 @@
 // design.md 8.5; replaces std::variant and the tagged unions of InputAction
 union enum Property : uint8_t
 {
-  { {int, Integer}, {double, Double}, {String, Text} }
+  { {int, Integer}, {double, Double}, {std::String, Text} }
 };
 int main()
 {
   Property p;
   p[Property::Integer] = 5;
   bool wasInt = p == Property::Integer;
-  p[Property::Text] = String("t");
-  println(wasInt, " ", p == Property::Text, " ", p[Property::Text]);
+  p[Property::Text] = std::String("t");
+  std::println(wasInt, " ", p == Property::Text, " ", p[Property::Text]);
   return 0;
 }

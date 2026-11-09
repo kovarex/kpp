@@ -20,6 +20,6 @@ int main()
   Flag yes = Flag::fromBool(true);
   bool either = take(yes || ask(false));
   bool both = take(yes && ask(false));
-  println(either, " ", both, " ", asked);
+  std::println(either, " ", both, " ", asked);
   return 0;
 }

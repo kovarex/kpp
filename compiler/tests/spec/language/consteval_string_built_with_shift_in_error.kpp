@@ -9,15 +9,15 @@ struct Holes
       if (p[0] == '{' && p[1] == '}')
         ++holes;
   }
-  consteval void checkPieces(ContainerSize pieces) const
+  consteval void checkPieces(std::ContainerSize pieces) const
   {
-    String message("format: ");
-    message << holes << " {} for " << int(pieces) << StringView(pieces == 1 ? " piece" : " pieces");
-    if (ContainerSize(holes) != pieces)
-      throw LogicError(message);
+    std::String message("format: ");
+    message << holes << " {} for " << int(pieces) << std::StringView(pieces == 1 ? " piece" : " pieces");
+    if (std::ContainerSize(holes) != pieces)
+      throw std::LogicError(message);
   }
 };
-int count(Holes pattern, Text pieces) { return int(pieces.count); }
+int count(Holes pattern, std::Text pieces) { return int(pieces.count); }
 int main()
 {
   return count("{} {}", 1);

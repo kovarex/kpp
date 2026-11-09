@@ -12,6 +12,6 @@ int capture()
 }
 int main()
 {
-  println(alignof(CONTEXT), " ", alignof(M128A), " ", alignof(SpecAligned), " ", sizeof(SpecAligned), " ", capture());
+  std::println(alignof(CONTEXT), " ", alignof(M128A), " ", alignof(SpecAligned), " ", sizeof(SpecAligned), " ", capture());
   return 0;
 }

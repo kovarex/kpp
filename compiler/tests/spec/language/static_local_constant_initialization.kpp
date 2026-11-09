@@ -87,7 +87,7 @@ int main()
   hits = counted();
   int a = once();
   int b = once();
-  println(scaled(12.5), " ", minimum(), " ", sumTable(), " ", timesFour<3>(), " ", timesFour<5>(), " ", Box<long long>::scale(), " ", Box<char>::scale(), " ",
+  std::println(scaled(12.5), " ", minimum(), " ", sumTable(), " ", timesFour<3>(), " ", timesFour<5>(), " ", Box<long long>::scale(), " ", Box<char>::scale(), " ",
           rateTwice(), " ", rateAddress() == &rate(), " ", hits, " ", a + b, " ", calls, " ",
           firstArgument(5) + firstArgument(7) - firstArgument(9));
   return 0;

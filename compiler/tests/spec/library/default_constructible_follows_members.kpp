@@ -17,23 +17,23 @@ struct Holds { NoDefault n; };
 struct HoldsInitialised { NoDefault n = NoDefault(1); };
 struct HoldsReference { int& r; };
 struct HoldsConst { const int c; };
-struct Plain { int a; String b; };
+struct Plain { int a; std::String b; };
 struct Derived : Holds {};
 struct Declares { Declares(int x) {} };
-static_assert(!isConstructible<FirstHasNone>);
-static_assert(isConstructible<FirstHasOne>);
-static_assert(!isConstructible<Holds>);
-static_assert(isConstructible<HoldsInitialised>);
-static_assert(!isConstructible<HoldsReference>);
-static_assert(!isConstructible<HoldsConst>);
-static_assert(isConstructible<Plain>);
-static_assert(!isConstructible<Derived>);
-static_assert(!isConstructible<Declares>);
-static_assert(isConstructible<Declares, int>);
-static_assert(isCopyConstructible<FirstHasNone> && isMoveConstructible<FirstHasNone>);
-static_assert(isConstructible<int> && isConstructible<NoDefault*> && !isConstructible<int&>);
+static_assert(!std::isConstructible<FirstHasNone>);
+static_assert(std::isConstructible<FirstHasOne>);
+static_assert(!std::isConstructible<Holds>);
+static_assert(std::isConstructible<HoldsInitialised>);
+static_assert(!std::isConstructible<HoldsReference>);
+static_assert(!std::isConstructible<HoldsConst>);
+static_assert(std::isConstructible<Plain>);
+static_assert(!std::isConstructible<Derived>);
+static_assert(!std::isConstructible<Declares>);
+static_assert(std::isConstructible<Declares, int>);
+static_assert(std::isCopyConstructible<FirstHasNone> && std::isMoveConstructible<FirstHasNone>);
+static_assert(std::isConstructible<int> && std::isConstructible<NoDefault*> && !std::isConstructible<int&>);
 int main()
 {
-  println("ok");
+  std::println("ok");
   return 0;
 }

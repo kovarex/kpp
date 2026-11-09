@@ -12,7 +12,7 @@ public:
   template<class T>
   static bool hasType()
   {
-    return (... || isSame<T, Args>);
+    return (... || std::isSame<T, Args>);
   }
   static size_t totalSize()
   {
@@ -25,6 +25,6 @@ int main()
 {
   int calls = 0;
   TypeList<int, Small, Large>::forEach([&](auto value) { calls += int(sizeof(value)); });
-  println(calls, " ", TypeList<int, Small, Large>::hasType<Small>(), " ", TypeList<int, Small, Large>::hasType<double>(), " ", TypeList<int, Small, Large>::totalSize());
+  std::println(calls, " ", TypeList<int, Small, Large>::hasType<Small>(), " ", TypeList<int, Small, Large>::hasType<double>(), " ", TypeList<int, Small, Large>::totalSize());
   return 0;
 }

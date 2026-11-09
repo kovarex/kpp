@@ -9,8 +9,8 @@ template<class T> struct S
   enum Plain : T { one = 1, two = (T)-1 };
 };
 template<int N> struct Tm { enum E { first = N, second = N + 1 }; };
-template<class E> const char* named(E e) { return kppEnumeratorName(e); }
-template<class E> long long viaUnderlying(E e) { return (long long)sizeof(UnderlyingType<E>) * 1000 + (long long)static_cast<UnderlyingType<E>>(e); }
+template<class E> const char* named(E e) { return std::kppEnumeratorName(e); }
+template<class E> long long viaUnderlying(E e) { return (long long)sizeof(std::UnderlyingType<E>) * 1000 + (long long)static_cast<std::UnderlyingType<E>>(e); }
 int main()
 {
   printf("%d %d\n", (int)S<short>::Dir::count, (int)S<long long>::Dir::count);

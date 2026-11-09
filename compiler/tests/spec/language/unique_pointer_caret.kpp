@@ -8,29 +8,29 @@ struct Holder
 {
   Item^ item;
 };
-static_assert(isSame<Item^, UniquePtr<Item>>);
-static_assert(isSame<const Item^, UniquePtr<const Item>>);
-static_assert(isSame<Item^ const&, const UniquePtr<Item>&>);
-static_assert(isSame<Vector<Item^>, Vector<UniquePtr<Item>>>);
+static_assert(std::isSame<Item^, std::UniquePtr<Item>>);
+static_assert(std::isSame<const Item^, std::UniquePtr<const Item>>);
+static_assert(std::isSame<Item^ const&, const std::UniquePtr<Item>&>);
+static_assert(std::isSame<std::Vector<Item^>, std::Vector<std::UniquePtr<Item>>>);
 constexpr int six = 6, three = 3;
-static_assert(sizeof(Array<int, six ^ three>) == 5 * sizeof(int)); // (exclusive or in a template argument)
-Item^ make(int v) { return makeUnique<Item>(v); }
+static_assert(sizeof(std::Array<int, six ^ three>) == 5 * sizeof(int)); // (exclusive or in a template argument)
+Item^ make(int v) { return std::makeUnique<Item>(v); }
 int read(Item^ const& p) { return p->value; }
-int readLong(const UniquePtr<Item>& p) { return p->value; }
+int readLong(const std::UniquePtr<Item>& p) { return p->value; }
 int readConst(const Item^ p) { return p->value; }
 int main()
 {
   Item^ a = make(3);
-  Vector<Item^> items;
+  std::Vector<Item^> items;
   items.push_back(make(4));
   items.emplace_back(new Item(5));
   Holder h{make(6)};
   Item^* to = &a;
-  const Item^ c = UniquePtr<const Item>(new Item(7));
+  const Item^ c = std::UniquePtr<const Item>(new Item(7));
   int x = 6, y = 3;
   int z = x ^ y;
   z = z ^ (x);
-  println(read(a), " ", readLong(items[0]), " ", items[1]->value, " ", h.item->value, " ", (*to)->value, " ", c->value, " ",
+  std::println(read(a), " ", readLong(items[0]), " ", items[1]->value, " ", h.item->value, " ", (*to)->value, " ", c->value, " ",
           readConst(make(8)), " ", z);
   return 0;
 }

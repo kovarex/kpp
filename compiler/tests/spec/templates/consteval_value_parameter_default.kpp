@@ -9,6 +9,6 @@ constexpr int dependent = scaled(2);
 constexpr int none = three();
 int main()
 {
-  println(deduced, " ", times(4), " ", partial, " ", times<int>(2), " ", dependent, " ", scaled(2), " ", none, " ", three());
+  std::println(deduced, " ", times(4), " ", partial, " ", times<int>(2), " ", dependent, " ", scaled(2), " ", none, " ", three());
   return 0;
 }

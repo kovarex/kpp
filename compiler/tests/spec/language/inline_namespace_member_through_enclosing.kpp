@@ -17,6 +17,6 @@ namespace Geo
 int main()
 {
   Geo::Point p;
-  println(Geo::V2::version(), " ", Geo::version(), " ", p.x, " ", Geo::scale(2), " ", Geo::scale(2.5), " ", Geo::inside());
+  std::println(Geo::V2::version(), " ", Geo::version(), " ", p.x, " ", Geo::scale(2), " ", Geo::scale(2.5), " ", Geo::inside());
   return 0;
 }

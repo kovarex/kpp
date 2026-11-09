@@ -4,13 +4,13 @@ template<class Id>
 struct Filter
 {
   int value = 0;
-  template<typename = EnableIf<!isSame<Id, int>>>
-  Filter(StringView name) : value(int(name.size())) {}
+  template<typename = std::EnableIf<!std::isSame<Id, int>>>
+  Filter(std::StringView name) : value(int(name.size())) {}
 };
 struct Item {};
 int main()
 {
-  Filter<Item> filter(StringView("abcd"));
-  println(filter.value);
+  Filter<Item> filter(std::StringView("abcd"));
+  std::println(filter.value);
   return 0;
 }

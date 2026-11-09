@@ -22,6 +22,6 @@ double half()
 }
 int main()
 {
-  println(constants(), " ", half());
+  std::println(constants(), " ", half());
   return 0;
 }

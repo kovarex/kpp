@@ -2,7 +2,7 @@
 struct Cells
 {
   int values[3] = { 4, 5, 6 };
-  ~Cells() { println("cells gone"); }
+  ~Cells() { std::println("cells gone"); }
   int* begin() { return this.values; }
   int* end() { return this.values + 3; }
 };
@@ -22,6 +22,6 @@ int main()
   int odd = 0;
   for (int i = 0; i < 4 ? true : false; ++i)
     odd += i;
-  println(total, " ", count, " ", odd);
+  std::println(total, " ", count, " ", odd);
   return 0;
 }

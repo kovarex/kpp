@@ -38,7 +38,7 @@ constexpr int folded(int x)
   return x;
 }
 static_assert(folded(1) == 12 && folded(3) == 133 && folded(5) == 105 && folded(9) == 9);
-StringView orientation(Direction d)
+std::StringView orientation(Direction d)
 {
   switch (d)
   {
@@ -50,9 +50,9 @@ StringView orientation(Direction d)
 }
 int main()
 {
-  println(kind(1), " ", kind(3), " ", kind(4), " ", kind(5), " ", kind(6), " ", kind(7), " ", kind(9));
+  std::println(kind(1), " ", kind(3), " ", kind(4), " ", kind(5), " ", kind(6), " ", kind(7), " ", kind(9));
   int f1 = folded(1), f3 = folded(3), f5 = folded(5), f9 = folded(9);
-  println(f1, " ", f3, " ", f5, " ", f9);
-  println(orientation(Direction::North), " ", orientation(Direction::West));
+  std::println(f1, " ", f3, " ", f5, " ", f9);
+  std::println(orientation(Direction::North), " ", orientation(Direction::West));
   return 0;
 }

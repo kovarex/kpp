@@ -2,11 +2,11 @@
 // found comparing kpp with std::chrono (thread I's time battery)
 int main()
 {
-  Nanoseconds far(-100000000000000001);
-  Nanoseconds farUp(100000000000000001);
-  println(floor<Microseconds>(far).count(), " ", ceil<Microseconds>(far).count(), " ", floor<Seconds>(farUp).count(), " ", ceil<Seconds>(farUp).count());
-  println(floor<Seconds>(Nanoseconds(-1)).count(), " ", ceil<Seconds>(Nanoseconds(-1)).count(), " ", floor<Seconds>(Milliseconds(1500)).count(), " ", ceil<Seconds>(Milliseconds(-1500)).count());
-  println(round<Seconds>(Milliseconds(2500)).count(), " ", round<Seconds>(Milliseconds(3500)).count(), " ", round<Seconds>(Milliseconds(-2500)).count(), " ", round<Seconds>(Milliseconds(2501)).count(), " ",
-          round<Milliseconds>(Nanoseconds(-1500000)).count(), " ", round<Seconds>(farUp).count());
+  std::Nanoseconds far(-100000000000000001);
+  std::Nanoseconds farUp(100000000000000001);
+  std::println(std::floor<std::Microseconds>(far).count(), " ", std::ceil<std::Microseconds>(far).count(), " ", std::floor<std::Seconds>(farUp).count(), " ", std::ceil<std::Seconds>(farUp).count());
+  std::println(std::floor<std::Seconds>(std::Nanoseconds(-1)).count(), " ", std::ceil<std::Seconds>(std::Nanoseconds(-1)).count(), " ", std::floor<std::Seconds>(std::Milliseconds(1500)).count(), " ", std::ceil<std::Seconds>(std::Milliseconds(-1500)).count());
+  std::println(std::round<std::Seconds>(std::Milliseconds(2500)).count(), " ", std::round<std::Seconds>(std::Milliseconds(3500)).count(), " ", std::round<std::Seconds>(std::Milliseconds(-2500)).count(), " ", std::round<std::Seconds>(std::Milliseconds(2501)).count(), " ",
+          std::round<std::Milliseconds>(std::Nanoseconds(-1500000)).count(), " ", std::round<std::Seconds>(farUp).count());
   return 0;
 }

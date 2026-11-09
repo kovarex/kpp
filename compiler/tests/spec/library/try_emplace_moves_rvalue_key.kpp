@@ -11,7 +11,7 @@ struct Key
   bool operator<(const Key& other) const { return this.v < other.v; }
   bool operator==(const Key& other) const { return this.v == other.v; }
 };
-size_t hashOf(const Key& key) { return hashOf(key.v); }
+size_t hashOf(const Key& key) { return std::hashOf(key.v); }
 struct Value
 {
   int v = 0;
@@ -27,27 +27,27 @@ void tryEmplace(const char* name)
   moves = 0;
   M m;
   Key a(1);
-  m.try_emplace(move(a), 5);
+  m.try_emplace(std::move(a), 5);
   Key b(2);
-  m.try_emplace(m.end(), move(b), 6);
+  m.try_emplace(m.end(), std::move(b), 6);
   Key c(1);
-  bool inserted = m.try_emplace(move(c), 7).second;
-  print(StringView(name), ": ", copies, " ", inserted, " ", m.size(), "; ");
+  bool inserted = m.try_emplace(std::move(c), 7).second;
+  std::print(std::StringView(name), ": ", copies, " ", inserted, " ", m.size(), "; ");
 }
 int main()
 {
-  tryEmplace<Map<Key, Value>>("Map");
-  tryEmplace<HashMap<Key, Value>>("HashMap");
-  tryEmplace<FastMap<Key, Value>>("FastMap");
-  Vector<Pair<Key, Value>> entries;
+  tryEmplace<std::Map<Key, Value>>("Map");
+  tryEmplace<std::HashMap<Key, Value>>("HashMap");
+  tryEmplace<std::FastMap<Key, Value>>("FastMap");
+  std::Vector<std::Pair<Key, Value>> entries;
   entries.reserve(2);
   copies = 0;
   moves = 0;
   entries.emplace(entries.end(), Key(1), Value());
   entries.emplace(entries.end(), Key(3), Value());
-  print("Vector at the end: ", copies, " ", moves, "; ");
+  std::print("Vector at the end: ", copies, " ", moves, "; ");
   copies = 0;
   entries.emplace(entries.begin() + 1, Key(2), Value());
-  println("before another: ", copies, " ", entries[0].first.v, entries[1].first.v, entries[2].first.v);
+  std::println("before another: ", copies, " ", entries[0].first.v, entries[1].first.v, entries[2].first.v);
   return 0;
 }

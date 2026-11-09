@@ -68,6 +68,6 @@ int main()
   int b4 = counted4();
   int a5 = counted5();
   int b5 = counted5();
-  println(a0, " ", b0, " ", a1, " ", b1, " ", a2, " ", b2, " ", a3, " ", b3, " ", a4, " ", b4, " ", a5, " ", b5);
+  std::println(a0, " ", b0, " ", a1, " ", b1, " ", a2, " ", b2, " ", a3, " ", b3, " ", a4, " ", b4, " ", a5, " ", b5);
   return 0;
 }

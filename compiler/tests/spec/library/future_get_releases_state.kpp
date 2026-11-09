@@ -2,11 +2,11 @@
 // factorio: ThreadedBufferedReadStream::stopReadWorker's `if (this->worker.valid()) this->worker.get();` and its destructor's `assert(!this->worker.valid())`: the worker stayed valid after get(), and the normal start stopped at that assertion once the main menu's map was loaded
 int main()
 {
-  Future<int> f = async(Launch::async, []() { return 7; });
+  std::Future<int> f = std::async(std::Launch::async, []() { return 7; });
   bool before = f.valid();
   int value = f.get();
-  Future<void> g = async(Launch::deferred, []() {});
+  std::Future<void> g = std::async(std::Launch::deferred, []() {});
   g.get();
-  println(before, " ", value, " ", f.valid(), " ", g.valid());
+  std::println(before, " ", value, " ", f.valid(), " ", g.valid());
   return 0;
 }

@@ -3,29 +3,29 @@
 struct Thrower
 {
   Thrower() { throw 5; }
-  void* operator new(size_t size) { println("thrower new"); return malloc(size); }
-  void operator delete(void* p) { println("thrower delete"); free(p); }
+  void* operator new(size_t size) { std::println("thrower new"); return std::malloc(size); }
+  void operator delete(void* p) { std::println("thrower delete"); std::free(p); }
 };
 struct Arena { char bytes[64]; int used = 0; };
 struct Pooled
 {
   int v;
   Pooled(int x) : v(x) { if (x < 0) throw x; }
-  void* operator new(size_t size, Arena& a) { println("arena new ", size); void* p = a.bytes + a.used; a.used += int(size); return p; }
-  void operator delete(void*, Arena& a) { println("arena delete ", a.used); }
+  void* operator new(size_t size, Arena& a) { std::println("arena new ", size); void* p = a.bytes + a.used; a.used += int(size); return p; }
+  void operator delete(void*, Arena& a) { std::println("arena delete ", a.used); }
 };
 struct NoDelete
 {
   NoDelete() { throw 1; }
-  void* operator new(size_t size, int tag) { println("tagged new ", tag); return malloc(size); }
+  void* operator new(size_t size, int tag) { std::println("tagged new ", tag); return std::malloc(size); }
 };
 int main()
 {
-  try { new Thrower; } catch (int x) { println("caught ", x); }
+  try { new Thrower; } catch (int x) { std::println("caught ", x); }
   Arena arena;
   Pooled* p = new (arena) Pooled(7);
-  println(p->v, " ", arena.used);
-  try { new (arena) Pooled(-1); } catch (int x) { println("caught ", x); }
-  try { new (3) NoDelete; } catch (int x) { println("caught ", x); }
+  std::println(p->v, " ", arena.used);
+  try { new (arena) Pooled(-1); } catch (int x) { std::println("caught ", x); }
+  try { new (3) NoDelete; } catch (int x) { std::println("caught ", x); }
   return 0;
 }

@@ -4,9 +4,9 @@ struct Tile { int x, y; };
 Tile tileAt(int x, int y) { return Tile{x, y}; }
 int main()
 {
-  Vector<Pair<int, bool>> two{ { {1, false}, {2, true} } };
-  Vector<Pair<Tile, bool>> four{ { { tileAt(-1, 1), false }, { tileAt(0, 1), false }, { tileAt(-1, 2), true }, { tileAt(0, 2), true } } };
-  Vector<Pair<int, bool>> flat{ {5, true}, {6, false} };
-  println(int(two.size()), " ", two[1].first, " ", two[1].second, " | ", int(four.size()), " ", four[0].first.x, " ", four[3].first.y, " ", four[2].second, " | ", int(flat.size()), " ", flat[1].first);
+  std::Vector<std::Pair<int, bool>> two{ { {1, false}, {2, true} } };
+  std::Vector<std::Pair<Tile, bool>> four{ { { tileAt(-1, 1), false }, { tileAt(0, 1), false }, { tileAt(-1, 2), true }, { tileAt(0, 2), true } } };
+  std::Vector<std::Pair<int, bool>> flat{ {5, true}, {6, false} };
+  std::println(int(two.size()), " ", two[1].first, " ", two[1].second, " | ", int(four.size()), " ", four[0].first.x, " ", four[3].first.y, " ", four[2].second, " | ", int(flat.size()), " ", flat[1].first);
   return 0;
 }

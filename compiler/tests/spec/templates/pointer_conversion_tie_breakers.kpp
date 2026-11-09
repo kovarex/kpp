@@ -14,6 +14,6 @@ int main()
   Spider spider;
   Spider* s = &spider;
   const Spider* cs = &spider;
-  println(pick(s), " ", pick(cs), " ", nearer(s), " ", byRef(spider), " ", byRef(*cs));
+  std::println(pick(s), " ", pick(cs), " ", nearer(s), " ", byRef(spider), " ", byRef(*cs));
   return 0;
 }

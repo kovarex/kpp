@@ -17,10 +17,10 @@ struct Bits
 };
 int main()
 {
-  println(Bits<0xFFFFFFFFu + 2u>::value);
-  println(Bits<uint8_t(300)>::value);
-  println(Bits<alignof(Vec3)>::value);
-  println(Bits<sizeof(Vec3)>::value);
-  println(Bits<(unsigned short)70000>::value);
+  std::println(Bits<0xFFFFFFFFu + 2u>::value);
+  std::println(Bits<uint8_t(300)>::value);
+  std::println(Bits<alignof(Vec3)>::value);
+  std::println(Bits<sizeof(Vec3)>::value);
+  std::println(Bits<(unsigned short)70000>::value);
   return 0;
 }

@@ -9,6 +9,6 @@ struct C
 int main()
 {
   C c;
-  println(c.r[0]);
+  std::println(c.r[0]);
   return 0;
 }

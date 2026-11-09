@@ -5,10 +5,10 @@ struct Mixing { int box; const Connection* connection; };
 int main()
 {
   Connection a{1, true}, b{2, false};
-  Vector<Mixing> mixings;
+  std::Vector<Mixing> mixings;
   mixings.push_back(Mixing{10, &a});
   mixings.push_back(Mixing{20, &b});
-  Vector<const Connection*> stored;
+  std::Vector<const Connection*> stored;
   stored.push_back(&a);
   int found = 0, sums = 0;
   for (const auto& [box, connection] : mixings)
@@ -21,6 +21,6 @@ int main()
         ++found;
     sums += both() + byRef();
   }
-  println(found, " ", sums);
+  std::println(found, " ", sums);
   return 0;
 }

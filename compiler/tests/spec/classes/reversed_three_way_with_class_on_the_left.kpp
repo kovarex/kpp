@@ -4,7 +4,7 @@ struct Version
 {
   int major = 0;
   int minor = 0;
-  strong_ordering operator<=>(const Version& other) const = default;
+  std::strong_ordering operator<=>(const Version& other) const = default;
 };
 struct ModVersion : Version
 {
@@ -12,7 +12,7 @@ struct ModVersion : Version
 struct Holder
 {
   int held = 0;
-  strong_ordering operator<=>(const ModVersion& v) const { return this.held <=> v.major; }
+  std::strong_ordering operator<=>(const ModVersion& v) const { return this.held <=> v.major; }
   bool operator==(const ModVersion& v) const { return this.held == v.major; }
 };
 template<typename T>
@@ -20,7 +20,7 @@ struct Box
 {
   int held = 0;
   template<typename U>
-  strong_ordering operator<=>(const U& v) const { return this.held <=> v.major; }
+  std::strong_ordering operator<=>(const U& v) const { return this.held <=> v.major; }
   template<typename U>
   bool operator==(const U& v) const { return this.held == v.major; }
 };
@@ -36,14 +36,14 @@ int main()
   ModVersion current = version(3, 0);
   Holder holder{2};
   Box<int> box{4};
-  Optional<ModVersion> latest = version(1, 2);
-  Optional<ModVersion> none;
+  std::Optional<ModVersion> latest = version(1, 2);
+  std::Optional<ModVersion> none;
   bool a = current > holder;
   bool b = current >= box;
   bool c = holder < current;
   bool d = current > latest;
   bool e = current > none;
   bool f = version(1, 2) >= latest;
-  println(a, " ", b, " ", c, " ", d, " ", e, " ", f);
+  std::println(a, " ", b, " ", c, " ", d, " ", e, " ", f);
   return 0;
 }

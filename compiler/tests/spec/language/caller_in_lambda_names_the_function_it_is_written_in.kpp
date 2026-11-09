@@ -1,6 +1,6 @@
 // spec: `caller` filled in by a call written in a lambda names the function the lambda is written in, whichever function calls the lambda (and asks the code generator for it first), also for a generic lambda's instances called from a function template
 // factorio: the tests' generic lambdas (SuiteCustomGui's, called through MplVector::forEach) named the function that first emitted them, which varied with the threads' order: the IR differed between two runs (found by the templates thread, 2026-10-31)
-const char* where(CallerLocation here = caller) { return here.function_name(); }
+const char* where(std::CallerLocation here = caller) { return here.function_name(); }
 template<typename F, typename T>
 const char* forEach(F f, T value) { return f(value); }
 auto outer()
@@ -11,6 +11,6 @@ const char* first() { return forEach(outer(), 1); }
 const char* second() { return forEach(outer(), 2.0); }
 int main()
 {
-  println(StringView(first()), " ", StringView(second()));
+  std::println(std::StringView(first()), " ", std::StringView(second()));
   return 0;
 }

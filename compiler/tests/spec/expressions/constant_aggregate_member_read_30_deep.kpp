@@ -9,6 +9,6 @@ constexpr int v = 1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 
 static_assert(v == 34);
 int main()
 {
-  println(v);
+  std::println(v);
   return 0;
 }

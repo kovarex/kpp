@@ -12,20 +12,20 @@ long long sumAll(Args... args)
 }
 
 template<typename T, typename... Rest>
-String joinWith(const char* separator, T first, Rest... rest)
+std::String joinWith(const char* separator, T first, Rest... rest)
 {
-  String result = toString(first);
-  ((result.append(separator), result.append(toString(rest))), ...);
+  std::String result = std::toString(first);
+  ((result.append(separator), result.append(std::toString(rest))), ...);
   return result;
 }
 
 int main()
 {
-  println(2, " + ", 3, " = ", 2 + 3);
-  println("name=", String("kpp"), " pi=", 3.25, " ok=", true, " ch=", 'x');
-  println("count=", countArgs(1, 2.0, "three"), " sum=", sumAll(1, 2, 3, 4));
-  println(joinWith(", ", 1, 2, 3));
-  println(format("{}{}", "no", " args") + String("!"));
-  println("plain string without arguments");
+  std::println(2, " + ", 3, " = ", 2 + 3);
+  std::println("name=", std::String("kpp"), " pi=", 3.25, " ok=", true, " ch=", 'x');
+  std::println("count=", countArgs(1, 2.0, "three"), " sum=", sumAll(1, 2, 3, 4));
+  std::println(joinWith(", ", 1, 2, 3));
+  std::println(std::format("{}{}", "no", " args") + std::String("!"));
+  std::println("plain string without arguments");
   return 0;
 }

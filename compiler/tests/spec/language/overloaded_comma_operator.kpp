@@ -12,6 +12,6 @@ int main()
   Plain p{3}, q{4};
   Plain right = (p, q);
   int i = (1, 2);
-  println(joined.v, " ", right.v, " ", i);
+  std::println(joined.v, " ", right.v, " ", i);
   return 0;
 }

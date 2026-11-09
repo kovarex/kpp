@@ -18,6 +18,6 @@ int main()
   int on = 0;
   if (pointer)
     on = 1;
-  println(on, " ", pointer ? 1 : 0);
+  std::println(on, " ", pointer ? 1 : 0);
   return 0;
 }

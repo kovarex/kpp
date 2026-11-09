@@ -21,6 +21,6 @@ int main()
   Widget w;
   w.id = 2;
   f << horizontalLine << w;
-  println(f.sum);
+  std::println(f.sum);
   return 0;
 }

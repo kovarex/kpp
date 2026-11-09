@@ -59,7 +59,7 @@ constexpr int inBase()
 constexpr int values[] = {assign(), compound(), throughPointer(), inArray(), inBase()};
 int main()
 {
-  println(values[0], " ", values[1], " ", values[2], " ", values[3], " ", values[4]);
-  println(assign(), " ", compound(), " ", throughPointer(), " ", inArray(), " ", inBase());
+  std::println(values[0], " ", values[1], " ", values[2], " ", values[3], " ", values[4]);
+  std::println(assign(), " ", compound(), " ", throughPointer(), " ", inArray(), " ", inBase());
   return 0;
 }

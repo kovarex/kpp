@@ -2,21 +2,21 @@
 // factorio: build.kpp of programs/factorio (docs/build.md): `project.cIncludes.add(path(factorio, "libraries", lib))` for a list of libraries
 constexpr int includes()
 {
-  Vector<String> paths;
-  for (StringView lib : {"SDL3/include", "SDL_Mixer/include", "Lua", "curl/include"})
+  std::Vector<std::String> paths;
+  for (std::StringView lib : {"SDL3/include", "SDL_Mixer/include", "Lua", "curl/include"})
   {
-    String path = "C:/Factorio/libraries/";
+    std::String path = "C:/Factorio/libraries/";
     path << lib;
     paths.push_back(path);
   }
   int total = 0;
-  for (const String& p : paths)
+  for (const std::String& p : paths)
     total += p.size();
   return paths.size() * 1000 + total;
 }
 static_assert(includes() == 4132);
 int main()
 {
-  println(includes());
+  std::println(includes());
   return 0;
 }

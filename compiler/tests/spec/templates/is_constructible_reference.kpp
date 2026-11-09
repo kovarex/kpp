@@ -4,22 +4,22 @@ extern "C" import "stdio.h";
 using A4 = char[4];
 struct Base {};
 struct Derived : Base {};
-static_assert(isConstructible<A4&, A4&>);
-static_assert(isConstructible<const A4&, A4&>);
-static_assert(!isConstructible<A4&, const A4&>);
-static_assert(isConstructible<int&, int&>);
-static_assert(!isConstructible<int&, int>);
-static_assert(!isConstructible<int&, int&&>);
-static_assert(isConstructible<const int&, int>);
-static_assert(isConstructible<int&&, int>);
-static_assert(!isConstructible<int&&, int&>);
-static_assert(isConstructible<Base&, Derived&>);
-static_assert(!isConstructible<Derived&, Base&>);
-static_assert(isConstructible<const String&, const char*>);
+static_assert(std::isConstructible<A4&, A4&>);
+static_assert(std::isConstructible<const A4&, A4&>);
+static_assert(!std::isConstructible<A4&, const A4&>);
+static_assert(std::isConstructible<int&, int&>);
+static_assert(!std::isConstructible<int&, int>);
+static_assert(!std::isConstructible<int&, int&&>);
+static_assert(std::isConstructible<const int&, int>);
+static_assert(std::isConstructible<int&&, int>);
+static_assert(!std::isConstructible<int&&, int&>);
+static_assert(std::isConstructible<Base&, Derived&>);
+static_assert(!std::isConstructible<Derived&, Base&>);
+static_assert(std::isConstructible<const std::String&, const char*>);
 int main()
 {
   char buffer[4] = "xyz";
-  auto t = forwardAsTuple(buffer, 2);
-  printf("%s %d\n", get<0>(t), get<1>(t));
+  auto t = std::forwardAsTuple(buffer, 2);
+  printf("%s %d\n", std::get<0>(t), std::get<1>(t));
   return 0;
 }

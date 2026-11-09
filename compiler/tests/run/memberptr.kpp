@@ -6,11 +6,11 @@ struct Style
 {
   int padding = 1;
   int margin = 2;
-  UniquePtr<String> title;
+  std::UniquePtr<std::String> title;
   double scale = 1.5;
 
   template<typename StyleType, typename PropertyType>
-  const PropertyType* getProperty(UniquePtr<PropertyType> StyleType::*property) const
+  const PropertyType* getProperty(std::UniquePtr<PropertyType> StyleType::*property) const
   {
     return (static_cast<const StyleType*>(this)->*property).get();
   }
@@ -32,8 +32,8 @@ int main()
   bump(style, &Style::padding, 10);
   bump(style, &Style::scale, 0.25);
   printf("%d %d %.2f\n", style.padding, style.margin, style.scale);
-  style.title.reset(new String("hello"));
-  const String* title = style.getProperty(&Style::title);
+  style.title.reset(new std::String("hello"));
+  const std::String* title = style.getProperty(&Style::title);
   printf("%s %d\n", title->c_str(), member == &Style::margin ? 1 : 0);
   return 0;
 }

@@ -3,7 +3,7 @@
 extern "C" int printf(const char* format, ...);
 int main()
 {
-  ErrorCode noCondition(9999, systemCategory());
-  printf("%d %d %d\n", (int)(noCondition == (Errc)0), (int)((Errc)0 == noCondition), (int)(noCondition != (Errc)0));
+  std::ErrorCode noCondition(9999, std::systemCategory());
+  printf("%d %d %d\n", (int)(noCondition == (std::Errc)0), (int)((std::Errc)0 == noCondition), (int)(noCondition != (std::Errc)0));
   return 0;
 }

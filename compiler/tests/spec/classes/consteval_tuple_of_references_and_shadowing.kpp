@@ -3,40 +3,40 @@ extern "C" int printf(const char* format, ...);
 constexpr int prvalueOfReferences()
 {
   int a = 0, b = 0;
-  Tuple<int&, int&>(a, b) = Pair<int, int>(1, 2);
+  std::Tuple<int&, int&>(a, b) = std::Pair<int, int>(1, 2);
   return a * 10 + b;
 }
 constexpr int assignedFromATuple()
 {
   int a = 0, b = 0;
-  Tuple<int&, int&> t(a, b);
-  t = Tuple<int, int>(3, 4);
+  std::Tuple<int&, int&> t(a, b);
+  t = std::Tuple<int, int>(3, 4);
   return a * 10 + b;
 }
 constexpr int throughGet()
 {
   int a = 1, b = 2;
-  Tuple<int&, int&> t(a, b);
-  get<0>(t) = 7;
-  get<1>(t) += 5;
+  std::Tuple<int&, int&> t(a, b);
+  std::get<0>(t) = 7;
+  std::get<1>(t) += 5;
   return a * 10 + b;
 }
 constexpr int tieFromTie()
 {
   int a = 1, b = 2;
-  tie(a, b) = tie(b, a);
+  std::tie(a, b) = std::tie(b, a);
   return a * 10 + b;
 }
 constexpr int tiedPair()
 {
   int a = 0, b = 0;
-  tie(a, b) = Pair<int, int>(3, 4);
+  std::tie(a, b) = std::Pair<int, int>(3, 4);
   return a * 10 + b;
 }
 constexpr int structuredBinding()
 {
   int a = 1, b = 2;
-  auto [x, y] = tie(a, b);
+  auto [x, y] = std::tie(a, b);
   x = 5;
   y = 6;
   return a * 10 + b;
@@ -44,63 +44,63 @@ constexpr int structuredBinding()
 constexpr int copyOfReferences()
 {
   int a = 1, b = 2;
-  Tuple<int&, int&> t(a, b);
+  std::Tuple<int&, int&> t(a, b);
   auto u = t;
-  get<0>(u) = 9;
+  std::get<0>(u) = 9;
   return a * 10 + b;
 }
 constexpr int mixed()
 {
   int a = 1;
-  Tuple<int&, int> t(a, 2);
-  get<0>(t) = 3;
-  get<1>(t) = 4;
-  return a * 10 + get<1>(t);
+  std::Tuple<int&, int> t(a, 2);
+  std::get<0>(t) = 3;
+  std::get<1>(t) = 4;
+  return a * 10 + std::get<1>(t);
 }
 constexpr int mixedTheOtherWay()
 {
   int a = 1;
-  Tuple<int, int&> t(2, a);
-  get<1>(t) = 3;
+  std::Tuple<int, int&> t(2, a);
+  std::get<1>(t) = 3;
   return a;
 }
 constexpr int constReference()
 {
   int a = 7;
-  Tuple<const int&, char> t(a, 'x');
-  return get<0>(t) + get<1>(t);
+  std::Tuple<const int&, char> t(a, 'x');
+  return std::get<0>(t) + std::get<1>(t);
 }
 constexpr int rvalueReference()
 {
   int a = 7;
-  Tuple<int&&> t(static_cast<int&&>(a));
-  get<0>(t) = 8;
+  std::Tuple<int&&> t(static_cast<int&&>(a));
+  std::get<0>(t) = 8;
   return a;
 }
 constexpr long t2 = 5;
-constexpr int shadowed() { Tuple<int, char> t2(3, 'a'); return get<0>(t2); }
+constexpr int shadowed() { std::Tuple<int, char> t2(3, 'a'); return std::get<0>(t2); }
 constexpr int shadowedInABlock()
 {
   int n = 0;
   {
-    Tuple<int, char> t2(4, 'b');
-    n = get<0>(t2);
+    std::Tuple<int, char> t2(4, 'b');
+    n = std::get<0>(t2);
   }
   return n + int(t2);
 }
-constexpr int shadowedByAParameter(Tuple<int, char> t2) { return get<0>(t2) + 1; }
-template <typename T> constexpr auto firstOf(const T& v) { return get<0>(v); }
-constexpr int shadowedThroughATemplate() { Tuple<int, char> t2(6, 'c'); return firstOf(t2); }
-struct Holder { long t2 = 11; constexpr int local() const { Tuple<int, char> t2(7, 'd'); return get<0>(t2) + int(this.t2); } };
-constexpr int theGlobalBesideALocal() { Tuple<int, char> local(1, 'e'); return get<0>(local) + int(t2); }
-constexpr int lambdaShadow() { Tuple<int, char> t2(8, 'f'); auto l = [&] { return get<0>(t2); }; return l(); }
+constexpr int shadowedByAParameter(std::Tuple<int, char> t2) { return std::get<0>(t2) + 1; }
+template <typename T> constexpr auto firstOf(const T& v) { return std::get<0>(v); }
+constexpr int shadowedThroughATemplate() { std::Tuple<int, char> t2(6, 'c'); return firstOf(t2); }
+struct Holder { long t2 = 11; constexpr int local() const { std::Tuple<int, char> t2(7, 'd'); return std::get<0>(t2) + int(this.t2); } };
+constexpr int theGlobalBesideALocal() { std::Tuple<int, char> local(1, 'e'); return std::get<0>(local) + int(t2); }
+constexpr int lambdaShadow() { std::Tuple<int, char> t2(8, 'f'); auto l = [&] { return std::get<0>(t2); }; return l(); }
 constexpr int get0 = 3;
 constexpr int shadowedName() { long get0 = 4; return int(get0) + 1; }
 template <int N> constexpr int nth() { return N; }
 constexpr int nthShadow() { int N = 3; return nth<2>() + N; }
 constexpr int c1 = prvalueOfReferences(), c2 = assignedFromATuple(), c3 = throughGet(), c4 = tieFromTie(), c5 = tiedPair(), c6 = structuredBinding();
 constexpr int c7 = copyOfReferences(), c8 = mixed(), c9 = mixedTheOtherWay(), c10 = constReference(), c11 = rvalueReference();
-constexpr int c12 = shadowed(), c13 = shadowedInABlock(), c14 = shadowedByAParameter(Tuple<int, char>(1, 'x')), c15 = shadowedThroughATemplate();
+constexpr int c12 = shadowed(), c13 = shadowedInABlock(), c14 = shadowedByAParameter(std::Tuple<int, char>(1, 'x')), c15 = shadowedThroughATemplate();
 constexpr int c16 = Holder().local(), c17 = theGlobalBesideALocal(), c18 = lambdaShadow(), c19 = shadowedName(), c20 = nthShadow();
 int main()
 {

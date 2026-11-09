@@ -10,6 +10,6 @@ int main()
   u8 small = (u8)-1;
   f64 half = (f64)-0.5;
   f32 x = 3.0f;
-  println(all == ~usize(0), " ", (u32)+one, " ", back, " ", small, " ", half, " ", twice((u32)-1), " ", half_v<f32> * x, " ", half_v<f64> - 1.0);
+  std::println(all == ~usize(0), " ", (u32)+one, " ", back, " ", small, " ", half, " ", twice((u32)-1), " ", half_v<f32> * x, " ", half_v<f64> - 1.0);
   return 0;
 }

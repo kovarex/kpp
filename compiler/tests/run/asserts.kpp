@@ -4,17 +4,17 @@
 struct Guard
 {
   const char* name;
-  Guard(const char* name) : name(name) { println("enter ", StringView(name)); }
-  ~Guard() { println("leave ", StringView(this->name)); }
+  Guard(const char* name) : name(name) { std::println("enter ", std::StringView(name)); }
+  ~Guard() { std::println("leave ", std::StringView(this->name)); }
 };
 
-void note(const char* text, CallerLocation here = caller)
+void note(const char* text, std::CallerLocation here = caller)
 {
-  println(StringView(text), " at line ", int(here.line()), " column ", int(here.column()), " in ", StringView(here.function_name()));
+  std::println(std::StringView(text), " at line ", int(here.line()), " column ", int(here.column()), " in ", std::StringView(here.function_name()));
 }
 
-conditional(config::debug) void debugOnly(const char* text) { println("debug: ", StringView(text)); }
-conditional(!config::debug) void releaseOnly(const char* text) { println("release: ", StringView(text)); }
+conditional(config::debug) void debugOnly(const char* text) { std::println("debug: ", std::StringView(text)); }
+conditional(!config::debug) void releaseOnly(const char* text) { std::println("release: ", std::StringView(text)); }
 
 if constexpr (config::debug)
 {
@@ -37,14 +37,14 @@ int main()
   debugOnly("shown");
   releaseOnly("hidden");
   if constexpr (config::platform == Platform::Windows)
-    println("windows");
+    std::println("windows");
   else
     println("elsewhere");
-  println("build kind ", buildKind());
+  std::println("build kind ", buildKind());
   {
     Guard _("a");
     Guard _("b");
-    println("inside");
+    std::println("inside");
   }
   return 0;
 }

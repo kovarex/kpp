@@ -2,11 +2,11 @@
 extern "C" int printf(const char* format, ...);
 int main()
 {
-  HoursMinutesSeconds<Minutes> a(Minutes(90));
+  std::HoursMinutesSeconds<std::Minutes> a(std::Minutes(90));
   printf("90 min: %lld h %lld min, back %lld\n", (long long)a.hours().count(), (long long)a.minutes().count(), (long long)a.to_duration().count());
-  HoursMinutesSeconds<Hours> b(Hours(-25));
+  std::HoursMinutesSeconds<std::Hours> b(std::Hours(-25));
   printf("-25 h: negative %d, back %lld\n", (int)b.is_negative(), (long long)b.to_duration().count());
-  HoursMinutesSeconds<Duration<i64, Ratio<1, 3>>> c(Duration<i64, Ratio<1, 3>>(7));
+  std::HoursMinutesSeconds<std::Duration<i64, std::Ratio<1, 3>>> c(std::Duration<i64, std::Ratio<1, 3>>(7));
   printf("7/3 s: %lld s, subseconds %lld, back %lld\n", (long long)c.seconds().count(), (long long)c.subseconds().count(), (long long)c.to_duration().count());
   return 0;
 }

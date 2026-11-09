@@ -21,6 +21,6 @@ float assigned() { Strict s(a); s = _mm_shuffle_ps(a, a, _MM_SHUFFLE(0, 1, 2, 3)
 
 int main()
 {
-  println(initialised(), byValue(), byReference(), _mm_cvtss_f32(returned().value), assigned());
+  std::println(initialised(), byValue(), byReference(), _mm_cvtss_f32(returned().value), assigned());
   return 0;
 }

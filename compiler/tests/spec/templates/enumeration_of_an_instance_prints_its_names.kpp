@@ -16,7 +16,7 @@ int main()
   S<8>::E h = S<8>::E::B;
   S<8>::E outside = S<8>::E(4);
   T<1>::F f = T<1>::F::B;
-  println(e, " ", g, " ", h, " ", f, " ", Plain::X);
-  println(outside);
+  std::println(e, " ", g, " ", h, " ", f, " ", Plain::X);
+  std::println(outside);
   return 0;
 }

@@ -13,22 +13,22 @@ struct Z10 { char a : 3; short : 0; char b : 2; char c : 2; };
 Z5 global5 = {5, 9};
 int main()
 {
-  println(sizeof(Z1), " ", sizeof(Z2), " ", sizeof(Z3), " ", sizeof(Z4), " ", sizeof(Z5), " ", sizeof(Z6), " ", sizeof(Z7), " ", sizeof(Z8), " ", sizeof(Z9), " ",
+  std::println(sizeof(Z1), " ", sizeof(Z2), " ", sizeof(Z3), " ", sizeof(Z4), " ", sizeof(Z5), " ", sizeof(Z6), " ", sizeof(Z7), " ", sizeof(Z8), " ", sizeof(Z9), " ",
           sizeof(Z10));
-  println(alignof(Z1), " ", alignof(Z2), " ", alignof(Z3), " ", alignof(Z4), " ", alignof(Z5), " ", alignof(Z6), " ", alignof(Z7), " ", alignof(Z8), " ", alignof(Z9),
+  std::println(alignof(Z1), " ", alignof(Z2), " ", alignof(Z3), " ", alignof(Z4), " ", alignof(Z5), " ", alignof(Z6), " ", alignof(Z7), " ", alignof(Z8), " ", alignof(Z9),
           " ", alignof(Z10));
   Z5 z{3, 11};
   z.b = 13;
   Z5 copy = z;
-  println(int(copy.a), " ", int(copy.b), " ", int(*((const unsigned char*)&copy + 4) & 15), " ", int(global5.a), " ", int(global5.b));
+  std::println(int(copy.a), " ", int(copy.b), " ", int(*((const unsigned char*)&copy + 4) & 15), " ", int(global5.a), " ", int(global5.b));
   Z7 seven{};
   seven.a = 2;
   seven.b = 'x';
-  println((const char*)&seven.b - (const char*)&seven);
+  std::println((const char*)&seven.b - (const char*)&seven);
   Z9 nine{};
   nine.a = 9;
   nine.b = 7;
   nine.c = 300;
-  println(int(nine.a), " ", int(nine.b), " ", nine.c, " ", (const char*)&nine.c - (const char*)&nine);
+  std::println(int(nine.a), " ", int(nine.b), " ", nine.c, " ", (const char*)&nine.c - (const char*)&nine);
   return 0;
 }

@@ -15,6 +15,6 @@ int main()
   Status j = s | Tag::B;
   Status k = ~s;
   Status l = Tag::A | s;
-  println(int(j.tag), " ", int(k.tag), " ", int(l.tag));
+  std::println(int(j.tag), " ", int(k.tag), " ", int(l.tag));
   return 0;
 }

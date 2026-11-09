@@ -20,8 +20,8 @@ constexpr int referred()
 {
   int a = 1;
   int b = 2;
-  Tuple<int, int&> t(a, b);
-  get<1>(t) = 7;
+  std::Tuple<int, int&> t(a, b);
+  std::get<1>(t) = 7;
   return b;
 }
 
@@ -30,6 +30,6 @@ constexpr int c2 = referred();
 
 int main()
 {
-  println(c1, " ", c2, " ", chosen(), " ", referred());
+  std::println(c1, " ", c2, " ", chosen(), " ", referred());
   return 0;
 }

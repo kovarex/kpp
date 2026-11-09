@@ -1,7 +1,7 @@
 // spec: a range-for over a const Deque (DequeIterator's != and ++) works in a compile-time evaluation as at run time; the constant equals what the program computes (`6`)
 // factorio: build.kpp (design.md 12): projectlib's describe() walks Project's Deque<Executable>
 extern "C" import "stdio.h";
-constexpr int sum(const Deque<int>& all)
+constexpr int sum(const std::Deque<int>& all)
 {
   int total = 0;
   for (int value : all)
@@ -10,7 +10,7 @@ constexpr int sum(const Deque<int>& all)
 }
 constexpr int summed()
 {
-  Deque<int> all;
+  std::Deque<int> all;
   for (int i = 1; i <= 3; ++i)
     all.push_back(i);
   return sum(all);

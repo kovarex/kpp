@@ -7,7 +7,7 @@ struct Entry
 };
 constexpr int stale()
 {
-  Vector<Entry> entries;
+  std::Vector<Entry> entries;
   entries.push_back(Entry{});
   Entry& first = entries.back();
   for (int i = 0; i < 8; ++i)

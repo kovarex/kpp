@@ -36,8 +36,8 @@ int main()
   A* up = dynamic_cast<A*>(nextA());
   B* same = dynamic_cast<B*>(next());
   C* down = dynamic_cast<C*>(next());
-  println(calls, " ", up == static_cast<A*>(&global), " ", same == static_cast<B*>(&global), " ", down == &global);
+  std::println(calls, " ", up == static_cast<A*>(&global), " ", same == static_cast<B*>(&global), " ", down == &global);
   void* top = dynamic_cast<void*>(next());
-  println(calls, " ", top == (void*)&global);
+  std::println(calls, " ", top == (void*)&global);
   return 0;
 }

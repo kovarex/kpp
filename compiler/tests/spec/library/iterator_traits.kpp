@@ -4,15 +4,15 @@ struct OnlyValue
 {
   using value_type = int;
 };
-using VectorIterator = Vector<String>::const_iterator;
+using VectorIterator = std::Vector<std::String>::const_iterator;
 int main()
 {
-  IteratorTraits<VectorIterator>::value_type text = "text";
-  IteratorTraits<OnlyValue>::value_type number = 5;
-  Vector<String> list;
+  std::IteratorTraits<VectorIterator>::value_type text = "text";
+  std::IteratorTraits<OnlyValue>::value_type number = 5;
+  std::Vector<std::String> list;
   list.push_back(text);
-  IteratorTraits<Vector<String>::iterator>::pointer first = list.data();
-  IteratorTraits<VectorIterator>::reference element = list[0];
-  println(text, " ", number, " ", *first, " ", element, " ", isSame<IteratorTraits<VectorIterator>::iterator_category, RandomAccessIteratorTag>, " ", isSame<IteratorTraits<VectorIterator>::value_type, String>, " ", isSame<IteratorTraits<VectorIterator>::difference_type, ptrdiff_t>);
+  std::IteratorTraits<std::Vector<std::String>::iterator>::pointer first = list.data();
+  std::IteratorTraits<VectorIterator>::reference element = list[0];
+  std::println(text, " ", number, " ", *first, " ", element, " ", std::isSame<std::IteratorTraits<VectorIterator>::iterator_category, std::RandomAccessIteratorTag>, " ", std::isSame<std::IteratorTraits<VectorIterator>::value_type, std::String>, " ", std::isSame<std::IteratorTraits<VectorIterator>::difference_type, ptrdiff_t>);
   return 0;
 }

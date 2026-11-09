@@ -9,7 +9,7 @@ struct Triple
   int c = 3;
 };
 template<>
-struct TupleSize<Triple> { static constexpr int value = 3; };
+struct std::TupleSize<Triple> { static constexpr int value = 3; };
 template<int I>
 int& get(Triple& t)
 {
@@ -25,7 +25,7 @@ struct Odd
   int a = 0;
 };
 template<>
-struct TupleSize<Odd> { static int value; };
+struct std::TupleSize<Odd> { static int value; };
 int odd(Odd& o)
 {
   auto& [a] = o;
@@ -35,6 +35,6 @@ int main()
 {
   Triple t;
   auto [x, y] = t;
-  println(x, " ", y);
+  std::println(x, " ", y);
   return 0;
 }

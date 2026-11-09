@@ -15,6 +15,6 @@ done:
 again:
   if (++retries < 3)
     goto again;
-  println(found, " ", retries);
+  std::println(found, " ", retries);
   return 0;
 }

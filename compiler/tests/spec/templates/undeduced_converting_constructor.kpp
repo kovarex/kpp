@@ -6,15 +6,15 @@ public:
   virtual ~Widget() {}
   int id = 0;
 };
-static int collapsible(UniquePtr<Widget> collapsed, UniquePtr<Widget> expanded) { return 1; }
-static int collapsible(UniquePtr<Widget> expanded) { return 2; }
-static int collapsible(const String& collapsed, UniquePtr<Widget> expanded) { return 3; }
-static int collapsible(String&& collapsed, UniquePtr<Widget> expanded) { return 4; }
+static int collapsible(std::UniquePtr<Widget> collapsed, std::UniquePtr<Widget> expanded) { return 1; }
+static int collapsible(std::UniquePtr<Widget> expanded) { return 2; }
+static int collapsible(const std::String& collapsed, std::UniquePtr<Widget> expanded) { return 3; }
+static int collapsible(std::String&& collapsed, std::UniquePtr<Widget> expanded) { return 4; }
 int main()
 {
   bool loaded = true;
-  UniquePtr<Widget> table = makeUnique<Widget>();
-  UniquePtr<Widget> other = makeUnique<Widget>();
-  println(collapsible(loaded ? "..." : "<empty>", move(table)), " ", collapsible(move(other)));
+  std::UniquePtr<Widget> table = std::makeUnique<Widget>();
+  std::UniquePtr<Widget> other = std::makeUnique<Widget>();
+  std::println(collapsible(loaded ? "..." : "<empty>", std::move(table)), " ", collapsible(std::move(other)));
   return 0;
 }

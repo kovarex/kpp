@@ -20,9 +20,9 @@ int kind(Query&&) { return 3; }
 int main()
 {
   Query query;
-  Query sent = addAuth(move(query));
+  Query sent = addAuth(std::move(query));
   addAuth(query);
   const Query fixed;
-  println(sent.fields, " ", query.fields, " ", kind(query), " ", kind(fixed), " ", kind(move(query)), " ", kind(Query{}));
+  std::println(sent.fields, " ", query.fields, " ", kind(query), " ", kind(fixed), " ", kind(std::move(query)), " ", kind(Query{}));
   return 0;
 }

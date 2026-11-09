@@ -21,7 +21,7 @@ Throws thrower;
 Tr last{"last"};
 int main()
 {
-  setTerminate(onTerminate);
+  std::setTerminate(onTerminate);
   printf("main\n");
   return 0;
 }

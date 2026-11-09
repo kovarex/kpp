@@ -17,6 +17,6 @@ int main()
 {
   A a(1.5);
   B b(2.5);
-  println(double(b), " ", static_cast<double>(b), " ", double(a), " ", static_cast<double>(a));
+  std::println(double(b), " ", static_cast<double>(b), " ", double(a), " ", static_cast<double>(a));
   return 0;
 }

@@ -59,9 +59,9 @@ constexpr Packed packed = Packed(40);
 
 int main()
 {
-  println(earlyNumber, " ", earlyRatio, " ", earlyBothA, " ", earlyBothB, " ", earlyNested, " ", earlyTag, " ", earlyPlain, " ", earlyAligned, " ",
+  std::println(earlyNumber, " ", earlyRatio, " ", earlyBothA, " ", earlyBothB, " ", earlyNested, " ", earlyTag, " ", earlyPlain, " ", earlyAligned, " ",
           earlyLength, " ", earlyBits);
-  println(number[Value::Number], " ", ratio[Value::Ratio], " ", both[Value::Both].a, " ", both[Value::Both].b, " ", nested[Value::Nested][Inner::Small], " ",
+  std::println(number[Value::Number], " ", ratio[Value::Ratio], " ", both[Value::Both].a, " ", both[Value::Both].b, " ", nested[Value::Nested][Inner::Small], " ",
           int(both.tag()), " ", plain.f, " ", aligned.wide.b + aligned.wide.d, " ", packed.length, " ", packed.capacity * 10 + packed.flag);
   return 0;
 }

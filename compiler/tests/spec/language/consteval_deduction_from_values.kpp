@@ -21,6 +21,6 @@ static_assert(Fixed<int>(1.5).value == 384);
 static_assert(Fixed<long long>(0.25).value == 64);
 int main()
 {
-  println(Fixed<int>(1.5).value);
+  std::println(Fixed<int>(1.5).value);
   return 0;
 }

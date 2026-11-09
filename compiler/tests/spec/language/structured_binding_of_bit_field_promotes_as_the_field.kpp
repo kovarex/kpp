@@ -32,13 +32,13 @@ int main()
   s.w40 = 7;
   s.i20 = 4;
   auto [a, b, c, d, e] = s;
-  static_assert(isSame<decltype(a + 0), int> && isSame<decltype(b + 0), int> && isSame<decltype(c + 0), unsigned>);
-  static_assert(isSame<decltype(d + 0), uint64_t> && isSame<decltype(e + 0), int>);
-  println(i64(a - 2), " ", i64((b - 3) / 2), " ", i64(c - 6), " ", i64(d - 8));
-  println(int(sizeof(e + 0)), " ", int(sizeof(d + 0)), " ", int(b - 3 < 0));
+  static_assert(std::isSame<decltype(a + 0), int> && std::isSame<decltype(b + 0), int> && std::isSame<decltype(c + 0), unsigned>);
+  static_assert(std::isSame<decltype(d + 0), uint64_t> && std::isSame<decltype(e + 0), int>);
+  std::println(i64(a - 2), " ", i64((b - 3) / 2), " ", i64(c - 6), " ", i64(d - 8));
+  std::println(int(sizeof(e + 0)), " ", int(sizeof(d + 0)), " ", int(b - 3 < 0));
   Box<Three> x{};
   x.a = 2;
   auto [p] = x;
-  println(i64(p - 3));
+  std::println(i64(p - 3));
   return 0;
 }

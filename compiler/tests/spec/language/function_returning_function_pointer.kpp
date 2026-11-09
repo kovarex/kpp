@@ -6,6 +6,6 @@ int (*choose(bool up))(int) { return up ? inc : dec; }
 auto chooseToo(bool up) -> int (*)(int) { return up ? inc : dec; }
 int main()
 {
-  println(choose(true)(5), " ", choose(false)(5), " ", chooseToo(true)(1));
+  std::println(choose(true)(5), " ", choose(false)(5), " ", chooseToo(true)(1));
   return 0;
 }

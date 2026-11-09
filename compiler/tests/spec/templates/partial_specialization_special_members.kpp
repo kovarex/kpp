@@ -22,7 +22,7 @@ struct Holder<T, false>
   Holder(Holder<T, false>&& other) : present(other.present)
   {
     if (other.present)
-      new (&this.storage.value) T(move(other.storage.value));
+      new (&this.storage.value) T(std::move(other.storage.value));
   }
   ~Holder() { if (this.present) this.storage.value.~T(); }
 };
@@ -32,14 +32,14 @@ struct Opt : Holder<T, false>
   Opt() {}
   implicit Opt(T&& v)
   {
-    new (&this.storage.value) T(move(v));
+    new (&this.storage.value) T(std::move(v));
     this.present = true;
   }
 };
 int main()
 {
-  Opt<UniquePtr<int>> a = makeUnique<int>(4);
-  Opt<UniquePtr<int>> b = move(a);
-  println(**&b.storage.value);
+  Opt<std::UniquePtr<int>> a = std::makeUnique<int>(4);
+  Opt<std::UniquePtr<int>> b = std::move(a);
+  std::println(**&b.storage.value);
   return 0;
 }

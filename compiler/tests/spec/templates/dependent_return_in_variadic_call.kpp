@@ -4,6 +4,6 @@ template<typename T> typename T::Unit scaled(const T& t) { return t.value * T::s
 int main()
 {
   Meters m;
-  println(scaled(m));
+  std::println(scaled(m));
   return 0;
 }

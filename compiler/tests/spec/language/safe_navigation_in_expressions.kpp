@@ -17,7 +17,7 @@ class Tag
 {
 public:
   int id = 1;
-  ~Tag() { println("tag gone"); }
+  ~Tag() { std::println("tag gone"); }
   Tag& self() { return this; }
   int get() { return this.id; }
 };
@@ -35,36 +35,36 @@ int main()
   Leaf* none = nullptr;
   Leaf*& alias = set;
   if (set?->ok())
-    println("ok");
+    std::println("ok");
   if (!none?->ok())
-    println("not ok");
-  println(alias?->value ?: 0);
-  println(none?->fixed ?: 0, " ", set?->fixed ?: 0);
-  println((none?->kind ?: Leaf::Kind::Small) == Leaf::Kind::Small, " ", (set?->kind ?: Leaf::Kind::Small) == Leaf::Kind::Big);
-  println(none?->items == nullptr, " ", set?->items != nullptr);
+    std::println("not ok");
+  std::println(alias?->value ?: 0);
+  std::println(none?->fixed ?: 0, " ", set?->fixed ?: 0);
+  std::println((none?->kind ?: Leaf::Kind::Small) == Leaf::Kind::Small, " ", (set?->kind ?: Leaf::Kind::Small) == Leaf::Kind::Big);
+  std::println(none?->items == nullptr, " ", set?->items != nullptr);
   auto copy = set?->value;
   copy = 9;
-  println(*copy, " ", leaf.value);
-  println(sizeof(set?->value), " ", sizeof(set?->kind));
+  std::println(*copy, " ", leaf.value);
+  std::println(sizeof(set?->value), " ", sizeof(set?->kind));
   int fromRef = set?->ref() ?: 0;
-  println(fromRef);
-  println(set?->add(none?->value ?: 0) ?: 0, " ", none?->add(set?->value ?: 0) ?: 0);
-  println(set?->me()?->me()?->value ?: 0);
-  println(makeTag().self().get(), " ", (&leaf)?->value ?: 0);
-  println(call(set), " ", call(none));
+  std::println(fromRef);
+  std::println(set?->add(none?->value ?: 0) ?: 0, " ", none?->add(set?->value ?: 0) ?: 0);
+  std::println(set?->me()?->me()?->value ?: 0);
+  std::println(makeTag().self().get(), " ", (&leaf)?->value ?: 0);
+  std::println(call(set), " ", call(none));
   poke(none);
-  println(pick(0, 4), " ", pick(5, 4));
-  println(choose(0), " ", choose(4));
+  std::println(pick(0, 4), " ", pick(5, 4));
+  std::println(choose(0), " ", choose(4));
   auto f = [p = set]() { return p?->value; };
-  println(f() ?: 0);
+  std::println(f() ?: 0);
   int total = 0;
   for (Leaf* p : {set, none, set})
     total += p?->value ?: 100;
-  println(total);
-  println((set?->value ?: 0) + (none?->value ?: 0) * 2);
+  std::println(total);
+  std::println((set?->value ?: 0) + (none?->value ?: 0) * 2);
   bool both = set?->ok() && none?->ok();
-  println(both);
+  std::println(both);
   int picked = set ? set?->value ?: 0 : 0;
-  println(picked);
+  std::println(picked);
   return 0;
 }

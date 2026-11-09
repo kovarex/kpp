@@ -33,7 +33,7 @@ struct Runner
       if constexpr (config::debug)
         println("inside ", agui::Widget::widgets);
     }
-    println("done");
+    std::println("done");
   }
 };
 

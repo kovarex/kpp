@@ -7,6 +7,6 @@ int main()
   int Style::*m = &Style::left;
   Style* p = &s;
   p->*m = 20;
-  println(get(s, &Style::top), " ", get(s, m));
+  std::println(get(s, &Style::top), " ", get(s, m));
   return 0;
 }

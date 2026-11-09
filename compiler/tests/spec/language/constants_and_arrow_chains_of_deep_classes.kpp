@@ -344,6 +344,6 @@ int main()
 {
   A8 x;
   auto through = x->v;
-  println(sizeof(through), " ", through + 1);
+  std::println(sizeof(through), " ", through + 1);
   return 0;
 }

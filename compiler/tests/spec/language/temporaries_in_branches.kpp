@@ -3,8 +3,8 @@
 struct Noisy
 {
   int id;
-  Noisy(int id) : id(id) { println("+", id); }
-  ~Noisy() { println("-", this.id); }
+  Noisy(int id) : id(id) { std::println("+", id); }
+  ~Noisy() { std::println("-", this.id); }
   int value() const { return this.id * 10; }
 };
 int pick(bool flag) { return flag ? Noisy(1).value() : 0; }
@@ -12,11 +12,11 @@ bool both(bool flag) { return flag && Noisy(2).value() > 5; }
 bool either(bool flag) { return flag || Noisy(3).value() > 50; }
 int main()
 {
-  println(pick(false));
-  println(pick(true));
-  println(both(false));
-  println(both(true));
-  println(either(true));
-  println(either(false));
+  std::println(pick(false));
+  std::println(pick(true));
+  std::println(both(false));
+  std::println(both(true));
+  std::println(either(true));
+  std::println(either(false));
   return 0;
 }

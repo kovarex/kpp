@@ -47,6 +47,6 @@ int main()
 {
   constexpr Box b(2, 3, 10, 3);
   constexpr Vec v = moved(Vec{5, 6});
-  println(Show<b.width()>::value, " ", Show<counted()>::value, " ", Show<v.x + v.y>::value);
+  std::println(Show<b.width()>::value, " ", Show<counted()>::value, " ", Show<v.x + v.y>::value);
   return 0;
 }

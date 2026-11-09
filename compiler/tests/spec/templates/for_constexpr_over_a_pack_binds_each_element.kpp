@@ -7,7 +7,7 @@ int count()
   int total = 0;
   for constexpr (typename E : types<Ts...>)
   {
-    static_assert(isSame<E, int>, "not int");
+    static_assert(std::isSame<E, int>, "not int");
     ++total;
   }
   return total;
@@ -17,18 +17,18 @@ int main()
   int total = 0;
   for constexpr (typename E : types<int, int>)
   {
-    static_assert(isSame<E, int>, "not int");
+    static_assert(std::isSame<E, int>, "not int");
     ++total;
   }
   for constexpr (typename E : types<Pass, int>)
   {
-    if constexpr (isSame<E, Pass>)
+    if constexpr (std::isSame<E, Pass>)
       static_assert(E::v == 1, "one");
     else
       static_assert(sizeof(E) == 4, "four");
     ++total;
   }
-  println(total);
-  println(count<int, int, int>());
+  std::println(total);
+  std::println(count<int, int, int>());
   return 0;
 }

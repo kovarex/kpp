@@ -3,9 +3,9 @@
 template<typename K, typename V>
 struct PairList
 {
-  using value_type = Pair<K, V>;
+  using value_type = std::Pair<K, V>;
   int sum = 0;
-  implicit PairList(InitializerList<value_type> data)
+  implicit PairList(std::InitializerList<value_type> data)
   {
     for (auto& [key, value] : data)
       this.sum += key * value;
@@ -13,10 +13,10 @@ struct PairList
 };
 int main()
 {
-  Vector<Pair<String, int>> items;
-  items.push_back(Pair<String, int>(String("a"), 1));
-  items.push_back(Pair<String, int>(String("b"), 2));
-  String names;
+  std::Vector<std::Pair<std::String, int>> items;
+  items.push_back(std::Pair<std::String, int>(std::String("a"), 1));
+  items.push_back(std::Pair<std::String, int>(std::String("b"), 2));
+  std::String names;
   int sum = 0;
   for (const auto& [name, count] : items)
   {
@@ -24,6 +24,6 @@ int main()
     sum += count;
   }
   PairList<int, int> list = {{2, 3}, {4, 5}};
-  println(names, " ", sum, " ", list.sum);
+  std::println(names, " ", sum, " ", list.sum);
   return 0;
 }

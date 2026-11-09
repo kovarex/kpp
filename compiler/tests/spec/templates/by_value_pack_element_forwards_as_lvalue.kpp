@@ -3,28 +3,28 @@
 class Holder
 {
 public:
-  String text;
-  Holder(const String& t) : text(t) { print("copy "); }
-  Holder(String&& t) : text(move(t)) { print("move "); }
+  std::String text;
+  Holder(const std::String& t) : text(t) { std::print("copy "); }
+  Holder(std::String&& t) : text(std::move(t)) { std::print("move "); }
 };
 template<typename... Args>
 void relayMake(Args&&... args)
 {
-  UniquePtr<Holder> h = makeUnique<Holder>(args...);
+  std::UniquePtr<Holder> h = std::makeUnique<Holder>(args...);
 }
 template<typename... Args>
 void relayByValue(Args... args)
 {
-  UniquePtr<Holder> h = makeUnique<Holder>(args...);
+  std::UniquePtr<Holder> h = std::makeUnique<Holder>(args...);
 }
 int main()
 {
-  String s = "hello";
+  std::String s = "hello";
   relayMake(s);
-  relayMake(String("temporary"));
-  String t = "world";
+  relayMake(std::String("temporary"));
+  std::String t = "world";
   relayByValue(t);
-  UniquePtr<Holder> direct = makeUnique<Holder>(s);
-  println("[", s, "] [", t, "]");
+  std::UniquePtr<Holder> direct = std::makeUnique<Holder>(s);
+  std::println("[", s, "] [", t, "]");
   return 0;
 }

@@ -13,6 +13,6 @@ int main()
   when (false) int bumped = bump();
   when (true) int counted = bump();
   if constexpr (true)
-    println("calls ", calls, " counted ", counted);
+    std::println("calls ", calls, " counted ", counted);
   return 0;
 }

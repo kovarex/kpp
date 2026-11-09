@@ -9,8 +9,8 @@ public:
 int main()
 {
   Box b;
-  println(Box().take());
-  println(move(b).take());
-  println(b.take());
+  std::println(Box().take());
+  std::println(std::move(b).take());
+  std::println(b.take());
   return 0;
 }

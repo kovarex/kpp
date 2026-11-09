@@ -4,7 +4,7 @@ extern "C" int printf(const char* format, ...);
 
 struct Evens
 {
-  Vector<int>& values;
+  std::Vector<int>& values;
 
   struct Iterator
   {
@@ -25,7 +25,7 @@ struct Evens
     bool operator==(const Iterator& other) const { return this->current == other.current; }
   };
 
-  Evens(Vector<int>& values) : values(values) {}
+  Evens(std::Vector<int>& values) : values(values) {}
   Iterator begin() { return Iterator(this->values.begin(), this->values.end()); }
   Iterator end() { return Iterator(this->values.end(), this->values.end()); }
 };
@@ -46,7 +46,7 @@ struct Countdown
 
 int main()
 {
-  Vector<int> numbers;
+  std::Vector<int> numbers;
   for (int i = 1; i <= 8; ++i)
     numbers.push_back(i);
   Evens evens(numbers);
@@ -56,7 +56,7 @@ int main()
   for (int& v : Evens(numbers))
     v *= 10;
   printf("%d %d %d %d\n", sum, numbers[1], numbers[2], numbers[7]);
-  String digits;
+  std::String digits;
   for (int v : Countdown{5})
     digits << (char)('0' + v);
   printf("%s\n", digits.c_str());

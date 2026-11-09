@@ -55,6 +55,6 @@ constexpr int e = derived();
 constexpr int p = self();
 int main()
 {
-  println(s, " ", sum(), " ", d, " ", defaults(), " ", e, " ", derived(), " ", p, " ", self());
+  std::println(s, " ", sum(), " ", d, " ", defaults(), " ", e, " ", derived(), " ", p, " ", self());
   return 0;
 }

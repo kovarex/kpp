@@ -11,20 +11,20 @@ struct BoxRef
   implicit BoxRef(Box& b) : p(&b) {}
 };
 
-int countRefs(InitializerList<BoxRef> refs) { return refs.size(); }
+int countRefs(std::InitializerList<BoxRef> refs) { return refs.size(); }
 
 template<typename T>
 T same(T value) { return value; }
 
 template<typename T>
-int countOf(InitializerList<T> list) { return int(list.size()) * 10 + int(isConst<T>); }
+int countOf(std::InitializerList<T> list) { return int(list.size()) * 10 + int(std::isConst<T>); }
 
 int main()
 {
   Box a{1};
   Box b{2};
-  println(same(countRefs({a, b})));
+  std::println(same(countRefs({a, b})));
   const Box c{3};
-  println(countOf({c, c, c}));
+  std::println(countOf({c, c, c}));
   return 0;
 }

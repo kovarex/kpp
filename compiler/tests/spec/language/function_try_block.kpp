@@ -5,14 +5,14 @@ struct Parser
   int parse(int x) try { if (x < 0) throw x; return this.base + x; } catch (int e) { return this.base - e; }
 };
 int twice(int x) try { if (x > 5) throw 1.5; return x * 2; } catch (double) { return -1; } catch (...) { return -2; }
-void note(int x) try { if (x) throw x; println("no throw"); } catch (int e) { println("caught ", e); }
+void note(int x) try { if (x) throw x; std::println("no throw"); } catch (int e) { std::println("caught ", e); }
 int passOn(int x) try { throw x; } catch (double) { return 0; }
 int main()
 {
   Parser p;
   note(0);
   note(4);
-  try { passOn(7); } catch (int e) { println("left ", e); }
-  println(p.parse(3), " ", p.parse(-4), " ", twice(2), " ", twice(9));
+  try { passOn(7); } catch (int e) { std::println("left ", e); }
+  std::println(p.parse(3), " ", p.parse(-4), " ", twice(2), " ", twice(9));
   return 0;
 }

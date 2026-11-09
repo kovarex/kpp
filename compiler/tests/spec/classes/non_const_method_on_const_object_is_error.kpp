@@ -25,6 +25,6 @@ int main()
   fixed = b;
   ++fixed;
   fixed += 2;
-  println(cb.get(), " ", fixed.get());
+  std::println(cb.get(), " ", fixed.get());
   return 0;
 }

@@ -8,7 +8,7 @@
 // error: when_false_name_hides_outer_names.kpp:32: error: 'size' exists only when config::debug holds: use it inside `if constexpr (config::debug)` or a `when` on it
 int tally = 100;
 struct Info { int v = 1; };
-void note(long n) { println("outer ", n); }
+void note(long n) { std::println("outer ", n); }
 struct Base { int size = 1; };
 
 namespace game
@@ -29,6 +29,6 @@ struct Box : Base
 int main()
 {
   Box b;
-  println(game::read(), " ", game::run(), " ", b.get(), " ", b.size);
+  std::println(game::read(), " ", game::run(), " ", b.get(), " ", b.size);
   return 0;
 }

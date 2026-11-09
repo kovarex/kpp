@@ -1,8 +1,8 @@
 // spec: Endian (std::endian): little, big and native, native being little on every target kpp builds for; usable in a static_assert
 // factorio: Serialiser.cpp's `static_assert(std::endian::native == std::endian::little, "Serialisation requires little endianness.")` (4c178a5b915)
-static_assert(Endian::native == Endian::little, "little endian");
+static_assert(std::Endian::native == std::Endian::little, "little endian");
 int main()
 {
-  println(Endian::native == Endian::little, " ", Endian::native != Endian::big);
+  std::println(std::Endian::native == std::Endian::little, " ", std::Endian::native != std::Endian::big);
   return 0;
 }

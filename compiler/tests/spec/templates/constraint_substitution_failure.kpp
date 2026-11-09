@@ -1,18 +1,18 @@
 // spec: a constraint whose trait arguments do not form for the deduced arguments (`decltype(declval<T>().str())` for a T without str()) is not satisfied, as C++ has it (a substitution failure), and `isInvocable<P, int>` is false for a pointer to data; in both cases the next overload is taken
 // found in the game's toStr (`requires (isSame<RemoveConst<RemoveReference<decltype(declval<T>().str())>>, String> || ...)`) and EntitySearch's predicate constructor (`requires isInvocable<PredicateType, EntityT*>` given a LatencyState*), which the checker could not evaluate
 struct Base {};
-struct WithStr : Base { String str() const { return "with"; } };
+struct WithStr : Base { std::String str() const { return "with"; } };
 struct Plain : Base {};
-template<class T> requires ((isSame<RemoveConst<RemoveReference<decltype(declval<T>().str())>>, String>) && isClass<T>)
+template<class T> requires ((std::isSame<std::RemoveConst<std::RemoveReference<decltype(std::declval<T>().str())>>, std::String>) && std::isClass<T>)
 const char* describe(const T& value) { return "str"; }
 const char* describe(const Base& value) { return "base"; }
-template<class P> requires isInvocable<P, int>
+template<class P> requires std::isInvocable<P, int>
 const char* call(P p) { return "callable"; }
 const char* call(const int* p) { return "not callable"; }
 int f(int x) { return x; }
 int main()
 {
   int data = 0;
-  println(StringView(describe(WithStr())), " ", StringView(describe(Plain())), " ", StringView(call(&f)), " ", StringView(call(&data)));
+  std::println(std::StringView(describe(WithStr())), " ", std::StringView(describe(Plain())), " ", std::StringView(call(&f)), " ", std::StringView(call(&data)));
   return 0;
 }

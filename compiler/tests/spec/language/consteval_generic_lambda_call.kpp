@@ -15,7 +15,7 @@ constexpr long long references()
   auto bump = [](auto& v) { v = v * 10; };
   bump(x);
   auto size = [](const auto& s) { return (long long)s.size(); };
-  String text = "abc";
+  std::String text = "abc";
   return x * 10 + size(text);
 }
 constexpr long long captures()
@@ -30,6 +30,6 @@ int main()
   constexpr long long a = twoTypes();
   constexpr long long b = references();
   constexpr long long c = captures();
-  println(a, " ", twoTypes(), " ", b, " ", references(), " ", c, " ", captures());
+  std::println(a, " ", twoTypes(), " ", b, " ", references(), " ", c, " ", captures());
   return 0;
 }

@@ -43,6 +43,6 @@ int main()
   take(); int m2 = leftBoxPointer()->*member(); m2 = order;
   take(); int c1 = callee()(right()); c1 = order;
   take(); int c2 = leftBox().get(right()); c2 = order;
-  println(a1, " ", a2, " ", a3, " ", a4, " ", a5, " | ", s1, " ", s2, " | ", h1, " ", h2, " ", h3, " | ", m1, " ", m2, " | ", c1, " ", c2);
+  std::println(a1, " ", a2, " ", a3, " ", a4, " ", a5, " | ", s1, " ", s2, " | ", h1, " ", h2, " ", h3, " | ", m1, " ", m2, " | ", c1, " ", c2);
   return 0;
 }

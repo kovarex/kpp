@@ -13,7 +13,7 @@ struct Vec2D : public Vec2<double, Vec2D>
   using Vec2::Vec2;
   using Vec2::save;
   void save(Tree& output) const { output.n += 10; }
-  void save(Tree& output, const String& key) const { output.n += int(key.size()); }
+  void save(Tree& output, const std::String& key) const { output.n += int(key.size()); }
   void saveBoth(Tree& t, Serialiser& s) const
   {
     this.save(t);
@@ -39,6 +39,6 @@ int main()
   Tree t2;
   Serialiser s2;
   spec.center.saveBoth(t2, s2);
-  println(t.n, " ", s.n, " ", t2.n, " ", s2.n);
+  std::println(t.n, " ", s.n, " ", t2.n, " ", s2.n);
   return 0;
 }

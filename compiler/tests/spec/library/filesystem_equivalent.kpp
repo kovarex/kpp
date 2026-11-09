@@ -2,32 +2,32 @@
 // factorio: the debug adapter's BreakpointSource::isSameSource since Factorio df1c9d1cd3c, `Filesystem::equivalent(other.path, this->path, ec)`
 int main()
 {
-  filesystem::path dir = filesystem::temp_directory_path() / "kpp-spec-equivalent";
-  filesystem::create_directories(dir / "sub");
+  std::filesystem::path dir = std::filesystem::temp_directory_path() / "kpp-spec-equivalent";
+  std::filesystem::create_directories(dir / "sub");
   {
-    OutFileStream out((dir / "a.txt").string());
+    std::OutFileStream out((dir / "a.txt").string());
     out << "a";
   }
   {
-    OutFileStream out((dir / "b.txt").string());
+    std::OutFileStream out((dir / "b.txt").string());
     out << "b";
   }
-  ErrorCode ec;
-  bool same = filesystem::equivalent(dir / "a.txt", dir / "sub" / ".." / "a.txt", ec);
-  bool other = filesystem::equivalent(dir / "a.txt", dir / "b.txt", ec);
-  bool directory = filesystem::equivalent(dir / "sub", dir / "sub" / ".", ec);
-  bool missing = filesystem::equivalent(dir / "a.txt", dir / "none.txt", ec);
+  std::ErrorCode ec;
+  bool same = std::filesystem::equivalent(dir / "a.txt", dir / "sub" / ".." / "a.txt", ec);
+  bool other = std::filesystem::equivalent(dir / "a.txt", dir / "b.txt", ec);
+  bool directory = std::filesystem::equivalent(dir / "sub", dir / "sub" / ".", ec);
+  bool missing = std::filesystem::equivalent(dir / "a.txt", dir / "none.txt", ec);
   bool reported = (bool)ec;
   bool thrown = false;
   try
   {
-    filesystem::equivalent(dir / "none.txt", dir / "a.txt");
+    std::filesystem::equivalent(dir / "none.txt", dir / "a.txt");
   }
-  catch (const filesystem::filesystem_error&)
+  catch (const std::filesystem::filesystem_error&)
   {
     thrown = true;
   }
-  filesystem::remove_all(dir);
-  println(same, " ", other, " ", directory, " ", missing, " ", reported, " ", thrown);
+  std::filesystem::remove_all(dir);
+  std::println(same, " ", other, " ", directory, " ", missing, " ", reported, " ", thrown);
   return 0;
 }

@@ -13,6 +13,6 @@ int main()
   Derived derived;
   Derived* dp = &derived;
   Base* bp = &derived;
-  println(f(dp), " ", g(bp), " ", h(bp));
+  std::println(f(dp), " ", g(bp), " ", h(bp));
   return 0;
 }

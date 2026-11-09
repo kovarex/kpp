@@ -3,16 +3,16 @@
 extern "C" import "stdio.h";
 struct Dep
 {
-  String name;
-  Vector<String> configs;
-  Dep& config(StringView n)
+  std::String name;
+  std::Vector<std::String> configs;
+  Dep& config(std::StringView n)
   {
-    String s = n;
+    std::String s = n;
     this.configs.push_back(s);
     return this;
   }
 };
-Dep& add(Deque<Dep>& to, StringView name)
+Dep& add(std::Deque<Dep>& to, std::StringView name)
 {
   Dep& d = to.emplace_back();
   d.name = name;
@@ -20,8 +20,8 @@ Dep& add(Deque<Dep>& to, StringView name)
 }
 struct Uses
 {
-  Deque<Dep> uses;
-  Dep& use(StringView name) { return add(this.uses, name); }
+  std::Deque<Dep> uses;
+  Dep& use(std::StringView name) { return add(this.uses, name); }
 };
 int chained()
 {

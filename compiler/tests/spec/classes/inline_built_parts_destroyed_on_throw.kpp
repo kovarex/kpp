@@ -5,12 +5,12 @@ class M
 {
 public:
   int id;
-  M() : id(++counter) { if (this.id == 2) throw RuntimeError("second"); print("M", this.id, " "); }
-  M(int i) : id(i) { print("M", this.id, " "); }
-  M(const M& o) : id(o.id + 10) { if (o.id == 22) throw RuntimeError("copy"); print("M", this.id, "c "); }
-  ~M() { print("~M", this.id, " "); }
+  M() : id(++counter) { if (this.id == 2) throw std::RuntimeError("second"); std::print("M", this.id, " "); }
+  M(int i) : id(i) { std::print("M", this.id, " "); }
+  M(const M& o) : id(o.id + 10) { if (o.id == 22) throw std::RuntimeError("copy"); std::print("M", this.id, "c "); }
+  ~M() { std::print("~M", this.id, " "); }
 };
-int fail(int x) { if (x > 0) throw RuntimeError("no"); return x; }
+int fail(int x) { if (x > 0) throw std::RuntimeError("no"); return x; }
 struct Couple
 {
   M first;
@@ -24,17 +24,17 @@ public:
 };
 int main()
 {
-  try { M arr[3]; } catch (...) { println("| array"); }
-  try { Couple p{M(5), M(fail(1))}; } catch (...) { println("| aggregate"); }
+  try { M arr[3]; } catch (...) { std::println("| array"); }
+  try { Couple p{M(5), M(fail(1))}; } catch (...) { std::println("| aggregate"); }
   Holder h;
-  println("| made");
-  try { Holder copy(h); } catch (...) { println("| copy"); }
+  std::println("| made");
+  try { Holder copy(h); } catch (...) { std::println("| copy"); }
   try
   {
     M one(31);
     M two(22);
     auto f = [one, two]() { return one.id + two.id; };
   }
-  catch (...) { println("| lambda"); }
+  catch (...) { std::println("| lambda"); }
   return 0;
 }

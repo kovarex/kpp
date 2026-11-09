@@ -22,7 +22,7 @@ int castTo(Base& object)
     Derived& d = dynamic_cast<Derived&>(object);
     return d.b;
   }
-  catch (const BadCast&)
+  catch (const std::BadCast&)
   {
     return -1;
   }
@@ -37,7 +37,7 @@ int main()
   {
     printf("%d\n", typeid(*nothing) == typeid(Base));
   }
-  catch (const BadTypeid&)
+  catch (const std::BadTypeid&)
   {
     printf("bad typeid\n");
   }
@@ -45,7 +45,7 @@ int main()
   {
     printf("%d\n", typeid((*nothing)) == typeid(Base));
   }
-  catch (const Exception&)
+  catch (const std::Exception&)
   {
     printf("an exception\n");
   }
@@ -64,7 +64,7 @@ int main()
     {
       dynamic_cast<Other&>(reference);
     }
-    catch (const Exception&)
+    catch (const std::Exception&)
     {
       printf("inside a handler\n");
     }

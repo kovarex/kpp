@@ -14,13 +14,13 @@ struct S
 template<class T>
 struct Box
 {
-  static_assert(!isPointer<T>, "no pointers in a Box");
+  static_assert(!std::isPointer<T>, "no pointers in a Box");
   T value{};
 };
 template<class T>
 int describe()
 {
-  if constexpr (isIntegral<T>)
+  if constexpr (std::isIntegral<T>)
     return 1;
   else
     static_assert(sizeof(T) == 0, "describe needs a number");
@@ -31,6 +31,6 @@ int main()
   static_assert(false, "in a function");
   static_assert(counter == 3, "a variable");
   Box<int*> b;
-  println(describe<float>());
+  std::println(describe<float>());
   return 0;
 }

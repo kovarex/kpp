@@ -13,6 +13,6 @@ int main()
   const Box box;
   auto read = [&]() { return ~box; };
   int v = read();
-  println(v, " ", box.mutableCalls, " ", box.constCalls);
+  std::println(v, " ", box.mutableCalls, " ", box.constCalls);
   return 0;
 }

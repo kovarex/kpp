@@ -3,16 +3,16 @@ enum class Dir : uint8_t
 {
   { A, B, C }
 };
-template<typename E> String joined()
+template<typename E> std::String joined()
 {
-  String all;
+  std::String all;
   for (E v : E::values)
-    all << StringView(v.str());
+    all << std::StringView(v.str());
   return all;
 }
 template<typename E> int countOf() { return E::count; }
 int main()
 {
-  println(joined<Dir>(), " ", countOf<Dir>());
+  std::println(joined<Dir>(), " ", countOf<Dir>());
   return 0;
 }

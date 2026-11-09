@@ -4,21 +4,21 @@
 // a type of its own (CommonUtil's Checks). find_first_not_of takes where to start, as C++'s pos.
 i32 main()
 {
-  String s = "VmPeak: 1234 kB";
-  print(s.compare(0, 7, "VmPeak:") == 0, " ", s.compare(0, 6, "VmPeak:") < 0, " ", s.compare(8, 100, "1234 kB") == 0, "\n");
+  std::String s = "VmPeak: 1234 kB";
+  std::print(s.compare(0, 7, "VmPeak:") == 0, " ", s.compare(0, 6, "VmPeak:") < 0, " ", s.compare(8, 100, "1234 kB") == 0, "\n");
   bool thrown = false;
   try
   {
     s.compare(100, 1, "x");
   }
-  catch (const OutOfRange&)
+  catch (const std::OutOfRange&)
   {
     thrown = true;
   }
-  print(thrown, "\n");
-  String line = "NAME=  Debian";
-  print(line.find_first_not_of(" \t", 5), " ", line.find_first_not_of(' ', 6), " ", line.find_first_not_of(String("NAME="), 0), "\n");
-  MakeUnsigned<long> u = 3;
-  print(isSame<MakeUnsigned<long>, unsigned long>, " ", isSame<MakeUnsigned<unsigned long>, unsigned long>, " ", u, "\n");
+  std::print(thrown, "\n");
+  std::String line = "NAME=  Debian";
+  std::print(line.find_first_not_of(" \t", 5), " ", line.find_first_not_of(' ', 6), " ", line.find_first_not_of(std::String("NAME="), 0), "\n");
+  std::MakeUnsigned<long> u = 3;
+  std::print(std::isSame<std::MakeUnsigned<long>, unsigned long>, " ", std::isSame<std::MakeUnsigned<unsigned long>, unsigned long>, " ", u, "\n");
   return 0;
 }

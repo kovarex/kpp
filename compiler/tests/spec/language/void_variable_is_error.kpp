@@ -12,6 +12,6 @@ int main()
 {
   auto local = (void)0;
   touch();
-  println(1);
+  std::println(1);
   return 0;
 }

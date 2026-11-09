@@ -1,22 +1,22 @@
 // spec: the free begin, end, cbegin, cend, rbegin, size, ssize, empty and data of a container (std::begin and friends), also inside a template
 // factorio: std::begin/std::end in CommonUtil's appendVector helpers and cxxopts' format_description, std::rbegin in the reverse wrappers, std::size in LuaHelper
 template<typename Container>
-void appendAll(Container& target, const Container& more) { target.insert(end(target), begin(more), end(more)); }
+void appendAll(Container& target, const Container& more) { target.insert(std::end(target), std::begin(more), std::end(more)); }
 int main()
 {
-  Vector<int> v = {1, 2, 3};
-  const Vector<int>& cv = v;
-  String text("abc");
-  auto current = begin(text);
+  std::Vector<int> v = {1, 2, 3};
+  const std::Vector<int>& cv = v;
+  std::String text("abc");
+  auto current = std::begin(text);
   int sum = 0;
-  for (auto it = begin(v); it != end(v); ++it)
+  for (auto it = std::begin(v); it != std::end(v); ++it)
     sum += *it;
   int csum = 0;
-  for (auto it = cbegin(cv); it != cend(cv); ++it)
+  for (auto it = std::cbegin(cv); it != std::cend(cv); ++it)
     csum += *it;
-  Map<int, int> m = {{1, 10}, {2, 20}};
-  Vector<int> more = {4, 5};
+  std::Map<int, int> m = {{1, 10}, {2, 20}};
+  std::Vector<int> more = {4, 5};
   appendAll(v, more);
-  println(sum, " ", csum, " ", *current, " ", size(v), " ", ssize(text), " ", empty(m), " ", *data(v), " ", rbegin(m)->first, " ", *rbegin(v));
+  std::println(sum, " ", csum, " ", *current, " ", std::size(v), " ", std::ssize(text), " ", std::empty(m), " ", *std::data(v), " ", std::rbegin(m)->first, " ", *std::rbegin(v));
   return 0;
 }

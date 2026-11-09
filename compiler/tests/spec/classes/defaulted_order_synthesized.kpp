@@ -26,7 +26,7 @@ struct Key
   Index index;
   Digest digest;
   uint64_t mask[2] = {};
-  strong_ordering operator<=>(const Key&) const = default;
+  std::strong_ordering operator<=>(const Key&) const = default;
 };
 int main()
 {
@@ -38,6 +38,6 @@ int main()
   d.digest.bytes[0] = 5;
   Key e = a;
   e.index.index = 9;
-  println(a < b, " ", b < a, " ", a == a, " ", a == b, " ", c > b, " ", d < e);
+  std::println(a < b, " ", b < a, " ", a == a, " ", a == b, " ", c > b, " ", d < e);
   return 0;
 }

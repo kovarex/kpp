@@ -24,7 +24,7 @@ int fromHere()
 }
 int main()
 {
-  println(fromHere(), " ", fromThere());
-  println(withHelper(100), " ", viaOther());
+  std::println(fromHere(), " ", fromThere());
+  std::println(withHelper(100), " ", viaOther());
   return 0;
 }

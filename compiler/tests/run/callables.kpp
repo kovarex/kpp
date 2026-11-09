@@ -30,9 +30,9 @@ public:
 };
 struct Slider
 {
-  Vector<Function<void(double)>> moves;
-  void onMove(Function<void(double)> callback) { this->moves.push_back(move(callback)); }
-  void onMove(Function<void()> callback) { this->onMove([callback = move(callback)](double) { callback(); }); }
+  std::Vector<std::Function<void(double)>> moves;
+  void onMove(std::Function<void(double)> callback) { this->moves.push_back(std::move(callback)); }
+  void onMove(std::Function<void()> callback) { this->onMove([callback = std::move(callback)](double) { callback(); }); }
 };
 int main()
 {
@@ -46,7 +46,7 @@ int main()
   int n = 0;
   s.onMove([&n]() { n += 1; });
   s.onMove([&n](double v) { n += int(v); });
-  for (Function<void(double)>& f : s.moves)
+  for (std::Function<void(double)>& f : s.moves)
     f(10.0);
   printf("%d %d %zu\n", impl.calls, n, s.moves.size());
   return 0;

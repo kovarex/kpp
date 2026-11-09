@@ -15,28 +15,28 @@ public:
 int main()
 {
   {
-    SharedFuture<int> shared(async([]() -> int { throw Failure(7); }));
+    std::SharedFuture<int> shared(std::async([]() -> int { throw Failure(7); }));
     for (int i = 0; i < 3; ++i)
     {
       try { shared.get(); }
-      catch (const Failure& f) { println("caught ", f.code); }
+      catch (const Failure& f) { std::println("caught ", f.code); }
     }
   }
-  ExceptionPtr kept;
+  std::ExceptionPtr kept;
   try { throw Failure(9); }
-  catch (...) { kept = currentException(); }
-  println("outside ", made - destroyed);
-  try { rethrowException(kept); }
-  catch (Failure& f) { println("again ", f.code); }
+  catch (...) { kept = std::currentException(); }
+  std::println("outside ", made - destroyed);
+  try { std::rethrowException(kept); }
+  catch (Failure& f) { std::println("again ", f.code); }
   kept = nullptr;
-  ExceptionPtr none = currentException();
-  println(made - destroyed, " ", (bool)none);
+  std::ExceptionPtr none = std::currentException();
+  std::println(made - destroyed, " ", (bool)none);
   try { throw 5; }
   catch (int v)
   {
-    ExceptionPtr inner = currentException();
-    try { rethrowException(inner); }
-    catch (int w) { println("int ", v, " ", w); }
+    std::ExceptionPtr inner = std::currentException();
+    try { std::rethrowException(inner); }
+    catch (int w) { std::println("int ", v, " ", w); }
   }
   return 0;
 }

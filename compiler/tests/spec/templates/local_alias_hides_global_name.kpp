@@ -21,11 +21,11 @@ int main()
   using List = TypeList<int, Small, Large>;
   int calls = 0;
   List::forEach([&](auto value) { calls += int(sizeof(value)); });
-  println(calls, " ", List::totalSize());
+  std::println(calls, " ", List::totalSize());
   {
     using List = TypeList<Small>;
-    println(List::totalSize());
+    std::println(List::totalSize());
   }
-  println(List::totalSize());
+  std::println(List::totalSize());
   return 0;
 }

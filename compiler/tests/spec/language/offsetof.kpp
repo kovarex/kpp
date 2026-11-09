@@ -26,6 +26,6 @@ int main()
   State* l = &block.l;
   LX* back = (LX*)((char*)l - offsetof(LX, l));
   const int maxalign = int(offsetof(struct cD, u));
-  println(int(offsetof(LX, l)), " ", back == &block, " ", maxalign);
+  std::println(int(offsetof(LX, l)), " ", back == &block, " ", maxalign);
   return 0;
 }

@@ -6,8 +6,8 @@ int main()
   unsigned i = 0x300u;
   bool less = b < ((i >> 8) & 3);
   if (b < (((int)(((i) >> 8) & 3))))
-    println(less, " less");
+    std::println(less, " less");
   else
-    println(less, " not less");
+    std::println(less, " not less");
   return 0;
 }

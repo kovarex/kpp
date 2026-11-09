@@ -3,8 +3,8 @@
 template<typename... Args>
 struct Sig
 {
-  Vector<Function<void(Args...)>> handlers;
-  void connect(Function<void(Args...)> f) { this.handlers.push_back(move(f)); }
+  std::Vector<std::Function<void(Args...)>> handlers;
+  void connect(std::Function<void(Args...)> f) { this.handlers.push_back(std::move(f)); }
   void operator()(Args... args) { for (auto& f : this.handlers) f(args...); }
 };
 struct Holder
@@ -15,8 +15,8 @@ struct Holder
 int main()
 {
   Holder h;
-  h.changed.connect([]() { println("changed"); });
-  h.valued.connect([](int v) { println("value ", v); });
+  h.changed.connect([]() { std::println("changed"); });
+  h.valued.connect([](int v) { std::println("value ", v); });
   h.changed();
   h.valued(4);
   return 0;

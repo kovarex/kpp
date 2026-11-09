@@ -16,7 +16,7 @@ int main()
 {
   A runtime = A{1} + 1.5;
   A member = A{1} * 3;
-  println(made.v, " ", runtime.v);
-  println(tied.v, " ", member.v);
+  std::println(made.v, " ", runtime.v);
+  std::println(tied.v, " ", member.v);
   return 0;
 }

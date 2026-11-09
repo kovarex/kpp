@@ -13,11 +13,11 @@ union enum State
   { {Walking, Walk}, {Resting, Rest} }
 };
 static constexpr size_t RestIndex = 1;
-static_assert(isSame<VariantAlternative<0, State>, Walking>);
-static_assert(isSame<VariantAlternative<RestIndex, State>, Resting>);
+static_assert(std::isSame<std::VariantAlternative<0, State>, Walking>);
+static_assert(std::isSame<std::VariantAlternative<RestIndex, State>, Resting>);
 int main()
 {
-  VariantAlternative<0, State> w;
-  println(w.speed, " ", sizeof(VariantAlternative<1, State>));
+  std::VariantAlternative<0, State> w;
+  std::println(w.speed, " ", sizeof(std::VariantAlternative<1, State>));
   return 0;
 }

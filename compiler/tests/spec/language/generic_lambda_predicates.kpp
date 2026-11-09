@@ -5,7 +5,7 @@ struct Table
   int base = 3;
   int run()
   {
-    Vector<int> memo(4);
+    std::Vector<int> memo(4);
     auto rowBottom = [&](uint32_t i) -> int { return this.base + int(i) + memo[i]; };
     auto findFirstRow = [](uint32_t lower, uint32_t upper, auto predicate) -> uint32_t
     {
@@ -27,6 +27,6 @@ struct Table
 int main()
 {
   Table t;
-  println(t.run());
+  std::println(t.run());
   return 0;
 }

@@ -30,24 +30,24 @@ struct MoveOnly
 template<typename T>
 void grow(const char* name)
 {
-  Vector<T> values;
+  std::Vector<T> values;
   values.reserve(3);
   for (int i = 0; i < 3; ++i)
     values.emplace_back(i);
   copies = 0;
   moves = 0;
   values.reserve(100);
-  println(StringView(name), ": ", copies, " copies, ", moves, " moves, ", values[0].v, " ", values[2].v);
+  std::println(std::StringView(name), ": ", copies, " copies, ", moves, " moves, ", values[0].v, " ", values[2].v);
   // An insert before the end that grows the block moves the elements whatever their move (MSVC's
   // std::vector: the standard guarantees nothing there).
   copies = 0;
-  Vector<T> full;
+  std::Vector<T> full;
   full.reserve(2);
   full.emplace_back(1);
   full.emplace_back(2);
   copies = 0;
   full.emplace(full.begin(), 0);
-  println(StringView(name), " inserted before: ", copies, " copies, ", full[0].v, " ", full[1].v, " ", full[2].v);
+  std::println(std::StringView(name), " inserted before: ", copies, " copies, ", full[0].v, " ", full[1].v, " ", full[2].v);
 }
 
 int main()

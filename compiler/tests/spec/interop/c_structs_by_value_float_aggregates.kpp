@@ -17,17 +17,17 @@ extern "C" D3 kppD3(D3 v) { return D3{v.c, v.b, v.a}; }
 int main()
 {
   F4 f4 = specF4(F4{1, 2, 3, 4});
-  println(f4.a, " ", f4.b, " ", f4.c, " ", f4.d);
+  std::println(f4.a, " ", f4.b, " ", f4.c, " ", f4.d);
   D3 d3 = specD3(D3{1, 2, 4});
-  println(d3.a, " ", d3.b, " ", d3.c);
+  std::println(d3.a, " ", d3.b, " ", d3.c);
   F5 f5 = specF5(F5{{1, 2, 3, 4, 5}});
-  println(f5.a[0], " ", f5.a[1], " ", f5.a[2], " ", f5.a[3], " ", f5.a[4]);
+  std::println(f5.a[0], " ", f5.a[1], " ", f5.a[2], " ", f5.a[3], " ", f5.a[4]);
   U1 u;
   u.f = 2;
-  println(specU1(u).f);
+  std::println(specU1(u).f);
   A16 a = specA16(A16{5, 7});
-  println(a.a, " ", a.b);
-  println(specManyF2(F2{1, 9}, F2{9, 2}, F2{3, 9}, F2{9, 4}, F2{5, 6}, 7));
-  println(specCallsBack());
+  std::println(a.a, " ", a.b);
+  std::println(specManyF2(F2{1, 9}, F2{9, 2}, F2{3, 9}, F2{9, 4}, F2{5, 6}, 7));
+  std::println(specCallsBack());
   return 0;
 }

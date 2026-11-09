@@ -3,6 +3,6 @@ enum class Mode { Fast, Safe };
 template<Mode M> const char* modeName() { return M == Mode::Fast ? "fast" : "safe"; }
 int main()
 {
-  println(StringView(modeName<Mode::Fast>()), " ", StringView(modeName<Mode::Safe>()));
+  std::println(std::StringView(modeName<Mode::Fast>()), " ", std::StringView(modeName<Mode::Safe>()));
   return 0;
 }

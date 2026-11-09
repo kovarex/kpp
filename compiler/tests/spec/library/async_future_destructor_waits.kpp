@@ -3,10 +3,10 @@
 extern "C" import "stdio.h";
 int main()
 {
-  Atomic<int> finished(0);
+  std::Atomic<int> finished(0);
   {
-    Future<void> waited = async([&]() {
-      thisThread::sleep_for(Milliseconds(100));
+    std::Future<void> waited = std::async([&]() {
+      std::thisThread::sleep_for(std::Milliseconds(100));
       finished.store(1);
     });
   }

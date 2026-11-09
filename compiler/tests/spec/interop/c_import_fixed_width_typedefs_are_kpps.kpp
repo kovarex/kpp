@@ -12,13 +12,13 @@ int main()
   u64 f = 6;
   i64 g = 7;
   long h = 8;
-  println(add_int64(&a, 2), " ", add_uint64(&b, 3), " ", add_size(&c, 4), " ", add_ptrdiff(&d, 5), " ", add_intptr(&e, 6), " ",
+  std::println(add_int64(&a, 2), " ", add_uint64(&b, 3), " ", add_size(&c, 4), " ", add_ptrdiff(&d, 5), " ", add_intptr(&e, 6), " ",
           add_uintptr(&f, 7), " ", add_count(&g, 8), " ", add_long(&h, 9));
   // kpp's int64_t and size_t keep their meaning where stdint.h is imported: i64 and usize.
   int64_t viaName = a;
   i64* same = &viaName;
   size_t size = c;
   usize* sameSize = &size;
-  println(*same, " ", *sameSize, " ", sizeof(int64_t), " ", sizeof(spec_count), " ", fast_bytes() == sizeof(int_fast32_t));
+  std::println(*same, " ", *sameSize, " ", sizeof(int64_t), " ", sizeof(spec_count), " ", fast_bytes() == sizeof(int_fast32_t));
   return 0;
 }

@@ -11,13 +11,13 @@ struct Plain
 template<typename T>
 const char* kind()
 {
-  if constexpr (isTypedUnion<T>)
+  if constexpr (std::isTypedUnion<T>)
     return "union";
   else
     return "other";
 }
 int main()
 {
-  println(isTypedUnion<Shape>, " ", isTypedUnion<Plain>, " ", isTypedUnion<int>, " ", StringView(kind<Shape>()), " ", StringView(kind<Plain>()));
+  std::println(std::isTypedUnion<Shape>, " ", std::isTypedUnion<Plain>, " ", std::isTypedUnion<int>, " ", std::StringView(kind<Shape>()), " ", std::StringView(kind<Plain>()));
   return 0;
 }

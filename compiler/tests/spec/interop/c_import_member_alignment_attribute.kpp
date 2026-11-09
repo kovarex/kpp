@@ -9,6 +9,6 @@ int main()
   a.block[0] = 20;
   a.block[7] = 300;
   a.tail = 4000;
-  println(sizeof(AlignedTail), " ", alignof(AlignedTail), " ", c_layout(0), " ", c_layout(1), " ", c_layout(2), " ", c_layout(3), " ", c_sum(&a));
+  std::println(sizeof(AlignedTail), " ", alignof(AlignedTail), " ", c_layout(0), " ", c_layout(1), " ", c_layout(2), " ", c_layout(3), " ", c_sum(&a));
   return 0;
 }

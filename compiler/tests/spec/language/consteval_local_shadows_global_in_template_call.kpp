@@ -7,7 +7,7 @@ template<class T> constexpr T twice(T t) { return t + t; }
 constexpr int local() { long long g2 = 3; return sizeOf(g2); }
 constexpr long long doubled() { long long g2 = 3000000000; return twice(g2); }
 constexpr int parameter(long long g2) { return sizeOf(g2); }
-constexpr int tuple() { Tuple<int, char> t2(3, 'a'); return get<0>(t2); }
+constexpr int tuple() { std::Tuple<int, char> t2(3, 'a'); return std::get<0>(t2); }
 constexpr int lv = local();
 constexpr long long dv = doubled();
 constexpr int pv = parameter(1);
@@ -15,6 +15,6 @@ constexpr int tv = tuple();
 
 int main()
 {
-  println(lv, " ", dv, " ", pv, " ", tv, " ", local(), " ", doubled(), " ", parameter(1), " ", tuple());
+  std::println(lv, " ", dv, " ", pv, " ", tv, " ", local(), " ", doubled(), " ", parameter(1), " ", tuple());
   return 0;
 }

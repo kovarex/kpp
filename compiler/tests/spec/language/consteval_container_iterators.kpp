@@ -1,9 +1,9 @@
 // spec: a range-for at compile time over a library container whose iterators are objects (Deque) runs its begin(), end(), !=, * and ++ as the program does, also writing through `auto&`; a member object called (Hash's operator()) works too; each constant equals what the program computes (`2010 4`); List, ForwardList, Set and FastMap are language/consteval_node_containers's (pending)
 // factorio: build.kpp (design.md 12): projectlib's describe() walks Project's containers
 extern "C" import "stdio.h";
-constexpr int deque() { Deque<int> d; d.push_back(1); d.push_front(2); for (int& v : d) v *= 10; int t = 0; for (int v : d) t = t * 100 + v; return t; }
-struct Hashing { Hash<int> hasher; constexpr int low() const { return (int)(this.hasher(5) & 3); } };
-constexpr int hashed() { Hashing h; return h.low() == (int)(hashOf(5) & 3) ? 4 : 0; }
+constexpr int deque() { std::Deque<int> d; d.push_back(1); d.push_front(2); for (int& v : d) v *= 10; int t = 0; for (int v : d) t = t * 100 + v; return t; }
+struct Hashing { std::Hash<int> hasher; constexpr int low() const { return (int)(this.hasher(5) & 3); } };
+constexpr int hashed() { Hashing h; return h.low() == (int)(std::hashOf(5) & 3) ? 4 : 0; }
 constexpr int results[] = {deque(), hashed()};
 int main()
 {

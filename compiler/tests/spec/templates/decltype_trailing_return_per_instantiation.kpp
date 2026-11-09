@@ -22,8 +22,8 @@ int main()
   int s = call(seven);
   auto sum = add(short(1), short(2));
   auto mixed = add(1, 0.5);
-  Vector<int> v = {4, 5};
+  std::Vector<int> v = {4, 5};
   firstOf(v) = 9;
-  println(d, " ", s, " ", sizeof(sum), " ", mixed, " ", v[0], " ", sizeof(call([]() -> char { return 'x'; })));
+  std::println(d, " ", s, " ", sizeof(sum), " ", mixed, " ", v[0], " ", sizeof(call([]() -> char { return 'x'; })));
   return 0;
 }

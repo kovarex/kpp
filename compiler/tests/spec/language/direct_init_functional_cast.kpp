@@ -6,6 +6,6 @@ const int SMALL{int(3.7)};
 int main()
 {
   ID local(ID(5));
-  println(EMPTY, " ", SMALL, " ", local);
+  std::println(EMPTY, " ", SMALL, " ", local);
   return 0;
 }

@@ -4,12 +4,12 @@ template<typename T>
 struct Bits
 {
   static constexpr int count = int(sizeof(T)) * 8;
-  static constexpr int valueBits = isSigned<T> ? This::count - 1 : This::count;
+  static constexpr int valueBits = std::isSigned<T> ? This::count - 1 : This::count;
 };
 int main()
 {
-  Array<int, Bits<uint64_t>::valueBits + 1> forces;
-  Array<int, Bits<int16_t>::valueBits> shorts;
-  println(forces.size(), " ", shorts.size());
+  std::Array<int, Bits<uint64_t>::valueBits + 1> forces;
+  std::Array<int, Bits<int16_t>::valueBits> shorts;
+  std::println(forces.size(), " ", shorts.size());
   return 0;
 }

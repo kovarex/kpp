@@ -7,12 +7,12 @@ struct Box
   Box(double d) : v((int)d) {}
   bool operator<(const Box& other) const { return this.v < other.v; }
   template <typename U>
-  strong_ordering operator<=>(const U& u) const { return this.v < u ? strong_ordering::less : this.v > u ? strong_ordering::greater : strong_ordering::equal; }
+  std::strong_ordering operator<=>(const U& u) const { return this.v < u ? std::strong_ordering::less : this.v > u ? std::strong_ordering::greater : std::strong_ordering::equal; }
 };
 int main()
 {
   Box one(1.0);
-  Optional<int> optionalOne = 1;
+  std::Optional<int> optionalOne = 1;
   printf("%d %d %d\n", (int)(one < 1.5), (int)(optionalOne < 1.5), (int)(one < Box(1.5)));
   return 0;
 }

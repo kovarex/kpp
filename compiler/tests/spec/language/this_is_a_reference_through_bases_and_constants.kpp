@@ -51,14 +51,14 @@ int main()
 {
   Derived d;
   const Base& b = d;
-  println(b.describe(), " ", b.viaPointer(), " ", d.both(), " ", d.useTemplate());
-  println(k, " ", m);
+  std::println(b.describe(), " ", b.viaPointer(), " ", d.both(), " ", d.useTemplate());
+  std::println(k, " ", m);
   Holder<int> h;
   auto add = h.adder();
   add(3);
   add(4);
   Self a, c;
   a.link(c);
-  println(h.value, " ", c.isNext(a) ? 1 : 0, " ", a.isNext(c) ? 1 : 0, " ", a.callStatic());
+  std::println(h.value, " ", c.isNext(a) ? 1 : 0, " ", a.isNext(c) ? 1 : 0, " ", a.callStatic());
   return 0;
 }

@@ -4,6 +4,6 @@ constexpr int empty = 3;
 static_assert(empty == 3, "empty is the global");
 int main()
 {
-  println(empty);
+  std::println(empty);
   return 0;
 }

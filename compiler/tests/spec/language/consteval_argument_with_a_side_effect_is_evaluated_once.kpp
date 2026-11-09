@@ -41,7 +41,7 @@ constexpr int two()
 {
   int values[4] = {10, 20, 30, 40};
   int i = 0, j = 2;
-  swap(values[i++], values[j++]);
+  std::swap(values[i++], values[j++]);
   return values[0] * 1000 + values[2] * 10 + i + j * 100;
 }
 
@@ -57,8 +57,8 @@ constexpr int moved()
 {
   int values[3] = {10, 20, 30};
   int i = 0;
-  int a = move(values[i++]);
-  int b = forward<int&>(values[i++]);
+  int a = std::move(values[i++]);
+  int b = std::forward<int&>(values[i++]);
   return a + b + i * 100;
 }
 
@@ -72,6 +72,6 @@ static_assert(moved() == 230);
 
 int main()
 {
-  println(reference(), " ", result(), " ", value(), " ", constReference(), " ", two(), " ", nested(), " ", moved());
+  std::println(reference(), " ", result(), " ", value(), " ", constReference(), " ", two(), " ", nested(), " ", moved());
   return 0;
 }

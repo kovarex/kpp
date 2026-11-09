@@ -11,7 +11,7 @@ struct Node : Links
 };
 constexpr int throughBase()
 {
-  Node* n = (Node*)allocateBytes(sizeof(Node));
+  Node* n = (Node*)std::allocateBytes(sizeof(Node));
   n->next = nullptr;
   n->value = 5;
   Links* base = n;
@@ -33,7 +33,7 @@ constexpr int base = throughBase();
 constexpr int plain = throughVoid();
 int main()
 {
-  println(throughBase(), " ", throughVoid());
-  println(base, " ", plain);
+  std::println(throughBase(), " ", throughVoid());
+  std::println(base, " ", plain);
   return 0;
 }

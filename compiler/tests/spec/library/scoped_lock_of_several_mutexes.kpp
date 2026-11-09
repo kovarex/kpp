@@ -3,16 +3,16 @@
 extern "C" import "stdio.h";
 int main()
 {
-  Mutex a, b, c;
-  RecursiveMutex r;
+  std::Mutex a, b, c;
+  std::RecursiveMutex r;
   {
-    ScopedLock<Mutex, Mutex, RecursiveMutex> three(a, b, r);
+    std::ScopedLock<std::Mutex, std::Mutex, std::RecursiveMutex> three(a, b, r);
     (void)three;
   }
   {
-    ScopedLock lock(a, b);
+    std::ScopedLock lock(a, b);
     bool aFree = true, bFree = true;
-    Thread probe([&]() {
+    std::Thread probe([&]() {
       aFree = a.try_lock();
       bFree = b.try_lock();
     });
@@ -26,15 +26,15 @@ int main()
   a.lock();
   b.lock();
   {
-    ScopedLock adopted(adoptLock, a, b);
+    std::ScopedLock adopted(std::adoptLock, a, b);
     (void)adopted;
   }
   bool freedAfterAdopt = a.try_lock();
   a.unlock();
   printf(" %d", (int)freedAfterAdopt);
   {
-    ScopedLock<Mutex> one(c);
-    ScopedLock<> nothing;
+    std::ScopedLock<std::Mutex> one(c);
+    std::ScopedLock<> nothing;
     (void)one;
     (void)nothing;
   }
@@ -42,17 +42,17 @@ int main()
   c.unlock();
   printf(" %d", (int)cFree);
   int counter = 0;
-  Thread forward([&]() {
+  std::Thread forward([&]() {
     for (int i = 0; i < 20000; ++i)
     {
-      ScopedLock lock(a, b, c);
+      std::ScopedLock lock(a, b, c);
       ++counter;
     }
   });
-  Thread backward([&]() {
+  std::Thread backward([&]() {
     for (int i = 0; i < 20000; ++i)
     {
-      ScopedLock lock(c, b, a);
+      std::ScopedLock lock(c, b, a);
       ++counter;
     }
   });

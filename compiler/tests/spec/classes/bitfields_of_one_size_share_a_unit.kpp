@@ -35,6 +35,6 @@ int main()
   m.a = -3;
   m.b = 9;
   m.c = -1000;
-  println(int(d.tileY), " ", int(d.amount), " ", int(d.tileX), " ", int(d.isDecal), " ", int(d.padding), " | ", int(m.a), " ", int(m.b), " ", int(m.c), " | ", sizeof(Data), " ", sizeof(Mixed), " ", sizeof(Sizes));
+  std::println(int(d.tileY), " ", int(d.amount), " ", int(d.tileX), " ", int(d.isDecal), " ", int(d.padding), " | ", int(m.a), " ", int(m.b), " ", int(m.c), " | ", sizeof(Data), " ", sizeof(Mixed), " ", sizeof(Sizes));
   return 0;
 }

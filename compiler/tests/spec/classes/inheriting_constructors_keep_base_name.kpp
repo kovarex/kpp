@@ -25,6 +25,6 @@ int main()
 {
   Derived d(5);
   bool ok = Derived::setUp();
-  println(d.value, " ", ok, " ", Base::registered);
+  std::println(d.value, " ", ok, " ", Base::registered);
   return 0;
 }

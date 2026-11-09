@@ -1,7 +1,7 @@
 // spec: `throw;` in a function a catch handler calls raises the exception that handler holds (the exception dispatcher: `try { throw; } catch (const Error& e) ... catch (...)`)
 // found in the converted game: Exceptions.kpp's `throw; // Rethrow the current exception so that we can catch it here.` and ModManager::enterMinimalMode ("`throw;` outside a catch handler")
-class Error : public Exception { public: int code; Error(int c) : Exception("error"), code(c) {} };
-class Other : public Exception { public: Other() : Exception("other") {} };
+class Error : public std::Exception { public: int code; Error(int c) : Exception("error"), code(c) {} };
+class Other : public std::Exception { public: Other() : Exception("other") {} };
 int classify()
 {
   try
@@ -36,6 +36,6 @@ int main()
   {
     b = classify();
   }
-  println(a, " ", b);
+  std::println(a, " ", b);
   return 0;
 }

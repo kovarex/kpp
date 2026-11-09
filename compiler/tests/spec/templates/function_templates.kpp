@@ -7,6 +7,6 @@ const char* kind(int) { return "int"; }
 template<typename To, typename From> To convert(From value) { return (To)value; }
 int main()
 {
-  println(biggest(3, 9), " ", biggest(String("a"), String("b")), " ", StringView(kind(1)), " ", StringView(kind(true)), " ", StringView(kind(2.5)), " ", convert<int>(3.9));
+  std::println(biggest(3, 9), " ", biggest(std::String("a"), std::String("b")), " ", std::StringView(kind(1)), " ", std::StringView(kind(true)), " ", std::StringView(kind(2.5)), " ", convert<int>(3.9));
   return 0;
 }

@@ -16,7 +16,7 @@ struct WithArg
   void load(Input& in, int extra) { this.v = extra; }
 };
 template<typename T, typename DeserialiserType, typename... Args>
-concept has_load = requires(T& result, DeserialiserType& input, Args&&... args) { result.load(input, ::forward<Args>(args)...); };
+concept has_load = requires(T& result, DeserialiserType& input, Args&&... args) { result.load(input, std::forward<Args>(args)...); };
 template<class T, typename... Args>
 const char* how(T& result, Args&&... args)
 {
@@ -31,6 +31,6 @@ int main()
   Thing t;
   Other o;
   WithArg w;
-  println(StringView(how(t)), " ", StringView(how(o)), " ", StringView(how(w)), " ", StringView(how(w, 3)));
+  std::println(std::StringView(how(t)), " ", std::StringView(how(o)), " ", std::StringView(how(w)), " ", std::StringView(how(w, 3)));
   return 0;
 }

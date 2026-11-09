@@ -7,6 +7,6 @@ int main()
 {
   int a[3] = {};
   int b[5] = {};
-  println(length(a), " ", length(b), " ", first(a), " ", second(&a));
+  std::println(length(a), " ", length(b), " ", first(a), " ", second(&a));
   return 0;
 }

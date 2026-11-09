@@ -11,6 +11,6 @@ int main()
     default:
       return 1;
   }
-  println(DERIVED / 2, " ", SCALED_BASE / 2, " ", REAL_HALF, " ", REAL_EXPONENT);
+  std::println(DERIVED / 2, " ", SCALED_BASE / 2, " ", REAL_HALF, " ", REAL_EXPONENT);
   return 0;
 }

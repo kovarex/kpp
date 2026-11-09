@@ -15,7 +15,7 @@ void appendFile(const char* path, const char* data, int count)
   fclose(f);
 }
 
-void state(const char* label, const InFileStream& in)
+void state(const char* label, const std::InFileStream& in)
 {
   bool asBool = false;
   if (in)
@@ -27,11 +27,11 @@ const char* path = "in_file_stream_fail_and_clear_follow_std.bin";
 
 void freshStreams()
 {
-  InFileStream none;
+  std::InFileStream none;
   state("default constructed", none);
-  InFileStream in(path);
+  std::InFileStream in(path);
   state("opened", in);
-  InFileStream missing("in_file_stream_fail_and_clear_follow_std_missing.bin");
+  std::InFileStream missing("in_file_stream_fail_and_clear_follow_std_missing.bin");
   state("missing", missing);
   missing.clear();
   state("missing: cleared", missing);
@@ -43,31 +43,31 @@ void freshStreams()
 
 void endOfFile()
 {
-  InFileStream in(path);
-  String line;
-  getline(in, line);
+  std::InFileStream in(path);
+  std::String line;
+  std::getline(in, line);
   state("first line", in);
-  getline(in, line);
+  std::getline(in, line);
   state("last line, no newline", in);
   printf("[%s]\n", line.c_str());
   in.clear();
   state("cleared at the end", in);
   bool got = false;
-  if (getline(in, line))
+  if (std::getline(in, line))
     got = true;
   printf("getline after clear %d [%s]\n", (int)got, line.c_str());
   state("getline at the end", in);
   in.clear();
   in.seekg(0);
   state("cleared and rewound", in);
-  getline(in, line);
+  std::getline(in, line);
   printf("[%s]\n", line.c_str());
   state("read after rewinding", in);
 }
 
 void failedRead()
 {
-  InFileStream in(path);
+  std::InFileStream in(path);
   char buffer[100];
   in.read(buffer, 100);
   state("read past the end", in);
@@ -93,7 +93,7 @@ void failedRead()
 
 void getPastTheEnd()
 {
-  InFileStream in(path);
+  std::InFileStream in(path);
   int count = 0;
   while (in.get() != -1)
     ++count;
@@ -108,7 +108,7 @@ void getPastTheEnd()
 
 void ignoreToTheEnd()
 {
-  InFileStream in(path);
+  std::InFileStream in(path);
   in.ignore(1000);
   state("ignore to the end", in);
   in.ignore(1);
@@ -121,7 +121,7 @@ void ignoreToTheEnd()
 
 void closedStream()
 {
-  InFileStream in(path);
+  std::InFileStream in(path);
   in.close();
   state("closed", in);
   in.close();
@@ -140,7 +140,7 @@ void closedStream()
 
 void openWhileOpen()
 {
-  InFileStream in(path);
+  std::InFileStream in(path);
   in.open(path);
   state("open while open", in);
   in.clear();
@@ -152,7 +152,7 @@ void openWhileOpen()
 
 void clearOnGood()
 {
-  InFileStream in(path);
+  std::InFileStream in(path);
   int c = in.get();
   in.clear();
   state("cleared while good", in);
@@ -164,8 +164,8 @@ void aFileThatGrew()
 {
   const char* grown = "in_file_stream_fail_and_clear_follow_std_grown.bin";
   writeFile(grown, "ab", 2);
-  InFileStream in(grown);
-  String line;
+  std::InFileStream in(grown);
+  std::String line;
   while (in.get() != -1)
   {
   }
@@ -187,10 +187,10 @@ void aFileThatGrew()
 
 void movedStream()
 {
-  InFileStream in(path);
+  std::InFileStream in(path);
   char buffer[100];
   in.read(buffer, 100);
-  InFileStream moved(move(in));
+  std::InFileStream moved(std::move(in));
   state("moved, failed", moved);
   moved.clear();
   moved.seekg(0);

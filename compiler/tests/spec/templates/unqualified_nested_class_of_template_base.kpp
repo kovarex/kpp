@@ -36,6 +36,6 @@ int main()
   board.cells[0] = 1;
   board.cells[1] = 2;
   board.cells[2] = 4;
-  println(board.sum());
+  std::println(board.sum());
   return 0;
 }

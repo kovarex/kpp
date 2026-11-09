@@ -22,6 +22,6 @@ int main()
 {
   Label l;
   Mixed m;
-  println(l.size, " ", m.extra);
+  std::println(l.size, " ", m.extra);
   return 0;
 }

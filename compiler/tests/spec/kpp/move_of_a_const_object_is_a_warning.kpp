@@ -14,20 +14,20 @@ struct Tracked
 template<typename T>
 int copiesOf(T&& value)
 {
-  RemoveReference<T> local = move(value);
+  std::RemoveReference<T> local = std::move(value);
   return local.copies;
 }
 
 int main()
 {
   const Tracked kept;
-  Tracked copied = move(kept);
+  Tracked copied = std::move(kept);
   const int limit = 3;
-  int n = move(limit);
+  int n = std::move(limit);
   Tracked plain;
-  Tracked moved = move(plain);
-  Tracked forwarded = forward<const Tracked&>(kept);
-  const Tracked& viewed = asConst(plain);
-  println(copied.copies, " ", copied.moves, " ", n, " ", moved.moves, " ", copiesOf(kept), " ", copiesOf(Tracked()), " ", forwarded.copies, " ", viewed.moves);
+  Tracked moved = std::move(plain);
+  Tracked forwarded = std::forward<const Tracked&>(kept);
+  const Tracked& viewed = std::asConst(plain);
+  std::println(copied.copies, " ", copied.moves, " ", n, " ", moved.moves, " ", copiesOf(kept), " ", copiesOf(Tracked()), " ", forwarded.copies, " ", viewed.moves);
   return 0;
 }

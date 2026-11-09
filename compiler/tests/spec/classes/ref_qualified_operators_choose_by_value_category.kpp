@@ -48,24 +48,24 @@ Ops make()
 template<typename T>
 int viaForward(T&& t)
 {
-  return forward<T>(t)[0];
+  return std::forward<T>(t)[0];
 }
 
 int main()
 {
   Ops o;
   const Ops c;
-  printf("call %d %d %d %d %d\n", o(0), c(0), Ops()(0), move(o)(0), make()(0));
-  printf("index %d %d %d %d %d\n", o[0], c[0], Ops()[0], move(o)[0], make()[0]);
-  printf("deref %d %d %d %d %d\n", *o, *c, *Ops(), *move(o), *make());
-  printf("plus %d %d %d %d %d\n", o + 0, c + 0, Ops() + 0, move(o) + 0, make() + 0);
-  printf("minus %d %d %d %d %d\n", -o, -c, -Ops(), -move(o), -make());
-  printf("not %d %d %d %d %d\n", !o, !c, !Ops(), !move(o), !make());
-  printf("increment %d %d %d\n", ++o, ++Ops(), ++move(o));
-  printf("postfix %d %d %d\n", o++, Ops()++, move(o)++);
-  printf("compound %d %d %d\n", o += 0, Ops() += 0, move(o) += 0);
-  printf("equal %d %d %d %d\n", o == 0, c == 0, Ops() == 0, move(o) == 0);
-  printf("comma %d %d %d\n", (o, 0), (Ops(), 0), (move(o), 0));
+  printf("call %d %d %d %d %d\n", o(0), c(0), Ops()(0), std::move(o)(0), make()(0));
+  printf("index %d %d %d %d %d\n", o[0], c[0], Ops()[0], std::move(o)[0], make()[0]);
+  printf("deref %d %d %d %d %d\n", *o, *c, *Ops(), *std::move(o), *make());
+  printf("plus %d %d %d %d %d\n", o + 0, c + 0, Ops() + 0, std::move(o) + 0, make() + 0);
+  printf("minus %d %d %d %d %d\n", -o, -c, -Ops(), -std::move(o), -make());
+  printf("not %d %d %d %d %d\n", !o, !c, !Ops(), !std::move(o), !make());
+  printf("increment %d %d %d\n", ++o, ++Ops(), ++std::move(o));
+  printf("postfix %d %d %d\n", o++, Ops()++, std::move(o)++);
+  printf("compound %d %d %d\n", o += 0, Ops() += 0, std::move(o) += 0);
+  printf("equal %d %d %d %d\n", o == 0, c == 0, Ops() == 0, std::move(o) == 0);
+  printf("comma %d %d %d\n", (o, 0), (Ops(), 0), (std::move(o), 0));
   printf("forward %d %d %d\n", viaForward(o), viaForward(c), viaForward(Ops()));
   int v = o->value;
   printf("arrow %d %d", Ops::pointerCalls, v);
@@ -73,7 +73,7 @@ int main()
   printf(" %d", Ops::pointerCalls);
   v = Ops()->value;
   printf(" %d", Ops::pointerCalls);
-  v = move(o)->value;
+  v = std::move(o)->value;
   printf(" %d\n", Ops::pointerCalls);
   return 0;
 }

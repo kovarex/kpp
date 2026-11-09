@@ -12,8 +12,8 @@ struct Box
 int main()
 {
   Box b;
-  String s = "ab";
+  std::String s = "ab";
   s.replace(0, 0, "<");
-  println(StringView(take(0)), " ", StringView(b.put(0, 0)), " ", s, " ", StringView(take(nullptr)));
+  std::println(std::StringView(take(0)), " ", std::StringView(b.put(0, 0)), " ", s, " ", std::StringView(take(nullptr)));
   return 0;
 }

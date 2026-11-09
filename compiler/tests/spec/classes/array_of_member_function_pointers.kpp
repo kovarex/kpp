@@ -12,6 +12,6 @@ int main()
   C c;
   int (C::*fns[2])() = {&C::f, &C::g};
   int (*table[1])() = {&one};
-  println((c.*fns[0])(), " ", (c.*fns[1])(), " ", table[0]());
+  std::println((c.*fns[0])(), " ", (c.*fns[1])(), " ", table[0]());
   return 0;
 }

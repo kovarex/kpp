@@ -14,15 +14,15 @@ struct Registered
   ~Registered() {}
 };
 Registered make(int id) { return Registered(id); }
-Map<String, int> makeMap()
+std::Map<std::String, int> makeMap()
 {
-  Map<String, int> m;
-  m[String("one")] = 1;
+  std::Map<std::String, int> m;
+  m[std::String("one")] = 1;
   return m;
 }
 struct Holder
 {
-  Map<String, int> map;
+  std::Map<std::String, int> map;
   Registered reg;
   Holder() : map(makeMap()), reg(make(5)) {}
 };
@@ -31,13 +31,13 @@ int main()
 {
   Holder h;
   int kept = keeper.where == &h.reg ? 1 : 0;
-  h.map[String("two")] = 2;
+  h.map[std::String("two")] = 2;
   int sum = 0;
   for (const auto& entry : h.map)
     sum += entry.second;
   bool flag = sum > 0;
-  Map<String, int> chosen = flag ? makeMap() : Map<String, int>();
-  chosen[String("three")] = 3;
-  println(sum, " ", int(chosen.size()), " ", kept, " ", consume(make(9)));
+  std::Map<std::String, int> chosen = flag ? makeMap() : std::Map<std::String, int>();
+  chosen[std::String("three")] = 3;
+  std::println(sum, " ", int(chosen.size()), " ", kept, " ", consume(make(9)));
   return 0;
 }

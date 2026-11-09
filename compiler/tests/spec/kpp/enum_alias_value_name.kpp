@@ -9,6 +9,6 @@ enum class Kind : u8
 
 int main()
 {
-  println(Kind::last);
-  println(Kind::third);
+  std::println(Kind::last);
+  std::println(Kind::third);
 }

@@ -3,26 +3,26 @@
 extern "C" import "stdio.h";
 constexpr i32 countCopies()
 {
-  Vector<i32> v = {1, 2, 3, 4};
-  v.insert(v.begin() + 1, (ContainerSize)3, 9);
+  std::Vector<i32> v = {1, 2, 3, 4};
+  v.insert(v.begin() + 1, (std::ContainerSize)3, 9);
   return (i32)v.size();
 }
 constexpr i32 fromAnother()
 {
-  Vector<i32> v = {1, 2, 3, 4};
-  Vector<i32> w = {7, 8};
+  std::Vector<i32> v = {1, 2, 3, 4};
+  std::Vector<i32> w = {7, 8};
   v.insert(v.begin() + 2, w.begin(), w.end());
   return (i32)v.size();
 }
 constexpr i32 fromAnArray()
 {
   i32 raw[] = {5, 6};
-  Vector<i32> v(raw, raw + 2);
+  std::Vector<i32> v(raw, raw + 2);
   return (i32)v.size();
 }
 constexpr i32 fromItself()
 {
-  Vector<i32> v = {1, 2, 3, 4};
+  std::Vector<i32> v = {1, 2, 3, 4};
   v.insert(v.begin(), v.begin() + 2, v.end());
   return v[0] * 1000 + v[1] * 100 + v[2] * 10 + (i32)v.size();
 }

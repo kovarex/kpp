@@ -25,7 +25,7 @@ struct Undo
   int start = 0;
   int end = 0;
 };
-void show(const Second& s) { print("[", s.second, "] "); }
+void show(const Second& s) { std::print("[", s.second, "] "); }
 int main()
 {
   Both both;
@@ -37,17 +37,17 @@ int main()
   show(no ? alone : both);
   Second& r = yes ? both : alone;
   r.second = 21;
-  println(both.second, " ", alone.second);
-  Optional<Undo> none;
+  std::println(both.second, " ", alone.second);
+  std::Optional<Undo> none;
   Undo undo{4, 5};
-  Optional<Undo> chosen = yes ? none : undo;
-  Optional<Undo> other = no ? none : undo;
-  println(chosen.hasValue(), " ", other.hasValue() ? other->end : -1);
+  std::Optional<Undo> chosen = yes ? none : undo;
+  std::Optional<Undo> other = no ? none : undo;
+  std::println(chosen.hasValue(), " ", other.hasValue() ? other->end : -1);
   Expression plain;
   plain.value = 7;
   Negated negated(plain);
   const Expression& first = yes ? negated : plain;
   const Expression& picked = no ? negated : plain;
-  println(first.value, " ", picked.value, " ", &picked == &plain);
+  std::println(first.value, " ", picked.value, " ", &picked == &plain);
   return 0;
 }

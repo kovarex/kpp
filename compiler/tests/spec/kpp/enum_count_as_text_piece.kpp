@@ -9,9 +9,9 @@ enum class Plain
   { A, B, C }
 };
 extern "C" int puts(const char* text);
-String text(Text pieces)
+std::String text(std::Text pieces)
 {
-  String out;
+  std::String out;
   pieces.appendTo(out);
   return out;
 }

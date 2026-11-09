@@ -2,14 +2,14 @@
 // found by thread D (2026-11-05): the evaluator kept such a temporary as a read-only copy, so `String moved = move(t);` (the String's move constructor empties t) was no constant
 constexpr int moved()
 {
-  String&& t = String("de");
-  String m = move(t);
+  std::String&& t = std::String("de");
+  std::String m = std::move(t);
   return int(t.size()) * 10 + int(m.size());
 }
 constexpr int forwarded()
 {
-  String&& t = String("abc");
-  String m = forward<String>(t);
+  std::String&& t = std::String("abc");
+  std::String m = std::forward<std::String>(t);
   return int(t.size()) * 10 + int(m.size());
 }
 constexpr int converted()
@@ -24,6 +24,6 @@ int main()
   constexpr int a = moved();
   constexpr int b = forwarded();
   constexpr int c = converted();
-  println(a, " ", moved(), " ", b, " ", forwarded(), " ", c, " ", converted());
+  std::println(a, " ", moved(), " ", b, " ", forwarded(), " ", c, " ", converted());
   return 0;
 }

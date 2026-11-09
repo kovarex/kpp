@@ -37,9 +37,9 @@ done:
 int main()
 {
   for (int n = 0; n < 7; ++n)
-    println(n, " ", run(n));
-  println(run(8), " ", run(9));
+    std::println(n, " ", run(n));
+  std::println(run(8), " ", run(9));
   try { run(7); }
-  catch (int e) { println("caught ", e); }
+  catch (int e) { std::println("caught ", e); }
   return 0;
 }

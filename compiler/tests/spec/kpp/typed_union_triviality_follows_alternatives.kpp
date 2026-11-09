@@ -21,7 +21,7 @@ union enum State : uint8_t
 {
   { {Patrolling, Patrol}, {Attacking, Attack} }
 };
-Optional<State> maybe(int step)
+std::Optional<State> maybe(int step)
 {
   if (step == 1)
     return State(Attacking(6));
@@ -29,13 +29,13 @@ Optional<State> maybe(int step)
 }
 int main()
 {
-  println(isTriviallyCopyable<State>, " ", isTriviallyDestructible<State>, " ", isTriviallyCopyable<Attacking>, " ", isTriviallyDestructible<Attacking>);
+  std::println(std::isTriviallyCopyable<State>, " ", std::isTriviallyDestructible<State>, " ", std::isTriviallyCopyable<Attacking>, " ", std::isTriviallyDestructible<Attacking>);
   {
     State state = Patrolling{0};
-    if (const Optional<State> s = maybe(1))
+    if (const std::Optional<State> s = maybe(1))
       state = *s;
-    println("inside: live ", live);
+    std::println("inside: live ", live);
   }
-  println("live ", live);
+  std::println("live ", live);
   return 0;
 }

@@ -5,30 +5,30 @@ struct Frame { int b = 2; };
 template<class T>
 struct Buffer
 {
-  static Vector<int> generate();
-  static const Vector<int> values;
+  static std::Vector<int> generate();
+  static const std::Vector<int> values;
 };
 template<class T>
-const Vector<int> Buffer<T>::values = Buffer<T>::generate();
+const std::Vector<int> Buffer<T>::values = Buffer<T>::generate();
 using UpdateBuffer = Buffer<Update>;
 using FrameBuffer = Buffer<Frame>;
 template<>
-Vector<int> UpdateBuffer::generate()
+std::Vector<int> UpdateBuffer::generate()
 {
-  Vector<int> result;
+  std::Vector<int> result;
   result.push_back(10);
   return result;
 }
 template<>
-Vector<int> FrameBuffer::generate()
+std::Vector<int> FrameBuffer::generate()
 {
-  Vector<int> result;
+  std::Vector<int> result;
   result.push_back(20);
   result.push_back(30);
   return result;
 }
 int main()
 {
-  println(UpdateBuffer::values[0], " ", FrameBuffer::values.size(), " ", FrameBuffer::values[1], " ", UpdateBuffer::generate().size(), " ", FrameBuffer::generate().size());
+  std::println(UpdateBuffer::values[0], " ", FrameBuffer::values.size(), " ", FrameBuffer::values[1], " ", UpdateBuffer::generate().size(), " ", FrameBuffer::generate().size());
   return 0;
 }

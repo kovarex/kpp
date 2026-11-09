@@ -10,12 +10,12 @@ public:
     T value;
     friend bool operator<(const Point& a, const Point& b) { return a.value < b.value; }
   };
-  bool less(T a, T b) const { return Less<void>()(Point(a), Point(b)); }
+  bool less(T a, T b) const { return std::Less<void>()(Point(a), Point(b)); }
 };
 
 int main()
 {
   Union<int> u;
-  println(u.less(1, 2), " ", u.less(3, 2));
+  std::println(u.less(1, 2), " ", u.less(3, 2));
   return 0;
 }

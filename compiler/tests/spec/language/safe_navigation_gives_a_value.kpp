@@ -3,9 +3,9 @@ class Tag
 {
 public:
   int id = 9;
-  Tag() { println("made"); }
-  Tag(const Tag& other) : id(other.id + 1) { println("copied"); }
-  ~Tag() { println("gone ", this.id); }
+  Tag() { std::println("made"); }
+  Tag(const Tag& other) : id(other.id + 1) { std::println("copied"); }
+  ~Tag() { std::println("gone ", this.id); }
 };
 class Holder
 {
@@ -14,7 +14,7 @@ public:
   int number = 3;
   bool flag = true;
   double ratio = 0.5;
-  String name = "engine";
+  std::String name = "engine";
   Holder* self = nullptr;
   Tag& ref() { return this.tag; }
   int& count() { return this.number; }
@@ -25,14 +25,14 @@ int main()
   Holder* none = nullptr;
   Holder* set = &h;
   {
-    Optional<Tag> a = none?->tag;
-    println(bool(a));
-    Optional<Tag> b = set?->ref();
-    println(b->id);
+    std::Optional<Tag> a = none?->tag;
+    std::println(bool(a));
+    std::Optional<Tag> b = set?->ref();
+    std::println(b->id);
   }
-  println(set?->count() ?: 0, " ", none?->count() ?: 0, " ", none?->flag, " ", set?->flag, " ", none?->ratio ?: 0.0, " ", set?->ratio ?: 0.0, " ", none?->self == nullptr);
-  Optional<String> name = set?->name;
-  println(*name, " ", none?->name ?: String("none"));
-  println("end");
+  std::println(set?->count() ?: 0, " ", none?->count() ?: 0, " ", none?->flag, " ", set?->flag, " ", none?->ratio ?: 0.0, " ", set?->ratio ?: 0.0, " ", none?->self == nullptr);
+  std::Optional<std::String> name = set?->name;
+  std::println(*name, " ", none?->name ?: std::String("none"));
+  std::println("end");
   return 0;
 }

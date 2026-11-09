@@ -40,6 +40,6 @@ const PositionFunction Belt::functions[2][2] =
 int main()
 {
   Position a = Belt::functions[0][0](5, 2), b = Belt::functions[0][1](5, 2), c = Belt::functions[1][0](5, 2);
-  println(a.x, " ", a.y, " ", b.x, " ", b.y, " ", c.x, " ", c.y);
+  std::println(a.x, " ", a.y, " ", b.x, " ", b.y, " ", c.x, " ", c.y);
   return 0;
 }

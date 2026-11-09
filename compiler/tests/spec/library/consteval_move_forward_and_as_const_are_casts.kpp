@@ -20,15 +20,15 @@ template<typename... Args>
 constexpr int codes(Args&&... args)
 {
   int digits = 0;
-  ((digits = digits * 10 + code(forward<Args>(args))), ...);
+  ((digits = digits * 10 + code(std::forward<Args>(args))), ...);
   return digits;
 }
 
 constexpr int movedObject()
 {
   Tracked t(5);
-  Tracked m = move(t);
-  Tracked n = move(move(m));
+  Tracked m = std::move(t);
+  Tracked n = std::move(std::move(m));
   return (t.value == -1) * 1000 + (m.value == -1) * 100 + n.value * 10 + n.moves;
 }
 
@@ -36,18 +36,18 @@ constexpr int onceEach()
 {
   int values[3] = {10, 20, 30};
   int i = 0;
-  int a = move(values[i++]);
-  int b = forward<int&>(values[i++]);
+  int a = std::move(values[i++]);
+  int b = std::forward<int&>(values[i++]);
   return a + b + i * 100;
 }
 
 constexpr int throughReferences()
 {
   int x = 1;
-  forward<int&>(x) = 7;
-  int&& r = move(x);
+  std::forward<int&>(x) = 7;
+  int&& r = std::move(x);
   r += 2;
-  int y = move(3) + asConst(x);
+  int y = std::move(3) + std::asConst(x);
   return x * 100 + y;
 }
 
@@ -55,15 +55,15 @@ constexpr int constAndSwap()
 {
   Tracked t(1);
   int a = 1, b = 2;
-  swap(a, b);
-  return t.which() * 1000 + asConst(t).which() * 100 + a * 10 + b;
+  std::swap(a, b);
+  return t.which() * 1000 + std::asConst(t).which() * 100 + a * 10 + b;
 }
 
 constexpr int packed()
 {
   int a = 1;
   const int c = 2;
-  return codes(a, 3, c, move(a));
+  return codes(a, 3, c, std::move(a));
 }
 
 static_assert(movedObject() == 1152);
@@ -74,6 +74,6 @@ static_assert(packed() == 1323);
 
 int main()
 {
-  println(movedObject(), " ", onceEach(), " ", throughReferences(), " ", constAndSwap(), " ", packed());
+  std::println(movedObject(), " ", onceEach(), " ", throughReferences(), " ", constAndSwap(), " ", packed());
   return 0;
 }

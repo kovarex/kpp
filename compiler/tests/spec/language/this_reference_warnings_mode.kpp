@@ -56,6 +56,6 @@ int main()
   Node* heap = new Node();
   heap->drop();
   Iter it;
-  println(a.get(), " ", a.self() == &a, " ", a.ref().value, " ", a.same(&b), " ", a.valid(), " ", a.alive(), " ", a.next == &b, " ", a.later(), " ", a.copied(), " ", *it.me());
+  std::println(a.get(), " ", a.self() == &a, " ", a.ref().value, " ", a.same(&b), " ", a.valid(), " ", a.alive(), " ", a.next == &b, " ", a.later(), " ", a.copied(), " ", *it.me());
   return 0;
 }

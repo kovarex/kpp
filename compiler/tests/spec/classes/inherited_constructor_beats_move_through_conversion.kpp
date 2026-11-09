@@ -2,7 +2,7 @@
 // found in tests/TestFlatMap (MoveOnlyString: `using String::String;` beside a deleted copy and a defaulted move constructor)
 struct Label
 {
-  String value;
+  std::String value;
   Label() = default;
   implicit Label(const char* s) : value(s) {}
   Label(const Label& other) = default;
@@ -21,6 +21,6 @@ int main()
   MoveOnly direct("abc");
   int converted = take("hello");
   MoveOnly moved(static_cast<MoveOnly&&>(direct));
-  println(int(moved.value.size()), " ", converted, " ", moved.value);
+  std::println(int(moved.value.size()), " ", converted, " ", moved.value);
   return 0;
 }

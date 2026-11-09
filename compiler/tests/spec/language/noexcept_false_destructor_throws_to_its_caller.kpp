@@ -16,7 +16,7 @@ int main()
   {
     caught = v;
   }
-  println(caught, " then");
+  std::println(caught, " then");
   try
   {
     loud();
@@ -25,6 +25,6 @@ int main()
   {
     caught += v;
   }
-  println(caught);
+  std::println(caught);
   return 0;
 }

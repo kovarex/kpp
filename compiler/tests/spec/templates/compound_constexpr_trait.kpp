@@ -16,7 +16,7 @@ template<class T, class Make>
 int32_t classify()
 {
   using value_type = T::value_type;
-  if constexpr (!isSame<Make, FromPtree> || !isArithmetic<value_type>)
+  if constexpr (!std::isSame<Make, FromPtree> || !std::isArithmetic<value_type>)
     return 1;
   else
     return 0;
@@ -33,6 +33,6 @@ auto main() -> int32_t
   // Make=FromPtree, value_type=int32_t (arithmetic)
   // !true || !true = false || false = false -> 0
   int32_t c = classify<Vec<int32_t>, FromPtree>();
-  println(a, b, c);
+  std::println(a, b, c);
   return 0;
 }

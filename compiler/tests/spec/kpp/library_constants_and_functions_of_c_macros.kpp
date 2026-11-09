@@ -2,17 +2,17 @@
 // factorio: zstd's interface (zstd.h), which the game writes zstd::ZSTD_COMPRESSBOUND, zstd::ZSTD_CONTENTSIZE_ERROR; programs/factorio/harness/zstd.c checks every one against the C build
 int main()
 {
-  println(zstd::ZSTD_BLOCKSIZE_MAX, " ", sizeof(zstd::ZSTD_BLOCKSIZE_MAX), " ", zstd::ZSTD_CONTENTSIZE_UNKNOWN, " ", sizeof(zstd::ZSTD_CONTENTSIZE_UNKNOWN));
-  println(zstd::ZSTD_MAGICNUMBER, " ", zstd::ZSTD_MAGICNUMBER * 0 - 1 < 0, " ", zstd::ZSTD_WINDOWLOG_MAX, " ", zstd::ZSTD_CHAINLOG_MIN);
-  println(int(zstd::ZSTD_STRATEGY_MAX), " ", zstd::ZSTD_STRATEGY_MAX == zstd::ZSTD_btultra2);
+  std::println(zstd::ZSTD_BLOCKSIZE_MAX, " ", sizeof(zstd::ZSTD_BLOCKSIZE_MAX), " ", zstd::ZSTD_CONTENTSIZE_UNKNOWN, " ", sizeof(zstd::ZSTD_CONTENTSIZE_UNKNOWN));
+  std::println(zstd::ZSTD_MAGICNUMBER, " ", zstd::ZSTD_MAGICNUMBER * 0 - 1 < 0, " ", zstd::ZSTD_WINDOWLOG_MAX, " ", zstd::ZSTD_CHAINLOG_MIN);
+  std::println(int(zstd::ZSTD_STRATEGY_MAX), " ", zstd::ZSTD_STRATEGY_MAX == zstd::ZSTD_btultra2);
   int small = 1000;
   unsigned char byte = 200;
   long long negative = -5;
   size_t large = 1048576;
-  println(zstd::ZSTD_COMPRESSBOUND(small), " ", sizeof(zstd::ZSTD_COMPRESSBOUND(small)), " ", zstd::ZSTD_COMPRESSBOUND(byte), " ",
+  std::println(zstd::ZSTD_COMPRESSBOUND(small), " ", sizeof(zstd::ZSTD_COMPRESSBOUND(small)), " ", zstd::ZSTD_COMPRESSBOUND(byte), " ",
           sizeof(zstd::ZSTD_COMPRESSBOUND(byte)));
-  println(zstd::ZSTD_COMPRESSBOUND(negative), " ", sizeof(zstd::ZSTD_COMPRESSBOUND(negative)), " ", zstd::ZSTD_COMPRESSBOUND(large), " ",
+  std::println(zstd::ZSTD_COMPRESSBOUND(negative), " ", sizeof(zstd::ZSTD_COMPRESSBOUND(negative)), " ", zstd::ZSTD_COMPRESSBOUND(large), " ",
           sizeof(zstd::ZSTD_COMPRESSBOUND(large)));
-  println(zstd::blocks(300000));
+  std::println(zstd::blocks(300000));
   return 0;
 }

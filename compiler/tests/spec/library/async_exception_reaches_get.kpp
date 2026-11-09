@@ -3,8 +3,8 @@
 extern "C" import "stdio.h";
 int main()
 {
-  Future<int> failing = async([]() -> int { throw 5; });
-  Future<int> later = async(Launch::deferred, []() -> int { throw 6; });
+  std::Future<int> failing = std::async([]() -> int { throw 5; });
+  std::Future<int> later = std::async(std::Launch::deferred, []() -> int { throw 6; });
   try
   {
     failing.get();

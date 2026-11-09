@@ -13,6 +13,6 @@ int main()
 {
   Sorted<int> s;
   Sorted<int, DefaultLess<int>> t;
-  println(s.less(1, 2), " ", t.less(2, 1), " ", countLess(s, 3, 4));
+  std::println(s.less(1, 2), " ", t.less(2, 1), " ", countLess(s, 3, 4));
   return 0;
 }

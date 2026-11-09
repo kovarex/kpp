@@ -3,72 +3,72 @@
 struct Worker
 {
   int base = 10;
-  Atomic<int> result;
+  std::Atomic<int> result;
   void loop(int a, int b) { this.result.store(this.base + a + b); }
 };
-Atomic<int> sum;
-Atomic<Thread::Id> seen;
+std::Atomic<int> sum;
+std::Atomic<std::Thread::Id> seen;
 void add(int a, int b, int c, int d, int e, int f, int g) { sum.store(a + b + c + d + e + f + g); }
-void consume(UniquePtr<int> value, int* out)
+void consume(std::UniquePtr<int> value, int* out)
 {
   *out = *value;
-  seen.store(thisThread::getId());
+  seen.store(std::thisThread::getId());
 }
 int main()
 {
-  Thread none;
-  println(none.joinable(), " ", none.getId() == Thread::Id());
-  Thread t1(add, 1, 2, 3, 4, 5, 6, 7);
+  std::Thread none;
+  std::println(none.joinable(), " ", none.getId() == std::Thread::Id());
+  std::Thread t1(add, 1, 2, 3, 4, 5, 6, 7);
   t1.join();
   Worker worker;
-  Thread t2(&Worker::loop, &worker, 3, 4);
+  std::Thread t2(&Worker::loop, &worker, 3, 4);
   t2.join();
   int out = 0;
-  Thread t3(consume, makeUnique<int>(42), &out); // (ref(out) for an int&: classes/reference_bound_through_conversion_operator)
-  Thread::Id id3 = t3.get_id();
+  std::Thread t3(consume, std::makeUnique<int>(42), &out); // (ref(out) for an int&: classes/reference_bound_through_conversion_operator)
+  std::Thread::Id id3 = t3.get_id();
   t3.join();
-  println(sum.load(), " ", worker.result.load(), " ", out, " ", seen.load() == id3, " ", id3 != thisThread::get_id());
-  println(t3.joinable(), " ", t3.getId() == Thread::id());
-  HashSet<Thread::Id> ids;
-  ids.insert(thisThread::getId());
+  std::println(sum.load(), " ", worker.result.load(), " ", out, " ", seen.load() == id3, " ", id3 != std::thisThread::get_id());
+  std::println(t3.joinable(), " ", t3.getId() == std::Thread::id());
+  std::HashSet<std::Thread::Id> ids;
+  ids.insert(std::thisThread::getId());
   ids.insert(id3);
-  ids.insert(thisThread::getId());
-  println(ids.size(), " ", (id3 < thisThread::getId()) != (thisThread::getId() < id3));
+  ids.insert(std::thisThread::getId());
+  std::println(ids.size(), " ", (id3 < std::thisThread::getId()) != (std::thisThread::getId() < id3));
   try
   {
     t3.join();
   }
-  catch (const SystemError& e)
+  catch (const std::SystemError& e)
   {
-    println("join: ", e.code() == Errc::invalid_argument);
+    std::println("join: ", e.code() == std::Errc::invalid_argument);
   }
-  Mutex m;
-  UniqueLock<Mutex> deferred(m, deferLock);
-  println(deferred.owns_lock());
+  std::Mutex m;
+  std::UniqueLock<std::Mutex> deferred(m, std::deferLock);
+  std::println(deferred.owns_lock());
   deferred.lock();
-  UniqueLock<Mutex> tried(m, tryToLock);
-  println(deferred.owns_lock(), " ", tried.owns_lock());
+  std::UniqueLock<std::Mutex> tried(m, std::tryToLock);
+  std::println(deferred.owns_lock(), " ", tried.owns_lock());
   try
   {
     tried.unlock();
   }
-  catch (const SystemError& e)
+  catch (const std::SystemError& e)
   {
-    println("unlock: ", e.code() == Errc::operation_not_permitted);
+    std::println("unlock: ", e.code() == std::Errc::operation_not_permitted);
   }
-  Mutex* released = deferred.release();
-  UniqueLock<Mutex> adopted(*released, adoptLock);
-  println(deferred.owns_lock(), " ", adopted.owns_lock(), " ", adopted.mutex() == &m);
-  ConditionVariable cv;
-  CvStatus status = cv.wait_for(adopted, Milliseconds(5));
+  std::Mutex* released = deferred.release();
+  std::UniqueLock<std::Mutex> adopted(*released, std::adoptLock);
+  std::println(deferred.owns_lock(), " ", adopted.owns_lock(), " ", adopted.mutex() == &m);
+  std::ConditionVariable cv;
+  std::CvStatus status = cv.wait_for(adopted, std::Milliseconds(5));
   bool ready = false;
-  Thread t4([&]() { LockGuard<Mutex> lock(m); ready = true; cv.notify_all(); });
-  bool woken = cv.wait_until(adopted, SteadyClock::now() + Seconds(10), [&]() { return ready; });
+  std::Thread t4([&]() { std::LockGuard<std::Mutex> lock(m); ready = true; cv.notify_all(); });
+  bool woken = cv.wait_until(adopted, std::SteadyClock::now() + std::Seconds(10), [&]() { return ready; });
   adopted.unlock();
   t4.join();
-  println(status == CvStatus::timeout, " ", woken);
-  auto start = SteadyClock::now();
-  thisThread::sleep_for(Milliseconds(3));
-  println(SteadyClock::now() - start >= Milliseconds(3));
+  std::println(status == std::CvStatus::timeout, " ", woken);
+  auto start = std::SteadyClock::now();
+  std::thisThread::sleep_for(std::Milliseconds(3));
+  std::println(std::SteadyClock::now() - start >= std::Milliseconds(3));
   return 0;
 }

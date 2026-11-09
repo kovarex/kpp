@@ -7,15 +7,15 @@ enum class Color : uint8_t { { Red, Green } };
 template<typename T>
 const char* describe()
 {
-  if constexpr (isPointer<T>)
+  if constexpr (std::isPointer<T>)
     return "pointer";
-  else if constexpr (isEnum<T>)
+  else if constexpr (std::isEnum<T>)
     return "enum";
-  else if constexpr (isFloatingPoint<T>)
+  else if constexpr (std::isFloatingPoint<T>)
     return "float";
-  else if constexpr (isIntegral<T>)
-    return isSigned<T> ? "signed" : "unsigned";
-  else if constexpr (isClass<T>)
+  else if constexpr (std::isIntegral<T>)
+    return std::isSigned<T> ? "signed" : "unsigned";
+  else if constexpr (std::isClass<T>)
     return "class";
   else
     return "?";
@@ -24,16 +24,16 @@ const char* describe()
 template<typename T>
 int widthOf()
 {
-  RemoveReference<RemoveConst<T>> value;
+  std::RemoveReference<std::RemoveConst<T>> value;
   return sizeof(value);
 }
 
 int main()
 {
-  println(StringView(describe<int>()), " ", StringView(describe<char*>()), " ", StringView(describe<Color>()), " ", StringView(describe<double>()), " ", StringView(describe<unsigned int>()), " ", StringView(describe<Base>()));
-  println(widthOf<const long long&>(), " ", widthOf<Derived>());
-  println(isSame<RemoveConst<const int>, int>, " ", isSame<RemoveReference<Base&>, Base>, " ", isSame<int, long long>);
-  println(isBaseOf<Base, Derived>, " ", isBaseOf<Derived, Base>, " ", isConvertible<Derived*, Base*>);
-  println(isSame<UnderlyingType<Color>, uint8_t>, " ", isNullPointer<nullptr_t>);
+  std::println(std::StringView(describe<int>()), " ", std::StringView(describe<char*>()), " ", std::StringView(describe<Color>()), " ", std::StringView(describe<double>()), " ", std::StringView(describe<unsigned int>()), " ", std::StringView(describe<Base>()));
+  std::println(widthOf<const long long&>(), " ", widthOf<Derived>());
+  std::println(std::isSame<std::RemoveConst<const int>, int>, " ", std::isSame<std::RemoveReference<Base&>, Base>, " ", std::isSame<int, long long>);
+  std::println(std::isBaseOf<Base, Derived>, " ", std::isBaseOf<Derived, Base>, " ", std::isConvertible<Derived*, Base*>);
+  std::println(std::isSame<std::UnderlyingType<Color>, uint8_t>, " ", std::isNullPointer<nullptr_t>);
   return 0;
 }

@@ -3,19 +3,19 @@
 struct Graph
 {
   template<typename VertexT>
-  int visit(VertexT* vertex, Vector<VertexT*>::iterator& output) const;
+  int visit(VertexT* vertex, std::Vector<VertexT*>::iterator& output) const;
 };
 template<typename VertexT>
-int Graph::visit(VertexT* vertex, Vector<VertexT*>::iterator& output) const
+int Graph::visit(VertexT* vertex, std::Vector<VertexT*>::iterator& output) const
 {
   return *vertex + int(output == output);
 }
 int main()
 {
   Graph g;
-  Vector<int*> v;
+  std::Vector<int*> v;
   int x = 5;
   auto it = v.begin();
-  println(g.visit(&x, it));
+  std::println(g.visit(&x, it));
   return 0;
 }

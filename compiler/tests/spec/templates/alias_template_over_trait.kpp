@@ -1,9 +1,9 @@
 // spec: an alias template whose target is a type trait (template<typename T> using Plain = RemoveReference<T>;)
-template<typename T> using Plain = RemoveReference<T>;
+template<typename T> using Plain = std::RemoveReference<T>;
 int main()
 {
   Plain<int&> y = 3;
   Plain<const int&> z = 4;
-  println(y + z);
+  std::println(y + z);
   return 0;
 }

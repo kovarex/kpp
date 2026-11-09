@@ -1,74 +1,74 @@
 // spec: shuffle, sample, shiftLeft and shiftRight, as std's: shuffle permutes, sample picks n distinct elements keeping their order (forward iterators) or into a random access destination (input iterators), and the shifts move the elements by n and return the new end or start
 // factorio: K's ranking of the stdlib gaps (2026-11-06): not there; the game's Util::shuffle is its own
-bool samePermutation(const Vector<int>& a, Vector<int> b)
+bool samePermutation(const std::Vector<int>& a, std::Vector<int> b)
 {
-  Vector<int> sorted = a;
-  sort(sorted.begin(), sorted.end());
-  sort(b.begin(), b.end());
+  std::Vector<int> sorted = a;
+  std::sort(sorted.begin(), sorted.end());
+  std::sort(b.begin(), b.end());
   return sorted == b;
 }
 
-void show(StringView what, const Vector<int>& v)
+void show(std::StringView what, const std::Vector<int>& v)
 {
-  print(what, ":");
+  std::print(what, ":");
   for (int x : v)
-    print(" ", x);
-  println();
+    std::print(" ", x);
+  std::println();
 }
 
 int main()
 {
-  Vector<int> numbers = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
-  Vector<int> shuffled = numbers;
-  DefaultRandomEngine engine(7);
-  shuffle(shuffled.begin(), shuffled.end(), engine);
-  println("shuffle permutes ", samePermutation(numbers, shuffled), ", moved ", shuffled != numbers);
-  Vector<int> again = numbers;
-  DefaultRandomEngine sameSeed(7);
-  shuffle(again.begin(), again.end(), sameSeed);
-  println("same seed, same order ", again == shuffled);
-  Vector<int> one = {5};
-  shuffle(one.begin(), one.end(), engine);
-  shuffle(one.begin(), one.begin(), engine);
+  std::Vector<int> numbers = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+  std::Vector<int> shuffled = numbers;
+  std::DefaultRandomEngine engine(7);
+  std::shuffle(shuffled.begin(), shuffled.end(), engine);
+  std::println("shuffle permutes ", samePermutation(numbers, shuffled), ", moved ", shuffled != numbers);
+  std::Vector<int> again = numbers;
+  std::DefaultRandomEngine sameSeed(7);
+  std::shuffle(again.begin(), again.end(), sameSeed);
+  std::println("same seed, same order ", again == shuffled);
+  std::Vector<int> one = {5};
+  std::shuffle(one.begin(), one.end(), engine);
+  std::shuffle(one.begin(), one.begin(), engine);
   show("shuffle of one", one);
   i32 firstCounts[3] = {0, 0, 0};
   for (i32 round = 0; round < 3000; ++round)
   {
-    Vector<int> three = {0, 1, 2};
-    shuffle(three.begin(), three.end(), engine);
+    std::Vector<int> three = {0, 1, 2};
+    std::shuffle(three.begin(), three.end(), engine);
     firstCounts[three[0]]++;
   }
-  println("each first about a third ", firstCounts[0] > 900 && firstCounts[1] > 900 && firstCounts[2] > 900);
+  std::println("each first about a third ", firstCounts[0] > 900 && firstCounts[1] > 900 && firstCounts[2] > 900);
 
-  Vector<int> picked;
-  List<int> source = {1, 2, 3, 4, 5, 6, 7, 8};
-  sample(source.begin(), source.end(), backInserter(picked), 3, engine);
-  bool ordered = isSorted(picked.begin(), picked.end()) && adjacentFind(picked.begin(), picked.end()) == picked.end();
-  println("sample of 3: ", picked.size(), " in order and distinct ", ordered);
+  std::Vector<int> picked;
+  std::List<int> source = {1, 2, 3, 4, 5, 6, 7, 8};
+  std::sample(source.begin(), source.end(), std::backInserter(picked), 3, engine);
+  bool ordered = std::isSorted(picked.begin(), picked.end()) && std::adjacentFind(picked.begin(), picked.end()) == picked.end();
+  std::println("sample of 3: ", picked.size(), " in order and distinct ", ordered);
   picked.clear();
-  sample(source.begin(), source.end(), backInserter(picked), 20, engine);
-  println("sample of more than there are: ", picked.size());
-  Vector<int> room(4);
-  Vector<int>::iterator end = sample(numbers.begin(), numbers.end(), room.begin(), 4, engine);
-  println("sample returns its end ", end == room.end());
+  std::sample(source.begin(), source.end(), std::backInserter(picked), 20, engine);
+  std::println("sample of more than there are: ", picked.size());
+  std::Vector<int> room(4);
+  std::Vector<int>::iterator end = std::sample(numbers.begin(), numbers.end(), room.begin(), 4, engine);
+  std::println("sample returns its end ", end == room.end());
 
-  Vector<int> left = {1, 2, 3, 4, 5};
-  auto newEnd = shiftLeft(left.begin(), left.end(), 2);
-  println("shiftLeft returns ", newEnd - left.begin());
+  std::Vector<int> left = {1, 2, 3, 4, 5};
+  auto newEnd = std::shiftLeft(left.begin(), left.end(), 2);
+  std::println("shiftLeft returns ", newEnd - left.begin());
   left.erase(newEnd, left.end());
   show("shiftLeft 2", left);
-  Vector<int> all = {1, 2, 3};
-  println("shiftLeft all ", shiftLeft(all.begin(), all.end(), 3) == all.begin(), " none ", shiftLeft(all.begin(), all.end(), 0) == all.end());
-  Vector<int> right = {1, 2, 3, 4, 5};
-  auto newStart = shiftRight(right.begin(), right.end(), 2);
-  println("shiftRight returns ", newStart - right.begin());
-  show("shiftRight 2 (from 2)", Vector<int>(newStart, right.end()));
-  List<int> linked = {1, 2, 3, 4};
-  auto linkedStart = shiftRight(linked.begin(), linked.end(), 1);
-  print("shiftRight of a list:");
+  std::Vector<int> all = {1, 2, 3};
+  std::println("shiftLeft all ", std::shiftLeft(all.begin(), all.end(), 3) == all.begin(), " none ", std::shiftLeft(all.begin(), all.end(), 0) == all.end());
+  std::Vector<int> right = {1, 2, 3, 4, 5};
+  auto newStart = std::shiftRight(right.begin(), right.end(), 2);
+  std::println("shiftRight returns ", newStart - right.begin());
+  show("shiftRight 2 (from 2)", std::Vector<int>(newStart, right.end()));
+  std::List<int> linked = {1, 2, 3, 4};
+  auto linkedStart = std::shiftRight(linked.begin(), linked.end(), 1);
+  std::print("shiftRight of a list:");
   for (auto it = linkedStart; it != linked.end(); ++it)
-    print(" ", *it);
-  println();
-  println("shiftRight past the end ", shiftRight(all.begin(), all.end(), 5) == all.end());
+    std::print(" ", *it);
+  std::println();
+  std::println("shiftRight past the end ", std::shiftRight(all.begin(), all.end(), 5) == all.end());
   return 0;
 }

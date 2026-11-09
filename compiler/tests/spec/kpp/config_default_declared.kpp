@@ -21,6 +21,6 @@ struct Counters
 int main()
 {
   Counters c;
-  println(StringView(build()), " ", c.checks, " ", config::level, " ", config::mode, " ", config::mode.size(), " ", config::home == Platform::Linux);
+  std::println(std::StringView(build()), " ", c.checks, " ", config::level, " ", config::mode, " ", config::mode.size(), " ", config::home == Platform::Linux);
   return 0;
 }

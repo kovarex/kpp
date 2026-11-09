@@ -6,16 +6,16 @@ struct Territory
 };
 int main()
 {
-  Vector<UniquePtr<Territory>> territories;
+  std::Vector<std::UniquePtr<Territory>> territories;
   for (int i = 1; i <= 3; ++i)
   {
-    territories.push_back(makeUnique<Territory>());
+    territories.push_back(std::makeUnique<Territory>());
     territories.back()->id = i;
   }
-  auto all = transformView(territories, [](const UniquePtr<Territory>& t) -> Territory& { return *t; });
+  auto all = std::transformView(territories, [](const std::UniquePtr<Territory>& t) -> Territory& { return *t; });
   Territory* first = &all.front();
   Territory* last = &all.back();
   last->id = 30;
-  println(first->id, " ", last->id, " ", first == territories[0].get(), " ", territories[2]->id);
+  std::println(first->id, " ", last->id, " ", first == territories[0].get(), " ", territories[2]->id);
   return 0;
 }

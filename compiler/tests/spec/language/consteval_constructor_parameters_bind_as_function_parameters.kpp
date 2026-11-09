@@ -2,49 +2,49 @@
 // found by thread D (2026-11-05), comparing Optional<String> at compile time and run time: a constructor bound an argument without a place as a value nothing destroyed (a moved-from String's block: "memory allocated at String.kpp:657 is never freed"), a by-value parameter given an lvalue shared its block ("memory freed twice"), and `Optional<String> o = s;` moved from s; so every Optional<String> made from a String, and any constructor given a String temporary, was no constant
 struct ByValue
 {
-  String s;
-  ByValue(String v) : s(move(v)) {}
+  std::String s;
+  ByValue(std::String v) : s(std::move(v)) {}
 };
 struct ByRvalue
 {
-  String s;
-  ByRvalue(String&& v) : s(move(v)) {}
+  std::String s;
+  ByRvalue(std::String&& v) : s(std::move(v)) {}
 };
 struct ByConstRef
 {
-  String s;
-  ByConstRef(const String& v) : s(v) {}
+  std::String s;
+  ByConstRef(const std::String& v) : s(v) {}
 };
 struct Converting
 {
-  String s;
+  std::String s;
   int from = 0;
-  implicit Converting(const String& v) : s(v), from(1) {}
-  implicit Converting(String&& v) : s(move(v)), from(2) {}
+  implicit Converting(const std::String& v) : s(v), from(1) {}
+  implicit Converting(std::String&& v) : s(std::move(v)), from(2) {}
 };
 constexpr long long byValue()
 {
-  String s = "abc";
+  std::String s = "abc";
   ByValue copied(s);          // a copy: s keeps its text
-  ByValue moved(move(s));     // moved: s is left empty
-  ByValue made(String("de")); // a temporary
+  ByValue moved(std::move(s));     // moved: s is left empty
+  ByValue made(std::String("de")); // a temporary
   return (long long)copied.s.size() * 1000 + (long long)s.size() * 100 + (long long)moved.s.size() * 10 + (long long)made.s.size();
 }
 constexpr long long references()
 {
-  ByRvalue a(String("abc"));
-  ByConstRef b(String("de"));
-  ByConstRef c(StringView("f"));
+  ByRvalue a(std::String("abc"));
+  ByConstRef b(std::String("de"));
+  ByConstRef c(std::StringView("f"));
   return (long long)a.s.size() * 100 + (long long)b.s.size() * 10 + (long long)c.s.size();
 }
 constexpr long long converting()
 {
-  String s = "abc";
+  std::String s = "abc";
   Converting copied = s;             // const String&: s keeps its text
-  Converting made = String("de");    // String&&: the temporary
-  Optional<String> o = s;            // Optional(const T&): a copy
-  Optional<String> p = String("fg"); // Optional(T&&): moved from the temporary
-  Optional<String> q(String("h"));
+  Converting made = std::String("de");    // String&&: the temporary
+  std::Optional<std::String> o = s;            // Optional(const T&): a copy
+  std::Optional<std::String> p = std::String("fg"); // Optional(T&&): moved from the temporary
+  std::Optional<std::String> q(std::String("h"));
   return copied.from * 10000 + made.from * 1000 + (long long)s.size() * 100 + (long long)(*o).size() * 10 + (long long)((*p).size() + (*q).size());
 }
 int main()
@@ -52,6 +52,6 @@ int main()
   constexpr long long a = byValue();
   constexpr long long b = references();
   constexpr long long c = converting();
-  println(a, " ", byValue(), " ", b, " ", references(), " ", c, " ", converting());
+  std::println(a, " ", byValue(), " ", b, " ", references(), " ", c, " ", converting());
   return 0;
 }

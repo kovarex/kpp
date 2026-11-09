@@ -8,7 +8,7 @@ int main()
   Base* x = new A();
   A* asA = dynamic_cast<A*>(x);
   B* asB = dynamic_cast<B*>(x);
-  println(asA != nullptr, " ", asB == nullptr);
+  std::println(asA != nullptr, " ", asB == nullptr);
   delete x;
   return 0;
 }

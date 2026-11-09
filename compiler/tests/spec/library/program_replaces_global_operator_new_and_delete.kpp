@@ -6,27 +6,27 @@ int sizedDeletes = 0;
 void* operator new(usize size)
 {
   ++news;
-  return malloc(size == 0 ? 1 : size);
+  return std::malloc(size == 0 ? 1 : size);
 }
 void operator delete(void* p)
 {
   ++deletes;
-  free(p);
+  std::free(p);
 }
 void operator delete(void* p, usize size)
 {
   ++sizedDeletes;
-  println("sized delete ", size);
-  free(p);
+  std::println("sized delete ", size);
+  std::free(p);
 }
 void* operator new(usize size, int tag)
 {
-  println("tagged new ", size, " ", tag);
+  std::println("tagged new ", size, " ", tag);
   return operator new(size);
 }
 void operator delete(void* p, int tag)
 {
-  println("tagged delete ", tag);
+  std::println("tagged delete ", tag);
   operator delete(p);
 }
 struct Thing
@@ -65,8 +65,8 @@ int main()
   ::operator delete(raw);
   int* tagged = new (7) int(1);
   delete tagged;
-  try { new (9) Throws; } catch (int x) { println("caught ", x); }
-  try { new Throws; } catch (int x) { println("caught ", x); }
-  println(news, " ", deletes, " ", sizedDeletes);
+  try { new (9) Throws; } catch (int x) { std::println("caught ", x); }
+  try { new Throws; } catch (int x) { std::println("caught ", x); }
+  std::println(news, " ", deletes, " ", sizedDeletes);
   return 0;
 }

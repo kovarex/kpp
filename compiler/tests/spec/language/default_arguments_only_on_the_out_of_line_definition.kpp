@@ -4,4 +4,4 @@ struct S { int m(int a); static int s(int a); S(int z, int a); int v; };
 int S::m(int a = 3) { return a + this.v; }
 int S::s(int a = 4) { return a; }
 S::S(int z, int a = 5) : v(a + z) { }
-int main() { S x(1); println(x.m(), " ", S::s(), " ", x.v); return 0; }
+int main() { S x(1); std::println(x.m(), " ", S::s(), " ", x.v); return 0; }

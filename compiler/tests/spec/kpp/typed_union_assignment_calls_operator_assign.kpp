@@ -4,12 +4,12 @@ class Noisy
 {
 public:
   Noisy() {}
-  implicit Noisy(int value) : value(value) { println("construct ", value); }
-  Noisy(const Noisy& other) : value(other.value) { println("copy construct ", this.value); }
-  Noisy(Noisy&& other) : value(other.value) { println("move construct ", this.value); }
-  Noisy& operator=(const Noisy& other) { this.value = other.value; println("copy assign ", this.value); return this; }
-  Noisy& operator=(Noisy&& other) { this.value = other.value; println("move assign ", this.value); return this; }
-  ~Noisy() { println("destroy ", this.value); }
+  implicit Noisy(int value) : value(value) { std::println("construct ", value); }
+  Noisy(const Noisy& other) : value(other.value) { std::println("copy construct ", this.value); }
+  Noisy(Noisy&& other) : value(other.value) { std::println("move construct ", this.value); }
+  Noisy& operator=(const Noisy& other) { this.value = other.value; std::println("copy assign ", this.value); return this; }
+  Noisy& operator=(Noisy&& other) { this.value = other.value; std::println("move assign ", this.value); return this; }
+  ~Noisy() { std::println("destroy ", this.value); }
 
   int value = 0;
 };
@@ -19,12 +19,12 @@ class Refusing
 public:
   Refusing() {}
   Refusing(const Refusing&) {}
-  Refusing& operator=(const Refusing&) { throw RuntimeError("no"); }
+  Refusing& operator=(const Refusing&) { throw std::RuntimeError("no"); }
 };
 
 union enum Held : u8
 {
-  { {int, Count}, {Noisy, Object}, {String, Words}, {Refusing, Picky} }
+  { {int, Count}, {Noisy, Object}, {std::String, Words}, {Refusing, Picky} }
 };
 
 Noisy make(int value) { return Noisy(value); }
@@ -34,28 +34,28 @@ int main()
   Held a;
   Held b;
   a[Object] = 1;
-  println("-- from a union holding the same");
+  std::println("-- from a union holding the same");
   b[Object] = 2;
   a = b;
-  println("-- moved");
+  std::println("-- moved");
   b[Object].value = 3;
-  a = move(b);
-  println("-- by name, the same alternative");
+  a = std::move(b);
+  std::println("-- by name, the same alternative");
   a[Object] = make(4);
-  println("-- another alternative");
+  std::println("-- another alternative");
   a[Count] = 5;
-  println("-- back");
+  std::println("-- back");
   a[Object] = make(6);
   a[Count] = a[Object].value + 1;
-  println(a[Count]);
-  println("-- reads what it holds");
+  std::println(a[Count]);
+  std::println("-- reads what it holds");
   Held text;
   text[Words] = "a text long enough to be held outside the object";
   text[Words] = text[Words] + "!";
-  println(text[Words].size());
+  std::println(text[Words].size());
   text[Count] = (int)text[Words].size();
-  println(text[Count]);
-  println("-- its operator= throws");
+  std::println(text[Count]);
+  std::println("-- its operator= throws");
   Held picky;
   picky[Picky] = Refusing();
   Held other;
@@ -64,10 +64,10 @@ int main()
   {
     picky = other;
   }
-  catch (const RuntimeError& e)
+  catch (const std::RuntimeError& e)
   {
-    println(StringView(e.what()), " ", picky == Held::Picky);
+    std::println(std::StringView(e.what()), " ", picky == Held::Picky);
   }
-  println("-- end");
+  std::println("-- end");
   return 0;
 }

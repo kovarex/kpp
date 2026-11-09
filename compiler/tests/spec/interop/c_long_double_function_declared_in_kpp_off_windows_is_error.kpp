@@ -18,6 +18,6 @@ double quarter() { return specQuarterOf(1.0); }
 bool address() { auto f = fabsl; return f != nullptr; }
 int main()
 {
-  println(absolute(), " ", whole(), " ", third(), " ", quarter(), " ", address());
+  std::println(absolute(), " ", whole(), " ", third(), " ", quarter(), " ", address());
   return 0;
 }

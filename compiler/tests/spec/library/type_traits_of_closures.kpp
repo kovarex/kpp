@@ -20,10 +20,10 @@ struct Throwing
 };
 template <class T> void row(const char* name)
 {
-  printf("%-10s %d%d%d %d%d%d%d%d%d %d%d%d%d %d%d %d\n", name, isClass<T>, isConstructible<T>, isTriviallyDefaultConstructible<T>,
-         isTriviallyCopyable<T>, isTriviallyDestructible<T>, isTriviallyCopyConstructible<T>, isTriviallyMoveConstructible<T>, isTriviallyCopyAssignable<T>, isTriviallyMoveAssignable<T>,
-         isCopyConstructible<T>, isMoveConstructible<T>, isCopyAssignable<T>, isMoveAssignable<T>, isNothrowMoveConstructible<T>, isNothrowMoveAssignable<T>,
-         isConstructible<T, const T&>);
+  printf("%-10s %d%d%d %d%d%d%d%d%d %d%d%d%d %d%d %d\n", name, std::isClass<T>, std::isConstructible<T>, std::isTriviallyDefaultConstructible<T>,
+         std::isTriviallyCopyable<T>, std::isTriviallyDestructible<T>, std::isTriviallyCopyConstructible<T>, std::isTriviallyMoveConstructible<T>, std::isTriviallyCopyAssignable<T>, std::isTriviallyMoveAssignable<T>,
+         std::isCopyConstructible<T>, std::isMoveConstructible<T>, std::isCopyAssignable<T>, std::isMoveAssignable<T>, std::isNothrowMoveConstructible<T>, std::isNothrowMoveAssignable<T>,
+         std::isConstructible<T, const T&>);
 }
 int main()
 {

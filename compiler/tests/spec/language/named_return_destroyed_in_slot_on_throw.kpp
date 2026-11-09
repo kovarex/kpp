@@ -4,12 +4,12 @@ struct Resource
 {
   int id = 0;
   Resource() {}
-  Resource(const Resource& o) : id(o.id) { println("copied"); }
-  Resource(Resource&& o) : id(o.id) { println("moved"); }
+  Resource(const Resource& o) : id(o.id) { std::println("copied"); }
+  Resource(Resource&& o) : id(o.id) { std::println("moved"); }
   ~Resource()
   {
     ++destroyed;
-    println("destroyed ", this.id);
+    std::println("destroyed ", this.id);
   }
 };
 Resource open(bool fail)
@@ -26,21 +26,21 @@ int main()
   try
   {
     Resource ok = open(false);
-    println("opened ", ok.id);
+    std::println("opened ", ok.id);
   }
   catch (int)
   {
-    println("not thrown");
+    std::println("not thrown");
   }
   try
   {
     Resource bad = open(true);
-    println("not reached ", bad.id);
+    std::println("not reached ", bad.id);
   }
   catch (int e)
   {
-    println("caught ", e);
+    std::println("caught ", e);
   }
-  println("destroyed ", destroyed, " times");
+  std::println("destroyed ", destroyed, " times");
   return 0;
 }

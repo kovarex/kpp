@@ -20,6 +20,6 @@ int test(T v)
 
 int main()
 {
-  println(test(NoBool{}), " ", test(WithBool{}), " ", test(5));
+  std::println(test(NoBool{}), " ", test(WithBool{}), " ", test(5));
   return 0;
 }

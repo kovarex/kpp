@@ -2,9 +2,9 @@
 // up to its call of broken, whose stub names it and aborts.
 int main(int argc, char**)
 {
-  println("before");
+  std::println("before");
   if (argc > 1)
     return broken(argc);
-  println("after");
+  std::println("after");
   return 0;
 }

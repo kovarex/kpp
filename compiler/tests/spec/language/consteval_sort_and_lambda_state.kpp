@@ -2,16 +2,16 @@
 // found by thread D (2026-11-05): each was no constant: a function object's operator() template was not looked for, a capture by copy was read only, and a lambda's reference parameter was a read-only copy
 constexpr int sorted()
 {
-  Vector<int> v;
+  std::Vector<int> v;
   for (int i = 0; i < 40; ++i)
     v.push_back((i * 37) % 41);
-  sort(v.begin(), v.end());
+  std::sort(v.begin(), v.end());
   int ok = 1;
   for (int i = 1; i < 40; ++i)
     if (v[i - 1] > v[i])
       ok = 0;
   int a[3] = {3, 1, 2};
-  sort(a, a + 3);
+  std::sort(a, a + 3);
   return ok * 10000 + v[39] * 1000 + a[0] * 100 + a[1] * 10 + a[2];
 }
 constexpr int lambdas()
@@ -30,6 +30,6 @@ constexpr int s = sorted();
 constexpr int l = lambdas();
 int main()
 {
-  println(s, " ", sorted(), " ", l, " ", lambdas());
+  std::println(s, " ", sorted(), " ", l, " ", lambdas());
   return 0;
 }

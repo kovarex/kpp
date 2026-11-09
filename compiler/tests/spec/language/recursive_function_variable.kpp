@@ -2,7 +2,7 @@
 // factorio: Gui.kpp's recursiveAppendWidgets, which walks the widget tree
 int main()
 {
-  Function<int(int)> fib = [&](int n) { return n < 2 ? n : fib(n - 1) + fib(n - 2); };
-  println(fib(10));
+  std::Function<int(int)> fib = [&](int n) { return n < 2 ? n : fib(n - 1) + fib(n - 2); };
+  std::println(fib(10));
   return 0;
 }

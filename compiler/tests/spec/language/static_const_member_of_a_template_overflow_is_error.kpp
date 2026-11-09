@@ -9,7 +9,7 @@ template <i64 A, i64 B> struct Product
 template <i64 A, i64 B> const i64 Product<A, B>::outside = A + B;
 int main()
 {
-  println(Product<4000000000000000000ll, 5>::wraps, " ", Product<1, 2>::outside);
-  println(Product<4000000000000000000ll, 3>::value);
+  std::println(Product<4000000000000000000ll, 5>::wraps, " ", Product<1, 2>::outside);
+  std::println(Product<4000000000000000000ll, 3>::value);
   return 0;
 }

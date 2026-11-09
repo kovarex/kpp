@@ -18,8 +18,8 @@ int main()
   Box b;
   const Box c;
   Box* p = &b;
-  println(b.which(), " ", Box().which(), " ", move(b).which(), " ", p->which(), " ", make().which());
-  println(b.peek(), " ", c.peek(), " ", Box().peek());
-  println(b.out(), " ", Box().out());
+  std::println(b.which(), " ", Box().which(), " ", std::move(b).which(), " ", p->which(), " ", make().which());
+  std::println(b.peek(), " ", c.peek(), " ", Box().peek());
+  std::println(b.out(), " ", Box().out());
   return 0;
 }

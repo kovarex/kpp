@@ -11,7 +11,7 @@ struct Derived : Base
 template<class A> struct Holder
 {
   A held;
-  template<class U> Holder(U&& value) : held(forward<U>(value)) {}
+  template<class U> Holder(U&& value) : held(std::forward<U>(value)) {}
 };
 constexpr int casts()
 {
@@ -26,8 +26,8 @@ constexpr int casts()
 constexpr int moves()
 {
   int a = 1;
-  int&& m = move(a);
-  int&& f = forward<int>(a);
+  int&& m = std::move(a);
+  int&& f = std::forward<int>(a);
   a = 5;
   m = m + 1;
   return a * 10 + f;
@@ -35,8 +35,8 @@ constexpr int moves()
 constexpr int forwards()
 {
   int a = 1;
-  const int& f = forward<const int&>(a);
-  int& g = forward<int&>(a);
+  const int& f = std::forward<const int&>(a);
+  int& g = std::forward<int&>(a);
   a = 3;
   g = g + 1;
   return f * 10 + a;
@@ -54,8 +54,8 @@ constexpr int pairs()
 {
   int a = 1;
   int b = 2;
-  Pair<const int&, int> p(a, 2);
-  Pair<int&, int> q(a, b);
+  std::Pair<const int&, int> p(a, 2);
+  std::Pair<int&, int> q(a, b);
   Holder<const int&> h(a);
   a = 9;
   q.first = q.first + 1;
@@ -68,6 +68,6 @@ constexpr int b = bases();
 constexpr int p = pairs();
 int main()
 {
-  println(c, " ", casts(), " ", m, " ", moves(), " ", f, " ", forwards(), " ", b, " ", bases(), " ", p, " ", pairs());
+  std::println(c, " ", casts(), " ", m, " ", moves(), " ", f, " ", forwards(), " ", b, " ", bases(), " ", p, " ", pairs());
   return 0;
 }

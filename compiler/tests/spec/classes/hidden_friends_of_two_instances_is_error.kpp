@@ -13,6 +13,6 @@ int main()
 {
   Box<int> i(3);
   Box<long> l(3);
-  println(same(i, l));
+  std::println(same(i, l));
   return 0;
 }

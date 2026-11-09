@@ -16,9 +16,9 @@ struct Order
 template<class T, class... Args>
 T* create(Args&&... values)
 {
-  return new T(forward<Args>(values)...);
+  return new T(std::forward<Args>(values)...);
 }
-double pick(bool shadow, const Pair<Vec2, Vec2>& shift)
+double pick(bool shadow, const std::Pair<Vec2, Vec2>& shift)
 {
   Order* o = create<Order>(shadow ? shift.second : shift.first, 5);
   double r = o->shift.x + o->tag;
@@ -32,18 +32,18 @@ struct Params
 };
 uint32_t widths(const Params& p)
 {
-  Vector<uint32_t> out;
+  std::Vector<uint32_t> out;
   out.emplace_back(p.lineLength != 0 ? p.lineLength : p.frameCount);
   return out[0];
 }
 int main()
 {
-  Pair<Vec2, Vec2> s{Vec2(1, 2), Vec2(3, 4)};
+  std::Pair<Vec2, Vec2> s{Vec2(1, 2), Vec2(3, 4)};
   int a = 1;
   int b = 2;
   bool first = true;
   (first ? a : b) = 10;
   Params p;
-  println(pick(true, s), " ", pick(false, s), " ", a, " ", b, " ", widths(p));
+  std::println(pick(true, s), " ", pick(false, s), " ", a, " ", b, " ", widths(p));
   return 0;
 }

@@ -19,6 +19,6 @@ int main()
   Widget x(made());
   Widget y(2, 2);
   Holder h;
-  println(w.v, " ", x.v, " ", y.v, " ", h.get().v, " ", global.v);
+  std::println(w.v, " ", x.v, " ", y.v, " ", h.get().v, " ", global.v);
   return 0;
 }

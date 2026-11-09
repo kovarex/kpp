@@ -2,7 +2,7 @@
 // factorio: Filesystem::Path's copy and move constructors (`Path(Path&& p) : path(std::move(p))`, `explicit Path(const Path& p) : path(p)`), over std::filesystem::path
 struct Label
 {
-  String value;
+  std::String value;
   Label() {}
   implicit Label(const char* v) : value(v) {}
 };
@@ -11,7 +11,7 @@ struct Name : Label
   Name() {}
   implicit Name(const char* s) : Label(s) {}
   Name(const Name& n) : Label(n) {}
-  Name(Name&& n) : Label(::move(n)) {}
+  Name(Name&& n) : Label(std::move(n)) {}
 };
 struct Plain
 {
@@ -26,10 +26,10 @@ int main()
 {
   Name a("abc");
   Name b(a);
-  Name c(::move(b));
+  Name c(std::move(b));
   Derived d;
   d.v = 5;
   Derived e(d);
-  println(c.value, " ", e.v);
+  std::println(c.value, " ", e.v);
   return 0;
 }

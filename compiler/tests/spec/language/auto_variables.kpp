@@ -9,8 +9,8 @@ int main()
   auto box = makeBox();
   const auto& ref = box;
   auto* ptr = &box;
-  auto text = String("text");
+  auto text = std::String("text");
   ptr->width += 1;
-  println(n, " ", int(d * 2), " ", ref.width, " ", text.size(), " ", sizeof(n) == sizeof(int));
+  std::println(n, " ", int(d * 2), " ", ref.width, " ", text.size(), " ", sizeof(n) == sizeof(int));
   return 0;
 }

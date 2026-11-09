@@ -6,13 +6,13 @@ int sum(const int (&a)[3]) { return a[0] + a[1] + a[2]; }
 int near(const int (&a)[2]) { return 1; }
 int near(Point p) { return 2; }
 int pick(const int (&a)[3]) { return 1; }
-int pick(InitializerList<int> list) { return 2; }
+int pick(std::InitializerList<int> list) { return 2; }
 // (explicit by default, design.md: a function argument's braces name their type, an array type through an alias,
 // but an InitializerList parameter's)
 using Three = const int[3];
 using Two = const int[2];
 int main()
 {
-  println(sum(Three{1, 2, 3}), " ", sum(Three{4}), " ", near(Two{1, 2}), " ", pick({1, 2, 3}));
+  std::println(sum(Three{1, 2, 3}), " ", sum(Three{4}), " ", near(Two{1, 2}), " ", pick({1, 2, 3}));
   return 0;
 }

@@ -23,11 +23,11 @@ template<typename... T> int forwarded(T... v)
 }
 template<typename... T> int lengths(T... v)
 {
-  auto f = [...s = move(v)]() mutable
+  auto f = [...s = std::move(v)]() mutable
   {
     int total = 0;
     ((total = total * 10 + int(s.size())), ...);
-    ((s = String("x")), ...);
+    ((s = std::String("x")), ...);
     return total;
   };
   int first = f();
@@ -38,6 +38,6 @@ int main()
   int a = 1, b = 2;
   bump(a, b);
   printf("%d %d %d %d %d %d %d\n", twice(4, 5)(), twice()(), counted(1, 'x', 2.5)(), counted()(), a * 10 + b, forwarded(1, 2, 3),
-         lengths(String("abc"), String("de")));
+         lengths(std::String("abc"), std::String("de")));
   return 0;
 }

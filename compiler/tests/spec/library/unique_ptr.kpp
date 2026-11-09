@@ -13,33 +13,33 @@ struct Closer
     delete r;
   }
 };
-UniquePtr<Res> make(bool sub) { if (sub) return UniquePtr<Res>(new Sub()); return makeUnique<Res>(1); }
+std::UniquePtr<Res> make(bool sub) { if (sub) return std::UniquePtr<Res>(new Sub()); return std::makeUnique<Res>(1); }
 int main()
 {
-  UniquePtr<Res> a = make(false);
-  UniquePtr<Res> b = make(true);
-  UniquePtr<Res> c = ::move(a);
+  std::UniquePtr<Res> a = make(false);
+  std::UniquePtr<Res> b = make(true);
+  std::UniquePtr<Res> c = std::move(a);
   int ids = b->id + c->id;
   b.reset();
-  UniqueArray<int> arr(3);
+  std::UniqueArray<int> arr(3);
   arr[2] = 7;
-  println(ids, " ", a == nullptr, " ", alive, " ", (bool)c, " ", arr[2]);
+  std::println(ids, " ", a == nullptr, " ", alive, " ", (bool)c, " ", arr[2]);
   c = nullptr;
-  println(alive);
-  UniqueArray<char> buffer = makeUniqueArrayForOverwrite<char>(16);
+  std::println(alive);
+  std::UniqueArray<char> buffer = std::makeUniqueArrayForOverwrite<char>(16);
   buffer[15] = 'z';
-  UniqueArray<String> names = makeUniqueArrayForOverwrite<String>(2);
-  println(int(sizeof(UniqueArray<char>)), " ", buffer[15], " ", names[1].size());
+  std::UniqueArray<std::String> names = std::makeUniqueArrayForOverwrite<std::String>(2);
+  std::println(int(sizeof(std::UniqueArray<char>)), " ", buffer[15], " ", names[1].size());
   {
-    UniquePtr<Res, Closer> d(new Res(1));
-    UniquePtr<Res, Closer> e = ::move(d);
+    std::UniquePtr<Res, Closer> d(new Res(1));
+    std::UniquePtr<Res, Closer> e = std::move(d);
     e.reset(new Res(2));
     Res* raw = e.release();
     delete raw;
-    UniquePtr<Res, Closer> f(new Res(3));
+    std::UniquePtr<Res, Closer> f(new Res(3));
     f.swap(e);
-    UniquePtr<Res, Closer> empty;
+    std::UniquePtr<Res, Closer> empty;
   }
-  println(closed, " ", alive, " ", sizeof(UniquePtr<Res>));
+  std::println(closed, " ", alive, " ", sizeof(std::UniquePtr<Res>));
   return 0;
 }

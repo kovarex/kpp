@@ -16,28 +16,28 @@ struct Counted
 };
 int main()
 {
-  Optional<Counted> a;
-  Optional<Counted> b(nullopt);
-  println(alive, " ", a.has_value(), " ", a == nullopt);
+  std::Optional<Counted> a;
+  std::Optional<Counted> b(std::nullopt);
+  std::println(alive, " ", a.has_value(), " ", a == std::nullopt);
   a = Counted(5);
-  Optional<Counted> c = a;
-  println(alive, " ", c->value, " ", a->value == c.value().value);
+  std::Optional<Counted> c = a;
+  std::println(alive, " ", c->value, " ", a->value == c.value().value);
   c = a;
-  println(alive, " ", c->value);
+  std::println(alive, " ", c->value);
   a.reset();
-  println(alive, " ", !a);
+  std::println(alive, " ", !a);
   c = b;
-  println(alive, " ", c.has_value());
+  std::println(alive, " ", c.has_value());
   c.emplace(7);
   c.emplace(8);
-  println(alive, " ", c.value().value);
+  std::println(alive, " ", c.value().value);
   {
-    Optional<Counted> d(inPlace, 3);
-    println(alive);
+    std::Optional<Counted> d(std::inPlace, 3);
+    std::println(alive);
   }
-  Optional<Wide> wide;
+  std::Optional<Wide> wide;
   wide = Wide{{1, 2, 3, 4}};
-  println(alive, " ", alignof(Optional<Wide>), " ", ((size_t)&*wide) % 16);
-  println(isTriviallyCopyable<Optional<float>>, " ", isTriviallyDestructible<Optional<float>>, " ", isTriviallyCopyable<Optional<Counted>>, " ", isTriviallyDestructible<Optional<Counted>>);
+  std::println(alive, " ", alignof(std::Optional<Wide>), " ", ((size_t)&*wide) % 16);
+  std::println(std::isTriviallyCopyable<std::Optional<float>>, " ", std::isTriviallyDestructible<std::Optional<float>>, " ", std::isTriviallyCopyable<std::Optional<Counted>>, " ", std::isTriviallyDestructible<std::Optional<Counted>>);
   return 0;
 }

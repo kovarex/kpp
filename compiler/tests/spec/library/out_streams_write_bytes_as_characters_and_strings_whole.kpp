@@ -1,17 +1,17 @@
 // spec: the output streams write a u8 or an i8 (C++'s unsigned char and signed char, so uint8_t and int8_t) as the character it holds, as std::ostream's inserters for unsigned char and signed char do ([ostream.inserters.character]), and a String whole, its NUL bytes too, as std::string's inserter writes size() characters ([string.io]): an OutFileStream, any OutStream and cerr alike, alone or in a chain; the other integers, an i8 promoted by arithmetic among them, stay numbers (`file: 16 bytes: AB|CD|65 66|-1 5 / 11 bytes: ab.cd1ab.cd / stream 8 bytes: AB ab.cd / cerr 10 bytes: EF! ab.cd/`, clang's with MSVC's STL: std::ofstream, an std::ostream& to an ostringstream, std::cerr)
 // found in thread I's reading of Stream.kpp after its battery al3 (2026-11-09): `out << (u8)65` wrote "65" where std::ofstream writes "A" (a u8 took the i32 overload), and an OutFileStream's or cerr's `<< s` stopped at the String's first NUL (fputs) where std writes all of it
 extern "C" import "stdio.h";
-class Collected : public OutStream
+class Collected : public std::OutStream
 {
 public:
-  String text;
-  void writeBytes(const char* data, ContainerSize count) override { this.text.append(data, count); }
+  std::String text;
+  void writeBytes(const char* data, std::ContainerSize count) override { this.text.append(data, count); }
 };
 // The file's bytes, a NUL as '.' and a newline as '/'.
 void showFile(const char* label, const char* path)
 {
   FILE* f = fopen(path, "rb");
-  String text;
+  std::String text;
   int count = 0;
   int c;
   while ((c = fgetc(f)) != EOF)
@@ -28,29 +28,29 @@ int main()
   i8 b = 66;
   unsigned char c = 67;
   signed char d = 68;
-  String withNul("ab", 2);
+  std::String withNul("ab", 2);
   withNul.push_back('\0');
   withNul.append("cd", 2);
   {
-    OutFileStream out("out_streams_write_bytes_as_characters_and_strings_whole.out");
+    std::OutFileStream out("out_streams_write_bytes_as_characters_and_strings_whole.out");
     out << a << b << '|' << c << d << '|' << (int)a << ' ' << (u32)b << '|' << (i8)-1 + 0 << ' ' << (i16)5;
   }
   showFile("file: ", "out_streams_write_bytes_as_characters_and_strings_whole.out");
   {
-    OutFileStream out("out_streams_write_bytes_as_characters_and_strings_whole.out");
+    std::OutFileStream out("out_streams_write_bytes_as_characters_and_strings_whole.out");
     out << withNul;
     out << 1 << withNul;
   }
   showFile("", "out_streams_write_bytes_as_characters_and_strings_whole.out");
   Collected stream;
-  OutStream& any = stream;
+  std::OutStream& any = stream;
   any << a << b << ' ' << withNul;
   printf("stream %d bytes: ", (int)stream.text.size());
   for (char x : stream.text)
     printf("%c", x == 0 ? '.' : x);
   printf("\n");
   freopen("out_streams_write_bytes_as_characters_and_strings_whole.err", "wb", stderr);
-  cerr << (u8)69 << (i8)70 << '!' << ' ' << withNul << endl;
+  std::cerr << (u8)69 << (i8)70 << '!' << ' ' << withNul << std::endl;
   showFile("cerr ", "out_streams_write_bytes_as_characters_and_strings_whole.err");
   fclose(stderr);
   remove("out_streams_write_bytes_as_characters_and_strings_whole.out");

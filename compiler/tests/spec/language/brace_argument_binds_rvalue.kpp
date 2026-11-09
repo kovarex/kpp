@@ -4,13 +4,13 @@ struct Box
 {
   int copies = 0;
   int moves = 0;
-  void take(const Pair<int, UniquePtr<int>>& entry) { ++this.copies; }
-  void take(Pair<int, UniquePtr<int>>&& entry) { ++this.moves; }
+  void take(const std::Pair<int, std::UniquePtr<int>>& entry) { ++this.copies; }
+  void take(std::Pair<int, std::UniquePtr<int>>&& entry) { ++this.moves; }
 };
 int main()
 {
   Box box;
-  box.take(Pair<int, UniquePtr<int>>{1, makeUnique<int>(5)});
-  println(box.copies, " ", box.moves);
+  box.take(std::Pair<int, std::UniquePtr<int>>{1, std::makeUnique<int>(5)});
+  std::println(box.copies, " ", box.moves);
   return 0;
 }

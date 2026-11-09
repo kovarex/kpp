@@ -24,7 +24,7 @@ public:
 template<class PrototypeType>
 struct PrototypeList
 {
-  static Vector<const PrototypeType*> indexToPrototype;
+  static std::Vector<const PrototypeType*> indexToPrototype;
 
   static const PrototypeType* getSafe(const PrototypeType::IDType& id)
   {
@@ -35,7 +35,7 @@ struct PrototypeList
 };
 
 template<class PrototypeType>
-Vector<const PrototypeType*> PrototypeList<PrototypeType>::indexToPrototype;
+std::Vector<const PrototypeType*> PrototypeList<PrototypeType>::indexToPrototype;
 
 int main()
 {
@@ -45,6 +45,6 @@ int main()
   ItemPrototype::IDType id = iron.getID();
   const ItemPrototype* found = PrototypeList<ItemPrototype>::getSafe(id);
   id.index = 5;
-  println(found ? found->stackSize : 0, " ", PrototypeList<ItemPrototype>::getSafe(id) == nullptr);
+  std::println(found ? found->stackSize : 0, " ", PrototypeList<ItemPrototype>::getSafe(id) == nullptr);
   return 0;
 }

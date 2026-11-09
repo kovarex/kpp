@@ -9,7 +9,7 @@ int main()
   auto after = [&](int first, auto&&... rest) { return first * base + (rest * ... * 1); };
   auto forward = [](auto... xs) { return sum3(xs...); };
   auto each = [](auto... xs) { int s = 0; ((s = s * 10 + xs), ...); return s; };
-  println(fold(), " ", fold(1, 2, 3), " ", fold(1.5, 2.25), " ", count(), " ", count(1, 'a', 2.0));
-  println(after(3), " ", after(3, 4, 5), " ", forward(1, 2, 3), " ", each(1, short(2), 4, 8));
+  std::println(fold(), " ", fold(1, 2, 3), " ", fold(1.5, 2.25), " ", count(), " ", count(1, 'a', 2.0));
+  std::println(after(3), " ", after(3, 4, 5), " ", forward(1, 2, 3), " ", each(1, short(2), 4, 8));
   return 0;
 }

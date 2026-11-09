@@ -4,7 +4,7 @@
 // error: shift_chain_with_bitwise_operator_is_error.kpp:11: error: a << chain into a String mixed with ^ needs parentheses: `out << (a ^ b)` (design.md 14)
 int main()
 {
-  String out;
+  std::String out;
   int flags = 6, mask = 3;
   out << flags & mask;
   out << "x" << flags | mask;

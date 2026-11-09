@@ -2,11 +2,11 @@
 // factorio: the escapes of universal_character_names_in_literals in their wide forms: StringUtil's tables write code units as escapes, and a character literal is folded by the constant evaluator, not by the string decoder (which took its first byte: `L'é'` was 0xC3)
 int main()
 {
-  WString hex = L"\xA9\x263A";
-  WString octal = L"\101\7";
-  WString source = L"é";
+  std::WString hex = L"\xA9\x263A";
+  std::WString octal = L"\101\7";
+  std::WString source = L"é";
   wchar_t letter = L'é';
   const char narrow[] = "\08\1010";
-  println(hex.size(), " ", (int)hex[0], " ", (int)hex[1], " | ", octal.size(), " ", (int)octal[0], " ", (int)octal[1], " | ", (int)source[0], " ", (int)letter, " | ", int(sizeof(narrow)), " ", (int)narrow[0], " ", (int)narrow[1], " ", (int)narrow[2], " ", (int)narrow[3]);
+  std::println(hex.size(), " ", (int)hex[0], " ", (int)hex[1], " | ", octal.size(), " ", (int)octal[0], " ", (int)octal[1], " | ", (int)source[0], " ", (int)letter, " | ", int(sizeof(narrow)), " ", (int)narrow[0], " ", (int)narrow[1], " ", (int)narrow[2], " ", (int)narrow[3]);
   return 0;
 }

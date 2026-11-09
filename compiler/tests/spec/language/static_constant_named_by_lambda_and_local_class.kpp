@@ -60,6 +60,6 @@ long long viaObject()
 
 int main()
 {
-  println(viaLambda(), " ", viaLocalClass(), " ", viaGenericLambda(), " ", viaInstanceLambda<3>(), " ", viaInstanceLambda<6>(), " ", viaObject());
+  std::println(viaLambda(), " ", viaLocalClass(), " ", viaGenericLambda(), " ", viaInstanceLambda<3>(), " ", viaInstanceLambda<6>(), " ", viaObject());
   return 0;
 }

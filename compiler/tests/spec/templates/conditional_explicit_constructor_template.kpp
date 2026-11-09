@@ -25,14 +25,14 @@ struct Opt
   bool set = false;
   Opt() {}
   template<typename U = T>
-  implicit(isConvertible<U, T>) Opt(U&& v) requires(!isSame<RemoveCvRef<U>, T> && isConstructible<T, U>) { this.set = true; }
+  implicit(isConvertible<U, T>) Opt(U&& v) requires(!std::isSame<std::RemoveCvRef<U>, T> && std::isConstructible<T, U>) { this.set = true; }
 };
-int take(Optional<TooFar> t) { return t.hasValue() ? (bool(*t) ? 2 : 1) : 0; }
+int take(std::Optional<TooFar> t) { return t.hasValue() ? (bool(*t) ? 2 : 1) : 0; }
 int pick(Opt<Strict> o) { return o.set ? 10 : 11; }
 int pick(long l) { return 20; }
 int main()
 {
   const TooFar::Enum e = TooFar::True;
-  println(take(TooFar::False), " ", take(e), " ", pick(5), " ", pick(Opt<Strict>(5)));
+  std::println(take(TooFar::False), " ", take(e), " ", pick(5), " ", pick(Opt<Strict>(5)));
   return 0;
 }

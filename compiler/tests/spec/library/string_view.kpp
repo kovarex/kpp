@@ -1,12 +1,12 @@
 // spec: StringView (std::string_view): from literals and Strings, substr, find, prefix/suffix, comparison
 // factorio: 1744 uses in 527 files
-int countWords(StringView text)
+int countWords(std::StringView text)
 {
   int words = 0;
   while (!text.empty())
   {
     int space = text.find(' ');
-    if (space == StringView::npos) { ++words; break; }
+    if (space == std::StringView::npos) { ++words; break; }
     if (space > 0) ++words;
     text = text.substr(space + 1);
   }
@@ -14,10 +14,10 @@ int countWords(StringView text)
 }
 int main()
 {
-  String owner = "key=value";
-  StringView view = owner;
+  std::String owner = "key=value";
+  std::StringView view = owner;
   int eq = view.find('=');
-  StringView key = view.substr(0, eq), value = view.substr(eq + 1);
-  println(key, " ", value, " ", key == "key", " ", view.startsWith("ke"), " ", view.endsWith(StringView("lue")), " ", countWords("a bb  ccc"));
+  std::StringView key = view.substr(0, eq), value = view.substr(eq + 1);
+  std::println(key, " ", value, " ", key == "key", " ", view.startsWith("ke"), " ", view.endsWith(std::StringView("lue")), " ", countWords("a bb  ccc"));
   return 0;
 }

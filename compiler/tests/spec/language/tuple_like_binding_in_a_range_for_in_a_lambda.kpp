@@ -2,9 +2,9 @@
 extern "C" int printf(const char* format, ...);
 int main()
 {
-  Vector<Tuple<int, int>> values;
-  values.push_back(Tuple<int, int>(1, 4));
-  values.push_back(Tuple<int, int>(2, 5));
+  std::Vector<std::Tuple<int, int>> values;
+  values.push_back(std::Tuple<int, int>(1, 4));
+  values.push_back(std::Tuple<int, int>(2, 5));
   int sum = 0;
   auto run = [&]
   {

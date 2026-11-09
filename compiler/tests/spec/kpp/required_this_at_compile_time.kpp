@@ -25,6 +25,6 @@ static_assert(C().run() == 10);
 int main(int argc, char** argv)
 {
   C c;
-  println(C::get(argc - 1), " ", C::bareTwiceLimit, " ", c.field, " ", c.times(argc), " ", c.run());
+  std::println(C::get(argc - 1), " ", C::bareTwiceLimit, " ", c.field, " ", c.times(argc), " ", c.run());
   return 0;
 }

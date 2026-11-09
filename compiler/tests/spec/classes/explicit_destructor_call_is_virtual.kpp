@@ -35,7 +35,7 @@ int main()
   three->Base::~Base();
   printf("--\n");
   Base* four = new (place) Second;
-  destroyAt(four);
+  std::destroyAt(four);
   printf("--\n");
   Second* five = new (place) Second;
   five->Middle::~Middle();

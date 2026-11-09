@@ -20,14 +20,14 @@ struct Vector2D : Vector2
   using Vector2::Vector2;
   Vector2D(int both) : Vector2(both, both) {}
 };
-int clampOf(Pair<Vector2D, Vector2D> clamp = { {}, {} }) { return int(clamp.first.x + clamp.second.y); }
-int pick(const String&) { return 2; }
+int clampOf(std::Pair<Vector2D, Vector2D> clamp = { {}, {} }) { return int(clamp.first.x + clamp.second.y); }
+int pick(const std::String&) { return 2; }
 int pick(int) { return 1; }
 int main()
 {
   Filter f{5};
   Destination d{6};
-  Vector<Mapping> mappings({ {}, {}, {f, d} });
-  println(int(mappings.size()), " ", mappings[0].source.id, " ", mappings[2].destination.id, " ", pick(int{}), " ", clampOf(), " ", clampOf(Pair<Vector2D, Vector2D>{{1.0, 2.0}, {3}}));
+  std::Vector<Mapping> mappings({ {}, {}, {f, d} });
+  std::println(int(mappings.size()), " ", mappings[0].source.id, " ", mappings[2].destination.id, " ", pick(int{}), " ", clampOf(), " ", clampOf(std::Pair<Vector2D, Vector2D>{{1.0, 2.0}, {3}}));
   return 0;
 }

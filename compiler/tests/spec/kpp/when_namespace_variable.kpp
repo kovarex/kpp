@@ -16,8 +16,8 @@ int make(int value)
 int main()
 {
   int total = make(1) + make(2) + make(3);
-  println(total);
+  std::println(total);
   if constexpr (config::debug)
-    println(StringView(buildName), ": ", Statistics::created, " made");
+    std::println(std::StringView(buildName), ": ", Statistics::created, " made");
   return 0;
 }

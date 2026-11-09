@@ -5,14 +5,14 @@ int main()
   const char* text = "0.125xyz";
   char* end = nullptr;
   long double value = strtold(text, &end);
-  println(value, " ", end - text);
+  std::println(value, " ", end - text);
   const char* spaced = "  -2.5e3!";
   value = strtold(spaced, &end);
-  println(value, " ", end - spaced);
+  std::println(value, " ", end - spaced);
   const char* hex = "0x1.8p1";
   value = strtold(hex, &end);
-  println(value, " ", end - hex);
+  std::println(value, " ", end - hex);
   auto parse = &strtold;
-  println(parse("0.5", nullptr));
+  std::println(parse("0.5", nullptr));
   return 0;
 }

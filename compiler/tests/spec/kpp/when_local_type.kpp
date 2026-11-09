@@ -14,7 +14,7 @@ int main()
     if constexpr (config::debug)
       ++stats.hits;
   if constexpr (config::debug)
-    println("hits ", stats.hits, " ", stats.doubled());
-  println("done");
+    std::println("hits ", stats.hits, " ", stats.doubled());
+  std::println("done");
   return 0;
 }

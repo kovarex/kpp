@@ -11,7 +11,7 @@ template<typename T> struct Wrapper
 };
 int main()
 {
-  println(Pick<int>::id, " ", Pick<char*>::id, " ", Wrapper<int>::Pick2<int>::id, " ", Wrapper<int>::Pick2<char*>::id);
-  println(Wrapper<int>::Pick3<int>::id, " ", Wrapper<int>::Pick3<char>::id, " ", Wrapper<char>::Pick3<char>::id);
+  std::println(Pick<int>::id, " ", Pick<char*>::id, " ", Wrapper<int>::Pick2<int>::id, " ", Wrapper<int>::Pick2<char*>::id);
+  std::println(Wrapper<int>::Pick3<int>::id, " ", Wrapper<int>::Pick3<char>::id, " ", Wrapper<char>::Pick3<char>::id);
   return 0;
 }

@@ -15,12 +15,12 @@ struct Color
 };
 
 template<class T>
-struct Const : Conditional<isIntegral<T> || isFloatingPoint<T>, Value<T>, T> {};
+struct Const : std::Conditional<std::isIntegral<T> || std::isFloatingPoint<T>, Value<T>, T> {};
 
 float redOf(const Color& c) { return c.r; }
 float greenOf(const Color* c) { return c->g; }
 
-template<bool B> struct ViaParam : BoolConstant<B> {};
+template<bool B> struct ViaParam : std::BoolConstant<B> {};
 
 int main()
 {
@@ -31,6 +31,6 @@ int main()
   tint.g = 0.25f;
   ViaParam<false> v;
   ViaParam<true> w;
-  println(number.value(), " ", tint.r, " ", redOf(tint), " ", greenOf(&tint), " ", v.value, " ", w.value);
+  std::println(number.value(), " ", tint.r, " ", redOf(tint), " ", greenOf(&tint), " ", v.value, " ", w.value);
   return 0;
 }

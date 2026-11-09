@@ -2,8 +2,8 @@
 struct Part
 {
   int id;
-  Part(int i) : id(i) { if (i == 13) throw i; println("part ", this.id); }
-  ~Part() { println("part ", this.id, " gone"); }
+  Part(int i) : id(i) { if (i == 13) throw i; std::println("part ", this.id); }
+  ~Part() { std::println("part ", this.id, " gone"); }
 };
 struct Widget
 {
@@ -11,17 +11,17 @@ struct Widget
   Part b;
   Widget(int second, bool bodyThrows) try : a(1), b(second)
   {
-    println("body");
+    std::println("body");
     if (bodyThrows)
       throw 2.5;
   }
-  catch (int e) { println("handler int ", e); }
-  catch (double d) { println("handler double ", d); }
+  catch (int e) { std::println("handler int ", e); }
+  catch (double d) { std::println("handler double ", d); }
 };
 int main()
 {
-  try { Widget w(13, false); } catch (int e) { println("outer int ", e); }
-  try { Widget w(2, true); } catch (double d) { println("outer double ", d); }
-  { Widget w(3, false); println("made"); }
+  try { Widget w(13, false); } catch (int e) { std::println("outer int ", e); }
+  try { Widget w(2, true); } catch (double d) { std::println("outer double ", d); }
+  { Widget w(3, false); std::println("made"); }
   return 0;
 }

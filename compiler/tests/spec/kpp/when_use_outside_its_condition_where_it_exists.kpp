@@ -7,6 +7,6 @@ int main()
   int total = 1;
   total += count;
   auto read = [count]() { return count; };
-  println(total, " ", read());
+  std::println(total, " ", read());
   return 0;
 }

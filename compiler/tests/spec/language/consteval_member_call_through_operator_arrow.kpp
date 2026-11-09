@@ -19,7 +19,7 @@ struct Outer
 };
 constexpr long long optional()
 {
-  Optional<String> o = String("abc");
+  std::Optional<std::String> o = std::String("abc");
   return (long long)o->size() * 10 + (long long)o->find('c');
 }
 constexpr long long handle()
@@ -39,7 +39,7 @@ constexpr long long chain()
 }
 constexpr long long iterator()
 {
-  Map<int, String> m;
+  std::Map<int, std::String> m;
   m[1] = "de";
   auto it = m.find(1);
   return (long long)it->second.size() * 10 + it->first;
@@ -50,6 +50,6 @@ int main()
   constexpr long long b = handle();
   constexpr long long c = chain();
   constexpr long long d = iterator();
-  println(a, " ", optional(), " ", b, " ", handle(), " ", c, " ", chain(), " ", d, " ", iterator());
+  std::println(a, " ", optional(), " ", b, " ", handle(), " ", c, " ", chain(), " ", d, " ", iterator());
   return 0;
 }

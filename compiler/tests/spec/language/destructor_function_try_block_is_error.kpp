@@ -3,7 +3,7 @@
 struct Widget
 {
   int v = 1;
-  ~Widget() try { println("bye"); } catch (...) { println("caught"); }
+  ~Widget() try { println("bye"); } catch (...) { std::println("caught"); }
 };
 int main()
 {

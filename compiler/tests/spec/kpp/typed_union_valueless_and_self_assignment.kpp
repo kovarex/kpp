@@ -2,7 +2,7 @@
 // found by thread B with E's typed union report (2026-11-06, kpp/typed_union_alternative_that_throws_is_not_destroyed): `a = a` destroyed a's String, then copied it from the freed text
 struct Noisy
 {
-  String s;
+  std::String s;
   Noisy(const char* t) : s(t) {}
   Noisy(const Noisy& o) : s(o.s)
   {
@@ -14,15 +14,15 @@ struct Noisy
 };
 union enum U : u8
 {
-  { {int, Int}, {String, Text}, {Noisy, N} }
+  { {int, Int}, {std::String, Text}, {Noisy, N} }
 };
 
 int main()
 {
-  U a = String("hello, a string long enough for the heap");
+  U a = std::String("hello, a string long enough for the heap");
   U& alias = a;
   a = alias;
-  println(a[U::Text]);
+  std::println(a[U::Text]);
   U boom(U::N, "boom");
   U b = 5;
   try
@@ -31,13 +31,13 @@ int main()
   }
   catch (int)
   {
-    println("threw");
+    std::println("threw");
   }
   U c = 7;
-  println(b == c, " ", c == b, " ", b < c, " ", c < b, " ", b == U::Int, " ", int(c.tag()));
+  std::println(b == c, " ", c == b, " ", b < c, " ", c < b, " ", b == U::Int, " ", int(c.tag()));
   U d = b;
-  println(b == d, " ", d < c, " ", d <= b);
+  std::println(b == d, " ", d < c, " ", d <= b);
   b = 9;
-  println(b[U::Int], " ", b == c, " ", c < b);
+  std::println(b[U::Int], " ", b == c, " ", c < b);
   return 0;
 }

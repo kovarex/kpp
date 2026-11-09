@@ -55,12 +55,12 @@ int main()
   Second s;
   Both b;
   Aligned a;
-  println("plain ", sizeof(Plain), " ", offsetIn(p, p.c), " ", offsetIn(p, p.d));
-  println("over ", sizeof(Over), " ", offsetIn(o, o.c), " ", offsetIn(o, o.d));
-  println("derived ", sizeof(Derived), " ", offsetIn(d, d.c), " ", offsetIn(d, d.d), " ", offsetIn(d, d.e), " ", offsetIn(d, d.z));
-  println("second ", sizeof(Second), " ", offsetIn(s, s.big), " ", offsetIn(s, s.small));
-  println("both ", sizeof(Both), " ", offsetIn(b, b.big), " ", offsetIn(b, b.small), " ", offsetIn(b, b.tail));
-  println("aligned ", sizeof(Aligned), " ", alignof(Aligned), " ", offsetIn(a, a.c), " ", offsetIn(a, a.d));
-  println(o.c, " ", o.d, " ", d.z, " ", s.small, " ", b.tail, " ", a.c);
+  std::println("plain ", sizeof(Plain), " ", offsetIn(p, p.c), " ", offsetIn(p, p.d));
+  std::println("over ", sizeof(Over), " ", offsetIn(o, o.c), " ", offsetIn(o, o.d));
+  std::println("derived ", sizeof(Derived), " ", offsetIn(d, d.c), " ", offsetIn(d, d.d), " ", offsetIn(d, d.e), " ", offsetIn(d, d.z));
+  std::println("second ", sizeof(Second), " ", offsetIn(s, s.big), " ", offsetIn(s, s.small));
+  std::println("both ", sizeof(Both), " ", offsetIn(b, b.big), " ", offsetIn(b, b.small), " ", offsetIn(b, b.tail));
+  std::println("aligned ", sizeof(Aligned), " ", alignof(Aligned), " ", offsetIn(a, a.c), " ", offsetIn(a, a.d));
+  std::println(o.c, " ", o.d, " ", d.z, " ", s.small, " ", b.tail, " ", a.c);
   return 0;
 }

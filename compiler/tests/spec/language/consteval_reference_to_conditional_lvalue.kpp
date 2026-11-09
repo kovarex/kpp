@@ -38,7 +38,7 @@ constexpr int mixed()
 constexpr int cl = local(), cr = returned(), ca = assigned(), cm = mixed();
 int main()
 {
-  println(local(), " ", returned(), " ", assigned(), " ", mixed());
-  println(cl, " ", cr, " ", ca, " ", cm);
+  std::println(local(), " ", returned(), " ", assigned(), " ", mixed());
+  std::println(cl, " ", cr, " ", ca, " ", cm);
   return 0;
 }

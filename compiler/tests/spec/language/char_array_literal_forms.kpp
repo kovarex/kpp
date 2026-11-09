@@ -10,6 +10,6 @@ int main()
   wchar_t wide[5] = L"wid";
   const char* names[2] = {"first", "second"};
   Name n;
-  println("[", StringView((const char*)braced), "] ", (int)braced[5], " ", (int)wide[0], " ", (int)wide[3], " [", StringView(names[1]), "] ", StringView((const char*)n.text));
+  std::println("[", std::StringView((const char*)braced), "] ", (int)braced[5], " ", (int)wide[0], " ", (int)wide[3], " [", std::StringView(names[1]), "] ", std::StringView((const char*)n.text));
   return 0;
 }

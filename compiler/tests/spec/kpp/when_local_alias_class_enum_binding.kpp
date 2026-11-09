@@ -12,7 +12,7 @@ int main()
   when (config::debug) using Count = long long;
   when (!config::debug) using Count = int;
   Count c = 5;
-  println((int)sizeof(Count), " ", (int)c);
+  std::println((int)sizeof(Count), " ", (int)c);
   when (config::debug) typedef int DebugInt;
   when (config::debug) DebugInt extra = 7;
   when (config::debug) struct Probe
@@ -23,7 +23,7 @@ int main()
   when (config::debug) enum class Level { low, high };
   when (config::debug) auto [x, y] = make();
   if constexpr (config::debug)
-    println(extra, " ", probe.v, " ", x + y, " ", (int)Level::high);
+    std::println(extra, " ", probe.v, " ", x + y, " ", (int)Level::high);
   else
     println("release");
   return 0;

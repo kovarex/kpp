@@ -2,11 +2,11 @@
 // factorio: std::thread's constructor with a function (ParallelScenarioLoader's `std::thread(ParallelScenarioLoader::doLoad, mapInterface, loader, ...)`), std::invoke, the game's own `F&&` wrappers
 static int add(int a, int b) { return a + b; }
 template<typename F, typename... Args>
-decltype(auto) call(F&& f, Args&&... args) { return forward<F>(f)(forward<Args>(args)...); }
+decltype(auto) call(F&& f, Args&&... args) { return std::forward<F>(f)(std::forward<Args>(args)...); }
 template<typename F>
-Decay<F> keep(F&& f) { return f; }
+std::Decay<F> keep(F&& f) { return f; }
 int main()
 {
-  println(call(add, 2, 3), " ", keep(add)(4, 5));
+  std::println(call(add, 2, 3), " ", keep(add)(4, 5));
   return 0;
 }

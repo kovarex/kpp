@@ -28,6 +28,6 @@ bool functionMember()
 }
 int main()
 {
-  println(pointer(), dataMember(), functionMember());
+  std::println(pointer(), dataMember(), functionMember());
   return 0;
 }

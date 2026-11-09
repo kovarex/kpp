@@ -11,6 +11,6 @@ int main()
   SpecMsg msg;
   msg.data.result = SPEC_OK;
   SpecCode local = r.status;
-  println(int(local), " ", int(msg.data.result), " ", int(SPEC_LIMIT));
+  std::println(int(local), " ", int(msg.data.result), " ", int(SPEC_LIMIT));
   return 0;
 }

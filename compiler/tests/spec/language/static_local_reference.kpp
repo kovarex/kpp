@@ -1,18 +1,18 @@
 // spec: a static local reference, `static const Map<String, int>& table = makeTable();`, is bound once, on the first call, to what the initializer returns, and read through on every call
 // factorio: InputState::scancodeFromString's `static const std::map<std::string, SDL_Scancode>& keyStrings = InputState::generateReverseScancodeConfigStrings();`
-const Map<String, int>& makeTable()
+const std::Map<std::String, int>& makeTable()
 {
-  static Map<String, int> table = {{"a", 1}, {"b", 2}};
+  static std::Map<std::String, int> table = {{"a", 1}, {"b", 2}};
   return table;
 }
-int lookup(const String& key)
+int lookup(const std::String& key)
 {
-  static const Map<String, int>& table = makeTable();
+  static const std::Map<std::String, int>& table = makeTable();
   auto found = table.find(key);
   return found == table.end() ? -1 : found->second;
 }
 int main()
 {
-  println(lookup("b"), " ", lookup("z"));
+  std::println(lookup("b"), " ", lookup("z"));
   return 0;
 }

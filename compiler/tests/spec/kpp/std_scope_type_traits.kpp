@@ -20,7 +20,7 @@ int main()
   std::println(sizeof(std::Decay<const int&>), " ", std::isSame<std::RemoveConst<const int>, int>);
   std::println(Conditional<true, char, double>::mine, " ", Decay<int>::mine);
   std::println(sizeof(Conditional<true, char, double>));
-  using UnderlyingType = UnderlyingType<Flags>;
+  using UnderlyingType = std::UnderlyingType<Flags>;
   std::println(sizeof(UnderlyingType));
   return 0;
 }

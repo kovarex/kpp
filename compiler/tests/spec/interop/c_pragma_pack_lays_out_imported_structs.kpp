@@ -6,9 +6,9 @@ int main()
   Four f;
   One o;
   Two t;
-  println(sizeof(Four), " ", (char*)&f.pointer - (char*)&f);
-  println(sizeof(One), " ", (char*)&o.d - (char*)&o);
-  println(sizeof(Two), " ", (char*)&t.v - (char*)&t);
-  println(sizeof(Plain));
+  std::println(sizeof(Four), " ", (char*)&f.pointer - (char*)&f);
+  std::println(sizeof(One), " ", (char*)&o.d - (char*)&o);
+  std::println(sizeof(Two), " ", (char*)&t.v - (char*)&t);
+  std::println(sizeof(Plain));
   return 0;
 }

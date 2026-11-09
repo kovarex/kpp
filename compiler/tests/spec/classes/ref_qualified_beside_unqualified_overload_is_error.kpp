@@ -10,6 +10,6 @@ public:
 int main()
 {
   Box b;
-  println(b.get());
+  std::println(b.get());
   return 0;
 }

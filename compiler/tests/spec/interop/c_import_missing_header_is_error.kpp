@@ -7,5 +7,5 @@ extern "C" import "kpp_spec_nor_this.h";
 extern "C" import "string.h";
 int main()
 {
-  return int(strlen("x")) - 1;
+  return int(std::strlen("x")) - 1;
 }

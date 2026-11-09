@@ -1,9 +1,9 @@
 // spec: data() of an empty WString points at its terminator, as std::wstring's and String's do, const or not
 int main()
 {
-  WString empty;
-  const WString& same = empty;
-  println((int)same.data()[0]);
-  println((int)empty.data()[0]);
+  std::WString empty;
+  const std::WString& same = empty;
+  std::println((int)same.data()[0]);
+  std::println((int)empty.data()[0]);
   return 0;
 }

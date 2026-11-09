@@ -5,7 +5,7 @@ struct Lock
   Lock() {}
   Lock(const Lock&) = delete;
   Lock(Lock&&) = delete;
-  ~Lock() { println("released ", this.id); }
+  ~Lock() { std::println("released ", this.id); }
 };
 Lock acquire(int id)
 {
@@ -22,8 +22,8 @@ int main()
 {
   {
     Lock a = acquire(3);
-    println("held ", a.id);
+    std::println("held ", a.id);
   }
-  println("done");
+  std::println("done");
   return 0;
 }

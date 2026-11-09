@@ -19,8 +19,8 @@ int main()
   int (&&rr)(int) = plain;
   int (*fromRef)(int) = i;
   Holder h{plain};
-  println(i(1), " ", d(2.0), " ", q(3), " ", rr(4), " ", global(5), " ", fromRef(6), " ", h.f(7));
-  println(&global == &plain, " ", Kind<decltype(i)>::value, " ", Kind<decltype(fromRef)>::value);
-  println(takes(i), " ", takes(d), " ", takes(plain));
+  std::println(i(1), " ", d(2.0), " ", q(3), " ", rr(4), " ", global(5), " ", fromRef(6), " ", h.f(7));
+  std::println(&global == &plain, " ", Kind<decltype(i)>::value, " ", Kind<decltype(fromRef)>::value);
+  std::println(takes(i), " ", takes(d), " ", takes(plain));
   return 0;
 }

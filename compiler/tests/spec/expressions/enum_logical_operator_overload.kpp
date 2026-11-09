@@ -21,6 +21,6 @@ int main()
 {
   Status lowest = make(Status::Same) || make(Status::Overwritten);
   Status highest = make(Status::Defines) && make(Status::Overwritten);
-  println(int(lowest), " ", int(highest), " ", calls);
+  std::println(int(lowest), " ", int(highest), " ", calls);
   return 0;
 }

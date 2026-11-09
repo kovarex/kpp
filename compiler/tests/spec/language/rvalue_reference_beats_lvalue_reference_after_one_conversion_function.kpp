@@ -35,7 +35,7 @@ int main()
   E e;
   printf("=%d\n", f(e));
   U u;
-  printf("=%d\n", g(move(u)));
+  printf("=%d\n", g(std::move(u)));
   A a;
   { B&& x = a; printf("[%d] ", x.v); }
   printf("\n");

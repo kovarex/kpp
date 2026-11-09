@@ -16,7 +16,7 @@ struct OwnMove
 };
 int main()
 {
-  printf("%d%d%d %d%d%d\n", isNothrowMoveConstructible<Throwing>, isNothrowMoveConstructible<Holds>, isNothrowMoveConstructible<OwnMove>,
-         isMoveConstructible<Throwing>, isNothrowMoveAssignable<Throwing>, isNothrowMoveAssignable<Holds>);
+  printf("%d%d%d %d%d%d\n", std::isNothrowMoveConstructible<Throwing>, std::isNothrowMoveConstructible<Holds>, std::isNothrowMoveConstructible<OwnMove>,
+         std::isMoveConstructible<Throwing>, std::isNothrowMoveAssignable<Throwing>, std::isNothrowMoveAssignable<Holds>);
   return 0;
 }

@@ -6,6 +6,6 @@ extern "C" const char __ImageBase;
 int main()
 {
   const char* image = &__ImageBase;
-  println(image[0], image[1]);
+  std::println(image[0], image[1]);
   return 0;
 }

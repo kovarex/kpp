@@ -25,7 +25,7 @@ int main()
   A* pa = &c;
   const B* cpb = &c;
   B* none = nullptr;
-  println(dynamic_cast<void*>(pb) == (void*)&c, " ", dynamic_cast<void*>(pa) == (void*)&c, " ", dynamic_cast<const void*>(cpb) == (const void*)&c, " ",
+  std::println(dynamic_cast<void*>(pb) == (void*)&c, " ", dynamic_cast<void*>(pa) == (void*)&c, " ", dynamic_cast<const void*>(cpb) == (const void*)&c, " ",
           dynamic_cast<void*>(none) == nullptr);
   return 0;
 }

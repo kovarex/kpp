@@ -11,7 +11,7 @@ struct Tokenizer
   int position = 0;
   bool step(char c)
   {
-    static const Map<char, Token::Type> first = {{'+', Token::Type::Plus}, {'-', Token::Type::Minus}};
+    static const std::Map<char, Token::Type> first = {{'+', Token::Type::Plus}, {'-', Token::Type::Minus}};
     if (auto it = first.find(c); it != first.end())
     {
       this.current.type = it->second;
@@ -26,6 +26,6 @@ int main()
   Tokenizer t;
   bool a = t.step('+');
   bool b = t.step('x');
-  println(a, " ", b, " ", (int)t.current.type, " ", t.position);
+  std::println(a, " ", b, " ", (int)t.current.type, " ", t.position);
   return 0;
 }

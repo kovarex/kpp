@@ -21,7 +21,7 @@ template<class T> struct ValueOnly
 };
 void setHalf(double& d) { d = 0.5; }
 void bump(Holder& h) { h.v += 1; }
-void append(String& s) { s.append("x"); }
+void append(std::String& s) { s.append("x"); }
 void moveRight(Point& p) { p.x += 1; }
 void reset(int*& slot) { slot = nullptr; }
 int readHalf(const double& d) { return int(d * 2); }
@@ -34,7 +34,7 @@ int main()
   bump(s);
   int i = 1;
   int sum = readHalf(i) + readPoint({1, 2});
-  String text("a");
+  std::String text("a");
   append(text);
   Handle<int> handle;
   reset(handle);

@@ -2,7 +2,7 @@
 // factorio: 470 uses in 237 files
 struct Header { int32_t size; int32_t kind; };
 static_assert(sizeof(Header) == 8, "header is two words");
-static_assert(isSame<int, int32_t>, "int is 32 bits here");
+static_assert(std::isSame<int, int32_t>, "int is 32 bits here");
 template<typename T>
 struct Checked
 {
@@ -12,6 +12,6 @@ struct Checked
 int main()
 {
   Checked<int> c{5};
-  println(c.value);
+  std::println(c.value);
   return 0;
 }

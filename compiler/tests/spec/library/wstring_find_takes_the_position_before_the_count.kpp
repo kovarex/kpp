@@ -1,8 +1,8 @@
 // spec: WString's find(text, from, count) takes the position before the count, as std::wstring's and String's do
 int main()
 {
-  WString text = L"abcabcabc";
-  println(text.find(L"bcz", 3, 2));
-  println(text.find(L"cab", 1, 1));
+  std::WString text = L"abcabcabc";
+  std::println(text.find(L"bcz", 3, 2));
+  std::println(text.find(L"cab", 1, 1));
   return 0;
 }

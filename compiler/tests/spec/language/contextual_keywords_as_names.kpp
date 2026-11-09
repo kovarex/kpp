@@ -20,6 +20,6 @@ int main()
   int implicit = 3;
   int both_const[2] = {4, 6};
   Flags flags{5, 2};
-  println(accumulate(3, 4), " ", implicit + both_const[0], " ", twice(both_const[1]), " ", flags.accumulate + flags.both_const, " ", length(5));
+  std::println(accumulate(3, 4), " ", implicit + both_const[0], " ", twice(both_const[1]), " ", flags.accumulate + flags.both_const, " ", length(5));
   return 0;
 }

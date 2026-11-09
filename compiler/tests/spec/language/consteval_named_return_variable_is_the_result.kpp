@@ -70,6 +70,6 @@ constexpr int viaTemplate = build<Counted>().moves;
 constexpr int twoVariables = either(true).moves;
 int main()
 {
-  println(moved, " ", destroyed, " ", value, " ", viaTemplate, " ", twoVariables);
+  std::println(moved, " ", destroyed, " ", value, " ", viaTemplate, " ", twoVariables);
   return 0;
 }

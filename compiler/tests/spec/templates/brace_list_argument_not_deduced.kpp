@@ -5,17 +5,17 @@ namespace Strings
   template<typename... Args>
   int totalLength(const Args&... args) { return Strings::totalLength({args...}); }
 
-  int totalLength(InitializerList<StringView> parts)
+  int totalLength(std::InitializerList<std::StringView> parts)
   {
     int length = 0;
-    for (StringView part : parts)
+    for (std::StringView part : parts)
       length += part.size();
     return length;
   }
 }
 int main()
 {
-  String middle = "cde";
-  println(Strings::totalLength("ab", middle, StringView("f")));
+  std::String middle = "cde";
+  std::println(Strings::totalLength("ab", middle, std::StringView("f")));
   return 0;
 }

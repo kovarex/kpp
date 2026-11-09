@@ -1168,6 +1168,6 @@ int main()
   sum += p93.total();
   sum += p94.total();
   sum += p95.total();
-  println(sum);
+  std::println(sum);
   return 0;
 }

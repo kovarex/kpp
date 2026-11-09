@@ -6,6 +6,6 @@ int* tooMany() { return new int[2]{1, 2, 3}; }
 int* negative() { return new int[-1]; }
 int main()
 {
-  println(tooMany()[0], " ", negative() == nullptr ? 1 : 0);
+  std::println(tooMany()[0], " ", negative() == nullptr ? 1 : 0);
   return 0;
 }

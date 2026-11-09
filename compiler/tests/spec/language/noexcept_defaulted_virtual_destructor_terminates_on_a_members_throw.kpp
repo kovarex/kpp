@@ -1,24 +1,24 @@
 // spec: as noexcept_defaulted_destructor_terminates_on_a_members_throw, the destructor reached through a base's virtual one
 void onTerminate()
 {
-  println("terminate");
+  std::println("terminate");
   fflush(nullptr);
   exit(0);
 }
-struct T { ~T() noexcept(false) { println("member"); throw 1; } };
+struct T { ~T() noexcept(false) { std::println("member"); throw 1; } };
 class B { public: virtual ~B() noexcept = default; };
 class S : public B { public: T t; ~S() noexcept override = default; };
 void destroy(B* p) { delete p; }
 int main()
 {
-  setTerminate(onTerminate);
+  std::setTerminate(onTerminate);
   try
   {
     destroy(new S);
   }
   catch (int)
   {
-    println("caught past the destructor");
+    std::println("caught past the destructor");
   }
   return 0;
 }

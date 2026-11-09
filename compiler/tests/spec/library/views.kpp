@@ -9,33 +9,33 @@ struct ToChunk
 };
 struct Deref
 {
-  const Territory& operator()(const UniquePtr<Territory>& t) const { return *t; }
+  const Territory& operator()(const std::UniquePtr<Territory>& t) const { return *t; }
 };
 struct Manager
 {
-  Vector<UniquePtr<Territory>> territories;
-  TransformView<Vector<UniquePtr<Territory>>, Deref> all() const { return transformView(this.territories, Deref()); }
+  std::Vector<std::UniquePtr<Territory>> territories;
+  std::TransformView<std::Vector<std::UniquePtr<Territory>>, Deref> all() const { return std::transformView(this.territories, Deref()); }
 };
 int main()
 {
-  auto positions = iotaView(0, 6) | transformView(ToChunk{3});
-  String text;
+  auto positions = std::iotaView(0, 6) | std::transformView(ToChunk{3});
+  std::String text;
   for (Chunk c : positions)
-    text << toString(c.x) + toString(c.y) + " ";
+    text << std::toString(c.x) + std::toString(c.y) + " ";
   Manager m;
-  m.territories.push_back(makeUnique<Territory>(Territory{1}));
-  m.territories.push_back(makeUnique<Territory>(Territory{2}));
-  String ids;
-  for (const Territory& t : reverseView(m.all()))
-    ids << toString(t.id);
-  Vector<int> values = {5, 6, 7, 8};
-  Subrange<const int*> middle{values.data() + 1, values.data() + 3};
+  m.territories.push_back(std::makeUnique<Territory>(Territory{1}));
+  m.territories.push_back(std::makeUnique<Territory>(Territory{2}));
+  std::String ids;
+  for (const Territory& t : std::reverseView(m.all()))
+    ids << std::toString(t.id);
+  std::Vector<int> values = {5, 6, 7, 8};
+  std::Subrange<const int*> middle{values.data() + 1, values.data() + 3};
   int sum = 0;
   for (int v : middle)
     sum += v;
   tm t = {};
-  bool whole = parseTime("2026-10-28T23:57:42.123Z", "%Y-%m-%dT%H:%M:%S.%fZ", &t);
-  println(text, "| ", ids, " ", sum, " ", middle.size(), " ", positions.size());
-  println(whole, " ", t.tm_year + 1900, " ", t.tm_mon + 1, " ", t.tm_mday, " ", t.tm_hour, " ", t.tm_min, " ", t.tm_sec);
+  bool whole = std::parseTime("2026-10-28T23:57:42.123Z", "%Y-%m-%dT%H:%M:%S.%fZ", &t);
+  std::println(text, "| ", ids, " ", sum, " ", middle.size(), " ", positions.size());
+  std::println(whole, " ", t.tm_year + 1900, " ", t.tm_mon + 1, " ", t.tm_mday, " ", t.tm_hour, " ", t.tm_min, " ", t.tm_sec);
   return 0;
 }

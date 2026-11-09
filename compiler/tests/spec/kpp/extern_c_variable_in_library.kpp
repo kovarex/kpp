@@ -2,6 +2,6 @@
 // found building the http library for FreeBSD: http's `extern "C" char** environ` linked as http::environ, on every target
 int main()
 {
-  println(clib::readValue());
+  std::println(clib::readValue());
   return 0;
 }

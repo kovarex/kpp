@@ -31,8 +31,8 @@ struct Unit
 };
 inline auto scan(const Pos& leftTop, const Pos& rightBottom)
 {
-  return iotaView(0, (rightBottom.y + 1 - leftTop.y) * (rightBottom.x + 1 - leftTop.x)) |
-         transformView([leftTop, width = rightBottom.x + 1 - leftTop.x](const auto& index) { return leftTop + Pos(index % width, index / width); });
+  return std::iotaView(0, (rightBottom.y + 1 - leftTop.y) * (rightBottom.x + 1 - leftTop.x)) |
+         std::transformView([leftTop, width = rightBottom.x + 1 - leftTop.x](const auto& index) { return leftTop + Pos(index % width, index / width); });
 }
 inline auto scan(const Box& box)
 {
@@ -42,6 +42,6 @@ int main()
 {
   Unit u;
   u.box.rightBottom = Pos(2, 1);
-  println(u.check(12), " ", u.check(13));
+  std::println(u.check(12), " ", u.check(13));
   return 0;
 }

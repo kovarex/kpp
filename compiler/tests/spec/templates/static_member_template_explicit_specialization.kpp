@@ -9,18 +9,18 @@ public:
 template<typename T>
 void Defines::setKey(int* stack, const char* key, T value)
 {
-  println(*stack, " ", StringView(key), " ", int(value));
+  std::println(*stack, " ", std::StringView(key), " ", int(value));
 }
 template<>
-void Defines::setKey<const String&>(int* stack, const char* key, const String& value)
+void Defines::setKey<const std::String&>(int* stack, const char* key, const std::String& value)
 {
-  println(*stack, " ", StringView(key), " ", value);
+  std::println(*stack, " ", std::StringView(key), " ", value);
 }
 int main()
 {
   int depth = 2;
-  String name = "spidertron";
+  std::String name = "spidertron";
   Defines::setKey(&depth, "count", 7);
-  Defines::setKey<const String&>(&depth, "name", name);
+  Defines::setKey<const std::String&>(&depth, "name", name);
   return 0;
 }

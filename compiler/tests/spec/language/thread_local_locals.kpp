@@ -2,7 +2,7 @@
 // factorio: MathExpressions::Evaluator::getVariablesCache's `thread_local EvaluatorParameters cache;`: it was an automatic local, the reference returned dangled, and `--dump-data` crashed in UtilityConstants' verifyExpression (also SelectorCombinatorControlBehavior, LocaleStringReplacer, WaitConditionCounts)
 struct Cache
 {
-  Vector<int> values;
+  std::Vector<int> values;
   int builds = 0;
   Cache() { this.builds = 1; }
 };
@@ -32,8 +32,8 @@ int main()
   counter();
   counter();
   int inThread = 0;
-  Thread worker([&]() { inThread = counter(); });
+  std::Thread worker([&]() { inThread = counter(); });
   worker.join();
-  println(a, " ", b, " ", counter(), " ", inThread);
+  std::println(a, " ", b, " ", counter(), " ", inThread);
   return 0;
 }

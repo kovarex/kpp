@@ -1,11 +1,11 @@
 // spec: RatioAdd and RatioSubtract give their result whenever it fits, as std::ratio_add and ratio_subtract do ([ratio.arithmetic]: the result is ill-formed only when it cannot be represented): two ratios of 1/10^12 add to 1/(5 * 10^11) and subtract to 0/1, though the product of their denominators, 10^24, is past i64
 extern "C" int printf(const char* format, ...);
-using Pico = Ratio<1, 1000000000000>;
+using Pico = std::Ratio<1, 1000000000000>;
 int main()
 {
-  printf("%lld/%lld\n", (long long)RatioAdd<Pico, Pico>::num, (long long)RatioAdd<Pico, Pico>::den);
-  printf("%lld/%lld\n", (long long)RatioSubtract<Pico, Pico>::num, (long long)RatioSubtract<Pico, Pico>::den);
-  printf("%lld/%lld\n", (long long)RatioAdd<Ratio<1, 3000000000000>, Ratio<1, 2000000000000>>::num,
-         (long long)RatioAdd<Ratio<1, 3000000000000>, Ratio<1, 2000000000000>>::den);
+  printf("%lld/%lld\n", (long long)std::RatioAdd<Pico, Pico>::num, (long long)std::RatioAdd<Pico, Pico>::den);
+  printf("%lld/%lld\n", (long long)std::RatioSubtract<Pico, Pico>::num, (long long)std::RatioSubtract<Pico, Pico>::den);
+  printf("%lld/%lld\n", (long long)std::RatioAdd<std::Ratio<1, 3000000000000>, std::Ratio<1, 2000000000000>>::num,
+         (long long)std::RatioAdd<std::Ratio<1, 3000000000000>, std::Ratio<1, 2000000000000>>::den);
   return 0;
 }

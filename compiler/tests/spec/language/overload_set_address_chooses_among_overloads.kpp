@@ -20,19 +20,19 @@ struct Handlers
 };
 struct Handler
 {
-  void remove(int, const Adapter& a) { println("remove ", a.a); }
+  void remove(int, const Adapter& a) { std::println("remove ", a.a); }
   bool remove(int* p, const Adapter&) { return p != nullptr; }
-  void other(int, Controller& c) { println("other ", c.c); }
-  void single(int, const Adapter& a) { println("single ", a.a); }
+  void other(int, Controller& c) { std::println("other ", c.c); }
+  void single(int, const Adapter& a) { std::println("single ", a.a); }
 };
 int main()
 {
   Handlers hs;
   hs.add(1, &Handler::remove);
-  print(hs.controllerCount, " ", hs.commonCount, " ");
+  std::print(hs.controllerCount, " ", hs.commonCount, " ");
   hs.add(2, &Handler::other);
-  print(hs.controllerCount, " ", hs.commonCount, " ");
+  std::print(hs.controllerCount, " ", hs.commonCount, " ");
   hs.add(3, &Handler::single);
-  println(hs.controllerCount, " ", hs.commonCount);
+  std::println(hs.controllerCount, " ", hs.commonCount);
   return 0;
 }

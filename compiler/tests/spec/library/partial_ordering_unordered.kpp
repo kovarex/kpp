@@ -2,8 +2,8 @@
 // factorio: StrongTypedef's operator<=> for floating-point values gives std::partial_ordering::unordered when a side is NaN
 int main()
 {
-  partial_ordering u = partial_ordering::unordered;
-  partial_ordering g = partial_ordering::greater;
-  println(u < 0, " ", u > 0, " ", u <= 0, " ", u >= 0, " ", u == 0, " ", u == partial_ordering::less, " ", g > 0, " ", g >= 0);
+  std::partial_ordering u = std::partial_ordering::unordered;
+  std::partial_ordering g = std::partial_ordering::greater;
+  std::println(u < 0, " ", u > 0, " ", u <= 0, " ", u >= 0, " ", u == 0, " ", u == std::partial_ordering::less, " ", g > 0, " ", g >= 0);
   return 0;
 }

@@ -16,13 +16,13 @@ struct Count
 };
 int main()
 {
-  Array layers = {Layer::Ground, Layer::Object, Layer::Air};
+  std::Array layers = {Layer::Ground, Layer::Object, Layer::Air};
   static_assert(layers.size() == size_t(Layer::Count));
-  static_assert(Limits<uint8_t>::max() == 255 && Limits<int16_t>::max() == 32767 && Limits<int32_t>::min() == -2147483647 - 1);
-  println(Count<Limits<uint8_t>::max() + 1>::value);
-  println(Count<max(sizeof(int), sizeof(double))>::value);
-  println(Count<clampTo(17, 0, 10)>::value);
-  println(Count<static_cast<size_t>(Layer::Air)>::value);
-  println(Count<layers.size()>::value);
+  static_assert(std::Limits<uint8_t>::max() == 255 && std::Limits<int16_t>::max() == 32767 && std::Limits<int32_t>::min() == -2147483647 - 1);
+  std::println(Count<std::Limits<uint8_t>::max() + 1>::value);
+  std::println(Count<std::max(sizeof(int), sizeof(double))>::value);
+  std::println(Count<clampTo(17, 0, 10)>::value);
+  std::println(Count<static_cast<size_t>(Layer::Air)>::value);
+  std::println(Count<layers.size()>::value);
   return 0;
 }

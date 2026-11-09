@@ -5,6 +5,6 @@ struct alignas(Align) AlignedBytes { unsigned char bytes[Size]; };
 struct Pair4 { int a; char b; };
 int main()
 {
-  println(alignof(AlignedBytes<3, 16>), " ", alignof(Pair4));
+  std::println(alignof(AlignedBytes<3, 16>), " ", alignof(Pair4));
   return 0;
 }

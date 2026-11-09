@@ -6,7 +6,7 @@ struct Shape
 {
   static constexpr i32 size = sizeof...(Ts);
   i32 held = 0;
-  Tuple<Ts...> all;
+  std::Tuple<Ts...> all;
   i32 index() const { return this.held; }
   template<i32 I>
   decltype(auto) get() & { return this.all.template get<I>(); }
@@ -70,7 +70,7 @@ template<int I, typename V>
 void showOne(V& v)
 {
   hold<I>(v);
-  int got = visit([](const auto& x) { return x.value; }, v);
+  int got = std::visit([](const auto& x) { return x.value; }, v);
   printf(" %d", got);
 }
 
@@ -138,8 +138,8 @@ void changesTheAlternative()
 {
   Shape<Alt<0>, Alt<1>, Alt<2>> v;
   hold<2>(v);
-  visit([](auto& x) { x.value = -5; }, v);
-  int got = visit([](auto& x) { return x.value; }, v);
+  std::visit([](auto& x) { x.value = -5; }, v);
+  int got = std::visit([](auto& x) { return x.value; }, v);
   printf("changed %d\n", got);
 }
 
@@ -159,15 +159,15 @@ void alternativeCategories()
 {
   Two v;
   const Two& c = v;
-  printf("%s\n", visit(WhichAlternative(), v));
-  printf("%s\n", visit(WhichAlternative(), c));
-  printf("%s\n", visit(WhichAlternative(), move(v)));
+  printf("%s\n", std::visit(WhichAlternative(), v));
+  printf("%s\n", std::visit(WhichAlternative(), c));
+  printf("%s\n", std::visit(WhichAlternative(), std::move(v)));
   Two w;
   hold<1>(w);
   const Two& d = w;
-  printf("%s\n", visit(WhichAlternative(), w));
-  printf("%s\n", visit(WhichAlternative(), d));
-  printf("%s\n", visit(WhichAlternative(), move(w)));
+  printf("%s\n", std::visit(WhichAlternative(), w));
+  printf("%s\n", std::visit(WhichAlternative(), d));
+  printf("%s\n", std::visit(WhichAlternative(), std::move(w)));
 }
 
 struct WhichVisitor
@@ -183,11 +183,11 @@ void visitorCategories()
   Two v;
   WhichVisitor f;
   const WhichVisitor g;
-  printf("visitor %d\n", visit(f, v));
-  printf("visitor %d\n", visit(g, v));
+  printf("visitor %d\n", std::visit(f, v));
+  printf("visitor %d\n", std::visit(g, v));
   hold<1>(v);
-  printf("visitor %d\n", visit(f, v));
-  printf("visitor %d\n", visit(g, v));
+  printf("visitor %d\n", std::visit(f, v));
+  printf("visitor %d\n", std::visit(g, v));
 }
 
 struct NoCopy
@@ -211,9 +211,9 @@ void visitorIsNotCopied()
 {
   Two v;
   NoCopy f;
-  visit(f, v);
+  std::visit(f, v);
   hold<1>(v);
-  visit(f, v);
+  std::visit(f, v);
   printf("calls %d\n", f.calls);
 }
 
@@ -221,10 +221,10 @@ void referenceResult()
 {
   Two v;
   hold<1>(v);
-  int& r = visit([](auto& x) -> int& { return x.value; }, v);
+  int& r = std::visit([](auto& x) -> int& { return x.value; }, v);
   r = 77;
-  visit([](auto& x) -> int& { return x.value; }, v) += 1;
-  int got = visit([](auto& x) { return x.value; }, v);
+  std::visit([](auto& x) -> int& { return x.value; }, v) += 1;
+  int got = std::visit([](auto& x) { return x.value; }, v);
   printf("reference %d\n", got);
 }
 
@@ -238,7 +238,7 @@ void classResult()
 {
   Two v;
   hold<1>(v);
-  Named n = visit([](auto& x) { return Named(x.value + 1); }, v);
+  Named n = std::visit([](auto& x) { return Named(x.value + 1); }, v);
   printf("named %d\n", n.id);
 }
 
@@ -247,11 +247,11 @@ void copiesAndMoves()
   Shape<Counted, Alt<1>> v;
   copies = 0;
   moves = 0;
-  int got = visit([](auto x) { return x.value; }, v);
+  int got = std::visit([](auto x) { return x.value; }, v);
   printf("lvalue: %d copies %d moves %d\n", got, copies, moves);
   copies = 0;
   moves = 0;
-  got = visit([](auto x) { return x.value; }, move(v));
+  got = std::visit([](auto x) { return x.value; }, std::move(v));
   printf("rvalue: %d copies %d moves %d\n", got, copies, moves);
 }
 
@@ -262,10 +262,10 @@ void holdingNone()
   int calls = 0;
   try
   {
-    visit([&](auto& x) { ++calls; return x.value; }, v);
+    std::visit([&](auto& x) { ++calls; return x.value; }, v);
     printf("no exception\n");
   }
-  catch (const BadVariantAccess&)
+  catch (const std::BadVariantAccess&)
   {
     printf("caught, calls %d\n", calls);
   }
@@ -276,7 +276,7 @@ void visitorThrows()
   Two v;
   try
   {
-    visit([](auto& x) -> int { throw x.value + 1; }, v);
+    std::visit([](auto& x) -> int { throw x.value + 1; }, v);
   }
   catch (int e)
   {

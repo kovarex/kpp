@@ -33,10 +33,10 @@ int main()
   // Ten ints (three general registers are left after the named three), eleven doubles (eight vector
   // registers) and a pointer, the rest on the stack.
   sum("iiiiiiiiiidddddddddddp", &ints, &reals, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5, 9.5, 10.5, &seven);
-  println(ints, " ", reals);
+  std::println(ints, " ", reals);
   ints = 0;
   reals = 0;
   sum("lidl", &ints, &reals, 1000000000000LL, 2, 0.25, 3LL);
-  println(ints, " ", reals);
+  std::println(ints, " ", reals);
   return 0;
 }

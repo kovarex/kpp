@@ -10,6 +10,6 @@ int main()
   };
   auto mixed = [](auto&& self, int n) -> double { return n == 0 ? 1 : self(self, n - 1) / 2; };
   auto flip = [](auto&& self, int n) -> double { return n == 0 ? 0.75 : (n % 2 ? 1 : self(self, n - 1)) * 2; };
-  println(fact(fact, 20), " ", viaLocal(viaLocal, 20), " ", mixed(mixed, 3), " ", flip(flip, 2));
+  std::println(fact(fact, 20), " ", viaLocal(viaLocal, 20), " ", mixed(mixed, 3), " ", flip(flip, 2));
   return 0;
 }

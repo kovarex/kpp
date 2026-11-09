@@ -17,6 +17,6 @@ int main()
   int i = value;
   long long l = value;
   Strict s = value;
-  println(i, " ", l, " ", s.v);
+  std::println(i, " ", l, " ", s.v);
   return 0;
 }

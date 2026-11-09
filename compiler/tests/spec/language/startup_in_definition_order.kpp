@@ -4,7 +4,7 @@ class Table
 {
 public:
   int size = 0;
-  Table(const char* name, int n) : size(n) { println(StringView(name), " ", n); }
+  Table(const char* name, int n) : size(n) { std::println(std::StringView(name), " ", n); }
 };
 int sizeOf(const Table& t) { return t.size; }
 int firstSize();
@@ -13,7 +13,7 @@ const Table second{"second", firstSize() * 2};
 const Table third{"third", sizeOf(second) + 1};
 int main()
 {
-  println(third.size, " ", second.size, " ", first.size);
+  std::println(third.size, " ", second.size, " ", first.size);
   return 0;
 }
 int firstSize() { return first.size; }

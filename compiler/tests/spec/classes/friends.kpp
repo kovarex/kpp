@@ -19,6 +19,6 @@ int main()
   Account a;
   a.deposit(5);
   Auditor au;
-  println(peek(a), " ", au.twice(a));
+  std::println(peek(a), " ", au.twice(a));
   return 0;
 }

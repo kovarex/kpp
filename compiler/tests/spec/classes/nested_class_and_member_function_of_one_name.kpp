@@ -13,6 +13,6 @@ int main()
   Probe p;
   Probe::Reading r{5};
   int (Probe::*m)(int) = &Probe::Reading;
-  println(p.Reading(3), " ", r.value, " ", (p.*m)(2));
+  std::println(p.Reading(3), " ", r.value, " ", (p.*m)(2));
   return 0;
 }

@@ -15,6 +15,6 @@ int main()
   Wrapper w;
   w.set(3, 4);
   w.reset();
-  println("brace init assign: ok");
+  std::println("brace init assign: ok");
   return 0;
 }

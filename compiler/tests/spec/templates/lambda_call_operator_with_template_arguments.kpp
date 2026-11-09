@@ -9,13 +9,13 @@ int main()
   {
     T t;
     total += t.v;
-    println(StringView(name), " ", StringView(T::kind()));
+    std::println(std::StringView(name), " ", std::StringView(T::kind()));
   };
   runTest.operator()<A>("first");
   runTest.operator()<B>("second");
   auto* pointer = &runTest;
   pointer->operator()<A>("third");
   auto scaled = []<class T, class U>(U factor) { T t; return t.v * factor; };
-  println(total, " ", scaled.operator()<B>(2), " ", scaled.operator()<A, double>(1.5));
+  std::println(total, " ", scaled.operator()<B>(2), " ", scaled.operator()<A, double>(1.5));
   return 0;
 }

@@ -24,7 +24,7 @@ struct Item
   bool flag;
 };
 template<class... Args>
-Item makeItem(LoadFunction load, bool flag, Args&&... args) { return Item{load, flag, forward<Args>(args)...}; }
+Item makeItem(LoadFunction load, bool flag, Args&&... args) { return Item{load, flag, std::forward<Args>(args)...}; }
 template<class T>
 Item registerLoader() { return makeItem([](const auto& parameters, int input) -> Base* { return new T(parameters, input); }, true); }
 int main()
@@ -32,7 +32,7 @@ int main()
   Item item = registerLoader<Thing>();
   Params p;
   Base* b = item.load(p, 5);
-  println(b->value(), " ", int(item.flag));
+  std::println(b->value(), " ", int(item.flag));
   delete b;
   return 0;
 }

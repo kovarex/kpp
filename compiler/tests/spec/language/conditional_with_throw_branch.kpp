@@ -2,22 +2,22 @@
 struct Name
 {
   int id;
-  ~Name() { println("name ", this.id, " gone"); }
+  ~Name() { std::println("name ", this.id, " gone"); }
 };
 int positive(int x) { return x > 0 ? x : throw x; }
 int doubled(int x) { int r = x < 0 ? throw 1.5 : x * 2; return r; }
 Name named(int id) { return id ? Name{id} : throw id; }
-void check(bool bad) { bad ? throw 3 : println("check fine"); }
+void check(bool bad) { bad ? throw 3 : std::println("check fine"); }
 int main()
 {
   try
   {
-    println(positive(2), " ", doubled(4), " ", named(7).id);
+    std::println(positive(2), " ", doubled(4), " ", named(7).id);
     check(false);
     positive(-1);
   }
-  catch (int e) { println("caught ", e); }
-  try { doubled(-1); } catch (double d) { println("caught ", d); }
-  try { named(0); } catch (int e) { println("caught name ", e); }
+  catch (int e) { std::println("caught ", e); }
+  try { doubled(-1); } catch (double d) { std::println("caught ", d); }
+  try { named(0); } catch (int e) { std::println("caught name ", e); }
   return 0;
 }

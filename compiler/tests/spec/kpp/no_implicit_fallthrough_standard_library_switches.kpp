@@ -8,22 +8,22 @@ int main()
     switch (i)
     {
       case 1:
-        print("one ");
+        std::print("one ");
         fallthrough;
       case 2:
-        println("two");
+        std::println("two");
       case 3:
-        println("three");
+        std::println("three");
     }
   }
   tm t = {};
-  bool parsed = parseTime("2026-11-08 12:34", "%Y-%m-%d %H:%M", &t);
-  println(parsed ? 1 : 0, " ", t.tm_year + 1900, " ", t.tm_mon + 1, " ", t.tm_mday, " ", t.tm_hour, " ", t.tm_min);
+  bool parsed = std::parseTime("2026-11-08 12:34", "%Y-%m-%d %H:%M", &t);
+  std::println(parsed ? 1 : 0, " ", t.tm_year + 1900, " ", t.tm_mon + 1, " ", t.tm_mday, " ", t.tm_hour, " ", t.tm_min);
   // (Windows errors: file and path not found, ..., bad network name; access denied, ..., cannot make; file exists twice;
   // disk full twice; write and read fault; not same device; one it does not map)
   int errors[] = {2, 3, 161, 5, 82, 80, 183, 39, 112, 29, 30, 17, 999};
   for (int k = 0; k < 13; ++k)
-    print(k == 0 ? StringView("") : StringView(" "), errcOfWindowsError(errors[k]));
-  println();
+    std::print(k == 0 ? std::StringView("") : std::StringView(" "), std::errcOfWindowsError(errors[k]));
+  std::println();
   return 0;
 }

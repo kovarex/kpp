@@ -2,18 +2,18 @@
 // factorio: 14 uses: DebugAdapter's std::ranges::find_if over its maps and vectors, std::ranges::find over LuaDebugAdapter::threads and BlueprintChartRenderer's invalidColors array (4c178a5b915)
 int main()
 {
-  Vector<int> list;
+  std::Vector<int> list;
   for (int x : {4, 8, 15, 16})
     list.push_back(x);
-  Vector<int>::iterator eight = ::find(list, 8);
-  Vector<int>::iterator none = ::find(list, 5);
-  Map<int, String> names;
+  std::Vector<int>::iterator eight = std::find(list, 8);
+  std::Vector<int>::iterator none = std::find(list, 5);
+  std::Map<int, std::String> names;
   names[1] = "one";
   names[2] = "two";
-  auto two = ::findIf(names, [&](const Pair<const int, String>& item) { return item.second == "two"; });
-  auto missing = ::findIf(names, [&](const auto& item) { return item.first > 2; });
+  auto two = std::findIf(names, [&](const std::Pair<const int, std::String>& item) { return item.second == "two"; });
+  auto missing = std::findIf(names, [&](const auto& item) { return item.first > 2; });
   int colors[3] = {7, 9, 11};
-  int* nine = ::find(colors, 9);
-  println((int)(eight - list.begin()), " ", none == list.end(), " ", two->first, " ", missing == names.end(), " ", (int)(nine - colors), " ", ::find(colors, 1) == end(colors));
+  int* nine = std::find(colors, 9);
+  std::println((int)(eight - list.begin()), " ", none == list.end(), " ", two->first, " ", missing == names.end(), " ", (int)(nine - colors), " ", std::find(colors, 1) == std::end(colors));
   return 0;
 }

@@ -1,5 +1,5 @@
 // spec: when a `?->` object is not set, a pointer result is null, a bool false and a void call does nothing; any other result is an Optional (a number, a String), empty then, which `?:` unwraps: `int p = t?->engine->power ?: -1;` (kovarex, 2026-11-07, design.md 23a)
-class Engine { public: int power = 70; String name = "steam"; bool hot = true; void run() { println("run"); } };
+class Engine { public: int power = 70; std::String name = "steam"; bool hot = true; void run() { std::println("run"); } };
 class Train { public: Engine* engine = nullptr; };
 int main()
 {
@@ -8,15 +8,15 @@ int main()
   set.engine = &e;
   Train* t = &set;
   Train* none = nullptr;
-  Optional<int> a = t?->engine->power;
-  Optional<int> b = none?->engine->power;
-  println(bool(a), " ", *a, " ", bool(b));
+  std::Optional<int> a = t?->engine->power;
+  std::Optional<int> b = none?->engine->power;
+  std::println(bool(a), " ", *a, " ", bool(b));
   int p = t?->engine->power ?: -1;
   int q = none?->engine->power ?: -1;
-  println(p, " ", q);
-  Optional<String> n = t?->engine->name;
-  println(*n, " ", bool(none?->engine->name));
-  println(none?->engine == nullptr, " ", none?->engine->hot, " ", t?->engine->hot);
+  std::println(p, " ", q);
+  std::Optional<std::String> n = t?->engine->name;
+  std::println(*n, " ", bool(none?->engine->name));
+  std::println(none?->engine == nullptr, " ", none?->engine->hot, " ", t?->engine->hot);
   none?->engine->run();
   t?->engine->run();
   return 0;

@@ -1,10 +1,10 @@
 struct SiteOptions
 {
-  String repository = ".";                         // the kpp repository's root
-  String out;                                      // where the site is written
-  String registry;                                 // a copy of the registry's store (index/*.json); "": none
-  Vector<String> pageRoots;                        // the directories whose .md files become pages
-  String sourceUrl = "https://github.com/kovarex/kpp"; // where a link to a file that is not a page goes
-  String registryUrl = "https://kpp.net/registry/";    // where the archives are
-  String commit;                                   // the repository's commit, named in every page's footer
+  std::String repository = ".";                         // the kpp repository's root
+  std::String out;                                      // where the site is written
+  std::String registry;                                 // a copy of the registry's store (index/*.json); "": none
+  std::Vector<std::String> pageRoots;                        // the directories whose .md files become pages
+  std::String sourceUrl = "https://github.com/kovarex/kpp"; // where a link to a file that is not a page goes
+  std::String registryUrl = "https://kpp.net/registry/";    // where the archives are
+  std::String commit;                                   // the repository's commit, named in every page's footer
 };

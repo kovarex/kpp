@@ -5,6 +5,6 @@ int main()
   int k = -3, total = 0;
   for (int j = k < 0 ? 0 : k; j < 4; ++j)
     total += j;
-  println(total);
+  std::println(total);
   return 0;
 }

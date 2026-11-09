@@ -7,6 +7,6 @@ constexpr int pick(int x) { return x; }
 constexpr int twice(int v) { return pick(v) * 2; }
 int main()
 {
-  println(int(sizeof(sized) / sizeof(int)), " ", twice(3));
+  std::println(int(sizeof(sized) / sizeof(int)), " ", twice(3));
   return 0;
 }

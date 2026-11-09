@@ -54,11 +54,11 @@ int lambdaStatic()
 // A lambda as a pointer to a function: its thunk, emitted at its first use, is its own.
 int callThrough(int (*f)(int), int x) { return f(x); }
 
-class Failure : public Exception
+class Failure : public std::Exception
 {
 public:
   int code;
-  Failure(int code) : Exception(String("failed")), code(code) {}
+  Failure(int code) : Exception(std::String("failed")), code(code) {}
 };
 int risky(int n)
 {
@@ -98,8 +98,8 @@ int main()
   {
     caught = f.code;
   }
-  println(withLambda(10), " ", shape->area(), " ", back->side, " ", StringView(named->name()), " count ", countTwice(1.5), " ", lambdaStatic(),
-          " caught ", caught, " ", StringView(label(2)), " ", StringView("ok"), " ", callThrough([](int x) { return x * 2; }, 15), " ",
+  std::println(withLambda(10), " ", shape->area(), " ", back->side, " ", std::StringView(named->name()), " count ", countTwice(1.5), " ", lambdaStatic(),
+          " caught ", caught, " ", std::StringView(label(2)), " ", std::StringView("ok"), " ", callThrough([](int x) { return x * 2; }, 15), " ",
           Registry<int>::total, " ", built.value);
   return 0;
 }

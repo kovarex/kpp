@@ -7,9 +7,9 @@ int main()
   double big = 1e308;
   double inf = big * 10.0;
   double nan = inf - inf;
-  bool infinite = isinf(inf);
-  bool notANumber = isnan(nan);
-  println(infinite, " ", notANumber, " ", isinf(big), " ", isnan(big), " ", isfinite(big));
-  println(abs(-3), " ", sqrt(16.0));
+  bool infinite = std::isinf(inf);
+  bool notANumber = std::isnan(nan);
+  std::println(infinite, " ", notANumber, " ", std::isinf(big), " ", std::isnan(big), " ", std::isfinite(big));
+  std::println(std::abs(-3), " ", sqrt(16.0));
   return 0;
 }

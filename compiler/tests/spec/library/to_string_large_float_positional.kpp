@@ -3,6 +3,6 @@ int main()
 {
   float floats[] = {1e8f, 1e9f, 1e10f, 1.5e10f, 1.23456789e12f, 1e15f, 1e16f, 1e17f};
   for (float value : floats)
-    println(toString(value));
+    std::println(std::toString(value));
   return 0;
 }

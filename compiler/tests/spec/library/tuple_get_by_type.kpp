@@ -2,19 +2,19 @@
 // factorio: K's ranking of the stdlib gaps (2026-11-06): there was get<T> of a Pair only
 int main()
 {
-  Tuple<int, String, double> t(1, "two", 3.5);
-  get<int>(t) = 4;
-  get<String>(t) << "!";
-  println(get<0>(t), " ", get<String>(t), " ", get<double>(t));
-  const Tuple<int, String, double>& same = t;
-  println(get<double>(same) * 2);
-  String taken = get<String>(move(t));
-  println(taken, " '", get<1>(t), "'");
+  std::Tuple<int, std::String, double> t(1, "two", 3.5);
+  std::get<int>(t) = 4;
+  std::get<std::String>(t) << "!";
+  std::println(std::get<0>(t), " ", std::get<std::String>(t), " ", std::get<double>(t));
+  const std::Tuple<int, std::String, double>& same = t;
+  std::println(std::get<double>(same) * 2);
+  std::String taken = std::get<std::String>(std::move(t));
+  std::println(taken, " '", std::get<1>(t), "'");
   int x = 5;
-  Tuple<int&, char> refs(x, 'c');
-  get<int&>(refs) = 6;
-  println(x, " ", get<char>(refs));
-  Tuple<int, int, char> twice(1, 2, 'z');
-  println(get<char>(twice));
+  std::Tuple<int&, char> refs(x, 'c');
+  std::get<int&>(refs) = 6;
+  std::println(x, " ", std::get<char>(refs));
+  std::Tuple<int, int, char> twice(1, 2, 'z');
+  std::println(std::get<char>(twice));
   return 0;
 }

@@ -1,8 +1,8 @@
 // spec: toWString takes a u64, as std::to_wstring takes unsigned long long and toString takes a u64
 int main()
 {
-  for (wchar_t c : toWString((u64)18446744073709551615ull))
-    print((char)c);
-  println();
+  for (wchar_t c : std::toWString((u64)18446744073709551615ull))
+    std::print((char)c);
+  std::println();
   return 0;
 }

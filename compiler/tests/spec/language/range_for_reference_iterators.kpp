@@ -26,6 +26,6 @@ int main()
   int sum = 0;
   for (int e : Search(s, 1))
     sum += e;
-  println(sum);
+  std::println(sum);
   return 0;
 }

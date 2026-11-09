@@ -4,6 +4,6 @@ const auto HEADERSIZE = (sizeof("\033Lua") - sizeof(char) + 2 + 6 + sizeof("\x19
 int main()
 {
   unsigned char header[HEADERSIZE];
-  println(int(sizeof("ab")), " ", int(sizeof("\033Lua")), " ", int(sizeof("")), " ", int(sizeof(header)));
+  std::println(int(sizeof("ab")), " ", int(sizeof("\033Lua")), " ", int(sizeof("")), " ", int(sizeof(header)));
   return 0;
 }

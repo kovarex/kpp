@@ -11,10 +11,10 @@ int readFromArray = rail.*Accessors::all[1];
 constexpr int L::*second = &L::b;
 struct Accessors
 {
-  static constexpr Array all = {&L::a, &L::b};
+  static constexpr std::Array all = {&L::a, &L::b};
 };
 int main()
 {
-  println(read, " ", readFromArray);
+  std::println(read, " ", readFromArray);
   return 0;
 }

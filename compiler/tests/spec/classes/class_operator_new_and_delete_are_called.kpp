@@ -6,14 +6,14 @@ struct Counted
 {
   int value;
   Counted(int v) : value(v) {}
-  static void* operator new(size_t size) { ++allocations; return malloc(size); }
-  static void operator delete(void* p) { ++deletions; free(p); }
+  static void* operator new(size_t size) { ++allocations; return std::malloc(size); }
+  static void operator delete(void* p) { ++deletions; std::free(p); }
 };
 struct Sized
 {
   long long a, b;
-  void* operator new(size_t size) { println("new ", size); return malloc(size); }
-  void operator delete(void* p, size_t size) { println("delete ", size); free(p); }
+  void* operator new(size_t size) { std::println("new ", size); return std::malloc(size); }
+  void operator delete(void* p, size_t size) { std::println("delete ", size); std::free(p); }
 };
 struct Larger : Sized { long long c; };
 int main()
@@ -21,12 +21,12 @@ int main()
   Counted* c = new Counted(3);
   int v = c->value;
   delete c;
-  println(allocations, " ", deletions, " ", v);
+  std::println(allocations, " ", deletions, " ", v);
   Counted* g = ::new Counted(4);
   ::delete g;
   Counted* none = nullptr;
   delete none;
-  println(allocations, " ", deletions);
+  std::println(allocations, " ", deletions);
   Sized* s = new Sized;
   delete s;
   Larger* l = new Larger;

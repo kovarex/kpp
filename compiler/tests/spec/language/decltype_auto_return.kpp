@@ -10,6 +10,6 @@ int main()
   call(getter, b) = 7;
   int& r = call(getter, b);
   r += 1;
-  println(b.v);
+  std::println(b.v);
   return 0;
 }

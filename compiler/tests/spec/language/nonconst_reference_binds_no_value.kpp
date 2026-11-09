@@ -28,6 +28,6 @@ int main()
   World w;
   Gen& picked = x > 0 ? w.a : w.getB();
   int& r = value();
-  int& m = move(x);
+  int& m = std::move(x);
   return c + g + r + m + five() + picked.state;
 }

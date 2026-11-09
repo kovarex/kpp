@@ -15,6 +15,6 @@ public:
 int main()
 {
   Shape<int> s;
-  println(s.sides());
+  std::println(s.sides());
   return 0;
 }

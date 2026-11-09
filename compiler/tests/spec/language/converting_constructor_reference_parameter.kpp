@@ -12,6 +12,6 @@ int main()
 {
   int two = 2;
   Constant c = two;
-  println(get(2), " ", get(two), " ", c.value, " ", byRef(two));
+  std::println(get(2), " ", get(two), " ", c.value, " ", byRef(two));
   return 0;
 }

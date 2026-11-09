@@ -5,11 +5,11 @@
 class S
 {
 public:
-  String s;
+  std::String s;
 };
-void take(S&& x) { S y = move(x); }
+void take(S&& x) { S y = std::move(x); }
 void takeInt(int&& v) { v = 5; }
-String moved()
+std::String moved()
 {
   S a;
   a.s = "hi";
@@ -25,8 +25,8 @@ int changed()
 int main()
 {
   S b;
-  take(move(b));
+  take(std::move(b));
   takeInt(3);
-  println("[", moved(), "] ", changed());
+  std::println("[", moved(), "] ", changed());
   return 0;
 }

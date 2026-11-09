@@ -1,7 +1,7 @@
 // spec: a qualified name its namespace does not declare is the checker's error, naming it whole, wherever it stands: a call's callee in a local's initializer, a range-for's range (`filesystem::backward_directory_iterator`, which no library declares; the spec named recursive_directory_iterator until kpp's library got one), a namespace of the program's
 // found by thread G's stdlib comparison (2026-11-05): codegen said "does not support a range of unknown type yet" and "a local of unknown type"; an unqualified name was already "'x' is not declared"
-// error: undeclared_name_in_a_namespace_is_error.kpp:13: error: 'filesystem::nothingHere' is not declared
-// error: undeclared_name_in_a_namespace_is_error.kpp:14: error: 'filesystem::backward_directory_iterator' is not declared
+// error: undeclared_name_in_a_namespace_is_error.kpp:13: error: 'std::filesystem::nothingHere' is not declared
+// error: undeclared_name_in_a_namespace_is_error.kpp:14: error: 'std::filesystem::backward_directory_iterator' is not declared
 // error: undeclared_name_in_a_namespace_is_error.kpp:16: error: 'shapes::volume' is not declared
 namespace shapes
 {
@@ -10,8 +10,8 @@ namespace shapes
 int main()
 {
   int n = 0;
-  auto a = filesystem::nothingHere(1);
-  for (const filesystem::directory_entry& e : filesystem::backward_directory_iterator(filesystem::path(".")))
+  auto a = std::filesystem::nothingHere(1);
+  for (const std::filesystem::directory_entry& e : std::filesystem::backward_directory_iterator(std::filesystem::path(".")))
     ++n;
   n += shapes::area(2, 3) + shapes::volume(1, 2, 3);
   return n;

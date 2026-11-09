@@ -6,7 +6,7 @@ public:
   if constexpr (config::debug)
   {
     int references = 0;
-    void check() const { println("checked ", this.references); }
+    void check() const { std::println("checked ", this.references); }
   }
   void connect()
   {
@@ -23,7 +23,7 @@ public:
 
 if constexpr (config::debug)
 {
-  void debugOnlyCount(int count) { println("count ", count); }
+  void debugOnlyCount(int count) { std::println("count ", count); }
 }
 
 int main()
@@ -33,6 +33,6 @@ int main()
   if constexpr (!config::debug)
     println("release main");
   else
-    println("debug main ", line.references);
+    std::println("debug main ", line.references);
   return 0;
 }

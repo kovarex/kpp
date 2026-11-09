@@ -20,6 +20,6 @@ int main()
 {
   Coin a(1);
   Flag f{true};
-  println((-a).cents, " ", (-make()).cents, " ", calls, " ", !f);
+  std::println((-a).cents, " ", (-make()).cents, " ", calls, " ", !f);
   return 0;
 }

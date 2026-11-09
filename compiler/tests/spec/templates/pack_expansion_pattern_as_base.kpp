@@ -11,6 +11,6 @@ template <typename... A> struct Many : Leaf<A>...
 int main()
 {
   Many<int, char> m(3, 'a');
-  println(m.Leaf<int>::value, " ", m.Leaf<char>::value);
+  std::println(m.Leaf<int>::value, " ", m.Leaf<char>::value);
   return 0;
 }

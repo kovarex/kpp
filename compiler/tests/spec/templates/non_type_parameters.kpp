@@ -13,6 +13,6 @@ int main()
   Buffer<int, 2, true> checked;
   plain.items[3] = 7;
   checked.items[0] = 5;
-  println(plain.size(), " ", plain.get(3), " ", checked.get(5), " ", checked.get(0));
+  std::println(plain.size(), " ", plain.get(3), " ", checked.get(5), " ", checked.get(0));
   return 0;
 }

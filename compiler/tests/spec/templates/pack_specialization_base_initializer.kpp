@@ -18,6 +18,6 @@ int main()
 {
   Chain<int, double, int> c(1, 2.5, 3);
   const Chain<double, int>& rest = c;
-  println(c.count(), " ", c.value, " ", rest.value);
+  std::println(c.count(), " ", c.value, " ", rest.value);
   return 0;
 }

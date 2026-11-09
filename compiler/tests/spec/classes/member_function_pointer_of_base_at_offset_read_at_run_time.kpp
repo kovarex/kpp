@@ -36,12 +36,12 @@ int main()
   BothFn f = pick(0);
   BothFn g = pick(1);
   BothFn none = pick(2);
-  println((both.*f)(), " ", (both.*g)(), " ", int(none == nullptr));
+  std::println((both.*f)(), " ", (both.*g)(), " ", int(none == nullptr));
   SecondFn back = static_cast<SecondFn>(f);
   Second& s = both;
-  println((s.*back)(), " ", int(back == &Second::get));
+  std::println((s.*back)(), " ", int(back == &Second::get));
   SecondFn own = static_cast<SecondFn>(&Both::twice);
-  println((s.*own)());
-  println(int(f == BothFn(&Second::get)), " ", int(f == g));
+  std::println((s.*own)());
+  std::println(int(f == BothFn(&Second::get)), " ", int(f == g));
   return 0;
 }

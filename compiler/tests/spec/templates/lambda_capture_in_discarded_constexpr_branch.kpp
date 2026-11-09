@@ -23,7 +23,7 @@ int FluidBox::findOtherEnd(SurfaceType& surface, int distance) const
   {
     if (distance > limit)
       return CandidateType::Distant;
-    if constexpr (isSame<RemoveConst<SurfaceType>, Surface>)
+    if constexpr (std::isSame<std::RemoveConst<SurfaceType>, Surface>)
     {
       if (surface.tiles < distance)
         return CandidateType::Blocked;
@@ -41,13 +41,13 @@ int main()
   int total = 0;
   auto add = [&](auto value)
   {
-    if constexpr (isSame<decltype(value), int>)
+    if constexpr (std::isSame<decltype(value), int>)
       total += value + extra;
     else
       total += 1;
   };
   add(1);
   add(2.0);
-  println(box.findOtherEnd(surface, 3), " ", box.findOtherEnd(surface, 5), " ", box.findOtherEnd(blueprint, 9), " ", total);
+  std::println(box.findOtherEnd(surface, 3), " ", box.findOtherEnd(surface, 5), " ", box.findOtherEnd(blueprint, 9), " ", total);
   return 0;
 }

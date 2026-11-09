@@ -1,27 +1,27 @@
 // spec: memcpy, memmove and memset at compile time, over the evaluation's own objects by their types: a whole object copied, a scalar's bits read as another scalar of its size (`quiet_NaN`: memcpy of 0x7FC00000 into a float), elements copied along arrays, zero (or a char) set over elements; each constant equals what the program computes (`true 130 3`)
 // factorio: CyclicFramePosition::EMPTY = Limits<float>::quiet_NaN(), silently initialized at run time until the check of language/constexpr_variable_that_is_no_constant_is_error
-static constexpr float quietNan = Limits<float>::quiet_NaN();
+static constexpr float quietNan = std::Limits<float>::quiet_NaN();
 constexpr int arrays()
 {
   int a[4] = {1, 2, 3, 4};
   int b[4] = {};
-  memcpy(b, a, sizeof(int) * 3);
-  memset(a, 0, sizeof(a));
+  std::memcpy(b, a, sizeof(int) * 3);
+  std::memset(a, 0, sizeof(a));
   return b[0] * 100 + b[2] * 10 + b[3] + a[1];
 }
 constexpr int bits()
 {
   float f = 1.0f;
   uint32_t u = 0;
-  memcpy(&u, &f, 4);
+  std::memcpy(&u, &f, 4);
   char text[4] = {};
-  memset(text, 'x', 3);
+  std::memset(text, 'x', 3);
   return u == 0x3F800000u ? 3 : 0;
 }
 static_assert(quietNan != quietNan);
 static_assert(arrays() == 130 && bits() == 3);
 int main()
 {
-  println(quietNan != quietNan, " ", arrays(), " ", bits());
+  std::println(quietNan != quietNan, " ", arrays(), " ", bits());
   return 0;
 }

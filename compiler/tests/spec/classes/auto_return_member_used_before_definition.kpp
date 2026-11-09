@@ -5,7 +5,7 @@ int main()
   Params p;
   p.shift = 5;
   auto offset = p.getOffset();
-  println(offset.x, " ", offset.y, " ", p.twice(4));
+  std::println(offset.x, " ", offset.y, " ", p.twice(4));
   return 0;
 }
 

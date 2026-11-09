@@ -8,6 +8,6 @@ namespace scope
 enum class E : u8 { X };
 int main()
 {
-  println((int)sizeof(A), " ", (int)sizeof(scope::C), " ", (int)sizeof(E::X));
+  std::println((int)sizeof(A), " ", (int)sizeof(scope::C), " ", (int)sizeof(E::X));
   return 0;
 }

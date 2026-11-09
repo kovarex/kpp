@@ -4,14 +4,14 @@ template<class T>
 struct Holder
 {
   T value{};
-  int kind() const requires isIntegral<T> { return 1; }
-  int kind() const requires (!isIntegral<T>) { return 2; }
+  int kind() const requires std::isIntegral<T> { return 1; }
+  int kind() const requires (!std::isIntegral<T>) { return 2; }
   int describe() const { return this.kind() * 10; }
 };
 int main()
 {
   Holder<int> i;
   Holder<double> d;
-  println(i.describe(), " ", d.describe());
+  std::println(i.describe(), " ", d.describe());
   return 0;
 }

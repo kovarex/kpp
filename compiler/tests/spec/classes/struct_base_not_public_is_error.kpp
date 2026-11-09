@@ -10,6 +10,6 @@ int main()
 {
   Hidden h;
   Guarded g;
-  println(h.z, " ", g.w);
+  std::println(h.z, " ", g.w);
   return 0;
 }

@@ -11,6 +11,6 @@ int main()
   D2<long long, int> a{5};
   auto b = a * 2;
   auto c = 3 * a;
-  println(b.t, " ", c.t);
+  std::println(b.t, " ", c.t);
   return 0;
 }

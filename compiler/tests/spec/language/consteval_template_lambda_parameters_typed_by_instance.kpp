@@ -9,17 +9,17 @@ template<class T> constexpr int smaller(N<T>* a, N<T>* b)
   return less(a, b) ? a->v : b->v;
 }
 
-template<class T> constexpr T firstSorted(Vector<N<T>*>& v)
+template<class T> constexpr T firstSorted(std::Vector<N<T>*>& v)
 {
-  stableSort(v.begin(), v.end(), [](N<T>* x, N<T>* y) { return x->v < y->v; });
+  std::stableSort(v.begin(), v.end(), [](N<T>* x, N<T>* y) { return x->v < y->v; });
   return v[0]->v;
 }
 
-constexpr int sorted() { List<int> l = {5, 1, 4}; l.sort(); return l.front() * 100 + l.back(); }
+constexpr int sorted() { std::List<int> l = {5, 1, 4}; l.sort(); return l.front() * 100 + l.back(); }
 
 constexpr int sortedDown()
 {
-  List<int> l = {5, 1, 4};
+  std::List<int> l = {5, 1, 4};
   l.sort([](const int& a, const int& b) { return a > b; });
   return l.front() * 100 + l.back();
 }
@@ -30,7 +30,7 @@ constexpr int pick()
   a->v = 7;
   N<int>* b = new N<int>();
   b->v = 3;
-  Vector<N<int>*> v = {a, b};
+  std::Vector<N<int>*> v = {a, b};
   int r = smaller(a, b) * 10 + firstSorted(v);
   delete a;
   delete b;
@@ -43,6 +43,6 @@ constexpr int p = pick();
 
 int main()
 {
-  println(s, " ", d, " ", p, " ", sorted(), " ", sortedDown(), " ", pick());
+  std::println(s, " ", d, " ", p, " ", sorted(), " ", sortedDown(), " ", pick());
   return 0;
 }

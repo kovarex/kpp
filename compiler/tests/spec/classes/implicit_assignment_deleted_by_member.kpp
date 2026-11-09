@@ -80,7 +80,7 @@ int main()
   HoldsNoCopy t;
   HoldsMovable u;
   HoldsMovable w;
-  u = move(w);
+  u = std::move(w);
   a = b;
   p = q;
   h = i;

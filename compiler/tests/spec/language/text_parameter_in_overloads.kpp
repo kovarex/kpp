@@ -3,18 +3,18 @@ extern "C" import "stdio.h";
 struct Point
 {
   int x = 0;
-  void appendTo(String& out) const { out << "p"; }
+  void appendTo(std::String& out) const { out << "p"; }
 };
 struct Wrapped
 {
   implicit Wrapped(int value) {}
 };
 void f(int value) { printf("int "); }
-void f(Text text) { printf("Text "); }
+void f(std::Text text) { printf("Text "); }
 void g(const Point& p) { printf("Point "); }
-void g(Text text) { printf("Text "); }
+void g(std::Text text) { printf("Text "); }
 void h(Wrapped w) { printf("Wrapped "); }
-void h(Text text) { printf("Text "); }
+void h(std::Text text) { printf("Text "); }
 int main()
 {
   Point p;

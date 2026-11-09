@@ -7,22 +7,22 @@ struct Info
   Mode mode;
   bool shown;
 };
-constexpr Array named =
+constexpr std::Array named =
 {
-  Pair { "first", Mode::A },
-  Pair { "second", Mode::C },
+  std::Pair { "first", Mode::A },
+  std::Pair { "second", Mode::C },
 };
-constexpr auto infos = Array {
+constexpr auto infos = std::Array {
   Info { "x", Mode::B, true },
   Info { "y", Mode::C, false },
   Info { "z", Mode::A, true },
 };
-constexpr auto words = Array { "relevancy", "downloads" };
+constexpr auto words = std::Array { "relevancy", "downloads" };
 static_assert(named.size() == 2 && named[1].second == Mode::C);
 static_assert(infos[2].mode == Mode::A && !infos[1].shown && infos.size() == 3);
 static_assert(words[1][0] == 'd');
 int main()
 {
-  println(StringView(named[0].first), " ", StringView(infos[1].name), " ", StringView(words[0]));
+  std::println(std::StringView(named[0].first), " ", std::StringView(infos[1].name), " ", std::StringView(words[0]));
   return 0;
 }

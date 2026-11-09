@@ -2,17 +2,17 @@
 // factorio: 116 deque uses in 68 files
 int main()
 {
-  Deque<int> d;
+  std::Deque<int> d;
   d.push_back(2);
   d.push_front(1);
   d.push_back(3);
   int front = d.front();
   d.pop_front();
-  Queue<String> q;
-  q.push(String("first"));
-  q.push(String("second"));
-  String head = q.front();
+  std::Queue<std::String> q;
+  q.push(std::String("first"));
+  q.push(std::String("second"));
+  std::String head = q.front();
   q.pop();
-  println(front, " ", d.size(), " ", d.back(), " ", head, " ", q.size(), " ", q.front());
+  std::println(front, " ", d.size(), " ", d.back(), " ", head, " ", q.size(), " ", q.front());
   return 0;
 }

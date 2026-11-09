@@ -11,6 +11,6 @@ int main()
 {
   Counter c;
   c.bump();
-  println(useTwice(), " ", c.n, " ", add(2, 3));
+  std::println(useTwice(), " ", c.n, " ", add(2, 3));
   return 0;
 }

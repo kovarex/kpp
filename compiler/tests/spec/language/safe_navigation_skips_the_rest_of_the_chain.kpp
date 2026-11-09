@@ -14,12 +14,12 @@ public:
 };
 int argument()
 {
-  println("argument");
+  std::println("argument");
   return 2;
 }
 int index()
 {
-  println("index");
+  std::println("index");
   return 1;
 }
 int main()
@@ -29,9 +29,9 @@ int main()
   o.inner = &in;
   Outer* none = nullptr;
   Outer* set = &o;
-  println(none?->inner->v ?: 0, " ", set?->inner->v ?: 0);
-  println(none?->add(argument()) ?: 0, " ", set?->add(argument()) ?: 0);
-  println(none?->items[index()] ?: 0, " ", set?->items[index()] ?: 0);
-  println(none?->self()->self()->add(1) ?: 0, " ", set?->self()->self()->add(1) ?: 0);
+  std::println(none?->inner->v ?: 0, " ", set?->inner->v ?: 0);
+  std::println(none?->add(argument()) ?: 0, " ", set?->add(argument()) ?: 0);
+  std::println(none?->items[index()] ?: 0, " ", set?->items[index()] ?: 0);
+  std::println(none?->self()->self()->add(1) ?: 0, " ", set?->self()->self()->add(1) ?: 0);
   return 0;
 }

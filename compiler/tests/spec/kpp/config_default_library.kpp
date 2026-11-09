@@ -3,6 +3,6 @@
 // kpp: --config zlib::checked=true
 int main()
 {
-  println(zlib::levelOf(), " ", config::zlib::level, " ", config::zlib::checked);
+  std::println(zlib::levelOf(), " ", config::zlib::level, " ", config::zlib::checked);
   return 0;
 }

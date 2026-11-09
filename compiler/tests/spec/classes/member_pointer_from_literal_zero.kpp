@@ -13,9 +13,9 @@ int main()
   int Base::*none = nullptr;
   int Base::*first = &Base::first;
   int (Base::*noMethod)() const = nullptr;
-  println(readOr(b, nullptr, 7), " ", readOr(b, first, 7), " ", none == nullptr);
+  std::println(readOr(b, nullptr, 7), " ", readOr(b, first, 7), " ", none == nullptr);
   first = nullptr;
-  println(first == nullptr, " ", callOr(b, nullptr, 9), " ", callOr(b, &Base::get, 9));
-  println(noMethod == nullptr);
+  std::println(first == nullptr, " ", callOr(b, nullptr, 9), " ", callOr(b, &Base::get, 9));
+  std::println(noMethod == nullptr);
   return 0;
 }

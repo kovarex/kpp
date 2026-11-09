@@ -12,28 +12,28 @@ struct T
   }
   constexpr bool operator==(const T& o) const { return &this == &o; }
 };
-constexpr Vector<T> nine()
+constexpr std::Vector<T> nine()
 {
-  Vector<T> v;
+  std::Vector<T> v;
   v.push_back(T());
   v[0].how = 9;
   return v;
 }
 constexpr int fromElement()
 {
-  Vector<T> v = nine();
+  std::Vector<T> v = nine();
   T x;
   x = v[0];
   return x.how;
 }
 constexpr int fromFront()
 {
-  Vector<T> v = nine();
+  std::Vector<T> v = nine();
   T x;
   x = v.front();
   return x.how;
 }
-constexpr int fromConst(const Vector<T>& v)
+constexpr int fromConst(const std::Vector<T>& v)
 {
   T x;
   x = v[0];
@@ -41,31 +41,31 @@ constexpr int fromConst(const Vector<T>& v)
 }
 constexpr int throughConst()
 {
-  Vector<T> v = nine();
+  std::Vector<T> v = nine();
   return fromConst(v);
 }
 constexpr int selfAssigned()
 {
-  Vector<T> v = nine();
+  std::Vector<T> v = nine();
   v[0] = v[0];
   return v[0].how;
 }
 constexpr int same()
 {
-  Vector<T> v = nine();
+  std::Vector<T> v = nine();
   return v[0] == v[0] ? 1 : 0;
 }
 constexpr int other()
 {
-  Vector<T> v = nine();
+  std::Vector<T> v = nine();
   T x;
   return x == v[0] ? 1 : 0;
 }
 template<int N> struct Show { static constexpr int value = N; };
 int main()
 {
-  println(fromElement(), " ", fromFront(), " ", throughConst(), " ", selfAssigned(), " ", same(), " ", other());
-  println(Show<fromElement()>::value, " ", Show<fromFront()>::value, " ", Show<throughConst()>::value, " ", Show<selfAssigned()>::value, " ",
+  std::println(fromElement(), " ", fromFront(), " ", throughConst(), " ", selfAssigned(), " ", same(), " ", other());
+  std::println(Show<fromElement()>::value, " ", Show<fromFront()>::value, " ", Show<throughConst()>::value, " ", Show<selfAssigned()>::value, " ",
           Show<same()>::value, " ", Show<other()>::value);
   return 0;
 }

@@ -23,6 +23,6 @@ int main()
   bool same = a == 0;
   int* p = none<int>();
   long* q = none<long>();
-  println(x, " ", same, " ", b == nullptr, " ", m == nullptr, " ", p == nullptr, " ", q == nullptr);
+  std::println(x, " ", same, " ", b == nullptr, " ", m == nullptr, " ", p == nullptr, " ", q == nullptr);
   return 0;
 }

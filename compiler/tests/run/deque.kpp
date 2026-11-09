@@ -5,20 +5,20 @@ extern "C" int printf(const char* format, ...);
 
 // The containers' protected parts, which the checks below look at.
 template<typename T>
-class DequeProbe : public Deque<T>
+class DequeProbe : public std::Deque<T>
 {
 public:
-  ContainerSize blocks() const { return this->mapLength; }
+  std::ContainerSize blocks() const { return this->mapLength; }
 };
-class LongQueue : public Queue<int, DequeProbe<int>>
+class LongQueue : public std::Queue<int, DequeProbe<int>>
 {
 public:
-  ContainerSize blocks() const { return this->values.blocks(); }
+  std::ContainerSize blocks() const { return this->values.blocks(); }
 };
-class StackProbe : public Stack<String>
+class StackProbe : public std::Stack<std::String>
 {
 public:
-  String& bottom() { return this->values[0]; }
+  std::String& bottom() { return this->values[0]; }
 };
 
 uint64_t state = 4242;
@@ -32,13 +32,13 @@ int nextInt(int range)
 
 int main()
 {
-  Deque<String> deque;
-  Vector<String> reference;
+  std::Deque<std::String> deque;
+  std::Vector<std::String> reference;
   int errors = 0;
   for (int step = 0; step < 30000; ++step)
   {
     int action = nextInt(100);
-    String value = toString(step) + String(step % 5 == 0 ? " with a tail long enough for the heap" : "");
+    std::String value = std::toString(step) + std::String(step % 5 == 0 ? " with a tail long enough for the heap" : "");
     if (action < 30)
     {
       deque.push_back(value);
@@ -76,13 +76,13 @@ int main()
       if (deque.size() != reference.size())
         ++errors;
       int i = 0;
-      for (String& s : deque)
+      for (std::String& s : deque)
         errors += s == reference[i++] ? 0 : 1;
     }
   }
 
   // References survive pushes at both ends.
-  Deque<int> numbers;
+  std::Deque<int> numbers;
   numbers.push_back(42);
   int* kept = &numbers.front();
   for (int i = 0; i < 100000; ++i)
@@ -105,10 +105,10 @@ int main()
     }
   }
   StackProbe stack;
-  stack.push(String("a"));
-  String& bottom = stack.top();
+  stack.push(std::String("a"));
+  std::String& bottom = stack.top();
   for (int i = 0; i < 1000; ++i)
-    stack.push(toString(i));
+    stack.push(std::toString(i));
   bool stackStable = &bottom == &stack.bottom();
   printf("%d %d %d %zu %d %lld %d %s\n", errors, deque.size() == reference.size() ? 1 : 0, stable ? 1 : 0, queue.size(),
          queue.blocks() <= 16 ? 1 : 0, sum, stackStable ? 1 : 0, stack.top().c_str());

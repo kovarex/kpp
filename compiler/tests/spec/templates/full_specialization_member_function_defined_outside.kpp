@@ -20,6 +20,6 @@ int main()
 {
   Flag<true> t;
   Flag<false> f;
-  println(t.value(), " ", f.value());
+  std::println(t.value(), " ", f.value());
   return 0;
 }

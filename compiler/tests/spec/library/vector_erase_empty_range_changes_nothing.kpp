@@ -17,7 +17,7 @@ struct Item
 };
 int main()
 {
-  Vector<Item> v;
+  std::Vector<Item> v;
   for (int i = 0; i < 5; ++i)
     v.emplace_back(i);
   Item* at = v.erase(v.begin() + 3, v.begin() + 3);
@@ -25,9 +25,9 @@ int main()
   for (const Item& x : v)
     printf(" %d", x.v);
   printf(" %d", assigned);
-  Vector<String> s;
-  s.push_back(String("a"));
-  s.push_back(String("b"));
+  std::Vector<std::String> s;
+  s.push_back(std::String("a"));
+  s.push_back(std::String("b"));
   s.erase(s.begin(), s.begin());
   printf(" [%s] [%s]\n", s[0].c_str(), s[1].c_str());
   return 0;

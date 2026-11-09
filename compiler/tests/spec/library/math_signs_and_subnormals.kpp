@@ -8,8 +8,8 @@ int main()
   double nan = zero / zero;
   double sub = 4.9e-324 * (1 + zero);
   float subf = 1e-45f * float(1 + zero);
-  println(1 / abs(nz), " ", 1 / double(abs(nzf)), " ", signbit(abs(nan)), " ", signbit(abs(-nan)), " ", abs(-2.5), " ", abs(-1.5f));
-  println(isnormal(sub), " ", isnormal(subf), " ", isnormal(2.2250738585072014e-308 * (1 + zero)), " ", isnormal(1.0), " ", isnormal(0.0), " ", isnormal(nan));
-  println(signbit(-nan) != signbit(nan), " ", signbit(-0.0), " ", signbit(0.0), " ", signbit(-1e-300), " ", signbit(-0.0f));
+  std::println(1 / std::abs(nz), " ", 1 / double(std::abs(nzf)), " ", std::signbit(std::abs(nan)), " ", std::signbit(std::abs(-nan)), " ", std::abs(-2.5), " ", std::abs(-1.5f));
+  std::println(isnormal(sub), " ", isnormal(subf), " ", isnormal(2.2250738585072014e-308 * (1 + zero)), " ", isnormal(1.0), " ", isnormal(0.0), " ", isnormal(nan));
+  std::println(std::signbit(-nan) != std::signbit(nan), " ", std::signbit(-0.0), " ", std::signbit(0.0), " ", std::signbit(-1e-300), " ", std::signbit(-0.0f));
   return 0;
 }

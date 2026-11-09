@@ -6,6 +6,6 @@ int main()
   Box<int> a;
   Box<Loud> b;
   Loud l;
-  println(noexcept(a.set(1)) ? 1 : 0, " ", noexcept(b.set(l)) ? 1 : 0);
+  std::println(noexcept(a.set(1)) ? 1 : 0, " ", noexcept(b.set(l)) ? 1 : 0);
   return 0;
 }

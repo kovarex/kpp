@@ -2,11 +2,11 @@
 // factorio: TestBoundingBox:295, TestLightningRangeVisualisation:288, TestTipsAndTricks:1883 and VariablePersistenceMultioctaveNoise:123 call std::sqrt and std::ceil with integers (4c178a5b915)
 int main()
 {
-  auto root = sqrt(2);
-  double rootOfLong = sqrt(10000000000000001LL);
-  auto up = ceil(7);
-  auto down = floor((short)3);
-  auto nearest = round(5u);
-  println(isSame<decltype(root), double>, " ", root == sqrt(2.0), " ", rootOfLong == 100000000.0, " ", isSame<decltype(up), double>, " ", up + down + nearest, " ", isnan(3) || isinf(3), " ", isfinite(3));
+  auto root = std::sqrt(2);
+  double rootOfLong = std::sqrt(10000000000000001LL);
+  auto up = std::ceil(7);
+  auto down = std::floor((short)3);
+  auto nearest = std::round(5u);
+  std::println(std::isSame<decltype(root), double>, " ", root == std::sqrt(2.0), " ", rootOfLong == 100000000.0, " ", std::isSame<decltype(up), double>, " ", up + down + nearest, " ", std::isnan(3) || std::isinf(3), " ", std::isfinite(3));
   return 0;
 }

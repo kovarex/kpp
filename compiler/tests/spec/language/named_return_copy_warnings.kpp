@@ -26,12 +26,12 @@ Wire either(bool b)
   return c;
 }
 Wire param(Wire p) { return p; }
-Optional<Wire> other(int x)
+std::Optional<Wire> other(int x)
 {
   const Wire w(x);
   return w;
 }
-Wire looped(const Vector<Wire>& all)
+Wire looped(const std::Vector<Wire>& all)
 {
   for (Wire w : all)
     if (w.v > 1)
@@ -41,9 +41,9 @@ Wire looped(const Vector<Wire>& all)
 }
 int main()
 {
-  Vector<Wire> all;
+  std::Vector<Wire> all;
   all.push_back(Wire(1));
   all.push_back(Wire(5));
-  println(built(1).v, " ", either(true).v, " ", param(Wire(3)).v, " ", other(4)->v, " ", looped(all).v);
+  std::println(built(1).v, " ", either(true).v, " ", param(Wire(3)).v, " ", other(4)->v, " ", looped(all).v);
   return 0;
 }

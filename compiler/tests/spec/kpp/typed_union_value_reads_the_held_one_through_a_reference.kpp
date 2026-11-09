@@ -3,21 +3,21 @@
 class Named
 {
 public:
-  Named(const String& name) : name(name) {}
-  String name;
+  Named(const std::String& name) : name(name) {}
+  std::String name;
 };
 
 class Both
 {
 public:
-  Both(const char* first, const char* second) : first(first), second(String(second)) {}
-  String first;
+  Both(const char* first, const char* second) : first(first), second(std::String(second)) {}
+  std::String first;
   Named second;
 };
 
 union enum Held : u8
 {
-  { {int, Count}, {String, Words}, {Named, Object}, {Both, Two} }
+  { {int, Count}, {std::String, Words}, {Named, Object}, {Both, Two} }
 };
 
 const char* text = "a text long enough to be held outside the object";
@@ -29,41 +29,41 @@ int main()
 {
   Held h;
   h[Words] = text;
-  String& alias = h[Words];
+  std::String& alias = h[Words];
   h[Object] = Named(alias);
-  println(h[Object].name);
+  std::println(h[Object].name);
 
   Held whole;
   whole[Words] = text;
-  String& wholeAlias = whole[Words];
+  std::String& wholeAlias = whole[Words];
   whole = Named(wholeAlias);
-  println(whole[Object].name);
+  std::println(whole[Object].name);
 
   Held same;
   same[Words] = text;
-  String& self = same[Words];
+  std::String& self = same[Words];
   same = self;
-  println(same[Words]);
+  std::println(same[Words]);
 
   Held count;
   count[Count] = 4;
   count = count[Count] + 1;
-  println(count[Count]);
+  std::println(count[Count]);
 
   Held inside;
   inside[Two] = Both(text, "the second text, long enough to be held outside too");
   inside[Object] = inside[Two].second;
-  println(inside[Object].name);
+  std::println(inside[Object].name);
 
   Held first;
   first[Two] = Both(text, "second");
   first[Words] = first[Two].first;
-  println(first[Words]);
+  std::println(first[Words]);
 
   Held reached;
   reached[Words] = text;
   current = &reached;
   reached[Object] = reachedThroughAPointer();
-  println(reached[Object].name);
+  std::println(reached[Object].name);
   return 0;
 }

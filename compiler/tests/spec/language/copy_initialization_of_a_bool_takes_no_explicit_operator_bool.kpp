@@ -32,29 +32,29 @@ int main()
   bool copied = f;
   bool assigned = false;
   assigned = f;
-  println(copied ? 1 : 0, " ", take(f) ? 1 : 0, " ", give(f) ? 1 : 0, " ", assigned ? 1 : 0);
+  std::println(copied ? 1 : 0, " ", take(f) ? 1 : 0, " ", give(f) ? 1 : 0, " ", assigned ? 1 : 0);
   bool direct(f);
   bool listed{f};
-  println(direct ? 1 : 0, " ", listed ? 1 : 0, " ", bool(f) ? 1 : 0, " ", static_cast<bool>(f) ? 1 : 0);
+  std::println(direct ? 1 : 0, " ", listed ? 1 : 0, " ", bool(f) ? 1 : 0, " ", static_cast<bool>(f) ? 1 : 0);
   int on = 0;
   if (f)
     on = 1;
   int loops = 0;
   while (f && loops < 3)
     ++loops;
-  println(on, " ", loops, " ", !f ? 1 : 0, " ", f || false ? 1 : 0, " ", f ? 1 : 0);
+  std::println(on, " ", loops, " ", !f ? 1 : 0, " ", f || false ? 1 : 0, " ", f ? 1 : 0);
   Pointer p;
   bool pointerCopied = p;
-  println(pointerCopied ? 1 : 0, " ", takePointer(p) ? 1 : 0, " ", givePointer(p) ? 1 : 0);
+  std::println(pointerCopied ? 1 : 0, " ", takePointer(p) ? 1 : 0, " ", givePointer(p) ? 1 : 0);
   bool pointerDirect(p);
   bool pointerListed{p};
   int pointerOn = 0;
   if (p)
     pointerOn = 1;
-  println(pointerDirect ? 1 : 0, " ", pointerListed ? 1 : 0, " ", pointerOn, " ", !p ? 1 : 0, " ", p && true ? 1 : 0, " ", p ? 1 : 0);
-  println((on == 0 ? f : false) ? 1 : 0, " ", (on == 0 ? p : false) ? 1 : 0);
+  std::println(pointerDirect ? 1 : 0, " ", pointerListed ? 1 : 0, " ", pointerOn, " ", !p ? 1 : 0, " ", p && true ? 1 : 0, " ", p ? 1 : 0);
+  std::println((on == 0 ? f : false) ? 1 : 0, " ", (on == 0 ? p : false) ? 1 : 0);
   constexpr bool listedConstant = listedEarly();
   constexpr bool copiedConstant = copiedEarly();
-  println(listedConstant ? 1 : 0, " ", copiedConstant ? 1 : 0);
+  std::println(listedConstant ? 1 : 0, " ", copiedConstant ? 1 : 0);
   return 0;
 }

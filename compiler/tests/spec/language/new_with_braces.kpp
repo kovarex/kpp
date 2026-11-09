@@ -13,9 +13,9 @@ int main(int argc, char** argv)
   double* none = new double{};
   int** null = new int*{};
   Meters* three = new Meters[3]{Meters(1), Meters(20), Meters(300)};
-  println(*zero, " ", *seven, " ", *none, " ", *null == nullptr ? 1 : 0, " ", three[0].value + three[1].value + three[2].value);
+  std::println(*zero, " ", *seven, " ", *none, " ", *null == nullptr ? 1 : 0, " ", three[0].value + three[1].value + three[2].value);
   int* fits = new int[argc + 3]{3, 4, 5};
-  println(fits[0], " ", fits[1], " ", fits[2], " ", fits[3]);
+  std::println(fits[0], " ", fits[1], " ", fits[2], " ", fits[3]);
   delete zero;
   delete seven;
   delete none;

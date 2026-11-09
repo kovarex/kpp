@@ -10,22 +10,22 @@ struct Pattern
       if (p[0] == '{' && p[1] == '}')
         ++this.holes;
   }
-  consteval void checkPieces(ContainerSize pieces) const
+  consteval void checkPieces(std::ContainerSize pieces) const
   {
-    if (pieces != ContainerSize(this.holes))
-      throw LogicError("the {} and the pieces do not pair up");
+    if (pieces != std::ContainerSize(this.holes))
+      throw std::LogicError("the {} and the pieces do not pair up");
   }
 };
 // (each {} replaced by the next piece)
-String fill(Pattern pattern, Text pieces)
+std::String fill(Pattern pattern, std::Text pieces)
 {
-  String out;
+  std::String out;
   const char* p = pattern.text;
-  ContainerSize next = 0;
+  std::ContainerSize next = 0;
   while (*p != 0)
     if (p[0] == '{' && p[1] == '}')
     {
-      const TextPiece& piece = pieces.pieces[next++];
+      const std::TextPiece& piece = pieces.pieces[next++];
       piece.append(piece.object, out);
       p += 2;
     }
@@ -34,11 +34,11 @@ String fill(Pattern pattern, Text pieces)
   return out;
 }
 template<typename... A>
-String relay(const A&... args)
+std::String relay(const A&... args)
 {
   return fill("{} {}", args...);
 }
-String passOn(Pattern pattern, int value)
+std::String passOn(Pattern pattern, int value)
 {
   return fill(pattern, value);
 }

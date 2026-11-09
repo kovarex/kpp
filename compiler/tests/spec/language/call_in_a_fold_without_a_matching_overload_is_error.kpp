@@ -3,8 +3,8 @@
 // error: call_in_a_fold_without_a_matching_overload_is_error.kpp:17: error: no overload of show takes (C)
 struct A { int v; };
 struct C { int w = 0; };
-inline void show(int x) { println(x); }
-inline void show(const A& a) { println("A", a.v); }
+inline void show(int x) { std::println(x); }
+inline void show(const A& a) { std::println("A", a.v); }
 template<typename... Ts>
 void each(Ts... ts)
 {

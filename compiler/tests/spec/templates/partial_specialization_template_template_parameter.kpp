@@ -27,6 +27,6 @@ int classify()
 }
 int main()
 {
-  println(classify<Box<int>>(), " ", classify<int>(), " ", IsSpec<Box<char>, Box>::value, " ", IsSpec<Vector<int>, Box>::value);
+  std::println(classify<Box<int>>(), " ", classify<int>(), " ", IsSpec<Box<char>, Box>::value, " ", IsSpec<std::Vector<int>, Box>::value);
   return 0;
 }

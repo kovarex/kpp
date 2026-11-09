@@ -10,6 +10,6 @@ template<int N> int g() { auto l = []() { return take(N); }; return l(); }
 
 int main()
 {
-  println(f<Kind::C>(), " ", g<7>());
+  std::println(f<Kind::C>(), " ", g<7>());
   return 0;
 }

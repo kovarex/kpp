@@ -35,6 +35,6 @@ template<class T> constexpr bool staticMemberOne = requires(T t) { t.sone; };
 template<class T> constexpr bool staticMemberTwo = requires(T t) { t.stwo; };
 int main()
 {
-  println(int(HasOne<S>), " ", int(HasTwo<S>), " ", int(inherited<S>), " ", int(own<S>), " ", int(ownWithArgs<S>), " ", int(staticOne<S>), " ", int(staticTwo<S>), " ", int(staticTwoAddress<S>), " ", int(staticTmpl<S>), " ", int(fieldAddress<S>), " ", int(freeOneAddress<S>), " ", int(freeTwoAddress<S>), " ", int(freeTmplAddress<S>), " ", int(memberUncalled<S>), " ", int(staticMemberOne<S>), " ", int(staticMemberTwo<S>));
+  std::println(int(HasOne<S>), " ", int(HasTwo<S>), " ", int(inherited<S>), " ", int(own<S>), " ", int(ownWithArgs<S>), " ", int(staticOne<S>), " ", int(staticTwo<S>), " ", int(staticTwoAddress<S>), " ", int(staticTmpl<S>), " ", int(fieldAddress<S>), " ", int(freeOneAddress<S>), " ", int(freeTwoAddress<S>), " ", int(freeTmplAddress<S>), " ", int(memberUncalled<S>), " ", int(staticMemberOne<S>), " ", int(staticMemberTwo<S>));
   return 0;
 }

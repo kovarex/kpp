@@ -10,6 +10,6 @@ public:
 };
 int main()
 {
-  println(valueOf(5));
+  std::println(valueOf(5));
   return 0;
 }

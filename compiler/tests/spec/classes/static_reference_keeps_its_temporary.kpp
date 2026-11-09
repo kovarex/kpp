@@ -3,9 +3,9 @@ class T
 {
 public:
   int id;
-  T(int i) : id(i) { println("ctor ", this.id); }
-  T(const T& o) : id(o.id + 100) { println("copy ", this.id); }
-  virtual ~T() { println("dtor ", this.id); }
+  T(int i) : id(i) { std::println("ctor ", this.id); }
+  T(const T& o) : id(o.id + 100) { std::println("copy ", this.id); }
+  virtual ~T() { std::println("dtor ", this.id); }
   virtual int get() const { return this.id; }
 };
 class D : public T { public: int extra; D(int i) : T(i), extra(i * 10) {} int get() const override { return this.id + this.extra; } };
@@ -24,12 +24,12 @@ int noise(int a)
 }
 int main()
 {
-  println("main ", noise(1));
-  println(one.get(), " ", eight, " ", base.get(), " ", held.ref.get(), " ", held.n);
+  std::println("main ", noise(1));
+  std::println(one.get(), " ", eight, " ", base.get(), " ", held.ref.get(), " ", held.n);
   for (int i = 0; i < 2; ++i)
   {
     static Holder kept{T(5), 6};
-    println(noise(i), " ", kept.ref.get(), " ", kept.n);
+    std::println(noise(i), " ", kept.ref.get(), " ", kept.n);
   }
   return 0;
 }

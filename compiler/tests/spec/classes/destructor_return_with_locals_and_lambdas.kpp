@@ -36,11 +36,11 @@ int main()
   {
     Guard g;
   }
-  print(destroyed, " ");
+  std::print(destroyed, " ");
   destroyed = 0;
   {
     Lambdas l;
   }
-  println(destroyed);
+  std::println(destroyed);
   return 0;
 }

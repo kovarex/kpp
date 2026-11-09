@@ -13,8 +13,8 @@ struct Twice : Holder<int>
 };
 constexpr long long tupled()
 {
-  Tuple<int, long long, char> t = {1, 2, 'c'};
-  return get<0>(t) * 100 + get<1>(t) * 10 + (get<2>(t) == 'c' ? 1 : 0);
+  std::Tuple<int, long long, char> t = {1, 2, 'c'};
+  return std::get<0>(t) * 100 + std::get<1>(t) * 10 + (std::get<2>(t) == 'c' ? 1 : 0);
 }
 constexpr long long aliased()
 {
@@ -25,6 +25,6 @@ int main()
 {
   constexpr long long a = tupled();
   constexpr long long b = aliased();
-  println(a, " ", tupled(), " ", b, " ", aliased());
+  std::println(a, " ", tupled(), " ", b, " ", aliased());
   return 0;
 }

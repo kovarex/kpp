@@ -6,6 +6,6 @@ template<class T> typename Pick<sizeof(T) == 4>::type f(T) { return 1; }
 template<class T> typename Pick<sizeof(T) == 8>::type f(T) { return 2; }
 int main()
 {
-  println(f(1));
+  std::println(f(1));
   return 0;
 }

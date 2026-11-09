@@ -4,9 +4,9 @@ struct Event { int x; };
 int main()
 {
   int n = 0;
-  Function<void(Event)> byValue = [&n](Event e) { n += e.x; };
-  Function<void(int&)> byRef = [&n](int& r) { r += 1; n += 100; };
-  Function<void(const Event&)> byConstRef = [&n](const Event& e) { n += e.x * 10; };
+  std::Function<void(Event)> byValue = [&n](Event e) { n += e.x; };
+  std::Function<void(int&)> byRef = [&n](int& r) { r += 1; n += 100; };
+  std::Function<void(const Event&)> byConstRef = [&n](const Event& e) { n += e.x * 10; };
   Event e;
   e.x = 3;
   int k = 0;

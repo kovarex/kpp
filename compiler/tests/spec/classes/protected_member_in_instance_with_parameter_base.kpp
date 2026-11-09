@@ -21,6 +21,6 @@ public:
 int main()
 {
   Dragging<Table> d;
-  println(d.paint());
+  std::println(d.paint());
   return 0;
 }

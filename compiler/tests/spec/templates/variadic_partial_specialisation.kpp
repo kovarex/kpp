@@ -3,10 +3,10 @@
 template <typename...> struct IndexInTemplateList;
 // still looking (declared first: where both match, the one below is more specialised)
 template <typename T, typename F, typename... R>
-struct IndexInTemplateList<T, F, R...> : IntegralConstant<size_t, 1 + IndexInTemplateList<T, R...>::value> {};
+struct IndexInTemplateList<T, F, R...> : std::IntegralConstant<size_t, 1 + IndexInTemplateList<T, R...>::value> {};
 // found it
 template <typename T, typename... R>
-struct IndexInTemplateList<T, T, R...> : IntegralConstant<size_t, 0> {};
+struct IndexInTemplateList<T, T, R...> : std::IntegralConstant<size_t, 0> {};
 
 template<typename... Ts> struct Count { static constexpr int value = 0; };
 template<typename T, typename... Rest> struct Count<T, Rest...> { static constexpr int value = 1 + Count<Rest...>::value; };
@@ -22,6 +22,6 @@ using Order = TypeList<A, B, C>;
 static_assert(Order::indexOf<C>() == 2);
 int main()
 {
-  println(Order::indexOf<A>(), " ", Order::indexOf<B>(), " ", IndexInTemplateList<C, A, B, C>::value, " ", Count<int, char, A>::value);
+  std::println(Order::indexOf<A>(), " ", Order::indexOf<B>(), " ", IndexInTemplateList<C, A, B, C>::value, " ", Count<int, char, A>::value);
   return 0;
 }

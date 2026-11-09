@@ -21,6 +21,6 @@ int main()
   int second = b.next();
   int third = static_cast<Base<int>&>(d).next();
   int fourth = c.next();
-  println(first, " ", second, " ", third, " ", fourth);
+  std::println(first, " ", second, " ", third, " ", fourth);
   return 0;
 }

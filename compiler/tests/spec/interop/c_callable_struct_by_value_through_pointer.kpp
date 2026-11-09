@@ -10,6 +10,6 @@ int main()
   S8 s;
   s.a = 4;
   s.b = 5;
-  println(kppTakeS8(s), " ", pointer(s), " ", other(s));
+  std::println(kppTakeS8(s), " ", pointer(s), " ", other(s));
   return 0;
 }

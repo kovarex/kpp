@@ -1,10 +1,10 @@
 // spec: an alias template producing a reference type
-template<typename T> using Ref = RemoveReference<T>&;
+template<typename T> using Ref = std::RemoveReference<T>&;
 int main()
 {
   int x = 5;
   Ref<int&> r = x;
   r += 1;
-  println(x);
+  std::println(x);
   return 0;
 }

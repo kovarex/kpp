@@ -24,6 +24,6 @@ int main()
 {
   int reporter = 7;
   TestRunner runner(reporter, true);
-  println(runner.value(), " ", runner.exitOnFailure);
+  std::println(runner.value(), " ", runner.exitOnFailure);
   return 0;
 }

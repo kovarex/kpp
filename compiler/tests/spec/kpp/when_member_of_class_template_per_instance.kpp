@@ -10,11 +10,11 @@ template<typename T>
 struct Slot
 {
   T value;
-  when (isTriviallyCopyable<T>) T backup;
+  when (std::isTriviallyCopyable<T>) T backup;
 
   void save()
   {
-    if constexpr (isTriviallyCopyable<T>)
+    if constexpr (std::isTriviallyCopyable<T>)
       this.backup = this.value;
   }
 };
@@ -25,6 +25,6 @@ int main()
   number.value = 4;
   number.save();
   number.value = 5;
-  println(number.value, " ", number.backup, " ", sizeof(Slot<int>), " ", sizeof(Slot<Handle>));
+  std::println(number.value, " ", number.backup, " ", sizeof(Slot<int>), " ", sizeof(Slot<Handle>));
   return 0;
 }

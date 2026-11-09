@@ -12,7 +12,7 @@ concept Integral = IsInt<T>::value;
 template<typename T>
 concept Signed = Integral<T> && (T(-1) < T(0));
 template<typename T, typename U>
-concept Same = IsSame<T, U>::value;
+concept Same = std::IsSame<T, U>::value;
 int kind(Integral auto) { return 1; }
 int kind(Signed auto) { return 2; }
 template<typename T>
@@ -22,6 +22,6 @@ int main()
 {
   unsigned u = 3;
   auto onlyInts = [](Integral auto v) { return v + 1; };
-  println(kind(u), " ", kind(-1), " ", kind(1.5), " ", twice(21), " ", onlyInts(4));
+  std::println(kind(u), " ", kind(-1), " ", kind(1.5), " ", twice(21), " ", onlyInts(4));
   return 0;
 }

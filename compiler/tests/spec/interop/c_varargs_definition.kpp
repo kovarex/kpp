@@ -12,17 +12,17 @@ int sumOf(int count, ...)
   va_end(arguments);
   return sum;
 }
-String formatted(const char* format, ...)
+std::String formatted(const char* format, ...)
 {
   char buffer[64];
   va_list arguments;
   va_start(arguments, format);
   vsnprintf(buffer, sizeof(buffer), format, arguments);
   va_end(arguments);
-  return String(buffer);
+  return std::String(buffer);
 }
 int main()
 {
-  println(sumOf(3, 1, 2, 3), " ", formatted("%d-%s", 7, "x"));
+  std::println(sumOf(3, 1, 2, 3), " ", formatted("%d-%s", 7, "x"));
   return 0;
 }

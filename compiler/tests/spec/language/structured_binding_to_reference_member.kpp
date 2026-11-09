@@ -10,8 +10,8 @@ struct GamePair
   GamePair() = default;
   template<class T1, class T2>
   constexpr GamePair(T1&& key, T2&& value)
-    : first(forward<T1>(key))
-    , second(forward<T2>(value))
+    : first(std::forward<T1>(key))
+    , second(std::forward<T2>(value))
   {}
   KeyType first;
   ValueType second;
@@ -22,15 +22,15 @@ int main()
   nauvis.index = 7;
   GamePair<int, Surface&> one(1, nauvis);
   const auto& [location, surface] = one;
-  print("binding ", surface.index, "; ");
+  std::print("binding ", surface.index, "; ");
   auto& [l2, s2] = one;
-  print("non-const binding ", s2.index, "; ");
-  Vector<GamePair<int, Surface&>> list = {{1, nauvis}};
-  print("vector ", list[0].second.index, "; ");
+  std::print("non-const binding ", s2.index, "; ");
+  std::Vector<GamePair<int, Surface&>> list = {{1, nauvis}};
+  std::print("vector ", list[0].second.index, "; ");
   for (const auto& entry : list)
-    print("loop ", entry.second.index, "; ");
+    std::print("loop ", entry.second.index, "; ");
   for (const auto& [l, s] : list)
-    print("loop binding ", s.index, "; ");
-  println("");
+    std::print("loop binding ", s.index, "; ");
+  std::println("");
   return 0;
 }

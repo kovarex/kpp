@@ -9,7 +9,7 @@ struct Value
 };
 
 template<class T>
-struct Const : Conditional<isIntegral<T> || isFloatingPoint<T>, Value<T>, T> {};
+struct Const : std::Conditional<std::isIntegral<T> || std::isFloatingPoint<T>, Value<T>, T> {};
 
 double twice(double x) { return 2 * x; }
 
@@ -26,6 +26,6 @@ int main()
   float neg = -limit;
   float scaled = area * limit;
   area += limit;
-  println(d, " ", small, " ", sum, " ", neg, " ", scaled, " ", area);
+  std::println(d, " ", small, " ", sum, " ", neg, " ", scaled, " ", area);
   return 0;
 }

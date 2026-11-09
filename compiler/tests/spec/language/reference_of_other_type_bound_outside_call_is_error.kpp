@@ -14,7 +14,7 @@ const double& widen(const int& i) { return i; }
 class S
 {
 public:
-  String s;
+  std::String s;
 };
 double loop()
 {
@@ -23,18 +23,18 @@ double loop()
     d = 0.5;
   return arr[0];
 }
-String bind()
+std::String bind()
 {
   S a;
   a.s = "hi";
   S&& r = a;
-  S b = move(r);
+  S b = std::move(r);
   return a.s;
 }
 int main()
 {
   int i = 7;
   A a(i);
-  println(loop(), " ", a.r, " ", widen(i), " [", bind(), "]");
+  std::println(loop(), " ", a.r, " ", widen(i), " [", bind(), "]");
   return 0;
 }

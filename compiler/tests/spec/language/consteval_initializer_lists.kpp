@@ -3,8 +3,8 @@
 enum class Flag { A, B, C, D };
 struct Flags
 {
-  constexpr Flags(InitializerList<Flag> values) : bits(This::toBits(values)) {}
-  static constexpr uint64_t toBits(InitializerList<Flag> values)
+  constexpr Flags(std::InitializerList<Flag> values) : bits(This::toBits(values)) {}
+  static constexpr uint64_t toBits(std::InitializerList<Flag> values)
   {
     uint64_t acc = 0;
     for (auto value : values)
@@ -21,7 +21,7 @@ struct Option
 };
 constexpr Flags common = {Flag::A, Flag::C};
 constexpr Option option{{Flag::B, Flag::D}, 7};
-constexpr int sum(InitializerList<int> values)
+constexpr int sum(std::InitializerList<int> values)
 {
   int total = 0;
   for (int v : values)
@@ -36,7 +36,7 @@ constexpr int arrays()
   int total = 0;
   for (const int& v : items)
     total += v;
-  Array<int, 3> more = {5, 6, 7};
+  std::Array<int, 3> more = {5, 6, 7};
   for (auto v : more)
     total += v;
   return total;
@@ -47,6 +47,6 @@ static_assert(sum({1, 2, 3}) == 6);
 static_assert(arrays() == 118);
 int main()
 {
-  println(common.bits, " ", sum({4, 5}), " ", arrays());
+  std::println(common.bits, " ", sum({4, 5}), " ", arrays());
   return 0;
 }

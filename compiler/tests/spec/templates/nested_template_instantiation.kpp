@@ -2,8 +2,8 @@
 template<typename T>
 struct MyStack
 {
-  Vector<T> items;
-  template<typename... Args> T& push(Args&&... args) { return this.items.emplace_back(::forward<Args>(args)...); }
+  std::Vector<T> items;
+  template<typename... Args> T& push(Args&&... args) { return this.items.emplace_back(std::forward<Args>(args)...); }
 };
 int main()
 {
@@ -11,6 +11,6 @@ int main()
   MyStack<int>& inner = nested.push();
   int seven = 7;
   inner.push(seven);
-  println(nested.items.size(), " ", nested.items[0].items[0]);
+  std::println(nested.items.size(), " ", nested.items[0].items[0]);
   return 0;
 }

@@ -1,10 +1,10 @@
 // spec: an alias template of a class template (template<typename T> using Ptr = UniquePtr<T>;) used as a variable type
 // factorio: 7 alias templates in 6 files
-template<typename T> using Ptr = UniquePtr<T>;
+template<typename T> using Ptr = std::UniquePtr<T>;
 struct Big { int v = 2; };
 int main()
 {
-  Ptr<Big> p = makeUnique<Big>();
-  println(p->v);
+  Ptr<Big> p = std::makeUnique<Big>();
+  std::println(p->v);
   return 0;
 }

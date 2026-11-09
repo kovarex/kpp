@@ -3,21 +3,21 @@
 struct Widget
 {
   bool click(int x) { return x > 0; }
-  bool press(int x, const String& s) { return x > 0 && !s.empty(); }
+  bool press(int x, const std::String& s) { return x > 0 && !s.empty(); }
 };
 template<class ClassType, class MethodPtr, class... Args>
 int invoke(MethodPtr method, ClassType* object, Args&&... args)
 {
-  if constexpr (isInvocableR<bool, MethodPtr, ClassType&, int, Args...>)
-    return (object->*method)(1, forward<Args>(args)...) ? 2 : 1;
+  if constexpr (std::isInvocableR<bool, MethodPtr, ClassType&, int, Args...>)
+    return (object->*method)(1, std::forward<Args>(args)...) ? 2 : 1;
   else
     return 0;
 }
 int main()
 {
   Widget w;
-  String s = "x";
-  println(invoke<Widget>(&Widget::click, &w), " ", invoke<Widget>(&Widget::press, &w, s));
-  println(isInvocable<bool (Widget::*)(int), Widget&, int>, " ", isInvocableR<bool, bool (Widget::*)(int), Widget&, int>, " ", isInvocableR<bool, bool (Widget::*)(int), Widget&>, " ", isInvocable<bool (Widget::*)(int), int>);
+  std::String s = "x";
+  std::println(invoke<Widget>(&Widget::click, &w), " ", invoke<Widget>(&Widget::press, &w, s));
+  std::println(std::isInvocable<bool (Widget::*)(int), Widget&, int>, " ", std::isInvocableR<bool, bool (Widget::*)(int), Widget&, int>, " ", std::isInvocableR<bool, bool (Widget::*)(int), Widget&>, " ", std::isInvocable<bool (Widget::*)(int), int>);
   return 0;
 }

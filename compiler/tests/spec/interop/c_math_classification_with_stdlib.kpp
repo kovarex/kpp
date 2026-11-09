@@ -5,6 +5,6 @@ extern "C" import "math.h";
 int main()
 {
   double big = 1e308;
-  println(isinf(big * 10.0), " ", isinf(1.0), " ", isnan((big * 10.0) - (big * 10.0)), " ", isfinite(1.0), " ", fabs(-2.5));
+  std::println(std::isinf(big * 10.0), " ", std::isinf(1.0), " ", std::isnan((big * 10.0) - (big * 10.0)), " ", std::isfinite(1.0), " ", fabs(-2.5));
   return 0;
 }

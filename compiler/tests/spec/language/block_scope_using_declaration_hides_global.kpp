@@ -24,6 +24,6 @@ int main()
     second = pick(1.5f);
     third = pick('c');
   }
-  println(inside, " ", helper(), " | ", first, " ", second, " ", third, " ", pick('c'));
+  std::println(inside, " ", helper(), " | ", first, " ", second, " ", third, " ", pick('c'));
   return 0;
 }

@@ -4,10 +4,10 @@
 // error: format_pieces_mismatch_is_error.kpp:11: error: FormatString does not take 1 piece: it throws LogicError("format: 0 {} for 1 piece")
 int main()
 {
-  String name("x");
+  std::String name("x");
   int count = 3;
-  String a = format("{} has {}", name);
-  String b = format("{} items", count, name);
-  String c = format("plain", count);
+  std::String a = std::format("{} has {}", name);
+  std::String b = std::format("{} items", count, name);
+  std::String c = std::format("plain", count);
   return int(a.size() + b.size() + c.size());
 }

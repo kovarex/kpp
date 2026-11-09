@@ -14,8 +14,8 @@ struct Show
 int main()
 {
   if constexpr (half > 0.25)
-    println("half is more than a quarter");
-  println(Show<int(half * 10)>::value);
-  println(Show<(third * 3 == 1.0f) ? 1 : 0>::value);
+    std::println("half is more than a quarter");
+  std::println(Show<int(half * 10)>::value);
+  std::println(Show<(third * 3 == 1.0f) ? 1 : 0>::value);
   return 0;
 }

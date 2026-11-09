@@ -24,6 +24,6 @@ int main()
   int b = 0;
   for (int& v : bag)
     b += v;
-  println(a, " ", b, " ", constCalls, " ", mutableCalls);
+  std::println(a, " ", b, " ", constCalls, " ", mutableCalls);
   return 0;
 }

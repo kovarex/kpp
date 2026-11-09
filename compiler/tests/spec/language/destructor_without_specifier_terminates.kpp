@@ -1,22 +1,22 @@
 // spec: a destructor with no specifier is noexcept when its parts' are ([except.spec] 8), so an exception leaving it ends the program, no handler outside it is reached; it passed through to the first try a frame up until 2026-11-06, silently
 void onTerminate()
 {
-  println("terminate");
+  std::println("terminate");
   fflush(nullptr);
   exit(0);
 }
-struct S { ~S() { println("throwing"); throw 1; } };
+struct S { ~S() { std::println("throwing"); throw 1; } };
 void scope() { S s; }
 int main()
 {
-  setTerminate(onTerminate);
+  std::setTerminate(onTerminate);
   try
   {
     scope();
   }
   catch (int)
   {
-    println("caught past the destructor");
+    std::println("caught past the destructor");
   }
   return 0;
 }

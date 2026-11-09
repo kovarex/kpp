@@ -21,13 +21,13 @@ int main()
   AreaFn g = &Shape::area;
   int (*h)(double) = twice;
   h = &twice;
-  println(f("x"), " ", g("y"), " ", h(1.5));
+  std::println(f("x"), " ", g("y"), " ", h(1.5));
   int (Shape::*m)(const char*) const = &Shape::scaled;
   Shape s;
   int (&r)(double) = twice;
   AreaFn table[] = {Shape::area, &Shape::area};
   IntFn t = nullptr;
   t = doubled;
-  println((s.*m)("z"), " ", r(1.0), " ", table[1]("a"), " ", t(21));
+  std::println((s.*m)("z"), " ", r(1.0), " ", table[1]("a"), " ", t(21));
   return 0;
 }

@@ -3,14 +3,14 @@
 struct Chunk { int x, y; Chunk operator+(const Chunk& o) const { return Chunk{this.x + o.x, this.y + o.y}; } };
 inline auto lineByLine(const Chunk& leftTop, const Chunk& rightBottom)
 {
-  return iotaView(0, (rightBottom.y + 1 - leftTop.y) * (rightBottom.x + 1 - leftTop.x))
-    | transformView([leftTop, width = rightBottom.x + 1 - leftTop.x](const auto& index) { return leftTop + Chunk{index % width, index / width}; });
+  return std::iotaView(0, (rightBottom.y + 1 - leftTop.y) * (rightBottom.x + 1 - leftTop.x))
+    | std::transformView([leftTop, width = rightBottom.x + 1 - leftTop.x](const auto& index) { return leftTop + Chunk{index % width, index / width}; });
 }
 int main()
 {
   int sum = 0;
   for (const Chunk& c : lineByLine(Chunk{1, 1}, Chunk{2, 2}))
     sum += c.x * 10 + c.y;
-  println(sum);
+  std::println(sum);
   return 0;
 }

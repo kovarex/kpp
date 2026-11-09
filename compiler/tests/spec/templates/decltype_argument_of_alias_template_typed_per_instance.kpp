@@ -19,6 +19,6 @@ int main()
   i32 b = 6;
   u8 c = 200;
   i64 d = -1;
-  println(add(a, b), " ", add(a, a), " ", add(d, c));
+  std::println(add(a, b), " ", add(a, a), " ", add(d, c));
   return 0;
 }

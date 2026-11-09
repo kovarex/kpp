@@ -9,6 +9,6 @@ constexpr int offset = 2;
 int main()
 {
   Scaler s;
-  println(s.scaled(5), " ", scale(8));
+  std::println(s.scaled(5), " ", scale(8));
   return 0;
 }

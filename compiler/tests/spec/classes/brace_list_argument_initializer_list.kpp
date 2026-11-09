@@ -5,7 +5,7 @@ class Caps
 public:
   enum class Enum { Color, Light, Depth };
   constexpr Caps() = default;
-  constexpr Caps(InitializerList<Enum> values)
+  constexpr Caps(std::InitializerList<Enum> values)
   {
     for (auto v : values)
       this.bits |= 1ULL << size_t(v);
@@ -19,6 +19,6 @@ uint64_t clear(int color, Caps targets = {Caps::Color, Caps::Depth}) { return ui
 int sum(Point p) { return p.x + p.y; }
 int main()
 {
-  println(take(Caps{Caps::Color, Caps::Light}), " ", clear(1), " ", clear(2, Caps{Caps::Light}), " ", sum(Point{3, 4}));
+  std::println(take(Caps{Caps::Color, Caps::Light}), " ", clear(1), " ", clear(2, Caps{Caps::Light}), " ", sum(Point{3, 4}));
   return 0;
 }

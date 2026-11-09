@@ -3,6 +3,6 @@
 extern "C" import "c_header_inline_switch_keeps_c_fallthrough.h";
 int main()
 {
-  println(specCaseRuns(0), " ", specCaseRuns(1), " ", specCaseRuns(2), " ", specCaseRuns(3));
+  std::println(specCaseRuns(0), " ", specCaseRuns(1), " ", specCaseRuns(2), " ", specCaseRuns(3));
   return 0;
 }

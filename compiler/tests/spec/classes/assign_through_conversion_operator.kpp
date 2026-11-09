@@ -26,6 +26,6 @@ int main()
   Holder h;
   h.chosen = c;
   ProtoID copy = c;
-  println(int(h.chosen.index), " ", int(copy.index));
+  std::println(int(h.chosen.index), " ", int(copy.index));
   return 0;
 }

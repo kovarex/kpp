@@ -15,16 +15,16 @@ AIState next(int n)
   return Patrolling{n};
 }
 
-void report(const AIState& s) { println(StringView(s == AIState::Attack ? "attack" : "patrol")); }
+void report(const AIState& s) { std::println(std::StringView(s == AIState::Attack ? "attack" : "patrol")); }
 
 int main()
 {
   AIState s = Patrolling{1};
-  println(s == AIState::Patrol, " ", s[AIState::Patrol].steps);
+  std::println(s == AIState::Patrol, " ", s[AIState::Patrol].steps);
   s = Attacking{7};
-  println(s == AIState::Attack, " ", s[AIState::Attack].target);
+  std::println(s == AIState::Attack, " ", s[AIState::Attack].target);
   AIState t = next(5);
-  println(t == AIState::Attack, " ", next(1) == AIState::Patrol);
+  std::println(t == AIState::Attack, " ", next(1) == AIState::Patrol);
   report(Patrolling{3});
   return 0;
 }

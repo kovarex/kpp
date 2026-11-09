@@ -3,22 +3,22 @@
 template <typename T>
 struct ByValue { T iterable; };
 template <typename T>
-auto begin(ByValue<T> w) { return rbegin(w.iterable); }
+auto begin(ByValue<T> w) { return std::rbegin(w.iterable); }
 template <typename T>
-auto end(ByValue<T> w) { return rend(w.iterable); }
+auto end(ByValue<T> w) { return std::rend(w.iterable); }
 template <typename T>
-ByValue<T> reverseOf(T&& iterable) { return { ::move(iterable) }; }
+ByValue<T> reverseOf(T&& iterable) { return { std::move(iterable) }; }
 int main()
 {
   int data[3] = {1, 2, 3};
-  Span<int> s(data, 3);
+  std::Span<int> s(data, 3);
   int sum = 0;
   int weight = 1;
-  for (int x : reverseOf(Span<int>(data, 3)))
+  for (int x : reverseOf(std::Span<int>(data, 3)))
   {
     sum += x * weight;
     weight *= 10;
   }
-  println(sum, " ", *rbegin(s));
+  std::println(sum, " ", *std::rbegin(s));
   return 0;
 }

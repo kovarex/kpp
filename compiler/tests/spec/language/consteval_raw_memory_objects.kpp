@@ -59,7 +59,7 @@ constexpr int zeroed()
 template<int N> struct Show { static constexpr int value = N; };
 int main()
 {
-  println(placed(), " ", assigned(), " ", placedInDerived(), " ", throughPointer(), " ", zeroed());
-  println(Show<placed()>::value, " ", Show<assigned()>::value, " ", Show<placedInDerived()>::value, " ", Show<throughPointer()>::value, " ", Show<zeroed()>::value);
+  std::println(placed(), " ", assigned(), " ", placedInDerived(), " ", throughPointer(), " ", zeroed());
+  std::println(Show<placed()>::value, " ", Show<assigned()>::value, " ", Show<placedInDerived()>::value, " ", Show<throughPointer()>::value, " ", Show<zeroed()>::value);
   return 0;
 }

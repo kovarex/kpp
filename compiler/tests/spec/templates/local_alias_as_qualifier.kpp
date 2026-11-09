@@ -3,13 +3,13 @@
 template<class T1, class T2>
 void failed(T1 value, T2 min, T2 max)
 {
-  println(value, " out of ", min, "..", max);
+  std::println(value, " out of ", min, "..", max);
 }
 template<class T1, class T2>
 void rangeCheck(T2 value)
 {
-  using nl = Limits<T1>;
-  if constexpr (isFloatingPoint<T1>)
+  using nl = std::Limits<T1>;
+  if constexpr (std::isFloatingPoint<T1>)
   {
     if (value < nl::lowest() || value > nl::max())
       failed(value, nl::lowest(), nl::max());

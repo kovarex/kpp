@@ -6,7 +6,7 @@ struct Binder
 {
   using PtFunc = int32_t (T::*)(lua_State*);
   static PtFunc reader;
-  static int registerRead(String&& name, PtFunc f)
+  static int registerRead(std::String&& name, PtFunc f)
   {
     This::reader = f;
     return int(name.size());
@@ -36,6 +36,6 @@ int main()
 {
   int registered = Derived::init();
   Derived d;
-  println((d.*Binder<Derived>::reader)(nullptr), " ", registered);
+  std::println((d.*Binder<Derived>::reader)(nullptr), " ", registered);
   return 0;
 }

@@ -2,12 +2,12 @@
 // factorio: StringViewReadStream::read's `this->data.copy(buffer, size, this->pos)` on a std::string_view (4c178a5b915)
 int main()
 {
-  StringView text = "converted";
+  std::StringView text = "converted";
   char buffer[8] = {};
   uint64_t first = text.copy(buffer, 4, 0);
   uint64_t rest = text.copy(buffer + 4, 100, 6);
   uint64_t none = text.copy(buffer, 3, 9);
-  String owned = "kpp";
+  std::String owned = "kpp";
   char more[4] = {};
   uint64_t fromString = owned.copy(more, 2, 1);
   bool threw = false;
@@ -15,7 +15,7 @@ int main()
   {
     text.copy(buffer, 1, 10);
   }
-  catch (const OutOfRange&)
+  catch (const std::OutOfRange&)
   {
     threw = true;
   }
@@ -24,10 +24,10 @@ int main()
   {
     owned.copy(more, 1, 4);
   }
-  catch (const OutOfRange&)
+  catch (const std::OutOfRange&)
   {
     stringThrew = true;
   }
-  println(first, " ", rest, " ", none, " ", StringView(buffer, 7), " ", fromString, " ", StringView(more, 2), " ", threw, " ", stringThrew);
+  std::println(first, " ", rest, " ", none, " ", std::StringView(buffer, 7), " ", fromString, " ", std::StringView(more, 2), " ", threw, " ", stringThrew);
   return 0;
 }

@@ -14,6 +14,6 @@ int main()
 {
   Registry* r = new Registry();
   Registry* l = new Larger();
-  println(r->count(), " ", l->count());
+  std::println(r->count(), " ", l->count());
   return 0;
 }

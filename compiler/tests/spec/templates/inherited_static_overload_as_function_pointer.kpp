@@ -5,11 +5,11 @@ class ComplexExpressionWithOperation
 {
 public:
   static int computeConstant(int variables, int constants) { return variables * 100 + constants + Operation::bias; }
-  static int computeConstant(const Vector<int>& args);
+  static int computeConstant(const std::Vector<int>& args);
 };
 
 template<class Operation, int variableCount, int constantCount>
-int ComplexExpressionWithOperation<Operation, variableCount, constantCount>::computeConstant(const Vector<int>& args)
+int ComplexExpressionWithOperation<Operation, variableCount, constantCount>::computeConstant(const std::Vector<int>& args)
 {
   return ComplexExpressionWithOperation::computeConstant(args[0] + variableCount, args[1] + constantCount);
 }
@@ -22,13 +22,13 @@ public:
 
 struct NamedFunction
 {
-  int (*computeConstant)(const Vector<int>&) = nullptr;
+  int (*computeConstant)(const std::Vector<int>&) = nullptr;
 };
 
 struct ConstructedFunction
 {
-  ConstructedFunction(int (*computeConstant)(const Vector<int>&)) : computeConstant(computeConstant) {}
-  int (*computeConstant)(const Vector<int>&) = nullptr;
+  ConstructedFunction(int (*computeConstant)(const std::Vector<int>&)) : computeConstant(computeConstant) {}
+  int (*computeConstant)(const std::Vector<int>&) = nullptr;
 };
 
 template<class Expression>
@@ -47,7 +47,7 @@ int main()
 {
   NamedFunction function = create<QuickMultioctaveNoise>();
   ConstructedFunction constructed = construct<QuickMultioctaveNoise>();
-  Vector<int> args = {3, 4};
-  println(function.computeConstant(args), " ", constructed.computeConstant(args));
+  std::Vector<int> args = {3, 4};
+  std::println(function.computeConstant(args), " ", constructed.computeConstant(args));
   return 0;
 }

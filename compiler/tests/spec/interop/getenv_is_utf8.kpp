@@ -19,26 +19,26 @@ void dump(const char* text)
 int main()
 {
   _wputenv_s(L"KPP_SPEC_TEXT", L"ž 日本 \U0001F600");
-  dump(getenv("KPP_SPEC_TEXT"));
-  dump(::getenv("KPP_SPEC_MISSING"));
+  dump(std::getenv("KPP_SPEC_TEXT"));
+  dump(std::getenv("KPP_SPEC_MISSING"));
   _wputenv_s(L"KPP_SPEC_ž", L"name");
-  dump(getenv("KPP_SPEC_ž"));
-  char* first = getenv("KPP_SPEC_TEXT");
-  char* second = getenv("KPP_SPEC_TEXT");
+  dump(std::getenv("KPP_SPEC_ž"));
+  char* first = std::getenv("KPP_SPEC_TEXT");
+  char* second = std::getenv("KPP_SPEC_TEXT");
   printf("%d\n", first == second); // kept while the variable stays
   _wputenv_s(L"KPP_SPEC_TEXT", L"život");
-  dump(getenv("KPP_SPEC_TEXT"));
+  dump(std::getenv("KPP_SPEC_TEXT"));
   _wputenv_s(L"KPP_SPEC_TEXT", L"");
-  dump(getenv("KPP_SPEC_TEXT")); // removed, as _wputenv_s has it
-  char* (*function)(const char*) = getenv;
+  dump(std::getenv("KPP_SPEC_TEXT")); // removed, as _wputenv_s has it
+  char* (*function)(const char*) = std::getenv;
   dump(function("KPP_SPEC_ž"));
   wchar_t lone[3] = {L'a', (wchar_t)0xD800, 0};
   _wputenv_s(L"KPP_SPEC_LONE", lone);
   try
   {
-    dump(getenv("KPP_SPEC_LONE"));
+    dump(std::getenv("KPP_SPEC_LONE"));
   }
-  catch (const SystemError& e)
+  catch (const std::SystemError& e)
   {
     printf("SystemError %d\n", e.code().value());
   }

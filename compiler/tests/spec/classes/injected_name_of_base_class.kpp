@@ -35,6 +35,6 @@ int main()
 {
   ChartTooltip tip;
   Doubles numbers;
-  println(tip.labelStyle(), " ", numbers.width());
+  std::println(tip.labelStyle(), " ", numbers.width());
   return 0;
 }

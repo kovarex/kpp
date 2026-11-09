@@ -11,6 +11,6 @@ void* const fromInt = (void*)(int64_t)(int32_t)-2;
 long long readEarly() { return (long long)Holder::LOADING + (long long)invalid + (long long)sentinel; }
 int main()
 {
-  println(early, " ", readEarly(), " ", (long long)fromUnsigned, " ", (long long)fromInt);
+  std::println(early, " ", readEarly(), " ", (long long)fromUnsigned, " ", (long long)fromInt);
   return 0;
 }

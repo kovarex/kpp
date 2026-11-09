@@ -9,7 +9,7 @@ struct Turn
 int main()
 {
   Turn<double> t{3.0};
-  println(t.fraction());
+  std::println(t.fraction());
   return 0;
 }
 const auto HALF_TURN_INVERSE = 0.5;

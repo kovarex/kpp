@@ -9,21 +9,21 @@ extern "C" import "unistd.h";
 
 int main()
 {
-  filesystem::path dir = filesystem::temp_directory_path() / "kpp-spec-stat-import";
-  filesystem::remove_all(dir);
-  filesystem::create_directory(dir);
+  std::filesystem::path dir = std::filesystem::temp_directory_path() / "kpp-spec-stat-import";
+  std::filesystem::remove_all(dir);
+  std::filesystem::create_directory(dir);
   {
-    OutFileStream out((dir / "a.txt").string());
+    std::OutFileStream out((dir / "a.txt").string());
     out << "abc";
   }
   struct stat own;
   bool statted = lstat((dir / "a.txt").string().c_str(), &own) == 0;
-  println(statted, " ", own.st_size, " ", filesystem::file_size(dir / "a.txt"), " ", sizeof(struct stat) <= 256, " ", sizeof(struct statvfs) <= 128);
+  std::println(statted, " ", own.st_size, " ", std::filesystem::file_size(dir / "a.txt"), " ", sizeof(struct stat) <= 256, " ", sizeof(struct statvfs) <= 128);
   DIR* listing = opendir(dir.string().c_str());
   int entries = 0;
   while (dirent* entry = readdir(listing))
     ++entries;
   closedir(listing);
-  println(entries, " ", filesystem::remove_all(dir));
+  std::println(entries, " ", std::filesystem::remove_all(dir));
   return 0;
 }

@@ -17,10 +17,10 @@ int Counted::destroyed = 0;
 
 int main()
 {
-  Optional<Counted> full(inPlace, 3);
-  Optional<Counted> empty;
+  std::Optional<Counted> full(std::inPlace, 3);
+  std::Optional<Counted> empty;
   full.swap(empty);
-  println((bool)full, " ", (bool)empty, " ", empty->value);
-  println(Counted::moved, " moved, ", Counted::destroyed, " destroyed");
+  std::println((bool)full, " ", (bool)empty, " ", empty->value);
+  std::println(Counted::moved, " moved, ", Counted::destroyed, " destroyed");
   return 0;
 }

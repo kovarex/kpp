@@ -13,7 +13,7 @@ struct Provider
 template<class T>
 T* Provider::allocate()
 {
-  static_assert(isBaseOf<Base, T>, "only Bases");
+  static_assert(std::isBaseOf<Base, T>, "only Bases");
   return nullptr;
 }
 template<>
@@ -26,6 +26,6 @@ int main()
   Provider p;
   B* b = p.allocate<B>();
   A* a = p.allocate<A>();
-  println(b->y, " ", a == nullptr);
+  std::println(b->y, " ", a == nullptr);
   return 0;
 }

@@ -14,12 +14,12 @@ int main()
   int b = 7;
   Ref r(a);
   Ref copy = r;
-  Ref moved = ::move(copy);
-  Vector<Ref> all;
+  Ref moved = std::move(copy);
+  std::Vector<Ref> all;
   all.push_back(r);
   all.push_back(Ref(b));
   int first = all[0];
   int second = all[1];
-  println(int(moved), " ", all.size(), " ", first, " ", second);
+  std::println(int(moved), " ", all.size(), " ", first, " ", second);
   return 0;
 }

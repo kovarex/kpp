@@ -88,13 +88,13 @@ public:
   }
 };
 
-int inspect(const game::Point& point, int scale, game::Mode mode, StringView label)
+int inspect(const game::Point& point, int scale, game::Mode mode, std::StringView label)
 {
   int sum = point.x * scale + int(label.size()) * 0;
   game::Mask mask = game::Mask::All;
   auto scaled = [sum, &mask](int k) { return sum * k + (mask == game::Mask::All ? 0 : 1); };
   sum = scaled(1) + game::counter - game::Shape::made;
-  Vector<int> values;
+  std::Vector<int> values;
   values.push_back(sum);
   auto& [px, py] = point; // (bindings: the members of the object they name)
   game::Point copied = point;
@@ -193,6 +193,6 @@ int main()
   game::Point point{3, 4};
   scoped(3);
   functionTypes(3);
-  println(inspect(point, 2, game::Mode::On, "label"));
+  std::println(inspect(point, 2, game::Mode::On, "label"));
   return 0;
 }

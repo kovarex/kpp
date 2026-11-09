@@ -97,6 +97,6 @@ int main()
   s += f42();
   s += f43();
   s += f44();
-  println(s);
+  std::println(s);
   return 0;
 }

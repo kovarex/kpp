@@ -2,35 +2,35 @@
 // factorio: Player::sendTranslationRequests's `entry.localisedString = std::move(item.second)` over a const std::map& (the player's translation requests in flight): the requests lost their keys in the converted game, so the map's CRC differed from the C++ build's (Campaigns/LoadDemoLevel05)
 struct Localised
 {
-  String key;
-  Vector<int> parameters;
+  std::String key;
+  std::Vector<int> parameters;
 };
 struct Entry
 {
   Localised localised;
 };
 
-void send(const Map<int, Localised>& requests, Vector<Entry>& entries)
+void send(const std::Map<int, Localised>& requests, std::Vector<Entry>& entries)
 {
   for (auto& item : requests)
   {
     Entry& entry = entries.emplace_back();
-    entry.localised = move(item.second);
+    entry.localised = std::move(item.second);
   }
 }
 
 int main()
 {
-  Map<int, Localised> inFlight;
+  std::Map<int, Localised> inFlight;
   inFlight[7] = Localised{"iron-processing-stop", {1}};
-  Vector<Entry> entries;
+  std::Vector<Entry> entries;
   send(inFlight, entries);
   const Localised source{"copper", {2}};
-  Localised constructed(move(source));
+  Localised constructed(std::move(source));
   Localised assigned;
-  assigned = move(source);
-  const String text = "plate";
-  String textCopy(move(text));
-  println(inFlight[7].key, " ", inFlight[7].parameters.size(), " ", entries[0].localised.key, " | ", source.key, " ", source.parameters.size(), " ", constructed.key, " ", assigned.key, " | ", text, " ", textCopy);
+  assigned = std::move(source);
+  const std::String text = "plate";
+  std::String textCopy(std::move(text));
+  std::println(inFlight[7].key, " ", inFlight[7].parameters.size(), " ", entries[0].localised.key, " | ", source.key, " ", source.parameters.size(), " ", constructed.key, " ", assigned.key, " | ", text, " ", textCopy);
   return 0;
 }

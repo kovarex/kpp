@@ -7,7 +7,7 @@ int main()
 {
   Flags f = Flags::A | Flags::B;
   bool hasB = f & Flags::B;
-  println(int(f), " ", f & Flags::B);
-  println(hasB);
+  std::println(int(f), " ", f & Flags::B);
+  std::println(hasB);
   return 0;
 }

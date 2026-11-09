@@ -27,6 +27,6 @@ int main()
     if (numbers[i] > biggest)
       biggest = numbers[i];
   free(numbers);
-  printf("%d %d %d %d %d\n", n, EOF, BUFSIZ > 0 ? 1 : 0, abs(-7), biggest);
+  printf("%d %d %d %d %d\n", n, EOF, BUFSIZ > 0 ? 1 : 0, std::abs(-7), biggest);
   return 0;
 }

@@ -8,10 +8,10 @@ struct Holder
 {
   T held;
   Holder() {}
-  Holder(Holder&& o) noexcept(isNothrowMoveConstructible<T>) : held(move(o.held)) {}
+  Holder(Holder&& o) noexcept(isNothrowMoveConstructible<T>) : held(std::move(o.held)) {}
 };
 int main()
 {
-  println(int(isNothrowMoveConstructible<Throwing>), " ", int(isNothrowMoveConstructible<Quiet>), " ", int(isNothrowMoveConstructible<BySize>), " ", int(isNothrowMoveConstructible<Holder<Throwing>>), " ", int(isNothrowMoveConstructible<Holder<Quiet>>));
+  std::println(int(std::isNothrowMoveConstructible<Throwing>), " ", int(std::isNothrowMoveConstructible<Quiet>), " ", int(std::isNothrowMoveConstructible<BySize>), " ", int(std::isNothrowMoveConstructible<Holder<Throwing>>), " ", int(std::isNothrowMoveConstructible<Holder<Quiet>>));
   return 0;
 }

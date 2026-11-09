@@ -7,24 +7,24 @@ class WithCtor { WithCtor(int x) { } };
 int main()
 {
   // isFundamental
-  static_assert(isFundamental<int>);
-  static_assert(isFundamental<float>);
-  static_assert(isFundamental<bool>);
-  static_assert(!isFundamental<Simple>);
+  static_assert(std::isFundamental<int>);
+  static_assert(std::isFundamental<float>);
+  static_assert(std::isFundamental<bool>);
+  static_assert(!std::isFundamental<Simple>);
 
   // isTriviallyDestructible
-  static_assert(isTriviallyDestructible<int>);
-  static_assert(isTriviallyDestructible<Simple>);
-  static_assert(!isTriviallyDestructible<NonTrivial>);
+  static_assert(std::isTriviallyDestructible<int>);
+  static_assert(std::isTriviallyDestructible<Simple>);
+  static_assert(!std::isTriviallyDestructible<NonTrivial>);
 
   // isTriviallyCopyAssignable (uses isTriviallyCopyable under the hood)
-  static_assert(isTriviallyCopyAssignable<int>);
-  static_assert(isTriviallyCopyAssignable<Simple>);
+  static_assert(std::isTriviallyCopyAssignable<int>);
+  static_assert(std::isTriviallyCopyAssignable<Simple>);
 
   // isTriviallyDefaultConstructible
-  static_assert(isTriviallyDefaultConstructible<int>);
-  static_assert(isTriviallyDefaultConstructible<Simple>);
+  static_assert(std::isTriviallyDefaultConstructible<int>);
+  static_assert(std::isTriviallyDefaultConstructible<Simple>);
 
-  println("type traits: ok");
+  std::println("type traits: ok");
   return 0;
 }

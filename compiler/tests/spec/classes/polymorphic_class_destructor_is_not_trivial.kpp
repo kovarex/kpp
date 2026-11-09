@@ -30,13 +30,13 @@ class Plain
 public:
   int f() const { return 2; }
 };
-static_assert(!isTriviallyDestructible<Shape>);
-static_assert(isTriviallyDestructible<Device>);
+static_assert(!std::isTriviallyDestructible<Shape>);
+static_assert(std::isTriviallyDestructible<Device>);
 int main()
 {
-  println(isTriviallyDestructible<Shape>, " ", isTriviallyDestructible<Square>, " ", isTriviallyDestructible<Written>, " ", isTriviallyDestructible<Unknown>, " ",
-          isTriviallyDestructible<Device>, " ", isTriviallyDestructible<Plain>);
-  Optional<Square> square = Square();
-  println(square->sides(), " ", square.hasValue());
+  std::println(std::isTriviallyDestructible<Shape>, " ", std::isTriviallyDestructible<Square>, " ", std::isTriviallyDestructible<Written>, " ", std::isTriviallyDestructible<Unknown>, " ",
+          std::isTriviallyDestructible<Device>, " ", std::isTriviallyDestructible<Plain>);
+  std::Optional<Square> square = Square();
+  std::println(square->sides(), " ", square.hasValue());
   return 0;
 }

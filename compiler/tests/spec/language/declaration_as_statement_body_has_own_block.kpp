@@ -4,8 +4,8 @@ struct Noisy
 {
   int id = 0;
   bool built = false;
-  Noisy(int id) : id(id), built(true) { print("+", id, " "); }
-  ~Noisy() { print("-", this.id, StringView(this.built ? "" : "(never built)"), " "); }
+  Noisy(int id) : id(id), built(true) { std::print("+", id, " "); }
+  ~Noisy() { std::print("-", this.id, std::StringView(this.built ? "" : "(never built)"), " "); }
 };
 void choose(int which)
 {
@@ -15,7 +15,7 @@ void choose(int which)
     Noisy b(2);
   else
     Noisy c(3);
-  print("| ");
+  std::print("| ");
 }
 int main()
 {
@@ -25,6 +25,6 @@ int main()
     Noisy d(10 + i);
   while (false)
     Noisy e(20);
-  println("end");
+  std::println("end");
   return 0;
 }

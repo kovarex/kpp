@@ -5,32 +5,32 @@ extern "C" import "intrin.h";
 struct Item
 {
   int value = 7;
-  ~Item() { println("drop ", this.value); }
+  ~Item() { std::println("drop ", this.value); }
 };
 struct Wide
 {
   __m128 v;
   int tag = 5;
-  ~Wide() { println("wide ", this.tag); }
+  ~Wide() { std::println("wide ", this.tag); }
 };
 int main()
 {
   int n = 4;
   int* partial = new int[n]{1, 2};
-  println(partial[0], " ", partial[1], " ", partial[2], " ", partial[3]);
+  std::println(partial[0], " ", partial[1], " ", partial[2], " ", partial[3]);
   delete[] partial;
   Item* empty = new Item[0];
   delete[] empty;
   Wide* wides = new Wide[2];
-  println("aligned ", ((uintptr_t)wides % 16) == 0);
+  std::println("aligned ", ((uintptr_t)wides % 16) == 0);
   wides[1].tag = 9;
   delete[] wides;
   auto grid = new int[n][4]();
   grid[3][2] = 42;
-  println(grid[0][0], " ", grid[3][2]);
+  std::println(grid[0][0], " ", grid[3][2]);
   delete[] grid;
   {
-    UniqueArray<Item> owned(new Item[3]);
+    std::UniqueArray<Item> owned(new Item[3]);
     owned[1].value = 11;
   }
   Item* listed = new Item[3]{Item(), Item()};

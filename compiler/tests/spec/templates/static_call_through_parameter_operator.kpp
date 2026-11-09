@@ -12,7 +12,7 @@ bool lessVia(const T& a, const T& b) { return KeyOf::of(a) < KeyOf::of(b); }
 
 int main()
 {
-  String a("apple"), b("banana");
-  println(lessVia<String, Identity<String>>(a, b) ? 1 : 0, " ", lessVia<String, Identity<String>>(b, a) ? 1 : 0);
+  std::String a("apple"), b("banana");
+  std::println(lessVia<std::String, Identity<std::String>>(a, b) ? 1 : 0, " ", lessVia<std::String, Identity<std::String>>(b, a) ? 1 : 0);
   return 0;
 }

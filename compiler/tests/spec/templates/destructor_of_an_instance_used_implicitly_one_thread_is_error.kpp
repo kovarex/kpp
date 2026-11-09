@@ -24,6 +24,6 @@ int main()
 {
   Holder<int> h;
   Keeper<long> k;
-  println(h.value, " ", k.value);
+  std::println(h.value, " ", k.value);
   return 0;
 }

@@ -59,6 +59,6 @@ constexpr int p = pointers();
 constexpr int d = destructors();
 int main()
 {
-  println(p, " ", pointers(), " ", d, " ", destructors());
+  std::println(p, " ", pointers(), " ", d, " ", destructors());
   return 0;
 }

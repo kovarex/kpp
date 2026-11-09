@@ -34,6 +34,6 @@ int work(Tracker& t)
 int main()
 {
   Tracker t;
-  println(work(t), " ", config::debug);
+  std::println(work(t), " ", config::debug);
   return 0;
 }

@@ -4,12 +4,12 @@ enum class Small : int8_t { A = -3, B = 4 };
 enum class Big : uint32_t { C = 4000000000u };
 
 template<class T>
-auto widen(const T& value) { return Conditional<isSigned<UnderlyingType<T>>, int64_t, uint64_t>(value); }
+auto widen(const T& value) { return std::Conditional<std::isSigned<std::UnderlyingType<T>>, int64_t, uint64_t>(value); }
 
 int main()
 {
   auto a = widen(Small::A);
   auto b = widen(Big::C);
-  println(a, " ", b, " ", sizeof(a), " ", sizeof(b));
+  std::println(a, " ", b, " ", sizeof(a), " ", sizeof(b));
   return 0;
 }

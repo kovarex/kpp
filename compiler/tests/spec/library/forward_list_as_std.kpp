@@ -14,7 +14,7 @@ struct Counted
   ~Counted() { ++destroyed; }
 };
 
-void reportCounts(const char* what, const ForwardList<Counted>& l)
+void reportCounts(const char* what, const std::ForwardList<Counted>& l)
 {
   printf("%s: copy %d copy= %d destroy %d |", what, copied, copyAssigned, destroyed);
   for (const Counted& x : l)
@@ -25,7 +25,7 @@ void reportCounts(const char* what, const ForwardList<Counted>& l)
   destroyed = 0;
 }
 
-void show(const char* what, const ForwardList<int>& l)
+void show(const char* what, const std::ForwardList<int>& l)
 {
   printf("%s:", what);
   for (int x : l)
@@ -38,12 +38,12 @@ bool sameParity(int a, int b) { return a % 2 == b % 2; }
 
 int main()
 {
-  ForwardList<int> counted(3);
+  std::ForwardList<int> counted(3);
   show("count", counted);
-  ForwardList<int> filled(3, 7);
+  std::ForwardList<int> filled(3, 7);
   show("count value", filled);
-  Vector<int> source = {1, 2, 3};
-  ForwardList<int> ranged(source.begin(), source.end());
+  std::Vector<int> source = {1, 2, 3};
+  std::ForwardList<int> ranged(source.begin(), source.end());
   show("range", ranged);
   ranged.assign(2, 9);
   show("assign count", ranged);
@@ -73,15 +73,15 @@ int main()
   auto zero = ranged.insert_after(ranged.begin(), 0, 5);
   printf("insert zero %d\n", (int)(zero == ranged.begin()));
 
-  ForwardList<int> a = {1, 2, 3};
-  ForwardList<int> b = {7, 8, 9};
+  std::ForwardList<int> a = {1, 2, 3};
+  std::ForwardList<int> b = {7, 8, 9};
   auto kept = a.begin();
   auto taken = b.begin();
   a.splice_after(kept, b);
   show("splice all", a);
   printf("spliced from empty %d\n", (int)b.empty());
   printf("iterators stay %d %d\n", *kept, *taken);
-  ForwardList<int> c = {10, 11, 12, 13};
+  std::ForwardList<int> c = {10, 11, 12, 13};
   auto from = c.begin();
   auto to = from;
   ++to;
@@ -99,38 +99,38 @@ int main()
   show("splice one within", a);
   a.splice_after(a.begin(), a, a.begin());
   show("splice onto itself", a);
-  a.splice_after(a.before_begin(), ForwardList<int>({20, 21}));
+  a.splice_after(a.before_begin(), std::ForwardList<int>({20, 21}));
   show("splice rvalue", a);
   a.splice_after(a.before_begin(), c, c.before_begin(), c.begin());
   show("splice empty range", a);
 
-  ForwardList<int> d = {9, 5, 1};
-  ForwardList<int> e = {8, 5, 2};
+  std::ForwardList<int> d = {9, 5, 1};
+  std::ForwardList<int> e = {8, 5, 2};
   d.merge(e, descending);
   show("merge less", d);
   printf("merged from empty %d\n", (int)e.empty());
-  ForwardList<int> f = {1, 2};
-  f.merge(ForwardList<int>({0, 3, 4}));
+  std::ForwardList<int> f = {1, 2};
+  f.merge(std::ForwardList<int>({0, 3, 4}));
   show("merge rvalue", f);
-  ForwardList<int> g;
+  std::ForwardList<int> g;
   g.merge(f);
   show("merge into empty", g);
-  ForwardList<int> u = {1, 3, 2, 4, 6, 5, 5};
+  std::ForwardList<int> u = {1, 3, 2, 4, 6, 5, 5};
   printf("unique removed %d\n", (int)u.unique(sameParity));
   show("unique same", u);
-  ForwardList<int> w = {1, 1, 2, 2, 2, 3, 1};
+  std::ForwardList<int> w = {1, 1, 2, 2, 2, 3, 1};
   printf("unique removed %d\n", (int)w.unique());
   show("unique", w);
-  ForwardList<int> r = {3, 1, 3, 2, 3};
+  std::ForwardList<int> r = {3, 1, 3, 2, 3};
   printf("remove element %d\n", (int)r.remove(r.front()));
   show("removed", r);
   r.swap(w);
   show("swapped", r);
   show("swapped other", w);
 
-  ForwardList<Counted> x = {1, 2, 3, 4};
-  ForwardList<Counted> y = {5, 6};
-  ForwardList<Counted> z = {7, 8, 9, 10, 11, 12};
+  std::ForwardList<Counted> x = {1, 2, 3, 4};
+  std::ForwardList<Counted> y = {5, 6};
+  std::ForwardList<Counted> z = {7, 8, 9, 10, 11, 12};
   copied = 0;
   copyAssigned = 0;
   destroyed = 0;

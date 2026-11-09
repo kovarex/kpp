@@ -16,7 +16,7 @@ struct Holder
   Counted cs[2];
 };
 constexpr Counted byValue(Counted c) { return c; }
-template<typename T> constexpr T pass(T&& t) { return forward<T>(t); }
+template<typename T> constexpr T pass(T&& t) { return std::forward<T>(t); }
 constexpr int run()
 {
   Counted a;
@@ -31,14 +31,14 @@ constexpr int parts()
 {
   Holder h;
   Holder copied = h;
-  Holder moved = move(copied);
+  Holder moved = std::move(copied);
   Counted source;
-  Counted forwarded = pass(move(source));
+  Counted forwarded = pass(std::move(source));
   return copied.cs[1].copies * 10000 + moved.cs[1].moves * 1000 + copied.c.movedFrom * 100 + forwarded.moves * 10 + source.movedFrom;
 }
 template<int N> struct Show { static constexpr int value = N; };
 int main()
 {
-  println(run(), " ", parts(), " ", Show<run()>::value, " ", Show<parts()>::value);
+  std::println(run(), " ", parts(), " ", Show<run()>::value, " ", Show<parts()>::value);
   return 0;
 }

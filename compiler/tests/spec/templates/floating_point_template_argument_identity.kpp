@@ -25,13 +25,13 @@ int main()
   int e = Counter<0.0>::bump();
   int f = Counter<-0.0>::bump();
   int g = Counter<0.0>::bump();
-  int h = Counter<Limits<double>::quiet_NaN()>::bump();
-  int i = Counter<Limits<double>::quiet_NaN()>::bump();
-  println(a, " ", b, " ", c, " ", e, " ", f, " ", g, " ", h, " ", i);
+  int h = Counter<std::Limits<double>::quiet_NaN()>::bump();
+  int i = Counter<std::Limits<double>::quiet_NaN()>::bump();
+  std::println(a, " ", b, " ", c, " ", e, " ", f, " ", g, " ", h, " ", i);
   int j = Any<0.0>::bump();
   int k = Any<0.0f>::bump();
   int l = Any<0>::bump();
   int m = Any<0.0>::bump();
-  println(j, " ", k, " ", l, " ", m);
+  std::println(j, " ", k, " ", l, " ", m);
   return 0;
 }

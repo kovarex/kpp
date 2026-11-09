@@ -2,20 +2,20 @@
 // factorio: UnitTest's TestList::Add, `this->index.try_emplace(test->details.name, test)` with Map<String, const Test*> and a LowercaseString name (`operator const String&()`): once Map had a try_emplace(K&&), the call took it and the map moved every test's name out of its details (the runner printed `[Suite/]`); the stdlib's rvalue-key overloads take only a K rvalue since. Vector<String>::push_back(T&&) does the same: ServerMultiplayerManager::updateServerGameData's `playerNames.push_back(clientsInfo.serverStateInfo.serverUsername)` (a LowercaseString) moved the server's name out, so the next broadcast listed an empty player (Multiplayer MultiplayerLANGameUpdating: "Expected <server> but was "), and ClientsPeerInfo's `peerNames.push_back(this->getPeerName(peerID))` empties peer names
 struct Name
 {
-  String value;
+  std::String value;
   Name(const char* v) : value(v) {}
-  implicit operator const String&() const { return this.value; }
+  implicit operator const std::String&() const { return this.value; }
 };
-void take(const String& s) { print("const& ", s, "; "); }
-void take(String&& s)
+void take(const std::String& s) { std::print("const& ", s, "; "); }
+void take(std::String&& s)
 {
-  String moved = move(s);
-  print("&& ", moved, "; ");
+  std::String moved = std::move(s);
+  std::print("&& ", moved, "; ");
 }
 int main()
 {
   Name name("abc");
   take(name);
-  println("after: '", name.value, "'");
+  std::println("after: '", name.value, "'");
   return 0;
 }

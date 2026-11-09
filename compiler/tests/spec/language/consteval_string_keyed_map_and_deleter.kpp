@@ -6,15 +6,15 @@ struct Twice
 };
 constexpr int maps()
 {
-  Map<String, int> m;
-  m[String("b")] = 2;
-  m[String("a")] = 1;
-  return m[String("b")] * 10 + m[String("a")];
+  std::Map<std::String, int> m;
+  m[std::String("b")] = 2;
+  m[std::String("a")] = 1;
+  return m[std::String("b")] * 10 + m[std::String("a")];
 }
 constexpr int pointers()
 {
-  UniquePtr<int> p(new int(4));
-  UniquePtr<int> q = move(p);
+  std::UniquePtr<int> p(new int(4));
+  std::UniquePtr<int> q = std::move(p);
   return (p ? 1 : 0) * 10 + *q;
 }
 constexpr int functors() { return Twice()(21); }
@@ -23,6 +23,6 @@ constexpr int p = pointers();
 constexpr int f = functors();
 int main()
 {
-  println(m, " ", maps(), " ", p, " ", pointers(), " ", f, " ", functors());
+  std::println(m, " ", maps(), " ", p, " ", pointers(), " ", f, " ", functors());
   return 0;
 }

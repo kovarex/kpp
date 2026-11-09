@@ -3,7 +3,7 @@
 class Base
 {
 public:
-  virtual ~Base() { println("destroyed"); }
+  virtual ~Base() { std::println("destroyed"); }
   virtual int value() const { return 1; }
 };
 class Derived : public Base
@@ -14,12 +14,12 @@ public:
 int main()
 {
   {
-    SharedPtr<Base> shared = makeUnique<Derived>();
-    SharedPtr<Base> second = shared;
-    println(shared->value(), " ", shared.useCount());
+    std::SharedPtr<Base> shared = std::makeUnique<Derived>();
+    std::SharedPtr<Base> second = shared;
+    std::println(shared->value(), " ", shared.useCount());
   }
-  UniquePtr<Derived> owner = makeUnique<Derived>();
-  SharedPtr<Derived> taken(move(owner));
-  println(taken->value(), " ", taken.useCount(), " ", owner.get() == nullptr);
+  std::UniquePtr<Derived> owner = std::makeUnique<Derived>();
+  std::SharedPtr<Derived> taken(std::move(owner));
+  std::println(taken->value(), " ", taken.useCount(), " ", owner.get() == nullptr);
   return 0;
 }

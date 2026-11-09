@@ -1,12 +1,12 @@
 // spec: a trait's value as a template argument of a base class (`struct IsPtr : BoolConstant<isPointer<T>> {}`)
 // factorio: the class-form traits C++ builds this way (std::is_same<A, B> : bool_constant<...>)
-template<typename T> struct IsPtr : BoolConstant<isPointer<T>> {};
-template<typename T> struct IsPtr2 : IntegralConstant<bool, isPointer<T>> {};
+template<typename T> struct IsPtr : std::BoolConstant<std::isPointer<T>> {};
+template<typename T> struct IsPtr2 : std::IntegralConstant<bool, std::isPointer<T>> {};
 int main()
 {
   bool a = IsPtr<int>();
   bool b = IsPtr<int*>();
   bool c = IsPtr2<int>();
-  println(a, " ", b, " ", c);
+  std::println(a, " ", b, " ", c);
   return 0;
 }

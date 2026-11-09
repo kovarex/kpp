@@ -11,6 +11,6 @@ constexpr size_t countOf = sizeof...(Ts);
 int main()
 {
   const size_t* where = &TypeList<int, float, char>::count;
-  println(TypeList<int, float, char>::count, " ", TypeList<int, float, char>::doubled, " ", countOf<int, double>, " ", TypeList<>::count, " ", *where);
+  std::println(TypeList<int, float, char>::count, " ", TypeList<int, float, char>::doubled, " ", countOf<int, double>, " ", TypeList<>::count, " ", *where);
   return 0;
 }

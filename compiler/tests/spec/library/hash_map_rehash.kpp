@@ -3,7 +3,7 @@
 extern "C" import "stdio.h";
 int main()
 {
-  HashMap<int, int> h;
+  std::HashMap<int, int> h;
   for (int i = 0; i < 1000; ++i)
     h[i] = i * 2;
   int* kept = &h[500];
@@ -17,11 +17,11 @@ int main()
   for (int i = 0; i < 1000; ++i)
     all = all && h.contains(i) && h[i] == i * 2;
   printf(" %d %d %d", (int)h.size(), (int)all, (int)(kept == &h[500]));
-  HashMap<int, int> empty;
+  std::HashMap<int, int> empty;
   empty.rehash(0);
   empty.rehash(64);
   printf(" %d %d |", (int)empty.size(), (int)empty.empty());
-  FastHashMap<int, int> fast;
+  std::FastHashMap<int, int> fast;
   for (int i = 0; i < 500; ++i)
     fast[i] = i;
   fast.rehash(4096);
@@ -30,12 +30,12 @@ int main()
   for (int i = 0; i < 500; ++i)
     all = all && fast.contains(i) && fast[i] == i;
   printf(" %d %d %d |", (int)fast.size(), (int)all, (int)fast.contains(500) + 1);
-  HashSet<String> words;
-  words.insert(String("a"));
-  words.insert(String("b"));
-  words.insert(String("c"));
+  std::HashSet<std::String> words;
+  words.insert(std::String("a"));
+  words.insert(std::String("b"));
+  words.insert(std::String("c"));
   words.rehash(1000);
   words.rehash(0);
-  printf(" %d %d\n", (int)words.size(), (int)(words.contains(String("a")) && words.contains(String("b")) && words.contains(String("c"))));
+  printf(" %d %d\n", (int)words.size(), (int)(words.contains(std::String("a")) && words.contains(std::String("b")) && words.contains(std::String("c"))));
   return 0;
 }

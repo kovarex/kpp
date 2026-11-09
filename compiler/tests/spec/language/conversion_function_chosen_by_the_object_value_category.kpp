@@ -38,7 +38,7 @@ int main()
   show(a);
   int b = R{};
   show(b);
-  int c = move(r);
+  int c = std::move(r);
   show(c);
   int d = make();
   show(d);
@@ -67,7 +67,7 @@ int main()
   show(l2);
   long l3 = kp;
   show(l3);
-  long l4 = move(p);
+  long l4 = std::move(p);
   show(l4);
   B bb;
   if (bb)

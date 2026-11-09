@@ -51,7 +51,7 @@ constexpr int assigned()
 constexpr int cm = mode(), ct = truth(), ca = argument(), cd = deduced(), cs = assigned();
 int main()
 {
-  println(mode(), " ", truth(), " ", argument(), " ", deduced(), " ", assigned());
-  println(cm, " ", ct, " ", ca, " ", cd, " ", cs);
+  std::println(mode(), " ", truth(), " ", argument(), " ", deduced(), " ", assigned());
+  std::println(cm, " ", ct, " ", ca, " ", cd, " ", cs);
   return 0;
 }

@@ -11,6 +11,6 @@ extern const TValue luaO_nilobject_;
 const TValue luaO_nilobject_ = {nullptr, 7};
 int main()
 {
-  println(NONVALIDVALUE == luaO_nilobject, " ", NONVALIDVALUE != nullptr, " ", luaO_nilobject->tt);
+  std::println(NONVALIDVALUE == luaO_nilobject, " ", NONVALIDVALUE != nullptr, " ", luaO_nilobject->tt);
   return 0;
 }

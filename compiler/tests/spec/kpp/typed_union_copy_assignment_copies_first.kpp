@@ -6,11 +6,11 @@ public:
   Safe(int value) : value(value) {}
   Safe(const Safe& other) : value(other.value)
   {
-    println("copied ", this.value);
+    std::println("copied ", this.value);
     if (this.value < 0)
       throw 1;
   }
-  Safe(Safe&& other) noexcept : value(other.value) { println("moved ", this.value); }
+  Safe(Safe&& other) noexcept : value(other.value) { std::println("moved ", this.value); }
   int value;
 };
 
@@ -20,7 +20,7 @@ public:
   Risky(int value) : value(value) {}
   Risky(const Risky& other) : value(other.value)
   {
-    println("copied ", this.value);
+    std::println("copied ", this.value);
     if (this.value < 0)
       throw 2;
   }
@@ -36,38 +36,38 @@ int main()
 {
   U a = 1;
   U safe = Safe(5);
-  println("-- through a copy");
+  std::println("-- through a copy");
   a = safe;
-  println(a[U::First].value);
+  std::println(a[U::First].value);
 
   U b = 2;
   U bad = Safe(-5);
-  println("-- the copy throws, the union stays");
+  std::println("-- the copy throws, the union stays");
   try
   {
     b = bad;
   }
   catch (int e)
   {
-    println("caught ", e, " ", b == U::Number);
+    std::println("caught ", e, " ", b == U::Number);
   }
 
   U c = 3;
   U risky = Risky(6);
-  println("-- straight to the place");
+  std::println("-- straight to the place");
   c = risky;
-  println(c[U::Second].value);
+  std::println(c[U::Second].value);
 
   U d = 4;
   U worse = Risky(-6);
-  println("-- the copy throws, the union holds none");
+  std::println("-- the copy throws, the union holds none");
   try
   {
     d = worse;
   }
   catch (int e)
   {
-    println("caught ", e, " ", d.tag() == U::Tag::count);
+    std::println("caught ", e, " ", d.tag() == U::Tag::count);
   }
   return 0;
 }

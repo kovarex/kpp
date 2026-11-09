@@ -3,11 +3,11 @@
 struct Named
 {
   static int live;
-  String text;
+  std::String text;
   Named() : text("-") { This::live++; }
   implicit Named(const char* text) : text(text) { This::live++; }
   Named(const Named& other) : text(other.text) { This::live++; }
-  Named(Named&& other) : text(move(other.text)) { This::live++; }
+  Named(Named&& other) : text(std::move(other.text)) { This::live++; }
   ~Named() { This::live--; }
 };
 
@@ -15,55 +15,55 @@ int Named::live = 0;
 
 long long storage[64];
 
-void show(StringView what, Named* first, Named* last)
+void show(std::StringView what, Named* first, Named* last)
 {
-  print(what, ":");
+  std::print(what, ":");
   for (; first != last; ++first)
-    print(" ", first->text);
-  println(" (", Named::live, " live)");
+    std::print(" ", first->text);
+  std::println(" (", Named::live, " live)");
 }
 
 int main()
 {
   Named* room = (Named*)storage;
-  List<Named> source = {"a", "b", "c"};
-  Named* end = uninitializedCopy(source.begin(), source.end(), room);
+  std::List<Named> source = {"a", "b", "c"};
+  Named* end = std::uninitializedCopy(source.begin(), source.end(), room);
   show("copy", room, end);
-  destroy(room, end);
-  end = uninitializedCopyN(source.begin(), 2, room);
+  std::destroy(room, end);
+  end = std::uninitializedCopyN(source.begin(), 2, room);
   show("copyN", room, end);
-  println(destroyN(room, 2) == end);
-  end = uninitializedMove(source.begin(), source.end(), room);
+  std::println(std::destroyN(room, 2) == end);
+  end = std::uninitializedMove(source.begin(), source.end(), room);
   show("move", room, end);
-  println("source after move: '", source.front().text, "'");
-  destroy(room, end);
-  Deque<Named> more = {"x", "y", "z"};
-  Pair<Deque<Named>::iterator, Named*> moved = uninitializedMoveN(more.begin(), 2, room);
+  std::println("source after move: '", source.front().text, "'");
+  std::destroy(room, end);
+  std::Deque<Named> more = {"x", "y", "z"};
+  std::Pair<std::Deque<Named>::iterator, Named*> moved = std::uninitializedMoveN(more.begin(), 2, room);
   show("moveN", room, moved.second);
-  println("source left at ", moved.first->text);
-  destroy(room, moved.second);
-  uninitializedFill(room, room + 2, Named("f"));
+  std::println("source left at ", moved.first->text);
+  std::destroy(room, moved.second);
+  std::uninitializedFill(room, room + 2, Named("f"));
   show("fill", room, room + 2);
-  destroy(room, room + 2);
-  end = uninitializedFillN(room, 3, Named("g"));
+  std::destroy(room, room + 2);
+  end = std::uninitializedFillN(room, 3, Named("g"));
   show("fillN", room, end);
-  destroy(room, end);
-  end = uninitializedValueConstructN(room, 2);
+  std::destroy(room, end);
+  end = std::uninitializedValueConstructN(room, 2);
   show("valueN", room, end);
-  destroy(room, end);
-  end = uninitializedDefaultConstructN(room, 1);
+  std::destroy(room, end);
+  end = std::uninitializedDefaultConstructN(room, 1);
   show("defaultN", room, end);
-  destroyAt(room);
-  Named* built = constructAt(room, "c");
+  std::destroyAt(room);
+  Named* built = std::constructAt(room, "c");
   show("constructAt", built, built + 1);
-  destroyAt(built);
-  Vector<int> numbers = {1, 2, 3};
+  std::destroyAt(built);
+  std::Vector<int> numbers = {1, 2, 3};
   int intRoom[3];
   int* ints = (int*)intRoom;
-  int* intsEnd = uninitializedCopy(numbers.begin(), numbers.end(), ints);
-  println(intsEnd - ints, " ", ints[0] + ints[1] + ints[2]);
-  uninitializedValueConstruct(ints, ints + 3);
-  println(ints[0] + ints[1] + ints[2]);
-  println(Named::live - (int)source.size() - (int)more.size());
+  int* intsEnd = std::uninitializedCopy(numbers.begin(), numbers.end(), ints);
+  std::println(intsEnd - ints, " ", ints[0] + ints[1] + ints[2]);
+  std::uninitializedValueConstruct(ints, ints + 3);
+  std::println(ints[0] + ints[1] + ints[2]);
+  std::println(Named::live - (int)source.size() - (int)more.size());
   return 0;
 }

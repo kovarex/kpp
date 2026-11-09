@@ -14,7 +14,7 @@ int main()
   T local;
   T* heap = new T;
   T b2{2};
-  println(global.b, " ", local.b, " ", heap->b, " | ", braced.a, " ", braced.b, " | ", b2.a, " ", b2.b);
+  std::println(global.b, " ", local.b, " ", heap->b, " | ", braced.a, " ", braced.b, " | ", b2.a, " ", b2.b);
   delete heap;
   return 0;
 }

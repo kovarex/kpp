@@ -7,10 +7,10 @@ int main()
   int (*(*app))[3] = &ap;
   int (**app2)[3] = &ap;
   int (*&apr)[3] = ap;
-  println((**app)[1], " ", (**app2)[2], " ", (*apr)[0]);
+  std::println((**app)[1], " ", (**app2)[2], " ", (*apr)[0]);
   int (&(ar))[3] = arr;
-  println(ar[2], " ", sizeof(ar));
+  std::println(ar[2], " ", sizeof(ar));
   int (*(tab[2]))[3] = {&arr, &arr};
-  println((*tab[1])[1], " ", sizeof(tab) / sizeof(tab[0]));
+  std::println((*tab[1])[1], " ", sizeof(tab) / sizeof(tab[0]));
   return 0;
 }

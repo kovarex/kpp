@@ -13,11 +13,11 @@ int main()
   Item a{2, 'a'};
   Item b{2, 'b'};
   Item c{5, 'c'};
-  println(min(a, b, lighter).name, max(a, b, lighter).name, min(c, a, lighter).name, max(a, c, lighter).name);
+  std::println(std::min(a, b, lighter).name, std::max(a, b, lighter).name, std::min(c, a, lighter).name, std::max(a, c, lighter).name);
   Item low{1, 'l'};
   Item high{3, 'h'};
-  println(clamp(c, low, high, lighter).name, clamp(Item{0, 'z'}, low, high, lighter).name, clamp(a, low, high, lighter).name);
-  println(&clamp(a, low, high, lighter) == &a);
-  println(min({3, 1, 2}), " ", max({3, 1, 2}), " ", clamp(7, 9, 1, Greater<>()));
+  std::println(std::clamp(c, low, high, lighter).name, std::clamp(Item{0, 'z'}, low, high, lighter).name, std::clamp(a, low, high, lighter).name);
+  std::println(&std::clamp(a, low, high, lighter) == &a);
+  std::println(std::min({3, 1, 2}), " ", std::max({3, 1, 2}), " ", std::clamp(7, 9, 1, std::Greater<>()));
   return 0;
 }

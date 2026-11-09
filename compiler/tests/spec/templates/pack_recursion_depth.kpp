@@ -2,9 +2,9 @@
 // factorio: PrototypeListList::getTypeIndex over the 85 prototype lists (MplVector), behind AreCreatedInOrder's static_asserts and the indexes the game reads at run time
 template <typename...> struct IndexInTemplateList;
 template <typename T, typename... R>
-struct IndexInTemplateList<T, T, R...> : IntegralConstant<size_t, 0> {};
+struct IndexInTemplateList<T, T, R...> : std::IntegralConstant<size_t, 0> {};
 template <typename T, typename F, typename... R>
-struct IndexInTemplateList<T, F, R...> : IntegralConstant<size_t, 1 + IndexInTemplateList<T, R...>::value> {};
+struct IndexInTemplateList<T, F, R...> : std::IntegralConstant<size_t, 1 + IndexInTemplateList<T, R...>::value> {};
 template <class... Args>
 struct TypeList
 {
@@ -36,6 +36,6 @@ static_assert(areInOrder<List8, List25>());
 static_assert(Lists::indexOf<List84>() == 84);
 int main()
 {
-  println(Lists::indexOf<List8>(), " ", Lists::indexOf<List84>(), " ", areInOrder<List25, List8>());
+  std::println(Lists::indexOf<List8>(), " ", Lists::indexOf<List84>(), " ", areInOrder<List25, List8>());
   return 0;
 }

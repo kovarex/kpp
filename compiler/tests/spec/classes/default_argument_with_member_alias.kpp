@@ -4,7 +4,7 @@ class CharacterModifier
 {
 public:
   using ModifierValueType = double;
-  CharacterModifier(int type, ModifierValueType defaultValue = 0, ModifierValueType maximumValue = Limits<ModifierValueType>::max())
+  CharacterModifier(int type, ModifierValueType defaultValue = 0, ModifierValueType maximumValue = std::Limits<ModifierValueType>::max())
     : type(type), value(defaultValue), maximum(maximumValue) {}
   int type;
   ModifierValueType value;
@@ -20,6 +20,6 @@ public:
 int main()
 {
   CharacterModifiers modifiers;
-  println(modifiers.speed.maximum > 1e300, " ", modifiers.reach.value);
+  std::println(modifiers.speed.maximum > 1e300, " ", modifiers.reach.value);
   return 0;
 }

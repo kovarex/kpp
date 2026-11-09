@@ -15,6 +15,6 @@ constexpr int twice = [](int v) { return v * 2; }(21);
 static_assert(shape.h == 6 && twice == 42);
 int main()
 {
-  println(shape.h, " ", twice);
+  std::println(shape.h, " ", twice);
   return 0;
 }

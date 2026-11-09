@@ -1,9 +1,9 @@
 // spec: a static member function of a class template, named in an instance's member, binds to a reference parameter (`const auto& pred`, `const Pred& pred`) as that instance's function, as in C++
 // factorio: SetupModifiersBaseValue<...>'s `Util::stableSort(modifiersOfType, technologyDepthOrder)` since Factorio df1c9d1cd3c (5 headline errors)
 template<class Value>
-void sortWith(Vector<Value>& container, const auto& pred)
+void sortWith(std::Vector<Value>& container, const auto& pred)
 {
-  stableSort(container.begin(), container.end(), pred);
+  std::stableSort(container.begin(), container.end(), pred);
 }
 template<typename Tag>
 class Tech
@@ -14,13 +14,13 @@ public:
     int depth;
   };
   static bool depthOrder(const Location& a, const Location& b) { return a.depth < b.depth; }
-  static void sortAll(Vector<Location>& all) { sortWith(all, This::depthOrder); }
+  static void sortAll(std::Vector<Location>& all) { sortWith(all, This::depthOrder); }
 };
 struct AmmoTag;
 int main()
 {
-  Vector<Tech<AmmoTag>::Location> all = {{3}, {1}, {2}};
+  std::Vector<Tech<AmmoTag>::Location> all = {{3}, {1}, {2}};
   Tech<AmmoTag>::sortAll(all);
-  println(all[0].depth, " ", all[1].depth, " ", all[2].depth);
+  std::println(all[0].depth, " ", all[1].depth, " ", all[2].depth);
   return 0;
 }

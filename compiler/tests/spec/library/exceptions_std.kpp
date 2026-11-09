@@ -2,18 +2,18 @@
 // factorio: 410 std::exception / runtime_error uses in 216 files
 void check(int i)
 {
-  if (i < 0) throw InvalidArgument(String("negative"));
-  if (i > 9) throw OutOfRange(String("too big"));
+  if (i < 0) throw std::InvalidArgument(std::String("negative"));
+  if (i > 9) throw std::OutOfRange(std::String("too big"));
 }
 int main()
 {
-  String log;
+  std::String log;
   for (int i : {-1, 5, 10})
   {
     try { check(i); log << "ok "; }
-    catch (const OutOfRange& e) { log << "range:"; log << StringView(e.what()); log << ' '; }
-    catch (const Exception& e) { log << "other:"; log << StringView(e.what()); log << ' '; }
+    catch (const std::OutOfRange& e) { log << "range:"; log << std::StringView(e.what()); log << ' '; }
+    catch (const std::Exception& e) { log << "other:"; log << std::StringView(e.what()); log << ' '; }
   }
-  println(log);
+  std::println(log);
   return 0;
 }

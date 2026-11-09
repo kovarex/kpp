@@ -11,7 +11,7 @@ public:
 class D : public Base
 {
 public:
-  String s;
+  std::String s;
   int f() const override { return 2; }
 };
 class Plain
@@ -36,6 +36,6 @@ int main()
   Fancy other;
   Plain& viaBase = other;
   viaBase = target;
-  println(r.f(), " ", sliced.g(), " ", viaBase.g());
+  std::println(r.f(), " ", sliced.g(), " ", viaBase.g());
   return 0;
 }

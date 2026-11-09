@@ -9,7 +9,7 @@ public:
 };
 
 template<typename T> constexpr T twice(T v) { return v + v; }
-template<typename T> constexpr MakeUnsigned<T> magnitude(T v) { return static_cast<MakeUnsigned<T>>(v < 0 ? -v : v); }
+template<typename T> constexpr std::MakeUnsigned<T> magnitude(T v) { return static_cast<std::MakeUnsigned<T>>(v < 0 ? -v : v); }
 
 template<typename T>
 constexpr i64 viaLocal(T v)
@@ -30,6 +30,6 @@ constexpr u64 s = viaClassName(i64(-7));
 
 int main()
 {
-  println(r, " ", s, " ", viaLocal(i64(300)), " ", viaClassName(i64(-7)));
+  std::println(r, " ", s, " ", viaLocal(i64(300)), " ", viaClassName(i64(-7)));
   return 0;
 }

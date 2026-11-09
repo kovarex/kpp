@@ -24,19 +24,19 @@ struct Value
 };
 int main()
 {
-  Map<int, int> m;
+  std::Map<int, int> m;
   auto r = m.insert_or_assign(1, 10);
   printf("%d %d", (int)r.second, r.first->second);
   r = m.insert_or_assign(1, 11);
   printf(" %d %d %d |", (int)r.second, m[1], (int)m.size() + 1);
-  Map<String, Value> named;
-  String key("k");
+  std::Map<std::String, Value> named;
+  std::String key("k");
   Value first(5);
-  auto n = named.insert_or_assign(move(key), move(first));
+  auto n = named.insert_or_assign(std::move(key), std::move(first));
   printf(" %d moved %d", (int)n.second, (int)(first.v == -1));
-  String again("k");
+  std::String again("k");
   Value second(6);
-  n = named.insert_or_assign(move(again), move(second));
+  n = named.insert_or_assign(std::move(again), std::move(second));
   printf(" kept %d", (int)(again == "k"));
   printf(" %d assigned %d |", (int)n.second, n.first->second.assignedByMove);
   auto at = m.insert_or_assign(m.end(), 2, 22);

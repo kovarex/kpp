@@ -12,7 +12,7 @@ template <typename C> void show(const C& c)
 }
 int main()
 {
-  Deque<int> d;
+  std::Deque<int> d;
   for (int i = 0; i < 4; ++i)
     d.push_back(i);
   auto at = d.insert(d.begin() + 2, {7, 8, 9});
@@ -21,17 +21,17 @@ int main()
   int* kept = &d[4];
   d.shrink_to_fit();
   printf(" | %d", (int)(kept == &d[4] && *kept == 9));
-  List<int> l;
+  std::List<int> l;
   l.push_back(1);
   l.push_back(2);
-  auto li = l.insert(next(l.begin()), 3, 3);
+  auto li = l.insert(std::next(l.begin()), 3, 3);
   printf(" | %d %d | ", *li, (int)l.size());
   show(l);
   auto same = l.insert(l.begin(), 0, 5);
   printf(" | %d %d", (int)(same == l.begin()), *l.begin() + 1);
   l.insert(l.end(), 1, l.front());
   printf(" | %d", (int)(l.back() == 1));
-  Array<int, 3> x = {1, 2, 3}, y = {9, 9, 9};
+  std::Array<int, 3> x = {1, 2, 3}, y = {9, 9, 9};
   x.swap(y);
   printf(" ");
   show(y);
@@ -39,7 +39,7 @@ int main()
   show(x);
   printf(" ");
   show(y);
-  Array<int, 0> e, f;
+  std::Array<int, 0> e, f;
   e.swap(f);
   printf(" | %d\n", (int)e.size());
   return 0;

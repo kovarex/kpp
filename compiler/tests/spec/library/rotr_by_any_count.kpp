@@ -1,13 +1,13 @@
 // spec: rotr (C++20 std::rotr) rotates by its count modulo the width, a negative count to the left, and a count of 0 or a multiple of the width gives the value back; at run time (an optimized build too) and at compile time. Before, rotr(x, 0) shifted left by the width, which LLVM may make anything (an optimized build gave 0x0b6baa20 for rotr(0x12345678, 0) and garbage for 32, 33 and negative counts), a silent wrong answer, and a constant of it was refused. clang prints the same
 // found comparing kpp with clang (thread I's bit battery)
-constexpr u32 atCompileTime = rotr(0x12345678u, 0) ^ rotr(0x12345678u, 36);
+constexpr u32 atCompileTime = std::rotr(0x12345678u, 0) ^ std::rotr(0x12345678u, 36);
 int main(int argc, char**)
 {
   u32 v = 0x12345678u + u32(argc - 1);
   u64 w = 0x0123456789ABCDEFull + u64(argc - 1);
   i32 counts[] = {0, 4, 32, 33, -1, -4, 64};
   for (i32 c : counts)
-    println(c, " ", hex(rotr(v, c), 8), " ", hex(rotr(w, c), 16));
-  println(hex(atCompileTime, 8));
+    std::println(c, " ", std::hex(std::rotr(v, c), 8), " ", std::hex(std::rotr(w, c), 16));
+  std::println(std::hex(atCompileTime, 8));
   return 0;
 }

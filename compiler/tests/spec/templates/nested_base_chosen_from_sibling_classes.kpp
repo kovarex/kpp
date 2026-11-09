@@ -15,13 +15,13 @@ public:
     void* p = nullptr;
     void* parent() const { return this.p; }
   };
-  using HookParentHolder = Conditional<ParentAware, Normal, Empty>;
+  using HookParentHolder = std::Conditional<ParentAware, Normal, Empty>;
   class Hook : public HookParentHolder
   {
   public:
     bool linked() const { return this.parent() != nullptr; }
   };
-  class DirectHook : public Conditional<ParentAware, Normal, Empty> {};
+  class DirectHook : public std::Conditional<ParentAware, Normal, Empty> {};
 };
 
 template<class T, bool ParentAware = false>
@@ -41,6 +41,6 @@ int main()
   Plain plain;
   Direct direct;
   direct.p = &x;
-  println(item.parent() == &x, " ", item.linked(), " ", plain.parent() == nullptr, " ", direct.parent() == &x, " ", sizeof(Item) > sizeof(Plain));
+  std::println(item.parent() == &x, " ", item.linked(), " ", plain.parent() == nullptr, " ", direct.parent() == &x, " ", sizeof(Item) > sizeof(Plain));
   return 0;
 }

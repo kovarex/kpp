@@ -7,6 +7,6 @@ test square
 }
 int main()
 {
-  println(square(4));
+  std::println(square(4));
   return 0;
 }

@@ -18,7 +18,7 @@ extern "C" int puts(const char* text);
 int main()
 {
   const char* text = "b";
-  String result;
+  std::String result;
   for (bool made : {makesView(Opaque{1}), makesView("a"), makesView(text), makesView(3)})
     result.append(made ? "1" : "0");
   puts(result.c_str());

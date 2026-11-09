@@ -26,9 +26,9 @@ int main()
 {
   Derived* p = new Derived();
   Derived d;
-  Vector<Derived> many;
+  std::Vector<Derived> many;
   many.resize(2);
-  printf("%d %d %d %d %d %d\n", isConstructible<Derived> ? 1 : 0, isConstructible<Other> ? 1 : 0, isConstructible<Derived, int> ? 1 : 0, int(many.size()), p->v, d.v);
+  printf("%d %d %d %d %d %d\n", std::isConstructible<Derived> ? 1 : 0, std::isConstructible<Other> ? 1 : 0, std::isConstructible<Derived, int> ? 1 : 0, int(many.size()), p->v, d.v);
   delete p;
   return 0;
 }

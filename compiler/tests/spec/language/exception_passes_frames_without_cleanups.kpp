@@ -1,5 +1,5 @@
 // spec: an exception passes through functions that have nothing to destroy and no try (no landing pad of their own) to the handler in their caller's caller: off Windows each such frame needs its unwind table (design.md, "Targets and hosts", stage 3)
-class Boom : public Exception { public: int depth; Boom(int depth) : Exception("boom"), depth(depth) {} };
+class Boom : public std::Exception { public: int depth; Boom(int depth) : Exception("boom"), depth(depth) {} };
 int thrower(int n)
 {
   if (n > 0)
@@ -10,14 +10,14 @@ int plain(int n) { return thrower(n) + 1; }
 int plainer(int n) { return plain(n * 2) + 2; }
 int main()
 {
-  println(plainer(0));
+  std::println(plainer(0));
   try
   {
-    println(plainer(3));
+    std::println(plainer(3));
   }
   catch (const Boom& e)
   {
-    println("caught at depth ", e.depth);
+    std::println("caught at depth ", e.depth);
   }
   return 0;
 }

@@ -1,7 +1,7 @@
 // spec: exceptions: throw, catch by reference and base, rethrow, cleanup of locals
 // factorio: 3118 throw sites in 853 files, 457 try blocks
-struct Note { const char* text; Note(const char* t) : text(t) {} ~Note() { println("~", StringView(this.text)); } };
-class Failure : public Exception { public: int code; Failure(int code) : Exception(String("failed")), code(code) {} };
+struct Note { const char* text; Note(const char* t) : text(t) {} ~Note() { std::println("~", std::StringView(this.text)); } };
+class Failure : public std::Exception { public: int code; Failure(int code) : Exception(std::String("failed")), code(code) {} };
 int risky(int n)
 {
   Note note("local");
@@ -15,17 +15,17 @@ int main()
   {
     risky(1);
     risky(3);
-    println("not reached");
+    std::println("not reached");
   }
-  catch (const Exception& e)
+  catch (const std::Exception& e)
   {
-    println("caught ", StringView(e.what()));
+    std::println("caught ", std::StringView(e.what()));
   }
   try
   {
-    try { throw RuntimeError(String("inner")); }
-    catch (const RuntimeError&) { println("rethrowing"); throw; }
+    try { throw std::RuntimeError(std::String("inner")); }
+    catch (const std::RuntimeError&) { std::println("rethrowing"); throw; }
   }
-  catch (const Exception& e) { println("outer ", StringView(e.what())); }
+  catch (const std::Exception& e) { std::println("outer ", std::StringView(e.what())); }
   return 0;
 }

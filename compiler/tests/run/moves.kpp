@@ -42,7 +42,7 @@ const char* byRef(Tracker&& t) { return "rvalue"; }
 struct Holder
 {
   Tracker t;
-  UniquePtr<int> p;
+  std::UniquePtr<int> p;
   Holder(int id) : t(id), p(new int(id)) {}
 };
 
@@ -50,33 +50,33 @@ int main()
 {
   Tracker a(1);
   Tracker b = a;       // copy
-  Tracker c = move(a); // move
+  Tracker c = std::move(a); // move
   byValue(b);          // copy
-  byValue(move(b));    // move
+  byValue(std::move(b));    // move
   byValue(Tracker(5)); // a temporary: no constructor call at all
   printf("%d %d %d\n", copies, moves, a.movedFrom ? 1 : 0);
-  printf("%s %s %s\n", byRef(c), byRef(move(c)), byRef(Tracker(6)));
-  Vector<Tracker> v;
+  printf("%s %s %s\n", byRef(c), byRef(std::move(c)), byRef(Tracker(6)));
+  std::Vector<Tracker> v;
   v.push_back(c);             // copy
-  v.push_back(move(c));       // move
+  v.push_back(std::move(c));       // move
   v.emplace_back(c);          // copy: forwarding an lvalue
   v.emplace_back(Tracker(7)); // move: forwarding a temporary
   printf("%d %d %zu\n", copies, moves, v.size());
   c = b;
-  c = move(b);
+  c = std::move(b);
   printf("%d %d\n", copyAssigns, moveAssigns);
   Holder h(8);
-  Holder h2 = move(h); // memberwise: the Tracker and the UniquePtr are moved
+  Holder h2 = std::move(h); // memberwise: the Tracker and the UniquePtr are moved
   printf("%d %d %d %d\n", moves, h.t.movedFrom ? 1 : 0, h.p ? 1 : 0, *h2.p);
-  Vector<UniquePtr<int>> owners;
-  UniquePtr<int> u(new int(9));
-  owners.push_back(move(u));
+  std::Vector<std::UniquePtr<int>> owners;
+  std::UniquePtr<int> u(new int(9));
+  owners.push_back(std::move(u));
   owners.emplace_back(new int(10));
   printf("%d %d %d\n", u ? 1 : 0, *owners[0], *owners[1]);
-  swap(owners[0], owners[1]);
+  std::swap(owners[0], owners[1]);
   printf("%d %d\n", *owners[0], *owners[1]);
-  String s = "text";
-  String t = move(s);
+  std::String s = "text";
+  std::String t = std::move(s);
   printf("%zu %s\n", s.size(), t.c_str());
   return 0;
 }

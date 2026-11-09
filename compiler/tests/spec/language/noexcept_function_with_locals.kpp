@@ -1,11 +1,11 @@
 // spec: a noexcept function with locals to destroy: when nothing throws, its locals are destroyed as usual; when an exception reaches it, the program ends through the terminate handler from the search, its locals and the thrower's not destroyed (the cleanups' unwinding and the noexcept function's stop, on every target)
 // found on Windows (2026-11-05): a call with locals in a noexcept function outside any try took the innermost try's frame, and there was none: kpp crashed building the game's tests
-class Boom : public Exception { public: Boom() : Exception("boom") {} };
+class Boom : public std::Exception { public: Boom() : Exception("boom") {} };
 struct Noisy
 {
   const char* name;
   Noisy(const char* name) : name(name) {}
-  ~Noisy() { println("destroyed ", StringView(this.name)); }
+  ~Noisy() { std::println("destroyed ", std::StringView(this.name)); }
 };
 bool armed = false;
 void mayThrow() { Noisy inner("inner"); if (armed) throw Boom(); }
@@ -13,17 +13,17 @@ void guarded() noexcept
 {
   Noisy outer("outer");
   mayThrow();
-  println("guarded returns");
+  std::println("guarded returns");
 }
 void onTerminate()
 {
-  println("terminate");
+  std::println("terminate");
   fflush(nullptr);
   exit(0);
 }
 int main()
 {
-  setTerminate(onTerminate);
+  std::setTerminate(onTerminate);
   guarded();
   armed = true;
   guarded();

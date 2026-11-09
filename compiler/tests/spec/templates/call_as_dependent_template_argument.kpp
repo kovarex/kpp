@@ -12,6 +12,6 @@ Frac<gcdOf(P1::num, P2::num), P1::den / gcdOf(P1::den, P2::den) * P2::den> commo
 int main()
 {
   auto c = common(Frac<4, 3>(), Frac<6, 5>());
-  println(c.num, " ", c.den);
+  std::println(c.num, " ", c.den);
   return 0;
 }

@@ -8,12 +8,12 @@ public:
     MinLinear, MagLinear, MipLinear
   };
   constexpr Mode() = default;
-  constexpr Mode(InitializerList<Enum> values) : bits(Mode::toBits(values)) {}
+  constexpr Mode(std::InitializerList<Enum> values) : bits(Mode::toBits(values)) {}
   constexpr Mode(Enum value) : bits(uint8_t(1u << int(value))) {}
   using enum Enum;
   uint8_t bits = 0;
 private:
-  constexpr static uint8_t toBits(InitializerList<Enum> values)
+  constexpr static uint8_t toBits(std::InitializerList<Enum> values)
   {
     uint8_t acc = 0;
     for (auto value : values)
@@ -28,6 +28,6 @@ int main()
   assigned = {Mode::MinLinear, Mode::MagLinear};
   Mode one;
   one = {Mode::Enum::MipLinear};
-  println(int(declared.bits), " ", int(assigned.bits), " ", int(one.bits));
+  std::println(int(declared.bits), " ", int(assigned.bits), " ", int(one.bits));
   return 0;
 }

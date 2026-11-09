@@ -1,27 +1,27 @@
 // spec: Vector::insert(position, first, last) with [first, last) in the same vector: the elements as they were before the insert, whether it grows (the old storage freed) or opens room in place (the elements moved), as MSVC's and libstdc++'s vectors do
 // found by comparing with MSVC's STL and libstdc++ (thread G, 2026-11-05): kpp copied moved-over and freed elements (on Linux reading freed memory)
-void show(const Vector<int>& v)
+void show(const std::Vector<int>& v)
 {
   for (int x : v)
-    print(x, " ");
-  println();
+    std::print(x, " ");
+  std::println();
 }
 int main()
 {
-  Vector<int> grow;
+  std::Vector<int> grow;
   for (int i = 0; i < 20; ++i)
     grow.push_back(i);
   grow.shrink_to_fit();
   grow.insert(grow.begin() + 3, grow.begin() + 10, grow.end());
   show(grow);
-  Vector<int> inPlace = {1, 2, 3, 4, 5};
+  std::Vector<int> inPlace = {1, 2, 3, 4, 5};
   inPlace.reserve(20);
   inPlace.insert(inPlace.begin(), inPlace.begin() + 1, inPlace.begin() + 4);
   show(inPlace);
-  Vector<String> strings = {"a", "b", "c"};
+  std::Vector<std::String> strings = {"a", "b", "c"};
   strings.insert(strings.end(), strings.cbegin(), strings.cend());
-  for (const String& s : strings)
-    print(s);
-  println();
+  for (const std::String& s : strings)
+    std::print(s);
+  std::println();
   return 0;
 }

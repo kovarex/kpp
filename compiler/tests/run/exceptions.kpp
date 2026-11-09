@@ -16,11 +16,11 @@ struct Tracker
   }
 };
 
-class Error : public Exception
+class Error : public std::Exception
 {
 public:
   int code;
-  Error(const String& message, int code) : Exception(message), code(code) {}
+  Error(const std::String& message, int code) : Exception(message), code(code) {}
 };
 
 struct Other
@@ -51,17 +51,17 @@ int depth1(int x)
   return r;
 }
 
-String describe(int x)
+std::String describe(int x)
 {
   try
   {
-    String prefix = "value ";
+    std::String prefix = "value ";
     prefix << (char)(depth1(x) + 48);
     return prefix;
   }
   catch (const Error& e)
   {
-    return String("error: ") + e.what();
+    return std::String("error: ") + e.what();
   }
 }
 
@@ -93,7 +93,7 @@ void rethrower()
   {
     throw Error("original", 7);
   }
-  catch (Exception& e)
+  catch (std::Exception& e)
   {
     printf("rethrowing %s\n", e.what());
     throw;
@@ -110,7 +110,7 @@ void translator()
   catch (const Error& e)
   {
     printf("translating %s (%d)\n", e.what(), e.code);
-    throw RuntimeError(String("wrapped ") + e.what());
+    throw std::RuntimeError(std::String("wrapped ") + e.what());
   }
 }
 
@@ -135,7 +135,7 @@ int main()
   {
     printf("wrong handler\n");
   }
-  catch (const RuntimeError& e)
+  catch (const std::RuntimeError& e)
   {
     printf("outer caught %s\n", e.what());
   }
@@ -173,7 +173,7 @@ int main()
   {
     printf("%d\n", depth3(Tracker(30).id));
   }
-  catch (const Exception& e)
+  catch (const std::Exception& e)
   {
     printf("caught %s, live %d\n", e.what(), live);
   }

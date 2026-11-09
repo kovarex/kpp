@@ -23,7 +23,7 @@ constexpr int differ() { Derived a; Derived b; a.prev = &b; return a.prev == &a 
 template<int N> struct Show { static constexpr int value = N; };
 int main()
 {
-  println(same(), " ", sameReversed(), " ", sameMulti(), " ", differ());
-  println(Show<same()>::value, " ", Show<sameReversed()>::value, " ", Show<sameMulti()>::value, " ", Show<differ()>::value);
+  std::println(same(), " ", sameReversed(), " ", sameMulti(), " ", differ());
+  std::println(Show<same()>::value, " ", Show<sameReversed()>::value, " ", Show<sameMulti()>::value, " ", Show<differ()>::value);
   return 0;
 }

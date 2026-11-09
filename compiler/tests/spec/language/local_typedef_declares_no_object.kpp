@@ -15,13 +15,13 @@ int main()
   {
     typedef Tracked Alias;
     Alias* none = nullptr;
-    println(none == nullptr, " ", Tracked::made, " ", Tracked::gone);
+    std::println(none == nullptr, " ", Tracked::made, " ", Tracked::gone);
   }
   goto past;
   typedef Tracked Skipped;
 past:
-  println(Tracked::made, " ", Tracked::gone);
+  std::println(Tracked::made, " ", Tracked::gone);
   Skipped real;
-  println(Tracked::made, " ", Tracked::gone);
+  std::println(Tracked::made, " ", Tracked::gone);
   return 0;
 }

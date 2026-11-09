@@ -7,27 +7,27 @@ namespace demo
   class Text
   {
   public:
-    static void split(StringView text, Vector<StringView>& result);
-    static int count(StringView text);
+    static void split(std::StringView text, std::Vector<std::StringView>& result);
+    static int count(std::StringView text);
     int instanceSize() const;
     int size = 0;
   };
 
-  void Text::split(StringView text, Vector<StringView>& result) // defined before its first caller
+  void Text::split(std::StringView text, std::Vector<std::StringView>& result) // defined before its first caller
   {
     result.clear();
     int start = 0;
     for (int i = 0; i <= text.size(); ++i)
       if (i == text.size() || text[i] == '\n')
       {
-        result.push_back(StringView(text.data() + start, i - start));
+        result.push_back(std::StringView(text.data() + start, i - start));
         start = i + 1;
       }
   }
 
-  int Text::count(StringView text)
+  int Text::count(std::StringView text)
   {
-    Vector<StringView> parts;
+    std::Vector<std::StringView> parts;
     Text::split(text, parts);
     return (int)parts.size();
   }
@@ -37,9 +37,9 @@ namespace demo
 
 int main()
 {
-  String s("ab\ncd\ne");
+  std::String s("ab\ncd\ne");
   printf("%d\n", demo::Text::count(s));
-  Vector<StringView> parts;
+  std::Vector<std::StringView> parts;
   demo::Text::split(s, parts);
   printf("%zu %zu %d\n", parts.size(), parts[1].size(), (int)(parts[2].data() - s.data()));
   demo::Text t;

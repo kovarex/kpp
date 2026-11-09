@@ -3,14 +3,14 @@
 struct Noisy
 {
   int v;
-  implicit Noisy(int v) : v(v) { println("make ", v); }
-  ~Noisy() { println("drop ", this.v); }
+  implicit Noisy(int v) : v(v) { std::println("make ", v); }
+  ~Noisy() { std::println("drop ", this.v); }
 };
 struct Point
 {
   int x;
   int y;
-  ~Point() { println("drop point ", this.x); }
+  ~Point() { std::println("drop point ", this.x); }
 };
 struct A { const int (&r)[3]; };
 struct N { const Noisy (&r)[2]; int k; };
@@ -21,7 +21,7 @@ using Two = const Noisy[2];
 A global{Three{1, 2, 3}};
 A globalBraces{{4, 5, 6}};
 int sum(const A& a) { return a.r[0] + a.r[1] + a.r[2]; }
-int show(const N& n) { println("show ", n.r[0].v + n.r[1].v + n.k); return 0; }
+int show(const N& n) { std::println("show ", n.r[0].v + n.r[1].v + n.k); return 0; }
 int fromStatic()
 {
   static N kept{Two{Noisy(20), Noisy(21)}, 1};
@@ -29,35 +29,35 @@ int fromStatic()
 }
 int main()
 {
-  println("globals ", sum(global), " ", sum(globalBraces));
+  std::println("globals ", sum(global), " ", sum(globalBraces));
   {
     A a{Three{7, 8, 9}};
     A b{{10, 11, 12}};
-    println("locals ", sum(a), " ", sum(b));
+    std::println("locals ", sum(a), " ", sum(b));
   }
   {
     N n{Two{Noisy(1), Noisy(2)}, 3};
-    println("held ", n.r[0].v + n.r[1].v + n.k);
+    std::println("held ", n.r[0].v + n.r[1].v + n.k);
   }
-  println("named done");
+  std::println("named done");
   {
     N m{{Noisy(4), Noisy(5)}, 6};
-    println("held ", m.r[0].v + m.r[1].v + m.k);
+    std::println("held ", m.r[0].v + m.r[1].v + m.k);
   }
-  println("braces done");
+  std::println("braces done");
   {
     P p{{30, 31}, 32};
-    println("held ", p.p.x + p.p.y + p.n);
+    std::println("held ", p.p.x + p.p.y + p.n);
   }
-  println("point done");
+  std::println("point done");
   {
     Outer o{{Two{Noisy(7), Noisy(8)}, 9}, {{40, 41}, 42}};
-    println("held ", o.n.r[0].v + o.n.k + o.q.p.x + o.q.n);
+    std::println("held ", o.n.r[0].v + o.n.k + o.q.p.x + o.q.n);
   }
-  println("outer done");
+  std::println("outer done");
   show(N{Two{Noisy(10), Noisy(11)}, 12});
-  println("argument done");
-  println("static ", fromStatic());
-  println("static ", fromStatic());
+  std::println("argument done");
+  std::println("static ", fromStatic());
+  std::println("static ", fromStatic());
   return 0;
 }

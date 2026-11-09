@@ -31,6 +31,6 @@ int main()
   Character c;
   Handle<Character> h(&c);
   Associated a;
-  println(a.direct(&c), " ", a.viaHandle(h));
+  std::println(a.direct(&c), " ", a.viaHandle(h));
   return 0;
 }

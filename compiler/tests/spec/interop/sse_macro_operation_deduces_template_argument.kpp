@@ -20,18 +20,18 @@ struct Ints
   implicit Ints(__m128i v) : value(v) {}
   __m128i value;
 };
-StringView which(Floats) { return "floats"; }
-StringView which(Ints) { return "ints"; }
+std::StringView which(Floats) { return "floats"; }
+std::StringView which(Ints) { return "ints"; }
 
 int main()
 {
   __m128 a = _mm_setr_ps(1.0f, 2.0f, 3.0f, 4.0f);
   __m128i b = _mm_setr_epi32(5, 6, 7, 8);
-  println(lane0Of(_mm_shuffle_ps(a, a, _MM_SHUFFLE(0, 1, 2, 3))), " ", lane0Of(_mm_shuffle_epi32(b, _MM_SHUFFLE(0, 1, 2, 2))), " ",
+  std::println(lane0Of(_mm_shuffle_ps(a, a, _MM_SHUFFLE(0, 1, 2, 3))), " ", lane0Of(_mm_shuffle_epi32(b, _MM_SHUFFLE(0, 1, 2, 2))), " ",
           lane0Of(_mm_extract_epi16(b, 2)), " ", lane0Of(_MM_SHUFFLE(0, 0, 1, 1)));
-  println(which(_mm_shuffle_ps(a, a, 0)), " ", which(_mm_shuffle_epi32(b, 0)), " ", lane0(_mm_shuffle_ps(a, a, 1)), " ", lane0(_mm_srli_si128(b, 4)));
+  std::println(which(_mm_shuffle_ps(a, a, 0)), " ", which(_mm_shuffle_epi32(b, 0)), " ", lane0(_mm_shuffle_ps(a, a, 1)), " ", lane0(_mm_srli_si128(b, 4)));
   auto shuffled = _mm_shufflelo_epi16(b, _MM_SHUFFLE(0, 0, 0, 0));
   auto extracted = _mm_extract_epi16(shuffled, 3);
-  println(extracted, " ", lane0Of(extracted));
+  std::println(extracted, " ", lane0Of(extracted));
   return 0;
 }

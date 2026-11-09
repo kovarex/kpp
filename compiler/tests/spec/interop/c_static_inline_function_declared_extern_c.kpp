@@ -12,6 +12,6 @@ int main()
   tm* local = localtime(&now);
   time_t back = mktime(local);
   tm* utc = gmtime(&now); // (localtime's tm, which it reuses)
-  println(result, " ", written, " ", specClock(nullptr), " ", now > 0 && again >= now, " ", utc != nullptr && utc->tm_year > 100, " ", back == now);
+  std::println(result, " ", written, " ", specClock(nullptr), " ", now > 0 && again >= now, " ", utc != nullptr && utc->tm_year > 100, " ", back == now);
   return 0;
 }

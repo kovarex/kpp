@@ -9,9 +9,9 @@ namespace Helpers
   template <typename... >
   struct index;
   template <typename T, typename... R>
-  struct index<T, T, R...> : IntegralConstant<size_t, 0> {};
+  struct index<T, T, R...> : std::IntegralConstant<size_t, 0> {};
   template <typename T, typename F, typename... R>
-  struct index<T, F, R...> : IntegralConstant<size_t, 1 + index<T, R...>::value> {};
+  struct index<T, F, R...> : std::IntegralConstant<size_t, 1 + index<T, R...>::value> {};
 
   template<class... Ts>
   struct OrderList
@@ -21,7 +21,7 @@ namespace Helpers
     static constexpr size_t getIndex() { return index<T, Ts...>::value; }
     template<class T>
     static void update(Entry& entry, int& sum) { sum = sum * 10 + entry.value; }
-    static void update(Array<Entry, size>& lists, int& sum)
+    static void update(std::Array<Entry, size>& lists, int& sum)
     {
       (OrderList::update<Ts>(lists[OrderList::getIndex<Ts>()], sum), ...);
     }
@@ -33,12 +33,12 @@ struct C {};
 using Order = Helpers::OrderList<A, B, C>;
 int main()
 {
-  Array<Entry, 3> lists;
+  std::Array<Entry, 3> lists;
   lists[0].value = 1;
   lists[1].value = 2;
   lists[2].value = 3;
   int sum = 0;
   Order::update(lists, sum);
-  println(sum, " ", int(Order::getIndex<C>()));
+  std::println(sum, " ", int(Order::getIndex<C>()));
   return 0;
 }

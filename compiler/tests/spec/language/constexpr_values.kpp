@@ -13,6 +13,6 @@ int main()
   int table[columns * rows];
   for (int i = 0; i < cells(); ++i)
     table[i] = i * Grid::border;
-  println(rows, " ", cells(), " ", (int)(sizeof(table) / sizeof(int)), " ", table[7]);
+  std::println(rows, " ", cells(), " ", (int)(sizeof(table) / sizeof(int)), " ", table[7]);
   return 0;
 }

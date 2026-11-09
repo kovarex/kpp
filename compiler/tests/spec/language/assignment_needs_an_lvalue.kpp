@@ -37,7 +37,7 @@ int main()
   static_cast<int&>(x) = 5;
   g() = 5;
   make() = S();
-  Vector<int> numbers = {1, 2, 3};
+  std::Vector<int> numbers = {1, 2, 3};
   int second = *++numbers.begin() + *--numbers.end();
   f() = 5;
   (x + 1) = 5;

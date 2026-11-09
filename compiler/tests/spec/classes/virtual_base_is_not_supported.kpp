@@ -9,6 +9,6 @@ int main()
 {
   Both both;
   both.Left::value = 3;
-  println(both.Right::value);
+  std::println(both.Right::value);
   return 0;
 }

@@ -5,13 +5,13 @@ int main()
   short int a = (short int)40000;
   signed short int b = (signed short int)40000;
   unsigned short int c = (unsigned short int)70000;
-  println(format("{} {} {} {} {} {}", (int)sizeof(short int), (int)sizeof(signed short int), (int)sizeof(unsigned short int), (int)a, (int)b, (int)c));
-  println((int)sizeof(int short), " ", (int)sizeof(short unsigned int), " ", (int)sizeof(int signed short), " ", (int)sizeof(int unsigned short));
-  println((int)sizeof(long int), " ", (int)sizeof(long long int), " ", (int)sizeof(unsigned long long int), " ", (int)sizeof(int unsigned long), " ", (int)sizeof(int long long), " ", (int)sizeof(long unsigned long int));
-  println((int)sizeof(signed char), " ", (int)sizeof(char signed), " ", (int)sizeof(long double), " ", (int)sizeof(double long), " ", (int)sizeof(signed), " ", (int)sizeof(signed int));
+  std::println(std::format("{} {} {} {} {} {}", (int)sizeof(short int), (int)sizeof(signed short int), (int)sizeof(unsigned short int), (int)a, (int)b, (int)c));
+  std::println((int)sizeof(int short), " ", (int)sizeof(short unsigned int), " ", (int)sizeof(int signed short), " ", (int)sizeof(int unsigned short));
+  std::println((int)sizeof(long int), " ", (int)sizeof(long long int), " ", (int)sizeof(unsigned long long int), " ", (int)sizeof(int unsigned long), " ", (int)sizeof(int long long), " ", (int)sizeof(long unsigned long int));
+  std::println((int)sizeof(signed char), " ", (int)sizeof(char signed), " ", (int)sizeof(long double), " ", (int)sizeof(double long), " ", (int)sizeof(signed), " ", (int)sizeof(signed int));
   signed char s = (signed char)200;
   int unsigned long u = (int unsigned long)-1;
   long long int big = (long long int)1 << 40;
-  println((int)s, " ", u == 4294967295u, " ", big == 1099511627776);
+  std::println((int)s, " ", u == 4294967295u, " ", big == 1099511627776);
   return 0;
 }

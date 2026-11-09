@@ -24,6 +24,6 @@ int main()
   Holder h;
   h.p = array[1];
   h.after = 9;
-  println(array[1].tag, " ", array[1].value, " ", array[1].small, " ", h.p.value, " ", h.after);
+  std::println(array[1].tag, " ", array[1].value, " ", array[1].small, " ", h.p.value, " ", h.after);
   return 0;
 }

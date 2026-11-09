@@ -13,6 +13,6 @@ int main()
   counter::Counter c;
   c.add(2).add(3);
   Program p;
-  println(c.count, " ", c.address() == &c, " ", p.get(), " ", p.self() == &p);
+  std::println(c.count, " ", c.address() == &c, " ", p.get(), " ", p.self() == &p);
   return 0;
 }

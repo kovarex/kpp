@@ -2,7 +2,7 @@
 // found in the converted game: `const Optional<const Territory*> territoryOptional = territoryManager->getTerritoryForChunk(chunk);` (an Optional<Territory*>) in Chart and ChartRenderer, and `Optional<ActionData::SetupBlueprintData>(*parameters)` through SetupBlueprintData's explicit constructor from SetupBlueprintParameters (SelectUpgradePlannerGui, PlayerInputSource)
 struct Territory { int id = 5; };
 Territory t;
-Optional<Territory*> find(bool any) { if (any) return &t; return nullopt; }
+std::Optional<Territory*> find(bool any) { if (any) return &t; return std::nullopt; }
 struct Parameters { int size = 3; };
 struct SetupData
 {
@@ -12,14 +12,14 @@ struct SetupData
 };
 int main()
 {
-  const Optional<const Territory*> some = find(true);
-  const Optional<const Territory*> none = find(false);
-  Optional<double> widened = Optional<float>(1.5f);
+  const std::Optional<const Territory*> some = find(true);
+  const std::Optional<const Territory*> none = find(false);
+  std::Optional<double> widened = std::Optional<float>(1.5f);
   Parameters p;
   const Parameters* parameters = &p;
-  Optional<SetupData> setup = parameters ? Optional<SetupData>(*parameters) : Optional<SetupData>();
-  Optional<String> text = "abc";
-  Optional<double> fromInt = 4;
-  println(some.hasValue() ? (*some)->id : -1, " ", none.hasValue(), " ", *widened, " ", setup->size, " ", text->size(), " ", *fromInt);
+  std::Optional<SetupData> setup = parameters ? std::Optional<SetupData>(*parameters) : std::Optional<SetupData>();
+  std::Optional<std::String> text = "abc";
+  std::Optional<double> fromInt = 4;
+  std::println(some.hasValue() ? (*some)->id : -1, " ", none.hasValue(), " ", *widened, " ", setup->size, " ", text->size(), " ", *fromInt);
   return 0;
 }

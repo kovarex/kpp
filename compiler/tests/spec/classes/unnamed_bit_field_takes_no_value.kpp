@@ -14,9 +14,9 @@ int main()
   GapFirst h{3, 4};
   Gap m = make<Gap>(1, 2, 3);
   GapF mf = make<GapF>(1, 2.5f);
-  println(g.a, " ", g.b, " ", g.c, " ", f.a, " ", f.f, " ", h.a, " ", h.b, " ", m.a, " ", m.b, " ", m.c, " ", mf.a, " ", mf.f);
+  std::println(g.a, " ", g.b, " ", g.c, " ", f.a, " ", f.f, " ", h.a, " ", h.b, " ", m.a, " ", m.b, " ", m.c, " ", mf.a, " ", mf.f);
   constexpr int s = sum(Gap{1, 2, 3});
   static_assert(sum(Gap{1, 2, 3}) == 123);
-  println(s, " ", sum(cg), " ", sum(g));
+  std::println(s, " ", sum(cg), " ", sum(g));
   return 0;
 }

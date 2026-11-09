@@ -3,10 +3,10 @@
 extern "C" import "stdio.h";
 int main()
 {
-  UniformIntDistribution<int> d;
-  UniformIntDistribution<u64> du;
-  DefaultRandomEngine e(12345);
-  UniformIntDistribution<u64> wide(0, 3ull * 4611686018427387904ull - 1);
+  std::UniformIntDistribution<int> d;
+  std::UniformIntDistribution<u64> du;
+  std::DefaultRandomEngine e(12345);
+  std::UniformIntDistribution<u64> wide(0, 3ull * 4611686018427387904ull - 1);
   int low = 0;
   for (int i = 0; i < 300000; ++i)
     low += wide(e) < 4611686018427387904ull;

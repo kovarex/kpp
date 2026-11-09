@@ -16,6 +16,6 @@ public:
 int main()
 {
   Notification n(Notification::Flags::Standard | Notification::Flags::Spoiling);
-  println((int)n.flags);
+  std::println((int)n.flags);
   return 0;
 }

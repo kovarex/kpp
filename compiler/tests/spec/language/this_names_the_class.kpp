@@ -53,11 +53,11 @@ enum class Direction
 int main()
 {
   Train t;
-  println(t.faster().speed, " ", Train::total(), " ", t.moving(), " ", t.copy().speed, " ", t.later());
+  std::println(t.faster().speed, " ", Train::total(), " ", t.moving(), " ", t.copy().speed, " ", t.later());
   Box<double> b;
-  println(b.with(2.5).value);
+  std::println(b.with(2.5).value);
   Derived d;
-  println(d.size(), " ", d.ownSize());
-  println(StringView(Direction::North.turned().str()), " ", StringView(Direction::East.turned().str()));
+  std::println(d.size(), " ", d.ownSize());
+  std::println(std::StringView(Direction::North.turned().str()), " ", std::StringView(Direction::East.turned().str()));
   return 0;
 }

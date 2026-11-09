@@ -4,7 +4,7 @@ class Named
 public:
   const char* name;
   Named(const char* name) : name(name) {}
-  ~Named() { print("~", StringView(this.name), ";"); }
+  ~Named() { std::print("~", std::StringView(this.name), ";"); }
 };
 class Shape
 {
@@ -16,13 +16,13 @@ class Square : public Shape
 public:
   Named label{"label"};
   int sides() const override { return 4; }
-  ~Square() { print("~Square;"); }
+  ~Square() { std::print("~Square;"); }
 };
 class Declared
 {
 public:
   virtual int f() const { return 1; }
-  ~Declared() { print("~Declared;"); }
+  ~Declared() { std::print("~Declared;"); }
 };
 class FromDeclared : public Declared
 {
@@ -35,12 +35,12 @@ public:
   virtual int f() const { return 2; }
   static void destroy(Guarded* g) { delete g; }
 protected:
-  ~Guarded() { print("~Guarded;"); }
+  ~Guarded() { std::print("~Guarded;"); }
 };
 class FromGuarded : public Guarded
 {
 public:
-  ~FromGuarded() { print("~FromGuarded;"); }
+  ~FromGuarded() { std::print("~FromGuarded;"); }
 };
 class Plain
 {
@@ -66,25 +66,25 @@ int main()
 {
   Shape* s = new Square();
   delete s;
-  println();
+  std::println();
   Declared* d = new FromDeclared();
   delete d;
-  println();
+  std::println();
   Guarded::destroy(new FromGuarded());
-  println();
+  std::println();
   Shape* second = new Second();
   delete second;
-  println();
+  std::println();
   Holder<int>* h = new IntHolder();
-  println(h->get());
+  std::println(h->get());
   delete h;
-  println();
+  std::println();
   {
-    UniquePtr<Shape> owned(new Square());
+    std::UniquePtr<Shape> owned(new Square());
   }
-  println();
+  std::println();
   Shape* placed = new Square();
   placed->~Shape();
-  println();
+  std::println();
   return 0;
 }

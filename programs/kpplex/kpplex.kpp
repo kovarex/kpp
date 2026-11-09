@@ -40,10 +40,10 @@ struct SymbolTable
 {
   uint32_t* slots = nullptr; // symbol id + 1; 0 is empty
   uint32_t capacity = 0;
-  Vector<Slice> names;
+  std::Vector<Slice> names;
 
   SymbolTable() { this.rehash(1 << 17); }
-  ~SymbolTable() { free(this.slots); }
+  ~SymbolTable() { std::free(this.slots); }
 
   int size() const { return this.names.size(); }
 
@@ -57,7 +57,7 @@ struct SymbolTable
 
   void rehash(uint32_t newCapacity)
   {
-    uint32_t* newSlots = (uint32_t*)malloc(newCapacity * sizeof(uint32_t));
+    uint32_t* newSlots = (uint32_t*)std::malloc(newCapacity * sizeof(uint32_t));
     memset(newSlots, 0, newCapacity * sizeof(uint32_t));
     for (uint32_t i = 0; i < this.capacity; ++i)
       if (this.slots[i] != 0)
@@ -68,7 +68,7 @@ struct SymbolTable
           index = (index + 1) & (newCapacity - 1);
         newSlots[index] = this.slots[i];
       }
-    free(this.slots);
+    std::free(this.slots);
     this.slots = newSlots;
     this.capacity = newCapacity;
   }
@@ -141,12 +141,12 @@ struct Lexer
   const char* p;
   const char* end;
   SymbolTable* symbols;
-  Vector<Token>* tokens;
+  std::Vector<Token>* tokens;
   uint32_t keywordCount;
   uint32_t lineCount = 0;
   uint32_t errorCount = 0;
 
-  Lexer(const char* text, uint32_t size, SymbolTable* symbols, uint32_t keywordCount, Vector<Token>* tokens)
+  Lexer(const char* text, uint32_t size, SymbolTable* symbols, uint32_t keywordCount, std::Vector<Token>* tokens)
     : begin(text), p(text), end(text + size), symbols(symbols), tokens(tokens), keywordCount(keywordCount)
   {
   }
@@ -439,7 +439,7 @@ struct Lexer
 
 // --- files --------------------------------------------------------------------------------
 
-bool hasSourceExtension(const String& path)
+bool hasSourceExtension(const std::String& path)
 {
   const char* s = path.c_str();
   int n = path.size();
@@ -450,10 +450,10 @@ bool hasSourceExtension(const String& path)
   return n >= 2 && memcmp(s + n - 2, ".h", 2) == 0;
 }
 
-void collectFiles(const String& dir, Vector<String>& out)
+void collectFiles(const std::String& dir, std::Vector<std::String>& out)
 {
   __finddata64_t data;
-  String pattern(dir);
+  std::String pattern(dir);
   pattern.append("\\*");
   intptr_t handle = _findfirst64(pattern.c_str(), &data);
   if (handle == -1)
@@ -462,7 +462,7 @@ void collectFiles(const String& dir, Vector<String>& out)
   {
     if (data.name[0] != '.')
     {
-      String path(dir);
+      std::String path(dir);
       path.append("\\");
       path.append(data.name);
       if ((data.attrib & _A_SUBDIR) != 0)
@@ -485,7 +485,7 @@ char* readFile(const char* path, uint32_t& size)
   fseek(f, 0, SEEK_END);
   long length = ftell(f);
   fseek(f, 0, SEEK_SET);
-  char* buffer = (char*)malloc((size_t)length + 1);
+  char* buffer = (char*)std::malloc((size_t)length + 1);
   size = (uint32_t)fread(buffer, 1, (size_t)length, f);
   buffer[size] = 0;
   fclose(f);
@@ -508,16 +508,16 @@ int main(int argc, char** argv)
     printf("usage: kpplex <directory>...\n");
     return 1;
   }
-  Vector<String> paths;
+  std::Vector<std::String> paths;
   for (int i = 1; i < argc; ++i)
   {
-    String root(argv[i]);
+    std::String root(argv[i]);
     collectFiles(root, paths);
   }
 
   double t0 = now();
-  Vector<char*> texts;
-  Vector<uint32_t> sizes;
+  std::Vector<char*> texts;
+  std::Vector<uint32_t> sizes;
   uint64_t bytes = 0;
   for (int i = 0; i < paths.size(); ++i)
   {
@@ -536,7 +536,7 @@ int main(int argc, char** argv)
 
   SymbolTable symbols;
   uint32_t keywordCount = (uint32_t)addKeywords(symbols);
-  Vector<Token> tokens;
+  std::Vector<Token> tokens;
   tokens.reserve((int)(bytes / 5));
   uint64_t lines = 0;
   uint64_t errors = 0;

@@ -615,19 +615,19 @@ int main()
   int differ = 0;
   for (const PythonInstant& p : pythonInstants)
   {
-    TimePoint<SystemClock> t(Duration<long long, Ratio<1, 10000000>>(p.microseconds * 10));
-    String rfc = formatRfc3339(t, 6);
-    String http = formatHttpDate(t);
-    Optional<TimePoint<SystemClock>> rfcBack = parseRfc3339(p.rfc3339);
-    Optional<TimePoint<SystemClock>> httpBack = parseHttpDate(p.httpDate);
-    TimePoint<SystemClock> whole = SystemClock::from_time_t(SystemClock::to_time_t(t));
+    std::TimePoint<std::SystemClock> t(std::Duration<long long, std::Ratio<1, 10000000>>(p.microseconds * 10));
+    std::String rfc = std::formatRfc3339(t, 6);
+    std::String http = std::formatHttpDate(t);
+    std::Optional<std::TimePoint<std::SystemClock>> rfcBack = std::parseRfc3339(p.rfc3339);
+    std::Optional<std::TimePoint<std::SystemClock>> httpBack = std::parseHttpDate(p.httpDate);
+    std::TimePoint<std::SystemClock> whole = std::SystemClock::from_time_t(std::SystemClock::to_time_t(t));
     bool same = rfc == p.rfc3339 && http == p.httpDate && rfcBack.hasValue() && rfcBack.value() == t && httpBack.hasValue() && httpBack.value() == whole;
     if (!same)
     {
       ++differ;
-      println(StringView(p.rfc3339), ": ", rfc, " ", http);
+      std::println(std::StringView(p.rfc3339), ": ", rfc, " ", http);
     }
   }
-  println(int(sizeof(pythonInstants) / sizeof(pythonInstants[0])), " instants, ", differ, " differ");
+  std::println(int(sizeof(pythonInstants) / sizeof(pythonInstants[0])), " instants, ", differ, " differ");
   return 0;
 }

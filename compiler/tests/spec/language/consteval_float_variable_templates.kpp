@@ -6,10 +6,10 @@ template<typename T>
 constexpr T three_v = T(3);
 int main()
 {
-  double pi = Numbers::pi_v<double>;
+  double pi = std::Numbers::pi_v<double>;
   float half = half_v<float>;
   int three = three_v<int>;
   static_assert(half_v<double> == 0.5 && three_v<int> == 3);
-  println(int(pi * 1000), " ", int(half * 10), " ", three);
+  std::println(int(pi * 1000), " ", int(half * 10), " ", three);
   return 0;
 }

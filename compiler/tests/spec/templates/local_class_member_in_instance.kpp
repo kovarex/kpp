@@ -8,9 +8,9 @@ int dispatch(int count, Func fn)
     int item;
     int order;
     bool operator<(const ToCall& other) const { return this.order < other.order; }
-    static Vector<ToCall> collect(int count)
+    static std::Vector<ToCall> collect(int count)
     {
-      Vector<ToCall> result;
+      std::Vector<ToCall> result;
       for (int i = 0; i < count; ++i)
         result.push_back(ToCall{i, count - i});
       return result;
@@ -23,6 +23,6 @@ int dispatch(int count, Func fn)
 }
 int main()
 {
-  println(dispatch(3, [](int item, int order) { return item * 10 + order; }));
+  std::println(dispatch(3, [](int item, int order) { return item * 10 + order; }));
   return 0;
 }

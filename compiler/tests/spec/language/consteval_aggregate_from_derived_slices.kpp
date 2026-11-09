@@ -26,6 +26,6 @@ constexpr Out o4{d, 7};
 int main()
 {
   Out r{makeD(), 8};
-  println(b2.x, " ", o2.b.x, " ", o2.z, " ", o3.b.x, " ", o3.z, " ", o4.b.x, " ", o4.z, " ", r.b.x, " ", r.z);
+  std::println(b2.x, " ", o2.b.x, " ", o2.z, " ", o3.b.x, " ", o3.z, " ", o4.b.x, " ", o4.z, " ", r.b.x, " ", r.z);
   return 0;
 }

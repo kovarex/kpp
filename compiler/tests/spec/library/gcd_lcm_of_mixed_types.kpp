@@ -7,6 +7,6 @@ int main()
   int b = 18;
   u8 c = 8;
   i64 d = -12;
-  printf("%u %u %d / %lld %lld\n", lcm(a, b), gcd(a, b), (int)sizeof(lcm(a, b)), (long long)lcm(c, d), (long long)gcd(c, d) * 2);
+  printf("%u %u %d / %lld %lld\n", std::lcm(a, b), std::gcd(a, b), (int)sizeof(std::lcm(a, b)), (long long)std::lcm(c, d), (long long)std::gcd(c, d) * 2);
   return 0;
 }

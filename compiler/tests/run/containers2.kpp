@@ -5,10 +5,10 @@
 extern "C" int printf(const char* format, ...);
 
 // A HashMap whose slots the churn check counts (its table is protected).
-class ChurnedMap : public HashMap<int, int>
+class ChurnedMap : public std::HashMap<int, int>
 {
 public:
-  ContainerSize slots() const { return this->table.slotCount(); }
+  std::ContainerSize slots() const { return this->table.slotCount(); }
 };
 
 uint64_t state = 12345;
@@ -46,14 +46,14 @@ struct SelfAware
 
 void moves()
 {
-  Vector<SelfAware> values;
+  std::Vector<SelfAware> values;
   for (int i = 0; i < 100; ++i)
     values.push_back(SelfAware(nextInt(10)));
   values.insert(0, SelfAware(5));
   values.erase(10);
   values.erase(values.begin() + 20, values.begin() + 30);
-  stableSort(values.begin(), values.end());
-  HashMap<int, SelfAware> map;
+  std::stableSort(values.begin(), values.end());
+  std::HashMap<int, SelfAware> map;
   for (int i = 0; i < 100; ++i)
     map[i] = SelfAware(i);
   int valid = 0;
@@ -66,66 +66,66 @@ void moves()
 void strings()
 {
   // Growing across the 30-character small capacity one character at a time.
-  String text;
+  std::String text;
   for (int i = 0; i < 40; ++i)
     text.push_back(char('a' + i % 26));
   printf("%zu %d %s\n", text.size(), text.isLarge() ? 1 : 0, text.c_str());
-  String small("exactly-30-characters!!!!!!!!!");
-  String large("exactly-31-characters!!!!!!!!!!");
+  std::String small("exactly-30-characters!!!!!!!!!");
+  std::String large("exactly-31-characters!!!!!!!!!!");
   printf("%zu %d %zu %d\n", small.size(), small.isLarge() ? 1 : 0, large.size(), large.isLarge() ? 1 : 0);
 
   // Appending and inserting a string into itself, small and large.
-  String twice("abc");
+  std::String twice("abc");
   twice.append(twice);
   twice.append(twice);
   twice.append(twice);
   twice.append(twice);
   printf("%zu %s\n", twice.size(), twice.c_str());
-  String inner("0123456789");
+  std::String inner("0123456789");
   inner.insert(5, inner.c_str() + 2, 6);
   printf("%s\n", inner.c_str());
 
   // Copies and moves keep their own characters.
-  String a = large;
-  String b = small;
-  String moved = move(a);
+  std::String a = large;
+  std::String b = small;
+  std::String moved = std::move(a);
   a = b;
   b.append("+more");
   printf("%s|%s|%s|%d\n", a.c_str(), b.c_str(), moved.c_str(), a == small ? 1 : 0);
-  String assigned("short");
+  std::String assigned("short");
   assigned = large;
-  assigned = String("x");
+  assigned = std::String("x");
   printf("%s %zu\n", assigned.c_str(), assigned.size());
 
   // Searching.
-  String haystack("the needle and the other needle");
+  std::String haystack("the needle and the other needle");
   printf("%zu %zu %zu %zu %zu %zu\n", haystack.find("needle"), haystack.find("needle", 5), haystack.find("pin"), haystack.find('o'),
-         haystack.find("", 3), haystack.find(String("the"), 1));
+         haystack.find("", 3), haystack.find(std::String("the"), 1));
   printf("%s|%s|%s\n", haystack.substr(4, 6).c_str(), haystack.substr(26).c_str(), haystack.substr(26, -1).c_str());
 
   // Editing.
-  String edit("hello world");
+  std::String edit("hello world");
   edit.erase(5, 6);
   edit.resize(8, '!');
   edit.insert(0, 2, '>');
   printf("%s %zu\n", edit.c_str(), edit.size());
   edit.clear();
   printf("[%s] %zu %d\n", edit.c_str(), edit.size(), edit.empty() ? 1 : 0);
-  String joined = String("left") + "+" + large + 'X';
-  printf("%s %d\n", joined.c_str(), String("abc") < String("abd") ? 1 : 0);
+  std::String joined = std::String("left") + "+" + large + 'X';
+  printf("%s %d\n", joined.c_str(), std::String("abc") < std::String("abd") ? 1 : 0);
 }
 
 void vectors()
 {
   // push_back of an element of the vector itself while it grows.
-  Vector<String> words;
-  words.push_back(String("first word that is long enough to live on the heap"));
+  std::Vector<std::String> words;
+  words.push_back(std::String("first word that is long enough to live on the heap"));
   for (int i = 0; i < 20; ++i)
     words.push_back(words[0]);
   words.insert(0, words[words.size() - 1]);
   printf("%zu %s\n", words.size(), words[20].c_str());
 
-  Vector<int> numbers;
+  std::Vector<int> numbers;
   for (int i = 0; i < 4; ++i)
     numbers.push_back(i);
   numbers.push_back(numbers[3]);
@@ -137,7 +137,7 @@ void vectors()
     printf("%d ", n);
   printf("\n");
 
-  Vector<String> copy = words;
+  std::Vector<std::String> copy = words;
   copy.resize(2);
   copy.resize(3);
   printf("%zu %zu [%s]\n", copy.size(), words.size(), copy[2].c_str());
@@ -145,29 +145,29 @@ void vectors()
 
 void sorting()
 {
-  Vector<int> values;
+  std::Vector<int> values;
   for (int i = 0; i < 5000; ++i)
     values.push_back(nextInt(1000));
-  sort(values.begin(), values.end(), [](int a, int b) { return a > b; });
+  std::sort(values.begin(), values.end(), [](int a, int b) { return a > b; });
   bool descending = true;
   for (int i = 1; i < values.size(); ++i)
     if (values[i - 1] < values[i])
       descending = false;
-  Vector<int> heap;
+  std::Vector<int> heap;
   for (int i = 0; i < 300; ++i)
     heap.push_back(nextInt(50));
   auto less = [](int a, int b) { return a < b; };
-  heapSort(heap.begin(), heap.end(), less);
+  std::heapSort(heap.begin(), heap.end(), less);
   bool ascending = true;
   for (int i = 1; i < heap.size(); ++i)
     if (heap[i] < heap[i - 1])
       ascending = false;
   printf("%d %d %d %d\n", descending ? 1 : 0, ascending ? 1 : 0, values[0], heap[0]);
 
-  Vector<String> names;
+  std::Vector<std::String> names;
   for (int i = 0; i < 200; ++i)
-    names.push_back(toString(nextInt(100000)) + String(i % 3 == 0 ? " and a tail long enough to allocate" : ""));
-  sort(names.begin(), names.end());
+    names.push_back(std::toString(nextInt(100000)) + std::String(i % 3 == 0 ? " and a tail long enough to allocate" : ""));
+  std::sort(names.begin(), names.end());
   bool sorted = true;
   for (int i = 1; i < names.size(); ++i)
     if (names[i] < names[i - 1])
@@ -175,10 +175,10 @@ void sorting()
   printf("%d\n", sorted ? 1 : 0);
 
   // stableSort keeps the original order of equal keys.
-  Vector<Pair<int, int>> pairs;
+  std::Vector<std::Pair<int, int>> pairs;
   for (int i = 0; i < 1000; ++i)
-    pairs.push_back(Pair<int, int>(nextInt(10), i));
-  stableSort(pairs.begin(), pairs.end(), [](const Pair<int, int>& a, const Pair<int, int>& b) { return a.first < b.first; });
+    pairs.push_back(std::Pair<int, int>(nextInt(10), i));
+  std::stableSort(pairs.begin(), pairs.end(), [](const std::Pair<int, int>& a, const std::Pair<int, int>& b) { return a.first < b.first; });
   bool stable = true;
   for (int i = 1; i < pairs.size(); ++i)
     if (pairs[i].first < pairs[i - 1].first || (pairs[i].first == pairs[i - 1].first && pairs[i].second < pairs[i - 1].second))
@@ -190,13 +190,13 @@ void sorting()
   for (int round = 0; round < 100; ++round)
   {
     int n = 1 + nextInt(3000);
-    Vector<int> data, reference;
+    std::Vector<int> data, reference;
     for (int i = 0; i < n; ++i)
       data.push_back(nextInt(round % 2 == 1 ? 50 : 100000));
     reference = data;
-    sort(reference.begin(), reference.end());
+    std::sort(reference.begin(), reference.end());
     int k = nextInt(n);
-    nthElement(data.begin(), data.begin() + k, data.end());
+    std::nthElement(data.begin(), data.begin() + k, data.end());
     selectionErrors += data[k] == reference[k] ? 0 : 1;
     for (int i = 0; i < n; ++i)
       selectionErrors += (i < k && data[k] < data[i]) || (i > k && data[i] < data[k]) ? 1 : 0;
@@ -218,26 +218,26 @@ void hashing()
   printf("%zu %d\n", churn.size(), churn.slots() <= 256 ? 1 : 0);
 
   // A copy keeps the deleted markers that later keys' probe paths run through.
-  HashMap<String, int> map;
+  std::HashMap<std::String, int> map;
   for (int i = 0; i < 1000; ++i)
-    map[toString(i)] = i;
+    map[std::toString(i)] = i;
   for (int i = 0; i < 1000; i += 3)
-    map.erase(toString(i));
-  HashMap<String, int> copy = map;
+    map.erase(std::toString(i));
+  std::HashMap<std::String, int> copy = map;
   int found = 0;
   for (int i = 0; i < 1000; ++i)
-    if (copy.contains(toString(i)))
-      found += copy.find(toString(i))->second == i ? 1 : 100000;
-  HashMap<String, int> moved = move(copy);
-  map.insert_or_assign(String("1"), 11);
-  printf("%d %zu %zu %d %d\n", found, moved.size(), copy.size(), map.find(String("1"))->second, map.contains(String("3")) ? 1 : 0);
+    if (copy.contains(std::toString(i)))
+      found += copy.find(std::toString(i))->second == i ? 1 : 100000;
+  std::HashMap<std::String, int> moved = std::move(copy);
+  map.insert_or_assign(std::String("1"), 11);
+  printf("%d %zu %zu %d %d\n", found, moved.size(), copy.size(), map.find(std::String("1"))->second, map.contains(std::String("3")) ? 1 : 0);
 
   // Aligned pointers as keys.
-  Vector<int*> blocks;
-  HashSet<int*> pointers;
+  std::Vector<int*> blocks;
+  std::HashSet<int*> pointers;
   for (int i = 0; i < 500; ++i)
   {
-    int* block = (int*)malloc(64);
+    int* block = (int*)std::malloc(64);
     blocks.push_back(block);
     pointers.insert(block);
   }
@@ -246,26 +246,26 @@ void hashing()
     present += pointers.contains(block) ? 1 : 0;
   for (int i = 0; i < 500; i += 2)
     pointers.erase(blocks[i]);
-  HashSet<int*> pointersCopy = pointers;
+  std::HashSet<int*> pointersCopy = pointers;
   printf("%d %zu %d\n", present, pointers.size(), pointersCopy.contains(blocks[1]) ? 1 : 0);
   for (int* block : blocks)
-    free(block);
+    std::free(block);
 
   // HashMap keeps entries in place while the table grows; FastHashMap agrees with it on contents.
-  HashMap<int, String> stable;
-  String* kept = &stable[7];
-  *kept = String("stays put while the table grows around it");
-  FastHashMap<int, int> fast;
+  std::HashMap<int, std::String> stable;
+  std::String* kept = &stable[7];
+  *kept = std::String("stays put while the table grows around it");
+  std::FastHashMap<int, int> fast;
   int64_t sum = 0;
   for (int i = 0; i < 20000; ++i)
   {
-    stable[i * 13] = toString(i);
+    stable[i * 13] = std::toString(i);
     fast[i % 5000] += i;
     if (i % 3 == 0)
       fast.erase(nextInt(5000));
   }
   bool sameAddress = &stable[7] == kept;
-  auto inserted = stable.insert(Pair<int, String>(7, String("ignored")));
+  auto inserted = stable.insert(std::Pair<int, std::String>(7, std::String("ignored")));
   for (auto& entry : fast)
     sum += entry.second;
   int visited = 0;
@@ -277,18 +277,18 @@ void hashing()
 // The checked accessors throw OutOfRange.
 void checked()
 {
-  Vector<int> values = {1, 2, 3};
-  String text("abc");
-  Map<int, int> map;
+  std::Vector<int> values = {1, 2, 3};
+  std::String text("abc");
+  std::Map<int, int> map;
   map[1] = 10;
-  HashMap<int, int> hash;
+  std::HashMap<int, int> hash;
   int caught = 0;
-  try { values.at(3); } catch (const OutOfRange& e) { ++caught; }
-  try { text.substr(4); } catch (const OutOfRange& e) { ++caught; }
-  try { text.erase(5, 1); } catch (const OutOfRange& e) { ++caught; }
-  try { map.at(2); } catch (const OutOfRange& e) { ++caught; }
-  try { hash.at(2); } catch (const OutOfRange& e) { ++caught; }
-  String end = text.substr(3);
+  try { values.at(3); } catch (const std::OutOfRange& e) { ++caught; }
+  try { text.substr(4); } catch (const std::OutOfRange& e) { ++caught; }
+  try { text.erase(5, 1); } catch (const std::OutOfRange& e) { ++caught; }
+  try { map.at(2); } catch (const std::OutOfRange& e) { ++caught; }
+  try { hash.at(2); } catch (const std::OutOfRange& e) { ++caught; }
+  std::String end = text.substr(3);
   printf("%d %d [%s] %d %c\n", caught, values.at(2), end.c_str(), map.at(1), text.at(1));
 }
 

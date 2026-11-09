@@ -4,12 +4,12 @@ struct Vec
 {
   int x, y;
   operator bool() const { return this.x != 0 || this.y != 0; }
-  implicit operator String() const { return format("({}, {})", this.x, this.y); }
+  implicit operator std::String() const { return std::format("({}, {})", this.x, this.y); }
 };
 int main()
 {
   Vec v{1, 2};
-  String text = v;
-  println(text, " ", bool(v));
+  std::String text = v;
+  std::println(text, " ", bool(v));
   return 0;
 }

@@ -3,7 +3,7 @@
 // factorio: the class operator new work; clang: no matching function for call to 'operator new'
 struct OnlyPlain
 {
-  void* operator new(size_t size) { return malloc(size); }
+  void* operator new(size_t size) { return std::malloc(size); }
 };
 int main()
 {

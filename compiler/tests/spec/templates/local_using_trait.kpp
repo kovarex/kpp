@@ -7,8 +7,8 @@ enum Unsigned : uint32_t { X = 0, Y = 1 };
 template<typename E>
 int32_t classify()
 {
-  using U = UnderlyingType<E>;
-  if constexpr (isUnsigned<U>)
+  using U = std::UnderlyingType<E>;
+  if constexpr (std::isUnsigned<U>)
     return 1;
   else
     return 0;
@@ -20,6 +20,6 @@ auto main() -> int32_t
   // Unsigned -> uint32 -> isUnsigned = true -> 1
   // Signed   -> int32  -> isUnsigned = false -> 0
   // result = 10
-  println(r);
+  std::println(r);
   return 0;
 }

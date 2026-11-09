@@ -26,6 +26,6 @@ int main()
   Box<int> a(4), b(4);
   Box<int>::Inner inner;
   Local local;
-  println(a.get(), " ", a == b, " ", Box<int>::count, " ", int(a.kind()), " ", inner.depth, " ", local.twice(), " ", peekId(a));
+  std::println(a.get(), " ", a == b, " ", Box<int>::count, " ", int(a.kind()), " ", inner.depth, " ", local.twice(), " ", peekId(a));
   return 0;
 }

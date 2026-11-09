@@ -25,6 +25,6 @@ public:
 };
 int main()
 {
-  println(Boiler::staticInit());
+  std::println(Boiler::staticInit());
   return 0;
 }

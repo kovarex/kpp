@@ -24,7 +24,7 @@ int main()
   Base* a = make([seven] { return seven; });
   Base* b = make([] { return 40; });
   Base* c = make([&seven] { return seven * 100; });
-  println(a->run(), " ", b->run(), " ", c->run());
+  std::println(a->run(), " ", b->run(), " ", c->run());
   delete a;
   delete b;
   delete c;

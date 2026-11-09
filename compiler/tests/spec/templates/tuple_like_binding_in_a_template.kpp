@@ -1,13 +1,13 @@
 // spec: a structured binding of a tuple-like value works in a function template, as outside one: the names read and write through get<i> of the hidden object (`7`)
 extern "C" int printf(const char* format, ...);
-Tuple<int*, bool> lookUp(int* where) { return Tuple<int*, bool>(where, true); }
+std::Tuple<int*, bool> lookUp(int* where) { return std::Tuple<int*, bool>(where, true); }
 
 template<typename T, typename... Args>
 int inTemplate(int* where, Args&&... args)
 {
   auto [it, created] = lookUp(where);
   if (created)
-    *it = T(forward<Args>(args)...);
+    *it = T(std::forward<Args>(args)...);
   return *it;
 }
 

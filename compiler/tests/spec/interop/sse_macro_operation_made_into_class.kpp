@@ -79,9 +79,9 @@ float castStrict() { return _mm_cvtss_f32(Strict(_mm_shuffle_ps(a, a, _MM_SHUFFL
 
 int main()
 {
-  println(initialised(), " ", returned(), " ", byValue(), " ", byReference(), " ", assigned(), " ", operand());
-  println(assignedLanes(), " ", initialisedLanes(), " ", directLanes());
-  println(initialisedInts(), " ", intsByValue());
-  println(directStrict(), " ", bracedStrict(), " ", memberStrict(), " ", newStrict(), " ", castStrict());
+  std::println(initialised(), " ", returned(), " ", byValue(), " ", byReference(), " ", assigned(), " ", operand());
+  std::println(assignedLanes(), " ", initialisedLanes(), " ", directLanes());
+  std::println(initialisedInts(), " ", intsByValue());
+  std::println(directStrict(), " ", bracedStrict(), " ", memberStrict(), " ", newStrict(), " ", castStrict());
   return 0;
 }

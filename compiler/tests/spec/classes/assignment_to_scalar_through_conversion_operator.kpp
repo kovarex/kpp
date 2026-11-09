@@ -24,6 +24,6 @@ int main()
   assigned = act(1);
   ActionResult::Enum kind = ActionResult::Success;
   kind = act(0);
-  println(declared, " ", tested, " ", assigned, " ", kind == ActionResult::GenericFail);
+  std::println(declared, " ", tested, " ", assigned, " ", kind == ActionResult::GenericFail);
   return 0;
 }

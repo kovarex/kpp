@@ -8,12 +8,12 @@ class Square : public Shape
 {
 public:
   int sides() const override { return 4; }
-  ~Square() override { println("~Square"); }
+  ~Square() override { std::println("~Square"); }
 };
 int main()
 {
   Shape* s = new Square();
-  println(s->sides());
+  std::println(s->sides());
   delete s;
   return 0;
 }

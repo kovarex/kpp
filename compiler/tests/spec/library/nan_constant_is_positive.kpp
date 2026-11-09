@@ -4,6 +4,6 @@ int main()
 {
   double n = NAN;
   float f = NAN;
-  println(signbit(n), " ", signbit(f), " ", signbit(-n), " ", isnan(n), " ", isnan(f), " ", n != n);
+  std::println(std::signbit(n), " ", std::signbit(f), " ", std::signbit(-n), " ", std::isnan(n), " ", std::isnan(f), " ", n != n);
   return 0;
 }

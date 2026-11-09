@@ -31,6 +31,6 @@ constexpr int steps()
 constexpr int stepped = steps();
 int main()
 {
-  println(steps(), " ", stepped);
+  std::println(steps(), " ", stepped);
   return 0;
 }

@@ -36,8 +36,8 @@ int main()
   Case c{"neg", construct<Neg>};
   const Expr& (*binary)(const Expr&, const Expr&) = construct<Add>;
   int sum = 0;
-  for (const auto& t : InitializerList<TestCase<const Expr& (*)(const Expr&)>>{{"a", construct<Neg>}, {"b", &construct<Neg>}})
+  for (const auto& t : std::InitializerList<TestCase<const Expr& (*)(const Expr&)>>{{"a", construct<Neg>}, {"b", &construct<Neg>}})
     sum += t.constructor(storage[0]).v;
-  println(c.constructor(storage[0]).v, " ", binary(storage[0], storage[0]).v, " ", sum);
+  std::println(c.constructor(storage[0]).v, " ", binary(storage[0], storage[0]).v, " ", sum);
   return 0;
 }

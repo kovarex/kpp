@@ -35,10 +35,10 @@ int main()
   Narrow n{};
   int offsetE = int((const char*)&m.e - (const char*)&m), offsetH = int((const char*)&m.h - (const char*)&m);
   int offsetTail = int((const char*)&n.tail - (const char*)&n);
-  println(sizeof(Mixed) == cSizeMixed() ? 1 : 0, " ", alignof(Mixed) == cAlignMixed() ? 1 : 0, " ", offsetE == cOffsetE() ? 1 : 0, " ",
+  std::println(sizeof(Mixed) == cSizeMixed() ? 1 : 0, " ", alignof(Mixed) == cAlignMixed() ? 1 : 0, " ", offsetE == cOffsetE() ? 1 : 0, " ",
           offsetH == cOffsetH() ? 1 : 0, " ", sizeof(Narrow) == cSizeNarrow() ? 1 : 0, " ", offsetTail == cOffsetTail() ? 1 : 0);
   cFill(&m);
-  println(int(m.a), " ", int(m.b), " ", m.c, " ", m.d, " ", int(m.e), " ", m.f, " ", m.g, " ", int(m.h));
+  std::println(int(m.a), " ", int(m.b), " ", m.c, " ", m.d, " ", int(m.e), " ", m.f, " ", m.g, " ", int(m.h));
   Mixed k{};
   k.a = 2;
   k.b = -7;
@@ -51,14 +51,14 @@ int main()
   for (int which = 0; which < 8; ++which)
   {
     if (which > 0)
-      print(" ");
-    print(cField(&k, which));
+      std::print(" ");
+    std::print(cField(&k, which));
   }
-  println();
+  std::println();
   n.a = -1;
   n.b = 1;
   n.c = -2;
   n.tail = 0;
-  println(cNarrow(&n));
+  std::println(cNarrow(&n));
   return 0;
 }

@@ -9,17 +9,17 @@ enum class Kind : u8
 enum class Mood
 {
   { Calm, Angry }
-  void appendTo(String& out) const { out.append("own"); }
+  void appendTo(std::String& out) const { out.append("own"); }
 };
-void show(Text text)
+void show(std::Text text)
 {
-  String s;
+  std::String s;
   text.appendTo(s);
   printf("[%s]", s.c_str());
 }
 constexpr int length(Direction d)
 {
-  String s;
+  std::String s;
   d.appendTo(s);
   return int(s.size());
 }
@@ -27,7 +27,7 @@ static_assert(length(Direction::South) == 5);
 static_assert(length(Direction(7)) == 12);
 int main()
 {
-  String out;
+  std::String out;
   Direction::North.appendTo(out);
   out.append(" ");
   Shade s = Dark;

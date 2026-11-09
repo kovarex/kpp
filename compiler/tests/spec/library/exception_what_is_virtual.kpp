@@ -1,9 +1,9 @@
 // spec: Exception's what() is virtual, as std::exception's is: a class deriving from an error type and giving its own what() (`override`) is read through a reference to any of its bases, and an Exception is polymorphic (its destructor virtual) (`mine mine plain`)
 // factorio: the tests' UnitTest++ AssertException, whose what() is its description while its runtime_error base holds "": `virtual char const* what() const throw() override` (an error since the override check, c9a3d36d, while what() was not virtual)
-class MineError : public RuntimeError
+class MineError : public std::RuntimeError
 {
 public:
-  MineError() : RuntimeError(String("")) {}
+  MineError() : RuntimeError(std::String("")) {}
   const char* what() const noexcept override { return "mine"; }
 };
 
@@ -13,20 +13,20 @@ int main()
   {
     throw MineError();
   }
-  catch (const Exception& e)
+  catch (const std::Exception& e)
   {
-    print(StringView(e.what()), " ");
+    std::print(std::StringView(e.what()), " ");
   }
   try
   {
     throw MineError();
   }
-  catch (const RuntimeError& e)
+  catch (const std::RuntimeError& e)
   {
-    print(StringView(e.what()), " ");
+    std::print(std::StringView(e.what()), " ");
   }
-  Exception* plain = new LogicError(String("plain"));
-  println(StringView(plain->what()));
+  std::Exception* plain = new std::LogicError(std::String("plain"));
+  std::println(std::StringView(plain->what()));
   delete plain;
   return 0;
 }

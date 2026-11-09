@@ -15,6 +15,6 @@ int main(int argc, char** argv)
   callbacks.tail = 0;
   if (argc > 100)
     exit_with(3); // (declared: not called here)
-  println(sizeof(Callbacks), " ", sum_values(values, 4), " ", apply_callbacks(&callbacks));
+  std::println(sizeof(Callbacks), " ", sum_values(values, 4), " ", apply_callbacks(&callbacks));
   return 0;
 }

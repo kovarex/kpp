@@ -3,8 +3,8 @@
 extern "C" import "extern_c_variables.h";
 int main()
 {
-  println(specTable[0].a + specTable[0].b, " ", specTable[1].b, " ", specCounter, " ", specScalar);
+  std::println(specTable[0].a + specTable[0].b, " ", specTable[1].b, " ", specCounter, " ", specScalar);
   specCounter = 100;
-  println(specBump(), " ", specCounter);
+  std::println(specBump(), " ", specCounter);
   return 0;
 }

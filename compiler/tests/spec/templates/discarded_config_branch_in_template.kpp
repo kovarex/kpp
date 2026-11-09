@@ -13,6 +13,6 @@ template<class T> int pick(T x)
 }
 int main()
 {
-  println(pick(10), " ", pick(20.5));
+  std::println(pick(10), " ", pick(20.5));
   return 0;
 }

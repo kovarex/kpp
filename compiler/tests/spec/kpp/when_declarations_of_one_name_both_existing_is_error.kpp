@@ -4,15 +4,15 @@
 template<typename T>
 int limit()
 {
-  when (isTriviallyCopyable<T>) int size = 1;
+  when (std::isTriviallyCopyable<T>) int size = 1;
   when (sizeof(T) == 4) int size = 2;
-  if constexpr (isTriviallyCopyable<T>)
+  if constexpr (std::isTriviallyCopyable<T>)
     return size;
   return 0;
 }
 
 int main()
 {
-  println(limit<double>(), " ", limit<int>());
+  std::println(limit<double>(), " ", limit<int>());
   return 0;
 }

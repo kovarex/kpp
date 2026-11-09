@@ -4,6 +4,6 @@ extern "C" import "c_header_null_pointer_spellings.h";
 
 int main()
 {
-  println(zero_ul(), " ", zero_lu(), " ", zero_ull(), " ", zero_hex(), " ", zero_octal(), " ", some());
+  std::println(zero_ul(), " ", zero_lu(), " ", zero_ull(), " ", zero_hex(), " ", zero_octal(), " ", some());
   return 0;
 }

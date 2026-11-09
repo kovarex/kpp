@@ -4,7 +4,7 @@ int plainDeclaration()
 {
   auto run = []
   {
-    auto [key, value] = Tuple<int, int>(3, 30);
+    auto [key, value] = std::Tuple<int, int>(3, 30);
     return key + value;
   };
   return run();
@@ -12,7 +12,7 @@ int plainDeclaration()
 
 int rangeForByCopy()
 {
-  Tuple<int, int> rows[2] = {Tuple<int, int>(1, 4), Tuple<int, int>(2, 5)};
+  std::Tuple<int, int> rows[2] = {std::Tuple<int, int>(1, 4), std::Tuple<int, int>(2, 5)};
   int base = 1000;
   auto run = [=]
   {
@@ -28,7 +28,7 @@ int genericLambda()
 {
   auto g = [](auto... xs)
   {
-    Tuple<int, double> t(3, 0.5);
+    std::Tuple<int, double> t(3, 0.5);
     auto [i, d] = t;
     return i * (xs + ...) + int(d * 10);
   };
@@ -37,7 +37,7 @@ int genericLambda()
 
 int capturedBindings()
 {
-  Tuple<int, int> t(7, 8);
+  std::Tuple<int, int> t(7, 8);
   auto [a, b] = t;
   auto byCopy = [a, b] { return a * 10 + b; };
   auto byRef = [&a, &b] { a += 1; b += 2; return a + b; };
@@ -48,7 +48,7 @@ int capturedBindings()
 
 int nestedLambdas()
 {
-  Tuple<int, int> rows[2] = {Tuple<int, int>(1, 2), Tuple<int, int>(3, 4)};
+  std::Tuple<int, int> rows[2] = {std::Tuple<int, int>(1, 2), std::Tuple<int, int>(3, 4)};
   int out = 0;
   auto outer = [&]
   {

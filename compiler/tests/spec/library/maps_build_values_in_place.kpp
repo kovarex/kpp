@@ -16,22 +16,22 @@ struct File
 };
 int main()
 {
-  HashMap<String, const Shader> shaders;
+  std::HashMap<std::String, const Shader> shaders;
   for (int i = 0; i < 100; ++i)
-    shaders.try_emplace(toString(i), i, i * 2);
-  bool added = shaders.try_emplace(String("7"), 0, 0).second;
-  const Shader& seven = shaders.find(String("7"))->second;
-  HashMap<int, File> open;
+    shaders.try_emplace(std::toString(i), i, i * 2);
+  bool added = shaders.try_emplace(std::String("7"), 0, 0).second;
+  const Shader& seven = shaders.find(std::String("7"))->second;
+  std::HashMap<int, File> open;
   open[1].refCount = 4;
-  Map<int, File> files;
+  std::Map<int, File> files;
   files[3].refCount += 2;
   files[3].refCount += 1;
-  Map<int, const Shader> byId;
+  std::Map<int, const Shader> byId;
   byId.try_emplace(5, 50, 1);
-  HashMap<int, const UniquePtr<int>> owned;
+  std::HashMap<int, const std::UniquePtr<int>> owned;
   owned.try_emplace(1, new int(5));
-  UniquePtr<int> spare(new int(7));
-  bool replaced = owned.try_emplace(1, move(spare)).second;
-  println(shaders.size(), " ", added, " ", seven.id, " ", seven.kind, " ", open[1].refCount, " ", files[3].refCount, " ", byId.find(5)->second.id, " ", *owned.find(1)->second, " ", replaced ? 0 : *spare);
+  std::UniquePtr<int> spare(new int(7));
+  bool replaced = owned.try_emplace(1, std::move(spare)).second;
+  std::println(shaders.size(), " ", added, " ", seven.id, " ", seven.kind, " ", open[1].refCount, " ", files[3].refCount, " ", byId.find(5)->second.id, " ", *owned.find(1)->second, " ", replaced ? 0 : *spare);
   return 0;
 }

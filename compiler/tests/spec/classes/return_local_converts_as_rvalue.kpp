@@ -11,13 +11,13 @@ class Derived : public Base
 public:
   int id() const override { return 2; }
 };
-UniquePtr<Base> make()
+std::UniquePtr<Base> make()
 {
-  UniquePtr<Derived> obj = makeUnique<Derived>();
+  std::UniquePtr<Derived> obj = std::makeUnique<Derived>();
   return obj;
 }
 int main()
 {
-  println(make()->id());
+  std::println(make()->id());
   return 0;
 }

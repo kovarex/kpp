@@ -3,8 +3,8 @@
 struct Noisy
 {
   int v;
-  implicit Noisy(int v) : v(v) { println("make ", v); }
-  ~Noisy() { println("drop ", this.v); }
+  implicit Noisy(int v) : v(v) { std::println("make ", v); }
+  ~Noisy() { std::println("drop ", this.v); }
 };
 struct Holder { const Noisy (&r)[2]; };
 int first(const int* p) { return p[0] * 10 + p[2]; }
@@ -12,11 +12,11 @@ using Three = const int[3];
 using Two = const Noisy[2];
 int main()
 {
-  println(first(Three{1, 2, 3}));
+  std::println(first(Three{1, 2, 3}));
   {
     Holder h{Two{Noisy(3), Noisy(4)}};
-    println("held ", h.r[0].v + h.r[1].v);
+    std::println("held ", h.r[0].v + h.r[1].v);
   }
-  println("holder done");
+  std::println("holder done");
   return 0;
 }

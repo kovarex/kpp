@@ -30,7 +30,7 @@ constexpr int rings()
 }
 constexpr int listed()
 {
-  List<int> l{1, 2, 3};
+  std::List<int> l{1, 2, 3};
   int t = 0;
   for (int v : l)
     t += v;
@@ -38,9 +38,9 @@ constexpr int listed()
 }
 constexpr int copied()
 {
-  List<int> a;
+  std::List<int> a;
   a.push_back(2);
-  List<int> b = a;
+  std::List<int> b = a;
   int t = 0;
   for (int v : b)
     t += v;
@@ -48,28 +48,28 @@ constexpr int copied()
 }
 constexpr int copiedDirectly()
 {
-  List<int> a;
+  std::List<int> a;
   a.push_back(2);
   a.push_back(3);
-  List<int> b(a);
+  std::List<int> b(a);
   return int(b.size()) * 10 + b.back();
 }
 constexpr int moved()
 {
-  List<int> a;
+  std::List<int> a;
   a.push_back(2);
-  List<int> b = move(a);
+  std::List<int> b = std::move(a);
   return int(b.size()) * 10 + int(a.size());
 }
 constexpr int assigned()
 {
-  List<int> l = {4, 5};
+  std::List<int> l = {4, 5};
   return l.front() + l.back();
 }
 constexpr int results[] = {rings(), listed(), copied(), copiedDirectly(), moved(), assigned()};
 int main()
 {
-  println(rings(), " ", listed(), " ", copied(), " ", copiedDirectly(), " ", moved(), " ", assigned());
-  println(results[0], " ", results[1], " ", results[2], " ", results[3], " ", results[4], " ", results[5]);
+  std::println(rings(), " ", listed(), " ", copied(), " ", copiedDirectly(), " ", moved(), " ", assigned());
+  std::println(results[0], " ", results[1], " ", results[2], " ", results[3], " ", results[4], " ", results[5]);
   return 0;
 }

@@ -4,8 +4,8 @@ int main()
 {
   int a[4] = { 1, 2, 3, 4 };
   const int* first = &a[0];
-  println(&a[3] - first);
+  std::println(&a[3] - first);
   long long* wide = (long long*)&a[2];
-  println(wide - &a[0]);
+  std::println(wide - &a[0]);
   return 0;
 }

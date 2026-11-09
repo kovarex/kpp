@@ -35,14 +35,14 @@ public:
 int main()
 {
   char buffer[64];
-  memset(buffer, 0xAB, sizeof(buffer));
+  std::memset(buffer, 0xAB, sizeof(buffer));
   Small* s = new (buffer) Small();
-  println(s->longStr.ptr == nullptr ? 1 : 0, " ", s->longStr.len, " ", int(s->flag));
-  memset(buffer, 0xAB, sizeof(buffer));
+  std::println(s->longStr.ptr == nullptr ? 1 : 0, " ", s->longStr.len, " ", int(s->flag));
+  std::memset(buffer, 0xAB, sizeof(buffer));
   Plain* p = new (buffer) Plain();
-  println(p->raw, " ", int(p->flag));
-  memset(buffer, 0xAB, sizeof(buffer));
+  std::println(p->raw, " ", int(p->flag));
+  std::memset(buffer, 0xAB, sizeof(buffer));
   Plain* q = new (buffer) Plain(3, 5);
-  println(q->low, " ", q->high, " ", int(q->flag));
+  std::println(q->low, " ", q->high, " ", int(q->flag));
   return 0;
 }

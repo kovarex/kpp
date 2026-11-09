@@ -7,20 +7,20 @@ struct Reference
   Reference(Reference&&) = default;
   int id;
 };
-int countOf(const String& text, Vector<Reference> references = {})
+int countOf(const std::String& text, std::Vector<Reference> references = {})
 {
   return int(references.size()) + int(text.size());
 }
 struct Cache
 {
-  Cache(const Vector<Reference>& rules, const Vector<int>& exemptions) : count(rules.size() + exemptions.size()) {}
+  Cache(const std::Vector<Reference>& rules, const std::Vector<int>& exemptions) : count(rules.size() + exemptions.size()) {}
   int count;
 };
 int main()
 {
-  Cache dummy(Vector<Reference>{}, Vector<int>{});
-  Vector<Reference> some;
+  Cache dummy(std::Vector<Reference>{}, std::Vector<int>{});
+  std::Vector<Reference> some;
   some.push_back(Reference(1));
-  println(countOf("ab"), " ", countOf("abc", move(some)), " ", dummy.count);
+  std::println(countOf("ab"), " ", countOf("abc", std::move(some)), " ", dummy.count);
   return 0;
 }

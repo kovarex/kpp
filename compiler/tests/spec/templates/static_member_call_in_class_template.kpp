@@ -3,21 +3,21 @@
 template<class E>
 struct Base
 {
-  String text;
-  Base(const String& t) : text(t) {}
+  std::String text;
+  Base(const std::String& t) : text(t) {}
 };
 template<class E>
 struct Item : Base<E>
 {
   Item(E value) : Base<E>(This::listOptions()) {}
   Item(E value, E after) : Base<E>(This::listOptions(after)) {}
-  static String listOptions(Optional<E> endAfter = nullopt) { return endAfter ? String("bounded") : String("all"); }
+  static std::String listOptions(std::Optional<E> endAfter = std::nullopt) { return endAfter ? std::String("bounded") : std::String("all"); }
 };
 enum class Mode { A, B };
 int main()
 {
   Item<Mode> a(Mode::A);
   Item<Mode> b(Mode::A, Mode::B);
-  println(a.text, " ", b.text);
+  std::println(a.text, " ", b.text);
   return 0;
 }

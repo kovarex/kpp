@@ -1,25 +1,25 @@
 // spec: a partial specialisation written over the library's Function with a parameter for the signature (`template<class T> struct is_std_function<Function<T>> : TrueType {}`) matches every Function, T deduced as its signature (Function<void()> is FunctionImpl<void>), so a constructor constrained by it (`Scoped(Scoped&&) requires(is_std_function<Callback>::value)`) is there for a Function callback
 // factorio: src/Util/ScopedCallback.hpp's move constructor, `requires(is_std_function<DestructorCallbackType>::value)`, which the tests' `ScopedCallback resetSettings(...scopedSetValueWithoutNotification(false));` move from (21 lines of the tests package)
 template <typename T>
-struct is_std_function : FalseType {};
+struct is_std_function : std::FalseType {};
 template <typename T>
-struct is_std_function<Function<T>> : TrueType {};
+struct is_std_function<Function<T>> : std::TrueType {};
 template <class Callback>
 struct Scoped
 {
-  Scoped(Callback callback) : callback(::move(callback)) {}
-  Scoped(Scoped&& other) requires(is_std_function<Callback>::value) { ::swap(this.callback, other.callback); }
+  Scoped(Callback callback) : callback(std::move(callback)) {}
+  Scoped(Scoped&& other) requires(is_std_function<Callback>::value) { std::swap(this.callback, other.callback); }
   Scoped(const Scoped&) = delete;
   ~Scoped() { if (this.callback) this.callback(); }
   Callback callback;
 };
 int counter = 0;
-Scoped<Function<void()>> make() { return Scoped<Function<void()>>([]() { ++counter; }); }
+Scoped<std::Function<void()>> make() { return Scoped<std::Function<void()>>([]() { ++counter; }); }
 int main()
 {
   {
     Scoped guard(make());
   }
-  println(is_std_function<Function<void()>>::value, " ", is_std_function<int>::value, " ", is_std_function<Function<int(double)>>::value, " ", counter);
+  std::println(is_std_function<std::Function<void()>>::value, " ", is_std_function<int>::value, " ", is_std_function<std::Function<int(double)>>::value, " ", counter);
   return 0;
 }

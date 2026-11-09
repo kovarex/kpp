@@ -2,7 +2,7 @@
 // factorio: CommonUtil's reverse(container) wrappers behind every reversed range-for (their template form also needs templates/partial_ordering_of_function_templates)
 struct Backwards
 {
-  Vector<int>* iterable;
+  std::Vector<int>* iterable;
 };
 auto begin(Backwards w) { return w.iterable->rbegin(); }
 auto end(Backwards w) { return w.iterable->rend(); }
@@ -27,14 +27,14 @@ Evens makeEvens(int n)
 
 int main()
 {
-  Vector<int> v = {1, 2, 3};
-  String order;
+  std::Vector<int> v = {1, 2, 3};
+  std::String order;
   for (int x : Backwards{&v})
-    order << toString(x);
+    order << std::toString(x);
   for (auto& x : Backwards{&v})
     x *= 10;
   for (const auto& x : makeEvens(3))
-    order << " " + toString(x);
-  println(order, " ", v[0], " ", v[2], " ", evensMade);
+    order << " " + std::toString(x);
+  std::println(order, " ", v[0], " ", v[2], " ", evensMade);
   return 0;
 }

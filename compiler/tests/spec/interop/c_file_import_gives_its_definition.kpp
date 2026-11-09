@@ -5,7 +5,7 @@ extern "C" import "stdio.h";
 
 int main()
 {
-  println(sizeof(FILE));
+  std::println(sizeof(FILE));
   fputs("through FILE*\n", stdout);
   return 0;
 }

@@ -16,13 +16,13 @@ static int pick(const Flag<DragTag>*) { return 1; }
 static int pick(const Flag<BeltTag>*) { return 2; }
 int main()
 {
-  static_assert(!isBaseOf<Flag<BeltTag>, Flag<DragTag>>);
-  static_assert(isBaseOf<Flag<BeltTag>, Flag<BeltTag>>);
-  static_assert(isBaseOf<Flag<BeltTag>, Holder<BeltTag>>);
-  static_assert(!isBaseOf<Flag<BeltTag>, Holder<DragTag>>);
-  static_assert(isBaseOf<Shape, Square> && !isBaseOf<Square, Shape>);
+  static_assert(!std::isBaseOf<Flag<BeltTag>, Flag<DragTag>>);
+  static_assert(std::isBaseOf<Flag<BeltTag>, Flag<BeltTag>>);
+  static_assert(std::isBaseOf<Flag<BeltTag>, Holder<BeltTag>>);
+  static_assert(!std::isBaseOf<Flag<BeltTag>, Holder<DragTag>>);
+  static_assert(std::isBaseOf<Shape, Square> && !std::isBaseOf<Square, Shape>);
   Holder<DragTag> drag;
   Holder<BeltTag> belt;
-  println(pick(&drag), " ", pick(&belt));
+  std::println(pick(&drag), " ", pick(&belt));
   return 0;
 }

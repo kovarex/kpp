@@ -2,11 +2,11 @@
 // factorio: DebugTools.cpp's preset loading, `line.rfind("ghostShimmerConfig.tint", 0) == 0` on a std::string_view line (a prefix test), 30 uses through its macros
 int main()
 {
-  StringView line = "ghostShimmerConfig.tint: 1:2:3:4";
-  println(line.rfind("ghostShimmerConfig.tint", 0), " ", line.rfind("tint", 0));
-  println(line.rfind(":"), " ", line.rfind(":", 26), " ", line.rfind(':', 26));
-  println(line.rfind("missing"), " ", line.rfind("", 5), " ", line.rfind(String("Config")));
-  StringView empty;
-  println(empty.rfind("x"), " ", empty.rfind(""), " ", empty.rfind('x', 3));
+  std::StringView line = "ghostShimmerConfig.tint: 1:2:3:4";
+  std::println(line.rfind("ghostShimmerConfig.tint", 0), " ", line.rfind("tint", 0));
+  std::println(line.rfind(":"), " ", line.rfind(":", 26), " ", line.rfind(':', 26));
+  std::println(line.rfind("missing"), " ", line.rfind("", 5), " ", line.rfind(std::String("Config")));
+  std::StringView empty;
+  std::println(empty.rfind("x"), " ", empty.rfind(""), " ", empty.rfind('x', 3));
   return 0;
 }

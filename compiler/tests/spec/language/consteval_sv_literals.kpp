@@ -1,9 +1,9 @@
 // spec: a string literal with the sv suffix at compile time is the string it spells, as the walk types it
 // factorio: UnusedPrototypeHelpers::ignoredKeys = {"ignore"sv, "steam_stats_name"sv, ...}
-constexpr Array keys = {"ignore"sv, "type"sv};
+constexpr std::Array keys = {"ignore"sv, "type"sv};
 static_assert(keys.size() == 2 && keys[1][0] == 't');
 int main()
 {
-  println(StringView(keys[0]), " ", keys.size());
+  std::println(std::StringView(keys[0]), " ", keys.size());
   return 0;
 }

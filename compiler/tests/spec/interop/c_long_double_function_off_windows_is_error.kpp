@@ -12,6 +12,6 @@ double third() { return specThirdOf(9.0); }
 bool address() { auto f = specHalfOf; return f != nullptr; }
 int main()
 {
-  println(half(), " ", whole(), " ", third(), " ", address());
+  std::println(half(), " ", whole(), " ", third(), " ", address());
   return 0;
 }

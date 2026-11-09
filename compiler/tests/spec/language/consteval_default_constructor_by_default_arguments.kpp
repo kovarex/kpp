@@ -31,6 +31,6 @@ constexpr int styled()
 constexpr int cl = local(), cb = braced(), cs = styled();
 int main()
 {
-  println(viaInit.width, " ", plainInit.width, " ", cl, " ", cb, " ", cs, " ", local());
+  std::println(viaInit.width, " ", plainInit.width, " ", cl, " ", cb, " ", cs, " ", local());
   return 0;
 }

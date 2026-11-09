@@ -3,12 +3,12 @@
 template<class T>
 struct Button { T id; };
 template<class T>
-int pick(Function<bool(T*)> selector) { T probe{}; return selector(&probe) ? int(sizeof(probe.id)) : -1; }
+int pick(std::Function<bool(T*)> selector) { T probe{}; return selector(&probe) ? int(sizeof(probe.id)) : -1; }
 struct Control
 {
   int clicks = 0;
   template<class T>
-  void clickSelect(Function<bool(T*)> selector = nullptr, int button = 1) { T probe{}; if (selector && selector(&probe)) this.clicks += button; }
+  void clickSelect(std::Function<bool(T*)> selector = nullptr, int button = 1) { T probe{}; if (selector && selector(&probe)) this.clicks += button; }
 };
 int main()
 {
@@ -18,10 +18,10 @@ int main()
     Control control;
     control.clickSelect<Button<IDType>>([&](Button<IDType>*) { ++seen; return true; });
     auto inner = [](Button<IDType>* b) { return b->id == IDType(); };
-    println(StringView(type), " ", control.clicks, " ", pick<Button<IDType>>(inner), " ", int(value));
+    std::println(std::StringView(type), " ", control.clicks, " ", pick<Button<IDType>>(inner), " ", int(value));
   };
   test(3, "int");
   test(short(4), "short");
-  println(seen);
+  std::println(seen);
   return 0;
 }

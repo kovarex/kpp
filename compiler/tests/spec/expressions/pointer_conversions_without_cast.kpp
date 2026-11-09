@@ -26,6 +26,6 @@ int main()
   int* none = nullptr;
   const Derived* cd = &d;
   Label t;
-  println(int(cv == v), " ", int(base->a), " ", int(constBase == base), " ", f(1), " ", int(**constRows), " ", int(first[0]), " ", int(none == nullptr), " ", int(cd == base) + t.same(t) - 1);
+  std::println(int(cv == v), " ", int(base->a), " ", int(constBase == base), " ", f(1), " ", int(**constRows), " ", int(first[0]), " ", int(none == nullptr), " ", int(cd == base) + t.same(t) - 1);
   return 0;
 }

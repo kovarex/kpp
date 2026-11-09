@@ -1,11 +1,11 @@
 // spec: function templates with a deduced (`auto`, `auto&`) return type
-struct P { int first = 1; String second = "two"; };
+struct P { int first = 1; std::String second = "two"; };
 template<typename T> auto& firstOf(T& t) { return t.first; }
 template<typename T> auto twice(T v) { return v + v; }
 int main()
 {
   P p;
   firstOf(p) += 1;
-  println(p.first, " ", twice(20), " ", twice(String("ab")));
+  std::println(p.first, " ", twice(20), " ", twice(std::String("ab")));
   return 0;
 }

@@ -15,6 +15,6 @@ int apply(int a, int b)
 }
 int main()
 {
-  println(apply<Expr<add, 3>>(2, 5));
+  std::println(apply<Expr<add, 3>>(2, 5));
   return 0;
 }

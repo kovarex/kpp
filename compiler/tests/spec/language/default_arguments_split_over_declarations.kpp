@@ -5,12 +5,12 @@ int f(int a, int b = 2, int c);
 int f(int a = 1, int b, int c);
 int f(int a, int b, int c) { return a * 100 + b * 10 + c; }
 void g(int a, int b = 5);
-void g(int a = 4, int b) { println(a, " ", b); }
+void g(int a = 4, int b) { std::println(a, " ", b); }
 struct S { void m(int a, int b = 2); };
-void S::m(int a = 1, int b) { println(a, " ", b); }
+void S::m(int a = 1, int b) { std::println(a, " ", b); }
 int main()
 {
-  println(f(), " ", f(7), " ", f(7, 8), " ", f(7, 8, 9));
+  std::println(f(), " ", f(7), " ", f(7, 8), " ", f(7, 8, 9));
   g();
   g(1);
   S s;

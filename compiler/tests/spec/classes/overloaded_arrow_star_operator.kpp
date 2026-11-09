@@ -13,6 +13,6 @@ int main()
   M* pm = &m;
   int M::* mv = &M::v;
   int viaOperator = q->*5;
-  println(viaOperator, " ", q->*1, " ", pm->*mv, " ", m.*mv);
+  std::println(viaOperator, " ", q->*1, " ", pm->*mv, " ", m.*mv);
   return 0;
 }

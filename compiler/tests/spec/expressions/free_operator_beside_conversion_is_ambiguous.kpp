@@ -27,7 +27,7 @@ int main()
 {
   Num n(2.5);
   Flag f{true};
-  println(-n);
-  println(!f);
+  std::println(-n);
+  std::println(!f);
   return 0;
 }

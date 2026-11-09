@@ -9,6 +9,6 @@ int main()
 {
   Config::counter += 1;
   global *= 3;
-  println(Config::counter, " ", global);
+  std::println(Config::counter, " ", global);
   return 0;
 }

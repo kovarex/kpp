@@ -1,6 +1,6 @@
 // spec: Less<T> and the transparent Less<> (std::less<>) as comparator objects; `Name<>` written with empty brackets takes every default
 // found in src/Util (FlatMap<K, V, Comp = std::less<>>)
-template<typename T, typename Comp = Less<>>
+template<typename T, typename Comp = std::Less<>>
 struct Ordered
 {
   T a;
@@ -11,8 +11,8 @@ struct Ordered
 int main()
 {
   Ordered<int> p{1, 2};
-  Ordered<int, Greater<int>> q{1, 2};
-  Less<String> byString;
-  println(p.ordered(), " ", q.ordered(), " ", byString(String("a"), String("b")), " ", Less<>()(3, 2));
+  Ordered<int, std::Greater<int>> q{1, 2};
+  std::Less<std::String> byString;
+  std::println(p.ordered(), " ", q.ordered(), " ", byString(std::String("a"), std::String("b")), " ", std::Less<>()(3, 2));
   return 0;
 }

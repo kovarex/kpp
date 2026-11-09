@@ -4,6 +4,6 @@ extern "C" import "c_macro_alias_of_a_later_macro.h";
 
 int main()
 {
-  println(A_FIRST, " ", A_SECOND, " ", ZZ_DERIVED, " ", A_FIRST / 2);
+  std::println(A_FIRST, " ", A_SECOND, " ", ZZ_DERIVED, " ", A_FIRST / 2);
   return 0;
 }

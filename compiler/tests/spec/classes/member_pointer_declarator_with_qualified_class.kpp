@@ -17,6 +17,6 @@ int main()
   int (game::Square::*areaOf)() const = &game::Square::area;
   int game::Square::*side = &game::Square::side;
   square.*side = 2;
-  println((square.*areaOf)(), " ", call(square, globalArea), " ", square.*side + 1);
+  std::println((square.*areaOf)(), " ", call(square, globalArea), " ", square.*side + 1);
   return 0;
 }

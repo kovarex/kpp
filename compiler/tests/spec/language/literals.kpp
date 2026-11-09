@@ -8,7 +8,7 @@ int main()
   const char* raw = R"(a\b"c")";
   const char* joined = "one" "two";
   float f = 1.5f;
-  println(hex, " ", oct, " ", u == Limits<unsigned long long>::max(), " ", neg == Limits<long long>::min());
-  println((int)tab, " ", (int)quote, " ", (int)nul, " ", StringView(raw), " ", StringView(joined), " ", f == 1.5f);
+  std::println(hex, " ", oct, " ", u == std::Limits<unsigned long long>::max(), " ", neg == std::Limits<long long>::min());
+  std::println((int)tab, " ", (int)quote, " ", (int)nul, " ", std::StringView(raw), " ", std::StringView(joined), " ", f == 1.5f);
   return 0;
 }

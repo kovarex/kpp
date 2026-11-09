@@ -3,11 +3,11 @@
 // error: typed_union_from_tag_and_value_errors.kpp:10: error: a String is ambiguous for the typed union U: its alternatives Text and Comment both have that type
 union enum U : uint8_t
 {
-  { {int, Number}, {String, Text}, {String, Comment} }
+  { {int, Number}, {std::String, Text}, {std::String, Comment} }
 };
 U::Tag chosen = U::Text;
-U byVariable() { return U(chosen, String("x")); }
-U byValue() { return String("y"); }
+U byVariable() { return U(chosen, std::String("x")); }
+U byValue() { return std::String("y"); }
 int main()
 {
   return byVariable() == U::Text && byValue() == U::Comment;

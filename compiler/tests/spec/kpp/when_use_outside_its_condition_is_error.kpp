@@ -9,6 +9,6 @@ int main()
   if constexpr (config::tracing)
     total += count;
   total += count;
-  println(total);
+  std::println(total);
   return 0;
 }

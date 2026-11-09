@@ -38,14 +38,14 @@ constexpr int constant()
 }
 constexpr int listed()
 {
-  List<int> l;
+  std::List<int> l;
   l.push_back(1);
   return int(l.size());
 }
 constexpr int cm = made(), cc = constant(), cl = listed();
 int main()
 {
-  println(made(), " ", constant(), " ", listed());
-  println(cm, " ", cc, " ", cl);
+  std::println(made(), " ", constant(), " ", listed());
+  std::println(cm, " ", cc, " ", cl);
   return 0;
 }

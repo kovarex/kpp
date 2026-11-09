@@ -11,6 +11,6 @@ namespace n { extern int (*g)(int); }
 int (*n::g)(int) = twice;
 int main()
 {
-  println(S::fp(1), " ", S::tab[1](2), " ", S::arr[1], " ", (*S::pp)(3), " ", n::g(4));
+  std::println(S::fp(1), " ", S::tab[1](2), " ", S::arr[1], " ", (*S::pp)(3), " ", n::g(4));
   return 0;
 }

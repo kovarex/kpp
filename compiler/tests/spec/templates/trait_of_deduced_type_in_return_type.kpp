@@ -1,15 +1,15 @@
 // spec: a return type made by a type trait of a deduced parameter (std::move's `remove_reference_t<T>&&`), as the call's type
 // factorio: std::move and std::forward, and the helpers declared through remove_reference_t or decay_t
 template<typename T>
-RemoveReference<T>&& asRvalue(T&& value) { return (RemoveReference<T>&&)value; }
+std::RemoveReference<T>&& asRvalue(T&& value) { return (std::RemoveReference<T>&&)value; }
 
 template<typename T>
-const char* category(T&&) { return isSame<T, int&> ? "lvalue" : "rvalue"; }
+const char* category(T&&) { return std::isSame<T, int&> ? "lvalue" : "rvalue"; }
 
 int main()
 {
   int x = 1;
-  println(isSame<decltype(asRvalue(x)), int&&>);
-  println(StringView(category(asRvalue(x))));
+  std::println(std::isSame<decltype(asRvalue(x)), int&&>);
+  std::println(std::StringView(category(asRvalue(x))));
   return 0;
 }

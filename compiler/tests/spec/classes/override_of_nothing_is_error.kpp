@@ -11,7 +11,7 @@ class Derived : public Base
 {
 public:
   void tell(unsigned count) { write(count); }
-  void write(int count) override { println(count); }
+  void write(int count) override { std::println(count); }
 };
 int main()
 {

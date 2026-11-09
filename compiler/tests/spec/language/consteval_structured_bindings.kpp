@@ -8,35 +8,35 @@ struct Two
   const int& get() const { return I == 0 ? this.a : this.b; }
 };
 template<>
-struct TupleSize<Two>
+struct std::TupleSize<Two>
 {
   static constexpr size_t value = 2;
 };
 constexpr int copied()
 {
-  Pair<int, int> p{3, 4};
+  std::Pair<int, int> p{3, 4};
   auto [a, b] = p;
   p.first = 9;
   return a * 10 + b;
 }
 constexpr int referred()
 {
-  Pair<int, int> p{3, 4};
+  std::Pair<int, int> p{3, 4};
   auto& [a, b] = p;
   a = 7;
   return p.first * 10 + b;
 }
 constexpr int read()
 {
-  Pair<int, int> p{3, 4};
+  std::Pair<int, int> p{3, 4};
   const auto& [a, b] = p;
   return a * 10 + b;
 }
 constexpr int looped()
 {
-  Vector<Pair<int, int>> v;
-  v.push_back(Pair<i32, i32>{1, 2});
-  v.push_back(Pair<i32, i32>{3, 4});
+  std::Vector<std::Pair<int, int>> v;
+  v.push_back(std::Pair<i32, i32>{1, 2});
+  v.push_back(std::Pair<i32, i32>{3, 4});
   int t = 0;
   for (const auto& [a, b] : v)
     t += a * b;
@@ -50,7 +50,7 @@ constexpr int elements()
 }
 constexpr int fastMap()
 {
-  FastMap<int, int> m;
+  std::FastMap<int, int> m;
   m[2] = 5;
   m[1] = 4;
   int t = 0;
@@ -60,7 +60,7 @@ constexpr int fastMap()
 }
 constexpr int map()
 {
-  Map<int, int> m;
+  std::Map<int, int> m;
   m[3] = 30;
   m[1] = 10;
   m[2] = 20;
@@ -89,7 +89,7 @@ constexpr int tupleLikeReferred()
 constexpr int results[] = {copied(), referred(), read(), looped(), elements(), fastMap(), map(), tupleLike(), tupleLikeReferred()};
 int main()
 {
-  println(copied(), " ", referred(), " ", read(), " ", looped(), " ", elements(), " ", fastMap(), " ", map(), " ", tupleLike(), " ", tupleLikeReferred());
-  println(results[0], " ", results[1], " ", results[2], " ", results[3], " ", results[4], " ", results[5], " ", results[6], " ", results[7], " ", results[8]);
+  std::println(copied(), " ", referred(), " ", read(), " ", looped(), " ", elements(), " ", fastMap(), " ", map(), " ", tupleLike(), " ", tupleLikeReferred());
+  std::println(results[0], " ", results[1], " ", results[2], " ", results[3], " ", results[4], " ", results[5], " ", results[6], " ", results[7], " ", results[8]);
   return 0;
 }

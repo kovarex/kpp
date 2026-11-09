@@ -11,7 +11,7 @@ constexpr int named(int k)
 }
 constexpr int initialized(int k)
 {
-  if (String s = "abc"; k > 0)
+  if (std::String s = "abc"; k > 0)
     return int(s.size());
   return 1;
 }

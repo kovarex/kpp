@@ -11,8 +11,8 @@ template<typename... T> int countOf(Count<T...>) { return sizeof...(T); }
 template<typename... U> int forwarded() { return Same<U...>::value * 10 + PlusOne<U...>::value; }
 int main()
 {
-  println(Same<>::value, " ", Same<char, short>::value, " ", PlusOne<>::value, " ", PlusOne<char>::value, " ", PlusOne<char, short>::value);
-  println(PlusEnd<>::value, " ", PlusEnd<char, short>::value, " ", AfterFirst<char>::value, " ", AfterFirst<char, short, int>::value);
-  println(Is<PlusOne<char, short>>::value, " ", countOf(PlusOne<char, short>()), " ", forwarded<>(), " ", forwarded<char, short, int>());
+  std::println(Same<>::value, " ", Same<char, short>::value, " ", PlusOne<>::value, " ", PlusOne<char>::value, " ", PlusOne<char, short>::value);
+  std::println(PlusEnd<>::value, " ", PlusEnd<char, short>::value, " ", AfterFirst<char>::value, " ", AfterFirst<char, short, int>::value);
+  std::println(Is<PlusOne<char, short>>::value, " ", countOf(PlusOne<char, short>()), " ", forwarded<>(), " ", forwarded<char, short, int>());
   return 0;
 }

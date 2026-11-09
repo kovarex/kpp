@@ -2,8 +2,8 @@
 // factorio: ExportResultGui::loadAndAttachInternal (a handler's calls in a scope of their own, a FloatingGuiWindow local around the try)
 // kpp: --debug-info
 // (LLVM's verifier rejects a handler's cleanup that unwinds elsewhere than its catchswitch only in a module with debug info.)
-struct Note { const char* text; Note(const char* t) : text(t) {} ~Note() { println("~", StringView(this.text)); } };
-void fail(const char* what) { throw RuntimeError(String(what)); }
+struct Note { const char* text; Note(const char* t) : text(t) {} ~Note() { std::println("~", std::StringView(this.text)); } };
+void fail(const char* what) { throw std::RuntimeError(std::String(what)); }
 void handle()
 {
   Note outer("outer");
@@ -11,13 +11,13 @@ void handle()
   {
     fail("first");
   }
-  catch (const RuntimeError& e)
+  catch (const std::RuntimeError& e)
   {
     Note inner("inner");
-    println("caught ", StringView(e.what()));
+    std::println("caught ", std::StringView(e.what()));
     fail("second");
   }
-  println("not reached");
+  std::println("not reached");
 }
 void nested()
 {
@@ -28,15 +28,15 @@ void nested()
     {
       fail("third");
     }
-    catch (const RuntimeError&)
+    catch (const std::RuntimeError&)
     {
       Note inner("inner2");
       fail("fourth");
     }
   }
-  catch (const RuntimeError& e)
+  catch (const std::RuntimeError& e)
   {
-    println("nested caught ", StringView(e.what()));
+    std::println("nested caught ", std::StringView(e.what()));
   }
 }
 int main()
@@ -45,9 +45,9 @@ int main()
   {
     handle();
   }
-  catch (const Exception& e)
+  catch (const std::Exception& e)
   {
-    println("main caught ", StringView(e.what()));
+    std::println("main caught ", std::StringView(e.what()));
   }
   nested();
   return 0;

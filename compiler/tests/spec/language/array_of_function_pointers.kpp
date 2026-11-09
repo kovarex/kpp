@@ -8,6 +8,6 @@ int main()
   int (*later[3])();
   later[0] = two;
   later[2] = one;
-  println(table[0]() + table[1](), " ", globalTable[0](), " ", later[0]() * 10 + later[2](), " ", sizeof(later) / sizeof(later[0]));
+  std::println(table[0]() + table[1](), " ", globalTable[0](), " ", later[0]() * 10 + later[2](), " ", sizeof(later) / sizeof(later[0]));
   return 0;
 }

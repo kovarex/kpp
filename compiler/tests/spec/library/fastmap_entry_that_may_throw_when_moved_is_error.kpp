@@ -9,7 +9,7 @@ struct Throwing
 };
 int main()
 {
-  FastMap<i32, Throwing> m;
+  std::FastMap<i32, Throwing> m;
   m[1].v = 2;
   return 0;
 }

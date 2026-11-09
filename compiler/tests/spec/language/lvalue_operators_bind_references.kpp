@@ -22,6 +22,6 @@ int main()
   v = 9;
   int& c = (b, x);
   c += 1;
-  println(x, " ", a, " ", b, " ", which, " ", isSame<decltype(v), int&>);
+  std::println(x, " ", a, " ", b, " ", which, " ", std::isSame<decltype(v), int&>);
   return 0;
 }

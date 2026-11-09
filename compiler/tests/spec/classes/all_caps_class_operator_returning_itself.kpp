@@ -26,6 +26,6 @@ int main()
   a.r = 3;
   b.r = 4;
   ID x, y;
-  println((a + b).r, " ", (x - y).v);
+  std::println((a + b).r, " ", (x - y).v);
   return 0;
 }

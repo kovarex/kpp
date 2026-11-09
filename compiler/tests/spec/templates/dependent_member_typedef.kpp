@@ -2,13 +2,13 @@
 template<typename T>
 struct MyStack
 {
-  Vector<T> items;
-  typename Vector<T>::iterator first() { return this.items.begin(); }
+  std::Vector<T> items;
+  typename std::Vector<T>::iterator first() { return this.items.begin(); }
 };
 int main()
 {
-  MyStack<String> names;
-  names.items.push_back(String("a"));
-  println(*names.first());
+  MyStack<std::String> names;
+  names.items.push_back(std::String("a"));
+  std::println(*names.first());
   return 0;
 }

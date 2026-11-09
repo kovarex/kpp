@@ -17,7 +17,7 @@ int main()
   double low = 1.0;
   double high = 3.0;
   auto below = low < minimum;
-  println(below, " ", high < minimum, " ", low >= minimum, " ", high > minimum, " ", low == minimum);
-  println((low <=> minimum) < 0, " ", (high <=> minimum) > 0, " ", (2.0 <=> minimum) == 0);
+  std::println(below, " ", high < minimum, " ", low >= minimum, " ", high > minimum, " ", low == minimum);
+  std::println((low <=> minimum) < 0, " ", (high <=> minimum) > 0, " ", (2.0 <=> minimum) == 0);
   return 0;
 }

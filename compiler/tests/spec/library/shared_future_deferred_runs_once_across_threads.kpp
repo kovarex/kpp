@@ -4,23 +4,23 @@ int main()
 {
   const int rounds = 300;
   const int threads = 8;
-  Atomic<int> runs = 0;
-  Atomic<int> wrong = 0;
-  Atomic<int> thrown = 0;
+  std::Atomic<int> runs = 0;
+  std::Atomic<int> wrong = 0;
+  std::Atomic<int> thrown = 0;
   for (int round = 0; round < rounds; ++round)
   {
-    SharedFuture<int> shared(async(Launch::deferred, [&runs]() -> int { runs.fetch_add(1); return 42; }));
+    std::SharedFuture<int> shared(std::async(std::Launch::deferred, [&runs]() -> int { runs.fetch_add(1); return 42; }));
     // A gate the threads block on until all of them have started, then call get() together. (Not a
     // spin: on CI's 2 CPUs, 8 spinners took 61 s of the program's 60, and yielding ones still timed
     // out in the release build, the thread still to start waiting for a CPU behind them.)
-    Mutex gateMutex;
-    ConditionVariable gate;
+    std::Mutex gateMutex;
+    std::ConditionVariable gate;
     int started = 0;
-    Vector<Thread> workers;
+    std::Vector<std::Thread> workers;
     for (int i = 0; i < threads; ++i)
-      workers.push_back(Thread([shared, &gateMutex, &gate, &started, &wrong, &thrown]() {
+      workers.push_back(std::Thread([shared, &gateMutex, &gate, &started, &wrong, &thrown]() {
         {
-          UniqueLock<Mutex> lock(gateMutex);
+          std::UniqueLock<std::Mutex> lock(gateMutex);
           if (++started == threads)
             gate.notifyAll();
           else
@@ -36,9 +36,9 @@ int main()
           thrown.fetch_add(1);
         }
       }));
-    for (Thread& worker : workers)
+    for (std::Thread& worker : workers)
       worker.join();
   }
-  println(runs.load() == rounds, " ", wrong.load(), " ", thrown.load());
+  std::println(runs.load() == rounds, " ", wrong.load(), " ", thrown.load());
   return 0;
 }

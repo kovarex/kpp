@@ -6,7 +6,7 @@ public:
   using ValueType = uint64_t;
   constexpr Tick() = default;
   implicit constexpr Tick(ValueType value) : value(value) {}
-  constexpr strong_ordering operator<=>(const Tick& other) const = default;
+  constexpr std::strong_ordering operator<=>(const Tick& other) const = default;
   ValueType value = 0u;
 };
 constexpr Tick MAX = Tick(1000);
@@ -14,6 +14,6 @@ int main()
 {
   uint64_t small = 5;
   uint64_t max = 1000;
-  println(int(small != MAX), " ", int(max != MAX), " ", int(small == MAX), " ", int(max == MAX));
+  std::println(int(small != MAX), " ", int(max != MAX), " ", int(small == MAX), " ", int(max == MAX));
   return 0;
 }

@@ -5,8 +5,8 @@ int main()
   auto direct{41};
   int value = 5;
   auto copyOf = [value{value + 1}] { return value; };
-  String name("abc");
+  std::String name("abc");
   auto sized = [length{name.size()}] { return length * 10; };
-  println(direct + 1, " ", copyOf(), " ", sized());
+  std::println(direct + 1, " ", copyOf(), " ", sized());
   return 0;
 }

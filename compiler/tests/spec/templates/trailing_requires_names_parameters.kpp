@@ -8,6 +8,6 @@ template<class T> int h(T v) requires (sizeof(v) > 4) { return 6; }
 
 int main()
 {
-  println(g(1), " ", g(1.0), " ", h('a'), " ", h(2.5));
+  std::println(g(1), " ", g(1.0), " ", h('a'), " ", h(2.5));
   return 0;
 }

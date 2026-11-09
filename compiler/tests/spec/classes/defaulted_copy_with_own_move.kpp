@@ -23,6 +23,6 @@ int main()
   h.result.value = 7;
   Result r = h;
   Result moved = static_cast<Result&&>(r);
-  println(r.value, " ", moved.value);
+  std::println(r.value, " ", moved.value);
   return 0;
 }

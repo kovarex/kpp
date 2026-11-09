@@ -6,6 +6,6 @@ int main()
   Handle invalid = (Handle)(long long)-1;
   Handle none = (Handle)(unsigned long long)0;
   long long back = (long long)invalid;
-  println(back, " ", invalid == none, " ", none == nullptr);
+  std::println(back, " ", invalid == none, " ", none == nullptr);
   return 0;
 }

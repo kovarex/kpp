@@ -19,6 +19,6 @@ int main()
 {
   Flags f;
   f.bits.bits = 2;
-  println(f.contains<Flags::Enum::OutputClosed>(), " ", f.contains<Flags::Enum::InputClosed>(), " ", narrow<static_cast<unsigned char>(300)>());
+  std::println(f.contains<Flags::Enum::OutputClosed>(), " ", f.contains<Flags::Enum::InputClosed>(), " ", narrow<static_cast<unsigned char>(300)>());
   return 0;
 }

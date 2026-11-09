@@ -11,6 +11,6 @@ int main()
 {
   Unary* twice = [](double x) { return x * 2; };
   Named table[2] = {{[](double x) { return x + 1; }, 1}, {twice, 1}};
-  println(apply(twice, 4), " ", table[0].function(1.5), " ", apply([](double x) { return -x; }, 3));
+  std::println(apply(twice, 4), " ", table[0].function(1.5), " ", apply([](double x) { return -x; }, 3));
   return 0;
 }

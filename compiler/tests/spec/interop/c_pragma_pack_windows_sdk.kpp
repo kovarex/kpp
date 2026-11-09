@@ -5,8 +5,8 @@ extern "C" import "windows.h";
 extern "C" import "dbghelp.h";
 int main()
 {
-  println(sizeof(MINIDUMP_EXCEPTION_INFORMATION), " ", alignof(MINIDUMP_EXCEPTION_INFORMATION));
-  println(sizeof(CONTEXT), " ", alignof(CONTEXT));
-  println(sizeof(BITMAPFILEHEADER), " ", sizeof(IMAGE_DOS_HEADER), " ", sizeof(WIN32_FIND_DATAW));
+  std::println(sizeof(MINIDUMP_EXCEPTION_INFORMATION), " ", alignof(MINIDUMP_EXCEPTION_INFORMATION));
+  std::println(sizeof(CONTEXT), " ", alignof(CONTEXT));
+  std::println(sizeof(BITMAPFILEHEADER), " ", sizeof(IMAGE_DOS_HEADER), " ", sizeof(WIN32_FIND_DATAW));
   return 0;
 }

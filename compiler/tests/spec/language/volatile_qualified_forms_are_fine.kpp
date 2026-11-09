@@ -28,12 +28,12 @@ int main()
   int* p1 = const_cast<int*>(&v);
   int* p2 = (int*)&v;
   *p1 = 5;
-  println((int)r1, " ", (int)r2, " ", *p2, " ", s.vget(), " ", cvs.cvget(), " ", sizeOfRef(v), " ", sizeOfConstRef(v));
+  std::println((int)r1, " ", (int)r2, " ", *p2, " ", s.vget(), " ", cvs.cvget(), " ", sizeOfRef(v), " ", sizeOfConstRef(v));
   for (volatile int& e : a)
     e = 7;
   auto f = [&]() { return (int)v; };
   V copy = vv;
   vv = V(4);
-  println((int)a[0], " ", f(), " ", copy.n, " ", (int)vv.n);
+  std::println((int)a[0], " ", f(), " ", copy.n, " ", (int)vv.n);
   return 0;
 }

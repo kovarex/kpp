@@ -17,13 +17,13 @@ enum class Direction : uint8_t
 };
 int main()
 {
-  String all;
+  std::String all;
   for (Direction d : Direction::values)
   {
-    all << StringView(d.str());
-    all << StringView(d.isVertical() ? "|" : "-");
+    all << std::StringView(d.str());
+    all << std::StringView(d.isVertical() ? "|" : "-");
   }
   Direction d = Direction::East;
-  println(Direction::count, " ", all, " ", StringView(d.opposite().str()), " ", StringView(nameof(Direction)), " ", (int)sizeof(Direction));
+  std::println(Direction::count, " ", all, " ", std::StringView(d.opposite().str()), " ", std::StringView(nameof(Direction)), " ", (int)sizeof(Direction));
   return 0;
 }

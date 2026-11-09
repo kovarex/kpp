@@ -2,14 +2,14 @@
 // factorio: the tests' `for (std::string blockingEntity : {"stone-wall", "transport-belt"})` (TestDragBuilding), `for (std::string entityName : {"assembling-machine-3", ...})` (TestInventory) and the like: each name came out empty, "Unknown entity name: " and "Unknown item name: " (13 failed checks)
 int main()
 {
-  String joined;
-  for (String name : {"stone-wall", "transport-belt"})
+  std::String joined;
+  for (std::String name : {"stone-wall", "transport-belt"})
     joined << name + ";";
-  Vector<const char*> list = {"a", "bb"};
-  for (String name : list)
+  std::Vector<const char*> list = {"a", "bb"};
+  for (std::String name : list)
     joined << name + ";";
-  for (const String& name : {"ref"})
+  for (const std::String& name : {"ref"})
     joined << name;
-  println(joined);
+  std::println(joined);
   return 0;
 }

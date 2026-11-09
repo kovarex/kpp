@@ -50,6 +50,6 @@ constexpr int c = calls();
 constexpr int m = members();
 int main()
 {
-  println(c, " ", calls(), " ", m, " ", members());
+  std::println(c, " ", calls(), " ", m, " ", members());
   return 0;
 }

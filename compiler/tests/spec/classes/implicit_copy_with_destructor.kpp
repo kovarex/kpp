@@ -3,7 +3,7 @@
 class Named
 {
 public:
-  String name;
+  std::String name;
   int count = 0;
   Named(const char* n, int c) : name(n), count(c) {}
   virtual ~Named() {}
@@ -22,7 +22,7 @@ int main()
   Holder g = h;
   g.named.count = 5;
   h = g;
-  println(b->name, " ", b->count, " ", h.named.count, " ", g.named.name);
+  std::println(b->name, " ", b->count, " ", h.named.count, " ", g.named.name);
   delete b;
   return 0;
 }

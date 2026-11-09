@@ -9,6 +9,6 @@ static_assert(Big > 0 && -U'a' == 4294967199u);
 int main()
 {
   printf("%s %s %s %s %s\n", f(U'a'), f(u'a'), f(L'a'), f(u8'a'), f(Big));
-  printf("%d %u %d\n", (int)isSame<decltype(U'a' + 1), unsigned>, -U'a', (int)(Big > 0));
+  printf("%d %u %d\n", (int)std::isSame<decltype(U'a' + 1), unsigned>, -U'a', (int)(Big > 0));
   return 0;
 }

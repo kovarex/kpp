@@ -8,6 +8,6 @@ int main()
   int total = 1;
   auto read = [count]() { return 0; };
   total += read();
-  println(total);
+  std::println(total);
   return 0;
 }

@@ -6,6 +6,6 @@ using GetTickCountFn = DWORD(__stdcall*)(void);
 int main()
 {
   GetTickCountFn f = &GetTickCount;
-  println(f() > 0);
+  std::println(f() > 0);
   return 0;
 }

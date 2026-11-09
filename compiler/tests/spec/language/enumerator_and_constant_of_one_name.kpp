@@ -7,6 +7,6 @@ enum Mode { HEAD = 10, COPY, SYNC };
 int main()
 {
   Mode m = COPY;
-  println((int)m, " ", (int)SYNC);
+  std::println((int)m, " ", (int)SYNC);
   return 0;
 }

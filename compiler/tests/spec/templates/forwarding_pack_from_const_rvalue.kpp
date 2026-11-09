@@ -9,13 +9,13 @@ struct Program
 template<typename... Args>
 int build(Args&&... args)
 {
-  Program p(forward<Args>(args)...);
+  Program p(std::forward<Args>(args)...);
   return (int)sizeof...(Args) * 100 + p.a * 10 + p.b;
 }
 using ConstProgram = const Program;
 int main()
 {
   const Program x(1, 2);
-  println(build(ConstProgram(3, 4)), " ", build(move(x)));
+  std::println(build(ConstProgram(3, 4)), " ", build(std::move(x)));
   return 0;
 }

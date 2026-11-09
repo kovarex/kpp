@@ -3,9 +3,9 @@
 struct Mod
 {
   static inline const char* const CORE_MOD = "core";
-  String name = "base";
+  std::String name = "base";
 };
-void show(const String& name) { print("[", name, "] "); }
+void show(const std::String& name) { std::print("[", name, "] "); }
 int main()
 {
   Mod mod;
@@ -13,9 +13,9 @@ int main()
   Mod* some = &mod;
   show(none ? none->name : Mod::CORE_MOD);
   show(some ? some->name : Mod::CORE_MOD);
-  String a = none ? none->name : Mod::CORE_MOD;
-  auto lambda = [&](const String& modName) { print("<", modName, "> "); };
+  std::String a = none ? none->name : Mod::CORE_MOD;
+  auto lambda = [&](const std::String& modName) { std::print("<", modName, "> "); };
   lambda(none ? none->name : Mod::CORE_MOD);
-  println(a);
+  std::println(a);
   return 0;
 }

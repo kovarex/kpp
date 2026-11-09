@@ -2,7 +2,7 @@
 extern "C" int printf(const char* format, ...);
 template<typename M> struct Same { using Type = M; };
 template<typename M> constexpr M viaLocalAlias(M m) { using C = typename Same<M>::Type; return C(m); }
-template<typename T> constexpr MakeUnsigned<T> viaAliasTemplate(T value) { return MakeUnsigned<T>(value); }
+template<typename T> constexpr std::MakeUnsigned<T> viaAliasTemplate(T value) { return std::MakeUnsigned<T>(value); }
 static_assert(viaLocalAlias(3) == 3);
 static_assert(viaAliasTemplate<i64>(5) == 5);
 int main()

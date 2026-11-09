@@ -27,7 +27,7 @@ int main()
   p.add(3);
   Box<int> b{21};
   created += ROWS;
-  println(p.add(4), " ", b.twice(), " ", largest(5, 9), " ", int(Dark), " ", int(Mode::Slow), " ", sizeof(Count), " ", created);
-  println(otherShapes());
+  std::println(p.add(4), " ", b.twice(), " ", largest(5, 9), " ", int(Dark), " ", int(Mode::Slow), " ", sizeof(Count), " ", created);
+  std::println(otherShapes());
   return 0;
 }

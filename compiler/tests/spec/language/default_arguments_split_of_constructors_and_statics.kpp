@@ -6,9 +6,9 @@ int base() { return 40; }
 int g(int a, int b = base() + 2);
 int g(int a = base(), int b) { return a + b; }
 const char* h(const char* a, const char* b = "bee");
-const char* h(const char* a = "ay", const char* b) { println(a[0], " ", b[0]); return a; }
+const char* h(const char* a = "ay", const char* b) { std::println(a[0], " ", b[0]); return a; }
 namespace n { int k(int a, int b = 2); int k(int a = 1, int b) { return a * 10 + b; } }
 struct T { static int s(int a, int b = 3); int lam(int a, int b = 5); };
 int T::s(int a = 2, int b) { return a * 10 + b; }
 int T::lam(int a = 4, int b) { return a * 10 + b; }
-int main() { S x(1); println(x.a, " ", x.s[0], " ", S(1, 2).s[1], " ", g(), " ", g(1), " ", n::k(), " ", T::s(), " ", T().lam()); h(); h("x"); return 0; }
+int main() { S x(1); std::println(x.a, " ", x.s[0], " ", S(1, 2).s[1], " ", g(), " ", g(1), " ", n::k(), " ", T::s(), " ", T().lam()); h(); h("x"); return 0; }

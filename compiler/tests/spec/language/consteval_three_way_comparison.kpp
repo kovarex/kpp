@@ -8,7 +8,7 @@ struct P
   bool operator==(const P&) const = default;
 };
 
-constexpr double nan = Limits<double>::quiet_NaN();
+constexpr double nan = std::Limits<double>::quiet_NaN();
 constexpr bool t = (1.0 <=> 2.0) < 0;
 constexpr bool u = (3 <=> 2) > 0;
 constexpr bool v = (2u <=> 2u) == 0;
@@ -19,6 +19,6 @@ static_assert(t && u && v && !w && !x && y);
 
 int main()
 {
-  println(t, " ", u, " ", v, " ", w, " ", x, " ", y);
+  std::println(t, " ", u, " ", v, " ", w, " ", x, " ", y);
   return 0;
 }

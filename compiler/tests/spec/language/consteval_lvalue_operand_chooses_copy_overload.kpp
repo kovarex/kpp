@@ -3,18 +3,18 @@
 extern "C" import "stdio.h";
 constexpr int copied()
 {
-  String x;
+  std::String x;
   x = "x";
-  String y;
+  std::String y;
   y = x;
   return y.size() * 10 + x.size();
 }
 constexpr int moved()
 {
-  String x;
+  std::String x;
   x = "x";
-  String y;
-  y = move(x);
+  std::String y;
+  y = std::move(x);
   return y.size() * 10 + x.size();
 }
 struct Acc

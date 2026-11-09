@@ -11,12 +11,12 @@ struct Pairish
 };
 struct Budget
 {
-  static constexpr Milliseconds limit = Milliseconds(5);
+  static constexpr std::Milliseconds limit = std::Milliseconds(5);
 };
 int main()
 {
   Pairish p = Pairish<int, double>(1, 2.5);
-  Duration budget = Milliseconds(5);
-  println(p.a, " ", p.b, " ", budget.count(), " ", Budget::limit.count());
+  std::Duration budget = std::Milliseconds(5);
+  std::println(p.a, " ", p.b, " ", budget.count(), " ", Budget::limit.count());
   return 0;
 }

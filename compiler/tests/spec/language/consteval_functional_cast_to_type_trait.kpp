@@ -3,12 +3,12 @@
 extern "C" import "stdio.h";
 enum class Direction : u8 { North, East };
 template<typename E>
-constexpr int underlying(E value) { return int(UnderlyingType<E>(value)); }
+constexpr int underlying(E value) { return int(std::UnderlyingType<E>(value)); }
 static_assert(underlying(Direction(7)) == 7);
 constexpr int seven = underlying(Direction(7));
 struct Size { int w = 0; int h = 0; constexpr Size(int width, int height) : w(width), h(height) {} };
 template<typename T>
-constexpr int width() { return RemoveCvRef<T>(3, 4).w; }
+constexpr int width() { return std::RemoveCvRef<T>(3, 4).w; }
 static_assert(width<const Size&>() == 3);
 constexpr int three = width<const Size&>();
 int main()

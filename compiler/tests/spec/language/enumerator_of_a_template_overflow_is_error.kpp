@@ -6,6 +6,6 @@ template <i64 A, i64 B> struct Product
 };
 int main()
 {
-  println(Product<4000000000000000000ll, 3>::value);
+  std::println(Product<4000000000000000000ll, 3>::value);
   return 0;
 }

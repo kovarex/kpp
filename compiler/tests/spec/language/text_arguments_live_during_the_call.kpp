@@ -5,16 +5,16 @@ struct Loud
   int id = 0;
   Loud(int id) : id(id) {}
   ~Loud() { printf("~%d ", this.id); }
-  void appendTo(String& out) const
+  void appendTo(std::String& out) const
   {
     out << "loud";
     out << char('0' + this.id);
   }
 };
 Loud make(int id) { return Loud(id); }
-void show(Text text)
+void show(std::Text text)
 {
-  String s;
+  std::String s;
   text.appendTo(s);
   printf("%s ", s.c_str());
 }

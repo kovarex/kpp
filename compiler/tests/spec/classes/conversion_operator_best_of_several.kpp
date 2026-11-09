@@ -28,6 +28,6 @@ int main()
   int i = m;
   Derived derived;
   int h = derived;
-  println(x, " ", d, " ", i, " ", h);
+  std::println(x, " ", d, " ", i, " ", h);
   return 0;
 }

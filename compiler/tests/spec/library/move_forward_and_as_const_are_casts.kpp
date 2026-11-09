@@ -31,13 +31,13 @@ int code(const int&) { return 2; }
 int code(int&&) { return 3; }
 
 template<typename T>
-int relay(T&& value) { return code(forward<T>(value)); }
+int relay(T&& value) { return code(std::forward<T>(value)); }
 
 template<typename... Args>
 int codes(Args&&... args)
 {
   int digits = 0;
-  ((digits = digits * 10 + code(forward<Args>(args))), ...);
+  ((digits = digits * 10 + code(std::forward<Args>(args))), ...);
   return digits;
 }
 
@@ -57,12 +57,12 @@ namespace physics
 constexpr int atCompileTime()
 {
   int x = 4;
-  int y = move(x);
-  int& z = forward<int&>(x);
+  int y = std::move(x);
+  int& z = std::forward<int&>(x);
   z += 1;
   physics::Point p{1};
   auto&& q = move(p);
-  return y + asConst(x) + forward<int>(x) + q.x + physics::forward<int>(2);
+  return y + std::asConst(x) + std::forward<int>(x) + q.x + physics::forward<int>(2);
 }
 
 static_assert(atCompileTime() == 4 + 5 + 5 + 11 + 3);
@@ -71,29 +71,29 @@ int main()
 {
   int a = 1;
   const int c = 2;
-  static_assert(isSame<decltype(move(a)), int&&>);
-  static_assert(isSame<decltype(asConst(a)), const int&>);
-  static_assert(isSame<decltype(forward<int&>(a)), int&>);
-  static_assert(isSame<decltype(forward<int>(a)), int&&>);
-  println(code(move(a)), code(a), code(asConst(a)), code(c), " ", relay(a), relay(3), relay(c), relay(move(a)), " ", codes(a, 3, c, move(a)));
-  println(code(move<int&>(a)), " ", atCompileTime());
+  static_assert(std::isSame<decltype(std::move(a)), int&&>);
+  static_assert(std::isSame<decltype(std::asConst(a)), const int&>);
+  static_assert(std::isSame<decltype(std::forward<int&>(a)), int&>);
+  static_assert(std::isSame<decltype(std::forward<int>(a)), int&&>);
+  std::println(code(std::move(a)), code(a), code(std::asConst(a)), code(c), " ", relay(a), relay(3), relay(c), relay(std::move(a)), " ", codes(a, 3, c, std::move(a)));
+  std::println(code(std::move<int&>(a)), " ", atCompileTime());
 
   Probe probe;
   Tracked t(5, &probe);
-  Tracked m = move(t);
-  Tracked k = asConst(m);
-  Tracked f = forward<Tracked&>(k);
-  Tracked g = forward<Tracked>(k);
-  println(probe.copies, " ", probe.moves, " ", t.value, " ", m.value, " ", k.value, " ", f.value, " ", g.value);
+  Tracked m = std::move(t);
+  Tracked k = std::asConst(m);
+  Tracked f = std::forward<Tracked&>(k);
+  Tracked g = std::forward<Tracked>(k);
+  std::println(probe.copies, " ", probe.moves, " ", t.value, " ", m.value, " ", k.value, " ", f.value, " ", g.value);
 
   Box b;
   int x = 1, y = 2;
-  swap(x, y);
-  println(b.get(), " ", asConst(b).get(), " ", x, " ", y);
+  std::swap(x, y);
+  std::println(b.get(), " ", std::asConst(b).get(), " ", x, " ", y);
 
   physics::Point p{1};
   physics::Point q = physics::move(p);
   physics::Point r = move(p);
-  println(q.x, " ", r.x, " ", physics::forward<int>(4));
+  std::println(q.x, " ", r.x, " ", physics::forward<int>(4));
   return 0;
 }

@@ -10,6 +10,6 @@ int main()
   bool c = noexcept(1 + 2);
   static_assert(!noexcept(mayThrow()), "mayThrow() can throw");
   static_assert(noexcept(never()), "never() cannot");
-  println(a, " ", b, " ", c);
+  std::println(a, " ", b, " ", c);
   return 0;
 }

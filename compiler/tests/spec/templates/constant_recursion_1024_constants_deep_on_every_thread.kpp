@@ -11,6 +11,6 @@ int deepest()
 }
 int main()
 {
-  println(Sum<1000>::value, " ", deepest());
+  std::println(Sum<1000>::value, " ", deepest());
   return 0;
 }

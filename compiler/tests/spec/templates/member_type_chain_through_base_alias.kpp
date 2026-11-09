@@ -39,7 +39,7 @@ int declared()
 
 int main()
 {
-  println(int(ItemPrototype::IDType::IndexType(6)), " ", viaParameter<ItemPrototype>(), " ", throughLocalAlias<ItemPrototype>(), " ", declared<ItemPrototype>());
-  println(truncated<FluidPrototype>(300), " ", truncated<ItemPrototype>(300));
+  std::println(int(ItemPrototype::IDType::IndexType(6)), " ", viaParameter<ItemPrototype>(), " ", throughLocalAlias<ItemPrototype>(), " ", declared<ItemPrototype>());
+  std::println(truncated<FluidPrototype>(300), " ", truncated<ItemPrototype>(300));
   return 0;
 }

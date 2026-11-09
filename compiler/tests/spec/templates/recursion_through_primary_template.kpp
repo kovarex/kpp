@@ -17,9 +17,9 @@ struct Count<0> { static constexpr int value = 0; };
 
 int main()
 {
-  static_assert(isSame<Nest<2, int>::Type, int**>);
-  static_assert(isSame<Element<1, int, char, double>::Type, char>);
+  static_assert(std::isSame<Nest<2, int>::Type, int**>);
+  static_assert(std::isSame<Element<1, int, char, double>::Type, char>);
   Element<2, int, char, double>::Type d = 2.5;
-  println(d, " ", Count<3>::value);
+  std::println(d, " ", Count<3>::value);
   return 0;
 }

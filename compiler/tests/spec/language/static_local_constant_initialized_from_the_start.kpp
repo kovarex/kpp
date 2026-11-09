@@ -24,11 +24,11 @@ int fromCall()
 }
 int main()
 {
-  println(skipStatic(1), " ", skipStatic(0), " ", skipStatic(1));
+  std::println(skipStatic(1), " ", skipStatic(0), " ", skipStatic(1));
   base = 20;
   calls = 100;
   int first = constFromGlobal();
   int id = fromCall();
-  println(first, " ", id, " ", calls);
+  std::println(first, " ", id, " ", calls);
   return 0;
 }

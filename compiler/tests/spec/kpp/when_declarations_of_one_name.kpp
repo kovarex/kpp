@@ -2,13 +2,13 @@
 // factorio: `#ifdef DEBUG` / `#else` pairs declaring one local or member two ways, converted to two `when` declarations (design.md 12)
 struct DebugTimer
 {
-  DebugTimer(int id) { println("debug timer ", id); }
-  ~DebugTimer() { println("debug timer done"); }
+  DebugTimer(int id) { std::println("debug timer ", id); }
+  ~DebugTimer() { std::println("debug timer done"); }
 };
 
 struct NullTimer
 {
-  NullTimer(int) { println("no timer"); }
+  NullTimer(int) { std::println("no timer"); }
 };
 
 int main()
@@ -16,7 +16,7 @@ int main()
   {
     when (config::debug) DebugTimer timer(1);
     when (!config::debug) NullTimer timer(1);
-    println("work");
+    std::println("work");
   }
   return 0;
 }

@@ -3,11 +3,11 @@
 extern "C" import "stdio.h";
 int main()
 {
-  String texts[] = {String("same text"), String(""), String("exactly 8"), String("a longer text past two words")};
+  std::String texts[] = {std::String("same text"), std::String(""), std::String("exactly 8"), std::String("a longer text past two words")};
   for (int i = 0; i < 4; ++i)
   {
-    StringView view(texts[i].data(), texts[i].size());
-    bool same = Hash<String>()(texts[i]) == Hash<StringView>()(view) && hashOf(texts[i]) == hashOf(view);
+    std::StringView view(texts[i].data(), texts[i].size());
+    bool same = std::Hash<std::String>()(texts[i]) == std::Hash<std::StringView>()(view) && std::hashOf(texts[i]) == std::hashOf(view);
     printf(i ? " %d" : "%d", (int)same);
   }
   printf("\n");

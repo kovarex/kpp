@@ -3,7 +3,7 @@ extern "C" import "stdio.h";
 struct Point
 {
   int x = 0;
-  void appendTo(String& out) const
+  void appendTo(std::String& out) const
   {
     out << "(";
     out << char('0' + this.x);
@@ -13,13 +13,13 @@ struct Point
 struct Color
 {
   bool green = false;
-  void appendTo(String& out) const { out << StringView(this.green ? "green" : "red"); }
+  void appendTo(std::String& out) const { out << std::StringView(this.green ? "green" : "red"); }
 };
 struct Out
 {
-  String text;
+  std::String text;
 };
-Out& operator<<(Out& out, Text text)
+Out& operator<<(Out& out, std::Text text)
 {
   text.appendTo(out.text);
   return out;

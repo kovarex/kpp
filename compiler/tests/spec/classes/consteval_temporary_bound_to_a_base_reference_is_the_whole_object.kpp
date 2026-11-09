@@ -78,7 +78,7 @@ int main()
   constexpr int l = local();
   constexpr int tl = trackedLocal();
   constexpr int sb = secondBase();
-  println(p, " ", tp, " ", l, " ", tl, " ", sb);
-  println(parameter(), " ", trackedParameter(), " ", local(), " ", trackedLocal(), " ", secondBase());
+  std::println(p, " ", tp, " ", l, " ", tl, " ", sb);
+  std::println(parameter(), " ", trackedParameter(), " ", local(), " ", trackedLocal(), " ", secondBase());
   return 0;
 }

@@ -15,10 +15,10 @@ int main()
 {
   constexpr double half = 0.5;
   int plain = 1;
-  static_assert(isSame<decltype(Plain::count), const int>);
-  static_assert(isSame<decltype(Plain::True), const Plain::Enum>);
-  static_assert(isSame<decltype(half), const double>);
-  static_assert(isSame<decltype(Plain::limits[0]), const int&>);
-  println(kind(Plain::count), " ", kind(half), " ", kind(plain), " ", Plain::limits[1] + Plain::count);
+  static_assert(std::isSame<decltype(Plain::count), const int>);
+  static_assert(std::isSame<decltype(Plain::True), const Plain::Enum>);
+  static_assert(std::isSame<decltype(half), const double>);
+  static_assert(std::isSame<decltype(Plain::limits[0]), const int&>);
+  std::println(kind(Plain::count), " ", kind(half), " ", kind(plain), " ", Plain::limits[1] + Plain::count);
   return 0;
 }

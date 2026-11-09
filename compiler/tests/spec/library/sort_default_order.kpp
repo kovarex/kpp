@@ -1,10 +1,10 @@
 // spec: ::sort by operator< (no comparator)
 int main()
 {
-  Vector<int> v;
+  std::Vector<int> v;
   for (int x : {5, 3, 8, 1})
     v.push_back(x);
-  ::sort(v.begin(), v.end());
-  println(v[0], " ", v[1], " ", v[3]);
+  std::sort(v.begin(), v.end());
+  std::println(v[0], " ", v[1], " ", v[3]);
   return 0;
 }

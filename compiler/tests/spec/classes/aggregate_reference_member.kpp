@@ -10,9 +10,9 @@ int main()
   int x = 5;
   IntRef r{x};
   r.value = 6;
-  Vector<int> v = {1, 2, 3};
-  Holder<Vector<int>> h{v};
+  std::Vector<int> v = {1, 2, 3};
+  Holder<std::Vector<int>> h{v};
   h.ref.push_back(4);
-  println(x, " ", h.ref[1], " ", second(h), " ", v.size());
+  std::println(x, " ", h.ref[1], " ", second(h), " ", v.size());
   return 0;
 }

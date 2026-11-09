@@ -1,35 +1,35 @@
 // spec: WString's insert before an index of a WString, a zero-terminated text, count copies of a unit and part of itself, as std::wstring inserts them; an index past the end throws OutOfRange
 // factorio: the tests' ForkTask.cpp, `params.insert(0, executablePath + L" ")` on the command line it hands CreateProcessW
-String narrow(const WString& text)
+std::String narrow(const std::WString& text)
 {
-  String out;
+  std::String out;
   for (int i = 0; i < text.size(); ++i)
     out.push_back(char(text[i]));
   return out;
 }
 int main()
 {
-  WString params = L"--run-test x";
-  WString exe = L"C:\\factorio.exe";
+  std::WString params = L"--run-test x";
+  std::WString exe = L"C:\\factorio.exe";
   params.insert(0, exe + L" ");
-  println(narrow(params), " ", params.size());
+  std::println(narrow(params), " ", params.size());
   params.insert(params.size(), L" 2>&1");
   params.insert(3, 2, L'_');
-  println(narrow(params));
-  WString self = L"abc";
+  std::println(narrow(params));
+  std::WString self = L"abc";
   self.insert(1, self);
-  println(narrow(self), " ", self.size());
-  WString empty;
+  std::println(narrow(self), " ", self.size());
+  std::WString empty;
   empty.insert(0, L"");
   empty.insert(0, L"z");
-  println(narrow(empty));
+  std::println(narrow(empty));
   try
   {
     self.insert(99, L"x");
   }
-  catch (const OutOfRange&)
+  catch (const std::OutOfRange&)
   {
-    println("out of range");
+    std::println("out of range");
   }
   return 0;
 }

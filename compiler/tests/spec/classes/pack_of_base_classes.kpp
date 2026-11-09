@@ -29,6 +29,6 @@ int main()
   m.id = 4;
   Plain<Name, Size> p{{5}, {1.5}};
   Name& asName = m;
-  println(m.id, " ", m.w, " ", m.own, " ", m.tag(), " ", m.area(), " ", asName.id, " | ", p.id, " ", p.w, " ", sizeof(Mix<Name, Size>));
+  std::println(m.id, " ", m.w, " ", m.own, " ", m.tag(), " ", m.area(), " ", asName.id, " | ", p.id, " ", p.w, " ", sizeof(Mix<Name, Size>));
   return 0;
 }

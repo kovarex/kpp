@@ -24,17 +24,17 @@ Counter makeCounter() { return Counter(); }
 int takeCounter(Counter c) { return c.n; }
 int main()
 {
-  println(static_cast<Strict>(9).v);
+  std::println(static_cast<Strict>(9).v);
   Counter c;
   c.n = 5;
   Counter copied = static_cast<Counter>(c);
   Counter moved = static_cast<Counter>(makeCounter());
-  println(copied.n, " ", moved.n, " ", takeCounter(static_cast<Counter>(c)), " ", static_cast<Counter>(c).n);
+  std::println(copied.n, " ", moved.n, " ", takeCounter(static_cast<Counter>(c)), " ", static_cast<Counter>(c).n);
   Derived d;
   d.b = 7;
   Base sliced = static_cast<Base>(d);
   Base& ref = static_cast<Base&>(d);
   ref.b = 8;
-  println(sliced.b, " ", d.b, " ", static_cast<Wrapper>(Meters{2.5}).w);
+  std::println(sliced.b, " ", d.b, " ", static_cast<Wrapper>(Meters{2.5}).w);
   return 0;
 }

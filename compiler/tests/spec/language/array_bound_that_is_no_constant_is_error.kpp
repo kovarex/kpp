@@ -11,6 +11,6 @@ int backwards[minus(2)];
 Buffer<4> fine;
 int main()
 {
-  println(int(sizeof(sized) / sizeof(int)));
+  std::println(int(sizeof(sized) / sizeof(int)));
   return 0;
 }

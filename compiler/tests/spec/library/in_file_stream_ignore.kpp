@@ -2,19 +2,19 @@
 // factorio: the tests' ForkLogic.cpp merges the forks' XML reports: `in.ignore(std::numeric_limits<std::streamsize>::max(), '>')` past `<?xml version="1.0"?>`, then `std::getline(in, buffer, '>')`
 int main()
 {
-  const char* temp = getenv("TEMP");
-  String path = String(temp ? temp : ".") + "/kpp_in_file_stream_ignore.txt";
+  const char* temp = std::getenv("TEMP");
+  std::String path = std::String(temp ? temp : ".") + "/kpp_in_file_stream_ignore.txt";
   {
-    OutFileStream out(path);
+    std::OutFileStream out(path);
     out << "<?xml version=\"1.0\"?><unittest-results tests=\"6\">rest";
   }
-  InFileStream in(path);
-  in.ignore(Limits<StreamSize>::max(), '>');
-  String header;
-  getline(in, header, '>');
-  println(header);
+  std::InFileStream in(path);
+  in.ignore(std::Limits<std::StreamSize>::max(), '>');
+  std::String header;
+  std::getline(in, header, '>');
+  std::println(header);
   in.ignore(2);
-  println(char(in.get()));
+  std::println(char(in.get()));
   in.close();
   remove(path.c_str());
   return 0;

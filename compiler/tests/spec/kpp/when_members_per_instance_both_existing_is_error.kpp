@@ -4,7 +4,7 @@
 template<typename T>
 struct Duo
 {
-  when (isTriviallyCopyable<T>) int extra;
+  when (std::isTriviallyCopyable<T>) int extra;
   when (sizeof(T) >= 4) int extra;
 };
 

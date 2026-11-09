@@ -2,9 +2,9 @@
 // found by thread D (2026-11-05): the lambda's body read the function's own IR names for the elements (Emitter::packLocals outlived the function), so `[&](int a, int b) { show(a + b); (show(ts), ...); }` printed its own parameters, and with fewer of them LLVM rejected the module (use of undefined value '%p1')
 struct A { int v; };
 struct B { int v; };
-inline void show(int x) { println(x); }
-inline void show(const A& a) { println("A", a.v); }
-inline void show(const B& b) { println("B", b.v); }
+inline void show(int x) { std::println(x); }
+inline void show(const A& a) { std::println("A", a.v); }
+inline void show(const B& b) { std::println("B", b.v); }
 inline int digits(int a, int b, int c) { return a * 100 + b * 10 + c; }
 
 template<typename... Ts>
@@ -45,11 +45,11 @@ int nested(Ts... ts)
 int main()
 {
   each(7, A{8}, B{9});
-  println(total(5, 1, 2, 3));
-  println(spread(1, 2, 3));
+  std::println(total(5, 1, 2, 3));
+  std::println(spread(1, 2, 3));
   int x = 1, y = 2;
   bump(x, y);
-  println(x, " ", y);
-  println(nested(1, 2, 3, 4));
+  std::println(x, " ", y);
+  std::println(nested(1, 2, 3, 4));
   return 0;
 }

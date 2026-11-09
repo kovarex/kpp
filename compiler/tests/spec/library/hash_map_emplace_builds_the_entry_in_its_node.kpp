@@ -24,21 +24,21 @@ struct Key
 };
 
 int Key::moved = 0;
-usize hashOf(const Key& key) { return hashOf(key.id); }
+usize hashOf(const Key& key) { return std::hashOf(key.id); }
 
 int main()
 {
-  HashMap<int, Fixed> map;
+  std::HashMap<int, Fixed> map;
   for (int i = 0; i < 20; ++i)
-    map.emplace(piecewiseConstruct, forwardAsTuple(i), forwardAsTuple(i * 10));
-  auto [it, created] = map.emplace(piecewiseConstruct, forwardAsTuple(3), forwardAsTuple(99));
-  println(map.size(), " ", created, " ", it->second.value, " ", Fixed::built, " built ", Fixed::destroyed, " destroyed");
-  println(map.at(19).value);
-  HashSet<Key> keys;
+    map.emplace(std::piecewiseConstruct, std::forwardAsTuple(i), std::forwardAsTuple(i * 10));
+  auto [it, created] = map.emplace(std::piecewiseConstruct, std::forwardAsTuple(3), std::forwardAsTuple(99));
+  std::println(map.size(), " ", created, " ", it->second.value, " ", Fixed::built, " built ", Fixed::destroyed, " destroyed");
+  std::println(map.at(19).value);
+  std::HashSet<Key> keys;
   auto [where, added] = keys.emplace(7);
   auto [again, addedAgain] = keys.emplace(7);
-  println(keys.size(), " ", added, " ", addedAgain, " ", where->id, " ", where == again, " moved ", Key::moved);
-  auto hinted = map.emplace_hint(map.begin(), piecewiseConstruct, forwardAsTuple(40), forwardAsTuple(4));
-  println(hinted->first, " ", hinted->second.value, " ", map.size());
+  std::println(keys.size(), " ", added, " ", addedAgain, " ", where->id, " ", where == again, " moved ", Key::moved);
+  auto hinted = map.emplace_hint(map.begin(), std::piecewiseConstruct, std::forwardAsTuple(40), std::forwardAsTuple(4));
+  std::println(hinted->first, " ", hinted->second.value, " ", map.size());
   return 0;
 }

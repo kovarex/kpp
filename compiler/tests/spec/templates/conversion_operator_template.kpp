@@ -4,7 +4,7 @@ struct Value
 {
   double stored = 2.5;
   template<class T>
-    requires (isIntegral<T> || isFloatingPoint<T>)
+    requires (std::isIntegral<T> || std::isFloatingPoint<T>)
   implicit operator T() const { return T(this.stored * 2); }
   template<class T>
   T as() const { return this; }
@@ -14,6 +14,6 @@ int main()
   Value v;
   double d = v;
   int i = v;
-  println(d, " ", i, " ", v.as<double>(), " ", v.as<int>());
+  std::println(d, " ", i, " ", v.as<double>(), " ", v.as<int>());
   return 0;
 }

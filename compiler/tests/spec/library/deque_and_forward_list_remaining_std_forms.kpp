@@ -2,13 +2,13 @@
 extern "C" int printf(const char* format, ...);
 int main()
 {
-  Deque<int> d = {1, 5};
-  DequeIterator<int> di = d.insert(d.begin() + 1, 3, 7);
+  std::Deque<int> d = {1, 5};
+  std::DequeIterator<int> di = d.insert(d.begin() + 1, 3, 7);
   printf("%d:", (int)(di - d.begin()));
   for (int x : d)
     printf(" %d", x);
   printf("\n");
-  ForwardList<int> f = {5, 1, 4, 1, 3};
+  std::ForwardList<int> f = {5, 1, 4, 1, 3};
   f.removeIf([](int x) { return x == 4; });
   f.sort();
   for (int x : f)

@@ -19,7 +19,7 @@ public:
 struct Point { int x; int y; };
 void setHalf(double& d) { d = 1.5; }
 void bump(Holder& h) { h.b.v += 1; }
-void append(String& s) { s.append("!"); }
+void append(std::String& s) { s.append("!"); }
 void moveRight(Point& p) { p.x += 1; }
 int scalar()
 {
@@ -45,6 +45,6 @@ int main()
 {
   literal();
   braced();
-  println(scalar(), " ", converted());
+  std::println(scalar(), " ", converted());
   return 0;
 }

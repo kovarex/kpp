@@ -27,7 +27,7 @@ int migrate(int count)
       for (int i = 0; i < count; ++i)
         this.connections.emplace_back(i);
     }
-    Vector<Connection> connections;
+    std::Vector<Connection> connections;
   };
   Migration m(count);
   int sum = 0;
@@ -38,6 +38,6 @@ int migrate(int count)
 int main()
 {
   Layer l(2);
-  println(l.total, " ", migrate(4));
+  std::println(l.total, " ", migrate(4));
   return 0;
 }

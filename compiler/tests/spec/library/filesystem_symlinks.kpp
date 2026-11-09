@@ -2,30 +2,30 @@
 // target: linux (on Windows making a link needs Developer Mode or the privilege to create symbolic links: the same calls are there, CreateSymbolicLink and the reparse point read back)
 int main()
 {
-  using namespace filesystem;
+  using namespace std::filesystem;
   path root = temp_directory_path() / "kpp-spec-symlinks";
   remove_all(root);
   create_directories(root / "a" / "b");
   {
-    OutFileStream out((root / "a" / "one.txt").string());
+    std::OutFileStream out((root / "a" / "one.txt").string());
     out << "hello";
   }
   create_symlink("a/one.txt", root / "link.txt");
   create_directory_symlink("a", root / "dirlink");
-  println("read [", read_symlink(root / "link.txt").generic_string(), "] [", read_symlink(root / "dirlink").generic_string(), "]");
-  println("status ", is_symlink(root / "link.txt"), " ", is_regular_file(root / "link.txt"), " ", file_size(root / "link.txt"), " ", is_directory(root / "dirlink"),
+  std::println("read [", read_symlink(root / "link.txt").generic_string(), "] [", read_symlink(root / "dirlink").generic_string(), "]");
+  std::println("status ", is_symlink(root / "link.txt"), " ", is_regular_file(root / "link.txt"), " ", file_size(root / "link.txt"), " ", is_directory(root / "dirlink"),
           " ", symlink_status(root / "dirlink").type() == file_type::symlink);
   copy_symlink(root / "link.txt", root / "link2.txt");
-  println("copy [", read_symlink(root / "link2.txt").generic_string(), "] ", is_symlink(root / "link2.txt"));
-  ErrorCode ec;
+  std::println("copy [", read_symlink(root / "link2.txt").generic_string(), "] ", is_symlink(root / "link2.txt"));
+  std::ErrorCode ec;
   read_symlink(root / "a", ec);
-  println("not a link ", ec == Errc::invalid_argument);
+  std::println("not a link ", ec == std::Errc::invalid_argument);
   i32 plain = 0, followed = 0;
   for (recursive_directory_iterator it(root), end; it != end; ++it)
     ++plain;
   for (recursive_directory_iterator it(root, directory_options::follow_directory_symlink), end; it != end; ++it)
     ++followed;
-  println("recursive ", plain, " ", followed);
-  println("removed ", remove_all(root));
+  std::println("recursive ", plain, " ", followed);
+  std::println("removed ", remove_all(root));
   return 0;
 }

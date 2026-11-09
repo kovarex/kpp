@@ -50,7 +50,7 @@ constexpr bool order()
 template<long long N> struct Show { static constexpr long long value = N; };
 int main()
 {
-  println(Show<direct()>::value, " ", Show<throughCall()>::value, " ", Show<members()>::value, " ", Show<walk()>::value, " ", order());
+  std::println(Show<direct()>::value, " ", Show<throughCall()>::value, " ", Show<members()>::value, " ", Show<walk()>::value, " ", order());
   static_assert(order());
   return 0;
 }

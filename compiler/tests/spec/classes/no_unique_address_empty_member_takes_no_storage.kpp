@@ -7,10 +7,10 @@ struct Empty
 
 struct Noisy
 {
-  Noisy() { println("Noisy()"); }
-  Noisy(const Noisy&) { println("Noisy(const Noisy&)"); }
-  Noisy& operator=(const Noisy&) { println("Noisy::operator="); return this; }
-  ~Noisy() { println("~Noisy()"); }
+  Noisy() { std::println("Noisy()"); }
+  Noisy(const Noisy&) { std::println("Noisy(const Noisy&)"); }
+  Noisy& operator=(const Noisy&) { std::println("Noisy::operator="); return this; }
+  ~Noisy() { std::println("~Noisy()"); }
 };
 
 struct First { [[no_unique_address]] Empty e; int x; };
@@ -28,7 +28,7 @@ public:
 };
 struct Other {};
 struct TwoKinds { [[no_unique_address]] Empty e; [[no_unique_address]] Other o; long long x; };
-struct WithNoisy { int x = 0x11223344; [[no_unique_address]] Noisy n; String text = "long enough to be held outside the object itself"; };
+struct WithNoisy { int x = 0x11223344; [[no_unique_address]] Noisy n; std::String text = "long enough to be held outside the object itself"; };
 
 template<typename Compare>
 struct Holder
@@ -42,7 +42,7 @@ struct Copied
 {
   [[no_unique_address]] Empty e;
   int x;
-  String s;
+  std::String s;
 };
 
 struct Aggregate { [[no_unique_address]] Empty e; int x; int y; };
@@ -62,37 +62,37 @@ int main()
 {
   First first;
   first.x = 0x01020304;
-  println(first.e.twice(21), " ", first.x == 0x01020304, " ", (void*)&first.e == (void*)&first);
+  std::println(first.e.twice(21), " ", first.x == 0x01020304, " ", (void*)&first.e == (void*)&first);
   Last last;
-  println((void*)&last.e == (void*)&last, " ", (void*)&last.x == (void*)&last);
+  std::println((void*)&last.e == (void*)&last, " ", (void*)&last.x == (void*)&last);
   Middle middle;
   middle.a = 'a';
   middle.b = 'b';
-  println(offsetof(Middle, b), " ", middle.a, middle.b);
+  std::println(offsetof(Middle, b), " ", middle.a, middle.b);
   Virtual v;
-  println(v.x, " ", v.e.twice(4));
+  std::println(v.x, " ", v.e.twice(4));
   auto compare = [](int a, int b) { return a < b; };
   Holder<decltype(compare)> holder{compare, 5};
-  println(sizeof(holder), " ", holder.compare(1, 2), " ", holder.value);
+  std::println(sizeof(holder), " ", holder.compare(1, 2), " ", holder.value);
   {
     WithNoisy a;
     WithNoisy b = a;
     a.x = 1;
     a = b;
-    println(a.x == 0x11223344, " ", a.text.size());
+    std::println(a.x == 0x11223344, " ", a.text.size());
   }
   Copied c{{}, 0x55667788, "a text long enough to be held outside the object"};
   Copied d = c;
-  Copied e = move(c);
+  Copied e = std::move(c);
   d.x = 0;
   d = e;
-  println(d.x == 0x55667788, " ", d.s.size(), " ", e.x == 0x55667788);
+  std::println(d.x == 0x55667788, " ", d.s.size(), " ", e.x == 0x55667788);
   Aggregate zero = {};
   Aggregate given{{}, 1, 2};
-  println(zero.x, zero.y, " ", given.x, given.y, " ", constant.x, constant.y);
+  std::println(zero.x, zero.y, " ", given.x, given.y, " ", constant.x, constant.y);
   First array[3];
   for (int i = 0; i < 3; ++i)
     array[i].x = i;
-  println(array[2].x, " ", (char*)&array[1].e - (char*)&array[0].e);
+  std::println(array[2].x, " ", (char*)&array[1].e - (char*)&array[0].e);
   return 0;
 }

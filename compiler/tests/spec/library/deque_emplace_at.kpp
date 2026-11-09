@@ -2,15 +2,15 @@
 // factorio: the tests' TestCompactDeque compares the game's CompactDeque with a std::deque: `deq2.emplace(deq2.begin(), "begin")`, `deq2.emplace(deq2.begin() + index, toStr(n))`
 int main()
 {
-  Deque<String> deque;
+  std::Deque<std::String> deque;
   deque.push_back("b");
   deque.push_back("d");
   auto at = deque.emplace(deque.begin(), "a");
   deque.emplace(deque.begin() + 2, 1, 'c');
   deque.emplace(deque.end(), "e");
-  String joined;
-  for (const String& s : deque)
+  std::String joined;
+  for (const std::String& s : deque)
     joined << s;
-  println(joined, " ", *at, " ", deque.size());
+  std::println(joined, " ", *at, " ", deque.size());
   return 0;
 }

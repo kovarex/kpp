@@ -4,7 +4,7 @@ template<int... I>
 struct Seq {};
 int sum3(int a, int b, int c) { return a + b + c; }
 template<int... I>
-int sumOf(const Array<int, 3>& values, Seq<I...>) { return sum3(values[I]...); }
+int sumOf(const std::Array<int, 3>& values, Seq<I...>) { return sum3(values[I]...); }
 struct Point
 {
   int x = 0;
@@ -15,15 +15,15 @@ struct Holder
 {
   Point p;
   template<int... I>
-  Holder(const Array<int, 2>& values, Seq<I...>) : p(values[I]...) {}
+  Holder(const std::Array<int, 2>& values, Seq<I...>) : p(values[I]...) {}
 };
 template<int... I>
 int count(Seq<I...>) { return int(sizeof...(I)); }
 int main()
 {
-  Array<int, 3> values = {1, 2, 3};
-  Array<int, 2> two = {4, 5};
+  std::Array<int, 3> values = {1, 2, 3};
+  std::Array<int, 2> two = {4, 5};
   Holder h(two, Seq<1, 0>());
-  println(sumOf(values, Seq<0, 1, 2>()), " ", h.p.x, " ", h.p.y, " ", count(Seq<4, 5, 6, 7>()));
+  std::println(sumOf(values, Seq<0, 1, 2>()), " ", h.p.x, " ", h.p.y, " ", count(Seq<4, 5, 6, 7>()));
   return 0;
 }

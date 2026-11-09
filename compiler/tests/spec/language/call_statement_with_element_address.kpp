@@ -20,6 +20,6 @@ int main()
   int first = 1, second = 2;
   int* items[2] = {&first, &second};
   Holder<int>::exchange(*items[0], *items[1]);
-  println((int)image[4], " ", (int)image[6], " ", first, " ", second);
+  std::println((int)image[4], " ", (int)image[6], " ", first, " ", second);
   return 0;
 }

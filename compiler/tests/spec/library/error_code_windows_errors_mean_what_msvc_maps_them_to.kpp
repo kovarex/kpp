@@ -2,18 +2,18 @@
 // target: windows (the table of Windows errors)
 // found by thread I's battery er1 (2026-11-09): errcOfWindowsError, written to be std's table, lacked 30 of MSVC's entries (Winsock's errors, ERROR_SEM_TIMEOUT, WAIT_TIMEOUT, ERROR_NOT_READY...), which equalled no condition
 extern "C" int printf(const char* format, ...);
-Errc conditions[26] = {
-  Errc::operation_not_permitted, Errc::no_such_file_or_directory, Errc::no_such_process, Errc::interrupted, Errc::io_error,
-  Errc::resource_unavailable_try_again, Errc::illegal_byte_sequence, Errc::permission_denied, Errc::device_or_resource_busy,
-  Errc::file_exists, Errc::cross_device_link, Errc::no_such_device, Errc::not_a_directory, Errc::is_a_directory,
-  Errc::invalid_argument, Errc::too_many_files_open, Errc::file_too_large, Errc::no_space_on_device, Errc::read_only_file_system,
-  Errc::resource_deadlock_would_occur, Errc::filename_too_long, Errc::function_not_supported, Errc::directory_not_empty,
-  Errc::not_supported, Errc::operation_not_supported, Errc::timed_out};
+std::Errc conditions[26] = {
+  std::Errc::operation_not_permitted, std::Errc::no_such_file_or_directory, std::Errc::no_such_process, std::Errc::interrupted, std::Errc::io_error,
+  std::Errc::resource_unavailable_try_again, std::Errc::illegal_byte_sequence, std::Errc::permission_denied, std::Errc::device_or_resource_busy,
+  std::Errc::file_exists, std::Errc::cross_device_link, std::Errc::no_such_device, std::Errc::not_a_directory, std::Errc::is_a_directory,
+  std::Errc::invalid_argument, std::Errc::too_many_files_open, std::Errc::file_too_large, std::Errc::no_space_on_device, std::Errc::read_only_file_system,
+  std::Errc::resource_deadlock_would_occur, std::Errc::filename_too_long, std::Errc::function_not_supported, std::Errc::directory_not_empty,
+  std::Errc::not_supported, std::Errc::operation_not_supported, std::Errc::timed_out};
 int main()
 {
   for (int e = 1; e < 20000; ++e)
   {
-    ErrorCode ec(e, systemCategory());
+    std::ErrorCode ec(e, std::systemCategory());
     int found = -1;
     for (int i = 0; i < 26; ++i)
       if (ec == conditions[i])

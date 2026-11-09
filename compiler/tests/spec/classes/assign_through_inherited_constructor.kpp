@@ -9,8 +9,8 @@ class Handle
 {
 public:
   Handle() = default;
-  implicit Handle(UniquePtr<Object>&& o) : object(::move(o)) {}
-  UniquePtr<Object> object;
+  implicit Handle(std::UniquePtr<Object>&& o) : object(std::move(o)) {}
+  std::UniquePtr<Object> object;
 };
 class SpriteState : public Handle
 {
@@ -18,11 +18,11 @@ public:
   using Handle::Handle;
   int get() const { return this.object ? this.object->value : -1; }
 };
-UniquePtr<Object> make() { return makeUnique<Object>(); }
+std::UniquePtr<Object> make() { return std::makeUnique<Object>(); }
 int main()
 {
-  Array<SpriteState, 2> states;
+  std::Array<SpriteState, 2> states;
   states[1] = make();
-  println(states[0].get(), " ", states[1].get());
+  std::println(states[0].get(), " ", states[1].get());
   return 0;
 }

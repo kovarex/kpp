@@ -1,27 +1,27 @@
 // spec: a String assigned from a Vector<String>'s element reached through a const reference works at compile time as at run time (`5 5`): String::operator=(const String&) compares this with &other, a frame's object and a heap element
 // factorio: build.kpp: projectlib's kppLastTarget (name = arguments[i + 1], a cell's --target) stopped the interpreter, "the build description is no constant" at String.kpp's operator=; projectlib assigns through a StringView until this passes
 extern "C" import "stdio.h";
-void last(String& name, const Vector<String>& arguments)
+void last(std::String& name, const std::Vector<std::String>& arguments)
 {
   for (u64 i = 0; i < arguments.size(); ++i)
     name = arguments[i];
 }
 constexpr int copied()
 {
-  Vector<String> arguments;
+  std::Vector<std::String> arguments;
   arguments.push_back("x");
   arguments.push_back("linux");
-  String name;
+  std::String name;
   last(name, arguments);
   return name.size();
 }
 static_assert(copied() == 5);
 int main()
 {
-  Vector<String> arguments;
+  std::Vector<std::String> arguments;
   arguments.push_back("x");
   arguments.push_back("linux");
-  String name;
+  std::String name;
   last(name, arguments);
   printf("%d %d\n", copied(), int(name.size()));
   return 0;

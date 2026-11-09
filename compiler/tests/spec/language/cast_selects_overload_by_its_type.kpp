@@ -12,6 +12,6 @@ int main()
   auto pl = static_cast<long long (*)(long long)>(twice);
   auto pd = (double (*)(double))twice;
   auto pa = static_cast<double (*)(double)>(&twice);
-  println(pl(3), " ", pd(3), " ", pa(2), " ", call(static_cast<double (*)(double)>(twice), 2.0));
+  std::println(pl(3), " ", pd(3), " ", pa(2), " ", call(static_cast<double (*)(double)>(twice), 2.0));
   return 0;
 }

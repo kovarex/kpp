@@ -1,22 +1,22 @@
 // spec: in a fold expression, a call whose argument is the pack's element (`text(rest)`) expands per element as any call does, also where an overload of that name takes a Text: the exact overload (text(int)) is chosen for each element, and the fold expands the pack
 // factorio: compiler/tests/run/format.kpp's joinWith, `((result.append(separator), result.append(toString(rest))), ...)`, after the stdlib's toString(Text) beside toString(int) (design.md 14)
 extern "C" int puts(const char* text);
-String text(int value)
+std::String text(int value)
 {
-  String out;
+  std::String out;
   out.append(char('0' + value));
   return out;
 }
-String text(Text pieces)
+std::String text(std::Text pieces)
 {
-  String out;
+  std::String out;
   pieces.appendTo(out);
   return out;
 }
 template<typename... R>
-String join(R... rest)
+std::String join(R... rest)
 {
-  String r;
+  std::String r;
   (r.append(text(rest)), ...);
   return r;
 }

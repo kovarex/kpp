@@ -6,19 +6,19 @@ struct Inner
 {
   T value;
   template<typename... Args>
-  void emplace(Args&&... args) { this.value = T(forward<Args>(args)...); }
+  void emplace(Args&&... args) { this.value = T(std::forward<Args>(args)...); }
 };
 template<typename T>
 struct Outer
 {
   Inner<T> inner;
   template<typename... Args>
-  void emplace(Args&&... args) { this.inner.emplace(forward<Args>(args)...); }
+  void emplace(Args&&... args) { this.inner.emplace(std::forward<Args>(args)...); }
 };
 int main()
 {
-  Outer<String> outer;
+  Outer<std::String> outer;
   outer.emplace(3, 'x');
-  println(outer.inner.value);
+  std::println(outer.inner.value);
   return 0;
 }

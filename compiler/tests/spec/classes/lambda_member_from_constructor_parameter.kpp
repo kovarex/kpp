@@ -13,6 +13,6 @@ int main()
   int k = 10;
   auto lambda = [k](int x) { return x + k; };
   Holder<decltype(lambda)> h(100, lambda);
-  println(h.call(5));
+  std::println(h.call(5));
   return 0;
 }

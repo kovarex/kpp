@@ -2,23 +2,23 @@
 extern "C" import "stdio.h";
 struct P
 {
-  void appendTo(String& out) const { out.append("p"); }
+  void appendTo(std::String& out) const { out.append("p"); }
 };
 template<typename T>
-void twice(const T& value, String& out)
+void twice(const T& value, std::String& out)
 {
   value.appendTo(out);
   out.append(" ");
 }
-void show(Text text)
+void show(std::Text text)
 {
-  String s;
+  std::String s;
   text.appendTo(s);
   printf("[%s] ", s.c_str());
 }
 int main()
 {
-  String out;
+  std::String out;
   int i = 7;
   i.appendTo(out);
   out.append(" ");
@@ -43,13 +43,13 @@ int main()
   char c = 'x';
   c.appendTo(out);
   out.append(" ");
-  String ab = "ab";
+  std::String ab = "ab";
   ab.appendTo(out);
   out.append(" ");
-  StringView("cd").appendTo(out);
+  std::StringView("cd").appendTo(out);
   printf("%s ", out.c_str());
   show(42, " ", P{});
-  String t;
+  std::String t;
   twice(u32(42), t);
   printf("%su\n", t.c_str());
   return 0;

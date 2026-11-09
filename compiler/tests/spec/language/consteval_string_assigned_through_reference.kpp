@@ -3,14 +3,14 @@
 extern "C" import "stdio.h";
 struct Named
 {
-  String name;
+  std::String name;
 };
-void copyName(const Named& from, String& to) { to = from.name; }
+void copyName(const Named& from, std::String& to) { to = from.name; }
 constexpr int copied()
 {
   Named n;
   n.name = "x";
-  String s;
+  std::String s;
   copyName(n, s);
   return s.size();
 }
@@ -19,7 +19,7 @@ int main()
 {
   Named n;
   n.name = "x";
-  String s;
+  std::String s;
   copyName(n, s);
   printf("%d %d\n", copied(), int(s.size()));
   return 0;

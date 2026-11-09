@@ -2,7 +2,7 @@
 // design.md 8.5 (decided 2026-10-28); the converter's std::variant mapping: SerialiserHelper/DeserialiserHelper save and load of variants (index, variant_size, variant_alternative_t)
 union enum Value : uint8_t
 {
-  { {int, Number}, {double, Ratio}, {String, Text} }
+  { {int, Number}, {double, Ratio}, {std::String, Text} }
 };
 
 template<class U>
@@ -10,7 +10,7 @@ void describe(const U& u)
 {
   for constexpr (auto a : alternatives(U))
     if (u == a.tag)
-      println(int(a.tag), " ", StringView(a.name), " ", u[a]);
+      std::println(int(a.tag), " ", std::StringView(a.name), " ", u[a]);
 }
 
 template<class U>
@@ -31,10 +31,10 @@ int main()
   Value v;
   v[Value::Ratio] = 0.5;
   describe(v);
-  println(int(v.tag()), " ", int(Value::Tag::count));
+  std::println(int(v.tag()), " ", int(Value::Tag::count));
   Value w = defaultAt<Value>(2);
-  println(w == Value::Text, " ", w[Value::Text].size());
+  std::println(w == Value::Text, " ", w[Value::Text].size());
   for constexpr (auto a : alternatives(Value))
-    println(StringView(a.name));
+    std::println(std::StringView(a.name));
   return 0;
 }

@@ -3,8 +3,8 @@
 struct Timer
 {
   const char* name;
-  Timer(const char* name) : name(name) { println("start ", StringView(name)); }
-  ~Timer() { println("stop ", StringView(this.name)); }
+  Timer(const char* name) : name(name) { std::println("start ", std::StringView(name)); }
+  ~Timer() { std::println("stop ", std::StringView(this.name)); }
 };
 
 int main()
@@ -13,8 +13,8 @@ int main()
     Timer outer("outer");
     when (config::debug) Timer timer("phase");
     Timer inner("inner");
-    println("work");
+    std::println("work");
   }
-  println("after");
+  std::println("after");
   return 0;
 }

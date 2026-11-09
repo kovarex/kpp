@@ -18,6 +18,6 @@ int main()
   int c = applyBoth(g);
   auto twice = [&](auto x) { return g(x) + g(x); };
   int d = twice(1);
-  println(a, " ", b, " ", c, " ", d, " ", counter);
+  std::println(a, " ", b, " ", c, " ", d, " ", counter);
   return 0;
 }

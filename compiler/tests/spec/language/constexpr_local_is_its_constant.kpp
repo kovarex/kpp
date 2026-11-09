@@ -17,6 +17,6 @@ int main()
   int atRunTime = which();
   constexpr double d = scaled(2.0);
   constexpr const char* text = "kpp";
-  println(atCompileTime, " ", atRunTime, " ", d, " ", StringView(text));
+  std::println(atCompileTime, " ", atRunTime, " ", d, " ", std::StringView(text));
   return 0;
 }

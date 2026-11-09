@@ -12,6 +12,6 @@ int main()
   Ring<int, 3> r;
   r.push(5);
   r.push(6);
-  println(r.items[0], " ", r.head);
+  std::println(r.items[0], " ", r.head);
   return 0;
 }

@@ -31,12 +31,12 @@ int main()
   W<int> wi;
   W<float> wf;
   W<double> wd;
-  print(wi.f(), " ", wf.f(), " ", wi.g(), " ", wd.g(), " ");
-  print(a(1), " ", a(1.0), " ");
-  print(b(1), " ", b('c'), " ", b((short)1), " ");
-  print(c(1), " ", c('c'), " ");
-  print(d(1), " ");
-  print(e(1.0f), " ", e(1.0), " ");
-  println(f(1, 'c'), " ", f(1, 2.0));
+  std::print(wi.f(), " ", wf.f(), " ", wi.g(), " ", wd.g(), " ");
+  std::print(a(1), " ", a(1.0), " ");
+  std::print(b(1), " ", b('c'), " ", b((short)1), " ");
+  std::print(c(1), " ", c('c'), " ");
+  std::print(d(1), " ");
+  std::print(e(1.0f), " ", e(1.0), " ");
+  std::println(f(1, 'c'), " ", f(1, 2.0));
   return 0;
 }

@@ -30,17 +30,17 @@ int main()
 {
   S s{1, 2};
   auto [a, b] = s;
-  println(a, " ", b);
+  std::println(a, " ", b);
   auto& [c, d] = s;
   c = 6;
   d = 9;
-  println(s.u3, " ", s.rest, " ", c, " ", d);
+  std::println(s.u3, " ", s.rest, " ", c, " ", d);
   c += 3;
-  println(s.u3, " ", s.rest, " ", twice(c), " ", twice(b));
+  std::println(s.u3, " ", s.rest, " ", twice(c), " ", twice(b));
   const unsigned& r = c;
-  println(r);
+  std::println(r);
   T t{10, 2.5};
   auto [p, q] = t;
-  println(p, " ", q, " ", atCompileTime());
+  std::println(p, " ", q, " ", atCompileTime());
   return 0;
 }

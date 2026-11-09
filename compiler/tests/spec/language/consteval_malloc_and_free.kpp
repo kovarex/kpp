@@ -42,7 +42,7 @@ constexpr int chars()
 }
 constexpr int vector()
 {
-  Vector<int> v;
+  std::Vector<int> v;
   for (int i = 0; i < 20; ++i)
     v.push_back(i);
   int sum = 0;
@@ -52,15 +52,15 @@ constexpr int vector()
 }
 constexpr int string()
 {
-  String s = "abc";
-  String t = s;
+  std::String s = "abc";
+  std::String t = s;
   t << "de";
-  String u = move(t);
+  std::String u = std::move(t);
   return u.size();
 }
 template<int N> struct Show { static constexpr int value = N; };
 int main()
 {
-  println(Show<grow()>::value, " ", Show<placed()>::value, " ", Show<chars()>::value, " ", Show<vector()>::value, " ", Show<string()>::value, " ", chars());
+  std::println(Show<grow()>::value, " ", Show<placed()>::value, " ", Show<chars()>::value, " ", Show<vector()>::value, " ", Show<string()>::value, " ", chars());
   return 0;
 }

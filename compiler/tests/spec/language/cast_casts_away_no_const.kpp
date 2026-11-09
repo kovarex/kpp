@@ -35,7 +35,7 @@ int main()
   int* p2 = reinterpret_cast<int*>(p);
   D& r3 = static_cast<D&>(b);
   int* p3 = static_cast<int*>(v);
-  S&& r4 = move(s);
-  take(move(s));
+  S&& r4 = std::move(s);
+  take(std::move(s));
   return copy.v + kept.w + away->v + old->v + r1.v + r2 + p1->v + *p2 + r3.w + *p3 + r4.v;
 }

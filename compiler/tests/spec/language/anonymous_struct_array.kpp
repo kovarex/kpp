@@ -18,6 +18,6 @@ int main()
   int total = 0;
   for (const auto& pass : passes)
     total += pass.start.y + pass.step;
-  println(sizeof(passes) / sizeof(passes[0]), " ", total);
+  std::println(sizeof(passes) / sizeof(passes[0]), " ", total);
   return 0;
 }

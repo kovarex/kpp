@@ -9,6 +9,6 @@ int main()
 {
   Acc a;
   int (Acc::*t)() = &Acc::toText;
-  println((a.*t)());
+  std::println((a.*t)());
   return 0;
 }

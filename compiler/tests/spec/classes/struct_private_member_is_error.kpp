@@ -19,6 +19,6 @@ int main()
 {
   Counter c;
   Node n;
-  println(c.value, " ", n.next == nullptr);
+  std::println(c.value, " ", n.next == nullptr);
   return 0;
 }

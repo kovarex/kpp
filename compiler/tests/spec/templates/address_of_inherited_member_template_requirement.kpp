@@ -30,6 +30,6 @@ int main()
 {
   Plain plain;
   Own own;
-  println(Binder<Plain>::call(plain), " ", Binder<Own>::call(own));
+  std::println(Binder<Plain>::call(plain), " ", Binder<Own>::call(own));
   return 0;
 }

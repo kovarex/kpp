@@ -22,6 +22,6 @@ int main()
 {
   Desc d;
   d.name.id = 7;
-  println(check(d, &Desc::getName), " ", check(d, &Desc::getCount), " ", value(d, &Desc::getCount));
+  std::println(check(d, &Desc::getName), " ", check(d, &Desc::getCount), " ", value(d, &Desc::getCount));
   return 0;
 }

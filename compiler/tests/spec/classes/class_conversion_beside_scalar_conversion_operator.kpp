@@ -26,6 +26,6 @@ struct Collector { Direction direction = Direction::East; Direction getDirection
 int main()
 {
   Collector c;
-  println(use(c.direction), " ", use(c.getDirection()));
+  std::println(use(c.direction), " ", use(c.getDirection()));
   return 0;
 }

@@ -32,8 +32,8 @@ int main()
   s.u32 = 7;
   s.s5 = -2;
   T t;
-  println(StringView(f(s.u3)), " ", StringView(g(s.u3)), " ", StringView(h(s.u3)), " ", StringView(k(s.w3)));
-  println(StringView(f(s.w3)), " ", StringView(f(s.s5)), " ", StringView(m(s.u3)), " ", StringView(n(s.u32)));
-  println(StringView(t.p(s.u3)), " ", StringView(f((s.u3))));
+  std::println(std::StringView(f(s.u3)), " ", std::StringView(g(s.u3)), " ", std::StringView(h(s.u3)), " ", std::StringView(k(s.w3)));
+  std::println(std::StringView(f(s.w3)), " ", std::StringView(f(s.s5)), " ", std::StringView(m(s.u3)), " ", std::StringView(n(s.u32)));
+  std::println(std::StringView(t.p(s.u3)), " ", std::StringView(f((s.u3))));
   return 0;
 }

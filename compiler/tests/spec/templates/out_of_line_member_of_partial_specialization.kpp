@@ -24,6 +24,6 @@ int main()
   Holder<int, false> b;
   a.load(2);
   b.load(3);
-  println(a.value, " ", b.value);
+  std::println(a.value, " ", b.value);
   return 0;
 }

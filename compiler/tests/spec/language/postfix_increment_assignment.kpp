@@ -20,6 +20,6 @@ int main()
   Counter a, b;
   a.value = 5;
   b = a++;
-  println(a.value, " ", b.value);
+  std::println(a.value, " ", b.value);
   return 0;
 }

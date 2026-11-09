@@ -1,9 +1,9 @@
 // spec: an alias template over Conditional with a bool parameter (Conditional<Small, int16_t, int64_t>)
-template<bool Small> using Index = Conditional<Small, int16_t, int64_t>;
+template<bool Small> using Index = std::Conditional<Small, int16_t, int64_t>;
 int main()
 {
   Index<true> a = 1;
   Index<false> b = 2;
-  println((int)sizeof(a), " ", (int)sizeof(b), " ", (int)(a + b));
+  std::println((int)sizeof(a), " ", (int)sizeof(b), " ", (int)(a + b));
   return 0;
 }

@@ -2,10 +2,10 @@
 // factorio: Filesystem::Path's defaulted assignments given a String (`endingInfo.imagePath = info.getDefault<std::string>(...)`, FileUtil's `path = name + ".zip"`), through Path's implicit constructor from a string
 struct Name
 {
-  String text;
+  std::String text;
   Name() = default;
   implicit Name(const char* s) : text(s) {}
-  implicit Name(String&& s) : text(s) {}
+  implicit Name(std::String&& s) : text(s) {}
   Name& operator=(const Name& other) = default;
   Name& operator=(Name&& other) = default;
 };
@@ -15,7 +15,7 @@ int main()
   Name n;
   n = "abc";
   Name m;
-  m = String("def");
-  println(n.text, " ", m.text);
+  m = std::String("def");
+  std::println(n.text, " ", m.text);
   return 0;
 }

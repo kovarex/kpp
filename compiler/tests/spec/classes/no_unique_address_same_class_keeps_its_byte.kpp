@@ -17,15 +17,15 @@ template<typename T> bool differ(const T& a, const T& b) { return (const void*)&
 int main()
 {
   SameBase base;
-  println(sizeof(SameBase), " ", differ<Empty>(base, base.e));
+  std::println(sizeof(SameBase), " ", differ<Empty>(base, base.e));
   SameMember member;
-  println(sizeof(SameMember), " ", differ(member.a, member.b));
+  std::println(sizeof(SameMember), " ", differ(member.a, member.b));
   BothMarked both;
-  println(sizeof(BothMarked), " ", differ(both.a, both.b));
+  std::println(sizeof(BothMarked), " ", differ(both.a, both.b));
   Inside inside;
-  println(sizeof(Inside), " ", differ<Empty>(inside.a, inside.d));
-  println(sizeof(Aligned), " ", alignof(Aligned));
-  println(sizeof(NotEmpty), " ", offsetof(NotEmpty, c));
-  println(sizeof(Elements));
+  std::println(sizeof(Inside), " ", differ<Empty>(inside.a, inside.d));
+  std::println(sizeof(Aligned), " ", alignof(Aligned));
+  std::println(sizeof(NotEmpty), " ", offsetof(NotEmpty, c));
+  std::println(sizeof(Elements));
   return 0;
 }

@@ -3,7 +3,7 @@
 struct Point
 {
   int x;
-  ~Point() { println("drop ", this.x); }
+  ~Point() { std::println("drop ", this.x); }
 };
 struct H { const Point& p; };
 struct Widget
@@ -19,27 +19,27 @@ int fromStatic()
 }
 int main()
 {
-  println("global ", globalHs[0].p.x + globalHs[1].p.x);
+  std::println("global ", globalHs[0].p.x + globalHs[1].p.x);
   {
     H h = H{Point{1}};
-    println("held ", h.p.x);
+    std::println("held ", h.p.x);
   }
-  println("copy done");
+  std::println("copy done");
   {
     auto a = H{Point{2}};
-    println("held ", a.p.x);
+    std::println("held ", a.p.x);
   }
-  println("auto done");
+  std::println("auto done");
   {
     H hs[2] = {{Point{3}}, {Point{4}}};
-    println("held ", hs[0].p.x + hs[1].p.x);
+    std::println("held ", hs[0].p.x + hs[1].p.x);
   }
-  println("array done");
+  std::println("array done");
   {
     Widget w{{Point{7}}};
-    println("widget made");
+    std::println("widget made");
   }
-  println("widget done");
-  println("static ", fromStatic());
+  std::println("widget done");
+  std::println("static ", fromStatic());
   return 0;
 }

@@ -1,9 +1,9 @@
 // spec: a `for constexpr` in a lambda written in a function, a template's instance or a plain one: the loop's body is typed once per element in the lambda as in the function itself; an instantiation is emitted from a private copy, whose lambda the loop retypes (the instantiation's own copy, which other threads read, was retyped in place: retypedPerElement looked at statements, not into lambdas), a plain function's own nodes are retyped in place as before
 struct A { int v; };
 struct B { int v; };
-inline void show(int x) { println(x); }
-inline void show(const A& a) { println("A", a.v); }
-inline void show(const B& b) { println("B", b.v); }
+inline void show(int x) { std::println(x); }
+inline void show(const A& a) { std::println("A", a.v); }
+inline void show(const B& b) { std::println("B", b.v); }
 
 template<typename T>
 void typesInLambda()
@@ -23,6 +23,6 @@ int plain()
 int main()
 {
   typesInLambda<int>();
-  println(plain());
+  std::println(plain());
   return 0;
 }

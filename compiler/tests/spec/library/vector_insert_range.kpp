@@ -6,7 +6,7 @@ struct Countdown
   using difference_type = ptrdiff_t;
   using pointer = const int*;
   using reference = int;
-  using iterator_category = InputIteratorTag;
+  using iterator_category = std::InputIteratorTag;
   int left;
   int operator*() const { return this.left; }
   Countdown& operator++()
@@ -18,10 +18,10 @@ struct Countdown
 };
 int main()
 {
-  Vector<int> v = {1, 2, 3};
+  std::Vector<int> v = {1, 2, 3};
   int extra[] = {7, 8};
   v.insert(v.begin() + 1, extra, extra + 2);
-  List<int> list;
+  std::List<int> list;
   list.push_back(40);
   list.push_back(50);
   v.insert(v.cend(), list.begin(), list.end());
@@ -31,15 +31,15 @@ int main()
   const int* second = v.cbegin() + 1;
   v.erase(second);
   for (int x : v)
-    print(x, " ");
-  println("");
-  Vector<UniquePtr<int>> from;
-  from.push_back(makeUnique<int>(5));
-  from.push_back(makeUnique<int>(6));
-  Vector<UniquePtr<int>> to;
-  to.push_back(makeUnique<int>(4));
-  to.insert(to.end(), MoveIterator<UniquePtr<int>*>(from.begin()), MoveIterator<UniquePtr<int>*>(from.end()));
-  MoveIterator<int*> a(extra), b(extra + 2);
-  println(to.size(), " ", *to[0], " ", *to[2], " ", from[0] == nullptr, " ", b - a, " ", (a + 1)[0]);
+    std::print(x, " ");
+  std::println("");
+  std::Vector<std::UniquePtr<int>> from;
+  from.push_back(std::makeUnique<int>(5));
+  from.push_back(std::makeUnique<int>(6));
+  std::Vector<std::UniquePtr<int>> to;
+  to.push_back(std::makeUnique<int>(4));
+  to.insert(to.end(), std::MoveIterator<std::UniquePtr<int>*>(from.begin()), std::MoveIterator<std::UniquePtr<int>*>(from.end()));
+  std::MoveIterator<int*> a(extra), b(extra + 2);
+  std::println(to.size(), " ", *to[0], " ", *to[2], " ", from[0] == nullptr, " ", b - a, " ", (a + 1)[0]);
   return 0;
 }

@@ -25,5 +25,5 @@ int main()
   int n = Hidden + 1;
   Plain p = Red;
   bool same = p == Green;
-  println(int(Mask::Water) + (m.bits > Mask::None ? 0 : 1) + n + same); return 0;
+  std::println(int(Mask::Water) + (m.bits > Mask::None ? 0 : 1) + n + same); return 0;
 }

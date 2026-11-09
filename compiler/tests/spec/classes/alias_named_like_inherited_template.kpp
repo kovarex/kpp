@@ -7,7 +7,7 @@ public:
   struct Option
   {
     using DataType = DataType_;
-    using Predicate = Function<bool(const DataType&)>;
+    using Predicate = std::Function<bool(const DataType&)>;
   };
   virtual ~Filters() = default;
 };
@@ -19,15 +19,15 @@ public:
   class Filter
   {
   public:
-    Filter(Option::Predicate predicate) : predicate(::move(predicate)) {}
+    Filter(Option::Predicate predicate) : predicate(std::move(predicate)) {}
     Option::Predicate predicate;
   };
-  Vector<Filter> filters;
+  std::Vector<Filter> filters;
 };
 int main()
 {
   Instance<int> i;
   i.filters.push_back(Instance<int>::Filter([](const int& x) { return x > 2; }));
-  println(i.filters[0].predicate(5), " ", i.filters[0].predicate(1));
+  std::println(i.filters[0].predicate(5), " ", i.filters[0].predicate(1));
   return 0;
 }

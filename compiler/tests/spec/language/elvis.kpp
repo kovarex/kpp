@@ -1,7 +1,7 @@
 // spec: `a ?: b` is `a ? a : b` with a evaluated once, an lvalue when both are, of a class by its bool conversion; `c ?::x : y` stays a conditional; clang's output
 int calls = 0;
 int counted(int v) { ++calls; return v; }
-int fallback() { println("fallback"); return 9; }
+int fallback() { std::println("fallback"); return 9; }
 namespace n { int x = 3; }
 struct B { int v; operator bool() const { return this.v != 0; } };
 B make(int v) { ++calls; return B{v}; }
@@ -9,29 +9,29 @@ int main()
 {
   int zero = 0;
   int five = 5;
-  println(zero ?: 2, " ", five ?: 2, " ", zero ?: five ?: 7);
-  println(counted(4) ?: 1, " ", calls);
-  println(counted(0) ?: 1, " ", calls);
-  println(five ?: fallback());
-  println(zero ?: fallback());
+  std::println(zero ?: 2, " ", five ?: 2, " ", zero ?: five ?: 7);
+  std::println(counted(4) ?: 1, " ", calls);
+  std::println(counted(0) ?: 1, " ", calls);
+  std::println(five ?: fallback());
+  std::println(zero ?: fallback());
   int* none = nullptr;
   int* some = &five;
-  println(*(none ?: some), " ", (some ?: nullptr) == some);
+  std::println(*(none ?: some), " ", (some ?: nullptr) == some);
   (zero ?: five) = 6;
-  println(five);
+  std::println(five);
   (five ?: zero) = 8;
-  println(five);
+  std::println(five);
   double d = zero ?: 2.5;
-  println(d);
+  std::println(d);
   bool yes = true;
-  println(yes ?::n::x : 4);
-  println((make(0) ?: make(2)).v, " ", (make(3) ?: make(4)).v, " ", calls);
+  std::println(yes ?::n::x : 4);
+  std::println((make(0) ?: make(2)).v, " ", (make(3) ?: make(4)).v, " ", calls);
   B a{0};
   B b{7};
-  println((a ?: b).v);
+  std::println((a ?: b).v);
   (a ?: b).v = 8;
-  println(b.v);
+  std::println(b.v);
   const char* s = nullptr;
-  println((s ?: "text")[1]);
+  std::println((s ?: "text")[1]);
   return 0;
 }

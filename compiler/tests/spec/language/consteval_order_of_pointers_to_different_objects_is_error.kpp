@@ -25,6 +25,6 @@ constexpr long long literalAndArray = literalBeforeArray();
 constexpr long long oneArray = oneArrayOrdered();
 int main()
 {
-  println(oneArray);
+  std::println(oneArray);
   return 0;
 }

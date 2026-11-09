@@ -10,7 +10,7 @@ public:
 class Derived : public Base
 {
 public:
-  void write(int count) { println(count); }
+  void write(int count) { std::println(count); }
 };
 int main()
 {

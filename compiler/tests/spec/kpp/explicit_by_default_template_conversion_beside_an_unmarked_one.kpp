@@ -20,6 +20,6 @@ int main()
   Entity* e = nullptr;
   e = pointer;
   Entity* f = pointer;
-  println(e == &entity ? 1 : 0, " ", f == &entity ? 1 : 0, " ", take(pointer));
+  std::println(e == &entity ? 1 : 0, " ", f == &entity ? 1 : 0, " ", take(pointer));
   return 0;
 }

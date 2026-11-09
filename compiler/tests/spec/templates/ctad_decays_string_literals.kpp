@@ -4,10 +4,10 @@ extern "C" import "stdio.h";
 enum class Kind { A, B };
 int main()
 {
-  constexpr auto words = Array{"relevancy", "downloads"};
-  auto entry = Pair{"autonomous", Kind::B};
-  static_assert(isSame<decltype(words), const Array<const char*, 2>>);
-  static_assert(isSame<decltype(entry), Pair<const char*, Kind>>);
+  constexpr auto words = std::Array{"relevancy", "downloads"};
+  auto entry = std::Pair{"autonomous", Kind::B};
+  static_assert(std::isSame<decltype(words), const std::Array<const char*, 2>>);
+  static_assert(std::isSame<decltype(entry), std::Pair<const char*, Kind>>);
   printf("%s %s %s %d\n", words[0], words[1], entry.first, int(entry.second));
   return 0;
 }

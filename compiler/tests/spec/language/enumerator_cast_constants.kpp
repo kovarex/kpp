@@ -10,14 +10,14 @@ class TileBatch
 {
 public:
   enum class TileRenderGroup { Background, UnderWater, Foreground, Last = Foreground };
-  Array<uint32_t, size_t(TileRenderGroup::Last) + 1> renderGroupSizes;
+  std::Array<uint32_t, size_t(TileRenderGroup::Last) + 1> renderGroupSizes;
 };
 enum class AlertType : uint8_t { EntityDestroyed, NoMaterial, NoPower, ALERTS_COUNT };
 int main()
 {
-  Array<int, RenderLayer::LayerType(RenderLayer::LAST)> sprites;
+  std::Array<int, RenderLayer::LayerType(RenderLayer::LAST)> sprites;
   TileBatch batch;
   int counts[size_t(AlertType::ALERTS_COUNT)] = {};
-  println(sprites.size(), " ", batch.renderGroupSizes.size(), " ", int(sizeof(counts) / sizeof(int)));
+  std::println(sprites.size(), " ", batch.renderGroupSizes.size(), " ", int(sizeof(counts) / sizeof(int)));
   return 0;
 }

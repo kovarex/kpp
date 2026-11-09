@@ -47,7 +47,7 @@ int main()
   Derived f;
   Implicit g;
   Keeper k;
-  println(a.value(), " ", b.value(), " ", c.value(), " ", d->value(), " ", e.b, " ", f.b, " ", g.b, " ", k.keep());
+  std::println(a.value(), " ", b.value(), " ", c.value(), " ", d->value(), " ", e.b, " ", f.b, " ", g.b, " ", k.keep());
   delete d;
   return 0;
 }

@@ -15,6 +15,6 @@ struct Box
 int main()
 {
   Box<int> b;
-  println(b.get(), " ", b.add(5));
+  std::println(b.get(), " ", b.add(5));
   return 0;
 }

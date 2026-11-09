@@ -2,11 +2,11 @@
 // factorio: LocaleStringReplacer's `Math::min(this->input.find(PARAMETER_SEPARATOR), this->input.size())`: with npos -1 the minimum was -1, a huge size_t offset, and every localised string came out followed by its own suffixes (`0 minutes__inutes__nutes__...`: 15 of the Localisation suite's tests and the others showing localised text)
 int main()
 {
-  String text = "minutes";
-  StringView view = text;
-  size_t offset = min(view.find("__"), view.size());
-  println(offset, " ", text.find('x') < text.size(), " ", view.substr(2, StringView::npos), " ", String::npos == StringView::npos);
-  WString wide = L"abc";
-  println(text.rfind('t', String::npos), " ", wide.substr(1, WString::npos).size(), " ", text.erase(3, String::npos));
+  std::String text = "minutes";
+  std::StringView view = text;
+  size_t offset = std::min(view.find("__"), view.size());
+  std::println(offset, " ", text.find('x') < text.size(), " ", view.substr(2, std::StringView::npos), " ", std::String::npos == std::StringView::npos);
+  std::WString wide = L"abc";
+  std::println(text.rfind('t', std::String::npos), " ", wide.substr(1, std::WString::npos).size(), " ", text.erase(3, std::String::npos));
   return 0;
 }

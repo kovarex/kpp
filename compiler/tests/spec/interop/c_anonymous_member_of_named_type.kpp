@@ -10,11 +10,11 @@ int main()
   info.rcMonitor.right = 7;
   info.szDevice[0] = 65;
   LPMONITORINFO base = (LPMONITORINFO)(&info);
-  println(sizeof(MONITORINFO), " ", sizeof(MONITORINFOEXW), " ", base->cbSize, " ", info.rcMonitor.right, " ", int(info.szDevice[0]), " ", (char*)&info.szDevice[0] - (char*)&info);
+  std::println(sizeof(MONITORINFO), " ", sizeof(MONITORINFOEXW), " ", base->cbSize, " ", info.rcMonitor.right, " ", int(info.szDevice[0]), " ", (char*)&info.szDevice[0] - (char*)&info);
   SpecPoint3 p = {};
   p.x = 1;
   p.y = 2;
   p.z = 3;
-  println(sizeof(SpecPoint3), " ", sizeof(SpecTagged), " ", p.x * 100 + p.y * 10 + p.z);
+  std::println(sizeof(SpecPoint3), " ", sizeof(SpecTagged), " ", p.x * 100 + p.y * 10 + p.z);
   return 0;
 }

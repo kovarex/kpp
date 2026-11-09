@@ -36,6 +36,6 @@ int notConstant()
 }
 int main()
 {
-  println(counted(), " ", fromParameter(2), " ", notConstant(), " ", notConstant());
+  std::println(counted(), " ", fromParameter(2), " ", notConstant(), " ", notConstant());
   return 0;
 }

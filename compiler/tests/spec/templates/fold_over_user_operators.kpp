@@ -31,10 +31,10 @@ int sink(Ts... ts)
 
 int main()
 {
-  println(sumLeft(A{1}, B{2}, A{3}));
+  std::println(sumLeft(A{1}, B{2}, A{3}));
   Vec v = sumVecs(Vec{1, 2}, Vec{3, 4}, Vec{5, 6});
-  println(v.x, " ", v.y);
-  println(sink(1, A{2}, 3));
-  println(int(all(Flag::A, Flag::C, Flag::A)));
+  std::println(v.x, " ", v.y);
+  std::println(sink(1, A{2}, 3));
+  std::println(int(all(Flag::A, Flag::C, Flag::A)));
   return 0;
 }

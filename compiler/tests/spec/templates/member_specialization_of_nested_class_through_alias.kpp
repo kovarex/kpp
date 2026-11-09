@@ -26,6 +26,6 @@ int main()
 {
   Update u;
   Frame f;
-  println(UpdateBuffer::Checker::add(&Update::a, u), " ", FrameBuffer::Checker::add(&Frame::a, f));
+  std::println(UpdateBuffer::Checker::add(&Update::a, u), " ", FrameBuffer::Checker::add(&Frame::a, f));
   return 0;
 }

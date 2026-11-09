@@ -2,7 +2,7 @@
 extern "C" int printf(const char* format, ...);
 template<typename T> struct Box { T v; };
 template<typename T> constexpr bool operator==(const Box<T>& a, const Box<T>& b) { return a.v == b.v; }
-template<typename T> constexpr strong_ordering operator<=>(const Box<T>& a, const Box<T>& b) { return a.v <=> b.v; }
+template<typename T> constexpr std::strong_ordering operator<=>(const Box<T>& a, const Box<T>& b) { return a.v <=> b.v; }
 constexpr bool e1 = Box<int>{1} == Box<int>{1};
 constexpr bool e2 = Box<int>{1} != Box<int>{2};
 constexpr bool e3 = (Box<int>{1} <=> Box<int>{2}) < 0;

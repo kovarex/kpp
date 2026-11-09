@@ -8,12 +8,12 @@ struct Fixed
 };
 struct Definition
 {
-  Vector<int> migrations;
+  std::Vector<int> migrations;
 };
 using mapped_type = double; // not the one `decltype(...)::mapped_type` names
 struct Holder
 {
-  Map<int, String> inventories;
+  std::Map<int, std::String> inventories;
   Fixed deviation;
   decltype(Definition::migrations)::const_iterator it = nullptr;
   int size() const
@@ -26,9 +26,9 @@ struct Holder
 int main()
 {
   Holder h;
-  Vector<int> v;
+  std::Vector<int> v;
   v.push_back(7);
   h.it = v.begin();
-  println(h.size(), " ", *h.it);
+  std::println(h.size(), " ", *h.it);
   return 0;
 }

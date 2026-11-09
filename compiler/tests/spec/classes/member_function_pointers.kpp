@@ -10,6 +10,6 @@ int main()
 {
   int (Calc::*op)(int) const = &Calc::mul;
   Calc c;
-  println((c.*op)(3), " ", (c.*(&Calc::add))(3));
+  std::println((c.*op)(3), " ", (c.*(&Calc::add))(3));
   return 0;
 }

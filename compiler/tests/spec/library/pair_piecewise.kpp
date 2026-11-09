@@ -8,20 +8,20 @@ struct Targeter
 };
 struct Owner
 {
-  UniquePtr<int> value;
+  std::UniquePtr<int> value;
   int extra = 0;
-  Owner(UniquePtr<int>&& v, int extra) : value(move(v)), extra(extra) {}
+  Owner(std::UniquePtr<int>&& v, int extra) : value(std::move(v)), extra(extra) {}
 };
 int main()
 {
   Entity entity;
   entity.id = 42;
-  Vector<Pair<Targeter, int>> targets;
-  targets.emplace_back(piecewiseConstruct, Tuple{&entity}, Tuple{5});
-  Vector<Pair<Targeter, Owner>> owners;
-  owners.emplace_back(piecewiseConstruct, Tuple{&entity}, Tuple<UniquePtr<int>, int>(makeUnique<int>(8), 3));
+  std::Vector<std::Pair<Targeter, int>> targets;
+  targets.emplace_back(std::piecewiseConstruct, std::Tuple{&entity}, std::Tuple{5});
+  std::Vector<std::Pair<Targeter, Owner>> owners;
+  owners.emplace_back(std::piecewiseConstruct, std::Tuple{&entity}, std::Tuple<std::UniquePtr<int>, int>(std::makeUnique<int>(8), 3));
   int seed = 6;
-  Pair<String, int> named(piecewiseConstruct, forwardAsTuple("abc", 2), forwardAsTuple(seed));
-  println(targets[0].first.entity->id, " ", targets[0].second, " ", owners[0].first.entity->id, " ", *owners[0].second.value, " ", owners[0].second.extra, " ", named.first, " ", named.second);
+  std::Pair<std::String, int> named(std::piecewiseConstruct, std::forwardAsTuple("abc", 2), std::forwardAsTuple(seed));
+  std::println(targets[0].first.entity->id, " ", targets[0].second, " ", owners[0].first.entity->id, " ", *owners[0].second.value, " ", owners[0].second.extra, " ", named.first, " ", named.second);
   return 0;
 }

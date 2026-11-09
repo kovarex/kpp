@@ -4,7 +4,7 @@ template<typename V>
 class Mod
 {
 public:
-  Mod(int type, V def = 0, V maximum = Limits<V>::max()) : def(def), maximum(maximum) {}
+  Mod(int type, V def = 0, V maximum = std::Limits<V>::max()) : def(def), maximum(maximum) {}
   V def, maximum;
 };
 class Mods
@@ -18,6 +18,6 @@ int main()
 {
   Mods m;
   Mod<double> direct(3);
-  println(m.speed.maximum > 1e300, " ", m.reach.def, " ", m.reach.maximum > 1e300, " ", direct.maximum > 1e300);
+  std::println(m.speed.maximum > 1e300, " ", m.reach.def, " ", m.reach.maximum > 1e300, " ", direct.maximum > 1e300);
   return 0;
 }

@@ -38,21 +38,21 @@ int main()
   int C::*pc = pb;
   int C::*own = &C::own;
   int A::*none = nullptr;
-  println(c.*pb, " ", c.*pc, " ", c.*own, " ", none == nullptr ? 1 : 0);
-  println(pc == &C::b ? 1 : 0, " ", pc != own ? 1 : 0, " ", none ? 1 : 0);
+  std::println(c.*pb, " ", c.*pc, " ", c.*own, " ", none == nullptr ? 1 : 0);
+  std::println(pc == &C::b ? 1 : 0, " ", pc != own ? 1 : 0, " ", none ? 1 : 0);
   C* p = &c;
   p->*own = 40;
-  println(c.own, " ", p->*pc);
+  std::println(c.own, " ", p->*pc);
   int C::*fields[3] = {&C::a, &C::b, &C::own};
   int sum = 0;
   for (int C::*f : fields)
     sum += c.*f;
-  println(sum);
+  std::println(sum);
   Holder h{&B::b, 'h'};
-  println(c.*h.field, " ", h.tag, " ", read<&C::own>(c));
+  std::println(c.*h.field, " ", h.tag, " ", read<&C::own>(c));
   constexpr int compileTime = sizeof(int A::*);
   int runTime = sizeof(int A::*);
-  println(Size<sizeof(int A::*)>::value, " ", compileTime, " ", runTime, " ", sizeof(Holder), " ", sizeof(fields));
-  println(alignof(int A::*), " ", alignof(Holder));
+  std::println(Size<sizeof(int A::*)>::value, " ", compileTime, " ", runTime, " ", sizeof(Holder), " ", sizeof(fields));
+  std::println(alignof(int A::*), " ", alignof(Holder));
   return 0;
 }

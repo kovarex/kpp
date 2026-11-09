@@ -14,7 +14,7 @@ public:
   HeartbeatMessage() = default;
   implicit HeartbeatMessage(Heartbeat&& heartbeat) noexcept : heartbeat(heartbeat) {}
   Heartbeat heartbeat;
-  Vector<uint32_t> requests;
+  std::Vector<uint32_t> requests;
   int type() const override { return 1; }
 };
 class Color
@@ -24,12 +24,12 @@ public:
   Color(const agui::Color& color) : r(color.r) {}
   float r;
 };
-static_assert(isMoveConstructible<HeartbeatMessage>, "Not movable.");
-static_assert(isMoveAssignable<HeartbeatMessage>, "Not movable.");
-static_assert(!isMoveConstructible<Message>);
-static_assert(isTriviallyCopyConstructible<Color> && isTriviallyMoveAssignable<Color>);
+static_assert(std::isMoveConstructible<HeartbeatMessage>, "Not movable.");
+static_assert(std::isMoveAssignable<HeartbeatMessage>, "Not movable.");
+static_assert(!std::isMoveConstructible<Message>);
+static_assert(std::isTriviallyCopyConstructible<Color> && std::isTriviallyMoveAssignable<Color>);
 int main()
 {
-  println(isMoveConstructible<HeartbeatMessage>, " ", isMoveConstructible<Message>, " ", isTriviallyCopyConstructible<Color>, " ", isTriviallyCopyAssignable<Color>);
+  std::println(std::isMoveConstructible<HeartbeatMessage>, " ", std::isMoveConstructible<Message>, " ", std::isTriviallyCopyConstructible<Color>, " ", std::isTriviallyCopyAssignable<Color>);
   return 0;
 }

@@ -4,6 +4,6 @@ static_assert(sizeof(U"ab") == 12);
 int main()
 {
   wchar_t buffer[sizeof(L"hello") / sizeof(wchar_t)] = {};
-  println(sizeof(L"ab") / sizeof(wchar_t), " ", sizeof(u"ab"), " ", sizeof(U"ab"), " ", sizeof(u8"ab"), " ", sizeof("ab"), " ", sizeof(L"a" L"bc") / sizeof(wchar_t), " ", sizeof(u"\U0001F600"), " ", sizeof(buffer) / sizeof(buffer[0]));
+  std::println(sizeof(L"ab") / sizeof(wchar_t), " ", sizeof(u"ab"), " ", sizeof(U"ab"), " ", sizeof(u8"ab"), " ", sizeof("ab"), " ", sizeof(L"a" L"bc") / sizeof(wchar_t), " ", sizeof(u"\U0001F600"), " ", sizeof(buffer) / sizeof(buffer[0]));
   return 0;
 }

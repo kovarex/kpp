@@ -9,24 +9,24 @@ static_assert(sizeof(int32_t) == 4 && sizeof(void*) == 8);
 template<class T>
 struct Box
 {
-  static_assert(!isPointer<T>, "no pointers in a Box");
+  static_assert(!std::isPointer<T>, "no pointers in a Box");
   T value{};
 };
 template<class T>
 int describe()
 {
   static_assert(sizeof(T) >= 1);
-  if constexpr (isIntegral<T>)
+  if constexpr (std::isIntegral<T>)
     return 1;
-  else if constexpr (isFloatingPoint<T>)
+  else if constexpr (std::isFloatingPoint<T>)
     return 2;
   else
     static_assert(sizeof(T) == 0, "describe needs a number");
 }
 int main()
 {
-  static_assert(isSame<int, int32_t>);
+  static_assert(std::isSame<int, int32_t>);
   Box<int> b;
-  println(b.value, " ", describe<int>(), " ", describe<double>());
+  std::println(b.value, " ", describe<int>(), " ", describe<double>());
   return 0;
 }

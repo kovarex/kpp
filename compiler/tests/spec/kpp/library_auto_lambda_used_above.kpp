@@ -3,6 +3,6 @@ int main()
 {
   shapes::Square s;
   s.side = 3;
-  println(s.area() + 3, " ", shapes::sq(3));
+  std::println(s.area() + 3, " ", shapes::sq(3));
   return 0;
 }

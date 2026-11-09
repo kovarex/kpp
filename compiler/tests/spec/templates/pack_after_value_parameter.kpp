@@ -13,24 +13,24 @@ public:
 };
 enum class ZeroHandling { KeepZeros, SkipZeros };
 template<class T, class... A>
-constexpr bool shouldConstruct = isConstructible<T, A...>;
+constexpr bool shouldConstruct = std::isConstructible<T, A...>;
 template<class DeserialiserType>
 class Helper
 {
 public:
   template<class T, ZeroHandling Zeros, typename ... Args>
-  static void loadUnique(DeserialiserType& input, UniquePtr<T>& target, Args&&... args)
+  static void loadUnique(DeserialiserType& input, std::UniquePtr<T>& target, Args&&... args)
   {
     constexpr bool keepZeros = Zeros == ZeroHandling::KeepZeros;
     if constexpr (shouldConstruct<T, DeserialiserType&, Args&&...>)
-      target.reset(new T(input, ::forward<Args>(args)...));
+      target.reset(new T(input, std::forward<Args>(args)...));
     else if constexpr (keepZeros)
-      target.reset(new T(::forward<Args>(args)...));
+      target.reset(new T(std::forward<Args>(args)...));
   }
   template<class T, typename ... Args>
-  static void loadValue(DeserialiserType& input, UniquePtr<T>& target, Args&&... args)
+  static void loadValue(DeserialiserType& input, std::UniquePtr<T>& target, Args&&... args)
   {
-    This::loadUnique<T, ZeroHandling::KeepZeros>(input, target, ::forward<Args>(args)...);
+    This::loadUnique<T, ZeroHandling::KeepZeros>(input, target, std::forward<Args>(args)...);
   }
 };
 int main()
@@ -38,9 +38,9 @@ int main()
   Input in;
   Machine m;
   const Params p;
-  UniquePtr<Behavior> b;
+  std::UniquePtr<Behavior> b;
   Helper<Input>::loadValue(in, b, m, p);
-  println(b->sum);
+  std::println(b->sum);
   return 0;
 }
 

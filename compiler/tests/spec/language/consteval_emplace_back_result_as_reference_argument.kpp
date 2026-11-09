@@ -3,8 +3,8 @@
 extern "C" import "stdio.h";
 struct Item
 {
-  String name;
-  Optional<bool> flag;
+  std::String name;
+  std::Optional<bool> flag;
 };
 void fill(Item& item)
 {
@@ -13,7 +13,7 @@ void fill(Item& item)
 }
 constexpr int direct()
 {
-  Vector<Item> v;
+  std::Vector<Item> v;
   fill(v.emplace_back());
   return v[0].flag.value_or(true) ? 1 : 0;
 }
@@ -21,7 +21,7 @@ static_assert(direct() == 0);
 constexpr int results[] = {direct()};
 int main()
 {
-  Vector<Item> v;
+  std::Vector<Item> v;
   fill(v.emplace_back());
   printf("%d %d\n", results[0], v[0].flag.value_or(true) ? 1 : 0);
   return 0;

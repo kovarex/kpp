@@ -28,6 +28,6 @@ int iconAt(const Sprite* sprite) { return sprite->id + 1; }
 int main()
 {
   UtilitySprites sprites;
-  println(icon(sprites.resetWhite), " ", iconAt(&sprites.resetWhite));
+  std::println(icon(sprites.resetWhite), " ", iconAt(&sprites.resetWhite));
   return 0;
 }

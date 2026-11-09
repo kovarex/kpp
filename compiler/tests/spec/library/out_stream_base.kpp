@@ -1,24 +1,24 @@
 // spec: OutStream, the output streams' base (std::ostream): code that writes to any stream with << (text, a String, a char, int, unsigned, long long, unsigned long long, double, endl) and write (bytes as they are) writes through the derived stream's writeBytes, with std::ostream's default formatting; an OutFileStream is one
 // factorio: UnitTest++'s XmlTestReporter (`explicit XmlTestReporter(std::ostream& ostream)`, which writes the XML report with <<, and which the tests' TestReporter hands an std::ofstream), and the tests' TestBitmapUtil, `dumpBitmap(std::ostream& out, ...)`
-class Collected : public OutStream
+class Collected : public std::OutStream
 {
 public:
-  String text;
-  void writeBytes(const char* data, ContainerSize count) override { this.text.append(data, count); }
+  std::String text;
+  void writeBytes(const char* data, std::ContainerSize count) override { this.text.append(data, count); }
 };
-void report(OutStream& os, int tests, double seconds)
+void report(std::OutStream& os, int tests, double seconds)
 {
-  os << "<unittest-results" << " tests=\"" << tests << "\"" << " time=\"" << seconds << "\"" << '>' << endl;
-  os << String("failures ") << 3u << ' ' << -4000000000ll << ' ' << 18446744073709551615ull;
+  os << "<unittest-results" << " tests=\"" << tests << "\"" << " time=\"" << seconds << "\"" << '>' << std::endl;
+  os << std::String("failures ") << 3u << ' ' << -4000000000ll << ' ' << 18446744073709551615ull;
   os.write(" bytes", 6);
 }
 int main()
 {
   Collected out;
   report(out, 42, 0.125);
-  println(out.text);
-  OutFileStream file; // never opened: it writes nothing
+  std::println(out.text);
+  std::OutFileStream file; // never opened: it writes nothing
   report(file, 1, 2.5);
-  println(file.is_open());
+  std::println(file.is_open());
   return 0;
 }

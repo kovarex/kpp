@@ -4,11 +4,11 @@
 // report comes from the throw site, with nothing unwound (docs/design.md, "Targets and hosts", stage 3).
 // With an argument the message is too long for the object (a heap one), which the report printed as
 // the pointer's bytes once String grew to 32 bytes (its mark read where the 24-byte String had it).
-class Boom : public Exception
+class Boom : public std::Exception
 {
 public:
   Boom() : Exception("it went boom") {}
-  Boom(const String& message) : Exception(message) {}
+  Boom(const std::String& message) : Exception(message) {}
 };
 
 int deep(int v, bool large)
@@ -20,7 +20,7 @@ int deep(int v, bool large)
 
 int main(int argc, char** argv)
 {
-  println("before");
-  println(deep(5, argc > 1));
+  std::println("before");
+  std::println(deep(5, argc > 1));
   return 0;
 }

@@ -8,7 +8,7 @@ int dispatch(int count, Func fn)
     int item;
     int order;
   };
-  Vector<ToCall> calls;
+  std::Vector<ToCall> calls;
   for (int i = 0; i < count; ++i)
     calls.push_back(ToCall{i, count - i});
   int total = 0;
@@ -23,7 +23,7 @@ int local()
     int a;
     int b;
   };
-  Vector<Factors> pairs;
+  std::Vector<Factors> pairs;
   pairs.push_back(Factors{1, 2});
   pairs.push_back(Factors{3, 4});
   int sum = 0;
@@ -33,6 +33,6 @@ int local()
 }
 int main()
 {
-  println(dispatch(3, [](int item, int order) { return item * 10 + order; }), " ", local());
+  std::println(dispatch(3, [](int item, int order) { return item * 10 + order; }), " ", local());
   return 0;
 }

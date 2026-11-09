@@ -1,6 +1,6 @@
 // spec: a local variable of an unnamed union with an anonymous struct member (`union { struct { uint16_t build, subVersion, version, product; }; uint64_t packedVersion; } version;`) declared in a lambda's body, as in a function's: the members read the bits of packedVersion
 // factorio: GraphicsInterfaceDX11::logDeviceInfo's createDriverDescription lambda, which unpacks a driver's packed version so
-String describeDirect(uint64_t packedVersion)
+std::String describeDirect(uint64_t packedVersion)
 {
   union
   {
@@ -8,7 +8,7 @@ String describeDirect(uint64_t packedVersion)
     uint64_t packedVersion;
   } version;
   version.packedVersion = packedVersion;
-  return format("{}.{}.{}.{}", version.product, version.version, version.subVersion, version.build);
+  return std::format("{}.{}.{}.{}", version.product, version.version, version.subVersion, version.build);
 }
 int main()
 {
@@ -20,9 +20,9 @@ int main()
       uint64_t packedVersion;
     } version;
     version.packedVersion = packedVersion;
-    return format("{}.{}.{}.{}", version.product, version.version, version.subVersion, version.build);
+    return std::format("{}.{}.{}.{}", version.product, version.version, version.subVersion, version.build);
   };
   uint64_t packed = (uint64_t(31) << 48) | (uint64_t(0) << 32) | (uint64_t(101) << 16) | 4000;
-  println(describeDirect(packed), " ", describe(packed));
+  std::println(describeDirect(packed), " ", describe(packed));
   return 0;
 }

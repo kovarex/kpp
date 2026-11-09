@@ -1,12 +1,12 @@
 // spec: `_` as a repeatable unnamed local living to the end of its scope
-struct Guard { const char* n; Guard(const char* n) : n(n) { println("+", StringView(n)); } ~Guard() { println("-", StringView(this.n)); } };
+struct Guard { const char* n; Guard(const char* n) : n(n) { std::println("+", std::StringView(n)); } ~Guard() { std::println("-", std::StringView(this.n)); } };
 int main()
 {
   {
     Guard _("a");
     Guard _("b");
-    println("inside");
+    std::println("inside");
   }
-  println("after");
+  std::println("after");
   return 0;
 }

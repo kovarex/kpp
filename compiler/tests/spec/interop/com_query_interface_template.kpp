@@ -39,6 +39,6 @@ int main()
   int result = unknown->QueryInterface(&derived);
   IUnknownLike* base = nullptr;
   int other = derived->QueryInterface(&base);
-  println(result, " ", derived->value(), " ", object.asked, " ", other);
+  std::println(result, " ", derived->value(), " ", object.asked, " ", other);
   return 0;
 }

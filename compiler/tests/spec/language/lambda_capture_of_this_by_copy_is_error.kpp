@@ -5,13 +5,13 @@ class Owner
 {
 public:
   int value = 3;
-  Function<int()> byCopy() { return [*this]() { return value; }; }
+  std::Function<int()> byCopy() { return [*this]() { return value; }; }
 };
 int main()
 {
   Owner o;
-  Function<int()> copied = o.byCopy();
+  std::Function<int()> copied = o.byCopy();
   o.value = 7;
-  println(copied());
+  std::println(copied());
   return 0;
 }

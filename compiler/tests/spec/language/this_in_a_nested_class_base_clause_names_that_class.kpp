@@ -156,7 +156,7 @@ int main()
 {
   WithLocal w;
   Objects::Inner o;
-  println(Named::Inner::g(), " ", Member::Inner::f(), " ", OutOfLine::Inner::f(), " ", w.make(), " ", Holder<double>::Nested::f(), " ", Decl::Inner::f(), " ", o.size);
-  println(Qualified::Inner::n());
+  std::println(Named::Inner::g(), " ", Member::Inner::f(), " ", OutOfLine::Inner::f(), " ", w.make(), " ", Holder<double>::Nested::f(), " ", Decl::Inner::f(), " ", o.size);
+  std::println(Qualified::Inner::n());
   return 0;
 }

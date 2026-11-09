@@ -20,8 +20,8 @@ int main()
   Label<16> t;
   t.shortStr[0] = 'k';
   t.shortStr[1] = 0;
-  println(sizeof(t) >= 17, " ", t.shortStr[0]);
+  std::println(sizeof(t) >= 17, " ", t.shortStr[0]);
   t.longStr.len = 7;
-  println(t.longStr.len);
+  std::println(t.longStr.len);
   return 0;
 }

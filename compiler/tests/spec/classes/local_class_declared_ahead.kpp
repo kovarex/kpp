@@ -11,8 +11,8 @@ int plan(int count)
   {
     int index = 0;
   };
-  Vector<Support> supports;
-  Vector<Rail> rails;
+  std::Vector<Support> supports;
+  std::Vector<Rail> rails;
   for (int i = 0; i < count; ++i)
   {
     supports.push_back(Support{i});
@@ -29,6 +29,6 @@ int plan(int count)
 }
 int main()
 {
-  println(plan(4));
+  std::println(plan(4));
   return 0;
 }

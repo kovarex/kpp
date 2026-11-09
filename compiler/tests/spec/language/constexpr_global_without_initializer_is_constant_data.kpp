@@ -32,7 +32,7 @@ int readA() { return p.a; }
 int readAll() { return q.b * 100 + arr.items[2].a * 10 + mutableP.a; }
 int main()
 {
-  println(early, " ", p.a);
-  println(earlyAll, " ", readAll(), " ", constructed, " ", counted.c);
+  std::println(early, " ", p.a);
+  std::println(earlyAll, " ", readAll(), " ", constructed, " ", counted.c);
   return 0;
 }

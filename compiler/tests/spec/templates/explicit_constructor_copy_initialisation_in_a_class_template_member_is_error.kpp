@@ -6,7 +6,7 @@ template<typename E> struct It
 {
   E* p = nullptr;
   It() {}
-  template<typename F> requires (isSame<E, RemoveConst<F>> && !isSame<F, E>)
+  template<typename F> requires (std::isSame<E, std::RemoveConst<F>> && !std::isSame<F, E>)
   It(const It<F>& other) : p((E*)other.p) {}
 };
 template<typename T> struct Box

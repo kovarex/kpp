@@ -14,7 +14,7 @@ int main()
   int answeredWithSubleaf = __get_cpuid_count(0, 0, &a2, &b2, &c2, &d2);
   u32 w = 77, x = 77, y = 77, z = 77;
   int refused = __get_cpuid(highest + 1, &w, &x, &y, &z);
-  println(highest >= 1, " ", extended >= 0x80000000u, " ", answered == 1 && a == highest && b == vendor, " ", answeredWithSubleaf == 1 && a2 == highest,
+  std::println(highest >= 1, " ", extended >= 0x80000000u, " ", answered == 1 && a == highest && b == vendor, " ", answeredWithSubleaf == 1 && a2 == highest,
           " ", refused == 0 && w == 77 && x == 77 && y == 77 && z == 77, " ", b != 0 && c != 0 && d != 0);
   return 0;
 }

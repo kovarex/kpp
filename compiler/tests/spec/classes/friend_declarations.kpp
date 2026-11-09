@@ -22,6 +22,6 @@ int main()
 {
   Item a(1), b(1), c(2);
   Other other;
-  println(a.get(), " ", a == b, " ", a == c, " ", other.twice(c));
+  std::println(a.get(), " ", a == b, " ", a == c, " ", other.twice(c));
   return 0;
 }

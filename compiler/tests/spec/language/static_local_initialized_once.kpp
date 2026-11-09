@@ -5,14 +5,14 @@ class Flaky
 {
 public:
   int value;
-  Flaky() : value(++attempts) { if (attempts < 3) throw RuntimeError("not yet"); }
+  Flaky() : value(++attempts) { if (attempts < 3) throw std::RuntimeError("not yet"); }
 };
 int flaky()
 {
   static Flaky f;
   return f.value;
 }
-Atomic<int> built;
+std::Atomic<int> built;
 class Slow
 {
 public:
@@ -20,7 +20,7 @@ public:
   Slow()
   {
     built.fetchAdd(1);
-    thisThread::sleepFor(Milliseconds(50));
+    std::thisThread::sleepFor(std::Milliseconds(50));
     this.value = 42;
   }
 };
@@ -35,17 +35,17 @@ int main()
 {
   for (int i = 0; i < 4; ++i)
   {
-    try { print(flaky(), " "); } catch (...) { print("x "); }
+    try { std::print(flaky(), " "); } catch (...) { std::print("x "); }
   }
-  println();
-  Vector<Thread> threads;
+  std::println();
+  std::Vector<std::Thread> threads;
   for (int i = 0; i < 8; ++i)
     threads.emplace_back(read, i);
-  for (Thread& t : threads)
+  for (std::Thread& t : threads)
     t.join();
   int right = 0;
   for (int r : results)
     right += r == 42;
-  println(built.load(), " ", right);
+  std::println(built.load(), " ", right);
   return 0;
 }

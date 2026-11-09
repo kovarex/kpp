@@ -13,6 +13,6 @@ int main()
   Machine m;
   m.run();
   Machine::Stats copy = m.stats;
-  println(m.state == Machine::State::On, " ", copy.cycles);
+  std::println(m.state == Machine::State::On, " ", copy.cycles);
   return 0;
 }

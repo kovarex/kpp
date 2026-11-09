@@ -18,6 +18,6 @@ struct Show
 static_assert(bumped() == 3);
 int main()
 {
-  println(Show<bumped()>::value);
+  std::println(Show<bumped()>::value);
   return 0;
 }

@@ -17,6 +17,6 @@ int main()
 {
   Node* p = 0;
   Links l = { 0, 0, 0 };
-  println(p == none(), " ", l.next == nullptr, " ", l.field == nullptr, " ", l.get == nullptr);
+  std::println(p == none(), " ", l.next == nullptr, " ", l.field == nullptr, " ", l.get == nullptr);
   return 0;
 }

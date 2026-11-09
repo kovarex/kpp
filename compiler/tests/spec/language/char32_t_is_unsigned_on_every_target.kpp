@@ -4,7 +4,7 @@ extern "C" import "stdio.h";
 int main()
 {
   char32_t c = char32_t(4294967295u);
-  printf("%llu %d %d %d %llu\n", (unsigned long long)Limits<char32_t>::max(), (int)Limits<char32_t>::is_signed, (int)isSame<char32_t, wchar_t>, (int)(c > 0),
+  printf("%llu %d %d %d %llu\n", (unsigned long long)std::Limits<char32_t>::max(), (int)std::Limits<char32_t>::is_signed, (int)std::isSame<char32_t, wchar_t>, (int)(c > 0),
          (unsigned long long)c);
   return 0;
 }

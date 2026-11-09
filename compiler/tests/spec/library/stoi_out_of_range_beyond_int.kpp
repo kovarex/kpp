@@ -3,11 +3,11 @@ void tryStoi(const char* text)
 {
   try
   {
-    println(StringView(text), " -> ", stoi(text));
+    std::println(std::StringView(text), " -> ", std::stoi(text));
   }
-  catch (const OutOfRange& e)
+  catch (const std::OutOfRange& e)
   {
-    println(StringView(text), " -> OutOfRange: ", StringView(e.what()));
+    std::println(std::StringView(text), " -> OutOfRange: ", std::StringView(e.what()));
   }
 }
 int main()

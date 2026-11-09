@@ -3,7 +3,7 @@
 template<typename K, typename V>
 struct Table
 {
-  using value_type = Pair<K, V>;
+  using value_type = std::Pair<K, V>;
   value_type first;
 };
 template<typename T>
@@ -25,6 +25,6 @@ int main()
   Dialog<long> d;
   d.mapping.first.first = 3;
   d.mapping.first.second = 40;
-  println(d.get()->first, " ", d.get()->second);
+  std::println(d.get()->first, " ", d.get()->second);
   return 0;
 }

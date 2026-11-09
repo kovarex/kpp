@@ -24,6 +24,6 @@ int main()
 {
   Counted p = plain();
   Counted a = aligned();
-  println(plainMoves, " ", alignedMoves, " | ", p.moves, " ", a.moves);
+  std::println(plainMoves, " ", alignedMoves, " | ", p.moves, " ", a.moves);
   return 0;
 }

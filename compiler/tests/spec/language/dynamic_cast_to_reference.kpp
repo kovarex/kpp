@@ -17,6 +17,6 @@ int main()
 {
   Standard s;
   Option o{&s};
-  println(o.as(), " ", o.viaPointer());
+  std::println(o.as(), " ", o.viaPointer());
   return 0;
 }

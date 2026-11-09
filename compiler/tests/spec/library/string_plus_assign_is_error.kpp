@@ -3,10 +3,10 @@
 // error: string_plus_assign_is_error.kpp:9: error: std::String has no operator+=: `<<` appends to a std::String
 int main()
 {
-  String s("a");
-  String t("b");
+  std::String s("a");
+  std::String t("b");
   s << t;
   s += t;
-  println(s);
+  std::println(s);
   return 0;
 }

@@ -4,26 +4,26 @@ int main()
 {
   for (int round = 0; round < 2; ++round)
   {
-    Vector<int> list;
+    std::Vector<int> list;
     list.push_back(round);
   }
   {
-    Vector<int> list;
+    std::Vector<int> list;
     list.push_back(1);
     list.push_back(2);
   }
   {
-    Vector<int> list;
+    std::Vector<int> list;
     list.push_back(3);
   }
   {
-    Vector<int> list;
+    std::Vector<int> list;
     auto add = [&list](int v) { list.push_back(v); };
     add(5);
     add(6);
     auto count = [&list]() { return list.size(); };
     auto first = [list]() { return list[0]; };
-    println(list.size(), " ", count(), " ", first());
+    std::println(list.size(), " ", count(), " ", first());
   }
   return 0;
 }

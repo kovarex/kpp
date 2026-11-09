@@ -14,13 +14,13 @@ struct Converts
 
 int main()
 {
-  println(isConvertible<int, Optional<Converts>>, " ", isConvertible<int, Optional<OnlyExplicit>>);
-  println(isConvertible<Pair<int, int>, Pair<Converts, long>>, " ", isConvertible<Pair<int, int>, Pair<OnlyExplicit, long>>);
-  println(isConstructible<Optional<OnlyExplicit>, int>, " ", isConstructible<Pair<OnlyExplicit, long>, Pair<int, int>>);
-  Optional<Converts> a = 5;
-  Optional<OnlyExplicit> b(6);
-  Pair<Converts, long> c = Pair<int, int>(7, 8);
-  Pair<OnlyExplicit, long> d(Pair<int, int>(9, 10));
-  println(a->value, " ", b->value, " ", c.first.value, " ", d.first.value);
+  std::println(std::isConvertible<int, std::Optional<Converts>>, " ", std::isConvertible<int, std::Optional<OnlyExplicit>>);
+  std::println(std::isConvertible<std::Pair<int, int>, std::Pair<Converts, long>>, " ", std::isConvertible<std::Pair<int, int>, std::Pair<OnlyExplicit, long>>);
+  std::println(std::isConstructible<std::Optional<OnlyExplicit>, int>, " ", std::isConstructible<std::Pair<OnlyExplicit, long>, std::Pair<int, int>>);
+  std::Optional<Converts> a = 5;
+  std::Optional<OnlyExplicit> b(6);
+  std::Pair<Converts, long> c = std::Pair<int, int>(7, 8);
+  std::Pair<OnlyExplicit, long> d(std::Pair<int, int>(9, 10));
+  std::println(a->value, " ", b->value, " ", c.first.value, " ", d.first.value);
   return 0;
 }

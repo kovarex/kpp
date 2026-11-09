@@ -7,7 +7,7 @@ template<class T> void d(T) noexcept(sizeof(T) == 4) {}
 
 int main()
 {
-  println(noexcept(a()), " ", noexcept(b()), " ", noexcept(c<int>()), " ", noexcept(c<double>()), " ",
+  std::println(noexcept(a()), " ", noexcept(b()), " ", noexcept(c<int>()), " ", noexcept(c<double>()), " ",
           noexcept(d(1)), " ", noexcept(d(1.0)));
   return 0;
 }

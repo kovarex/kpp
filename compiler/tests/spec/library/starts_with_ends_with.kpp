@@ -2,9 +2,9 @@
 // factorio: the tests' TestTranslationCoverage: `view.starts_with('[') && view.ends_with(']')` on a std::string_view, `name.starts_with("dummy-")` and `item.first.starts_with(prefix)` on std::strings
 int main()
 {
-  String name = "dummy-tile";
-  StringView view = "[item]";
-  StringView prefix = "dummy";
-  println(name.starts_with("dummy-"), " ", name.starts_with(prefix), " ", name.ends_with('e'), " ", name.starts_with('x'), " | ", view.starts_with('['), " ", view.ends_with(']'), " ", StringView().starts_with('['), " ", String().ends_with(""));
+  std::String name = "dummy-tile";
+  std::StringView view = "[item]";
+  std::StringView prefix = "dummy";
+  std::println(name.starts_with("dummy-"), " ", name.starts_with(prefix), " ", name.ends_with('e'), " ", name.starts_with('x'), " | ", view.starts_with('['), " ", view.ends_with(']'), " ", std::StringView().starts_with('['), " ", std::String().ends_with(""));
   return 0;
 }

@@ -6,18 +6,18 @@ struct Point
   Point(int x, int y) : x(x), y(y) {}
 };
 template<typename T, typename... Args>
-inline constexpr bool canBuild = isConstructible<T, Args...>;
+inline constexpr bool canBuild = std::isConstructible<T, Args...>;
 template<typename T, typename... Args>
 int build(Args... args)
 {
-  if constexpr (isConstructible<T, Args...>)
+  if constexpr (std::isConstructible<T, Args...>)
     return sizeof(T(args...));
   else
     return 0;
 }
 int main()
 {
-  println(isConstructible<Point, int, int>, " ", isConstructible<Point, int>, " ", canBuild<String, const char*>, " ", isConstructible<int, double>);
-  println(build<Point>(1, 2), " ", build<Point>(1));
+  std::println(std::isConstructible<Point, int, int>, " ", std::isConstructible<Point, int>, " ", canBuild<std::String, const char*>, " ", std::isConstructible<int, double>);
+  std::println(build<Point>(1, 2), " ", build<Point>(1));
   return 0;
 }

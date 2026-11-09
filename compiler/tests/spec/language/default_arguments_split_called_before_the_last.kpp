@@ -5,4 +5,4 @@ int early() { return f(1); }
 int f(int a = 7, int b);
 int late() { return f(); }
 int f(int a, int b) { return a * 10 + b; }
-int main() { println(early(), " ", late()); return 0; }
+int main() { std::println(early(), " ", late()); return 0; }

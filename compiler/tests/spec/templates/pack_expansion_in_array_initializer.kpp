@@ -34,7 +34,7 @@ template<typename... T> int withRoom(T... v)
 }
 int main()
 {
-  println(fromParameters(), " ", fromParameters(5, 6.5, 'a'), " ", fromConstants<4, 5, 7>(), " ", fromConstants<3>());
-  println(fromObjects(Cell{1, 2}, Cell{3, 1}), " ", fromObjects(), " ", withRoom(3, 4), " ", withRoom());
+  std::println(fromParameters(), " ", fromParameters(5, 6.5, 'a'), " ", fromConstants<4, 5, 7>(), " ", fromConstants<3>());
+  std::println(fromObjects(Cell{1, 2}, Cell{3, 1}), " ", fromObjects(), " ", withRoom(3, 4), " ", withRoom());
   return 0;
 }

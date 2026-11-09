@@ -8,6 +8,6 @@ int main()
 {
   void* self = &self;
   Node head{&head};
-  println(self == (void*)&self, " ", head.next == &head);
+  std::println(self == (void*)&self, " ", head.next == &head);
   return 0;
 }

@@ -32,6 +32,6 @@ int main()
   d = c;
   Mask plain;
   plain.operator=(m).bits += 1;
-  println(c.bits, " ", c.extra, " ", c.setup, " ", d.bits, " ", d.setup, " ", plain.bits);
+  std::println(c.bits, " ", c.extra, " ", c.setup, " ", d.bits, " ", d.setup, " ", plain.bits);
   return 0;
 }

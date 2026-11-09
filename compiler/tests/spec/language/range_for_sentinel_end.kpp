@@ -19,6 +19,6 @@ int main()
     sum += v;
   for (int v : Countdown(2))
     sum += v * 10;
-  println(sum, " ", c.left);
+  std::println(sum, " ", c.left);
   return 0;
 }

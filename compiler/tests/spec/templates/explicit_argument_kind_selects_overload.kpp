@@ -6,14 +6,14 @@ struct Abs {};
 struct Fn
 {
   template<class Expression>
-  static int create(Vector<const char*>&& names) { return 1; }
+  static int create(std::Vector<const char*>&& names) { return 1; }
 
   template<Mode M>
-  static int create(Vector<const char*>&& names) { return M == Mode::Cell ? 2 : 3; }
+  static int create(std::Vector<const char*>&& names) { return M == Mode::Cell ? 2 : 3; }
 };
 
 int main()
 {
-  println(Fn::create<Mode::Cell>(Vector<const char*>{"value"}), " ", Fn::create<Abs>(Vector<const char*>{"value"}), " ", Fn::create<Mode::Distance>(Vector<const char*>{"x", "y"}));
+  std::println(Fn::create<Mode::Cell>(std::Vector<const char*>{"value"}), " ", Fn::create<Abs>(std::Vector<const char*>{"value"}), " ", Fn::create<Mode::Distance>(std::Vector<const char*>{"x", "y"}));
   return 0;
 }

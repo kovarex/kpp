@@ -24,6 +24,6 @@ int main()
   int c2 = counter<int>();
   int d1 = counter<long long>();
   int d2 = counter<long long>();
-  println(a1, " ", a2, " ", b1, " ", b2, " ", c1, " ", c2, " ", d1, " ", d2);
+  std::println(a1, " ", a2, " ", b1, " ", b2, " ", c1, " ", c2, " ", d1, " ", d2);
   return 0;
 }

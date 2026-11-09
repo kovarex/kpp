@@ -6,16 +6,16 @@ int main()
 {
   int (*p)(int) = thrice;
   int (*&r)(int) = p;
-  println(r(2));
+  std::println(r(2));
   r = twice;
-  println(p(2));
+  std::println(p(2));
   int (*const& cr)(int) = p;
-  println(cr(4));
+  std::println(cr(4));
   int (*const c)(int) = thrice;
-  println(c(4));
+  std::println(c(4));
   int (*&&rr)(int) = thrice;
-  println(rr(5));
+  std::println(rr(5));
   int (&&fr)(int) = twice;
-  println(fr(5));
+  std::println(fr(5));
   return 0;
 }

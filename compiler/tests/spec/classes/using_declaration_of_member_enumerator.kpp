@@ -21,6 +21,6 @@ int main()
   Focus a = Focus::fromBool(true);
   Focus b = Focus::False;
   Focus c = Focus::True;
-  println(a.asBool(), " ", b.asBool(), " ", c.asBool());
+  std::println(a.asBool(), " ", b.asBool(), " ", c.asBool());
   return 0;
 }

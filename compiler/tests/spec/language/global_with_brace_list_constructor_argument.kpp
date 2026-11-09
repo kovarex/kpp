@@ -5,7 +5,7 @@ namespace UnitTest
   struct SuiteModpackAdder
   {
     int total = 0;
-    SuiteModpackAdder(int suite, InitializerList<const char*> modpacks) { this.total = suite + int(modpacks.size()); }
+    SuiteModpackAdder(int suite, std::InitializerList<const char*> modpacks) { this.total = suite + int(modpacks.size()); }
   };
 }
 namespace SuiteVanilla
@@ -18,6 +18,6 @@ namespace SuiteVanilla
 }
 int main()
 {
-  println(SuiteVanilla::environmentsAdded.total);
+  std::println(SuiteVanilla::environmentsAdded.total);
   return 0;
 }

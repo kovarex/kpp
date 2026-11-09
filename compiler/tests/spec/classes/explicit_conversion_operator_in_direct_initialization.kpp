@@ -5,7 +5,7 @@ class Constant
 public:
   Constant() {}
   Constant(double value) : number(value) {}
-  Constant(String value) : text(value) {}
+  Constant(std::String value) : text(value) {}
   Constant(const Constant& other) { this = other; }
   Constant& operator=(const Constant& other)
   {
@@ -14,13 +14,13 @@ public:
     return this;
   }
   double number = 0;
-  String text;
+  std::String text;
 };
 class Parsed
 {
 public:
   Parsed() = default;
-  Parsed(Constant&& constant) : constant(move(constant)) {}
+  Parsed(Constant&& constant) : constant(std::move(constant)) {}
   operator bool() const { return this.constant.number != 0; }
   operator const Constant&() const { return this.constant; }
   Constant constant;
@@ -58,7 +58,7 @@ class StrongTypedef
 public:
   constexpr StrongTypedef(const ValueType& value) : value(value) {}
   constexpr operator const ValueType&() const { return this.value; }
-  template<typename CastType> requires (!isSame<CastType, ValueType>)
+  template<typename CastType> requires (!std::isSame<CastType, ValueType>)
   constexpr operator CastType() const { return CastType(this.value); }
 private:
   ValueType value;
@@ -83,6 +83,6 @@ int main()
     found = item.index;
   Zoom zoom(2.5);
   double screen = toScreen(4.0, Scale(zoom));
-  println(direct.number, " ", viaTemplate.number, " ", cast.number, " ", found, " ", screen);
+  std::println(direct.number, " ", viaTemplate.number, " ", cast.number, " ", found, " ", screen);
   return 0;
 }

@@ -7,7 +7,7 @@ public:
   virtual void clearBase() = 0;
 };
 template<class T>
-class Triggers : public Vector<T>, public Clearable
+class Triggers : public std::Vector<T>, public Clearable
 {
 public:
   int sum()
@@ -29,6 +29,6 @@ int main()
     outside += v;
   int inside = l.sum();
   l.clearBase();
-  println(outside, " ", inside, " ", l.size());
+  std::println(outside, " ", inside, " ", l.size());
   return 0;
 }

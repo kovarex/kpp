@@ -22,7 +22,7 @@ struct Signed
 };
 void show(const char* what, const TreeData& data)
 {
-  println(StringView(what), ": ", (int)data.treeVariation, " ", (int)data.progress, " ", (int)data.color, " ", (int)data.greyProgress);
+  std::println(std::StringView(what), ": ", (int)data.treeVariation, " ", (int)data.progress, " ", (int)data.color, " ", (int)data.greyProgress);
 }
 int main()
 {
@@ -37,7 +37,7 @@ int main()
   show("implicit +=", data);
   data.implicitIncrement();
   show("implicit ++", data);
-  println("implicit read: ", data.implicitRead());
+  std::println("implicit read: ", data.implicitRead());
   (data.color) += 1;
   show("parenthesized +=", data);
   (data.color) = 7;
@@ -45,18 +45,18 @@ int main()
   (data.color)++;
   show("parenthesized ++", data);
   int assigned = (data.greyProgress = 17);
-  println("assignment value: ", assigned, " field ", (int)data.greyProgress);
+  std::println("assignment value: ", assigned, " field ", (int)data.greyProgress);
   int added = (data.greyProgress += 15);
-  println("compound value: ", added, " field ", (int)data.greyProgress);
+  std::println("compound value: ", added, " field ", (int)data.greyProgress);
   data.progress = 15;
   int prefix = ++data.progress;
-  println("prefix value: ", prefix, " field ", (int)data.progress);
+  std::println("prefix value: ", prefix, " field ", (int)data.progress);
   show("after", data);
   Signed s;
   s.low = 3;
   s.high = -16;
   s.low++;
   --s.high;
-  println("signed: ", (int)s.low, " ", (int)s.high);
+  std::println("signed: ", (int)s.low, " ", (int)s.high);
   return 0;
 }

@@ -14,10 +14,10 @@ int main()
   int i = 1;
   const int ci = 2;
   int* ip = &i;
-  print(pick(1, 2), " ", pick(1, 2.5), " ", pick(2.5, 1), " ");
-  print(ref(i, 3), " ", ref(ci, 3), " ", ref(i, 3LL), " ");
-  print(ptr(ip, 4), " ", ptr(ip, 4.5), " ");
-  print(two(1, 2.5, 3), " ", two(1, 2.5, 3.5), " ");
-  println(larger(3, 4), " ", (int)larger<double>(1, 2.5));
+  std::print(pick(1, 2), " ", pick(1, 2.5), " ", pick(2.5, 1), " ");
+  std::print(ref(i, 3), " ", ref(ci, 3), " ", ref(i, 3LL), " ");
+  std::print(ptr(ip, 4), " ", ptr(ip, 4.5), " ");
+  std::print(two(1, 2.5, 3), " ", two(1, 2.5, 3.5), " ");
+  std::println(larger(3, 4), " ", (int)larger<double>(1, 2.5));
   return 0;
 }

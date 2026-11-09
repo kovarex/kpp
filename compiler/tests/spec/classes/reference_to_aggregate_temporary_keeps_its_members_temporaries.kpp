@@ -3,7 +3,7 @@
 struct Point
 {
   int x;
-  ~Point() { println("drop ", this.x); }
+  ~Point() { std::println("drop ", this.x); }
 };
 struct H { const Point& p; };
 struct Two { const Point& a; const Point& b; };
@@ -15,32 +15,32 @@ int fromStatic()
 }
 int main()
 {
-  println("g ", g.p.x);
-  println("s ", fromStatic());
+  std::println("g ", g.p.x);
+  std::println("s ", fromStatic());
   {
     const H& h = H{Point{1}};
-    println("held ", h.p.x);
+    std::println("held ", h.p.x);
   }
-  println("reference done");
+  std::println("reference done");
   {
     H&& r = H{Point{2}};
-    println("held ", r.p.x);
+    std::println("held ", r.p.x);
   }
-  println("rvalue done");
+  std::println("rvalue done");
   {
     const H& b = {Point{3}};
-    println("held ", b.p.x);
+    std::println("held ", b.p.x);
   }
-  println("list done");
+  std::println("list done");
   {
     const Two& t = Two{Point{7}, Point{8}};
-    println("held ", t.a.x + t.b.x);
+    std::println("held ", t.a.x + t.b.x);
   }
-  println("two done");
+  std::println("two done");
   {
     const auto& a = H{Point{9}};
-    println("held ", a.p.x);
+    std::println("held ", a.p.x);
   }
-  println("auto done");
+  std::println("auto done");
   return 0;
 }

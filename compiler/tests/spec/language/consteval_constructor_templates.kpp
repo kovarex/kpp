@@ -5,19 +5,19 @@ struct Entry
 {
   Entry() = default;
   template<class T1, class T2>
-  constexpr Entry(T1&& key, T2&& value) : first(forward<T1>(key)), second(forward<T2>(value)) {}
+  constexpr Entry(T1&& key, T2&& value) : first(std::forward<T1>(key)), second(std::forward<T2>(value)) {}
   K first;
   V second;
 };
 enum class Flag : uint32_t { A = 1, B = 2 };
-using FlagName = Entry<uint32_t, StringView>;
-constexpr auto names = Array {
+using FlagName = Entry<uint32_t, std::StringView>;
+constexpr auto names = std::Array {
   FlagName { uint32_t(Flag::A), "a-flag" },
   FlagName { uint32_t(Flag::B), "b" },
 };
 static_assert(names[0].second.size() == 6 && names[1].first == 2);
 int main()
 {
-  println(names[0].second, " ", names[1].first);
+  std::println(names[0].second, " ", names[1].first);
   return 0;
 }

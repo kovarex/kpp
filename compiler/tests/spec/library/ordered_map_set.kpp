@@ -2,16 +2,16 @@
 // factorio: 827 std::map uses in 422 files, 641 std::set in 293 files
 int main()
 {
-  Map<int, String> m;
+  std::Map<int, std::String> m;
   m[3] = "c";
   m[1] = "a";
   m[2] = "b";
-  String order;
+  std::String order;
   for (auto& [k, v] : m)
     order << v;
-  Set<int> s;
+  std::Set<int> s;
   s.insert(5);
   s.insert(1);
-  println(order, " ", m.size(), " ", *s.begin());
+  std::println(order, " ", m.size(), " ", *s.begin());
   return 0;
 }

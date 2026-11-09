@@ -28,6 +28,6 @@ int main()
   s.longStr.data[0] = 'a';
   s.b.size = 7;
   s.a = 3;
-  println(sizeof(Imm<16>), " ", s.longStr.size, " ", s.longStr.data[0] == 'a', " ", s.b.size, " ", s.a);
+  std::println(sizeof(Imm<16>), " ", s.longStr.size, " ", s.longStr.data[0] == 'a', " ", s.b.size, " ", s.a);
   return 0;
 }

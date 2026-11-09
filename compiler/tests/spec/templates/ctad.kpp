@@ -14,12 +14,12 @@ struct Guard
 };
 int main()
 {
-  Both both(1, String("two"));
+  Both both(1, std::String("two"));
   int mode = 1;
   {
     Guard g(mode, 5);
-    println(both.a, " ", both.b, " ", mode);
+    std::println(both.a, " ", both.b, " ", mode);
   }
-  println(mode);
+  std::println(mode);
   return 0;
 }

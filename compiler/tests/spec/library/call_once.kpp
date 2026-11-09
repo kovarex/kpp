@@ -3,31 +3,31 @@
 extern "C" import "stdio.h";
 int main()
 {
-  OnceFlag flag;
-  Atomic<int> calls(0);
-  Atomic<int> sawDone(0);
+  std::OnceFlag flag;
+  std::Atomic<int> calls(0);
+  std::Atomic<int> sawDone(0);
   int value = 0;
-  Vector<Thread> threads;
+  std::Vector<std::Thread> threads;
   for (int t = 0; t < 8; ++t)
-    threads.push_back(Thread([&]() {
-      callOnce(flag, [&]() {
-        thisThread::sleep_for(Milliseconds(20));
+    threads.push_back(std::Thread([&]() {
+      std::callOnce(flag, [&]() {
+        std::thisThread::sleep_for(std::Milliseconds(20));
         value = 42;
         calls.fetch_add(1);
       });
       if (value == 42)
         sawDone.fetch_add(1);
     }));
-  for (Thread& t : threads)
+  for (std::Thread& t : threads)
     t.join();
   printf("%d %d |", calls.load(), (int)(sawDone.load() == 8));
-  OnceFlag retried;
+  std::OnceFlag retried;
   int attempts = 0;
   for (int i = 0; i < 3; ++i)
   {
     try
     {
-      call_once(retried, [&](int add) {
+      std::call_once(retried, [&](int add) {
         ++attempts;
         if (attempts == 1)
           throw 1;
@@ -39,10 +39,10 @@ int main()
     }
   }
   printf(" %d %d |", attempts, value);
-  OnceFlag third;
+  std::OnceFlag third;
   int ran = 0;
-  call_once(third, [&]() { ++ran; });
-  call_once(third, [&]() { ran += 10; });
+  std::call_once(third, [&]() { ++ran; });
+  std::call_once(third, [&]() { ran += 10; });
   printf(" %d %d\n", ran, (int)(ran == 1));
   return 0;
 }

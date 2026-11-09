@@ -17,6 +17,6 @@ namespace game
 int main()
 {
   Tally t;
-  println(t.get(), " ", game::read());
+  std::println(t.get(), " ", game::read());
   return 0;
 }

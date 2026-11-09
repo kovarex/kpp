@@ -8,6 +8,6 @@ int main()
 {
   Strict t(6);
   Strict u{7};
-  println(t.v, " ", u.v, " ", Strict(8).v, " ", Strict{9}.v);
+  std::println(t.v, " ", u.v, " ", Strict(8).v, " ", Strict{9}.v);
   return 0;
 }

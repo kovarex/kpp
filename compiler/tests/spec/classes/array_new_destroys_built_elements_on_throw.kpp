@@ -11,12 +11,12 @@ public:
   {
     if (i == failAt)
       throw i;
-    print("+", this.id, " ");
+    std::print("+", this.id, " ");
     ++built;
   }
   ~Piece()
   {
-    print("-", this.id, " ");
+    std::print("-", this.id, " ");
     --built;
   }
 };
@@ -30,7 +30,7 @@ int main()
   }
   catch (int v)
   {
-    println("caught ", v, ", built ", built);
+    std::println("caught ", v, ", built ", built);
   }
   failAt = 102;
   try
@@ -40,7 +40,7 @@ int main()
   }
   catch (int v)
   {
-    println("caught ", v, ", built ", built);
+    std::println("caught ", v, ", built ", built);
   }
   failAt = 103;
   int n = 4;
@@ -51,11 +51,11 @@ int main()
   }
   catch (int v)
   {
-    println("caught ", v, ", built ", built);
+    std::println("caught ", v, ", built ", built);
   }
   failAt = -1;
   Piece* whole = new Piece[2]{Piece(7), Piece(8)};
   delete[] whole;
-  println("built ", built);
+  std::println("built ", built);
   return 0;
 }

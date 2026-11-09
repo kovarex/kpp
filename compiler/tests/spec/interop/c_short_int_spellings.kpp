@@ -3,6 +3,6 @@
 extern "C" import "c_short_int_spellings.h";
 int main()
 {
-  println((int)sizeof(ShortPair), " ", (int)sizeof(u16), " ", (int)swap16((u16)0x1234), " ", (int)swap16((u16)0x12345), " ", (int)sizeLongInt());
+  std::println((int)sizeof(ShortPair), " ", (int)sizeof(u16), " ", (int)swap16((u16)0x1234), " ", (int)swap16((u16)0x12345), " ", (int)sizeLongInt());
   return 0;
 }

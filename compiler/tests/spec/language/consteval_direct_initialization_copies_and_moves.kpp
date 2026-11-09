@@ -23,8 +23,8 @@ constexpr int classes()
   a.how = 7;
   T b(a);
   T c{a};
-  T d(move(a));
-  T e{move(a)};
+  T d(std::move(a));
+  T e{std::move(a)};
   return b.how * 100000 + c.how * 10000 + T(a).how * 1000 + T{a}.how * 100 + d.how * 10 + e.how;
 }
 constexpr int aggregates()
@@ -39,20 +39,20 @@ constexpr int aggregates()
 }
 constexpr int elements()
 {
-  Vector<T> v;
+  std::Vector<T> v;
   v.push_back(T());
   v[0].how = 7;
   T t(v[0]);
-  Vector<String> names;
+  std::Vector<std::String> names;
   names.push_back("linux");
-  String name(names[0]);
+  std::String name(names[0]);
   name.append('!');
   return t.how * 100 + int(name.size()) * 10 + int(names[0].size());
 }
 template<int N> struct Show { static constexpr int value = N; };
 int main()
 {
-  println(classes(), " ", aggregates(), " ", elements());
-  println(Show<classes()>::value, " ", Show<aggregates()>::value, " ", Show<elements()>::value);
+  std::println(classes(), " ", aggregates(), " ", elements());
+  std::println(Show<classes()>::value, " ", Show<aggregates()>::value, " ", Show<elements()>::value);
   return 0;
 }

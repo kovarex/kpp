@@ -12,10 +12,10 @@ struct Box
 };
 constexpr int iterators()
 {
-  List<int> l;
+  std::List<int> l;
   l.push_back(1);
   const int& x = *l.begin();
-  Optional<int> o(2);
+  std::Optional<int> o(2);
   const int& y = *o;
   l.front() = 7;
   *o = 8;
@@ -23,7 +23,7 @@ constexpr int iterators()
 }
 constexpr int strings()
 {
-  String s("ab");
+  std::String s("ab");
   const char& c = s[0];
   char& d = s[1];
   s[0] = 'x';
@@ -44,7 +44,7 @@ constexpr int arguments()
 {
   int a = 1;
   int b = 2;
-  Ref m(max(a, b));
+  Ref m(std::max(a, b));
   Box box;
   Ref n(box.get());
   b = 5;
@@ -57,6 +57,6 @@ constexpr int o = operators();
 constexpr int a = arguments();
 int main()
 {
-  println(i, " ", iterators(), " ", s, " ", strings(), " ", o, " ", operators(), " ", a, " ", arguments());
+  std::println(i, " ", iterators(), " ", s, " ", strings(), " ", o, " ", operators(), " ", a, " ", arguments());
   return 0;
 }

@@ -2,8 +2,8 @@
 // kpp: --release
 int main()
 {
-  auto numbers = iotaView(1, 4);
-  for (auto&& x : reverseView(numbers))
-    println((int)x);
+  auto numbers = std::iotaView(1, 4);
+  for (auto&& x : std::reverseView(numbers))
+    std::println((int)x);
   return 0;
 }

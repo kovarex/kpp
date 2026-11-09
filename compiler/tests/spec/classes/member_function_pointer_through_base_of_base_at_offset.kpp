@@ -40,7 +40,7 @@ int main()
   DFn runtime = which();
   x.callback = &D::hit;
   (x.*x.callback)();
-  println((x.*constant)(), " ", (x.*runtime)(), " ", int(constant == runtime), " ", x.d);
-  println(int(sizeof(CFn)), " ", int(sizeof(DFn)));
+  std::println((x.*constant)(), " ", (x.*runtime)(), " ", int(constant == runtime), " ", x.d);
+  std::println(int(sizeof(CFn)), " ", int(sizeof(DFn)));
   return 0;
 }

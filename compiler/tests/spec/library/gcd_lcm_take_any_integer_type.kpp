@@ -4,7 +4,7 @@ extern "C" import "stdio.h";
 int main()
 {
   unsigned long long big = 18446744073709551615ULL;
-  printf("%llu %llu %d %d %d\n", (unsigned long long)gcd(big, 5ULL), (unsigned long long)lcm(big / 5, 5ULL), (int)sizeof(gcd(12, 18)), (int)sizeof(lcm(3, 4)),
-         (int)gcd((unsigned char)255, (unsigned char)255));
+  printf("%llu %llu %d %d %d\n", (unsigned long long)std::gcd(big, 5ULL), (unsigned long long)std::lcm(big / 5, 5ULL), (int)sizeof(std::gcd(12, 18)), (int)sizeof(std::lcm(3, 4)),
+         (int)std::gcd((unsigned char)255, (unsigned char)255));
   return 0;
 }

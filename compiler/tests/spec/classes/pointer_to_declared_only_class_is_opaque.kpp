@@ -29,12 +29,12 @@ int main()
   holder.table[1] = holder.handle;
   void* raw = holder.table[1];
   Handle* back = static_cast<Handle*>(raw);
-  println(same(back, h), " ", holder.table[0] == nullptr, " ", back != nullptr);
+  std::println(same(back, h), " ", holder.table[0] == nullptr, " ", back != nullptr);
   // A C-style cast between unrelated class pointers reinterprets: the Second subobject's pointer
   // goes through Handle* unadjusted.
   Second* second = &both;
   Handle* viaSecond = (Handle*)second;
-  println(((Second*)viaSecond)->b, " ", ((Both*)h)->c);
-  println(reinterpret_cast<First*>(holder.handle)->a);
+  std::println(((Second*)viaSecond)->b, " ", ((Both*)h)->c);
+  std::println(reinterpret_cast<First*>(holder.handle)->a);
   return 0;
 }

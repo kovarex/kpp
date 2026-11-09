@@ -9,31 +9,31 @@ struct Tracker
   Tracker(Tracker&&) { ++live; }
   ~Tracker() { --live; }
 };
-static void store(Function<void()> f) { f(); }
+static void store(std::Function<void()> f) { f(); }
 int main()
 {
   {
     Tracker t;
     auto byCopy = [t]() {};
   }
-  print("a ", live, " ");
+  std::print("a ", live, " ");
   {
     Tracker t2;
     auto byCopy2 = [t2]() {};
     auto copied = byCopy2;
   }
-  print("b ", live, " ");
+  std::print("b ", live, " ");
   {
     auto initCapture = [u = Tracker()]() {};
-    Function<void()> fn = initCapture;
+    std::Function<void()> fn = initCapture;
   }
-  print("c ", live, " ");
+  std::print("c ", live, " ");
   store([w = Tracker()]() {});
-  print("d ", live, " ");
+  std::print("d ", live, " ");
   {
-    Function<void()> fn = [w = Tracker()]() {};
-    Function<void()> copy = fn;
+    std::Function<void()> fn = [w = Tracker()]() {};
+    std::Function<void()> copy = fn;
   }
-  println("e ", live, " copies ", copies);
+  std::println("e ", live, " copies ", copies);
   return 0;
 }

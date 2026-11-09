@@ -9,23 +9,23 @@ struct Undo
 };
 struct Shape { int sides = 3; };
 struct Square : Shape { Square() { this.sides = 4; } };
-static Optional<Undo> merge(const Optional<Undo>& first, const Optional<Undo>& second)
+static std::Optional<Undo> merge(const std::Optional<Undo>& first, const std::Optional<Undo>& second)
 {
   return first && second ? Undo(first->start, second->end) : first ? first : second;
 }
 int main()
 {
-  Optional<Undo> a = Undo(Location{1}, Location{2});
-  Optional<Undo> b = Undo(Location{3}, Location{4});
-  Optional<Undo> none;
-  Optional<Undo> both = merge(a, b);
-  Optional<Undo> one = merge(none, b);
+  std::Optional<Undo> a = Undo(Location{1}, Location{2});
+  std::Optional<Undo> b = Undo(Location{3}, Location{4});
+  std::Optional<Undo> none;
+  std::Optional<Undo> both = merge(a, b);
+  std::Optional<Undo> one = merge(none, b);
   Square square;
   Shape shape;
   bool on = true;
   const Shape& picked = on ? square : shape;
-  static_assert(isSame<decltype(on ? Undo(Location{}, Location{}) : a), Optional<Undo>>);
-  static_assert(isSame<decltype(on ? a : Undo(Location{}, Location{})), Optional<Undo>>);
-  println(both->start.x, " ", both->end.x, " ", one->start.x, " ", merge(none, none).hasValue(), " ", picked.sides);
+  static_assert(std::isSame<decltype(on ? Undo(Location{}, Location{}) : a), std::Optional<Undo>>);
+  static_assert(std::isSame<decltype(on ? a : Undo(Location{}, Location{})), std::Optional<Undo>>);
+  std::println(both->start.x, " ", both->end.x, " ", one->start.x, " ", merge(none, none).hasValue(), " ", picked.sides);
   return 0;
 }

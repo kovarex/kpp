@@ -18,15 +18,15 @@ template<typename T> constexpr bool fits = sizeof(T) <= 4;
 constexpr int answer = 6 * 7;
 int compared = 0;
 template<typename T>
-String written(const T& value)
+std::String written(const T& value)
 {
-  String s;
+  std::String s;
   value.appendTo(s);
   return s;
 }
-void check(const char* expected, const String& kept, const String& bound, const String& read, Text piece)
+void check(const char* expected, const std::String& kept, const std::String& bound, const std::String& read, std::Text piece)
 {
-  String s;
+  std::String s;
   piece.appendTo(s);
   ++compared;
   if (s != expected || kept != expected || bound != expected || read != expected)
@@ -34,21 +34,21 @@ void check(const char* expected, const String& kept, const String& bound, const 
 }
 // The value kept in a variable, bound to a reference and read through the address of its object, against the piece.
 template<typename T>
-void compare(const char* expected, T kept, const T& bound, const T* object, Text piece)
+void compare(const char* expected, T kept, const T& bound, const T* object, std::Text piece)
 {
   check(expected, written(kept), written(bound), written(*object), piece);
 }
-static_assert(isSame<int, int> && !isSame<int, long> && hasBegin<Vector<int>> && !hasBegin<int> && fits<int> && !fits<double>);
+static_assert(std::isSame<int, int> && !std::isSame<int, long> && hasBegin<std::Vector<int>> && !hasBegin<int> && fits<int> && !fits<double>);
 static_assert(countOf<int, char, double> == 3 && countOf<> == 0 && bytes<double> == 8 && bytes<Plain> == 4 && answer == 42);
 static_assert(config::zlib::debug && config::zlib::level == 7);
 static_assert(Direction::count == 5 && Letter::count == 3);
 int main()
 {
-  bool same = isSame<int, int>;
-  check("true", written(same), written<bool>(isSame<int, int>), written(*&same), isSame<int, int>);
-  bool differ = isSame<int, long>;
-  check("false", written(differ), written<bool>(isSame<int, long>), written(*&differ), isSame<int, long>);
-  compare<bool>("true", hasBegin<Vector<int>>, hasBegin<Vector<int>>, &hasBegin<Vector<int>>, hasBegin<Vector<int>>);
+  bool same = std::isSame<int, int>;
+  check("true", written(same), written<bool>(std::isSame<int, int>), written(*&same), std::isSame<int, int>);
+  bool differ = std::isSame<int, long>;
+  check("false", written(differ), written<bool>(std::isSame<int, long>), written(*&differ), std::isSame<int, long>);
+  compare<bool>("true", hasBegin<std::Vector<int>>, hasBegin<std::Vector<int>>, &hasBegin<std::Vector<int>>, hasBegin<std::Vector<int>>);
   compare<bool>("false", hasBegin<int>, hasBegin<int>, &hasBegin<int>, hasBegin<int>);
   compare<bool>("true", fits<int>, fits<int>, &fits<int>, fits<int>);
   compare<bool>("false", fits<double>, fits<double>, &fits<double>, fits<double>);
@@ -68,7 +68,7 @@ int main()
   compare<Direction>("South", Direction::values[2], Direction::values[2], &Direction::values[2], Direction::values[2]);
   compare<Letter>("C", Letter::values[Letter::count - 1], Letter::values[2], &Letter::values[2], Letter::values[2]);
   // (two instances, two objects; the same instance, one)
-  check("true", written(&hasBegin<int> != (const bool*)&hasBegin<Vector<int>>), written(&countOf<int> == &countOf<int>), written(&bytes<char> != &bytes<short>), true);
+  check("true", written(&hasBegin<int> != (const bool*)&hasBegin<std::Vector<int>>), written(&countOf<int> == &countOf<int>), written(&bytes<char> != &bytes<short>), true);
   printf("%d same\n", compared);
   return 0;
 }

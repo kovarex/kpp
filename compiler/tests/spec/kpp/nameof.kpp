@@ -4,6 +4,6 @@ struct Sprite { int frame = 0; };
 int main()
 {
   Sprite sprite;
-  println(StringView(nameof(sprite)), " ", StringView(nameof(sprite.frame)), " ", StringView(nameof(Sprite)));
+  std::println(std::StringView(nameof(sprite)), " ", std::StringView(nameof(sprite.frame)), " ", std::StringView(nameof(Sprite)));
   return 0;
 }

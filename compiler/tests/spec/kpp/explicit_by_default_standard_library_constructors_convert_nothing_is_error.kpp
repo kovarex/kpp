@@ -4,14 +4,14 @@
 // error: explicit_by_default_standard_library_constructors_convert_nothing_is_error.kpp:13: error: copy-initialising int32^ from int32* by its constructor, which converts only when marked implicit
 // error: explicit_by_default_standard_library_constructors_convert_nothing_is_error.kpp:14: error: copy-initialising SharedPtr<int32> from int32* by its constructor, which converts only when marked implicit
 // error: explicit_by_default_standard_library_constructors_convert_nothing_is_error.kpp:15: error: copy-initialising Duration<int64, Ratio<1, 1>> from int32 by its constructor, which converts only when marked implicit
-void wait(Seconds s) {}
+void wait(std::Seconds s) {}
 
 int main()
 {
-  Vector<int> counted = 3;
-  Milliseconds ms = 5;
-  UniquePtr<int> owned = new int(4);
-  SharedPtr<int> shared = new int(5);
+  std::Vector<int> counted = 3;
+  std::Milliseconds ms = 5;
+  std::UniquePtr<int> owned = new int(4);
+  std::SharedPtr<int> shared = new int(5);
   wait(7);
   return 0;
 }

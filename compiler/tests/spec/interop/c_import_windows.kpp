@@ -8,6 +8,6 @@ int main()
   GetSystemInfo(&info);
   LARGE_INTEGER freq;
   QueryPerformanceFrequency(&freq);
-  println(pid != 0, " ", info.dwNumberOfProcessors > 0, " ", freq.QuadPart > 0);
+  std::println(pid != 0, " ", info.dwNumberOfProcessors > 0, " ", freq.QuadPart > 0);
   return 0;
 }

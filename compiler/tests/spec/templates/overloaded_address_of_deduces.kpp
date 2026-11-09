@@ -22,6 +22,6 @@ int main()
   Holder<Thing> holder;
   int got = fill(&holder);
   Thing** plain = &holder;
-  println(got, " ", holder.p == &shared, " ", *plain == &shared);
+  std::println(got, " ", holder.p == &shared, " ", *plain == &shared);
   return 0;
 }

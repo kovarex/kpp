@@ -4,7 +4,7 @@ extern "C" long double specHalfOf(long double x);
 double through(long double (*f)(long double), double x) { return f(x); }
 int main()
 {
-  println(specHalfOf(5.0), " ", through(specHalfOf, 0.5));
+  std::println(specHalfOf(5.0), " ", through(specHalfOf, 0.5));
   return 0;
 }
 extern "C" long double specHalfOf(long double x) { return x / 2; }

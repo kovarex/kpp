@@ -20,7 +20,7 @@ public:
   DeleteHelper(T* data, SourceLocation location = SourceLocation::current()) : LoadHelper(location), data(data) {}
   int size() const override { return int(sizeof(T)); }
 private:
-  UniquePtr<T> data;
+  std::UniquePtr<T> data;
 };
 struct OldData
 {
@@ -28,11 +28,11 @@ struct OldData
 };
 int main()
 {
-  UniquePtr<OldData> old = makeUnique<OldData>();
-  Vector<LoadHelper*> helpers;
+  std::UniquePtr<OldData> old = std::makeUnique<OldData>();
+  std::Vector<LoadHelper*> helpers;
   helpers.push_back(new DeleteHelper(old.release()));
   DeleteHelper local(new OldData());
-  println(helpers[0]->size(), " ", local.size(), " ", old == nullptr);
+  std::println(helpers[0]->size(), " ", local.size(), " ", old == nullptr);
   delete helpers[0];
   return 0;
 }

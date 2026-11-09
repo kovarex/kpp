@@ -55,20 +55,20 @@ void work(int which)
 }
 int main()
 {
-  Thread a(work, 1);
+  std::Thread a(work, 1);
   a.join();
   for (int i = 0; i < logged; ++i)
     if (events[i] >= 2000)
-      print(events[i], " ");
-  println(seen);
+      std::print(events[i], " ");
+  std::println(seen);
   seen = 0;
   logged = 0;
-  Thread b(work, 2);
+  std::Thread b(work, 2);
   b.join();
   for (int i = 0; i < logged; ++i)
     if (events[i] >= 2000)
-      print(events[i], " ");
-  println(seen);
+      std::print(events[i], " ");
+  std::println(seen);
   seen = 0;
   return 0;
 }

@@ -23,14 +23,14 @@ static_assert(packed() == 211);
 int main()
 {
   Flags f{Low, Mode::Off, Dark, false};
-  println(int(f.level), " ", int(f.mode), " ", int(f.shade));
+  std::println(int(f.level), " ", int(f.mode), " ", int(f.shade));
   f.level = Top;
   f.mode = Mode::On;
   f.shade = Light;
   Level l = f.level;
   Mode m = f.mode;
-  println(int(l), " ", int(m), " ", f.level == Top, " ", f.mode == Mode::On, " ", f.shade == Light);
+  std::println(int(l), " ", int(m), " ", f.level == Top, " ", f.mode == Mode::On, " ", f.shade == Light);
   Flags g{};
-  println(int(g.level), " ", int(g.mode), " ", packed());
+  std::println(int(g.level), " ", int(g.mode), " ", packed());
   return 0;
 }

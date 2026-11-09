@@ -9,9 +9,9 @@ int main()
   int (C::**pm)(int) const = &m;
   int (C::*&rm)(int) const = m;
   int (C::*(*pm2))(int) const = &m;
-  println((c.*m)(1), " ", (c.*(*pm))(2), " ", (c.*rm)(3), " ", (c.*(*pm2))(4), " ", (c.*pinned)(5));
+  std::println((c.*m)(1), " ", (c.*(*pm))(2), " ", (c.*rm)(3), " ", (c.*(*pm2))(4), " ", (c.*pinned)(5));
   int C::*d = &C::v;
   int C::**pd = &d;
-  println(c.*(*pd));
+  std::println(c.*(*pd));
   return 0;
 }

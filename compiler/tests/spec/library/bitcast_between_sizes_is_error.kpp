@@ -5,6 +5,6 @@ extern "C" import "stdio.h";
 int main()
 {
   float f = 1.0f;
-  printf("%llx\n", (unsigned long long)bitCast<u64>(f));
+  printf("%llx\n", (unsigned long long)std::bitCast<u64>(f));
   return 0;
 }

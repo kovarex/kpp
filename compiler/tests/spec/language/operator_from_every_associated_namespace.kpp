@@ -20,6 +20,6 @@ int main()
 {
   base::Text left;
   auto r = left / ext::Wrapped();
-  println(r.kind);
+  std::println(r.kind);
   return 0;
 }

@@ -4,34 +4,34 @@ int throwsMade = 0;
 struct Trivial
 {
   int v;
-  void* operator new[](size_t size) { println("trivial new[] ", size); return malloc(size); }
-  void operator delete[](void* p) { println("trivial delete[]"); free(p); }
+  void* operator new[](size_t size) { std::println("trivial new[] ", size); return std::malloc(size); }
+  void operator delete[](void* p) { std::println("trivial delete[]"); std::free(p); }
 };
 struct TrivialSized
 {
   int v;
-  void* operator new[](size_t size) { println("sized new[] ", size); return malloc(size); }
-  void operator delete[](void* p, size_t size) { println("sized delete[] ", size); free(p); }
+  void* operator new[](size_t size) { std::println("sized new[] ", size); return std::malloc(size); }
+  void operator delete[](void* p, size_t size) { std::println("sized delete[] ", size); std::free(p); }
 };
 struct Destructed
 {
   int v = 1;
-  ~Destructed() { println("~", this.v); }
-  void* operator new[](size_t size) { println("destructed new[] ", size); return malloc(size); }
-  void operator delete[](void* p, size_t size) { println("destructed delete[] ", size); free(p); }
+  ~Destructed() { std::println("~", this.v); }
+  void* operator new[](size_t size) { std::println("destructed new[] ", size); return std::malloc(size); }
+  void operator delete[](void* p, size_t size) { std::println("destructed delete[] ", size); std::free(p); }
 };
 struct Throws
 {
   Throws() { if (++throwsMade == 3) throw throwsMade; }
-  ~Throws() { println("~Throws"); }
-  void* operator new[](size_t size) { println("throws new[] ", size); return malloc(size); }
-  void operator delete[](void* p) { println("throws delete[]"); free(p); }
+  ~Throws() { std::println("~Throws"); }
+  void* operator new[](size_t size) { std::println("throws new[] ", size); return std::malloc(size); }
+  void operator delete[](void* p) { std::println("throws delete[]"); std::free(p); }
 };
 struct Arena { char bytes[64]; int used = 0; };
 struct Pooled
 {
   int v = 5;
-  void* operator new[](size_t size, Arena& a) { println("arena new[] ", size); void* p = a.bytes + a.used; a.used += int(size); return p; }
+  void* operator new[](size_t size, Arena& a) { std::println("arena new[] ", size); void* p = a.bytes + a.used; a.used += int(size); return p; }
 };
 int main()
 {
@@ -42,14 +42,14 @@ int main()
   delete[] b;
   Destructed* c = new Destructed[2];
   delete[] c;
-  try { new Throws[4]; } catch (int x) { println("caught ", x); }
+  try { new Throws[4]; } catch (int x) { std::println("caught ", x); }
   Trivial* g = ::new Trivial[2];
   ::delete[] g;
   Trivial* none = nullptr;
   delete[] none;
   Arena arena;
   Pooled* p = new (arena) Pooled[2];
-  println(p[1].v, " ", arena.used);
-  println("end");
+  std::println(p[1].v, " ", arena.used);
+  std::println("end");
   return 0;
 }

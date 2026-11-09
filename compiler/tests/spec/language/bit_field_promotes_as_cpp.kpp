@@ -25,7 +25,7 @@ constexpr int64_t viaConstant()
 }
 static_assert(viaConstant() == -9);
 static_assert(sizeof(S{}.i20 + 0) == 4 && sizeof(S{}.w3 + 0) == 4 && sizeof(S{}.w40 + 0) == 8);
-static_assert(isSame<decltype(S{}.u3 + 0), int> && isSame<decltype(S{}.w32 + 0), unsigned> && isSame<decltype(S{}.w40 + 0), uint64_t>);
+static_assert(std::isSame<decltype(S{}.u3 + 0), int> && std::isSame<decltype(S{}.w32 + 0), unsigned> && std::isSame<decltype(S{}.w40 + 0), uint64_t>);
 
 int main()
 {
@@ -47,19 +47,19 @@ int main()
   int64_t d = s.u3 << 31;
   int64_t e = (s.w3 - 3) / 2;
   int64_t f = no ? s.u3 : -1;
-  println(a, " ", b, " ", c, " ", d, " ", e, " ", f);
-  println(s.u3 - 2 < 0, " ", s.w3 - 3 < 0, " ", s.s5 < s.u3, " ", (s.u3 = 1) - 2 < 0, " ", s.fromMember());
+  std::println(a, " ", b, " ", c, " ", d, " ", e, " ", f);
+  std::println(s.u3 - 2 < 0, " ", s.w3 - 3 < 0, " ", s.s5 < s.u3, " ", (s.u3 = 1) - 2 < 0, " ", s.fromMember());
   // a 32-bit unsigned one an unsigned int, a 64-bit one of 32 bits too; a wider one keeps its type
   int64_t g = s.u32 - 2;
   int64_t h = s.w32 - 6;
-  println(g, " ", h, " ", s.w40 - 8 < 0);
+  std::println(g, " ", h, " ", s.w40 - 8 < 0);
   // an enum bit-field promotes as its enum (a fixed underlying uint32_t: unsigned), a bool one as bool
   int64_t i = s.level - 2;
   int64_t j = s.on - 2;
-  println(i, " ", j);
+  std::println(i, " ", j);
   // a compound assignment computes in the promoted type: 6 / -2 is -3, its low 3 bits 5
   s.u3 = 6;
   s.u3 /= -2;
-  println(s.u3, " ", viaConstant());
+  std::println(s.u3, " ", viaConstant());
   return 0;
 }

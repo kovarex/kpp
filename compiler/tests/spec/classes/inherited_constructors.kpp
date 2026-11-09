@@ -13,13 +13,13 @@ class Filler : public Widget
 public:
   using Widget::Widget;
   int weight = 7;
-  String label = "filler";
+  std::String label = "filler";
   int kind() const override { return 2; }
 };
 int main()
 {
   Filler f(3, 4);
   Filler g(5, 6, "named");
-  println(f.width, " ", f.height, " ", StringView(f.name), " ", f.weight, " ", f.label, " ", f.kind(), " ", StringView(g.name));
+  std::println(f.width, " ", f.height, " ", std::StringView(f.name), " ", f.weight, " ", f.label, " ", f.kind(), " ", std::StringView(g.name));
   return 0;
 }

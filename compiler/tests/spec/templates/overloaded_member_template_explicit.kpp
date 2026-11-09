@@ -11,7 +11,7 @@ struct Reader
   T load(Args&&... args)
   {
     T result;
-    this.load(result, forward<Args>(args)...);
+    this.load(result, std::forward<Args>(args)...);
     return result;
   }
 

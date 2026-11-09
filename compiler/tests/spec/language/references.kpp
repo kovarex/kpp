@@ -1,11 +1,11 @@
 // spec: references: lvalue, const binding a temporary, rvalue references and move
 struct Buffer
 {
-  Vector<int> data;
+  std::Vector<int> data;
   Buffer() {}
-  Buffer(Buffer&& other) : data(::move(other.data)) {}
+  Buffer(Buffer&& other) : data(std::move(other.data)) {}
 };
-int length(const String& s) { return s.size(); }
+int length(const std::String& s) { return s.size(); }
 int main()
 {
   int x = 1, y = 2;
@@ -14,9 +14,9 @@ int main()
   rx += 5;
   Buffer a;
   a.data.push_back(7);
-  Buffer b(::move(a));
+  Buffer b(std::move(a));
   int&& r = x + 1;
   r += 1;
-  println(x, " ", y, " ", length(String("abc") + "d"), " ", b.data.size(), " ", a.data.size(), " ", r);
+  std::println(x, " ", y, " ", length(std::String("abc") + "d"), " ", b.data.size(), " ", a.data.size(), " ", r);
   return 0;
 }

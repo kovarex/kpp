@@ -16,8 +16,8 @@ auto make(Ts... ts)
 int main()
 {
   auto f = make(1, 2, 3);
-  println(f());
+  std::println(f());
   auto g = makeDigits(4, 5, 6);
-  println(g(), " ", g());
+  std::println(g(), " ", g());
   return 0;
 }

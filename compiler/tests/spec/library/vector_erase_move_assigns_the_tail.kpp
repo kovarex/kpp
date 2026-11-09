@@ -27,14 +27,14 @@ public:
 };
 int main()
 {
-  Vector<Counted> v;
+  std::Vector<Counted> v;
   v.reserve(8);
   for (int i = 0; i < 4; ++i)
     v.emplace_back(i);
   constructions = assignments = destructions = 0;
   v.erase(v.begin() + 1);
   printf("%d %d %d / ", constructions, assignments, destructions);
-  Vector<Counted> w;
+  std::Vector<Counted> w;
   w.reserve(8);
   for (int i = 0; i < 6; ++i)
     w.emplace_back(i);
@@ -43,7 +43,7 @@ int main()
   printf("%d %d %d / [", constructions, assignments, destructions);
   for (const Counted& c : v)
     printf(&c == v.begin() ? "%d" : " %d", c.value);
-  Vector<Fixed> f;
+  std::Vector<Fixed> f;
   for (int i = 0; i < 4; ++i)
     f.emplace_back(i);
   f.erase(f.begin() + 2);

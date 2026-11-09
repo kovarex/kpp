@@ -87,35 +87,35 @@ void base()
 {
   B b;
   A& a = b;
-  println(a.get()->id(), " ", b.get()->w, " ", b.get()->pad, " ", a.ref().id(), " ", b.ref().w);
+  std::println(a.get()->id(), " ", b.get()->w, " ", b.get()->pad, " ", a.ref().id(), " ", b.ref().w);
   X* part = a.get();
   W* whole = b.get();
-  println(part == static_cast<X*>(whole) ? 1 : 0, " ", a.after(), " ", b.later());
+  std::println(part == static_cast<X*>(whole) ? 1 : 0, " ", a.after(), " ", b.later());
 }
 void levels()
 {
   C c;
   A& a = c;
   B& b = c;
-  println(a.get()->id(), " ", b.get()->id(), " ", b.get()->w, " ", c.get()->v, " ", a.ref().id());
+  std::println(a.get()->id(), " ", b.get()->id(), " ", b.get()->w, " ", c.get()->v, " ", a.ref().id());
 }
 void inherited()
 {
   Inherits i;
   A& a = i;
-  println(a.get()->id(), " ", i.get()->w, " ", a.after(), " ", i.later());
+  std::println(a.get()->id(), " ", i.get()->w, " ", a.after(), " ", i.later());
 }
 void nulls()
 {
   Null n;
   A& a = n;
-  println(a.get() == nullptr ? 1 : 0, " ", n.get() == nullptr ? 1 : 0);
+  std::println(a.get() == nullptr ? 1 : 0, " ", n.get() == nullptr ? 1 : 0);
 }
 void itself()
 {
   Self s;
   P& p = s;
-  println(p.self() == static_cast<X*>(&s) ? 1 : 0, " ", s.self()->mine, " ", p.self()->x);
+  std::println(p.self() == static_cast<X*>(&s) ? 1 : 0, " ", s.self()->mine, " ", p.self()->x);
 }
 // the same result in both, derived from the overrider: nothing covariant
 class Later;
@@ -144,7 +144,7 @@ void same()
 {
   R r;
   Q& q = r;
-  println(q.make()->k);
+  std::println(q.make()->k);
 }
 int main()
 {

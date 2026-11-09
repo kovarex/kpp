@@ -4,9 +4,9 @@ class M
 {
 public:
   int id;
-  M(int i) : id(i) { print("M", this.id, " "); }
-  M(const M& o) : id(o.id + 100) { print("C", this.id, " "); }
-  ~M() { print("~", this.id, " "); }
+  M(int i) : id(i) { std::print("M", this.id, " "); }
+  M(const M& o) : id(o.id + 100) { std::print("C", this.id, " "); }
+  ~M() { std::print("~", this.id, " "); }
 };
 struct Wrap
 {
@@ -18,18 +18,18 @@ int main()
 {
   {
     const M& m = wrap(5).inner;
-    print("| ", m.id, " ");
+    std::print("| ", m.id, " ");
   }
-  println("| first");
+  std::println("| first");
   {
     const int& id = wrap(6).inner.id;
-    print("| ", id, " ");
+    std::print("| ", id, " ");
   }
-  println("| second");
+  std::println("| second");
   {
     const M& m = rewrap(wrap(7)).inner;
-    print("| ", m.id, " ");
+    std::print("| ", m.id, " ");
   }
-  println("| third");
+  std::println("| third");
   return 0;
 }

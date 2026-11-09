@@ -41,14 +41,14 @@ int main()
   Bits<5> y;
   y.a = 17;
   y.b = 2;
-  println(int(x.a), " ", int(x.b), " ", int(y.a), " ", int(y.b), " | ", *reinterpret_cast<uint32_t*>(&x), " ", *reinterpret_cast<uint32_t*>(&y));
+  std::println(int(x.a), " ", int(x.b), " ", int(y.a), " ", int(y.b), " | ", *reinterpret_cast<uint32_t*>(&x), " ", *reinterpret_cast<uint32_t*>(&y));
   x.bump();
   y.bump();
-  println(int(x.sum()), " ", int(y.sum()), " | ", int(x.a), " ", int(x.b), " ", int(y.a), " ", int(y.b));
+  std::println(int(x.sum()), " ", int(y.sum()), " | ", int(x.a), " ", int(x.b), " ", int(y.a), " ", int(y.b));
   Bits<5> z{30, 4};
   Wrapped<3> w;
   w.a = 7;
   w.b = 9;
-  println(int(z.a), " ", int(z.b), " | ", int(w.a), " ", int(w.b), " ", w.tag, " | ", int(global3.a), " ", int(global3.b), " | ", packed(3), " ", packed(5));
+  std::println(int(z.a), " ", int(z.b), " | ", int(w.a), " ", int(w.b), " ", w.tag, " | ", int(global3.a), " ", int(global3.b), " | ", packed(3), " ", packed(5));
   return 0;
 }

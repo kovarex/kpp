@@ -39,6 +39,6 @@ int main()
 {
   E e;
   A& a = e;
-  println(a.get()->x);
+  std::println(a.get()->x);
   return 0;
 }

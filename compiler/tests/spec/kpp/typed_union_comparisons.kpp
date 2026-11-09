@@ -2,13 +2,13 @@
 // factorio: UndoActionDescription's defaulted <=> over its ValueVariant (std::variant converted to a typed union)
 union enum Value
 {
-  { {int, Integer}, {double, Real}, {String, Text} }
+  { {int, Integer}, {double, Real}, {std::String, Text} }
 };
 struct Entry
 {
   int id = 0;
   Value value;
-  strong_ordering operator<=>(const Entry&) const = default;
+  std::strong_ordering operator<=>(const Entry&) const = default;
 };
 int main()
 {
@@ -19,6 +19,6 @@ int main()
   d[Integer] = 5;
   Entry e1{1, a};
   Entry e2{1, c};
-  println(a == d, " ", a == b, " ", a < b, " ", b < c, " ", c < a, " ", e1 < e2, " ", e2 == e2);
+  std::println(a == d, " ", a == b, " ", a < b, " ", b < c, " ", c < a, " ", e1 < e2, " ", e2 == e2);
   return 0;
 }

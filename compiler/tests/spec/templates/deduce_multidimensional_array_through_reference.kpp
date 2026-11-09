@@ -7,15 +7,15 @@ struct Point
 };
 struct Recorder
 {
-  static int record(const char* address, const String& name, uint64_t size, uint64_t align) { return int(size); }
+  static int record(const char* address, const std::String& name, uint64_t size, uint64_t align) { return int(size); }
   template<class T>
-  static int record(const T& value, const String& name) { return Recorder::record((const char*)(const void*)&value, name, sizeof(T), alignof(T)); }
+  static int record(const T& value, const std::String& name) { return Recorder::record((const char*)(const void*)&value, name, sizeof(T), alignof(T)); }
 };
 int main()
 {
   Point points[16][2];
-  Vector<int> lists[4][3][2];
+  std::Vector<int> lists[4][3][2];
   int single[5] = {};
-  println(Recorder::record(points, "points") == int(sizeof(points)), " ", Recorder::record(lists, "lists") == int(sizeof(lists)), " ", Recorder::record(single, "single"));
+  std::println(Recorder::record(points, "points") == int(sizeof(points)), " ", Recorder::record(lists, "lists") == int(sizeof(lists)), " ", Recorder::record(single, "single"));
   return 0;
 }

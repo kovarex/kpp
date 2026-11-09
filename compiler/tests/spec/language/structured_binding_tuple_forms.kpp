@@ -22,7 +22,7 @@ struct Counter
   }
 };
 template<>
-struct TupleSize<Counter> { static constexpr int value = 2; };
+struct std::TupleSize<Counter> { static constexpr int value = 2; };
 
 namespace geometry
 {
@@ -44,7 +44,7 @@ namespace geometry
   }
 }
 template<>
-struct TupleSize<geometry::Point> { static constexpr int value = 3; };
+struct std::TupleSize<geometry::Point> { static constexpr int value = 3; };
 
 template<typename T>
 struct Swapped
@@ -53,7 +53,7 @@ struct Swapped
   T outer;
 };
 template<typename T>
-struct TupleSize<Swapped<T>> { static constexpr int value = 2; };
+struct std::TupleSize<Swapped<T>> { static constexpr int value = 2; };
 template<int I, typename T>
 T& get(Swapped<T>& s)
 {
@@ -92,7 +92,7 @@ int main()
   Grid g;
   Swapped<int> s{1, 2};
   auto [o, i] = s;
-  Vector<Counter> counters;
+  std::Vector<Counter> counters;
   counters.push_back(Counter());
   counters.push_back(Counter());
   int total = 0;
@@ -102,6 +102,6 @@ int main()
     total += a + b;
   }
   const auto& [ca, cb] = c;
-  println(c.a, " ", c.b, " ", copy, " ", px, " ", py, " ", pz, " ", g.sum(p), " ", o, " ", i, " ", total, " ", counters[0].a, " ", ca + cb, " ", firstOf(c));
+  std::println(c.a, " ", c.b, " ", copy, " ", px, " ", py, " ", pz, " ", g.sum(p), " ", o, " ", i, " ", total, " ", counters[0].a, " ", ca + cb, " ", firstOf(c));
   return 0;
 }

@@ -4,8 +4,8 @@ class Noisy
 {
 public:
   int id;
-  Noisy(int i) : id(i) { print("+", this.id, " "); }
-  ~Noisy() { print("-", this.id, " "); }
+  Noisy(int i) : id(i) { std::print("+", this.id, " "); }
+  ~Noisy() { std::print("-", this.id, " "); }
 };
 int cases(int x)
 {
@@ -61,8 +61,8 @@ after:
 }
 int main()
 {
-  println(cases(0), " ", cases(1), " ", cases(2), " ", cases(3));
-  println(loops());
-  println(skipBlock(1), " ", skipStatic(1));
+  std::println(cases(0), " ", cases(1), " ", cases(2), " ", cases(3));
+  std::println(loops());
+  std::println(skipBlock(1), " ", skipStatic(1));
   return 0;
 }

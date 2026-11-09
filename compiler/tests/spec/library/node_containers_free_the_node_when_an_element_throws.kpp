@@ -73,7 +73,7 @@ void report(const char* name)
 int main()
 {
   Item item(1);
-  List<Item> list;
+  std::List<Item> list;
   list.push_back(item);
   start();
   for (i32 i = 0; i < 100; ++i)
@@ -97,7 +97,7 @@ int main()
       ++thrown;
     }
   report("List insert");
-  ForwardList<Item> forward;
+  std::ForwardList<Item> forward;
   start();
   for (i32 i = 0; i < 100; ++i)
     try
@@ -109,7 +109,7 @@ int main()
       ++thrown;
     }
   report("ForwardList push_front");
-  Map<i32, Item> map;
+  std::Map<i32, Item> map;
   map.emplace(0, item);
   start();
   for (i32 i = 0; i < 100; ++i)
@@ -133,7 +133,7 @@ int main()
       ++thrown;
     }
   report("Map try_emplace");
-  Set<Item> set;
+  std::Set<Item> set;
   start();
   for (i32 i = 0; i < 100; ++i)
     try
@@ -145,7 +145,7 @@ int main()
       ++thrown;
     }
   report("Set insert");
-  MultiMap<i32, Item> multimap;
+  std::MultiMap<i32, Item> multimap;
   start();
   for (i32 i = 0; i < 100; ++i)
     try
@@ -157,7 +157,7 @@ int main()
       ++thrown;
     }
   report("MultiMap emplace");
-  MultiSet<Item> multiset;
+  std::MultiSet<Item> multiset;
   start();
   for (i32 i = 0; i < 100; ++i)
     try
@@ -169,7 +169,7 @@ int main()
       ++thrown;
     }
   report("MultiSet insert");
-  HashMap<i32, Item> hashMap;
+  std::HashMap<i32, Item> hashMap;
   hashMap.emplace(0, item);
   start();
   for (i32 i = 0; i < 100; ++i)
@@ -193,7 +193,7 @@ int main()
       ++thrown;
     }
   report("HashMap try_emplace");
-  HashSet<Item, ItemHash> hashSet;
+  std::HashSet<Item, ItemHash> hashSet;
   hashSet.emplace(0);
   start();
   throwing = false;

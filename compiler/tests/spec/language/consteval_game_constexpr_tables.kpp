@@ -25,33 +25,33 @@ constexpr int codeCount()
   using namespace Codes;
   return Last - First;
 }
-constexpr Array<Key, 6> keys()
+constexpr std::Array<Key, 6> keys()
 {
-  Array<Key, 6> table = {};
+  std::Array<Key, 6> table = {};
   for (auto& value : table)
     value = INVALID;
   table[2] = B;
   return table;
 }
-constexpr Array<Optional<Key>, 4> optionalKeys()
+constexpr std::Array<std::Optional<Key>, 4> optionalKeys()
 {
-  Array<Optional<Key>, 4> table = {};
+  std::Array<std::Optional<Key>, 4> table = {};
   table[1] = A;
   return table;
 }
 static constexpr char pi[] = "1.57";
 static constexpr const char lookup[2][4] = {"ab", "cd"};
-static constexpr Array named = {Pair(1, "one"), Pair(13, "thirteen")};
+static constexpr std::Array named = {std::Pair(1, "one"), std::Pair(13, "thirteen")};
 static constexpr Vec2D shift = Vec2D(1.0, 3.5) * 2.0;
-static constexpr Array<Key, 6> table = keys();
-static constexpr Array<Optional<Key>, 4> optionals = optionalKeys();
-static constexpr Optional<int> five = 5;
+static constexpr std::Array<Key, 6> table = keys();
+static constexpr std::Array<std::Optional<Key>, 4> optionals = optionalKeys();
+static constexpr std::Optional<int> five = 5;
 static_assert(sizeof(pi) == 5 && pi[4] == 0);
 static_assert(named[1].first == 13 && shift.y == 7.0 && table[2] == B && table[5] == INVALID);
 static_assert(codeCount() == 7);
 static_assert(*optionals[1] == A && !optionals[2].has_value() && *five == 5);
 int main()
 {
-  println(pi, " ", named[1].first, " ", lookup[1][1], " ", int(table[2]), " ", shift.y, " ", int(*optionals[1]), " ", *five);
+  std::println(pi, " ", named[1].first, " ", lookup[1][1], " ", int(table[2]), " ", shift.y, " ", int(*optionals[1]), " ", *five);
   return 0;
 }

@@ -2,46 +2,46 @@
 // factorio: none known; the guarantee that a size past the size's range is an error, not a wrapped length and a write past the block (String's append compared length + count, which wrapped, with the capacity: negative with int sizes, past 2^64 with u64)
 int main()
 {
-  String text = "a heap string, longer than twenty-two bytes";
+  std::String text = "a heap string, longer than twenty-two bytes";
   const char* bytes = text.data();
-  ContainerSize before = text.size();
+  std::ContainerSize before = text.size();
   try
   {
-    text.append(bytes, maxContainerSize);
-    println("appended");
+    text.append(bytes, std::maxContainerSize);
+    std::println("appended");
   }
-  catch (const LengthError& e)
+  catch (const std::LengthError& e)
   {
-    println("append: ", StringView(e.what()), ", size ", text.size() == before);
-  }
-  try
-  {
-    text.append(maxContainerSize - 10, 'x');
-    println("appended");
-  }
-  catch (const LengthError& e)
-  {
-    println("append count: ", StringView(e.what()), ", size ", text.size() == before);
+    std::println("append: ", std::StringView(e.what()), ", size ", text.size() == before);
   }
   try
   {
-    text.insert(3, bytes, maxContainerSize);
-    println("inserted");
+    text.append(std::maxContainerSize - 10, 'x');
+    std::println("appended");
   }
-  catch (const LengthError& e)
+  catch (const std::LengthError& e)
   {
-    println("insert: ", StringView(e.what()), ", size ", text.size() == before);
+    std::println("append count: ", std::StringView(e.what()), ", size ", text.size() == before);
+  }
+  try
+  {
+    text.insert(3, bytes, std::maxContainerSize);
+    std::println("inserted");
+  }
+  catch (const std::LengthError& e)
+  {
+    std::println("insert: ", std::StringView(e.what()), ", size ", text.size() == before);
   }
   // A range that runs backwards: its length is negative, checked before a byte is read.
   try
   {
-    String range(bytes + 3, bytes);
-    println("constructed ", range.size());
+    std::String range(bytes + 3, bytes);
+    std::println("constructed ", range.size());
   }
-  catch (const LengthError& e)
+  catch (const std::LengthError& e)
   {
-    println("range: ", StringView(e.what()));
+    std::println("range: ", std::StringView(e.what()));
   }
-  println(text);
+  std::println(text);
   return 0;
 }

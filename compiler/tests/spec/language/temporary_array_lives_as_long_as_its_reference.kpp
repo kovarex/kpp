@@ -3,13 +3,13 @@
 struct Noisy
 {
   int v;
-  implicit Noisy(int v) : v(v) { println("make ", v); }
-  Noisy(const Noisy& o) : v(o.v) { println("copy ", this.v); }
-  ~Noisy() { println("drop ", this.v); }
+  implicit Noisy(int v) : v(v) { std::println("make ", v); }
+  Noisy(const Noisy& o) : v(o.v) { std::println("copy ", this.v); }
+  ~Noisy() { std::println("drop ", this.v); }
 };
 int total(const Noisy (&a)[2])
 {
-  println("total");
+  std::println("total");
   return a[0].v + a[1].v;
 }
 template<typename T, int N> T sumOf(const T (&a)[N])
@@ -27,27 +27,27 @@ using Square = const int[2][2];
 int main()
 {
   int t = total(Two{Noisy(1), Noisy(2)});
-  println("after ", t);
+  std::println("after ", t);
   {
     const auto& r = Two{Noisy(3), Noisy(4)};
-    println("bound ", r[0].v + r[1].v);
+    std::println("bound ", r[0].v + r[1].v);
   }
-  println("scope done");
+  std::println("scope done");
   {
     const Noisy (&q)[2] = {Noisy(5), Noisy(6)};
-    println("bound ", q[0].v + q[1].v);
+    std::println("bound ", q[0].v + q[1].v);
   }
-  println("scope done");
+  std::println("scope done");
   for (const Noisy& n : Two{Noisy(7), Noisy(8)})
-    println("loop ", n.v);
-  println("loop done");
+    std::println("loop ", n.v);
+  std::println("loop done");
   const int (&left)[3] = {9};
-  println(left[0], " ", left[1], " ", left[2], " ", sumOf(Four{1.5, 2.5, 3, 4}), " ", corner(Square{{1, 2}, {3, 4}}));
+  std::println(left[0], " ", left[1], " ", left[2], " ", sumOf(Four{1.5, 2.5, 3, 4}), " ", corner(Square{{1, 2}, {3, 4}}));
   for (int x : Three{7, 8})
-    print("[", x, "]");
-  println();
+    std::print("[", x, "]");
+  std::println();
   int (&&changed)[3] = {1, 2, 3};
   changed[0] = 10;
-  println(changed[0] + changed[1] + changed[2]);
+  std::println(changed[0] + changed[1] + changed[2]);
   return 0;
 }

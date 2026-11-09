@@ -2,7 +2,7 @@
 extern "C" import "c_struct_member_attributes.h";
 int main()
 {
-  println(sizeof(SpecAlignedMember) == specAlignedSize(), " ", offsetof(SpecAlignedMember, after) == specAlignedAfter(), " ", alignof(SpecAlignedMember));
-  println(sizeof(SpecNullableMember) == specNullableSize(), " ", offsetof(SpecNullableMember, after) == specNullableAfter());
+  std::println(sizeof(SpecAlignedMember) == specAlignedSize(), " ", offsetof(SpecAlignedMember, after) == specAlignedAfter(), " ", alignof(SpecAlignedMember));
+  std::println(sizeof(SpecNullableMember) == specNullableSize(), " ", offsetof(SpecNullableMember, after) == specNullableAfter());
   return 0;
 }

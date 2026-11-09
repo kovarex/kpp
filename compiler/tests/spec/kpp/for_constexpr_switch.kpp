@@ -12,6 +12,6 @@ const char* nameOf(int kind)
 }
 int main()
 {
-  println(StringView(nameOf(1)), " ", StringView(nameOf(2)), " ", StringView(nameOf(3)));
+  std::println(std::StringView(nameOf(1)), " ", std::StringView(nameOf(2)), " ", std::StringView(nameOf(3)));
   return 0;
 }

@@ -4,6 +4,6 @@ int main()
 {
   char buffer[32];
   int n = snprintf(buffer, sizeof(buffer), "%d-%s-%.1f", 7, "x", 2.5);
-  println(n, " ", buffer);
+  std::println(n, " ", buffer);
   return 0;
 }

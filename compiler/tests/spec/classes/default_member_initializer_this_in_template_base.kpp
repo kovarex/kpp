@@ -23,6 +23,6 @@ struct Item : H<Item, true>
 int main()
 {
   Item item;
-  println(item.next == &item, " ", item.linked(), " ", item.value);
+  std::println(item.next == &item, " ", item.linked(), " ", item.value);
   return 0;
 }

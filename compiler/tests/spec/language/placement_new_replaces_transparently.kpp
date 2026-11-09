@@ -16,6 +16,6 @@ int main()
   int plain = 5;
   const int* view = &plain;
   new (const_cast<int*>(view)) int(6);
-  println(entry.id, " ", entry.count, " ", old->id, " ", first, " ", second, " ", plain);
+  std::println(entry.id, " ", entry.count, " ", old->id, " ", first, " ", second, " ", plain);
   return 0;
 }

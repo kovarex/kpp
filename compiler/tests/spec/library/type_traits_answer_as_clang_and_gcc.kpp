@@ -57,12 +57,12 @@ template<class T> struct Tmpl { T t; };
 template<class T> void row(const char* n)
 {
   printf("%-22s", n);
-  printf(" %d%d%d%d%d%d%d%d", isVoid<T>, isNullPointer<T>, isIntegral<T>, isFloatingPoint<T>, isArray<T>, isPointer<T>, isReference<T>, isEnum<T>);
-  printf(" %d%d%d%d%d%d%d%d", isClass<T>, isFunction<T>, isConst<T>, isArithmetic<T>, isFundamental<T>, isMemberPointer<T>, isMemberObjectPointer<T>, isMemberFunctionPointer<T>);
-  printf(" %d%d%d%d%d", isSigned<T>, isUnsigned<T>, isAbstract<T>, isPolymorphic<T>, isFinal<T>);
-  printf(" %d%d%d%d", isCopyConstructible<T>, isMoveConstructible<T>, isCopyAssignable<T>, isMoveAssignable<T>);
-  printf(" %d%d%d%d%d%d%d", isTriviallyCopyable<T>, isTriviallyDestructible<T>, isTriviallyDefaultConstructible<T>, isTriviallyCopyConstructible<T>, isTriviallyMoveConstructible<T>, isTriviallyCopyAssignable<T>, isTriviallyMoveAssignable<T>);
-  printf(" %d%d %d%d\n", isNothrowMoveConstructible<T>, isNothrowMoveAssignable<T>, isConstructible<T>, isConstructible<T, int>);
+  printf(" %d%d%d%d%d%d%d%d", std::isVoid<T>, std::isNullPointer<T>, std::isIntegral<T>, std::isFloatingPoint<T>, std::isArray<T>, std::isPointer<T>, std::isReference<T>, std::isEnum<T>);
+  printf(" %d%d%d%d%d%d%d%d", std::isClass<T>, std::isFunction<T>, std::isConst<T>, std::isArithmetic<T>, std::isFundamental<T>, std::isMemberPointer<T>, std::isMemberObjectPointer<T>, std::isMemberFunctionPointer<T>);
+  printf(" %d%d%d%d%d", std::isSigned<T>, std::isUnsigned<T>, std::isAbstract<T>, std::isPolymorphic<T>, std::isFinal<T>);
+  printf(" %d%d%d%d", std::isCopyConstructible<T>, std::isMoveConstructible<T>, std::isCopyAssignable<T>, std::isMoveAssignable<T>);
+  printf(" %d%d%d%d%d%d%d", std::isTriviallyCopyable<T>, std::isTriviallyDestructible<T>, std::isTriviallyDefaultConstructible<T>, std::isTriviallyCopyConstructible<T>, std::isTriviallyMoveConstructible<T>, std::isTriviallyCopyAssignable<T>, std::isTriviallyMoveAssignable<T>);
+  printf(" %d%d %d%d\n", std::isNothrowMoveConstructible<T>, std::isNothrowMoveAssignable<T>, std::isConstructible<T>, std::isConstructible<T, int>);
 }
 int main()
 {
@@ -87,11 +87,11 @@ int main()
   row<const Pod>("const Pod"); row<const UserCopy>("const UserCopy"); row<const MoveOnly>("const MoveOnly"); row<volatile int>("volatile int"); row<volatile Pod>("volatile Pod");
   auto l1 = [] {}; int cap = 0; auto l2 = [cap] { return cap; }; auto l3 = [&cap] { return cap; };
   row<decltype(l1)>("lambda");
-  printf("%d%d%d%d%d%d%d%d %d%d%d%d\n", isConvertible<int, double>, isConvertible<double, int>, isConvertible<int*, void*>, isConvertible<void*, int*>, isConvertible<Poly*, Empty*>, isConvertible<PolyDerived*, Poly*>, isConvertible<Poly*, PolyDerived*>, isConvertible<int, ArgCtor>, isConvertible<int, ExplicitCtor>, isConvertible<ConvOp, int>, isConvertible<ExplicitConv, int>, isConvertible<int, void>);
-  printf("%d%d%d%d%d%d%d\n", isBaseOf<Poly, PolyDerived>, isBaseOf<PolyDerived, Poly>, isBaseOf<Poly, Poly>, isBaseOf<int, int>, isBaseOf<Pod, DerivedPod>, isBaseOf<Abstract, Concrete>, isBaseOf<Empty, Poly>);
-  printf("%d%d%d%d%d%d%d%d\n", isSame<int, int>, isSame<int, const int>, isSame<int, int&>, isSame<unsigned, unsigned int>, isSame<long long, long long int>, isSame<char, signed char>, isSame<int*, int*>, isSame<Tmpl<int>, Tmpl<int>>);
-  printf("%d%d%d%d%d%d\n", isConstructible<ArgCtor, int>, isConstructible<ArgCtor, double>, isConstructible<ExplicitCtor, int>, isConstructible<Pod, int, float>, isConstructible<int, int, int>, isConstructible<ArgCtor, const char*>);
+  printf("%d%d%d%d%d%d%d%d %d%d%d%d\n", std::isConvertible<int, double>, std::isConvertible<double, int>, std::isConvertible<int*, void*>, std::isConvertible<void*, int*>, std::isConvertible<Poly*, Empty*>, std::isConvertible<PolyDerived*, Poly*>, std::isConvertible<Poly*, PolyDerived*>, std::isConvertible<int, ArgCtor>, std::isConvertible<int, ExplicitCtor>, std::isConvertible<ConvOp, int>, std::isConvertible<ExplicitConv, int>, std::isConvertible<int, void>);
+  printf("%d%d%d%d%d%d%d\n", std::isBaseOf<Poly, PolyDerived>, std::isBaseOf<PolyDerived, Poly>, std::isBaseOf<Poly, Poly>, std::isBaseOf<int, int>, std::isBaseOf<Pod, DerivedPod>, std::isBaseOf<Abstract, Concrete>, std::isBaseOf<Empty, Poly>);
+  printf("%d%d%d%d%d%d%d%d\n", std::isSame<int, int>, std::isSame<int, const int>, std::isSame<int, int&>, std::isSame<unsigned, unsigned int>, std::isSame<long long, long long int>, std::isSame<char, signed char>, std::isSame<int*, int*>, std::isSame<Tmpl<int>, Tmpl<int>>);
+  printf("%d%d%d%d%d%d\n", std::isConstructible<ArgCtor, int>, std::isConstructible<ArgCtor, double>, std::isConstructible<ExplicitCtor, int>, std::isConstructible<Pod, int, float>, std::isConstructible<int, int, int>, std::isConstructible<ArgCtor, const char*>);
   auto fn = [](int) { return 1; };
-  printf("%d%d%d%d%d\n", isInvocable<decltype(fn), int>, isInvocable<decltype(fn), const char*>, isInvocable<decltype(fn)>, isInvocableR<int, decltype(fn), int>, isInvocableR<const char*, decltype(fn), int>);
+  printf("%d%d%d%d%d\n", std::isInvocable<decltype(fn), int>, std::isInvocable<decltype(fn), const char*>, std::isInvocable<decltype(fn)>, std::isInvocableR<int, decltype(fn), int>, std::isInvocableR<const char*, decltype(fn), int>);
   return 0;
 }

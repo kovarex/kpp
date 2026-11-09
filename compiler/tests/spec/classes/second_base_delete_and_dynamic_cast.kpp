@@ -5,13 +5,13 @@ class Shape
 {
 public:
   int sides = 0;
-  virtual ~Shape() { println("~Shape"); }
+  virtual ~Shape() { std::println("~Shape"); }
 };
 class Printable
 {
 public:
   int copies = 1;
-  virtual ~Printable() { println("~Printable"); }
+  virtual ~Printable() { std::println("~Printable"); }
   virtual int print() const { return 0; }
 };
 class Square : public Shape, public Printable
@@ -19,7 +19,7 @@ class Square : public Shape, public Printable
 public:
   int side = 3;
   Square() { this.sides = 4; }
-  ~Square() override { println("~Square"); }
+  ~Square() override { std::println("~Square"); }
   int print() const override { return this.side * this.side; }
 };
 class Circle : public Shape

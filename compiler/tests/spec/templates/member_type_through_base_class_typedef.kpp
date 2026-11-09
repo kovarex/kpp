@@ -8,7 +8,7 @@ struct Result
 class Reporter
 {
 public:
-  typedef Vector<Result> ResultList;
+  typedef std::Vector<Result> ResultList;
   ResultList& results() { return this.list; }
   ResultList list;
 };
@@ -34,6 +34,6 @@ int main()
   reporter.list.push_back(Result{true, 5});
   reporter.list.push_back(Result{false, 7});
   reporter.list.push_back(Result{true, 9});
-  println(reporter.failedIds());
+  std::println(reporter.failedIds());
   return 0;
 }

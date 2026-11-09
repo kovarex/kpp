@@ -3,20 +3,20 @@
 struct Pos { int x, y; };
 struct Named
 {
-  Named(String name, int count) : name(move(name)), count(count) {}
-  String name;
+  Named(std::String name, int count) : name(std::move(name)), count(count) {}
+  std::String name;
   int count;
 };
 static int pick(Pos) { return 1; }
 static int pick(Named) { return 2; }
-static int pick(Vector<String>) { return 3; }
+static int pick(std::Vector<std::String>) { return 3; }
 static int take(const Pos&) { return 4; }
 static int take(Pos&&) { return 5; }
 static int scalar(int value) { return value; }
 static int scalar(Named) { return -1; }
 int main()
 {
-  println(pick(Pos{1, 2}), " ", pick(Named{String("a"), 2}), " ", pick(Named{"a", 2}), " ", pick(Vector<String>{String("a"), String("b"), String("c")}));
-  println(take(Pos{3, 4}), " ", scalar(Named{"n", 1}));
+  std::println(pick(Pos{1, 2}), " ", pick(Named{std::String("a"), 2}), " ", pick(Named{"a", 2}), " ", pick(std::Vector<std::String>{std::String("a"), std::String("b"), std::String("c")}));
+  std::println(take(Pos{3, 4}), " ", scalar(Named{"n", 1}));
   return 0;
 }

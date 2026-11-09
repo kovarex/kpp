@@ -1,7 +1,7 @@
 // spec: a comparison's rewritten candidates are ranked with the class's own operators, as C++ ranks them ([over.match.best]): the conversions first, then a function over a template's specialization (2.4), and only then the non-rewritten candidate over a rewritten one (2.8): `D{1} < D{2}` takes a non-template operator<=> over an operator< template, `G(1) != G(1)` the rewritten `!(G(1) == G(1))` over an operator!= template, `H(1) != 1` the rewritten `!(H(1) == 1)` over an operator!=(const H&) needing a conversion, while `E{1} < E{2}` keeps the operator< that ties with operator<=> (`110110110101101`, clang's)
 // found by D (2026-11-06), widening classes/rewritten_three_way_beats_operator_needing_a_conversion to a battery against clang: those three called the class's own operator, without a word
 extern "C" import "stdio.h";
-using SO = strong_ordering;
+using SO = std::strong_ordering;
 
 struct C
 {

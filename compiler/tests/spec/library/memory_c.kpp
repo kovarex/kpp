@@ -3,14 +3,14 @@
 int main()
 {
   char a[8];
-  ::memset(a, 'x', 7);
+  std::memset(a, 'x', 7);
   a[7] = 0;
   char b[8];
-  ::memcpy(b, a, 8);
+  std::memcpy(b, a, 8);
   b[0] = 'y';
-  int* block = (int*)malloc(4 * sizeof(int));
+  int* block = (int*)std::malloc(4 * sizeof(int));
   block[3] = 11;
-  println((int)::strlen(a), " ", ::memcmp(a, b, 8) != 0, " ", b[1] == 'x', " ", block[3]);
-  free(block);
+  std::println((int)std::strlen(a), " ", std::memcmp(a, b, 8) != 0, " ", b[1] == 'x', " ", block[3]);
+  std::free(block);
   return 0;
 }

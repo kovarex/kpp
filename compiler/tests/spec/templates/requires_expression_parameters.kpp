@@ -10,8 +10,8 @@ template<typename T>
 int which(Reversed<T> w) { return 2; }
 int main()
 {
-  Vector<int> v;
-  Reversed<Vector<int>> r{&v};
-  println(hasBegin<Vector<int>>, " ", hasBegin<int>, " ", which(v), " ", which(r));
+  std::Vector<int> v;
+  Reversed<std::Vector<int>> r{&v};
+  std::println(hasBegin<std::Vector<int>>, " ", hasBegin<int>, " ", which(v), " ", which(r));
   return 0;
 }

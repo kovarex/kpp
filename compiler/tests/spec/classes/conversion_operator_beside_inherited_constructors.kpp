@@ -8,14 +8,14 @@ public:
   int quality = 1;
   WithQuality() = default;
   WithQuality(int b) : base(b) {}
-  WithQuality(StringView name) : base(int(name.size())) {}
+  WithQuality(std::StringView name) : base(int(name.size())) {}
 };
 class Signal : public WithQuality<char>
 {
 public:
   using super = WithQuality<char>;
   using super::super;
-  Signal(const char* name) : super(StringView(name)) {}
+  Signal(const char* name) : super(std::StringView(name)) {}
 };
 class Connector
 {
@@ -33,6 +33,6 @@ int main()
   Prototype p;
   Signal s = p.output;
   Signal fromName("abc");
-  println(defaultOutput(&p).base, " ", s.base, " ", fromName.base);
+  std::println(defaultOutput(&p).base, " ", s.base, " ", fromName.base);
   return 0;
 }

@@ -16,6 +16,6 @@ int main()
   auto addBase = [base](auto x) { return x + base; };
   auto twice = [](auto x) { return x * 2; };
   Box<int> box{4};
-  println(applyTwice(addBase, 1), " ", applyTwice(twice, 3), " ", box.apply(twice), " ", box.apply([](auto v) { return v - 1; }));
+  std::println(applyTwice(addBase, 1), " ", applyTwice(twice, 3), " ", box.apply(twice), " ", box.apply([](auto v) { return v - 1; }));
   return 0;
 }

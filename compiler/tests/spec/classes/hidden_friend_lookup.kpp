@@ -41,9 +41,9 @@ int main()
   money::Coin a(5), b(7);
   money::Gold g(9);
   a += b;
-  println(valueOf(a), " ", valueOf(-a), " ", a.twice(), " ", madeSoFar(a) > 0, " ", valueOf(g), " ", describe(a), " ", money::describe(3L));
+  std::println(valueOf(a), " ", valueOf(-a), " ", a.twice(), " ", madeSoFar(a) > 0, " ", valueOf(g), " ", describe(a), " ", money::describe(3L));
   Box<double> x(1.5), y(2.25);
   Box<int> i(3);
-  println(get(x + y), " ", sum(x, y), " ", get(i), " ", i.viaFriend());
+  std::println(get(x + y), " ", sum(x, y), " ", get(i), " ", i.viaFriend());
   return 0;
 }

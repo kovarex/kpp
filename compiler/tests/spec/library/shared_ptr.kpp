@@ -3,10 +3,10 @@
 struct Node { int v = 4; };
 int main()
 {
-  SharedPtr<Node> a = makeShared<Node>();
-  SharedPtr<Node> b = a;
-  WeakPtr<Node> w = a;
+  std::SharedPtr<Node> a = std::makeShared<Node>();
+  std::SharedPtr<Node> b = a;
+  std::WeakPtr<Node> w = a;
   a = nullptr;
-  println(b->v, " ", w.lock() != nullptr, " ", b.use_count()); // the lock() temporary lives to the end of the line: 2 owners
+  std::println(b->v, " ", w.lock() != nullptr, " ", b.use_count()); // the lock() temporary lives to the end of the line: 2 owners
   return 0;
 }

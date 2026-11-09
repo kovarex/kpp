@@ -25,13 +25,13 @@ int main()
 {
   Pos p;
   bump<&Pos::x>(p, 10);
-  println(readField<&Pos::x>(p), " ", readField<&Pos::y>(p), " ", c, " ", atCompileTime());
+  std::println(readField<&Pos::x>(p), " ", readField<&Pos::y>(p), " ", c, " ", atCompileTime());
   A a;
   B b;
   ns::C n;
   Reader<&A::v> rv;
   Reader<&A::w> rw;
-  println(get<A, &A::v>(a), " ", get<A, &A::w>(a), " ", get<B, &B::v>(b), " ", get<ns::C, &ns::C::v>(n));
-  println(anyField<&A::w>(a), " ", anyField<&B::big>(b), " ", anyField<&B::v>(b), " ", rv.read(a), " ", rw.read(a));
+  std::println(get<A, &A::v>(a), " ", get<A, &A::w>(a), " ", get<B, &B::v>(b), " ", get<ns::C, &ns::C::v>(n));
+  std::println(anyField<&A::w>(a), " ", anyField<&B::big>(b), " ", anyField<&B::v>(b), " ", rv.read(a), " ", rw.read(a));
   return 0;
 }

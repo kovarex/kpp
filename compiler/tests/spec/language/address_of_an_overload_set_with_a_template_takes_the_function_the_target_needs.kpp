@@ -10,6 +10,6 @@ float call(float (*f)(void*, int), void* data) { return f(data, 1); }
 int main()
 {
   float values[2] = {1.0f, 2.5f};
-  println(call(pick, values));
+  std::println(call(pick, values));
   return 0;
 }

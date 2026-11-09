@@ -42,8 +42,8 @@ int main()
   bool sameC = built == &c;
   Box<int> d = boxOf(4);
   bool sameD = built == &d;
-  println(a.value, " ", b.inner, " ", c.inner, " ", d.inner);
-  println(copies, " copies, ", moves, " moves");
-  println(sameA, " ", sameB, " ", sameC, " ", sameD);
+  std::println(a.value, " ", b.inner, " ", c.inner, " ", d.inner);
+  std::println(copies, " copies, ", moves, " moves");
+  std::println(sameA, " ", sameB, " ", sameC, " ", sameD);
   return 0;
 }

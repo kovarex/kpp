@@ -3,7 +3,7 @@
 class Shape
 {
 public:
-  virtual ~Shape() { println("~Shape"); }
+  virtual ~Shape() { std::println("~Shape"); }
   virtual int area() const = 0;
   virtual const char* name() const { return "shape"; }
   int doubled() const { return this.area() * 2; }
@@ -13,7 +13,7 @@ class Square : public Shape
 public:
   int side;
   Square(int side) : side(side) {}
-  ~Square() override { println("~Square"); }
+  ~Square() override { std::println("~Square"); }
   int area() const override { return this.side * this.side; }
   const char* name() const override { return "square"; }
 };
@@ -25,11 +25,11 @@ public:
 };
 int main()
 {
-  Vector<Shape*> shapes;
+  std::Vector<Shape*> shapes;
   shapes.push_back(new Square(3));
   shapes.push_back(new Unit());
   for (Shape* s : shapes)
-    println(StringView(s->name()), " ", s->area(), " ", s->doubled());
+    std::println(std::StringView(s->name()), " ", s->area(), " ", s->doubled());
   for (Shape* s : shapes)
     delete s;
   return 0;

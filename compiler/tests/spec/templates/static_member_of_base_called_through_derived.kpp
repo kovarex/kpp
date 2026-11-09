@@ -5,12 +5,12 @@ class ComplexExpression
 {
 public:
   static constexpr int N = variableCount + constantCount + expressionCount;
-  static int computeHash(const Vector<int>& args);
+  static int computeHash(const std::Vector<int>& args);
   static int staticType() { return Expression::TYPE; }
   int memberType() const { return Expression::TYPE; }
 };
 template<class Expression, int variableCount, int constantCount, int expressionCount>
-int ComplexExpression<Expression, variableCount, constantCount, expressionCount>::computeHash(const Vector<int>& args)
+int ComplexExpression<Expression, variableCount, constantCount, expressionCount>::computeHash(const std::Vector<int>& args)
 {
   release_assert(args.size() == This::N);
   int hash = Expression::TYPE;
@@ -25,14 +25,14 @@ public:
   static constexpr int TYPE = operation;
 };
 template<typename T>
-int hashOf(const Vector<int>& args) { return T::computeHash(args); }
+int hashOf(const std::Vector<int>& args) { return T::computeHash(args); }
 int main()
 {
-  Vector<int> args = {1, 2};
+  std::Vector<int> args = {1, 2};
   WithOperation<7, 2, 0> object;
   int viaBase = ComplexExpression<WithOperation<7, 2, 0>, 2, 0>::staticType();
   int viaDerived = WithOperation<7, 2, 0>::staticType();
   int viaObject = object.staticType();
-  println(viaBase, " ", viaDerived, " ", viaObject, " ", object.memberType(), " ", WithOperation<7, 2, 0>::computeHash(args), " ", hashOf<WithOperation<3, 1, 1>>(args));
+  std::println(viaBase, " ", viaDerived, " ", viaObject, " ", object.memberType(), " ", WithOperation<7, 2, 0>::computeHash(args), " ", hashOf<WithOperation<3, 1, 1>>(args));
   return 0;
 }

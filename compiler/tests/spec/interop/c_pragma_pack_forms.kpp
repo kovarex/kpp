@@ -5,19 +5,19 @@ extern "C" import "c_pragma_pack_forms.h";
 int main()
 {
   Labelled labelled; Inner inner; Changed changed; Natural natural; ThroughPragma through; Holder holder; Bits bits; Outside outside; Wide wide;
-  println(sizeof(Labelled) * 100 + ((char*)&labelled.v - (char*)&labelled), " ", cOffsets(0));
-  println(sizeof(Inner) * 100 + ((char*)&inner.v - (char*)&inner), " ", cOffsets(1));
-  println(sizeof(Changed) * 100 + ((char*)&changed.d - (char*)&changed), " ", cOffsets(2));
-  println(sizeof(Natural) * 100 + ((char*)&natural.d - (char*)&natural), " ", cOffsets(3));
-  println(sizeof(ThroughPragma) * 100 + ((char*)&through.v - (char*)&through), " ", cOffsets(4));
-  println(sizeof(Mixed) * 100 + alignof(Mixed), " ", cOffsets(5));
-  println(sizeof(Holder) * 100 + ((char*)&holder.natural - (char*)&holder), " ", cOffsets(6));
-  println(sizeof(Bits) * 100 + ((char*)&bits.d - (char*)&bits), " ", cOffsets(7));
-  println(sizeof(Outside) * 100 + ((char*)&outside.array - (char*)&outside), " ", cOffsets(8));
-  println(sizeof(Wide) * 100 + ((char*)&wide.d - (char*)&wide), " ", cOffsets(9));
-  println(sizeof(AfterExtraPop) * 100 + alignof(Holder), " ", cOffsets(10));
+  std::println(sizeof(Labelled) * 100 + ((char*)&labelled.v - (char*)&labelled), " ", cOffsets(0));
+  std::println(sizeof(Inner) * 100 + ((char*)&inner.v - (char*)&inner), " ", cOffsets(1));
+  std::println(sizeof(Changed) * 100 + ((char*)&changed.d - (char*)&changed), " ", cOffsets(2));
+  std::println(sizeof(Natural) * 100 + ((char*)&natural.d - (char*)&natural), " ", cOffsets(3));
+  std::println(sizeof(ThroughPragma) * 100 + ((char*)&through.v - (char*)&through), " ", cOffsets(4));
+  std::println(sizeof(Mixed) * 100 + alignof(Mixed), " ", cOffsets(5));
+  std::println(sizeof(Holder) * 100 + ((char*)&holder.natural - (char*)&holder), " ", cOffsets(6));
+  std::println(sizeof(Bits) * 100 + ((char*)&bits.d - (char*)&bits), " ", cOffsets(7));
+  std::println(sizeof(Outside) * 100 + ((char*)&outside.array - (char*)&outside), " ", cOffsets(8));
+  std::println(sizeof(Wide) * 100 + ((char*)&wide.d - (char*)&wide), " ", cOffsets(9));
+  std::println(sizeof(AfterExtraPop) * 100 + alignof(Holder), " ", cOffsets(10));
   Changed pair[2];
   cFill(&holder, pair);
-  println(holder.nested.v == 0x01020304, " ", holder.natural.d, " ", pair[1].d);
+  std::println(holder.nested.v == 0x01020304, " ", holder.natural.d, " ", pair[1].d);
   return 0;
 }

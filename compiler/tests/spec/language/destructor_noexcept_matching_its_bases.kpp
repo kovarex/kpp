@@ -34,6 +34,6 @@ int main()
   D3 d3;
   D6 d6;
   D13 d13;
-  println("compiled");
+  std::println("compiled");
   return 0;
 }

@@ -3,16 +3,16 @@ extern "C" import "stdio.h";
 struct Point
 {
   int x = 0;
-  void appendTo(String& out) const
+  void appendTo(std::String& out) const
   {
     out << "(";
     out << char('0' + this.x);
     out << ")";
   }
 };
-constexpr int length(Text text)
+constexpr int length(std::Text text)
 {
-  String s;
+  std::String s;
   text.appendTo(s);
   return int(s.size());
 }

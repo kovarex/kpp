@@ -2,9 +2,9 @@
 // found by thread D (2026-11-05) with the lambda pack fix (6a87c1e8): a generic lambda's body was typed for each call as a whole, never per element of the pack, and its capture of the pack was refused ("a generic lambda that uses a parameter pack of the function it is written in"); its call operator is emitted from a private copy of its instance's body, retyped per element
 struct A { int v; };
 struct B { int v; };
-inline void show(int x) { println(x); }
-inline void show(const A& a) { println("A", a.v); }
-inline void show(const B& b) { println("B", b.v); }
+inline void show(int x) { std::println(x); }
+inline void show(const A& a) { std::println("A", a.v); }
+inline void show(const B& b) { std::println("B", b.v); }
 inline int digits(int a, int b, int c) { return a * 100 + b * 10 + c; }
 
 template<typename... Ts>
@@ -38,9 +38,9 @@ void typesGeneric()
 
 int main()
 {
-  println(viaGeneric(1, 2, 3));
+  std::println(viaGeneric(1, 2, 3));
   eachGeneric(7, A{8}, B{9});
-  println(spreadGeneric(1, 2, 3));
+  std::println(spreadGeneric(1, 2, 3));
   typesGeneric<B, int, A>();
   return 0;
 }

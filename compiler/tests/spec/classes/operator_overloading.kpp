@@ -21,7 +21,7 @@ int main()
   Vec c = a + b * 2;
   c += -a;
   ++c;
-  String text = format("({}, {})", c.x, c.y);
-  println(text, " ", c[0], " ", c[1], " ", c(2), " ", a == Vec(1, 2), " ", a < b, " ", bool(Vec(0, 0)));
+  std::String text = std::format("({}, {})", c.x, c.y);
+  std::println(text, " ", c[0], " ", c[1], " ", c(2), " ", a == Vec(1, 2), " ", a < b, " ", bool(Vec(0, 0)));
   return 0;
 }

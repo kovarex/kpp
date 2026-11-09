@@ -25,8 +25,8 @@ int main()
   bump();
   int mine = bump();
   int other = 0;
-  Thread worker([&]() { other = bump(); });
+  std::Thread worker([&]() { other = bump(); });
   worker.join();
-  println(mine, " ", other, " ", bump());
+  std::println(mine, " ", other, " ", bump());
   return 0;
 }

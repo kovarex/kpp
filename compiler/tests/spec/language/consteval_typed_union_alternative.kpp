@@ -2,20 +2,20 @@
 // found by thread D (2026-11-05): `v[V::Number]` of a typed union local was no constant (the interpreter made typed unions, but read their alternatives only as constant data of a global)
 union enum V : uint8_t
 {
-  { {int, Number}, {double, Ratio}, {String, Name} }
+  { {int, Number}, {double, Ratio}, {std::String, Name} }
 };
 constexpr int read()
 {
   V n = 3;
   V r = 2.5;
-  V s = String("abc");
+  V s = std::String("abc");
   return n[V::Number] * 100 + int(r[V::Ratio] * 2) * 10 + int(s[V::Name].size());
 }
 constexpr int write()
 {
   V n = 3;
   n[V::Number] += 4;
-  V s = String("ab");
+  V s = std::String("ab");
   s[V::Name].append("c");
   return n[V::Number] * 10 + int(s[V::Name].size());
 }
@@ -23,6 +23,6 @@ constexpr int r = read();
 constexpr int w = write();
 int main()
 {
-  println(r, " ", read(), " ", w, " ", write());
+  std::println(r, " ", read(), " ", w, " ", write());
   return 0;
 }

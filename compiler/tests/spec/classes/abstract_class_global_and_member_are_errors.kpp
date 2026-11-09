@@ -10,12 +10,12 @@ public:
 class Derived : public Base
 {
 public:
-  void write(int count) { println(count); }
+  void write(int count) { std::println(count); }
 };
 Derived global;
 struct Frame { Derived inner; int tag = 1; };
 int main()
 {
-  println(1);
+  std::println(1);
   return 0;
 }

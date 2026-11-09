@@ -15,7 +15,7 @@ public:
   ~D() noexcept(false)
   {
     printf("-D%d ", this.id);
-    if (uncaught_exceptions() == 0)
+    if (std::uncaught_exceptions() == 0)
       throw E(this.id);
   }
 };

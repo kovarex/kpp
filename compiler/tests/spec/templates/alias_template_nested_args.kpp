@@ -1,9 +1,9 @@
 // spec: an alias template whose target nests the parameter in another template argument (Vector<Pair<T, T>>)
-template<typename T> using Pairs = Vector<Pair<T, T>>;
+template<typename T> using Pairs = std::Vector<std::Pair<T, T>>;
 int main()
 {
   Pairs<int> pairs;
-  pairs.push_back(makePair(1, 2));
-  println(pairs.size(), " ", pairs[0].second);
+  pairs.push_back(std::makePair(1, 2));
+  std::println(pairs.size(), " ", pairs[0].second);
   return 0;
 }

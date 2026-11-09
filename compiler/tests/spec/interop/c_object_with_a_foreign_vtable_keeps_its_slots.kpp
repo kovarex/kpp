@@ -15,7 +15,7 @@ class Impl : public Device
 {
 public:
   int count = 2;
-  virtual ~Impl() { println("~Impl ", this.count); }
+  virtual ~Impl() { std::println("~Impl ", this.count); }
   int addRef() override { return ++this.count; }
   int release() override
   {
@@ -34,7 +34,7 @@ int main()
   Impl* impl = new Impl();
   int byC = specCallCreate(reinterpret_cast<SpecDevice*>(impl), 3);
   int released = specCallRelease(reinterpret_cast<SpecDevice*>(impl));
-  println(created, " ", byC, " ", released, " ", fromC->release());
+  std::println(created, " ", byC, " ", released, " ", fromC->release());
   specCallRelease(reinterpret_cast<SpecDevice*>(impl));
   return 0;
 }

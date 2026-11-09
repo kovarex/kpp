@@ -3,7 +3,7 @@
 template<typename T>
 struct Holder
 {
-  Map<String, Map<T, String>> mapping;
+  std::Map<std::String, std::Map<T, std::String>> mapping;
 
   int count() const
   {
@@ -38,12 +38,12 @@ int joinedSize(const ContainerType& container)
 int main()
 {
   Holder<int> h;
-  h.mapping[String("ab")][1] = String("x");
-  h.mapping[String("ab")][2] = String("yz");
-  h.mapping[String("c")][3] = String("w");
-  Vector<String> words;
-  words.push_back(String("ab"));
-  words.push_back(String("cde"));
-  println(h.count(), " ", h.keys(), " ", joinedSize(words));
+  h.mapping[std::String("ab")][1] = std::String("x");
+  h.mapping[std::String("ab")][2] = std::String("yz");
+  h.mapping[std::String("c")][3] = std::String("w");
+  std::Vector<std::String> words;
+  words.push_back(std::String("ab"));
+  words.push_back(std::String("cde"));
+  std::println(h.count(), " ", h.keys(), " ", joinedSize(words));
   return 0;
 }

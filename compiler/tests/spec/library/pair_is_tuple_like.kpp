@@ -1,7 +1,7 @@
 // spec: Pair is tuple-like, as std::pair: TupleSize<Pair<A, B>> is 2 and TupleElement gives A and B, so code generic over tuple-like types takes a Pair, and a structured binding of a Pair binds get<0> and get<1>, first and second, by reference when it is `auto&` (in a template and in a range-for in a lambda too)
 // factorio: K's ranking of the stdlib gaps (2026-11-06): Pair was not tuple-like until D's ee4da98b made tuple-like bindings work in templates and lambdas, which the game's Pairs need (NoiseExpressionStorage::getOrCreate, MainTasks::generateMapPreview)
 template<typename E>
-i32 countElements(const E&) { return tupleSize<E>; }
+i32 countElements(const E&) { return std::tupleSize<E>; }
 
 template<typename E>
 void twice(E& e)
@@ -13,21 +13,21 @@ void twice(E& e)
 
 int main()
 {
-  Pair<int, double> p(3, 1.5);
-  println(countElements(p), " ", isSame<TupleElement<0, Pair<int, double>>::Type, int>, " ", isSame<TupleElement<1, Pair<int, double>>::Type, double>);
+  std::Pair<int, double> p(3, 1.5);
+  std::println(countElements(p), " ", std::isSame<std::TupleElement<0, std::Pair<int, double>>::Type, int>, " ", std::isSame<std::TupleElement<1, std::Pair<int, double>>::Type, double>);
   auto& [x, y] = p;
   x = 4;
-  println(p.first, " ", y);
+  std::println(p.first, " ", y);
   twice(p);
-  println(p.first, " ", p.second);
-  Map<int, String> names = {{1, "one"}, {2, "two"}};
-  String joined;
+  std::println(p.first, " ", p.second);
+  std::Map<int, std::String> names = {{1, "one"}, {2, "two"}};
+  std::String joined;
   auto join = [&]
   {
     for (const auto& [key, name] : names)
-      joined << toString(key) << name;
+      joined << std::toString(key) << name;
   };
   join();
-  println(joined);
+  std::println(joined);
   return 0;
 }

@@ -7,6 +7,6 @@ int main()
 {
   Packed a = (((Packed)(255) << Shift) | ((Packed)(180) << 16));
   Wide b = (Wide)(7) + 1;
-  println(a, " ", b);
+  std::println(a, " ", b);
   return 0;
 }

@@ -3,32 +3,32 @@ extern "C" int printf(const char* format, ...);
 
 int main()
 {
-  HashMap<String, int> ages;
-  ages.insert(String("ann"), 31);
-  ages.insert(String("bob"), 40);
-  ages[String("ann")] = 32;
-  ages[String("cy")] += 5;
+  std::HashMap<std::String, int> ages;
+  ages.insert(std::String("ann"), 31);
+  ages.insert(std::String("bob"), 40);
+  ages[std::String("ann")] = 32;
+  ages[std::String("cy")] += 5;
   int total = 0;
-  ages.forEach([&](const String& name, int age) { total += age; });
-  int* bob = &ages.find(String("bob"))->second;
-  bool hasDan = ages.contains(String("dan"));
-  printf("%zu %d %d %d %d\n", ages.size(), total, *bob, hasDan ? 1 : 0, ages.erase(String("bob")) ? 1 : 0);
+  ages.forEach([&](const std::String& name, int age) { total += age; });
+  int* bob = &ages.find(std::String("bob"))->second;
+  bool hasDan = ages.contains(std::String("dan"));
+  printf("%zu %d %d %d %d\n", ages.size(), total, *bob, hasDan ? 1 : 0, ages.erase(std::String("bob")) ? 1 : 0);
 
-  HashMap<int, String> names;
+  std::HashMap<int, std::String> names;
   for (int i = 0; i < 100; ++i)
-    names.insert(i, toString(i * 7));
-  HashMap<int, String> copy = names;
+    names.insert(i, std::toString(i * 7));
+  std::HashMap<int, std::String> copy = names;
   names.erase(50);
   printf("%zu %zu %s %s\n", names.size(), copy.size(), copy.find(50)->second.c_str(), names.find(99)->second.c_str());
 
-  Optional<String> maybe;
-  Optional<String> some(String("value"));
-  Optional<int> number(41);
-  Optional<String> other = some;
-  other.set(String("changed"));
+  std::Optional<std::String> maybe;
+  std::Optional<std::String> some(std::String("value"));
+  std::Optional<int> number(41);
+  std::Optional<std::String> other = some;
+  other.set(std::String("changed"));
   printf("%d %d %s %s %d\n", maybe.hasValue() ? 1 : 0, some.hasValue() ? 1 : 0, some.get().c_str(), other.get().c_str(), number.get() + 1);
 
-  String text = toString(-1234) + String(" ") + toString(2.5) + String(" ") + toString(true);
-  println(text);
+  std::String text = std::toString(-1234) + std::String(" ") + std::toString(2.5) + std::String(" ") + std::toString(true);
+  std::println(text);
   return 0;
 }

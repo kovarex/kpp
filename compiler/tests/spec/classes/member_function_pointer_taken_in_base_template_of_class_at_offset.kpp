@@ -36,6 +36,6 @@ int main()
   ProtoBase<Proto>::setUp();
   Proto p;
   p.x = 5;
-  println((p.*Binder<Proto>::reader)());
+  std::println((p.*Binder<Proto>::reader)());
   return 0;
 }

@@ -16,6 +16,6 @@ int main()
   int c = V<'a'>::bump();
   int d = V<97>::bump();
   int e = V<0>::bump();
-  println(a, " ", b, " ", c, " ", d, " ", e, " ", V<'a'>::size(), " ", V<97>::size(), " ", V<0ll>::size());
+  std::println(a, " ", b, " ", c, " ", d, " ", e, " ", V<'a'>::size(), " ", V<97>::size(), " ", V<0ll>::size());
   return 0;
 }

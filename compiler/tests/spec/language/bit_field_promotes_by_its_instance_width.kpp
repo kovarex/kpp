@@ -32,6 +32,6 @@ int main()
   Wrapped<3> w;
   w.a = 1;
   auto wv = w.a - 4;
-  println(v, " ", x.below(), " ", x.negative(), " ", isSame<decltype(x.a - 4), int>, " ", wv, " ", viaConstant());
+  std::println(v, " ", x.below(), " ", x.negative(), " ", std::isSame<decltype(x.a - 4), int>, " ", wv, " ", viaConstant());
   return 0;
 }

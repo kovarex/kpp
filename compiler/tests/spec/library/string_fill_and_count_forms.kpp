@@ -2,11 +2,11 @@
 // found in src/Util (PropertyItem: `String(this->indentation * 5 - 3, ' ')`; StringUtil: `result.insert(0, 1, '-')`, `result.append(tmp, 0, offset)`; Base64: `result.append(1, c)`)
 int main()
 {
-  String dashes(3, '-');
+  std::String dashes(3, '-');
   dashes.append(2, '=');
   dashes.insert(0, 1, '[');
-  String digits = "123456";
+  std::String digits = "123456";
   dashes.append(digits, 1, 3);
-  println(dashes, " ", dashes.size());
+  std::println(dashes, " ", dashes.size());
   return 0;
 }

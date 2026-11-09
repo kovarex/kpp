@@ -3,14 +3,14 @@
 class Registry
 {
 public:
-  static Vector<String>& names()
+  static std::Vector<std::String>& names()
   {
-    static Vector<String> all;
+    static std::Vector<std::String> all;
     return all;
   }
   static bool add(const char* name)
   {
-    Registry::names().push_back(String(name));
+    Registry::names().push_back(std::String(name));
     return true;
   }
 };
@@ -28,7 +28,7 @@ public:
 bool fluidRegistered = Registry::add("fluid");
 int main()
 {
-  for (const String& name : Registry::names())
-    println(name);
+  for (const std::String& name : Registry::names())
+    std::println(name);
   return 0;
 }

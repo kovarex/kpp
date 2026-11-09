@@ -4,16 +4,16 @@ enum class Mode : uint8_t { Off, On, Heavy };
 struct Pair32 { int a, b; };
 struct Flags
 {
-  Atomic<bool> a;
+  std::Atomic<bool> a;
   bool b = true;
   uint8_t c = 7;
-  Atomic<uint16_t> d;
+  std::Atomic<uint16_t> d;
   uint16_t e = 9;
-  Atomic<Mode> mode;
-  Atomic<double> progress = 0.5;
-  Atomic<float> fraction = 0.25f;
-  Atomic<Pair32> pair;
-  Atomic<int*> pointer;
+  std::Atomic<Mode> mode;
+  std::Atomic<double> progress = 0.5;
+  std::Atomic<float> fraction = 0.25f;
+  std::Atomic<Pair32> pair;
+  std::Atomic<int*> pointer;
 };
 int main()
 {
@@ -30,11 +30,11 @@ int main()
   f.pointer = &x;
   Mode expected = Mode::On;
   bool swapped = f.mode.compareExchange(expected, Mode::Off);
-  Atomic<int> counter = 10;
+  std::Atomic<int> counter = 10;
   counter.fetchSub(3);
-  Atomic<uint64_t> big = 1ull << 40;
+  std::Atomic<uint64_t> big = 1ull << 40;
   big++;
-  println(f.a.load(), " ", f.b, " ", f.c, " ", f.d.load(), " ", f.e, " ", (int)f.mode.load(), " ", f.progress.load(), " ", f.fraction.load(), " ", f.pair.load().b, " ", *f.pointer.load(), " ", swapped, " ", (int)expected, " ", counter.load());
-  println(big.load(), " ", sizeof(Atomic<bool>));
+  std::println(f.a.load(), " ", f.b, " ", f.c, " ", f.d.load(), " ", f.e, " ", (int)f.mode.load(), " ", f.progress.load(), " ", f.fraction.load(), " ", f.pair.load().b, " ", *f.pointer.load(), " ", swapped, " ", (int)expected, " ", counter.load());
+  std::println(big.load(), " ", sizeof(std::Atomic<bool>));
   return 0;
 }

@@ -13,6 +13,6 @@ extern "C" size_t strlen(const char* s);
 int main()
 {
   Box box;
-  println(twice(4), " ", geometry::area(1.5), " ", box.scaled(5), " ", strlen("abcd"));
+  std::println(twice(4), " ", geometry::area(1.5), " ", box.scaled(5), " ", strlen("abcd"));
   return 0;
 }

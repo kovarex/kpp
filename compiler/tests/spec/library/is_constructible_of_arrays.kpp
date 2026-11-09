@@ -4,8 +4,8 @@ struct Agg { int a; double b; };
 struct NoDefault { implicit NoDefault(int) {} };
 int main()
 {
-  printf("%d%d%d%d %d%d%d%d %d%d%d\n", isConstructible<int[3], int>, isConstructible<int[3], int, int, int>, isConstructible<int[3], int, int, int, int>, isConstructible<int[3]>,
-         isConstructible<int[], int>, isConstructible<int[2], const char*>, isConstructible<Agg[2], Agg>, isConstructible<int[3], double>,
-         isConstructible<NoDefault[2], int>, isConstructible<NoDefault[2], int, int>, isConstructible<int[2][2], int>);
+  printf("%d%d%d%d %d%d%d%d %d%d%d\n", std::isConstructible<int[3], int>, std::isConstructible<int[3], int, int, int>, std::isConstructible<int[3], int, int, int, int>, std::isConstructible<int[3]>,
+         std::isConstructible<int[], int>, std::isConstructible<int[2], const char*>, std::isConstructible<Agg[2], Agg>, std::isConstructible<int[3], double>,
+         std::isConstructible<NoDefault[2], int>, std::isConstructible<NoDefault[2], int, int>, std::isConstructible<int[2][2], int>);
   return 0;
 }

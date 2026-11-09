@@ -3,17 +3,17 @@
 namespace Store
 {
   extern int counter;
-  extern String label;
+  extern std::String label;
   int bump() { return ++counter; }
-  String describe() { return label + "!"; }
+  std::String describe() { return label + "!"; }
   int counter = 40;
-  String label = "set";
+  std::String label = "set";
 }
 int main()
 {
   Store::bump();
   int now = Store::counter;
   int next = Store::bump();
-  println(now, " ", next, " ", Store::label, " ", Store::describe());
+  std::println(now, " ", next, " ", Store::label, " ", Store::describe());
   return 0;
 }

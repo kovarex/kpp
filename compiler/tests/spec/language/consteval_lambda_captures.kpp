@@ -15,7 +15,7 @@ struct S
   }
 };
 template<class F>
-constexpr int count(const Vector<int>& v, F pred)
+constexpr int count(const std::Vector<int>& v, F pred)
 {
   int n = 0;
   for (int x : v)
@@ -83,7 +83,7 @@ constexpr int memberAlone()
 }
 constexpr int passed()
 {
-  Vector<int> v;
+  std::Vector<int> v;
   v.push_back(1);
   v.push_back(5);
   v.push_back(8);
@@ -93,9 +93,9 @@ constexpr int passed()
 constexpr int results[] = {copied(), referred(), written(), byDefaultCopy(), byDefaultReference(), initCapture(), calledAtOnce(), member(), memberAlone(), passed()};
 int main()
 {
-  println(copied(), " ", referred(), " ", written(), " ", byDefaultCopy(), " ", byDefaultReference(), " ", initCapture(), " ", calledAtOnce(), " ", member(), " ",
+  std::println(copied(), " ", referred(), " ", written(), " ", byDefaultCopy(), " ", byDefaultReference(), " ", initCapture(), " ", calledAtOnce(), " ", member(), " ",
           memberAlone(), " ", passed());
-  println(results[0], " ", results[1], " ", results[2], " ", results[3], " ", results[4], " ", results[5], " ", results[6], " ", results[7], " ", results[8], " ",
+  std::println(results[0], " ", results[1], " ", results[2], " ", results[3], " ", results[4], " ", results[5], " ", results[6], " ", results[7], " ", results[8], " ",
           results[9]);
   return 0;
 }

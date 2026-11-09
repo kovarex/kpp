@@ -9,12 +9,12 @@ public:
   Reference& operator=(Reference&&) = default;
   int id;
 };
-int count(Vector<Reference> items = {}) { return int(items.size()); }
+int count(std::Vector<Reference> items = {}) { return int(items.size()); }
 int main()
 {
-  Vector<Reference> one;
+  std::Vector<Reference> one;
   one.push_back(Reference(4));
-  Vector<Reference> none = {};
-  println(count(), " ", count(::move(one)), " ", int(none.size()));
+  std::Vector<Reference> none = {};
+  std::println(count(), " ", count(std::move(one)), " ", int(none.size()));
   return 0;
 }

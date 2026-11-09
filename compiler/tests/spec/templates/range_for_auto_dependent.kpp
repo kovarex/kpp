@@ -3,7 +3,7 @@
 template<class T>
 struct Dialog
 {
-  Map<int, T> resultMapping;
+  std::Map<int, T> resultMapping;
   int keys()
   {
     int s = 0;
@@ -21,7 +21,7 @@ int sum(const C& values)
   return s;
 }
 template<class T>
-int firsts(const Vector<Pair<int, T>>& values)
+int firsts(const std::Vector<std::Pair<int, T>>& values)
 {
   int s = 0;
   for (const auto& item : values)
@@ -33,11 +33,11 @@ int main()
   Dialog<int> d;
   d.resultMapping[2] = 3;
   d.resultMapping[5] = 1;
-  Vector<int> v;
+  std::Vector<int> v;
   v.push_back(2);
   v.push_back(5);
-  Vector<Pair<int, double>> p;
-  p.push_back(Pair<int, double>(4, 0.5));
-  println(d.keys(), " ", sum(v), " ", firsts(p));
+  std::Vector<std::Pair<int, double>> p;
+  p.push_back(std::Pair<int, double>(4, 0.5));
+  std::println(d.keys(), " ", sum(v), " ", firsts(p));
   return 0;
 }

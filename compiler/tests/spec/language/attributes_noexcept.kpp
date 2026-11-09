@@ -7,6 +7,6 @@ int main()
   [[maybe_unused]] int unused = 0;
   Aligned a;
   a.v[0] = 1;
-  println(compute(), " ", (int)sizeof(Aligned));
+  std::println(compute(), " ", (int)sizeof(Aligned));
   return 0;
 }

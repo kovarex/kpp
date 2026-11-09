@@ -42,7 +42,7 @@ int main()
   Holder<Target> h;
   h.target = &a;
   Plain p{&a};
-  Map<Target*, int, Less<>> map;
+  std::Map<Target*, int, std::Less<>> map;
   map[*h] = 5;
   map[*p] += 1;
   Tens tens;
@@ -50,7 +50,7 @@ int main()
   Target* const& viaLocal = *h;
   int& named = *tens;
   named = 7;
-  println(same(*h, &a), " ", same(*p, &a), " ", int(map.size()), " ", map.find(&a) != map.end() ? map.find(&a)->second : -1);
-  println(twice(tens[3]), " ", local, " ", viaLocal == &a, " ", tens.values[1]);
+  std::println(same(*h, &a), " ", same(*p, &a), " ", int(map.size()), " ", map.find(&a) != map.end() ? map.find(&a)->second : -1);
+  std::println(twice(tens[3]), " ", local, " ", viaLocal == &a, " ", tens.values[1]);
   return 0;
 }

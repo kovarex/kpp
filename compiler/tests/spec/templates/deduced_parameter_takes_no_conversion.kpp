@@ -32,7 +32,7 @@ int main()
   Direction d;
   Opt<Direction> o(Direction::North);
   Derived derived;
-  println(d != Direction::East, " ", o != d, " ", d != o);
-  println(fromOpt(o), " ", fromOpt(derived), " ", fromOpt(3));
+  std::println(d != Direction::East, " ", o != d, " ", d != o);
+  std::println(fromOpt(o), " ", fromOpt(derived), " ", fromOpt(3));
   return 0;
 }

@@ -14,6 +14,6 @@ struct S
 
 int main(int argc, char** argv)
 {
-  println(tool::main(21), " ", S::main(), " ", argc);
+  std::println(tool::main(21), " ", S::main(), " ", argc);
   return 0;
 }

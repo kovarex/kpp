@@ -11,10 +11,10 @@ struct Bank
   static int pick(ThrowOnError t) { return t ? 1 : 2; }
   static int pick(AllowFiles a) { return a ? 3 : 4; }
 };
-static_assert(isSame<Bank::ThrowOnError, NamedBool<class ThrowOnError>>);
-static_assert(!isSame<Bank::ThrowOnError, Bank::AllowFiles>);
+static_assert(std::isSame<Bank::ThrowOnError, NamedBool<class ThrowOnError>>);
+static_assert(!std::isSame<Bank::ThrowOnError, Bank::AllowFiles>);
 int main()
 {
-  println(Bank::pick(Bank::ThrowOnError{true}), " ", Bank::pick(Bank::AllowFiles{false}), " ", sizeof(Bank::ThrowOnError));
+  std::println(Bank::pick(Bank::ThrowOnError{true}), " ", Bank::pick(Bank::AllowFiles{false}), " ", sizeof(Bank::ThrowOnError));
   return 0;
 }

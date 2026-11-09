@@ -1,6 +1,6 @@
 // spec: a requires-expression is a constant: true when its body is valid for the types at hand, so `if constexpr (requires { t.save(); })` picks the branch
 // found in src/Util (SerialiserHelper: `else if constexpr (requires { target.save(output); })`)
-struct Saver { void save() const { println("saved by method"); } };
+struct Saver { void save() const { std::println("saved by method"); } };
 struct Plain { int x; };
 template<typename T>
 void save(const T& t)
@@ -8,7 +8,7 @@ void save(const T& t)
   if constexpr (requires { t.save(); })
     t.save();
   else
-    println("plain ", sizeof(t));
+    std::println("plain ", sizeof(t));
 }
 int main()
 {

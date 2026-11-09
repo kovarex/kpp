@@ -16,6 +16,6 @@ int main()
   static const Box s{2};
   const Box<int> c{3};
   Box m{4};
-  println(b.get(), " ", g.get(), " ", s.get(), " ", c.get(), " ", m.get());
+  std::println(b.get(), " ", g.get(), " ", s.get(), " ", c.get(), " ", m.get());
   return 0;
 }

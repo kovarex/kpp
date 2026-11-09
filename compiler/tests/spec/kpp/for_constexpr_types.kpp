@@ -4,9 +4,9 @@ struct A { static const char* name() { return "a"; } };
 struct B { static const char* name() { return "b"; } };
 int main()
 {
-  String names;
+  std::String names;
   for constexpr (typename T : types<A, B>)
-    names << StringView(T::name());
-  println(names);
+    names << std::StringView(T::name());
+  std::println(names);
   return 0;
 }

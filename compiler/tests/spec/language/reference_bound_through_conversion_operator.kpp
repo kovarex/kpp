@@ -12,6 +12,6 @@ int main()
 {
   Slot s;
   increment(s);
-  println(s.first, " ", s.second);
+  std::println(s.first, " ", s.second);
   return 0;
 }

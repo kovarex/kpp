@@ -7,6 +7,6 @@ int main()
 {
   double zero = 0.0;
   double nan = divide(zero, zero);
-  println(huge == inverse, " ", inverse > 0.0, " ", nan == nan, " ", NAN == NAN, " ", 1.0 / zero == inverse);
+  std::println(huge == inverse, " ", inverse > 0.0, " ", nan == nan, " ", NAN == NAN, " ", 1.0 / zero == inverse);
   return 0;
 }

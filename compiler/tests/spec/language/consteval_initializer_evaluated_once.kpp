@@ -56,7 +56,7 @@ constexpr int braces()
 template<int N> struct Show { static constexpr int value = N; };
 int main()
 {
-  println(copyInitialized(), " ", member(), " ", made(), " ", parens(), " ", braces());
-  println(Show<copyInitialized()>::value, " ", Show<member()>::value, " ", Show<made()>::value, " ", Show<parens()>::value, " ", Show<braces()>::value);
+  std::println(copyInitialized(), " ", member(), " ", made(), " ", parens(), " ", braces());
+  std::println(Show<copyInitialized()>::value, " ", Show<member()>::value, " ", Show<made()>::value, " ", Show<parens()>::value, " ", Show<braces()>::value);
   return 0;
 }

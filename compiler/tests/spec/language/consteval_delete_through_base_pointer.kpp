@@ -34,7 +34,7 @@ constexpr int owned()
   {
     B* b = new B();
     b->log = &log;
-    UniquePtr<A> u(b);
+    std::UniquePtr<A> u(b);
   }
   return log;
 }
@@ -42,6 +42,6 @@ constexpr int d = deleted();
 constexpr int o = owned();
 int main()
 {
-  println(d, " ", deleted(), " ", o, " ", owned());
+  std::println(d, " ", deleted(), " ", o, " ", owned());
   return 0;
 }

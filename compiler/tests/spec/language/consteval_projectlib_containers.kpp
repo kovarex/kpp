@@ -3,12 +3,12 @@
 extern "C" import "stdio.h";
 struct Named
 {
-  String name;
-  Vector<String> roots;
+  std::String name;
+  std::Vector<std::String> roots;
 };
 constexpr int assigned()
 {
-  Vector<Named> all;
+  std::Vector<Named> all;
   all.push_back(Named{});
   Named& n = all.back();
   n.name = "abc";
@@ -16,21 +16,21 @@ constexpr int assigned()
 }
 constexpr int emplaced()
 {
-  Vector<Named> all;
+  std::Vector<Named> all;
   all.emplace_back();
   all.emplace_back().roots.push_back("src");
   return all.size();
 }
 constexpr int queued()
 {
-  Deque<Named> all;
+  std::Deque<Named> all;
   for (int i = 0; i < 3; ++i)
     all.push_back(Named{});
   return all.size();
 }
 constexpr int fallback()
 {
-  Optional<bool> unset;
+  std::Optional<bool> unset;
   return unset.value_or(true) ? 1 : 0;
 }
 static_assert(assigned() == 3);

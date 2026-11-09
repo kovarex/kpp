@@ -22,6 +22,6 @@ int activate(const EntityAndIndex& e) { return e.index + e.entity.index; }
 int main()
 {
   Tower tower;
-  println(activate(tower));
+  std::println(activate(tower));
   return 0;
 }

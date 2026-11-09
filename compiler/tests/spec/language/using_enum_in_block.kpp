@@ -11,6 +11,6 @@ int main()
   for (Desc::Type t : { Build, Rotate })
     sum = sum * 10 + int(t);
   Desc::Type one = Remove;
-  println(sum, " ", int(one));
+  std::println(sum, " ", int(one));
   return 0;
 }

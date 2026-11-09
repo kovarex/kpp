@@ -12,6 +12,6 @@ int main()
   M m{0};
   int sum = m + 1L;
   int bad = m + 1;
-  println(sum, " ", bad);
+  std::println(sum, " ", bad);
   return 0;
 }

@@ -17,7 +17,7 @@ consteval int both()
 int main()
 {
   Holder<int> h(3);
-  println(h.which(), " ", Holder<int>(4).which());
-  println(both());
+  std::println(h.which(), " ", Holder<int>(4).which());
+  std::println(both());
   return 0;
 }

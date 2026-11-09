@@ -6,7 +6,7 @@ struct Empty
 };
 struct Holder : Empty
 {
-  String s;
+  std::String s;
   Holder(const char* t) : s(t) {}
 };
 int main()
@@ -14,6 +14,6 @@ int main()
   Holder a("first value that is long enough to be on the heap"), b("second value that is long enough to be on the heap");
   a = b;
   Holder c = b;
-  println(a.s, " ", c.s.size(), " ", a.s == b.s);
+  std::println(a.s, " ", c.s.size(), " ", a.s == b.s);
   return 0;
 }

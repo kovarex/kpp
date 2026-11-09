@@ -10,6 +10,6 @@ int main()
   int32_t compound = -64;
   compound >>= n;
   auto promotedSmall = small << n;
-  println(x >> sideBitShift, " ", x >> n, " ", big >> n, " ", promotedSmall, " ", compound, " ", (-1 << n) >> 2u);
+  std::println(x >> sideBitShift, " ", x >> n, " ", big >> n, " ", promotedSmall, " ", compound, " ", (-1 << n) >> 2u);
   return 0;
 }

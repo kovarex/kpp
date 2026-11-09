@@ -6,8 +6,8 @@ int main()
   long long ll = -1;
   unsigned u = 1;
   int8_t sc = -56;
-  println((ll < u), " ", sc >> 1);
+  std::println((ll < u), " ", sc >> 1);
   int64_t total = 0;
-  println(ll < u, " ", sc > == false, " ", total);
+  std::println(ll < u, " ", sc > == false, " ", total);
   return 0;
 }

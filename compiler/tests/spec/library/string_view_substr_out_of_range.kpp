@@ -2,18 +2,18 @@
 // found by comparing with MSVC's STL and libstdc++ (thread G, 2026-11-05): kpp's StringView gave an empty view
 int main()
 {
-  StringView v = "hello world";
-  println("[", v.substr(6), "] [", v.substr(11), "] [", v.substr(4, 100), "]");
+  std::StringView v = "hello world";
+  std::println("[", v.substr(6), "] [", v.substr(11), "] [", v.substr(4, 100), "]");
   bool threw = false;
   try
   {
     v.substr(12);
   }
-  catch (const OutOfRange&)
+  catch (const std::OutOfRange&)
   {
     threw = true;
   }
-  println(threw, " ", v.find("o", 20) == StringView::npos, " ", v.find("", 12) == StringView::npos, " ", v.find("", 11), " ",
-          v.find_first_of(StringView("od"), 30) == StringView::npos);
+  std::println(threw, " ", v.find("o", 20) == std::StringView::npos, " ", v.find("", 12) == std::StringView::npos, " ", v.find("", 11), " ",
+          v.find_first_of(std::StringView("od"), 30) == std::StringView::npos);
   return 0;
 }

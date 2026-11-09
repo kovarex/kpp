@@ -1,13 +1,13 @@
 // spec: a program's free function with the parameters of a standard library function of the same name (`String toString(int)`) is the program's: the library's is std::toString (it was a clash while the library's names were global)
-String toString(int value)
+std::String toString(int value)
 {
-  String text;
+  std::String text;
   text << "#" << (i64)value;
   return text;
 }
-String toString(int value, int base) { return toString(value + base); }
+std::String toString(int value, int base) { return toString(value + base); }
 int main()
 {
-  println(toString(12), " ", toString(4, 6));
+  std::println(toString(12), " ", toString(4, 6));
   return 0;
 }

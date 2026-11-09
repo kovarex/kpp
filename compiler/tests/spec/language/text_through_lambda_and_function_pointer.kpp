@@ -2,19 +2,19 @@
 extern "C" import "stdio.h";
 struct P
 {
-  void appendTo(String& out) const { out << "p"; }
+  void appendTo(std::String& out) const { out << "p"; }
 };
-void show(Text text)
+void show(std::Text text)
 {
-  String s;
+  std::String s;
   text.appendTo(s);
   printf("[%s]", s.c_str());
 }
 int main()
 {
-  auto viaLambda = [](Text text) { show(text); };
+  auto viaLambda = [](std::Text text) { show(text); };
   viaLambda("a", P{});
-  void (*pointer)(Text) = &show;
+  void (*pointer)(std::Text) = &show;
   pointer("b", P{});
   (*pointer)("c", P{});
   printf("\n");

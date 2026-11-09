@@ -1,7 +1,7 @@
 // spec: a call that two overloads take equally well is an error, as in C++, never one of them taken silently: pick(int64, int32) and pick(int32, int64) given two int32s
 // error: the call of pick with (int32&, int32&) is ambiguous
-void pick(int64_t a, int32_t b) { println("first"); }
-void pick(int32_t a, int64_t b) { println("second"); }
+void pick(int64_t a, int32_t b) { std::println("first"); }
+void pick(int32_t a, int64_t b) { std::println("second"); }
 int main()
 {
   int32_t x = 1, y = 2;

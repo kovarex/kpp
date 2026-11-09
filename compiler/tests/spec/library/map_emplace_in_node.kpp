@@ -24,16 +24,16 @@ struct Pinned
 };
 int main()
 {
-  Map<int, RailNode> nodes;
+  std::Map<int, RailNode> nodes;
   auto [first, added] = nodes.emplace(3, 30);
   auto [again, addedAgain] = nodes.emplace(3, 31);
   nodes.emplace(1, 10);
-  Set<Pinned> pinned;
+  std::Set<Pinned> pinned;
   pinned.emplace(5);
   bool second = pinned.emplace(5).second;
-  MultiMap<int, RailNode> multi;
+  std::MultiMap<int, RailNode> multi;
   multi.emplace(2, 20);
   multi.emplace(2, 21);
-  println(first->second.rail, " ", added, " ", again->second.rail, " ", addedAgain, " ", nodes.size(), " ", second, " ", multi.size(), " ", alive);
+  std::println(first->second.rail, " ", added, " ", again->second.rail, " ", addedAgain, " ", nodes.size(), " ", second, " ", multi.size(), " ", alive);
   return 0;
 }

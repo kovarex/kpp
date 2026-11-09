@@ -47,18 +47,18 @@ template<typename... Args>
 int sum(Args&&... args) { return (int(args) + ...); }
 int main()
 {
-  Vector<Rect> rects;
+  std::Vector<Rect> rects;
   rects.push_back(Rect{1, 2, true});
   rects.push_back(Rect{3, 4, false});
   Flag flag;
   flag = Flag::True;
-  Vector<int> a;
+  std::Vector<int> a;
   a.push_back(1);
-  Vector<int> b;
+  std::Vector<int> b;
   b.push_back(2);
   b.push_back(3);
   int total = 0;
-  for (Vector<int>* v : {&a, &b})
+  for (std::Vector<int>* v : {&a, &b})
     for (int x : *v)
       total += x;
   Style style;
@@ -73,7 +73,7 @@ int main()
   if (p && q)
     ++hits;
   printf("%d %d %d %d %d %d %d %zu\n", rects[1].x, flag.value ? 1 : 0, total, style.which(2), d.caret, hits, sum(Kind::B, 4), rects.size());
-  HashSet<int> set;
+  std::HashSet<int> set;
   set.insert(3);
   set.insert(5);
   set.insert(3);
@@ -82,7 +82,7 @@ int main()
   int sumSet = 0;
   for (int v : set)
     sumSet += v;
-  HashSet<Rect*> pointers;
+  std::HashSet<Rect*> pointers;
   pointers.insert(&rects[0]);
   pointers.insert(&rects[1]);
   pointers.insert(&rects[0]);

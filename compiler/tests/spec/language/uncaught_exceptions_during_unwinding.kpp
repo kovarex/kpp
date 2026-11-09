@@ -3,7 +3,7 @@
 class Guard
 {
 public:
-  ~Guard() { print(uncaught_exceptions(), " "); }
+  ~Guard() { std::print(std::uncaught_exceptions(), " "); }
 };
 class Nested
 {
@@ -13,42 +13,42 @@ public:
     try
     {
       Guard inner;
-      throw RuntimeError("inner");
+      throw std::RuntimeError("inner");
     }
     catch (...)
     {
-      print(uncaught_exceptions(), " ");
+      std::print(std::uncaught_exceptions(), " ");
     }
   }
 };
 int main()
 {
-  print(uncaught_exceptions(), " ");
+  std::print(std::uncaught_exceptions(), " ");
   try
   {
     Guard g;
-    throw RuntimeError("x");
+    throw std::RuntimeError("x");
   }
   catch (...)
   {
-    print(uncaught_exceptions());
+    std::print(std::uncaught_exceptions());
   }
-  println();
+  std::println();
   try
   {
     Nested n;
-    throw RuntimeError("outer");
+    throw std::RuntimeError("outer");
   }
   catch (...)
   {
-    print(uncaught_exceptions());
+    std::print(std::uncaught_exceptions());
   }
-  println();
+  std::println();
   try
   {
     try
     {
-      throw RuntimeError("first");
+      throw std::RuntimeError("first");
     }
     catch (...)
     {
@@ -58,8 +58,8 @@ int main()
   }
   catch (...)
   {
-    print(uncaught_exceptions());
+    std::print(std::uncaught_exceptions());
   }
-  println();
+  std::println();
   return 0;
 }

@@ -5,8 +5,8 @@ struct Acc { int digits = 0; };
 Acc& operator<<(Acc& a, int&) { a.digits = a.digits * 10 + 1; return a; }
 Acc& operator<<(Acc& a, const int&) { a.digits = a.digits * 10 + 2; return a; }
 Acc& operator<<(Acc& a, int&&) { a.digits = a.digits * 10 + 3; return a; }
-template<typename... Args> int forwarded(Args&&... args) { Acc a; (a << ... << forward<Args>(args)); return a.digits; }
-template<typename... Args> int comma(Args&&... args) { Acc a; ((a << forward<Args>(args)), ...); return a.digits; }
+template<typename... Args> int forwarded(Args&&... args) { Acc a; (a << ... << std::forward<Args>(args)); return a.digits; }
+template<typename... Args> int comma(Args&&... args) { Acc a; ((a << std::forward<Args>(args)), ...); return a.digits; }
 template<typename... Args> int named(Args&&... args) { Acc a; (a << ... << args); return a.digits; }
 template<typename... Args> int byValue(Args... args) { Acc a; (a << ... << args); return a.digits; }
 template<typename... Args> int constRefs(const Args&... args) { Acc a; (a << ... << args); return a.digits; }
@@ -16,7 +16,7 @@ struct Log { int digits = 0; };
 Log& operator<<(Log& l, Note&) { l.digits = l.digits * 10 + 1; return l; }
 Log& operator<<(Log& l, const Note&) { l.digits = l.digits * 10 + 2; return l; }
 Log& operator<<(Log& l, Note&&) { l.digits = l.digits * 10 + 3; return l; }
-template<typename... Args> int classes(Args&&... args) { Log l; (l << ... << forward<Args>(args)); return l.digits; }
+template<typename... Args> int classes(Args&&... args) { Log l; (l << ... << std::forward<Args>(args)); return l.digits; }
 struct Sink { int digits = 0; };
 Sink& operator>>(int&, Sink& s) { s.digits = s.digits * 10 + 1; return s; }
 Sink& operator>>(const int&, Sink& s) { s.digits = s.digits * 10 + 2; return s; }
@@ -24,7 +24,7 @@ Sink& operator>>(int&&, Sink& s) { s.digits = s.digits * 10 + 3; return s; }
 Sink& operator>>(Note&, Sink& s) { s.digits = s.digits * 10 + 4; return s; }
 Sink& operator>>(const Note&, Sink& s) { s.digits = s.digits * 10 + 5; return s; }
 Sink& operator>>(Note&&, Sink& s) { s.digits = s.digits * 10 + 6; return s; }
-template<typename... Args> int rightFold(Args&&... args) { Sink s; (forward<Args>(args) >> ... >> s); return s.digits; }
+template<typename... Args> int rightFold(Args&&... args) { Sink s; (std::forward<Args>(args) >> ... >> s); return s.digits; }
 struct Stamp { int v = 0; };
 int digitsOf = 0;
 void mark(int d) { digitsOf = digitsOf * 10 + d; }
@@ -37,23 +37,23 @@ Stamp operator*(Stamp&&, Stamp&&) { mark(6); return Stamp{}; }
 Stamp operator*(Stamp&, const Stamp&) { mark(7); return Stamp{}; }
 Stamp operator*(const Stamp&, const Stamp&) { mark(8); return Stamp{}; }
 Stamp operator*(Stamp&&, const Stamp&) { mark(9); return Stamp{}; }
-template<typename... Args> int unaryLeft(Args&&... args) { digitsOf = 0; (... * forward<Args>(args)); return digitsOf; }
-template<typename... Args> int unaryRight(Args&&... args) { digitsOf = 0; (forward<Args>(args) * ...); return digitsOf; }
+template<typename... Args> int unaryLeft(Args&&... args) { digitsOf = 0; (... * std::forward<Args>(args)); return digitsOf; }
+template<typename... Args> int unaryRight(Args&&... args) { digitsOf = 0; (std::forward<Args>(args) * ...); return digitsOf; }
 struct Changing { int seen = 0; };
 Changing& operator<<(Changing& c, int& x) { c.seen = c.seen * 10 + x; x = 7; return c; }
 template<typename... Args> int changesThem(Args&... args) { Changing c; (c << ... << args); return c.seen; }
 Changing& operator>>(int& x, Changing& c) { c.seen = c.seen * 10 + x; x = 8; return c; }
 template<typename... Args> int changesFromRight(Args&... args) { Changing c; (args >> ... >> c); return c.seen; }
 int& operator<<(int& i, const Note& n) { i = i * 10 + n.v; return i; }
-template<typename... Args> void firstElementLvalue(Args&&... args) { (... << forward<Args>(args)); }
+template<typename... Args> void firstElementLvalue(Args&&... args) { (... << std::forward<Args>(args)); }
 struct Stage { int digits = 0; };
 const Stage& operator<<(Stage& s, char) { s.digits = s.digits * 10 + 1; return s; }
 const Stage& operator<<(const Stage& s, char) { const_cast<Stage&>(s).digits = s.digits * 10 + 2; return s; }
 template<typename... Args> int constResult(Args... args) { Stage s; (s << ... << args); return s.digits; }
 struct Gate { int digits = 0; };
-Gate&& operator<<(Gate&& g, char) { g.digits = g.digits * 10 + 3; return move(g); }
-Gate&& operator<<(Gate& g, char) { g.digits = g.digits * 10 + 1; return move(g); }
-Gate&& operator<<(const Gate& g, char) { const_cast<Gate&>(g).digits = g.digits * 10 + 2; return move(const_cast<Gate&>(g)); }
+Gate&& operator<<(Gate&& g, char) { g.digits = g.digits * 10 + 3; return std::move(g); }
+Gate&& operator<<(Gate& g, char) { g.digits = g.digits * 10 + 1; return std::move(g); }
+Gate&& operator<<(const Gate& g, char) { const_cast<Gate&>(g).digits = g.digits * 10 + 2; return std::move(const_cast<Gate&>(g)); }
 template<typename... Args> int xvalueResult(Args... args) { Gate g; (g << ... << args); return g.digits; }
 int copies = 0;
 
@@ -89,9 +89,9 @@ public:
   Chain& operator<<(int&&) { this.digits = this.digits * 10 + 3; return this; }
 };
 
-template<typename... Args> int members(Args&&... args) { Chain c; (c << ... << forward<Args>(args)); return c.digits; }
-template<typename... Args> int emptyPack(Args&&... args) { Acc a; a.digits = 5; return (a << ... << forward<Args>(args)).digits; }
-template<typename... Args> int oneElement(Args&&... args) { return (... * forward<Args>(args)).v; }
+template<typename... Args> int members(Args&&... args) { Chain c; (c << ... << std::forward<Args>(args)); return c.digits; }
+template<typename... Args> int emptyPack(Args&&... args) { Acc a; a.digits = 5; return (a << ... << std::forward<Args>(args)).digits; }
+template<typename... Args> int oneElement(Args&&... args) { return (... * std::forward<Args>(args)).v; }
 template<typename... Ts> int typePackFold() { Acc a; int x = 1; (a << ... << Ts(x)); return a.digits; }
 
 class Lifetime
@@ -106,11 +106,11 @@ int valueOf(const Lifetime& l) { return l.v; }
 template<typename... Args> void lifetimes(Args... args) { Seq s; (s << ... << valueOf(Lifetime(args))); printf("|,"); }
 template<typename... Ts> int inner(Ts... ts) { return (0 + ... + ts); }
 template<typename... Args> int nestedScalar(Args... args) { Acc a; (a << ... << inner(args, args)); return a.digits; }
-template<typename... As> Acc& innerUser(Acc& a, As&&... as) { return (a << ... << forward<As>(as)); }
+template<typename... As> Acc& innerUser(Acc& a, As&&... as) { return (a << ... << std::forward<As>(as)); }
 struct Ledger { int digits = 0; };
 Ledger& operator<<(Ledger& l, Acc& a) { l.digits = l.digits * 100 + a.digits; return l; }
-template<typename... Args> int nestedUser(Args&&... args) { Ledger l; Acc a; int x = 1; (l << ... << innerUser(a, x, forward<Args>(args))); return l.digits; }
-template<typename... Args> int valueOfResult(Args&&... args) { Acc a; Acc b = (a << ... << forward<Args>(args)); b.digits += 1; return a.digits * 100 + b.digits; }
+template<typename... Args> int nestedUser(Args&&... args) { Ledger l; Acc a; int x = 1; (l << ... << innerUser(a, x, std::forward<Args>(args))); return l.digits; }
+template<typename... Args> int valueOfResult(Args&&... args) { Acc a; Acc b = (a << ... << std::forward<Args>(args)); b.digits += 1; return a.digits * 100 + b.digits; }
 struct Box { int v; };
 Box operator+(const Box& a, const Box& b) { return Box{a.v * 10 + b.v}; }
 template<typename... Args> int braced(Args... args) { return (... + Box{args}).v; }
@@ -119,18 +119,18 @@ template<typename T> class Holder
 {
 public:
   T acc;
-  template<typename... Args> int total(Args&&... args) { (this.acc << ... << forward<Args>(args)); return this.acc.digits; }
+  template<typename... Args> int total(Args&&... args) { (this.acc << ... << std::forward<Args>(args)); return this.acc.digits; }
 };
 
 int main()
 {
   int a = 1;
   const int c = 2;
-  printf("%d %d\n", forwarded(a, 3, c, move(a)), comma(a, 3, c, move(a)));
-  printf("%d %d %d %d\n", named(a, 3, c, move(a)), byValue(a, 3, c), constRefs(a, 3, c), temporaries(a, 3));
+  printf("%d %d\n", forwarded(a, 3, c, std::move(a)), comma(a, 3, c, std::move(a)));
+  printf("%d %d %d %d\n", named(a, 3, c, std::move(a)), byValue(a, 3, c), constRefs(a, 3, c), temporaries(a, 3));
   Note n{1};
   const Note cn{2};
-  printf("%d\n", classes(n, Note{1}, cn, move(n)));
+  printf("%d\n", classes(n, Note{1}, cn, std::move(n)));
   printf("%d\n", rightFold(a, 3, c, n, Note{1}, cn));
   Stamp s1, s2;
   const Stamp cs;
@@ -154,13 +154,13 @@ int main()
   printf("\n");
   rightOrder(1, 2, 3);
   printf("\n");
-  printf("%d %d %d %d\n", members(a, 3, c, move(a)), emptyPack(), oneElement(Note{4}), typePackFold<int, short>());
+  printf("%d %d %d %d\n", members(a, 3, c, std::move(a)), emptyPack(), oneElement(Note{4}), typePackFold<int, short>());
   lifetimes(1, 2);
   printf("\n");
-  auto lambda = [](auto&&... xs) { Acc acc; (acc << ... << forward<decltype(xs)>(xs)); return acc.digits; };
-  printf("%d\n", lambda(a, 3, c, move(a)));
+  auto lambda = [](auto&&... xs) { Acc acc; (acc << ... << std::forward<decltype(xs)>(xs)); return acc.digits; };
+  printf("%d\n", lambda(a, 3, c, std::move(a)));
   printf("%d %d %d %d\n", nestedScalar(1, 2), nestedUser(a, 3, c), valueOfResult(a, 3), braced(1, 2, 3));
   Holder<Acc> h;
-  printf("%d\n", h.total(a, 3, c, move(a)));
+  printf("%d\n", h.total(a, 3, c, std::move(a)));
   return 0;
 }

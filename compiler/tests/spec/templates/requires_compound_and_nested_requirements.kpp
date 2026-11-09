@@ -18,7 +18,7 @@ struct IsInt<char>
 template<typename T>
 concept Integral = IsInt<T>::value;
 template<typename T, typename U>
-concept Same = IsSame<T, U>::value;
+concept Same = std::IsSame<T, U>::value;
 template<typename T>
 concept HasSize = requires(const T& t) {
   t.size();
@@ -60,10 +60,10 @@ template<typename T>
 int pick(T) { return 2; }
 int main()
 {
-  println(HasSize<Sized>, " ", HasSize<SizedWrong>, " ", HasSize<SizedChar>, " ", HasSize<int>);
-  println(SizeIsInt<Sized>, " ", SizeIsInt<SizedChar>);
-  println(Small<char>, " ", Small<short>, " ", Small<int>, " ", SmallAndSized<Sized>, " ", SmallAndSized<SizedChar>);
-  println(sizeOrZero(Sized{7}), " ", sizeOrZero(SizedWrong{}));
-  println(pick('a'), " ", pick(1));
+  std::println(HasSize<Sized>, " ", HasSize<SizedWrong>, " ", HasSize<SizedChar>, " ", HasSize<int>);
+  std::println(SizeIsInt<Sized>, " ", SizeIsInt<SizedChar>);
+  std::println(Small<char>, " ", Small<short>, " ", Small<int>, " ", SmallAndSized<Sized>, " ", SmallAndSized<SizedChar>);
+  std::println(sizeOrZero(Sized{7}), " ", sizeOrZero(SizedWrong{}));
+  std::println(pick('a'), " ", pick(1));
   return 0;
 }

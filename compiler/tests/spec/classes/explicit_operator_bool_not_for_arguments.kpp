@@ -20,6 +20,6 @@ int main()
   bool truth = false;
   if (location)
     truth = true;
-  println(a.slot, " ", truth);
+  std::println(a.slot, " ", truth);
   return 0;
 }

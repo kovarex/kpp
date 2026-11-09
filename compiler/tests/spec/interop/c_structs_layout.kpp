@@ -10,6 +10,6 @@ int main()
   Rect r{1, 2, 3, 4};
   Rect copy;
   memcpy(&copy, &r, sizeof(Rect));
-  println((int)sizeof(Pixel), " ", (int)sizeof(row), " ", (int)sizeof(Rect), " ", (int)row[2].g, " ", copy.w);
+  std::println((int)sizeof(Pixel), " ", (int)sizeof(row), " ", (int)sizeof(Rect), " ", (int)row[2].g, " ", copy.w);
   return 0;
 }

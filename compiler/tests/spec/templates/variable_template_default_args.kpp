@@ -13,6 +13,6 @@ int main()
   static_assert(mySize<double> == 12); // sizeof(double) + sizeof(int) = 8 + 4
   static_assert(!isBig<float>);        // 8 > 8 is false
   static_assert(isBig<double>);        // 12 > 8 is true
-  println("variable template default args: ok");
+  std::println("variable template default args: ok");
   return 0;
 }

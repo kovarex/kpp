@@ -23,6 +23,6 @@ struct Square : Shape
 int main()
 {
   Square s;
-  println(s.area());
+  std::println(s.area());
   return 0;
 }

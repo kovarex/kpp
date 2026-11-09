@@ -2,7 +2,7 @@
 class P { };
 int main()
 {
-  println(isConvertible<const InitializerList<P*>&, StringView>);
-  println(isConvertible<const InitializerList<int>&, StringView>);
+  std::println(std::isConvertible<const std::InitializerList<P*>&, std::StringView>);
+  std::println(std::isConvertible<const std::InitializerList<int>&, std::StringView>);
   return 0;
 }

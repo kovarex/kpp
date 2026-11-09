@@ -1,7 +1,7 @@
 // spec: a reference parameter given an object of another type refers to a converted temporary, never to the argument itself: `const double& d` given an int local divides as a double, and `const String& s` given a StringView builds a String that ends with the caller's full expression (its memory freed); the constant equals what the program computes (`0.75 6`)
 // factorio: found by the templates thread on build.kpp's `path += lib` (a StringView into String's const String& parameter): the converted String was never destroyed (a leak at compile time); the int case read the int as it was
 constexpr double quarter(const double& d) { return d / 4; }
-constexpr int length(const String& s) { return s.size(); }
+constexpr int length(const std::String& s) { return s.size(); }
 constexpr double run()
 {
   int three = 3;
@@ -9,12 +9,12 @@ constexpr double run()
 }
 constexpr int lengths()
 {
-  StringView view = "abcd";
+  std::StringView view = "abcd";
   return length(view) + length("xy");
 }
 static_assert(run() == 0.75 && lengths() == 6);
 int main()
 {
-  println(run(), " ", lengths());
+  std::println(run(), " ", lengths());
   return 0;
 }

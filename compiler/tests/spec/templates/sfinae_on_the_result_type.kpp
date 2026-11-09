@@ -6,6 +6,6 @@ template<class T> typename OnlyIf<sizeof(T) == 4, int>::type kind(T) { return 4;
 template<class T> typename OnlyIf<sizeof(T) == 8, int>::type kind(T) { return 8; }
 int main()
 {
-  println(kind(1), " ", kind(1.0));
+  std::println(kind(1), " ", kind(1.0));
   return 0;
 }

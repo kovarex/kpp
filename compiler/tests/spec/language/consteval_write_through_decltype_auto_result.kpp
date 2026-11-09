@@ -18,17 +18,17 @@ constexpr int members()
 }
 constexpr int tuples()
 {
-  Tuple<int, char> t(3, 'a');
-  get<0>(t) = 7;
-  get<0>(t) += 4;
-  int& r = get<0>(t);
+  std::Tuple<int, char> t(3, 'a');
+  std::get<0>(t) = 7;
+  std::get<0>(t) += 4;
+  int& r = std::get<0>(t);
   r *= 2;
-  return get<0>(t) * 1000 + get<1>(t);
+  return std::get<0>(t) * 1000 + std::get<1>(t);
 }
 constexpr int fromMembers = members();
 constexpr int fromTuples = tuples();
 int main()
 {
-  println(fromMembers, " ", members(), " ", fromTuples, " ", tuples());
+  std::println(fromMembers, " ", members(), " ", fromTuples, " ", tuples());
   return 0;
 }

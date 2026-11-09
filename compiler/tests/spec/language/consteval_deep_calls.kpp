@@ -33,9 +33,9 @@ constexpr int d17() { return d16(); }
 constexpr int d18() { return d17(); }
 constexpr int d19() { return d18(); }
 static_assert(d19() == 11);
-static_assert(Limits<int32_t>::max() == d19() * 0 + 2147483647);
+static_assert(std::Limits<int32_t>::max() == d19() * 0 + 2147483647);
 int main()
 {
-  println(d19());
+  std::println(d19());
   return 0;
 }

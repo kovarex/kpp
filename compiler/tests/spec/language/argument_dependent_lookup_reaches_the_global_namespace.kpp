@@ -101,12 +101,12 @@ constexpr int atCompileTime = lib::constantTwice(Key{4});
 int main()
 {
   Key key{4};
-  println(lib::hashTwice(key), " ", lib::hashTwice(4), " ", lib::hashTwice(Red), " ", lib::hashTwice(Scoped::One), " ", lib::hashTwice(Wrapped{6}));
-  println(lib::hashTwice(&key), " ", lib::hashTwice(Outer::Inner{1}), " ", lib::hashTwice(lib::Box<Key>{key}));
-  println(other::hashIt(key), " ", other::hashIt(1), " ", other::plain(key), " ", other::plainEnum(Green), " ", other::plainInt(1));
+  std::println(lib::hashTwice(key), " ", lib::hashTwice(4), " ", lib::hashTwice(Red), " ", lib::hashTwice(Scoped::One), " ", lib::hashTwice(Wrapped{6}));
+  std::println(lib::hashTwice(&key), " ", lib::hashTwice(Outer::Inner{1}), " ", lib::hashTwice(lib::Box<Key>{key}));
+  std::println(other::hashIt(key), " ", other::hashIt(1), " ", other::plain(key), " ", other::plainEnum(Green), " ", other::plainInt(1));
   Derived d, e;
-  println(other::callsPrivate(key), " ", other::callsRank(d), " ", other::callsBuiltinOnly(nm::Inside{1}));
-  println(other::callsDeduced(key), " ", other::callsWithArguments(key), " ", other::callsSwap(d, e), " ", other::sameFunctionTwice(key), " ", other::inner::pastBoth(key));
-  println(atCompileTime);
+  std::println(other::callsPrivate(key), " ", other::callsRank(d), " ", other::callsBuiltinOnly(nm::Inside{1}));
+  std::println(other::callsDeduced(key), " ", other::callsWithArguments(key), " ", other::callsSwap(d, e), " ", other::sameFunctionTwice(key), " ", other::inner::pastBoth(key));
+  std::println(atCompileTime);
   return 0;
 }

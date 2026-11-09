@@ -32,7 +32,7 @@ struct Row<H, T...> : Holder<sizeof...(T), H>, Row<T...>
   Row(const H& head, const T&... tail) : Holder<sizeof...(T), H>(head), Row<T...>(tail...) {}
 };
 template<typename... Types>
-struct TupleSize<Row<Types...>> { static constexpr int value = sizeof...(Types); };
+struct std::TupleSize<Row<Types...>> { static constexpr int value = sizeof...(Types); };
 template<int I, typename... Types>
 auto& get(Row<Types...>& r)
 {
@@ -43,7 +43,7 @@ const auto& get(const Row<Types...>& r)
 {
   return holderOf<int(sizeof...(Types)) - 1 - I>(r);
 }
-Row<int, double, String> make(int i) { return Row<int, double, String>(i, 2.5, String("three")); }
+Row<int, double, std::String> make(int i) { return Row<int, double, std::String>(i, 2.5, std::String("three")); }
 
 struct Both : Holder<0, int>, Holder<1, double>
 {
@@ -52,15 +52,15 @@ struct Both : Holder<0, int>, Holder<1, double>
 
 int main()
 {
-  Row<int, double, String> r(1, 2.5, String("three"));
-  println(get<0>(r), " ", get<1>(r), " ", get<2>(r));
+  Row<int, double, std::String> r(1, 2.5, std::String("three"));
+  std::println(get<0>(r), " ", get<1>(r), " ", get<2>(r));
   auto& [a, b, c] = r;
   a = 10;
   auto [x, y, z] = make(7);
-  const Row<int, double, String>& cr = r;
+  const Row<int, double, std::String>& cr = r;
   const auto& [ca, cb, cc] = cr;
-  println(get<0>(r), " ", b, " ", c, " ", x, " ", y, " ", z, " ", ca + int(cb), " ", cc.size());
+  std::println(get<0>(r), " ", b, " ", c, " ", x, " ", y, " ", z, " ", ca + int(cb), " ", cc.size());
   Both both;
-  println(holderOf<0>(both), " ", holderOf<1>(both));
+  std::println(holderOf<0>(both), " ", holderOf<1>(both));
   return 0;
 }

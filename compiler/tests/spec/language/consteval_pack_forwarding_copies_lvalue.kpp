@@ -10,32 +10,32 @@ struct C
 constexpr int lvalues()
 {
   C c;
-  Map<int, C> m;
+  std::Map<int, C> m;
   m.emplace(1, c);
-  using E = Pair<const int, C>;
-  E* p = (E*)malloc(sizeof(E));
+  using E = std::Pair<const int, C>;
+  E* p = (E*)std::malloc(sizeof(E));
   new (p) E(1, c);
   int placed = p->second.n;
   p->~E();
-  free(p);
-  Vector<C> v;
+  std::free(p);
+  std::Vector<C> v;
   v.emplace_back(c);
-  String k("b");
-  Map<String, int> names;
+  std::String k("b");
+  std::Map<std::String, int> names;
   names.emplace(k, 2);
   return m[1].n * 1000 + placed * 100 + v[0].n * 10 + int(k.size());
 }
 constexpr int rvalues()
 {
   C c;
-  Map<int, C> m;
-  m.emplace(1, move(c));
+  std::Map<int, C> m;
+  m.emplace(1, std::move(c));
   return m[1].n;
 }
 constexpr int l = lvalues();
 constexpr int r = rvalues();
 int main()
 {
-  println(l, " ", lvalues(), " ", r, " ", rvalues());
+  std::println(l, " ", lvalues(), " ", r, " ", rvalues());
   return 0;
 }

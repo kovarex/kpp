@@ -31,6 +31,6 @@ int main()
   n.value = 9;
   int w = (m = n).value;
   m = 4;
-  println(v, " ", a.value, " ", a.copies, " ", w, " ", m.value, " ", m.copies);
+  std::println(v, " ", a.value, " ", a.copies, " ", w, " ", m.value, " ", m.copies);
   return 0;
 }

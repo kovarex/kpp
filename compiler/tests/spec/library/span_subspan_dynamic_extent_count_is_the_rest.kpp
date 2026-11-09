@@ -4,9 +4,9 @@ extern "C" import "stdio.h";
 int main()
 {
   int raw[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
-  Span<int> s(raw, 10);
-  Span<int> rest = s.subspan(2, dynamicExtent);
-  Span<int> none = s.subspan(10, dynamicExtent);
+  std::Span<int> s(raw, 10);
+  std::Span<int> rest = s.subspan(2, std::dynamicExtent);
+  std::Span<int> none = s.subspan(10, std::dynamicExtent);
   printf("%d %d %d | %d\n", (int)rest.size(), rest.front(), rest.back(), (int)none.size());
   return 0;
 }

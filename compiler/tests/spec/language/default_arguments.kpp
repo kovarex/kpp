@@ -15,7 +15,7 @@ int main()
 {
   Timer t;
   Timer fast(30);
-  println(scaled(1), " ", scaled(1, 3), " ", scaled(1, 3, 0));
-  println(t.ticks(2), " ", fast.ticks(2), " ", fast.ticks(2, 120));
+  std::println(scaled(1), " ", scaled(1, 3), " ", scaled(1, 3, 0));
+  std::println(t.ticks(2), " ", fast.ticks(2), " ", fast.ticks(2, 120));
   return 0;
 }

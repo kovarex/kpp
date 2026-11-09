@@ -5,7 +5,7 @@ class OnHeap
 {
 public:
   template<typename... Args>
-  OnHeap(Args&&... args) : value(new InnerType(::forward<Args>(args)...)) {}
+  OnHeap(Args&&... args) : value(new InnerType(std::forward<Args>(args)...)) {}
   ~OnHeap() { delete this.value; }
   OnHeap(const OnHeap&) = delete;
   OnHeap(OnHeap&& other) : value(other.value) { other.value = nullptr; }
@@ -20,8 +20,8 @@ int main()
   OnHeap<Counter> local;
   Holder holder;
   OnHeap<Counter> given(Counter{3});
-  Vector<OnHeap<Counter>> many;
+  std::Vector<OnHeap<Counter>> many;
   many.resize(2);
-  println((*local).count, " ", (*holder.counter).count, " ", (*given).count, " ", (*many[1]).count);
+  std::println((*local).count, " ", (*holder.counter).count, " ", (*given).count, " ", (*many[1]).count);
   return 0;
 }

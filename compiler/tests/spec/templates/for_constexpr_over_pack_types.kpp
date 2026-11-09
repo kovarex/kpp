@@ -2,9 +2,9 @@
 // found by thread D (2026-11-05), beside the lambda pack fix: the pack was one element, all its types at once: a body that names no overload ran once, silently (countTypes returned 1), and the calls of show were "a call that did not resolve"
 struct A { int v; };
 struct B { int v; };
-inline void show(int x) { println(x); }
-inline void show(const A& a) { println("A", a.v); }
-inline void show(const B& b) { println("B", b.v); }
+inline void show(int x) { std::println(x); }
+inline void show(const A& a) { std::println("A", a.v); }
+inline void show(const B& b) { std::println("B", b.v); }
 
 template<typename... Ts>
 void eachType()
@@ -35,6 +35,6 @@ int main()
 {
   eachType<B, int, A>();
   eachTypeInLambda<int, A>();
-  println(countTypes<char, int, double>());
+  std::println(countTypes<char, int, double>());
   return 0;
 }

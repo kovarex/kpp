@@ -14,9 +14,9 @@ int main()
   a.value = 5;
   const Wrapper& constant = a;
   Wrapper b(constant);
-  Wrapper c(move(a));
+  Wrapper c(std::move(a));
   Wrapper d(a);
-  Wrapper e = move(c);
-  println(b.value, " ", b.via, " ", c.value, " ", c.via, " ", d.value, " ", d.via, " ", e.value, " ", e.via);
+  Wrapper e = std::move(c);
+  std::println(b.value, " ", b.via, " ", c.value, " ", c.via, " ", d.value, " ", d.via, " ", e.value, " ", e.via);
   return 0;
 }

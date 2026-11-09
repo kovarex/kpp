@@ -131,10 +131,10 @@ void copies(const char* name, const C& source, const C& two)
 int main()
 {
   {
-    List<Item> source;
+    std::List<Item> source;
     for (i32 i = 0; i < 5; ++i)
       source.emplace_back(i);
-    List<Item> two;
+    std::List<Item> two;
     two.emplace_back(10);
     two.emplace_back(11);
     copies("List", source, two);
@@ -142,7 +142,7 @@ int main()
     buildsLeft = 2;
     try
     {
-      List<Item> range(source.begin(), source.end());
+      std::List<Item> range(source.begin(), source.end());
     }
     catch (i32)
     {
@@ -155,7 +155,7 @@ int main()
       buildsLeft = 2;
       try
       {
-        List<Item> repeated(4, one);
+        std::List<Item> repeated(4, one);
       }
       catch (i32)
       {
@@ -167,7 +167,7 @@ int main()
     buildsLeft = 2;
     try
     {
-      List<Item> listed{Item(1), Item(2), Item(3), Item(4)};
+      std::List<Item> listed{Item(1), Item(2), Item(3), Item(4)};
     }
     catch (i32)
     {
@@ -189,10 +189,10 @@ int main()
   report("List gone", false, 0);
   live = 0;
   {
-    ForwardList<Item> source;
+    std::ForwardList<Item> source;
     for (i32 i = 5; i-- > 0;)
       source.emplace_front(i);
-    ForwardList<Item> two;
+    std::ForwardList<Item> two;
     two.emplace_front(11);
     two.emplace_front(10);
     copies("ForwardList", source, two);
@@ -200,7 +200,7 @@ int main()
     buildsLeft = 2;
     try
     {
-      ForwardList<Item> range(source.begin(), source.end());
+      std::ForwardList<Item> range(source.begin(), source.end());
     }
     catch (i32)
     {
@@ -211,10 +211,10 @@ int main()
   report("ForwardList gone", false, 0);
   live = 0;
   {
-    Map<i32, Item> source;
+    std::Map<i32, Item> source;
     for (i32 i = 0; i < 9; ++i)
       source.emplace(i, Item(i));
-    Map<i32, Item> two;
+    std::Map<i32, Item> two;
     two.emplace(10, Item(10));
     two.emplace(11, Item(11));
     copies("Map", source, two);
@@ -233,10 +233,10 @@ int main()
   report("Map gone", false, 0);
   live = 0;
   {
-    Set<Item> source;
+    std::Set<Item> source;
     for (i32 i = 0; i < 9; ++i)
       source.emplace(i);
-    Set<Item> two;
+    std::Set<Item> two;
     two.emplace(10);
     two.emplace(11);
     copies("Set", source, two);
@@ -244,10 +244,10 @@ int main()
   report("Set gone", false, 0);
   live = 0;
   {
-    MultiMap<i32, Item> source;
+    std::MultiMap<i32, Item> source;
     for (i32 i = 0; i < 9; ++i)
       source.emplace(i % 3, Item(i));
-    MultiMap<i32, Item> two;
+    std::MultiMap<i32, Item> two;
     two.emplace(10, Item(10));
     two.emplace(10, Item(11));
     copies("MultiMap", source, two);
@@ -255,10 +255,10 @@ int main()
   report("MultiMap gone", false, 0);
   live = 0;
   {
-    MultiSet<Item> source;
+    std::MultiSet<Item> source;
     for (i32 i = 0; i < 9; ++i)
       source.emplace(i % 3);
-    MultiSet<Item> two;
+    std::MultiSet<Item> two;
     two.emplace(10);
     two.emplace(10);
     copies("MultiSet", source, two);
@@ -266,10 +266,10 @@ int main()
   report("MultiSet gone", false, 0);
   live = 0;
   {
-    HashMap<i32, Item> source;
+    std::HashMap<i32, Item> source;
     for (i32 i = 0; i < 9; ++i)
       source.emplace(i, Item(i));
-    HashMap<i32, Item> two;
+    std::HashMap<i32, Item> two;
     two.emplace(10, Item(10));
     two.emplace(11, Item(11));
     copies("HashMap", source, two);
@@ -299,10 +299,10 @@ int main()
   report("HashMap gone", false, 0);
   live = 0;
   {
-    HashSet<Item, ItemHash> source;
+    std::HashSet<Item, ItemHash> source;
     for (i32 i = 0; i < 9; ++i)
       source.emplace(i);
-    HashSet<Item, ItemHash> two;
+    std::HashSet<Item, ItemHash> two;
     two.emplace(10);
     two.emplace(11);
     copies("HashSet", source, two);
@@ -321,10 +321,10 @@ int main()
   report("HashSet gone", false, 0);
   live = 0;
   {
-    FastMap<i32, Entry> source;
+    std::FastMap<i32, Entry> source;
     for (i32 i = 0; i < 40; ++i)
       source.emplace(i, Entry(i));
-    FastMap<i32, Entry> two;
+    std::FastMap<i32, Entry> two;
     two.emplace(10, Entry(10));
     two.emplace(11, Entry(11));
     copies("FastMap", source, two);
@@ -332,10 +332,10 @@ int main()
   report("FastMap gone", false, 0);
   live = 0;
   {
-    FastSet<Entry> source;
+    std::FastSet<Entry> source;
     for (i32 i = 0; i < 40; ++i)
       source.emplace(i);
-    FastSet<Entry> two;
+    std::FastSet<Entry> two;
     two.emplace(10);
     two.emplace(11);
     copies("FastSet", source, two);

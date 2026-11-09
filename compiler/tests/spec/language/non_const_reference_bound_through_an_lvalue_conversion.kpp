@@ -41,7 +41,7 @@ int main()
   printf("=%d\n", g(gv));
   printf("%d\n", gv.v);
   H h;
-  { int& x(move(h)); printf("%d\n", x); }
+  { int& x(std::move(h)); printf("%d\n", x); }
   { int& x = h; x = 9; printf("%d\n", h.v); }
   return 0;
 }

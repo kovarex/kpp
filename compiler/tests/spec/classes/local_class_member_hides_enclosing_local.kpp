@@ -95,6 +95,6 @@ int enclosingBeforeGlobal()
 }
 int main()
 {
-  println(unchanged(), " ", assigned(), " ", computed(), " ", parameter(5), " ", inherited(), " ", nested(), " ", enclosingBeforeGlobal());
+  std::println(unchanged(), " ", assigned(), " ", computed(), " ", parameter(5), " ", inherited(), " ", nested(), " ", enclosingBeforeGlobal());
   return 0;
 }

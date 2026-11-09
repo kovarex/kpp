@@ -7,17 +7,17 @@ int main()
   int sum = 0;
   for (int v : values)
     sum += v;
-  Vector<String> names;
-  names.push_back(String("a"));
-  names.push_back(String("b"));
-  for (String& n : names)
+  std::Vector<std::String> names;
+  names.push_back(std::String("a"));
+  names.push_back(std::String("b"));
+  for (std::String& n : names)
     n << "!";
-  String joined;
-  for (const String& n : names)
+  std::String joined;
+  for (const std::String& n : names)
     joined << n;
   int count = 0;
   for (int v : {10, 20, 30})
     count += v;
-  println(sum, " ", joined, " ", count);
+  std::println(sum, " ", joined, " ", count);
   return 0;
 }

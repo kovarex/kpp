@@ -3,27 +3,27 @@ extern "C" int printf(const char* format, ...);
 
 int main()
 {
-  String greeting("Hello");
-  greeting << String(", ");
+  std::String greeting("Hello");
+  greeting << std::String(", ");
   greeting.append("kpp");
   greeting.append('!');
   greeting << '?';
-  String copy = greeting;
-  String head = copy.substr(0, 5) + String("...");
+  std::String copy = greeting;
+  std::String head = copy.substr(0, 5) + std::String("...");
   printf("%s|%s|%zu|%zu|%d\n", greeting.c_str(), head.c_str(), greeting.size(), greeting.find('k'), greeting == copy ? 1 : 0);
 
-  Vector<String> words;
-  words.push_back(String("alpha"));
-  words.push_back(String("beta"));
+  std::Vector<std::String> words;
+  words.push_back(std::String("alpha"));
+  words.push_back(std::String("beta"));
   words.push_back(greeting);
-  Vector<String> wordsCopy = words;
+  std::Vector<std::String> wordsCopy = words;
   words.erase(0);
   int total = 0;
-  for (String& w : wordsCopy)
+  for (std::String& w : wordsCopy)
     total += w.size();
   printf("%zu %zu %s %s %d\n", words.size(), wordsCopy.size(), words[0].c_str(), wordsCopy[2].c_str(), total);
 
-  Vector<int> numbers;
+  std::Vector<int> numbers;
   for (int i = 0; i < 5; ++i)
     numbers.push_back(i * 3);
   int sum = 0;

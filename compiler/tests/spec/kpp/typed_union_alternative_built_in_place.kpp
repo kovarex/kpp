@@ -8,17 +8,17 @@ public:
   Loaded(int v, int w) : value(v + w)
   {
     if (w < 0)
-      throw RuntimeError("no");
+      throw std::RuntimeError("no");
   }
-  Loaded(Loaded&& other) : value(other.value) { println("moved"); }
-  Loaded(const Loaded& other) : value(other.value) { println("copied"); }
+  Loaded(Loaded&& other) : value(other.value) { std::println("moved"); }
+  Loaded(const Loaded& other) : value(other.value) { std::println("copied"); }
   Loaded& operator=(Loaded&& other)
   {
     this.value = other.value;
-    println("assigned");
+    std::println("assigned");
     return this;
   }
-  ~Loaded() { println("destroyed ", this.value); }
+  ~Loaded() { std::println("destroyed ", this.value); }
 };
 union enum Slot : uint8_t
 {
@@ -28,10 +28,10 @@ union enum Slot : uint8_t
   T& emplace(Args&&... args)
   {
     for constexpr (auto a : alternatives(Slot))
-      if constexpr (isSame<a.type, T>)
+      if constexpr (std::isSame<a.type, T>)
       {
         this.~Slot();
-        new (&this) Slot(a.tag, T(forward<Args>(args)...));
+        new (&this) Slot(a.tag, T(std::forward<Args>(args)...));
         return (this)[a];
       }
   }
@@ -50,33 +50,33 @@ int main()
 {
   Slot slot;
   load(slot, 7);
-  println(slot == Slot::Full, " ", slot[Slot::Full].value);
-  println("-- again, the same alternative: destroyed and built");
+  std::println(slot == Slot::Full, " ", slot[Slot::Full].value);
+  std::println("-- again, the same alternative: destroyed and built");
   load(slot, 8);
-  println(slot[Slot::Full].value);
-  println("-- from the constructor's arguments");
+  std::println(slot[Slot::Full].value);
+  std::println("-- from the constructor's arguments");
   slot.~Slot();
   new (&slot) Slot(Slot::Full, 4, 5);
-  println(slot[Slot::Full].value);
-  println("-- through a generated emplace");
+  std::println(slot[Slot::Full].value);
+  std::println("-- through a generated emplace");
   slot.emplace<Loaded>(1, 2);
-  println(slot[Slot::Full].value);
-  println("-- a constructor that throws leaves it holding none");
+  std::println(slot[Slot::Full].value);
+  std::println("-- a constructor that throws leaves it holding none");
   try
   {
     slot.~Slot();
     new (&slot) Slot(Slot::Full, 1, -2);
   }
-  catch (const RuntimeError& e)
+  catch (const std::RuntimeError& e)
   {
-    println(StringView(e.what()), " ", slot.tag() == Slot::Tag::count);
+    std::println(std::StringView(e.what()), " ", slot.tag() == Slot::Tag::count);
   }
-  println("-- assigned: the value first, then moved to its place");
+  std::println("-- assigned: the value first, then moved to its place");
   slot[Slot::Full] = Loaded(9);
-  println(slot[Slot::Full].value);
-  println("-- assigned the alternative held");
+  std::println(slot[Slot::Full].value);
+  std::println("-- assigned the alternative held");
   slot[Slot::Full] = Loaded(10);
-  println(slot[Slot::Full].value);
-  println("-- end");
+  std::println(slot[Slot::Full].value);
+  std::println("-- end");
   return 0;
 }

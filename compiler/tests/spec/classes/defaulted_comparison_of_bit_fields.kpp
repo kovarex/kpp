@@ -15,7 +15,7 @@ int main()
   ((unsigned char*)&y)[3] = 0xFF;
   F big{2, 1};
   F small{1, 2};
-  println(x == y, " ", x != y, " ", (x <=> y) == 0);
-  println(big > small, " ", big < small, " ", (big <=> small) > 0);
+  std::println(x == y, " ", x != y, " ", (x <=> y) == 0);
+  std::println(big > small, " ", big < small, " ", (big <=> small) > 0);
   return 0;
 }

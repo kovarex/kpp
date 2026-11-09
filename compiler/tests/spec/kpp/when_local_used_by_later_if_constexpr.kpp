@@ -8,7 +8,7 @@ int main()
   int sum = cells[0] + cells[2];
   if constexpr (config::debug)
   {
-    println("debug ", sum, " ", neighbors);
+    std::println("debug ", sum, " ", neighbors);
   }
   else
     println("release ", sum, " ", skipped);

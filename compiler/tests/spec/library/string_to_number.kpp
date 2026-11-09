@@ -3,41 +3,41 @@
 int main()
 {
   size_t pos = 99;
-  int scancode = stoi("42", &pos);
-  println(scancode, " ", pos);
-  println(stoi(" -17abc", &pos), " ", pos);
-  println(stoi("ff", nullptr, 16), " ", stol("-0x10", nullptr, 16), " ", stoi("777", nullptr, 8));
+  int scancode = std::stoi("42", &pos);
+  std::println(scancode, " ", pos);
+  std::println(std::stoi(" -17abc", &pos), " ", pos);
+  std::println(std::stoi("ff", nullptr, 16), " ", std::stol("-0x10", nullptr, 16), " ", std::stoi("777", nullptr, 8));
   size_t processed = 0;
-  unsigned long id = stoul("4000000000 rest", &processed);
-  println(id, " ", processed);
-  unsigned long long steamId = stoull("76561198000000000", &processed);
-  println(steamId, " ", processed);
-  println(stoll("-9000000000"), " ", stoi("12", nullptr));
-  println(stof("2.5"), " ", stod("1e3x", &pos), " ", pos);
-  println(double(stold("0.125")));
+  unsigned long id = std::stoul("4000000000 rest", &processed);
+  std::println(id, " ", processed);
+  unsigned long long steamId = std::stoull("76561198000000000", &processed);
+  std::println(steamId, " ", processed);
+  std::println(std::stoll("-9000000000"), " ", std::stoi("12", nullptr));
+  std::println(std::stof("2.5"), " ", std::stod("1e3x", &pos), " ", pos);
+  std::println(double(std::stold("0.125")));
   try
   {
-    stoi("keycode", &pos);
+    std::stoi("keycode", &pos);
   }
-  catch (const InvalidArgument& e)
+  catch (const std::InvalidArgument& e)
   {
-    println("InvalidArgument: ", StringView(e.what()), " (pos still ", pos, ")");
-  }
-  try
-  {
-    stoi("99999999999");
-  }
-  catch (const OutOfRange& e)
-  {
-    println("OutOfRange: ", StringView(e.what()));
+    std::println("InvalidArgument: ", std::StringView(e.what()), " (pos still ", pos, ")");
   }
   try
   {
-    stod("1e999");
+    std::stoi("99999999999");
   }
-  catch (const OutOfRange& e)
+  catch (const std::OutOfRange& e)
   {
-    println("OutOfRange: ", StringView(e.what()));
+    std::println("OutOfRange: ", std::StringView(e.what()));
+  }
+  try
+  {
+    std::stod("1e999");
+  }
+  catch (const std::OutOfRange& e)
+  {
+    std::println("OutOfRange: ", std::StringView(e.what()));
   }
   return 0;
 }

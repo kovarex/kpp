@@ -42,6 +42,6 @@ constexpr int m = member();
 constexpr int p = picked();
 int main()
 {
-  println(l, " ", local(), " ", m, " ", member(), " ", p, " ", picked());
+  std::println(l, " ", local(), " ", m, " ", member(), " ", p, " ", picked());
   return 0;
 }

@@ -3,8 +3,8 @@
 void first() {}
 int main()
 {
-  setTerminate(first);
-  TerminateHandlerFunction previous = setTerminate([]() { abort(); });
-  println(previous == &first);
+  std::setTerminate(first);
+  std::TerminateHandlerFunction previous = std::setTerminate([]() { abort(); });
+  std::println(previous == &first);
   return 0;
 }

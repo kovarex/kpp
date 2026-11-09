@@ -11,7 +11,7 @@ void takeInt(int x) { printf("%d\n", x); }
 void takePtr(Item* p) { printf("%d\n", p->v); }
 int main()
 {
-  Item^ item = makeUnique<Item>();
+  Item^ item = std::makeUnique<Item>();
   takeInt(item);
   takePtr(item);
   Counter counter;

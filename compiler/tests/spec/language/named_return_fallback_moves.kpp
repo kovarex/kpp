@@ -58,7 +58,7 @@ int main()
   Tracked e = localOrTemporary(true);
   Tracked f = parameter(Tracked());
   Tracked g = aligned();
-  println(a.value, " ", b.value, " ", c.value, " ", d.value, " ", e.value, " ", f.value, " ", g.value);
-  println(copies, " copies, ", moves, " moves");
+  std::println(a.value, " ", b.value, " ", c.value, " ", d.value, " ", e.value, " ", f.value, " ", g.value);
+  std::println(copies, " copies, ", moves, " moves");
   return 0;
 }

@@ -30,7 +30,7 @@ struct Rect
 };
 struct Named
 {
-  String name;
+  std::String name;
   Rect bounds;
   Named() = default;
   Named(const Named&) = default;
@@ -54,7 +54,7 @@ int main()
   Rect b = a;
   Rect c = Rect();
   c = b;
-  Rect d(move(a));
+  Rect d(std::move(a));
   printf("%d %d %d %d %d %d\n", b.x, c.y, d.x, a == d ? 1 : 0, a != c ? 1 : 0, c == Rect(3, 4) ? 1 : 0);
   Named n;
   n.name = "hello";

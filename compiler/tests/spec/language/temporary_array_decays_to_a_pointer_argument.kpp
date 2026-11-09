@@ -3,24 +3,24 @@
 struct Noisy
 {
   int v;
-  implicit Noisy(int v) : v(v) { println("make ", v); }
-  ~Noisy() { println("drop ", this.v); }
+  implicit Noisy(int v) : v(v) { std::println("make ", v); }
+  ~Noisy() { std::println("drop ", this.v); }
 };
 struct First { int a; };
 struct Second { int b; };
 struct Both : First, Second { };
 int first(const int* p) { return p[0] * 10 + p[2]; }
 int bytes(const void* p) { return *static_cast<const int*>(p); }
-int value(const Noisy* p) { println("value ", p[0].v + p[1].v); return 0; }
+int value(const Noisy* p) { std::println("value ", p[0].v + p[1].v); return 0; }
 int second(const Second* p) { return p[0].b * 10 + p[1].b; }
 using Three = const int[3];
 using Two = const Noisy[2];
 using Duo = const Both[2];
 int main()
 {
-  println(first(Three{1, 2, 3}));
-  println(bytes(Three{4, 5, 6}));
-  println(value(Two{Noisy(7), Noisy(8)}), " after");
-  println(second(Duo{{{1}, {2}}, {{3}, {4}}}));
+  std::println(first(Three{1, 2, 3}));
+  std::println(bytes(Three{4, 5, 6}));
+  std::println(value(Two{Noisy(7), Noisy(8)}), " after");
+  std::println(second(Duo{{{1}, {2}}, {{3}, {4}}}));
   return 0;
 }

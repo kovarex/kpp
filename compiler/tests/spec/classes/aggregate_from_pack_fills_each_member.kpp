@@ -7,21 +7,21 @@ struct Base { int b; };
 struct Der : Base { int d; int e = 9; };
 struct RefHolder { int& r; int v; };
 template<class T, class... A> T make(A... v) { return T{v...}; }
-template<class T, class... A> T makeRef(A&&... v) { return T{forward<A>(v)...}; }
+template<class T, class... A> T makeRef(A&&... v) { return T{std::forward<A>(v)...}; }
 
 int main()
 {
   Bits s1 = make<Bits>(1u, 2u);
   Bits s2 = make<Bits>(1u, 2u, 3);
   Bits s3 = make<Bits>(9u, 33u, -4);
-  println(s1.a, " ", s1.b, " ", s1.c, " ", s2.a, " ", s2.b, " ", s2.c, " ", s3.a, " ", s3.b, " ", s3.c);
+  std::println(s1.a, " ", s1.b, " ", s1.c, " ", s2.a, " ", s2.b, " ", s2.c, " ", s3.a, " ", s3.b, " ", s3.c);
   Left l = make<Left>(1, 2);
   Left l1 = make<Left>(1);
   Der d = make<Der>(Base{5}, 6);
-  println(l.x, " ", l.y, " ", l.z, " ", l.q.v, " ", l1.x, " ", l1.y, " ", l1.z, " ", l1.q.v, " ", d.b, " ", d.d, " ", d.e);
+  std::println(l.x, " ", l.y, " ", l.z, " ", l.q.v, " ", l1.x, " ", l1.y, " ", l1.z, " ", l1.q.v, " ", d.b, " ", d.d, " ", d.e);
   int i = 11;
   RefHolder h = makeRef<RefHolder>(i, 3);
   i = 12;
-  println(h.r, " ", h.v);
+  std::println(h.r, " ", h.v);
   return 0;
 }

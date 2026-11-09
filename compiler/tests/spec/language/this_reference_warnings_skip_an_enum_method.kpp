@@ -18,6 +18,6 @@ enum class Direction
 int main()
 {
   Direction d = Direction::North;
-  println(d.isNorth(), " ", d.number());
+  std::println(d.isNorth(), " ", d.number());
   return 0;
 }

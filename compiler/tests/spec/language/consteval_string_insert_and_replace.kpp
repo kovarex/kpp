@@ -2,21 +2,21 @@
 extern "C" int printf(const char* format, ...);
 consteval int inserted()
 {
-  String s("ab");
-  String t("XY");
+  std::String s("ab");
+  std::String t("XY");
   s.insert(1, t);
   return s == "aXYb" ? int(s.size()) : -1;
 }
 consteval int insertedIntoItself()
 {
-  String s("abc");
+  std::String s("abc");
   s.insert(1, s.data(), 2);
   s.insert(0, "a");
   return s == "aaabbc" ? int(s.size()) : -1;
 }
 consteval int replaced()
 {
-  String s("abcd");
+  std::String s("abcd");
   s.replace(1, 2, "--");
   return s == "a--d" ? int(s.size()) : -1;
 }
@@ -25,12 +25,12 @@ static_assert(insertedIntoItself() == 6);
 static_assert(replaced() == 4);
 int main()
 {
-  String a("ab");
-  a.insert(1, String("XY"));
-  String b("abc");
+  std::String a("ab");
+  a.insert(1, std::String("XY"));
+  std::String b("abc");
   b.insert(1, b.data(), 2);
   b.insert(0, "a");
-  String c("abcd");
+  std::String c("abcd");
   c.replace(1, 2, "--");
   printf("%s %s %s / %d %d %d\n", a.c_str(), b.c_str(), c.c_str(), inserted(), insertedIntoItself(), replaced());
   return 0;

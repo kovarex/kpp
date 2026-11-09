@@ -19,8 +19,8 @@ struct Flags
 int main()
 {
   Flags<Actions::count> flags;
-  println(flags.size(), " ", sizeof(flags));
+  std::println(flags.size(), " ", sizeof(flags));
   size_t n = Actions::count;
-  println(n * 2);
+  std::println(n * 2);
   return 0;
 }

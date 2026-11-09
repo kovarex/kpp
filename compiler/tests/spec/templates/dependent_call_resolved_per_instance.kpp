@@ -8,6 +8,6 @@ template<class T> int one(T a) { return pick(a); }
 template<class T> int choose(T a, T b) { return pick(a, b); }
 int main()
 {
-  println(one("x"), " ", one(2.5));
+  std::println(one("x"), " ", one(2.5));
   return choose(1, 2);
 }

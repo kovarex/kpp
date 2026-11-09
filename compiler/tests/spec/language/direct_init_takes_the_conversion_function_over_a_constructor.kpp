@@ -33,6 +33,6 @@ int main()
   C c;
   { A x(c); printf("[%d]\n", x.v); }
   { A x(C{}); printf("[%d]\n", x.v); }
-  { A x{move(c)}; printf("[%d]\n", x.v); }
+  { A x{std::move(c)}; printf("[%d]\n", x.v); }
   return 0;
 }

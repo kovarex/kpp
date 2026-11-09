@@ -8,30 +8,30 @@ int which(int (***)(int)) { return 3; }
 int (*g)(int) = twice;
 int (**gg)(int) = &g;
 struct S { int (**m)(int); int (*(*n))(int); };
-void call(int (**a)(int)) { println((*a)(4)); }
-void call2(int (*(*a))(int)) { println((*a)(5)); }
+void call(int (**a)(int)) { std::println((*a)(4)); }
+void call2(int (*(*a))(int)) { std::println((*a)(5)); }
 int main()
 {
   int (*p)(int) = thrice;
   int (*(*pp))(int) = &p;
-  println((*pp)(5));
+  std::println((*pp)(5));
   *pp = twice;
-  println(p(5));
+  std::println(p(5));
   int (**qq)(int) = &p;
-  println((*qq)(6));
+  std::println((*qq)(6));
   int (***q3)(int) = &qq;
-  println((**q3)(6));
+  std::println((**q3)(6));
   int (*(*&rq))(int) = pp;
-  println((*rq)(7));
+  std::println((*rq)(7));
   int (**&rq2)(int) = qq;
-  println((*rq2)(8));
-  println((*gg)(3));
+  std::println((*rq2)(8));
+  std::println((*gg)(3));
   S s;
   s.m = &p;
   s.n = &g;
-  println((*s.m)(5), " ", (*s.n)(6));
+  std::println((*s.m)(5), " ", (*s.n)(6));
   call(&p);
   call2(&g);
-  println(which(p), " ", which(pp), " ", which(qq), " ", which(q3), " ", which(gg));
+  std::println(which(p), " ", which(pp), " ", which(qq), " ", which(q3), " ", which(gg));
   return 0;
 }

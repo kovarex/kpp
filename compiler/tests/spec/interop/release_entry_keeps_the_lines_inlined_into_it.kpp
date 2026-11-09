@@ -33,13 +33,13 @@ extern "C" import "dbghelp.h";
   if (captured == 2 && !found)
     found = SymGetLineFromAddr64(process, address, &displacement, &line);
   if (found)
-    println("line ", line.LineNumber);
+    std::println("line ", line.LineNumber);
   else
-    println("no line");
+    std::println("no line");
 }
 int main()
 {
-  println("from main");
+  std::println("from main");
   whereFrom();
   return 0;
 }
