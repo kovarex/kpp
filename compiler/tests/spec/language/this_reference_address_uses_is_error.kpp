@@ -1,0 +1,62 @@
+// spec: with --this-reference (design.md 23d) `this` is the object, so C++'s uses of it as the pointer are errors with their fix, write `&this`: returned or stored as a pointer, passed to a pointer parameter or through C's `...` (which would take the object itself), cast to a pointer type, compared with a pointer, assigned to one, deleted, and the place of a placement new; in a class template's member too, said once in the code's own walk
+// kpp: --this-reference
+// error: this_reference_address_uses_is_error.kpp:32: error: this is a reference (the object): write `&this`, not `this`
+// error: this_reference_address_uses_is_error.kpp:33: error: this is a reference (the object): write `&this`, not `this`
+// error: this_reference_address_uses_is_error.kpp:34: error: this is a reference (the object): write `&this`, not `this`
+// error: this_reference_address_uses_is_error.kpp:35: error: this is a reference (the object): write `&this`, not `this`
+// error: this_reference_address_uses_is_error.kpp:36: error: this is a reference (the object): write `&this`, not `this`
+// error: this_reference_address_uses_is_error.kpp:37: error: this is a reference (the object): write `&this`, not `this`
+// error: this_reference_address_uses_is_error.kpp:38: error: this is a reference (the object): write `&this`, not `this`
+// error: this_reference_address_uses_is_error.kpp:39: error: this is a reference (the object): write `&this`, not `this`
+// error: this_reference_address_uses_is_error.kpp:40: error: this is a reference (the object): write `&this`, not `this`
+// error: this_reference_address_uses_is_error.kpp:41: error: this is a reference (the object): write `&this`, not `this`
+// error: this_reference_address_uses_is_error.kpp:42: error: this is a reference (the object): write `&this`, not `this`
+// error: this_reference_address_uses_is_error.kpp:43: error: this is a reference (the object): write `&this`, not `this`
+// error: this_reference_address_uses_is_error.kpp:44: error: this is a reference (the object): write `&this`, not `this`
+// error: this_reference_address_uses_is_error.kpp:52: error: this is a reference (the object): write `&this`, not `this`
+// error: this_reference_address_uses_is_error.kpp:53: error: this is a reference (the object): write `&this`, not `this`
+// no-warning: this_reference_address_uses_is_error.kpp:45
+// no-warning: this_reference_address_uses_is_error.kpp:46
+extern "C" import "stdio.h";
+class Base
+{
+public:
+  int b = 3;
+  virtual ~Base() {}
+};
+void take(const Base* p) {}
+class Node : public Base
+{
+public:
+  int x = 5;
+  Node* returned() { return this; }
+  void stored() { Node* p = this; (void)p; }
+  void passed() const { take(this); }
+  void printed() const { printf("%p\n", this); }
+  const Base* cast() const { return static_cast<const Base*>(this); }
+  void* plainCast() { return (void*)this; }
+  bool compared(const Node& o) const { return this == &o; }
+  bool ordered(const Node* o) const { return this < o; }
+  void assigned(Node*& owner) { owner = this; }
+  void destroyed() { delete this; }
+  void replaced() { new (this) Node(); }
+  const Node* constCast() const { return const_cast<const Node*>(this); }
+  Base* dynamic() { return dynamic_cast<Base*>(this); }
+  Node& object() { return this; }
+  bool address(const Node& o) const { return &this == &o; }
+};
+template<class T> class Box
+{
+public:
+  T value{};
+  Box* self() { return this; }
+  void show() const { printf("%p\n", this); }
+};
+int main()
+{
+  Node n;
+  Box<int> b;
+  b.self();
+  b.show();
+  return n.x;
+}

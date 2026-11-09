@@ -425,6 +425,10 @@
     // walk; e is then made what the fix writes (`this.x`, `this`, the pointer's null test), so that its walk
     // goes on over every operand and says nothing more of it.
     void objectThisError(Expr* e);
+    // --this-reference: `this` the object where C++'s pointer was meant, e converted to `to`, a pointer type (or, with
+    // `always`, where nothing but the address can be meant: C's `...`): the error "write `&this`, not `this`", once,
+    // in the code's own walk. True when e is that `this`.
+    bool objectThisWherePointer(const Expr* e, const Ty* to, bool always = false);
     std::unordered_set<const Expr*> thisUsesNoted; // the `this` nodes a parent has spoken for
     std::unordered_set<const NameExpr*> thisRuleNoted; // the bare names required `this.` reported (bareMemberRule)
     // A declaration in kpp code named `This`, the keyword for the class around the code: an error (design.md 23c).
@@ -651,7 +655,7 @@
     // overload answers), and the code generator reports what it cannot convert, as before.
     // ambiguousOnly: an ambiguous conversion alone is the error (the chosen function's argument, which an
     // ambiguous conversion kept viable, C++ [over.best.ics] 10).
-    void checkClassToScalar(const Ty* from, const Ty* to, uint32_t token, bool ambiguousOnly = false);
+    void checkClassToScalar(const Ty* from, const Ty* to, uint32_t token, bool ambiguousOnly = false, const Expr* source = nullptr);
     // A construction of class t from args (a call of the class, a functional cast, `new T(args)`, a
     // variable's direct initialization) that no constructor takes, or takes ambiguously: an error, by
     // the rule codegen and the interpreter follow (chooseConstructor; design.md 24). Only in code

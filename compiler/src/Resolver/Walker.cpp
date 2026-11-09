@@ -2185,9 +2185,35 @@ auto GlobalScope::Impl::Walker::objectThisError(Expr* e) -> void
         c->cond = pointer(c->cond);
       }
       return;
+    case NodeKind::DeleteExpr: // `delete this`: delete takes the address
+      if (auto* d = static_cast<DeleteExpr*>(e); isObjectThis(d->operand))
+      {
+        fail(d->operand->token, "this is a reference (the object): write `&this`, not `this`");
+        d->operand = pointer(d->operand);
+      }
+      return;
+    case NodeKind::NewExpr: // `new (this) T`: the place is an address
+      for (Expr*& place : static_cast<NewExpr*>(e)->placement)
+        if (isObjectThis(place))
+        {
+          fail(place->token, "this is a reference (the object): write `&this`, not `this`");
+          place = pointer(place);
+        }
+      return;
     default:
       return;
   }
+}
+
+auto GlobalScope::Impl::Walker::objectThisWherePointer(const Expr* e, const Ty* to, bool always) -> bool
+{
+  if (!file || !file->thisReference || !isObjectThis(e) || probing || activeSubst)
+    return false;
+  if (!always && (!to || types.unqualified(types.stripRef(to))->kind != TyKind::Pointer))
+    return false;
+  if (thisUsesNoted.insert(e).second)
+    impl.reportCheckerError(file, e->token, "this is a reference (the object): write `&this`, not `this`");
+  return true;
 }
 
 auto GlobalScope::Impl::Walker::noteThisCondition(Node* cond) -> Node*
@@ -4005,7 +4031,7 @@ auto GlobalScope::Impl::Walker::bindOverloadSets(const std::vector<OverloadSetAr
       bindOverloadSet(s, fnTy->args[s.index]);
 }
 
-auto GlobalScope::Impl::Walker::checkClassToScalar(const Ty* from, const Ty* to, uint32_t token, bool ambiguousOnly) -> void
+auto GlobalScope::Impl::Walker::checkClassToScalar(const Ty* from, const Ty* to, uint32_t token, bool ambiguousOnly, const Expr* source) -> void
 {
   if (probing || activeSubst || !file || !from || !to || !from->isKnown() || !to->isKnown() || types.isDependent(from) ||
       types.isDependent(to))
@@ -4050,6 +4076,8 @@ auto GlobalScope::Impl::Walker::checkClassToScalar(const Ty* from, const Ty* to,
                                            "(...) takes it");
     return;
   }
+  if (objectThisWherePointer(source, to)) // `take(this)` for a C*: C++'s pointer
+    return;
   impl.reportCheckerError(file, token, "a class (" + types.toString(f, &symbols) + ") does not convert to " + types.toString(t, &symbols) +
                                          ": it has no implicit conversion operator to a scalar");
 }
@@ -5209,7 +5237,10 @@ auto GlobalScope::Impl::Walker::checkScalarArguments(FunctionDecl* f, const Ty* 
     return;
   for (size_t i = 0; i < args.size() && i < fnTy->args.size(); ++i)
     if (args[i] && args[i]->kind != NodeKind::BraceInitExpr && argTypes[i] && argTypes[i]->kind != TyKind::Pack)
-      checkClassToScalar(argTypes[i], fnTy->args[i], args[i]->token, ambiguousOnly);
+      checkClassToScalar(argTypes[i], fnTy->args[i], args[i]->token, ambiguousOnly, args[i]);
+  if (fnTy->variadic) // `printf("%p", this)`: C's `...` would take the object itself
+    for (size_t i = fnTy->args.size(); i < args.size(); ++i)
+      objectThisWherePointer(args[i], nullptr, true);
 }
 
 auto GlobalScope::Impl::Walker::checkReferenceArguments(FunctionDecl* f, const Ty* fnTy, const Span<Expr*>& args, const std::string& callee) -> void
@@ -7722,6 +7753,20 @@ auto GlobalScope::Impl::Walker::typeOfBinary(BinaryExpr* b) -> const Ty*
   FunctionDecl* callee = nullptr;
   bool member = false;
   const Ty* t = typeOfBinaryOperator(b, call, callee, member);
+  if (file && file->thisReference && !b->isKeyword && call != OperatorCall::Function && call != OperatorCall::Rewritten)
+    switch (P(b->op))
+    {
+      case P::EqEq: case P::NotEq: case P::Less: case P::Greater: case P::LessEq: case P::GreaterEq: case P::Spaceship:
+        // `this == &other`, `this < p`: C++'s pointers compared
+        objectThisWherePointer(b->lhs, b->rhs ? b->rhs->ty : nullptr);
+        objectThisWherePointer(b->rhs, b->lhs ? b->lhs->ty : nullptr);
+        break;
+      case P::Assign: // `owner = this;`
+        objectThisWherePointer(b->rhs, b->lhs ? b->lhs->ty : nullptr);
+        break;
+      default:
+        break;
+    }
   recordOperatorCall(b, t, b->lhs, b->rhs, call, callee, member);
   return t;
 }
@@ -9479,7 +9524,7 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
       if (v->init && declared && !impl.containsAuto(declared) && !v->bracedInit && v->init->kind != NodeKind::BraceInitExpr &&
           !(v->init->kind == NodeKind::FunctionalCastExpr && static_cast<FunctionalCastExpr*>(v->init)->type == v->type))
       {
-        checkClassToScalar(argumentType(v->init, initTy, types), declared, v->init->token);
+        checkClassToScalar(argumentType(v->init, initTy, types), declared, v->init->token, false, v->init);
         checkExplicitCopy(argumentType(v->init, initTy, types), declared, v->init->token); // `Strict s = 5;` (an lvalue as one: `B&& x = a;` takes `implicit B(A&)`)
       }
       if (v->init && declared && !impl.containsAuto(declared) && !v->bracedInit && v->init->kind == NodeKind::BraceInitExpr)
@@ -10374,6 +10419,7 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
             }
             else
             {
+              objectThisWherePointer(value, ft->inner); // `return this;` from a function returning C*
               checkExplicitCopy(t, ft->inner, value->token);
               checkClosureConversion(value, ft->inner, value->token); // `return l2;` from a function returning `const decltype(l1)&`
               // `int& get() const { return this->v; }`: the result, a non-const reference, given a const object.
@@ -10711,6 +10757,7 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
       walkType(c->type);
       const Ty* operand = walkExpr(c->operand);
       const Ty* t = typeOf(c->type);
+      objectThisWherePointer(c->operand, t); // `(void*)this`
       // `(double (*)(double))twice`: an overloaded function's name takes the overload of the cast's
       // type ([over.over] 1, an explicit conversion), as an initializer's does; it took the first one
       bindTemplateAddresses(c->operand, t);
@@ -10723,6 +10770,7 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
       walkType(c->type);
       const Ty* operand = walkExpr(c->operand);
       const Ty* t = typeOf(c->type);
+      objectThisWherePointer(c->operand, t); // `static_cast<Base*>(this)`
       if (c->castKind == Kw::static_cast_)
       {
         bindTemplateAddresses(c->operand, t); // (`static_cast<long long (*)(long long)>(twice)`: as the C-style cast above)

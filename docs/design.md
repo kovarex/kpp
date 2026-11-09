@@ -2436,12 +2436,16 @@ see what `*this` gives them, and `&this` as the pointer itself (form 2), never a
 `[&this]` is C++'s `[this]` capture. These are errors with their fix: `this->x` of a class with no
 operator-> ("write `this.`, not `this->`"), `*this` of a class with no operator* ("write `this`, not
 `*this`"), `[this]` ("write `&this`, not `this`"), and a `[=]` lambda that uses the object ("write `=,
-&this`, not `=`"). The null tests have no fix: `if (this)`, `this == nullptr` and `this &&`. `!this` acts on
+&this`, not `=`"), and C++'s uses of `this` as the pointer ("write `&this`, not `this`"; 2026-11-09):
+returned, stored or assigned as a pointer, passed to a pointer parameter or through C's `...` (which would
+take the object itself, silently), cast to a pointer type, compared with a pointer where no operator of the
+class takes it, deleted, and the place of a placement new. One converted to a template's own parameter
+type is left to codegen's error. The null tests have no fix: `if (this)`, `this == nullptr` and `this &&`. `!this` acts on
 the object, as said above. The plan (A-plan-this-reference in the coordinator's notes): C's converter
 writes the new forms and the game builds with the option, then ours, then the default with the stdlib
 converted. Specs language/this_is_a_reference, this_is_a_reference_through_bases_and_constants,
-this_reference_old_forms_is_error, this_reference_capture_of_this_is_error and
-this_reference_keeps_the_pointer_in_the_standard_library.
+this_reference_old_forms_is_error, this_reference_address_uses_is_error,
+this_reference_capture_of_this_is_error and this_reference_keeps_the_pointer_in_the_standard_library.
 
 ### 23e. A fix in a message (F, 2026-11-07)
 An error or warning whose fix is mechanical ends, before any " (design.md N)", with exactly one of two
