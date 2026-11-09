@@ -1392,14 +1392,13 @@ auto GlobalScope::Impl::constName(NameExpr* n, const TypeContext& ctx) -> std::o
     return b ? std::optional<ConstValue>(ConstValue::integer(*b, types.boolType())) : std::nullopt;
   };
   Lookup l = lookupQualified(n->name, ctx.scope, ctx.locals, 1, ctx.subst, ctx.elementPacks, ctx.elementIndex);
-  if (l.found == Found::No && !n->resolved && n->name.parts.size() == 1 && n->name.parts[0].hasTemplateArgs &&
-      isBoolTraitName(n->name.parts[0].symbol))
+  if (const NamePart* trait = l.found == Found::No && !n->resolved ? boolTraitPart(n->name, ctx.scope, ctx.locals, 1) : nullptr)
   {
     // `isSame<T, int>` as a constant (an if constexpr condition under the substitution).
-    std::vector<const Ty*> a = traitArgs(n->name.parts[0], ctx, 1);
+    std::vector<const Ty*> a = traitArgs(*trait, ctx, 1);
     if (a.empty())
       return std::nullopt;
-    return boolean(traitValue(symbols.name(n->name.parts[0].symbol), a));
+    return boolean(traitValue(symbols.name(trait->symbol), a));
   }
   // `if constexpr (has_get_entity<OwnerType>)`: a concept for these arguments, not the value its
   // requires-expression was last typed to.
@@ -1965,9 +1964,9 @@ auto GlobalScope::Impl::constCall(CallExpr* c, const TypeContext& ctx, int depth
   // `UnderlyingType<E>(value)`, `Conditional<isSigned<U>, int64_t, uint64_t>(value)`: a functional cast to the type the
   // built-in trait gives, as the walk types the call (typeOfCall), which converts as `T(value)` does below. The name is
   // no function (or the library's struct of the name, which the trait is not).
-  if (!d && callee->name.parts.size() == 1 && callee->name.parts[0].hasTemplateArgs && isTypeTraitName(callee->name.parts[0].symbol))
+  if (const NamePart* traitPart = d ? nullptr : typeTraitPart(callee->name, ctx.scope, ctx.locals, depth + 1))
   {
-    const Ty* to = typeTrait(callee->name.parts[0], ctx, depth + 1);
+    const Ty* to = typeTrait(*traitPart, ctx, depth + 1);
     to = to && to->isKnown() ? types.unqualified(to) : nullptr;
     if (to && (to->isArithmetic() || to->kind == TyKind::Enum) && c->args.size() <= 1)
       return c->args.empty() ? constConverted(ConstValue::integer(0), to) : constConverted(constValue(c->args[0], ctx, depth + 1), to);
@@ -2512,7 +2511,10 @@ auto GlobalScope::Impl::constFreeFunction(uint32_t symbol, const std::vector<con
   std::vector<Scope*> places;
   for (const Ty* a : argTypes)
     if (const Ty* t = a ? types.stripRef(a) : nullptr; t && (t->kind == TyKind::Class || t->kind == TyKind::Enum) && t->decl)
+    {
       places.push_back(lexicalScopeOf(t->decl));
+      associatedNamespaces(t, places); // (its bases' and its arguments' too, [basic.lookup.argdep] 2)
+    }
   places.push_back(scope);
   // Every place's functions ranked together, as C++ ranks argument-dependent lookup's and ordinary
   // lookup's (the walker's operatorFunction and GlobalScope::findFree do the same): from each place

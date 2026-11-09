@@ -279,6 +279,19 @@ void runParse(Build& build)
       parsed[i]->lambdaTag = i < build.lambdaTags.size() ? build.lambdaTags[i] : 0;
       std::string library = options.libraryRoot.string();
       parsed[i]->isLibrary = !library.empty() && parsed[i]->path.compare(0, library.size(), library) == 0;
+      parsed[i]->stdScope = options.stdScope;
+      // --std-scope: the standard library is the scoped library std (design.md 16), but for C's names, which clib/ declares.
+      if (options.stdScope && parsed[i]->isLibrary)
+      {
+        std::string_view inside = std::string_view(parsed[i]->path).substr(library.size());
+        while (!inside.empty() && (inside[0] == '/' || inside[0] == '\\'))
+          inside.remove_prefix(1);
+        if (!(inside.starts_with("clib") && inside.size() > 4 && (inside[4] == '/' || inside[4] == '\\')))
+        {
+          parsed[i]->library = "std";
+          parsed[i]->libraryScope = symbols.intern("std");
+        }
+      }
       // (the standard library and what kpp generates, `<tests>.kpp` and `<config>`, keep C++'s pointer until the
       // meaning becomes the default, design.md 23d)
       parsed[i]->thisReference = options.thisReference && !parsed[i]->isLibrary && !(parsed[i]->path.size() && parsed[i]->path[0] == '<');

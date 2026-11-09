@@ -613,6 +613,15 @@ auto GlobalScope::Impl::lookupUnqualified(uint32_t symbol, Scope* context, const
       via = viaFound ? sameNameTogether(via, one, depth) : one;
       viaFound = true;
     }
+    if (s == &root && stdScope)
+    {
+      Lookup bridged = own;
+      if (bridgedToStd(symbol, bridged, ownFound, depth) && found(bridged))
+      {
+        own = bridged;
+        ownFound = true;
+      }
+    }
     if (ownFound && viaFound)
       return sameNameTogether(own, via, depth);
     if (ownFound)
@@ -707,11 +716,21 @@ auto GlobalScope::Impl::associatedNamespaces(const Ty* t, std::vector<Scope*>& o
   Scope* s = own ? own->parent : lexicalScopeOf(t->decl);
   while (s && s->kind != ScopeKind::Namespace)
     s = s->parent;
-  if (s && s != &root && std::find(out.begin(), out.end(), s) == out.end())
+  if (s && (s != &root || stdScope) && std::find(out.begin(), out.end(), s) == out.end()) // (the global scope: only a code in std misses it by ordinary lookup)
     out.push_back(s);
   if (t->kind == TyKind::Class)
+  {
     for (const Ty* a : t->args)
       associatedNamespaces(a, out, depth + 1);
+    // A base class's namespace is associated as the class's own is ([basic.lookup.argdep] 2.2).
+    if (ClassDecl* def = types.isDependent(t) ? nullptr : classDefinition(t))
+    {
+      std::vector<const Ty*> bases;
+      directBases(t, def, bases);
+      for (const Ty* b : bases)
+        associatedNamespaces(b, out, depth + 1);
+    }
+  }
 }
 
 auto GlobalScope::Impl::hiddenFriendsOf(ClassDecl* def, uint32_t symbol) -> const std::vector<Entry>*
@@ -1444,6 +1463,43 @@ auto GlobalScope::Impl::lookupInScopeOrPrivate(Scope* s, Scope* context, uint32_
   return lookupInScope(s, symbol, out, depth);
 }
 
+auto GlobalScope::Impl::bridgedToStd(uint32_t symbol, Lookup& out, bool found, int depth) -> bool
+{
+  Lookup library;
+  if (!stdScope || !lookupInScope(stdScope, symbol, library, depth))
+    return found;
+  if (!found)
+    out = library;
+  else if (out.decl && out.decl->kind == NodeKind::FunctionDecl && library.decl && library.decl->kind == NodeKind::FunctionDecl)
+    out = sameNameTogether(out, library, depth);
+  return true;
+}
+
+auto GlobalScope::Impl::moveBareSpecializationsToStd() -> void
+{
+  if (!stdScope)
+    return;
+  for (uint32_t i = 0; i < root.shardCount; ++i)
+  {
+    std::vector<uint32_t> emptied;
+    for (auto& [symbol, entries] : root.shards[i].map)
+    {
+      auto isSpecialization = [](const Entry& e) { return e.decl && e.decl->kind == NodeKind::ClassDecl && (e.decl->flags & DF_Specialization); };
+      if (std::none_of(entries.begin(), entries.end(), isSpecialization) || !stdScope->find(symbol) ||
+          std::any_of(entries.begin(), entries.end(), [](const Entry& e) { return e.decl && e.decl->kind == NodeKind::ClassDecl && !(e.decl->flags & DF_Specialization); }))
+        continue;
+      for (const Entry& e : entries)
+        if (isSpecialization(e))
+          stdScope->add(symbol, e.decl, e.scope);
+      entries.erase(std::remove_if(entries.begin(), entries.end(), isSpecialization), entries.end());
+      if (entries.empty())
+        emptied.push_back(symbol);
+    }
+    for (uint32_t symbol : emptied)
+      root.shards[i].map.erase(symbol);
+  }
+}
+
 auto GlobalScope::Impl::lookupWritten(const QualifiedName& name, Scope* context, const LocalStack* locals, int depth, const Subst* subst,
                                       const std::vector<Decl*>* elementPacks, uint32_t elementIndex) -> Lookup
 {
@@ -1520,6 +1576,8 @@ auto GlobalScope::Impl::lookupWritten(const QualifiedName& name, Scope* context,
     if (current)
     {
       lookupInScopeOrPrivate(current, context, part.symbol, step, depth);
+      if (i == 0 && current == &root && stdScope)
+        bridgedToStd(part.symbol, step, step.found != Found::No, depth);
       if (currentTy)
         lookupThroughBaseInstances(currentTy, part.symbol, step, depth); // `G<0>::type` with G<N> : E<N> and E<0> a specialisation
       if (step.found == Found::No)

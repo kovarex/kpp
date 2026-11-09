@@ -1954,6 +1954,29 @@ glad stays unscoped, its build.kpp says why; CommonUtil, Agui and Util not this 
   Specs: language/text_check_pieces, language/text_check_pieces_mismatch_is_error,
   language/consteval_conversion_to_deduced_parameter(_mismatch_is_error).
 
+#### The standard library in `std` (kovarex, 2026-11-09; being built)
+
+"Map was renamed to Gamemap, and Vector to Vector2 because of the clashes with std ... Lets do std::String etc for now." The
+standard library becomes the scoped library `std`: `std::String`, `std::Vector`, `std::println`, `std::move`. kovarex's answers:
+
+1. Every name of it writes `std::`, functions too: no prelude.
+2. `using namespace std;` is an error, as for every library.
+3. A top-level `using std::String;` or `using IntMap = std::Map<int, int>;` is allowed, and reaches the whole program; a clash is the usual error.
+4. Error messages show `std::Map` everywhere.
+5. The game's renames (`Vector2D`, `GameMap`, `GameOptional`, `GamePair`, `GameRuntimeError`) go back, as a step of their own.
+
+What is not in `std`: C's names, `stdlib/clib/` (`malloc`, `sqrt`, `INT_MAX`, the C tags the platform layer shares with a program's
+C import), the allocation functions (`operator new`, global as C++'s), the compiler's built-in types. `extern "C"` keeps its C name.
+The compiler's built-in traits belong to `std` as the library's templates do: `std::isSame<A, B>`, `std::Conditional<c, A, B>`; and
+what the language means by a library name is that name, not whatever the program calls so (`T^` is `::std::UniquePtr<T>`).
+
+`--std-scope` turns it on, off by default, until the rewrite of every tree is done. While it is on, a name the global scope lacks
+is looked up in `std`, functions of one name in both are one overload set and a bare specialization (`template<> struct Hash<Key>`)
+specializes `std`'s template, so that code not yet rewritten keeps compiling. That bridge goes when the rewrite is done.
+
+Argument-dependent lookup follows C++ here: a base class's namespace is associated, and with `std` scoped the global namespace is
+one (a library template's `hashOf(key)` finds a program's global `hashOf(Key)`).
+
 ### 17. A self-contained release (decided 2026-11-02)
 
 kovarex, 2026-11-02, after the first installer asked for Visual Studio's clang: "I definetly want

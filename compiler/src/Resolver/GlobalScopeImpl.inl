@@ -25,6 +25,9 @@
   Scope root{ScopeKind::Namespace, nullptr, nullptr, 256};
   std::mutex deferredMutex;
   std::vector<std::pair<const ParsedFile*, Scope*>> privateScopes; // each file's private names (design.md 15), as indexFile made them
+  Scope* stdScope = nullptr;          // --std-scope: the standard library's names (design.md 16)
+  // Where the compiler finds what it names in the standard library: std, or the global scope without --std-scope.
+  Scope* stdlibScope() { return stdScope ? stdScope : &root; }
   std::vector<Scope*> libraryScopes; // each scoped library's names (design.md 16), by name once the index is finished
   std::vector<NamespaceDecl*> programNamespaces; // the top-level namespace blocks of the files of no scoped library
   std::unordered_set<uint32_t> unscopedLibraries; // the unscoped libraries' names, which qualify nothing (design.md 16)

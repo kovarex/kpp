@@ -1,0 +1,9 @@
+// spec: --std-scope: `using namespace std;` is an error, as for every library (kovarex, 2026-11-09; design.md 16)
+// factorio: none yet
+// kpp: --std-scope
+// error: std_scope_using_namespace_is_error.kpp:5: error: 'std' is a library: its names are written std::name
+using namespace std;
+int main()
+{
+  return 0;
+}

@@ -1,0 +1,32 @@
+// spec: argument-dependent lookup reaches the namespace of each of the argument's base classes ([basic.lookup.argdep] 2.2): `measure(d)` with D : Shapes::Base finds Shapes::measure, and an operator too; found by the --std-scope run (a class derived from Vector compared with <)
+// factorio: none yet
+namespace Shapes
+{
+  struct Base
+  {
+    int value;
+  };
+  int measure(const Base& b)
+  {
+    return b.value + 1;
+  }
+  bool operator<(const Base& a, const Base& b)
+  {
+    return a.value < b.value;
+  }
+}
+struct Derived : Shapes::Base
+{
+};
+struct Further : Derived
+{
+};
+int main()
+{
+  Derived d;
+  d.value = 3;
+  Further f;
+  f.value = 7;
+  println(measure(d), " ", measure(f), " ", d < f);
+  return 0;
+}

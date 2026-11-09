@@ -815,7 +815,7 @@ auto codegen::Emitter::lvalue(Expr* e) -> std::string
     {
       auto* n = static_cast<NameExpr*>(e);
       Decl* d = n->resolved;
-      if (!d && n->name.parts.size() == 1 && n->name.parts[0].hasTemplateArgs && e->ty && e->ty->kind == TyKind::Bool)
+      if (!d && (n->name.parts.size() == 1 || (n->name.parts.size() == 2 && sym(n->name.parts[0].symbol) == "std")) && n->name.last().hasTemplateArgs && e->ty && e->ty->kind == TyKind::Bool)
         break; // a builtin trait (`isSame<int, int>`, left unresolved, typed bool) bound to a reference: its value goes to a temporary (below)
       if (!d)
         unsupported(e, "an unresolved name (" + sym(n->name.last().symbol) + ")", !(n->name.parts.size() == 1 && global.undeclaredReported(sym(n->name.last().symbol))));

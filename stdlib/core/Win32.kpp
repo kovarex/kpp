@@ -7,17 +7,6 @@
 // passes its own storage of the same layout as them; the one enumeration taken by value is defined
 // as windows.h defines it.
 
-struct _SECURITY_ATTRIBUTES;
-struct _RTL_SRWLOCK;            // SRWLOCK: one pointer, zero when unlocked
-struct _RTL_CONDITION_VARIABLE; // CONDITION_VARIABLE: one pointer, zero when initialised
-struct _FILETIME;               // two 32-bit halves of a 64-bit count of 100 ns ticks since 1601
-struct _WIN32_FIND_DATAW;
-struct _BY_HANDLE_FILE_INFORMATION;
-struct _OVERLAPPED;
-union _LARGE_INTEGER;  // a 64-bit signed integer
-union _ULARGE_INTEGER; // a 64-bit unsigned integer
-enum _GET_FILEEX_INFO_LEVELS { GetFileExInfoStandard, GetFileExMaxInfoLevel };
-
 namespace win32
 {
   // The wide environment (getenv, FilesWindows.kpp)

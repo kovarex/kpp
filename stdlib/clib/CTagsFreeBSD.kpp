@@ -1,0 +1,13 @@
+requires config::platform == Platform::FreeBSD;
+// kpp standard library: FreeBSD's C tags, global as every C name is, so that a program's import of the C headers declares the same types (--std-scope, design.md 16).
+
+// pthreads' types, as sys/_pthreadtypes.h names them: each a pointer to a struct the C library
+// allocates (`typedef struct pthread_mutex *pthread_mutex_t;`). The structs are declared by their
+// tags, so that a program's import of pthread.h declares the functions that take them the same way.
+struct pthread;
+struct pthread_attr;
+struct pthread_mutex;
+struct pthread_cond;
+struct pthread_rwlock;
+// A directory stream, as dirent.h names it: `typedef struct _dirdesc DIR;`.
+struct _dirdesc;

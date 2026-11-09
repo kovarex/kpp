@@ -1657,9 +1657,9 @@ auto GlobalScope::Impl::constraintValue(Expr* e, Decl* f, const Subst& s, int de
   if (e->kind == NodeKind::NameExpr)
   {
     auto* n = static_cast<NameExpr*>(e);
-    if (n->name.parts.size() == 1 && n->name.parts[0].hasTemplateArgs && isBoolTraitName(n->name.parts[0].symbol))
+    if (const NamePart* trait = boolTraitPart(n->name, ctx.scope, ctx.locals, depth + 1))
     {
-      std::vector<const Ty*> args = traitArgs(n->name.parts[0], ctx, depth + 1);
+      std::vector<const Ty*> args = traitArgs(*trait, ctx, depth + 1);
       if (args.empty())
       {
         // Arguments that do not form for known parameters (`decltype(declval<T>().str())` for
@@ -2003,7 +2003,8 @@ auto GlobalScope::Impl::undeclaredNameIn(Expr* e, Decl* f, const LocalStack& own
     case NodeKind::NameExpr:
     {
       auto* n = static_cast<NameExpr*>(e);
-      if (n->name.empty() || (n->name.parts.size() == 1 && (isBoolTraitName(n->name.parts[0].symbol) || builtinByName(n->name.parts[0].symbol))))
+      if (n->name.empty() || (n->name.parts.size() == 1 && (isBoolTraitName(n->name.parts[0].symbol) || builtinByName(n->name.parts[0].symbol))) ||
+          boolTraitPart(n->name, lexicalScopeOf(f), &own, depth + 1))
         return {};
       Lookup l = lookupQualified(n->name, lexicalScopeOf(f), &own, depth + 1);
       if (l.found != Found::No || l.decl)
@@ -2681,7 +2682,9 @@ auto GlobalScope::Impl::sameFunction(FunctionDecl* a, FunctionDecl* b) -> bool
   // A function declared `extern "C"` and then defined without it is one C function (C++
   // [dcl.link] 5: the later declaration takes the earlier one's linkage), as Lua's
   // lua_getnresults is in lua.kpp and ldebug.kpp.
-  if (!(isCFunction(a) && isCFunction(b)) && homeScope(a) != homeScope(b))
+  // (--std-scope's bridge, Lookup.hpp: until programs write std::, the global scope and std are one overload set)
+  auto home = [this](FunctionDecl* f) { Scope* s = homeScope(f); return s == stdScope ? &root : s; };
+  if (!(isCFunction(a) && isCFunction(b)) && home(a) != home(b))
     return false;
   // Two definitions of one signature that constraints tell apart are two overloads (`requires A<T>`
   // and `requires B<T>`, `template<Small T>` and `template<SmallInt T>`), never one function

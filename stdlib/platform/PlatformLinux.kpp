@@ -1,17 +1,6 @@
 requires config::platform == Platform::Linux;
 // What glibc has its own way in the platform layer (PlatformPosix.kpp; PlatformFreeBSD.kpp).
 
-// pthreads' types, as glibc's bits/pthreadtypes.h names them (a union each, pthread_attr_t's tagged,
-// the others' typedefs of untagged ones, which the C import names by the typedef): declared, not
-// defined, so that a program's import of pthread.h declares the functions that take them the same way,
-// and the library passes its own storage of their sizes.
-union pthread_attr_t;
-union pthread_mutex_t;
-union pthread_cond_t;
-union pthread_rwlock_t;
-// A directory stream, as dirent.h names it: `typedef struct __dirstream DIR;`.
-struct __dirstream;
-
 namespace posix
 {
   // errno, which glibc's errno.h defines as (*__errno_location()).

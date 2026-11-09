@@ -1,0 +1,13 @@
+// spec: --std-scope: a top-level `using std::String;` and an alias of a library name are allowed and reach the whole program (kovarex, 2026-11-09)
+// factorio: none yet
+// kpp: --std-scope
+using std::String;
+using IntMap = std::Map<int, int>;
+int main()
+{
+  String text("hello");
+  IntMap values;
+  values[3] = 4;
+  std::println(text, " ", values[3]);
+  return 0;
+}

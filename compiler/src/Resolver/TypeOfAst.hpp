@@ -92,6 +92,13 @@
 
   bool isTypeTraitName(uint32_t symbol);
 
+  // The part of `name` that is a built-in trait with its arguments (`Conditional<...>`; under --std-scope also
+  // `std::Conditional<...>`, and no program's own template of such a name), or null.
+  const NamePart* typeTraitPart(const QualifiedName& name, Scope* scope, const LocalStack* locals, int depth);
+  // The same for the bool-valued traits (`isSame<T, U>`, which the library does not declare: the compiler's).
+  const NamePart* boolTraitPart(const QualifiedName& name, Scope* scope, const LocalStack* locals, int depth);
+  const NamePart* traitPart(const QualifiedName& name, bool isTrait, Scope* scope, const LocalStack* locals, int depth);
+
   // RemoveConst<T> and the other type-valued traits; null when `part` is not one.
   const Ty* typeTrait(const NamePart& part, const TypeContext& ctx, int depth);
 

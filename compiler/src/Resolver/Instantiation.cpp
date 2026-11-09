@@ -142,8 +142,7 @@ auto GlobalScope::Impl::memberTypeOf(const Ty* t, uint32_t symbol, int depth) ->
                      !static_cast<NamedType*>(named)->name.parts[0].hasTemplateArgs;
     // `struct Const : Conditional<isIntegral<T>, Value<T>, T>`: a type trait, the class it picks
     // for these arguments (the lookup above searched the trait's own scope).
-    bool trait = named->kind == NodeKind::NamedType && static_cast<NamedType*>(named)->name.parts.size() == 1 &&
-                 static_cast<NamedType*>(named)->name.parts[0].hasTemplateArgs && isTypeTraitName(static_cast<NamedType*>(named)->name.parts[0].symbol);
+    bool trait = named->kind == NodeKind::NamedType && typeTraitPart(static_cast<NamedType*>(named)->name, ctx.scope, ctx.locals, depth + 1);
     if (!parameter && !trait)
       continue; // a written class's members were found by the lookup above
     for (const Ty* bt : baseInstances(b, ctx, depth + 1))
@@ -505,11 +504,11 @@ auto GlobalScope::Impl::templateArgument(Node* arg, Decl* param, const TypeConte
   if (arg->kind == NodeKind::NamedType)
   {
     const QualifiedName& an = static_cast<NamedType*>(arg)->name;
-    if (an.parts.size() == 1 && an.parts[0].hasTemplateArgs && isBoolTraitName(an.parts[0].symbol))
+    if (const NamePart* trait = boolTraitPart(an, ctx.scope, ctx.locals, depth + 1))
     {
       // `EnableIf<isIntegral<T>>`: a trait's value, once its arguments are known.
-      std::vector<const Ty*> targs = traitArgs(an.parts[0], ctx, depth + 1);
-      std::optional<bool> b = targs.empty() ? std::nullopt : traitValue(symbols.name(an.parts[0].symbol), targs);
+      std::vector<const Ty*> targs = traitArgs(*trait, ctx, depth + 1);
+      std::optional<bool> b = targs.empty() ? std::nullopt : traitValue(symbols.name(trait->symbol), targs);
       return b ? types.valueType(types.boolType(), *b ? 1 : 0) : types.unknown();
     }
     // `Array<char, bufferSize>`: a bare name is a type to the parser; it may be a constant.
@@ -749,7 +748,7 @@ auto GlobalScope::Impl::isLibraryFunction(const Decl* d, bool impl) -> bool
       static_cast<const ClassDecl*>(d)->name.last().symbol != (impl ? functionImplSymbolId() : functionSymbolId()))
     return false;
   Lookup l;
-  return lookupInScope(&root, impl ? functionImplSymbolId() : functionSymbolId(), l, 0) && (l.decl == d || (l.scope && l.scope->owner == d));
+  return lookupInScope(stdlibScope(), impl ? functionImplSymbolId() : functionSymbolId(), l, 0) && (l.decl == d || (l.scope && l.scope->owner == d));
 }
 
 auto GlobalScope::Impl::functionOfSignature(const Ty* signature) -> const Ty*
@@ -757,7 +756,7 @@ auto GlobalScope::Impl::functionOfSignature(const Ty* signature) -> const Ty*
   if (!signature || signature->kind != TyKind::Function)
     return nullptr;
   Lookup implLookup;
-  if (!lookupInScope(&root, functionImplSymbolId(), implLookup, 0) || !implLookup.scope || !implLookup.scope->owner)
+  if (!lookupInScope(stdlibScope(), functionImplSymbolId(), implLookup, 0) || !implLookup.scope || !implLookup.scope->owner)
     return nullptr;
   std::vector<const Ty*> implArgs{signature->inner};
   for (const Ty* a : signature->args)
@@ -770,7 +769,7 @@ auto GlobalScope::Impl::initializerListDecl() -> Decl*
   if (initializerListSymbol_ == UINT32_MAX)
     initializerListSymbol_ = symbols.intern("InitializerList");
   Lookup l;
-  if (lookupInScope(&root, initializerListSymbol_, l, 0) && l.scope && l.scope->owner)
+  if (lookupInScope(stdlibScope(), initializerListSymbol_, l, 0) && l.scope && l.scope->owner)
     return l.scope->owner;
   return nullptr;
 }
@@ -785,7 +784,7 @@ auto GlobalScope::Impl::textDecl() -> Decl*
   if (textSymbol_ == UINT32_MAX)
     textSymbol_ = symbols.intern("Text");
   Lookup l;
-  if (lookupInScope(&root, textSymbol_, l, 0) && l.scope && l.scope->owner && l.scope->owner->kind == NodeKind::ClassDecl)
+  if (lookupInScope(stdlibScope(), textSymbol_, l, 0) && l.scope && l.scope->owner && l.scope->owner->kind == NodeKind::ClassDecl)
     return l.scope->owner;
   return nullptr;
 }
@@ -811,10 +810,10 @@ auto GlobalScope::Impl::callIntrinsicOf(const FunctionDecl* f) -> CallIntrinsic
   std::call_once(callIntrinsicsOnce, [this]
   {
     auto isReference = [](const Type* t) { return t && (t->kind == NodeKind::LRefType || t->kind == NodeKind::RRefType); };
-    // (the root scope's entries as indexed, read directly: no walk's lookup, whose dependencies this would join)
+    // (the library scope's entries as indexed, read directly: no walk's lookup, whose dependencies this would join)
     for (auto [name, which] : {std::pair<const char*, CallIntrinsic>{"move", CallIntrinsic::Move}, {"forward", CallIntrinsic::Forward},
                                {"asConst", CallIntrinsic::AsConst}})
-      if (const std::vector<Entry>* entries = root.find(symbols.intern(name)))
+      if (const std::vector<Entry>* entries = stdlibScope()->find(symbols.intern(name)))
         for (const Entry& e : *entries)
         {
           if (!e.decl || e.decl->kind != NodeKind::FunctionDecl)
@@ -925,7 +924,7 @@ auto GlobalScope::Impl::textParameterOf(const Ty* ft) -> size_t
 auto GlobalScope::Impl::libraryDecl(std::string_view name, NodeKind kind) -> Decl*
 {
   Lookup l;
-  if (!lookupInScope(&root, symbols.intern(name), l, 0))
+  if (!lookupInScope(stdlibScope(), symbols.intern(name), l, 0))
     return nullptr;
   if (kind == NodeKind::ClassDecl)
     return l.scope && l.scope->owner && l.scope->owner->kind == NodeKind::ClassDecl ? l.scope->owner : nullptr;
@@ -995,7 +994,7 @@ auto GlobalScope::Impl::textPieceOf(const Expr* e, const Ty* given) -> TextPiece
     // free `void appendTo(T value, String& out)` (design.md 14: the member of every type, the
     // program writing none of its own), taking the type itself: no promotion or conversion
     // reaches one (an unscoped enumeration prints as itself, never as the integer it converts to).
-    FunctionDecl* f = constFreeFunction(appendTo, {types.lref(types.qualified(t, true, false)), types.lref(string)}, &root, true);
+    FunctionDecl* f = constFreeFunction(appendTo, {types.lref(types.qualified(t, true, false)), types.lref(string)}, stdlibScope(), true);
     const Ty* ft = f && f->file && f->file->isLibrary ? declaredTypeOf(f, nullptr, 0) : nullptr;
     const Ty* takes = ft && ft->kind == TyKind::Function && ft->args.size() == 2 ? types.unqualified(types.stripRef(ft->args[0])) : nullptr;
     if (takes && (!f->templateParams.empty() || takes == t))
@@ -1013,7 +1012,7 @@ auto GlobalScope::Impl::enumFromStrDecl() -> Decl*
   if (enumFromStrSymbol_ == UINT32_MAX)
     enumFromStrSymbol_ = symbols.intern("enumFromStr");
   Lookup l;
-  if (lookupInScope(&root, enumFromStrSymbol_, l, 0) && l.decl && l.decl->kind == NodeKind::FunctionDecl)
+  if (lookupInScope(stdlibScope(), enumFromStrSymbol_, l, 0) && l.decl && l.decl->kind == NodeKind::FunctionDecl)
     return l.decl;
   return nullptr;
 }
@@ -1023,7 +1022,7 @@ auto GlobalScope::Impl::optionalDecl() -> Decl*
   if (optionalSymbol_ == UINT32_MAX)
     optionalSymbol_ = symbols.intern("Optional");
   Lookup l;
-  if (lookupInScope(&root, optionalSymbol_, l, 0) && l.decl && l.decl->kind == NodeKind::ClassDecl && !l.decl->templateParams.empty())
+  if (lookupInScope(stdlibScope(), optionalSymbol_, l, 0) && l.decl && l.decl->kind == NodeKind::ClassDecl && !l.decl->templateParams.empty())
     return l.decl;
   return nullptr;
 }
@@ -1033,7 +1032,7 @@ auto GlobalScope::Impl::strongOrderingDecl() -> Decl*
   if (strongOrderingSymbol_ == UINT32_MAX)
     strongOrderingSymbol_ = symbols.intern("strong_ordering");
   Lookup l;
-  if (lookupInScope(&root, strongOrderingSymbol_, l, 0) && l.scope && l.scope->owner)
+  if (lookupInScope(stdlibScope(), strongOrderingSymbol_, l, 0) && l.scope && l.scope->owner)
     return l.scope->owner;
   return nullptr;
 }
@@ -1049,7 +1048,7 @@ auto GlobalScope::Impl::typeInfoDecl() -> Decl*
   if (typeInfoSymbol_ == UINT32_MAX)
     typeInfoSymbol_ = symbols.intern("TypeInfo");
   Lookup l;
-  if (lookupInScope(&root, typeInfoSymbol_, l, 0) && l.scope && l.scope->owner)
+  if (lookupInScope(stdlibScope(), typeInfoSymbol_, l, 0) && l.scope && l.scope->owner)
     return l.scope->owner;
   return nullptr;
 }
@@ -1059,7 +1058,7 @@ auto GlobalScope::Impl::isFunctionImpl(const Ty* t) -> bool
   if (!t || t->kind != TyKind::Class || !t->decl || t->decl->kind != NodeKind::ClassDecl)
     return false;
   const QualifiedName& n = static_cast<ClassDecl*>(t->decl)->name;
-  return !n.empty() && n.last().symbol == functionImplSymbolId();
+  return !n.empty() && n.last().symbol == functionImplSymbolId() && (!stdScope || (t->decl->file && t->decl->file->isLibrary));
 }
 
 auto GlobalScope::Impl::callableWith(const Ty* a, const Ty* impl, int depth) -> bool
@@ -1458,7 +1457,7 @@ auto GlobalScope::Impl::typeOfTypeDecl(Decl* d, const Lookup& l, const NamePart&
         if (signature && signature->kind == TyKind::Function)
         {
           Lookup implLookup;
-          if (lookupInScope(&root, symbols.intern("FunctionImpl"), implLookup, 0) && implLookup.scope && implLookup.scope->owner)
+          if (lookupInScope(stdlibScope(), symbols.intern("FunctionImpl"), implLookup, 0) && implLookup.scope && implLookup.scope->owner)
           {
             std::vector<const Ty*> implArgs{signature->inner};
             for (const Ty* a : signature->args)
@@ -1700,8 +1699,8 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
       if (n->resolved && (n->resolved->kind == NodeKind::ParamDecl || (n->resolved->kind == NodeKind::VariableDecl && !(n->resolved->flags & DF_Typedef))))
         if (const Ty* vt = declaredTypeOf(n->resolved, ctx.subst, depth + 1); vt && vt->isKnown() && !containsAuto(vt))
           return vt;
-      if (n->name.parts.size() == 1 && n->name.parts[0].hasTemplateArgs)
-        if (const Ty* trait = typeTrait(n->name.parts[0], ctx, depth))
+      if (const NamePart* part = typeTraitPart(n->name, ctx.scope, ctx.locals, depth))
+        if (const Ty* trait = typeTrait(*part, ctx, depth))
           return trait;
       // Under an instantiation the qualifier's arguments are known: `Pick<1, A, B>::Type` with
       // A = int finds the member in the specialisation those arguments pick.
@@ -2904,7 +2903,7 @@ auto GlobalScope::Impl::astNeedsArguments(Node* n, Scope* scope, const LocalStac
     case NodeKind::NamedType:
     {
       auto* named = static_cast<NamedType*>(n);
-      if (named->name.parts.size() == 1 && named->name.parts[0].hasTemplateArgs && isTypeTraitName(named->name.parts[0].symbol))
+      if (typeTraitPart(named->name, scope, locals, depth + 1))
         return true; // `RemoveReference<T>&&` (std::move's result): the trait of the deduced T, not T
       bool hasArgs = false;
       for (const NamePart& part : named->name.parts)

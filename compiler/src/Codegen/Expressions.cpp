@@ -1636,7 +1636,7 @@ auto codegen::Emitter::allocationFailure(Node* at, const std::string& stop) -> v
 auto codegen::Emitter::throwFromLibrary(const char* name, Node* at, const std::string& stop) -> void
 {
   // The library's function (its names are reserved: no program function takes its place).
-  FunctionDecl* thrower = global.findFreeFunction(name, {}, nullptr); // (from the global scope)
+  FunctionDecl* thrower = global.libraryFunction(name);
   if (thrower && thrower->file && thrower->file->isLibrary && thrower->params.empty())
   {
     emitCall("", "void " + useFunction(thrower, {}, nullptr, at) + "()", true);
@@ -1653,7 +1653,7 @@ auto codegen::Emitter::throwFromLibrary(const char* name, Node* at, const std::s
 auto codegen::Emitter::missingOperator(Node* at, const Ty* cls, const std::string& name) -> void
 {
   std::string className = qualifiedName(cls->decl);
-  if (name == "operator+=" && (className == "String" || className == "WString") && cls->decl->file && cls->decl->file->isLibrary)
+  if (name == "operator+=" && (global.isLibraryClass(cls, "String") || global.isLibraryClass(cls, "WString")))
     fail(at, className + " has no operator+=: `<<` appends to a " + className + " (docs/stdlib/text.md; design.md 14)");
   unsupported(at, className + " has no " + name);
 }

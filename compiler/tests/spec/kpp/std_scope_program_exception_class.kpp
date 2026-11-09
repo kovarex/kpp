@@ -1,0 +1,27 @@
+// spec: --std-scope: a program's own Exception holding a String is not taken for the library's (the code generator reads the library's message by its class)
+// factorio: none yet
+// kpp: --std-scope
+struct Exception
+{
+  std::String text;
+};
+int main()
+{
+  try
+  {
+    throw Exception{std::String("mine")};
+  }
+  catch (const Exception& e)
+  {
+    std::println(e.text);
+  }
+  try
+  {
+    throw std::RuntimeError("library");
+  }
+  catch (const std::Exception& e)
+  {
+    std::println(std::StringView(e.what()));
+  }
+  return 0;
+}

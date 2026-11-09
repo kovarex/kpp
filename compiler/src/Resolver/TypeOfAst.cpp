@@ -210,6 +210,31 @@ auto GlobalScope::Impl::isTypeTraitName(uint32_t symbol) -> bool
          name == "Conditional" || name == "EnableIf" || name == "VariantAlternative";
 }
 
+auto GlobalScope::Impl::typeTraitPart(const QualifiedName& name, Scope* scope, const LocalStack* locals, int depth) -> const NamePart*
+{
+  return traitPart(name, !name.empty() && name.last().symbol != UINT32_MAX && isTypeTraitName(name.last().symbol), scope, locals, depth);
+}
+
+auto GlobalScope::Impl::boolTraitPart(const QualifiedName& name, Scope* scope, const LocalStack* locals, int depth) -> const NamePart*
+{
+  return traitPart(name, !name.empty() && name.last().symbol != UINT32_MAX && isBoolTraitName(name.last().symbol), scope, locals, depth);
+}
+
+auto GlobalScope::Impl::traitPart(const QualifiedName& name, bool isTrait, Scope* scope, const LocalStack* locals, int depth) -> const NamePart*
+{
+  if (!isTrait || !name.last().hasTemplateArgs)
+    return nullptr;
+  if (!stdScope)
+    return name.parts.size() == 1 ? &name.parts[0] : nullptr;
+  if (name.parts.size() == 2 && name.parts[0].symbol == symStd)
+    return &name.parts[1];
+  if (name.parts.size() != 1)
+    return nullptr;
+  Lookup l = lookupUnqualified(name.parts[0].symbol, name.global ? &root : scope, locals, depth + 1);
+  // (`using UnderlyingType = UnderlyingType<E>;` in a function: the alias it declares is no template of the name)
+  return l.decl && !l.decl->templateParams.empty() && !(l.decl->file && l.decl->file->isLibrary) ? nullptr : &name.parts[0];
+}
+
 auto GlobalScope::Impl::typeTrait(const NamePart& part, const TypeContext& ctx, int depth) -> const Ty*
 {
   std::string_view name = symbols.name(part.symbol);
@@ -2076,7 +2101,7 @@ auto GlobalScope::Impl::namesTupleBinding(const Expr* e) -> bool
 auto GlobalScope::Impl::tupleSizeOf(const Ty* t, std::optional<int64_t>& size, int depth) -> bool
 {
   Lookup l;
-  if (!lookupInScope(&root, symTupleSize, l, depth + 1, false) || !l.decl)
+  if (!lookupInScope(stdlibScope(), symTupleSize, l, depth + 1, false) || !l.decl)
     return false;
   Decl* primary = nullptr;
   auto isPrimary = [](Decl* d) { return d && d->kind == NodeKind::ClassDecl && !(d->flags & DF_Specialization) && d->templateParams.size() == 1; };

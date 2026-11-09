@@ -50,6 +50,8 @@ void usage(FILE* out)
           "                list of the marks it may drop; docs/design.md \"Explicit by default\"); no other change\n"
           "  --this-warnings  warn of each unqualified name that finds a data member or a member function, which\n"
           "                required `this.` writes `this.x` (the readme's Planned); no error, no other change\n"
+          "  --std-scope  the standard library in the scoped library std: std::String, std::println (docs/design.md 16);\n"
+          "                a bare name that finds nothing still finds the library's, until the rewrite is done\n"
           "  --this-reference  `this` the kpp way in the program's own files (docs/design.md 23c, 23d): required\n"
           "                `this.` (a bare name is never a member: `this.x`, `This::count`), `this` a reference\n"
           "                (`this.x`, `return this;`, `&this` the pointer, `[&this]`; `this->`, `*this`, `[this]` errors)\n"

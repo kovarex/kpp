@@ -118,6 +118,15 @@ int helper(int) { return 2; }
 - **Why:** adding a library never changes or breaks existing code, and `zlib::close` says what it is.
 - **See:** [design 16][d16]; spec `kpp/using_namespace_of_a_library_is_error`.
 
+### The standard library is the library `std` (this stage)
+
+- **C++:** `std` is a namespace; `using namespace std;` is allowed, and a program may not add to it, apart from specializations.
+- **kpp:** `std` is a scoped library, so `using namespace std;` is an error, as for every library. Its names are kpp's (`std::String`,
+  `std::Vector`, `std::println`), and C's stay global, never `std::sqrt`. A top-level `using std::String;` is allowed and reaches the whole
+  program. Today the names are global (`String`); `--std-scope` moves them.
+- **Why:** a program's own `Map` or `Vector` stands beside the library's (kovarex, 2026-11-09).
+- **See:** [design 16][d16]; specs `kpp/std_scope_names`, `kpp/std_scope_using_namespace_is_error`.
+
 ### C is the only foreign language (built)
 
 - **C++:** C++ libraries are linked, and C headers are `#include`d.

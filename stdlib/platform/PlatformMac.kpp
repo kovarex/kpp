@@ -5,18 +5,6 @@ requires config::platform == Platform::Mac;
 // sys/statvfs.h, sys/dirent.h, sys/errno.h, time.h, unistd.h, fcntl.h). Written before an SDK was on
 // this machine (2026-11-07): what only a link and a run check is listed in docs/design.md (stage 8, M7).
 
-// pthreads' types, as sys/_pthread/_pthread_types.h names them: pthread_t a pointer to
-// `struct _opaque_pthread_t`, the others structs of a signature and opaque bytes. Declared by their
-// tags, so that a program's import of pthread.h declares the functions that take them the same way.
-struct _opaque_pthread_t;
-struct _opaque_pthread_attr_t;
-struct _opaque_pthread_mutex_t;
-struct _opaque_pthread_cond_t;
-struct _opaque_pthread_rwlock_t;
-// A directory stream, as dirent.h names it: `typedef struct { ... } DIR;`, a struct of no tag, which
-// the C import names by its typedef.
-struct DIR;
-
 namespace posix
 {
   // errno, which macOS's errno.h defines as (*__error()).

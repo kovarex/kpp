@@ -1,0 +1,7 @@
+requires config::platform != Platform::Windows;
+// kpp standard library: POSIX's clock's C tags, global as every C name is, so that a program's import of the C headers declares the same types (--std-scope, design.md 16).
+
+// struct timespec, both C libraries' (time_t and long: 16 bytes on LP64). Declared by its tag
+// alone, as the headers name it, so that a program's import of time.h declares these functions the
+// same way; the library passes its own storage of the same layout.
+struct timespec;

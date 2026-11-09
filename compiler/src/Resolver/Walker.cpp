@@ -1511,7 +1511,7 @@ auto GlobalScope::Impl::Walker::resolveTypeName(NamedType* t) -> void
   {
     if (t->name.parts.size() == 1 && impl.builtinByName(t->name.parts[0].symbol))
       ++stats.typesBuiltinByName;
-    else if (t->name.parts.size() == 1 && t->name.parts[0].hasTemplateArgs && impl.isTypeTraitName(t->name.parts[0].symbol))
+    else if (impl.typeTraitPart(t->name, scope, &locals, 0))
       ++stats.typesResolved; // RemoveConst<T> and friends
     else
     {
@@ -1520,8 +1520,7 @@ auto GlobalScope::Impl::Walker::resolveTypeName(NamedType* t) -> void
       // A type name nothing declares is an error where it is written, as an undeclared name is
       // (not `class X` in a template argument, which declares X; not a value trait, isConst<T>,
       // written where a type may be; not in a template's own walk: its instances say).
-      const NamePart& first = t->name.parts[0];
-      if (!t->elaborated && !(t->name.parts.size() == 1 && first.hasTemplateArgs && impl.isBoolTraitName(first.symbol)) && !inGenericTemplate())
+      if (!t->elaborated && !impl.boolTraitPart(t->name, scope, &locals, 0) && !inGenericTemplate())
         reportUndeclared(t->name, t->token);
     }
   }
@@ -1889,10 +1888,10 @@ auto GlobalScope::Impl::Walker::resolveName(NameExpr* e) -> const Ty*
     return unknown(Why::Unsupported);
   }
   walkType(e->name.typeQualifier); // `decltype(this->deviation)::CoordinateType::FractionalBits`
-  if (e->name.parts.size() == 1 && e->name.parts[0].hasTemplateArgs && impl.isBoolTraitName(e->name.parts[0].symbol))
+  if (const NamePart* trait = impl.boolTraitPart(e->name, scope, &locals, 0))
   {
     // A builtin trait: a bool the code generator evaluates once the arguments are known.
-    for (Node* arg : e->name.parts[0].templateArgs)
+    for (Node* arg : trait->templateArgs)
       walkNode(arg);
     e->resolved = nullptr;
     ++stats.namesGlobal;
@@ -6391,7 +6390,7 @@ auto GlobalScope::Impl::Walker::builtinMemberCall(CallExpr* c, MemberExpr* m, co
     argTypes.push_back(argumentType(a, walkExpr(a), types));
   std::vector<FunctionDecl*> candidates;
   Lookup l;
-  if (impl.lookupInScope(&impl.root, m->member.last().symbol, l, 0))
+  if (impl.lookupInScope(impl.stdlibScope(), m->member.last().symbol, l, 0))
   {
     if (l.overloads)
     {
@@ -6472,14 +6471,14 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
       record(n, types.function(t, {}, false));
       return t;
     }
-    if (n->name.parts.size() == 1 && n->name.parts[0].hasTemplateArgs && impl.isTypeTraitName(n->name.parts[0].symbol))
-      if (const Ty* trait = impl.typeTrait(n->name.parts[0], ctx(), 0); trait && trait->isKnown())
+    if (const NamePart* traitPart = impl.typeTraitPart(n->name, scope, &locals, 0))
+      if (const Ty* trait = impl.typeTrait(*traitPart, ctx(), 0); trait && trait->isKnown())
       {
         // `Conditional<isSigned<U>, int64_t, uint64_t>(value)`: a functional cast to the type the
         // built-in trait gives, as the same name gives in a declaration (not the library's
         // Conditional struct).
         n->resolved = nullptr;
-        for (Node* arg : n->name.parts[0].templateArgs)
+        for (Node* arg : traitPart->templateArgs)
           walkNode(arg);
         ++stats.callsResolved;
         record(n, trait);
@@ -7278,7 +7277,10 @@ auto GlobalScope::Impl::Walker::operatorFunction(P op, const Ty* lhs, const Ty* 
     std::vector<Scope*> places;
     for (const Ty* t : {l, types.stripRef(rhs)})
       if (t && (t->kind == TyKind::Class || t->kind == TyKind::Enum) && t->decl)
+      {
         places.push_back(impl.lexicalScopeOf(t->decl));
+        impl.associatedNamespaces(t, places); // (its bases' and its arguments' too, [basic.lookup.argdep] 2)
+      }
     places.push_back(scope);
     // Every place's operators ranked together, as C++ ranks argument-dependent lookup's and
     // ordinary lookup's ([over.match.oper] 3): from each place the innermost scope declaring the

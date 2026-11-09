@@ -1,0 +1,12 @@
+// kpp standard library: Win32's C tags, global as every C name is, so that a program's import of the C headers declares the same types (--std-scope, design.md 16).
+
+struct _SECURITY_ATTRIBUTES;
+struct _RTL_SRWLOCK;            // SRWLOCK: one pointer, zero when unlocked
+struct _RTL_CONDITION_VARIABLE; // CONDITION_VARIABLE: one pointer, zero when initialised
+struct _FILETIME;               // two 32-bit halves of a 64-bit count of 100 ns ticks since 1601
+struct _WIN32_FIND_DATAW;
+struct _BY_HANDLE_FILE_INFORMATION;
+struct _OVERLAPPED;
+union _LARGE_INTEGER;  // a 64-bit signed integer
+union _ULARGE_INTEGER; // a 64-bit unsigned integer
+enum _GET_FILEEX_INFO_LEVELS { GetFileExInfoStandard, GetFileExMaxInfoLevel };

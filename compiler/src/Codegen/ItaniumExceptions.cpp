@@ -167,7 +167,7 @@ auto codegen::Emitter::typeinfoFor(const Ty* t, Node* at) -> std::string
     std::vector<const Ty*> fieldTypes = info.fieldTypes;
     for (const BaseSubobject& base : handlerBases(t, at))
       convertsTo(base.cls, base.offset);
-    if (display == "Exception" && exceptionTypeinfo.empty())
+    if (global.isLibraryClass(t, "Exception") && exceptionTypeinfo.empty())
     {
       exceptionTypeinfo = name;
       // Its message, its first data member, is a String: the last of its bytes is the length of a
@@ -176,7 +176,7 @@ auto codegen::Emitter::typeinfoFor(const Ty* t, Node* at) -> std::string
       // what() virtual, as std::exception's).
       if (!info.fieldDecls.empty() && bases.empty())
         if (auto field = info.fieldIndex.find(info.fieldDecls[0]); field != info.fieldIndex.end() && field->second < fieldTypes.size() &&
-                                                                    types.toString(fieldTypes[field->second], &symbols) == "String")
+                                                                    global.isLibraryClass(fieldTypes[field->second], "String"))
         {
           exceptionMessageMark = sizeOf(fieldTypes[field->second], at) - 1;
           exceptionMessageOffset = "ptrtoint (ptr getelementptr (" + structName + ", ptr null, i32 0, i32 " + std::to_string(field->second) + ") to i64)";

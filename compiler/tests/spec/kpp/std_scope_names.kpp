@@ -1,0 +1,35 @@
+// spec: --std-scope: the standard library's names are std::name (design.md 16), and a program's own Vector, Optional and UniquePtr stand beside them; `T^` and an enum's fromStr still mean the library's (kovarex, 2026-11-09)
+// factorio: none yet
+// kpp: --std-scope
+struct Vector
+{
+  int x;
+  int y;
+};
+template<typename T> struct Optional
+{
+  int mine = 7;
+};
+template<typename T> struct UniquePtr
+{
+  int mine = 9;
+};
+enum class Colour
+{
+  { Red, Green }
+};
+int main()
+{
+  std::Vector<std::String> names;
+  names.push_back(std::String("ab"));
+  Vector own{3, 4};
+  std::println(names[0], " ", own.x + own.y);
+  Optional<int> mine;
+  UniquePtr<int> alsoMine;
+  std::println(mine.mine, " ", alsoMine.mine);
+  int^ owner = std::makeUnique<int>(5);
+  std::println(*owner);
+  std::Optional<Colour> found = Colour::fromStr("Green");
+  std::println(found.hasValue(), " ", found.value() == Colour::Green);
+  return 0;
+}

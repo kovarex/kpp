@@ -3,11 +3,6 @@ requires config::platform != Platform::Windows;
 // portable files make through platform:: (PlatformWindows.kpp for Windows). What differs between
 // the two is in PlatformLinux.kpp and PlatformFreeBSD.kpp: the clocks' ids and the errno accessor.
 
-// struct timespec, both C libraries' (time_t and long: 16 bytes on LP64). Declared by its tag
-// alone, as the headers name it, so that a program's import of time.h declares these functions the
-// same way; the library passes its own storage of the same layout.
-struct timespec;
-
 // The environment's text is its bytes here (FilesWindows.kpp for Windows' UTF-8 one).
 extern "C" char* getenv(const char* name);
 

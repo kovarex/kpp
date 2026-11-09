@@ -1,0 +1,40 @@
+// spec: --std-scope: while programs write bare names, `template<> struct TupleSize<X>` and a Hash specialization still specialize std's templates (the fallback of the move into std), and std::-qualified ones do
+// factorio: none yet
+// kpp: --std-scope
+struct Point
+{
+  int x;
+  int y;
+  template<usize I> int get() const
+  {
+    return I == 0 ? this.x : this.y;
+  }
+};
+template<> struct TupleSize<Point>
+{
+  static constexpr usize value = 2;
+};
+template<usize I> struct TupleElement<I, Point>
+{
+  using type = int;
+};
+struct Key
+{
+  int v;
+  bool operator==(const Key& other) const = default;
+};
+template<> struct std::Hash<Key>
+{
+  usize operator()(const Key& k) const
+  {
+    return usize(k.v);
+  }
+};
+int main()
+{
+  auto [a, b] = Point{3, 4};
+  std::HashMap<Key, int> values;
+  values[Key{1}] = a + b;
+  std::println(values[Key{1}]);
+  return 0;
+}

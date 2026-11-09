@@ -4,13 +4,6 @@ requires config::platform != Platform::Windows;
 // differ (stat, statvfs, dirent) are read at their C library's offsets: PlatformLinux.kpp,
 // PlatformFreeBSD.kpp, PlatformMac.kpp.
 
-// The C library's structs, declared by their tags as its headers name them, so that a program's
-// import of sys/stat.h, sys/statvfs.h or dirent.h declares these functions the same way; the library
-// passes its own storage of their sizes.
-struct stat;
-struct statvfs;
-struct dirent;
-
 namespace posix
 {
   extern "C" i32 stat(const char* path, ::stat* out);

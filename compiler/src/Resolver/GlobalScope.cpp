@@ -54,6 +54,8 @@ void GlobalScope::indexFile(ParsedFile& file)
       top->library = true; // (whichever namespace of the name came first: the program's is an error, topLevelClashes)
       impl->libraryScopes.push_back(top);
     }
+    if (file.isLibrary)
+      impl->stdScope = top;
   }
   else
   {
@@ -200,6 +202,7 @@ void GlobalScope::finishIndex()
     }
   }
   impl->deferredVariables.clear();
+  impl->moveBareSpecializationsToStd();
   std::unordered_set<Scope*> seen;
   impl->sortEntries(&impl->root, seen);
   std::sort(impl->privateScopes.begin(), impl->privateScopes.end(), [](const auto& a, const auto& b) { return a.first->index < b.first->index; });
@@ -789,6 +792,16 @@ FunctionDecl* GlobalScope::findFreeFunction(std::string_view name, const std::ve
   return findFree(impl->symbols.intern(name), argTypes, context);
 }
 
+FunctionDecl* GlobalScope::libraryFunction(std::string_view name)
+{
+  return static_cast<FunctionDecl*>(impl->libraryDecl(name, NodeKind::FunctionDecl));
+}
+
+bool GlobalScope::isLibraryClass(const Ty* t, std::string_view name)
+{
+  return t && t->kind == TyKind::Class && t->decl && t->decl == impl->libraryDecl(name, NodeKind::ClassDecl);
+}
+
 FunctionDecl* GlobalScope::findFree(uint32_t symbol, const std::vector<const Ty*>& argTypes, Decl* context)
 {
   // The arguments' classes' friend functions are candidates beside the namespaces' (hiddenFriendClass
@@ -812,7 +825,10 @@ FunctionDecl* GlobalScope::findFree(uint32_t symbol, const std::vector<const Ty*
   std::vector<Scope*> places;
   for (const Ty* a : argTypes)
     if (const Ty* t = a ? impl->types.stripRef(a) : nullptr; t && (t->kind == TyKind::Class || t->kind == TyKind::Enum) && t->decl)
+    {
       places.push_back(impl->lexicalScopeOf(t->decl));
+      impl->associatedNamespaces(t, places); // (its bases' and its arguments' too, [basic.lookup.argdep] 2)
+    }
   places.push_back(impl->lexicalScopeOf(context));
   // Every place's functions ranked together, as C++ ranks argument-dependent lookup's and ordinary
   // lookup's: from each place the innermost scope declaring the name, and the friends (the walker's
@@ -1834,20 +1850,21 @@ const Ty* GlobalScope::typeOfAstIn(Type* t, Decl* context, const TemplateArgs& a
 
 std::optional<bool> GlobalScope::typeTraitValue(NameExpr* e, Decl* context, const TemplateArgs& args)
 {
-  if (e->name.parts.size() != 1 || !e->name.parts[0].hasTemplateArgs || !impl->isBoolTraitName(e->name.parts[0].symbol))
-    return std::nullopt;
   Impl::DeclContext dc;
   impl->declContextFor(context, dc);
+  const NamePart* trait = impl->boolTraitPart(e->name, dc.scope, &dc.params, 0);
+  if (!trait)
+    return std::nullopt;
   Subst s = toSubst(args);
   ParsedFile* file = context ? context->file : nullptr;
   Impl::TypeContext ctx{dc.scope, &dc.params, args.empty() ? nullptr : &s, file ? file->tokens : nullptr, file ? file->text : std::string_view()};
-  std::vector<const Ty*> a = impl->traitArgs(e->name.parts[0], ctx, 0);
+  std::vector<const Ty*> a = impl->traitArgs(*trait, ctx, 0);
   bool hasPack = false;
-  for (Node* arg : e->name.parts[0].templateArgs)
+  for (Node* arg : trait->templateArgs)
     hasPack = hasPack || arg->kind == NodeKind::PackType; // `isConstructible<T, Args...>`: any number of types
-  if (a.empty() || (!hasPack && a.size() != e->name.parts[0].templateArgs.size()))
+  if (a.empty() || (!hasPack && a.size() != trait->templateArgs.size()))
     return std::nullopt;
-  return impl->traitValue(impl->symbols.name(e->name.parts[0].symbol), a);
+  return impl->traitValue(impl->symbols.name(trait->symbol), a);
 }
 
 void GlobalScope::deduceArgs(FunctionDecl* f, const std::vector<const Ty*>& argTypes, TemplateArgs& args)

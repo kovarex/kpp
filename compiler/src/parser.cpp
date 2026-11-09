@@ -58,6 +58,7 @@ namespace
       kwFromStr = symbols.intern("fromStr");
       kwOptional = symbols.intern("Optional");
       kwUniquePtr = symbols.intern("UniquePtr");
+      kwStd = symbols.intern("std");
       kwText = symbols.intern("text");
       kwTag = symbols.intern("Tag");
       kwTagField = symbols.intern("__tag");
@@ -1285,7 +1286,7 @@ namespace
           part.symbol = kwUniquePtr;
           part.hasTemplateArgs = true;
           part.templateArgs = makeSpanOf(std::vector<Node*>{type});
-          owner->name.parts = makeSpanOf(std::vector<NamePart>{part});
+          owner->name.parts = libraryNameParts(part);
           owner->name.global = true;
           type = owner;
         }
@@ -1552,7 +1553,8 @@ namespace
         optional.hasTemplateArgs = true;
         optional.templateArgs = makeSpanOf(std::vector<Node*>{selfArg});
         NamedType* result = node<NamedType>(start);
-        result->name.parts = makeSpanOf(std::vector<NamePart>{optional});
+        result->name.parts = libraryNameParts(optional);
+        result->name.global = out.stdScope;
         from->returnType = result;
         BuiltinType* ch = node<BuiltinType>(start);
         ch->keyword = Kw::char_;
@@ -7346,13 +7348,24 @@ namespace
     uint32_t testCount = 0;   // Tests parsed so far in this file.
     uint32_t kwThisType;
     uint32_t kwImplicit, kwFallthrough, kwBothConst, kwClassConst, kwAccumulate, kwImport, kwAssert, kwReleaseAssert, kwCaller,
-             kwConditional, kwUnderscore, kwConfig, kwNameof, kwCount, kwValues, kwStr, kwTypes, kwFromStr, kwOptional, kwUniquePtr, kwText, kwTag, kwTagField,
+             kwConditional, kwUnderscore, kwConfig, kwNameof, kwCount, kwValues, kwStr, kwTypes, kwFromStr, kwOptional, kwUniquePtr, kwStd, kwText, kwTag, kwTagField,
              kwTagMethod, kwTypeMember, kwSuite;
     uint32_t lambdaCount = 0;        // Lambdas parsed so far in this file.
     uint32_t autoCount = 0;          // Type parameters invented for `auto` parameters so far in this file.
     uint16_t pendingAttributes = 0;  // [[noinline]] and friends seen before the current declaration.
     uint8_t pendingPack = 0;         // C: __kpp_pack(n) after `struct`: the next class's ClassDecl::pack.
     uint32_t pendingDeprecation = UINT32_MAX; // [[deprecated("why")]]: why's token
+
+    // A name the language itself means as the library's (`T^`'s UniquePtr, fromStr's Optional): `std::X` under
+    // --std-scope, written ::-global by the caller, so that a program's own X never changes what it means.
+    Span<NamePart> libraryNameParts(const NamePart& part)
+    {
+      if (!out.stdScope)
+        return makeSpanOf(std::vector<NamePart>{part});
+      NamePart scope;
+      scope.symbol = kwStd;
+      return makeSpanOf(std::vector<NamePart>{scope, part});
+    }
 
     // A [[deprecated]] declaration (its attribute pending): recorded with its reason for the warnings.
     void noteDeprecation(Decl* d)
