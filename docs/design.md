@@ -2338,8 +2338,13 @@ language/this_names_the_class_in_nested_local_and_out_of_line_code covers nested
 members, member templates, operators, hidden friends and a static's initializer, 2026-11-09.) In the class's own base
 clause `This` names the class too (kovarex, 2026-11-09: CRTP, `class Widget : public Counter<This>`; a class
 template's current instance, `Counter<Gadget<T>>`): the base clause is looked up outside the class, so the indexer
-marks each `This` written there with the class and the type lookup takes it (built 2026-11-09, spec
-language/this_names_the_class_in_its_own_base_clause). The converter writes `This` nowhere else (kovarex).
+marks each `This` written there, under a decltype or an operand too, with the class, and the type lookup takes the mark
+first: around a nested class the lookup finds the outer class, which until 2026-11-09 the walk, member lookup through the
+bases and the evaluator took while codegen's layout took the nested class. `This::kind` is named through the type `This`
+(the parser's QualifiedName::typeQualifier, as `decltype(e)::kind`), so it reads as the class's name would (built
+2026-11-09, specs language/this_names_the_class_in_its_own_base_clause,
+language/this_in_a_nested_class_base_clause_names_that_class, language/this_in_a_nested_class_base_clause_is_not_the_outer_class_is_error).
+The converter writes `This` nowhere else (kovarex).
 
 It lands as `override` does: a warning under a flag, counted, then the converter, then an error. The error is built
 (thread J, 2026-11-09) under `--this-reference`, thread A's switch for `this` the kpp way (A's plan: `this` a reference beside

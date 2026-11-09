@@ -1,0 +1,162 @@
+// spec: `This` in a nested class's base clause names that class (design.md 23c), for every reader of the base: its layout, member lookup through it, the evaluator's objects of it. Around a nested class the lookup finds the outer class, and until 2026-11-09 all but codegen's layout took that one, so a specialization for the outer class or for the nested class told them apart. A member class, one defined outside its class, a local class of a member function, a class template's member class, `This` under a decltype, and `This::kind`; clang's and g++'s output for the C++ with each class's name, but for the last row: C++ has no `Inner::kind` in Inner's own base clause (Inner is incomplete there), kpp reads it as it reads that name
+template<class D> class Pick
+{
+public:
+  static constexpr int f() { return (int)sizeof(D); }
+};
+template<int N> class Sized
+{
+public:
+  static constexpr int n() { return N; }
+};
+template<class D> class Sizing
+{
+public:
+  int size = (int)sizeof(D);
+};
+
+class Named
+{
+public:
+  char big[100];
+  class Inner : public Pick<This>
+  {
+  public:
+    int x = 0;
+  };
+};
+template<> class Pick<Named::Inner>
+{
+public:
+  static constexpr int g() { return -2; }
+};
+
+class Member
+{
+public:
+  char big[100];
+  class Inner : public Pick<This>
+  {
+  public:
+    int x = 0;
+  };
+};
+template<> class Pick<Member>
+{
+public:
+  static constexpr int notF() { return -1; }
+};
+
+class OutOfLine
+{
+public:
+  char big[100];
+  class Inner;
+};
+class OutOfLine::Inner : public Pick<This>
+{
+public:
+  short x = 0;
+};
+template<> class Pick<OutOfLine>
+{
+public:
+  static constexpr int notF() { return -1; }
+};
+
+class WithLocal
+{
+public:
+  char big[100];
+  int make();
+};
+int WithLocal::make()
+{
+  class L : public Pick<This>
+  {
+  public:
+    long long x = 0;
+  };
+  return L::f();
+}
+template<> class Pick<WithLocal>
+{
+public:
+  static constexpr int notF() { return -1; }
+};
+
+template<class T> class Holder
+{
+public:
+  char pad[50];
+  class Nested : public Pick<This>
+  {
+  public:
+    T t[3]{};
+  };
+};
+template<> class Pick<Holder<double>>
+{
+public:
+  static constexpr int notF() { return -1; }
+};
+
+class Decl
+{
+public:
+  char big[100];
+  class Inner : public Pick<decltype(*(This*)nullptr)>
+  {
+  public:
+    int x = 0;
+  };
+};
+template<> class Pick<Decl&>
+{
+public:
+  static constexpr int notF() { return -1; }
+};
+
+class Objects
+{
+public:
+  char big[100];
+  class Inner : public Sizing<This>
+  {
+  public:
+    int x = 0;
+  };
+};
+
+template<> class Sized<1>
+{
+public:
+  static constexpr int notN() { return -1; }
+};
+class Qualified
+{
+public:
+  static constexpr int kind = 1;
+  class Inner : public Sized<This::kind>
+  {
+  public:
+    static constexpr int kind = 2;
+  };
+};
+
+static_assert(Named::Inner::g() == -2);
+static_assert(Member::Inner::f() == 4);
+static_assert(OutOfLine::Inner::f() == 2);
+static_assert(Holder<double>::Nested::f() == 24);
+static_assert(Decl::Inner::f() == 4);
+static_assert(Objects::Inner().size == 8);
+static_assert(Qualified::Inner::n() == 2);
+
+int main()
+{
+  WithLocal w;
+  Objects::Inner o;
+  println(Named::Inner::g(), " ", Member::Inner::f(), " ", OutOfLine::Inner::f(), " ", w.make(), " ", Holder<double>::Nested::f(), " ", Decl::Inner::f(), " ", o.size);
+  println(Qualified::Inner::n());
+  return 0;
+}

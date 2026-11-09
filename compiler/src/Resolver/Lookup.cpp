@@ -444,19 +444,24 @@ auto GlobalScope::Impl::lookupTypeName(const NamedType* t, Scope* context, const
 {
   if (t->elaborated && t->name.parts.size() == 1 && !t->name.global && !t->name.parts[0].hasTemplateArgs)
     return lookupUnqualified(t->name.parts[0].symbol, context, locals, depth, true);
-  Lookup l = lookupQualified(t->name, context, locals, depth, subst, elementPacks, elementIndex); // (`typename IsRef<Ts>::Type` in a pattern)
   // `This` in a class's own base clause (`class Widget : public Counter<This>`), which the indexer marked with the
   // class (markThisInBaseClause): the class, as the lookup inside it would have it (a class template's current
-  // instance).
-  if (l.found == Found::No && t->resolved && t->resolved->kind == NodeKind::ClassDecl && t->name.parts.size() == 1 && !t->name.global &&
-      t->name.parts[0].symbol == symThisType && static_cast<ClassDecl*>(t->resolved)->ownScope)
-  {
-    l.decl = t->resolved;
-    l.scope = static_cast<ClassDecl*>(t->resolved)->ownScope;
-    l.found = Found::Member;
-    l.foundIn = l.scope;
-  }
-  return l;
+  // instance), and never what the lookup around the class finds. Around a nested class that is the outer class, which
+  // the walk, member lookup through the bases and the evaluator took, and codegen's layout (which looks in the class)
+  // did not: `Outer::Inner`'s `Pick<This>` was two types (until 2026-11-09, a silent wrong answer). Elsewhere `resolved`
+  // is the class the walk found the same way.
+  if (t->resolved && t->resolved->kind == NodeKind::ClassDecl && t->name.parts.size() == 1 && !t->name.global && t->name.parts[0].symbol == symThisType &&
+      !t->name.parts[0].hasTemplateArgs)
+    if (auto* c = static_cast<ClassDecl*>(t->resolved); c->ownScope && !(c->file && c->file->isImported))
+    {
+      Lookup l;
+      l.decl = c;
+      l.scope = c->ownScope;
+      l.found = Found::Member;
+      l.foundIn = l.scope;
+      return l;
+    }
+  return lookupQualified(t->name, context, locals, depth, subst, elementPacks, elementIndex); // (`typename IsRef<Ts>::Type` in a pattern)
 }
 
 auto GlobalScope::Impl::lookupUnqualified(uint32_t symbol, Scope* context, const LocalStack* locals, int depth, bool qualifierOnly) -> Lookup

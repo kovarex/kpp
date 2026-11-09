@@ -50,6 +50,7 @@ namespace
       kwUnderscore = symbols.intern("_");
       kwConfig = symbols.intern("config");
       kwNameof = symbols.intern("nameof");
+      kwThisType = symbols.intern("This");
       kwCount = symbols.intern("count");
       kwValues = symbols.intern("values");
       kwStr = symbols.intern("str");
@@ -398,6 +399,34 @@ namespace
         advance();
       }
       inRecovery = false;
+    }
+
+    // `This::kind` in a class's own base clause: named through the type `This` (QualifiedName::typeQualifier, as
+    // `decltype(e)::kind` is), which the indexer marks with the class (markThisInBaseClause). As a name's first part
+    // it would be looked up around the class, where `This` is an outer class or nothing.
+    void qualifyThroughThis(Type* type, uint32_t from)
+    {
+      bool written = false;
+      for (uint32_t i = from; i + 1 < pos && !written; ++i)
+        written = toks[i].getKind() == TokenKind::Identifier && toks[i].id == kwThisType && toks[i + 1].is(P::ColonColon);
+      if (!written || isC())
+        return;
+      auto qualify = [&](QualifiedName& name, uint32_t token)
+      {
+        if (name.parts.size() < 2 || name.global || name.typeQualifier || name.parts[0].symbol != kwThisType || name.parts[0].hasTemplateArgs || name.parts[0].special)
+          return;
+        NamedType* self = node<NamedType>(token);
+        self->name.parts = Span<NamePart>{name.parts.data, 1};
+        name.typeQualifier = self;
+        name.parts = Span<NamePart>{name.parts.data + 1, name.parts.count - 1};
+      };
+      forEachNode(type, [&](Node* n)
+      {
+        if (n->kind == NodeKind::NamedType)
+          qualify(static_cast<NamedType*>(n)->name, n->token);
+        else if (n->kind == NodeKind::NameExpr)
+          qualify(static_cast<NameExpr*>(n)->name, n->token);
+      });
     }
 
     // --- arena helpers ---
@@ -4540,12 +4569,14 @@ namespace
             else if (accept(Kw::protected_)) base.access = Access::Protected;
             else break;
           }
+          uint32_t baseStart = pos;
           base.type = parseType();
           if (!base.type)
           {
             error("expected base class");
             return true;
           }
+          qualifyThroughThis(base.type, baseStart);
           base.isPack = accept(P::Ellipsis);
           if (base.isPack)
           {
@@ -7275,6 +7306,7 @@ namespace
     std::unordered_set<uint32_t> testBodies; // The '{' of the bodies spliceAround wrote around (a test's).
     ParsedFile::TestSuite* currentSuite = nullptr; // The suite being parsed (design.md 8.7).
     uint32_t testCount = 0;   // Tests parsed so far in this file.
+    uint32_t kwThisType;
     uint32_t kwImplicit, kwFallthrough, kwBothConst, kwClassConst, kwAccumulate, kwImport, kwAssert, kwReleaseAssert, kwCaller,
              kwConditional, kwUnderscore, kwConfig, kwNameof, kwCount, kwValues, kwStr, kwTypes, kwFromStr, kwOptional, kwUniquePtr, kwText, kwTag, kwTagField,
              kwTagMethod, kwTypeMember, kwSuite;

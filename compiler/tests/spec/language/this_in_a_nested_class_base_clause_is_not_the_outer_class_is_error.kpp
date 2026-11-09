@@ -1,0 +1,22 @@
+// spec: `This` in a nested class's base clause is that class, never the class around it (design.md 23c): a member only the specialization for the outer class has is no member of the nested class. Until 2026-11-09 this compiled and called Pick<Outer>::g
+// error: this_in_a_nested_class_base_clause_is_not_the_outer_class_is_error.kpp:22: error: codegen does not support a call that did not resolve yet (in main())
+template<class D> class Pick
+{
+public:
+  static int f() { return 1; }
+};
+template<> class Pick<Outer>
+{
+public:
+  static int g() { return -1; }
+};
+class Outer
+{
+public:
+  class Inner : public Pick<This>
+  {
+  public:
+    int x = 0;
+  };
+};
+int main() { return Outer::Inner::g(); }
