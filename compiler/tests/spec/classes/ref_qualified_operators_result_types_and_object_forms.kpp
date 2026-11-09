@@ -1,0 +1,123 @@
+// spec: the object's value category chooses among `&` and `&&` operators in every form of the object and in the type of the result: a member of an rvalue, a conditional, a comma, a cast, a forwarded or moved parameter, a derived class's call, a conversion operator; the overload's result type is what `auto`, `decltype` and the next overload see; clang 19's output
+extern "C" int printf(const char* format, ...);
+struct Ops
+{
+  constexpr int operator()(int) & { return 1; }
+  constexpr int operator()(int) const& { return 2; }
+  constexpr int operator()(int) && { return 3; }
+  constexpr int operator[](int) & { return 11; }
+  constexpr int operator[](int) && { return 13; }
+  constexpr int operator*() & { return 21; }
+  constexpr int operator*() && { return 23; }
+  constexpr int operator+(int) & { return 31; }
+  constexpr int operator+(int) && { return 33; }
+  constexpr int operator-() & { return 41; }
+  constexpr int operator-() && { return 43; }
+  constexpr int operator==(int) & { return 91; }
+  constexpr int operator==(int) && { return 93; }
+};
+struct Types
+{
+  char operator()(int) & { return 'a'; }
+  double operator()(int) && { return 1.5; }
+  char operator[](int) & { return 'a'; }
+  double operator[](int) && { return 1.5; }
+  char operator*() & { return 'a'; }
+  double operator*() && { return 1.5; }
+  char operator+(int) & { return 'a'; }
+  double operator+(int) && { return 1.5; }
+  char operator-() & { return 'a'; }
+  double operator-() && { return 1.5; }
+  char operator++() & { return 'a'; }
+  double operator++() && { return 1.5; }
+  char operator++(int) & { return 'a'; }
+  double operator++(int) && { return 1.5; }
+};
+struct Holder
+{
+  Ops inner;
+  Ops& ref() { return this.inner; }
+  Ops get() { return this.inner; }
+};
+struct Self
+{
+  int operator()(int) & { return 1; }
+  int operator()(int) && { return 3; }
+  int viaThis() { return this(0); }
+};
+struct Base
+{
+  int operator()(int) & { return 1; }
+  int operator()(int) && { return 3; }
+  int operator+(int) & { return 31; }
+  int operator+(int) && { return 33; }
+};
+struct Derived : Base
+{
+};
+struct OnlyConst
+{
+  int operator()(int) const& { return 2; }
+  int operator()(int) && { return 3; }
+};
+struct Conv
+{
+  operator int() & { return 1; }
+  operator int() && { return 3; }
+};
+int kind(char) { return 1; }
+int kind(double) { return 2; }
+Ops make() { return Ops(); }
+Ops& makeRef() { static Ops o; return o; }
+Ops&& makeRRef() { static Ops o; return move(o); }
+const Ops constMake() { return Ops(); }
+template<typename T>
+int apply(T&& t) { return forward<T>(t)(0); }
+template<typename T>
+int byValue(T t) { return t(0); }
+template<typename T>
+int moved(T t) { return move(t)(0); }
+int main()
+{
+  Ops o;
+  Types t;
+  Holder h;
+  Ops arr[2];
+  Ops* p = &o;
+  bool yes = true;
+  int a1 = Ops{}(0), a2 = makeRef()(0), a3 = makeRRef()(0), a4 = constMake()(0);
+  printf("calls %d %d %d %d\n", a1, a2, a3, a4);
+  int b1 = h.inner(0), b2 = Holder().inner(0), b3 = move(h).inner(0), b4 = h.ref()(0), b5 = h.get()(0);
+  printf("members %d %d %d %d %d\n", b1, b2, b3, b4, b5);
+  int c1 = arr[0](0), c2 = (*p)(0), c3 = p->operator()(0), c4 = (yes ? o : o)(0), c5 = (yes ? Ops() : Ops())(0), c6 = (0, o)(0), c7 = (0, Ops())(0);
+  printf("forms %d %d %d %d %d %d %d\n", c1, c2, c3, c4, c5, c6, c7);
+  int d1 = static_cast<Ops&&>(o)(0), d2 = static_cast<Ops&>(o)(0), d3 = static_cast<const Ops&>(o)(0), d4 = ((Ops&&)o)(0);
+  printf("casts %d %d %d %d\n", d1, d2, d3, d4);
+  int e1 = apply(o), e2 = apply(Ops()), e3 = byValue(o), e4 = moved(o);
+  printf("templates %d %d %d %d\n", e1, e2, e3, e4);
+  int f1 = kind(t(0)), f2 = kind(Types()(0)), f3 = kind(t[0]), f4 = kind(Types()[0]), f5 = kind(*t), f6 = kind(*Types());
+  printf("results %d %d %d %d %d %d\n", f1, f2, f3, f4, f5, f6);
+  int g1 = kind(t + 0), g2 = kind(Types() + 0), g3 = kind(-t), g4 = kind(-Types()), g5 = kind(++t), g6 = kind(++Types()), g7 = kind(t++), g8 = kind(Types()++);
+  printf("results2 %d %d %d %d %d %d %d %d\n", g1, g2, g3, g4, g5, g6, g7, g8);
+  auto h1 = Types()(0);
+  auto h2 = t(0);
+  decltype(Types()[0]) h3 = 0;
+  decltype(t[0]) h4 = 0;
+  printf("sizes %d %d %d %d\n", (int)sizeof(h1), (int)sizeof(h2), (int)sizeof(h3), (int)sizeof(h4));
+  Self s;
+  int i1 = s.viaThis(), i2 = Self().viaThis(), i3 = s(0), i4 = Self()(0);
+  printf("self %d %d %d %d\n", i1, i2, i3, i4);
+  Derived der;
+  int j1 = der(0), j2 = Derived()(0), j3 = der + 0, j4 = Derived() + 0, j5 = move(der)(0);
+  printf("derived %d %d %d %d %d\n", j1, j2, j3, j4, j5);
+  OnlyConst oc;
+  const OnlyConst coc;
+  int k1 = oc(0), k2 = coc(0), k3 = OnlyConst()(0), k4 = static_cast<const OnlyConst&&>(coc)(0);
+  printf("onlyconst %d %d %d %d\n", k1, k2, k3, k4);
+  Conv cv;
+  int l1 = int(cv), l2 = int(Conv()), l3 = int(move(cv));
+  printf("conv %d %d %d\n", l1, l2, l3);
+  auto lam = [](int x) { return x + 1; };
+  printf("lambda %d %d\n", lam(1), [](int x) { return x + 2; }(1));
+  return 0;
+}

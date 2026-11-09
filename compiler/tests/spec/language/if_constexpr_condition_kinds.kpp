@@ -1,0 +1,65 @@
+// spec: what an `if constexpr` accepts as a constant: sizeof of a parameter, a static constant, a constexpr function's call, constexpr and const locals, an enumerator, a temporary's member, a member function reading nothing of a parameter's object, an init statement's constexpr variable; clang 19's output
+extern "C" int printf(const char* format, ...);
+struct Box
+{
+  int value = 0;
+  constexpr static int kind = 2;
+  constexpr int fixed() const { return 4; }
+  constexpr static int make() { return 5; }
+};
+constexpr int twice(int x) { return x * 2; }
+constexpr int global = 3;
+const int alsoGlobal = 7;
+enum Mode { One = 1, Two = 2 };
+template<typename T>
+struct Trait { static constexpr bool yes = sizeof(T) == 4; };
+template<int N>
+int fromParameter() { if constexpr (N > 1) return 1; else return 2; }
+template<typename T>
+int fromType(const T& x)
+{
+  if constexpr (sizeof(x) == 4)
+    return 1;
+  else if constexpr (sizeof(T) == 8)
+    return 2;
+  else
+    return 3;
+}
+template<typename T>
+int nested()
+{
+  if constexpr (Trait<T>::yes)
+  {
+    if constexpr (T(1) + T(1) == T(2))
+      return 1;
+    return 2;
+  }
+  return 3;
+}
+int plain(const Box& x, int y)
+{
+  int r = 0;
+  if constexpr (sizeof(x) == 4) r += 1;
+  if constexpr (sizeof(y) == 4) r += 2;
+  if constexpr (Box::kind == 2) r += 4;
+  if constexpr (twice(global) == 6) r += 8;
+  if constexpr (alsoGlobal == 7) r += 16;
+  if constexpr (One == 1) r += 32;
+  if constexpr (Box::make() == 5) r += 64;
+  if constexpr (Box{}.fixed() == 4) r += 128;
+  if constexpr (true && !false) r += 256;
+  const int local = 3;
+  constexpr int local2 = 4;
+  if constexpr (local == 3) r += 512;
+  if constexpr (local2 == 4) r += 1024;
+  if constexpr (Box{5}.value == 5) r += 2048;
+  if constexpr (constexpr int n = twice(2); n == 4) r += 4096;
+
+  return r;
+}
+int main()
+{
+  Box b;
+  printf("%d %d %d %d %d %d\n", plain(b, 0), fromParameter<1>(), fromParameter<2>(), fromType(1), fromType(1.5), nested<int>());
+  return 0;
+}

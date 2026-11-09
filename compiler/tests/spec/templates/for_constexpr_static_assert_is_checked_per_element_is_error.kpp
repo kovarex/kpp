@@ -1,0 +1,38 @@
+// spec: a static_assert in a `for constexpr` body holds for each element, in a function that is no template as in an instance, and in an auto function's body after a return gave its type; a discarded branch is not checked, one element's failure names that element
+// found by thread I (2026-11-09): in a function that is no template it passed
+// error: for_constexpr_static_assert_is_checked_per_element_is_error.kpp:12: error: static assertion failed: "not int" (in E = double)
+// error: for_constexpr_static_assert_is_checked_per_element_is_error.kpp:14: error: static assertion failed: "only one" (in v = 2)
+// error: for_constexpr_static_assert_is_checked_per_element_is_error.kpp:20: error: static assertion failed: "has one" (in E = Fail)
+// error: for_constexpr_static_assert_is_checked_per_element_is_error.kpp:29: error: static assertion failed: "after the return" (in Ts = int32, double, E = double
+struct Pass { static constexpr int v = 1; };
+struct Fail { static constexpr int v = 0; };
+int plainFunction()
+{
+  for constexpr (typename E : types<int, double>)
+    static_assert(isSame<E, int>, "not int");
+  for constexpr (int v : {1, 2})
+    static_assert(v == 1, "only one");
+  for constexpr (typename E : types<Pass, Fail>)
+  {
+    if constexpr (E::v == 1)
+      println("one");
+    else
+      static_assert(E::v == 1, "has one");
+  }
+  return 0;
+}
+template<typename... Ts>
+auto openReturn()
+{
+  for constexpr (typename E : types<Ts...>)
+  {
+    static_assert(isSame<E, int>, "after the return");
+    return 1;
+  }
+  return 2;
+}
+int main()
+{
+  plainFunction();
+  return openReturn<int, double>();
+}

@@ -1213,6 +1213,8 @@ auto codegen::Emitter::statement(Stmt* s) -> void
           subStatement(*known ? i->then : i->else_);
           break;
         }
+      if (i->isConstexpr) // ([stmt.if] 2: never a test at run time; here, with the layouts `sizeof` may need that the resolver has not)
+        fail(s, "the condition of an if constexpr is not a constant expression");
       pushScope();
       if (i->init)
         statement(i->init);

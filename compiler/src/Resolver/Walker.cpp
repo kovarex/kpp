@@ -26,7 +26,10 @@ auto GlobalScope::Impl::Walker::forConstexprElements(ForConstexprStmt* f, std::v
       const Ty* t = arg && uint8_t(arg->kind) <= uint8_t(NodeKind::PackType) ? typeOf(static_cast<Type*>(arg)) : nullptr;
       if (!t || !t->isKnown() || types.isDependent(t))
         return false;
-      out.push_back(t);
+      if (arg->kind == NodeKind::PackType && t->kind == TyKind::Pack)
+        out.insert(out.end(), t->args.begin(), t->args.end()); // `types<Ts...>`: each type of the pack in turn
+      else
+        out.push_back(t);
     }
     return v->isType;
   }
@@ -2617,7 +2620,15 @@ auto GlobalScope::Impl::Walker::memberOfQualifierInstance(NameExpr* e) -> Lookup
   return l;
 }
 
-auto GlobalScope::Impl::Walker::objectForArrow(const Ty* t, int depth) -> const Ty*
+auto GlobalScope::Impl::Walker::objectOperand(const Expr* e, const Ty* t) -> const Ty*
+{
+  const Ty* object = t ? types.stripRef(t) : nullptr;
+  if (!e || !e->ty || !e->ty->isKnown() || !object || object->kind != TyKind::Class)
+    return t;
+  return isLvalueExpression(e) || e->ty->kind == TyKind::LRef || t->kind == TyKind::LRef ? types.lref(object) : types.rref(object);
+}
+
+auto GlobalScope::Impl::Walker::objectForArrow(const Ty* t, int depth, const Expr* objectExpr) -> const Ty*
 {
   t = types.stripRef(t);
   if (!t)
@@ -2637,6 +2648,10 @@ auto GlobalScope::Impl::Walker::objectForArrow(const Ty* t, int depth) -> const 
         if (entry.decl && entry.decl->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(entry.decl)->params.empty() &&
             (!pick || ((entry.decl->flags & DF_Const) != 0) == t->isConst))
           pick = entry.decl;
+      // (`&` beside `&&`: the object's value category chooses, as for any operator; the next `->`'s object is a call's result)
+      if (std::vector<const Ty*> none; objectExpr)
+        if (bool ambiguous; FunctionDecl* chosen = pickOverload(arrow.decl, arrow.overloads, none, &arrow.subst, objectOperand(objectExpr, t), ambiguous))
+          pick = chosen;
       if (pick)
       {
         arrow.decl = pick;
@@ -3113,7 +3128,7 @@ auto GlobalScope::Impl::Walker::typeOfMember(MemberExpr* m) -> const Ty*
   {
     // `object.[m]`: the data member the descriptor m names (reflection, design.md 8.3).
     const Ty* d = types.stripRef(walkExpr(m->dynamicMember));
-    const Ty* object = m->op == P::Arrow || m->op == P::SafeArrow ? objectForArrow(base) : base;
+    const Ty* object = m->op == P::Arrow || m->op == P::SafeArrow ? objectForArrow(base, 0, m->base) : base;
     if (!d || !d->isKnown())
       return unknown(Why::Base);
     if (d->kind != TyKind::Member || !d->decl)
@@ -3149,7 +3164,7 @@ auto GlobalScope::Impl::Walker::typeOfMember(MemberExpr* m) -> const Ty*
   }
   const Ty* object = base;
   if (m->op == P::Arrow || m->op == P::SafeArrow)
-    object = objectForArrow(base);
+    object = objectForArrow(base, 0, m->base);
   if (!object || !object->isKnown())
   {
     ++stats.membersUnknownBase;
@@ -6836,7 +6851,7 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
     for (const NamePart& part : m->member.parts)
       for (Node* arg : part.templateArgs)
         walkNode(arg);
-    const Ty* object = (m->op == P::Arrow || m->op == P::SafeArrow) ? objectForArrow(base) : base;
+    const Ty* object = (m->op == P::Arrow || m->op == P::SafeArrow) ? objectForArrow(base, 0, m->base) : base;
     if (m->member.empty())
     {
       record(m, types.unknown());
@@ -7097,7 +7112,7 @@ auto GlobalScope::Impl::Walker::callResultOfValue(const Ty* t, CallExpr* c, cons
       bool ambiguous;
       std::vector<const Ty*> argTypes = argTypesOf(c->args);
       std::vector<FunctionDecl*> tied;
-      if (FunctionDecl* f = pickOverload(r.decl, r.overloads, argTypes, &r.subst, t, ambiguous, nullptr, {}, &tied))
+      if (FunctionDecl* f = pickOverload(r.decl, r.overloads, argTypes, &r.subst, c ? objectOperand(c->callee, t) : t, ambiguous, nullptr, {}, &tied))
       {
         if (!ambiguous)
           checkConstObjectCall(f, t, c->token);
@@ -7204,7 +7219,7 @@ static bool callableAssignment(ClassDecl* def, FunctionDecl* f)
   return false;
 }
 
-auto GlobalScope::Impl::Walker::operatorFunction(P op, const Ty* lhs, const Ty* rhs, uint32_t token, size_t arity, Subst& subst, bool& isMember) -> FunctionDecl*
+auto GlobalScope::Impl::Walker::operatorFunction(P op, const Ty* lhs, const Ty* rhs, uint32_t token, size_t arity, Subst& subst, bool& isMember, const Ty* object) -> FunctionDecl*
 {
   FunctionDecl* constViolation = nullptr; // the class's own operator, non-const, on a const lhs
   Subst violationSubst;
@@ -7222,7 +7237,7 @@ auto GlobalScope::Impl::Walker::operatorFunction(P op, const Ty* lhs, const Ty* 
       std::vector<const Ty*> argTypes;
       if (arity == 2)
         argTypes.push_back(rhs);
-      FunctionDecl* f = pickOverload(r.decl, r.overloads, argTypes, &r.subst, lhs, ambiguous);
+      FunctionDecl* f = pickOverload(r.decl, r.overloads, argTypes, &r.subst, object ? object : lhs, ambiguous);
       // `a = b` of a class that declares no operator= of its own: its implicit copy or move
       // assignment, which hides every base's operator= (C++ [class.copy.assign]; a using-declaration
       // brings one in: BoolConfigItem's `using StorageConfigItem<bool>::operator=;`). Not the base's, which would leave the class's own members as they
@@ -7434,7 +7449,9 @@ auto GlobalScope::Impl::Walker::overloadedOperator(P op, const Ty* lhs, const Ty
   // const char*)` binds the stream lvalue.
   operatorChosen = nullptr;
   operatorCall = OperatorCall::Undecided;
-  if (FunctionDecl* f = operatorFunction(op, lhsOperand ? lhsOperand : lhs, rhs, token, arity, subst, isMember))
+  // A left operand no reference is a prvalue (an lvalue came as T&, an xvalue as T&&): a member's object, for `&` beside `&&`.
+  const Ty* prvalue = lhsOperand && lhsOperand->kind == TyKind::Class ? types.rref(lhsOperand) : nullptr;
+  if (FunctionDecl* f = operatorFunction(op, lhsOperand ? lhsOperand : lhs, rhs, token, arity, subst, isMember, prvalue))
   {
     // `one < 1.5` with a member operator<(const Box&), which converts 1.5 by a constructor, and an
     // operator<=> template taking it as it is: the rewritten `(one <=> 1.5) < 0`, a better match
@@ -10019,7 +10036,7 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
           !retypingElements && !probing)
       {
         const Ty* type = deducedLocal ? deducedLocal : declared;
-        impl.checkConstexprVariable(v, type, ctx(), activeSubst ? bodyOf : nullptr, file);
+        impl.checkConstexprVariable(v, type, ctx(), activeSubst && !plainElementWalks ? bodyOf : nullptr, file);
       }
       checkAbstractObject(v, deducedLocal ? deducedLocal : declared);
       break;
@@ -10070,7 +10087,7 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
           instance += ", asked for at " + Impl::locationOf(requestFile, requestToken);
         // In an instance's function, it counts if the program uses the function (C++ does not
         // instantiate the members, or the calls in the branches, nobody uses).
-        impl.checkStaticAssert(s, ctx(), instance, activeSubst ? bodyOf : nullptr);
+        impl.checkStaticAssert(s, ctx(), instance, activeSubst && !plainElementWalks ? bodyOf : nullptr);
       }
       break;
     }
@@ -10680,19 +10697,24 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
         PatternScope pattern(*this, true); // (`for constexpr (auto x : args)`: the body is its pattern, once per element)
         walkNode(f->list);
       }
+      bool generic = inGenericTemplate(); // (of what is around the loop: its own variable makes the body generic, unbound)
       locals.push(v->name, v);
       ++forConstexprDepth;
       walkStmt(f->body);
       --forConstexprDepth;
-      // In an instantiation of an auto function whose return type is still open (`visit(f, u)`
-      // returning f's result from inside the loop): the body once per element, the variable
-      // bound to it, as the code generator emits it, until a return gives the type.
+      // The body once per element, the variable bound to it, as the code generator emits it: wherever the elements are
+      // known (a function that is no template, an instance), for what the body asserts of each (a failing static_assert
+      // in one element's body is an error), and in an instance of an auto function whose return type is still open
+      // (`visit(f, u)` returning f's result from inside the loop), until a return gives the type.
       std::vector<const Ty*> elements;
-      if (activeSubst && !returnFrames.empty() && !returnFrames.back() && forConstexprElements(f, elements))
+      bool open = activeSubst && !returnFrames.empty() && !returnFrames.back();
+      bool checked = !generic && !retypingElements && !probing;
+      if ((open || checked) && forConstexprElements(f, elements))
       {
-        Subst bound = *activeSubst;
+        Subst bound = activeSubst ? *activeSubst : Subst{};
         bound.pairs.push_back({v, nullptr});
         const Subst* saved = activeSubst;
+        plainElementWalks += !saved;
         activeSubst = &bound;
         for (const Ty* element : elements)
         {
@@ -10700,10 +10722,11 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
           size_t inner = locals.mark();
           walkStmt(f->body);
           locals.pop(inner);
-          if (returnFrames.back())
+          if (!checked && returnFrames.back())
             break;
         }
         activeSubst = saved;
+        plainElementWalks -= !saved;
       }
       locals.pop(mark);
       break;
@@ -10968,7 +10991,7 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
         if (r.decl && r.decl->kind == NodeKind::FunctionDecl)
         {
           bool ambiguous;
-          if (FunctionDecl* f = pickOverload(r.decl, r.overloads, argTypesOf(i->args), &r.subst, b, ambiguous))
+          if (FunctionDecl* f = pickOverload(r.decl, r.overloads, argTypesOf(i->args), &r.subst, objectOperand(i->base, b), ambiguous))
           {
             checkConstObjectCall(f, base, i->token); // (`o[0]` of a const or volatile o by a member without the qualifier)
             return record(e, returnTypeOfCall(f, &r.subst, i->args, nullptr));

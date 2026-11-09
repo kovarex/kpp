@@ -427,6 +427,9 @@ switch (type)
     case T::kind: return parse<T>();
 }
 ```
+A static_assert or constexpr variable in the body is checked once per element, in a function that
+is no template as in an instance (2026-11-09); an `if constexpr` whose condition is no constant is
+an error, never a test at run time.
 At namespace and class scope the body may hold function definitions and explicit
 specialisations, which share their spelled name and differ by the element's type (overloads);
 it may not declare data members or variables, because there is no way to name them per element

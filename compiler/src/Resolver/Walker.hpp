@@ -84,6 +84,7 @@
     const Ty* probedCast(const Ty* t, const Ty* operand);
 
     int forConstexprDepth = 0; // for constexpr bodies this walk is inside (typed with the variable unbound)
+    int plainElementWalks = 0; // bound to one element of a for constexpr in a function that is no template: no instance to wait for
 
     // The elements of a for constexpr list under the current substitution: the types of
     // `types<A, B>`, the constants of `{1, 2}`, the descriptors of `alternatives(U)` and of
@@ -482,7 +483,10 @@
     };
 
     // Follows operator-> on class types for `a->b`.
-    const Ty* objectForArrow(const Ty* t, int depth = 0);
+    const Ty* objectForArrow(const Ty* t, int depth = 0, const Expr* objectExpr = nullptr);
+    // The object of an operator function as overload resolution takes it, a class's with its value category: an lvalue T&,
+    // anything else T&& ([over.match.funcs] 4: `Ops()(0)` calls `operator()(int) &&`). A plain T says nothing of it.
+    const Ty* objectOperand(const Expr* e, const Ty* t);
 
     // Looks a member up in the class of `objectTy` (after stripping references and const).
     // The instantiation a member found in scope `in` belongs to, seen through an object of type t
@@ -946,7 +950,7 @@
     // from the namespaces of both operand classes or the current scope, ranked together as C++
     // does ([over.match.oper]): the member, unless a free one takes the operands strictly better.
     // For a member, subst is the substitution of its class and isMember is set.
-    FunctionDecl* operatorFunction(P op, const Ty* lhs, const Ty* rhs, uint32_t token, size_t arity, Subst& subst, bool& isMember);
+    FunctionDecl* operatorFunction(P op, const Ty* lhs, const Ty* rhs, uint32_t token, size_t arity, Subst& subst, bool& isMember, const Ty* object = nullptr);
 
     // Whether `lhs <=> rhs` is a defaulted operator<=>, which gives the class `==` as well.
     bool threeWayDefaulted(const Ty* lhs, const Ty* rhs, uint32_t token);

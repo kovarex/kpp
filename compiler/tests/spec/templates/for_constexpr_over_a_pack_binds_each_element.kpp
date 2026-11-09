@@ -1,0 +1,34 @@
+// spec: `for constexpr (typename E : types<Ts...>)` binds E to each type of the pack in turn, never to the pack whole: a static_assert true of each element passes, as in a function that is no template, with what a discarded branch asserts left alone
+// found through thread I's report (2026-11-09): the walker bound the pack whole, so the assertion failed with `E = int32, int32`
+struct Pass { static constexpr int v = 1; };
+template<typename... Ts>
+int count()
+{
+  int total = 0;
+  for constexpr (typename E : types<Ts...>)
+  {
+    static_assert(isSame<E, int>, "not int");
+    ++total;
+  }
+  return total;
+}
+int main()
+{
+  int total = 0;
+  for constexpr (typename E : types<int, int>)
+  {
+    static_assert(isSame<E, int>, "not int");
+    ++total;
+  }
+  for constexpr (typename E : types<Pass, int>)
+  {
+    if constexpr (isSame<E, Pass>)
+      static_assert(E::v == 1, "one");
+    else
+      static_assert(sizeof(E) == 4, "four");
+    ++total;
+  }
+  println(total);
+  println(count<int, int, int>());
+  return 0;
+}

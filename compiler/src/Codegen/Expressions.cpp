@@ -2081,7 +2081,7 @@ auto codegen::Emitter::unary(UnaryExpr* u) -> Value
       {
         const Ty* foundIn = nullptr;
         std::vector<const Ty*> intArg = {types.intType(32)};
-        FunctionDecl* pf = findMemberFunction(o.ty, opName, intArg, o.ty, u, &foundIn, true);
+        FunctionDecl* pf = findMemberFunction(o.ty, opName, intArg, conversionObject(o), u, &foundIn, true);
         // No postfix operator++(int): an error, as in C++. (Until 2026-11-05 the prefix one was
         // called, MSVC's extension: `C d = c++;` gave d the incremented value.)
         if (!pf)

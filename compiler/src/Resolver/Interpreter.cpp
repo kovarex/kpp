@@ -914,7 +914,7 @@ auto GlobalScope::Impl::constValueIn(Expr* e, const TypeContext& ctx, int depth)
         {
           // `*optional`: the class's operator*, run on the object (where it is, when it has a place).
           Subst subst;
-          FunctionDecl* f = constClassOperator(p->type, P::Star, {}, subst, depth);
+          FunctionDecl* f = constClassOperator(p->type, P::Star, {}, subst, depth, false, constObjectOf(u->operand, *p, object));
           std::optional<ConstValue> self = p;
           return f && constDefinition(f) ? constCallOn(f, subst, {}, &self, depth + 1, object ? &*object : nullptr) : std::nullopt;
         }
@@ -929,13 +929,13 @@ auto GlobalScope::Impl::constValueIn(Expr* e, const TypeContext& ctx, int depth)
       std::optional<ConstValue> v = constValue(u->operand, ctx, depth + 1);
       if (v && v->isObject())
       {
-        if (*op == P::Bang)
+        Subst subst;
+        FunctionDecl* f = v->type ? constClassOperator(v->type, *op, {}, subst, depth, false, constObjectOf(u->operand, *v)) : nullptr; // `-vector`
+        if (*op == P::Bang && !f)
         {
-          std::optional<bool> t = constTruth(*v, depth + 1); // `!optional`
+          std::optional<bool> t = constTruth(*v, depth + 1); // `!optional`, by its conversion to bool
           return t ? std::optional<ConstValue>(ConstValue::integer(!*t, types.boolType())) : std::nullopt;
         }
-        Subst subst;
-        FunctionDecl* f = v->type ? constClassOperator(v->type, *op, {}, subst, depth) : nullptr; // `-vector`
         std::optional<ConstValue> self = v;
         return f && constDefinition(f) ? constCallOn(f, subst, {}, &self, depth + 1) : std::nullopt;
       }
@@ -2729,14 +2729,27 @@ auto GlobalScope::Impl::constByConversionOperator(const ConstValue& v, const Ty*
   return r ? constAsDeclared(r, t) : std::nullopt; // (then the standard conversion to t)
 }
 
-auto GlobalScope::Impl::constClassOperator(const Ty* t, P op, const std::vector<const Ty*>& argTypes, Subst& subst, int depth, bool templates) -> FunctionDecl*
+auto GlobalScope::Impl::constClassOperator(const Ty* t, P op, const std::vector<const Ty*>& argTypes, Subst& subst, int depth, bool templates, const Ty* object) -> FunctionDecl*
 {
   std::vector<FunctionDecl*> candidates = constMembersNamed(t, opSymbols[uint32_t(op)], subst, depth, templates);
   if (candidates.empty())
     return nullptr;
   bool ambiguous = false;
-  FunctionDecl* f = chooseAmong(candidates, argTypes, subst.empty() ? nullptr : &subst, types.unqualified(t), ambiguous);
+  // (a const or volatile object as before unless some candidate is ref-qualified: the value read here is not what the program's object is)
+  bool refQualified = std::any_of(candidates.begin(), candidates.end(), [](FunctionDecl* c) { return c->refQualifier != FunctionDecl::RefQualifier::None; });
+  FunctionDecl* f = chooseAmong(candidates, argTypes, subst.empty() ? nullptr : &subst, object && refQualified ? object : types.unqualified(t), ambiguous);
   return f && !ambiguous ? f : nullptr;
+}
+
+auto GlobalScope::Impl::constObjectOf(Expr* e, const ConstValue& v, const std::optional<ConstPlace>& place) -> const Ty*
+{
+  Expr* source = nullptr;
+  if (!e || !v.type || constCategory(e, source) != 1)
+    return e && v.type ? types.rref(types.unqualified(types.stripRef(v.type))) : nullptr;
+  const Ty* typed = e->ty && e->ty->isKnown() && !types.isDependent(e->ty) ? types.stripRef(e->ty) : nullptr;
+  bool readOnly = (place && !place->writable()) || (typed && typed->isConst);
+  const Ty* object = types.unqualified(types.stripRef(v.type));
+  return types.lref(readOnly ? types.qualified(object, true, false) : object);
 }
 
 auto GlobalScope::Impl::constMemberwiseEqual(const ConstValue& l, const ConstValue& r, const TypeContext& ctx, int depth) -> std::optional<bool>
@@ -7477,7 +7490,7 @@ auto GlobalScope::Impl::constArrowOf(Expr* e, const ConstValue& v, const TypeCon
   if (!v.isObject() || !v.type || v.type->isBraceList() || types.unqualified(types.stripRef(v.type))->kind != TyKind::Class)
     return std::nullopt;
   Subst subst;
-  FunctionDecl* arrow = constClassOperator(v.type, P::Arrow, {}, subst, depth);
+  FunctionDecl* arrow = constClassOperator(v.type, P::Arrow, {}, subst, depth, false, constObjectOf(e, v));
   if (!arrow || !constDefinition(arrow))
     return std::nullopt;
   std::optional<ConstPlace> place = e && constPure(e) ? constPlaceOf(e, ctx, depth + 1) : std::nullopt;
@@ -7544,7 +7557,7 @@ auto GlobalScope::Impl::constCallObjectValue(const ConstValue& object, std::opti
     argTypes.push_back(constOperandType(values[i], &o));
   }
   Subst subst;
-  FunctionDecl* call = constClassOperator(self->type, P::LParen, argTypes, subst, depth, true);
+  FunctionDecl* call = constClassOperator(self->type, P::LParen, argTypes, subst, depth, true, c->callee ? constObjectOf(c->callee, *self) : nullptr);
   if (!call || !constDefinition(call))
     return std::nullopt;
   if (!call->templateParams.empty())
@@ -7639,7 +7652,7 @@ auto GlobalScope::Impl::constPlaceOf(Expr* e, const TypeContext& ctx, int depth,
       if (!object)
         object = constMaterialize(*p, p->type);
       Subst subst;
-      FunctionDecl* f = object ? constClassOperator(p->type, P::Star, {}, subst, depth) : nullptr;
+      FunctionDecl* f = object ? constClassOperator(p->type, P::Star, {}, subst, depth, false, constObjectOf(operand, *p, object)) : nullptr;
       if (!f || !f->templateParams.empty() || !constDefinition(f))
         return std::nullopt;
       if (constReturnsLRef(f, subst))
@@ -8241,7 +8254,7 @@ auto GlobalScope::Impl::constIndex(IndexExpr* x, const TypeContext& ctx, int dep
   if (!base)
     return std::nullopt;
   if (base->isObject() && base->type && types.unqualified(base->type)->kind == TyKind::Class)
-    return constOperatorCall(*base, opSymbols[uint32_t(P::LBracket)], x->args, ctx, depth);
+    return constOperatorCall(*base, opSymbols[uint32_t(P::LBracket)], x->args, ctx, depth, constObjectOf(x->base, *base));
   std::optional<ConstValue> index = constValue(x->args[0], ctx, depth + 1);
   if (!index || index->kind != ConstValue::Kind::Int)
     return std::nullopt;
@@ -8262,7 +8275,7 @@ auto GlobalScope::Impl::constIndex(IndexExpr* x, const TypeContext& ctx, int dep
   return e.isUnset() ? std::nullopt : std::optional<ConstValue>(e);
 }
 
-auto GlobalScope::Impl::constOperatorCall(const ConstValue& object, uint32_t name, Span<Expr*> args, const TypeContext& ctx, int depth) -> std::optional<ConstValue>
+auto GlobalScope::Impl::constOperatorCall(const ConstValue& object, uint32_t name, Span<Expr*> args, const TypeContext& ctx, int depth, const Ty* objectType) -> std::optional<ConstValue>
 {
   Scope* s = classScopeOf(object.type);
   Lookup l;
@@ -8292,16 +8305,18 @@ auto GlobalScope::Impl::constOperatorCall(const ConstValue& object, uint32_t nam
   }
   else if (l.decl && l.decl->kind == NodeKind::FunctionDecl && constDefinition(static_cast<FunctionDecl*>(l.decl)))
     candidates.push_back(static_cast<FunctionDecl*>(l.decl));
-  // Of a const and a non-const overload alike (`operator[]`), the const one: the object is a value.
+  // Of a const and a non-const overload alike (`operator[]`), the const one: the object is a value. Ref-qualified ones
+  // (`&` beside `&&`): as for any operator, by the object's value category.
+  bool refQualified = objectType && std::any_of(candidates.begin(), candidates.end(), [](FunctionDecl* c) { return c->refQualifier != FunctionDecl::RefQualifier::None; });
   std::vector<FunctionDecl*> consts;
   for (FunctionDecl* f : candidates)
     if (f->flags & DF_Const)
       consts.push_back(f);
-  if (!consts.empty())
+  if (!consts.empty() && !refQualified)
     candidates = consts;
   Subst subst = memberSubst(types.unqualified(object.type), l.foundIn, depth + 1);
   bool ambiguous = false;
-  FunctionDecl* f = chooseAmong(candidates, argTypes, subst.empty() ? nullptr : &subst, types.unqualified(object.type), ambiguous);
+  FunctionDecl* f = chooseAmong(candidates, argTypes, subst.empty() ? nullptr : &subst, refQualified ? objectType : types.unqualified(object.type), ambiguous);
   if (!f || ambiguous || !f->templateParams.empty())
     return std::nullopt;
   LocalStack params;
@@ -8615,7 +8630,7 @@ auto GlobalScope::Impl::constAssign(BinaryExpr* b, const TypeContext& ctx, int d
     // `y = x` copies and only `y = move(x)` moves.
     const Ty* rightType = b->rhs->ty && b->rhs->ty->isKnown() && !types.isDependent(b->rhs->ty) ? b->rhs->ty : constTypeOfValue(*r);
     Subst subst;
-    FunctionDecl* f = constClassOperator(target, op, {argumentType(b->rhs, rightType, types)}, subst, depth, op == P::Assign);
+    FunctionDecl* f = constClassOperator(target, op, {argumentType(b->rhs, rightType, types)}, subst, depth, op == P::Assign, types.lref(target));
     if (f && !constDefaulted(f) && constDefinition(f))
     {
       // Run on the object where it is, the right operand referred to where it is: an lvalue's
@@ -8774,7 +8789,7 @@ auto GlobalScope::Impl::constIncrement(UnaryExpr* u, bool increment, const TypeC
       argTypes.push_back(types.intType());
       args.push_back(ConstValue::integer(0, types.intType()));
     }
-    FunctionDecl* f = constClassOperator(old->type, op, argTypes, subst, depth);
+    FunctionDecl* f = constClassOperator(old->type, op, argTypes, subst, depth, false, constObjectOf(u->operand, *old, place));
     if (!f || !constDefinition(f))
     {
       if (constWhy().empty())

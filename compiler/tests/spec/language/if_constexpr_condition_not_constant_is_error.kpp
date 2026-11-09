@@ -1,0 +1,30 @@
+// spec: the condition of an `if constexpr` is a constant expression ([stmt.if] 2), in a function, in a template's instance and in a generic lambda's: never a test at run time
+// found by thread I (2026-11-09): it behaved as a plain `if`
+// error: if_constexpr_condition_not_constant_is_error.kpp:9: error: the condition of an if constexpr is not a constant expression
+// error: if_constexpr_condition_not_constant_is_error.kpp:16: error: the condition of an if constexpr is not a constant expression
+// error: if_constexpr_condition_not_constant_is_error.kpp:24: error: the condition of an if constexpr is not a constant expression
+struct Box { int value = 0; };
+int plainFunction(const Box& x)
+{
+  if constexpr (x.value == 0)
+    return 1;
+  return 2;
+}
+template<typename T>
+int instance(const T& x)
+{
+  if constexpr (x.value == 0)
+    return 1;
+  return 2;
+}
+int main()
+{
+  auto generic = [](const auto& x)
+  {
+    if constexpr (x.value == 0)
+      return 1;
+    return 2;
+  };
+  Box b;
+  return plainFunction(b) + instance(b) + generic(b);
+}

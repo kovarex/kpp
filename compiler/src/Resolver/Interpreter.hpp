@@ -354,7 +354,10 @@
 
   // An operator a class declares for op, or `= default` (a defaulted `<=>` implies `==`). templates:
   // operator templates too (Less<void>'s operator()), their own parameters the caller's to bind.
-  FunctionDecl* constClassOperator(const Ty* t, P op, const std::vector<const Ty*>& argTypes, Subst& subst, int depth, bool templates = false);
+  // object: the object as overload resolution takes it (constObjectOf), for `&` beside `&&`; null: t, its category not known.
+  FunctionDecl* constClassOperator(const Ty* t, P op, const std::vector<const Ty*>& argTypes, Subst& subst, int depth, bool templates = false, const Ty* object = nullptr);
+  // The object e of a class's operator function: an lvalue T& (const as it was typed or where it is reached), anything else T&&.
+  const Ty* constObjectOf(Expr* e, const ConstValue& v, const std::optional<struct ConstPlace>& place = std::nullopt);
 
   // `a == b` of two objects of one class compared member by member (a defaulted `==`, or the one a
   // defaulted `<=>` implies): bases, then members, each by its own `==`.
@@ -1117,7 +1120,7 @@
   std::optional<ConstValue> constIndex(IndexExpr* x, const TypeContext& ctx, int depth);
 
   // A member operator of a class (`names[i]`: operator[]) run on an object the evaluation holds.
-  std::optional<ConstValue> constOperatorCall(const ConstValue& object, uint32_t name, Span<Expr*> args, const TypeContext& ctx, int depth);
+  std::optional<ConstValue> constOperatorCall(const ConstValue& object, uint32_t name, Span<Expr*> args, const TypeContext& ctx, int depth, const Ty* objectType = nullptr);
 
   // self: the object a member function runs on (`this`), the object it leaves after.
   // places: the arguments' places, for reference parameters (a reference parameter given none

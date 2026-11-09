@@ -327,7 +327,7 @@ auto codegen::Emitter::constObject(Expr* e, int depth) -> bool
 auto codegen::Emitter::operatorCall(Value object, const std::string& name, Span<Expr*> args, Node* at, bool required, const std::string& sret) -> Value
 {
   const Ty* foundIn = nullptr;
-  FunctionDecl* f = findMemberFunction(object.ty, name, argTypesOf(args), object.ty, at, &foundIn, true);
+  FunctionDecl* f = findMemberFunction(object.ty, name, argTypesOf(args), conversionObject(object), at, &foundIn, true); // (its value category: `&` beside `&&`)
   if (!f)
   {
     if (required)

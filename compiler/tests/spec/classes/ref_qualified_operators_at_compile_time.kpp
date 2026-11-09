@@ -1,0 +1,92 @@
+// spec: at compile time the object's value category and const choose among ref-qualified operators as at run time ([expr.const]): `Ops()(0)` is 3, `global(0)` of a constexpr object 2, and a class's own operator! is called; clang 19's output
+extern "C" int printf(const char* format, ...);
+struct Ops
+{
+  int value = 0;
+  constexpr int operator()(int) & { return 1; }
+  constexpr int operator()(int) const& { return 2; }
+  constexpr int operator()(int) && { return 3; }
+  constexpr int operator[](int) & { return 11; }
+  constexpr int operator[](int) const& { return 12; }
+  constexpr int operator[](int) && { return 13; }
+  constexpr int operator*() & { return 21; }
+  constexpr int operator*() const& { return 22; }
+  constexpr int operator*() && { return 23; }
+  constexpr int operator+(int) & { return 31; }
+  constexpr int operator+(int) const& { return 32; }
+  constexpr int operator+(int) && { return 33; }
+  constexpr int operator-() & { return 41; }
+  constexpr int operator-() const& { return 42; }
+  constexpr int operator-() && { return 43; }
+  constexpr int operator!() & { return 51; }
+  constexpr int operator!() const& { return 52; }
+  constexpr int operator!() && { return 53; }
+  constexpr int operator==(int) & { return 91; }
+  constexpr int operator==(int) const& { return 92; }
+  constexpr int operator==(int) && { return 93; }
+};
+struct OnlyTwo
+{
+  constexpr int operator()(int) const& { return 2; }
+  constexpr int operator()(int) && { return 3; }
+};
+constexpr Ops make() { return Ops(); }
+constexpr Ops global;
+constexpr OnlyTwo two;
+constexpr int callOf()
+{
+  Ops o;
+  const Ops c;
+  return o(0) * 10000 + c(0) * 100 + Ops()(0);
+}
+constexpr int indexOf()
+{
+  Ops o;
+  const Ops c;
+  return o[0] * 10000 + c[0] * 100 + Ops()[0];
+}
+constexpr int starOf()
+{
+  Ops o;
+  const Ops c;
+  return *o * 10000 + *c * 100 + *Ops();
+}
+constexpr int plusOf()
+{
+  Ops o;
+  const Ops c;
+  return (o + 0) * 10000 + (c + 0) * 100 + (Ops() + 0);
+}
+constexpr int minusOf()
+{
+  Ops o;
+  const Ops c;
+  return -o * 10000 + -c * 100 + -Ops();
+}
+constexpr int notOf()
+{
+  Ops o;
+  const Ops c;
+  return !o * 10000 + !c * 100 + !Ops();
+}
+constexpr int equalOf()
+{
+  Ops o;
+  const Ops c;
+  return (o == 0) * 10000 + (c == 0) * 100 + (Ops() == 0);
+}
+constexpr int movedOf()
+{
+  Ops o;
+  OnlyTwo t;
+  return move(o)(0) * 10000 + make()(0) * 100 + t(0);
+}
+constexpr int a = callOf(), b = indexOf(), c = starOf(), d = plusOf(), e = minusOf(), f = notOf(), g = equalOf(), h = movedOf();
+constexpr int i = global(0), j = global[0], k = *global, l = two(0), m = Ops()(0), n = *Ops(), p = !Ops();
+int main()
+{
+  printf("%d %d %d %d\n", a, b, c, d);
+  printf("%d %d %d %d\n", e, f, g, h);
+  printf("%d %d %d %d %d %d %d\n", i, j, k, l, m, n, p);
+  return 0;
+}

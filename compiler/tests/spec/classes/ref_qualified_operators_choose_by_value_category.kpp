@@ -1,6 +1,5 @@
 // spec: an overloaded operator's ref qualifier tells overloads apart by the object's value category, as a member function's does ([over.match.oper], [over.match.call], [over.match.funcs] 4): `f()(0)`, `move(f)(0)` and `forward<T>(t)(0)` call `operator()(int) &&`, and so do `[]`, unary `*`, `-`, `!`, prefix and postfix `++`, `+`, `+=`, `==`, the comma and `->` on a temporary, a call's result or a moved object; an lvalue takes `&`, a const one `const&`; clang and g++ print the same
 // found by thread I (2026-11-09): `visit(Visitor(), v)` called the visitor's `&` overload where std::visit calls its `&&` one
-// pending: a silent wrong answer. The call and the operators on an rvalue object take the first overload, the `&` one, as Value and the checker's stripped reference say nothing of the object's category: `Ops()(0)` is 1 for 3, `Ops()[0]` 11 for 13, `*make()` 21 for 23; for `+` and the unary operators only `move(o)` is right
 extern "C" int printf(const char* format, ...);
 struct Ops
 {
