@@ -1,0 +1,4 @@
+file: 16 bytes: AB|CD|65 66|-1 5
+11 bytes: ab.cd1ab.cd
+stream 8 bytes: AB ab.cd
+cerr 10 bytes: EF! ab.cd/

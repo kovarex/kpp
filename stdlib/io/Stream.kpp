@@ -75,8 +75,10 @@ private:
 
 // The output streams' base (what std::ostream is to code that writes to any stream: UnitTest++'s
 // XmlTestReporter writes its report to the stream it is given, the tests' an OutFileStream). A
-// stream writes the bytes (writeBytes); `<<` writes text, a char as itself and numbers as
-// std::ostream's defaults do (%d, %u, %lld, %llu, %g), and endl a newline.
+// stream writes the bytes (writeBytes); `<<` writes text (a String whole, NUL bytes too), a char,
+// a u8 and an i8 as the character each holds (C++'s unsigned char and signed char, which
+// std::ostream writes as characters), the other numbers as std::ostream's defaults do (%d, %u,
+// %lld, %llu, %g), and endl a newline.
 class OutStream
 {
 public:
@@ -114,6 +116,23 @@ OutStream& operator<<(OutStream& s, const String& text)
 OutStream& operator<<(OutStream& s, char c)
 {
   s.writeBytes(&c, 1);
+  return s;
+}
+
+// A u8 or an i8 as the character it holds, as std::ostream's inserters for unsigned char and signed
+// char ([ostream.inserters.character]; until 2026-11-09 a u8 promoted to the i32 overload, and
+// `out << (u8)65` wrote "65" for std's "A").
+OutStream& operator<<(OutStream& s, u8 c)
+{
+  char byte = (char)c;
+  s.writeBytes(&byte, 1);
+  return s;
+}
+
+OutStream& operator<<(OutStream& s, i8 c)
+{
+  char byte = (char)c;
+  s.writeBytes(&byte, 1);
   return s;
 }
 
@@ -223,9 +242,11 @@ StderrStream& operator<<(StderrStream& s, const char* text)
   return s;
 }
 
+// The String whole, NUL bytes too, as std::string's inserter writes size() characters (fputs stopped
+// at the first NUL until 2026-11-09).
 StderrStream& operator<<(StderrStream& s, const String& text)
 {
-  fputs(text.c_str(), s.handle());
+  fwrite(text.data(), 1, text.size(), s.handle());
   return s;
 }
 
@@ -259,6 +280,19 @@ StderrStream& operator<<(StderrStream& s, char c)
   return s;
 }
 
+// A u8 or an i8 as the character it holds, as OutStream's.
+StderrStream& operator<<(StderrStream& s, u8 c)
+{
+  fputc(c, s.handle());
+  return s;
+}
+
+StderrStream& operator<<(StderrStream& s, i8 c)
+{
+  fputc((u8)c, s.handle());
+  return s;
+}
+
 StderrStream& operator<<(StderrStream& s, const void* ptr)
 {
   fprintf(s.handle(), "%p", ptr);
@@ -283,11 +317,10 @@ OutFileStream& operator<<(OutFileStream& s, const char* text)
   return s;
 }
 
+// The String whole, NUL bytes too, as OutStream's (fputs stopped at the first NUL until 2026-11-09).
 OutFileStream& operator<<(OutFileStream& s, const String& text)
 {
-  if (s.handle)
-    fputs(text.c_str(), s.handle);
-  return s;
+  return s.write(text.data(), text.size());
 }
 
 OutFileStream& operator<<(OutFileStream& s, EndlTag)
