@@ -13,15 +13,22 @@ bool compileModule(std::string_view, const BackendOptions&, std::string&, std::s
 #else
 
 #include "llvm/Analysis/TargetLibraryInfo.h"
+#include "llvm/CodeGen/MachineFunctionPass.h"
+#include "llvm/CodeGen/MachineInstrBuilder.h"
+#include "llvm/CodeGen/TargetInstrInfo.h"
+#include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/DiagnosticPrinter.h"
+#include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/IRReader/IRReader.h"
+#include "llvm/MC/MCInst.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Passes/PassBuilder.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
@@ -35,6 +42,7 @@ bool compileModule(std::string_view, const BackendOptions&, std::string&, std::s
 #include <fstream>
 #include <memory>
 #include <mutex>
+#include <vector>
 
 bool inProcessBackend() { return true; }
 
@@ -81,6 +89,10 @@ namespace
       LLVMInitializeAArch64AsmPrinter();
       LLVMInitializeAArch64AsmParser();
       llvm::install_fatal_error_handler(fatalError);
+      // compileModule verifies a module once. LLVM's parser would run the verifier a second time, for debug
+      // information of older versions than kpp writes (UpgradeDebugInfo: 3.4% of a debug build's back end).
+      const char* arguments[] = {"kpp", "-disable-auto-upgrade-debug-info"};
+      llvm::cl::ParseCommandLineOptions(2, arguments);
     });
   }
 
@@ -122,6 +134,92 @@ namespace
 
     const BackendOptions* options;
     std::string errors;
+  };
+
+  // Each `asm "nop"` in a function (Emitter::emitCall: two per invoke, 631,606 in the game's debug build) as
+  // the instruction it is: the asm printer makes a new asm parser for every inline asm, 3.9% of that build's
+  // back end. The object is the same, byte for byte, so this runs right before the printer (the passes
+  // before it tell an inline asm from an instruction: on Win64, whether a call is a function's last
+  // instruction), and a nop between a call and an epilogue stays an inline asm: the printer's own nop after a
+  // call before an epilogue looks back over pseudo instructions, and an inline asm is one, an instruction not.
+  struct NopsAsInstructions : llvm::MachineFunctionPass
+  {
+    static char ID;
+
+    NopsAsInstructions() : llvm::MachineFunctionPass(ID) {}
+
+    llvm::StringRef getPassName() const override { return "kpp's nops as instructions"; }
+
+    void getAnalysisUsage(llvm::AnalysisUsage& usage) const override
+    {
+      usage.setPreservesAll();
+      llvm::MachineFunctionPass::getAnalysisUsage(usage);
+    }
+
+    bool runOnMachineFunction(llvm::MachineFunction& function) override
+    {
+      const llvm::TargetInstrInfo& instructions = *function.getSubtarget().getInstrInfo();
+      const unsigned nop = instructions.getNop().getOpcode();
+      bool changed = false;
+      auto replace = [&](llvm::MachineInstr& asmNop)
+      {
+        llvm::BuildMI(*asmNop.getParent(), asmNop, asmNop.getDebugLoc(), instructions.get(nop));
+        asmNop.eraseFromParent();
+        changed = true;
+      };
+      // (the nops after the last call with only pseudo instructions since it, across blocks as the printer looks)
+      std::vector<llvm::MachineInstr*> sinceCall;
+      auto replaceThose = [&]
+      {
+        for (llvm::MachineInstr* asmNop : sinceCall)
+          replace(*asmNop);
+        sinceCall.clear();
+      };
+      bool afterCall = false;
+      for (llvm::MachineBasicBlock& block : function)
+        for (llvm::MachineInstr& instruction : llvm::make_early_inc_range(block))
+          if (instruction.isCall())
+          {
+            replaceThose();
+            afterCall = true;
+          }
+          else if (instruction.isInlineAsm() && llvm::StringRef(instruction.getOperand(llvm::InlineAsm::MIOp_AsmString).getSymbolName()) == "nop")
+          {
+            if (afterCall)
+              sinceCall.push_back(&instruction);
+            else
+              replace(instruction);
+          }
+          else if (!instruction.isPseudo())
+          {
+            replaceThose();
+            afterCall = false;
+          }
+          else if (!sinceCall.empty() && instructions.getName(instruction.getOpcode()) == "SEH_Epilogue")
+          {
+            sinceCall.clear();
+            afterCall = false;
+          }
+      replaceThose();
+      return changed;
+    }
+  };
+  char NopsAsInstructions::ID = 0;
+
+  // The passes LLVM's target machine adds to write an object, with kpp's before its asm printer (x86-64's;
+  // the nops of other targets go through the asm parser).
+  struct ObjectPasses : llvm::legacy::PassManagerBase
+  {
+    explicit ObjectPasses(llvm::legacy::PassManager& passes) : passes(passes) {}
+
+    void add(llvm::Pass* pass) override
+    {
+      if (pass->getPassName() == "X86 Assembly Printer")
+        passes.add(new NopsAsInstructions);
+      passes.add(pass);
+    }
+
+    llvm::legacy::PassManager& passes;
   };
 }
 
@@ -238,7 +336,8 @@ bool compileModule(std::string_view ir, const BackendOptions& options, std::stri
   llvm::legacy::PassManager codegen;
   codegen.add(new llvm::TargetLibraryInfoWrapperPass(llvm::TargetLibraryInfoImpl(parsed)));
   // (DisableVerify: the module was verified above.)
-  if (machine->addPassesToEmitFile(codegen, out, nullptr, llvm::CodeGenFileType::ObjectFile, /*DisableVerify*/ true))
+  ObjectPasses passes(codegen);
+  if (machine->addPassesToEmitFile(passes, out, nullptr, llvm::CodeGenFileType::ObjectFile, /*DisableVerify*/ true))
   {
     error = "the target cannot emit an object file";
     return false;
