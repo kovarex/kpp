@@ -1,0 +1,458 @@
+// spec: a container whose element's construction throws, at every construction in turn and at sizes from 0 to 33: a copy of a whole List, ForwardList, Vector, Deque, Set, MultiSet, Map, MultiMap or HashMap and every other constructor (count, count and value, a range, a brace list) leaves no element alive; copy assignment and assign, resize and a range insert leave none lost and the container usable; and where the standard says an operation has no effects if it throws, the container is as it was: List's and ForwardList's inserts of one or of several elements ([list.modifiers], [forward.list.modifiers]), the maps' and sets' inserts and emplaces of one ([associative.reqmts.except], [unord.req.except]). Optional's emplace and assignments, make_shared and a Function's copy lose nothing either. Each line is what clang with MSVC's STL and g++ with libstdc++ print for the same program
+// found by thread I's battery bomb1 (2026-11-09): a copy constructor left the elements it had built undestroyed (a constructor that throws runs no destructor) in List, ForwardList, Set, MultiSet, Map, MultiMap and HashMap; copy-assigning a HashMap crashed (its tags were copied before its entries existed); List's and ForwardList's inserts of several elements left the first ones in
+extern "C" int printf(const char* format, ...);
+int live = 0;
+int fuse = -1;
+
+void tick()
+{
+  if (fuse == 0)
+  {
+    fuse = -1;
+    throw 42;
+  }
+  if (fuse > 0)
+    --fuse;
+}
+
+struct Bomb
+{
+  int value;
+  Bomb() : value(0)
+  {
+    tick();
+    ++live;
+  }
+  Bomb(int v) : value(v)
+  {
+    tick();
+    ++live;
+  }
+  Bomb(const Bomb& o) : value(o.value)
+  {
+    tick();
+    ++live;
+  }
+  Bomb& operator=(const Bomb& o)
+  {
+    tick();
+    value = o.value;
+    return *this;
+  }
+  ~Bomb() { --live; }
+  bool operator<(const Bomb& o) const { return value < o.value; }
+  bool operator==(const Bomb& o) const { return value == o.value; }
+};
+
+struct Callable
+{
+  Bomb bomb;
+  Callable(int v) : bomb(v) {}
+  int operator()() const { return bomb.value; }
+};
+
+template <typename C> Vector<int> values(const C& c)
+{
+  Vector<int> result;
+  for (const auto& b : c)
+    result.push_back(b.value);
+  return result;
+}
+
+template <typename M> Vector<int> keys(const M& m)
+{
+  Vector<int> result;
+  for (const auto& e : m)
+    result.push_back(e.first.value);
+  return result;
+}
+
+template <typename M> Vector<int> mapped(const M& m)
+{
+  Vector<int> result;
+  for (const auto& e : m)
+    result.push_back(e.first);
+  sort(result.begin(), result.end());
+  for (const auto& e : m)
+    result.push_back(1000 + e.second.value);
+  return result;
+}
+
+int sumOf(const Vector<int>& v)
+{
+  int sum = 0;
+  for (int x : v)
+    sum += x;
+  return sum;
+}
+
+int sizes[13] = {0, 1, 2, 3, 4, 7, 8, 15, 16, 17, 31, 32, 33};
+
+// op on a fresh container of each size, a throw injected at each construction: strong says the container
+// must be as it was afterwards (otherwise only that no object was lost).
+template <typename Make, typename Snap, typename Op> void inject(const char* label, Make make, Snap snap, Op op, bool strong)
+{
+  int violations = 0;
+  int finalSum = 0;
+  int finalSize = 0;
+  for (int n : sizes)
+  {
+    for (int f = 0; f < 400; ++f)
+    {
+      bool threw = false;
+      fuse = -1;
+      int liveOutside = live;
+      {
+        auto c = make(n);
+        Vector<int> before = snap(c);
+        int liveBefore = live;
+        fuse = f;
+        try
+        {
+          op(c);
+        }
+        catch (int)
+        {
+          threw = true;
+        }
+        fuse = -1;
+        if (threw && strong && !(snap(c) == before))
+          ++violations;
+        if (threw && strong && live != liveBefore)
+          ++violations;
+        if (!threw)
+        {
+          Vector<int> after = snap(c);
+          finalSum += sumOf(after);
+          finalSize += (int)after.size();
+        }
+      }
+      if (live != liveOutside)
+      {
+        ++violations;
+        live = liveOutside;
+      }
+      if (!threw)
+        break;
+    }
+  }
+  printf("%s: violations %d, after success size %d sum %d\n", label, violations, finalSize, finalSum);
+  fflush(nullptr);
+}
+
+List<Bomb> makeList(int n)
+{
+  List<Bomb> c;
+  for (int i = 0; i < n; ++i)
+    c.emplace_back(i * 2);
+  return c;
+}
+
+ForwardList<Bomb> makeForward(int n)
+{
+  ForwardList<Bomb> c;
+  for (int i = 0; i < n; ++i)
+    c.emplace_front(i * 2);
+  return c;
+}
+
+Vector<Bomb> makeVector(int n)
+{
+  Vector<Bomb> c;
+  for (int i = 0; i < n; ++i)
+    c.emplace_back(i * 2);
+  c.shrink_to_fit();
+  return c;
+}
+
+Deque<Bomb> makeDeque(int n)
+{
+  Deque<Bomb> c;
+  for (int i = 0; i < n; ++i)
+    c.emplace_back(i * 2);
+  return c;
+}
+
+Set<Bomb> makeSet(int n)
+{
+  Set<Bomb> c;
+  for (int i = 0; i < n; ++i)
+    c.emplace(i * 2);
+  return c;
+}
+
+MultiSet<Bomb> makeMultiSet(int n)
+{
+  MultiSet<Bomb> c;
+  for (int i = 0; i < n; ++i)
+    c.emplace(i / 2);
+  return c;
+}
+
+Map<Bomb, int> makeMap(int n)
+{
+  Map<Bomb, int> c;
+  for (int i = 0; i < n; ++i)
+    c.emplace(i * 2, i);
+  return c;
+}
+
+MultiMap<Bomb, int> makeMultiMap(int n)
+{
+  MultiMap<Bomb, int> c;
+  for (int i = 0; i < n; ++i)
+    c.emplace(i / 2, i);
+  return c;
+}
+
+HashMap<int, Bomb> makeHashMap(int n)
+{
+  HashMap<int, Bomb> c;
+  for (int i = 0; i < n; ++i)
+    c.emplace(i * 2, i);
+  return c;
+}
+
+int main()
+{
+  const Bomb seven(7);
+  const Bomb eight(8);
+  Vector<Bomb> three;
+  three.reserve(3);
+  three.emplace_back(101);
+  three.emplace_back(102);
+  three.emplace_back(103);
+  auto v = [](const auto& c) { return values(c); };
+  auto k = [](const auto& c) { return keys(c); };
+  auto m = [](const auto& c) { return mapped(c); };
+
+  inject("list push_back", makeList, v, [&](List<Bomb>& c) { c.push_back(seven); }, true);
+  inject("list push_front", makeList, v, [&](List<Bomb>& c) { c.push_front(seven); }, true);
+  inject("list emplace_back", makeList, v, [&](List<Bomb>& c) { c.emplace_back(9); }, true);
+  inject("list emplace_front", makeList, v, [&](List<Bomb>& c) { c.emplace_front(9); }, true);
+  inject("list insert one", makeList, v, [&](List<Bomb>& c) { c.insert(c.end(), seven); }, true);
+  inject("list insert three copies", makeList, v, [&](List<Bomb>& c) { c.insert(c.begin(), 3, seven); }, true);
+  inject("list insert a range", makeList, v, [&](List<Bomb>& c) { c.insert(c.end(), three.begin(), three.end()); }, true);
+  inject("list emplace", makeList, v, [&](List<Bomb>& c) { c.emplace(c.begin(), 9); }, true);
+  inject("list copy", makeList, v, [&](List<Bomb>& c) { List<Bomb> copy = c; }, true);
+  inject("list assign (no leak)", makeList, v, [&](List<Bomb>& c) { const List<Bomb> source = makeList(5); c = source; }, false);
+  inject("forward_list push_front", makeForward, v, [&](ForwardList<Bomb>& c) { c.push_front(seven); }, true);
+  inject("forward_list emplace_front", makeForward, v, [&](ForwardList<Bomb>& c) { c.emplace_front(9); }, true);
+  inject("forward_list insert_after", makeForward, v, [&](ForwardList<Bomb>& c) { c.insert_after(c.before_begin(), seven); }, true);
+  inject("forward_list insert_after three", makeForward, v, [&](ForwardList<Bomb>& c) { c.insert_after(c.before_begin(), 3, seven); }, true);
+  inject("forward_list insert_after a range", makeForward, v, [&](ForwardList<Bomb>& c) { c.insert_after(c.before_begin(), three.begin(), three.end()); }, true);
+  inject("forward_list copy", makeForward, v, [&](ForwardList<Bomb>& c) { ForwardList<Bomb> copy = c; }, true);
+  inject("vector copy", makeVector, v, [&](Vector<Bomb>& c) { Vector<Bomb> copy = c; }, true);
+  inject("vector assign (no leak)", makeVector, v, [&](Vector<Bomb>& c) { const Vector<Bomb> source = makeVector(5); c = source; }, false);
+  inject("deque copy", makeDeque, v, [&](Deque<Bomb>& c) { Deque<Bomb> copy = c; }, true);
+  inject("deque assign (no leak)", makeDeque, v, [&](Deque<Bomb>& c) { const Deque<Bomb> source = makeDeque(5); c = source; }, false);
+  inject("set insert new", makeSet, v, [&](Set<Bomb>& c) { c.insert(seven); }, true);
+  inject("set insert present", makeSet, v, [&](Set<Bomb>& c) { Bomb two(2); c.insert(two); }, true);
+  inject("set emplace new", makeSet, v, [&](Set<Bomb>& c) { c.emplace(9); }, true);
+  inject("set emplace present", makeSet, v, [&](Set<Bomb>& c) { c.emplace(2); }, true);
+  inject("set copy", makeSet, v, [&](Set<Bomb>& c) { Set<Bomb> copy = c; }, true);
+  inject("set assign (no leak)", makeSet, v, [&](Set<Bomb>& c) { const Set<Bomb> source = makeSet(5); c = source; }, false);
+  inject("multiset insert", makeMultiSet, v, [&](MultiSet<Bomb>& c) { c.insert(seven); }, true);
+  inject("multiset emplace", makeMultiSet, v, [&](MultiSet<Bomb>& c) { c.emplace(1); }, true);
+  inject("multiset copy", makeMultiSet, v, [&](MultiSet<Bomb>& c) { MultiSet<Bomb> copy = c; }, true);
+  inject("map insert new", makeMap, k, [&](Map<Bomb, int>& c) { Pair<const Bomb, int> kv(seven, 1); c.insert(kv); }, true);
+  inject("map emplace new", makeMap, k, [&](Map<Bomb, int>& c) { c.emplace(9, 1); }, true);
+  inject("map emplace present", makeMap, k, [&](Map<Bomb, int>& c) { c.emplace(2, 1); }, true);
+  inject("map operator[] new", makeMap, k, [&](Map<Bomb, int>& c) { c[seven] = 1; }, true);
+  inject("map try_emplace new", makeMap, k, [&](Map<Bomb, int>& c) { c.try_emplace(seven, 1); }, true);
+  inject("map insert_or_assign new", makeMap, k, [&](Map<Bomb, int>& c) { c.insert_or_assign(seven, 1); }, true);
+  inject("map copy", makeMap, k, [&](Map<Bomb, int>& c) { Map<Bomb, int> copy = c; }, true);
+  inject("map assign (no leak)", makeMap, k, [&](Map<Bomb, int>& c) { const Map<Bomb, int> source = makeMap(5); c = source; }, false);
+  inject("multimap insert", makeMultiMap, k, [&](MultiMap<Bomb, int>& c) { Pair<const Bomb, int> kv(seven, 1); c.insert(kv); }, true);
+  inject("multimap emplace", makeMultiMap, k, [&](MultiMap<Bomb, int>& c) { c.emplace(1, 1); }, true);
+  inject("multimap copy", makeMultiMap, k, [&](MultiMap<Bomb, int>& c) { MultiMap<Bomb, int> copy = c; }, true);
+  inject("hash map emplace new", makeHashMap, m, [&](HashMap<int, Bomb>& c) { c.emplace(9, 1); }, true);
+  inject("hash map emplace present", makeHashMap, m, [&](HashMap<int, Bomb>& c) { c.emplace(2, 1); }, true);
+  inject("hash map insert new", makeHashMap, m, [&](HashMap<int, Bomb>& c) { Pair<const int, Bomb> kv(9, seven); c.insert(kv); }, true);
+  inject("hash map try_emplace new", makeHashMap, m, [&](HashMap<int, Bomb>& c) { c.try_emplace(9, 1); }, true);
+  inject("hash map insert_or_assign new", makeHashMap, m, [&](HashMap<int, Bomb>& c) { c.insert_or_assign(9, seven); }, true);
+  inject("hash map copy", makeHashMap, m, [&](HashMap<int, Bomb>& c) { HashMap<int, Bomb> copy = c; }, true);
+  inject("hash map assign (no leak)", makeHashMap, m, [&](HashMap<int, Bomb>& c) { const HashMap<int, Bomb> source = makeHashMap(5); c = source; }, false);
+
+  inject("forward_list assign (no leak)", makeForward, v, [&](ForwardList<Bomb>& c) { const ForwardList<Bomb> source = makeForward(5); c = source; }, false);
+  inject("multimap assign (no leak)", makeMultiMap, k, [&](MultiMap<Bomb, int>& c) { const MultiMap<Bomb, int> source = makeMultiMap(5); c = source; }, false);
+  inject("multiset assign (no leak)", makeMultiSet, v, [&](MultiSet<Bomb>& c) { const MultiSet<Bomb> source = makeMultiSet(5); c = source; }, false);
+
+  inject("list from count", makeList, v, [&](List<Bomb>& c) { List<Bomb> x(4); }, true);
+  inject("list from count and value", makeList, v, [&](List<Bomb>& c) { List<Bomb> x(4, seven); }, true);
+  inject("list from a range", makeList, v, [&](List<Bomb>& c) { List<Bomb> x(three.begin(), three.end()); }, true);
+  inject("list from a brace list", makeList, v, [&](List<Bomb>& c) { List<Bomb> x = {seven, eight, seven}; }, true);
+  inject("forward_list from count", makeForward, v, [&](ForwardList<Bomb>& c) { ForwardList<Bomb> x(4); }, true);
+  inject("forward_list from count and value", makeForward, v, [&](ForwardList<Bomb>& c) { ForwardList<Bomb> x(4, seven); }, true);
+  inject("forward_list from a range", makeForward, v, [&](ForwardList<Bomb>& c) { ForwardList<Bomb> x(three.begin(), three.end()); }, true);
+  inject("forward_list from a brace list", makeForward, v, [&](ForwardList<Bomb>& c) { ForwardList<Bomb> x = {seven, eight, seven}; }, true);
+  inject("vector from count", makeVector, v, [&](Vector<Bomb>& c) { Vector<Bomb> x(4); }, true);
+  inject("vector from count and value", makeVector, v, [&](Vector<Bomb>& c) { Vector<Bomb> x(4, seven); }, true);
+  inject("vector from a range", makeVector, v, [&](Vector<Bomb>& c) { Vector<Bomb> x(three.begin(), three.end()); }, true);
+  inject("vector from a brace list", makeVector, v, [&](Vector<Bomb>& c) { Vector<Bomb> x = {seven, eight, seven}; }, true);
+  inject("deque from count", makeDeque, v, [&](Deque<Bomb>& c) { Deque<Bomb> x(4); }, true);
+  inject("deque from count and value", makeDeque, v, [&](Deque<Bomb>& c) { Deque<Bomb> x(4, seven); }, true);
+  inject("deque from a range", makeDeque, v, [&](Deque<Bomb>& c) { Deque<Bomb> x(three.begin(), three.end()); }, true);
+  inject("deque from a brace list", makeDeque, v, [&](Deque<Bomb>& c) { Deque<Bomb> x = {seven, eight, seven}; }, true);
+  inject("set from a range", makeSet, v, [&](Set<Bomb>& c) { Set<Bomb> x(three.begin(), three.end()); }, true);
+  inject("set from a brace list", makeSet, v, [&](Set<Bomb>& c) { Set<Bomb> x = {seven, eight, seven}; }, true);
+  inject("multiset from a range", makeMultiSet, v, [&](MultiSet<Bomb>& c) { MultiSet<Bomb> x(three.begin(), three.end()); }, true);
+  inject("map from a brace list", makeMap, k, [&](Map<Bomb, int>& c) { Pair<const Bomb, int> kv(seven, 1); Map<Bomb, int> x = {kv, kv}; }, true);
+  inject("hash map from a brace list", makeHashMap, m, [&](HashMap<int, Bomb>& c) { Pair<const int, Bomb> kv(1, seven); HashMap<int, Bomb> x = {kv, kv}; }, true);
+  inject("list resize (no leak)", makeList, v, [&](List<Bomb>& c) { c.resize(c.size() + 3, seven); }, false);
+  inject("list assign range (no leak)", makeList, v, [&](List<Bomb>& c) { c.assign(three.begin(), three.end()); }, false);
+  inject("list assign count (no leak)", makeList, v, [&](List<Bomb>& c) { c.assign(5, seven); }, false);
+  inject("forward_list resize (no leak)", makeForward, v, [&](ForwardList<Bomb>& c) { c.resize(40, seven); }, false);
+  inject("forward_list assign range (no leak)", makeForward, v, [&](ForwardList<Bomb>& c) { c.assign(three.begin(), three.end()); }, false);
+  inject("forward_list assign count (no leak)", makeForward, v, [&](ForwardList<Bomb>& c) { c.assign(5, seven); }, false);
+  inject("vector insert three (no leak)", makeVector, v, [&](Vector<Bomb>& c) { c.insert(c.begin(), 3, seven); }, false);
+  inject("vector insert range (no leak)", makeVector, v, [&](Vector<Bomb>& c) { c.insert(c.begin(), three.begin(), three.end()); }, false);
+  inject("vector resize (no leak)", makeVector, v, [&](Vector<Bomb>& c) { c.resize(c.size() + 3, seven); }, false);
+  inject("vector assign count (no leak)", makeVector, v, [&](Vector<Bomb>& c) { c.assign(40, seven); }, false);
+  inject("deque insert three (no leak)", makeDeque, v, [&](Deque<Bomb>& c) { c.insert(c.begin() + c.size() / 2, 3, seven); }, false);
+  inject("deque insert range (no leak)", makeDeque, v, [&](Deque<Bomb>& c) { c.insert(c.begin() + c.size() / 2, three.begin(), three.end()); }, false);
+  inject("deque resize (no leak)", makeDeque, v, [&](Deque<Bomb>& c) { c.resize(c.size() + 3, seven); }, false);
+  inject("deque assign count (no leak)", makeDeque, v, [&](Deque<Bomb>& c) { c.assign(40, seven); }, false);
+  inject("set insert a range (no leak)", makeSet, v, [&](Set<Bomb>& c) { c.insert(three.begin(), three.end()); }, false);
+
+  // Optional: what each failed step leaves.
+  auto showOptional = [](const char* label, const Optional<Bomb>& o) {
+    if (o.has_value())
+      printf("%s: holds %d, live %d\n", label, o->value, live);
+    else
+      printf("%s: empty, live %d\n", label, live);
+  };
+  int outside = live;
+  {
+    Optional<Bomb> o;
+    o.emplace(5);
+    fuse = 0;
+    try
+    {
+      o.emplace(6);
+    }
+    catch (int)
+    {
+    }
+    fuse = -1;
+    showOptional("optional emplace over a value, throwing", o);
+  }
+  printf("optional 1 left %d\n", live - outside);
+  {
+    Optional<Bomb> o;
+    fuse = 0;
+    try
+    {
+      o = seven;
+    }
+    catch (int)
+    {
+    }
+    fuse = -1;
+    showOptional("optional = value, empty, throwing", o);
+  }
+  printf("optional 2 left %d\n", live - outside);
+  {
+    Optional<Bomb> o;
+    o.emplace(5);
+    fuse = 0;
+    try
+    {
+      o = seven;
+    }
+    catch (int)
+    {
+    }
+    fuse = -1;
+    showOptional("optional = value, full, throwing", o);
+  }
+  printf("optional 3 left %d\n", live - outside);
+  {
+    Optional<Bomb> o;
+    o.emplace(5);
+    Optional<Bomb> other;
+    other.emplace(6);
+    fuse = 0;
+    try
+    {
+      o = other;
+    }
+    catch (int)
+    {
+    }
+    fuse = -1;
+    showOptional("optional = optional, full, throwing", o);
+    showOptional("  its source", other);
+  }
+  printf("optional 4 left %d\n", live - outside);
+  {
+    Optional<Bomb> empty;
+    Optional<Bomb> other;
+    other.emplace(6);
+    fuse = 0;
+    try
+    {
+      empty = other;
+    }
+    catch (int)
+    {
+    }
+    fuse = -1;
+    showOptional("optional = optional, empty, throwing", empty);
+  }
+  printf("optional 5 left %d\n", live - outside);
+  {
+    Optional<Bomb> o;
+    o.emplace(5);
+    fuse = 0;
+    bool threw = false;
+    try
+    {
+      Optional<Bomb> copy = o;
+    }
+    catch (int)
+    {
+      threw = true;
+    }
+    fuse = -1;
+    printf("optional copy threw %d\n", (int)threw);
+    showOptional("  its source", o);
+  }
+  printf("optional 6 left %d\n", live - outside);
+
+  // SharedPtr and Function: a constructor that throws loses nothing.
+  {
+    bool threw = false;
+    fuse = 0;
+    try
+    {
+      SharedPtr<Bomb> p = makeShared<Bomb>(5);
+    }
+    catch (int)
+    {
+      threw = true;
+    }
+    fuse = -1;
+    printf("make_shared threw %d, left %d\n", (int)threw, live - outside);
+  }
+  {
+    Callable callable(11);
+    Function<int()> f = callable;
+    int before = live;
+    bool threw = false;
+    fuse = 0;
+    try
+    {
+      Function<int()> g = f;
+      printf("not reached %d\n", g());
+    }
+    catch (int)
+    {
+      threw = true;
+    }
+    fuse = -1;
+    printf("function copy threw %d, call %d, left %d\n", (int)threw, f(), live - before);
+  }
+  printf("function left %d\n", live - outside);
+  return 0;
+}

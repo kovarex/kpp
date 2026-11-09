@@ -1,0 +1,103 @@
+list push_back: violations 0, after success size 182 sum 3909
+list push_front: violations 0, after success size 182 sum 3909
+list emplace_back: violations 0, after success size 182 sum 3935
+list emplace_front: violations 0, after success size 182 sum 3935
+list insert one: violations 0, after success size 182 sum 3909
+list insert three copies: violations 0, after success size 208 sum 4091
+list insert a range: violations 0, after success size 208 sum 7796
+list emplace: violations 0, after success size 182 sum 3935
+list copy: violations 0, after success size 169 sum 3818
+list assign (no leak): violations 0, after success size 65 sum 260
+forward_list push_front: violations 0, after success size 182 sum 3909
+forward_list emplace_front: violations 0, after success size 182 sum 3935
+forward_list insert_after: violations 0, after success size 182 sum 3909
+forward_list insert_after three: violations 0, after success size 208 sum 4091
+forward_list insert_after a range: violations 0, after success size 208 sum 7796
+forward_list copy: violations 0, after success size 169 sum 3818
+vector copy: violations 0, after success size 169 sum 3818
+vector assign (no leak): violations 0, after success size 65 sum 260
+deque copy: violations 0, after success size 169 sum 3818
+deque assign (no leak): violations 0, after success size 65 sum 260
+set insert new: violations 0, after success size 182 sum 3909
+set insert present: violations 0, after success size 171 sum 3822
+set emplace new: violations 0, after success size 182 sum 3935
+set emplace present: violations 0, after success size 171 sum 3822
+set copy: violations 0, after success size 169 sum 3818
+set assign (no leak): violations 0, after success size 65 sum 260
+multiset insert: violations 0, after success size 182 sum 1005
+multiset emplace: violations 0, after success size 182 sum 927
+multiset copy: violations 0, after success size 169 sum 914
+map insert new: violations 0, after success size 182 sum 3909
+map emplace new: violations 0, after success size 182 sum 3935
+map emplace present: violations 0, after success size 171 sum 3822
+map operator[] new: violations 0, after success size 182 sum 3909
+map try_emplace new: violations 0, after success size 182 sum 3909
+map insert_or_assign new: violations 0, after success size 182 sum 3909
+map copy: violations 0, after success size 169 sum 3818
+map assign (no leak): violations 0, after success size 65 sum 260
+multimap insert: violations 0, after success size 182 sum 1005
+multimap emplace: violations 0, after success size 182 sum 927
+multimap copy: violations 0, after success size 169 sum 914
+hash map emplace new: violations 0, after success size 364 sum 187857
+hash map emplace present: violations 0, after success size 342 sum 176733
+hash map insert new: violations 0, after success size 364 sum 187935
+hash map try_emplace new: violations 0, after success size 364 sum 187857
+hash map insert_or_assign new: violations 0, after success size 364 sum 187935
+hash map copy: violations 0, after success size 338 sum 174727
+hash map assign (no leak): violations 0, after success size 130 sum 65390
+forward_list assign (no leak): violations 0, after success size 65 sum 260
+multimap assign (no leak): violations 0, after success size 65 sum 52
+multiset assign (no leak): violations 0, after success size 65 sum 52
+list from count: violations 0, after success size 169 sum 3818
+list from count and value: violations 0, after success size 169 sum 3818
+list from a range: violations 0, after success size 169 sum 3818
+list from a brace list: violations 0, after success size 169 sum 3818
+forward_list from count: violations 0, after success size 169 sum 3818
+forward_list from count and value: violations 0, after success size 169 sum 3818
+forward_list from a range: violations 0, after success size 169 sum 3818
+forward_list from a brace list: violations 0, after success size 169 sum 3818
+vector from count: violations 0, after success size 169 sum 3818
+vector from count and value: violations 0, after success size 169 sum 3818
+vector from a range: violations 0, after success size 169 sum 3818
+vector from a brace list: violations 0, after success size 169 sum 3818
+deque from count: violations 0, after success size 169 sum 3818
+deque from count and value: violations 0, after success size 169 sum 3818
+deque from a range: violations 0, after success size 169 sum 3818
+deque from a brace list: violations 0, after success size 169 sum 3818
+set from a range: violations 0, after success size 169 sum 3818
+set from a brace list: violations 0, after success size 169 sum 3818
+multiset from a range: violations 0, after success size 169 sum 914
+map from a brace list: violations 0, after success size 169 sum 3818
+hash map from a brace list: violations 0, after success size 338 sum 174727
+list resize (no leak): violations 0, after success size 208 sum 4091
+list assign range (no leak): violations 0, after success size 39 sum 3978
+list assign count (no leak): violations 0, after success size 65 sum 455
+forward_list resize (no leak): violations 0, after success size 520 sum 6275
+forward_list assign range (no leak): violations 0, after success size 39 sum 3978
+forward_list assign count (no leak): violations 0, after success size 65 sum 455
+vector insert three (no leak): violations 0, after success size 208 sum 4091
+vector insert range (no leak): violations 0, after success size 208 sum 7796
+vector resize (no leak): violations 0, after success size 208 sum 4091
+vector assign count (no leak): violations 0, after success size 520 sum 3640
+deque insert three (no leak): violations 0, after success size 208 sum 4091
+deque insert range (no leak): violations 0, after success size 208 sum 7796
+deque resize (no leak): violations 0, after success size 208 sum 4091
+deque assign count (no leak): violations 0, after success size 520 sum 3640
+set insert a range (no leak): violations 0, after success size 208 sum 7796
+optional emplace over a value, throwing: empty, live 5
+optional 1 left 0
+optional = value, empty, throwing: empty, live 5
+optional 2 left 0
+optional = value, full, throwing: holds 5, live 6
+optional 3 left 0
+optional = optional, full, throwing: holds 5, live 7
+  its source: holds 6, live 7
+optional 4 left 0
+optional = optional, empty, throwing: empty, live 6
+optional 5 left 0
+optional copy threw 1
+  its source: holds 5, live 6
+optional 6 left 0
+make_shared threw 1, left 0
+function copy threw 1, call 11, left 0
+function left 0

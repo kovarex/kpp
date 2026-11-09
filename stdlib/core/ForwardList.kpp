@@ -178,19 +178,24 @@ public:
 
   // count copies of value, or the elements of [first, last) (input iterators of any kind, not this
   // list's), after position, in order; returns the last one's position, or position for none.
+  // Built apart and then linked in, as an insert that throws has no effects ([forward.list.modifiers]).
   ForwardIterator<T> insert_after(ForwardIterator<T> position, ContainerSize count, const T& value)
   {
+    ForwardList<T> built;
+    ForwardIterator<T> tail = built.before_begin();
     for (; count > 0; --count)
-      position = this->emplace_after(position, value);
-    return position;
+      tail = built.emplace_after(tail, value);
+    return this->insertBuiltAfter(position, built, tail);
   }
 
   template<typename InputIt> requires (!isIntegral<InputIt>)
   ForwardIterator<T> insert_after(ForwardIterator<T> position, InputIt first, InputIt last)
   {
+    ForwardList<T> built;
+    ForwardIterator<T> tail = built.before_begin();
     for (; first != last; ++first)
-      position = this->emplace_after(position, *first);
-    return position;
+      tail = built.emplace_after(tail, *first);
+    return this->insertBuiltAfter(position, built, tail);
   }
 
   ForwardIterator<T> insert_after(ForwardIterator<T> position, InitializerList<T> items) { return this->insert_after(position, items.begin(), items.end()); }
@@ -416,6 +421,16 @@ private:
   }
 
   static T& valueOf(ForwardLinks* node) { return ((ForwardNode<T>*)node)->value; }
+
+  // built's nodes linked after position; returns the last one's position (builtLast), or position
+  // for none.
+  ForwardIterator<T> insertBuiltAfter(ForwardIterator<T> position, ForwardList<T>& built, ForwardIterator<T> builtLast)
+  {
+    if (built.empty())
+      return position;
+    this->splice_after(position, built);
+    return builtLast;
+  }
 
   // The position count elements in (before_begin() for 0), or the last element's when there are
   // fewer; count is left with how many were missing.

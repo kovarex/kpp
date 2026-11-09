@@ -275,27 +275,24 @@ public:
   ListIterator<T> insert(const_iterator position, T&& value) { return this->emplace(position, move(value)); }
 
   // count copies of value before position; returns the first one's position, or position for none.
+  // Built apart and then linked in, as an insert that throws has no effects ([list.modifiers]).
   ListIterator<T> insert(const_iterator position, ContainerSize count, const T& value)
   {
-    if (count == 0)
-      return iterator(position);
-    ListIterator<T> first = this->emplace(position, value); // (value may be an element: none moves)
-    for (ContainerSize i = 1; i < count; ++i)
-      this->emplace(position, value);
-    return first;
+    List<T> built;
+    for (ContainerSize i = 0; i < count; ++i)
+      built.emplace_back(value);
+    return this->insertBuilt(position, built);
   }
 
   // The elements of [first, last), input iterators of any kind, before position, in order; returns
-  // the first one's position, or position for none.
+  // the first one's position, or position for none. Built apart, as above.
   template<typename InputIt> requires (!isIntegral<InputIt>)
   ListIterator<T> insert(const_iterator position, InputIt first, InputIt last)
   {
-    if (first == last)
-      return iterator(position);
-    ListIterator<T> result = this->emplace(position, *first);
-    for (++first; first != last; ++first)
-      this->emplace(position, *first);
-    return result;
+    List<T> built;
+    for (; first != last; ++first)
+      built.push_back(*first);
+    return this->insertBuilt(position, built);
   }
 
   ListIterator<T> insert(const_iterator position, InitializerList<T> items) { return this->insert(position, items.begin(), items.end()); }
@@ -490,6 +487,16 @@ public:
   }
 
 private:
+  // built's nodes linked before position; returns the first one's position, or position for none.
+  ListIterator<T> insertBuilt(const_iterator position, List<T>& built)
+  {
+    if (built.empty())
+      return iterator(position);
+    ListIterator<T> first = built.begin();
+    this->splice(position, built);
+    return first;
+  }
+
   // Its length is a size (core/Sizes.kpp): LengthError past maxContainerSize, BadAlloc when malloc fails.
   // Relinks [first, last), count nodes of other (0 when other is this list), before position.
   void moveNodes(const_iterator position, List<T>& other, const_iterator first, const_iterator last, ContainerSize count)
