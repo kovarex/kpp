@@ -616,7 +616,7 @@ auto GlobalScope::Impl::lookupUnqualified(uint32_t symbol, Scope* context, const
     if (s == &root && stdScope)
     {
       Lookup bridged = own;
-      if (bridgedToStd(symbol, bridged, ownFound, depth) && found(bridged))
+      if (bridgedToStd(symbol, bridged, ownFound, depth, context) && found(bridged))
       {
         own = bridged;
         ownFound = true;
@@ -1520,8 +1520,18 @@ auto GlobalScope::Impl::lookupWithoutBridge(uint32_t symbol, Scope* context, con
   return l;
 }
 
-auto GlobalScope::Impl::bridgedToStd(uint32_t symbol, Lookup& out, bool found, int depth) -> bool
+auto GlobalScope::Impl::bridgedToStd(uint32_t symbol, Lookup& out, bool found, int depth, Scope* context) -> bool
 {
+  if (noBridge)
+  {
+    // (KPP_NO_BRIDGE: a program's names; clib/ and what kpp generates are written std:: when the bridge goes)
+    const ParsedFile* file = nullptr;
+    for (Scope* s = context; !file && s; s = s->parent)
+      file = s->privateTo ? s->privateTo : s->owner && s->owner->kind != NodeKind::NamespaceDecl ? s->owner->file : nullptr;
+    file = file ? file : lookupFile;
+    if (file && !file->isLibrary && !file->path.starts_with('<') && file->path.find("build\\kpp") == std::string::npos && file->path.find("build/kpp") == std::string::npos)
+      return found;
+  }
   Lookup library;
   if (!stdScope || bridgeOff || !lookupInScope(stdScope, symbol, library, depth))
     return found;
@@ -1534,7 +1544,7 @@ auto GlobalScope::Impl::bridgedToStd(uint32_t symbol, Lookup& out, bool found, i
 
 auto GlobalScope::Impl::moveBareSpecializationsToStd() -> void
 {
-  if (!stdScope)
+  if (!stdScope || noBridge)
     return;
   for (uint32_t i = 0; i < root.shardCount; ++i)
   {
@@ -1638,7 +1648,7 @@ auto GlobalScope::Impl::lookupWritten(const QualifiedName& name, Scope* context,
     {
       lookupInScopeOrPrivate(current, context, part.symbol, step, depth);
       if (i == 0 && current == &root && stdScope)
-        bridgedToStd(part.symbol, step, step.found != Found::No, depth);
+        bridgedToStd(part.symbol, step, step.found != Found::No, depth, context);
       if (currentTy)
         lookupThroughBaseInstances(currentTy, part.symbol, step, depth); // `G<0>::type` with G<N> : E<N> and E<0> a specialisation
       if (step.found == Found::No)

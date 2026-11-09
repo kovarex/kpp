@@ -215,7 +215,7 @@
   // scope does not declare is looked up in std, and functions of a name both declare are one overload set, as
   // they were when the library's names were global. `out` is what the global scope found (found); whether there is
   // anything now.
-  bool bridgedToStd(uint32_t symbol, Lookup& out, bool found, int depth);
+  bool bridgedToStd(uint32_t symbol, Lookup& out, bool found, int depth, Scope* context);
 
   // The name with the bridge out of it: what it finds once every program writes std::.
   Lookup lookupWithoutBridge(uint32_t symbol, Scope* context, const LocalStack* locals, bool qualifierOnly, bool global);
