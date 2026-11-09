@@ -1,0 +1,23 @@
+// spec: off Windows, a C function that a kpp declaration names and no kpp body defines, of `long double` (by value, through a pointer, through an alias, in an `extern "C"` block), is an error where it is called and where its address is taken, as an imported one is (interop/c_long_double_function_off_windows_is_error): its definition is C's, whose long double is x87's 80 bits on x86-64 SysV where kpp's stays double (docs/design.md, "Targets and hosts", the type table)
+// found in thread I's audit (2026-11-07): under WSL `extern "C" long double fabsl(long double x);` gave -2.5 for fabsl(-2.5), and the library's own declaration of strtold gave 0 for "0.125"; the refusal looked at imported functions alone
+// target: linux (Windows' long double is double: the same call is right there)
+// error: c_long_double_function_declared_in_kpp_off_windows_is_error.kpp:14: error: a C function of long double (fabsl)
+// error: c_long_double_function_declared_in_kpp_off_windows_is_error.kpp:15: error: a C function of long double (specWholePart)
+// error: c_long_double_function_declared_in_kpp_off_windows_is_error.kpp:16: error: a C function of long double (specThirdOf)
+// error: c_long_double_function_declared_in_kpp_off_windows_is_error.kpp:17: error: a C function of long double (specQuarterOf)
+// error: c_long_double_function_declared_in_kpp_off_windows_is_error.kpp:18: error: a C function of long double (fabsl)
+using spec_real = long double;
+extern "C" long double fabsl(long double x);
+extern "C" double specWholePart(double x, long double* whole);
+extern "C" spec_real specThirdOf(spec_real x);
+extern "C" { long double specQuarterOf(long double x); }
+double absolute() { return fabsl(-2.5); }
+double whole() { long double w = 0; return specWholePart(2.5, &w); }
+double third() { return specThirdOf(9.0); }
+double quarter() { return specQuarterOf(1.0); }
+bool address() { auto f = fabsl; return f != nullptr; }
+int main()
+{
+  println(absolute(), " ", whole(), " ", third(), " ", quarter(), " ", address());
+  return 0;
+}

@@ -101,8 +101,8 @@ auto codegen::Emitter::notAnInstance(FunctionDecl* f, const TemplateArgs& args, 
 }
 
 // Whether a C declaration's type is C's long double or holds it (through a pointer, a reference, an
-// array, const, a typedef or a function pointer's signature): kpp's long double is double, so off
-// Windows, where C's is x87's 80 bits in 16 bytes, the two are different types.
+// array, const, a typedef, a kpp alias or a function pointer's signature): kpp's long double is double,
+// so off Windows, where C's is x87's 80 bits in 16 bytes, the two are different types.
 static bool namesCLongDouble(const Type* t, int depth = 0)
 {
   if (!t || depth > 32)
@@ -124,6 +124,8 @@ static bool namesCLongDouble(const Type* t, int depth = 0)
     case NodeKind::NamedType:
     {
       const Decl* d = static_cast<const NamedType*>(t)->resolved;
+      if (d && d->kind == NodeKind::UsingAliasDecl) // (`using real = long double;` in a kpp declaration)
+        return d->templateParams.empty() && namesCLongDouble(static_cast<const UsingAliasDecl*>(d)->type, depth + 1);
       return d && d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef) && namesCLongDouble(static_cast<const VariableDecl*>(d)->type, depth + 1);
     }
     case NodeKind::FunctionType:
@@ -151,18 +153,28 @@ auto codegen::Emitter::useFunction(FunctionDecl* f, const TemplateArgs& args, co
         unsupported(at ? at : f, "a method of an enumeration of a class template, called without its instance");
   if (f->builtin == BUILTIN_EnumFromStr)
     return useFunctionOnce(f, args, classTy);
-  // An imported C function that takes or returns C's long double, or a pointer to one, off Windows:
-  // kpp's long double is double, C's there x87's 80 bits (design.md, "Targets and hosts", the type
-  // table), so a call would pass and take double's bits where the function has x87's: an error, as
-  // its address is (until 2026-11-05 the call was made as double(double), silently: FreeBSD's
-  // floorl(2.5) printed garbage).
+  // A C function that takes or returns C's long double, or a pointer to one, off Windows: an imported
+  // one, or one a kpp declaration names (`extern "C" long double fabsl(long double x);`) and no kpp
+  // body defines, whose definition is C's too. kpp's long double is double, C's there x87's 80 bits
+  // (design.md, "Targets and hosts", the type table), so a call would pass and take double's bits
+  // where the function has x87's: an error, as its address is (until 2026-11-05 the call was made as
+  // double(double), silently: FreeBSD's floorl(2.5) printed garbage; until 2026-11-09 a kpp
+  // declaration's too: fabsl(-2.5) gave -2.5 on Linux, the library's strtold 0 for "0.125").
   // (Apple's arm64 has long double as double, as Windows does: nothing to refuse there)
-  if (!sh.target.windows() && !(sh.target.mac() && sh.target.arm64()) && f->file && f->file->isImported)
+  if (!sh.target.windows() && !(sh.target.mac() && sh.target.arm64()) && isCFunction(f))
   {
     bool longDouble = namesCLongDouble(f->returnType);
     for (Decl* p : f->params)
       longDouble = longDouble || (p && p->kind == NodeKind::ParamDecl && namesCLongDouble(static_cast<ParamDecl*>(p)->type));
-    if (longDouble)
+    // (an `extern "C"` function that a kpp body defines is kpp's own, of kpp's long double, whichever
+    // of its declarations the use found)
+    bool cDefinition = f->file && f->file->isImported;
+    if (longDouble && !cDefinition)
+    {
+      Decl* d = global.definitionOf(f, args);
+      cDefinition = !d || d->kind != NodeKind::FunctionDecl || !static_cast<FunctionDecl*>(d)->body || (d->file && d->file->isImported);
+    }
+    if (longDouble && cDefinition)
       fail(at ? at : f, "a C function of long double (" + sym(f->name.last().symbol) + "): C's long double is " + (sh.target.arm64() ? "128 bits" : "x87's 80 bits") + " on " + sh.target.name + ", kpp's is double (design.md, \"Targets and hosts\")");
   }
   std::string key = functionName(f, args, classTy);

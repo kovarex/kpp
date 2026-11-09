@@ -332,10 +332,12 @@ Container::value_type first(const Container& container) { return container[0]; }
 ### `long double` is `double`, and `char` is always signed (built)
 
 - **C++:** both follow the target: 80-bit `long double` on x86-64 Linux, unsigned `char` on Linux arm64.
-- **kpp:** `long double` is `double` on every target; an imported C function that uses a different
-  `long double` is an error where it is used. `char` stays signed when arm64 comes.
+- **kpp:** `long double` is `double` on every target; a C function that uses a different `long double`
+  (imported, or declared `extern "C"` in kpp with no kpp body) is an error where it is used, and the
+  library's `strtold` is `strtod`'s value. `char` stays signed when arm64 comes.
 - **Why:** kpp's meaning does not change with the target.
-- **See:** [Targets and hosts][dtargets]; spec `interop/c_long_double_function_off_windows_is_error`.
+- **See:** [Targets and hosts][dtargets]; specs `interop/c_long_double_function_off_windows_is_error`,
+  `interop/c_long_double_function_declared_in_kpp_off_windows_is_error`, `library/strtold_on_every_target`.
 
 ### Undecided number types (undecided)
 

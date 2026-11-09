@@ -1,0 +1,10 @@
+// spec: off Windows, an `extern "C"` function of `long double` that kpp defines is kpp's own, called with kpp's long double (a double), whether the call finds its declaration or its definition, directly or through its address: only a C function that no kpp body defines is an error (interop/c_long_double_function_declared_in_kpp_off_windows_is_error)
+// target: linux (the refusal beside it is off Windows)
+extern "C" long double specHalfOf(long double x);
+double through(long double (*f)(long double), double x) { return f(x); }
+int main()
+{
+  println(specHalfOf(5.0), " ", through(specHalfOf, 0.5));
+  return 0;
+}
+extern "C" long double specHalfOf(long double x) { return x / 2; }
