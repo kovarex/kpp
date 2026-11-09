@@ -1,0 +1,36 @@
+// format: columns (130, 100, 80, 160): lines that fit one limit and not another
+void report(Logger& logger,
+            const Vector<Entity*>& entities,
+            const Surface& surface,
+            bool includeHidden)
+{
+  logger.write("entities on the surface: ",
+               entities.size(),
+               ", hidden ones included: ",
+               includeHidden);
+  if (surface.isValid() &&
+      surface.chunkCount() > 0 &&
+      !surface.isBeingDeleted() &&
+      entities.size() < surface.limit())
+    logger.write("the surface is valid and has chunks");
+  f64 average = surface.totalPollution() / f64(surface.chunkCount()) +
+                surface.basePollution() * surface.pollutionFactor();
+  for (const Entity* entity : entities)
+    logger.write(entity->name(),
+                 " at ",
+                 entity->position().x,
+                 ", ",
+                 entity->position().y,
+                 " facing ",
+                 entity->direction());
+  Vector<String> names = collectNames(entities,
+                                      includeHidden,
+                                      surface.name(),
+                                      logger.prefix(),
+                                      String("entity"),
+                                      2048);
+  return logger.finish(entities.size(),
+                       average,
+                       surface.name(),
+                       includeHidden ? String("with hidden ones") : String("visible only"));
+}

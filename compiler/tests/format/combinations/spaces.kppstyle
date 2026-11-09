@@ -1,0 +1,4 @@
+braced-list-spaces = yes
+columns = 80
+pointer = name
+template-space = yes

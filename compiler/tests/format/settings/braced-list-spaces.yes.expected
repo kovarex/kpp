@@ -1,0 +1,19 @@
+// format: braced-list-spaces (no, yes): initializer lists on a line, nested, empty and one item to a line
+struct Point
+{
+  i32 x = 0, y = 0;
+};
+
+Vector<Point> corners()
+{
+  i32 table[] = { 1, 2, 3 };
+  Vector<Vector<i32>> nested = { { 1, 2 }, { 3 }, {} };
+  Point origin{};
+  Point one{ 1, 1 };
+  Point designated = { .x = 2, .y = 3 };
+  Vector<Point> rows = {
+    { 0, 0 },
+    { 0, 1 }
+  };
+  return { origin, Point{ 4, 5 }, designated };
+}

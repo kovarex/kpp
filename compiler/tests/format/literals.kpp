@@ -1,0 +1,13 @@
+// format: user-defined literals: the suffix stays against its literal (`21_twice`), `operator""_km` has no space
+constexpr long double operator""_km(long double v) { return v * 1000; }
+constexpr int operator""_twice(unsigned long long v) { return int(v) * 2; }
+constexpr int operator""_code(char c) { return c + 0; }
+constexpr unsigned long long operator""_len(const char* text, unsigned long long length) { return length; }
+
+void use()
+{
+  double half = (double)0.5_km;
+  i32 four = 2_twice + 'a'_code - 97;
+  u64 length = "hello"_len;
+  println(half, " ", four, " ", length, " ", 1e3_km > 999999.0);
+}

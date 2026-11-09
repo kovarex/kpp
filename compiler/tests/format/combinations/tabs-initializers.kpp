@@ -1,0 +1,25 @@
+// format: indent tab with initializer-commas trailing and access-label member
+class Inserter
+  : public Entity
+  , public Targeter
+{
+public:
+  Inserter(i32 a, f64 b, const String& name)
+    : Entity(a)
+    , Targeter(b)
+    , name(name)
+
+    // the arm starts folded
+    , arm(0, 0)
+    , speed(b * 2)
+  {}
+
+  Inserter(i32 a) : Entity(a), Targeter(0), name("small") {}
+
+private:
+  String name;
+  Arm arm;
+  f64 speed = 0;
+};
+
+enum class Mode : u8 { Off, On };

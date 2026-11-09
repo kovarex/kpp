@@ -1,0 +1,31 @@
+// format: access-label (class, member): access labels in a class, a struct and a nested class
+class Widget
+{
+public:
+  Widget() = default;
+
+  i32 size() const { return this.count; }
+
+protected:
+  void grow() { ++this.count; }
+
+private:
+  class Part
+  {
+  public:
+    i32 id = 0;
+
+  private:
+    i32 secret = 0;
+  };
+
+  i32 count = 0;
+};
+
+struct Plain
+{
+  i32 x = 0;
+
+private:
+  i32 hidden = 0;
+};

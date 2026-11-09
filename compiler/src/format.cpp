@@ -20,6 +20,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <sstream>
 #include <thread>
@@ -80,7 +81,8 @@ namespace
   X(SpaceTrailingComment, "space-trailing-comment", "one space before a comment at a line's end") \
   X(SpaceWords, "space-between-words", "one space between two names, keywords or literals") \
   X(SpaceLabelColon, "space-label-colon", "no space before the colon of a label, a case or an access label") \
-  X(SpaceOther, "space-other", "the rest of the spacing rules (operator names, ..., lambda captures)")
+  X(SpaceOther, "space-other", "the rest of the spacing rules (operator names, ..., lambda captures)") \
+  X(InitializerLines, "initializer-list-lines", "a constructor's initializer list or a base clause whose : starts a line: one item to a line, its commas first (initializer-commas)")
 
   enum class Rule : uint8_t
   {
@@ -148,12 +150,15 @@ namespace
     bool defStart = false;  // starts an expanded definition at namespace or class scope
     bool defEnd = false;    // ends one
     bool marked = false;
+    bool listLines = false; // a `:` or `,` of an initializer list or base clause written one item to a line
+    bool afterListComma = false; // the first token after such a `,`
   };
 
   struct Frame
   {
     uint16_t parent = 0;
     int base = 0;
+    int tabs = 0; // of base, the columns written as tabs (indent = tab)
   };
 
   struct Item
@@ -170,17 +175,25 @@ namespace
     int lineIndent;
     uint32_t outLine;
     bool content;
-    int argCol = -1; // where the argument being written starts
+    int lineTabs = 0; // of lineIndent, the columns written as tabs
+    int argCol = -1;  // where the argument being written starts
+    int argTabs = 0;
   };
 
   class Formatter
   {
   public:
-    Formatter(std::string_view text, const std::vector<Token>& toks, const std::vector<uint8_t>& roles, SymbolTable& symbols)
-      : text(text), toks(toks), roles(roles), symbols(symbols)
+    Formatter(std::string_view text, const std::vector<Token>& toks, const std::vector<uint8_t>& roles, SymbolTable& symbols, const FormatStyle& style)
+      : text(text), toks(toks), roles(roles), symbols(symbols), style(style), columns(style.columns), indentWidth(style.indentTabs ? 4 : style.indent)
     {}
 
     FormatOutcome run();
+    // Per item, after run(): whether the line break before it (or its absence) was the writer's, kept as
+    // written, and whether its spaces were (a gap no rule covers: a space or none).
+    std::vector<uint8_t> keptBreak, keptSpace;
+    // After run(): the input with the whitespace of every gap the formatter decides moved (spaces, tabs,
+    // line breaks), seeded; the writer's choices it keeps stay (run_format.py's perturbed copies).
+    std::string perturb(uint32_t seed) const;
 
   private:
     // --- tokens ---
@@ -281,8 +294,8 @@ namespace
     bool typeOp(uint32_t i) const;
     bool postfixAt(uint32_t i) const;
     Space spaceBetween(uint32_t a, uint32_t b) const;
-    int lineIndent(uint32_t i, Rule& rule) const;
-    int commentIndent(size_t k, Rule& rule) const;
+    int lineIndent(uint32_t i, Rule& rule, int& tabs) const;
+    int commentIndent(size_t k, Rule& rule, int& tabs) const;
     struct Decision { bool brk; Rule rule; bool soft; };
     std::string_view gapBefore(size_t k) const
     {
@@ -290,7 +303,7 @@ namespace
       return text.substr(begin, items[k].begin - begin);
     }
     Decision decide(size_t k) const;
-    Space spacesBefore(size_t k, bool& unclassified) const;
+    Space spacesBefore(size_t k, bool& unclassified, bool* kept = nullptr) const;
     // Whether tokens a and b written together lex as something else: a longer punctuator, a comment.
     bool joins(uint32_t a, uint32_t b) const
     {
@@ -309,8 +322,18 @@ namespace
       return false;
     }
     int breakPrecedence(uint32_t t) const;
+    // The ( of an if, while, for, switch, catch or when: continued aligned after it with every continuation.
+    bool headerParen(uint32_t open) const
+    {
+      if (open == 0 || !isP(open, P::LParen))
+        return false;
+      uint32_t k = open - 1;
+      if (isKw(k, Kw::constexpr_) || isKw(k, Kw::consteval_))
+        return true;
+      return isKw(k, Kw::if_) || isKw(k, Kw::while_) || isKw(k, Kw::for_) || isKw(k, Kw::switch_) || isKw(k, Kw::catch_) || isKw(k, Kw::when_);
+    }
     void planSegment(size_t k, int startCol);
-    void wrap(size_t a, size_t b, int startCol, int contCol);
+    void wrap(size_t a, size_t b, int startCol, int contCol, int lineCol);
 
     std::string_view text;
     const std::vector<Token>& toks;
@@ -345,9 +368,10 @@ namespace
     std::vector<int> segWidth, segSpace;
     std::vector<uint8_t> segSoft;
     uint32_t bodyStart = 0;
-    int indentWidth = 2;
-  public:
-    int columns = 0;
+    const FormatStyle& style;
+    int columns;
+    int indentWidth;
+    std::vector<int> exprTabs; // per statement: the tab columns of the line exprCol is on
   };
 
   // `operator==(`, `operator()(`, `operator new[](`, `operator T*()`: the tokens of the name up to
@@ -445,8 +469,9 @@ namespace
     }
     if (accessLabel)
     {
-      mark(i, frame, uint16_t(level - 1), stmt, LineKind::Access, Rule::IndentAccessLabel);
-      mark(i + 1, frame, uint16_t(level - 1), stmt, LineKind::Continuation);
+      uint16_t labelLevel = style.accessAtMembers ? level : uint16_t(level - 1);
+      mark(i, frame, labelLevel, stmt, LineKind::Access, Rule::IndentAccessLabel);
+      mark(i + 1, frame, labelLevel, stmt, LineKind::Continuation);
       info[i + 1].colon = Colon::Access;
       return i + 2;
     }
@@ -487,7 +512,7 @@ namespace
       if (t.is(Kw::switch_) && isP(j, P::LBrace))
       {
         mark(j, frame, level, stmt, LineKind::BraceLine, Rule::IndentBrace);
-        bodyBraces(j, frame, level, Brace::Block, Ctx::Switch, level + 1, Rule::IndentCase);
+        bodyBraces(j, frame, level, Brace::Block, Ctx::Switch, style.caseIndent ? level + 1 : level, Rule::IndentCase);
         return info[j].match + 1;
       }
       return sub(j, end, frame, level, inner, stmt);
@@ -656,11 +681,22 @@ namespace
     Brace head = Brace::None; // what a { with no role of its own opens
     bool sawParams = false;
     int questions = 0, templates = 0;
+    bool isNamespace = false;
     enum { NoList, BaseList, InitList } listKind = NoList;
+    bool listLines = false;   // the list's `:` starts a line: one item to a line
+    bool afterSeparator = false;
     for (; i < end; ++i)
     {
       if (i != start || !info[i].marked)
         mark(i, frame, level, stmt, LineKind::Continuation);
+      if (afterSeparator)
+      {
+        afterSeparator = false;
+        info[i].afterListComma = !isP(i - 1, P::Colon);
+        info[i].listLines = true;
+        if (info[i].afterListComma && style.trailingCommas)
+          mark(i, frame, level, stmt, LineKind::Initializer, Rule::IndentInitializer);
+      }
       const Token& t = tok(i);
       if (!sawParams && head == Brace::None)
       {
@@ -670,7 +706,10 @@ namespace
           head = Brace::Class;
         else if (t.is(Kw::namespace_) || (t.is(Kw::extern_) && tok(i + 1).getKind() == TokenKind::String) ||
                  (i == start && isIdent(i, "suite") && tok(i + 1).getKind() == TokenKind::Identifier))
+        {
           head = Brace::Decl;
+          isNamespace = t.is(Kw::namespace_);
+        }
       }
       if (t.is(P::LParen) || t.is(P::LBracket))
       {
@@ -741,7 +780,7 @@ namespace
         }
         if (head == Brace::Decl)
         {
-          bodyBraces(i, frame, level, Brace::Decl, Ctx::Namespace, level + 1, Rule::IndentNamespace);
+          bodyBraces(i, frame, level, Brace::Decl, Ctx::Namespace, isNamespace && !style.namespaceIndent ? level : level + 1, Rule::IndentNamespace);
           uint32_t last = close;
           if (isP(close + 1, P::Semi))
           {
@@ -783,10 +822,21 @@ namespace
         else
           info[i].colon = ctx == Ctx::Class ? Colon::Bitfield : Colon::Other;
         if (listKind != NoList)
+        {
+          // (whether the writer started a line with the `:` is kept: no style breaks before it otherwise)
+          listLines = i > 0 && tokLine(i) != tokLine(i - 1);
           mark(i, frame, level, stmt, LineKind::Initializer, Rule::IndentInitializer);
+          info[i].listLines = listLines;
+          afterSeparator = listLines;
+        }
       }
-      else if (t.is(P::Comma) && templates == 0 && listKind != NoList)
-        mark(i, frame, level, stmt, LineKind::Initializer, Rule::IndentInitializer);
+      else if (t.is(P::Comma) && templates == 0 && listKind != NoList && listLines)
+      {
+        if (!style.trailingCommas)
+          mark(i, frame, level, stmt, LineKind::Initializer, Rule::IndentInitializer);
+        info[i].listLines = true;
+        afterSeparator = true;
+      }
     }
     return i;
   }
@@ -928,6 +978,9 @@ namespace
       return false;
     if (info[i].opName)
       return false;
+    // a member pointer's `C::*` (no expression has `::` before a `*`)
+    if (isP(i, P::Star) && i > 0 && isP(i - 1, P::ColonColon))
+      return true;
     // what follows only a type's: `T*)`, `T*,`, `Vector<T*>`, `T*()` (a template argument read both
     // as a type and as an expression has the expression's role)
     {
@@ -1023,7 +1076,7 @@ namespace
     const Info& ib = info[b];
     // operator names: `operator==(`, `operator()(`, `operator new`
     if (A.is(Kw::operator_))
-      return {isWord(b) ? 1 : 0, Rule::SpaceOther};
+      return {isWord(b) && B.getKind() != TokenKind::String ? 1 : 0, Rule::SpaceOther}; // (`operator new`, `operator""_km`)
     if (ia.opName && ib.opName)
       return {isWord(a) && isWord(b) ? 1 : 0, Rule::SpaceOther};
     if (ia.opName && B.is(P::LParen))
@@ -1056,20 +1109,20 @@ namespace
         if (A.getKind() == TokenKind::Keyword)
           return {1, Rule::SpaceBeforeBrace};
         if (A.is(P::LBrace) && ia.brace == Brace::List)
-          return {0, Rule::SpaceBracedList};
+          return {style.bracedListSpaces ? 1 : 0, Rule::SpaceBracedList};
       }
     }
     if (A.is(P::LBrace))
     {
       if (ia.brace == Brace::List)
-        return {0, Rule::SpaceBracedList};
+        return {style.bracedListSpaces && !B.is(P::RBrace) ? 1 : 0, Rule::SpaceBracedList};
       if (isBody(ia.brace))
         return {B.is(P::RBrace) ? 0 : 1, Rule::SpaceOneLiner};
     }
     if (B.is(P::RBrace))
     {
       if (ib.brace == Brace::List)
-        return {0, Rule::SpaceBracedList};
+        return {style.bracedListSpaces && !A.is(P::LBrace) ? 1 : 0, Rule::SpaceBracedList};
       if (isBody(ib.brace))
         return {1, Rule::SpaceOneLiner};
     }
@@ -1106,19 +1159,30 @@ namespace
     if (A.is(P::Ellipsis))
       return {isWord(b) || binaryAt(b) ? 1 : 0, Rule::SpaceOther};
     // template brackets
+    if (templateOpen(b) && A.is(Kw::template_))
+      return {style.templateSpace ? 1 : 0, Rule::SpaceTemplate};
     if (templateOpen(a) || templateOpen(b) || templateClose(b))
       return {0, Rule::SpaceTemplate};
+    // pointers and references: with the type (`T* p`), the name (`T *p`) or neither (`T * p`); none
+    // between two (`T** p`, `T **p`)
+    if (typeOp(b))
+    {
+      if (typeOp(a) || templateOpen(a) || style.pointer == FormatStyle::Pointer::Type)
+        return {0, Rule::SpacePointer};
+      if (A.is(P::LParen) || A.is(P::ColonColon) || A.is(P::LBracket) || A.is(P::Comma))
+        return {A.is(P::Comma) ? 1 : 0, Rule::SpacePointer};
+      return {1, Rule::SpacePointer};
+    }
     if (templateClose(a))
       return {isWord(b) || binaryAt(b) ? 1 : 0, Rule::SpaceTemplate};
-    // pointers and references with the type
-    if (typeOp(b))
-      return {0, Rule::SpacePointer};
     // a declarator in parentheses: `T (*)(int)`, `const char* (*f)(void*)`
     if (B.is(P::LParen) && typeOp(b + 1) && (A.getKind() == TokenKind::Identifier || A.getKind() == TokenKind::Keyword || templateClose(a) || typeOp(a)))
       return {1, Rule::SpacePointer};
     if (typeOp(a))
     {
       if (a > 0 && (isP(a - 1, P::LParen) || isP(a - 1, P::ColonColon)))
+        return {0, Rule::SpacePointer};
+      if (style.pointer == FormatStyle::Pointer::Name && (isWord(b) || B.is(P::Ellipsis)))
         return {0, Rule::SpacePointer};
       return {isWord(b) || binaryAt(b) ? 1 : 0, Rule::SpacePointer};
     }
@@ -1185,11 +1249,15 @@ namespace
 
   // --- indentation ---
 
-  int Formatter::lineIndent(uint32_t i, Rule& rule) const
+  // The indentation of the line token i starts; tabs: how many of its columns are levels, written as
+  // tabs with indent = tab (the rest aligns, with spaces).
+  int Formatter::lineIndent(uint32_t i, Rule& rule, int& tabs) const
   {
     const Info& in = info[i];
     int base = frames[in.frame].base;
     int statementBase = base + in.level * indentWidth;
+    int statementTabs = frames[in.frame].tabs + in.level * indentWidth;
+    tabs = statementTabs;
     rule = in.indentRule;
     switch (in.kind)
     {
@@ -1201,6 +1269,7 @@ namespace
             if (parenStack[k].content)
             {
               rule = Rule::IndentList;
+              tabs = parenStack[k].lineTabs;
               return parenStack[k].alignCol;
             }
             break;
@@ -1210,7 +1279,9 @@ namespace
         return statementBase;
       case LineKind::Initializer:
         rule = Rule::IndentInitializer;
-        return statementBase + indentWidth;
+        tabs = statementTabs + indentWidth;
+        // (initializer-commas trailing: the items after the first under it, after `: `)
+        return statementBase + indentWidth + (in.afterListComma ? 2 : 0);
       case LineKind::Continuation: case LineKind::ListOpen:
         break;
     }
@@ -1220,40 +1291,65 @@ namespace
       if (p.open < in.stmt)
         break;
       rule = Rule::IndentContinuationParen;
+      tabs = p.lineTabs;
       if (i == p.close)
         return p.lineIndent;
+      if (style.continuation > 0 && !headerParen(p.open))
+      {
+        // (continuation N: N columns in from the line of the (, an argument's own lines under its start)
+        if (p.argCol >= 0 && !isP(i - 1, P::Comma) && uint32_t(i - 1) != p.open && p.argCol > p.lineIndent + style.continuation)
+        {
+          tabs = p.argTabs;
+          return p.argCol;
+        }
+        return p.lineIndent + style.continuation;
+      }
       // inside an argument: under its start (what it continues); a new argument: under the first
       if (p.argCol >= 0 && !isP(i - 1, P::Comma) && uint32_t(i - 1) != p.open)
+      {
+        tabs = p.argTabs;
         return p.argCol;
+      }
       if (p.content)
         return p.alignCol;
       rule = Rule::IndentContinuation;
+      tabs = p.lineTabs + indentWidth;
       return p.lineIndent + indentWidth;
     }
     rule = Rule::IndentContinuation;
     if (in.kind == LineKind::ListOpen)
       return statementBase;
+    if (style.continuation > 0)
+      return statementBase + style.continuation;
     // under what it continues: the value after `return` or an assignment, else one level in (a
     // method chain's `.f()` too)
     if (exprCol[in.stmt] >= 0 && !isP(i, P::Dot) && !isP(i, P::Arrow) && !isP(i, P::SafeArrow))
+    {
+      tabs = exprTabs[in.stmt];
       return exprCol[in.stmt];
+    }
+    tabs = statementTabs + indentWidth;
     return statementBase + indentWidth;
   }
 
   // A comment on its own line: indented as the code after it (inside the body when that is a }).
-  int Formatter::commentIndent(size_t k, Rule& rule) const
+  int Formatter::commentIndent(size_t k, Rule& rule, int& tabs) const
   {
     size_t next = k + 1;
     while (next < items.size() && items[next].tok < 0)
       ++next;
     rule = Rule::IndentComment;
+    tabs = 0;
     if (next >= items.size())
       return 0;
     uint32_t t = uint32_t(items[next].tok);
     Rule ignored;
-    int indent = lineIndent(t, ignored);
+    int indent = lineIndent(t, ignored, tabs);
     if (isP(t, P::RBrace) && info[t].kind == LineKind::BraceLine)
+    {
       indent += indentWidth;
+      tabs += indentWidth;
+    }
     return indent;
   }
 
@@ -1283,7 +1379,7 @@ namespace
     if (in.inOneLine)
       return {false, Rule::None, false};
     if (bodyOpen)
-      return {true, Rule::BraceOwnLine, false};
+      return {!style.bracesEndOfLine || (in.stmtStart && pin.colon != Colon::Label), Rule::BraceOwnLine, false}; // (`case 1: {` too)
     if (afterBodyOpen)
       return {true, Rule::BraceContentsNextLine, false};
     if (bodyClose)
@@ -1302,9 +1398,24 @@ namespace
     {
       if (in.braceless)
         return {true, Rule::BracelessBodyOwnLine, false};
-      if (pin.colon == Colon::Label && !inputBreak)
-        return {false, Rule::None, false};
+      if (pin.colon == Colon::Label)
+        return {inputBreak, Rule::None, false}; // (a statement on its label's line or the next: the writer's)
       return {true, Rule::OneStatementPerLine, false};
+    }
+    // an initializer list or base clause one item to a line: its `:` where the writer put it (that is
+    // the fact), each item on a line of its own, the commas first or last (initializer-commas)
+    if ((in.colon == Colon::Init || in.colon == Colon::Base) && !in.listLines)
+      return {false, Rule::None, false};
+    if (in.colon == Colon::Init || in.colon == Colon::Base)
+      return {true, Rule::None, false};
+    if (in.listLines && isP(i, P::Comma))
+      return {!style.trailingCommas, Rule::InitializerLines, false};
+    if (in.listLines)
+    {
+      // (with initializer-commas trailing, a comma after a comment on its own line starts its line: the
+      // item stays after it)
+      bool commaAfterComment = k >= 2 && items[k - 1].tok == prevTok && items[k - 2].tok < 0;
+      return {in.afterListComma && style.trailingCommas && !commaAfterComment, Rule::InitializerLines, false};
     }
     if (afterBodyClose || in.attached)
       return {false, Rule::CloseBraceJoin, false};
@@ -1312,25 +1423,43 @@ namespace
   }
 
   // The spaces before item k on its line (n < 0: no rule covers them, the writer's are kept).
-  Formatter::Space Formatter::spacesBefore(size_t k, bool& unclassified) const
+  Formatter::Space Formatter::spacesBefore(size_t k, bool& unclassified, bool* kept) const
   {
     unclassified = false;
     const Item& it = items[k];
     std::string_view oldGap = gapBefore(k);
+    if (kept)
+      *kept = true; // (a space or none, as written; unless a rule says)
     if (it.tok < 0)
     {
       if (it.lineComment)
+      {
+        if (kept)
+          *kept = false;
         return {1, Rule::SpaceTrailingComment};
+      }
       return {oldGap.empty() ? 0 : 1, Rule::SpaceOther};
     }
     if (items[k - 1].tok < 0)
       return {oldGap.empty() ? 0 : 1, Rule::SpaceOther};
+    // a literal and a name right after it: a user-defined literal's suffix (`21_twice`, `""_km`), which
+    // must stay against it (the lexer gives two tokens; the parser joins them where nothing is between)
+    {
+      TokenKind before = tok(uint32_t(items[k - 1].tok)).getKind();
+      if ((before == TokenKind::Number || before == TokenKind::String || before == TokenKind::Char) && tok(uint32_t(it.tok)).getKind() == TokenKind::Identifier &&
+          oldGap.empty())
+        return {0, Rule::SpaceOther};
+    }
+    if (kept)
+      *kept = false;
     Space s = spaceBetween(uint32_t(items[k - 1].tok), uint32_t(it.tok));
     if (s.n == 0 && joins(uint32_t(items[k - 1].tok), uint32_t(it.tok)))
       s.n = 1; // never two tokens into one (`* =`, `- -`, `> >`)
     if (s.n >= 0)
       return s;
     unclassified = true;
+    if (kept)
+      *kept = true;
     bool newline = oldGap.find('\n') != std::string_view::npos;
     int n = newline ? 1 : int(oldGap.size());
     if (!newline && n > 1)
@@ -1409,11 +1538,12 @@ namespace
       // a raw string or comment over several lines: the writer's breaks stay
       for (size_t j = k + 1; j <= e; ++j)
         if (segSoft[j - k])
-          plan[j] = gapBefore(j).find('\n') != std::string_view::npos ? 1 : 2;
+          plan[j] = gapBefore(j).find('\n') != std::string_view::npos ? 3 : 4; // (the writer's: 3 a break, 4 none)
       return;
     }
     // continued under the value after `return` or the first assignment, as the emitter does
-    int contCol = startCol + indentWidth, col = startCol, depth = 0;
+    // (continuation N: N columns in)
+    int contCol = startCol + (style.continuation > 0 ? style.continuation : indentWidth), col = startCol, depth = 0;
     for (size_t j = k; j <= e; ++j)
     {
       if (j > k)
@@ -1423,7 +1553,7 @@ namespace
         uint32_t t = uint32_t(items[j].tok);
         if (isP(t, P::RParen) || isP(t, P::RBracket) || isP(t, P::RBrace))
           --depth;
-        if (depth == 0 && j < e && items[j + 1].tok >= 0 && (isKw(t, Kw::return_) || isKw(t, Kw::throw_) || assignment(t)))
+        if (style.continuation == 0 && depth == 0 && j < e && items[j + 1].tok >= 0 && (isKw(t, Kw::return_) || isKw(t, Kw::throw_) || assignment(t)))
         {
           contCol = col + segWidth[j - k] + segSpace[j + 1 - k];
           break;
@@ -1433,13 +1563,14 @@ namespace
       }
       col += segWidth[j - k];
     }
-    wrap(k, e, startCol, contCol);
+    wrap(k, e, startCol, contCol, startCol);
   }
 
-  // Breaks items [a, b] (laid out from startCol, continued at contCol) where they pass the limit: after
-  // each of their loosest operators outside brackets; else the arguments of the bracket that passes
-  // the limit one to a line, after its (.
-  void Formatter::wrap(size_t a, size_t b, int startCol, int contCol)
+  // Breaks items [a, b] (laid out from startCol on a line indented lineCol, continued at contCol) where
+  // they pass the limit: at each of their loosest operators outside brackets (after it, or before it with
+  // wrap-operator start); else the arguments of the bracket that passes the limit one to a line, after
+  // its ( (continuation align) or N columns in from the line, the first on a line of its own too.
+  void Formatter::wrap(size_t a, size_t b, int startCol, int contCol, int lineCol)
   {
     if (a > b)
       return;
@@ -1474,6 +1605,15 @@ namespace
     }
     if (crossing == SIZE_MAX)
       return;
+    // Where item j (an operator at depth 0) breaks the line: before it with wrap-operator start (an
+    // operator; never a comma, a semicolon or an assignment), else after it. SIZE_MAX: it cannot.
+    auto breakBefore = [&](size_t j, int precedence) -> size_t
+    {
+      bool before = style.wrapBeforeOperator && precedence >= 2 && precedence <= 12;
+      if (before)
+        return j > a && soft(j) ? j : SIZE_MAX;
+      return j < b && soft(j + 1) ? j + 1 : SIZE_MAX;
+    };
     // the loosest operators outside brackets; an assignment (or a range for's colon) last, after
     // what its value offers: `x = a ?` stays on the first line, the rest under the value
     int lowest = INT32_MAX, depth = 0;
@@ -1481,34 +1621,38 @@ namespace
     for (size_t j = a; j <= b; ++j)
     {
       depth -= closes(j);
-      if (depth == 0 && j < b && soft(j + 1) && items[j].tok >= 0)
+      if (depth == 0 && items[j].tok >= 0)
       {
         int p = breakPrecedence(uint32_t(items[j].tok));
-        if (p == 1)
-          assignments = true;
-        else if (p >= 0)
-          lowest = std::min(lowest, p);
+        if (p >= 0 && breakBefore(j, p) != SIZE_MAX)
+        {
+          if (p == 1)
+            assignments = true;
+          else
+            lowest = std::min(lowest, p);
+        }
       }
       depth += opens(j);
     }
     auto breakAt = [&](int precedence)
     {
       size_t start = a;
-      int pieceCol = startCol;
+      int pieceCol = startCol, pieceLine = lineCol;
       depth = 0;
       for (size_t j = a; j <= b; ++j)
       {
         depth -= closes(j);
-        if (depth == 0 && j < b && soft(j + 1) && items[j].tok >= 0 && breakPrecedence(uint32_t(items[j].tok)) == precedence)
+        size_t at = depth == 0 && items[j].tok >= 0 && breakPrecedence(uint32_t(items[j].tok)) == precedence ? breakBefore(j, precedence) : SIZE_MAX;
+        if (at != SIZE_MAX && at > start)
         {
-          plan[j + 1] = 1;
-          wrap(start, j, pieceCol, contCol);
-          start = j + 1;
-          pieceCol = contCol;
+          plan[at] = 1;
+          wrap(start, at - 1, pieceCol, contCol, pieceLine);
+          start = at;
+          pieceCol = pieceLine = contCol;
         }
         depth += opens(j);
       }
-      wrap(start, b, pieceCol, contCol);
+      wrap(start, b, pieceCol, contCol, pieceLine);
     };
     if (lowest != INT32_MAX)
     {
@@ -1545,6 +1689,20 @@ namespace
       return;
     }
     int alignCol = after[open - a];
+    int argLine = alignCol; // the indentation of the lines of the arguments after the first
+    int firstLine = lineCol;
+    if (style.continuation > 0 && !headerParen(uint32_t(items[open].tok)))
+    {
+      // N columns in, the first argument on a line of its own
+      alignCol = argLine = lineCol + style.continuation;
+      if (soft(open + 1))
+      {
+        plan[open + 1] = 1;
+        firstLine = argLine;
+      }
+      else
+        alignCol = after[open - a];
+    }
     std::vector<size_t> starts{open + 1};
     depth = 0;
     for (size_t j = open + 1; j < close; ++j)
@@ -1560,17 +1718,17 @@ namespace
         if (soft(starts[s]))
           plan[starts[s]] = 1;
       for (size_t s = 0; s < starts.size(); ++s)
-        wrap(starts[s], s + 1 < starts.size() ? starts[s + 1] - 1 : close - 1, alignCol, alignCol);
+        wrap(starts[s], s + 1 < starts.size() ? starts[s + 1] - 1 : close - 1, s == 0 ? alignCol : argLine, s == 0 ? alignCol : argLine, s == 0 ? firstLine : argLine);
     }
     else
-      wrap(open + 1, close - 1, alignCol, alignCol);
+      wrap(open + 1, close - 1, alignCol, alignCol, firstLine);
     if (close < b)
     {
       size_t last = starts.back();
-      int tail = alignCol;
+      int tail = starts.size() >= 2 ? argLine : alignCol;
       for (size_t j = last; j <= close; ++j)
         tail += (j > last ? segSpace[j - base] : 0) + segWidth[j - base];
-      wrap(close + 1, b, tail + segSpace[close + 1 - base], contCol);
+      wrap(close + 1, b, tail + segSpace[close + 1 - base], contCol, starts.size() >= 2 ? argLine : firstLine);
     }
   }
 
@@ -1744,7 +1902,10 @@ namespace
     for (size_t k = 1; k < items.size(); ++k)
       prevTokOf[k] = items[k - 1].tok >= 0 ? items[k - 1].tok : prevTokOf[k - 1];
     plan.assign(items.size(), 0);
+    keptBreak.assign(items.size(), 1);
+    keptSpace.assign(items.size(), 1);
     exprCol.assign(n + 1, -1);
+    exprTabs.assign(n + 1, 0);
 
     // brackets
     info.assign(n, Info());
@@ -1821,7 +1982,7 @@ namespace
     out.reserve(text.size() + text.size() / 16);
     out.append(text.substr(0, bodyStart));
     uint32_t outLine = 1;
-    int outCol = 0, curIndent = 0;
+    int outCol = 0, curIndent = 0, curTabs = 0;
     int32_t prevTok = -1;
     auto change = [&](Rule rule, size_t k)
     {
@@ -1841,15 +2002,27 @@ namespace
       bool brk = d.brk;
       breakRule = d.rule;
       bool planned = columns > 0 && d.soft && k > planFrom && k <= planTo && plan[k] != 0;
+      if (k > 0)
+      {
+        keptBreak[k] = planned ? plan[k] >= 3 : (d.soft || d.rule == Rule::None);
+        bool ignored, kept;
+        spacesBefore(k, ignored, &kept);
+        keptSpace[k] = kept;
+      }
       if (planned)
       {
-        brk = plan[k] == 1;
+        brk = plan[k] == 1 || plan[k] == 3;
         bool inputBreak = old.newlines > 0;
         breakRule = brk == inputBreak ? Rule::None : brk ? Rule::WrapBreak : Rule::WrapJoin;
       }
       if (brk)
       {
-        int blank = old.newlines >= 2 ? 1 : 0;
+        // (an empty line between two items of a list one item to a line is before or after the comma
+        // between them, as initializer-commas puts the line break)
+        auto listComma = [&](size_t j) { return j < items.size() && items[j].tok >= 0 && info[items[j].tok].listLines && isP(uint32_t(items[j].tok), P::Comma); };
+        auto blankGapAt = [&](size_t j) { std::string_view g = gapBefore(j); return std::count(g.begin(), g.end(), '\n') >= 2; };
+        int blank = old.newlines >= 2 || (listComma(k) && k + 1 < items.size() && blankGapAt(k + 1)) ||
+                    (k >= 2 && listComma(k - 1) && blankGapAt(k - 1)) ? 1 : 0;
         if (old.newlines >= 3)
           blankRule = Rule::BlankMaxOne;
         if (it.tok >= 0 && isP(uint32_t(it.tok), P::RBrace) && isBody(info[it.tok].brace) && !info[it.tok].oneLine)
@@ -1872,17 +2045,28 @@ namespace
           if (!first)
             blank = 1, blankRule = Rule::BlankAroundDefinition;
         }
-        int indent;
+        int indent, tabs;
         if (it.tok < 0)
-          indent = commentIndent(k, indentRule);
+          indent = commentIndent(k, indentRule, tabs);
         else
-          indent = lineIndent(uint32_t(it.tok), indentRule);
+          indent = lineIndent(uint32_t(it.tok), indentRule, tabs);
+        indent = std::max(indent, 0);
+        tabs = std::clamp(tabs, 0, indent);
+        if (blank && blankBefore[k])
+          blank = style.blankLinesAroundDefinitions;
         gap = lineEnd;
-        if (blank)
+        for (int b = 0; b < blank; ++b)
           gap += lineEnd;
-        gap.append(size_t(std::max(indent, 0)), ' ');
+        if (style.indentTabs)
+        {
+          gap.append(size_t(tabs / 4), '\t');
+          gap.append(size_t(indent - tabs / 4 * 4), ' ');
+        }
+        else
+          gap.append(size_t(indent), ' ');
         outLine += 1 + blank;
-        outCol = curIndent = std::max(indent, 0);
+        outCol = curIndent = indent;
+        curTabs = style.indentTabs ? tabs / 4 * 4 : 0;
         if (columns > 0 && !planned)
           planSegment(k, outCol);
       }
@@ -1937,13 +2121,19 @@ namespace
         // where an argument starts, and the value after `return` or an assignment
         if (!parenStack.empty() && prevTok >= 0 &&
             (uint32_t(prevTok) == parenStack.back().open || (isP(uint32_t(prevTok), P::Comma) && lastCommaDepth == parenStack.size())))
+        {
           parenStack.back().argCol = outCol;
+          parenStack.back().argTabs = curTabs;
+        }
         if (prevTok >= 0 && !brk && exprCol[info[t].stmt] < 0 && (isKw(uint32_t(prevTok), Kw::return_) || isKw(uint32_t(prevTok), Kw::throw_) ||
             (assignment(uint32_t(prevTok)) && info[prevTok].stmt == info[t].stmt)))
         {
           bool inParens = !parenStack.empty() && parenStack.back().open >= info[t].stmt;
           if (!inParens)
+          {
             exprCol[info[t].stmt] = outCol;
+            exprTabs[info[t].stmt] = curTabs;
+          }
         }
         if (isP(t, P::Comma))
           lastCommaDepth = parenStack.size();
@@ -1951,7 +2141,10 @@ namespace
         if (!parenStack.empty() && !parenStack.back().content && parenStack.back().outLine == outLine && parenStack.back().open != t)
           parenStack.back().content = true;
         if (info[t].opensFrame)
+        {
           frames[info[t].opensFrame].base = curIndent;
+          frames[info[t].opensFrame].tabs = curTabs;
+        }
         if (!parenStack.empty() && parenStack.back().close == t)
           parenStack.pop_back();
         out.append(body);
@@ -1964,7 +2157,7 @@ namespace
           outCol = widthOf(body.substr(nl + 1));
         }
         if (isP(t, P::LParen) || isP(t, P::LBracket) || (isP(t, P::LBrace) && info[t].brace == Brace::List && !info[t].oneLine))
-          parenStack.push_back({t, info[t].match, outCol, curIndent, outLine, false});
+          parenStack.push_back({t, info[t].match, outCol, curIndent, outLine, false, curTabs});
         prevTok = int32_t(t);
       }
       else
@@ -1978,7 +2171,13 @@ namespace
         }
         else
         {
-          uint32_t oldCol = it.begin - lineStarts[line(it.begin) - 1];
+          // (its column in the input, a tab to the next multiple of 4 as indent = tab writes them)
+          uint32_t oldCol = 0;
+          for (uint32_t q = lineStarts[line(it.begin) - 1]; q < it.begin; ++q)
+            if (text[q] == '\t')
+              oldCol = (oldCol / 4 + 1) * 4;
+            else if ((uint8_t(text[q]) & 0xC0) != 0x80)
+              ++oldCol;
           int delta = int(outCol) - int(oldCol);
           bool movable = true;
           for (size_t q = nl; q != std::string_view::npos; q = body.find('\n', q + 1))
@@ -2067,7 +2266,214 @@ namespace
   }
 }
 
-FormatOutcome formatText(std::string_view path, const std::string& text, int columns)
+namespace
+{
+  std::vector<std::string> splitText(std::string_view s)
+  {
+    std::vector<std::string> lines;
+    size_t p = 0;
+    while (p <= s.size())
+    {
+      size_t e = s.find('\n', p);
+      std::string_view l = s.substr(p, e == std::string_view::npos ? std::string_view::npos : e - p);
+      if (!l.empty() && l.back() == '\r')
+        l.remove_suffix(1);
+      lines.emplace_back(l);
+      if (e == std::string_view::npos)
+        break;
+      p = e + 1;
+    }
+    return lines;
+  }
+
+  // The settings (docs/format.md, "Settings"): each one's values, the default first, and what a value sets.
+  struct Setting
+  {
+    const char* name;
+    std::vector<const char*> values;
+    void (*set)(FormatStyle& style, size_t value);
+  };
+
+  const std::vector<Setting>& settings()
+  {
+    using P = FormatStyle::Pointer;
+    static const std::vector<Setting> table = {
+      {"indent", {"2", "4", "tab"}, [](FormatStyle& s, size_t v) { s.indent = v == 1 ? 4 : v == 2 ? 4 : 2; s.indentTabs = v == 2; }},
+      {"columns", {"130", "100", "80", "160"}, [](FormatStyle& s, size_t v) { s.columns = v == 1 ? 100 : v == 2 ? 80 : v == 3 ? 160 : 130; }},
+      {"braces", {"own-line", "end-of-line"}, [](FormatStyle& s, size_t v) { s.bracesEndOfLine = v == 1; }},
+      {"case-indent", {"yes", "no"}, [](FormatStyle& s, size_t v) { s.caseIndent = v == 0; }},
+      {"namespace-indent", {"yes", "no"}, [](FormatStyle& s, size_t v) { s.namespaceIndent = v == 0; }},
+      {"access-label", {"class", "member"}, [](FormatStyle& s, size_t v) { s.accessAtMembers = v == 1; }},
+      {"wrap-operator", {"end", "start"}, [](FormatStyle& s, size_t v) { s.wrapBeforeOperator = v == 1; }},
+      {"continuation", {"align", "4", "8"}, [](FormatStyle& s, size_t v) { s.continuation = v == 1 ? 4 : v == 2 ? 8 : 0; }},
+      {"pointer", {"type", "name", "both"}, [](FormatStyle& s, size_t v) { s.pointer = v == 1 ? P::Name : v == 2 ? P::Both : P::Type; }},
+      {"braced-list-spaces", {"no", "yes"}, [](FormatStyle& s, size_t v) { s.bracedListSpaces = v == 1; }},
+      {"template-space", {"no", "yes"}, [](FormatStyle& s, size_t v) { s.templateSpace = v == 1; }},
+      {"initializer-commas", {"leading", "trailing"}, [](FormatStyle& s, size_t v) { s.trailingCommas = v == 1; }},
+      {"blank-lines-between-functions", {"1", "2"}, [](FormatStyle& s, size_t v) { s.blankLinesAroundDefinitions = v == 1 ? 2 : 1; }},
+    };
+    return table;
+  }
+
+  bool applySetting(std::string_view key, std::string_view value, FormatStyle& style, std::string& error)
+  {
+    for (const Setting& setting : settings())
+    {
+      if (key != setting.name)
+        continue;
+      std::string allowed;
+      for (size_t v = 0; v < setting.values.size(); ++v)
+      {
+        if (value == setting.values[v])
+        {
+          setting.set(style, v);
+          return true;
+        }
+        allowed += std::string(v ? ", " : "") + setting.values[v];
+      }
+      error = std::string(setting.name) + " = " + std::string(value) + ": the values are " + allowed;
+      return false;
+    }
+    error = "no setting is called " + std::string(key) + " (kpp format --list-settings lists them)";
+    return false;
+  }
+
+  std::string Formatter::perturb(uint32_t seed) const
+  {
+    uint64_t state = 0x9E3779B97F4A7C15ull * (uint64_t(seed) + 1);
+    auto next = [&](uint32_t bound) -> uint32_t
+    {
+      state ^= state << 13;
+      state ^= state >> 7;
+      state ^= state << 17;
+      return uint32_t(state % bound);
+    };
+    size_t firstEnd = text.find('\n');
+    bool crlf = firstEnd != std::string_view::npos && firstEnd > 0 && text[firstEnd - 1] == '\r';
+    std::string_view lineEnd = crlf ? "\r\n" : "\n";
+    // the gaps on a line before a block comment over several lines: as written (its later lines move
+    // with its column)
+    std::vector<uint8_t> fixed(items.size() + 1, 0);
+    for (size_t k = 0; k < items.size(); ++k)
+      if (items[k].tok < 0 && !items[k].lineComment && text.substr(items[k].begin, items[k].end - items[k].begin).find('\n') != std::string_view::npos)
+      {
+        uint32_t l = line(items[k].begin);
+        for (size_t j = k + 1; j-- > 0 && line(items[j].begin) == l;)
+          fixed[j] = 1;
+        if (k + 1 < items.size())
+          fixed[k + 1] = 1;
+      }
+    auto spaces = [&](std::string& gap, uint32_t least)
+    {
+      uint32_t n = least + next(3);
+      for (uint32_t q = 0; q < n; ++q)
+        gap += next(5) == 0 ? '\t' : ' ';
+    };
+    std::string out(text.substr(0, items.empty() ? text.size() : items[0].begin));
+    for (size_t k = 0; k < items.size(); ++k)
+    {
+      std::string_view oldGap = gapBefore(k);
+      if (k > 0)
+      {
+        int newlines = int(std::count(oldGap.begin(), oldGap.end(), '\n'));
+        const Item& prev = items[k - 1];
+        const Item& it = items[k];
+        bool comment = prev.tok < 0 || it.tok < 0;
+        // a } whose { is on another line: its break stays (that a body is written over several lines
+        // is the writer's)
+        bool expandedClose = it.tok >= 0 && isP(uint32_t(it.tok), P::RBrace) && tokLine(info[it.tok].match) != tokLine(uint32_t(it.tok));
+        // (a gap whose spaces are the writer's: a line break there is a space, so none comes where there was none)
+        // (a config declaration is first on its line, where the parser reads it)
+        bool config = it.tok >= 0 && info[it.tok].stmtStart && isIdent(uint32_t(it.tok), "config");
+        bool keepBreak = fixed[k] || keptBreak[k] || newlines >= 2 || expandedClose || comment || config || (keptSpace[k] && oldGap.empty());
+        std::string gap;
+        if (fixed[k])
+          gap = oldGap;
+        else
+        {
+          bool brk = keepBreak ? newlines > 0 : next(4) == 0;
+          if (brk)
+          {
+            int count = newlines >= 2 ? 2 + int(next(2)) : 1;
+            for (int q = 0; q < count; ++q)
+            {
+              if (next(3) == 0)
+                gap += ' '; // (a trailing space)
+              gap += lineEnd;
+            }
+            uint32_t indent = next(13);
+            for (uint32_t q = 0; q < indent; ++q)
+              gap += next(6) == 0 ? '\t' : ' ';
+          }
+          else if (keptSpace[k] || comment)
+          {
+            if (!oldGap.empty())
+              spaces(gap, 1);
+          }
+          else
+          {
+            // (never two tokens into one, or two words)
+            uint32_t a = uint32_t(prev.tok), b = uint32_t(it.tok);
+            bool need = joins(a, b) || (isWord(a) && isWord(b)) || ((isWord(a) || tok(a).getKind() == TokenKind::Number) && tok(b).is(P::Dot));
+            spaces(gap, need ? 1 : 0);
+          }
+        }
+        out += gap;
+      }
+      out.append(text.substr(items[k].begin, items[k].end - items[k].begin));
+    }
+    out.append(text.substr(items.empty() ? text.size() : items.back().end));
+    return out;
+  }
+}
+
+bool readFormatStyle(std::string_view text, std::string_view path, FormatStyle& style, std::string& error)
+{
+  std::vector<std::string> given;
+  std::vector<std::string> lines = splitText(text);
+  for (size_t l = 0; l < lines.size(); ++l)
+  {
+    std::string_view line = lines[l];
+    size_t hash = line.find('#');
+    if (hash != std::string_view::npos)
+      line = line.substr(0, hash);
+    auto trim = [](std::string_view v)
+    {
+      while (!v.empty() && (v.front() == ' ' || v.front() == '\t'))
+        v.remove_prefix(1);
+      while (!v.empty() && (v.back() == ' ' || v.back() == '\t'))
+        v.remove_suffix(1);
+      return v;
+    };
+    line = trim(line);
+    if (line.empty())
+      continue;
+    std::string where = std::string(path) + ":" + std::to_string(l + 1) + ": ";
+    size_t eq = line.find('=');
+    if (eq == std::string_view::npos)
+    {
+      error = where + "not `key = value`: " + std::string(line);
+      return false;
+    }
+    std::string key(trim(line.substr(0, eq)));
+    std::string_view value = trim(line.substr(eq + 1));
+    if (std::find(given.begin(), given.end(), key) != given.end())
+    {
+      error = where + key + " is set twice";
+      return false;
+    }
+    given.push_back(key);
+    std::string why;
+    if (!applySetting(key, value, style, why))
+    {
+      error = where + why;
+      return false;
+    }
+  }
+  return true;
+}
+
+FormatOutcome formatText(std::string_view path, const std::string& text, const FormatStyle& style)
 {
   FormatOutcome outcome;
   SymbolTable symbols;
@@ -2093,9 +2499,57 @@ FormatOutcome formatText(std::string_view path, const std::string& text, int col
       return outcome;
     }
   }
-  Formatter formatter(text, lexed.tokens, roles, symbols);
-  formatter.columns = columns;
+  Formatter formatter(text, lexed.tokens, roles, symbols, style);
   return formatter.run();
+}
+
+std::string perturbText(std::string_view path, const std::string& text, uint32_t seed, std::string& error)
+{
+  SymbolTable symbols;
+  LexResult lexed = lex(text, symbols);
+  if (lexed.errorCount)
+  {
+    error = "the lexer reports an error";
+    return {};
+  }
+  std::vector<uint8_t> roles(text.size() + 1, 0);
+  {
+    std::vector<Token> parsedTokens = lexed.tokens;
+    ParsedFile parsed;
+    parsed.path = std::string(path);
+    parsed.formatRoles = &roles;
+    parseFile(parsedTokens, text, symbols, parsed, Dialect::KppSource, nullptr);
+    if (!parsed.diagnostics.empty())
+    {
+      error = "it does not parse";
+      return {};
+    }
+  }
+  FormatStyle style;
+  Formatter formatter(text, lexed.tokens, roles, symbols, style);
+  FormatOutcome formatted = formatter.run();
+  if (!formatted.formatted)
+  {
+    error = formatted.error;
+    return {};
+  }
+  std::string perturbed = formatter.perturb(seed);
+  // the copy's own check: the same tokens and comments, and formatting it gives what formatting the text does
+  FormatOutcome again = formatText(path, perturbed, style);
+  if (!again.formatted)
+    error = "internal: the perturbed copy is not formatted: " + again.error;
+  else if (again.text != formatted.text)
+  {
+    std::vector<std::string> a = splitText(formatted.text), b = splitText(again.text);
+    size_t l = 0;
+    while (l < a.size() && l < b.size() && a[l] == b[l])
+      ++l;
+    error = "internal: the perturbed copy formats otherwise, from line " + std::to_string(l + 1) + ": `" + (l < a.size() ? a[l] : "") + "` against `" +
+            (l < b.size() ? b[l] : "") + "`";
+  }
+  if (!error.empty())
+    return {};
+  return perturbed;
 }
 
 namespace
@@ -2103,56 +2557,115 @@ namespace
   int formatUsage()
   {
     fprintf(stderr,
-            "usage: kpp format [--check | --stdout | --stats [--examples N]] [--columns N] [--threads N] PATH...\n"
-            "  lays out the .kpp files (a directory: every .kpp file under it) in kpp's style (docs/format.md)\n"
+            "usage: kpp format [--check | --stdout | --stats [--examples N]] [--style FILE] [--set KEY=VALUE]... [--threads N] PATH...\n"
+            "       kpp format [--style FILE] [--set KEY=VALUE]... --from DIR --to DIR\n"
+            "       kpp format --perturb SEED --from DIR --to DIR\n"
+            "       kpp format --list-settings\n"
+            "  lays out the .kpp files (a directory: every .kpp file under it) in the project's style (docs/format.md):\n"
+            "  the .kppstyle beside the nearest build.kpp, else kpp's default\n"
             "  --check     changes nothing; lists each file not in the style, exit 1 if there is one\n"
             "  --stdout    writes the one file's formatted text to stdout\n"
             "  --stats     changes nothing; counts the changes by rule (files, lines, gaps)\n"
             "  --examples N  with --stats: N changed lines of each rule, before and after\n"
-            "  --columns N   the limit lines are wrapped to (130; 0: no wrapping, the writer's breaks stay)\n");
+            "  --style FILE  this style for every file (`key = value` lines), not the project's\n"
+            "  --set KEY=VALUE  one setting, over the style's\n"
+            "  --from DIR --to DIR  each .kpp under the first written formatted into the second, at its path; the first unchanged\n"
+            "  --perturb SEED  with --from and --to: copies whose whitespace is moved where the formatter decides it\n"
+            "  --list-settings  each setting: its name, its default, its other values\n"
+            "  --columns 0   no wrapping (the writer's line breaks stay)\n");
     return 2;
   }
 
-  std::vector<std::string> splitLines(std::string_view s)
+  bool readFile(const std::filesystem::path& path, std::string& text)
   {
-    std::vector<std::string> lines;
-    size_t p = 0;
-    while (p <= s.size())
+    std::ifstream in(path, std::ios::binary);
+    if (!in)
+      return false;
+    std::stringstream buffer;
+    buffer << in.rdbuf();
+    text = buffer.str();
+    return true;
+  }
+
+  bool writeFile(const std::filesystem::path& path, const std::string& text)
+  {
+    std::error_code ec;
+    if (path.has_parent_path())
+      std::filesystem::create_directories(path.parent_path(), ec);
+    std::ofstream o(path, std::ios::binary);
+    o.write(text.data(), std::streamsize(text.size()));
+    return bool(o);
+  }
+
+  // Every .kpp file under root; skip: a directory's build, bin and dot directories are left out.
+  void collectFiles(const std::filesystem::path& root, bool skip, std::vector<std::filesystem::path>& files)
+  {
+    std::error_code ec;
+    for (auto it = std::filesystem::recursive_directory_iterator(root, ec); it != std::filesystem::recursive_directory_iterator(); it.increment(ec))
     {
-      size_t e = s.find('\n', p);
-      std::string_view l = s.substr(p, e == std::string_view::npos ? std::string_view::npos : e - p);
-      if (!l.empty() && l.back() == '\r')
-        l.remove_suffix(1);
-      lines.emplace_back(l);
-      if (e == std::string_view::npos)
+      if (ec)
         break;
-      p = e + 1;
+      std::string name = it->path().filename().string();
+      if (skip && it->is_directory() && (name == "build" || name == "bin" || (!name.empty() && name[0] == '.')))
+      {
+        it.disable_recursion_pending();
+        continue;
+      }
+      if (it->is_regular_file() && it->path().extension() == ".kpp")
+        files.push_back(it->path());
     }
-    return lines;
   }
 }
 
 int runFormat(int argc, char** argv)
 {
-  bool check = false, stats = false, toStdout = false;
-  int examples = 0, columns = 130;
+  bool check = false, stats = false, toStdout = false, listSettings = false, columnsGiven = false;
+  int examples = 0, columns = -1;
+  long long perturbSeed = -1;
   unsigned threads = std::max(1u, std::thread::hardware_concurrency());
   std::vector<std::filesystem::path> roots;
+  std::string styleFile;
+  std::vector<std::string> sets;
+  std::filesystem::path from, to;
   for (int i = 2; i < argc; ++i)
   {
     std::string a = argv[i];
+    bool more = i + 1 < argc;
     if (a == "--check")
       check = true;
     else if (a == "--stats")
       stats = true;
     else if (a == "--stdout")
       toStdout = true;
-    else if (a == "--examples" && i + 1 < argc)
+    else if (a == "--list-settings")
+      listSettings = true;
+    else if (a == "--examples" && more)
       examples = atoi(argv[++i]);
-    else if (a == "--columns" && i + 1 < argc)
+    else if (a == "--columns" && more)
+    {
       columns = atoi(argv[++i]);
-    else if (a == "--threads" && i + 1 < argc)
+      columnsGiven = true;
+    }
+    else if (a == "--threads" && more)
       threads = unsigned(std::max(1, atoi(argv[++i])));
+    else if (a == "--style" && more)
+      styleFile = argv[++i];
+    else if (a == "--set" && more)
+      sets.push_back(argv[++i]);
+    else if (a == "--from" && more)
+      from = argv[++i];
+    else if (a == "--to" && more)
+      to = argv[++i];
+    else if (a == "--perturb" && more)
+    {
+      char* end = nullptr;
+      perturbSeed = strtoll(argv[++i], &end, 10);
+      if (!end || *end || perturbSeed < 0 || perturbSeed > UINT32_MAX)
+      {
+        fprintf(stderr, "kpp format: --perturb takes a number from 0 to %u\n", UINT32_MAX);
+        return 2;
+      }
+    }
     else if (a.size() > 1 && a[0] == '-')
     {
       fprintf(stderr, "kpp format: unknown option %s\n", a.c_str());
@@ -2161,41 +2674,167 @@ int runFormat(int argc, char** argv)
     else
       roots.emplace_back(a);
   }
-  if (roots.empty())
-    return formatUsage();
-  std::vector<std::filesystem::path> files;
-  for (const auto& root : roots)
+  if (listSettings)
   {
-    std::error_code ec;
-    if (std::filesystem::is_directory(root, ec))
+    for (const Setting& setting : settings())
     {
-      for (auto it = std::filesystem::recursive_directory_iterator(root, ec); it != std::filesystem::recursive_directory_iterator(); it.increment(ec))
+      printf("%s", setting.name);
+      for (const char* value : setting.values)
+        printf(" %s", value);
+      printf("\n");
+    }
+    return 0;
+  }
+  bool batch = !from.empty() || !to.empty();
+  if (batch && (from.empty() || to.empty() || !roots.empty() || check || stats || toStdout))
+  {
+    fprintf(stderr, "kpp format: --from and --to go together, with no PATH, --check, --stats or --stdout\n");
+    return 2;
+  }
+  if (perturbSeed >= 0 && (!batch || !styleFile.empty() || !sets.empty()))
+  {
+    fprintf(stderr, "kpp format: --perturb takes --from and --to, and no style\n");
+    return 2;
+  }
+  if (columnsGiven && columns != 0)
+  {
+    fprintf(stderr, "kpp format: --columns takes 0 (no wrapping); a style's columns are 130, 100, 80 or 160\n");
+    return 2;
+  }
+  if (!batch && roots.empty())
+    return formatUsage();
+
+  // the style given, if one is
+  bool styleGiven = !styleFile.empty() || !sets.empty();
+  FormatStyle given;
+  {
+    std::string error;
+    if (!styleFile.empty())
+    {
+      std::string text;
+      if (!readFile(styleFile, text))
       {
-        if (ec)
-          break;
-        std::string name = it->path().filename().string();
-        if (it->is_directory() && (name == "build" || name == "bin" || (!name.empty() && name[0] == '.')))
-        {
-          it.disable_recursion_pending();
-          continue;
-        }
-        if (it->is_regular_file() && it->path().extension() == ".kpp")
-          files.push_back(it->path());
+        fprintf(stderr, "kpp format: %s: cannot read it\n", styleFile.c_str());
+        return 2;
+      }
+      if (!readFormatStyle(text, styleFile, given, error))
+      {
+        fprintf(stderr, "kpp format: %s\n", error.c_str());
+        return 2;
       }
     }
-    else if (std::filesystem::is_regular_file(root, ec))
-      files.push_back(root);
-    else
+    for (const std::string& set : sets)
     {
-      fprintf(stderr, "kpp format: %s: no such file or directory\n", root.string().c_str());
-      return 2;
+      size_t eq = set.find('=');
+      if (eq == std::string::npos || !applySetting(set.substr(0, eq), set.substr(eq + 1), given, error))
+      {
+        fprintf(stderr, "kpp format: --set %s: %s\n", set.c_str(), eq == std::string::npos ? "not KEY=VALUE" : error.c_str());
+        return 2;
+      }
     }
   }
-  std::sort(files.begin(), files.end());
-  if (toStdout && files.size() != 1)
+
+  // the files: (input, output), output empty for one rewritten in place
+  struct Job
+  {
+    std::filesystem::path input, output;
+    const FormatStyle* style = nullptr;
+  };
+  std::vector<Job> jobs;
+  if (batch)
+  {
+    std::error_code ec;
+    if (!std::filesystem::is_directory(from, ec))
+    {
+      fprintf(stderr, "kpp format: --from %s: no such directory\n", from.string().c_str());
+      return 2;
+    }
+    std::vector<std::filesystem::path> files;
+    collectFiles(from, false, files);
+    std::sort(files.begin(), files.end());
+    for (const auto& f : files)
+      jobs.push_back({f, to / std::filesystem::relative(f, from, ec), nullptr});
+  }
+  else
+  {
+    std::vector<std::filesystem::path> files;
+    for (const auto& root : roots)
+    {
+      std::error_code ec;
+      if (std::filesystem::is_directory(root, ec))
+        collectFiles(root, true, files);
+      else if (std::filesystem::is_regular_file(root, ec))
+        files.push_back(root);
+      else
+      {
+        fprintf(stderr, "kpp format: %s: no such file or directory\n", root.string().c_str());
+        return 2;
+      }
+    }
+    std::sort(files.begin(), files.end());
+    for (const auto& f : files)
+      jobs.push_back({f, {}, nullptr});
+  }
+  if (toStdout && jobs.size() != 1)
   {
     fprintf(stderr, "kpp format: --stdout takes one file\n");
     return 2;
+  }
+
+  // each file's style: the one given, else its project's (.kppstyle beside the nearest build.kpp, read once)
+  std::map<std::filesystem::path, std::unique_ptr<FormatStyle>> projectStyles;
+  FormatStyle kppDefault;
+  for (Job& job : jobs)
+  {
+    if (styleGiven || perturbSeed >= 0 || batch)
+    {
+      job.style = &given;
+      continue;
+    }
+    std::error_code ec;
+    std::filesystem::path dir = std::filesystem::absolute(job.input, ec).parent_path();
+    job.style = &kppDefault;
+    for (std::filesystem::path d = dir;; d = d.parent_path())
+    {
+      std::filesystem::path styleAt = d / ".kppstyle";
+      auto found = projectStyles.find(d);
+      if (found != projectStyles.end())
+      {
+        if (found->second)
+        {
+          job.style = found->second.get();
+          break;
+        }
+      }
+      else if (std::filesystem::is_regular_file(styleAt, ec))
+      {
+        auto style = std::make_unique<FormatStyle>();
+        std::string text, error;
+        if (!readFile(styleAt, text) || !readFormatStyle(text, styleAt.string(), *style, error))
+        {
+          fprintf(stderr, "kpp format: %s\n", error.empty() ? (styleAt.string() + ": cannot read it").c_str() : error.c_str());
+          return 2;
+        }
+        job.style = style.get();
+        projectStyles[d] = std::move(style);
+        break;
+      }
+      else
+        projectStyles[d] = nullptr;
+      if (std::filesystem::is_regular_file(d / "build.kpp", ec) || d == d.parent_path())
+        break;
+    }
+  }
+  std::vector<FormatStyle> unwrapped; // (--columns 0: each style without wrapping)
+  if (columnsGiven)
+  {
+    unwrapped.reserve(jobs.size());
+    for (Job& job : jobs)
+    {
+      unwrapped.push_back(*job.style);
+      unwrapped.back().columns = 0;
+      job.style = &unwrapped.back();
+    }
   }
 
   struct Result
@@ -2204,36 +2843,44 @@ int runFormat(int argc, char** argv)
     std::string original;
     bool read = false;
   };
-  std::vector<Result> results(files.size());
+  std::vector<Result> results(jobs.size());
   std::atomic<size_t> next{0};
   auto worker = [&]
   {
-    for (size_t i; (i = next++) < files.size();)
+    for (size_t i; (i = next++) < jobs.size();)
     {
-      std::ifstream in(files[i], std::ios::binary);
-      if (!in)
+      Result& r = results[i];
+      if (!readFile(jobs[i].input, r.original))
         continue;
-      std::stringstream buffer;
-      buffer << in.rdbuf();
-      results[i].original = buffer.str();
-      results[i].read = true;
-      results[i].outcome = formatText(files[i].string(), results[i].original, columns);
+      r.read = true;
+      if (perturbSeed >= 0)
+      {
+        // (the seed and the file's path under --from, so that each file moves its own way)
+        uint32_t seed = uint32_t(perturbSeed);
+        for (char c : jobs[i].output.lexically_relative(to).generic_string())
+          seed = seed * 31 + uint8_t(c);
+        r.outcome.text = perturbText(jobs[i].input.string(), r.original, seed, r.outcome.error);
+        r.outcome.formatted = r.outcome.error.empty();
+      }
+      else
+        r.outcome = formatText(jobs[i].input.string(), r.original, *jobs[i].style);
     }
   };
   std::vector<std::thread> pool;
-  for (unsigned t = 0; t < std::min<size_t>(threads, files.size()); ++t)
+  for (unsigned t = 0; t < std::min<size_t>(threads, jobs.size()); ++t)
     pool.emplace_back(worker);
   for (auto& t : pool)
     t.join();
 
   size_t refused = 0, changed = 0;
-  for (size_t i = 0; i < files.size(); ++i)
+  for (size_t i = 0; i < jobs.size(); ++i)
   {
     const Result& r = results[i];
     if (!r.read || !r.outcome.formatted)
     {
       ++refused;
-      fprintf(stderr, "%s: not formatted: %s\n", files[i].string().c_str(), r.read ? r.outcome.error.c_str() : "cannot read it");
+      fprintf(stderr, "%s: not %s: %s\n", jobs[i].input.string().c_str(), perturbSeed >= 0 ? "perturbed" : "formatted",
+              r.read ? r.outcome.error.c_str() : "cannot read it");
       continue;
     }
     if (r.outcome.text != r.original)
@@ -2250,7 +2897,9 @@ int runFormat(int argc, char** argv)
   }
   if (stats)
   {
-    const std::vector<std::filesystem::path>& filePaths = files;
+    std::vector<std::filesystem::path> filePaths;
+    for (const Job& job : jobs)
+      filePaths.push_back(job.input);
     size_t ruleCount = size_t(Rule::Count);
     std::vector<size_t> ruleFiles(ruleCount), lines(ruleCount), gaps(ruleCount);
     std::vector<std::vector<std::string>> samples(ruleCount);
@@ -2287,8 +2936,8 @@ int runFormat(int argc, char** argv)
         {
           if (!split)
           {
-            before = splitLines(r.original);
-            after = splitLines(r.outcome.text);
+            before = splitText(r.original);
+            after = splitText(r.outcome.text);
             split = true;
           }
           for (const FormatChange& c : r.outcome.changes)
@@ -2353,19 +3002,38 @@ int runFormat(int argc, char** argv)
       uint32_t first = UINT32_MAX;
       for (const FormatChange& c : r.outcome.changes)
         first = std::min(first, c.line);
-      printf("%s:%u: not in kpp's style\n", files[i].string().c_str(), first);
+      printf("%s:%u: not in the style\n", jobs[i].input.string().c_str(), first);
     }
     printf("kpp format --check: %zu files, %zu not in the style, %zu not formatted\n", results.size(), changed, refused);
     return changed || refused ? 1 : 0;
   }
+  size_t written = 0;
   for (size_t i = 0; i < results.size(); ++i)
   {
     const Result& r = results[i];
-    if (!r.read || !r.outcome.formatted || r.outcome.text == r.original)
+    if (!r.read || !r.outcome.formatted)
       continue;
-    std::ofstream o(files[i], std::ios::binary);
-    o.write(r.outcome.text.data(), std::streamsize(r.outcome.text.size()));
+    if (batch)
+    {
+      if (!writeFile(jobs[i].output, r.outcome.text))
+      {
+        fprintf(stderr, "%s: cannot write it\n", jobs[i].output.string().c_str());
+        return 2;
+      }
+      ++written;
+    }
+    else if (r.outcome.text != r.original)
+    {
+      if (!writeFile(jobs[i].input, r.outcome.text))
+      {
+        fprintf(stderr, "%s: cannot write it\n", jobs[i].input.string().c_str());
+        return 2;
+      }
+    }
   }
-  printf("kpp format: %zu files, %zu changed, %zu not formatted\n", results.size(), changed, refused);
+  if (batch)
+    printf("kpp format: %zu files, %zu written, %zu changed, %zu not %s\n", results.size(), written, changed, refused, perturbSeed >= 0 ? "perturbed" : "formatted");
+  else
+    printf("kpp format: %zu files, %zu changed, %zu not formatted\n", results.size(), changed, refused);
   return refused ? 1 : 0;
 }

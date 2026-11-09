@@ -1,0 +1,3 @@
+columns = 80
+wrap-operator = start
+continuation = 4

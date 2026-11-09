@@ -4942,6 +4942,12 @@ Decided 2026-11-09 (kovarex, as thread F recommended):
 - Q11: line ends are kept per file.
 - Q13: `columns` takes only the widths the tests cover (130, 100, 80, 160).
 
+The 13 settings are built (2026-11-09; format.md, "Settings", has what each value does). Details the
+design left open: a constructor's initializer list or base clause is one item to a line exactly when
+its `:` starts a line (that is the kept fact); `namespace-indent` is about `namespace` only; `braces =
+end-of-line` leaves `else` and `catch` on the line after the `}`; with a numeric `continuation` the `(`
+of a control statement stays aligned.
+
 ## Open questions
 - **Syntax must be parseable without name lookup.** C++ needs to know whether a name is a type
   or a template to parse `a * b;` or `f < a > (b)`. In the index-then-resolve model the parser

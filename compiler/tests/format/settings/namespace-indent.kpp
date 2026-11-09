@@ -1,0 +1,32 @@
+// format: namespace-indent (yes, no): nested namespaces; an extern "C" block and a suite stay indented
+namespace game
+{
+  namespace detail
+  {
+    i32 helper(i32 x) { return x + 1; }
+
+    struct Cache
+    {
+      i32 hits = 0;
+    };
+  }
+
+  // A function in the outer namespace.
+  i32 run(i32 x)
+  {
+    return detail::helper(x);
+  }
+}
+
+extern "C"
+{
+  i32 kpp_entry(i32 x);
+}
+
+suite namespaces
+{
+  test helping
+  {
+    check(game::run(1) == 2);
+  }
+}

@@ -1,0 +1,21 @@
+// format: template-space (no, yes): template headers; template arguments and `.template` unchanged
+template <typename T>
+struct Box
+{
+  T value;
+
+  template <typename U>
+  U as() const { return U(this.value); }
+};
+
+template <>
+struct Box<void>
+{
+};
+
+template <template <typename> class C, typename... Ts>
+C<i32> make(Ts... values)
+{
+  Box<C<i32>> box;
+  return box.template as<C<i32>>();
+}

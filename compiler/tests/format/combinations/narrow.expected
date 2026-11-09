@@ -1,0 +1,65 @@
+// format: columns 80 with wrap-operator start and continuation 4
+bool shouldBuild(
+    const Entity& entity,
+    const Surface& surface,
+    const Force& force,
+    bool forced,
+    i32 tick,
+    i32 delay,
+    i32 limit)
+{
+  if (entity.isValid()
+      && surface.canPlace(entity.position(), entity.direction())
+      && force.hasResearched(entity.recipe())
+      || forced && tick > delay)
+    return true;
+  i32 total = entity.healthBonus() * force.healthMultiplier()
+      + surface.pollutionAt(entity.position()) * 3
+      + entity.distanceTo(surface.center())
+      - limit;
+  return total > limit
+      ? force.canAfford(
+          entity.cost(),
+          surface.index(),
+          tick,
+          delay,
+          limit,
+          total)
+      : force.wouldOverflow(entity.cost(), tick);
+}
+
+void spawn(
+    EntityFactory& factory,
+    const Surface& surface,
+    const Position& position,
+    Direction direction,
+    const Force& force)
+{
+  Entity* entity = factory.create(
+      surface.index(),
+      position.offsetBy(direction.vector()),
+      direction.rotated(2),
+      force.index(),
+      factory.defaultQuality(),
+      surface.tick());
+  factory.registerEntity(
+      entity,
+      EntityRegistration(
+          surface.index(),
+          force.index(),
+          factory.nextUnitNumber(),
+          surface.tick(),
+          true),
+      RegistrationMode::Immediate);
+  i64 score = factory.basePoints() * force.multiplier()
+      + surface.bonusFor(position) * direction.weight()
+      + entity->value()
+      + factory.bonus();
+  factory.log(
+      String("spawned ")
+      + entity->name()
+      + String(" at ")
+      + position.toString()
+      + String(" facing ")
+      + direction.toString());
+}

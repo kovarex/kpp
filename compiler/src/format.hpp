@@ -25,8 +25,36 @@ struct FormatOutcome
   std::vector<std::string> unclassifiedPairs; // the two tokens around each of unclassifiedLines
 };
 
-// columns 0: no wrapping (each line break inside a statement stays where it is).
-FormatOutcome formatText(std::string_view path, const std::string& text, int columns);
+// A style: one value for each of the 13 settings (docs/format.md, "Settings"), kpp's default as constructed.
+struct FormatStyle
+{
+  enum class Pointer : uint8_t { Type, Name, Both };
+  int indent = 2;          // indent: 2, 4, tab (indentTabs, 4 columns each)
+  bool indentTabs = false;
+  int columns = 130;       // columns: 130, 100, 80, 160 (0, --columns 0 only: no wrapping)
+  bool bracesEndOfLine = false;
+  bool caseIndent = true;
+  bool namespaceIndent = true;
+  bool accessAtMembers = false; // access-label member
+  bool wrapBeforeOperator = false; // wrap-operator start
+  int continuation = 0;    // continuation: align (0), 4, 8
+  Pointer pointer = Pointer::Type;
+  bool bracedListSpaces = false;
+  bool templateSpace = false;
+  bool trailingCommas = false; // initializer-commas trailing
+  int blankLinesAroundDefinitions = 1; // blank-lines-between-functions: 1, 2
+};
 
-// `kpp format [--check] [--stats] [--examples N] [--stdout] PATH...` (main.cpp).
+// Reads a .kppstyle's `key = value` lines into style; false with error (naming the line and the
+// allowed values) for an unknown setting, an unlisted value or a setting given twice.
+bool readFormatStyle(std::string_view text, std::string_view path, FormatStyle& style, std::string& error);
+
+FormatOutcome formatText(std::string_view path, const std::string& text, const FormatStyle& style);
+
+// The text with the whitespace between its tokens moved where the formatter decides it (spaces, tabs
+// and line breaks), keeping its tokens and the facts it keeps (run_format.py's perturbed copies).
+// Empty error: done.
+std::string perturbText(std::string_view path, const std::string& text, uint32_t seed, std::string& error);
+
+// `kpp format ...` (main.cpp; docs/format.md, Commands).
 int runFormat(int argc, char** argv);

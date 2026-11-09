@@ -1,0 +1,3 @@
+braces = end-of-line
+indent = 4
+case-indent = no

@@ -1,0 +1,21 @@
+// format: continuation (align, 4, 8): argument lists and continued expressions past the limit
+void spawn(EntityFactory& factory, const Surface& surface, const Position& position, Direction direction, const Force& force)
+{
+  Entity* entity = factory.create(
+          surface.index(),
+          position.offsetBy(direction.vector()),
+          direction.rotated(2),
+          force.index(),
+          factory.defaultQuality(),
+          surface.tick());
+  factory.registerEntity(
+          entity,
+          EntityRegistration(surface.index(), force.index(), factory.nextUnitNumber(), surface.tick(), true),
+          RegistrationMode::Immediate);
+  i64 score = factory.basePoints() * force.multiplier() +
+          surface.bonusFor(position) * direction.weight() +
+          entity->value() +
+          factory.bonus();
+  factory.log(
+          String("spawned ") + entity->name() + String(" at ") + position.toString() + String(" facing ") + direction.toString());
+}

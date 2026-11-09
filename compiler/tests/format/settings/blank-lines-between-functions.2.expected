@@ -1,0 +1,39 @@
+// format: blank-lines-between-functions (1, 2): the empty lines around expanded definitions; one-liners and other empty lines stay
+i32 counter = 0;
+
+
+// Counts up.
+void count()
+{
+  ++counter;
+}
+
+
+i32 get() { return counter; }
+i32 twice() { return counter * 2; }
+
+
+struct Tally
+{
+  i32 value = 0;
+
+
+  void add(i32 by)
+  {
+    this.value += by;
+  }
+
+
+  void reset()
+  {
+    this.value = 0;
+  }
+};
+
+
+void last()
+{
+  count();
+
+  count();
+}

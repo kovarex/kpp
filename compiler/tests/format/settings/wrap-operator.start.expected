@@ -1,0 +1,14 @@
+// format: wrap-operator (end, start): conditions, sums and a ?: broken at the limit
+bool shouldBuild(const Entity& entity, const Surface& surface, const Force& force, bool forced, i32 tick, i32 delay, i32 limit)
+{
+  if (entity.isValid() && surface.canPlace(entity.position(), entity.direction()) && force.hasResearched(entity.recipe())
+      || forced && tick > delay)
+    return true;
+  i32 total = entity.healthBonus() * force.healthMultiplier()
+              + surface.pollutionAt(entity.position()) * 3
+              + entity.distanceTo(surface.center())
+              - limit;
+  return total > limit
+         ? force.canAfford(entity.cost(), surface.index(), tick, delay, limit, total)
+         : force.wouldOverflow(entity.cost(), tick);
+}

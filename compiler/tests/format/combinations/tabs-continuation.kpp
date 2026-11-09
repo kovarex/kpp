@@ -1,0 +1,82 @@
+// format: indent tab with continuation 8: levels in tabs, alignment and continuation in spaces
+namespace shapes
+{
+  /* A block comment over lines
+     moves with its first line. */
+  class Square
+    : public Shape
+    , public Named
+  {
+  public:
+    Square(f64 side)
+      : side(side)
+      , area(side * side)
+    {}
+
+    f64 perimeter() const
+    {
+      if (this.side > 0)
+      {
+        for (i32 i = 0; i < 4; ++i)
+          this.walk(i);
+        return 4 * this.side;
+      }
+      else
+        return 0;
+    }
+
+    void visit(Vector<Square>& all) const
+    {
+      all.forEach([&](Square& s)
+      {
+        s.side += this.side;
+      });
+      i32 table[] = {
+        1, 2, 3,
+        4, 5, 6
+      };
+      switch (this.kind)
+      {
+        case Kind::Small:
+          this.grow(Size::Medium);
+          break;
+        default:
+          break;
+      }
+    }
+
+  private:
+    f64 side = 0;
+    f64 area = 0;
+  };
+
+  f64 total(const Vector<Square>& squares, f64 scale, f64 offset, f64 minimum, f64 maximum, bool clampToTheRangeBeforeAdding)
+  {
+    return squares.sum([&](const Square& s) { return s.perimeter() * scale + offset; }) +
+           clampToTheRangeBeforeAdding * minimum +
+           maximum;
+  }
+}
+
+void spawn(EntityFactory& factory, const Surface& surface, const Position& position, Direction direction, const Force& force)
+{
+  Entity* entity = factory.create(surface.index(),
+                                  position.offsetBy(direction.vector()),
+                                  direction.rotated(2),
+                                  force.index(),
+                                  factory.defaultQuality(),
+                                  surface.tick());
+  factory.registerEntity(entity,
+                         EntityRegistration(surface.index(), force.index(), factory.nextUnitNumber(), surface.tick(), true),
+                         RegistrationMode::Immediate);
+  i64 score = factory.basePoints() * force.multiplier() +
+              surface.bonusFor(position) * direction.weight() +
+              entity->value() +
+              factory.bonus();
+  factory.log(String("spawned ") +
+              entity->name() +
+              String(" at ") +
+              position.toString() +
+              String(" facing ") +
+              direction.toString());
+}

@@ -1,0 +1,26 @@
+// format: case-indent (yes, no): case labels inside their switch, a block after a label, a statement on the label's line
+i32 classify(i32 kind, i32 other)
+{
+  switch (kind)
+  {
+    case 0:
+      fallthrough;
+    case 1: return 1;
+    case 2:
+    {
+      i32 doubled = kind * 2;
+      return doubled;
+    }
+    case 3:
+      switch (other)
+      {
+        case 0:
+          return 30;
+        default:
+          return 31;
+      }
+    default:
+      break;
+  }
+  return 0;
+}

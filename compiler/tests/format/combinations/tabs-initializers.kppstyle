@@ -1,0 +1,3 @@
+indent = tab
+initializer-commas = trailing
+access-label = member

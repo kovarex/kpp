@@ -1,0 +1,50 @@
+// format: braced-list-spaces yes at columns 80 (the spaces count), pointer name, template-space yes
+struct Point
+{
+  i32 x = 0, y = 0;
+};
+
+Vector<Point> corners()
+{
+  i32 table[] = { 1, 2, 3 };
+  Vector<Vector<i32>> nested = { { 1, 2 }, { 3 }, {} };
+  Point origin{};
+  Point one{ 1, 1 };
+  Point designated = { .x = 2, .y = 3 };
+  Vector<Point> rows = {
+    { 0, 0 },
+    { 0, 1 }
+  };
+  return { origin, Point{ 4, 5 }, designated };
+}
+
+struct Node
+{
+  Node *next = nullptr;
+  Node **slot = nullptr;
+  const char *name = nullptr;
+  Shape ^owned;
+  i32 Node::*field = nullptr;
+};
+
+void link(Node *a,
+          const Node &b,
+          Node &&c,
+          Vector<Node *> &all,
+          Function<void(const Node &)> visit)
+{
+  Node *const fixed = a;
+  auto &first = *all.begin();
+  Node *cast = (Node *)a->next;
+  i32 product = a->id * b.id;
+  i32 masked = a->id & 7;
+  bool both = a->next && b.next;
+  i32 *address = &a->id;
+  visit(*a);
+}
+
+template <typename T>
+void forward(T &&value, T *const *table)
+{
+  use(static_cast<T &&>(value), table);
+}
