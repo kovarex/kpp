@@ -1762,15 +1762,23 @@ auto codegen::Emitter::moduleText(unsigned k, const std::string& prefix, bool in
   for (const Shared::Definition* d : definitions)
   {
     size_t at = out.size();
-    out += d->text;
     if (sh.debugInfo)
+    {
+      appendDefinitionMetadataFirst(out, d->text);
       nextDebugId += renumberDebugIds(out.data() + at, d->text.size(), nextDebugId);
+    }
+    else
+      out += d->text;
   }
+  size_t metadataAt = out.size();
   DebugLists lists;
   if (sh.fullDebugInfo)
     lists = appendDebugTypes(sh, out, definitionsAt, nextDebugId, (!sh.splitPieces || instancePiece) && k < sh.debugHomes.size() ? &sh.debugHomes[k] : nullptr);
   if (sh.debugInfo)
+  {
     out += debugModuleTailFor(sh.target, sh.fullDebugInfo, lists);
+    moveMetadataBeforeDefinitions(out, definitionsAt, metadataAt);
+  }
   return out;
 }
 

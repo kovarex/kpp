@@ -690,6 +690,28 @@ namespace codegen
   }
   inline const uint32_t debugFirstId = 16;
 
+  // --debug-info: metadata before what names it. To LLVM's parser a `!N` it has not read yet is a temporary
+  // node and later a replaceAllUsesWith, and every `!dbg` in a function body was one, each function's metadata
+  // following its body and the shared metadata ending the module: 3 to 4% of a module's compile. The order of
+  // the text does not change the object. A definition is kept as Emitter::debugLines writes it (its body, then
+  // its own metadata), so appended with the metadata first; the shared metadata moves when it is known, after
+  // the definitions (appendDebugTypes reads what they name).
+  inline void appendDefinitionMetadataFirst(std::string& out, std::string_view definition)
+  {
+    size_t bodyEnd = definition.rfind("\n}\n");
+    bodyEnd = bodyEnd == std::string_view::npos ? 0 : bodyEnd + 3;
+    out += definition.substr(bodyEnd);
+    out += definition.substr(0, bodyEnd);
+  }
+
+  // out's text from metadataAt on, moved to definitionsAt.
+  inline void moveMetadataBeforeDefinitions(std::string& out, size_t definitionsAt, size_t metadataAt)
+  {
+    const std::string metadata = out.substr(metadataAt);
+    out.resize(metadataAt);
+    out.insert(definitionsAt, metadata);
+  }
+
   // Calls found(offset, length) for each `@name` a text names, as module assembly has always scanned
   // them: every '@', a quoted name to its closing quote, an unquoted one over [A-Za-z0-9-$._].
   template<typename F>

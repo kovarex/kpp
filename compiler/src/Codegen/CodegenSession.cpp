@@ -705,15 +705,23 @@ static std::string programPieceText(const Shared& sh, unsigned k, const std::str
   for (const Shared::Definition* d : definitions)
   {
     size_t at = out.size();
-    out += d->text;
     if (sh.debugInfo)
+    {
+      appendDefinitionMetadataFirst(out, d->text);
       nextDebugId += renumberDebugIds(out.data() + at, d->text.size(), nextDebugId);
+    }
+    else
+      out += d->text;
   }
+  size_t metadataAt = out.size();
   DebugLists lists;
   if (sh.fullDebugInfo)
     lists = appendDebugTypes(sh, out, definitionsAt, nextDebugId);
   if (sh.debugInfo)
+  {
     out += debugModuleTailFor(sh.target, sh.fullDebugInfo, lists);
+    moveMetadataBeforeDefinitions(out, definitionsAt, metadataAt);
+  }
   return out;
 }
 
