@@ -191,6 +191,38 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
         leftOutTests[test] = line.substr(why);
       }
   }
+  // The `implicit` marks the conversion leaves out (overrides/implicit-dropped.txt, `FILE: KEY` per line,
+  // # starts a comment; FILE the output's key, KEY FileConverter::implicitKey's): a converting
+  // constructor or conversion operator about which no build of the game asks whether it is explicit
+  // (kpp's --implicit-uses, every platform and configuration; kovarex 2026-11-09), written without the
+  // word, as kpp's explicit by default (design.md "Explicit by default"). programs/factorio/implicit-dropped.py writes it.
+  std::map<std::string, std::set<std::string>> implicitDropped;
+  std::map<std::string, std::set<std::string>> implicitDroppedFound;
+  if (!overridesDir.empty())
+  {
+    std::string list;
+    if (readFile(overridesDir / "implicit-dropped.txt", list))
+      for (size_t pos = 0; pos < list.size();)
+      {
+        size_t end = list.find('\n', pos);
+        if (end == std::string::npos)
+          end = list.size();
+        std::string line = list.substr(pos, end - pos);
+        pos = end + 1;
+        size_t a = line.find_first_not_of(" \t\r"), b = line.find_last_not_of(" \t\r");
+        if (a == std::string::npos || line[a] == '#')
+          continue;
+        line = line.substr(a, b - a + 1);
+        size_t colon = line.find(": ");
+        if (colon == std::string::npos || line.find("::") == std::string::npos || line.back() != ')')
+        {
+          fprintf(stderr, "convert: %s: `%s` is not `FILE: Class::name(parameters)`\n", (overridesDir / "implicit-dropped.txt").generic_string().c_str(),
+                  line.c_str());
+          continue;
+        }
+        implicitDropped[line.substr(0, colon)].insert(line.substr(colon + 2));
+      }
+  }
   // The game's own headers each input includes (the includes resolved against the including file's
   // directory, each root and each root's parent, as the game's include paths do), and the
   // function-like macros each header leaves defined: an input sees those of every header it
@@ -992,6 +1024,11 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     fc.classesByName = &classesByName;
     fc.leftOutTests = &leftOutTests;
     fc.leftOutTestsFound = &leftOutTestsFound;
+    if (auto dropped = implicitDropped.find(key); dropped != implicitDropped.end())
+    {
+      fc.implicitDropped = &dropped->second;
+      fc.implicitDroppedFound = &implicitDroppedFound[key];
+    }
     fc.suitesConverted = &suitesConverted;
     if (auto kept = keptCLibraries.find(in.path.parent_path().filename().string()); kept != keptCLibraries.end())
       fc.keptCLibraries = &kept->second;
@@ -1061,6 +1098,13 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
   for (const auto& [test, why] : leftOutTests)
     if (!suitesConverted.empty() && !leftOutTestsFound.count(test))
       fprintf(stderr, "convert: %s: no converted test is %s\n", (overridesDir / "left-out-tests.txt").generic_string().c_str(), test.c_str());
+  // (An entry of a file converted here whose mark is not: one a platform or configuration of its own
+  // declares, or gone with the game's source. Its mark is written where it comes back.)
+  for (const auto& [file, keys] : implicitDropped)
+    if (outputs.count(file))
+      for (const std::string& k : keys)
+        if (!implicitDroppedFound[file].count(k))
+          total.add("implicit-dropped.txt entries of a converted file that found no mark");
   // Where a file is written: below its root's name (its key, by which its overrides are found), or
   // with --convert-base, at its root's path below that directory, so that the output mirrors the
   // source tree (C:/Factorio/libraries/Lua/lapi.c as libraries/Lua/lapi.kpp).

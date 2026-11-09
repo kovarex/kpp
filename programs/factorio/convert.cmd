@@ -185,7 +185,7 @@ rem conversion operator is explicit, and a function argument's braces name their
 rem C++'s `explicit` and marks what converts; the types of braced arguments, which it cannot spell in kpp
 rem reading C++, kpp's error names: "write `Vector2D{x, y}`, not `{x, y}`". apply-fixes.py writes them, in
 rem kpp\ and in the checkout, from each configuration's check: Windows' debug, release and final, the
-rem checkout's with its tests, Linux's; a build through codegen where templates' instances are walked. Twice:
+rem checkout's with its tests, Linux's and Linux's final (CrashHandler's upload of the log is final's alone); a build through codegen where templates' instances are walked. Twice:
 rem a fix can show the next. Explicit by default is kpp's default (D's 13d36a85), and so is no implicit
 rem fallthrough, for which the converter drops the `break;` that ends a case (design.md "No implicit fallthrough").
 set STEP=the explicit-by-default pass
@@ -201,7 +201,9 @@ for %%r in (1 2) do (
   %KPP% %EBD% --check --ext .kpp --release --config finalRelease=true %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %WHOLE%\src > nul 2> kpp\ebd-%%r-whole-final.txt
   type nul > kpp\ebd-%%r-linux.txt
   if not "%CONVERT_LINUX%"=="0" if exist %GAMESYSROOT%\kpp-sysroot.txt %KPP% %EBD% --cinclude %FACTORIO%\libraries\libbacktrace --target linux --sysroot %GAMESYSROOT% --emit-llvm kpp\ebd-linux.ll --ext .kpp --tests %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests > nul 2> kpp\ebd-%%r-linux.txt
-  python -I apply-fixes.py kpp\ebd-%%r-debug.txt kpp\ebd-%%r-release.txt kpp\ebd-%%r-final.txt kpp\ebd-%%r-whole.txt kpp\ebd-%%r-whole-release.txt kpp\ebd-%%r-whole-final.txt kpp\ebd-%%r-linux.txt || goto :failed
+  type nul > kpp\ebd-%%r-linux-final.txt
+  if not "%CONVERT_LINUX%"=="0" if exist %GAMESYSROOT%\kpp-sysroot.txt %KPP% %EBD% --cinclude %FACTORIO%\libraries\libbacktrace --target linux --sysroot %GAMESYSROOT% --check --release --config finalRelease=true --ext .kpp %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\Lua %L%\crc32fast %CLIBWHOLE% %WHOLE%\src > nul 2> kpp\ebd-%%r-linux-final.txt
+  python -I apply-fixes.py kpp\ebd-%%r-debug.txt kpp\ebd-%%r-release.txt kpp\ebd-%%r-final.txt kpp\ebd-%%r-whole.txt kpp\ebd-%%r-whole-release.txt kpp\ebd-%%r-whole-final.txt kpp\ebd-%%r-linux.txt kpp\ebd-%%r-linux-final.txt || goto :failed
 )
 for %%f in (kpp\ebd.ll kpp\ebd-whole.ll kpp\ebd-linux.ll) do if exist %%f del %%f
 rem (kpp\Util is a copy of kpp\src\Util, made before the fixes: again)

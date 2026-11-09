@@ -1473,6 +1473,54 @@
     // blocks seen so far tell a test's suite: the suite's name and its block's `{` and `}` tokens.
     const std::map<std::string, std::string>* leftOutTests = nullptr;
     std::set<std::string>* leftOutTestsFound = nullptr;
+    // The `implicit` marks this file goes without (overrides/implicit-dropped.txt, its entries for this
+    // file): a converting constructor or conversion operator no build of the game asks about, by
+    // implicitKey, and those found.
+    const std::set<std::string>* implicitDropped = nullptr;
+    std::set<std::string>* implicitDroppedFound = nullptr;
+    // A converting constructor's or conversion operator's key in implicit-dropped.txt: `Class::Class(a, b)`,
+    // `Class::operator()`, its class's own name and its parameters' names (`_` for one unnamed),
+    // which the converted declaration keeps (programs/factorio/implicit-dropped.py reads them there).
+    std::string implicitKey(FunctionDecl* f, const FunctionDecl* named)
+    {
+      Decl* owner = global.owningClass(f);
+      if (!owner || owner->kind != NodeKind::ClassDecl || static_cast<ClassDecl*>(owner)->name.empty() ||
+          static_cast<ClassDecl*>(owner)->name.last().symbol == UINT32_MAX)
+        return std::string();
+      std::string cls(symbols.name(static_cast<ClassDecl*>(owner)->name.last().symbol));
+      std::string key = cls + "::" + ((f->flags & DF_Conversion) ? std::string("operator") : cls) + "(";
+      for (size_t i = 0; i < named->params.size(); ++i)
+      {
+        const Decl* p = named->params[i];
+        uint32_t name = p->kind == NodeKind::ParamDecl ? static_cast<const ParamDecl*>(p)->name : UINT32_MAX;
+        key += (i ? ", " : "") + (name == UINT32_MAX ? std::string("_") : std::string(symbols.name(name)));
+      }
+      return key + ")";
+    }
+    bool implicitDroppedKey(const std::string& key)
+    {
+      if (!implicitDropped || key.empty() || !implicitDropped->count(key))
+        return false;
+      implicitDroppedFound->insert(key);
+      counts.add("implicit left out: no build asks about it (implicit-dropped.txt)");
+      return true;
+    }
+    // (A class the converter writes itself: a BITFIELD's.)
+    std::string implicitWord(const std::string& key) { return implicitDroppedKey(key) ? std::string() : std::string("implicit "); }
+    // (By the parameter names the converted declaration has: its own, or, where the body moves into the
+    // class, the definition's. An out-of-line definition that stays one has a mark of its own.)
+    bool implicitDroppedFor(FunctionDecl* f)
+    {
+      if (!implicitDropped)
+        return false;
+      if (inlineBodies && inlineBodies->declarations.count(f))
+      {
+        Decl* def = global.definitionOf(f);
+        if (def && def != f && def->kind == NodeKind::FunctionDecl)
+          return implicitDroppedKey(implicitKey(f, static_cast<FunctionDecl*>(def)));
+      }
+      return implicitDroppedKey(implicitKey(f, f));
+    }
     std::set<std::string>* suitesConverted = nullptr;
     std::vector<SuiteBlock> suiteBlocks;
     std::vector<FixtureBody> fixtureBodies;

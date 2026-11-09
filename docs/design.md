@@ -5265,7 +5265,15 @@ of a control statement stays aligned.
   it converts implicitly was asked (isExplicit: every conversion, overload candidate, requires clause and trait, whatever
   the answer, so one asked about keeps its mark even when no conversion took it); one never asked about changes nothing
   when it goes. The asked counts vary with -j (cached answers); their 0 does not, nor the uses. Spec
-  kpp/implicit_uses_lists_each_mark.
+  kpp/implicit_uses_lists_each_mark. The converter's step (C, 2026-11-09): programs/factorio/implicit-dropped.cmd builds
+  the converted checkout with `--implicit-uses` in 15 builds (Windows, Linux and FreeBSD; debug, release and final; with
+  and without the tests, final only without, as the C++ tests do not compile there), since code a build leaves out by a
+  false `when` asks nothing in it, and implicit-dropped.py lists each mark no build asks about in
+  overrides/implicit-dropped.txt, by file, class and parameter names (two marks sharing a key go only if both can);
+  the converter then leaves those out. A new or changed declaration is not on the list and keeps its mark, so the list
+  can only be stale in the safe direction. In the game (C:\Factorio 4c178a5b915): 1,490 listed, 1,550 marks gone, 954
+  keys kept. Its IR in all 15 builds is the same before and after but for the names that carry a token number (a
+  local class's, a static local's, a specialization's) and one assert's column.
 
 - **The noexcept operator** (D, 2026-11-06, [except.spec] 6) answers for any operand: what it names and what it
   calls without naming it (Walker::canThrow): a class's operators, constructions, implicit and defaulted

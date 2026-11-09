@@ -307,12 +307,12 @@
                       insert(toks[end].offset, " = " + value);
                       counts.add("default arguments carried from declarations");
                     }
-            if ((f->flags & DF_Constructor) && !(f->flags & (DF_Explicit | DF_Implicit)) && convertingConstructor(f))
+            if ((f->flags & DF_Constructor) && !(f->flags & (DF_Explicit | DF_Implicit)) && convertingConstructor(f) && !implicitDroppedFor(f))
             {
               insert(toks[f->token].offset, "implicit ");
               counts.add("implicit added");
             }
-            if ((f->flags & DF_Conversion) && !(f->flags & (DF_Explicit | DF_Implicit)))
+            if ((f->flags & DF_Conversion) && !(f->flags & (DF_Explicit | DF_Implicit)) && !implicitDroppedFor(f))
             {
               insert(toks[f->token].offset, "implicit ");
               counts.add("implicit added");
