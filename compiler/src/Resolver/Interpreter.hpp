@@ -225,6 +225,7 @@
   // stop at the operand that decides. A pattern naming a second pack, or a pack of the values a
   // function was given (`args...`), is no constant of step 1's.
   std::optional<ConstValue> constFold(FoldExpr* f, const TypeContext& ctx, int depth);
+  std::optional<ConstValue> constFoldOfAssignments(FoldExpr* f, const TypeContext& ctx, int depth);
 
   std::optional<ConstValue> constName(NameExpr* n, const TypeContext& ctx);
 

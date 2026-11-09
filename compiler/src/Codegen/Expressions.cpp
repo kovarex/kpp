@@ -129,6 +129,114 @@ auto codegen::Emitter::rvalue(Expr* e) -> Value
   return v;
 }
 
+// A fold of assignments: `((E1 op E2) op ...) op En` and `E1 op (E2 op (... op En))` ([temp.variadic] 10). An assignment
+// evaluates its right operand before its left one ([expr.ass] 1), so the operands from the last one back: a left fold's right
+// operands all before E1 and any of its assignments, a right fold's each assignment as its left operand is reached. Each step
+// is `a op b` as binary() emits it, a class's or an enumeration's own operator as in a plain assignment. Its result is E1, the
+// object (foldAssignedPlace, for lvalue), a fold of one operand that operand.
+auto codegen::Emitter::foldOfAssignments(FoldExpr* f, Expr* pattern, Expr* init, bool right, Decl* typePack) -> Value
+{
+  std::deque<PlaceName> places;
+  std::deque<NamedCastExpr> casts;
+  std::deque<BinaryExpr> steps;
+  const Ty* bound = typePack ? boundPack(typePack) : nullptr;
+  if (typePack && !bound)
+    unsupported(f, "a fold of assignments over a pack that is not bound here");
+  size_t operands = (typePack ? bound->args.size() : packElementCount(pattern, f)) + (init ? 1 : 0);
+  if (operands == 0)
+    unsupported(f, "a fold over an empty pack without an initial value");
+  auto fromTheLast = [&](auto&& visit)
+  {
+    if (init && right)
+      visit(init);
+    if (typePack)
+      forEachTypePackElement(typePack, [&](size_t) { visit(pattern); }, pattern, true);
+    else
+      forEachPackElement(pattern, f, [&](size_t) { visit(pattern); }, true);
+    if (init && !right)
+      visit(init);
+  };
+  auto place = [&](Expr* x) -> Expr*
+  {
+    if (bitfieldNamed(x))
+      unsupported(f, "a fold of assignments to a bit field");
+    foldAssignedPlace = lvalue(x);
+    foldAssignedAt = f;
+    return &places.emplace_back(*this, foldAssignedPlace, types.unqualified(types.stripRef(x->ty)), f->token).name;
+  };
+  // A value standing as an operand: a scalar in a slot of its own, a class's object as itself, a temporary as an xvalue.
+  auto standIn = [&](const Value& v) -> Expr*
+  {
+    const Ty* t = types.unqualified(types.stripRef(v.ty));
+    std::string at = v.text;
+    if (!isClass(t))
+    {
+      at = newObjectSlot(t, f);
+      store(v, at, t, f);
+    }
+    PlaceName& named = places.emplace_back(*this, at, t, f->token);
+    if (isClass(t) && !v.isTemporary)
+      return &named.name;
+    NamedCastExpr& cast = casts.emplace_back();
+    cast.kind = NodeKind::NamedCastExpr;
+    cast.token = f->token;
+    cast.castKind = Kw::static_cast_;
+    cast.operand = &named.name;
+    cast.ty = isClass(t) ? types.rref(t) : t;
+    return &cast;
+  };
+  auto assign = [&](Expr* target, const Value& value)
+  {
+    if (value.ty && types.stripRef(value.ty)->kind == TyKind::Void)
+      unsupported(f, "a fold of assignments over an operator that gives nothing");
+    BinaryExpr& step = steps.emplace_back();
+    step.kind = NodeKind::BinaryExpr;
+    step.token = f->token;
+    step.op = f->op;
+    step.lhs = target;
+    step.rhs = standIn(value);
+    return binary(&step);
+  };
+  size_t seen = 0;
+  Value result{"", types.voidType()};
+  if (operands == 1 && (!f->ty || f->ty->kind != TyKind::LRef)) // (one operand, a value: `(1 += ... += none)`)
+  {
+    fromTheLast([&](Expr* x) { result = rvalue(x); });
+    return result;
+  }
+  if (right)
+  {
+    fromTheLast([&](Expr* x)
+    {
+      if (++seen == 1 && operands > 1)
+        result = rvalue(x);
+      else if (Expr* target = place(x); seen == 1)
+        result = rvalue(target); // (one operand: the fold is it)
+      else
+        result = assign(target, result);
+    });
+    return result;
+  }
+  std::vector<Value> assigned;
+  Expr* target = nullptr;
+  fromTheLast([&](Expr* x)
+  {
+    if (++seen < operands)
+      assigned.push_back(rvalue(x));
+    else
+      target = place(x);
+  });
+  if (assigned.empty())
+    return rvalue(target);
+  for (size_t i = assigned.size(); i-- > 0;)
+  {
+    result = assign(target, assigned[i]);
+    if (isClass(types.stripRef(target->ty)) && i > 0) // (what a class's own operator gave takes the next one)
+      target = standIn(result);
+  }
+  return result;
+}
+
 // A fold with an operand of a class, a closure or an enumeration ([expr.prim.fold], [temp.variadic] 10): an operator
 // function may be called at any step, so each step is `a op b` as binary() emits it, the operator its operands' types
 // choose (the fold's one node records no choice for each element). `((init op E0) op E1) op E2` calls each operator
@@ -939,6 +1047,8 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
         fn += "  " + r + " = phi i1 " + phi + "\n";
         return {r, types.boolType()};
       }
+      if (isAssignment(op))
+        return foldOfAssignments(f, pattern, init, right, typePack);
       // A class, a closure or an enumeration among the operands: a step may call an operator function
       // (foldOverOperators). Scalars alone: the built-in operator, step by step.
       bool operators = false;

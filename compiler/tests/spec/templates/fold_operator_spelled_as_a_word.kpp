@@ -1,0 +1,13 @@
+// spec: a fold's operator spelled as a word is that operator: `(a and ...)`, `(... or a)`, `bitor`, `bitand` with an init, `xor`, `not_eq`, the two spellings of one fold's operators agreeing; run time and compile time; clang's output
+extern "C" int printf(const char* format, ...);
+template<int... Is> constexpr int words() { return (Is bitor ...) * 100 + (Is bitand ... bitand 7) + (... xor Is) * 1000; }
+template<int... Is> constexpr int mixed() { return (Is & ... bitand 7); }
+template<typename... Ts> bool allOf(Ts... a) { return (a and ...); }
+template<typename... Ts> bool anyOf(Ts... a) { return (... or a); }
+template<typename... Ts> bool ne(Ts... a) { return (a not_eq ...); }
+constexpr int w = words<1, 2, 4>();
+int main()
+{
+  printf("%d %d %d %d %d %d\n", w, mixed<7, 5>(), allOf(true, false), anyOf(false, true), ne(1, 2), words<1, 2, 4>());
+  return 0;
+}

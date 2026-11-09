@@ -8121,11 +8121,30 @@ auto GlobalScope::Impl::Walker::foldType(FoldExpr* f, const Ty* l, const Ty* r) 
   {
     // No element: a binary fold is its initial value, a unary && or || true or false, a unary comma
     // void() ([temp.variadic] 10; `(pr(args) && ...)` of none was of no type).
-    if (init)
-      return initType;
+    if (init) // (of assignments: the operand itself, an object if it is one)
+      return isAssignmentOp(op) && initType->isKnown() && isLvalueExpression(init) ? types.lref(types.stripRef(initType)) : initType;
     if (op == P::AndAnd || op == P::OrOr)
       return types.boolType();
     return op == P::Comma ? types.voidType() : nullptr;
+  }
+  if (isAssignmentOp(op))
+  {
+    // `((E1 op E2) op ...) op En`, `E1 op (E2 op (... op En))`: E1 assigned to last or first, each Ei of a right fold
+    // too. Its result is E1, the object, where the built-in operator runs; a class's own operator says what it gives (the
+    // caller's rule).
+    const Ty* first = !right && init ? initType : elements->args[0];
+    size_t assigned = right ? elements->args.size() - (init ? 0 : 1) : 0;
+    bool oneOperand = !init && elements->args.size() == 1;
+    for (size_t i = 0; i < assigned; ++i)
+      if (const Ty* t = elements->args[i]; t && types.stripRef(t)->kind != TyKind::Class)
+        checkConstModification(f->token, types.stripRef(t), "assignment to");
+    if (!right && !oneOperand && first && types.stripRef(first)->kind != TyKind::Class)
+      checkConstModification(f->token, types.stripRef(first), "assignment to", init);
+    if (!oneOperand)
+      checkAssignable(f->token, "the left operand of a fold's assignment", !right && init ? init : right ? f->lhs : f->rhs, first);
+    if (!first || !first->isKnown() || types.isDependent(first) || types.stripRef(first)->kind == TyKind::Class)
+      return nullptr;
+    return oneOperand && !isLvalueExpression(right ? f->lhs : f->rhs) ? first : types.lref(types.stripRef(first));
   }
   bool arithmeticOp = op == P::Plus || op == P::Minus || op == P::Star || op == P::Slash || op == P::Percent || op == P::Amp ||
                       op == P::Pipe || op == P::Caret || op == P::Shl || op == P::Shr;

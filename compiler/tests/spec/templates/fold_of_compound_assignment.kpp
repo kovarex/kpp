@@ -1,5 +1,4 @@
 // spec: a fold of a compound assignment operator ([expr.prim.fold] fold-operator: += -= *= /= %= ^= &= |= <<= >>= =): a left fold with init `(r += ... += a)` assigns each element to r in turn, a right fold `(a *= ...)` assigns from the last element back, its value the first element; at run time and at compile time
-// pending: kpp's parser takes no assignment operator in a fold ("unexpected '...'"), found by thread J's pack generator (2026-11-09); the owner is the coordinator's to name
 extern "C" int printf(const char* format, ...);
 template<typename... Ts> constexpr int addAll(int r, Ts... a) { return (r += ... += a); }
 template<typename... Ts> constexpr int shifted(int r, Ts... a) { return (r <<= ... <<= a); }

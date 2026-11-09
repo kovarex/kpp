@@ -1,5 +1,4 @@
 // spec: folds of `,` beside the unary right one: `(... , note(args))`, `(note(0) , ... , note(args))` and `(note(args) , ... , note(9))` visit their operands left to right, a parenthesized pattern `(... , (note(args)))` too; the value is the last operand's, `(args , ... , init)` of an empty pack init, at run time and at compile time
-// pending: kpp's parser reads `(... , x)` as an error ("unexpected '...'") and `(i , ... , args)`, `(args , ... , i)` as a comma expression around a unary fold, so codegen finds no pack in `(note(0) , ... , note(args))` and the evaluator no value in the empty unary fold; found by thread J's pack generator (2026-11-09); the owner is the coordinator's to name
 extern "C" int printf(const char* format, ...);
 int note(int i) { printf("visit %d ", i); return i * 10; }
 template<typename... Ts> int left(Ts... args) { return (... , note(args)); }

@@ -1,0 +1,17 @@
+// spec: a fold's built-in assignments are assignments: to a const element or init, or to a value, an error in the instance, as clang's
+// error: fold_of_assignments_to_no_object_is_error.kpp:6: error: assignment to a const value (const int32)
+// error: fold_of_assignments_to_no_object_is_error.kpp:7: error: assignment to a const value (const int32)
+// error: fold_of_assignments_to_no_object_is_error.kpp:8: error: the left operand of a fold's assignment is no lvalue
+// error: fold_of_assignments_to_no_object_is_error.kpp:9: error: the left operand of a fold's assignment is no lvalue
+template<typename... Ts> int constElements(const Ts... a) { (a *= ...); return 0; }
+template<typename... Ts> int constInit(const int r, Ts... a) { return (r += ... += a); }
+template<typename... Ts> int valueInit(Ts... a) { return (1 += ... += a); }
+template<typename... Ts> int valueElements(Ts... a) { return ((a + 1) *= ...); }
+int main()
+{
+  constElements(1, 2);
+  constInit(1, 2);
+  valueInit(2);
+  valueElements(1, 2);
+  return 0;
+}

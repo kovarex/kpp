@@ -1,0 +1,10 @@
+// spec: the two operators of a binary fold are one operator ([expr.prim.fold] 3): `(a + ... - 1)` read the second as the first until 2026-11-09, a wrong answer
+// error: fold_operators_differ_is_error.kpp:6: error: a fold expression's two operators must be the same ([expr.prim.fold] 3)
+// error: fold_operators_differ_is_error.kpp:7: error: a fold expression's two operators must be the same ([expr.prim.fold] 3)
+// error: fold_operators_differ_is_error.kpp:8: error: a fold expression's two operators must be the same ([expr.prim.fold] 3)
+// error: fold_operators_differ_is_error.kpp:9: error: a fold expression's two operators must be the same ([expr.prim.fold] 3)
+template<typename... Ts> int plusMinus(Ts... a) { return (a + ... - 1); }
+template<typename... Ts> int assigns(int r, Ts... a) { return (r += ... -= a); }
+template<typename... Ts> int commaPlus(Ts... a) { return (a , ... + 1); }
+template<typename... Ts> int plusComma(Ts... a) { return (a + ... , 1); }
+int main() { return 0; }

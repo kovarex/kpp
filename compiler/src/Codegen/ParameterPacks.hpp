@@ -74,8 +74,9 @@
     // What the instantiation binds a template parameter pack to (typePackIn found it bound).
     const Ty* boundPack(Decl* pack);
 
+    // (reversed: the last element first, for a fold of assignments, whose right operands are evaluated first)
     template<typename F>
-    void forEachPackElement(Expr* pattern, Node* at, F&& body)
+    void forEachPackElement(Expr* pattern, Node* at, F&& body, bool reversed = false)
     {
       Decl* param = packIn(pattern);
       if (!param && currentArgs)
@@ -83,7 +84,7 @@
         {
           // `values[I]...` over a template parameter pack (`int... I` of the index-sequence idiom):
           // the pattern once per element, with I bound to that element.
-          forEachTypePackElement(pack, body, pattern);
+          forEachTypePackElement(pack, body, pattern, reversed);
           return;
         }
       if (!param)
@@ -116,8 +117,9 @@
       for (Decl* p : params)
         if (auto l = locals.find(p); l != locals.end())
           outerLocals.push_back({p, l->second});
-      for (size_t i = 0; i < count; ++i)
+      for (size_t n = 0; n < count; ++n)
       {
+        size_t i = reversed ? count - 1 - n : n;
         // The pattern's mentions of the packs name element i; the rest of the body keeps them whole,
         // and so does an expansion inside the pattern (elementPattern).
         TemplateArgs elementArgs = original;
@@ -217,15 +219,16 @@
     // the pack bound to that element (a private copy: retypedPerElement), and the element's
     // arguments in effect; with a pattern, so are the other packs it names (`Is * Js`).
     template<class F>
-    void forEachTypePackElement(Decl* pack, F&& body, Node* pattern = nullptr)
+    void forEachTypePackElement(Decl* pack, F&& body, Node* pattern = nullptr, bool reversed = false)
     {
       TemplateArgs original = *currentArgs;
       const Ty* bound = nullptr;
       for (auto& [d, t] : original.pairs)
         if (d == pack)
           bound = t;
-      for (size_t i = 0; bound && i < bound->args.size(); ++i)
+      for (size_t n = 0; bound && n < bound->args.size(); ++n)
       {
+        size_t i = reversed ? bound->args.size() - 1 - n : n;
         // The pattern's mentions of the pack name element i; the parameters, the class instance
         // and its members keep the whole pack (`lists` an `Array<Entry, sizeof...(Ts)>&`).
         TemplateArgs elementArgs = original;

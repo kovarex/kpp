@@ -1010,6 +1010,17 @@ auto codegen::Emitter::lvalue(Expr* e) -> std::string
         return lvalue(c->operand);
       break;
     }
+    case NodeKind::FoldExpr: // `int& r = (x += ... += a);`: x, once
+      if (auto* f = static_cast<FoldExpr*>(e); isAssignment(P(f->op)))
+      {
+        Value v = rvalue(e);
+        if (isClass(v.ty))
+          return v.text;
+        if (foldAssignedAt == f)
+          return foldAssignedPlace;
+        unsupported(e, "a fold of assignments used as an lvalue whose place was not recorded");
+      }
+      break;
     case NodeKind::BinaryExpr:
     {
       auto* b = static_cast<BinaryExpr*>(e);

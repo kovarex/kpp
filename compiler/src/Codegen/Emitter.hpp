@@ -204,6 +204,8 @@ namespace codegen
     // lvalue (`int& r = (a[i++] = v);`) is that place, its left operand not evaluated again.
     const BinaryExpr* assignedAt = nullptr;
     std::string assignedPlace;
+    const FoldExpr* foldAssignedAt = nullptr; // the fold of assignments just emitted and the object it gives (lvalue)
+    std::string foldAssignedPlace;
     const Expr* evaluatedFirst = nullptr; // the stand-in for an assignment's right operand evaluated before its left
     // The `__range` of a range-for that calls free begin(__range) and end(__range): a variable of
     // the compiler's and the name of it passed to the calls (one each per such loop).

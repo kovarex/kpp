@@ -5785,6 +5785,7 @@ namespace
           f->lhs = e;
           f->rhs = nullptr;
           f->op = uint32_t(P::Comma);
+          parseFoldEnd(f, 1); // `(pack , ... , init)`, `(init , ... , pack)`
           e = f;
           continue;
         }
@@ -5878,6 +5879,44 @@ namespace
       return b;
     }
 
+    // A fold's operator as FoldExpr keeps it: the punctuator of one spelled as a word (`(a and ...)` is `(a && ...)`).
+    uint32_t foldOperator(const Token& t) const
+    {
+      if (t.getKind() == TokenKind::Keyword)
+        switch (Kw(t.id))
+        {
+          case Kw::or_: return uint32_t(P::OrOr);
+          case Kw::and_: return uint32_t(P::AndAnd);
+          case Kw::bitor_: return uint32_t(P::Pipe);
+          case Kw::xor_: return uint32_t(P::Caret);
+          case Kw::bitand_: return uint32_t(P::Amp);
+          case Kw::not_eq_: return uint32_t(P::NotEq);
+          default: break;
+        }
+      return t.id;
+    }
+
+    // [expr.prim.fold]'s fold-operator: a binary operator, the comma or an assignment.
+    bool atFoldOperator()
+    {
+      bool isKeyword;
+      return binaryPrecedence(tok(), isKeyword) >= 0 || at(P::Comma) || (at(TokenKind::Punctuator) && isAssignmentOp(P(tok().id)));
+    }
+
+    // After a fold's `...`: the second operator, which is the first one again ([expr.prim.fold] 3), and its operand.
+    void parseFoldEnd(FoldExpr* f, int minPrecedence)
+    {
+      if (!atFoldOperator())
+        return;
+      if (foldOperator(tok()) != f->op)
+      {
+        error("a fold expression's two operators must be the same ([expr.prim.fold] 3)");
+        return;
+      }
+      advance();
+      f->rhs = parseBinary(minPrecedence);
+    }
+
     static bool isAssignmentOp(P p)
     {
       switch (p)
@@ -5934,6 +5973,16 @@ namespace
         {
           uint32_t opTok = pos;
           advance();
+          if (at(P::Ellipsis)) // `(a *= ...)`, `(r += ... += a)`
+          {
+            advance();
+            FoldExpr* f = node<FoldExpr>(opTok);
+            f->lhs = lhs;
+            f->rhs = nullptr;
+            f->op = uint32_t(p);
+            parseFoldEnd(f, 1);
+            return f;
+          }
           BinaryExpr* b = node<BinaryExpr>(opTok);
           b->lhs = lhs;
           b->op = uint32_t(p);
@@ -6088,18 +6137,9 @@ namespace
           advance();
           FoldExpr* f = node<FoldExpr>(opTok);
           f->lhs = lhs;
-          f->op = op;
+          f->op = foldOperator(toks[opTok]);
           f->rhs = nullptr;
-          if (!at(P::RParen))
-          {
-            // ( pack op ... op init )
-            bool k;
-            if (binaryPrecedence(tok(), k) >= 0)
-            {
-              advance();
-              f->rhs = parseBinary(prec + 1);
-            }
-          }
+          parseFoldEnd(f, prec + 1); // ( pack op ... op init )
           lhs = f;
           continue;
         }
@@ -6170,11 +6210,10 @@ namespace
           {
             // Fold expression `( ... op pack )`.
             advance();
-            bool k;
-            if (binaryPrecedence(tok(), k) >= 0)
+            if (atFoldOperator())
             {
               FoldExpr* f = node<FoldExpr>(start);
-              f->op = tok().id;
+              f->op = foldOperator(tok());
               advance();
               f->lhs = nullptr;
               f->rhs = parseBinary(1);

@@ -1196,8 +1196,122 @@ auto GlobalScope::Impl::packNamedIn(Node* n, const Subst& s, int depth) -> Decl*
   }
 }
 
+// The operator a compound assignment applies (`+=`: `+`); none for another one.
+static std::optional<P> compoundAssignmentBase(P op)
+{
+  static const std::pair<P, P> compound[] = {{P::PlusAssign, P::Plus}, {P::MinusAssign, P::Minus}, {P::StarAssign, P::Star},
+                                             {P::SlashAssign, P::Slash}, {P::PercentAssign, P::Percent}, {P::AmpAssign, P::Amp},
+                                             {P::PipeAssign, P::Pipe}, {P::CaretAssign, P::Caret}, {P::ShlAssign, P::Shl},
+                                             {P::ShrAssign, P::Shr}};
+  for (auto [assign, plain] : compound)
+    if (assign == op)
+      return plain;
+  return std::nullopt;
+}
+
+auto GlobalScope::Impl::constFoldOfAssignments(FoldExpr* f, const TypeContext& ctx, int depth) -> std::optional<ConstValue>
+{
+  // `(r += ... += a * 2)`, `(a *= ...)` of scalars, a left fold's operands of no side effect, a fold assigning to the elements
+  // over the pack named alone: no operand's evaluation can show its order (the assignments evaluate theirs from the last one
+  // back, as at run time). Any other is no constant here, an error where one is needed (pending spec
+  // templates/fold_of_assignments_with_side_effects_in_a_constant).
+  P op = P(f->op);
+  if (!ctx.subst || !ctx.env)
+    return std::nullopt;
+  bool right = f->lhs && packNamedIn(f->lhs, *ctx.subst);
+  Expr* pattern = right ? f->lhs : f->rhs;
+  Expr* init = right ? f->rhs : f->lhs;
+  while (pattern && pattern->kind == NodeKind::ParenExpr)
+    pattern = static_cast<ParenExpr*>(pattern)->inner;
+  if (!pattern)
+    return std::nullopt;
+  size_t pack = ctx.env->size();
+  if (pattern->kind == NodeKind::NameExpr && static_cast<NameExpr*>(pattern)->name.parts.size() == 1)
+    for (size_t i = ctx.env->size(); i-- > 0;)
+      if ((*ctx.env)[i].symbol == static_cast<NameExpr*>(pattern)->name.parts[0].symbol)
+      {
+        pack = (*ctx.env)[i].pack ? i : ctx.env->size();
+        break;
+      }
+  bool named = pack != ctx.env->size(); // (the elements themselves, each a place)
+  bool operandsOnly = !right && init && constPure(pattern);
+  if (!named && !operandsOnly)
+    return std::nullopt;
+  size_t count = named && (*ctx.env)[pack].value.parts ? (*ctx.env)[pack].value.parts->size() : 0;
+  auto element = [&](size_t k)
+  {
+    const ConstBinding& b = (*ctx.env)[pack];
+    if (k < b.packPlaces.size() && b.packPlaces[k].env)
+    {
+      ConstPlace at = b.packPlaces[k];
+      const Ty* type = b.type && b.type->kind == TyKind::Pack && k < b.type->args.size() ? b.type->args[k] : nullptr;
+      at.readOnly = at.readOnly || (type && type->inner && type->inner->isConst);
+      return at;
+    }
+    return ConstPlace{ctx.env, pack, {k}, b.type && b.type->kind == TyKind::Pack && k < b.type->args.size() ? b.type->args[k] : (*b.value.parts)[k].type};
+  };
+  auto assign = [&](const ConstPlace& place, const ConstValue& value) -> std::optional<ConstValue>
+  {
+    const Ty* target = place.type ? types.unqualified(types.stripRef(place.type)) : nullptr;
+    bool ownElement = place.env == ctx.env && place.index == pack; // (the pack's binding is read-only as a whole; a by-value element is its own object)
+    if ((!ownElement && !place.writable()) || place.bits || value.isObject() || !target || target->kind == TyKind::Class || (target->kind == TyKind::Enum && op != P::Assign))
+      return std::nullopt;
+    std::optional<ConstValue> result = value;
+    if (op != P::Assign)
+    {
+      std::optional<ConstValue> old = constRead(place);
+      std::optional<P> base = compoundAssignmentBase(op);
+      if (!old || !base || old->isObject())
+        return std::nullopt;
+      result = old->isPointer() ? constPointerArith(*base, *old, value) : old->isAddress() ? constAddressArith(*base, *old, value, depth) : constArith().binary(*base, *old, value);
+    }
+    result = result ? constConvertTo(result, place.type, depth + 1) : std::nullopt;
+    return result && constWrite(place, *result) ? result : std::nullopt;
+  };
+  if (right)
+  {
+    if (count == 0 && !init)
+      return std::nullopt;
+    std::optional<ConstValue> value = init ? constValue(init, ctx, depth + 1) : constRead(element(count - 1));
+    for (size_t k = count - (init ? 0 : 1); k-- > 0 && value;)
+      value = assign(element(k), *value);
+    return value;
+  }
+  std::vector<ConstValue> values;
+  if (operandsOnly)
+  {
+    std::optional<std::vector<ConstValue>> expanded = constExpand(pattern, ctx, depth);
+    if (!expanded)
+      return std::nullopt;
+    values = std::move(*expanded);
+  }
+  else
+    for (size_t k = 1; k < count; ++k)
+    {
+      std::optional<ConstValue> v = constRead(element(k));
+      if (!v)
+        return std::nullopt;
+      values.push_back(*v);
+    }
+  if (!init && count == 0)
+    return std::nullopt;
+  std::optional<ConstPlace> place = init ? constPlaceOf(init, ctx, depth + 1, true) : std::optional<ConstPlace>(element(0));
+  if (!place)
+    return std::nullopt;
+  std::optional<ConstValue> value = values.empty() ? constRead(*place) : std::nullopt;
+  for (const ConstValue& v : values)
+  {
+    value = assign(*place, v);
+    if (!value)
+      return std::nullopt;
+  }
+  return value;
+}
+
 auto GlobalScope::Impl::constFold(FoldExpr* f, const TypeContext& ctx, int depth) -> std::optional<ConstValue>
 {
+  if (isAssignmentOperator(P(f->op)))
+    return constFoldOfAssignments(f, ctx, depth);
   std::optional<P> op = constOperator(f->op, false);
   if (!op || !ctx.subst || !isConstBinaryOperator(*op))
     return std::nullopt;
@@ -8353,14 +8467,7 @@ auto GlobalScope::Impl::constAssign(BinaryExpr* b, const TypeContext& ctx, int d
   std::optional<ConstValue> v = r;
   if (op != P::Assign)
   {
-    static const std::pair<P, P> compound[] = {{P::PlusAssign, P::Plus}, {P::MinusAssign, P::Minus}, {P::StarAssign, P::Star},
-                                               {P::SlashAssign, P::Slash}, {P::PercentAssign, P::Percent}, {P::AmpAssign, P::Amp},
-                                               {P::PipeAssign, P::Pipe}, {P::CaretAssign, P::Caret}, {P::ShlAssign, P::Shl},
-                                               {P::ShrAssign, P::Shr}};
-    std::optional<P> base;
-    for (auto [assign, plain] : compound)
-      if (assign == op)
-        base = plain;
+    std::optional<P> base = compoundAssignmentBase(op);
     if (!base)
       return std::nullopt;
     // (a bit-field operand promoted by its width: `u3 /= -2` divides ints)

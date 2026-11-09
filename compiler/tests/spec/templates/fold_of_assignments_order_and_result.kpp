@@ -1,0 +1,72 @@
+// spec: a fold of assignments is the chain [temp.variadic] 10 writes: an assignment evaluates its right operand first ([expr.ass] 1), so a left fold evaluates its operands from the last one back to the init and then assigns from the first one on, and a right fold assigns as it reaches each left operand from the last one back; a plain `=` and every compound operator; a class's own operators; the result is E1, the object (`int& r = (x += ... += a)`), a one-operand fold that operand; at compile time too, over the elements of a by-value and a by-reference pack and a side-effect-free pattern; clang's output
+extern "C" int printf(const char* format, ...);
+int say(int& i) { printf("<%d>", i); return i; }
+int& sayPlace(int& i) { printf("[%d]", i); return i; }
+int r0 = 0;
+int& start() { printf("(init)"); return r0; }
+template<typename... Ts> int leftOrder(Ts... a) { r0 = 100; return (start() += ... += say(a)); }
+template<typename... Ts> int rightOrder(Ts... a) { int last = 2; (sayPlace(a) *= ... *= last); return (0 + ... + a); }
+template<typename... Ts> int rightUnary(Ts... a) { (sayPlace(a) += ...); return (0 + ... + (a * 1)); }
+template<typename... Ts> int leftUnary(Ts... a) { (... -= sayPlace(a)); int s = 0; ((s = s * 100 + a), ...); return s; }
+template<typename... Ts> int plain(Ts... a) { (a = ...); int s = 0; ((s = s * 10 + a), ...); return s; }
+template<typename... Ts> int plainInit(int v, Ts... a) { (a = ... = v); int s = 0; ((s = s * 10 + a), ...); return s; }
+template<typename... Ts> int all(int r, Ts... a)
+{
+  (r += ... += a); printf("%d ", r);
+  (r -= ... -= a); printf("%d ", r);
+  (r *= ... *= a); printf("%d ", r);
+  (r /= ... /= a); printf("%d ", r);
+  (r %= ... %= a); printf("%d ", r);
+  (r |= ... |= a); printf("%d ", r);
+  (r &= ... &= a); printf("%d ", r);
+  (r ^= ... ^= a); printf("%d ", r);
+  (r <<= ... <<= a); printf("%d ", r);
+  (r >>= ... >>= a); printf("%d\n", r);
+  return r;
+}
+class Acc
+{
+public:
+  int v;
+  Acc(int v) : v(v) {}
+  Acc& operator+=(int x) { printf("acc+%d ", x); v += x; return *this; }
+  Acc& operator*=(const Acc& o) { printf("acc*%d ", o.v); v *= o.v; return *this; }
+};
+template<typename... Ts> int classLeft(Ts... a) { Acc s(1); (s += ... += a); return s.v; }
+template<typename... Ts> int classRight(Ts... a) { (a *= ...); return (0 + ... + a.v); }
+template<typename... Ts> int refResult(int r, Ts... a) { int& got = (r += ... += a); got = got * 2; return r; }
+template<typename... Ts> int oneRight(Ts... a) { int s = 0; int& got = (a *= ...); got = 9; ((s = a), ...); return s; }
+template<typename... Ts> int oneLeft(int r, Ts... a) { int& got = (r += ... += a); got = 8; return r; }
+template<typename... Ts> int rightRef(Ts... a) { int& got = (a *= ...); got = 7; int s = 0; ((s = s * 100 + a), ...); return s; }
+template<typename... Ts> int oneValue(Ts... a) { return (1 += ... += a); }
+template<typename... Ts> int oneValueElement(Ts... a) { return ((a + 1) *= ...); }
+template<typename... Ts> int parenResult(int r, Ts... a) { int v = (r += ... += a) + 1; return v * 10 + r; }
+template<typename... Ts> constexpr int constRight(Ts... a) { (a *= ...); return (0 + ... + a); }
+template<typename... Ts> constexpr int constLeftUnary(Ts... a) { (... += a); int r = 0; ((r = a), ...); return r; }
+template<typename... Ts> constexpr int constEmpty(int r, Ts... a) { return (r += ... += a); }
+template<typename... Ts> constexpr int constRefs(Ts&... a) { (a += ... += 5); return (0 + ... + a); }
+template<typename... Ts> constexpr int constPattern(int r, Ts... a) { return (r += ... += (a * 2)); }
+template<int... Is> constexpr int constIndices(int r) { return (r += ... += Is); }
+constexpr int cr = constRight(2, 3, 4);
+constexpr int cl = constLeftUnary(2, 3, 4);
+constexpr int ce = constEmpty(9);
+constexpr int refs() { int a = 1, b = 2; return constRefs(a, b); }
+constexpr int cf = refs();
+constexpr int cp = constPattern(1, 2, 3);
+constexpr int ci = constIndices<1, 2, 4>(10);
+int main()
+{
+  printf(" = %d\n", leftOrder(1, 2, 3));
+  printf(" = %d\n", rightOrder(1, 2, 3));
+  printf(" = %d\n", rightUnary(1, 2, 3));
+  printf(" = %d\n", leftUnary(1, 2, 3));
+  printf("%d %d\n", plain(1, 2, 3), plainInit(7, 1, 2));
+  all(1000, 3, 5);
+  printf(" = %d\n", classLeft(2, 3));
+  printf(" = %d\n", classRight(Acc(2), Acc(3), Acc(4)));
+  printf("%d %d\n", refResult(1, 2, 3), parenResult(1, 2));
+  printf("%d %d %d\n", oneRight(5), oneLeft(1), rightRef(2, 3));
+  printf("%d %d\n", oneValue(), oneValueElement(4));
+  printf("%d %d %d %d %d %d\n", cr, cl, ce, cf, cp, ci);
+  return 0;
+}
