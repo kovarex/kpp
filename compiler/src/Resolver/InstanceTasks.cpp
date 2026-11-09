@@ -65,6 +65,8 @@ auto GlobalScope::Impl::runMemberTask(const MemberTask& t) -> void
   {
     sub.requestFile = t.requestFile;
     sub.requestToken = t.requestToken;
+    sub.rootFile = t.rootFile;
+    sub.rootToken = t.rootToken;
     if (t.f)
     {
       w.checkMemberBody(sub, t.f, subst);

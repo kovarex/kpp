@@ -780,6 +780,10 @@ public:
   void forEachInstanceCopy(const ParsedFile& file, const std::function<void(Node* copy, const Decl* source)>& visit);
   // The same for every file at once, with the file each copy's tokens index (`kpp --lsp`'s rename).
   void forEachInstanceCopy(const std::function<void(Node* copy, const Decl* source, const ParsedFile& file)>& visit);
+  // The function instances' bodies, each with where the program's own code asked for it in the end
+  // (through the instances that asked for one another: InstanceRecord::rootFile; null rootFile for
+  // none): `kpp --lsp`'s references of a constructor an instance runs.
+  void forEachInstanceRoot(const std::function<void(Node* copy, const ParsedFile& file, const ParsedFile* rootFile, uint32_t rootToken)>& visit);
 private:
   Impl* impl;
 };

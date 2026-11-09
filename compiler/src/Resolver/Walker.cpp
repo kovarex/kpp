@@ -1096,6 +1096,8 @@ auto GlobalScope::Impl::Walker::checkMemberBody(Walker& sub, FunctionDecl* f, co
   member.instantiationDepth = sub.instantiationDepth;
   member.requestFile = sub.requestFile;
   member.requestToken = sub.requestToken;
+  member.rootFile = sub.rootFile;
+  member.rootToken = sub.rootToken;
   member.current = sub.current;
   member.locals.items = sub.locals.items;
   if (f->parent != cls)
@@ -1114,10 +1116,14 @@ auto GlobalScope::Impl::Walker::checkMemberBody(Walker& sub, FunctionDecl* f, co
     r->depth = member.instantiationDepth;
     r->requestFile = member.requestFile;
     r->requestToken = member.requestToken;
+    r->rootFile = member.rootFile;
+    r->rootToken = member.rootToken;
     r->fileIndex = mine.fileIndex;
     r->collectWhy = mine.collectWhy;
     inst->recheck = std::move(r);
   }
+  inst->rootFile = member.rootFile;
+  inst->rootToken = member.rootToken;
   member.returnFrames.push_back(nullptr);
   member.walkDecl(copy);
   const Ty* deduced = member.returnFrames.back();
@@ -1160,7 +1166,10 @@ auto GlobalScope::Impl::Walker::instantiateClass(const Ty* classTy) -> void
     // is free (Impl::MemberTask), not a weight on the thread that happened to ask first.
     const ParsedFile* askedIn = current && file ? file : nullptr;
     uint32_t askedAt = askedIn ? current->token : UINT32_MAX;
-    impl.queueMemberBody({classTy, nullptr, askedIn, askedAt, instantiationDepth});
+    Impl::MemberTask task{classTy, nullptr, askedIn, askedAt, instantiationDepth};
+    task.rootFile = activeSubst ? rootFile : askedIn;
+    task.rootToken = activeSubst ? rootToken : askedAt;
+    impl.queueMemberBody(task);
     inst->state.store(2, std::memory_order_release);
     inst->state.notify_all();
     return;
@@ -1263,6 +1272,8 @@ auto GlobalScope::Impl::Walker::instantiateFunction(FunctionDecl* f, const Subst
   }
   Impl::FunctionInstanceTask task{f, def, full, defFull, bodyScope, bodyThis, current && file ? file : nullptr,
                                   current && file ? current->token : UINT32_MAX, instantiationDepth};
+  task.rootFile = activeSubst ? rootFile : task.requestFile;
+  task.rootToken = activeSubst ? rootToken : task.requestToken;
   if (!needReturn && impl.queueMemberBodies.load(std::memory_order_relaxed))
   {
     // While the files are resolved: a check nobody waits for is a task for whichever worker
@@ -1298,6 +1309,8 @@ auto GlobalScope::Impl::Walker::runFunctionInstance(Impl::InstanceRecord* inst, 
   // them, which the code generator emits (`chunkLineByLineScan(...)`'s TransformView).
   FunctionDecl* copy = impl.copyInstance(t.def, t.bodyScope, t.full, t.full.pairs.empty());
   inst->body = copy;
+  inst->rootFile = t.rootFile;
+  inst->rootToken = t.rootToken;
   const Ty* deduced = nullptr;
   const Ty* pattern = nullptr; // the written `auto&`, `const auto*`...: the deduced type takes its shape
   subCheck(t.def, t.defFull, t.bodyScope, t.bodyThis, [&](Walker& sub)
@@ -1307,6 +1320,8 @@ auto GlobalScope::Impl::Walker::runFunctionInstance(Impl::InstanceRecord* inst, 
       sub.requestFile = t.requestFile;
       sub.requestToken = t.requestToken;
     }
+    sub.rootFile = t.rootFile;
+    sub.rootToken = t.rootToken;
     sub.returnFrames.push_back(nullptr);
     sub.walkDecl(copy);
     deduced = sub.returnFrames.back();

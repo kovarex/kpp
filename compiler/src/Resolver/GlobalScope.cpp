@@ -2405,6 +2405,17 @@ void GlobalScope::forEachInstanceCopy(const std::function<void(Node* copy, const
   }
 }
 
+void GlobalScope::forEachInstanceRoot(const std::function<void(Node* copy, const ParsedFile& file, const ParsedFile* rootFile, uint32_t rootToken)>& visit)
+{
+  for (Impl::InstanceShard& shard : impl->instanceShards)
+  {
+    std::lock_guard lock(shard.mutex);
+    for (auto& [key, record] : shard.map)
+      if (record->body && record->body->file)
+        visit(record->body, *record->body->file, record->rootFile, record->rootToken);
+  }
+}
+
 void GlobalScope::forEachInstanceStatsPlace(uint32_t fileIndex, const ParsedFile* file, const std::function<void(uint32_t& token)>& visit)
 {
   std::lock_guard lock(impl->instanceStatsMutex);
@@ -2631,6 +2642,8 @@ bool GlobalScope::recheckInstancesOf(const std::vector<FunctionDecl*>& sources, 
       RecordInto into(&r->deps);
       FunctionDecl* copy = impl->copyInstance(rc.source, rc.scope, rc.subst);
       r->body = copy;
+      r->rootFile = rc.rootFile;
+      r->rootToken = rc.rootToken;
       ResolveStats mine;
       mine.fileIndex = rc.fileIndex;
       mine.collectWhy = rc.collectWhy;
@@ -2643,6 +2656,8 @@ bool GlobalScope::recheckInstancesOf(const std::vector<FunctionDecl*>& sources, 
       member.instantiationDepth = rc.depth;
       member.requestFile = rc.requestFile;
       member.requestToken = rc.requestToken;
+      member.rootFile = rc.rootFile;
+      member.rootToken = rc.rootToken;
       member.locals.items = rc.locals;
       member.returnFrames.push_back(nullptr);
       member.walkDecl(copy);

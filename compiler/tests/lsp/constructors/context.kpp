@@ -1,0 +1,26 @@
+struct GlobalContext;
+
+class SuspendedContext
+{
+public:
+  implicit SuspendedContext(GlobalContext* context) : context(context) {}
+  SuspendedContext(i32 level) : level(level) {}
+  SuspendedContext operator+(const SuspendedContext& other) const { return SuspendedContext(this->level + other.level); }
+  operator bool() const { return this->level != 0; }
+  implicit operator i32() const { return this->level; }
+
+  GlobalContext* context = nullptr;
+  i32 level = 0;
+};
+
+struct Holder
+{
+  Holder(GlobalContext* c) : held(c) {}
+
+  SuspendedContext held;
+};
+
+struct Derived : SuspendedContext
+{
+  Derived(GlobalContext* c) : SuspendedContext(c) {}
+};

@@ -13,6 +13,7 @@
 #include <cctype>
 #include <condition_variable>
 #include <cstdarg>
+#include <cstdlib>
 #include <cstdio>
 #include <cstring>
 #include <deque>
@@ -360,7 +361,17 @@ namespace
         if (tokens[k].offset == d->file->programMainOffset)
           return k; // (main, which a --tests build renames: ParsedFile::programMainOffset)
     if (const QualifiedName* q = qualifiedNameOf(d))
+    {
+      // an operator function's: its `operator` keyword (references: the operators that call it)
+      if (!q->empty() && q->last().special >= 2 && d->kind == NodeKind::FunctionDecl)
+      {
+        for (uint32_t k = d->token; k < end; ++k)
+          if (tokens[k].is(Kw::operator_))
+            return k;
+        return UINT32_MAX;
+      }
       return q->empty() ? UINT32_MAX : nameToken(tokens, *q, d->token, end);
+    }
     return symbolToken(tokens, symbolOf(d), d->token, end);
   }
 
@@ -673,6 +684,39 @@ namespace
       std::unordered_map<const ParsedFile*, LineStarts> starts;
       bool referencesKnown = false;
       std::unordered_map<const Decl*, std::vector<std::pair<const ParsedFile*, uint32_t>>> references; // by canonical declaration
+      // A construction of a class object (knowConstructions): where it is shown (for one in an
+      // instance's body, where the program's code asked for the instance in the end), the class and the
+      // arguments, as overload resolution sees them; copyInit: a copy-initialization (`T x = v;`, an
+      // argument, a return), which no explicit constructor makes.
+      struct Construction
+      {
+        const ParsedFile* file;
+        uint32_t token;
+        const Ty* cls;
+        std::vector<const Ty*> args;
+        bool copyInit;
+      };
+      bool constructionsKnown = false;
+      std::vector<Construction> constructions;
+      // An operator function a written operator calls (`a + b`, `-a`: the checker's callee), at the operator.
+      struct OperatorUse
+      {
+        const ParsedFile* file;
+        uint32_t token;
+        const Decl* callee;
+      };
+      std::vector<OperatorUse> operatorUses;
+      // A class object converted to another type (an initialization, an argument, a return, a
+      // condition), for its conversion operators' references; contextualBool: a condition's.
+      struct Conversion
+      {
+        const ParsedFile* file;
+        uint32_t token;
+        const Ty* from;
+        const Ty* to;
+        bool contextualBool;
+      };
+      std::vector<Conversion> conversions;
       std::vector<Symbol> symbols;
       bool symbolsKnown = false;
       bool derivedKnown = false;
@@ -1643,19 +1687,404 @@ namespace
         Decl* d = canonical(*program.global, o->decl);
         knowReferences(program);
         bool withDeclarations = params["context"]["includeDeclaration"].boolean;
+        std::set<std::pair<const ParsedFile*, uint32_t>> listed;
         auto found = cache.references.find(d);
-        if (found == cache.references.end())
-          return;
-        for (const auto& [f, token] : found->second)
+        if (found != cache.references.end())
+          for (const auto& [f, token] : found->second)
+          {
+            const std::vector<Occurrence>& list = cache.occurrences[f];
+            auto it = std::lower_bound(list.begin(), list.end(), token, [](const Occurrence& x, uint32_t t) { return x.token < t; });
+            if (!withDeclarations && it != list.end() && it->token == token && it->declaration)
+              continue;
+            if (listed.insert({f, token}).second)
+              result.push(Json::object().set("uri", uriOf(overlayKey(f->path), f->path)).set("range", tokenRange(f, token)));
+          }
+        // A constructor's uses are the constructions overload resolution gives it (knowConstructions),
+        // written with the class's name or none (a conversion, a library's `new T(...)` for an emplace).
+        if (d->kind == NodeKind::FunctionDecl && (d->flags & DF_Constructor))
         {
-          const std::vector<Occurrence>& list = cache.occurrences[f];
-          auto it = std::lower_bound(list.begin(), list.end(), token, [](const Occurrence& x, uint32_t t) { return x.token < t; });
-          if (!withDeclarations && it != list.end() && it->token == token && it->declaration)
-            continue;
-          result.push(Json::object().set("uri", uriOf(overlayKey(f->path), f->path)).set("range", tokenRange(f, token)));
+          GlobalScope& global = *program.global;
+          TypeTable& types = global.types();
+          Decl* cls = global.owningClass(d);
+          if (cls)
+            cls = canonical(global, cls);
+          knowConstructions(program);
+          std::vector<std::pair<const ParsedFile*, uint32_t>> constructions;
+          for (const Cache::Construction& c : cache.constructions)
+          {
+            if (!cls || !c.cls->decl || canonical(global, c.cls->decl) != cls)
+              continue;
+            FunctionDecl* chosen = global.chooseConstructor(c.cls, c.args, nullptr, nullptr, c.copyInit);
+            if (!chosen || canonical(global, chosen) != d)
+              continue;
+            // A copy or move (an object of the class itself) is the class's copy or move, which the
+            // compiler makes itself when the class declares none: never another constructor's use
+            // through a conversion operator (`operator i32()` and `T(i32)`).
+            auto classDecl = [&](const Ty* t) -> Decl*
+            {
+              t = t ? types.unqualified(types.stripRef(t)) : nullptr;
+              return t && t->kind == TyKind::Class && t->decl ? canonical(global, t->decl) : nullptr;
+            };
+            if (c.args.size() == 1 && classDecl(c.args[0]) == cls)
+            {
+              const Ty* ft = global.typeOfDecl(chosen);
+              if (!ft || ft->kind != TyKind::Function || ft->args.size() != 1 || classDecl(ft->args[0]) != cls)
+                continue;
+            }
+            if (listed.insert({c.file, c.token}).second)
+              constructions.push_back({c.file, c.token});
+          }
+          // (by file and place: the instances' come in their tables' order)
+          std::sort(constructions.begin(), constructions.end(), [](const auto& a, const auto& b) { return a.first->path != b.first->path ? a.first->path < b.first->path : a.second < b.second; });
+          for (const auto& [file, token] : constructions)
+            result.push(Json::object().set("uri", uriOf(overlayKey(file->path), file->path)).set("range", tokenRange(file, token)));
+        }
+        // An operator function's uses are the operators that call it (`a + b`), a conversion
+        // operator's the conversions it makes (`T x = object`, `f(object)`, `if (object)`).
+        const QualifiedName* name = d->kind == NodeKind::FunctionDecl ? &static_cast<FunctionDecl*>(d)->name : nullptr;
+        uint8_t special = name && !name->empty() ? name->last().special : 0;
+        if (special == 2 || special == 3)
+        {
+          GlobalScope& global = *program.global;
+          knowConstructions(program);
+          std::vector<std::pair<const ParsedFile*, uint32_t>> uses;
+          if (special == 2)
+            for (const Cache::OperatorUse& u : cache.operatorUses)
+              if (canonical(global, const_cast<Decl*>(u.callee)) == d && listed.insert({u.file, u.token}).second)
+                uses.push_back({u.file, u.token});
+          if (special == 3)
+            for (const Cache::Conversion& c : cache.conversions)
+            {
+              FunctionDecl* chosen = global.chooseConversion(c.from, c.to, GlobalScope::ConversionKind::ToType, false, nullptr, nullptr, c.contextualBool);
+              if (chosen && canonical(global, chosen) == d && listed.insert({c.file, c.token}).second)
+                uses.push_back({c.file, c.token});
+            }
+          std::sort(uses.begin(), uses.end(), [](const auto& a, const auto& b) { return a.first->path != b.first->path ? a.first->path < b.first->path : a.second < b.second; });
+          for (const auto& [file, token] : uses)
+            result.push(Json::object().set("uri", uriOf(overlayKey(file->path), file->path)).set("range", tokenRange(file, token)));
         }
       });
       return result;
+    }
+
+    // Every construction of a class object the program makes, written or not (knowConstructions'
+    // Construction): `T x(a)`, `T x{a}`, `T x = a`, `T(a)`, `T{a}`, `new T(a)`, a constructor's member
+    // and base initializers, and the conversions by a converting constructor of an argument, a return
+    // value or an assignment's right side. An instance's body (a library's `new T(forward<Ts>(values)...)`
+    // in UniquePointer<T>::construct) gives its constructions at the place the program's own code asked
+    // for the instance in the end (`this->context.emplace(this)`: Walker::rootFile).
+    void knowConstructions(const KeptProgram& program)
+    {
+      if (cache.constructionsKnown)
+        return;
+      cache.constructionsKnown = true;
+      auto started = std::chrono::steady_clock::now();
+      GlobalScope& global = *program.global;
+      TypeTable& types = global.types();
+      auto classOf = [&](const Ty* t) -> const Ty*
+      {
+        t = t ? types.unqualified(types.stripRef(t)) : nullptr;
+        if (!t || t->kind != TyKind::Class || !t->isKnown() || t->isBraceList() || types.isDependent(t))
+          return nullptr;
+        return t;
+      };
+      // The arguments' types (a pack's expansion gives its elements), false when one is not known.
+      auto typesOf = [&](Span<Expr*> args, std::vector<const Ty*>& out)
+      {
+        for (Expr* a : args)
+        {
+          if (!a || !a->ty || !a->ty->isKnown() || types.isDependent(a->ty))
+            return false;
+          if (a->ty->kind == TyKind::Pack)
+          {
+            for (const Ty* t : a->ty->args)
+            {
+              if (!t || !t->isKnown())
+                return false;
+              out.push_back(t);
+            }
+            continue;
+          }
+          out.push_back(argumentType(a, a->ty, types));
+        }
+        return true;
+      };
+      // `T{a, b}` and `new T{a}` hold their arguments in a brace list.
+      auto unbraced = [](Span<Expr*> args) { return args.size() == 1 && args[0] && args[0]->kind == NodeKind::BraceInitExpr ? static_cast<BraceInitExpr*>(args[0])->args : args; };
+      // The token of a written type's name (its last part), else the node's own.
+      auto typeToken = [](const ParsedFile& file, Type* type, uint32_t fallback)
+      {
+        if (type && type->kind == NodeKind::NamedType && file.tokens)
+          if (uint32_t t = nameToken(*file.tokens, static_cast<NamedType*>(type)->name, type->token, type->token + 64); t != UINT32_MAX)
+            return t;
+        return fallback;
+      };
+      // A function's parameter types, for the conversions of its arguments (none for a template's).
+      auto parameterTypes = [&](FunctionDecl* f, std::vector<const Ty*>& out)
+      {
+        if (!f || !f->templateParams.empty())
+          return false;
+        const Ty* ft = global.typeOfDecl(f);
+        if (!ft || ft->kind != TyKind::Function)
+          return false;
+        out.assign(ft->args.begin(), ft->args.end());
+        return true;
+      };
+      // A value of type `from` (expression e) initializing an object of type `to`: a construction when
+      // `to` is a class `from` is not.
+      struct Found
+      {
+        std::vector<Server::Cache::Construction> constructions;
+        std::vector<Server::Cache::OperatorUse> operators;
+        std::vector<Server::Cache::Conversion> conversions;
+      };
+      using Constructions = Found;
+      auto conversion = [&](Constructions& out, const ParsedFile& file, Expr* e, const Ty* to, uint32_t token)
+      {
+        if (!e || !e->ty || !e->ty->isKnown() || e->ty->kind == TyKind::Pack || types.isDependent(e->ty) || !to || types.isDependent(to))
+          return;
+        const Ty* cls = classOf(to);
+        const Ty* from = classOf(e->ty);
+        if (from && from != cls && types.unqualified(types.stripRef(to))->kind != TyKind::Class)
+          out.conversions.push_back({&file, token, from, types.unqualified(types.stripRef(to)), false}); // by a conversion operator
+        if (!cls || from == cls)
+          return;
+        if (to->isReference() && !to->inner->isConst)
+          return; // (a non-const reference binds no temporary)
+        out.constructions.push_back({&file, token, cls, {argumentType(e, e->ty, types)}, true});
+      };
+      // The constructions written in a body or a file's declarations; `at`: the place they are shown
+      // at instead (an instance's request), null for where they are.
+      auto scan = [&](Constructions& out, const ParsedFile& file, Node* root, Span<Decl*> decls, const ParsedFile* atFile, uint32_t atToken)
+      {
+        std::unordered_set<const Node*> done; // (a variable's direct initialization, counted as the variable's)
+        auto add = [&](uint32_t token, const Ty* cls, std::vector<const Ty*> args, bool copyInit)
+        {
+          if (cls)
+            out.constructions.push_back({atFile ? atFile : &file, atFile ? atToken : token, cls, std::move(args), copyInit});
+        };
+        // A condition: a class object converted to bool by its (explicit too) operator bool.
+        auto condition = [&](Node* c)
+        {
+          if (!atFile && c && c->kind >= NodeKind::NameExpr && static_cast<Expr*>(c)->ty) // (an expression: a condition may declare)
+            if (const Ty* from = classOf(static_cast<Expr*>(c)->ty))
+              out.conversions.push_back({&file, c->token, from, types.boolType(), true});
+        };
+        auto each = [&](Node* n)
+        {
+          switch (n->kind)
+          {
+          case NodeKind::VariableDecl:
+          {
+            auto* v = static_cast<VariableDecl*>(n);
+            if (!v->init)
+              return;
+            uint32_t name = declarationNameToken(v);
+            if (name == UINT32_MAX)
+              name = v->token;
+            std::vector<const Ty*> args;
+            if (v->init->kind == NodeKind::FunctionalCastExpr && static_cast<FunctionalCastExpr*>(v->init)->type == v->type)
+            {
+              done.insert(v->init); // `T x(a)`
+              if (typesOf(static_cast<FunctionalCastExpr*>(v->init)->args, args))
+                add(name, classOf(v->init->ty), args, false);
+            }
+            else if (v->init->kind == NodeKind::BraceInitExpr)
+            {
+              done.insert(v->init); // `T x{a}`, `T x = {a}`
+              if (!atFile && v->templateParams.empty() && typesOf(static_cast<BraceInitExpr*>(v->init)->args, args))
+                add(name, classOf(global.typeOfDecl(v)), args, !v->bracedInit);
+            }
+            else if (!atFile && v->templateParams.empty() && v->kind == NodeKind::VariableDecl)
+              conversion(out, file, v->init, global.typeOfDecl(v), v->init->token); // `T x = a`
+            return;
+          }
+          case NodeKind::FunctionalCastExpr:
+          {
+            auto* c = static_cast<FunctionalCastExpr*>(n);
+            std::vector<const Ty*> args;
+            if (!done.count(c) && typesOf(c->braced ? unbraced(c->args) : c->args, args))
+              add(typeToken(file, c->type, c->token), classOf(c->ty), args, false);
+            return;
+          }
+          case NodeKind::NewExpr:
+          {
+            auto* e = static_cast<NewExpr*>(n);
+            std::vector<const Ty*> args;
+            if (e->ty && e->ty->kind == TyKind::Pointer && typesOf(e->braced ? unbraced(e->args) : e->args, args))
+              add(typeToken(file, e->type, e->token), classOf(e->ty->inner), args, false);
+            return;
+          }
+          case NodeKind::CallExpr:
+          {
+            if (atFile)
+              return;
+            auto* c = static_cast<CallExpr*>(n);
+            Decl* callee = c->callee ? resolvedOf(c->callee) : nullptr;
+            if (callee && callee->kind == NodeKind::ClassDecl)
+            {
+              // `T(a)` read as a call of the class
+              std::vector<const Ty*> args;
+              uint32_t token = c->callee->kind == NodeKind::NameExpr && file.tokens
+                                 ? nameToken(*file.tokens, static_cast<NameExpr*>(c->callee)->name, c->callee->token, c->callee->token + 64)
+                                 : UINT32_MAX;
+              if (typesOf(c->args, args))
+                add(token != UINT32_MAX ? token : c->callee->token, classOf(c->ty), args, false);
+              return;
+            }
+            std::vector<const Ty*> params;
+            if (!callee || callee->kind != NodeKind::FunctionDecl || !parameterTypes(static_cast<FunctionDecl*>(callee), params))
+              return;
+            for (size_t i = 0; i < c->args.size() && i < params.size(); ++i)
+              conversion(out, file, c->args[i], params[i], c->args[i] ? c->args[i]->token : c->token);
+            return;
+          }
+          case NodeKind::IfStmt:
+            condition(static_cast<IfStmt*>(n)->cond);
+            return;
+          case NodeKind::WhileStmt:
+            condition(static_cast<WhileStmt*>(n)->cond);
+            return;
+          case NodeKind::ForStmt:
+            condition(static_cast<ForStmt*>(n)->cond);
+            return;
+          case NodeKind::ConditionalExpr:
+            condition(static_cast<ConditionalExpr*>(n)->cond);
+            return;
+          case NodeKind::UnaryExpr:
+          {
+            auto* u = static_cast<UnaryExpr*>(n);
+            if (u->call == OperatorCall::Function && u->callee)
+              out.operators.push_back({atFile ? atFile : &file, atFile ? atToken : u->token, u->callee});
+            else if (!u->isKeyword && P(u->op) == P::Bang)
+              condition(u->operand);
+            return;
+          }
+          case NodeKind::BinaryExpr:
+          {
+            auto* b = static_cast<BinaryExpr*>(n);
+            if (b->call == OperatorCall::Function && b->callee)
+              out.operators.push_back({atFile ? atFile : &file, atFile ? atToken : b->token, b->callee});
+            else if (!b->isKeyword && (P(b->op) == P::AndAnd || P(b->op) == P::OrOr))
+            {
+              condition(b->lhs);
+              condition(b->rhs);
+            }
+            std::vector<const Ty*> params;
+            if (atFile || b->call != OperatorCall::Function || !b->callee || !parameterTypes(b->callee, params) || params.empty())
+              return;
+            conversion(out, file, b->rhs, params.back(), b->rhs ? b->rhs->token : b->token); // (a member's one parameter, a free one's second)
+            return;
+          }
+          case NodeKind::FunctionDecl:
+          {
+            auto* f = static_cast<FunctionDecl*>(n);
+            if (atFile || !f->templateParams.empty() || f->file != &file)
+              return;
+            // its returns' conversions
+            const Ty* ft = f->body ? global.typeOfDecl(f) : nullptr;
+            if (ft && ft->kind == TyKind::Function && classOf(ft->inner))
+              forEachNode(f->body, [&](Node* r)
+              {
+                if (r->kind == NodeKind::ReturnStmt && static_cast<ReturnStmt*>(r)->value)
+                  conversion(out, file, static_cast<ReturnStmt*>(r)->value, ft->inner, static_cast<ReturnStmt*>(r)->value->token);
+              });
+            // its member and base initializers
+            if (f->ctorInits.empty())
+              return;
+            Decl* cls = global.owningClass(f);
+            if (cls)
+              if (Decl* defined = global.definitionOf(cls))
+                cls = defined;
+            if (!cls || cls->kind != NodeKind::ClassDecl || !cls->templateParams.empty())
+              return;
+            auto* c = static_cast<ClassDecl*>(cls);
+            for (const FunctionDecl::CtorInit& init : f->ctorInits)
+            {
+              if (init.member.empty())
+                continue;
+              uint32_t symbol = init.member.last().symbol;
+              const Ty* type = nullptr;
+              for (Decl* m : c->members)
+                if (!type && m->kind == NodeKind::VariableDecl && symbolOf(m) == symbol)
+                  type = global.typeOfDecl(m);
+              for (const ClassDecl::Base& b : c->bases)
+                if (!type && b.type && b.type->kind == NodeKind::NamedType)
+                  if (Decl* base = static_cast<NamedType*>(b.type)->resolved; base && symbolOf(base) == symbol)
+                    type = global.typeOfAst(b.type, c);
+              std::vector<const Ty*> args;
+              uint32_t token = nameToken(*file.tokens, init.member, f->token, f->body ? f->body->token : f->endToken);
+              if (type && typesOf(init.braced ? unbraced(init.args) : init.args, args) && token != UINT32_MAX)
+                add(token, classOf(type), args, false);
+            }
+            return;
+          }
+          default:
+            return;
+          }
+        };
+        if (root)
+          forEachNode(root, each);
+        else
+          forEachNode(decls, each);
+      };
+      // What is scanned, files and instance bodies, scanned on every thread, joined in this order.
+      struct Part
+      {
+        const ParsedFile* file;
+        Node* root;
+        const ParsedFile* atFile;
+        uint32_t atToken;
+      };
+      std::vector<Part> parts;
+      for (const ParsedFile* file : program.files)
+        if (file && file->tokens)
+          parts.push_back({file, nullptr, nullptr, UINT32_MAX});
+      // The instances' bodies, at the call that asked for them: the name it calls (`emplace` in
+      // `this->context.emplace(this)`), the first name before a `(` or `<` from the request's token.
+      global.forEachInstanceRoot([&](Node* copy, const ParsedFile& file, const ParsedFile* rootFile, uint32_t rootToken)
+      {
+        if (!rootFile || !rootFile->tokens || rootToken >= rootFile->tokens->size() || !file.tokens)
+          return;
+        const std::vector<Token>& tokens = *rootFile->tokens;
+        uint32_t at = rootToken;
+        for (uint32_t k = rootToken; k < tokens.size() && k < rootToken + 64; ++k)
+        {
+          if (tokens[k].is(P::LParen) || tokens[k].is(P::Less) || tokens[k].is(P::Semi) || tokens[k].is(P::LBrace))
+            break;
+          if (tokens[k].getKind() == TokenKind::Identifier)
+            at = k;
+        }
+        // (a call's own token is its `(`: the name before it, past a template's arguments)
+        for (uint32_t k = at, depth = 0; k > 0 && k + 8 > rootToken && tokens[at].getKind() != TokenKind::Identifier; --k)
+        {
+          if (tokens[k].is(P::Greater))
+            ++depth;
+          else if (tokens[k].is(P::Less) && depth > 0)
+            --depth;
+          else if (depth == 0 && tokens[k].getKind() == TokenKind::Identifier)
+            at = k;
+        }
+        parts.push_back({&file, copy, rootFile, at});
+      });
+      std::vector<Constructions> found(parts.size());
+      std::atomic<size_t> next{0};
+      std::vector<std::thread> threads;
+      for (unsigned t = 0; t < std::max(1u, std::thread::hardware_concurrency()); ++t)
+        threads.emplace_back([&]
+        {
+          for (size_t i; (i = next++) < parts.size();)
+            scan(found[i], *parts[i].file, parts[i].root, parts[i].root ? Span<Decl*>() : parts[i].file->decls, parts[i].atFile, parts[i].atToken);
+        });
+      for (std::thread& t : threads)
+        t.join();
+      for (Found& part : found)
+      {
+        cache.constructions.insert(cache.constructions.end(), part.constructions.begin(), part.constructions.end());
+        cache.operatorUses.insert(cache.operatorUses.end(), part.operators.begin(), part.operators.end());
+        cache.conversions.insert(cache.conversions.end(), part.conversions.begin(), part.conversions.end());
+      }
+      log("constructions: %zu, %.3f s", cache.constructions.size(), std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count());
     }
 
     // Every class definition's direct bases, as derived classes by the base's canonical declaration
@@ -3037,6 +3466,10 @@ namespace
       const Json& params = m["params"];
       if (method.empty())
         return true; // a response to a request of ours (none are sent that want one)
+      // KPP_LSP_TRACE set: every message's method in the log (what an editor sends, docs/ide.md)
+      static const bool trace = getenv("KPP_LSP_TRACE") != nullptr;
+      if (trace)
+        log("<- %s%s", method.c_str(), request ? " (request)" : "");
       if (!initialized && method != "initialize" && method != "exit")
       {
         if (request)
@@ -3177,7 +3610,15 @@ namespace
       else if (method == "textDocument/declaration")
         respond(id, definition(params, true));
       else if (method == "textDocument/references")
-        respond(id, references(params));
+      {
+        auto started = std::chrono::steady_clock::now();
+        Json found = references(params);
+        std::string asked;
+        write(params, asked);
+        log("references: %zu, %.3f s, %.400s", found.items.size(), std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count(),
+            asked.c_str());
+        respond(id, std::move(found));
+      }
       else if (method == "textDocument/documentSymbol")
         respond(id, documentSymbols(params));
       else if (method == "workspace/symbol")
@@ -3191,7 +3632,10 @@ namespace
       else if (method == "textDocument/foldingRange")
         respond(id, foldingRanges(params));
       else if (request)
+      {
+        log("a request it does not support: %s", method.c_str());
         respondError(id, -32601, "kpp --lsp does not support " + method);
+      }
       return true;
     }
 

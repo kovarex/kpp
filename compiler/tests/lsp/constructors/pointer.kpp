@@ -1,0 +1,27 @@
+// The game's CommonUtil UniquePointer, its emplace's shape: the constructor runs in an instance of
+// construct, through a pack forwarded twice (tests/lsp.ps1's "constructors").
+template<class T>
+class UniquePointer
+{
+public:
+  UniquePointer() = default;
+  ~UniquePointer() { this->reset(nullptr); }
+
+  template<class... Ts>
+  void emplace(Ts&&... values) { this->reset(construct(forward<Ts>(values)...)); }
+
+  void reset(T* other)
+  {
+    if (this->value)
+      delete this->value;
+    this->value = other;
+  }
+
+  T* get() const { return this->value; }
+
+  template<class... Ts>
+  static T* construct(Ts&&... values) { return new T(forward<Ts>(values)...); }
+
+private:
+  T* value = nullptr;
+};

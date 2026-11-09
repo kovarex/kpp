@@ -21,6 +21,12 @@
     // messages about it.
     const ParsedFile* requestFile = nullptr;
     uint32_t requestToken = UINT32_MAX;
+    // Of an instance's walk: the request made from code that is no instance's (a function the program
+    // wrote, a file's walk) that it comes from in the end, through the instances that asked for one
+    // another: `this->context.emplace(this)` for UniquePointer<T>::construct's `new T(...)` (kpp --lsp:
+    // the references of a constructor an instance runs, InstanceRecord::rootFile).
+    const ParsedFile* rootFile = nullptr;
+    uint32_t rootToken = UINT32_MAX;
     FunctionDecl* bodyOf = nullptr;   // The function whose body is being walked.
     int instantiatedBaseDepth = 0;    // memberOfInstantiatedBases nesting
     Expr* const* walkedArgs = nullptr; // see WalkedArgs
@@ -282,6 +288,8 @@
         sub.requestFile = this->file;
         sub.requestToken = current->token;
       }
+      sub.rootFile = activeSubst ? rootFile : current ? this->file : nullptr;
+      sub.rootToken = activeSubst ? rootToken : current ? current->token : UINT32_MAX;
       for (Decl* p : templ->templateParams)
         sub.locals.push(static_cast<TemplateParamDecl*>(p)->name, p);
       body(sub);

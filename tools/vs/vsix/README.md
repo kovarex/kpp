@@ -36,7 +36,11 @@ declaration. Installing it therefore needs a restart of Visual Studio.
   - that a typed error reaches the Error List, and leaves it after undo;
   - with `-HoverAt` and `-CompleteAt`, Quick Info's text and the completion list's items, read from
     their popups through UI Automation;
-  - with `-CellError`, that the active configuration and the startup project switch the cell.
+  - with `-CellError`, that the active configuration and the startup project switch the cell;
+  - with `-ReferencesAt` and `-ReferencesCount`, Find All References (Shift+F12): the server's answer
+    (its log line) and the rows Visual Studio's window shows;
+  - with `-NavigateBack`, that View.NavigateBackward (Alt+Left where bound) after go to definition
+    returns to where it was asked.
 
   It ends with a screenshot of the window (usage in its header). The first start of the
   experimental instance shows Visual Studio's sign-in, which finishes on its own.

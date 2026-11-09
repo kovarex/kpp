@@ -25,6 +25,8 @@
     int depth;
     InstanceRecord* functionInstance = nullptr; // or a function instance's queued check (its record holds the task)
     std::shared_ptr<DeclWalk> declWalk;         // or a template function's own walk
+    const ParsedFile* rootFile = nullptr;       // Walker::rootFile
+    uint32_t rootToken = UINT32_MAX;
   };
   // The statistics of the queued walks, added to their files' once every worker is done (adding is
   // order-independent: the counts sum, a first occurrence is the earliest place).

@@ -1,0 +1,22 @@
+// A scripted editor session for tests\lsp.ps1 on tests\lsp\constructors: the references of a constructor
+// are the constructions overload resolution gives it, written with the class's name or none: `T x(a)`,
+// `T x{a}`, `T x = a`, `T(a)`, `T{a}`, `new T(a)`, an argument's conversion, a return's, a member's and a
+// base's initializer, and an instance's `new T(forward<Ts>(values)...)` at the program's call that asked
+// for it (`this->suspendedContext.emplace(this)`, Optional's emplace, Vector's emplace_back, makeUnique).
+// An operator function's are the operators that call it, a conversion operator's the conversions it makes.
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootUri":"$ROOT","capabilities":{}}}
+{"jsonrpc":"2.0","method":"initialized","params":{}}
+// `implicit SuspendedContext(GlobalContext* context)`: its declaration and every construction from a GlobalContext*.
+{"jsonrpc":"2.0","id":2,"method":"textDocument/references","params":{"textDocument":{"uri":"$ROOT/context.kpp"},"position":{"line":5,"character":11},"context":{"includeDeclaration":true}}}
+// `SuspendedContext(i32 level)`: only `SuspendedContext other(3)`.
+{"jsonrpc":"2.0","id":3,"method":"textDocument/references","params":{"textDocument":{"uri":"$ROOT/context.kpp"},"position":{"line":6,"character":2},"context":{"includeDeclaration":false}}}
+// The class's name: its uses as a type, as before (no construction that names no type).
+{"jsonrpc":"2.0","id":4,"method":"textDocument/references","params":{"textDocument":{"uri":"$ROOT/context.kpp"},"position":{"line":2,"character":6},"context":{"includeDeclaration":false}}}
+// `operator+`: the `+` that calls it.
+{"jsonrpc":"2.0","id":6,"method":"textDocument/references","params":{"textDocument":{"uri":"$ROOT/context.kpp"},"position":{"line":7,"character":19},"context":{"includeDeclaration":false}}}
+// `operator bool()` (explicit, as kpp's are by default): the conditions it converts, `sum &&` and `!other`.
+{"jsonrpc":"2.0","id":7,"method":"textDocument/references","params":{"textDocument":{"uri":"$ROOT/context.kpp"},"position":{"line":8,"character":2},"context":{"includeDeclaration":false}}}
+// `implicit operator i32()`: `i32 number = other`.
+{"jsonrpc":"2.0","id":8,"method":"textDocument/references","params":{"textDocument":{"uri":"$ROOT/context.kpp"},"position":{"line":9,"character":11},"context":{"includeDeclaration":false}}}
+{"jsonrpc":"2.0","id":5,"method":"shutdown"}
+{"jsonrpc":"2.0","method":"exit"}

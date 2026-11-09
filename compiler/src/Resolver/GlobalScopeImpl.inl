@@ -390,6 +390,8 @@
     const ParsedFile* requestFile;
     uint32_t requestToken;
     int depth;
+    const ParsedFile* rootFile = nullptr; // Walker::rootFile
+    uint32_t rootToken = UINT32_MAX;
   };
   struct InstanceRecord
   {
@@ -409,6 +411,8 @@
       int depth = 0;
       const ParsedFile* requestFile = nullptr;
       uint32_t requestToken = UINT32_MAX;
+      const ParsedFile* rootFile = nullptr; // Walker::rootFile
+      uint32_t rootToken = UINT32_MAX;
       uint32_t fileIndex = 0;
       bool collectWhy = false;
       const Ty* lambdaTy = nullptr; // a generic lambda's call operator: its closure type (subst: its own arguments)
@@ -420,6 +424,10 @@
     bool late = false;                  // made after the resolve (by codegen): a clean resolve may not make it (step 3b)
     std::unique_ptr<Recheck> recheck;
     const Decl* of = nullptr; // what it is an instance of (claimInstance's f)
+    // Where the program's own code asked for it in the end, through the instances that asked for one
+    // another (Walker::rootFile; null when no walk of the program's code did: codegen's)
+    const ParsedFile* rootFile = nullptr;
+    uint32_t rootToken = UINT32_MAX;
     std::unique_ptr<FunctionInstanceTask> task;
     FunctionDecl* body = nullptr;
     const Ty* deducedReturn = nullptr; // what the body's returns deduced, for an `auto` function

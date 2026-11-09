@@ -14,6 +14,11 @@
 # The extension's semantic tokens of -File (its colors) must be in the log, at least one token.
 # -ImplementationFrom FILE:LINE:COLUMN with -Implementation FILE:LINE: Edit.GoToImplementation there must
 # land at FILE:LINE (one implementation: an override, a derived class).
+# -ReferencesAt FILE:LINE:COLUMN with -ReferencesCount N: Edit.FindAllReferences there; the server must
+# answer N references (its log) and Visual Studio's Find All References window must show them (its
+# visible rows: between 1 and N).
+# -NavigateBack: View.NavigateBackward after Edit.GoToDefinition must land at -File:-Line again (the
+# navigation history Alt+Left uses).
 # -Solution opens the solution kpp --generate-visual-studio-files writes instead of the folder; with
 # -CellError TEXT it then checks the cells (docs/editors.md, "Cells"): -CellConfiguration as the active
 # configuration must show an error containing TEXT, -OtherTarget as the startup project must not.
@@ -44,7 +49,10 @@ param(
   [string]$InactiveDebug,
   [string]$InactiveRelease,
   [string]$ImplementationFrom,
-  [string]$Implementation
+  [string]$Implementation,
+  [string]$ReferencesAt,
+  [int]$ReferencesCount = -1,
+  [switch]$NavigateBack
 )
 $ErrorActionPreference = 'Stop'
 $checkout = (Resolve-Path "$PSScriptRoot\..\..\..").Path
@@ -286,6 +294,57 @@ try
   Go 'Edit.GoToDefinition' $Definition "${File}:${Line}:${Column}"
   Go 'Edit.GoToDeclaration' $Declaration $DeclarationFrom
   if ($ImplementationFrom) { Go 'Edit.GoToImplementation' $Implementation $ImplementationFrom }
+
+  # Navigate Backward after go to definition: back where it was asked (Visual Studio's navigation history).
+  if ($NavigateBack)
+  {
+    Go 'Edit.GoToDefinition' $Definition "${File}:${Line}:${Column}"
+    try { $dte.ExecuteCommand('View.NavigateBackward') } catch { }
+    Start-Sleep -Milliseconds 1000
+    $back = Here
+    Check 'View.NavigateBackward after Edit.GoToDefinition' ($back -ieq ("${File}:${Line}" -replace '/', '')) "$back, expected ${File}:${Line}"
+  }
+
+  # Find All References: the server's answer (its log line) and the rows of the window Visual Studio shows.
+  if ($ReferencesAt)
+  {
+    $log = Join-Path $env:LOCALAPPDATA 'kpp\visual-studio-lsp.log'
+    $before = @(Get-Content $log -ErrorAction SilentlyContinue | Where-Object { $_ -match 'references: ' }).Count
+    $p = Position $ReferencesAt
+    $t = [Diagnostics.Stopwatch]::StartNew()
+    $answered = $null
+    # (Visual Studio sends no request for a file it opened a moment ago: asked again every 10 s.)
+    while (-not $answered -and $t.Elapsed.TotalSeconds -lt $Timeout)
+    {
+      Open $p.File $p.Line $p.Column
+      Start-Sleep -Seconds 2
+      try { $dte.ExecuteCommand('Edit.FindAllReferences') } catch { "Edit.FindAllReferences: $_" }
+      $asked = [Diagnostics.Stopwatch]::StartNew()
+      while (-not $answered -and $asked.Elapsed.TotalSeconds -lt 10)
+      {
+        Start-Sleep -Milliseconds 500
+        $answered = @(Get-Content $log -ErrorAction SilentlyContinue | Where-Object { $_ -match 'references: ' }) | Select-Object -Skip $before -First 1
+      }
+    }
+    Check "the server's references at $ReferencesAt" ($answered -match "references: $ReferencesCount,") $(if ($answered) { $answered } else { 'no textDocument/references in the log' })
+    Start-Sleep -Seconds 3
+    # The window's rows as UI Automation sees them: its items under the element named "'NAME' references"
+    # (the visible ones: the list makes elements for those only; all of them when it shows all).
+    $window = [Windows.Automation.AutomationElement]::FromHandle($devenv.MainWindowHandle)
+    $all = $window.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition)
+    $pane = $null
+    foreach ($e in $all) { if ($e.Current.Name -match "^'.*' references") { $pane = $e; break } }
+    $rows = @()
+    if ($pane)
+    {
+      foreach ($e in $pane.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition))
+      {
+        if ($e.Current.ControlType -eq [Windows.Automation.ControlType]::DataItem) { $rows += $e.Current.Name }
+      }
+    }
+    Check "Find All References' rows at $ReferencesAt" ($rows.Count -ge [Math]::Min(1, $ReferencesCount) -and $rows.Count -le $ReferencesCount) ("{0} rows in '{1}': {2}" -f $rows.Count, $(if ($pane) { $pane.Current.Name } else { 'no window' }), (($rows | Select-Object -First 4) -join ' | '))
+    Snap 'references'
+  }
 
   # Hover: Edit.QuickInfo, its popup's text.
   if ($HoverAt)

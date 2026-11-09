@@ -1,0 +1,40 @@
+i32 levelOf(SuspendedContext s) { return s.level; }
+
+SuspendedContext made(GlobalContext* c) { return c; }
+
+struct GlobalContext
+{
+  void suspend() { this->suspendedContext.emplace(this); }
+
+  void forms()
+  {
+    SuspendedContext direct(this);
+    SuspendedContext braced{this};
+    SuspendedContext copied = this;
+    SuspendedContext viaCast = SuspendedContext(this);
+    SuspendedContext viaList = SuspendedContext{this};
+    SuspendedContext* created = new SuspendedContext(this);
+    delete created;
+    levelOf(this);
+    SuspendedContext other(3);
+    this->optional.emplace(this);
+    this->list.emplace_back(this);
+    UniquePtr<SuspendedContext> unique = makeUnique<SuspendedContext>(this);
+    SuspendedContext sum = other + other;
+    if (sum && !other)
+      levelOf(sum);
+    i32 number = other;
+  }
+
+  UniquePointer<SuspendedContext> suspendedContext;
+  Optional<SuspendedContext> optional;
+  Vector<SuspendedContext> list;
+};
+
+i32 main()
+{
+  GlobalContext global;
+  global.suspend();
+  global.forms();
+  return 0;
+}
