@@ -34,6 +34,10 @@
   void noteRelations(Scope* s);
 
   void ensureBases(Scope* cls, int depth);
+  // A class that is its own base (`struct A : B {}; struct B : A {};`, C++'s incomplete base) is an error at the class, and
+  // that base goes, so that what follows bases reaches an end; of the classes the index reached, single-threaded, at
+  // the index's end. A cycle through a plain class only: of templates alone, the instances made say so (directBases' limit).
+  void breakBaseCycles(const std::unordered_set<Scope*>& scopes);
 
   void ensureUsing(Scope* ns, int depth);
 

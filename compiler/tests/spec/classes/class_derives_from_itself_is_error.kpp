@@ -1,0 +1,73 @@
+// spec: a class cannot derive from itself, directly or through others, however they are ordered (C++: the base is incomplete): an error at the class, naming the cycle, through a class template too when a plain class is in it. It was "codegen: out of stack (recursion without end)", and with two bases in the cycle a compiler that did not finish. Templates alone are for their instances to say (templates/endless_template_bases_is_error), and one a specialization ends is fine (`Ended`, `Y<int>` below).
+// error: class_derives_from_itself_is_error.kpp:8: error: Self derives from itself (Self : Self): a class is not complete where it is its own base
+// error: class_derives_from_itself_is_error.kpp:13: error: A derives from itself (A : B : A): a class is not complete where it is its own base
+// error: class_derives_from_itself_is_error.kpp:22: error: C derives from itself (C : D : C): a class is not complete where it is its own base
+// error: class_derives_from_itself_is_error.kpp:26: error: D derives from itself (D : E : D): a class is not complete where it is its own base
+// error: class_derives_from_itself_is_error.kpp:35: error: M derives from itself (M : N : M): a class is not complete where it is its own base
+// factorio: none; found by the templates thread reviewing the depth bounds
+struct Self : Self
+{
+  int s;
+};
+
+struct A : B
+{
+  int a;
+};
+struct B : A
+{
+  int b;
+};
+
+struct C : D, E
+{
+  int c;
+};
+struct D : C, E
+{
+  int d;
+};
+struct E : C, D
+{
+  int e;
+};
+
+struct M : N<int>
+{
+  int m;
+};
+template<class T>
+struct N : M
+{
+};
+
+template<int N>
+struct Ended : Ended<N - 1>
+{
+};
+template<>
+struct Ended<0>
+{
+  int base = 3;
+};
+
+template<class T>
+struct X : Y<T>
+{
+};
+template<class T>
+struct Y : X<T>
+{
+};
+template<>
+struct Y<int>
+{
+  int ended = 5;
+};
+
+int main()
+{
+  X<int> x;
+  Ended<2> ended;
+  return x.ended + ended.base;
+}

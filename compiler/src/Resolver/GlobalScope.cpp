@@ -230,6 +230,7 @@ void GlobalScope::finishIndex()
   });
   for (Scope* s : withUsings)
     impl->ensureUsing(s, 0);
+  impl->breakBaseCycles(seen);
   // Deduction guides, by the class template each names: a function (template) of the guide's
   // parameters returning the class it gives, for class template argument deduction to try.
   std::stable_sort(impl->deferredGuides.begin(), impl->deferredGuides.end(), byDecl);

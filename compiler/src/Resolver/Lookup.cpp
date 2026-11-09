@@ -223,6 +223,128 @@ auto GlobalScope::Impl::ensureBases(Scope* cls, int depth) -> void
     cls->baseState.wait(seen, std::memory_order_acquire); // blocks (C++20 atomic wait) instead of spinning on yield
 }
 
+auto GlobalScope::Impl::breakBaseCycles(const std::unordered_set<Scope*>& scopes) -> void
+{
+  std::vector<Scope*> classes;
+  for (Scope* s : scopes)
+    if (s->kind == ScopeKind::Class && !s->baseTypes.empty() && s->owner && s->owner->kind == NodeKind::ClassDecl && !(s->owner->file && s->owner->file->isImported))
+      classes.push_back(s);
+  std::sort(classes.begin(), classes.end(), [](Scope* a, Scope* b) { return declaredBefore(a->owner, b->owner); });
+  // A template's instances can end the cycle where one of them is a specialization of its own.
+  auto hasSpecialization = [&](Scope* c)
+  {
+    if (c->templateParams.empty() && !(c->owner->flags & DF_Specialization))
+      return false;
+    const QualifiedName& name = static_cast<ClassDecl*>(c->owner)->name;
+    const std::vector<Entry>* entries = !name.empty() && c->parent ? c->parent->find(name.last().symbol) : nullptr;
+    return !entries || (c->owner->flags & DF_Specialization) ||
+           std::any_of(entries->begin(), entries->end(), [](const Entry& e) { return e.decl && e.decl->kind == NodeKind::ClassDecl && (e.decl->flags & DF_Specialization); });
+  };
+  auto nameOf = [&](Scope* c) { return std::string(symbols.name(static_cast<ClassDecl*>(c->owner)->name.last().symbol)); };
+  // A template's base written through a member of another instance (`TupleRest<T...>::Type`, which a specialization of
+  // TupleRest ends) is decided per instance: only a base that names the class itself says anything of every instance.
+  auto namesTheClass = [&](Scope* at, Scope* to)
+  {
+    if (at->templateParams.empty())
+      return true;
+    LocalStack params;
+    for (Decl* d : at->templateParams)
+      params.push(static_cast<TemplateParamDecl*>(d)->name, d);
+    for (const ClassDecl::Base& b : static_cast<ClassDecl*>(at->owner)->bases)
+      if (b.type && b.type->kind == NodeKind::NamedType)
+        if (Lookup l = lookupQualified(static_cast<NamedType*>(b.type)->name, at->parent, &params, 0); l.decl && l.decl->kind == NodeKind::ClassDecl && l.scope == to)
+          return true;
+    return false;
+  };
+  // The written bases of `at` that are `to`, gone: what follows bases by the types written reaches an end too.
+  auto dropWrittenBases = [&](Scope* at, Scope* to)
+  {
+    auto* def = static_cast<ClassDecl*>(at->owner);
+    LocalStack params;
+    for (Decl* d : at->templateParams)
+      params.push(static_cast<TemplateParamDecl*>(d)->name, d);
+    size_t kept = 0;
+    for (size_t i = 0; i < def->bases.size(); ++i)
+      if (scopeOfType(def->bases[i].type, at->parent, &params, 0) == to)
+        at->baseTypes.erase(std::remove(at->baseTypes.begin(), at->baseTypes.end(), def->bases[i].type), at->baseTypes.end());
+      else
+        def->bases.data[kept++] = def->bases[i];
+    def->bases.count = kept;
+  };
+  std::unordered_set<Scope*> reported;
+  auto report = [&](Scope* c, const std::string& chain)
+  {
+    if (reported.insert(c).second)
+      reportCheckerError(c->owner->file, c->owner->token, nameOf(c) + " derives from itself (" + chain + nameOf(c) + "): a class is not complete where it is its own base");
+  };
+  auto plain = [](Scope* c) { return c->templateParams.empty() && !(c->owner->flags & DF_Specialization); };
+  // Directly: ensureBases leaves a class's own name out of its bases (a template's `Count<N - 1>`, instances of which end).
+  for (Scope* c : classes)
+  {
+    ensureBases(c, 0);
+    if (c->baseScopes.size() == c->baseTypes.size() || !plain(c))
+      continue;
+    size_t before = c->baseTypes.size();
+    dropWrittenBases(c, c);
+    if (c->baseTypes.size() != before)
+      report(c, nameOf(c) + " : ");
+  }
+  std::unordered_map<Scope*, uint8_t> state; // 1 on the path, 2 finished
+  std::vector<std::pair<Scope*, size_t>> path;
+  for (Scope* start : classes)
+  {
+    if (state[start])
+      continue;
+    state[start] = 1;
+    path.push_back({start, 0});
+    while (!path.empty())
+    {
+      Scope* at = path.back().first;
+      ensureBases(at, 0);
+      if (path.back().second >= at->baseScopes.size())
+      {
+        state[at] = 2;
+        path.pop_back();
+        continue;
+      }
+      Scope* next = at->baseScopes[path.back().second];
+      if (state[next] == 1)
+      {
+        size_t first = path.size() - 1;
+        while (path[first].first != next)
+          --first;
+        // (Templates alone: instances, if any is made, directBases' limit says so.)
+        bool canEnd = true;
+        for (size_t i = first; i < path.size(); ++i)
+          canEnd = canEnd && !plain(path[i].first);
+        for (size_t i = first; i < path.size(); ++i)
+          canEnd = canEnd || hasSpecialization(path[i].first) || !namesTheClass(path[i].first, i + 1 < path.size() ? path[i + 1].first : next);
+        if (canEnd)
+        {
+          ++path.back().second;
+          continue;
+        }
+        std::string chain;
+        for (size_t i = first; i < path.size(); ++i)
+          chain += nameOf(path[i].first) + " : ";
+        report(next, chain);
+        // The cycle ends here, so that what follows bases reaches an end: the base as resolved and as written.
+        size_t index = path.back().second;
+        at->baseScopes.erase(at->baseScopes.begin() + index);
+        at->baseScopeDependent.erase(at->baseScopeDependent.begin() + index);
+        dropWrittenBases(at, next);
+        continue;
+      }
+      ++path.back().second;
+      if (state[next] == 0)
+      {
+        state[next] = 1;
+        path.push_back({next, 0});
+      }
+    }
+  }
+}
+
 auto GlobalScope::Impl::ensureUsing(Scope* ns, int depth) -> void
 {
   recordUse(USE_ScopeRelations, ns);
