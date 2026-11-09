@@ -133,8 +133,8 @@ jobs:
           if-no-files-found: error
 
   # run_tests in 2 halves at once (run_tests.cmd --part 1|2: part 2 is determinism, concurrency,
-  # generate and project, about 2 minutes either way), in full (--full): what a thread's quick gate
-  # leaves out before its push (concurrency, incremental, windows-gnu, determinism's full mode) runs
+  # generate, project and format ours, about 2 minutes either way), in full (--full): what a thread's quick
+  # gate leaves out before its push (concurrency, incremental, windows-gnu, format ours, determinism's full mode) runs
   # here on every push.
   run_tests:
     needs: build

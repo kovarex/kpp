@@ -97,9 +97,12 @@ Add 'lower case' @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-F
 # what `python tools\style\kppstyle.py --fix` corrects.
 Add 'code style' @('python', '-I', '..\tools\style\kppstyle.py', '--fixable', '--tracked', '..\stdlib', '..\libraries', '..\programs', '..\projectlib', '..\kppnet') -seconds 2 -note 'FAIL code style: python tools\style\kppstyle.py --fix PATH corrects it (docs/code-style.md)'
 # The formatter's test runner (tests\format\run_format.py) against a toy kpp format made wrong one way at
-# a time: each way is reported (tests\format\selftest\selftest.py). The formatter's own tests join once
-# kpp format has the interfaces run_format.py asks of it (docs/format.md, Status).
+# a time: each way is reported (tests\format\selftest\selftest.py).
 Add 'format runner' @('python', '-I', 'tests\format\selftest\selftest.py') -seconds 15
+# kpp format's own tests: its default, each value of each setting and the combinations that interact, each
+# over tests\format's snippets; --full also over our code (a copy of it, part 2: F-formatter-design.md 7a).
+Add 'format suite' @('python', '-I', 'tests\format\run_format.py', '--jobs', '4') -seconds 5 -note 'FAIL format suite: python tests\format\run_format.py shows it (--update rewrites the golden files, for review in the diff)'
+Add 'format ours' @('python', '-I', 'tests\format\run_format.py', '--corpus', 'ours', '--jobs', '8', '--out', 'build\tests\format-ours') -part 2 -seconds 90 -fullOnly $true -note 'FAIL format ours: python tests\format\run_format.py --corpus ours shows it'
 # Code packages (tests\packages.ps1, docs/design.md): kpp --packages lists each directory as a package,
 # with its README.md's first paragraph and the names each file declares.
 Add 'packages' (PsCheck 'tests\packages.ps1') -seconds 1

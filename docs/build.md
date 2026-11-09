@@ -1272,7 +1272,7 @@ or on the runner named by the repository variable `KPP_CI_RUNNER`, as parallel j
 - **build:** kpp, once, with `compiler\build.cmd` through ccache (below), handed to the other
   jobs as the artifact `kpp` (compiler\build\kpp.exe, kept 3 days).
 - **run_tests:** `compiler\tests\run_tests.cmd --full --part 1` and `--full --part 2` in 2 jobs,
-  after build: part 2 is determinism, concurrency, generate and project, part 1 everything else
+  after build: part 2 is determinism, concurrency, generate, project and format ours, part 1 everything else
   (about 2 minutes each on the runner). Each ends with its own line, as `run_tests: ALL PASSED (part
   2/2: checks 4/4)`; without `--part` it runs both, as by hand. run_tests runs its checks side by
   side, each a process of its own (tests\run_tests.ps1 lists them; `--jobs N` at once, by default a

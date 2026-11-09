@@ -7,7 +7,7 @@ rem   run_tests: ALL PASSED (end-to-end 45/45, checks 27/27)                    
 rem   run_tests: 2 FAILED: e2e enums, targets (end-to-end 44/45, checks 26/27)     exit 1
 rem A check that cannot run here (lsp-smoke without Node.js) is added as ", skipped: ...".
 rem --part 1 or --part 2 runs one half, for CI's two parallel jobs (docs/build.md, "Continuous
-rem integration"): part 2 is determinism, concurrency, generate and project, part 1 the rest; its
+rem integration"): part 2 is determinism, concurrency, generate, project and format ours, part 1 the rest; its
 rem line names it: run_tests: ALL PASSED (part 2/2: checks 4/4). --jobs N: how many checks at once
 rem (by default a third of the logical processors, 4 to 12). Without --full, the quick gate before a
 rem push: the longest checks left out (tests\run_tests.ps1 names them) and determinism's quick mode;
