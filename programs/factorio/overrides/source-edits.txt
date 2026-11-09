@@ -872,3 +872,36 @@
 @ tests/TestLoaderGui.cpp: the same for a long list
 -     CHECK_EQUAL(loader->filter, (std::array<ItemFilter, Loader::maxFilterCount>({ ItemWithQualityID("iron-plate"), ItemWithQualityID("copper-plate"), ItemFilter(), ItemFilter(), ItemFilter() })));
 +     CHECK_EQUAL(loader->filter, (std::array<ItemFilter, Loader::maxFilterCount>{{ ItemWithQualityID("iron-plate"), ItemWithQualityID("copper-plate"), ItemFilter(), ItemFilter(), ItemFilter() }}));
+
+# A polymorphic class's destructor is virtual (design.md 23b) and keeps the exception specification C++
+# gives it, so an override that may throw of a noexcept one is an error ([except.spec] 4; kovarex,
+# 2026-11-09). Three test fixtures hold a TestScenario, whose destructor may throw (a failed check in
+# its teardown fails the test), under bases whose implicit destructors C++ leaves non-virtual: those
+# bases say they may throw, as the game's own bases of destructors that may throw do (its package
+# streams), and NetworkInputListener, which the interface's would change, keeps the noexcept that C++
+# computes for it today from InputListener's destructor and its members.
+
+@ tests/GameViewControl.hpp: GameViewFixture and TestScenarioGui (through GuiControl) destroy a TestScenario
+- class GameViewControl
+- {
+- public:
++ class GameViewControl
++ {
++ public:
++   ~GameViewControl() noexcept(false) {}
+
+@ tests/LatencyInputFixture.hpp: LatencyGuiFixture derives from it and from GuiControl, whose destructor may throw
+-   LatencyInputFixture();
++   LatencyInputFixture();
++   ~LatencyInputFixture() noexcept(false) {}
+
+@ src/Input/LatencyInputActionQueueInterface.hpp: LatencyFixture destroys a TestScenario
+-   virtual LatencyType getLatency() const = 0;
+- };
++   virtual LatencyType getLatency() const = 0;
++   ~LatencyInputActionQueueInterface() noexcept(false) {}
++ };
+
+@ src/Net/NetworkInputListener.hpp: noexcept as C++ computes it from InputListener's destructor and its members
+-   virtual ~NetworkInputListener() = default;
++   virtual ~NetworkInputListener() noexcept = default;
