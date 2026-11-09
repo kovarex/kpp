@@ -10,8 +10,10 @@ The Visual Studio extension (docs/editors.md, "Visual Studio 2022"). It needs Vi
 - go to declaration (Ctrl+F12, Edit.GoToDeclaration). Visual Studio's language client leaves that
   command unavailable, so `GoToDeclaration.cs` handles it in .kpp editors: it sends
   `textDocument/declaration` on the client's connection and opens the answer;
-- the colors (docs/editors.md, "Colors"): `SemanticColors.cs` draws the server's semantic tokens
-  in Visual Studio's C++ colors (types, functions, parameters, members);
+- the colors (docs/editors.md, "Colors"), VS Code's Light Modern and Dark Modern: `SemanticColors.cs`
+  draws the server's semantic tokens as kpp's own classifications (`Colors.cs`), and
+  `kpp.tmLanguage.tmTheme` the grammar's control keywords, numbers, strings and comments; `make-colors.ps1` has
+  the colors per theme;
 - the cell (docs/editors.md, "Cells") from a solution kpp generated: `Cell.cs` takes the startup
   project as the target and the active configuration as the configuration. They go to the server
   at its start, and as `kpp/selectCell` when either changes.
@@ -31,8 +33,9 @@ declaration. Installing it therefore needs a restart of Visual Studio.
 - **Build:** `build.cmd` writes `tools\vs\kpp-visualstudio.vsix`. It needs the .NET 8 SDK (`winget install
   --id Microsoft.DotNet.SDK.8 -e`) and Visual Studio's MSBuild; the "Visual Studio extension
   development" workload is not needed.
-- **Install:** double-click kpp-visualstudio.vsix, or run `VSIXInstaller.exe kpp-visualstudio.vsix` from Visual
-  Studio's Common7\IDE.
+- **Install:** the kpp installer does it (`VSIXInstaller.exe /quiet`, with the release's version in the manifest, so a
+  later release replaces an earlier one); or double-click kpp-visualstudio.vsix, or run `VSIXInstaller.exe
+  kpp-visualstudio.vsix` from Visual Studio's Common7\IDE. Restart Visual Studio afterwards.
 - **Test:** `test.ps1` installs it into the experimental instance (`/rootsuffix Exp`), so the user's
   own Visual Studio is untouched. It opens a copy of a project as a folder, or with `-Solution` as
   the solution kpp generates. It checks through DTE and UI Automation:
@@ -51,3 +54,6 @@ declaration. Installing it therefore needs a restart of Visual Studio.
 
   `debugger-check.ps1` (after test.ps1 installed the extension) debugs `debugger-test` and checks `this.`
   in expressions and breakpoint conditions, setting a value, Locals, natvis and stepping.
+
+  `colors-check.ps1` (likewise) opens `colors-test` and compares what each line draws, pixel by pixel, with the table
+  of colors in Light and in Dark, and keeps the two pictures.

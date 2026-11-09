@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The grammar's scopes that are drawn as kpp's own classifications (Colors.cs, docs/editors.md "Colors"), not as
+     Visual Studio's TextMate theme has them (keyword.control as Keyword, constant.character.escape as String,
+     entity.name as Type, constant.numeric as Number, shared with every language). Visual Studio takes the file
+     named as the grammar with this extension, beside it, in place of its own: so the other keywords are here too. -->
+<plist version="1.0">
+  <dict>
+    <key>name</key>
+    <string>kpp</string>
+    <key>settings</key>
+    <array>
+      <dict>
+        <key>scope</key>
+        <string>keyword.other.kpp, keyword.other.kpp-word.kpp, storage.type.kpp, constant.language.kpp</string>
+        <key>settings</key>
+        <dict>
+          <key>vsclassificationtype</key>
+          <string>keyword</string>
+        </dict>
+      </dict>
+      <dict>
+        <key>scope</key>
+        <string>keyword.control.kpp</string>
+        <key>settings</key>
+        <dict>
+          <key>vsclassificationtype</key>
+          <string>kpp control keyword</string>
+        </dict>
+      </dict>
+      <dict>
+        <key>scope</key>
+        <string>keyword.operator.kpp</string>
+        <key>settings</key>
+        <dict>
+          <key>vsclassificationtype</key>
+          <string>kpp operator</string>
+        </dict>
+      </dict>
+      <dict>
+        <key>scope</key>
+        <string>constant.numeric.kpp</string>
+        <key>settings</key>
+        <dict>
+          <key>vsclassificationtype</key>
+          <string>kpp number</string>
+        </dict>
+      </dict>
+      <dict>
+        <key>scope</key>
+        <string>meta.number-type.kpp</string>
+        <key>settings</key>
+        <dict>
+          <key>vsclassificationtype</key>
+          <string>kpp number type</string>
+        </dict>
+      </dict>
+      <dict>
+        <key>scope</key>
+        <string>string.quoted.double.kpp, string.quoted.single.kpp, string.quoted.raw.kpp</string>
+        <key>settings</key>
+        <dict>
+          <key>vsclassificationtype</key>
+          <string>kpp string</string>
+        </dict>
+      </dict>
+      <dict>
+        <key>scope</key>
+        <string>constant.character.escape.kpp</string>
+        <key>settings</key>
+        <dict>
+          <key>vsclassificationtype</key>
+          <string>kpp string escape</string>
+        </dict>
+      </dict>
+      <dict>
+        <key>scope</key>
+        <string>comment.line.double-slash.kpp, comment.block.kpp</string>
+        <key>settings</key>
+        <dict>
+          <key>vsclassificationtype</key>
+          <string>kpp comment</string>
+        </dict>
+      </dict>
+      <dict>
+        <key>scope</key>
+        <string>entity.name.function.kpp</string>
+        <key>settings</key>
+        <dict>
+          <key>vsclassificationtype</key>
+          <string>kpp function</string>
+        </dict>
+      </dict>
+    </array>
+  </dict>
+</plist>

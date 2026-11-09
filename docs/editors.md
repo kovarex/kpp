@@ -106,8 +106,9 @@ Status (2026-11-03):
 
   Checked by tests\lsp\inactive (the transcript inactive), and in both editors: `inactive.js` and
   `test.ps1 -InactiveFile`.
-- **Colors** (kovarex, 2026-11-04: types and functions in colors of their own, locals in the
-  text's): the server's semantic tokens (`textDocument/semanticTokens/full`) name each name's
+- **Colors** (kovarex, 2026-11-04: types and functions in colors of their own; 2026-11-09: locals and
+  the other names too, as VS Code's Light Modern and Dark Modern draw them, which replaces 2026-11-04's
+  locals in the text's color): the server's semantic tokens (`textDocument/semanticTokens/full`) name each name's
   kind: namespace, type, class, enum, struct, typeParameter, parameter, variable, property,
   enumMember, function, method; modifiers declaration, defaultLibrary, static (a class's static
   member) and globalScope (a variable of a namespace or the file, clangd's). A client is told to
@@ -198,16 +199,36 @@ Studio. `tools\vs\install.cmd`, the grammar alone, is not needed with it.
   so the extension asks for the regions in initializationOptions. `test.ps1 -InactiveFile` checks
   them on tests\lsp\inactive as its generated solution: the regions the extension received in Debug,
   in Release (0.3 s after the switch) and in Debug again, with screenshots.
-- **Colors** are Visual Studio's C++ colors (Tools > Options > Fonts and Colors, "C++ Types",
-  "C++ Functions", ...): `SemanticColors.cs` asks for a file's semantic tokens when it opens and
-  after each check (`kpp/semanticTokensChanged`) and draws types as cppType, functions as
-  cppFunction, member functions as cppMemberFunction (cppStaticMemberFunction), parameters as
-  cppParameter, data members as cppMemberField (cppStaticMemberField), globals as
-  cppGlobalVariable, enumerators as cppEnumerator and namespaces as cppNamespace. Locals are left
-  as the grammar draws them, in the text's color, and so are keywords. Visual Studio's own client
-  takes semantic tokens too, but draws types and functions in one color, so the server offers the
-  capability to the extension alone. In the default light theme: types teal, functions brown,
-  parameters grey, the rest black. `test.ps1` checks that the extension received -File's tokens.
+- **Colors** are VS Code's (kovarex, 2026-11-09, the panel "kpp today": "Just set it to the selected
+  style"): Light Modern in Visual Studio's Light and Blue themes, Dark Modern in Dark. They are
+  classifications of kpp's own (`Colors.cs`), each in Tools > Options > Fonts and Colors (*kpp Local
+  Variable*, *kpp Type*, *kpp Function*, ...), where a change wins over the default. Their defaults per
+  theme are the table in `make-colors.ps1`, which writes `kpp.colors.pkgdef` as Visual Studio's own C++
+  and C# colors are given; High Contrast keeps the system's text color.
+
+  | what | Light | Dark |
+  |---|---|---|
+  | locals, parameters, members, static members, globals, `config::` values | `#001080` | `#9CDCFE` |
+  | types, namespaces | `#267F99` | `#4EC9B0` |
+  | functions, member functions, a name before `(` until the server has said what it is | `#795E26` | `#DCDCAA` |
+  | enumerators | `#0070C1` | `#4FC1FF` |
+  | control keywords (`if`, `return`, `for`, ...) | `#AF00DB` | `#C586C0` |
+  | numbers | `#098658` | `#B5CEA8` |
+  | number types (`i32`, `u8`, `f64`, ...) | `#3B3B3B` | `#CCCCCC` |
+  | strings | `#A31515` | `#CE9178` |
+  | escapes in strings | `#EE0000` | `#D7BA7D` |
+  | comments | `#008000` | `#6A9955` |
+  | `?->` and `?:` | `#000000` | `#D4D4D4` |
+
+  Names come from the server: `SemanticColors.cs` asks for a file's semantic tokens when it opens and
+  after each check (`kpp/semanticTokensChanged`). The rest comes from the grammar, whose scopes
+  `kpp.tmLanguage.tmTheme` names these classifications for (Visual Studio takes that file, beside the
+  grammar, over its own TextMate theme, which draws control keywords as Keyword and calls as Type). Other
+  keywords stay Visual Studio's Keyword and kpp's words *kpp Keyword*. Plain text and punctuation stay
+  the user's Plain Text. Visual Studio's own client takes semantic tokens too, but draws types and
+  functions in one color, so the server offers the capability to the extension alone. `test.ps1` checks
+  that the extension received -File's tokens; `colors-check.ps1` opens `colors-test` in Light and Dark and
+  compares the color of every line drawn with this table.
 - **Hover is plain text in Visual Studio.** Its client names hover's `contentFormat` as plain text
   alone. Given markdown, it showed only the code block (`const int volume`, without the value,
   the cell or the description). The server sends markdown only to a client that names it, so

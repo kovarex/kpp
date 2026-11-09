@@ -1,0 +1,5 @@
+// colors-check.ps1's program: a line for each of kpp's colors.
+void build(Project& project)
+{
+  project.executable("colorstest", {"main.kpp"});
+}

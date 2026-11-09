@@ -15,11 +15,10 @@ using StreamJsonRpc;
 /// <summary>
 /// Names colored by what they name (docs/editors.md, "Colors"): the server's semantic tokens
 /// (textDocument/semanticTokens/full), asked for again whenever it sends kpp/semanticTokensChanged
-/// (after each check), drawn by <see cref="SemanticClassifier"/> in Visual Studio's C++ colors: a
-/// kpp type is drawn as a C++ type, a function as a C++ function, and Tools > Options > Fonts and
-/// Colors ("C++ Types", "C++ Functions", ...) sets both. Visual Studio's own client would take the
-/// tokens too, but draws types and functions alike: the server offers them to the extension alone
-/// (initializationOptions' semanticColors).
+/// (after each check), drawn by <see cref="SemanticClassifier"/> as kpp's own classifications
+/// (<see cref="KppColors"/>), set in Tools > Options > Fonts and Colors ("kpp Type", "kpp Function",
+/// ...). Visual Studio's own client would take the tokens too, but draws types and functions alike:
+/// the server offers them to the extension alone (initializationOptions' semanticColors).
 /// </summary>
 internal static class SemanticTokens
 {
@@ -66,22 +65,21 @@ internal static class SemanticTokens
     }
 
     /// <summary>
-    /// The C++ classification a token is drawn as, by its type's and modifiers' names. A local is
-    /// left as the grammar draws it, in the text's color (kovarex, 2026-11-04), and so are keywords,
-    /// literals and comments. kpp's own words (check, require, fallthrough, implicit, This...), where
-    /// the parser takes them as such, are "kpp Keyword" (<see cref="KppKeywordFormat"/>).
+    /// The classification a token is drawn as, by its type's and modifiers' names. Keywords, literals
+    /// and comments are left to the grammar. kpp's own words (check, require, fallthrough, implicit,
+    /// This...), where the parser takes them as such, are "kpp Keyword" (<see cref="KppKeywordFormat"/>).
     /// </summary>
     public static string? ClassificationOf(string type, bool isStatic, bool globalScope) => type switch
     {
         "kppKeyword" => KppKeywordFormat.ClassificationName,
-        "namespace" => "cppNamespace",
-        "type" or "class" or "enum" or "struct" or "typeParameter" => "cppType",
-        "parameter" => "cppParameter",
-        "variable" => globalScope ? "cppGlobalVariable" : null,
-        "property" => isStatic ? "cppStaticMemberField" : "cppMemberField",
-        "enumMember" => "cppEnumerator",
-        "function" => "cppFunction",
-        "method" => isStatic ? "cppStaticMemberFunction" : "cppMemberFunction",
+        "namespace" => KppColors.Namespace,
+        "type" or "class" or "enum" or "struct" or "typeParameter" => KppColors.Type,
+        "parameter" => KppColors.Parameter,
+        "variable" => globalScope ? KppColors.Global : KppColors.Local,
+        "property" => isStatic ? KppColors.StaticMember : KppColors.Member,
+        "enumMember" => KppColors.Enumerator,
+        "function" => KppColors.Function,
+        "method" => KppColors.Method,
         _ => null,
     };
 
@@ -203,8 +201,7 @@ internal sealed class SemanticClassifierProvider : IClassifierProvider
 }
 
 /// <summary>
-/// A .kpp buffer's names as classification spans: the C++ classification of each token, where
-/// Visual Studio has it (the C++ workload).
+/// A .kpp buffer's names as classification spans: the classification of each token.
 /// </summary>
 internal sealed class SemanticClassifier : IClassifier
 {

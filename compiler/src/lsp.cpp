@@ -3291,7 +3291,7 @@ namespace
     // The legend's modifiers past declaration (1) and defaultLibrary (2): static (4), a class's
     // static member; globalScope (8, clangd's), a variable of a namespace or the file. A client
     // tells a global from a local, and a static member from an instance's, by them (Visual Studio's
-    // C++ colors: cppGlobalVariable, cppStaticMemberField, cppStaticMemberFunction).
+    // extension: kpp Global Variable, kpp Static Member).
     static constexpr const char* tokenModifiers[] = {"declaration", "defaultLibrary", "static", "globalScope"};
     enum : int { ModifierDeclaration = 1, ModifierDefaultLibrary = 2, ModifierStatic = 4, ModifierGlobalScope = 8 }; // (bits in tokenModifiers' order)
 
@@ -3571,7 +3571,7 @@ namespace
                           params["initializationOptions"]["inactiveRegions"].boolean;
         // The protocol's capability (VS Code's). Visual Studio's client takes the tokens too, but
         // draws types and functions alike in kpp's colors; its extension asks for them itself and
-        // draws them in Visual Studio's C++ colors (initializationOptions' semanticColors): the
+        // draws them in classifications of its own (initializationOptions' semanticColors): the
         // client is not offered them, and the extension is told after each check.
         semanticTokensRefresh = params["capabilities"]["workspace"]["semanticTokens"]["refreshSupport"].boolean;
         semanticColors = params["initializationOptions"]["semanticColors"].boolean;

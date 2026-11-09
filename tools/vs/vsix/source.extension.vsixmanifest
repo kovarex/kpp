@@ -18,6 +18,7 @@
   <Assets>
     <Asset Type="Microsoft.VisualStudio.MefComponent" d:Source="File" Path="KppVisualStudio.dll" />
     <Asset Type="Microsoft.VisualStudio.VsPackage" d:Source="File" Path="kpp.pkgdef" />
+    <Asset Type="Microsoft.VisualStudio.VsPackage" d:Source="File" Path="kpp.colors.pkgdef" />
     <Asset Type="DebuggerEngineExtension" d:Source="File" Path="KppVisualStudio.vsdconfig" />
   </Assets>
 </PackageManifest>

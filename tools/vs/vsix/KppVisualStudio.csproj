@@ -47,7 +47,10 @@
     <!-- The grammar Visual Studio and VS Code share, and VS Code's language configuration (comments,
          brackets, indentation), from where they are kept. -->
     <Content Include="..\kpp\Syntaxes\kpp.tmLanguage.json" Link="Grammars\kpp.tmLanguage.json" IncludeInVSIX="true" />
+    <!-- The grammar's scopes as kpp's own classifications: Visual Studio takes this name, beside the grammar. -->
+    <Content Include="kpp.tmLanguage.tmTheme" Link="Grammars\kpp.tmLanguage.tmTheme" IncludeInVSIX="true" />
     <Content Include="..\..\vscode\language-configuration.json" Link="LanguageConfiguration\language-configuration.json" IncludeInVSIX="true" />
     <Content Include="kpp.pkgdef" IncludeInVSIX="true" />
+    <Content Include="kpp.colors.pkgdef" IncludeInVSIX="true" />
   </ItemGroup>
 </Project>

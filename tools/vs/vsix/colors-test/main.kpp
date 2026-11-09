@@ -1,0 +1,43 @@
+// a comment
+namespace shapes
+{
+  enum class Side
+  {
+    leftSide,
+    rightSide
+  };
+  i32 globalCount = 7;
+  class Box
+  {
+  public:
+    implicit Box(f64 size) : width(size) {}
+    f64 width = 1.5;
+    static i32 total;
+    i32 grow(i32 extra)
+    {
+      i32 result = extra;
+      if (result)
+        return result + 1;
+      return this->size();
+    }
+    i32 size() { return Box::total; }
+  };
+  i32 Box::total = 8;
+}
+template<typename T>
+i32 unknownCall(T& t)
+{
+  return t.notResolved();
+}
+shapes::Box box = 3.5;
+const char* text = "tab\there";
+bool first = true;
+i32* pointer = nullptr;
+i32* fallback = pointer ?: pointer;
+shapes::Side chosen = shapes::Side::leftSide;
+bool debugging = config::debug;
+int main()
+{
+  return first ? 8 : shapes::globalCount;
+}
+// the last line
