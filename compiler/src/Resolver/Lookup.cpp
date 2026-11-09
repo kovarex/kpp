@@ -1506,10 +1506,24 @@ auto GlobalScope::Impl::lookupInScopeOrPrivate(Scope* s, Scope* context, uint32_
   return lookupInScope(s, symbol, out, depth);
 }
 
+static thread_local bool bridgeOff = false;
+
+auto GlobalScope::Impl::lookupWithoutBridge(uint32_t symbol, Scope* context, const LocalStack* locals, bool qualifierOnly, bool global) -> Lookup
+{
+  bridgeOff = true;
+  Lookup l;
+  if (global)
+    lookupInScope(&root, symbol, l, 0);
+  else
+    l = lookupUnqualified(symbol, context, locals, 0, qualifierOnly);
+  bridgeOff = false;
+  return l;
+}
+
 auto GlobalScope::Impl::bridgedToStd(uint32_t symbol, Lookup& out, bool found, int depth) -> bool
 {
   Lookup library;
-  if (!stdScope || !lookupInScope(stdScope, symbol, library, depth))
+  if (!stdScope || bridgeOff || !lookupInScope(stdScope, symbol, library, depth))
     return found;
   if (!found)
     out = library;
@@ -1533,7 +1547,11 @@ auto GlobalScope::Impl::moveBareSpecializationsToStd() -> void
         continue;
       for (const Entry& e : entries)
         if (isSpecialization(e))
+        {
           stdScope->add(symbol, e.decl, e.scope);
+          if (recordingStdUses && e.decl->file && !e.decl->file->isLibrary)
+            stdUses.push_back({e.decl->file, e.decl->token, 'S', symbol, nullptr});
+        }
       entries.erase(std::remove_if(entries.begin(), entries.end(), isSpecialization), entries.end());
       if (entries.empty())
         emptied.push_back(symbol);

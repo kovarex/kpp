@@ -792,6 +792,29 @@ FunctionDecl* GlobalScope::findFreeFunction(std::string_view name, const std::ve
   return findFree(impl->symbols.intern(name), argTypes, context);
 }
 
+std::string GlobalScope::stdUsesText()
+{
+  std::set<std::string> lines;
+  for (const Impl::StdUse& use : impl->stdUses)
+  {
+    char kind = use.kind;
+    if (kind == 'M')
+    {
+      const Decl* chosen = use.call->resolved;
+      if (chosen && !(chosen->file && chosen->file->isLibrary))
+        continue; // (the program's own function: it stays bare)
+      if (!chosen)
+        kind = 'U'; // (decided per instance: for a reader)
+    }
+    lines.insert(std::string(1, kind) + "\t" + use.file->path + "\t" + std::to_string((*use.file->tokens)[use.token].offset) + "\t" +
+                 std::string(impl->symbols.name(use.symbol)) + "\n");
+  }
+  std::string out;
+  for (const std::string& line : lines)
+    out += line;
+  return out;
+}
+
 FunctionDecl* GlobalScope::libraryFunction(std::string_view name)
 {
   return static_cast<FunctionDecl*>(impl->libraryDecl(name, NodeKind::FunctionDecl));

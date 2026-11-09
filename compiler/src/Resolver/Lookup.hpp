@@ -217,6 +217,9 @@
   // anything now.
   bool bridgedToStd(uint32_t symbol, Lookup& out, bool found, int depth);
 
+  // The name with the bridge out of it: what it finds once every program writes std::.
+  Lookup lookupWithoutBridge(uint32_t symbol, Scope* context, const LocalStack* locals, bool qualifierOnly, bool global);
+
   // The same bridge for a declaration: `template<> struct Hash<Key>` written bare specializes std's Hash, when the
   // global scope has no such template of its own.
   void moveBareSpecializationsToStd();

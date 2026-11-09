@@ -2,6 +2,8 @@
 // (Driver.hpp). A translation unit of its own since 2026-11-05 (main.cpp split, stage 2), moved
 // without a change.
 #include "Driver.hpp"
+#include <fstream>
+#include <random>
 
 namespace driver
 {
@@ -473,12 +475,18 @@ void runResolve(Build& build)
     global.enableAccessErrors(); // (not the C++ a conversion reads: its friends, its quirks)
   if (options.structRule && options.convertDir.empty()) // (not the C++ a conversion reads, whose structs may break it)
     global.enableStructRule();
+  const char* stdUses = getenv("KPP_STD_USES"); // (the rewrite to std::, tools/std/rewrite.py: each compile leaves a file there)
   global.resolveAll(parsed.size(), options.threads, [&](size_t i) { global.resolveFile(*parsed[i], lexed[i].tokens, files[i].text, stats[i]); });
   build.resolveTime = seconds(Clock::now() - start);
   // What the reports count is the resolve's: codegen instantiates more afterwards.
   global.resolveDone();
   build.instantiation = global.instantiationStats();
   build.instanceStats = global.instanceStats();
+  if (stdUses)
+  {
+    std::ofstream out(std::filesystem::path(stdUses) / (std::to_string(std::random_device{}()) + "-" + std::to_string(std::random_device{}()) + ".txt"), std::ios::binary);
+    out << global.stdUsesText();
+  }
   reportResolve(build);
 }
 

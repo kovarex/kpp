@@ -366,6 +366,7 @@
     void reportBaseAmbiguity(const Lookup& l, uint32_t symbol, uint32_t token);
 
     void resolveTypeName(NamedType* t);
+    void noteStdUse(const QualifiedName& name, uint32_t token, NameExpr* at);
 
     // `UniquePtr<Thing, CountingDeleter>` with a one-parameter UniquePtr: more template arguments
     // than the class (or alias) template has parameters, and no pack to take the rest, is a

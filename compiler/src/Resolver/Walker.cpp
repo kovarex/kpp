@@ -9378,6 +9378,8 @@ auto GlobalScope::Impl::Walker::walkType(Type* t) -> void
       break;
     case NodeKind::NamedType:
       walkType(static_cast<NamedType*>(t)->name.typeQualifier); // `decltype(x)::member`: x typed first
+      if (impl.recordingStdUses)
+        noteStdUse(static_cast<NamedType*>(t)->name, t->token, nullptr);
       resolveTypeName(static_cast<NamedType*>(t));
       break;
     case NodeKind::PointerType: walkType(static_cast<PointerType*>(t)->pointee); break;
@@ -10843,8 +10845,39 @@ auto GlobalScope::Impl::Walker::walkExprs(Span<Expr*> exprs) -> void
     walkExpr(e);
 }
 
+auto GlobalScope::Impl::Walker::noteStdUse(const QualifiedName& name, uint32_t token, NameExpr* at) -> void
+{
+  if (name.empty() || name.typeQualifier || !impl.stdScope || !file || file->isLibrary || file->isImported || file->path.empty() || file->path[0] == '<')
+    return;
+  const NamePart& first = name.parts[0];
+  if (first.symbol == UINT32_MAX || first.special != 0 || first.symbol == impl.symStd)
+    return;
+  bool trait = first.hasTemplateArgs && (impl.isTypeTraitName(first.symbol) || impl.isBoolTraitName(first.symbol));
+  if (!trait && !impl.stdScope->find(first.symbol))
+    return;
+  Lookup plain = impl.lookupWithoutBridge(first.symbol, scope, &locals, name.parts.size() > 1, name.global);
+  if (plain.absent)
+    return;
+  char kind = 0;
+  if (plain.found == Found::No)
+    kind = name.global ? 'G' : 'B';
+  else if (at && name.parts.size() == 1 && plain.decl && plain.decl->kind == NodeKind::FunctionDecl)
+    kind = 'M';
+  if (kind)
+  {
+    std::lock_guard lock(impl.stdUsesMutex);
+    impl.stdUses.push_back({file, token, kind, first.symbol, at});
+  }
+}
+
 auto GlobalScope::Impl::Walker::walkExpr(Expr* e) -> const Ty*
 {
+  if (impl.recordingStdUses && e)
+  {
+    Expr* named = e->kind == NodeKind::CallExpr ? static_cast<CallExpr*>(e)->callee : e;
+    if (named && named->kind == NodeKind::NameExpr)
+      noteStdUse(static_cast<NameExpr*>(named)->name, named->token, static_cast<NameExpr*>(named));
+  }
   const Ty* t = walkExprDispatch(e);
   if (e && plainEnumWarningsOn() && file && !file->isImported && !probing)
     notePlainEnumUses(e); // (after: its operands' names are resolved)

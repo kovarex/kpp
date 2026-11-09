@@ -28,6 +28,19 @@
   Scope* stdScope = nullptr;          // --std-scope: the standard library's names (design.md 16)
   // Where the compiler finds what it names in the standard library: std, or the global scope without --std-scope.
   Scope* stdlibScope() { return stdScope ? stdScope : &root; }
+  // KPP_STD_USES (the rewrite to std::): each name of a program that reaches std only through the bridge. kind B bare, G
+  // `::x`, S a bare specialization, M a bare call of a name the global scope also declares (its `call`'s choice decides).
+  struct StdUse
+  {
+    const ParsedFile* file;
+    uint32_t token;
+    char kind;
+    uint32_t symbol;
+    NameExpr* call;
+  };
+  bool recordingStdUses = getenv("KPP_STD_USES") != nullptr;
+  std::mutex stdUsesMutex;
+  std::vector<StdUse> stdUses;
   std::vector<Scope*> libraryScopes; // each scoped library's names (design.md 16), by name once the index is finished
   std::vector<NamespaceDecl*> programNamespaces; // the top-level namespace blocks of the files of no scoped library
   std::unordered_set<uint32_t> unscopedLibraries; // the unscoped libraries' names, which qualify nothing (design.md 16)
