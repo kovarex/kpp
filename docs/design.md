@@ -4731,6 +4731,28 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   (none: 1430 built for each target, 289 skipped). CI's macos_build job runs both on every push, so
   M2's and M7's objects cannot regress unseen before M3. With M3 and M10 it becomes a bundle run on
   GitHub's macOS runners, as the FreeBSD jobs do.
+- **M3, the link (2026-11-09, thread E, before a real SDK was here):** a build for macos or macos-x64
+  links with ld64.lld through clang's Darwin driver: `--target=<triple> -fuse-ld=lld -isysroot SDK
+  -Wl,-dead_strip`, and the driver adds `-arch`, `-platform_version macos <oldest> <the SDK's version
+  from SDKSettings.json>`, `-syslibroot` and `-lSystem` (libc, libm, pthreads and the unwinder are
+  libSystem's). The SDK goes as -isysroot: given --sysroot the driver reads no version from it.
+  ld64.lld signs arm64 output ad hoc itself (an unsigned arm64 program does not run); x86-64 output is
+  unsigned, as ld64.lld's default is. The personality's weak references to kpp_eh_offset and
+  kpp_eh_terminate, which a program without a throw does not define, are allowed undefined
+  (`-Wl,-U,_NAME`: ld64.lld wants every undefined symbol found, and dyld binds a missing weak import
+  to null, as ELF does). A kept symbol (`--keep-symbol`) gets Mach-O's underscore. A release build's
+  ThinLTO cache is `-cache_path_lto`, and a full LTO link has no partitions (ld64.lld has none). An
+  optimized build's DWARF stays in its module objects, which the executable's debug map names, until
+  dsymutil (M5) gathers it into a .dSYM. A C library with C++ files links the SDK's libc++ (`-lc++`).
+  Checked against the stand-in SDK's libSystem.tbd, which lists the 54 libSystem functions the four
+  kpp/macos_* programs link, debug and release: specs macos_sdk_checked_before_the_build and
+  macos_stdlib_compiles_to_mach_o_objects (arm64), macos_x64_compiles_to_mach_o_objects and
+  macos_x64_stdlib_compiles_to_mach_o_objects, now `// target: macos` and `macos-x64` snippets that
+  link into Mach-O executables (LC_MAIN, libSystem.B.dylib, LC_BUILD_VERSION 11.0 or 10.15 with SDK
+  11.3, arm64's LC_CODE_SIGNATURE), built by run_spec.py --target macos and macos-x64. The other
+  snippets there defer their link with the stand-in (`--defer-link`), whose stub lists only those
+  names. Not checked until a real SDK: the names against its .tbd stubs, a run (M10), C libraries'
+  `.m` and C++ files.
 - **M2, Mach-O objects (2026-11-07):** a build for macos or macos-x64 compiles its modules into Mach-O
   objects and stops at the link with an error that says so (ld64.lld is M3), never another target's
   link. Mach-O has no COMDATs and LLVM refuses a module that names one: each module's text loses its

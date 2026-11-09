@@ -75,6 +75,30 @@ std::string linkFlags(const Options& options, bool wideEntry)
       flags += " \"" + lib + "\"";
     return flags;
   }
+  // macOS (design.md, "Targets and hosts", stage 8, M3): ld64.lld through clang's Darwin driver,
+  // which passes -arch, -platform_version (the triple's oldest system and the SDK's version, read from
+  // its SDKSettings.json), -syslibroot and -lSystem: the C library, its math, threads and the unwinder
+  // are all libSystem's. The SDK goes as -isysroot (given --sysroot instead the driver reads no
+  // version from it), unused code is dropped (-dead_strip, as --gc-sections), and ld64.lld signs arm64
+  // output ad hoc itself (macOS runs no unsigned arm64 program). A symbol to keep has Mach-O's
+  // leading underscore.
+  if (options.target.mac())
+  {
+    std::string flags = targetFlags(options).substr(1) + " -fuse-ld=lld -Wl,-dead_strip";
+    // The personality's weak references to kpp_eh_offset and kpp_eh_terminate (Runtime.cpp), which a
+    // program without a throw of its own does not define: ELF makes a missing one null, ld64.lld wants
+    // every undefined symbol found unless told (-U), and dyld then binds the missing weak import to
+    // null too. A program that defines them links them as any symbol.
+    flags += itaniumRuntime(options); // (an empty one, its error printed, fails the link by name)
+    flags += " -Wl,-U,_kpp_eh_offset -Wl,-U,_kpp_eh_terminate";
+    if (!options.sysroot.empty())
+      flags += " -isysroot \"" + options.sysroot + "\"";
+    for (const std::string& symbol : options.keepSymbols)
+      flags += " -Wl,-u,_" + symbol;
+    for (const std::string& lib : options.libs)
+      flags += " \"" + lib + "\"";
+    return flags;
+  }
   // Another target (ELF): ld.lld with the target's sysroot, unused sections dropped as /OPT:REF
   // drops them, the C library's math and threads (libm and pthreads are libraries of their own
   // there), --lib files.
@@ -130,7 +154,9 @@ std::string linkFlags(const Options& options, bool wideEntry)
 // report's symbolizer look for it. A debug build keeps its DWARF in the executable.
 std::string splitDebugInfoCommand(const Options& options)
 {
-  if (!options.debugInfo || !options.optimize || options.target.windows() || options.exe.empty())
+  // (macOS keeps its DWARF in the module objects, which the executable's debug map names, as a Mac
+  // build does until dsymutil gathers it into a .dSYM: the macOS plan's M5)
+  if (!options.debugInfo || !options.optimize || options.target.windows() || options.target.mac() || options.exe.empty())
     return "";
   std::string objcopy = std::string("llvm-objcopy") + host::executableSuffix();
   std::filesystem::path clang = clangPath();
@@ -165,7 +191,8 @@ std::string ltoLinkFlags(const Options& options)
   bool msvc = options.target.msvc();
   std::string partitions = std::to_string(options.ltoPartitions ? options.ltoPartitions : std::max(1u, options.threads));
   std::string level = std::to_string(options.optLevel);
-  if (options.fullLTO && !options.target.gnu)
+  // (ld64.lld has no LTO partitions: a full LTO link for macOS is one)
+  if (options.fullLTO && !options.target.gnu && !options.target.mac())
     flags += msvc ? " -Wl,/opt:lldltopartitions=" + partitions : " -Wl,--lto-partitions=" + partitions;
   if (options.optLevel != 2)
     flags += msvc ? " -Wl,/opt:lldlto=" + level : " -Wl,--lto-O" + level;

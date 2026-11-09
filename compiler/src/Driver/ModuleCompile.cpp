@@ -72,18 +72,6 @@ std::string forTarget(const std::string& text, const Target& target)
   return target.mac() ? withoutComdats(withUnwindTables(text)) : withUnwindTables(text);
 }
 
-// A build for macOS links nothing yet: its modules are compiled into Mach-O objects, and the link, ld64.lld
-// with the SDK's stubs, comes with stage 8's M3. An error that says so, never another target's link.
-static bool refuseMachOLink(const Options& options, const std::string& what)
-{
-  if (!options.target.mac())
-    return false;
-  fprintf(stderr, "error: --target %s: %s; kpp links no Mach-O program yet (docs/design.md, \"Targets and hosts\", stage 8)\n",
-          options.target.name.c_str(), what.c_str());
-  codegenExit = 1;
-  return true;
-}
-
 std::string withUnwindTables(const std::string& text)
 {
   std::string out;
@@ -703,13 +691,6 @@ void runCodegen(Build& build)
     cg.ir = forTarget(cg.ir, options.target);
     if (!writeFile(llPath, cg.ir) || options.exe.empty() || stop)
       return;
-    if (options.target.mac())
-    {
-      // (the module compiled alone, into the object the link would take)
-      int rc = host::shell("\"" + clang + "\" " + level + targetFlags(options) + " -w -c " + compileFlags + " \"" + llPath + "\" -o \"" + options.exe + ".o\"");
-      refuseMachOLink(options, rc == 0 ? "its object is " + options.exe + ".o" : "clang did not compile its module (exit " + std::to_string(rc) + ")");
-      return;
-    }
     std::string command = "\"" + clang + "\" " + level + targetFlags(options) + " -w " + compileFlags + " \"" + llPath + "\" -o \"" + options.exe + "\" " +
                           (fullLTO ? "-fuse-ld=lld " + ltoLinkFlags(options) + " " : std::string()) + linkFlags(options, wideEntry(parsed, symbols, options.target)) +
                           splitDebugInfoCommand(options);
@@ -865,8 +846,6 @@ void runCodegen(Build& build)
       continue; // a module clang rejected (--keep-going): the link reports what it would have defined
     response += "\"" + slashes(o) + "\"\n";
   }
-  if (refuseMachOLink(options, "its " + std::to_string(objects.size()) + " objects are written"))
-    return;
   response += "-o \"" + slashes(options.exe) + "\"\n";
   if (thinLTO)
   {
@@ -880,8 +859,10 @@ void runCodegen(Build& build)
     }
     else
     {
+      // (ld64.lld names its cache -cache_path_lto)
       response += "-Wl,--thinlto-jobs=" + std::to_string(std::max(1u, options.threads)) + "\n";
-      response += "\"-Wl,--thinlto-cache-dir=" + slashes(options.exe) + ".ltocache\"\n";
+      response += options.target.mac() ? "\"-Wl,-cache_path_lto," + slashes(options.exe) + ".ltocache\"\n"
+                                       : "\"-Wl,--thinlto-cache-dir=" + slashes(options.exe) + ".ltocache\"\n";
     }
   }
   else if (fullLTO)

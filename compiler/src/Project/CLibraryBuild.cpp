@@ -130,7 +130,8 @@ namespace projects
   // no particular libstdc++ of the system it runs on); FreeBSD: libc++ and libcxxrt, its C++ ABI
   // library (a FreeBSD program links statically); windows-gnu: llvm-mingw's libc++ (its C++ ABI part
   // in it) and libunwind, their archives by name, as the import libraries would make the program need
-  // libc++.dll and libunwind.dll. Nothing for MSVC's Windows or a library of C files only.
+  // libc++.dll and libunwind.dll; macOS: the SDK's libc++ (libc++.tbd, its C++ ABI part in libc++abi,
+  // which it reexports), the system's dylib. Nothing for MSVC's Windows or a library of C files only.
   std::vector<std::string> cppRuntimeLibraries(const fs::path& root, const CLibrary& c, const std::string& platform, bool gnu)
   {
     if ((platform == "windows" && !gnu) || !forPlatform(c.prebuilt, platform).empty())
@@ -141,6 +142,8 @@ namespace projects
         (void)file;
         if (platform == "freebsd")
           return {"-lc++", "-lcxxrt"};
+        if (platform == "mac")
+          return {"-lc++"};
         if (platform == "windows")
           return {"-l:libc++.a", "-l:libunwind.a"};
         return {"-l:libstdc++.a"};

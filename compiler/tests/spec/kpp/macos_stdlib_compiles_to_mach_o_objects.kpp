@@ -1,7 +1,6 @@
-// spec: a program of the standard library's threads, locks, condition variables, files, directories, the file system's space, clocks, a map and exceptions compiles for macos into Mach-O objects through the library's macOS layer (PlatformMac.kpp, CMac.kpp: macOS's pthread sizes and initializers, struct stat, statvfs and dirent, errno values); the link (M3) is not there yet, which kpp says
+// spec: a program of the standard library's threads, locks, condition variables, files, directories, the file system's space, clocks, a map and exceptions compiles for macos into Mach-O objects through the library's macOS layer (PlatformMac.kpp, CMac.kpp: macOS's pthread sizes and initializers, struct stat, statvfs and dirent, errno values) and links with ld64.lld against the SDK's libSystem.tbd (M3: every libSystem function the library calls there, by its macOS name)
+// target: macos (a Mach-O program: built, not run, by run_spec.py --target macos)
 // kpp: --target macos --sysroot {here}/macos_sdk_checked_before_the_build.sdk
-// error: error: --target macos: its
-// error: objects are written; kpp links no Mach-O program yet (docs/design.md, "Targets and hosts", stage 8)
 int main()
 {
   Mutex m;

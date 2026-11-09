@@ -409,10 +409,11 @@ jobs:
   # macOS (docs/design.md, "Targets and hosts", stage 8): every snippet built for macos and macos-x64
   # here (run_spec.py --target macos, macos-x64) against the stand-in SDK beside the spec's
   # kpp/macos_sdk_checked_before_the_build.kpp, until CI has a real one (the macOS plan's M10, for
-  # kovarex): its modules compiled to Mach-O objects, the build stopping where the link would be (kpp
-  # links no Mach-O program yet, M3). A snippet that imports C headers is skipped (the stand-in has
-  # none); compiler\tests\spec\macos-known-failures.txt lists those known not to build. Fails on a new
-  # failure and on a known one that builds. publish does not wait for it.
+  # kovarex): its modules compiled to Mach-O objects, and linked by ld64.lld where the snippet brings a
+  # stub SDK of its own (the stand-in's link is deferred: its libSystem.tbd lists only what the macOS
+  # specs link). A snippet that imports C headers is skipped (the stand-in has none);
+  # compiler\tests\spec\macos-known-failures.txt lists those known not to build. Fails on a new failure
+  # and on a known one that builds. publish does not wait for it.
   macos_build:
     needs: build
     runs-on: ${{ vars.KPP_CI_RUNNER || 'windows-2022' }}

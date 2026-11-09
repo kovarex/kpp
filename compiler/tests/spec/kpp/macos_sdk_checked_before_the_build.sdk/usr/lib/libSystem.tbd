@@ -1,6 +1,14 @@
 --- !tapi-tbd
+# A stand-in for a macOS SDK's libSystem stub (spec kpp/macos_*): the architectures kpp checks, and
+# the libSystem functions the spec's macOS programs link, debug and release, by their Mach-O names,
+# nothing more. A real SDK's libSystem.tbd re-exports them from libsystem_c, libsystem_pthread,
+# libunwind and the rest.
 tbd-version:     4
 targets:         [ x86_64-macos, x86_64-maccatalyst, arm64-macos,
                    arm64e-macos, arm64e-maccatalyst ]
 install-name:    '/usr/lib/libSystem.B.dylib'
+current-version: 1292.100.5
+exports:
+  - targets:     [ x86_64-macos, arm64-macos ]
+    symbols:     [ __Unwind_GetIPInfo, __Unwind_GetLanguageSpecificData, __Unwind_GetRegionStart, __Unwind_RaiseException, __Unwind_Resume, __Unwind_SetGR, __Unwind_SetIP, ___bzero, ___cxa_atexit, ___error, ___stderrp, ___stdinp, ___stdoutp, __tlv_bootstrap, _abort, _bzero, _clock_gettime, _closedir, dyld_stub_binder, _fflush, _fprintf, _fputc, _free, _fwrite, _getenv, _lstat, '_lstat$INODE64', _malloc, _memcmp, _memcpy, _memset, _mkdir, _nanosleep, _opendir, '_opendir$INODE64', _printf, _pthread_cond_broadcast, _pthread_cond_destroy, _pthread_create, _pthread_join, _pthread_mutex_destroy, _pthread_mutex_lock, _pthread_mutex_unlock, _pthread_rwlock_destroy, _pthread_self, _readdir, '_readdir$INODE64', _stat, '_stat$INODE64', _statvfs, _strerror, _strlen, _sysconf, _write ]
 ...

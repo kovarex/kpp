@@ -105,13 +105,15 @@ FreeBSD (run.sh there compares each program's output with its expected output, w
 
 --target macos and --target macos-x64 build every snippet for macOS arm64 and x86-64 (design.md,
 "Targets and hosts", stage 8) against a macOS SDK (KPP_SDK_MACOS, else the stand-in SDK beside
-kpp/macos_sdk_checked_before_the_build.kpp: its SDKSettings.json, stdio.h and libSystem.tbd, enough
-for kpp's check and nothing more, so that a snippet importing C headers is skipped with it), into build\\spec-macos or build\\spec-macos-x64, writing no
-spec-status.md. kpp links no Mach-O program yet (M3): a snippet whose modules all compile to Mach-O
-objects and whose build stops at that link, with no other error, is "built"; macos-known-failures.txt
-lists those that do not build yet, as freebsd-known-failures.txt does (`build area/name  why`), for
-both targets. Nothing runs (macOS runs on CI's macOS runners once kpp links, design.md Q5). Skipped
-as for FreeBSD.
+kpp/macos_sdk_checked_before_the_build.kpp: its SDKSettings.json, a stdio.h for kpp's check, and a
+libSystem.tbd listing the functions the spec's macOS programs link; a snippet importing C headers is
+skipped with it), into build\\spec-macos or build\\spec-macos-x64, writing no spec-status.md. With the
+stand-in a snippet's link is deferred (--defer-link: its modules compiled to Mach-O objects, the link
+command written and not run), unless the snippet names an SDK of its own (`--sysroot` in its `kpp:`
+line), whose link runs; with KPP_SDK_MACOS every link runs. A snippet is "built" when its objects and
+link command are written, or its link wrote a Mach-O executable; macos-known-failures.txt lists those
+that do not build yet, as freebsd-known-failures.txt does (`build area/name  why`), for both targets.
+Nothing runs (macOS programs run on CI's macOS runners, design.md Q5). Skipped as for FreeBSD.
 """
 import argparse, hashlib, os, platform, re, shlex, shutil, subprocess, sys, concurrent.futures, time
 
@@ -163,8 +165,8 @@ MACOS_TARGETS = ("macos", "macos-x64")
 # Without KPP_SDK_MACOS a snippet that imports C headers, or has a C source, is skipped: the stand-in
 # has none.
 MACOS_STAND_IN = "KPP_SDK_MACOS" not in os.environ
-# What kpp says where a Mach-O program's link would be (ModuleCompile.cpp's refuseMachOLink).
-MACOS_NO_LINK = "kpp links no Mach-O program yet"
+# A 64-bit Mach-O file's first four bytes (MH_MAGIC_64, little-endian).
+MACHO_MAGIC = b"\xcf\xfa\xed\xfe"
 # run.sh, written into the FreeBSD bundle: on FreeBSD, `sh run.sh` runs every built snippet (60 s and
 # 4 GB of address space each), compares its output, normalised as normalise() does, with its .expected, and ends with one
 # summary line; its exit code says the same. A program's exit code above 1 fails, as here. known.txt
@@ -369,8 +371,10 @@ def build_and_run(path, area, name, work):
     companions = os.path.splitext(path)[0] + ".files"
     sources = [path, companions] if os.path.isdir(companions) else [path]
     sources += library_roots(path)
+    # (macOS with the stand-in SDK: the link deferred, unless the snippet names its own SDK)
+    defer = ["--defer-link"] if TARGET in MACOS_TARGETS and MACOS_STAND_IN and "--sysroot" not in info["kpp"] else []
     try:
-        c = subprocess.run([KPP, "--quiet", *EXTRA, *shlex.split(info["kpp"]), *modules, *libs, "--exe", exe, *sources], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
+        c = subprocess.run([KPP, "--quiet", *EXTRA, *shlex.split(info["kpp"]), *modules, *libs, *defer, "--exe", exe, *sources], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
     except subprocess.TimeoutExpired:
         result["status"] = "FAIL"; result["note"] = "compiler timed out"; return finish(result)
     if info["errors"]:
@@ -393,13 +397,8 @@ def build_and_run(path, area, name, work):
         else:
             result["status"] = "pass"
         return finish(result)
-    if TARGET in MACOS_TARGETS and c.returncode == 1:
-        # The build stops at the link (M3): built, when that is its one error.
-        errors = [l.strip() for l in (c.stdout + c.stderr).splitlines() if "error:" in l]
-        if errors and all(MACOS_NO_LINK in e for e in errors):
-            result["status"] = "built"
-            return result
-    if c.returncode != 0 or not os.path.exists(exe):
+    deferred = bool(defer) and os.path.exists(exe + ".link.command")
+    if c.returncode != 0 or not (os.path.exists(exe) or deferred):
         result["status"] = "FAIL"
         # (exit 2: kpp refused its command line, as an --exe path too long for Windows' tools; it says why)
         if c.returncode not in (0, 1, 2):
@@ -420,6 +419,16 @@ def build_and_run(path, area, name, work):
     if unwanted:
         result["status"] = "FAIL"; result["note"] = f"a warning that should not be: `{unwanted[0]}`"
         return finish(result)
+    if TARGET in MACOS_TARGETS:
+        # Built: its objects and link command (deferred), or a Mach-O executable.
+        if not deferred:
+            with open(exe, "rb") as f:
+                magic = f.read(4)
+            if magic != MACHO_MAGIC:
+                result["status"] = "FAIL"; result["note"] = f"the link wrote no 64-bit Mach-O executable (its first bytes {magic.hex()})"
+                return finish(result)
+        result["status"] = "built"
+        return result
     if TARGET == "freebsd":
         # Into the bundle, beside run.sh: the program as <area>.<name>.elf, and its expected output,
         # normalised (the rest of its build goes with its directory).
@@ -809,7 +818,7 @@ def main():
     for entry in stale:
         print(f"FAIL    {entry}  -- {os.path.basename(KNOWN_MACOS if TARGET in MACOS_TARGETS else KNOWN_FREEBSD)} names no such snippet")
     print((f"{counts['built']} built (run.sh runs them on FreeBSD: {os.path.relpath(OUT, ROOT)}), {counts['known']} known not to build, " if TARGET == "freebsd" else
-           f"{counts['built']} built to Mach-O objects (kpp links no Mach-O program yet), {counts['known']} known not to build, " if TARGET in MACOS_TARGETS else "") + f"{counts['pass']} pass, {counts['pending']} pending, {counts['FAIL']} failing, {counts['fixed']} fixed" +
+           f"{counts['built']} built for {TARGET} (Mach-O, not run here), {counts['known']} known not to build, " if TARGET in MACOS_TARGETS else "") + f"{counts['pass']} pass, {counts['pending']} pending, {counts['FAIL']} failing, {counts['fixed']} fixed" +
           (f", {skipped} skipped for {TARGET or 'windows'}" if skipped else "") + f" ({elapsed:.1f} s)")
     if not args.no_doc and not args.filter and not only:
         write_doc(results, elapsed)
