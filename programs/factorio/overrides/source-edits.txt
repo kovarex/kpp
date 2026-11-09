@@ -1149,3 +1149,46 @@
 - }
 +   return strcmp(s1, s2) == 0;
 + }
+
+# A move of a const object copies it (its result is a const rvalue): the game's nine, which kpp's warning lists,
+# written as the copies they are, or, in InputAction's move constructor, given the non-const getter the
+# macro's other types have.
+
+@ src/Entity/CombatRobot.cpp: timeToLiveStr is const
+-   description.add(global->localise("description.robot-lifetime"), std::move(timeToLiveStr));
++   description.add(global->localise("description.robot-lifetime"), timeToLiveStr);
+
+@ src/Entity/RollingStock.cpp: setupData is const
+-     this->train->setSchedule(std::move(setupData.trainData->schedule), 0, nullptr, ApplyToAll::False);
++     this->train->setSchedule(setupData.trainData->schedule, 0, nullptr, ApplyToAll::False);
+
+@ src/Gui/AsteroidCollectorGui.cpp: canShow and canSet are const
+-                                                                             std::move(canShow),
+-                                                                             std::move(canSet),
++                                                                             canShow,
++                                                                             canSet,
+
+@ src/ID/Filters/PrototypeFilters.cpp: original is a const reference
+-   , original(std::move(original))
++   , original(original)
+
+@ src/Input/InputAction.hpp: the non-const getter every other type of the action's data has, which the move constructor's macro calls on its non-const `other`
+-     return this->getuint64_t();
+-   }
+-   const PermissionGroupID& getPermissionGroupID() const
++     return this->getuint64_t();
++   }
++   UnitNumber& getUnitNumber() { assert(InputAction::isCorrectDataTypeForAction(this->type, typeid(uint64_t))); return this->getuint64_t(); }
++   const PermissionGroupID& getPermissionGroupID() const
+
+@ src/Input/PlayerInputSource.cpp: pingMessage is const
+-       this->sendToListeners(InputAction::WriteToConsole(std::move(pingMessage)));
++       this->sendToListeners(InputAction::WriteToConsole(pingMessage));
+
+@ src/Item/QuickBarSlot.cpp: selection is const
+-   this->spidertronRemoteSelection = std::move(selection);
++   this->spidertronRemoteSelection = selection;
+
+@ src/Player.cpp: item is const
+-     entry.localisedString = std::move(item.second);
++     entry.localisedString = item.second;
