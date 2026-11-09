@@ -72,14 +72,10 @@ public:
   operator bool() const { return this->held != nullptr; }
   bool operator!() const { return this->held == nullptr; }
   bool operator==(const UniquePtr<T, D>& other) const { return this->held == other.held; }
-  bool operator!=(const UniquePtr<T, D>& other) const { return this->held != other.held; }
   bool operator==(nullptr_t) const { return this->held == nullptr; }
-  bool operator!=(nullptr_t) const { return this->held != nullptr; }
   // Against a plain pointer, of the same class or a base of it.
   template<typename U>
   bool operator==(const U* other) const { return this->held == other; }
-  template<typename U>
-  bool operator!=(const U* other) const { return this->held != other; }
 
   // Owns newPointer, then gives the old object (if any) to the deleter.
   void reset(T* newPointer)

@@ -725,9 +725,6 @@ public:
   bool operator==(const DequeIterator<T>& other) const { return this->position == other.position; }
   template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<T>> && !isSame<F, T>)
   bool operator==(const DequeIterator<F>& other) const { return this->position == other.position; }
-  bool operator!=(const DequeIterator<T>& other) const { return this->position != other.position; }
-  template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<T>> && !isSame<F, T>)
-  bool operator!=(const DequeIterator<F>& other) const { return this->position != other.position; }
   bool operator<(const DequeIterator<T>& other) const { return this->position < other.position; }
   template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<T>> && !isSame<F, T>)
   bool operator<(const DequeIterator<F>& other) const { return this->position < other.position; }

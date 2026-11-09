@@ -96,7 +96,6 @@ struct FunctionImpl
   operator bool() const { return this->target != nullptr; }
   bool operator!() const { return this->target == nullptr; }
   bool operator==(nullptr_t) const { return this->target == nullptr; }
-  bool operator!=(nullptr_t) const { return this->target != nullptr; }
 
   R operator()(Args... args) const
   {

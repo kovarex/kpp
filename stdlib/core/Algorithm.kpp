@@ -976,15 +976,12 @@ public:
 
   // Comparisons with a reverse iterator of the same It, and of another (const and non-const).
   bool operator==(const ReverseIterator<It>& other) const = default;
-  bool operator!=(const ReverseIterator<It>& other) const { return this->current != other.current; }
   bool operator<(const ReverseIterator<It>& other) const { return other.current < this->current; }
   bool operator>(const ReverseIterator<It>& other) const { return this->current < other.current; }
   bool operator<=(const ReverseIterator<It>& other) const { return !(this->current < other.current); }
   bool operator>=(const ReverseIterator<It>& other) const { return !(other.current < this->current); }
   template<typename U>
   bool operator==(const ReverseIterator<U>& other) const { return this->current == other.current; }
-  template<typename U>
-  bool operator!=(const ReverseIterator<U>& other) const { return this->current != other.current; }
   template<typename U>
   bool operator<(const ReverseIterator<U>& other) const { return other.current < this->current; }
   template<typename U>

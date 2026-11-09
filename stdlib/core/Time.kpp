@@ -162,8 +162,6 @@ public:
   template<typename Rep2, typename Period2>
   bool operator==(const Duration<Rep2, Period2>& other) const { return compareDurations(*this, other) == 0; }
   template<typename Rep2, typename Period2>
-  bool operator!=(const Duration<Rep2, Period2>& other) const { return compareDurations(*this, other) != 0; }
-  template<typename Rep2, typename Period2>
   bool operator<(const Duration<Rep2, Period2>& other) const { return compareDurations(*this, other) < 0; }
   template<typename Rep2, typename Period2>
   bool operator<=(const Duration<Rep2, Period2>& other) const { return compareDurations(*this, other) <= 0; }
@@ -361,8 +359,6 @@ public:
   // Comparisons with a time point of the clock in any duration.
   template<typename Dur2>
   bool operator==(const TimePoint<Clock, Dur2>& other) const { return this->sinceEpoch == other.sinceEpoch; }
-  template<typename Dur2>
-  bool operator!=(const TimePoint<Clock, Dur2>& other) const { return this->sinceEpoch != other.sinceEpoch; }
   template<typename Dur2>
   bool operator<(const TimePoint<Clock, Dur2>& other) const { return this->sinceEpoch < other.sinceEpoch; }
   template<typename Dur2>

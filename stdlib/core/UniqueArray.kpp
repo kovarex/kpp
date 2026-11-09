@@ -38,7 +38,6 @@ public:
   operator bool() const { return this->pointer != nullptr; }
   bool operator!() const { return this->pointer == nullptr; }
   bool operator==(nullptr_t) const { return this->pointer == nullptr; }
-  bool operator!=(nullptr_t) const { return this->pointer != nullptr; }
 
   // The array, which the caller now owns (to give to `delete[]`); the UniqueArray is empty.
   T* release()

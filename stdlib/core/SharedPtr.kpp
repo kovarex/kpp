@@ -191,10 +191,8 @@ public:
   operator bool() const { return this->pointer != nullptr; }
   bool operator!() const { return this->pointer == nullptr; }
   bool operator==(const SharedPtr<T>& other) const { return this->pointer == other.pointer; }
-  bool operator!=(const SharedPtr<T>& other) const { return this->pointer != other.pointer; }
   bool operator<(const SharedPtr<T>& other) const { return this->pointer < other.pointer; }
   bool operator==(nullptr_t) const { return this->pointer == nullptr; }
-  bool operator!=(nullptr_t) const { return this->pointer != nullptr; }
   i32 use_count() const { return this->control ? this->control->strong.load() : 0; }
   i32 useCount() const { return this->use_count(); }
 

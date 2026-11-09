@@ -49,7 +49,6 @@ struct ErrorCategory
   bool system = false;
 
   bool operator==(const ErrorCategory& other) const = default;
-  bool operator!=(const ErrorCategory& other) const { return this->system != other.system; }
   const char* name() const { return this->system ? "system" : "generic"; }
 };
 
@@ -201,7 +200,6 @@ public:
   implicit ExceptionPtr(nullptr_t) {}
   operator bool() const { return (bool)this->holder; }
   bool operator==(const ExceptionPtr& other) const = default;
-  bool operator!=(const ExceptionPtr& other) const { return this->holder != other.holder; }
 
 private:
   template<typename E> friend ExceptionPtr makeExceptionPtr(const E& exception);

@@ -999,7 +999,6 @@ struct Atomic
   T operator+=(T delta) requires (!isPointer<T>) { return this->fetchAdd(delta) + delta; }
   T operator-=(T delta) requires (!isPointer<T>) { return this->fetchSub(delta) - delta; }
   bool operator==(T other) const { return this->load() == other; }
-  bool operator!=(T other) const { return this->load() != other; }
 
   // Blocks while the value's bits are old's (std::atomic::wait); a notify after a store that
   // changed them wakes it. Waiters and notifiers meet at the lock and condition variable of

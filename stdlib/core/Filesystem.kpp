@@ -351,7 +351,6 @@ namespace filesystem
   // Comparisons by compare(), free so that a String or a `const char*` converts on either side
   // (`name == directory` with a String name).
   bool operator==(const path& left, const path& right) { return left.compare(right) == 0; }
-  bool operator!=(const path& left, const path& right) { return left.compare(right) != 0; }
   bool operator<(const path& left, const path& right) { return left.compare(right) < 0; }
   bool operator<=(const path& left, const path& right) { return left.compare(right) <= 0; }
   bool operator>(const path& left, const path& right) { return left.compare(right) > 0; }
@@ -1129,7 +1128,6 @@ namespace filesystem
     u64 hard_link_count() const { return filesystem::hard_link_count(this->pathValue); }
 
     bool operator==(const directory_entry& other) const { return this->pathValue == other.pathValue; }
-    bool operator!=(const directory_entry& other) const { return this->pathValue != other.pathValue; }
     bool operator<(const directory_entry& other) const { return this->pathValue < other.pathValue; }
 
   private:
@@ -1231,7 +1229,6 @@ namespace filesystem
     const directory_entry& operator*() const { return this->listing->entry; }
     const directory_entry* operator->() const { return &this->listing->entry; }
     bool operator==(const directory_iterator& other) const = default;
-    bool operator!=(const directory_iterator& other) const { return this->listing != other.listing; }
 
   private:
     SharedPtr<DirectoryListing> listing;
@@ -1358,7 +1355,6 @@ namespace filesystem
     }
 
     bool operator==(const recursive_directory_iterator& other) const { return this->listing == other.listing; }
-    bool operator!=(const recursive_directory_iterator& other) const { return this->listing != other.listing; }
 
   private:
     void open(const path& p, directory_options options, ErrorCode& ec)

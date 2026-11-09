@@ -90,7 +90,6 @@ public:
   i64 operator-(const MoveIterator<It>& other) const { return this->current - other.current; }
   It base() const { return this->current; }
   bool operator==(const MoveIterator<It>& other) const = default;
-  bool operator!=(const MoveIterator<It>& other) const { return this->current != other.current; }
   bool operator<(const MoveIterator<It>& other) const { return this->current < other.current; }
   bool operator<=(const MoveIterator<It>& other) const { return this->current <= other.current; }
   bool operator>(const MoveIterator<It>& other) const { return this->current > other.current; }

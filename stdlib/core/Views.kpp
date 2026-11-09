@@ -110,7 +110,6 @@ public:
   IotaIterator<T> operator-(i64 n) const { return IotaIterator<T>((T)(this->value - n)); }
   i64 operator-(const IotaIterator<T>& other) const { return (i64)this->value - (i64)other.value; }
   bool operator==(const IotaIterator<T>& other) const { return this->value == other.value; }
-  bool operator!=(const IotaIterator<T>& other) const { return this->value != other.value; }
   bool operator<(const IotaIterator<T>& other) const { return this->value < other.value; }
   bool operator>(const IotaIterator<T>& other) const { return other.value < this->value; }
   bool operator<=(const IotaIterator<T>& other) const { return !(other.value < this->value); }
@@ -179,7 +178,6 @@ public:
 
   i64 operator-(const TransformIterator<It, F>& other) const { return distance(other.position, this->position); }
   bool operator==(const TransformIterator<It, F>& other) const { return this->position == other.position; }
-  bool operator!=(const TransformIterator<It, F>& other) const { return this->position != other.position; }
 
 private:
   It position;
@@ -264,7 +262,6 @@ public:
   }
 
   bool operator==(const ReverseViewIterator<It>& other) const { return this->position == other.position; }
-  bool operator!=(const ReverseViewIterator<It>& other) const { return this->position != other.position; }
 
 private:
   It position; // one past the element *this yields

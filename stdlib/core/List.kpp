@@ -55,9 +55,6 @@ public:
   bool operator==(const ListIterator<T>& other) const = default;
   template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<T>> && !isSame<F, T>)
   bool operator==(const ListIterator<F>& other) const { return this->node == other.node; }
-  bool operator!=(const ListIterator<T>& other) const { return this->node != other.node; }
-  template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<T>> && !isSame<F, T>)
-  bool operator!=(const ListIterator<F>& other) const { return this->node != other.node; }
 
   ListIterator<T>& operator++()
   {

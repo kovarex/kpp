@@ -211,7 +211,6 @@ public:
   }
 
   bool operator==(const Utf8CodePointIterator& other) const { return this->at == other.at; }
-  bool operator!=(const Utf8CodePointIterator& other) const { return this->at != other.at; }
 
 private:
   StringView text;

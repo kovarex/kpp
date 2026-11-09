@@ -343,9 +343,6 @@ public:
   bool operator==(const RbIterator<E>& other) const = default;
   template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<E>> && !isSame<F, E>)
   bool operator==(const RbIterator<F>& other) const { return this->node == other.node; }
-  bool operator!=(const RbIterator<E>& other) const { return this->node != other.node; }
-  template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<E>> && !isSame<F, E>)
-  bool operator!=(const RbIterator<F>& other) const { return this->node != other.node; }
 
   RbIterator<E>& operator++()
   {

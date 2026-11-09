@@ -321,7 +321,6 @@ struct Optional : OptionalValue<T>
   }
 
   bool operator==(NullOpt) const { return !this->present; }
-  bool operator!=(NullOpt) const { return this->present; }
 
   // An absent optional orders before every present one.
   bool operator<(const Optional<T>& other) const

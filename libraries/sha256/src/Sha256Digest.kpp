@@ -20,7 +20,6 @@ struct Sha256Digest
 
   // In constant time: how long it takes says nothing about where two digests differ.
   bool operator==(const Sha256Digest& other) const { return Sha256::constantTimeEqual(this->view(), other.view()); }
-  bool operator!=(const Sha256Digest& other) const { return !(*this == other); }
 
   StringView view() const { return StringView((const char*)this->bytes, 32); }
 

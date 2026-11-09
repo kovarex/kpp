@@ -185,8 +185,6 @@ struct JsonValue
     return false;
   }
 
-  bool operator!=(const JsonValue& other) const { return !(*this == other); }
-
   // The value as compact JSON, for messages and the test runner's check values.
   String str() const { return writeJson(*this); }
 

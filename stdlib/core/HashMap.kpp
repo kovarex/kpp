@@ -68,9 +68,6 @@ public:
   bool operator==(const HashIterator<E, stable>& other) const { return this->index == other.index; }
   template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<E>> && !isSame<F, E>)
   bool operator==(const HashIterator<F, stable>& other) const { return this->index == other.index; }
-  bool operator!=(const HashIterator<E, stable>& other) const { return this->index != other.index; }
-  template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<E>> && !isSame<F, E>)
-  bool operator!=(const HashIterator<F, stable>& other) const { return this->index != other.index; }
 
   HashIterator<E, stable>& operator++()
   {
