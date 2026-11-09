@@ -1,0 +1,95 @@
+// spec: when an element of the array a brace list makes for an InitializerList throws while it is built, the elements already built are destroyed, whether the list is a function's argument, a variable or a constructor's argument ([except.ctor] 3): nothing is left at any point (`left 0` on every line), clang's output with MSVC's STL and g++'s with libstdc++ (the C++ with std::initializer_list and std::vector)
+// found by thread I's battery bomb1 (2026-11-09), through `List<Bomb> x = {a, b, c}` and each other container: `f({a, b, c})` left the first elements undestroyed when a later one's copy threw (`left 1`, `left 2`)
+extern "C" int printf(const char* format, ...);
+int live = 0;
+int fuse = -1;
+
+void tick()
+{
+  if (fuse == 0)
+  {
+    fuse = -1;
+    throw 42;
+  }
+  if (fuse > 0)
+    --fuse;
+}
+
+struct B
+{
+  int v;
+  B(int x) : v(x)
+  {
+    tick();
+    ++live;
+  }
+  B(const B& o) : v(o.v)
+  {
+    tick();
+    ++live;
+  }
+  ~B() { --live; }
+};
+
+int total(InitializerList<B> items)
+{
+  int sum = 0;
+  for (const B& x : items)
+    sum += x.v;
+  return sum;
+}
+
+int main()
+{
+  B a(1), b(2), c(3);
+  int base = live;
+  for (int f = 0; f < 5; ++f)
+  {
+    fuse = f;
+    try
+    {
+      int s = total({a, b, c});
+      printf("argument, fuse %d: sum %d", f, s);
+    }
+    catch (int e)
+    {
+      printf("argument, fuse %d: caught %d", f, e);
+    }
+    fuse = -1;
+    printf(", left %d\n", live - base);
+  }
+  for (int f = 0; f < 5; ++f)
+  {
+    fuse = f;
+    try
+    {
+      InitializerList<B> items = {a, b, c};
+      int s = 0;
+      for (const B& x : items)
+        s += x.v;
+      printf("variable, fuse %d: sum %d", f, s);
+    }
+    catch (int e)
+    {
+      printf("variable, fuse %d: caught %d", f, e);
+    }
+    fuse = -1;
+    printf(", left %d\n", live - base);
+  }
+  for (int f = 0; f < 8; ++f)
+  {
+    fuse = f;
+    try
+    {
+      Vector<B> built = {a, b, c};
+      printf("constructor, fuse %d: size %d", f, (int)built.size());
+    }
+    catch (int e)
+    {
+      printf("constructor, fuse %d: caught %d", f, e);
+    }
+    fuse = -1;
+    printf(", left %d\n", live - base);
+  }
+  return 0;
+}

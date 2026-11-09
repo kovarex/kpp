@@ -121,21 +121,28 @@ auto codegen::Emitter::initializerListTemporary(const Ty* listTy, BraceInitExpr*
   else
     array = newObjectSlot(arrayTy, at);
   uint32_t i = 0;
-  auto initializeElement = [&](Expr* value)
   {
-    std::string slot = newTemp();
-    fn += "  " + slot + " = getelementptr inbounds " + llType(arrayTy, at) + ", ptr " + array + ", i64 0, i64 " + std::to_string(i++) + "\n";
-    initializeFrom(slot, element, value, at);
-  };
-  for (Expr* a : b->args)
-  {
-    if (isPackExpansion(a))
+    // The elements built so far are destroyed if a later one's construction throws, as an array's
+    // are (initializeArrayElements), until the array is registered whole below (until 2026-11-09
+    // `f({a, b, c})` left the first ones undestroyed when the last one's copy threw).
+    InlineParts parts(*this, at, true);
+    auto initializeElement = [&](Expr* value)
     {
-      Expr* pattern = static_cast<UnaryExpr*>(a)->operand;
-      forEachPackElement(pattern, at, [&](size_t) { initializeElement(pattern); });
+      std::string slot = newTemp();
+      fn += "  " + slot + " = getelementptr inbounds " + llType(arrayTy, at) + ", ptr " + array + ", i64 0, i64 " + std::to_string(i++) + "\n";
+      initializeFrom(slot, element, value, at);
+      parts.built(slot, element);
+    };
+    for (Expr* a : b->args)
+    {
+      if (isPackExpansion(a))
+      {
+        Expr* pattern = static_cast<UnaryExpr*>(a)->operand;
+        forEachPackElement(pattern, at, [&](size_t) { initializeElement(pattern); });
+      }
+      else
+        initializeElement(a);
     }
-    else
-      initializeElement(a);
   }
   if (!variable.empty() && !staticArray && needsDestruction(arrayTy, at))
     scopes.back().push_back({array, arrayTy}); // destroyed with the variable's scope
