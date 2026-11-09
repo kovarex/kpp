@@ -101,6 +101,32 @@ first 8 hex digits, and its program is `program.exe` (an 80-character name in a 
 tests\longpaths.ps1 builds an executable at 238 characters, expects the error at 239, and runs that
 snippet under a 140-character output directory.
 
+**The allocator (2026-11-09).** kpp's malloc is rpmalloc 1.4.5 (public domain), vendored unchanged
+in compiler/third_party/rpmalloc (its README names the archive and its SHA-256), on every host,
+with LLVM or without. Until then only kpp built with LLVM had it, by accident: LLVM's Windows
+release links rpmalloc into LLVMSupport.lib, whose malloc the linker took before the C runtime's.
+That copy was worth about 35% of the front end (A's measurement: resolve 1.40 to 0.87 s, instance
+checking's CPU 28.5 to 18.2 s), and a build without LLVM, a Linux build or a changed link order
+lost it without a word. compiler/src/allocator.c compiles rpmalloc into kpp:
+- Windows: kpp is built with the static C runtime (/MT) with LLVM or without, since only that lets
+  an executable replace malloc. rpmalloc's own malloc.c defines malloc and the runtime's
+  `_malloc_base` family, which the linker takes before libucrt's (and before LLVMSupport.lib's
+  copy, which is no longer linked). A thread's heap is made at its first allocation and released
+  at its exit by a fiber-local storage callback: LLVM's configuration.
+- Linux and FreeBSD: allocator.c defines malloc, free, calloc, realloc, the aligned ones and
+  malloc_usable_size in the executable, where they interpose libc's for every library. It does not
+  use rpmalloc's preload mode, which replaces pthread_create through dlsym and finalizes the
+  allocator from a destructor at exit, while kpp's detached threads (the compile server's idle
+  check) may still allocate. Instead a thread's heap is made at its first allocation and released
+  at its exit by a pthread key's destructor. FreeBSD is compiled against its sysroot but not run
+  (kpp does not run there yet).
+
+`kpp --version` checks it: each way kpp allocates (malloc, calloc, realloc, operator new and
+new[], the C runtime's strdup) must return the block rpmalloc's heap of that thread hands out
+next. Its last line is `allocator: rpmalloc 1.4.5`, or `allocator: not rpmalloc 1.4.5: ...`
+naming the ones that went elsewhere, with exit code 1. run_tests' project test and CI's Linux
+jobs run it. A build with the override taken out fails it on all six.
+
 **Programs describe their builds in .cmd scripts.** `programs/factorio/link-settings.cmd` sets
 `KPP`, `CINC` (8 `--cinclude`) and `LIBS` (19 libraries of the game's C++ build, 21 Windows
 libraries, the shims and the resource file). `link.cmd` and `run.cmd` both call it and then each

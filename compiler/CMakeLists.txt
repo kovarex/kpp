@@ -14,6 +14,8 @@ endif()
 
 add_executable(kpp
   src/main.cpp
+  src/allocator.c
+  src/allocator.cpp
   src/Driver/BodyGraft.cpp
   src/Driver/CImport.cpp
   src/Driver/Compile.cpp
@@ -90,6 +92,18 @@ add_executable(kpp
 )
 target_include_directories(kpp PRIVATE src)
 
+# kpp's allocator (src/allocator.c, docs/build.md "The allocator"): rpmalloc 1.4.5, vendored in
+# third_party/rpmalloc, is malloc for the whole process on every host; kpp --version checks it. Its
+# source is rpmalloc's own, warnings and all. On Windows only the static C runtime lets an
+# executable replace malloc (the DLL's own allocations would stay on the Windows heap), so kpp is
+# built with it, with LLVM or without.
+if (MSVC)
+  set_source_files_properties(src/allocator.c PROPERTIES COMPILE_OPTIONS "/W0;/WX-")
+  set_property(TARGET kpp PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
+else()
+  set_source_files_properties(src/allocator.c PROPERTIES COMPILE_OPTIONS "-w")
+endif()
+
 # kpp's version (docs/build.md, "Versions"): version.cmake runs at every build and rewrites
 # generated/version.hpp only when the version or the commit changed, so only version.cpp recompiles.
 add_custom_target(kpp_version
@@ -131,8 +145,7 @@ if (KPP_LLVM_DIR)
   list(FILTER kpp_llvm_libs EXCLUDE REGEX "LLVM-C[.]lib$")
   target_include_directories(kpp PRIVATE "${KPP_LLVM_DIR}/include")
   target_compile_definitions(kpp PRIVATE KPP_WITH_LLVM)
-  # The release's libraries are built against the static C runtime (/MT): so is kpp with them.
-  set_property(TARGET kpp PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
+  # (The release's libraries are built against the static C runtime, /MT, as kpp is: above.)
   target_link_libraries(kpp PRIVATE ${kpp_llvm_libs} psapi shell32 ole32 uuid advapi32 ws2_32 ntdll)
   if (MSVC)
     # (LLVM's headers are not warning-free at /W4.)

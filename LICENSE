@@ -235,6 +235,9 @@ The license above does not cover these; each keeps its own terms:
   (libraries/markdown/commonmark.js-LICENSE.txt), with mdurl's URL encoding,
   under the MIT License, Copyright (c) 2015 Vitaly Puzrin, Alex Kocharin
   (libraries/markdown/mdurl-LICENSE.txt).
+- compiler/third_party/rpmalloc/: rpmalloc 1.4.5, kpp's allocator, by Mattias
+  Jansson, released into the public domain, or under the MIT License where
+  public domain is not recognised (compiler/third_party/rpmalloc/LICENSE).
 - stdlib/core/Calendar.kpp: daysFromCivil and civilFromDays are Howard
   Hinnant's date algorithms, which he donated to the public domain.
 - programs/factorio/: the conversion of Factorio, the game of Wube Software.

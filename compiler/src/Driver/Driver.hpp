@@ -20,6 +20,7 @@
 #include "backend.hpp"
 #include "packages.hpp"
 #include "sha256.hpp"
+#include "allocator.hpp"
 #include <algorithm>
 #include <atomic>
 #include <condition_variable>

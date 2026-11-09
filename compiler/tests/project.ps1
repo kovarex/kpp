@@ -694,7 +694,7 @@ void configure(Cell& cell)
     cmd /c rd /s /q build
     $output = (Kpp @('--version')) -join "`n"
     if ($code -ne 0 -or $output -notmatch '^kpp \d+\.\d+\.\d+(\+dirty)?, commit [0-9a-f]{40}\r?\n' -or $output -notmatch "(?m)^compiler: $([regex]::Escape($KppExe))$" -or
-        $output -notmatch '(?m)^toolchain: ' -or $output -notmatch '(?m)^stdlib: .*stdlib$') { Fail "kpp --version in a project: exit $code`n$output" }
+        $output -notmatch '(?m)^toolchain: ' -or $output -notmatch '(?m)^stdlib: .*stdlib$' -or $output -notmatch '(?m)^allocator: rpmalloc \d') { Fail "kpp --version in a project: exit $code`n$output" }
     $output = (Kpp @('--help')) -join "`n"
     if ($code -ne 0 -or $output -notmatch '^usage: kpp' -or $output -notmatch '--version') { Fail "kpp --help in a project: exit $code`n$output" }
     foreach ($case in @(

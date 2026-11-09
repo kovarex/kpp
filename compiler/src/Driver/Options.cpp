@@ -216,6 +216,12 @@ int printVersion()
   for (const std::string& n : found)
     names += (names.empty() ? "" : ", ") + n;
   printf("libraries: %s (%s)\n", libraries.string().c_str(), names.empty() ? "none" : names.c_str());
-  return 0;
+  // The allocator, checked (allocator.hpp): a kpp whose malloc is not it says so and exits 1.
+  std::string allocatorProblem = allocator::check();
+  if (allocatorProblem.empty())
+    printf("allocator: %s\n", allocator::name());
+  else
+    printf("allocator: not %s: %s\n", allocator::name(), allocatorProblem.c_str());
+  return allocatorProblem.empty() ? 0 : 1;
 }
 }
