@@ -712,6 +712,26 @@ auto GlobalScope::Impl::classDefinition(const Ty* t) -> ClassDecl*
 
 auto GlobalScope::Impl::directBases(const Ty* t, ClassDecl* def, std::vector<const Ty*>& out) -> bool
 {
+  // `template<int N> struct G : G<N + 1> {}` has no end: each instance's base is a new instance. A number of its own, far below the
+  // classes' 4096, so that it is an error as soon as the walk gets there, not after every class has walked to the limit.
+  auto nestedInstance = [&](const Ty* base)
+  {
+    if (t->args.empty() || base->kind != TyKind::Class || base->args.empty())
+      return true;
+    int depth = std::atomic_ref<uint16_t>(t->instanceBases).load(std::memory_order_relaxed) + 1;
+    if (depth > maxInstanceBases)
+    {
+      reportCheckerError(def->file, def->token, "instances of " + std::string(debugName(def->name.last().symbol)) + " are nested more than " +
+                                                    std::to_string(maxInstanceBases) + " deep through their bases");
+      return false;
+    }
+    std::atomic_ref<uint16_t> known(base->instanceBases);
+    uint16_t seen = known.load(std::memory_order_relaxed);
+    while (seen < depth && !known.compare_exchange_weak(seen, uint16_t(depth), std::memory_order_relaxed))
+    {
+    }
+    return true;
+  };
   DeclContext dc;
   declContextFor(def, dc);
   Subst s = substFor(t);
@@ -725,13 +745,13 @@ auto GlobalScope::Impl::directBases(const Ty* t, ClassDecl* def, std::vector<con
     {
       for (const Ty* element : bt->args)
       {
-        if (!element || !element->isKnown() || types.isDependent(element))
+        if (!element || !element->isKnown() || types.isDependent(element) || !nestedInstance(element))
           return false;
         out.push_back(element);
       }
       continue;
     }
-    if (b.isPack || !bt || !bt->isKnown() || types.isDependent(bt))
+    if (b.isPack || !bt || !bt->isKnown() || types.isDependent(bt) || !nestedInstance(bt))
       return false;
     out.push_back(bt);
   }

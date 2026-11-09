@@ -235,6 +235,7 @@
   // recursion through them that no name evaluation is part of.
   static constexpr int maxNestedNames = 1024, maxNestedCalls = 512, maxNestedLevels = 4096;
   static constexpr int maxArrowChain = 256; // operator-> returning a class with an operator-> (clang's -foperator-arrow-depth)
+  static constexpr int maxInstanceBases = 1024; // class template instances each other's bases (clang's -ftemplate-depth)
   static thread_local int nameEvaluations, cachedLevels;
   static thread_local int deepestNames, deepestCalls, deepestLevels; // the most nested so far in the innermost CachedEvaluation
   static thread_local uint64_t evaluationTrips;

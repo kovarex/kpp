@@ -60,6 +60,9 @@ struct Ty
   bool isConst = false;
   bool isVolatile = false;
   bool variadic = false;
+  // A class template's instance: how many instances it is below through their bases, the deepest seen
+  // (GlobalScope::Impl::directBases). No part of the type's identity. Written from several threads, through atomic_ref.
+  mutable uint16_t instanceBases = 0;
   uint32_t count = 0;
   int64_t value = 0; // Value kinds only.
   const Ty* inner = nullptr;

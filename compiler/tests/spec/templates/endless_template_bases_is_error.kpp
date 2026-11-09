@@ -1,0 +1,5 @@
+// spec: a class template whose instances are each other's bases without end is an error of its own, at 1024 instances ([temp.inst] 16's implementation limit, clang's -ftemplate-depth): as quickly as the walk reaches it, and it says what is wrong
+// error: endless_template_bases_is_error.kpp:3: error: instances of G are nested more than 1024 deep through their bases
+template<int N> struct G : G<N + 1> {};
+G<0> g;
+int main() { return 0; }
