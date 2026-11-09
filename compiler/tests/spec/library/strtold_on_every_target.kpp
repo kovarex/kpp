@@ -1,0 +1,18 @@
+// spec: strtold gives the string's value as kpp's long double, which is a double on every target (strtod's value), and where the number ends through its endptr, by a call and through its address
+// found in thread I's audit of what Mach-O shares with ELF (2026-11-07): the library declared C's strtold, which off Windows returns x87's 80 bits (binary128 on Linux arm64) where kpp reads a double: under WSL this printed `0 5`, `5.404720059724e-310 8`, `1.573133380715708e-76 7` and `4.665362402915139e-62`; codegen refused only an imported C function of long double
+int main()
+{
+  const char* text = "0.125xyz";
+  char* end = nullptr;
+  long double value = strtold(text, &end);
+  println(value, " ", end - text);
+  const char* spaced = "  -2.5e3!";
+  value = strtold(spaced, &end);
+  println(value, " ", end - spaced);
+  const char* hex = "0x1.8p1";
+  value = strtold(hex, &end);
+  println(value, " ", end - hex);
+  auto parse = &strtold;
+  println(parse("0.5", nullptr));
+  return 0;
+}
