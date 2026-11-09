@@ -49,8 +49,20 @@ public:
 
   bool good() const { return !this->atEnd && !this->failed; }
   bool eof() const { return this->atEnd; }
+  bool fail() const { return this->failed; }
   operator bool() const { return !this->failed; }
   bool operator!() const { return this->failed; }
+
+  // Forgets the state; the file stays where it is. The next read asks the file again, so a file that
+  // grew since its end was reached goes on (std::basic_ios::clear; clearerr as C's stdio would
+  // otherwise keep answering from its own end flag).
+  void clear()
+  {
+    this->atEnd = false;
+    this->failed = false;
+    if (this->handle)
+      clearerr(this->handle);
+  }
 
   // The next byte. -1 past the end, which fails and sets the end, and of a stream that is not good,
   // which fails.

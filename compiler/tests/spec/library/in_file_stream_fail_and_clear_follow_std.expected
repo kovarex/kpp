@@ -1,0 +1,60 @@
+default constructed                  bool 1 not 0 good 1 eof 0 fail 0
+opened                               bool 1 not 0 good 1 eof 0 fail 0
+missing                              bool 0 not 1 good 0 eof 0 fail 1
+missing: cleared                     bool 1 not 0 good 1 eof 0 fail 0
+missing: get -1
+missing: after get                   bool 0 not 1 good 0 eof 1 fail 1
+missing: open 0
+first line                           bool 1 not 0 good 1 eof 0 fail 0
+last line, no newline                bool 1 not 0 good 0 eof 1 fail 0
+[second]
+cleared at the end                   bool 1 not 0 good 1 eof 0 fail 0
+getline after clear 0 []
+getline at the end                   bool 0 not 1 good 0 eof 1 fail 1
+cleared and rewound                  bool 1 not 0 good 1 eof 0 fail 0
+[first]
+read after rewinding                 bool 1 not 0 good 1 eof 0 fail 0
+read past the end                    bool 0 not 1 good 0 eof 1 fail 1
+read after failing                   bool 0 not 1 good 0 eof 1 fail 1
+seek after failing                   bool 0 not 1 good 0 eof 0 fail 1
+get after failing -1
+after that get                       bool 0 not 1 good 0 eof 0 fail 1
+tellg -1
+cleared after failing                bool 1 not 0 good 1 eof 0 fail 0
+seek after clearing                  bool 1 not 0 good 1 eof 0 fail 0
+get f
+after get                            bool 1 not 0 good 1 eof 0 fail 0
+tellg 1
+bytes 12
+get past the end                     bool 0 not 1 good 0 eof 1 fail 1
+cleared                              bool 1 not 0 good 1 eof 0 fail 0
+get -1
+get past the end again               bool 0 not 1 good 0 eof 1 fail 1
+ignore to the end                    bool 1 not 0 good 0 eof 1 fail 0
+ignore at the end                    bool 0 not 1 good 0 eof 1 fail 1
+cleared                              bool 1 not 0 good 1 eof 0 fail 0
+ignore after clearing                bool 1 not 0 good 0 eof 1 fail 0
+closed                               bool 1 not 0 good 1 eof 0 fail 0
+closed twice                         bool 0 not 1 good 0 eof 0 fail 1
+cleared                              bool 1 not 0 good 1 eof 0 fail 0
+get -1
+get with no file                     bool 0 not 1 good 0 eof 1 fail 1
+opened again                         bool 1 not 0 good 1 eof 0 fail 0
+get f
+open while open                      bool 0 not 1 good 0 eof 0 fail 1
+cleared                              bool 1 not 0 good 1 eof 0 fail 0
+get f
+open 1
+cleared while good                   bool 1 not 0 good 1 eof 0 fail 0
+got f i
+grew: at the end                     bool 0 not 1 good 0 eof 1 fail 1
+grew: no clear, get -1
+grew: not cleared                    bool 0 not 1 good 0 eof 1 fail 1
+grew: cleared, get c
+grew: after get                      bool 1 not 0 good 1 eof 0 fail 0
+grew: get d
+grew: get -1
+grew: at the end again               bool 0 not 1 good 0 eof 1 fail 1
+moved, failed                        bool 0 not 1 good 0 eof 1 fail 1
+moved, cleared                       bool 1 not 0 good 1 eof 0 fail 0
+get f
