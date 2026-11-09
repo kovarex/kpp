@@ -95,19 +95,19 @@ struct Site
 {
   Site(const SiteOptions& options) : options(options) {}
 
-  String path(StringView repositoryPath) const { return this->options.repository + "/" + repositoryPath; }
+  String path(StringView repositoryPath) const { return this.options.repository + "/" + repositoryPath; }
 
   void write(StringView sitePath, StringView content)
   {
-    siteWriteFile(this->options.out + "/" + sitePath, content);
-    ++this->written;
+    siteWriteFile(this.options.out + "/" + sitePath, content);
+    ++this.written;
   }
 
-  void warn(StringView page, StringView what) { this->warnings.push_back(toString(String(page), ": ", String(what))); }
+  void warn(StringView page, StringView what) { this.warnings.push_back(toString(String(page), ": ", String(what))); }
 
   bool isPage(StringView repositoryPath) const
   {
-    for (const String& p : this->pages)
+    for (const String& p : this.pages)
       if (StringView(p) == repositoryPath)
         return true;
     return false;
@@ -121,7 +121,7 @@ struct Site
       return destination;
     if (destination[0] == '#')
     {
-      this->anchorLinks.push_back(SiteAnchorLink{String(page), siteHtmlPath(page), url::urlDecode(StringView(destination).substr(1))});
+      this.anchorLinks.push_back(SiteAnchorLink{String(page), siteHtmlPath(page), url::urlDecode(StringView(destination).substr(1))});
       return destination;
     }
     url::Url reference;
@@ -131,7 +131,7 @@ struct Site
     }
     catch (const url::UrlError& e)
     {
-      this->warn(page, toString("a link that is not a URL, kept as it is: ", destination, " (", e.message, ")"));
+      this.warn(page, toString("a link that is not a URL, kept as it is: ", destination, " (", e.message, ")"));
       return destination;
     }
     if (!reference.isRelative() || reference.hasAuthority || reference.path.empty())
@@ -140,17 +140,17 @@ struct Site
     String file = url::urlDecode(StringView(target.path).substr(1));
     String fragment = reference.hasFragment ? "#" + reference.fragment : String();
     String trimmed = file.endsWith("/") ? String(StringView(file).substr(0, file.size() - 1)) : file;
-    if (this->isPage(trimmed))
+    if (this.isPage(trimmed))
     {
       if (reference.hasFragment)
-        this->anchorLinks.push_back(SiteAnchorLink{String(page), siteHtmlPath(trimmed), url::urlDecode(reference.fragment)});
+        this.anchorLinks.push_back(SiteAnchorLink{String(page), siteHtmlPath(trimmed), url::urlDecode(reference.fragment)});
       return url::urlEncodePath(siteRelativeLink(page, siteHtmlPath(trimmed))) + fragment;
     }
-    if (siteIsFile(this->path(trimmed)))
-      return this->options.sourceUrl + "/blob/master/" + url::urlEncodePath(trimmed) + fragment;
-    if (trimmed.empty() || siteIsDirectory(this->path(trimmed)))
-      return this->options.sourceUrl + "/tree/master/" + url::urlEncodePath(trimmed) + fragment;
-    this->warn(page, toString("a link to ", file, ", which is not in the repository"));
+    if (siteIsFile(this.path(trimmed)))
+      return this.options.sourceUrl + "/blob/master/" + url::urlEncodePath(trimmed) + fragment;
+    if (trimmed.empty() || siteIsDirectory(this.path(trimmed)))
+      return this.options.sourceUrl + "/tree/master/" + url::urlEncodePath(trimmed) + fragment;
+    this.warn(page, toString("a link to ", file, ", which is not in the repository"));
     return destination;
   }
 
@@ -159,9 +159,9 @@ struct Site
     return sitePage
       .render({{"title", String(title) + " - kpp"},
                {"root", siteRootOf(sitePath)},
-               {"source", this->options.sourceUrl},
+               {"source", this.options.sourceUrl},
                {"content", content},
-               {"commit", this->options.commit.empty() ? String("the working tree") : this->options.commit}})
+               {"commit", this.options.commit.empty() ? String("the working tree") : this.options.commit}})
       .str();
   }
 
@@ -170,51 +170,51 @@ struct Site
     markdown::MarkdownOptions markdown;
     markdown.tables = true;
     markdown.headingIds = true;
-    markdown.rewriteLink = [this, page](const String& destination) -> String { return this->rewriteLink(page, destination); };
+    markdown.rewriteLink = [&this, page](const String& destination) -> String { return this.rewriteLink(page, destination); };
     return html::SafeHtml::trusted(markdown::markdownToHtml(text, markdown));
   }
 
   void run()
   {
-    for (const String& root : this->options.pageRoots)
+    for (const String& root : this.options.pageRoots)
     {
-      if (!siteIsDirectory(this->path(root)))
-        throw SiteError(toString(root, " is not a directory of the repository ", this->options.repository));
-      siteFindMarkdown(this->options.repository, root, this->pages);
+      if (!siteIsDirectory(this.path(root)))
+        throw SiteError(toString(root, " is not a directory of the repository ", this.options.repository));
+      siteFindMarkdown(this.options.repository, root, this.pages);
     }
     html::SafeHtml documents;
-    for (const String& page : this->pages)
+    for (const String& page : this.pages)
     {
-      String text = siteReadFile(this->path(page));
+      String text = siteReadFile(this.path(page));
       String title = siteTitle(text, page);
       String html = siteHtmlPath(page);
-      String pageHtml = this->pageHtml(html, title, this->renderMarkdown(page, text));
-      this->write(html, pageHtml);
-      this->htmlPaths.push_back(html);
-      this->htmlTexts.push_back(pageHtml);
+      String pageHtml = this.pageHtml(html, title, this.renderMarkdown(page, text));
+      this.write(html, pageHtml);
+      this.htmlPaths.push_back(html);
+      this.htmlTexts.push_back(pageHtml);
       if (page.startsWith("docs/"))
         documents << siteDocumentItem.render({{"link", url::urlEncodePath(html)}, {"title", title}, {"path", page}});
     }
-    this->write("index.html", this->pageHtml("index.html", "kpp", siteHome.render({{"documents", documents}})));
-    this->write("style.css", siteStyle);
-    this->libraries();
-    this->checkAnchors();
+    this.write("index.html", this.pageHtml("index.html", "kpp", siteHome.render({{"documents", documents}})));
+    this.write("style.css", siteStyle);
+    this.libraries();
+    this.checkAnchors();
   }
 
   // Warns about every link to an anchor that its page has no id for.
   void checkAnchors()
   {
-    for (const SiteAnchorLink& link : this->anchorLinks)
+    for (const SiteAnchorLink& link : this.anchorLinks)
     {
       const String* html = nullptr;
-      for (i32 i = 0; i < this->htmlPaths.size(); ++i)
-        if (this->htmlPaths[i] == link.target)
-          html = &this->htmlTexts[i];
+      for (i32 i = 0; i < this.htmlPaths.size(); ++i)
+        if (this.htmlPaths[i] == link.target)
+          html = &this.htmlTexts[i];
       if (!html)
         continue;
       String id = " id=\"" + html::htmlEscape(link.anchor) + "\"";
       if (html->find(id) == String::npos)
-        this->warn(link.page, toString("a link to #", link.anchor, " in ", link.target, ", which has no such heading"));
+        this.warn(link.page, toString("a link to #", link.anchor, " in ", link.target, ", which has no such heading"));
     }
   }
 
@@ -223,14 +223,14 @@ struct Site
   void libraries()
   {
     Vector<String> names;
-    if (siteIsDirectory(this->path("libraries")))
-      for (const filesystem::directory_entry& entry : filesystem::directory_iterator(filesystem::path(this->path("libraries"))))
-        if (entry.is_directory() && siteIsFile(this->path("libraries/" + entry.path().filename().string() + "/build.kpp")))
+    if (siteIsDirectory(this.path("libraries")))
+      for (const filesystem::directory_entry& entry : filesystem::directory_iterator(filesystem::path(this.path("libraries"))))
+        if (entry.is_directory() && siteIsFile(this.path("libraries/" + entry.path().filename().string() + "/build.kpp")))
           names.push_back(entry.path().filename().string());
     Vector<json::JsonValue> index;
-    if (!this->options.registry.empty())
+    if (!this.options.registry.empty())
     {
-      String directory = this->options.registry + "/index";
+      String directory = this.options.registry + "/index";
       if (!siteIsDirectory(directory))
         throw SiteError(toString(directory, " is not a directory: --registry names a copy of the registry's store"));
       for (const filesystem::directory_entry& entry : filesystem::directory_iterator(filesystem::path(directory)))
@@ -260,7 +260,7 @@ struct Site
         if (library["name"].asString() == name)
           entry = &library;
       String latest = entry ? siteLatestVersion(*entry) : String();
-      String readme = this->path("libraries/" + name + "/README.md");
+      String readme = this.path("libraries/" + name + "/README.md");
       String summary = siteIsFile(readme) ? siteSummary(siteReadFile(readme)) : String();
       String page = "libraries/" + name + ".html";
       rows << siteLibraryItem.render({{"link", url::urlEncode(name) + ".html"}, {"name", name}, {"version", latest.empty() ? String("not published") : latest}, {"summary", summary}});
@@ -269,13 +269,13 @@ struct Site
       item.set("version", latest);
       item.set("summary", summary);
       search.push(item);
-      html::SafeHtml releases = entry ? this->releaseTable(*entry) : siteNotPublished.render({{"link", this->options.sourceUrl + "/tree/master/libraries/" + url::urlEncode(name)}, {"name", name}});
-      html::SafeHtml readmeHtml = siteIsFile(readme) ? this->renderMarkdown("libraries/" + name + "/README.md", siteReadFile(readme)) : html::SafeHtml();
-      this->write(page, this->pageHtml(page, name, siteLibraryPage.render({{"name", name}, {"releases", releases}, {"readme", readmeHtml}})));
+      html::SafeHtml releases = entry ? this.releaseTable(*entry) : siteNotPublished.render({{"link", this.options.sourceUrl + "/tree/master/libraries/" + url::urlEncode(name)}, {"name", name}});
+      html::SafeHtml readmeHtml = siteIsFile(readme) ? this.renderMarkdown("libraries/" + name + "/README.md", siteReadFile(readme)) : html::SafeHtml();
+      this.write(page, this.pageHtml(page, name, siteLibraryPage.render({{"name", name}, {"releases", releases}, {"readme", readmeHtml}})));
     }
-    this->write("libraries/index.html", this->pageHtml("libraries/index.html", "Libraries", siteLibraryList.render({{"rows", rows}})));
-    this->write("libraries/search.json", json::writeJson(search));
-    this->write("libraries/search.js", siteSearchScript);
+    this.write("libraries/index.html", this.pageHtml("libraries/index.html", "Libraries", siteLibraryList.render({{"rows", rows}})));
+    this.write("libraries/search.json", json::writeJson(search));
+    this.write("libraries/search.js", siteSearchScript);
   }
 
   html::SafeHtml releaseTable(const json::JsonValue& library)
@@ -289,7 +289,7 @@ struct Site
       rows << siteReleaseRow.render({{"version", r["version"].asString()},
                                      {"published", r["published"].asString()},
                                      {"kpp", r["kpp"].asString()},
-                                     {"archive", this->options.registryUrl + r["archive"].asString()},
+                                     {"archive", this.options.registryUrl + r["archive"].asString()},
                                      {"tree", r["tree"].asString()},
                                      {"yanked", yanked && !yanked->isNull() ? yanked->asString() : String()}});
     }

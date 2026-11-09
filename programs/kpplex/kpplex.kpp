@@ -42,10 +42,10 @@ struct SymbolTable
   uint32_t capacity = 0;
   Vector<Slice> names;
 
-  SymbolTable() { this->rehash(1 << 17); }
-  ~SymbolTable() { free(this->slots); }
+  SymbolTable() { this.rehash(1 << 17); }
+  ~SymbolTable() { free(this.slots); }
 
-  int size() const { return this->names.size(); }
+  int size() const { return this.names.size(); }
 
   static uint64_t hashOf(const char* data, uint32_t length)
   {
@@ -59,41 +59,41 @@ struct SymbolTable
   {
     uint32_t* newSlots = (uint32_t*)malloc(newCapacity * sizeof(uint32_t));
     memset(newSlots, 0, newCapacity * sizeof(uint32_t));
-    for (uint32_t i = 0; i < this->capacity; ++i)
-      if (this->slots[i] != 0)
+    for (uint32_t i = 0; i < this.capacity; ++i)
+      if (this.slots[i] != 0)
       {
-        Slice& name = this->names[(int)(this->slots[i] - 1)];
+        Slice& name = this.names[(int)(this.slots[i] - 1)];
         uint32_t index = (uint32_t)(SymbolTable::hashOf(name.data, name.length) & (newCapacity - 1));
         while (newSlots[index] != 0)
           index = (index + 1) & (newCapacity - 1);
-        newSlots[index] = this->slots[i];
+        newSlots[index] = this.slots[i];
       }
-    free(this->slots);
-    this->slots = newSlots;
-    this->capacity = newCapacity;
+    free(this.slots);
+    this.slots = newSlots;
+    this.capacity = newCapacity;
   }
 
   uint32_t intern(const char* data, uint32_t length)
   {
-    if ((uint32_t)this->names.size() * 2 >= this->capacity)
-      this->rehash(this->capacity * 2);
-    uint32_t index = (uint32_t)(SymbolTable::hashOf(data, length) & (this->capacity - 1));
+    if ((uint32_t)this.names.size() * 2 >= this.capacity)
+      this.rehash(this.capacity * 2);
+    uint32_t index = (uint32_t)(SymbolTable::hashOf(data, length) & (this.capacity - 1));
     for (;;)
     {
-      uint32_t slot = this->slots[index];
+      uint32_t slot = this.slots[index];
       if (slot == 0)
       {
         Slice s;
         s.data = data;
         s.length = length;
-        this->names.push_back(s);
-        this->slots[index] = (uint32_t)this->names.size();
-        return (uint32_t)this->names.size() - 1;
+        this.names.push_back(s);
+        this.slots[index] = (uint32_t)this.names.size();
+        return (uint32_t)this.names.size() - 1;
       }
-      Slice& existing = this->names[(int)(slot - 1)];
+      Slice& existing = this.names[(int)(slot - 1)];
       if (existing.length == length && memcmp(existing.data, data, length) == 0)
         return slot - 1;
-      index = (index + 1) & (this->capacity - 1);
+      index = (index + 1) & (this.capacity - 1);
     }
   }
 };
@@ -154,17 +154,17 @@ struct Lexer
   void push(TokenKind kind, const char* start, uint32_t id)
   {
     Token t;
-    t.offset = (uint32_t)(start - this->begin);
-    t.length = (uint32_t)(this->p - start) & 0xFFFFFF;
+    t.offset = (uint32_t)(start - this.begin);
+    t.length = (uint32_t)(this.p - start) & 0xFFFFFF;
     t.kind = (uint8_t)kind;
     t.id = id;
-    this->tokens->push_back(t);
+    this.tokens->push_back(t);
   }
 
   void error(const char* start)
   {
-    ++this->errorCount;
-    this->push(TokenKind::Error, start, 0);
+    ++this.errorCount;
+    this.push(TokenKind::Error, start, 0);
   }
 
   // Skips whitespace and comments. Returns true if a newline was crossed.
@@ -173,38 +173,38 @@ struct Lexer
     bool newline = false;
     for (;;)
     {
-      char c = *this->p;
+      char c = *this.p;
       if (c == '\n')
       {
-        ++this->p;
-        ++this->lineCount;
+        ++this.p;
+        ++this.lineCount;
         newline = true;
       }
       else if (c == ' ' || c == '\t' || c == '\r' || c == '\f' || c == '\v')
-        ++this->p;
-      else if (c == '/' && this->p[1] == '/')
+        ++this.p;
+      else if (c == '/' && this.p[1] == '/')
       {
-        this->p += 2;
-        while (*this->p != 0 && *this->p != '\n')
-          ++this->p;
+        this.p += 2;
+        while (*this.p != 0 && *this.p != '\n')
+          ++this.p;
       }
-      else if (c == '/' && this->p[1] == '*')
+      else if (c == '/' && this.p[1] == '*')
       {
-        this->p += 2;
-        while (*this->p != 0 && !(*this->p == '*' && this->p[1] == '/'))
+        this.p += 2;
+        while (*this.p != 0 && !(*this.p == '*' && this.p[1] == '/'))
         {
-          if (*this->p == '\n')
-            ++this->lineCount;
-          ++this->p;
+          if (*this.p == '\n')
+            ++this.lineCount;
+          ++this.p;
         }
-        if (*this->p != 0)
-          this->p += 2;
+        if (*this.p != 0)
+          this.p += 2;
       }
-      else if (c == '\\' && (this->p[1] == '\n' || (this->p[1] == '\r' && this->p[2] == '\n')))
+      else if (c == '\\' && (this.p[1] == '\n' || (this.p[1] == '\r' && this.p[2] == '\n')))
       {
         // Line continuation outside a directive; just skip it.
-        this->p += this->p[1] == '\r' ? 3 : 2;
-        ++this->lineCount;
+        this.p += this.p[1] == '\r' ? 3 : 2;
+        ++this.lineCount;
       }
       else
         return newline;
@@ -216,99 +216,99 @@ struct Lexer
     // Consume to end of line, honouring backslash continuations and comments.
     for (;;)
     {
-      char c = *this->p;
+      char c = *this.p;
       if (c == 0)
         break;
       if (c == '\n')
         break;
-      if (c == '\\' && (this->p[1] == '\n' || (this->p[1] == '\r' && this->p[2] == '\n')))
+      if (c == '\\' && (this.p[1] == '\n' || (this.p[1] == '\r' && this.p[2] == '\n')))
       {
-        this->p += this->p[1] == '\r' ? 3 : 2;
-        ++this->lineCount;
+        this.p += this.p[1] == '\r' ? 3 : 2;
+        ++this.lineCount;
         continue;
       }
-      if (c == '/' && this->p[1] == '*')
+      if (c == '/' && this.p[1] == '*')
       {
-        this->p += 2;
-        while (*this->p != 0 && !(*this->p == '*' && this->p[1] == '/'))
+        this.p += 2;
+        while (*this.p != 0 && !(*this.p == '*' && this.p[1] == '/'))
         {
-          if (*this->p == '\n')
-            ++this->lineCount;
-          ++this->p;
+          if (*this.p == '\n')
+            ++this.lineCount;
+          ++this.p;
         }
-        if (*this->p != 0)
-          this->p += 2;
+        if (*this.p != 0)
+          this.p += 2;
         continue;
       }
-      if (c == '/' && this->p[1] == '/')
+      if (c == '/' && this.p[1] == '/')
       {
-        while (*this->p != 0 && *this->p != '\n')
-          ++this->p;
+        while (*this.p != 0 && *this.p != '\n')
+          ++this.p;
         break;
       }
-      ++this->p;
+      ++this.p;
     }
-    this->push(TokenKind::Directive, start, 0);
+    this.push(TokenKind::Directive, start, 0);
   }
 
   bool lexRawString(const char* start)
   {
     // p points at '"' after R. Delimiter up to '('.
-    ++this->p;
-    const char* delimStart = this->p;
-    while (*this->p != 0 && *this->p != '(' && *this->p != '"' && *this->p != '\n' && this->p - delimStart < 16)
-      ++this->p;
-    if (*this->p != '(')
+    ++this.p;
+    const char* delimStart = this.p;
+    while (*this.p != 0 && *this.p != '(' && *this.p != '"' && *this.p != '\n' && this.p - delimStart < 16)
+      ++this.p;
+    if (*this.p != '(')
     {
-      this->error(start);
+      this.error(start);
       return false;
     }
-    size_t delimLength = (size_t)(this->p - delimStart);
-    ++this->p;
+    size_t delimLength = (size_t)(this.p - delimStart);
+    ++this.p;
     for (;;)
     {
-      if (*this->p == 0)
+      if (*this.p == 0)
       {
-        this->error(start);
+        this.error(start);
         return false;
       }
-      if (*this->p == '\n')
-        ++this->lineCount;
-      if (*this->p == ')' && strncmp(this->p + 1, delimStart, delimLength) == 0 && this->p[1 + delimLength] == '"')
+      if (*this.p == '\n')
+        ++this.lineCount;
+      if (*this.p == ')' && strncmp(this.p + 1, delimStart, delimLength) == 0 && this.p[1 + delimLength] == '"')
       {
-        this->p += 2 + delimLength;
+        this.p += 2 + delimLength;
         break;
       }
-      ++this->p;
+      ++this.p;
     }
-    this->push(TokenKind::String, start, 0);
+    this.push(TokenKind::String, start, 0);
     return true;
   }
 
   void lexQuoted(const char* start, char quote)
   {
-    ++this->p;
+    ++this.p;
     for (;;)
     {
-      char c = *this->p;
+      char c = *this.p;
       if (c == 0 || c == '\n')
       {
-        this->error(start);
+        this.error(start);
         return;
       }
       if (c == '\\')
       {
-        this->p += this->p[1] != 0 ? 2 : 1;
+        this.p += this.p[1] != 0 ? 2 : 1;
         continue;
       }
-      ++this->p;
+      ++this.p;
       if (c == quote)
         break;
     }
     // User-defined literal suffix.
-    while (isIdentChar(*this->p))
-      ++this->p;
-    this->push(quote == '"' ? TokenKind::String : TokenKind::Char, start, 0);
+    while (isIdentChar(*this.p))
+      ++this.p;
+    this.push(quote == '"' ? TokenKind::String : TokenKind::Char, start, 0);
   }
 
   void lexNumber(const char* start)
@@ -316,70 +316,70 @@ struct Lexer
     // pp-number: digit or .digit, then [0-9a-zA-Z_.'] with e+/e-/p+/p-.
     for (;;)
     {
-      char c = *this->p;
-      if ((c == 'e' || c == 'E' || c == 'p' || c == 'P') && (this->p[1] == '+' || this->p[1] == '-'))
-        this->p += 2;
-      else if (isIdentChar(c) || c == '.' || (c == '\'' && isIdentChar(this->p[1])))
-        ++this->p;
+      char c = *this.p;
+      if ((c == 'e' || c == 'E' || c == 'p' || c == 'P') && (this.p[1] == '+' || this.p[1] == '-'))
+        this.p += 2;
+      else if (isIdentChar(c) || c == '.' || (c == '\'' && isIdentChar(this.p[1])))
+        ++this.p;
       else
         break;
     }
-    this->push(TokenKind::Number, start, 0);
+    this.push(TokenKind::Number, start, 0);
   }
 
   void lexIdentifier(const char* start)
   {
-    while (isIdentChar(*this->p))
-      ++this->p;
+    while (isIdentChar(*this.p))
+      ++this.p;
     // String/char literal prefix: u8"..", L'..', R"(..)", u8R"(..)" etc.
-    if (*this->p == '"' || *this->p == '\'')
+    if (*this.p == '"' || *this.p == '\'')
     {
-      size_t prefixLength = (size_t)(this->p - start);
-      bool raw = prefixLength > 0 && this->p[-1] == 'R';
+      size_t prefixLength = (size_t)(this.p - start);
+      bool raw = prefixLength > 0 && this.p[-1] == 'R';
       size_t encLength = raw ? prefixLength - 1 : prefixLength;
       bool knownEncoding = encLength == 0 || (encLength == 1 && (start[0] == 'u' || start[0] == 'U' || start[0] == 'L')) ||
                            (encLength == 2 && start[0] == 'u' && start[1] == '8');
       if (knownEncoding)
       {
-        if (raw && *this->p == '"')
+        if (raw && *this.p == '"')
         {
-          this->lexRawString(start);
+          this.lexRawString(start);
           return;
         }
         if (!raw)
         {
-          this->lexQuoted(start, *this->p);
+          this.lexQuoted(start, *this.p);
           return;
         }
       }
     }
-    uint32_t id = this->symbols->intern(start, (uint32_t)(this->p - start));
-    if (id < this->keywordCount)
-      this->push(TokenKind::Keyword, start, id);
+    uint32_t id = this.symbols->intern(start, (uint32_t)(this.p - start));
+    if (id < this.keywordCount)
+      this.push(TokenKind::Keyword, start, id);
     else
-      this->push(TokenKind::Identifier, start, id - this->keywordCount);
+      this.push(TokenKind::Identifier, start, id - this.keywordCount);
   }
 
   // Max munch over the C++ punctuators, grouped by their first character.
   void lexPunctuator(const char* start)
   {
-    char c = *this->p;
-    char n = this->p[1];
+    char c = *this.p;
+    char n = this.p[1];
     int length = 1;
     switch (c)
     {
       case '<':
-        if (n == '=' && this->p[2] == '>') length = 3;
-        else if (n == '<' && this->p[2] == '=') length = 3;
+        if (n == '=' && this.p[2] == '>') length = 3;
+        else if (n == '<' && this.p[2] == '=') length = 3;
         else if (n == '<' || n == '=') length = 2;
       case '>':
-        if (n == '>' && this->p[2] == '=') length = 3;
+        if (n == '>' && this.p[2] == '=') length = 3;
         else if (n == '>' || n == '=') length = 2;
       case '-':
-        if (n == '>' && this->p[2] == '*') length = 3;
+        if (n == '>' && this.p[2] == '*') length = 3;
         else if (n == '>' || n == '-' || n == '=') length = 2;
       case '.':
-        if (n == '.' && this->p[2] == '.') length = 3;
+        if (n == '.' && this.p[2] == '.') length = 3;
         else if (n == '*') length = 2;
       case ':': if (n == ':') length = 2;
       case '+': if (n == '+' || n == '=') length = 2;
@@ -393,47 +393,47 @@ struct Lexer
       case '^': if (n == '=') length = 2;
       case '#': if (n == '#') length = 2;
       case '?':
-        if (n == '-' && this->p[2] == '>') length = 3;
+        if (n == '-' && this.p[2] == '>') length = 3;
         else if (n == ':') length = 2;
       case '{', '}', '[', ']', '(', ')', ';', ',', '~': // (single-character punctuators: length 1)
       default:
-        ++this->p;
-        this->error(start);
+        ++this.p;
+        this.error(start);
         return;
     }
-    this->p += length;
-    this->push(TokenKind::Punctuator, start, (uint32_t)(uint8_t)c * 4 + (uint32_t)length);
+    this.p += length;
+    this.push(TokenKind::Punctuator, start, (uint32_t)(uint8_t)c * 4 + (uint32_t)length);
   }
 
   void run()
   {
-    if (this->end - this->begin >= 3 && (uint8_t)this->p[0] == 0xEF && (uint8_t)this->p[1] == 0xBB && (uint8_t)this->p[2] == 0xBF)
-      this->p += 3; // UTF-8 byte order mark
+    if (this.end - this.begin >= 3 && (uint8_t)this.p[0] == 0xEF && (uint8_t)this.p[1] == 0xBB && (uint8_t)this.p[2] == 0xBF)
+      this.p += 3; // UTF-8 byte order mark
     bool lineStart = true;
     for (;;)
     {
-      if (this->skipTrivia())
+      if (this.skipTrivia())
         lineStart = true;
-      const char* start = this->p;
-      char c = *this->p;
-      if (c == 0 && this->p >= this->end)
+      const char* start = this.p;
+      char c = *this.p;
+      if (c == 0 && this.p >= this.end)
         break;
       if (c == '#' && lineStart)
       {
-        this->lexDirective(start);
+        this.lexDirective(start);
         continue;
       }
       lineStart = false;
       if (isIdentStart(c))
-        this->lexIdentifier(start);
-      else if (isDigit(c) || (c == '.' && isDigit(this->p[1])))
-        this->lexNumber(start);
+        this.lexIdentifier(start);
+      else if (isDigit(c) || (c == '.' && isDigit(this.p[1])))
+        this.lexNumber(start);
       else if (c == '"' || c == '\'')
-        this->lexQuoted(start, c);
+        this.lexQuoted(start, c);
       else
-        this->lexPunctuator(start);
+        this.lexPunctuator(start);
     }
-    this->push(TokenKind::End, this->p, 0);
+    this.push(TokenKind::End, this.p, 0);
   }
 };
 
