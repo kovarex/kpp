@@ -1122,7 +1122,7 @@ auto GlobalScope::Impl::constValueIn(Expr* e, const TypeContext& ctx, int depth)
 
 auto GlobalScope::Impl::packNamedIn(Node* n, const Subst& s, int depth) -> Decl*
 {
-  if (!n || depth > 32)
+  if (!n || depth > maxNestedLevels)
     return nullptr;
   auto named = [&](const QualifiedName& name) -> Decl* {
     if (name.parts.size() == 1 && !name.global)
@@ -1453,7 +1453,7 @@ auto GlobalScope::Impl::constIsExpansion(const Expr* e) -> bool
 
 auto GlobalScope::Impl::constNamesIn(Node* n, std::vector<uint32_t>& out, int depth) -> void
 {
-  if (!n || depth > 64)
+  if (!n || depth > maxNestedLevels)
     return;
   switch (n->kind)
   {
@@ -2431,7 +2431,7 @@ auto GlobalScope::Impl::constBasePath(const Ty* from, const Ty* to, int depth) -
   if (from == to)
     return std::vector<size_t>{};
   const ConstClassLayout* layout = constLayoutOf(from, depth);
-  if (!layout || depth > 16)
+  if (!layout || depth > maxNestedLevels)
     return std::nullopt;
   // (A base there twice, Left's and Right's: no one path, so no constant unless a qualified name
   // chooses one (constQualifierPath), rather than the first one's value.)
@@ -2677,7 +2677,7 @@ auto GlobalScope::Impl::constTruth(const ConstValue& v, int depth) -> std::optio
 {
   if (v.isScalar() || v.isPointer() || v.isAddress() || v.isMemberPointer())
     return v.truthy();
-  if (!v.isObject() || !v.type || v.type->isBraceList() || types.unqualified(v.type)->kind != TyKind::Class || depth > 64)
+  if (!v.isObject() || !v.type || v.type->isBraceList() || types.unqualified(v.type)->kind != TyKind::Class || depth > maxNestedLevels)
     return std::nullopt;
   const Ty* t = types.unqualified(v.type);
   // The conversion operator the one rule chooses for a condition (design.md 24, chooseConversion), as
@@ -2741,7 +2741,7 @@ auto GlobalScope::Impl::constClassOperator(const Ty* t, P op, const std::vector<
 
 auto GlobalScope::Impl::constMemberwiseEqual(const ConstValue& l, const ConstValue& r, const TypeContext& ctx, int depth) -> std::optional<bool>
 {
-  if (!l.isObject() || !r.isObject() || l.parts->size() != r.parts->size() || depth > 64)
+  if (!l.isObject() || !r.isObject() || l.parts->size() != r.parts->size() || depth > maxNestedLevels)
     return std::nullopt;
   for (size_t i = 0; i < l.parts->size(); ++i)
   {
@@ -2766,7 +2766,7 @@ auto GlobalScope::Impl::constScalarOrder(const ConstValue& l, const ConstValue& 
 
 auto GlobalScope::Impl::constMemberwiseOrder(const ConstValue& l, const ConstValue& r, const TypeContext& ctx, int depth) -> std::optional<int>
 {
-  if (depth > 64)
+  if (depth > maxNestedLevels)
     return std::nullopt;
   if (l.isScalar() && r.isScalar())
     return constScalarOrder(l, r);
@@ -3235,7 +3235,7 @@ auto GlobalScope::Impl::constBinaryValues(P op, const ConstValue& l, const Const
 
 auto GlobalScope::Impl::constOverrider(FunctionDecl* f, const Ty* t, int depth) -> FunctionDecl*
 {
-  if (!f || !(f->flags & (DF_Virtual | DF_Override)) || f->name.empty() || !t || depth > 16)
+  if (!f || !(f->flags & (DF_Virtual | DF_Override)) || f->name.empty() || !t || depth > maxNestedLevels)
     return f;
   const ConstClassLayout* layout = constLayoutOf(t, depth);
   if (!layout)
@@ -3481,7 +3481,7 @@ auto GlobalScope::Impl::constLayoutOf(const Ty* t, int /*depth*/) -> const Const
 auto GlobalScope::Impl::constFieldPath(const Ty* t, Decl* field, int depth) -> std::optional<std::vector<size_t>>
 {
   const ConstClassLayout* layout = constLayoutOf(t, depth);
-  if (!layout || depth > 16)
+  if (!layout || depth > maxNestedLevels)
     return std::nullopt;
   for (size_t i = 0; i < layout->fields.size(); ++i)
     if (layout->fields[i] == field)
@@ -3626,7 +3626,7 @@ auto GlobalScope::Impl::constString(LiteralExpr* l, const TypeContext& ctx) -> s
 auto GlobalScope::Impl::constEmpty(const Ty* t, bool zero, int depth, const ConstPlace* target) -> std::optional<ConstValue>
 {
   t = t ? types.unqualified(types.stripRef(t)) : nullptr;
-  if (!t || depth > 64)
+  if (!t || depth > maxNestedLevels)
     return std::nullopt;
   if (t->isArithmetic() || t->kind == TyKind::Enum || t->kind == TyKind::Pointer)
     return zero ? constConverted(ConstValue::integer(0), t) : std::optional<ConstValue>(ConstValue::unset(t));
@@ -3869,7 +3869,7 @@ auto GlobalScope::Impl::constCopyConstruct(const Ty* t, const ConstValue& v, con
   }
   const ConstClassLayout* layout = constLayoutOf(t, depth);
   ClassDecl* def = classDefinition(t);
-  if (!layout || !def || depth > 64)
+  if (!layout || !def || depth > maxNestedLevels)
     return std::nullopt;
   SpecialMembers special = specialMembersOf(def);
   FunctionDecl* ctor = moving && special.moveCtor ? special.moveCtor : special.copyCtor ? special.copyCtor : special.copyCtorNonConst;
@@ -3929,7 +3929,7 @@ auto GlobalScope::Impl::constAssignObject(const ConstPlace& place, const Ty* t, 
   t = types.unqualified(types.stripRef(t));
   if (!v.isObject() || !constAssignRunsCode(t))
     return constWrite(place, v);
-  if (depth > 64)
+  if (depth > maxNestedLevels)
     return false;
   auto partOf = [](const std::optional<ConstPlace>& whole, size_t i, const Ty* type) {
     std::optional<ConstPlace> part = whole;
@@ -4240,7 +4240,7 @@ auto GlobalScope::Impl::constElided(const Ty* t, Span<Expr*> values, size_t& nex
     at.bits = 0;
     constWrite(at, value);
   };
-  if (depth > 64)
+  if (depth > maxNestedLevels)
     return std::nullopt;
   auto element = [&](const Ty* et) -> std::optional<ConstValue> {
     // An aggregate's reference member (`View v{a}`): the address of what the value names.
@@ -4312,7 +4312,7 @@ auto GlobalScope::Impl::constElided(const Ty* t, Span<Expr*> values, size_t& nex
 
 auto GlobalScope::Impl::bracesElided(const Ty* et, Expr* value, const Ty* vt, int depth) -> bool
 {
-  if (!value || !et || et->isReference() || value->kind == NodeKind::BraceInitExpr || depth > 32)
+  if (!value || !et || et->isReference() || value->kind == NodeKind::BraceInitExpr || depth > maxNestedLevels)
     return false;
   et = types.unqualified(et);
   Expr* inner = value;
@@ -4345,7 +4345,7 @@ auto GlobalScope::Impl::valuesForElement(const Ty* et, Span<Expr*> values, size_
   et = types.unqualified(types.stripRef(et));
   Expr* x = values[start];
   bool elidable = (et->kind == TyKind::Array && et->count != 0) || (et->kind == TyKind::Class && constIsAggregate(et, depth, true));
-  if (depth > 32 || !elidable || !x || x->kind == NodeKind::BraceInitExpr || !bracesElided(et, x, typeOf(x), depth))
+  if (depth > maxNestedLevels || !elidable || !x || x->kind == NodeKind::BraceInitExpr || !bracesElided(et, x, typeOf(x), depth))
     return 1;
   size_t next = start;
   auto element = [&](const Ty* t) -> bool
@@ -4762,7 +4762,7 @@ auto GlobalScope::Impl::constFromBraceList(const ConstValue& list, const Ty* t, 
 {
   const Ty* u = types.unqualified(types.stripRef(t));
   const std::vector<ConstValue>& elements = *list.parts;
-  if (depth > 64)
+  if (depth > maxNestedLevels)
     return std::nullopt;
   if (isInitializerList(u))
     return constInitializerList(u, elements, depth);
@@ -4910,7 +4910,7 @@ auto GlobalScope::Impl::constDesignated(Expr* x, const TypeContext& ctx, int dep
 {
   while (x && x->kind == NodeKind::ParenExpr)
     x = static_cast<ParenExpr*>(x)->inner;
-  if (!x || depth > 64)
+  if (!x || depth > maxNestedLevels)
     return std::nullopt;
   auto pointee = [&](const ConstValue& p) -> std::optional<ConstDesignated> {
     const Ty* pt = p.isAddress() && p.type ? types.unqualified(types.stripRef(p.type)) : nullptr;
@@ -6245,7 +6245,7 @@ auto GlobalScope::Impl::constHeldStorage(const ConstValue& v, int depth) -> cons
     auto it = constStorage().find(v.target->storage);
     return it != constStorage().end() ? &it->second : &unknown;
   }
-  if ((v.isObject() || v.isPointer()) && v.parts && depth < 64)
+  if ((v.isObject() || v.isPointer()) && v.parts && depth < maxNestedLevels)
     for (const ConstValue& part : *v.parts)
       if (const ConstStorage* s = constHeldStorage(part, depth + 1))
         return s;
@@ -6451,7 +6451,7 @@ auto GlobalScope::Impl::constTypeAllocation(const ConstValue& p, const Ty* t, in
 auto GlobalScope::Impl::constRawObject(const Ty* t, bool zero, int depth) -> std::optional<ConstValue>
 {
   t = t ? types.unqualified(types.stripRef(t)) : nullptr;
-  if (!t || depth > 64)
+  if (!t || depth > maxNestedLevels)
     return std::nullopt;
   if (t->isArithmetic() || t->kind == TyKind::Enum || t->kind == TyKind::Pointer)
     return zero ? constConverted(ConstValue::integer(0), t) : std::optional<ConstValue>(ConstValue::unset(t));
@@ -6890,7 +6890,7 @@ auto GlobalScope::Impl::constDestroy(const Ty* t, const ConstValue& v, int depth
       constWhy() = std::string(what) + " " + types.toString(t, &symbols);
     return false;
   };
-  if (!triviallyDestructible(t) || depth > 64 || !v.isObject() || !v.parts)
+  if (!triviallyDestructible(t) || depth > maxNestedLevels || !v.isObject() || !v.parts)
     return cannot("a destruction the evaluator cannot run: of");
   // A part's place: the object's, one step in.
   auto partAt = [&](size_t i, const Ty* type) {
@@ -7440,7 +7440,7 @@ auto GlobalScope::Impl::constPointsIntoStorage(Expr* e) -> bool
 
 auto GlobalScope::Impl::constPure(Expr* e, int depth) -> bool
 {
-  if (!e || depth > 32)
+  if (!e || depth > maxNestedLevels)
     return !e;
   switch (e->kind)
   {
@@ -7562,7 +7562,7 @@ auto GlobalScope::Impl::constPlaceOf(Expr* e, const TypeContext& ctx, int depth,
 {
   while (e && e->kind == NodeKind::ParenExpr)
     e = static_cast<ParenExpr*>(e)->inner;
-  if (!e || depth > 64)
+  if (!e || depth > maxNestedLevels)
     return std::nullopt;
   if (e->kind == NodeKind::NameExpr)
   {
@@ -8061,7 +8061,7 @@ auto GlobalScope::Impl::constWrite(const ConstPlace& place, const ConstValue& v)
 auto GlobalScope::Impl::constBitsOf(const Ty* t, Decl* field, int depth) -> uint8_t
 {
   const ConstClassLayout* layout = constLayoutOf(t, depth);
-  if (!layout || depth > 16)
+  if (!layout || depth > maxNestedLevels)
     return 0;
   for (size_t i = 0; i < layout->fields.size(); ++i)
     if (layout->fields[i] == field)
@@ -8816,7 +8816,7 @@ auto GlobalScope::Impl::isAssignmentOperator(P op) -> bool
 
 auto GlobalScope::Impl::hasNestedLabel(Stmt* s, int depth) -> bool
 {
-  if (!s || depth > 64)
+  if (!s || depth > maxNestedLevels)
     return false;
   switch (s->kind)
   {

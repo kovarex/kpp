@@ -281,7 +281,7 @@ auto GlobalScope::Impl::isInstanceMember(const Decl* d) -> bool
 
 auto GlobalScope::Impl::lookupInScope(Scope* s, uint32_t symbol, Lookup& out, int depth, bool withUsing, bool skipDependentBases) -> bool
 {
-  if (depth > 24)
+  if (depth > maxNestedLevels)
     return false;
   if (const std::vector<Entry>* entries = s->find(symbol))
   {
@@ -703,17 +703,24 @@ auto GlobalScope::Impl::lookupPastAlias(UsingAliasDecl* alias, uint32_t symbol, 
   return lookupUnqualified(symbol, s->parent, nullptr, depth + 1);
 }
 
-auto GlobalScope::Impl::associatedNamespaces(const Ty* t, std::vector<Scope*>& out, int depth) -> void
+auto GlobalScope::Impl::associatedNamespaces(const Ty* t, std::vector<Scope*>& out, int depth, std::vector<const Ty*>* visited) -> void
 {
-  if (!t || depth > 4)
+  if (!t || depth > maxNestedLevels)
     return;
   t = types.unqualified(types.stripRef(t));
   while (t && (t->kind == TyKind::Pointer || t->kind == TyKind::Array))
     t = t->inner ? types.unqualified(t->inner) : nullptr;
   if (!t || !t->decl || (t->kind != TyKind::Class && t->kind != TyKind::Enum))
     return;
-  Scope* own = t->kind == TyKind::Class ? classScopeOf(t) : t->decl->ownScope;
-  Scope* s = own ? own->parent : lexicalScopeOf(t->decl);
+  // (The associated classes are a graph, not a tree: `class Robot : Hook<Robot>` is its own base's argument.)
+  std::vector<const Ty*> own;
+  if (!visited)
+    visited = &own;
+  if (std::find(visited->begin(), visited->end(), t) != visited->end())
+    return;
+  visited->push_back(t);
+  Scope* scope = t->kind == TyKind::Class ? classScopeOf(t) : t->decl->ownScope;
+  Scope* s = scope ? scope->parent : lexicalScopeOf(t->decl);
   while (s && s->kind != ScopeKind::Namespace)
     s = s->parent;
   if (s && (s != &root || stdScope) && std::find(out.begin(), out.end(), s) == out.end()) // (the global scope: only a code in std misses it by ordinary lookup)
@@ -721,14 +728,14 @@ auto GlobalScope::Impl::associatedNamespaces(const Ty* t, std::vector<Scope*>& o
   if (t->kind == TyKind::Class)
   {
     for (const Ty* a : t->args)
-      associatedNamespaces(a, out, depth + 1);
+      associatedNamespaces(a, out, depth + 1, visited);
     // A base class's namespace is associated as the class's own is ([basic.lookup.argdep] 2.2).
     if (ClassDecl* def = types.isDependent(t) ? nullptr : classDefinition(t))
     {
       std::vector<const Ty*> bases;
       directBases(t, def, bases);
       for (const Ty* b : bases)
-        associatedNamespaces(b, out, depth + 1);
+        associatedNamespaces(b, out, depth + 1, visited);
     }
   }
 }
@@ -768,20 +775,27 @@ auto GlobalScope::Impl::hiddenFriendsOf(ClassDecl* def, uint32_t symbol) -> cons
   return it->second.get();
 }
 
-auto GlobalScope::Impl::hiddenFriends(const Ty* t, uint32_t symbol, std::vector<HiddenFriends>& out, int depth) -> void
+auto GlobalScope::Impl::hiddenFriends(const Ty* t, uint32_t symbol, std::vector<HiddenFriends>& out, int depth, std::vector<const Ty*>* visited) -> void
 {
-  if (!t || depth > 4)
+  if (!t || depth > maxNestedLevels)
     return;
   t = types.unqualified(types.stripRef(t));
   while (t && (t->kind == TyKind::Pointer || t->kind == TyKind::Array))
     t = t->inner ? types.unqualified(t->inner) : nullptr;
+  // (The associated classes are a graph, not a tree: `class Robot : Hook<Robot>` is its own base's argument.)
+  std::vector<const Ty*> own;
+  if (!visited)
+    visited = &own;
+  if (!t || std::find(visited->begin(), visited->end(), t) != visited->end())
+    return;
+  visited->push_back(t);
   // An enumeration's associated class is the class it is a member of (NotificationData's `Flags
   // operator|` for its nested `enum class Flags`), a nested class's the one around it too (C++'s
   // [basic.lookup.argdep] 3), with the instance's arguments.
   auto enclosing = [&](const Decl* member)
   {
     if (member && member->parent && member->parent->kind == NodeKind::ClassDecl && !types.isDependent(t))
-      hiddenFriends(types.classType(member->parent, t->args), symbol, out, depth + 1);
+      hiddenFriends(types.classType(member->parent, t->args), symbol, out, depth + 1, visited);
   };
   if (t && t->kind == TyKind::Enum && t->decl)
   {
@@ -798,9 +812,9 @@ auto GlobalScope::Impl::hiddenFriends(const Ty* t, uint32_t symbol, std::vector<
   std::vector<const Ty*> bases;
   directBases(t, def, bases);
   for (const Ty* b : bases)
-    hiddenFriends(b, symbol, out, depth + 1);
+    hiddenFriends(b, symbol, out, depth + 1, visited);
   for (const Ty* a : t->args)
-    hiddenFriends(a, symbol, out, depth + 1);
+    hiddenFriends(a, symbol, out, depth + 1, visited);
 }
 
 auto GlobalScope::Impl::hiddenFriendLookup(uint32_t symbol, const std::vector<const Ty*>& argTypes, Subst& subst, std::string* conflict) -> Lookup

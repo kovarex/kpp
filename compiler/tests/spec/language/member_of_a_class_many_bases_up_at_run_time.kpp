@@ -1,0 +1,14 @@
+// spec: code generation follows a class however deep its bases are: a member and a derived-to-base conversion 100 bases up, as constant evaluation does (language/constants_and_arrow_chains_of_deep_classes; clang 19: 1 5)
+// pending: 'v' of D100 is no data member (codegen's own depth limits, Values.cpp and about 25 others)
+struct D0 { int v = 5; };
+template<int N> struct Chain : Chain<N - 1> { };
+template<> struct Chain<0> : D0 { };
+struct D100 : Chain<99> { };
+int pick(const D0&) { return 1; }
+int pick(double) { return 2; }
+int main()
+{
+  D100 d;
+  println(pick(d), " ", d.v);
+  return 0;
+}

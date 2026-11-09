@@ -4,7 +4,7 @@
 
 auto GlobalScope::Impl::overridesVirtual(const Ty* t, const std::string& key, int depth) -> std::optional<bool>
 {
-  if (!t || !t->isKnown() || types.isDependent(t) || t->kind != TyKind::Class || depth > 16)
+  if (!t || !t->isKnown() || types.isDependent(t) || t->kind != TyKind::Class || depth > maxNestedLevels)
     return std::nullopt;
   ClassDecl* def = classDefinition(t);
   std::vector<const Ty*> bases;
@@ -62,7 +62,7 @@ auto GlobalScope::Impl::isBaseClass(const Ty* base, const Ty* derived) -> bool
 
 auto GlobalScope::Impl::hasUnlinkedBase(Scope* cls, int depth) -> bool
 {
-  if (!cls || depth > 16 || cls->baseTypes.empty())
+  if (!cls || depth > maxNestedLevels || cls->baseTypes.empty())
     return false;
   ensureBases(cls, depth);
   if (cls->baseScopes.size() < cls->baseTypes.size())
@@ -75,7 +75,7 @@ auto GlobalScope::Impl::hasUnlinkedBase(Scope* cls, int depth) -> bool
 
 auto GlobalScope::Impl::isBaseScope(Scope* base, Scope* derived, int depth) -> bool
 {
-  if (!base || !derived || depth > 16)
+  if (!base || !derived || depth > maxNestedLevels)
     return false;
   ensureBases(derived, depth);
   for (Scope* b : derived->baseScopes)
@@ -615,7 +615,7 @@ auto GlobalScope::Impl::namedFunctionType(Decl* d, const Ty* t, const Subst* sub
 
 auto GlobalScope::Impl::overriddenNoexcept(const Ty* t, FunctionDecl* f, const std::string& key, int depth) -> FunctionDecl*
 {
-  if (!t || !t->isKnown() || types.isDependent(t) || t->kind != TyKind::Class || depth > 16)
+  if (!t || !t->isKnown() || types.isDependent(t) || t->kind != TyKind::Class || depth > maxNestedLevels)
     return nullptr;
   ClassDecl* def = classDefinition(t);
   std::vector<const Ty*> bases;

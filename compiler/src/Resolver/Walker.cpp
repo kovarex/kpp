@@ -2620,8 +2620,10 @@ auto GlobalScope::Impl::Walker::memberOfQualifierInstance(NameExpr* e) -> Lookup
 auto GlobalScope::Impl::Walker::objectForArrow(const Ty* t, int depth) -> const Ty*
 {
   t = types.stripRef(t);
-  if (!t || depth > 4)
+  if (!t)
     return t;
+  if (depth > Impl::maxArrowChain) // (never the class the chain stopped at: a member of that name there would be the wrong one)
+    return types.unknown();
   if (t->kind == TyKind::Pointer)
     return t->inner;
   if (t->kind == TyKind::Class)

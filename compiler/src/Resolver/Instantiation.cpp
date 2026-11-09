@@ -113,7 +113,7 @@ auto GlobalScope::Impl::substFor(const Ty* classTy) -> Subst
 auto GlobalScope::Impl::memberTypeOf(const Ty* t, uint32_t symbol, int depth) -> const Ty*
 {
   Scope* inside = classScopeOf(t);
-  if (!inside || depth > 16)
+  if (!inside || depth > maxNestedLevels)
     return nullptr;
   Lookup inner;
   lookupInScope(inside, symbol, inner, depth + 1);
@@ -157,7 +157,7 @@ auto GlobalScope::Impl::instantiationOfBase(const Ty* t, Scope* cls, Scope* in, 
 {
   if (cls == in)
     return t;
-  if (!cls || depth > 16 || cls->baseTypes.empty() || !cls->owner)
+  if (!cls || depth > maxNestedLevels || cls->baseTypes.empty() || !cls->owner)
     return nullptr;
   Subst own = substFor(t);
   LocalStack params;
@@ -185,7 +185,7 @@ auto GlobalScope::Impl::instantiationOfBase(const Ty* t, Scope* cls, Scope* in, 
 
 auto GlobalScope::Impl::lookupThroughBaseInstances(const Ty* t, uint32_t symbol, Lookup& l, int depth) -> void
 {
-  if (!t || t->kind != TyKind::Class || !t->decl || depth > 16 || types.isDependent(t))
+  if (!t || t->kind != TyKind::Class || !t->decl || depth > maxNestedLevels || types.isDependent(t))
     return;
   Scope* cls = classScopeOf(t);
   if (!cls || cls->baseTypes.empty() || !cls->owner || l.found == Found::Dependent || l.absent)
@@ -206,7 +206,7 @@ auto GlobalScope::Impl::lookupThroughBaseInstances(const Ty* t, uint32_t symbol,
 
 auto GlobalScope::Impl::lookupInBaseInstances(const Ty* t, Scope* cls, uint32_t symbol, Lookup& out, int depth) -> bool
 {
-  if (!cls || depth > 16 || cls->baseTypes.empty() || !cls->owner)
+  if (!cls || depth > maxNestedLevels || cls->baseTypes.empty() || !cls->owner)
     return false;
   Subst own = substFor(t);
   LocalStack params;
@@ -255,7 +255,7 @@ auto GlobalScope::Impl::instantiationsOfBase(const Ty* t, Scope* cls, Scope* in,
       out.push_back(t);
     return;
   }
-  if (!cls || depth > 16 || cls->baseTypes.empty() || !cls->owner)
+  if (!cls || depth > maxNestedLevels || cls->baseTypes.empty() || !cls->owner)
     return;
   Subst own = substFor(t);
   LocalStack params;
@@ -283,7 +283,7 @@ auto GlobalScope::Impl::bindingMembersClass(const Ty* t, int depth) -> const Ty*
 {
   t = types.unqualified(types.stripRef(t));
   Scope* cs = classScopeOf(t);
-  if (!cs || !cs->owner || cs->owner->kind != NodeKind::ClassDecl || depth > 16)
+  if (!cs || !cs->owner || cs->owner->kind != NodeKind::ClassDecl || depth > maxNestedLevels)
     return nullptr;
   for (Decl* m : membersRead(static_cast<ClassDecl*>(cs->owner)))
     if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef)))
@@ -347,7 +347,7 @@ auto GlobalScope::Impl::normalizeValueArgs(Span<Decl*> params, std::vector<const
 
 auto GlobalScope::Impl::derivesFromInstance(const Ty* t, Scope* cls, const Ty* base, int depth) -> bool
 {
-  if (!t || !cls || depth > 16)
+  if (!t || !cls || depth > maxNestedLevels)
     return false;
   if (types.unqualified(t) == base)
     return true;
@@ -388,7 +388,7 @@ auto GlobalScope::Impl::memberSubst(const Ty* t, Scope* foundIn, int depth) -> S
 
 auto GlobalScope::Impl::baseSubstForUnqualified(const Lookup& l, const TypeContext& ctx, int depth) -> Subst
 {
-  if (l.found != Found::Member || !l.foundIn || l.foundIn->kind != ScopeKind::Class || depth > 16)
+  if (l.found != Found::Member || !l.foundIn || l.foundIn->kind != ScopeKind::Class || depth > maxNestedLevels)
     return {};
   Scope* cls = ctx.scope;
   while (cls && cls->kind != ScopeKind::Class)

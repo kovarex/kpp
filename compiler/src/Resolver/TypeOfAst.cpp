@@ -329,7 +329,7 @@ auto GlobalScope::Impl::compositePointer(const Ty* a, const Ty* b) -> const Ty*
 
 auto GlobalScope::Impl::derivesFrom(const Ty* derived, const Ty* base, int depth) -> bool
 {
-  if (!derived || !base || depth > 16)
+  if (!derived || !base || depth > maxNestedLevels)
     return false;
   if (derived->kind != TyKind::Class || base->kind != TyKind::Class)
     return false;
@@ -787,7 +787,7 @@ auto GlobalScope::Impl::overrideKey(FunctionDecl* f, const Ty* cls) -> std::stri
 
 auto GlobalScope::Impl::polymorphicClass(const Ty* t, int depth) -> std::optional<bool>
 {
-  if (!t->isKnown() || types.isDependent(t) || depth > 16)
+  if (!t->isKnown() || types.isDependent(t) || depth > maxNestedLevels)
     return std::nullopt;
   if (t->kind != TyKind::Class)
     return false;
@@ -811,7 +811,7 @@ auto GlobalScope::Impl::polymorphicClass(const Ty* t, int depth) -> std::optiona
 
 auto GlobalScope::Impl::abstractClass(const Ty* t, std::unordered_set<std::string> overridden, int depth) -> std::optional<bool>
 {
-  if (!t->isKnown() || types.isDependent(t) || depth > 16)
+  if (!t->isKnown() || types.isDependent(t) || depth > maxNestedLevels)
     return std::nullopt;
   if (t->kind != TyKind::Class)
     return false;
@@ -967,7 +967,7 @@ auto GlobalScope::Impl::declaredSpecial(FunctionDecl* f, TraitForm form, const T
 
 auto GlobalScope::Impl::constructibleFromSelf(const Ty* t, bool move, TraitForm form, int depth) -> std::optional<bool>
 {
-  if (!t || !t->isKnown() || types.isDependent(t) || depth > 16)
+  if (!t || !t->isKnown() || types.isDependent(t) || depth > maxNestedLevels)
     return std::nullopt;
   if (t->isReference())
     return t->kind != TyKind::RRef || move; // (`int&&` binds no const int&)
@@ -1095,7 +1095,7 @@ auto GlobalScope::Impl::destructibleOutside(ClassDecl* def) -> bool
 
 auto GlobalScope::Impl::assignableFromSelf(const Ty* t, bool move, TraitForm form, int depth) -> std::optional<bool>
 {
-  if (!t || !t->isKnown() || types.isDependent(t) || depth > 16)
+  if (!t || !t->isKnown() || types.isDependent(t) || depth > maxNestedLevels)
     return std::nullopt;
   if (t->isReference())
   {
@@ -1194,7 +1194,7 @@ auto GlobalScope::Impl::trivialSubject(const Ty* t) -> TrivialSubject
 
 auto GlobalScope::Impl::triviallyDestructible(const Ty* t, int depth) -> std::optional<bool>
 {
-  if (!t || !t->isKnown() || types.isDependent(t) || depth > 16)
+  if (!t || !t->isKnown() || types.isDependent(t) || depth > maxNestedLevels)
     return std::nullopt;
   if (t->isReference())
     return true;
@@ -1239,7 +1239,7 @@ auto GlobalScope::Impl::destructorMayThrow(const Ty* t) -> std::optional<bool>
 {
   // (a class holding itself by value is an error of its own: the walk must only end)
   static thread_local int depth = 0;
-  if (!t || !t->isKnown() || types.isDependent(t) || depth > 64)
+  if (!t || !t->isKnown() || types.isDependent(t) || depth > maxNestedLevels)
     return std::nullopt;
   if (t->isReference())
     return false;
@@ -1357,7 +1357,7 @@ auto GlobalScope::Impl::hasVirtualDestructor(const Ty* t, int depth) -> bool
 
 auto GlobalScope::Impl::foreignVtableClass(const Ty* t, int depth) -> const Ty*
 {
-  if (!t || t->kind != TyKind::Class || depth > 16)
+  if (!t || t->kind != TyKind::Class || depth > maxNestedLevels)
     return nullptr;
   ClassDecl* def = classDefinition(t);
   if (!def)
@@ -1448,7 +1448,7 @@ auto GlobalScope::Impl::triviallyCopyable(const Ty* t) -> std::optional<bool>
 
 auto GlobalScope::Impl::defaultConstructible(const Ty* t, int depth) -> std::optional<bool>
 {
-  if (!t || !t->isKnown() || types.isDependent(t) || depth > 16)
+  if (!t || !t->isKnown() || types.isDependent(t) || depth > maxNestedLevels)
     return std::nullopt;
   if (t->isReference())
     return false;
@@ -1559,7 +1559,7 @@ auto GlobalScope::Impl::defaultConstructible(const Ty* t, int depth) -> std::opt
 
 auto GlobalScope::Impl::triviallyDefaultConstructible(const Ty* t, int depth) -> std::optional<bool>
 {
-  if (!t || !t->isKnown() || types.isDependent(t) || depth > 16)
+  if (!t || !t->isKnown() || types.isDependent(t) || depth > maxNestedLevels)
     return std::nullopt;
   if (t->isReference())
     return false;

@@ -85,7 +85,7 @@
   // The namespaces argument-dependent lookup searches for an argument of type t: a class's or an
   // enumeration's innermost enclosing namespace (not the global one, which ordinary lookup
   // searches anyway), and those of a class instance's type arguments.
-  void associatedNamespaces(const Ty* t, std::vector<Scope*>& out, int depth = 0);
+  void associatedNamespaces(const Ty* t, std::vector<Scope*>& out, int depth = 0, std::vector<const Ty*>* visited = nullptr);
 
   // The friend functions defined in a class (hidden friends: static members to the compiler, the
   // parser's DF_Static) named symbol, which no lookup finds but argument-dependent lookup through an
@@ -105,7 +105,7 @@
     const std::vector<Entry>* entries;
     const Ty* cls;
   };
-  void hiddenFriends(const Ty* t, uint32_t symbol, std::vector<HiddenFriends>& out, int depth = 0);
+  void hiddenFriends(const Ty* t, uint32_t symbol, std::vector<HiddenFriends>& out, int depth = 0, std::vector<const Ty*>* visited = nullptr);
 
   // The hidden friends named symbol the arguments find (hiddenFriends) as one lookup, and in subst
   // their classes' template arguments; the classes of two found sets being instances of one template

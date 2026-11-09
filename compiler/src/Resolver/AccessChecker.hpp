@@ -234,6 +234,7 @@
   // Cached computations nested in one another are counted as names are (levels, 4096), which bounds a
   // recursion through them that no name evaluation is part of.
   static constexpr int maxNestedNames = 1024, maxNestedCalls = 512, maxNestedLevels = 4096;
+  static constexpr int maxArrowChain = 256; // operator-> returning a class with an operator-> (clang's -foperator-arrow-depth)
   static thread_local int nameEvaluations, cachedLevels;
   static thread_local int deepestNames, deepestCalls, deepestLevels; // the most nested so far in the innermost CachedEvaluation
   static thread_local uint64_t evaluationTrips;

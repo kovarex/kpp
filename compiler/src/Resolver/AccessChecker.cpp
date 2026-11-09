@@ -197,7 +197,7 @@ auto GlobalScope::Impl::checkAccessUse(Decl* used, Node* at, Decl* d, FunctionDe
 auto GlobalScope::Impl::arrowObject(const Ty* t, int depth) -> const Ty*
 {
   t = t ? types.unqualified(types.stripRef(t)) : nullptr;
-  if (!t || depth > 4)
+  if (!t || depth > maxArrowChain)
     return nullptr;
   if (t->kind == TyKind::Pointer)
     return t->inner;
@@ -277,7 +277,7 @@ auto GlobalScope::Impl::declaresVirtual(ClassDecl* c, bool record) -> bool
 
 auto GlobalScope::Impl::polymorphicBaseOf(ClassDecl* c, int depth, bool record) -> ClassDecl*
 {
-  if (depth > 16)
+  if (depth > maxNestedLevels)
     return nullptr;
   for (const ClassDecl::Base& b : c->bases)
   {
@@ -481,7 +481,7 @@ auto GlobalScope::Impl::constDeducedType(VariableDecl* v, const Ty* written) -> 
 
 auto GlobalScope::Impl::constValueOfDecl(Decl* d, const TypeContext& ctx, int depth, const Subst* classSubst) -> std::optional<ConstValue>
 {
-  if (!d || depth > 96)
+  if (!d || depth > maxNestedLevels)
     return std::nullopt;
   if (d->kind == NodeKind::TemplateParamDecl)
   {
@@ -703,7 +703,7 @@ auto GlobalScope::Impl::classBasesOf(const Ty* cls, ClassDecl*& def, int depth) 
 {
   std::vector<const Ty*> out;
   def = nullptr;
-  if (!cls || cls->kind != TyKind::Class || !cls->decl || depth > 64 || types.isDependent(cls))
+  if (!cls || cls->kind != TyKind::Class || !cls->decl || depth > maxNestedLevels || types.isDependent(cls))
     return out;
   Decl* d = cls->decl;
   if (!d->ownScope)
@@ -819,7 +819,7 @@ bool GlobalScope::classDerivesFrom(const Ty* cls, const Ty* base) { return impl-
 
 auto GlobalScope::Impl::constSizeOf(const Ty* t, int depth) -> std::optional<int64_t>
 {
-  if (!t || depth > 24)
+  if (!t || depth > maxNestedLevels)
     return std::nullopt;
   if (const ConstHooks* h = constHooks(); h && h->layout)
     return h->layout(t, false); // the code generator's layout, the exact one
@@ -944,7 +944,7 @@ auto GlobalScope::Impl::constSizeOf(const Ty* t, int depth) -> std::optional<int
 
 auto GlobalScope::Impl::constAlignOf(const Ty* t, int depth) -> std::optional<int64_t>
 {
-  if (!t || depth > 24) return std::nullopt;
+  if (!t || depth > maxNestedLevels) return std::nullopt;
   if (const ConstHooks* h = constHooks(); h && h->layout)
     return h->layout(t, true);
   t = types.unqualified(t);
@@ -1018,7 +1018,7 @@ auto GlobalScope::Impl::constAlignOf(const Ty* t, int depth) -> std::optional<in
 
 auto GlobalScope::Impl::constFieldOffset(const Ty* t, Decl* m, int depth) -> std::optional<int64_t>
 {
-  if (!t || !m || depth > 24)
+  if (!t || !m || depth > maxNestedLevels)
     return std::nullopt;
   t = types.unqualified(types.stripRef(t));
   if (t->kind != TyKind::Class)
