@@ -79,6 +79,9 @@ Name: visualstudio; Description: "Install kpp-visualstudio.vsix, the kpp extensi
 
 [Run]
 Filename: "{code:VSIXInstallerOf}"; Parameters: "/quiet ""{app}\kpp-visualstudio.vsix"""; Flags: runasoriginaluser waituntilterminated; Tasks: visualstudio; StatusMsg: "Installing the Visual Studio extension (kpp-visualstudio.vsix)..."
+; VSIXInstaller replaces the extension's folder but leaves Visual Studio's configuration naming the old one, so
+; the next start has no grammar and no extension (a FileNotFoundException, every word in the text's color).
+Filename: "{code:DevenvOf}"; Parameters: "/updateconfiguration"; Flags: runasoriginaluser waituntilterminated; Tasks: visualstudio; StatusMsg: "Updating Visual Studio's configuration for the extension..."
 #endif
 
 [Registry]
@@ -159,6 +162,12 @@ end;
 function VSIXInstallerOf(Param: string): string;
 begin
   Result := VSIXInstaller();
+end;
+
+// That Visual Studio's devenv.exe, beside it.
+function DevenvOf(Param: string): string;
+begin
+  Result := ExtractFilePath(VSIXInstaller()) + 'devenv.exe';
 end;
 
 function VSIXInstallerFound(): Boolean;

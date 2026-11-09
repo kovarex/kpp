@@ -101,6 +101,9 @@ $vsVsix = if (-not $missing)
     }
     New-Item -ItemType Directory -Force "$work\tools\vscode" | Out-Null
     Copy-Item "$repository\tools\vscode\language-configuration.json" "$work\tools\vscode"
+    # (Nothing of an earlier package's build: the project's up-to-date check keeps the manifest it made, so the
+    # version stamped below would not reach the package, and an install would not replace the extension.)
+    foreach ($built in 'bin', 'obj') { if (Test-Path "$work\tools\vs\vsix\$built") { cmd /c "rd /s /q `"$work\tools\vs\vsix\$built`"" } }
     $manifest = "$work\tools\vs\vsix\source.extension.vsixmanifest"
     $text = [IO.File]::ReadAllText($manifest)
     if ($text -notmatch '<Identity [^>]*Version="') { throw "$manifest has no <Identity Version>" }
