@@ -5,7 +5,7 @@
 // `#ifdef PACKAGED_BUILD` chose.
 int main()
 {
-  println(StringView(config::debug ? "debug" : config::finalRelease ? "final" : "release"), " IsDebug ", BuildConstants::IsDebug, " IsFinalRelease ",
+  std::println(std::StringView(config::debug ? "debug" : config::finalRelease ? "final" : "release"), " IsDebug ", BuildConstants::IsDebug, " IsFinalRelease ",
           BuildConstants::IsFinalRelease, " IsPackagedBuild ", BuildConstants::IsPackagedBuild);
   return 0;
 }

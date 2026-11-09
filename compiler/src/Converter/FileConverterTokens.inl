@@ -1395,7 +1395,7 @@
         case 'o':
         {
           std::string type = integerType(false);
-          std::string name = c.conversion == 'x' ? "hex(" : c.conversion == 'X' ? "hexUpper(" : "octal(";
+          std::string name = c.conversion == 'x' ? "std::hex(" : c.conversion == 'X' ? "std::hexUpper(" : "std::octal(";
           valueOpen = name + (exact == type || literalInteger ? "" : type + "(");
           valueClose = std::string(exact == type || literalInteger ? "" : ")");
           if (c.flags.find('0') != std::string::npos && c.width > 0 && c.flags.find('-') == std::string::npos)
@@ -1454,11 +1454,11 @@
             bool text = charPointer || cText || (type && isStdStringType(type)) || (plain && plain->kind == NodeKind::ConditionalExpr);
             if (arg && !text)
             {
-              valueOpen = "StringView((const char*)(", valueClose = "))";
+              valueOpen = "std::StringView((const char*)(", valueClose = "))";
               counts.add("printf %s of a pointer of another or unknown type written StringView((const char*)(x))");
             }
             else
-              valueOpen = "StringView(", valueClose = ")";
+              valueOpen = "std::StringView(", valueClose = ")";
           }
           break;
         case 'f':
@@ -1472,12 +1472,12 @@
           if (trio)
             valueOpen = std::string(c.conversion == 'f' ? "trioFixed(" : c.conversion == 'e' ? "trioScientific(" : "trioSignificant(");
           else
-            valueOpen = std::string(c.conversion == 'f' ? "fixed(" : c.conversion == 'e' ? "scientific(" : "significant(");
+            valueOpen = std::string(c.conversion == 'f' ? "std::fixed(" : c.conversion == 'e' ? "std::scientific(" : "std::significant(");
           valueClose = ", " + std::to_string(precision) + ")";
           break;
         }
         case 'p':
-          valueOpen = "address(", valueClose = ")";
+          valueOpen = "std::address(", valueClose = ")";
           break;
         default: return false;
       }
@@ -1485,18 +1485,18 @@
       {
         if (!strchr("difeg", c.conversion))
           return false;
-        valueOpen = "withSign(" + valueOpen, valueClose += ")";
+        valueOpen = "std::withSign(" + valueOpen, valueClose += ")";
       }
       // (a `*` width's argument as the width: negative, it aligns left, as printf's does)
       std::string width = c.starWidth ? widthText : c.width > 0 ? std::to_string(c.width) : std::string();
       if (!width.empty())
       {
         if (c.flags.find('-') != std::string::npos)
-          valueOpen = "alignLeft(" + valueOpen, valueClose += ", " + width + ")";
+          valueOpen = "std::alignLeft(" + valueOpen, valueClose += ", " + width + ")";
         else if (c.flags.find('0') != std::string::npos && strchr("diufeg", c.conversion))
-          valueOpen = "zeroPadded(" + valueOpen, valueClose += ", " + width + ")";
+          valueOpen = "std::zeroPadded(" + valueOpen, valueClose += ", " + width + ")";
         else
-          valueOpen = "alignRight(" + valueOpen, valueClose += ", " + width + ")";
+          valueOpen = "std::alignRight(" + valueOpen, valueClose += ", " + width + ")";
       }
       open = valueOpen, close = valueClose;
       return true;
@@ -1629,7 +1629,7 @@
           auto [b, e] = trimmed(a);
           texts.push_back(rewritePrintfText(t.substr(b, e - b), depth + 1));
         }
-        std::string callee = word == "ssprintf" ? "toString" : printLike ? "print" : word;
+        std::string callee = word == "ssprintf" ? "std::toString" : printLike ? "std::print" : word;
         std::string rewritten;
         bool done = false;
         // (print returns no count: only a statement's printf, after `;`, `{`, `}` or `)` and before `;`)
@@ -1708,12 +1708,12 @@
               {
                 // (a literal: itself, aligned as asked)
                 ok = printfPiece(conversion, nullptr, 0, !printLike, o, cl, noDot, widthText);
-                if (ok && o.compare(0, 11, "StringView(") == 0)
-                  o.erase(0, 11), cl.erase(0, 1);
-                else if (ok && o.find("StringView(") != std::string::npos)
+                if (ok && o.compare(0, 16, "std::StringView(") == 0)
+                  o.erase(0, 16), cl.erase(0, 1);
+                else if (ok && o.find("std::StringView(") != std::string::npos)
                 {
-                  size_t at = o.find("StringView(");
-                  o.erase(at, 11);
+                  size_t at = o.find("std::StringView(");
+                  o.erase(at, 16);
                   cl.erase(0, 1);
                 }
               }
@@ -1744,7 +1744,7 @@
             for (size_t a = 0; a < formatIndex; ++a)
               rewritten += texts[a] + ", ";
             if (following == 0)
-              rewritten += "StringView(" + f + ")";
+              rewritten += "std::StringView(" + f + ")";
             else
             {
               rewritten += "ssprintf(" + f;
@@ -1830,7 +1830,7 @@
         todo(toks[f->token].offset, "a format function whose `format, ...` the converter cannot find");
         return;
       }
-      replace(toks[beforeFormat + 1].offset, endOffset(ellipsis) - toks[beforeFormat + 1].offset, "Text text");
+      replace(toks[beforeFormat + 1].offset, endOffset(ellipsis) - toks[beforeFormat + 1].offset, "std::Text text");
       counts.add("format functions taking a Text");
       if (!f->body || f->endToken <= f->body->token || f->endToken > toks.size())
         return;
@@ -2048,17 +2048,16 @@
       }
       if (kind == 'f')
       {
-        std::string fixed = shadowedAt("fixed", toks[open].offset) ? "::fixed(" : "fixed(";
-        replace(toks[open].offset, toks[open].length, "(" + fixed);
+        replace(toks[open].offset, toks[open].length, "(std::fixed(");
         replace(toks[ranges[0].second].offset, toks[ranges[0].second].length, ", 6))");
         counts.add("std::to_string of a floating value written toString(fixed(x, 6))");
         return;
       }
-      // (the std:: rename's edit, `toString`, gets the name)
+      // (the std:: rename's edit, `std::toString`, gets the game's name)
       for (Edit& e : edits)
-        if (e.offset == toks[first].offset && e.length && e.text.size() >= 8 && e.text.compare(e.text.size() - 8, 8, "toString") == 0)
+        if (e.offset == toks[first].offset && e.length && e.text == "std::toString")
         {
-          e.text += "AsStd";
+          e.text = "toStringAsStd";
           counts.add("std::to_string of a bool, char, enumeration or unknown type written toStringAsStd(x)");
           return;
         }
@@ -2088,11 +2087,11 @@
       if (in.c && name != "printf" && name != "fprintf")
         return false;
       if (name == "ssprintf")
-        to = "toString";
+        to = "std::toString";
       else if (name == "printf" && !resolved)
-        to = "print", trio = false;
+        to = "std::print", trio = false;
       else if (name == "fprintf" && !resolved)
-        to = "print", trio = false, formatIndex = 1; // print(stream, pieces...), as C++23's std::print(FILE*, ...)
+        to = "std::print", trio = false, formatIndex = 1; // print(stream, pieces...), as C++23's std::print(FILE*, ...)
       else if (auto macro = !resolved && !name.empty() ? formatMacros.find(name) : formatMacros.end(); macro != formatMacros.end())
         formatIndex = macro->second;
       else if (isFormatFunction(resolved))
@@ -2139,11 +2138,11 @@
           if (e.length > 0 && e.offset < after && e.offset + e.length == after)
             ending = &e;
         if (ending)
-          ending->text += alone ? "StringView(" : "ssprintf(";
+          ending->text += alone ? "std::StringView(" : "ssprintf(";
         else if (after < toks[formatFirst].offset)
-          replace(after, toks[formatFirst].offset - after, std::string(" ") + (alone ? "StringView(" : "ssprintf("));
+          replace(after, toks[formatFirst].offset - after, std::string(" ") + (alone ? "std::StringView(" : "ssprintf("));
         else
-          insert(after, alone ? "StringView(" : "ssprintf(");
+          insert(after, alone ? "std::StringView(" : "ssprintf(");
         uint32_t at = endOffset(paren - 1);
         Edit* parenRewrite = nullptr;
         for (Edit& e : edits)
@@ -2280,7 +2279,7 @@
         counts.add("printf calls left as they are (arguments not one per conversion, or a macro's)");
         return false;
       }
-      if (to == "print")
+      if (to == "std::print")
       {
         // (a statement: print returns no count)
         uint32_t first = firstTokenOf(call->callee), close = ranges.empty() ? last + 1 : ranges.back().second;
@@ -2313,9 +2312,7 @@
       uint32_t callAt = toks[firstTokenOf(call->callee)].offset;
       auto qualified = [&](std::string text)
       {
-        static const char* names[] = {"toString", "print", "hex", "hexUpper", "octal", "fixed", "significant", "scientific", "trioFixed",
-                                      "trioSignificant", "trioScientific", "withSign",
-                                      "alignLeft", "alignRight", "zeroPadded", "address", "StringView"};
+        static const char* names[] = {"trioFixed", "trioSignificant", "trioScientific"};
         for (const char* name : names)
           for (size_t at = text.find(name); at != std::string::npos; at = text.find(name, at + 1))
           {
@@ -2384,7 +2381,7 @@
       }
       printfRewritten.insert(call);
       counts.add(name == "ssprintf" ? "ssprintf calls written toString(pieces)"
-                 : to == "print"     ? "printf statements written print(pieces)"
+                 : to == "std::print" ? "printf statements written print(pieces)"
                  : !resolved         ? "Log and SAVING_TAG macro calls written with pieces"
                                      : "calls of the game's format functions written with pieces");
       return true;
@@ -2446,7 +2443,7 @@
         {
           // A format that reads nothing: `ssprintf("text", x)` is the text (ssprintf without
           // arguments is deleted: CommonUtil's StringUtil.hpp).
-          replace(toks[firstTokenOf(callee)].offset, toks[arg->token].offset - toks[firstTokenOf(callee)].offset, "String(");
+          replace(toks[firstTokenOf(callee)].offset, toks[arg->token].offset - toks[firstTokenOf(callee)].offset, "std::String(");
           remove(toks[last + 1].offset, toks[ranges.back().second].offset - toks[last + 1].offset);
           counts.add("printf arguments the format does not read dropped");
         }
@@ -2743,7 +2740,7 @@
             !toks[i + 3].is(P::ColonColon) && !(i > 0 && (toks[i - 1].is(P::ColonColon) || toks[i - 1].is(P::Dot) || toks[i - 1].is(P::Arrow))) &&
             namesIteratorType(std::string(spelling(i))))
         {
-          insert(t.offset, "IteratorTraits<");
+          insert(t.offset, "std::IteratorTraits<");
           insert(endOffset(i), ">");
           counts.add("iterator member types through IteratorTraits");
           i += 2;
@@ -2949,9 +2946,9 @@
           // A std::chrono literal (`10ms`, `1.5s`): the library's duration of that count, in double
           // for a fractional one.
           static const std::tuple<const char*, const char*, const char*> suffixes[] = {
-            {"ns", "Nanoseconds", "Duration<double, Nano>"}, {"us", "Microseconds", "Duration<double, Micro>"},
-            {"ms", "Milliseconds", "Duration<double, Milli>"}, {"min", "Minutes", "Duration<double, Ratio<60>>"},
-            {"s", "Seconds", "Duration<double>"}, {"h", "Hours", "Duration<double, Ratio<3600>>"}};
+            {"ns", "std::Nanoseconds", "std::Duration<double, std::Nano>"}, {"us", "std::Microseconds", "std::Duration<double, std::Micro>"},
+            {"ms", "std::Milliseconds", "std::Duration<double, std::Milli>"}, {"min", "std::Minutes", "std::Duration<double, std::Ratio<60>>"},
+            {"s", "std::Seconds", "std::Duration<double>"}, {"h", "std::Hours", "std::Duration<double, std::Ratio<3600>>"}};
           std::string_view number = spelling(i);
           size_t digits = 0;
           while (digits < number.size() && (isdigit((unsigned char)number[digits]) || number[digits] == '.' || number[digits] == '\''))
@@ -2976,13 +2973,13 @@
         }
         if (t.is(Kw::using_) && toks[i + 1].is(Kw::namespace_) && spelling(i + 2) == "std")
         {
-          // `using namespace std::chrono_literals;` (or std::chrono, std::literals): the literals
-          // are rewritten where they are written and the library's names are global.
+          // `using namespace std;` (kpp has none: UnitTest++'s AssertException, whose names are C's), or
+          // std::chrono_literals, std::chrono, std::literals, whose literals are rewritten where they are written.
           uint32_t j = i + 2;
           std::string path;
           for (; j < toks.size() && !toks[j].is(P::Semi); ++j)
             path += std::string(spelling(j));
-          if (j < toks.size() && (path == "std::chrono_literals" || path == "std::chrono" || path == "std::literals" ||
+          if (j < toks.size() && (path == "std" || path == "std::chrono_literals" || path == "std::chrono" || path == "std::literals" ||
                                   path == "std::literals::chrono_literals" || path == "std::chrono::literals"))
           {
             remove(t.offset, lineEndAfter(endOffset(j)) - t.offset);
@@ -2994,8 +2991,8 @@
         if (t.is(Kw::using_) && i + 4 < toks.size() && spelling(i + 1) == "std" && toks[i + 2].is(P::ColonColon) &&
             toks[i + 3].getKind() == TokenKind::Identifier && toks[i + 4].is(P::Semi))
         {
-          // `using std::ostream;`: the library's names are global, so the declaration goes and the
-          // file's later uses of the name are the library's (OutStream).
+          // `using std::ostream;`: the declaration goes and the file's later uses of the name are
+          // written as the library's (std::OutStream).
           std::string name(spelling(i + 3));
           if (auto known = stdNames.find(name); known != stdNames.end())
           {
@@ -3111,9 +3108,9 @@
         {
           // `value.~vector()`: the destructor of a std class, by the class's kpp name.
           auto it = stdNames.find(std::string(spelling(i)));
-          if (it != stdNames.end() && it->second.find("::") == std::string::npos && isupper((unsigned char)it->second[0]))
+          if (it != stdNames.end() && isupper((unsigned char)lastComponent(it->second)[0]))
           {
-            replace(t.offset, endOffset(i) - t.offset, it->second);
+            replace(t.offset, endOffset(i) - t.offset, lastComponent(it->second));
             counts.add("std renamed");
           }
         }
@@ -3163,14 +3160,13 @@
             // std::views and std::ranges::subrange are the library's views (Views.kpp, docs/stdlib/views.md);
             // std::ranges::find and find_if over a whole range its algorithms' range forms (algorithms.md).
             static const std::map<std::string, std::string> viewNames = {
-              {"views::iota", "iotaView"}, {"views::transform", "transformView"}, {"views::reverse", "reverseView"},
-              {"ranges::subrange", "Subrange"}, {"ranges::find", "::find"}, {"ranges::find_if", "::findIf"}};
+              {"views::iota", "std::iotaView"}, {"views::transform", "std::transformView"}, {"views::reverse", "std::reverseView"},
+              {"ranges::subrange", "std::Subrange"}, {"ranges::find", "std::find"}, {"ranges::find_if", "std::findIf"}};
             auto v = viewNames.find(name + "::" + std::string(spelling(i + 4)));
             if (v != viewNames.end())
             {
-              bool qualify = v->second[0] != ':' && shadowedAt(v->second, t.offset);
-              replace(t.offset, endOffset(i + 4) - t.offset, qualify ? "::" + v->second : v->second);
-              counts.add(name == "views" || v->second == "Subrange" ? "std::views renamed" : "std::ranges algorithms renamed");
+              replace(t.offset, endOffset(i + 4) - t.offset, v->second);
+              counts.add(name == "views" || v->second == "std::Subrange" ? "std::views renamed" : "std::ranges algorithms renamed");
               i += 4;
               continue;
             }
@@ -3249,7 +3245,7 @@
           if (name == "thread" && i + 4 < toks.size() && toks[i + 3].is(P::ColonColon) && spelling(i + 4) == "hardware_concurrency")
           {
             // A static member whose library name differs: std::thread::hardware_concurrency().
-            replace(t.offset, endOffset(i + 4) - t.offset, shadowedAt("Thread", t.offset) ? "::Thread::hardwareConcurrency" : "Thread::hardwareConcurrency");
+            replace(t.offset, endOffset(i + 4) - t.offset, "std::Thread::hardwareConcurrency");
             counts.add("std static member renamed");
             i += 4;
             continue;
@@ -3268,10 +3264,7 @@
             auto c = chronoNames.find(spelling(i + 4));
             if (c != chronoNames.end())
             {
-              std::string chronoTo = c->second;
-              if (shadowedAt(chronoTo, t.offset))
-                chronoTo = "::" + chronoTo;
-              replace(t.offset, endOffset(i + 4) - t.offset, chronoTo);
+              replace(t.offset, endOffset(i + 4) - t.offset, "std::" + c->second);
               counts.add("std::chrono renamed");
               i += 4;
               continue;
@@ -3363,7 +3356,7 @@
             }
             if (j < toks.size() && j >= i + 6 && toks[j - 1].is(P::RBracket) && toks[j - 2].is(P::LBracket))
             {
-              to = name == "unique_ptr" ? "UniqueArray" : name == "make_unique" ? "makeUniqueArray" : "makeUniqueArrayForOverwrite";
+              to = name == "unique_ptr" ? "std::UniqueArray" : name == "make_unique" ? "std::makeUniqueArray" : "std::makeUniqueArrayForOverwrite";
               remove(toks[j - 2].offset, endOffset(j - 1) - toks[j - 2].offset);
               counts.add("unique_ptr<T[]> to UniqueArray");
             }
@@ -3691,7 +3684,7 @@
                   "  using UnderlyingType = SmallBitset<value_count>::UnderlyingType;\n"
                   "\n"
                   "  constexpr " + bfName + "() = default;\n"
-                  "  " + implicitWord(bfName + "::" + bfName + "(values)") + "constexpr " + bfName + "(InitializerList<Enum> values) : bits(" + bfName + "::toBits(values)) {}\n"
+                  "  " + implicitWord(bfName + "::" + bfName + "(values)") + "constexpr " + bfName + "(std::InitializerList<Enum> values) : bits(" + bfName + "::toBits(values)) {}\n"
                   "  " + implicitWord(bfName + "::" + bfName + "(value)") + "constexpr " + bfName + "(Enum value) : bits(static_cast<uint64_t>(1ULL << static_cast<size_t>(value))) {}\n"
                   "\n"
                   "private:\n"
@@ -3727,7 +3720,7 @@
                   "\n"
                   "  using enum Enum;\n"
                   "private:\n"
-                  "  constexpr static uint64_t toBits(InitializerList<Enum> values)\n"
+                  "  constexpr static uint64_t toBits(std::InitializerList<Enum> values)\n"
                   "  {\n"
                   "    uint64_t acc = 0;\n"
                   "    for (auto value : values)\n"

@@ -25,17 +25,17 @@ namespace re2
 {
   // RE2's StringPiece: a view of text, with RE2's copy-outs (ToString, as_string, CopyToString,
   // AppendToString).
-  struct StringPiece : StringView
+  struct StringPiece : std::StringView
   {
     StringPiece() {}
-    implicit StringPiece(const char* text) : StringView(text) {}
-    StringPiece(const char* text, int count) : StringView(text, count) {}
-    implicit StringPiece(const String& text) : StringView(text) {}
-    implicit StringPiece(StringView view) : StringView(view) {}
-    String ToString() const { return String(this->data(), this->size()); }
-    String as_string() const { return String(this->data(), this->size()); }
-    void CopyToString(String* target) const { *target = String(this->data(), this->size()); }
-    void AppendToString(String* target) const { target->append(this->data(), this->size()); }
+    implicit StringPiece(const char* text) : std::StringView(text) {}
+    StringPiece(const char* text, int count) : std::StringView(text, count) {}
+    implicit StringPiece(const std::String& text) : std::StringView(text) {}
+    implicit StringPiece(std::StringView view) : std::StringView(view) {}
+    std::String ToString() const { return std::String(this->data(), this->size()); }
+    std::String as_string() const { return std::String(this->data(), this->size()); }
+    void CopyToString(std::String* target) const { *target = std::String(this->data(), this->size()); }
+    void AppendToString(std::String* target) const { target->append(this->data(), this->size()); }
   };
 }
 
@@ -61,19 +61,19 @@ public:
   struct Arg
   {
     void* target = nullptr;
-    bool (*parser)(StringView, void*) = nullptr;
+    bool (*parser)(std::StringView, void*) = nullptr;
 
     template<typename T>
     implicit Arg(T* target) : target(target), parser(&RE2::parseInto<T>) {}
-    bool Parse(const char* text, size_t n) const { return this->parser(StringView(text, (int)n), this->target); }
+    bool Parse(const char* text, size_t n) const { return this->parser(std::StringView(text, (int)n), this->target); }
   };
 
   void* handle = nullptr;
 
   implicit RE2(const char* pattern) : handle(kppRe2New(pattern, strlen(pattern), 0)) {}
-  implicit RE2(const String& pattern) : handle(kppRe2New(pattern.data(), (size_t)pattern.size(), 0)) {}
+  implicit RE2(const std::String& pattern) : handle(kppRe2New(pattern.data(), (size_t)pattern.size(), 0)) {}
   RE2(const char* pattern, CannedOptions options) : handle(kppRe2New(pattern, strlen(pattern), options == Latin1 ? 1 : 0)) {}
-  RE2(const String& pattern, CannedOptions options) : handle(kppRe2New(pattern.data(), (size_t)pattern.size(), options == Latin1 ? 1 : 0)) {}
+  RE2(const std::String& pattern, CannedOptions options) : handle(kppRe2New(pattern.data(), (size_t)pattern.size(), options == Latin1 ? 1 : 0)) {}
   RE2(const RE2& other) = delete;
   ~RE2() { kppRe2Delete(this->handle); }
 
@@ -82,7 +82,7 @@ public:
 
   // RE2::Match: text[startpos, endpos) against the pattern; submatch[0] is the whole match,
   // submatch[i] group i (empty, without data, for a group that took no part).
-  bool Match(StringView text, size_t startpos, size_t endpos, Anchor anchor, re2::StringPiece* submatch, int nsubmatch) const
+  bool Match(std::StringView text, size_t startpos, size_t endpos, Anchor anchor, re2::StringPiece* submatch, int nsubmatch) const
   {
     long long offsets[64];
     if (nsubmatch > 32)
@@ -99,9 +99,9 @@ public:
   // takes the targets as `A*... args`; a pack of pointer parameters does not deduce yet,
   // templates/pack_of_pointer_parameters.)
   template<typename... Args>
-  static bool FullMatch(StringView text, const RE2& re, Args... args) { return RE2::matchInto(text, re, ANCHOR_BOTH, args...); }
+  static bool FullMatch(std::StringView text, const RE2& re, Args... args) { return RE2::matchInto(text, re, ANCHOR_BOTH, args...); }
   template<typename... Args>
-  static bool PartialMatch(StringView text, const RE2& re, Args... args) { return RE2::matchInto(text, re, UNANCHORED, args...); }
+  static bool PartialMatch(std::StringView text, const RE2& re, Args... args) { return RE2::matchInto(text, re, UNANCHORED, args...); }
 
   // The start of *input matches and the submatches parse (Consume); then *input begins after the
   // match. Otherwise false and *input is unchanged.
@@ -120,11 +120,11 @@ public:
 
   // Replaces the first match of re in *str (Replace, true when there was one) or every match
   // (GlobalReplace, the count) by rewrite.
-  static bool Replace(String* str, const RE2& re, StringView rewrite) { return RE2::replaceIn(str, re, rewrite, 0) > 0; }
-  static int GlobalReplace(String* str, const RE2& re, StringView rewrite) { return RE2::replaceIn(str, re, rewrite, 1); }
+  static bool Replace(std::String* str, const RE2& re, std::StringView rewrite) { return RE2::replaceIn(str, re, rewrite, 0) > 0; }
+  static int GlobalReplace(std::String* str, const RE2& re, std::StringView rewrite) { return RE2::replaceIn(str, re, rewrite, 1); }
 
   template<typename... Args>
-  static bool matchInto(StringView text, const RE2& re, Anchor anchor, Args... args)
+  static bool matchInto(std::StringView text, const RE2& re, Anchor anchor, Args... args)
   {
     if (re.NumberOfCapturingGroups() < (int)sizeof...(Args))
       return false;
@@ -143,24 +143,24 @@ public:
   }
 
   template<typename T>
-  static bool parseInto(StringView text, void* target) { return RE2::parse(text, (T*)target); }
+  static bool parseInto(std::StringView text, void* target) { return RE2::parse(text, (T*)target); }
 
   // A nullptr target skips its group (RE2's Arg(nullptr)): ForkTask's `nullptr, nullptr, &time`.
-  static bool parse(StringView text, nullptr_t) { return true; }
+  static bool parse(std::StringView text, nullptr_t) { return true; }
 
-  static bool parse(StringView text, re2::StringPiece* out)
+  static bool parse(std::StringView text, re2::StringPiece* out)
   {
     *out = re2::StringPiece(text);
     return true;
   }
 
-  static bool parse(StringView text, String* out)
+  static bool parse(std::StringView text, std::String* out)
   {
-    *out = String(text.data(), text.size());
+    *out = std::String(text.data(), text.size());
     return true;
   }
 
-  static bool parse(StringView text, char* out)
+  static bool parse(std::StringView text, char* out)
   {
     if (text.size() != 1)
       return false;
@@ -168,7 +168,7 @@ public:
     return true;
   }
 
-  static bool parse(StringView text, uint8_t* out)
+  static bool parse(std::StringView text, uint8_t* out)
   {
     if (text.size() != 1)
       return false;
@@ -176,22 +176,22 @@ public:
     return true;
   }
 
-  static bool parse(StringView text, int16_t* out) { return kppRe2ParseShort(text.data(), (size_t)text.size(), out) != 0; }
-  static bool parse(StringView text, uint16_t* out) { return kppRe2ParseUnsignedShort(text.data(), (size_t)text.size(), out) != 0; }
-  static bool parse(StringView text, int32_t* out) { return kppRe2ParseInt(text.data(), (size_t)text.size(), out) != 0; }
-  static bool parse(StringView text, uint32_t* out) { return kppRe2ParseUnsignedInt(text.data(), (size_t)text.size(), out) != 0; }
-  static bool parse(StringView text, int64_t* out) { return kppRe2ParseLongLong(text.data(), (size_t)text.size(), out) != 0; }
-  static bool parse(StringView text, uint64_t* out) { return kppRe2ParseUnsignedLongLong(text.data(), (size_t)text.size(), out) != 0; }
-  static bool parse(StringView text, float* out) { return kppRe2ParseFloat(text.data(), (size_t)text.size(), out) != 0; }
-  static bool parse(StringView text, double* out) { return kppRe2ParseDouble(text.data(), (size_t)text.size(), out) != 0; }
+  static bool parse(std::StringView text, int16_t* out) { return kppRe2ParseShort(text.data(), (size_t)text.size(), out) != 0; }
+  static bool parse(std::StringView text, uint16_t* out) { return kppRe2ParseUnsignedShort(text.data(), (size_t)text.size(), out) != 0; }
+  static bool parse(std::StringView text, int32_t* out) { return kppRe2ParseInt(text.data(), (size_t)text.size(), out) != 0; }
+  static bool parse(std::StringView text, uint32_t* out) { return kppRe2ParseUnsignedInt(text.data(), (size_t)text.size(), out) != 0; }
+  static bool parse(std::StringView text, int64_t* out) { return kppRe2ParseLongLong(text.data(), (size_t)text.size(), out) != 0; }
+  static bool parse(std::StringView text, uint64_t* out) { return kppRe2ParseUnsignedLongLong(text.data(), (size_t)text.size(), out) != 0; }
+  static bool parse(std::StringView text, float* out) { return kppRe2ParseFloat(text.data(), (size_t)text.size(), out) != 0; }
+  static bool parse(std::StringView text, double* out) { return kppRe2ParseDouble(text.data(), (size_t)text.size(), out) != 0; }
 
-  static int replaceIn(String* str, const RE2& re, StringView rewrite, int global)
+  static int replaceIn(std::String* str, const RE2& re, std::StringView rewrite, int global)
   {
     char* out = nullptr;
     size_t length = 0;
     int n = kppRe2Replace(re.handle, str->data(), (size_t)str->size(), rewrite.data(), (size_t)rewrite.size(), global, &out, &length);
     if (n > 0)
-      *str = String(out, (int)length);
+      *str = std::String(out, (int)length);
     kppRe2Free(out);
     return n;
   }

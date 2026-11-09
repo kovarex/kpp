@@ -72,7 +72,7 @@ static std::string withTestMarksResolved(std::string text)
       // pointers in a check is an error; the others the compiler points out)
       for (const char* call : {".c_str()", "->c_str()", ".what()", "->what()", ".get<const char*>()", "->get<const char*>()"})
         if (!loose && inner.size() > strlen(call) && inner.compare(inner.size() - strlen(call), strlen(call), call) == 0)
-          out = "StringView(" + inner + ")";
+          out = "std::StringView(" + inner + ")";
     }
     else
     {
@@ -163,7 +163,7 @@ static const std::map<std::string, std::string>& nativeTestMacroBodies()
     b["CHECK_DOES_NOT_START_WITH"] = "require(!UnitTest::startsWith(actual, prefix))";
     b["CHECK_DOES_NOT_START_WITH_SOURCELOCATION"] = "require(!UnitTest::startsWith(actual, prefix))";
     b["CHECK_THROW"] = "requireThrows<ExpectedExceptionType>(expression)";
-    b["CHECK_THROW_EQUAL"] = "require(StringView(requireThrows<ExpectedExceptionType>(expression).what()) == expectedMessage)";
+    b["CHECK_THROW_EQUAL"] = "require(std::StringView(requireThrows<ExpectedExceptionType>(expression).what()) == expectedMessage)";
     b["CHECK_THROW_CONTAINS"] = "require(UnitTest::contains(requireThrows<ExpectedExceptionType>(expression).what(), expectedMessage))";
     return b;
   }();

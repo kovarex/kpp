@@ -6,47 +6,47 @@ extern "C" int printf(const char* format, ...);
 int main()
 {
   // StringUtil: trimming, case, search, splitting, formatting
-  String s = "  hello world  ";
+  std::String s = "  hello world  ";
   StringUtil::trim(s);
   printf("[%s]\n", s.c_str());
-  String lines = "\n\nabc\n\n";
+  std::String lines = "\n\nabc\n\n";
   StringUtil::trimBeginingAndEndingNewlines(lines);
   printf("[%s]\n", lines.c_str());
-  printf("%s %s\n", StringUtil::toUpperCopy(String("abc")).c_str(), StringUtil::toLowerCopy(StringView("DeF")).c_str());
-  printf("%d %d %d\n", StringUtil::startsWith(StringView("prefix_rest"), StringView("prefix")) ? 1 : 0,
-         StringUtil::endsWith(StringView("prefix_rest"), StringView("rest")) ? 1 : 0,
-         StringUtil::contains(StringView("prefix_rest"), StringView("fix_")) ? 1 : 0);
-  Vector<String> parts = StringUtil::splitBySingleDelimiter(String(","), StringView("a,bc,,def"));
+  printf("%s %s\n", StringUtil::toUpperCopy(std::String("abc")).c_str(), StringUtil::toLowerCopy(std::StringView("DeF")).c_str());
+  printf("%d %d %d\n", StringUtil::startsWith(std::StringView("prefix_rest"), std::StringView("prefix")) ? 1 : 0,
+         StringUtil::endsWith(std::StringView("prefix_rest"), std::StringView("rest")) ? 1 : 0,
+         StringUtil::contains(std::StringView("prefix_rest"), std::StringView("fix_")) ? 1 : 0);
+  std::Vector<std::String> parts = StringUtil::splitBySingleDelimiter(std::String(","), std::StringView("a,bc,,def"));
   printf("%zu:", parts.size());
   for (int i = 0; i < parts.size(); ++i)
     printf(" [%s]", parts[i].c_str());
   printf("\n");
-  Pair<StringView, StringView> first = StringUtil::splitFirst(StringView("="), StringView("key=value=more"));
-  printf("[%s] [%s]\n", toString(first.first).c_str(), toString(first.second).c_str());
+  std::Pair<std::StringView, std::StringView> first = StringUtil::splitFirst(std::StringView("="), std::StringView("key=value=more"));
+  printf("[%s] [%s]\n", std::toString(first.first).c_str(), std::toString(first.second).c_str());
   printf("%s\n", ssprintf("%d-%s-%.2f", 42, "x", 3.14159).c_str());
-  printf("%s\n", StringUtil::hexDump(String("AB"), String(" ")).c_str());
-  String replaced = "one two two";
-  StringUtil::replace_all(replaced, StringView("two"), StringView("2"));
+  printf("%s\n", StringUtil::hexDump(std::String("AB"), std::String(" ")).c_str());
+  std::String replaced = "one two two";
+  StringUtil::replace_all(replaced, std::StringView("two"), std::StringView("2"));
   printf("%s\n", replaced.c_str());
 
   // Numbers
-  printf("%d %d\n", StringUtil::strtoint<int>(String("123"), true), StringUtil::strtoint<int>(String("-7"), true));
-  printf("%.2f\n", StringUtil::strtodouble(String("2.5"), true));
+  printf("%d %d\n", StringUtil::strtoint<int>(std::String("123"), true), StringUtil::strtoint<int>(std::String("-7"), true));
+  printf("%.2f\n", StringUtil::strtodouble(std::String("2.5"), true));
   printf("%s %s\n", StringUtil::boolToString(true).c_str(), StringUtil::numberToString(1.5).c_str());
   try
   {
-    StringUtil::strtoint<int>(String("12x"), true);
+    StringUtil::strtoint<int>(std::String("12x"), true);
     printf("no throw\n");
   }
-  catch (const Exception& e)
+  catch (const std::Exception& e)
   {
     printf("caught: %s\n", e.what());
   }
 
   // UTF-8 <-> UTF-16 through the Windows API (the hand-written override)
-  WString wide = StringUtil::widen(String("h\xC3\xA9llo"));
+  std::WString wide = StringUtil::widen(std::String("h\xC3\xA9llo"));
   printf("%zu %d\n", wide.size(), (int)wide[1]);
-  String narrow = StringUtil::narrow(wide);
+  std::String narrow = StringUtil::narrow(wide);
   printf("%s %zu\n", narrow.c_str(), narrow.size());
 
   // Math: the fast approximations and fdlibm's pow, through bitCast instead of unions

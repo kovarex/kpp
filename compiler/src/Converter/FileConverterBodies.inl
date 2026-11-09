@@ -867,7 +867,7 @@
             if (m->op == P::Dot && name.special == 2 && (star || arrow) && dot + 4 < toks.size() &&
                 toks[dot + 3].is(P::LParen) && toks[dot + 4].is(P::RParen) && isStdIteratorType(typeOfExpr(m->base, 0).type, owner))
             {
-              insert(toks[firstTokenOf(m->base)].offset, star ? "(*" : "toAddress(");
+              insert(toks[firstTokenOf(m->base)].offset, star ? "(*" : "std::toAddress(");
               replace(toks[dot].offset, toks[dot + 4].offset + 1 - toks[dot].offset, ")");
               counts.add(star ? "explicit operator*() calls written *x" : "explicit operator->() calls written toAddress(x)");
             }
@@ -973,7 +973,7 @@
               replace(toks[op].offset, toks[op].length, "<<");
               if (asChar || cText || loose)
               {
-                insert(toks[rhsFirst].offset, asChar ? "char(" : cText ? "StringView(" : "(");
+                insert(toks[rhsFirst].offset, asChar ? "char(" : cText ? "std::StringView(" : "(");
                 insert(toks[end].offset, ")");
               }
               counts.add(asChar  ? "std::string += of an integer written << char(x)"

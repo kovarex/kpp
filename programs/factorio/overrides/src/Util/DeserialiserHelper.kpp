@@ -8,7 +8,7 @@ template<class DeserialiserType>
 class [[members]] DeserialiserHelper
 {
 private:
-  template<class T> requires (isTypedUnion<T>)
+  template<class T> requires (std::isTypedUnion<T>)
   static T loadSTDVariantIndirect(DeserialiserType& input)
   {
     const uint32_t alternativeIndex = loadContainerSize(input);
@@ -29,7 +29,7 @@ private:
                                          uint32_t(int(T::Tag::count))));
   }
 
-  template<class U> requires (isTypedUnion<U>)
+  template<class U> requires (std::isTypedUnion<U>)
   static void loadSTDVariant(DeserialiserType& input, U& target)
   {
     const uint32_t alternativeIndex = loadContainerSize(input);

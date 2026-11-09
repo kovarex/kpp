@@ -6,7 +6,7 @@
 class GameRuntimeError : public ::RuntimeError
 {
 public:
-  GameRuntimeError(const char* message) : ::RuntimeError(String(message)) {}
+  GameRuntimeError(const char* message) : ::RuntimeError(std::String(message)) {}
 };
 
 void inline prefetch(const void* p) {}

@@ -123,6 +123,12 @@
 
 # crc32fast's byte order: little endian on every platform kpp builds the game for (x86-64), without
 # its own __LITTLE_ENDIAN and __BIG_ENDIAN, which glibc's endian.h (through sys/param.h) declares too.
+@ libraries/UnitTest++/XmlTestReporter.cpp: a parameter named ostream, the name `using std::ostream` gave the type, which the converter writes std::OutStream
+- XmlTestReporter::XmlTestReporter(ostream& ostream)
+-     : m_ostream(ostream)
++ XmlTestReporter::XmlTestReporter(ostream& stream)
++     : m_ostream(stream)
+
 @ libraries/crc32fast/Crc32_fast.cpp: no __LITTLE_ENDIAN and __BIG_ENDIAN of its own (glibc's endian.h has them)
 - #ifndef __LITTLE_ENDIAN
 -   #define __LITTLE_ENDIAN 1234

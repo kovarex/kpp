@@ -364,7 +364,7 @@
   // (macro survey case C) converts use by use, so the explorer shows what it showed before.
   const std::map<std::string, std::string> argumentMacros = {
     {"ADD_VALUE", "Values::addValue($1, PrototypeExplorerWidgets::demangleMemberName(#1), #1, result)"},
-    {"SKIP_VALUE", "if constexpr (isReference<decltype($1)>) Values::recordReference(#1, result); else Values::recordValue($1, #1, result)"},
+    {"SKIP_VALUE", "if constexpr (std::isReference<decltype($1)>) Values::recordReference(#1, result); else Values::recordValue($1, #1, result)"},
     {"ADD_ENUM", "Values::recordValue($1, #1, result); result.add($1, $2, $3)"},
     // Util.hpp's `verify(x)`: x evaluated in every build, asserted only where asserts are (its #ifndef
     // NDEBUG branch is `assert(x)`, which kpp's release build compiles out with x:
@@ -377,7 +377,7 @@
     {"FD_SET", "kppFdSet((SOCKET)($1), (fd_set*)($2))"},
     // winnt.h's InterlockedIncrement and InterlockedDecrement, MSVC intrinsics on x64: the new value,
     // by the atomic add the library's Atomic is made of (stdlib/core/Thread.kpp, codegen's intrinsic).
-    {"InterlockedIncrement", "(kpp_atomic_add32((long*)($1), 1) + 1)"}, {"InterlockedDecrement", "(kpp_atomic_add32((long*)($1), -1) - 1)"},
+    {"InterlockedIncrement", "(std::kpp_atomic_add32((long*)($1), 1) + 1)"}, {"InterlockedDecrement", "(std::kpp_atomic_add32((long*)($1), -1) - 1)"},
     {"ZeroMemory", "memset(($1), 0, ($2))"},
     // stdlib.h's element count of an array, as its C definition has it (GraphicsInterfaceDX11's
     // `_countof(lvl)` of the feature levels).
@@ -458,7 +458,7 @@
       "    constexpr void validate() const\n"
       "    {\n"
       "      if (!this->isValid())\n"
-      "        throw GameRuntimeError(\"Invalid enum value \\\"\" + toString(this->asType()) + \"\\\" of " + name + "\");\n"
+      "        throw GameRuntimeError(\"Invalid enum value \\\"\" + std::toString(this->asType()) + \"\\\" of " + name + "\");\n"
       "    }\n"
       "\n"
       "    constexpr bool operator==(Enum other) const { return this->value == other; }\n"
@@ -480,10 +480,10 @@
       }
       out +=
         "  public:\n"
-        "    " + name + "(const String& str) : " + name + "(str.c_str()) {}\n"
+        "    " + name + "(const std::String& str) : " + name + "(str.c_str()) {}\n"
         "    " + name + "(const char* str) : value(" + name + "::findValue(str)) {}\n"
         "\n"
-        "    String str() const\n"
+        "    std::String str() const\n"
         "    {\n"
         "      switch (this->value)\n"
         "      {\n" + toStr +
@@ -494,7 +494,7 @@
         "  protected:\n"
         "    static Enum findValue(const char* val)\n"
         "    {\n" + fromStr +
-        "      throw GameRuntimeError(\"Invalid value \\\"\" + String(val) + \"\\\" of " + name + "\");\n"
+        "      throw GameRuntimeError(\"Invalid value \\\"\" + std::String(val) + \"\\\" of " + name + "\");\n"
         "    }\n";
     }
     return out + "  private:\n";
@@ -529,164 +529,165 @@
     return out;
   }
 
-  // std:: names and their kpp library spelling. Names not here keep their name and are counted.
-  // C library functions become `::name`: inside a namespace with its own `sqrt`, `std::sqrt` meant the C one.
+  // std:: names and their kpp library spelling: the standard library is the scoped library std (design.md 16), the
+  // compiler's traits with it. Names not here keep their name and are counted. What clib/ declares stays C's, and
+  // global: `::name`, as inside a namespace with its own `malloc`, `std::malloc` meant the C one.
   const std::map<std::string, std::string> stdNames = {
-    {"string", "String"}, {"string_view", "StringView"}, {"wstring", "WString"}, {"vector", "Vector"}, {"pair", "Pair"},
-    {"optional", "Optional"}, {"map", "Map"}, {"set", "Set"}, {"unordered_map", "HashMap"}, {"unordered_set", "HashSet"},
-    {"deque", "Deque"}, {"list", "List"}, {"array", "Array"}, {"span", "Span"}, {"dynamic_extent", "dynamicExtent"}, {"unique_ptr", "UniquePtr"}, {"default_delete", "DefaultDelete"}, {"queue", "Queue"},
-    {"replace", "replace"}, {"advance", "advance"}, {"make_optional", "makeOptional"}, {"clock", "::clock"}, {"abort", "::abort"},
-    {"shared_ptr", "SharedPtr"}, {"weak_ptr", "WeakPtr"}, {"function", "Function"}, {"tuple", "Tuple"}, {"variant", "Variant"},
-    {"initializer_list", "InitializerList"}, {"numeric_limits", "Limits"}, {"endian", "Endian"}, {"runtime_error", "RuntimeError"},
-    {"strong_ordering", "strong_ordering"}, {"weak_ordering", "weak_ordering"}, {"partial_ordering", "partial_ordering"},
-    {"logic_error", "LogicError"}, {"exception", "Exception"}, {"out_of_range", "OutOfRange"}, {"invalid_argument", "InvalidArgument"},
-    {"move", "::move"}, {"forward", "::forward"}, {"swap", "::swap"}, {"min", "::min"}, {"max", "::max"}, {"clamp", "::clamp"},
-    {"sort", "::sort"}, {"stable_sort", "::stableSort"}, {"find", "::find"}, {"find_if", "::findIf"}, {"remove_if", "::removeIf"}, {"erase_if", "::eraseIf"},
-    {"remove", "::remove"}, {"transform", "::transform"}, {"count_if", "::countIf"}, {"all_of", "::allOf"}, {"any_of", "::anyOf"},
-    {"none_of", "::noneOf"}, {"lower_bound", "::lowerBound"}, {"upper_bound", "::upperBound"}, {"reverse", "::reverse"},
-    {"fill", "::fill"}, {"copy", "::copy"}, {"accumulate", "::accumulate"}, {"begin", "begin"}, {"end", "end"}, {"size", "size"},
-    {"isnan", "::isnan"}, {"isinf", "::isinf"}, {"abs", "::abs"}, {"floor", "::floor"}, {"ceil", "::ceil"}, {"round", "::round"},
-    {"sqrt", "::sqrt"}, {"pow", "::pow"}, {"tolower", "::tolower"}, {"toupper", "::toupper"}, {"size_t", "size_t"},
-    {"nullptr_t", "nullptr_t"}, {"to_string", "toString"}, {"make_unique", "makeUnique"}, {"make_shared", "makeShared"},
-    {"make_pair", "makePair"}, {"make_tuple", "makeTuple"}, {"get", "get"}, {"declval", "declval"}, {"memcpy", "::memcpy"},
-    {"memset", "::memset"}, {"strlen", "::strlen"}, {"is_same_v", "isSame"}, {"is_constructible_v", "isConstructible"}, {"is_array_v", "isArray"}, {"is_signed_v", "isSigned"},
-    {"is_unsigned_v", "isUnsigned"}, {"is_pointer_v", "isPointer"}, {"is_enum_v", "isEnum"}, {"is_integral_v", "isIntegral"},
-    {"is_floating_point_v", "isFloatingPoint"}, {"is_base_of_v", "isBaseOf"}, {"is_trivially_copyable_v", "isTriviallyCopyable"},
-    {"is_arithmetic_v", "isArithmetic"}, {"is_fundamental_v", "isFundamental"},
-    {"is_trivially_destructible_v", "isTriviallyDestructible"}, {"is_trivially_copy_assignable_v", "isTriviallyCopyAssignable"},
-    {"is_trivially_copy_constructible_v", "isTriviallyCopyConstructible"}, {"is_trivially_default_constructible_v", "isTriviallyDefaultConstructible"},
-    {"remove_reference_t", "RemoveReference"}, {"remove_const_t", "RemoveConst"}, {"remove_cv_t", "RemoveCv"},
-    {"remove_extent_t", "RemoveExtent"}, {"remove_pointer_t", "RemovePointer"}, {"decay_t", "Decay"}, {"underlying_type_t", "UnderlyingType"},
-    {"conditional_t", "Conditional"}, {"enable_if_t", "EnableIf"}, {"chrono", "Chrono"}, {"atomic", "Atomic"}, {"mutex", "Mutex"},
-    {"lock_guard", "LockGuard"}, {"unique_lock", "UniqueLock"}, {"thread", "Thread"}, {"condition_variable", "ConditionVariable"},
-    {"exchange", "exchange"}, {"hash", "Hash"}, {"less", "Less"}, {"equal_to", "EqualTo"}, {"bind", "bind"}, {"ref", "ref"},
-    {"cref", "cref"}, {"reference_wrapper", "ReferenceWrapper"}, {"is_const_v", "isConst"}, {"is_reference_v", "isReference"},
-    {"numeric_limits", "Limits"}, {"strtoll", "::strtoll"}, {"strtoull", "::strtoull"}, {"strtod", "::strtod"}, {"strtof", "::strtof"},
-    {"ostream", "OutStream"}, {"istream", "InStream"}, {"stringstream", "StringStream"}, {"ostringstream", "StringStream"},
-    {"nullopt", "nullopt"}, {"count", "count"}, {"distance", "distance"}, {"max_element", "maxElement"}, {"min_element", "minElement"},
-    {"nextafter", "::nextafter"}, {"rbegin", "rbegin"}, {"rend", "rend"}, {"unique", "unique"}, {"is_class_v", "isClass"},
-    {"is_convertible_v", "isConvertible"}, {"is_null_pointer_v", "isNullPointer"}, {"back_inserter", "backInserter"},
-    {"is_void_v", "isVoid"}, {"is_function_v", "isFunction"}, {"invoke", "invoke"}, {"apply", "apply"}, {"tie", "tie"},
-    {"ignore", "ignore"}, {"index_sequence", "IndexSequence"}, {"make_index_sequence", "MakeIndexSequence"},
-    {"index_sequence_for", "IndexSequenceFor"}, {"byte", "u8"},
+    {"string", "std::String"}, {"string_view", "std::StringView"}, {"wstring", "std::WString"}, {"vector", "std::Vector"}, {"pair", "std::Pair"},
+    {"optional", "std::Optional"}, {"map", "std::Map"}, {"set", "std::Set"}, {"unordered_map", "std::HashMap"}, {"unordered_set", "std::HashSet"},
+    {"deque", "std::Deque"}, {"list", "std::List"}, {"array", "std::Array"}, {"span", "std::Span"}, {"dynamic_extent", "std::dynamicExtent"}, {"unique_ptr", "std::UniquePtr"}, {"default_delete", "std::DefaultDelete"}, {"queue", "std::Queue"},
+    {"replace", "std::replace"}, {"advance", "std::advance"}, {"make_optional", "std::makeOptional"}, {"clock", "::clock"}, {"abort", "::abort"},
+    {"shared_ptr", "std::SharedPtr"}, {"weak_ptr", "std::WeakPtr"}, {"function", "std::Function"}, {"tuple", "std::Tuple"}, {"variant", "std::Variant"},
+    {"initializer_list", "std::InitializerList"}, {"numeric_limits", "std::Limits"}, {"endian", "std::Endian"}, {"runtime_error", "std::RuntimeError"},
+    {"strong_ordering", "std::strong_ordering"}, {"weak_ordering", "std::weak_ordering"}, {"partial_ordering", "std::partial_ordering"},
+    {"logic_error", "std::LogicError"}, {"exception", "std::Exception"}, {"out_of_range", "std::OutOfRange"}, {"invalid_argument", "std::InvalidArgument"},
+    {"move", "std::move"}, {"forward", "std::forward"}, {"swap", "std::swap"}, {"min", "std::min"}, {"max", "std::max"}, {"clamp", "std::clamp"},
+    {"sort", "std::sort"}, {"stable_sort", "std::stableSort"}, {"find", "std::find"}, {"find_if", "std::findIf"}, {"remove_if", "std::removeIf"}, {"erase_if", "std::eraseIf"},
+    {"remove", "std::remove"}, {"transform", "std::transform"}, {"count_if", "std::countIf"}, {"all_of", "std::allOf"}, {"any_of", "std::anyOf"},
+    {"none_of", "std::noneOf"}, {"lower_bound", "std::lowerBound"}, {"upper_bound", "std::upperBound"}, {"reverse", "std::reverse"},
+    {"fill", "std::fill"}, {"copy", "std::copy"}, {"accumulate", "std::accumulate"}, {"begin", "std::begin"}, {"end", "std::end"}, {"size", "std::size"},
+    {"isnan", "std::isnan"}, {"isinf", "std::isinf"}, {"abs", "std::abs"}, {"floor", "std::floor"}, {"ceil", "std::ceil"}, {"round", "std::round"},
+    {"sqrt", "std::sqrt"}, {"pow", "std::pow"}, {"tolower", "::tolower"}, {"toupper", "::toupper"}, {"size_t", "size_t"},
+    {"nullptr_t", "nullptr_t"}, {"to_string", "std::toString"}, {"make_unique", "std::makeUnique"}, {"make_shared", "std::makeShared"},
+    {"make_pair", "std::makePair"}, {"make_tuple", "std::makeTuple"}, {"get", "std::get"}, {"declval", "std::declval"}, {"memcpy", "std::memcpy"},
+    {"memset", "std::memset"}, {"strlen", "std::strlen"}, {"is_same_v", "std::isSame"}, {"is_constructible_v", "std::isConstructible"}, {"is_array_v", "std::isArray"}, {"is_signed_v", "std::isSigned"},
+    {"is_unsigned_v", "std::isUnsigned"}, {"is_pointer_v", "std::isPointer"}, {"is_enum_v", "std::isEnum"}, {"is_integral_v", "std::isIntegral"},
+    {"is_floating_point_v", "std::isFloatingPoint"}, {"is_base_of_v", "std::isBaseOf"}, {"is_trivially_copyable_v", "std::isTriviallyCopyable"},
+    {"is_arithmetic_v", "std::isArithmetic"}, {"is_fundamental_v", "std::isFundamental"},
+    {"is_trivially_destructible_v", "std::isTriviallyDestructible"}, {"is_trivially_copy_assignable_v", "std::isTriviallyCopyAssignable"},
+    {"is_trivially_copy_constructible_v", "std::isTriviallyCopyConstructible"}, {"is_trivially_default_constructible_v", "std::isTriviallyDefaultConstructible"},
+    {"remove_reference_t", "std::RemoveReference"}, {"remove_const_t", "std::RemoveConst"}, {"remove_cv_t", "std::RemoveCv"},
+    {"remove_extent_t", "std::RemoveExtent"}, {"remove_pointer_t", "std::RemovePointer"}, {"decay_t", "std::Decay"}, {"underlying_type_t", "std::UnderlyingType"},
+    {"conditional_t", "std::Conditional"}, {"enable_if_t", "std::EnableIf"}, {"chrono", "std::Chrono"}, {"atomic", "std::Atomic"}, {"mutex", "std::Mutex"},
+    {"lock_guard", "std::LockGuard"}, {"unique_lock", "std::UniqueLock"}, {"thread", "std::Thread"}, {"condition_variable", "std::ConditionVariable"},
+    {"exchange", "std::exchange"}, {"hash", "std::Hash"}, {"less", "std::Less"}, {"equal_to", "std::EqualTo"}, {"bind", "std::bind"}, {"ref", "std::ref"},
+    {"cref", "std::cref"}, {"reference_wrapper", "std::ReferenceWrapper"}, {"is_const_v", "std::isConst"}, {"is_reference_v", "std::isReference"},
+    {"numeric_limits", "std::Limits"}, {"strtoll", "::strtoll"}, {"strtoull", "::strtoull"}, {"strtod", "::strtod"}, {"strtof", "::strtof"},
+    {"ostream", "std::OutStream"}, {"istream", "std::InStream"}, {"stringstream", "std::StringStream"}, {"ostringstream", "std::StringStream"},
+    {"nullopt", "std::nullopt"}, {"count", "std::count"}, {"distance", "std::distance"}, {"max_element", "std::maxElement"}, {"min_element", "std::minElement"},
+    {"nextafter", "std::nextafter"}, {"rbegin", "std::rbegin"}, {"rend", "std::rend"}, {"unique", "std::unique"}, {"is_class_v", "std::isClass"},
+    {"is_convertible_v", "std::isConvertible"}, {"is_null_pointer_v", "std::isNullPointer"}, {"back_inserter", "std::backInserter"},
+    {"is_void_v", "std::isVoid"}, {"is_function_v", "std::isFunction"}, {"invoke", "std::invoke"}, {"apply", "std::apply"}, {"tie", "std::tie"},
+    {"ignore", "std::ignore"}, {"index_sequence", "std::IndexSequence"}, {"make_index_sequence", "std::MakeIndexSequence"},
+    {"index_sequence_for", "std::IndexSequenceFor"}, {"byte", "u8"},
     {"int8_t", "int8_t"}, {"int16_t", "int16_t"}, {"int32_t", "int32_t"}, {"int64_t", "int64_t"}, {"uint8_t", "uint8_t"},
     {"uint16_t", "uint16_t"}, {"uint32_t", "uint32_t"}, {"uint64_t", "uint64_t"}, {"intptr_t", "intptr_t"}, {"uintptr_t", "uintptr_t"},
-    {"ptrdiff_t", "ptrdiff_t"}, {"fabs", "::fabs"}, {"fmod", "::fmod"}, {"log", "::log"}, {"exp", "::exp"}, {"sin", "::sin"}, {"cos", "::cos"},
-    {"atan2", "::atan2"}, {"isfinite", "::isfinite"}, {"signbit", "::signbit"}, {"trunc", "::trunc"}, {"lround", "::lround"},
-    {"scoped_lock", "ScopedLock"}, {"true_type", "TrueType"}, {"false_type", "FalseType"}, {"bad_alloc", "BadAlloc"},
+    {"ptrdiff_t", "ptrdiff_t"}, {"fabs", "std::fabs"}, {"fmod", "std::fmod"}, {"log", "std::log"}, {"exp", "std::exp"}, {"sin", "std::sin"}, {"cos", "std::cos"},
+    {"atan2", "std::atan2"}, {"isfinite", "std::isfinite"}, {"signbit", "std::signbit"}, {"trunc", "std::trunc"}, {"lround", "std::lround"},
+    {"scoped_lock", "std::ScopedLock"}, {"true_type", "std::TrueType"}, {"false_type", "std::FalseType"}, {"bad_alloc", "std::BadAlloc"},
     {"time_t", "::time_t"}, {"time", "::time"}, {"tm", "::tm"}, {"localtime", "::localtime"},
-    {"uncaught_exceptions", "::uncaught_exceptions"}, {"reverse_iterator", "ReverseIterator"},
-    {"uninitialized_copy", "uninitializedCopy"}, {"visit", "visit"},
+    {"uncaught_exceptions", "std::uncaught_exceptions"}, {"reverse_iterator", "std::ReverseIterator"},
+    {"uninitialized_copy", "std::uninitializedCopy"}, {"visit", "std::visit"},
     // --- batch 2: remaining unmapped names from Factorio ---
     // C library functions → global
     {"_Exit", "::_Exit"}, {"exit", "::exit"}, {"printf", "::printf"}, {"signal", "::signal"},
-    {"getenv", "::getenv"}, {"malloc", "::malloc"}, {"free", "::free"}, {"memcmp", "::memcmp"},
+    {"getenv", "std::getenv"}, {"malloc", "std::malloc"}, {"free", "std::free"}, {"memcmp", "std::memcmp"},
     {"strcpy", "::strcpy"}, {"strstr", "::strstr"}, {"qsort", "::qsort"},
     // math → global
     {"acos", "::acos"}, {"atan", "::atan"}, {"hypot", "::hypot"}, {"log2", "::log2"},
     {"log10", "::log10"}, {"modf", "::modf"}, {"isnormal", "::isnormal"},
-    {"nextafterf", "::nextafterf"},
+    {"nextafterf", "std::nextafterf"},
     // time → global
     {"gmtime", "::gmtime"}, {"strftime", "::strftime"},
     // string conversion → global
-    {"stoi", "stoi"}, {"stod", "stod"}, {"stoul", "stoul"}, {"stoull", "stoull"}, {"stof", "stof"}, {"stoll", "stoll"},
-    {"iterator_traits", "IteratorTraits"}, {"make_move_iterator", "makeMoveIterator"},
-    {"to_wstring", "toWString"}, {"getline", "getline"},
+    {"stoi", "std::stoi"}, {"stod", "std::stod"}, {"stoul", "std::stoul"}, {"stoull", "std::stoull"}, {"stof", "std::stof"}, {"stoll", "std::stoll"},
+    {"iterator_traits", "std::IteratorTraits"}, {"make_move_iterator", "std::makeMoveIterator"},
+    {"to_wstring", "std::toWString"}, {"getline", "std::getline"},
     // algorithms → global (camelCase)
-    {"adjacent_find", "adjacentFind"}, {"copy_backward", "copyBackward"},
-    {"copy_n", "copyN"}, {"equal", "equal"}, {"fill_n", "fillN"},
-    {"generate_n", "generateN"}, {"is_sorted", "isSorted"},
-    {"iter_swap", "iterSwap"}, {"lexicographical_compare", "lexicographicalCompare"},
-    {"merge", "merge"}, {"move_backward", "moveBackward"},
-    {"next", "next"}, {"prev", "prev"}, {"next_permutation", "nextPermutation"},
-    {"for_each", "forEach"}, {"find_if_not", "findIfNot"}, {"copy_if", "copyIf"}, {"replace_if", "replaceIf"},
-    {"binary_search", "binarySearch"}, {"equal_range", "equalRange"}, {"is_sorted_until", "isSortedUntil"},
-    {"generate", "generate"},
-    {"nth_element", "nthElement"}, {"rotate", "rotate"},
-    {"set_difference", "setDifference"}, {"set_intersection", "setIntersection"},
-    {"destroy", "destroy"}, {"uninitialized_default_construct", "uninitializedDefaultConstruct"},
-    {"uninitialized_move", "uninitializedMove"},
-    {"uninitialized_value_construct", "uninitializedValueConstruct"},
-    {"make_reverse_iterator", "makeReverseIterator"},
+    {"adjacent_find", "std::adjacentFind"}, {"copy_backward", "std::copyBackward"},
+    {"copy_n", "std::copyN"}, {"equal", "std::equal"}, {"fill_n", "std::fillN"},
+    {"generate_n", "std::generateN"}, {"is_sorted", "std::isSorted"},
+    {"iter_swap", "std::iterSwap"}, {"lexicographical_compare", "std::lexicographicalCompare"},
+    {"merge", "std::merge"}, {"move_backward", "std::moveBackward"},
+    {"next", "std::next"}, {"prev", "std::prev"}, {"next_permutation", "std::nextPermutation"},
+    {"for_each", "std::forEach"}, {"find_if_not", "std::findIfNot"}, {"copy_if", "std::copyIf"}, {"replace_if", "std::replaceIf"},
+    {"binary_search", "std::binarySearch"}, {"equal_range", "std::equalRange"}, {"is_sorted_until", "std::isSortedUntil"},
+    {"generate", "std::generate"},
+    {"nth_element", "std::nthElement"}, {"rotate", "std::rotate"},
+    {"set_difference", "std::setDifference"}, {"set_intersection", "std::setIntersection"},
+    {"destroy", "std::destroy"}, {"uninitialized_default_construct", "std::uninitializedDefaultConstruct"},
+    {"uninitialized_move", "std::uninitializedMove"},
+    {"uninitialized_value_construct", "std::uninitializedValueConstruct"},
+    {"make_reverse_iterator", "std::makeReverseIterator"},
     // containers and data structures
-    {"bitset", "Bitset"}, {"stack", "Stack"}, {"priority_queue", "PriorityQueue"},
-    {"forward_list", "ForwardList"}, {"multimap", "MultiMap"}, {"multiset", "MultiSet"},
+    {"bitset", "std::Bitset"}, {"stack", "std::Stack"}, {"priority_queue", "std::PriorityQueue"},
+    {"forward_list", "std::ForwardList"}, {"multimap", "std::MultiMap"}, {"multiset", "std::MultiSet"},
     // concurrency
-    {"atomic_bool", "Atomic<bool>"}, {"atomic_size_t", "Atomic<size_t>"},
-    {"atomic_uint8_t", "Atomic<u8>"}, {"atomic_uint16_t", "Atomic<u16>"}, {"atomic_uint32_t", "Atomic<u32>"},
-    {"atomic_uint64_t", "Atomic<u64>"}, {"atomic_int8_t", "Atomic<i8>"}, {"atomic_int16_t", "Atomic<i16>"},
-    {"atomic_int32_t", "Atomic<i32>"}, {"atomic_int64_t", "Atomic<i64>"}, {"atomic_load", "atomicLoad"},
-    {"atomic_store", "atomicStore"}, {"atomic_exchange", "atomicExchange"}, {"atomic_is_lock_free", "atomicIsLockFree"},
-    {"async", "async"}, {"future", "Future"}, {"shared_future", "SharedFuture"},
-    {"promise", "Promise"}, {"future_status", "FutureStatus"}, {"launch", "Launch"},
-    {"this_thread", "thisThread"}, {"recursive_mutex", "RecursiveMutex"}, {"shared_mutex", "SharedMutex"},
-    {"shared_lock", "SharedLock"}, {"cv_status", "CvStatus"}, {"defer_lock", "deferLock"}, {"try_to_lock", "tryToLock"},
-    {"adopt_lock", "adoptLock"}, {"defer_lock_t", "DeferLock"}, {"try_to_lock_t", "TryToLock"}, {"adopt_lock_t", "AdoptLock"},
+    {"atomic_bool", "std::Atomic<bool>"}, {"atomic_size_t", "std::Atomic<size_t>"},
+    {"atomic_uint8_t", "std::Atomic<u8>"}, {"atomic_uint16_t", "std::Atomic<u16>"}, {"atomic_uint32_t", "std::Atomic<u32>"},
+    {"atomic_uint64_t", "std::Atomic<u64>"}, {"atomic_int8_t", "std::Atomic<i8>"}, {"atomic_int16_t", "std::Atomic<i16>"},
+    {"atomic_int32_t", "std::Atomic<i32>"}, {"atomic_int64_t", "std::Atomic<i64>"}, {"atomic_load", "std::atomicLoad"},
+    {"atomic_store", "std::atomicStore"}, {"atomic_exchange", "std::atomicExchange"}, {"atomic_is_lock_free", "std::atomicIsLockFree"},
+    {"async", "std::async"}, {"future", "std::Future"}, {"shared_future", "std::SharedFuture"},
+    {"promise", "std::Promise"}, {"future_status", "std::FutureStatus"}, {"launch", "std::Launch"},
+    {"this_thread", "std::thisThread"}, {"recursive_mutex", "std::RecursiveMutex"}, {"shared_mutex", "std::SharedMutex"},
+    {"shared_lock", "std::SharedLock"}, {"cv_status", "std::CvStatus"}, {"defer_lock", "std::deferLock"}, {"try_to_lock", "std::tryToLock"},
+    {"adopt_lock", "std::adoptLock"}, {"defer_lock_t", "std::DeferLock"}, {"try_to_lock_t", "std::TryToLock"}, {"adopt_lock_t", "std::AdoptLock"},
     // type traits
-    {"source_location", "CallerLocation"},
-    {"type_info", "TypeInfo"}, {"nullopt_t", "NulloptType"},
-    {"is_abstract_v", "isAbstract"}, {"is_final_v", "isFinal"},
-    {"is_polymorphic_v", "isPolymorphic"}, {"is_class_v", "isClass"},
-    {"is_move_assignable_v", "isMoveAssignable"},
-    {"is_move_constructible_v", "isMoveConstructible"},
-    {"is_nothrow_move_assignable_v", "isNothrowMoveAssignable"},
-    {"is_nothrow_move_constructible_v", "isNothrowMoveConstructible"},
-    {"is_trivially_move_assignable_v", "isTriviallyMoveAssignable"},
-    {"is_trivially_move_constructible_v", "isTriviallyMoveConstructible"},
-    {"is_invocable_v", "isInvocable"}, {"is_invocable_r_v", "isInvocableR"},
-    {"is_copy_constructible_v", "isCopyConstructible"}, {"is_copy_assignable_v", "isCopyAssignable"},
-    {"is_member_pointer_v", "isMemberPointer"}, {"is_member_function_pointer_v", "isMemberFunctionPointer"},
-    {"is_member_object_pointer_v", "isMemberObjectPointer"},
-    {"alignment_of_v", "alignmentOf"},
-    {"add_const_t", "AddConst"}, {"add_lvalue_reference_t", "AddLvalueReference"},
-    {"remove_cv", "RemoveCv"}, {"is_const", "IsConst"}, {"is_same", "IsSame"},
-    {"make_unsigned_t", "MakeUnsigned"}, {"conditional", "Conditional"},
-    {"enable_if", "EnableIf"}, {"void_t", "VoidT"},
-    {"bool_constant", "BoolConstant"}, {"integral_constant", "IntegralConstant"},
-    {"enable_shared_from_this", "EnableSharedFromThis"}, {"bad_weak_ptr", "BadWeakPtr"},
-    {"bad_optional_access", "BadOptionalAccess"}, {"bad_function_call", "BadFunctionCall"},
+    {"source_location", "std::CallerLocation"},
+    {"type_info", "std::TypeInfo"}, {"nullopt_t", "std::NulloptType"},
+    {"is_abstract_v", "std::isAbstract"}, {"is_final_v", "std::isFinal"},
+    {"is_polymorphic_v", "std::isPolymorphic"}, {"is_class_v", "std::isClass"},
+    {"is_move_assignable_v", "std::isMoveAssignable"},
+    {"is_move_constructible_v", "std::isMoveConstructible"},
+    {"is_nothrow_move_assignable_v", "std::isNothrowMoveAssignable"},
+    {"is_nothrow_move_constructible_v", "std::isNothrowMoveConstructible"},
+    {"is_trivially_move_assignable_v", "std::isTriviallyMoveAssignable"},
+    {"is_trivially_move_constructible_v", "std::isTriviallyMoveConstructible"},
+    {"is_invocable_v", "std::isInvocable"}, {"is_invocable_r_v", "std::isInvocableR"},
+    {"is_copy_constructible_v", "std::isCopyConstructible"}, {"is_copy_assignable_v", "std::isCopyAssignable"},
+    {"is_member_pointer_v", "std::isMemberPointer"}, {"is_member_function_pointer_v", "std::isMemberFunctionPointer"},
+    {"is_member_object_pointer_v", "std::isMemberObjectPointer"},
+    {"alignment_of_v", "std::alignmentOf"},
+    {"add_const_t", "std::AddConst"}, {"add_lvalue_reference_t", "std::AddLvalueReference"},
+    {"remove_cv", "std::RemoveCv"}, {"is_const", "std::IsConst"}, {"is_same", "std::IsSame"},
+    {"make_unsigned_t", "std::MakeUnsigned"}, {"conditional", "std::Conditional"},
+    {"enable_if", "std::EnableIf"}, {"void_t", "std::VoidT"},
+    {"bool_constant", "std::BoolConstant"}, {"integral_constant", "std::IntegralConstant"},
+    {"enable_shared_from_this", "std::EnableSharedFromThis"}, {"bad_weak_ptr", "std::BadWeakPtr"},
+    {"bad_optional_access", "std::BadOptionalAccess"}, {"bad_function_call", "std::BadFunctionCall"},
     // variant helpers
-    {"holds_alternative", "holdsAlternative"}, {"get_if", "getIf"},
-    {"in_place_index", "inPlaceIndex"}, {"in_place_type_t", "InPlaceType"},
-    {"variant_alternative_t", "VariantAlternative"}, {"variant_size_v", "variantSize"},
+    {"holds_alternative", "std::holdsAlternative"}, {"get_if", "std::getIf"},
+    {"in_place_index", "std::inPlaceIndex"}, {"in_place_type_t", "std::InPlaceType"},
+    {"variant_alternative_t", "std::VariantAlternative"}, {"variant_size_v", "std::variantSize"},
     // tuple helpers
-    {"forward_as_tuple", "forwardAsTuple"}, {"tuple_size_v", "tupleSize"}, {"tuple_size", "TupleSize"}, {"tuple_element", "TupleElement"},
-    {"piecewise_construct", "piecewiseConstruct"},
+    {"forward_as_tuple", "std::forwardAsTuple"}, {"tuple_size_v", "std::tupleSize"}, {"tuple_size", "std::TupleSize"}, {"tuple_element", "std::TupleElement"},
+    {"piecewise_construct", "std::piecewiseConstruct"},
     // iterator tags
-    {"input_iterator_tag", "InputIteratorTag"},
-    {"forward_iterator_tag", "ForwardIteratorTag"},
-    {"bidirectional_iterator_tag", "BidirectionalIteratorTag"},
-    {"random_access_iterator_tag", "RandomAccessIteratorTag"},
+    {"input_iterator_tag", "std::InputIteratorTag"},
+    {"forward_iterator_tag", "std::ForwardIteratorTag"},
+    {"bidirectional_iterator_tag", "std::BidirectionalIteratorTag"},
+    {"random_access_iterator_tag", "std::RandomAccessIteratorTag"},
     // misc
-    {"greater", "Greater"}, {"greater_equal", "GreaterEqual"},
-    {"as_const", "asConst"}, {"to_address", "toAddress"},
-    {"mem_fn", "memFn"}, {"move_iterator", "MoveIterator"},
-    {"inserter", "inserter"}, {"back_inserter", "backInserter"},
-    {"make_exception_ptr", "makeExceptionPtr"}, {"exception_ptr", "ExceptionPtr"}, {"rethrow_exception", "rethrowException"},
-    {"set_terminate", "setTerminate"},
-    {"make_unique_for_overwrite", "makeUniqueForOverwrite"},
-    {"basic_string_view", "StringView"},
-    {"istreambuf_iterator", "IstreambufIterator"},
-    {"streamsize", "StreamSize"},
+    {"greater", "std::Greater"}, {"greater_equal", "std::GreaterEqual"},
+    {"as_const", "std::asConst"}, {"to_address", "std::toAddress"},
+    {"mem_fn", "std::memFn"}, {"move_iterator", "std::MoveIterator"},
+    {"inserter", "std::inserter"}, {"back_inserter", "std::backInserter"},
+    {"make_exception_ptr", "std::makeExceptionPtr"}, {"exception_ptr", "std::ExceptionPtr"}, {"rethrow_exception", "std::rethrowException"},
+    {"set_terminate", "std::setTerminate"},
+    {"make_unique_for_overwrite", "std::makeUniqueForOverwrite"},
+    {"basic_string_view", "std::StringView"},
+    {"istreambuf_iterator", "std::IstreambufIterator"},
+    {"streamsize", "std::StreamSize"},
     // I/O
-    {"cerr", "cerr"}, {"endl", "endl"}, {"ifstream", "InFileStream"},
-    {"ofstream", "OutFileStream"},
+    {"cerr", "std::cerr"}, {"endl", "std::endl"}, {"ifstream", "std::InFileStream"},
+    {"ofstream", "std::OutFileStream"},
     // random
-    {"default_random_engine", "DefaultRandomEngine"},
-    {"random_device", "RandomDevice"},
-    {"uniform_int_distribution", "UniformIntDistribution"},
+    {"default_random_engine", "std::DefaultRandomEngine"},
+    {"random_device", "std::RandomDevice"},
+    {"uniform_int_distribution", "std::UniformIntDistribution"},
     // concepts
-    {"convertible_to", "ConvertibleTo"}, {"equality_comparable", "EqualityComparable"},
+    {"convertible_to", "std::ConvertibleTo"}, {"equality_comparable", "std::EqualityComparable"},
     // misc C++
     {"sig_atomic_t", "::sig_atomic_t"}, {"isupper", "::isupper"},
-    {"ratio", "Ratio"}, {"nano", "Nano"}, {"micro", "Micro"}, {"milli", "Milli"}, {"centi", "Centi"}, {"deci", "Deci"}, {"kilo", "Kilo"}, {"mega", "Mega"},
-    {"string_literals", "stringLiterals"},
-    {"numbers", "Numbers"},
-    {"filesystem", "filesystem"},
-    {"error_code", "ErrorCode"}, {"errc", "Errc"},
-    {"system_error", "SystemError"}, {"system_category", "systemCategory"}, {"generic_category", "genericCategory"},
-    {"error_category", "ErrorCategory"}, {"make_error_code", "make_error_code"},
-    {"length_error", "LengthError"}, {"overflow_error", "OverflowError"},
-    {"codecvt_utf8", "CodecvtUtf8"}, {"wstring_convert", "WStringConvert"},
-    {"milli", "Milli"}, {"rotr", "rotr"}, {"lcm", "lcm"}};
+    {"ratio", "std::Ratio"}, {"nano", "std::Nano"}, {"micro", "std::Micro"}, {"milli", "std::Milli"}, {"centi", "std::Centi"}, {"deci", "std::Deci"}, {"kilo", "std::Kilo"}, {"mega", "std::Mega"},
+    {"string_literals", "std::stringLiterals"},
+    {"numbers", "std::Numbers"},
+    {"filesystem", "std::filesystem"},
+    {"error_code", "std::ErrorCode"}, {"errc", "std::Errc"},
+    {"system_error", "std::SystemError"}, {"system_category", "std::systemCategory"}, {"generic_category", "std::genericCategory"},
+    {"error_category", "std::ErrorCategory"}, {"make_error_code", "std::make_error_code"},
+    {"length_error", "std::LengthError"}, {"overflow_error", "std::OverflowError"},
+    {"codecvt_utf8", "std::CodecvtUtf8"}, {"wstring_convert", "std::WStringConvert"},
+    {"milli", "std::Milli"}, {"rotr", "std::rotr"}, {"lcm", "std::lcm"}};
 

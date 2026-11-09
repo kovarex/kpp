@@ -120,7 +120,7 @@
         std::string word = last.substr(i, j - i);
         auto mapped = stdNames.find(word);
         if (word != "std" && word != "const")
-          name += (i >= 5 && last.compare(i - 5, 5, "std::") == 0 && mapped != stdNames.end()) ? mapped->second : word;
+          name += (i >= 5 && last.compare(i - 5, 5, "std::") == 0 && mapped != stdNames.end()) ? lastComponent(mapped->second) : word;
         i = j;
       }
       else

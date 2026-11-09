@@ -2,13 +2,13 @@
 // the tests do not link; this one is a clipboard private to the process.
 namespace SystemClipboard
 {
-  String contents;
+  std::String contents;
 
-  void copy(const String& input) { contents = input; }
+  void copy(const std::String& input) { contents = input; }
 
-  String paste(bool filterNewlines)
+  std::String paste(bool filterNewlines)
   {
-    String result;
+    std::String result;
     for (int i = 0; i < contents.size(); ++i)
     {
       char c = contents[i];

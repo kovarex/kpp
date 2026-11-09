@@ -1670,7 +1670,7 @@ auto GlobalScope::Impl::constraintValue(Expr* e, Decl* f, const Subst& s, int de
               return std::nullopt;
         return false;
       }
-      return traitValue(symbols.name(n->name.parts[0].symbol), args);
+      return traitValue(symbols.name(trait->symbol), args);
     }
     // `has_str<T>` with `template<class T> concept has_str = requires(const T& value) { value.str(); };`.
     if (n->name.last().hasTemplateArgs)

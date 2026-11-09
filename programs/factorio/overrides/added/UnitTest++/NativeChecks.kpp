@@ -53,9 +53,9 @@ namespace UnitTest
     return true;
   }
 
-  bool contains(StringView actual, StringView substring)
+  bool contains(std::StringView actual, std::StringView substring)
   {
-    return actual.find(substring) != StringView::npos;
+    return actual.find(substring) != std::StringView::npos;
   }
 
   // Text or a container's elements, as CheckStartsWith. Its container branch writes its failure and
@@ -65,9 +65,9 @@ namespace UnitTest
   template<typename Actual, typename Prefix>
   bool startsWith(const Actual& actual, const Prefix& prefix)
   {
-    if constexpr (isConvertible<const Actual&, StringView> && isConvertible<const Prefix&, StringView>)
+    if constexpr (std::isConvertible<const Actual&, std::StringView> && std::isConvertible<const Prefix&, std::StringView>)
     {
-      StringView text = actual, start = prefix;
+      std::StringView text = actual, start = prefix;
       return text.size() >= start.size() && text.substr(0, start.size()) == start;
     }
     else

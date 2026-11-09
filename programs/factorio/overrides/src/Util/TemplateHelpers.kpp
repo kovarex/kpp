@@ -6,6 +6,6 @@
 template<typename T>
 struct is_std_variant
 {
-  static constexpr bool value = isTypedUnion<T>;
+  static constexpr bool value = std::isTypedUnion<T>;
   constexpr operator bool() const { return value; }
 };

@@ -2,12 +2,12 @@
 // UnitTest++'s Test::Run did around the tests. The runner handles its own options and passes the others
 // here: the game's.
 
-void testsSetup(const Vector<String>& arguments)
+void testsSetup(const std::Vector<std::String>& arguments)
 {
-  Vector<char*> argv;
-  String program = "factorio-test";
+  std::Vector<char*> argv;
+  std::String program = "factorio-test";
   argv.push_back(program.data());
-  Vector<String> copies = arguments;
+  std::Vector<std::String> copies = arguments;
   // --jobs: each process writes to a directory of its own under --write-data (a log, saves, a lock the
   // game takes), and without that option the processes would share the config's.
   if (i32 worker = testWorker())
@@ -17,13 +17,13 @@ void testsSetup(const Vector<String>& arguments)
       ++at;
     if (at + 1 >= copies.size())
     {
-      print("factorio-test: --jobs needs --write-data\n");
+      std::print("factorio-test: --jobs needs --write-data\n");
       ::exit(2);
     }
     copies[at + 1] = toString(copies[at + 1], "/worker-", worker);
     Filesystem::create_directories(Filesystem::Path(copies[at + 1]));
   }
-  for (String& argument : copies)
+  for (std::String& argument : copies)
     argv.push_back(argument.data());
   if (i32 result = fmain(i32(argv.size()), argv.data()))
     ::exit(result);
@@ -31,15 +31,15 @@ void testsSetup(const Vector<String>& arguments)
 
 // The name UnitTest++ gave a test, Suite/Test: the CRC files' key, which a C++ build's run shares. A
 // generated test is Suite/Generator_name, and two tests' names are no identifiers (docs/test-suites.md).
-private String testNameAsUnitTest()
+private std::String testNameAsUnitTest()
 {
-  String name = String(currentTestName());
+  std::String name = std::String(currentTestName());
   usize dot = name.find('.');
-  if (dot == String::npos)
+  if (dot == std::String::npos)
     return name;
   name[dot] = '/';
   usize generated = name.find('.', dot + 1);
-  if (generated != String::npos)
+  if (generated != std::String::npos)
     name[generated] = '_';
   if (name == "DragBuilding/UndergroundPipe2x2SmartFixing")
     return "DragBuilding/2x2UndergroundPipeSmartFixing";
@@ -55,19 +55,19 @@ void testBeforeEach()
 
 // A desync in a latency test: the test runs again to write the desync report (Test::HandleDesync),
 // and its failure comes from that run.
-test private void reportDesync(const Function<void()>& run, StringView what)
+test private void reportDesync(const std::Function<void()>& run, std::StringView what)
 {
   if (TestGlobals::desyncReportGenerationRun)
-    throw RuntimeError("TestGlobals::desyncReportGeneration was true when it should not have been");
+    throw std::RuntimeError("TestGlobals::desyncReportGeneration was true when it should not have been");
   if (!TestGlobals::desyncReportGenerationEnabled)
     fail("Unhandled exception while running test (desync report generation disabled): ", what);
   if (TestGlobals::heavyMode)
     fail("Unhandled exception while running test (desync report generation run disabled in heavy mode): ", what);
   TestGlobals::desyncReportGenerationRun = true;
-  String fullName = testNameAsUnitTest();
+  std::String fullName = testNameAsUnitTest();
   StringUtil::replace_all(fullName, '/', '-');
   TestGlobals::desyncedTestName = fullName;
-  String failure;
+  std::String failure;
   try
   {
     run();
@@ -76,22 +76,22 @@ test private void reportDesync(const Function<void()>& run, StringView what)
   catch (const LatencyTestDesyncErrorHandled& handled)
   {
     TestGlobals::desyncedTestName = "";
-    failure = toString("Desync while running test: ", StringView(handled.what()));
+    failure = toString("Desync while running test: ", std::StringView(handled.what()));
   }
   catch (const TestEnded&)
   {
     TestGlobals::desyncReportGenerationRun = false;
     throw;
   }
-  catch (const Exception& e)
+  catch (const std::Exception& e)
   {
-    failure = toString("Unhandled exception while running desync detection run.: ", StringView(e.what()));
+    failure = toString("Unhandled exception while running desync detection run.: ", std::StringView(e.what()));
   }
   TestGlobals::desyncReportGenerationRun = false;
   fail(failure);
 }
 
-test void testRun(Function<void()> run)
+test void testRun(std::Function<void()> run)
 {
   try
   {
@@ -99,11 +99,11 @@ test void testRun(Function<void()> run)
   }
   catch (const LatencyTestDesyncError& e)
   {
-    reportDesync(run, StringView(e.what()));
+    reportDesync(run, std::StringView(e.what()));
   }
   catch (const LatencyTestDesyncErrorHandled& e)
   {
-    fail("Desync while running test: ", StringView(e.what()));
+    fail("Desync while running test: ", std::StringView(e.what()));
   }
 }
 
@@ -125,7 +125,7 @@ void testsTeardown()
   if constexpr (!config::finalRelease)
     if (Entity::count != 0)
     {
-      print("leaked ", usize(Entity::count.load()), " entities\n");
+      std::print("leaked ", usize(Entity::count.load()), " entities\n");
       ::abort();
     }
 }

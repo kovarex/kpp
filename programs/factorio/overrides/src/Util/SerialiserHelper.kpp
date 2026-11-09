@@ -6,7 +6,7 @@ template<typename SerialiserType>
 class [[members]] SerialiserHelper
 {
 private:
-  template<class U> requires (isTypedUnion<U>)
+  template<class U> requires (std::isTypedUnion<U>)
   static void saveValue(SerialiserType& output, const U& target)
   {
     output.saveContainerSize(uint32_t(int(target.tag())));

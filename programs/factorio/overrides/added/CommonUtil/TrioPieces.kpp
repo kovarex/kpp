@@ -13,7 +13,7 @@ struct TrioFloating
   int precision;
   char conversion; // 'f', 'g' or 'e'
 
-  void appendTo(String& out) const
+  void appendTo(std::String& out) const
   {
     char format[5] = {'%', '.', '*', this->conversion, 0};
     char buffer[512];
@@ -26,7 +26,7 @@ struct TrioFloating
       return;
     }
     // (%f of a large value: its digits, all of them)
-    String longer(size_t(written) + 1, '\0');
+    std::String longer(size_t(written) + 1, '\0');
     trio::trio_snprintf(longer.data(), longer.size(), format, this->precision, this->value);
     out.append(longer.data(), size_t(written));
   }

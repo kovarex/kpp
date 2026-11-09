@@ -7,5 +7,5 @@
 // "Structured exception handling").
 typedef void (*terminate_handler)();
 typedef int (*_PNH)(size_t);
-terminate_handler set_terminate(terminate_handler handler) { return setTerminate(handler); }
+terminate_handler set_terminate(terminate_handler handler) { return std::setTerminate(handler); }
 extern "C" _PNH _set_new_handler(_PNH handler);

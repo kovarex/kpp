@@ -17,7 +17,7 @@ public:
 class SmokeFontLoader : public agui::FontLoader
 {
 public:
-  agui::Font* loadFont(const String& fileName, int height, int fontFlags, float borderWidth, const agui::Color& borderColor) override
+  agui::Font* loadFont(const std::String& fileName, int height, int fontFlags, float borderWidth, const agui::Color& borderColor) override
   {
     return new SmokeFont();
   }
@@ -85,9 +85,9 @@ int main()
   agui::VoidAguiBackendGraphics graphics;
   gui.setGraphics(&graphics);
   gui.setSize(640, 480);
-  agui::Label& label = agui::label(String());
+  agui::Label& label = agui::label(std::String());
   gui.getTop()->add(&label);
-  label.setText(String("Hello Agui")); // a text change inside a Gui schedules the label's resize for the next logic step
+  label.setText(std::String("Hello Agui")); // a text change inside a Gui schedules the label's resize for the next logic step
   gui.logic(true);
   printf("label %d x %d\n", label.getWidth(), label.getHeight());
   printf("top %d x %d, children %zu\n", gui.getTop()->getWidth(), gui.getTop()->getHeight(), gui.getTop()->getChildren().size());

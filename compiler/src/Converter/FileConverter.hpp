@@ -1035,13 +1035,13 @@
           // std::variant's ==, the same alternative with equal values; a template, so that as for
           // std::variant an alternative without == matters only where two unions are compared.
           const std::string& u = v.info->unionName;
-          std::string equality = indent + "  template<typename Other> requires (isSame<Other, " + u + ">)\n" + indent +
+          std::string equality = indent + "  template<typename Other> requires (std::isSame<Other, " + u + ">)\n" + indent +
                                  "  bool operator==(const Other& other) const\n" + indent + "  {\n" + indent + "    for constexpr (auto a : alternatives(" + u +
                                  "))\n" + indent + "      if (*this == a.tag)\n" + indent + "        return other == a.tag && (*this)[a] == other[a];\n" + indent +
                                  "    return false;\n" + indent + "  }\n";
           // std::get<T>, std::holds_alternative<T> and std::get_if<T> for a T only an instantiation
           // knows (a template's parameter): the alternative of type T, by the union's alternatives.
-          std::string loop = "for constexpr (auto a : alternatives(" + u + ")) if constexpr (isSame<a.type, T>) ";
+          std::string loop = "for constexpr (auto a : alternatives(" + u + ")) if constexpr (std::isSame<a.type, T>) ";
           std::string generic = indent + "  template<typename T>\n" + indent + "  T& get() { " + loop + "return (*this)[a]; }\n" + indent +
                                 "  template<typename T>\n" + indent + "  const T& get() const { " + loop + "return (*this)[a]; }\n" + indent +
                                 "  template<typename T>\n" + indent + "  bool holds() const { " + loop + "return *this == a.tag; return false; }\n" + indent +
@@ -1052,7 +1052,7 @@
                                 // move it: design.md 8.5), and index(), a size_t as std's (a `%zu`
                                 // reads 8 bytes, a << writes them).
                                 indent + "  template<typename T, typename... Args>\n" + indent + "  T& emplace(Args&&... args) { " + loop +
-                                "{ this->~" + u + "(); new (this) " + u + "(a.tag, T(forward<Args>(args)...)); return (*this)[a]; } }\n" + indent +
+                                "{ this->~" + u + "(); new (this) " + u + "(a.tag, T(std::forward<Args>(args)...)); return (*this)[a]; } }\n" + indent +
                                 "  size_t index() const { return size_t(this->tag()); }\n";
           std::string declaration = indent + "union enum " + u + "\n" + indent + "{\n" + indent + "  { " + list + " }\n" + equality + generic + indent + "};";
           if (v.member)
@@ -1168,7 +1168,53 @@
           counts.add("std renamed");
         }
       }
-      return in.c ? squeezed : kppNumberNames(squeezed);
+      return in.c ? cMathNames(squeezed) : kppNumberNames(cMathNames(squeezed));
+    }
+
+    // C's <math.h> classifications, macros C writes bare (Lua's .c files, converted as C++ too), are the library's
+    // functions (std::isnan: core/Math.kpp).
+    std::string cMathNames(const std::string& text)
+    {
+      std::string out;
+      for (size_t i = 0; i < text.size();)
+      {
+        char c = text[i];
+        if (c == '"' || (c == '\'' && !isDigitSeparator(text, i)))
+        {
+          size_t j = i + 1;
+          while (j < text.size() && text[j] != c)
+            j += text[j] == '\\' ? 2 : 1;
+          j = std::min(j + 1, text.size());
+          out.append(text, i, j - i);
+          i = j;
+          continue;
+        }
+        if (c == '/' && i + 1 < text.size() && (text[i + 1] == '/' || text[i + 1] == '*'))
+        {
+          size_t j = text[i + 1] == '/' ? text.find('\n', i) : text.find("*/", i + 2);
+          j = j == std::string::npos ? text.size() : text[i + 1] == '/' ? j : j + 2;
+          out.append(text, i, j - i);
+          i = j;
+          continue;
+        }
+        if (!isIdentChar(c))
+        {
+          out += c;
+          ++i;
+          continue;
+        }
+        size_t j = i;
+        while (j < text.size() && isIdentChar(text[j]))
+          ++j;
+        std::string word = text.substr(i, j - i);
+        bool member = !out.empty() && (out.back() == '.' || out.back() == ':' || (out.back() == '>' && out.size() > 1 && out[out.size() - 2] == '-'));
+        size_t after = text.find_first_not_of(" \t", j);
+        if (!member && after != std::string::npos && text[after] == '(' && (word == "isnan" || word == "isinf" || word == "isfinite" || word == "signbit"))
+          out += "std::";
+        out += word;
+        i = j;
+      }
+      return out;
     }
 
     // kpp's names of the integer and floating types (design.md 13, "What the converter does"):

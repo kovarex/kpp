@@ -42,7 +42,7 @@ namespace cxxopts
   bool isOptionChar(char c) { return isAlnum(c) || c == '-' || c == '_'; }
 
   // Fills groups 0..count-1 of result, group 0 being [begin, end), from (start, end) pairs (null: unmatched).
-  void fillMatch(match_results<const char*>& result, const char* begin, const char* end, InitializerList<Pair<const char*, const char*>> groups)
+  void fillMatch(match_results<const char*>& result, const char* begin, const char* end, std::InitializerList<std::Pair<const char*, const char*>> groups)
   {
     result.groups.clear();
     sub_match<const char*> whole;
@@ -50,7 +50,7 @@ namespace cxxopts
     whole.second = end;
     whole.matched = true;
     result.groups.push_back(whole);
-    for (const Pair<const char*, const char*>& g : groups)
+    for (const std::Pair<const char*, const char*>& g : groups)
     {
       sub_match<const char*> group;
       group.first = g.first;
@@ -84,9 +84,9 @@ namespace cxxopts
         ++q;
       if (q == end && q > digits)
       {
-        fillMatch(result, s, end, {Pair<const char*, const char*>(minus, minus ? minus + 1 : nullptr),
-                                   Pair<const char*, const char*>(prefix, prefix ? prefix + 2 : nullptr), Pair<const char*, const char*>(digits, end),
-                                   Pair<const char*, const char*>(nullptr, nullptr), Pair<const char*, const char*>(nullptr, nullptr)});
+        fillMatch(result, s, end, {std::Pair<const char*, const char*>(minus, minus ? minus + 1 : nullptr),
+                                   std::Pair<const char*, const char*>(prefix, prefix ? prefix + 2 : nullptr), std::Pair<const char*, const char*>(digits, end),
+                                   std::Pair<const char*, const char*>(nullptr, nullptr), std::Pair<const char*, const char*>(nullptr, nullptr)});
         return true;
       }
     }
@@ -94,9 +94,9 @@ namespace cxxopts
     const char* prefix = end - s == 3 && s[0] == '0' && s[1] == 'x' ? s : nullptr;
     if ((end - s == 1 && s[0] == '0') || (prefix && s[2] == '0'))
     {
-      fillMatch(result, s, end, {Pair<const char*, const char*>(nullptr, nullptr), Pair<const char*, const char*>(nullptr, nullptr),
-                                 Pair<const char*, const char*>(nullptr, nullptr), Pair<const char*, const char*>(s, end),
-                                 Pair<const char*, const char*>(prefix, prefix ? prefix + 2 : nullptr)});
+      fillMatch(result, s, end, {std::Pair<const char*, const char*>(nullptr, nullptr), std::Pair<const char*, const char*>(nullptr, nullptr),
+                                 std::Pair<const char*, const char*>(nullptr, nullptr), std::Pair<const char*, const char*>(s, end),
+                                 std::Pair<const char*, const char*>(prefix, prefix ? prefix + 2 : nullptr)});
       return true;
     }
     return false;
@@ -108,8 +108,8 @@ namespace cxxopts
     int length = int(end - s);
     if (!truthy && length == 0)
     {
-      fillMatch(result, s, end, {Pair<const char*, const char*>(nullptr, nullptr), Pair<const char*, const char*>(nullptr, nullptr),
-                                 Pair<const char*, const char*>(nullptr, nullptr)});
+      fillMatch(result, s, end, {std::Pair<const char*, const char*>(nullptr, nullptr), std::Pair<const char*, const char*>(nullptr, nullptr),
+                                 std::Pair<const char*, const char*>(nullptr, nullptr)});
       return true;
     }
     char lower = truthy ? 't' : 'f', upper = truthy ? 'T' : 'F';
@@ -120,12 +120,12 @@ namespace cxxopts
     bool longForm = length == 1 + restLength && strncmp(s + 1, rest, restLength) == 0;
     if (length != 1 && !longForm)
       return false;
-    Pair<const char*, const char*> first(s, s + 1);
-    Pair<const char*, const char*> tail = longForm ? Pair<const char*, const char*>(s + 1, end) : Pair<const char*, const char*>(nullptr, nullptr);
+    std::Pair<const char*, const char*> first(s, s + 1);
+    std::Pair<const char*, const char*> tail = longForm ? std::Pair<const char*, const char*>(s + 1, end) : std::Pair<const char*, const char*>(nullptr, nullptr);
     if (truthy)
       fillMatch(result, s, end, {first, tail});
     else
-      fillMatch(result, s, end, {Pair<const char*, const char*>(s, end), first, tail});
+      fillMatch(result, s, end, {std::Pair<const char*, const char*>(s, end), first, tail});
     return true;
   }
 
@@ -140,9 +140,9 @@ namespace cxxopts
         ++q;
       if (q == end || *q == '=')
       {
-        Pair<const char*, const char*> assignment = q < end ? Pair<const char*, const char*>(q, end) : Pair<const char*, const char*>(nullptr, nullptr);
-        Pair<const char*, const char*> value = q < end ? Pair<const char*, const char*>(q + 1, end) : Pair<const char*, const char*>(nullptr, nullptr);
-        fillMatch(result, s, end, {Pair<const char*, const char*>(name, q), assignment, value, Pair<const char*, const char*>(nullptr, nullptr)});
+        std::Pair<const char*, const char*> assignment = q < end ? std::Pair<const char*, const char*>(q, end) : std::Pair<const char*, const char*>(nullptr, nullptr);
+        std::Pair<const char*, const char*> value = q < end ? std::Pair<const char*, const char*>(q + 1, end) : std::Pair<const char*, const char*>(nullptr, nullptr);
+        fillMatch(result, s, end, {std::Pair<const char*, const char*>(name, q), assignment, value, std::Pair<const char*, const char*>(nullptr, nullptr)});
         return true;
       }
     }
@@ -153,8 +153,8 @@ namespace cxxopts
         ++q;
       if (q == end)
       {
-        fillMatch(result, s, end, {Pair<const char*, const char*>(nullptr, nullptr), Pair<const char*, const char*>(nullptr, nullptr),
-                                   Pair<const char*, const char*>(nullptr, nullptr), Pair<const char*, const char*>(s + 1, end)});
+        fillMatch(result, s, end, {std::Pair<const char*, const char*>(nullptr, nullptr), std::Pair<const char*, const char*>(nullptr, nullptr),
+                                   std::Pair<const char*, const char*>(nullptr, nullptr), std::Pair<const char*, const char*>(s + 1, end)});
         return true;
       }
     }
@@ -168,24 +168,24 @@ namespace cxxopts
     for (int withShort = 1; withShort >= 0; --withShort)
     {
       const char* q = s;
-      Pair<const char*, const char*> shortGroup(nullptr, nullptr), shortName(nullptr, nullptr);
+      std::Pair<const char*, const char*> shortGroup(nullptr, nullptr), shortName(nullptr, nullptr);
       if (withShort)
       {
         if (end - q < 2 || !isAlnum(q[0]) || q[1] != ',')
           continue;
-        shortGroup = Pair<const char*, const char*>(q, q + 2);
-        shortName = Pair<const char*, const char*>(q, q + 1);
+        shortGroup = std::Pair<const char*, const char*>(q, q + 2);
+        shortName = std::Pair<const char*, const char*>(q, q + 1);
         q += 2;
       }
       while (q < end && *q == ' ')
         ++q;
-      Pair<const char*, const char*> longName(nullptr, nullptr);
+      std::Pair<const char*, const char*> longName(nullptr, nullptr);
       if (q < end && isAlnum(*q))
       {
         const char* name = q++;
         while (q < end && isOptionChar(*q))
           ++q;
-        longName = Pair<const char*, const char*>(name, q);
+        longName = std::Pair<const char*, const char*>(name, q);
       }
       if (q == end)
       {
@@ -210,7 +210,7 @@ namespace cxxopts
       return matchOption(text, end, result);
     if (strcmp(pattern.pattern, "(([[:alnum:]]),)?[ ]*([[:alnum:]][-_[:alnum:]]*)?") == 0)
       return matchSpecifier(text, end, result);
-    throw LogicError(String("cxxopts: a pattern the hand-written matchers do not know: ") + pattern.pattern);
+    throw std::LogicError(String("cxxopts: a pattern the hand-written matchers do not know: ") + pattern.pattern);
   }
 
   bool regex_match(const String& text, match_results<const char*>& result, const basic_regex<char>& pattern)

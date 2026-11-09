@@ -11,7 +11,7 @@ namespace open_vcdiff
   public:
     // Replaces the contents of *target with the decoding of encoding against the dictionary; false
     // when encoding is not a well-formed VCDIFF.
-    bool Decode(const char* dictionary, size_t dictionarySize, const String& encoding, String* target)
+    bool Decode(const char* dictionary, size_t dictionarySize, const std::String& encoding, std::String* target)
     {
       char* output = nullptr;
       size_t outputSize = 0;

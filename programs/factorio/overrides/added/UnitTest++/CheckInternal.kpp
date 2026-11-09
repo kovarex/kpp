@@ -40,7 +40,7 @@ private void checkWith(const UnitTest::CheckCondition& condition, char const* fi
   {
     throw;
   }
-  catch (const Exception& e)
+  catch (const std::Exception& e)
   {
     breakUnderDebugger();
     MemoryOutStream UNIT_TEST_MEMORY_OUT_stream;

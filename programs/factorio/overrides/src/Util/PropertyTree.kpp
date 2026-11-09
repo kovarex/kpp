@@ -9,5 +9,5 @@ class [[members]] PropertyTree
 {
 public:
   [[replaces]]
-  using StringType = ImmutableStringTemplate<::max(sizeof(Vector<PropertyTree>), sizeof(SharedPtr<const String>) + 1)>;
+  using StringType = ImmutableStringTemplate<std::max(sizeof(std::Vector<PropertyTree>), sizeof(std::SharedPtr<const std::String>) + 1)>;
 };

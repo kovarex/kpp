@@ -81,13 +81,6 @@ bool signbit(float value)
   return value < 0.0f || (value == 0.0f && 1.0f / value < 0.0f);
 }
 
-// math.h defines these through compiler builtins, which the importer cannot bring over.
-const float INFINITY = 1e39f;
-const double HUGE_VAL = 1e309;
-// The positive quiet NaN, as C's NAN and Limits' quiet_NaN (0.0 / 0.0 at startup was the
-// processor's default NaN, a negative one: signbit(NAN) was true where C's is false).
-const double NAN = Limits<double>::quiet_NaN();
-
 // abs for the floating-point types (the C runtime's abs takes an int; std::abs on a double
 // converts to `::abs` and finds these): the value without its sign, as fabs, so a negative zero's
 // is +0 (it was -0: 1 / abs(-0.0) was -inf) and a NaN's sign bit is cleared.

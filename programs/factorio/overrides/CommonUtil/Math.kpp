@@ -8,28 +8,28 @@ namespace Math
   template<typename H, typename L>
   void extractWords(H& high, L& low, double d)
   {
-    uint64_t bits = bitCast<uint64_t>(d);
+    uint64_t bits = std::bitCast<uint64_t>(d);
     high = (uint32_t)(bits >> 32);
     low = (uint32_t)bits;
   }
 
   template<typename H>
-  void getHighWord(H& high, double d) { high = (uint32_t)(bitCast<uint64_t>(d) >> 32); }
+  void getHighWord(H& high, double d) { high = (uint32_t)(std::bitCast<uint64_t>(d) >> 32); }
 
   template<typename H>
   void setHighWord(double& d, H high)
   {
-    uint64_t bits = bitCast<uint64_t>(d);
+    uint64_t bits = std::bitCast<uint64_t>(d);
     bits = ((uint64_t)(uint32_t)high << 32) | (bits & 0xffffffffu);
-    d = bitCast<double>(bits);
+    d = std::bitCast<double>(bits);
   }
 
   template<typename L>
   void setLowWord(double& d, L low)
   {
-    uint64_t bits = bitCast<uint64_t>(d);
+    uint64_t bits = std::bitCast<uint64_t>(d);
     bits = (bits & ~(uint64_t)0xffffffffu) | (uint64_t)(uint32_t)low;
-    d = bitCast<double>(bits);
+    d = std::bitCast<double>(bits);
   }
 
   float exp2f(float p)
@@ -41,7 +41,7 @@ namespace Math
     int w = int(clipp);
     float z = clipp - w + offset;
     uint32_t bits = uint32_t(int64_t((1 << 23) * (clipp + 121.2740575f + 27.7280233f / (4.84252568f - z) - 1.49012907f * z)));
-    return bitCast<float>(bits);
+    return std::bitCast<float>(bits);
   }
 
   float erfc(float x)
@@ -52,21 +52,21 @@ namespace Math
     constexpr float b = 15.418191568719577f;
     constexpr float c = 5.609846028328545f;
 
-    uint32_t vcBits = bitCast<uint32_t>(c * x);
+    uint32_t vcBits = std::bitCast<uint32_t>(c * x);
     float xsq = x * x;
     float xquad = xsq * xsq;
 
     vcBits |= 0x80000000;
 
-    return 2.0f / (1.0f + exp2f(k * x)) - a * x * (b * xquad - 1.0f) * exp2f(bitCast<float>(vcBits));
+    return 2.0f / (1.0f + exp2f(k * x)) - a * x * (b * xquad - 1.0f) * exp2f(std::bitCast<float>(vcBits));
   }
 
   float log2(float x)
   {
     // Stolen from https://code.google.com/archive/p/fastapprox/
     assert(x > 0);
-    uint32_t vxBits = bitCast<uint32_t>(x);
-    float mx = bitCast<float>((vxBits & 0x007FFFFF) | 0x3f000000);
+    uint32_t vxBits = std::bitCast<uint32_t>(x);
+    float mx = std::bitCast<float>((vxBits & 0x007FFFFF) | 0x3f000000);
     float y = float(vxBits);
     y *= 1.1920928955078125e-7f;
 
@@ -105,7 +105,7 @@ namespace Math
     constexpr double Lg6 = 1.531383769920937332e-01;  /* 3FC39A09 D078C69F */
     constexpr double Lg7 = 1.479819860511658591e-01;  /* 3FC2F112 DF3E5244 */
 
-    uint64_t ui = bitCast<uint64_t>(x); // the bits of the double being worked on
+    uint64_t ui = std::bitCast<uint64_t>(x); // the bits of the double being worked on
     double_t hfsq, f, s, z, R, w, t1, t2, y, hi, lo, val_hi, val_lo;
     uint32_t hx;
     int k;
@@ -120,7 +120,7 @@ namespace Math
       /* subnormal number, scale x up */
       k -= 54;
       x *= 0x1p54;
-      ui = bitCast<uint64_t>(x);
+      ui = std::bitCast<uint64_t>(x);
       hx = ui >> 32;
     }
     else if (hx >= 0x7ff00000) {
@@ -134,7 +134,7 @@ namespace Math
     k += (int)(hx >> 20) - 0x3ff;
     hx = (hx & 0x000fffff) + 0x3fe6a09e;
     ui = (uint64_t)hx << 32 | (ui & 0xffffffff);
-    x = bitCast<double>(ui);
+    x = std::bitCast<double>(ui);
 
     f = x - 1.0;
     hfsq = 0.5*f*f;
@@ -178,9 +178,9 @@ namespace Math
 
     /* hi+lo = f - hfsq + s*(hfsq+R) ~ log(1+f) */
     hi = f - hfsq;
-    ui = bitCast<uint64_t>(hi);
+    ui = std::bitCast<uint64_t>(hi);
     ui &= (uint64_t)-1 << 32;
-    hi = bitCast<double>(ui);
+    hi = std::bitCast<double>(ui);
     lo = f - hi - hfsq + s * (hfsq + R);
 
     val_hi = hi * ivln2hi;

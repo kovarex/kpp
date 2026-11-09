@@ -7,11 +7,11 @@
 template<typename T>
 String toStringAsStd(T value)
 {
-  if constexpr (isFloatingPoint<T>)
+  if constexpr (std::isFloatingPoint<T>)
     return toString(fixed(value, 6));
-  else if constexpr (isEnum<T>)
-    return toStringAsStd(static_cast<UnderlyingType<T>>(value));
-  else if constexpr (isSame<T, bool> || isSame<T, char>)
+  else if constexpr (std::isEnum<T>)
+    return toStringAsStd(static_cast<std::UnderlyingType<T>>(value));
+  else if constexpr (std::isSame<T, bool> || std::isSame<T, char>)
     return toString(i32(value));
   else
     return toString(value);
