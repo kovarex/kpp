@@ -1,0 +1,39 @@
+// spec: a conversion operator's volatile counts as its const does ([over.match.funcs] 4, [over.ics.rank] 3.2.6): a volatile object takes only a volatile operator, and of two viable ones the one adding fewer qualifiers to the object wins (`operator int() const` for a plain object, `operator int() const volatile` for a volatile one, neither ambiguous); a cast, a copy-initialization and a direct-initialization alike; clang's output
+// found with the stdlib's volatile Atomic (K, 2026-11-09): `i32 n = v;` of a `volatile Atomic<i32>` was "ambiguous" between `operator T() const` and `operator T() const volatile`, and codegen "does not support a conversion from Atomic<int32> to int32"
+extern "C" int printf(const char* format, ...);
+
+struct Both
+{
+  int v = 3;
+  implicit operator int() const { return 1; }
+  implicit operator int() const volatile { return 2; }
+};
+
+struct OnlyVolatile
+{
+  implicit operator int() const volatile { return 5; }
+};
+
+struct ConstOrVolatile
+{
+  implicit operator int() const { return 7; }
+  implicit operator long long() volatile { return 8; }
+};
+
+int main()
+{
+  Both plain;
+  volatile Both shared;
+  const volatile Both fixed;
+  int a = plain;
+  int b = shared;
+  int c(shared);
+  int d = (int)shared;
+  int e = fixed;
+  OnlyVolatile only;
+  int f = only;
+  volatile ConstOrVolatile mixed;
+  long long g = mixed;
+  printf("%d %d %d %d %d %d %lld\n", a, b, c, d, e, f, g);
+  return 0;
+}

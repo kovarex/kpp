@@ -196,6 +196,7 @@ auto GlobalScope::Impl::chooseConversion(const Ty* from, const Ty* to, Conversio
   if (!start || start->kind != TyKind::Class || types.isDependent(start) || (toType && !target))
     return nullptr;
   bool constObject = object->isConst;
+  bool volatileObject = object->isVolatile; // (a volatile object calls volatile operators only, as const)
   // Every conversion operator of the class and its bases (C++ [class.conv.fct]: a base's is hidden by
   // one of a derived class to the same type), with the class declaring it and its arguments.
   struct Candidate
@@ -268,7 +269,7 @@ auto GlobalScope::Impl::chooseConversion(const Ty* from, const Ty* to, Conversio
   {
     const Candidate* c;
     int rank;
-    bool constMatch; // the operator's constness the object's
+    int addedQualifiers; // const and volatile the operator adds to the object's (fewer is better: a subset of the other's)
     bool refQualified;
     bool rvalueBinding; // its implicit object parameter an rvalue reference binding the object
     bool isTemplate;    // a conversion function template's specialization
@@ -277,8 +278,9 @@ auto GlobalScope::Impl::chooseConversion(const Ty* from, const Ty* to, Conversio
   for (const Candidate& c : candidates)
   {
     bool constOp = (c.f->flags & DF_Const) != 0;
-    if (constObject && !constOp)
-      continue; // a const object calls a const operator only
+    bool volatileOp = (c.f->flags & DF_Volatile) != 0;
+    if ((constObject && !constOp) || (volatileObject && !volatileOp))
+      continue; // a const object calls a const operator only, a volatile object a volatile one
     auto qualifier = FunctionDecl::RefQualifier(c.f->refQualifier);
     if (objectLvalue && qualifier == FunctionDecl::RefQualifier::RValue)
       continue;
@@ -325,7 +327,7 @@ auto GlobalScope::Impl::chooseConversion(const Ty* from, const Ty* to, Conversio
     }
     if (rank >= NotViable)
       continue;
-    viable.push_back({&c, rank, constOp == constObject, qualifier != FunctionDecl::RefQualifier::None,
+    viable.push_back({&c, rank, int(constOp && !constObject) + int(volatileOp && !volatileObject), qualifier != FunctionDecl::RefQualifier::None,
                       objectRvalue && qualifier == FunctionDecl::RefQualifier::RValue, !c.f->templateParams.empty()});
   }
   // The implicit object parameter first, then the result's conversion ([over.match.best] 2.1 before
@@ -339,8 +341,8 @@ auto GlobalScope::Impl::chooseConversion(const Ty* from, const Ty* to, Conversio
   auto compare = [](const Viable& a, const Viable& b) -> int {
     if (a.refQualified && b.refQualified && a.rvalueBinding != b.rvalueBinding)
       return a.rvalueBinding ? -1 : 1;
-    if (a.constMatch != b.constMatch)
-      return a.constMatch ? -1 : 1;
+    if (a.addedQualifiers != b.addedQualifiers)
+      return a.addedQualifiers < b.addedQualifiers ? -1 : 1;
     if (a.rank != b.rank)
       return a.rank < b.rank ? -1 : 1;
     return a.isTemplate == b.isTemplate ? 0 : a.isTemplate ? 1 : -1;
@@ -1531,6 +1533,7 @@ auto GlobalScope::Impl::surrogateFunction(const Ty* object, const std::vector<co
 {
   ambiguous = false;
   bool constObject = isConstObject(types.stripRef(object));
+  bool volatileObject = object && types.stripRef(object)->isVolatile;
   std::vector<const Ty*> given;
   std::function<void(const Ty*, int)> collect = [&](const Ty* cls, int depth)
   {
@@ -1541,7 +1544,8 @@ auto GlobalScope::Impl::surrogateFunction(const Ty* object, const std::vector<co
     for (Decl* m : membersRead(static_cast<ClassDecl*>(s->owner)))
     {
       if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Conversion) || !m->templateParams.empty() ||
-          isExplicit(static_cast<FunctionDecl*>(m), &subst) || (constObject && !(m->flags & DF_Const)))
+          isExplicit(static_cast<FunctionDecl*>(m), &subst) || (constObject && !(m->flags & DF_Const)) ||
+          (volatileObject && !(m->flags & DF_Volatile)))
         continue;
       const Ty* ft = declaredTypeOf(m, &subst, 0);
       const Ty* t = ft && ft->kind == TyKind::Function ? ft->inner : nullptr;
