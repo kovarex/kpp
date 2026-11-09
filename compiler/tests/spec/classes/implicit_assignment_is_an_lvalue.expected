@@ -1,0 +1,16 @@
+ops 1 31 11 21 41 1 1
+ref 9 1
+member 7 5
+take 6 6 1
+big 10 60 3 1
+big2 8 3
+big3 3 3
+chain 77 2
+addr 12
+copy 3 99
+twice 13 77
+dtor 6 4 0
+dtor2 0
+derived 3 8 3
+scalar 7 2
+cond 20 6

@@ -2743,13 +2743,15 @@ auto GlobalScope::Impl::constClassOperator(const Ty* t, P op, const std::vector<
 
 auto GlobalScope::Impl::constObjectOf(Expr* e, const ConstValue& v, const std::optional<ConstPlace>& place) -> const Ty*
 {
+  if (!e || !v.type)
+    return nullptr;
   Expr* source = nullptr;
-  if (!e || !v.type || constCategory(e, source) != 1)
-    return e && v.type ? types.rref(types.unqualified(types.stripRef(v.type))) : nullptr;
+  bool lvalue = constCategory(e, source) == 1;
   const Ty* typed = e->ty && e->ty->isKnown() && !types.isDependent(e->ty) ? types.stripRef(e->ty) : nullptr;
-  bool readOnly = (place && !place->writable()) || (typed && typed->isConst);
+  bool readOnly = (place && !place->writable()) || (typed && typed->isConst); // (of a const rvalue too: `move(constant)()` takes `const&&`)
   const Ty* object = types.unqualified(types.stripRef(v.type));
-  return types.lref(readOnly ? types.qualified(object, true, false) : object);
+  object = readOnly ? types.qualified(object, true, false) : object;
+  return lvalue ? types.lref(object) : types.rref(object);
 }
 
 auto GlobalScope::Impl::constMemberwiseEqual(const ConstValue& l, const ConstValue& r, const TypeContext& ctx, int depth) -> std::optional<bool>

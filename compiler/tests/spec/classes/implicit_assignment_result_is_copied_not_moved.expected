@@ -1,0 +1,18 @@
+statement copies 1 moves 0 destroyed 0
+copy 3 3 3
+copy copies 2 moves 0 destroyed 1
+ref 1 2
+value 3 3
+return copies 3 moves 0 destroyed 1
+bound 1
+args 2 2 3
+args copies 4 moves 0 destroyed 1
+auto 2 9 1
+deduction copies 4 moves 0 destroyed 1
+from temporary 0 0
+moved 3 -1
+rvalues copies 2 moves 2 destroyed 3
+plain 6 4 1 2
+place 7 4
+conditional 11
+614

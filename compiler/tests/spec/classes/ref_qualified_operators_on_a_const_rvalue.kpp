@@ -1,0 +1,51 @@
+// spec: a const rvalue object takes `const&&`, at compile time as at run time: `move(constant)()`, a call giving `const T`, with `*`, `[]`, unary `-` and `+`; clang 19's output
+// found by D's review of 54bf0d81 (2026-11-09): at compile time they took the non-const `&&`
+// warning: ref_qualified_operators_on_a_const_rvalue.kpp:33: warning: move of a const object (const Ops): its result is a const rvalue, so it is copied, not moved
+// warning: ref_qualified_operators_on_a_const_rvalue.kpp:34: warning: move of a const object (const Ops): its result is a const rvalue, so it is copied, not moved
+// warning: ref_qualified_operators_on_a_const_rvalue.kpp:39: warning: move of a const object (const Ops): its result is a const rvalue, so it is copied, not moved
+// warning: ref_qualified_operators_on_a_const_rvalue.kpp:45: warning: move of a const object (const Ops): its result is a const rvalue, so it is copied, not moved
+extern "C" int printf(const char* format, ...);
+struct Ops
+{
+  constexpr int operator()() & { return 1; }
+  constexpr int operator()() const& { return 2; }
+  constexpr int operator()() && { return 3; }
+  constexpr int operator()() const&& { return 4; }
+  constexpr int operator*() & { return 11; }
+  constexpr int operator*() const& { return 12; }
+  constexpr int operator*() && { return 13; }
+  constexpr int operator*() const&& { return 14; }
+  constexpr int operator[](int) & { return 21; }
+  constexpr int operator[](int) const& { return 22; }
+  constexpr int operator[](int) && { return 23; }
+  constexpr int operator[](int) const&& { return 24; }
+  constexpr int operator-() & { return 31; }
+  constexpr int operator-() const& { return 32; }
+  constexpr int operator-() && { return 33; }
+  constexpr int operator-() const&& { return 34; }
+  constexpr int operator+(int) & { return 41; }
+  constexpr int operator+(int) const& { return 42; }
+  constexpr int operator+(int) && { return 43; }
+  constexpr int operator+(int) const&& { return 44; }
+};
+constexpr Ops cx;
+constexpr const Ops constFour() { return Ops(); }
+constexpr int a1 = move(cx)(), a2 = constFour()(), a3 = *move(cx), a4 = *constFour(), a5 = move(cx)[0], a6 = constFour()[0];
+constexpr int b1 = -move(cx), b2 = -constFour(), b3 = move(cx) + 0, b4 = constFour() + 0, b5 = cx(), b6 = Ops()();
+constexpr int local()
+{
+  Ops o;
+  const Ops c;
+  return o() * 1000 + c() * 100 + move(c)() * 10 + move(o)();
+}
+constexpr int l = local();
+int main()
+{
+  const Ops rc;
+  int r1 = move(rc)(), r2 = constFour()(), r3 = *move(rc), r4 = move(rc)[0], r5 = -constFour(), r6 = constFour() + 0;
+  printf("%d %d %d %d %d %d\n", a1, a2, a3, a4, a5, a6);
+  printf("%d %d %d %d %d %d\n", b1, b2, b3, b4, b5, b6);
+  printf("%d\n", l);
+  printf("%d %d %d %d %d %d\n", r1, r2, r3, r4, r5, r6);
+  return 0;
+}

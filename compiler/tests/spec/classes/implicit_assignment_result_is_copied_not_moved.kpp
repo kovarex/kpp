@@ -1,0 +1,122 @@
+// spec: the result of a class's implicit operator= is the object itself: initializing from it copies and leaves it alone, `move(a = b)` moves, `return a = b` from a function returning a reference gives that object and from one returning a value a copy, `decltype(a = b)` is a reference; at compile time too; clang 19's output (the same copies, moves and destructors)
+extern "C" int printf(const char* format, ...);
+struct Tracked
+{
+  int v = 0;
+  static int copies, moves, destroyed;
+  Tracked() {}
+  Tracked(const Tracked& o) : v(o.v) { ++Tracked::copies; }
+  Tracked(Tracked&& o) : v(o.v) { o.v = -1; ++Tracked::moves; }
+  Tracked& operator=(const Tracked& o) { this.v = o.v; ++Tracked::copies; return this; }
+  Tracked& operator=(Tracked&& o) { this.v = o.v; o.v = -1; ++Tracked::moves; return this; }
+  ~Tracked() { ++Tracked::destroyed; }
+};
+int Tracked::copies = 0, Tracked::moves = 0, Tracked::destroyed = 0;
+struct Holder
+{
+  Tracked t;
+  int n = 0;
+};
+struct Plain
+{
+  int v = 0;
+  int w = 0;
+};
+struct Ops
+{
+  int v = 0;
+  constexpr int operator()(int) & { return 1; }
+  constexpr int operator()(int) && { return 3; }
+};
+Holder& assign(Holder& a, const Holder& b) { return a = b; }
+Holder byValue(Holder& a, const Holder& b) { return a = b; }
+Plain& assignPlain(Plain& a, const Plain& b) { return a = b; }
+Plain plainByValue(Plain& a, const Plain& b) { return a = b; }
+int count(const Holder& h) { return h.n; }
+int sink(Holder h) { return h.n; }
+template<typename T> struct IsL { static constexpr int v = 2; };
+template<typename T> struct IsL<T&> { static constexpr int v = 1; };
+template<typename T> int deduced(T&& t) { return IsL<T>::v; }
+constexpr int compileTime()
+{
+  Ops a, b;
+  b.v = 4;
+  Ops& r = (a = b);
+  r.v = 5;
+  int x = (a = b)(0);
+  (a = b).v = 6;
+  return a.v * 100 + x * 10 + b.v;
+}
+constexpr int ct = compileTime();
+int report(const char* what)
+{
+  printf("%s copies %d moves %d destroyed %d\n", what, Tracked::copies, Tracked::moves, Tracked::destroyed);
+  Tracked::copies = Tracked::moves = Tracked::destroyed = 0;
+  return 0;
+}
+int main()
+{
+  Holder a, b;
+  b.t.v = 3;
+  b.n = 2;
+  a = b;
+  report("statement");
+  {
+    Holder c = (a = b);
+    printf("copy %d %d %d\n", c.t.v, a.t.v, b.t.v);
+  }
+  report("copy");
+  {
+    Holder& r = assign(a, b);
+    printf("ref %d %d\n", (int)(&r == &a), r.n);
+    Holder v = byValue(a, b);
+    printf("value %d %d\n", v.t.v, a.t.v);
+  }
+  report("return");
+  {
+    const Holder& cr = (a = b);
+    printf("bound %d\n", (int)(&cr == &a));
+    int n = sink(a = b);
+    int m = count(a = b);
+    printf("args %d %d %d\n", n, m, a.t.v);
+  }
+  report("args");
+  {
+    auto c = (a = b);
+    decltype(a = b) d = a;
+    d.n = 8;
+    decltype(auto) e = (a = b);
+    e.n = 9;
+    int seen = a.n, kind = deduced(a = b);
+    printf("auto %d %d %d\n", c.n, seen, kind);
+  }
+  report("deduction");
+  {
+    Holder h = (a = Holder());
+    printf("from temporary %d %d\n", h.t.v, a.t.v);
+    Holder m = move(a = b);
+    printf("moved %d %d\n", m.t.v, a.t.v);
+  }
+  report("rvalues");
+  Plain p, q;
+  q.v = 3;
+  q.w = 4;
+  Plain s = (p = q);
+  s.v = 1;
+  Plain t = plainByValue(p, q);
+  t.w = 2;
+  assignPlain(p, q).v = 6;
+  printf("plain %d %d %d %d\n", p.v, p.w, s.v, t.w);
+  Plain arr[2];
+  Plain* ptr = arr;
+  (arr[0] = q).w = 9;
+  (*ptr = q).v = 7;
+  printf("place %d %d\n", arr[0].v, arr[0].w);
+  bool yes = true;
+  Plain u;
+  (yes ? u : p) = q;
+  ((yes ? u : p) = q).v = 11;
+  printf("conditional %d\n", u.v);
+  printf("%d\n", ct);
+  return 0;
+}

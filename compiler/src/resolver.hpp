@@ -90,6 +90,8 @@ inline bool isLvalueExpression(const Expr* e)
       t = t->inner;
     return t && (t->isArithmetic() || t->kind == TyKind::Enum || t->kind == TyKind::Pointer || t->kind == TyKind::MemberPointer);
   };
+  // A class's left operand: its implicit operator= (no function of its own) gives the object assigned.
+  auto isClassOperand = [](const Expr* x) { return x && x->ty && (x->ty->isReference() ? x->ty->inner : x->ty)->kind == TyKind::Class; };
   switch (e->kind)
   {
     case NodeKind::BinaryExpr:
@@ -101,7 +103,7 @@ inline bool isLvalueExpression(const Expr* e)
       {
         case P::Assign: case P::PlusAssign: case P::MinusAssign: case P::StarAssign: case P::SlashAssign: case P::PercentAssign:
         case P::AmpAssign: case P::PipeAssign: case P::CaretAssign: case P::ShlAssign: case P::ShrAssign:
-          return scalar(b->lhs) && b->call != OperatorCall::Function;
+          return (scalar(b->lhs) || (P(b->op) == P::Assign && b->call == OperatorCall::Builtin && isClassOperand(b->lhs))) && b->call != OperatorCall::Function;
         case P::Comma:
           return b->call != OperatorCall::Function && isLvalueExpression(b->rhs);
         default:

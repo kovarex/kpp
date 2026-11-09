@@ -1,0 +1,109 @@
+// spec: a class's implicit operator= gives the object assigned, an lvalue ([class.copy.assign], [expr.ass] 1): an operator on it takes `&`, a reference binds it, its member is assigned, it is passed by `Ops&`, deduced `T&`, assigned again and its address taken; no temporary is made or destroyed; clang 19's output
+// found by D's review of 54bf0d81 (2026-11-09): `(o = o2)(0)` took `&&`, `S& r = (a = b)` and `(a = b).v = 7` were refused
+extern "C" int printf(const char* format, ...);
+struct Ops
+{
+  int v = 0;
+  int operator()(int) & { return 1; }
+  int operator()(int) const& { return 2; }
+  int operator()(int) && { return 3; }
+  int operator+(int) & { return 31; }
+  int operator+(int) && { return 33; }
+  int operator[](int) & { return 11; }
+  int operator[](int) && { return 13; }
+  int operator*() & { return 21; }
+  int operator*() && { return 23; }
+  int operator-() & { return 41; }
+  int operator-() && { return 43; }
+};
+struct Big
+{
+  int a[6] = {1, 2, 3, 4, 5, 6};
+  int v = 0;
+};
+struct Dtor
+{
+  int v = 0;
+  static int count;
+  ~Dtor() { ++Dtor::count; }
+};
+int Dtor::count = 0;
+struct Base
+{
+  int b = 0;
+};
+struct Derived : Base
+{
+  int d = 0;
+};
+int take(Ops& o) { return o.v; }
+int take(Ops&& o) { return o.v + 100; }
+int takeBig(Big& o) { return o.v; }
+int takeBig(Big&& o) { return o.v + 100; }
+int takeBig(const Big& o) { return o.v + 200; }
+int takeDtor(Dtor& o) { return o.v; }
+template<typename T> struct IsL { static constexpr int v = 2; };
+template<typename T> struct IsL<T&> { static constexpr int v = 1; };
+template<typename T>
+int kindOf(T&& t) { return IsL<T>::v; }
+int main()
+{
+  Ops o, o2;
+  o2.v = 5;
+  int a1 = (o = o2)(0), a2 = (o = o2) + 0, a3 = (o = o2)[0], a4 = *(o = o2), a5 = -(o = o2), a6 = (o = Ops())(0), a7 = (o = move(o2))(0);
+  printf("ops %d %d %d %d %d %d %d\n", a1, a2, a3, a4, a5, a6, a7);
+  Ops& r = (o = o2);
+  r.v = 9;
+  printf("ref %d %d\n", o.v, (int)(&r == &o));
+  (o = o2).v = 7;
+  printf("member %d %d\n", o.v, o2.v);
+  o2.v = 6;
+  int took = take(o = o2), kind = kindOf(o = o2);
+  printf("take %d %d %d\n", took, o.v, kind);
+  Big x, y;
+  y.v = 3;
+  y.a[5] = 60;
+  Big& rb = (x = y);
+  rb.a[0] = 10;
+  printf("big %d %d %d %d\n", x.a[0], x.a[5], x.v, y.a[0]);
+  (x = y).v = 8;
+  printf("big2 %d %d\n", x.v, y.v);
+  int big3 = takeBig(x = y);
+  printf("big3 %d %d\n", big3, x.v);
+  Big z;
+  z = x = y;
+  (z = x).a[1] = 77;
+  printf("chain %d %d\n", z.a[1], x.a[1]);
+  Big* p = &(x = y);
+  p->v = 12;
+  printf("addr %d\n", x.v);
+  Big copy = (x = y);
+  copy.v = 99;
+  printf("copy %d %d\n", x.v, copy.v);
+  ((x = y) = z).v = 13;
+  printf("twice %d %d\n", x.v, x.a[1]);
+  Dtor d1, d2;
+  d2.v = 4;
+  {
+    Dtor& rd = (d1 = d2);
+    rd.v = 5;
+    takeDtor(d1 = d2);
+    (d1 = d2).v = 6;
+    printf("dtor %d %d %d\n", d1.v, d2.v, Dtor::count);
+  }
+  printf("dtor2 %d\n", Dtor::count);
+  Derived e, e2;
+  e2.d = 3;
+  (e = e2).d = 4;
+  (e = e2).b = 8;
+  printf("derived %d %d %d\n", e.d, e.b, e2.d);
+  int m = 1, n = 2;
+  (m = n) = 5;
+  int& rm = (m = n);
+  rm = 7;
+  printf("scalar %d %d\n", m, n);
+  bool yes = true;
+  (yes ? (o = o2) : o2).v = 20;
+  printf("cond %d %d\n", o.v, o2.v);
+  return 0;
+}

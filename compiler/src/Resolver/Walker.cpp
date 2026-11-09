@@ -7552,7 +7552,7 @@ auto GlobalScope::Impl::Walker::overloadedOperator(P op, const Ty* lhs, const Ty
       else if (l && rhs && types.unqualified(types.stripRef(rhs))->kind == TyKind::Class && impl.conversionRank(rhs, l, 0) >= NotViable)
         reportUnmarkedOperand(rhs, "=", token); // `kind = result;` through an operator explicit by default
       operatorCall = OperatorCall::Builtin;
-      return lhs;
+      return l && l->kind == TyKind::Class ? types.lref(l) : lhs; // (a class's implicit operator= gives T&: `S& r = (a = b);`, `(a = b)(0)` on an lvalue)
     case P::AndAnd: case P::OrOr: case P::Bang:
       operatorCall = OperatorCall::Builtin;
       return types.boolType();
