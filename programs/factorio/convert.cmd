@@ -183,7 +183,7 @@ if exist stubs\kpp xcopy /s /y /q stubs\kpp kpp\ >nul
 rem Explicit by default (design.md "Explicit by default", kovarex 2026-11-07): an unmarked constructor or
 rem conversion operator is explicit, and a function argument's braces name their type. The converter drops
 rem C++'s `explicit` and marks what converts; the types of braced arguments, which it cannot spell in kpp
-rem reading C++, kpp's error names: "write `Vector2D{x, y}`, not `{x, y}`". apply-fixes.py writes them, in
+rem reading C++, kpp's error names: "write `Vector{x, y}`, not `{x, y}`". apply-fixes.py writes them, in
 rem kpp\ and in the checkout, from each configuration's check: Windows' debug, release and final, the
 rem checkout's with its tests, Linux's and Linux's final (CrashHandler's upload of the log is final's alone); a build through codegen where templates' instances are walked. Twice:
 rem a fix can show the next. Explicit by default is kpp's default (D's 13d36a85), and so is no implicit
@@ -307,7 +307,7 @@ echo == Agui smoke test: tests\agui_smoke.kpp against the converted Agui (Void b
 kpp\agui_smoke.exe > kpp\agui_smoke.out.txt
 fc /w kpp\agui_smoke.out.txt tests\agui_smoke.expected > nul && (echo agui smoke test: output as expected& set /a SMOKES+=1) || (echo agui smoke test: OUTPUT DIFFERS & fc /w kpp\agui_smoke.out.txt tests\agui_smoke.expected & goto :failed)
 set "STEP=Util smoke test"
-echo == Util smoke test: tests\util_smoke.kpp against the converted Util subset (containers, sorting, the math expression evaluator; Logging, Util helpers, Math, FloatCast, GameRuntimeError and prefetch stubbed)
+echo == Util smoke test: tests\util_smoke.kpp against the converted Util subset (containers, sorting, the math expression evaluator; Logging, Util helpers, Math, FloatCast, RuntimeError and prefetch stubbed)
 set UFILES=
 for %%f in (kpp\Util\Container\*.kpp) do if not %%~nf==ExtendedBitBuffer set UFILES=!UFILES! %%f
 %KPP% --std ..\..\stdlib %CINC% --quiet --exe kpp\util_smoke.exe !FILES! !UFILES! tests\stubs\SystemClipboard.kpp tests\stubs\Log.kpp tests\stubs\UtilHelpers.kpp tests\stubs\MathStubs.kpp tests\stubs\FloatCast.kpp tests\stubs\UtilTemplateNames.kpp kpp\src\c-imports.kpp kpp\src\Util\ReleaseAssert.kpp kpp\Util\Sort kpp\Util\MathExpressions kpp\Util\BitBuffer.kpp kpp\Util\ToStr.kpp kpp\Util\LogLevel.kpp kpp\src\Typedefs.kpp kpp\src\TypeTraitsExtensions.kpp kpp\src\Graphics\BitmapFormat.kpp kpp\src\Noise\NoiseRegisterIndex.kpp tests\util_smoke.kpp %TRIOLINK% || goto :failed

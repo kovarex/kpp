@@ -5,17 +5,17 @@
 // date-time one after the seconds).
 namespace TimeUtil
 {
-  SystemClock::time_point fromISODate(const std::String& str)
+  std::SystemClock::time_point fromISODate(const std::String& str)
   {
     tm t = {};
     std::parseTime(str.c_str(), "%Y-%m-%d", &t);
-    return SystemClock::from_time_t(mkgmtime(&t));
+    return std::SystemClock::from_time_t(mkgmtime(&t));
   }
 
-  SystemClock::time_point fromISODateTime(const std::String& str)
+  std::SystemClock::time_point fromISODateTime(const std::String& str)
   {
     tm t = {};
     std::parseTime(str.c_str(), "%Y-%m-%dT%H:%M:%S.%fZ", &t);
-    return SystemClock::from_time_t(mkgmtime(&t));
+    return std::SystemClock::from_time_t(mkgmtime(&t));
   }
 }

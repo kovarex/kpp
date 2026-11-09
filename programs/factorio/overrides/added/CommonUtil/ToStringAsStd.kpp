@@ -5,14 +5,14 @@
 // true, a char as the character, an enumeration as its enumerator's name and a floating value as
 // its shortest text.
 template<typename T>
-String toStringAsStd(T value)
+std::String toStringAsStd(T value)
 {
   if constexpr (std::isFloatingPoint<T>)
-    return toString(fixed(value, 6));
+    return std::toString(std::fixed(value, 6));
   else if constexpr (std::isEnum<T>)
     return toStringAsStd(static_cast<std::UnderlyingType<T>>(value));
   else if constexpr (std::isSame<T, bool> || std::isSame<T, char>)
-    return toString(i32(value));
+    return std::toString(i32(value));
   else
-    return toString(value);
+    return std::toString(value);
 }

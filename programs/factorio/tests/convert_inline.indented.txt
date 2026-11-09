@@ -1,4 +1,4 @@
-    int value() const
+    i32 value() const
     {
       return 1;
     }

@@ -458,7 +458,7 @@
       "    constexpr void validate() const\n"
       "    {\n"
       "      if (!this->isValid())\n"
-      "        throw GameRuntimeError(\"Invalid enum value \\\"\" + std::toString(this->asType()) + \"\\\" of " + name + "\");\n"
+      "        throw RuntimeError(\"Invalid enum value \\\"\" + std::toString(this->asType()) + \"\\\" of " + name + "\");\n"
       "    }\n"
       "\n"
       "    constexpr bool operator==(Enum other) const { return this->value == other; }\n"
@@ -494,7 +494,7 @@
         "  protected:\n"
         "    static Enum findValue(const char* val)\n"
         "    {\n" + fromStr +
-        "      throw GameRuntimeError(\"Invalid value \\\"\" + std::String(val) + \"\\\" of " + name + "\");\n"
+        "      throw RuntimeError(\"Invalid value \\\"\" + std::String(val) + \"\\\" of " + name + "\");\n"
         "    }\n";
     }
     return out + "  private:\n";

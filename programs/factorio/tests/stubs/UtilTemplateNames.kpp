@@ -1,12 +1,12 @@
 // Stand-ins for what the Util subset's templates name without depending on their parameters, for
 // the Util smoke test: such a name nothing declares is an error at the template's definition,
 // whether or not the template is used (C++ [temp.res]), and the game's RuntimeError.kpp and
-// Prefetch.kpp pull in far more than the test needs (SmallBitset throws GameRuntimeError,
+// Prefetch.kpp pull in far more than the test needs (SmallBitset throws RuntimeError,
 // RadixSort prefetches).
-class GameRuntimeError : public ::RuntimeError
+class RuntimeError : public std::RuntimeError
 {
 public:
-  GameRuntimeError(const char* message) : ::RuntimeError(std::String(message)) {}
+  RuntimeError(const char* message) : std::RuntimeError(std::String(message)) {}
 };
 
 void inline prefetch(const void* p) {}

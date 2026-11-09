@@ -3,7 +3,7 @@
 kpp's explicit by default (design.md "Explicit by default", kovarex 2026-11-07) refuses what C++ took
 implicitly, and its errors end with the fix in design.md 23e's form: "write `NEW`, not `OLD`" or
 "remove `OLD`", OLD being the source's text at the message's line and column. A braced function argument
-gets the parameter's type as the compiler names it in kpp (`write `Vector2D{x, y}`, not `{x, y}``), which
+gets the parameter's type as the compiler names it in kpp (`write `Vector{x, y}`, not `{x, y}``), which
 the converter, reading C++, cannot spell itself: so convert.cmd checks the converted game with
 --diagnostic-columns in each configuration it builds and applies the fixes here.
 

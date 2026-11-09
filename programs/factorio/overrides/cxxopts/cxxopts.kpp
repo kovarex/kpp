@@ -21,15 +21,15 @@ namespace cxxopts
     bool matched = false;
 
     int length() const { return this->matched ? int(this->second - this->first) : 0; }
-    String str() const { return this->matched ? String(StringView(this->first, int(this->second - this->first))) : String(); }
-    implicit operator String() const { return this->str(); }
+    std::String str() const { return this->matched ? std::String(std::StringView(this->first, int(this->second - this->first))) : std::String(); }
+    implicit operator std::String() const { return this->str(); }
   };
 
   // The groups of a successful match (std::match_results); empty after a failed one.
   template<typename It>
   struct match_results
   {
-    Vector<sub_match<It>> groups;
+    std::Vector<sub_match<It>> groups;
 
     bool empty() const { return this->groups.empty(); }
     int length(int index = 0) const { return index < this->groups.size() ? this->groups[index].length() : 0; }
@@ -210,10 +210,10 @@ namespace cxxopts
       return matchOption(text, end, result);
     if (strcmp(pattern.pattern, "(([[:alnum:]]),)?[ ]*([[:alnum:]][-_[:alnum:]]*)?") == 0)
       return matchSpecifier(text, end, result);
-    throw std::LogicError(String("cxxopts: a pattern the hand-written matchers do not know: ") + pattern.pattern);
+    throw std::LogicError(std::String("cxxopts: a pattern the hand-written matchers do not know: ") + pattern.pattern);
   }
 
-  bool regex_match(const String& text, match_results<const char*>& result, const basic_regex<char>& pattern)
+  bool regex_match(const std::String& text, match_results<const char*>& result, const basic_regex<char>& pattern)
   {
     return regex_match(text.c_str(), result, pattern);
   }

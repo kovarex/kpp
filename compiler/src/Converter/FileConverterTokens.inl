@@ -860,7 +860,7 @@
     // its ieee_double_shape_type in its EXTRACT_WORDS macros, whose expansions are such text.
     std::string renameGameClasses(const std::string& s)
     {
-      std::string renamed = renameGameClassNames(qualifyScopedNames(s), &counts);
+      std::string renamed = qualifyScopedNames(s);
       if (!in.c || !cStaticRenames || cStaticRenames->empty())
         return renamed;
       std::string out;
@@ -3049,60 +3049,6 @@
           counts.add("__FILE__, __LINE__, __FUNCTION__ replaced");
           continue;
         }
-        if (t.getKind() == TokenKind::Identifier && spelling(i) == "Vector" && !(i >= 2 && toks[i - 1].is(P::ColonColon) && spelling(i - 2) == "std") && !memberAccessAt(i))
-        {
-          // The game's own 2D `Vector` class is Vector2D in kpp, where Vector is the library's std::vector.
-          replace(t.offset, endOffset(i) - t.offset, "Vector2D");
-          counts.add("Vector renamed to Vector2D");
-          continue;
-        }
-        if (t.getKind() == TokenKind::Identifier && spelling(i) == "Map" && !(i >= 2 && toks[i - 1].is(P::ColonColon) && spelling(i - 2) == "std") && !memberAccessAt(i))
-        {
-          // The game's `class Map` is GameMap in kpp, where Map<K,V> is the library's std::map.
-          replace(t.offset, endOffset(i) - t.offset, "GameMap");
-          counts.add("Map renamed to GameMap");
-          continue;
-        }
-        if (t.getKind() == TokenKind::Identifier && spelling(i) == "Optional" && !(i >= 2 && toks[i - 1].is(P::ColonColon) && spelling(i - 2) == "std") && !memberAccessAt(i))
-        {
-          // The game's sentinel-based `Optional<T, empty>` is GameOptional in kpp, where Optional<T> is the library's std::optional.
-          replace(t.offset, endOffset(i) - t.offset, "GameOptional");
-          counts.add("Optional renamed to GameOptional");
-          continue;
-        }
-        if (t.getKind() == TokenKind::Identifier && spelling(i) == "Pair" && !(i >= 2 && toks[i - 1].is(P::ColonColon) && spelling(i - 2) == "std") && !memberAccessAt(i))
-        {
-          // The game's `Pair<K,V>` is GamePair in kpp, where Pair<A,B> is the library's std::pair.
-          replace(t.offset, endOffset(i) - t.offset, "GamePair");
-          counts.add("Pair renamed to GamePair");
-          continue;
-        }
-        if (t.getKind() == TokenKind::Identifier && spelling(i) == "RuntimeError" && !(i >= 2 && toks[i - 1].is(P::ColonColon) && spelling(i - 2) == "std") && !memberAccessAt(i))
-        {
-          // The game's `class RuntimeError : public std::runtime_error` is GameRuntimeError in kpp,
-          // where RuntimeError is the library's std::runtime_error.
-          replace(t.offset, endOffset(i) - t.offset, "GameRuntimeError");
-          counts.add("RuntimeError renamed to GameRuntimeError");
-          continue;
-        }
-        if (t.getKind() == TokenKind::Identifier && (spelling(i) == "Clock" || spelling(i) == "TimePoint"))
-        {
-          // `using Clock = std::chrono::steady_clock;` and `using TimePoint = Clock::time_point;` at
-          // global scope (three Net headers), where the library declares Clock and TimePoint: those
-          // are GameClock and GameTimePoint, at their declarations and wherever the unqualified (or
-          // `::`-qualified) name finds them. A class's own Clock (MainLoop::Clock) keeps its name.
-          bool qualified = i >= 2 && toks[i - 1].is(P::ColonColon) &&
-                           (toks[i - 2].getKind() == TokenKind::Identifier || toks[i - 2].is(P::Greater) || toks[i - 2].is(P::Shr) ||
-                            toks[i - 2].is(P::RParen));
-          bool global = i >= 1 && toks[i - 1].is(P::ColonColon) && !qualified;
-          std::string name(spelling(i));
-          if (!qualified && (global || !shadowedAt(name, t.offset)))
-          {
-            replace(t.offset, endOffset(i) - t.offset, "Game" + name);
-            counts.add(name + " renamed to Game" + name);
-            continue;
-          }
-        }
         if (t.getKind() == TokenKind::Identifier && i >= 2 && toks[i - 1].is(P::Tilde) && (toks[i - 2].is(P::Dot) || toks[i - 2].is(P::Arrow)) &&
             i + 1 < toks.size() && (toks[i + 1].is(P::LParen) || toks[i + 1].is(P::Less)))
         {
@@ -3742,7 +3688,7 @@
             }
           }
           // MAKE_OPTIONAL(BaseClass, EmptyExpr) -> what the macro defines: the OptionalEmptyValue<BaseClass>
-          // specialisation returning EmptyExpr, and `using OptionalBaseClass = GameOptional<BaseClass>;`.
+          // specialisation returning EmptyExpr, and `using OptionalBaseClass = Optional<BaseClass>;`.
           if (name == "MAKE_OPTIONAL" && toks[i + 1].is(P::LParen))
           {
             int depth = 0;
@@ -3775,7 +3721,7 @@
                                        "{\n"
                                        "  constexpr static " + baseClass + " value() { return " + empty + "; }\n"
                                        "};\n"
-                                       "using Optional" + baseClass + " = GameOptional<" + baseClass + ">;";
+                                       "using Optional" + baseClass + " = Optional<" + baseClass + ">;";
                 uint32_t end = j;
                 if (end + 1 < toks.size() && toks[end + 1].is(P::Semi))
                   end = j + 1;

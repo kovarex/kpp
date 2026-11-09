@@ -1,78 +1,11 @@
 // NameMap.inl: the game's class renames, std names, aliases and scope names.
 // Part of convert.cpp, included where it stood in its anonymous namespace (a file of its own since 2026-11-05, moved without a change).
 
-  // The game's classes whose names the library uses (Vector, Map, Optional, Pair, RuntimeError),
-  // renamed as convertTokens renames them, in text that never was tokens: a macro's expansion, whose body and
-  // arguments are the game's C++ (`MACRO(StartWalking,, Vector, vector)` in InputAction's list).
-  // `std::` names in it are mapped later, by the pass over the whole output. `counts`, when given,
-  // counts the renames.
-  std::string renameGameClassNames(const std::string& s, Counts* counts)
-  {
-    static const std::map<std::string, std::pair<std::string, std::string>> renames = {
-      {"Vector", {"Vector2D", "Vector renamed to Vector2D"}},
-      {"Map", {"GameMap", "Map renamed to GameMap"}},
-      {"Optional", {"GameOptional", "Optional renamed to GameOptional"}},
-      {"Pair", {"GamePair", "Pair renamed to GamePair"}},
-      {"RuntimeError", {"GameRuntimeError", "RuntimeError renamed to GameRuntimeError"}}};
-    std::string out;
-    for (size_t i = 0; i < s.size();)
-    {
-      char c = s[i];
-      if (c == '"' || (c == '\'' && !isDigitSeparator(s, i)))
-      {
-        size_t j = i + 1;
-        while (j < s.size() && s[j] != c)
-          j += s[j] == '\\' ? 2 : 1;
-        j = std::min(j + 1, s.size());
-        out.append(s, i, j - i);
-        i = j;
-        continue;
-      }
-      if (!(isalpha((unsigned char)c) || c == '_'))
-      {
-        out += c;
-        ++i;
-        continue;
-      }
-      size_t j = i;
-      while (j < s.size() && isIdentChar(s[j]))
-        ++j;
-      std::string word = s.substr(i, j - i);
-      i = j;
-      auto r = renames.find(word);
-      if (r != renames.end())
-      {
-        // Not after `std::`.
-        size_t p = out.size();
-        while (p > 0 && out[p - 1] == ' ')
-          --p;
-        bool qualified = p >= 2 && out[p - 1] == ':' && out[p - 2] == ':';
-        if (qualified)
-        {
-          p -= 2;
-          while (p > 0 && out[p - 1] == ' ')
-            --p;
-        }
-        bool afterStd = qualified && p >= 3 && out.compare(p - 3, 3, "std") == 0 && (p == 3 || !isIdentChar(out[p - 4]));
-        if (!afterStd)
-        {
-          out += r->second.first;
-          if (counts)
-            counts->add(r->second.second);
-          continue;
-        }
-      }
-      out += word;
-    }
-    return out;
-  }
-
   // Text of the game's C++ carried into the output by hand (a default argument a declaration that
-  // goes had, a type written again): the game's class names and std:: names mapped as the token
-  // pass maps them (`std::atomic<bool>` is Atomic<bool>, `template<class V = Vector>` is Vector2D).
+  // goes had, a type written again): std:: names mapped as the token pass maps them
+  // (`std::atomic<bool>` is std::Atomic<bool>).
   std::string mapStdText(std::string value)
   {
-    value = renameGameClassNames(value, nullptr);
     for (size_t at = value.find("std::"); at != std::string::npos; at = value.find("std::", at))
     {
       size_t nameEnd = at + 5;

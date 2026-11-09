@@ -690,8 +690,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     for (const ConvertInput& in : inputs)
       if (in.parsed)
         inputOf[in.parsed] = &in;
-    // std:: names in carried text, mapped as the token pass maps them, after the game's classes
-    // whose names the library uses are renamed (`template<class V = Vector>` is Vector2D).
+    // std:: names in carried text, mapped as the token pass maps them.
     auto mapStd = [&](std::string value) { return mapStdText(std::move(value)); };
     // The defaults of a template's parameters on a declaration that goes, for the definition's
     // parameters that have none.
@@ -1244,7 +1243,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     text = withNotEqualsDropped(text, total, notEqualReview);
     text = withSuiteHeadersResolved(std::move(text), total);
     if (convertNativeTests && key.rfind("tests/", 0) == 0)
-      text = withTestNamesRestored(withTestDeclarationsMarked(withLocalChecksRenamed(std::move(text), total), total));
+      text = withTestDeclarationsMarked(withLocalChecksRenamed(std::move(text), total), total);
     if (ov)
     {
       // The hand-written part: appended, its definitions replaced the converted ones above.

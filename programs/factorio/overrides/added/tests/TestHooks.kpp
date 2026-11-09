@@ -20,7 +20,7 @@ void testsSetup(const std::Vector<std::String>& arguments)
       std::print("factorio-test: --jobs needs --write-data\n");
       ::exit(2);
     }
-    copies[at + 1] = toString(copies[at + 1], "/worker-", worker);
+    copies[at + 1] = std::toString(copies[at + 1], "/worker-", worker);
     Filesystem::create_directories(Filesystem::Path(copies[at + 1]));
   }
   for (std::String& argument : copies)
@@ -76,7 +76,7 @@ test private void reportDesync(const std::Function<void()>& run, std::StringView
   catch (const LatencyTestDesyncErrorHandled& handled)
   {
     TestGlobals::desyncedTestName = "";
-    failure = toString("Desync while running test: ", std::StringView(handled.what()));
+    failure = std::toString("Desync while running test: ", std::StringView(handled.what()));
   }
   catch (const TestEnded&)
   {
@@ -85,7 +85,7 @@ test private void reportDesync(const std::Function<void()>& run, std::StringView
   }
   catch (const std::Exception& e)
   {
-    failure = toString("Unhandled exception while running desync detection run.: ", std::StringView(e.what()));
+    failure = std::toString("Unhandled exception while running desync detection run.: ", std::StringView(e.what()));
   }
   TestGlobals::desyncReportGenerationRun = false;
   fail(failure);

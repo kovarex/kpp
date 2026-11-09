@@ -14,9 +14,9 @@ public:
     static_assert(std::isUnsigned<FullType>);
     static_assert(std::isUnsigned<InputType> || std::isSame<InputType, int>);
     static_assert(std::isSame<InputType, int> || sizeof(InputType) >= sizeof(FullType), "Corrupt space optimized saving detected (don't pre-cast the input value)");
-    if (uint64_t(size) > uint64_t(Limits<FullType>::max()))
+    if (uint64_t(size) > uint64_t(std::Limits<FullType>::max()))
       Logging::logAndAbortOrThrow("Serialiser.hpp", 47, LogLevel::Error, "Input value (%zu) is larger than the maximum (%zu) and can't be saved.",
-                                  size_t(size), size_t(Limits<FullType>::max()));
+                                  size_t(size), size_t(std::Limits<FullType>::max()));
     SerialiserHelper<Serialiser>::saveSpaceOptimized<ShortType, FullType>(*this, FullType(size));
   }
 };
