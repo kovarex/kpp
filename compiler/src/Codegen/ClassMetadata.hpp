@@ -71,7 +71,14 @@
     // body had them: `class Implicit { M a{3}; M b{fail(1)}; }` left a undestroyed.
     struct InlineParts
     {
-      InlineParts(Emitter& emitter, Node* where) : e(emitter), at(where) {}
+      // arrayElements: an array's elements from a brace list, which sit before the temporaries their
+      // initializers make, in statementTemps: an exception destroys those temporaries first and the
+      // elements built so far after them, as clang and g++ do (`T a[2] = {c ? make(1) : make(2),
+      // make(3)}` throwing in make(3); until 2026-11-08 the first element before the condition's
+      // temporaries, thread J's expression generator). A class's members are each destroyed in the
+      // reverse order of construction among the temporaries, as clang and g++ have them.
+      InlineParts(Emitter& emitter, Node* where, bool arrayElements = false)
+        : e(emitter), at(where), start(arrayElements ? emitter.statementTemps.size() : SIZE_MAX) {}
       InlineParts(const InlineParts&) = delete;
       void built(const std::string& addr, const Ty* t);
       // An array's elements built in a loop: the first *countSlot of them (an i64 the loop keeps).
@@ -80,7 +87,9 @@
 
       Emitter& e;
       Node* at;
+      size_t start;
       std::vector<std::string> parts;
+      void add(const Object& o);
     };
 
     // Default-constructs every element of an array of objects at addr: one after the other for a

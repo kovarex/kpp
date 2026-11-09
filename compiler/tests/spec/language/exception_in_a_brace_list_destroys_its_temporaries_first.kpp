@@ -1,0 +1,41 @@
+// spec: an exception in an array's brace list destroys the list's temporaries first and the elements built so far after them, as clang and g++ do; a class's members built so far are destroyed in the reverse order of construction among the temporaries ([except.ctor], [class.temporary]). clang's and g++'s output
+// found by thread J's expression generator (2026-11-08): kpp destroyed the first element before the condition's temporaries
+extern "C" int printf(const char* format, ...);
+int ticks = 0, limit = 0;
+struct T
+{
+  int id;
+  T(int i) : id(i) { if (++ticks == limit) { printf("!throw "); throw 1; } printf("+%d ", id); }
+  T(const T& o) : id(o.id + 100) { printf("c%d ", id); }
+  ~T() { printf("-%d ", id); }
+  operator bool() const { return id % 2 != 0; }
+};
+struct H
+{
+  T a;
+  T b;
+};
+T make(int i) { return T(i); }
+H hold(int i) { return H{T(i), T(i + 1)}; }
+int main()
+{
+  for (int n = 1; n <= 11; ++n)
+  {
+    ticks = 0;
+    limit = n;
+    printf("[%d] ", n);
+    try
+    {
+      T a[2] = {(bool)hold(1).b ? make(3) : make(4), make(5)};
+      printf("built ");
+      H h{(bool)make(7) ? make(8) : make(9), make(10)};
+      printf("built ");
+    }
+    catch (int)
+    {
+      printf("caught ");
+    }
+    printf("\n");
+  }
+  return 0;
+}

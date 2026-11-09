@@ -245,8 +245,14 @@ auto codegen::Emitter::InlineParts::built(const std::string& addr, const Ty* t) 
     return;
   Object o{addr, t};
   o.unwindOnly = true;
-  e.statementTemps.push_back(o);
-  parts.push_back(addr);
+  add(o);
+}
+
+auto codegen::Emitter::InlineParts::add(const Object& o) -> void
+{
+  size_t at = start == SIZE_MAX ? e.statementTemps.size() : std::min(start + parts.size(), e.statementTemps.size());
+  e.statementTemps.insert(e.statementTemps.begin() + ptrdiff_t(at), o);
+  parts.push_back(o.addr);
 }
 
 auto codegen::Emitter::InlineParts::builtCounted(const std::string& addr, const Ty* arrayTy, const std::string& countSlot) -> void
@@ -256,8 +262,7 @@ auto codegen::Emitter::InlineParts::builtCounted(const std::string& addr, const 
   Object o{addr, arrayTy};
   o.unwindOnly = true;
   o.countSlot = countSlot;
-  e.statementTemps.push_back(o);
-  parts.push_back(addr);
+  add(o);
 }
 
 codegen::Emitter::InlineParts::~InlineParts()
@@ -1996,7 +2001,7 @@ auto codegen::Emitter::initializeArrayElements(const std::string& addr, const Ty
 {
   t = types.unqualified(types.stripRef(t));
   const Ty* et = t->inner;
-  InlineParts parts(*this, at);
+  InlineParts parts(*this, at, true);
   size_t next = 0;
   uint32_t e = 0;
   if (std::any_of(values.begin(), values.end(), [&](Expr* v) { return isPackExpansion(v); }))
