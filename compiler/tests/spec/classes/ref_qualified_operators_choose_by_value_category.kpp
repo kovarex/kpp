@@ -1,0 +1,80 @@
+// spec: an overloaded operator's ref qualifier tells overloads apart by the object's value category, as a member function's does ([over.match.oper], [over.match.call], [over.match.funcs] 4): `f()(0)`, `move(f)(0)` and `forward<T>(t)(0)` call `operator()(int) &&`, and so do `[]`, unary `*`, `-`, `!`, prefix and postfix `++`, `+`, `+=`, `==`, the comma and `->` on a temporary, a call's result or a moved object; an lvalue takes `&`, a const one `const&`; clang and g++ print the same
+// found by thread I (2026-11-09): `visit(Visitor(), v)` called the visitor's `&` overload where std::visit calls its `&&` one
+// pending: a silent wrong answer. The call and the operators on an rvalue object take the first overload, the `&` one, as Value and the checker's stripped reference say nothing of the object's category: `Ops()(0)` is 1 for 3, `Ops()[0]` 11 for 13, `*make()` 21 for 23; for `+` and the unary operators only `move(o)` is right
+extern "C" int printf(const char* format, ...);
+struct Ops
+{
+  int value = 0;
+  int operator()(int) & { return 1; }
+  int operator()(int) const& { return 2; }
+  int operator()(int) && { return 3; }
+  int operator[](int) & { return 11; }
+  int operator[](int) const& { return 12; }
+  int operator[](int) && { return 13; }
+  int operator*() & { return 21; }
+  int operator*() const& { return 22; }
+  int operator*() && { return 23; }
+  int operator+(int) & { return 31; }
+  int operator+(int) const& { return 32; }
+  int operator+(int) && { return 33; }
+  int operator-() & { return 41; }
+  int operator-() const& { return 42; }
+  int operator-() && { return 43; }
+  int operator!() & { return 51; }
+  int operator!() const& { return 52; }
+  int operator!() && { return 53; }
+  int operator++() & { return 61; }
+  int operator++() && { return 63; }
+  int operator++(int) & { return 71; }
+  int operator++(int) && { return 73; }
+  int operator+=(int) & { return 81; }
+  int operator+=(int) && { return 83; }
+  int operator==(int) & { return 91; }
+  int operator==(int) const& { return 92; }
+  int operator==(int) && { return 93; }
+  int operator,(int) & { return 101; }
+  int operator,(int) && { return 103; }
+  Ops* operator->() & { Ops::pointerCalls = 1; return &this; }
+  Ops* operator->() const& { Ops::pointerCalls = 2; return (Ops*)&this; }
+  Ops* operator->() && { Ops::pointerCalls = 3; return &this; }
+  static int pointerCalls;
+};
+int Ops::pointerCalls = 0;
+
+Ops make()
+{
+  return Ops();
+}
+
+template<typename T>
+int viaForward(T&& t)
+{
+  return forward<T>(t)[0];
+}
+
+int main()
+{
+  Ops o;
+  const Ops c;
+  printf("call %d %d %d %d %d\n", o(0), c(0), Ops()(0), move(o)(0), make()(0));
+  printf("index %d %d %d %d %d\n", o[0], c[0], Ops()[0], move(o)[0], make()[0]);
+  printf("deref %d %d %d %d %d\n", *o, *c, *Ops(), *move(o), *make());
+  printf("plus %d %d %d %d %d\n", o + 0, c + 0, Ops() + 0, move(o) + 0, make() + 0);
+  printf("minus %d %d %d %d %d\n", -o, -c, -Ops(), -move(o), -make());
+  printf("not %d %d %d %d %d\n", !o, !c, !Ops(), !move(o), !make());
+  printf("increment %d %d %d\n", ++o, ++Ops(), ++move(o));
+  printf("postfix %d %d %d\n", o++, Ops()++, move(o)++);
+  printf("compound %d %d %d\n", o += 0, Ops() += 0, move(o) += 0);
+  printf("equal %d %d %d %d\n", o == 0, c == 0, Ops() == 0, move(o) == 0);
+  printf("comma %d %d %d\n", (o, 0), (Ops(), 0), (move(o), 0));
+  printf("forward %d %d %d\n", viaForward(o), viaForward(c), viaForward(Ops()));
+  int v = o->value;
+  printf("arrow %d %d", Ops::pointerCalls, v);
+  v = c->value;
+  printf(" %d", Ops::pointerCalls);
+  v = Ops()->value;
+  printf(" %d", Ops::pointerCalls);
+  v = move(o)->value;
+  printf(" %d\n", Ops::pointerCalls);
+  return 0;
+}

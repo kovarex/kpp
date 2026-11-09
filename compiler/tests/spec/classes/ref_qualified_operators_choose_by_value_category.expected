@@ -1,0 +1,13 @@
+call 1 2 3 3 3
+index 11 12 13 13 13
+deref 21 22 23 23 23
+plus 31 32 33 33 33
+minus 41 42 43 43 43
+not 51 52 53 53 53
+increment 61 63 63
+postfix 71 73 73
+compound 81 83 83
+equal 91 92 93 93
+comma 101 103 103
+forward 11 12 13
+arrow 1 0 2 3 3
