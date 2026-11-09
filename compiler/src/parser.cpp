@@ -7055,7 +7055,7 @@ namespace
         else if (at(P::Amp) && at(Kw::this_, 1))
         {
           // `[&this]`: the object by reference, which is what C++'s `[this]` captures (design.md 23d)
-          if (!thisIsObject())
+          if (!thisIsObject() && !roles) // (format mode reads a program of either kind)
             error("`[&this]` captures the object where `this` is a reference (--this-reference, design.md 23d); here `this` is the pointer: capture `this`");
           advance();
           advance();

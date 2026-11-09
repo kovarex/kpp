@@ -1,0 +1,5 @@
+// format: `[&this]` is read whichever `this` the program's build has (the converted game's --this-reference): kpp format has no build's options
+void Widget::show()
+{
+  this.run([&this]() { this.draw(); });
+}

@@ -67,10 +67,10 @@ Every value can be undone: formatting a file in any style and then in kpp's defa
 4. Each gap is decided by the rules below, in order: whether a line break comes before the token,
    then the empty lines and the indentation, or the spaces.
 5. With a limit, each line's statement is laid out flat. If it fits, the writer's breaks inside it
-   go. Otherwise it is broken after its loosest operators outside brackets (`?` and `:`, then `||`,
-   `&&`, comparisons, `+`, `*`...; an assignment last), else the arguments of the bracket that passes
-   the limit go one per line, lined up after its `(` (Q5). Each part that still does not fit is broken
-   the same way.
+   go, apart from an empty line. Otherwise it is broken after its loosest operators outside brackets
+   (`?` and `:`, then `||`, `&&`, comparisons, `+`, `*`...; an assignment last), else the arguments of
+   the bracket that passes the limit go one per line, lined up after its `(` (Q5). Each part that still
+   does not fit is broken the same way.
 6. The output is lexed again: it must have the input's tokens and comments, else the file is left as
    it is and reported (a formatter bug can refuse a file, never change a program).
 
@@ -79,7 +79,10 @@ of its 4,916 files have such a splice, 2 of them in Wube's code: PrototypeExplor
 
 ## What the writer keeps
 
-- An empty line (several count as one).
+- An empty line (several count as one), in every style, where a rule does not refuse one (rules 7 and
+  8, or a gap a rule joins). Inside a statement it is a line break the wrapping cannot remove; next to
+  an operator it is before or after it, as `wrap-operator` breaks the line. Before a body's `{` it
+  keeps that brace on its own line under `braces = end-of-line`.
 - A comment on its own line or at the end of a line.
 - A body written on one line (`i32 getX() const { return this.x; }`) or over several.
 - An initializer list on one line or over several; within a list over several lines, where its lines

@@ -333,6 +333,8 @@ namespace
       return isKw(k, Kw::if_) || isKw(k, Kw::while_) || isKw(k, Kw::for_) || isKw(k, Kw::switch_) || isKw(k, Kw::catch_) || isKw(k, Kw::when_);
     }
     void planSegment(size_t k, int startCol);
+    bool operatorBetweenCode(size_t j) const;
+    size_t emptyLineGap(size_t j) const;
     void wrap(size_t a, size_t b, int startCol, int contCol, int lineCol);
 
     std::string_view text;
@@ -1379,7 +1381,12 @@ namespace
     if (in.inOneLine)
       return {false, Rule::None, false};
     if (bodyOpen)
-      return {!style.bracesEndOfLine || (in.stmtStart && pin.colon != Colon::Label), Rule::BraceOwnLine, false}; // (`case 1: {` too)
+    {
+      // (an empty line before it is the writer's and is kept in every style, so the brace stays on its own line)
+      std::string_view gap = gapBefore(k);
+      bool emptyLine = std::count(gap.begin(), gap.end(), '\n') >= 2;
+      return {!style.bracesEndOfLine || emptyLine || (in.stmtStart && pin.colon != Colon::Label), Rule::BraceOwnLine, false}; // (`case 1: {` too)
+    }
     if (afterBodyOpen)
       return {true, Rule::BraceContentsNextLine, false};
     if (bodyClose)
@@ -1500,6 +1507,25 @@ namespace
     }
   }
 
+  // Item j is an operator a line may break on either side of (wrap-operator), with code on both sides: an
+  // empty line before it and one after it are the same fact.
+  bool Formatter::operatorBetweenCode(size_t j) const
+  {
+    if (columns == 0 || j == 0 || j + 1 >= items.size() || items[j].tok < 0 || items[j - 1].tok < 0 || items[j + 1].tok < 0)
+      return false;
+    int precedence = breakPrecedence(uint32_t(items[j].tok));
+    return precedence >= 2 && precedence <= 12 && decide(j).soft && decide(j + 1).soft;
+  }
+
+  // The gap an empty line written in soft gap j is kept in: its own, or across an operator, the side of the
+  // operator this style breaks the line on, so that the operators stay at one end of the lines.
+  size_t Formatter::emptyLineGap(size_t j) const
+  {
+    if (style.wrapBeforeOperator)
+      return operatorBetweenCode(j - 1) ? j - 1 : j;
+    return operatorBetweenCode(j) ? j + 1 : j;
+  }
+
   // Plans the line that starts at item k (at startCol): the items up to the next break no wrapping can
   // remove, joined where they fit, else broken (wrap).
   void Formatter::planSegment(size_t k, int startCol)
@@ -1533,12 +1559,28 @@ namespace
         plan[j] = d.soft ? 2 : 0;
       }
     }
+    // An empty line inside the statement is the writer's and stays in every style, whatever the wrapping
+    // does around it: only a shorter line can come of it, so the plan needs no change for the limit.
+    auto keepEmptyLines = [&]
+    {
+      for (size_t j = k + 1; j <= e; ++j)
+      {
+        std::string_view gap = gapBefore(j);
+        if (!segSoft[j - k] || std::count(gap.begin(), gap.end(), '\n') < 2)
+          continue;
+        size_t at = emptyLineGap(j);
+        if (at != j)
+          plan[j] = 2;
+        plan[at] = 1;
+      }
+    };
     if (multiline)
     {
       // a raw string or comment over several lines: the writer's breaks stay
       for (size_t j = k + 1; j <= e; ++j)
         if (segSoft[j - k])
           plan[j] = gapBefore(j).find('\n') != std::string_view::npos ? 3 : 4; // (the writer's: 3 a break, 4 none)
+      keepEmptyLines();
       return;
     }
     // continued under the value after `return` or the first assignment, as the emitter does
@@ -1564,6 +1606,7 @@ namespace
       col += segWidth[j - k];
     }
     wrap(k, e, startCol, contCol, startCol);
+    keepEmptyLines();
   }
 
   // Breaks items [a, b] (laid out from startCol on a line indented lineCol, continued at contCol) where
@@ -2021,8 +2064,10 @@ namespace
         // between them, as initializer-commas puts the line break)
         auto listComma = [&](size_t j) { return j < items.size() && items[j].tok >= 0 && info[items[j].tok].listLines && isP(uint32_t(items[j].tok), P::Comma); };
         auto blankGapAt = [&](size_t j) { std::string_view g = gapBefore(j); return std::count(g.begin(), g.end(), '\n') >= 2; };
+        // (and one written across an operator is on the side this style breaks the line on)
+        auto movedHere = [&](size_t j) { return j >= 1 && j < items.size() && decide(j).soft && blankGapAt(j) && emptyLineGap(j) == k; };
         int blank = old.newlines >= 2 || (listComma(k) && k + 1 < items.size() && blankGapAt(k + 1)) ||
-                    (k >= 2 && listComma(k - 1) && blankGapAt(k - 1)) ? 1 : 0;
+                    (k >= 2 && listComma(k - 1) && blankGapAt(k - 1)) || (planned && (movedHere(k - 1) || movedHere(k + 1))) ? 1 : 0;
         if (old.newlines >= 3)
           blankRule = Rule::BlankMaxOne;
         if (it.tok >= 0 && isP(uint32_t(it.tok), P::RBrace) && isBody(info[it.tok].brace) && !info[it.tok].oneLine)

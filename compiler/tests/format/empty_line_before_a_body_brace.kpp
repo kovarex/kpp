@@ -1,6 +1,33 @@
-// format: pending an empty line before a body's own-line brace is kept in the default style, and braces = end-of-line has nowhere to keep it: the round trip loses it (6 files of the converted game; thread F)
+// format: an empty line before a body's { is kept in the default style, and braces = end-of-line then leaves that brace on its own line (the round trip; 6 files of the converted game)
 void update(i32 ticks)
 
 {
   run(ticks);
+}
+
+struct Cell
+
+{
+  i32 x;
+};
+
+void step()
+
+// and with a comment between
+{
+  if (ready())
+
+  {
+    run(1);
+  }
+  else
+
+  {
+    run(2);
+  }
+  auto later = []()
+
+  {
+    return 1;
+  };
 }

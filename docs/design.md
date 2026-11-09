@@ -5010,7 +5010,10 @@ The 13 settings are built (2026-11-09; format.md, "Settings", has what each valu
 design left open: a constructor's initializer list or base clause is one item to a line exactly when
 its `:` starts a line (that is the kept fact); `namespace-indent` is about `namespace` only; `braces =
 end-of-line` leaves `else` and `catch` on the line after the `}`; with a numeric `continuation` the `(`
-of a control statement stays aligned.
+of a control statement stays aligned. An empty line is kept in every style, since a round trip through a
+personal style must bring it back (test-suites' format-check on the game, 2026-11-09): inside a statement
+it is a line break no wrapping removes, next to an operator it goes to the side `wrap-operator` breaks on,
+and before a body's `{` it keeps that brace on its own line under `braces = end-of-line`.
 
 ## Open questions
 - **Syntax must be parseable without name lookup.** C++ needs to know whether a name is a type

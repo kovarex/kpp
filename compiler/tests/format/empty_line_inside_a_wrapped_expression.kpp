@@ -1,4 +1,4 @@
-// format: pending an empty line inside a wrapped expression is kept in the default style, and wrap-operator = start loses it: the round trip does not bring it back (1 file of the converted game; thread F)
+// format: an empty line inside a wrapped expression stays in every style: on the side of its operator where the style breaks the line (the round trip; 1 file of the converted game)
 i32 total = 1 +
             1 +
             1 +

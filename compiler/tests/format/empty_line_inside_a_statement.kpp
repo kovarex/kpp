@@ -1,0 +1,25 @@
+// format: an empty line inside a statement that fits on one line stays too, in every style and at every limit
+i32 sum = 1 +
+
+          2;
+
+bool any(bool a, bool b)
+{
+  bool first = a &&
+
+               b;
+  log(a,
+
+      b);
+  string name = "a"
+
+                "b";
+  i32 pick = a ?
+
+             1 :
+
+             2;
+  return first || // the first
+
+         b;
+}
