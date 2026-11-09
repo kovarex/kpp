@@ -4,14 +4,14 @@
 // The hash of password with the 16 bytes of salt, at 2^cost rounds (4 to 31), as "$2y$...".
 // The salt must come from a cryptographically secure generator. A password over 72 bytes counts
 // its first 72 (as everywhere bcrypt is); one with a zero byte throws, as PHP 8.4 does.
-String bcryptHash(StringView password, i32 cost, StringView salt)
+std::String bcryptHash(std::StringView password, i32 cost, std::StringView salt)
 {
   if (cost < 4 || cost > 31)
-    throw BcryptError(toString("bcrypt's cost is 4 to 31, not ", cost));
+    throw BcryptError(std::toString("bcrypt's cost is 4 to 31, not ", cost));
   if (salt.size() != 16)
-    throw BcryptError(toString("bcrypt's salt is 16 bytes, not ", (i32)salt.size()));
+    throw BcryptError(std::toString("bcrypt's salt is 16 bytes, not ", (i32)salt.size()));
   bcryptCheckPassword(password);
-  String out = "$2y$";
+  std::String out = "$2y$";
   out << char('0' + cost / 10);
   out << char('0' + cost % 10);
   out << '$';
@@ -24,13 +24,13 @@ String bcryptHash(StringView password, i32 cost, StringView salt)
 // and "$2a$" for passwords of ASCII bytes only, where it is the same too. Anything else throws
 // BcryptError: a hash that cannot be read is an error, not a wrong password. The comparison
 // takes the same time wherever the hashes differ.
-bool bcryptVerify(StringView password, StringView hash)
+bool bcryptVerify(std::StringView password, std::StringView hash)
 {
   if (hash.size() != 60 || hash[0] != '$' || hash[1] != '2' || hash[3] != '$' || hash[6] != '$')
     throw BcryptError("not a bcrypt hash: it is \"$2?$NN$\" and 53 characters");
   char variant = hash[2];
   if (variant != 'y' && variant != 'b' && variant != 'a')
-    throw BcryptError(toString("the bcrypt variant $2", variant, "$ is not supported"));
+    throw BcryptError(std::toString("the bcrypt variant $2", variant, "$ is not supported"));
   bcryptCheckPassword(password);
   if (variant == 'a')
     for (i32 i = 0; i < (i32)password.size(); ++i)
@@ -40,13 +40,13 @@ bool bcryptVerify(StringView password, StringView hash)
     throw BcryptError("bcrypt's cost is two digits");
   i32 cost = (hash[4] - '0') * 10 + (hash[5] - '0');
   if (cost < 4 || cost > 31)
-    throw BcryptError(toString("bcrypt's cost is 4 to 31, not ", cost));
+    throw BcryptError(std::toString("bcrypt's cost is 4 to 31, not ", cost));
   for (i32 i = 7; i < 60; ++i)
     if (bcryptDigit(hash[i]) < 0)
-      throw BcryptError(toString("not a bcrypt hash: '", hash[i], "' at ", i));
+      throw BcryptError(std::toString("not a bcrypt hash: '", hash[i], "' at ", i));
   // The salt's last character carries 2 bits; the other 4 are ignored, as PHP does.
-  String salt = bcryptDecode(hash.substr(7, 22), 16);
-  String expected(hash.substr(0, 7));
+  std::String salt = bcryptDecode(hash.substr(7, 22), 16);
+  std::String expected(hash.substr(0, 7));
   bcryptEncode(expected, salt);
   bcryptAppendHash(expected, password, cost, salt);
   // Compare the hash part only: an uncanonical last salt character still verifies.
@@ -57,7 +57,7 @@ bool bcryptVerify(StringView password, StringView hash)
 }
 
 // The cost of a bcrypt hash, to decide whether to hash a password again with a higher one.
-i32 bcryptCost(StringView hash)
+i32 bcryptCost(std::StringView hash)
 {
   if (hash.size() != 60 || hash[0] != '$' || hash[1] != '2' || hash[3] != '$' || hash[6] != '$' ||
       hash[4] < '0' || hash[4] > '9' || hash[5] < '0' || hash[5] > '9')
@@ -65,7 +65,7 @@ i32 bcryptCost(StringView hash)
   return (hash[4] - '0') * 10 + (hash[5] - '0');
 }
 
-void bcryptCheckPassword(StringView password)
+void bcryptCheckPassword(std::StringView password)
 {
   for (i32 i = 0; i < (i32)password.size(); ++i)
     if (password[i] == 0)
@@ -90,7 +90,7 @@ i32 bcryptDigit(char c)
   return -1;
 }
 
-void bcryptEncode(String& out, StringView data)
+void bcryptEncode(std::String& out, std::StringView data)
 {
   i32 n = (i32)data.size();
   for (i32 i = 0; i < n; i += 3)
@@ -108,9 +108,9 @@ void bcryptEncode(String& out, StringView data)
 }
 
 // The first `bytes` bytes the characters encode (checked to be digits by the caller).
-String bcryptDecode(StringView text, i32 bytes)
+std::String bcryptDecode(std::StringView text, i32 bytes)
 {
-  String out;
+  std::String out;
   u32 bits = 0;
   i32 count = 0;
   for (i32 i = 0; i < (i32)text.size() && (i32)out.size() < bytes; ++i)
@@ -127,7 +127,7 @@ String bcryptDecode(StringView text, i32 bytes)
 }
 
 // Appends the 31 characters of the hash of password at 2^cost rounds with the 16-byte salt.
-void bcryptAppendHash(String& out, StringView password, i32 cost, StringView salt)
+void bcryptAppendHash(std::String& out, std::StringView password, i32 cost, std::StringView salt)
 {
   // The key is the password with its terminating zero byte, at most 72 bytes.
   i32 keyLength = (i32)password.size() + 1;
@@ -157,7 +157,7 @@ void bcryptAppendHash(String& out, StringView password, i32 cost, StringView sal
   for (i32 i = 0; i < 64; ++i)
     for (i32 j = 0; j < 6; j += 2)
       state.encrypt(text[j], text[j + 1]);
-  String bytes;
+  std::String bytes;
   for (i32 i = 0; i < 6; ++i)
   {
     bytes << char(text[i] >> 24);

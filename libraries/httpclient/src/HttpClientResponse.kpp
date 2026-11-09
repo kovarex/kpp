@@ -1,7 +1,7 @@
 struct HttpClientResponse
 {
   // The first header of that name (any case), or nullptr.
-  const String* header(StringView name) const
+  const std::String* header(std::StringView name) const
   {
     for (const HttpClientHeader& h : this.headers)
       if (httpClientEqualIgnoringCase(h.name, name))
@@ -10,6 +10,6 @@ struct HttpClientResponse
   }
 
   i32 status = 0;
-  Vector<HttpClientHeader> headers; // names as the server sent them
-  String body;
+  std::Vector<HttpClientHeader> headers; // names as the server sent them
+  std::String body;
 };

@@ -11,7 +11,7 @@ test aConnectionBothWays
   client.write("hello, ");
   client.write("server");
   check(server.readExactly(13) == "hello, server");
-  String big;
+  std::String big;
   for (i32 i = 0; i < 100000; ++i)
     big << char('a' + i % 26);
   server.write(big);
@@ -35,7 +35,7 @@ test aTimeout
   }
   catch (const NetError& e)
   {
-    timedOut = String(e.what()).find("timed out") != String::npos;
+    timedOut = std::String(e.what()).find("timed out") != std::String::npos;
   }
   check(timedOut);
 }

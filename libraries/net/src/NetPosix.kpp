@@ -21,15 +21,15 @@ i32 netErrno()
     return *__errno_location();
 }
 
-[[noreturn]] void netFail(StringView what)
+[[noreturn]] void netFail(std::StringView what)
 {
   i32 code = netErrno();
   if (code == EAGAIN || code == EWOULDBLOCK)
-    throw NetError(toString(what, ": timed out"));
-  throw NetError(toString(what, ": ", StringView(strerror(code)), " (errno ", code, ")"));
+    throw NetError(std::toString(what, ": timed out"));
+  throw NetError(std::toString(what, ": ", std::StringView(strerror(code)), " (errno ", code, ")"));
 }
 
-addrinfo* netResolve(StringView host, i32 port, bool passive)
+addrinfo* netResolve(std::StringView host, i32 port, bool passive)
 {
   addrinfo hints;
   memset(&hints, 0, sizeof(hints));
@@ -38,16 +38,16 @@ addrinfo* netResolve(StringView host, i32 port, bool passive)
   hints.ai_protocol = IPPROTO_TCP;
   if (passive)
     hints.ai_flags = AI_PASSIVE | AI_NUMERICHOST;
-  String name(host);
-  String service = toString(port);
+  std::String name(host);
+  std::String service = std::toString(port);
   addrinfo* found = nullptr;
   i32 result = getaddrinfo(name.c_str(), service.c_str(), &hints, &found);
   if (result != 0)
-    throw NetError(toString("cannot resolve ", host, ": ", StringView(gai_strerror(result))));
+    throw NetError(std::toString("cannot resolve ", host, ": ", std::StringView(gai_strerror(result))));
   return found;
 }
 
-i64 netConnect(StringView host, i32 port)
+i64 netConnect(std::StringView host, i32 port)
 {
   addrinfo* found = netResolve(host, port, false);
   i32 code = 0;
@@ -68,10 +68,10 @@ i64 netConnect(StringView host, i32 port)
     close(s);
   }
   freeaddrinfo(found);
-  throw NetError(toString("cannot connect to ", host, " port ", port, ": ", StringView(strerror(code)), " (errno ", code, ")"));
+  throw NetError(std::toString("cannot connect to ", host, " port ", port, ": ", std::StringView(strerror(code)), " (errno ", code, ")"));
 }
 
-i64 netListen(StringView address, i32 port)
+i64 netListen(std::StringView address, i32 port)
 {
   addrinfo* found = netResolve(address, port, true);
   i32 s = socket(found->ai_family, found->ai_socktype, found->ai_protocol);
@@ -88,7 +88,7 @@ i64 netListen(StringView address, i32 port)
     i32 code = netErrno();
     freeaddrinfo(found);
     close(s);
-    throw NetError(toString("cannot listen on ", address, " port ", port, ": ", StringView(strerror(code)), " (errno ", code, ")"));
+    throw NetError(std::toString("cannot listen on ", address, " port ", port, ": ", std::StringView(strerror(code)), " (errno ", code, ")"));
   }
   freeaddrinfo(found);
   return s;

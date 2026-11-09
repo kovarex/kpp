@@ -57,7 +57,7 @@ test stringEscapes
 }
 
 // The error's message for text that is not JSON, "" when it parses.
-String jsonErrorOf(StringView text)
+std::String jsonErrorOf(std::StringView text)
 {
   JsonValue value;
   JsonParseError error;
@@ -84,11 +84,11 @@ test errorsNameTheLineAndColumn
 
 test nestingIsLimited
 {
-  String deep;
+  std::String deep;
   for (i32 i = 0; i < 1001; ++i)
     deep << '[';
   check(jsonErrorOf(deep) == "1:1001: nesting deeper than 1000 levels");
-  String ok;
+  std::String ok;
   for (i32 i = 0; i < 1000; ++i)
     ok << '[';
   for (i32 i = 0; i < 1000; ++i)
@@ -121,7 +121,7 @@ test wrongTypesThrow
   catch (const JsonTypeError& e)
   {
     threw = true;
-    check(String(e.what()) == "JSON value is an array, not a string");
+    check(std::String(e.what()) == "JSON value is an array, not a string");
   }
   check(threw);
   threw = false;
@@ -146,11 +146,11 @@ test objectsCompareInAnyOrder
 // A double read back from its JSON text: the same bits.
 bool jsonNumberRoundTrips(double value)
 {
-  String text = writeJson(JsonValue(value));
+  std::String text = writeJson(JsonValue(value));
   JsonValue back = parseJson(text);
-  if (back.type == JsonType::number && bitCast<u64>(back.numberValue) == bitCast<u64>(value))
+  if (back.type == JsonType::number && std::bitCast<u64>(back.numberValue) == std::bitCast<u64>(value))
     return true;
-  println(text, " does not round-trip");
+  std::println(text, " does not round-trip");
   return false;
 }
 
@@ -176,8 +176,8 @@ test numbersRoundTripExactly
     state ^= state << 13;
     state ^= state >> 7;
     state ^= state << 17;
-    double value = bitCast<double>(state);
-    if (isfinite(value) && !jsonNumberRoundTrips(value))
+    double value = std::bitCast<double>(state);
+    if (std::isfinite(value) && !jsonNumberRoundTrips(value))
       ++failures;
   }
   check(failures == 0);

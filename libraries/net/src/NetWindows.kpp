@@ -15,11 +15,11 @@ void netStartup()
   WSADATA data;
   i32 result = WSAStartup(0x0202, &data);
   if (result != 0)
-    throw NetError(toString("WSAStartup failed: ", netSystemMessage(result)));
+    throw NetError(std::toString("WSAStartup failed: ", netSystemMessage(result)));
   started = true;
 }
 
-String netSystemMessage(i32 code)
+std::String netSystemMessage(i32 code)
 {
   char buffer[512];
   DWORD length = FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr, (DWORD)code, 0,
@@ -27,20 +27,20 @@ String netSystemMessage(i32 code)
   while (length > 0 && (buffer[length - 1] == '\n' || buffer[length - 1] == '\r' || buffer[length - 1] == ' ' || buffer[length - 1] == '.'))
     --length;
   if (length == 0)
-    return toString("error ", code);
-  return toString(StringView(buffer, (ContainerSize)length), " (error ", code, ")");
+    return std::toString("error ", code);
+  return std::toString(std::StringView(buffer, (std::ContainerSize)length), " (error ", code, ")");
 }
 
-[[noreturn]] void netFail(StringView what)
+[[noreturn]] void netFail(std::StringView what)
 {
   i32 code = WSAGetLastError();
   if (code == WSAETIMEDOUT)
-    throw NetError(toString(what, ": timed out"));
-  throw NetError(toString(what, ": ", netSystemMessage(code)));
+    throw NetError(std::toString(what, ": timed out"));
+  throw NetError(std::toString(what, ": ", netSystemMessage(code)));
 }
 
 // The addresses of host at port, for a stream socket; passive for a listener.
-addrinfo* netResolve(StringView host, i32 port, bool passive)
+addrinfo* netResolve(std::StringView host, i32 port, bool passive)
 {
   netStartup();
   addrinfo hints;
@@ -50,16 +50,16 @@ addrinfo* netResolve(StringView host, i32 port, bool passive)
   hints.ai_protocol = IPPROTO_TCP;
   if (passive)
     hints.ai_flags = AI_PASSIVE | AI_NUMERICHOST;
-  String name(host);
-  String service = toString(port);
+  std::String name(host);
+  std::String service = std::toString(port);
   addrinfo* found = nullptr;
   i32 result = getaddrinfo(name.c_str(), service.c_str(), &hints, &found);
   if (result != 0)
-    throw NetError(toString("cannot resolve ", host, ": ", netSystemMessage(result)));
+    throw NetError(std::toString("cannot resolve ", host, ": ", netSystemMessage(result)));
   return found;
 }
 
-i64 netConnect(StringView host, i32 port)
+i64 netConnect(std::StringView host, i32 port)
 {
   addrinfo* found = netResolve(host, port, false);
   i32 code = 0;
@@ -80,10 +80,10 @@ i64 netConnect(StringView host, i32 port)
     closesocket(s);
   }
   freeaddrinfo(found);
-  throw NetError(toString("cannot connect to ", host, " port ", port, ": ", netSystemMessage(code)));
+  throw NetError(std::toString("cannot connect to ", host, " port ", port, ": ", netSystemMessage(code)));
 }
 
-i64 netListen(StringView address, i32 port)
+i64 netListen(std::StringView address, i32 port)
 {
   addrinfo* found = netResolve(address, port, true);
   SOCKET s = socket(found->ai_family, found->ai_socktype, found->ai_protocol);
@@ -100,7 +100,7 @@ i64 netListen(StringView address, i32 port)
     i32 code = WSAGetLastError();
     freeaddrinfo(found);
     closesocket(s);
-    throw NetError(toString("cannot listen on ", address, " port ", port, ": ", netSystemMessage(code)));
+    throw NetError(std::toString("cannot listen on ", address, " port ", port, ": ", netSystemMessage(code)));
   }
   freeaddrinfo(found);
   return (i64)s;

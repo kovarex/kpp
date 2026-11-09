@@ -16,7 +16,7 @@ void htmlTemplateFail(const char* text, i32 offset, const char* what)
     else
       ++column;
   }
-  throw HtmlTemplateError(toString(line, ":", column, ": ", StringView(what)));
+  throw HtmlTemplateError(std::toString(line, ":", column, ": ", std::StringView(what)));
 }
 
 class HtmlTemplate
@@ -41,21 +41,21 @@ public:
 
   // Renders the template with a value for each hole; a hole without a value, or a value no hole
   // takes, throws HtmlTemplateError.
-  SafeHtml render(InitializerList<HtmlArgument> arguments) const
+  SafeHtml render(std::InitializerList<HtmlArgument> arguments) const
   {
-    String out;
+    std::String out;
     this.renderTo(out, arguments);
     return SafeHtml::trusted(out);
   }
 
-  void renderTo(String& out, InitializerList<HtmlArgument> arguments) const
+  void renderTo(std::String& out, std::InitializerList<HtmlArgument> arguments) const
   {
     i32 count = i32(arguments.size());
-    Vector<bool> used(count, false);
+    std::Vector<bool> used(count, false);
     for (i32 p = 0; p < this.partCount; ++p)
     {
       const HtmlTemplatePart& part = this.parts[p];
-      StringView name(this.text + part.start, part.length);
+      std::StringView name(this.text + part.start, part.length);
       if (part.kind == HtmlHole::literal)
       {
         out << name;
@@ -65,7 +65,7 @@ public:
       i32 index = 0;
       for (const HtmlArgument& a : arguments)
       {
-        if (StringView(a.name) == name)
+        if (std::StringView(a.name) == name)
         {
           argument = &a;
           used[index] = true;
@@ -73,18 +73,18 @@ public:
         ++index;
       }
       if (!argument)
-        throw HtmlTemplateError(toString("render: no value for {{", name, "}}"));
+        throw HtmlTemplateError(std::toString("render: no value for {{", name, "}}"));
       if ((argument->kind == HtmlArgumentKind::flag) != (part.kind == HtmlHole::flag))
-        throw HtmlTemplateError(part.kind == HtmlHole::flag ? toString("render: {{", name, "}} is a boolean attribute's, whose value is a bool")
-                                                            : toString("render: {{", name, "}} is a bool, which goes only in a boolean attribute (?name=\"{{hole}}\")"));
+        throw HtmlTemplateError(part.kind == HtmlHole::flag ? std::toString("render: {{", name, "}} is a boolean attribute's, whose value is a bool")
+                                                            : std::toString("render: {{", name, "}} is a bool, which goes only in a boolean attribute (?name=\"{{hole}}\")"));
       if (part.kind == HtmlHole::flag)
       {
         if (argument->on)
-          out << ' ' << StringView(this.text + part.attributeStart, part.attributeLength);
+          out << ' ' << std::StringView(this.text + part.attributeStart, part.attributeLength);
         continue;
       }
       if (argument->kind == HtmlArgumentKind::safe && part.kind != HtmlHole::text)
-        throw HtmlTemplateError(toString("render: {{", name, "}} is SafeHtml, which goes only in an element's text"));
+        throw HtmlTemplateError(std::toString("render: {{", name, "}} is SafeHtml, which goes only in an element's text"));
       if (part.kind == HtmlHole::text && argument->kind == HtmlArgumentKind::safe)
         out << (argument->value);
       else if (part.kind == HtmlHole::text || part.kind == HtmlHole::attribute)
@@ -92,7 +92,7 @@ public:
       else if (part.kind == HtmlHole::urlStart)
       {
         if (!htmlUrlIsSafe(argument->value))
-          throw HtmlTemplateError(toString("render: {{", name, "}} is a URL with a scheme other than http, https and mailto: ",
+          throw HtmlTemplateError(std::toString("render: {{", name, "}} is a URL with a scheme other than http, https and mailto: ",
                                            argument->value));
         htmlAppendEscaped(out, argument->value);
       }
@@ -103,7 +103,7 @@ public:
     for (const HtmlArgument& a : arguments)
     {
       if (!used[index])
-        throw HtmlTemplateError(toString("render: a value for ", StringView(a.name), ", which the template has no hole for"));
+        throw HtmlTemplateError(std::toString("render: a value for ", std::StringView(a.name), ", which the template has no hole for"));
       ++index;
     }
   }
@@ -112,12 +112,12 @@ public:
   constexpr i32 countParts() const { return this.partCount; }
 
   // The holes' names, in order, with repeats.
-  Vector<String> holes() const
+  std::Vector<std::String> holes() const
   {
-    Vector<String> names;
+    std::Vector<std::String> names;
     for (i32 p = 0; p < this.partCount; ++p)
       if (this.parts[p].kind != HtmlHole::literal)
-        names.push_back(String(this.text + this.parts[p].start, this.parts[p].length));
+        names.push_back(std::String(this.text + this.parts[p].start, this.parts[p].length));
     return names;
   }
 
@@ -413,7 +413,7 @@ private:
 
 // Whether a URL's scheme, if it has one, is http, https or mailto: the scheme is what comes before
 // a ':' that is before any '/', '?' or '#'.
-bool htmlUrlIsSafe(StringView url)
+bool htmlUrlIsSafe(std::StringView url)
 {
   for (i32 i = 0; i < url.size(); ++i)
   {
@@ -422,7 +422,7 @@ bool htmlUrlIsSafe(StringView url)
       return true;
     if (c == ':')
     {
-      String scheme;
+      std::String scheme;
       for (i32 k = 0; k < i; ++k)
         scheme << htmlLower(url[k]);
       return scheme == "http" || scheme == "https" || scheme == "mailto";
@@ -433,7 +433,7 @@ bool htmlUrlIsSafe(StringView url)
 
 // Appends the text percent-encoded: everything but RFC 3986's unreserved characters, and '/' when
 // keepSlash.
-void htmlAppendPercentEncoded(String& out, StringView text, bool keepSlash)
+void htmlAppendPercentEncoded(std::String& out, std::StringView text, bool keepSlash)
 {
   const char* hex = "0123456789ABCDEF";
   for (i32 i = 0; i < text.size(); ++i)

@@ -1,9 +1,9 @@
 // Text that is not JSON. The message starts with "line:column: ".
-class JsonParseError : public RuntimeError
+class JsonParseError : public std::RuntimeError
 {
 public: // 1-based, in bytes
   JsonParseError() {}
-  JsonParseError(const String& message, i32 line, i32 column) : RuntimeError(message), line(line), column(column) {}
+  JsonParseError(const std::String& message, i32 line, i32 column) : RuntimeError(message), line(line), column(column) {}
   i32 line = 0;   // 1-based
   i32 column = 0;
 };

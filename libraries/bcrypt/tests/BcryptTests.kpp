@@ -2,9 +2,9 @@
 // hashes PHP 8.3's crypt() wrote (BcryptPhpVectors.kpp, generate_vectors.php): passwords of 0 to
 // 255 bytes, ASCII and not, costs 4 and 5.
 
-String bcryptFromHex(const char* hex)
+std::String bcryptFromHex(const char* hex)
 {
-  String out;
+  std::String out;
   for (i32 i = 0; hex[i] != 0; i += 2)
   {
     auto digit = [](char c) -> i32 { return c <= '9' ? c - '0' : c - 'a' + 10; };
@@ -13,7 +13,7 @@ String bcryptFromHex(const char* hex)
   return out;
 }
 
-bool bcryptThrows(StringView password, StringView hash)
+bool bcryptThrows(std::StringView password, std::StringView hash)
 {
   try
   {
@@ -45,14 +45,14 @@ test phpHashes
 {
   for (i32 i = 0; i < bcryptPhpVectorCount; ++i)
   {
-    String password = bcryptFromHex(bcryptPhpVectors[i][0]);
-    StringView hash = bcryptPhpVectors[i][1];
+    std::String password = bcryptFromHex(bcryptPhpVectors[i][0]);
+    std::StringView hash = bcryptPhpVectors[i][1];
     check(bcryptVerify(password, hash));
     // bcryptHash writes the same string from the same salt.
-    String salt = bcryptDecode(hash.substr(7, 22), 16);
+    std::String salt = bcryptDecode(hash.substr(7, 22), 16);
     check(bcryptHash(password, bcryptCost(hash), salt) == hash);
     // A changed password fails.
-    String other = password;
+    std::String other = password;
     other << 'x';
     if (password.size() < 72)
       check(!bcryptVerify(other, hash));
@@ -61,24 +61,24 @@ test phpHashes
 
 test the72ByteLimit
 {
-  String salt = "0123456789abcdef";
-  String a(72, 'a');
-  String b = a;
+  std::String salt = "0123456789abcdef";
+  std::String a(72, 'a');
+  std::String b = a;
   b << "anything";
   check(bcryptHash(a, 4, salt) == bcryptHash(b, 4, salt));
-  String c(71, 'a');
+  std::String c(71, 'a');
   check(bcryptHash(a, 4, salt) != bcryptHash(c, 4, salt));
 }
 
 test errors
 {
-  String salt = "0123456789abcdef";
+  std::String salt = "0123456789abcdef";
   check(bcryptThrows("x", ""));
   check(bcryptThrows("x", "$2x$05$CCCCCCCCCCCCCCCCCCCCC.E5YPO9kmyuRGyh0XouQYb4YMJKvyOeW"));
   check(bcryptThrows("x", "$2y$03$CCCCCCCCCCCCCCCCCCCCC.E5YPO9kmyuRGyh0XouQYb4YMJKvyOeW"));
   check(bcryptThrows("x", "$2y$05$CCCCCCCCCCCCCCCCCCCCC.E5YPO9kmyuRGyh0XouQYb4YMJKvyOe!"));
   check(bcryptThrows("x", "$2y$05$CCCCCCCCCCCCCCCCCCCCC.E5YPO9kmyuRGyh0XouQYb4YMJKvyOe"));
-  check(bcryptThrows(String("a\0b", 3), "$2y$05$CCCCCCCCCCCCCCCCCCCCC.E5YPO9kmyuRGyh0XouQYb4YMJKvyOeW"));
+  check(bcryptThrows(std::String("a\0b", 3), "$2y$05$CCCCCCCCCCCCCCCCCCCCC.E5YPO9kmyuRGyh0XouQYb4YMJKvyOeW"));
   check(bcryptThrows("\xc3\xa9", "$2a$05$CCCCCCCCCCCCCCCCCCCCC.E5YPO9kmyuRGyh0XouQYb4YMJKvyOeW"));
   check(!bcryptThrows("\xc3\xa9", "$2y$05$CCCCCCCCCCCCCCCCCCCCC.E5YPO9kmyuRGyh0XouQYb4YMJKvyOeW"));
   bool threw = false;

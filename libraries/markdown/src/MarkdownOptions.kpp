@@ -6,5 +6,5 @@ struct MarkdownOptions
   bool headingIds = false;
   // Called with every link's and image's destination (percent-encoded, as written in the HTML);
   // what it returns is written instead. A site uses it to turn links to .md files into .html.
-  Function<String(const String&)> rewriteLink;
+  std::Function<std::String(const std::String&)> rewriteLink;
 };

@@ -1,6 +1,6 @@
 struct MarkdownReference
 {
-  String label; // normalized
-  String destination;
-  String title;
+  std::String label; // normalized
+  std::String destination;
+  std::String title;
 };

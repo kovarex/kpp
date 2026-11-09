@@ -8,8 +8,8 @@ struct JsonValue
   implicit JsonValue(i64 value) : type(JsonType::integer), integerValue(value) {}
   implicit JsonValue(double value) : type(JsonType::number), numberValue(value) {}
   implicit JsonValue(const char* value) : type(JsonType::string), stringValue(value) {}
-  implicit JsonValue(StringView value) : type(JsonType::string), stringValue(value) {}
-  implicit JsonValue(const String& value) : type(JsonType::string), stringValue(value) {}
+  implicit JsonValue(std::StringView value) : type(JsonType::string), stringValue(value) {}
+  implicit JsonValue(const std::String& value) : type(JsonType::string), stringValue(value) {}
 
   static JsonValue array()
   {
@@ -56,7 +56,7 @@ struct JsonValue
     return this.numberValue;
   }
 
-  const String& asString() const
+  const std::String& asString() const
   {
     this.expect(JsonType::string, "a string");
     return this.stringValue;
@@ -70,7 +70,7 @@ struct JsonValue
   {
     this.expect(JsonType::array, "an array");
     if (index < 0 || index >= this.items.size())
-      throw JsonTypeError(toString("JSON array index ", index, " out of range (size ", this.items.size(), ")"));
+      throw JsonTypeError(std::toString("JSON array index ", index, " out of range (size ", this.items.size(), ")"));
     return this.items[index];
   }
 
@@ -78,41 +78,41 @@ struct JsonValue
   {
     this.expect(JsonType::array, "an array");
     if (index < 0 || index >= this.items.size())
-      throw JsonTypeError(toString("JSON array index ", index, " out of range (size ", this.items.size(), ")"));
+      throw JsonTypeError(std::toString("JSON array index ", index, " out of range (size ", this.items.size(), ")"));
     return this.items[index];
   }
 
   // An object's member, or nullptr when it has none of that name; not an object throws.
-  const JsonValue* find(StringView key) const
+  const JsonValue* find(std::StringView key) const
   {
     this.expect(JsonType::object, "an object");
     for (i32 i = 0; i < this.keys.size(); ++i)
-      if (StringView(this.keys[i]) == key)
+      if (std::StringView(this.keys[i]) == key)
         return &this.items[i];
     return nullptr;
   }
 
-  JsonValue* find(StringView key)
+  JsonValue* find(std::StringView key)
   {
     this.expect(JsonType::object, "an object");
     for (i32 i = 0; i < this.keys.size(); ++i)
-      if (StringView(this.keys[i]) == key)
+      if (std::StringView(this.keys[i]) == key)
         return &this.items[i];
     return nullptr;
   }
 
-  bool contains(StringView key) const { return this.find(key) != nullptr; }
+  bool contains(std::StringView key) const { return this.find(key) != nullptr; }
 
   // An object's member; a missing one throws.
-  const JsonValue& operator[](StringView key) const
+  const JsonValue& operator[](std::StringView key) const
   {
     const JsonValue* member = this.find(key);
     if (!member)
-      throw JsonTypeError(toString("JSON object has no member \"", key, "\""));
+      throw JsonTypeError(std::toString("JSON object has no member \"", key, "\""));
     return *member;
   }
 
-  const JsonValue& operator[](const char* key) const { return (this)[StringView(key)]; }
+  const JsonValue& operator[](const char* key) const { return (this)[std::StringView(key)]; }
 
   // Appends to an array; a null value becomes an empty array first.
   JsonValue& push(const JsonValue& value)
@@ -126,7 +126,7 @@ struct JsonValue
 
   // Sets an object's member, replacing the value of an existing key in its place; a null value
   // becomes an empty object first.
-  JsonValue& set(StringView key, const JsonValue& value)
+  JsonValue& set(std::StringView key, const JsonValue& value)
   {
     if (this.type == JsonType::null)
       this.type = JsonType::object;
@@ -136,17 +136,17 @@ struct JsonValue
       *member = value;
       return *member;
     }
-    this.keys.push_back(String(key));
+    this.keys.push_back(std::String(key));
     this.items.push_back(value);
     return this.items.back();
   }
 
   // Removes an object's member; false when there was none.
-  bool remove(StringView key)
+  bool remove(std::StringView key)
   {
     this.expect(JsonType::object, "an object");
     for (i32 i = 0; i < this.keys.size(); ++i)
-      if (StringView(this.keys[i]) == key)
+      if (std::StringView(this.keys[i]) == key)
       {
         this.keys.erase(this.keys.begin() + i);
         this.items.erase(this.items.begin() + i);
@@ -186,21 +186,21 @@ struct JsonValue
   }
 
   // The value as compact JSON, for messages and the test runner's check values.
-  String str() const { return writeJson(this); }
+  std::String str() const { return writeJson(this); }
 
   void expect(JsonType wanted, const char* what) const
   {
     if (this.type != wanted)
-      throw JsonTypeError(toString("JSON value is ", StringView(jsonTypeName(this.type)), ", not ", StringView(what)));
+      throw JsonTypeError(std::toString("JSON value is ", std::StringView(jsonTypeName(this.type)), ", not ", std::StringView(what)));
   }
 
   JsonType type = JsonType::null;
   bool booleanValue = false;
   i64 integerValue = 0; // JsonType::integer: a number written without fraction or exponent
   double numberValue = 0;     // JsonType::number
-  String stringValue;
-  Vector<JsonValue> items; // an array's elements, or an object's values
-  Vector<String> keys;
+  std::String stringValue;
+  std::Vector<JsonValue> items; // an array's elements, or an object's values
+  std::Vector<std::String> keys;
 };
 
 // The JSON type's name with its article, for messages: "a string", "null".

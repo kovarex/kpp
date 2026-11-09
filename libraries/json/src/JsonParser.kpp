@@ -1,6 +1,6 @@
 struct JsonParser
 {
-  JsonParser(StringView text) : start(text.data()), at(text.data()), end(text.data() + text.size()) {}
+  JsonParser(std::StringView text) : start(text.data()), at(text.data()), end(text.data() + text.size()) {}
 
   JsonValue parseDocument()
   {
@@ -15,7 +15,7 @@ struct JsonParser
     return value;
   }
 
-  void fail(StringView what)
+  void fail(std::StringView what)
   {
     i32 line = 1;
     const char* lineStart = this.start;
@@ -26,7 +26,7 @@ struct JsonParser
         lineStart = c + 1;
       }
     i32 column = i32(this.at - lineStart) + 1;
-    throw JsonParseError(toString(line, ":", column, ": ", what), line, column);
+    throw JsonParseError(std::toString(line, ":", column, ": ", what), line, column);
   }
 
   void skipWhitespace()
@@ -82,7 +82,7 @@ struct JsonParser
   void enter()
   {
     if (++this.depth > jsonMaxDepth)
-      this.fail(toString("nesting deeper than ", jsonMaxDepth, " levels"));
+      this.fail(std::toString("nesting deeper than ", jsonMaxDepth, " levels"));
   }
 
   void parseArray(JsonValue& out)
@@ -132,7 +132,7 @@ struct JsonParser
       this.skipWhitespace();
       if (this.at == this.end || *this.at != '"')
         this.fail("expected a string as an object's key");
-      String key;
+      std::String key;
       this.parseString(key);
       this.skipWhitespace();
       if (this.at == this.end || *this.at != ':')
@@ -187,7 +187,7 @@ struct JsonParser
     return code;
   }
 
-  void parseString(String& out)
+  void parseString(std::String& out)
   {
     ++this.at; // "
     while (true)
@@ -263,7 +263,7 @@ struct JsonParser
       i32 length = jsonUtf8SequenceLength(this.at, this.end);
       if (length == 0)
         this.fail("bytes that are not UTF-8 in a string");
-      out << StringView(this.at, length);
+      out << std::StringView(this.at, length);
       this.at += length;
     }
   }
@@ -332,9 +332,9 @@ struct JsonParser
         return;
       }
     }
-    String digits(first, this.at);
+    std::String digits(first, this.at);
     double value = strtod(digits.c_str(), nullptr);
-    if (!isfinite(value))
+    if (!std::isfinite(value))
     {
       this.at = first;
       this.fail("a number too large for a double");

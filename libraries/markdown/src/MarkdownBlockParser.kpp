@@ -11,9 +11,9 @@ struct MarkdownBlockParser
 
   i32 peek(i32 at) const { return at < this.line.size() ? (u8)this.line[at] : -1; }
 
-  void parse(StringView text)
+  void parse(std::StringView text)
   {
-    String clean;
+    std::String clean;
     for (i32 i = 0; i < text.size(); ++i)
     {
       if (text[i] == 0)
@@ -27,7 +27,7 @@ struct MarkdownBlockParser
       i32 end = at;
       while (end < clean.size() && clean[end] != '\n' && clean[end] != '\r')
         ++end;
-      this.incorporateLine(StringView(clean.data() + at, end - at));
+      this.incorporateLine(std::StringView(clean.data() + at, end - at));
       if (end < clean.size() && clean[end] == '\r' && end + 1 < clean.size() && clean[end + 1] == '\n')
         ++end;
       at = end + 1;
@@ -230,7 +230,7 @@ struct MarkdownBlockParser
     return this.peek(k) == -1 ? length : 0;
   }
 
-  void incorporateLine(StringView text)
+  void incorporateLine(std::StringView text)
   {
     MarkdownNode* container = this.document;
     this.oldTip = this.tip;
@@ -376,7 +376,7 @@ struct MarkdownBlockParser
     // HTML block.
     if (!this.indented && c == '<')
     {
-      StringView rest = this.line.substr(at);
+      std::StringView rest = this.line.substr(at);
       for (i32 type = 1; type <= 7; ++type)
         if (markdownHtmlBlockStarts(type, rest) &&
             (type < 7 || (container->type != MarkdownType::paragraph && !(!this.allClosed && !this.blank && this.tip->type == MarkdownType::paragraph))))
@@ -545,7 +545,7 @@ struct MarkdownBlockParser
       i32 used = parser.parseReference(paragraph->content);
       if (used == 0)
         break;
-      paragraph->content = String(StringView(paragraph->content).substr(used));
+      paragraph->content = std::String(std::StringView(paragraph->content).substr(used));
       any = true;
     }
     return any;
@@ -575,22 +575,22 @@ struct MarkdownBlockParser
         if (block->fenced)
         {
           i32 newline = block->content.find('\n');
-          StringView first = StringView(block->content).substr(0, newline);
+          std::StringView first = std::StringView(block->content).substr(0, newline);
           block->info = markdownUnescape(markdownTrim(first));
-          block->literal = String(StringView(block->content).substr(newline + 1));
+          block->literal = std::String(std::StringView(block->content).substr(newline + 1));
         }
         else
         {
           // Its trailing blank lines become one line end.
-          block->literal = String(StringView(block->content).substr(0, markdownEndWithoutBlankLines(block->content)));
+          block->literal = std::String(std::StringView(block->content).substr(0, markdownEndWithoutBlankLines(block->content)));
           block->literal << '\n';
         }
-        block->content = String();
+        block->content = std::String();
       }
       case MarkdownType::htmlBlock:
       {
-        block->literal = String(StringView(block->content).substr(0, markdownEndWithoutBlankLines(block->content)));
-        block->content = String();
+        block->literal = std::String(std::StringView(block->content).substr(0, markdownEndWithoutBlankLines(block->content)));
+        block->content = std::String();
       }
       case MarkdownType::list:
       {
@@ -627,14 +627,14 @@ struct MarkdownBlockParser
   // --- GitHub's tables (the GFM spec's "Tables (extension)") ---
 
   // A row's cells: the text between unescaped '|'s, a leading and a trailing '|' optional.
-  static Vector<String> tableCells(StringView row)
+  static std::Vector<std::String> tableCells(std::StringView row)
   {
-    Vector<String> cells;
-    StringView text = markdownTrim(row);
+    std::Vector<std::String> cells;
+    std::StringView text = markdownTrim(row);
     i32 at = 0;
     if (text.size() > 0 && text[0] == '|')
       at = 1;
-    String cell;
+    std::String cell;
     bool any = false;
     for (i32 i = at; i < text.size(); ++i)
     {
@@ -648,8 +648,8 @@ struct MarkdownBlockParser
       }
       if (c == '|')
       {
-        cells.push_back(String(markdownTrim(cell)));
-        cell = String();
+        cells.push_back(std::String(markdownTrim(cell)));
+        cell = std::String();
         any = false;
         continue;
       }
@@ -657,25 +657,25 @@ struct MarkdownBlockParser
       any = true;
     }
     if (any || cells.empty())
-      cells.push_back(String(markdownTrim(cell)));
+      cells.push_back(std::String(markdownTrim(cell)));
     return cells;
   }
 
   // The alignments of a delimiter row (1 left, 2 center, 3 right, 0 none), or empty when the line
   // is not one.
-  static Vector<i32> tableAlignments(StringView row)
+  static std::Vector<i32> tableAlignments(std::StringView row)
   {
-    Vector<i32> alignments;
-    StringView text = markdownTrim(row);
+    std::Vector<i32> alignments;
+    std::StringView text = markdownTrim(row);
     bool hasPipe = false;
     for (char c : text)
       if (c == '|')
         hasPipe = true;
-    Vector<String> cells = MarkdownBlockParser::tableCells(text);
-    for (const String& cell : cells)
+    std::Vector<std::String> cells = MarkdownBlockParser::tableCells(text);
+    for (const std::String& cell : cells)
     {
       if (cell.size() == 0)
-        return Vector<i32>();
+        return std::Vector<i32>();
       i32 k = 0;
       bool left = cell[0] == ':';
       if (left)
@@ -690,27 +690,27 @@ struct MarkdownBlockParser
       if (right)
         ++k;
       if (dashes == 0 || k != cell.size())
-        return Vector<i32>();
+        return std::Vector<i32>();
       alignments.push_back(left && right ? 2 : right ? 3 : left ? 1 : 0);
     }
     if (!hasPipe && alignments.size() < 2)
-      return Vector<i32>();
+      return std::Vector<i32>();
     return alignments;
   }
 
   bool startTable(MarkdownNode* paragraph)
   {
     // The paragraph's last line is the header row; earlier lines stay a paragraph.
-    String& content = paragraph->content;
+    std::String& content = paragraph->content;
     i32 end = content.size() - 1;
     i32 lineStart = end;
     while (lineStart > 0 && content[lineStart - 1] != '\n')
       --lineStart;
-    StringView headerLine = StringView(content).substr(lineStart, end - lineStart);
-    Vector<i32> alignments = MarkdownBlockParser::tableAlignments(this.line.substr(this.nextNonspace));
+    std::StringView headerLine = std::StringView(content).substr(lineStart, end - lineStart);
+    std::Vector<i32> alignments = MarkdownBlockParser::tableAlignments(this.line.substr(this.nextNonspace));
     if (alignments.empty())
       return false;
-    Vector<String> header = MarkdownBlockParser::tableCells(headerLine);
+    std::Vector<std::String> header = MarkdownBlockParser::tableCells(headerLine);
     if (header.size() != alignments.size())
       return false;
     this.closeUnmatchedBlocks();
@@ -718,7 +718,7 @@ struct MarkdownBlockParser
     table->startLine = this.lineNumber - 1;
     if (lineStart > 0)
     {
-      paragraph->content = String(StringView(content).substr(0, lineStart));
+      paragraph->content = std::String(std::StringView(content).substr(0, lineStart));
       paragraph->insertAfter(table);
       this.finalize(paragraph, this.lineNumber - 2);
     }
@@ -738,13 +738,13 @@ struct MarkdownBlockParser
     return true;
   }
 
-  void fillRow(MarkdownNode* table, MarkdownNode* row, const Vector<String>& cells)
+  void fillRow(MarkdownNode* table, MarkdownNode* row, const std::Vector<std::String>& cells)
   {
     for (i32 i = 0; i < table->info.size(); ++i)
     {
       MarkdownNode* cell = this.nodes->make(MarkdownType::tableCell);
       cell->alignment = table->info[i] - '0';
-      cell->content = i < cells.size() ? cells[i] : String();
+      cell->content = i < cells.size() ? cells[i] : std::String();
       row->appendChild(cell);
     }
   }
@@ -764,9 +764,9 @@ struct MarkdownBlockParser
   MarkdownNode* tip;
   MarkdownNode* oldTip;
   MarkdownNode* lastMatchedContainer;
-  Vector<MarkdownReference> references;
+  std::Vector<MarkdownReference> references;
 
-  StringView line;
+  std::StringView line;
   i32 lineNumber = 0;
   i32 offset = 0;
   i32 column = 0;

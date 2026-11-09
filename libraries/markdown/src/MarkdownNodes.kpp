@@ -8,12 +8,12 @@ struct MarkdownNodes
     return &node;
   }
 
-  MarkdownNode* text(StringView literal)
+  MarkdownNode* text(std::StringView literal)
   {
     MarkdownNode* node = this.make(MarkdownType::text);
-    node->literal = String(literal);
+    node->literal = std::String(literal);
     return node;
   }
 
-  Deque<MarkdownNode> nodes;
+  std::Deque<MarkdownNode> nodes;
 };

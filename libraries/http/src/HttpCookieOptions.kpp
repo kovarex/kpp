@@ -2,9 +2,9 @@
 // not readable from JavaScript, sent on same-site requests and top-level links from elsewhere.
 struct HttpCookieOptions
 {
-  Optional<i64> maxAgeSeconds; // none: until the browser closes; 0: delete it now
-  String path = "/";
+  std::Optional<i64> maxAgeSeconds; // none: until the browser closes; 0: delete it now
+  std::String path = "/";
   bool httpOnly = true;
   bool secure = false;             // true on HTTPS, so it is never sent in clear
-  String sameSite = "Lax";         // "Strict", "Lax", "None" or empty for none
+  std::String sameSite = "Lax";         // "Strict", "Lax", "None" or empty for none
 };

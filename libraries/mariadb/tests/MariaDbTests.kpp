@@ -3,11 +3,11 @@
 // thread (a MariaDB 11 greeting, a result set with a NULL, an OK, an error). live/ runs it against a
 // real MariaDB.
 
-String mariaDbHex(StringView data)
+std::String mariaDbHex(std::StringView data)
 {
   const char* digits = "0123456789abcdef";
-  String out;
-  for (ContainerSize i = 0; i < data.size(); ++i)
+  std::String out;
+  for (std::ContainerSize i = 0; i < data.size(); ++i)
   {
     out << digits[(u8)data[i] >> 4];
     out << digits[(u8)data[i] & 15];
@@ -21,12 +21,12 @@ test sha1
   check(mariaDbHex(mariaDbSha1("abc")) == "a9993e364706816aba3e25717850c26c9cd0d89d");
   check(mariaDbHex(mariaDbSha1("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")) ==
         "84983e441c3bd26ebaae4aa1f95129e5e54670f1");
-  check(mariaDbHex(mariaDbSha1(String(1000000, 'a'))) == "34aa973cd4c4daa4f61eeb2bdbad27316534016f");
+  check(mariaDbHex(mariaDbSha1(std::String(1000000, 'a'))) == "34aa973cd4c4daa4f61eeb2bdbad27316534016f");
 }
 
-String mariaDbTestScramble()
+std::String mariaDbTestScramble()
 {
-  String scramble;
+  std::String scramble;
   for (i32 i = 1; i <= 20; ++i)
     scramble << char(i);
   return scramble;
@@ -44,10 +44,10 @@ test quoting
   check(mariaDbQuote("plain") == "'plain'");
   check(mariaDbQuote("it's \"x\"") == "'it\\'s \\\"x\\\"'");
   check(mariaDbQuote("a\\b") == "'a\\\\b'");
-  check(mariaDbQuote(String("\0\n\r\x1a", 4)) == "'\\0\\n\\r\\Z'");
+  check(mariaDbQuote(std::String("\0\n\r\x1a", 4)) == "'\\0\\n\\r\\Z'");
   check(mariaDbQuote("Učebnicová") == "'Učebnicová'");
-  check(mariaDbQuoteOrNull(Optional<String>()) == "NULL");
-  check(mariaDbQuoteOrNull(Optional<String>(String("x"))) == "'x'");
+  check(mariaDbQuoteOrNull(std::Optional<std::String>()) == "NULL");
+  check(mariaDbQuoteOrNull(std::Optional<std::String>(std::String("x"))) == "'x'");
 }
 
 test lengthEncodedIntegers
@@ -55,13 +55,13 @@ test lengthEncodedIntegers
   u64 values[] = {0, 250, 251, 65535, 65536, 16777215, 16777216, 0xffffffffffffull};
   for (u64 value : values)
   {
-    String encoded;
+    std::String encoded;
     mariaDbAppendLengthEncoded(encoded, value);
     MariaDbReader reader(encoded, 0);
     check(reader.lengthEncoded() == value);
     check(reader.position == encoded.size());
   }
-  String bad;
+  std::String bad;
   bad << char(0xff);
   MariaDbReader reader(bad, 0);
   bool threw = false;
@@ -70,9 +70,9 @@ test lengthEncodedIntegers
 }
 
 // The fake server's side: packets with a sequence number.
-void mariaDbTestWrite(net::TcpStream& stream, i32 sequence, StringView payload)
+void mariaDbTestWrite(net::TcpStream& stream, i32 sequence, std::StringView payload)
 {
-  String packet;
+  std::String packet;
   packet << char(payload.size() & 255);
   packet << char((payload.size() >> 8) & 255);
   packet << char((payload.size() >> 16) & 255);
@@ -81,24 +81,24 @@ void mariaDbTestWrite(net::TcpStream& stream, i32 sequence, StringView payload)
   stream.write(packet);
 }
 
-String mariaDbTestRead(net::TcpStream& stream)
+std::String mariaDbTestRead(net::TcpStream& stream)
 {
-  String header = stream.readExactly(4);
-  ContainerSize length = ContainerSize((u8)header[0]) | (ContainerSize((u8)header[1]) << 8) |
-                         (ContainerSize((u8)header[2]) << 16);
+  std::String header = stream.readExactly(4);
+  std::ContainerSize length = std::ContainerSize((u8)header[0]) | (std::ContainerSize((u8)header[1]) << 8) |
+                         (std::ContainerSize((u8)header[2]) << 16);
   return stream.readExactly((i64)length);
 }
 
-String mariaDbTestColumn(StringView name)
+std::String mariaDbTestColumn(std::StringView name)
 {
-  String out;
-  for (StringView part : {StringView("def"), StringView("gorating"), StringView("t"), StringView("t"), name, name})
+  std::String out;
+  for (std::StringView part : {std::StringView("def"), std::StringView("gorating"), std::StringView("t"), std::StringView("t"), name, name})
   {
     mariaDbAppendLengthEncoded(out, part.size());
     out << part;
   }
   out << char(0x0c);
-  out << String("\x2d\x00\x00\x01\x00\x00\xfd\x00\x00\x00\x00\x00", 12);
+  out << std::String("\x2d\x00\x00\x01\x00\x00\xfd\x00\x00\x00\x00\x00", 12);
   return out;
 }
 
@@ -106,61 +106,61 @@ String mariaDbTestColumn(StringView name)
 struct MariaDbFakeServer
 {
   net::TcpListener listener;
-  String user;
-  String auth;
-  String database;
-  Vector<String> queries;
+  std::String user;
+  std::String auth;
+  std::String database;
+  std::Vector<std::String> queries;
   bool quit = false;
-  String failure;
+  std::String failure;
 
   void run()
   {
     try
     {
       net::TcpStream stream = this.listener.accept();
-      String greeting;
+      std::String greeting;
       greeting << char(10);
       greeting << "5.5.5-11.7.2-MariaDB";
       greeting << char(0);
-      greeting << String("\x07\x00\x00\x00", 4); // connection id
-      greeting << StringView(mariaDbTestScramble()).substr(0, 8);
+      greeting << std::String("\x07\x00\x00\x00", 4); // connection id
+      greeting << std::StringView(mariaDbTestScramble()).substr(0, 8);
       greeting << char(0);
-      greeting << String("\xfe\xf7", 2); // capabilities, low word
+      greeting << std::String("\xfe\xf7", 2); // capabilities, low word
       greeting << char(45);
-      greeting << String("\x02\x00", 2); // status
-      greeting << String("\xff\x81", 2); // capabilities, high word: PLUGIN_AUTH, MULTI_RESULTS...
+      greeting << std::String("\x02\x00", 2); // status
+      greeting << std::String("\xff\x81", 2); // capabilities, high word: PLUGIN_AUTH, MULTI_RESULTS...
       greeting << char(21);
-      greeting << String(10, '\0');
-      greeting << StringView(mariaDbTestScramble()).substr(8, 12);
+      greeting << std::String(10, '\0');
+      greeting << std::StringView(mariaDbTestScramble()).substr(8, 12);
       greeting << char(0);
       greeting << "mysql_native_password";
       greeting << char(0);
       mariaDbTestWrite(stream, 0, greeting);
 
-      String response = mariaDbTestRead(stream);
+      std::String response = mariaDbTestRead(stream);
       MariaDbReader reader(response, 32);
       this.user = reader.nulTerminated();
       this.auth = reader.lengthEncodedString();
       this.database = reader.nulTerminated();
-      mariaDbTestWrite(stream, 2, String("\x00\x00\x00\x02\x00\x00\x00", 7));
+      mariaDbTestWrite(stream, 2, std::String("\x00\x00\x00\x02\x00\x00\x00", 7));
 
       // A SELECT: two columns, two rows, a NULL.
-      String query = mariaDbTestRead(stream);
-      this.queries.push_back(String(StringView(query).substr(1)));
-      String count;
+      std::String query = mariaDbTestRead(stream);
+      this.queries.push_back(std::String(std::StringView(query).substr(1)));
+      std::String count;
       count << char(2);
       mariaDbTestWrite(stream, 1, count);
       mariaDbTestWrite(stream, 2, mariaDbTestColumn("id"));
       mariaDbTestWrite(stream, 3, mariaDbTestColumn("name"));
-      String eof("\xfe\x00\x00\x02\x00", 5);
+      std::String eof("\xfe\x00\x00\x02\x00", 5);
       mariaDbTestWrite(stream, 4, eof);
-      String row1;
+      std::String row1;
       mariaDbAppendLengthEncoded(row1, 1);
       row1 << "1";
       mariaDbAppendLengthEncoded(row1, 3);
       row1 << "x'y";
       mariaDbTestWrite(stream, 5, row1);
-      String row2;
+      std::String row2;
       mariaDbAppendLengthEncoded(row2, 1);
       row2 << "2";
       row2 << char(0xfb);
@@ -169,22 +169,22 @@ struct MariaDbFakeServer
 
       // An UPDATE: 3 rows, insert id 300.
       query = mariaDbTestRead(stream);
-      this.queries.push_back(String(StringView(query).substr(1)));
-      mariaDbTestWrite(stream, 1, String("\x00\x03\xfc\x2c\x01\x02\x00\x00\x00", 9));
+      this.queries.push_back(std::String(std::StringView(query).substr(1)));
+      mariaDbTestWrite(stream, 1, std::String("\x00\x03\xfc\x2c\x01\x02\x00\x00\x00", 9));
 
       // An error.
       query = mariaDbTestRead(stream);
-      this.queries.push_back(String(StringView(query).substr(1)));
-      String error("\xff\x7a\x04#42S02", 9);
+      this.queries.push_back(std::String(std::StringView(query).substr(1)));
+      std::String error("\xff\x7a\x04#42S02", 9);
       error << "Table 'gorating.nope' doesn't exist";
       mariaDbTestWrite(stream, 1, error);
 
-      String last = mariaDbTestRead(stream);
+      std::String last = mariaDbTestRead(stream);
       this.quit = last.size() == 1 && last[0] == 0x01;
     }
-    catch (const Exception& e)
+    catch (const std::Exception& e)
     {
-      this.failure = String(StringView(e.what()));
+      this.failure = std::String(std::StringView(e.what()));
     }
   }
 };
@@ -201,7 +201,7 @@ test theProtocolAgainstAFakeServer
   options.password = "secret";
   options.database = "gorating";
   options.timeoutMilliseconds = 5000;
-  Thread thread(mariaDbRunFakeServer, &server);
+  std::Thread thread(mariaDbRunFakeServer, &server);
   {
     MariaDbConnection connection = MariaDbConnection::connect(options);
     check(connection.serverVersion == "5.5.5-11.7.2-MariaDB");
@@ -219,8 +219,8 @@ test theProtocolAgainstAFakeServer
     check(update.affectedRows == 3 && update.insertId == 300 && update.empty());
 
     i32 code = 0;
-    String state;
-    String message;
+    std::String state;
+    std::String message;
     try
     {
       connection.query("SELECT * FROM nope");
@@ -229,7 +229,7 @@ test theProtocolAgainstAFakeServer
     {
       code = e.code;
       state = e.sqlState;
-      message = String(StringView(e.what()));
+      message = std::String(std::StringView(e.what()));
     }
     check(code == 1146 && state == "42S02");
     check(message == "MariaDB error 1146 (42S02): Table 'gorating.nope' doesn't exist; the statement: SELECT * FROM nope");

@@ -2,7 +2,7 @@
 // a reference against a base (section 5), percent-encoding, and query strings in the form
 // browsers send (application/x-www-form-urlencoded).
 
-void urlFail(i32 offset, const char* what) { throw UrlError(toString(offset, ": ", StringView(what)), offset); }
+void urlFail(i32 offset, const char* what) { throw UrlError(std::toString(offset, ": ", std::StringView(what)), offset); }
 
 // A URI reference's components, as written (percent-encoded). The has* flags tell an empty
 // component from a missing one: "http://a?" has an empty query, "http://a" none.
@@ -18,14 +18,14 @@ struct Url
     i64 value = 0;
     for (char c : this.port)
       if ((value = value * 10 + (c - '0')) > 65535)
-        throw UrlError(toString("port ", this.port, " is out of range"), 0);
+        throw UrlError(std::toString("port ", this.port, " is out of range"), 0);
     return i32(value);
   }
 
   // The reference recomposed (RFC 3986 5.3).
-  String str() const
+  std::String str() const
   {
-    String out;
+    std::String out;
     if (!this.scheme.empty())
     {
       out << (this.scheme);
@@ -62,18 +62,18 @@ struct Url
 
   bool operator==(const Url& other) const { return this.str() == other.str(); }
 
-  String scheme; // without ':'; empty for a relative reference
+  std::String scheme; // without ':'; empty for a relative reference
   bool hasAuthority = false;
-  String userInfo;
+  std::String userInfo;
   bool hasUserInfo = false;
-  String host; // an IP literal keeps its brackets: [::1]
-  String port; // digits, maybe empty ("http://a:/")
+  std::String host; // an IP literal keeps its brackets: [::1]
+  std::String port; // digits, maybe empty ("http://a:/")
   bool hasPort = false;
-  String path;
+  std::String path;
   bool hasQuery = false;
-  String query;
+  std::String query;
   bool hasFragment = false;
-  String fragment;
+  std::String fragment;
 };
 
 bool urlIsUnreserved(char c)
@@ -99,7 +99,7 @@ i32 urlHexValue(char c)
 
 // Checks text[from, to) of a component: each character is unreserved, a sub-delimiter, one of
 // `allowed`, or a valid %XX.
-void urlCheckComponent(StringView text, i32 from, i32 to, const char* allowed, const char* component)
+void urlCheckComponent(std::StringView text, i32 from, i32 to, const char* allowed, const char* component)
 {
   for (i32 i = from; i < to; ++i)
   {
@@ -120,12 +120,12 @@ void urlCheckComponent(StringView text, i32 from, i32 to, const char* allowed, c
       if (allowed[k] == c)
         ok = true;
     if (!ok)
-      urlFail(i, toString("a character that may not stand in a URL's ", StringView(component), " (percent-encode it)").c_str());
+      urlFail(i, std::toString("a character that may not stand in a URL's ", std::StringView(component), " (percent-encode it)").c_str());
   }
 }
 
 // A URI reference (RFC 3986 4.1) split into its components; anything else throws UrlError.
-Url parseUrl(StringView text)
+Url parseUrl(std::StringView text)
 {
   Url url;
   i32 at = 0;
@@ -155,7 +155,7 @@ Url parseUrl(StringView text)
     }
     if (!letter)
       urlFail(0, "a ':' in the first segment of a relative path (write ./ before it), or a scheme that is not letters, digits, + - .");
-    url.scheme = String(text.substr(0, colon));
+    url.scheme = std::String(text.substr(0, colon));
     at = colon + 1;
   }
   // The authority.
@@ -171,7 +171,7 @@ Url parseUrl(StringView text)
       if (text[i] == '@')
       {
         urlCheckComponent(text, start, i, ":", "user information");
-        url.userInfo = String(text.substr(start, i - start));
+        url.userInfo = std::String(text.substr(start, i - start));
         url.hasUserInfo = true;
         hostStart = i + 1;
         break;
@@ -199,14 +199,14 @@ Url parseUrl(StringView text)
         }
       urlCheckComponent(text, hostStart, hostEnd, "", "host");
     }
-    url.host = String(text.substr(hostStart, hostEnd - hostStart));
+    url.host = std::String(text.substr(hostStart, hostEnd - hostStart));
     if (hostEnd < stop)
     {
       url.hasPort = true;
       for (i32 i = hostEnd + 1; i < stop; ++i)
         if (text[i] < '0' || text[i] > '9')
           urlFail(i, "a port that is not digits");
-      url.port = String(text.substr(hostEnd + 1, stop - hostEnd - 1));
+      url.port = std::String(text.substr(hostEnd + 1, stop - hostEnd - 1));
     }
     at = stop;
   }
@@ -215,7 +215,7 @@ Url parseUrl(StringView text)
   while (pathEnd < end && text[pathEnd] != '?' && text[pathEnd] != '#')
     ++pathEnd;
   urlCheckComponent(text, at, pathEnd, ":@/", "path");
-  url.path = String(text.substr(at, pathEnd - at));
+  url.path = std::String(text.substr(at, pathEnd - at));
   at = pathEnd;
   if (at < end && text[at] == '?')
   {
@@ -224,49 +224,49 @@ Url parseUrl(StringView text)
       ++queryEnd;
     urlCheckComponent(text, at + 1, queryEnd, ":@/?", "query");
     url.hasQuery = true;
-    url.query = String(text.substr(at + 1, queryEnd - at - 1));
+    url.query = std::String(text.substr(at + 1, queryEnd - at - 1));
     at = queryEnd;
   }
   if (at < end && text[at] == '#')
   {
     urlCheckComponent(text, at + 1, end, ":@/?", "fragment");
     url.hasFragment = true;
-    url.fragment = String(text.substr(at + 1, end - at - 1));
+    url.fragment = std::String(text.substr(at + 1, end - at - 1));
   }
   return url;
 }
 
 // The path without its "." and ".." segments (RFC 3986 5.2.4).
-String urlRemoveDotSegments(StringView path)
+std::String urlRemoveDotSegments(std::StringView path)
 {
-  String input = String(path);
-  String output;
+  std::String input = std::String(path);
+  std::String output;
   while (!input.empty())
   {
-    StringView in = input;
+    std::StringView in = input;
     if (in.startsWith("../"))
-      input = String(in.substr(3));
+      input = std::String(in.substr(3));
     else if (in.startsWith("./"))
-      input = String(in.substr(2));
+      input = std::String(in.substr(2));
     else if (in.startsWith("/./"))
-      input = String(in.substr(2));
+      input = std::String(in.substr(2));
     else if (in == "/.")
       input = "/";
     else if (in.startsWith("/../") || in == "/..")
     {
-      input = in == "/.." ? String("/") : String(in.substr(3));
+      input = in == "/.." ? std::String("/") : std::String(in.substr(3));
       i32 slash = output.rfind('/');
-      output = slash == String::npos ? String() : String(StringView(output).substr(0, slash));
+      output = slash == std::String::npos ? std::String() : std::String(std::StringView(output).substr(0, slash));
     }
     else if (in == "." || in == "..")
-      input = String();
+      input = std::String();
     else
     {
       i32 next = in.find('/', in[0] == '/' ? 1 : 0);
-      if (next == StringView::npos)
+      if (next == std::StringView::npos)
         next = in.size();
       output << in.substr(0, next);
-      input = String(in.substr(next));
+      input = std::String(in.substr(next));
     }
   }
   return output;
@@ -277,7 +277,7 @@ String urlRemoveDotSegments(StringView path)
 Url resolveUrl(const Url& base, const Url& reference)
 {
   if (base.isRelative())
-    throw UrlError(toString("resolving against ", base.str(), ", which has no scheme"), 0);
+    throw UrlError(std::toString("resolving against ", base.str(), ", which has no scheme"), 0);
   Url target;
   if (!reference.scheme.empty())
   {
@@ -296,7 +296,7 @@ Url resolveUrl(const Url& base, const Url& reference)
     {
       target = base;
       target.hasFragment = false;
-      target.fragment = String();
+      target.fragment = std::String();
       if (reference.hasQuery)
       {
         target.hasQuery = true;
@@ -309,19 +309,19 @@ Url resolveUrl(const Url& base, const Url& reference)
       target.hasQuery = reference.hasQuery;
       target.query = reference.query;
       target.hasFragment = false;
-      target.fragment = String();
+      target.fragment = std::String();
       if (reference.path[0] == '/')
         target.path = urlRemoveDotSegments(reference.path);
       else
       {
         // Merge (5.2.3): the reference after the base path's last '/'.
-        String merged;
+        std::String merged;
         if (base.hasAuthority && base.path.empty())
           merged = "/" + reference.path;
         else
         {
           i32 slash = base.path.rfind('/');
-          merged = slash == String::npos ? reference.path : String(StringView(base.path).substr(0, slash + 1)) + reference.path;
+          merged = slash == std::String::npos ? reference.path : std::String(std::StringView(base.path).substr(0, slash + 1)) + reference.path;
         }
         target.path = urlRemoveDotSegments(merged);
       }
@@ -334,21 +334,21 @@ Url resolveUrl(const Url& base, const Url& reference)
 }
 
 // resolveUrl on text.
-String resolveUrl(StringView base, StringView reference) { return resolveUrl(parseUrl(base), parseUrl(reference)).str(); }
+std::String resolveUrl(std::StringView base, std::StringView reference) { return resolveUrl(parseUrl(base), parseUrl(reference)).str(); }
 
 // --- percent-encoding ---
 
 // Every byte but RFC 3986's unreserved characters (letters, digits, - . _ ~) as %XX: a value that
 // goes into any component, a query parameter or a path segment.
-String urlEncode(StringView text) { return urlEncodeKeeping(text, ""); }
+std::String urlEncode(std::StringView text) { return urlEncodeKeeping(text, ""); }
 
 // As urlEncode, but '/' is kept: a path of segments.
-String urlEncodePath(StringView text) { return urlEncodeKeeping(text, "/"); }
+std::String urlEncodePath(std::StringView text) { return urlEncodeKeeping(text, "/"); }
 
-String urlEncodeKeeping(StringView text, const char* keep)
+std::String urlEncodeKeeping(std::StringView text, const char* keep)
 {
   const char* hex = "0123456789ABCDEF";
-  String out;
+  std::String out;
   for (i32 i = 0; i < text.size(); ++i)
   {
     u8 c = (u8)text[i];
@@ -368,11 +368,11 @@ String urlEncodeKeeping(StringView text, const char* keep)
 }
 
 // %XX as the byte; a '%' without two hex digits throws UrlError. '+' stays '+'.
-String urlDecode(StringView text) { return urlDecodeWith(text, false); }
+std::String urlDecode(std::StringView text) { return urlDecodeWith(text, false); }
 
-String urlDecodeWith(StringView text, bool plusIsSpace)
+std::String urlDecodeWith(std::StringView text, bool plusIsSpace)
 {
-  String out;
+  std::String out;
   for (i32 i = 0; i < text.size(); ++i)
   {
     char c = text[i];
@@ -399,9 +399,9 @@ String urlDecodeWith(StringView text, bool plusIsSpace)
 
 // "a=1&b=x+y&c": the parameters in order, '+' as a space, %XX decoded; an empty piece ("a&&b")
 // is skipped, a piece without '=' has an empty value.
-Vector<UrlQueryParameter> parseUrlQuery(StringView query)
+std::Vector<UrlQueryParameter> parseUrlQuery(std::StringView query)
 {
-  Vector<UrlQueryParameter> parameters;
+  std::Vector<UrlQueryParameter> parameters;
   i32 at = 0;
   while (at <= query.size())
   {
@@ -410,11 +410,11 @@ Vector<UrlQueryParameter> parseUrlQuery(StringView query)
       ++end;
     if (end > at)
     {
-      StringView piece = query.substr(at, end - at);
+      std::StringView piece = query.substr(at, end - at);
       i32 equals = piece.find('=');
       UrlQueryParameter p;
-      p.name = urlDecodeWith(equals == StringView::npos ? piece : piece.substr(0, equals), true);
-      p.value = equals == StringView::npos ? String() : urlDecodeWith(piece.substr(equals + 1), true);
+      p.name = urlDecodeWith(equals == std::StringView::npos ? piece : piece.substr(0, equals), true);
+      p.value = equals == std::StringView::npos ? std::String() : urlDecodeWith(piece.substr(equals + 1), true);
       parameters.push_back(p);
     }
     at = end + 1;
@@ -423,9 +423,9 @@ Vector<UrlQueryParameter> parseUrlQuery(StringView query)
 }
 
 // The parameters as a query string: names and values encoded, a space as '+'.
-String writeUrlQuery(const Vector<UrlQueryParameter>& parameters)
+std::String writeUrlQuery(const std::Vector<UrlQueryParameter>& parameters)
 {
-  String out;
+  std::String out;
   for (i32 i = 0; i < parameters.size(); ++i)
   {
     if (i > 0)
@@ -437,7 +437,7 @@ String writeUrlQuery(const Vector<UrlQueryParameter>& parameters)
   return out;
 }
 
-void urlAppendForm(String& out, StringView text)
+void urlAppendForm(std::String& out, std::StringView text)
 {
   for (i32 i = 0; i < text.size(); ++i)
   {
@@ -449,10 +449,10 @@ void urlAppendForm(String& out, StringView text)
 }
 
 // The first value of the parameter, or nullptr.
-const String* findUrlQueryParameter(const Vector<UrlQueryParameter>& parameters, StringView name)
+const std::String* findUrlQueryParameter(const std::Vector<UrlQueryParameter>& parameters, std::StringView name)
 {
   for (const UrlQueryParameter& p : parameters)
-    if (StringView(p.name) == name)
+    if (std::StringView(p.name) == name)
       return &p.value;
   return nullptr;
 }

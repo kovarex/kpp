@@ -1,7 +1,7 @@
 // A malformed template, or a render that does not fit its template. The message starts with
 // "line:column: " for a template's error.
-class HtmlTemplateError : public RuntimeError
+class HtmlTemplateError : public std::RuntimeError
 {
 public:
-  HtmlTemplateError(const String& message) : RuntimeError(message) {}
+  HtmlTemplateError(const std::String& message) : RuntimeError(message) {}
 };

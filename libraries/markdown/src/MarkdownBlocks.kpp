@@ -13,7 +13,7 @@ void markdownCopyMarker(MarkdownNode& to, const MarkdownNode& from)
 }
 
 // Where the text ends without its trailing lines of only spaces ("(\n *)+$" in commonmark.js).
-i32 markdownEndWithoutBlankLines(StringView text)
+i32 markdownEndWithoutBlankLines(std::StringView text)
 {
   i32 end = text.size();
   while (true)
@@ -30,7 +30,7 @@ i32 markdownEndWithoutBlankLines(StringView text)
 // Whether a blank line separates the block from the one after it.
 bool markdownEndsWithBlankLine(MarkdownNode* block) { return block->next && block->endLine != block->next->startLine - 1; }
 
-StringView markdownTrim(StringView text)
+std::StringView markdownTrim(std::StringView text)
 {
   i32 start = 0;
   i32 end = text.size();
@@ -42,7 +42,7 @@ StringView markdownTrim(StringView text)
 }
 
 // An ATX heading's text: without the closing sequence of '#'s and the spaces around it.
-String markdownAtxContent(StringView rest)
+std::String markdownAtxContent(std::StringView rest)
 {
   i32 end = rest.size();
   while (end > 0 && markdownIsSpaceOrTab(rest[end - 1]))
@@ -59,12 +59,12 @@ String markdownAtxContent(StringView rest)
     ++start;
   while (end > start && markdownIsSpaceOrTab(rest[end - 1]))
     --end;
-  return String(rest.substr(start, end - start));
+  return std::String(rest.substr(start, end - start));
 }
 
 // --- HTML blocks (CommonMark 4.6) ---
 
-bool markdownStartsWithIgnoringCase(StringView text, i32 at, const char* word)
+bool markdownStartsWithIgnoringCase(std::StringView text, i32 at, const char* word)
 {
   for (i32 i = 0; word[i]; ++i)
     if (at + i >= text.size() || markdownLower((u8)text[at + i]) != word[i])
@@ -72,7 +72,7 @@ bool markdownStartsWithIgnoringCase(StringView text, i32 at, const char* word)
   return true;
 }
 
-bool markdownContainsIgnoringCase(StringView text, const char* word)
+bool markdownContainsIgnoringCase(std::StringView text, const char* word)
 {
   for (i32 i = 0; i < text.size(); ++i)
     if (markdownStartsWithIgnoringCase(text, i, word))
@@ -80,14 +80,14 @@ bool markdownContainsIgnoringCase(StringView text, const char* word)
   return false;
 }
 
-bool markdownHtmlBlockStarts(i32 type, StringView text)
+bool markdownHtmlBlockStarts(i32 type, std::StringView text)
 {
   if (type == 1)
   {
     for (const char* tag : {"<script", "<pre", "<style", "<textarea"})
       if (markdownStartsWithIgnoringCase(text, 0, tag))
       {
-        i32 n = i32(strlen(tag));
+        i32 n = i32(std::strlen(tag));
         if (n == text.size() || text[n] == ' ' || text[n] == '\t' || text[n] == '>')
           return true;
       }
@@ -111,7 +111,7 @@ bool markdownHtmlBlockStarts(i32 type, StringView text)
       return false;
     if (!(end == text.size() || text[end] == ' ' || text[end] == '\t' || text[end] == '>' || (text[end] == '/' && end + 1 < text.size() && text[end + 1] == '>')))
       return false;
-    String name;
+    std::String name;
     for (i32 i = at; i < end; ++i)
       name << char(markdownLower((u8)text[i]));
     const char* names[] = {"address", "article", "aside", "base", "basefont", "blockquote", "body", "caption", "center", "col", "colgroup",
@@ -133,7 +133,7 @@ bool markdownHtmlBlockStarts(i32 type, StringView text)
   for (const char* tag : {"<script", "<style", "<pre", "<textarea"})
     if (markdownStartsWithIgnoringCase(text, 0, tag))
     {
-      i32 n = i32(strlen(tag));
+      i32 n = i32(std::strlen(tag));
       if (n < text.size() && !markdownIsAlphanumeric((u8)text[n]) && text[n] != '-')
         return false;
     }
@@ -143,7 +143,7 @@ bool markdownHtmlBlockStarts(i32 type, StringView text)
   return true;
 }
 
-bool markdownHtmlBlockEnds(i32 type, StringView text)
+bool markdownHtmlBlockEnds(i32 type, std::StringView text)
 {
   if (type == 1)
     return markdownContainsIgnoringCase(text, "</script>") || markdownContainsIgnoringCase(text, "</pre>") ||
@@ -161,7 +161,7 @@ bool markdownHtmlBlockEnds(i32 type, StringView text)
 
 bool markdownIsHtmlSpace(char c) { return c == ' ' || c == '\t' || c == '\n'; }
 
-i32 markdownTagName(StringView text, i32 at)
+i32 markdownTagName(std::StringView text, i32 at)
 {
   if (at >= text.size() || !markdownIsLetter((u8)text[at]))
     return 0;
@@ -171,7 +171,7 @@ i32 markdownTagName(StringView text, i32 at)
   return k - at;
 }
 
-i32 markdownOpenTag(StringView text, i32 at)
+i32 markdownOpenTag(std::StringView text, i32 at)
 {
   if (at >= text.size() || text[at] != '<')
     return 0;
@@ -235,7 +235,7 @@ i32 markdownOpenTag(StringView text, i32 at)
   return 0;
 }
 
-i32 markdownClosingTag(StringView text, i32 at)
+i32 markdownClosingTag(std::StringView text, i32 at)
 {
   if (at + 1 >= text.size() || text[at] != '<' || text[at + 1] != '/')
     return 0;
@@ -252,16 +252,16 @@ i32 markdownClosingTag(StringView text, i32 at)
 
 // The length of the text up to and with the first `end` at or after from, measured from at; 0 when
 // there is none.
-i32 markdownThrough(StringView text, i32 at, i32 from, const char* end)
+i32 markdownThrough(std::StringView text, i32 at, i32 from, const char* end)
 {
-  i32 n = i32(strlen(end));
+  i32 n = i32(std::strlen(end));
   for (i32 k = from; k + n <= text.size(); ++k)
-    if (StringView(text.data() + k, n) == StringView(end))
+    if (std::StringView(text.data() + k, n) == std::StringView(end))
       return k + n - at;
   return 0;
 }
 
-i32 markdownHtmlInline(StringView text, i32 at)
+i32 markdownHtmlInline(std::StringView text, i32 at)
 {
   if (i32 n = markdownOpenTag(text, at))
     return n;

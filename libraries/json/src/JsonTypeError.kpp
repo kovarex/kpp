@@ -1,7 +1,7 @@
 // A value of the wrong JSON type asked for, a missing member, an index out of range.
-class JsonTypeError : public RuntimeError
+class JsonTypeError : public std::RuntimeError
 {
 public:
   JsonTypeError() {}
-  JsonTypeError(const String& message) : RuntimeError(message) {}
+  JsonTypeError(const std::String& message) : RuntimeError(message) {}
 };

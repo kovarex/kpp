@@ -2,17 +2,17 @@
 // patterned messages' digests come from Python's hashlib and hmac (OpenSSL).
 
 // n bytes of a pattern: byte i is (i * 31 + 7) mod 256.
-String sha256Pattern(i32 n)
+std::String sha256Pattern(i32 n)
 {
-  String out;
+  std::String out;
   for (i32 i = 0; i < n; ++i)
     out << char((i * 31 + 7) & 255);
   return out;
 }
 
-String sha256Repeat(char c, i32 n)
+std::String sha256Repeat(char c, i32 n)
 {
-  String out;
+  std::String out;
   for (i32 i = 0; i < n; ++i)
     out << c;
   return out;
@@ -48,13 +48,13 @@ test lengthsAroundTheBlockBoundaries
 
 test dataGivenInParts
 {
-  String message = sha256Pattern(1000);
+  std::String message = sha256Pattern(1000);
   Sha256Digest whole = sha256(message);
   for (i32 part = 1; part <= 130; part += 3)
   {
     Sha256 hash;
     for (i32 at = 0; at < message.size(); at += part)
-      hash.update(StringView(message).substr(at, part < message.size() - at ? part : message.size() - at));
+      hash.update(std::StringView(message).substr(at, part < message.size() - at ? part : message.size() - at));
     check(hash.finish() == whole);
   }
   Sha256 reused;
@@ -71,7 +71,7 @@ test rfc4231HmacSha256
   check(hmacSha256("Jefe", "what do ya want for nothing?").hex() == "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843");
   check(hmacSha256(sha256Repeat('\xaa', 20), sha256Repeat('\xdd', 50)).hex() ==
         "773ea91e36800e46854db8ebd09181a72959098b3ef8c122d9635514ced565fe");
-  String key4;
+  std::String key4;
   for (i32 i = 1; i <= 25; ++i)
     key4 << char(i);
   check(hmacSha256(key4, sha256Repeat('\xcd', 50)).hex() == "82558a389a443c0ea4cc819899f2083a85f0faa3e578f8077a2e3ff46729665b");

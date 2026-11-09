@@ -2,11 +2,11 @@
 // (HttpClientWindows.kpp: WinHTTP), and HTTP/1.1 with OpenSSL on FreeBSD (HttpClientPosix.kpp).
 // README.md has the API.
 
-bool httpClientEqualIgnoringCase(StringView a, StringView b)
+bool httpClientEqualIgnoringCase(std::StringView a, std::StringView b)
 {
   if (a.size() != b.size())
     return false;
-  for (ContainerSize i = 0; i < a.size(); ++i)
+  for (std::ContainerSize i = 0; i < a.size(); ++i)
   {
     char x = a[i] >= 'A' && a[i] <= 'Z' ? char(a[i] - 'A' + 'a') : a[i];
     char y = b[i] >= 'A' && b[i] <= 'Z' ? char(b[i] - 'A' + 'a') : b[i];
@@ -20,87 +20,87 @@ bool httpClientEqualIgnoringCase(StringView a, StringView b)
 HttpClientResponse fetch(const HttpClientRequest& request)
 {
   if (!(request.url.starts_with("http://") || request.url.starts_with("https://")))
-    throw HttpClientError(toString("not an http or https address: ", request.url));
+    throw HttpClientError(std::toString("not an http or https address: ", request.url));
   for (const HttpClientHeader& h : request.headers)
     for (char c : h.name + h.value)
       if (c == '\r' || c == '\n' || c == 0)
-        throw HttpClientError(toString("the header ", h.name, " has a line break or a zero byte"));
+        throw HttpClientError(std::toString("the header ", h.name, " has a line break or a zero byte"));
   return httpClientFetch(request);
 }
 
 // A GET of url.
-HttpClientResponse fetch(StringView url)
+HttpClientResponse fetch(std::StringView url)
 {
   HttpClientRequest request;
-  request.url = String(url);
+  request.url = std::String(url);
   return fetch(request);
 }
 
 // A POST of an urlencoded form (name=value&..., as url::writeUrlQuery writes it).
-HttpClientResponse postForm(StringView url, StringView form)
+HttpClientResponse postForm(std::StringView url, std::StringView form)
 {
   HttpClientRequest request;
   request.method = "POST";
-  request.url = String(url);
-  request.headers.push_back(HttpClientHeader{String("Content-Type"), String("application/x-www-form-urlencoded")});
-  request.body = String(form);
+  request.url = std::String(url);
+  request.headers.push_back(HttpClientHeader{std::String("Content-Type"), std::String("application/x-www-form-urlencoded")});
+  request.body = std::String(form);
   return fetch(request);
 }
 
 // Parses "Name: value" lines (the status line and blank lines skipped).
-Vector<HttpClientHeader> httpClientParseHeaders(StringView text)
+std::Vector<HttpClientHeader> httpClientParseHeaders(std::StringView text)
 {
-  Vector<HttpClientHeader> headers;
-  ContainerSize at = 0;
+  std::Vector<HttpClientHeader> headers;
+  std::ContainerSize at = 0;
   while (at < text.size())
   {
-    ContainerSize end = text.find('\n', at);
-    if (end == StringView::npos)
+    std::ContainerSize end = text.find('\n', at);
+    if (end == std::StringView::npos)
       end = text.size();
-    StringView line = text.substr(at, end - at);
+    std::StringView line = text.substr(at, end - at);
     if (!line.empty() && line[line.size() - 1] == '\r')
       line = line.substr(0, line.size() - 1);
-    ContainerSize colon = line.find(':');
-    if (colon != StringView::npos && colon > 0 && !line.starts_with("HTTP/"))
+    std::ContainerSize colon = line.find(':');
+    if (colon != std::StringView::npos && colon > 0 && !line.starts_with("HTTP/"))
     {
-      StringView value = line.substr(colon + 1);
+      std::StringView value = line.substr(colon + 1);
       while (!value.empty() && (value[0] == ' ' || value[0] == '\t'))
         value = value.substr(1);
-      headers.push_back(HttpClientHeader{String(line.substr(0, colon)), String(value)});
+      headers.push_back(HttpClientHeader{std::String(line.substr(0, colon)), std::String(value)});
     }
     at = end + 1;
   }
   return headers;
 }
 
-HttpClientTarget httpClientTarget(StringView url)
+HttpClientTarget httpClientTarget(std::StringView url)
 {
   HttpClientTarget target;
   target.secure = url.starts_with("https://");
-  StringView rest = url.substr(target.secure ? 8 : 7);
-  ContainerSize slash = rest.find('/');
-  ContainerSize question = rest.find('?');
-  ContainerSize end = slash < question ? slash : question;
-  StringView authority = end == StringView::npos ? rest : rest.substr(0, end);
-  target.path = end == StringView::npos ? String("/") : String(rest.substr(end));
+  std::StringView rest = url.substr(target.secure ? 8 : 7);
+  std::ContainerSize slash = rest.find('/');
+  std::ContainerSize question = rest.find('?');
+  std::ContainerSize end = slash < question ? slash : question;
+  std::StringView authority = end == std::StringView::npos ? rest : rest.substr(0, end);
+  target.path = end == std::StringView::npos ? std::String("/") : std::String(rest.substr(end));
   if (!target.path.starts_with("/"))
-    target.path = toString("/", target.path);
-  if (authority.find('@') != StringView::npos)
-    throw HttpClientError(toString("an address with a user name: ", url));
-  ContainerSize colon = authority.rfind(':');
+    target.path = std::toString("/", target.path);
+  if (authority.find('@') != std::StringView::npos)
+    throw HttpClientError(std::toString("an address with a user name: ", url));
+  std::ContainerSize colon = authority.rfind(':');
   bool bracketed = authority.starts_with("[");
-  if (colon != StringView::npos && (!bracketed || authority.find(']') < colon))
+  if (colon != std::StringView::npos && (!bracketed || authority.find(']') < colon))
   {
-    StringView port = authority.substr(colon + 1);
+    std::StringView port = authority.substr(colon + 1);
     i32 value = 0;
     for (char c : port)
     {
       if (c < '0' || c > '9' || value > 65535)
-        throw HttpClientError(toString("the port of ", url, " is not a number"));
+        throw HttpClientError(std::toString("the port of ", url, " is not a number"));
       value = value * 10 + (c - '0');
     }
     if (port.empty() || value == 0 || value > 65535)
-      throw HttpClientError(toString("the port of ", url, " is not a port"));
+      throw HttpClientError(std::toString("the port of ", url, " is not a port"));
     target.port = (u16)value;
     authority = authority.substr(0, colon);
   }
@@ -109,7 +109,7 @@ HttpClientTarget httpClientTarget(StringView url)
   if (bracketed)
     authority = authority.substr(1, authority.size() - 2);
   if (authority.empty())
-    throw HttpClientError(toString("an address without a host: ", url));
-  target.host = String(authority);
+    throw HttpClientError(std::toString("an address without a host: ", url));
+  target.host = std::String(authority);
   return target;
 }

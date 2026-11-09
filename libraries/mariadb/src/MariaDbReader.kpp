@@ -1,12 +1,12 @@
 // Reads a packet's fields; reading past its end throws.
 struct MariaDbReader
 {
-  MariaDbReader(StringView data, ContainerSize position) : data(data), position(position) {}
+  MariaDbReader(std::StringView data, std::ContainerSize position) : data(data), position(position) {}
 
-  void need(ContainerSize n)
+  void need(std::ContainerSize n)
   {
     if (this.position + n > this.data.size())
-      throw MariaDbError("a packet from the server is shorter than its fields", 0, String());
+      throw MariaDbError("a packet from the server is shorter than its fields", 0, std::String());
   }
 
   u8 peek()
@@ -15,7 +15,7 @@ struct MariaDbReader
     return (u8)this.data[this.position];
   }
 
-  void skip(ContainerSize n)
+  void skip(std::ContainerSize n)
   {
     this.need(n);
     this.position += n;
@@ -38,11 +38,11 @@ struct MariaDbReader
 
   u64 fixed(i32 bytes)
   {
-    this.need((ContainerSize)bytes);
+    this.need((std::ContainerSize)bytes);
     u64 value = 0;
     for (i32 i = 0; i < bytes; ++i)
-      value |= (u64)(u8)this.data[this.position + (ContainerSize)i] << (8 * i);
-    this.position += (ContainerSize)bytes;
+      value |= (u64)(u8)this.data[this.position + (std::ContainerSize)i] << (8 * i);
+    this.position += (std::ContainerSize)bytes;
     return value;
   }
 
@@ -57,37 +57,37 @@ struct MariaDbReader
       return this.fixed(3);
     if (first == 0xfe)
       return this.fixed(8);
-    throw MariaDbError(toString("a length-encoded integer cannot start with ", (i32)first), 0, String());
+    throw MariaDbError(std::toString("a length-encoded integer cannot start with ", (i32)first), 0, std::String());
   }
 
-  String bytes(ContainerSize n)
+  std::String bytes(std::ContainerSize n)
   {
     this.need(n);
-    String out(this.data.substr(this.position, n));
+    std::String out(this.data.substr(this.position, n));
     this.position += n;
     return out;
   }
 
-  String lengthEncodedString() { return this.bytes((ContainerSize)this.lengthEncoded()); }
-  void skipLengthEncodedString() { this.skip((ContainerSize)this.lengthEncoded()); }
+  std::String lengthEncodedString() { return this.bytes((std::ContainerSize)this.lengthEncoded()); }
+  void skipLengthEncodedString() { this.skip((std::ContainerSize)this.lengthEncoded()); }
 
-  String nulTerminated()
+  std::String nulTerminated()
   {
-    ContainerSize end = this.data.find('\0', this.position);
-    if (end == StringView::npos)
-      throw MariaDbError("a packet from the server lacks a terminating zero", 0, String());
-    String out(this.data.substr(this.position, end - this.position));
+    std::ContainerSize end = this.data.find('\0', this.position);
+    if (end == std::StringView::npos)
+      throw MariaDbError("a packet from the server lacks a terminating zero", 0, std::String());
+    std::String out(this.data.substr(this.position, end - this.position));
     this.position = end + 1;
     return out;
   }
 
-  String rest()
+  std::String rest()
   {
-    String out(this.data.substr(this.position));
+    std::String out(this.data.substr(this.position));
     this.position = this.data.size();
     return out;
   }
 
-  StringView data;
-  ContainerSize position = 0;
+  std::StringView data;
+  std::ContainerSize position = 0;
 };

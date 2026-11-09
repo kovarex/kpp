@@ -21,12 +21,12 @@ struct TcpStream
   ~TcpStream() { this.close(); }
 
   // Connects to host (a name or an address) at port, trying each address the name has.
-  static TcpStream connect(StringView host, i32 port) { return TcpStream(netConnect(host, port)); }
+  static TcpStream connect(std::StringView host, i32 port) { return TcpStream(netConnect(host, port)); }
 
   bool isOpen() const { return this.handle != -1; }
 
   // Sends all the bytes, or throws.
-  void write(StringView data)
+  void write(std::StringView data)
   {
     this.checkOpen();
     i64 sent = 0;
@@ -43,32 +43,32 @@ struct TcpStream
   }
 
   // Reads exactly n bytes; the connection closing first throws.
-  String readExactly(i64 n)
+  std::String readExactly(i64 n)
   {
-    String out;
+    std::String out;
     char buffer[4096];
     while ((i64)out.size() < n)
     {
       i64 want = n - (i64)out.size();
       i64 got = this.read(buffer, want < 4096 ? want : 4096);
       if (got == 0)
-        throw NetError(toString("the connection closed after ", (i64)out.size(), " of ", n, " bytes"));
-      out << StringView(buffer, (ContainerSize)got);
+        throw NetError(std::toString("the connection closed after ", (i64)out.size(), " of ", n, " bytes"));
+      out << std::StringView(buffer, (std::ContainerSize)got);
     }
     return out;
   }
 
   // Reads until the other side closes the connection.
-  String readAll()
+  std::String readAll()
   {
-    String out;
+    std::String out;
     char buffer[4096];
     for (;;)
     {
       i64 got = this.read(buffer, 4096);
       if (got == 0)
         return out;
-      out << StringView(buffer, (ContainerSize)got);
+      out << std::StringView(buffer, (std::ContainerSize)got);
     }
   }
 

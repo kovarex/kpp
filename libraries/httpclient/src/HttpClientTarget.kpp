@@ -2,7 +2,7 @@
 struct HttpClientTarget
 {
   bool secure = false;
-  String host;
+  std::String host;
   u16 port = 0;
-  String path;
+  std::String path;
 };

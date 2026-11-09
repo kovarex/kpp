@@ -2,7 +2,7 @@
 // server (HttpServer.kpp) gives it, cookies, urlencoded and multipart forms, and the response with
 // its status, headers, cookies and body. README.md has the API.
 
-StringView httpStatusText(i32 status)
+std::StringView httpStatusText(i32 status)
 {
   switch (status)
   {
@@ -31,19 +31,19 @@ StringView httpStatusText(i32 status)
   return "Unknown";
 }
 
-String httpLower(StringView text)
+std::String httpLower(std::StringView text)
 {
-  String out(text);
-  for (ContainerSize i = 0; i < out.size(); ++i)
+  std::String out(text);
+  for (std::ContainerSize i = 0; i < out.size(); ++i)
     if (out[i] >= 'A' && out[i] <= 'Z')
       out[i] = char(out[i] - 'A' + 'a');
   return out;
 }
 
-StringView httpTrim(StringView text)
+std::StringView httpTrim(std::StringView text)
 {
-  ContainerSize start = 0;
-  ContainerSize end = text.size();
+  std::ContainerSize start = 0;
+  std::ContainerSize end = text.size();
   while (start < end && (text[start] == ' ' || text[start] == '\t'))
     ++start;
   while (end > start && (text[end - 1] == ' ' || text[end - 1] == '\t'))
@@ -53,16 +53,16 @@ StringView httpTrim(StringView text)
 
 // A header a response may carry: a token for a name, no line break or zero byte in the value
 // (which would let the value write headers of its own).
-void httpCheckHeader(StringView name, StringView value)
+void httpCheckHeader(std::StringView name, std::StringView value)
 {
   if (name.empty())
     throw HttpError("a header with no name", 500);
-  for (ContainerSize i = 0; i < name.size(); ++i)
+  for (std::ContainerSize i = 0; i < name.size(); ++i)
     if (!httpIsToken(name[i]))
-      throw HttpError(toString("the header name \"", name, "\" has a character a header name cannot have"), 500);
-  for (ContainerSize i = 0; i < value.size(); ++i)
+      throw HttpError(std::toString("the header name \"", name, "\" has a character a header name cannot have"), 500);
+  for (std::ContainerSize i = 0; i < value.size(); ++i)
     if (value[i] == '\r' || value[i] == '\n' || value[i] == 0)
-      throw HttpError(toString("the value of the header ", name, " has a line break or a zero byte"), 500);
+      throw HttpError(std::toString("the value of the header ", name, " has a line break or a zero byte"), 500);
 }
 
 bool httpIsToken(char c)
@@ -76,41 +76,41 @@ bool httpIsToken(char c)
 }
 
 // RFC 6265: a token for a name; a value of printable ASCII without space, '"', ',', ';' or '\'.
-void httpCheckCookie(StringView name, StringView value)
+void httpCheckCookie(std::StringView name, std::StringView value)
 {
   if (name.empty())
     throw HttpError("a cookie with no name", 500);
-  for (ContainerSize i = 0; i < name.size(); ++i)
+  for (std::ContainerSize i = 0; i < name.size(); ++i)
     if (!httpIsToken(name[i]))
-      throw HttpError(toString("the cookie name \"", name, "\" is not a token"), 500);
-  for (ContainerSize i = 0; i < value.size(); ++i)
+      throw HttpError(std::toString("the cookie name \"", name, "\" is not a token"), 500);
+  for (std::ContainerSize i = 0; i < value.size(); ++i)
   {
     u8 c = (u8)value[i];
     if (c <= 0x20 || c >= 0x7f || c == '"' || c == ',' || c == ';' || c == '\\')
-      throw HttpError(toString("the value of the cookie ", name, " has a character a cookie cannot have (encode it)"), 500);
+      throw HttpError(std::toString("the value of the cookie ", name, " has a character a cookie cannot have (encode it)"), 500);
   }
 }
 
 // "a=1; b=2": the cookies in order (names and values as sent); a piece without '=' is skipped.
-Vector<HttpHeader> httpParseCookies(StringView header)
+std::Vector<HttpHeader> httpParseCookies(std::StringView header)
 {
-  Vector<HttpHeader> cookies;
-  ContainerSize at = 0;
+  std::Vector<HttpHeader> cookies;
+  std::ContainerSize at = 0;
   while (at < header.size())
   {
-    ContainerSize end = header.find(';', at);
-    if (end == StringView::npos)
+    std::ContainerSize end = header.find(';', at);
+    if (end == std::StringView::npos)
       end = header.size();
-    StringView piece = httpTrim(header.substr(at, end - at));
-    ContainerSize equals = piece.find('=');
-    if (equals != StringView::npos && equals > 0)
+    std::StringView piece = httpTrim(header.substr(at, end - at));
+    std::ContainerSize equals = piece.find('=');
+    if (equals != std::StringView::npos && equals > 0)
     {
       HttpHeader c;
-      c.name = String(httpTrim(piece.substr(0, equals)));
-      StringView value = httpTrim(piece.substr(equals + 1));
+      c.name = std::String(httpTrim(piece.substr(0, equals)));
+      std::StringView value = httpTrim(piece.substr(equals + 1));
       if (value.size() >= 2 && value[0] == '"' && value[value.size() - 1] == '"')
         value = value.substr(1, value.size() - 2);
-      c.value = String(value);
+      c.value = std::String(value);
       cookies.push_back(c);
     }
     at = end + 1;
@@ -119,32 +119,32 @@ Vector<HttpHeader> httpParseCookies(StringView header)
 }
 
 // The boundary parameter of a multipart Content-Type, quoted or not; none throws.
-String httpBoundary(StringView contentType)
+std::String httpBoundary(std::StringView contentType)
 {
-  ContainerSize at = httpLower(contentType).find("boundary=");
-  if (at == String::npos)
+  std::ContainerSize at = httpLower(contentType).find("boundary=");
+  if (at == std::String::npos)
     throw HttpError("a multipart body without a boundary");
-  StringView value = contentType.substr(at + 9);
+  std::StringView value = contentType.substr(at + 9);
   if (!value.empty() && value[0] == '"')
   {
-    ContainerSize close = value.find('"', 1);
-    if (close == StringView::npos)
+    std::ContainerSize close = value.find('"', 1);
+    if (close == std::StringView::npos)
       throw HttpError("a multipart boundary's quote is not closed");
-    return String(value.substr(1, close - 1));
+    return std::String(value.substr(1, close - 1));
   }
-  ContainerSize end = value.find(';');
-  return String(httpTrim(end == StringView::npos ? value : value.substr(0, end)));
+  std::ContainerSize end = value.find(';');
+  return std::String(httpTrim(end == std::StringView::npos ? value : value.substr(0, end)));
 }
 
 // The parts of a multipart/form-data body (RFC 7578); a body that does not follow it throws.
-Vector<HttpPart> httpParseMultipart(StringView body, StringView boundary)
+std::Vector<HttpPart> httpParseMultipart(std::StringView body, std::StringView boundary)
 {
   if (boundary.empty() || boundary.size() > 70)
     throw HttpError("a multipart boundary is 1 to 70 characters");
-  String delimiter = toString("--", boundary);
-  Vector<HttpPart> parts;
-  ContainerSize at = body.find(delimiter);
-  if (at == StringView::npos)
+  std::String delimiter = std::toString("--", boundary);
+  std::Vector<HttpPart> parts;
+  std::ContainerSize at = body.find(delimiter);
+  if (at == std::StringView::npos)
     throw HttpError("a multipart body without its first boundary");
   at += delimiter.size();
   for (;;)
@@ -154,27 +154,27 @@ Vector<HttpPart> httpParseMultipart(StringView body, StringView boundary)
     if (body.substr(at, 2) != "\r\n")
       throw HttpError("a multipart boundary not followed by CRLF");
     at += 2;
-    ContainerSize headersEnd = body.find("\r\n\r\n", at);
-    if (headersEnd == StringView::npos)
+    std::ContainerSize headersEnd = body.find("\r\n\r\n", at);
+    if (headersEnd == std::StringView::npos)
       throw HttpError("a multipart part whose headers do not end");
     HttpPart part;
     bool named = false;
-    StringView headers = body.substr(at, headersEnd - at);
-    ContainerSize line = 0;
+    std::StringView headers = body.substr(at, headersEnd - at);
+    std::ContainerSize line = 0;
     while (line <= headers.size())
     {
-      ContainerSize lineEnd = headers.find("\r\n", line);
-      if (lineEnd == StringView::npos)
+      std::ContainerSize lineEnd = headers.find("\r\n", line);
+      if (lineEnd == std::StringView::npos)
         lineEnd = headers.size();
-      StringView text = headers.substr(line, lineEnd - line);
-      ContainerSize colon = text.find(':');
-      if (colon != StringView::npos)
+      std::StringView text = headers.substr(line, lineEnd - line);
+      std::ContainerSize colon = text.find(':');
+      if (colon != std::StringView::npos)
       {
-        String name = httpLower(httpTrim(text.substr(0, colon)));
-        StringView value = httpTrim(text.substr(colon + 1));
+        std::String name = httpLower(httpTrim(text.substr(0, colon)));
+        std::StringView value = httpTrim(text.substr(colon + 1));
         if (name == "content-disposition")
         {
-          Optional<String> fieldName = httpDispositionParameter(value, "name");
+          std::Optional<std::String> fieldName = httpDispositionParameter(value, "name");
           if (fieldName.has_value())
           {
             part.name = *fieldName;
@@ -183,30 +183,30 @@ Vector<HttpPart> httpParseMultipart(StringView body, StringView boundary)
           part.filename = httpDispositionParameter(value, "filename");
         }
         else if (name == "content-type")
-          part.contentType = String(value);
+          part.contentType = std::String(value);
       }
       line = lineEnd + 2;
     }
     if (!named)
       throw HttpError("a multipart part without a Content-Disposition name");
-    ContainerSize dataStart = headersEnd + 4;
-    String next = toString("\r\n", delimiter);
-    ContainerSize dataEnd = body.find(next, dataStart);
-    if (dataEnd == StringView::npos)
+    std::ContainerSize dataStart = headersEnd + 4;
+    std::String next = std::toString("\r\n", delimiter);
+    std::ContainerSize dataEnd = body.find(next, dataStart);
+    if (dataEnd == std::StringView::npos)
       throw HttpError("a multipart part that does not end in a boundary");
-    part.data = String(body.substr(dataStart, dataEnd - dataStart));
+    part.data = std::String(body.substr(dataStart, dataEnd - dataStart));
     parts.push_back(part);
     at = dataEnd + next.size();
   }
 }
 
 // A parameter of a Content-Disposition value (`form-data; name="x"; filename="a.sgf"`), unquoted.
-Optional<String> httpDispositionParameter(StringView value, StringView parameter)
+std::Optional<std::String> httpDispositionParameter(std::StringView value, std::StringView parameter)
 {
-  ContainerSize at = 0;
+  std::ContainerSize at = 0;
   while (at < value.size())
   {
-    ContainerSize end = at;
+    std::ContainerSize end = at;
     bool quoted = false;
     while (end < value.size() && (quoted || value[end] != ';'))
     {
@@ -216,36 +216,36 @@ Optional<String> httpDispositionParameter(StringView value, StringView parameter
         ++end;
       ++end;
     }
-    StringView piece = httpTrim(value.substr(at, end - at));
-    ContainerSize equals = piece.find('=');
-    if (equals != StringView::npos && httpLower(httpTrim(piece.substr(0, equals))) == parameter)
+    std::StringView piece = httpTrim(value.substr(at, end - at));
+    std::ContainerSize equals = piece.find('=');
+    if (equals != std::StringView::npos && httpLower(httpTrim(piece.substr(0, equals))) == parameter)
     {
-      StringView raw = httpTrim(piece.substr(equals + 1));
+      std::StringView raw = httpTrim(piece.substr(equals + 1));
       if (raw.size() >= 2 && raw[0] == '"' && raw[raw.size() - 1] == '"')
       {
-        String out;
-        for (ContainerSize i = 1; i + 1 < raw.size(); ++i)
+        std::String out;
+        for (std::ContainerSize i = 1; i + 1 < raw.size(); ++i)
         {
           if (raw[i] == '\\' && i + 2 < raw.size())
             ++i;
           out << raw[i];
         }
-        return Optional<String>(out);
+        return std::Optional<std::String>(out);
       }
-      return Optional<String>(String(raw));
+      return std::Optional<std::String>(std::String(raw));
     }
     at = end + 1;
   }
-  return Optional<String>();
+  return std::Optional<std::String>();
 }
 
 // The request target split: path (decoded; a malformed %XX throws HttpError) and query (as sent).
-void httpSetTarget(HttpRequest& request, StringView target)
+void httpSetTarget(HttpRequest& request, std::StringView target)
 {
-  request.target = String(target);
-  ContainerSize question = target.find('?');
-  StringView path = question == StringView::npos ? target : target.substr(0, question);
-  request.query = question == StringView::npos ? String() : String(target.substr(question + 1));
+  request.target = std::String(target);
+  std::ContainerSize question = target.find('?');
+  std::StringView path = question == std::StringView::npos ? target : target.substr(0, question);
+  request.query = question == std::StringView::npos ? std::String() : std::String(target.substr(question + 1));
   try
   {
     request.path = url::urlDecode(path);
@@ -253,6 +253,6 @@ void httpSetTarget(HttpRequest& request, StringView target)
   }
   catch (const url::UrlError& e)
   {
-    throw HttpError(toString("a malformed request target: ", StringView(e.what())));
+    throw HttpError(std::toString("a malformed request target: ", std::StringView(e.what())));
   }
 }

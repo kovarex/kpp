@@ -1,7 +1,7 @@
 // A hash that is not bcrypt, a variant this library does not read, or an argument out of range.
-class BcryptError : public RuntimeError
+class BcryptError : public std::RuntimeError
 {
 public:
   BcryptError() {}
-  BcryptError(const String& message) : RuntimeError(message) {}
+  BcryptError(const std::String& message) : RuntimeError(message) {}
 };

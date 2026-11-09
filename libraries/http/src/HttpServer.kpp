@@ -7,54 +7,54 @@
 // answer: 400, 411, 413, 431, 501).
 HttpRequest httpReadRequest(net::TcpStream& stream)
 {
-  String data;
-  ContainerSize headEnd = String::npos;
+  std::String data;
+  std::ContainerSize headEnd = std::String::npos;
   char buffer[8192];
-  while (headEnd == String::npos)
+  while (headEnd == std::String::npos)
   {
     if (data.size() > 64 * 1024)
       throw HttpError("the request's headers are over 64 KB", 431);
     i64 got = stream.read(buffer, 8192);
     if (got == 0)
       throw HttpError("the connection closed before the request's headers ended");
-    data << StringView(buffer, (ContainerSize)got);
+    data << std::StringView(buffer, (std::ContainerSize)got);
     headEnd = data.find("\r\n\r\n");
   }
-  StringView head = StringView(data).substr(0, headEnd);
-  ContainerSize lineEnd = head.find("\r\n");
-  StringView requestLine = lineEnd == StringView::npos ? head : head.substr(0, lineEnd);
-  ContainerSize space1 = requestLine.find(' ');
-  ContainerSize space2 = space1 == StringView::npos ? StringView::npos : requestLine.find(' ', space1 + 1);
-  if (space2 == StringView::npos || requestLine.substr(space2 + 1, 7) != "HTTP/1.")
-    throw HttpError(toString("not an HTTP/1.x request line: \"", requestLine, "\""));
+  std::StringView head = std::StringView(data).substr(0, headEnd);
+  std::ContainerSize lineEnd = head.find("\r\n");
+  std::StringView requestLine = lineEnd == std::StringView::npos ? head : head.substr(0, lineEnd);
+  std::ContainerSize space1 = requestLine.find(' ');
+  std::ContainerSize space2 = space1 == std::StringView::npos ? std::StringView::npos : requestLine.find(' ', space1 + 1);
+  if (space2 == std::StringView::npos || requestLine.substr(space2 + 1, 7) != "HTTP/1.")
+    throw HttpError(std::toString("not an HTTP/1.x request line: \"", requestLine, "\""));
   HttpRequest request;
-  request.method = String(requestLine.substr(0, space1));
+  request.method = std::String(requestLine.substr(0, space1));
   httpSetTarget(request, requestLine.substr(space1 + 1, space2 - space1 - 1));
-  ContainerSize at = lineEnd == StringView::npos ? head.size() : lineEnd + 2;
+  std::ContainerSize at = lineEnd == std::StringView::npos ? head.size() : lineEnd + 2;
   while (at < head.size())
   {
-    ContainerSize end = head.find("\r\n", at);
-    if (end == StringView::npos)
+    std::ContainerSize end = head.find("\r\n", at);
+    if (end == std::StringView::npos)
       end = head.size();
-    StringView line = head.substr(at, end - at);
-    ContainerSize colon = line.find(':');
-    if (colon == StringView::npos || colon == 0)
-      throw HttpError(toString("a header line without a name: \"", line, "\""));
+    std::StringView line = head.substr(at, end - at);
+    std::ContainerSize colon = line.find(':');
+    if (colon == std::StringView::npos || colon == 0)
+      throw HttpError(std::toString("a header line without a name: \"", line, "\""));
     HttpHeader h;
     h.name = httpLower(line.substr(0, colon));
-    h.value = String(httpTrim(line.substr(colon + 1)));
+    h.value = std::String(httpTrim(line.substr(colon + 1)));
     request.headers.push_back(h);
     at = end + 2;
   }
   if (request.header("transfer-encoding") != nullptr)
     throw HttpError("a chunked request body (only Content-Length is read)", 501);
-  const String* length = request.header("content-length");
+  const std::String* length = request.header("content-length");
   i64 n = length == nullptr ? 0 : httpParseLength(*length);
-  request.body = String(StringView(data).substr(headEnd + 4));
+  request.body = std::String(std::StringView(data).substr(headEnd + 4));
   if ((i64)request.body.size() > n)
     throw HttpError("more bytes than the Content-Length (pipelining is not read)");
   if (n > 64 * 1024 * 1024)
-    throw HttpError(toString("a body of ", n, " bytes"), 413);
+    throw HttpError(std::toString("a body of ", n, " bytes"), 413);
   if ((i64)request.body.size() < n)
     request.body << stream.readExactly(n - (i64)request.body.size());
   return request;
@@ -62,7 +62,7 @@ HttpRequest httpReadRequest(net::TcpStream& stream)
 
 void httpWriteResponse(net::TcpStream& stream, const HttpResponse& response)
 {
-  String out = response.head(false);
+  std::String out = response.head(false);
   if (response.header("Content-Length") == nullptr)
     out << "Content-Length: " << (i64)response.body.size() << "\r\n";
   out << "Connection: close\r\n\r\n";
@@ -72,23 +72,23 @@ void httpWriteResponse(net::TcpStream& stream, const HttpResponse& response)
 
 // Serves requests with handler until options.maxRequests have been answered. An exception from
 // handler is a 500 whose body has the message (this server is for one's own machine).
-void httpServe(const HttpServerOptions& options, const Function<void(const HttpRequest&, HttpResponse&)>& handler)
+void httpServe(const HttpServerOptions& options, const std::Function<void(const HttpRequest&, HttpResponse&)>& handler)
 {
   net::TcpListener listener = net::TcpListener::listen(options.address, options.port);
   if (options.log)
-    println(toString("serving http://", options.address, ":", listener.port(), "/"));
+    std::println(std::toString("serving http://", options.address, ":", listener.port(), "/"));
   httpServeOn(listener, options, handler);
 }
 
 void httpServeOn(net::TcpListener& listener, const HttpServerOptions& options,
-                 const Function<void(const HttpRequest&, HttpResponse&)>& handler)
+                 const std::Function<void(const HttpRequest&, HttpResponse&)>& handler)
 {
   for (i64 served = 0; options.maxRequests < 0 || served < options.maxRequests; ++served)
   {
     net::TcpStream stream = listener.accept();
     stream.setTimeout(30000);
     HttpResponse response;
-    String what = "?";
+    std::String what = "?";
     try
     {
       HttpRequest request = httpReadRequest(stream);
@@ -98,21 +98,21 @@ void httpServeOn(net::TcpListener& listener, const HttpServerOptions& options,
     catch (const HttpError& e)
     {
       response = httpErrorResponse(e.status);
-      response.body << String(StringView(e.what())) + "\n";
+      response.body << std::String(std::StringView(e.what())) + "\n";
     }
     catch (const net::NetError& e)
     {
       if (options.log)
-        println(toString(what, ": ", StringView(e.what())));
+        std::println(std::toString(what, ": ", std::StringView(e.what())));
       continue;
     }
-    catch (const Exception& e)
+    catch (const std::Exception& e)
     {
       response = httpErrorResponse(500);
-      response.body << String(StringView(e.what())) + "\n";
+      response.body << std::String(std::StringView(e.what())) + "\n";
     }
     if (options.log)
-      println(toString(what, " ", response.status));
+      std::println(std::toString(what, " ", response.status));
     try
     {
       httpWriteResponse(stream, response);
@@ -120,7 +120,7 @@ void httpServeOn(net::TcpListener& listener, const HttpServerOptions& options,
     catch (const net::NetError& e)
     {
       if (options.log)
-        println(toString(what, ": ", StringView(e.what())));
+        std::println(std::toString(what, ": ", std::StringView(e.what())));
     }
   }
 }

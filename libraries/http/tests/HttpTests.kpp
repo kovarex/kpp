@@ -4,7 +4,7 @@
 
 test cookies
 {
-  Vector<HttpHeader> cookies = httpParseCookies("gorating_id=abc123; theme=\"dark\";  empty=; =skipped; flag");
+  std::Vector<HttpHeader> cookies = httpParseCookies("gorating_id=abc123; theme=\"dark\";  empty=; =skipped; flag");
   check(cookies.size() == 3);
   check(cookies[0].name == "gorating_id" && cookies[0].value == "abc123");
   check(cookies[1].name == "theme" && cookies[1].value == "dark");
@@ -20,7 +20,7 @@ test cookies
 
   HttpResponse response;
   HttpCookieOptions options;
-  options.maxAgeSeconds = Optional<i64>(604800);
+  options.maxAgeSeconds = std::Optional<i64>(604800);
   options.secure = true;
   response.setCookie("gorating_id", "xyz", options);
   response.deleteCookie("old");
@@ -63,16 +63,16 @@ test responses
   check(response.headers.size() == 2);
 }
 
-HttpRequest httpFormRequest(StringView contentType, StringView body)
+HttpRequest httpFormRequest(std::StringView contentType, std::StringView body)
 {
   HttpRequest request;
   request.method = "POST";
   httpSetTarget(request, "/report_action?redirect=%2Fplayer");
   HttpHeader h;
   h.name = "content-type";
-  h.value = String(contentType);
+  h.value = std::String(contentType);
   request.headers.push_back(h);
-  request.body = String(body);
+  request.body = std::String(body);
   return request;
 }
 
@@ -80,10 +80,10 @@ test forms
 {
   HttpRequest request = httpFormRequest("application/x-www-form-urlencoded", "username=kovarex&password=a%26b+c&empty=");
   check(request.path == "/report_action" && *request.parameter("redirect") == "/player");
-  Vector<url::UrlQueryParameter> form = request.form();
+  std::Vector<url::UrlQueryParameter> form = request.form();
   check(form.size() == 3 && form[1].value == "a&b c" && form[2].value.empty());
 
-  String body = "--XyZ\r\n"
+  std::String body = "--XyZ\r\n"
                 "Content-Disposition: form-data; name=\"winner\"\r\n\r\n"
                 "Jan \"Honza\" Novák\r\n"
                 "--XyZ\r\n"
@@ -95,13 +95,13 @@ test forms
                 "\r\n"
                 "--XyZ--\r\n";
   HttpRequest multipart = httpFormRequest("multipart/form-data; boundary=XyZ", body);
-  Vector<HttpPart> parts = multipart.multipart();
+  std::Vector<HttpPart> parts = multipart.multipart();
   check(parts.size() == 3);
   check(parts[0].name == "winner" && parts[0].data == "Jan \"Honza\" Novák" && !parts[0].filename.has_value());
   check(parts[1].name == "sgf" && *parts[1].filename == "game 1.sgf" && parts[1].contentType == "application/x-go-sgf");
   check(parts[1].data == "(;GM[1]\r\n;B[pd])");
   check(parts[2].filename.has_value() && parts[2].filename->empty() && parts[2].data.empty());
-  Vector<url::UrlQueryParameter> fields = multipart.form();
+  std::Vector<url::UrlQueryParameter> fields = multipart.form();
   check(fields.size() == 1 && fields[0].name == "winner");
 
   check(httpBoundary("multipart/form-data; boundary=\"a b\"") == "a b");
@@ -116,13 +116,13 @@ test forms
 void httpTestHandler(const HttpRequest& request, HttpResponse& response)
 {
   if (request.path == "/fail")
-    throw RuntimeError(String("the handler failed"));
+    throw std::RuntimeError(std::String("the handler failed"));
   if (request.method == "POST")
   {
-    response.redirect(toString("/done?name=", url::urlEncode(request.form()[0].value)));
+    response.redirect(std::toString("/done?name=", url::urlEncode(request.form()[0].value)));
     return;
   }
-  response.body = toString(request.method, " ", request.path, " cookie=", request.cookie("session").has_value() ? *request.cookie("session") : String("none"), " id=", request.parameter("id") == nullptr ? String("none") : *request.parameter("id"));
+  response.body = std::toString(request.method, " ", request.path, " cookie=", request.cookie("session").has_value() ? *request.cookie("session") : std::String("none"), " id=", request.parameter("id") == nullptr ? std::String("none") : *request.parameter("id"));
 }
 
 struct HttpTestServer
@@ -138,7 +138,7 @@ void httpRunTestServer(HttpTestServer* server)
   httpServeOn(server->listener, server->options, httpTestHandler);
 }
 
-String httpTestFetch(i32 port, StringView request)
+std::String httpTestFetch(i32 port, std::StringView request)
 {
   net::TcpStream stream = net::TcpStream::connect("127.0.0.1", port);
   stream.setTimeout(5000);
@@ -151,24 +151,24 @@ test theBuiltInServer
   HttpTestServer server;
   server.listener = net::TcpListener::listen("127.0.0.1", 0);
   i32 port = server.listener.port();
-  Thread thread(httpRunTestServer, &server);
+  std::Thread thread(httpRunTestServer, &server);
 
-  String get = httpTestFetch(port, "GET /player%20page?id=5 HTTP/1.1\r\nHost: x\r\nCookie: session=s1\r\n\r\n");
+  std::String get = httpTestFetch(port, "GET /player%20page?id=5 HTTP/1.1\r\nHost: x\r\nCookie: session=s1\r\n\r\n");
   check(get == "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: 31\r\nConnection: close\r\n\r\n"
                "GET /player page cookie=s1 id=5");
 
-  String post = httpTestFetch(port, "POST /login HTTP/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\n"
+  std::String post = httpTestFetch(port, "POST /login HTTP/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\n"
                                     "Content-Length: 16\r\n\r\nname=a%2Fb+c&x=1");
   check(post.find("HTTP/1.1 303 See Other\r\n") == 0);
-  check(post.find("Location: /done?name=a%2Fb%20c\r\n") != String::npos);
+  check(post.find("Location: /done?name=a%2Fb%20c\r\n") != std::String::npos);
 
-  String failed = httpTestFetch(port, "GET /fail HTTP/1.1\r\n\r\n");
-  check(failed.find("HTTP/1.1 500 Internal Server Error\r\n") == 0 && failed.find("the handler failed") != String::npos);
+  std::String failed = httpTestFetch(port, "GET /fail HTTP/1.1\r\n\r\n");
+  check(failed.find("HTTP/1.1 500 Internal Server Error\r\n") == 0 && failed.find("the handler failed") != std::String::npos);
 
-  String chunked = httpTestFetch(port, "POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n");
+  std::String chunked = httpTestFetch(port, "POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n");
   check(chunked.find("HTTP/1.1 501 Not Implemented\r\n") == 0);
 
-  String garbage = httpTestFetch(port, "hello\r\n\r\n");
+  std::String garbage = httpTestFetch(port, "hello\r\n\r\n");
   check(garbage.find("HTTP/1.1 400 Bad Request\r\n") == 0);
   thread.join();
 }

@@ -51,7 +51,7 @@ struct Sha256
     }
   }
 
-  void update(StringView data) { this.update(data.data(), data.size()); }
+  void update(std::StringView data) { this.update(data.data(), data.size()); }
 
   // The digest of everything given; after it, only reset() is allowed.
   Sha256Digest finish()
@@ -82,7 +82,7 @@ struct Sha256
 
   // Whether a and b are the same bytes, in a time that depends on their lengths only: for
   // comparing a MAC or a token with the expected one.
-  static bool constantTimeEqual(StringView a, StringView b)
+  static bool constantTimeEqual(std::StringView a, std::StringView b)
   {
     if (a.size() != b.size())
       return false;
@@ -152,7 +152,7 @@ struct Sha256
 };
 
 // SHA-256 of the bytes.
-Sha256Digest sha256(StringView data)
+Sha256Digest sha256(std::StringView data)
 {
   Sha256 hash;
   hash.update(data);
@@ -160,7 +160,7 @@ Sha256Digest sha256(StringView data)
 }
 
 // HMAC-SHA-256 (RFC 2104) of the message under the key; a key longer than 64 bytes is hashed first.
-Sha256Digest hmacSha256(StringView key, StringView message)
+Sha256Digest hmacSha256(std::StringView key, std::StringView message)
 {
   u8 keyBlock[64];
   for (i32 i = 0; i < 64; ++i)

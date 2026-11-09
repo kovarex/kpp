@@ -1,9 +1,9 @@
 struct HttpClientRequest
 {
-  String method = "GET";
-  String url;                       // http://... or https://...
-  Vector<HttpClientHeader> headers; // besides the ones the client adds (Host, Content-Length...)
-  String body;
+  std::String method = "GET";
+  std::String url;                       // http://... or https://...
+  std::Vector<HttpClientHeader> headers; // besides the ones the client adds (Host, Content-Length...)
+  std::String body;
   i32 timeoutMilliseconds = 30000;  // for connecting, sending and each read
   bool followRedirects = true;      // to the same scheme or from http to https
 };

@@ -1,8 +1,8 @@
 // A part of a multipart/form-data body: a field, or a file when filename is given.
 struct HttpPart
 {
-  String name;
-  Optional<String> filename;
-  String contentType; // empty when the part says none
-  String data;
+  std::String name;
+  std::Optional<std::String> filename;
+  std::String contentType; // empty when the part says none
+  std::String data;
 };

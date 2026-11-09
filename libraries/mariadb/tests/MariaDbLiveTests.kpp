@@ -2,34 +2,34 @@
 // skipped). The user (MARIADB_TEST_USER, MARIADB_TEST_PASSWORD) needs all rights on the database
 // MARIADB_TEST_DATABASE, which it fills with its own table and procedure.
 
-String mariaDbEnvironment(const char* name)
+std::String mariaDbEnvironment(const char* name)
 {
-  const char* value = getenv(name);
-  return value == nullptr ? String() : String(StringView(value));
+  const char* value = std::getenv(name);
+  return value == nullptr ? std::String() : std::String(std::StringView(value));
 }
 
 test aRealServer
 {
-  String port = mariaDbEnvironment("MARIADB_TEST_PORT");
+  std::String port = mariaDbEnvironment("MARIADB_TEST_PORT");
   if (port.empty())
   {
-    println("skipped: MARIADB_TEST_PORT is not set (tests/MariaDbLiveTests.kpp)");
+    std::println("skipped: MARIADB_TEST_PORT is not set (tests/MariaDbLiveTests.kpp)");
     return;
   }
   MariaDbOptions options;
-  options.port = (i32)stoll(port);
+  options.port = (i32)std::stoll(port);
   options.user = mariaDbEnvironment("MARIADB_TEST_USER");
   options.password = mariaDbEnvironment("MARIADB_TEST_PASSWORD");
   options.database = mariaDbEnvironment("MARIADB_TEST_DATABASE");
   MariaDbConnection connection = MariaDbConnection::connect(options);
-  println(toString("server ", connection.serverVersion));
+  std::println(std::toString("server ", connection.serverVersion));
 
   connection.query("DROP TABLE IF EXISTS kpp_live");
   connection.query("CREATE TABLE kpp_live (id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, name VARCHAR(64) "
                    "COLLATE utf8mb4_unicode_ci NULL, rating DOUBLE NULL, data BLOB NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-  String tricky = toString("O'Brien \"x\" \\ \n Učebnicová ", String("\0\x1a", 2));
+  std::String tricky = std::toString("O'Brien \"x\" \\ \n Učebnicová ", std::String("\0\x1a", 2));
   MariaDbResult inserted = connection.query("INSERT INTO kpp_live (name, rating, data) VALUES (", mariaDbQuote(tricky), ", 1234.5678, ",
-                                            mariaDbQuote(String("\0\xff\x01", 3)), ")");
+                                            mariaDbQuote(std::String("\0\xff\x01", 3)), ")");
   check(inserted.affectedRows == 1 && inserted.insertId == 1);
   connection.query("INSERT INTO kpp_live (name) VALUES (NULL)");
 
@@ -37,7 +37,7 @@ test aRealServer
   check(rows.size() == 2);
   check(rows.text(0, "name") == tricky);
   check(rows.text(0, "rating") == "1234.5678");
-  check(rows.text(0, "data") == String("\0\xff\x01", 3));
+  check(rows.text(0, "data") == std::String("\0\xff\x01", 3));
   check(rows.text(1, "total") == "2");
   check(!rows.at(1, "name").has_value());
 

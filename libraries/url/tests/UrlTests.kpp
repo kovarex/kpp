@@ -20,10 +20,10 @@ test rfc398654ResolvingReferences
   i32 failed = 0;
   for (const auto& c : cases)
   {
-    String resolved = resolveUrl(base, c[0]);
+    std::String resolved = resolveUrl(base, c[0]);
     if (resolved != c[1])
     {
-      println("\"", StringView(c[0]), "\" resolved to ", resolved, ", not ", StringView(c[1]));
+      std::println("\"", std::StringView(c[0]), "\" resolved to ", resolved, ", not ", std::StringView(c[1]));
       ++failed;
     }
   }
@@ -60,7 +60,7 @@ test components
 }
 
 // The error's message for text that does not parse, "" when it does.
-String urlErrorOf(StringView text)
+std::String urlErrorOf(std::StringView text)
 {
   try
   {
@@ -100,12 +100,12 @@ test whatIsNotAUrl
 
 test percentEncodingAgainstPython
 {
-  String all;
+  std::String all;
   for (i32 i = 0; i < 256; ++i)
     all << char(i);
-  String expected = "%00%01%02%03%04%05%06%07%08%09%0A%0B%0C%0D%0E%0F%10%11%12%13%14%15%16%17%18%19%1A%1B%1C%1D%1E%1F%20%21%22%23%24%25%26%27%28%29%2A%2B%2C-.%2F0123456789%3A%3B%3C%3D%3E%3F%40ABCDEFGHIJKLMNOPQRSTUVWXYZ%5B%5C%5D%5E_%60abcdefghijklmnopqrstuvwxyz%7B%7C%7D~%7F";
+  std::String expected = "%00%01%02%03%04%05%06%07%08%09%0A%0B%0C%0D%0E%0F%10%11%12%13%14%15%16%17%18%19%1A%1B%1C%1D%1E%1F%20%21%22%23%24%25%26%27%28%29%2A%2B%2C-.%2F0123456789%3A%3B%3C%3D%3E%3F%40ABCDEFGHIJKLMNOPQRSTUVWXYZ%5B%5C%5D%5E_%60abcdefghijklmnopqrstuvwxyz%7B%7C%7D~%7F";
   for (i32 i = 128; i < 256; ++i)
-    expected << toString("%", "0123456789ABCDEF"[i >> 4], "0123456789ABCDEF"[i & 15]);
+    expected << std::toString("%", "0123456789ABCDEF"[i >> 4], "0123456789ABCDEF"[i & 15]);
   check(urlEncode(all) == expected);
   check(urlDecode(expected) == all);
   check(urlDecode("a%2fb%2Fc+d") == "a/b/c+d");
@@ -125,20 +125,20 @@ test percentEncodingAgainstPython
 
 test queryStringsAgainstPython
 {
-  Vector<UrlQueryParameter> parameters;
+  std::Vector<UrlQueryParameter> parameters;
   parameters.push_back(UrlQueryParameter{"a b", "x&y=z"});
   parameters.push_back(UrlQueryParameter{"caf\xC3\xA9", "1+1"});
   parameters.push_back(UrlQueryParameter{"e", ""});
-  String query = writeUrlQuery(parameters);
+  std::String query = writeUrlQuery(parameters);
   check(query == "a+b=x%26y%3Dz&caf%C3%A9=1%2B1&e=");
-  Vector<UrlQueryParameter> back = parseUrlQuery(query);
+  std::Vector<UrlQueryParameter> back = parseUrlQuery(query);
   require(back.size() == 3);
   check(back[0].name == "a b");
   check(back[0].value == "x&y=z");
   check(back[1].name == "caf\xC3\xA9");
   check(back[1].value == "1+1");
   check(back[2].value == "");
-  Vector<UrlQueryParameter> loose = parseUrlQuery("&q=kpp+lang&&flag&q=second");
+  std::Vector<UrlQueryParameter> loose = parseUrlQuery("&q=kpp+lang&&flag&q=second");
   require(loose.size() == 3);
   check(*findUrlQueryParameter(loose, "q") == "kpp lang");
   check(loose[1].name == "flag");

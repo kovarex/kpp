@@ -23,73 +23,73 @@ HttpRequest httpReadCgiRequest()
   HttpRequest request;
   for (char** variable = httpEnvironment(); *variable != nullptr; ++variable)
   {
-    StringView entry(*variable);
-    ContainerSize equals = entry.find('=');
-    if (equals == StringView::npos)
+    std::StringView entry(*variable);
+    std::ContainerSize equals = entry.find('=');
+    if (equals == std::StringView::npos)
       continue;
-    StringView name = entry.substr(0, equals);
-    StringView value = entry.substr(equals + 1);
+    std::StringView name = entry.substr(0, equals);
+    std::StringView value = entry.substr(equals + 1);
     if (name.size() > 5 && name.substr(0, 5) == "HTTP_")
     {
       HttpHeader h;
       h.name = httpLower(name.substr(5));
-      for (ContainerSize i = 0; i < h.name.size(); ++i)
+      for (std::ContainerSize i = 0; i < h.name.size(); ++i)
         if (h.name[i] == '_')
           h.name[i] = '-';
-      h.value = String(value);
+      h.value = std::String(value);
       request.headers.push_back(h);
     }
     else if (name == "CONTENT_TYPE" || name == "CONTENT_LENGTH")
     {
       HttpHeader h;
-      h.name = name == "CONTENT_TYPE" ? String("content-type") : String("content-length");
-      h.value = String(value);
+      h.name = name == "CONTENT_TYPE" ? std::String("content-type") : std::String("content-length");
+      h.value = std::String(value);
       request.headers.push_back(h);
     }
   }
   request.method = httpCgiVariable("REQUEST_METHOD");
   if (request.method.empty())
     throw HttpError("REQUEST_METHOD is not set: this program runs as CGI", 500);
-  String target = httpCgiVariable("REQUEST_URI");
+  std::String target = httpCgiVariable("REQUEST_URI");
   if (target.empty())
   {
     target = httpCgiVariable("SCRIPT_NAME") + httpCgiVariable("PATH_INFO");
-    String query = httpCgiVariable("QUERY_STRING");
+    std::String query = httpCgiVariable("QUERY_STRING");
     if (!query.empty())
       target = target + "?" + query;
   }
   httpSetTarget(request, target);
   request.remoteAddress = httpCgiVariable("REMOTE_ADDR");
-  const String* length = request.header("content-length");
+  const std::String* length = request.header("content-length");
   if (length != nullptr && !length->empty())
   {
     i64 n = httpParseLength(*length);
     if constexpr (config::platform == Platform::Windows)
       _setmode(0, 0x8000); // _O_BINARY
-    request.body.resize((ContainerSize)n);
-    ContainerSize got = n == 0 ? 0 : fread(request.body.data(), 1, (usize)n, stdin);
+    request.body.resize((std::ContainerSize)n);
+    std::ContainerSize got = n == 0 ? 0 : fread(request.body.data(), 1, (usize)n, stdin);
     if ((i64)got != n)
-      throw HttpError(toString("the body ended after ", (i64)got, " of its ", n, " bytes"));
+      throw HttpError(std::toString("the body ended after ", (i64)got, " of its ", n, " bytes"));
   }
   return request;
 }
 
-String httpCgiVariable(const char* name)
+std::String httpCgiVariable(const char* name)
 {
-  const char* value = getenv(name);
-  return value == nullptr ? String() : String(StringView(value));
+  const char* value = std::getenv(name);
+  return value == nullptr ? std::String() : std::String(std::StringView(value));
 }
 
 // A Content-Length: digits only.
-i64 httpParseLength(StringView text)
+i64 httpParseLength(std::StringView text)
 {
   if (text.empty() || text.size() > 15)
-    throw HttpError(toString("a Content-Length of \"", text, "\""));
+    throw HttpError(std::toString("a Content-Length of \"", text, "\""));
   i64 n = 0;
-  for (ContainerSize i = 0; i < text.size(); ++i)
+  for (std::ContainerSize i = 0; i < text.size(); ++i)
   {
     if (text[i] < '0' || text[i] > '9')
-      throw HttpError(toString("a Content-Length of \"", text, "\""));
+      throw HttpError(std::toString("a Content-Length of \"", text, "\""));
     n = n * 10 + (text[i] - '0');
   }
   return n;
@@ -99,7 +99,7 @@ void httpWriteCgiResponse(const HttpResponse& response)
 {
   if constexpr (config::platform == Platform::Windows)
     _setmode(1, 0x8000); // _O_BINARY
-  String out = response.head(true);
+  std::String out = response.head(true);
   if (response.header("Content-Length") == nullptr)
     out << "Content-Length: " << (i64)response.body.size() << "\r\n";
   out << "\r\n";
@@ -111,7 +111,7 @@ void httpWriteCgiResponse(const HttpResponse& response)
 // Answers the one request of this CGI process with handler. A request that cannot be read is a
 // 4xx response; an exception from handler is a 500 with no detail for the browser and the message
 // on stderr, which the web server writes to its error log. Returns main's exit code.
-i32 httpCgi(const Function<void(const HttpRequest&, HttpResponse&)>& handler)
+i32 httpCgi(const std::Function<void(const HttpRequest&, HttpResponse&)>& handler)
 {
   HttpResponse response;
   try
@@ -124,7 +124,7 @@ i32 httpCgi(const Function<void(const HttpRequest&, HttpResponse&)>& handler)
     fprintf(stderr, "%s\n", e.what());
     response = httpErrorResponse(e.status);
   }
-  catch (const Exception& e)
+  catch (const std::Exception& e)
   {
     fprintf(stderr, "%s\n", e.what());
     response = httpErrorResponse(500);
@@ -138,6 +138,6 @@ HttpResponse httpErrorResponse(i32 status)
   HttpResponse response;
   response.status = status;
   response.setHeader("Content-Type", "text/plain; charset=utf-8");
-  response.body = toString(status, " ", httpStatusText(status), "\n");
+  response.body = std::toString(status, " ", httpStatusText(status), "\n");
   return response;
 }

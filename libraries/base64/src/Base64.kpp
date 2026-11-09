@@ -2,22 +2,22 @@
 // rejects.
 
 // Base64 with '+' and '/', padded with '='.
-String base64Encode(StringView data) { return base64EncodeWith(data, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/", true); }
+std::String base64Encode(std::StringView data) { return base64EncodeWith(data, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/", true); }
 
 // base64url: '-' and '_' instead of '+' and '/', unpadded unless pad (JWT and URLs leave it out).
-String base64UrlEncode(StringView data, bool pad = false)
+std::String base64UrlEncode(std::StringView data, bool pad = false)
 {
   return base64EncodeWith(data, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_", pad);
 }
 
 // The bytes of padded base64 text; anything else throws Base64Error.
-String base64Decode(StringView text) { return base64DecodeWith(text, false); }
+std::String base64Decode(std::StringView text) { return base64DecodeWith(text, false); }
 
 // The bytes of base64url text, padded or not.
-String base64UrlDecode(StringView text) { return base64DecodeWith(text, true); }
+std::String base64UrlDecode(std::StringView text) { return base64DecodeWith(text, true); }
 
 // As base64Decode and base64UrlDecode, but false instead of a throw.
-bool tryBase64Decode(StringView text, String& out)
+bool tryBase64Decode(std::StringView text, std::String& out)
 {
   try
   {
@@ -30,7 +30,7 @@ bool tryBase64Decode(StringView text, String& out)
   }
 }
 
-bool tryBase64UrlDecode(StringView text, String& out)
+bool tryBase64UrlDecode(std::StringView text, std::String& out)
 {
   try
   {
@@ -43,9 +43,9 @@ bool tryBase64UrlDecode(StringView text, String& out)
   }
 }
 
-String base64EncodeWith(StringView data, const char* alphabet, bool pad)
+std::String base64EncodeWith(std::StringView data, const char* alphabet, bool pad)
 {
-  String out;
+  std::String out;
   i32 i = 0;
   for (; i + 3 <= data.size(); i += 3)
   {
@@ -66,7 +66,7 @@ String base64EncodeWith(StringView data, const char* alphabet, bool pad)
     if (rest == 2)
       out << alphabet[(bits >> 6) & 63];
     if (pad)
-      out << (rest == 1 ? StringView("==") : StringView("="));
+      out << (rest == 1 ? std::StringView("==") : std::StringView("="));
   }
   return out;
 }
@@ -87,9 +87,9 @@ i32 base64Value(char c, bool url)
   return -1;
 }
 
-void base64Fail(i32 offset, const char* what) { throw Base64Error(toString(offset, ": ", StringView(what)), offset); }
+void base64Fail(i32 offset, const char* what) { throw Base64Error(std::toString(offset, ": ", std::StringView(what)), offset); }
 
-String base64DecodeWith(StringView text, bool url)
+std::String base64DecodeWith(std::StringView text, bool url)
 {
   // The characters before the padding, which is '=' or "==" at the end.
   i32 length = text.size();
@@ -110,7 +110,7 @@ String base64DecodeWith(StringView text, bool url)
     base64Fail(length, "a single base64 character left over at the end");
   if (padding > 0 && padding != 4 - length % 4)
     base64Fail(length, "the wrong number of '=' for the length");
-  String out;
+  std::String out;
   u32 bits = 0;
   i32 count = 0;
   for (i32 i = 0; i < length; ++i)

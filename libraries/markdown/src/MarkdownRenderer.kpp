@@ -1,14 +1,14 @@
 struct MarkdownRenderer
 {
-  void literal(StringView text)
+  void literal(std::StringView text)
   {
     this.out << text;
     this.lastWasNewline = text.size() == 1 && text[0] == '\n';
   }
 
-  void escaped(StringView text)
+  void escaped(std::StringView text)
   {
-    String e;
+    std::String e;
     for (char c : text)
     {
       if (c == '&')
@@ -31,7 +31,7 @@ struct MarkdownRenderer
       this.literal("\n");
   }
 
-  String destination(MarkdownNode* node) const
+  std::String destination(MarkdownNode* node) const
   {
     return this.options.rewriteLink ? this.options.rewriteLink(node->destination) : node->destination;
   }
@@ -44,11 +44,11 @@ struct MarkdownRenderer
 
   // GitHub's heading id: lowercase, letters, digits, '-' and '_' kept, spaces as '-', the rest
   // dropped; a repeated id gets -1, -2...
-  String headingId(MarkdownNode* heading)
+  std::String headingId(MarkdownNode* heading)
   {
-    String text;
+    std::String text;
     markdownPlainText(text, heading);
-    String id;
+    std::String id;
     for (i32 i = 0; i < text.size();)
     {
       i32 length = 1;
@@ -61,16 +61,16 @@ struct MarkdownRenderer
         markdownAppendFolded(id, c);
       i += length;
     }
-    String unique = id;
+    std::String unique = id;
     for (i32 n = 1;; ++n)
     {
       bool used = false;
-      for (const String& existing : this.ids)
+      for (const std::String& existing : this.ids)
         if (existing == unique)
           used = true;
       if (!used)
         break;
-      unique = id + "-" + toString(n);
+      unique = id + "-" + std::toString(n);
     }
     this.ids.push_back(unique);
     return unique;
@@ -97,7 +97,7 @@ struct MarkdownRenderer
       }
       case MarkdownType::heading:
       {
-        String tag = "h" + toString(node->level);
+        std::String tag = "h" + std::toString(node->level);
         this.newline();
         if (this.options.headingIds)
         {
@@ -128,13 +128,13 @@ struct MarkdownRenderer
         const char* tag = node->ordered ? "ol" : "ul";
         this.newline();
         if (node->ordered && node->start != 1)
-          this.literal(toString("<ol start=\"", node->start, "\">"));
+          this.literal(std::toString("<ol start=\"", node->start, "\">"));
         else
-          this.literal(toString("<", StringView(tag), ">"));
+          this.literal(std::toString("<", std::StringView(tag), ">"));
         this.newline();
         this.children(node);
         this.newline();
-        this.literal(toString("</", StringView(tag), ">"));
+        this.literal(std::toString("</", std::StringView(tag), ">"));
         this.newline();
       }
       case MarkdownType::item:
@@ -151,7 +151,7 @@ struct MarkdownRenderer
         if (end > 0)
         {
           this.literal("<pre><code class=\"language-");
-          this.escaped(StringView(node->info).substr(0, end));
+          this.escaped(std::StringView(node->info).substr(0, end));
           this.literal("\">");
         }
         else
@@ -186,9 +186,9 @@ struct MarkdownRenderer
           {
             const char* tag = row->header ? "th" : "td";
             const char* align[] = {"", " align=\"left\"", " align=\"center\"", " align=\"right\""};
-            this.literal(toString("<", StringView(tag), StringView(align[cell->alignment]), ">"));
+            this.literal(std::toString("<", std::StringView(tag), std::StringView(align[cell->alignment]), ">"));
             this.children(cell);
-            this.literal(toString("</", StringView(tag), ">"));
+            this.literal(std::toString("</", std::StringView(tag), ">"));
             this.newline();
           }
           this.literal("</tr>");
@@ -240,7 +240,7 @@ struct MarkdownRenderer
         this.literal("<img src=\"");
         this.escaped(this.destination(node));
         this.literal("\" alt=\"");
-        String alt;
+        std::String alt;
         markdownPlainText(alt, node);
         this.escaped(alt);
         if (node->title.size() > 0)
@@ -255,8 +255,8 @@ struct MarkdownRenderer
     }
   }
 
-  String out;
+  std::String out;
   MarkdownOptions options;
   bool lastWasNewline = true; // the last thing written was exactly "\n", or nothing
-  Vector<String> ids;
+  std::Vector<std::String> ids;
 };

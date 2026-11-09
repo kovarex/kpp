@@ -2,10 +2,10 @@
 // broken for collisions (the scramble does not rely on that).
 
 // The 20 bytes of SHA-1 of data.
-String mariaDbSha1(StringView data)
+std::String mariaDbSha1(std::StringView data)
 {
   u32 h[5] = {0x67452301u, 0xefcdab89u, 0x98badcfeu, 0x10325476u, 0xc3d2e1f0u};
-  String message(data);
+  std::String message(data);
   u64 bits = (u64)data.size() * 8;
   message << char(0x80);
   while (message.size() % 64 != 56)
@@ -13,7 +13,7 @@ String mariaDbSha1(StringView data)
   for (i32 i = 7; i >= 0; --i)
     message << char((bits >> (8 * i)) & 255);
   u32 w[80];
-  for (ContainerSize block = 0; block < message.size(); block += 64)
+  for (std::ContainerSize block = 0; block < message.size(); block += 64)
   {
     for (i32 i = 0; i < 16; ++i)
       w[i] = ((u32)(u8)message[block + 4 * i] << 24) | ((u32)(u8)message[block + 4 * i + 1] << 16) |
@@ -65,7 +65,7 @@ String mariaDbSha1(StringView data)
     h[3] += d;
     h[4] += e;
   }
-  String out;
+  std::String out;
   for (i32 i = 0; i < 5; ++i)
     for (i32 j = 3; j >= 0; --j)
       out << char((h[i] >> (8 * j)) & 255);

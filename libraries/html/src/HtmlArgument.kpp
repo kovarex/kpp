@@ -1,15 +1,15 @@
 struct HtmlArgument
 {
-  HtmlArgument(const char* name, StringView value) : name(name), value(value) {}
+  HtmlArgument(const char* name, std::StringView value) : name(name), value(value) {}
   HtmlArgument(const char* name, const char* value) : name(name), value(value) {}
-  HtmlArgument(const char* name, const String& value) : name(name), value(value) {}
+  HtmlArgument(const char* name, const std::String& value) : name(name), value(value) {}
   HtmlArgument(const char* name, const SafeHtml& value) : name(name), value(value.str()), kind(HtmlArgumentKind::safe) {}
-  HtmlArgument(const char* name, i32 value) : name(name), value(toString(value)) {}
-  HtmlArgument(const char* name, i64 value) : name(name), value(toString(value)) {}
+  HtmlArgument(const char* name, i32 value) : name(name), value(std::toString(value)) {}
+  HtmlArgument(const char* name, i64 value) : name(name), value(std::toString(value)) {}
   HtmlArgument(const char* name, bool value) : name(name), kind(HtmlArgumentKind::flag), on(value) {}
 
   const char* name;
-  String value;
+  std::String value;
   HtmlArgumentKind kind = HtmlArgumentKind::text;
   bool on = false; // a flag's value
 };

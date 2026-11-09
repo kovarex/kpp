@@ -3,44 +3,44 @@ struct HttpResponse
   HttpResponse() { this.setHeader("Content-Type", "text/html; charset=utf-8"); }
 
   // Sets the header, replacing any of that name (any case).
-  void setHeader(StringView name, StringView value)
+  void setHeader(std::StringView name, std::StringView value)
   {
     httpCheckHeader(name, value);
-    String lower = httpLower(name);
-    for (ContainerSize i = 0; i < this.headers.size(); ++i)
+    std::String lower = httpLower(name);
+    for (std::ContainerSize i = 0; i < this.headers.size(); ++i)
       if (httpLower(this.headers[i].name) == lower)
       {
-        this.headers[i].value = String(value);
+        this.headers[i].value = std::String(value);
         return;
       }
     this.addHeader(name, value);
   }
 
   // Adds the header, keeping others of that name (Set-Cookie).
-  void addHeader(StringView name, StringView value)
+  void addHeader(std::StringView name, std::StringView value)
   {
     httpCheckHeader(name, value);
     HttpHeader h;
-    h.name = String(name);
-    h.value = String(value);
+    h.name = std::String(name);
+    h.value = std::String(value);
     this.headers.push_back(h);
   }
 
-  const String* header(StringView name) const
+  const std::String* header(std::StringView name) const
   {
-    String lower = httpLower(name);
+    std::String lower = httpLower(name);
     for (const HttpHeader& h : this.headers)
       if (httpLower(h.name) == lower)
         return &h.value;
     return nullptr;
   }
 
-  void setCookie(StringView name, StringView value, const HttpCookieOptions& options = HttpCookieOptions())
+  void setCookie(std::StringView name, std::StringView value, const HttpCookieOptions& options = HttpCookieOptions())
   {
     httpCheckCookie(name, value);
-    String header = String(name) + "=" + String(value);
+    std::String header = std::String(name) + "=" + std::String(value);
     if (options.maxAgeSeconds.has_value())
-      header << toString("; Max-Age=", *options.maxAgeSeconds);
+      header << std::toString("; Max-Age=", *options.maxAgeSeconds);
     if (!options.path.empty())
       header << "; Path=" << options.path;
     if (options.httpOnly)
@@ -53,16 +53,16 @@ struct HttpResponse
   }
 
   // Tells the browser to forget the cookie (at that path).
-  void deleteCookie(StringView name, StringView path = "/")
+  void deleteCookie(std::StringView name, std::StringView path = "/")
   {
     HttpCookieOptions options;
-    options.maxAgeSeconds = Optional<i64>(0);
-    options.path = String(path);
+    options.maxAgeSeconds = std::Optional<i64>(0);
+    options.path = std::String(path);
     this.setCookie(name, "", options);
   }
 
   // A redirect to location: 303 See Other (after a form's POST, the browser GETs it) unless said.
-  void redirect(StringView location, i32 status = 303)
+  void redirect(std::StringView location, i32 status = 303)
   {
     this.status = status;
     this.setHeader("Location", location);
@@ -71,16 +71,16 @@ struct HttpResponse
 
   // The status line's text and the headers, each line ending in CRLF, as CGI writes them
   // ("Status: 200 OK") or HTTP/1.1 ("HTTP/1.1 200 OK"); the blank line and the body follow.
-  String head(bool cgi) const
+  std::String head(bool cgi) const
   {
-    String out = cgi ? toString("Status: ", this.status, " ", httpStatusText(this.status), "\r\n")
-                     : toString("HTTP/1.1 ", this.status, " ", httpStatusText(this.status), "\r\n");
+    std::String out = cgi ? std::toString("Status: ", this.status, " ", httpStatusText(this.status), "\r\n")
+                     : std::toString("HTTP/1.1 ", this.status, " ", httpStatusText(this.status), "\r\n");
     for (const HttpHeader& h : this.headers)
       out << h.name + ": " + h.value + "\r\n";
     return out;
   }
 
   i32 status = 200;
-  Vector<HttpHeader> headers;
-  String body;
+  std::Vector<HttpHeader> headers;
+  std::String body;
 };

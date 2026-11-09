@@ -1,9 +1,9 @@
 // Text that is not a URI reference, or a malformed percent-encoding. The message starts with the
 // byte offset of the problem.
-class UrlError : public RuntimeError
+class UrlError : public std::RuntimeError
 {
 public:
   UrlError() {}
-  UrlError(const String& message, i32 offset) : RuntimeError(message), offset(offset) {}
+  UrlError(const std::String& message, i32 offset) : RuntimeError(message), offset(offset) {}
   i32 offset = 0;
 };

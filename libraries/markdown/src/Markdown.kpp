@@ -2,7 +2,7 @@
 // commonmark.js's renderer), byte for byte.
 
 // The HTML of a CommonMark document.
-String markdownToHtml(StringView text, const MarkdownOptions& options = MarkdownOptions())
+std::String markdownToHtml(std::StringView text, const MarkdownOptions& options = MarkdownOptions())
 {
   MarkdownNodes nodes;
   MarkdownBlockParser blocks(&nodes, options);
@@ -29,7 +29,7 @@ void markdownParseInlines(MarkdownNodes* nodes, MarkdownBlockParser* blocks, Mar
 }
 
 // The text of inlines without their markup: a heading's for its id, an image's alt text.
-void markdownPlainText(String& out, MarkdownNode* node)
+void markdownPlainText(std::String& out, MarkdownNode* node)
 {
   for (MarkdownNode* child = node->firstChild; child; child = child->next)
   {

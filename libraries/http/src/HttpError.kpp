@@ -1,9 +1,9 @@
 // A request that is not HTTP as this library reads it, or a response it will not write (a header
 // with a line break, a cookie value with a ';').
-class HttpError : public RuntimeError
+class HttpError : public std::RuntimeError
 {
 public: // what the server answers when the request was the problem
   HttpError() {}
-  HttpError(const String& message, i32 status = 400) : RuntimeError(message), status(status) {}
+  HttpError(const std::String& message, i32 status = 400) : RuntimeError(message), status(status) {}
   i32 status = 400;
 };

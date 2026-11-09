@@ -20,7 +20,7 @@ test aTemplateMadeAtCompileTime
   static_assert(htmlTestCard.countParts() == 9);
   SafeHtml card = htmlTestCard.render({{"kind", "featured"}, {"url", "https://kpp.net/json"}, {"name", "json <1.0>"}, {"summary", "\"fast\" & strict"}});
   check(card.str() == "<div class=\"card featured\"><a href=\"https://kpp.net/json\">json &lt;1.0&gt;</a><p>&quot;fast&quot; &amp; strict</p></div>");
-  Vector<String> holes = htmlTestCard.holes();
+  std::Vector<std::String> holes = htmlTestCard.holes();
   check(holes.size() == 4);
   check(holes[0] == "kind");
   check(holes[3] == "summary");
@@ -40,12 +40,12 @@ test safeHtmlGoesInAsItIsAndAPageNestsTemplates
                      "<b>markdown</b></p><br><img src=\"logo.png\" alt=\"kpp &amp; you\"/></body></html>");
   SafeHtml list;
   for (const char* name : {"json", "sha256"})
-    list << htmlTestCard.render({{"kind", "small"}, {"url", "/" + String(name)}, {"name", name}, {"summary", ""}});
-  check(list.str().find("<a href=\"/sha256\">sha256</a>") != String::npos);
+    list << htmlTestCard.render({{"kind", "small"}, {"url", "/" + std::String(name)}, {"name", name}, {"summary", ""}});
+  check(list.str().find("<a href=\"/sha256\">sha256</a>") != std::String::npos);
 }
 
 // The error's message for a template made at run time, "" when it is fine.
-String htmlTemplateErrorOf(const char* text)
+std::String htmlTemplateErrorOf(const char* text)
 {
   try
   {
@@ -86,7 +86,7 @@ test malformedTemplates
 }
 
 // The error's message for a render, "" when it renders.
-String htmlRenderErrorOf(const HtmlTemplate& t, InitializerList<HtmlArgument> arguments)
+std::String htmlRenderErrorOf(const HtmlTemplate& t, std::InitializerList<HtmlArgument> arguments)
 {
   try
   {

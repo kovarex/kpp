@@ -5,15 +5,15 @@ class SafeHtml
 {
 public:
   // HTML its writer vouches for: a constant, a template's rendering.
-  static SafeHtml trusted(StringView html)
+  static SafeHtml trusted(std::StringView html)
   {
     SafeHtml safe;
-    safe.html = String(html);
+    safe.html = std::String(html);
     return safe;
   }
 
   // The text, escaped.
-  static SafeHtml escape(StringView text)
+  static SafeHtml escape(std::StringView text)
   {
     SafeHtml safe;
     htmlAppendEscaped(safe.html, text);
@@ -28,9 +28,9 @@ public:
   }
 
   bool empty() const { return this.html.empty(); }
-  const String& str() const { return this.html; }
+  const std::String& str() const { return this.html; }
   bool operator==(const SafeHtml& other) const = default;
 
 private:
-  String html;
+  std::String html;
 };

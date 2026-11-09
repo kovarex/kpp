@@ -3,14 +3,14 @@
 // choices where the RFC leaves one.
 
 // The value the whole text holds: one value with only whitespace around it.
-JsonValue parseJson(StringView text)
+JsonValue parseJson(std::StringView text)
 {
   JsonParser parser(text);
   return parser.parseDocument();
 }
 
 // As parseJson, but false instead of a throw; error (when given) gets the error.
-bool tryParseJson(StringView text, JsonValue& out, JsonParseError* error = nullptr)
+bool tryParseJson(std::StringView text, JsonValue& out, JsonParseError* error = nullptr)
 {
   try
   {
@@ -71,7 +71,7 @@ i32 jsonUtf8SequenceLength(const char* text, const char* end)
 }
 
 // Whether the bytes are UTF-8.
-bool jsonIsUtf8(StringView text)
+bool jsonIsUtf8(std::StringView text)
 {
   const char* at = text.data();
   const char* end = at + text.size();
@@ -91,7 +91,7 @@ bool jsonIsUtf8(StringView text)
 }
 
 // Appends the code point (at most U+10FFFF, not a surrogate) as UTF-8.
-void jsonAppendUtf8(String& out, i32 code)
+void jsonAppendUtf8(std::String& out, i32 code)
 {
   if (code < 0x80)
     out << char(code);

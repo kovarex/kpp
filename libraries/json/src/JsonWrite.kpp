@@ -3,28 +3,28 @@
 // throw JsonTypeError rather than write text that would read back as something else.
 
 // Compact: no whitespace.
-String writeJson(const JsonValue& value)
+std::String writeJson(const JsonValue& value)
 {
-  String out;
+  std::String out;
   jsonWrite(out, value, -1, 0);
   return out;
 }
 
 // One member or element per line, indented by indent spaces per level.
-String writeJsonPretty(const JsonValue& value, i32 indent = 2)
+std::String writeJsonPretty(const JsonValue& value, i32 indent = 2)
 {
-  String out;
+  std::String out;
   jsonWrite(out, value, indent, 0);
   return out;
 }
 
 // Appends the value; indent < 0 is compact.
-void jsonWrite(String& out, const JsonValue& value, i32 indent, i32 level)
+void jsonWrite(std::String& out, const JsonValue& value, i32 indent, i32 level)
 {
   switch (value.type)
   {
     case JsonType::null: out << "null"; return;
-    case JsonType::boolean: out << (value.booleanValue ? StringView("true") : StringView("false")); return;
+    case JsonType::boolean: out << (value.booleanValue ? std::StringView("true") : std::StringView("false")); return;
     case JsonType::integer: out << value.integerValue; return;
     case JsonType::number: jsonWriteNumber(out, value.numberValue); return;
     case JsonType::string: jsonWriteString(out, value.stringValue); return;
@@ -40,7 +40,7 @@ void jsonWrite(String& out, const JsonValue& value, i32 indent, i32 level)
         if (object)
         {
           jsonWriteString(out, value.keys[i]);
-          out << (indent < 0 ? StringView(":") : StringView(": "));
+          out << (indent < 0 ? std::StringView(":") : std::StringView(": "));
         }
         jsonWrite(out, value.items[i], indent, level + 1);
       }
@@ -52,7 +52,7 @@ void jsonWrite(String& out, const JsonValue& value, i32 indent, i32 level)
   }
 }
 
-void jsonNewLine(String& out, i32 indent, i32 level)
+void jsonNewLine(std::String& out, i32 indent, i32 level)
 {
   if (indent < 0)
     return;
@@ -64,15 +64,15 @@ void jsonNewLine(String& out, i32 indent, i32 level)
 // The shortest of %.15g, %.16g and %.17g that strtod reads back as the same double: 17
 // significant digits always do, and a double that 15 digits can name gets its shortest form.
 // Always has a '.' or an exponent, so it reads back as a number, not an integer.
-void jsonWriteNumber(String& out, double value)
+void jsonWriteNumber(std::String& out, double value)
 {
-  if (!isfinite(value))
+  if (!std::isfinite(value))
     throw JsonTypeError("JSON has no form for NaN or infinity");
   char buffer[40];
   i32 n = 0;
   for (i32 precision = 15; precision <= 17; ++precision)
   {
-    n = snprintf(buffer, 40, "%.*g", precision, value);
+    n = std::snprintf(buffer, 40, "%.*g", precision, value);
     if (strtod(buffer, nullptr) == value)
       break;
   }
@@ -80,12 +80,12 @@ void jsonWriteNumber(String& out, double value)
   for (i32 i = 0; i < n; ++i)
     if (buffer[i] == '.' || buffer[i] == 'e')
       hasPoint = true;
-  out << StringView(buffer, n);
+  out << std::StringView(buffer, n);
   if (!hasPoint)
     out << ".0";
 }
 
-void jsonWriteString(String& out, StringView text)
+void jsonWriteString(std::String& out, std::StringView text)
 {
   if (!jsonIsUtf8(text))
     throw JsonTypeError("a JSON string must be UTF-8");

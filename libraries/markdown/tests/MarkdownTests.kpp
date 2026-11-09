@@ -76,16 +76,16 @@ test lineEndingsAndOddBytes
 {
   check(markdownToHtml("a\r\nb\rc\n\r\n# d") == "<p>a\nb\nc</p>\n<h1>d</h1>\n");
   check(markdownToHtml("") == "");
-  check(markdownToHtml(StringView("a\0b", 3)) == "<p>a\xEF\xBF\xBD" "b</p>\n");
+  check(markdownToHtml(std::StringView("a\0b", 3)) == "<p>a\xEF\xBF\xBD" "b</p>\n");
 }
 
 test rewritingLinks
 {
   MarkdownOptions options;
-  options.rewriteLink = [](const String& destination) -> String
+  options.rewriteLink = [](const std::String& destination) -> std::String
   {
     if (destination.endsWith(".md"))
-      return String(StringView(destination).substr(0, destination.size() - 3)) + ".html";
+      return std::String(std::StringView(destination).substr(0, destination.size() - 3)) + ".html";
     return destination;
   };
   check(markdownToHtml("[a](design.md) [b](x.png) ![c](d.md)", options) ==

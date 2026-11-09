@@ -2,9 +2,9 @@
 
 // The text with & < > " ' as character references: safe in an element's text and in a quoted
 // attribute value.
-String htmlEscape(StringView text)
+std::String htmlEscape(std::StringView text)
 {
-  String out;
+  std::String out;
   htmlAppendEscaped(out, text);
   return out;
 }
@@ -12,7 +12,7 @@ String htmlEscape(StringView text)
 // An ASCII letter in lower case; any other character as it is.
 constexpr char htmlLower(char c) { return c >= 'A' && c <= 'Z' ? char(c - 'A' + 'a') : c; }
 
-void htmlAppendEscaped(String& out, StringView text)
+void htmlAppendEscaped(std::String& out, std::StringView text)
 {
   for (i32 i = 0; i < text.size(); ++i)
   {

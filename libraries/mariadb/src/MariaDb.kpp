@@ -3,24 +3,24 @@
 // "Client/Server Protocol" (handshake, COM_QUERY, result sets, OK and ERR packets).
 
 // The client's answer to the server's scramble for an authentication plugin.
-String mariaDbAuthenticate(StringView plugin, StringView password, StringView scramble)
+std::String mariaDbAuthenticate(std::StringView plugin, std::StringView password, std::StringView scramble)
 {
   if (plugin == "mysql_native_password")
     return mariaDbNativePassword(password, scramble);
-  throw MariaDbError(toString("the authentication plugin ", plugin, " is not supported (only mysql_native_password)"), 0, String());
+  throw MariaDbError(std::toString("the authentication plugin ", plugin, " is not supported (only mysql_native_password)"), 0, std::String());
 }
 
 // mysql_native_password: SHA1(password) XOR SHA1(scramble + SHA1(SHA1(password))); nothing for no password.
-String mariaDbNativePassword(StringView password, StringView scramble)
+std::String mariaDbNativePassword(std::StringView password, std::StringView scramble)
 {
   if (password.empty())
-    return String();
-  String stage1 = mariaDbSha1(password);
-  String stage2 = mariaDbSha1(stage1);
-  String salted(scramble);
+    return std::String();
+  std::String stage1 = mariaDbSha1(password);
+  std::String stage2 = mariaDbSha1(stage1);
+  std::String salted(scramble);
   salted << stage2;
-  String mix = mariaDbSha1(salted);
-  String out;
+  std::String mix = mariaDbSha1(salted);
+  std::String out;
   for (i32 i = 0; i < 20; ++i)
     out << char(stage1[i] ^ mix[i]);
   return out;
@@ -28,10 +28,10 @@ String mariaDbNativePassword(StringView password, StringView scramble)
 
 // text in single quotes, escaped as the server reads it unless NO_BACKSLASH_ESCAPES is on (which is
 // what PHP's real_escape_string does): \0, \n, \r, \\, ', " and Ctrl-Z get a backslash.
-String mariaDbQuote(StringView text)
+std::String mariaDbQuote(std::StringView text)
 {
-  String out = "'";
-  for (ContainerSize i = 0; i < text.size(); ++i)
+  std::String out = "'";
+  for (std::ContainerSize i = 0; i < text.size(); ++i)
   {
     char c = text[i];
     switch (c)
@@ -51,20 +51,20 @@ String mariaDbQuote(StringView text)
 }
 
 // mariaDbQuote, or NULL for an empty Optional.
-String mariaDbQuoteOrNull(const Optional<String>& value)
+std::String mariaDbQuoteOrNull(const std::Optional<std::String>& value)
 {
   if (!value.has_value())
     return "NULL";
-  return mariaDbQuote(StringView(*value));
+  return mariaDbQuote(std::StringView(*value));
 }
 
-void mariaDbAppendUint32(String& out, u32 value)
+void mariaDbAppendUint32(std::String& out, u32 value)
 {
   for (i32 i = 0; i < 4; ++i)
     out << char((value >> (8 * i)) & 255);
 }
 
-void mariaDbAppendLengthEncoded(String& out, u64 value)
+void mariaDbAppendLengthEncoded(std::String& out, u64 value)
 {
   if (value < 251)
     out << char(value);

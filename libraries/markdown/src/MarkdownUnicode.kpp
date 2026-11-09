@@ -1885,7 +1885,7 @@ const MarkdownCaseFold markdownCaseFolds[] = {
 };
 
 // Appends the code point case folded (Unicode's full folding: U+1E9E is ss).
-void markdownAppendFolded(String& out, i32 c)
+void markdownAppendFolded(std::String& out, i32 c)
 {
   if (c < 0x80)
   {
@@ -1903,7 +1903,7 @@ void markdownAppendFolded(String& out, i32 c)
       low = middle + 1;
     else
     {
-      out << StringView(markdownCaseFolds[middle].folded);
+      out << std::StringView(markdownCaseFolds[middle].folded);
       return;
     }
   }

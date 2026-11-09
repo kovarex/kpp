@@ -29,7 +29,7 @@ struct TcpListener
 
   // Listens on address ("127.0.0.1", "0.0.0.0", "::1"...) at port; port 0 picks a free one
   // (port() says which).
-  static TcpListener listen(StringView address, i32 port) { return TcpListener(netListen(address, port)); }
+  static TcpListener listen(std::StringView address, i32 port) { return TcpListener(netListen(address, port)); }
 
   i32 port() const { return netLocalPort(this.handle); }
 

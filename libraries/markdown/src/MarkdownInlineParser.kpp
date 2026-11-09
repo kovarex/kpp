@@ -7,7 +7,7 @@ struct MarkdownInlineParser
 
   void parse(MarkdownNode* block)
   {
-    String content = String(markdownTrim(block->content));
+    std::String content = std::String(markdownTrim(block->content));
     this.subject = content;
     this.position = 0;
     this.delimiters = nullptr;
@@ -15,7 +15,7 @@ struct MarkdownInlineParser
     while (this.parseInline(block))
     {
     }
-    block->content = String();
+    block->content = std::String();
     this.processEmphasis(nullptr);
   }
 
@@ -72,7 +72,7 @@ struct MarkdownInlineParser
       i32 end = last->literal.size();
       while (end > 0 && last->literal[end - 1] == ' ')
         --end;
-      last->literal = String(StringView(last->literal).substr(0, end));
+      last->literal = std::String(std::StringView(last->literal).substr(0, end));
       block->appendChild(this.nodes->make(hard ? MarkdownType::lineBreak : MarkdownType::softBreak));
     }
     else
@@ -121,7 +121,7 @@ struct MarkdownInlineParser
         ++k;
       if (k - runStart == ticks)
       {
-        String contents;
+        std::String contents;
         for (i32 i = afterOpen; i < runStart; ++i)
           contents << (this.subject[i] == '\n' ? ' ' : this.subject[i]);
         bool allSpace = true;
@@ -130,7 +130,7 @@ struct MarkdownInlineParser
             allSpace = false;
         MarkdownNode* code = this.nodes->make(MarkdownType::code);
         if (contents.size() > 0 && !allSpace && contents[0] == ' ' && contents.back() == ' ')
-          code->literal = String(StringView(contents).substr(1, contents.size() - 2));
+          code->literal = std::String(std::StringView(contents).substr(1, contents.size() - 2));
         else
           code->literal = contents;
         block->appendChild(code);
@@ -231,8 +231,8 @@ struct MarkdownInlineParser
         MarkdownNode* closerNode = closer->node;
         opener->count -= used;
         closer->count -= used;
-        openerNode->literal = String(StringView(openerNode->literal).substr(0, openerNode->literal.size() - used));
-        closerNode->literal = String(StringView(closerNode->literal).substr(0, closerNode->literal.size() - used));
+        openerNode->literal = std::String(std::StringView(openerNode->literal).substr(0, openerNode->literal.size() - used));
+        closerNode->literal = std::String(std::StringView(closerNode->literal).substr(0, closerNode->literal.size() - used));
         MarkdownNode* emphasis = this.nodes->make(used == 1 ? MarkdownType::emphasis : MarkdownType::strong);
         MarkdownNode* node = openerNode->next;
         while (node && node != closerNode)
@@ -356,7 +356,7 @@ struct MarkdownInlineParser
   }
 
   // A link destination, decoded and percent-encoded, or false.
-  bool parseLinkDestination(String& out)
+  bool parseLinkDestination(std::String& out)
   {
     if (this.peek() == '<')
     {
@@ -418,7 +418,7 @@ struct MarkdownInlineParser
   }
 
   // A link title in "", '' or (), unescaped, or false.
-  bool parseLinkTitle(String& out)
+  bool parseLinkTitle(std::String& out)
   {
     i32 open = this.peek();
     i32 close = open == '(' ? ')' : open;
@@ -465,8 +465,8 @@ struct MarkdownInlineParser
     bool image = opener->image;
     i32 save = this.position;
     bool matched = false;
-    String destination;
-    String title;
+    std::String destination;
+    std::String title;
     if (this.peek() == '(')
     {
       this.position += 1;
@@ -488,24 +488,24 @@ struct MarkdownInlineParser
       if (!matched)
       {
         this.position = save;
-        destination = String();
-        title = String();
+        destination = std::String();
+        title = std::String();
       }
     }
     if (!matched)
     {
       i32 beforeLabel = this.position;
       i32 n = this.parseLinkLabel();
-      String label;
+      std::String label;
       bool hasLabel = false;
       if (n > 2)
       {
-        label = String(this.subject.substr(beforeLabel, n));
+        label = std::String(this.subject.substr(beforeLabel, n));
         hasLabel = true;
       }
       else if (!opener->bracketAfter)
       {
-        label = String(this.subject.substr(opener->index, start - opener->index));
+        label = std::String(this.subject.substr(opener->index, start - opener->index));
         hasLabel = true;
       }
       if (n == 0)
@@ -549,9 +549,9 @@ struct MarkdownInlineParser
     return true;
   }
 
-  const MarkdownReference* findReference(StringView label)
+  const MarkdownReference* findReference(std::StringView label)
   {
-    String normalized = markdownNormalizeLabel(label);
+    std::String normalized = markdownNormalizeLabel(label);
     for (const MarkdownReference& r : this.blocks->references)
       if (r.label == normalized)
         return &r;
@@ -586,9 +586,9 @@ struct MarkdownInlineParser
       }
       if (ok && k < this.subject.size() && this.subject[k] == '>')
       {
-        StringView address = this.subject.substr(this.position + 1, k - this.position - 1);
+        std::StringView address = this.subject.substr(this.position + 1, k - this.position - 1);
         MarkdownNode* link = this.nodes->make(MarkdownType::link);
-        link->destination = markdownNormalizeUri(toString("mailto:", address));
+        link->destination = markdownNormalizeUri(std::toString("mailto:", address));
         link->appendChild(this.nodes->text(address));
         block->appendChild(link);
         this.position = k + 1;
@@ -612,7 +612,7 @@ struct MarkdownInlineParser
       ++k;
     if (k >= this.subject.size() || this.subject[k] != '>')
       return false;
-    StringView uri = this.subject.substr(this.position + 1, k - this.position - 1);
+    std::StringView uri = this.subject.substr(this.position + 1, k - this.position - 1);
     MarkdownNode* link = this.nodes->make(MarkdownType::link);
     link->destination = markdownNormalizeUri(uri);
     link->appendChild(this.nodes->text(uri));
@@ -627,7 +627,7 @@ struct MarkdownInlineParser
     if (length == 0)
       return false;
     MarkdownNode* html = this.nodes->make(MarkdownType::htmlInline);
-    html->literal = String(this.subject.substr(this.position, length));
+    html->literal = std::String(this.subject.substr(this.position, length));
     block->appendChild(html);
     this.position += length;
     return true;
@@ -635,7 +635,7 @@ struct MarkdownInlineParser
 
   bool parseEntity(MarkdownNode* block)
   {
-    String decoded;
+    std::String decoded;
     i32 length = markdownEntity(this.subject, this.position, decoded);
     if (length == 0)
       return false;
@@ -645,42 +645,42 @@ struct MarkdownInlineParser
   }
 
   // A link reference definition at the start of text: adds it and returns its length, or 0.
-  i32 parseReference(StringView text)
+  i32 parseReference(std::StringView text)
   {
     this.subject = text;
     this.position = 0;
     i32 labelLength = this.parseLinkLabel();
     if (labelLength == 0)
       return 0;
-    StringView rawLabel = text.substr(0, labelLength);
+    std::StringView rawLabel = text.substr(0, labelLength);
     if (this.peek() != ':')
       return 0;
     this.position += 1;
     this.skipSpacesAndNewline();
-    String destination;
+    std::String destination;
     if (!this.parseLinkDestination(destination))
       return 0;
     i32 beforeTitle = this.position;
     this.skipSpacesAndNewline();
-    String title;
+    std::String title;
     bool hasTitle = false;
     if (this.position != beforeTitle)
       hasTitle = this.parseLinkTitle(title);
     if (!hasTitle)
     {
-      title = String();
+      title = std::String();
       this.position = beforeTitle;
     }
     bool atLineEnd = this.atLineEnd();
     if (!atLineEnd && hasTitle)
     {
-      title = String();
+      title = std::String();
       this.position = beforeTitle;
       atLineEnd = this.atLineEnd();
     }
     if (!atLineEnd)
       return 0;
-    String label = markdownNormalizeLabel(rawLabel);
+    std::String label = markdownNormalizeLabel(rawLabel);
     if (label.size() == 0)
       return 0;
     bool known = false;
@@ -713,10 +713,10 @@ struct MarkdownInlineParser
 
   MarkdownNodes* nodes;
   MarkdownBlockParser* blocks;
-  StringView subject;
+  std::StringView subject;
   i32 position = 0;
   MarkdownDelimiter* delimiters = nullptr;
   MarkdownBracket* brackets = nullptr;
-  Deque<MarkdownDelimiter> delimiterStore;
-  Deque<MarkdownBracket> bracketStore;
+  std::Deque<MarkdownDelimiter> delimiterStore;
+  std::Deque<MarkdownBracket> bracketStore;
 };

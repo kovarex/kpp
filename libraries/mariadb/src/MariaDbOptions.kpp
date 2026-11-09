@@ -1,9 +1,9 @@
 struct MariaDbOptions
 {
-  String host = "127.0.0.1";
+  std::String host = "127.0.0.1";
   i32 port = 3306;
-  String user;
-  String password;
-  String database;           // empty: none
+  std::String user;
+  std::String password;
+  std::String database;           // empty: none
   i32 timeoutMilliseconds = 30000; // for connecting's reads and every query's; 0 waits forever
 };

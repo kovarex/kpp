@@ -2130,14 +2130,14 @@ const MarkdownEntityName markdownEntityNames[] = {
 };
 
 // The UTF-8 text of a named character reference (without '&' and ';'), or nullptr.
-const char* markdownNamedEntity(StringView name)
+const char* markdownNamedEntity(std::StringView name)
 {
   i32 low = 0;
   i32 high = 2125;
   while (low < high)
   {
     i32 middle = (low + high) / 2;
-    i32 compare = strcmp(String(name).c_str(), markdownEntityNames[middle].name);
+    i32 compare = std::strcmp(std::String(name).c_str(), markdownEntityNames[middle].name);
     if (compare == 0)
       return markdownEntityNames[middle].value;
     if (compare < 0)

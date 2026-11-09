@@ -1,9 +1,9 @@
 struct HttpRequest
 {
   // The first header of that name (any case), or nullptr.
-  const String* header(StringView name) const
+  const std::String* header(std::StringView name) const
   {
-    String lower = httpLower(name);
+    std::String lower = httpLower(name);
     for (const HttpHeader& h : this.headers)
       if (h.name == lower)
         return &h.value;
@@ -11,30 +11,30 @@ struct HttpRequest
   }
 
   // The query's first parameter of that name, or nullptr.
-  const String* parameter(StringView name) const { return url::findUrlQueryParameter(this.parameters, name); }
+  const std::String* parameter(std::StringView name) const { return url::findUrlQueryParameter(this.parameters, name); }
 
   // The value of the cookie of that name, or nullptr.
-  Optional<String> cookie(StringView name) const
+  std::Optional<std::String> cookie(std::StringView name) const
   {
-    const String* header = this.header("cookie");
+    const std::String* header = this.header("cookie");
     if (header == nullptr)
-      return Optional<String>();
+      return std::Optional<std::String>();
     for (const HttpHeader& c : httpParseCookies(*header))
       if (c.name == name)
-        return Optional<String>(c.value);
-    return Optional<String>();
+        return std::Optional<std::String>(c.value);
+    return std::Optional<std::String>();
   }
 
   // The body's fields when it is application/x-www-form-urlencoded or multipart/form-data (files
   // left out: multipart() has them); another body throws HttpError (415).
-  Vector<url::UrlQueryParameter> form() const
+  std::Vector<url::UrlQueryParameter> form() const
   {
-    String type = this.contentType();
+    std::String type = this.contentType();
     if (type == "application/x-www-form-urlencoded")
       return url::parseUrlQuery(this.body);
     if (type == "multipart/form-data")
     {
-      Vector<url::UrlQueryParameter> fields;
+      std::Vector<url::UrlQueryParameter> fields;
       for (const HttpPart& part : this.multipart())
         if (!part.filename.has_value())
         {
@@ -46,38 +46,38 @@ struct HttpRequest
       return fields;
     }
     if (this.body.empty())
-      return Vector<url::UrlQueryParameter>();
-    throw HttpError(toString("a form cannot be read from a body of type \"", type, "\""), 415);
+      return std::Vector<url::UrlQueryParameter>();
+    throw HttpError(std::toString("a form cannot be read from a body of type \"", type, "\""), 415);
   }
 
   // The parts of a multipart/form-data body; another type throws HttpError (415).
-  Vector<HttpPart> multipart() const
+  std::Vector<HttpPart> multipart() const
   {
-    const String* header = this.header("content-type");
+    const std::String* header = this.header("content-type");
     if (header == nullptr || this.contentType() != "multipart/form-data")
       throw HttpError("the body is not multipart/form-data", 415);
     return httpParseMultipart(this.body, httpBoundary(*header));
   }
 
   // The Content-Type's media type in lower case, without its parameters; empty without one.
-  String contentType() const
+  std::String contentType() const
   {
-    const String* header = this.header("content-type");
+    const std::String* header = this.header("content-type");
     if (header == nullptr)
-      return String();
-    StringView type = *header;
-    ContainerSize semicolon = type.find(';');
-    if (semicolon != StringView::npos)
+      return std::String();
+    std::StringView type = *header;
+    std::ContainerSize semicolon = type.find(';');
+    if (semicolon != std::StringView::npos)
       type = type.substr(0, semicolon);
     return httpLower(httpTrim(type));
   }
 
-  String method;                              // "GET", "POST"...
-  String target;                              // as sent: "/player?id=5"
-  String path;                                // decoded: "/player"
-  String query;                               // as sent: "id=5"
-  Vector<url::UrlQueryParameter> parameters;  // the query's, decoded
-  Vector<HttpHeader> headers;                 // names in lower case
-  String body;
-  String remoteAddress;
+  std::String method;                              // "GET", "POST"...
+  std::String target;                              // as sent: "/player?id=5"
+  std::String path;                                // decoded: "/player"
+  std::String query;                               // as sent: "id=5"
+  std::Vector<url::UrlQueryParameter> parameters;  // the query's, decoded
+  std::Vector<HttpHeader> headers;                 // names in lower case
+  std::String body;
+  std::String remoteAddress;
 };

@@ -2,32 +2,32 @@
 // Optional, which is what PHP's mysqli gives), or the counts of a statement that has no rows.
 struct MariaDbResult
 {
-  ContainerSize size() const { return this.rows.size(); }
+  std::ContainerSize size() const { return this.rows.size(); }
   bool empty() const { return this.rows.empty(); }
 
   // The index of the column named name; a name the result does not have throws.
-  ContainerSize column(StringView name) const
+  std::ContainerSize column(std::StringView name) const
   {
-    for (ContainerSize i = 0; i < this.columns.size(); ++i)
+    for (std::ContainerSize i = 0; i < this.columns.size(); ++i)
       if (this.columns[i] == name)
         return i;
-    throw MariaDbError(toString("the result has no column ", name), 0, String());
+    throw MariaDbError(std::toString("the result has no column ", name), 0, std::String());
   }
 
   // Row row's value of column name (empty for NULL).
-  const Optional<String>& at(ContainerSize row, StringView name) const { return this.rows[row][this.column(name)]; }
+  const std::Optional<std::String>& at(std::ContainerSize row, std::StringView name) const { return this.rows[row][this.column(name)]; }
 
   // Row row's value of column name; NULL throws.
-  const String& text(ContainerSize row, StringView name) const
+  const std::String& text(std::ContainerSize row, std::StringView name) const
   {
-    const Optional<String>& value = this.at(row, name);
+    const std::Optional<std::String>& value = this.at(row, name);
     if (!value.has_value())
-      throw MariaDbError(toString("the column ", name, " is NULL"), 0, String());
+      throw MariaDbError(std::toString("the column ", name, " is NULL"), 0, std::String());
     return *value;
   }
 
-  Vector<String> columns;
-  Vector<Vector<Optional<String>>> rows;
+  std::Vector<std::String> columns;
+  std::Vector<std::Vector<std::Optional<std::String>>> rows;
   u64 affectedRows = 0;
   u64 insertId = 0;
 };

@@ -26,34 +26,34 @@ extern "C" const char* X509_verify_cert_error_string(i32 code);
 extern "C" u32 ERR_get_error();
 extern "C" void ERR_error_string_n(u32 code, char* buffer, usize size);
 
-i64 httpClientNumber(StringView text, i32 base, StringView what, StringView url)
+i64 httpClientNumber(std::StringView text, i32 base, std::StringView what, std::StringView url)
 {
   if (text.empty())
-    throw HttpClientError(toString("the response of ", url, " has no ", what));
+    throw HttpClientError(std::toString("the response of ", url, " has no ", what));
   i64 value = 0;
   for (char c : text)
   {
     i32 digit = c >= '0' && c <= '9' ? c - '0' : base == 16 && c >= 'a' && c <= 'f' ? c - 'a' + 10
                 : base == 16 && c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
     if (digit < 0 || value > (i64)1 << 48)
-      throw HttpClientError(toString("the response of ", url, " has a ", what, " that is not a number: ", text));
+      throw HttpClientError(std::toString("the response of ", url, " has a ", what, " that is not a number: ", text));
     value = value * base + digit;
   }
   return value;
 }
 
 // One request on a connection of its own; its response, any status.
-HttpClientResponse httpClientExchange(const HttpClientRequest& request, StringView method, StringView url, StringView body)
+HttpClientResponse httpClientExchange(const HttpClientRequest& request, std::StringView method, std::StringView url, std::StringView body)
 {
   HttpClientTarget target = httpClientTarget(url);
   HttpClientConnection connection;
-  connection.url = String(url);
+  connection.url = std::String(url);
   connection.open(target, request.timeoutMilliseconds);
 
-  String host = target.host.find(':') != String::npos ? toString("[", target.host, "]"): target.host;
+  std::String host = target.host.find(':') != std::String::npos ? std::toString("[", target.host, "]"): target.host;
   if (target.port != (target.secure ? 443 : 80))
-    host = toString(host, ":", (i32)target.port);
-  String head = toString(method, " ", target.path, " HTTP/1.1\r\nHost: ", host, "\r\nUser-Agent: kpp-httpclient/0.1\r\nConnection: close\r\n");
+    host = std::toString(host, ":", (i32)target.port);
+  std::String head = std::toString(method, " ", target.path, " HTTP/1.1\r\nHost: ", host, "\r\nUser-Agent: kpp-httpclient/0.1\r\nConnection: close\r\n");
   for (const HttpClientHeader& h : request.headers)
     head << h.name + ": " + h.value + "\r\n";
   if (!body.empty() || method == "POST" || method == "PUT")
@@ -67,68 +67,68 @@ HttpClientResponse httpClientExchange(const HttpClientRequest& request, StringVi
   // An informational response (100 Continue) comes before the real one.
   do
   {
-    String status = reader.line();
+    std::String status = reader.line();
     if (!status.starts_with("HTTP/1.") || status.size() < 12 || status[8] != ' ')
-      throw HttpClientError(toString("the response of ", url, " does not start with an HTTP status line: ", status.substr(0, 80)));
-    response.status = (i32)httpClientNumber(StringView(status).substr(9, 3), 10, "status", url);
-    String headers;
-    for (String line = reader.line(); !line.empty(); line = reader.line())
+      throw HttpClientError(std::toString("the response of ", url, " does not start with an HTTP status line: ", status.substr(0, 80)));
+    response.status = (i32)httpClientNumber(std::StringView(status).substr(9, 3), 10, "status", url);
+    std::String headers;
+    for (std::String line = reader.line(); !line.empty(); line = reader.line())
       headers << line + "\n";
     response.headers = httpClientParseHeaders(headers);
   } while (response.status >= 100 && response.status < 200);
 
-  const String* encoding = response.header("Transfer-Encoding");
-  const String* length = response.header("Content-Length");
+  const std::String* encoding = response.header("Transfer-Encoding");
+  const std::String* length = response.header("Content-Length");
   if (method == "HEAD" || response.status == 204 || response.status == 304)
     return response;
   if (encoding != nullptr && httpClientEqualIgnoringCase(*encoding, "chunked"))
   {
     for (;;)
     {
-      String size = reader.line();
-      ContainerSize extension = size.find(';');
-      if (extension != String::npos)
+      std::String size = reader.line();
+      std::ContainerSize extension = size.find(';');
+      if (extension != std::String::npos)
         size = size.substr(0, extension);
       while (!size.empty() && (size[size.size() - 1] == ' ' || size[size.size() - 1] == '\t'))
         size = size.substr(0, size.size() - 1);
       i64 n = httpClientNumber(size, 16, "chunk size", url);
       if (n == 0)
         break;
-      response.body << reader.take((ContainerSize)n);
+      response.body << reader.take((std::ContainerSize)n);
       if (!reader.line().empty())
-        throw HttpClientError(toString("a chunk of the response of ", url, " is longer than its size"));
+        throw HttpClientError(std::toString("a chunk of the response of ", url, " is longer than its size"));
     }
     // (the trailer's fields, if any, are not read: the connection closes)
   }
   else if (encoding != nullptr && !httpClientEqualIgnoringCase(*encoding, "identity"))
-    throw HttpClientError(toString("the response of ", url, " has the transfer encoding ", *encoding));
+    throw HttpClientError(std::toString("the response of ", url, " has the transfer encoding ", *encoding));
   else if (length != nullptr)
-    response.body = reader.take((ContainerSize)httpClientNumber(*length, 10, "Content-Length", url));
+    response.body = reader.take((std::ContainerSize)httpClientNumber(*length, 10, "Content-Length", url));
   else
     response.body = reader.rest();
   return response;
 }
 
 // Location against the address it answered: absolute, scheme-relative, absolute path or relative.
-String httpClientResolve(StringView base, StringView location)
+std::String httpClientResolve(std::StringView base, std::StringView location)
 {
   if (location.starts_with("http://") || location.starts_with("https://"))
-    return String(location);
+    return std::String(location);
   bool secure = base.starts_with("https://");
-  StringView scheme = secure ? "https:" : "http:";
+  std::StringView scheme = secure ? "https:" : "http:";
   if (location.starts_with("//"))
-    return String(scheme) + location;
-  StringView rest = base.substr(scheme.size() + 2);
-  ContainerSize pathStart = rest.find('/');
-  ContainerSize question = rest.find('?');
+    return std::String(scheme) + location;
+  std::StringView rest = base.substr(scheme.size() + 2);
+  std::ContainerSize pathStart = rest.find('/');
+  std::ContainerSize question = rest.find('?');
   if (question < pathStart)
     pathStart = question;
-  String origin = String(base.substr(0, scheme.size() + 2)) + (pathStart == StringView::npos ? rest : rest.substr(0, pathStart));
+  std::String origin = std::String(base.substr(0, scheme.size() + 2)) + (pathStart == std::StringView::npos ? rest : rest.substr(0, pathStart));
   if (location.starts_with("/"))
     return origin + location;
-  StringView path = pathStart == StringView::npos ? StringView("/") : rest.substr(pathStart);
-  ContainerSize query = path.find('?');
-  if (query != StringView::npos)
+  std::StringView path = pathStart == std::StringView::npos ? std::StringView("/") : rest.substr(pathStart);
+  std::ContainerSize query = path.find('?');
+  if (query != std::StringView::npos)
     path = path.substr(0, query);
   if (location.starts_with("?"))
     return origin + path + location;
@@ -137,27 +137,27 @@ String httpClientResolve(StringView base, StringView location)
 
 HttpClientResponse httpClientFetch(const HttpClientRequest& request)
 {
-  String url = request.url;
-  String method = request.method;
-  String body = request.body;
+  std::String url = request.url;
+  std::String method = request.method;
+  std::String body = request.body;
   // Redirects as WinHTTP follows them: at most 10, never from https to http; 303, and 301 or 302
   // after a POST, become a GET without the body.
   for (i32 redirects = 0;; ++redirects)
   {
     HttpClientResponse response = httpClientExchange(request, method, url, body);
     i32 s = response.status;
-    const String* location = response.header("Location");
+    const std::String* location = response.header("Location");
     if (!request.followRedirects || location == nullptr || !(s == 301 || s == 302 || s == 303 || s == 307 || s == 308))
       return response;
-    String next = httpClientResolve(url, *location);
+    std::String next = httpClientResolve(url, *location);
     if (url.starts_with("https://") && next.starts_with("http://"))
       return response;
     if (redirects == 10)
-      throw HttpClientError(toString(request.url, " redirects more than 10 times"));
+      throw HttpClientError(std::toString(request.url, " redirects more than 10 times"));
     if (s == 303 || ((s == 301 || s == 302) && method == "POST"))
     {
       method = "GET";
-      body = String();
+      body = std::String();
     }
     url = next;
   }
