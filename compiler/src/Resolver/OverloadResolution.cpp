@@ -1968,6 +1968,8 @@ auto GlobalScope::Impl::typeOfSignatureExpression(Expr* e, const TypeContext& ct
   probe.activeSubst = ctx.subst;
   if (objectType)
     probe.thisType = types.pointer(objectType);
+  else if (Decl* cls = ctx.subst && ctx.scope ? enclosingClassDecl(ctx.scope) : nullptr; cls && cls->kind == NodeKind::ClassDecl)
+    probe.thisType = types.pointer(substitute(selfType(cls), *ctx.subst)); // `noexcept(noexcept(this.v = x))` in a member: the instance's object
   if (ctx.elementPacks && !ctx.elementPacks->empty())
   {
     // One element of a pack expansion's pattern: the packs' mentions name it, ctx.subst binding them whole.
