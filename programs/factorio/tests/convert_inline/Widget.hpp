@@ -39,3 +39,13 @@ template<typename T> T Widget::as() const
 {
   return T(this->width);
 }
+
+// A definition inside an indented namespace: the body takes the class's indentation alone.
+namespace inner
+{
+  class Indented
+  {
+  public:
+    int value() const;
+  };
+}

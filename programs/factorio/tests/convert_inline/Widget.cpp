@@ -61,3 +61,11 @@ int Widget::summed(const std::pair<int, int>& sizes) const
 {
   return sizes.first + sizes.second + this->width;
 }
+
+namespace inner
+{
+  int Indented::value() const
+  {
+    return 1;
+  }
+}

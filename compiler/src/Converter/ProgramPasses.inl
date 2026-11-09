@@ -606,7 +606,11 @@ static std::string resolveInlineBodies(std::string text, Counts& counts)
         closedEarly = true;
     if (!opened || depth != 0 || closedEarly)
       continue;
-    bodies[id] = {text.substr(body + bodyMark.size(), end - body - bodyMark.size()), lineIndent(at)};
+    // (the definition's indentation: its mark stands before that, at the line's start, markInlineBody's declStart)
+    size_t indentEnd = idEnd + 3;
+    while (indentEnd < text.size() && (text[indentEnd] == ' ' || text[indentEnd] == '	'))
+      ++indentEnd;
+    bodies[id] = {text.substr(body + bodyMark.size(), end - body - bodyMark.size()), lineIndent(at) + text.substr(idEnd + 3, indentEnd - idEnd - 3)};
     definitionRanges[id] = {at, end + endMark.size()};
     size_t commentFrom = 0;
     comments[id] = commentAbove(at, commentFrom);
