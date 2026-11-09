@@ -1461,6 +1461,8 @@ auto GlobalScope::Impl::Walker::resolveTypeName(NamedType* t) -> void
     return;
   Lookup l = impl.lookupTypeName(t, scope, &locals, 0, activeSubst, elementPacks, elementIndex);
   reportAmbiguity(l, t->name, t->token);
+  noteImplicitMember(t, t->name, l); // (a constant the parser read as a type: `Box<limit>`, `sizeof(limit)`)
+  bareMemberRule(t, t->name, l); // (the lookup gave the global already: what is left is the error)
   if (l.found == Found::Local && l.decl && l.decl->when && t->name.parts.size() == 1)
   {
     // A local alias, class or enumeration a `when` declares (design.md 19): the one of the name
@@ -1777,6 +1779,10 @@ auto GlobalScope::Impl::Walker::typeOfResolvedName(const Lookup& l, const NamePa
     }
     case NodeKind::ParamDecl:
     {
+      // (the generic pass; an instance's walk binds the pack, and the expansions are the same)
+      if (static_cast<ParamDecl*>(d)->isPack && packPatterns == 0 && !activeSubst && !probing && file && !file->isImported)
+        impl.reportCheckerError(file, e->token, "the parameter pack " + std::string(symbols.name(static_cast<ParamDecl*>(d)->name)) +
+                                                    " is not expanded: a pack is named only in the pattern of a `...` ([temp.variadic] 5)");
       if (l.found == Found::Local)
         if (const Ty* walked = locals.deducedTypeOf(d))
           return walked; // a lambda's parameter as this walk typed it
@@ -1910,8 +1916,8 @@ auto GlobalScope::Impl::Walker::resolveName(NameExpr* e) -> const Ty*
   }
   if (!whenLookup(l, e))
     return types.unknown(); // (design.md 19: reported, or the instances' to tell)
-  noteImplicitMember(e, l);
-  if (Lookup outside = bareMemberRule(e, l); outside.decl != l.decl)
+  noteImplicitMember(e, e->name, l);
+  if (Lookup outside = bareMemberRule(e, e->name, l); outside.decl != l.decl)
   {
     l = outside; // (required `this.`: a bare name that is a member and a global, the global)
     e->resolved = l.decl;
@@ -1990,17 +1996,17 @@ auto GlobalScope::Impl::Walker::reachThroughBases(Scope* cls, Scope* target, int
   return reached;
 }
 
-auto GlobalScope::Impl::bareNameOutside(const NameExpr* n, const Lookup& l, Scope* scope, Decl** onlyMember) -> Lookup
+auto GlobalScope::Impl::bareNameOutside(const QualifiedName& name, const Lookup& l, Scope* scope, Decl** onlyMember) -> Lookup
 {
   // (the mark is the program's own files only: the stdlib keeps the old meaning until --this-reference is the default, A's plan step 4)
-  if (!n->name.requiresThis || l.found != Found::Member || !l.foundIn || l.foundIn->kind != ScopeKind::Class || !l.foundIn->owner)
+  if (!name.requiresThis || l.found != Found::Member || !l.foundIn || l.foundIn->kind != ScopeKind::Class || !l.foundIn->owner)
     return l;
   Decl* d = l.decl;
   if (d && d->kind == NodeKind::UsingNameDecl && !static_cast<UsingNameDecl*>(d)->isEnum) // (`using Base::f;`, then `f()`)
     d = lookupQualified(static_cast<UsingNameDecl*>(d)->name, lexicalScopeOf(d), nullptr, 0).decl;
   if (!d || (d->kind != NodeKind::VariableDecl && d->kind != NodeKind::FunctionDecl) || (d->flags & (DF_Typedef | DF_Constructor | DF_Destructor)))
     return l; // (types, enumerators and nested classes need no `this.`)
-  const NamePart& part = n->name.parts[0];
+  const NamePart& part = name.parts[0];
   uint32_t symbol = !part.special ? part.symbol : part.special == 2 && part.opToken < uint32_t(P::Count) ? opSymbols[part.opToken] : UINT32_MAX;
   if (symbol == UINT32_MAX)
     return l;
@@ -2018,15 +2024,15 @@ auto GlobalScope::Impl::bareNameOutside(const NameExpr* n, const Lookup& l, Scop
   return l;
 }
 
-auto GlobalScope::Impl::Walker::bareMemberRule(const NameExpr* n, const Lookup& l) -> Lookup
+auto GlobalScope::Impl::Walker::bareMemberRule(const Node* n, const QualifiedName& qualified, const Lookup& l) -> Lookup
 {
   Decl* d = nullptr;
-  Lookup outside = impl.bareNameOutside(n, l, scope, &d);
+  Lookup outside = impl.bareNameOutside(qualified, l, scope, &d);
   // (a requires-expression's probe too: an error, never a requirement silently unmet)
   const ParsedFile* where = file ? file : probedFile;
   if (d && where && !activeSubst && thisRuleNoted.insert(n).second)
   {
-    const NamePart& part = n->name.parts[0];
+    const NamePart& part = qualified.parts[0];
     uint32_t symbol = !part.special ? part.symbol : impl.opSymbols[part.opToken];
     std::string name(symbols.name(symbol));
     std::string old = !part.special ? name
@@ -2038,10 +2044,10 @@ auto GlobalScope::Impl::Walker::bareMemberRule(const NameExpr* n, const Lookup& 
   return outside;
 }
 
-auto GlobalScope::Impl::Walker::noteImplicitMember(const NameExpr* n, const Lookup& l) -> void
+auto GlobalScope::Impl::Walker::noteImplicitMember(const Node* n, const QualifiedName& qualified, const Lookup& l) -> void
 {
   const ParsedFile* where = file ? file : probedFile; // (a requires-expression's probe too: what the rule will take)
-  if (!thisWarningsOn() || l.found != Found::Member || n->name.parts.size() != 1 || n->name.global || n->name.typeQualifier || !where ||
+  if (!thisWarningsOn() || l.found != Found::Member || qualified.parts.size() != 1 || qualified.global || qualified.typeQualifier || !where ||
       where->isImported || declaredTypes > 0 || !l.foundIn || l.foundIn->kind != ScopeKind::Class || !l.foundIn->owner)
     return;
   Decl* d = l.decl;
@@ -2050,7 +2056,7 @@ auto GlobalScope::Impl::Walker::noteImplicitMember(const NameExpr* n, const Look
   if (!d || (d->kind != NodeKind::VariableDecl && d->kind != NodeKind::FunctionDecl) || (d->flags & (DF_Typedef | DF_Constructor | DF_Destructor)))
     return; // (types, enumerators and nested classes need no `this.`: design.md 23c)
   // (`operator=(other)`: the operator's symbol; a destructor's or a conversion's name has none to give)
-  const NamePart& part = n->name.parts[0];
+  const NamePart& part = qualified.parts[0];
   uint32_t symbol = !part.special ? part.symbol : part.special == 2 && part.opToken < uint32_t(P::Count) ? impl.opSymbols[part.opToken] : UINT32_MAX;
   if (symbol == UINT32_MAX)
     return;
@@ -6366,8 +6372,8 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
       record(n, types.unknown());
       return types.unknown(); // (design.md 19: reported, or the instances' to tell)
     }
-    noteImplicitMember(n, l);
-    if (Lookup outside = bareMemberRule(n, l); outside.decl != l.decl)
+    noteImplicitMember(n, n->name, l);
+    if (Lookup outside = bareMemberRule(n, n->name, l); outside.decl != l.decl)
       l = outside; // (required `this.`: a bare call of a name that is a member and a global, the global's)
     Subst friendArgs; // the class arguments of the friend functions argument-dependent lookup finds
     if (l.found == Found::Global)
@@ -8213,6 +8219,7 @@ auto GlobalScope::Impl::Walker::typeOfUnary(UnaryExpr* u) -> const Ty*
 
 auto GlobalScope::Impl::Walker::typeOfUnaryOperator(UnaryExpr* u, OperatorCall& call, FunctionDecl*& callee, bool& member) -> const Ty*
 {
+  PatternScope pattern(*this, !u->isKeyword && P(u->op) == P::Ellipsis && u->postfix);
   if (!u->isKeyword && P(u->op) == P::Ellipsis && u->postfix)
   {
     if (const Ty* pack = typeOfExpansion(u))
@@ -9201,7 +9208,12 @@ auto GlobalScope::Impl::Walker::walkType(Type* t) -> void
     case NodeKind::LRefType: walkType(static_cast<LRefType*>(t)->referenced); break;
     case NodeKind::RRefType: walkType(static_cast<RRefType*>(t)->referenced); break;
     case NodeKind::ConstType: walkType(static_cast<ConstType*>(t)->inner); break;
-    case NodeKind::PackType: walkType(static_cast<PackType*>(t)->pattern); break;
+    case NodeKind::PackType:
+    {
+      PatternScope pattern(*this, true);
+      walkType(static_cast<PackType*>(t)->pattern);
+      break;
+    }
     case NodeKind::ArrayType:
       walkType(static_cast<ArrayType*>(t)->element);
       walkExpr(static_cast<ArrayType*>(t)->size);
@@ -9566,8 +9578,11 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
           ++stats.namesMember;
         FunctionDecl* savedInitializers = initializersOf;
         initializersOf = f;
-        for (Expr* a : init.args)
-          walkExpr(a);
+        {
+          PatternScope pattern(*this, init.isPack); // (`Bs(args)...`)
+          for (Expr* a : init.args)
+            walkExpr(a);
+        }
         initializersOf = savedInitializers;
         // `x{d}` with a double d for an int member: a brace initialization that narrows.
         if (init.braced && !init.isPack && l.decl && (l.decl->kind == NodeKind::VariableDecl || l.decl->kind == NodeKind::ClassDecl))
@@ -10503,7 +10518,10 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
       else if (Expr* subject = reflectionSubject(f->list))
         walkExpr(subject); // `members(T)`: the type reflected on
       else
+      {
+        PatternScope pattern(*this, true); // (`for constexpr (auto x : args)`: the body is its pattern, once per element)
         walkNode(f->list);
+      }
       locals.push(v->name, v);
       ++forConstexprDepth;
       walkStmt(f->body);
@@ -10959,6 +10977,7 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
     case NodeKind::SizeofExpr:
     {
       auto* z = static_cast<SizeofExpr*>(e);
+      PatternScope pattern(*this, z->isPack); // (`sizeof...(args)` counts the pack)
       walkType(z->type);
       walkExpr(z->operand);
       // `sizeof(s->items)` of a flexible array member (or of `extern int table[];`): an array
@@ -11319,6 +11338,7 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
       std::optional<ElementPacksAside> aside;
       if (!once)
         aside.emplace(*this, inElementPattern); // (a fold inside such a pattern: its packs whole)
+      PatternScope foldPattern(*this, true);
       const Ty* l = walkExpr(f->lhs);
       const Ty* r = walkExpr(f->rhs);
       inElementPattern = was;

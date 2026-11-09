@@ -383,6 +383,12 @@ void markRequiredThis(Span<Decl*> decls)
         name.requiresThis = name.parts.size() == 1 && !name.global && !name.typeQualifier;
         break;
       }
+      case NodeKind::NamedType: // (`Box<limit>`, `sizeof(limit)`: a constant the parser read as a type)
+      {
+        QualifiedName& name = static_cast<NamedType*>(n)->name;
+        name.requiresThis = name.parts.size() == 1 && !name.global && !name.typeQualifier;
+        break;
+      }
       case NodeKind::ParamDecl:
         declaredTypes.push_back(static_cast<ParamDecl*>(n)->type);
         break;
@@ -403,6 +409,8 @@ void markRequiredThis(Span<Decl*> decls)
     {
       if (n->kind == NodeKind::NameExpr)
         static_cast<NameExpr*>(n)->name.requiresThis = false;
+      else if (n->kind == NodeKind::NamedType)
+        static_cast<NamedType*>(n)->name.requiresThis = false;
     });
 }
 

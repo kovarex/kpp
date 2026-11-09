@@ -1,0 +1,27 @@
+// spec: required `this.` (design.md 23c, under --this-reference) holds for a bare constant the parser reads as a type: `Box<limit>` and `sizeof(limit)` in code, beside a static member `limit` and a global `limit`, are the global (Q10), at compile time and at run time; `This::limit` is the member; in a data member's type the name stays the member (the types in declarations)
+// found by thread J checking D's review of bf890184 (2026-11-09): such a name is a NamedType, no NameExpr, and the rule never saw it: 2 and 4 where the rule says 1 and 1
+// kpp: --this-reference
+extern "C" int printf(const char* format, ...);
+constexpr char limit = 1;
+template<int N> class Box
+{
+public:
+  static int get() { return N; }
+};
+template<int N> int valueOf(Box<N>&) { return N; }
+class Gauge
+{
+public:
+  static constexpr int limit = 2;
+  Box<limit> kept;
+  static int viaArgument() { return Box<limit>::get(); }
+  static int viaSizeof() { return sizeof(limit); }
+  static int qualified() { return Box<This::limit>::get() * 10 + (int)sizeof(This::limit); }
+  int kept2() { return valueOf(this.kept); }
+};
+int main()
+{
+  Gauge g;
+  printf("%d %d %d %d\n", Gauge::viaArgument(), Gauge::viaSizeof(), Gauge::qualified(), g.kept2());
+  return 0;
+}

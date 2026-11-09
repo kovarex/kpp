@@ -1,0 +1,20 @@
+// spec: a function parameter pack named outside the pattern of a `...` is an error in the template's own text, instantiated or not, as clang's "expression contains unexpanded parameter pack" ([temp.variadic] 5): beside its expansion in one call, alone as an argument, in a generic lambda; `sizeof...(args)`, a fold, an expansion's pattern and a member initializer's pack are where it may be named
+// found by thread J's pack generator (2026-11-09): `sumAll(args, args...)` reached codegen as "taking the address of args"
+// error: parameter_pack_named_outside_an_expansion_is_error.kpp:15: error: the parameter pack args is not expanded: a pack is named only in the pattern of a `...` ([temp.variadic] 5)
+// error: parameter_pack_named_outside_an_expansion_is_error.kpp:16: error: the parameter pack args is not expanded: a pack is named only in the pattern of a `...` ([temp.variadic] 5)
+// error: parameter_pack_named_outside_an_expansion_is_error.kpp:17: error: the parameter pack xs is not expanded: a pack is named only in the pattern of a `...` ([temp.variadic] 5)
+template<typename... Ts> int sumAll(Ts... a) { return (0 + ... + a); }
+template<typename... Bs> struct Multi : Bs...
+{
+  template<typename... Ts> Multi(Ts... args) : Bs(args)... {}
+};
+template<typename... Ts>
+int notInstantiated(Ts... args)
+{
+  int fine = sumAll(args...) + (int)sizeof...(args) + (0 + ... + args);
+  int beside = sumAll(args, args...);
+  int alone = sumAll(args);
+  auto lambda = [](auto... xs) { return sumAll(xs); };
+  return fine + beside + alone;
+}
+int main() { return 0; }

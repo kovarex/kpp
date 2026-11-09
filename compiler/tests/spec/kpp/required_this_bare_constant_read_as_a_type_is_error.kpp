@@ -1,0 +1,18 @@
+// spec: required `this.` (design.md 23c, under --this-reference): a bare constant the parser reads as a type (`Box<made>`, `sizeof(made)`) that finds only a member is the error naming the fix
+// kpp: --this-reference
+// error: required_this_bare_constant_read_as_a_type_is_error.kpp:13: error: made is a static member: write `This::made`, not `made` (design.md 23c)
+// error: required_this_bare_constant_read_as_a_type_is_error.kpp:14: error: made is a static member: write `This::made`, not `made` (design.md 23c)
+template<int N> class Box
+{
+public:
+  static int get() { return N; }
+};
+class Train
+{
+  static constexpr int made = 2;
+  static int a() { return Box<made>::get(); }
+  static int b() { return sizeof(made); }
+public:
+  static int c() { return This::a() + This::b(); }
+};
+int main() { return Train::c(); }

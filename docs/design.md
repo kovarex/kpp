@@ -2337,7 +2337,10 @@ kovarex, 2026-11-07:
   follows the rule too, as the code around it does: the global, or the error, never a requirement silently unmet. Which
   names the rule takes is a mark the parser's last step sets (QualifiedName::requiresThis, markRequiredThis, 2026-11-09,
   D's review), because the evaluator meets a name in an array bound or a template argument before the walk has been there.
-  Specs kpp/required_this_types_in_declarations_keep_the_member, kpp/required_this_in_a_requires_expression,
+  lookupQualified applies it, for every reader of the name: the walk, the evaluator, a template argument and a constant the
+  parser read as a type (`Box<limit>`, `sizeof(limit)`).
+  Specs kpp/required_this_compile_time_reads_the_same_name, kpp/required_this_constant_read_as_a_type,
+  kpp/required_this_types_in_declarations_keep_the_member, kpp/required_this_in_a_requires_expression,
   kpp/required_this_bare_member_in_a_requires_expression_is_error.
 - **Whose code** (Q12): all kpp code, the game, the stdlib, the official libraries and the programs.
   Imported C and C++ headers are exempt, "so we can actually use C++ libraries, which we will have for a

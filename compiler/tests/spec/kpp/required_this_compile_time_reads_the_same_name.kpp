@@ -1,0 +1,21 @@
+// spec: required `this.` (design.md 23c, under --this-reference) at compile time: a bare name beside a member and a global of its spelling is the global in a constant expression as at run time: a static's value and a static constexpr function, a static member's initializer, a default member initializer
+// found by thread D's review of bf890184 (2026-11-09): the walk bound the global and the evaluator took the member: `2 2` where the rule says `1 1`, a static's initializer 4 where it says 2
+// kpp: --this-reference
+extern "C" int printf(const char* format, ...);
+constexpr int limit = 1;
+class C
+{
+public:
+  static constexpr int limit = 2;
+  static constexpr int get(int k) { return limit + k; }
+  static constexpr int twiceLimit = limit * 2;
+  int field = limit;
+};
+int main()
+{
+  constexpr int atCompileTime = C::get(0);
+  volatile int zero = 0;
+  C c;
+  printf("%d %d %d %d\n", atCompileTime, C::get(zero), C::twiceLimit, c.field);
+  return 0;
+}

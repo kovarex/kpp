@@ -1431,7 +1431,9 @@ auto GlobalScope::Impl::lookupQualified(const QualifiedName& name, Scope* contex
   Lookup l = lookupWritten(name, context, locals, depth, subst, elementPacks, elementIndex);
   if (Decl* en = usingEnumerator(l.decl, depth))
     l.decl = en, l.overloads = nullptr, l.scope = nullptr;
-  return l;
+  // Required `this.` (design.md 23c): here, for every reader of a marked name, the walk, the evaluator, a template
+  // argument or a constant the parser read as a type (`Box<limit>`, `sizeof(limit)`).
+  return name.requiresThis ? bareNameOutside(name, l, context) : l;
 }
 
 auto GlobalScope::Impl::lookupInScopeOrPrivate(Scope* s, Scope* context, uint32_t symbol, Lookup& out, int depth) -> bool
