@@ -1216,3 +1216,10 @@
 @ tests/TestLuaEventFilters.cpp: script is const
 -     return [&scenario, script = std::move(script)] (const std::string& filter) -> void
 +     return [&scenario, script = script] (const std::string& filter) -> void
+
+# The global namespace is associated in argument-dependent lookup, and every file's global functions are one scope, where
+# C++'s translation units keep apart what no header declares: a helper a .cpp defines globally is that file's.
+
+@ tests/TestSpaceMap.cpp: the file's own helper (no header declares it), which TestAudioGui's suite also has as its own
+- void openSpaceMap(TestScenarioGui& scenario)
++ static void openSpaceMap(TestScenarioGui& scenario)

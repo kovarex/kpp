@@ -1,0 +1,28 @@
+// spec: what the global namespace being associated does not do: a global function is no candidate for a class of another namespace, and one of the same parameters as the namespace's function makes the call ambiguous, as in C++.
+// error: argument_dependent_lookup_of_the_global_namespace_is_error.kpp:18: error: a class (S) does not convert to int32: it has no implicit conversion operator to a scalar
+// error: argument_dependent_lookup_of_the_global_namespace_is_error.kpp:19: error: the call of twice with (Key&) is ambiguous between int32(Key)
+// factorio: none
+namespace n
+{
+  struct S
+  {
+    int v;
+  };
+}
+int f(const n::S& s) { return s.v; }
+int twice(Key k) { return 1; }
+namespace lib
+{
+  int f(int v) { return v; }
+  int twice(Key k) { return 2; }
+  int g(n::S s) { return f(s); }
+  int h(Key k) { return twice(k); }
+}
+struct Key
+{
+  int v;
+};
+int main()
+{
+  return 0;
+}

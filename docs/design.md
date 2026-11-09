@@ -3609,7 +3609,14 @@ The smallest language that is still kpp, as the target of the first code generat
   An unqualified call `f(args)` also finds the functions named `f` that the namespaces
   associated with its arguments declare: the innermost enclosing namespace of each argument's
   class or enumeration (through pointers, references and arrays) and of a class instance's type
-  arguments. The functions found both ways are one overload set. It does not apply when
+  arguments, the global namespace too (D, 2026-11-09: a namespace's own `hashOf` stops ordinary
+  lookup, and a global Key's `hashOf(Key)` has to be found all the same; it was left out, which
+  took the namespace's function for an enumeration or a class converting to its parameter, a
+  silent wrong answer). There, a file's `private` functions come first, as ordinary lookup has
+  them, and the library's functions are no candidates, nor is the global namespace associated
+  through the library's classes: they are std's, only declared there until the library is scoped
+  (language/argument_dependent_lookup_reaches_the_global_namespace). The functions found both
+  ways are one overload set. It does not apply when
   ordinary lookup finds a class member, a local or something other than a function. Why: the
   converter keeps the game's unqualified calls as written (`shortNumberFormat(time,
   StringUtil::Compactness::Loose)` from namespace TimeUtil), so without the rule it would have to

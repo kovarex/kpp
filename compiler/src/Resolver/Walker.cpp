@@ -3804,10 +3804,17 @@ auto GlobalScope::Impl::Walker::addArgumentDependentCandidates(Lookup& l, uint32
     impl.associatedNamespaces(a, namespaces);
   for (Scope* ns : namespaces)
   {
-    if (ns == l.foundIn)
-      continue;
+    if (ns == l.foundIn || (l.foundIn && l.foundIn->privateTo && l.foundIn->parent == ns))
+      continue; // (ordinary lookup got that far: a file's `private` names stand before the global ones)
+    // In the global namespace, as ordinary lookup has it: this file's `private` functions first (design.md 15).
+    Scope* in = ns;
+    if (ns == &impl.root)
+      if (Scope* own = impl.privateScopeFor(scope); own && own->parent == ns && own->find(symbol))
+        in = own;
     Lookup found;
-    if (!impl.lookupInScope(ns, symbol, found, 0, false) || !found.decl || found.decl->kind != NodeKind::FunctionDecl || found.foundIn != ns)
+    if (!impl.lookupInScope(in, symbol, found, 0, false) || !found.decl || found.decl->kind != NodeKind::FunctionDecl || found.foundIn != in)
+      continue;
+    if (ns == &impl.root && !impl.stdScope && !(found = impl.withoutLibraryFunctions(found)).decl)
       continue;
     l = l.found == Found::No ? found : impl.mergeOverloads(l, found);
   }

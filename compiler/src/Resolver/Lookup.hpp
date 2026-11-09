@@ -83,9 +83,16 @@
   Lookup lookupPastAlias(UsingAliasDecl* alias, uint32_t symbol, int depth);
 
   // The namespaces argument-dependent lookup searches for an argument of type t: a class's or an
-  // enumeration's innermost enclosing namespace (not the global one, which ordinary lookup
-  // searches anyway), and those of a class instance's type arguments.
+  // enumeration's innermost enclosing namespace, the global one too, and those of a class
+  // instance's type arguments. Without --std-scope the library's classes, declared in the global
+  // namespace as if they were std's, have none: no program's function is found through them.
   void associatedNamespaces(const Ty* t, std::vector<Scope*>& out, int depth = 0, std::vector<const Ty*>* visited = nullptr);
+
+  // l without the library's functions: the program's functions of the global namespace, which is
+  // all argument-dependent lookup finds there (without --std-scope the library's are declared
+  // there as well, as if they were std's). Its decl is null when none is left. Kept with the
+  // merged sets (forgetMergedOverloads).
+  Lookup withoutLibraryFunctions(const Lookup& l);
 
   // The friend functions defined in a class (hidden friends: static members to the compiler, the
   // parser's DF_Static) named symbol, which no lookup finds but argument-dependent lookup through an

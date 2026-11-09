@@ -1,0 +1,112 @@
+// spec: the global namespace is associated as any other ([basic.lookup.argdep] 2): an unqualified call in a namespace that has a function of the name, where ordinary lookup stops, also finds the global functions of the name for an argument of a global class or enumeration, through a pointer or a nesting class or a template argument too; for an argument of a builtin type or of a class of another namespace, none. A file's `private` functions come first there, as ordinary lookup has them; the library's functions, std's, are no candidates. (Until 2026-11-09 the global namespace was left out: an error for a class that converts to nothing, and without one the namespace's function, for an enumeration, a class converting to its parameter, a derived class: silent wrong answers.) What clang prints.
+// factorio: a std template's `hashOf(key)` for a game's global Key, with the library's own hashOf overloads in std
+namespace lib
+{
+  int hashOf(int v) { return v + 1; }
+  template<class T> int hashTwice(const T& t) { return hashOf(t) * 2; }
+  template<class T> struct Box { T value; };
+  constexpr int constantOf(int v) { return v + 1; }
+  template<class T> constexpr int constantTwice(const T& t) { return constantOf(t) * 2; }
+}
+
+struct Key
+{
+  int v;
+};
+int hashOf(const Key& k) { return k.v * 10; }
+constexpr int constantOf(const Key& k) { return k.v * 10; }
+
+enum Color { Red = 3, Green = 5 };
+int hashOf(Color c) { return c == Red ? 300 : 500; }
+
+enum class Scoped { One };
+int hashOf(Scoped) { return 111; }
+
+struct Wrapped
+{
+  int v;
+  implicit operator int() const { return this.v; }
+};
+int hashOf(const Wrapped& w) { return w.v * 100; }
+
+int hashOf(const Key* k) { return k->v * 1000; }
+
+struct Outer
+{
+  struct Inner
+  {
+    int v;
+  };
+};
+int hashOf(const Outer::Inner& i) { return i.v + 7000; }
+int hashOf(const lib::Box<Key>& b) { return b.value.v + 8000; }
+
+private int privateOne(const Key& k) { return k.v + 50; }
+
+struct Base
+{
+  int b = 1;
+};
+struct Derived : Base
+{
+  int d = 2;
+};
+int rank(const Derived&) { return 2; }
+
+namespace nm
+{
+  struct Inside
+  {
+    int v;
+  };
+}
+int builtinOnly(int) { return 10; }
+int builtinOnly(const nm::Inside&) { return 9; }
+
+template<class T> int deduced(const T&) { return 1; }
+template<class T> int withArguments(const Key& k) { return k.v + sizeof(T); }
+int named(const Key& k) { return k.v * 10; }
+
+namespace other
+{
+  int hashOf(double) { return -2; }
+  template<class T> int hashIt(const T& t) { return hashOf(t); }
+  int plain(Key k) { return hashOf(k); }
+  int plainEnum(Color c) { return hashOf(c); }
+  int plainInt(int i) { return hashOf(i); }
+  int privateOne(int) { return -3; }
+  int callsPrivate(Key k) { return privateOne(k); }
+  int rank(const Base&) { return 1; }
+  int callsRank(Derived& d) { return rank(d); }
+  int builtinOnly(double) { return -4; }
+  int callsBuiltinOnly(nm::Inside i) { return builtinOnly(i.v); }
+  int deduced(int) { return 2; }
+  int callsDeduced(Key k) { return deduced(k) * 10 + deduced(1); }
+  template<class T> int withArguments(int) { return -5; }
+  int callsWithArguments(Key k) { return withArguments<long long>(k); }
+  int swap(Base&, Base&) { return 1; } // (the library's swap<T>, which takes a Derived exactly, is std's: no candidate)
+  int callsSwap(Derived& a, Derived& b) { return swap(a, b); }
+  using ::named;
+  int named(int) { return -7; }
+  int sameFunctionTwice(Key k) { return named(k); } // (by its using-declaration and by the argument: one candidate)
+  namespace inner
+  {
+    int hashOf(float) { return -6; }
+    int pastBoth(Key k) { return hashOf(k); }
+  }
+}
+
+constexpr int atCompileTime = lib::constantTwice(Key{4});
+
+int main()
+{
+  Key key{4};
+  println(lib::hashTwice(key), " ", lib::hashTwice(4), " ", lib::hashTwice(Red), " ", lib::hashTwice(Scoped::One), " ", lib::hashTwice(Wrapped{6}));
+  println(lib::hashTwice(&key), " ", lib::hashTwice(Outer::Inner{1}), " ", lib::hashTwice(lib::Box<Key>{key}));
+  println(other::hashIt(key), " ", other::hashIt(1), " ", other::plain(key), " ", other::plainEnum(Green), " ", other::plainInt(1));
+  Derived d, e;
+  println(other::callsPrivate(key), " ", other::callsRank(d), " ", other::callsBuiltinOnly(nm::Inside{1}));
+  println(other::callsDeduced(key), " ", other::callsWithArguments(key), " ", other::callsSwap(d, e), " ", other::sameFunctionTwice(key), " ", other::inner::pastBoth(key));
+  println(atCompileTime);
+  return 0;
+}

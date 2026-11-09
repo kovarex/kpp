@@ -723,7 +723,10 @@ auto GlobalScope::Impl::associatedNamespaces(const Ty* t, std::vector<Scope*>& o
   Scope* s = scope ? scope->parent : lexicalScopeOf(t->decl);
   while (s && s->kind != ScopeKind::Namespace)
     s = s->parent;
-  if (s && (s != &root || stdScope) && std::find(out.begin(), out.end(), s) == out.end()) // (the global scope: only a code in std misses it by ordinary lookup)
+  // (The global namespace is one as any other ([basic.lookup.argdep] 2): a program's `hashOf(Key)` for its global Key, from
+  // a namespace with a hashOf of its own, or from std. Not through the library's classes, without --std-scope declared there as if they were std's.)
+  bool libraryClassAtRoot = s == &root && !stdScope && t->decl->file && t->decl->file->isLibrary;
+  if (s && !libraryClassAtRoot && std::find(out.begin(), out.end(), s) == out.end())
     out.push_back(s);
   if (t->kind == TyKind::Class)
   {
@@ -907,6 +910,32 @@ auto GlobalScope::Impl::mergeOverloads(const Lookup& a, const Lookup& b) -> Look
   }
   Lookup out = a;
   out.overloads = merged.get();
+  return out;
+}
+
+auto GlobalScope::Impl::withoutLibraryFunctions(const Lookup& l) -> Lookup
+{
+  auto ofLibrary = [](const Entry& e) { return e.decl && e.decl->file && e.decl->file->isLibrary; };
+  if (!l.overloads || std::none_of(l.overloads->begin(), l.overloads->end(), ofLibrary))
+    return l;
+  std::lock_guard lock(mergedOverloadsMutex);
+  std::unique_ptr<std::vector<Entry>>& kept = mergedOverloads[{l.overloads, nullptr}]; // (a merge's second set is never null)
+  if (!kept)
+  {
+    kept = std::make_unique<std::vector<Entry>>();
+    for (const Entry& e : *l.overloads)
+      if (!ofLibrary(e))
+        kept->push_back(e);
+  }
+  Lookup out = l;
+  out.overloads = kept.get();
+  out.decl = nullptr;
+  if (!kept->empty())
+  {
+    Entry e = pick(*kept);
+    out.decl = e.decl;
+    out.scope = e.scope ? e.scope : scopeOfEntry(e, 0);
+  }
   return out;
 }
 
