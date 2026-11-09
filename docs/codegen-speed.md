@@ -677,6 +677,21 @@ The table gives medians, with each compiler's range in brackets:
 - **The output is unchanged.** The game's IR and its 256 debug objects are byte-identical with and without the
   cuts.
 
+B's window of 2026-11-09 (13:13 to 13:15) tried one builder per class layout, and it was dropped:
+- **What it was.** Every emitter builds a class's layout the first time it needs one and the first copy published
+  wins, so at the start of level 0 the threads build the same classes at once. A diagnostic build counted 43,062
+  layouts built and 17,133 dropped, 4.6 of 6.0 thread-seconds. The change made an emitter that holds no layout of
+  its own wait a moment (2 ms at most) for one another emitter is building: about 26,100 built and 200 to 300
+  dropped.
+- **Compilers:** master a571b23d against that change on it, each with LLVM inside. **Tree:** factorio-in-kpp
+  converted from C:\Factorio 4c178a5b915 by kpp 8ca54606. **Command:** as above, five clean builds each in turned
+  order, the machine 0 to 12% busy before each build.
+- **Codegen did not move:** 4.30 s (4.26 to 4.47) on master, 4.32 s (4.31 to 4.43) with the change; kpp 8.5 s
+  both, the back end after codegen 2.49 and 2.47 s. Those duplicates run on cores with nothing else to do. It
+  saved CPU and no time, so nothing of it is on master.
+- **Where the clean build is now** (master a571b23d, this window's medians): kpp 8.5 s = codegen 4.30 + the back end
+  after it 2.49 + the rest 1.70; the link 1.2 s; the build.kpp description 0.35 to 0.87 s before it.
+
 When this plan was written, a clean debug build of the game was 17.1 s, the leaf edit 1.4 to 1.5 s,
 and the wide edit 1.9 s. These were thread A's quiet numbers: kpp run directly, without debug info.
 The gains overlap; each line is against the line before. The status column is as of 2026-11-02.
