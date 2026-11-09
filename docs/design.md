@@ -1980,6 +1980,13 @@ specializes `std`'s template, so that code not yet rewritten keeps compiling. Th
 Argument-dependent lookup follows C++ here: a base class's namespace is associated, and with `std` scoped the global namespace is
 one (a library template's `hashOf(key)` finds a program's global `hashOf(Key)`).
 
+The converter's step (C, 2026-11-09): the converted game writes `std::` for what the library declares, the built-in traits too
+(`std::isSame<T, U>`); what clib/ alone declares stays `::malloc`; `std::remove` is the algorithm (all 22 of the game's calls). C's
+`NAN`, `INFINITY` and `HUGE_VAL` are in clib/, global as C has them, and C's `isnan`, `isinf`, `isfinite` and `signbit`, macros C writes
+bare, are written `std::isnan`. The game's classes keep their names: Vector, Map, Optional, Pair, RuntimeError, Clock and TimePoint.
+The renames had cost more than the name: a definition starting with a renamed class lost the mark that moves its body into its class, so
+those bodies now move, as all others did (`src/Graphics/TextDrawSection.kpp`'s drawSection, 182 lines).
+
 ### 17. A self-contained release (decided 2026-11-02)
 
 kovarex, 2026-11-02, after the first installer asked for Visual Studio's clang: "I definetly want
