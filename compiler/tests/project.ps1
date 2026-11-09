@@ -489,7 +489,11 @@ if (Run 'syslibs')
     foreach ($case in @(@('', '', @(), 'windows'), @('', '', @('--target', 'freebsd', '--run'), 'freebsd'),
                         @('app.argument("--target");  app.argument("linux");', '', @('--run'), 'linux'),
                         @('app.argument("--target");  app.argument("linux");', '', @('--target', 'windows'), 'windows'),
-                        @('', 'cell.target.argument("--target");  cell.target.argument("freebsd");', @(), 'error')))
+                        @('', 'cell.target.argument("--target");  cell.target.argument("freebsd");', @(), 'error'),
+                        # (projectlib's names as kpp's: AArch64 Linux and macOS by name and by triple)
+                        @('', '', @('--target', 'linux-arm64', '--run'), 'linux'), @('', '', @('--target', 'aarch64-linux-gnu', '--run'), 'linux'),
+                        @('', '', @('--target', 'macos', '--run'), 'mac'), @('', '', @('--target', 'macos-x64', '--run'), 'mac'),
+                        @('', '', @('--target', 'x86_64-apple-darwin20', '--run'), 'mac'), @('', '', @('--target', 'arm64-apple-macosx12.0', '--run'), 'mac')))
     {
       Set-Content 'build.kpp' $cellBuild.Replace('TARGET', $case[0]).Replace('CONFIGURE', $case[1])
       if (Test-Path 'platform.txt') { Remove-Item 'platform.txt' }

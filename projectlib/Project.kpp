@@ -597,15 +597,21 @@ void kppConfigurationLines(String& out, const Project& project, const Configurat
 }
 
 // The platform a --target names, as kpp's targetNamed reads it (compiler/src/target.hpp): its names
-// and triples for Linux and FreeBSD, Windows for the rest (windows, windows-gnu; a name kpp does not
-// know fails kpp's build). kpp checks the cell's against its own (Project/Build.cpp), so that this
-// copy cannot go wrong silently.
+// and triples for Linux (x86-64 and AArch64), FreeBSD and macOS, Windows for the rest (windows,
+// windows-gnu; a name kpp does not know fails kpp's build). kpp checks the cell's against its own
+// (Project/Build.cpp), so that this copy cannot go wrong silently.
 Platform kppTargetPlatform(StringView name)
 {
   if (name == "linux" || name == "x86_64-unknown-linux-gnu" || name == "x86_64-linux-gnu" || name == "x86_64-pc-linux-gnu")
     return Platform::Linux;
+  if (name == "linux-arm64" || name == "aarch64-unknown-linux-gnu" || name == "aarch64-linux-gnu" || name == "arm64-unknown-linux-gnu")
+    return Platform::Linux;
   if (name == "freebsd" || name.startsWith("x86_64-unknown-freebsd"))
     return Platform::FreeBSD;
+  bool apple = name.find("-apple-macos") != StringView::npos || name.find("-apple-darwin") != StringView::npos;
+  if (name == "macos" || name == "macos-x64" ||
+      (apple && (name.startsWith("arm64-") || name.startsWith("aarch64-") || name.startsWith("x86_64-"))))
+    return Platform::Mac;
   return Platform::Windows;
 }
 

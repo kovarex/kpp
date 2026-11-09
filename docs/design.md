@@ -4711,6 +4711,11 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   macos_sdk_too_old_is_explained, macos_sdk_lacks_the_architecture_is_explained,
   macos_not_an_sdk_is_explained (fake SDKs beside them: the spec runner's `{here}`), and
   macos_sdk_checked_before_the_build: with a good SDK the build goes on (M2, below).
+- **build.kpp (2026-11-09, thread E):** projectlib's kppTargetPlatform reads the names and triples as
+  targetNamed does: `macos`, `macos-x64` and the apple triples are `Platform::Mac`, `linux-arm64` and
+  the aarch64 Linux triples `Platform::Linux`. Until then a project's cell.platform said Windows for
+  them, and kpp refused the build (its check that projectlib reads a name as kpp does). run_tests'
+  project test builds a cell for each.
 - **M2, Mach-O objects (2026-11-07):** a build for macos or macos-x64 compiles its modules into Mach-O
   objects and stops at the link with an error that says so (ld64.lld is M3), never another target's
   link. Mach-O has no COMDATs and LLVM refuses a module that names one: each module's text loses its
