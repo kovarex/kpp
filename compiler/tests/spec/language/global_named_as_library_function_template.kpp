@@ -1,0 +1,9 @@
+// spec: a global of the program named as one of the standard library's function templates (`empty`, Iterator.kpp) is the program's: the library's is std::empty (it was a clash while the library's names were global)
+// factorio: from D's value corpus: `int empty` gave "static assertion whose condition the compiler cannot evaluate yet" and a codegen error beside the clash
+constexpr int empty = 3;
+static_assert(empty == 3, "empty is the global");
+int main()
+{
+  println(empty);
+  return 0;
+}

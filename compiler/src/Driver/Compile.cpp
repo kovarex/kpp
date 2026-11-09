@@ -82,8 +82,8 @@ int compile(int argc, char** argv)
       options.thisWarnings = true;
     else if (arg == "--this-reference")
       options.thisReference = true;
-    else if (arg == "--std-scope")
-      options.stdScope = true;
+    else if (arg == "--std-scope" || arg == "--no-std-scope")
+      options.stdScope = arg == "--std-scope";
     else if (arg == "--this-reference-library" && i + 1 < argc)
       options.thisReferenceLibraries.push_back(argv[++i]);
     else if (arg == "--explicit-by-default")

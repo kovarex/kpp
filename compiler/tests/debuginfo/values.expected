@@ -31,15 +31,15 @@ function game::Square::sideBy::__lambda_f9e4fd6c_0::operator()(int32)
 function game::Square::sideBy::__lambda_f9e4fd6c_1::operator()(int32)
   parameter by int
   local held game::Square
-function inspect(const game::Point&, int32, game::Mode, StringView)
+function inspect(const game::Point&, int32, game::Mode, std::StringView)
   parameter point const game::Point&
   parameter scale int
   parameter mode game::Mode
-  parameter label StringView&
+  parameter label std::StringView&
   local sum int
   local mask game::Mask
   local scaled inspect::__lambda_f9e4fd6c_2
-  local values Vector<int32>
+  local values std::Vector<int32>
   local px const int&
   local py const int&
   local copied game::Point
@@ -104,7 +104,7 @@ class Value, 16 bytes
   member __tag Value::Tag at 0, public
   member __alt_Integer int at 8, public
   member __alt_Real double at 8, public
-class Vector<int32>, 24 bytes
+class std::Vector<int32>, 24 bytes
   member items int* at 0, private
   member length unsigned __int64 at 8, private
   member allocated unsigned __int64 at 16, private

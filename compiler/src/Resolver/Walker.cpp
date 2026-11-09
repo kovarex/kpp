@@ -5221,8 +5221,8 @@ auto GlobalScope::Impl::Walker::spelledParameterType(ParamDecl* p, const Ty* to)
               {
                 Decl* d = impl.lookupQualified(argument->name, dc.scope, &dc.params, 0).decl;
                 std::optional<std::string> path = d ? scopePath(d->parent) : std::nullopt;
-                if (!path || !path->empty())
-                  return true;
+                if ((!path || !path->empty()) && !(d && d->file && d->file->isLibrary))
+                  return true; // (a library's name, written bare while the bridge lasts: as it is written)
               }
               if (depth < 8 && unqualifiedArgument(argument->name, depth + 1))
                 return true;

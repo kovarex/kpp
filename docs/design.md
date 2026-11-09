@@ -1973,7 +1973,7 @@ C import), the allocation functions (`operator new`, global as C++'s), the compi
 The compiler's built-in traits belong to `std` as the library's templates do: `std::isSame<A, B>`, `std::Conditional<c, A, B>`; and
 what the language means by a library name is that name, not whatever the program calls so (`T^` is `::std::UniquePtr<T>`).
 
-`--std-scope` turns it on, off by default, until the rewrite of every tree is done. While it is on, a name the global scope lacks
+It is on by default (`--no-std-scope` turns it off, to compare with). Until the rewrite of every tree is done, a name the global scope lacks
 is looked up in `std`, functions of one name in both are one overload set and a bare specialization (`template<> struct Hash<Key>`)
 specializes `std`'s template, so that code not yet rewritten keeps compiling. That bridge goes when the rewrite is done.
 

@@ -1,5 +1,4 @@
-// spec: a program's free function with the parameters of a standard library function of the same name (`String toString(int)`, which Format.kpp has) is that function defined twice in the one global scope: a compile error naming both, not a clash in the generated code; declaring it again (`int printf(const char*, ...);`) and an overload with other parameters are fine
-// error: error: 'toString' with these parameters is defined here and in the standard library
+// spec: a program's free function with the parameters of a standard library function of the same name (`String toString(int)`) is the program's: the library's is std::toString (it was a clash while the library's names were global)
 String toString(int value)
 {
   String text;

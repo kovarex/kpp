@@ -1,25 +1,25 @@
-String
-StringView
-Vector<*>
-Span<*>
-UniquePtr<*>
-SharedPtr<*>
-WeakPtr<*>
-Map<*>
-Set<*>
-MultiMap<*>
-MultiSet<*>
-Optional<*>
-Pair<*>
-HashMap<*>
-HashSet<*>
-Deque<*>
-HashTable<Pair<String, int32>, String, HashMapKey<String, int32>, Hash<String>, EqualTo<String>, true>
-HashTable<Pair<int32, Vector<int32> >, int32, HashMapKey<int32, Vector<int32> >, Hash<int32>, EqualTo<int32>, true>
-HashTable<int32, int32, HashSetKey<int32>, Hash<int32>, EqualTo<int32>, true>
+std::String
+std::StringView
+std::Vector<*>
+std::Span<*>
+std::UniquePtr<*>
+std::SharedPtr<*>
+std::WeakPtr<*>
+std::Map<*>
+std::Set<*>
+std::MultiMap<*>
+std::MultiSet<*>
+std::Optional<*>
+std::Pair<*>
+std::HashMap<*>
+std::HashSet<*>
+std::Deque<*>
+std::HashTable<int32, int32, std::HashSetKey<int32>, std::Hash<int32>, std::EqualTo<int32>, true>
+std::HashTable<std::Pair<int32, std::Vector<int32> >, int32, std::HashMapKey<int32, std::Vector<int32> >, std::Hash<int32>, std::EqualTo<int32>, true>
+std::HashTable<std::Pair<std::String, int32>, std::String, std::HashMapKey<std::String, int32>, std::Hash<std::String>, std::EqualTo<std::String>, true>
 Point^
-List<String>
-ForwardList<int32>
-RbTree<Pair<String, int32>, String, MapKey<String, int32>, Less<String> >
-RbTree<int32, int32, SetKey<int32>, Less<int32> >
+std::List<std::String>
+std::ForwardList<int32>
+std::RbTree<int32, int32, std::SetKey<int32>, std::Less<int32> >
+std::RbTree<std::Pair<std::String, int32>, std::String, std::MapKey<std::String, int32>, std::Less<std::String> >
 Property

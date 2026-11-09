@@ -1,6 +1,6 @@
 // spec: String has no `+=` on purpose (docs/stdlib/text.md, design.md 14): `s += t` is an error that says so and what to write, `<<`, which appends; WString alike
 // found by thread E's battery (2026-11-06): the error said "codegen does not support String has no operator+= yet", as if it were a gap
-// error: string_plus_assign_is_error.kpp:9: error: String has no operator+=: `<<` appends to a String
+// error: string_plus_assign_is_error.kpp:9: error: std::String has no operator+=: `<<` appends to a std::String
 int main()
 {
   String s("a");

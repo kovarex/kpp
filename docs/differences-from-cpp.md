@@ -123,7 +123,7 @@ int helper(int) { return 2; }
 - **C++:** `std` is a namespace; `using namespace std;` is allowed, and a program may not add to it, apart from specializations.
 - **kpp:** `std` is a scoped library, so `using namespace std;` is an error, as for every library. Its names are kpp's (`std::String`,
   `std::Vector`, `std::println`), and C's stay global, never `std::sqrt`. A top-level `using std::String;` is allowed and reaches the whole
-  program. Today the names are global (`String`); `--std-scope` moves them.
+  program. Until the rewrite of every tree is done a bare `String` still finds the library's.
 - **Why:** a program's own `Map` or `Vector` stands beside the library's (kovarex, 2026-11-09).
 - **See:** [design 16][d16]; specs `kpp/std_scope_names`, `kpp/std_scope_using_namespace_is_error`.
 

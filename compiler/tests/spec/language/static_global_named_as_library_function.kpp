@@ -1,0 +1,9 @@
+// spec: a static global, or one in an unnamed namespace, named as one of the standard library's functions is the program's: the library's are std::empty and std::size (they were clashes while the library's names were global)
+// factorio: from D's value corpus (a global named `empty`); the clash check passed over names local to their file
+static int empty = 3;
+namespace { int size = 4; }
+int main()
+{
+  println(empty, " ", size);
+  return 0;
+}

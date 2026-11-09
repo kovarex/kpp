@@ -1223,3 +1223,7 @@
 @ tests/TestSpaceMap.cpp: the file's own helper (no header declares it), which TestAudioGui's suite also has as its own
 - void openSpaceMap(TestScenarioGui& scenario)
 + static void openSpaceMap(TestScenarioGui& scenario)
+
+@ libraries/UnitTest++/AssertException.cpp: `using namespace std;` is an error in kpp, whose std is a library (design.md 16); the two calls below it are C's
+- 	using namespace std;
++ 

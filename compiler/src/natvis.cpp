@@ -111,9 +111,13 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
       else if (d->kind == NodeKind::NamespaceDecl)
         collect(static_cast<const NamespaceDecl*>(d)->decls, file);
   };
+  bool scoped = false; // the standard library is the scoped library std
   for (const ParsedFile* f : files)
     if (f->isLibrary)
+    {
       collect(f->decls, f);
+      scoped = scoped || f->libraryScope != UINT32_MAX;
+    }
 
   std::set<std::string> broken; // rules left out for what they compute: by their first class
   std::string largeMark;
@@ -330,7 +334,14 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
         }
     }
     if (ok)
-      out += r.xml;
+    {
+      // (the classes are std::String to the debugger when the library is scoped, design.md 16; a rule per instance below has its name from the debug information)
+      std::string xml = r.xml;
+      const std::string opening = "<Type Name=\"";
+      for (size_t at = xml.find(opening); scoped && at != std::string::npos; at = xml.find(opening, at + 1))
+        xml.insert(at + opening.size(), "std::");
+      out += xml;
+    }
     else
       ruleOut.insert(r.classes.begin(), r.classes.end());
   }

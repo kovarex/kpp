@@ -25,7 +25,7 @@
     bool returnCopyWarnings = false; // --return-copy-warnings
     bool zeroNullWarnings = false; // --zero-null-warnings
     bool thisWarnings = false; // --this-warnings
-    bool stdScope = false; // --std-scope: the standard library is the scoped library std (design.md 16), C's names (clib/) and the allocation functions global
+    bool stdScope = true; // (--no-std-scope turns it off, for a comparison with the names global) the standard library is the scoped library std (design.md 16), C's names (clib/) and the allocation functions global
     bool thisReference = false; // --this-reference: required `this.` and `this` the object (design.md 23c, 23d), not in the standard library's files
     bool thisReferenceWarnings = false; // --this-reference-warnings
     bool plainEnumWarnings = false; // --plain-enum-warnings
