@@ -5,7 +5,9 @@ and drops trailing spaces; every other setting renders as the default. Its pertu
 leading, trailing and inner spaces and an own-line `{`, never an empty line.
 
 STANDIN_BREAK=WHAT makes it wrong in one way, for the test to see run_format.py report it:
-canonical, idempotent, roundtrip, whitespace, golden, refuse, crash, exit0, settings.
+canonical, idempotent, roundtrip, whitespace, golden, refuse, crash, exit0, settings, lineends (LF
+out of a CRLF file), accept (any number of columns), check (--check names nothing), checkall
+(--check names every file).
 """
 import os
 import random
@@ -39,6 +41,8 @@ def read_style(path):
             if not text:
                 continue
             key, _, value = (part.strip() for part in text.partition("="))
+            if BREAK == "accept" and key == "columns" and value.isdigit():
+                continue
             if key not in known or value not in known[key]:
                 sys.stderr.write(f"{path}:{number}: error: unknown setting or value: {text}\n")
                 sys.exit(2)
@@ -47,8 +51,8 @@ def read_style(path):
 
 
 def format_text(text, style):
-    newline = "\r\n" if "\r\n" in text.split("\n", 1)[0] + "\n" else "\n"
-    unit = {"2": "  ", "4": "    ", "tab": "\t"}[style.get("indent", "2")]
+    newline = "\r\n" if "\r\n" in text.split("\n", 1)[0] + "\n" and BREAK != "lineends" else "\n"
+    unit ={"2": "  ", "4": "    ", "tab": "\t"}[style.get("indent", "2")]
     if BREAK == "golden" and style.get("indent") == "4":
         unit = "   "
     words = [" ".join(line.split()) if BREAK != "whitespace" else line.strip() for line in text.replace("\r\n", "\n").split("\n")]
@@ -118,6 +122,19 @@ def main(argv):
         for name, values in SETTINGS:
             print(name, *values)
         return 0
+    if argv[:1] == ["--check"]:
+        if len(argv) != 4 or argv[1] != "--style":
+            sys.stderr.write(f"standin: not --check --style FILE IN: {argv}\n")
+            return 2
+        style = read_style(argv[2])
+        unformatted = 0
+        for path, rel in each_file(argv[3]):
+            with open(path, encoding="utf-8", newline="") as f:
+                text = f.read()
+            if BREAK == "checkall" or BREAK != "check" and format_text(text, style) != text:
+                unformatted += 1
+                print(path)  # (format.md: --check lists the files)
+        return 1 if unformatted else 0
     options = dict(zip(argv[::2], argv[1::2]))
     if len(argv) % 2 or not {"--from", "--to"} <= options.keys() or len(options.keys() & {"--style", "--perturb"}) != 1:
         sys.stderr.write(f"standin: not --style FILE or --perturb SEED, with --from IN --to OUT: {argv}\n")

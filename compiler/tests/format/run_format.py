@@ -10,16 +10,29 @@ Each configuration (one value for each of the formatter's settings) is tested ov
                  tokens and comments, and writes nothing for a file that fails
     whitespace   format(p, C) = format(x, C) for every perturbed copy p of x (spaces and line
                  breaks moved between tokens by `kpp format --perturb SEED`, the five kept facts kept)
+    line ends    each file keeps its line ends (kovarex 2026-11-09, Q11): format(x, C) has x's, and
+                 format(l, C) is format(x, C) with the other line ends, l being x with the other
+                 ones (CRLF for LF, LF for CRLF), so every file is tested both ways in every
+                 configuration, whatever git does to a snippet's line ends
+    check        `kpp format --check` agrees with formatting: it names no file of format(x, C), and
+                 of the first perturbed copy p exactly those that format(p, C) changes
     golden       settings/NAME.kpp in NAME=VALUE is settings/NAME.VALUE.expected, and
                  combinations/NAME.kpp in combinations/NAME.kppstyle is combinations/NAME.expected
+    settings     (once) a style giving a setting a value --list-settings does not list, or naming no
+                 setting, is refused: nothing written, an exit code other than 0 and 1. Only the
+                 tested values are accepted (kovarex 2026-11-09, Q13, said of `columns`)
 
 The configurations: kpp's default; each value of each setting other than its default, every other
 setting at its default (from `kpp format --list-settings`, so a new setting or value is tested at
 once and needs its golden file); and each combinations/NAME.kppstyle, the settings that interact.
 
 The corpus: `snippets` (this directory's *.kpp, settings/*.kpp, combinations/*.kpp: one construct or
-difficulty each), `ours` (the .kpp files git tracks in stdlib, libraries, programs and kppnet, each
-first formatted in the default style, until our code is reformatted), or a directory.
+difficulty each), `ours` (the .kpp files git tracks in stdlib, libraries, programs, kppnet and projectlib, each
+first formatted in the default style, in a copy: our code is not reformatted until wrapping lands
+and kovarex has seen the counts, Q9), or a directory.
+
+run_tests' layout check becomes `kpp format --check` over our code once it is reformatted (Q10);
+tools\\style\\kppstyle.py keeps the rules that are not layout.
 
 A snippet's header says what it is about:
 
@@ -37,6 +50,12 @@ What the runner asks of kpp format (F's side):
                                                    some files were refused (their errors on stderr,
                                                    each naming its file), any other code a failure
     kpp format --perturb SEED --from IN --to OUT   the perturbed copies, the same way
+    kpp format --check --style FILE IN             (format.md's --check PATH..., in a style) writes
+                                                   nothing; exit 0 when every .kpp under IN is
+                                                   formatted, 1 when some are not, each listed on
+                                                   stdout or stderr; any other code a failure
+A path it prints is IN's path joined with the file's, or the file's path under IN. format.md lists the
+ones not built yet (2026-11-09: all but --check, which has no --style yet).
 
 Each configuration runs in a directory of its own under --out (build\\tests\\format by default),
 deleted when it passes. --update writes the golden files from the current output, for review in the
@@ -53,7 +72,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, "..", "..", ".."))
-OURS = ["stdlib", "libraries", "programs", "kppnet"]
+OURS = ["stdlib", "libraries", "programs", "kppnet", "projectlib"]
 
 
 class Failure(Exception):
@@ -65,14 +84,19 @@ def command(kpp):
     return [sys.executable, "-I", kpp] if kpp.endswith(".py") else [kpp]
 
 
-def kpp_format(kpp, arguments, what):
-    """Runs `kpp format ARGUMENTS`; returns its exit code and stderr. A code other than 0 or 1 fails."""
+def run_kpp_format(kpp, arguments, what):
+    """Runs `kpp format ARGUMENTS`; returns the completed process, whatever its exit code."""
     try:
-        r = subprocess.run([*command(kpp), "format", *arguments], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
+        return subprocess.run([*command(kpp), "format", *arguments], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
     except subprocess.TimeoutExpired:
         raise Failure(f"{what}: kpp format timed out")
     except OSError as e:
         raise Failure(f"{what}: kpp format did not start: {e}")
+
+
+def kpp_format(kpp, arguments, what):
+    """Runs `kpp format ARGUMENTS`; returns its exit code and stderr. A code other than 0 or 1 fails."""
+    r = run_kpp_format(kpp, arguments, what)
     if r.returncode not in (0, 1):
         raise Failure(f"{what}: kpp format exit code {r.returncode & 0xFFFFFFFF}: {first_line(r.stderr)}")
     return r.returncode, r.stderr
@@ -234,18 +258,84 @@ def write_style(path, style):
         f.write("".join(f"{key} = {value}\n" for key, value in style.items()))
 
 
-def refusals(stderr, missing):
+def names(line, source, rel):
+    """Whether a line of stderr names the file rel under source: its full path, or rel itself not as
+    the end of a longer path (crlf.kpp is not settings/crlf.kpp)."""
+    line = line.replace("\\", "/").lower()
+    rel = rel.lower()
+    if (source.replace("\\", "/").rstrip("/") + "/" + rel).lower() in line:
+        return True
+    start = 0
+    while (i := line.find(rel, start)) >= 0:
+        end = i + len(rel)
+        if (i == 0 or line[i - 1] not in "/._-" and not line[i - 1].isalnum()) and (end == len(line) or not (line[end].isalnum() or line[end] in "/._-")):
+            return True
+        start = i + 1
+    return False
+
+
+def refusals(stderr, source, missing):
     """Each missing file's lines of stderr (the formatter names the file in its errors)."""
     lines = stderr.splitlines()
     result = {}
     for rel in missing:
-        name = rel.replace("/", os.sep)
-        said = [line for line in lines if rel in line.replace("\\", "/") or name in line]
+        said = [line for line in lines if names(line, source, rel)]
         result[rel] = said[0][:300] if said else "refused, and stderr does not name it"
     return result
 
 
-def run_configuration(args, kpp, index, name, style, golden, xdir, rels, default_style, perturbed):
+def line_ends(text):
+    """LF, CRLF, mixed, or None for a text of no line end."""
+    lf = text.count(b"\n")
+    crlf = text.count(b"\r\n")
+    if lf == 0:
+        return None
+    if crlf == lf and text.count(b"\r") == crlf:
+        return "CRLF"
+    return "LF" if b"\r" not in text else "mixed"
+
+
+def other_line_ends(text):
+    return text.replace(b"\r\n", b"\n") if line_ends(text) == "CRLF" else text.replace(b"\n", b"\r\n")
+
+
+def unlisted_values(settings):
+    """[(setting, value)] a style must not be given: a setting that does not exist, and for each one
+    a value it does not list; for a setting with numbers among its values, a number just below and
+    above them and one between that is not listed."""
+    result = [("no-such-setting", settings[next(iter(settings))][0])]
+    for name, values in settings.items():
+        result.append((name, "unlisted"))
+        numbers = sorted(int(v) for v in values if v.isdigit())
+        if numbers:
+            between = [n for n in range(numbers[0] + 1, numbers[-1]) if str(n) not in values]
+            result += [(name, str(n)) for n in [numbers[0] - 1, numbers[-1] + 1] + between[:1] if str(n) not in values]
+    return result
+
+
+def refuse_unlisted(args, kpp, settings, xdir, rel):
+    """The settings check: each unlisted value refused, nothing written. [(file, check, detail)]."""
+    work = os.path.join(args.out, "unlisted")
+    source = os.path.join(work, "in")
+    os.makedirs(os.path.dirname(os.path.join(source, rel)), exist_ok=True)
+    shutil.copyfile(os.path.join(xdir, rel), os.path.join(source, rel))
+    failures = []
+    for i, (name, value) in enumerate(unlisted_values(settings)):
+        style = os.path.join(work, f"s{i}.kppstyle")
+        with open(style, "w", encoding="utf-8", newline="\n") as f:
+            f.write(f"{name} = {value}\n")
+        target = os.path.join(work, f"o{i}")
+        r = run_kpp_format(kpp, ["--style", style, "--from", source, "--to", target], f"`{name} = {value}`")
+        written = os.path.isdir(target) and any(files for _, _, files in os.walk(target))
+        if r.returncode in (0, 1) or written:
+            failures.append(("", "settings", f"`{name} = {value}` accepted (exit code {r.returncode & 0xFFFFFFFF}" +
+                             (", files written" if written else "") + "): only the values --list-settings lists are"))
+    if not failures:
+        shutil.rmtree(work, ignore_errors=True)
+    return failures
+
+
+def run_configuration(args, kpp, index, name, style, golden, xdir, rels, default_style, perturbed, ldir, swapped):
     """[(file, check, detail)] of one configuration; its directory is deleted when it passes."""
     work = os.path.join(args.out, f"c{index:03d}")
     if os.path.isdir(work):
@@ -267,7 +357,7 @@ def run_configuration(args, kpp, index, name, style, golden, xdir, rels, default
                 written[rel] = read_bytes(path)
             elif os.path.isfile(os.path.join(source, rel)):
                 missing.append(rel)
-        for rel, said in refusals(stderr, missing).items():
+        for rel, said in refusals(stderr, source, missing).items():
             failures.append((rel, check, f"refused: {said}"))
         if code == 1 and not missing:
             failures.append(("", check, f"exit code 1, yet every file was written: {first_line(stderr)}"))
@@ -291,11 +381,47 @@ def run_configuration(args, kpp, index, name, style, golden, xdir, rels, default
         for rel in rels:
             if rel in a and rel in back and back[rel] != x[rel]:
                 failures.append((rel, "round trip", first_difference(x[rel], back[rel])))
+    first_perturbed = None
     for seed, pdir in perturbed:
         p = run(style_file, pdir, os.path.join(work, f"AP{seed}"), f"whitespace {seed}")
         for rel in rels:
             if rel in a and rel in p and p[rel] != a[rel]:
                 failures.append((rel, f"whitespace {seed}", first_difference(a[rel], p[rel])))
+        if first_perturbed is None:
+            first_perturbed = (pdir, p)
+    for rel in rels:
+        if rel in a:
+            want, got = line_ends(x[rel]), line_ends(a[rel])
+            if want in ("LF", "CRLF") and got != want:
+                failures.append((rel, "line ends", f"{want} in, {got or 'no line end'} out"))
+    if swapped:
+        swapped_out = run(style_file, ldir, os.path.join(work, "AL"), "line ends")
+        for rel in swapped:
+            if rel in a and rel in swapped_out and swapped_out[rel] != other_line_ends(a[rel]):
+                failures.append((rel, "line ends", f"its {line_ends(other_line_ends(x[rel]))} copy: " + first_difference(other_line_ends(a[rel]), swapped_out[rel])))
+
+    def check(source, formatted, what):
+        """`kpp format --check` over source: the files it names, each one compared with formatted."""
+        r = run_kpp_format(kpp, ["--check", "--style", style_file, source], f"{name} check")
+        code, stderr = r.returncode, r.stdout + r.stderr
+        if code not in (0, 1):
+            raise Failure(f"{name} check: kpp format --check exit code {code & 0xFFFFFFFF}: {first_line(r.stderr)}")
+        lines = stderr.splitlines()
+        named = {rel for rel in formatted if any(names(line, source, rel) for line in lines)}
+        for rel in sorted(formatted):
+            changed = formatted[rel] != read_bytes(os.path.join(source, rel))
+            if changed and rel not in named:
+                failures.append((rel, "check", f"{what}: not named, yet formatting changes it"))
+            elif rel in named and not changed:
+                failures.append((rel, "check", f"{what}: named, yet formatting leaves it as it is"))
+        if code == 0 and named:
+            failures.append(("", "check", f"{what}: exit code 0, yet it names {len(named)} files"))
+        if code == 1 and not named:
+            failures.append(("", "check", f"{what}: exit code 1, naming no file: {first_line(stderr)}"))
+
+    check(adir, a, "the formatted files")
+    if first_perturbed:
+        check(first_perturbed[0], first_perturbed[1], "the first perturbed copy")
     for source, expected in golden:
         if source not in x:
             continue  # (filtered out)
@@ -370,7 +496,7 @@ def main():
             os.makedirs(os.path.dirname(os.path.join(xdir, rel)), exist_ok=True)
             shutil.copyfile(os.path.join(sdir, rel), os.path.join(xdir, rel))
         missing = [rel for rel, _, _ in files if not os.path.isfile(os.path.join(xdir, rel))]
-        for rel, said in refusals(stderr, missing).items():
+        for rel, said in refusals(stderr, sdir, missing).items():
             failures.append(("default, first", rel, "format", f"refused: {said}"))
         files = [f for f in files if f[0] not in missing]
     rels = [rel for rel, _, _ in files]
@@ -390,9 +516,21 @@ def main():
             if not os.path.isfile(os.path.join(pdir, rel)):
                 failures.append(("perturb", rel, f"seed {seed}", "no perturbed copy written"))
         perturbed.append((seed, pdir))
+    # x with the other line ends, each file that has one kind
+    ldir = os.path.join(args.out, "L")
+    swapped = []
+    for rel in rels:
+        text = read_bytes(os.path.join(xdir, rel))
+        if line_ends(text) in ("LF", "CRLF"):
+            os.makedirs(os.path.dirname(os.path.join(ldir, rel)), exist_ok=True)
+            with open(os.path.join(ldir, rel), "wb") as f:
+                f.write(other_line_ends(text))
+            swapped.append(rel)
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
-        jobs = [(name, pool.submit(run_configuration, args, args.kpp, index, name, style, golden, xdir, rels, default_style, perturbed))
+        jobs = [(name, pool.submit(run_configuration, args, args.kpp, index, name, style, golden, xdir, rels, default_style, perturbed, ldir, swapped))
                 for index, (name, style, golden) in enumerate(configs)]
+        if rels and (not args.shard or args.shard.split("/")[0] == "1"):
+            jobs.append(("unlisted", pool.submit(refuse_unlisted, args, args.kpp, settings, xdir, rels[0])))
         for name, job in jobs:
             try:
                 failures += [(name, rel, check, detail) for rel, check, detail in job.result()]

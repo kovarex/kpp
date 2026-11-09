@@ -62,7 +62,7 @@ def run(directory, extra=(), env_break="", corpus=()):
     env.pop("STANDIN_BREAK", None)
     if env_break:
         env["STANDIN_BREAK"] = env_break
-    command = [sys.executable, "-I", RUNNER, "--kpp", STANDIN, "--here", directory, "--out", directory + ".out", "--jobs", "4", *extra]
+    command = [sys.executable, "-I", RUNNER, "--kpp", STANDIN, "--here", directory, "--out", directory + ".out", "--jobs", "4", "--perturbations", "1", *extra]
     for c in corpus:
         command += ["--corpus", c]
     r = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
@@ -79,7 +79,7 @@ def messy(directory):
 
 # (what, change to the snippets before the run, the runner's options, STANDIN_BREAK, exit code, texts the output must have)
 CASES = [
-    ("the right formatter passes", None, [], "", 0, ["17 files x 20 configurations"]),
+    ("the right formatter passes", None, [], "", 0, ["17 files x 20 configurations, 1 perturbed copies each"]),
     ("a formatter that changes canonical text", None, [], "canonical", 1, ["[default] canonical:"]),
     ("a formatter that is not idempotent", None, [], "idempotent", 1, ["] idempotent:"]),
     ("a formatter that loses an empty line", None, [], "roundtrip", 1, ["] round trip:"]),
@@ -89,6 +89,12 @@ CASES = [
     ("a refused file with exit code 0", None, [], "exit0", 1, ["exit code 0, yet 1 files were not written"]),
     ("a crash", None, [], "crash", 1, ["kpp format exit code 3"]),
     ("a bad --list-settings", None, [], "settings", 1, ["--list-settings: not `NAME DEFAULT VALUE...`"]),
+    ("a formatter that writes LF for a CRLF file", None, [], "lineends", 1,
+     ["crlf.kpp  [default] line ends: CRLF in, LF out", "classes.kpp  [indent=4] line ends: its CRLF copy:"]),
+    ("an unlisted number of columns accepted", None, [], "accept", 1,
+     ["[unlisted] settings: `columns = 79` accepted", "`columns = 161` accepted", "`columns = 81` accepted"]),
+    ("--check that names nothing", None, [], "check", 1, ["] check: the first perturbed copy: not named, yet formatting changes it"]),
+    ("--check that names every file", None, [], "checkall", 1, ["] check: the formatted files: named, yet formatting leaves it as it is"]),
     ("a filtered run", None, ["--filter", "crlf"], "", 0, ["1 files x 20 configurations"]),
     ("a shard", None, ["--shard", "2/4"], "", 0, ["17 files x 5 configurations"]),
     ("a missing golden file", lambda d: remove(d, os.path.join("settings", "pointer.both.expected")), [], "", 1,
@@ -136,14 +142,14 @@ def main():
         code, output = run(directory, [] if corpus else extra, env_break, corpus)
         return expect(what, code, output, want_code, texts)
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=16) as pool:
         for line in pool.map(lambda c: case(*c[0:1], *c[1]), enumerate(CASES)):
             print(line)
     shutil.rmtree(WORK, ignore_errors=True)
     if failed:
         print(f"format selftest: {len(failed)} FAILED: {', '.join(failed)}")
         return 1
-    print("format selftest: ALL PASSED")
+    print(f"format selftest: ALL PASSED ({len(CASES) + 1} cases)")
     return 0
 
 
