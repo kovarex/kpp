@@ -180,7 +180,7 @@ public:
   const_reverse_iterator rbegin() const { return const_reverse_iterator(this->end()); }
   const_reverse_iterator rend() const { return const_reverse_iterator(this->begin()); }
 
-  void swap(Deque<T>& other)
+  void swap(Deque<T>& other) noexcept
   {
     Deque<T> held(move(other));
     other = move(*this);

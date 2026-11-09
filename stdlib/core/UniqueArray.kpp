@@ -63,7 +63,7 @@ public:
   }
 
   // (by hand: ::swap here was swap<T*> and move<T*&> for every element type)
-  void swap(UniqueArray<T>& other)
+  void swap(UniqueArray<T>& other) noexcept
   {
     T* mine = this->pointer;
     this->pointer = other.pointer;

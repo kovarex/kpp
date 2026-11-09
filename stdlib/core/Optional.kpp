@@ -397,7 +397,7 @@ struct Optional : OptionalValue<T>
 
   // As std's: two values are swapped (swap of T), one is moved into the empty Optional and destroyed
   // where it was.
-  void swap(Optional<T>& other)
+  void swap(Optional<T>& other) noexcept(isNothrowMoveConstructible<T> && isNothrowMoveAssignable<T>)
   {
     if (this->present && other.present)
       ::swap(**this, *other);

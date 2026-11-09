@@ -36,6 +36,11 @@ struct EmptyTuple
 template<typename H, typename... T>
 struct Tuple;
 
+// Whether a Tuple's move assignment of an element of type T throws nothing (std's is_nothrow_assignable<T&, T>):
+// a reference element assigns what it refers to, by a copy for an lvalue reference.
+template<typename T>
+constexpr bool tupleElementNothrowMoveAssignable = isSame<T, RemoveReference<T>&> ? isNothrowCopyAssignable<RemoveReference<T>> : isNothrowMoveAssignable<RemoveReference<T>>;
+
 // The rest of a Tuple after its first element, a base of it: a Tuple of the others, or EmptyTuple.
 template<typename... T>
 struct TupleRest { using Type = Tuple<T...>; };
@@ -125,7 +130,7 @@ struct Tuple : TupleLeaf<i32(sizeof...(T)), H>, TupleRest<T...>::Type
     return *this;
   }
 
-  Tuple<H, T...>& operator=(Tuple<H, T...>&& other)
+  Tuple<H, T...>& operator=(Tuple<H, T...>&& other) noexcept(tupleElementNothrowMoveAssignable<H> && isNothrowMoveAssignable<Rest>)
   {
     static_cast<Leaf&>(*this).value = other.template getRvalue<0>();
     static_cast<Rest&>(*this) = static_cast<Rest&&>(other);

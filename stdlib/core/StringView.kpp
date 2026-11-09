@@ -49,7 +49,7 @@ public:
     return this->chars[index];
   }
 
-  void swap(StringView& other)
+  void swap(StringView& other) noexcept
   {
     StringView held = *this;
     *this = other;

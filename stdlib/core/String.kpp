@@ -492,7 +492,7 @@ public:
     return this->compare(pos, count, String(other.data() + pos2, count2 < available ? count2 : available));
   }
 
-  void swap(String& other)
+  void swap(String& other) noexcept
   {
     String held(move(other));
     other = move(*this);

@@ -139,7 +139,7 @@ public:
 
   // By hand, not by ::swap: kpp checks this member for every Vector<T>, and ::swap of the block pointer
   // was swap<T*> and move<T*&> for every element type.
-  void swap(Vector<T>& other)
+  void swap(Vector<T>& other) noexcept
   {
     T* block = this->items;
     this->items = other.items;

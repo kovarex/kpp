@@ -129,3 +129,18 @@ and usable. Iterators, pointers and references into a moved-from container stay 
 to the same elements, now in the destination (except a String's characters held in place, see
 string.md, and end iterators of node-based containers, which belong to the container object).
 Swapping two containers exchanges their contents in O(1) with the same rule.
+
+## What throws nothing
+
+Where std's functions are noexcept, kpp's are, so the noexcept operator and the isNothrow* traits
+answer as C++'s (`noexcept(T(move(x)))` is T's move constructor's answer):
+- move, forward, declval, asConst and isConstantEvaluated always.
+- `swap(a, b)` when T's move construction and move assignment throw nothing; `exchange(slot, v)`
+  when T's move construction and the assignment from v do.
+- A container's `swap(other)`: a sequence's (Vector, Deque, List, ForwardList), String's,
+  StringView's, FastMap's, FastSet's and the smart pointers' always; Map's, Set's, MultiMap's and
+  MultiSet's when a copy of the comparator throws nothing, HashMap's and HashSet's when copies of the
+  hasher and the key equality do; Array's, Optional's and Pair's when the elements' move construction
+  and move assignment do, PriorityQueue's when its container's and comparator's do.
+- A Tuple's move assignment when each element's does (a reference element's: the assignment of what
+  it refers to, a copy for an lvalue reference).

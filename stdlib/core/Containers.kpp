@@ -64,7 +64,7 @@ struct Array
   }
 
   // Exchanges the elements one by one (std::array::swap).
-  void swap(Array<T, N>& other)
+  void swap(Array<T, N>& other) noexcept(isNothrowMoveConstructible<T> && isNothrowMoveAssignable<T>)
   {
     for (ContainerSize i = 0; i < N; ++i)
     {
@@ -145,7 +145,7 @@ struct Array<T, 0>
   const T& front() const { return *this->data(); }
   const T& back() const { return *this->data(); }
   void fill(const T& value) {}
-  void swap(Array<T, 0>& other) {}
+  void swap(Array<T, 0>& other) noexcept {}
 };
 
 // The extent of a Span whose length is known only when the program runs (std::dynamic_extent).

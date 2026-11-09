@@ -1,0 +1,114 @@
+// spec: the noexcept operator over the stdlib's utilities answers as clang's with MSVC's STL: move, forward, declval, asConst and isConstantEvaluated are noexcept, so a construction from move(x) is its constructor's answer; swap(a, b) by T's move construction and move assignment, exchange by T's move construction and the assignment from the new value; the containers' member swaps always (the sequences, String, StringView, FastMap/FastSet, the smart pointers), by the comparator's copy (Map, Set, MultiMap, MultiSet), by the hasher's (HashMap, HashSet), by the elements' moves (Array, Optional, Pair, PriorityQueue); a Tuple's move assignment by its elements' (a reference element's by the assignment of what it refers to); clang's output (the twin with std's names: FastMap/FastSet as std::map/set, UniqueArray as unique_ptr<int[]>)
+// found by the coordinator (2026-11-08): Utility.kpp declared neither move nor forward noexcept, so every line here answered 0 before, and isNothrowMoveAssignable<Tuple<String, int>> 0 (K, 2026-11-09)
+extern "C" int printf(const char* format, ...);
+
+struct Throwing
+{
+  Throwing() = default;
+  Throwing(Throwing&&) {}
+  Throwing& operator=(Throwing&&) { return *this; }
+};
+
+struct Quiet
+{
+  Quiet() = default;
+  Quiet(Quiet&&) noexcept {}
+  Quiet& operator=(Quiet&&) noexcept { return *this; }
+};
+
+struct AssignThrows
+{
+  AssignThrows() = default;
+  AssignThrows(AssignThrows&&) noexcept {}
+  AssignThrows& operator=(AssignThrows&&) { return *this; }
+};
+
+struct ThrowingLess
+{
+  ThrowingLess() = default;
+  ThrowingLess(const ThrowingLess&) {}
+  ThrowingLess& operator=(const ThrowingLess&) = default;
+  bool operator()(int a, int b) const { return a < b; }
+};
+
+struct ThrowingHash
+{
+  ThrowingHash() = default;
+  ThrowingHash(const ThrowingHash&) {}
+  ThrowingHash& operator=(const ThrowingHash&) = default;
+  usize operator()(int a) const { return usize(a); }
+};
+
+int main()
+{
+  int i = 1;
+  int j = 2;
+  Quiet q;
+  Quiet q2;
+  Throwing t;
+  Throwing t2;
+  AssignThrows a;
+  AssignThrows a2;
+  String s;
+  String s2;
+  Vector<int> v;
+  Vector<int> v2;
+  UniquePtr<int> u;
+  // move, forward and declval
+  printf("%d %d %d %d %d %d\n", int(noexcept(move(i))), int(noexcept(move(t))), int(noexcept(forward<int&>(i))), int(noexcept(forward<Throwing>(t))),
+         int(noexcept(declval<Throwing>())), int(noexcept(declval<Quiet&>())));
+  // a construction from a move is its constructor's answer
+  printf("%d %d %d %d %d %d %d\n", int(noexcept(int(move(i)))), int(noexcept(Quiet(move(q)))), int(noexcept(Throwing(move(t)))), int(noexcept(String(move(s)))),
+         int(noexcept(Vector<int>(move(v)))), int(noexcept(UniquePtr<int>(move(u)))), int(noexcept(Quiet(forward<Quiet>(q)))));
+  // swap: by the move constructor and the move assignment
+  printf("%d %d %d %d %d %d\n", int(noexcept(swap(i, j))), int(noexcept(swap(q, q2))), int(noexcept(swap(t, t2))), int(noexcept(swap(a, a2))),
+         int(noexcept(swap(s, s2))), int(noexcept(swap(v, v2))));
+  // the sequences' and owners' member swaps
+  Vector<Throwing> vt;
+  Deque<int> d;
+  List<int> l;
+  ForwardList<int> f;
+  SharedPtr<int> sp;
+  WeakPtr<int> wp;
+  UniqueArray<int> ua;
+  StringView sv;
+  printf("%d %d %d %d %d %d %d %d %d %d %d\n", int(noexcept(v.swap(v2))), int(noexcept(vt.swap(vt))), int(noexcept(s.swap(s2))), int(noexcept(d.swap(d))),
+         int(noexcept(l.swap(l))), int(noexcept(f.swap(f))), int(noexcept(u.swap(u))), int(noexcept(sp.swap(sp))), int(noexcept(wp.swap(wp))),
+         int(noexcept(ua.swap(ua))), int(noexcept(sv.swap(sv))));
+  // the ordered and hash containers' by their comparator's or hasher's copy
+  Map<int, int> m;
+  Map<int, int, ThrowingLess> mt;
+  Set<int> st;
+  MultiMap<int, int> mm;
+  MultiSet<int, ThrowingLess> mst;
+  FastMap<int, int> fm;
+  FastSet<int> fs;
+  HashMap<int, int> hm;
+  HashMap<int, int, ThrowingHash> hmt;
+  HashSet<int> hs;
+  printf("%d %d %d %d %d %d %d %d %d %d\n", int(noexcept(m.swap(m))), int(noexcept(mt.swap(mt))), int(noexcept(st.swap(st))), int(noexcept(mm.swap(mm))),
+         int(noexcept(mst.swap(mst))), int(noexcept(fm.swap(fm))), int(noexcept(fs.swap(fs))), int(noexcept(hm.swap(hm))), int(noexcept(hmt.swap(hmt))),
+         int(noexcept(hs.swap(hs))));
+  // by their elements'
+  Optional<int> oi;
+  Optional<Throwing> ot;
+  Optional<AssignThrows> oa;
+  Pair<int, String> pi;
+  Pair<int, Throwing> pt;
+  Array<int, 3> ai;
+  Array<Throwing, 3> at;
+  Array<Throwing, 0> a0;
+  PriorityQueue<int> pq;
+  printf("%d %d %d %d %d %d %d %d %d\n", int(noexcept(oi.swap(oi))), int(noexcept(ot.swap(ot))), int(noexcept(oa.swap(oa))), int(noexcept(pi.swap(pi))),
+         int(noexcept(pt.swap(pt))), int(noexcept(ai.swap(ai))), int(noexcept(at.swap(at))), int(noexcept(a0.swap(a0))), int(noexcept(pq.swap(pq))));
+  // exchange: by the move constructor and the assignment from the new value; isConstantEvaluated, asConst
+  printf("%d %d %d %d %d %d %d\n", int(noexcept(exchange(i, 5))), int(noexcept(exchange(q, Quiet()))), int(noexcept(exchange(t, Throwing()))),
+         int(noexcept(exchange(a, AssignThrows()))), int(noexcept(exchange(s, "text"))), int(noexcept(isConstantEvaluated())), int(noexcept(asConst(s))));
+  // the traits: a Tuple's move assignment by its elements' (a reference element's by the assignment it does)
+  printf("%d %d %d %d %d %d %d %d\n", int(isNothrowMoveConstructible<Pair<String, int>>), int(isNothrowMoveAssignable<Pair<String, int>>),
+         int(isNothrowMoveConstructible<Tuple<String, int>>), int(isNothrowMoveAssignable<Tuple<String, int>>), int(isNothrowMoveAssignable<Tuple<Throwing, int>>),
+         int(isNothrowMoveAssignable<Tuple<int&, int>>), int(isNothrowMoveAssignable<Tuple<String&, int>>), int(isNothrowMoveAssignable<Optional<String>>));
+  static_assert(noexcept(move(declval<Throwing&>())) && noexcept(Quiet(move(declval<Quiet&>()))) && !noexcept(Throwing(move(declval<Throwing&>()))));
+  static_assert(noexcept(swap(declval<String&>(), declval<String&>())) && !noexcept(swap(declval<Throwing&>(), declval<Throwing&>())));
+  return 0;
+}

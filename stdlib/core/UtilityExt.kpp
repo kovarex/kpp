@@ -2,7 +2,7 @@
 // convert to.
 
 template<typename T>
-const T& asConst(const T& value) { return value; }
+const T& asConst(const T& value) noexcept { return value; }
 
 // std::to_address: a raw pointer as it is, a fancy pointer or class iterator through its
 // operator->, recursively (pointer_traits<P>::to_address is not consulted: no stdlib class has one).

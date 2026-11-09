@@ -38,6 +38,7 @@ Members:
   name: the same, with fallback of any type T is constructed from (`p.value_or(nullptr)`).
 - `swap(other)`: two values are swapped (`swap` of T); when one Optional is empty, the value is
   moved into it (one move construction) and destroyed in the other; two empty ones stay so.
+  noexcept when T's move construction and move assignment are.
 - Comparison: `==`, `!=` with another Optional (equal when both are empty or both hold equal
   values), with a value of any type the held one compares with (an empty Optional equals no
   value), with nullopt (equal when empty); `<` and `<=>` with another Optional (empty orders

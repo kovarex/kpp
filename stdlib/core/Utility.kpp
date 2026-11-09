@@ -3,21 +3,21 @@
 
 // value as an rvalue (std::move): from an lvalue or an rvalue alike.
 template<typename T>
-RemoveReference<T>&& move(T&& value) { return (RemoveReference<T>&&)value; }
+RemoveReference<T>&& move(T&& value) noexcept { return (RemoveReference<T>&&)value; }
 
 // value with the value category T says (std::forward<T>): an lvalue reference T keeps it an
 // lvalue, any other T makes it an rvalue.
 template<typename T>
-T&& forward(RemoveReference<T>& value) { return (T&&)value; }
+T&& forward(RemoveReference<T>& value) noexcept { return (T&&)value; }
 template<typename T>
-T&& forward(RemoveReference<T>&& value) { return (T&&)value; }
+T&& forward(RemoveReference<T>&& value) noexcept { return (T&&)value; }
 
 // Whether this runs in a compile-time evaluation (std::is_constant_evaluated): true there, false
 // in the program. Code that must not branch at run time writes `if consteval` instead, whose other
 // branch is the only one the program holds. (A template only so that a program that never calls it
 // holds none of it: the code generator emits every function that is no template.)
 template<typename Unused = void>
-constexpr bool isConstantEvaluated()
+constexpr bool isConstantEvaluated() noexcept
 {
   if consteval
   {
@@ -29,7 +29,7 @@ constexpr bool isConstantEvaluated()
 // A value of type T where only its type matters (`decltype(declval<T>().str())`): declared, never
 // defined, so a call outside decltype and requires does not link.
 template<typename T>
-T&& declval();
+T&& declval() noexcept;
 
 // Relocation: moves count objects from source into the unconstructed memory at destination and
 // destroys the originals (move constructor, then destructor), as containers do when they grow or
@@ -179,17 +179,19 @@ void relocateIfNoexcept(T* destination, T* source, i64 count)
   }
 }
 
+// noexcept when T's move construction and move assignment are (std::swap's).
 template<typename T>
-void swap(T& a, T& b)
+void swap(T& a, T& b) noexcept(isNothrowMoveConstructible<T> && isNothrowMoveAssignable<T>)
 {
   T tmp = move(a);
   a = move(b);
   b = move(tmp);
 }
 
-// Stores newValue and returns what was there.
+// Stores newValue and returns what was there; noexcept when T's move construction and the assignment from
+// newValue are (std::exchange's).
 template<typename T, typename U>
-T exchange(T& slot, U&& newValue)
+T exchange(T& slot, U&& newValue) noexcept(isNothrowMoveConstructible<T> && noexcept(declval<T&>() = declval<U>()))
 {
   T old = move(slot);
   slot = forward<U>(newValue);
@@ -316,7 +318,7 @@ struct Pair
     return *this;
   }
 
-  void swap(Pair<A, B>& other)
+  void swap(Pair<A, B>& other) noexcept(isNothrowMoveConstructible<A> && isNothrowMoveAssignable<A> && isNothrowMoveConstructible<B> && isNothrowMoveAssignable<B>)
   {
     ::swap(this->first, other.first);
     ::swap(this->second, other.second);

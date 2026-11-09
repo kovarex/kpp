@@ -26,7 +26,8 @@ Members:
   first and second.
 - `= other` (copy or move, from a Tuple of the same or other element types, or for two elements
   from a Pair): assigns element by element. An element that is a reference assigns the object it
-  refers to; it is not rebound. So `tie(a, b) = pair` assigns a and b.
+  refers to; it is not rebound. So `tie(a, b) = pair` assigns a and b. The move assignment from a
+  Tuple of the same type is noexcept when every element's assignment is (common.md).
 - `get<i>()`: element i, what the free get gives for an lvalue Tuple.
 - Comparison: `==` (equal when every element is equal to the other's), `!=`, and `<=>`, which
   orders by the first element that differs, by its `<=>`, or its `<` where it has none; this

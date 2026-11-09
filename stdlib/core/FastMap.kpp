@@ -796,7 +796,7 @@ public:
     other = move(rest);
   }
 
-  void swap(FastMap<K, V>& other)
+  void swap(FastMap<K, V>& other) noexcept
   {
     FastMap<K, V> held(move(other));
     other = move(*this);
@@ -928,7 +928,7 @@ public:
     other = move(rest);
   }
 
-  void swap(FastSet<T>& other)
+  void swap(FastSet<T>& other) noexcept
   {
     FastSet<T> held(move(other));
     other = move(*this);

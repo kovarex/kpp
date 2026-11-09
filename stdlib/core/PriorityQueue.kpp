@@ -61,7 +61,8 @@ public:
       this->siftDown(0);
   }
 
-  void swap(PriorityQueue<T, Container, Compare>& other)
+  void swap(PriorityQueue<T, Container, Compare>& other) noexcept(isNothrowMoveConstructible<Container> && isNothrowMoveAssignable<Container> &&
+                                                                 isNothrowMoveConstructible<Compare> && isNothrowMoveAssignable<Compare>)
   {
     ::swap(this->heap, other.heap);
     ::swap(this->compare, other.compare);

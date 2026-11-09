@@ -100,7 +100,7 @@ public:
     return result;
   }
 
-  void swap(UniquePtr<T, D>& other)
+  void swap(UniquePtr<T, D>& other) noexcept
   {
     T* tmp = this->held;
     this->held = other.held;

@@ -175,7 +175,7 @@ public:
     taking.swap(*this);
   }
 
-  void swap(SharedPtr<T>& other)
+  void swap(SharedPtr<T>& other) noexcept
   {
     T* p = this->pointer;
     SharedControl* c = this->control;
@@ -277,7 +277,7 @@ public:
     return *this;
   }
 
-  void swap(WeakPtr<T>& other)
+  void swap(WeakPtr<T>& other) noexcept
   {
     T* p = this->pointer;
     SharedControl* c = this->control;
