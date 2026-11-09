@@ -4791,9 +4791,12 @@ on our own code, are in [format.md](format.md). Decided:
   braces with one-liners, columns with wrap-operator); the round-trip, idempotence and perturbation
   checks run per configuration tested.
 
-Open: Q9 (when our code and the game are reformatted), Q10 (whether `kpp format --check` replaces
-kppstyle.py's layout rules in run_tests), Q11 (line ends kept per file), Q13 (which widths `columns`
-takes).
+Decided 2026-11-09 (kovarex, as thread F recommended):
+- Q9: our code and the converted game are reformatted after wrapping (step 3), the counts shown to him
+  first (format.md has them; he checks them before either is reformatted).
+- Q10: `kpp format --check` replaces kppstyle.py's layout rules in run_tests.
+- Q11: line ends are kept per file.
+- Q13: `columns` takes only the widths the tests cover (130, 100, 80, 160).
 
 ## Open questions
 - **Syntax must be parseable without name lookup.** C++ needs to know whether a name is a type
@@ -4817,11 +4820,6 @@ takes).
   language server as built"). **Decided 2026-11-06 (kovarex): an own editor comes later, only when kpp
   is fully mature with all features implemented.** No editor work until then; ide.md's decisions 3 to
   8 that depend on the editor are parked with it.
-
-- **kpp format** (the section above, 2026-11-08): Q9 when our code and the converted game are
-  reformatted (thread F recommends after wrapping lands, the counts shown first), Q10 `kpp format
-  --check` in place of kppstyle.py's layout rules, Q11 line ends kept per file, Q13 the widths
-  `columns` takes (thread F: 130, 100, 80 and 160 only, for now).
 
 - **Running and testing kpp code** (the section above, 2026-10-30): Q1 an implicit `--run` (decided
   2026-11-06: none). Q2 (`--filter`), Q3 (the runner's isolation and parallelism) and Q4 (native
