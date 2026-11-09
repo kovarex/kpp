@@ -1,0 +1,9 @@
+// spec: a system ErrorCode whose error means no condition equals no Errc, not even the Errc of value 0, as with std::error_code and std::errc (`0 0 1`, clang's with MSVC's STL and g++'s with libstdc++)
+// found by thread I's battery er1 (2026-11-09): "no condition" was the value 0, so `ErrorCode(9999, systemCategory()) == (Errc)0` held
+extern "C" int printf(const char* format, ...);
+int main()
+{
+  ErrorCode noCondition(9999, systemCategory());
+  printf("%d %d %d\n", (int)(noCondition == (Errc)0), (int)((Errc)0 == noCondition), (int)(noCondition != (Errc)0));
+  return 0;
+}

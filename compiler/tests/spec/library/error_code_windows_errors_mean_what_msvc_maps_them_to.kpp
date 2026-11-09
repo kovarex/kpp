@@ -1,0 +1,25 @@
+// spec: on Windows a system ErrorCode equals the Errc that MSVC's std::system_category maps its Windows error to, for each error from 1 to 19999 that maps to a condition kpp's Errc names (each line is the error and the condition's place in `conditions`, what clang with MSVC's STL prints for the same program), but for three: ERROR_INVALID_DRIVE (15) and ERROR_BAD_PATHNAME (161) are no_such_file_or_directory (MSVC's: no_such_device and none) and ERROR_DIRECTORY (267) not_a_directory (MSVC's: invalid_argument; docs/stdlib/filesystem.md says so)
+// target: windows (the table of Windows errors)
+// found by thread I's battery er1 (2026-11-09): errcOfWindowsError, written to be std's table, lacked 30 of MSVC's entries (Winsock's errors, ERROR_SEM_TIMEOUT, WAIT_TIMEOUT, ERROR_NOT_READY...), which equalled no condition
+extern "C" int printf(const char* format, ...);
+Errc conditions[26] = {
+  Errc::operation_not_permitted, Errc::no_such_file_or_directory, Errc::no_such_process, Errc::interrupted, Errc::io_error,
+  Errc::resource_unavailable_try_again, Errc::illegal_byte_sequence, Errc::permission_denied, Errc::device_or_resource_busy,
+  Errc::file_exists, Errc::cross_device_link, Errc::no_such_device, Errc::not_a_directory, Errc::is_a_directory,
+  Errc::invalid_argument, Errc::too_many_files_open, Errc::file_too_large, Errc::no_space_on_device, Errc::read_only_file_system,
+  Errc::resource_deadlock_would_occur, Errc::filename_too_long, Errc::function_not_supported, Errc::directory_not_empty,
+  Errc::not_supported, Errc::operation_not_supported, Errc::timed_out};
+int main()
+{
+  for (int e = 1; e < 20000; ++e)
+  {
+    ErrorCode ec(e, systemCategory());
+    int found = -1;
+    for (int i = 0; i < 26; ++i)
+      if (ec == conditions[i])
+        found = i;
+    if (found >= 0)
+      printf("%d %d\n", e, found);
+  }
+  return 0;
+}

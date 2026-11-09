@@ -87,26 +87,40 @@ enum class Errc
   timed_out = platform::errnoTimedOut,
 };
 
-// The condition a Windows error means, as std::system_category's equivalence maps it, or 0.
+// The condition a Windows error means, or 0 for none: MSVC's std::system_category's table for the
+// conditions Errc names (every error from 1 to 19999, spec
+// library/error_code_windows_errors_mean_what_msvc_maps_them_to), but for 15, 161 and 267, which
+// MSVC's maps to no_such_device, none and invalid_argument (docs/stdlib/filesystem.md gives 267).
 i32 errcOfWindowsError(i32 error)
 {
   switch (error)
   {
-    // file, path not found; bad drive, network path, name
+    // file and path not found, bad drive, network path and name, invalid name, bad path name
     case 2, 3, 15, 53, 67, 123, 161: return i32(Errc::no_such_file_or_directory);
-    // access denied, write protected, sharing violation, cannot make
-    case 5, 19, 32, 82: return i32(Errc::permission_denied);
+    // access denied, invalid access, current directory, write protected, sharing violation, cannot
+    // make, no access, Winsock's access denied
+    case 5, 12, 16, 19, 32, 82, 998, 10013: return i32(Errc::permission_denied);
     case 17: return i32(Errc::cross_device_link);
     case 80, 183: return i32(Errc::file_exists);
     case 145: return i32(Errc::directory_not_empty);
     case 267: return i32(Errc::not_a_directory);
-    case 87: return i32(Errc::invalid_argument);
+    // invalid handle, invalid parameter, negative seek, invalid reparse tag, Winsock's invalid argument
+    case 6, 87, 131, 4393, 10022: return i32(Errc::invalid_argument);
     case 39, 112: return i32(Errc::no_space_on_device);
-    case 170: return i32(Errc::device_or_resource_busy);
-    case 206: return i32(Errc::filename_too_long);
+    // busy drive, busy, open files, device in use
+    case 142, 170, 2401, 2404: return i32(Errc::device_or_resource_busy);
+    // buffer overflow, filename too long, Winsock's too long
+    case 111, 206, 10063: return i32(Errc::filename_too_long);
     case 50: return i32(Errc::not_supported);
-    case 4: return i32(Errc::too_many_files_open);
-    case 29, 30: return i32(Errc::io_error); // write fault, read fault
+    case 4, 10024: return i32(Errc::too_many_files_open);
+    // seek, write fault, read fault, open failed, cannot open, read and write the registry
+    case 25, 29, 30, 110, 1011, 1012, 1013: return i32(Errc::io_error);
+    case 20, 55: return i32(Errc::no_such_device); // bad unit, device gone
+    case 21, 1237: return i32(Errc::resource_unavailable_try_again); // not ready, retry
+    case 1: return i32(Errc::function_not_supported);
+    case 10004: return i32(Errc::interrupted);
+    case 10045: return i32(Errc::operation_not_supported);
+    case 121, 258, 1460, 10060: return i32(Errc::timed_out);
     default: return 0;
   }
 }
@@ -151,7 +165,11 @@ public:
   {
     if (this->value_ == 0)
       return false;
-    return (this->category_.system ? platform::errcOfSystemError(this->value_) : this->value_) == i32(condition);
+    if (!this->category_.system)
+      return this->value_ == i32(condition);
+    // (errcOfSystemError's 0 is no condition, which equals no Errc, not even the one of value 0)
+    i32 meant = platform::errcOfSystemError(this->value_);
+    return meant != 0 && meant == i32(condition);
   }
 
 private:
