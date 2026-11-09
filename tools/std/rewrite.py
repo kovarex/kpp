@@ -18,7 +18,8 @@ Each record is `kind, path, offset, name`:
 B    a bare name: std:: goes before it
 G    `::name`: `::` becomes std::
 S    a bare specialization (`template<> struct Hash<Key>`): std:: goes before its name, found from the declaration
-M    a bare call of a function the global scope also declares, which took the library's: std:: goes before it, and it is listed
+M    a bare call of a function the global scope also declares, which took the library's: listed and left, for a reader (--calls
+     writes std:: before them too: what the code does now)
 U    the same call, decided per template instance: left alone, and listed (for a reader)
 
 A record whose text is not there is listed and not applied. KPP_NO_BRIDGE=1 compiles without the bridge: what is left bare is an error.
@@ -33,7 +34,8 @@ import sys
 def main():
     arguments = sys.argv[1:]
     dry = '--dry' in arguments
-    arguments = [a for a in arguments if a != '--dry']
+    calls = '--calls' in arguments
+    arguments = [a for a in arguments if a != '--dry' and a != '--calls']
     only = []
     while '--only' in arguments:
         at = arguments.index('--only')
@@ -87,6 +89,9 @@ def main():
                 continue
             if kind == 'M':
                 listed.append('took the library over a global of the name: %s:%d %s' % (source, line_of(data, at), name))
+                if not calls:
+                    counts['M left'] += 1
+                    continue
             edits[at] = (0, b'std::')
             counts[kind] += 1
         if edits and not dry:

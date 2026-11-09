@@ -798,12 +798,13 @@ std::string GlobalScope::stdUsesText()
   for (const Impl::StdUse& use : impl->stdUses)
   {
     char kind = use.kind;
-    if (kind == 'M')
+    if (use.call)
     {
+      // What the call took: a program's own function (a hidden friend, by argument-dependent lookup) or C's (clib/) stays bare.
       const Decl* chosen = use.call->resolved;
-      if (chosen && !(chosen->file && chosen->file->isLibrary))
-        continue; // (the program's own function: it stays bare)
-      if (!chosen)
+      if (chosen && chosen->kind == NodeKind::FunctionDecl && !(chosen->file && chosen->file->libraryScope != UINT32_MAX))
+        continue;
+      if (kind == 'M' && !chosen)
         kind = 'U'; // (decided per instance: for a reader)
     }
     lines.insert(std::string(1, kind) + "\t" + use.file->path + "\t" + std::to_string((*use.file->tokens)[use.token].offset) + "\t" +

@@ -443,7 +443,7 @@ auto GlobalScope::Impl::qualifierSubst(const QualifiedName& name, const TypeCont
       !(l.decl->kind == NodeKind::VariableDecl && (l.decl->flags & DF_Typedef)))
     return s;
   const Ty* qualifier = nullptr;
-  if (prefix.parts.size() > 1 || l.found == Found::Member)
+  if ((prefix.parts.size() > 1 && !typeTraitPart(prefix, ctx.scope, ctx.locals, depth + 1)) || l.found == Found::Member) // (`std::Conditional<...>::Type`: the class, not the trait's choice)
   {
     // `PrototypeType::IDType::IndexType`: the qualifier converted as the type it names, so that
     // an alias it ends in has the arguments of the base declaring it (ID<EntityPrototype, uint16>);
