@@ -1,0 +1,24 @@
+// spec: with --this-reference a test build compiles: the runner kpp generates for the tests (`<tests>.kpp` and its platform parts) is the compiler's own code, which keeps C++'s pointer as the standard library does until the meaning becomes the default (design.md 23d); the tests' own `this` is the object
+// kpp: --this-reference
+// test:
+// exit: 0
+class Counter
+{
+public:
+  int count = 0;
+  Counter& add(int n)
+  {
+    this.count += n;
+    return this;
+  }
+  const Counter* address() const { return &this; }
+};
+
+test Chained
+{
+  Counter c;
+  c.add(2).add(3);
+  require(c.count == 5, "count");
+  require(c.address() == &c, "address");
+  println("count ", c.count);
+}

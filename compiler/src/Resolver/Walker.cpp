@@ -2283,14 +2283,19 @@ auto GlobalScope::Impl::Walker::noteThisUse(Expr* e) -> void
       noteThisAddress(e); // (no parent spoke for it: passed, returned, stored)
       break;
     case NodeKind::MemberExpr:
-      if (auto* m = static_cast<MemberExpr*>(e); isThis(m->base) && P(m->op) == P::Arrow)
-        claim(m->base, "this is a reference: write `this.`, not `this->`");
-      break;
     case NodeKind::CallExpr: // (`this->f()`: a member call walks its callee's object itself, not the MemberExpr)
-      if (auto* c = static_cast<CallExpr*>(e); c->callee && c->callee->kind == NodeKind::MemberExpr)
-        if (auto* m = static_cast<MemberExpr*>(c->callee); isThis(m->base) && P(m->op) == P::Arrow)
-          claim(m->base, "this is a reference: write `this.`, not `this->`");
+    {
+      auto* m = e->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(e) : nullptr;
+      if (auto* c = e->kind == NodeKind::CallExpr ? static_cast<CallExpr*>(e) : nullptr; c && c->callee && c->callee->kind == NodeKind::MemberExpr)
+        m = static_cast<MemberExpr*>(c->callee);
+      if (!m || !isThis(m->base))
+        break;
+      if (P(m->op) == P::Arrow)
+        claim(m->base, "this is a reference: write `this.`, not `this->`");
+      else if (P(m->op) == P::Dot) // `this.x` written the new way already (required `this.`'s fix): no fix, `&this.x` would be wrong
+        thisUsesNoted.insert(m->base);
       break;
+    }
     case NodeKind::UnaryExpr:
     {
       auto* u = static_cast<UnaryExpr*>(e);
