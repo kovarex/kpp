@@ -78,8 +78,6 @@ int compile(int argc, char** argv)
       options.returnCopyWarnings = true;
     else if (arg == "--zero-null-warnings")
       options.zeroNullWarnings = true;
-    else if (arg == "--override-warnings")
-      options.overrideWarnings = true;
     else if (arg == "--this-warnings")
       options.thisWarnings = true;
     else if (arg == "--this-reference")

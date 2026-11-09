@@ -45,8 +45,6 @@ void usage(FILE* out)
           "                (docs/design.md, \"struct and class\"); no error, no other change\n"
           "  --zero-null-warnings  a literal 0 that would be a pointer (an error, docs/design.md 4) is a warning instead:\n"
           "                convert.cmd's nullptr pass rewrites what they name\n"
-          "  --override-warnings  warn of each class with a virtual function whose destructor is not virtual, which\n"
-          "                kpp makes virtual (docs/design.md 23b); no error, no other change\n"
           "  --implicit-uses FILE  write each constructor and conversion operator marked `implicit`, its uses as an\n"
           "                implicit conversion and how often whether it converts implicitly was asked (the converter's\n"
           "                list of the marks it may drop; docs/design.md \"Explicit by default\"); no other change\n"

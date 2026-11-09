@@ -612,9 +612,6 @@ void runCodegen(Build& build)
   if (options.zeroNullWarnings)
     for (const std::string& w : takeZeroNullWarnings())
       fprintf(stderr, "%s\n", w.c_str());
-  if (options.overrideWarnings)
-    for (const std::string& w : takeOverrideWarnings())
-      fprintf(stderr, "%s\n", w.c_str());
   if (options.thisWarnings)
     for (const std::string& w : takeThisWarnings())
       fprintf(stderr, "%s\n", w.c_str());

@@ -1178,8 +1178,6 @@ namespace
   std::atomic<bool> zeroNullWarningsEnabled{false};
   std::mutex zeroNullMutex;
   std::set<std::string> zeroNullNotes; // (sorted, each token once)
-  std::atomic<bool> overrideWarningsEnabled{false};
-  std::set<std::string> overrideNotes; // (sorted, an instance's as its template's, once)
   std::atomic<bool> thisWarningsEnabled{false};
   std::atomic<bool> explicitByDefaultEnabled{true};
   std::atomic<bool> noImplicitFallthroughEnabled{true};
@@ -1196,30 +1194,6 @@ bool firstZeroNull(const void* file, uint32_t token)
 {
   std::lock_guard lock(zeroNullMutex);
   return zeroNullSeen.insert({file, token}).second;
-}
-
-void setOverrideWarnings(bool on)
-{
-  std::lock_guard lock(zeroNullMutex);
-  overrideNotes.clear();
-  overrideWarningsEnabled = on;
-}
-
-bool overrideWarningsOn() { return overrideWarningsEnabled; }
-
-void noteOverrideWarning(const std::string& warning)
-{
-  std::lock_guard lock(zeroNullMutex);
-  overrideNotes.insert(warning);
-}
-
-std::vector<std::string> takeOverrideWarnings()
-{
-  std::lock_guard lock(zeroNullMutex);
-  std::vector<std::string> out(overrideNotes.begin(), overrideNotes.end());
-  overrideNotes.clear();
-  sortDiagnostics(out);
-  return out;
 }
 
 void setExplicitByDefault(bool on) { explicitByDefaultEnabled = on; }

@@ -57,13 +57,6 @@ std::string sourceLocation(const std::string& path, size_t line, size_t column =
 // instead, "PATH:LINE[:COL]: warning: the literal 0 is no pointer: write nullptr (design.md 4)", each token
 // once, printed after codegen (takeZeroNullWarnings): convert.cmd's nullptr pass (fix-null.py) rewrites
 // what they name in the C++ it converted. set turns the mode on and clears the notes.
-// --override-warnings: a class with a virtual function whose destructor is not virtual, which kpp's rule
-// makes virtual (design.md 23b), "PATH:LINE: warning: X has a virtual function and an implicit destructor,
-// which becomes virtual", each once: the count before that rule lands. (Required `override` is an error.)
-void setOverrideWarnings(bool on);
-bool overrideWarningsOn();
-void noteOverrideWarning(const std::string& warning);
-std::vector<std::string> takeOverrideWarnings();
 // --this-warnings: an unqualified name that finds a data member or a member function, "PATH:LINE: warning:
 // NAME is a data member: write this.NAME" (a member function; a static member's `This::NAME`), each once per
 // place; one beside a global of its spelling says so. The count before required `this.`
