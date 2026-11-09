@@ -1270,10 +1270,14 @@ auto codegen::Emitter::enterBranchBesideThrow(ConditionalExpr* c) -> Expr*
   std::string on = newLabel("cond.on"), leaves = newLabel("cond.throw");
   bool thenThrows = beside == c->else_;
   fn += "  br i1 " + cond.text + ", label %" + (thenThrows ? leaves : on) + ", label %" + (thenThrows ? on : leaves) + "\n";
-  size_t temps = statementTemps.size();
+  // (What the throw's operand made is not made on the way on, and what the condition made is still there: the
+  // throw destroys the statement's temporaries on its way out (emitThrow's destroyTemps), which left the list empty,
+  // and a resize grew it again with empty records, kpp's crash on `c ? 1 : throw 2` where c made an object with a
+  // destructor, until 2026-11-08: thread J's expression generator.)
+  std::vector<Object> before(statementTemps.begin(), statementTemps.end());
   startBlock(leaves);
   rvalue(thenThrows ? c->then : c->else_);
-  statementTemps.resize(temps); // (what the throw's operand made is not made on the way on)
+  statementTemps = std::move(before);
   fn += "  unreachable\n";
   startBlock(on);
   return beside;

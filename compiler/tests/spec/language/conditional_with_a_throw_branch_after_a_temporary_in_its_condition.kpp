@@ -1,0 +1,57 @@
+// spec: a conditional with a throw-expression branch whose condition makes an object with a destructor (`(bool)make(i) ? use(make(i + 10)) : throw i`, `!make(i) ? throw E(i) : use(T(i + 20))`): the condition's temporary lives to the end of the full-expression on the way on, and is destroyed after the thrown object is made on the way out ([expr.cond] 2, [class.temporary] 4). clang's and g++'s output (the C++ with `explicit` where kpp marks none)
+// found by thread J's expression generator (2026-11-08): kpp crashed (the throw emptied the statement's temporaries, and a resize grew the list again with empty records)
+extern "C" int printf(const char* format, ...);
+struct T
+{
+  int id;
+  T(int i) : id(i) { printf("+%d ", id); }
+  T(const T& o) : id(o.id + 100) { printf("c%d ", id); }
+  ~T() { printf("-%d ", id); }
+  operator bool() const { return id % 2 != 0; }
+};
+struct E
+{
+  int code;
+  E(int c) : code(c) { printf("E%d ", code); }
+  E(const E& o) : code(o.code) { printf("cE%d ", code); }
+  ~E() { printf("~E%d ", code); }
+};
+T make(int i) { printf("mk "); return T(i); }
+int use(const T& t) { printf("u%d ", t.id); return t.id; }
+int pick(int i)
+{
+  return (bool)make(i) ? use(make(i + 10)) : throw i;
+}
+int pickObject(int i)
+{
+  int x = !make(i) ? throw E(i) : use(T(i + 20));
+  return x;
+}
+int main()
+{
+  for (int i = 1; i <= 2; ++i)
+  {
+    try
+    {
+      printf("[%d] ", pick(i));
+    }
+    catch (int e)
+    {
+      printf("caught %d ", e);
+    }
+    printf("\n");
+  }
+  for (int i = 3; i <= 4; ++i)
+  {
+    try
+    {
+      printf("[%d] ", pickObject(i));
+    }
+    catch (const E& e)
+    {
+      printf("caught E%d ", e.code);
+    }
+    printf("\n");
+  }
+  return 0;
+}
