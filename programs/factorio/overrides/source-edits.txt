@@ -905,3 +905,247 @@
 @ src/Net/NetworkInputListener.hpp: noexcept as C++ computes it from InputListener's destructor and its members
 -   virtual ~NetworkInputListener() = default;
 +   virtual ~NetworkInputListener() noexcept = default;
+
+# `a != b` is only ever `!(a == b)` (design.md 4, kovarex 2026-11-09): the operator!= the converter's step
+# (ProgramPasses.inl's withNotEqualsDropped) cannot drop or turn into the == itself. Where the class's == is
+# written through its != (`return !(*this != other);`), the == takes the != body negated; where an == is
+# the != negated with the same asserts, the != goes; where there is none, the != becomes the ==. SSE.hpp's
+# six masks return a vector, not bool, and stay (kovarex, 2026-11-09).
+
+@ src/Data/ModSettings/ModSetting.hpp: the == is virtual, as the != it was written through was
+-   virtual bool operator!=(const ModSetting& other) const;
+-   bool operator==(const ModSetting& other) const;
++   virtual bool operator==(const ModSetting& other) const;
+
+@ src/Data/ModSettings/ModSetting.cpp: the == is the != negated
+- bool ModSetting::operator!=(const ModSetting& other) const
+- {
+-   return this->prototype != other.prototype;
+- }
+-
+- bool ModSetting::operator==(const ModSetting& other) const
+- {
+-   return !(*this != other);
+- }
++ bool ModSetting::operator==(const ModSetting& other) const
++ {
++   return this->prototype == other.prototype;
++ }
+
+@ src/Data/ModSettings/BoolSetting.hpp: overrides ModSetting's ==
+-   virtual bool operator!=(const ModSetting& other) const override;
++   virtual bool operator==(const ModSetting& other) const override;
+
+@ src/Data/ModSettings/BoolSetting.cpp: the == is the != negated
+- bool BoolSetting::operator!=(const ModSetting& other) const
+- {
+-   return super::operator!=(other) || this->value != static_cast<const BoolSetting&>(other).value;
++ bool BoolSetting::operator==(const ModSetting& other) const
++ {
++   return super::operator==(other) && this->value == static_cast<const BoolSetting&>(other).value;
+
+@ src/Data/ModSettings/ColorSetting.hpp: overrides ModSetting's ==
+-   bool operator!=(const ModSetting& other) const override;
++   bool operator==(const ModSetting& other) const override;
+
+@ src/Data/ModSettings/ColorSetting.cpp: the == is the != negated
+- bool ColorSetting::operator!=(const ModSetting& other) const
+- {
+-   return super::operator!=(other) || this->value != static_cast<const ColorSetting&>(other).value;
++ bool ColorSetting::operator==(const ModSetting& other) const
++ {
++   return super::operator==(other) && this->value == static_cast<const ColorSetting&>(other).value;
+
+@ src/Data/ModSettings/DoubleSetting.hpp: overrides ModSetting's ==
+-   virtual bool operator!=(const ModSetting& other) const override;
++   virtual bool operator==(const ModSetting& other) const override;
+
+@ src/Data/ModSettings/DoubleSetting.cpp: the == is the != negated (a NaN differs from itself either way)
+- bool DoubleSetting::operator!=(const ModSetting& other) const
+- {
+-   return super::operator!=(other) || this->value != static_cast<const DoubleSetting&>(other).value;
++ bool DoubleSetting::operator==(const ModSetting& other) const
++ {
++   return super::operator==(other) && this->value == static_cast<const DoubleSetting&>(other).value;
+
+@ src/Data/ModSettings/IntSetting.hpp: overrides ModSetting's ==
+-   virtual bool operator!=(const ModSetting& other) const override;
++   virtual bool operator==(const ModSetting& other) const override;
+
+@ src/Data/ModSettings/IntSetting.cpp: the == is the != negated
+- bool IntSetting::operator!=(const ModSetting& other) const
+- {
+-   return super::operator!=(other) || this->value != static_cast<const IntSetting&>(other).value;
++ bool IntSetting::operator==(const ModSetting& other) const
++ {
++   return super::operator==(other) && this->value == static_cast<const IntSetting&>(other).value;
+
+@ src/Data/ModSettings/StringSetting.hpp: overrides ModSetting's ==
+-   virtual bool operator!=(const ModSetting& other) const override;
++   virtual bool operator==(const ModSetting& other) const override;
+
+@ src/Data/ModSettings/StringSetting.cpp: the == is the != negated
+- bool StringSetting::operator!=(const ModSetting& other) const
+- {
+-   return super::operator!=(other) || this->value != static_cast<const StringSetting&>(other).value;
++ bool StringSetting::operator==(const ModSetting& other) const
++ {
++   return super::operator==(other) && this->value == static_cast<const StringSetting&>(other).value;
+
+@ src/Data/ModSettings/ModSettings.hpp: the == alone, which was written through the !=
+-   bool operator!=(const ModSettingsTemplate& other) const;
+-   bool operator==(const ModSettingsTemplate& other) const;
++   bool operator==(const ModSettingsTemplate& other) const;
+
+@ src/Data/ModSettings/ModSettings.cpp: the == is the != negated (as many lines, for the log calls' __LINE__ below)
+- template<ModSettingScopeType::Type T>
+- bool ModSettingsTemplate<T>::operator!=(const ModSettingsTemplate& other) const
+- {
+-   if (this->settings.size() != other.settings.size())
+-     return true;
+-
+-   // Both should be sorted identically
+-   auto it1 = this->settings.begin();
+-   auto it2 = other.settings.begin();
+-   while (it1 != this->settings.end())
+-     if (**it1++ != **it2++)
+-       return true;
+-   return false;
+- }
+-
+- template<ModSettingScopeType::Type T>
+- bool ModSettingsTemplate<T>::operator==(const ModSettingsTemplate& other) const
+- {
+-   return !(*this != other);
+- }
++ template<ModSettingScopeType::Type T>
++ bool ModSettingsTemplate<T>::operator==(const ModSettingsTemplate& other) const
++ {
++   if (this->settings.size() != other.settings.size())
++     return false;
++
++   // Both should be sorted identically
++   auto it1 = this->settings.begin();
++   auto it2 = other.settings.begin();
++   while (it1 != this->settings.end())
++     if (**it1++ != **it2++)
++       return false;
++   return true;
++ }
++
++
++
++
++
++
+
+@ src/GapFiller.hpp: the iterator equals its end, where it differed from it
+-     bool operator!=(const Ended&) const;
++     bool operator==(const Ended&) const;
+
+@ src/GapFiller.cpp: the == is the != negated (its coordinates are integers)
+- bool GapFiller::Iterator::operator!=(const Ended&) const
+- {
+-   if (this->context.gapFillingStep.x == 0 && this->context.gapFillingStep.y == 0)
+-     return this->context.rebuildStart && this->position == this->context.startPosition;
++ bool GapFiller::Iterator::operator==(const Ended&) const
++ {
++   if (this->context.gapFillingStep.x == 0 && this->context.gapFillingStep.y == 0)
++     return !(this->context.rebuildStart && this->position == this->context.startPosition);
+
+@ src/GapFiller.cpp: the == is the != negated (its coordinates are integers)
+-   if (goingUp)
+-     return currentCoordinate <= endCoordinate;
+-   return currentCoordinate >= endCoordinate;
++   if (goingUp)
++     return currentCoordinate > endCoordinate;
++   return currentCoordinate < endCoordinate;
+
+@ src/Gui/TechnologyReference.hpp: the != is its == negated, with the same assert
+-   bool operator!=(const TechnologyReference& other) const;
+-   bool operator==(const TechnologyReference& other) const;
++   bool operator==(const TechnologyReference& other) const;
+
+@ src/Gui/TechnologyReference.cpp: the != is its == negated, with the same assert
+- bool TechnologyReference::operator!=(const TechnologyReference& other) const
+- {
+-   assert(this->map == other.map && this->forceID == other.forceID ||
+-          !this->technologyID || !other.technologyID);
+-   return this->technologyID != other.technologyID;
+- }
+-
+- bool TechnologyReference::operator==(const TechnologyReference& other) const
++ bool TechnologyReference::operator==(const TechnologyReference& other) const
+
+@ src/Input/InputAction.hpp: the check for an empty action as ==, the != it was negated
+-   bool operator!=(const InputAction& action) const { (void)(action); assert(!action); return bool(*this); }
+-   bool operator!=(InputActionType action) const { (void)(action); assert(action == InputActionType::Nothing); return bool(*this); }
++   bool operator==(const InputAction& action) const { (void)(action); assert(!action); return !bool(*this); }
++   bool operator==(InputActionType action) const { (void)(action); assert(action == InputActionType::Nothing); return !bool(*this); }
+
+@ src/MapEditor/EditorAction.hpp: the check for an empty action as ==, the != it was negated
+-   bool operator!=(const EditorAction& action) const { (void)(action); assert(!action); return bool(*this); }
+-   bool operator!=(Type type) const { (void)(type); assert(type == Type::Nothing); return bool(*this); }
++   bool operator==(const EditorAction& action) const { (void)(action); assert(!action); return !bool(*this); }
++   bool operator==(Type type) const { (void)(type); assert(type == Type::Nothing); return !bool(*this); }
+
+@ src/MapEditor/Tools/EditorTool.hpp: the != is its == negated, with the same static_assert
+-     return this == other.get();
+-   }
+-   template<class T>
+-   bool operator!=(const std::unique_ptr<T>& other) const
+-   {
+-     static_assert(std::is_base_of_v<EditorTool, T>);
+-     return this != other.get();
+-   }
++     return this == other.get();
++   }
+
+@ src/Logistics/LogisticSections.hpp: the == alone, which was written through the !=
+-   bool operator!=(const LogisticSections& other) const;
+-   bool operator==(const LogisticSections& other) const { return !(*this != other); }
++   bool operator==(const LogisticSections& other) const;
+
+@ src/Logistics/LogisticSections.cpp: the == is the != negated
+- bool LogisticSections::operator!=(const LogisticSections& other) const
+- {
+-   if (this->trashNotRequested != other.trashNotRequested)
+-     return true;
+-   return static_cast<const super&>(*this) != static_cast<const super&>(other);
+- }
++ bool LogisticSections::operator==(const LogisticSections& other) const
++ {
++   if (this->trashNotRequested != other.trashNotRequested)
++     return false;
++   return static_cast<const super&>(*this) == static_cast<const super&>(other);
++ }
+
+@ src/Util/Container/CompactDeque.hpp: the != is its == negated, with the same assert
+-     bool operator==(const IteratorBase& other) const { assert(this->deque == other.deque); return this->index == other.index; }
+-     bool operator!=(const IteratorBase& other) const { assert(this->deque == other.deque); return this->index != other.index; }
++     bool operator==(const IteratorBase& other) const { assert(this->deque == other.deque); return this->index == other.index; }
+
+@ src/Util/IDWithCount.hpp: the != is its == negated (the base's != is its == negated)
+-   bool operator!=(const IDWithCount<IDType, CountType>& other) const { return super::operator!=(other) || this->perSecond != other.perSecond; }
+-   bool operator==(const IDWithCount<IDType, CountType>& other) const { return super::operator==(other) && this->perSecond == other.perSecond; }
++   bool operator==(const IDWithCount<IDType, CountType>& other) const { return super::operator==(other) && this->perSecond == other.perSecond; }
+
+@ src/Util/ImmutableString.hpp: the != is `!(*this == other)`
+-   bool operator==(const char* other) const;
+-
+-   template <typename Arg>
+-   bool operator!=(Arg&& other) const;
++   bool operator==(const char* other) const;
+
+@ src/Util/ImmutableString.hpp: the != is `!(*this == other)`
+-   return strcmp(s1, s2) == 0;
+- }
+- 
+- template <size_t N>
+- template <typename Arg>
+- bool ImmutableStringTemplate<N>::operator!=(Arg&& other) const
+- {
+-   return !(*this == std::forward<Arg>(other));
+- }
++   return strcmp(s1, s2) == 0;
++ }

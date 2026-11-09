@@ -205,7 +205,14 @@ builds win less unless machine code is cached per function.
   by their terms), 42 made the `==`, 18 kept for review besides SSE's six. Its IR before and after: every function
   only before is an `operator!=` (and one `==` instance now inlined everywhere), every one only after an
   `operator==`, and no call reaches another function than the `==` of a dropped `!=` (24 differ by that `==`
-  inlined). tests\convert_notequal checks each form against C++'s output.
+  inlined). tests\convert_notequal checks each form against C++'s output. The 18 are hand edits of the C++ it
+  reads (programs/factorio/overrides/source-edits.txt, C, 2026-11-09): ModSetting's `==`, written
+  `!(*this != other)`, is virtual and the chain's five overrides are `==` (`super::operator==(other) && ...`);
+  ModSettingsTemplate's and LogisticSections' `==`, written through their `!=`, take its body with each result
+  negated; GapFiller's iterator equals its end (its three results negated, integers); TechnologyReference's,
+  EditorTool's, CompactDeque's iterator's, IDWithCount's and ImmutableString's `!=` were their `==` negated
+  (the same asserts) and go; InputAction's and EditorAction's two empty-action checks become `==`. The game
+  then has no `operator!=` returning bool.
 - Structured bindings are tuple-like through the library's `TupleSize` and `get` (std::tuple_size,
   std::get), as in C++: when `TupleSize<E>` has a member named `value` (a full or partial
   specialization for E; the primary `TupleSize` is empty), `auto [a, b] = e` names exactly
