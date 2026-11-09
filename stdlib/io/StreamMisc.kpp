@@ -4,8 +4,9 @@
 using StreamSize = i64;
 
 // IstreambufIterator<Char> (std::istreambuf_iterator<char>): an input iterator over the characters
-// of an InFileStream, one get() at a time. A default-constructed one is the end, which an iterator
-// equals once its stream has no more characters (`copy(IstreambufIterator<char>(in), {}, out)`).
+// of an InFileStream, one byte at a time and leaving the stream's state alone, as
+// std::istreambuf_iterator reads the stream's buffer. A default-constructed one is the end, which an
+// iterator equals once its stream has no more characters (`copy(IstreambufIterator<char>(in), {}, out)`).
 // Char is char: the library's streams are of chars.
 template<typename Char = char>
 class IstreambufIterator
@@ -22,7 +23,7 @@ public:
 
   IstreambufIterator(InFileStream& s) : stream(&s)
   {
-    this->current = s.get();
+    this->current = s.rawGet();
   }
 
   Char operator*() const { return (Char)this->current; }
@@ -30,7 +31,7 @@ public:
   IstreambufIterator& operator++()
   {
     if (this->stream)
-      this->current = this->stream->get();
+      this->current = this->stream->rawGet();
     return *this;
   }
 

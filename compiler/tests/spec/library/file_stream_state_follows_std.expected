@@ -1,0 +1,91 @@
+default input                        bool 1 not 0 good 1 eof 0
+default input: open 0
+default input: get -1
+default input: after get             bool 0 not 1 good 0 eof 1
+default input: closed                bool 0 not 1 good 0 eof 0
+default output                       bool 1 good 1 open 0
+default output: after a write        bool 0 good 0 open 0
+default output: after write()        bool 0 good 0 open 0
+default output: closed               bool 0 good 0 open 0
+iterator: read [abc]
+iterator: after reading all          bool 1 not 0 good 1 eof 0
+iterator: get after it -1
+iterator: after that get             bool 0 not 1 good 0 eof 1
+open while open                      bool 0 not 1 good 0 eof 0
+open while open: file open 1
+open while open: get -1
+open while open: closed              bool 0 not 1 good 0 eof 0
+open while open: opened again        bool 1 not 0 good 1 eof 0
+open while open: next x
+closed twice                         bool 0 not 1 good 0 eof 0
+write then close                     bool 1 good 1 open 0
+write then close: the write looks fine
+write after close                    bool 0 good 0 open 0
+opened after that                    bool 1 good 1 open 1
+closed twice                         bool 0 good 0 open 0
+output: open while open              bool 0 good 0 open 1
+output: closed after that            bool 0 good 0 open 0
+output: first byte -1
+missing: after open                  bool 0 not 1 good 0 eof 0
+missing: getline                     result 0 line [kept]
+missing: get -1
+missing: after get                   bool 0 not 1 good 0 eof 0
+missing: open 0
+no last newline: getline 1           result 1 line [ab]
+no last newline: after 1             bool 1 not 0 good 1 eof 0
+no last newline: getline 2           result 1 line [cd]
+no last newline: after 2             bool 1 not 0 good 0 eof 1
+no last newline: getline 3 (at end)  result 0 line [cd]
+no last newline: after 3             bool 0 not 1 good 0 eof 1
+no last newline: getline 4           result 0 line [cd]
+last newline: getline 1              result 1 line [ab]
+last newline: after 1                bool 1 not 0 good 1 eof 0
+last newline: getline 2 (at end)     result 0 line []
+last newline: after 2                bool 0 not 1 good 0 eof 1
+last newline: getline 3              result 0 line []
+last newline: after 3                bool 0 not 1 good 0 eof 1
+get: after 1                         bool 1 not 0 good 1 eof 0
+get: after 2 (last)                  bool 1 not 0 good 1 eof 0
+get: after 3 (past the end)          bool 0 not 1 good 0 eof 1
+get: after 4                         bool 0 not 1 good 0 eof 1
+get: 120 121 -1 -1
+ignore past the end                  bool 1 not 0 good 0 eof 1
+ignore past the end: next -1
+ignore past the end: after get       bool 0 not 1 good 0 eof 1
+ignore to the last byte              bool 1 not 0 good 1 eof 0
+ignore to the last byte: next -1
+ignore to the last byte: after get   bool 0 not 1 good 0 eof 1
+ignore through a delimiter           bool 1 not 0 good 1 eof 0
+ignore through a delimiter: next d
+ignore, no such delimiter            bool 1 not 0 good 0 eof 1
+ignore one: next b
+read all exactly                     bool 1 not 0 good 1 eof 0
+read past the end                    bool 0 not 1 good 0 eof 1
+read short                           bool 0 not 1 good 0 eof 1
+read short: [abcde.....]
+read after a short read              bool 0 not 1 good 0 eof 1
+read nothing                         bool 1 not 0 good 1 eof 0
+seekg 3                              bool 1 not 0 good 1 eof 0
+seekg 3: tellg 3, next d
+seekg after eof alone: before        bool 1 not 0 good 0 eof 1
+seekg after eof alone: after         bool 1 not 0 good 1 eof 0
+seekg after eof alone: next 98
+seekg after a failed get: before     bool 0 not 1 good 0 eof 1
+seekg after a failed get: after      bool 0 not 1 good 0 eof 0
+seekg after a failed get: next -1
+seekg after a failed get: end        bool 0 not 1 good 0 eof 0
+tellg at eof alone: -1
+tellg at eof alone: after            bool 0 not 1 good 0 eof 1
+tellg after a failed get: -1
+input: open                          bool 1 not 0 good 1 eof 0
+input: closed                        bool 1 not 0 good 1 eof 0
+input: open 0
+input: get after close -1
+input: after that get                bool 0 not 1 good 0 eof 1
+input: opened again                  bool 1 not 0 good 1 eof 0
+input: next a
+output: open                         bool 1 good 1 open 1
+output: closed                       bool 1 good 1 open 0
+output: opened again                 bool 1 good 1 open 1
+output: closed again                 bool 1 good 1 open 0
+output: cannot open                  bool 0 good 0 open 0

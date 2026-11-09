@@ -7,3 +7,9 @@ writes `"\n"` as the one byte 0a, also on Windows, where std::ofstream's text mo
 an InFileStream reads every byte as it is. `getline(stream, line)` with the newline as delimiter
 drops a `\r` right before it, so the lines of a CRLF file come without it on every platform; a `\r`
 anywhere else stays (spec library/file_streams_have_no_text_mode).
+
+A stream's state is std's (spec library/file_stream_state_follows_std). `if (in)` asks whether anything
+failed, so a stream that only reached the end is true while `good()` is false. `getline` of a stream
+that cannot read leaves the string as it was. A stream closed or default-constructed stays good until
+an operation fails, so `out.close(); if (!out)` is true only when a write failed. There is no `fail()`,
+`clear()` or `rdstate()` yet: a program that calls one does not compile.

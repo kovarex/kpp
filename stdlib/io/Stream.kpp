@@ -1,5 +1,9 @@
 // File streams: a thin wrapper over C stdio that gives the interface std::ifstream/ofstream
 // convert to. FILE and stderr are declared in clib/CStdio.kpp and its platforms' files.
+//
+// A stream's state is its own, as std's is: what its operations met, not whether a file is open or
+// what the file's own flags say. good(), eof() and the truth value are std's ([iostate.flags]): the
+// truth value is "nothing failed", so a stream that only reached the end, or was closed, is true.
 
 class InFileStream
 {
@@ -8,7 +12,7 @@ public:
   InFileStream(const char* filename) { this->open(filename); }
   InFileStream(const String& filename) { this->open(filename.c_str()); }
   InFileStream(const InFileStream&) = delete;
-  InFileStream(InFileStream&& other) : handle(other.handle) { other.handle = nullptr; }
+  InFileStream(InFileStream&& other) : handle(other.handle), atEnd(other.atEnd), failed(other.failed) { other.handle = nullptr; }
 
   ~InFileStream()
   {
@@ -16,61 +20,146 @@ public:
       fclose(this->handle);
   }
 
-  void open(const char* filename) { this->handle = fopen(filename, "rb"); }
+  // A stream with a file open stays as it is and fails, as std::filebuf's open; a file that opens
+  // clears the state.
+  void open(const char* filename)
+  {
+    FILE* opened = this->handle ? nullptr : fopen(filename, "rb");
+    if (!opened)
+    {
+      this->failed = true;
+      return;
+    }
+    this->handle = opened;
+    this->atEnd = false;
+    this->failed = false;
+  }
+
   void open(const String& filename) { this->open(filename.c_str()); }
   bool is_open() const { return this->handle != nullptr; }
   bool isOpen() const { return this->handle != nullptr; }
 
+  // Closing keeps the state, and fails for a stream with no file (std::ifstream::close).
   void close()
   {
-    if (this->handle)
-    {
-      fclose(this->handle);
-      this->handle = nullptr;
-    }
+    if (!this->handle || fclose(this->handle) != 0)
+      this->failed = true;
+    this->handle = nullptr;
   }
 
-  bool good() const { return this->handle != nullptr && feof(this->handle) == 0 && ferror(this->handle) == 0; }
-  bool eof() const { return this->handle != nullptr && feof(this->handle) != 0; }
-  operator bool() const { return this->good(); }
-  bool operator!() const { return !this->good(); }
+  bool good() const { return !this->atEnd && !this->failed; }
+  bool eof() const { return this->atEnd; }
+  operator bool() const { return !this->failed; }
+  bool operator!() const { return this->failed; }
 
-  i32 get() { return this->handle ? fgetc(this->handle) : -1; }
+  // The next byte. -1 past the end, which fails and sets the end, and of a stream that is not good,
+  // which fails.
+  i32 get()
+  {
+    if (!this->ready())
+      return -1;
+    i32 c = this->rawGet();
+    if (c == -1)
+    {
+      this->atEnd = true;
+      this->failed = true;
+    }
+    return c;
+  }
+
+  // The next byte or -1, touching no state: what std::istreambuf_iterator reads, the stream's buffer
+  // past its state.
+  i32 rawGet() { return this->handle ? fgetc(this->handle) : -1; }
 
   // Skips up to count bytes, through the first delimiter met (std::istream::ignore; the tests'
-  // ForkLogic skips an XML declaration with `in.ignore(Limits<StreamSize>::max(), '>')`).
+  // ForkLogic skips an XML declaration with `in.ignore(Limits<StreamSize>::max(), '>')`). Reaching
+  // the end sets the end and is no failure.
   InFileStream& ignore(i64 count = 1, i32 delimiter = -1)
   {
-    for (i64 i = 0; i < count && this->handle; ++i)
+    if (!this->ready())
+      return *this;
+    for (i64 i = 0; i < count; ++i)
     {
-      i32 c = fgetc(this->handle);
-      if (c == -1 || c == delimiter)
+      i32 c = this->rawGet();
+      if (c == -1)
+      {
+        this->atEnd = true;
+        break;
+      }
+      if (c == delimiter)
         break;
     }
     return *this;
   }
 
+  // The end coming before count bytes fails and sets the end.
   InFileStream& read(char* buffer, ContainerSize count)
   {
-    if (this->handle)
-      fread(buffer, 1, count, this->handle);
+    if (!this->ready())
+      return *this;
+    usize got = this->handle ? fread(buffer, 1, count, this->handle) : (usize)0;
+    if ((ContainerSize)got < count)
+    {
+      this->atEnd = true;
+      this->failed = true;
+    }
     return *this;
   }
 
+  // Clears the end first; a stream that failed stays where it is, failed (std::istream::seekg).
   InFileStream& seekg(long pos)
   {
-    if (this->handle)
-      fseek(this->handle, pos, 0);
+    this->atEnd = false;
+    if (!this->failed && (!this->handle || fseek(this->handle, pos, 0) != 0))
+      this->failed = true;
     return *this;
   }
 
+  // -1 of a stream that is not good, which fails (std::istream::tellg, through its sentry).
   long tellg()
   {
-    return this->handle ? ftell(this->handle) : -1;
+    if (!this->ready() || !this->handle)
+      return -1;
+    return ftell(this->handle);
+  }
+
+  // What getline reads (std::getline): a stream that is not good fails and leaves line as it was; the
+  // end before any byte fails and sets the end, the end after a last line with no delimiter only sets it.
+  bool readLine(String& line, char delimiter)
+  {
+    if (!this->ready())
+      return false;
+    line = String();
+    bool extracted = false;
+    i32 c;
+    while ((c = this->rawGet()) != -1)
+    {
+      extracted = true;
+      if ((char)c == delimiter)
+      {
+        if (delimiter == '\n' && !line.empty() && line.back() == '\r')
+          line.pop_back();
+        return true;
+      }
+      line.append((char)c);
+    }
+    this->atEnd = true;
+    this->failed = !extracted;
+    return extracted;
   }
 
 private:
+  // std's istream::sentry for these unformatted input functions: a stream that is not good fails.
+  bool ready()
+  {
+    if (!this->good())
+      this->failed = true;
+    return this->good();
+  }
+
   FILE* handle = nullptr;
+  bool atEnd = false;
+  bool failed = false;
 };
 
 // The output streams' base (what std::ostream is to code that writes to any stream: UnitTest++'s
@@ -188,7 +277,7 @@ public:
   OutFileStream(const char* filename) { this->open(filename); }
   OutFileStream(const String& filename) { this->open(filename.c_str()); }
   OutFileStream(const OutFileStream&) = delete;
-  OutFileStream(OutFileStream&& other) : handle(other.handle) { other.handle = nullptr; }
+  OutFileStream(OutFileStream&& other) : handle(other.handle), failed(other.failed) { other.handle = nullptr; }
 
   ~OutFileStream()
   {
@@ -196,27 +285,46 @@ public:
       fclose(this->handle);
   }
 
-  void open(const char* filename) { this->handle = fopen(filename, "wb"); }
+  // As InFileStream's: a stream with a file open stays as it is and fails; a file that opens clears
+  // the state.
+  void open(const char* filename)
+  {
+    FILE* opened = this->handle ? nullptr : fopen(filename, "wb");
+    if (!opened)
+    {
+      this->failed = true;
+      return;
+    }
+    this->handle = opened;
+    this->failed = false;
+  }
+
   void open(const String& filename) { this->open(filename.c_str()); }
   bool is_open() const { return this->handle != nullptr; }
   bool isOpen() const { return this->handle != nullptr; }
 
+  // Closing keeps the state: `out.close(); if (!out)` asks whether the writes worked. It fails for a
+  // stream with no file, and for a file that did not take what was written.
   void close()
   {
-    if (this->handle)
-    {
-      fclose(this->handle);
-      this->handle = nullptr;
-    }
+    bool worked = this->handle && ferror(this->handle) == 0;
+    if (this->handle && fclose(this->handle) != 0)
+      worked = false;
+    this->handle = nullptr;
+    if (!worked)
+      this->failed = true;
   }
 
-  bool good() const { return this->handle != nullptr && ferror(this->handle) == 0; }
+  bool good() const { return !this->failed && (!this->handle || ferror(this->handle) == 0); }
   operator bool() const { return this->good(); }
 
+  // A stream that failed writes nothing, and one with no file fails, as std's ostream.
   OutFileStream& write(const char* data, ContainerSize count)
   {
-    if (this->handle)
-      fwrite(data, 1, count, this->handle);
+    if (!this->good() || count == 0)
+      return *this;
+    if (!this->handle || (ContainerSize)fwrite(data, 1, count, this->handle) != count)
+      this->failed = true;
     return *this;
   }
 
@@ -225,6 +333,9 @@ public:
     if (this->handle)
       fflush(this->handle);
   }
+
+private:
+  bool failed = false;
 };
 
 // The << operator for streams, so `cerr << "text" << value << endl;` works.
@@ -312,9 +423,7 @@ StderrStream& operator<<(StderrStream& s, EndlTag)
 
 OutFileStream& operator<<(OutFileStream& s, const char* text)
 {
-  if (s.handle)
-    fputs(text, s.handle);
-  return s;
+  return s.write(text, (ContainerSize)strlen(text));
 }
 
 // The String whole, NUL bytes too, as OutStream's (fputs stopped at the first NUL until 2026-11-09).
@@ -325,11 +434,8 @@ OutFileStream& operator<<(OutFileStream& s, const String& text)
 
 OutFileStream& operator<<(OutFileStream& s, EndlTag)
 {
-  if (s.handle)
-  {
-    fputc('\n', s.handle);
-    fflush(s.handle);
-  }
+  s.write("\n", 1);
+  s.flush();
   return s;
 }
 
@@ -340,21 +446,5 @@ StderrStream cerr;
 // newline as delimiter, a '\r' right before it is dropped (kovarex 2026-11-06), on every platform.
 bool getline(InFileStream& stream, String& line, char delimiter = '\n')
 {
-  line = String();
-  if (!stream.good())
-    return false;
-  i32 c;
-  bool read = false;
-  while ((c = stream.get()) != -1)
-  {
-    read = true;
-    if ((char)c == delimiter)
-    {
-      if (delimiter == '\n' && !line.empty() && line.back() == '\r')
-        line.pop_back();
-      break;
-    }
-    line.append((char)c);
-  }
-  return read;
+  return stream.readLine(line, delimiter);
 }
