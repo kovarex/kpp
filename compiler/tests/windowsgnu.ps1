@@ -3,6 +3,7 @@
 # and run, its output compared with the .expected as for the default target. run_tests.cmd runs it.
 param([string]$KppExe = "$PSScriptRoot\..\build\kpp.exe")
 $ErrorActionPreference = 'Stop'
+$KppExe = (Resolve-Path $KppExe).Path # (run_tests passes it relative to compiler\, and the project's build runs in its own directory)
 $work = Join-Path $PSScriptRoot '..\build\tests\windowsgnu'
 New-Item -ItemType Directory -Force $work | Out-Null
 $work = (Resolve-Path $work).Path
@@ -24,6 +25,7 @@ try
     if ($got -eq $want) { $passed++ } else { $failed += "$n (output differs)" }
   }
 }
+catch { $failed += "the end-to-end programs stopped: $_" } # (a compiler that does not start: without this the check went on and said ok)
 finally { Pop-Location }
 # A --debug-info build's PDB holds the .natvis as the MSVC target's does (lld's /natvis through
 # --Xlink), so Visual Studio shows the library's values in a windows-gnu program (docs/debugging.md).
@@ -40,7 +42,9 @@ else
 $startup = "$PSScriptRoot\spec\language\startup_in_definition_order"
 foreach ($lto in @(), @('--lto', 'full'))
 {
+  if (Test-Path "$work\startup.exe") { Remove-Item "$work\startup.exe" } # (a build that fails must not run the last one's)
   & $KppExe --quiet --target windows-gnu --release @lto --exe "$work\startup.exe" "$startup.kpp" > "$work\startup.compile.txt" 2>&1
+  if ($LASTEXITCODE -ne 0 -or -not (Test-Path "$work\startup.exe")) { $failed += "startup order in a release build $lto (compile: $work\startup.compile.txt)"; continue }
   $out = (& "$work\startup.exe" | Out-String).Trim() -replace "`r", ''
   if ($out -ne (Get-Content -Raw "$startup.expected").Trim().Replace("`r", '')) { $failed += "startup order in a release build $lto" }
 }
@@ -57,10 +61,12 @@ try
   foreach ($configuration in 'debug', 'release')
   {
     & $KppExe $configuration --no-server --target windows-gnu > "$work\clibrary.$configuration.txt" 2>&1
+    if ($LASTEXITCODE -ne 0) { $failed += "the C library project ($configuration): exit code $LASTEXITCODE ($work\clibrary.$configuration.txt)"; continue }
     $out = if (Test-Path "build\$configuration\app.exe") { (& "build\$configuration\app.exe" | Out-String).Trim() } else { '' }
     if ($out -ne '42 windows 10') { $failed += "the C library project ($configuration): '$out' ($work\clibrary.$configuration.txt)" }
   }
 }
+catch { $failed += "the C library project stopped: $_" }
 finally { Pop-Location }
 foreach ($f in $failed) { "FAIL windows-gnu $f" }
 if (-not $failed.Count) { "ok   windows-gnu: $passed end-to-end programs, the .natvis in a --debug-info build's PDB, a project's C libraries" }
