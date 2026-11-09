@@ -3184,7 +3184,8 @@ auto GlobalScope::Impl::deduce(const Ty* pattern, const Ty* arg, Subst& out, int
       bool forwarding = pattern->kind == TyKind::RRef && !pattern->inner->isConst && depth == 0;
       if (!out.find(pattern->inner->decl))
       {
-        const Ty* bound = pattern->inner->isConst ? types.unqualified(a) : a;
+        // (of the argument's const and volatile what the parameter does not take itself: `const T&` given a volatile int is T volatile int)
+        const Ty* bound = pattern->inner->isConst || pattern->inner->isVolatile ? types.qualified(types.unqualified(a), a->isConst && !pattern->inner->isConst, a->isVolatile && !pattern->inner->isVolatile) : a;
         if (bound->kind == TyKind::Array)
           bound = arrayQualifiersOff(bound, pattern->inner->isConst, pattern->inner->isVolatile);
         if (forwarding && (arg->kind == TyKind::LRef || a->kind == TyKind::Function))

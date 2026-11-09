@@ -1,0 +1,117 @@
+// spec: volatile is a qualifier as const is, and no conversion drops it: a reference to a non-volatile object (a reference to const included) binds no volatile one, a static_cast or reinterpret_cast casts it away never, a member function not declared volatile takes no volatile object, an implicit copy or move constructor or assignment operator takes none or assigns to none, a volatile object's array, member and base are volatile as const ones are const. Each is an error in clang and g++; until 2026-11-09 most compiled here, 32 forms, dropping the volatile silently ([dcl.init.ref] 5, [expr.static.cast] 1, [over.match.funcs] 4, [class.copy.ctor] 7, [class.copy.assign])
+// error: volatile_qualifier_violations_are_errors.kpp:60: error: the member function g is not volatile, and its object is a volatile T
+// error: volatile_qualifier_violations_are_errors.kpp:61: error: the member function g is not volatile, and its object is a volatile T
+// error: volatile_qualifier_violations_are_errors.kpp:75: error: the result of retRef (int32&) is bound to a volatile object (volatile int32): a reference to a non-volatile object binds no volatile one, only a reference to volatile does ([dcl.init.ref] 5)
+// error: volatile_qualifier_violations_are_errors.kpp:76: error: the result of retConstRef (const int32&) is bound to a volatile object (volatile int32): a reference to a non-volatile object binds no volatile one, only a reference to volatile does ([dcl.init.ref] 5)
+// error: volatile_qualifier_violations_are_errors.kpp:77: error: S is copied from a volatile object (volatile S), and no constructor of it takes one ([class.copy.ctor] 7)
+// error: volatile_qualifier_violations_are_errors.kpp:80: error: r1 (int32&) is bound to a volatile object (volatile int32): a reference to a non-volatile object binds no volatile one, only a reference to volatile does ([dcl.init.ref] 5)
+// error: volatile_qualifier_violations_are_errors.kpp:81: error: r2 (const int32&) is bound to a volatile object (volatile int32): a reference to a non-volatile object binds no volatile one, only a reference to volatile does ([dcl.init.ref] 5)
+// error: volatile_qualifier_violations_are_errors.kpp:82: error: r3 (int32&&) is bound to a volatile object (volatile int32): a reference to a non-volatile object binds no volatile one, only a reference to volatile does ([dcl.init.ref] 5)
+// error: volatile_qualifier_violations_are_errors.kpp:83: error: r4 (int32&) is bound to a volatile object (volatile int32): a reference to a non-volatile object binds no volatile one, only a reference to volatile does ([dcl.init.ref] 5)
+// error: volatile_qualifier_violations_are_errors.kpp:84: error: r5 (S&) is bound to a volatile object (volatile S): a reference to a non-volatile object binds no volatile one, only a reference to volatile does ([dcl.init.ref] 5)
+// error: volatile_qualifier_violations_are_errors.kpp:85: error: r6 (const S&) is bound to a volatile object (volatile S): a reference to a non-volatile object binds no volatile one, only a reference to volatile does ([dcl.init.ref] 5)
+// error: volatile_qualifier_violations_are_errors.kpp:86: error: r7 (S&) is bound to a volatile object (volatile D): a reference to a non-volatile object binds no volatile one, only a reference to volatile does ([dcl.init.ref] 5)
+// error: volatile_qualifier_violations_are_errors.kpp:87: error: r8 (int32[2]&) is bound to a volatile object (volatile int32[2]): a reference to a non-volatile object binds no volatile one, only a reference to volatile does ([dcl.init.ref] 5)
+// error: volatile_qualifier_violations_are_errors.kpp:88: error: the argument for r (int32&) of takeRef is a volatile object (volatile int32): a reference to a non-volatile object binds no volatile one, only a reference to volatile does ([dcl.init.ref] 5)
+// error: volatile_qualifier_violations_are_errors.kpp:89: error: the argument for r (const int32&) of takeConstRef is a volatile object (volatile int32): a reference to a non-volatile object binds no volatile one, only a reference to volatile does ([dcl.init.ref] 5)
+// error: volatile_qualifier_violations_are_errors.kpp:90: error: the argument for s (S&) of takeSRef is a volatile object (volatile S): a reference to a non-volatile object binds no volatile one, only a reference to volatile does ([dcl.init.ref] 5)
+// error: volatile_qualifier_violations_are_errors.kpp:91: error: the argument for s (const S&) of takeConstSRef is a volatile object (volatile S): a reference to a non-volatile object binds no volatile one, only a reference to volatile does ([dcl.init.ref] 5)
+// error: volatile_qualifier_violations_are_errors.kpp:92: error: the argument for s (S&&) of takeSRRef is a volatile object (volatile S): a reference to a non-volatile object binds no volatile one, only a reference to volatile does ([dcl.init.ref] 5)
+// error: volatile_qualifier_violations_are_errors.kpp:93: error: S is copied from a volatile object (volatile S), and no constructor of it takes one ([class.copy.ctor] 7)
+// error: volatile_qualifier_violations_are_errors.kpp:94: error: S is copied from a volatile object (volatile S), and no constructor of it takes one ([class.copy.ctor] 7)
+// error: volatile_qualifier_violations_are_errors.kpp:96: error: assignment to a volatile object (volatile S): the implicit assignment operator of S is not volatile ([class.copy.assign])
+// error: volatile_qualifier_violations_are_errors.kpp:97: error: assignment from a volatile object (volatile S): the implicit assignment operator of S takes none ([class.copy.assign])
+// error: volatile_qualifier_violations_are_errors.kpp:98: error: static_cast<int32*> casts away the volatile of volatile int32: only const_cast does ([expr.static.cast] 1, [expr.reinterpret.cast] 2, [expr.dynamic.cast] 2)
+// error: volatile_qualifier_violations_are_errors.kpp:99: error: reinterpret_cast<int32*> casts away the volatile of volatile int32: only const_cast does ([expr.static.cast] 1, [expr.reinterpret.cast] 2, [expr.dynamic.cast] 2)
+// error: volatile_qualifier_violations_are_errors.kpp:100: error: static_cast<int32&> casts away the volatile of volatile int32: only const_cast does ([expr.static.cast] 1, [expr.reinterpret.cast] 2, [expr.dynamic.cast] 2)
+// error: volatile_qualifier_violations_are_errors.kpp:101: error: reinterpret_cast<int32&> casts away the volatile of volatile int32: only const_cast does ([expr.static.cast] 1, [expr.reinterpret.cast] 2, [expr.dynamic.cast] 2)
+// error: volatile_qualifier_violations_are_errors.kpp:102: error: static_cast<S&> casts away the volatile of volatile S: only const_cast does ([expr.static.cast] 1, [expr.reinterpret.cast] 2, [expr.dynamic.cast] 2)
+// error: volatile_qualifier_violations_are_errors.kpp:103: error: the member function get is not volatile, and its object is a volatile S
+// error: volatile_qualifier_violations_are_errors.kpp:104: error: the member function cget is not volatile, and its object is a volatile S
+// error: volatile_qualifier_violations_are_errors.kpp:105: error: the member function cget is not volatile, and its object is a const volatile S
+// error: volatile_qualifier_violations_are_errors.kpp:106: error: the member function vget is not const, and its object is a const volatile S
+// error: volatile_qualifier_violations_are_errors.kpp:108: error: the member function get is not volatile, and its object is a volatile S
+// error: volatile_qualifier_violations_are_errors.kpp:110: error: the member function get is not volatile, and its object is a volatile S
+// error: volatile_qualifier_violations_are_errors.kpp:111: error: the member function operator( is not volatile, and its object is a volatile O
+// error: volatile_qualifier_violations_are_errors.kpp:112: error: the member function operator[ is not volatile, and its object is a volatile O
+// error: volatile_qualifier_violations_are_errors.kpp:113: error: the member function operator+ is not volatile, and its object is a volatile O
+// error: volatile_qualifier_violations_are_errors.kpp:114: error: e (int32&) is bound to a volatile object (volatile int32): a reference to a non-volatile object binds no volatile one, only a reference to volatile does ([dcl.init.ref] 5)
+struct S
+{
+  int x = 1;
+  int get() { return x; }
+  int cget() const { return x; }
+  int vget() volatile { return x; }
+  int cvget() const volatile { return x; }
+};
+struct D : S
+{
+  int y = 2;
+};
+struct O
+{
+  int operator()() { return 1; }
+  int operator[](int) { return 1; }
+  int operator+(int) { return 1; }
+};
+struct T
+{
+  int g() { return 1; }
+  int h() volatile { return g(); }
+  int i() volatile { return this->g(); }
+};
+void takeRef(int& r) {}
+void takeConstRef(const int& r) {}
+void takeSRef(S& s) {}
+void takeConstSRef(const S& s) {}
+void takeSRRef(S&& s) {}
+void takeSValue(S s) {}
+volatile int v = 1;
+volatile S s;
+volatile D d;
+volatile O o;
+const volatile S cvs{};
+volatile int a[2] = {1, 2};
+int& retRef() { return v; }
+const int& retConstRef() { return v; }
+S retValue() { return s; }
+void violations()
+{
+  int& r1 = v;
+  const int& r2 = v;
+  int&& r3 = static_cast<volatile int&&>(v);
+  int& r4 = s.x;
+  S& r5 = s;
+  const S& r6 = s;
+  S& r7 = d;
+  int (&r8)[2] = a;
+  takeRef(v);
+  takeConstRef(v);
+  takeSRef(s);
+  takeConstSRef(s);
+  takeSRRef(static_cast<volatile S&&>(s));
+  takeSValue(s);
+  S t1 = s;
+  S t2;
+  s = t2;
+  t2 = s;
+  int* p1 = static_cast<int*>(&v);
+  int* p2 = reinterpret_cast<int*>(&v);
+  int& r9 = static_cast<int&>(v);
+  int& r10 = reinterpret_cast<int&>(v);
+  S& r11 = static_cast<S&>(s);
+  s.get();
+  s.cget();
+  cvs.cget();
+  cvs.vget();
+  volatile S* ps = &s;
+  ps->get();
+  volatile S& rs = s;
+  rs.get();
+  o();
+  o[0];
+  int x = o + 1;
+  for (int& e : a)
+    e = 1;
+}
+int main() { return 0; }

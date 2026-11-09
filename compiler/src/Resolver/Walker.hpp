@@ -184,14 +184,14 @@
     // gives an lvalue of the type is taken: conversionRank's).
     void checkTemporaryBound(uint32_t token, const std::string& what, const Ty* declared, const Ty* given);
 
-    // Whether f, a member function, is a non-const one called on a const object (objectTy): no
-    // candidate in C++, whose implicit object parameter `C&` a const object does not bind
+    // Whether f, a member function, lacks a const or a volatile its object (objectTy) has: no
+    // candidate in C++, whose implicit object parameter `C&` such an object does not bind
     // ([over.match.funcs]/4-5). A static member, a constructor or a destructor takes any object.
-    bool nonConstOnConstObject(FunctionDecl* f, const Ty* objectTy);
+    bool dropsObjectQualifier(FunctionDecl* f, const Ty* objectTy);
 
     void checkConstObjectCall(FunctionDecl* f, const Ty* objectTy, uint32_t token);
-    // A call on a const object (objectTy) whose overloads (pickOverload's arguments) took none: the
-    // one a non-const object would have taken, a non-const member function, is the error
+    // A call on a const or volatile object (objectTy) whose overloads (pickOverload's arguments) took
+    // none: the one an unqualified object would have taken, a member function without the qualifier, is the error
     // checkConstObjectCall reports (`items.push_back(1)` in a const member function, push_back's
     // two overloads both non-const), where the call was left unresolved, codegen's error. True when
     // a non-const object's call would take one (the error is that one's).
@@ -743,6 +743,12 @@
     // constructor, a conversion operator of the value's class) and its constructor for it is explicit.
     // Only in code walked where it is written, as checkClassToScalar.
     void checkExplicitCopy(const Ty* from, const Ty* to, uint32_t token);
+    // A class object copied or moved from a volatile one of its class: an error unless a constructor the class
+    // declares takes one (the implicit ones take none, [class.copy.ctor] 7).
+    void checkCopiedFromVolatile(const Ty* from, const Ty* to, uint32_t token);
+    // `s = t;` of a volatile class object, or from one, by the implicit assignment operator (not volatile, and
+    // taking no volatile object: [class.copy.assign]). l: the left operand's type, without its reference.
+    void checkImplicitAssignmentVolatile(const Ty* l, const Ty* rhs, uint32_t token);
     // `Strict s = {5};`, `return {5};`: copy-list-initialisation whose chosen constructor is explicit
     // ([over.match.list]).
     void checkExplicitListCopy(BraceInitExpr* b, const Ty* to);

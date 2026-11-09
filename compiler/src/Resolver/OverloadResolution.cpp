@@ -587,6 +587,13 @@ auto GlobalScope::Impl::isConstObject(const Ty* t) -> bool
   return t && t->isConst;
 }
 
+auto GlobalScope::Impl::isVolatileObject(const Ty* t) -> bool
+{
+  while (t && t->kind == TyKind::Array)
+    t = t->inner;
+  return t && t->isVolatile;
+}
+
 auto GlobalScope::Impl::unqualifiedDeep(const Ty* t) -> const Ty*
 {
   if (t && t->kind == TyKind::Array && t->inner && !t->decl) // (`T[N]` with N a parameter: left as it is)

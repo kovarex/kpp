@@ -1,0 +1,39 @@
+// spec: what volatile allows: a reference or a pointer to volatile binds a volatile object, a const_cast or a C cast takes volatile away, a volatile member function runs on a volatile object, a constructor and an assignment declared for one take one, `const T&` of a template deduces T volatile, a lambda reads one through its reference. clang's and g++'s output
+struct S
+{
+  int x = 1;
+  int vget() volatile { return x + 1; }
+  int cvget() const volatile { return x + 2; }
+};
+struct V
+{
+  int n;
+  V(int n) : n(n) {}
+  V(const volatile V& o) : n(o.n + 10) {}
+  void operator=(const V& o) volatile { n = o.n + 20; }
+};
+volatile int v = 1;
+volatile S s;
+const volatile S cvs{};
+volatile int a[2] = {1, 2};
+volatile V vv{3};
+template<class T> int sizeOfRef(T& t) { return (int)sizeof(T); }
+template<class T> int sizeOfConstRef(const T& t) { return (int)sizeof(T); }
+
+int main()
+{
+  const volatile int& r1 = v;
+  volatile int& r2 = v;
+  r2 = 4;
+  int* p1 = const_cast<int*>(&v);
+  int* p2 = (int*)&v;
+  *p1 = 5;
+  println((int)r1, " ", (int)r2, " ", *p2, " ", s.vget(), " ", cvs.cvget(), " ", sizeOfRef(v), " ", sizeOfConstRef(v));
+  for (volatile int& e : a)
+    e = 7;
+  auto f = [&]() { return (int)v; };
+  V copy = vv;
+  vv = V(4);
+  println((int)a[0], " ", f(), " ", copy.n, " ", (int)vv.n);
+  return 0;
+}

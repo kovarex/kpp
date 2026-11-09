@@ -389,16 +389,23 @@ auto GlobalScope::Impl::Walker::checkConstModification(uint32_t token, const Ty*
 
 auto GlobalScope::Impl::Walker::checkConstDropped(uint32_t token, const std::string& what, const Ty* declared, const Ty* given) -> void
 {
-  if (probing || !declared || !declared->isReference() || !declared->inner || Impl::isConstObject(declared->inner) || !given ||
-      !given->isReference() || !given->inner || !given->isKnown() || types.isDependent(given) || types.isDependent(declared) ||
-      Impl::mentionsUnknown(given) || Impl::mentionsUnknown(declared) || !Impl::isConstObject(given->inner))
+  if (probing || !declared || !declared->isReference() || !declared->inner || !given || !given->isReference() || !given->inner || !given->isKnown() ||
+      types.isDependent(given) || types.isDependent(declared) || Impl::mentionsUnknown(given) || Impl::mentionsUnknown(declared))
+    return;
+  bool dropsConst = Impl::isConstObject(given->inner) && !Impl::isConstObject(declared->inner);
+  bool dropsVolatile = Impl::isVolatileObject(given->inner) && !Impl::isVolatileObject(declared->inner);
+  if (!dropsConst && !dropsVolatile)
     return;
   const Ty* object = impl.unqualifiedDeep(given->inner);
   const Ty* referred = impl.unqualifiedDeep(declared->inner);
   if (object != referred && !(object->kind == TyKind::Class && referred->kind == TyKind::Class && impl.isBaseClass(referred, object)))
     return; // (an object of another type: a conversion's, never the object itself)
-  reportCheck(token, what + " (" + types.toString(declared, &impl.symbols) + ") is bound to a const object (" + types.toString(given->inner, &impl.symbols) +
-                         "): a non-const reference binds no const object, only a const reference does ([dcl.init.ref] 5)");
+  if (dropsConst)
+    reportCheck(token, what + " (" + types.toString(declared, &impl.symbols) + ") is bound to a const object (" + types.toString(given->inner, &impl.symbols) +
+                           "): a non-const reference binds no const object, only a const reference does ([dcl.init.ref] 5)");
+  else
+    reportCheck(token, what + " (" + types.toString(declared, &impl.symbols) + ") is bound to a volatile object (" + types.toString(given->inner, &impl.symbols) +
+                           "): a reference to a non-volatile object binds no volatile one, only a reference to volatile does ([dcl.init.ref] 5)");
 }
 
 auto GlobalScope::Impl::Walker::checkTemporaryBound(uint32_t token, const std::string& what, const Ty* declared, const Ty* given) -> void
@@ -468,9 +475,13 @@ auto GlobalScope::Impl::Walker::checkCastConst(NamedCastExpr* c, const Ty* from,
     source = f->inner;
     target = to->inner;
   }
-  if (!source || !target || !Impl::isConstObject(source) || Impl::isConstObject(target))
+  if (!source || !target)
     return;
-  reportCheck(c->token, std::string(cast) + "<" + types.toString(to, &impl.symbols) + "> casts away the const of " + types.toString(source, &impl.symbols) +
+  bool dropsConst = Impl::isConstObject(source) && !Impl::isConstObject(target);
+  bool dropsVolatile = Impl::isVolatileObject(source) && !Impl::isVolatileObject(target);
+  if (!dropsConst && !dropsVolatile)
+    return;
+  reportCheck(c->token, std::string(cast) + "<" + types.toString(to, &impl.symbols) + "> casts away the " + (dropsConst ? "const" : "volatile") + " of " + types.toString(source, &impl.symbols) +
                             ": only const_cast does ([expr.static.cast] 1, [expr.reinterpret.cast] 2, [expr.dynamic.cast] 2)");
 }
 
@@ -484,19 +495,24 @@ auto GlobalScope::Impl::Walker::reportCheck(uint32_t token, const std::string& m
     impl.reportCheckerError(file, token, message);
 }
 
-auto GlobalScope::Impl::Walker::nonConstOnConstObject(FunctionDecl* f, const Ty* objectTy) -> bool
+auto GlobalScope::Impl::Walker::dropsObjectQualifier(FunctionDecl* f, const Ty* objectTy) -> bool
 {
   const Ty* o = objectTy ? types.stripRef(objectTy) : nullptr;
-  return f && o && o->isConst && o->isKnown() && o->kind == TyKind::Class && !(f->flags & (DF_Const | DF_Static | DF_Constructor | DF_Destructor));
+  return f && o && o->isKnown() && o->kind == TyKind::Class && !(f->flags & (DF_Static | DF_Constructor | DF_Destructor)) &&
+         ((o->isConst && !(f->flags & DF_Const)) || (o->isVolatile && !(f->flags & DF_Volatile)));
 }
 
 auto GlobalScope::Impl::Walker::checkConstObjectCall(FunctionDecl* f, const Ty* objectTy, uint32_t token) -> void
 {
-  if (!nonConstOnConstObject(f, objectTy))
+  if (!dropsObjectQualifier(f, objectTy))
     return;
   uint32_t symbol = impl.functionSymbol(f->name);
-  reportCheck(token, "the member function " + std::string(symbol == UINT32_MAX ? "?" : impl.symbols.name(symbol)) +
-                         " is not const, and its object is a " + types.toString(types.stripRef(objectTy), &impl.symbols));
+  const Ty* o = types.stripRef(objectTy);
+  bool lacksConst = o->isConst && !(f->flags & DF_Const);
+  bool lacksVolatile = o->isVolatile && !(f->flags & DF_Volatile);
+  reportCheck(token, "the member function " + std::string(symbol == UINT32_MAX ? "?" : impl.symbols.name(symbol)) + " is not " +
+                         (lacksConst && lacksVolatile ? "const volatile" : lacksConst ? "const" : "volatile") + ", and its object is a " +
+                         types.toString(o, &impl.symbols));
 }
 
 auto GlobalScope::Impl::Walker::checkRefQualifierMix(FunctionDecl* f) -> void
@@ -547,7 +563,7 @@ auto GlobalScope::Impl::Walker::checkConstObjectOverloads(Decl* primary, const s
                                                          const Ty* objectTy, const NamePart* namePart, Span<Expr*> callArgs, uint32_t token) -> bool
 {
   const Ty* o = objectTy ? types.stripRef(objectTy) : nullptr;
-  if (probing || !o || !o->isConst || o->kind != TyKind::Class || !o->isKnown())
+  if (probing || !o || !(o->isConst || o->isVolatile) || o->kind != TyKind::Class || !o->isKnown())
     return false;
   bool ambiguous = false;
   FunctionDecl* g = pickOverload(primary, overloads, argTypes, classSubst, types.unqualified(o), ambiguous, namePart, callArgs, nullptr);
@@ -4279,6 +4295,36 @@ auto GlobalScope::Impl::Walker::checkConstruction(const Ty* t, Span<Expr*> args,
                                                  : "no constructor of " + types.toString(c, &symbols) + " takes (" + list + ")");
 }
 
+auto GlobalScope::Impl::Walker::checkCopiedFromVolatile(const Ty* from, const Ty* to, uint32_t token) -> void
+{
+  const Ty* source = types.stripRef(from);
+  const Ty* t = types.unqualified(types.stripRef(to));
+  if (!source->isVolatile || t->kind != TyKind::Class || t->isBraceList())
+    return;
+  const Ty* f = types.unqualified(source);
+  if (f != t && !(f->kind == TyKind::Class && impl.isBaseClass(t, f)))
+    return; // (a conversion's, not a copy)
+  bool ambiguous = false;
+  std::vector<const Ty*> args{types.lref(source)};
+  if (impl.chooseConstructor(t, args, nullptr, nullptr, false, &ambiguous) || ambiguous)
+    return; // (one the class declares takes a volatile object)
+  reportCheck(token, types.toString(t, &impl.symbols) + " is copied from a volatile object (" + types.toString(source, &impl.symbols) +
+                         "), and no constructor of it takes one ([class.copy.ctor] 7)");
+}
+
+auto GlobalScope::Impl::Walker::checkImplicitAssignmentVolatile(const Ty* l, const Ty* rhs, uint32_t token) -> void
+{
+  if (l->isVolatile)
+  {
+    reportCheck(token, "assignment to a volatile object (" + types.toString(l, &impl.symbols) + "): the implicit assignment operator of " +
+                           types.toString(types.unqualified(l), &impl.symbols) + " is not volatile ([class.copy.assign])");
+    return;
+  }
+  if (const Ty* r = rhs ? types.stripRef(rhs) : nullptr; r && r->isVolatile && types.unqualified(r) == types.unqualified(l))
+    reportCheck(token, "assignment from a volatile object (" + types.toString(r, &impl.symbols) + "): the implicit assignment operator of " +
+                           types.toString(types.unqualified(l), &impl.symbols) + " takes none ([class.copy.assign])");
+}
+
 auto GlobalScope::Impl::Walker::checkExplicitCopy(const Ty* from, const Ty* to, uint32_t token) -> void
 {
   // (in template code too, each instance: reportExplicitError; `It<T> m = this->find();` in a class template's member,
@@ -4286,6 +4332,8 @@ auto GlobalScope::Impl::Walker::checkExplicitCopy(const Ty* from, const Ty* to, 
   if (probing || !file || !from || !to || !from->isKnown() || !to->isKnown() || types.isDependent(from) || types.isDependent(to) ||
       Impl::mentionsUnknown(from) || Impl::mentionsUnknown(to))
     return;
+  if (!to->isReference())
+    checkCopiedFromVolatile(from, to, token);
   const Ty* t = types.unqualified(types.stripRef(to));
   const Ty* f = types.unqualified(types.stripRef(from));
   // The value's class's conversion operator that a direct-initialization takes and this one does not: one explicit by
@@ -5290,10 +5338,8 @@ auto GlobalScope::Impl::Walker::checkReferenceBindings(const std::string& callee
     const Ty* given = argTypes[i];
     bool expansion = args[i] && args[i]->kind == NodeKind::UnaryExpr && !static_cast<UnaryExpr*>(args[i])->isKeyword &&
                      static_cast<UnaryExpr*>(args[i])->postfix && P(static_cast<UnaryExpr*>(args[i])->op) == P::Ellipsis;
-    if (!args[i] || expansion || !param || !param->isReference() || !param->inner || (param->kind == TyKind::LRef && Impl::isConstObject(param->inner)) || !given ||
-        !given->isKnown() || given->kind == TyKind::Pack || types.isDependent(given) || Impl::mentionsUnknown(given))
-      continue;
-    if (impl.conversionRank(given, param) < Impl::NotViable)
+    if (!args[i] || expansion || !param || !param->isReference() || !param->inner || !given || !given->isKnown() || given->kind == TyKind::Pack ||
+        types.isDependent(given) || Impl::mentionsUnknown(given))
       continue;
     const Ty* a = types.unqualified(types.stripRef(given));
     const Ty* pt = types.unqualified(param->inner);
@@ -5301,6 +5347,18 @@ auto GlobalScope::Impl::Walker::checkReferenceBindings(const std::string& callee
     auto* p = i < params.size() ? static_cast<ParamDecl*>(params[i]) : nullptr;
     std::string name = p && p->name != UINT32_MAX ? std::string(symbols.name(p->name)) : "#" + std::to_string(i + 1);
     std::string argument = "the argument for " + name + " (" + types.toString(param, &symbols) + ") of " + callee;
+    // `take(v)` with a volatile v: no reference binds a volatile object unless it is a reference to volatile, a
+    // reference to const included ([dcl.init.ref] 5.4.3).
+    if (related && Impl::isVolatileObject(types.stripRef(given)) && !Impl::isVolatileObject(param->inner))
+    {
+      reportHere(args[i]->token, argument + " is a volatile object (" + types.toString(types.stripRef(given), &symbols) +
+                                     "): a reference to a non-volatile object binds no volatile one, only a reference to volatile does ([dcl.init.ref] 5)");
+      continue;
+    }
+    if (param->kind == TyKind::LRef && Impl::isConstObject(param->inner))
+      continue;
+    if (impl.conversionRank(given, param) < Impl::NotViable)
+      continue;
     // `take(move(s))` with a const s: an rvalue of a const object, which a T&& does not bind.
     if (param->kind == TyKind::RRef && given->kind == TyKind::RRef && related && Impl::isConstObject(types.stripRef(given)) && !Impl::isConstObject(param->inner))
     {
@@ -7076,7 +7134,7 @@ auto GlobalScope::Impl::Walker::operatorFunction(P op, const Ty* lhs, const Ty* 
         f = nullptr;
       if (f)
       {
-        if (!nonConstOnConstObject(f, lhs))
+        if (!dropsObjectQualifier(f, lhs))
         {
           member = f;
           memberSubst = r.subst;
@@ -7371,6 +7429,7 @@ auto GlobalScope::Impl::Walker::overloadedOperator(P op, const Ty* lhs, const Ty
       {
         const Ty* self = types.lref(types.qualified(l, true, false));
         checkConstModification(token, l, "assignment to");
+        checkImplicitAssignmentVolatile(l, rhs, token);
         checkExplicitCopy(rhs, self, token); // `s = 5;`: its operator=(const S&) given 5
       }
       else if (l && rhs && types.unqualified(types.stripRef(rhs))->kind == TyKind::Class && impl.conversionRank(rhs, l, 0) >= NotViable)
@@ -10809,7 +10868,10 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
         {
           bool ambiguous;
           if (FunctionDecl* f = pickOverload(r.decl, r.overloads, argTypesOf(i->args), &r.subst, b, ambiguous))
+          {
+            checkConstObjectCall(f, base, i->token); // (`o[0]` of a const or volatile o by a member without the qualifier)
             return record(e, returnTypeOfCall(f, &r.subst, i->args, nullptr));
+          }
         }
         // `oi[values]`: the built-in subscript of a pointer index, the class converting to an integer only by an operator
         // explicit by default (the rule's error; codegen said "OI has no operator[]")

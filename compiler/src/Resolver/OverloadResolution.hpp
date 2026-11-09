@@ -77,6 +77,8 @@
   // Whether an object of type t is const: t's own const, an array's its elements' ([basic.type.qualifier]
   // 3: `const int (&)[3]` is a reference to const, a brace list or a temporary binds it).
   static bool isConstObject(const Ty* t);
+  // Whether an object of type t is volatile: t's own volatile, an array's its elements'.
+  static bool isVolatileObject(const Ty* t);
   // t without its const and volatile, an array's elements' included (`const int[3]` is an int[3]).
   const Ty* unqualifiedDeep(const Ty* t);
 
