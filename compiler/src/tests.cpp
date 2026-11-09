@@ -42,7 +42,7 @@ struct __KppTestFailure
   bool hasValues = false;
   String left;
   String right;
-  Vector<String> arguments;
+  std::Vector<String> arguments;
 };
 
 struct __KppTest
@@ -61,8 +61,8 @@ struct __KppSuite
 {
   int job = -1; // --jobs: its place among the jobs
   String name;
-  Vector<String> depends;
-  Vector<String> tags;
+  std::Vector<String> depends;
+  std::Vector<String> tags;
   int order = -1;
   bool failed = false;
   bool needed = false; // --with-dependencies: a selected suite depends on it
@@ -132,12 +132,12 @@ extern "C" void kpp_test_forget()
 
 struct __KppTestState
 {
-  Vector<__KppTest> tests;
-  Vector<__KppSuite> suites;
-  Vector<__KppGeneratorEntry> generators;
+  std::Vector<__KppTest> tests;
+  std::Vector<__KppSuite> suites;
+  std::Vector<__KppGeneratorEntry> generators;
   const __KppGeneratorEntry* generating = nullptr;
   bool noSetup = false; // the program defines no testsSetup
-  Vector<__KppTestFailure> failures; // the running test's
+  std::Vector<__KppTestFailure> failures; // the running test's
   const __KppTest* current = nullptr;
   bool running = false;
   int captured = 0; // inside runTest or runCaptured: failures are collected, not printed
@@ -145,7 +145,7 @@ struct __KppTestState
   String left;
   String right;
   const char* op = "";
-  Vector<String> arguments; // a failed call's
+  std::Vector<String> arguments; // a failed call's
   bool working = false;     // in a worker process of --jobs: what the runner says goes to workerOut
   i64 workerOut = 0;
   int worker = 0;           // testWorker
@@ -165,9 +165,9 @@ __KppTestState& __kppTestState()
 struct TestEnded {};
 
 // The comma-separated names of text.
-Vector<String> __kppNames(const char* text)
+std::Vector<String> __kppNames(const char* text)
 {
-  Vector<String> names;
+  std::Vector<String> names;
   String name;
   for (int i = 0;; ++i)
   {
@@ -489,7 +489,7 @@ template<typename T, typename F> T __kppRequireThrows(F body, const char* text, 
 }
 
 // checkThrows<T>(expr): the T that evaluating expr throws, or none and a failure (the test goes on).
-template<typename T, typename F> Optional<T> __kppCheckThrows(F body, const char* text, CallerLocation here = caller)
+template<typename T, typename F> std::Optional<T> __kppCheckThrows(F body, const char* text, CallerLocation here = caller)
 {
   try
   {
@@ -497,11 +497,11 @@ template<typename T, typename F> Optional<T> __kppCheckThrows(F body, const char
   }
   catch (const T& e)
   {
-    return Optional<T>(e);
+    return std::Optional<T>(e);
   }
   __kppTestState().note = String("nothing was thrown");
   __kppFail(here.file_name(), int(here.line()), int(here.column()), "check", text, "check failed");
-  return Optional<T>();
+  return std::Optional<T>();
 }
 
 // A failure of the running test as a whole, at its declaration: an exception that left it, its
@@ -582,7 +582,7 @@ extern "C" void kpp_check_failed(const char* file, int line, int column, const c
 
 // The hooks a program may define (design.md 8.7). The program's own, a function, is the better
 // match for a call than these templates, which say that it has none.
-template<typename T = void> void testsSetup(const Vector<String>& arguments)
+template<typename T = void> void testsSetup(const std::Vector<String>& arguments)
 {
   __kppTestState().noSetup = true;
 }
@@ -646,7 +646,7 @@ StringView currentTestName()
 bool __kppCaptured(const Function<void()>& step)
 {
   __KppTestState& state = __kppTestState();
-  Vector<__KppTestFailure> outer = state.failures;
+  std::Vector<__KppTestFailure> outer = state.failures;
   state.failures.clear();
   ++state.captured;
   step();
@@ -789,7 +789,7 @@ String __kppJson(const String& text)
   return result;
 }
 
-String __kppJsonTest(const __KppTest& test, const char* status, const Vector<__KppTestFailure>& failures, double seconds = 0)
+String __kppJsonTest(const __KppTest& test, const char* status, const std::Vector<__KppTestFailure>& failures, double seconds = 0)
 {
   String line;
   line << "{\"test\":" << __kppJson(test.fullName);
@@ -848,10 +848,10 @@ u64 __kppRandom(u64& state)
 // The suites' places: of those ready, the first by name, or with random (--shuffle) any of them.
 void __kppOrderSuites(u64* random)
 {
-  Vector<__KppSuite>& suites = __kppTestState().suites;
+  std::Vector<__KppSuite>& suites = __kppTestState().suites;
   for (int placed = 0; placed < int(suites.size()); ++placed)
   {
-    Vector<__KppSuite*> ready;
+    std::Vector<__KppSuite*> ready;
     for (__KppSuite& suite : suites)
     {
       if (suite.order >= 0)
@@ -903,7 +903,7 @@ bool __kppNumber(const char* text, u64& value)
 
 // Where --from NAME starts in selected, or --after NAME (after true): NAME is a suite, a test's full
 // name or a test's name when one test has it. -1 and a message when it names none of them.
-int __kppStart(const Vector<const __KppTest*>& selected, const char* name, bool after)
+int __kppStart(const std::Vector<const __KppTest*>& selected, const char* name, bool after)
 {
   int first = -1, last = -1, sameName = 0;
   for (int pass = 0; pass < 3 && first < 0; ++pass)
@@ -931,7 +931,7 @@ int __kppStart(const Vector<const __KppTest*>& selected, const char* name, bool 
 }
 
 // The failed suites among those suite depends on, directly or further back, in the run's order.
-void __kppFailedDependencies(const __KppSuite& suite, Vector<const __KppSuite*>& found)
+void __kppFailedDependencies(const __KppSuite& suite, std::Vector<const __KppSuite*>& found)
 {
   for (const String& dependency : suite.depends)
   {
@@ -980,7 +980,7 @@ bool __kppRunOne(const __KppTest* test, u64 slowSeconds, u64* took)
 
 // A worker of --jobs: runs the tests the first process names (`first last` of the selection, a line
 // each) until it closes the pipe.
-int __kppWork(const Vector<const __KppTest*>& selected, i64 from, u64 slowSeconds)
+int __kppWork(const std::Vector<const __KppTest*>& selected, i64 from, u64 slowSeconds)
 {
   __KppTestState& state = __kppTestState();
   String line;
@@ -1068,7 +1068,7 @@ public:
 private:
   Mutex mutex;
   ConditionVariable ready;
-  Vector<__KppJobEvent> events;
+  std::Vector<__KppJobEvent> events;
   int head = 0;
 };
 
@@ -1111,7 +1111,7 @@ struct __KppJobWorker
 };
 
 // Whether a suite must wait: a dependency, directly or through suites left out, has not finished.
-bool __kppJobWaits(const __KppSuite& suite, const Vector<__KppJob>& jobs)
+bool __kppJobWaits(const __KppSuite& suite, const std::Vector<__KppJob>& jobs)
 {
   for (const String& name : suite.depends)
   {
@@ -1140,7 +1140,7 @@ public:
   }
 
   // Starts count workers; false when one could not start.
-  bool start(int count, Vector<String> extra, int argc, char** argv)
+  bool start(int count, std::Vector<String> extra, int argc, char** argv)
   {
     this->extra = move(extra);
     this->argc = argc;
@@ -1184,11 +1184,11 @@ public:
   }
 
   __KppJobEvents events;
-  Vector<__KppJobWorker> workers;
+  std::Vector<__KppJobWorker> workers;
   bool started = false;
 
 private:
-  Vector<String> extra;
+  std::Vector<String> extra;
   int argc = 0;
   char** argv = nullptr;
 };
@@ -1283,17 +1283,17 @@ bool __kppReadDurations(const char* name, __KppDurations& seconds)
 
 // Runs the selection over the workers; finished(position, test) says each test's end, in the order of
 // the selection. False when no worker could go on.
-template<typename Finished> bool __kppRunJobs(const Vector<const __KppTest*>& selected, __KppJobPool& pool, const __KppDurations* durations,
+template<typename Finished> bool __kppRunJobs(const std::Vector<const __KppTest*>& selected, __KppJobPool& pool, const __KppDurations* durations,
                                               bool exitOnFailure, Finished finished)
 {
   __KppTestState& state = __kppTestState();
-  Vector<__KppJobTest> results;
+  std::Vector<__KppJobTest> results;
   results.resize(selected.size());
   // A job is a suite, or with durations each test on its own, as Factorio's --fork splits by its
   // cached test times: a long suite's tests run in several processes at once. With --exit-on-failure
   // a suite waits for its dependencies, so it stays whole.
   bool byTest = durations && !exitOnFailure;
-  Vector<__KppJob> jobs;
+  std::Vector<__KppJob> jobs;
   for (int i = 0; i < int(selected.size()); ++i)
   {
     const __KppSuite* suite = selected[i]->suite[0] != 0 ? __kppSuite(selected[i]->suite) : nullptr;
@@ -1335,7 +1335,7 @@ template<typename Finished> bool __kppRunJobs(const Vector<const __KppTest*>& se
       knownTests += job.last - job.first;
     }
   double perTest = knownTests > 0 ? known / knownTests : 1;
-  Vector<double> weight;
+  std::Vector<double> weight;
   for (const __KppJob& job : jobs)
   {
     const double* took = secondsOf(job);
@@ -1351,7 +1351,7 @@ template<typename Finished> bool __kppRunJobs(const Vector<const __KppTest*>& se
   }
   if (exitOnFailure)
   {
-    Vector<double> own = weight;
+    std::Vector<double> own = weight;
     for (int j = int(jobs.size()) - 1; j >= 0; --j) // (a dependent comes after its dependencies)
       for (int k = j + 1; k < int(jobs.size()); ++k)
         if (jobs[j].suite && jobs[k].suite)
@@ -1359,13 +1359,13 @@ template<typename Finished> bool __kppRunJobs(const Vector<const __KppTest*>& se
             if (name == jobs[j].suite->name)
               weight[j] = max(weight[j], own[j] + weight[k]);
   }
-  Vector<int> byWeight;
+  std::Vector<int> byWeight;
   for (int j = 0; j < int(jobs.size()); ++j)
     byWeight.push_back(j);
   stableSort(byWeight.begin(), byWeight.end(), [&](int a, int b) { return weight[a] > weight[b]; });
 
   __KppJobEvents& events = pool.events;
-  Vector<__KppJobWorker>& workers = pool.workers;
+  std::Vector<__KppJobWorker>& workers = pool.workers;
   int said = 0;      // the jobs whose tests finished() has seen
   int deaths = 0;    // workers that ended with no suite to blame
   bool stopping = !pool.started;
@@ -1418,7 +1418,7 @@ template<typename Finished> bool __kppRunJobs(const Vector<const __KppTest*>& se
         __KppJobTest& result = results[job->next];
         result.finished = true;
         result.crashed = toString("exit code ", code);
-        result.report = __kppJsonTest(*selected[job->next], "crash", Vector<__KppTestFailure>());
+        result.report = __kppJsonTest(*selected[job->next], "crash", std::Vector<__KppTestFailure>());
         ++job->next;
         stopping = stopping || exitOnFailure;
       }
@@ -1485,8 +1485,8 @@ template<typename Finished> bool __kppRunJobs(const Vector<const __KppTest*>& se
 
 int main(int argc, char** argv)
 {
-  Vector<const char*> filters, onlySuites, skipSuites;
-  Vector<String> others; // the arguments the runner does not know: testsSetup's
+  std::Vector<const char*> filters, onlySuites, skipSuites;
+  std::Vector<String> others; // the arguments the runner does not know: testsSetup's
   const char* tag = nullptr;
   bool list = false, exitOnFailure = false, withDependencies = false, shuffle = false;
   const char* report = nullptr;
@@ -1600,7 +1600,7 @@ int main(int argc, char** argv)
   __KppJobPool pool;
   if (jobs > 0 && !list)
   {
-    Vector<String> extra;
+    std::Vector<String> extra;
     if (shuffle)
     {
       extra.push_back(String("--shuffle"));
@@ -1660,7 +1660,7 @@ int main(int argc, char** argv)
   __kppOrderSuites(shuffle ? &random : nullptr);
   // The suites in their order, each one's tests by line (a suite is one block in one file), then the
   // tests outside suites by file and line, whatever order the registrations ran in.
-  Vector<__KppTest>& tests = state.tests;
+  std::Vector<__KppTest>& tests = state.tests;
   for (__KppTest& test : tests)
   {
     __KppSuite* suite = test.suite[0] != 0 ? __kppSuite(test.suite) : nullptr;
@@ -1729,8 +1729,8 @@ int main(int argc, char** argv)
         return true;
     return false;
   };
-  Vector<const __KppTest*> selected;
-  Vector<bool> isChosen;
+  std::Vector<const __KppTest*> selected;
+  std::Vector<bool> isChosen;
   for (const __KppTest& test : tests)
   {
     const __KppSuite* suite = test.suite[0] != 0 ? __kppSuite(test.suite) : nullptr;
@@ -1784,7 +1784,7 @@ int main(int argc, char** argv)
     return __kppWork(selected, i64(workerIn), slowSeconds);
 
   int run = 0, failed = 0, notRun = 0;
-  Vector<const __KppTest*> roots; // the failed tests no failed dependency explains
+  std::Vector<const __KppTest*> roots; // the failed tests no failed dependency explains
   bool explained = false;         // a failure after a failed dependency
   auto finished = [&](const __KppTest* test, bool passed, const String& crashed)
   {
@@ -1793,7 +1793,7 @@ int main(int argc, char** argv)
     {
       ++failed;
       __KppSuite* suite = test->suite[0] != 0 ? __kppSuite(test->suite) : nullptr;
-      Vector<const __KppSuite*> after;
+      std::Vector<const __KppSuite*> after;
       if (suite)
       {
         __kppFailedDependencies(*suite, after);
@@ -1831,7 +1831,7 @@ int main(int argc, char** argv)
       if (!result.finished)
       {
         ++notRun;
-        writeReport(__kppJsonTest(*selected[position], "not run", Vector<__KppTestFailure>()));
+        writeReport(__kppJsonTest(*selected[position], "not run", std::Vector<__KppTestFailure>()));
         return;
       }
       finished(selected[position], result.passed, result.crashed);
@@ -1846,7 +1846,7 @@ int main(int argc, char** argv)
       if (exitOnFailure && failed > 0)
       {
         ++notRun;
-        writeReport(__kppJsonTest(*test, "not run", Vector<__KppTestFailure>()));
+        writeReport(__kppJsonTest(*test, "not run", std::Vector<__KppTestFailure>()));
         continue;
       }
       u64 took = 0;
@@ -1904,7 +1904,7 @@ struct __KppWorkerProcess
 };
 
 // (the worker's command line is this one's, whatever it quotes, and the worker's own arguments)
-bool __kppStartWorker(__KppWorkerProcess& worker, int index, const Vector<String>& extra, int argc, char** argv)
+bool __kppStartWorker(__KppWorkerProcess& worker, int index, const std::Vector<String>& extra, int argc, char** argv)
 {
   u64 attributes[3] = {24, 0, 1}; // SECURITY_ATTRIBUTES: its size, no descriptor, inherited
   void* commandsIn = nullptr;
@@ -1918,7 +1918,7 @@ bool __kppStartWorker(__KppWorkerProcess& worker, int index, const Vector<String
   // (this process's ends: a worker holding one would keep the other workers' pipes open)
   __kppWin32::SetHandleInformation(commandsOut, 1, 0);
   __kppWin32::SetHandleInformation(messagesIn, 1, 0);
-  Vector<wchar_t> line;
+  std::Vector<wchar_t> line;
   for (const wchar_t* c = __kppWin32::GetCommandLineW(); *c != 0; ++c)
     line.push_back(*c);
   String added;
@@ -2003,19 +2003,19 @@ struct __KppWorkerProcess
   i64 from = 0; // the pipe from its messages
 };
 
-bool __kppStartWorker(__KppWorkerProcess& worker, int index, const Vector<String>& extra, int argc, char** argv)
+bool __kppStartWorker(__KppWorkerProcess& worker, int index, const std::Vector<String>& extra, int argc, char** argv)
 {
   signal(13, (SignalHandler)1); // SIGPIPE, SIG_IGN: a worker that died says so by its pipe's end
   int commands[2] = {};
   int messages[2] = {};
   if (__kppPosix::pipe(commands) != 0 || __kppPosix::pipe(messages) != 0)
     return false;
-  Vector<String> added = extra;
+  std::Vector<String> added = extra;
   added.push_back(String("--kpp-worker"));
   added.push_back(toString(index));
   added.push_back(toString(commands[0]));
   added.push_back(toString(messages[1]));
-  Vector<char*> arguments;
+  std::Vector<char*> arguments;
   for (int i = 0; i < argc; ++i)
     arguments.push_back(argv[i]);
   for (String& argument : added)

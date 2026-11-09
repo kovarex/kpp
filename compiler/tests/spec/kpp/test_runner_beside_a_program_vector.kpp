@@ -1,0 +1,26 @@
+// spec: the test runner's own vectors are std::Vector: a program's global Vector and Optional change nothing in it
+// factorio: the game's Vector (a 2D vector, no template) and Optional, with the game's tests
+// test: --suite mine
+// exit: 0
+class Vector
+{
+public:
+  int x = 3;
+};
+
+template<typename T, T empty>
+class Optional
+{
+public:
+  T value = empty;
+};
+
+suite Mine
+{
+  test First
+  {
+    Vector v;
+    Optional<int, 2> o;
+    check(v.x + o.value == 5);
+  }
+}
