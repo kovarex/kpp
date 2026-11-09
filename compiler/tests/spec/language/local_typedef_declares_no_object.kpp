@@ -1,0 +1,27 @@
+// spec: a typedef in a function names a type and declares nothing else, as in C++ ([dcl.typedef]): no object of a class type is built or destroyed (`typedef Tracked Alias;` made a Tracked and destroyed it at the end of the block: `true 1 0` printed where C++ prints `true 0 0`), and a jump past one jumps past no initialization
+// factorio: `typedef Function<void (Scenario* scenario, ...)> ...` in a member function of ServerMultiplayerManager built and destroyed an empty Function
+struct Tracked
+{
+  Tracked() { ++made; }
+  ~Tracked() { ++gone; }
+  static int made;
+  static int gone;
+};
+int Tracked::made = 0;
+int Tracked::gone = 0;
+
+int main()
+{
+  {
+    typedef Tracked Alias;
+    Alias* none = nullptr;
+    println(none == nullptr, " ", Tracked::made, " ", Tracked::gone);
+  }
+  goto past;
+  typedef Tracked Skipped;
+past:
+  println(Tracked::made, " ", Tracked::gone);
+  Skipped real;
+  println(Tracked::made, " ", Tracked::gone);
+  return 0;
+}

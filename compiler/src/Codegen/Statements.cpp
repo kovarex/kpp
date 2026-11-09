@@ -1028,6 +1028,11 @@ auto codegen::Emitter::statement(Stmt* s) -> void
           continue; // `when (false)` (design.md 19): no storage, no constructor, no destructor
         if (d->flags & DF_Extern)
           continue; // `extern int x;` in a block: the namespace's x, its uses resolved to it
+        // A typedef in a block: the parser keeps it as a declarator, and it names a type, with no object. As a
+        // variable a class's was built and destroyed, a jump past it was refused, and each had a slot and was the
+        // debugger's variable (of a function type, one LLVM's verifier refuses).
+        if (d->flags & DF_Typedef)
+          continue;
         if (d->kind == NodeKind::VariableDecl)
         {
           // A variable whose initialization a jump into its scope would skip (jumpBypassesInitialization):
