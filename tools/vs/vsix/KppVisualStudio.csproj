@@ -26,7 +26,22 @@
     <PackageReference Include="Microsoft.VisualStudio.SDK" Version="17.14.40265" ExcludeAssets="runtime" />
     <PackageReference Include="Microsoft.VisualStudio.LanguageServer.Client" Version="17.14.60" ExcludeAssets="runtime" />
     <PackageReference Include="Microsoft.VisualStudio.Extensibility.Build" Version="17.14.40608" PrivateAssets="all" />
+    <!-- The debugger engine's API (KppExpressionEvaluator.cs, KppFrameLanguage.cs), and the tool that compiles its .vsdconfigxml. -->
+    <PackageReference Include="Microsoft.VisualStudio.Debugger.Engine" Version="17.14.1051801" ExcludeAssets="runtime" />
+    <PackageReference Include="Microsoft.VSSDK.Debugger.VSDConfigTool" Version="17.14.1051801" PrivateAssets="all" />
   </ItemGroup>
+
+  <ItemGroup>
+    <VsdConfigXmlFiles Include="KppVisualStudio.vsdconfigxml" />
+  </ItemGroup>
+
+  <!-- The compiled .vsdconfig (VSDConfigTool's CreateVsdbgConfigFile) into the VSIX, beside the dll, where
+       the manifest's DebuggerEngineExtension asset names it. -->
+  <Target Name="KppVsdConfigInVsix" AfterTargets="GetVsixSourceItems" DependsOnTargets="CreateVsdbgConfigFile">
+    <ItemGroup>
+      <VSIXSourceItem Include="$(VsdConfigFile)" />
+    </ItemGroup>
+  </Target>
 
   <ItemGroup>
     <!-- The grammar Visual Studio and VS Code share, and VS Code's language configuration (comments,

@@ -16,6 +16,10 @@ The Visual Studio extension (docs/editors.md, "Visual Studio 2022"). It needs Vi
   project as the target and the active configuration as the configuration. They go to the server
   at its start, and as `kpp/selectCell` when either changes.
 
+It also gives the debugger kpp's `this.x` in the watch window, hovers, the Immediate window and breakpoint
+conditions (docs/debugging.md, "this in the watch window"): `KppFrameLanguage.cs` and
+`KppExpressionEvaluator.cs`, debugger engine components configured by `KppVisualStudio.vsdconfigxml`.
+
 It is an in-process extension (`ILanguageClient`, `ILanguageClientCustomMessage2`), not a
 VisualStudio.Extensibility `LanguageServerProvider`. The out-of-process provider gives an
 extension no way to send the server a request of its own, so it cannot serve go to
@@ -44,3 +48,6 @@ declaration. Installing it therefore needs a restart of Visual Studio.
 
   It ends with a screenshot of the window (usage in its header). The first start of the
   experimental instance shows Visual Studio's sign-in, which finishes on its own.
+
+  `debugger-check.ps1` (after test.ps1 installed the extension) debugs `debugger-test` and checks `this.`
+  in expressions and breakpoint conditions, setting a value, Locals, natvis and stepping.

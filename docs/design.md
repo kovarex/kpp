@@ -2434,7 +2434,9 @@ Spec: language/this_warnings_mode.
 kovarex answered Q13 to Q17 on 2026-11-07, as recommended but for Q13. `this` names the object, everywhere:
 - **Member access is `this.x`** (Q13 a), the only form; `this->x` is the class's `operator->`, as on any
   object. Required `this.` (23c) is this rule's spelling. The game has 182,657 lines with `this->` for the
-  converter to rewrite.
+  converter to rewrite. Visual Studio's debug windows take `this.x` too (kovarex, 2026-11-09: "In debug
+  window we need to write this. to make it consistent"; built in its extension, debugging.md, "this in
+  the watch window"; VS Code's debugger loads no extension and stays C++'s).
 - **`*this` is the class's `operator*`** (Q14), an error when it has none, saying "write this": `return *this;`
   is `return this;` (8,647 lines in the game), "one of the selling points of the change".
 - **`&this` is the pointer** (Q15): `foo(&this)`, `return &this;`, `&this == other`, `delete &this` (5,411 lines

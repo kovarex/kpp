@@ -2,6 +2,7 @@
 // and linked: runCodegen; its declarations in ModuleCompile.hpp (Driver.hpp). A translation unit of
 // its own since 2026-11-05 (main.cpp split, stage 2), moved without a change.
 #include "Driver.hpp"
+#include <filesystem>
 
 namespace driver
 {
@@ -681,6 +682,15 @@ void runCodegen(Build& build)
       fprintf(stderr, "warning: natvis: %s\n", problem.c_str());
     if (!writeFile(natvisPath(options), natvis))
       fprintf(stderr, "error: cannot write %s\n", natvisPath(options).c_str());
+    // The program's own .natvis files, one path a line, for what cannot read them out of the PDB: Visual
+    // Studio's kpp evaluator (docs/debugging.md, "this in the watch window").
+    {
+      std::string list;
+      for (const std::string& file : options.natvisFiles)
+        list += std::filesystem::absolute(file).string() + "\n";
+      if (!writeFile(natvisPath(options) + "-files", list))
+        fprintf(stderr, "error: cannot write %s-files\n", natvisPath(options).c_str());
+    }
   }
   if (cg.modules.empty())
   {

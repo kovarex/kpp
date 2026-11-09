@@ -334,13 +334,42 @@ GetExpression, which applies the natvis:
 Every one has its `[Raw View]` too. (tools\vs\vsix\natvis-check.ps1; not part of run_tests, which
 has no Visual Studio session.)
 
-**`this` in the watch window is C++'s pointer**, also once kpp's `this` is a reference (decided for
-this stage, readme's Planned). Visual Studio's expression evaluator takes `this` as its own keyword,
-the member function's object pointer: in a member function it shows `Shape *`, takes `this->width`,
-`*this` and a bare `width`, and `this.width` is an error ("class "Shape" has no member "width"",
-though `this.count` finds a static member). The debug information cannot change that: giving its
-`this` variable a reference type left all of it as it was (tried 2026-11-07 on kpp ac6731fd), so
-kpp writes `this` as a pointer, as clang does. In the watch window, write `this->x` or `x`.
+### this in the watch window
+
+Visual Studio takes `this.x` as kpp writes it (kovarex, 2026-11-09: "In debug window we need to write
+this. to make it consistent"): in the watch window, a hover, the Immediate window and a breakpoint's
+condition, `this.x` and `this.f()` work, and `&this` is the pointer. Formats (`this.x,x`) and assigning
+(`this.x = 3`) work too. `this->x` and a bare `x` still work.
+
+It is two debugger engine (Concord) components in kpp-visualstudio.vsix:
+- `KppFrameLanguage` gives code compiled from a .kpp file a language of kpp's own (kpp.pkgdef registers
+  it). A stack frame takes its language from the symbol information it carries, so a call stack filter
+  replaces that; a breakpoint's condition asks the symbol query, which it answers too. The Language
+  column of the call stack says kpp; C and C++ frames stay C++.
+- `KppExpressionEvaluator` is the evaluator of that language. It writes `this.` as `this->` and `&this` as
+  `this`, outside strings, and passes the text to Visual Studio's C++ evaluator in a C++ inspection
+  context. The results carry that context, so Locals and expanding a value are the C++ evaluator's, as
+  before. Visual Studio applies the natvis inside a PDB only in the context it makes for a C++ frame, so
+  this context is given the files by name: the `NAME.natvis` beside the executable and the program's own
+  (`--natvis`, listed in `NAME.natvis-files`). Moved without those files, the program's values show raw.
+  A type with an `<Intrinsic>` is not applied from a file given this way, so kpp's rules write those
+  expressions out (a program's own natvis should too; factorio.natvis has none).
+
+The debug information stays C++'s, and objects keep naming their compiler `kpp 0.2.5`. Tried and not
+used: a component in front of the C++ evaluator, filtered on C++ (what it passes on comes back to it,
+and it loops); the registry's `Debugger\CodeView Compilers\1:NAME`, which maps a compiler name to a language and
+works, but only for one exact name, so every version would need its own key.
+
+What stays C++'s: in Locals the `this` row is the pointer, and "Add Watch" on a member writes `this->x`
+(which evaluates). A bare `this` is the pointer. The debug information cannot change that: giving its
+`this` variable a reference type left it as it was (tried 2026-11-07 on kpp ac6731fd), so kpp writes `this`
+as a pointer, as clang does.
+
+VS Code's debugger loads no kpp extension: there, `this.x` is still an error or a wrong value (C++'s
+evaluator reads `this.count` as a static member's), and `this->x` or `x` is what works.
+
+tools\vs\vsix\debugger-check.ps1 checks all of it in the experimental instance (not part of run_tests,
+which has no Visual Studio session).
 
 ## How kpp emits it
 

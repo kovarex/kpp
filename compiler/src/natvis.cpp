@@ -126,18 +126,22 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
 
   // `mark` is a String's last byte: a small string's length, or largeMark for one on the heap.
   const std::string mark = "(unsigned char)smallChars[sizeof(smallChars) - 1]";
+  // (written out, no <Intrinsic>: a natvis file given to an evaluation by name, as Visual Studio's kpp evaluator
+  // does, does not apply a type that has one; docs/debugging.md, "this in the watch window")
+  const std::string large = "(" + mark + " == " + largeMark + ")";
+  const std::string block = "(sizeof(**map) &gt; 16 ? 16 : sizeof(**map) &gt; 8 ? 32 : sizeof(**map) &gt; 4 ? 64 : "
+                            "sizeof(**map) &gt; 2 ? 128 : sizeof(**map) &gt; 1 ? 256 : 512)";
   std::vector<Rule> rules = {
     {{"String"}, {"smallChars", "heapChars", "heapLength", "heapCapacity"},
      "  <Type Name=\"String\">\n"
-     "    <Intrinsic Name=\"large\" Expression=\"" + mark + " == " + largeMark + "\"/>\n"
-     "    <DisplayString Condition=\"large()\">{heapChars,[heapLength]s8}</DisplayString>\n"
+     "    <DisplayString Condition=\"" + large + "\">{heapChars,[heapLength]s8}</DisplayString>\n"
      "    <DisplayString>{smallChars,[" + mark + "]s8}</DisplayString>\n"
-     "    <StringView Condition=\"large()\">heapChars,[heapLength]s8</StringView>\n"
+     "    <StringView Condition=\"" + large + "\">heapChars,[heapLength]s8</StringView>\n"
      "    <StringView>smallChars,[" + mark + "]s8</StringView>\n"
      "    <Expand>\n"
-     "      <Item Name=\"[length]\" Condition=\"large()\">heapLength</Item>\n"
-     "      <Item Name=\"[length]\" Condition=\"!large()\">(int)" + mark + "</Item>\n"
-     "      <Item Name=\"[capacity]\" Condition=\"large()\">heapCapacity</Item>\n"
+     "      <Item Name=\"[length]\" Condition=\"" + large + "\">heapLength</Item>\n"
+     "      <Item Name=\"[length]\" Condition=\"!" + large + "\">(int)" + mark + "</Item>\n"
+     "      <Item Name=\"[capacity]\" Condition=\"" + large + "\">heapCapacity</Item>\n"
      "    </Expand>\n"
      "  </Type>\n"},
     {{"StringView"}, {"chars", "byteCount"},
@@ -262,21 +266,19 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
     {{"ForwardList"}, {"beforeHead"}, "", {{"ForwardLinks", {"next"}}, {"ForwardNode", {"value"}}}},
     {{"RbTree"}, {"header", "count"}, "", {{"RbNodeBase", {"parent", "left", "right"}}, {"RbNode", {"entry"}}}},
     // Element i is at position start + i of the map's space: block (start + i) / blockSize() at
-    // that offset. block() is Deque::blockSize() (checked below), sizeof(T) taken as sizeof(**map).
+    // that offset. `block` is Deque::blockSize() (checked below), sizeof(T) taken as sizeof(**map).
     {{"Deque"}, {"map", "start", "length"},
      "  <Type Name=\"Deque&lt;*&gt;\">\n"
-     "    <Intrinsic Name=\"block\" Expression=\"sizeof(**map) &gt; 16 ? 16 : sizeof(**map) &gt; 8 ? 32 : sizeof(**map) &gt; 4 ? 64 : "
-     "sizeof(**map) &gt; 2 ? 128 : sizeof(**map) &gt; 1 ? 256 : 512\"/>\n"
      "    <DisplayString>{{ length={length} }}</DisplayString>\n"
      "    <Expand>\n"
      "      <IndexListItems>\n"
      "        <Size>length</Size>\n"
-     "        <ValueNode>map[(start + $i) / block()][(start + $i) % block()]</ValueNode>\n"
+     "        <ValueNode>map[(start + $i) / " + block + "][(start + $i) % " + block + "]</ValueNode>\n"
      "      </IndexListItems>\n"
      "    </Expand>\n"
      "  </Type>\n"},
   };
-  // The Deque rule's block() is this blockSize: elements per block, about 512 bytes' worth, a power
+  // The Deque rule's `block` is this blockSize: elements per block, about 512 bytes' worth, a power
   // of two, at least 16.
   if (auto d = library.find("Deque"); d != library.end())
   {

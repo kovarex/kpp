@@ -1,0 +1,5 @@
+// debugger-check.ps1's program: `this.` and values in Visual Studio's debugger.
+void build(Project& project)
+{
+  project.executable("debuggertest", {"main.kpp"}).natvis("corner.natvis");
+}

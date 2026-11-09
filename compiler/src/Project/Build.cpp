@@ -535,7 +535,7 @@ namespace projects
                         return false;
                       }).empty();
     std::string name = exe.filename().string(), stem = exe.stem().string();
-    static const char* const beside[] = {".pdb", ".ilk", ".natvis", ".lib", ".exp"};
+    static const char* const beside[] = {".pdb", ".ilk", ".natvis", ".natvis-files", ".lib", ".exp"};
     std::error_code ec;
     std::vector<fs::path> doomed;
     for (fs::directory_iterator it(exe.parent_path(), ec), end; !ec && it != end; it.increment(ec))

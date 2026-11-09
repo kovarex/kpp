@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The debugger engine (Concord) components of kpp-visualstudio.vsix: the expression evaluator of kpp's
+     language (KppExpressionEvaluator.cs) and what gives .kpp code that language (KppFrameLanguage.cs).
+     VSDConfigTool compiles this into KppVisualStudio.vsdconfig. -->
+<Configuration xmlns="http://schemas.microsoft.com/vstudio/vsdconfig/2008">
+  <ManagedComponent ComponentId="4ccb8a76-cbcb-4932-99cd-1258343fb749" ComponentLevel="9992500" AssemblyName="KppVisualStudio">
+    <Class Name="KppVisualStudio.KppExpressionEvaluator">
+      <Implements>
+        <InterfaceGroup>
+          <Filter>
+            <LanguageId RequiredValue="8e4f1c52-6a3b-4f7d-9c21-5b0a7d3e91c4"/>
+          </Filter>
+          <Interface Name="IDkmLanguageExpressionEvaluator"/>
+          <Interface Name="IDkmLanguageFrameDecoder"/>
+          <Interface Name="IDkmLanguageInstructionDecoder"/>
+          <Interface Name="IDkmLanguageExpressionCompiler"/>
+        </InterfaceGroup>
+      </Implements>
+    </Class>
+    <Class Name="KppVisualStudio.KppFrameLanguage">
+      <Implements>
+        <InterfaceGroup>
+          <Filter>
+            <RuntimeId RequiredValue="DkmRuntimeId.Native"/>
+          </Filter>
+          <Interface Name="IDkmSymbolCompilerIdQuery"/>
+        </InterfaceGroup>
+        <InterfaceGroup>
+          <NoFilter/>
+          <Interface Name="IDkmCallStackFilter"/>
+        </InterfaceGroup>
+      </Implements>
+    </Class>
+  </ManagedComponent>
+</Configuration>

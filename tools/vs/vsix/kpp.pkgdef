@@ -3,3 +3,7 @@
 
 [$RootKey$\TextMate\LanguageConfiguration\GrammarMapping]
 "source.kpp"="$PackageFolder$\LanguageConfiguration\language-configuration.json"
+
+[$RootKey$\AD7Metrics\ExpressionEvaluator\{8e4f1c52-6a3b-4f7d-9c21-5b0a7d3e91c4}\{b27d6e10-3c84-4a19-8f57-2e9c1a64d0f3}]
+"Language"="kpp"
+"Name"="kpp"

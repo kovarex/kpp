@@ -1,0 +1,120 @@
+# kpp's `this.` in Visual Studio's debugger (docs/debugging.md, "this in the watch window"): debugs
+# debugger-test in the experimental instance (/rootsuffix Exp; kpp-visualstudio.vsix installed by test.ps1
+# before) through DTE: expressions, conditional breakpoints, setting a value, the Immediate window, Locals,
+# natvis in a kpp frame and stepping. Prints one line per check; the last says whether all passed, and
+# the exit code agrees. Not part of run_tests, which has no Visual Studio session.
+param([string]$KppExe, [string]$Work)
+$ErrorActionPreference = 'Stop'
+$test = [IO.File]::ReadAllText("$PSScriptRoot\test.ps1")
+$a = $test.IndexOf('Add-Type @"'); $b = $test.IndexOf('[KppVsMessageFilter]::Register()')
+Invoke-Expression $test.Substring($a, $b - $a)
+[KppVsMessageFilter]::Register()
+$ide = "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE"
+$root = (Resolve-Path "$PSScriptRoot\..\..\..").Path
+if (-not $KppExe) { $KppExe = "$root\compiler\build\kpp.exe" }
+if (-not $Work) { $Work = "$root\compiler\build\vs-debugger" }
+if (Test-Path $Work) { cmd /c rd /s /q "$Work" }
+New-Item -ItemType Directory -Force $Work | Out-Null
+Copy-Item "$PSScriptRoot\debugger-test\*" $Work
+$env:KPP_LSP_SERVER = $KppExe
+Push-Location $Work
+& $KppExe --generate-visual-studio-files | Out-Null
+if ($LASTEXITCODE -ne 0) { "debugger-check: FAILED: kpp --generate-visual-studio-files exit $LASTEXITCODE"; exit 1 }
+Pop-Location
+$Sln = "$Work\build\visual-studio\$(Split-Path $Work -Leaf).sln" # (named after its directory)
+$Main = "$Work\main.kpp"
+$bodyLine = 8
+$script:failed = 0
+function Check($what, $ok, $detail)
+{
+  if ($ok) { "ok   $what ($detail)" } else { "FAIL $what ($detail)"; $script:failed++ }
+}
+$devenv = Start-Process "$ide\devenv.exe" -ArgumentList '/rootsuffix', 'Exp', "`"$Sln`"" -PassThru
+$dte = $null; $t = [Diagnostics.Stopwatch]::StartNew()
+while (-not $dte -and $t.Elapsed.TotalSeconds -lt 120) { Start-Sleep -Milliseconds 250; $dte = [KppVsRot]::Dte($devenv.Id) }
+while ($dte.Solution.Projects.Count -lt 1 -and $t.Elapsed.TotalSeconds -lt 120) { Start-Sleep -Milliseconds 250 }
+function WaitStop($seconds)
+{
+  $t = [Diagnostics.Stopwatch]::StartNew()
+  Start-Sleep -Milliseconds 500
+  while ($t.Elapsed.TotalSeconds -lt $seconds)
+  {
+    $m = $dte.Debugger.CurrentMode
+    if ($m -eq 1 -or $m -eq 2) { return $m }
+    Start-Sleep -Milliseconds 300
+  }
+  return 0
+}
+function Value($e) { $dte.Debugger.GetExpression($e, $true, 5000) }
+function Expect($e, $want)
+{
+  $x = Value $e
+  Check "$e" ($x.IsValidValue -and $x.Value -like $want) "$($x.Type) = $($x.Value)"
+}
+function Conditional($condition, $stops)
+{
+  foreach ($bp in @($dte.Debugger.Breakpoints)) { $bp.Delete() }
+  $dte.Debugger.Breakpoints.Add('', $Main, $bodyLine, 1, $condition, 1) | Out-Null
+  $dte.Debugger.Go($false)
+  $mode = WaitStop 40
+  Check "breakpoint condition $condition" ($mode -eq $(if ($stops) { 2 } else { 1 })) "mode $mode"
+  if ($dte.Debugger.CurrentMode -ne 1) { $dte.Debugger.Stop($true); WaitStop 20 | Out-Null }
+}
+try
+{
+  $build = $dte.Solution.SolutionBuild
+  $build.BuildProject($build.ActiveConfiguration.Name, @($build.StartupProjects)[0], $true)
+  Check 'build' ($build.LastBuildInfo -eq 0) "failed projects $($build.LastBuildInfo)"
+  if ($build.LastBuildInfo) { return }
+  Conditional 'this.side == 7' $true
+  Conditional 'this.side == 8' $false
+  foreach ($bp in @($dte.Debugger.Breakpoints)) { $bp.Delete() }
+  $dte.Debugger.Breakpoints.Add('', $Main, $bodyLine) | Out-Null
+  $dte.Debugger.Go($false)
+  $mode = WaitStop 40
+  Check 'stops in the member function' ($mode -eq 2 -and $dte.Debugger.CurrentStackFrame.FunctionName -eq 'Square::area') "mode $mode, $($dte.Debugger.CurrentStackFrame.FunctionName)"
+  Check "a kpp frame's language" ($dte.Debugger.CurrentStackFrame.Language -eq 'kpp') $dte.Debugger.CurrentStackFrame.Language
+  Expect 'this.side' '7'
+  Expect 'this.side * 2' '14'
+  Expect 'this->side' '7'
+  Expect 'side' '7'
+  Expect 'this.area()' '49'
+  Expect 'this.side,x' '0x00000007'
+  Expect '&this' '0x*{side=7 }'
+  Expect '*this' '{side=7 }'
+  Expect '"this.side"' '"this.side"'
+  $x = Value 'this.nothing'
+  Check 'this.nothing is an error' (-not $x.IsValidValue) $x.Value
+  $locals = @($dte.Debugger.CurrentStackFrame.Locals | ForEach-Object { $_.Name })
+  Check 'Locals' ($locals -contains 'this' -and $locals -contains 'result') ($locals -join ', ')
+  (Value 'this.side').Value = '9'
+  Expect 'this.side' '9'
+  $dte.Debugger.ExecuteStatement('this.side = 11', 5000, $true)
+  Expect 'this.side' '11'
+  $dte.Debugger.StepOver($true)
+  $mode = WaitStop 20
+  Check 'step over' ($mode -eq 2) "mode $mode, result = $((Value 'result').Value)"
+  $dte.Debugger.StepOut($true)
+  $mode = WaitStop 20
+  Check 'step out' ($mode -eq 2 -and $dte.Debugger.CurrentStackFrame.FunctionName -like '*main') "mode $mode, $($dte.Debugger.CurrentStackFrame.FunctionName)"
+  Expect 'square.side' '11'
+  Expect 'square.area()' '121'
+  Expect 'numbers' '{ length=3 }'
+  Expect 'numbers.items[2]' '3'
+  Expect 'name' '"kpp"'
+  Expect 'queue' '{ length=1 }'
+  Expect 'corner' 'corner 1 2'
+  $stack = @($dte.Debugger.CurrentThread.StackFrames | ForEach-Object { "$($_.Language)" })
+  Check "C++ frames stay C++" ($stack -contains 'C++') ($stack -join ', ')
+  $dte.Debugger.Stop($true)
+}
+catch { Check 'the run' $false "threw: $($_.Exception.Message), line $($_.InvocationInfo.ScriptLineNumber)" }
+finally
+{
+  try { $dte.Documents.CloseAll(2) } catch { }
+  try { $dte.Quit() } catch { }
+  if (-not $devenv.WaitForExit(60000)) { Stop-Process -Id $devenv.Id -Force -ErrorAction SilentlyContinue }
+}
+if ($script:failed) { "debugger-check: $($script:failed) FAILED"; exit 1 }
+"debugger-check: ALL PASSED"
+exit 0

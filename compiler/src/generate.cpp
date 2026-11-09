@@ -525,7 +525,7 @@ int generateProjectFiles(int argc, char** argv)
         clean += " " + quoteArg(arg);
       std::string exe = ide.exe.string(), stem = fs::path(ide.exe).replace_extension().string();
       clean += " --exe " + quoteArg(exe) + " >nul & del /q " + quoteArg(exe) + " " + quoteArg(exe + ".*");
-      for (const char* extension : {".pdb", ".ilk", ".natvis", ".lib", ".exp"})
+      for (const char* extension : {".pdb", ".ilk", ".natvis", ".natvis-files", ".lib", ".exp"})
         clean += " " + quoteArg(stem + extension);
       clean += " 2>nul";
       ide.cleanCommand = clean + " & exit /b 0";
