@@ -625,9 +625,57 @@ Medians:
   build, against 0.89 s for the others), as in the windows above.
 
 The tail itself is the instance pieces' work: 128 pieces, 938 MB of IR, 79 to 92 thread-s after codegen. What
-would move it is compiling instance code during codegen. Where codegen leaves cores idle (its end phase, about
-1.3 s, more than the late levels) is the measure of what that could gain (B-lever2-tail-2026-11-08.md in the
-coordinator's notes).
+would move it is compiling instance code during codegen, so how many cores codegen leaves idle was measured
+next, in B's window of 2026-11-08 (23:03 to 23:04):
+- **Setup:** three clean inner compiles of the game with master 37bcd403, kpp's CPU time polled every 50 ms
+  beside codegen's level marks.
+- **Idle cores:** codegen (6.1 to 6.7 s there) left 66 to 83 of its ~200 core-seconds idle. Of those, 30 to 33
+  were in level 0, where no instance exists yet; its first ~0.6 s ran at 2 to 7 cores. Another 19 to 25 were in
+  the end phase, ~0.5 s of it at 1 to 2 cores.
+- **Reach of the big piece:** instance code could use only the idle time after level 5, about 25 to 35 core-s,
+  against 84 to 99 thread-s of instance work after codegen.
+
+So lever 2's big piece would gain about 1 s at best, for instance pieces keyed by depth and a server that
+recomputes the depths of the whole program. It is shelved (the coordinator, 2026-11-08); the design and the
+measurements are in B-lever2-tail-2026-11-08.md in the coordinator's notes. The two idle stretches the timeline
+showed are cut directly instead:
+- **An enumeration's enumerators computed once.** The end phase's serial stretch was not the debugger's ~50,000
+  class names (a timer gave all of them 50 ms) but one class's debug type: D3D11_MESSAGE, whose member's type
+  D3D11_MESSAGE_ID has thousands of enumerators, each written from the one before it in Windows' SDK
+  (`D3D11_MESSAGE_ID_X = ( D3D11_MESSAGE_ID_W + 1 )`). The interpreter computed every enumerator it was asked for
+  again from the first one, finding each earlier one by a scan of those before it: the type's enumerator list took
+  1.57 s on one thread, and the end phase's last ~0.5 s ran on that thread alone. The interpreter now keeps an
+  enumeration's values once computed (a thread's own copy, as D's 07f330fb keeps its caches): that type takes
+  22 ms, and homeDebugClasses 160 ms.
+- **The constant text of numbers made before the shared lock.** Level 0's slow start was the startup globals'
+  convoy. The constant texts of Tile's 65,536-entry tables (8.7 MB each) were written under the shared lock,
+  100+ ms each, while every emitter's first uses of globals waited. A global without an initializer was also
+  evaluated twice: once before the lock and again under it. Now a constant made only of numbers gets its text
+  before the lock, and such a global takes the value evaluated there. The tables hold the lock 11 to 12 ms, and
+  the startup globals' holds fell from 549–589 ms to 338 ms in all. These hold times come from B's diagnostic
+  build on a busy machine.
+
+B timed both cuts together in a window on 2026-11-09 (01:44 to 01:47):
+- **Compilers:** master 8ca54606 against both cuts on it, each with LLVM inside.
+- **Tree:** factorio-in-kpp converted from C:\Factorio 4c178a5b915 by kpp 8ca54606.
+- **Command:** `kpp factorio debug --verbose` with `KPP_STEP_TIMES=1`, five clean builds each in turned order.
+- **Load:** the machine 0 to 8% busy before each build, but one at 71%.
+
+The table gives medians, with each compiler's range in brackets:
+
+| | master 8ca54606 | and both cuts |
+|---|---:|---:|
+| kpp | 9.99 s (9.78 to 10.16) | 9.15 s (9.06 to 9.24) |
+| of it codegen | 5.26 s (5.26 to 5.41) | 4.57 s (4.54 to 4.62) |
+| of it the back end after codegen | 2.58 s | 2.54 s |
+| of it the rest | 2.01 s | 2.02 s |
+
+- **Codegen is 0.69 s faster (13%)** in every round, and kpp 0.84 s. How the gain splits between the two cuts
+  was not measured.
+- **The wall leaves out build.kpp's description,** which the cuts' compiler found cached: 0.37 s before the
+  build, against 0.90 s for master's, as in the windows above.
+- **The output is unchanged.** The game's IR and its 256 debug objects are byte-identical with and without the
+  cuts.
 
 When this plan was written, a clean debug build of the game was 17.1 s, the leaf edit 1.4 to 1.5 s,
 and the wide edit 1.9 s. These were thread A's quiet numbers: kpp run directly, without debug info.
