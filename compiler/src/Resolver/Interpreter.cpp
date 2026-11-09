@@ -228,6 +228,20 @@ auto GlobalScope::Impl::enumValueRange(const Ty* t) -> std::optional<std::pair<i
   return keep(range);
 }
 
+auto GlobalScope::Impl::keptEnumerators(const Ty* enumType) -> std::shared_ptr<const EnumeratorTable>
+{
+  static thread_local ThreadCopy<std::shared_ptr<const EnumeratorTable>> copy;
+  std::unordered_map<const Ty*, std::shared_ptr<const EnumeratorTable>>& mine = copy.of(cacheOwner);
+  if (auto it = mine.find(enumType); it != mine.end())
+    return it->second;
+  std::lock_guard lock(enumeratorTablesMutex);
+  auto it = enumeratorTables.find(enumType);
+  if (it == enumeratorTables.end())
+    return nullptr; // (not computed yet: nothing kept here, a later call finds it)
+  mine.emplace(enumType, it->second);
+  return it->second;
+}
+
 auto GlobalScope::Impl::declaredUnderlying(const Ty* t, const Subst* local) -> const Ty*
 {
   static thread_local ThreadCopy<const Ty*> copy;

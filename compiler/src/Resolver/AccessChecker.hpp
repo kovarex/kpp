@@ -141,6 +141,16 @@
     const EnumeratorValues* outer;
   };
   static thread_local const EnumeratorValues* enumeratorValues;
+  // The values of an enumeration's enumerators (not an instance's), all of them, by its type: computed
+  // once by constValueOfDecl when one is first asked for, and kept as enumValueRange's answers are (for
+  // this GlobalScope's life, a thread's own copy of what it asked: no lock again). Each was computed again
+  // from the first enumerator whenever one was asked: Windows' SDK headers write each message id from the
+  // one before (`D3D11_MESSAGE_ID_X = (D3D11_MESSAGE_ID_W + 1)`), and the debug type of D3D11_MESSAGE
+  // asking for the thousands of D3D11_MESSAGE_ID took codegen 0.5 s on one thread at its end.
+  using EnumeratorTable = std::unordered_map<const Decl*, ConstValue>;
+  std::mutex enumeratorTablesMutex;
+  std::unordered_map<const Ty*, std::shared_ptr<const EnumeratorTable>> enumeratorTables;
+  std::shared_ptr<const EnumeratorTable> keptEnumerators(const Ty* enumType);
 
   std::optional<ConstValue> constValueOfDecl(Decl* d, const TypeContext& ctx, int depth, const Subst* classSubst = nullptr);
 

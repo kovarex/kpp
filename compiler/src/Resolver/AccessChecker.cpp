@@ -611,6 +611,13 @@ auto GlobalScope::Impl::constValueOfDecl(Decl* d, const TypeContext& ctx, int de
           enumParams.push(static_cast<TemplateParamDecl*>(p.param)->name, p.param);
     TypeContext ectx{e->ownScope ? e->ownScope : lexicalScopeOf(e), &enumParams, instance, e->file ? e->file->tokens : nullptr,
                      e->file ? e->file->text : std::string_view()};
+    // An enumeration with no instance's arguments to depend on: all its enumerators' values, kept
+    // once computed (keptEnumerators), where each one asked was computed again from the first.
+    const bool plain = !instance || instance->pairs.empty();
+    if (plain)
+      if (std::shared_ptr<const EnumeratorTable> kept = keptEnumerators(enumType))
+        if (auto it = kept->find(d); it != kept->end())
+          return it->second;
     // An enumerator written from the one before (`F1 = 2 * F0`) asks for it while this loop
     // computes it: the values found so far answer, so that a chain is evaluated once, not again
     // for each link (2^n steps).
@@ -628,6 +635,10 @@ auto GlobalScope::Impl::constValueOfDecl(Decl* d, const TypeContext& ctx, int de
       EnumeratorValues& f;
     } pop{found};
     ConstValue next = ConstValue::integer(0, enumType);
+    // (a plain enumeration's loop goes on past d to its last enumerator, and keeps them all; one after
+    // d that does not evaluate leaves d's value as before, its reason as it was at d, nothing kept)
+    std::optional<ConstValue> asked;
+    std::string whyAtAsked;
     for (Decl* m : e->enumerators)
     {
       if (m->kind != NodeKind::EnumeratorDecl)
@@ -642,13 +653,34 @@ auto GlobalScope::Impl::constValueOfDecl(Decl* d, const TypeContext& ctx, int de
         bool holdsItsValue = written && written->kind == ConstValue::Kind::Int && !e->underlying && !e->isClass && types.longBits() == 64;
         std::optional<ConstValue> v = holdsItsValue ? ConstValue::integer(written->i, enumType) : constConverted(written, enumType);
         if (!v)
-          return std::nullopt;
+        {
+          if (asked)
+            constWhy() = whyAtAsked;
+          return asked;
+        }
         next = *v;
       }
       if (cur == d)
-        return next;
+      {
+        if (!plain)
+          return next;
+        asked = next;
+        whyAtAsked = constWhy();
+      }
       found.values.push_back({cur, next});
       ++next.i;
+    }
+    if (asked)
+    {
+      auto table = std::make_shared<EnumeratorTable>();
+      for (const auto& [at, value] : found.values)
+        table->emplace(at, value);
+      {
+        std::lock_guard lock(enumeratorTablesMutex);
+        enumeratorTables.emplace(enumType, std::move(table));
+      }
+      constWhy() = whyAtAsked; // (as the evaluation left it at d, where it returned before)
+      return asked;
     }
   }
   return std::nullopt;
