@@ -12,7 +12,7 @@ auto codegen::Emitter::packIn(Node* n, int depth) -> Decl*
 
 auto codegen::Emitter::packsIn(Node* n, std::vector<Decl*>& out, int depth) -> void
 {
-  if (!n || depth > 32)
+  if (!n || depth > maxExpressionNesting)
     return;
   switch (n->kind)
   {
@@ -109,7 +109,7 @@ auto codegen::Emitter::templatePacksOf(Decl* param) -> std::vector<Decl*>
 auto codegen::Emitter::parameterPacksNamedIn(Node* n, int depth) -> std::vector<Decl*>
 {
   std::vector<Decl*> out;
-  if (!n || depth > 32)
+  if (!n || depth > maxExpressionNesting)
     return out;
   auto add = [&](Node* x) {
     for (Decl* d : parameterPacksNamedIn(x, depth + 1))
@@ -229,7 +229,7 @@ auto codegen::Emitter::addNamedPacks(Node* pattern, std::vector<Decl*>& packs, s
 
 auto codegen::Emitter::typePacksIn(Node* n, std::vector<Decl*>& out, int depth) -> void
 {
-  if (!n || depth > 32 || !currentArgs)
+  if (!n || depth > maxExpressionNesting || !currentArgs)
     return;
   auto inName = [&](const QualifiedName& name)
   {

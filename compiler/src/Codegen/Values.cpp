@@ -803,7 +803,7 @@ auto codegen::Emitter::variableTemplateObject(NameExpr* n, VariableDecl* v, Node
 
 auto codegen::Emitter::lvalue(Expr* e) -> std::string
 {
-  if (++recursionDepth > 128)
+  if (++recursionDepth > maxExpressionNesting)
   {
     recursionDepth = 0;
     fail(e, "expression nested too deeply");
@@ -1384,7 +1384,7 @@ auto codegen::Emitter::qualifierType(Node* e, Node* at) -> const Ty*
 
 auto codegen::Emitter::instantiationIn(const Ty* cls, Decl* owner, Node* at, int depth) -> const Ty*
 {
-  if (!cls || !isClass(cls) || depth > 32)
+  if (!cls || !isClass(cls) || depth > maxClassNesting)
     return nullptr;
   const Ty* c = canonicalClass(cls, at);
   ClassDecl* def = classDef(c->decl, at);

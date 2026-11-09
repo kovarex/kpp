@@ -28,7 +28,7 @@ auto codegen::Emitter::reflectionSubject(Node* list, bool* alternatives) -> Expr
 
 auto codegen::Emitter::collectMembers(const Ty* cls, std::vector<const Ty*>& out, Node* at, int depth) -> void
 {
-  if (depth > 16)
+  if (depth > maxClassNesting)
     unsupported(at, "a class nested too deep for members(T)");
   ClassDecl* def = classDef(cls->decl, at);
   if (!def)

@@ -61,7 +61,7 @@ auto codegen::Emitter::fieldStart(StructInfo& info, uint32_t index, Node* at) ->
 
 auto codegen::Emitter::constantBytes(const ConstValue& v, const Ty* t, std::vector<uint8_t>& out, uint64_t offset, Node* at, int depth) -> bool
 {
-  if (!t || depth > 64)
+  if (!t || depth > maxClassNesting)
     return false;
   t = types.unqualified(t);
   if (v.kind == ConstValue::Kind::Unset)
@@ -265,7 +265,7 @@ auto codegen::Emitter::unionConstant(const ConstValue& v, const Ty* t, StructInf
 
 auto codegen::Emitter::constantText(const ConstValue& v, const Ty* t, Node* at, int depth) -> std::optional<std::string>
 {
-  if (!t || depth > 64)
+  if (!t || depth > maxClassNesting)
     return std::nullopt;
   t = types.unqualified(t);
   bool unset = v.kind == ConstValue::Kind::Unset; // static storage starts zero
@@ -496,7 +496,7 @@ auto codegen::Emitter::hasMutableMember(const Ty* t, Node* at, int depth) -> boo
   t = types.unqualified(t);
   while (t->kind == TyKind::Array)
     t = types.unqualified(t->inner);
-  if (!isClass(t) || depth > 16)
+  if (!isClass(t) || depth > maxClassNesting)
     return false;
   StructInfo& info = structFor(t, at);
   for (Decl* m : info.fieldDecls)
@@ -585,7 +585,7 @@ auto codegen::Emitter::integerAddress(Expr* value) -> std::optional<int64_t>
   // (an int32 sign-extended, an unsigned one zero-extended: the value folds as its own type's).
   Expr* e = value;
   bool cast = false;
-  for (int depth = 0; e && depth < 16; ++depth)
+  for (int depth = 0; e && depth < maxExpressionNesting; ++depth)
   {
     if (e->kind == NodeKind::ParenExpr)
       e = static_cast<ParenExpr*>(e)->inner;
@@ -686,7 +686,7 @@ auto codegen::Emitter::preEvaluateGlobal(VariableDecl* v, Node* at, const Ty* cl
 
 auto codegen::Emitter::pureData(const Ty* t, Node* at, int depth) -> bool
 {
-  if (!t || depth > 16)
+  if (!t || depth > maxClassNesting)
     return false;
   t = types.unqualified(t);
   switch (t->kind)

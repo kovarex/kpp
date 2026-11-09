@@ -6,7 +6,7 @@
 
 auto codegen::Emitter::arrowOperand(Value p, Node* at) -> Value
 {
-  for (int depth = 0; depth < 8 && isClass(p.ty); ++depth)
+  for (int depth = 0; depth < maxArrowChain && isClass(p.ty); ++depth)
   {
     const Ty* foundIn = nullptr;
     if (!findMemberFunction(p.ty, "operator->", {}, p.ty, at, &foundIn))
@@ -413,7 +413,7 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
 {
   if (e->kind == NodeKind::BraceInitExpr && static_cast<BraceInitExpr*>(e)->text)
     return {textTemporary(static_cast<BraceInitExpr*>(e), e), types.unqualified(types.stripRef(e->ty)), false}; // (design.md 14)
-  if (++recursionDepth > 128)
+  if (++recursionDepth > maxExpressionNesting)
   {
     recursionDepth = 0;
     fail(e, "expression nested too deeply");
@@ -1386,7 +1386,7 @@ auto codegen::Emitter::deallocationCall(FunctionDecl* f, const std::string& size
 
 auto codegen::Emitter::classDeallocation(const Ty* cls, const Ty*& owner, bool& sized, Node* at, int depth) -> FunctionDecl*
 {
-  if (!cls || !isClass(cls) || depth > 64)
+  if (!cls || !isClass(cls) || depth > maxClassNesting)
     return nullptr;
   const Ty* key = canonicalClass(cls, at);
   ClassDecl* c = classDef(key->decl, at);

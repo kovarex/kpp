@@ -364,7 +364,7 @@ auto codegen::Emitter::canonicalClass(const Ty* t, Node* at) -> const Ty*
 
 auto codegen::Emitter::definitionsIn(const Ty* t, int depth) -> const Ty*
 {
-  if (!t || depth > 32)
+  if (!t || depth > maxClassNesting)
     return t;
   if (auto it = definitionsCache.find(t); it != definitionsCache.end())
     return it->second;
@@ -1636,7 +1636,7 @@ auto codegen::Emitter::gep(const std::string& structName, const std::string& add
 
 auto codegen::Emitter::fieldTypeIn(const Ty* classTy, Decl* member, Node* at, int depth) -> const Ty*
 {
-  if (!isClass(classTy) || depth > 16)
+  if (!isClass(classTy) || depth > maxClassNesting)
     return nullptr;
   StructInfo& info = structFor(classTy, at);
   if (auto it = info.fieldIndex.find(member); it != info.fieldIndex.end())
@@ -1708,7 +1708,7 @@ auto codegen::Emitter::fieldAddress(const Ty* classTy, Decl* member, const std::
 
 auto codegen::Emitter::findFieldByName(const Ty* classTy, uint32_t nameSymbol, Node* at, int depth) -> Decl*
 {
-  if (depth > 16 || !classTy || classTy->kind != TyKind::Class || !classTy->decl)
+  if (depth > maxClassNesting || !classTy || classTy->kind != TyKind::Class || !classTy->decl)
     return nullptr;
   Decl* def = global.definitionOf(classTy->decl);
   if (!def || def->kind != NodeKind::ClassDecl)

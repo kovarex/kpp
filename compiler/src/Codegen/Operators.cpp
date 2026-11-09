@@ -299,7 +299,7 @@ auto codegen::Emitter::withCheckedConst(Value v, Expr* e) -> Value
 
 auto codegen::Emitter::constObject(Expr* e, int depth) -> bool
 {
-  if (!e || depth > 16)
+  if (!e || depth > maxExpressionNesting)
     return false;
   if (e->ty && types.stripRef(e->ty)->isConst)
     return true;

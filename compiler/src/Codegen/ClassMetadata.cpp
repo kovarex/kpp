@@ -349,7 +349,7 @@ auto codegen::Emitter::needsConstruction(const Ty* t, Node* at, int depth) -> bo
   t = types.stripRef(t);
   if (t->kind == TyKind::Array)
     return needsConstruction(t->inner, at, depth);
-  if (!isClass(t) || !t->decl || depth > 16)
+  if (!isClass(t) || !t->decl || depth > maxClassNesting)
     return false;
   if (hasUserConstructors(classDef(t->decl, at)))
     return true;
@@ -546,7 +546,7 @@ auto codegen::Emitter::destructionMayThrow(const Ty* t, Node* at, int depth) -> 
     // (the resolver's rule, [except.spec] 8; it leaves to this walk a class with a closure among its parts)
     if (std::optional<bool> known = global.destructorMayThrow(canonicalClass(t, at)))
       result = *known;
-    else if (depth > 64)
+    else if (depth > maxClassNesting)
       fail(at, "the destruction of " + types.toString(t, &symbols) + ", nested too deeply to say whether it may throw");
     else if (c->isTypedUnion)
     {
@@ -1976,7 +1976,7 @@ auto codegen::Emitter::elidedValues(const Ty* t, Span<Expr*> values, size_t star
   {
     if (next >= values.size())
       return false;
-    if (depth > 32 || initializesWhole(et, values[next], at))
+    if (depth > maxClassNesting || initializesWhole(et, values[next], at))
       ++next;
     else
       next += std::max<size_t>(1, elidedValues(et, values, next, at, depth + 1));
@@ -2099,7 +2099,7 @@ auto codegen::Emitter::bindingAddress(VariableDecl* v, Node* e, std::string& out
   // declares none, the one base that has them (C++'s rule: Vector2D's x and y are its CRTP
   // base Vector2's).
   const Ty* owner = object;
-  for (int depth = 0; depth < 16 && structFor(owner, e).fieldDecls.empty(); ++depth)
+  for (int depth = 0; depth < maxClassNesting && structFor(owner, e).fieldDecls.empty(); ++depth)
   {
     const Ty* withMembers = nullptr;
     for (auto& [baseDef, baseIndex] : std::vector<std::pair<Decl*, uint32_t>>(structFor(owner, e).bases))
@@ -2160,7 +2160,7 @@ auto codegen::Emitter::bindingBitfield(Expr* e) -> const BitfieldInfo*
   if (!isClass(owner))
     return nullptr;
   // (the class bindingAddress takes the member from: the object's, or the one base with members)
-  for (int depth = 0; depth < 16 && structFor(owner, e).fieldDecls.empty(); ++depth)
+  for (int depth = 0; depth < maxClassNesting && structFor(owner, e).fieldDecls.empty(); ++depth)
   {
     const Ty* withMembers = nullptr;
     for (auto& [baseDef, baseIndex] : std::vector<std::pair<Decl*, uint32_t>>(structFor(owner, e).bases))
@@ -2696,7 +2696,7 @@ auto codegen::Emitter::copyConstruct(const std::string& dst, const std::string& 
 auto codegen::Emitter::implicitCopyDeletedBy(const Ty* t, Node* at, int depth) -> std::string
 {
   t = types.unqualified(types.stripRef(t));
-  if (!isClass(t) || isLambda(t) || depth > 16)
+  if (!isClass(t) || isLambda(t) || depth > maxClassNesting)
     return "";
   const StructInfo& info = structFor(t, at);
   auto ofPart = [&](const Ty* pt, const std::string& what) -> std::string
@@ -2995,7 +2995,7 @@ auto codegen::Emitter::assignmentDeleted(const Ty* t, bool move, Node* at, int d
   t = types.unqualified(types.stripRef(t));
   while (t->kind == TyKind::Array && t->inner)
     t = types.unqualified(t->inner);
-  if (!isClass(t) || isLambda(t) || depth > 16 || typedUnionOf(t, at))
+  if (!isClass(t) || isLambda(t) || depth > maxClassNesting || typedUnionOf(t, at))
     return false;
   const Ty* foundIn = nullptr;
   std::vector<const Ty*> argTypes{move ? types.rref(t) : types.lref(types.qualified(t, true, false))};
@@ -3431,7 +3431,7 @@ auto codegen::Emitter::relocatesBitwise(const Ty* t, Node* at, int depth) -> boo
         return false;
     return true;
   }
-  if (!isClass(t) || depth > 32)
+  if (!isClass(t) || depth > maxClassNesting)
     return true;
   const Ty* key = canonicalClass(t, at);
   noteLayout(key);
@@ -3471,7 +3471,7 @@ auto codegen::Emitter::assignsBitwise(const Ty* t, Node* at, int depth) -> bool
   t = types.unqualified(types.stripRef(t));
   while (t->kind == TyKind::Array && t->inner)
     t = types.unqualified(t->inner);
-  if (!isClass(t) || depth > 32)
+  if (!isClass(t) || depth > maxClassNesting)
     return true;
   const Ty* key = canonicalClass(t, at);
   noteLayout(key);

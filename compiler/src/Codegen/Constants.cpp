@@ -150,7 +150,7 @@ auto codegen::Emitter::foldHooks(Node* at, bool& layoutFailed) -> ConstHooks
 auto codegen::Emitter::memberOffset(const Ty* t, Decl* m, Node* at, int depth) -> std::optional<uint64_t>
 {
   t = types.unqualified(types.stripRef(t));
-  if (!isClass(t) || depth > 16)
+  if (!isClass(t) || depth > maxClassNesting)
     return std::nullopt;
   classSizeAndAlign(t, at); // laid out, the fields' sizes known
   auto lock = sharedLock();

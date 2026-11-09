@@ -9,6 +9,11 @@
 
 namespace codegen
 {
+  // How deep a class is followed through its bases and members, as the front end does (GlobalScope::Impl::maxNestedLevels), and an
+  // operator-> returning a class with an operator-> (its maxArrowChain).
+  inline constexpr int maxClassNesting = 4096, maxArrowChain = 256;
+  // Expressions and statements in one another, each rvalue and lvalue a level: a member chain counts two levels a member (1 GB stacks).
+  inline constexpr int maxExpressionNesting = 2048;
 #include "FunctionState.hpp"
 
   struct Emitter : FunctionState

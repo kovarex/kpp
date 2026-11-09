@@ -595,7 +595,7 @@ auto codegen::Emitter::debugAggregateBindings(VariableDecl* v) -> void
     // (the class with the members, as bindingAddress takes it: the object's, or its one base with members)
     const Ty* owner = object;
     uint64_t base = 0;
-    for (int depth = 0; depth < 16 && structFor(owner, v).fieldDecls.empty(); ++depth)
+    for (int depth = 0; depth < maxClassNesting && structFor(owner, v).fieldDecls.empty(); ++depth)
     {
       const Ty* withMembers = nullptr;
       for (auto& [baseDef, baseIndex] : std::vector<std::pair<Decl*, uint32_t>>(structFor(owner, v).bases))
@@ -918,7 +918,7 @@ auto codegen::Emitter::statement(Stmt* s) -> void
 {
   if (!s)
     return;
-  if (++recursionDepth > 128)
+  if (++recursionDepth > maxExpressionNesting)
   {
     recursionDepth = 0;
     fail(s, "statement nested too deeply");
