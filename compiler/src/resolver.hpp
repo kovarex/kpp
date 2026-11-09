@@ -586,6 +586,10 @@ public:
   // --return-copy-warnings: each `return x;` of a local or parameter of class type that is copied
   // or moved, not built in the result's place, with why (the program's files; not templates yet).
   std::vector<std::string> returnCopyWarnings(const std::vector<ParsedFile*>& files);
+  // --implicit-uses (source.hpp): a line for each constructor and conversion operator marked `implicit` in the program's
+  // files (not imported C), in their order, "PATH:LINE<TAB>constructor|conversion<TAB>NAME<TAB>uses N<TAB>asked M",
+  // "<TAB>conditional" after an `implicit(cond)`; each use's place on a line of its own after it, "<TAB>at PATH:LINE".
+  std::vector<std::string> implicitUses(const std::vector<ParsedFile*>& files);
   bool isTemplateContext(Decl* d);               // Inside a template (any enclosing declaration has parameters).
   // Instantiation queries, single-threaded (code generation):
   const Ty* typeOfDeclIn(Decl* d, const TemplateArgs& args);

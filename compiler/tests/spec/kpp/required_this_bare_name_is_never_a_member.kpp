@@ -1,0 +1,35 @@
+// spec: required `this.` (design.md 23c, under --this-reference): a bare name is a local, a parameter or a global, never a member: beside a member function `helper` and a data member `limit` of the class, a bare `helper(2)` calls the global helper and a bare `limit` reads the global limit (Q10, kovarex 2026-11-07: no error); a static member is reached as `This::made`, types, enumerators and nested classes stay bare, and a member initializer names the member bare (`: limit(l)`)
+// kpp: --this-reference
+extern "C" int printf(const char* format, ...);
+int helper(int x) { return x + 100; }
+int limit = 7;
+class Gauge
+{
+public:
+  int limit;
+  static int made;
+  int helper(int x) const { return x; }
+  enum class Mode { Low, High };
+  using Reading = int;
+  class Needle
+  {
+  public:
+    int angle = 30;
+  };
+  Gauge(int l) : limit(l) { This::made++; }
+  static int reading()
+  {
+    Reading r = helper(2) + limit;
+    Mode m = Mode::High;
+    Needle n;
+    return r + (m == Mode::High ? n.angle : 0) + This::made;
+  }
+};
+int Gauge::made = 0;
+int main()
+{
+  Gauge a(1);
+  Gauge b(2);
+  printf("%d %d\n", Gauge::reading(), Gauge::made);
+  return 0;
+}

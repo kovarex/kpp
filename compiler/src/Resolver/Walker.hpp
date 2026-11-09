@@ -381,6 +381,12 @@
     // of a class, which required `this.` writes `this.x` (a static one `This::x`). One beside a name of its
     // spelling around the class says so: a bare name will be that one.
     void noteImplicitMember(const NameExpr* n, const Lookup& l);
+    // Required `this.` (design.md 23c, under --this-reference, kpp code only): a bare name is a local, a parameter or a
+    // global, never a member. One that the lookup finds as a data member, a member function or a static member of a
+    // class around the code is looked up again outside every class around it: what that finds is the name (Q10, no
+    // error), and nothing is the error "x is a data member: write `this.x`, not `x`" (a static's `This::x`). Types,
+    // enumerators and nested classes stay bare. l as it was when the rule does not apply.
+    Lookup bareMemberRule(const NameExpr* n, const Lookup& l);
     // --this-reference-warnings (design.md 23d): what e does with `this` that changes once it is a reference,
     // noted before e's operands are walked; a `this` no parent claimed is its address (noteThisAddress).
     void noteThisUse(Expr* e);
@@ -395,6 +401,7 @@
     void notePlainEnumUse(const Expr* operand, const char* kind);
     void noteDefaultCaptureOfThis(LambdaExpr* l);
     std::unordered_set<const Expr*> thisUsesNoted; // the `this` nodes a parent has spoken for
+    std::unordered_set<const NameExpr*> thisRuleNoted; // the bare names required `this.` reported (bareMemberRule)
     // A declaration in kpp code named `This`, the keyword for the class around the code: an error (design.md 23c).
     void checkNotThis(uint32_t symbol, uint32_t token);
     // The name of a scoped enum the scopes around declare with an enumerator spelled symbol, for "write

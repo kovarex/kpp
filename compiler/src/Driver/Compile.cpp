@@ -82,6 +82,8 @@ int compile(int argc, char** argv)
       options.overrideWarnings = true;
     else if (arg == "--this-warnings")
       options.thisWarnings = true;
+    else if (arg == "--this-reference")
+      options.thisReference = true;
     else if (arg == "--explicit-by-default")
       ; // the default since the flip (design.md "Explicit by default"): accepted until convert.cmd and build.kpp drop it
     else if (arg == "--this-reference-warnings")
@@ -104,6 +106,8 @@ int compile(int argc, char** argv)
       options.check = true;
     else if (arg == "--packages")
       options.packages = options.quiet = true; // (the tree alone on stdout, not the front end's statistics)
+    else if (arg == "--implicit-uses" && i + 1 < argc)
+      options.implicitUses = argv[++i];
     else if (arg == "--emit-llvm" && i + 1 < argc)
       options.emitLLVM = argv[++i];
     else if (arg == "--exe" && i + 1 < argc)

@@ -1230,6 +1230,52 @@ void setNoImplicitFallthrough(bool on) { noImplicitFallthroughEnabled = on; }
 
 bool noImplicitFallthroughOn() { return noImplicitFallthroughEnabled; }
 
+static bool thisReferenceEnabled = false;
+
+void setThisReference(bool on) { thisReferenceEnabled = on; }
+
+bool thisReferenceOn() { return thisReferenceEnabled; }
+
+static bool implicitUsesEnabled = false;
+static std::mutex implicitUsesMutex;
+struct ImplicitTally
+{
+  uint64_t asked = 0;
+  std::set<std::string> places;
+};
+static std::map<std::pair<const void*, uint32_t>, ImplicitTally> implicitRecords;
+
+void setImplicitUses(bool on)
+{
+  std::lock_guard lock(implicitUsesMutex);
+  implicitRecords.clear();
+  implicitUsesEnabled = on;
+}
+
+bool implicitUsesOn() { return implicitUsesEnabled; }
+
+void noteImplicitAsked(const void* file, uint32_t token)
+{
+  std::lock_guard lock(implicitUsesMutex);
+  ++implicitRecords[{file, token}].asked;
+}
+
+void noteImplicitUse(const void* file, uint32_t token, const std::string& place)
+{
+  std::lock_guard lock(implicitUsesMutex);
+  implicitRecords[{file, token}].places.insert(place);
+}
+
+std::vector<ImplicitRecord> takeImplicitRecords()
+{
+  std::lock_guard lock(implicitUsesMutex);
+  std::vector<ImplicitRecord> out;
+  for (auto& [key, tally] : implicitRecords)
+    out.push_back({key.first, key.second, tally.asked, std::vector<std::string>(tally.places.begin(), tally.places.end())});
+  implicitRecords.clear();
+  return out;
+}
+
 void setThisWarnings(bool on)
 {
   std::lock_guard lock(zeroNullMutex);

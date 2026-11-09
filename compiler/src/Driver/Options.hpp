@@ -26,12 +26,14 @@
     bool zeroNullWarnings = false; // --zero-null-warnings
     bool overrideWarnings = false; // --override-warnings
     bool thisWarnings = false; // --this-warnings
+    bool thisReference = false; // --this-reference
     bool thisReferenceWarnings = false; // --this-reference-warnings
     bool plainEnumWarnings = false; // --plain-enum-warnings
     bool structRule = true;      // design.md "struct and class" (--struct-rule, the default)
     bool cTypeWarnings = false;  // --c-type-warnings
     bool quiet = false;
     std::string emitLLVM; // --emit-llvm <path>
+    std::string implicitUses; // --implicit-uses <path> (source.hpp's setImplicitUses)
     std::string exe;      // --exe <path>
     std::string runBuild; // --run-build CONFIGURATION: print build.kpp's description (GlobalScope::runBuild)
     std::string stdDir;   // --std <dir>; default: <kpp dir>\..\..\stdlib when it exists

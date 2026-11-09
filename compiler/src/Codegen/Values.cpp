@@ -24,6 +24,8 @@ auto codegen::Emitter::conversionOf(const Ty* from, const Ty* to, GlobalScope::C
       unsupported(at, "a conversion of " + types.toString(from, &symbols) + " to bool where a condition (or a direct-initialization) would take " +
                           qualifiedName(op) + " and a copy-initialization " + qualifiedName(copied) + ", and codegen does not know which this is");
   }
+  if (op && !explicitCast && (op->flags & DF_Implicit) && implicitUsesOn() && currentFile && at)
+    noteImplicitUse(op->file, op->token, locationOf(at, currentFile, false)); // (a use of the mark, --implicit-uses)
   if (foundIn)
     *foundIn = op ? canonicalClass(in, at) : nullptr;
   return op;

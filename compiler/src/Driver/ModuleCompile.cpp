@@ -636,6 +636,24 @@ void runCodegen(Build& build)
   if (options.plainEnumWarnings)
     for (const std::string& w : takePlainEnumWarnings())
       fprintf(stderr, "%s\n", w.c_str());
+  if (!options.implicitUses.empty())
+  {
+    std::vector<ParsedFile*> files;
+    for (const std::unique_ptr<ParsedFile>& p : build.parsed)
+      files.push_back(p.get());
+    std::string text;
+    for (const std::string& line : global.implicitUses(files))
+      text += line + "\n";
+    if (options.implicitUses == "-")
+      fputs(text.c_str(), stderr); // (`-`: with the warnings, as a snippet reads them)
+    else if (FILE* out = fopen(options.implicitUses.c_str(), "wb"))
+    {
+      fwrite(text.data(), 1, text.size(), out);
+      fclose(out);
+    }
+    else
+      fprintf(stderr, "error: cannot write %s (--implicit-uses)\n", options.implicitUses.c_str());
+  }
   if (options.check)
     return; // the errors are all it is for
   std::string clang = clangPath();

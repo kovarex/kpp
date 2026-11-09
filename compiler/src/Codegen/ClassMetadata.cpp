@@ -8,14 +8,20 @@ auto codegen::Emitter::constructorFor(const Ty* classTy, Span<Expr*> args, Node*
 {
   std::vector<bool> nulls;
   bool anyNull = false;
+  // (a copy-initialization's constructor marked `implicit`: a use of the mark, --implicit-uses)
+  auto noted = [&](FunctionDecl* ctor) {
+    if (ctor && implicitOnly && (ctor->flags & DF_Implicit) && implicitUsesOn() && currentFile && at)
+      noteImplicitUse(ctor->file, ctor->token, locationOf(at, currentFile, false));
+    return ctor;
+  };
   for (Expr* a : args)
   {
     if (a && isPackExpansion(a))
-      return findConstructor(classTy, argTypesOf(args), at, {}, implicitOnly); // (the elements are no literals)
+      return noted(findConstructor(classTy, argTypesOf(args), at, {}, implicitOnly)); // (the elements are no literals)
     nulls.push_back(nullPointerConstant(a));
     anyNull = anyNull || nulls.back();
   }
-  return findConstructor(classTy, argTypesOf(args), at, anyNull ? nulls : std::vector<bool>{}, implicitOnly);
+  return noted(findConstructor(classTy, argTypesOf(args), at, anyNull ? nulls : std::vector<bool>{}, implicitOnly));
 }
 
 auto codegen::Emitter::findConstructor(const Ty* classTy, const std::vector<const Ty*>& argTypes, Node* at, const std::vector<bool>& nulls,

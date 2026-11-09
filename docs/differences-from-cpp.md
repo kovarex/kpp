@@ -437,7 +437,7 @@ Pinned make() { Pinned p; return p; }   // compiles: an error in C++
   member: `void setX(i32 x) { this.x = x; }`. The member a member initializer names stays bare
   (`: speed(speed)`), as do `using` declarations and declared types. All kpp code follows it, the
   stdlib and libraries too; imported headers are exempt. Today members are named bare, as in C++.
-- **Status:** `--this-warnings` lists them ([design 23c](design.md)).
+- **Status:** `--this-warnings` lists them; the rule's errors are built under `--this-reference` (not yet the default: the converter's rewrite and `this` as a reference come first) ([design 23c](design.md)).
 - **See:** [design 6][d6]; the readme's Planned.
 
 ### `this` is a reference (this stage, decided, not built)

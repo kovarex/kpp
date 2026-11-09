@@ -1822,6 +1822,11 @@ auto GlobalScope::Impl::Walker::resolveName(NameExpr* e) -> const Ty*
   if (!whenLookup(l, e))
     return types.unknown(); // (design.md 19: reported, or the instances' to tell)
   noteImplicitMember(e, l);
+  if (Lookup outside = bareMemberRule(e, l); outside.decl != l.decl)
+  {
+    l = outside; // (required `this.`: a bare name that is a member and a global, the global)
+    e->resolved = l.decl;
+  }
   switch (l.found)
   {
     case Found::No:
@@ -1894,6 +1899,42 @@ auto GlobalScope::Impl::Walker::reachThroughBases(Scope* cls, Scope* target, int
     reached = 2;
   }
   return reached;
+}
+
+auto GlobalScope::Impl::Walker::bareMemberRule(const NameExpr* n, const Lookup& l) -> Lookup
+{
+  // (the program's own files: the stdlib keeps the old meaning until --this-reference is the default, A's plan step 4)
+  if (!thisReferenceOn() || l.found != Found::Member || n->name.parts.size() != 1 || n->name.global || n->name.typeQualifier || !file ||
+      file->isImported || file->isLibrary || probing || declaredTypes > 0 || !l.foundIn || l.foundIn->kind != ScopeKind::Class || !l.foundIn->owner)
+    return l;
+  Decl* d = l.decl;
+  if (d && d->kind == NodeKind::UsingNameDecl && !static_cast<UsingNameDecl*>(d)->isEnum) // (`using Base::f;`, then `f()`)
+    d = impl.lookupQualified(static_cast<UsingNameDecl*>(d)->name, impl.lexicalScopeOf(d), nullptr, 0).decl;
+  if (!d || (d->kind != NodeKind::VariableDecl && d->kind != NodeKind::FunctionDecl) || (d->flags & (DF_Typedef | DF_Constructor | DF_Destructor)))
+    return l; // (types, enumerators and nested classes need no `this.`)
+  const NamePart& part = n->name.parts[0];
+  uint32_t symbol = !part.special ? part.symbol : part.special == 2 && part.opToken < uint32_t(P::Count) ? impl.opSymbols[part.opToken] : UINT32_MAX;
+  if (symbol == UINT32_MAX)
+    return l;
+  // Outside every class around the code (a nested class's outer classes too; a local class's function's locals are no
+  // bare name's either): what a bare name means once it is never a member.
+  Scope* outside = nullptr;
+  for (Scope* s = scope; s; s = s->parent)
+    if (s->kind == ScopeKind::Class)
+      outside = s->parent;
+  if (outside)
+    if (Lookup global = impl.lookupUnqualified(symbol, outside, nullptr, 0); global.found != Found::No && global.decl)
+      return global; // (a member and a global of one spelling: the global, Q10)
+  if (!activeSubst && thisRuleNoted.insert(n).second)
+  {
+    std::string name(symbols.name(symbol));
+    std::string old = !part.special ? name
+                                    : Impl::spelledTokens(file, n->token, n->token + (P(part.opToken) == P::LParen || P(part.opToken) == P::LBracket ? 2 : 1));
+    bool isStatic = (d->flags & DF_Static) != 0;
+    impl.reportCheckerError(file, n->token, name + " is a " + (isStatic ? "static member" : d->kind == NodeKind::FunctionDecl ? "member function" : "data member") +
+                                                ": write `" + (isStatic ? "This::" : "this.") + old + "`, not `" + old + "` (design.md 23c)");
+  }
+  return l;
 }
 
 auto GlobalScope::Impl::Walker::noteImplicitMember(const NameExpr* n, const Lookup& l) -> void
@@ -6074,6 +6115,8 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
       return types.unknown(); // (design.md 19: reported, or the instances' to tell)
     }
     noteImplicitMember(n, l);
+    if (Lookup outside = bareMemberRule(n, l); outside.decl != l.decl)
+      l = outside; // (required `this.`: a bare call of a name that is a member and a global, the global's)
     Subst friendArgs; // the class arguments of the friend functions argument-dependent lookup finds
     if (l.found == Found::Global)
       l = impl.withNamespaceUsings(l, 0); // `using lib::size;` beside the namespace's own size(int)
@@ -7328,7 +7371,11 @@ auto GlobalScope::Impl::Walker::unmarkedScalarConversion(const Ty* t, const Ty*&
     for (Decl* m : membersRead(kd))
       if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Conversion) &&
           ((m->flags & DF_Implicit) || static_cast<FunctionDecl*>(m)->explicitCondition))
+      {
+        if ((m->flags & DF_Implicit) && implicitUsesOn())
+          noteImplicitAsked(m->file, m->token); // (its mark decides the error: --implicit-uses)
         return true;
+      }
     std::vector<const Ty*> kb;
     if (impl.directBases(k, kd, kb))
       for (const Ty* b : kb)

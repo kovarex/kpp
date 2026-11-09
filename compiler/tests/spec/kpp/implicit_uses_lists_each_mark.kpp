@@ -1,0 +1,55 @@
+// spec: --implicit-uses FILE (- for the compiler's output) lists each constructor and conversion operator marked `implicit`: PATH:LINE, constructor or conversion, its name, `uses N` (the places codegen converted through it: a copy-initialization, an argument, a class template's instance's) and `asked M` (how often whether it converts implicitly was asked, whatever the answer: a requires clause's isConvertible, an overload's candidate), then each use's place, `<TAB>at PATH:LINE`; one never asked about (Never's) says `uses 0<TAB>asked 0`, so the converter may drop its mark (kovarex, 2026-11-09). The asked counts vary with -j (cached answers), their 0 does not
+// kpp: --implicit-uses -
+// warning: implicit_uses_lists_each_mark.kpp:15	constructor	Used::Used	uses 2	asked 
+// warning: implicit_uses_lists_each_mark.kpp:49
+// warning: implicit_uses_lists_each_mark.kpp:20	conversion	Converts::operator int32	uses 1	asked 
+// warning: implicit_uses_lists_each_mark.kpp:25	constructor	Asked::Asked	uses 0	asked 
+// warning: implicit_uses_lists_each_mark.kpp:30	constructor	Candidate::Candidate	uses 0	asked 
+// warning: implicit_uses_lists_each_mark.kpp:35	constructor	Never::Never	uses 0	asked 0
+// warning: implicit_uses_lists_each_mark.kpp:36	conversion	Never::operator bool	uses 0	asked 0
+// warning: implicit_uses_lists_each_mark.kpp:41	constructor	Box::Box	uses 1	asked 
+extern "C" int printf(const char* format, ...);
+struct Used
+{
+  int v;
+  implicit Used(int x) : v(x) {}
+};
+struct Converts
+{
+  int v = 3;
+  implicit operator int() const { return v; }
+};
+struct Asked
+{
+  int v;
+  implicit Asked(double x) : v((int)x) {}
+};
+struct Candidate
+{
+  int v;
+  implicit Candidate(const char* s) : v(s[0]) {}
+};
+struct Never
+{
+  int v;
+  implicit Never(char c) : v(c) {}
+  implicit operator bool() const { return v != 0; }
+};
+template<class T> struct Box
+{
+  T value;
+  implicit Box(T x) : value(x) {}
+};
+int take(Used u) { return u.v; }
+int pick(Candidate c) { return 1; }
+int pick(int i) { return 2; }
+template<class T> int onlyIfConvertible() requires isConvertible<double, T> { return 7; }
+int main()
+{
+  Used u = 5;
+  Converts c;
+  int i = c;
+  Box<int> b = 4;
+  printf("%d %d %d %d %d\n", take(9), i, pick(1), onlyIfConvertible<Asked>(), b.value);
+  return 0;
+}

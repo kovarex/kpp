@@ -2320,7 +2320,14 @@ template's current instance, `Counter<Gadget<T>>`): the base clause is looked up
 marks each `This` written there with the class and the type lookup takes it (built 2026-11-09, spec
 language/this_names_the_class_in_its_own_base_clause). The converter writes `This` nowhere else (kovarex).
 
-It lands as `override` does: a warning under a flag, counted, then the converter, then an error.
+It lands as `override` does: a warning under a flag, counted, then the converter, then an error. The error is built
+(thread J, 2026-11-09) under `--this-reference`, thread A's switch for `this` the kpp way (A's plan: `this` a reference beside
+it, one option for both), in the program's own files (not the stdlib, isLibrary, until the option is the default, nor
+imported C): a bare name whose lookup finds a data member, a member function or a static member of a class around the code
+is looked up again outside every class around it (Walker::bareMemberRule); what that finds is the name, no error, and
+nothing is the error with the warning's fix clause, "speed is a data member: write `this.speed`, not `speed`" (a static's
+`This::count`). Specs kpp/required_this_bare_member_is_error, kpp/required_this_bare_name_is_never_a_member. The game
+builds with the option once the converter has written the warnings' fixes (C) and `this.x` compiles (A's step 1).
 `--this-warnings` is the first step and changes nothing else: each
 unqualified name that finds a data member or a member function of a class is a warning at the name, "x is a
 data member: write `this.x`, not `x`" ("a member function"), a static member's "a static member: write
@@ -5088,6 +5095,12 @@ Decided 2026-11-09 (kovarex, as thread F recommended):
   conversion operator ([stmt.switch] 2; the checker's error, codegen's "does not support" before); specs
   templates/class_template_argument_deduction_by_copy_takes_no_explicit_constructor_is_error,
   language/switch_on_class_with_only_an_explicit_conversion_is_error.
+  The converted game's unneeded marks go (kovarex, 2026-11-09: the converter keeps `implicit` only where it is used):
+  `--implicit-uses FILE` lists each mark with its uses (the places codegen converted through it) and how often whether
+  it converts implicitly was asked (isExplicit: every conversion, overload candidate, requires clause and trait, whatever
+  the answer, so one asked about keeps its mark even when no conversion took it); one never asked about changes nothing
+  when it goes. The asked counts vary with -j (cached answers); their 0 does not, nor the uses. Spec
+  kpp/implicit_uses_lists_each_mark.
 
 - **The noexcept operator** (D, 2026-11-06, [except.spec] 6) answers for any operand: what it names and what it
   calls without naming it (Walker::canThrow): a class's operators, constructions, implicit and defaulted

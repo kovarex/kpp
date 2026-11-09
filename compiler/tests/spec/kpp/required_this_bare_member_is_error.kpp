@@ -1,0 +1,43 @@
+// spec: required `this.` (design.md 23c, under --this-reference): a bare name that finds only a member of the class around the code is an error naming the fix, a data member's `this.x`, a member function's `this.wheels`, a static member's `This::made`, in a body, a default member initializer and a lambda in a member; a member initializer's name (`: speed(s)`), types, enumerators and nested classes stay bare, and a member with a global of its spelling is the global (no error)
+// kpp: --this-reference
+// error: required_this_bare_member_is_error.kpp:25: error: speed is a data member: write `this.speed`, not `speed` (design.md 23c)
+// error: required_this_bare_member_is_error.kpp:26: error: made is a static member: write `This::made`, not `made` (design.md 23c)
+// error: required_this_bare_member_is_error.kpp:27: error: wheels is a member function: write `this.wheels`, not `wheels` (design.md 23c)
+// error: required_this_bare_member_is_error.kpp:32: error: speed is a data member: write `this.speed`, not `speed` (design.md 23c)
+// error: required_this_bare_member_is_error.kpp:34: error: speed is a data member: write `this.speed`, not `speed` (design.md 23c)
+int helper(int x) { return x + 1; }
+class Train
+{
+public:
+  int speed = 0;
+  static int made;
+  int wheels() const { return 3; }
+  int helper(int x) const { return x; }
+  enum class State { Moving, Stopped };
+  using Speed = int;
+  class Wheel
+  {
+  public:
+    int r = 1;
+  };
+  void setSpeed(int s)
+  {
+    speed = s;
+    made++;
+    int n = wheels();
+    Speed v = n;
+    State st = State::Moving;
+    Wheel w;
+    int h = helper(2) + v + w.r + (st == State::Moving ? 1 : 0);
+    int twice = [&]() { return speed * 2; }() + h;
+  }
+  int doubled = speed * 2;
+  Train(int s) : speed(s) {}
+};
+int Train::made = 0;
+int main()
+{
+  Train t(1);
+  t.setSpeed(2);
+  return 0;
+}

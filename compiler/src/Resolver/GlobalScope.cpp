@@ -1527,6 +1527,39 @@ VariableDecl* GlobalScope::namedReturnVariable(const Stmt* body, const Ty* resul
   return v;
 }
 
+std::vector<std::string> GlobalScope::implicitUses(const std::vector<ParsedFile*>& files)
+{
+  std::map<std::pair<const void*, uint32_t>, ImplicitRecord> records;
+  for (ImplicitRecord& r : takeImplicitRecords())
+    records[{r.file, r.token}] = std::move(r);
+  std::vector<std::string> out;
+  for (ParsedFile* file : files)
+  {
+    if (!file || file->isImported || !file->tokens)
+      continue;
+    LineStarts starts(file->text);
+    forEachNode(file->decls, [&](Node* n)
+    {
+      if (n->kind != NodeKind::FunctionDecl)
+        return;
+      auto* f = static_cast<FunctionDecl*>(n);
+      if (!(f->flags & DF_Implicit) || !(f->flags & (DF_Constructor | DF_Conversion)) || f->file != file || f->token >= file->tokens->size())
+        return;
+      auto it = records.find({file, f->token});
+      uint64_t asked = it == records.end() ? 0 : it->second.asked;
+      size_t uses = it == records.end() ? 0 : it->second.places.size();
+      std::string line = sourceLocation(file->path, starts.line((*file->tokens)[f->token].offset)) + "	" +
+                         ((f->flags & DF_Constructor) ? "constructor" : "conversion") + "	" + qualifiedName(f) + "	uses " + std::to_string(uses) +
+                         "	asked " + std::to_string(asked) + (f->explicitCondition ? "	conditional" : "");
+      out.push_back(line);
+      if (it != records.end())
+        for (const std::string& place : it->second.places)
+          out.push_back("	at " + place);
+    });
+  }
+  return out;
+}
+
 std::vector<std::string> GlobalScope::returnCopyWarnings(const std::vector<ParsedFile*>& files)
 {
   std::vector<std::string> out;

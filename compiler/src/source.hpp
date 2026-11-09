@@ -80,6 +80,27 @@ bool explicitByDefaultOn();
 // meaning either way (SwitchStmt::cRules).
 void setNoImplicitFallthrough(bool on);
 bool noImplicitFallthroughOn();
+// --implicit-uses FILE: each constructor and conversion operator marked `implicit`, how often the compiler asked whether
+// it converts implicitly (every convertibility question: a conversion, an overload's candidate, a requires clause, a trait;
+// whatever the answer) and the places where codegen converted through it (GlobalScope::implicitUses writes the lines). The
+// converter's list of the marks it may drop: one never asked about changes nothing when it goes (kovarex, 2026-11-09).
+// A declaration is its file and its token (a class template's member counted once over its instances).
+void setImplicitUses(bool on);
+bool implicitUsesOn();
+void noteImplicitAsked(const void* file, uint32_t token);
+void noteImplicitUse(const void* file, uint32_t token, const std::string& place);
+struct ImplicitRecord
+{
+  const void* file = nullptr;
+  uint32_t token = 0;
+  uint64_t asked = 0;
+  std::vector<std::string> places; // sorted, each once
+};
+std::vector<ImplicitRecord> takeImplicitRecords();
+// --this-reference: `this` the kpp way (design.md 23c, 23d), in the program's own files: required `this.`, a bare
+// name never a member (Walker::bareMemberRule, thread J); `this` as a reference (thread A's, beside it).
+void setThisReference(bool on);
+bool thisReferenceOn();
 void setThisWarnings(bool on);
 bool thisWarningsOn();
 void noteThisWarning(const std::string& warning);
