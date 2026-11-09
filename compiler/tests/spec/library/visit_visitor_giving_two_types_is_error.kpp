@@ -1,0 +1,30 @@
+// spec: visit's visitor gives one type for every alternative ([variant.visit], Mandates): a visitor that gives an int for one and a double for another is a compile error, never the double converted to the first's int
+// found by thread I (2026-11-09), with visit's rewrite; std::visit rejects it with clang and MSVC's STL and with g++ and libstdc++
+// error: static assertion failed: "visit: the visitor must give the same type for every alternative"
+template<i32 I>
+struct Alt
+{
+  int value = I;
+};
+template<i32 N>
+struct Shape
+{
+  static constexpr i32 size = N;
+  i32 held = 0;
+  i32 index() const { return this->held; }
+  template<i32 I>
+  Alt<I> get() { return Alt<I>(); }
+};
+struct Mixed
+{
+  int operator()(const Alt<0>& a) { return a.value; }
+  double operator()(const Alt<1>& a) { return a.value + 0.5; }
+};
+int main()
+{
+  Shape<2> v;
+  v.held = 1;
+  auto got = visit(Mixed(), v);
+  println(got);
+  return 0;
+}

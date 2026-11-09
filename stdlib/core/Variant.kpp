@@ -58,20 +58,44 @@ constexpr i32 variantSize = V::size;
 // VariantAlternative<I, U>: the type of the typed union U's I-th alternative, a built-in of the
 // compiler's (design.md 8.5), as std::variant_alternative_t is.
 
-// visit: calls a visitor with the current value. Supports up to 8 alternatives.
-template<typename Visitor, typename V>
-auto visit(Visitor&& vis, V&& variant) -> decltype(vis(variant.template get<0>()))
+// What visit throws for a variant that holds none of its alternatives, as std::bad_variant_access.
+class BadVariantAccess : public Exception
+{
+public:
+  BadVariantAccess() : Exception(String("bad variant access")) {}
+};
+
+// visit(visitor, variant): the visitor called with the alternative the variant holds, as std::visit
+// of one variant ([variant.visit]). The variant is a class with index(), get<I>() and its number of
+// alternatives as the constant `size` (variantSize), which can be any number. The visitor and the
+// variant are passed on as they came, so an rvalue variant gives its visitor an rvalue, and the
+// visitor gives one type for every alternative. A typed union takes no visit: it is asked with a
+// `switch` (design.md 8.5).
+template<typename Visitor, typename V> requires requires (V& v) { v.index(); }
+
+auto visit(Visitor&& vis, V&& variant) -> decltype(forward<Visitor>(vis)(forward<V>(variant).template get<0>()))
+{
+  constexpr i32 count = variantSize<RemoveCvRef<V>>;
+  using Result = decltype(forward<Visitor>(vis)(forward<V>(variant).template get<0>()));
+  return visitIndexed<Result>(forward<Visitor>(vis), forward<V>(variant), MakeIndexSequence<count>());
+}
+
+// One case per alternative. (A switch, as nesting an instantiation per alternative runs out of the
+// nesting the compiler types a generic lambda's call in.)
+template<typename Result, typename Visitor, typename V, i32... I>
+Result visitIndexed(Visitor&& vis, V&& variant, IndexSequence<I...>)
 {
   switch (variant.index())
   {
-    case 0: return vis(variant.template get<0>());
-    case 1: return vis(variant.template get<1>());
-    case 2: return vis(variant.template get<2>());
-    case 3: return vis(variant.template get<3>());
-    case 4: return vis(variant.template get<4>());
-    case 5: return vis(variant.template get<5>());
-    case 6: return vis(variant.template get<6>());
-    case 7: return vis(variant.template get<7>());
+    for constexpr (typename Index : types<IntegralConstant<i32, I>...>)
+      case Index::value: return visitAlternative<Index::value, Result>(forward<Visitor>(vis), forward<V>(variant));
   }
-  return vis(variant.template get<0>());
+  throw BadVariantAccess();
+}
+
+template<i32 I, typename Result, typename Visitor, typename V>
+Result visitAlternative(Visitor&& vis, V&& variant)
+{
+  static_assert(isSame<decltype(forward<Visitor>(vis)(forward<V>(variant).template get<I>())), Result>, "visit: the visitor must give the same type for every alternative");
+  return forward<Visitor>(vis)(forward<V>(variant).template get<I>());
 }

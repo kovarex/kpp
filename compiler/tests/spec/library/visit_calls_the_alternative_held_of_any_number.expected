@@ -1,0 +1,27 @@
+1: 0
+2: 0 10
+3: 0 10 20
+7: 0 30 60
+8: 0 30 70
+9: 0 70 80
+12: 80 90 100 110
+20: 0 80 150 160 190
+64: 0 310 630
+changed -5
+0 lvalue
+0 const lvalue
+0 rvalue
+1 lvalue
+1 const lvalue
+1 rvalue
+visitor 1
+visitor 2
+visitor 11
+visitor 12
+calls 2
+reference 78
+named 11
+lvalue: 1 copies 1 moves 0
+rvalue: 1 copies 0 moves 1
+caught, calls 0
+visitor threw 1

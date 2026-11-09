@@ -1,8 +1,9 @@
-// spec: std::variant's functions and members on a typed union (`holdsAlternative<int>(v)`, `get<int>(v)`, `v.index()`, `v.get<1>()`) are errors that say how a `union enum` is asked (`v == U::Name`, v.tag()) and read (`v[Name]`), design.md 8.5; until 2026-11-06 codegen's "a call that did not resolve" or "a member access that did not resolve" (E's report)
-// error: typed_union_variant_api_is_error.kpp:12: error: holdsAlternative takes no typed union (Value): a `union enum` is asked with `v == Value::Name` (or v.tag()) and read with `v[Name]` (design.md 8.5)
-// error: typed_union_variant_api_is_error.kpp:13: error: get takes no typed union (Value): a `union enum` is asked with `v == Value::Name` (or v.tag()) and read with `v[Name]` (design.md 8.5)
-// error: typed_union_variant_api_is_error.kpp:14: error: index is no member of the typed union Value: a `union enum` is asked with `v == Value::Name` (or v.tag()) and read with `v[Name]` (design.md 8.5)
-// error: typed_union_variant_api_is_error.kpp:15: error: get is no member of the typed union Value: a `union enum` is asked with `v == Value::Name` (or v.tag()) and read with `v[Name]` (design.md 8.5)
+// spec: std::variant's functions and members on a typed union (`holdsAlternative<int>(v)`, `get<int>(v)`, `v.index()`, `v.get<1>()`, `visit(f, v)`) are errors that say how a `union enum` is asked (`v == U::Name`, v.tag()) and read (`v[Name]`), design.md 8.5; until 2026-11-06 codegen's "a call that did not resolve" or "a member access that did not resolve" (E's report)
+// error: typed_union_variant_api_is_error.kpp:13: error: holdsAlternative takes no typed union (Value): a `union enum` is asked with `v == Value::Name` (or v.tag()) and read with `v[Name]` (design.md 8.5)
+// error: typed_union_variant_api_is_error.kpp:14: error: get takes no typed union (Value): a `union enum` is asked with `v == Value::Name` (or v.tag()) and read with `v[Name]` (design.md 8.5)
+// error: typed_union_variant_api_is_error.kpp:15: error: index is no member of the typed union Value: a `union enum` is asked with `v == Value::Name` (or v.tag()) and read with `v[Name]` (design.md 8.5)
+// error: typed_union_variant_api_is_error.kpp:16: error: get is no member of the typed union Value: a `union enum` is asked with `v == Value::Name` (or v.tag()) and read with `v[Name]` (design.md 8.5)
+// error: typed_union_variant_api_is_error.kpp:17: error: visit takes no typed union (Value): a `union enum` is asked with `v == Value::Name` (or v.tag()) and read with `v[Name]` (design.md 8.5)
 union enum Value : u8
 {
   { {int, Integer}, {double, Real} }
@@ -13,7 +14,8 @@ int ask(Value v)
   int value = get<int>(v);
   int which = v.index();
   int second = v.get<1>();
-  return held ? value + which + second : 0;
+  int visited = visit([](auto& x) { return 1; }, v);
+  return held ? value + which + second + visited : 0;
 }
 int main()
 {
