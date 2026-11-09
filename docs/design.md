@@ -2367,7 +2367,7 @@ either: the count stays a safety check, and converted code relying on the old lo
 
 Spec: language/this_warnings_mode.
 
-### 23d. `this` is a reference (decided 2026-11-07, not built)
+### 23d. `this` is a reference (decided 2026-11-07; built under --this-reference 2026-11-09)
 kovarex answered Q13 to Q17 on 2026-11-07, as recommended but for Q13. `this` names the object, everywhere:
 - **Member access is `this.x`** (Q13 a), the only form; `this->x` is the class's `operator->`, as on any
   object. Required `this.` (23c) is this rule's spelling. The game has 182,657 lines with `this->` for the
@@ -2412,6 +2412,23 @@ library's tests, kppsite, kpplex, projectlib):
 
 The address's two rows are one fix: a comparison through a class's operator== counts as passed. Spec
 language/this_reference_warnings_mode.
+
+`--this-reference` (the one option for `this` the kpp way, which required `this.` of 23c shares) has the second step (2026-11-09, thread A): the meaning itself, in the program's own files
+(ParsedFile::thisReference). The standard library keeps C++'s pointer until the meaning becomes the default,
+when it is converted with the switch, and an enum's methods keep `this` as the value. The old and new
+meanings collide (`return this;`, `f(this)`, `auto c = this;` and `this == other` each mean the pointer in
+one and the object in the other), so a file takes one meaning whole, never both. The parser writes `this`
+as an implicit `*this` around C++'s pointer (ThisExpr::form 1), so the walk, constant evaluation and codegen
+see what `*this` gives them, and `&this` as the pointer itself (form 2), never a class's unary operator&.
+`[&this]` is C++'s `[this]` capture. These are errors with their fix: `this->x` of a class with no
+operator-> ("write `this.`, not `this->`"), `*this` of a class with no operator* ("write `this`, not
+`*this`"), `[this]` ("write `&this`, not `this`"), and a `[=]` lambda that uses the object ("write `=,
+&this`, not `=`"). The null tests have no fix: `if (this)`, `this == nullptr` and `this &&`. `!this` acts on
+the object, as said above. The plan (A-plan-this-reference in the coordinator's notes): C's converter
+writes the new forms and the game builds with the option, then ours, then the default with the stdlib
+converted. Specs language/this_is_a_reference, this_is_a_reference_through_bases_and_constants,
+this_reference_old_forms_is_error, this_reference_capture_of_this_is_error and
+this_reference_keeps_the_pointer_in_the_standard_library.
 
 ### 23e. A fix in a message (F, 2026-11-07)
 An error or warning whose fix is mechanical ends, before any " (design.md N)", with exactly one of two

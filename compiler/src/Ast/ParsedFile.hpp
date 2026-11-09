@@ -51,6 +51,9 @@ struct ParsedFile
   // constexpr`, and test code as written, with no token spliced in.
   std::vector<uint8_t>* formatRoles = nullptr;
   bool isLibrary = false;  // The standard library's sources (set by the driver): the top-level names they claim are reserved.
+  // `this` is the object here (design.md 23d, --this-reference; set by the driver): the program's own
+  // files and its libraries', not the standard library's (converted when the meaning becomes the default).
+  bool thisReference = false;
   Scope* privateScope = nullptr; // Its `private` top-level names (design.md 15), set by the resolver's index.
   // The library it is a file of (design.md 16; set by the driver): its name, empty for the program's
   // files and the standard library's; for a scoped library also the name's symbol, and the namespace

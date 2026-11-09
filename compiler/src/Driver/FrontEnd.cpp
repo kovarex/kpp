@@ -279,6 +279,7 @@ void runParse(Build& build)
       parsed[i]->lambdaTag = i < build.lambdaTags.size() ? build.lambdaTags[i] : 0;
       std::string library = options.libraryRoot.string();
       parsed[i]->isLibrary = !library.empty() && parsed[i]->path.compare(0, library.size(), library) == 0;
+      parsed[i]->thisReference = options.thisReference && !parsed[i]->isLibrary;
       if (i < build.fileLibrary.size() && build.fileLibrary[i] >= 0)
       {
         const Options::LibraryRoot& root = options.libraryRoots[size_t(build.fileLibrary[i])];

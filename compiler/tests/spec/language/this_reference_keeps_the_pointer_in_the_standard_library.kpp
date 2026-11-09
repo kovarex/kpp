@@ -1,0 +1,26 @@
+// spec: --this-reference changes `this` in the program's own files only: the standard library, compiled with every program, keeps C++'s pointer until it is converted with the default (design.md 23d), so its classes work beside the program's (`this.` here, `this->` and `*this` there); an enum's methods keep `this` as the value (`5 1`)
+// kpp: --this-reference
+enum class Dir
+{
+  { North, South }
+  Dir opposite() const { return this == Dir::North ? Dir::South : Dir::North; }
+};
+class Bag
+{
+public:
+  Vector<int> items;
+  String name = "bag";
+  Bag& put(int x)
+  {
+    this.items.push_back(x);
+    return this;
+  }
+  int count() const { return int(this.items.size()) + int(this.name.size()); }
+};
+int main()
+{
+  Bag b;
+  b.put(1).put(2);
+  println(b.count(), " ", Dir::North.opposite() == Dir::South ? 1 : 0);
+  return 0;
+}

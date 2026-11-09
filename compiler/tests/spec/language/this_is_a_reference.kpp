@@ -1,0 +1,68 @@
+// spec: with --this-reference `this` is the object, as a reference (design.md 23d): `this.x` and `this.f()`, `return this;` from a function returning the class by reference, `this` passed to a reference parameter, `&this` the pointer (returned, compared), `[&this]` capturing the object by reference, `[copy = this]` a copy, a default member initializer, a template's member; `this->x` calls a class's own operator-> and `*this` its operator*; clang's output of the same program written with C++'s pointer (`this->`, `*this`, `[this]`)
+// kpp: --this-reference
+class Counter
+{
+public:
+  int value = 1;
+  int doubled = this.value * 2;
+  int get() const { return this.value; }
+  Counter& add(int n)
+  {
+    this.value += n;
+    return this;
+  }
+  Counter* self() { return &this; }
+  bool same(const Counter* other) const { return &this == other; }
+  int sum(const Counter& other) const { return this.value + other.value; }
+  int twice() const { return this.sum(this); }
+  auto live() { return [&this]() { return this.value; }; }
+  auto frozen() { return [copy = this]() { return copy.value; }; }
+  auto bump() { return [&this]() { this.value += 100; }; }
+};
+class Handle
+{
+public:
+  Counter* target;
+  int own = 7;
+  Counter* operator->() { return this.target; }
+  int viaArrow() { return this->value; }
+  int ownValue() { return this.own; }
+};
+class Wrapped
+{
+public:
+  int inner = 42;
+  int operator*() const { return this.inner + 1; }
+  int star() const { return *this; }
+};
+template<typename T>
+class Box
+{
+public:
+  T item{};
+  Box& set(T v)
+  {
+    this.item = v;
+    return this;
+  }
+  T get() const { return this.item; }
+};
+int main()
+{
+  Counter c;
+  c.add(2).add(3);
+  Counter other;
+  auto live = c.live();
+  auto frozen = c.frozen();
+  auto bump = c.bump();
+  bump();
+  println(c.get(), " ", c.doubled, " ", c.self() == &c ? 1 : 0, " ", c.same(&c) ? 1 : 0, " ", c.same(&other) ? 1 : 0);
+  println(c.twice(), " ", c.sum(other), " ", live(), " ", frozen());
+  Handle h{&c};
+  println(h.viaArrow(), " ", h.ownValue());
+  Wrapped w;
+  println(w.star());
+  Box<int> b;
+  println(b.set(9).get());
+  return 0;
+}

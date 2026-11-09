@@ -1,0 +1,31 @@
+// spec: with --this-reference (design.md 23d) C++'s pointer forms of `this` are errors with their fix: `this->x` of a class with no operator-> (write `this.`), `*this` of a class with no operator* (write `this`), a `[=]` lambda that uses the object (write `=, &this`), and the null tests, `if (this)`, `this == nullptr`, `this && ...`, which have no fix (a reference is never null)
+// kpp: --this-reference
+// error: this_reference_old_forms_is_error.kpp:14: error: this is a reference (the object): write `this.`, not `this->`
+// error: this_reference_old_forms_is_error.kpp:15: error: this is a reference (the object): write `this.`, not `this->`
+// error: this_reference_old_forms_is_error.kpp:16: error: this is a reference (the object): write `this`, not `*this`
+// error: this_reference_old_forms_is_error.kpp:17: error: [=] does not capture the object (design.md 23d): write `=, &this`, not `=`
+// error: this_reference_old_forms_is_error.kpp:20: error: this is a reference, never null (design.md 23d)
+// error: this_reference_old_forms_is_error.kpp:24: error: this is a reference, never null (design.md 23d)
+// error: this_reference_old_forms_is_error.kpp:25: error: this is a reference, never null (design.md 23d)
+class Node
+{
+public:
+  int value = 1;
+  int get() const { return this->value; }
+  int call() const { return this->get(); }
+  Node& ref() { return *this; }
+  auto reader() { return [=]() { return this.value; }; }
+  bool alive() const
+  {
+    if (this)
+      return true;
+    return false;
+  }
+  bool valid() const { return this == nullptr; }
+  bool both(bool b) const { return this && b; }
+};
+int main()
+{
+  Node n;
+  return n.get();
+}

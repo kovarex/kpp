@@ -140,6 +140,13 @@ namespace
   public:
     bool isC() const { return dialect == Dialect::C; }
     bool isKpp() const { return dialect == Dialect::KppSource; }
+    // `this` is the object here (--this-reference, design.md 23d), not in an enum's methods (the value already).
+    bool thisIsObject() const { return out.thisReference && enumBodies == 0; }
+    static bool isObjectThis(const Expr* e)
+    {
+      return e && e->kind == NodeKind::UnaryExpr && static_cast<const UnaryExpr*>(e)->operand &&
+             static_cast<const UnaryExpr*>(e)->operand->kind == NodeKind::ThisExpr && static_cast<const ThisExpr*>(static_cast<const UnaryExpr*>(e)->operand)->form == 1;
+    }
   private:
     // Backtracks to a saved position, undoing any token splits made after it.
     void restore(uint32_t save)
@@ -4843,7 +4850,9 @@ namespace
         if (accept(P::Semi))
           continue;
         // kpp: member declarations inside an enum.
+        ++enumBodies; // (an enum's methods have `this` as the value already)
         parseDeclaration(Scope::Enum);
+        --enumBodies;
         if (inRecovery)
           break;
       }
@@ -6115,6 +6124,14 @@ namespace
             u->isKeyword = false;
             u->postfix = false;
             u->operand = parseUnary();
+            if (p == P::Amp && isObjectThis(u->operand))
+            {
+              // `&this`: the pointer itself, never a class's unary operator& (design.md 23d)
+              ThisExpr* t = static_cast<ThisExpr*>(static_cast<UnaryExpr*>(u->operand)->operand);
+              t->form = 2;
+              t->token = start;
+              return t;
+            }
             return u;
           }
           case P::Ellipsis:
@@ -6662,8 +6679,21 @@ namespace
               return l;
             }
             case Kw::this_:
+            {
               advance();
-              return node<ThisExpr>(start);
+              ThisExpr* t = node<ThisExpr>(start);
+              if (!thisIsObject())
+                return t;
+              // `this` is the object (design.md 23d): an implicit `*this` around C++'s pointer, so that
+              // what reads it (the walk, constant evaluation, codegen) sees what `*this` gives it.
+              t->form = 1;
+              UnaryExpr* u = node<UnaryExpr>(start);
+              u->op = uint32_t(P::Star);
+              u->isKeyword = false;
+              u->postfix = false;
+              u->operand = t;
+              return u;
+            }
             case Kw::typeid_:
             {
               advance();
@@ -6945,8 +6975,21 @@ namespace
           advance();
           l->defaultCapture = 1;
         }
-        else if (accept(Kw::this_))
+        else if (at(Kw::this_))
         {
+          if (thisIsObject())
+            error("this is a reference: a capture of the object by reference is `&this`, a copy `[copy = this]` (design.md 23d): write `&this`, not `this`");
+          advance();
+          cap.isThis = true;
+          captures.push_back(cap);
+        }
+        else if (at(P::Amp) && at(Kw::this_, 1))
+        {
+          // `[&this]`: the object by reference, which is what C++'s `[this]` captures (design.md 23d)
+          if (!thisIsObject())
+            error("`[&this]` captures the object where `this` is a reference (--this-reference, design.md 23d); here `this` is the pointer: capture `this`");
+          advance();
+          advance();
           cap.isThis = true;
           captures.push_back(cap);
         }
@@ -7258,6 +7301,7 @@ namespace
     const char* text;
     SymbolTable& symbols;
     ParsedFile& out;
+    int enumBodies = 0; // the enum bodies the parse is in (thisIsObject)
     Arena& arena;
     uint32_t pos = 0;
     std::vector<Node*> scratch;

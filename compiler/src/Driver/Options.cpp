@@ -54,6 +54,7 @@ void usage(FILE* out)
           "                required `this.` writes `this.x` (the readme's Planned); no error, no other change\n"
           "  --this-reference  `this` the kpp way in the program's own files (docs/design.md 23c, 23d): required\n"
           "                `this.` (a bare name is never a member: `this.x`, `This::count`), `this` a reference\n"
+          "                (`this.x`, `return this;`, `&this` the pointer, `[&this]`; `this->`, `*this`, `[this]` errors)\n"
           "  --plain-enum-warnings  warn of each plain (unscoped) enum and each use of its enumerators by kind (bits,\n"
           "                integer, array index or size: kpp has only enum class, docs/design.md 8.4); no other change\n"
           "  --this-reference-warnings  warn of each use of `this` that changes once it is a reference (`this->`,\n"

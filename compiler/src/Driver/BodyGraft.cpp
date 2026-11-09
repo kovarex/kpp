@@ -121,6 +121,7 @@ bool bodiesOnly(Build& kept, size_t i, std::string text, ChangedFile& out, std::
   out.parsed->index = old.index;
   out.parsed->lambdaTag = old.lambdaTag;
   out.parsed->isLibrary = old.isLibrary;
+  out.parsed->thisReference = old.thisReference;
   out.parsed->library = old.library;
   out.parsed->libraryScope = old.libraryScope;
   parseFile(out.tokens, out.text, *kept.symbols, *out.parsed, dialectOfPath(out.parsed->path), &kept.options.configValues);
@@ -517,6 +518,7 @@ bool functionsOnly(Build& kept, size_t i, std::string text, FunctionChange& out,
   out.parsed->index = old.index;
   out.parsed->lambdaTag = old.lambdaTag;
   out.parsed->isLibrary = old.isLibrary;
+  out.parsed->thisReference = old.thisReference;
   out.parsed->library = old.library;
   out.parsed->libraryScope = old.libraryScope;
   parseFile(out.tokens, out.text, *kept.symbols, *out.parsed, dialectOfPath(out.parsed->path), &kept.options.configValues);

@@ -9,7 +9,9 @@ struct NameExpr : Expr { QualifiedName name; Decl* resolved = nullptr; };
 // keyword for true/false/nullptr; file: the one it was parsed from, whose tokens spell it (an
 // expression may be evaluated in another file's context: a default argument, a template's)
 struct LiteralExpr : Expr { TokenKind literalKind; Kw keyword; ParsedFile* file = nullptr; };
-struct ThisExpr : Expr {};
+// form: 0 C++'s `this`, the pointer; under --this-reference (design.md 23d) 1 the object, which the parser
+// writes as an implicit `*this` around it (a UnaryExpr), and 2 `&this`, the pointer written so.
+struct ThisExpr : Expr { uint8_t form = 0; };
 struct CallExpr : Expr
 {
   Expr* callee;

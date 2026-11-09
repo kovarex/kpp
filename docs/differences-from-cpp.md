@@ -440,7 +440,7 @@ Pinned make() { Pinned p; return p; }   // compiles: an error in C++
 - **Status:** `--this-warnings` lists them; the rule's errors are built under `--this-reference` (not yet the default: the converter's rewrite and `this` as a reference come first) ([design 23c](design.md)).
 - **See:** [design 6][d6]; the readme's Planned.
 
-### `this` is a reference (this stage, decided, not built)
+### `this` is a reference (this stage, built under `--this-reference`)
 
 - **C++:** `this` is a pointer.
 - **kpp:** `this` is a reference everywhere (kovarex, 2026-11-07): `this.x` is the member access and
@@ -449,8 +449,12 @@ Pinned make() { Pinned p; return p; }   // compiles: an error in C++
   `this == other` compares the objects; `[&this]` captures it by reference and `[copy = this]` copies it,
   while `[this]` and `[*this]` are errors, and `[=]` never captures it; `this` is never null, so
   `if (this)` is an error. Today it is a pointer, except in an enum's methods, where it is the value.
-- **Status:** `--this-reference-warnings` lists each use that changes; the game has 185,189 lines of
-  `this->`, 5,097 of `*this` and 8,707 using its address ([design 23d](design.md)).
+- **Status:** built under `--this-reference` (2026-11-09), in the program's own files; the standard
+  library keeps the pointer until the meaning becomes the default. `--this-reference-warnings` lists each
+  use that changes; the game has 185,189 lines of `this->`, 5,097 of `*this` and 8,707 using its address
+  ([design 23d](design.md)). Specs `language/this_is_a_reference`, `this_is_a_reference_through_bases_and_constants`,
+  `this_reference_old_forms_is_error`, `this_reference_capture_of_this_is_error` and
+  `this_reference_keeps_the_pointer_in_the_standard_library`.
 - **Why:** one meaning of `this` in every place, and `*this` gone from the code.
 - **See:** [design 6][d6]; the readme's Planned.
 

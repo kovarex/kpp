@@ -1,0 +1,18 @@
+// spec: with --this-reference (design.md 23d) a lambda's `[this]` is an error: the object is captured by reference as `[&this]`, a copy is `[copy = this]`, and a C++ habit must not become a silent copy
+// kpp: --this-reference
+// error: this_reference_capture_of_this_is_error.kpp:10: error: this is a reference: a capture of the object by reference is `&this`, a copy `[copy = this]` (design.md 23d): write `&this`, not `this`
+class Owner
+{
+public:
+  int value = 3;
+  int run()
+  {
+    auto f = [this]() { return this.value; };
+    return f();
+  }
+};
+int main()
+{
+  Owner o;
+  return o.run();
+}

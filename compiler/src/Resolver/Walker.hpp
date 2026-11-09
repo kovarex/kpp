@@ -409,7 +409,8 @@
     // --this-reference-warnings (design.md 23d): what e does with `this` that changes once it is a reference,
     // noted before e's operands are walked; a `this` no parent claimed is its address (noteThisAddress).
     void noteThisUse(Expr* e);
-    void noteThisCondition(Node* cond);
+    // (returns the condition to walk: under --this-reference a null test of `this` the pointer's, once its error is said)
+    Node* noteThisCondition(Node* cond);
     void noteThisAddress(Expr* thisExpr);
     void noteThisReference(uint32_t token, const std::string& message);
     // --plain-enum-warnings: a plain enum declared in kpp code, and the uses of its enumerators e makes, noted
@@ -419,6 +420,11 @@
     void notePlainEnumUses(Expr* e);
     void notePlainEnumUse(const Expr* operand, const char* kind);
     void noteDefaultCaptureOfThis(LambdaExpr* l);
+    // --this-reference (design.md 23d): what e writes that `this` the object makes an error (`this->x` of a
+    // class with no operator->, `*this` with no operator*, a null test), reported once in the code's own
+    // walk; e is then made what the fix writes (`this.x`, `this`, the pointer's null test), so that its walk
+    // goes on over every operand and says nothing more of it.
+    void objectThisError(Expr* e);
     std::unordered_set<const Expr*> thisUsesNoted; // the `this` nodes a parent has spoken for
     std::unordered_set<const NameExpr*> thisRuleNoted; // the bare names required `this.` reported (bareMemberRule)
     // A declaration in kpp code named `This`, the keyword for the class around the code: an error (design.md 23c).

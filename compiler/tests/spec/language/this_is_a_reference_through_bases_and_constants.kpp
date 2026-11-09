@@ -1,0 +1,64 @@
+// spec: with --this-reference (design.md 23d) `this.f()` of a virtual function dispatches on the object's type, as C++'s `this->f()` does; `(&this)->` is the pointer's; an out-of-line member, a cast to a base reference, `this.template f<T>()`, constant evaluation (`this.v`, `return this;` in a constexpr member), `[&this]` in a template's member, `&this` stored and compared, a static through `This::` and `this.`; clang's output of the same program with C++'s pointer
+// kpp: --this-reference
+class Base
+{
+public:
+  int b = 10;
+  virtual ~Base() = default;
+  virtual int kind() const { return 1; }
+  int describe() const { return this.kind() * 100 + this.b; }
+  int viaPointer() const { return (&this)->kind(); }
+};
+class Derived : public Base
+{
+public:
+  int d = 5;
+  int kind() const override { return 2; }
+  int both() const;
+  const Base& asBase() const { return static_cast<const Base&>(this); }
+  template<typename T> T conv() const { return T(this.d); }
+  int useTemplate() const { return this.template conv<int>() + this.conv<int>(); }
+};
+int Derived::both() const { return this.b + this.d + this.asBase().b; }
+class Lit
+{
+public:
+  int v;
+  constexpr Lit(int x) : v(x) {}
+  constexpr int twice() const { return this.v * 2; }
+  constexpr const Lit& me() const { return this; }
+};
+constexpr int k = Lit(21).twice();
+constexpr int m = Lit(4).me().v;
+template<typename T>
+class Holder
+{
+public:
+  T value{};
+  auto adder() { return [&this](T x) { this.value += x; }; }
+};
+class Self
+{
+public:
+  int n = 0;
+  Self* next = nullptr;
+  void link(Self& other) { other.next = &this; }
+  bool isNext(const Self& other) const { return other.next == &this; }
+  static int count() { return 4; }
+  int callStatic() const { return This::count() + this.count(); }
+};
+int main()
+{
+  Derived d;
+  const Base& b = d;
+  println(b.describe(), " ", b.viaPointer(), " ", d.both(), " ", d.useTemplate());
+  println(k, " ", m);
+  Holder<int> h;
+  auto add = h.adder();
+  add(3);
+  add(4);
+  Self a, c;
+  a.link(c);
+  println(h.value, " ", c.isNext(a) ? 1 : 0, " ", a.isNext(c) ? 1 : 0, " ", a.callStatic());
+  return 0;
+}
