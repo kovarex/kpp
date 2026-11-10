@@ -166,18 +166,9 @@ bool bodiesOnly(Build& kept, size_t i, std::string text, ChangedFile& out, std::
     {
       if (!ob.eligible || !nb.eligible)
         return why = "a changed body with a deduced return type", false;
-      // A class or enumeration declared in a body gets its scope when the file is indexed: one in
-      // a new body would have none (a lambda's closure is no such declaration).
-      bool localType = false;
-      auto findLocalTypes = [&](Node* n)
-      {
-        if ((n->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(n)->lambda) || n->kind == NodeKind::EnumDecl)
-          localType = true;
-      };
-      forEachNode(nb.f->body, findLocalTypes);
-      forEachNode(ob.f->body, findLocalTypes); // (and the old body's would stay in the index)
-      if (localType)
-        return why = "a changed body declares a class or an enumeration", false;
+      // (A class or enumeration declared in it gets its scope when it is grafted, graftBodies; until
+      // 2026-11-10 such a body was not incremental, the build from scratch: thread F's
+      // ElectricNetworkValues::computeUsage under F5, 6 s.)
       out.changed.push_back(k);
     }
     a = ob.close + 1;
@@ -477,11 +468,31 @@ bool graftBodies(Build& kept, ChangedFile& c, std::string& why)
         if (where == c.newBodies[k].f)
           return why = "a new body has a cast to rewrite", false;
   // The new bodies, their declarations (locals, lambdas' closures) now the kept file's and their
-  // parent the kept function where it was the new parse's.
+  // parent the kept function where it was the new parse's. A class or enumeration the new body
+  // declares gets its scope (GlobalScope::indexGraftedBody), and the old body's are types no code
+  // names now: their layouts and names go in codegen (droppedClasses), so does what was made of them
+  // (rebuildLLVM finds it by its declarations: their parent is a replaced function), and what is made
+  // of the new ones is made as from scratch, by their first use.
   for (size_t k : c.changed)
   {
     FunctionDecl* keptF = c.oldBodies[k].f;
     FunctionDecl* newF = c.newBodies[k].f;
+    auto localType = [](Node* n)
+    {
+      return (n->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(n)->lambda) || n->kind == NodeKind::EnumDecl;
+    };
+    forEachNode(keptF->body, [&](Node* n)
+    {
+      if (!localType(n))
+        return;
+      auto* d = static_cast<Decl*>(n);
+      if (n->kind == NodeKind::EnumDecl)
+        kept.droppedClasses.push_back(kept.global->types().enumType(d));
+      else if (static_cast<ClassDecl*>(n)->isDefinition && d->templateParams.empty())
+        kept.droppedClasses.push_back(kept.global->types().classType(d, {}));
+    });
+    bool declaresTypes = false;
+    forEachNode(newF->body, [&](Node* n) { declaresTypes = declaresTypes || localType(n); });
     keptF->body = newF->body;
     forEachNode(keptF->body, [&](Node* n)
     {
@@ -495,6 +506,8 @@ bool graftBodies(Build& kept, ChangedFile& c, std::string& why)
       else if (n->kind == NodeKind::LiteralExpr)
         static_cast<LiteralExpr*>(n)->file = &file; // its spelling is read from its file's tokens
     });
+    if (declaresTypes)
+      kept.global->indexGraftedBody(keptF);
   }
   kept.files[i].text = std::move(c.text);
   kept.lexed[i].tokens = std::move(c.tokens);
@@ -930,6 +943,7 @@ bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, double collec
   // it run in full.
   std::vector<FunctionDecl*> carriedBodies, carriedMovedLines, carriedReplaced;
   std::vector<const Decl*> carriedGlobals;
+  std::vector<const Ty*> carriedDropped; // (the types it dropped: their names and layouts are still codegen's)
   bool carriedInFull = false;
   if (kept.codegenBehind)
   {
@@ -937,6 +951,7 @@ bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, double collec
     carriedMovedLines = kept.movedLines;
     carriedReplaced = kept.replacedBodies;
     carriedGlobals = kept.changedGlobals;
+    carriedDropped = kept.droppedClasses;
     carriedInFull = !kept.rebuildCodegen || !kept.addedFunctions.empty() || !kept.removedFunctions.empty() || !kept.changedLayouts.empty() ||
                     !kept.instancesOf.empty() || kept.positionalCodegenInFull;
   }
@@ -1299,6 +1314,7 @@ bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, double collec
     for (const Decl* d : carriedGlobals)
       if (std::find(kept.changedGlobals.begin(), kept.changedGlobals.end(), d) == kept.changedGlobals.end())
         kept.changedGlobals.push_back(d);
+    kept.droppedClasses.insert(kept.droppedClasses.end(), carriedDropped.begin(), carriedDropped.end());
   }
   std::sort(kept.changedBodies.begin(), kept.changedBodies.end());
   kept.changedBodies.erase(std::unique(kept.changedBodies.begin(), kept.changedBodies.end()), kept.changedBodies.end());

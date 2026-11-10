@@ -1,0 +1,82 @@
+// spec: a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile server"): a body that declares a local polymorphic class (a base and an override, called through the base), a local enumeration and a lambda in a member function, edited in the override, then in the enumeration's use, then in the lambda: each build follows the kept program or declines, and prints what a build from scratch prints
+//--- step: the program
+int run(int x)
+{
+  enum class Mode { Add, Twice };
+  class Base
+  {
+  public:
+    virtual ~Base() {}
+    virtual int apply(int v) const { return v; }
+  };
+  class Adder : public Base
+  {
+  public:
+    int by = 2;
+    int apply(int v) const override { auto f = [&this](int w) { return w + this.by; }; return f(v); }
+  };
+  Adder adder;
+  const Base& b = adder;
+  Mode m = Mode::Add;
+  return m == Mode::Add ? b.apply(x) : b.apply(x) * 2;
+}
+int main()
+{
+  std::println(run(5));
+  return 0;
+}
+// expect: 7
+//--- step: the override edited
+int run(int x)
+{
+  enum class Mode { Add, Twice };
+  class Base
+  {
+  public:
+    virtual ~Base() {}
+    virtual int apply(int v) const { return v; }
+  };
+  class Adder : public Base
+  {
+  public:
+    int by = 2;
+    int apply(int v) const override { auto f = [&this](int w) { return w + this.by * 10; }; return f(v); }
+  };
+  Adder adder;
+  const Base& b = adder;
+  Mode m = Mode::Add;
+  return m == Mode::Add ? b.apply(x) : b.apply(x) * 2;
+}
+int main()
+{
+  std::println(run(5));
+  return 0;
+}
+// expect: 25
+//--- step: the enumeration's use edited
+int run(int x)
+{
+  enum class Mode { Add, Twice };
+  class Base
+  {
+  public:
+    virtual ~Base() {}
+    virtual int apply(int v) const { return v; }
+  };
+  class Adder : public Base
+  {
+  public:
+    int by = 2;
+    int apply(int v) const override { auto f = [&this](int w) { return w + this.by * 10; }; return f(v); }
+  };
+  Adder adder;
+  const Base& b = adder;
+  Mode m = Mode::Twice;
+  return m == Mode::Add ? b.apply(x) : b.apply(x) * 2;
+}
+int main()
+{
+  std::println(run(5));
+  return 0;
+}
+// expect: 50

@@ -2967,6 +2967,17 @@ bool GlobalScope::indexFunctions(const std::vector<FunctionDecl*>& added)
   return whole;
 }
 
+void GlobalScope::indexGraftedBody(FunctionDecl* f)
+{
+  if (!f->body)
+    return;
+  auto outOfLine = impl->outOfLineScope.find(f);
+  Scope* scope = outOfLine != impl->outOfLineScope.end() ? outOfLine->second : impl->lexicalScopeOf(f);
+  impl->indexLocalTypes(f->body, scope, f);
+  std::lock_guard lock(impl->deferredMutex);
+  impl->localTypesOfOutOfLine.erase(f); // (their parent is the class's scope already)
+}
+
 std::vector<const Decl*> GlobalScope::walksReading(const std::vector<ChangedName>& changed)
 {
   std::vector<const Scope*> relations;

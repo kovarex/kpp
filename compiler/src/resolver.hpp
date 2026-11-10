@@ -454,6 +454,10 @@ public:
   // The declarations whose walks read one of the names (nothing forgotten): the callers of an edited
   // function, whose code may hold its body (codegen inlines trivial functions).
   std::vector<const Decl*> walksReading(const std::vector<ChangedName>& changed);
+  // A body a compile server's build grafted into a kept function (BodyGraft's graftBodies): its local classes and enumerations
+  // get their scopes, as the file's index gave its old body's (Indexer's indexLocalTypes), an out-of-line member's seeing its
+  // class (finishIndex's localTypesOfOutOfLine). Its old body's keep theirs: nothing reaches them now.
+  void indexGraftedBody(FunctionDecl* f);
   std::vector<FunctionDecl*> outOfLineDefinitions(const Decl* cls); // the out-of-line member definitions attached to a class
   // Step 4, a template's body changed: its instances (function instances, class instances' members)
   // copied from the new body and checked again, their statistics replacing theirs; false when one

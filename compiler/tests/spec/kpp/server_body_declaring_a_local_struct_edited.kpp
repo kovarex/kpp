@@ -1,0 +1,144 @@
+// spec: a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile server"): a body that declares a local struct (a constructor, a member function, a lambda taking it, a Vector of it) edited in its member function, in the body's own statements, and in the struct's members: the build follows the kept program (the new body grafted, its struct given its scope, the old struct's layout and what was made of it gone), as Factorio's ElectricNetworkValues::computeUsage, which was not incremental (thread F under F5, 6 s)
+//--- step: the program
+struct Values
+{
+  int a = 3;
+  int b = 4;
+  int compute() const
+  {
+    struct Category
+    {
+      Category(int p) : potential(p), left(p) {}
+      int used() const { return this.potential - this.left; }
+      int potential;
+      int left;
+    };
+    auto take = [](Category& c, int n) { c.left -= n; return c.left; };
+    Category one(this.a);
+    Category two(this.b);
+    take(one, 1);
+    take(two, 2);
+    std::Vector<Category> all;
+    all.push_back(one);
+    all.push_back(two);
+    int sum = 0;
+    for (const Category& c : all)
+      sum = sum * 10 + c.used();
+    return sum;
+  }
+};
+int main()
+{
+  Values v;
+  std::println(v.compute());
+  return 0;
+}
+// expect: 12
+//--- step: the struct's member function edited
+struct Values
+{
+  int a = 3;
+  int b = 4;
+  int compute() const
+  {
+    struct Category
+    {
+      Category(int p) : potential(p), left(p) {}
+      int used() const { return (this.potential - this.left) * 2; }
+      int potential;
+      int left;
+    };
+    auto take = [](Category& c, int n) { c.left -= n; return c.left; };
+    Category one(this.a);
+    Category two(this.b);
+    take(one, 1);
+    take(two, 2);
+    std::Vector<Category> all;
+    all.push_back(one);
+    all.push_back(two);
+    int sum = 0;
+    for (const Category& c : all)
+      sum = sum * 10 + c.used();
+    return sum;
+  }
+};
+int main()
+{
+  Values v;
+  std::println(v.compute());
+  return 0;
+}
+// expect: 24
+//--- step: a statement added to the body
+struct Values
+{
+  int a = 3;
+  int b = 4;
+  int compute() const
+  {
+    struct Category
+    {
+      Category(int p) : potential(p), left(p) {}
+      int used() const { return (this.potential - this.left) * 2; }
+      int potential;
+      int left;
+    };
+    auto take = [](Category& c, int n) { c.left -= n; return c.left; };
+    Category one(this.a);
+    Category two(this.b);
+    take(one, 1);
+    take(one, 1);
+    take(two, 2);
+    std::Vector<Category> all;
+    all.push_back(one);
+    all.push_back(two);
+    int sum = 0;
+    for (const Category& c : all)
+      sum = sum * 10 + c.used();
+    return sum;
+  }
+};
+int main()
+{
+  Values v;
+  std::println(v.compute());
+  return 0;
+}
+// expect: 44
+//--- step: the struct given a member
+struct Values
+{
+  int a = 3;
+  int b = 4;
+  int compute() const
+  {
+    struct Category
+    {
+      Category(int p) : potential(p), left(p) {}
+      int used() const { return (this.potential - this.left) * this.scale; }
+      int potential;
+      int left;
+      int scale = 3;
+    };
+    auto take = [](Category& c, int n) { c.left -= n; return c.left; };
+    Category one(this.a);
+    Category two(this.b);
+    take(one, 1);
+    take(one, 1);
+    take(two, 2);
+    std::Vector<Category> all;
+    all.push_back(one);
+    all.push_back(two);
+    int sum = 0;
+    for (const Category& c : all)
+      sum = sum * 10 + c.used();
+    return sum;
+  }
+};
+int main()
+{
+  Values v;
+  std::println(v.compute());
+  return 0;
+}
+// expect: 66

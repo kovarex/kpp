@@ -1622,6 +1622,18 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
   Emitter& e = *emitters[0];
   for (auto& em : emitters)
     em->lineStarts.clear(); // the edited files' lines moved
+  // Work on each emitter's own answers, the emitters on threads (one pass over the game's 32 on one thread was 0.23 s of an
+  // edit of ElectricNetworkValues::computeUsage, whose old local struct's member functions are released).
+  auto onEachEmitter = [&](const auto& fn)
+  {
+    std::atomic<size_t> next{0};
+    auto work = [&](unsigned)
+    {
+      for (size_t i; (i = next++) < emitters.size();)
+        fn(*emitters[i]);
+    };
+    onThreads(std::max(1u, std::min(session.threads, unsigned(emitters.size()))), work);
+  };
   // What the changed and removed functions' emissions added goes (their definitions, their
   // lambdas' operators, their static locals); the changed and the added ones are emitted again,
   // each in its file's module as a program function is. A template's function (or a local class's)
@@ -1874,9 +1886,32 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
         return true;
     return false;
   };
+  // What a replaced or removed body declared (a local class or enumeration, a lambda's closure, and what those declare) no
+  // code names now: a new body's are new declarations, whose functions and instances are made by their first use.
+  std::unordered_set<const Decl*> goneBodies(replaced.begin(), replaced.end());
+  goneBodies.insert(removed.begin(), removed.end());
+  std::unordered_map<const Decl*, bool> goneDeclIn;
+  auto goneDecl = [&](const Decl* d)
+  {
+    if (!d || goneBodies.empty())
+      return false;
+    auto [it, isNew] = goneDeclIn.emplace(d, false);
+    if (isNew)
+      for (const Decl* p = d->parent; p; p = p->parent)
+        if (goneBodies.count(p))
+        {
+          it->second = true;
+          break;
+        }
+    return it->second;
+  };
   // An instance made for the closure of a lambda whose writer is emitted again with a new body (`applyTo<closure>`):
   // the old lambda's, which no one calls now; dropped, not emitted again (the new lambda's instance is
   // made by its first use). Not a writer emitted again with the body it had (sameClosures).
+  // So is a member function of a class the old body declared, and an instance made for one of its types (`Vector<Category>`):
+  // emitted again from the old declarations, they kept their names from the new ones', whose first use found them emitted (until
+  // 2026-11-10 a body declaring a class was not incremental; on the way, an edit of a local struct's member function with a line
+  // added before it printed what the old member gave, kpp/server_local_struct_member_edited_with_a_line_added).
   // (Every type the instance is made of, each once: the types form a DAG, a lambda nested in holders
   // to any depth; none is cut off, which would keep an instance for a closure that no longer exists.)
   std::unordered_map<const Ty*, bool> oldClosureIn;
@@ -1892,7 +1927,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
       if (auto writer = sh.closureWriters.find(e.types.unqualified(t));
           writer != sh.closureWriters.end() && owners.count(writer->second.writtenIn) && !sameClosures.count(writer->second.writtenIn))
         found = true;
-    found = found || oldClosure(t->inner);
+    found = found || goneDecl(t->decl) || oldClosure(t->inner);
     for (const Ty* a : t->args)
       found = found || oldClosure(a);
     return oldClosureIn[t] = found;
@@ -1908,7 +1943,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
   };
   auto forOldClosure = [&](const Instantiation& inst)
   {
-    if (oldClosure(inst.classTy))
+    if (goneDecl(inst.f) || oldClosure(inst.classTy))
       return true;
     for (const auto& pair : inst.args.pairs)
       if (oldClosure(pair.second))
@@ -1958,8 +1993,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
         --sh.result.structs; // (counted again when laid out again: the count is a build from scratch's)
       sh.structs.erase(key);
     }
-    for (auto& em : emitters)
-      em->forgetLayoutAnswers();
+    onEachEmitter([](Emitter& em) { em.forgetLayoutAnswers(); });
     sh.finalLayouts.clear();
     sh.finalSizes.clear();
     sh.finalDestruction.clear();
@@ -2037,8 +2071,10 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     std::sort(was.owned.begin(), was.owned.end());
   }
   if (!releasedNames.empty())
-    for (auto& em : emitters)
-      std::erase_if(em->usedFunctions, [&](const auto& used) { return releasedNames.count(used.first) || releasedNames.count(used.second.name); });
+    onEachEmitter([&](Emitter& em)
+    {
+      std::erase_if(em.usedFunctions, [&](const auto& used) { return releasedNames.count(used.first) || releasedNames.count(used.second.name); });
+    });
   // A closure of a function emitted again: its name goes to the closure the function's new walk makes
   // (the same lambda: irTypeName would give it `.2`), whose type line, when its layout is the same, is
   // already in the shared declarations (below).
@@ -2072,7 +2108,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
       if (auto known = mentionsIn.find(t); known != mentionsIn.end())
         return known->second;
       mentionsIn[t] = false;
-      bool found = droppedTypes.count(t) || droppedTypes.count(e.types.unqualified(t)) || mentions(t->inner);
+      bool found = droppedTypes.count(t) || droppedTypes.count(e.types.unqualified(t)) || goneDecl(t->decl) || mentions(t->inner);
       for (const Ty* a : t->args)
         found = found || mentions(a);
       return mentionsIn[t] = found;
@@ -2106,8 +2142,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
           --sh.result.structs;
         sh.structs.erase(key);
       }
-      for (auto& em : emitters)
-        em->forgetLayoutAnswers();
+      onEachEmitter([](Emitter& em) { em.forgetLayoutAnswers(); });
       sh.finalLayouts.clear();
       sh.finalSizes.clear();
       sh.finalDestruction.clear();
@@ -2317,8 +2352,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
           --sh.result.structs;
         sh.structs.erase(t);
       }
-      for (auto& em : emitters)
-        em->forgetLayoutAnswers();
+      onEachEmitter([](Emitter& em) { em.forgetLayoutAnswers(); });
       sh.finalLayouts.clear();
       sh.finalSizes.clear();
       sh.finalDestruction.clear();

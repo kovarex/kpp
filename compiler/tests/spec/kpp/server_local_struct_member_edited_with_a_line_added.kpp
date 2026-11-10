@@ -1,0 +1,239 @@
+// spec: a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile server"): a member function of a struct declared in a member function's body (a constant member, a lambda taking it by reference), edited together with a line added to the body after the struct, prints what the new member function gives: the old struct's member function is dropped, not emitted again from the old declaration under the name the new one has (it printed what the old one gave, `5.5 0.9166666666666666`; Factorio's ElectricNetworkValues::computeUsage, thread F's edit under F5)
+//--- step: the program
+using Energy = f64;
+struct Usage
+{
+  f64 total = 0;
+  f64 satisfaction = 0;
+};
+class InputValues
+{
+public:
+  Energy solar = 5;
+  Energy primary = 3;
+  Energy demand = 6;
+  Usage computeUsage() const
+  {
+    struct Category
+    {
+      Category(Energy potential) : potential(potential), leftOver(potential) {}
+      f64 getSatisfaction() const
+      {
+        if (this.leftOver >= this.potential)
+          return 0.0;
+        if (this.leftOver <= 0.0)
+          return 1.0;
+        return (this.potential - this.leftOver) / this.potential;
+      }
+
+      const Energy potential;
+      Energy leftOver;
+    };
+
+    auto transferNumbers = [](Category& output, Category& demand) -> f64
+    {
+      const Energy transfer = std::min(output.leftOver, demand.leftOver);
+      output.leftOver -= transfer;
+      demand.leftOver -= transfer;
+      return transfer;
+    };
+
+    Category solarOutput(this.solar);
+    Category primaryOutput(this.primary);
+    Category primaryDemand(this.demand);
+    Energy total = 0;
+    total += transferNumbers(solarOutput, primaryDemand);
+    total += transferNumbers(primaryOutput, primaryDemand);
+    Usage u;
+    u.total = total;
+    u.satisfaction = primaryDemand.getSatisfaction();
+    return u;
+  }
+};
+int main()
+{
+  InputValues v;
+  Usage u = v.computeUsage();
+  std::println(u.total, " ", u.satisfaction);
+  return 0;
+}
+// expect: 6 1
+//--- step: the struct's member function edited, a line added after the struct
+using Energy = f64;
+struct Usage
+{
+  f64 total = 0;
+  f64 satisfaction = 0;
+};
+class InputValues
+{
+public:
+  Energy solar = 5;
+  Energy primary = 3;
+  Energy demand = 6;
+  Usage computeUsage() const
+  {
+    struct Category
+    {
+      Category(Energy potential) : potential(potential), leftOver(potential) {}
+      f64 getSatisfaction() const
+      {
+        if (this.leftOver >= this.potential)
+          return 0.0;
+        if (this.leftOver <= 0.0)
+          return 1.0;
+        return (this.potential - this.leftOver) / this.potential * 2.0;
+      }
+
+      const Energy potential;
+      Energy leftOver;
+    };
+
+    auto transferNumbers = [](Category& output, Category& demand) -> f64
+    {
+      const Energy transfer = std::min(output.leftOver, demand.leftOver);
+      output.leftOver -= transfer;
+      demand.leftOver -= transfer;
+      return transfer;
+    };
+
+    Category solarOutput(this.solar);
+    solarOutput.leftOver = solarOutput.leftOver * 0.5;
+    Category primaryOutput(this.primary);
+    Category primaryDemand(this.demand);
+    Energy total = 0;
+    total += transferNumbers(solarOutput, primaryDemand);
+    total += transferNumbers(primaryOutput, primaryDemand);
+    Usage u;
+    u.total = total;
+    u.satisfaction = primaryDemand.getSatisfaction();
+    return u;
+  }
+};
+int main()
+{
+  InputValues v;
+  Usage u = v.computeUsage();
+  std::println(u.total, " ", u.satisfaction);
+  return 0;
+}
+// expect: 5.5 1.8333333333333333
+//--- step: back as it was
+using Energy = f64;
+struct Usage
+{
+  f64 total = 0;
+  f64 satisfaction = 0;
+};
+class InputValues
+{
+public:
+  Energy solar = 5;
+  Energy primary = 3;
+  Energy demand = 6;
+  Usage computeUsage() const
+  {
+    struct Category
+    {
+      Category(Energy potential) : potential(potential), leftOver(potential) {}
+      f64 getSatisfaction() const
+      {
+        if (this.leftOver >= this.potential)
+          return 0.0;
+        if (this.leftOver <= 0.0)
+          return 1.0;
+        return (this.potential - this.leftOver) / this.potential;
+      }
+
+      const Energy potential;
+      Energy leftOver;
+    };
+
+    auto transferNumbers = [](Category& output, Category& demand) -> f64
+    {
+      const Energy transfer = std::min(output.leftOver, demand.leftOver);
+      output.leftOver -= transfer;
+      demand.leftOver -= transfer;
+      return transfer;
+    };
+
+    Category solarOutput(this.solar);
+    Category primaryOutput(this.primary);
+    Category primaryDemand(this.demand);
+    Energy total = 0;
+    total += transferNumbers(solarOutput, primaryDemand);
+    total += transferNumbers(primaryOutput, primaryDemand);
+    Usage u;
+    u.total = total;
+    u.satisfaction = primaryDemand.getSatisfaction();
+    return u;
+  }
+};
+int main()
+{
+  InputValues v;
+  Usage u = v.computeUsage();
+  std::println(u.total, " ", u.satisfaction);
+  return 0;
+}
+// expect: 6 1
+//--- step: the line added alone
+using Energy = f64;
+struct Usage
+{
+  f64 total = 0;
+  f64 satisfaction = 0;
+};
+class InputValues
+{
+public:
+  Energy solar = 5;
+  Energy primary = 3;
+  Energy demand = 6;
+  Usage computeUsage() const
+  {
+    struct Category
+    {
+      Category(Energy potential) : potential(potential), leftOver(potential) {}
+      f64 getSatisfaction() const
+      {
+        if (this.leftOver >= this.potential)
+          return 0.0;
+        if (this.leftOver <= 0.0)
+          return 1.0;
+        return (this.potential - this.leftOver) / this.potential;
+      }
+
+      const Energy potential;
+      Energy leftOver;
+    };
+
+    auto transferNumbers = [](Category& output, Category& demand) -> f64
+    {
+      const Energy transfer = std::min(output.leftOver, demand.leftOver);
+      output.leftOver -= transfer;
+      demand.leftOver -= transfer;
+      return transfer;
+    };
+
+    Category solarOutput(this.solar);
+    solarOutput.leftOver = solarOutput.leftOver * 0.5;
+    Category primaryOutput(this.primary);
+    Category primaryDemand(this.demand);
+    Energy total = 0;
+    total += transferNumbers(solarOutput, primaryDemand);
+    total += transferNumbers(primaryOutput, primaryDemand);
+    Usage u;
+    u.total = total;
+    u.satisfaction = primaryDemand.getSatisfaction();
+    return u;
+  }
+};
+int main()
+{
+  InputValues v;
+  Usage u = v.computeUsage();
+  std::println(u.total, " ", u.satisfaction);
+  return 0;
+}
+// expect: 5.5 0.9166666666666666
