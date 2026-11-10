@@ -259,10 +259,11 @@ auto GlobalScope::Impl::Walker::checkNotLibrary(const Type* type, uint32_t token
 auto GlobalScope::Impl::Walker::scopedEnumeratorNamed(uint32_t symbol) -> std::string
 {
   // The scoped enums the scopes around declare, each scope's entries read under its shards' locks (an error's
-  // message only: never on a lookup's path).
+  // message only: never on a lookup's path). The innermost scope that has one, every shard of it: a name's shard follows its
+  // symbol's number, which follows the order the threads interned the names in.
   std::string found;
   for (Scope* s = scope; s && found.empty(); s = s->parent)
-    for (uint32_t i = 0; i < s->shardCount && found.empty(); ++i)
+    for (uint32_t i = 0; i < s->shardCount; ++i)
     {
       std::lock_guard lock(s->shards[i].mutex);
       for (const auto& [entrySymbol, entries] : s->shards[i].map)
@@ -330,16 +331,22 @@ auto GlobalScope::Impl::Walker::reportUndeclared(const QualifiedName& name, uint
   }
   else if (const ParsedFile* owner = impl.filePrivateTo(name.parts[0].symbol, file))
     message = "'" + std::string(spelled) + "' is private to " + owner->path;
-  else if (std::string scoped = scopedEnumeratorNamed(name.parts[0].symbol); !scoped.empty())
-    message += " (an enumerator of a scoped enum is named through its enum, in a case label too): write `" + scoped + "::" + std::string(spelled) +
-               "`, not `" + std::string(spelled) + "`";
   else
+  {
+    // A library's name first (`String(input)` is std::String, whatever enum has an enumerator String), else a scoped enumerator.
+    bool suggested = false;
     for (Scope* library : impl.libraryScopes)
       if (library->find(name.parts[0].symbol))
       {
         message += "; did you mean " + std::string(symbols.name(library->name)) + "::" + std::string(spelled) + "?";
+        suggested = true;
         break;
       }
+    if (!suggested)
+      if (std::string scoped = scopedEnumeratorNamed(name.parts[0].symbol); !scoped.empty())
+        message += " (an enumerator of a scoped enum is named through its enum, in a case label too): write `" + scoped + "::" + std::string(spelled) +
+                   "`, not `" + std::string(spelled) + "`";
+  }
   if (activeSubst)
   {
     reportInInstance(token, message);

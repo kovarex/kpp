@@ -1,0 +1,11 @@
+// spec: an undeclared bare name's suggestion is chosen the same way whatever the thread count: the library's name first (`std::String`), else the scoped enumerator of that spelling whose enum comes first by name (the game's AlignmentEnum.kpp: "write `ModSettingType::String`" at -j 8, "write `LuaNativeTypeTag::String`" at -j 32)
+// error: undeclared_name_suggestions_are_the_same_on_every_thread_count.kpp:9: error: 'String' is not declared; did you mean std::String?
+// error: undeclared_name_suggestions_are_the_same_on_every_thread_count.kpp:10: error: 'Banana' is not declared (an enumerator of a scoped enum is named through its enum, in a case label too): write `Alpha::Banana`, not `Banana`
+enum class Zeta { Banana, String };
+enum class Mid { Banana, String };
+enum class Alpha { Banana, String };
+int main()
+{
+  auto s = String("x");
+  return s.size() + int(Banana);
+}
