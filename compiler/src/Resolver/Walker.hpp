@@ -78,10 +78,6 @@
     // the class has an operator for it, since a requirement holds exactly when it is valid.
     bool probing = false;
     bool inSpecializationPattern = false; // a class specialization's arguments, which no instance walks again
-    // A function's result and parameters, walked before its body: an instance's walk of them reports into no body
-    // (reportInInstance), so a template's own walk reports a type name nothing declares there (until 2026-11-10 none
-    // did: `template<class T> Box<Undeclared> wrap(T)` called gave codegen's error about what took its result).
-    bool templateSignature = false;
     // A probe's names that nothing declares, kept for the walker that made it (a requires-expression in a template's own
     // walk or in a function that is no template), which reports them: in a requirement that depends on nothing they are
     // an error as anywhere, never a requirement false (C++'s two phases; until 2026-11-10 silently false, or true for a

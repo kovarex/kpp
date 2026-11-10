@@ -1,0 +1,37 @@
+// spec: a type name nothing declares anywhere in a template is an error where it is written, used or not, as in C++'s first phase ([temp.res]): a function template's local, cast and sizeof, a class template's data member and member alias; a name its parameters decide stays its instances' (`typename T::Inner`, a member of a class a decltype names, one a base its parameters decide may have) (until 2026-11-10 its instances said, and of a template nothing instantiated nothing)
+// error: undeclared_type_in_a_template_body_is_error.kpp:13: error: 'Undeclared' is not declared
+// error: undeclared_type_in_a_template_body_is_error.kpp:14: error: 'Unknown' is not declared
+// error: undeclared_type_in_a_template_body_is_error.kpp:15: error: 'Nothing' is not declared
+// error: undeclared_type_in_a_template_body_is_error.kpp:20: error: 'Absent' is not declared
+// error: undeclared_type_in_a_template_body_is_error.kpp:21: error: 'Gone' is not declared
+struct Inside
+{
+  using Inner = int;
+};
+template<class T> int unused(T x)
+{
+  Undeclared local;
+  auto cast = static_cast<Unknown>(x);
+  return int(sizeof(Nothing));
+}
+template<class T> struct Holder
+{
+  typename T::Inner fine;
+  Absent missing;
+  using Alias = Gone;
+};
+template<class T> int dependent(T x)
+{
+  typename T::Inner value = 1;
+  decltype(x)::Inner other = 2;
+  return value + other;
+}
+template<class T> struct Mixin : T
+{
+  int get() { return 3; }
+};
+int main()
+{
+  Mixin<Inside> m;
+  return dependent(Inside{}) + m.get();
+}

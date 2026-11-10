@@ -1734,14 +1734,15 @@ auto GlobalScope::Impl::Walker::resolveTypeName(NamedType* t) -> void
       countUnresolved(t->name, t->token);
       // A type name nothing declares is an error where it is written, as an undeclared name is
       // (not `class X` in a template argument, which declares X; not a value trait, isConst<T>,
-      // written where a type may be). In a template's own walk only in a function template's
-      // signature (templateSignature), as C++'s first phase has it and as a value's name is
-      // (reportUndeclared: not in a class with a base its parameters decide, whose members only the
-      // instance knows; not a member of a class a type names, `decltype(t.make())::made`, the member
-      // lookup's): the rest its instances say, until the converted game names none (cxxopts'
-      // stringstream_parser names a std::StringStream, in a template nothing instantiates).
+      // written where a type may be). In a template's own walk too, used or not, as C++'s first
+      // phase has it and as a value's name is (reportUndeclared: not in a class with a base its
+      // parameters decide, whose members only the instance knows; not a member of a class a type
+      // names, `decltype(t.make())::made`, the member lookup's). A function template's signature
+      // since 2026-11-10 (an instance's walk of it reports into no body, reportInInstance: a call's
+      // type was unknown and codegen's error about what took it), the rest of a template since the
+      // converter dropped cxxopts' stringstream_parser, the converted game's one such name.
       if (!t->elaborated && !impl.boolTraitPart(t->name, scope, &locals, 0) &&
-          (!inGenericTemplate() || inSpecializationPattern || undeclaredSink || (templateSignature && !t->name.typeQualifier)))
+          (!inGenericTemplate() || inSpecializationPattern || undeclaredSink || !t->name.typeQualifier))
         reportUndeclared(t->name, t->token);
     }
   }
@@ -10234,8 +10235,6 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
         impl.recordInstanceSubst(f, *activeSubst); // the classes of its body see these arguments
       Scope* saved = scope;
       const Ty* savedThis = thisType;
-      bool savedSignature = templateSignature;
-      templateSignature = true;
       ++declaredTypes;
       walkType(f->returnType);
       --declaredTypes;
@@ -10263,7 +10262,6 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
         checkTypeNamesNoVariable(static_cast<ParamDecl*>(p)->type, p->token); // (a function's own: not a function type's, `gcd(P1::num, P2::num)`, which may be a call)
       }
       walkType(f->trailingReturn);
-      templateSignature = savedSignature;
       walkExpr(f->requiresClause);
       walkExpr(f->condition);
       checkDefinedOnce(f);

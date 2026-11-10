@@ -164,14 +164,16 @@ builds win less unless machine code is cached per function.
   written on another declaration of the template counts; a nested class template's count is its own
   parameters', not its enclosing template's. `Pair<int>` was codegen's "the layout of Pair<int32>:
   the member b has an unknown type". Spec templates/class_template_named_with_too_few_arguments_is_error.
-- A type name nothing declares in a function template's signature (its result, its parameters) is
-  an error in the template's own walk, used or not, as in C++'s first phase (2026-11-10, spec
-  templates/undeclared_type_in_a_template_signature_is_error); a value's name already was. Until
-  then only an instance said, and of its signature nothing: the call's type was unknown and
-  codegen's error was about what took it. Elsewhere in a template (a body, a class template's data
-  members) a type name stays its instances' to judge until the converted game names none there:
-  cxxopts' stringstream_parser names a std::StringStream, which kpp's stdlib does not have, in a
-  template nothing instantiates.
+- A type name nothing declares anywhere in a template is an error in the template's own walk, used
+  or not, as in C++'s first phase (2026-11-10; a value's name already was). A name its parameters
+  decide stays its instances': `typename T::Inner`, a member of a class a decltype names, a name in
+  a class with a base its parameters decide. Until then only an instance said, and of its
+  signature nothing: the call's type was unknown and codegen's error was about what took it. First
+  for a function template's signature, then for the rest once the converter dropped cxxopts'
+  stringstream_parser, whose std::StringStream (kpp's stdlib has none) was the converted game's one
+  such name, in a template nothing instantiated (C, 6457ebe19). Specs
+  templates/undeclared_type_in_a_template_signature_is_error and
+  templates/undeclared_type_in_a_template_body_is_error.
 - Partial specializations (2026-11-05): an array type is a template argument (`Kind<int[3]>`,
   `Kind<T[N]>`, `Kind<T[]>`, `Kind<T[N][M]>`; `Take<table[2]>` stays an index for a constant
   parameter, as `Frac<gcd(N, M)>` stays a call), so a partial specialization on arrays matches
