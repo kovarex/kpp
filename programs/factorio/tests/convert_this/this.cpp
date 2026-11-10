@@ -1,5 +1,6 @@
 // `this` as a reference (design.md 23d): each C++ spelling of the object, converted, built with --this-reference and
 // run, prints what its C++ build prints (tests\convert_this.expected).
+#include <cmath>
 #include <cstdio>
 #include <functional>
 
@@ -104,5 +105,7 @@ int main()
   printf("%d %d\n", WithOperators().asCondition(), WithOperators().throughAction());
   printf("%d %d\n", Outer::makeStatic(), Outer::Inner().read());
   printf("%d\n", Derived<int>().twice());
+  // (bare, as <cmath> has it: a double, not C's abs(int))
+  printf("%g %g\n", abs(-1.5), floor(-1.5));
   return 0;
 }

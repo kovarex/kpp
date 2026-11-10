@@ -1172,7 +1172,7 @@
     }
 
     // C's <math.h> classifications, macros C writes bare (Lua's .c files, converted as C++ too), are the library's
-    // functions (std::isnan: core/Math.kpp).
+    // functions (std::isnan: core/Math.kpp); so are C's math functions a macro's text calls, which the token pass does not see.
     std::string cMathNames(const std::string& text)
     {
       std::string out;
@@ -1209,7 +1209,17 @@
         std::string word = text.substr(i, j - i);
         bool member = !out.empty() && (out.back() == '.' || out.back() == ':' || (out.back() == '>' && out.size() > 1 && out[out.size() - 2] == '-'));
         size_t after = text.find_first_not_of(" \t", j);
-        if (!member && after != std::string::npos && text[after] == '(' && (word == "isnan" || word == "isinf" || word == "isfinite" || word == "signbit"))
+        // (a macro's text writes the rest: stb_truetype's STBTT_sqrt; not a declaration's name, after its type)
+        static const std::set<std::string> math = {"isnan", "isinf", "isfinite", "signbit", "abs", "fabs", "floor", "ceil", "round", "trunc", "sqrt",
+                                                   "pow", "fmod", "exp", "log", "sin", "cos", "atan2", "lround", "nextafter"};
+        size_t last = out.find_last_not_of(" \t");
+        size_t wordStart = last;
+        while (wordStart != std::string::npos && wordStart > 0 && isIdentChar(out[wordStart - 1]))
+          --wordStart;
+        bool declared = last != std::string::npos && isIdentChar(out[last]) && out.compare(wordStart, last + 1 - wordStart, "return") != 0 &&
+                        out.compare(wordStart, last + 1 - wordStart, "else") != 0 && out.compare(wordStart, last + 1 - wordStart, "case") != 0;
+        bool classification = word == "isnan" || word == "isinf" || word == "isfinite" || word == "signbit";
+        if (!member && !declared && after != std::string::npos && text[after] == '(' && math.count(word) && (classification || in.c))
           out += "std::";
         out += word;
         i = j;

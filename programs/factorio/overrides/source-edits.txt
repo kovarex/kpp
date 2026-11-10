@@ -123,6 +123,19 @@
 
 # crc32fast's byte order: little endian on every platform kpp builds the game for (x86-64), without
 # its own __LITTLE_ENDIAN and __BIG_ENDIAN, which glibc's endian.h (through sys/param.h) declares too.
+# A bare math call is written std:: (the library's overloads, not C's): this one is glm's, found by its argument.
+@ src/Util/SimplexNoiseUtil.cpp: floor of a glm vector
+-   return floor(glm::mod((x1 + p.z) * x0, p.x));
++   return glm::floor(glm::mod((x1 + p.z) * x0, p.x));
+
+# `[=]` does not capture the object in kpp (design.md 23d): C++20's own `[=, this]`, on the Linux-only lines the `this` pass does not see.
+@ src/Scenario/AsyncScenarioSaver.cpp: the child's and the parent's lambda name the object
+-     [=] (int writeFd) // child
++     [=, this] (int writeFd) // child
+@ src/Scenario/AsyncScenarioSaver.cpp: the parent's
+-     [=] (pid_t child, ChildProcessAgent::ProcessStatus status) // parent, on completion
++     [=, this] (pid_t child, ChildProcessAgent::ProcessStatus status) // parent, on completion
+
 @ libraries/UnitTest++/XmlTestReporter.cpp: a parameter named ostream, the name `using std::ostream` gave the type, which the converter writes std::OutStream
 - XmlTestReporter::XmlTestReporter(ostream& ostream)
 -     : m_ostream(ostream)

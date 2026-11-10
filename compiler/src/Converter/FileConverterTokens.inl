@@ -1875,7 +1875,7 @@
                  spelling(k + 4) == list && toks[k + 5].is(P::RParen))
         {
           replace(toks[k].offset, endOffset(k + 5) - toks[k].offset,
-                  std::string(shadowedAt("toString", toks[k].offset) ? "::toString" : "toString") + "(text)");
+                  "std::toString(text)");
           replaced = true;
           for (uint32_t h = k; h <= k + 5; ++h)
             handled.insert(h);
@@ -3048,6 +3048,21 @@
           replace(t.offset, endOffset(i) - t.offset, withFileAndLine(std::string(spelling(i)), t.offset));
           counts.add("__FILE__, __LINE__, __FUNCTION__ replaced");
           continue;
+        }
+        if (t.getKind() == TokenKind::Identifier && i + 1 < toks.size() && toks[i + 1].is(P::LParen) &&
+            !(i > 0 && (toks[i - 1].is(P::Dot) || toks[i - 1].is(P::Arrow) || toks[i - 1].is(P::ColonColon) || toks[i - 1].getKind() == TokenKind::Identifier ||
+                        toks[i - 1].is(Kw::int_) || toks[i - 1].is(Kw::float_) || toks[i - 1].is(Kw::double_) || toks[i - 1].is(Kw::long_))))
+        {
+          // `abs(x)` after <cmath>, written bare: the library's overloads, std::abs of a double. Bare in kpp it would
+          // be C's alone once the bridge goes, abs(int) of the C import, with no error (design.md 16).
+          static const std::set<std::string_view> cMath = {"abs", "fabs", "floor", "ceil", "round", "trunc", "sqrt", "pow", "fmod", "exp", "log",
+                                                           "sin", "cos", "atan2", "lround", "nextafter"};
+          if (cMath.count(spelling(i)) && !shadowedAt(std::string(spelling(i)), t.offset))
+          {
+            insert(t.offset, "std::");
+            counts.add("bare <cmath> calls written std::");
+            continue;
+          }
         }
         if (t.getKind() == TokenKind::Identifier && i >= 2 && toks[i - 1].is(P::Tilde) && (toks[i - 2].is(P::Dot) || toks[i - 2].is(P::Arrow)) &&
             i + 1 < toks.size() && (toks[i + 1].is(P::LParen) || toks[i + 1].is(P::Less)))
