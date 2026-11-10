@@ -426,6 +426,14 @@ del kpp\convert_this.ll
 %KPP% --std ..\..\stdlib --quiet --this-reference --exe kpp\convert_this.exe kpp\convert_this || goto :failed
 kpp\convert_this.exe > kpp\convert_this.out.txt
 fc /w kpp\convert_this.out.txt tests\convert_this.expected > nul && (echo this: output as expected& set /a SMOKES+=1) || (echo this: OUTPUT DIFFERS & fc /w kpp\convert_this.out.txt tests\convert_this.expected & goto :failed)
+set "STEP=alignment check"
+echo == alignment: tests\convert_align\align.cpp converted and written with `this` as a reference: continuation lines keep their alignment, a block's lines their indentation ^(tests\convert_align.expected.kpp^), and it runs
+if exist kpp\convert_align rd /s /q kpp\convert_align
+%KPP% --no-std --quiet --convert kpp\convert_align --ext .cpp tests\convert_align || goto :failed
+%KPP% --convert-this-reference kpp\convert_align > nul || goto :failed
+fc /b kpp\convert_align\convert_align\align.kpp tests\convert_align.expected.kpp > nul && (echo alignment: as expected) || (echo alignment: DIFFERS& fc kpp\convert_align\convert_align\align.kpp tests\convert_align.expected.kpp & goto :failed)
+%KPP% --std ..\..\stdlib --quiet --this-reference --exe kpp\convert_align.exe kpp\convert_align || goto :failed
+kpp\convert_align.exe > nul || goto :failed
 set "STEP=platforms check"
 echo == platforms: tests\convert_platform\platform.cpp converted for Windows and for Linux ^(--convert-platform linux, clang's predefines in linux-predefines.txt^) in debug and release, each configuration's two made one by config::platform ^(--convert-merge-platform^), then the configurations by config::debug; built and run for Windows ^(tests\convert_platform.expected^) and for Linux under WSL ^(tests\convert_platform.linux.expected^)
 if exist kpp\cplat rd /s /q kpp\cplat

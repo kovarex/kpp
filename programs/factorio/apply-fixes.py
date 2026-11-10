@@ -39,6 +39,120 @@ WRITE = re.compile(r'write `(?P<new>.*)`, not `(?P<old>.*)`$')
 REMOVE = re.compile(r'remove `(?P<old>.*)`$')
 
 
+def alignment_moves(data, placed):
+    """The continuation lines the fixes move to keep their alignment, as the converter's AlignContinuations.inl moves
+    them (kovarex 2026-11-10): a line whose first character stood at the column of a token on an earlier line of the
+    same open parenthesis, bracket or braced list moves by what the fixes changed on that line before that token; a
+    block's lines never move. placed: (start, end, new bytes), not overlapping. Returns more of them."""
+    starts = [0] + [i + 1 for i, b in enumerate(data) if b == 10]
+    tokens = [[] for _ in starts]
+    group_at_start = [-1] * len(starts)
+    groups, stack = [], []
+    line = 0
+    i, n = 0, len(data)
+    first_of_line = True
+    while i < n:
+        while line + 1 < len(starts) and starts[line + 1] <= i:
+            line += 1
+            group_at_start[line] = stack[-1] if stack else -1
+        c = data[i:i + 1]
+        if c == b'\n':
+            first_of_line = True
+            i += 1
+            continue
+        if c in (b' ', b'\t', b'\r'):
+            i += 1
+            continue
+        if first_of_line and c == b'#':
+            while i < n and not (data[i] == 10 and data[i - 1] != 92):
+                i += 1
+            continue
+        first_of_line = False
+        if data.startswith(b'//', i) or data.startswith(b'/*', i):
+            tokens[line].append((i, i - starts[line]))
+            if data.startswith(b'//', i):
+                e = data.find(b'\n', i)
+                i = n if e < 0 else e
+            else:
+                e = data.find(b'*/', i + 2)
+                i = n if e < 0 else e + 2
+            continue
+        tokens[line].append((i, i - starts[line]))
+        if c in (b'"', b"'"):
+            e = i + 1
+            while e < n and data[e:e + 1] != c and data[e] != 10:
+                e += 2 if data[e] == 92 else 1
+            i = min(e + 1, n)
+            continue
+        if c.isalnum() or c == b'_':
+            while i < n and (data[i:i + 1].isalnum() or data[i:i + 1] == b'_'):
+                i += 1
+            continue
+        if c in (b'(', b'[', b'{'):
+            block = False
+            if c == b'{':
+                p = i
+                while p > starts[line] and data[p - 1:p] in (b' ', b'\t'):
+                    p -= 1
+                before = data[p - 1:p] if p > starts[line] else b''
+                block = not (before in (b'=', b'(', b',', b'{', b'['))
+            groups.append((block, line))
+            stack.append(len(groups) - 1)
+        elif c in (b')', b']', b'}') and stack:
+            stack.pop()
+        i += 1
+    while line + 1 < len(starts):
+        line += 1
+        group_at_start[line] = stack[-1] if stack else -1
+    ordered = sorted(placed)
+
+    def delta(line_start, anchor):
+        d = 0
+        for start, end, new in ordered:
+            if start >= line_start and (start < anchor or (start == anchor and end == start)):
+                if end > anchor or b'\n' in new:
+                    return None
+                d += len(new) - (end - start)
+            elif start < line_start < end:
+                return None
+        return d
+
+    moved = [0] * len(starts)
+    more = []
+    for j in range(1, len(starts)):
+        g = group_at_start[j]
+        if g < 0 or groups[g][0] or not tokens[j]:
+            continue
+        first = tokens[j][0][0]
+        column = first - starts[j]
+        anchor = None
+        for k in range(j - 1, groups[g][1] - 1, -1):
+            hit = [t for t in tokens[k] if t[1] == column]
+            if hit:
+                anchor = (k, hit[0][0])
+                break
+        if anchor is None:
+            continue
+        k, at = anchor
+        if tokens[k][0][0] == at and k != groups[g][1]:
+            moved[j] = moved[k]
+        else:
+            d = delta(starts[k], at)
+            if d is None:
+                continue
+            moved[j] = moved[k] + d
+        if moved[j] == 0 or any(starts[j] <= s <= first or s < starts[j] < e for s, e, _ in ordered) or column + moved[j] < 0:
+            moved[j] = 0
+            continue
+        if moved[j] > 0:
+            more.append((starts[j], starts[j], b' ' * moved[j]))
+        elif data[starts[j]:starts[j] - moved[j]] == b' ' * -moved[j]:
+            more.append((starts[j], starts[j] - moved[j], b''))
+        else:
+            moved[j] = 0
+    return more
+
+
 def fixes_of(paths):
     found = {}
     unfixable = []
@@ -88,6 +202,7 @@ def main():
     for (path, line, column), fix in found.items():
         by_file.setdefault(path, []).append((line, column, fix))
     applied = 0
+    moved = 0
     failed = []
     for path in [p for p in by_file if not converted(p)]:
         for line, column, (old, new) in by_file.pop(path):
@@ -116,6 +231,8 @@ def main():
                 placed.append((offset, end, b''))
             else:
                 placed.append((offset, offset + len(old_bytes), new_bytes))
+        moves = alignment_moves(data, placed)
+        placed += moves
         placed.sort(reverse=True)
         for i in range(1, len(placed)):
             if placed[i][1] > placed[i - 1][0]:
@@ -125,10 +242,12 @@ def main():
         for start, end, text in placed:
             data = data[:start] + text + data[end:]
             applied += 1
+        applied -= len(moves)
+        moved += len(moves)
         open(path, 'wb').write(data)
     for f in failed:
         print('apply-fixes: ' + f)
-    print(f'apply-fixes: {applied} fixes applied in {len(by_file)} files, {len(unfixable)} explicit-by-default errors name no fix')
+    print(f'apply-fixes: {applied} fixes applied in {len(by_file)} files ({moved} continuation lines moved to keep their alignment), {len(unfixable)} explicit-by-default errors name no fix')
     for line in unfixable[:20]:
         print('  ' + line)
     return 1 if failed else 0

@@ -1,0 +1,40 @@
+// tests\convert_align: continuation lines keep their alignment when the conversion changes the length of the text
+// before what they align to (a std name one shorter in kpp, an integer type's name, `this` as a reference), and a
+// block's lines follow the block, never an alignment (an `if` whose condition changed length).
+// convert.cmd compares the conversion, `this` written as a reference, with tests\convert_align.expected.kpp and runs it.
+
+struct Box
+{
+  i32 a;
+  i32 b;
+
+  i32 total(i32 extra,
+            i32 more) const
+  {
+    return this.sum(this.a, this.b,
+                    extra + more);
+  }
+
+  i32 sum(i32 x, i32 y, i32 z) const { return x + y + z; }
+};
+
+std::UniquePtr<Box> make(i32 a,
+                         i32 b)
+{
+  return std::makeUnique<Box>(Box{a,
+                                  b});
+}
+
+i32 main()
+{
+  std::UniquePtr<Box> box(make(u32(1) + u32(2),
+                               4));
+  if (std::makeUnique<Box>(Box{1, 2})->total(1, 2) > 0 &&
+      box->a == 3)
+  {
+    i32 kept = 1;
+    std::print(i32(box->total(kept,
+                              2)), " ", kept, "\n");
+  }
+  return 0;
+}

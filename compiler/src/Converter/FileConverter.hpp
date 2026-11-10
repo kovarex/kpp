@@ -1135,6 +1135,13 @@
         }
         std::stable_sort(edits.begin(), edits.end(), byOffset);
       }
+      // (continuation lines keep their alignment where the edits change the length before it: AlignContinuations.inl)
+      if (std::vector<Edit> moves = alignmentEdits(std::string(text), edits); !moves.empty())
+      {
+        counts.add("continuation lines moved to keep their alignment", int(moves.size()));
+        edits.insert(edits.end(), moves.begin(), moves.end());
+        std::stable_sort(edits.begin(), edits.end(), byOffset);
+      }
       std::string out = applyEdits(edits, 0, uint32_t(text.size()));
       // At most two consecutive blank lines where includes and directives used to be.
       std::string squeezed;
@@ -1177,7 +1184,8 @@
           counts.add("std renamed");
         }
       }
-      return in.c ? cMathNames(squeezed) : kppNumberNames(cMathNames(squeezed));
+      std::string named = in.c ? cMathNames(squeezed) : kppNumberNames(cMathNames(squeezed));
+      return alignedAsBefore(squeezed, named);
     }
 
     // C's <math.h> classifications, macros C writes bare (Lua's .c files, converted as C++ too), are the library's

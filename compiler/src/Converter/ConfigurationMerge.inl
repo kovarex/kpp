@@ -1904,7 +1904,8 @@ static std::string withThisAsReference(const std::string& text, size_t counts[3]
   std::string out = text;
   for (const Edit& e : edits)
     out.replace(e.offset, e.length, e.text);
-  return out;
+  // (continuation lines keep their alignment: `this->x(` is one shorter as `this.x(`, AlignContinuations.inl)
+  return alignedAsBefore(text, out);
 }
 
 int convertThisReference(const std::vector<std::filesystem::path>& directories)
