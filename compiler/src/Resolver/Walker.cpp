@@ -1903,8 +1903,8 @@ auto GlobalScope::Impl::Walker::checkTemplateArgumentCount(NamedType* t, const L
   Span<Decl*> params = def->kind == NodeKind::ClassDecl ? impl.effectiveParams(def) : def->templateParams;
   if (params.empty())
     return; // not a template: other errors say so
-  if (static_cast<TemplateParamDecl*>(params[params.size() - 1])->isPack)
-    return;
+  size_t enclosing = def->kind == NodeKind::ClassDecl ? impl.enclosingParamCount(def) : 0; // (an enclosing class template's, first)
+  bool pack = static_cast<TemplateParamDecl*>(params[params.size() - 1])->isPack;
   size_t given = 0;
   for (Node* arg : last.templateArgs)
   {
@@ -1912,11 +1912,32 @@ auto GlobalScope::Impl::Walker::checkTemplateArgumentCount(NamedType* t, const L
       return; // `X<Args...>`: as many as the pack has, told once it is known
     ++given;
   }
-  if (given <= params.size())
+  // Too few as too many ([temp.arg] 4): one of its own parameters after those given with no default argument, on this
+  // declaration or on another of the template (`template<class T, class U = int> struct Def;`), and no pack. Until
+  // 2026-11-10 only too many was an error, and `Pair<int>` of `template<class T, class U> struct Pair` codegen's "the
+  // layout of Pair<int32>: the member b has an unknown type".
+  size_t required = 0;
+  for (size_t i = enclosing; i < params.size(); ++i)
+  {
+    auto* p = static_cast<TemplateParamDecl*>(params[i]);
+    bool defaulted = p->isPack || p->defaultArg;
+    size_t own = i - enclosing;
+    if (l.overloads)
+      for (const Entry& e : *l.overloads)
+        if (e.decl && e.decl != def && e.decl->kind == def->kind && e.decl->templateParams.size() == def->templateParams.size() &&
+            own < e.decl->templateParams.size() && static_cast<TemplateParamDecl*>(e.decl->templateParams[own])->defaultArg)
+          defaulted = true;
+    if (!defaulted)
+      required = own + 1;
+  }
+  size_t most = params.size() - enclosing;
+  if (given >= required && (pack || given <= most))
     return;
-  std::string name = impl.debugName(last.symbol);
-  impl.reportCheckerError(file, t->token, name + " takes " + std::to_string(params.size()) + " template argument" +
-                                              (params.size() == 1 ? "" : "s") + ", " + std::to_string(given) + " given");
+  std::string takes = pack ? "at least " + std::to_string(required) : required == most ? std::to_string(most)
+                                                                                       : std::to_string(required) + " to " + std::to_string(most);
+  bool one = takes == "1" || takes == "at least 1";
+  impl.reportCheckerError(file, t->token, impl.debugName(last.symbol) + " takes " + takes + " template argument" + (one ? "" : "s") + ", " +
+                                              std::to_string(given) + " given");
 }
 
 auto GlobalScope::Impl::Walker::hiddenObjectType(VariableDecl* v) -> const Ty*

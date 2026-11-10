@@ -1,0 +1,32 @@
+// spec: a class template or an alias template named with fewer template arguments than it has parameters without a default (written on this declaration or another) is an error, as too many is ([temp.arg] 4): a global's, a parameter's, a local's, a member's, a nested class template's in its enclosing template; a pack takes none, and defaults fill the rest (until 2026-11-10 too many alone was an error, `Pair<int>` codegen's "the layout of Pair<int32>: the member b has an unknown type")
+// error: class_template_named_with_too_few_arguments_is_error.kpp:17: error: Inner takes 2 template arguments, 1 given
+// error: class_template_named_with_too_few_arguments_is_error.kpp:20: error: Pair takes 2 template arguments, 1 given
+// error: class_template_named_with_too_few_arguments_is_error.kpp:21: error: Arr takes 2 template arguments, 1 given
+// error: class_template_named_with_too_few_arguments_is_error.kpp:22: error: Def takes 1 to 2 template arguments, 0 given
+// error: class_template_named_with_too_few_arguments_is_error.kpp:23: error: Variadic takes at least 1 template argument, 0 given
+// error: class_template_named_with_too_few_arguments_is_error.kpp:26: error: Pair takes 2 template arguments, 1 given
+// error: class_template_named_with_too_few_arguments_is_error.kpp:27: error: Alias takes 2 template arguments, 1 given
+template<class T, class U> struct Pair { T a; U b; };
+template<class T, int N> struct Arr { T v[N]; };
+template<class T, class U = int> struct Def { T a; U b; };
+template<class T, class... Rest> struct Variadic { T first; };
+template<class T, class U> using Alias = Pair<T, U>;
+template<class T> struct Outer
+{
+  template<class U, class V> struct Inner { U u; V v; };
+  Inner<T> broken;
+  Inner<T, T> fine;
+};
+Pair<int> global;
+int use(Arr<int> a) { return 0; }
+int none(Def<> d) { return 0; }
+int empty(Variadic<> v) { return 0; }
+int main()
+{
+  Pair<int> p;
+  Alias<int> aliased;
+  Def<int> d;
+  Variadic<int> one;
+  Variadic<int, char, bool> three;
+  return d.b + one.first + three.first;
+}

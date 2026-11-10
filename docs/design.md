@@ -152,6 +152,12 @@ builds win less unless machine code is cached per function.
   argument of a type not known); a deduction conflict has its own error, above. Specs
   templates/call_whose_candidates_are_left_out_is_error and
   templates/call_whose_candidates_are_left_out_in_an_instance_is_error.
+- A class template or an alias template named with too few template arguments is an error, as too
+  many was (2026-11-10, [temp.arg] 4): "Pair takes 2 template arguments, 1 given", "Def takes 1 to 2
+  template arguments, 0 given", "Variadic takes at least 1 template argument, 0 given". A default
+  written on another declaration of the template counts; a nested class template's count is its own
+  parameters', not its enclosing template's. `Pair<int>` was codegen's "the layout of Pair<int32>:
+  the member b has an unknown type". Spec templates/class_template_named_with_too_few_arguments_is_error.
 - A type name nothing declares in a function template's signature (its result, its parameters) is
   an error in the template's own walk, used or not, as in C++'s first phase (2026-11-10, spec
   templates/undeclared_type_in_a_template_signature_is_error); a value's name already was. Until
