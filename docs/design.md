@@ -401,6 +401,15 @@ replacements, in the order of how much code they remove:
    them by writing the attribute (decided 2026-11-06, kovarex: "yes"). In a template instance's
    body a warning counts once codegen emits the instance, as C++ warns in the instances it makes.
    Spec language/nodiscard_and_deprecated_warn.
+   Misleading indentation (2026-11-10, kovarex: "It is good to have warning for this"): a statement
+   indented as if it were in the body of the if, else, for or while above it, a single statement
+   without braces on its own line, is a warning at the statement, as clang's -Wmisleading-indentation
+   (the same cases: the next statement starts its line at the body's indentation, deeper than the
+   keyword's line; a tab counts to the next multiple of 8 columns, a line mixing tabs and spaces is
+   left alone). Under `--indentation-warnings` for now: the converted game has 4 such places, each the
+   converter keeping an `#ifdef` block's deeper indentation where it drops or converts the directive,
+   and convert.cmd's headline counts every warning. On by default once the converter re-indents them.
+   Spec language/misleading_indentation_warns.
 The spellings above are the working proposal; each is settled and recorded here when the feature
 is implemented.
 

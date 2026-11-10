@@ -78,6 +78,8 @@ int compile(int argc, char** argv)
       options.returnCopyWarnings = true;
     else if (arg == "--zero-null-warnings")
       options.zeroNullWarnings = true;
+    else if (arg == "--indentation-warnings")
+      options.indentationWarnings = true;
     else if (arg == "--this-warnings")
       options.thisWarnings = true;
     else if (arg == "--this-reference")

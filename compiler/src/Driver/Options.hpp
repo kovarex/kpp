@@ -24,6 +24,7 @@
     bool accessWarnings = false; // --access-warnings
     bool returnCopyWarnings = false; // --return-copy-warnings
     bool zeroNullWarnings = false; // --zero-null-warnings
+    bool indentationWarnings = false; // --indentation-warnings
     bool thisWarnings = false; // --this-warnings
     bool thisPointer = false; // --this-pointer: the program's own files keep C++'s pointer (the warnings that convert from it, convert.cmd)
     bool thisReference = false; // --this-reference: required `this.` and `this` the object (design.md 23c, 23d), not in the standard library's files

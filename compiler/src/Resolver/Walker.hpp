@@ -181,6 +181,11 @@
     // A warning at token: in an instance's body one that counts once its function is emitted
     // (Impl::instanceWarnings), none in an `if constexpr` branch the walk could not decide.
     void reportWarning(uint32_t token, const std::string& message);
+    // A warning when next, the statement after s in a block, is indented as if it were in the body of the if, else,
+    // for or while that s ends with, a single statement without braces (clang's -Wmisleading-indentation): next starts
+    // its line at the body's indentation, deeper than the line of the body's keyword. A tab counts to the next multiple
+    // of 8 columns; a line whose indentation mixes tabs and spaces is left alone.
+    void checkMisleadingIndentation(Stmt* s, Stmt* next);
 
     // A built-in assignment (`=`, `+=` and the others on a scalar), increment or decrement of a const
     // object is an error, as in C++ ([expr.ass]/1, [expr.pre.incr]: the operand is a modifiable

@@ -463,6 +463,90 @@ auto GlobalScope::Impl::Walker::reportWarning(uint32_t token, const std::string&
   impl.reportCheckerWarning(file, token, message);
 }
 
+auto GlobalScope::Impl::Walker::checkMisleadingIndentation(Stmt* s, Stmt* next) -> void
+{
+  // (under --indentation-warnings; once, in the walk of the code as written: no instance, no probe, no imported C)
+  if (!indentationWarningsOn() || !s || !next || probing || activeSubst || !file || file->isImported || next->kind == NodeKind::EmptyStmt)
+    return;
+  // The body s ends with, down through bodies that are themselves one statement without braces (`for (...) if (x) a;`
+  // ends with a), and the keyword that heads it (an else body's is the `else` just before it).
+  Stmt* body = nullptr;
+  uint32_t keyword = 0;
+  for (Stmt* t = s; t;)
+  {
+    Stmt* inner = nullptr;
+    uint32_t heads = t->token;
+    switch (t->kind)
+    {
+      case NodeKind::IfStmt:
+      {
+        auto* i = static_cast<IfStmt*>(t);
+        inner = i->else_ ? i->else_ : i->then;
+        if (i->else_ && inner && inner->token > 0)
+          heads = inner->token - 1; // `else`
+        break;
+      }
+      case NodeKind::ForStmt: inner = static_cast<ForStmt*>(t)->body; break;
+      case NodeKind::RangeForStmt: inner = static_cast<RangeForStmt*>(t)->body; break;
+      case NodeKind::ForConstexprStmt: inner = static_cast<ForConstexprStmt*>(t)->body; break;
+      case NodeKind::WhileStmt: inner = static_cast<WhileStmt*>(t)->body; break;
+      default: break;
+    }
+    if (!inner || inner->kind == NodeKind::BlockStmt || inner->kind == NodeKind::EmptyStmt)
+      return;
+    body = inner;
+    keyword = heads;
+    t = inner->kind == NodeKind::IfStmt || inner->kind == NodeKind::ForStmt || inner->kind == NodeKind::RangeForStmt ||
+            inner->kind == NodeKind::ForConstexprStmt || inner->kind == NodeKind::WhileStmt
+          ? inner
+          : nullptr;
+  }
+  if (!body || keyword >= tokens.size() || body->token >= tokens.size() || next->token >= tokens.size())
+    return;
+  // A token's line: where it starts, its indentation in columns (a tab to the next multiple of 8), whether that mixes
+  // tabs and spaces, and whether the token is the first thing on it.
+  struct Place
+  {
+    size_t lineStart = 0;
+    int indent = 0;
+    bool mixed = false;
+    bool first = true;
+  };
+  auto place = [&](uint32_t token)
+  {
+    Place p;
+    size_t offset = std::min<size_t>(tokens[token].offset, text.size());
+    size_t newline = offset == 0 ? std::string_view::npos : text.rfind('\n', offset - 1);
+    p.lineStart = newline == std::string_view::npos ? 0 : newline + 1;
+    bool tab = false, space = false, leading = true;
+    for (size_t i = p.lineStart; i < offset; ++i)
+    {
+      char c = text[i];
+      if (leading && c == ' ')
+        ++p.indent, space = true;
+      else if (leading && c == '\t')
+        p.indent = (p.indent / 8 + 1) * 8, tab = true;
+      else
+      {
+        leading = false;
+        p.first = false;
+      }
+    }
+    p.mixed = tab && space;
+    return p;
+  };
+  Place k = place(keyword), b = place(body->token), n = place(next->token);
+  if (!b.first || !n.first || k.lineStart == b.lineStart || b.lineStart == n.lineStart || k.mixed || b.mixed || n.mixed ||
+      b.indent != n.indent || b.indent <= k.indent)
+    return;
+  const Token& kw = tokens[keyword];
+  const char* name = kw.is(Kw::else_) ? "else" : kw.is(Kw::for_) ? "for" : kw.is(Kw::while_) ? "while" : "if";
+  size_t line = 1 + size_t(std::count(text.begin(), text.begin() + b.lineStart, '\n'));
+  impl.reportCheckerWarning(file, next->token, std::string("this statement is indented as if it were in the body of the `") + name +
+                                                   "` above it, which is only the statement on line " + std::to_string(line) +
+                                                   ": put both in braces, or unindent this one");
+}
+
 auto GlobalScope::Impl::Walker::checkConstModification(uint32_t token, const Ty* object, const char* what, const Expr* operand) -> void
 {
   if (!object || !object->isConst || !object->isKnown())
@@ -10876,8 +10960,13 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
       size_t mark = locals.mark(), savedBlock = blockLocals;
       blockLocals = mark;
       blockStarts.push_back(mark);
-      for (Stmt* inner : static_cast<BlockStmt*>(s)->stmts)
-        walkStmt(inner);
+      Span<Stmt*> stmts = static_cast<BlockStmt*>(s)->stmts;
+      for (size_t k = 0; k < stmts.size(); ++k)
+      {
+        walkStmt(stmts[k]);
+        if (k + 1 < stmts.size())
+          checkMisleadingIndentation(stmts[k], stmts[k + 1]);
+      }
       blockStarts.pop_back();
       blockLocals = savedBlock;
       locals.pop(mark);

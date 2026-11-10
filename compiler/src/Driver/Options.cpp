@@ -43,6 +43,8 @@ void usage(FILE* out)
           "  --access-warnings  warn of private and protected members named outside their class, its derived classes and\n"
           "                its friends, and of structs with a private member, a non-public base or a virtual function\n"
           "                (docs/design.md, \"struct and class\"); no error, no other change\n"
+          "  --indentation-warnings  warn of a statement indented as if it were in the body of the if, else, for or while\n"
+          "                above it, a single statement without braces it is not part of (clang's -Wmisleading-indentation)\n"
           "  --zero-null-warnings  a literal 0 that would be a pointer (an error, docs/design.md 4) is a warning instead:\n"
           "                convert.cmd's nullptr pass rewrites what they name\n"
           "  --implicit-uses FILE  write each constructor and conversion operator marked `implicit`, its uses as an\n"

@@ -115,6 +115,9 @@ void noteThisReferenceWarning(const std::string& warning);
 std::vector<std::string> takeThisReferenceWarnings();
 void setZeroNullWarnings(bool on);
 bool zeroNullWarningsOn();
+// --indentation-warnings: a statement indented as if it were in an unbraced body it is not in (Walker::checkMisleadingIndentation).
+void setIndentationWarnings(bool on);
+bool indentationWarningsOn();
 void noteZeroNullWarning(const std::string& warning);
 std::vector<std::string> takeZeroNullWarnings();
 // Whether the literal 0 at token of file is reported for the first time in this build (the walk

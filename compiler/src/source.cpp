@@ -1206,6 +1206,7 @@ namespace
 #endif
 namespace
 {
+  std::atomic<bool> indentationWarningsEnabled{false};
   std::atomic<bool> zeroNullWarningsEnabled{false};
   std::mutex zeroNullMutex;
   std::set<std::string> zeroNullNotes; // (sorted, each token once)
@@ -1362,6 +1363,10 @@ void setZeroNullWarnings(bool on)
 }
 
 bool zeroNullWarningsOn() { return zeroNullWarningsEnabled; }
+
+void setIndentationWarnings(bool on) { indentationWarningsEnabled = on; }
+
+bool indentationWarningsOn() { return indentationWarningsEnabled; }
 
 void noteZeroNullWarning(const std::string& warning)
 {
