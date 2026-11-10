@@ -18,6 +18,30 @@ static void say(const char* text)
   WriteFile(GetStdHandle(STD_ERROR_HANDLE), text, (DWORD)strlen(text), &written, NULL);
 }
 
+/* dbghelp.dll's inline frame functions (Windows 8 and later), found when first needed: MinGW-w64's
+   dbghelp.h and import library have none of them, and Visual Studio's have them all, so both
+   toolchains build this file alike. Without them a frame names only the function the inlined code
+   went into. */
+typedef DWORD(WINAPI* AddrIncludeInlineTrace)(HANDLE, DWORD64);
+typedef BOOL(WINAPI* QueryInlineTrace)(HANDLE, DWORD64, DWORD, DWORD64, DWORD64, LPDWORD, LPDWORD);
+typedef BOOL(WINAPI* FromInlineContext)(HANDLE, DWORD64, ULONG, PDWORD64, PSYMBOL_INFO);
+typedef BOOL(WINAPI* GetLineFromInlineContext)(HANDLE, DWORD64, ULONG, DWORD64, PDWORD, PIMAGEHLP_LINE64);
+static AddrIncludeInlineTrace symAddrIncludeInlineTrace;
+static QueryInlineTrace symQueryInlineTrace;
+static FromInlineContext symFromInlineContext;
+static GetLineFromInlineContext symGetLineFromInlineContext;
+
+static void findInlineFunctions(void)
+{
+  HMODULE dbghelp = GetModuleHandleA("dbghelp.dll");
+  if (!dbghelp)
+    return;
+  symAddrIncludeInlineTrace = (AddrIncludeInlineTrace)(void*)GetProcAddress(dbghelp, "SymAddrIncludeInlineTrace");
+  symQueryInlineTrace = (QueryInlineTrace)(void*)GetProcAddress(dbghelp, "SymQueryInlineTrace");
+  symFromInlineContext = (FromInlineContext)(void*)GetProcAddress(dbghelp, "SymFromInlineContext");
+  symGetLineFromInlineContext = (GetLineFromInlineContext)(void*)GetProcAddress(dbghelp, "SymGetLineFromInlineContext");
+}
+
 /* One frame: module!function+offset from the PDB, else module+offset. */
 static void frame(HANDLE process, DWORD64 address, int index)
 {
@@ -38,13 +62,14 @@ static void frame(HANDLE process, DWORD64 address, int index)
      a release build's code is mostly inlined, and its frames named only the function it all went
      into); a caller's address is the return address, so they are the ones of the byte before. */
   DWORD64 at = index ? address - 1 : address;
-  DWORD inlined = SymAddrIncludeInlineTrace(process, at);
+  int inlineFunctions = symAddrIncludeInlineTrace && symQueryInlineTrace && symFromInlineContext && symGetLineFromInlineContext;
+  DWORD inlined = inlineFunctions ? symAddrIncludeInlineTrace(process, at) : 0;
   DWORD inlineContext = 0, frameIndex = 0;
-  if (inlined && SymQueryInlineTrace(process, at, 0, at, at, &inlineContext, &frameIndex))
+  if (inlined && symQueryInlineTrace(process, at, 0, at, at, &inlineContext, &frameIndex))
     for (DWORD k = 0; k < inlined; ++k)
     {
       DWORD64 inlineDisplacement = 0;
-      if (!SymFromInlineContext(process, at, inlineContext + k, &inlineDisplacement, symbol))
+      if (!symFromInlineContext(process, at, inlineContext + k, &inlineDisplacement, symbol))
         continue;
       snprintf(text, sizeof text, "      %s!%s (inlined)", name, symbol->Name);
       say(text);
@@ -52,7 +77,7 @@ static void frame(HANDLE process, DWORD64 address, int index)
       memset(&inlineLine, 0, sizeof inlineLine);
       inlineLine.SizeOfStruct = sizeof inlineLine;
       DWORD inlineLineDisplacement = 0;
-      if (SymGetLineFromInlineContext(process, at, inlineContext + k, 0, &inlineLineDisplacement, &inlineLine))
+      if (symGetLineFromInlineContext(process, at, inlineContext + k, 0, &inlineLineDisplacement, &inlineLine))
       {
         snprintf(text, sizeof text, "  %s:%lu", inlineLine.FileName, (unsigned long)inlineLine.LineNumber);
         say(text);
@@ -93,6 +118,7 @@ static void stack(CONTEXT context)
       *slash = 0;
     SymSetOptions(SYMOPT_UNDNAME | SYMOPT_LOAD_LINES | SYMOPT_DEFERRED_LOADS | SYMOPT_FAIL_CRITICAL_ERRORS);
     SymInitialize(process, directory, TRUE); /* the executable's directory: no symbol server */
+    findInlineFunctions();
   }
   if (!context.Rip && context.Rsp)
   {
