@@ -5058,32 +5058,46 @@ namespace
         {
           case Kw::if_:
           {
+            // An `else if` chain is parsed here, link by link, not by a statement's recursion per link: the
+            // nesting limit is for what a program nests, and a chain of thousands of branches is no nesting
+            // (until 2026-11-10 one of about 350 links was "nesting too deep", and each link's recovery after it
+            // skipped on: D's note, scratch\templates\e2\ifs).
             advance();
             IfStmt* s = node<IfStmt>(start);
-            if (accept(Kw::constexpr_))
-              s->isConstexpr = true;
-            if (at(Kw::consteval_) || (at(P::Bang) && at(Kw::consteval_, 1)))
+            for (IfStmt* link = s;;)
             {
-              // `if consteval { ... } else { ... }`, `if !consteval { ... }` (C++23): no condition.
-              bool negated = accept(P::Bang);
+              if (accept(Kw::constexpr_))
+                link->isConstexpr = true;
+              if (at(Kw::consteval_) || (at(P::Bang) && at(Kw::consteval_, 1)))
+              {
+                // `if consteval { ... } else { ... }`, `if !consteval { ... }` (C++23): no condition.
+                bool negated = accept(P::Bang);
+                advance();
+                link->ifConsteval = negated ? 2 : 1;
+                link->cond = nullptr;
+                if (!at(P::LBrace))
+                  error("expected '{' after if consteval");
+              }
+              else
+              {
+                if (!expect(P::LParen, "expected '(' after if"))
+                  return s;
+                parseCondition(link->init, link->cond);
+                expect(P::RParen, "expected ')'");
+              }
+              link->then = parseStatement();
+              if (!accept(Kw::else_))
+                return s;
+              if (!at(Kw::if_) || inRecovery)
+              {
+                link->else_ = parseStatement();
+                return s;
+              }
+              IfStmt* next = node<IfStmt>(pos);
               advance();
-              s->ifConsteval = negated ? 2 : 1;
-              s->cond = nullptr;
-              if (!at(P::LBrace))
-                error("expected '{' after if consteval");
-              s->then = parseStatement();
-              if (accept(Kw::else_))
-                s->else_ = parseStatement();
-              return s;
+              link->else_ = next;
+              link = next;
             }
-            if (!expect(P::LParen, "expected '(' after if"))
-              return s;
-            parseCondition(s->init, s->cond);
-            expect(P::RParen, "expected ')'");
-            s->then = parseStatement();
-            if (accept(Kw::else_))
-              s->else_ = parseStatement();
-            return s;
           }
           case Kw::while_:
           {

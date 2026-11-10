@@ -9524,6 +9524,29 @@ auto GlobalScope::Impl::constStatementIn(Stmt* s, const TypeContext& ctx, std::v
       std::optional<bool> cond = condition(i->cond);
       if (!cond)
         return ConstFlow::Failed;
+      // An `else if` chain's plain links (no init, no declaration as the condition: nothing of theirs lives
+      // through the branches) in this frame, not a recursion each: a chain of thousands of links is no
+      // nesting (until 2026-11-10 one of 512 was "cannot evaluate"; D's note).
+      while (!*cond && i->else_ && i->else_->kind == NodeKind::IfStmt)
+      {
+        auto* next = static_cast<IfStmt*>(i->else_);
+        if (next->ifConsteval || next->init || (next->cond && next->cond->kind == NodeKind::DeclStmt))
+          break;
+        if (++constSteps() > constStepBudget()) // (as a statement of its own counts)
+        {
+          if (constWhy().empty())
+            constWhy() = constBudgetWhy(constStepBudget(), "steps");
+          return ConstFlow::Failed;
+        }
+        i = next;
+        cond = condition(i->cond);
+        if (!cond)
+        {
+          if (!constFailedAt().file)
+            constFailedAt() = ConstWhere{constRunningFile(), i->token};
+          return ConstFlow::Failed;
+        }
+      }
       return constStatement(*cond ? i->then : i->else_, ctx, env, result, depth + 1);
     }
     case NodeKind::ForStmt:

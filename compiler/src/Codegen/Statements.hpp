@@ -147,6 +147,8 @@
     uint32_t openDebugBlock(Node* at);
 
     void statement(Stmt* s);
+    // A run-time if and the plain ifs of its `else if` chain, without a recursion per link.
+    void ifChain(IfStmt* first);
     // The end of a loop's body, back to condLabel. A variable its condition declared (declares)
     // ends here each time; one with a destructor also at falseLabel, the way out when the condition
     // is false, which goes on to endLabel. The scope of such a variable closes here.

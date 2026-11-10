@@ -918,6 +918,61 @@ auto codegen::Emitter::endIteration(bool declares, size_t outside, const std::st
   emitBranch(condLabel);
 }
 
+auto codegen::Emitter::ifChain(IfStmt* first) -> void
+{
+  // Each link of `if (a) ... else if (b) ... else if (c) ...` as statement() emits it as its else branch's
+  // substatement, here in one frame, not by a recursion per link: a chain of thousands of branches is no
+  // nesting (until 2026-11-10 one of 2048 was "expression nested too deeply"; D's note). The links stay
+  // open until the last one's end: then each one's end, as the recursion's returns made them.
+  struct Open
+  {
+    std::string endLabel;
+    uint32_t debugBlock; // (statement()'s guard restores it as a link's statement ends)
+  };
+  std::vector<Open> open;
+  for (IfStmt* i = first;;)
+  {
+    pushScope();
+    if (i->init)
+      statement(i->init);
+    Value cond = condition(i->cond, i);
+    destroyTemps();
+    std::string tL = newLabel("if.then"), eL = newLabel("if.else"), jL = newLabel("if.end");
+    fn += "  br i1 " + cond.text + ", label %" + tL + ", label %" + (i->else_ ? eL : jL) + "\n";
+    startBlock(tL);
+    subStatement(i->then);
+    emitBranch(jL);
+    auto* next = i->else_ && i->else_->kind == NodeKind::IfStmt ? static_cast<IfStmt*>(i->else_) : nullptr;
+    if (!next || next->ifConsteval || next->isConstexpr)
+    {
+      if (i->else_)
+      {
+        startBlock(eL);
+        subStatement(i->else_);
+        emitBranch(jL);
+      }
+      startBlock(jL);
+      popScope();
+      break;
+    }
+    startBlock(eL);
+    pushScope(); // (subStatement's, for the else branch)
+    open.push_back({jL, debugBlock});
+    if (declaresInHead(next)) // (what statement() does before an if's own work)
+      openDebugBlock(next);
+    debugLine(next);
+    i = next;
+  }
+  for (size_t k = open.size(); k-- > 0;)
+  {
+    debugBlock = open[k].debugBlock;
+    popScope(); // the else branch's
+    emitBranch(open[k].endLabel);
+    startBlock(open[k].endLabel);
+    popScope(); // the link's own
+  }
+}
+
 auto codegen::Emitter::statement(Stmt* s) -> void
 {
   if (!s)
@@ -1219,24 +1274,7 @@ auto codegen::Emitter::statement(Stmt* s) -> void
         }
       if (i->isConstexpr) // ([stmt.if] 2: never a test at run time; here, with the layouts `sizeof` may need that the resolver has not)
         fail(s, "the condition of an if constexpr is not a constant expression");
-      pushScope();
-      if (i->init)
-        statement(i->init);
-      Value cond = condition(i->cond, s);
-      destroyTemps();
-      std::string tL = newLabel("if.then"), eL = newLabel("if.else"), jL = newLabel("if.end");
-      fn += "  br i1 " + cond.text + ", label %" + tL + ", label %" + (i->else_ ? eL : jL) + "\n";
-      startBlock(tL);
-      subStatement(i->then);
-      emitBranch(jL);
-      if (i->else_)
-      {
-        startBlock(eL);
-        subStatement(i->else_);
-        emitBranch(jL);
-      }
-      startBlock(jL);
-      popScope();
+      ifChain(i);
       break;
     }
     case NodeKind::AssertStmt:
