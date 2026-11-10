@@ -55,6 +55,14 @@
     return false;
   }
 
+  // The classes a program's types name, by their qualified names, and the last names of the types the resolver
+  // left unresolved (convertToKpp; a declaration of a class defined nowhere goes when neither names it).
+  struct ProgramNames
+  {
+    std::set<std::string> classes;
+    std::set<uint32_t> unresolved;
+  };
+
   struct FileConverter
   {
     bool isHeader() const
@@ -1446,6 +1454,7 @@
     const CarriedTemplateDefaults* carriedTemplateDefaults = nullptr;
     const ScopeNames* scopeNames = nullptr;
     const std::set<std::string>* libraryTypes = nullptr; // the library's global classes and aliases (libraryTypeNames)
+    const ProgramNames* programNames = nullptr; // what the program's types name (convertToKpp)
     std::set<std::string>* opaqueKept = nullptr; // classes declared and defined nowhere, kept as declarations (once in the program)
     const std::set<std::string>* macroClasses = nullptr; // the classes ENUM and BITFIELD define (collectMacroClasses)
     const std::set<std::string>* braceableClasses = nullptr; // collectBraceableClasses

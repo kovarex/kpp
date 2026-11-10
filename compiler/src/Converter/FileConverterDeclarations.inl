@@ -185,7 +185,17 @@
               // (a class ENUM or BITFIELD defines has a definition the resolver does not see: its
               // declaration goes as any other's)
               bool macroDefined = !def && macroClasses && macroClasses->count(global.qualifiedName(c));
-              if (namespaceScope && opaqueKept && !macroDefined && (!def || def == c || specializedOnly || definedInLeftOutFile) &&
+              // (a class defined nowhere that no type of the program names, `class Region;` of a class the game
+              // removed long ago, goes: by the resolver's names, a word elsewhere is no use of it)
+              bool namedNowhere = programNames && (!def || def == c) && !macroDefined && c->templateParams.empty() && !c->name.empty() &&
+                                  c->name.last().symbol != UINT32_MAX && !programNames->classes.count(global.qualifiedName(c)) &&
+                                  !programNames->unresolved.count(c->name.last().symbol);
+              if (namespaceScope && namedNowhere)
+              {
+                removeDecl(d);
+                counts.add("declarations of classes defined nowhere and named by no type removed");
+              }
+              else if (namespaceScope && opaqueKept && !macroDefined && (!def || def == c || specializedOnly || definedInLeftOutFile) &&
                   opaqueKept->insert(global.qualifiedName(c)).second)
               {
                 // No definition anywhere (`namespace TaskBar { class Interface; }`, used only through

@@ -1,5 +1,6 @@
 #include "convert.hpp"
 #include "parser.hpp"
+#include "Ast/AstWalk.hpp"
 #include "source.hpp"
 #include <algorithm>
 #include <cctype>

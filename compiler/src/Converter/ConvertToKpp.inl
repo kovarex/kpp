@@ -829,6 +829,21 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
   }
   ScopeNames scopeNames;
   std::set<std::string> opaqueKept;
+  // The classes the program names, by the resolver's reading of each type (a template's argument too), and the
+  // last names of the types it did not resolve (a template's dependent code), which keep a class of the name.
+  ProgramNames programNames;
+  for (const ConvertInput& in : inputs)
+    if (in.parsed && !in.parsed->isImported)
+      forEachNode(in.parsed->decls, [&](Node* n)
+      {
+        if (n->kind != NodeKind::NamedType)
+          return;
+        auto* t = static_cast<NamedType*>(n);
+        if (t->resolved && (t->resolved->kind == NodeKind::ClassDecl || t->resolved->kind == NodeKind::UsingAliasDecl))
+          programNames.classes.insert(global.qualifiedName(t->resolved));
+        else if (!t->resolved && !t->name.empty() && t->name.last().symbol != UINT32_MAX)
+          programNames.unresolved.insert(t->name.last().symbol);
+      });
   std::set<std::string> macroClasses = collectMacroClasses(inputs);
   InlineBodies inlineBodies;
   for (const ConvertInput& in : inputs)
@@ -1034,6 +1049,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     fc.scopeNames = &scopeNames;
     fc.libraryTypes = &libraryTypes;
     fc.opaqueKept = &opaqueKept;
+    fc.programNames = &programNames;
     fc.macroClasses = &macroClasses;
     fc.braceableClasses = &braceableClasses;
     fc.inlineBodies = &inlineBodies;
