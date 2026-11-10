@@ -1228,8 +1228,10 @@ on a Windows with no Visual Studio, Build Tools or Windows SDK.
   lld-link's debug link with a PDB takes 5.7 to 9.7 s, 80% of it merging the 5.2 M type records of
   the Visual Studio-built libraries' debug information (the PDB 485 MB, link.exe's 77 MB), against
   0.4 to 1.5 s for link.exe's incremental relink; without a PDB lld-link takes 1.1 to 1.4 s. The
-  game, which links Visual Studio-built C++ libraries, keeps `--toolchain msvc` and
-  `--incremental-link`. The release link (ThinLTO) is the same with lld 19.1.5 and 19.1.7: 52.9 to
+  game prefers `--toolchain msvc,bundled` (factorio-in-kpp's build.kpp): Visual Studio's, with
+  `--incremental-link`, where it is here, else the bundled one, with which it builds, links Factorio's
+  Visual Studio-built C++ libraries, imports only Windows' DLLs and passes its 9,501 tests and the 45
+  menu maps' checksums (release) as with Visual Studio's (2026-11-10). The release link (ThinLTO) is the same with lld 19.1.5 and 19.1.7: 52.9 to
   66.6 against 53.6 to 74.9 s on a busy machine, the executable 44.0 MB both.
 - **A symbol kept in the link** whatever the toolchain: `--keep-symbol NAME` links in what defines
   NAME although nothing names it, a C library's object that registers itself at startup (kpp-native's
