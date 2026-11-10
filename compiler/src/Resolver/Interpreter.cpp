@@ -1933,6 +1933,36 @@ auto GlobalScope::Impl::constCall(CallExpr* c, const TypeContext& ctx, int depth
   Expr* called = c->callee;
   while (called->kind == NodeKind::ParenExpr && static_cast<ParenExpr*>(called)->inner)
     called = static_cast<ParenExpr*>(called)->inner;
+  if (auto* b = called->kind == NodeKind::BinaryExpr ? static_cast<BinaryExpr*>(called) : nullptr;
+      b && !b->isKeyword && (P(b->op) == P::DotStar || P(b->op) == P::ArrowStar))
+  {
+    // `(s.*fn)()`, `(p->*fn)(x)`: the member function the pointer names, its final overrider when virtual, run on the
+    // object (until 2026-11-10 no constant; thread A's battery).
+    std::optional<ConstValue> member = constPure(b->rhs) ? constValue(b->rhs, ctx, depth + 1) : std::nullopt;
+    if (!member || !member->isMemberPointer() || !member->target->decl || member->target->decl->kind != NodeKind::FunctionDecl)
+      return std::nullopt;
+    std::optional<ConstPlace> base;
+    if (P(b->op) == P::DotStar)
+      base = constPure(b->lhs) ? constPlaceOf(b->lhs, ctx, depth + 1, true) : std::nullopt;
+    else if (constPure(b->lhs))
+      if (std::optional<ConstValue> p = constValue(b->lhs, ctx, depth + 1); p && p->isAddress() && p->target->storage)
+        base = constStoragePlace(*p, "a use of", depth);
+    std::optional<ConstValue> object = base ? constRead(*base) : std::nullopt;
+    if (!object || !object->isObject() || !object->type || object->type->isBraceList())
+      return std::nullopt;
+    auto* f = static_cast<FunctionDecl*>(member->target->decl);
+    if (f->flags & (DF_Virtual | DF_Override))
+      f = constOverrider(f, object->type, 0);
+    if (!f || !f->templateParams.empty() || !constDefinition(f))
+      return std::nullopt;
+    Subst subst = memberSubst(types.unqualified(object->type), f->parent ? f->parent->ownScope : nullptr, 0);
+    std::vector<ConstValue> args;
+    std::vector<std::optional<ConstPlace>> places;
+    std::vector<uint8_t> categories;
+    if (!constArguments(c->args, ctx, depth, args, &places, &categories))
+      return std::nullopt;
+    return constCallOn(f, subst, args, &object, depth + 1, &*base, &places, &categories);
+  }
   if (called->kind == NodeKind::LambdaExpr)
   {
     auto* l = static_cast<LambdaExpr*>(called);
@@ -4294,7 +4324,7 @@ auto GlobalScope::Impl::constElided(const Ty* t, Span<Expr*> values, size_t& nex
     return ConstValue::object(at, std::move(elements));
   }
   const ConstClassLayout* layout = constLayoutOf(t, depth);
-  if (!layout || !constIsAggregate(t, depth) || !constMayMake(layout->bases.size() + layout->fields.size()))
+  if (!layout || !constIsAggregate(t, depth, true) || !constMayMake(layout->bases.size() + layout->fields.size()))
     return std::nullopt;
   std::vector<ConstValue> parts;
   if (into)
@@ -4311,11 +4341,37 @@ auto GlobalScope::Impl::constElided(const Ty* t, Span<Expr*> values, size_t& nex
     made(parts.size(), b, *part);
     parts.push_back(*part);
   }
+  // A union takes one element, for its first member, or none (then the member with a default member initializer, else
+  // its first, value-initialized); its other members hold nothing ([dcl.init.aggr] 3.3, 5.5, 16). Until 2026-11-10
+  // every member took one: `Agg h{4, 6, 9}` with a union member between gave the union both 6 and 9 and the member
+  // after it 0 at compile time, 9 at run time (thread A's battery).
+  bool union_ = layout->decl && layout->decl->keyword == Kw::union_;
+  size_t unionMember = SIZE_MAX;
+  if (union_)
+  {
+    for (size_t i = 0; i < layout->fields.size() && unionMember == SIZE_MAX; ++i)
+      if (!constUnnamedField(*layout, i) && next >= values.size() && layout->fields[i]->init)
+        unionMember = i;
+    for (size_t i = 0; i < layout->fields.size() && unionMember == SIZE_MAX; ++i)
+      if (!constUnnamedField(*layout, i) || !layout->fields[i])
+        unionMember = i;
+  }
   for (size_t i = 0; i < layout->fields.size(); ++i)
   {
-    std::optional<ConstValue> part = constUnnamedField(*layout, i) ? constEmpty(layout->fieldTypes[i], true, depth + 1)
-                                    : next < values.size()        ? element(layout->fieldTypes[i])
-                                                                  : constFieldDefault(*layout, i, true, depth);
+    if (union_ && i != unionMember)
+    {
+      ConstValue none = ConstValue::unset(layout->fieldTypes[i]);
+      made(parts.size(), layout->fieldTypes[i], none);
+      parts.push_back(none);
+      continue;
+    }
+    // (an anonymous struct or union member, `struct T { int tag; union { int a; long long b; }; }`, is an element of
+    // its own, `T{1, {7}}` or `T{1, 7}` its first member's: [dcl.init.aggr] 3.1; until 2026-11-10 no constant,
+    // thread A's battery. An unnamed bit field takes none.)
+    bool anonymousMember = !layout->fields[i];
+    std::optional<ConstValue> part = constUnnamedField(*layout, i) && !anonymousMember ? constEmpty(layout->fieldTypes[i], true, depth + 1)
+                                    : next < values.size()                         ? element(layout->fieldTypes[i])
+                                                                                   : constFieldDefault(*layout, i, true, depth);
     if (!part)
       return std::nullopt;
     made(parts.size(), layout->fieldTypes[i], *part);
@@ -4440,7 +4496,7 @@ auto GlobalScope::Impl::constBraceInit(const Ty* t, BraceInitExpr* b, const Type
     std::optional<ConstValue> list = constBraceList(b, ctx, depth, &places, &categories);
     return list ? constFromBraceList(*list, t, depth, nullptr, &places, &categories) : std::nullopt;
   }
-  if (constIsAggregate(t, depth))
+  if (constIsAggregate(t, depth, true))
   {
     // `W b{a}` with a an object of the aggregate itself (as the walk typed it): a copy of a, as
     // C++ makes it ([dcl.init.list] 3.2), not its first member initialized from it.
@@ -5115,6 +5171,21 @@ auto GlobalScope::Impl::constAddressOf(Expr* operand, const TypeContext& ctx, in
     }
   }
   std::optional<ConstDesignated> a = constDesignated(x, ctx, depth);
+  if (!a && x->kind == NodeKind::IndexExpr && static_cast<IndexExpr*>(x)->args.size() == 1 && static_cast<IndexExpr*>(x)->base &&
+      static_cast<IndexExpr*>(x)->base->ty && constPure(x))
+  {
+    // `&a[5]` of a built-in array or pointer: `a + 5`, the one past the end included, which designates no element
+    // to read (until 2026-11-10 no constant; thread A's battery). ([expr.unary.op] 3 and [expr.add] 4, as clang has it)
+    auto* ix = static_cast<IndexExpr*>(x);
+    const Ty* bt = types.unqualified(types.stripRef(ix->base->ty));
+    if (bt->kind == TyKind::Array || bt->kind == TyKind::Pointer)
+    {
+      std::optional<ConstValue> base = constValue(ix->base, ctx, depth + 1);
+      std::optional<ConstValue> index = base && base->isAddress() ? constValue(ix->args[0], ctx, depth + 1) : std::nullopt;
+      if (index && index->kind == ConstValue::Kind::Int)
+        return constAddressMove(*base, index->i, depth);
+    }
+  }
   if (!a)
   {
     // `&v[0]`: an element a class's operator[] designates where the run holds it (a heap block, a
@@ -5851,6 +5922,16 @@ auto GlobalScope::Impl::constRunConstructor(FunctionDecl* ctor, const Ty* t, con
   // 13: `X(int* l) : m(l, 2), L(l, 1)` runs L's constructor first; written order ran m's first).
   size_t nb = layout->bases.size(), nf = layout->fields.size();
   std::vector<const FunctionDecl::CtorInit*> written(nb + nf, nullptr);
+  // `T() : tag(2), b(9) {}` with b a member of T's anonymous union: the anonymous member made as without one,
+  // then b written in it (until 2026-11-10 no constant; thread A's battery).
+  struct InnerInit
+  {
+    size_t part;  // the anonymous member's, among the bases and fields
+    size_t inner; // the member's within it
+    const ConstClassLayout* layout;
+    const FunctionDecl::CtorInit* init;
+  };
+  std::vector<InnerInit> innerInits;
   for (const FunctionDecl::CtorInit& init : ctor->ctorInits)
   {
     if (absentMemberInit(layout->decl, init))
@@ -5865,6 +5946,14 @@ auto GlobalScope::Impl::constRunConstructor(FunctionDecl* ctor, const Ty* t, con
         written[nb + i] = &init;
         found = true;
       }
+    for (size_t i = 0; i < nf && !found && init.member.parts.size() == 1; ++i)
+      if (const ConstClassLayout* inner = !layout->fields[i] ? constLayoutOf(layout->fieldTypes[i], depth + 1) : nullptr)
+        for (size_t j = 0; j < inner->fields.size() && !found; ++j)
+          if (inner->fields[j] && !inner->fields[j]->name.empty() && inner->fields[j]->name.last().symbol == symbol)
+          {
+            innerInits.push_back({nb + i, j, inner, &init});
+            found = true;
+          }
     size_t sameName = 0, namedBase = 0;
     for (size_t b = 0; b < nb && !found; ++b)
       if (layout->bases[b]->decl && !static_cast<ClassDecl*>(layout->bases[b]->decl)->name.empty() &&
@@ -5935,6 +6024,17 @@ auto GlobalScope::Impl::constRunConstructor(FunctionDecl* ctor, const Ty* t, con
                  : constConstruct(tu, values, false, depth + 1, nullptr, delegatedTo, &places, &categories);
       return values.size() == 1 ? constConvertTo(values[0], target, depth + 1) : std::nullopt;
     }
+    if (init.braced && types.unqualified(types.stripRef(target))->kind == TyKind::Array &&
+        !(init.args.size() == 1 && init.args[0]->kind == NodeKind::BraceInitExpr))
+    {
+      // `S(int x) : v{x, x + 1, x + 2}` of an array member: its elements from the list, as `int v[3] = {...}` has them
+      // (until 2026-11-10 no constant: the list was taken for a constructor's arguments; thread A's battery).
+      BraceInitExpr list{};
+      list.kind = NodeKind::BraceInitExpr;
+      list.token = init.args.empty() ? 0 : init.args[0]->token;
+      list.args = init.args;
+      return constInitialize(target, &list, fctx, depth + 1);
+    }
     if (init.args.size() == 1)
     {
       const Ty* tu = types.unqualified(types.stripRef(target));
@@ -5991,7 +6091,8 @@ auto GlobalScope::Impl::constRunConstructor(FunctionDecl* ctor, const Ty* t, con
     return constConstruct(target, values, false, depth + 1, &init.args, delegatedTo, &places, &categories);
   };
   for (const FunctionDecl::CtorInit& init : ctor->ctorInits)
-    if (!absentMemberInit(layout->decl, init) && std::find(written.begin(), written.end(), &init) == written.end())
+    if (!absentMemberInit(layout->decl, init) && std::find(written.begin(), written.end(), &init) == written.end() &&
+        std::none_of(innerInits.begin(), innerInits.end(), [&](const InnerInit& ii) { return ii.init == &init; }))
     {
       // `Frame(int x) : Frame(x, 0) {}`: the delegated-to constructor makes the object, this object ([class.base.init] 6):
       // made elsewhere and copied, a pointer it stored to `this` pointed at an object that had ended (K, 2026-11-09).
@@ -6052,6 +6153,17 @@ auto GlobalScope::Impl::constRunConstructor(FunctionDecl* ctor, const Ty* t, con
     bool held = !union_ || written[k] || (!base && layout->fields[k - nb] && layout->fields[k - nb]->init); // (a union's member without an initializer is none it holds)
     if (held && !constWrite(at, *part))
       return std::nullopt;
+    for (const InnerInit& ii : innerInits)
+      if (ii.part == k)
+      {
+        std::optional<ConstValue> v = initialize(*ii.init, ii.layout->fieldTypes[ii.inner]);
+        ConstPlace in = at;
+        in.path.push_back(ii.inner);
+        in.type = ii.layout->fieldTypes[ii.inner];
+        in.bits = ii.layout->fieldBits[ii.inner];
+        if (!v || !constWrite(in, *v))
+          return std::nullopt;
+      }
   }
   std::optional<ConstValue> built = constRead(home);
   if (!built || !built->isObject() || !built->parts || built->parts->size() != nb + nf)
@@ -7704,6 +7816,7 @@ auto GlobalScope::Impl::constPlaceOf(Expr* e, const TypeContext& ctx, int depth,
     // (by the path: an inherited member's type is under its base's arguments, not holder's)
     base->type = constPartType(holder, *path, path->size(), 0);
     base->bits = constBitsOf(holder, d);
+    base->mutablePart = base->mutablePart || (d->flags & DF_Mutable);
     return constThroughReference(*base, depth);
   }
   if (e->kind == NodeKind::BinaryExpr && !static_cast<BinaryExpr*>(e)->isKeyword &&

@@ -1,0 +1,96 @@
+// spec: compile-time evaluation gives what the program gives at run time for: an array member's brace list in a constructor's initializer (`v{x, x + 1, x * 2}`), the address one past an array's end (`&a[5]`), a mutable member written in a const member function, an anonymous union's members (aggregate-initialized, braces elided, named in a constructor's initializer), a union member of an aggregate whose braces are elided (one element, for its first member), and a call through a pointer to a member function (virtual or not, by `.*` and `->*`)
+// found: thread A's battery (2026-11-10): the union with elided braces gave the member after it 0 at compile time and 9 at run time, silently; each of the others was "no constant"
+struct Arr
+{
+  int v[4];
+  int n;
+  Arr(int x) : v{x, x + 1, x * 2}, n{x} {}
+  Arr() : v{}, n(9) {}
+};
+constexpr int arrays(int x)
+{
+  Arr a(x), b;
+  return a.v[0] * 1000 + a.v[1] * 100 + a.v[2] * 10 + a.v[3] + b.v[2] + b.n * 100000;
+}
+constexpr int pastTheEnd()
+{
+  int a[5] = {1, 2, 3, 4, 5};
+  int* e = &a[5];
+  int s = 0;
+  for (int* p = &a[0]; p != e; ++p)
+    s = s * 10 + *p;
+  return s + int(e - &a[2]) * 1000000;
+}
+struct Counter
+{
+  mutable int reads = 0;
+  int v = 4;
+  int get() const { ++this.reads; return this.v; }
+};
+constexpr int mutables()
+{
+  const Counter c;
+  int s = c.get() + c.get();
+  return s * 100 + c.reads;
+}
+struct Tagged
+{
+  int tag;
+  union { int a; i64 b; };
+  Tagged() : tag(2), b(9) {}
+  Tagged(int t, int x) : tag(t), a(x) {}
+};
+struct Agg
+{
+  int tag;
+  union { int a; i64 b; };
+  int after;
+};
+struct Named
+{
+  int tag;
+  union U { int a; i64 b; } u;
+  int after;
+};
+constexpr i64 unions()
+{
+  Tagged x;
+  Tagged y(1, 5);
+  y.b = i64(1) << 33;
+  Agg g{3, {7}, 8};
+  Agg h{4, 6, 9};
+  Named n{5, 6, 7};
+  return x.b + x.tag * 10 + (y.b >> 30) * 100 + g.a * 1000 + g.after * 10000 + h.a * 100000 + h.after * 1000000 + n.u.a * 10000000 + n.after * 100000000;
+}
+class Base
+{
+public:
+  int v = 3;
+  virtual int f(int x) const { return this.v + x; }
+  int g(int x) const { return this.v * x; }
+  virtual ~Base() = default;
+};
+class Derived : public Base
+{
+public:
+  int f(int x) const override { return 100 + x; }
+};
+constexpr int memberPointers(bool virtualOne)
+{
+  Derived d;
+  Base b;
+  int (Base::*m)(int) const = virtualOne ? &Base::f : &Base::g;
+  const Base* p = &d;
+  return (d.*m)(2) * 10000 + (b.*m)(4) * 100 + (p->*m)(1);
+}
+bool yes = true;
+int one = 1;
+int main()
+{
+  constexpr int a = arrays(3), e = pastTheEnd(), m = mutables(), pv = memberPointers(true), pn = memberPointers(false);
+  constexpr i64 u = unions();
+  std::println(a, " ", arrays(3 * one), " ", e, " ", pastTheEnd(), " ", m, " ", mutables());
+  std::println(u, " ", unions());
+  std::println(pv, " ", memberPointers(yes), " ", pn, " ", memberPointers(!yes));
+  return 0;
+}

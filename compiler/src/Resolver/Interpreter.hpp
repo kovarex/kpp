@@ -781,13 +781,16 @@
   struct ConstPlace
   {
     ConstBinding& binding() const { return (*env)[index]; }
-    bool writable() const { return !readOnly && binding().writable; }
+    // (a mutable member, or a part of one, is written through a const path too: `++this.hits` in a const member
+    // function, [dcl.stc] 10; until 2026-11-10 no constant, thread A's battery)
+    bool writable() const { return mutablePart || (!readOnly && binding().writable); }
 
     std::vector<ConstBinding>* env = nullptr; // by index: the locals may grow meanwhile
     size_t index = 0;
     std::vector<size_t> path;
     const Ty* type = nullptr; // the part's type, which a stored value is converted to
     bool readOnly = false;    // reached through something const (a reference to const)
+    bool mutablePart = false; // a mutable member's (or within one), which a const path does not make read-only
     uint8_t bits = 0;         // a bit field's width, which a stored value is fitted to
   };
 
