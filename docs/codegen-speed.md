@@ -692,6 +692,21 @@ B's window of 2026-11-09 (13:13 to 13:15) tried one builder per class layout, an
 - **Where the clean build is now** (master a571b23d, this window's medians): kpp 8.5 s = codegen 4.30 + the back end
   after it 2.49 + the rest 1.70; the link 1.2 s; the build.kpp description 0.35 to 0.87 s before it.
 
+B's window of 2026-11-10 (04:15 to 04:18) timed the back end's cuts that window 12's profile chose (16370e7b: one
+verifier run, LLVM's parser's second one off, and `asm "nop"` made the nop instruction before the asm printer;
+af7b66b1: each module's metadata written before what names it):
+- **Compilers:** master 3eb819d5 against af7b66b1 (the two cuts, with the local typedef fix 1aee85f6 between
+  them), each with LLVM inside. **Tree:** factorio-in-kpp a9f363870 (C:\Factorio 4c178a5b915, converted by kpp
+  24a67d03). **Command:** as above, five clean builds each in turned order; the window started after a minute
+  under 5% load, and each build started at 0 to 5%.
+- **The back end after codegen is 0.29 s faster (2.48 to 2.19 s, 12%) and kpp 0.40 s (8.50 to 8.10 s, 4.7%)**
+  in every round: kpp 8.5 to 8.6 s against 8.1 to 8.2 s; codegen 4.29 against 4.25 s; the link 1.2 s both.
+  The game's 256 debug objects are byte-identical with and without the cuts.
+- **The wall gained 0.89 s (10.60 to 9.71 s),** but about 0.5 s of it is build.kpp's description before the build,
+  which a round after the other compiler's makes again (0.87 against 0.35 s): not the cuts.
+- **Window 12's samples estimated 5 to 6% of the build's CPU;** 4.7% of kpp's time went, since the back end after
+  codegen runs on every core and what it saves shows almost whole.
+
 When this plan was written, a clean debug build of the game was 17.1 s, the leaf edit 1.4 to 1.5 s,
 and the wide edit 1.9 s. These were thread A's quiet numbers: kpp run directly, without debug info.
 The gains overlap; each line is against the line before. The status column is as of 2026-11-02.
