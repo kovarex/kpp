@@ -1,0 +1,48 @@
+// spec: a class deriving from a class said `final`, or from one whose destructor is `final` (its own destructor, written or not, would override that one), is an error, as in C++ ([class.pre], [class.virtual] 4), a class template's at its instance, each element of a pack of bases alike (until 2026-11-10 accepted)
+// error: deriving_from_a_final_class_is_error.kpp:22: error: FromSealed derives from Sealed, which is final (line 7): remove that `final`, or derive from another class
+// error: deriving_from_a_final_class_is_error.kpp:25: error: Quiet derives from Closing, whose destructor is final (line 15): remove that `final`, or derive from another class
+// error: deriving_from_a_final_class_is_error.kpp:31: error: the destructor overrides Closing's, which is final (line 15): remove that `final`
+// error: deriving_from_a_final_class_is_error.kpp:33: error: Over<Sealed> derives from Sealed, which is final (line 7): remove that `final`, or derive from another class
+// error: deriving_from_a_final_class_is_error.kpp:36: error: All<Open, Sealed> derives from Sealed, which is final (line 7): remove that `final`, or derive from another class
+class Sealed final
+{
+public:
+  int x = 1;
+};
+class Closing
+{
+public:
+  virtual ~Closing() final {}
+};
+class Open
+{
+public:
+  int y = 2;
+};
+class FromSealed : public Sealed
+{
+};
+class Quiet : public Closing
+{
+};
+class Loud : public Closing
+{
+public:
+  ~Loud() override {}
+};
+template<class T> class Over : public T
+{
+};
+template<class... Ts> class All : public Ts...
+{
+};
+int main()
+{
+  FromSealed s;
+  Quiet q;
+  Loud l;
+  Over<Sealed> o;
+  Over<Open> fine;
+  All<Open, Sealed> both;
+  return fine.y;
+}

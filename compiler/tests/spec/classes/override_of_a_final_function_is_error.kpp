@@ -1,0 +1,38 @@
+// spec: a member function overriding one a base says `final` is an error, as in C++ ([class.virtual] 4), whatever it says itself (`override`, `final` or neither), a class template's at its instance; a function of the same name with another signature overrides nothing, and a function said `final` may end a virtual function of a base or be a new one (until 2026-11-10 accepted, a call through the base reaching the override)
+// error: override_of_a_final_function_is_error.kpp:24: error: f overrides Base's, which is final (line 9): rename it, or remove that `final`
+// error: override_of_a_final_function_is_error.kpp:25: error: g overrides Middle's, which is final (line 16): rename it, or remove that `final`
+// error: override_of_a_final_function_is_error.kpp:30: error: f in Over<Base> overrides Base's, which is final (line 9): rename it, or remove that `final`
+class Base
+{
+public:
+  virtual ~Base() {}
+  virtual int f() final { return 1; }
+  virtual int g() { return 2; }
+  virtual int h() const { return 3; }
+};
+class Middle : public Base
+{
+public:
+  int g() final { return 4; }
+  int h() const final { return 5; }
+  virtual int fresh() final { return 6; }
+};
+class Leaf : public Middle
+{
+public:
+  int f(int x) { return x; }
+  int f() override { return 7; }
+  int g() { return 8; }
+};
+template<class T> class Over : public T
+{
+public:
+  int f() override { return 9; }
+};
+int main()
+{
+  Leaf leaf;
+  Over<Base> over;
+  Base& b = leaf;
+  return b.f() + over.f() + leaf.f(1);
+}

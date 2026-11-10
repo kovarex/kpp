@@ -2316,6 +2316,14 @@ for an instance's). `virtual` beside `override` stays allowed (Q8). `--override-
 the classes whose destructor would become virtual, and went when that rule was built (2026-11-09). Specs language/override_is_required,
 classes/override_of_nothing_is_error, classes/override_of_nothing_in_an_instance_is_error.
 
+`final` closes as in C++ (2026-11-10; both accepted before, a virtual call through the base reaching the
+override). A function overriding one a base says `final` is an error, whatever it says itself, a class
+template's at its instance ([class.virtual] 4): "f overrides Base's, which is final (line 9): rename it,
+or remove that `final`". So is a class deriving from one said `final`, or from one whose destructor is
+(its own destructor, written or not, would override that one): "FromSealed derives from Sealed, which is
+final (line 7): remove that `final`, or derive from another class". Specs
+classes/override_of_a_final_function_is_error, classes/deriving_from_a_final_class_is_error.
+
 **A polymorphic class's destructor is virtual** (kovarex, 2026-11-07, Q5; built 2026-11-09). A class with
 a virtual function, its own or a base's, has a virtual destructor, written or not; `virtual ~X()` stays
 allowed and says nothing more. "What is the point of a non-virtual destructor": `delete` through a base

@@ -34,6 +34,83 @@ auto GlobalScope::Impl::overridesVirtual(const Ty* t, const std::string& key, in
   return unknown ? std::nullopt : std::optional<bool>(false);
 }
 
+auto GlobalScope::Impl::finalOverridden(const Ty* t, const std::string& key, const Ty** base, int depth) -> FunctionDecl*
+{
+  if (!t || !t->isKnown() || types.isDependent(t) || t->kind != TyKind::Class || depth > maxNestedLevels)
+    return nullptr;
+  ClassDecl* def = classDefinition(t);
+  std::vector<const Ty*> bases;
+  if (!def || !directBases(t, def, bases))
+    return nullptr;
+  for (const Ty* b : bases)
+  {
+    ClassDecl* bd = b && b->kind == TyKind::Class ? classDefinition(b) : nullptr;
+    if (!bd)
+      continue;
+    // (the key only of a function said final: few are)
+    for (Decl* m : membersRead(bd))
+      if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Final) && !(m->flags & (DF_Static | DF_Constructor)) && m->templateParams.empty() &&
+          overrideKey(static_cast<FunctionDecl*>(m), b) == key)
+      {
+        if (base)
+          *base = b;
+        return static_cast<FunctionDecl*>(m);
+      }
+    if (FunctionDecl* deeper = finalOverridden(b, key, base, depth + 1))
+      return deeper;
+  }
+  return nullptr;
+}
+
+auto GlobalScope::Impl::finalOverrideMessage(FunctionDecl* f, FunctionDecl* closed, const Ty* base, const ParsedFile* file, const std::string& instance)
+  -> std::string
+{
+  const NamePart& n = f->name.last();
+  std::string name = (f->flags & DF_Destructor) ? std::string("the destructor") : n.special ? std::string("this operator") : debugName(n.symbol);
+  return name + (instance.empty() ? std::string() : " in " + instance) + " overrides " + types.toString(base, &symbols) + "'s, which is final (" +
+         placeFrom(file, closed->file, closed->token) + "): " + ((f->flags & DF_Destructor) ? "remove that `final`" : "rename it, or remove that `final`");
+}
+
+auto GlobalScope::Impl::checkFinalBases(const Ty* t, ClassDecl* def, const std::string& instance) -> void
+{
+  if (!t || !def || !def->file || def->file->isImported || def->bases.empty())
+    return;
+  // (a destructor of its own overrides a final one: Walker::checkOverride says so there)
+  bool ownDestructor = false;
+  for (Decl* m : membersRead(def))
+    ownDestructor = ownDestructor || (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Destructor));
+  DeclContext dc;
+  declContextFor(def, dc);
+  Subst s = substFor(t);
+  TypeContext ctx{dc.scope, &dc.params, s.pairs.empty() ? nullptr : &s, def->file->tokens, def->file->text};
+  for (const ClassDecl::Base& b : def->bases)
+  {
+    const Ty* bt = b.type ? convertType(b.type, ctx, 0) : nullptr;
+    std::vector<const Ty*> each; // (`struct overloaded : Ts...`: each element)
+    if (b.isPack && bt && bt->kind == TyKind::Pack)
+      each.assign(bt->args.begin(), bt->args.end());
+    else if (bt)
+      each.push_back(bt);
+    for (const Ty* e : each)
+    {
+      ClassDecl* bd = e && e->kind == TyKind::Class && e->isKnown() && !types.isDependent(e) ? classDefinition(e) : nullptr;
+      if (!bd)
+        continue;
+      Decl* closed = bd->isFinal ? bd : nullptr;
+      if (!closed && !ownDestructor)
+        for (Decl* m : membersRead(bd))
+          if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Destructor) && (m->flags & DF_Final))
+            closed = m;
+      if (!closed)
+        continue;
+      std::string name = !instance.empty() ? instance : def->name.empty() ? std::string("this class") : namePartText(def->name.last());
+      reportCheckerError(def->file, b.type->token, name + " derives from " + types.toString(e, &symbols) +
+                                                       (closed == bd ? ", which is final (" : ", whose destructor is final (") +
+                                                       placeFrom(def->file, closed->file, closed->token) + "): remove that `final`, or derive from another class");
+    }
+  }
+}
+
 auto GlobalScope::Impl::isBaseClass(const Ty* base, const Ty* derived) -> bool
 {
   if (isBaseScope(classScopeOf(base), classScopeOf(derived)))

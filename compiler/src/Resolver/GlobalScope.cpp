@@ -443,6 +443,8 @@ size_t GlobalScope::checkInstanceStaticAsserts(size_t from)
     if (c->file && !c->file->isImported)
     {
       Impl::TokenScope tokenScope(c->file->tokens, c->file->text);
+      if (!c->bases.empty())
+        impl->checkFinalBases(cls, c, impl->types.toString(cls, &impl->symbols));
       // Only an instance with a virtual function, its own or a base's, or a member that says `override` (of
       // nothing, a mixin over a plain base) has anything to check: most (Vector<int>) have neither, and the
       // check's overrideKey types each member (0.7 s of a game build on one thread, B's profile 2026-11-07).
@@ -451,13 +453,23 @@ size_t GlobalScope::checkInstanceStaticAsserts(size_t from)
         anySays = anySays || (m->kind == NodeKind::FunctionDecl && (m->flags & (DF_Override | DF_Final)));
       bool check = anySays || impl->polymorphicClass(cls) == std::optional<bool>(true);
       for (Decl* m : membersRead(c))
-        if (check && m->kind == NodeKind::FunctionDecl && m->templateParams.empty() && !(m->flags & (DF_Static | DF_Constructor)) &&
-            (!(m->flags & DF_Destructor) || (m->flags & DF_Override))) // (a destructor need not say it, Q5, but one that does overrides)
+        if (check && m->kind == NodeKind::FunctionDecl && m->templateParams.empty() && !(m->flags & (DF_Static | DF_Constructor)))
         {
+          std::string key = impl->overrideKey(static_cast<FunctionDecl*>(m), cls);
+          // (none overrides a base's final function, [class.virtual] 4, as Walker::checkOverride says of a class's own)
+          const Ty* finalBase = nullptr;
+          if (FunctionDecl* closed = impl->finalOverridden(cls, key, &finalBase))
+          {
+            impl->reportCheckerError(c->file, m->token,
+                                     impl->finalOverrideMessage(static_cast<FunctionDecl*>(m), closed, finalBase, c->file, impl->types.toString(cls, &impl->symbols)));
+            continue;
+          }
+          if ((m->flags & DF_Destructor) && !(m->flags & DF_Override))
+            continue; // (a destructor need not say it, Q5, but one that does overrides)
           bool says = (m->flags & (DF_Override | DF_Final)) != 0;
           if (says && !(m->flags & DF_Override))
             continue; // (`final` alone may end a new virtual function)
-          std::optional<bool> overrides = impl->overridesVirtual(cls, impl->overrideKey(static_cast<FunctionDecl*>(m), cls), 0);
+          std::optional<bool> overrides = impl->overridesVirtual(cls, key, 0);
           if (!overrides || *overrides == says)
             continue;
           const NamePart& n = static_cast<FunctionDecl*>(m)->name.last();

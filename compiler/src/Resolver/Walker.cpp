@@ -992,13 +992,8 @@ auto GlobalScope::Impl::Walker::checkDefinedOnce(FunctionDecl* f) -> void
     return;
   // (in the same file: its line, which was the text after the place's last ':', the column with
   // --diagnostic-columns and not a line in Visual Studio's form)
-  std::string where = Impl::locationOf(first->file, first->token);
-  if (first->file == file && first->file->tokens && first->token < first->file->tokens->size())
-  {
-    size_t offset = std::min<size_t>((*first->file->tokens)[first->token].offset, first->file->text.size());
-    where = "line " + std::to_string(1 + std::count(first->file->text.begin(), first->file->text.begin() + offset, '\n'));
-  }
-  impl.reportCheckerError(file, f->token, "the function " + impl.namePartText(f->name.last()) + " is defined twice (first at " + where + ")");
+  impl.reportCheckerError(file, f->token, "the function " + impl.namePartText(f->name.last()) + " is defined twice (first at " +
+                                              Impl::placeFrom(file, first->file, first->token) + ")");
 }
 
 auto GlobalScope::Impl::Walker::checkArrayBounds(VariableDecl* v) -> void
@@ -6210,6 +6205,20 @@ auto GlobalScope::Impl::Walker::checkOverride(FunctionDecl* f) -> void
 {
   checkOverrideNoexcept(f);
   checkDestructorRedeclared(f);
+  // A function a base says `final` is overridden by none ([class.virtual] 4), whatever the overrider says
+  // (`override`, `final` or neither). A class template's are its instances' (GlobalScope::checkInstanceStaticAsserts).
+  if (!probing && !retypingElements && file && !file->isImported && !activeSubst && !inGenericTemplate() && f->name.parts.size() == 1 &&
+      f->templateParams.empty() && !(f->flags & (DF_Static | DF_Constructor)))
+    if (Decl* cls = impl.owningClassOf(f); cls && cls->kind == NodeKind::ClassDecl)
+      if (const Ty* self = impl.selfType(cls); self && self->isKnown() && !types.isDependent(self))
+      {
+        const Ty* base = nullptr;
+        if (FunctionDecl* closed = impl.finalOverridden(self, impl.overrideKey(f, self), &base))
+        {
+          impl.reportCheckerError(file, f->token, impl.finalOverrideMessage(f, closed, base, file));
+          return;
+        }
+      }
   // (factorio: a stream deriving from OutStream kept `writeBytes(const char*, int) override` when the
   // library's sizes became unsigned, compiled, and writing to it called the base's pure function)
   // Required `override` (design.md 23b): one that overrides says so, `override` or `final` (Q6); a destructor
@@ -10071,6 +10080,10 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
                                                       " derives from " + (base->name.empty() ? std::string("a") : impl.namePartText(base->name.last()) + ",") +
                                                       " a polymorphic class (a struct is a public value type, design.md \"struct and class\"): make it a class");
       checkDestructorNoexcept(c);
+      if (c->isDefinition && !activeSubst && !probing && !retypingElements && file && !file->isImported && !inGenericTemplate() &&
+          c->templateParams.empty() && !c->bases.empty())
+        if (const Ty* self = impl.selfType(c); self && self->isKnown() && !types.isDependent(self))
+          impl.checkFinalBases(self, c);
       if (c->ownScope)
         scope = c->ownScope;
       else if (c->name.parts.size() > 1)

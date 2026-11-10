@@ -13,6 +13,17 @@
   // [class.virtual]). Null when a base is not known.
   std::optional<bool> overridesVirtual(const Ty* t, const std::string& key, int depth = 0);
 
+  // The function said `final` in a base of class t (directly or deeper) that a member with this override key
+  // (overrideKey) would override, with in base the base declaring it; null for none. Such an override is
+  // ill-formed ([class.virtual] 4).
+  FunctionDecl* finalOverridden(const Ty* t, const std::string& key, const Ty** base = nullptr, int depth = 0);
+  // The error for member f overriding closed, base's final function (finalOverridden), reported in file; instance
+  // names a class template's instance f is a member of.
+  std::string finalOverrideMessage(FunctionDecl* f, FunctionDecl* closed, const Ty* base, const ParsedFile* file, const std::string& instance = {});
+  // No class derives from one said `final`, nor from one whose destructor is (its own, written or not, would override
+  // that): an error at each such base of class t, def its definition; instance names a class template's instance.
+  void checkFinalBases(const Ty* t, ClassDecl* def, const std::string& instance = {});
+
   // Whether a class's bases, as its scope and its bases' scopes link them (once, without
   // arguments), leave one out: a base its arguments decide, or one outside the program.
   bool hasUnlinkedBase(Scope* cls, int depth = 0);

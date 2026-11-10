@@ -327,6 +327,8 @@
 
   // `path:line` of a token, `path:line:column` with --diagnostic-columns (sourceLocation).
   static std::string locationOf(const ParsedFile* file, uint32_t token);
+  // Where token is, cited in an error reported in file from: `line N` in from itself, else as locationOf.
+  static std::string placeFrom(const ParsedFile* from, const ParsedFile* file, uint32_t token);
   // The source text from token first to token last as written, for a fix's "write `NEW`, not `OLD`" (the
   // editor's quick fix replaces OLD where it starts, at the location's column); empty when out of range.
   static std::string spelledTokens(const ParsedFile* file, uint32_t first, uint32_t last);

@@ -2241,6 +2241,14 @@ static std::string placeOf(const ParsedFile* file, uint32_t token)
 
 auto GlobalScope::Impl::locationOf(const ParsedFile* file, uint32_t token) -> std::string { return placeOf(file, token); }
 
+auto GlobalScope::Impl::placeFrom(const ParsedFile* from, const ParsedFile* file, uint32_t token) -> std::string
+{
+  if (!file || file != from || !file->tokens || token >= file->tokens->size())
+    return placeOf(file, token);
+  size_t offset = std::min<size_t>((*file->tokens)[token].offset, file->text.size());
+  return "line " + std::to_string(1 + std::count(file->text.begin(), file->text.begin() + offset, '\n'));
+}
+
 auto GlobalScope::Impl::spelledTokens(const ParsedFile* file, uint32_t first, uint32_t last) -> std::string
 {
   if (!file || !file->tokens || first > last || last >= file->tokens->size())
