@@ -1,0 +1,70 @@
+// spec: a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile server"): a constructor and a function template whose bodies an edit makes trivial are inlined by their kept callers as from scratch (a constructor's caller names its class, not the constructor, so the walks that read the edit do not reach it: it is found by the name its code calls), and the template's instance that every caller now inlines is no longer defined, while one whose address a function takes stays (that function's emission asks for it); then the bodies back as they were (until 2026-11-10 identity gaps: the kept caller still called the constructor, and the instance stayed defined beside the inlined calls)
+//--- step: the program
+class Spot
+{
+public:
+  Spot(int x, int y);
+  int x = 0;
+  int y = 0;
+};
+Spot::Spot(int x, int y) : x(x), y(y) { if (x < 0) this.x = 0; }
+
+template<class T>
+T twice(T v) { T r = v + v; if (r < 0) r = 0; return r; }
+
+int buildSpot() { Spot s(1, 2); return s.x + s.y; }
+int useTwice() { return twice(3); }
+int viaPointer() { i64 (*f)(i64) = &twice<i64>; return int(f(4)); }
+
+int main()
+{
+  std::println(buildSpot(), " ", useTwice(), " ", viaPointer());
+  return 0;
+}
+// expect: 3 6 8
+//--- step: the constructor and the template made trivial
+class Spot
+{
+public:
+  Spot(int x, int y);
+  int x = 0;
+  int y = 0;
+};
+Spot::Spot(int x, int y) : x(x), y(y) {}
+
+template<class T>
+T twice(T v) { return v + v; }
+
+int buildSpot() { Spot s(1, 2); return s.x + s.y; }
+int useTwice() { return twice(3); }
+int viaPointer() { i64 (*f)(i64) = &twice<i64>; return int(f(4)); }
+
+int main()
+{
+  std::println(buildSpot(), " ", useTwice(), " ", viaPointer());
+  return 0;
+}
+// expect: 3 6 8
+//--- step: back as they were
+class Spot
+{
+public:
+  Spot(int x, int y);
+  int x = 0;
+  int y = 0;
+};
+Spot::Spot(int x, int y) : x(x), y(y) { if (x < 0) this.x = 0; }
+
+template<class T>
+T twice(T v) { T r = v + v; if (r < 0) r = 0; return r; }
+
+int buildSpot() { Spot s(1, 2); return s.x + s.y; }
+int useTwice() { return twice(3); }
+int viaPointer() { i64 (*f)(i64) = &twice<i64>; return int(f(4)); }
+
+int main()
+{
+  std::println(buildSpot(), " ", useTwice(), " ", viaPointer());
+  return 0;
+}
+// expect: 3 6 8

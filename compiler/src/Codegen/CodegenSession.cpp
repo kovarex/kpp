@@ -1972,17 +1972,30 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
   // The classes of the members dropped for an old closure whose layouts are polymorphic: a vtable, in the modules that used it,
   // names those members (checked below: a layout kept is a vtable no one asks for its members again).
   std::vector<std::pair<const Ty*, std::string>> polymorphicDropped;
+  // An instance whose own body is the edited one (its template's): emitted again below, or gone when its body is trivial now
+  // (madeTrivial).
+  std::vector<const Shared::Definition*> editedInstances;
   for (unsigned k = 0; k < sh.moduleCount; ++k)
     for (const Shared::Definition& d : sh.definitions[k])
     {
       if (!d.emitted || owners.count(d.owner))
         continue;
       bool forOld = forOldClosure(*d.emitted);
-      if (forOld || std::any_of(d.inlined.begin(), d.inlined.end(), [&](const FunctionDecl* body) { return edited.count(body) != 0 || rechecked.count(body) != 0; }) ||
-          instanceOfEdited(d) || (!droppedLayouts.empty() && usesDropped(d)))
+      bool inlinesEdited = std::any_of(d.inlined.begin(), d.inlined.end(), [&](const FunctionDecl* body) { return edited.count(body) != 0 || rechecked.count(body) != 0; });
+      bool layoutDropped = !droppedLayouts.empty() && usesDropped(d);
+      if (forOld || inlinesEdited || instanceOfEdited(d) || layoutDropped)
       {
         owners.insert(d.owner);
-        if (!forOld)
+        bool ownBodyEdited = false;
+        if (!forOld && !inlinesEdited && !layoutDropped && d.name == d.owner && (!d.emitted->args.empty() || d.emitted->classTy))
+        {
+          Decl* defined = e.global.definitionOf(d.emitted->f, d.emitted->args);
+          const FunctionDecl* written = defined && defined->kind == NodeKind::FunctionDecl ? static_cast<const FunctionDecl*>(defined) : d.emitted->f;
+          ownBodyEdited = edited.count(written) != 0 || edited.count(d.emitted->f) != 0;
+        }
+        if (ownBodyEdited)
+          editedInstances.push_back(&d);
+        else if (!forOld)
           holding[d.emitted->depth].push_back(*d.emitted);
         else
         {
@@ -2016,6 +2029,114 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     sh.finalLayouts.clear();
     sh.finalSizes.clear();
     sh.finalDestruction.clear();
+  }
+  // An edited function that a build from scratch inlines into every caller now (trivialDefinition, trivialConstructor) and that
+  // no kept code inlined before (the definitions' records name what each inlined): the kept code that calls it is emitted again,
+  // to inline it (a constructor's callers name its class, not it, so its walk's readers are not they), and an instance of an
+  // edited template goes, its name released, unless code that cannot be emitted again names it (a caller's emission asks for it
+  // again where the caller still calls it, an address taken). Until 2026-11-10 identity gaps: a kept caller still called a
+  // constructor made trivial, and a template's instance made trivial stayed defined beside the calls that inlined it (the
+  // program the same, its code not a build from scratch's).
+  {
+    struct MadeTrivial
+    {
+      std::string name;
+      const Shared::Definition* instance; // (null: a program function, which is defined in any case)
+      bool kept = false;                  // named where it cannot be emitted again: emitted again itself, as before
+    };
+    std::vector<MadeTrivial> madeTrivial;
+    std::unordered_set<const FunctionDecl*> inlinedBefore;
+    bool inlinedKnown = false;
+    auto wasInlined = [&](const FunctionDecl* f)
+    {
+      if (!inlinedKnown)
+      {
+        for (unsigned k = 0; k < sh.moduleCount; ++k)
+          for (const Shared::Definition& d : sh.definitions[k])
+            inlinedBefore.insert(d.inlined.begin(), d.inlined.end());
+        inlinedKnown = true;
+      }
+      return inlinedBefore.count(f) != 0;
+    };
+    auto trivialNow = [&](FunctionDecl* f, const TemplateArgs& args, const Ty* classTy)
+    {
+      try
+      {
+        if (f->flags & DF_Constructor)
+          return classTy && e.trivialConstructor(f, args, classTy, f) != nullptr;
+        return e.trivialDefinition(f, args, classTy) != nullptr;
+      }
+      catch (Emitter::Unsupported&)
+      {
+        return false;
+      }
+    };
+    for (FunctionDecl* f : replaced)
+      if ((f->flags & DF_Constructor) && e.isProgramFunction(f) && !wasInlined(f))
+        if (Decl* cls = e.global.owningClass(f); cls && cls->kind == NodeKind::ClassDecl && cls->templateParams.empty())
+          if (const Ty* classTy = e.canonicalClass(e.types.classType(cls, {}), f); trivialNow(f, {}, classTy))
+            madeTrivial.push_back({e.functionName(f, {}, nullptr), nullptr});
+    for (const Shared::Definition* d : editedInstances)
+    {
+      Decl* defined = e.global.definitionOf(d->emitted->f, d->emitted->args);
+      const FunctionDecl* written = defined && defined->kind == NodeKind::FunctionDecl ? static_cast<const FunctionDecl*>(defined) : d->emitted->f;
+      if (!(d->emitted->f->flags & DF_Virtual) && !wasInlined(written) && trivialNow(d->emitted->f, d->emitted->args, d->emitted->classTy))
+        madeTrivial.push_back({d->name, d});
+      else
+        holding[d->emitted->depth].push_back(*d->emitted);
+    }
+    if (!madeTrivial.empty())
+    {
+      std::unordered_map<std::string_view, size_t> byName;
+      for (size_t i = 0; i < madeTrivial.size(); ++i)
+        byName.emplace(madeTrivial[i].name, i);
+      for (unsigned k = 0; k < sh.moduleCount; ++k)
+        for (const Shared::Definition& d : sh.definitions[k])
+        {
+          if (owners.count(d.owner))
+            continue;
+          for (auto [at, length] : d.names)
+            if (auto it = byName.find(std::string_view(d.text).substr(at, length)); it != byName.end())
+            {
+              if (d.emitted)
+              {
+                owners.insert(d.owner);
+                holding[d.emitted->depth].push_back(*d.emitted);
+                break;
+              }
+              madeTrivial[it->second].kept = true;
+            }
+        }
+      // (a text that is no function's names it otherwise than in a declaration: a vtable, a static local's or a global's
+      // initializer)
+      auto namedIn = [](std::string_view text, std::string_view name)
+      {
+        for (size_t at = text.find(name); at != std::string_view::npos; at = text.find(name, at + 1))
+        {
+          size_t line = text.rfind('\n', at);
+          line = line == std::string_view::npos ? 0 : line + 1;
+          if (text.substr(line, 8) != "declare ")
+            return true;
+        }
+        return false;
+      };
+      for (MadeTrivial& m : madeTrivial)
+        if (m.instance && !m.kept)
+        {
+          m.kept = namedIn(sh.shared.text, m.name) || namedIn(sh.decls.text, m.name);
+          for (unsigned k = 0; !m.kept && k < sh.moduleCount; ++k)
+          {
+            m.kept = namedIn(sh.moduleDecls[k].text, m.name);
+            for (const Shared::OwnedEntry& o : sh.ownedEntries[k])
+              m.kept = m.kept || namedIn(o.text, m.name);
+          }
+        }
+      for (const MadeTrivial& m : madeTrivial)
+        if (m.instance && m.kept)
+          holding[m.instance->emitted->depth].push_back(*m.instance->emitted);
+        else if (m.instance)
+          releaseName(m.name);
+    }
   }
   // Per module, the texts dropped (sorted) and how many definitions and owned entries stayed: the
   // ones emitted now follow those, and a module whose new texts are the dropped ones again (an
