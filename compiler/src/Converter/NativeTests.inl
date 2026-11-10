@@ -218,21 +218,67 @@ static std::string withSuiteHeadersResolved(std::string text, Counts& counts)
         (depends ? h.depends : h.tags).push_back(item);
       from = comma + 1;
     }
-    // (the mark, its `;`, and its line when nothing else stands on it)
-    size_t removeEnd = end + 1;
-    size_t semicolon = text.find_first_not_of(" \t", removeEnd);
-    if (semicolon != std::string::npos && text[semicolon] == ';')
-      removeEnd = semicolon + 1;
+    // (the mark, its `;`, and its line when nothing else stands on it. With --convert-marks the
+    // macro's expansion stands between `/*kpp:if ID*/` and `/*kpp:endif ID*/`, so the `;` comes after
+    // the endif: the marks are looked past. A line that holds nothing else but marks that open and
+    // close on it, a group left empty, goes whole, in every configuration alike.)
+    auto skipMarks = [&](size_t from) -> size_t
+    {
+      for (;;)
+      {
+        from = text.find_first_not_of(" \t", from);
+        if (from == std::string::npos || text.compare(from, 6, "/*kpp:") != 0)
+          return from;
+        size_t close = text.find("*/", from);
+        if (close == std::string::npos)
+          return from;
+        from = close + 2;
+      }
+    };
+    size_t semicolon = skipMarks(end + 1);
+    bool hasSemicolon = semicolon != std::string::npos && text[semicolon] == ';';
     size_t lineStart = text.rfind('\n', at);
     lineStart = lineStart == std::string::npos ? 0 : lineStart + 1;
-    size_t lineEnd = text.find('\n', removeEnd);
-    bool alone = text.find_first_not_of(" \t", lineStart) == at &&
-                 (lineEnd == std::string::npos ? text.find_first_not_of(" \t\r", removeEnd) == std::string::npos
-                                               : text.find_first_not_of(" \t\r", removeEnd) == lineEnd);
-    if (alone)
+    size_t lineEnd = text.find('\n', hasSemicolon ? semicolon : end);
+    size_t lineStop = lineEnd == std::string::npos ? text.size() : lineEnd;
+    // (the rest of the line without the mark and its `;`: only blanks and marks, each if closed)
+    std::string rest = hasSemicolon ? text.substr(lineStart, at - lineStart) + text.substr(end + 1, semicolon - end - 1) +
+                                        text.substr(semicolon + 1, lineStop - semicolon - 1)
+                                    : text.substr(lineStart, at - lineStart) + text.substr(end + 1, lineStop - end - 1);
+    std::multiset<std::string> opened, closed;
+    bool onlyMarks = true;
+    for (size_t r = 0; r < rest.size();)
+    {
+      if (rest[r] == ' ' || rest[r] == '\t' || rest[r] == '\r')
+        ++r;
+      else if (rest.compare(r, 6, "/*kpp:") == 0 && rest.find("*/", r) != std::string::npos)
+      {
+        size_t close = rest.find("*/", r);
+        std::string mark = rest.substr(r + 6, close - r - 6);
+        if (mark.compare(0, 3, "if ") == 0)
+          opened.insert(mark.substr(3));
+        else if (mark.compare(0, 6, "endif ") == 0)
+          closed.insert(mark.substr(6));
+        else
+          onlyMarks = false;
+        r = close + 2;
+      }
+      else
+      {
+        onlyMarks = false;
+        break;
+      }
+    }
+    if (onlyMarks && opened == closed)
       text.erase(lineStart, (lineEnd == std::string::npos ? text.size() : lineEnd + 1) - lineStart);
     else
-      text.erase(at, removeEnd - at);
+    {
+      // (the `;` first: erasing the mark before it would move it)
+      if (hasSemicolon)
+        text.erase(semicolon, 1);
+      text.erase(at, end + 1 - at);
+    }
+    bool alone = onlyMarks && opened == closed;
     counts.add(depends ? "suite dependencies written in the suite's header" : "suite modpacks written as the suite's tags");
     at = alone ? lineStart : at;
   }
