@@ -1922,6 +1922,8 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
               for (const Ty* a : args)
                 if (!spliceIfPack(a, spliced))
                   spliced.push_back(a);
+              if (!types.isDependent(types.classType(sub->decl, Span<const Ty*>{spliced.data(), uint32_t(spliced.size())})))
+                appendDefaultPatterns(sub->decl, spliced, depth + 1); // (its defaults for the parameters left: as substitute's)
               return resolveSpecialization(types.classType(sub->decl, Span<const Ty*>{spliced.data(), uint32_t(spliced.size())}), depth + 1);
             }
           return types.param(l.decl, span);
@@ -3927,6 +3929,10 @@ auto GlobalScope::Impl::substitute(const Ty* t, const Subst& s, int depth) -> co
           for (const Ty* a : t->args)
             if (const Ty* sub = substitute(a, s, depth); !spliceIfPack(sub, args))
               args.push_back(sub);
+          // (the template's defaults for the parameters the written arguments leave: `TT<int>` with TT = Two of `template<class T,
+          // class U = char>` is Two<int, char> (C++17's [temp.arg.template] 3); until 2026-11-10 Two<int>, which nothing matched)
+          if (!types.isDependent(types.classType(r->decl, Span<const Ty*>{args.data(), uint32_t(args.size())})))
+            appendDefaultPatterns(r->decl, args, depth + 1);
           const Ty* applied = resolveSpecialization(types.classType(r->decl, Span<const Ty*>{args.data(), uint32_t(args.size())}), depth + 1);
           return types.qualified(applied, t->isConst, t->isVolatile);
         }

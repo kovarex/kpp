@@ -1,0 +1,27 @@
+// spec: a template template parameter of one parameter binds a class template whose further parameters have defaults, and the argument it applies to fills them ([temp.arg.template] 3, C++17): `oneParam(TT<int>*)` of `template<template<typename> class TT>` given a `Two<int>*`, Two being `template<typename T, typename U = char>`, deduces TT = Two; a pack of parameters binds any (clang's output)
+// found by D's deduction battery against clang (2026-11-10): "a call that did not resolve", as TT<int> with TT = Two was Two<int> without its default, which no Two<int, char>* converted to
+template<typename T, typename U = char>
+struct Two
+{
+  T a;
+  U b;
+};
+template<typename... Ts>
+struct Many
+{
+};
+template<template<typename> class TT>
+int oneParam(TT<int>*) { return 1; }
+template<template<typename...> class TT>
+int anyParams(TT<int, char>*) { return 2; }
+template<template<typename> class TT>
+int sizeOf(const TT<short>& x) { return int(sizeof(x)); }
+
+int main()
+{
+  Two<int>* two = nullptr;
+  Many<int, char>* many = nullptr;
+  Two<short> s{1, 'c'};
+  std::println(oneParam(two), " ", anyParams(many), " ", sizeOf(s));
+  return 0;
+}
