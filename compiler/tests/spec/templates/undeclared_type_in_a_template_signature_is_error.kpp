@@ -1,0 +1,21 @@
+// spec: a type name nothing declares in a function template's signature (its result, a parameter, a template argument there; a class template's member function's too) is an error where it is written, used or not, as in C++'s first phase ([temp.res]); until 2026-11-10 only an instance's walk said, and of its signature nothing: the call's type was unknown and codegen's error was about what took the call's result ("a call to std::println with 2 arguments, which takes 1")
+// error: undeclared_type_in_a_template_signature_is_error.kpp:10: error: 'Undeclared' is not declared
+// error: undeclared_type_in_a_template_signature_is_error.kpp:11: error: 'Missing' is not declared
+// error: undeclared_type_in_a_template_signature_is_error.kpp:12: error: 'Absent' is not declared
+// error: undeclared_type_in_a_template_signature_is_error.kpp:15: error: 'Nowhere' is not declared
+template<class T> struct Box
+{
+  T value;
+};
+template<class T> Box<Undeclared> wrap(T x) { return {}; }
+template<class T> int take(T x, Missing y) { return 1; }
+template<class T> Absent unused(T x) { return {}; }
+template<class T> struct Holder
+{
+  Nowhere get() const { return {}; }
+};
+int main()
+{
+  std::println(wrap(1).value);
+  return 0;
+}

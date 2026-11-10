@@ -142,6 +142,24 @@ builds win less unless machine code is cached per function.
   2.5)` of `template<class T> f(T, T)` takes another overload or has none. The first deduction stood
   until then and the other arguments converted to it (`larger(1, 2.5)` gave 2; spec
   templates/parameter_deduced_twice_must_agree).
+- A call no candidate takes, a function template among them, is an error naming each candidate's
+  reason (2026-11-10), as C++'s "no matching function": a template whose constraints the arguments
+  it deduces do not satisfy, one whose signature does not form with them (SFINAE, above), a plain
+  function an argument does not convert for: "no make takes (int32): with T = int32, its result
+  type does not form (line 1)". It was codegen's "a call that did not resolve", or an error about
+  what took the call's result ("a call to std::println with 2 arguments, which takes 1"). Only where
+  every candidate's reason is sure (no pack, Text, C ellipsis, explicit template argument or
+  argument of a type not known); a deduction conflict has its own error, above. Specs
+  templates/call_whose_candidates_are_left_out_is_error and
+  templates/call_whose_candidates_are_left_out_in_an_instance_is_error.
+- A type name nothing declares in a function template's signature (its result, its parameters) is
+  an error in the template's own walk, used or not, as in C++'s first phase (2026-11-10, spec
+  templates/undeclared_type_in_a_template_signature_is_error); a value's name already was. Until
+  then only an instance said, and of its signature nothing: the call's type was unknown and
+  codegen's error was about what took it. Elsewhere in a template (a body, a class template's data
+  members) a type name stays its instances' to judge until the converted game names none there:
+  cxxopts' stringstream_parser names a std::StringStream, which kpp's stdlib does not have, in a
+  template nothing instantiates.
 - Partial specializations (2026-11-05): an array type is a template argument (`Kind<int[3]>`,
   `Kind<T[N]>`, `Kind<T[]>`, `Kind<T[N][M]>`; `Take<table[2]>` stays an index for a constant
   parameter, as `Frac<gcd(N, M)>` stays a call), so a partial specialization on arrays matches

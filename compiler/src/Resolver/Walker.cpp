@@ -820,6 +820,49 @@ auto GlobalScope::Impl::Walker::reportDeductionConflict(Decl* primary, const std
   reportCheck(token, "no " + called + " takes (" + list + "): " + why + " ([temp.deduct.call])");
 }
 
+auto GlobalScope::Impl::Walker::reportTemplatesRejected(Decl* primary, const std::vector<Entry>* overloads, const std::vector<const Ty*>& argTypes,
+                                                      Span<Expr*> callArgs, const NamePart& name, const Subst* classSubst, const Ty* objectTy,
+                                                      uint32_t token) -> void
+{
+  // (as reportDeductionConflict: only where C++ has the error surely, every candidate's reason one candidateRejection
+  // knows; any other is left as it was, and a set of plain functions only is reportNoMatchingFunction's. Not where an
+  // argument is a brace list, names functions without a target or expands a pack, as there.)
+  if (probing || !file || file->isImported || (inGenericTemplate() && !activeSubst) || name.hasTemplateArgs || argTypes.size() != callArgs.size())
+    return;
+  for (Expr* a : callArgs)
+    if (!a || a->kind == NodeKind::BraceInitExpr || namesFunctionsWithoutTarget(a) ||
+        (a->kind == NodeKind::UnaryExpr && !static_cast<UnaryExpr*>(a)->isKeyword && static_cast<UnaryExpr*>(a)->postfix &&
+         P(static_cast<UnaryExpr*>(a)->op) == P::Ellipsis))
+      return;
+  std::vector<FunctionDecl*> candidates;
+  if (overloads)
+  {
+    for (const Entry& e : *overloads)
+      if (e.decl->kind == NodeKind::FunctionDecl)
+        candidates.push_back(static_cast<FunctionDecl*>(e.decl));
+  }
+  else if (primary && primary->kind == NodeKind::FunctionDecl)
+    candidates.push_back(static_cast<FunctionDecl*>(primary));
+  if (std::none_of(candidates.begin(), candidates.end(), [](FunctionDecl* f) { return !f->templateParams.empty(); }))
+    return;
+  std::string why;
+  for (FunctionDecl* f : candidates)
+  {
+    std::string one = impl.candidateRejection(f, argTypes, classSubst);
+    if (one.empty())
+      return;
+    why += (why.empty() ? "" : "; ") + one + " (" + Impl::placeFrom(file, f->file, f->token) + ")";
+  }
+  std::string list;
+  for (const Ty* a : argTypes)
+    list += (list.empty() ? "" : ", ") + types.toString(types.stripRef(a), &symbols);
+  std::string called = name.symbol == UINT32_MAX ? std::string("the function") : std::string(symbols.name(name.symbol));
+  const Ty* o = objectTy ? types.unqualified(types.stripRef(objectTy)) : nullptr;
+  if (o && o->kind == TyKind::Class && o->isKnown() && !types.isDependent(o))
+    called = types.toString(o, &symbols) + "::" + called;
+  reportCheck(token, "no " + called + " takes (" + list + "): " + why);
+}
+
 auto GlobalScope::Impl::Walker::reportNoMatchingMember(Decl* primary, const std::vector<Entry>* overloads, const Ty* objectTy, uint32_t symbol,
                                                      const std::vector<const Ty*>& argTypes, uint32_t token) -> void
 {
@@ -1691,8 +1734,14 @@ auto GlobalScope::Impl::Walker::resolveTypeName(NamedType* t) -> void
       countUnresolved(t->name, t->token);
       // A type name nothing declares is an error where it is written, as an undeclared name is
       // (not `class X` in a template argument, which declares X; not a value trait, isConst<T>,
-      // written where a type may be; not in a template's own walk: its instances say).
-      if (!t->elaborated && !impl.boolTraitPart(t->name, scope, &locals, 0) && (!inGenericTemplate() || inSpecializationPattern || undeclaredSink))
+      // written where a type may be). In a template's own walk only in a function template's
+      // signature (templateSignature), as C++'s first phase has it and as a value's name is
+      // (reportUndeclared: not in a class with a base its parameters decide, whose members only the
+      // instance knows; not a member of a class a type names, `decltype(t.make())::made`, the member
+      // lookup's): the rest its instances say, until the converted game names none (cxxopts'
+      // stringstream_parser names a std::StringStream, in a template nothing instantiates).
+      if (!t->elaborated && !impl.boolTraitPart(t->name, scope, &locals, 0) &&
+          (!inGenericTemplate() || inSpecializationPattern || undeclaredSink || (templateSignature && !t->name.typeQualifier)))
         reportUndeclared(t->name, t->token);
     }
   }
@@ -7099,6 +7148,7 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
             reportNoMatchingFunction(d, l.overloads, n->name, argTypes, c->args, classSubst, implicitObject ? types.lref(implicitObject) : nullptr,
                                      c->token); // `k(&c)` with k(int*) and k(double*)
           reportDeductionConflict(d, l.overloads, argTypes, n->name.last(), nullptr, c->token); // `refConv(1, 2.0)` for `refConv(const T&, T)`
+          reportTemplatesRejected(d, l.overloads, argTypes, c->args, n->name.last(), classSubst, nullptr, c->token); // `make(1)` for `make(T) -> typename T::Value`
         }
         else if (auto* only = static_cast<FunctionDecl*>(d); !checkArgumentCount(&only->params, impl.declaredTypeOf(d, classSubst, 0), (only->flags & DF_Variadic) != 0, c->args, c->token,
                                                                                     impl.namePartText(n->name.last())))
@@ -7291,6 +7341,7 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
           if (!constObjectError) // (`items.push_back(1)` on a const Vector is that error alone, not "no overload" too)
             reportNoMatchingMember(r.decl, r.overloads, object, symbol, argTypes, m->token); // `s.find("x", 0, 5)`: String has no find of three
           reportDeductionConflict(r.decl, r.overloads, argTypes, last, object, m->token); // `box.both(1, 'c')` for `both(T, T)`
+          reportTemplatesRejected(r.decl, r.overloads, argTypes, c->args, last, &r.subst, object, m->token); // `box.wide(1)` for `wide(T) requires (sizeof(T) > 4)`
         }
         else if (auto* only = static_cast<FunctionDecl*>(r.decl);
                  !checkArgumentCount(&only->params, impl.declaredTypeOf(r.decl, &r.subst, 0), (only->flags & DF_Variadic) != 0, c->args, c->token, impl.namePartText(last)))
@@ -10135,6 +10186,8 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
         impl.recordInstanceSubst(f, *activeSubst); // the classes of its body see these arguments
       Scope* saved = scope;
       const Ty* savedThis = thisType;
+      bool savedSignature = templateSignature;
+      templateSignature = true;
       ++declaredTypes;
       walkType(f->returnType);
       --declaredTypes;
@@ -10162,6 +10215,7 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
         checkTypeNamesNoVariable(static_cast<ParamDecl*>(p)->type, p->token); // (a function's own: not a function type's, `gcd(P1::num, P2::num)`, which may be a call)
       }
       walkType(f->trailingReturn);
+      templateSignature = savedSignature;
       walkExpr(f->requiresClause);
       walkExpr(f->condition);
       checkDefinedOnce(f);

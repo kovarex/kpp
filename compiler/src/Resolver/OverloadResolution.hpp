@@ -436,6 +436,14 @@
            !static_cast<const FunctionDecl*>(d)->body;
   }
 
+  // Why f is no candidate for a call with these arguments (classSubst: its class's), as chooseAmong leaves it out: their
+  // count, "it takes 2 arguments"; for a plain function an argument its parameter does not take, "argument 1 (int32)
+  // does not convert to char*"; for a function template that deduces every parameter and takes each argument, its
+  // constraints ([temp.constr.constr]) or its signature not forming under the deduced arguments ([temp.deduct] 8),
+  // "with T = int32, its constraints are not satisfied", "with T = int32, its result type does not form". Empty for
+  // any other reason, or one not known (a pack, a Text or C ellipsis, an argument whose type is not known or a brace
+  // list).
+  std::string candidateRejection(FunctionDecl* f, const std::vector<const Ty*>& argTypes, const Subst* classSubst);
   FunctionDecl* chooseAmong(const std::vector<FunctionDecl*>& candidates, const std::vector<const Ty*>& argTypes, const Subst* classSubst, const Ty* objectTy, bool& ambiguous, const std::function<bool(FunctionDecl*, Subst&)>* bindExplicit = nullptr, const std::vector<bool>* nullConstants = nullptr, std::vector<FunctionDecl*>* tiedOut = nullptr, const std::vector<const Ty*>* bitFieldPromotions = nullptr);
 
   // C++ ranks a class's member operator and the free ones together ([over.match.oper]); the checker

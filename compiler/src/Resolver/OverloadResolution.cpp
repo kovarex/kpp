@@ -2904,6 +2904,82 @@ auto GlobalScope::Impl::namesDependentMember(const Ty* t, int depth) -> bool
   return false;
 }
 
+auto GlobalScope::Impl::candidateRejection(FunctionDecl* f, const std::vector<const Ty*>& argTypes, const Subst* classSubst) -> std::string
+{
+  // (chooseAmong's steps for this one candidate)
+  if (isFunctionSpecialization(f) || (f->flags & DF_Variadic) || namesTextLast(f))
+    return {};
+  for (const Ty* at : argTypes)
+    if (!at || !at->isKnown() || types.isDependent(at) || mentionsUnknown(at) || at->isBraceList() || at->kind == TyKind::Pack)
+      return {};
+  bool plain = f->templateParams.empty();
+  if (plain && f->isTemplate)
+    return {}; // (an explicit specialization's: its template is the candidate)
+  for (Decl* tp : f->templateParams)
+    if (static_cast<TemplateParamDecl*>(tp)->isPack)
+      return {};
+  size_t required = 0;
+  for (Decl* p : f->params)
+  {
+    if (static_cast<ParamDecl*>(p)->isPack)
+      return {};
+    required += static_cast<ParamDecl*>(p)->defaultValue ? 0 : 1;
+  }
+  if (argTypes.size() < required || argTypes.size() > f->params.size())
+    return required == f->params.size() ? "it takes " + std::to_string(required) + (required == 1 ? " argument" : " arguments")
+                                         : "it takes " + std::to_string(required) + " to " + std::to_string(f->params.size()) + " arguments";
+  const Ty* ft = declaredTypeOf(f, classSubst, 0);
+  if (!ft || ft->kind != TyKind::Function)
+    return {};
+  if (plain)
+  {
+    for (size_t i = 0; i < argTypes.size() && i < ft->args.size(); ++i)
+    {
+      const Ty* pt = ft->args[i];
+      if (!pt || !pt->isKnown() || types.isDependent(pt) || mentionsUnknown(pt))
+        return {};
+      if (conversionRank(argTypes[i], pt) >= NotViable)
+        return "argument " + std::to_string(i + 1) + " (" + types.toString(types.stripRef(argTypes[i]), &symbols) + ") does not convert to " +
+               types.toString(pt, &symbols);
+    }
+    return {};
+  }
+  Subst deduced = classSubst ? *classSubst : Subst{};
+  size_t givenCount = deduced.pairs.size();
+  deduceCall(f, ft, argTypes, deduced);
+  if (!deductionsAgree(f, ft, argTypes, deduced, givenCount) || !fillDefaultTemplateArgs(f, deduced))
+    return {};
+  std::string with;
+  for (Decl* tp : f->templateParams)
+  {
+    const Ty* t = deduced.find(tp);
+    if (!t || !t->isKnown() || types.isDependent(t) || mentionsUnknown(t))
+      return {};
+    uint32_t name = static_cast<TemplateParamDecl*>(tp)->name;
+    with += (with.empty() ? "" : ", ") + std::string(name == UINT32_MAX ? "?" : symbols.name(name)) + " = " + types.toString(t, &symbols);
+  }
+  for (size_t i = 0; i < argTypes.size() && i < ft->args.size(); ++i)
+  {
+    const Ty* pt = substitute(ft->args[i], deduced);
+    if (!pt || !pt->isKnown() || dependsOn(pt, f->templateParams) || conversionRank(argTypes[i], pt) >= NotViable)
+      return {}; // (an argument its parameter does not take: another reason)
+  }
+  if (!constraintsHold(f, deduced))
+    return "with " + with + ", its constraints are not satisfied";
+  if (namesDependentMember(ft) || signatureHasDecltype(f))
+    if (const Ty* typed = declaredTypeOf(f, &deduced, 0); typed && typed->kind == TyKind::Function)
+    {
+      if (!typed->inner || mentionsUnknown(typed->inner) || namesMissingMember(typed->inner))
+        return "with " + with + ", its result type does not form";
+      for (size_t i = 0; i < typed->args.size(); ++i)
+        if (mentionsUnknown(typed->args[i]) || namesMissingMember(typed->args[i]))
+          return "with " + with + ", the type of its parameter " + std::to_string(i + 1) + " does not form";
+      if (mentionsUnknown(typed) || namesMissingMember(typed))
+        return "with " + with + ", its type does not form";
+    }
+  return {};
+}
+
 auto GlobalScope::Impl::chooseAmong(const std::vector<FunctionDecl*>& candidates, const std::vector<const Ty*>& argTypes, const Subst* classSubst, const Ty* objectTy, bool& ambiguous, const std::function<bool(FunctionDecl*, Subst&)>* bindExplicit, const std::vector<bool>* nullConstants, std::vector<FunctionDecl*>* tiedOut, const std::vector<const Ty*>* bitFieldPromotions) -> FunctionDecl*
 {
   bool argsConcrete = true;

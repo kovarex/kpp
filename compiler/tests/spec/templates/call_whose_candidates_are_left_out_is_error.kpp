@@ -1,0 +1,24 @@
+// spec: a call no candidate takes, a function template among them, is an error naming each candidate's reason, as C++'s "no matching function" ([over.match.viable]): a template whose constraints the arguments it deduces do not satisfy ([temp.constr.constr]), one whose result type does not form with them (`typename T::Value` or `decltype(x.size())` for an int, [temp.deduct] 8), a plain function an argument does not convert for; a member function template's error names its class (until 2026-11-10 codegen's "a call that did not resolve", or an error about what took the call's result); a call another candidate takes is no error
+// error: call_whose_candidates_are_left_out_is_error.kpp:20: error: no Box::wide takes (int32): with T = int32, its constraints are not satisfied (line 7)
+// error: call_whose_candidates_are_left_out_is_error.kpp:21: error: no pick takes (int32): with T = int32, its result type does not form (line 9); with T = int32, its result type does not form (line 10)
+// error: call_whose_candidates_are_left_out_is_error.kpp:22: error: no either takes (int32): with T = int32, its constraints are not satisfied (line 11); argument 1 (int32) does not convert to char* (line 12)
+struct Box
+{
+  template<class T> int wide(T x) requires (sizeof(T) > 4) { return 1; }
+};
+template<class T> auto pick(T x) -> typename T::Value { return {}; }
+template<class T> auto pick(T x) -> decltype(x.size()) { return 0; }
+template<class T> int either(T x) requires (sizeof(T) > 8) { return 1; }
+int either(char* p) { return 2; }
+template<class T> int good(T x) requires (sizeof(T) > 8) { return 1; }
+template<class T> int good(T x) { return 2; }
+int main()
+{
+  Box box;
+  double wideEnough = 3;
+  int ok = box.wide(wideEnough) + good(1);
+  int a = box.wide(1);
+  int b = pick(1);
+  int c = either(1);
+  return ok + a + b + c;
+}

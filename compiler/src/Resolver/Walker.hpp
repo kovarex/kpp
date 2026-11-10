@@ -78,6 +78,10 @@
     // the class has an operator for it, since a requirement holds exactly when it is valid.
     bool probing = false;
     bool inSpecializationPattern = false; // a class specialization's arguments, which no instance walks again
+    // A function's result and parameters, walked before its body: an instance's walk of them reports into no body
+    // (reportInInstance), so a template's own walk reports a type name nothing declares there (until 2026-11-10 none
+    // did: `template<class T> Box<Undeclared> wrap(T)` called gave codegen's error about what took its result).
+    bool templateSignature = false;
     // A probe's names that nothing declares, kept for the walker that made it (a requires-expression in a template's own
     // walk or in a function that is no template), which reports them: in a requirement that depends on nothing they are
     // an error as anywhere, never a requirement false (C++'s two phases; until 2026-11-10 silently false, or true for a
@@ -238,6 +242,13 @@
     // whose class names the function in the error (null for a function's call).
     void reportDeductionConflict(Decl* primary, const std::vector<Entry>* overloads, const std::vector<const Ty*>& argTypes, const NamePart& name,
                                  const Ty* objectTy, uint32_t token);
+    // A call no candidate takes, a function template among them, each for a reason Impl::candidateRejection knows: a
+    // template that deduces its parameters from the arguments and is then left out for its constraints or for its
+    // signature, which does not form with them, a plain function for an argument it does not take. "no make takes
+    // (int32): with T = int32, its result type does not form (line 1)", where it was codegen's "a call that did not
+    // resolve", or an error about what took the call's result ("a call to std::println with 2 arguments").
+    void reportTemplatesRejected(Decl* primary, const std::vector<Entry>* overloads, const std::vector<const Ty*>& argTypes, Span<Expr*> callArgs,
+                                 const NamePart& name, const Subst* classSubst, const Ty* objectTy, uint32_t token);
     void reportNoMatchingMember(Decl* primary, const std::vector<Entry>* overloads, const Ty* objectTy, uint32_t symbol,
                                 const std::vector<const Ty*>& argTypes, uint32_t token);
     // The same for a function's call, by the name written (C++'s "no matching function for call"): `k(&c)` with
