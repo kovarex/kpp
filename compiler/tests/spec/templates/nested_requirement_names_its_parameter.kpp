@@ -1,0 +1,12 @@
+// spec: a nested requirement names the requires-expression's own parameters, as unevaluated operands ([expr.prim.req.general] 5): `requires(T t) { requires sizeof(t) > 1; }` holds for long and not for char, `requires sizeof(t) > 100` for neither, and `requires(T a, T b) { requires sizeof(decltype(a + b)) == sizeof(T); }` holds for long, not for char, which promotes (`true false false true false`, clang's)
+// found by D reviewing concepts (2026-11-09): the nested requirement was evaluated with the concept's parameters in scope but not the requires-expression's, so it was "a static assertion whose condition the compiler cannot evaluate yet" (kpp 0.2.61 took it silently true)
+template<class T> concept NestedOk = requires(T t) { requires sizeof(t) > 1; };
+template<class T> concept Big = requires(T t) { requires sizeof(t) > 100; };
+template<class T> concept NoPromotion = requires(T a, T b) { requires sizeof(decltype(a + b)) == sizeof(T); };
+static_assert(NestedOk<long> && !NestedOk<char> && !Big<long> && NoPromotion<long> && !NoPromotion<char>);
+
+int main()
+{
+  std::println(NestedOk<long>, " ", NestedOk<char>, " ", Big<long>, " ", NoPromotion<long>, " ", NoPromotion<char>);
+  return 0;
+}

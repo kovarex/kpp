@@ -189,8 +189,9 @@
   // expression: a boolean variable template (`hasBegin<C>`), a comparison of deduced constants
   // (`N1 * D2 <= N2 * D1`). nullopt when it cannot be told (an argument still dependent, an
   // expression the constant evaluation does not know). f is the function (or the concept) whose
-  // template parameters s binds.
-  std::optional<bool> constraintValue(Expr* e, Decl* f, const Subst& s, int depth = 0);
+  // template parameters s binds. local: the parameters of the requires-expression a nested requirement is
+  // in (`requires(T t) { requires sizeof(t) > 1; }`), in scope for it, unevaluated operands as C++ allows.
+  std::optional<bool> constraintValue(Expr* e, Decl* f, const Subst& s, int depth = 0, Span<Decl*> local = {});
 
   // The primary of the variable template a lookup found (its declaration without written
   // arguments), or null when the name is no variable template.

@@ -1620,19 +1620,19 @@ auto GlobalScope::Impl::pushFunctionParams(Decl* d, LocalStack& own) -> void
         own.push(static_cast<ParamDecl*>(p)->name, p);
 }
 
-auto GlobalScope::Impl::constraintValue(Expr* e, Decl* f, const Subst& s, int depth) -> std::optional<bool>
+auto GlobalScope::Impl::constraintValue(Expr* e, Decl* f, const Subst& s, int depth, Span<Decl*> local) -> std::optional<bool>
 {
   if (!e || depth > 16)
     return std::nullopt;
   switch (e->kind)
   {
-    case NodeKind::ParenExpr: return constraintValue(static_cast<ParenExpr*>(e)->inner, f, s, depth + 1);
+    case NodeKind::ParenExpr: return constraintValue(static_cast<ParenExpr*>(e)->inner, f, s, depth + 1, local);
     case NodeKind::UnaryExpr:
     {
       auto* u = static_cast<UnaryExpr*>(e);
       if (u->isKeyword ? Kw(u->op) == Kw::not_ : P(u->op) == P::Bang)
       {
-        std::optional<bool> v = constraintValue(u->operand, f, s, depth + 1);
+        std::optional<bool> v = constraintValue(u->operand, f, s, depth + 1, local);
         return v ? std::optional<bool>(!*v) : std::nullopt;
       }
       break;
@@ -1644,7 +1644,7 @@ auto GlobalScope::Impl::constraintValue(Expr* e, Decl* f, const Subst& s, int de
       bool orOp = b->isKeyword ? Kw(b->op) == Kw::or_ : P(b->op) == P::OrOr;
       if (!andOp && !orOp)
         break;
-      std::optional<bool> l = constraintValue(b->lhs, f, s, depth + 1), r = constraintValue(b->rhs, f, s, depth + 1);
+      std::optional<bool> l = constraintValue(b->lhs, f, s, depth + 1, local), r = constraintValue(b->rhs, f, s, depth + 1, local);
       if (andOp)
         return (l && !*l) || (r && !*r) ? std::optional<bool>(false) : (l && r ? std::optional<bool>(true) : std::nullopt);
       return (l && *l) || (r && *r) ? std::optional<bool>(true) : (l && r ? std::optional<bool>(false) : std::nullopt);
@@ -1658,6 +1658,9 @@ auto GlobalScope::Impl::constraintValue(Expr* e, Decl* f, const Subst& s, int de
   LocalStack own;
   pushEnclosingTemplateParams(f, own);
   pushFunctionParams(f, own);
+  for (Decl* p : local) // (the requires-expression's own parameters: `sizeof(t)` of `requires(T t)`)
+    if (p && p->kind == NodeKind::ParamDecl)
+      own.push(static_cast<ParamDecl*>(p)->name, p);
   TypeContext ctx{lexicalScopeOf(f), &own, &s, f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
   if (e->kind == NodeKind::NameExpr)
   {
@@ -1945,7 +1948,7 @@ auto GlobalScope::Impl::requirementsExtraHold(RequiresExpr* r, const std::vector
   }
   for (Expr* e : r->nested)
   {
-    std::optional<bool> v = constraintValue(e, owner, s, 1);
+    std::optional<bool> v = constraintValue(e, owner, s, 1, r->params);
     if (v && !*v)
       return false;
     unknownYet = unknownYet || !v;
