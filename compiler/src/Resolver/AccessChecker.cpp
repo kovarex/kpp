@@ -147,6 +147,26 @@ auto GlobalScope::Impl::accessOf(Decl* used, FunctionDecl* fn, const std::vector
   // public WidgetType` naming agui::Layout's members as an instance with WidgetType a Table).
   if (isProtected && self && !types.isDependent(self) && isBaseClass(types.classType(owner, {}), self))
     return a;
+  // `public: using A::twice;` in the class the name is looked up in: the name is as accessible as the
+  // using-declaration is ([namespace.udecl] 19, [class.access.base] 5); until 2026-11-10 a protected
+  // base member made public so was refused (thread A's battery).
+  uint32_t symbol = member->kind == NodeKind::FunctionDecl && !static_cast<FunctionDecl*>(member)->name.empty()
+                      ? static_cast<FunctionDecl*>(member)->name.last().symbol
+                    : member->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(member)->name.empty()
+                      ? static_cast<VariableDecl*>(member)->name.last().symbol
+                      : UINT32_MAX;
+  if (symbol != UINT32_MAX && naming && naming != owner->ownScope && naming->owner && naming->owner->kind == NodeKind::ClassDecl)
+    for (Decl* m : membersRead(static_cast<ClassDecl*>(naming->owner)))
+    {
+      auto* u = m && m->kind == NodeKind::UsingNameDecl ? static_cast<UsingNameDecl*>(m) : nullptr;
+      if (!u || u->isEnum || u->name.parts.size() < 2 || u->name.last().symbol != symbol)
+        continue;
+      if (u->access == Access::Public)
+        return a;
+      for (Scope* s : context)
+        if (s == naming || (u->access == Access::Protected && isBaseScope(naming, s)))
+          return a;
+    }
   a.member = member;
   a.owner = owner;
   a.isProtected = isProtected;

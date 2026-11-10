@@ -1,0 +1,21 @@
+// spec: a member a using-declaration names in a protected section stays protected: naming it outside the class and the classes deriving from it is an error, as its base's own protected member is ([namespace.udecl] 19)
+// error: using_declaration_protected_is_error.kpp:18: error: A::thrice is protected, named in the function main
+// error: using_declaration_protected_is_error.kpp:19: error: A::twice is protected, named in the function main
+class A
+{
+protected:
+  int twice() const { return 2; }
+  int thrice() const { return 3; }
+};
+class B : public A
+{
+protected:
+  using A::thrice;
+};
+int main()
+{
+  B b;
+  int x = b.thrice();
+  int y = b.twice();
+  return x + y;
+}

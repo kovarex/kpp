@@ -1,0 +1,32 @@
+// spec: a using-declaration names a base's member with the access of the place it stands in ([namespace.udecl] 19): `public: using Base::twice;` makes a protected member of the base public in the derived class, a protected one is named in the classes deriving from it, and the member itself stays protected in the base
+// found: thread A's battery (2026-11-10): `b.twice()` was "A::twice is protected, named in the function main", where clang takes it
+class A
+{
+protected:
+  int p = 3;
+  int twice() const { return this.p * 2; }
+  int thrice() const { return this.p * 3; }
+public:
+  int v = 1;
+};
+class B : public A
+{
+public:
+  using A::twice;
+  using A::p;
+protected:
+  using A::thrice;
+};
+class C : public B
+{
+public:
+  int all() const { return this.thrice() + this.twice() + this.p; }
+};
+int main()
+{
+  B b;
+  C c;
+  b.p = 4;
+  std::println(b.twice(), " ", b.p, " ", c.all());
+  return 0;
+}
