@@ -12,18 +12,18 @@ Factorio already has (see [Status](#status)).
   file is parsed once, every template instantiated once, and an edit rebuilds only what it touched.
   Factorio converted to kpp, against its own C++ build (debug, 32 threads):
 
-  | | C++ (MSVC, FASTBuild) | kpp 0.2.1154 | kpp faster by |
+  | | C++ (MSVC, FASTBuild) | kpp 0.2.1340 | kpp faster by |
   |---|---:|---:|---:|
-  | Edit of one function | 25 s | 2.2 s | 11x |
-  | Edit of an inline function used across the game | 55 s | 2.5 s | 22x |
-  | Clean build of the game, libraries already built | 42 s | 11.2 s | 3.8x |
-  | Whole build of factorio.exe, every library included | 46 s | 13.5 s | 3.4x |
-  | Whole build of factorio-test.exe (the unit tests), every library included | 60 s | 17.2 s | 3.5x |
+  | Edit of one function | 25 s | 1.7 s | 15x |
+  | Edit of an inline function used across the game | 55 s | 2.1 s | 26x |
+  | Clean build of the game, libraries already built | 42 s | 11.4 s | 3.7x |
+  | Whole build of factorio.exe, every library included | 46 s | 14.2 s | 3.2x |
+  | Whole build of factorio-test.exe (the unit tests), every library included | 60 s | 15.9 s | 3.8x |
 
-  The kpp column is kpp 0.2.1154 (master 40a5b85e, 2026-11-09), a release build in the release's layout, run as a user
-  runs it: `kpp measure` (the average of 3 rounds, the compile server warm for the edits, the machine otherwise idle) on the
-  development machine (Ryzen 9 9950X, 32
-  threads, 128 GB), where the C++ edit times were also measured (the average of 2 rounds, docs/test-matrix.md).
+  The kpp column is the installed kpp 0.2.1340 (bdf11989, 2026-11-10), run as a user runs it: kovarex's `kpp measure`
+  in a factorio-in-kpp checkout (8dc0c25e2; the average of 3 rounds, the compile server warm for the edits, the machine
+  0-1% busy before each round) on his machine (Ryzen 9 9950X, 32 threads, 128 GB). The C++ edit times were measured on
+  the development machine, the same processor (the average of 2 rounds, docs/test-matrix.md).
   The C++ clean and whole builds are kovarex's own measurement; the clean build is of a precompiled-header
   change, practically only Factorio recompiling. The last two rows are whole builds
   including all the C and C++ libraries the game links. Both sides build full debug information. These are today's numbers, and the work to
