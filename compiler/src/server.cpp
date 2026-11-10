@@ -91,8 +91,8 @@ namespace
   std::string errorText(DWORD error);
 #endif
 
-  // What a client did to get a server, step by step: printed when none could be reached, and under
-  // kpp's report (no --quiet) when it started one.
+  // What a client did to get a server, step by step: printed when none could be reached, written into
+  // the server's log when it started one.
   std::vector<std::string> startSteps;
 
   // KEY.args: what a server builds, its working directory and arguments, each ended by a zero byte,
@@ -1561,7 +1561,7 @@ int runClient(int argc, char** argv, CompileFunction compile)
       close(starting);
 #endif
   }
-  // The steps: always when no server was reached; under kpp's report (no --quiet) when one was started.
+  // The steps, when no server was reached.
   auto printSteps = [&]
   {
     std::error_code ec;
@@ -1578,8 +1578,18 @@ int runClient(int argc, char** argv, CompileFunction compile)
     printSteps();
     return compile(argc, argv);
   }
-  if (startedOne && std::find(args.begin(), args.end(), "--quiet") == args.end())
-    printSteps();
+  // A server this client started: the steps go into its log, not to the build's output (whose stderr
+  // a build with a server and one without must print alike).
+  // (in the log's own form: a time and the client's process id)
+  if (startedOne)
+  {
+    startSteps.push_back("connect: reached");
+    std::string own = serverLog;
+    serverLog = logPath(key);
+    for (const std::string& step : startSteps)
+      logLine("client: %s", step.c_str());
+    serverLog = own;
+  }
   std::string request = requestHeader(buildRequest);
   putString(request, exe);
   putString(request, cwd);
