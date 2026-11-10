@@ -87,6 +87,14 @@ namespace
 
   std::string logPath(const std::string& key) { return serverDirectory() + key + ".log"; }
 
+#ifdef _WIN32
+  std::string errorText(DWORD error);
+#endif
+
+  // What a client did to get a server, step by step: printed when none could be reached, and under
+  // kpp's report (no --quiet) when it started one.
+  std::vector<std::string> startSteps;
+
   // KEY.args: what a server builds, its working directory and arguments, each ended by a zero byte,
   // written by the client that starts it; stopServers finds a project's servers by them.
   std::string argumentsPath(const std::string& key) { return serverDirectory() + key + ".args"; }
@@ -413,7 +421,19 @@ namespace
     WIN32_FIND_DATAA found;
     HANDLE search = FindFirstFileA((dir + "*").c_str(), &found);
     if (search == INVALID_HANDLE_VALUE)
+    {
+      startSteps.push_back("prune: the folder cannot be listed (" + errorText(GetLastError()) + ")");
       return;
+    }
+    size_t removed = 0, kept = 0;
+    DWORD keptBecause = 0;
+    auto remove = [&](const std::string& name)
+    {
+      if (DeleteFileA((dir + name).c_str()))
+        ++removed;
+      else
+        ++kept, keptBecause = GetLastError();
+    };
     do
     {
       if (found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
@@ -428,13 +448,14 @@ namespace
     } while (FindNextFileA(search, &found));
     FindClose(search);
     for (const std::string& name : exes)
-      DeleteFileA((dir + name).c_str());
+      remove(name);
     for (const std::string& name : others)
     {
       std::string stem = name.substr(0, name.find('.'));
       if (GetFileAttributesA((dir + stem + ".exe").c_str()) == INVALID_FILE_ATTRIBUTES) // (its server runs otherwise)
-        DeleteFileA((dir + name).c_str());
+        remove(name);
     }
+    startSteps.push_back("prune: " + std::to_string(removed) + " old file(s) removed, " + std::to_string(kept) + " not" + (kept ? " (a running server's copy is not; the last, " + errorText(keptBecause) + ")" : std::string()));
   }
 
   // Starts a server for the key. It runs from a copy of kpp in the temp directory, so that kpp
@@ -443,24 +464,39 @@ namespace
   bool startServer(const std::string& exe, const std::string& key, const std::string& cwd, std::string& why, HANDLE& process)
   {
     std::string dir = serverDirectory();
-    CreateDirectoryA(dir.c_str(), nullptr);
+    if (CreateDirectoryA(dir.c_str(), nullptr))
+      startSteps.push_back("folder: " + dir + ", created");
+    else if (GetLastError() == ERROR_ALREADY_EXISTS)
+      startSteps.push_back("folder: " + dir + ", already there");
+    else
+      startSteps.push_back("folder: " + dir + ", cannot be created (" + errorText(GetLastError()) + ")");
     pruneServerDirectory(dir, key);
     std::string copy = dir + key + ".exe";
     // The copy is held open, without sharing its deletion, until its server runs from it: another
     // client's pruneServerDirectory cannot delete it in between.
     auto hold = [&] { return CreateFileA(copy.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr); };
     HANDLE held = hold();
-    if (held == INVALID_HANDLE_VALUE)
+    if (held != INVALID_HANDLE_VALUE)
+      startSteps.push_back("copy: " + copy + " is already there");
+    else
     {
       std::string part = copy + "." + std::to_string(GetCurrentProcessId());
       if (!CopyFileA(exe.c_str(), part.c_str(), FALSE))
       {
         why = "kpp could not be copied to " + part + " (" + errorText(GetLastError()) + ")";
+        startSteps.push_back("copy: " + why);
         return false;
       }
-      if (!MoveFileA(part.c_str(), copy.c_str()))
+      if (MoveFileA(part.c_str(), copy.c_str()))
+        startSteps.push_back("copy: made " + copy);
+      else
+      {
+        startSteps.push_back("copy: not moved into place (" + errorText(GetLastError()) + "; another client may have put it there first)");
         DeleteFileA(part.c_str()); // another client put it there first
+      }
       held = hold();
+      if (held == INVALID_HANDLE_VALUE)
+        startSteps.push_back("copy: cannot be opened (" + errorText(GetLastError()) + ")");
     }
     // The kpp it was started from and that kpp's stamp, as the key has it: the server exits once
     // they differ (runServer).
@@ -475,14 +511,23 @@ namespace
     // console, about 30 ms apiece (a small program's edit: clang 61 to 69 ms instead of 35 to 39,
     // the link 102 to 107 instead of 70 to 74).
     const DWORD flags = CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP;
-    bool started = CreateProcessA(copy.c_str(), command.data(), nullptr, nullptr, FALSE, flags | CREATE_BREAKAWAY_FROM_JOB, nullptr, cwd.c_str(), &si, &pi) ||
-                   CreateProcessA(copy.c_str(), command.data(), nullptr, nullptr, FALSE, flags, nullptr, cwd.c_str(), &si, &pi);
+    bool started = CreateProcessA(copy.c_str(), command.data(), nullptr, nullptr, FALSE, flags | CREATE_BREAKAWAY_FROM_JOB, nullptr, cwd.c_str(), &si, &pi);
+    if (started)
+      startSteps.push_back("start: process " + std::to_string(pi.dwProcessId) + ", out of the client's job");
+    else
+    {
+      startSteps.push_back("start: out of the client's job refused (" + errorText(GetLastError()) + ")");
+      started = CreateProcessA(copy.c_str(), command.data(), nullptr, nullptr, FALSE, flags, nullptr, cwd.c_str(), &si, &pi);
+      if (started)
+        startSteps.push_back("start: process " + std::to_string(pi.dwProcessId) + ", in the client's job");
+    }
     DWORD startError = GetLastError();
     if (held != INVALID_HANDLE_VALUE)
       CloseHandle(held);
     if (!started)
     {
       why = copy + " could not be started (" + errorText(startError) + ")";
+      startSteps.push_back("start: " + why);
       return false;
     }
     CloseHandle(pi.hThread);
@@ -581,6 +626,7 @@ namespace
     if (error != 0)
     {
       why = exe + " could not be started (" + strerror(error) + ")";
+      startSteps.push_back("start: " + why);
       return false;
     }
     // (reaped by a thread of its own: the client may live on, and the server's end is no zombie)
@@ -1474,10 +1520,13 @@ int runClient(int argc, char** argv, CompileFunction compile)
   std::string exe = modulePath(), cwd = currentDirectory();
   std::vector<std::string> args = argumentsOf(argc, argv);
   std::string key = serverKey(exe, cwd, args), name = pipeName(key);
-  Channel pipe = connectPipe(name, 0);
   std::string noServer; // why no server could be reached
+  Channel pipe = connectPipe(name, 0, &noServer);
+  bool startedOne = pipe == noChannel;
   if (pipe == noChannel)
   {
+    startSteps.push_back("connect, before starting one: " + noServer);
+    noServer.clear();
     // KEY.args before the server starts: a stop of its project that comes meanwhile finds it (and
     // waits for its pipe, stopKey); it goes again when no server could be started.
     std::string record = cwd + '\0';
@@ -1512,11 +1561,25 @@ int runClient(int argc, char** argv, CompileFunction compile)
       close(starting);
 #endif
   }
+  // The steps: always when no server was reached; under kpp's report (no --quiet) when one was started.
+  auto printSteps = [&]
+  {
+    std::error_code ec;
+    uintmax_t logSize = std::filesystem::file_size(logPath(key), ec);
+    startSteps.push_back("connect: " + std::string(pipe != noChannel ? "reached" : noServer.empty() ? "no reason known" : noServer));
+    startSteps.push_back("log: " + logPath(key) + (ec ? ", no such file" : ", " + std::to_string(logSize) + " bytes"));
+    fprintf(stderr, "kpp: the compile server, step by step (key %s):\n", key.c_str());
+    for (const std::string& step : startSteps)
+      fprintf(stderr, "  %s\n", step.c_str());
+  };
   if (pipe == noChannel)
   {
     fprintf(stderr, "kpp: no compile server could be reached (%s; its log, if it wrote one: %s); building in this process\n", noServer.empty() ? "no reason known" : noServer.c_str(), logPath(key).c_str());
+    printSteps();
     return compile(argc, argv);
   }
+  if (startedOne && std::find(args.begin(), args.end(), "--quiet") == args.end())
+    printSteps();
   std::string request = requestHeader(buildRequest);
   putString(request, exe);
   putString(request, cwd);

@@ -205,6 +205,7 @@ function Unreachable([string]$what, [string]$pattern)
   $ErrorActionPreference = 'Stop'
   if ($code -ne 0) { Fail "$what`: the build in the client's process failed (exit $code): $output" }
   if ($output -notmatch 'no compile server could be reached \(' -or $output -notmatch $pattern) { Fail "$what`: the message does not say why: $output" }
+  if ($output -notmatch 'step by step' -or $output -notmatch 'folder: ' -or $output -notmatch 'log: ') { Fail "$what`: no steps: $output" }
 }
 & $copy --stop-all-servers 2>&1 | Out-Null
 $env:TMP = "$work\no\such\folder"
