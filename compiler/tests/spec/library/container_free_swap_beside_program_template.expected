@@ -1,0 +1,11 @@
+vector 1 3
+string bb a
+map 0 1
+hash map 0 1
+deque 0 1
+optional false true
+unique true 7
+array 3 1
+pair 3 1
+the program's swap
+int 2 1

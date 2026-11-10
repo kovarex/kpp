@@ -128,7 +128,11 @@ Moving a container takes its elements in O(1) without touching them; the source 
 and usable. Iterators, pointers and references into a moved-from container stay valid and refer
 to the same elements, now in the destination (except a String's characters held in place, see
 string.md, and end iterators of node-based containers, which belong to the container object).
-Swapping two containers exchanges their contents in O(1) with the same rule.
+Swapping two containers exchanges their contents in O(1) with the same rule. Each class with a
+member `swap(other)` (the containers, String, Optional, Pair, the smart pointers, Thread, UniqueLock,
+SharedLock, filesystem::path) has a free `swap(a, b)` that calls it, as C++'s std has, noexcept as the
+member is: more specialized than the generic `swap<T>`, so a program's own `template<typename T> void
+swap(T&, T&)` beside it leaves `swap(vectorA, vectorB)` the container's, not ambiguous.
 
 ## What throws nothing
 

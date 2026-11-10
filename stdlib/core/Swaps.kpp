@@ -1,0 +1,146 @@
+// kpp standard library: the free swap of each class that has a member swap, as C++'s std has one per
+// container, smart pointer and the rest ([container.reqmts], [utility.swap]): `swap(a, b)` of two
+// Vectors calls a.swap(b), in O(1), and is more specialized than any `template<typename T> void
+// swap(T&, T&)`, the library's or a program's own beside it, which would make the call ambiguous.
+// Each is noexcept as the member swap is.
+
+template<typename T, ContainerSize N>
+void swap(Array<T, N>& a, Array<T, N>& b) noexcept(noexcept(a.swap(b)))
+{
+  a.swap(b);
+}
+
+template<typename T>
+void swap(Vector<T>& a, Vector<T>& b) noexcept
+{
+  a.swap(b);
+}
+
+template<typename T>
+void swap(Deque<T>& a, Deque<T>& b) noexcept
+{
+  a.swap(b);
+}
+
+template<typename T>
+void swap(List<T>& a, List<T>& b) noexcept
+{
+  a.swap(b);
+}
+
+template<typename T>
+void swap(ForwardList<T>& a, ForwardList<T>& b) noexcept
+{
+  a.swap(b);
+}
+
+void swap(String& a, String& b) noexcept { a.swap(b); }
+
+template<typename K, typename V, typename Compare>
+void swap(Map<K, V, Compare>& a, Map<K, V, Compare>& b) noexcept(noexcept(a.swap(b)))
+{
+  a.swap(b);
+}
+
+template<typename T, typename Compare>
+void swap(Set<T, Compare>& a, Set<T, Compare>& b) noexcept(noexcept(a.swap(b)))
+{
+  a.swap(b);
+}
+
+template<typename K, typename V, typename Compare>
+void swap(MultiMap<K, V, Compare>& a, MultiMap<K, V, Compare>& b) noexcept(noexcept(a.swap(b)))
+{
+  a.swap(b);
+}
+
+template<typename T, typename Compare>
+void swap(MultiSet<T, Compare>& a, MultiSet<T, Compare>& b) noexcept(noexcept(a.swap(b)))
+{
+  a.swap(b);
+}
+
+template<typename K, typename V, typename Hasher, typename KeyEqual, bool stable>
+void swap(HashMap<K, V, Hasher, KeyEqual, stable>& a, HashMap<K, V, Hasher, KeyEqual, stable>& b) noexcept(noexcept(a.swap(b)))
+{
+  a.swap(b);
+}
+
+template<typename T, typename Hasher, typename KeyEqual, bool stable>
+void swap(HashSet<T, Hasher, KeyEqual, stable>& a, HashSet<T, Hasher, KeyEqual, stable>& b) noexcept(noexcept(a.swap(b)))
+{
+  a.swap(b);
+}
+
+template<typename K, typename V>
+void swap(FastMap<K, V>& a, FastMap<K, V>& b) noexcept
+{
+  a.swap(b);
+}
+
+template<typename T>
+void swap(FastSet<T>& a, FastSet<T>& b) noexcept
+{
+  a.swap(b);
+}
+
+template<typename T, typename Container, typename Compare>
+void swap(PriorityQueue<T, Container, Compare>& a, PriorityQueue<T, Container, Compare>& b) noexcept(noexcept(a.swap(b)))
+{
+  a.swap(b);
+}
+
+template<typename T>
+void swap(Optional<T>& a, Optional<T>& b) noexcept(noexcept(a.swap(b)))
+{
+  a.swap(b);
+}
+
+template<typename A, typename B>
+void swap(Pair<A, B>& a, Pair<A, B>& b) noexcept(noexcept(a.swap(b)))
+{
+  a.swap(b);
+}
+
+template<typename T, typename D>
+void swap(UniquePtr<T, D>& a, UniquePtr<T, D>& b) noexcept
+{
+  a.swap(b);
+}
+
+template<typename T>
+void swap(UniqueArray<T>& a, UniqueArray<T>& b) noexcept
+{
+  a.swap(b);
+}
+
+template<typename T>
+void swap(SharedPtr<T>& a, SharedPtr<T>& b) noexcept
+{
+  a.swap(b);
+}
+
+template<typename T>
+void swap(WeakPtr<T>& a, WeakPtr<T>& b) noexcept
+{
+  a.swap(b);
+}
+
+void swap(Thread& a, Thread& b) noexcept { a.swap(b); }
+
+template<typename M>
+void swap(UniqueLock<M>& a, UniqueLock<M>& b) noexcept
+{
+  a.swap(b);
+}
+
+template<typename M>
+void swap(SharedLock<M>& a, SharedLock<M>& b) noexcept
+{
+  a.swap(b);
+}
+
+namespace filesystem
+{
+  void swap(path& a, path& b) noexcept { a.swap(b); }
+}

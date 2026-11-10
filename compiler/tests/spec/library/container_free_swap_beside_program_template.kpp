@@ -1,0 +1,58 @@
+// spec: swap(a, b) of two library containers beside a program's own `template<typename T> void swap(T&, T&)` calls the library's swap of that container, more specialized than either template (C++'s std has a free swap per container, [container.reqmts], [utility.swap]); it was ambiguous between the program's swap<T> and the library's
+// factorio: thread E's batteries (E-batteries-adl-calls-forconstexpr-assign-2026-11-10.md, item 7)
+template<typename T>
+void swap(T& a, T& b)
+{
+  std::println("the program's swap");
+  T kept = std::move(a);
+  a = std::move(b);
+  b = std::move(kept);
+}
+
+int main()
+{
+  std::Vector<i32> va = {1, 2, 3};
+  std::Vector<i32> vb = {4};
+  swap(va, vb);
+  std::println("vector ", va.size(), " ", vb.size());
+  std::String sa = "a";
+  std::String sb = "bb";
+  swap(sa, sb);
+  std::println("string ", sa, " ", sb);
+  std::Map<i32, i32> ma;
+  ma[1] = 10;
+  std::Map<i32, i32> mb;
+  swap(ma, mb);
+  std::println("map ", ma.size(), " ", mb.size());
+  std::HashMap<i32, i32> ha;
+  ha[1] = 10;
+  std::HashMap<i32, i32> hb;
+  swap(ha, hb);
+  std::println("hash map ", ha.size(), " ", hb.size());
+  std::Deque<i32> da = {1};
+  std::Deque<i32> db;
+  swap(da, db);
+  std::println("deque ", da.size(), " ", db.size());
+  std::Optional<i32> oa = 5;
+  std::Optional<i32> ob;
+  swap(oa, ob);
+  std::println("optional ", oa.hasValue(), " ", ob.hasValue());
+  std::UniquePtr<i32> ua = std::makeUnique<i32>(7);
+  std::UniquePtr<i32> ub;
+  swap(ua, ub);
+  std::println("unique ", ua == nullptr, " ", *ub);
+  std::Array<i32, 2> aa = {1, 2};
+  std::Array<i32, 2> ab = {3, 4};
+  swap(aa, ab);
+  std::println("array ", aa[0], " ", ab[0]);
+  std::Pair<i32, i32> pa(1, 2);
+  std::Pair<i32, i32> pb(3, 4);
+  swap(pa, pb);
+  std::println("pair ", pa.first, " ", pb.first);
+  // A type of the program's own takes the program's template.
+  i32 x = 1;
+  i32 y = 2;
+  swap(x, y);
+  std::println("int ", x, " ", y);
+  return 0;
+}
