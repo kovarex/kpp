@@ -22,6 +22,7 @@ add_executable(kpp
   src/Driver/ConfigConstants.cpp
   src/Driver/FrontEnd.cpp
   src/Driver/Link.cpp
+  src/Driver/LinePatch.cpp
   src/Driver/ModuleCompile.cpp
   src/Driver/Options.cpp
   src/Driver/Runtime.cpp

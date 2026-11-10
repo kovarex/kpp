@@ -42,6 +42,7 @@
 #include <sstream>
 #include <vector>
 #include "host.hpp" // processId, openPipe
+#include "Driver/LinePatch.hpp" // (namespace driver of its own: Build.hpp names LineMap)
 
 namespace driver
 {

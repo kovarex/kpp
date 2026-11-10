@@ -415,7 +415,7 @@ void runCodegen(Build& build)
   std::vector<std::string> objects;
   for (unsigned k = 0; k < outputModules; ++k)
     objects.push_back(options.exe + "." + std::to_string(k) + ".o");
-  std::atomic<int> failures{0}, cached{0};
+  std::atomic<int> failures{0}, cached{0}, patchedObjects{0}; // (patched: counted unchanged too, their code is)
   struct ModuleFailure
   {
     unsigned module;
@@ -728,6 +728,48 @@ void runCodegen(Build& build)
   start = Clock::now();
   // Output module k's object: the last build's when rebuildLLVM did not assemble it again or its hash
   // file has its text, else compiled (by LLVM's back end in this process, or by clang).
+  // --verify-incremental: module k's object, its line tables patched, against its compile from the same .ll (whose name the
+  // object holds), all but the COFF header's time stamp: one that differs is an error of the build (the server's check reports
+  // the difference in what it printed), and the compiled object is taken.
+  auto verifyPatched = [&](size_t k)
+  {
+    std::string llPath = options.exe + "." + std::to_string(k) + ".ll", patched, compiled, error;
+    if (inProcess)
+    {
+      BackendOptions backend;
+      backend.path = llPath;
+      backend.module = unsigned(k);
+      backend.functionSections = functionSections;
+      if (!compileModule(cg.modules[k], backend, compiled, error))
+        return;
+    }
+    else
+    {
+      std::string checkPath = objects[k] + ".verify.o";
+      if (!writeFile(llPath, cg.modules[k]))
+        return;
+      std::string command = "\"" + clang + "\" " + level + targetFlags(options) + " -w " + compileFlags + " " + options.clangFlags + " -c \"" + llPath + "\" -o \"" +
+                            checkPath + "\"";
+      bool made = host::shell(command) == 0 && readFile(checkPath, compiled);
+      std::error_code ec;
+      std::filesystem::remove(checkPath, ec);
+      if (!made)
+        return;
+    }
+    if (!readFile(objects[k], patched))
+      return;
+    std::string written = compiled;
+    if (patched.size() >= 8 && compiled.size() >= 8)
+    {
+      memset(patched.data() + 4, 0, 4);
+      memset(compiled.data() + 4, 0, 4);
+    }
+    if (patched != compiled)
+    {
+      fprintf(stderr, "kpp: --verify-incremental: module %zu's object, its line tables patched, is not what its compile gives\n", k);
+      writeFile(objects[k], written);
+    }
+  };
   auto compileEnd = [&](size_t k)
   {
     if (!cg.changedModules.empty() && !cg.changedModules[k])
@@ -740,6 +782,23 @@ void runCodegen(Build& build)
       cg.modules[k] = forTarget(cg.modules[k], options.target); // (before its hash: an object made without them is made again)
     if (unchangedObject(k, cg.modules[k], level, hashText))
       return;
+    // A text that changed only in its debug lines (an edit moved them): the kept object's line tables
+    // patched, as the edit's line maps say (kovarex, 2026-11-10), its hash file written once it is.
+    if (k < cg.linesOnlyModules.size() && cg.linesOnlyModules[k] && !build.lineMaps.empty() && options.target.windows())
+    {
+      std::string hashPath = options.exe + "." + std::to_string(k) + ".hash", why;
+      std::error_code ec;
+      std::filesystem::remove(hashPath, ec); // (patched halfway, the object is never taken for the old text's)
+      if (patchLineTables(objects[k], build.lineMaps, why) && writeFile(hashPath, hashText))
+      {
+        if (options.verifyIncremental)
+          verifyPatched(k);
+        ++patchedObjects;
+        ++cached;
+        return;
+      }
+      logBuildNote("module " + std::to_string(k) + "'s line tables not patched (" + why + "): compiled");
+    }
     if (inProcess)
     {
       compileInProcess(k, cg.modules[k], hashText);
@@ -802,6 +861,8 @@ void runCodegen(Build& build)
   else
     parallelFor(cg.modules.size(), options.threads, compileEnd);
   double compileTime = seconds(Clock::now() - start);
+  if (int patched = patchedObjects.load())
+    logBuildNote(std::to_string(patched) + " object(s) of modules whose debug lines alone changed patched, not compiled");
   std::string during = backEnd ? ", " + std::to_string(backEnd->duringCodegen()) + " during codegen" : ""; // (step 4's P2)
   // A module clang or LLVM rejected is an error of the build whatever --quiet says, with what it said
   // (its first lines): with --keep-going the link goes on without its object and reports what it

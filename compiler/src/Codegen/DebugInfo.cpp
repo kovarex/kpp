@@ -367,9 +367,7 @@ auto codegen::Emitter::debugGlobal(const std::string& name, VariableDecl* def, c
   if (!sh.fullDebugInfo || !def || !def->file || !t || !t->isKnown() || types.isDependent(t))
     return std::string();
   std::string bare = name.rfind("@\"", 0) == 0 ? name.substr(2, name.size() - 3) : name.substr(1);
-  uint64_t key = 14695981039346656037ull;
-  for (unsigned char c : bare)
-    key = (key ^ c) * 1099511628211ull;
+  uint64_t key = debugGlobalKey(name);
   char placeholder[24];
   snprintf(placeholder, sizeof placeholder, "!G%016llx", (unsigned long long)key);
   std::string text = debugId(0) + " = !DIGlobalVariableExpression(var: " + debugId(1) + ", expr: !DIExpression())\n" + debugId(1) +

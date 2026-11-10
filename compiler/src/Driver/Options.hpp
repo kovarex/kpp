@@ -79,6 +79,8 @@
     std::string clangFlags;        // --clang-flags: more flags for compiling the modules (-fsanitize=address)
     bool incrementalLink = false;  // --incremental-link: a debug build's link redoes only the objects that changed
     bool deferLink = false;        // --defer-link: the link command written for kpp to run (Project/Build.cpp), not run
+    bool verifyIncremental = false; // --verify-incremental: a compile server's build checked against one from scratch (server.cpp);
+                                    // here: an object whose line tables were patched is compared with the module's compile
     std::string toolchain;         // --toolchain bundled|msvc: which clang and linker (source.hpp's selectToolchain)
     bool debugInfo = false;        // --debug-info: line tables (docs/debugging.md)
     bool check = false;            // --check: codegen's errors too, nothing written (`kpp --lsp`'s checks)

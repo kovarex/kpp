@@ -231,7 +231,7 @@ int compile(int argc, char** argv)
     else if (arg == "--convert" && i + 1 < argc)
       options.convertDir = argv[++i];
     else if (arg == "--verify-incremental")
-      ; // the compile server's (server.cpp): a build in its own process is from scratch anyway
+      options.verifyIncremental = true; // the compile server's (server.cpp): a build in its own process is from scratch anyway
     else if (arg == "--overrides" && i + 1 < argc)
       options.overridesDir = argv[++i];
     else if (arg == "--convert-base" && i + 1 < argc)

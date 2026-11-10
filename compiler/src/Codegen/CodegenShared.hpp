@@ -743,6 +743,17 @@ namespace codegen
     }
   }
 
+  // The key of global `name`'s debug metadata (Shared::debugGlobals, its `!G` placeholder): the hash of its
+  // IR name without the `@` and the quotes.
+  inline uint64_t debugGlobalKey(const std::string& name)
+  {
+    std::string_view bare = name.rfind("@\"", 0) == 0 ? std::string_view(name).substr(2, name.size() - 3) : std::string_view(name).substr(1);
+    uint64_t key = 14695981039346656037ull;
+    for (unsigned char c : bare)
+      key = (key ^ c) * 1099511628211ull;
+    return key;
+  }
+
   inline Shared::Definition Shared::definitionOf(std::string text)
   {
     Definition d;

@@ -1452,6 +1452,53 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   return std::move(result);
 }
 
+// IR text with the numbers of its debug metadata's lines left out (`line: 12`, `scopeLine: 12` give
+// `line: `, `scopeLine: `), to tell texts that differ in their lines alone.
+static std::string withoutLines(std::string_view text)
+{
+  std::string out;
+  out.reserve(text.size());
+  size_t from = 0;
+  for (size_t at = text.find("ine: "); at != std::string_view::npos; at = text.find("ine: ", at + 5))
+  {
+    if (at == 0 || (text[at - 1] != 'l' && text[at - 1] != 'L'))
+      continue;
+    size_t digits = at + 5;
+    while (digits < text.size() && isdigit((unsigned char)text[digits]))
+      ++digits;
+    out.append(text.substr(from, at + 5 - from));
+    from = digits;
+  }
+  out.append(text.substr(from));
+  return out;
+}
+
+// Whether two lists of texts (each sorted) are the same but for their debug lines: their texts with the
+// lines left out, sorted again, equal.
+template<class It> static bool sameButLines(const std::vector<std::string>& before, It from, It to)
+{
+  std::vector<std::string> a, b;
+  for (const std::string& t : before)
+    a.push_back(withoutLines(t));
+  for (; from != to; ++from)
+  {
+    if constexpr (std::is_same_v<std::decay_t<decltype(*from)>, std::string>)
+      b.push_back(withoutLines(*from));
+    else
+      b.push_back(withoutLines(from->text));
+  }
+  if (a.size() != b.size())
+    return false;
+  std::sort(a.begin(), a.end());
+  std::sort(b.begin(), b.end());
+  return a == b;
+}
+
+static bool sameButLines(const std::vector<std::string>& before, const std::vector<std::string>& after)
+{
+  return sameButLines(before, after.begin(), after.end());
+}
+
 // A constant global whose initializer read an edited function (no constructor to emit again). One
 // codegen never defined: its value reached the code only through folds, each of which ran its
 // initializer, the edited function too, and recorded what it ran (the interpreter's `ran` hook,
@@ -2342,6 +2389,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     return out;
   }
   std::vector<unsigned> which;
+  std::vector<bool> linesOnly(sh.moduleCount, false); // (texts changed in their debug lines alone: linesOnlyModules)
   for (unsigned k = 0; k < sh.moduleCount; ++k)
   {
     Dropped& was = dropped[k];
@@ -2357,13 +2405,20 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     bool same = !declared && defs.size() - was.keptDefinitions == was.definitions.size() &&
                 std::equal(was.definitions.begin(), was.definitions.end(), defs.begin() + was.keptDefinitions,
                            [](const std::string& a, const Shared::Definition& b) { return a == b.text; });
-    if (same)
+    // (or the same but for its debug lines: a function emitted again because an edit moved its lines,
+    // its code the one it had; the server patches the object's line tables, LinePatch.hpp)
+    bool linesCandidate = !same && !declared && !layoutsReplaced && sh.fullDebugInfo && !sh.importableModules &&
+                          defs.size() - was.keptDefinitions == was.definitions.size();
+    if (same || linesCandidate)
     {
       std::vector<std::string> ownedNow;
       for (size_t i = was.keptOwned; i < owned.size(); ++i)
         ownedNow.push_back(owned[i].text);
       std::sort(ownedNow.begin(), ownedNow.end());
-      same = ownedNow == was.owned;
+      if (same)
+        same = ownedNow == was.owned;
+      else
+        linesOnly[k] = sameButLines(was.definitions, defs.begin() + was.keptDefinitions, defs.end()) && sameButLines(was.owned, ownedNow);
     }
     std::inplace_merge(defs.begin(), defs.begin() + was.keptDefinitions, defs.end(), byText);
     if (same && !layoutsReplaced)
@@ -2379,6 +2434,41 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     sh.moduleDecls[k].entries = std::move(entries);
     sh.moduleDecls[k].text.clear();
     sh.moduleDecls[k].finish();
+  }
+  // --debug-info: a global defined in a file whose lines an edit moved has its DIGlobalVariable's line made again
+  // (Emitter::debugGlobal); one that changed changes its home module's text, in its debug metadata alone (a
+  // DIGlobalVariable's line is in no CodeView record: its object stays the one it has, patched). Until
+  // 2026-11-10 it kept the line of the build before (--verify-incremental: the module's text not a build from
+  // scratch's).
+  if (sh.fullDebugInfo && sh.homeGlobals && !movedLines.empty())
+  {
+    std::unordered_set<const ParsedFile*> movedFiles;
+    for (const FunctionDecl* f : movedLines)
+      movedFiles.insert(f->file);
+    for (auto& [decl, name] : sh.globals)
+    {
+      if (decl->kind != NodeKind::VariableDecl)
+        continue;
+      VariableDecl* def = e.variableDefinition(static_cast<VariableDecl*>(decl));
+      if (!def || !movedFiles.count(def->file))
+        continue;
+      auto home = sh.homedGlobals.find(name);
+      const Ty* t = e.global.typeOfDecl(decl);
+      if (home == sh.homedGlobals.end() || !t)
+        continue;
+      uint64_t key = debugGlobalKey(name);
+      auto kept = sh.debugGlobals.find(key);
+      if (kept == sh.debugGlobals.end())
+        continue;
+      std::string before = kept->second;
+      e.debugGlobal(name, def, t);
+      if (sh.debugGlobals[key] != before && std::find(which.begin(), which.end(), home->second.home) == which.end())
+      {
+        which.push_back(home->second.home);
+        linesOnly[home->second.home] = true;
+      }
+    }
+    std::sort(which.begin(), which.end());
   }
   // Placed again (Emitter::placeShortDefinitions): a definition placed elsewhere than before changes
   // both modules, and a module whose definitions changed changes those its definitions are placed in.
@@ -2412,6 +2502,9 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
           also.push_back(at(sh.placedIn, name));
         }
     which.insert(which.end(), also.begin(), also.end());
+    for (unsigned k : also)
+      if (k < linesOnly.size())
+        linesOnly[k] = false;
     std::sort(which.begin(), which.end());
     which.erase(std::unique(which.begin(), which.end()), which.end());
   }
@@ -2439,7 +2532,10 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
   }
   for (unsigned k = 0; k < sh.moduleCount; ++k)
     if (sh.unassembled[k])
+    {
       which.push_back(k);
+      linesOnly[k] = false; // (what an earlier build left unassembled changed otherwise)
+    }
   std::sort(which.begin(), which.end());
   which.erase(std::unique(which.begin(), which.end()), which.end());
   sh.unassembled.assign(sh.moduleCount, false);
@@ -2470,6 +2566,14 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     }
   for (unsigned i : assembled)
     out.changedModules[i] = true;
+  out.linesOnlyModules.assign(outputs, false);
+  for (unsigned k : which)
+    if (linesOnly[k])
+    {
+      out.linesOnlyModules[k] = true;
+      if (sh.splitPieces)
+        out.linesOnlyModules[k + sh.moduleCount] = true;
+    }
   out.functions = sh.functions;
   out.structs = session.result.structs;
   session.usable = true;

@@ -33,6 +33,9 @@ struct CodegenResult
   size_t functions = 0;
   size_t structs = 0;
   std::vector<bool> changedModules; // rebuildLLVM: which modules it assembled again (the others' texts are empty here)
+  // rebuildLLVM, --debug-info: of those, the ones whose texts changed only in their debug lines (a function emitted again because
+  // an edit moved its lines, its code the one it had): their objects' line tables are patched, not compiled (driver::patchLineTables)
+  std::vector<bool> linesOnlyModules;
   // With a PieceStream: the program pieces whose object the stream compiles, its text being modules[k]
   // (handed over at level 0's barrier, the same at the end).
   std::vector<bool> streamed;

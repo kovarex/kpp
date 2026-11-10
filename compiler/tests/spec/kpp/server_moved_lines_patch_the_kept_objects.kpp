@@ -1,0 +1,165 @@
+// spec: a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile server"), with --debug-info: an edit that only moves lines of another file (a line added above everything, two lines in the middle, lines taken away) patches the line tables of the kept objects whose modules changed in their debug lines alone (kovarex, 2026-11-10: "Line numbers should be just patched"), each patched object checked against its module's compile by --verify-incremental
+// kpp: --debug-info
+//--- step: the program
+int main()
+{
+  Box b;
+  std::println(second(4), " ", b.twice(), " ", thrice(5), " ", thrice(1.5), " ", last(7));
+  return 0;
+}
+// expect: 13 6 15 4.5 5
+//--- file: a.kpp
+int first(int v)
+{
+  return v + 1;
+}
+
+int second(int v)
+{
+  int w = v * 2;
+  return w + first(v);
+}
+
+struct Box
+{
+  int value = 3;
+  int twice() const
+  {
+    return this.value * 2;
+  }
+};
+
+template<typename T> T thrice(T v)
+{
+  return v * 3;
+}
+
+int last(int v)
+{
+  if (v > 2)
+    return v - 2;
+  return v;
+}
+//--- step: a line added above everything
+int main()
+{
+  Box b;
+  std::println(second(4), " ", b.twice(), " ", thrice(5), " ", thrice(1.5), " ", last(7));
+  return 0;
+}
+// expect: 13 6 15 4.5 5
+//--- file: a.kpp
+// a line above everything
+int first(int v)
+{
+  return v + 1;
+}
+
+int second(int v)
+{
+  int w = v * 2;
+  return w + first(v);
+}
+
+struct Box
+{
+  int value = 3;
+  int twice() const
+  {
+    return this.value * 2;
+  }
+};
+
+template<typename T> T thrice(T v)
+{
+  return v * 3;
+}
+
+int last(int v)
+{
+  if (v > 2)
+    return v - 2;
+  return v;
+}
+//--- step: two lines in the middle
+int main()
+{
+  Box b;
+  std::println(second(4), " ", b.twice(), " ", thrice(5), " ", thrice(1.5), " ", last(7));
+  return 0;
+}
+// expect: 13 6 15 4.5 5
+//--- file: a.kpp
+// a line above everything
+int first(int v)
+{
+  return v + 1;
+}
+
+int second(int v)
+{
+  int w = v * 2;
+  return w + first(v);
+}
+
+
+struct Box
+{
+  int value = 3;
+  int twice() const
+  {
+    return this.value * 2;
+  }
+};
+
+template<typename T> T thrice(T v)
+{
+  return v * 3;
+}
+
+int last(int v)
+{
+  if (v > 2)
+    return v - 2;
+  return v;
+}
+//--- step: the lines taken away
+int main()
+{
+  Box b;
+  std::println(second(4), " ", b.twice(), " ", thrice(5), " ", thrice(1.5), " ", last(7));
+  return 0;
+}
+// expect: 13 6 15 4.5 5
+//--- file: a.kpp
+int first(int v)
+{
+  return v + 1;
+}
+
+int second(int v)
+{
+  int w = v * 2;
+  return w + first(v);
+}
+
+struct Box
+{
+  int value = 3;
+  int twice() const
+  {
+    return this.value * 2;
+  }
+};
+
+template<typename T> T thrice(T v)
+{
+  return v * 3;
+}
+
+int last(int v)
+{
+  if (v > 2)
+    return v - 2;
+  return v;
+}

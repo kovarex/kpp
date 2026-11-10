@@ -379,9 +379,32 @@ bool remapKeptFile(Build& kept, ParsedFile& file, const std::vector<uint32_t>& m
     const std::vector<Token>& after = *fresh.tokens;
     LineStarts oldLines(file.text), newLines(fresh.text);
     std::vector<bool> lineMoved(before.size(), false);
+    // (each kept token's line before and after: the file's line map, which patches the kept objects'
+    // line tables; a line whose tokens went to two lines has none)
+    std::vector<std::pair<uint32_t, uint32_t>> lines;
+    bool anyMoved = false;
     for (size_t t = 0; t < before.size() && t < map.size(); ++t)
       if (map[t] != UINT32_MAX && map[t] < after.size())
-        lineMoved[t] = oldLines.line(before[t].offset) != newLines.line(after[map[t]].offset);
+      {
+        uint32_t from = uint32_t(oldLines.line(before[t].offset)), to = uint32_t(newLines.line(after[map[t]].offset));
+        lineMoved[t] = from != to;
+        anyMoved = anyMoved || lineMoved[t];
+        lines.push_back({from, to});
+      }
+    if (anyMoved)
+    {
+      std::sort(lines.begin(), lines.end());
+      lines.erase(std::unique(lines.begin(), lines.end()), lines.end());
+      std::vector<std::pair<uint32_t, uint32_t>> single;
+      for (size_t i = 0; i < lines.size(); ++i)
+        if ((i == 0 || lines[i - 1].first != lines[i].first) && (i + 1 == lines.size() || lines[i + 1].first != lines[i].first))
+          single.push_back(lines[i]);
+      std::error_code ec;
+      std::string path = std::filesystem::absolute(file.path, ec).string(); // (as codegen's debugFileOf names it)
+      if (ec)
+        path = file.path;
+      kept.lineMaps.push_back({path, std::move(single)});
+    }
     std::vector<DeclaredFunction> functions;
     std::vector<Decl*> containers;
     collectFunctions(file.decls, nullptr, false, functions, containers);
@@ -919,6 +942,8 @@ bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, double collec
   }
   kept.changedBodies.clear();
   kept.movedLines.clear();
+  kept.lineMaps.clear();
+  const bool behind = kept.codegenBehind; // (the kept objects are older than the last build: its lines moved too)
   kept.replacedBodies.clear();
   kept.addedFunctions.clear();
   kept.removedFunctions.clear();
@@ -1263,6 +1288,8 @@ bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, double collec
     for (FunctionDecl* f : carriedBodies)
       if (!removed.count(f))
         kept.changedBodies.push_back(f);
+    if (behind)
+      kept.lineMaps.clear(); // (the kept objects' lines moved twice: compiled)
     for (FunctionDecl* f : carriedMovedLines)
       if (!removed.count(f))
         kept.movedLines.push_back(f);
