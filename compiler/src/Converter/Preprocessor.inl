@@ -689,5 +689,5 @@
     {"error_category", "std::ErrorCategory"}, {"make_error_code", "std::make_error_code"},
     {"length_error", "std::LengthError"}, {"overflow_error", "std::OverflowError"},
     {"codecvt_utf8", "std::CodecvtUtf8"}, {"wstring_convert", "std::WStringConvert"},
-    {"milli", "std::Milli"}, {"rotr", "std::rotr"}, {"lcm", "std::lcm"}};
+    {"milli", "std::Milli"}, {"throw_with_nested", "std::throw_with_nested"}, {"rotr", "std::rotr"}, {"lcm", "std::lcm"}};
 

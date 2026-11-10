@@ -2757,7 +2757,7 @@
             start -= 2;
           if (!(start > 0 && (toks[start - 1].is(P::ColonColon) || toks[start - 1].is(P::Greater) || toks[start - 1].is(P::Dot) || toks[start - 1].is(P::Arrow))))
           {
-            insert(toks[start].offset, "IteratorTraits<");
+            insert(toks[start].offset, "std::IteratorTraits<");
             insert(endOffset(i), ">");
             counts.add("iterator member types through IteratorTraits");
             i += 2;
@@ -3061,6 +3061,23 @@
           {
             insert(t.offset, "std::");
             counts.add("bare <cmath> calls written std::");
+            continue;
+          }
+        }
+        if (t.getKind() == TokenKind::Identifier && i + 2 < toks.size() &&
+            !(i > 0 && (toks[i - 1].is(P::Dot) || toks[i - 1].is(P::Arrow) || toks[i - 1].is(P::ColonColon) || toks[i - 1].getKind() == TokenKind::Identifier)) &&
+            !shadowedAt(std::string(spelling(i)), t.offset))
+        {
+          // What C++ finds by its argument and kpp's std would too only for a class: `begin(cells)` of an array,
+          // `get<Component>(chunk)` with its template arguments, `make_error_code(errc)` (design.md 16). With an argument:
+          // a bare `begin()` is a member's.
+          std::string_view name = spelling(i);
+          bool call = toks[i + 1].is(P::LParen) && !toks[i + 2].is(P::RParen) && (name == "begin" || name == "end" || name == "make_error_code");
+          bool getOf = name == "get" && toks[i + 1].is(P::Less);
+          if (call || getOf)
+          {
+            insert(t.offset, "std::");
+            counts.add("bare calls of the library's functions found by their argument written std::");
             continue;
           }
         }
