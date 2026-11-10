@@ -57,12 +57,44 @@ auto codegen::Emitter::collectMembers(const Ty* cls, std::vector<const Ty*>& out
 
 auto codegen::Emitter::forConstexpr(ForConstexprStmt* f) -> void
 {
+  // `break` leaves the statement and `continue` goes on to the next element, each destroying the
+  // element's objects on the way, as in C++26's expansion statements ([stmt.expand]); until
+  // 2026-11-10 both were errors ("break outside a loop or switch", E's battery a3).
+  std::string endL = newLabel("forconstexpr.end");
+  size_t outside = scopes.size();
   forEachConstexprElement(f, [&](size_t)
   {
+    std::string nextL = newLabel("forconstexpr.next");
     pushScope();
+    loops.push_back({endL, nextL, outside});
     statement(f->body);
+    loops.pop_back();
     popScope();
+    emitBranch(nextL);
+    startBlock(nextL);
   });
+  emitBranch(endL);
+  startBlock(endL);
+}
+
+auto codegen::Emitter::labelsCases(ForConstexprStmt* f) -> bool
+{
+  for (Stmt* inner : bodyStatements(f->body))
+    if (inner->kind == NodeKind::CaseStmt || inner->kind == NodeKind::DefaultStmt)
+      return true;
+  return false;
+}
+
+auto codegen::Emitter::ownElement(const std::optional<ConstValue>& v) -> const Ty*
+{
+  const Ty* t = v && v->type ? types.unqualified(types.stripRef(v->type)) : nullptr;
+  if (!t)
+    return nullptr;
+  if (v->kind == ConstValue::Kind::Int && t->isIntegral())
+    return types.valueType(t, v->i);
+  if (v->isFloat() && t->kind == TyKind::Float)
+    return types.valueType(t, TypeTable::floatBits(v->f, t->bits));
+  return nullptr;
 }
 
 auto codegen::Emitter::bodyStatements(Stmt* body) -> std::vector<Stmt*>
@@ -107,10 +139,22 @@ auto codegen::Emitter::forEachConstexprElement(ForConstexprStmt* f, const std::f
     if (var->isType)
       unsupported(f, "a list of values for a for constexpr type variable");
     const Ty* elementTy = var->valueType ? global.typeOfAstIn(var->valueType, currentFunction, original) : nullptr;
-    if (!elementTy || !elementTy->isKnown() || elementTy->kind == TyKind::Auto)
+    // `for constexpr (auto v : {1, 'c', 2.5})`: each element of its own type, as C++26's expansion
+    // statement and a `template<auto V>` argument have it (until 2026-11-10 an error, "a for constexpr
+    // value variable without a written type").
+    bool ownTypes = elementTy && elementTy->kind == TyKind::Auto;
+    if (!elementTy || (!elementTy->isKnown() && !ownTypes))
       unsupported(f, "a for constexpr value variable without a written type");
     for (Expr* e : static_cast<BraceInitExpr*>(list)->args)
     {
+      if (ownTypes)
+      {
+        const Ty* element = ownElement(foldConst(e));
+        if (!element)
+          unsupported(e, "a for constexpr element of an `auto` variable that is not an integer, enumeration or floating constant");
+        elements.push_back(element);
+        continue;
+      }
       std::optional<int64_t> v = evalConst(e);
       if (!v)
         unsupported(e, "a for constexpr element that is not a constant");
@@ -598,7 +642,7 @@ auto codegen::Emitter::switchStatement(SwitchStmt* sw) -> void
   };
   for (Stmt* st : body->stmts)
   {
-    if (st->kind == NodeKind::ForConstexprStmt)
+    if (st->kind == NodeKind::ForConstexprStmt && labelsCases(static_cast<ForConstexprStmt*>(st)))
     {
       // `for constexpr (typename T : kinds) case T::kind: ...`: one case per element.
       auto* fc = static_cast<ForConstexprStmt*>(st);
@@ -693,18 +737,15 @@ auto codegen::Emitter::switchStatement(SwitchStmt* sw) -> void
   };
   for (Stmt* st : body->stmts)
   {
-    if (st->kind == NodeKind::ForConstexprStmt)
+    if (st->kind == NodeKind::ForConstexprStmt && labelsCases(static_cast<ForConstexprStmt*>(st)))
     {
       auto* fc = static_cast<ForConstexprStmt*>(st);
       // (its elements' labels begin groups of their own, each element its scope: the group before it ends here)
       if (implicitBreaks && groupScope)
-        for (Stmt* inner : bodyStatements(fc->body))
-          if (inner->kind == NodeKind::CaseStmt || inner->kind == NodeKind::DefaultStmt)
-          {
-            popScope();
-            groupScope = false;
-            break;
-          }
+      {
+        popScope();
+        groupScope = false;
+      }
       forEachConstexprElement(fc, [&](size_t element)
       {
         pushScope();

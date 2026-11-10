@@ -1,0 +1,4 @@
++1-1 +2-2 +3-3 | breaks 3
++10-10 +20-20 +30-30 +40-40 | continues 8
+nested 19121239 inLoop 222
+inSwitch 100 0 12 123

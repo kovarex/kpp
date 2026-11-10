@@ -60,6 +60,9 @@
     // declared before the lambda in the function around it; with several, which one is in scope
     // the code generator cannot tell from the names alone.
     Decl* unusedCapture(LambdaExpr* l, uint32_t symbol);
+    // Whether a capture `[symbol]` of l names the variable of a for constexpr around it (C++26's
+    // expansion statements let a lambda capture it; kpp's is a template parameter of the body).
+    bool forConstexprVariable(LambdaExpr* l, uint32_t symbol);
 
     // The type a captured variable has in the closure (references stripped): the variable's declared
     // type where the declaration alone gives it, an init-capture's as its initializer deduces it,

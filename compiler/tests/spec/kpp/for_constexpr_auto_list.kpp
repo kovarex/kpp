@@ -1,0 +1,15 @@
+// spec: `for constexpr (auto v : {...})` over a list of constants of different types: each element of its own type, as C++26's expansion statements have it and as a `template<auto V>` argument is (an integer, a character, a bool, a floating value, an enumerator); the variable usable as a template argument
+// found: E's battery a3 (2026-11-10): "codegen does not support a for constexpr value variable without a written type yet"
+enum class Color { Red = 3, Green = 5 };
+template <auto V> i64 twice() { return i64(V) * 2; }
+int main()
+{
+  i64 total = 0;
+  for constexpr (auto v : {1, 'c', 2.5, 7ll, true, 0.25f, Color::Green, u8(200)})
+  {
+    total = total * 10 + i64(sizeof(v));
+    std::print(twice<v>(), " ");
+  }
+  std::println("| ", total);
+  return 0;
+}

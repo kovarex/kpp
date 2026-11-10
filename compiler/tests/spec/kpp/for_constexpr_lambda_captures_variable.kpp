@@ -1,0 +1,28 @@
+// spec: a lambda in a for constexpr body may capture the loop variable by name (`[v]`, `[&v]`, beside other captures, in a nested lambda, in a function template), as C++26's expansion statements allow: it reads the element's constant
+// found: E's battery a3 (2026-11-10): "the closure ... could not be laid out (codegen does not support a capture that is not a local variable (v) yet)"; `[]` worked
+template <typename T>
+T scaled(T base)
+{
+  T sum = 0;
+  for constexpr (int k : {1, 2})
+  {
+    auto f = [k, base] { return base * T(k); };
+    sum += f();
+  }
+  return sum;
+}
+int main()
+{
+  int total = 0;
+  for constexpr (int v : {2, 3})
+  {
+    auto twice = [v] { return v * 2; };
+    auto add = [&total, v](int x) { total += x + v; };
+    auto byRef = [&v] { return v + 100; };
+    auto outer = [v] { return [v] { return v * 1000; }(); };
+    add(twice());
+    total += byRef() + outer();
+  }
+  std::println(total, " ", scaled(5), " ", scaled(1.5));
+  return 0;
+}

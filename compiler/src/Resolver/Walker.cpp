@@ -88,6 +88,22 @@ auto GlobalScope::Impl::Walker::forConstexprElements(ForConstexprStmt* f, std::v
   if (list && list->kind == NodeKind::BraceInitExpr)
   {
     const Ty* elementTy = v->valueType ? typeOf(v->valueType) : nullptr;
+    if (!v->isType && elementTy && elementTy->kind == TyKind::Auto)
+    {
+      // `for constexpr (auto v : {1, 'c', 2.5})`: each element of its own type (codegen's ownElement).
+      for (Expr* e : static_cast<BraceInitExpr*>(list)->args)
+      {
+        std::optional<ConstValue> c = impl.constValue(e, ctx(), 0);
+        const Ty* t = c && c->type ? types.unqualified(types.stripRef(c->type)) : nullptr;
+        if (t && c->kind == ConstValue::Kind::Int && t->isIntegral())
+          out.push_back(types.valueType(t, c->i));
+        else if (t && c->isFloat() && t->kind == TyKind::Float)
+          out.push_back(types.valueType(t, TypeTable::floatBits(c->f, t->bits)));
+        else
+          return false;
+      }
+      return true;
+    }
     if (v->isType || !elementTy || !elementTy->isKnown() || types.isDependent(elementTy) || elementTy->kind == TyKind::Auto)
       return false;
     for (Expr* e : static_cast<BraceInitExpr*>(list)->args)

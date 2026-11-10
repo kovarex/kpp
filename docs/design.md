@@ -430,6 +430,12 @@ switch (type)
 A static_assert or constexpr variable in the body is checked once per element, in a function that
 is no template as in an instance (2026-11-09); an `if constexpr` whose condition is no constant is
 an error, never a test at run time.
+As in C++26's expansion statements ([stmt.expand], 2026-11-10, E's battery a3): `break` in the body leaves the
+statement and `continue` goes on to the next element, each destroying the element's objects; a list of constants
+for an `auto` variable (`for constexpr (auto v : {1, 'c', 2.5})`) gives each element its own type, as a
+`template<auto V>` argument has it; a lambda in the body may capture the variable by name (`[v]`, `[&v]`), and reads
+the element's constant. Directly in a switch's body, a for constexpr whose elements are the switch's cases (below)
+belongs to the switch: `break` in it leaves the switch (C++26 has no labels in an expansion statement).
 What each element has its own of (a local class or enum, a static or thread_local variable) has nodes of
 each element's own: a copy of the body per element, made only for a body that declares one, a local
 class seeing the loop variables as an instance's classes see its arguments (2026-11-10).

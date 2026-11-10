@@ -15,6 +15,13 @@
     // body once per element, re-typed and emitted with the loop variable bound to the element (a
     // type, or a constant), the way a pack expansion binds each element in turn.
     void forConstexpr(ForConstexprStmt* f);
+    // An element of `for constexpr (auto v : {...})`: the constant as a template argument of its own
+    // type (an integer, enumeration or floating one); null for any other value.
+    const Ty* ownElement(const std::optional<ConstValue>& v);
+    // `for constexpr (typename T : kinds) case T::kind: ...` directly in a switch's body: its elements
+    // are the switch's cases (design.md 8.2), and `break` in it leaves the switch; any other one is a
+    // statement of its own, which `break` leaves.
+    bool labelsCases(ForConstexprStmt* f);
 
     // The statements of a for constexpr body: those of its block, or the statement itself.
     static std::vector<Stmt*> bodyStatements(Stmt* body);

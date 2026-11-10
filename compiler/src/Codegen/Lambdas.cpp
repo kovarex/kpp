@@ -98,6 +98,8 @@ auto codegen::Emitter::captureList(LambdaExpr* l, std::unordered_map<Decl*, cons
     for (Decl* u : used)
       if (localNamed(u, cap.symbol) || bindsName(u, cap.symbol))
         d = d ? d : u;
+    if (!d && forConstexprVariable(l, cap.symbol))
+      continue; // `[v]` of a for constexpr variable: the element's constant, which the body reads as `[]`'s does
     if (!d)
       d = unusedCapture(l, cap.symbol);
     if (bindingObject(d))
@@ -208,6 +210,37 @@ auto codegen::Emitter::bindsName(Decl* d, uint32_t symbol) -> bool
   for (Node* b : static_cast<VariableDecl*>(d)->structuredBindings)
     if (b && b->kind == NodeKind::NameExpr && !static_cast<NameExpr*>(b)->name.empty() && static_cast<NameExpr*>(b)->name.last().symbol == symbol)
       return true;
+  return false;
+}
+
+auto codegen::Emitter::forConstexprVariable(LambdaExpr* l, uint32_t symbol) -> bool
+{
+  auto holds = [&](Node* root)
+  {
+    bool found = false;
+    forEachNode(root, [&](Node* n) { found = found || (n->kind == NodeKind::LambdaExpr && n->token == l->token); }); // (l may be a copy)
+    return found;
+  };
+  for (Decl* d = l->closure ? l->closure->parent : nullptr; d; d = d->parent)
+  {
+    if (d->kind != NodeKind::FunctionDecl || !static_cast<FunctionDecl*>(d)->body)
+      continue;
+    bool found = false;
+    forEachNode(static_cast<FunctionDecl*>(d)->body, [&](Node* n)
+    {
+      if (found || n->kind != NodeKind::ForConstexprStmt)
+        return;
+      auto* fc = static_cast<ForConstexprStmt*>(n);
+      auto* v = static_cast<TemplateParamDecl*>(fc->var);
+      if (v->isType || v->name != symbol)
+        return;
+      found = holds(fc->body);
+      for (Stmt* each : fc->elementBodies)
+        found = found || holds(each);
+    });
+    if (found)
+      return true;
+  }
   return false;
 }
 

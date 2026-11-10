@@ -1,0 +1,112 @@
+// spec: `break` in a for constexpr body leaves the statement and `continue` goes on to the next element, each destroying the element's objects on the way (C++26's expansion statements, [stmt.expand]); a loop, a switch or another for constexpr inside the body keeps its own break; directly in a switch's body a for constexpr whose elements are the switch's cases is the switch's, its `break` the switch's (design.md 8.2)
+// found: E's battery a3 (2026-11-10): "codegen does not support break outside a loop or switch yet"
+struct Tracer
+{
+  int id;
+  Tracer(int i) : id(i) { std::print("+", this.id); }
+  ~Tracer() { std::print("-", this.id, " "); }
+};
+
+int breaks()
+{
+  int sum = 0;
+  for constexpr (int v : {1, 2, 3, 4})
+  {
+    Tracer t(v);
+    if (v == 3)
+      break;
+    sum += v;
+  }
+  return sum;
+}
+
+int continues()
+{
+  int sum = 0;
+  for constexpr (int v : {1, 2, 3, 4})
+  {
+    Tracer t(v * 10);
+    if constexpr (v == 2)
+      continue;
+    sum += v;
+  }
+  return sum;
+}
+
+int nested()
+{
+  int total = 0;
+  for constexpr (int a : {1, 2, 3})
+  {
+    for constexpr (int b : {1, 2, 3})
+    {
+      if (b > a)
+        break;
+      total = total * 10 + b;
+    }
+    if (a == 2)
+      continue;
+    for (int i = 0; i < 5; ++i)
+    {
+      if (i == 1)
+        break; // the for's
+      total = total * 10 + 9;
+    }
+  }
+  return total;
+}
+
+int inLoop()
+{
+  // continue and break of the for constexpr, not the while around it
+  int rounds = 0, total = 0;
+  while (rounds < 2)
+  {
+    ++rounds;
+    for constexpr (int v : {1, 2, 3})
+    {
+      if (v == 1)
+        continue;
+      if (v == 3)
+        break;
+      total = total * 10 + v;
+    }
+  }
+  return total * 10 + rounds;
+}
+
+struct A { static const int kind = 1; };
+struct B { static const int kind = 2; };
+int inSwitch(int kind, int stop)
+{
+  int total = 0;
+  switch (kind)
+  {
+    for constexpr (typename T : types<A, B>)
+      case T::kind:
+      {
+        if (T::kind == stop)
+          break; // the switch's: its elements are the switch's cases
+        return T::kind * 100;
+      }
+    default:
+      for constexpr (int v : {1, 2, 3})
+      {
+        if (v == stop)
+          break; // the for constexpr's
+        total = total * 10 + v;
+      }
+  }
+  return total;
+}
+
+int main()
+{
+  int b = breaks();
+  std::println("| breaks ", b);
+  int c = continues();
+  std::println("| continues ", c);
+  std::println("nested ", nested(), " inLoop ", inLoop());
+  std::println("inSwitch ", inSwitch(1, 0), " ", inSwitch(2, 2), " ", inSwitch(5, 3), " ", inSwitch(5, 0));
+  return 0;
+}
