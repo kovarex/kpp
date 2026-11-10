@@ -1,0 +1,10 @@
+// spec: an enumerator's value may name a later enumerator of its enumeration (kpp's order independence, design.md 2): `enum { X = K, K = 3, Y = K * 2, Z }` is 3 3 6 7, in a class, at namespace scope, in an enum class, and from an enumerator after it that counts up from a written one; a cycle is still an error
+// found: thread A's battery (2026-11-10): "the enumerator X is no constant the compiler could evaluate: constants nested more than 1024 deep", the enumeration's values found again from the first for each one asked
+struct S { enum { X = K, K = 3, Y = K * 2, Z }; };
+enum E { A = D + 1, B, C = 3, D };
+enum class F : unsigned char { G = int(H) + 1, H = 200 };
+int main()
+{
+  std::println(int(S::X), " ", int(S::K), " ", int(S::Y), " ", int(S::Z), " ", int(A), " ", int(B), " ", int(C), " ", int(D), " ", int(F::G), " ", int(F::H));
+  return 0;
+}

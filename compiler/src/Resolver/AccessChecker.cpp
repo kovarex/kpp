@@ -641,11 +641,58 @@ auto GlobalScope::Impl::constValueOfDecl(Decl* d, const TypeContext& ctx, int de
     // An enumerator written from the one before (`F1 = 2 * F0`) asks for it while this loop
     // computes it: the values found so far answer, so that a chain is evaluated once, not again
     // for each link (2^n steps).
+    // A written value, converted as the enumeration has it. (Off Windows an enumeration without a fixed type is as wide
+    // as its enumerators, which are what is being found out: declaredUnderlying. `big = 0x100000000` stays, on Windows it
+    // is int.)
+    auto writtenValue = [&](EnumeratorDecl* cur) -> std::optional<ConstValue>
+    {
+      // (its value as a walk of it typed it: constWalkedCopy)
+      std::optional<ConstValue> written = constValue(constWalkedCopy(cur, cur->value, e->file, ectx.scope, e, instance), ectx, depth + 1);
+      bool holdsItsValue = written && written->kind == ConstValue::Kind::Int && !e->underlying && !e->isClass && types.longBits() == 64;
+      return holdsItsValue ? ConstValue::integer(written->i, enumType) : constConverted(written, enumType);
+    };
+    bool beingFound = false;
     for (const EnumeratorValues* f = enumeratorValues; f; f = f->outer)
       if (f->e == e && f->type == enumType)
+      {
         for (const auto& [at, value] : f->values)
           if (at == d)
             return value;
+        beingFound = true;
+      }
+    if (beingFound)
+    {
+      // One after the enumerator the loop below is at (`X = K, K = 3`: K asked while X is found): d alone, from the
+      // last written value up to it, not the loop again from the first, which asked for d again without an end (until
+      // 2026-11-10 "constants nested more than 1024 deep"; thread A's battery). A cycle (`X = K, K = X`) still ends there.
+      int64_t offset = 0;
+      EnumeratorDecl* from = nullptr;
+      bool seen = false;
+      for (size_t i = e->enumerators.size(); i-- > 0;)
+      {
+        Decl* m = e->enumerators[i];
+        if (m->kind != NodeKind::EnumeratorDecl)
+          continue;
+        seen = seen || m == d;
+        if (!seen)
+          continue;
+        if (static_cast<EnumeratorDecl*>(m)->value)
+        {
+          from = static_cast<EnumeratorDecl*>(m);
+          break;
+        }
+        ++offset;
+      }
+      if (!seen)
+        return std::nullopt;
+      std::optional<ConstValue> v = from ? writtenValue(from) : std::optional<ConstValue>(ConstValue::integer(0, enumType));
+      if (!v)
+        return std::nullopt;
+      if (!from)
+        --offset; // (counting from 0: the first enumerator is 0, offset counted it)
+      v->i += offset;
+      return v;
+    }
     EnumeratorValues found{e, enumType, {}, enumeratorValues};
     enumeratorValues = &found;
     struct Pop
@@ -666,12 +713,7 @@ auto GlobalScope::Impl::constValueOfDecl(Decl* d, const TypeContext& ctx, int de
       auto* cur = static_cast<EnumeratorDecl*>(m);
       if (cur->value)
       {
-        // (its value as a walk of it typed it: constWalkedCopy)
-        std::optional<ConstValue> written = constValue(constWalkedCopy(cur, cur->value, e->file, ectx.scope, e, instance), ectx, depth + 1);
-        // (Off Windows an enumeration without a fixed type is as wide as its enumerators, which are
-        // what is being found out: declaredUnderlying. `big = 0x100000000` stays, on Windows it is int.)
-        bool holdsItsValue = written && written->kind == ConstValue::Kind::Int && !e->underlying && !e->isClass && types.longBits() == 64;
-        std::optional<ConstValue> v = holdsItsValue ? ConstValue::integer(written->i, enumType) : constConverted(written, enumType);
+        std::optional<ConstValue> v = writtenValue(cur);
         if (!v)
         {
           if (asked)

@@ -1,0 +1,7 @@
+// spec: enumerators whose values name each other in a cycle are an error, not a value
+// error: enumerator_cycle_is_error.kpp:3: error: the enumerator X is no constant the compiler could evaluate: constants nested more than 1024 deep (each name's value needing the next one's, as a template recursion does) (in main())
+enum E { X = K, K = X };
+int main()
+{
+  return int(X);
+}
