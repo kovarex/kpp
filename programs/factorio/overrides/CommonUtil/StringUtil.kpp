@@ -12,14 +12,14 @@ void wstringConvert() = delete; // codecvt is gone: widen and narrow below do th
 
 namespace StringUtil
 {
-  std::WString widen(const char* str, int length) { return platform::widenUtf8(str, length); }
+  std::WString widen(const char* str, int length) { return std::platform::widenUtf8(str, length); }
 
   std::WString widen(const std::String& str) { return widen(str.c_str(), str.size()); }
   std::WString widen(std::StringView str) { return widen(str.data(), str.size()); }
   std::WString widen(const std::WString& str) { return str; }
   std::WString widen(const char* str) { return widen(str, (int)strlen(str)); }
 
-  std::String narrow(const wchar_t* str, int length) { return platform::narrowWide(str, length); }
+  std::String narrow(const wchar_t* str, int length) { return std::platform::narrowWide(str, length); }
 
   std::String narrow(const std::WString& str) { return narrow(str.c_str(), str.size()); }
   std::String narrow(wchar_t str) { return narrow(&str, 1); }

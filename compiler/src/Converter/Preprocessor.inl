@@ -268,7 +268,7 @@
     {"END_FORCE_OPTIMIZE", ""}, {"SUPPRESS_UBSAN", ""}, {"PADDING_WARNING", ""},
     // errno: the stdlib's accessor, one spelling on every platform (_errno() on Windows, glibc's
     // __errno_location(), FreeBSD's __error()).
-    {"errno", "(*platform::errnoLocation())"},
+    {"errno", "(*std::platform::errnoLocation())"},
     // SDL_stdinc.h's format for an Sint64, which SDLWindow concatenates with a literal (Windows').
     {"SDL_PRIs64", "\"I64d\""},
     // C headers' constants that are casts, which the C import does not take for constants (signal.h,
