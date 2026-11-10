@@ -1,5 +1,5 @@
-// spec: a function parameter pack whose pattern is a class template-id (`const Box<Ts>&... boxes`, `Box<Ts>... boxes`, `Buf<Ts, 2>... bufs`) deduces one element of its pack from each argument and takes one parameter per element ([temp.deduct.call] 1, [temp.variadic] 5) (clang's output)
-// pending: "codegen does not support a call that did not resolve yet": the candidate's parameter, substituted, splices the pack into the class's arguments (Box<int, char>) instead of expanding the pattern per element; given one argument, "a parameter pack that was not deduced yet" in codegen (found by D's deduction battery against clang, 2026-11-10; D, the instance's parameters codegen's too)
+// spec: a function parameter pack whose pattern is a class template-id (`const Box<Ts>&... boxes`, `Box<Ts>... boxes`, `Buf<Ts, 2>... bufs`) deduces one element of its pack from each argument and takes one parameter per element, which the body reads ([temp.deduct.call] 1, [temp.variadic] 5); with a parameter before it too (clang's output)
+// found by D's deduction battery against clang (2026-11-10): "codegen does not support a call that did not resolve yet", the candidate's parameter, substituted, splicing the pack into the class's arguments (Box<int, char>) instead of expanding the pattern per element; given one argument, codegen's "a parameter pack that was not deduced"
 template<typename T>
 struct Box
 {
@@ -16,13 +16,18 @@ template<typename... Ts>
 int byValue(Box<Ts>... boxes) { return int(sizeof...(boxes)); }
 template<typename... Ts>
 int pairs(Buf<Ts, 2>... bufs) { return int(sizeof...(Ts)); }
+template<typename... Ts>
+int sum(const Box<Ts>&... boxes) { return (0 + ... + int(boxes.v)); }
+template<typename T, typename... Ts>
+int lead(T first, const Box<Ts>&... rest) { return int(first) * 100 + int(sizeof...(rest)) * 10 + (0 + ... + int(rest.v)); }
 
 int main()
 {
-  Box<int> b{};
-  Box<char> c{};
+  Box<int> b{3};
+  Box<char> c{4};
   Buf<int, 2> x{};
   Buf<char, 2> y{};
   std::println(byRef(b, c), " ", byValue(b, c, b), " ", pairs(x, y), " ", pairs(x));
+  std::println(sum(b, c, b), " ", lead(7, b, c));
   return 0;
 }

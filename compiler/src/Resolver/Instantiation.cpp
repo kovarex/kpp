@@ -2180,6 +2180,21 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
   }
 }
 
+auto GlobalScope::Impl::expandedPattern(ParamDecl* pd, const TypeContext& ctx, int depth) -> const Ty*
+{
+  if (!pd || !pd->type || isBarePack(pd->type))
+    return nullptr;
+  PackType expansion{};
+  expansion.kind = NodeKind::PackType;
+  expansion.token = pd->token;
+  expansion.pattern = pd->type;
+  const Ty* elements = convertType(&expansion, ctx, depth + 1);
+  if (!elements || elements->kind != TyKind::Pack ||
+      !std::all_of(elements->args.begin(), elements->args.end(), [&](const Ty* e) { return e && e->isKnown() && !types.isDependent(e); }))
+    return nullptr;
+  return elements;
+}
+
 auto GlobalScope::Impl::declContextFor(Decl* d, DeclContext& out) -> void
 {
   out.scope = lexicalScopeOf(d);
@@ -2614,7 +2629,13 @@ auto GlobalScope::Impl::computeDeclaredType(Decl* d, const Subst* subst, int dep
     }
     case NodeKind::ParamDecl:
     {
-      const Ty* t = convertType(static_cast<ParamDecl*>(d)->type, ctx, depth + 1);
+      auto* pd = static_cast<ParamDecl*>(d);
+      const Ty* t = convertType(pd->type, ctx, depth + 1);
+      // `const Box<Ts>&... boxes` with Ts bound: the pack of its elements' types, as the function's type has them
+      // (the code generator takes a pack parameter's elements from here)
+      if (pd->isPack && subst && t && t->kind != TyKind::Pack && !packParamOf(t))
+        if (const Ty* elements = expandedPattern(pd, ctx, depth))
+          return elements;
       return t && t->kind == TyKind::Array ? types.decay(t) : t; // `double m[3][3]` is a pointer parameter
     }
     case NodeKind::EnumeratorDecl:
@@ -2646,6 +2667,13 @@ auto GlobalScope::Impl::computeDeclaredType(Decl* d, const Subst* subst, int dep
         if (pd->isPack && spliceIfPack(pt, params))
         {
           // deduced pack (`Args...`, `Args&&...`): one parameter per element
+        }
+        else if (const Ty* elements = pd->isPack && subst ? expandedPattern(pd, ctx, depth) : nullptr)
+        {
+          // `const Box<Ts>&... boxes` with Ts bound: the pattern once per element, one parameter each ([temp.variadic] 5);
+          // until 2026-11-10 one parameter, the pack spliced into the class's arguments (Box<int, char>), so no call took it
+          for (const Ty* e : elements->args)
+            params.push_back(e->kind == TyKind::Array ? types.decay(e) : !e->isReference() ? types.unqualified(e) : e);
         }
         else
         {

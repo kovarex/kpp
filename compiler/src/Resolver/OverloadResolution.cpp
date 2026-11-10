@@ -2928,7 +2928,20 @@ auto GlobalScope::Impl::chooseAmong(const std::vector<FunctionDecl*>& candidates
         c.params.push_back(nullptr);
         continue;
       }
-      if (!f->templateParams.empty())
+      bool expandedPack = false;
+      if (!f->templateParams.empty() && i < f->params.size() && f->params[i] && f->params[i]->kind == NodeKind::ParamDecl &&
+          static_cast<ParamDecl*>(f->params[i])->isPack && !packParamOf(pt))
+        if (const Ty* typed = declaredTypeOf(f, &deduced, 0); typed && typed->kind == TyKind::Function && typed->args.size() >= i &&
+                                                                !typed->variadic)
+        {
+          // A parameter pack whose pattern is built around the packs (`const Box<Ts>&... boxes`): the parameters the
+          // declaration typed under the deduced arguments has, one per element (substitute splices the pack into the
+          // class's arguments instead: Box<int, char>, which took no argument until 2026-11-10).
+          std::vector<const Ty*> elements(typed->args.begin() + i, typed->args.end());
+          pt = types.pack(Span<const Ty*>{elements.data(), uint32_t(elements.size())});
+          expandedPack = true;
+        }
+      if (!f->templateParams.empty() && !expandedPack)
       {
         const Ty* written = pt;
         pt = substitute(pt, deduced);

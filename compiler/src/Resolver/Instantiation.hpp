@@ -311,6 +311,11 @@
   // Whether a pack expansion's pattern is the pack alone (`Args...`).
   static bool isBarePack(const Type* pattern);
 
+  // A function parameter pack's pattern (`const Box<Ts>&... boxes`) under ctx's substitution: a Pack of it typed once per
+  // element of the packs it names; null when they are not bound to packs, its pattern is a bare pack, or an element is
+  // not known.
+  const Ty* expandedPattern(ParamDecl* pd, const TypeContext& ctx, int depth);
+
   // The parameter packs that s binds to packs and the pattern n names (by name, in its names and
   // template arguments, in types and expressions written in it), each once.
   void packsNamedIn(Node* n, const Subst& s, std::vector<Decl*>& out, int depth = 0);
