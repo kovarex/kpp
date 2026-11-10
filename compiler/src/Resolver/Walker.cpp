@@ -5701,11 +5701,38 @@ auto GlobalScope::Impl::Walker::checkScalarArguments(FunctionDecl* f, const Ty* 
     {
       checkClassToScalar(argTypes[i], fnTy->args[i], args[i]->token, ambiguousOnly, args[i]);
       if (!ambiguousOnly)
+      {
         checkPointerToScalar(argTypes[i], fnTy->args[i], args[i]);
+        if (!(i + 1 == f->params.size() && impl.namesTextLast(f)) && !namesFunctionsWithoutTarget(args[i])) // (a Text takes pieces)
+          checkClassToClass(argTypes[i], fnTy->args[i], args[i]);
+      }
     }
   if (fnTy->variadic) // `printf("%p", this)`: C's `...` would take the object itself
     for (size_t i = fnTy->args.size(); i < args.size(); ++i)
       objectThisWherePointer(args[i], nullptr, true);
+}
+
+auto GlobalScope::Impl::Walker::checkClassToClass(const Ty* given, const Ty* param, Expr* arg) -> void
+{
+  if (probing || !given || !param || !given->isKnown() || !param->isKnown() || types.isDependent(given) || types.isDependent(param) ||
+      (param->kind == TyKind::LRef && !types.stripRef(param)->isConst)) // (a non-const lvalue reference: checkReferenceArguments's)
+    return;
+  const Ty* a = types.unqualified(types.stripRef(given));
+  const Ty* p = types.unqualified(types.stripRef(param));
+  if (a->kind != TyKind::Class || p->kind != TyKind::Class || a == p || a->isBraceList() || p->isBraceList() || Impl::lambdaOf(a) ||
+      Impl::mentionsUnknown(a) || Impl::mentionsUnknown(p) || (a->decl && (a->decl->attributes & ATTR_Draft)) || impl.isBaseClass(p, a))
+    return;
+  if (impl.conversionRank(given, param) < Impl::NotViable)
+    return;
+  // (by the rules a construction and a conversion run by, design.md 24: one a direct-initialization takes, explicit by
+  // default or ambiguous, is checkExplicitCopy's to say)
+  bool ambiguous = false;
+  if (impl.chooseConstructor(p, {given}, nullptr, nullptr, false, &ambiguous) || ambiguous ||
+      impl.chooseConversion(a, p, GlobalScope::ConversionKind::ToType, true, nullptr, nullptr, false, &ambiguous) || ambiguous)
+    return;
+  std::string from = types.toString(a, &symbols), to = types.toString(p, &symbols);
+  reportHere(arg->token, "a " + from + " does not convert to " + types.toString(param, &symbols) + ": " + from + " does not derive from " + to +
+                           ", no constructor of " + to + " takes it, and no conversion operator of " + from + " gives one");
 }
 
 auto GlobalScope::Impl::Walker::checkPointerToScalar(const Ty* given, const Ty* param, Expr* arg) -> void

@@ -773,6 +773,11 @@
     // floating-point or enumeration type (to bool it does, [conv.bool]), the checker's error for a single
     // candidate (the code generator's "does not support passing a pointer where long is expected" before).
     void checkPointerToScalar(const Ty* given, const Ty* param, Expr* arg);
+    // A class given for a single candidate's parameter of another class that it does not derive from, that no constructor
+    // of takes and no conversion operator of it gives (conversionRank's rules): the checker's error, where it was codegen's
+    // about something else ("a conversion from Bar to int32", the parameter's aggregate initialization) or "binding an
+    // unrelated class to a reference".
+    void checkClassToClass(const Ty* given, const Ty* param, Expr* arg);
     void checkScalarArguments(FunctionDecl* f, const Ty* fnTy, const Span<Expr*>& args, bool ambiguousOnly = false);
     // The same call's arguments for its reference parameters (checkReferenceBindings), f named by
     // callee if given (`sink(d)` of a class's operator()).

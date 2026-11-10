@@ -151,7 +151,13 @@ builds win less unless machine code is cached per function.
   every candidate's reason is sure (no pack, Text, C ellipsis, explicit template argument or
   argument of a type not known); a deduction conflict has its own error, above. Specs
   templates/call_whose_candidates_are_left_out_is_error and
-  templates/call_whose_candidates_are_left_out_in_an_instance_is_error.
+  templates/call_whose_candidates_are_left_out_in_an_instance_is_error. A single plain candidate's
+  call stays codegen's to convert, but an argument of a class that its parameter's class does not
+  take is the checker's error (2026-11-10): not derived from it, no constructor of it taking one, no
+  conversion operator giving one, by the rules a construction and a conversion run by: "a Bar does not
+  convert to const Foo&: ...". It was codegen's "a conversion from Bar to int32" (the parameter's
+  aggregate initialization) or "binding an unrelated class to a reference". Spec
+  classes/unrelated_class_argument_is_error.
 - A class template or an alias template named with too few template arguments is an error, as too
   many was (2026-11-10, [temp.arg] 4): "Pair takes 2 template arguments, 1 given", "Def takes 1 to 2
   template arguments, 0 given", "Variadic takes at least 1 template argument, 0 given". A default

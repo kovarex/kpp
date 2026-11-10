@@ -1,0 +1,31 @@
+// spec: a class given for a function's parameter of another class that it does not derive from, that no constructor of the other takes and no conversion operator of it gives, is an error at the argument, as C++'s "no known conversion" ([over.best.ics]): a value, a const reference and an rvalue reference parameter, a member function's and a class template instance's alike; a derived class's object still converts to its base (until 2026-11-10 codegen's error about something else: "a conversion from Bar to int32", the parameter's aggregate initialization, or "binding an unrelated class to a reference")
+// error: unrelated_class_argument_is_error.kpp:25: error: a Bar does not convert to Foo: Bar does not derive from Foo, no constructor of Foo takes it, and no conversion operator of Bar gives one
+// error: unrelated_class_argument_is_error.kpp:26: error: a Bar does not convert to const Foo&: Bar does not derive from Foo, no constructor of Foo takes it, and no conversion operator of Bar gives one
+// error: unrelated_class_argument_is_error.kpp:27: error: a Bar does not convert to Foo&&: Bar does not derive from Foo, no constructor of Foo takes it, and no conversion operator of Bar gives one
+// error: unrelated_class_argument_is_error.kpp:28: error: a Bar does not convert to Foo: Bar does not derive from Foo, no constructor of Foo takes it, and no conversion operator of Bar gives one
+// error: unrelated_class_argument_is_error.kpp:29: error: a Box<char> does not convert to Box<int32>: Box<char> does not derive from Box<int32>, no constructor of Box<int32> takes it, and no conversion operator of Box<char> gives one
+struct Foo { int x = 1; };
+struct Bar { int y = 2; };
+struct Base { int z = 3; };
+struct Derived : Base { int w = 4; };
+template<class T> struct Box { T value; };
+struct Holder
+{
+  int put(Foo f) { return f.x; }
+};
+int take(Foo f) { return f.x; }
+int takeConst(const Foo& f) { return f.x; }
+int takeMoved(Foo&& f) { return f.x; }
+int takeBase(Base b) { return b.z; }
+int takeBox(Box<int> b) { return b.value; }
+int main()
+{
+  Bar b;
+  Holder h;
+  int one = take(b);
+  int two = takeConst(b);
+  int three = takeMoved(Bar{});
+  int four = h.put(b);
+  int five = takeBox(Box<char>{});
+  return one + two + three + four + five + takeBase(Derived{});
+}
