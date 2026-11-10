@@ -11150,6 +11150,14 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
       if (b->kind == TyKind::Pointer || b->kind == TyKind::Array)
       {
         later.judged = true;
+        // `arr[0, 1]`: a comma in brackets separates indexes (C++23's [expr.sub]), and a built-in subscript takes
+        // one (it read arr[0], neither C++20's comma operator, arr[1], nor C++23's error, thread E's battery a5).
+        if (i->args.size() != 1)
+        {
+          reportHere(i->token, "a built-in subscript takes one index, and this one is given " + std::to_string(i->args.size()) +
+                                   ": a comma in brackets separates indexes, as in C++23 (write `a[(i, j)]` for the comma operator)");
+          return record(e, types.lref(b->inner));
+        }
         // (an index of a class that converts to an integer only by an operator explicit by default: the rule's error)
         if (firstIndex && i->args.size() == 1 && !builtinOperand(firstIndex))
           reportUnmarkedOperand(firstIndex, "[]", i->token);
@@ -11203,6 +11211,30 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
             checkConstObjectCall(f, base, i->token); // (`o[0]` of a const or volatile o by a member without the qualifier)
             return record(e, returnTypeOfCall(f, &r.subst, i->args, nullptr));
           }
+        }
+        // `v[1, 2]` where every operator[] of the class takes fewer indexes: a comma in brackets separates them, as in
+        // C++23 (codegen said "V has no operator[]").
+        if (i->args.size() > 1 && r.decl && r.decl->kind == NodeKind::FunctionDecl)
+        {
+          size_t most = 0;
+          bool more = false;
+          auto weigh = [&](Decl* d) {
+            if (!d || d->kind != NodeKind::FunctionDecl)
+              return;
+            auto* f = static_cast<FunctionDecl*>(d);
+            for (Decl* p : f->params)
+              more = more || static_cast<ParamDecl*>(p)->isPack;
+            most = std::max(most, f->params.size());
+          };
+          if (r.overloads)
+            for (const Entry& entry : *r.overloads)
+              weigh(entry.decl);
+          else
+            weigh(r.decl);
+          if (!more && most < i->args.size())
+            reportHere(i->token, types.toString(types.unqualified(b), &symbols) + "'s operator[] takes " + (most == 1 ? std::string("one index") : std::to_string(most) + " indexes") +
+                                     " at most, and this subscript is given " + std::to_string(i->args.size()) +
+                                     ": a comma in brackets separates indexes, as in C++23 (write `v[(i, j)]` for the comma operator)");
         }
         // `oi[values]`: the built-in subscript of a pointer index, the class converting to an integer only by an operator
         // explicit by default (the rule's error; codegen said "OI has no operator[]")

@@ -1,0 +1,18 @@
+// spec: a comma in brackets separates indexes, as in C++23 ([expr.sub]): a built-in subscript given two, `arr[0, 1]`, is an error, and so is `v[1, 2]` where every operator[] of the class takes one; `a[(i, j)]` is the comma operator, and an operator[] taking two indexes takes `m[1, 0]`
+// found by thread E's battery a5 (2026-11-10): `arr[0, 1]` read arr[0], neither C++20's comma operator (arr[1]) nor C++23's error, a silent wrong answer, and `v[1, 2]` was the code generator's "V has no operator[]"
+// error: subscript_given_more_indexes_than_taken_is_error.kpp:15: error: V's operator[] takes one index at most, and this subscript is given 2
+// error: subscript_given_more_indexes_than_taken_is_error.kpp:16: error: a built-in subscript takes one index, and this one is given 2
+struct V
+{
+  int data[4] = {1, 2, 3, 4};
+  int operator[](int i) const { return this.data[i]; }
+};
+
+int main()
+{
+  V v;
+  int arr[3] = {7, 8, 9};
+  int x = v[1, 2];
+  int y = arr[0, 1];
+  return x + y;
+}
