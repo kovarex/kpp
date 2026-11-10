@@ -6006,9 +6006,10 @@ namespace
         advance();
       }
       Expr* lhs = parseLogicalOr();
-      if (at(TokenKind::Punctuator))
+      if (at(TokenKind::Punctuator) || at(Kw::and_eq_) || at(Kw::or_eq_) || at(Kw::xor_eq_))
       {
-        P p = P(tok().id);
+        // (`a and_eq b` is `a &= b`)
+        P p = at(Kw::and_eq_) ? P::AmpAssign : at(Kw::or_eq_) ? P::PipeAssign : at(Kw::xor_eq_) ? P::CaretAssign : P(tok().id);
         if (isAssignmentOp(p))
         {
           uint32_t opTok = pos;
@@ -6169,7 +6170,11 @@ namespace
         if (noGreater && (at(P::GreaterEq) || at(P::ShrAssign)))
           return lhs;
         uint32_t opTok = pos;
-        uint32_t op = tok().id;
+        // `a bitand b` is `a & b` ([lex.digraph] 2: an alternative token is its primary one in all but
+        // spelling): its class's operator& too. Until 2026-11-10 one kept as a keyword was typed as an
+        // arithmetic result and refused by codegen ("this keyword operator"), and `and`/`or` never
+        // called a class's operator&&/||.
+        uint32_t op = foldOperator(tok());
         advance();
         // Fold expression `pack op ...`
         if (at(P::Ellipsis))
@@ -6199,7 +6204,7 @@ namespace
         b->lhs = lhs;
         b->rhs = rhs;
         b->op = op;
-        b->isKeyword = isKeyword;
+        b->isKeyword = false;
         // `(HANDLE) -1`: a cast when HANDLE is a type, which only the resolver knows (ParsedFile::castCandidates).
         Expr* paren = lhs; // also under casts: `(long long)(HANDLE) -2`
         while (paren->kind == NodeKind::CastExpr && static_cast<CastExpr*>(paren)->operand)
@@ -6284,8 +6289,8 @@ namespace
           {
             advance();
             UnaryExpr* u = node<UnaryExpr>(start);
-            u->op = uint32_t(Kw(toks[start].id));
-            u->isKeyword = true;
+            u->op = uint32_t(Kw(toks[start].id) == Kw::not_ ? P::Bang : P::Tilde); // (`not x` is `!x`, as for the binary ones)
+            u->isKeyword = false;
             u->postfix = false;
             u->operand = parseUnary();
             return u;

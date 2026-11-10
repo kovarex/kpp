@@ -1,0 +1,30 @@
+// spec: an alternative token is its primary token in all but spelling ([lex.digraph] 2): `a and b` calls a class's operator&&, `not a` its operator!, `bitand`, `bitor`, `xor`, `compl` and `not_eq` are &, |, ^, ~ and != with a class's operators and in folds, and `and_eq`, `or_eq`, `xor_eq` are &=, |=, ^=
+// found: thread A's battery (2026-11-10): `a and b` and `not a` of a class with operator&& and operator! took the built-in operators through its bool conversion (0 and false, where clang gives 12010 and true, silently); `bitand`, `bitor`, `xor`, `compl` and `not_eq` were codegen's "this keyword operator", `and_eq` a parse error
+struct Flags
+{
+  int bits;
+  Flags operator&(Flags o) const { return Flags{this.bits & o.bits}; }
+  Flags operator|(Flags o) const { return Flags{this.bits | o.bits}; }
+  Flags operator^(Flags o) const { return Flags{this.bits ^ o.bits}; }
+  Flags operator~() const { return Flags{~this.bits & 0xff}; }
+  bool operator!() const { return this.bits == 0x55; }
+  bool operator==(Flags o) const { return this.bits + 1 == o.bits; }
+  int operator&&(Flags o) const { return this.bits * 1000 + o.bits; }
+  int operator||(Flags o) const { return this.bits - o.bits; }
+  operator bool() const { return true; }
+};
+template <typename... T> bool all(T... t) { return (t and ...); }
+template <typename... T> int either(T... t) { return (t bitor ...); }
+int main()
+{
+  Flags a{12}, b{10};
+  Flags c = a bitand b, d = a bitor b, e = a xor b, f = compl a;
+  std::println(c.bits, " ", d.bits, " ", e.bits, " ", f.bits, " ", not Flags{0x55}, " ", not a, " ", a not_eq Flags{13}, " ", a not_eq Flags{14});
+  std::println(a and b, " ", a or b);
+  int x = 6, y = 3;
+  x and_eq 7;
+  y or_eq 8;
+  x xor_eq 1;
+  std::println(x, " ", y, " ", x > 1 and y > 1 or x == 0, " ", not (x == 7) or not y, " ", x bitand y bitor 8 xor 1, " ", all(true, 1, 'c'), " ", all(true, 0), " ", either(1, 2, 8));
+  return 0;
+}
