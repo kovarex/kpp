@@ -1,0 +1,31 @@
+// spec: a polymorphic class written in a function template is a class of each instance, one made for each lambda: its virtual function called through the base runs that instance's lambda (thread F's link failure, 2026-11-10: a compile server dropped such a member after an edit the lambda's writer read, and kept the vtable that names it)
+
+class Helper
+{
+public:
+  virtual ~Helper() {}
+  virtual int run() = 0;
+};
+
+template<class F>
+Helper* makeHelper(F&& f)
+{
+  class Inner : public Helper
+  {
+  public:
+    Inner(F&& g) : g(std::move(g)) {}
+    virtual int run() override { return this.g(); }
+    F g;
+  };
+  return new Inner(std::move(f));
+}
+
+int main()
+{
+  int base = 40;
+  Helper* a = makeHelper([base]() { return base + 2; });
+  Helper* b = makeHelper([]() { return 7; });
+  std::println(a->run(), " ", b->run());
+  delete a;
+  delete b;
+}

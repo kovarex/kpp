@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**2081 pass, 7 pending, 0 failing, 0 fixed** (2088 snippets, 219.8 s).
+**2082 pass, 7 pending, 0 failing, 0 fixed** (2089 snippets, 151.8 s).
 
 ## Language: statements, expressions, declarations
 
@@ -1039,6 +1039,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `classes/polymorphic_class_destructor_is_virtual.kpp` | a class with a virtual function, its own or a base's, has a virtual destructor, written or not (kovarex, 2026-11-07, design.md 23b): `delete` through a base runs the whole object's destructor, whether the base's is implicit, declared without `virtual` or protected, the base at an offset (a second base), an instance of a class template, through UniquePtr and an explicit `p->~Base()` too; C++ runs the base's alone, undefined behaviour | pass |  |  |
 | `classes/polymorphic_class_operator_delete.kpp` | a delete through a virtual destructor gives the memory back through the operator delete of the object's own class ([expr.delete] 10, [class.free] 4): a derived class's own, sized with the whole object's size, one it inherits, and through a second base the one the most derived class declares; free for a class with none | pass | the class operator new work (thread J, the forms left over: it was refused); clang's output |  |
 | `classes/polymorphic_class_with_a_deleted_destructor.kpp` | a polymorphic class whose destructor is deleted (an object made once and never destroyed) builds and runs: its destructor, virtual by kpp's rule (design.md 23b), takes a vtable slot that holds no function, as a pure one's, since no call can reach it | pass |  |  |
+| `classes/polymorphic_local_class_of_a_template_made_for_a_lambda.kpp` | a polymorphic class written in a function template is a class of each instance, one made for each lambda: its virtual function called through the base runs that instance's lambda (thread F's link failure, 2026-11-10: a compile server dropped such a member after an edit the lambda's writer read, and kept the vtable that names it) | pass |  |  |
 | `classes/postfix_increment_needs_postfix_operator.kpp` | `c++` and `c--` of a class call its postfix operator, `operator++(int)` (a member's, or a free `operator++(C&, int)`), never the prefix `operator++()`: a class declaring only the prefix one makes `c++` a compile error, as in C++ ([over.inc]); `++c` calls the prefix one | pass |  |  |
 | `classes/postfix_increment_without_postfix_operator_is_error.kpp` | `c++` and `c--` on a class that has only the prefix operator are errors, as in C++ (clang: "cannot increment value of type 'C'"), where kpp called the prefix one, MSVC's extension: `C d = c++;` gave d the incremented value, `1 1` for C++'s `1 0` had it compiled | pass |  |  |
 | `classes/postincrement_assignment.kpp` | postincrement_assignment | pass |  |  |

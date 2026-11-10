@@ -101,6 +101,15 @@ $steps = @(
   # template's static local, try and static braced list only moves them. Until then each of these ran codegen in full.
   @{ name = 'a line and a statement added above a local class, static locals and a template''s try (they move, their names do not)'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12 7'; edit = { Edit 'positions.kpp' 'int positionHelper() { return 1; }' "int positionHelper()`n{`n  int one = 1;`n  return one;`n}" } },
   @{ name = 'that edit back'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12 7'; edit = { Edit 'positions.kpp' "int positionHelper()`n{`n  int one = 1;`n  return one;`n}" 'int positionHelper() { return 1; }' } },
+  # A function emitted again only because it read an edited name keeps what was made for its lambda's closure: a polymorphic
+  # local class of a template's instance made for it lost its virtual function and kept its vtable (F, 2026-11-10: the game
+  # did not link after an edit of Entity::getDump).
+  @{ name = 'a body edit read by a lambda that a template makes a polymorphic local class for'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12 7'; edit = { Edit 'positions.kpp' 'int helperBase() { return 7; }' 'int helperBase() { int seven = 7; return seven; }' } },
+  @{ name = 'that body edit back'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12 7'; edit = { Edit 'positions.kpp' 'int helperBase() { int seven = 7; return seven; }' 'int helperBase() { return 7; }' } },
+  # An edit of the lambda's writer itself: its closure is a new type, the members made for the old one go, and the local class's
+  # vtable, kept with its layout, names them: codegen in full (rebuildLLVM declines) instead of a module that does not link.
+  @{ name = 'an edit of that lambda''s writer (a new closure type)'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12 7'; codegenFull = 'a member function of a polymorphic class'; edit = { Edit 'positions.kpp' '  int r = h->run();' '  int r = h->run() + 0;' } },
+  @{ name = 'that writer edit back'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12 7'; codegenFull = 'a member function of a polymorphic class'; edit = { Edit 'positions.kpp' '  int r = h->run() + 0;' '  int r = h->run();' } },
   @{ name = 'a body edit above a kept function with a lambda (which moves)'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12 7'; edit = { Edit 'lambdas.kpp' 'int firstHelper() { int r = 2; return r; }' 'int firstHelper() { int r = 2; r = r + 0; return r; }' } },
   @{ name = 'that body edit back'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12 7'; edit = { Edit 'lambdas.kpp' 'int firstHelper() { int r = 2; r = r + 0; return r; }' 'int firstHelper() { int r = 2; return r; }' } },
   # noexcept added to a function that calls one that may throw (B's review of 7807b4ff): on Windows its
@@ -276,8 +285,9 @@ $byName = @($ours | Where-Object { $_ -match 'codegen in full: .* read an edited
 if ($byName.Count -ne 0) { "FAIL incremental: $($byName.Count) body edits generated the program in full for a global that read the edited name: $($byName[0])"; $failed++ }
 else { "ok   incremental body edits not in full for a global that read only a free function's name" }
 $dropped = @($ours | Where-Object { $_ -match 'made by codegen dropped' })
-if ($dropped.Count -ne 4) { "FAIL incremental: $($dropped.Count) builds dropped instances codegen made, 4 expected (Panel::base and Step::operator+ through each server)"; $failed++ }
-else { "ok   incremental instances codegen made dropped and made anew (4)" }
+# (and viaHelper's lambda's writer edited and back: makeHelper's instance for its old closure)
+if ($dropped.Count -ne 8) { "FAIL incremental: $($dropped.Count) builds dropped instances codegen made, 8 expected (Panel::base, Step::operator+ and viaHelper's writer edit and back, through each server)"; $failed++ }
+else { "ok   incremental instances codegen made dropped and made anew (8)" }
 # (12: the signature edits, the overload added and removed and unitDepth's return type edit (read by an
 # auto local), through each of two servers; the overload steps change what an instance,
 # viaScale<double>, calls: it is checked again, not built from scratch)

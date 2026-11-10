@@ -1401,7 +1401,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     session->usable = true;
     auto start = std::chrono::steady_clock::now();
     bool rebuilt = false;
-    CodegenResult again = rebuildLLVM(*session, picked, {}, {}, {}, {}, {}, {}, {}, rebuilt);
+    CodegenResult again = rebuildLLVM(*session, picked, {}, {}, {}, {}, {}, {}, {}, {}, rebuilt);
     double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
     shared = std::move(session->shared);
     emitters = std::move(session->emitters);
@@ -1453,16 +1453,18 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
 }
 
 static CodegenResult rebuildModules(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies, const std::vector<FunctionDecl*>& movedLines,
-                                    const std::vector<FunctionDecl*>& added, const std::vector<FunctionDecl*>& removed,
-                                    const std::vector<const Decl*>& changedLayouts, const std::vector<const Decl*>& instancesOf,
-                                    const std::vector<const Decl*>& changedGlobals, const std::vector<const Ty*>& droppedClasses, bool& rebuilt);
+                                    const std::vector<FunctionDecl*>& replaced, const std::vector<FunctionDecl*>& added,
+                                    const std::vector<FunctionDecl*>& removed, const std::vector<const Decl*>& changedLayouts,
+                                    const std::vector<const Decl*>& instancesOf, const std::vector<const Decl*>& changedGlobals,
+                                    const std::vector<const Ty*>& droppedClasses, bool& rebuilt);
 
 CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies, const std::vector<FunctionDecl*>& movedLines,
-                          const std::vector<FunctionDecl*>& added, const std::vector<FunctionDecl*>& removed, const std::vector<const Decl*>& changedLayouts,
-                          const std::vector<const Decl*>& instancesOf, const std::vector<const Decl*>& changedGlobals,
-                          const std::vector<const Ty*>& droppedClasses, bool& rebuilt)
+                          const std::vector<FunctionDecl*>& replaced, const std::vector<FunctionDecl*>& added, const std::vector<FunctionDecl*>& removed,
+                          const std::vector<const Decl*>& changedLayouts, const std::vector<const Decl*>& instancesOf,
+                          const std::vector<const Decl*>& changedGlobals, const std::vector<const Ty*>& droppedClasses, bool& rebuilt)
 {
-  CodegenResult out = rebuildModules(session, changedBodies, movedLines, added, removed, changedLayouts, instancesOf, changedGlobals, droppedClasses, rebuilt);
+  CodegenResult out =
+    rebuildModules(session, changedBodies, movedLines, replaced, added, removed, changedLayouts, instancesOf, changedGlobals, droppedClasses, rebuilt);
   // The classes every module defines (the session's, made again by homeDebugClasses when this
   // build named a class), whatever path the rebuild took: one place, so that no return of it
   // gives the natvis an empty list. (A build from scratch's homeDebugClasses fills its result.)
@@ -1485,9 +1487,10 @@ void unassembledAgain(CodegenSession& session, const std::vector<bool>& changedM
 }
 
 static CodegenResult rebuildModules(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies, const std::vector<FunctionDecl*>& movedLines,
-                                    const std::vector<FunctionDecl*>& added, const std::vector<FunctionDecl*>& removed,
-                                    const std::vector<const Decl*>& changedLayouts, const std::vector<const Decl*>& instancesOf,
-                                    const std::vector<const Decl*>& changedGlobals, const std::vector<const Ty*>& droppedClasses, bool& rebuilt)
+                                    const std::vector<FunctionDecl*>& replaced, const std::vector<FunctionDecl*>& added,
+                                    const std::vector<FunctionDecl*>& removed, const std::vector<const Decl*>& changedLayouts,
+                                    const std::vector<const Decl*>& instancesOf, const std::vector<const Decl*>& changedGlobals,
+                                    const std::vector<const Ty*>& droppedClasses, bool& rebuilt)
 {
   rebuilt = false;
   CodegenResult out;
@@ -1534,6 +1537,18 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
   for (FunctionDecl* f : movedLines)
     if (e.isProgramFunction(f) && owners.insert(e.functionName(f, {}, nullptr)).second)
       level.push_back(programFunction(f));
+  // The program functions emitted again with the bodies they had (readers of an edited name, moved lines) and the global
+  // constructors below: their lambdas' closures are the types they were, so what was made for those stays (until 2026-11-10 it
+  // went as an old closure's, and a polymorphic local class of a template's instance made for one lost its virtual functions,
+  // its vtable kept: thread F's game did not link after an edit of Entity::getDump, which EntityWithOwner's constructor reads).
+  std::unordered_set<std::string> sameClosures;
+  {
+    std::unordered_set<const FunctionDecl*> replacedSet(replaced.begin(), replaced.end());
+    for (const std::vector<FunctionDecl*>* list : {&changedBodies, &movedLines})
+      for (FunctionDecl* f : *list)
+        if (!replacedSet.count(f) && e.isProgramFunction(f))
+          sameClosures.insert(e.functionName(f, {}, nullptr));
+  }
   // The functions whose emission raised the last build's errors (a session kept across them): emitted
   // again, so that each error is given again at its place now, or goes. Those emitted again for that
   // alone must fail again (an error that goes without a change is one that a mark of something
@@ -1570,7 +1585,10 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     }
     for (const std::string& fnName : it->second)
       if (owners.insert(fnName).second)
+      {
         globalsAgain.push_back(sh.globalInits.at(fnName));
+        sameClosures.insert(fnName); // (its initializer is the one it had)
+      }
   }
   // Each emitter's verdicts on which callees are trivial (inlined) were taken on the old bodies:
   // taken again. (A changed body that is trivial now is inlined by callers that only called it
@@ -1716,9 +1734,9 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
         return true;
     return false;
   };
-  // An instance made for the closure of a lambda whose writer is emitted again (`applyTo<closure>`):
+  // An instance made for the closure of a lambda whose writer is emitted again with a new body (`applyTo<closure>`):
   // the old lambda's, which no one calls now; dropped, not emitted again (the new lambda's instance is
-  // made by its first use).
+  // made by its first use). Not a writer emitted again with the body it had (sameClosures).
   // (Every type the instance is made of, each once: the types form a DAG, a lambda nested in holders
   // to any depth; none is cut off, which would keep an instance for a closure that no longer exists.)
   std::unordered_map<const Ty*, bool> oldClosureIn;
@@ -1731,7 +1749,8 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     oldClosureIn[t] = false; // (a cycle, if any, holds no old closure through itself)
     bool found = false;
     if (e.isLambda(t))
-      if (auto writer = sh.closureWriters.find(e.types.unqualified(t)); writer != sh.closureWriters.end() && owners.count(writer->second.writtenIn))
+      if (auto writer = sh.closureWriters.find(e.types.unqualified(t));
+          writer != sh.closureWriters.end() && owners.count(writer->second.writtenIn) && !sameClosures.count(writer->second.writtenIn))
         found = true;
     found = found || oldClosure(t->inner);
     for (const Ty* a : t->args)
@@ -1756,6 +1775,9 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
         return true;
     return false;
   };
+  // The classes of the members dropped for an old closure whose layouts are polymorphic: a vtable, in the modules that used it,
+  // names those members (checked below: a layout kept is a vtable no one asks for its members again).
+  std::vector<std::pair<const Ty*, std::string>> polymorphicDropped;
   for (unsigned k = 0; k < sh.moduleCount; ++k)
     for (const Shared::Definition& d : sh.definitions[k])
     {
@@ -1769,7 +1791,11 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
         if (!forOld)
           holding[d.emitted->depth].push_back(*d.emitted);
         else
+        {
           releaseName(d.name);
+          if (const StructInfo* info = d.emitted->classTy ? layoutFor(d.emitted->classTy) : nullptr; info && info->polymorphic)
+            polymorphicDropped.push_back({e.types.unqualified(d.emitted->classTy), d.name});
+        }
       }
     }
   if (!droppedLayouts.empty())
@@ -1877,13 +1903,16 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
   // (the same lambda: irTypeName would give it `.2`), whose type line, when its layout is the same, is
   // already in the shared declarations (below).
   // So do the types made from such a closure (`Holder<closure>`, a std::function's implementation).
+  // (A writer emitted again with the body it had keeps its closures' types and what was made of them: its call operators alone
+  // go, emitted again by its emission.)
   std::unordered_set<const Ty*> droppedTypes;
   for (auto& [t, info] : sh.closures)
     if (auto writer = sh.closureWriters.find(t);
         droppedNames.count(info.functionName) || (writer != sh.closureWriters.end() && owners.count(writer->second.writtenIn))) // (a generic lambda's operators are instances: by its writer)
     {
       sh.closuresEmitted.erase(t);
-      droppedTypes.insert(t);
+      if (writer == sh.closureWriters.end() || !sameClosures.count(writer->second.writtenIn))
+        droppedTypes.insert(t);
     }
   // So do the class instances the resolver took out (no one asks for them now: `Boxed<int>` after an
   // edit made it `Boxed<long long>`): their layouts and names go (a build from scratch has neither).
@@ -1908,6 +1937,14 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
         found = found || mentions(a);
       return mentionsIn[t] = found;
     };
+    // A member of a polymorphic class dropped for an old closure whose layout stays (a local class of the instance made for it:
+    // its type names no closure): the class's vtable names the member and nothing asks for it again: codegen in full.
+    for (auto& [cls, name] : polymorphicDropped)
+      if (!mentions(cls))
+      {
+        out.declined = "a member function of a polymorphic class made for an edited function's lambda, which its kept vtable names (" + name + ")";
+        return out;
+      }
     std::erase_if(sh.irTypeNames, [&](const auto& named) { return mentions(named.second); });
     // Their layouts go too (`Hold<closure>`, laid out for the old closure): a build from scratch never
     // lays them out, nor counts them; every answer computed from them with them.

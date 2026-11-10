@@ -907,19 +907,21 @@ bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, double collec
   // session has not seen, and this build emits it too. What codegen cannot take as changed bodies
   // and globals (functions added or removed, layouts, instances), or could not follow then, makes
   // it run in full.
-  std::vector<FunctionDecl*> carriedBodies, carriedMovedLines;
+  std::vector<FunctionDecl*> carriedBodies, carriedMovedLines, carriedReplaced;
   std::vector<const Decl*> carriedGlobals;
   bool carriedInFull = false;
   if (kept.codegenBehind)
   {
     carriedBodies = kept.changedBodies;
     carriedMovedLines = kept.movedLines;
+    carriedReplaced = kept.replacedBodies;
     carriedGlobals = kept.changedGlobals;
     carriedInFull = !kept.rebuildCodegen || !kept.addedFunctions.empty() || !kept.removedFunctions.empty() || !kept.changedLayouts.empty() ||
                     !kept.instancesOf.empty() || kept.positionalCodegenInFull;
   }
   kept.changedBodies.clear();
   kept.movedLines.clear();
+  kept.replacedBodies.clear();
   kept.addedFunctions.clear();
   kept.removedFunctions.clear();
   kept.changedLayouts.clear();
@@ -964,6 +966,7 @@ bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, double collec
     for (size_t k : changed[n].changed)
     {
       kept.changedBodies.push_back(changed[n].oldBodies[k].f);
+      kept.replacedBodies.push_back(changed[n].oldBodies[k].f);
       if (changed[n].oldBodies[k].templated)
         templateBodies.push_back(changed[n].oldBodies[k].f);
       else
@@ -1237,6 +1240,9 @@ bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, double collec
     for (FunctionDecl* f : carriedMovedLines)
       if (!removed.count(f))
         kept.movedLines.push_back(f);
+    for (FunctionDecl* f : carriedReplaced)
+      if (!removed.count(f))
+        kept.replacedBodies.push_back(f);
     for (const Decl* d : carriedGlobals)
       if (std::find(kept.changedGlobals.begin(), kept.changedGlobals.end(), d) == kept.changedGlobals.end())
         kept.changedGlobals.push_back(d);

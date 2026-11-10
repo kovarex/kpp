@@ -372,7 +372,7 @@ void runCodegen(Build& build)
   const unsigned outputModules = codegenOutputModules(modules, options.debug, options.optimize); // (a debug build's modules in two pieces each)
   if (build.rebuildCodegen && build.codegen && build.moduleBytes.size() == outputModules)
   {
-    cg = rebuildLLVM(*build.codegen, build.changedBodies, build.movedLines, build.addedFunctions, build.removedFunctions, build.changedLayouts, build.instancesOf,
+    cg = rebuildLLVM(*build.codegen, build.changedBodies, build.movedLines, build.replacedBodies, build.addedFunctions, build.removedFunctions, build.changedLayouts, build.instancesOf,
                      build.changedGlobals, build.droppedClasses, rebuilt);
     logBuildNote(!rebuilt              ? "codegen: rebuildLLVM declined (" + cg.declined + "), the program generated in full"
                  : cg.failed()        ? "codegen: the session kept across " + std::to_string(cg.errors.size() + cg.hiddenErrors) + " error(s), " +

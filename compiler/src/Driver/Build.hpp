@@ -89,6 +89,9 @@
     bool positionalCodegenInFull = false;
     // --debug-info: the kept functions whose lines an edit moved (emitted again for their line tables, not for their code).
     std::vector<FunctionDecl*> movedLines;
+    // The functions whose bodies this build replaced (changedBodies holds their readers too, emitted again with the bodies they
+    // had): their lambdas' closures are new types, what was made for the old ones goes (rebuildLLVM).
+    std::vector<FunctionDecl*> replacedBodies;
     CodegenSessionPtr codegen;
     // The session a codegen in full replaced: freed once the build has answered its client
     // (incrementalBuild), not on the build's own time (about 1 s on the game).

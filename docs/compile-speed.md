@@ -1426,6 +1426,21 @@ function", 7 of the 83 files; thread F's probe of 2026-11-10 found defaulted ope
 constructor's declaration and an explicit instantiation), and a lambda or local type added above
 another in its file.
 
+**What an edit leaves of a lambda's closure (2026-11-10, thread B; thread F's find).** An edit of
+`Entity::getDump` left the game unable to link (exit 1120: `InnerSetupHelper<...>::load` and `setup`
+unresolved), with master's kpp before and after 735baab72. EntityWithOwner's constructor reads `getDump`,
+so the server emits it again, and `rebuildModules` dropped what had been made for its lambda's closure as
+an old closure's: among it the virtual functions of `SimpleLoadHelper::Setup<closure>`'s local polymorphic
+class, whose layout stayed, and with it the vtable in the modules that use it, so nothing asked for those
+functions again. A function emitted again with the body it had (a reader of an edited name, moved lines, a
+global's constructor) keeps its closures' types, so what was made for them stays now (the driver passes the
+bodies it replaced, `replacedBodies`). For a writer whose body was replaced, a member of a polymorphic class
+made for the old closure whose layout stays declines the rebuild (codegen in full) instead of a module that
+does not link. F's steps on the game (scratch\codegen\prof\linkfail-b.py: a line added at the top of
+getDump, twice, put back, then nothing changed) link now, at 2.3, 2.2, 1.9 and 0.1 s. Spec
+classes/polymorphic_local_class_of_a_template_made_for_a_lambda; tests\incremental.ps1 edits a function such a
+lambda reads (built from the kept session) and the lambda's writer (in full, with the reason).
+
 **A generic lambda's call operator made anew in an edit (2026-11-02, thread A, step 1).** The new
 walk's lambda is a new closure type, so its call operator for its arguments is a new instance, and
 the old lambda's is one nobody asks for: the rewalk counts the new one apart (`rewalkLambdas`, not

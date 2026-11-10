@@ -33,7 +33,40 @@ int templateStatics(T v)
   return int(last) + int(numbers.size());
 }
 
-int positionsTotal = withLocals() + templateStatics(2) + templateStatics(2.5);
+// A polymorphic class written in a function template, made for a lambda (thread F's link failure, 2026-11-10): an edit of a
+// function the lambda's writer reads emits the writer again, which must keep what was made for its closure (the class's
+// vtable is kept, and asks for its virtual function only once).
+class Helper
+{
+public:
+  virtual ~Helper() {}
+  virtual int run() = 0;
+};
+
+template<class F>
+Helper* makeHelper(F&& f)
+{
+  class Inner : public Helper
+  {
+  public:
+    Inner(F&& g) : g(std::move(g)) {}
+    virtual int run() override { return g(); }
+    F g;
+  };
+  return new Inner(std::move(f));
+}
+
+int helperBase() { return 7; }
+
+int viaHelper()
+{
+  Helper* h = makeHelper([]() { return helperBase(); });
+  int r = h->run();
+  delete h;
+  return r;
+}
+
+int positionsTotal = withLocals() + templateStatics(2) + templateStatics(2.5) + viaHelper();
 
 // A union enum's generated tag() has no `{` to pair: the file stays incremental (2026-11-10).
 struct Walking { int steps; };
