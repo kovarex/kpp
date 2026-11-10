@@ -943,6 +943,16 @@ void build(Project& project)
     $before = Get-Content -Raw 'src\main.kpp'
     $output = (Kpp @('measure', '--rounds', '1')) -join "`n"
     if ($code -eq 0 -or $output -notmatch 'main\.kpp has changes of its own' -or (Get-Content -Raw 'src\main.kpp') -ne $before) { Fail "kpp measure with a changed file: exit $code`n$output" }
+    # --check: the checks alone, nothing built; then an edit whose text the file no longer holds,
+    # named by its row with the count (the game's `this->x` after `this` became a reference, 2026-11-10).
+    $ErrorActionPreference = 'Continue'
+    git checkout -q -- src/main.kpp 2>$null
+    $ErrorActionPreference = 'Stop'
+    $output = (Kpp @('measure', '--check')) -join "`n"
+    if ($code -ne 0 -or $output -notmatch '1 edit, each text once' -or $output -notmatch 'Edit of one function: ') { Fail "kpp measure --check: exit $code`n$output" }
+    (Get-Content -Raw 'build.kpp').Replace('"Hello from kpp"', '"Goodbye from kpp"') | Set-Content -NoNewline 'build.kpp'
+    $output = (Kpp @('measure', '--check')) -join "`n"
+    if ($code -eq 0 -or $output -notmatch 'the edit "Edit of one function": .*main\.kpp holds its text 0 times, not once') { Fail "kpp measure with a text the file does not hold: exit $code`n$output" }
     Kpp @('--stop-server') | Out-Null
   }
   finally { Pop-Location }

@@ -28,7 +28,7 @@ void usage(FILE* out)
           "       kpp [targets] [configurations] [options] in a project's directory (build.kpp: --run ARGS,\n"
           "       --test, --set NAME=VALUE, --verbose (kpp's report of each build), --rebuild (from scratch),\n"
           "       --clean (the cells' kpp objects and compile servers gone) and the options below;\n"
-          "       kpp new, kpp options, kpp measure [--rounds N] [--compare DIR]; docs/build.md)\n"
+          "       kpp new, kpp options, kpp measure [--rounds N] [--compare DIR] [--check]; docs/build.md)\n"
           "  --version     the version and commit, the compiler, the toolchain a build takes, the standard library\n"
           "  --help        this list\n"
           "  -j N          worker threads (default: hardware threads)\n"

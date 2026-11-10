@@ -48,16 +48,18 @@ namespace projects
     return ec ? fs::file_time_type::min() : t;
   }
 
-  // `kpp measure [--rounds N] [--compare DIR]`: the readme's rows on this machine (docs/build.md,
+  // `kpp measure [--rounds N] [--compare DIR] [--check]`: the readme's rows on this machine (docs/build.md,
   // "kpp measure"). In rounds, each row in turn: build.kpp's edits (project.measure()) in the cell it
   // names, each made, built, put back and built through the compile server, as `kpp TARGET
   // CONFIGURATION` builds; the clean build of that target, the server stopped and its configuration's
   // outputs deleted, the C and C++ libraries kept; and per executable its whole build, the C and C++
-  // libraries deleted too. With --compare, each row's other build (measure().compare) after it.
+  // libraries deleted too. With --compare, each row's other build (measure().compare) after it. With
+  // --check, only what it checks before it builds (each edit's text once in its file, no changes there).
   int measureProject(const fs::path& root, int argc, char** argv)
   {
     int rounds = 3;
     fs::path compareDirectory;
+    bool checkOnly = false;
     for (int i = 2; i < argc; ++i)
     {
       std::string arg = argv[i];
@@ -65,9 +67,11 @@ namespace projects
         rounds = atoi(argv[++i]);
       else if (arg == "--compare" && i + 1 < argc)
         compareDirectory = fs::absolute(argv[++i]);
+      else if (arg == "--check")
+        checkOnly = true;
       else
       {
-        fprintf(stderr, "error: kpp measure takes --rounds N and --compare DIR, not %s (docs/build.md, \"kpp measure\")\n", arg.c_str());
+        fprintf(stderr, "error: kpp measure takes --rounds N, --compare DIR and --check, not %s (docs/build.md, \"kpp measure\")\n", arg.c_str());
         return 2;
       }
     }
@@ -96,15 +100,22 @@ namespace projects
     for (const Measurement::Edit& e : m.edits)
     {
       fs::path path = (root / e.file).make_preferred();
-      std::string text;
+      std::string text, edit = "the edit \"" + e.row + "\": ";
       if (!readFile(path, text))
       {
-        problems.push_back(path.string() + " is not there");
+        problems.push_back(edit + path.string() + " is not there");
         continue;
       }
-      size_t at = text.find(e.from);
-      if (e.from.empty() || at == std::string::npos || text.find(e.from, at + 1) != std::string::npos)
-        problems.push_back(path.string() + " does not hold \"" + e.from + "\" exactly once");
+      // (Its count, so that a text the file no longer has, a source changed under build.kpp's edit, reads
+      // apart from one it has twice; 2026-11-10: the game's `this->x` became `this.x`.)
+      size_t count = 0;
+      for (size_t at = e.from.empty() ? std::string::npos : text.find(e.from); at != std::string::npos; at = text.find(e.from, at + 1))
+        ++count;
+      if (e.from.empty())
+        problems.push_back(edit + "its text is empty");
+      else if (count != 1)
+        problems.push_back(edit + path.string() + " holds its text " + std::to_string(count) + " times, not once" +
+                           (count == 0 ? " (changed since build.kpp was written: update measure()'s text)" : "") + ": \"" + e.from + "\"");
       std::string status;
       if (runAndRead("git -C " + quoteArg(root.string()) + " status --porcelain -- " + quoteArg(e.file), status) != 0)
         problems.push_back("git could not tell whether " + path.string() + " has changes of its own (kpp measure needs git and a git checkout)");
@@ -123,6 +134,14 @@ namespace projects
       for (const std::string& p : problems)
         fprintf(stderr, "  %s\n", p.c_str());
       return 1;
+    }
+    if (checkOnly)
+    {
+      printf("kpp measure --check: %zu edit%s, each text once in its file and the file without changes of its own\n", m.edits.size(),
+             m.edits.size() == 1 ? "" : "s");
+      for (const Measurement::Edit& e : m.edits)
+        printf("  %s: %s\n", e.row.c_str(), (root / e.file).make_preferred().string().c_str());
+      return 0;
     }
     auto compareOf = [&](const std::string& row) -> const Measurement::Compare*
     {

@@ -896,7 +896,7 @@ factorio-in-kpp's `kpp factorio debug --msvc-diagnostics` (Visual Studio's build
 
 ### kpp measure (2026-11-03)
 
-`kpp measure [--rounds N] [--compare DIR]` in a project times its builds on this machine, as a user
+`kpp measure [--rounds N] [--compare DIR] [--check]` in a project times its builds on this machine, as a user
 runs them, and prints a table to paste (the readme's, from a factorio-in-kpp checkout; kovarex,
 2026-11-03: one command, no script). build.kpp says what it edits and compares:
 
@@ -929,9 +929,15 @@ m.compare("whole factorio", "..."); // an executable's whole build's
 - **Safe for the checkout**: it starts only when each file it edits holds its text exactly once and
   has no changes of its own (`git status`: it needs git); it puts the files back after each build, at
   the end, on an error, and on Ctrl+C or Ctrl+Break (the console's handler). It never edits the
-  compared checkout, only sets the time of the files `compare` names.
+  compared checkout, only sets the time of the files `compare` names. A text a file does not hold
+  exactly once is named with its edit's row and how many times the file holds it (0: the source
+  changed under build.kpp, as the game's `this->x` became `this.x`; 2026-11-10).
+- **`--check`**: only those checks (every edit's text once in its file, no changes of its own, the
+  --compare files there), then stops: nothing built or edited. Run it after a change to the sources
+  build.kpp's edits name.
 - Checked by tests\project.ps1 (a `kpp new` project measured in two rounds: its rows, each the
-  average of its rounds' times, the file as committed after; a changed file refused, nothing built). Ctrl+Break during a round's edit put the
+  average of its rounds' times, the file as committed after; a changed file refused, nothing built;
+  `--check`, and an edit whose text the file does not hold, named by its row). Ctrl+Break during a round's edit put the
   file back (by hand, 2026-11-03).
 
 ## Project files for an IDE
