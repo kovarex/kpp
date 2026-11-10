@@ -70,6 +70,11 @@ struct ClassDecl : Decl
   struct Base { Type* type; Access access; bool isVirtual; bool isPack; };
 
   Kw keyword = Kw::struct_;
+  // A class declared in a function body, an anonymous one or a specialization: its number in its file in the parser's
+  // order, which its name in the code carries with the file's tag (numberInFile in Ast.hpp, `f::Local@6c1f0e2a_3`), not
+  // its place: a compile server keeps the code of what an edit above it only moved. UINT32_MAX: no number (in the
+  // padding after keyword: no larger a ClassDecl).
+  uint32_t number = UINT32_MAX;
   QualifiedName name; // Empty for anonymous.
   Span<Base> bases;
   Span<Decl*> members;
@@ -113,6 +118,7 @@ struct EnumDecl : Decl
   QualifiedName name;
   bool isClass = false;
   bool isDefinition = false;
+  uint32_t number = UINT32_MAX; // as ClassDecl::number: one declared in a function body, or an anonymous one
   Type* underlying = nullptr;
   Span<Decl*> enumerators;
   Span<Decl*> members; // kpp: methods inside enums.
@@ -162,10 +168,34 @@ struct VariableDecl : Decl
   // A hidden `auto&& a = get<i>(e)` that a tuple-like structured binding names (the resolver's
   // tupleBindings); the binding's name node in the object's list points at it (resolved).
   bool tupleBinding = false;
+  // A static local: its number in the function at file or class level it is written in, which its storage's name
+  // carries (Emitter::staticLocalName), not its place. UINT32_MAX: none.
+  uint32_t number = UINT32_MAX;
   Expr* bitfield = nullptr;
   Span<Expr*> structuredBindings; // NameExpr* for `auto [a, b] = ...`
   Expr* alignment = nullptr; // alignas(N) on the variable or data member
 };
+// A class's, an enumeration's or a static local's number (ClassDecl::number, EnumDecl::number,
+// VariableDecl::number); UINT32_MAX for any other declaration.
+inline uint32_t numberOf(const Decl* d)
+{
+  switch (d->kind)
+  {
+    case NodeKind::ClassDecl: return static_cast<const ClassDecl*>(d)->number;
+    case NodeKind::EnumDecl: return static_cast<const EnumDecl*>(d)->number;
+    case NodeKind::VariableDecl: return static_cast<const VariableDecl*>(d)->number;
+    default: return UINT32_MAX;
+  }
+}
+inline void setNumber(Decl* d, uint32_t number)
+{
+  if (d->kind == NodeKind::ClassDecl)
+    static_cast<ClassDecl*>(d)->number = number;
+  else if (d->kind == NodeKind::EnumDecl)
+    static_cast<EnumDecl*>(d)->number = number;
+  else if (d->kind == NodeKind::VariableDecl)
+    static_cast<VariableDecl*>(d)->number = number;
+}
 // A constructor's initializer of a data member of cls (its definition) that a false `when` dropped:
 // it exists exactly when the member does (design.md 19), so it does not either.
 inline bool absentMemberInit(const ClassDecl* cls, const FunctionDecl::CtorInit& init)

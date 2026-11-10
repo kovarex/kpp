@@ -120,6 +120,8 @@ unsigned codegenOutputModules(unsigned moduleCount, bool debug, bool optimize);
 // polymorphic one, or one a destructor helper, a descriptor, a global or a lambda's capture holds).
 // instancesOf: templates one of whose instances read a change (the resolver checked it again or
 // took it out): all their instances, and the functions that inlined one, are emitted again.
+// movedLines (--debug-info): functions kept as they were whose lines an edit moved: emitted again for their line tables
+// (a template's: its instances), and nothing else with them, not their callers (inlined code carries no lines of its callee).
 // A build that assembled modules and compiled none of them (it stopped at an error outside codegen: the
 // checker's): those modules (changedModules, a build's result; empty: all of them, a build in full)
 // are assembled again by the next build, whose own changes may leave their texts as this build had
@@ -127,7 +129,7 @@ unsigned codegenOutputModules(unsigned moduleCount, bool debug, bool optimize);
 // fixed static_assert linked the object from before the edit, silently; thread K, 2026-11-07).
 void unassembledAgain(CodegenSession& session, const std::vector<bool>& changedModules);
 
-CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies, const std::vector<FunctionDecl*>& added,
-                          const std::vector<FunctionDecl*>& removed, const std::vector<const Decl*>& changedLayouts,
+CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies, const std::vector<FunctionDecl*>& movedLines,
+                          const std::vector<FunctionDecl*>& added, const std::vector<FunctionDecl*>& removed, const std::vector<const Decl*>& changedLayouts,
                           const std::vector<const Decl*>& instancesOf, const std::vector<const Decl*>& changedGlobals,
                           const std::vector<const Ty*>& droppedClasses, bool& rebuilt);

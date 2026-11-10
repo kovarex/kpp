@@ -1,0 +1,44 @@
+// What must not be renamed by an edit above it in its file: its name in the code carries a number, not a place
+// (tests\incremental.ps1 adds a line and a statement above all of these, and every one stays kept).
+int positionHelper() { return 1; }
+
+// A local class and enumeration, a static local, a lambda.
+int withLocals()
+{
+  struct Local { int v = 2; int get() const { return v + positionHelper(); } };
+  enum Mode { First, Second };
+  static int calls = 0;
+  calls = calls + 1;
+  Local l;
+  auto add = [](int a, int b) { return a + b; };
+  return add(l.get(), int(Second)) + calls;
+}
+
+// A template's static local, try and static braced list: its instances hold those names too.
+template<typename T>
+int templateStatics(T v)
+{
+  static T last = v;
+  static std::InitializerList<int> numbers = {1, 2, 3};
+  try
+  {
+    if (v < T(0))
+      throw 1;
+    last = v;
+  }
+  catch (int)
+  {
+    return -1;
+  }
+  return int(last) + int(numbers.size());
+}
+
+int positionsTotal = withLocals() + templateStatics(2) + templateStatics(2.5);
+
+// A union enum's generated tag() has no `{` to pair: the file stays incremental (2026-11-10).
+struct Walking { int steps; };
+struct Waiting { int ticks; };
+union enum Activity : uint8_t
+{
+  { {Walking, Walk}, {Waiting, Wait} }
+};

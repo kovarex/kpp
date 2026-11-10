@@ -2,6 +2,7 @@
 // build (steps 3b and 4); its declarations in BodyGraft.hpp (Driver.hpp). A translation unit of its
 // own since 2026-11-05 (main.cpp split, stage 2), moved without a change.
 #include "Driver.hpp"
+#include "LineStarts.hpp"
 
 namespace driver
 {
@@ -67,8 +68,11 @@ bool collectBodies(Span<Decl*> decls, const std::vector<Token>& tokens, bool inT
         if (!f->body)
           break;
         uint32_t open = f->body->token;
+        // (A body that does not start with `{`, a `union enum`'s generated tag() or a function-try-block, is not a body to pair: its
+        // tokens are compared with the rest, and an edit of it is an edit outside the bodies. Until 2026-11-10 it made the whole file
+        // not incremental: 261 of the game's 3,929 files have a union enum.)
         if (open >= tokens.size() || !tokens[open].is(P::LBrace))
-          return false;
+          break;
         uint32_t close = open;
         for (int depth = 0; close < tokens.size(); ++close)
           if (tokens[close].is(P::LBrace))
@@ -284,20 +288,34 @@ void collectFunctions(Span<Decl*> decls, Decl* container, bool inTemplate, std::
 bool remapKeptFile(Build& kept, ParsedFile& file, const std::vector<uint32_t>& map, const std::unordered_set<Node*>& skip,
                    const std::unordered_set<const Decl*>& staleSources, const ParsedFile& fresh)
 {
-  // Names the code gives by position: a function's local types (`f::Local@2045`; its lambdas'
-  // closures by their file's tag and the parser's numbers in the file's order,
-  // `f::__lambda_6c1f0e2a_1`), its static locals, catch filters and static initializer lists (by
-  // their tokens). A build from scratch of the new text names them by their new places, so a kept
-  // function holding one that moves is emitted again (in full, for a local type: codegen's session
-  // keeps the types' names; and for a template's, whose instances it cannot emit again alone), and a
-  // kept closure takes the name the new parse gives the lambda at its new place.
+  // Names in the code carry numbers, not places: a lambda's closure its number in its file
+  // (`f::__lambda_6c1f0e2a_1`), a local class or enumeration, an anonymous one and a class
+  // specialization theirs (`f::Local@6c1f0e2a_3`, ClassDecl::number), a static local its number in its
+  // function, a catch filter and a static initializer list the emission's. So a kept function an
+  // edit only moved keeps its code (until 2026-11-10 they carried their tokens: an edit above a
+  // local class, or above a template's static local, `try` or braced initializer, generated
+  // the program in full, 6 s on the game). What the new parse numbers otherwise (a lambda or a
+  // local type added or removed above it in its file) takes the new number here, and codegen runs
+  // in full (its session keeps the types' names).
   std::unordered_map<uint32_t, ClassDecl*> freshClosures; // new token -> the new parse's closure there
-  forEachNode(fresh.decls, [&](Node* n)
+  // (new token, which of the numbered declarations there) -> the new parse's number: the classes of
+  // a `union enum` are three at one token.
+  std::unordered_map<uint64_t, uint32_t> freshNumbers;
+  auto numberKey = [](uint32_t token, uint32_t occurrence) { return uint64_t(token) << 32 | occurrence; };
+  auto isNumberedType = [](Node* n)
   {
-    if (n->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(n)->lambda)
-      freshClosures[n->token] = static_cast<ClassDecl*>(n);
-  });
-  auto moved = [&](uint32_t t) { return t >= map.size() || map[t] != t; };
+    return (n->kind == NodeKind::ClassDecl || n->kind == NodeKind::EnumDecl) && numberOf(static_cast<Decl*>(n)) != UINT32_MAX;
+  };
+  {
+    std::unordered_map<uint32_t, uint32_t> occurrences;
+    forEachNode(fresh.decls, [&](Node* n)
+    {
+      if (n->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(n)->lambda)
+        freshClosures[n->token] = static_cast<ClassDecl*>(n);
+      else if (isNumberedType(n))
+        freshNumbers[numberKey(n->token, occurrences[n->token]++)] = numberOf(static_cast<Decl*>(n));
+    });
+  }
   // A kept closure takes the name the new parse gives the lambda at its new place: true when that
   // name is another.
   auto renameClosure = [&](ClassDecl* c)
@@ -310,44 +328,78 @@ bool remapKeptFile(Build& kept, ParsedFile& file, const std::vector<uint32_t>& m
     const_cast<NamePart&>(c->name.parts[c->name.parts.size() - 1]).symbol = it->second->name.last().symbol;
     return true;
   };
-  std::vector<DeclaredFunction> functions;
-  std::vector<Decl*> containers;
-  collectFunctions(file.decls, nullptr, false, functions, containers);
-  for (const DeclaredFunction& d : functions)
+  // A kept class or enumeration takes the number the new parse gives it at its new place: true when
+  // that number is another.
+  auto renumber = [&](Node* n, std::unordered_map<uint32_t, uint32_t>& occurrences)
   {
-    if (!d.f->body || skip.count(d.f->body))
-      continue;
-    bool localType = false, positional = false;
-    forEachNode(d.f->body, [&](Node* n)
+    auto* d = static_cast<Decl*>(n);
+    uint32_t place = n->token < map.size() ? map[n->token] : UINT32_MAX;
+    if (place == UINT32_MAX)
+      return false;
+    auto it = freshNumbers.find(numberKey(place, occurrences[place]++));
+    if (it == freshNumbers.end() || it->second == numberOf(d))
+      return false;
+    setNumber(d, it->second);
+    return true;
+  };
+  bool renumbered = false;
+  auto followNumbers = [&](Node* n, std::unordered_map<uint32_t, uint32_t>& occurrences)
+  {
+    if (n->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(n)->lambda)
+      renumbered = renameClosure(static_cast<ClassDecl*>(n)) || renumbered;
+    else if (isNumberedType(n))
+      renumbered = renumber(n, occurrences) || renumbered;
+  };
+  // Everywhere in the file (a closure in a global's initializer, a default member initializer, a
+  // default argument: the instances made from it carry its name,
+  // `FunctionImpl<int32, int32>::call<__lambda_6c1f0e2a_2>`), and in the instances' own copies.
+  {
+    std::unordered_map<uint32_t, uint32_t> occurrences;
+    forEachNode(file.decls, [&](Node* n)
     {
-      if (skip.count(n))
-        return;
-      if (n->kind == NodeKind::ClassDecl || n->kind == NodeKind::EnumDecl)
-      {
-        // (A lambda's closure is named by its file's number, not its place: renamed only.)
-        bool renamed = n->kind == NodeKind::ClassDecl && renameClosure(static_cast<ClassDecl*>(n));
-        bool closure = n->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(n)->lambda;
-        localType = localType || renamed || (!closure && moved(n->token));
-      }
-      else if ((n->kind == NodeKind::VariableDecl && (static_cast<Decl*>(n)->flags & DF_Static)) || n->kind == NodeKind::TryStmt ||
-               n->kind == NodeKind::BraceInitExpr)
-        positional = positional || moved(n->token);
+      if (!skip.count(n))
+        followNumbers(n, occurrences);
     });
-    if (localType || (positional && d.templated))
-      kept.positionalCodegenInFull = true;
-    else if (positional)
-      kept.changedBodies.push_back(d.f);
   }
-  // The closures outside function bodies, named alike (a global's initializer `{ [](int v) {...}, ...
-  // }`, a default member initializer, a default argument): the instances made from them carry their
-  // names (`FunctionImpl<int32, int32>::call<__lambda_6c1f0e2a_2>`), so a renamed one is emitted in
-  // full too. (Only renamed: outside a function their names carry no token. The ones in bodies again:
-  // renamed already.)
-  forEachNode(file.decls, [&](Node* n)
+  kept.global->forEachInstanceCopy(file, [&](Node* copy, const Decl* source)
   {
-    if (!skip.count(n) && n->kind == NodeKind::ClassDecl && renameClosure(static_cast<ClassDecl*>(n)))
-      kept.positionalCodegenInFull = true;
+    if (staleSources.count(source))
+      return;
+    std::unordered_map<uint32_t, uint32_t> occurrences;
+    forEachNode(copy, [&](Node* n) { followNumbers(n, occurrences); });
   });
+  if (renumbered)
+    kept.positionalCodegenInFull = true;
+  // --debug-info: a kept function's text has its lines (DISubprogram, its DILocations), which the
+  // edit moved when it is below the edit or was reformatted: emitted again, for that alone (its
+  // callers' code is not touched: inlined code carries no lines of its callee). Until 2026-11-10 its
+  // lines went stale unless an edit happened to run codegen in full.
+  if (kept.options.debugInfo)
+  {
+    const std::vector<Token>& before = *file.tokens;
+    const std::vector<Token>& after = *fresh.tokens;
+    LineStarts oldLines(file.text), newLines(fresh.text);
+    std::vector<bool> lineMoved(before.size(), false);
+    for (size_t t = 0; t < before.size() && t < map.size(); ++t)
+      if (map[t] != UINT32_MAX && map[t] < after.size())
+        lineMoved[t] = oldLines.line(before[t].offset) != newLines.line(after[map[t]].offset);
+    std::vector<DeclaredFunction> functions;
+    std::vector<Decl*> containers;
+    collectFunctions(file.decls, nullptr, false, functions, containers);
+    // (the member functions of a class declared in a function go with it: its emission owns them)
+    for (const DeclaredFunction& d : functions)
+    {
+      if (!d.f->body || skip.count(d.f->body))
+        continue;
+      uint32_t last = std::min<uint32_t>(d.f->endToken, uint32_t(before.size()));
+      for (uint32_t t = d.f->token; t < last; ++t)
+        if (lineMoved[t])
+        {
+          kept.movedLines.push_back(d.f);
+          break;
+        }
+    }
+  }
   bool lost = false;
   std::unordered_set<Node*> done;
   auto remap = [&](Node* n)
@@ -855,17 +907,19 @@ bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, double collec
   // session has not seen, and this build emits it too. What codegen cannot take as changed bodies
   // and globals (functions added or removed, layouts, instances), or could not follow then, makes
   // it run in full.
-  std::vector<FunctionDecl*> carriedBodies;
+  std::vector<FunctionDecl*> carriedBodies, carriedMovedLines;
   std::vector<const Decl*> carriedGlobals;
   bool carriedInFull = false;
   if (kept.codegenBehind)
   {
     carriedBodies = kept.changedBodies;
+    carriedMovedLines = kept.movedLines;
     carriedGlobals = kept.changedGlobals;
     carriedInFull = !kept.rebuildCodegen || !kept.addedFunctions.empty() || !kept.removedFunctions.empty() || !kept.changedLayouts.empty() ||
                     !kept.instancesOf.empty() || kept.positionalCodegenInFull;
   }
   kept.changedBodies.clear();
+  kept.movedLines.clear();
   kept.addedFunctions.clear();
   kept.removedFunctions.clear();
   kept.changedLayouts.clear();
@@ -977,9 +1031,9 @@ bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, double collec
   std::sort(kept.changedLayouts.begin(), kept.changedLayouts.end());
   kept.changedLayouts.erase(std::unique(kept.changedLayouts.begin(), kept.changedLayouts.end()), kept.changedLayouts.end());
   // Codegen takes changed layouts (rebuildLLVM lays them out again, or declines); it runs in full
-  // for local types that moved (remapKeptFile).
+  // for a lambda or a local type renumbered (remapKeptFile).
   if (kept.positionalCodegenInFull)
-    inFull("a local type moved (its name is its place)");
+    inFull("a lambda or a local type was renumbered (its name is its number in the file)");
   if (carriedInFull)
     inFull("the last build generated no code and changed what codegen does not follow");
   if (!names.empty() || !constantBodies.empty())
@@ -1180,6 +1234,9 @@ bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, double collec
     for (FunctionDecl* f : carriedBodies)
       if (!removed.count(f))
         kept.changedBodies.push_back(f);
+    for (FunctionDecl* f : carriedMovedLines)
+      if (!removed.count(f))
+        kept.movedLines.push_back(f);
     for (const Decl* d : carriedGlobals)
       if (std::find(kept.changedGlobals.begin(), kept.changedGlobals.end(), d) == kept.changedGlobals.end())
         kept.changedGlobals.push_back(d);

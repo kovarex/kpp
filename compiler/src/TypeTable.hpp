@@ -126,7 +126,7 @@ public:
 
   bool isDependent(const Ty* t) const;
   // qualified: classes and enums with the namespaces and classes they are declared in, and a
-  // local class with the place it is declared at (DebugInfoRenderer::LineInfo and
+  // local class with its number in its file (DebugInfoRenderer::LineInfo and
   // DebugVisualizationRenderer::LineInfo are two classes): what the code generator's IR names
   // are made of, which must tell every two types apart.
   std::string toString(const Ty* t, const SymbolTable* symbols, bool qualified = false) const;

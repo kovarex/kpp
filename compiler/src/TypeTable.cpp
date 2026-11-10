@@ -695,7 +695,7 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols, bool qu
   // Which element of a `for constexpr` a class's copy of the body is for: each element's is a type of its own.
   auto elementOf = [](Decl* d) -> std::string { return d->elementMark ? "#e" + std::to_string(d->elementMark) : std::string(); };
   // A class or enum with the namespaces and classes around it (qualified), and a class declared
-  // in a function with where it is declared, since its path alone may not be unique.
+  // in a function with its number in its file, since its path alone may not be unique.
   auto declName = [&](Decl* d) -> std::string
   {
     std::string name = ownName(d);
@@ -720,15 +720,11 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols, bool qu
         name = function + "::" + name;
         local = true;
       }
-    // (Not a lambda's closure, which its file's tag and its number tell apart, `__lambda_6c1f0e2a_1`:
-    // its place would rename it whenever a line is added above it in its function, and a compile
-    // server's codegen keeps the types' names.)
+    // Its number in its file, not its place, which a line added above it would change while a compile
+    // server keeps the code that names it (`f::Local@6c1f0e2a_3`, ClassDecl::number). (Not a lambda's closure,
+    // whose name is its file's tag and its number, `__lambda_6c1f0e2a_1`.)
     if (local && !(d->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(d)->lambda))
-    {
-      char at[32];
-      snprintf(at, sizeof at, "@%u", d->token); // the token it is declared at
-      name += at;
-    }
+      name += "@" + numberInFile(d);
     return filePrivatePrefix(d) + name; // (two files' private classes of one name: design.md 15)
   };
   switch (t->kind)
@@ -793,7 +789,7 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols, bool qu
         s += ">";
       }
       if (t->decl && (t->decl->flags & DF_Specialization))
-        s += "/spec" + std::to_string(t->decl->token); // a specialisation (partial: its own arguments; full: Flag<true> beside Flag<false>) is not the primary's instantiation
+        s += "/spec" + numberInFile(t->decl); // a specialisation (partial: its own arguments; full: Flag<true> beside Flag<false>) is not the primary's instantiation
       break;
     case TyKind::Param: s += declName(t->decl); break;
     case TyKind::DependentMember: s += toString(t->inner, symbols, qualified) + "::" + (symbols ? std::string(symbols->name(uint32_t(t->value))) : std::string("?")); break;

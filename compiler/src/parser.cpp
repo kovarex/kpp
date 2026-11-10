@@ -445,6 +445,20 @@ namespace
       ++out.nodeCount;
       return n;
     }
+    // In a function body: a function among the declarations around (a lambda's body and a local class's members are in one).
+    bool insideFunction() const
+    {
+      for (const Decl* p = currentParent; p; p = p->parent)
+        if (p->kind == NodeKind::FunctionDecl)
+          return true;
+      return false;
+    }
+    // A class or enumeration that TypeTable's names tell apart by a number, not by its name alone (ClassDecl::number).
+    void numberType(Decl* d, bool anonymous)
+    {
+      if (anonymous || (d->flags & DF_Specialization) || insideFunction())
+        setNumber(d, numberedTypes++);
+    }
     template<typename T>
     T* decl(uint32_t token)
     {
@@ -1911,6 +1925,8 @@ namespace
       }
       size_t mark = scratch.size();
       uint32_t start = pos;
+      if (numberedLocals && scope != Scope::Local && !insideFunction())
+        numberedLocals = 0; // (each function at file or class level numbers its own)
       pendingAlignment = nullptr; // an alignas belongs to the declaration it is written in, never the next one
       // `private int helper();` at file scope: the declaration's names are its file's own (design.md 15).
       bool filePrivate = false;
@@ -2446,10 +2462,12 @@ namespace
         {
           // `_`: an unnamed local that lives to the end of the scope; every `_` is a distinct object.
           NamePart part;
-          part.symbol = symbols.intern("_" + std::to_string(start));
+          part.symbol = symbols.intern("_" + std::to_string(numberedLocals++));
           v->name.parts = makeSpanOf(std::vector<NamePart>{part});
         }
         v->flags |= flags | d.flags;
+        if (scope == Scope::Local && (v->flags & (DF_Static | DF_ThreadLocal)))
+          v->number = numberedLocals++;
         v->bitfield = d.bitfield;
         if (pendingAttributes & ATTR_NoUniqueAddress)
         {
@@ -3806,6 +3824,7 @@ namespace
         error("expected the name of the union enum");
         return true;
       }
+      numberType(c, false);
       Type* underlying = nullptr;
       if (accept(P::Colon))
         underlying = parseType();
@@ -3826,6 +3845,7 @@ namespace
       currentClassName = c->name.last().symbol;
       size_t mark = scratch.size();
       EnumDecl* tag = decl<EnumDecl>(start);
+      numberType(tag, false);
       tag->isKpp = true;
       tag->isDefinition = true;
       tag->underlying = underlying;
@@ -3833,6 +3853,7 @@ namespace
       tagPart.symbol = kwTag;
       tag->name.parts = makeSpanOf(std::vector<NamePart>{tagPart});
       ClassDecl* storage = decl<ClassDecl>(start); // the anonymous union of the alternatives
+      numberType(storage, true);
       storage->keyword = Kw::union_;
       storage->isDefinition = true;
       std::vector<Decl*> enumerators, alternatives;
@@ -4521,6 +4542,7 @@ namespace
       skipAttributes();
       if (templ.present && !c->name.empty() && c->name.last().hasTemplateArgs)
         c->flags |= DF_Specialization; // `template<typename T> struct Describe<T*>`: a partial specialisation
+      numberType(c, c->name.empty());
       if (!c->templateParams.empty() && !(c->flags & DF_Specialization) && c->name.parts.size() == 1)
       {
         // A class template declared in a class template: its instances are made with the enclosing
@@ -4803,6 +4825,7 @@ namespace
           return false;
         }
       }
+      numberType(e, e->name.empty());
       if (accept(P::Colon))
       {
         e->underlying = parseType();
@@ -7351,6 +7374,8 @@ namespace
              kwConditional, kwUnderscore, kwConfig, kwNameof, kwCount, kwValues, kwStr, kwTypes, kwFromStr, kwOptional, kwUniquePtr, kwStd, kwText, kwTag, kwTagField,
              kwTagMethod, kwTypeMember, kwSuite;
     uint32_t lambdaCount = 0;        // Lambdas parsed so far in this file.
+    uint32_t numberedTypes = 0;      // Classes and enumerations given a number so far in this file (ClassDecl::number).
+    uint32_t numberedLocals = 0;     // Static locals and `_` locals numbered so far in the function at file or class level parsed now.
     uint32_t autoCount = 0;          // Type parameters invented for `auto` parameters so far in this file.
     uint16_t pendingAttributes = 0;  // [[noinline]] and friends seen before the current declaration.
     uint8_t pendingPack = 0;         // C: __kpp_pack(n) after `struct`: the next class's ClassDecl::pack.

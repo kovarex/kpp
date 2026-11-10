@@ -83,11 +83,12 @@
     // server's next build does not read a file whose stamp is the same again (compile).
     std::vector<FileStamp> stamps;
     std::vector<uint64_t> textHashes;
-    // An incremental build moved a kept local type (a lambda's closure, a local class) or renamed a
-    // closure, or moved a template's position-named entity: names in the code are the position's
-    // (`f::Local@2045`, a static local's `.2051`), so codegen runs in full (its session keeps
+    // An incremental build renumbered a kept lambda's closure or a kept class or enumeration (one added or removed above it in
+    // its file): the names in the code carry the numbers (`f::Local@6c1f0e2a_3`), so codegen runs in full (its session keeps
     // the types' names). See remapKeptFile.
     bool positionalCodegenInFull = false;
+    // --debug-info: the kept functions whose lines an edit moved (emitted again for their line tables, not for their code).
+    std::vector<FunctionDecl*> movedLines;
     CodegenSessionPtr codegen;
     // The session a codegen in full replaced: freed once the build has answered its client
     // (incrementalBuild), not on the build's own time (about 1 s on the game).

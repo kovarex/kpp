@@ -42,3 +42,19 @@ inline std::string filePrivatePrefix(const Decl* d)
     tag += digits[(hash >> shift) & 15];
   return tag + "::";
 }
+
+// A numbered class's or enumeration's number with its file's tag, as a name carries it (`f::Local@6c1f0e2a_3`, `Flag<int>/spec6c1f0e2a_7`;
+// ClassDecl::number): the same wherever the declaration is written in its file, and unique in the program (the tag is the
+// one that names the file's lambdas). A declaration the parser gave no number: its token.
+inline std::string numberInFile(const Decl* d)
+{
+  uint32_t number = numberOf(d);
+  if (number == UINT32_MAX)
+    return std::to_string(d->token);
+  uint32_t tag = d->file ? (d->file->lambdaTag ? d->file->lambdaTag : d->file->index) : 0;
+  static const char digits[] = "0123456789abcdef";
+  std::string text;
+  for (int shift = 28; shift >= 0; shift -= 4)
+    text += digits[(tag >> shift) & 15];
+  return text + "_" + std::to_string(number);
+}

@@ -1,0 +1,57 @@
+// spec: a local class, a local enumeration and a static local stay apart when two overloads, two blocks or two instances declare the same names: their names in the code carry their number in their file or function, not their place (2026-11-10)
+
+int value(int)
+{
+  struct Local { int v = 1; int get() const { return this.v; } };
+  enum Mode { A = 3 };
+  static int count = 10;
+  ++count;
+  return Local().get() + int(A) + count;
+}
+
+int value(double)
+{
+  struct Local { long long v = 2; char c = 'x'; int get() const { return int(sizeof(Local)) + int(this.v); } };
+  enum Mode { A = 5 };
+  static int count = 20;
+  ++count;
+  return Local().get() + int(A) + count;
+}
+
+int blocks()
+{
+  int total = 0;
+  {
+    struct Inner { int a = 7; };
+    static int n = 1;
+    total += Inner().a + n;
+  }
+  {
+    struct Inner { int a = 9; int b = 1; };
+    static int n = 2;
+    total += Inner().a + Inner().b + n;
+  }
+  return total;
+}
+
+template<typename T>
+int perInstance()
+{
+  struct Holder { T value; };
+  static int calls = 0;
+  ++calls;
+  return int(sizeof(Holder)) * 10 + calls;
+}
+
+int main()
+{
+  int a = value(0);
+  int b = value(0.5);
+  int c = value(1);
+  std::println(a, " ", b, " ", c);
+  std::println(blocks());
+  int d = perInstance<char>();
+  int e = perInstance<long long>();
+  int f = perInstance<char>();
+  std::println(d, " ", e, " ", f);
+}

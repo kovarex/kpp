@@ -115,7 +115,7 @@ auto codegen::Emitter::initializerListTemporary(const Ty* listTy, BraceInitExpr*
     if (needsDestruction(arrayTy, at))
       unsupported(at, "an InitializerList in static storage of elements that need destruction");
     std::string owner = variable.substr(0, variable.size() - (variable.back() == '"' ? 1 : 0));
-    array = owner + ".list." + std::to_string(b->token) + (variable.back() == '"' ? "\"" : "");
+    array = owner + ".list." + std::to_string(namedPlaces++) + (variable.back() == '"' ? "\"" : "");
     addOwnedEntry(array + " = internal global " + llType(arrayTy, at) + " zeroinitializer\n");
   }
   else

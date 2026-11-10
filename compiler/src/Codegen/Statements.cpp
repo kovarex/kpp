@@ -86,10 +86,12 @@ auto codegen::Emitter::staticLocalName(const std::string& function, VariableDecl
     owner = owner.substr(2, owner.size() - 3);
   else if (!owner.empty() && owner[0] == '@')
     owner = owner.substr(1);
-  // (`static auto [a, b] = pair;`: its hidden object has no name, its token tells it apart.)
+  // (`static auto [a, b] = pair;`: its hidden object has no name, its number tells it apart. The number, not the
+  // token: a compile server keeps the code of a function an edit above it only moved, VariableDecl::number.)
   // (in a `for constexpr` body: one per element, its copy's mark)
   std::string element = v->elementMark ? "#" + std::to_string(v->elementMark) : std::string();
-  return "@\"" + owner + "::" + (v->name.empty() ? std::string("[bindings]") : sym(v->name.last().symbol)) + "." + std::to_string(v->token) + element + "\"";
+  return "@\"" + owner + "::" + (v->name.empty() ? std::string("[bindings]") : sym(v->name.last().symbol)) + "." +
+         std::to_string(v->number != UINT32_MAX ? v->number : v->token) + element + "\"";
 }
 
 auto codegen::Emitter::sharedStaticText(const std::string& name, VariableDecl* v, const Ty* t, uint64_t alignment) -> std::string

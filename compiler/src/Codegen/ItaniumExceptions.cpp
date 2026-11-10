@@ -420,11 +420,11 @@ auto codegen::Emitter::tryStatement(TryStmt* t) -> void
     startBlock(endL); // nothing in the body can throw to the handlers
     return;
   }
-  // The filter function, named by the function and where the try is written (the same in every
-  // run, whatever order the functions are emitted in).
+  // The filter function, named by the function and its number in it (the same in every run, whatever
+  // order the functions are emitted in, and wherever the function is written).
   std::string owner = currentFunctionName.size() > 2 && currentFunctionName[1] == '"' ? currentFunctionName.substr(2, currentFunctionName.size() - 3)
                                                                                       : currentFunctionName.substr(currentFunctionName.empty() ? 0 : 1);
-  std::string filter = "@\"kpp.filter." + owner + "." + std::to_string(t->token) + "\"";
+  std::string filter = "@\"kpp.filter." + owner + "." + std::to_string(namedPlaces++) + "\"";
   std::string ft = "define i32 " + filter + "(ptr %pointers, ptr %frame) {\nentry:\n"
                    "  %rec = load ptr, ptr %pointers\n  %code = load i32, ptr %rec\n"
                    "  %tip = getelementptr inbounds i8, ptr %rec, i64 40\n  %ti = load ptr, ptr %tip\n"
@@ -1004,7 +1004,16 @@ auto codegen::Emitter::emitEntry(const std::string& mainName) -> bool
   {
     Shared::Definition definition = Shared::definitionOf(text);
     auto lock = sharedLock();
-    sh.definitions[definedIn[mainName]].push_back(std::move(definition));
+    std::vector<Shared::Definition>& definitions = sh.definitions[definedIn[mainName]];
+    // (a compile server's build writes it again for main's new line: in the old one's place)
+    const std::string head = "define i32 @" + entry + "(";
+    for (Shared::Definition& old : definitions)
+      if (old.text.starts_with(head))
+      {
+        old = std::move(definition);
+        return true;
+      }
+    definitions.push_back(std::move(definition));
   }
   return true;
 }

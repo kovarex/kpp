@@ -1401,7 +1401,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     session->usable = true;
     auto start = std::chrono::steady_clock::now();
     bool rebuilt = false;
-    CodegenResult again = rebuildLLVM(*session, picked, {}, {}, {}, {}, {}, {}, rebuilt);
+    CodegenResult again = rebuildLLVM(*session, picked, {}, {}, {}, {}, {}, {}, {}, rebuilt);
     double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
     shared = std::move(session->shared);
     emitters = std::move(session->emitters);
@@ -1452,17 +1452,17 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   return std::move(result);
 }
 
-static CodegenResult rebuildModules(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies, const std::vector<FunctionDecl*>& added,
-                                    const std::vector<FunctionDecl*>& removed, const std::vector<const Decl*>& changedLayouts,
-                                    const std::vector<const Decl*>& instancesOf, const std::vector<const Decl*>& changedGlobals,
-                                    const std::vector<const Ty*>& droppedClasses, bool& rebuilt);
+static CodegenResult rebuildModules(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies, const std::vector<FunctionDecl*>& movedLines,
+                                    const std::vector<FunctionDecl*>& added, const std::vector<FunctionDecl*>& removed,
+                                    const std::vector<const Decl*>& changedLayouts, const std::vector<const Decl*>& instancesOf,
+                                    const std::vector<const Decl*>& changedGlobals, const std::vector<const Ty*>& droppedClasses, bool& rebuilt);
 
-CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies, const std::vector<FunctionDecl*>& added,
-                          const std::vector<FunctionDecl*>& removed, const std::vector<const Decl*>& changedLayouts,
+CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies, const std::vector<FunctionDecl*>& movedLines,
+                          const std::vector<FunctionDecl*>& added, const std::vector<FunctionDecl*>& removed, const std::vector<const Decl*>& changedLayouts,
                           const std::vector<const Decl*>& instancesOf, const std::vector<const Decl*>& changedGlobals,
                           const std::vector<const Ty*>& droppedClasses, bool& rebuilt)
 {
-  CodegenResult out = rebuildModules(session, changedBodies, added, removed, changedLayouts, instancesOf, changedGlobals, droppedClasses, rebuilt);
+  CodegenResult out = rebuildModules(session, changedBodies, movedLines, added, removed, changedLayouts, instancesOf, changedGlobals, droppedClasses, rebuilt);
   // The classes every module defines (the session's, made again by homeDebugClasses when this
   // build named a class), whatever path the rebuild took: one place, so that no return of it
   // gives the natvis an empty list. (A build from scratch's homeDebugClasses fills its result.)
@@ -1484,10 +1484,10 @@ void unassembledAgain(CodegenSession& session, const std::vector<bool>& changedM
       sh.unassembled[k] = true;
 }
 
-static CodegenResult rebuildModules(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies, const std::vector<FunctionDecl*>& added,
-                                    const std::vector<FunctionDecl*>& removed, const std::vector<const Decl*>& changedLayouts,
-                                    const std::vector<const Decl*>& instancesOf, const std::vector<const Decl*>& changedGlobals,
-                                    const std::vector<const Ty*>& droppedClasses, bool& rebuilt)
+static CodegenResult rebuildModules(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies, const std::vector<FunctionDecl*>& movedLines,
+                                    const std::vector<FunctionDecl*>& added, const std::vector<FunctionDecl*>& removed,
+                                    const std::vector<const Decl*>& changedLayouts, const std::vector<const Decl*>& instancesOf,
+                                    const std::vector<const Decl*>& changedGlobals, const std::vector<const Ty*>& droppedClasses, bool& rebuilt)
 {
   rebuilt = false;
   CodegenResult out;
@@ -1529,6 +1529,10 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     }
   for (FunctionDecl* f : added)
     if (e.isProgramFunction(f))
+      level.push_back(programFunction(f));
+  // Kept functions whose lines moved (--debug-info): emitted again for their line tables; their callers stay.
+  for (FunctionDecl* f : movedLines)
+    if (e.isProgramFunction(f) && owners.insert(e.functionName(f, {}, nullptr)).second)
       level.push_back(programFunction(f));
   // The functions whose emission raised the last build's errors (a session kept across them): emitted
   // again, so that each error is given again at its place now, or goes. Those emitted again for that
@@ -1585,13 +1589,23 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
   // resolver checked it again, or took it out to be made anew by its first use here), and a
   // function that inlined one (its body as written is the template's).
   std::unordered_set<const Decl*> rechecked(instancesOf.begin(), instancesOf.end());
+  std::unordered_set<const FunctionDecl*> linesMoved(movedLines.begin(), movedLines.end()); // (a template's: its instances again, for their lines)
   auto instanceOfEdited = [&](const Shared::Definition& d)
   {
     if (d.name != d.owner || (d.emitted->args.empty() && !d.emitted->classTy))
       return false;
     Decl* defined = e.global.definitionOf(d.emitted->f, d.emitted->args);
     const FunctionDecl* written = defined && defined->kind == NodeKind::FunctionDecl ? static_cast<const FunctionDecl*>(defined) : d.emitted->f;
-    return edited.count(written) != 0 || edited.count(d.emitted->f) != 0 || rechecked.count(written) != 0 || rechecked.count(d.emitted->f) != 0;
+    if (edited.count(written) != 0 || edited.count(d.emitted->f) != 0 || rechecked.count(written) != 0 || rechecked.count(d.emitted->f) != 0 ||
+        linesMoved.count(written) != 0 || linesMoved.count(d.emitted->f) != 0)
+      return true;
+    // A member function of a class declared in a function: its walk is that function's (the server names the function when the
+    // member read an edited name: one that became trivial is inlined now), and its lines are in that function's.
+    for (const Decl* p = d.emitted->f->parent; p; p = p->parent)
+      if (p->kind == NodeKind::FunctionDecl &&
+          (edited.count(static_cast<const FunctionDecl*>(p)) != 0 || linesMoved.count(static_cast<const FunctionDecl*>(p)) != 0))
+        return true;
+    return false;
   };
   // Changed class layouts (the resolver's changedLayouts: data members of non-template classes
   // added, removed or changed): those layouts, and every one holding one of them by value or as a
@@ -2013,6 +2027,11 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     collectNextLevel(emitters, level);
   }
   gatherProgramFunctions(sh, emitters);
+  // The program's entry names main's line in its debug information (emitEntry): written again with main.
+  if (sh.debugInfo)
+    for (const char* name : {"@kpp.main", "@kpp.wmain"})
+      if (owners.count(name))
+        e.emitEntry(name);
   // An error, or a first use that added to the shared declarations (in every module): from scratch.
   // What it was goes to the server's log (the first one, cut).
   auto cut = [](const std::string& text) { return text.substr(0, std::min(text.find('\n'), size_t(240))); };

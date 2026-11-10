@@ -1381,6 +1381,51 @@ an edit above a kept function with a lambda and back. Still from scratch: an edi
 generic lambda (`[](auto v)`): its new walk makes a new call operator instance ("the new code
 instantiates what the old did not").
 
+**Names carry numbers, not places (2026-11-10, thread B).** kovarex's one-line edits took about 6 s on
+obyvak against `kpp measure`'s 1.2 s, the server's log saying "codegen in full: a local type moved (its
+name is its place)". A local class's or enumeration's name carried its token (`f::Local@2045`), so did a
+static local's (`.2051`), a catch filter's, a static initializer list's and a class specialization's
+(`/spec2045`): a token added above any of them in its file ran codegen in full (a local type, or a
+template's static local, `try` or braced list) or emitted their functions again. Of 83 converted game
+files given a one-token edit in their first function body (scratch\codegen\prof\survey.ps1, the files
+picked toward those with local types), master ran codegen in full for that alone in 39 (median 5.8 s
+from the edit to a checked build) and was fast in 29 (2.6 s). Now a class or enumeration declared in a
+function, an anonymous one and a specialization carry their number in their file in the parser's order
+(`f::Local@6c1f0e2a_3`, `ClassDecl::number`, after the file's tag as a lambda's closure has it), a static local
+its number in the function at file or class level it is written in, and catch filters and static lists
+the order their function's emission meets them (`FunctionState::namedPlaces`). `remapKeptFile` runs
+codegen in full only for a renumbered one (a lambda or a local type added or removed above it in its
+file), with the message "a lambda or a local type was renumbered".
+
+With `--debug-info` a kept function's text holds its lines, and an edit that moved them (a whitespace
+edit too) left them stale unless codegen happened to run in full: `--verify-incremental --debug-info`
+reported the difference on a three-function program. `remapKeptFile` now lists the kept functions whose
+tokens' lines moved and `rebuildLLVM` emits them again for that alone (`movedLines`: not their callers,
+since inlined code carries no lines of its callee), and the program's entry with main's line
+(`emitEntry` replaces its definition). A member function of a class declared in a function is emitted
+again with that function when the function's walk read an edited name or its lines moved: its own
+record, which the function's emission again did not reach (the edit test's new step: its undo kept a
+call that a build from scratch inlines). A file with a `union enum` (261 of the game's 3,929) was never
+incremental: its generated `tag()` has no `{` for `collectBodies` to pair; such a body is compared as
+text with the rest now.
+
+Measured with scratch\codegen\prof\edit-ab.ps1: `kpp factorio debug --verbose` through the compile server
+on a factorio-in-kpp checkout (3af5801a8, from C:\Factorio 4c178a5b915), a line `;` added at the top of
+the first function body and taken out again, three rounds of each, master 3263a40bf's kpp then the
+change's, both without LLVM inside; the machine was shared with other threads' gates, so these are
+indications. From the edit to a linked game: AtlasBuilder.kpp 13.4 to 17.6 s with master (codegen in
+full, a local type moved), median 15.3, and 3.8 to 6.2 s with the change, median 4.8 (8 modules assembled
+again, 79 functions emitted again, most for their moved lines); ChartRenderer.kpp 5.2 to 6.1 s, median
+5.35, and 2.4 to 5.6 s, median 2.5 (16 modules, 106 functions); SegmentedUnitAI.kpp, which has a union
+enum, 7.5 to 8.0 s, median 7.8 (not incremental), and 3.4 to 5.0 s, median 3.9 (70 modules, 128
+functions: its moved lines reach template instances in many modules).
+
+Still in full: an edit read by a function the server cannot emit again on its own, a declaration
+without a body (`BodyGraft.cpp`'s walksReading loop: "the walk of X::operator== read an edited
+function", 7 of the 83 files; thread F's probe of 2026-11-10 found defaulted operators, an out-of-line
+constructor's declaration and an explicit instantiation), and a lambda or local type added above
+another in its file.
+
 **A generic lambda's call operator made anew in an edit (2026-11-02, thread A, step 1).** The new
 walk's lambda is a new closure type, so its call operator for its arguments is a new instance, and
 the old lambda's is one nobody asks for: the rewalk counts the new one apart (`rewalkLambdas`, not

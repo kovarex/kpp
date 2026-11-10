@@ -35,7 +35,7 @@
     const Ty* localType(VariableDecl* v);
 
     // A static local's storage, named after the function it belongs to (an IR name, `@"..."`) and
-    // numbered by where the variable is written (its token): the same name in every run.
+    // numbered in that function (VariableDecl::number): the same name in every run, wherever the function is written.
     std::string staticLocalName(const std::string& function, VariableDecl* v);
 
     // The definition of a static local that code other emissions write names too (staticLocal's
