@@ -4,9 +4,9 @@ Base64 and base64url ([RFC 4648](https://www.rfc-editor.org/rfc/rfc4648) section
 kpp. Decoding is strict, so one byte string has exactly one encoding that decodes.
 
 ```cpp
-String text = base64Encode("foobar");      // Zm9vYmFy
-String bytes = base64Decode("Zm9vYg==");   // foob
-String token = base64UrlEncode(random32);  // '-' and '_', no padding
+std::String text = base64Encode("foobar");      // Zm9vYmFy
+std::String bytes = base64Decode("Zm9vYg==");   // foob
+std::String token = base64UrlEncode(random32);  // '-' and '_', no padding
 ```
 
 ## API

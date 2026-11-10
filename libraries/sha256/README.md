@@ -6,7 +6,7 @@ MACs and tokens. The registry's tree hash (kppnet/registry/tree_hash.py) and its
 it.
 
 ```cpp
-println(sha256("abc").hex());          // ba7816bf...f20015ad
+std::println(sha256("abc").hex());          // ba7816bf...f20015ad
 
 Sha256 hash;                           // data in parts
 hash.update(header);

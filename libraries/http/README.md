@@ -16,7 +16,7 @@ void handle(const http::HttpRequest& request, http::HttpResponse& response)
 {
   if (request.path == "/login" && request.method == "POST")
   {
-    Vector<url::UrlQueryParameter> form = request.form();
+    std::Vector<url::UrlQueryParameter> form = request.form();
     ...
     response.setCookie("gorating_id", sessionId, options);
     response.redirect("/");
@@ -27,7 +27,7 @@ void handle(const http::HttpRequest& request, http::HttpResponse& response)
 
 int main()
 {
-  if (getenv("REQUEST_METHOD") != nullptr)
+  if (std::getenv("REQUEST_METHOD") != nullptr)
     return http::httpCgi(handle);          // under Apache
   http::HttpServerOptions options;
   options.port = 8080;

@@ -8,10 +8,10 @@ kpp; an HTTP server comes later. No TLS: a reverse proxy (NFS's front end) or a 
 TcpStream connection = TcpStream::connect("127.0.0.1", 3307);
 connection.setTimeout(10000);           // milliseconds; a read or write waiting longer throws
 connection.write(request);
-String reply = connection.readExactly(4);
+std::String reply = connection.readExactly(4);
 
 TcpListener listener = TcpListener::listen("127.0.0.1", 0);   // port 0: any free one
-println(listener.port());
+std::println(listener.port());
 TcpStream client = listener.accept();
 ```
 

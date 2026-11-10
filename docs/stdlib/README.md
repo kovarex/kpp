@@ -10,6 +10,14 @@ here as the rule, and marked as a difference from C++ so that converted code can
 Where the implementation (stdlib/) does not meet this specification yet, docs/stdlib-conformance.md
 lists it. The specification wins: such a gap is a bug to fix, not a change of the rule.
 
+Every name these pages specify is in `std` (docs/design.md 16): a program writes `std::Vector<int>`,
+`std::sort(v)`, `std::filesystem::path`. The pages write them bare, inside std, as a class's own page
+writes its members. A bare `Vector` in a program is an error ("'Vector' is not declared; did you mean
+std::Vector?"), and a program's own Vector is another class. Not in std: C's names (stdlib/clib/:
+`malloc`, `INT_MAX`, the C tags), the allocation functions (`operator new`) and the compiler's built-in
+types. A lower-case `std::` name in parentheses (std::tuple, std::thread) is C++'s, and the page's
+class is what that converts to.
+
 Files:
 - [Common rules](common.md): sizes, element requirements, invalidation, complexity, errors.
 - [Vector](vector.md), [String](string.md), [UTF-8](utf8.md): validating, decoding and encoding UTF-8 text
@@ -39,7 +47,7 @@ Not specified yet: the rest of text output (print, Text, `<<`), streams, futures
 beyond one rule (2026-10-30): every C function the library declares has the type its C header gives
 it (the UCRT's for the C runtime, windows.h's for Win32), so that a program importing that header
 declares the same function the same way. The C runtime's are global, as in C (`FILE*` streams,
-`char*` from strchr, strrchr and strstr); the Win32 ones are in namespace win32 (stdlib/core/Win32.kpp),
+`char*` from strchr, strrchr and strstr); the Win32 ones are in namespace std::win32 (stdlib/core/Win32.kpp),
 called qualified, with windows.h's struct and union tags declared and the library's own storage of
 their layout cast to them. Checked by library/c_declarations_as_in_c_headers and
 interop/library_win32_declarations_as_in_windows_h.

@@ -11,7 +11,7 @@ constexpr HtmlTemplate page(R"(<!DOCTYPE html>
 SafeHtml items;
 for (const Library& library : libraries)
   items << libraryCard.render({{"url", "/library/" + library.name}, {"name", library.name}, {"summary", library.summary}});
-String html = page.render({{"title", "Libraries"}, {"items", items}}).html;
+std::String html = page.render({{"title", "Libraries"}, {"items", items}}).html;
 ```
 
 ## Templates

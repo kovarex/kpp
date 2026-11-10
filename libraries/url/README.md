@@ -6,11 +6,11 @@ strings as browsers send them.
 
 ```cpp
 Url url = parseUrl("https://kpp.net/registry/json?format=json#readme");
-println(url.host);                                         // kpp.net
-String next = resolveUrl("https://kpp.net/docs/a/b.html", "../c.html");  // https://kpp.net/docs/c.html
-String link = "/library/" + urlEncode(name);               // a path segment
-Vector<UrlQueryParameter> query = parseUrlQuery(url.query);
-const String* format = findUrlQueryParameter(query, "format");
+std::println(url.host);                                         // kpp.net
+std::String next = resolveUrl("https://kpp.net/docs/a/b.html", "../c.html");  // https://kpp.net/docs/c.html
+std::String link = "/library/" + urlEncode(name);               // a path segment
+std::Vector<UrlQueryParameter> query = parseUrlQuery(url.query);
+const std::String* format = findUrlQueryParameter(query, "format");
 ```
 
 ## API

@@ -225,11 +225,11 @@ memory limits: Starlark's sandbox, without a second language.
 // build.kpp of programs/factorio
 void build(Project& project)
 {
-    StringView factorio = project.setting("FACTORIO", "C:/Factorio");
+    std::StringView factorio = project.setting("FACTORIO", "C:/Factorio");
     project.use("sdl3", "3.4");                // for every target
     project.use("lua");
     project.use("factorio-native");            // libraries/factorio-native
-    for (StringView lib : {"SDL3/include", "SDL_Mixer/include", "Lua", "", "curl/include"})
+    for (std::StringView lib : {"SDL3/include", "SDL_Mixer/include", "Lua", "", "curl/include"})
         project.cIncludes.add(path(factorio, "libraries", lib));
     project.configuration("fastdebug", "debug").optimize = true;
 

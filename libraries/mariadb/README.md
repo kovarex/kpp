@@ -15,12 +15,12 @@ options.database = "gorating";
 MariaDbConnection db = MariaDbConnection::connect(options);
 
 MariaDbResult players = db.query("SELECT id, name, rating FROM user WHERE username = ", mariaDbQuote(username));
-for (ContainerSize i = 0; i < players.size(); ++i)
-  println(players.text(i, "name"));
+for (std::ContainerSize i = 0; i < players.size(); ++i)
+  std::println(players.text(i, "name"));
 
 db.begin();
 MariaDbResult insert = db.query("INSERT INTO game (...) VALUES (...)");
-println(insert.insertId);
+std::println(insert.insertId);
 db.commit();
 ```
 

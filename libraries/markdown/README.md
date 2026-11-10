@@ -5,12 +5,12 @@ and heading ids as options. Its output is the spec's, byte for byte: all 655 exa
 CommonMark spec pass, as do the 8 table examples of the GFM spec ([Conformance](#conformance)).
 
 ```cpp
-String html = markdownToHtml("# kpp\n\nFast *builds*.\n");  // <h1>kpp</h1>\n<p>Fast <em>builds</em>.</p>\n
+std::String html = markdownToHtml("# kpp\n\nFast *builds*.\n");  // <h1>kpp</h1>\n<p>Fast <em>builds</em>.</p>\n
 
 MarkdownOptions options;
 options.tables = true;      // | a | b |
 options.headingIds = true;  // <h2 id="hosting-on-kppnet">
-String page = markdownToHtml(readme, options);
+std::String page = markdownToHtml(readme, options);
 ```
 
 ## What it supports

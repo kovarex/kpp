@@ -1,7 +1,7 @@
 # Filesystem: paths, files and directories
 
-What `std::filesystem` converts to: namespace `filesystem`, with std's names (`filesystem::path`,
-`filesystem::exists`, ...), so that code which reaches it through a namespace alias or a
+What `std::filesystem` converts to: namespace `std::filesystem`, with C++'s names (`std::filesystem::path`,
+`std::filesystem::exists`, ...), so that code which reaches it through a namespace alias or a
 using-directive (Factorio's `namespace __fs = std::filesystem;` with `using namespace __fs;`)
 reads the same. On Windows paths are UTF-16 text as Windows keeps them, and every operation is a
 Win32 wide-character call. On Linux and FreeBSD paths are wide text too (UTF-32: wchar_t is 32 bits
@@ -197,7 +197,7 @@ Paths' stream operators (`<<` and `>>` with C++'s quoting) are not provided.
 
 # ErrorCode, Errc, SystemError
 
-What `std::error_code`, `std::errc` and `std::system_error` convert to (global names).
+What `std::error_code`, `std::errc` and `std::system_error` convert to (`std::ErrorCode`, `std::Errc`, `std::SystemError`).
 
 `ErrorCategory`: what an error value means: `systemCategory()` (the system's error: on Windows what
 GetLastError returns, elsewhere an errno value) or `genericCategory()` (an errno value); `name()` is

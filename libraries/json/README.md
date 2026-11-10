@@ -6,15 +6,15 @@ and column. Numbers round-trip exactly.
 
 ```cpp
 JsonValue config = parseJson(R"({"name": "kpp", "threads": 32, "tags": ["fast"]})");
-println(config["name"].asString());            // kpp
+std::println(config["name"].asString());            // kpp
 long long threads = config["threads"].asInteger();
 
 JsonValue out;
 out.set("version", 1);
 out.set("ratio", 0.1);
 out.set("tags", JsonValue::array()).push("fast");
-println(writeJson(out));                        // {"version":1,"ratio":0.1,"tags":["fast"]}
-println(writeJsonPretty(out));                  // two spaces per level
+std::println(writeJson(out));                        // {"version":1,"ratio":0.1,"tags":["fast"]}
+std::println(writeJsonPretty(out));                  // two spaces per level
 ```
 
 ## API

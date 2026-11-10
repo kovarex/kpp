@@ -8,7 +8,7 @@ of hash. Written for gorating.com's move from PHP to kpp, whose users' passwords
 if (bcryptVerify(password, user.passwordHash))   // throws BcryptError on a hash it cannot read
   logIn(user);
 
-String hash = bcryptHash(password, 10, salt);     // salt: 16 bytes from a secure random source
+std::String hash = bcryptHash(password, 10, salt);     // salt: 16 bytes from a secure random source
 ```
 
 ## API

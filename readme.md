@@ -115,8 +115,8 @@ what is decided but not built yet is under [Planned](#planned). Every rule that 
   int main()
   {
     for (Direction d : Direction::values)  // North true South, East false West, ...
-      println(StringView(d.str()), " ", d.isVertical(), " ", StringView(d.opposite().str()));
-    println(Direction::count, " ", Direction::fromStr("West").has_value());  // 4 true
+      std::println(std::StringView(d.str()), " ", d.isVertical(), " ", std::StringView(d.opposite().str()));
+    std::println(Direction::count, " ", Direction::fromStr("West").has_value());  // 4 true
     return 0;
   }
   ```
@@ -128,25 +128,25 @@ what is decided but not built yet is under [Planned](#planned). Every rule that 
   ```cpp
   union enum Property : u8
   {
-    { {int, Integer}, {double, Double}, {String, Text} }
+    { {int, Integer}, {double, Double}, {std::String, Text} }
   };
 
-  String describe(const Property& p)
+  std::String describe(const Property& p)
   {
     switch (p)
     {
-      case Property::Integer: return format("int {}", p[Property::Integer]);
-      case Property::Double: return format("double {}", p[Property::Double]);
-      case Property::Text: return format("text {}", p[Property::Text]);
+      case Property::Integer: return std::format("int {}", p[Property::Integer]);
+      case Property::Double: return std::format("double {}", p[Property::Double]);
+      case Property::Text: return std::format("text {}", p[Property::Text]);
     }
   }
 
   int main()
   {
     Property p = 5;                       // the alternative of an int: Integer
-    println(describe(p));                 // int 5
-    p[Property::Text] = String("hello");  // destroys the int, holds a String
-    println(describe(p));                 // text hello
+    std::println(describe(p));                 // int 5
+    p[Property::Text] = std::String("hello");  // destroys the int, holds a String
+    std::println(describe(p));                 // text hello
     return 0;
   }
   ```
@@ -162,17 +162,17 @@ what is decided but not built yet is under [Planned](#planned). Every rule that 
   };
 
   template<typename T>
-  String describe(const T& object)
+  std::String describe(const T& object)
   {
-    String result;
+    std::String result;
     for constexpr (auto m : members(T))
-      result << format("{}={} ", StringView(m.name), object.[m]);
+      result << std::format("{}={} ", std::StringView(m.name), object.[m]);
     return result;
   }
 
   int main()
   {
-    println(describe(Settings()));  // width=640 fullscreen=false
+    std::println(describe(Settings()));  // width=640 fullscreen=false
     return 0;
   }
   ```
@@ -187,9 +187,9 @@ what is decided but not built yet is under [Planned](#planned). Every rule that 
 
   int main()
   {
-    Vector<int> numbers;
+    std::Vector<int> numbers;
     numbers.push_back(7);
-    println(first(numbers));  // 7
+    std::println(first(numbers));  // 7
     return 0;
   }
   ```
@@ -211,7 +211,7 @@ what is decided but not built yet is under [Planned](#planned). Every rule that 
 
   int main()
   {
-    println(square(4));
+    std::println(square(4));
     return 0;
   }
   ```
@@ -228,7 +228,7 @@ what is decided but not built yet is under [Planned](#planned). Every rule that 
 
   int main()
   {
-    println(sqrt(2.0));
+    std::println(sqrt(2.0));
     return 0;
   }
   ```
