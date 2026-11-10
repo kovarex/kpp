@@ -118,6 +118,12 @@ public:
   // Same type with qualifiers added (references and functions ignore them).
   const Ty* qualified(const Ty* t, bool isConst, bool isVolatile);
   const Ty* unqualified(const Ty* t);
+  // Whether pointer from converts to pointer to by a qualification conversion ([conv.qual]), from != to:
+  // the two similar (the same pointer and array levels down to one type), each level of to as cv as
+  // from's at least, and every level above one that differs const in to. An array's cv is its
+  // elements' ([basic.type.qualifier] 3), so `int (*)[2]` converts to `const int (*)[2]`, and an array
+  // of a bound to one of unknown bound (C++20).
+  bool qualificationConverts(const Ty* from, const Ty* to);
 
   // Reference and top-level qualifier removal, as for `auto` deduction.
   const Ty* decay(const Ty* t);

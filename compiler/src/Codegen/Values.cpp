@@ -527,6 +527,9 @@ auto codegen::Emitter::impliedPointerConversion(const Ty* from, const Ty* to, No
 
 auto codegen::Emitter::qualificationConverts(const Ty* from, const Ty* to) -> bool
 {
+  // (TypeTable's rule, the checker's too, which takes arrays' elements: `int (*)[2]` as a `const int (*)[2]`)
+  if (types.qualificationConverts(types.unqualified(from), types.unqualified(to)))
+    return true;
   bool constAbove = true;
   for (const Ty *a = from->inner, *b = to->inner; a && b;)
   {

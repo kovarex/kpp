@@ -837,6 +837,11 @@ auto GlobalScope::Impl::conversionRank(const Ty* arg, const Ty* param, int depth
         }
         if (losesNoexcept(types.unqualified(ai), types.unqualified(pi)))
           return 1; // the function pointer conversion, an exact match worse than the identity ([conv.fctptr])
+        // `int (*)[2]` to `const int (*)[2]`, `int**` to `const int* const*`: the qualification
+        // conversion at a deeper level or through an array's elements, an exact match ([conv.qual];
+        // it was no candidate, so f(const void*) or f(bool) was called instead, a silent wrong answer)
+        if (types.qualificationConverts(types.unqualified(a), p))
+          return 1;
         if (pi->kind == TyKind::Void)
           return (ai->isConst && !pi->isConst) || (ai->isVolatile && !pi->isVolatile) ? NotViable : 3; // (`const char*` is no `void*`)
         if (ai->kind == TyKind::Class && pi->kind == TyKind::Class && isBaseClass(pi, ai))

@@ -549,6 +549,54 @@ const Ty* TypeTable::qualified(const Ty* t, bool isConst, bool isVolatile)
   return intern(copy);
 }
 
+bool TypeTable::qualificationConverts(const Ty* from, const Ty* to)
+{
+  if (!from || !to || from == to || from->kind != TyKind::Pointer || to->kind != TyKind::Pointer)
+    return false;
+  auto element = [](const Ty* t) {
+    while (t->kind == TyKind::Array && t->inner)
+      t = t->inner;
+    return t;
+  };
+  auto bare = [&](const Ty* t) {
+    std::vector<uint32_t> bounds;
+    for (; t->kind == TyKind::Array && t->inner; t = t->inner)
+      bounds.push_back(t->count);
+    t = unqualified(t);
+    for (size_t i = bounds.size(); i-- > 0;)
+      t = array(t, bounds[i]);
+    return t;
+  };
+  bool constAbove = true;
+  for (const Ty *a = from->inner, *b = to->inner; a && b;)
+  {
+    const Ty* ea = element(a);
+    const Ty* eb = element(b);
+    if ((ea->isConst && !eb->isConst) || (ea->isVolatile && !eb->isVolatile))
+      return false;
+    if ((ea->isConst != eb->isConst || ea->isVolatile != eb->isVolatile) && !constAbove)
+      return false;
+    const Ty* ua = bare(a);
+    const Ty* ub = bare(b);
+    if (ua == ub)
+      return true;
+    constAbove = constAbove && eb->isConst;
+    if (ua->kind == TyKind::Pointer && ub->kind == TyKind::Pointer)
+    {
+      a = ua->inner;
+      b = ub->inner;
+    }
+    else if (ua->kind == TyKind::Array && ub->kind == TyKind::Array && (ua->count == ub->count || ub->count == 0) && !ua->decl && !ub->decl)
+    {
+      a = a->inner;
+      b = b->inner;
+    }
+    else
+      return false;
+  }
+  return false;
+}
+
 const Ty* TypeTable::unqualified(const Ty* t)
 {
   if (!t || (!t->isConst && !t->isVolatile))
