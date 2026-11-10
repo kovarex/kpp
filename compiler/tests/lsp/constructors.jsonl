@@ -2,7 +2,7 @@
 // are the constructions overload resolution gives it, written with the class's name or none: `T x(a)`,
 // `T x{a}`, `T x = a`, `T(a)`, `T{a}`, `new T(a)`, an argument's conversion, a return's, a member's and a
 // base's initializer, and an instance's `new T(forward<Ts>(values)...)` at the program's call that asked
-// for it (`this->suspendedContext.emplace(this)`, Optional's emplace, Vector's emplace_back, makeUnique).
+// for it (`this.suspendedContext.emplace(&this)`, Optional's emplace, Vector's emplace_back, makeUnique).
 // An operator function's are the operators that call it, a conversion operator's the conversions it makes.
 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootUri":"$ROOT","capabilities":{}}}
 {"jsonrpc":"2.0","method":"initialized","params":{}}

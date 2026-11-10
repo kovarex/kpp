@@ -4,22 +4,22 @@ SuspendedContext made(GlobalContext* c) { return c; }
 
 struct GlobalContext
 {
-  void suspend() { this.suspendedContext.emplace(this); }
+  void suspend() { this.suspendedContext.emplace(&this); }
 
   void forms()
   {
-    SuspendedContext direct(this);
-    SuspendedContext braced{this};
-    SuspendedContext copied = this;
-    SuspendedContext viaCast = SuspendedContext(this);
-    SuspendedContext viaList = SuspendedContext{this};
-    SuspendedContext* created = new SuspendedContext(this);
+    SuspendedContext direct(&this);
+    SuspendedContext braced{&this};
+    SuspendedContext copied = &this;
+    SuspendedContext viaCast = SuspendedContext(&this);
+    SuspendedContext viaList = SuspendedContext{&this};
+    SuspendedContext* created = new SuspendedContext(&this);
     delete created;
-    levelOf(this);
+    levelOf(&this);
     SuspendedContext other(3);
-    this.optional.emplace(this);
-    this.list.emplace_back(this);
-    std::UniquePtr<SuspendedContext> unique = std::makeUnique<SuspendedContext>(this);
+    this.optional.emplace(&this);
+    this.list.emplace_back(&this);
+    std::UniquePtr<SuspendedContext> unique = std::makeUnique<SuspendedContext>(&this);
     SuspendedContext sum = other + other;
     if (sum && !other)
       levelOf(sum);
