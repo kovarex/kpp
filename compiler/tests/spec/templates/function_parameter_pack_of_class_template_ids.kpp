@@ -1,0 +1,28 @@
+// spec: a function parameter pack whose pattern is a class template-id (`const Box<Ts>&... boxes`, `Box<Ts>... boxes`, `Buf<Ts, 2>... bufs`) deduces one element of its pack from each argument and takes one parameter per element ([temp.deduct.call] 1, [temp.variadic] 5) (clang's output)
+// pending: "codegen does not support a call that did not resolve yet": the candidate's parameter, substituted, splices the pack into the class's arguments (Box<int, char>) instead of expanding the pattern per element; given one argument, "a parameter pack that was not deduced yet" in codegen (found by D's deduction battery against clang, 2026-11-10; D, the instance's parameters codegen's too)
+template<typename T>
+struct Box
+{
+  T v;
+};
+template<typename T, int N>
+struct Buf
+{
+  T items[N];
+};
+template<typename... Ts>
+int byRef(const Box<Ts>&... boxes) { return int(sizeof...(Ts)); }
+template<typename... Ts>
+int byValue(Box<Ts>... boxes) { return int(sizeof...(boxes)); }
+template<typename... Ts>
+int pairs(Buf<Ts, 2>... bufs) { return int(sizeof...(Ts)); }
+
+int main()
+{
+  Box<int> b{};
+  Box<char> c{};
+  Buf<int, 2> x{};
+  Buf<char, 2> y{};
+  std::println(byRef(b, c), " ", byValue(b, c, b), " ", pairs(x, y), " ", pairs(x));
+  return 0;
+}
