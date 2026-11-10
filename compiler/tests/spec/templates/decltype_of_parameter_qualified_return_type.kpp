@@ -1,0 +1,17 @@
+// spec: a function template's trailing return type that names a member of the class a decltype of its parameters gives (`-> typename decltype(t.make())::made`, `-> decltype(T{})::made`) is that member's type for the deduced arguments
+// pending: the call is "codegen does not support a call that did not resolve yet": the return type is not typed again under the deduced arguments, as `-> decltype(t.make())` alone is (Walker typeOfCall's astMentionsDecltype path). Found by D's battery (2026-11-10), parsed since A's typename-before-decltype fix; deduction: D
+struct N
+{
+  using made = int;
+};
+struct M
+{
+  N make() const { return N{}; }
+};
+template <typename T> auto makes(T t) -> typename decltype(t.make())::made { return 6; }
+template <typename T> auto fresh(T) -> decltype(T{})::made { return 7; }
+int main()
+{
+  std::println(makes(M{}), " ", fresh(N{}));
+  return 0;
+}

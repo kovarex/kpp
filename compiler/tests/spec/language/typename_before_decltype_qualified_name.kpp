@@ -1,0 +1,15 @@
+// spec: `typename` may stand before a decltype-specifier's nested name (`typename decltype(m)::made`), as a declaration's type and a trailing return type, meaning what the name means without it
+// found: D's battery (2026-11-10): "expected trailing return type (at 'typename')", "expected declaration (at 'typename')"
+struct M
+{
+  using made = short;
+};
+M m;
+auto f() -> typename decltype(m)::made { return 8; }
+int main()
+{
+  typename decltype(m)::made x = 3;
+  decltype(m)::made y = 4;
+  std::println(x + y, " ", f(), " ", sizeof(f()), " ", sizeof(x));
+  return 0;
+}

@@ -1085,6 +1085,10 @@ namespace
           break;
       }
       Type* type = nullptr;
+      // `typename decltype(t.make())::made`: the keyword before a decltype-specifier's nested name says what it does
+      // without it (until 2026-11-10 "expected trailing return type", D's battery).
+      if (at(Kw::typename_) && at(Kw::decltype_, 1))
+        advance();
       uint32_t typeToken = pos;
       if (at(TokenKind::Keyword) && isBuiltinTypeKeyword(Kw(tok().id)))
       {
