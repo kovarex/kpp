@@ -536,7 +536,7 @@
           counts.add("explicit instantiations of classes kept: a static data member runs code at startup, or the class is not known here");
           continue;
         }
-        remove(toks[keyword - 1].offset, lineEndAfter(endOffset(end)) - toks[keyword - 1].offset);
+        removeWholeLine(toks[keyword - 1].offset, endOffset(end));
         counts.add("explicit instantiations of classes removed: no effect in kpp");
       }
     }
@@ -1653,6 +1653,22 @@
       uint32_t start = declStart(d);
       uint32_t end = d->endToken > d->token && d->endToken <= toks.size() ? endOffset(d->endToken - 1) : start;
       remove(start, lineEndAfter(end) - start);
+    }
+
+    // From `from` to `end` and the rest of its line, when nothing else is on it; then its indentation goes too, which
+    // would otherwise stay in front of the next line (`  template class X<int>;`, `    using namespace std::chrono_literals;`).
+    void removeWholeLine(uint32_t from, uint32_t end)
+    {
+      uint32_t to = lineEndAfter(end);
+      if (to != end)
+      {
+        uint32_t s = from;
+        while (s > 0 && (text[s - 1] == ' ' || text[s - 1] == '\t'))
+          --s;
+        if (s == 0 || text[s - 1] == '\n')
+          from = s;
+      }
+      remove(from, to - from);
     }
 
     // After offset, the rest of its line when nothing else is on it (to the newline included).

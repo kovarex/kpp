@@ -2982,7 +2982,7 @@
           if (j < toks.size() && (path == "std" || path == "std::chrono_literals" || path == "std::chrono" || path == "std::literals" ||
                                   path == "std::literals::chrono_literals" || path == "std::chrono::literals"))
           {
-            remove(t.offset, lineEndAfter(endOffset(j)) - t.offset);
+            removeWholeLine(t.offset, endOffset(j));
             counts.add("using namespace for chrono removed");
             i = j;
             continue;
@@ -2997,7 +2997,7 @@
           if (auto known = stdNames.find(name); known != stdNames.end())
           {
             stdUsingNames[name] = known->second;
-            remove(t.offset, lineEndAfter(endOffset(i + 4)) - t.offset);
+            removeWholeLine(t.offset, endOffset(i + 4));
             counts.add("using-declarations of std names removed");
             i += 4;
             continue;
