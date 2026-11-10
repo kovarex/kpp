@@ -26,6 +26,9 @@
     OperatorWatch* operatorWatch = nullptr;
     // A fold with an operand of a class, a closure or an enumeration, step by step.
     Value foldOverOperators(FoldExpr* f, Expr* pattern, Expr* init, bool right, Decl* typePack);
+    // Whether a fold over `,`, `&&` or `||` may call an operator function: an operand of a class, a closure or an
+    // enumeration that has one for two operands of its type (operandTypes: the operands', in order).
+    bool foldCallsOperator(FoldExpr* f, P op, const std::vector<const Ty*>& operandTypes);
     Value foldOfAssignments(FoldExpr* f, Expr* pattern, Expr* init, bool right, Decl* typePack);
     // Where the operator function called for expression e builds its result: the object it
     // initializes (inPlaceOperator), else nowhere yet ("": a temporary).

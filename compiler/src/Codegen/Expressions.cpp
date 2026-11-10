@@ -247,6 +247,26 @@ auto codegen::Emitter::foldOfAssignments(FoldExpr* f, Expr* pattern, Expr* init,
 // and a scalar's value copied into a slot of its own: `(a << ... << forward<Args>(args))` called operator<<(Acc&, int&&)
 // for an int&, a const int& and an int&& alike (3333 where C++ gives 1323), an int& parameter was "no operator<<", and
 // the elements of a `<<` fold all ran before its first operator.
+auto codegen::Emitter::foldCallsOperator(FoldExpr* f, P op, const std::vector<const Ty*>& operandTypes) -> bool
+{
+  for (const Ty* t : operandTypes)
+  {
+    if (!t || !t->isKnown() || !(isClass(t) || isLambda(t) || t->kind == TyKind::Enum))
+      continue;
+    // (two lvalues of the type: the operator found for them, no code emitted)
+    PlaceName a(*this, "", t, f->token), b(*this, "", t, f->token);
+    BinaryExpr probe{};
+    probe.kind = NodeKind::BinaryExpr;
+    probe.token = f->token;
+    probe.op = uint32_t(op);
+    probe.lhs = &a.name;
+    probe.rhs = &b.name;
+    if (userLogicalOperator(&probe, op) || userEnumLogicalOperator(&probe, op))
+      return true;
+  }
+  return false;
+}
+
 auto codegen::Emitter::foldOverOperators(FoldExpr* f, Expr* pattern, Expr* init, bool right, Decl* typePack) -> Value
 {
   std::deque<PlaceName> places;
@@ -1000,6 +1020,18 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
         if (init && right)
           visit(init);
       };
+      // A class's, a closure's or an enumeration's own `,`, `&&` or `||`: the fold is the chain of its calls
+      // ([temp.variadic] 10), each step through binary(), which calls the operator function where one applies
+      // and takes the built-in operator where none does. Until 2026-11-10 these three were the built-in ones
+      // for every operand: a class's operator was never called, silently where the class converts to bool or
+      // the comma fold's value is not used.
+      if (op == P::Comma || op == P::AndAnd || op == P::OrOr)
+      {
+        std::vector<const Ty*> operandTypes;
+        eachOperand([&](Expr* x) { operandTypes.push_back(x->ty ? types.stripRef(x->ty) : nullptr); });
+        if (foldCallsOperator(f, op, operandTypes))
+          return foldOverOperators(f, pattern, init, right, typePack);
+      }
       if (op == P::Comma)
       {
         // Its value is the last operand's, where the walk typed it so (operands of no class).
@@ -2403,7 +2435,8 @@ auto codegen::Emitter::binary(BinaryExpr* b) -> Value
     verifyOperatorCall(b, OperatorCall::Builtin);
     return logical(op == P::AndAnd, b->lhs, b->rhs, b);
   }
-  if (op == P::Comma && !chosen) // (a class's operator, the walk chose: called below)
+  // (a class's operator, the walk chose: called below; and one a fold's step finds, no walk having typed the step)
+  if (op == P::Comma && !chosen && !(b->call == OperatorCall::Undecided && (userLogicalOperator(b, op) || userEnumLogicalOperator(b, op))))
   {
     rvalue(b->lhs);
     return rvalue(b->rhs);

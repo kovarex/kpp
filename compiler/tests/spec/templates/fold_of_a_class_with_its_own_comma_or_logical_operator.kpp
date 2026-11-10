@@ -1,5 +1,5 @@
-// spec: a fold over `,`, `&&` or `||` of a class with such an operator of its own is the chain of its calls, as C++ writes it: `(args , ...)` is E0 , (E1 , E2), `(... && args)` is (E0 && E1) && E2
-// pending: codegen's fold takes these three operators as the built-in ones: a class's operator is never called ("a conversion from Flag to bool", and silently where the class converts to bool or the comma's value is not used), found comparing folds with clang (thread B, 2026-11-09); clang's output
+// spec: a fold over `,`, `&&` or `||` of a class with such an operator of its own is the chain of its calls, as C++ writes it: `(args , ...)` is E0 , (E1 , E2) (its value: templates/fold_over_a_class_comma_has_its_operators_type), `(... && args)` is (E0 && E1) && E2; also where its value is not used (`(args , ...);`) and where the class converts to bool (Both: its operator&& is called, the result tested after); a class with no such operator (Truth) takes the built-in, short-circuit one; clang's output
+// found by thread B comparing folds with clang (2026-11-09): codegen took these three operators as the built-in ones, so a class's operator was never called: an error ("a conversion from Flag to bool") or silently, where the class converts to bool or the comma fold's value is not used
 extern "C" int printf(const char* format, ...);
 void event(char kind, int v) { printf("%c%d,", kind, v); }
 struct Part { int v; };
@@ -7,7 +7,8 @@ struct Mark { int v; };
 Mark operator,(Part a, Part b) { event('a', a.v * 10 + b.v); return Mark{a.v + b.v}; }
 Mark operator,(Mark a, Part b) { event('b', a.v * 10 + b.v); return Mark{a.v + b.v}; }
 Mark operator,(Part a, Mark b) { event('c', a.v * 10 + b.v); return Mark{a.v + b.v}; }
-template<typename... Args> int rightComma(Args... args) { return (args , ...).v; }
+template<typename... Args> void unusedRightComma(Args... args) { (args , ...); }
+template<typename... Args> void unusedLeftComma(Args... args) { (... , args); }
 struct Flag { int v; };
 Flag operator&&(Flag a, Flag b) { event('n', a.v * 10 + b.v); return Flag{a.v * b.v}; }
 Flag operator||(Flag a, Flag b) { event('o', a.v * 10 + b.v); return Flag{a.v + b.v}; }
@@ -27,6 +28,16 @@ public:
 template<typename... Args> bool builtinAnd(Args... args) { return (args && ...); }
 template<typename... Args> bool builtinOr(Args... args) { return (args || ...); }
 
+struct Both
+{
+  int v;
+  operator bool() const { event('t', this.v); return this.v != 0; }
+};
+Both operator&&(Both a, Both b) { event('n', a.v * 10 + b.v); return Both{a.v * b.v}; }
+Both operator||(Both a, Both b) { event('o', a.v * 10 + b.v); return Both{a.v + b.v}; }
+template<typename... Args> bool andAsBool(Args... args) { if ((args && ...)) return true; return false; }
+template<typename... Args> bool orAsBool(Args... args) { if ((... || args)) return true; return false; }
+
 class Mem
 {
 public:
@@ -45,8 +56,6 @@ template<typename... Args> int enumInit(Args... args) { return (0 + ... + args);
 
 int main()
 {
-  int v2 = rightComma(Part{1}, Part{2}, Part{3});
-  printf(" %d\n", v2);
   int v3 = leftAnd(Flag{1}, Flag{2}, Flag{3});
   printf(" %d\n", v3);
   int v4 = rightAnd(Flag{1}, Flag{2}, Flag{3});
@@ -62,5 +71,13 @@ int main()
   Mem m;
   printf("%d\n", dotStar(m, &Mem::a, &Mem::b));
   printf("%d %d %d\n", enumBits(Color::Red, Color::Green, Color::Blue), enumLeft(Color::Red, Color::Green, Color::Blue), enumInit(Color::Red, Color::Green));
+  unusedRightComma(Part{1}, Part{2}, Part{3});
+  printf("\n");
+  unusedLeftComma(Part{1}, Part{2}, Part{3});
+  printf("\n");
+  bool a = andAsBool(Both{1}, Both{0}, Both{2});
+  printf(" %d\n", a ? 1 : 0);
+  bool o = orAsBool(Both{0}, Both{3}, Both{4});
+  printf(" %d\n", o ? 1 : 0);
   return 0;
 }
