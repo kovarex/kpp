@@ -130,6 +130,10 @@ for %%c in (debug release final) do %KPP% --convert-merge-platform kpp\whole-%%c
 set WHOLEIN=kpp\whole-both
 :wholemerge
 %KPP% --convert-merge %WHOLEIN%-debug %WHOLEIN%-release %WHOLE% overrides\configuration-choices.txt %WHOLEIN%-final || goto :failed
+rem Factorio's own test runner and UnitTest++'s framework, which kpp's runner replaced: converted for
+rem the tests' macros their headers define, then left out (overrides\left-out-files.txt).
+set STEP=the left-out files
+for /f "eol=# tokens=*" %%f in (overrides\left-out-files.txt) do if exist "%WHOLE%\%%f" (del /q "%WHOLE%\%%~f") else (echo convert: overrides\left-out-files.txt names %%f, which the conversion did not write& goto :failed)
 type %WHOLE%\CONVERSION.md | findstr /B "Files"
 set STEP=the debugger rules
 rem The game's own Visual Studio rules (utils\tools\vs15\Visualizers\factorio.natvis) for the converted

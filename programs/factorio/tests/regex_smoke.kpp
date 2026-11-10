@@ -1,6 +1,6 @@
 // RE2 through the converted RegexUtil (overrides/src/Util/RegexUtil.kpp) and native/re2_c.cpp, which
 // convert.cmd links with the game's re2.lib: FullMatch and PartialMatch into typed targets, a
-// nullptr target that skips its group (RE2's Arg(nullptr); ForkTask's success pattern), a group that
+// nullptr target that skips its group (RE2's Arg(nullptr)), a group that
 // took no part, Consume stepping through lines (LuaDebugAdapter's headers), Replace and
 // GlobalReplace. regex_smoke.expected is what RE2's own semantics give.
 int main()

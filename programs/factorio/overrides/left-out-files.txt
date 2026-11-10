@@ -1,0 +1,57 @@
+# Converted files that the conversion leaves out of the checkout (convert.cmd deletes them after the
+# merge), one path per line as the checkout has it. Each is Factorio's own test runner, which kpp's
+# runner replaced (design.md 8.7, docs/testing.md): its selection, forking, interactive mode, reports
+# and UnitTest++'s framework, with the tests of that code. They are converted all the same, because
+# the tests' macros (SUITE, TEST, CHECK..., TEST_GENERATOR) are defined in these headers and the
+# conversion writes them as kpp's own suites, tests and checks. Nothing that stays names them
+# (kovarex, 2026-11-10: the dead code goes). UnitTest++'s comparisons stay, as
+# overrides\added\UnitTest++\NativeChecks.kpp.
+
+tests\ForkLogic.kpp
+tests\ForkTask.kpp
+tests\ForkTaskParams.kpp
+tests\ForkTestTimes.kpp
+tests\TestSelector.kpp
+tests\TestSelectionResult.kpp
+tests\InteractiveTestSelect.kpp
+tests\InteractiveTextSelect.kpp
+tests\InteractiveTestClipboard.kpp
+tests\InteractiveWinClipboard.kpp
+tests\InteractiveTestSelectionHistory.kpp
+tests\PersistentTestContext.kpp
+tests\TestReporter.kpp
+tests\GeneratedTests.kpp
+tests\TestSet.kpp
+# their tests
+tests\TestTestSelector.kpp
+tests\TestInteractiveTestSelect.kpp
+tests\TestInteractiveSelectionHistory.kpp
+tests\TestFailedTests.kpp
+# UnitTest++'s framework
+libraries\UnitTest++\AssertException.kpp
+libraries\UnitTest++\CheckMacros.kpp
+libraries\UnitTest++\Checks.kpp
+libraries\UnitTest++\Config.kpp
+libraries\UnitTest++\CurrentTest.kpp
+libraries\UnitTest++\DeferredTestReporter.kpp
+libraries\UnitTest++\DeferredTestReporterStdout.kpp
+libraries\UnitTest++\DeferredTestResult.kpp
+libraries\UnitTest++\Fixtures.kpp
+libraries\UnitTest++\Posix\SignalTranslator.kpp
+libraries\UnitTest++\ReportAssert.kpp
+libraries\UnitTest++\Suite.kpp
+libraries\UnitTest++\SuiteList.kpp
+libraries\UnitTest++\TerminateTestException.kpp
+libraries\UnitTest++\Test.kpp
+libraries\UnitTest++\TestDetails.kpp
+libraries\UnitTest++\TestList.kpp
+libraries\UnitTest++\TestMacros.kpp
+libraries\UnitTest++\TestMemoryOutStream.kpp
+libraries\UnitTest++\TestReporter.kpp
+libraries\UnitTest++\TestReporterStdout.kpp
+libraries\UnitTest++\TestResults.kpp
+libraries\UnitTest++\TestRunner.kpp
+libraries\UnitTest++\TestSuite.kpp
+libraries\UnitTest++\TestTime.kpp
+libraries\UnitTest++\UnitTest++.kpp
+libraries\UnitTest++\XmlTestReporter.kpp

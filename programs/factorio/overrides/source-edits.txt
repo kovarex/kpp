@@ -517,13 +517,8 @@
 -     if (run.config.interactive)
 -       run.persistentContext.save();
 -     return result;
-+     if (run.config.interactive || run.config.fork)
-+       throw std::runtime_error("--interactive and --fork are not in the native runner; --jobs replaces --fork");
 +     if (variables_map.count("save") || variables_map.count("add-tags"))
-+     {
-+       TestSelector testSelector;
-+       std::exit(run(variables_map, testSelector, writeCrc, run.config, run.persistentContext));
-+     }
++       std::exit(run.runTool(variables_map));
 +     return 0;
 
 @ tests/Main.cpp: the runner is the program's main
@@ -533,52 +528,342 @@
 - }
 +
 
-@ tests/Main.cpp: Factorio's runner's own options are kpp's runner's (design.md 8.7, docs/testing.md): each is an error naming what to write instead, not an option parsed and ignored (a save or its tags still take --repeat-count)
--   if (variables_map.count("help"))
+# Factorio's own test runner goes (kovarex, 2026-11-10): its options, the run's fork, selection and
+# interactive state, UnitTest++'s runner under TestRunner; its files are left out
+# (overrides\left-out-files.txt).
+
+@ tests/Main.cpp: the modpack's name is checked here, where UnitTest++'s Suite.cpp (left out) checked it
+-   if (!UnitTest::isValidModpackName(TestGlobals::activeModpack))
++   if (TestGlobals::activeModpack != "default" && TestGlobals::activeModpack != "vanilla" && TestGlobals::activeModpack != "sa")
+
+@ tests/Main.cpp: Factorio's runner's options go: kpp's runner selects, orders, forks and reports (design.md 8.7, docs/testing.md); an unknown option is cxxopts' error
+-     ("t,test", "run individual test - repeat to run multiple tests", po::value<std::vector<std::string>>())
+-     ("tests", "run multiple tests - a CSV list of test names", po::value<std::string>())
+-     ("tests-file", "run multiple tests - from a CSV file of test names", po::value<std::string>())
+-     ("s,suite", "run individual test suite - repeat to run multiple suites", po::value<std::vector<std::string>>())
+-     ("suites", "run multiple suites - a CSV list of suite names", po::value<std::string>())
+-     ("skip-suites", "skip multiple suites - a CSV list of suite names", po::value<std::string>())
+-     ("from", "suite/test run all tests starting with this suite/test", po::value<std::string>())
+-     ("after", "suite/test run all tests starting with the next suite/test after specified one", po::value<std::string>())
+-     ("contains", "run all tests that contain the given string in the test or suite name", po::value<std::string>())
+-     ("test-contains", "run all tests that contain the given string in the test name", po::value<std::string>())
+-     ("suite-contains", "run all suites that contain the given string in the suite name", po::value<std::string>())
+-     ("V,invert-selection", "Invert selection of test done by the previous parameters")
++
+
+@ tests/Main.cpp: Factorio's runner's options go: kpp's runner selects, orders, forks and reports (design.md 8.7, docs/testing.md); an unknown option is cxxopts' error
+-     ("fork-cache-path", "Forces fork tests in graphics mode to use graphics cache files from this path.", po::value<std::string>())
+-     ("is-graphics-fork", "", po::value<bool>())
++
+
+@ tests/Main.cpp: Factorio's runner's options go: kpp's runner selects, orders, forks and reports (design.md 8.7, docs/testing.md); an unknown option is cxxopts' error
+-     ("exit-on-failure", "Exit after a first failed test.")
+-     ("newlines", "Print newlines after a test name (for easier parsing of output in scripts).")
+-     ("xml", "Where to save xml with test result.", po::value<std::string>()->default_value(""))
++
+
+@ tests/Main.cpp: Factorio's runner's options go: kpp's runner selects, orders, forks and reports (design.md 8.7, docs/testing.md); an unknown option is cxxopts' error
+-     ("skip-selection-logging", "If test selection logging should be skipped.")
+-     ("fork", "Runs tests in multiple processes - one process per suite.")
+-     ("num-forks", "Number of forks to run in parallel", po::value<uint32_t>()->default_value("0"))
+-     ("show-fork-wait-times", "Reports the time spent waiting for fork test results to finish when the process count falls short of the desired count.")
+-     ("hide-failed-fork-tasks", "Do not print the list of all tests to the console if a fork failed some, only the failed ones.")
++
+
+@ tests/Main.cpp: Factorio's runner's options go: kpp's runner selects, orders, forks and reports (design.md 8.7, docs/testing.md); an unknown option is cxxopts' error
+-     ("i,interactive", "Interactive mode")
++
+
+@ tests/Main.cpp: Factorio's runner's options go: kpp's runner selects, orders, forks and reports (design.md 8.7, docs/testing.md); an unknown option is cxxopts' error
+-     ("randomize-tests-order", "Tests are run in random order instead of default order")
+-     ("randomize-fork-distribution", "Tests are split randomly between forks")
++
+
+@ tests/Main.cpp: the fork's graphics caches go with the forks
+-   if (variables_map.count("fork-cache-path"))
+-     TestGlobals::forcedCacheFilesPath = variables_map["fork-cache-path"].as<std::string>();
++
+
+@ tests/Main.cpp: --force-opengl is read where the window is made (TestRun::prepareGlobal); the field only went to the forks
+-   if (variables_map["force-opengl"].as<bool>())
+-     TestGlobals::forceOpenGL = true;
++
+
+@ tests/Main.cpp: the order is the runner's (--shuffle)
+-     TestGlobals::randomizeTestsOrder = bool(variables_map.count("randomize-tests-order")); // Used by boskid to help with test interferences discovery
+-     TestGlobals::randomizeForkDistribution = bool(variables_map.count("randomize-fork-distribution")); // Used by boskid to help with test interferences discovery
+-     if (TestGlobals::randomizeTestsOrder)
+-       LOG_NOTICE("Using random tests order");
+-     if (TestGlobals::randomizeForkDistribution)
+-       LOG_NOTICE("Using random fork distribution");
++
+
+@ tests/TestRun.hpp: the interactive mode's state goes
+- #include <PersistentTestContext.hpp>
++
+
+@ tests/TestRun.hpp: the selection is the runner's
+- class TestSelector;
++
+
+@ tests/TestRun.hpp: the runner selects and forks
+-   bool interactive = false;
++
+
+@ tests/TestRun.hpp: the runner selects and forks
+-   bool fork = false;
+-   bool skipSelectionLogging = false;
++
+
+@ tests/TestRun.hpp: what is left of the run: a save, or a desync report's tags (the runner runs the tests)
+-   void postSuitesSetup();
+-   int operator()(const cxxopts::ParseResult& variables_map,
+-                  const TestSelector& testSelector,
+-                  bool& writeCrc,
+-                  TestRunConfig& config,
+-                  PersistentTestContext& persistentContext);
++   int runTool(const cxxopts::ParseResult& variables_map);
+
+@ tests/TestRun.hpp: the interactive mode's state goes
+-   PersistentTestContext persistentContext;
++
+
+@ tests/TestRun.cpp: the interactive mode's state goes
+- void TestRun::postSuitesSetup()
+- {
+-   if (this->config.interactive)
+-     this->persistentContext.load();
+- }
+- 
++
+
+@ tests/TestRun.cpp: what is left of the run: a save, or a desync report's tags (the runner runs the tests, forks and reports)
+- int TestRun::operator()(const cxxopts::ParseResult& variables_map,
+-                         const TestSelector& testSelector,
+-                         bool& writeCrc,
+-                         TestRunConfig& config,
+-                         PersistentTestContext& context)
+- {
+-   if (this->config.fork)
 -   {
--     printf("%s\n", options.help({}).c_str());
+-     writeCrc = false; // runFork will write its own crc-values.dat and we don't want it overwritten
+-     return ForkLogic::runFork(testSelector,
+-                               this->persistentContext.failedTests,
+-                               variables_map["xml"].as<std::string>(),
+-                               variables_map["num-forks"].as<uint32_t>(),
+-                               variables_map["show-fork-wait-times"].as<bool>(),
+-                               !variables_map["hide-failed-fork-tasks"].as<bool>(),
+-                               variables_map["graphics"].as<bool>() ? ForkTask::GraphicsMode::True : ForkTask::GraphicsMode::False);
+-   }
+- 
+-   if (!this->config.skipSelectionLogging)
+-     testSelector.logSelection();
+- 
+-   if (variables_map.count("save"))
+-   {
+-     uint32_t updateCount = UINT32_MAX;
+-     if (variables_map.count("update-count"))
+-       updateCount = variables_map["update-count"].as<uint32_t>();
+- 
+-     runSave(this->config.repeatCount, updateCount, variables_map["save"].as<std::string>());
 -     return 0;
 -   }
-+   if (variables_map.count("help"))
+- #ifndef FINAL_RELEASE
+-   else if (variables_map.count("add-tags"))
+-   {
+-     addTagsToDesyncReport(Filesystem::Path(variables_map["add-tags"].as<std::string>()));
+-     return 0;
+-   }
+- #endif
+-   else
+-   {
+-     TestReporter reporter(variables_map["newlines"].as<bool>(),
+-                           variables_map["xml"].as<std::string>(),
+-                           this->config.enableLogging,
+-                           !variables_map["no-colors"].as<bool>(),
+-                           this->persistentContext.failedTests);
+-     TestRunner runner(reporter, variables_map["exit-on-failure"].as<bool>());
+- 
+-     for (uint32_t i = 0; i < this->config.repeatCount; ++i)
+-       if (!runner.runList(testSelector, UnitTest::TestList::getInstance(), config, context))
+-         break;
+- 
+-     return runner.finish();
+-   }
+- }
++ int TestRun::runTool(const cxxopts::ParseResult& variables_map)
++ {
++   if (variables_map.count("save"))
 +   {
-+     printf("%s\n", options.help({}).c_str());
++     uint32_t updateCount = UINT32_MAX;
++     if (variables_map.count("update-count"))
++       updateCount = variables_map["update-count"].as<uint32_t>();
++ 
++     runSave(this->config.repeatCount, updateCount, variables_map["save"].as<std::string>());
 +     return 0;
 +   }
++ #ifndef FINAL_RELEASE
++   if (variables_map.count("add-tags"))
++   {
++     addTagsToDesyncReport(Filesystem::Path(variables_map["add-tags"].as<std::string>()));
++     return 0;
++   }
++ #endif
++   return 0;
++ }
+
+@ tests/TestRun.cpp: the runner forks (--jobs)
+-   GlobalContext::headlessMode = !(variables_map["graphics"].as<bool>() && !variables_map["fork"].as<bool>()) && !variables_map["prepare-cache-files"].as<bool>();
++   GlobalContext::headlessMode = !variables_map["graphics"].as<bool>() && !variables_map["prepare-cache-files"].as<bool>();
+
+@ tests/TestRun.cpp: the runner forks (--jobs)
+-   localGlobal->inForkGraphicsTests = variables_map["is-graphics-fork"].as<bool>();
 +
-+   static const char* const runnerOptions[][2] = {
-+     {"test", "--filter *.NAME (the runner's names are Suite.Test, * matching anything)"},
-+     {"tests", "--filter *.NAME, once per test"},
-+     {"tests-file", "--filter *.NAME, once per test"},
-+     {"suite", "--suite NAME"},
-+     {"suites", "--suite NAME, once per suite"},
-+     {"skip-suites", "--skip-suite NAME, once per suite"},
-+     {"from", "--from NAME"},
-+     {"after", "--after NAME"},
-+     {"contains", "--filter *TEXT*"},
-+     {"test-contains", "--filter *.*TEXT*"},
-+     {"suite-contains", "--filter *TEXT*.*"},
-+     {"invert-selection", "--skip-suite NAME (the runner has no inverted selection)"},
-+     {"exit-on-failure", "--exit-on-failure, before the game's options"},
-+     {"repeat-count", "nothing yet (the runner has no repeat; it runs once)"},
-+     {"randomize-tests-order", "--shuffle [SEED]"},
-+     {"fork", "--jobs N"},
-+     {"num-forks", "--jobs N"},
-+     {"show-fork-wait-times", "--jobs N (the runner says nothing about waits)"},
-+     {"hide-failed-fork-tasks", "--jobs N (the runner prints only the failed tests' lines)"},
-+     {"randomize-fork-distribution", "--jobs N (it hands out the work the same way each run)"},
-+     {"fork-cache-path", "--jobs N (its workers make their own caches)"},
-+     {"is-graphics-fork", "--jobs N"},
-+     {"xml", "--report FILE (one JSON line per test)"},
-+     {"newlines", "nothing: the runner prints a test's lines as they are"},
-+     {"interactive", "nothing: --filter, --suite and --from select tests"},
-+   };
-+   if (!variables_map.count("save") && !variables_map.count("add-tags"))
-+     for (const auto& option : runnerOptions)
-+       if (variables_map.count(option[0]))
-+       {
-+         printf("factorio-test: --%s is Factorio's test runner's; kpp's runner runs the tests (docs/testing.md): write %s\n", option[0], option[1]);
-+         return 2;
-+       }
+
+@ tests/TestRun.cpp: the runner selects and forks
+-   this->skipSelectionLogging = variables_map["skip-selection-logging"].as<bool>();
++
+
+@ tests/TestRun.cpp: the runner selects and forks
+-   this->fork = variables_map["fork"].as<bool>();
+- 
++
+
+@ tests/TestRun.cpp: the runner selects and forks
+-   if (variables_map.count("interactive"))
+-     this->interactive = true;
+- 
++
+
+@ tests/TestRunner.hpp: what kpp's runner leaves of Factorio's: the checks after each test (testAfterEach)
+- class TestRunner : UnitTest::TestRunner
+- {
+- public:
+-   TestRunner(UnitTest::TestReporter& reporter, bool exitOnFailure)
+-     : UnitTest::TestRunner(reporter)
+-     , exitOnFailure(exitOnFailure)
+-   {}
+- 
+-   /// Run list of tests filtereed by TestSelector
+-   /// and return true if other tests can be run
+-   /// After the last runList is called, the finishe method must be used.
+-   bool runList(const TestSelector& selector,
+-                const UnitTest::TestList& list,
+-                TestRunConfig& config,
+-                PersistentTestContext& persistentContext);
+-   int finish() { return this->Finish(); }
+-   static void postTestValidation(UnitTest::Test* curTest);
+-   static void checkLeaks(const UnitTest::Test* curTest);
+- 
+- private:
+-   bool exitOnFailure;
+- };
++ class TestRunner
++ {
++ public:
++   static void postTestValidation();
++   static void checkLeaks();
++ };
+
+@ tests/TestRunner.hpp: UnitTest++'s runner goes
+- #include <TestRunner.h>
+- class TestSelector;
+- class TestRunConfig;
+- class PersistentTestContext;
++
+
+@ tests/TestRunner.cpp: kpp's runner runs the tests
+- bool TestRunner::runList(const TestSelector& selector,
+-                          const UnitTest::TestList& list,
+-                          TestRunConfig& config,
+-                          PersistentTestContext& persistentContext)
+- {
+-   selector.reset();
+- 
+-   auto testsCopy = list.tests;
+-   if (TestGlobals::randomizeTestsOrder)
+-   {
+-     RandomGenerator rng(RandomGenerator::UseSystemTime::True);
+-     Util::shuffle(testsCopy, rng);
+-   }
+- 
+-   SlowDetector slowTestDetector;
+- 
+-   uint32_t step = 0;
+-   for (UnitTest::Test* test : testsCopy)
+-   {
+-     if (!selector.shouldRun(*test))
+-       continue;
+- 
+-     crcDumper.open(test->details.fullName());
+-     slowTestDetector.start([=]{ printf("\n>>>> Test %s is taking more than 5 minutes\n", test->details.fullName().c_str()); }, 300.0/*second*/);
+- 
+-     this->RunTest(test);
+- 
+-     slowTestDetector.stop();
+-     this->postTestValidation(test);
+- 
+-     if (global && global->appManager && !GlobalContext::headlessMode)
+-       global->appManager->eraseIf([](AppManagerState* state)
+-       {
+-         return !dynamic_cast<InMainMenu*>(state) && !dynamic_cast<InTests*>(state);
+-       });
+- 
+-     if (this->exitOnFailure && this->result->getFailureCount())
+-       return false;
+- 
+-     // save after first step, and after each 10 tests, so with a lot of tests in the failed list and crash somwhere later,
+-     // it would save most of the progress so next time, the passing tests won't have to be repeated
+-     ++step;
+-     if (config.interactive && (step == 1 || step % 10 == 0))
+-       persistentContext.save();
+-   }
+- 
+-   return true;
+- }
+- 
++
+
+@ tests/TestRunner.cpp: the checks after each test take no test (testAfterEach)
+- void TestRunner::postTestValidation(UnitTest::Test* curTest)
++ void TestRunner::postTestValidation()
+
+@ tests/TestRunner.cpp: the checks after each test take no test (testAfterEach)
+-     TestRunner::checkLeaks(curTest);
++     TestRunner::checkLeaks();
+
+@ tests/TestRunner.cpp: the checks after each test take no test (testAfterEach)
+- void TestRunner::checkLeaks(const UnitTest::Test* curTest)
+- {
+-   (void)curTest;
++ void TestRunner::checkLeaks()
++ {
+
+@ tests/TestGlobals.hpp: the forks' and the order's settings go with Factorio's runner
+-   extern std::string forcedCacheFilesPath;
++
+
+@ tests/TestGlobals.hpp: the forks' and the order's settings go with Factorio's runner
+-   extern bool forceOpenGL;
++
+
+@ tests/TestGlobals.hpp: the forks' and the order's settings go with Factorio's runner
+-   extern bool randomizeTestsOrder;
+-   extern bool randomizeForkDistribution;
++
+
+@ tests/TestGlobals.cpp: the forks' and the order's settings go with Factorio's runner
+-   bool forceOpenGL = false;
++
+
+@ tests/TestGlobals.cpp: the forks' and the order's settings go with Factorio's runner
+-   std::string forcedCacheFilesPath;
++
+
+@ tests/TestGlobals.cpp: the forks' and the order's settings go with Factorio's runner
+-   bool randomizeTestsOrder = false;
+-   bool randomizeForkDistribution = false;
++
 
 @ tests/TestRunner.cpp: an exception in the validation fails the test through the runner
 -     curTest->HandleExceptions("running post test validation");
@@ -728,7 +1013,7 @@
 -       test.Run();
 -       TestRunner::postTestValidation(&test);
 +       passed = runCaptured([this] { T fixture; this->testInstructions(fixture); });
-+       TestRunner::postTestValidation(nullptr);
++       TestRunner::postTestValidation();
 
 @ tests/MetaTestRunner.hpp: the inner test is a function the runner runs with its failures captured
 -     bool testResultExpectationMet = expectingSuccessfulTestRun.asBool() != innerResults.isCurrentTestFailed();

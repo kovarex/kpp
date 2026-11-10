@@ -36,7 +36,8 @@ void testsHelp()
   std::String program = "factorio-test";
   std::String help = "--help";
   char* argv[] = {program.data(), help.data()};
-  fmain(2, argv);
+  if (i32 result = fmain(2, argv))
+    ::exit(result);
 }
 
 // The name UnitTest++ gave a test, Suite/Test: the CRC files' key, which a C++ build's run shares. A
@@ -119,7 +120,7 @@ test void testRun(std::Function<void()> run)
 
 test void testAfterEach()
 {
-  TestRunner::postTestValidation(nullptr);
+  TestRunner::postTestValidation();
   if (global && global->appManager && !GlobalContext::headlessMode)
     global->appManager->eraseIf([](AppManagerState* state)
     {
