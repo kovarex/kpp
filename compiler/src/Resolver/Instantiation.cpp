@@ -1724,6 +1724,24 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
       auto* n = static_cast<NamedType*>(t);
       if (n->name.empty())
         return types.unknown();
+      // `typename decltype(t.make())::made`: the decltype converted here, where the function whose parameters it may name
+      // is known (lookupTypeName's context has none), then the member in the class it gives. Until 2026-11-10 such a
+      // return type was no type under the deduced arguments, so its function never resolved (A's
+      // templates/decltype_of_parameter_qualified_return_type).
+      if (n->name.typeQualifier && n->name.typeQualifier->kind == NodeKind::DecltypeType && (ctx.function || ctx.tokens) &&
+          std::none_of(n->name.parts.begin(), n->name.parts.end(), [](const NamePart& p) { return p.hasTemplateArgs; }))
+      {
+        const Ty* q = convertType(n->name.typeQualifier, ctx, depth + 1);
+        q = q ? types.unqualified(types.stripRef(q)) : nullptr;
+        if (q && q->isKnown() && !types.isDependent(q) && q->kind == TyKind::Class)
+        {
+          const Ty* m = q;
+          for (const NamePart& part : n->name.parts)
+            m = m && m->kind == TyKind::Class ? memberTypeOf(m, part.symbol, depth + 1) : nullptr;
+          if (m)
+            return m;
+        }
+      }
       // An alias local to a function body (`using T = VectorType::value_type;`), as the walk
       // found it: also where the context has no locals (the code generator's typeOfAstIn).
       if (n->name.parts.size() == 1 && n->resolved && n->resolved->kind == NodeKind::UsingAliasDecl &&
@@ -2793,6 +2811,8 @@ auto GlobalScope::Impl::astMentionsDecltype(Node* n, int depth) -> bool
     case NodeKind::LRefType: return astMentionsDecltype(static_cast<LRefType*>(n)->referenced, depth + 1);
     case NodeKind::RRefType: return astMentionsDecltype(static_cast<RRefType*>(n)->referenced, depth + 1);
     case NodeKind::NamedType:
+      if (astMentionsDecltype(static_cast<NamedType*>(n)->name.typeQualifier, depth + 1))
+        return true; // `typename decltype(t.make())::made`
       for (const NamePart& part : static_cast<NamedType*>(n)->name.parts)
         for (Node* arg : part.templateArgs)
           if (astMentionsDecltype(arg, depth + 1))

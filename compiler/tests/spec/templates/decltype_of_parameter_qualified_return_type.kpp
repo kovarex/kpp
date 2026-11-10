@@ -1,5 +1,5 @@
 // spec: a function template's trailing return type that names a member of the class a decltype of its parameters gives (`-> typename decltype(t.make())::made`, `-> decltype(T{})::made`) is that member's type for the deduced arguments
-// pending: the call is "codegen does not support a call that did not resolve yet": the return type is not typed again under the deduced arguments, as `-> decltype(t.make())` alone is (Walker typeOfCall's astMentionsDecltype path). Found by D's battery (2026-11-10), parsed since A's typename-before-decltype fix; deduction: D
+// found by D's battery (2026-11-10), parsed since A's typename-before-decltype fix: the call was "a call that did not resolve", the return type not typed again under the deduced arguments (convertType's NamedType gave lookupTypeName no function for the decltype, and the walker's astMentionsDecltype did not look at the name's qualifier)
 struct N
 {
   using made = int;
