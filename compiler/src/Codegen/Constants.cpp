@@ -746,6 +746,17 @@ auto codegen::Emitter::lineOperand(uint32_t line) -> std::string
   return value;
 }
 
+auto codegen::Emitter::endReached(Stmt* body) -> void
+{
+  uint32_t token = body ? body->token : 0;
+  if (body && body->kind == NodeKind::BlockStmt && static_cast<BlockStmt*>(body)->endToken)
+    token = static_cast<BlockStmt*>(body)->endToken;
+  auto [line, column] = lineColumnOf(token);
+  emitCall("", "void @kpp_assert_failed(ptr " + cStringConstant(programPathOf(currentFile)) + ", i32 " + lineOperand(line) + ", i32 " +
+                   std::to_string(column) + ", ptr " + cStringConstant("control reached the end of a function that returns a value") + ")", false);
+  usesAssert = true;
+}
+
 auto codegen::Emitter::lineColumnOf(uint32_t token) -> std::pair<uint32_t, uint32_t>
 {
   const std::vector<Token>& toks = *currentFile->tokens;

@@ -463,7 +463,10 @@ auto codegen::Emitter::emitFunction(FunctionDecl* original, const TemplateArgs& 
       else if (name == "@kpp.main" || name == "@kpp.wmain")
         fn += "  ret i32 0\n";
       else // falling off the end (after a throw, usually): a zero rather than `unreachable`, see emitThrow
+      {
+        endReached(f->body);
         fn += "  ret " + (currentReturn->isReference() ? std::string("ptr null") : llType(currentReturn, f) + " zeroinitializer") + "\n";
+      }
     }
     addFunction(name, functionText(header));
   }

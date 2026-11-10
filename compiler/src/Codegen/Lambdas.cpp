@@ -1016,7 +1016,10 @@ auto codegen::Emitter::emitLambda(LambdaExpr* l, const Ty* t, const Ty* callTy, 
       if (currentReturn->kind == TyKind::Void || hasSret)
         fn += "  ret void\n";
       else
+      {
+        endReached(l->body);
         fn += "  ret " + (currentReturn->isReference() ? std::string("ptr null") : llType(currentReturn, l) + " zeroinitializer") + "\n";
+      }
     }
     addFunction(name, functionText(header));
   }

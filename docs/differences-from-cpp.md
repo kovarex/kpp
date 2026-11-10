@@ -558,6 +558,16 @@ enum class Direction : u8
 - **Why:** adding a value finds every switch, and a corrupted byte stops the program where it is seen.
 - **See:** [design 8.4][d8]; spec `kpp/typed_unions_switch_copy`.
 
+### Running off the end of a function that returns a value stops (built)
+
+- **C++:** undefined behavior: an exhaustive `switch` over a plain enum given a value no case names, and the
+  function goes on with whatever its result holds.
+- **kpp:** the end of such a function, reached, calls the assert hook (`kpp_assert_failed`) with the line and column
+  of its closing brace and "control reached the end of a function that returns a value", which stops the program;
+  a lambda's too. `main` returns 0, as in C++.
+- **Why:** a corrupted value stops the program where it is seen, as a kpp enum's `switch` does, never a silent zero.
+- **See:** spec `language/end_of_value_function_reached_stops`.
+
 ### No implicit fallthrough (built)
 
 - **C++:** a `case` runs into the next without `break`.

@@ -139,6 +139,12 @@
     // kept object rewrites, and not the function's code (kovarex, 2026-11-10: "lets try that"; until then the line was the
     // call's operand, and moving an assert compiled its module again: AtlasBuilder.kpp's). Elsewhere the line itself.
     std::string lineOperand(uint32_t line);
+    // Control reaching the end of a function that returns a value (C++'s undefined behavior: an exhaustive switch over a
+    // C++-style enum given a value no case names): the assert hook, with the line and column of the body's closing brace,
+    // as a kpp enum's switch calls it on a value outside its cases (until 2026-11-10 the function gave zero, silently: D's
+    // note). The function's zero return stays after the call, as after a throw (emitThrow): the optimizer never proves it
+    // noreturn, and a hook that returns (a test's) gets the zero.
+    void endReached(Stmt* body);
     std::unordered_map<const ParsedFile*, std::string> lineSections; // a file's line section (lineOperand)
 
     // The source text from one token up to (not including) another.
