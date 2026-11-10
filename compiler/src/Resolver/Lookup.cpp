@@ -829,12 +829,29 @@ auto GlobalScope::Impl::associatedNamespaces(const Ty* t, std::vector<Scope*>& o
   t = types.unqualified(types.stripRef(t));
   while (t && (t->kind == TyKind::Pointer || t->kind == TyKind::Array))
     t = t->inner ? types.unqualified(t->inner) : nullptr;
-  if (!t || !t->decl || (t->kind != TyKind::Class && t->kind != TyKind::Enum))
-    return;
   // (The associated classes are a graph, not a tree: `class Robot : Hook<Robot>` is its own base's argument.)
   std::vector<const Ty*> own;
   if (!visited)
     visited = &own;
+  // A function's: those of its parameter types and its result type, a pointer to a member's: those of its
+  // class and of the member's type ([basic.lookup.argdep] 3.3 to 3.5): `f(&ns::takesX)` finds ns::f
+  // (it was "'f' is not declared", thread E's battery a5).
+  if (t && t->kind == TyKind::Function)
+  {
+    for (const Ty* p : t->args)
+      associatedNamespaces(p, out, depth + 1, visited);
+    associatedNamespaces(t->inner, out, depth + 1, visited);
+    return;
+  }
+  if (t && t->kind == TyKind::MemberPointer)
+  {
+    if (!t->args.empty())
+      associatedNamespaces(t->args[0], out, depth + 1, visited);
+    associatedNamespaces(t->inner, out, depth + 1, visited);
+    return;
+  }
+  if (!t || !t->decl || (t->kind != TyKind::Class && t->kind != TyKind::Enum))
+    return;
   if (std::find(visited->begin(), visited->end(), t) != visited->end())
     return;
   visited->push_back(t);
@@ -907,6 +924,22 @@ auto GlobalScope::Impl::hiddenFriends(const Ty* t, uint32_t symbol, std::vector<
   std::vector<const Ty*> own;
   if (!visited)
     visited = &own;
+  // A function's associated classes are its parameter types' and its result type's, a pointer to a
+  // member's its class's and the member type's ([basic.lookup.argdep] 3.3 to 3.5), as associatedNamespaces.
+  if (t && t->kind == TyKind::Function)
+  {
+    for (const Ty* p : t->args)
+      hiddenFriends(p, symbol, out, depth + 1, visited);
+    hiddenFriends(t->inner, symbol, out, depth + 1, visited);
+    return;
+  }
+  if (t && t->kind == TyKind::MemberPointer)
+  {
+    if (!t->args.empty())
+      hiddenFriends(t->args[0], symbol, out, depth + 1, visited);
+    hiddenFriends(t->inner, symbol, out, depth + 1, visited);
+    return;
+  }
   if (!t || std::find(visited->begin(), visited->end(), t) != visited->end())
     return;
   visited->push_back(t);

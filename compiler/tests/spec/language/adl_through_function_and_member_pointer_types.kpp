@@ -1,0 +1,29 @@
+// spec: argument-dependent lookup searches the namespaces of a function pointer's parameter and result types and of a member pointer's class ([basic.lookup.argdep] 3.3 to 3.5), and finds the hidden friends of those classes: `f(&ns::takesX)` calls ns::f(void (*)(X)), `g(&ns::makeX)` ns::g(X* (*)()), `hidden(&ns::takesX)` X's hidden friend, `m(&ns::X::method)` and `d(&ns::X::v)` ns's (`6 7 8 9 10 11`, clang's)
+// found by thread E's battery a5 (2026-11-10): each was "'f' is not declared", as the lookup took no namespace from a function type or a member pointer
+extern "C" import "stdio.h";
+
+namespace ns
+{
+  struct X
+  {
+    int v;
+    int method(int) const { return 0; }
+    friend int hidden(void (*)(X)) { return 9; }
+  };
+
+  void takesX(X) {}
+  X* makeX() { return nullptr; }
+  int useX(int, X&) { return 0; }
+  int f(void (*)(X)) { return 6; }
+  int g(X* (*)()) { return 7; }
+  int h(int (*)(int, X&)) { return 8; }
+  int m(int (X::*)(int) const) { return 10; }
+  int d(int X::*) { return 11; }
+}
+
+int main()
+{
+  printf("%d %d %d ", f(&ns::takesX), g(&ns::makeX), h(&ns::useX));
+  printf("%d %d %d\n", hidden(&ns::takesX), m(&ns::X::method), d(&ns::X::v));
+  return 0;
+}
