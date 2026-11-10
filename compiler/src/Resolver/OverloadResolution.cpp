@@ -2181,6 +2181,7 @@ auto GlobalScope::Impl::normalizeConstraint(NormalConstraint& n, const Node* e, 
       VariableDecl* concept_ = conceptOf(lookupQualified(name->name, lexicalScopeOf(owner), &own, depth + 1).decl);
       if (!concept_)
         break;
+      pushFunctionParams(owner, own); // (`IsInt<decltype(x)>` in a requires clause of `f(auto x)`: x, as constraintValue has it)
       TypeContext ctx{lexicalScopeOf(owner), &own, &s, owner->file ? owner->file->tokens : nullptr, owner->file ? owner->file->text : std::string_view()};
       std::vector<const Ty*> args;
       size_t count = concept_->templateParams.size();
@@ -2189,6 +2190,11 @@ auto GlobalScope::Impl::normalizeConstraint(NormalConstraint& n, const Node* e, 
         const Ty* a = templateArgument(written, concept_->templateParams[std::min(args.size(), count - 1)], ctx, depth + 1);
         if (!a || !a->isKnown())
           return -1;
+        // `IsInt<decltype(x)>` of `f(auto x)`: x's type, the function's own invented parameter, taken as s takes it (the
+        // other function's at the same position, moreConstrained), as a parameter named in the argument is (until
+        // 2026-11-10 left as it was, so two abbreviated templates' same atom differed and neither was more constrained).
+        if (types.isDependent(a))
+          a = substitute(a, s);
         if (written && written->kind == NodeKind::PackType && a->kind == TyKind::Pack)
           args.insert(args.end(), a->args.begin(), a->args.end());
         else

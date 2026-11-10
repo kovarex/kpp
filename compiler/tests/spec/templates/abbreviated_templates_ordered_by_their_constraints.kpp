@@ -1,0 +1,26 @@
+// spec: two abbreviated function templates (`auto x`) whose constraints name their parameter through decltype(x) are ordered by those constraints, as two templates naming T are ([temp.func.order] 6.2.2, [temp.constr.order]): `IsInt<decltype(x)>` subsumes `IsInt<decltype(x)> || IsLong<decltype(x)>`, and `Small<decltype(x)> && IsInt<decltype(x)>` subsumes `Small<decltype(x)>` (clang's output)
+// found by D's concepts battery against clang (2026-11-10): both calls were "ambiguous", as normalizing `IsInt<decltype(x)>` found no x (the function's parameters were not in its scope) and kept each function's own invented parameter, so the same atom differed
+template<typename T>
+concept IsInt = std::IsSame<T, int>::value;
+template<typename T>
+concept IsLong = std::IsSame<T, long>::value;
+template<typename T>
+concept Small = sizeof(T) <= 4;
+int a(auto x)
+  requires IsInt<decltype(x)> || IsLong<decltype(x)>
+{ return 1; }
+int a(auto x)
+  requires IsInt<decltype(x)>
+{ return 2; }
+int b(auto x)
+  requires Small<decltype(x)>
+{ return 1; }
+int b(auto x)
+  requires Small<decltype(x)> && IsInt<decltype(x)>
+{ return 2; }
+
+int main()
+{
+  std::println(a(5), " ", a(5L), " ", b(5), " ", b('c'));
+  return 0;
+}
