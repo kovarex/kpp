@@ -20,7 +20,7 @@ auto GlobalScope::Impl::Walker::formedOnly(const Ty* t, const Expr* a, const Exp
   if (!probing && !substituting)
     return t;
   for (const Expr* x : {a, b, c})
-    if (x && x->ty && !x->ty->isKnown())
+    if (x && x->ty && !x->ty->isKnown() && x->kind != NodeKind::BraceInitExpr) // (a braced list has the type it initializes: `T{}`)
       return x->ty;
   return t;
 }
@@ -6581,12 +6581,29 @@ auto GlobalScope::Impl::Walker::typeOfCall(CallExpr* c) -> const Ty*
     checkImmediate(f, c->token, [&] { return impl.constValue(c, ctx(), 0); });
     packText(c->args, f, c->token);
   }
+  else if (d && t && d->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(d)->isType && (probing || substituting) &&
+           types.unqualified(t)->kind == TyKind::Class && !types.isDependent(t))
+  {
+    // `T(...)` of a type parameter while probing or substituting: as a class named so (below), its constructors must take
+    // the arguments (`decltype(T(), 1)` of a class with only a `Needs(int)` held until 2026-11-10).
+    std::vector<const Ty*> traitArgs{t};
+    bool known = true;
+    for (const Ty* a : argTypesOf(c->args))
+    {
+      known = known && a && a->isKnown() && !types.isDependent(a);
+      traitArgs.push_back(a);
+    }
+    if (known && impl.traitValue("isConstructible", traitArgs) == false)
+      return unknown(Why::Overload);
+  }
   else if (d && t && (d->kind == NodeKind::ClassDecl || d->kind == NodeKind::UsingAliasDecl || (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef))))
   {
     // In a requirement (`requires { StringView(value); }`), a class built from arguments none of
     // its constructors takes is no well-formed expression: the requirement fails, never holds
     // because the cast has the class's type whatever the constructors.
-    if (probing && !c->args.empty() && types.unqualified(t)->kind == TyKind::Class && !types.isDependent(t))
+    // (While substituting too, and without arguments: `decltype(T(), 1)` of a class with only a `Needs(int)`, which held until
+    // 2026-11-10.)
+    if ((probing || substituting) && types.unqualified(t)->kind == TyKind::Class && !types.isDependent(t))
     {
       std::vector<const Ty*> traitArgs{t};
       bool known = true;
@@ -11851,6 +11868,18 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
       for (Expr* a : c->args)
         if (const Ty* failed = formedOnly(nullptr, a))
           return record(e, failed); // (`void(T::value)` of an int, while probing)
+      // While probing or substituting, `T()` or `T{}` of a class whose constructors take no call without arguments is no
+      // construction ([dcl.init] 7, 9, [class.default.ctor] 1): `decltype(T(), 1)` of a class with only a `Needs(int)`
+      // (until 2026-11-10 it held, the construction without arguments left to codegen).
+      if ((probing || substituting) && t && t->isKnown() && !types.isDependent(t))
+      {
+        bool noArguments = c->args.empty() || (c->braced && c->args.size() == 1 && c->args[0] && c->args[0]->kind == NodeKind::BraceInitExpr &&
+                                               static_cast<BraceInitExpr*>(c->args[0])->args.empty());
+        const Ty* k = types.unqualified(types.stripRef(t));
+        if (noArguments && k->kind == TyKind::Class && !k->isBraceList() && !Impl::lambdaOf(k))
+          if (impl.traitValue("isConstructible", {t}) == false)
+            return record(e, unknown(Why::Overload));
+      }
       return record(e, t);
     }
     case NodeKind::TypeidExpr:

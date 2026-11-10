@@ -1,0 +1,25 @@
+// spec: a braced construction in a SFINAE decltype forms for a type it can build and not for one it cannot ([temp.deduct] 8): `decltype(T{}, 1)` holds for an aggregate and not for a class whose constructor takes an argument, as `decltype(T(), 1)` (clang's output)
+// found by D's check of its own SFINAE change against clang (2026-11-10): the empty braced list, which has the type it initializes, counted as an operand that does not form, so `T{}` failed for every T
+struct Plain
+{
+  int v;
+};
+struct Needs
+{
+  int v;
+  Needs(int x) : v(x) {}
+};
+template<typename T>
+auto viaBrace(T, int) -> decltype(T{}, 1) { return 1; }
+template<typename T>
+int viaBrace(T, long) { return 2; }
+template<typename T>
+auto viaParen(T, int) -> decltype(T(), 1) { return 1; }
+template<typename T>
+int viaParen(T, long) { return 2; }
+
+int main()
+{
+  std::println(viaBrace(Plain{1}, 0), " ", viaParen(Plain{1}, 0), " ", viaBrace(Needs(2), 0), " ", viaParen(Needs(2), 0));
+  return 0;
+}
