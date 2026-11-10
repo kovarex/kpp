@@ -1,4 +1,4 @@
-// spec: a value of a class whose conversion operator yields the target class initializes it through that operator, also when the target inherits its base's constructors (`using super::super;`), none of which takes the value
+// spec: a value of a class whose conversion operator yields the target class initializes it through that operator, also when the target inherits its base's constructors (`using Inherited::Inherited;`), none of which takes the value
 // found in src/CircuitNetwork/Behaviors/AccumulatorControlBehavior.kpp: `return entity.getPrototype()->defaultOutputSignal;` returns a SignalIDConnector as a SignalID (which inherits IDWithQuality's constructors) through `implicit operator SignalID() const`: "a constructor of IDWithQuality taking 1 arguments"
 template<class T>
 class WithQuality
@@ -13,9 +13,9 @@ public:
 class Signal : public WithQuality<char>
 {
 public:
-  using super = WithQuality<char>;
-  using super::super;
-  Signal(const char* name) : super(std::StringView(name)) {}
+  using Inherited = WithQuality<char>;
+  using Inherited::Inherited;
+  Signal(const char* name) : Inherited(std::StringView(name)) {}
 };
 class Connector
 {

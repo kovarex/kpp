@@ -2663,6 +2663,30 @@ when that exact text starts there. Notes go before the clause. So far: --this-wa
 a bare enumerator of a scoped enum, `implicit` written twice or beside `explicit`, and explicit by default's
 plain `explicit`, `explicit(cond)` and braced argument ("Explicit by default").
 
+### 23f. `super`: a class's first base (decided 2026-11-10, built the same day)
+kovarex, 2026-11-10: classes no longer write `using super = Base;`. Every kpp class with a base has the member
+alias `super`, its first listed base, as if it declared `using super = FirstBase;` (public): `super::f()`,
+`super(v)` in a constructor's initializer list, `super::Inner`, `using super::super;` for the base's
+constructors, `super::super::f()` for the base's own base. Java, Kotlin, Swift, Objective-C and Dart call it
+`super`, C# `base`, PHP `parent::`, MSVC `__super` (which searches every base); with several bases kpp's is
+the first, as kovarex chose.
+- Nothing declares `super`: a member alias, a typedef, a variable, a function or a parameter of that name is
+  "`super` is built in: it names the first base of the class it is in, and nothing may declare it" (kovarex:
+  a class's own super naming another class "might be a gotcha"). Another base is named by its own name.
+- Being the class's own member, the built-in super hides the one its base has, so `super` is never the
+  grandparent; in C++ a class without the alias inherits its base's. Adding it changed nothing in the game:
+  its IR (the game and its tests, factorio-in-kpp 62f26ec55's sources) was byte-identical with and without it.
+- Not for a base that is a pack's expansion (`struct overloaded : Ts...`), and not in imported C. `super` where
+  no class around the code has a base is "`super` names the first base of the class it is in, and this code
+  is in no class with a base".
+- The converter drops `using super = X;`. Where X is the first base (the same tokens, or its last name alone,
+  the injected class name) nothing else changes (1,427 of the game's 1,435); where X is another class (a
+  second base, a grandparent: 8) the class's uses of `super`, in its body and its member functions defined
+  outside it, are written as X (`MainGuiWindow::update()`, `using X::Name;` for `using super::super;`).
+Built in the parser (Parser::implicitSuper), so a template's dependent base, instantiation, hover and
+go-to-definition treat it as the alias it stands for. Specs kpp/super_names_the_first_base,
+kpp/super_without_a_base_is_error, kpp/super_declared_is_error.
+
 ### 24. The compiler's own sources: laid out as Factorio's (decided 2026-11-05)
 kovarex, 2026-11-05: the compiler's C++ follows Factorio's layout, "one class per file, classes with
 capital letters, like LinkHelper.cpp", and refactorings that are clear wins are pushed without asking.

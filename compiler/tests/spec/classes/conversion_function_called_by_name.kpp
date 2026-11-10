@@ -1,4 +1,4 @@
-// spec: a conversion function called by its name: `commands.operator AllowedCommands::Enum()` (the type qualified), and a base's `super::operator bool()` from the derived class's own explicit operator bool (the base named through an alias of its template's injected name)
+// spec: a conversion function called by its name: `commands.operator AllowedCommands::Enum()` (the type qualified), and a base's `Inherited::operator bool()` from the derived class's own explicit operator bool (the base named through an alias of its template's injected name)
 // factorio: ServerMultiplayerManager::hostGame's `uint8_t(scenario->requestedValueOfAllowedCommands.operator AllowedCommands::Enum())`, PortTargeter's `explicit operator bool() const { return super::operator bool(); }` (super = TargeterWithOwner, whose base Targeter has the operator)
 class AllowedCommands
 {
@@ -31,10 +31,10 @@ struct Entity {};
 struct Robot {};
 class PortTargeter : private TargeterWithOwner<Entity, Robot, 7>
 {
-  using super = TargeterWithOwner;
+  using Inherited = TargeterWithOwner;
 public:
   void aim(Entity* entity) { this.target = entity; }
-  operator bool() const { return super::operator bool(); }
+  operator bool() const { return Inherited::operator bool(); }
 };
 int main()
 {

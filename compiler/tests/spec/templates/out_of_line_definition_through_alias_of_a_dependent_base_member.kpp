@@ -1,0 +1,25 @@
+// spec: a class template's out-of-line member definition whose return type is `typename Slot<IDType>::CountType`, the class's member alias of its dependent base's member (`using CountType = Button<IDType>::CountType;`), matches the declaration `CountType getCount() const;`, as it does when the alias goes through `super::CountType`
+template<class IDType, class ElemType = void>
+class Button
+{
+public:
+  using CountType = int;
+};
+template<class IDType>
+class Slot : public Button<IDType>
+{
+public:
+  using CountType = Button<IDType>::CountType;
+  CountType getCount() const;
+};
+template<class IDType>
+typename Slot<IDType>::CountType Slot<IDType>::getCount() const
+{
+  return 5;
+}
+int main()
+{
+  Slot<char> s;
+  std::println(s.getCount());
+  return 0;
+}

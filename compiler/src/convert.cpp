@@ -19,6 +19,16 @@ struct InlineBodies
   std::map<std::string, size_t> kept; // why a definition stays outside, counted
 };
 
+// A class's own `using super = X;` (kpp's super is built in, the first base, and nothing declares it:
+// design.md 23f), by the class: whether X is the first base, and X as written and its last name.
+// collectSuperAliases.
+struct SuperAlias
+{
+  bool firstBase = false;
+  std::string written, last;
+};
+using SuperAliases = std::unordered_map<const Decl*, SuperAlias>;
+
 namespace
 {
   struct Edit

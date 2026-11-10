@@ -13,8 +13,8 @@ public:
 class Signal : public WithQuality<char>
 {
 public:
-  using super = WithQuality<char>;
-  using super::super;
+  using Inherited = WithQuality<char>;
+  using Inherited::Inherited;
 };
 class Connector
 {

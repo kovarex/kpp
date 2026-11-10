@@ -850,6 +850,10 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     if (in.parsed && !in.parsed->isImported && !in.c)
       collectInlineBodies(in.parsed->decls, false, global, symbols, inlineBodies);
   total.add("member function bodies written in their classes", inlineBodies.definitions.size());
+  SuperAliases superAliases;
+  for (const ConvertInput& in : inputs)
+    if (in.parsed && !in.parsed->isImported && !in.c)
+      collectSuperAliases(in.parsed->decls, in, symbols, superAliases);
   for (const auto& [why, n] : inlineBodies.kept)
     total.add("member function bodies kept outside their classes: " + why, n);
   std::set<std::string> braceableClasses;
@@ -1053,6 +1057,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     fc.macroClasses = &macroClasses;
     fc.braceableClasses = &braceableClasses;
     fc.inlineBodies = &inlineBodies;
+    fc.superAliases = &superAliases;
     fc.headerMacros = &headerMacros;
     fc.headerAliases = &headerAliases;
     if (auto renames = fileAliasRenames.find(&in); renames != fileAliasRenames.end())

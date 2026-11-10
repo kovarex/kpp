@@ -421,6 +421,16 @@ Pinned make() { Pinned p; return p; }   // compiles: an error in C++
 - **Why:** a change in a base cannot silently unhook an override.
 - **See:** [design 6][d6]; the readme's Planned.
 
+### `super` names the first base (built)
+
+- **C++:** no such name; code writes `using super = Base;` in each class (MSVC has `__super`), and a class
+  without it inherits its base's, which names the grandparent.
+- **kpp:** every class with a base has the member alias `super`, its first listed base. Nothing may declare
+  `super`; another base is named by its own name.
+- **Status:** built 2026-11-10 ([design 23f](design.md)); the converter drops the game's `using super = FirstBase;`.
+- **Why:** one line less in every derived class, and `super` never silently skips a level.
+- **See:** specs `kpp/super_names_the_first_base`, `kpp/super_without_a_base_is_error`, `kpp/super_declared_is_error`.
+
 ### A polymorphic class's destructor is virtual (built)
 
 - **C++:** a destructor is virtual only when declared so, its own or a base's; `delete` through a base

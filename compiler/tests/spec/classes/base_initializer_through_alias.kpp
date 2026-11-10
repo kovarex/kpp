@@ -1,4 +1,4 @@
-// spec: a constructor initializes its base through a member alias of the base, `using super = Conditional<...>; Const(const T& v) : super(v) {}`
+// spec: a constructor initializes its base through a member alias of the base, `using Inherited = Conditional<...>; Const(const T& v) : Inherited(v) {}`
 // found in the game's UtilityConstants: Const<T> (276 members) names its base Value<T> or T through `super`
 template<typename T>
 struct Value
@@ -9,8 +9,8 @@ struct Value
 template<typename T>
 struct Const : std::Conditional<std::isClass<T>, T, Value<T>>
 {
-  using super = Conditional<std::isClass<T>, T, Value<T>>;
-  Const(const T& v) : super(v) {}
+  using Inherited = Conditional<std::isClass<T>, T, Value<T>>;
+  Const(const T& v) : Inherited(v) {}
 };
 struct Point
 {

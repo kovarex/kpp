@@ -1,4 +1,4 @@
-// spec: the operator== that a defaulted operator<=> declares is a member a qualified call names: a derived class's own operator== written `super::operator==(other) && ...` (super an alias of the base) compares the base's members, as `a == b` on two bases does
+// spec: the operator== that a defaulted operator<=> declares is a member a qualified call names: a derived class's own operator== written `Inherited::operator==(other) && ...` (Inherited an alias of the base) compares the base's members, as `a == b` on two bases does
 // factorio: RelativeItemStackLocation::operator== is `super::operator==(condition) && this->source == condition.source` over ItemStackLocation's `operator<=>(...) const = default`: the call came out as a copy of condition, converted to bool by ItemStackLocation's explicit operator bool, so any two locations with the same source compared equal and the tests' getWidget lookups found the first slot: InsertPlan's "Expected {speed-module, normal} x 1 but was {<null>, <null>} x 0" and the like (8 failed checks, all passing with the call written as a comparison of the bases); ApplicationVersion::operator== over Version is written the same way
 class Base
 {
@@ -12,7 +12,7 @@ public:
 };
 class Derived : public Base
 {
-  using super = Base;
+  using Inherited = Base;
 public:
   Derived(int a, int b, int source) : Base(a, b), source(source) {}
   bool operator==(const Derived& other) const;
@@ -22,11 +22,11 @@ public:
 };
 bool Derived::operator==(const Derived& other) const
 {
-  return super::operator==(other) && this.source == other.source;
+  return Inherited::operator==(other) && this.source == other.source;
 }
 bool Derived::operator<(const Derived& other) const
 {
-  return super::operator<=>(other) < 0;
+  return Inherited::operator<=>(other) < 0;
 }
 int main()
 {

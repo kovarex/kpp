@@ -1,0 +1,56 @@
+// spec: every class with a base has a member alias `super` naming its first listed base, as if it declared `using super = FirstBase;` (kovarex, 2026-11-10; Java's and Swift's super, C#'s base, MSVC's __super): `super::f()`, `super(v)` in a constructor's initializer list, `super::Inner`, `using super::super;`, `super::super::f()` for the base's own base. With several bases super is the first; another base is named by its own name (`Other::f()`). A class's super hides its base's, so super is never the grandparent (design.md 23f)
+struct Root
+{
+  int f() const { return 1; }
+};
+struct Base : Root
+{
+  using Inner = short;
+  int value;
+  Base(int v) : value(v) {}
+  int f() const { return 10 + super::f(); }
+};
+struct Mid : Base
+{
+  Mid(int v) : super(v * 2) {}
+  int f() const { return 100 + super::f(); }
+  int rootF() const { return super::super::f(); }
+  super::Inner small() const { return super::Inner(this.value); }
+};
+struct Leaf : Mid
+{
+  using super::super;
+  int f() const { return 1000 + super::f(); }
+};
+struct Other
+{
+  int f() const { return 7; }
+};
+struct Both : Base, Other
+{
+  Both() : super(3) {}
+  int f() const { return super::f() + Other::f(); }
+};
+template<class T>
+struct Holder
+{
+  T held;
+  T get() const { return this.held; }
+};
+template<class T>
+struct Doubled : Holder<T>
+{
+  T get() const { return super::get() * 2; }
+};
+int main()
+{
+  Mid m(5);
+  Leaf l(6);
+  Both b;
+  Doubled<int> d;
+  d.held = 21;
+  std::println(m.f(), " ", m.value, " ", m.rootF(), " ", m.small());
+  std::println(l.f(), " ", l.value);
+  std::println(b.f(), " ", b.value, " ", d.get());
+  return 0;
+}

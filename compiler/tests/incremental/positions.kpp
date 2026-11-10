@@ -89,9 +89,9 @@ int spotsEqual() { return Spot(1, 2) == Spot(1, 2) ? 1 : 0; }
 // read an edited function", the game's `using super = FloatingGuiWindow;` in 20 classes).
 class SpotMarker : public Spot
 {
-  using super = Spot;
+  using Inherited = Spot;
 public:
-  using super::x;
+  using Inherited::x;
   SpotMarker() : Spot(3, 4) {}
 };
 static_assert(sizeof(Spot) == 8);

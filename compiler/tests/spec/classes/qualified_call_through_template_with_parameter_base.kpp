@@ -1,4 +1,4 @@
-// spec: a qualified call of a member that a class template instance inherits from its template parameter (`template<class WidgetType> class DragPaneWidget : public WidgetType, public DragPane`), through an alias of the instance: `super::paintBackgroundGlow(...)` with `using super = DragPaneVerticalFlow;` calls agui::Widget's, without virtual dispatch
+// spec: a qualified call of a member that a class template instance inherits from its template parameter (`template<class WidgetType> class DragPaneWidget : public WidgetType, public DragPane`), through an alias of the instance: `Inherited::paintBackgroundGlow(...)` with `using Inherited = DragPaneVerticalFlow;` calls agui::Widget's, without virtual dispatch
 // factorio: ConditionDragPane::paintBackgroundGlow's `super::paintBackgroundGlow(paintEvent, absolutePosition);`, DragPaneVerticalFlow = DragPaneWidget<agui::VerticalFlow, DragPane::DragMode::MOVE, DragPane::VERTICAL>
 namespace agui
 {
@@ -23,20 +23,20 @@ public:
 template<class WidgetType, int dragMode>
 class DragPaneWidget : public WidgetType, public DragPane
 {
-  using super = WidgetType;
+  using Inherited = WidgetType;
 public:
-  DragPaneWidget() : super(), DragPane(dragMode) {}
+  DragPaneWidget() : Inherited(), DragPane(dragMode) {}
 };
 using DragPaneVerticalFlow = DragPaneWidget<agui::VerticalFlow, 1>;
 class ConditionDragPane : public DragPaneVerticalFlow
 {
-  using super = DragPaneVerticalFlow;
+  using Inherited = DragPaneVerticalFlow;
 public:
   void paintBackgroundGlow(int amount) override;
 };
 void ConditionDragPane::paintBackgroundGlow(int amount)
 {
-  super::paintBackgroundGlow(amount * 2);
+  Inherited::paintBackgroundGlow(amount * 2);
 }
 int main()
 {

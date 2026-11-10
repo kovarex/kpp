@@ -1,4 +1,4 @@
-// spec: inheriting constructors through an alias of the base's injected name (`using super = Template; using super::super;` in a class deriving from Template<Proto, int>): super is the base instance, and `new Proto(7, nullptr)` runs the base's constructor
+// spec: inheriting constructors through an alias of the base's injected name (`using Inherited = Template; using Inherited::Inherited;` in a class deriving from Template<Proto, int>): Inherited is the base instance, and `new Proto(7, nullptr)` runs the base's constructor
 // factorio: the Lua prototype wrappers (`using super = LuaPrototypeTemplate; using super::super;` in LuaEntityPrototype and its siblings, 197 constructions)
 struct lua_State;
 template<typename TemplateType, typename IDType>
@@ -12,9 +12,9 @@ public:
 class Proto : public Template<Proto, int>
 {
 public:
-  using super = Template;
-  using super::super;
-  int viaSuper() { super* s = &this; return s->id; }
+  using Inherited = Template;
+  using Inherited::Inherited;
+  int viaSuper() { Inherited* s = &this; return s->id; }
 };
 int main()
 {

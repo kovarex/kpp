@@ -1,4 +1,4 @@
-// spec: a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile server"): an edit of a base class's constructor body, whose name (the class's) a derived class's `using super = Base;`, a using-declaration of a member (`using super::scaled;`), a static_assert on the class's size and an inheriting constructor (`using Base::Base;`) read: the aliases, the using-declaration of a member and the static_assert have no code, so the build follows the kept program (until 2026-11-10 codegen in full, "the walk of Derived::? read an edited function": 20 of the game's classes write `using super = FloatingGuiWindow;`), and the inheriting constructor's class is built as from scratch
+// spec: a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile server"): an edit of a base class's constructor body, whose name (the class's) a derived class's `using Inherited = Base;`, a using-declaration of a member (`using Inherited::scaled;`), a static_assert on the class's size and an inheriting constructor (`using Base::Base;`) read: the aliases, the using-declaration of a member and the static_assert have no code, so the build follows the kept program (until 2026-11-10 codegen in full, "the walk of Derived::? read an edited function": 20 of the game's classes wrote `using super = FloatingGuiWindow;`), and the inheriting constructor's class is built as from scratch
 //--- step: the program
 class Base
 {
@@ -11,9 +11,9 @@ Base::Base(int v) : value(v) { if (v < 0) this.value = 0; }
 
 class Derived : public Base
 {
-  using super = Base;
+  using Inherited = Base;
 public:
-  using super::scaled;
+  using Inherited::scaled;
   Derived() : Base(5) {}
   int scaled(double by) const { return int(this.value * by); }
 };
@@ -46,9 +46,9 @@ Base::Base(int v) : value(v) { if (v < 0) this.value = 0; this.value += 1; }
 
 class Derived : public Base
 {
-  using super = Base;
+  using Inherited = Base;
 public:
-  using super::scaled;
+  using Inherited::scaled;
   Derived() : Base(5) {}
   int scaled(double by) const { return int(this.value * by); }
 };
@@ -81,9 +81,9 @@ Base::Base(int v) : value(v) { if (v < 0) this.value = 0; }
 
 class Derived : public Base
 {
-  using super = Base;
+  using Inherited = Base;
 public:
-  using super::scaled;
+  using Inherited::scaled;
   Derived() : Base(5) {}
   int scaled(double by) const { return int(this.value * by); }
 };

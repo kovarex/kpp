@@ -1467,6 +1467,7 @@
     const std::set<std::string>* macroClasses = nullptr; // the classes ENUM and BITFIELD define (collectMacroClasses)
     const std::set<std::string>* braceableClasses = nullptr; // collectBraceableClasses
     const InlineBodies* inlineBodies = nullptr; // collectInlineBodies
+    const SuperAliases* superAliases = nullptr; // collectSuperAliases
     // The files the conversion leaves out: a class defined only in one of them is defined nowhere
     // (GraphicsInterface.hpp's `class ShaderProgram;` stays, as the game's files see it).
     const std::set<const ParsedFile*>* leftOutFiles = nullptr;

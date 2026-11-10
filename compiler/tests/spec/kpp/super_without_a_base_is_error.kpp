@@ -1,0 +1,11 @@
+// spec: `super` in a class with no base names nothing: an error where it is used, as any undeclared name is (a class's built-in super is its first base's; design.md 23f)
+// error: super_without_a_base_is_error.kpp:5: error: `super` names the first base of the class it is in, and this code is in no class with a base
+struct Lone
+{
+  int f() const { return super::f(); }
+};
+int main()
+{
+  Lone l;
+  return l.f();
+}

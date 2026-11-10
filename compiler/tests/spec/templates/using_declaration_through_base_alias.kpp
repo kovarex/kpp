@@ -1,4 +1,4 @@
-// spec: `using super::front;` in a class template whose `using super = Store<T>;` names its base: the member is the base's, with the base's arguments (front() returns T&, not the base's own unbound parameter)
+// spec: `using Inherited::front;` in a class template whose `using Inherited = Store<T>;` names its base: the member is the base's, with the base's arguments (front() returns T&, not the base's own unbound parameter)
 // factorio: CircularBuffer<T> : CompactDeque<T> with `using super::front; using super::rbegin; ...` (SegmentEngine's `this->nodes.front()`, ElectricNetwork's `historyBuffer.rbegin()`)
 template<class T>
 class Store
@@ -11,9 +11,9 @@ public:
 template<class T>
 class Ring : Store<T>
 {
-  using super = Store<T>;
+  using Inherited = Store<T>;
 public:
-  using super::front;
+  using Inherited::front;
   void put(T value) { this.items[0] = value; }
 };
 

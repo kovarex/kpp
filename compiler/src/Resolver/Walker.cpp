@@ -322,6 +322,18 @@ auto GlobalScope::Impl::Walker::reportUndeclared(const QualifiedName& name, uint
       impl.reportCheckerError(file, token, message);
     return;
   }
+  // `super::f()` or `super(v)` in a class with no base, and none around it (the parser gives a class
+  // with a base the member alias, design.md 23f).
+  if (!name.global && !name.typeQualifier && name.parts[0].symbol == impl.symSuper &&
+      impl.lookupUnqualified(impl.symSuper, scope, &locals, 0, name.parts.size() > 1).found == Found::No)
+  {
+    std::string message = "`super` names the first base of the class it is in, and this code is in no class with a base";
+    if (activeSubst)
+      reportInInstance(token, message);
+    else if (!(inGenericTemplate() && (dependentCall || inClassWithParameterBase())))
+      impl.reportCheckerError(file, token, message);
+    return;
+  }
   if (name.parts.size() > 1 && !name.typeQualifier)
   {
     // `filesystem::recursive_directory_iterator`: a name its namespace does not declare (G's stdlib
@@ -10076,8 +10088,14 @@ auto GlobalScope::Impl::Walker::walkWhenCondition(Decl* d) -> void
 
 auto GlobalScope::Impl::Walker::checkNotThis(uint32_t symbol, uint32_t token) -> void
 {
-  if (symbol == impl.symThisType && file && !file->isImported && !probing && !activeSubst)
+  if (!file || file->isImported || probing || activeSubst)
+    return;
+  if (symbol == impl.symThisType)
     impl.reportCheckerError(file, token, "`This` is a keyword: it names the class the code is in");
+  // `super` is every class's first base, built in (design.md 23f): nothing declares it, so that it
+  // never names another class than that (kovarex, 2026-11-10: "it might be a gotcha").
+  else if (symbol == impl.symSuper)
+    impl.reportCheckerError(file, token, "`super` is built in: it names the first base of the class it is in, and nothing may declare it (design.md 23f)");
 }
 
 auto GlobalScope::Impl::Walker::checkSpecializationNames(Decl* d, const QualifiedName& name) -> void
@@ -10125,7 +10143,7 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
   if (!d)
     return;
   walkWhenCondition(d);
-  switch (d->kind) // (nothing in kpp code is named `This`: design.md 23c)
+  switch (d->kind) // (nothing in kpp code is named `This` or `super`: design.md 23c, 23f)
   {
     case NodeKind::ClassDecl: // (a class specialization's arguments: walkClass's inSpecializationPattern)
       if (const QualifiedName& n = static_cast<ClassDecl*>(d)->name; !n.empty())
@@ -10145,6 +10163,11 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
         checkNotThis(n.last().symbol, d->token);
         checkSpecializationNames(d, n);
       }
+      break;
+    case NodeKind::UsingAliasDecl:
+      if (!(d->flags & DF_Implicit)) // (not the parser's own `using super = FirstBase;`)
+        if (uint32_t name = static_cast<UsingAliasDecl*>(d)->name; name == impl.symSuper)
+          checkNotThis(name, d->token);
       break;
     default: break;
   }

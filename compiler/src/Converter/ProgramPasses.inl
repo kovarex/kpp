@@ -802,6 +802,97 @@ static std::string writtenType(const Type* t, const SymbolTable& symbols)
   }
 }
 
+// Whether alias names the class template instance base does, its template arguments written out to
+// the template's defaults (`IDButton<IDType, void>` of `IDButton<IDType>`, its ElemType's default void).
+static bool sameButDefaults(const Type* alias, const Type* base, const SymbolTable& symbols)
+{
+  if (!alias || !base || alias->kind != NodeKind::NamedType || base->kind != NodeKind::NamedType)
+    return false;
+  auto* a = static_cast<const NamedType*>(alias);
+  auto* b = static_cast<const NamedType*>(base);
+  if (a->name.empty() || a->name.parts.size() != b->name.parts.size() || a->name.global != b->name.global || !b->resolved ||
+      b->resolved->kind != NodeKind::ClassDecl)
+    return false;
+  for (size_t i = 0; i + 1 < a->name.parts.size(); ++i)
+    if (a->name.parts[i].symbol != b->name.parts[i].symbol || a->name.parts[i].hasTemplateArgs || b->name.parts[i].hasTemplateArgs)
+      return false;
+  const NamePart& al = a->name.last();
+  const NamePart& bl = b->name.last();
+  Span<Decl*> params = b->resolved->templateParams;
+  if (al.symbol != bl.symbol || !al.hasTemplateArgs || al.templateArgs.size() <= bl.templateArgs.size() || al.templateArgs.size() > params.size())
+    return false;
+  auto written = [&](const Node* n) { return n && isTypeNode(n) ? writtenType(static_cast<const Type*>(n), symbols) : std::string(); };
+  for (size_t i = 0; i < al.templateArgs.size(); ++i)
+  {
+    const Node* given = i < bl.templateArgs.size() ? bl.templateArgs[i] : static_cast<const TemplateParamDecl*>(params[i])->defaultArg;
+    std::string x = written(al.templateArgs[i]), y = written(given);
+    if (x.empty() || x != y)
+      return false;
+  }
+  return true;
+}
+
+// Each class's own `using super = X;` (SuperAlias). X is the first base when it is written as the base's
+// type is (`using super = gui::Frame<Style>;` of `: public gui::Frame<Style>`), or as its last name alone,
+// in the class the injected class name of that base (`using super = LuaPrototypeTemplate;` of `: public
+// LuaPrototypeTemplate<LuaAchievementPrototype, ...>`, `using super = HorizontalFlow;` of `: public
+// agui::HorizontalFlow`), or with the template's default arguments written out (sameButDefaults). Anything
+// else is another class (a second base, a grandparent).
+static void collectSuperAliases(Span<Decl*> decls, const ConvertInput& in, const SymbolTable& symbols, SuperAliases& out, int depth = 0)
+{
+  if (depth > 64)
+    return;
+  const std::vector<Token>& toks = *in.tokens;
+  auto spell = [&](uint32_t k) { return in.text.substr(toks[k].offset, toks[k].length); };
+  for (Decl* d : decls)
+  {
+    if (d->kind == NodeKind::NamespaceDecl)
+    {
+      collectSuperAliases(static_cast<NamespaceDecl*>(d)->decls, in, symbols, out, depth + 1);
+      continue;
+    }
+    if (d->kind != NodeKind::ClassDecl)
+      continue;
+    auto* c = static_cast<ClassDecl*>(d);
+    collectSuperAliases(c->members, in, symbols, out, depth + 1);
+    for (Decl* m : c->members)
+    {
+      if (m->kind != NodeKind::UsingAliasDecl || !m->templateParams.empty())
+        continue;
+      auto* a = static_cast<UsingAliasDecl*>(m);
+      if (a->name == UINT32_MAX || symbols.name(a->name) != "super" || !a->type || a->type->token >= toks.size())
+        continue;
+      uint32_t from = a->type->token, semi = from;
+      while (semi < toks.size() && !toks[semi].is(P::Semi))
+        ++semi;
+      if (semi >= toks.size() || semi == from)
+        continue;
+      SuperAlias alias;
+      alias.written = std::string(in.text.substr(toks[from].offset, toks[semi - 1].offset + toks[semi - 1].length - toks[from].offset));
+      alias.last = a->type->kind == NodeKind::NamedType && !static_cast<NamedType*>(a->type)->name.empty()
+                     ? std::string(symbols.name(static_cast<NamedType*>(a->type)->name.last().symbol))
+                     : alias.written;
+      if (!c->bases.empty() && !c->bases[0].isPack && c->bases[0].type && c->bases[0].type->token < toks.size())
+      {
+        uint32_t base = c->bases[0].type->token, n = 0;
+        while (from + n < semi && base + n < toks.size() && spell(from + n) == spell(base + n))
+          ++n;
+        bool baseEnds = base + n < toks.size() && (toks[base + n].is(P::Comma) || toks[base + n].is(P::LBrace));
+        if (from + n == semi && baseEnds)
+          alias.firstBase = true;
+        else if (semi == from + 1 && toks[from].getKind() == TokenKind::Identifier && c->bases[0].type->kind == NodeKind::NamedType)
+        {
+          const QualifiedName& bn = static_cast<NamedType*>(c->bases[0].type)->name;
+          alias.firstBase = !bn.empty() && symbols.name(bn.last().symbol) == spell(from) && (bn.last().hasTemplateArgs || bn.parts.size() > 1);
+        }
+        if (!alias.firstBase)
+          alias.firstBase = sameButDefaults(a->type, c->bases[0].type, symbols);
+      }
+      out[c] = alias;
+    }
+  }
+}
+
 static void collectInlineBodies(Span<Decl*> decls, bool inTemplate, GlobalScope& global, const SymbolTable& symbols, InlineBodies& out)
 {
   for (Decl* d : decls)

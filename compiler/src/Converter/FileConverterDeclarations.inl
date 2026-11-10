@@ -265,6 +265,16 @@
             auto* f = static_cast<FunctionDecl*>(d);
             if (objectOfMacroArguments(f))
               break;
+            // A member function defined outside its class, whose class's `using super = X;` names
+            // another class than its first base: its super is X (renameSuper).
+            if (f->name.parts.size() > 1 && f->endToken > f->token)
+              if (const SuperAlias* other = superNamesOther(global.owningClass(f)))
+              {
+                uint32_t first = f->token, start = declStart(f);
+                while (first > 0 && toks[first - 1].offset >= start)
+                  --first;
+                renameSuper(*other, first, f->endToken, {});
+              }
             // (before markInlineBody: `override` goes before the mark on the declaration's `;`, which must
             // stay right before it for the body to move in)
             if (!(f->flags & (DF_Override | DF_Final | DF_Static | DF_Constructor | DF_Destructor | DF_Conversion)) && f->templateParams.empty())
@@ -356,6 +366,35 @@
             // with the namespace the directive names (with `::` when there is none).
             auto* a = static_cast<UsingAliasDecl*>(d);
             Type* t = a->type;
+            if (const SuperAlias* sa = superAliasOf(a))
+            {
+              // `using super = X;` in a class: kpp has a built-in super, the class's first base, which
+              // nothing may declare (design.md 23f, kovarex 2026-11-10). Naming the first base, the
+              // alias goes; naming another class (a second base, a grandparent), it goes and the
+              // class's uses of super name that class (renameSuper).
+              uint32_t semi = t->token;
+              while (semi < toks.size() && !toks[semi].is(P::Semi))
+                ++semi;
+              if (semi < toks.size())
+              {
+                removeWholeLine(toks[a->token].offset, endOffset(semi));
+                if (sa->firstBase)
+                  counts.add("using super = FirstBase; removed (kpp's built-in super)");
+                else
+                {
+                  // The class's own body, its nested classes' and the alias itself left out (each
+                  // nested class has its own super).
+                  auto* owner = static_cast<ClassDecl*>(a->parent);
+                  std::vector<std::pair<uint32_t, uint32_t>> skip{{a->token, semi + 1}};
+                  for (Decl* m : owner->members)
+                    if (m->kind == NodeKind::ClassDecl && m->endToken > m->token)
+                      skip.push_back({m->token, m->endToken});
+                  renameSuper(*sa, owner->token, owner->endToken, skip);
+                  counts.add("using super = X; of another class than the first base removed, its uses naming X");
+                }
+                break;
+              }
+            }
             bool ownName = t && t->token + 1 < toks.size() && toks[t->token].getKind() == TokenKind::Identifier &&
                            spelling(t->token) == symbols.name(a->name) && toks[t->token + 1].is(P::Semi) &&
                            !(t->token > 0 && toks[t->token - 1].is(P::ColonColon));
@@ -1658,6 +1697,42 @@
       if (lastKept + 1 < n)
         remove(paramEnd(lastKept), paramEnd(n - 1) - paramEnd(lastKept));
       counts.add("allocator template parameters dropped", (int)dropped);
+    }
+
+    // The class's own `using super = X;` when d is that alias (collectSuperAliases).
+    const SuperAlias* superAliasOf(const Decl* d) const
+    {
+      if (!superAliases || !d || d->kind != NodeKind::UsingAliasDecl || !d->parent || static_cast<const UsingAliasDecl*>(d)->name == UINT32_MAX ||
+          symbols.name(static_cast<const UsingAliasDecl*>(d)->name) != "super")
+        return nullptr;
+      auto it = superAliases->find(d->parent);
+      return it == superAliases->end() ? nullptr : &it->second;
+    }
+
+    // The class's own `using super = X;` when X is not its first base: kpp's super would be another class.
+    const SuperAlias* superNamesOther(const Decl* cls) const
+    {
+      if (!superAliases || !cls)
+        return nullptr;
+      auto it = superAliases->find(cls);
+      return it == superAliases->end() || it->second.firstBase ? nullptr : &it->second;
+    }
+
+    // Each `super` of tokens [from, to) but those in skip, written as what the class's alias named
+    // (`super::f()` as `MainGuiWindow::f()`, `super(v)` as `MainGuiWindow(v)`), and the inheriting
+    // constructors' `using super::super;` as `using X::Name;`, Name X's last name.
+    void renameSuper(const SuperAlias& alias, uint32_t from, uint32_t to, const std::vector<std::pair<uint32_t, uint32_t>>& skip)
+    {
+      for (uint32_t k = from; k < to && k < toks.size(); ++k)
+      {
+        bool skipped = false;
+        for (auto [s, e] : skip)
+          skipped = skipped || (k >= s && k < e);
+        if (skipped || toks[k].getKind() != TokenKind::Identifier || spelling(k) != "super")
+          continue;
+        bool afterScope = k > 0 && toks[k - 1].is(P::ColonColon);
+        replace(toks[k].offset, toks[k].length, afterScope ? alias.last : alias.written);
+      }
     }
 
     void removeDecl(Decl* d)

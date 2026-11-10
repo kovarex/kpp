@@ -1,4 +1,4 @@
-// spec: `super::f<T>()` with `using super = BehaviorTemplate;` (the injected class name of a class template the class derives from, which itself derives from its parameter Parent) calls Parent's static member template f, explicit template arguments and all, as in C++
+// spec: `Inherited::f<T>()` with `using Inherited = BehaviorTemplate;` (the injected class name of a class template the class derives from, which itself derives from its parameter Parent) calls Parent's static member template f, explicit template arguments and all, as in C++
 // factorio: every LuaFooControlBehavior::staticInit's `super::staticInitGenericOnOffControlBehaviorMembers<LuaFooControlBehavior>()` (and LuaCombinatorControlBehavior's), with super = LuaControlBehaviorTemplate<LuaFoo..., LuaGenericOnOffControlBehavior> (21 headline errors of 4c178a5b915)
 class Behavior
 {
@@ -18,10 +18,10 @@ class BehaviorTemplate : public Parent
 };
 class Boiler : public BehaviorTemplate<Boiler, OnOff>
 {
-  using super = BehaviorTemplate;
+  using Inherited = BehaviorTemplate;
 public:
   static constexpr int id = 4;
-  static int staticInit() { return super::initOnOff<Boiler>() * 100 + super::initBase<Boiler>(); }
+  static int staticInit() { return Inherited::initOnOff<Boiler>() * 100 + Inherited::initBase<Boiler>(); }
 };
 int main()
 {

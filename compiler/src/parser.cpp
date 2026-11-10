@@ -68,6 +68,7 @@ namespace
       kwFallthrough = symbols.intern("fallthrough");
       kwBothConst = symbols.intern("both_const");
       kwClassConst = symbols.intern("class_const");
+      kwSuper = symbols.intern("super");
       kwAccumulate = symbols.intern("accumulate");
       kwTest = symbols.intern("test");
       kwTestSuite = symbols.intern("suite");
@@ -4558,6 +4559,32 @@ namespace
       pushDecl(eq);
     }
 
+    // A kpp class with a base has the member alias `super`, its first listed base, as if it wrote
+    // `using super = FirstBase;` (kovarex, 2026-11-10; design.md 23f). Being the class's own member,
+    // it hides the super its base has, so super is never the grandparent. Nothing may declare super
+    // (the walker's checkNotThis): a class that does keeps its own, the error's, and gets none. Not a
+    // pack's expansion (`struct overloaded : Ts...`), whose first base is no one type.
+    void implicitSuper(ClassDecl* c, size_t mark)
+    {
+      if (!isKpp() || c->bases.empty() || c->bases[0].isPack)
+        return;
+      for (size_t i = mark; i < scratch.size(); ++i)
+      {
+        Decl* m = static_cast<Decl*>(scratch[i]);
+        if (m->kind == NodeKind::UsingAliasDecl && static_cast<UsingAliasDecl*>(m)->name == kwSuper)
+          return;
+        if (m->kind == NodeKind::VariableDecl)
+          if (const QualifiedName& n = static_cast<VariableDecl*>(m)->name; n.parts.size() == 1 && n.last().symbol == kwSuper)
+            return;
+      }
+      UsingAliasDecl* alias = decl<UsingAliasDecl>(c->bases[0].type->token);
+      alias->access = Access::Public;
+      alias->flags |= DF_Implicit;
+      alias->name = kwSuper;
+      alias->type = c->bases[0].type;
+      pushDecl(alias);
+    }
+
     bool parseClassOrElaborated(Scope scope, uint32_t flags, TemplateHeader templ)
     {
       if (at(Kw::union_) && at(Kw::enum_, 1))
@@ -4702,6 +4729,7 @@ namespace
           c->importErrorAt = symbols.intern(std::string(spelling(toks[first.token])));
       }
       implicitEquality(mark);
+      implicitSuper(c, mark);
       c->members = makeSpan<Decl*>(mark);
       checkWhenClash(c);
       // A friend function defined in its class (a hidden friend) takes no object: a static member,
@@ -7472,7 +7500,7 @@ namespace
     ParsedFile::TestSuite* currentSuite = nullptr; // The suite being parsed (design.md 8.7).
     uint32_t testCount = 0;   // Tests parsed so far in this file.
     uint32_t kwThisType;
-    uint32_t kwImplicit, kwFallthrough, kwBothConst, kwClassConst, kwAccumulate, kwImport, kwAssert, kwReleaseAssert, kwCaller,
+    uint32_t kwImplicit, kwFallthrough, kwBothConst, kwClassConst, kwSuper, kwAccumulate, kwImport, kwAssert, kwReleaseAssert, kwCaller,
              kwConditional, kwUnderscore, kwConfig, kwNameof, kwCount, kwValues, kwStr, kwTypes, kwFromStr, kwOptional, kwUniquePtr, kwStd, kwText, kwTag, kwTagField,
              kwTagMethod, kwTypeMember, kwSuite;
     uint32_t lambdaCount = 0;        // Lambdas parsed so far in this file outside the bodies of functions at file or class level.

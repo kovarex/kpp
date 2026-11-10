@@ -1,4 +1,4 @@
-// spec: at compile time a member function named with its class (`A::f()`, `super::bump()`, `this->A::f()`, `b.A::f()`) is that function, no virtual call ([class.virtual] 16), run on the object's part of its class, as at run time; and `d.Base::v` reads and writes the member of the base that the derived class hides
+// spec: at compile time a member function named with its class (`A::f()`, `Inherited::bump()`, `this->A::f()`, `b.A::f()`) is that function, no virtual call ([class.virtual] 16), run on the object's part of its class, as at run time; and `d.Base::v` reads and writes the member of the base that the derived class hides
 // found by thread D (2026-11-05): the interpreter dispatched `A::f()` in B's override of f to B::f again, until calls nested 512 deep (no constant), and a qualified member was no constant; Factorio's overrides call their `super::` functions throughout
 class A
 {
@@ -11,11 +11,11 @@ public:
 class B : public A
 {
 public:
-  using super = A;
+  using Inherited = A;
   int f() const override { return A::f() + 10; }
   void bump() override
   {
-    super::bump();
+    Inherited::bump();
     this.v *= 10;
   }
 };

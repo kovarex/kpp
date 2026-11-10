@@ -24,8 +24,8 @@ public:
 class SignalFilter : public Filter<SignalIdBase>
 {
 public:
-  using super = Filter<SignalIdBase>;
-  using super::super;
+  using Inherited = Filter<SignalIdBase>;
+  using Inherited::Inherited;
   SignalFilter(int raw) { this.baseId.value = raw; }
 };
 class Holder

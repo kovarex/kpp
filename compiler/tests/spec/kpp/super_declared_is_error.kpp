@@ -1,0 +1,29 @@
+// spec: nothing in kpp code declares `super`, every class's built-in alias of its first base (design.md 23f; kovarex, 2026-11-10: a class's own super, naming another class, would be a gotcha): a member alias, a typedef, a variable, a function or a parameter of that name is an error; another base is named by its own name
+// error: super_declared_is_error.kpp:16: error: `super` is built in: it names the first base of the class it is in, and nothing may declare it (design.md 23f)
+// error: super_declared_is_error.kpp:21: error: `super` is built in: it names the first base of the class it is in, and nothing may declare it (design.md 23f)
+// error: super_declared_is_error.kpp:23: error: `super` is built in: it names the first base of the class it is in, and nothing may declare it (design.md 23f)
+// error: super_declared_is_error.kpp:24: error: `super` is built in: it names the first base of the class it is in, and nothing may declare it (design.md 23f)
+struct Base
+{
+  int f() const { return 1; }
+};
+struct Other
+{
+  int f() const { return 2; }
+};
+struct Picked : Base, Other
+{
+  using super = Other;
+  int g() const { return super::f(); }
+};
+struct Typed : Base
+{
+  typedef Other super;
+};
+int super(int x) { return x; }
+int twice(int super) { return 2 * super; }
+int main()
+{
+  Picked p;
+  return p.g() + twice(1);
+}

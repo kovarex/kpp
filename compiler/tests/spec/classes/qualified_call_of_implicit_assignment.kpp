@@ -1,4 +1,4 @@
-// spec: `super::operator=(other)` (or `Base::operator=(other)`) of a class that declares no operator= calls its implicit assignment on this object's base part, as `this->super::operator=(other)` does: the base's members are assigned, member by member
+// spec: `Inherited::operator=(other)` (or `Base::operator=(other)`) of a class that declares no operator= calls its implicit assignment on this object's base part, as `this->Inherited::operator=(other)` does: the base's members are assigned, member by member
 // found in src (RobotWithLogisticInterface, CustomAlert, EntityToNameTagMapping, TrainStopReservation, ModInfo, CircularBuffer: `super::operator=(other);` in their own assignments)
 struct Base
 {
@@ -7,11 +7,11 @@ struct Base
 };
 struct Derived : Base
 {
-  using super = Base;
+  using Inherited = Base;
   int b = 0;
   Derived& operator=(const Derived& other)
   {
-    super::operator=(other);
+    Inherited::operator=(other);
     this.b = other.b + 100;
     return this;
   }
