@@ -4068,7 +4068,8 @@ byte for byte unless a difference is shown to be a fix.
 **This stage (kovarex, 2026-11-06; "Roadmap" has the stages):** macOS as a host moves to under
 consideration, not decided. Building every target, macOS included, on Windows and Linux is enough
 for this stage, so macOS as a target stays planned. What this section says of a Mac host (section 5,
-`xcrun`, kpp hosted on macOS) waits for that decision.
+`xcrun`, kpp hosted on macOS) waits for that decision. macOS as a target moved to stage 2 on
+2026-11-10 (kovarex; "Roadmap").
 
 **Order (proposed):**
 1. Linux x86-64: the most tooling, CI runners, and the closest to FreeBSD. It is also testable on
@@ -4345,7 +4346,7 @@ The semantics of section 9 hold on every target:
       - an enum with an enumerator whose value it could not read is not declared, none of its
         enumerators.
     - Before this, FreeBSD 14.3's ucontext_t imported as 360 bytes, not 880 (2026-11-03).
-- **macOS targets.** Built on Windows and Linux in this stage (kovarex, 2026-11-06), as "any host
+- **macOS targets.** Built on Windows and Linux, in stage 2 since 2026-11-10 (kovarex), as "any host
   builds any target" has it (2026-11-02): ld64.lld and the SDK's headers and stubs, the SDK supplied by
   each user (Q7). Running them takes CI's macOS runners (Q5).
 - **Windows target from another host:** lld-link and the Windows SDK's import libraries and UCRT
@@ -5395,8 +5396,12 @@ ones under "Targets and hosts".
 The readme's "Planned" lists what is in each. Placed by this decision:
 - Named arguments, `both_const` and `class_const` (their details not decided yet) and the localisation
   library are stage 2's.
-- macOS as a host is under consideration, not decided; macOS as a target stays in stage 1, built on
-  Windows and Linux ("Targets and hosts"). Linux as a host is done (2026-11-06).
+- macOS as a host is under consideration, not decided. macOS as a target is stage 2's (kovarex,
+  2026-11-10: Wube's Apple people take it up once Factorio is a branch), still built on Windows and
+  Linux ("Targets and hosts"); what is built of it so far stays. Linux as a host is done (2026-11-06).
+- Compilation outside Visual Studio is stage 2's (kovarex, 2026-11-10): builds from a terminal and
+  other editors, the compile server for them included (a terminal build on kovarex's machine said "no
+  compile server could be reached"). Stage 1 is the Visual Studio workflow.
 - The library registry is under consideration, not decided, and not for stage 1.
 
 The work so far, in order:

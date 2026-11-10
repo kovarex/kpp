@@ -248,14 +248,16 @@ Decided, and not built yet:
   today.
 - **`this` is a reference** everywhere: `this.x`, `return this;`, `&this` for the pointer. (Inside an
   enum's methods `this` already is the value.)
-- **macOS as a target**, built on Windows and Linux ([design.md](docs/design.md), "Targets and
-  hosts").
 - **Factorio on the bundled toolchain.** The game still builds with an installed Visual Studio
   (`--toolchain msvc`) because it links C++ libraries built the Visual Studio way; it moves to
   kpp's own toolchain as they are converted or rebuilt (design.md 17).
 
 ### Later
 
+- **macOS as a target**, built on Windows and Linux ([design.md](docs/design.md), "Targets and
+  hosts"), once kpp is a branch in Factorio.
+- **Compiling outside Visual Studio**: builds from a terminal or another editor, with the compile
+  server, are made smooth in the next stage. This one is about the Visual Studio workflow.
 - **One definition for const and non-const**: `both_const` writes a getter once for both
   constnesses (`both_const B* getB() both_const`), `class_const` a class once for both (an iterator
   and its const iterator). The details are not decided yet.
