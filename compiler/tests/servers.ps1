@@ -192,6 +192,50 @@ $ErrorActionPreference = 'Continue'
 & $copy --stop-all-servers 2>&1 | Out-Null
 $ErrorActionPreference = 'Stop'
 
+# A client that reaches no server builds in its own process and says why (kovarex's obyvak, 2026-11-10: the
+# message alone said nothing of the reason). A TEMP that cannot be written; a KEY.exe that is no program; a
+# pipe of the key that this client may not open (a server run elevated).
+$unreachable = "$work\unreachable"
+New-Item -ItemType Directory -Force $unreachable | Out-Null
+function Unreachable([string]$what, [string]$pattern)
+{
+  $ErrorActionPreference = 'Continue'
+  $output = (& $copy --server --quiet --std $std --exe "$unreachable\one.exe" "$work\one.kpp" 2>&1 | ForEach-Object { "$_" }) -join "`n"
+  $code = $LASTEXITCODE
+  $ErrorActionPreference = 'Stop'
+  if ($code -ne 0) { Fail "$what`: the build in the client's process failed (exit $code): $output" }
+  if ($output -notmatch 'no compile server could be reached \(' -or $output -notmatch $pattern) { Fail "$what`: the message does not say why: $output" }
+}
+& $copy --stop-all-servers 2>&1 | Out-Null
+$env:TMP = "$work\no\such\folder"
+$env:TEMP = $env:TMP
+Unreachable 'a temporary folder that does not exist' 'could not be copied'
+$env:TMP = "$work\tmp"
+$env:TEMP = $env:TMP
+$ErrorActionPreference = 'Continue'
+& $copy --server --quiet --std $std --exe "$unreachable\one.exe" "$work\one.kpp" 2>&1 | Out-Null
+$ErrorActionPreference = 'Stop'
+$key = (Get-ChildItem "$work\tmp\kpp-server\*.args" | Where-Object { [IO.File]::ReadAllText($_.FullName).Contains('unreachable') } | Select-Object -First 1).BaseName
+if (-not $key) { Fail 'no key found for the unreachable checks' }
+else
+{
+  & $copy --stop-all-servers 2>&1 | Out-Null
+  $image = "$work\tmp\kpp-server\$key.exe"
+  for ($try = 0; $try -lt 100 -and (Test-Path $image); $try++) { try { Remove-Item -Force $image } catch { Start-Sleep -Milliseconds 100 } }
+  Set-Content -Encoding ascii $image 'no program'
+  Unreachable 'a server image that is no program' 'could not be started'
+  Remove-Item -Force $image
+  $security = New-Object IO.Pipes.PipeSecurity
+  $security.AddAccessRule((New-Object IO.Pipes.PipeAccessRule ([Security.Principal.WindowsIdentity]::GetCurrent().User), 'ReadWrite', 'Deny'))
+  $security.AddAccessRule((New-Object IO.Pipes.PipeAccessRule ([Security.Principal.WindowsIdentity]::GetCurrent().User), 'CreateNewInstance', 'Allow'))
+  $held = New-Object IO.Pipes.NamedPipeServerStream ("kpp-server-$key"), 'InOut', 1, 'Byte', 'None', 0, 0, $security
+  Unreachable 'a pipe this client may not open' 'denied'
+  $held.Dispose()
+  $ErrorActionPreference = 'Continue'
+  & $copy --stop-all-servers 2>&1 | Out-Null
+  $ErrorActionPreference = 'Stop'
+}
+
 StopLeftovers
 if ($failed -eq 0) { "ok   servers: one exits when its kpp changes, --stop-all-servers stops them all, stale server files go, one server writes each client's diagnostic form, Visual Studio's own variables leave a replay a replay" }
 exit $failed

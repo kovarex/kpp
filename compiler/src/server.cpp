@@ -335,8 +335,20 @@ namespace
 #ifdef _WIN32
   std::string pipeName(const std::string& key) { return "\\\\.\\pipe\\kpp-server-" + key; }
 
-  // Connects to the server's pipe, waiting while another client is being served.
-  HANDLE connectPipe(const std::string& name, DWORD waitMs)
+  // A Windows error in words, on one line.
+  std::string errorText(DWORD error)
+  {
+    char text[256] = "";
+    DWORD n = FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr, error, 0, text, sizeof text, nullptr);
+    while (n > 0 && (text[n - 1] == '\r' || text[n - 1] == '\n' || text[n - 1] == '.'))
+      text[--n] = 0;
+    return "error " + std::to_string(error) + (n ? ", " + std::string(text) : std::string());
+  }
+
+  // Connects to the server's pipe, waiting while another client is being served. why, when given: the
+  // reason it could not. server, when given: the process just started for it, whose early end (other
+  // than losing the key to another server, exit 1) is the answer without waiting for the pipe.
+  HANDLE connectPipe(const std::string& name, DWORD waitMs, std::string* why = nullptr, HANDLE server = nullptr)
   {
     auto start = std::chrono::steady_clock::now();
     for (;;)
@@ -346,11 +358,40 @@ namespace
         return h;
       DWORD error = GetLastError();
       if (error == ERROR_PIPE_BUSY)
+      {
         WaitNamedPipeA(name.c_str(), NMPWAIT_WAIT_FOREVER); // a build is running: as long as it takes
-      else if (std::chrono::steady_clock::now() - start > std::chrono::milliseconds(waitMs))
+        continue;
+      }
+      if (error == ERROR_ACCESS_DENIED && waitMs != 0)
+      {
+        // (no wait makes this one go away)
+        if (why)
+          *why = "access to the pipe " + name + " is denied: a server for these arguments runs as another user or elevated (a Visual Studio run as administrator?), and only it may use the pipe";
         return INVALID_HANDLE_VALUE;
-      else
-        Sleep(20);
+      }
+      if (server && WaitForSingleObject(server, 0) == WAIT_OBJECT_0)
+      {
+        DWORD code = 0;
+        GetExitCodeProcess(server, &code);
+        if (code != 1)
+        {
+          if (why)
+          {
+            char text[64];
+            snprintf(text, sizeof text, "0x%lX", (unsigned long)code);
+            *why = std::string("the server ended as it started, with exit code ") + text;
+          }
+          return INVALID_HANDLE_VALUE;
+        }
+        server = nullptr;
+      }
+      if (std::chrono::steady_clock::now() - start > std::chrono::milliseconds(waitMs))
+      {
+        if (why)
+          *why = "the pipe " + name + " could not be opened in " + std::to_string(waitMs / 1000) + " s (" + errorText(error) + "): the server did not create it";
+        return INVALID_HANDLE_VALUE;
+      }
+      Sleep(20);
     }
   }
 
@@ -398,7 +439,8 @@ namespace
 
   // Starts a server for the key. It runs from a copy of kpp in the temp directory, so that kpp
   // itself can be rebuilt while a server runs (Windows keeps a running executable locked).
-  bool startServer(const std::string& exe, const std::string& key, const std::string& cwd)
+  // why: the reason it could not start one. process: the server's, to be closed by the caller.
+  bool startServer(const std::string& exe, const std::string& key, const std::string& cwd, std::string& why, HANDLE& process)
   {
     std::string dir = serverDirectory();
     CreateDirectoryA(dir.c_str(), nullptr);
@@ -412,7 +454,10 @@ namespace
     {
       std::string part = copy + "." + std::to_string(GetCurrentProcessId());
       if (!CopyFileA(exe.c_str(), part.c_str(), FALSE))
+      {
+        why = "kpp could not be copied to " + part + " (" + errorText(GetLastError()) + ")";
         return false;
+      }
       if (!MoveFileA(part.c_str(), copy.c_str()))
         DeleteFileA(part.c_str()); // another client put it there first
       held = hold();
@@ -432,12 +477,16 @@ namespace
     const DWORD flags = CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP;
     bool started = CreateProcessA(copy.c_str(), command.data(), nullptr, nullptr, FALSE, flags | CREATE_BREAKAWAY_FROM_JOB, nullptr, cwd.c_str(), &si, &pi) ||
                    CreateProcessA(copy.c_str(), command.data(), nullptr, nullptr, FALSE, flags, nullptr, cwd.c_str(), &si, &pi);
+    DWORD startError = GetLastError();
     if (held != INVALID_HANDLE_VALUE)
       CloseHandle(held);
     if (!started)
+    {
+      why = copy + " could not be started (" + errorText(startError) + ")";
       return false;
+    }
     CloseHandle(pi.hThread);
-    CloseHandle(pi.hProcess);
+    process = pi.hProcess;
     return true;
   }
 #else
@@ -462,7 +511,7 @@ namespace
 
   // Connects to the server's socket. A busy server accepts the next client when its build is done:
   // connect() is queued till then (listen's backlog), as Windows' WaitNamedPipe waits.
-  int connectPipe(const std::string& name, int waitMs)
+  int connectPipe(const std::string& name, int waitMs, std::string* why = nullptr)
   {
     sockaddr_un address{};
     address.sun_family = AF_UNIX;
@@ -507,7 +556,7 @@ namespace
 
   // Starts a server for the key: kpp itself, in a session of its own (no copy: a running executable
   // can be replaced on POSIX), its streams the null device. The client holds KEY.starting meanwhile.
-  bool startServer(const std::string& exe, const std::string& key, const std::string& cwd)
+  bool startServer(const std::string& exe, const std::string& key, const std::string& cwd, std::string& why)
   {
     std::string dir = serverDirectory();
     mkdir(dir.c_str(), 0700);
@@ -530,7 +579,10 @@ namespace
     posix_spawn_file_actions_destroy(&actions);
     posix_spawnattr_destroy(&attributes);
     if (error != 0)
+    {
+      why = exe + " could not be started (" + strerror(error) + ")";
       return false;
+    }
     // (reaped by a thread of its own: the client may live on, and the server's end is no zombie)
     std::thread([pid] { int status = 0; waitpid(pid, &status, 0); }).detach();
     return true;
@@ -1423,6 +1475,7 @@ int runClient(int argc, char** argv, CompileFunction compile)
   std::vector<std::string> args = argumentsOf(argc, argv);
   std::string key = serverKey(exe, cwd, args), name = pipeName(key);
   Channel pipe = connectPipe(name, 0);
+  std::string noServer; // why no server could be reached
   if (pipe == noChannel)
   {
     // KEY.args before the server starts: a stop of its project that comes meanwhile finds it (and
@@ -1441,8 +1494,17 @@ int runClient(int argc, char** argv, CompileFunction compile)
 #endif
     if (FILE* f = fopen(argumentsPath(key).c_str(), "wb"))
       fwrite(record.data(), 1, record.size(), f), fclose(f);
-    if (startServer(exe, key, cwd))
-      pipe = connectPipe(name, 20000);
+#ifdef _WIN32
+    HANDLE started = nullptr;
+    if (startServer(exe, key, cwd, noServer, started))
+    {
+      pipe = connectPipe(name, 20000, &noServer, started);
+      CloseHandle(started);
+    }
+#else
+    if (startServer(exe, key, cwd, noServer))
+      pipe = connectPipe(name, 20000, &noServer);
+#endif
     else
       remove(argumentsPath(key).c_str());
 #ifndef _WIN32
@@ -1452,7 +1514,7 @@ int runClient(int argc, char** argv, CompileFunction compile)
   }
   if (pipe == noChannel)
   {
-    fprintf(stderr, "kpp: no compile server could be reached; building in this process\n");
+    fprintf(stderr, "kpp: no compile server could be reached (%s; its log, if it wrote one: %s); building in this process\n", noServer.empty() ? "no reason known" : noServer.c_str(), logPath(key).c_str());
     return compile(argc, argv);
   }
   std::string request = requestHeader(buildRequest);
@@ -1663,7 +1725,12 @@ int runServer(const char* key, const char* origin, const char* stamp, CompileFun
   HANDLE pipe = CreateNamedPipeA(name.c_str(), PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE,
                                  PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS, 1, 1 << 16, 1 << 16, 0, nullptr);
   if (pipe == INVALID_HANDLE_VALUE)
+  {
+    DWORD error = GetLastError();
+    serverLog = logPath(key);
+    logLine("another process has this key's pipe (%s): this server ends", errorText(error).c_str());
     return 1; // another server has the key
+  }
   serverLog = logPath(key);
   logLine("started");
   markDiagnosticLocations(); // each client prints them in its own form
