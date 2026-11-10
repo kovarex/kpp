@@ -96,14 +96,16 @@ struct FoldExpr : Expr { Expr* lhs; Expr* rhs; uint32_t op; };
 // requires(params) { requirements; }: true when every requirement is well-typed for the types at
 // hand; the type checker sets satisfied where the expression is typed (again per instantiation).
 // resultConstraints: one per requirement, the type-constraint of a compound one (`{ t.size() } ->
-// Integral`), null for none. nested: the nested requirements (`requires sizeof(T) <= 2;`), each a
-// constraint that must hold.
+// Integral`), null for none. noexceptRequired: one per requirement, 1 for a compound one written
+// `{ t.size() } noexcept`, whose expression must not be potentially-throwing. nested: the nested
+// requirements (`requires sizeof(T) <= 2;`), each a constraint that must hold.
 struct RequiresExpr : Expr
 {
   Span<Decl*> params;
   Span<Expr*> requirements;
   Span<Type*> typeRequirements;
   Span<Type*> resultConstraints;
+  Span<uint8_t> noexceptRequired;
   Span<Expr*> nested;
   bool satisfied = false;
 };

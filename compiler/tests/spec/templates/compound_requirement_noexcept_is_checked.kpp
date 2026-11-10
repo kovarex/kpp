@@ -1,0 +1,51 @@
+// spec: a compound requirement written `{ e } noexcept` holds only when e is not potentially-throwing ([expr.prim.req.compound] 1.2): in a concept, before a result's type-constraint, under a conditional noexcept, for scalar operators, in a requires clause choosing an overload, in an if constexpr and outside any template (clang's output)
+// found by D's concepts battery against clang (2026-11-10): the parser accepted the noexcept and nothing checked it, so a concept asking for it held for a size() that may throw, silently
+template<typename A, typename B>
+concept Same = std::IsSame<A, B>::value;
+struct NoThrow
+{
+  int size() const noexcept { return 3; }
+};
+struct MayThrow
+{
+  int size() const { return 4; }
+};
+struct LongNoThrow
+{
+  long size() const noexcept { return 5; }
+};
+template<typename T>
+struct Conditional
+{
+  int size() const noexcept(sizeof(T) > 1) { return 6; }
+};
+template<typename T>
+concept SizeNoexcept = requires(const T& t) { { t.size() } noexcept; };
+template<typename T>
+concept SizeNoexceptInt = requires(const T& t) { { t.size() } noexcept -> Same<int>; };
+template<typename T>
+concept AddsNoexcept = requires(T a, T b) { { a + b } noexcept; };
+template<typename T>
+int pick(const T&) { return 1; }
+template<typename T>
+  requires SizeNoexcept<T>
+int pick(const T&) { return 2; }
+template<typename T>
+std::StringView describe(const T& t)
+{
+  if constexpr (requires { { t.size() } noexcept; })
+    return "noexcept";
+  else
+    return "may-throw";
+}
+constexpr bool plain = requires(const MayThrow& m) { { m.size() } noexcept; };
+static_assert(SizeNoexcept<NoThrow> && !SizeNoexcept<MayThrow> && !plain);
+
+int main()
+{
+  std::println(SizeNoexcept<NoThrow>, " ", SizeNoexcept<MayThrow>, " ", SizeNoexcept<Conditional<char>>, " ", SizeNoexcept<Conditional<int>>);
+  std::println(SizeNoexceptInt<NoThrow>, " ", SizeNoexceptInt<MayThrow>, " ", SizeNoexceptInt<LongNoThrow>);
+  std::println(AddsNoexcept<int>, " ", AddsNoexcept<double>, " ", plain);
+  std::println(pick(MayThrow()), " ", pick(NoThrow()), " ", describe(NoThrow()), " ", describe(MayThrow()));
+  return 0;
+}

@@ -1894,9 +1894,10 @@ auto GlobalScope::Impl::requirementsHold(RequiresExpr* r, Decl* owner, const Sub
       return false;
   }
   std::vector<const Ty*> resultTypes;
-  for (Expr* requirement : r->requirements)
+  bool undecided = false; // (a `{ e } noexcept` whose e canThrow does not decide yet)
+  for (size_t i = 0; i < r->requirements.size(); ++i)
   {
-    Expr* copy = copier.expression(requirement);
+    Expr* copy = copier.expression(r->requirements[i]);
     const Ty* ty = probe.walkExpr(copy);
     if (!ty || !ty->isKnown() || probe.namesFunctionsWithoutTarget(copy))
       return false;
@@ -1904,11 +1905,22 @@ auto GlobalScope::Impl::requirementsHold(RequiresExpr* r, Decl* owner, const Sub
       dependent = true;
     else if (!namesOnlyAccessible(copy, fn, context, nullptr))
       return false;
+    else if (i < r->noexceptRequired.size() && r->noexceptRequired[i] && !probe.inGenericTemplate())
+    {
+      // `{ t.size() } noexcept`: not satisfied when the expression is potentially-throwing ([expr.prim.req.compound] 1.2).
+      std::string unsupported;
+      bool throws = probe.canThrow(copy, unsupported);
+      if (!unsupported.empty())
+        undecided = true;
+      else if (throws)
+        return false;
+    }
     resultTypes.push_back(argumentType(copy, ty, types));
   }
   if (dependent)
     return std::nullopt;
-  return requirementsExtraHold(r, resultTypes, owner, s);
+  std::optional<bool> extra = requirementsExtraHold(r, resultTypes, owner, s);
+  return undecided && (!extra || *extra) ? std::nullopt : extra;
 }
 
 auto GlobalScope::Impl::resultConstraintHolds(Type* constraint, const Ty* type, Decl* owner, const Subst& s) -> std::optional<bool>

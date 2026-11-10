@@ -11858,13 +11858,24 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
       }
       std::vector<const Ty*> resultTypes;
       bool dependent = false;
-      for (Expr* requirement : r->requirements)
+      for (size_t i = 0; i < r->requirements.size(); ++i)
       {
-        Expr* copy = copier.expression(requirement);
+        Expr* copy = copier.expression(r->requirements[i]);
         const Ty* ty = probe.walkExpr(copy);
         if (!ty || !ty->isKnown() || probe.namesFunctionsWithoutTarget(copy) ||
             (!impl.types.isDependent(ty) && !impl.namesOnlyAccessible(copy, bodyOf, context, self)))
           satisfied = false;
+        else if (i < r->noexceptRequired.size() && r->noexceptRequired[i] && !impl.types.isDependent(ty) && !probe.inGenericTemplate())
+        {
+          // `{ t.size() } noexcept`: not satisfied when the expression is potentially-throwing ([expr.prim.req.compound]
+          // 1.2); what canThrow does not decide yet is an error, never a guess.
+          std::string unsupported;
+          bool throws = probe.canThrow(copy, unsupported);
+          if (!unsupported.empty() && file && !probing)
+            impl.reportCheckerError(file, r->requirements[i]->token, "a compound requirement's noexcept does not decide " + unsupported + " yet");
+          if (throws || !unsupported.empty())
+            satisfied = false;
+        }
         dependent = dependent || (ty && impl.types.isDependent(ty));
         resultTypes.push_back(ty ? argumentType(copy, ty, impl.types) : nullptr);
       }

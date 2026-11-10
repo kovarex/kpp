@@ -6400,6 +6400,7 @@ namespace
               std::vector<Expr*> requirements;
               std::vector<Type*> typeRequirements;
               std::vector<Type*> resultConstraints; // (one per requirement)
+              std::vector<uint8_t> noexceptRequired; // (one per requirement)
               std::vector<Expr*> nested;
               while (!at(P::RBrace) && !at(TokenKind::End))
               {
@@ -6412,7 +6413,9 @@ namespace
                 {
                   Expr* e = parseExpression();
                   expect(P::RBrace, "expected '}' after the compound requirement");
-                  accept(Kw::noexcept_); // (not checked: kpp's exceptions say nothing of noexcept to a requirement)
+                  // `{ t.size() } noexcept`: the expression must not be potentially-throwing (until
+                  // 2026-11-10 skipped: never checked, so a concept asking for it held for a size() that may throw).
+                  bool required = accept(Kw::noexcept_);
                   Type* constraint = nullptr;
                   if (at(P::Arrow))
                     noteRole(pos, FormatTrailingArrow);
@@ -6428,6 +6431,7 @@ namespace
                   {
                     requirements.push_back(e);
                     resultConstraints.push_back(constraint);
+                    noexceptRequired.push_back(required);
                   }
                 }
                 else if (accept(Kw::requires_))
@@ -6443,6 +6447,7 @@ namespace
                   {
                     requirements.push_back(e);
                     resultConstraints.push_back(nullptr);
+                    noexceptRequired.push_back(0);
                   }
                 }
                 if (!accept(P::Semi))
@@ -6456,6 +6461,7 @@ namespace
               r->requirements = makeSpanOf(requirements);
               r->typeRequirements = makeSpanOf(typeRequirements);
               r->resultConstraints = makeSpanOf(resultConstraints);
+              r->noexceptRequired = makeSpanOf(noexceptRequired);
               r->nested = makeSpanOf(nested);
             }
             return r;
