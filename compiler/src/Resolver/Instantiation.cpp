@@ -2184,7 +2184,25 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
 
 auto GlobalScope::Impl::expandedPattern(ParamDecl* pd, const TypeContext& ctx, int depth) -> const Ty*
 {
-  if (!pd || !pd->type || isBarePack(pd->type))
+  if (!pd || !pd->type)
+    return nullptr;
+  // (the pack's own forms, `Args&&`, `const Args&`, `Args*`, stay as they were: the explicit pack arguments' quirks,
+  // templates/explicit_pack_template_arguments and std::call_once, rely on them)
+  const Type* core = pd->type;
+  for (;;)
+  {
+    if (core && core->kind == NodeKind::ConstType)
+      core = static_cast<const ConstType*>(core)->inner;
+    else if (core && core->kind == NodeKind::LRefType)
+      core = static_cast<const LRefType*>(core)->referenced;
+    else if (core && core->kind == NodeKind::RRefType)
+      core = static_cast<const RRefType*>(core)->referenced;
+    else if (core && core->kind == NodeKind::PointerType)
+      core = static_cast<const PointerType*>(core)->pointee;
+    else
+      break;
+  }
+  if (!core || isBarePack(core))
     return nullptr;
   PackType expansion{};
   expansion.kind = NodeKind::PackType;
@@ -2635,7 +2653,10 @@ auto GlobalScope::Impl::computeDeclaredType(Decl* d, const Subst* subst, int dep
       const Ty* t = convertType(pd->type, ctx, depth + 1);
       // `const Box<Ts>&... boxes` with Ts bound: the pack of its elements' types, as the function's type has them
       // (the code generator takes a pack parameter's elements from here)
-      if (pd->isPack && subst && t && t->kind != TyKind::Pack && !packParamOf(t))
+      // (a pack, or a reference or pointer to one, `Args&&`, is the pack as it was: spliceIfPack's forms)
+      bool packForm = t && (t->kind == TyKind::Pack || ((t->kind == TyKind::LRef || t->kind == TyKind::RRef || t->kind == TyKind::Pointer) && t->inner &&
+                                                         t->inner->kind == TyKind::Pack));
+      if (pd->isPack && subst && t && !packForm && !packParamOf(t))
         if (const Ty* elements = expandedPattern(pd, ctx, depth))
           return elements;
       return t && t->kind == TyKind::Array ? types.decay(t) : t; // `double m[3][3]` is a pointer parameter
