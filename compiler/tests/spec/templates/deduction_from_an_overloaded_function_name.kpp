@@ -1,5 +1,5 @@
 // spec: a template parameter deduces from an overloaded function's name given for a pointer to function: of the overloads, the one whose type deduces is taken ([temp.deduct.call] 6): `apply(over, 4)` of `template<typename R> R apply(R (*f)(int), int)` with over(int) and over(double) takes over(int), R = int (clang's output)
-// pending: "codegen does not support a call to apply whose template arguments could not be deduced yet": an overload set deduces nothing (found by D's deduction battery against clang, 2026-11-10; D)
+// found by D's deduction battery against clang (2026-11-10): "codegen does not support a call to apply whose template arguments could not be deduced yet", as an overload set deduced nothing
 int over(int x) { return x + 1; }
 double over(double x) { return x * 2; }
 template<typename R>

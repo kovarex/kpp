@@ -3826,6 +3826,7 @@ auto GlobalScope::Impl::Walker::returnTypeOfCall(FunctionDecl* f, const Subst* c
       const Ty* fnTy = impl.declaredTypeOf(f, classSubst, 0);
       if (namePart)
         bindExplicitArgs(f, *namePart, args, s);
+      takesCallSets(f, s); // (an overload set's argument deduces what it decides: `apply(over, 4)`)
       impl.deduceCall(f, fnTy, argTypes(), s);
       impl.fillDefaultTemplateArgs(f, s);
       if ((probing || substituting) && (f->flags & DF_Delete) && !impl.functionSpecializationFor(f, s))
@@ -3867,6 +3868,7 @@ auto GlobalScope::Impl::Walker::returnTypeOfCall(FunctionDecl* f, const Subst* c
     // Explicit template arguments first, then deduction from the arguments.
     if (namePart)
       bindExplicitArgs(f, *namePart, args, subst);
+    takesCallSets(f, subst); // (an overload set's argument deduces what it decides: `apply(over, 4)`)
     impl.deduceCall(f, fnTy, argTypes(), subst);
     impl.fillDefaultTemplateArgs(f, subst);
     if ((probing || substituting) && (f->flags & DF_Delete) && !impl.functionSpecializationFor(f, subst))
@@ -4034,6 +4036,39 @@ auto GlobalScope::Impl::Walker::takesCallSets(FunctionDecl* f, Subst& s) -> bool
 {
   if (!callSets)
     return true;
+  // A parameter of a function type its template's parameters decide (`R (*f)(int)`) deduces from an overload set: of the
+  // set's functions, the one whose type deduces it, when exactly one does ([temp.deduct.call] 6). Until 2026-11-10 the set
+  // deduced nothing: `apply(over, 4)` was "template arguments could not be deduced".
+  if (!f->templateParams.empty())
+    if (const Ty* generic = impl.declaredTypeOf(f, s.pairs.empty() ? nullptr : &s, 0); generic && generic->kind == TyKind::Function)
+      for (const OverloadSetArgument& set : *callSets)
+      {
+        if (set.index >= generic->args.size() || !set.set.overloads)
+          continue;
+        const Ty* pt = types.unqualified(types.stripRef(generic->args[set.index]));
+        const Ty* pattern = pt && pt->kind == TyKind::Pointer ? pt->inner : pt;
+        if (!pattern || pattern->kind != TyKind::Function || !types.isDependent(pattern))
+          continue;
+        Subst chosen;
+        int matches = 0;
+        for (const Entry& e : *set.set.overloads)
+        {
+          if (!e.decl || e.decl->kind != NodeKind::FunctionDecl || !e.decl->templateParams.empty() ||
+              (e.decl->parent && e.decl->parent->kind == NodeKind::ClassDecl && !(e.decl->flags & DF_Static)))
+            continue;
+          const Ty* fnTy = impl.declaredTypeOf(e.decl, nullptr, 0);
+          if (!fnTy || fnTy->kind != TyKind::Function || !fnTy->isKnown() || types.isDependent(fnTy))
+            continue;
+          Subst one = s;
+          impl.deduceArgument(pattern, fnTy, one, 1);
+          if (one.failed || !Impl::sameArgument(impl.substitute(pattern, one), fnTy))
+            continue;
+          ++matches;
+          chosen = one;
+        }
+        if (matches == 1)
+          s = chosen;
+      }
   const Ty* ft = impl.declaredTypeOf(f, s.pairs.empty() ? nullptr : &s, 0);
   if (!ft || ft->kind != TyKind::Function)
     return true;
