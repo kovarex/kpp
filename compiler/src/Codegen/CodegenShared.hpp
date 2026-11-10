@@ -502,13 +502,27 @@ namespace codegen
     std::unordered_map<std::string, std::string> stubMessages; // a stubbed function -> "qualified name at file:line"
   };
 
+  // A metadata id as the IR text writes it: ten digits, zeros before (`%010u`), at to[0..9].
+  inline void writeDebugId(char* to, uint32_t id)
+  {
+    for (int k = 9; k >= 0; --k)
+    {
+      to[k] = char('0' + id % 10);
+      id /= 10;
+    }
+  }
+
   // --debug-info: a definition's own metadata ids (Emitter::debugId: `!` and ten digits, after a
-  // space or at a line's start) become base + its own id, in place. Returns how many it used.
-  inline uint32_t renumberDebugIds(char* text, size_t size, uint32_t base)
+  // space or at a line's start) become base + its own id, in place. Returns how many it used. With
+  // marks, the place (offset + its place in text) of every `!T` and `!G` it passes is added to marks,
+  // in order: what appendDebugTypes would otherwise find again by a scan of the whole text.
+  inline uint32_t renumberDebugIds(char* text, size_t size, uint32_t base, std::vector<uint32_t>* marks = nullptr, size_t offset = 0)
   {
     uint32_t used = 0;
     for (char* at = (char*)memchr(text, '!', size); at; at = (char*)memchr(at + 1, '!', text + size - at - 1))
     {
+      if (marks && at + 1 < text + size && (at[1] == 'T' || at[1] == 'G'))
+        marks->push_back(uint32_t(offset + size_t(at - text)));
       if (at + 11 > text + size || (at > text && at[-1] != ' ' && at[-1] != '\n') || (at + 11 < text + size && isdigit((unsigned char)at[11])))
         continue;
       uint32_t local = 0;
@@ -520,9 +534,7 @@ namespace codegen
           digits = false;
       if (!digits)
         continue;
-      char buffer[16];
-      snprintf(buffer, sizeof buffer, "%010u", base + local);
-      memcpy(at + 1, buffer, 10);
+      writeDebugId(at + 1, base + local);
       used = std::max(used, local + 1);
     }
     return used;
@@ -560,14 +572,33 @@ namespace codegen
   // one's metadata once. Returns the ids of the list of the classes defined here, the compile unit's
   // retainedTypes (LLVM's CodeView writer emits a type only when something in its module names it,
   // and a class's home may not), and of the list of those globals, its globals (0: none), for
-  // debugModuleTailFor.
+  // debugModuleTailFor. marks: the places of the `!T` and `!G` in out from `from` on, in order, as
+  // the renumbering of the definitions noted them (renumberDebugIds), so that only the text before
+  // `from` is scanned; without them all of it is (the whole text scanned four times was the larger
+  // part of this function's 8% of a debug --check of the game: A's profile, 2026-11-09).
   struct DebugLists
   {
     uint32_t retained = 0, globals = 0;
   };
-  inline DebugLists appendDebugTypes(const Shared& sh, std::string& out, size_t from, uint32_t& nextDebugId, const std::vector<uint64_t>* homed = nullptr)
+  inline DebugLists appendDebugTypes(const Shared& sh, std::string& out, size_t from, uint32_t& nextDebugId, const std::vector<uint64_t>* homed = nullptr,
+                                     const std::vector<uint32_t>* marks = nullptr)
   {
     DebugLists lists;
+    // The places of the `!T` and `!G` in out from `from` on: the definitions' (marks, or a scan), then each text appended here
+    // (noted as renumberDebugIds numbers it).
+    std::vector<uint32_t> places;
+    if (marks)
+      places = *marks;
+    else
+      for (size_t at = out.find('!', from); at != std::string::npos; at = out.find('!', at + 1))
+        if (at + 1 < out.size() && (out[at + 1] == 'T' || out[at + 1] == 'G'))
+          places.push_back(uint32_t(at));
+    std::vector<uint32_t> globalPlaces; // (every `!G` before out's end now, in order)
+    for (size_t at = out.find("!G"); at != std::string::npos && at < from; at = out.find("!G", at + 2))
+      globalPlaces.push_back(uint32_t(at));
+    for (uint32_t at : places)
+      if (out[at + 1] == 'G')
+        globalPlaces.push_back(at);
     auto listOf = [&](const std::vector<uint32_t>& ids) -> uint32_t
     {
       if (ids.empty())
@@ -586,8 +617,7 @@ namespace codegen
     };
     std::unordered_map<uint64_t, uint32_t> globalIds;
     std::vector<uint32_t> globalList;
-    size_t globalsEnd = out.size();
-    for (size_t at = out.find("!G"); at != std::string::npos && at < globalsEnd; at = out.find("!G", at + 2))
+    for (uint32_t at : globalPlaces)
       if (std::optional<uint64_t> key = debugTypeKeyAt(out, at, 'G'); key && !globalIds.count(*key))
         if (auto it = sh.debugGlobals.find(*key); it != sh.debugGlobals.end() && !it->second.empty())
         {
@@ -595,16 +625,16 @@ namespace codegen
           globalList.push_back(nextDebugId);
           size_t start = out.size();
           out += it->second;
-          nextDebugId += renumberDebugIds(out.data() + start, it->second.size(), nextDebugId);
+          nextDebugId += renumberDebugIds(out.data() + start, it->second.size(), nextDebugId, &places, start);
         }
-    for (size_t at = out.find("!G"); at != std::string::npos && at < globalsEnd; at = out.find("!G", at + 2))
+    for (uint32_t at : globalPlaces)
       if (std::optional<uint64_t> key = debugTypeKeyAt(out, at, 'G'))
       {
         if (auto it = globalIds.find(*key); it != globalIds.end())
         {
-          char text[24];
-          snprintf(text, sizeof text, "!%010u       ", it->second);
-          memcpy(&out[at], text, 18);
+          out[at] = '!';
+          writeDebugId(&out[at + 1], it->second);
+          memset(&out[at + 11], ' ', 7);
         }
         else if (at >= 7 && out.compare(at - 7, 7, ", !dbg ") == 0)
           memset(&out[at - 7], ' ', 25); // (a global no emitter described: no attachment)
@@ -619,42 +649,52 @@ namespace codegen
         if (std::optional<uint64_t> key = debugTypeKeyAt(text, at); key && keys.insert(*key).second)
           work.push_back(*key);
     };
-    collect(std::string_view(out).substr(from));
+    // (the definitions' and the globals' metadata appended above: what out holds from `from` on)
+    for (uint32_t at : places)
+      if (out[at + 1] == 'T')
+        if (std::optional<uint64_t> key = debugTypeKeyAt(out, at); key && keys.insert(*key).second)
+          work.push_back(*key);
     if (homed)
       for (uint64_t key : *homed)
         if (keys.insert(key).second)
           work.push_back(key);
+    std::unordered_map<uint64_t, const Shared::DebugTypeText*> typeOf; // (each looked up once)
     while (!work.empty())
     {
       uint64_t key = work.back();
       work.pop_back();
       if (const Shared::DebugTypeText* type = sh.findDebugType(key))
+      {
+        typeOf.emplace(key, type);
         collect(textOf(*type, key));
+      }
     }
     std::unordered_map<uint64_t, uint32_t> ids;
     for (uint64_t key : keys)
-      if (const Shared::DebugTypeText* type = sh.findDebugType(key); type && !textOf(*type, key).empty())
+      if (auto found = typeOf.find(key); found != typeOf.end() && !textOf(*found->second, key).empty())
       {
-        const std::string& text = textOf(*type, key);
+        const std::string& text = textOf(*found->second, key);
         ids[key] = nextDebugId;
         size_t at = out.size();
         out += text;
-        nextDebugId += renumberDebugIds(out.data() + at, text.size(), nextDebugId);
+        nextDebugId += renumberDebugIds(out.data() + at, text.size(), nextDebugId, &places, at);
       }
-    for (size_t at = out.find("!T", from); at != std::string::npos; at = out.find("!T", at + 2))
-      if (std::optional<uint64_t> key = debugTypeKeyAt(out, at))
-      {
-        char text[24];
-        auto it = ids.find(*key);
-        if (it != ids.end())
-          snprintf(text, sizeof text, "!%010u       ", it->second);
-        else
-          snprintf(text, sizeof text, "%-18s", "null"); // (a type no emitter made: none)
-        memcpy(&out[at], text, 18);
-      }
+    for (uint32_t at : places)
+      if (out[at + 1] == 'T')
+        if (std::optional<uint64_t> key = debugTypeKeyAt(out, at))
+        {
+          if (auto it = ids.find(*key); it != ids.end())
+          {
+            out[at] = '!';
+            writeDebugId(&out[at + 1], it->second);
+            memset(&out[at + 11], ' ', 7);
+          }
+          else
+            memcpy(&out[at], "null              ", 18); // (a type no emitter made: none)
+        }
     std::vector<uint32_t> retained;
     for (uint64_t key : keys)
-      if (auto it = ids.find(key); it != ids.end() && defined(key) && !sh.findDebugType(key)->definition.empty())
+      if (auto it = ids.find(key); it != ids.end() && defined(key) && !typeOf.at(key)->definition.empty())
         retained.push_back(it->second);
     lists.retained = listOf(retained);
     lists.globals = listOf(globalList);

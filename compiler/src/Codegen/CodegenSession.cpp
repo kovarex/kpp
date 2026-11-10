@@ -702,13 +702,14 @@ static std::string programPieceText(const Shared& sh, unsigned k, const std::str
   out += '\n';
   uint32_t nextDebugId = debugFirstId;
   size_t definitionsAt = out.size();
+  std::vector<uint32_t> marks; // (the definitions' `!T` and `!G`: appendDebugTypes)
   for (const Shared::Definition* d : definitions)
   {
     size_t at = out.size();
     if (sh.debugInfo)
     {
       appendDefinitionMetadataFirst(out, d->text);
-      nextDebugId += renumberDebugIds(out.data() + at, d->text.size(), nextDebugId);
+      nextDebugId += renumberDebugIds(out.data() + at, d->text.size(), nextDebugId, sh.fullDebugInfo ? &marks : nullptr, at);
     }
     else
       out += d->text;
@@ -716,7 +717,7 @@ static std::string programPieceText(const Shared& sh, unsigned k, const std::str
   size_t metadataAt = out.size();
   DebugLists lists;
   if (sh.fullDebugInfo)
-    lists = appendDebugTypes(sh, out, definitionsAt, nextDebugId);
+    lists = appendDebugTypes(sh, out, definitionsAt, nextDebugId, nullptr, &marks);
   if (sh.debugInfo)
   {
     out += debugModuleTailFor(sh.target, sh.fullDebugInfo, lists);
