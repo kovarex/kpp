@@ -89,23 +89,22 @@ enum class Errc
 
 // The condition a Windows error means, or 0 for none: MSVC's std::system_category's table for the
 // conditions Errc names (every error from 1 to 19999, spec
-// library/error_code_windows_errors_mean_what_msvc_maps_them_to), but for 15, 161 and 267, which
-// MSVC's maps to no_such_device, none and invalid_argument (docs/stdlib/filesystem.md gives 267).
+// library/error_code_windows_errors_mean_what_msvc_maps_them_to).
 i32 errcOfWindowsError(i32 error)
 {
   switch (error)
   {
-    // file and path not found, bad drive, network path and name, invalid name, bad path name
-    case 2, 3, 15, 53, 67, 123, 161: return i32(Errc::no_such_file_or_directory);
+    // file and path not found, network path and name, invalid name (a bad path name, 161, is none)
+    case 2, 3, 53, 67, 123: return i32(Errc::no_such_file_or_directory);
     // access denied, invalid access, current directory, write protected, sharing violation, cannot
     // make, no access, Winsock's access denied
     case 5, 12, 16, 19, 32, 82, 998, 10013: return i32(Errc::permission_denied);
     case 17: return i32(Errc::cross_device_link);
     case 80, 183: return i32(Errc::file_exists);
     case 145: return i32(Errc::directory_not_empty);
-    case 267: return i32(Errc::not_a_directory);
-    // invalid handle, invalid parameter, negative seek, invalid reparse tag, Winsock's invalid argument
-    case 6, 87, 131, 4393, 10022: return i32(Errc::invalid_argument);
+    // invalid handle, invalid parameter, negative seek, a directory name expected (ERROR_DIRECTORY),
+    // invalid reparse tag, Winsock's invalid argument
+    case 6, 87, 131, 267, 4393, 10022: return i32(Errc::invalid_argument);
     case 39, 112: return i32(Errc::no_space_on_device);
     // busy drive, busy, open files, device in use
     case 142, 170, 2401, 2404: return i32(Errc::device_or_resource_busy);
@@ -115,7 +114,7 @@ i32 errcOfWindowsError(i32 error)
     case 4, 10024: return i32(Errc::too_many_files_open);
     // seek, write fault, read fault, open failed, cannot open, read and write the registry
     case 25, 29, 30, 110, 1011, 1012, 1013: return i32(Errc::io_error);
-    case 20, 55: return i32(Errc::no_such_device); // bad unit, device gone
+    case 15, 20, 55: return i32(Errc::no_such_device); // bad drive, bad unit, device gone
     case 21, 1237: return i32(Errc::resource_unavailable_try_again); // not ready, retry
     case 1: return i32(Errc::function_not_supported);
     case 10004: return i32(Errc::interrupted);
@@ -127,7 +126,8 @@ i32 errcOfWindowsError(i32 error)
 
 // An error value with its category (std::error_code); 0 is no error. Compared with an Errc, a system
 // error equals the condition it means (Windows' ERROR_FILE_NOT_FOUND is no_such_file_or_directory;
-// elsewhere a system error is an errno value: platform::errcOfSystemError).
+// elsewhere a system error is an errno value: platform::errcOfSystemError), and no error the Errc of
+// value 0, as std's system category maps 0 to the generic 0.
 class ErrorCode
 {
 public:
@@ -163,11 +163,10 @@ public:
 
   bool operator==(Errc condition) const
   {
-    if (this.value_ == 0)
-      return false;
-    if (!this.category_.system)
+    if (!this.category_.system || this.value_ == 0)
       return this.value_ == i32(condition);
-    // (errcOfSystemError's 0 is no condition, which equals no Errc, not even the one of value 0)
+    // (errcOfSystemError's 0 is no condition, which a system error equals no Errc for, not even the
+    // one of value 0)
     i32 meant = platform::errcOfSystemError(this.value_);
     return meant != 0 && meant == i32(condition);
   }

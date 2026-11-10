@@ -1,0 +1,14 @@
+// spec: no error equals the Errc of value 0, as a std::error_code of value 0 equals std::errc{} (its category's condition for 0 is the generic 0): a default ErrorCode, one of value 0 in the generic category and a cleared one, compared either way round; a code of another value does not, and a zero code equals no other Errc. Every line is what clang with MSVC's STL and g++ with libstdc++ print
+// kovarex, 2026-11-10 ("ok follow"): until then a zero code equalled no condition, as docs/stdlib/filesystem.md said (thread I's battery er1 printed `0 0 0 1` for std's `1 1 0 0`)
+extern "C" int printf(const char* format, ...);
+int main()
+{
+  std::ErrorCode none;
+  std::ErrorCode zeroGeneric(0, std::genericCategory());
+  std::ErrorCode made = std::make_error_code(std::Errc::no_such_file_or_directory);
+  printf("%d %d %d %d\n", (int)(none == (std::Errc)0), (int)(zeroGeneric == (std::Errc)0), (int)(made == (std::Errc)0), (int)(none != (std::Errc)0));
+  printf("%d %d\n", (int)((std::Errc)0 == none), (int)(none == std::Errc::no_such_file_or_directory));
+  made.clear();
+  printf("%d %d\n", (int)(made == (std::Errc)0), (int)(bool)made);
+  return 0;
+}

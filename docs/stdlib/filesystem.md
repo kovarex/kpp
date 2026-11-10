@@ -222,12 +222,14 @@ function_not_supported, directory_not_empty, not_supported, operation_not_suppor
 stdlib/platform). `make_error_code(e)`: the ErrorCode of e in the
 generic category. `ec == e` (and `!=`) for an ErrorCode and an Errc: a generic code equals the
 condition of its value; a system code equals, elsewhere than Windows, the condition of its value,
-and on Windows the condition its Windows error means: file, path
-or network path not found, a bad name: no_such_file_or_directory; access denied, write
+and on Windows the condition its Windows error means, as MSVC's std::system_category has it: file,
+path or network path not found, a bad name: no_such_file_or_directory; access denied, write
 protected, sharing violation: permission_denied; already exists: file_exists; not same device:
-cross_device_link; directory not empty: directory_not_empty; a directory name expected:
-not_a_directory; and the others listed in Error.kpp's errcOfWindowsError. A zero code equals no
-condition.
+cross_device_link; directory not empty: directory_not_empty; a directory name expected
+(ERROR_DIRECTORY) and an invalid parameter: invalid_argument; a bad drive: no_such_device; and the
+others listed in Error.kpp's errcOfWindowsError. A zero code, no error, equals the Errc of value 0
+(`ErrorCode() == Errc(0)`, as std's; kovarex, 2026-11-10); a system error that means no condition
+equals no Errc.
 
 `SystemError`: a RuntimeError with an ErrorCode (`code()`); `SystemError(code)` has the code's
 message as what(), `SystemError(code, what)` has `what: message`.
