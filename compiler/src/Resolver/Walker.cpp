@@ -2230,10 +2230,13 @@ static bool isObjectThis(const Node* e)
 
 auto GlobalScope::Impl::Walker::objectThisError(Expr* e) -> void
 {
+  // The code's own walk says it once, not each instance's; a probe (a requires-expression's, an instance's too) says it as well: the
+  // mistake is in the source wherever it is, never a requirement silently unmet (`if constexpr (requires { this->items[0] = v; })`).
   auto fail = [&](uint32_t token, const std::string& message)
   {
-    if (!probing && !activeSubst) // (the code's own walk says it once, not each instance's)
-      impl.reportCheckerError(file, token, message);
+    const ParsedFile* where = file ? file : probedFile;
+    if (where && (probing || !activeSubst))
+      impl.reportCheckerError(where, token, message);
   };
   // One mistake says one error: the tree is repaired to the old pointer's form. Never a template's own tree, which other threads
   // copy for its instances (each instance repairs its copy, and the answers must not depend on who came first). A compile server
@@ -2351,12 +2354,13 @@ auto GlobalScope::Impl::Walker::objectThisError(Expr* e) -> void
 
 auto GlobalScope::Impl::Walker::objectThisWherePointer(const Expr* e, const Ty* to, bool always) -> bool
 {
-  if (!file || !file->thisReference || !isObjectThis(e) || probing || activeSubst)
+  const ParsedFile* where = file ? file : probedFile;
+  if (!where || !where->thisReference || !isObjectThis(e) || (activeSubst && !probing))
     return false;
   if (!always && (!to || types.unqualified(types.stripRef(to))->kind != TyKind::Pointer))
     return false;
   if (thisUsesNoted.insert(e).second)
-    impl.reportCheckerError(file, e->token, "this is a reference (the object): write `&this`, not `this`");
+    impl.reportCheckerError(where, e->token, "this is a reference (the object): write `&this`, not `this`");
   return true;
 }
 
@@ -11013,7 +11017,7 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
   } guard(current, e);
   if (thisReferenceWarningsOn() && file && !file->isImported && !file->thisReference && !probing)
     noteThisUse(e);
-  if (file && file->thisReference)
+  if (const ParsedFile* where = file ? file : probedFile; where && where->thisReference) // (a probe's too: a requires-expression's)
     objectThisError(e);
   switch (e->kind)
   {

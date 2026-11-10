@@ -1,0 +1,33 @@
+// spec: C++'s `this->` in a requires-expression is the error it is anywhere, never a requirement silently unmet: `if constexpr (requires { this->items[0] = v; })` took the other branch (the standard library's Vector::insertBuilt copied and move-assigned where it should assign, found converting the stdlib)
+// error: this_reference_old_form_in_a_requires_expression_is_error.kpp:11: error: this is a reference (the object): write `this.`, not `this->`
+// error: this_reference_old_form_in_a_requires_expression_is_error.kpp:17: error: items is a data member: write `this.items`, not `items`
+// error: this_reference_old_form_in_a_requires_expression_is_error.kpp:25: error: this is a reference (the object): write `this.`, not `this->`
+template<class T>
+struct Box
+{
+  T items[2];
+  int assign(const T& v)
+  {
+    if constexpr (requires { this->items[0] = v; })
+      return 1;
+    return 2;
+  }
+  int bare(const T& v)
+  {
+    if constexpr (requires { items[0] = v; })
+      return 1;
+    return 2;
+  }
+};
+struct Plain
+{
+  int items[2];
+  bool assignable() const { return requires { this->items[0] = 1; }; }
+};
+int main()
+{
+  Box<int> b;
+  Plain p;
+  std::println(b.assign(1), " ", b.bare(1), " ", p.assignable());
+  return 0;
+}
