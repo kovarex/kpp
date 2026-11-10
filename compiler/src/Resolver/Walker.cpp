@@ -465,7 +465,7 @@ auto GlobalScope::Impl::Walker::reportWarning(uint32_t token, const std::string&
 
 auto GlobalScope::Impl::Walker::checkMisleadingIndentation(Stmt* s, Stmt* next) -> void
 {
-  // (under --indentation-warnings; once, in the walk of the code as written: no instance, no probe, no imported C)
+  // (on by default; once, in the walk of the code as written: no instance, no probe, no imported C)
   if (!indentationWarningsOn() || !s || !next || probing || activeSubst || !file || file->isImported || next->kind == NodeKind::EmptyStmt)
     return;
   // The body s ends with, down through bodies that are themselves one statement without braces (`for (...) if (x) a;`

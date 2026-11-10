@@ -1206,7 +1206,7 @@ namespace
 #endif
 namespace
 {
-  std::atomic<bool> indentationWarningsEnabled{false};
+  std::atomic<bool> indentationWarningsEnabled{true};
   std::atomic<bool> zeroNullWarningsEnabled{false};
   std::mutex zeroNullMutex;
   std::set<std::string> zeroNullNotes; // (sorted, each token once)

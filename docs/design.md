@@ -406,10 +406,10 @@ replacements, in the order of how much code they remove:
    without braces on its own line, is a warning at the statement, as clang's -Wmisleading-indentation
    (the same cases: the next statement starts its line at the body's indentation, deeper than the
    keyword's line; a tab counts to the next multiple of 8 columns, a line mixing tabs and spaces is
-   left alone). Under `--indentation-warnings` for now: the converted game has 4 such places, each the
-   converter keeping an `#ifdef` block's deeper indentation where it drops or converts the directive,
-   and convert.cmd's headline counts every warning. On by default once the converter re-indents them.
-   Spec language/misleading_indentation_warns.
+   left alone). On by default, as kovarex asked, since 2026-11-10: it was under `--indentation-warnings`
+   (still accepted) while the converted game had 4 such places, each an `#ifdef` block's contents the
+   converter kept indented where it dropped the directive, until the converter dedented them (cce68cd90;
+   convert.cmd's headline counts every warning). Spec language/misleading_indentation_warns.
 The spellings above are the working proposal; each is settled and recorded here when the feature
 is implemented.
 

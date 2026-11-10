@@ -115,7 +115,8 @@ void noteThisReferenceWarning(const std::string& warning);
 std::vector<std::string> takeThisReferenceWarnings();
 void setZeroNullWarnings(bool on);
 bool zeroNullWarningsOn();
-// --indentation-warnings: a statement indented as if it were in an unbraced body it is not in (Walker::checkMisleadingIndentation).
+// The misleading-indentation warning (on by default): a statement indented as if it were in an unbraced body it is not in
+// (Walker::checkMisleadingIndentation).
 void setIndentationWarnings(bool on);
 bool indentationWarningsOn();
 void noteZeroNullWarning(const std::string& warning);
