@@ -1575,7 +1575,7 @@ auto GlobalScope::Impl::Walker::resolveTypeName(NamedType* t) -> void
       // A type name nothing declares is an error where it is written, as an undeclared name is
       // (not `class X` in a template argument, which declares X; not a value trait, isConst<T>,
       // written where a type may be; not in a template's own walk: its instances say).
-      if (!t->elaborated && !impl.boolTraitPart(t->name, scope, &locals, 0) && !inGenericTemplate())
+      if (!t->elaborated && !impl.boolTraitPart(t->name, scope, &locals, 0) && (!inGenericTemplate() || inSpecializationPattern))
         reportUndeclared(t->name, t->token);
     }
   }
@@ -9745,6 +9745,16 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
           impl.reportCheckerError(file, b.type->token, "virtual base classes are not supported (" + base + ", a base of " + of + ")");
         }
       }
+      // A specialization's arguments (`template<typename T> struct Describe<Vector<T>>`), named from where its bases are: a
+      // name in them that nothing declares is an error, as anywhere (it was a specialization no instance matched, silently).
+      if ((c->flags & DF_Specialization) && !c->name.empty() && c->name.last().hasTemplateArgs)
+      {
+        bool savedPattern = inSpecializationPattern;
+        inSpecializationPattern = true;
+        for (Node* a : c->name.last().templateArgs)
+          walkNode(a);
+        inSpecializationPattern = savedPattern;
+      }
       // A struct is a public value type (design.md "struct and class"): one deriving from a
       // polymorphic class is none (its own virtual functions the parser reports).
       if (impl.structRuleErrors && c->keyword == Kw::struct_ && c->isDefinition && !c->isClosure && !c->isTypedUnion && !activeSubst && !probing && file &&
@@ -10952,7 +10962,8 @@ auto GlobalScope::Impl::Walker::walkExprs(Span<Expr*> exprs) -> void
 
 auto GlobalScope::Impl::Walker::noteStdUse(const QualifiedName& name, uint32_t token, NameExpr* at) -> void
 {
-  if (name.empty() || name.typeQualifier || !impl.stdScope || !file || file->isLibrary || file->isImported || file->path.empty() || file->path[0] == '<')
+  if (name.empty() || name.typeQualifier || !impl.stdScope || !file || file->isLibrary || file->isImported || file->path.empty() ||
+      (file->path[0] == '<' && !file->path.starts_with("<tests")))
     return;
   const NamePart& first = name.parts[0];
   if (first.symbol == UINT32_MAX || first.special != 0 || first.symbol == impl.symStd)

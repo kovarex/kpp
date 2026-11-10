@@ -162,8 +162,8 @@ public:
 
   void swap(Thread& other)
   {
-    ::swap(this->handle, other.handle);
-    ::swap(this->threadId, other.threadId);
+    std::swap(this->handle, other.handle);
+    std::swap(this->threadId, other.threadId);
   }
 
   // The thread's Id, or Id() when not joinable.
@@ -545,8 +545,8 @@ public:
 
   void swap(UniqueLock<M>& other)
   {
-    ::swap(this->mutex_, other.mutex_);
-    ::swap(this->owns, other.owns);
+    std::swap(this->mutex_, other.mutex_);
+    std::swap(this->owns, other.owns);
   }
 
   M* mutex() const { return this->mutex_; }
@@ -641,8 +641,8 @@ public:
 
   void swap(SharedLock<M>& other)
   {
-    ::swap(this->mutex_, other.mutex_);
-    ::swap(this->owns, other.owns);
+    std::swap(this->mutex_, other.mutex_);
+    std::swap(this->owns, other.owns);
   }
 
   M* mutex() const { return this->mutex_; }

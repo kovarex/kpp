@@ -5,7 +5,7 @@ i32 viaBox(i32 v) { return Box<i32>{v}.twice(); }
 int main()
 {
   constexpr i32 a = viaScaled();
-  println(a);
+  std::println(a);
   return 0;
 }
 // error: the constexpr variable a is no constant
@@ -26,7 +26,7 @@ i32 viaBox(i32 v) { return Box<i32>{v}.twice(); }
 int main()
 {
   constexpr i32 a = viaScaled();
-  println(a);
+  std::println(a);
   return 0;
 }
 // expect: 6
@@ -49,7 +49,7 @@ int main()
   constexpr i32 a = viaScaled();
   static_assert(viaBox(3) == 6);
   constexpr i32 c = viaBox(4);
-  println(a + c);
+  std::println(a + c);
   return 0;
 }
 // expect: 14
@@ -72,7 +72,7 @@ int main()
   constexpr i32 a = viaScaled();
   static_assert(viaBox(3) == 6);
   constexpr i32 c = viaBox(4);
-  println(a + c);
+  std::println(a + c);
   return 0;
 }
 // error: static assertion failed
@@ -94,7 +94,7 @@ int main()
 {
   constexpr i32 a = viaScaled();
   constexpr i32 c = viaBox(4);
-  println(a + c);
+  std::println(a + c);
   return 0;
 }
 // expect: 18

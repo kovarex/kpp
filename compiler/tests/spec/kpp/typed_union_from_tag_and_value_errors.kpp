@@ -1,6 +1,6 @@
 // spec: constructing a typed union from a tag needs a constant tag, one of its alternatives (a tag read at run time cannot choose the alternative to build); a value alone whose type two alternatives share stays an ambiguity error, as before (design.md 8.5, decided by kovarex 2026-10-31)
 // error: typed_union_from_tag_and_value_errors.kpp:9: error: the tag constructing the typed union U is no constant one of its alternatives
-// error: typed_union_from_tag_and_value_errors.kpp:10: error: a String is ambiguous for the typed union U: its alternatives Text and Comment both have that type
+// error: typed_union_from_tag_and_value_errors.kpp:10: error: a std::String is ambiguous for the typed union U: its alternatives Text and Comment both have that type
 union enum U : uint8_t
 {
   { {int, Number}, {std::String, Text}, {std::String, Comment} }

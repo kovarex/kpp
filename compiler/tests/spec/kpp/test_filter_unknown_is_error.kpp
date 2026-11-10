@@ -3,12 +3,12 @@
 // exit: 2
 suite Parsing tags slow
 {
-  test Numbers { println("Parsing.Numbers"); }
+  test Numbers { std::println("Parsing.Numbers"); }
 }
 
 suite Printing
 {
-  test Numbers { println("Printing.Numbers"); }
+  test Numbers { std::println("Printing.Numbers"); }
 }
 
-test alone { println("alone"); }
+test alone { std::println("alone"); }

@@ -31,7 +31,7 @@ namespace projects
     write(directory / "src" / "main.kpp",
           "int main()\n"
           "{\n"
-          "  println(\"Hello from kpp\");\n"
+          "  std::println(\"Hello from kpp\");\n"
           "  return 0;\n"
           "}\n");
     write(directory / ".gitignore", "build/\n.vscode/\n");

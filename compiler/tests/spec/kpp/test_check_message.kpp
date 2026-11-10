@@ -9,6 +9,6 @@ suite Messages
     for (int i = 0; i < 3; ++i)
       check(counts[i] < 6, "item ", i);
     require(counts[0] == 5, "first");
-    println("not reached");
+    std::println("not reached");
   }
 }

@@ -39,7 +39,9 @@
     NameExpr* call;
   };
   bool recordingStdUses = getenv("KPP_STD_USES") != nullptr;
-  bool noBridge = getenv("KPP_NO_BRIDGE") != nullptr; // (proves a tree's rewrite complete before the bridge goes)
+  // KPP_STD_BRIDGE=1: the bridge of the move into std (a bare name the global scope lacks is std's), for tools/std/rewrite.py
+  // on a branch written before the move; never in a build.
+  bool noBridge = getenv("KPP_STD_BRIDGE") == nullptr;
   std::mutex stdUsesMutex;
   std::vector<StdUse> stdUses;
   std::vector<Scope*> libraryScopes; // each scoped library's names (design.md 16), by name once the index is finished

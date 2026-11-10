@@ -2,7 +2,7 @@
 // factorio: 8 uses in 5 files
 template<typename T> struct Describe { static const char* name() { return "value"; } };
 template<typename T> struct Describe<T*> { static const char* name() { return "pointer"; } };
-template<typename T> struct Describe<Vector<T>> { static const char* name() { return "vector"; } };
+template<typename T> struct Describe<std::Vector<T>> { static const char* name() { return "vector"; } };
 int main()
 {
   std::println(std::StringView(Describe<int>::name()), " ", std::StringView(Describe<int*>::name()), " ", std::StringView(Describe<std::Vector<int>>::name()));

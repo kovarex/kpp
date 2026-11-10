@@ -2,26 +2,26 @@
 // test:
 // exit: 1
 bool isClose(double a, double b, double tolerance) { return a - b <= tolerance && b - a <= tolerance; }
-bool contains(StringView text, StringView part) { return text.find(part) != StringView::npos; }
+bool contains(std::StringView text, std::StringView part) { return text.find(part) != std::StringView::npos; }
 
 class Opaque { public: int value = 0; };
 class Text2
 {
 public:
   int size = 3;
-  bool has(StringView part, int from = 0) const { return false; }
-  String str() const { return String("text2"); }
+  bool has(std::StringView part, int from = 0) const { return false; }
+  std::String str() const { return std::String("text2"); }
 };
 bool isTrivial(int a) { return a == 0; }
 bool takesOpaque(const Opaque& o, Opaque* p, const char* c) { return false; }
-bool shortens(StringView text) { text = text.substr(1); return false; }
-bool owns(String text) { text << "more"; return false; }
-bool reference(const String& text, int& counter) { ++counter; return false; }
+bool shortens(std::StringView text) { text = text.substr(1); return false; }
+bool owns(std::String text) { text << "more"; return false; }
+bool reference(const std::String& text, int& counter) { ++counter; return false; }
 bool withDefault(int a, int b = 7) { return false; }
 bool classValue(const Text2& t, bool flag, char letter) { return false; }
 template<typename T> bool generic(T value) { return false; }
 bool evaluatedOnce(int value) { return false; }
-bool inList(InitializerList<int> list, int value) { return false; }
+bool inList(std::InitializerList<int> list, int value) { return false; }
 int calls = 0;
 int counted() { return ++calls; }
 
@@ -40,13 +40,13 @@ suite Values
     Opaque o;
     check(takesOpaque(o, nullptr, nullptr));
     check(shortens("value"));
-    check(owns(String("owned")));
+    check(owns(std::String("owned")));
     int counter = 1;
-    check(reference(String("temporary"), counter));
+    check(reference(std::String("temporary"), counter));
     check(withDefault(1));
     check(classValue(Text2(), true, 'c'));
     check(generic(5));
-    check(generic(StringView("text")));
+    check(generic(std::StringView("text")));
     Text2 t;
     check(t.has("part"));
     check(evaluatedOnce(counted()));

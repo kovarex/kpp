@@ -399,7 +399,7 @@ struct Optional : OptionalValue<T>
   void swap(Optional<T>& other) noexcept(isNothrowMoveConstructible<T> && isNothrowMoveAssignable<T>)
   {
     if (this->present && other.present)
-      ::swap(**this, *other);
+      std::swap(**this, *other);
     else if (this->present)
     {
       other.emplace(move(**this));

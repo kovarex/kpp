@@ -9,5 +9,5 @@ suite Belts
 suite Splitters depends Belts
 {
   test Splits { check(2 == 3); }
-  test Merges { println("Splitters.Merges"); }
+  test Merges { std::println("Splitters.Merges"); }
 }

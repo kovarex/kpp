@@ -8,7 +8,7 @@ struct Constant
 };
 using No = Constant<bool, false>;
 template<typename T> struct HasSize : No {};
-template<typename T> struct HasSize<Vector<T>> : Constant<bool, true> {};
+template<typename T> struct HasSize<std::Vector<T>> : Constant<bool, true> {};
 template<typename T>
 int sizeOf(const T& value)
 {

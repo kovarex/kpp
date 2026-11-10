@@ -4,19 +4,19 @@
 class Counter
 {
 public:
-  Counter() { println("built"); }
-  ~Counter() { println("destroyed"); }
+  Counter() { std::println("built"); }
+  ~Counter() { std::println("destroyed"); }
 };
 
 suite Inner
 {
-  test Passes : Counter { println("passes, in ", currentTestName()); }
+  test Passes : Counter { std::println("passes, in ", currentTestName()); }
   test Fails
   {
     check(1 == 2);
-    println("after the check");
+    std::println("after the check");
     require(false);
-    println("not reached");
+    std::println("not reached");
   }
 }
 
@@ -27,6 +27,6 @@ suite Outer
     require(runTest("Inner.Passes"));
     require(runTest("Passes"));
     require(!runTest("Fails"));
-    println("back in ", currentTestName());
+    std::println("back in ", currentTestName());
   }
 }

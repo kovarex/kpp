@@ -1,31 +1,31 @@
-// C-style limit constants derived from Limits<T>.
+// C-style limit constants derived from std::Limits<T>.
 
 const void* NULL = nullptr;
 
-const int8_t INT8_MIN = Limits<int8_t>::min();
-const int8_t INT8_MAX = Limits<int8_t>::max();
-const uint8_t UINT8_MAX = Limits<uint8_t>::max();
+const int8_t INT8_MIN = std::Limits<int8_t>::min();
+const int8_t INT8_MAX = std::Limits<int8_t>::max();
+const uint8_t UINT8_MAX = std::Limits<uint8_t>::max();
 
-const int16_t INT16_MIN = Limits<int16_t>::min();
-const int16_t INT16_MAX = Limits<int16_t>::max();
-const uint16_t UINT16_MAX = Limits<uint16_t>::max();
+const int16_t INT16_MIN = std::Limits<int16_t>::min();
+const int16_t INT16_MAX = std::Limits<int16_t>::max();
+const uint16_t UINT16_MAX = std::Limits<uint16_t>::max();
 
-const int INT32_MIN = Limits<int>::min();
-const int INT32_MAX = Limits<int>::max();
-const unsigned int UINT32_MAX = Limits<unsigned int>::max();
+const int INT32_MIN = std::Limits<int>::min();
+const int INT32_MAX = std::Limits<int>::max();
+const unsigned int UINT32_MAX = std::Limits<unsigned int>::max();
 
-const long long INT64_MIN = Limits<long long>::min();
-const long long INT64_MAX = Limits<long long>::max();
-const unsigned long long UINT64_MAX = Limits<unsigned long long>::max();
+const long long INT64_MIN = std::Limits<long long>::min();
+const long long INT64_MAX = std::Limits<long long>::max();
+const unsigned long long UINT64_MAX = std::Limits<unsigned long long>::max();
 
-const unsigned long long SIZE_MAX = Limits<unsigned long long>::max();
+const unsigned long long SIZE_MAX = std::Limits<unsigned long long>::max();
 
-const int INT_MIN = Limits<int>::min();
-const int INT_MAX = Limits<int>::max();
-const unsigned int UINT_MAX = Limits<unsigned int>::max();
+const int INT_MIN = std::Limits<int>::min();
+const int INT_MAX = std::Limits<int>::max();
+const unsigned int UINT_MAX = std::Limits<unsigned int>::max();
 
-const long long LLONG_MIN = Limits<long long>::min();
-const long long LLONG_MAX = Limits<long long>::max();
-const unsigned long long ULLONG_MAX = Limits<unsigned long long>::max();
+const long long LLONG_MIN = std::Limits<long long>::min();
+const long long LLONG_MAX = std::Limits<long long>::max();
+const unsigned long long ULLONG_MAX = std::Limits<unsigned long long>::max();
 
 const int CHAR_BIT = 8;

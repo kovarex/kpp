@@ -3,22 +3,22 @@
 // exit: 0
 suite Combined depends Belts, Inserters
 {
-  test Both { println("Combined.Both"); }
+  test Both { std::println("Combined.Both"); }
 }
 
 suite Inserters depends Belts
 {
-  test Picks { println("Inserters.Picks"); }
+  test Picks { std::println("Inserters.Picks"); }
 }
 
 suite Belts
 {
-  test Moves { println("Belts.Moves"); }
+  test Moves { std::println("Belts.Moves"); }
 }
 
 suite Alone
 {
-  test Runs { println("Alone.Runs"); }
+  test Runs { std::println("Alone.Runs"); }
 }
 
-test Loose { println("loose"); }
+test Loose { std::println("loose"); }

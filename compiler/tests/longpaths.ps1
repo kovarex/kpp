@@ -17,7 +17,7 @@ if (Test-Path $work) { cmd /c rd /s /q "$work" }
 New-Item -ItemType Directory -Force $work | Out-Null
 $work = (Resolve-Path $work).Path
 $hello = Join-Path $work 'hello.kpp'
-[IO.File]::WriteAllText($hello, "int main() { println(`"long paths`"); return 0; }`n")
+[IO.File]::WriteAllText($hello, "int main() { std::println(`"long paths`"); return 0; }`n")
 
 # A directory of $length characters under $work (each part at most 100), not created.
 function DeepPath([int]$length)

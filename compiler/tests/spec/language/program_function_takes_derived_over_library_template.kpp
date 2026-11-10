@@ -1,6 +1,5 @@
 // spec: a program's own `empty(const Base&)` takes a Derived (clang 7): the library's template is std::empty and no candidate
 // factorio: none yet; D's review of c5253532 (2026-11-09)
-// pending: the bridge's one overload set: the library's template wins by deduction: goes with the bridge at step 4
 struct Base
 {
 };

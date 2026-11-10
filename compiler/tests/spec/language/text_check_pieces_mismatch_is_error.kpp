@@ -1,7 +1,7 @@
 // spec: a call whose pieces do not pair up with its pattern (checkPieces throws) is a compile error naming the class, the piece count and the message, one built in a String included: too many, too few, and a template instance's pack expansion (design.md 14)
-// error: text_check_pieces_mismatch_is_error.kpp:35: error: Pattern does not take 1 piece: it throws LogicError("format: 2 {} for 1 pieces") (text_check_pieces_mismatch_is_error.kpp:24) (design.md 14)
-// error: text_check_pieces_mismatch_is_error.kpp:39: error: Pattern does not take 2 pieces: it throws LogicError("format: 1 {} for 2 pieces") (text_check_pieces_mismatch_is_error.kpp:24) (design.md 14)
-// error: text_check_pieces_mismatch_is_error.kpp:40: error: Pattern does not take 0 pieces: it throws LogicError("format: 2 {} for 0 pieces") (text_check_pieces_mismatch_is_error.kpp:24) (design.md 14)
+// error: text_check_pieces_mismatch_is_error.kpp:35: error: Pattern does not take 1 piece: it throws std::LogicError("format: 2 {} for 1 pieces") (text_check_pieces_mismatch_is_error.kpp:24) (design.md 14)
+// error: text_check_pieces_mismatch_is_error.kpp:39: error: Pattern does not take 2 pieces: it throws std::LogicError("format: 1 {} for 2 pieces") (text_check_pieces_mismatch_is_error.kpp:24) (design.md 14)
+// error: text_check_pieces_mismatch_is_error.kpp:40: error: Pattern does not take 0 pieces: it throws std::LogicError("format: 2 {} for 0 pieces") (text_check_pieces_mismatch_is_error.kpp:24) (design.md 14)
 struct Pattern
 {
   const char* text;

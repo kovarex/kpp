@@ -216,7 +216,7 @@ namespace filesystem
     }
 
     path& replace_extension() { return this->replace_extension(path()); }
-    void swap(path& other) noexcept { ::swap(this->text, other.text); }
+    void swap(path& other) noexcept { std::swap(this->text, other.text); }
 
     const WString& native() const { return this->text; }
     const wchar_t* c_str() const { return this->text.c_str(); }

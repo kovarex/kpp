@@ -33,7 +33,7 @@ try
   for ($r = 1; $r -le $Rounds; $r++)
   {
     # Another file of a different size or the same size each round (a stamp that differs only in time).
-    [IO.File]::WriteAllText($main, "int main() { println($(1000 + $r)); return 0; }")
+    [IO.File]::WriteAllText($main, "int main() { std::println($(1000 + $r)); return 0; }")
     $ErrorActionPreference = 'Continue'
     $out = & $KppExe --server --quiet --exe "$work\w.exe" "$work\src" 2>&1 | ForEach-Object { "$_" }
     $code = $LASTEXITCODE

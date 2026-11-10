@@ -3,7 +3,7 @@
 // warning: named_return_copy_warnings.kpp:25: warning: the return of 'a' copies or moves it, not built in the result's place: two variables are returned
 // warning: named_return_copy_warnings.kpp:26: warning: the return of 'c' copies or moves it, not built in the result's place: two variables are returned
 // warning: named_return_copy_warnings.kpp:28: warning: the return of 'p' copies or moves it, not built in the result's place: a parameter is returned
-// warning: named_return_copy_warnings.kpp:32: warning: the return of 'w' copies or moves it, not built in the result's place: the variable's type, const Wire, is not the returned Optional<Wire>: a copy or a conversion
+// warning: named_return_copy_warnings.kpp:32: warning: the return of 'w' copies or moves it, not built in the result's place: the variable's type, const Wire, is not the returned std::Optional<Wire>: a copy or a conversion
 // warning: named_return_copy_warnings.kpp:38: warning: the return of 'w' copies or moves it, not built in the result's place: two variables are returned
 // warning: named_return_copy_warnings.kpp:40: warning: the return of 'none' copies or moves it, not built in the result's place: two variables are returned
 struct Wire

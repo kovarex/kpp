@@ -2685,7 +2685,7 @@ auto GlobalScope::Impl::sameFunction(FunctionDecl* a, FunctionDecl* b) -> bool
   // [dcl.link] 5: the later declaration takes the earlier one's linkage), as Lua's
   // lua_getnresults is in lua.kpp and ldebug.kpp.
   // (--std-scope's bridge, Lookup.hpp: until programs write std::, the global scope and std are one overload set)
-  auto home = [this](FunctionDecl* f) { Scope* s = homeScope(f); return s == stdScope ? &root : s; };
+  auto home = [this](FunctionDecl* f) { Scope* s = homeScope(f); return s == stdScope && !noBridge ? &root : s; };
   if (!(isCFunction(a) && isCFunction(b)) && home(a) != home(b))
     return false;
   // Two definitions of one signature that constraints tell apart are two overloads (`requires A<T>`

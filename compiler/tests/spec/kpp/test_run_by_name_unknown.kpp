@@ -4,9 +4,9 @@
 suite A
 {
   test Same { }
-  test Unknown { runTest("Nothing"); println("not reached"); }
-  test Ambiguous { runTest("Same"); println("not reached"); }
-  test Itself { runTest("A.Itself"); println("not reached"); }
+  test Unknown { runTest("Nothing"); std::println("not reached"); }
+  test Ambiguous { runTest("Same"); std::println("not reached"); }
+  test Itself { runTest("A.Itself"); std::println("not reached"); }
 }
 
 suite B

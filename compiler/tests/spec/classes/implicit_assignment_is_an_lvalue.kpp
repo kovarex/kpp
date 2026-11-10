@@ -50,7 +50,7 @@ int main()
 {
   Ops o, o2;
   o2.v = 5;
-  int a1 = (o = o2)(0), a2 = (o = o2) + 0, a3 = (o = o2)[0], a4 = *(o = o2), a5 = -(o = o2), a6 = (o = Ops())(0), a7 = (o = move(o2))(0);
+  int a1 = (o = o2)(0), a2 = (o = o2) + 0, a3 = (o = o2)[0], a4 = *(o = o2), a5 = -(o = o2), a6 = (o = Ops())(0), a7 = (o = std::move(o2))(0);
   printf("ops %d %d %d %d %d %d %d\n", a1, a2, a3, a4, a5, a6, a7);
   Ops& r = (o = o2);
   r.v = 9;

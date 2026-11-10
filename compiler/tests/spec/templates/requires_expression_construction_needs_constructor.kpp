@@ -11,7 +11,7 @@ struct FromInt
 template<typename T>
 bool makesView(const T& value)
 {
-  if constexpr (requires { StringView(value); })
+  if constexpr (requires { std::StringView(value); })
     return true;
   else
     return false;

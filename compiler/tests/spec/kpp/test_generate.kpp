@@ -7,8 +7,8 @@ suite Saves
 
   generate EachSave
   {
-    Vector<String> names{"tutorial", "space-age"};
-    for (const String& name : names)
+    std::Vector<std::String> names{"tutorial", "space-age"};
+    for (const std::String& name : names)
       this.addTest(name, [name] { check(name.size() > 0); });
   }
 

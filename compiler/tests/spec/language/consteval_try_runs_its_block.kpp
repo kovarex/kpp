@@ -118,6 +118,6 @@ static_assert(nested(1) == 8);
 int main()
 {
   int r = blockOf(200);
-  println(blockOf(2), " ", returnsFromTheBlock(4), " ", loopsThroughIt(), " ", functionTryBlock(2), " ", Built(2).v, " ", destroysItsLocals(), " ", nested(1), " ", r);
+  std::println(blockOf(2), " ", returnsFromTheBlock(4), " ", loopsThroughIt(), " ", functionTryBlock(2), " ", Built(2).v, " ", destroysItsLocals(), " ", nested(1), " ", r);
   return 0;
 }

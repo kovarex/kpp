@@ -3,10 +3,10 @@
 // exit: 0
 suite Order
 {
-  test Zebra { println("Zebra"); }
-  test Apple { println("Apple"); }
+  test Zebra { std::println("Zebra"); }
+  test Apple { std::println("Apple"); }
 
   void helper() {}
 
-  test Mango { println("Mango"); }
+  test Mango { std::println("Mango"); }
 }

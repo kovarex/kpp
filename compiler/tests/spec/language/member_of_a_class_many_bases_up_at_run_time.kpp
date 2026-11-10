@@ -1,6 +1,6 @@
 // spec: code generation follows a class however deep it is, as constant evaluation does (language/constants_and_arrow_chains_of_deep_classes): a member and a conversion 100 bases up, a default member initializer, a destructor, copying and assigning 40 members in, a virtual call and destruction 40 bases up, a constant object 80 members deep, an operator-> chain of 200, a parameter pack 200 expression levels down (clang 19's output)
 int destroyed = 0;
-void println2(int a, int b) { println(a, " ", b); }
+void println2(int a, int b) { std::println(a, " ", b); }
 struct D0 { int v = 5; };
 struct D1 : D0 { };
 struct D2 : D1 { };

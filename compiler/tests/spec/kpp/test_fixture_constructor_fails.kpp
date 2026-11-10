@@ -4,18 +4,18 @@
 class Refuses
 {
 public:
-  Refuses() { throw RuntimeError("no map"); }
+  Refuses() { throw std::RuntimeError("no map"); }
 };
 
 class Leaks
 {
 public:
-  ~Leaks() noexcept(false) { throw RuntimeError("an entity leaked"); }
+  ~Leaks() noexcept(false) { throw std::RuntimeError("an entity leaked"); }
 };
 
 suite Fixtures
 {
-  test Building : Refuses { println("not reached"); }
-  test Destroying : Leaks { println("body ran"); }
-  test After { println("after"); }
+  test Building : Refuses { std::println("not reached"); }
+  test Destroying : Leaks { std::println("body ran"); }
+  test After { std::println("after"); }
 }

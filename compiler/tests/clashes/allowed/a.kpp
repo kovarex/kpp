@@ -7,6 +7,6 @@ const auto half = 0.5;
 template<class T, class = void>
 constexpr bool hasBig = false;
 template<class T>
-constexpr bool hasBig<T, VoidT<typename T::Big>> = true;
+constexpr bool hasBig<T, std::VoidT<typename T::Big>> = true;
 struct Large { using Big = int; };
 Count fromA() { return Cell{}.v + int(half * 2) + (hasBig<Large> ? 10 : 0) + (hasBig<Cell> ? 100 : 0); }

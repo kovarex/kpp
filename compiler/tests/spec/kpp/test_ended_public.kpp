@@ -14,7 +14,7 @@ suite Clearing
       }
       catch (const TestEnded&)
       {
-        println("caught");
+        std::println("caught");
       }
     }
   };

@@ -24,6 +24,6 @@ test squareOfANegative
 
 int main()
 {
-  println("main is not part of a test build");
+  std::println("main is not part of a test build");
   return 3;
 }

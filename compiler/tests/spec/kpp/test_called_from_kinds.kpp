@@ -35,6 +35,6 @@ suite Kinds
   test Recursive { recursive(2); }
   test InLambda { auto f = []() { return freeTemplate(10); }; f(); }
   test FunctionPointer { int (*p)(int) = &recursive; p(0); }
-  test ThroughFunction { Function<int(int)> f = recursive; f(0); }
+  test ThroughFunction { std::Function<int(int)> f = recursive; f(0); }
   test Caught { try { Value a(1); } catch (const TestEnded&) { } check(false, "after the catch: no frame left"); }
 }

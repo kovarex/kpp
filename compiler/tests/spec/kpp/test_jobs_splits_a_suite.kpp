@@ -18,33 +18,33 @@ else
 
 // This run's name: the first process makes it before it starts the workers, which inherit it, so
 // two runs of the snippet at once share no directory.
-String nameThisRun()
+std::String nameThisRun()
 {
   const char* variable = "KPP_SPEC_TEST_JOBS_SPLITS_A_SUITE";
-  if (const char* inherited = getenv(variable); inherited && inherited[0] != 0)
-    return String(inherited);
-  String name;
-  name << "kpp-spec-test-jobs-splits-a-suite-" << processId() << "-" << SteadyClock::now().time_since_epoch().count();
+  if (const char* inherited = std::getenv(variable); inherited && inherited[0] != 0)
+    return std::String(inherited);
+  std::String name;
+  name << "kpp-spec-test-jobs-splits-a-suite-" << processId() << "-" << std::SteadyClock::now().time_since_epoch().count();
   setVariable(variable, name.c_str());
   return name;
 }
 
-String runName = nameThisRun();
+std::String runName = nameThisRun();
 
-filesystem::path runDirectory() { return filesystem::temp_directory_path() / runName; }
+std::filesystem::path runDirectory() { return std::filesystem::temp_directory_path() / runName; }
 
 // Marks this test's start, waits for the other's and marks that it saw it.
 void meet(const char* self, const char* other)
 {
-  filesystem::create_directories(runDirectory() / (String(self) << ".started"));
-  auto limit = SteadyClock::now() + Seconds(60);
-  while (!filesystem::exists(runDirectory() / (String(other) << ".started")))
+  std::filesystem::create_directories(runDirectory() / (std::String(self) << ".started"));
+  auto limit = std::SteadyClock::now() + std::Seconds(60);
+  while (!std::filesystem::exists(runDirectory() / (std::String(other) << ".started")))
   {
-    if (SteadyClock::now() > limit)
+    if (std::SteadyClock::now() > limit)
       return;
-    thisThread::sleepFor(Milliseconds(10));
+    std::thisThread::sleepFor(std::Milliseconds(10));
   }
-  filesystem::create_directory(runDirectory() / (String(self) << ".saw"));
+  std::filesystem::create_directory(runDirectory() / (std::String(self) << ".saw"));
 }
 
 suite Long
@@ -58,7 +58,7 @@ void testsTeardown()
 {
   if (testWorker() != 0)
     return;
-  bool together = filesystem::exists(runDirectory() / "First.saw") && filesystem::exists(runDirectory() / "Second.saw");
-  filesystem::remove_all(runDirectory());
-  println(StringView(together ? "together" : "one after the other"));
+  bool together = std::filesystem::exists(runDirectory() / "First.saw") && std::filesystem::exists(runDirectory() / "Second.saw");
+  std::filesystem::remove_all(runDirectory());
+  std::println(std::StringView(together ? "together" : "one after the other"));
 }

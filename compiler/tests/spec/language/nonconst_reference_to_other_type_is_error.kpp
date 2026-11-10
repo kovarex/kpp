@@ -2,7 +2,7 @@
 // found by thread B (2026-11-05), reading codegen's argumentText; the checker reports it since (thread D's checkReferenceArguments), codegen's own error behind it
 // error: nonconst_reference_to_other_type_is_error.kpp:27: error: the argument for d (double&) of setHalf is no lvalue of its type (it is int32)
 // error: nonconst_reference_to_other_type_is_error.kpp:33: error: the argument for h (Holder&) of bump is no lvalue of its type (it is Box)
-// error: nonconst_reference_to_other_type_is_error.kpp:38: error: the argument for s (String&) of append is no lvalue of its type
+// error: nonconst_reference_to_other_type_is_error.kpp:38: error: the argument for s (std::String&) of append is no lvalue of its type
 // error: nonconst_reference_to_other_type_is_error.kpp:42: error: the argument for p (Point&) of moveRight is no lvalue of its type (it is a brace list)
 class Box
 {

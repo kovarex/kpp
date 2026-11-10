@@ -1,6 +1,5 @@
 // spec: a program's own `min(int, int)` converts doubles (clang 2): the library's template is std::min and no candidate
 // factorio: none yet; D's review of c5253532 (2026-11-09)
-// pending: the bridge's one overload set: the library's template wins: goes with the bridge at step 4
 int min(int a, int b)
 {
   return a < b ? a : b;

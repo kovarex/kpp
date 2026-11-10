@@ -55,7 +55,7 @@ public:
     assert(!this->heap.empty());
     ContainerSize last = this->heap.size() - 1;
     if (last > 0)
-      ::swap(this->heap[0], this->heap[last]);
+      std::swap(this->heap[0], this->heap[last]);
     this->heap.pop_back();
     if (!this->heap.empty())
       this->siftDown(0);
@@ -64,8 +64,8 @@ public:
   void swap(PriorityQueue<T, Container, Compare>& other) noexcept(isNothrowMoveConstructible<Container> && isNothrowMoveAssignable<Container> &&
                                                                  isNothrowMoveConstructible<Compare> && isNothrowMoveAssignable<Compare>)
   {
-    ::swap(this->heap, other.heap);
-    ::swap(this->compare, other.compare);
+    std::swap(this->heap, other.heap);
+    std::swap(this->compare, other.compare);
   }
 
   // kpp addition: removes every element.
@@ -85,7 +85,7 @@ private:
       ContainerSize parent = (i - 1) / 2;
       if (!this->compare(this->heap[parent], this->heap[i]))
         break;
-      ::swap(this->heap[parent], this->heap[i]);
+      std::swap(this->heap[parent], this->heap[i]);
       i = parent;
     }
   }
@@ -104,7 +104,7 @@ private:
         largest = right;
       if (largest == i)
         break;
-      ::swap(this->heap[i], this->heap[largest]);
+      std::swap(this->heap[i], this->heap[largest]);
       i = largest;
     }
   }

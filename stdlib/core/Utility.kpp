@@ -320,8 +320,8 @@ struct Pair
 
   void swap(Pair<A, B>& other) noexcept(isNothrowMoveConstructible<A> && isNothrowMoveAssignable<A> && isNothrowMoveConstructible<B> && isNothrowMoveAssignable<B>)
   {
-    ::swap(this->first, other.first);
-    ::swap(this->second, other.second);
+    std::swap(this->first, other.first);
+    std::swap(this->second, other.second);
   }
 };
 

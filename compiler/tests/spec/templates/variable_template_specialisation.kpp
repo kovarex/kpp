@@ -1,9 +1,9 @@
 // spec: variable template specialisations, partial and full, chosen as C++ does: the most specialised match, a VoidT detection argument matching only when its member exists, a variable template used inside another's initializer
-// found in the game's SerialiserHelper (`force_memcpy_save<T, VoidT<T::force_memcpy_save>> = true` inside is_memcpy_saveable: 125 instantiations) and the library's tupleSize
+// found in the game's SerialiserHelper (`force_memcpy_save<T, std::VoidT<T::force_memcpy_save>> = true` inside is_memcpy_saveable: 125 instantiations) and the library's tupleSize
 template<class T, class = void>
 constexpr bool force_memcpy_save = false;
 template<class T>
-constexpr bool force_memcpy_save<T, VoidT<T::force_memcpy_save>> = true;
+constexpr bool force_memcpy_save<T, std::VoidT<T::force_memcpy_save>> = true;
 
 template<class T>
 inline constexpr bool is_memcpy_saveable = std::isFundamental<T> && !std::isPointer<T> && !std::isNullPointer<T> || force_memcpy_save<T>;

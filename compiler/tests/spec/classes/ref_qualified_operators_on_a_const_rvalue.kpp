@@ -30,19 +30,19 @@ struct Ops
 };
 constexpr Ops cx;
 constexpr const Ops constFour() { return Ops(); }
-constexpr int a1 = move(cx)(), a2 = constFour()(), a3 = *move(cx), a4 = *constFour(), a5 = move(cx)[0], a6 = constFour()[0];
-constexpr int b1 = -move(cx), b2 = -constFour(), b3 = move(cx) + 0, b4 = constFour() + 0, b5 = cx(), b6 = Ops()();
+constexpr int a1 = std::move(cx)(), a2 = constFour()(), a3 = *std::move(cx), a4 = *constFour(), a5 = std::move(cx)[0], a6 = constFour()[0];
+constexpr int b1 = -std::move(cx), b2 = -constFour(), b3 = std::move(cx) + 0, b4 = constFour() + 0, b5 = cx(), b6 = Ops()();
 constexpr int local()
 {
   Ops o;
   const Ops c;
-  return o() * 1000 + c() * 100 + move(c)() * 10 + move(o)();
+  return o() * 1000 + c() * 100 + std::move(c)() * 10 + std::move(o)();
 }
 constexpr int l = local();
 int main()
 {
   const Ops rc;
-  int r1 = move(rc)(), r2 = constFour()(), r3 = *move(rc), r4 = move(rc)[0], r5 = -constFour(), r6 = constFour() + 0;
+  int r1 = std::move(rc)(), r2 = constFour()(), r3 = *std::move(rc), r4 = std::move(rc)[0], r5 = -constFour(), r6 = constFour() + 0;
   printf("%d %d %d %d %d %d\n", a1, a2, a3, a4, a5, a6);
   printf("%d %d %d %d %d %d\n", b1, b2, b3, b4, b5, b6);
   printf("%d\n", l);

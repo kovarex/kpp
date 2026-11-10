@@ -30,7 +30,7 @@ $helpers = New-Object Text.StringBuilder
 for ($i = 0; $i -lt 20000; $i++) { [void]$helpers.Append("int helper$i(int v) { return v * $($i % 7 + 1) + call([v]() { return v + $i; }); }`n") }
 $lambdas = New-Object Text.StringBuilder
 for ($i = 0; $i -lt 3000; $i++) { [void]$lambdas.Append("  total += call([&total]() { return total % $($i % 13 + 2) + $i; });`n") }
-$main = "int main()`n{`n  int total = 0;`n$lambdas  total += helper0(1);`n  println(total);`n  return 0;`n}`n"
+$main = "int main()`n{`n  int total = 0;`n$lambdas  total += helper0(1);`n  std::println(total);`n  return 0;`n}`n"
 [IO.File]::WriteAllText("$work\src\helpers.kpp", $helpers.ToString())
 [IO.File]::WriteAllText("$work\src\main.kpp", $main)
 

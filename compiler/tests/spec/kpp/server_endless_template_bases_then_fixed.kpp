@@ -6,7 +6,7 @@ int main()
 {
   G<0> g;
   Box<int> b;
-  println(b.v);
+  std::println(b.v);
   return 0;
 }
 // error: instances of G are nested more than 1024 deep
@@ -18,7 +18,7 @@ int main()
 {
   G<0> g;
   Box<int> b;
-  println(b.v);
+  std::println(b.v);
   return 0;
 }
 // expect: 7

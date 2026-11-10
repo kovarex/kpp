@@ -7,7 +7,7 @@ int helper()
 int broken() { return nosuchname; }
 int main()
 {
-  println(helper());
+  std::println(helper());
   return 0;
 }
 // error: server_kept_error_moves_with_its_line.kpp:5: error: 'nosuchname' is not declared
@@ -21,7 +21,7 @@ int helper()
 int broken() { return nosuchname; }
 int main()
 {
-  println(helper());
+  std::println(helper());
   return 0;
 }
 // error: server_kept_error_moves_with_its_line.kpp:7: error: 'nosuchname' is not declared

@@ -6,15 +6,15 @@ int runs = 0;
 test void testBeforeEach()
 {
   ++runs;
-  println("before ", runs);
+  std::println("before ", runs);
   require(runs != 2, "second");
 }
 
-void testAfterEach() { println("after ", runs); }
+void testAfterEach() { std::println("after ", runs); }
 
 suite Hooks
 {
-  test First { println("first"); }
-  test Second { println("not reached"); }
-  test Third { println("third"); }
+  test First { std::println("first"); }
+  test Second { std::println("not reached"); }
+  test Third { std::println("third"); }
 }

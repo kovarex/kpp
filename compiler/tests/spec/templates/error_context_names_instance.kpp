@@ -1,5 +1,5 @@
 // spec: an error in a template instance's code names the instance with its arguments and the function that asked for it, as the program writes them (`sum<int32>(const Vector<int32>&)`, `main()`): two instances are two errors
-// error: error_context_names_instance.kpp:7: error: a pointer (int32*) does not convert to int32 without a cast (in sum<int32>(const Vector<int32>&), requested by main())
+// error: error_context_names_instance.kpp:7: error: a pointer (int32*) does not convert to int32 without a cast (in sum<int32>(const std::Vector<int32>&), requested by main())
 template<typename T>
 int sum(const std::Vector<T>& values)
 {

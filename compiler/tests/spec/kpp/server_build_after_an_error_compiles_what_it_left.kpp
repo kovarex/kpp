@@ -4,7 +4,7 @@ int shown() { return 2; }
 int main()
 {
   static_assert(shown() == 2);
-  println(shown());
+  std::println(shown());
   return 0;
 }
 // expect: 2
@@ -13,7 +13,7 @@ int shown() { return 3; }
 int main()
 {
   static_assert(shown() == 2);
-  println(shown());
+  std::println(shown());
   return 0;
 }
 // error: static assertion failed
@@ -21,7 +21,7 @@ int main()
 int shown() { return 3; }
 int main()
 {
-  println(shown());
+  std::println(shown());
   return 0;
 }
 // expect: 3
@@ -30,7 +30,7 @@ int shown() { return 3; }
 int broken() { return missing; }
 int main()
 {
-  println(shown() + 1);
+  std::println(shown() + 1);
   return 0;
 }
 // error: 'missing' is not declared
@@ -38,7 +38,7 @@ int main()
 int shown() { return 3; }
 int main()
 {
-  println(shown() + 1);
+  std::println(shown() + 1);
   return 0;
 }
 // expect: 4

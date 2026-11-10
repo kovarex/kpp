@@ -187,9 +187,9 @@ if (Run 'clibs')
   {
 
     New-Item -ItemType Directory -Force 'tests', 'include' | Out-Null
-    Set-Content 'src\main.kpp' "int main()`n{`n  println(`"game `", answer());`n  return 0;`n}"
+    Set-Content 'src\main.kpp' "int main()`n{`n  std::println(`"game `", answer());`n  return 0;`n}"
     Set-Content 'src\answer.kpp' "int answer() { return GREETING_NUMBER; }"
-    Set-Content 'tests\tests.kpp' "int main()`n{`n  println(`"tests `", plus_one(answer()));`n  return 0;`n}"
+    Set-Content 'tests\tests.kpp' "int main()`n{`n  std::println(`"tests `", plus_one(answer()));`n  return 0;`n}"
     Set-Content 'include\greeting.h' "#define GREETING_NUMBER 41`nint plus_one(int value);"
     # A C library built from its sources: plus.c, and broken.c left out by exclude.
     New-Item -ItemType Directory -Force 'libs\plus' | Out-Null
@@ -324,7 +324,7 @@ if (Run 'libraries')
   {
     $appBuild = "void build(Project& project)`n{`n  project.executable(`"app`", {`"src`"});`n  project.use(`"greet`", `"0.2`");`n  project.configuration(`"release`").config(`"greet::suffix`", `".`");`n}"
     Set-Content 'build.kpp' $appBuild
-    Set-Content 'src\main.kpp' "int main()`n{`n  println(greet::greeting(`"app`"));`n  return 0;`n}"
+    Set-Content 'src\main.kpp' "int main()`n{`n  std::println(greet::greeting(`"app`"));`n  return 0;`n}"
     $greet = @'
 void build(Project& project)
 {
@@ -338,11 +338,11 @@ void build(Project& project)
 }
 '@
     Set-Content 'libraries\greet\build.kpp' $greet
-    Set-Content 'libraries\greet\src\greet.kpp' "String greeting(StringView name) { return shout(`"hello`") + name + config::greet::suffix; }`ntest greeting`n{`n  check(greeting(`"a`") == `"hello! a`");`n}"
+    Set-Content 'libraries\greet\src\greet.kpp' "std::String greeting(std::StringView name) { return shout(`"hello`") + name + config::greet::suffix; }`ntest greeting`n{`n  check(greeting(`"a`") == `"hello! a`");`n}"
     Set-Content 'libraries\greet\tests\more.kpp' "test greetingTwice`n{`n  check(greeting(`"b`") == `"hello! b`");`n  check(greeting(`"c`") == `"wrong`");`n}"
     $text = "void build(Project& project)`n{`n  Library& text = project.library(`"text`");`n  text.version = `"1.0.0`";`n  text.unscoped = true;`n}"
     Set-Content 'libraries\text\build.kpp' $text
-    Set-Content 'libraries\text\src\text.kpp' "String shout(StringView s) { String r = s; r << `"! `"; return r; }"
+    Set-Content 'libraries\text\src\text.kpp' "std::String shout(std::StringView s) { std::String r = s; r << `"! `"; return r; }"
     $output = Kpp @('--no-server')
     $printed = if ($code -eq 0) { & '.\build\debug\app.exe' } else { '' }
     if ($code -ne 0 -or "$printed" -ne 'hello! app') { Fail "an executable using a library: exit $code, printed '$printed'`n$($output -join "`n")" }
@@ -356,10 +356,10 @@ void build(Project& project)
     }
     if ($filters -notmatch 'Filter Include="Libraries"') { Fail "Visual Studio's folder Libraries is missing:`n$filters" }
     # greet is scoped: a bare greeting() from the program is an error; text is unscoped (shout bare in greet).
-    Set-Content 'src\main.kpp' "int main()`n{`n  println(greeting(`"app`"));`n  return 0;`n}"
+    Set-Content 'src\main.kpp' "int main()`n{`n  std::println(greeting(`"app`"));`n  return 0;`n}"
     $output = (Kpp @('--no-server')) -join "`n"
     if ($code -eq 0 -or $output -notmatch 'did you mean greet::greeting') { Fail "a scoped library's name used bare: exit $code`n$output" }
-    Set-Content 'src\main.kpp' "int main()`n{`n  println(greet::greeting(`"app`"));`n  return 0;`n}"
+    Set-Content 'src\main.kpp' "int main()`n{`n  std::println(greet::greeting(`"app`"));`n  return 0;`n}"
     foreach ($case in @(@(@('release'), 'hello! app.'), @(@('--config', 'greet::suffix=?'), 'hello! app?')))
     {
       $output = Kpp ($case[0] + @('--no-server', '--run'))
@@ -418,12 +418,12 @@ void build(Project& project)
     # copy, comes from the libraries\ beside stdlib\ (the checkout's, for this kpp); a copy in the
     # project's libraries\ comes first.
     Set-Content 'build.kpp' "void build(Project& project)`n{`n  project.executable(`"app`", {`"src`"});`n  project.use(`"base64`");`n}"
-    Set-Content 'src\main.kpp' "int main()`n{`n  println(base64::base64Encode(`"kpp`"));`n  return 0;`n}"
+    Set-Content 'src\main.kpp' "int main()`n{`n  std::println(base64::base64Encode(`"kpp`"));`n  return 0;`n}"
     $output = (Kpp @('--no-server', '--run')) -join "`n"
     if ($code -ne 0 -or $output -notmatch '(?m)^a3Bw$') { Fail "base64 from kpp's own libraries: exit $code`n$output" }
     New-Item -ItemType Directory -Force 'libraries\base64\src' | Out-Null
     Set-Content 'libraries\base64\build.kpp' "void build(Project& project)`n{`n  Library& base64 = project.library(`"base64`");`n  base64.version = `"9.0.0`";`n  base64.root(`"src`");`n}"
-    Set-Content 'libraries\base64\src\Base64.kpp' "String base64Encode(StringView data) { return `"the project's own base64`"; }"
+    Set-Content 'libraries\base64\src\Base64.kpp' "std::String base64Encode(std::StringView data) { return `"the project's own base64`"; }"
     $output = (Kpp @('--no-server', '--run')) -join "`n"
     if ($code -ne 0 -or $output -notmatch "(?m)^the project's own base64$") { Fail "a project's own base64 before kpp's: exit $code`n$output" }
     cmd /c rd /s /q 'libraries\base64'
@@ -447,7 +447,7 @@ if (Run 'syslibs')
     New-Item -ItemType Directory -Force 'libraries\sys\src' | Out-Null
     $sysBuild = "void build(Project& project)`n{`n  Library& sys = project.library(`"sys`");`n  sys.version = `"1.0.0`";`n  LINKS`n}"
     Set-Content 'libraries\sys\src\sys.kpp' "extern `"C`" unsigned long GetFileVersionInfoSizeA(const char* name, unsigned long* handle);`nbool versioned() { unsigned long h = 0; return GetFileVersionInfoSizeA(`"kernel32.dll`", &h) > 0; }`ntest kernel32HasAVersion`n{`n  check(versioned());`n}"
-    Set-Content 'src\main.kpp' "int main()`n{`n  if (sys::versioned())`n    println(`"versioned`");`n  else`n    println(`"none`");`n  return 0;`n}"
+    Set-Content 'src\main.kpp' "int main()`n{`n  if (sys::versioned())`n    std::println(`"versioned`");`n  else`n    std::println(`"none`");`n  return 0;`n}"
     Set-Content 'build.kpp' "void build(Project& project)`n{`n  Executable& app = project.executable(`"app`", {`"src`"});`n  app.use(`"sys`");`n}"
     Set-Content 'libraries\sys\build.kpp' ($sysBuild -replace 'LINKS', "sys.systemLibrary(`"version`", Platform::Windows);`n  sys.systemLibrary(`"nosuchlibrary`", Platform::FreeBSD);")
     $output = Kpp @('--no-server', '--run')
@@ -485,7 +485,7 @@ if (Run 'syslibs')
     # target's argument), which configure(cell) sees and describe.txt keeps. A --target configure(cell)
     # adds itself comes too late for it: an error before the build, never Windows' steps in another's.
     $cellBuild = "void build(Project& project)`n{`n  Executable& app = project.executable(`"app`", {`"src`"});`n  app.use(`"sys`");`n  app.systemLibrary(`"version`");`n  TARGET`n}`n" +
-                 "void configure(Cell& cell)`n{`n  String c = `"echo `";`n  c << StringView(config::platformName(cell.platform)) << `">platform.txt`";`n  cell.target.afterBuild(c);`n  CONFIGURE`n}"
+                 "void configure(Cell& cell)`n{`n  std::String c = `"echo `";`n  c << std::StringView(config::platformName(cell.platform)) << `">platform.txt`";`n  cell.target.afterBuild(c);`n  CONFIGURE`n}"
     foreach ($case in @(@('', '', @(), 'windows'), @('', '', @('--target', 'freebsd', '--run'), 'freebsd'),
                         @('app.argument("--target");  app.argument("linux");', '', @('--run'), 'linux'),
                         @('app.argument("--target");  app.argument("linux");', '', @('--target', 'windows'), 'windows'),
@@ -518,7 +518,7 @@ if (Run 'syslibs')
     {
       New-Item -ItemType Directory -Force 'libraries\bsd\src' | Out-Null
       Set-Content 'libraries\bsd\src\bsd.kpp' "int answer() { return 42; }"
-      Set-Content 'src\main.kpp' "int main()`n{`n  println(bsd::answer());`n  return 0;`n}"
+      Set-Content 'src\main.kpp' "int main()`n{`n  std::println(bsd::answer());`n  return 0;`n}"
       Set-Content 'build.kpp' "void build(Project& project)`n{`n  Executable& app = project.executable(`"app`", {`"src`"});`n  app.use(`"bsd`");`n}"
       foreach ($platform in @('FreeBSD', 'Linux'))
       {
@@ -536,7 +536,7 @@ if (Run 'syslibs')
     New-Item -ItemType Directory -Force 'libraries\deflate\src' | Out-Null
     Set-Content 'libraries\deflate\build.kpp' "void build(Project& project)`n{`n  Library& deflate = project.library(`"deflate`");`n  deflate.version = `"1.0.0`";`n}"
     Set-Content 'libraries\deflate\src\deflate.kpp' "// How hard it tries.`nconfig i32 level = 6;`nconfig bool checked;`nint levelOf() { return config::deflate::level; }"
-    Set-Content 'src\main.kpp' "int main()`n{`n  println(deflate::levelOf(), `" `", config::deflate::checked);`n  return 0;`n}"
+    Set-Content 'src\main.kpp' "int main()`n{`n  std::println(deflate::levelOf(), `" `", config::deflate::checked);`n  return 0;`n}"
     $deflateApp = "void build(Project& project)`n{`n  Executable& app = project.executable(`"app`", {`"src`"});`n  USE`n}"
     Set-Content 'build.kpp' ($deflateApp -replace 'USE', 'app.use("deflate");')
     $output = (Kpp @('--no-server')) -join "`n"
@@ -563,7 +563,7 @@ if (Run 'syslibs')
     Set-Content 'libraries\conv\build.kpp' "void build(Project& project)`n{`n  Library& conv = project.library(`"conv`");`n  conv.version = `"1.0.0`";`n  conv.root(`".`");`n}"
     Set-Content 'libraries\conv\conv.kpp' "int twice(int x) { return 2 * x; }"
     Set-Content 'libraries\conv\conv.h' "this is a C header, not kpp"
-    Set-Content 'src\main.kpp' "int main()`n{`n  println(conv::twice(21));`n  return 0;`n}"
+    Set-Content 'src\main.kpp' "int main()`n{`n  std::println(conv::twice(21));`n  return 0;`n}"
     $convApp = "void build(Project& project)`n{`n  Executable& app = project.executable(`"app`", {`"src`"});`n  app.use(`"conv`");`n  app.argument(`"--ext`");`n  app.argument(`".kpp`");`n}"
     Set-Content 'build.kpp' $convApp
     $output = Kpp @('--no-server', '--run')
@@ -586,8 +586,8 @@ if (Run 'matrix')
   Push-Location $matrix
   try
   {
-    Set-Content 'src\main.kpp' "int main()`n{`n  println(`"main `", config::debug, `" `", config::level, `" `", config::steam);`n  return 0;`n}"
-    Set-Content 'tests\tests.kpp' "int main()`n{`n  println(`"tests `", config::level, `" `", config::unit);`n  return 0;`n}"
+    Set-Content 'src\main.kpp' "int main()`n{`n  std::println(`"main `", config::debug, `" `", config::level, `" `", config::steam);`n  return 0;`n}"
+    Set-Content 'tests\tests.kpp' "int main()`n{`n  std::println(`"tests `", config::level, `" `", config::unit);`n  return 0;`n}"
     $matrixBuild = @'
 void build(Project& project)
 {
@@ -615,7 +615,7 @@ void configure(Cell& cell)
   // made here, for the build step and the debugger alike.
   if (cell.target.name == "main")
   {
-    String name = String(cell.configuration.name == "debug" ? "Debug" : cell.configuration.name == "release" ? "Release" : "FastDebug") + "x64";
+    std::String name = std::String(cell.configuration.name == "debug" ? "Debug" : cell.configuration.name == "release" ? "Release" : "FastDebug") + "x64";
     cell.target.afterBuild("cmd /c \"if not exist bin\\" + name + " mkdir bin\\" + name + "\" && copy /y \"{exe}\" bin\\" + name + "\\ >nul");
     cell.target.debug("bin/" + name + "/main.exe");
   }
@@ -755,7 +755,7 @@ if (Run 'runfile')
   Push-Location $project
   try
   {
-    $body = '(int argc, char** argv) { print("NAME"); for (int i = 1; i < argc; ++i) print(" ", StringView(argv[i])); println(); return CODE; }'
+    $body = '(int argc, char** argv) { std::print("NAME"); for (int i = 1; i < argc; ++i) std::print(" ", std::StringView(argv[i])); std::println(); return CODE; }'
     Set-Content 'build.kpp' "void build(Project& project)`n{`n  project.executable(`"app`", {`"src`"});`n}"
     Set-Content 'src\main.kpp' ('int main' + $body.Replace('NAME', 'project').Replace('CODE', '0'))
     Set-Content 'hello.kpp' ('int main' + $body.Replace('NAME', 'file').Replace('CODE', '7'))
@@ -802,7 +802,7 @@ if (Run 'readonly')
     Set-Content '..\lib\build.kpp' "void build(Project& project)`n{`n  Library& lib = project.library(`"lib`");`n  lib.version = `"1.0.0`";`n}"
     Set-Content '..\lib\src\lib.kpp' "config i32 answer = 42;`nint answer() { return config::lib::answer; }"
     Set-Content 'build.kpp' "void build(Project& project)`n{`n  Executable& app = project.executable(`"app`", {`"src`"});`n  app.use(`"lib`", local(`"../lib`"));`n}"
-    Set-Content 'src\main.kpp' "int main() { println(lib::answer()); return 0; }"
+    Set-Content 'src\main.kpp' "int main() { std::println(lib::answer()); return 0; }"
     $me = "$env:USERDOMAIN\$env:USERNAME"
     icacls "$readonly\lib" /deny "${me}:(OI)(CI)(WD,AD,WEA,WA)" /Q | Out-Null
     $writable = try { Set-Content '..\lib\probe.txt' 'x' -ErrorAction Stop; $true } catch { $false }
@@ -832,7 +832,7 @@ if (Run 'linkinputs')
   Push-Location $inputs
   try
   {
-    Set-Content 'src\main.kpp' "struct Point`n{`n  i32 x = 1;`n};`nint main()`n{`n  Point p;`n  println(p.x);`n  return 0;`n}"
+    Set-Content 'src\main.kpp' "struct Point`n{`n  i32 x = 1;`n};`nint main()`n{`n  Point p;`n  std::println(p.x);`n  return 0;`n}"
     Set-Content 'build.kpp' "void build(Project& project)`n{`n  Executable& app = project.executable(`"app`", {`"src`"});`n  app.natvis(`"point.natvis`");`n  app.argument(`"--debug-info`");`n}"
     $natvis = '<?xml version="1.0" encoding="utf-8"?><AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010"><Type Name="Point"><DisplayString>RULE {x}</DisplayString></Type></AutoVisualizer>'
     foreach ($rule in 'firstrule', 'secondrule')
@@ -917,7 +917,7 @@ if (Run 'paths')
     Set-Content 'include\where.h' 'const char* c_file(void);'
     Set-Content 'libs\where\where.c' "#include `"where.h`"`nconst char* c_file(void) { return __FILE__; }"
     Set-Content 'build.kpp' "void build(Project& project)`n{`n  CLibrary& where = project.cLibrary(`"where`");`n  where.source(`"libs/where`");`n  where.include(`"include`");`n  Executable& paths = project.executable(`"paths`", {`"src`"});`n  paths.link(`"where`");`n  paths.cInclude(`"include`");`n}"
-    Set-Content 'src\main.kpp' "extern `"C`" import `"where.h`";`nvoid where(CallerLocation here = caller) { println(StringView(here.file_name())); }`nint main()`n{`n  println(format(`"{}`", 1)); // (Format.kpp's release_assert in the program)`n  println(StringView(c_file()));`n  where();`n  return 0;`n}"
+    Set-Content 'src\main.kpp' "extern `"C`" import `"where.h`";`nvoid where(std::CallerLocation here = caller) { std::println(std::StringView(here.file_name())); }`nint main()`n{`n  std::println(std::format(`"{}`", 1)); // (Format.kpp's release_assert in the program)`n  std::println(std::StringView(c_file()));`n  where();`n  return 0;`n}"
     $root = (Get-Location).Path
     $stdlib = [IO.Path]::GetFullPath((Join-Path (Split-Path $KppExe) '..\..\stdlib'))
     $output = @(Kpp @('--release', '--no-server', '--run'))
@@ -967,7 +967,7 @@ if (Run 'pch')
     Set-Content 'pre\b.c' "#define B_FIRST 1`n#include `"pre.h`"`nint b_value(void) { return VALUE * B_FIRST; }"
     Set-Content 'pre\c.cpp' "// a comment`n/* and another */`n#include `"pre.h`"`n#include `"api.h`"`nint c_value(void) { return VALUE; }"
     Set-Content 'pre\own\d.c' "#include `"pre.h`"`nint d_value(void) { return VALUE; }"
-    Set-Content 'src\main.kpp' "extern `"C`" import `"api.h`";`nint main()`n{`n  println(a_value(), `" `", b_value(), `" `", c_value(), `" `", d_value());`n  return 0;`n}"
+    Set-Content 'src\main.kpp' "extern `"C`" import `"api.h`";`nint main()`n{`n  std::println(a_value(), `" `", b_value(), `" `", c_value(), `" `", d_value());`n  return 0;`n}"
     $describe = { param([string]$header) "void build(Project& project)`n{`n  CLibrary& pre = project.cLibrary(`"pre`");`n  pre.source(`"pre`");`n  pre.include(`"inc`");`n$header  Executable& app = project.executable(`"app`", {`"src`"});`n  app.link(`"pre`");`n  app.cInclude(`"inc`");`n}" }
     Set-Content 'build.kpp' (& $describe '')
     $output = @(Kpp @('release', '--no-server', '--run'))

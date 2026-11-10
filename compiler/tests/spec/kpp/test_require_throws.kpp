@@ -4,7 +4,7 @@
 int parse(int x)
 {
   if (x < 0)
-    throw RuntimeError("negative");
+    throw std::RuntimeError("negative");
   return x;
 }
 
@@ -12,16 +12,16 @@ suite Throwing
 {
   test Throws
   {
-    RuntimeError e = requireThrows<RuntimeError>(parse(-1));
-    require(StringView(e.what()) == "negative");
-    println("caught ", StringView(e.what()));
+    std::RuntimeError e = requireThrows<std::RuntimeError>(parse(-1));
+    require(std::StringView(e.what()) == "negative");
+    std::println("caught ", std::StringView(e.what()));
   }
 
   test DoesNotThrow
   {
-    Optional<RuntimeError> e = checkThrows<RuntimeError>(parse(2));
+    std::Optional<std::RuntimeError> e = checkThrows<std::RuntimeError>(parse(2));
     check(!e.hasValue());
-    requireThrows<RuntimeError>(parse(3));
-    println("not reached");
+    requireThrows<std::RuntimeError>(parse(3));
+    std::println("not reached");
   }
 }

@@ -3,7 +3,7 @@
 // exit: 1
 struct Guard
 {
-  ~Guard() { println("guard destroyed"); }
+  ~Guard() { std::println("guard destroyed"); }
 };
 
 test require
@@ -11,17 +11,17 @@ test require
   Guard guard;
   int x = 1;
   require(x == 2);
-  println("not reached");
+  std::println("not reached");
 }
 
 test assert
 {
   int x = 1;
   release_assert(x == 2);
-  println("not reached either");
+  std::println("not reached either");
 }
 
 test after
 {
-  println("still running");
+  std::println("still running");
 }

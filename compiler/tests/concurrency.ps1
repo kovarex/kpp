@@ -39,7 +39,7 @@ for ($i = 0; $i -lt 1000; $i++)
 }
 [void]$lambdas.AppendLine("int main()`n{`n  long long t = 0;")
 for ($i = 0; $i -lt 1000; $i++) { [void]$lambdas.AppendLine("  t += use$i();") }
-[void]$lambdas.AppendLine("  println(t);`n  return 0;`n}")
+[void]$lambdas.AppendLine("  std::println(t);`n  return 0;`n}")
 $programs += 'returned lambdas (1,000, written here)'
 $sources += Join-Path $work 'returned_lambdas.kpp'
 [IO.File]::WriteAllText($sources[-1], $lambdas.ToString())
@@ -61,7 +61,7 @@ for ($i = 0; $i -lt 500; $i++)
 [void]$above.AppendLine("const int base = 7;")
 [void]$above.AppendLine("int main()`n{`n  long long t = 0;")
 for ($i = 0; $i -lt 500; $i++) { [void]$above.AppendLine("  t += use$i();") }
-[void]$above.AppendLine("  println(t);`n  return 0;`n}")
+[void]$above.AppendLine("  std::println(t);`n  return 0;`n}")
 $programs += 'lambdas used above their declarations (1,000, written here)'
 $sources += Join-Path $work 'lambdas_above.kpp'
 [IO.File]::WriteAllText($sources[-1], $above.ToString())
@@ -145,9 +145,9 @@ $generic = New-Object System.Text.StringBuilder
 [void]$generic.AppendLine("  int a() { return f(1, 2); }`n  int b() { return f(3, 4); }")
 [void]$generic.AppendLine("  int c() { int (*p)(int, int) = f; return p(5, 6); }`n  int d() { int (*p)(int, int) = f; return p(7, 8); }`n};")
 [void]$generic.AppendLine("template<typename F> Caller<F> caller(F f) { return Caller<F>{f}; }")
-[void]$generic.AppendLine("template<int N> struct Holder`n{`n  Function<int(int)> f = [](int x) { return x + N; };`n  int value = 0;")
+[void]$generic.AppendLine("template<int N> struct Holder`n{`n  std::Function<int(int)> f = [](int x) { return x + N; };`n  int value = 0;")
 [void]$generic.AppendLine("  Holder() {}`n  Holder(int v) : value(v) {}`n};")
-[void]$generic.AppendLine("template<int N> int applyN(int x, Function<int(int)> f = [](int v) { return v * 3 + N; }) { return f(x); }")
+[void]$generic.AppendLine("template<int N> int applyN(int x, std::Function<int(int)> f = [](int v) { return v * 3 + N; }) { return f(x); }")
 [void]$generic.AppendLine("template<int N> struct UseDefault`n{`n  int a() { return applyN<N>(1); }`n  int b() { return applyN<N>(2); }`n};")
 for ($i = 0; $i -lt 1000; $i++)
 {
@@ -157,7 +157,7 @@ for ($i = 0; $i -lt 1000; $i++)
 }
 [void]$generic.AppendLine("int main()`n{`n  long long t = 0;")
 for ($i = 0; $i -lt 1000; $i++) { [void]$generic.AppendLine("  t += writer$i() + holders$i() + defaults$i();") }
-[void]$generic.AppendLine("  println(t);`n  return 0;`n}")
+[void]$generic.AppendLine("  std::println(t);`n  return 0;`n}")
 $genericSource = Join-Path $work 'generic_lambdas.kpp'
 [IO.File]::WriteAllText($genericSource, $generic.ToString())
 # (The returned lambdas too, with modules: a caller emits the operator on demand when it needs it before

@@ -51,13 +51,18 @@ def main():
     for path in glob.glob(os.path.join(arguments[0], '*.txt')):
         with open(path, encoding='utf-8') as f:
             for line in f:
-                kind, source, offset, name = line.rstrip('\n').split('\t')
+                kind, source, offset, name = line.rstrip('\n').split('\t')[:4]
+                if source.startswith('<'):
+                    continue # (what kpp generates: compiler/src)
                 parts = os.path.abspath(source).split(os.sep)
                 if 'build' not in parts and (not only or any(os.path.abspath(source).startswith(prefix) for prefix in only)): # (build\: what kpp generates)
                     records[source].add((int(offset), kind, name))
     counts = collections.Counter()
     listed = []
     for source, uses in sorted(records.items()):
+        if not os.path.exists(source):
+            counts['elsewhere'] += len(uses) # (a path relative to another directory: run it there too)
+            continue
         with open(source, 'rb') as f:
             data = f.read()
         edits = {}

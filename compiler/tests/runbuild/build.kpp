@@ -2,7 +2,7 @@
 void build(Project& project)
 {
   project.root("src");
-  for (StringView lib : {"SDL3/include", "SDL_Mixer/include", "Lua", "curl/include"})
+  for (std::StringView lib : {"SDL3/include", "SDL_Mixer/include", "Lua", "curl/include"})
     project.include("C:/Factorio/libraries/", lib);
   if (project.configuration == Configuration::release)
     project.root("release-only");

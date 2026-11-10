@@ -74,7 +74,7 @@ std::string configSource(const ConfigValues& values, const std::map<std::string,
     {
       const ConfigDeclaration& d = source->second.declaration;
       if (d.kind == "string")
-        s += indent + "const StringView " + name + " = \"" + escapedString(value.text) + "\";\n";
+        s += indent + "const std::StringView " + name + " = \"" + escapedString(value.text) + "\";\n";
       else if (d.kind == "enum")
         s += indent + "const " + d.type + " " + name + " = " + d.type + "::" + value.text + ";\n";
       else

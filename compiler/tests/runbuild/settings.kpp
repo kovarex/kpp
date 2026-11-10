@@ -1,9 +1,9 @@
 // The settings kpp generates beside build.kpp (compiler/src/Project/Describe.cpp, settingsSource), for excludes.kpp.
-StringView kppSetting(StringView name, StringView otherwise)
+std::StringView kppSetting(std::StringView name, std::StringView otherwise)
 {
   return otherwise;
 }
 
-StringView kppProjectName() { return "excludes"; }
-StringView kppCommandLineTarget() { return ""; }
-StringView kppHostTarget() { return "windows"; }
+std::StringView kppProjectName() { return "excludes"; }
+std::StringView kppCommandLineTarget() { return ""; }
+std::StringView kppHostTarget() { return "windows"; }

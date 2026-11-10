@@ -3,23 +3,23 @@ enum class Configuration { debug, release };
 struct Project
 {
   Configuration configuration = Configuration::debug;
-  Vector<String> roots;
-  Vector<String> includes;
-  void root(StringView r) { roots.push_back(String(r)); }
-  void include(StringView first, StringView second) { String s = String(first); s << second; includes.push_back(move(s)); }
+  std::Vector<std::String> roots;
+  std::Vector<std::String> includes;
+  void root(std::StringView r) { roots.push_back(std::String(r)); }
+  void include(std::StringView first, std::StringView second) { std::String s = std::String(first); s << second; includes.push_back(std::move(s)); }
 };
-String describe(const Project& project)
+std::String describe(const Project& project)
 {
-  String text = "configuration ";
-  text << StringView(project.configuration == Configuration::debug ? "debug" : "release");
+  std::String text = "configuration ";
+  text << std::StringView(project.configuration == Configuration::debug ? "debug" : "release");
   text << "\n";
-  for (const String& r : project.roots)
+  for (const std::String& r : project.roots)
   {
     text << "root ";
     text << r;
     text << "\n";
   }
-  for (const String& i : project.includes)
+  for (const std::String& i : project.includes)
   {
     text << "cinclude ";
     text << i;

@@ -18,7 +18,7 @@ if (Test-Path $work) { cmd /c rd /s /q $work }
 $temp = Join-Path $work 'temp'
 $cache = Join-Path $temp 'kpp-run'
 New-Item -ItemType Directory -Force $cache | Out-Null
-Set-Content (Join-Path $work 'hello.kpp') "int main()`n{`n  println(`"hello `", 6 * 7);`n  return 0;`n}"
+Set-Content (Join-Path $work 'hello.kpp') "int main()`n{`n  std::println(`"hello `", 6 * 7);`n  return 0;`n}"
 
 function Plant([string]$name, [datetime]$used, [bool]$lock)
 {

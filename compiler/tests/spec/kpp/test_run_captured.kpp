@@ -7,10 +7,10 @@ suite Meta
   {
     bool passed = runCaptured([]() { check(1 == 1); });
     require(passed);
-    bool failed = runCaptured([]() { require(1 == 2); println("not reached"); });
+    bool failed = runCaptured([]() { require(1 == 2); std::println("not reached"); });
     require(!failed);
-    bool threw = runCaptured([]() { throw RuntimeError("inner"); });
+    bool threw = runCaptured([]() { throw std::RuntimeError("inner"); });
     require(!threw);
-    println("outer goes on");
+    std::println("outer goes on");
   }
 }

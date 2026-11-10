@@ -7,7 +7,7 @@ suite Signs
   {
     int m = -1;
     unsigned u = 4294967295u;
-    println("outside a check: ", m == u);
+    std::println("outside a check: ", m == u);
     check(u > m);
     check(m == u);
   }

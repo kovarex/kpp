@@ -70,7 +70,7 @@ Set-Content -Encoding ascii "$work\probe.kpp" @'
 extern "C" import "string.h";
 int main()
 {
-  println("toolchain ", strlen("forty-two"));
+  std::println("toolchain ", strlen("forty-two"));
   return 0;
 }
 '@
@@ -150,7 +150,7 @@ try
     New-Item -ItemType Directory -Force 'libs\plus' | Out-Null
     Set-Content -Encoding ascii 'libs\plus\plus.c' "#ifdef _MSC_VER`n#error the bundled toolchain builds the GNU dialect`n#endif`nint plus_one(int value) { return value + PLUS; }"
     Set-Content -Encoding ascii 'libs\plus\twice.cpp' "extern `"C`" int twice(int value) { return value * 2; }"
-    Set-Content -Encoding ascii 'src\main.kpp' "extern `"C`" int plus_one(int value);`nextern `"C`" int twice(int value);`nint main()`n{`n  println(`"Hello from kpp `", twice(plus_one(20)));`n  return 0;`n}"
+    Set-Content -Encoding ascii 'src\main.kpp' "extern `"C`" int plus_one(int value);`nextern `"C`" int twice(int value);`nint main()`n{`n  std::println(`"Hello from kpp `", twice(plus_one(20)));`n  return 0;`n}"
     Set-Content -Encoding ascii 'build.kpp' @'
 void build(Project& project)
 {
@@ -190,7 +190,7 @@ void build(Project& project)
     if ($run.exit -ne 0 -or $run.text -notmatch 'Hello from kpp 42' -or $run.text -match 'kept by --keep-symbol') { Fail "an object nothing names was linked in without --keep-symbol: $($run.text)" }
     if ($run.text -notmatch 'kpp: built .*\(debug, bundled toolchain, total') { Fail "kpp's build line does not say the bundled toolchain: $($run.text)" }
     $built = Get-Content -Raw 'build.kpp'
-    Set-Content -Encoding ascii 'build.kpp' ($built -replace 'hello\.link\("plus"\);', "hello.link(`"plus`");`n  for (StringView option : {`"--keep-symbol`", `"kept_marker`"})`n    hello.argument(option);")
+    Set-Content -Encoding ascii 'build.kpp' ($built -replace 'hello\.link\("plus"\);', "hello.link(`"plus`");`n  for (std::StringView option : {`"--keep-symbol`", `"kept_marker`"})`n    hello.argument(option);")
     $run = Run "$inst\kpp.exe" @('--no-server', '--run')
     if ($run.exit -ne 0 -or $run.text -notmatch 'kept by --keep-symbol' -or $run.text -notmatch 'Hello from kpp 42') { Fail "--keep-symbol kept_marker did not link in its object (the GNU driver's -u): $($run.text)" }
     Set-Content -Encoding ascii 'build.kpp' $built
@@ -208,7 +208,7 @@ void build(Project& project)
   {
     $null = Run "$inst\kpp.exe" @('new')
     Set-Content -Encoding ascii 'libs\plus\plus.c' "#ifndef _MSC_VER`n#error --toolchain msvc builds the C libraries with Visual Studio's clang`n#endif`nint plus_one(int value) { return value + 1; }"
-    Set-Content -Encoding ascii 'src\main.kpp' "extern `"C`" int plus_one(int value);`nint main()`n{`n  println(`"Hello from kpp `", plus_one(41));`n  return 0;`n}"
+    Set-Content -Encoding ascii 'src\main.kpp' "extern `"C`" int plus_one(int value);`nint main()`n{`n  std::println(`"Hello from kpp `", plus_one(41));`n  return 0;`n}"
     Set-Content -Encoding ascii 'build.kpp' @'
 void build(Project& project)
 {
@@ -216,7 +216,7 @@ void build(Project& project)
   plus.source("libs/plus");
   Executable& withvs = project.executable("withvs", {"src"});
   withvs.link("plus");
-  for (StringView option : {"--toolchain", "msvc"})
+  for (std::StringView option : {"--toolchain", "msvc"})
     withvs.argument(option);
 }
 '@
@@ -235,7 +235,7 @@ void build(Project& project)
     $run = Run "$inst\kpp.exe" @('--no-server', '--run')
     if ($run.exit -ne 0 -or $run.text -notmatch 'Hello from kpp 42' -or $run.text -match 'kept by --keep-symbol') { Fail "an object nothing names was linked in without --keep-symbol (msvc): $($run.text)" }
     if ($run.text -notmatch 'kpp: built .*\(debug, msvc toolchain, total') { Fail "kpp's build line does not say the msvc toolchain: $($run.text)" }
-    Set-Content -Encoding ascii 'build.kpp' ($withArguments -replace 'withvs\.link\("plus"\);', "withvs.link(`"plus`");`n  for (StringView option : {`"--keep-symbol`", `"kept_marker`"})`n    withvs.argument(option);")
+    Set-Content -Encoding ascii 'build.kpp' ($withArguments -replace 'withvs\.link\("plus"\);', "withvs.link(`"plus`");`n  for (std::StringView option : {`"--keep-symbol`", `"kept_marker`"})`n    withvs.argument(option);")
     $run = Run "$inst\kpp.exe" @('--no-server', '--run')
     if ($run.exit -ne 0 -or $run.text -notmatch 'kept by --keep-symbol' -or $run.text -notmatch 'Hello from kpp 42') { Fail "--keep-symbol kept_marker did not link in its object (link.exe's /INCLUDE): $($run.text)" }
     Set-Content -Encoding ascii 'build.kpp' $withArguments
@@ -292,7 +292,7 @@ void build(Project& project)
     try
     {
       $built = Get-Content -Raw 'build.kpp'
-      Set-Content -Encoding ascii 'build.kpp' ($built -replace 'hello\.link\("plus"\);', "hello.link(`"plus`");`n  for (StringView option : {`"--toolchain`", `"msvc,bundled`"})`n    hello.argument(option);")
+      Set-Content -Encoding ascii 'build.kpp' ($built -replace 'hello\.link\("plus"\);', "hello.link(`"plus`");`n  for (std::StringView option : {`"--toolchain`", `"msvc,bundled`"})`n    hello.argument(option);")
       cmd /c rd /s /q build
       $run = Run "$inst\kpp.exe" @('--no-server', '--run')
       if ($run.exit -ne 0 -or $run.text -notmatch 'Hello from kpp 42' -or $run.text -notmatch '\(debug, bundled toolchain, total') { Fail "a build.kpp asking for msvc,bundled without Visual Studio did not build with the bundled toolchain: $($run.text)" }

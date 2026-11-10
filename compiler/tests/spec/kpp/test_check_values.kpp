@@ -9,7 +9,7 @@ test fails
   int x = 2;
   check(x + 1 == 4);
   check(x < 1);
-  String s("abc");
+  std::String s("abc");
   check(s == "abd");
   check(Dir::North != Dir::North);
   check(Opaque{1} == Opaque{2});

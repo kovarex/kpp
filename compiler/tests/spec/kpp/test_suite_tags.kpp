@@ -3,15 +3,15 @@
 // exit: 0
 suite Common
 {
-  test Runs { println("Common.Runs"); }
+  test Runs { std::println("Common.Runs"); }
 }
 
 suite Vanilla tags vanilla
 {
-  test Runs { println("Vanilla.Runs"); }
+  test Runs { std::println("Vanilla.Runs"); }
 }
 
 suite Both tags vanilla, space
 {
-  test Runs { println("Both.Runs"); }
+  test Runs { std::println("Both.Runs"); }
 }

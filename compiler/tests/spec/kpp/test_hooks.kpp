@@ -3,22 +3,22 @@
 // exit: 1
 int leaked = 0;
 
-void testsSetup(const Vector<String>& arguments)
+void testsSetup(const std::Vector<std::String>& arguments)
 {
-  for (const String& argument : arguments)
-    println("setup ", argument);
+  for (const std::String& argument : arguments)
+    std::println("setup ", argument);
 }
 
 test void testAfterEach()
 {
-  println("after each");
+  std::println("after each");
   require(leaked == 0, "leaked ", leaked);
 }
 
-void testsTeardown() { println("teardown"); }
+void testsTeardown() { std::println("teardown"); }
 
 suite Hooks
 {
-  test Clean { println("clean"); }
+  test Clean { std::println("clean"); }
   test Leaky { leaked = 1; }
 }

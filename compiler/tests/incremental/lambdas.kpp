@@ -49,5 +49,5 @@ int viaLambda()
 // A global whose initializer holds lambdas: a lambda added before them in this file renumbers them,
 // and the instances made from them (Function<int(int)>'s call of each) must take the new names.
 int stepOf(int v) { return v + 1; }
-Function<int(int)> stepFunctions[2] = { [](int v) { return stepOf(v); }, [](int v) { return stepOf(v) * 2; } };
+std::Function<int(int)> stepFunctions[2] = { [](int v) { return stepOf(v); }, [](int v) { return stepOf(v) * 2; } };
 int viaSteps() { return stepFunctions[0](3) + stepFunctions[1](3); }

@@ -109,8 +109,14 @@ auto GlobalScope::Impl::lexicalScopeOf(Decl* d) -> Scope*
       return p == p->file->libraryNamespace && p->file->privateScope ? p->file->privateScope : p->ownScope;
   // A top-level declaration of a file with private names is in the file's view of the global
   // scope: those names first (design.md 15), whichever file's walk asks. (A scoped library's file
-  // sees its private names before the library's, design.md 16: the namespace above.)
-  return d && d->file && d->file->privateScope ? d->file->privateScope : &root;
+  // sees its private names before the library's, design.md 16: the namespace above.) One with no
+  // parent in a scoped library's file (a top-level template's parameter) is in the library's
+  // namespace: std::Array's `ContainerSize N` names std's ContainerSize.
+  if (d && d->file && d->file->privateScope)
+    return d->file->privateScope;
+  if (d && d->file && d->file->libraryNamespace && d->file->libraryNamespace->ownScope)
+    return d->file->libraryNamespace->ownScope;
+  return &root;
 }
 
 auto GlobalScope::Impl::scopeOfType(Type* type, Scope* context, const LocalStack* locals, int depth) -> Scope*
@@ -1644,16 +1650,9 @@ auto GlobalScope::Impl::lookupWithoutBridge(uint32_t symbol, Scope* context, con
 
 auto GlobalScope::Impl::bridgedToStd(uint32_t symbol, Lookup& out, bool found, int depth, Scope* context) -> bool
 {
+  (void)context;
   if (noBridge)
-  {
-    // (KPP_NO_BRIDGE: a program's names; clib/ and what kpp generates are written std:: when the bridge goes)
-    const ParsedFile* file = nullptr;
-    for (Scope* s = context; !file && s; s = s->parent)
-      file = s->privateTo ? s->privateTo : s->owner && s->owner->kind != NodeKind::NamespaceDecl ? s->owner->file : nullptr;
-    file = file ? file : lookupFile;
-    if (file && !file->isLibrary && !file->path.starts_with('<') && file->path.find("build\\kpp") == std::string::npos && file->path.find("build/kpp") == std::string::npos)
-      return found;
-  }
+    return found;
   Lookup library;
   if (!stdScope || bridgeOff || !lookupInScope(stdScope, symbol, library, depth))
     return found;
@@ -1691,6 +1690,23 @@ auto GlobalScope::Impl::moveBareSpecializationsToStd() -> void
     for (uint32_t symbol : emptied)
       root.shards[i].map.erase(symbol);
   }
+}
+
+auto GlobalScope::Impl::reportSpecializationsOfNothing() -> void
+{
+  for (uint32_t i = 0; i < root.shardCount; ++i)
+    for (auto& [symbol, entries] : root.shards[i].map)
+    {
+      auto isSpecialization = [](const Entry& e) { return e.decl && e.decl->kind == NodeKind::ClassDecl && (e.decl->flags & DF_Specialization); };
+      if (entries.empty() || !std::all_of(entries.begin(), entries.end(), isSpecialization))
+        continue;
+      std::string name(symbols.name(symbol));
+      std::string message = "'" + name + "' is not declared" +
+                            (stdScope && stdScope->find(symbol) ? "; did you mean std::" + name + "? (a specialization names its template)" : " (a specialization names its template)");
+      for (const Entry& e : entries)
+        if (e.decl->file && !e.decl->file->isLibrary && !e.decl->file->isImported)
+          reportCheckerError(e.decl->file, e.decl->token, message);
+    }
 }
 
 auto GlobalScope::Impl::lookupWritten(const QualifiedName& name, Scope* context, const LocalStack* locals, int depth, const Subst* subst,

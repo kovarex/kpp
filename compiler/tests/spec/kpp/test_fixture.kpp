@@ -4,8 +4,8 @@
 class Counter
 {
 public:
-  Counter(int start = 0) : value(start) { println("built ", this.value); }
-  ~Counter() { println("destroyed ", this.value); }
+  Counter(int start = 0) : value(start) { std::println("built ", this.value); }
+  ~Counter() { std::println("destroyed ", this.value); }
 protected:
   int value;
   void bump() { ++this.value; }
@@ -23,6 +23,6 @@ suite Counting
   {
     this.bump();
     require(this.value == 12);
-    println("not reached");
+    std::println("not reached");
   }
 }

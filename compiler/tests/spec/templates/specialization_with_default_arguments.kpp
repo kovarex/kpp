@@ -3,7 +3,7 @@
 template <typename T, typename Enable = void>
 struct is_optional : std::FalseType {};
 template <typename T>
-struct is_optional<Optional<T>> : std::TrueType {};
+struct is_optional<std::Optional<T>> : std::TrueType {};
 template <typename K, typename H = std::Vector<K>>
 struct Table { static constexpr int kind = 0; };
 template <typename K>

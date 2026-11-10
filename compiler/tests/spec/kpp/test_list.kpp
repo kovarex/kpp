@@ -1,9 +1,9 @@
 // spec: the runner's --list prints every test's full name and location without running any
 // test: --list
 // exit: 0
-test first { println("not run"); }
+test first { std::println("not run"); }
 
 test second
 {
-  println("not run either");
+  std::println("not run either");
 }

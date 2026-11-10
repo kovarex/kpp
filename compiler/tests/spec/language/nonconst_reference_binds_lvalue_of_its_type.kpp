@@ -2,7 +2,7 @@
 // found by thread B (2026-11-05): the checker accepted each (the one plain candidate, its arguments left to codegen): `setHalf(i)` passed the int's address as a double's and the program crashed, the others changed a temporary instead of the argument
 // error: nonconst_reference_binds_lvalue_of_its_type.kpp:41: error: the argument for d (double&) of setHalf is no lvalue of its type
 // error: nonconst_reference_binds_lvalue_of_its_type.kpp:43: error: the argument for h (Holder&) of bump is no lvalue of its type
-// error: nonconst_reference_binds_lvalue_of_its_type.kpp:44: error: the argument for s (String&) of append is no lvalue of its type
+// error: nonconst_reference_binds_lvalue_of_its_type.kpp:44: error: the argument for s (std::String&) of append is no lvalue of its type
 // error: nonconst_reference_binds_lvalue_of_its_type.kpp:45: error: the argument for p (Point&) of moveRight is no lvalue of its type
 // error: nonconst_reference_binds_lvalue_of_its_type.kpp:47: error: the argument for slot (int32*&) of reset is no lvalue of its type
 struct Holder { int v = 0; };

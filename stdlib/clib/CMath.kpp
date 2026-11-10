@@ -7,7 +7,7 @@ const float INFINITY = 1e39f;
 const double HUGE_VAL = 1e309;
 // The positive quiet NaN, as C's NAN and Limits' quiet_NaN (0.0 / 0.0 at startup was the
 // processor's default NaN, a negative one: signbit(NAN) was true where C's is false).
-const double NAN = Limits<double>::quiet_NaN();
+const double NAN = std::Limits<double>::quiet_NaN();
 
 extern "C" double acos(double x);
 extern "C" double asin(double x);
@@ -28,8 +28,8 @@ extern "C" double cbrt(double x);
 
 // Neither zero nor subnormal, infinite or NaN: a magnitude of at least DBL_MIN (FLT_MIN). A
 // subnormal was normal (isnormal(4.9e-324) true where C's is false).
-bool isnormal(double value) { return isfinite(value) && abs(value) >= 2.2250738585072014e-308; }
-bool isnormal(float value) { return isfinite(value) && abs(value) >= 1.17549435e-38f; }
+bool isnormal(double value) { return std::isfinite(value) && std::abs(value) >= 2.2250738585072014e-308; }
+bool isnormal(float value) { return std::isfinite(value) && std::abs(value) >= 1.17549435e-38f; }
 
 float acos(float x) { return (float)acos((double)x); }
 float asin(float x) { return (float)asin((double)x); }
@@ -147,11 +147,11 @@ double fdim(A x, B y) { return fdim(double(x), double(y)); }
 // nexttoward: the next value after from toward to, a long double, which is a double here (kpp's
 // long double is double on every target, where C's is x87's 80 bits off Windows): nextafter's,
 // and for a float the next float toward to without rounding to through float first.
-double nexttoward(double from, long double to) { return nextafter(from, (double)to); }
+double nexttoward(double from, long double to) { return std::nextafter(from, (double)to); }
 
 float nexttoward(float from, long double to)
 {
   if ((double)from == (double)to || from != from || to != to)
     return from != from ? from : (float)to;
-  return nextafterf(from, (double)from < (double)to ? INFINITY : -INFINITY);
+  return std::nextafterf(from, (double)from < (double)to ? INFINITY : -INFINITY);
 }

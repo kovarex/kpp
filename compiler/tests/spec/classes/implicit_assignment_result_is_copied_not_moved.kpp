@@ -94,7 +94,7 @@ int main()
   {
     Holder h = (a = Holder());
     printf("from temporary %d %d\n", h.t.v, a.t.v);
-    Holder m = move(a = b);
+    Holder m = std::move(a = b);
     printf("moved %d %d\n", m.t.v, a.t.v);
   }
   report("rvalues");

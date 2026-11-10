@@ -1,7 +1,7 @@
 // spec: `?->`'s result is a value, so nothing assigns to it, an Optional's operator= neither; a number's result is an Optional, which converts to no number: `?:` gives its value (design.md 23a); a type that cannot be copied has no value to give
 // error: safe_navigation_gives_no_lvalue_is_error.kpp:20: error: the left operand of an assignment is no lvalue
 // error: safe_navigation_gives_no_lvalue_is_error.kpp:21: error: the left operand of an assignment is no lvalue
-// error: safe_navigation_gives_no_lvalue_is_error.kpp:25: error: a class (Optional<int32>) does not convert to int32
+// error: safe_navigation_gives_no_lvalue_is_error.kpp:25: error: a class (std::Optional<int32>) does not convert to int32
 class Engine
 {
 public:

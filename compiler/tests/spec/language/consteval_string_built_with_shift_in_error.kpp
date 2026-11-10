@@ -1,5 +1,5 @@
 // spec: a message built with `<<` in a consteval check is the text the compile error quotes (`format: 2 {} for 1 piece`)
-// error: consteval_string_built_with_shift_in_error.kpp:23: error: Holes does not take 1 piece: it throws LogicError("format: 2 {} for 1 piece") (consteval_string_built_with_shift_in_error.kpp:17) (design.md 14)
+// error: consteval_string_built_with_shift_in_error.kpp:23: error: Holes does not take 1 piece: it throws std::LogicError("format: 2 {} for 1 piece") (consteval_string_built_with_shift_in_error.kpp:17) (design.md 14)
 struct Holes
 {
   int holes;

@@ -22,6 +22,6 @@ suite Helpers
   {
     Checker checker;
     checker.all(1, -2);
-    println("not reached");
+    std::println("not reached");
   }
 }

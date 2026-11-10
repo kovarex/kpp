@@ -3,7 +3,7 @@
 int main()
 {
   constexpr i32 a = scaled(3);
-  println(a);
+  std::println(a);
   return 0;
 }
 // error: the constexpr variable a is no constant
@@ -32,7 +32,7 @@ i32 instance = OldBox<i32>{}.viaArrow();
 int main()
 {
   constexpr i32 a = scaled(3);
-  println(a);
+  std::println(a);
   return 0;
 }
 // error: write `this.`, not `this->`

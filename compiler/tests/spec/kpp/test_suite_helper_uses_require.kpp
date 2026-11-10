@@ -11,7 +11,7 @@ suite Helpers
   test Negative
   {
     requirePositive(-2);
-    println("not reached");
+    std::println("not reached");
   }
 
   test Positive { requirePositive(2); }

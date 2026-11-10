@@ -1,5 +1,5 @@
 // spec: an implicit consteval constructor converting to a deduced function template's parameter (`Counted<sizeof...(A)>`) that throws for the call's deduced arguments is a compile error at the call, never a throw at run time
-// error: consteval_conversion_to_deduced_parameter_mismatch_is_error.kpp:24: error: the call of consteval Counted::Counted is no constant: it throws LogicError("mismatch") (consteval_conversion_to_deduced_parameter_mismatch_is_error.kpp:14)
+// error: consteval_conversion_to_deduced_parameter_mismatch_is_error.kpp:24: error: the call of consteval Counted::Counted is no constant: it throws std::LogicError("mismatch") (consteval_conversion_to_deduced_parameter_mismatch_is_error.kpp:14)
 template<int N>
 struct Counted
 {

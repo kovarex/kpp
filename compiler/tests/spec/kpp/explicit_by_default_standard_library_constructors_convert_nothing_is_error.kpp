@@ -1,9 +1,9 @@
 // spec: explicit by default (design.md "Explicit by default"), the standard library's constructors that std makes explicit convert nothing without the word, which K's 7d9fd9ac removed with the flip: copy-initialising a Vector from a count, a Milliseconds from a count of ticks, a UniquePtr or a SharedPtr from a pointer, and an argument of type Seconds from an int are each an error naming the direct-initialisation, as std's `explicit` ones are in C++ (clang: "no viable conversion from 'int' to 'std::vector<int>'")
-// error: explicit_by_default_standard_library_constructors_convert_nothing_is_error.kpp:11: error: copy-initialising Vector<int32> from int32 by its constructor, which converts only when marked implicit
-// error: explicit_by_default_standard_library_constructors_convert_nothing_is_error.kpp:12: error: copy-initialising Duration<int64, Ratio<1, 1000>> from int32 by its constructor, which converts only when marked implicit
+// error: explicit_by_default_standard_library_constructors_convert_nothing_is_error.kpp:11: error: copy-initialising std::Vector<int32> from int32 by its constructor, which converts only when marked implicit
+// error: explicit_by_default_standard_library_constructors_convert_nothing_is_error.kpp:12: error: copy-initialising std::Duration<int64, std::Ratio<1, 1000>> from int32 by its constructor, which converts only when marked implicit
 // error: explicit_by_default_standard_library_constructors_convert_nothing_is_error.kpp:13: error: copy-initialising int32^ from int32* by its constructor, which converts only when marked implicit
-// error: explicit_by_default_standard_library_constructors_convert_nothing_is_error.kpp:14: error: copy-initialising SharedPtr<int32> from int32* by its constructor, which converts only when marked implicit
-// error: explicit_by_default_standard_library_constructors_convert_nothing_is_error.kpp:15: error: copy-initialising Duration<int64, Ratio<1, 1>> from int32 by its constructor, which converts only when marked implicit
+// error: explicit_by_default_standard_library_constructors_convert_nothing_is_error.kpp:14: error: copy-initialising std::SharedPtr<int32> from int32* by its constructor, which converts only when marked implicit
+// error: explicit_by_default_standard_library_constructors_convert_nothing_is_error.kpp:15: error: copy-initialising std::Duration<int64, std::Ratio<1, 1>> from int32 by its constructor, which converts only when marked implicit
 void wait(std::Seconds s) {}
 
 int main()

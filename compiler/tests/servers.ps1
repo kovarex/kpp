@@ -22,8 +22,8 @@ $env:KPP_WATCH_CHECK = '1' # (each build's watched listing compared with a listi
 $std = (Resolve-Path "$PSScriptRoot\..\..\stdlib").Path
 $copy = "$work\bin\kpp.exe"
 Copy-Item $KppExe $copy
-Set-Content -Encoding ascii "$work\one.kpp" "int main() { println(1); return 0; }"
-Set-Content -Encoding ascii "$work\two.kpp" "int main() { println(2); return 0; }"
+Set-Content -Encoding ascii "$work\one.kpp" "int main() { std::println(1); return 0; }"
+Set-Content -Encoding ascii "$work\two.kpp" "int main() { std::println(2); return 0; }"
 
 # The process ids of the servers whose logs are in the test's TEMP, by log.
 function Servers()

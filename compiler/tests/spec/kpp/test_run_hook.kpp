@@ -6,13 +6,13 @@ struct Desync {};
 class Fixture
 {
 public:
-  Fixture() { println("built"); }
-  ~Fixture() { println("destroyed"); }
+  Fixture() { std::println("built"); }
+  ~Fixture() { std::println("destroyed"); }
 };
 
 bool reporting = false;
 
-void testRun(Function<void()> run)
+void testRun(std::Function<void()> run)
 {
   try
   {
@@ -20,7 +20,7 @@ void testRun(Function<void()> run)
   }
   catch (const Desync&)
   {
-    println("rerun");
+    std::println("rerun");
     reporting = true;
     run();
   }
@@ -32,9 +32,9 @@ suite Rerun
   {
     if (!reporting)
       throw Desync();
-    println("second run");
+    std::println("second run");
     require(false, "reported");
   }
 
-  test Plain { println("plain"); }
+  test Plain { std::println("plain"); }
 }

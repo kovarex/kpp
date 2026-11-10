@@ -3,7 +3,7 @@
 // exit: 1
 test standard
 {
-  throw RuntimeError("the disk is full");
+  throw std::RuntimeError("the disk is full");
 }
 
 struct Custom
@@ -17,5 +17,5 @@ test other
 
 test after
 {
-  println("still running");
+  std::println("still running");
 }

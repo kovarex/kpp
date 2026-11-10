@@ -241,7 +241,7 @@ else
   if (Test-Path "$project\build") { cmd /c rd /s /q "$project\build" }
   New-Item -ItemType Directory -Force "$project\src" | Out-Null
   [IO.File]::WriteAllText((Join-Path $project 'build.kpp'), "void build(Project& project)`n{`n  project.executable(`"hello`", {`"src`"});`n}`n")
-  [IO.File]::WriteAllText((Join-Path $project 'src\main.kpp'), "int main()`n{`n  println(`"hello`");`n  return 0;`n}`n")
+  [IO.File]::WriteAllText((Join-Path $project 'src\main.kpp'), "int main()`n{`n  std::println(`"hello`");`n  return 0;`n}`n")
   $kppPath = (Resolve-Path $KppExe).Path # (run_tests passes it relative to compiler\)
   Push-Location $project
   try

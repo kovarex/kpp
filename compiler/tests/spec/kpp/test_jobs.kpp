@@ -5,7 +5,7 @@ suite First
 {
   test Slow
   {
-    thisThread::sleepFor(Milliseconds(200));
+    std::thisThread::sleepFor(std::Milliseconds(200));
     check(1 == 2, "first");
   }
   test Second { check(testWorker() > 0); }

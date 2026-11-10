@@ -14,7 +14,7 @@ $failed = 0
 function Fail([string]$what) { "FAIL objectcache: $what"; $script:failed++ }
 
 [IO.File]::WriteAllText("$work\src\shape.kpp", "struct Shape { int width = 0; int height = 0; };`nint area(const Shape& s) { return s.width * s.height; }`n")
-$main = "int main()`n{`n  Shape square;`n  square.width = 3;`n  square.height = 3;`n  Vector<int> sides;`n  sides.push_back(square.width);`n  println(`"area `", area(square), `" sides `", sides.size());`n  return 0;`n}`n"
+$main = "int main()`n{`n  Shape square;`n  square.width = 3;`n  square.height = 3;`n  std::Vector<int> sides;`n  sides.push_back(square.width);`n  std::println(`"area `", area(square), `" sides `", sides.size());`n  return 0;`n}`n"
 [IO.File]::WriteAllText("$work\src\main.kpp", $main)
 
 # One build into out\NAME.exe with the cache dir: its exit code, the clang line's module count and how

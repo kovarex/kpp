@@ -3,12 +3,12 @@
 // exit: 0
 suite Alpha
 {
-  test First { println("Alpha.First"); }
-  test Second { println("Alpha.Second"); }
-  test Third { println("Alpha.Third"); }
+  test First { std::println("Alpha.First"); }
+  test Second { std::println("Alpha.Second"); }
+  test Third { std::println("Alpha.Third"); }
 }
 
 suite Long
 {
-  test Runs { println("Long.Runs"); }
+  test Runs { std::println("Long.Runs"); }
 }

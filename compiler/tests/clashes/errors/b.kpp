@@ -6,6 +6,6 @@ namespace { int depth = 20; }
 int useB() { return total + Crate{}.v + measure + counter + depth; }
 int main()
 {
-  println(useA(), " ", useB());
+  std::println(useA(), " ", useB());
   return 0;
 }

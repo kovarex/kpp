@@ -40,7 +40,7 @@ $text = ''
 for ($i = 0; $i -lt $functions; $i++) { $text += "int f$i(int x) { return x + $i; }`n" }
 $text += "int main()`n{`n  int sum = 0;`n"
 for ($i = 0; $i -lt $functions; $i++) { $text += "  sum = f$i(sum);`n" }
-$text += "  println(`"sum `", sum);`n  return 0;`n}`n"
+$text += "  std::println(`"sum `", sum);`n  return 0;`n}`n"
 [IO.File]::WriteAllText($source, $text)
 $expected = 'sum ' + (($functions - 1) * $functions / 2)
 

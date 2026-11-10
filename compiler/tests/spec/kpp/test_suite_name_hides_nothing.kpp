@@ -15,7 +15,7 @@ suite Beacon
   {
     Beacon beacon;
     require(helperRange(beacon) == 3);
-    println("range ", helperRange(beacon));
+    std::println("range ", helperRange(beacon));
   }
 }
 
@@ -26,6 +26,6 @@ suite Other
   test Own
   {
     require(helperRange() == 9);
-    println("own helper");
+    std::println("own helper");
   }
 }

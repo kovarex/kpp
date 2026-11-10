@@ -228,6 +228,9 @@
   // global scope has no such template of its own.
   void moveBareSpecializationsToStd();
 
+  // A class specialization at the top level whose template nothing there declares: an error (one in std is std::X).
+  void reportSpecializationsOfNothing();
+
   Lookup lookupWritten(const QualifiedName& name, Scope* context, const LocalStack* locals, int depth, const Subst* subst = nullptr,
                        const std::vector<Decl*>* elementPacks = nullptr, uint32_t elementIndex = 0);
 

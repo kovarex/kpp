@@ -8,6 +8,6 @@ suite Failing
     int state = 3;
     if (state != 2)
       fail("unexpected state ", state);
-    println("not reached");
+    std::println("not reached");
   }
 }

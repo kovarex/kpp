@@ -3,11 +3,11 @@
 // exit: 0
 suite Few
 {
-  test Only { println("Few.Only"); }
+  test Only { std::println("Few.Only"); }
 }
 
 suite Many
 {
-  test First { println("Many.First"); }
-  test Second { println("Many.Second"); }
+  test First { std::println("Many.First"); }
+  test Second { std::println("Many.Second"); }
 }

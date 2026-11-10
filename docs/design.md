@@ -1976,9 +1976,11 @@ C import), the allocation functions (`operator new`, global as C++'s), the compi
 The compiler's built-in traits belong to `std` as the library's templates do: `std::isSame<A, B>`, `std::Conditional<c, A, B>`; and
 what the language means by a library name is that name, not whatever the program calls so (`T^` is `::std::UniquePtr<T>`).
 
-It is on by default (`--no-std-scope` turns it off, to compare with). Until the rewrite of every tree is done, a name the global scope lacks
-is looked up in `std`, functions of one name in both are one overload set and a bare specialization (`template<> struct Hash<Key>`)
-specializes `std`'s template, so that code not yet rewritten keeps compiling. That bridge goes when the rewrite is done.
+Built (2026-11-10): every tree writes `std::`, and a bare `String` is "'String' is not declared; did you mean std::String?".
+A class in a message is `std::Map`. `KPP_STD_BRIDGE=1` brings back, for one compile, the bridge the move went through (a name
+the global scope lacks is std's, functions of one name in both one overload set, a bare specialization std's template), so
+that `tools/std/rewrite.py` can rewrite a branch written before the move; never in a build. `--no-std-scope` compiles the
+library's names as global, to compare with (nothing written `std::` compiles so).
 
 Argument-dependent lookup follows C++ here: a base class's namespace is associated, and with `std` scoped the global namespace is
 one (a library template's `hashOf(key)` finds a program's global `hashOf(Key)`).

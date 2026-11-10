@@ -3,12 +3,12 @@
 // exit: 0
 void testAssertFailed(const char* file, int line, int column, const char* text)
 {
-  throw RuntimeError(String(text));
+  throw std::RuntimeError(std::String(text));
 }
 
 test AssertThrows
 {
   int x = 1;
-  requireThrows<RuntimeError>(([&] { release_assert(x == 2); })());
-  println("went on");
+  requireThrows<std::RuntimeError>(([&] { release_assert(x == 2); })());
+  std::println("went on");
 }

@@ -31,10 +31,10 @@ constexpr T biggest(T a, T b) { T r = a > b ? a : b; return r; }
 
 struct Grid
 {
-  int fill(Array<int, biggest(2, 3)>& cells);
+  int fill(std::Array<int, biggest(2, 3)>& cells);
 };
 
-int Grid::fill(Array<int, biggest(2, 3)>& cells) { return int(cells.size()); }
+int Grid::fill(std::Array<int, biggest(2, 3)>& cells) { return int(cells.size()); }
 
 // A global whose initializer calls a free function named as a member edited elsewhere (Shape::area):
 // its lookup of the free `area` cannot reach the member, so the member's body edit is no reason to

@@ -699,6 +699,17 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols, bool qu
   auto declName = [&](Decl* d) -> std::string
   {
     std::string name = ownName(d);
+    if (!qualified && d && symbols && (d->kind == NodeKind::ClassDecl || d->kind == NodeKind::EnumDecl) && d->file && d->file->isLibrary &&
+        d->file->libraryScope != UINT32_MAX)
+    {
+      // The standard library's class in a message: std::Map, std::filesystem::path (kovarex, 2026-11-09), a program's own
+      // Map beside it. (A class nested in a class keeps its bare name, as every class's does here.)
+      std::string spaces;
+      const Decl* p = d->parent;
+      for (; p && p->kind == NodeKind::NamespaceDecl && static_cast<const NamespaceDecl*>(p)->name != UINT32_MAX; p = p->parent)
+        spaces = std::string(symbols->name(static_cast<const NamespaceDecl*>(p)->name)) + "::" + spaces;
+      return !p && !spaces.empty() ? spaces + name : name;
+    }
     if (!qualified || !d || (d->kind != NodeKind::ClassDecl && d->kind != NodeKind::EnumDecl))
       return name;
     bool local = name == "?"; // an anonymous class is told apart by where it is declared too

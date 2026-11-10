@@ -155,7 +155,7 @@ public:
     this->insert_after(last, missing, value);
   }
 
-  void swap(ForwardList<T>& other) noexcept { ::swap(this->beforeHead.next, other.beforeHead.next); }
+  void swap(ForwardList<T>& other) noexcept { std::swap(this->beforeHead.next, other.beforeHead.next); }
 
   bool empty() const { return this->beforeHead.next == nullptr; }
   T& front() const { return ((ForwardNode<T>*)this->beforeHead.next)->value; }

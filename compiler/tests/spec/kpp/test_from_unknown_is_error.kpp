@@ -3,21 +3,21 @@
 // exit: 2
 suite Base
 {
-  test First { println("Base.First"); }
-  test Second { println("Base.Second"); }
+  test First { std::println("Base.First"); }
+  test Second { std::println("Base.Second"); }
 }
 
 suite Middle depends Base
 {
-  test Only { println("Middle.Only"); }
+  test Only { std::println("Middle.Only"); }
 }
 
 suite Top depends Middle
 {
-  test Last { println("Top.Last"); }
+  test Last { std::println("Top.Last"); }
 }
 
 suite Other
 {
-  test Alone { println("Other.Alone"); }
+  test Alone { std::println("Other.Alone"); }
 }

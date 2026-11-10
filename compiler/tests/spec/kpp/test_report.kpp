@@ -3,7 +3,7 @@
 // exit: 1
 test fails
 {
-  String s("a\"b");
+  std::String s("a\"b");
   check(s == "a\"c");
 }
 

@@ -20,5 +20,5 @@ test Chained
   c.add(2).add(3);
   require(c.count == 5, "count");
   require(c.address() == &c, "address");
-  println("count ", c.count);
+  std::println("count ", c.count);
 }

@@ -3,7 +3,7 @@
 // exit: 1
 suite Splitters depends Belts
 {
-  test Splits { println("not reached"); }
+  test Splits { std::println("not reached"); }
 }
 
 suite Belts
@@ -11,7 +11,7 @@ suite Belts
   test Moves
   {
     check(1 == 2);
-    println("the failed test finishes");
+    std::println("the failed test finishes");
   }
-  test Stops { println("not reached either"); }
+  test Stops { std::println("not reached either"); }
 }

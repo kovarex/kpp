@@ -1,7 +1,7 @@
 // spec: format's pattern takes one piece per {}: a call with more or fewer pieces does not compile, the error naming both counts (FormatString's checkPieces, design.md 14), also where the pattern has no {} at all
-// error: format_pieces_mismatch_is_error.kpp:9: error: FormatString does not take 1 piece: it throws LogicError("format: 2 {} for 1 piece")
-// error: format_pieces_mismatch_is_error.kpp:10: error: FormatString does not take 2 pieces: it throws LogicError("format: 1 {} for 2 pieces")
-// error: format_pieces_mismatch_is_error.kpp:11: error: FormatString does not take 1 piece: it throws LogicError("format: 0 {} for 1 piece")
+// error: format_pieces_mismatch_is_error.kpp:9: error: std::FormatString does not take 1 piece: it throws std::LogicError("format: 2 {} for 1 piece")
+// error: format_pieces_mismatch_is_error.kpp:10: error: std::FormatString does not take 2 pieces: it throws std::LogicError("format: 1 {} for 2 pieces")
+// error: format_pieces_mismatch_is_error.kpp:11: error: std::FormatString does not take 1 piece: it throws std::LogicError("format: 0 {} for 1 piece")
 int main()
 {
   std::String name("x");

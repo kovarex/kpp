@@ -203,6 +203,7 @@ void GlobalScope::finishIndex()
   }
   impl->deferredVariables.clear();
   impl->moveBareSpecializationsToStd();
+  impl->reportSpecializationsOfNothing();
   std::unordered_set<Scope*> seen;
   impl->sortEntries(&impl->root, seen);
   std::sort(impl->privateScopes.begin(), impl->privateScopes.end(), [](const auto& a, const auto& b) { return a.first->index < b.first->index; });
@@ -803,13 +804,17 @@ std::string GlobalScope::stdUsesText()
     {
       // What the call took: a program's own function (a hidden friend, by argument-dependent lookup) or C's (clib/) stays bare.
       const Decl* chosen = use.call->resolved;
-      if (chosen && chosen->kind == NodeKind::FunctionDecl && !(chosen->file && chosen->file->libraryScope != UINT32_MAX))
+      if (chosen && chosen->kind == NodeKind::FunctionDecl && !(chosen->file && chosen->file->isLibrary && chosen->file->libraryScope != UINT32_MAX))
         continue;
       if (kind == 'M' && !chosen)
         kind = 'U'; // (decided per instance: for a reader)
     }
-    lines.insert(std::string(1, kind) + "\t" + use.file->path + "\t" + std::to_string((*use.file->tokens)[use.token].offset) + "\t" +
-                 std::string(impl->symbols.name(use.symbol)) + "\n");
+    uint32_t offset = (*use.file->tokens)[use.token].offset;
+    size_t line = 1 + size_t(std::count(use.file->text.begin(), use.file->text.begin() + std::min<size_t>(offset, use.file->text.size()), '\n'));
+    std::error_code absoluteError; // (a path relative to where the compile ran, a test's own directory: absolute, for the tool)
+    std::string path = use.file->path.starts_with('<') ? use.file->path : std::filesystem::absolute(use.file->path, absoluteError).string();
+    lines.insert(std::string(1, kind) + "\t" + path + "\t" + std::to_string(offset) + "\t" + std::string(impl->symbols.name(use.symbol)) + "\t" +
+                 std::to_string(line) + "\n");
   }
   std::string out;
   for (const std::string& line : lines)

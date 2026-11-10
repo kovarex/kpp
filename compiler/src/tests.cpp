@@ -34,25 +34,25 @@ std::string testRunnerSource()
 
 struct __KppTestFailure
 {
-  String file;
+  std::String file;
   int line = 0;
   int column = 0;
   const char* kind = "check";
-  String expression;
+  std::String expression;
   bool hasValues = false;
-  String left;
-  String right;
-  std::Vector<String> arguments;
+  std::String left;
+  std::String right;
+  std::Vector<std::String> arguments;
 };
 
 struct __KppTest
 {
   void (*run)();
-  Function<void()> body; // a generated test's (run null)
+  std::Function<void()> body; // a generated test's (run null)
   const char* suite;
-  CallerLocation where;
-  String name; // the last part of fullName
-  String fullName;
+  std::CallerLocation where;
+  std::String name; // the last part of fullName
+  std::String fullName;
   int order = 0; // its suite's place in the run (the tests outside suites last)
   u64 shuffled = 0; // --shuffle: its place among the tests of its suite
 };
@@ -60,9 +60,9 @@ struct __KppTest
 struct __KppSuite
 {
   int job = -1; // --jobs: its place among the jobs
-  String name;
-  std::Vector<String> depends;
-  std::Vector<String> tags;
+  std::String name;
+  std::Vector<std::String> depends;
+  std::Vector<std::String> tags;
   int order = -1;
   bool failed = false;
   bool needed = false; // --with-dependencies: a selected suite depends on it
@@ -74,7 +74,7 @@ struct __KppGeneratorEntry
   void (*run)();
   const char* name;
   const char* suite;
-  CallerLocation where;
+  std::CallerLocation where;
 };
 
 // A test function's call (design.md 8.7), for its "called from" line: the call site kpp_test_call
@@ -142,16 +142,16 @@ struct __KppTestState
   bool running = false;
   int captured = 0; // inside runTest or runCaptured: failures are collected, not printed
   bool hasValues = false;
-  String left;
-  String right;
+  std::String left;
+  std::String right;
   const char* op = "";
-  std::Vector<String> arguments; // a failed call's
+  std::Vector<std::String> arguments; // a failed call's
   bool working = false;     // in a worker process of --jobs: what the runner says goes to workerOut
   i64 workerOut = 0;
   int worker = 0;           // testWorker
-  String note;    // in place of the values: requireThrows' "nothing was thrown"
+  std::String note;    // in place of the values: requireThrows' "nothing was thrown"
   bool hasMessage = false;
-  String message; // a check's message arguments, or fail's
+  std::String message; // a check's message arguments, or fail's
 };
 
 __KppTestState& __kppTestState()
@@ -165,17 +165,17 @@ __KppTestState& __kppTestState()
 struct TestEnded {};
 
 // The comma-separated names of text.
-std::Vector<String> __kppNames(const char* text)
+std::Vector<std::String> __kppNames(const char* text)
 {
-  std::Vector<String> names;
-  String name;
+  std::Vector<std::String> names;
+  std::String name;
   for (int i = 0;; ++i)
   {
     if (text[i] == ',' || text[i] == 0)
     {
       if (!name.empty())
         names.push_back(name);
-      name = String();
+      name = std::String();
       if (text[i] == 0)
         return names;
     }
@@ -184,7 +184,7 @@ std::Vector<String> __kppNames(const char* text)
   }
 }
 
-int __kppRegisterTest(void (*run)(), const char* name, const char* suite, CallerLocation here = caller)
+int __kppRegisterTest(void (*run)(), const char* name, const char* suite, std::CallerLocation here = caller)
 {
   __KppTest test;
   test.run = run;
@@ -192,21 +192,21 @@ int __kppRegisterTest(void (*run)(), const char* name, const char* suite, Caller
   test.where = here;
   if (suite[0] == 0)
   {
-    test.fullName = String(here.file_name());
+    test.fullName = std::String(here.file_name());
     test.fullName.append(" > ");
   }
   else
   {
-    test.fullName = String(suite);
+    test.fullName = std::String(suite);
     test.fullName.append(".");
   }
   test.fullName.append(name);
-  test.name = String(name);
+  test.name = std::String(name);
   __kppTestState().tests.push_back(test);
   return 0;
 }
 
-int __kppRegisterGenerator(void (*run)(), const char* name, const char* suite, CallerLocation here = caller)
+int __kppRegisterGenerator(void (*run)(), const char* name, const char* suite, std::CallerLocation here = caller)
 {
   __KppGeneratorEntry generator;
   generator.run = run;
@@ -222,7 +222,7 @@ int __kppRegisterGenerator(void (*run)(), const char* name, const char* suite, C
 class __KppGenerator
 {
 public:
-  void addTest(const String& name, Function<void()> body)
+  void addTest(const std::String& name, std::Function<void()> body)
   {
     __KppTestState& state = __kppTestState();
     const __KppGeneratorEntry& generator = *state.generating;
@@ -232,7 +232,7 @@ public:
     test.suite = generator.suite;
     test.where = generator.where;
     test.name = name;
-    test.fullName = toString(StringView(generator.suite), ".", StringView(generator.name), ".", name);
+    test.fullName = std::toString(std::StringView(generator.suite), ".", std::StringView(generator.name), ".", name);
     state.tests.push_back(test);
   }
 };
@@ -240,7 +240,7 @@ public:
 int __kppRegisterSuite(const char* name, const char* depends, const char* tags)
 {
   __KppSuite suite;
-  suite.name = String(name);
+  suite.name = std::String(name);
   suite.depends = __kppNames(depends);
   suite.tags = __kppNames(tags);
   __kppTestState().suites.push_back(suite);
@@ -248,9 +248,9 @@ int __kppRegisterSuite(const char* name, const char* depends, const char* tags)
 }
 
 // The value as text, when its appendTo or a str() method can say it.
-template<typename T> bool __kppShow(const T& value, String& text)
+template<typename T> bool __kppShow(const T& value, std::String& text)
 {
-  if constexpr (isPointer<T>)
+  if constexpr (std::isPointer<T>)
   {
     if (!value)
     {
@@ -258,27 +258,27 @@ template<typename T> bool __kppShow(const T& value, String& text)
       return true;
     }
   }
-  if constexpr (isArithmetic<T>)
+  if constexpr (std::isArithmetic<T>)
   {
-    text = toString(value);
+    text = std::toString(value);
     return true;
   }
-  else if constexpr (isConvertible<const T&, StringView>)
+  else if constexpr (std::isConvertible<const T&, std::StringView>)
   {
-    StringView view = value;
-    text = String(view);
+    std::StringView view = value;
+    text = std::String(view);
     return true;
   }
   else if constexpr (requires { value.appendTo(text); })
   {
-    text = String();
+    text = std::String();
     value.appendTo(text);
     return true;
   }
-  else if constexpr (isConvertible<const T&, const char*>)
+  else if constexpr (std::isConvertible<const T&, const char*>)
   {
     // C text (`s == "abd"`'s literal), which is no piece of a Text (design.md 14)
-    text = String(StringView((const char*)value));
+    text = std::String(std::StringView((const char*)value));
     return true;
   }
   else if constexpr (requires { value.str(); })
@@ -298,21 +298,21 @@ template<typename L, typename R> bool __kppNote(const L& l, const R& r, const ch
   return false;
 }
 // C text: a pointer to characters or an array of them (a string literal), whose == compares addresses.
-template<typename T> constexpr bool __kppIsCText = (isPointer<T> || isArray<T>) && isConvertible<const T&, const char*>;
+template<typename T> constexpr bool __kppIsCText = (std::isPointer<T> || std::isArray<T>) && std::isConvertible<const T&, const char*>;
 // A signed and an unsigned integer in a check compare by value (design.md 8.7), as std::cmp_equal and
 // std::cmp_less do; bool is no number here.
 template<typename L, typename R> constexpr bool __kppMixedSign =
-  isIntegral<L> && isIntegral<R> && !isSame<L, bool> && !isSame<R, bool> && isSigned<L> != isSigned<R>;
+  std::isIntegral<L> && std::isIntegral<R> && !std::isSame<L, bool> && !std::isSame<R, bool> && std::isSigned<L> != std::isSigned<R>;
 template<typename L, typename R> bool __kppValueEqual(const L& l, const R& r)
 {
-  if constexpr (isSigned<L>)
+  if constexpr (std::isSigned<L>)
     return l >= 0 && u64(l) == u64(r);
   else
     return r >= 0 && u64(l) == u64(r);
 }
 template<typename L, typename R> bool __kppValueLess(const L& l, const R& r)
 {
-  if constexpr (isSigned<L>)
+  if constexpr (std::isSigned<L>)
     return l < 0 || u64(l) < u64(r);
   else
     return r >= 0 && u64(l) < u64(r);
@@ -368,13 +368,13 @@ template<typename L, typename R> bool __kppGreaterEqual(const L& l, const R& r)
 // cannot show or has no value of.
 template<typename T> void __kppCallValue(const T& value)
 {
-  String text;
-  __kppTestState().arguments.push_back(__kppShow(value, text) ? text : String("?"));
+  std::String text;
+  __kppTestState().arguments.push_back(__kppShow(value, text) ? text : std::String("?"));
 }
 
 void __kppCallValue()
 {
-  __kppTestState().arguments.push_back(String("?"));
+  __kppTestState().arguments.push_back(std::String("?"));
 }
 
 // A check's message (design.md 8.7: `check(cond, arguments...)`, `fail(arguments...)`), as println
@@ -382,8 +382,8 @@ void __kppCallValue()
 template<typename... Pieces> bool __kppMessage(const Pieces&... pieces)
 {
   __KppTestState& state = __kppTestState();
-  state.message = String();
-  String piece;
+  state.message = std::String();
+  std::String piece;
   ((__kppShow(pieces, piece) ? (state.message << piece, 0) : (state.message << "?", 0)), ...);
   state.hasMessage = true;
   return false;
@@ -397,9 +397,9 @@ int testWorker()
 }
 
 // What a worker tells the first process: a kind, the text's length, a line end, the text.
-void __kppSend(char kind, const String& text)
+void __kppSend(char kind, const std::String& text)
 {
-  String frame;
+  std::String frame;
   frame.append(kind);
   frame << int(text.size()) << "\n";
   frame.append(text);
@@ -408,15 +408,15 @@ void __kppSend(char kind, const String& text)
 }
 
 // A line of the runner's own.
-void __kppSay(const String& line)
+void __kppSay(const std::String& line)
 {
   __KppTestState& state = __kppTestState();
   if (!state.working)
   {
-    println(line);
+    std::println(line);
     return;
   }
-  String text = line;
+  std::String text = line;
   text.append('\n');
   __kppSend('P', text);
 }
@@ -426,20 +426,20 @@ void __kppFail(const char* file, int line, int column, const char* kind, const c
 {
   __KppTestState& state = __kppTestState();
   __KppTestFailure failure;
-  failure.file = String(file);
+  failure.file = std::String(file);
   failure.line = line;
   failure.column = column;
   failure.kind = kind;
-  failure.expression = String(text);
+  failure.expression = std::String(text);
   failure.hasValues = state.hasValues;
-  String shown = toString(StringView(file), ":", line, ":", column, ": ", StringView(what));
+  std::String shown = std::toString(std::StringView(file), ":", line, ":", column, ": ", std::StringView(what));
   if (text[0] != 0)
-    shown << ": " << StringView(text);
+    shown << ": " << std::StringView(text);
   if (state.hasValues)
   {
     failure.left = state.left;
     failure.right = state.right;
-    shown << " (" << state.left << " " << StringView(state.op) << " " << state.right << ")";
+    shown << " (" << state.left << " " << std::StringView(state.op) << " " << state.right << ")";
   }
   else if (!state.arguments.empty())
   {
@@ -461,19 +461,19 @@ void __kppFail(const char* file, int line, int column, const char* kind, const c
   {
     for (const __KppTestFrame* frame = __kppInnermostFrame(); frame; frame = frame->outer)
       if (frame->site.file)
-        shown << "\n" << StringView(frame->site.file) << ":" << frame->site.line << ":" << frame->site.column << ": called from here";
+        shown << "\n" << std::StringView(frame->site.file) << ":" << frame->site.line << ":" << frame->site.column << ": called from here";
     __kppSay(shown);
   }
   state.hasValues = false;
   state.arguments.clear();
-  state.note = String();
+  state.note = std::String();
   state.hasMessage = false;
   state.failures.push_back(failure);
 }
 
 // requireThrows<T>(expr) (design.md 8.7): the T that evaluating expr throws; a failure that ends the
 // test when it throws none (another exception leaves the test).
-template<typename T, typename F> T __kppRequireThrows(F body, const char* text, CallerLocation here = caller)
+template<typename T, typename F> T __kppRequireThrows(F body, const char* text, std::CallerLocation here = caller)
 {
   try
   {
@@ -483,13 +483,13 @@ template<typename T, typename F> T __kppRequireThrows(F body, const char* text, 
   {
     return e;
   }
-  __kppTestState().note = String("nothing was thrown");
+  __kppTestState().note = std::String("nothing was thrown");
   __kppFail(here.file_name(), int(here.line()), int(here.column()), "require", text, "check failed");
   throw TestEnded();
 }
 
 // checkThrows<T>(expr): the T that evaluating expr throws, or none and a failure (the test goes on).
-template<typename T, typename F> std::Optional<T> __kppCheckThrows(F body, const char* text, CallerLocation here = caller)
+template<typename T, typename F> std::Optional<T> __kppCheckThrows(F body, const char* text, std::CallerLocation here = caller)
 {
   try
   {
@@ -499,23 +499,23 @@ template<typename T, typename F> std::Optional<T> __kppCheckThrows(F body, const
   {
     return std::Optional<T>(e);
   }
-  __kppTestState().note = String("nothing was thrown");
+  __kppTestState().note = std::String("nothing was thrown");
   __kppFail(here.file_name(), int(here.line()), int(here.column()), "check", text, "check failed");
   return std::Optional<T>();
 }
 
 // A failure of the running test as a whole, at its declaration: an exception that left it, its
 // fixture's construction or destruction.
-void __kppTestFailed(const String& text)
+void __kppTestFailed(const std::String& text)
 {
   const __KppTest& test = *__kppTestState().current;
   __kppFail(test.where.file_name(), int(test.where.line()), int(test.where.column()), "exception", text.c_str(), "test failed");
 }
 
 // The text an exception says, after a colon, when it is one of the library's.
-template<typename E> String __kppWhat(const E& e)
+template<typename E> std::String __kppWhat(const E& e)
 {
-  return toString(": ", e.message);
+  return std::toString(": ", e.message);
 }
 
 // The fixture's destruction; a failure of the test when it throws.
@@ -525,13 +525,13 @@ template<typename T> void __kppDestroyFixture(T* fixture, const char* name)
   {
     delete fixture;
   }
-  catch (const Exception& e)
+  catch (const std::Exception& e)
   {
-    __kppTestFailed(toString("tearing down fixture ", StringView(name), __kppWhat(e)));
+    __kppTestFailed(std::toString("tearing down fixture ", std::StringView(name), __kppWhat(e)));
   }
   catch (...)
   {
-    __kppTestFailed(toString("tearing down fixture ", StringView(name)));
+    __kppTestFailed(std::toString("tearing down fixture ", std::StringView(name)));
   }
 }
 
@@ -548,14 +548,14 @@ template<typename T> void __kppRunFixture(const char* name)
   {
     throw;
   }
-  catch (const Exception& e)
+  catch (const std::Exception& e)
   {
-    __kppTestFailed(toString("creating fixture ", StringView(name), __kppWhat(e)));
+    __kppTestFailed(std::toString("creating fixture ", std::StringView(name), __kppWhat(e)));
     throw TestEnded();
   }
   catch (...)
   {
-    __kppTestFailed(toString("creating fixture ", StringView(name)));
+    __kppTestFailed(std::toString("creating fixture ", std::StringView(name)));
     throw TestEnded();
   }
   try
@@ -582,14 +582,14 @@ extern "C" void kpp_check_failed(const char* file, int line, int column, const c
 
 // The hooks a program may define (design.md 8.7). The program's own, a function, is the better
 // match for a call than these templates, which say that it has none.
-template<typename T = void> void testsSetup(const std::Vector<String>& arguments)
+template<typename T = void> void testsSetup(const std::Vector<std::String>& arguments)
 {
   __kppTestState().noSetup = true;
 }
 template<typename T = void> void testBeforeEach()
 {
 }
-template<typename T = void> void testRun(Function<void()> run)
+template<typename T = void> void testRun(std::Function<void()> run)
 {
   run();
 }
@@ -601,7 +601,7 @@ template<typename T = void> void testsTeardown()
 }
 
 // One step of a test: true when it ran to its end; an exception that leaves it fails the test.
-bool __kppGuarded(const Function<void()>& step, const char* what)
+bool __kppGuarded(const std::Function<void()>& step, const char* what)
 {
   try
   {
@@ -611,13 +611,13 @@ bool __kppGuarded(const Function<void()>& step, const char* what)
   catch (const TestEnded&)
   {
   }
-  catch (const Exception& e)
+  catch (const std::Exception& e)
   {
-    __kppTestFailed(toString("an exception left ", StringView(what), __kppWhat(e)));
+    __kppTestFailed(std::toString("an exception left ", std::StringView(what), __kppWhat(e)));
   }
   catch (...)
   {
-    __kppTestFailed(toString("an exception left ", StringView(what)));
+    __kppTestFailed(std::toString("an exception left ", std::StringView(what)));
   }
   return false;
 }
@@ -625,7 +625,7 @@ bool __kppGuarded(const Function<void()>& step, const char* what)
 // A test's fixture and body, through the program's testRun.
 void __kppRunWhole(const __KppTest* test)
 {
-  Function<void()> whole = [test]()
+  std::Function<void()> whole = [test]()
   {
     if (test->run)
       test->run();
@@ -636,14 +636,14 @@ void __kppRunWhole(const __KppTest* test)
 }
 
 // The running test's full name, empty outside a test (design.md 8.7).
-StringView currentTestName()
+std::StringView currentTestName()
 {
   __KppTestState& state = __kppTestState();
-  return state.running ? StringView(state.current->fullName) : StringView();
+  return state.running ? std::StringView(state.current->fullName) : std::StringView();
 }
 
 // Runs step with its failures collected instead of the running test's: true when it had none.
-bool __kppCaptured(const Function<void()>& step)
+bool __kppCaptured(const std::Function<void()>& step)
 {
   __KppTestState& state = __kppTestState();
   std::Vector<__KppTestFailure> outer = state.failures;
@@ -657,12 +657,12 @@ bool __kppCaptured(const Function<void()>& step)
 }
 
 // Ends the running test with a failure at here; outside a test there is none to fail.
-void __kppMisused(CallerLocation here, const String& text)
+void __kppMisused(std::CallerLocation here, const std::String& text)
 {
   __KppTestState& state = __kppTestState();
   if (!state.running)
   {
-    println(StringView(here.file_name()), ":", here.line(), ":", here.column(), ": ", text);
+    std::println(std::StringView(here.file_name()), ":", here.line(), ":", here.column(), ": ", text);
     abort();
   }
   __kppMessage(text);
@@ -671,40 +671,40 @@ void __kppMisused(CallerLocation here, const String& text)
 }
 
 // Runs body inside the running test, its failures captured (design.md 8.7): true when it had none.
-bool runCaptured(Function<void()> body, CallerLocation here = caller)
+bool runCaptured(std::Function<void()> body, std::CallerLocation here = caller)
 {
   if (!__kppTestState().running)
-    __kppMisused(here, String("runCaptured outside a test"));
+    __kppMisused(here, std::String("runCaptured outside a test"));
   return __kppCaptured([&body]() { __kppGuarded(body, "the test"); });
 }
 
 // Runs a registered test in place, fixture included, its failures captured (design.md 8.7): true
 // when it had none. name is Suite.Test, or Test when one test has that name.
-bool runTest(StringView name, CallerLocation here = caller)
+bool runTest(std::StringView name, std::CallerLocation here = caller)
 {
   __KppTestState& state = __kppTestState();
   if (!state.running)
-    __kppMisused(here, String("runTest outside a test"));
+    __kppMisused(here, std::String("runTest outside a test"));
   const __KppTest* found = nullptr;
   int matches = 0;
   for (const __KppTest& test : state.tests)
-    if (StringView(test.fullName) == name)
+    if (std::StringView(test.fullName) == name)
     {
       found = &test;
       matches = 1;
       break;
     }
-    else if (StringView(test.name) == name)
+    else if (std::StringView(test.name) == name)
     {
       found = &test;
       ++matches;
     }
   if (matches == 0)
-    __kppMisused(here, toString("runTest: no test is called ", name));
+    __kppMisused(here, std::toString("runTest: no test is called ", name));
   if (matches > 1)
-    __kppMisused(here, toString("runTest: ", matches, " tests are called ", name, ": write Suite.Test"));
+    __kppMisused(here, std::toString("runTest: ", matches, " tests are called ", name, ": write Suite.Test"));
   if (found == state.current)
-    __kppMisused(here, toString("runTest: ", name, " is the running test"));
+    __kppMisused(here, std::toString("runTest: ", name, " is the running test"));
   const __KppTest* outer = state.current;
   state.current = found;
   bool passed = __kppCaptured([found]() { __kppRunWhole(found); });
@@ -717,7 +717,7 @@ template<typename T = void> void testAssertFailed(const char* file, int line, in
 {
   if (!__kppTestState().running)
   {
-    println(StringView(file), ":", line, ":", column, ": assertion failed: ", StringView(text));
+    std::println(std::StringView(file), ":", line, ":", column, ": assertion failed: ", std::StringView(text));
     abort();
   }
   __kppFail(file, line, column, "assert", text, "assertion failed");
@@ -765,9 +765,9 @@ bool __kppSameName(const char* a, const char* b)
   }
 }
 
-String __kppJson(const String& text)
+std::String __kppJson(const std::String& text)
 {
-  String result("\"");
+  std::String result("\"");
   const char* c = text.c_str();
   for (int i = 0; c[i] != 0; ++i)
   {
@@ -789,21 +789,21 @@ String __kppJson(const String& text)
   return result;
 }
 
-String __kppJsonTest(const __KppTest& test, const char* status, const std::Vector<__KppTestFailure>& failures, double seconds = 0)
+std::String __kppJsonTest(const __KppTest& test, const char* status, const std::Vector<__KppTestFailure>& failures, double seconds = 0)
 {
-  String line;
+  std::String line;
   line << "{\"test\":" << __kppJson(test.fullName);
   if (test.suite[0] != 0)
-    line << ",\"suite\":" << __kppJson(String(test.suite));
-  line << ",\"file\":" << __kppJson(String(test.where.file_name())) << ",\"line\":" << int(test.where.line()) << ",\"status\":\""
-       << StringView(status) << "\",\"seconds\":" << seconds << ",\"failures\":[";
+    line << ",\"suite\":" << __kppJson(std::String(test.suite));
+  line << ",\"file\":" << __kppJson(std::String(test.where.file_name())) << ",\"line\":" << int(test.where.line()) << ",\"status\":\""
+       << std::StringView(status) << "\",\"seconds\":" << seconds << ",\"failures\":[";
   for (int i = 0; i < int(failures.size()); ++i)
   {
     const __KppTestFailure& f = failures[i];
     if (i > 0)
       line.append(",");
     line << "{\"file\":" << __kppJson(f.file) << ",\"line\":" << f.line << ",\"column\":" << f.column << ",\"kind\":\""
-         << StringView(f.kind) << "\",\"expression\":" << __kppJson(f.expression);
+         << std::StringView(f.kind) << "\",\"expression\":" << __kppJson(f.expression);
     if (f.hasValues)
       line << ",\"values\":[" << __kppJson(f.left) << "," << __kppJson(f.right) << "]";
     else if (!f.arguments.empty())
@@ -827,13 +827,13 @@ String __kppJsonTest(const __KppTest& test, const char* status, const std::Vecto
 __KppSuite* __kppSuite(const char* name)
 {
   for (__KppSuite& suite : __kppTestState().suites)
-    if (strcmp(suite.name.c_str(), name) == 0)
+    if (std::strcmp(suite.name.c_str(), name) == 0)
       return &suite;
   return nullptr;
 }
 
 // Each suite's place in the run: of the suites whose dependencies all have theirs, the first by name.
-u64 __kppNanoseconds() { return u64(SteadyClock::now().time_since_epoch().count()); }
+u64 __kppNanoseconds() { return u64(std::SteadyClock::now().time_since_epoch().count()); }
 
 // splitmix64: --shuffle's numbers, the same for a seed on every target.
 u64 __kppRandom(u64& state)
@@ -857,7 +857,7 @@ void __kppOrderSuites(u64* random)
       if (suite.order >= 0)
         continue;
       bool isReady = true;
-      for (const String& dependency : suite.depends)
+      for (const std::String& dependency : suite.depends)
       {
         __KppSuite* d = __kppSuite(dependency.c_str());
         isReady = isReady && (!d || d->order >= 0);
@@ -867,7 +867,7 @@ void __kppOrderSuites(u64* random)
     }
     if (ready.empty())
       return; // a cycle, which the compiler reports
-    stableSort(ready.begin(), ready.end(), [](const __KppSuite* a, const __KppSuite* b) { return strcmp(a->name.c_str(), b->name.c_str()) < 0; });
+    std::stableSort(ready.begin(), ready.end(), [](const __KppSuite* a, const __KppSuite* b) { return std::strcmp(a->name.c_str(), b->name.c_str()) < 0; });
     ready[random ? int(__kppRandom(*random) % u64(ready.size())) : 0]->order = placed;
   }
 }
@@ -875,7 +875,7 @@ void __kppOrderSuites(u64* random)
 // --with-dependencies: suite's dependencies, directly or further back.
 void __kppMarkNeeded(const __KppSuite& suite)
 {
-  for (const String& dependency : suite.depends)
+  for (const std::String& dependency : suite.depends)
   {
     __KppSuite* d = __kppSuite(dependency.c_str());
     if (d && !d->needed)
@@ -919,12 +919,12 @@ int __kppStart(const std::Vector<const __KppTest*>& selected, const char* name, 
     }
   if (first < 0)
   {
-    println(StringView(after ? "--after" : "--from"), ": no selected suite or test is called ", StringView(name));
+    std::println(std::StringView(after ? "--after" : "--from"), ": no selected suite or test is called ", std::StringView(name));
     return -1;
   }
   if (sameName > 1)
   {
-    println(StringView(after ? "--after" : "--from"), ": ", sameName, " selected tests are called ", StringView(name), ": write Suite.Test");
+    std::println(std::StringView(after ? "--after" : "--from"), ": ", sameName, " selected tests are called ", std::StringView(name), ": write Suite.Test");
     return -1;
   }
   return after ? last + 1 : first;
@@ -933,7 +933,7 @@ int __kppStart(const std::Vector<const __KppTest*>& selected, const char* name, 
 // The failed suites among those suite depends on, directly or further back, in the run's order.
 void __kppFailedDependencies(const __KppSuite& suite, std::Vector<const __KppSuite*>& found)
 {
-  for (const String& dependency : suite.depends)
+  for (const std::String& dependency : suite.depends)
   {
     const __KppSuite* d = __kppSuite(dependency.c_str());
     if (!d)
@@ -952,7 +952,7 @@ void __kppFailedDependencies(const __KppSuite& suite, std::Vector<const __KppSui
 bool __kppHasTag(const __KppSuite* suite, const char* tag)
 {
   if (suite)
-    for (const String& t : suite->tags)
+    for (const std::String& t : suite->tags)
       if (__kppSameName(t.c_str(), tag))
         return true;
   return false;
@@ -974,7 +974,7 @@ bool __kppRunOne(const __KppTest* test, u64 slowSeconds, u64* took)
   state.running = false;
   *took = __kppNanoseconds() - started;
   if (*took > slowSeconds * 1000000000u)
-    __kppSay(toString("slow test: ", test->fullName, " ran longer than ", slowSeconds, " s"));
+    __kppSay(std::toString("slow test: ", test->fullName, " ran longer than ", slowSeconds, " s"));
   return state.failures.empty();
 }
 
@@ -983,7 +983,7 @@ bool __kppRunOne(const __KppTest* test, u64 slowSeconds, u64* took)
 int __kppWork(const std::Vector<const __KppTest*>& selected, i64 from, u64 slowSeconds)
 {
   __KppTestState& state = __kppTestState();
-  String line;
+  std::String line;
   char c = 0;
   while (__kppReadPipe(from, &c, 1) == 1)
   {
@@ -996,16 +996,16 @@ int __kppWork(const std::Vector<const __KppTest*>& selected, i64 from, u64 slowS
     u64 first = 0, last = 0;
     __kppNumber(line.substr(0, space).c_str(), first);
     __kppNumber(line.substr(space + 1).c_str(), last);
-    line = String();
+    line = std::String();
     for (u64 i = first; i < last; ++i)
     {
-      __kppSend('B', String());
+      __kppSend('B', std::String());
       u64 took = 0;
       bool passed = __kppRunOne(selected[int(i)], slowSeconds, &took);
       __kppSend('R', __kppJsonTest(*selected[int(i)], passed ? "pass" : "fail", state.failures, double(took) / 1000000000.0));
-      __kppSend('D', String(passed ? "1" : "0"));
+      __kppSend('D', std::String(passed ? "1" : "0"));
     }
-    __kppSend('E', String());
+    __kppSend('E', std::String());
   }
   testsTeardown();
   return 0;
@@ -1016,9 +1016,9 @@ struct __KppJobTest
 {
   bool finished = false;
   bool passed = false;
-  String crashed; // how its process ended
-  String printed;
-  String report;
+  std::String crashed; // how its process ended
+  std::String printed;
+  std::String report;
 };
 
 // A suite of the selection, or the tests outside suites: the tests first..last, next the first of them
@@ -1037,37 +1037,37 @@ struct __KppJobEvent
 {
   int worker = 0;
   char kind = 0;
-  String text;
+  std::String text;
 };
 
 // What the workers' readers hand to the first process.
 class __KppJobEvents
 {
 public:
-  void push(int worker, char kind, String text)
+  void push(int worker, char kind, std::String text)
   {
     __KppJobEvent event;
     event.worker = worker;
     event.kind = kind;
-    event.text = move(text);
-    LockGuard<Mutex> guard(this->mutex);
-    this->events.push_back(move(event));
+    event.text = std::move(text);
+    std::LockGuard<std::Mutex> guard(this->mutex);
+    this->events.push_back(std::move(event));
     this->ready.notifyOne();
   }
 
   __KppJobEvent pop()
   {
-    UniqueLock<Mutex> lock(this->mutex);
+    std::UniqueLock<std::Mutex> lock(this->mutex);
     while (this->head == int(this->events.size()))
       this->ready.wait(lock);
-    __KppJobEvent event = move(this->events[this->head]);
+    __KppJobEvent event = std::move(this->events[this->head]);
     ++this->head;
     return event;
   }
 
 private:
-  Mutex mutex;
-  ConditionVariable ready;
+  std::Mutex mutex;
+  std::ConditionVariable ready;
   std::Vector<__KppJobEvent> events;
   int head = 0;
 };
@@ -1075,7 +1075,7 @@ private:
 // One worker's messages, until it ends: then an 'X'.
 void __kppReadWorker(__KppJobEvents* events, int worker, i64 from)
 {
-  String pending;
+  std::String pending;
   char buffer[4096];
   for (;;)
   {
@@ -1087,7 +1087,7 @@ void __kppReadWorker(__KppJobEvents* events, int worker, i64 from)
     for (;;)
     {
       size_t lineEnd = pending.find('\n', at);
-      if (lineEnd == String::npos)
+      if (lineEnd == std::String::npos)
         break;
       u64 length = 0;
       __kppNumber(pending.substr(at + 1, lineEnd - at - 1).c_str(), length);
@@ -1098,13 +1098,13 @@ void __kppReadWorker(__KppJobEvents* events, int worker, i64 from)
     }
     pending = pending.substr(at);
   }
-  events->push(worker, 'X', String());
+  events->push(worker, 'X', std::String());
 }
 
 struct __KppJobWorker
 {
   __KppWorkerProcess process;
-  Thread reader;
+  std::Thread reader;
   bool alive = false;
   int job = -1;
   bool inTest = false; // between its 'B' and its 'D'
@@ -1113,7 +1113,7 @@ struct __KppJobWorker
 // Whether a suite must wait: a dependency, directly or through suites left out, has not finished.
 bool __kppJobWaits(const __KppSuite& suite, const std::Vector<__KppJob>& jobs)
 {
-  for (const String& name : suite.depends)
+  for (const std::String& name : suite.depends)
   {
     const __KppSuite* dependency = __kppSuite(name.c_str());
     if (!dependency)
@@ -1140,9 +1140,9 @@ public:
   }
 
   // Starts count workers; false when one could not start.
-  bool start(int count, std::Vector<String> extra, int argc, char** argv)
+  bool start(int count, std::Vector<std::String> extra, int argc, char** argv)
   {
-    this->extra = move(extra);
+    this->extra = std::move(extra);
     this->argc = argc;
     this->argv = argv;
     this->workers.resize(count);
@@ -1160,7 +1160,7 @@ public:
     worker.alive = true;
     worker.job = -1;
     worker.inTest = false;
-    worker.reader = Thread(__kppReadWorker, &this->events, index, worker.process.from);
+    worker.reader = std::Thread(__kppReadWorker, &this->events, index, worker.process.from);
     return true;
   }
 
@@ -1188,7 +1188,7 @@ public:
   bool started = false;
 
 private:
-  std::Vector<String> extra;
+  std::Vector<std::String> extra;
   int argc = 0;
   char** argv = nullptr;
 };
@@ -1196,15 +1196,15 @@ private:
 // --durations FILE: the seconds an earlier run's --report gives each test and each suite.
 struct __KppDurations
 {
-  HashMap<String, double> tests;
-  HashMap<String, double> suites;
-  HashMap<String, int> suiteTests; // the tests it names in each suite
+  std::HashMap<std::String, double> tests;
+  std::HashMap<std::String, double> suites;
+  std::HashMap<std::String, int> suiteTests; // the tests it names in each suite
 };
 
 // A JSON string's text from at, the character after its opening quote, to its closing one.
-String __kppJsonText(StringView line, size_t at)
+std::String __kppJsonText(std::StringView line, size_t at)
 {
-  String text;
+  std::String text;
   for (; at < line.size() && line[at] != '"'; ++at)
   {
     if (line[at] == '\\' && at + 1 < line.size())
@@ -1221,7 +1221,7 @@ bool __kppReadDurations(const char* name, __KppDurations& seconds)
   FILE* file = fopen(name, "rb");
   if (!file)
     return false;
-  String text;
+  std::String text;
   char buffer[65536];
   for (;;)
   {
@@ -1231,16 +1231,16 @@ bool __kppReadDurations(const char* name, __KppDurations& seconds)
     text.append(buffer, count);
   }
   fclose(file);
-  StringView rest(text);
+  std::StringView rest(text);
   while (!rest.empty())
   {
     auto end = rest.find('\n');
-    StringView line = rest.substr(0, end);
-    rest = end == StringView::npos ? StringView() : rest.substr(end + 1);
+    std::StringView line = rest.substr(0, end);
+    rest = end == std::StringView::npos ? std::StringView() : rest.substr(end + 1);
     auto test = line.find("{\"test\":\"");
     auto suite = line.find("\"suite\":\"");
     auto took = line.find("\"seconds\":");
-    if (test == StringView::npos || took == StringView::npos)
+    if (test == std::StringView::npos || took == std::StringView::npos)
       continue;
     // (a JSON number: digits, a fraction, an exponent)
     double value = 0, scale = 0;
@@ -1271,9 +1271,9 @@ bool __kppReadDurations(const char* name, __KppDurations& seconds)
         value = negative ? value / 10 : value * 10;
     }
     seconds.tests[__kppJsonText(line, test + 9)] = value;
-    if (suite != StringView::npos)
+    if (suite != std::StringView::npos)
     {
-      String name = __kppJsonText(line, suite + 9);
+      std::String name = __kppJsonText(line, suite + 9);
       seconds.suites[name] += value;
       ++seconds.suiteTests[name];
     }
@@ -1321,7 +1321,7 @@ template<typename Finished> bool __kppRunJobs(const std::Vector<const __KppTest*
   {
     if (!durations)
       return nullptr;
-    const HashMap<String, double>& known = byTest ? durations->tests : durations->suites;
+    const std::HashMap<std::String, double>& known = byTest ? durations->tests : durations->suites;
     if (!byTest && !job.suite)
       return nullptr;
     auto at = known.find(byTest ? selected[job.first]->fullName : job.suite->name);
@@ -1355,14 +1355,14 @@ template<typename Finished> bool __kppRunJobs(const std::Vector<const __KppTest*
     for (int j = int(jobs.size()) - 1; j >= 0; --j) // (a dependent comes after its dependencies)
       for (int k = j + 1; k < int(jobs.size()); ++k)
         if (jobs[j].suite && jobs[k].suite)
-          for (const String& name : jobs[k].suite->depends)
+          for (const std::String& name : jobs[k].suite->depends)
             if (name == jobs[j].suite->name)
-              weight[j] = max(weight[j], own[j] + weight[k]);
+              weight[j] = std::max(weight[j], own[j] + weight[k]);
   }
   std::Vector<int> byWeight;
   for (int j = 0; j < int(jobs.size()); ++j)
     byWeight.push_back(j);
-  stableSort(byWeight.begin(), byWeight.end(), [&](int a, int b) { return weight[a] > weight[b]; });
+  std::stableSort(byWeight.begin(), byWeight.end(), [&](int a, int b) { return weight[a] > weight[b]; });
 
   __KppJobEvents& events = pool.events;
   std::Vector<__KppJobWorker>& workers = pool.workers;
@@ -1380,7 +1380,7 @@ template<typename Finished> bool __kppRunJobs(const std::Vector<const __KppTest*
         {
           jobs[j].given = true;
           workers[w].job = j;
-          String command = toString(jobs[j].next, " ", jobs[j].last, "\n");
+          std::String command = std::toString(jobs[j].next, " ", jobs[j].last, "\n");
           __kppWritePipe(workers[w].process.to, command.data(), int(command.size())); // (a worker that died says so with its 'X')
           break;
         }
@@ -1417,7 +1417,7 @@ template<typename Finished> bool __kppRunJobs(const std::Vector<const __KppTest*
       {
         __KppJobTest& result = results[job->next];
         result.finished = true;
-        result.crashed = toString("exit code ", code);
+        result.crashed = std::toString("exit code ", code);
         result.report = __kppJsonTest(*selected[job->next], "crash", std::Vector<__KppTestFailure>());
         ++job->next;
         stopping = stopping || exitOnFailure;
@@ -1440,7 +1440,7 @@ template<typename Finished> bool __kppRunJobs(const std::Vector<const __KppTest*
     else if (event.kind == 'P')
       results[job->next].printed.append(event.text);
     else if (event.kind == 'R')
-      results[job->next].report = move(event.text);
+      results[job->next].report = std::move(event.text);
     else if (event.kind == 'D')
     {
       results[job->next].finished = true;
@@ -1469,7 +1469,7 @@ template<typename Finished> bool __kppRunJobs(const std::Vector<const __KppTest*
     int code = pool.ended(event);
     if (code != 0)
     {
-      println("a test worker ended with exit code ", code, " after its tests");
+      std::println("a test worker ended with exit code ", code, " after its tests");
       ended = false;
     }
   }
@@ -1486,7 +1486,7 @@ template<typename Finished> bool __kppRunJobs(const std::Vector<const __KppTest*
 int main(int argc, char** argv)
 {
   std::Vector<const char*> filters, onlySuites, skipSuites;
-  std::Vector<String> others; // the arguments the runner does not know: testsSetup's
+  std::Vector<std::String> others; // the arguments the runner does not know: testsSetup's
   const char* tag = nullptr;
   bool list = false, exitOnFailure = false, withDependencies = false, shuffle = false;
   const char* report = nullptr;
@@ -1500,23 +1500,23 @@ int main(int argc, char** argv)
   u64 workerIn = 0, workerOut = 0, workerIndex = 0;
   for (int i = 1; i < argc; ++i)
   {
-    if (strcmp(argv[i], "--filter") == 0 && i + 1 < argc)
+    if (std::strcmp(argv[i], "--filter") == 0 && i + 1 < argc)
       filters.push_back(argv[++i]);
-    else if (strcmp(argv[i], "--suite") == 0 && i + 1 < argc)
+    else if (std::strcmp(argv[i], "--suite") == 0 && i + 1 < argc)
       onlySuites.push_back(argv[++i]);
-    else if (strcmp(argv[i], "--skip-suite") == 0 && i + 1 < argc)
+    else if (std::strcmp(argv[i], "--skip-suite") == 0 && i + 1 < argc)
       skipSuites.push_back(argv[++i]);
-    else if (strcmp(argv[i], "--tag") == 0 && i + 1 < argc)
+    else if (std::strcmp(argv[i], "--tag") == 0 && i + 1 < argc)
       tag = argv[++i];
-    else if (strcmp(argv[i], "--exit-on-failure") == 0)
+    else if (std::strcmp(argv[i], "--exit-on-failure") == 0)
       exitOnFailure = true;
-    else if (strcmp(argv[i], "--with-dependencies") == 0)
+    else if (std::strcmp(argv[i], "--with-dependencies") == 0)
       withDependencies = true;
-    else if (strcmp(argv[i], "--from") == 0 && i + 1 < argc)
+    else if (std::strcmp(argv[i], "--from") == 0 && i + 1 < argc)
       from = argv[++i];
-    else if (strcmp(argv[i], "--after") == 0 && i + 1 < argc)
+    else if (std::strcmp(argv[i], "--after") == 0 && i + 1 < argc)
       after = argv[++i];
-    else if (strcmp(argv[i], "--shuffle") == 0)
+    else if (std::strcmp(argv[i], "--shuffle") == 0)
     {
       shuffle = true;
       if (i + 1 < argc && __kppNumber(argv[i + 1], seed))
@@ -1525,37 +1525,37 @@ int main(int argc, char** argv)
         ++i;
       }
     }
-    else if (strcmp(argv[i], "--slow") == 0 && i + 1 < argc)
+    else if (std::strcmp(argv[i], "--slow") == 0 && i + 1 < argc)
     {
       if (!__kppNumber(argv[++i], slowSeconds))
       {
-        println("--slow takes a number of seconds, not ", StringView(argv[i]));
+        std::println("--slow takes a number of seconds, not ", std::StringView(argv[i]));
         return 2;
       }
     }
-    else if (strcmp(argv[i], "--jobs") == 0 && i + 1 < argc)
+    else if (std::strcmp(argv[i], "--jobs") == 0 && i + 1 < argc)
     {
       if (!__kppNumber(argv[++i], jobs) || jobs == 0)
       {
-        println("--jobs takes a number of processes, not ", StringView(argv[i]));
+        std::println("--jobs takes a number of processes, not ", std::StringView(argv[i]));
         return 2;
       }
     }
-    else if (strcmp(argv[i], "--durations") == 0 && i + 1 < argc)
+    else if (std::strcmp(argv[i], "--durations") == 0 && i + 1 < argc)
       durations = argv[++i];
-    else if (strcmp(argv[i], "--kpp-worker") == 0 && i + 3 < argc)
+    else if (std::strcmp(argv[i], "--kpp-worker") == 0 && i + 3 < argc)
     {
       __kppNumber(argv[i + 1], workerIndex);
       __kppNumber(argv[i + 2], workerIn);
       __kppNumber(argv[i + 3], workerOut);
       i += 3;
     }
-    else if (strcmp(argv[i], "--list") == 0)
+    else if (std::strcmp(argv[i], "--list") == 0)
       list = true;
-    else if (strcmp(argv[i], "--report") == 0 && i + 1 < argc)
+    else if (std::strcmp(argv[i], "--report") == 0 && i + 1 < argc)
       report = argv[++i];
     else
-      others.push_back(String(argv[i]));
+      others.push_back(std::String(argv[i]));
   }
   __KppTestState& state = __kppTestState();
   if (workerIndex > 0)
@@ -1568,24 +1568,24 @@ int main(int argc, char** argv)
   }
   else if (durations && jobs == 0)
   {
-    println("--durations orders the tests of --jobs: give --jobs N too");
+    std::println("--durations orders the tests of --jobs: give --jobs N too");
     return 2;
   }
   FILE* reportFile = nullptr;
-  bool reportToStdout = report && strcmp(report, "-") == 0;
+  bool reportToStdout = report && std::strcmp(report, "-") == 0;
   if (report && !reportToStdout)
   {
     reportFile = fopen(report, "w");
     if (!reportFile)
     {
-      println("cannot write the report ", StringView(report));
+      std::println("cannot write the report ", std::StringView(report));
       return 2;
     }
   }
-  auto writeReport = [&](const String& text)
+  auto writeReport = [&](const std::String& text)
   {
     if (reportToStdout)
-      print(text);
+      std::print(text);
     else if (reportFile)
       fputs(text.c_str(), reportFile);
   };
@@ -1600,13 +1600,13 @@ int main(int argc, char** argv)
   __KppJobPool pool;
   if (jobs > 0 && !list)
   {
-    std::Vector<String> extra;
+    std::Vector<std::String> extra;
     if (shuffle)
     {
-      extra.push_back(String("--shuffle"));
-      extra.push_back(toString(seed));
+      extra.push_back(std::String("--shuffle"));
+      extra.push_back(std::toString(seed));
     }
-    pool.started = pool.start(int(min(jobs, u64(1000))), move(extra), argc, argv);
+    pool.started = pool.start(int(std::min(jobs, u64(1000))), std::move(extra), argc, argv);
   }
   if (!list)
   {
@@ -1614,24 +1614,24 @@ int main(int argc, char** argv)
     {
       testsSetup(others);
     }
-    catch (const Exception& e)
+    catch (const std::Exception& e)
     {
-      println("testsSetup failed", __kppWhat(e));
+      std::println("testsSetup failed", __kppWhat(e));
       return 2;
     }
   }
   if (!others.empty() && (list || state.noSetup))
   {
-    println("unknown test runner argument ", others[0],
+    std::println("unknown test runner argument ", others[0],
             "; the runner takes --filter TEXT, --suite NAME, --skip-suite NAME, --with-dependencies, --from NAME, --after NAME, --tag TAG, "
             "--exit-on-failure, --shuffle [SEED], --slow SECONDS, --jobs N, --durations FILE, --list, --report FILE (- for stdout), "
             "and the program's testsSetup the others");
     return 2;
   }
   // The generators first, by file and line: their tests join the others.
-  stableSort(state.generators.begin(), state.generators.end(), [](const __KppGeneratorEntry& a, const __KppGeneratorEntry& b)
+  std::stableSort(state.generators.begin(), state.generators.end(), [](const __KppGeneratorEntry& a, const __KppGeneratorEntry& b)
   {
-    int byFile = strcmp(a.where.file_name(), b.where.file_name());
+    int byFile = std::strcmp(a.where.file_name(), b.where.file_name());
     return byFile != 0 ? byFile < 0 : a.where.line() < b.where.line();
   });
   for (const __KppGeneratorEntry& generator : state.generators)
@@ -1641,21 +1641,21 @@ int main(int argc, char** argv)
     {
       generator.run();
     }
-    catch (const Exception& e)
+    catch (const std::Exception& e)
     {
-      println(StringView(generator.where.file_name()), ":", int(generator.where.line()), ":", int(generator.where.column()),
-              ": error: the generator ", StringView(generator.suite), ".", StringView(generator.name), " threw", __kppWhat(e));
+      std::println(std::StringView(generator.where.file_name()), ":", int(generator.where.line()), ":", int(generator.where.column()),
+              ": error: the generator ", std::StringView(generator.suite), ".", std::StringView(generator.name), " threw", __kppWhat(e));
       return 2;
     }
   }
   state.generating = nullptr;
   if (from && after)
   {
-    println("--from and --after both say where to start: give one");
+    std::println("--from and --after both say where to start: give one");
     return 2;
   }
   if (shuffle && !state.working)
-    println("shuffle seed: ", seed);
+    std::println("shuffle seed: ", seed);
   u64 random = seed;
   __kppOrderSuites(shuffle ? &random : nullptr);
   // The suites in their order, each one's tests by line (a suite is one block in one file), then the
@@ -1666,11 +1666,11 @@ int main(int argc, char** argv)
     __KppSuite* suite = test.suite[0] != 0 ? __kppSuite(test.suite) : nullptr;
     test.order = suite ? suite->order : int(state.suites.size());
   }
-  stableSort(tests.begin(), tests.end(), [](const __KppTest& a, const __KppTest& b)
+  std::stableSort(tests.begin(), tests.end(), [](const __KppTest& a, const __KppTest& b)
   {
     if (a.order != b.order)
       return a.order < b.order;
-    int byFile = strcmp(a.where.file_name(), b.where.file_name());
+    int byFile = std::strcmp(a.where.file_name(), b.where.file_name());
     if (byFile != 0)
       return byFile < 0;
     return a.where.line() < b.where.line();
@@ -1679,7 +1679,7 @@ int main(int argc, char** argv)
   {
     for (__KppTest& test : tests)
       test.shuffled = __kppRandom(random);
-    stableSort(tests.begin(), tests.end(), [](const __KppTest& a, const __KppTest& b)
+    std::stableSort(tests.begin(), tests.end(), [](const __KppTest& a, const __KppTest& b)
     {
       return a.order != b.order ? a.order < b.order : a.shuffled < b.shuffled;
     });
@@ -1694,7 +1694,7 @@ int main(int argc, char** argv)
       any = any || __kppMatches(test.fullName.c_str(), filter);
     if (!any)
     {
-      println("--filter: no test matches ", StringView(filter));
+      std::println("--filter: no test matches ", std::StringView(filter));
       return 2;
     }
   }
@@ -1706,7 +1706,7 @@ int main(int argc, char** argv)
         any = any || __kppSameName(suite.name.c_str(), name);
       if (!any)
       {
-        println(StringView(pass == 0 ? "--suite" : "--skip-suite"), ": no suite is called ", StringView(name));
+        std::println(std::StringView(pass == 0 ? "--suite" : "--skip-suite"), ": no suite is called ", std::StringView(name));
         return 2;
       }
     }
@@ -1717,7 +1717,7 @@ int main(int argc, char** argv)
       any = any || __kppHasTag(&suite, tag);
     if (!any)
     {
-      println("--tag: no suite is tagged ", StringView(tag));
+      std::println("--tag: no suite is tagged ", std::StringView(tag));
       return 2;
     }
   }
@@ -1770,9 +1770,9 @@ int main(int argc, char** argv)
   {
     for (const __KppTest* test : selected)
     {
-      println(test->fullName, " (", StringView(test->where.file_name()), ":", int(test->where.line()), ")");
+      std::println(test->fullName, " (", std::StringView(test->where.file_name()), ":", int(test->where.line()), ")");
       if (report)
-        writeReport(toString("{\"test\":", __kppJson(test->fullName), ",\"file\":", __kppJson(String(test->where.file_name())), ",\"line\":",
+        writeReport(std::toString("{\"test\":", __kppJson(test->fullName), ",\"file\":", __kppJson(std::String(test->where.file_name())), ",\"line\":",
                              int(test->where.line()), "}\n"));
     }
     if (reportFile)
@@ -1786,7 +1786,7 @@ int main(int argc, char** argv)
   int run = 0, failed = 0, notRun = 0;
   std::Vector<const __KppTest*> roots; // the failed tests no failed dependency explains
   bool explained = false;         // a failure after a failed dependency
-  auto finished = [&](const __KppTest* test, bool passed, const String& crashed)
+  auto finished = [&](const __KppTest* test, bool passed, const std::String& crashed)
   {
     ++run;
     if (!passed)
@@ -1800,19 +1800,19 @@ int main(int argc, char** argv)
         suite->failed = true;
       }
       if (!crashed.empty())
-        println("failed: ", test->fullName, " (it crashed: ", crashed, ")");
+        std::println("failed: ", test->fullName, " (it crashed: ", crashed, ")");
       else if (after.empty())
-        println("failed: ", test->fullName);
+        std::println("failed: ", test->fullName);
       if (after.empty())
         roots.push_back(test);
       else
       {
         explained = true;
-        String names;
+        std::String names;
         for (const __KppSuite* d : after)
-          names << StringView(names.empty() ? "" : ", ") << d->name;
+          names << std::StringView(names.empty() ? "" : ", ") << d->name;
         if (crashed.empty())
-          println("failed: ", test->fullName, " (after failures in: ", names, ")");
+          std::println("failed: ", test->fullName, " (after failures in: ", names, ")");
       }
     }
   };
@@ -1822,12 +1822,12 @@ int main(int argc, char** argv)
     __KppDurations seconds;
     if (durations && !__kppReadDurations(durations, seconds))
     {
-      println("--durations: cannot read ", StringView(durations));
+      std::println("--durations: cannot read ", std::StringView(durations));
       return 2;
     }
     jobsRan = __kppRunJobs(selected, pool, durations ? &seconds : nullptr, exitOnFailure, [&](int position, const __KppJobTest& result)
     {
-      print(result.printed);
+      std::print(result.printed);
       if (!result.finished)
       {
         ++notRun;
@@ -1838,7 +1838,7 @@ int main(int argc, char** argv)
       writeReport(result.report);
     });
     if (!jobsRan)
-      println("--jobs: the workers did not run every test");
+      std::println("--jobs: the workers did not run every test");
   }
   else
     for (const __KppTest* test : selected)
@@ -1851,24 +1851,24 @@ int main(int argc, char** argv)
       }
       u64 took = 0;
       bool passed = __kppRunOne(test, slowSeconds, &took);
-      finished(test, passed, String());
+      finished(test, passed, std::String());
       writeReport(__kppJsonTest(*test, passed ? "pass" : "fail", state.failures, double(took) / 1000000000.0));
     }
   testsTeardown();
-  writeReport(toString("{\"summary\":{\"tests\":", run + notRun, ",\"failed\":", failed, ",\"notRun\":", notRun, "}}\n"));
+  writeReport(std::toString("{\"summary\":{\"tests\":", run + notRun, ",\"failed\":", failed, ",\"notRun\":", notRun, "}}\n"));
   if (reportFile)
     fclose(reportFile);
-  String summary = toString(run + notRun, " ", StringView(run + notRun == 1 ? "test" : "tests"), ", ", failed, " failed");
+  std::String summary = std::toString(run + notRun, " ", std::StringView(run + notRun == 1 ? "test" : "tests"), ", ", failed, " failed");
   if (notRun > 0)
     summary << ", " << notRun << " not run";
   if (explained)
   {
     summary << " (root failures: ";
     for (int i = 0; i < int(roots.size()); ++i)
-      summary << StringView(i > 0 ? ", " : "") << roots[i]->fullName;
+      summary << std::StringView(i > 0 ? ", " : "") << roots[i]->fullName;
     summary << ")";
   }
-  println(summary);
+  std::println(summary);
   return !jobsRan ? 2 : failed ? 1 : 0;
 }
 )kpp";
@@ -1904,7 +1904,7 @@ struct __KppWorkerProcess
 };
 
 // (the worker's command line is this one's, whatever it quotes, and the worker's own arguments)
-bool __kppStartWorker(__KppWorkerProcess& worker, int index, const std::Vector<String>& extra, int argc, char** argv)
+bool __kppStartWorker(__KppWorkerProcess& worker, int index, const std::Vector<std::String>& extra, int argc, char** argv)
 {
   u64 attributes[3] = {24, 0, 1}; // SECURITY_ATTRIBUTES: its size, no descriptor, inherited
   void* commandsIn = nullptr;
@@ -1921,8 +1921,8 @@ bool __kppStartWorker(__KppWorkerProcess& worker, int index, const std::Vector<S
   std::Vector<wchar_t> line;
   for (const wchar_t* c = __kppWin32::GetCommandLineW(); *c != 0; ++c)
     line.push_back(*c);
-  String added;
-  for (const String& argument : extra)
+  std::String added;
+  for (const std::String& argument : extra)
     added << " " << argument;
   added << " --kpp-worker " << index << " " << u64(commandsIn) << " " << u64(messagesOut);
   for (char c : added)
@@ -1931,15 +1931,15 @@ bool __kppStartWorker(__KppWorkerProcess& worker, int index, const std::Vector<S
   u64 startup[13] = {104}; // STARTUPINFOW: its size, and nothing else: the standard handles are this one's
   u64 information[3] = {}; // PROCESS_INFORMATION: the process, its thread, their ids
   int created = __kppWin32::CreateProcessW(nullptr, line.data(), nullptr, nullptr, 1, 0, nullptr, nullptr, (_STARTUPINFOW*)startup, (_PROCESS_INFORMATION*)information);
-  win32::CloseHandle(commandsIn);
-  win32::CloseHandle(messagesOut);
+  std::win32::CloseHandle(commandsIn);
+  std::win32::CloseHandle(messagesOut);
   if (!created)
   {
-    win32::CloseHandle(commandsOut);
-    win32::CloseHandle(messagesIn);
+    std::win32::CloseHandle(commandsOut);
+    std::win32::CloseHandle(messagesIn);
     return false;
   }
-  win32::CloseHandle((void*)information[1]);
+  std::win32::CloseHandle((void*)information[1]);
   worker.process = i64(information[0]);
   worker.to = i64(u64(commandsOut));
   worker.from = i64(u64(messagesIn));
@@ -1961,18 +1961,18 @@ bool __kppWritePipe(i64 pipe, const void* data, int size)
 void __kppCloseWorkerInput(__KppWorkerProcess& worker)
 {
   if (worker.to != 0)
-    win32::CloseHandle((void*)u64(worker.to));
+    std::win32::CloseHandle((void*)u64(worker.to));
   worker.to = 0;
 }
 
 int __kppEndWorker(__KppWorkerProcess& worker)
 {
   __kppCloseWorkerInput(worker);
-  win32::WaitForSingleObject((void*)u64(worker.process), 0xFFFFFFFFu);
+  std::win32::WaitForSingleObject((void*)u64(worker.process), 0xFFFFFFFFu);
   unsigned long code = 0;
   __kppWin32::GetExitCodeProcess((void*)u64(worker.process), &code);
-  win32::CloseHandle((void*)u64(worker.process));
-  win32::CloseHandle((void*)u64(worker.from));
+  std::win32::CloseHandle((void*)u64(worker.process));
+  std::win32::CloseHandle((void*)u64(worker.from));
   return int(code);
 }
 )kpp";
@@ -2003,22 +2003,22 @@ struct __KppWorkerProcess
   i64 from = 0; // the pipe from its messages
 };
 
-bool __kppStartWorker(__KppWorkerProcess& worker, int index, const std::Vector<String>& extra, int argc, char** argv)
+bool __kppStartWorker(__KppWorkerProcess& worker, int index, const std::Vector<std::String>& extra, int argc, char** argv)
 {
   signal(13, (SignalHandler)1); // SIGPIPE, SIG_IGN: a worker that died says so by its pipe's end
   int commands[2] = {};
   int messages[2] = {};
   if (__kppPosix::pipe(commands) != 0 || __kppPosix::pipe(messages) != 0)
     return false;
-  std::Vector<String> added = extra;
-  added.push_back(String("--kpp-worker"));
-  added.push_back(toString(index));
-  added.push_back(toString(commands[0]));
-  added.push_back(toString(messages[1]));
+  std::Vector<std::String> added = extra;
+  added.push_back(std::String("--kpp-worker"));
+  added.push_back(std::toString(index));
+  added.push_back(std::toString(commands[0]));
+  added.push_back(std::toString(messages[1]));
   std::Vector<char*> arguments;
   for (int i = 0; i < argc; ++i)
     arguments.push_back(argv[i]);
-  for (String& argument : added)
+  for (std::String& argument : added)
     arguments.push_back(argument.data());
   arguments.push_back(nullptr);
   int process = __kppPosix::fork();

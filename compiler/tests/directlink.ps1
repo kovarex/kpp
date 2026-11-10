@@ -11,7 +11,7 @@ New-Item -ItemType Directory -Force "$work\out" | Out-Null
 $KppExe = (Resolve-Path $KppExe).Path
 $failed = 0
 function Fail([string]$what) { "FAIL directlink: $what"; $script:failed++ }
-[IO.File]::WriteAllText("$work\main.kpp", "int main()`n{`n  Vector<int> v;`n  v.push_back(6);`n  println(`"linked `", v[0] * 7);`n  return 0;`n}`n")
+[IO.File]::WriteAllText("$work\main.kpp", "int main()`n{`n  std::Vector<int> v;`n  v.push_back(6);`n  std::println(`"linked `", v[0] * 7);`n  return 0;`n}`n")
 $exe = "$work\out\main.exe"
 function Build([string]$flags = '')
 {

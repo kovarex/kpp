@@ -2,7 +2,7 @@
 // found by thread D (2026-11-05), comparing const errors with clang: kpp refused `this->v = 1;` in a const member function and accepted `v = 1;` and the rest, which changed a const object
 // error: const_member_function_members_are_const.kpp:31: error: assignment to a const value (const int32)
 // error: const_member_function_members_are_const.kpp:32: error: increment of a const value (const int32)
-// error: const_member_function_members_are_const.kpp:33: error: the member function push_back is not const, and its object is a const Vector<int32>
+// error: const_member_function_members_are_const.kpp:33: error: the member function push_back is not const, and its object is a const std::Vector<int32>
 // error: const_member_function_members_are_const.kpp:34: error: assignment to a const value (const int32)
 // error: const_member_function_members_are_const.kpp:35: error: assignment to a const value (const int32)
 // error: const_member_function_members_are_const.kpp:36: error: assignment to a const value (const int32)

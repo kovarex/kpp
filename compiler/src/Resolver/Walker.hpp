@@ -77,6 +77,7 @@
     // conversion of a class to a type that is no class (`bool(instance)`) is typed only when
     // the class has an operator for it, since a requirement holds exactly when it is valid.
     bool probing = false;
+    bool inSpecializationPattern = false; // a class specialization's arguments, which no instance walks again
     bool walkingQueued = false; // a queued walk (Impl::DeclWalk): its own declaration is walked here, not queued again
 
     // The type of an explicit conversion of operand to t (a cast) while probing: unknown when the

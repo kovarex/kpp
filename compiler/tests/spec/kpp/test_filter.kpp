@@ -1,6 +1,6 @@
 // spec: the runner's --filter runs the tests whose full name ("file > name") contains the text, `*` matching anything
 // test: --filter "parse*Number"
 // exit: 0
-test parseANumber { println("ran: parse a number"); }
-test parseAName { println("ran: parse a name"); }
-test printANumber { println("ran: print a number"); }
+test parseANumber { std::println("ran: parse a number"); }
+test parseAName { std::println("ran: parse a name"); }
+test printANumber { std::println("ran: print a number"); }

@@ -7,6 +7,6 @@ static_assert(INCLUDED_FOR == (config::platform == Platform::Windows ? 1 : confi
 
 int main()
 {
-  println(scaled(14), " ", StringView(platform_name()), " ", cpp_sum(4));
+  std::println(scaled(14), " ", std::StringView(platform_name()), " ", cpp_sum(4));
   return 0;
 }

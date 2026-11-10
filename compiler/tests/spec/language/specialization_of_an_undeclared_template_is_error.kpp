@@ -1,0 +1,33 @@
+// spec: a specialization of a template that nothing declares is an error, whose message names the library's template when the library has one: a bare `template<> struct Hash<Key>` written before the library moved into std was otherwise a class nothing used, silently
+// factorio: none yet
+// error: specialization_of_an_undeclared_template_is_error.kpp:12: error: 'TupleSize' is not declared; did you mean std::TupleSize? (a specialization names its template)
+// error: specialization_of_an_undeclared_template_is_error.kpp:22: error: 'Hash' is not declared; did you mean std::Hash? (a specialization names its template)
+// error: specialization_of_an_undeclared_template_is_error.kpp:26: error: 'Nothing' is not declared (a specialization names its template)
+struct Key
+{
+  int v;
+  bool operator==(const Key& other) const = default;
+};
+struct Point;
+template<> struct TupleSize<Point>
+{
+  static constexpr usize value = 2;
+};
+struct Point
+{
+  int x;
+  int y;
+};
+template<> struct std::TupleSize<Key>;
+template<> struct Hash<Key>
+{
+  usize operator()(const Key& k) const { return usize(k.v); }
+};
+template<typename T> struct Nothing<T*>
+{
+};
+int main()
+{
+  std::println(1);
+  return 0;
+}

@@ -8,5 +8,5 @@ suite Belts
 
 suite Pipes
 {
-  test Empty { println("Pipes.Empty"); }
+  test Empty { std::println("Pipes.Empty"); }
 }
