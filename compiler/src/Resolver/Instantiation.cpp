@@ -32,6 +32,24 @@ auto GlobalScope::Impl::effectiveParams(Decl* cls) -> Span<Decl*>
   return {};
 }
 
+auto GlobalScope::Impl::templateDefaultHolder(Decl* def, size_t i) -> Decl*
+{
+  if (!def || i >= def->templateParams.size())
+    return nullptr;
+  if (static_cast<TemplateParamDecl*>(def->templateParams[i])->defaultArg)
+    return def;
+  if (def->kind != NodeKind::ClassDecl || static_cast<ClassDecl*>(def)->name.parts.size() != 1)
+    return nullptr;
+  Scope* scope = lexicalScopeOf(def);
+  const std::vector<Entry>* entries = scope ? scope->find(static_cast<ClassDecl*>(def)->name.last().symbol) : nullptr;
+  if (entries)
+    for (const Entry& e : *entries)
+      if (e.decl && e.decl != def && e.decl->kind == NodeKind::ClassDecl && !(e.decl->flags & DF_Specialization) &&
+          e.decl->templateParams.size() == def->templateParams.size() && static_cast<TemplateParamDecl*>(e.decl->templateParams[i])->defaultArg)
+        return e.decl;
+  return nullptr;
+}
+
 auto GlobalScope::Impl::enclosingParamCount(Decl* cls) -> size_t
 {
   if (!cls || cls->kind != NodeKind::ClassDecl || static_cast<ClassDecl*>(cls)->instanceParams.empty())
@@ -1500,17 +1518,23 @@ auto GlobalScope::Impl::typeOfTypeDecl(Decl* d, const Lookup& l, const NamePart&
         // (`Less<>`: all of them).
         for (size_t i = args.size(); i < params.size(); ++i)
         {
-          auto* p = static_cast<TemplateParamDecl*>(params[i]);
-          if (!p->defaultArg)
+          // (its own, or another declaration's of the template, in terms of that one's parameters: until 2026-11-10 a
+          // default written only before the definition was not taken, `Def<char>` codegen's "the member b has an unknown
+          // type")
+          Decl* holder = static_cast<TemplateParamDecl*>(params[i])->defaultArg ? def : i >= enclosing ? templateDefaultHolder(def, i - enclosing) : nullptr;
+          if (!holder)
             break;
+          auto named = [&](size_t k) { return k < enclosing || holder == def ? params[k] : holder->templateParams[k - enclosing]; };
+          auto* p = static_cast<TemplateParamDecl*>(named(i));
           Subst s;
           LocalStack own; // the parameters by name: `= Less<K>` names an earlier one
           for (size_t k = 0; k < i; ++k)
           {
-            s.pairs.push_back({params[k], args[k]});
-            own.push(static_cast<TemplateParamDecl*>(params[k])->name, params[k]);
+            s.pairs.push_back({named(k), args[k]});
+            own.push(static_cast<TemplateParamDecl*>(named(k))->name, named(k));
           }
-          TypeContext dctx{lexicalScopeOf(def), &own, &s, def->file ? def->file->tokens : nullptr, def->file ? def->file->text : std::string_view()};
+          TypeContext dctx{lexicalScopeOf(holder), &own, &s, holder->file ? holder->file->tokens : nullptr,
+                           holder->file ? holder->file->text : std::string_view()};
           args.push_back(templateArgument(p->defaultArg, p, dctx, depth + 1)); // (another declaration's: a step of depth, as a hop through a name is)
         }
       }

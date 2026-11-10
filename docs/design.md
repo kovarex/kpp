@@ -172,6 +172,12 @@ builds win less unless machine code is cached per function.
   written on another declaration of the template counts; a nested class template's count is its own
   parameters', not its enclosing template's. `Pair<int>` was codegen's "the layout of Pair<int32>:
   the member b has an unknown type". Spec templates/class_template_named_with_too_few_arguments_is_error.
+- A class template's default template arguments add up over its declarations in its scope, as in C++
+  ([temp.param] 12; 2026-11-10): one written only on a declaration before the definition is taken
+  where the class is named and where a partial specialization is matched, in terms of that
+  declaration's parameters, whose names may be others (`class C = Less<K>` beside a definition naming
+  them Key and Compare; Impl::templateDefaultHolder). It was not taken: `Def<char>` was codegen's "the
+  member b has an unknown type". Spec templates/default_template_argument_on_a_forward_declaration.
 - A type name nothing declares anywhere in a template is an error in the template's own walk, used
   or not, as in C++'s first phase (2026-11-10; a value's name already was). A name its parameters
   decide stays its instances': `typename T::Inner`, a member of a class a decltype names, a name in

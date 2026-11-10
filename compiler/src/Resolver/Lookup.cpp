@@ -1223,20 +1223,25 @@ auto GlobalScope::Impl::appendDefaultPatterns(Decl* primary, std::vector<const T
   Span<Decl*> params = !primary ? Span<Decl*>{} : !primary->templateParams.empty() ? primary->templateParams : effectiveParams(primary);
   for (size_t i = out.size(); i < params.size(); ++i)
   {
-    auto* p = static_cast<TemplateParamDecl*>(params[i]);
-    if (!p->defaultArg || p->isPack)
+    // (its own default, or another declaration's of the template, in terms of that one's parameters: templateDefaultHolder)
+    Decl* holder = static_cast<TemplateParamDecl*>(params[i])->defaultArg ? primary
+                 : params.data == primary->templateParams.data ? templateDefaultHolder(primary, i)
+                                                               : nullptr;
+    Span<Decl*> named = holder == primary ? params : holder ? holder->templateParams : Span<Decl*>{};
+    auto* p = holder ? static_cast<TemplateParamDecl*>(named[i]) : nullptr;
+    if (!p || !p->defaultArg || p->isPack)
       return;
     LocalStack own;
     Subst s;
-    for (size_t k = 0; k < params.size(); ++k)
-      own.push(static_cast<TemplateParamDecl*>(params[k])->name, params[k]);
+    for (size_t k = 0; k < named.size(); ++k)
+      own.push(static_cast<TemplateParamDecl*>(named[k])->name, named[k]);
     for (size_t k = 0; k < i; ++k)
-      s.pairs.push_back({params[k], out[k]});
+      s.pairs.push_back({named[k], out[k]});
     if (enclosing)
       for (const Subst::Pair& p : enclosing->pairs)
         s.pairs.push_back(p);
-    TypeContext dctx{lexicalScopeOf(primary), &own, &s, primary->file ? primary->file->tokens : nullptr,
-                     primary->file ? primary->file->text : std::string_view()};
+    TypeContext dctx{lexicalScopeOf(holder), &own, &s, holder->file ? holder->file->tokens : nullptr,
+                     holder->file ? holder->file->text : std::string_view()};
     const Ty* t = templateArgument(p->defaultArg, p, dctx, depth + 1);
     if (!t || !t->isKnown())
       return;

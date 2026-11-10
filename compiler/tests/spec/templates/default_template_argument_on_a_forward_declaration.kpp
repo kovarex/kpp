@@ -1,0 +1,33 @@
+// spec: a class template's default template argument written only on a declaration before its definition is the template's, as the defaults of its declarations add up ([temp.param] 12): `Def<char>` of `template<class T, class U = int> struct Def;` and a definition without it has an int member, the default written in terms of that declaration's parameters (`class C = Less<K>` where the definition names them Key and Compare) and used where a partial specialization is matched (`Pick<char*>` takes `Pick<V*, int>`) (until 2026-11-10 not taken: codegen's "the member b has an unknown type")
+template<class T, class U = int> struct Def;
+template<class T, class U> struct Def
+{
+  T a;
+  U b;
+};
+template<class K> struct Less
+{
+  static constexpr int tag = 7;
+};
+template<class K, class C = Less<K>> struct Map;
+template<class Key, class Compare> struct Map
+{
+  int tag() const { return Compare::tag; }
+};
+template<class T, class U = int> struct Pick;
+template<class T, class U> struct Pick
+{
+  static constexpr int which = 1;
+};
+template<class V> struct Pick<V*, int>
+{
+  static constexpr int which = 2;
+};
+int main()
+{
+  Def<char> d;
+  d.b = 5;
+  Map<long> m;
+  std::println(int(sizeof(d.b)), " ", d.b, " ", m.tag(), " ", Pick<char*>::which, " ", Pick<char>::which);
+  return 0;
+}

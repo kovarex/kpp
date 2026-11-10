@@ -10,6 +10,11 @@
   // class template (`Holder<T>::Node`), the enclosing template's, or, for a class template nested
   // in one (`Heap<V, Tag>::IteratorBase<Value>`), the enclosing template's and then its own.
   static Span<Decl*> effectiveParams(Decl* cls);
+  // The declaration of class template def whose own template parameter i has a default argument: def, or another
+  // declaration of the template in its scope (`template<class T, class U = int> struct Def;` before its definition: the
+  // defaults of a template's declarations add up, [temp.param] 12), whose default is written in terms of its own
+  // parameters (their names may be others). Null for none.
+  Decl* templateDefaultHolder(Decl* def, size_t i);
 
   // How many of a class's effectiveParams are an enclosing template's, ahead of its own: those of
   // `Heap<V, Tag>` for its member template IteratorBase<Value>; 0 for any class that is not a
