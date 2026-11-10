@@ -33,8 +33,8 @@ int main()
   Counter c;
   c.add();
   if constexpr (config::debug)
-    println("debug ", pick());
+    std::println("debug ", pick());
   else
-    println("release ", pick());
+    std::println("release ", pick());
   return 0;
 }

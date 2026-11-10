@@ -19,7 +19,7 @@ struct GlobalContext
     SuspendedContext other(3);
     this.optional.emplace(this);
     this.list.emplace_back(this);
-    UniquePtr<SuspendedContext> unique = makeUnique<SuspendedContext>(this);
+    std::UniquePtr<SuspendedContext> unique = std::makeUnique<SuspendedContext>(this);
     SuspendedContext sum = other + other;
     if (sum && !other)
       levelOf(sum);
@@ -27,8 +27,8 @@ struct GlobalContext
   }
 
   UniquePointer<SuspendedContext> suspendedContext;
-  Optional<SuspendedContext> optional;
-  Vector<SuspendedContext> list;
+  std::Optional<SuspendedContext> optional;
+  std::Vector<SuspendedContext> list;
 };
 
 i32 main()

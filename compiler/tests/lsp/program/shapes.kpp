@@ -6,7 +6,7 @@ struct Shape
   int area() const { return this.width * this.height; }
 };
 
-int totalArea(const Vector<Shape>& shapes)
+int totalArea(const std::Vector<Shape>& shapes)
 {
   int sum = 0;
   for (const Shape& s : shapes)

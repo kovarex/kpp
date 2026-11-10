@@ -1,5 +1,5 @@
 int main()
 {
-  println(shared());
+  std::println(shared());
   return 0;
 }

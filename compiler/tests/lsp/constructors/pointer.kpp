@@ -8,7 +8,7 @@ public:
   ~UniquePointer() { this.reset(nullptr); }
 
   template<class... Ts>
-  void emplace(Ts&&... values) { this.reset(This::construct(forward<Ts>(values)...)); }
+  void emplace(Ts&&... values) { this.reset(This::construct(std::forward<Ts>(values)...)); }
 
   void reset(T* other)
   {
@@ -20,7 +20,7 @@ public:
   T* get() const { return this.value; }
 
   template<class... Ts>
-  static T* construct(Ts&&... values) { return new T(forward<Ts>(values)...); }
+  static T* construct(Ts&&... values) { return new T(std::forward<Ts>(values)...); }
 
 private:
   T* value = nullptr;

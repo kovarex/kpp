@@ -28,6 +28,6 @@ i32 main()
 {
   Cube cube;
   Shape& shape = cube;
-  println(shape.area());
+  std::println(shape.area());
   return 0;
 }

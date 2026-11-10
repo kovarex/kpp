@@ -5,6 +5,6 @@ int loud() { return sound::volume() + 1; }
 
 int main()
 {
-  println(shared());
+  std::println(shared());
   return 0;
 }

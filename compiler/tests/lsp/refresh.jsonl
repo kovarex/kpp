@@ -3,7 +3,7 @@
 // workspace/semanticTokens/refresh after every check, and its answer (null) is taken as it comes.
 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootUri":"$ROOT","capabilities":{"workspace":{"semanticTokens":{"refreshSupport":true}}}}}
 {"jsonrpc":"2.0","method":"initialized","params":{}}
-{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$ROOT/main.kpp","languageId":"kpp","version":1,"text":"int main()\n{\n  Vector<Shape> shapes;\n  Shape square;\n  square.width = 3;\n  square.height = 3;\n  shapes.push_back(square);\n  println(\"{}\", totalArea(shapes));\n  return 0;\n}\n"}}}
+{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$ROOT/main.kpp","languageId":"kpp","version":1,"text":"int main()\n{\n  std::Vector<Shape> shapes;\n  Shape square;\n  square.width = 3;\n  square.height = 3;\n  shapes.push_back(square);\n  std::println(\"{}\", totalArea(shapes));\n  return 0;\n}\n"}}}
 {"jsonrpc":"2.0","id":"kpp-refresh-1","result":null}
 // The tokens: Vector, Shape (types), shapes, square (locals), width, height (members), push_back,
 // println, totalArea (functions).

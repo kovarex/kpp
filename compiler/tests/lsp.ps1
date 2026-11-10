@@ -19,9 +19,6 @@
 # -Update writes the expected files from this run (read them before committing). run_tests.cmd runs it.
 param([string]$KppExe = "$PSScriptRoot\..\build\kpp.exe", [switch]$Update)
 $ErrorActionPreference = 'Stop'
-# The inputs still write the standard library's names bare (String, println), and every request names a position in
-# them: they compile with the bridge of the move into std (design.md 16) until they are rewritten with their positions.
-$env:KPP_STD_BRIDGE = '1'
 $work = Join-Path $PSScriptRoot '..\build\tests\lsp'
 if (Test-Path $work) { Remove-Item -Recurse -Force $work }
 New-Item -ItemType Directory -Force $work | Out-Null
