@@ -1,0 +1,11 @@
+// spec: a call of a single function whose argument does not convert is that error alone, in a template's instance too: the call's type is the function's result, so a call around it (`std::println(take(t))`) takes the overload for that (until 2026-11-10 the call's type was unknown and codegen's error was about the println: "passing int32 where a pointer is expected")
+// error: single_function_call_keeps_its_result_type.kpp:5: error: an int32 does not convert to Foo: no constructor of Foo takes one, and an aggregate takes its values in braces (Foo{...}) (in T = int32)
+struct Foo { int x = 1; };
+int take(Foo f) { return f.x; }
+template<class T> void show(T t) { std::println(take(t)); }
+int main()
+{
+  show(Foo{2});
+  show(3);
+  return 0;
+}

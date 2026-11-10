@@ -769,11 +769,11 @@
     // floating-point or enumeration type (to bool it does, [conv.bool]), the checker's error for a single
     // candidate (the code generator's "does not support passing a pointer where long is expected" before).
     void checkPointerToScalar(const Ty* given, const Ty* param, Expr* arg);
-    // A class given for a single candidate's parameter of another class that it does not derive from, that no constructor
-    // of takes and no conversion operator of it gives (conversionRank's rules): the checker's error, where it was codegen's
-    // about something else ("a conversion from Bar to int32", the parameter's aggregate initialization) or "binding an
-    // unrelated class to a reference".
-    void checkClassToClass(const Ty* given, const Ty* param, Expr* arg);
+    // The type of a call of a single plain function whose arguments the checker found no conversion for: the function's
+    // result, the arguments' errors their own (the checks beside it, or codegen's as it converts them), so that a call
+    // around it picks by it. Unknown, it took an overload of another type (`std::println(take(t))` in an instance: "passing
+    // int32 where a pointer is expected"). Null in a probe or a substitution, where such a call is no well-formed one.
+    const Ty* singleCandidateResult(FunctionDecl* f, const Subst* subst, const Span<Expr*>& args, const NamePart* namePart, CallExpr* call);
     void checkScalarArguments(FunctionDecl* f, const Ty* fnTy, const Span<Expr*>& args, bool ambiguousOnly = false);
     // The same call's arguments for its reference parameters (checkReferenceBindings), f named by
     // callee if given (`sink(d)` of a class's operator()).
@@ -800,7 +800,11 @@
     // `Strict(5)` take it. Reported where the class takes the value by no implicit conversion (another
     // constructor, a conversion operator of the value's class) and its constructor for it is explicit.
     // Only in code walked where it is written, as checkClassToScalar.
-    void checkExplicitCopy(const Ty* from, const Ty* to, uint32_t token);
+    // And where nothing converts the value at all, no constructor a direct-initialization takes and no conversion
+    // operator: "a Bar does not convert to const Foo&: ...", "an int32 does not convert to Foo: ...", where it was
+    // codegen's error about something else, or for an aggregate its first member's initialization (`Foo f = 7;` was
+    // Foo{7}). source: the value's expression where there is one (the literal 0 is a null pointer for a constructor's).
+    void checkExplicitCopy(const Ty* from, const Ty* to, uint32_t token, const Expr* source = nullptr);
     // A class object copied or moved from a volatile one of its class: an error unless a constructor the class
     // declares takes one (the implicit ones take none, [class.copy.ctor] 7).
     void checkCopiedFromVolatile(const Ty* from, const Ty* to, uint32_t token);
@@ -1028,7 +1032,9 @@
     // overloadedOperator's decision (design.md 24): Function (operatorChosen), Rewritten, Builtin, or
     // Undecided when it found nothing.
     OperatorCall operatorCall = OperatorCall::Undecided;
-    const Ty* overloadedOperator(P op, const Ty* lhs, const Ty* rhs, uint32_t token, size_t arity, bool countFailure = true, const Ty* lhsOperand = nullptr);
+    // rhsValue: a binary operator's right operand, where there is one (an assignment's value, checkExplicitCopy's source).
+    const Ty* overloadedOperator(P op, const Ty* lhs, const Ty* rhs, uint32_t token, size_t arity, bool countFailure = true, const Ty* lhsOperand = nullptr,
+                                 const Expr* rhsValue = nullptr);
 
     static bool isAssignmentOp(P op);
     // Why C++ defines the implicit assignment of cls as deleted ([class.copy.assign] 2, 4, 7), or

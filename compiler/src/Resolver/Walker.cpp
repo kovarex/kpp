@@ -4715,7 +4715,7 @@ auto GlobalScope::Impl::Walker::checkImplicitAssignmentVolatile(const Ty* l, con
                            types.toString(types.unqualified(l), &impl.symbols) + " takes none ([class.copy.assign])");
 }
 
-auto GlobalScope::Impl::Walker::checkExplicitCopy(const Ty* from, const Ty* to, uint32_t token) -> void
+auto GlobalScope::Impl::Walker::checkExplicitCopy(const Ty* from, const Ty* to, uint32_t token, const Expr* source) -> void
 {
   // (in template code too, each instance: reportExplicitError; `It<T> m = this->find();` in a class template's member,
   // through It's explicit constructor template, built until 2026-11-08 without --explicit-by-default, C's spec)
@@ -4789,13 +4789,70 @@ auto GlobalScope::Impl::Walker::checkExplicitCopy(const Ty* from, const Ty* to, 
     }
   }
   if (!ctor && !ambiguous)
+  {
     if (FunctionDecl* op = explicitOperator(t, false))
     {
       std::string name = types.toString(t, &symbols);
       operatorError(op, "copy-initialising " + name + " from " + types.toString(f, &symbols), name + "(...)");
       return;
     }
-  if (!ctor || ambiguous)
+    // Nothing converts it ([dcl.init] 17.6.3: no constructor a direct-initialization takes, no conversion operator; one
+    // explicit by default is the error above). Until 2026-11-10 codegen's error about something else, or for an aggregate
+    // its first member's initialization: `Foo f = 7;` was Foo{7}, and `take(3)` for a Foo parameter took it so, where
+    // C++ takes an aggregate's values in braces only. Not a Text's pieces, a lambda (its own checks), the name of
+    // functions without a target, or the literal 0, a null pointer for a constructor taking one. Nor where the value as
+    // an lvalue or as an rvalue converts: a caller's type may not say which it is (a return's, of `this.items` an lvalue
+    // for `implicit Span(Array<U, N>&)`, of a local both, [class.copy.elision] 3).
+    const Expr* value = source;
+    while (value && value->kind == NodeKind::ParenExpr)
+      value = static_cast<const ParenExpr*>(value)->inner;
+    bool zero = value && value->kind == NodeKind::LiteralExpr && static_cast<const LiteralExpr*>(value)->literalKind == TokenKind::Number &&
+                isZeroLiteral(spelling(static_cast<const LiteralExpr*>(value)));
+    if (impl.isText(t) || Impl::lambdaOf(f) || (f->decl && (f->decl->attributes & ATTR_Draft)) || f->kind == TyKind::Function ||
+        (f->kind == TyKind::Int && (!source || zero)) || (source && namesFunctionsWithoutTarget(const_cast<Expr*>(source))))
+      return;
+    for (const Ty* category : {types.lref(types.stripRef(from)), types.rref(types.stripRef(from))})
+    {
+      bool either = false;
+      if (impl.conversionRank(category, t, 0) < NotViable || impl.chooseConstructor(t, {category}, nullptr, nullptr, false, &either) || either)
+        return;
+    }
+    // Nor a class whose bases, as its definition makes them for its arguments, reach t: a partial specialization's over a
+    // pack (`Chain<Head, Tail...> : Chain<Tail...>`) is one the scopes do not link (isBaseClass). Bases not known: as
+    // if they reached it.
+    std::function<bool(const Ty*, int)> reaches = [&](const Ty* d, int depth) -> bool
+    {
+      ClassDecl* def = depth < maxNestedLevels ? impl.classDefinition(d) : nullptr;
+      std::vector<const Ty*> bases;
+      if (!def || !impl.directBases(d, def, bases))
+        return true;
+      for (const Ty* b : bases)
+      {
+        const Ty* u = b ? types.unqualified(b) : nullptr;
+        if (!u || !u->isKnown() || u == t || (u->kind == TyKind::Class && reaches(u, depth + 1)))
+          return true;
+      }
+      return false;
+    };
+    if (f->kind == TyKind::Class && reaches(f, 0))
+      return;
+    std::string fromName = types.toString(f, &symbols), toName = types.toString(t, &symbols);
+    std::string article = !fromName.empty() && std::strchr("aeioAEIO", fromName[0]) ? "an " : "a ";
+    if (f->kind == TyKind::Class)
+    {
+      reportHere(token, article + fromName + " does not convert to " + types.toString(to, &symbols) + ": " + fromName + " does not derive from " +
+                          toName + ", no constructor of " + toName + " takes it, and no conversion operator of " + fromName + " gives one");
+      return;
+    }
+    bool constructors = false;
+    if (ClassDecl* def = impl.classDefinition(t))
+      for (Decl* m : membersRead(def))
+        constructors = constructors || (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor));
+    reportHere(token, article + fromName + " does not convert to " + types.toString(to, &symbols) + ": no constructor of " + toName + " takes one" +
+                        (constructors ? std::string() : ", and an aggregate takes its values in braces (" + toName + "{...})"));
+    return;
+  }
+  if (ambiguous)
     return;
   // A constructor template's condition with its own arguments deduced from the value: `Box<OnlyExplicit> b = 6;` with
   // `template<typename U> implicit(isConvertible<U, T>) Box(U&& u)`, as std::optional<E> o = 6 for an explicit
@@ -4860,7 +4917,7 @@ auto GlobalScope::Impl::Walker::checkUnmarkedListElements(BraceInitExpr* b, cons
   // conversion; that conversion is the error, as C++'s for an explicit Strict(int) (it was codegen's "a constructor
   // taking 2 arguments").
   for (size_t i = 0; i < argTypes.size(); ++i)
-    checkExplicitCopy(argTypes[i], element, b->args[i]->token);
+    checkExplicitCopy(argTypes[i], element, b->args[i]->token, b->args[i]);
 }
 
 auto GlobalScope::Impl::Walker::checkSwitchOnClass(SwitchStmt* w) -> void
@@ -5686,7 +5743,7 @@ auto GlobalScope::Impl::Walker::checkExplicitArguments(FunctionDecl* f, const Ty
           checkListNarrowing(static_cast<BraceInitExpr*>(args[i])->args, fnTy->args[i]); // `take({1.5})` for an int
       }
       else
-        checkExplicitCopy(argTypes[i], fnTy->args[i], args[i]->token);
+        checkExplicitCopy(argTypes[i], fnTy->args[i], args[i]->token, args[i]);
     }
 }
 
@@ -5702,38 +5759,24 @@ auto GlobalScope::Impl::Walker::checkScalarArguments(FunctionDecl* f, const Ty* 
     {
       checkClassToScalar(argTypes[i], fnTy->args[i], args[i]->token, ambiguousOnly, args[i]);
       if (!ambiguousOnly)
-      {
         checkPointerToScalar(argTypes[i], fnTy->args[i], args[i]);
-        if (!(i + 1 == f->params.size() && impl.namesTextLast(f)) && !namesFunctionsWithoutTarget(args[i])) // (a Text takes pieces)
-          checkClassToClass(argTypes[i], fnTy->args[i], args[i]);
-      }
     }
   if (fnTy->variadic) // `printf("%p", this)`: C's `...` would take the object itself
     for (size_t i = fnTy->args.size(); i < args.size(); ++i)
       objectThisWherePointer(args[i], nullptr, true);
 }
 
-auto GlobalScope::Impl::Walker::checkClassToClass(const Ty* given, const Ty* param, Expr* arg) -> void
+auto GlobalScope::Impl::Walker::singleCandidateResult(FunctionDecl* f, const Subst* subst, const Span<Expr*>& args, const NamePart* namePart,
+                                                     CallExpr* call) -> const Ty*
 {
-  if (probing || !given || !param || !given->isKnown() || !param->isKnown() || types.isDependent(given) || types.isDependent(param) ||
-      (param->kind == TyKind::LRef && !types.stripRef(param)->isConst)) // (a non-const lvalue reference: checkReferenceArguments's)
-    return;
-  const Ty* a = types.unqualified(types.stripRef(given));
-  const Ty* p = types.unqualified(types.stripRef(param));
-  if (a->kind != TyKind::Class || p->kind != TyKind::Class || a == p || a->isBraceList() || p->isBraceList() || Impl::lambdaOf(a) ||
-      Impl::mentionsUnknown(a) || Impl::mentionsUnknown(p) || (a->decl && (a->decl->attributes & ATTR_Draft)) || impl.isBaseClass(p, a))
-    return;
-  if (impl.conversionRank(given, param) < Impl::NotViable)
-    return;
-  // (by the rules a construction and a conversion run by, design.md 24: one a direct-initialization takes, explicit by
-  // default or ambiguous, is checkExplicitCopy's to say)
-  bool ambiguous = false;
-  if (impl.chooseConstructor(p, {given}, nullptr, nullptr, false, &ambiguous) || ambiguous ||
-      impl.chooseConversion(a, p, GlobalScope::ConversionKind::ToType, true, nullptr, nullptr, false, &ambiguous) || ambiguous)
-    return;
-  std::string from = types.toString(a, &symbols), to = types.toString(p, &symbols);
-  reportHere(arg->token, "a " + from + " does not convert to " + types.toString(param, &symbols) + ": " + from + " does not derive from " + to +
-                           ", no constructor of " + to + " takes it, and no conversion operator of " + from + " gives one");
+  if (probing || substituting || !f || !f->templateParams.empty() || f->isTemplate)
+    return nullptr;
+  const Ty* fnTy = impl.declaredTypeOf(f, subst, 0);
+  if (!fnTy || fnTy->kind != TyKind::Function || !fnTy->inner || !fnTy->inner->isKnown() || types.isDependent(fnTy->inner) ||
+      impl.containsAuto(fnTy->inner) || Impl::mentionsUnknown(fnTy->inner))
+    return nullptr;
+  const Ty* result = returnTypeOfCall(f, subst, args, namePart, call);
+  return result && result->isKnown() ? result : nullptr;
 }
 
 auto GlobalScope::Impl::Walker::checkPointerToScalar(const Ty* given, const Ty* param, Expr* arg) -> void
@@ -7206,6 +7249,11 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
           checkScalarArguments(static_cast<FunctionDecl*>(d), impl.declaredTypeOf(d, classSubst, 0), c->args);
           checkExplicitArguments(static_cast<FunctionDecl*>(d), impl.declaredTypeOf(d, classSubst, 0), c->args);
           checkReferenceArguments(static_cast<FunctionDecl*>(d), impl.declaredTypeOf(d, classSubst, 0), c->args); // `setHalf(i)` for a double&
+          if (const Ty* result = singleCandidateResult(only, classSubst, c->args, &n->name.last(), c))
+          {
+            record(n, impl.declaredTypeOf(d, classSubst, 0));
+            return result;
+          }
         }
         record(n, types.unknown());
         return unknown(Why::Overload);
@@ -7399,6 +7447,11 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
           checkScalarArguments(static_cast<FunctionDecl*>(r.decl), impl.declaredTypeOf(r.decl, &r.subst, 0), c->args);
           checkExplicitArguments(static_cast<FunctionDecl*>(r.decl), impl.declaredTypeOf(r.decl, &r.subst, 0), c->args);
           checkReferenceArguments(static_cast<FunctionDecl*>(r.decl), impl.declaredTypeOf(r.decl, &r.subst, 0), c->args);
+          if (const Ty* result = singleCandidateResult(only, &r.subst, c->args, &last, c))
+          {
+            record(m, impl.declaredTypeOf(r.decl, &r.subst, 0));
+            return result;
+          }
         }
         record(m, types.unknown());
         return unknown(Why::Overload);
@@ -7899,7 +7952,8 @@ auto GlobalScope::Impl::Walker::rewrittenBeats(P op, FunctionDecl* f, const Subs
   return false;
 }
 
-auto GlobalScope::Impl::Walker::overloadedOperator(P op, const Ty* lhs, const Ty* rhs, uint32_t token, size_t arity, bool countFailure, const Ty* lhsOperand) -> const Ty*
+auto GlobalScope::Impl::Walker::overloadedOperator(P op, const Ty* lhs, const Ty* rhs, uint32_t token, size_t arity, bool countFailure, const Ty* lhsOperand,
+                                                  const Expr* rhsValue) -> const Ty*
 {
   const Ty* l = types.stripRef(lhs);
   Subst subst;
@@ -8007,7 +8061,7 @@ auto GlobalScope::Impl::Walker::overloadedOperator(P op, const Ty* lhs, const Ty
         const Ty* self = types.lref(types.qualified(l, true, false));
         checkConstModification(token, l, "assignment to");
         checkImplicitAssignmentVolatile(l, rhs, token);
-        checkExplicitCopy(rhs, self, token); // `s = 5;`: its operator=(const S&) given 5
+        checkExplicitCopy(rhs, self, token, rhsValue); // `s = 5;`: its operator=(const S&) given 5
       }
       else if (l && rhs && types.unqualified(types.stripRef(rhs))->kind == TyKind::Class && impl.conversionRank(rhs, l, 0) >= NotViable)
         reportUnmarkedOperand(rhs, "=", token); // `kind = result;` through an operator explicit by default
@@ -8500,7 +8554,7 @@ auto GlobalScope::Impl::Walker::typeOfBinaryOperator(BinaryExpr* b, OperatorCall
       return types.param(ls->kind == TyKind::Param ? ls->decl : rs->decl);
     if (op == P::Assign)
       checkClosureTo(b->rhs, l, b->token); // `later = [=] { ... text ... }`
-    if (const Ty* t = overloadedOperator(op, l, argumentType(b->rhs, r, types), b->token, 2, false, argumentType(b->lhs, l, types)))
+    if (const Ty* t = overloadedOperator(op, l, argumentType(b->rhs, r, types), b->token, 2, false, argumentType(b->lhs, l, types), b->rhs))
     {
       // `a = b` by the class's implicit assignment (no operator= of its own took b): one C++ deletes
       // is an error. A copy from an lvalue of the class (or of one derived from it), a move from
@@ -10425,7 +10479,7 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
           !(v->init->kind == NodeKind::FunctionalCastExpr && static_cast<FunctionalCastExpr*>(v->init)->type == v->type))
       {
         checkClassToScalar(argumentType(v->init, initTy, types), declared, v->init->token, false, v->init);
-        checkExplicitCopy(argumentType(v->init, initTy, types), declared, v->init->token); // `Strict s = 5;` (an lvalue as one: `B&& x = a;` takes `implicit B(A&)`)
+        checkExplicitCopy(argumentType(v->init, initTy, types), declared, v->init->token, v->init); // `Strict s = 5;` (an lvalue as one: `B&& x = a;` takes `implicit B(A&)`)
       }
       if (v->init && declared && !impl.containsAuto(declared) && !v->bracedInit && v->init->kind == NodeKind::BraceInitExpr)
         checkExplicitListCopy(static_cast<BraceInitExpr*>(v->init), declared); // `Strict s = {5};`
@@ -11337,7 +11391,7 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
             else
             {
               objectThisWherePointer(value, ft->inner); // `return this;` from a function returning C*
-              checkExplicitCopy(t, ft->inner, value->token);
+              checkExplicitCopy(t, ft->inner, value->token, value);
               checkClosureConversion(value, ft->inner, value->token); // `return l2;` from a function returning `const decltype(l1)&`
               // `int& get() const { return this->v; }`: the result, a non-const reference, given a const object.
               if (ft->inner->isReference() && t)

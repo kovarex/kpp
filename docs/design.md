@@ -151,13 +151,21 @@ builds win less unless machine code is cached per function.
   every candidate's reason is sure (no pack, Text, C ellipsis, explicit template argument or
   argument of a type not known); a deduction conflict has its own error, above. Specs
   templates/call_whose_candidates_are_left_out_is_error and
-  templates/call_whose_candidates_are_left_out_in_an_instance_is_error. A single plain candidate's
-  call stays codegen's to convert, but an argument of a class that its parameter's class does not
-  take is the checker's error (2026-11-10): not derived from it, no constructor of it taking one, no
-  conversion operator giving one, by the rules a construction and a conversion run by: "a Bar does not
-  convert to const Foo&: ...". It was codegen's "a conversion from Bar to int32" (the parameter's
-  aggregate initialization) or "binding an unrelated class to a reference". Spec
-  classes/unrelated_class_argument_is_error.
+  templates/call_whose_candidates_are_left_out_in_an_instance_is_error.
+- A copy-initialization of a class from a value that nothing converts is an error (2026-11-10, as C++'s
+  [dcl.init] 17.6.3): no constructor of the class takes it (as an lvalue or an rvalue), no conversion
+  operator of its class gives one, it does not derive from the class. A variable's `Foo f = 7;`, an
+  argument, a return value, `f = 8;` through the implicit operator=: "an int32 does not convert to
+  Foo: no constructor of Foo takes one, and an aggregate takes its values in braces (Foo{...})", "a Bar
+  does not convert to const Foo&: ...". An aggregate took a scalar as its first member's value until
+  then (Foo{7}), and another class was codegen's error about something else ("a conversion from Bar
+  to int32", "binding an unrelated class to a reference"). The literal 0 still converts to a
+  constructor's pointer, and braces and parentheses still initialize an aggregate. A single plain
+  candidate's call stays codegen's to convert, and its type is the function's result whatever its
+  arguments, so a call around it picks by that: `std::println(take(t))` in an instance was codegen's
+  "passing int32 where a pointer is expected" beside the argument's error. Specs
+  classes/copy_initialization_nothing_converts_is_error, classes/unrelated_class_argument_is_error and
+  templates/single_function_call_keeps_its_result_type.
 - A class template or an alias template named with too few template arguments is an error, as too
   many was (2026-11-10, [temp.arg] 4): "Pair takes 2 template arguments, 1 given", "Def takes 1 to 2
   template arguments, 0 given", "Variadic takes at least 1 template argument, 0 given". A default

@@ -1,0 +1,31 @@
+// spec: copy-initializing a class from a value of another type that no constructor of the class takes and no conversion operator of the value's class gives is an error, as in C++ ([dcl.init] 17.6.3): a scalar for an aggregate (`Foo f = 7;`, `return 3;`, an argument 9, `f = 8;` through the implicit operator=), a class unrelated to it; the literal 0 converts to a constructor's pointer, braces and parentheses initialize an aggregate (until 2026-11-10 an aggregate took the scalar as its first member's value, Foo{7}, and a call around such a call, `std::println(take(3))`, was codegen's "passing int32 where a pointer is expected")
+// error: copy_initialization_nothing_converts_is_error.kpp:17: error: an int32 does not convert to Foo: no constructor of Foo takes one, and an aggregate takes its values in braces (Foo{...})
+// error: copy_initialization_nothing_converts_is_error.kpp:20: error: an int32 does not convert to Foo: no constructor of Foo takes one, and an aggregate takes its values in braces (Foo{...})
+// error: copy_initialization_nothing_converts_is_error.kpp:23: error: a Bar does not convert to Foo: Bar does not derive from Foo, no constructor of Foo takes it, and no conversion operator of Bar gives one
+// error: copy_initialization_nothing_converts_is_error.kpp:24: error: a double does not convert to Handle: no constructor of Handle takes one
+// error: copy_initialization_nothing_converts_is_error.kpp:28: error: an int32 does not convert to const Foo&: no constructor of Foo takes one, and an aggregate takes its values in braces (Foo{...})
+// error: copy_initialization_nothing_converts_is_error.kpp:29: error: an int32 does not convert to Foo: no constructor of Foo takes one, and an aggregate takes its values in braces (Foo{...})
+// error: copy_initialization_nothing_converts_is_error.kpp:30: error: an int32 does not convert to Foo: no constructor of Foo takes one, and an aggregate takes its values in braces (Foo{...})
+struct Foo { int x = 1; };
+struct Bar { int y = 2; };
+struct Handle
+{
+  implicit Handle(Foo* p) : p(p) {}
+  Foo* p;
+};
+int take(Foo f) { return f.x; }
+Foo make() { return 3; }
+int main()
+{
+  Foo f = 7;
+  Foo braced = {5};
+  Foo paren(6);
+  Foo g = Bar{};
+  Handle h = 2.5;
+  Handle null = 0;
+  Handle none = nullptr;
+  int pointed = null.p || none.p ? 1 : 0;
+  f = 8;
+  std::println(take(3));
+  return f.x + take(9) + make().x + braced.x + paren.x + g.x + h.p->x + pointed;
+}
