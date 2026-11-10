@@ -580,6 +580,21 @@
       const Preprocessed& decided = preprocessed ? *preprocessed : own;
       size_t nextDrop = 0, nextNote = 0;
       bool inComment = false; // as in preprocessText: a line starting inside a block comment is no directive
+      // An #if group whose directive is indented, as the code around it (`  #ifdef DEBUG`), with its
+      // lines indented one more level (`    postLoadSetupRan = true;`): once the directive goes, its
+      // lines are dedented by that level, where they stand as statements of the block around them, so
+      // that their indentation says what they belong to (D's misleading-indentation check). The
+      // directive's indentation, the dedent of its lines (-1 until its first line), and whether it may
+      // dedent: not after a statement's head without a brace (`if (x)` above the #if), whose body the
+      // group's line is.
+      struct IndentedGroup
+      {
+        size_t directive;
+        int dedent;
+        bool allowed;
+      };
+      std::vector<IndentedGroup> indentedGroups;
+      std::string lastCode; // the last code line written out, trimmed
       for (auto [offset, length] : lines)
       {
         while (nextDrop < decided.dropped.size() && decided.dropped[nextDrop].second <= offset)
@@ -604,6 +619,62 @@
             remove(offset, removeLength);
             counts.add("lines dropped by #if");
           }
+          else if (!commentAtStart && p < line.size())
+          {
+            size_t indent = 0;
+            while (indent < line.size() && line[indent] == ' ')
+              ++indent;
+            // (not a line a token goes on into: a raw string's text stays as it is)
+            auto inside = std::upper_bound(toks.begin(), toks.end(), offset, [](uint32_t at, const Token& t) { return at < t.offset + t.length; });
+            bool inToken = inside != toks.end() && inside->offset < offset;
+            // The indentation the block's statements have: its `{` line's and one level (two
+            // spaces, the game's), where a line of a group whose directive stands at the block's own
+            // level (`{` then `#ifndef HEADLESS` then the line) is already.
+            auto statementIndent = [&]() -> size_t
+            {
+              int depth = 0, parens = 0;
+              for (auto k = inside; k != toks.begin();)
+              {
+                --k;
+                // (inside an open parenthesis, a call's arguments: a continuation line, as it is)
+                if (k->is(P::RParen))
+                  ++parens;
+                else if (k->is(P::LParen) && parens-- == 0)
+                  return SIZE_MAX;
+                if (k->is(P::RBrace))
+                  ++depth;
+                else if (k->is(P::LBrace) && depth-- == 0)
+                {
+                  size_t lineStart = text.rfind('\n', k->offset);
+                  lineStart = lineStart == std::string_view::npos ? 0 : lineStart + 1;
+                  size_t braceIndent = 0;
+                  while (lineStart + braceIndent < text.size() && text[lineStart + braceIndent] == ' ')
+                    ++braceIndent;
+                  return braceIndent + 2;
+                }
+              }
+              return 0;
+            };
+            // (the outer groups' dedent first; a group's own is its first line's indentation over
+            // the directive's and over the block's statements')
+            size_t dedent = 0;
+            for (IndentedGroup& g : indentedGroups)
+            {
+              if (g.dedent < 0)
+              {
+                size_t at = indent - std::min(indent, dedent), expected = std::max(g.directive, statementIndent());
+                g.dedent = g.allowed && !inToken && expected != SIZE_MAX && at > expected ? int(at - expected) : 0;
+              }
+              dedent += size_t(g.dedent);
+            }
+            if (dedent > 0 && indent >= dedent && offset != 0 && !inToken)
+            {
+              remove(offset, uint32_t(dedent));
+              counts.add("lines of an indented #if group dedented");
+            }
+            size_t last = line.find_last_not_of(" \t\r");
+            lastCode = line.substr(p, last + 1 - p);
+          }
           continue;
         }
         ++p;
@@ -620,9 +691,18 @@
         for (char& ch : rest)
           if (ch == '\\' || ch == '\r')
             ch = ' ';
+        if (word == "endif" && !indentedGroups.empty())
+          indentedGroups.pop_back();
         if (word == "if" || word == "ifdef" || word == "ifndef")
         {
           counts.add("#if");
+          {
+            size_t hash = line.find('#');
+            bool spaces = hash > 0 && line.find_first_not_of(' ') == hash;
+            auto endsWith = [&](const char* end) { return lastCode.size() >= strlen(end) && lastCode.compare(lastCode.size() - strlen(end), strlen(end), end) == 0; };
+            bool head = endsWith(")") || endsWith("else") || endsWith("do");
+            indentedGroups.push_back({spaces ? hash : 0, spaces ? -1 : 0, !head});
+          }
           // (written where the text around it is: a drop its own condition starts begins at it)
           bool around = active || (nextDrop < decided.dropped.size() && decided.dropped[nextDrop].first == offset);
           openIfGroups.push_back({nextIfGroup++, around});
