@@ -1,0 +1,34 @@
+// spec: a class template's member alias of a dependent base's member type (`using CountType = Middle<IDType>::CountType;`, Middle's itself Button's) is that type, through every step: an out-of-line definition naming it through the class (`typename Slot<IDType>::CountType Slot<IDType>::getCount() const`) matches the declaration naming it bare, for the primary's member and for a specialization's (until 2026-11-10 the class's name resolved one step only, Middle<IDType>::CountType where the declaration's was uint32, and the definition matched no declaration)
+template<class IDType> class Button
+{
+public:
+  using CountType = u32;
+  virtual ~Button() {}
+};
+template<> class Button<char>
+{
+public:
+  using CountType = u8;
+  virtual ~Button() {}
+};
+template<class IDType> class Middle : public Button<IDType>
+{
+public:
+  using CountType = Button<IDType>::CountType;
+};
+template<class IDType> class Slot : public Middle<IDType>
+{
+public:
+  using CountType = Middle<IDType>::CountType;
+  CountType getCount() const;
+  CountType getTwice(CountType value) const;
+};
+template<class IDType> typename Slot<IDType>::CountType Slot<IDType>::getCount() const { return 3; }
+template<class IDType> typename Slot<IDType>::CountType Slot<IDType>::getTwice(typename Slot<IDType>::CountType value) const { return value * 2; }
+int main()
+{
+  Slot<int> s;
+  Slot<char> c;
+  std::println(s.getCount(), " ", s.getTwice(5), " ", int(c.getCount()), " ", int(c.getTwice(4)), " ", int(sizeof(c.getCount())));
+  return 0;
+}

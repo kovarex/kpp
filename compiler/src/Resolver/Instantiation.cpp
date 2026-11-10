@@ -4015,7 +4015,22 @@ auto GlobalScope::Impl::substitute(const Ty* t, const Subst& s, int depth) -> co
       if (sub && sub->kind == TyKind::Class && sub->decl &&
           (!types.isDependent(sub) || sub == selfType(sub->decl) || !(sub->decl->attributes & ATTR_Specialized)))
         if (const Ty* r = memberTypeOf(sub, uint32_t(t->value), depth + 1))
+        {
+          // A member that names another class's member (`using CountType = Button<IDType>::CountType;` in Slot, a class
+          // deriving from Button<IDType>): that one too, by the same rule, so that the class's name for the type and the
+          // other class's are one type. Until 2026-11-10 the first step alone: an out-of-line `typename Slot<IDType>::CountType
+          // Slot<IDType>::getCount() const` was Button<IDType>::CountType where its declaration's was uint32, and matched none.
+          for (int step = 0; step < 16 && r && r->kind == TyKind::DependentMember && r->inner && r->inner->kind == TyKind::Class && r->inner->decl &&
+                             (!types.isDependent(r->inner) || r->inner == selfType(r->inner->decl) || !(r->inner->decl->attributes & ATTR_Specialized));
+               ++step)
+          {
+            const Ty* next = memberTypeOf(r->inner, uint32_t(r->value), depth + 1);
+            if (!next || next == r)
+              break;
+            r = types.qualified(next, r->isConst || next->isConst, r->isVolatile || next->isVolatile);
+          }
           return types.qualified(r, t->isConst || r->isConst, t->isVolatile);
+        }
       return sub == t->inner ? t : types.qualified(types.dependentMember(sub, uint32_t(t->value)), t->isConst, t->isVolatile);
     }
     case TyKind::Pointer: return types.qualified(types.pointer(substitute(t->inner, s, depth)), t->isConst, t->isVolatile);
