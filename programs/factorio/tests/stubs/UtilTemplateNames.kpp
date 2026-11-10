@@ -10,3 +10,13 @@ public:
 };
 
 void inline prefetch(const void* p) {}
+
+// The game's classes the Util subset's templates name in their signatures (Optional's loading and
+// saving constructors and members, ScopedEntityStorage's element): declared only, as nothing the test
+// instantiates uses them (kpp checks that a type name a template names is declared, fb6568df8).
+class Deserialiser;
+class MapDeserialiser;
+class Serialiser;
+class MapSerialiser;
+class PropertyTree;
+class Entity;
