@@ -1,0 +1,87 @@
+// spec: a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile server"), with --debug-info: a kept function whose lines an edit above it moved is emitted again with the lines of its closing braces where they are now, the function's own (its return without a return statement) and an inner block's (where the block's object is destroyed), as from scratch: the brace's place was not remapped with the kept file's tokens, so the line given was that of the token as many places before it as the edit added (Factorio's ElectricNetworkUsageValues::load after a line added to ElectricNetworkInputValues::computeUsage above it)
+// kpp: --debug-info
+//--- step: the program
+int counter = 0;
+struct Guard
+{
+  ~Guard() { counter += 100; }
+};
+
+void first()
+{
+  counter += 1;
+}
+
+void second()
+{
+  {
+    Guard g;
+    counter += 2;
+  }
+  counter += 3;
+}
+
+int main()
+{
+  first();
+  second();
+  std::println(counter);
+  return 0;
+}
+// expect: 106
+//--- step: a line added to the function above
+int counter = 0;
+struct Guard
+{
+  ~Guard() { counter += 100; }
+};
+
+void first()
+{
+  counter += 1;
+  counter += 10;
+}
+
+void second()
+{
+  {
+    Guard g;
+    counter += 2;
+  }
+  counter += 3;
+}
+
+int main()
+{
+  first();
+  second();
+  std::println(counter);
+  return 0;
+}
+// expect: 116
+//--- step: two lines taken out above
+int counter = 0;
+struct Guard
+{
+  ~Guard() { counter += 100; }
+};
+
+void first() { counter += 1; }
+
+void second()
+{
+  {
+    Guard g;
+    counter += 2;
+  }
+  counter += 3;
+}
+
+int main()
+{
+  first();
+  second();
+  std::println(counter);
+  return 0;
+}
+// expect: 106

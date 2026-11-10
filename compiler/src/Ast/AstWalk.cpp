@@ -440,4 +440,9 @@ void remapNodeTokens(Node* n, const std::function<uint32_t(uint32_t)>& remap)
   }
   else if (n->kind == NodeKind::ErrorStmt && static_cast<ErrorStmt*>(n)->endToken)
     static_cast<ErrorStmt*>(n)->endToken = remap(static_cast<ErrorStmt*>(n)->endToken - 1) + 1;
+  // (a block's closing brace itself: its line is the function's last and where the block's objects are destroyed, in --debug-info;
+  // until 2026-11-10 a kept function emitted again for its moved lines gave the line of the token as many places before it as the
+  // edit added, kpp/server_moved_lines_keep_closing_brace_lines)
+  else if (n->kind == NodeKind::BlockStmt && static_cast<BlockStmt*>(n)->endToken)
+    static_cast<BlockStmt*>(n)->endToken = remap(static_cast<BlockStmt*>(n)->endToken);
 }
