@@ -1,5 +1,4 @@
 // spec: a comma fold over a class with an operator, of its own has the type of the chain's last call, as C++ instantiates `E0 , (E1 , E2)`: here Mark, whose member the result is read through (`(args , ...).v`); clang's output
-// pending: the walk types a comma fold over class operands as void (foldType leaves such operands to the caller, whose comma is void), so `.v` of it is "the type <unknown> of MemberExpr"; codegen calls the operators (templates/fold_of_a_class_with_its_own_comma_or_logical_operator), found by thread B comparing folds with clang (2026-11-09)
 extern "C" int printf(const char* format, ...);
 void event(char kind, int v) { printf("%c%d,", kind, v); }
 struct Part { int v; };

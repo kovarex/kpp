@@ -8498,7 +8498,9 @@ auto GlobalScope::Impl::Walker::foldType(FoldExpr* f, const Ty* l, const Ty* r) 
     if (!t->isKnown() || types.isDependent(t))
       return nullptr;
     bool scalar = t->kind == TyKind::Bool || t->kind == TyKind::Char || t->kind == TyKind::Int || t->kind == TyKind::Float;
-    if (arithmeticOp ? !scalar : (t->kind == TyKind::Class || t->kind == TyKind::Lambda || t->kind == TyKind::Enum || t->kind == TyKind::Void))
+    // (a class or an enumeration under a comma or a logical operator: its own operator's type, below)
+    bool own = (op == P::Comma || op == P::AndAnd || op == P::OrOr) && (t->kind == TyKind::Class || t->kind == TyKind::Enum);
+    if (!own && (arithmeticOp ? !scalar : (t->kind == TyKind::Class || t->kind == TyKind::Lambda || t->kind == TyKind::Enum || t->kind == TyKind::Void)))
       return nullptr;
   }
   const Ty* initOperand = init ? operands.back() : nullptr;
@@ -8506,6 +8508,18 @@ auto GlobalScope::Impl::Walker::foldType(FoldExpr* f, const Ty* l, const Ty* r) 
     operands.pop_back();
   auto step = [&](const Ty* a, const Ty* b) -> const Ty*
   {
+    if (!a || !b)
+      return nullptr;
+    // `(args , ...)` of a class with an operator, of its own: that operator's result, step by step, as C++
+    // instantiates `E0 , (E1 , E2)` (the chain's last call's type, Mark; it was void, so `(args , ...).v` failed);
+    // a comma of no operator of its own gives its right operand, a logical operator a bool.
+    auto ownKind = [](const Ty* t) { t = t->kind == TyKind::LRef || t->kind == TyKind::RRef ? t->inner : t; return t->kind == TyKind::Class || t->kind == TyKind::Enum; };
+    if ((op == P::Comma || op == P::AndAnd || op == P::OrOr) && (ownKind(a) || ownKind(b)))
+    {
+      if (const Ty* called = overloadedOperator(op, a, b, f->token, 2, false); called && called->isKnown() && operatorCall == OperatorCall::Function)
+        return called;
+      return op == P::Comma ? b : types.boolType();
+    }
     if (boolOp)
       return types.boolType();
     if (op == P::Comma)
