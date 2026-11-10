@@ -82,6 +82,13 @@ what is decided but not built yet is under [Planned](#planned). Every rule that 
 - **A class with a virtual function has a virtual destructor**, written or not, so `delete` through a
   base runs the whole object's destructor. A COM interface, whose vtable is not kpp's to change, says
   `[[foreign_vtable]]` and cannot be deleted.
+- **Required `this.`**: a member is written `this.x` and a static one `This::count`, so that adding a
+  local or a global never changes what an existing line means; a bare name is never a member.
+  `This` names the class the code is in (`Vector<T>` inside Vector). Outside a scoped enum its values
+  are `Direction::North`, in case labels too.
+- **Required `override`** on every function that overrides a virtual one (or says `final`).
+- **`this` is a reference** everywhere: `this.x`, `return this;`, `&this` for the pointer. (Inside an
+  enum's methods `this` is the value.)
 
 ### Less boilerplate
 
@@ -240,14 +247,6 @@ kpp.net and other things.
 
 Decided, and not built yet:
 
-- **Required `this.`**: a member is written `this.x` and a static one `This::count`, so that adding a
-  local or a global never changes what an existing line means; a bare name is never a member.
-  `This` names the class the code is in (`Vector<T>` inside Vector). Outside a scoped enum its values
-  are `Direction::North`, in case labels too.
-- **Required `override`** on every function that overrides a virtual one (or says `final`): an error
-  today.
-- **`this` is a reference** everywhere: `this.x`, `return this;`, `&this` for the pointer. (Inside an
-  enum's methods `this` already is the value.)
 - **Factorio on the bundled toolchain.** The game still builds with an installed Visual Studio
   (`--toolchain msvc`) because it links C++ libraries built the Visual Studio way; it moves to
   kpp's own toolchain as they are converted or rebuilt (design.md 17).
