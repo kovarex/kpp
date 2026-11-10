@@ -3381,6 +3381,26 @@ auto GlobalScope::Impl::fillDefaultTemplateArgs(FunctionDecl* f, Subst& s) -> bo
       return false;
     s.pairs.push_back({d, t});
   }
+  // A constant parameter's type under the arguments, a defaulted one's too, must form ([temp.deduct] 7, 8):
+  // `EnableIfT<(sizeof(T) > 2), int> = 0` (or `typename EnableIf<...>::type = 0`) names no type for a char, so
+  // the template is no candidate. Until 2026-11-10 that type was never typed under the arguments, so two
+  // enable_if overloads were both candidates ("ambiguous"). Only for type arguments all known (a constant's value
+  // has its parameter's type, unknown exactly when it does not form).
+  bool concrete = true;
+  for (const Subst::Pair& q : s.pairs)
+    if (q.param && q.param->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(q.param)->isType)
+      concrete = concrete && q.type && q.type->isKnown() && !types.isDependent(q.type) && !mentionsUnknown(q.type);
+  if (concrete)
+    for (Decl* d : f->templateParams)
+    {
+      auto* p = static_cast<TemplateParamDecl*>(d);
+      if (p->isType || !p->valueType || !p->innerParams.empty() || !s.find(d))
+        continue;
+      TypeContext ctx{lexicalScopeOf(f), &own, &s, f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
+      const Ty* t = convertType(p->valueType, ctx, 0);
+      if (!t || !t->isKnown() || mentionsUnknown(t) || namesMissingMember(t))
+        return false;
+    }
   // C++: a trailing pack nothing deduces is empty (`assignIf<Index + 1, Tail...>(widget)` with
   // Tail empty names `assignIf<Index + 1>`, whose `template<size_t Index, class Head, class...
   // Tail>` has an empty Tail). One a parameter takes is the call's to deduce.
