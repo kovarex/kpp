@@ -1,0 +1,39 @@
+// spec: a partial specialization whose argument is a value its parameters decide matches by that value once they are deduced, a non-deduced context ([temp.spec.partial.match] 2): `Width<T, EnableIfT<(sizeof(T) > 2)>>` for a T wider than two bytes, `Kind<T, EnableIfT<std::IsSame<T, int>::value>>` for an int (clang's output)
+// found by D's SFINAE battery against clang (2026-11-10): the template's own conversion held no such value, so the specialization matched nothing, silently: the primary was taken
+template<bool B, typename T = void>
+struct EnableIf
+{
+};
+template<typename T>
+struct EnableIf<true, T>
+{
+  using type = T;
+};
+template<bool B, typename T = void>
+using EnableIfT = typename EnableIf<B, T>::type;
+template<typename T, typename = void>
+struct Width
+{
+  static constexpr int v = 0;
+};
+template<typename T>
+struct Width<T, EnableIfT<(sizeof(T) > 2)>>
+{
+  static constexpr int v = 1;
+};
+template<typename T, typename = void>
+struct Kind
+{
+  static constexpr int v = 0;
+};
+template<typename T>
+struct Kind<T, EnableIfT<std::IsSame<T, int>::value>>
+{
+  static constexpr int v = 1;
+};
+
+int main()
+{
+  std::println(Width<char>::v, " ", Width<int>::v, " ", Width<double>::v, " ", Kind<int>::v, " ", Kind<char>::v);
+  return 0;
+}

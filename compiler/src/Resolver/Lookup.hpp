@@ -164,7 +164,8 @@
 
   // A partial specialisation's patterns (`<T, T, R...>`) as types, its own parameters standing for
   // themselves; a pack expansion is its pack parameter. False when one does not convert.
-  bool specializationPatterns(ClassDecl* c, Decl* primary, std::vector<const Ty*>& out, int depth);
+  // valueDependent, when given, takes the positions of values the parameters decide (no type holds them yet).
+  bool specializationPatterns(ClassDecl* c, Decl* primary, std::vector<const Ty*>& out, int depth, std::vector<size_t>* valueDependent = nullptr);
 
   // A specialisation written with fewer arguments than its primary has parameters
   // (`is_optional<Optional<T>>` of `template<typename T, typename Enable = void>`): the rest are

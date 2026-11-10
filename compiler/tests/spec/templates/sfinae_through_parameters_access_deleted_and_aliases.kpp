@@ -1,0 +1,80 @@
+// spec: more of what does not form for the deduced arguments takes a template out of the overloads ([temp.deduct] 8): a decltype naming a function parameter whose type depends on T (`decltype(t.size(), 1)`), a private member named outside its class (access checking is part of the substitution), a call of a deleted function, a template argument that does not form (`Size<sizeof(T::x)>`), an alias template's argument it drops (`VoidT<decltype(...)>` with a pack, CWG 1558), and a member template's defaulted parameter naming a missing type (clang's output)
+// found by D's SFINAE battery against clang (2026-11-10): each held for an int, silently, but the private member (the instance's error) and the member templates ("ambiguous")
+template<typename T>
+T&& declv();
+template<bool B, typename T = void>
+struct EnableIf
+{
+};
+template<typename T>
+struct EnableIf<true, T>
+{
+  using type = T;
+};
+template<bool B, typename T = void>
+using EnableIfT = typename EnableIf<B, T>::type;
+template<typename...>
+using VoidT = void;
+struct S
+{
+  int size() const { return 0; }
+};
+template<typename T>
+auto viaParameter(T t) -> decltype(t.size(), 1) { return 1; }
+int viaParameter(...) { return 2; }
+template<typename T>
+auto viaVoidCast(T t) -> decltype((void)t.size(), 1) { return 1; }
+int viaVoidCast(...) { return 2; }
+class Priv
+{
+  int secret = 1;
+public:
+  int open = 2;
+};
+template<typename T>
+auto readSecret(const T& t) -> decltype(t.secret, 1) { return 1; }
+int readSecret(...) { return 2; }
+template<typename T>
+auto readOpen(const T& t) -> decltype(t.open, 1) { return 1; }
+int readOpen(...) { return 2; }
+int del(int) = delete;
+int del(double) { return 0; }
+template<typename T>
+auto callsDel(T t) -> decltype(del(t), 1) { return 1; }
+int callsDel(...) { return 2; }
+template<int N>
+struct Size
+{
+  static constexpr int v = N;
+};
+struct HasX
+{
+  static int x;
+};
+template<typename T>
+auto sizeOfX(T) -> decltype(Size<sizeof(T::x)>::v, 1) { return 1; }
+int sizeOfX(...) { return 2; }
+int takes(int, char) { return 1; }
+template<typename... Ts, typename = VoidT<decltype(takes(declv<Ts>()...))>>
+int callable(Ts...) { return 1; }
+int callable(...) { return 2; }
+template<typename T>
+struct W
+{
+  T v;
+  template<typename U = T, typename = EnableIfT<std::IsSame<U, int>::value>>
+  int onlyInt() const { return 1; }
+  template<typename U = T, typename = EnableIfT<!std::IsSame<U, int>::value>, typename = void>
+  int onlyInt() const { return 2; }
+};
+
+int main()
+{
+  Priv p;
+  W<int> wi{1};
+  W<char> wc{'c'};
+  std::println(viaParameter(S()), " ", viaParameter(5), " ", viaVoidCast(S()), " ", viaVoidCast(5));
+  std::println(readSecret(p), " ", readOpen(p), " ", callsDel(1), " ", callsDel(1.5), " ", sizeOfX(HasX()), " ", sizeOfX(5));
+  std::println(callable(1, 'c'), " ", callable(1), " ", callable(1, 2, 3), " ", wi.onlyInt(), " ", wc.onlyInt());
+  return 0;
+}

@@ -2010,6 +2010,17 @@ auto GlobalScope::Impl::Walker::resolveName(NameExpr* e) -> const Ty*
   for (const NamePart& part : e->name.parts)
     for (Node* arg : part.templateArgs)
       walkNode(arg);
+  // While probing or substituting, a template argument that does not form leaves the name none ([temp.deduct] 8):
+  // `Size<sizeof(T::x)>::v` of an int (until 2026-11-10 the member of whatever Size the lookup found).
+  if (probing || substituting)
+    for (const NamePart& part : e->name.parts)
+      for (Node* arg : part.templateArgs)
+      {
+        const Ty* at = !arg ? nullptr : Impl::isTypeNode(arg) ? typeOf(static_cast<Type*>(arg))
+                                      : uint8_t(arg->kind) >= uint8_t(NodeKind::NameExpr) ? static_cast<Expr*>(arg)->ty : nullptr;
+        if (arg && (!at || !at->isKnown()))
+          return unknown(Why::Name);
+      }
   Lookup l = lookupHere(e->name);
   if (l.found == Found::No && e->name.parts.size() > 1)
     l = memberOfQualifierInstance(e);
@@ -3800,7 +3811,7 @@ auto GlobalScope::Impl::Walker::returnTypeOfCall(FunctionDecl* f, const Subst* c
   // A requirement's probe of a call of a deleted function (`requires { consume(v); }`, `requires(T& t, U u) { t = u; }`
   // through a deleted operator=): no well-formed expression ([dcl.fct.def.delete] 2), so the requirement is not met.
   // A template's is decided once its arguments are, as the explicit specialization for them is no deleted function.
-  if (probing && (f->flags & DF_Delete) && f->templateParams.empty())
+  if ((probing || substituting) && (f->flags & DF_Delete) && f->templateParams.empty())
     return unknown(Why::Overload);
   if (f->body == nullptr && f->returnType == nullptr && !(f->flags & (DF_Constructor | DF_Destructor | DF_Conversion)))
     return unknown(Why::Unsupported);
@@ -3817,7 +3828,7 @@ auto GlobalScope::Impl::Walker::returnTypeOfCall(FunctionDecl* f, const Subst* c
         bindExplicitArgs(f, *namePart, args, s);
       impl.deduceCall(f, fnTy, argTypes(), s);
       impl.fillDefaultTemplateArgs(f, s);
-      if (probing && (f->flags & DF_Delete) && !impl.functionSpecializationFor(f, s))
+      if ((probing || substituting) && (f->flags & DF_Delete) && !impl.functionSpecializationFor(f, s))
         return unknown(Why::Overload);
       if (call)
         recordTemplateArgs(call, f, s);
@@ -3858,7 +3869,7 @@ auto GlobalScope::Impl::Walker::returnTypeOfCall(FunctionDecl* f, const Subst* c
       bindExplicitArgs(f, *namePart, args, subst);
     impl.deduceCall(f, fnTy, argTypes(), subst);
     impl.fillDefaultTemplateArgs(f, subst);
-    if (probing && (f->flags & DF_Delete) && !impl.functionSpecializationFor(f, subst))
+    if ((probing || substituting) && (f->flags & DF_Delete) && !impl.functionSpecializationFor(f, subst))
       return unknown(Why::Overload);
     if (call)
       recordTemplateArgs(call, f, subst);

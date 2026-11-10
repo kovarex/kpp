@@ -1176,12 +1176,16 @@ auto GlobalScope::Impl::isPackParam(const Ty* t) -> bool
          static_cast<TemplateParamDecl*>(t->decl)->isPack;
 }
 
-auto GlobalScope::Impl::specializationPatterns(ClassDecl* c, Decl* primary, std::vector<const Ty*>& out, int depth) -> bool
+auto GlobalScope::Impl::specializationPatterns(ClassDecl* c, Decl* primary, std::vector<const Ty*>& out, int depth, std::vector<size_t>* valueDependent) -> bool
 {
   const NamePart& part = c->name.last();
   LocalStack own;
+  Subst ownParams; // (each parameter as itself: what a written argument names of them, mentionsBound)
   for (Decl* p : c->templateParams)
+  {
     own.push(static_cast<TemplateParamDecl*>(p)->name, p);
+    ownParams.pairs.push_back({p, types.param(p)});
+  }
   TypeContext sctx{lexicalScopeOf(c), &own, nullptr, c->file ? c->file->tokens : nullptr, c->file ? c->file->text : std::string_view()};
   for (size_t i = 0; i < part.templateArgs.size(); ++i)
   {
@@ -1189,7 +1193,18 @@ auto GlobalScope::Impl::specializationPatterns(ClassDecl* c, Decl* primary, std:
     const Ty* t = a && a->kind == NodeKind::PackType ? convertType(static_cast<PackType*>(a)->pattern, sctx, depth + 1)
                                                      : templateArgument(a, parameterFor(primary, i), sctx, depth);
     if (!t || !t->isKnown())
+    {
+      // `Width<T, EnableIfT<(sizeof(T) > 2)>>`: a value the parameters decide, which no type of the template's own
+      // holds; matchPatterns, which asks for these, converts it once they are deduced (a non-deduced context).
+      // Until 2026-11-10 such a specialization matched nothing, silently (the primary was taken).
+      if (valueDependent && a && a->kind != NodeKind::PackType && mentionsBound(a, ownParams))
+      {
+        valueDependent->push_back(i);
+        out.push_back(t ? t : types.unknown());
+        continue;
+      }
       return false;
+    }
     out.push_back(t);
   }
   bool expansion = !part.templateArgs.empty() && part.templateArgs[part.templateArgs.size() - 1] &&
@@ -1243,7 +1258,7 @@ static void decltypesIn(Node* n, std::vector<Type*>& out, int depth = 0, bool qu
     case NodeKind::NamedType:
     {
       auto* named = static_cast<NamedType*>(n);
-      if (qualified && (named->name.parts.size() > 1 || named->name.typeQualifier))
+      if (qualified && named->typename_ && (named->name.parts.size() > 1 || named->name.typeQualifier)) // (`typename T::type`: a value written there, `IsSame<T, int>::value`, is no type)
         out.push_back(named);
       for (const NamePart& part : named->name.parts)
         for (Node* a : part.templateArgs)
@@ -1271,7 +1286,8 @@ auto GlobalScope::Impl::matchPatterns(ClassDecl* c, Decl* primary, const std::ve
   size_t written = part.templateArgs.size();
   bool expansion = written > 0 && part.templateArgs[written - 1] && part.templateArgs[written - 1]->kind == NodeKind::PackType;
   std::vector<const Ty*> patterns;
-  if (!specializationPatterns(c, primary, patterns, depth))
+  std::vector<size_t> valueDependent;
+  if (!specializationPatterns(c, primary, patterns, depth, &valueDependent))
     return false;
   size_t n = patterns.size(); // the written ones, then the primary's defaults
   // The primary's defaults that name the specialization's parameters (`int N = sizeof(U)` for
@@ -1282,9 +1298,15 @@ auto GlobalScope::Impl::matchPatterns(ClassDecl* c, Decl* primary, const std::ve
   if (expansion ? args.size() < n - 1 : args.size() != n && !defaultsLater)
     return false;
   Subst s;
+  std::vector<size_t> deferred; // (patterns compared once every parameter is deduced)
   for (size_t i = 0; i < n; ++i)
   {
     const Ty* pattern = patterns[i];
+    if (std::find(valueDependent.begin(), valueDependent.end(), i) != valueDependent.end())
+    {
+      deferred.push_back(i); // (a value the parameters decide: compared once they are deduced)
+      continue;
+    }
     if (expansion && i == n - 1)
     {
       if (!isPackParam(pattern))
@@ -1369,8 +1391,18 @@ auto GlobalScope::Impl::matchPatterns(ClassDecl* c, Decl* primary, const std::ve
         else
           s.pairs.push_back(q);
       }
-      if (!sameArgument(substitute(pattern, s), args[i]))
-        return false;
+      if (const Ty* sub = substitute(pattern, s); !sameArgument(sub, args[i]))
+      {
+        // A pattern whose value the substitution cannot compute (`EnableIfT<(sizeof(T) > 2)>`, the member of an
+        // EnableIf<sizeof(T) > 2>; for a constant parameter, `IsSame<T, int>::value`, which the template's own
+        // conversion reads as a member type), a non-deduced context: converted anew from its written argument once
+        // every parameter is deduced, below. Until 2026-11-10 it matched nothing, silently (the primary was taken).
+        auto* param = parameterFor(primary, i);
+        bool constant = param && param->kind == NodeKind::TemplateParamDecl && !static_cast<TemplateParamDecl*>(param)->isType;
+        if ((!types.isDependent(sub) && !constant) || i >= written)
+          return false;
+        deferred.push_back(i);
+      }
     }
     else if (!sameArgument(pattern, args[i]))
       return false;
@@ -1398,6 +1430,19 @@ auto GlobalScope::Impl::matchPatterns(ClassDecl* c, Decl* primary, const std::ve
     if (!t)
       return false;
     deduced.push_back(t);
+  }
+  if (!deferred.empty())
+  {
+    LocalStack own;
+    for (Decl* p : c->templateParams)
+      own.push(static_cast<TemplateParamDecl*>(p)->name, p);
+    TypeContext sctx{lexicalScopeOf(c), &own, &s, c->file ? c->file->tokens : nullptr, c->file ? c->file->text : std::string_view()};
+    for (size_t i : deferred)
+    {
+      const Ty* retyped = templateArgument(part.templateArgs[i], parameterFor(primary, i), sctx, depth + 1);
+      if (!retyped || !retyped->isKnown() || types.isDependent(retyped) || !sameArgument(retyped, args[i]))
+        return false;
+    }
   }
   // C++'s substitution failure ([temp.class.spec.match] 2, [temp.deduct] 8): a decltype or a qualified
   // type name the arguments write must form under the arguments deduced, or the specialization does

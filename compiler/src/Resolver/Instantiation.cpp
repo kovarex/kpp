@@ -508,6 +508,10 @@ auto GlobalScope::Impl::templateArgument(Node* arg, Decl* param, const TypeConte
     {
       // `EnableIf<isIntegral<T>>`: a trait's value, once its arguments are known.
       std::vector<const Ty*> targs = traitArgs(*trait, ctx, depth + 1);
+      // (arguments that still depend on a parameter decide nothing yet: `std::IsSame<T, int>::value` in a partial
+      // specialization's pattern was false whatever T, until 2026-11-10, so `Kind<T, EnableIfT<...>>` matched no int)
+      if (std::any_of(targs.begin(), targs.end(), [&](const Ty* a) { return !a || types.isDependent(a) || mentionsUnknown(a); }))
+        return types.unknown();
       std::optional<bool> b = targs.empty() ? std::nullopt : traitValue(symbols.name(trait->symbol), targs);
       return b ? types.valueType(types.boolType(), *b ? 1 : 0) : types.unknown();
     }
@@ -528,6 +532,18 @@ auto GlobalScope::Impl::templateArgument(Node* arg, Decl* param, const TypeConte
       Subst qs; // `Array<int, Bits<int16_t>::valueBits>`: the member under the instantiation's arguments
       if (an.parts.size() > 1 && (l.decl->kind == NodeKind::VariableDecl || l.decl->kind == NodeKind::EnumeratorDecl))
         qs = qualifierSubst(an, ctx, depth + 1, l.foundIn);
+      // (a member of a class whose arguments still depend on a parameter is no value yet: `IsSame<T, int>::value` in a
+      // partial specialization's pattern was the primary's false whatever T, found in its base FalseType, until 2026-11-10)
+      if (an.parts.size() > 1 && !an.typeQualifier && std::any_of(an.parts.begin(), an.parts.end() - 1, [](const NamePart& p) { return p.hasTemplateArgs; }))
+      {
+        NamedType qualifier{};
+        qualifier.kind = NodeKind::NamedType;
+        qualifier.token = arg->token;
+        qualifier.name = an;
+        qualifier.name.parts.count -= 1;
+        if (const Ty* q = convertType(&qualifier, ctx, depth + 1); !q || !q->isKnown() || types.isDependent(q) || mentionsUnknown(q))
+          return types.unknown();
+      }
       v = constValueOfDecl(l.decl, ctx, depth, qs.pairs.empty() ? nullptr : &qs);
       if (!v && l.decl->kind == NodeKind::TemplateParamDecl)
         return types.param(l.decl); // `Num<I>` in a template: the argument is still the parameter (dependent)
@@ -1604,6 +1620,26 @@ auto GlobalScope::Impl::typeOfTypeDecl(Decl* d, const Lookup& l, const NamePart&
           for (const Subst::Pair& p : ctx.subst->pairs)
             s.pairs.push_back(p);
         TypeContext actx{lexicalScopeOf(u), &own, &s, u->file ? u->file->tokens : nullptr, u->file ? u->file->text : std::string_view()};
+        // An argument that does not form, the arguments otherwise known, leaves the alias none, though its type may not
+        // name it (`VoidT<decltype(f(declv<Ts>()...))>`, CWG 1558): a substitution failure where one is asked for.
+        // Until 2026-11-10 the alias's type, so the detection idiom in a defaulted template argument always held.
+        bool argsKnown = true, argFails = false;
+        auto judge = [&](const Ty* a) {
+          if (!a || !a->isKnown() || mentionsUnknown(a) || namesMissingMember(a))
+            argFails = true;
+          else if (types.isDependent(a))
+            argsKnown = false;
+        };
+        for (const Ty* a : args)
+        {
+          if (a && a->kind == TyKind::Pack)
+            for (const Ty* e : a->args)
+              judge(e);
+          else
+            judge(a);
+        }
+        if (argFails && argsKnown && args.size() >= lastPart.templateArgs.size())
+          return types.unknown();
         // As a declared type is (declaredTypeOf): as if asked from the top, a level of its own.
         CachedEvaluation level;
         if (!level.ok)
@@ -2044,20 +2080,44 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
         own.tokens = d->file->tokens;
         own.text = d->file->text;
       }
-      if ((own.function || own.tokens) && own.subst && !own.subst->empty() && d->expr &&
-          (!generic->isKnown() || types.isDependent(generic) || mentionsBound(d->expr, *own.subst)))
+      // (and one with a part the template's own walk typed dependent: `decltype(t.size(), 1)` of a `T t`, whose int the
+      // comma gives hides the call's dependence; until 2026-11-10 never typed anew, so it held for an int, silently)
+      auto dependentPart = [&](Expr* x)
       {
-        const Ty* typed = typeOfSignatureExpression(d->expr, own, nullptr, nullptr, nullptr, true);
+        bool found = false;
+        forEachNode(x, [&](Node* n) {
+          found = found || (uint8_t(n->kind) >= uint8_t(NodeKind::NameExpr) && static_cast<Expr*>(n)->ty && types.isDependent(static_cast<Expr*>(n)->ty));
+        });
+        return found;
+      };
+      bool dependentExpr = d->expr && own.subst && !own.subst->empty() && (mentionsBound(d->expr, *own.subst) || dependentPart(d->expr));
+      if ((own.function || own.tokens) && own.subst && !own.subst->empty() && d->expr &&
+          (!generic->isKnown() || types.isDependent(generic) || dependentExpr))
+      {
+        bool concrete = std::all_of(own.subst->pairs.begin(), own.subst->pairs.end(), [&](const Subst::Pair& p) {
+          return p.type && p.type->isKnown() && !types.isDependent(p.type) && !mentionsUnknown(p.type);
+        });
+        Expr* typedCopy = nullptr;
+        const Ty* typed = typeOfSignatureExpression(d->expr, own, &typedCopy, nullptr, nullptr, true);
         if (typed && typed->isKnown() && !types.isDependent(typed))
+        {
+          // What it names must be accessible from the template's declaration, access checking being part of the
+          // substitution ([temp.deduct] 8): `-> decltype(t.secret, 1)` of a private member is a substitution failure,
+          // until 2026-11-10 the instance's error ("Priv::secret is private").
+          if (concrete && own.function && typedCopy)
+          {
+            std::vector<Scope*> context;
+            accessContext(own.function, context);
+            if (!namesOnlyAccessible(typedCopy, own.function, context, nullptr))
+              return types.unknown();
+          }
           return decltypeOfExpr(typed);
+        }
         // An expression that does not form under the arguments, all of them known (`decltype(T::value)` with T = int,
         // `decltype(a + b)` of a class without operator+): no type, a substitution failure ([temp.deduct] 8), never
         // the generic walk's (until 2026-11-10 kept, so a template whose signature has it stayed a candidate with a
         // type made up: T, void*).
-        if ((!typed || !typed->isKnown()) && mentionsBound(d->expr, *own.subst) &&
-            std::all_of(own.subst->pairs.begin(), own.subst->pairs.end(), [&](const Subst::Pair& p) {
-              return p.type && p.type->isKnown() && !types.isDependent(p.type) && !mentionsUnknown(p.type);
-            }))
+        if ((!typed || !typed->isKnown()) && dependentExpr && concrete)
           return types.unknown();
       }
       return generic;
@@ -3377,7 +3437,9 @@ auto GlobalScope::Impl::fillDefaultTemplateArgs(FunctionDecl* f, Subst& s) -> bo
       continue;
     TypeContext ctx{lexicalScopeOf(f), &own, &s, f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
     const Ty* t = templateArgument(p->defaultArg, d, ctx, 0);
-    if (!t || !t->isKnown())
+    // (`class = EnableIfT<SameT<U, int>::value>` for a char names EnableIf<false>'s missing type: a substitution failure,
+    // until 2026-11-10 a candidate, so two such member templates were "ambiguous" and one alone was called)
+    if (!t || !t->isKnown() || namesMissingMember(t))
       return false;
     s.pairs.push_back({d, t});
   }
