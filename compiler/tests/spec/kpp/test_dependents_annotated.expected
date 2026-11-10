@@ -3,4 +3,4 @@ failed: Belts.Moves
 test_dependents_annotated.kpp:11:17: check failed: 2 == 3 (2 == 3)
 failed: Splitters.Splits (after failures in: Belts)
 Splitters.Merges
-3 tests, 2 failed (root failures: Belts.Moves)
+3 tests, 2 failed (root failures: Belts.Moves; 1 after failures in their dependencies)

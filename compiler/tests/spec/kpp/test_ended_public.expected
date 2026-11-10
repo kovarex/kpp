@@ -1,4 +1,4 @@
 test_ended_public.kpp:13:9: check failed: false: in clear
 caught
 failed: Clearing.Clears
-1 test, 1 failed
+1 test, 1 failed (root failures: Clearing.Clears)

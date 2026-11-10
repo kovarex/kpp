@@ -4,4 +4,4 @@ test_run_by_name_unknown.kpp:8:20: failed: runTest: 2 tests are called Same: wri
 failed: A.Ambiguous
 test_run_by_name_unknown.kpp:9:17: failed: runTest: A.Itself is the running test
 failed: A.Itself
-5 tests, 3 failed
+5 tests, 3 failed (root failures: A.Unknown, A.Ambiguous, A.Itself)

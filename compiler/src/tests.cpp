@@ -66,6 +66,7 @@ struct __KppSuite
   int order = -1;
   bool failed = false;
   bool needed = false; // --with-dependencies: a selected suite depends on it
+  int depth = -1;      // its longest chain of dependencies (0: none), once known
 };
 
 // A suite's `generate Name { }` (design.md 8.7): the parser's function that runs its body.
@@ -928,6 +929,21 @@ int __kppStart(const std::Vector<const __KppTest*>& selected, const char* name, 
     return -1;
   }
   return after ? last + 1 : first;
+}
+
+// How far a suite is from the most fundamental ones: 0 when it depends on none, else one more than
+// its deepest dependency (a cycle is the compiler's error).
+int __kppDepth(__KppSuite& suite)
+{
+  if (suite.depth >= 0)
+    return suite.depth;
+  suite.depth = 0;
+  int deepest = 0;
+  for (const std::String& dependency : suite.depends)
+    if (__KppSuite* d = __kppSuite(dependency.c_str()))
+      deepest = std::max(deepest, __kppDepth(*d) + 1);
+  suite.depth = deepest;
+  return deepest;
 }
 
 // The failed suites among those suite depends on, directly or further back, in the run's order.
@@ -1861,11 +1877,28 @@ int main(int argc, char** argv)
   std::String summary = std::toString(run + notRun, " ", std::StringView(run + notRun == 1 ? "test" : "tests"), ", ", failed, " failed");
   if (notRun > 0)
     summary << ", " << notRun << " not run";
-  if (explained)
+  if (!roots.empty())
   {
-    summary << " (root failures: ";
+    // The failures to look at first: those no failed dependency explains, the most fundamental first
+    // (the fewest dependencies before them, design.md 8.7), whatever order --jobs ran them in.
+    std::Vector<int> depths;
+    for (const __KppTest* test : roots)
+    {
+      __KppSuite* suite = test->suite[0] != 0 ? __kppSuite(test->suite) : nullptr;
+      depths.push_back(suite ? __kppDepth(*suite) : 0);
+    }
+    std::Vector<int> order;
     for (int i = 0; i < int(roots.size()); ++i)
-      summary << std::StringView(i > 0 ? ", " : "") << roots[i]->fullName;
+      order.push_back(i);
+    std::stableSort(order.begin(), order.end(), [&](int a, int b) { return depths[a] < depths[b]; });
+    const int shown = 20;
+    summary << " (root failures: ";
+    for (int i = 0; i < int(order.size()) && i < shown; ++i)
+      summary << std::StringView(i > 0 ? ", " : "") << roots[order[i]]->fullName;
+    if (int(order.size()) > shown)
+      summary << ", and " << int(order.size()) - shown << " more";
+    if (explained)
+      summary << "; " << failed - int(roots.size()) << " after failures in their dependencies";
     summary << ")";
   }
   std::println(summary);

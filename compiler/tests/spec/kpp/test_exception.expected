@@ -3,4 +3,4 @@ failed: test_exception.kpp > standard
 test_exception.kpp:13:1: test failed: an exception left the test
 failed: test_exception.kpp > other
 still running
-3 tests, 2 failed
+3 tests, 2 failed (root failures: test_exception.kpp > standard, test_exception.kpp > other)

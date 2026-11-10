@@ -833,9 +833,16 @@ suite DragBuildingBelt depends DragBuilding, TransportBelt
   failed test has finished; the rest count as not run (`3 tests, 1 failed, 1 not run`), and since
   dependencies run first, a failure in a dependency stops the run before its dependents. With
   `--jobs N` it starts no further suite. Reporting only: a failed test of a suite whose
-  dependency, directly or further back, had a failure, prints `failed: B.x (after failures in: A)`,
-  and the summary then names the root failures, those without a failed dependency:
-  `3 tests, 2 failed (root failures: A.y)`.
+  dependency, directly or further back, had a failure, prints `failed: B.x (after failures in: A)`.
+  Whenever a test failed, the summary names the root failures, those no failed dependency explains,
+  **the most fundamental first** (kovarex 2026-11-10, FFF-366: when something basic breaks, the
+  simplest failing test comes first, not a 100-line game test): a root of a suite with fewer
+  dependencies before it (its longest chain, 0 for none) comes before one with more, then the
+  run's order; at most 20 names, then `and N more`; and when some failures came after failed
+  dependencies, how many: `3 tests, 2 failed (root failures: A.y; 1 after failures in their
+  dependencies)`. The order of the output, the marks and this list do not depend on how the tests
+  ran: serially, or under `--jobs` and `--durations`, where tests run at once and in any order but
+  are reported in the suites' order (kpp/test_root_failures_simplest_first).
 - **The runner's options** add `--suite NAME` and `--skip-suite NAME` (repeatable), `--with-dependencies`
   (adds the suites the selection depends on, whole, whatever selected the others; `--skip-suite`
   still wins), `--from NAME` and `--after NAME` (start the selection in the order at a suite, a test's

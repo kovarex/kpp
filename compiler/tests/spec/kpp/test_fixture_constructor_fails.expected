@@ -4,4 +4,4 @@ body ran
 test_fixture_constructor_fails.kpp:19:3: test failed: tearing down fixture Leaks: an entity leaked
 failed: Fixtures.Destroying
 after
-3 tests, 2 failed
+3 tests, 2 failed (root failures: Fixtures.Building, Fixtures.Destroying)

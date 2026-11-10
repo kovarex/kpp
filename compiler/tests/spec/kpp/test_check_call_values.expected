@@ -23,4 +23,4 @@ test_check_call_values.kpp:64:5: check failed: p(1)
 test_check_call_values.kpp:65:5: check failed: isTrivial(1) || isTrivial(2)
 test_check_call_values.kpp:66:5: check failed: !!isTrivial(9)
 failed: Values.Nested
-3 tests, 3 failed
+3 tests, 3 failed (root failures: Values.Calls, Values.Kinds, Values.Nested)

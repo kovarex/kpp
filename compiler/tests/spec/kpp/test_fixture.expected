@@ -4,4 +4,4 @@ built 10
 test_fixture.kpp:25:5: check failed: this.value == 12 (11 == 12)
 destroyed 11
 failed: Counting.WithStart
-2 tests, 1 failed
+2 tests, 1 failed (root failures: Counting.WithStart)

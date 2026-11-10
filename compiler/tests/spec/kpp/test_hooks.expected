@@ -5,4 +5,4 @@ after each
 test_hooks.kpp:15:3: check failed: leaked == 0 (1 == 0): leaked 1
 failed: Hooks.Leaky
 teardown
-2 tests, 1 failed
+2 tests, 1 failed (root failures: Hooks.Leaky)

@@ -8,4 +8,4 @@ failed: Hooks.Second
 before 3
 third
 after 3
-3 tests, 1 failed
+3 tests, 1 failed (root failures: Hooks.Second)

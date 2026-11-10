@@ -6,4 +6,4 @@ test_jobs.kpp:21:16: check failed: false: third
 failed: Third.After (after failures in: First)
 test_jobs.kpp:24:16: check failed: 3 == 4 (3 == 4): outside
 failed: test_jobs.kpp > Outside
-5 tests, 4 failed (root failures: First.Slow, Other.Fast, test_jobs.kpp > Outside)
+5 tests, 4 failed (root failures: First.Slow, Other.Fast, test_jobs.kpp > Outside; 1 after failures in their dependencies)

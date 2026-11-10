@@ -1,0 +1,17 @@
+// spec: the summary always names the root failures (those no failed dependency explains), the most fundamental first: a suite that depends on none before one that depends on others, whatever order the run or --jobs took (kovarex 2026-11-10: the simplest failing test first)
+// test: --jobs 2
+// exit: 1
+suite Base
+{
+  test Works { check(true); }
+}
+
+suite Alpha depends Base
+{
+  test Builds { check(1 == 2); }
+}
+
+suite Zulu
+{
+  test Holds { check(2 == 3); }
+}

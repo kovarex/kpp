@@ -2,4 +2,4 @@ test_function_called_from.kpp:6:3: check failed: value >= 0 (-2 >= 0): value -2
 test_function_called_from.kpp:15:5: called from here
 test_function_called_from.kpp:24:12: called from here
 failed: Helpers.Values
-1 test, 1 failed
+1 test, 1 failed (root failures: Helpers.Values)

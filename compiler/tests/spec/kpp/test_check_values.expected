@@ -5,4 +5,4 @@ test_check_values.kpp:14:3: check failed: Dir::North != Dir::North (North != Nor
 test_check_values.kpp:15:3: check failed: Opaque{1} == Opaque{2}
 test_check_values.kpp:18:3: check failed: ready
 failed: test_check_values.kpp > fails
-2 tests, 1 failed
+2 tests, 1 failed (root failures: test_check_values.kpp > fails)

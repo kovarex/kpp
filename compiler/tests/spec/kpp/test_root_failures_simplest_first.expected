@@ -1,0 +1,5 @@
+test_root_failures_simplest_first.kpp:11:17: check failed: 1 == 2 (1 == 2)
+failed: Alpha.Builds
+test_root_failures_simplest_first.kpp:16:16: check failed: 2 == 3 (2 == 3)
+failed: Zulu.Holds
+3 tests, 2 failed (root failures: Zulu.Holds, Alpha.Builds)

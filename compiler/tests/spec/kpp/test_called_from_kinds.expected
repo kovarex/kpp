@@ -46,4 +46,4 @@ test_called_from_kinds.kpp:10:27: check failed: x != 1 (1 != 1): ctor
 test_called_from_kinds.kpp:39:23: called from here
 test_called_from_kinds.kpp:39:66: check failed: false: after the catch: no frame left
 failed: Kinds.Caught
-16 tests, 16 failed
+16 tests, 16 failed (root failures: Kinds.Constructor, Kinds.Destructor, Kinds.OperatorEquals, Kinds.OperatorPlus, Kinds.Conversion, Kinds.CallOperator, Kinds.Virtual, Kinds.ThroughPointer, Kinds.Static, Kinds.TemplateMember, Kinds.FreeTemplate, Kinds.Recursive, Kinds.InLambda, Kinds.FunctionPointer, Kinds.ThroughFunction, Kinds.Caught)

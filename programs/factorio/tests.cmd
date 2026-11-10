@@ -108,7 +108,7 @@ echo == running %EXE% --config %OUT%\config.ini --write-data %OUT%\run --no-colo
 set RESULT=%errorlevel%
 popd
 echo == factorio-test exit %RESULT%; its output: %OUT%\tests.txt
-%SystemRoot%\System32\findstr.exe /r /c:"Success:" /c:"FAILURE:" /c:"Test time:" /c:"^[0-9]* tests*, [0-9]* failed" %OUT%\tests.txt
+%SystemRoot%\System32\findstr.exe /r /c:"Success:" /c:"FAILURE:" /c:"Test time:" /c:"^failed: " /c:"^[0-9]* tests*, [0-9]* failed" %OUT%\tests.txt
 echo == the C++ build: Success: 9501 tests passed (2026-11-06; tests.cmd --baseline measures it again)
 exit /b %RESULT%
 
@@ -130,5 +130,7 @@ copy /y %OUT%\report.jsonl %OUT%\test-seconds.jsonl >nul
 echo tests: ALL PASSED (%SUMMARY%, --jobs %SHARDS%)
 exit /b 0
 :shardsFailed
+rem The failed tests in the suites' dependency order (design.md 8.7); the summary names the root failures.
+%SystemRoot%\System32\findstr.exe /r /c:"^failed: " %OUT%\tests.txt
 echo tests: FAILED (%SUMMARY%, exit code %RESULT%, --jobs %SHARDS%)
 exit /b 1

@@ -2,4 +2,4 @@ caught negative
 test_require_throws.kpp:22:42: check failed: checkThrows<std::RuntimeError>(parse(2)) (nothing was thrown)
 test_require_throws.kpp:24:5: check failed: requireThrows<std::RuntimeError>(parse(3)) (nothing was thrown)
 failed: Throwing.DoesNotThrow
-2 tests, 1 failed
+2 tests, 1 failed (root failures: Throwing.DoesNotThrow)

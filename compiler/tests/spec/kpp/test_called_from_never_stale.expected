@@ -10,4 +10,4 @@ failed: Stale.ConstructorBodyKeepsItsLine
 test_called_from_never_stale.kpp:46:24: check failed: v != 1 (1 != 1): in the initializer
 test_called_from_never_stale.kpp:45:34: called from here
 failed: Stale.MemberInitializerKeepsItsCall
-5 tests, 5 failed
+5 tests, 5 failed (root failures: Stale.Virtual, Stale.VirtualWithoutTheKeyword, Stale.ConstructorThrows, Stale.ConstructorBodyKeepsItsLine, Stale.MemberInitializerKeepsItsCall)

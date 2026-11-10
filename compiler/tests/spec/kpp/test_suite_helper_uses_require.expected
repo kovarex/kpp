@@ -1,4 +1,4 @@
 test_suite_helper_uses_require.kpp:8:5: check failed: value > 0 (-2 > 0): value -2
 test_suite_helper_uses_require.kpp:13:5: called from here
 failed: Helpers.Negative
-2 tests, 1 failed
+2 tests, 1 failed (root failures: Helpers.Negative)

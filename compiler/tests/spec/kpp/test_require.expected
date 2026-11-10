@@ -4,4 +4,4 @@ failed: test_require.kpp > require
 test_require.kpp:20:3: assertion failed: x == 2
 failed: test_require.kpp > assert
 still running
-3 tests, 2 failed
+3 tests, 2 failed (root failures: test_require.kpp > require, test_require.kpp > assert)
