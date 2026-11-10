@@ -707,6 +707,17 @@ af7b66b1: each module's metadata written before what names it):
 - **Window 12's samples estimated 5 to 6% of the build's CPU;** 4.7% of kpp's time went, since the back end after
   codegen runs on every core and what it saves shows almost whole.
 
+B's window of 2026-11-10 (20:58 to 21:00, the coordinator holding the other threads) timed the module text's cuts of
+B-module-text-plan-2026-11-10.md (6bfcae41: the debug types' and globals' placeholders noted as the definitions are
+numbered, not found by four scans of the whole module text; ids written without snprintf; each type looked up once):
+- **Compilers:** 6bfcae41 against its parent's three files, both built from 6bfcae41 (the same version in the IR).
+  **Tree:** fik, factorio-in-kpp bf68c7278. **Command:** `kpp factorio debug --no-server --verbose`, six rounds each in
+  turned order, objects kept (no module compiled: the two compilers' 256 module texts are the same), the machine 1 to
+  2.5% busy.
+- **Codegen 3.33 to 3.36 s before, 3.28 to 3.32 s with them (medians 3.351 and 3.302 s, 1.5%); kpp 5.1 to 5.2 s with
+  both.** appendDebugTypes was 8% of a debug --check's samples (A's profile of 2026-11-09), but module text is made on
+  every core at once, and so little of it shows as wall time.
+
 When this plan was written, a clean debug build of the game was 17.1 s, the leaf edit 1.4 to 1.5 s,
 and the wide edit 1.9 s. These were thread A's quiet numbers: kpp run directly, without debug info.
 The gains overlap; each line is against the line before. The status column is as of 2026-11-02.
