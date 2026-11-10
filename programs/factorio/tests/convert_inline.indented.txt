@@ -1,4 +1,5 @@
     i32 value() const
     {
-      return 1;
+      i32 one = 1;
+      return one;
     }

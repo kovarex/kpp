@@ -66,7 +66,8 @@ namespace inner
 {
   int Indented::value() const
   {
-    return 1;
+    int one = 1;
+    return one;
   }
 }
 
@@ -75,3 +76,6 @@ template<class T> Registration Registered<T>::registration;
 
 template class Plain<int>;
 template class Registered<int>;
+
+void Widget::nothing(int)
+{}

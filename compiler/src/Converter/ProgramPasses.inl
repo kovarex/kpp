@@ -683,6 +683,22 @@ static std::string resolveInlineBodies(std::string text, Counts& counts)
   }
   out.append(text, from, std::string::npos);
   text = std::move(out);
+  // The declarations' parameters markInlineBody marked: the definition's names where its body moved,
+  // their own where it stayed.
+  for (size_t at = text.find("/*kpp:p:"); at != std::string::npos; at = text.find("/*kpp:p:", at))
+  {
+    size_t idEnd = text.find(':', at + 8), newEnd = text.find("*/", idEnd), close = text.find("/*kpp:p*/", newEnd);
+    if (idEnd == std::string::npos || newEnd == std::string::npos || close == std::string::npos)
+      break;
+    std::string id = text.substr(at + 8, idEnd - at - 8);
+    bool movedHere = moved.count(id) != 0;
+    std::string written = movedHere ? text.substr(idEnd + 1, newEnd - idEnd - 1) : text.substr(newEnd + 2, close - newEnd - 2);
+    if (movedHere)
+      counts.add(written.empty() ? "parameters left unnamed as the definition leaves them, its body moved into the class"
+                                 : "parameters named as the definition names them, its body moved into the class");
+    text.replace(at, close + 9 - at, written);
+    at += written.size();
+  }
   // The moved definitions go (with the line they stood on and one blank line before them); the
   // others keep their text, the marks gone.
   for (const std::string& id : moved)

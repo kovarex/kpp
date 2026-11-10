@@ -332,10 +332,146 @@ inline std::string withStyleEmptyLinesOnce(const std::string& text)
   return result;
 }
 
+// One-liners (docs/code-style.md, "Empty lines between definitions"; kovarex 2026-11-10: "short
+// oneliners are preferred, when there is just one command"). A function's body that the .cpp wrote on
+// lines of its own, empty (`void Entity::upgradeModules(ItemStack&, ItemCounts&, InventoryBuffer&)`
+// then `{}`) or one short statement (`{`, `return false;`, `}`), goes on its declarator's line, as the
+// headers write one-liners: `... InventoryBuffer&) {}`, `bool canInsert(CanInsertData) const { return
+// false; }`, when the line stays within the 130 characters of a line. The declarator is the line
+// before, ending with `)` or with `)` then const, override, final or noexcept, whole as code (no
+// comment at its end); not a constructor's initializers written over lines (a line starting with `:`
+// or `,`), nor a statement's head (`if (x)`). The statement: one line ending with `;`, no comment, no
+// block (`{`), no statement of its own kind (if, for, while...). And no empty line between two
+// one-liners that follow one another.
+inline std::string withOneLiners(const std::string& text)
+{
+  using namespace styleEmptyLines;
+  std::vector<std::string> lines;
+  for (size_t start = 0; start < text.size();)
+  {
+    size_t end = text.find('\n', start);
+    if (end == std::string::npos)
+      end = text.size();
+    lines.push_back(text.substr(start, end - start));
+    start = end + 1;
+  }
+  bool finalNewline = !text.empty() && text.back() == '\n';
+  std::vector<std::string> code;
+  std::vector<bool> inside;
+  codeOf(lines, code, inside);
+  auto startsWithKeyword = [](std::string_view t, std::initializer_list<std::string_view> keywords)
+  {
+    for (std::string_view keyword : keywords)
+      if (t.substr(0, keyword.size()) == keyword && (t.size() == keyword.size() || !isIdentChar(t[keyword.size()])))
+        return true;
+    return false;
+  };
+  auto declarator = [&](size_t i)
+  {
+    if (inside[i] || trimmed(lines[i]) != trimmed(code[i]))
+      return false;
+    std::string_view head = trimmed(code[i]);
+    if (head.substr(0, 1) == ":" || head.substr(0, 1) == "," || startsWithKeyword(head, {"if", "for", "while", "switch", "catch", "else", "do"}))
+      return false;
+    for (std::string_view t = head;;)
+    {
+      bool stripped = false;
+      for (std::string_view word : {"const", "override", "final", "noexcept"})
+        if (t.size() > word.size() && t.substr(t.size() - word.size()) == word && !isIdentChar(t[t.size() - word.size() - 1]))
+        {
+          t = trimmed(t.substr(0, t.size() - word.size()));
+          stripped = true;
+          break;
+        }
+      if (!stripped)
+        return endsWith(t, ")");
+    }
+  };
+  auto shortStatement = [&](size_t i)
+  {
+    std::string_view statement = trimmed(lines[i]), statementCode = trimmed(code[i]);
+    return !inside[i] && endsWith(statementCode, ";") && statementCode.find('{') == std::string_view::npos &&
+           statement.find("//") == std::string_view::npos && statement.find("/*") == std::string_view::npos &&
+           !startsWithKeyword(statementCode, {"if", "for", "while", "switch", "do", "try", "else", "case", "default"});
+  };
+  std::vector<std::string> out;
+  std::vector<bool> oneLiner; // per line of out: a one-liner this pass made or found
+  auto isOneLiner = [&](std::string_view c)
+  {
+    std::string_view t = trimmed(c);
+    size_t open = t.find('{'), close = t.rfind(')', open);
+    return endsWith(t, "}") && open != std::string_view::npos && close != std::string_view::npos && t.substr(0, 1) != "}" &&
+           !startsWithKeyword(t, {"if", "for", "while", "switch", "catch", "else", "do", "class", "struct", "enum", "namespace", "union"});
+  };
+  for (size_t i = 0; i < lines.size(); ++i)
+  {
+    if (i > 0 && !out.empty() && declarator(i - 1) && !inside[i])
+    {
+      std::string joined = out.back();
+      while (!joined.empty() && isspace((unsigned char)joined.back()))
+        joined.pop_back();
+      // (`{}`, or `{` / one statement / `}`; a comment after the closing brace, the declaration's own
+      // that resolveInlineBodies put after the body, stays after it)
+      auto after = [&](size_t k, std::string_view brace) -> std::optional<std::string>
+      {
+        std::string_view line = trimmed(lines[k]);
+        if (inside[k] || trimmed(code[k]) != brace || line.substr(0, brace.size()) != brace)
+          return std::nullopt;
+        std::string_view rest = trimmed(line.substr(brace.size()));
+        return rest.empty() ? std::string() : " " + std::string(rest);
+      };
+      if (std::optional<std::string> comment = after(i, "{}"))
+      {
+        if (joined.size() + 3 + comment->size() <= 130)
+        {
+          out.back() = joined + " {}" + *comment;
+          oneLiner.back() = comment->empty();
+          continue;
+        }
+      }
+      std::optional<std::string> comment;
+      if (trimmed(lines[i]) == "{" && i + 2 < lines.size() && (comment = after(i + 2, "}")) && shortStatement(i + 1))
+      {
+        joined += " { " + std::string(trimmed(lines[i + 1])) + " }" + *comment;
+        if (joined.size() <= 130)
+        {
+          out.back() = joined;
+          oneLiner.back() = comment->empty();
+          i += 2;
+          continue;
+        }
+      }
+    }
+    out.push_back(lines[i]);
+    oneLiner.push_back(!inside[i] && isOneLiner(code[i]) && trimmed(lines[i]) == trimmed(code[i]));
+  }
+  // (no empty line between two one-liners)
+  std::vector<std::string> kept;
+  for (size_t k = 0; k < out.size(); ++k)
+  {
+    if (trimmed(out[k]).empty() && !kept.empty())
+    {
+      size_t next = k;
+      while (next < out.size() && trimmed(out[next]).empty())
+        ++next;
+      if (next < out.size() && oneLiner[k - 1] && oneLiner[next])
+      {
+        k = next - 1;
+        continue;
+      }
+    }
+    kept.push_back(out[k]);
+  }
+  std::string result;
+  for (size_t k = 0; k < kept.size(); ++k)
+    result += kept[k] + (k + 1 < kept.size() || finalNewline ? "\n" : "");
+  return result;
+}
+
 // Until nothing changes: an empty line inserted after a definition can meet one already there.
 std::string withStyleEmptyLines(const std::string& text)
 {
-  std::string result = text;
+  std::string result = withOneLiners(text);
   for (int round = 0; round < 4; ++round)
   {
     std::string next = withStyleEmptyLinesOnce(result);

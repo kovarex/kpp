@@ -16,6 +16,7 @@ public:
   int renamed(int value) const; // named `amount` in the definition: the declaration takes its name
   int unnamed(int, int scale = 1) const; // `amount` unnamed here
   int summed(const std::pair<int, int>&) const; // a template's type, unnamed
+  void nothing(int count); // unnamed in its empty definition: `void nothing(i32) {}`
   // `instances` in the definition, a name its default argument uses: stays outside its class
   int shadowed(int value = instances) const;
   template<typename T> T as() const;

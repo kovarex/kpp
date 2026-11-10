@@ -1258,6 +1258,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     std::vector<std::string> notEqualReview;
     text = withNotEqualsDropped(text, total, notEqualReview);
     text = withSuiteHeadersResolved(std::move(text), total);
+    text = withOneLiners(text); // (again in convertMerge, the last step, with the empty lines)
     if (convertNativeTests && key.rfind("tests/", 0) == 0)
       text = withTestDeclarationsMarked(withLocalChecksRenamed(std::move(text), total), total);
     if (ov)

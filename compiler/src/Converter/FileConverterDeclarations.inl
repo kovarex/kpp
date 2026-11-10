@@ -429,17 +429,29 @@
           {
             auto* a = static_cast<ParamDecl*>(f->params[i]);
             auto* b = static_cast<ParamDecl*>(def->params[i]);
-            if (b->name == UINT32_MAX || a->name == b->name)
+            if (a->name == b->name)
               continue;
             ParamNamePlace place = paramNamePlace(a, symbols);
+            // (marked, `/*kpp:p:ID:NEW*/OLD/*kpp:p*/`: resolveInlineBodies writes NEW where the body
+            // moves and OLD where it stays, a definition in an #if group, which may differ per platform)
+            std::string open = "/*kpp:p:" + std::to_string(it->second) + ":";
+            if (b->name == UINT32_MAX)
+            {
+              // (unnamed in the definition, as an empty body's or an unused parameter's: unnamed here
+              // too, `upgradeModules(ItemStack&, ItemCounts&, InventoryBuffer&) {}`)
+              if (place.nameToken != UINT32_MAX && place.nameToken > a->token)
+              {
+                uint32_t from = endOffset(place.nameToken - 1), to = endOffset(place.nameToken);
+                replace(from, to - from, open + "*/" + std::string(text.substr(from, to - from)) + "/*kpp:p*/");
+              }
+              continue;
+            }
             std::string name(symbols.name(b->name));
             if (place.nameToken != UINT32_MAX)
-              replace(toks[place.nameToken].offset, toks[place.nameToken].length, name);
+              replace(toks[place.nameToken].offset, toks[place.nameToken].length,
+                      open + name + "*/" + std::string(spelling(place.nameToken)) + "/*kpp:p*/");
             else if (place.insertBefore != UINT32_MAX)
-              insert(endOffset(place.insertBefore - 1), " " + name); // (after the type's last token)
-            else
-              continue;
-            counts.add("parameters named as the definition names them, its body moved into the class");
+              insert(endOffset(place.insertBefore - 1), open + " " + name + "*//*kpp:p*/"); // (after the type's last token)
           }
         }
         return;
