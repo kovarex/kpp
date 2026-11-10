@@ -3711,7 +3711,10 @@ namespace
     {
       uint32_t start = pos;
       TemplateParamDecl* p = decl<TemplateParamDecl>(start);
-      if (at(Kw::typename_) || at(Kw::class_))
+      // `typename EnableIf<(sizeof(T) > 2), int>::type = 0`: a constant parameter whose type is a typename-specifier,
+      // not a type parameter (until 2026-11-10 "expected '>' after template parameters"; D's battery).
+      bool typenameSpecifier = at(Kw::typename_) && (at(P::ColonColon, 1) || (atIdent(1) && (at(P::ColonColon, 2) || at(P::Less, 2))));
+      if ((at(Kw::typename_) || at(Kw::class_)) && !typenameSpecifier)
       {
         advance();
         p->isType = true;
@@ -3786,7 +3789,7 @@ namespace
         p->name = tok().id;
         advance();
         // Constrained type parameter: `Concept<X> T` parsed as valueType=Concept, name=T.
-        if (p->valueType->kind == NodeKind::NamedType)
+        if (p->valueType->kind == NodeKind::NamedType && !typenameSpecifier)
           p->isType = true; // Heuristic: could also be `int N`; builtin types are not NamedType.
       }
       if (accept(P::Assign))

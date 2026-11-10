@@ -1,0 +1,27 @@
+// spec: a constant template parameter whose type is a typename-specifier (`typename EnableIf<(sizeof(T) > 2), int>::type = 0`, the enable_if idiom) is a constant parameter, not a type parameter: unnamed or named, defaulted or given
+// found: D's battery (2026-11-10): "expected '>' after template parameters", and the function was lost
+template <bool B, typename T = void>
+struct EnableIf
+{
+};
+template <typename T>
+struct EnableIf<true, T>
+{
+  using type = T;
+};
+template <typename T>
+struct Id
+{
+  using type = T;
+};
+template <typename T, typename EnableIf<(sizeof(T) > 2), int>::type = 0>
+int size(T) { return 4; }
+template <typename Id<int>::type N = 7>
+int seven() { return N; }
+template <typename T, typename Id<T>::type N>
+T scaled(T x) { return x * N; }
+int main()
+{
+  std::println(size(5), " ", seven(), " ", seven<3>(), " ", scaled<int, 6>(7));
+  return 0;
+}

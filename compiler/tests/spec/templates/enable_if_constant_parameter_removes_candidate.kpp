@@ -1,0 +1,26 @@
+// spec: a substitution failure in the type of a defaulted constant template parameter removes the candidate ([temp.deduct] 8, the enable_if idiom's `EnableIfT<cond, int> = 0` and `typename EnableIf<cond, int>::type = 0`): of two overloads whose conditions exclude each other, the one whose condition holds is called
+// pending: the call is "ambiguous between int32(T) and int32(T)": the failed substitution of the parameter's type keeps the candidate. Found by thread A while writing templates/typename_specifier_constant_template_parameter (2026-11-10); deduction: D
+template <bool B, typename T = void>
+struct EnableIf
+{
+};
+template <typename T>
+struct EnableIf<true, T>
+{
+  using type = T;
+};
+template <bool B, typename T = void>
+using EnableIfT = typename EnableIf<B, T>::type;
+template <typename T, EnableIfT<(sizeof(T) > 2), int> = 0>
+int size(T) { return 4; }
+template <typename T, EnableIfT<(sizeof(T) <= 2), int> = 0>
+int size(T) { return 1; }
+template <typename T, typename EnableIf<(sizeof(T) > 2), int>::type = 0>
+int kind(T) { return 40; }
+template <typename T, typename EnableIf<(sizeof(T) <= 2), int>::type = 0>
+int kind(T) { return 10; }
+int main()
+{
+  std::println(size(5), " ", size('c'), " ", kind(5), " ", kind('c'));
+  return 0;
+}
