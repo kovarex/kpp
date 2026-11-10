@@ -41,7 +41,7 @@ for m in range(modules):
         lines.append("struct %s : Shape" % name)
         lines.append("{")
         lines.append("  int a; int b; int c;")
-        lines.append("  Vector<int> items;")
+        lines.append("  std::Vector<int> items;")
         lines.append("  %s(int seed) : a(seed), b(seed * 7 + %d), c(seed - %d) { this->id = seed; }" % (name, c, m))
         lines.append("  int area() const override { return this->a * this->b + this->c; }")
         lines.append("  int weight() const override { return mix(this->a, this->b) + Shape::weight(); }")
@@ -83,7 +83,7 @@ for m in range(modules):
 main = ["int main()", "{", "  int total = 0;"]
 for m in range(modules):
     main.append("  total = mix(total, runModule%d(%d));" % (m, m))
-main.append('  println(total);')
+main.append('  std::println(total);')
 main.append("  return 0;")
 main.append("}")
 main.append("")

@@ -72,7 +72,7 @@ run=$("$installed" --run | tail -n 1)
 echo "smoke test: kpp new and kpp --run: $run"
 mkdir -p "$smoke/json/src" && cd "$smoke/json"
 printf 'void build(Project& project)\n{\n  project.executable("app", {"src"});\n  project.use("json");\n}\n' > build.kpp
-printf 'int main()\n{\n  println(json::parseJson("[1, 2]").size());\n  return 0;\n}\n' > src/main.kpp
+printf 'int main()\n{\n  std::println(json::parseJson("[1, 2]").size());\n  return 0;\n}\n' > src/main.kpp
 run=$("$installed" --run | tail -n 1)
 [ "$run" = "2" ] || { echo "the packaged kpp did not build a project using its json library: '$run'"; exit 1; }
 echo "smoke test: a project using json: $run"
