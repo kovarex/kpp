@@ -618,6 +618,16 @@ p[Property::Text] = String("hello");
 
 ## Expressions
 
+### Falling off the end of a function that returns a value (built)
+
+- **C++:** undefined behavior; compilers warn (-Wreturn-type), and the caller gets whatever is left.
+- **kpp:** a compile error, as in C# and Java: every path of a function returning a value ends in a
+  return, a throw, a call of a `[[noreturn]]` function, an endless loop, or a switch that names every
+  enumerator of its enum or has a default. A `[[noreturn]]` function that returns or reaches its end is an
+  error too. main's end returns 0, as in C++.
+- **See:** [design 7][d7], item 8; specs `language/end_of_a_value_returning_function_is_error`, `language/noreturn_ends_a_path`,
+  `language/noreturn_function_that_returns_is_error`.
+
 ### `?->` and `?:` (built)
 
 - **C++:** neither (`?:` is a GNU extension).

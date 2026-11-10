@@ -1,0 +1,49 @@
+// spec: control reaching the end of a function that returns a value is an error, as C#'s and Java's is (C++ leaves it undefined, and kpp returned garbage): after an if without an else, a switch with neither a default nor every enumerator of its enum, a loop that can stop, an endless loop a break leaves; a function returning void may end, and so may main, whose end returns 0
+// error: end_of_a_value_returning_function_is_error.kpp:13: error: control can reach the end of half, which returns int32: return a value there, or end that path with a throw or a call of a [[noreturn]] function
+// error: end_of_a_value_returning_function_is_error.kpp:21: error: control can reach the end of colorCode, which returns int32: return a value there, or end that path with a throw or a call of a [[noreturn]] function
+// error: end_of_a_value_returning_function_is_error.kpp:30: error: control can reach the end of search, which returns int32: return a value there, or end that path with a throw or a call of a [[noreturn]] function
+// error: end_of_a_value_returning_function_is_error.kpp:39: error: control can reach the end of breaksOut, which returns int32: return a value there, or end that path with a throw or a call of a [[noreturn]] function
+enum class Color { Red, Green, Blue };
+int half(int x)
+{
+  if (x > 0)
+    return x / 2;
+  else if (x < 0)
+    return -x / 2;
+}
+int colorCode(Color c)
+{
+  switch (c)
+  {
+    case Color::Red: return 1;
+    case Color::Green: return 2;
+  }
+}
+int search(int x)
+{
+  while (x > 0)
+  {
+    if (x == 5)
+      return x;
+    --x;
+  }
+}
+int breaksOut(int x)
+{
+  while (true)
+  {
+    if (x > 3)
+      break;
+    return x;
+  }
+}
+void nothing(int x)
+{
+  if (x)
+    return;
+}
+int main()
+{
+  nothing(0);
+  std::println(half(4), " ", colorCode(Color::Red), " ", search(5), " ", breaksOut(1));
+}

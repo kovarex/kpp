@@ -1,0 +1,71 @@
+// spec: a path ends, so that no return is needed after it, at a throw, at a call of a [[noreturn]] function (a free function, one whose declaration alone says it, a member, a static member template whose attribute follows its header, abort()), in an endless loop, at a switch whose cases all end and that names every enumerator of its enum or has a default (a case may go on to the next by `fallthrough;`), at a try whose block and handlers all end, and in a template at the branch its instance takes
+struct Failure
+{
+  int code;
+};
+[[noreturn]] void fail(int code) { throw Failure{code}; }
+[[noreturn]] void declaredOnly(int code);
+void declaredOnly(int code) { throw Failure{code + 100}; }
+struct Checker
+{
+  [[noreturn]] void reject(int code) const { throw Failure{code + 200}; }
+  template<class T>
+  [[noreturn]]
+  static void rejectAny(T value) { throw Failure{int(value) + 300}; }
+};
+enum class Color { Red, Green, Blue };
+int viaThrow(int x) { if (x > 0) return x; throw Failure{x}; }
+int viaFree(int x) { if (x > 0) return x; fail(x); }
+int viaDeclared(int x) { if (x > 0) return x; declaredOnly(x); }
+int viaMember(const Checker& c, int x) { if (x > 0) return x; c.reject(x); }
+int viaTemplate(int x) { if (x > 0) return x; Checker::rejectAny(x); }
+int viaAbort(int x) { if (x > 0) return x; abort(); }
+int viaLoop(int x) { while (true) { if (x > 10) return x; x *= 2; } }
+int viaFor(int x) { for (;;) { if (x > 10) return x; x += 3; } }
+int viaSwitch(Color c)
+{
+  switch (c)
+  {
+    case Color::Red: return 1;
+    case Color::Green: return 2;
+    case Color::Blue: return 3;
+  }
+}
+int viaFallthrough(int x)
+{
+  switch (x)
+  {
+    case 1:
+      fallthrough;
+    case 2:
+      return 20;
+    default:
+      return 30;
+  }
+}
+int viaTry(int x)
+{
+  try
+  {
+    return viaFree(x);
+  }
+  catch (const Failure& failure)
+  {
+    return failure.code - 1000;
+  }
+}
+template<class T>
+int viaConstexpr(T x)
+{
+  if constexpr (sizeof(T) == 4)
+    return 4;
+  else
+    fail(int(sizeof(T)));
+}
+int main()
+{
+  Checker c;
+  std::println(viaThrow(1), " ", viaFree(2), " ", viaDeclared(3), " ", viaMember(c, 4), " ", viaTemplate(5), " ", viaAbort(6), " ", viaLoop(3), " ", viaFor(2),
+               " ", viaSwitch(Color::Blue), " ", viaFallthrough(1), " ", viaTry(-5), " ", viaConstexpr(1));
+  return 0;
+}

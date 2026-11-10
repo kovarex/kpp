@@ -475,6 +475,299 @@ auto GlobalScope::Impl::Walker::reportWarning(uint32_t token, const std::string&
   impl.reportCheckerWarning(file, token, message);
 }
 
+auto GlobalScope::Impl::Walker::declaredNoReturn(FunctionDecl* g) -> bool
+{
+  if (!g)
+    return false;
+  if (g->attributes & ATTR_NoReturn)
+    return true;
+  if (FunctionDecl* d = impl.declarationOfDefinition(g)) // (an out-of-line member's: its declaration in the class says it)
+    return (d->attributes & ATTR_NoReturn) != 0;
+  // A free function's other declaration (`[[noreturn]] void fatal(const char* why);` and its definition below).
+  if (g->name.parts.size() != 1 || g->name.last().special || g->name.last().symbol == UINT32_MAX)
+    return false;
+  Scope* s = impl.lexicalScopeOf(g);
+  if (const std::vector<Entry>* entries = s ? s->find(g->name.last().symbol) : nullptr)
+    for (const Entry& e : *entries)
+      if (e.decl && e.decl != g && e.decl->kind == NodeKind::FunctionDecl && (e.decl->attributes & ATTR_NoReturn) &&
+          impl.sameFunction(g, static_cast<FunctionDecl*>(e.decl)))
+        return true;
+  return false;
+}
+
+auto GlobalScope::Impl::Walker::statementBreaks(Stmt* s) -> bool
+{
+  if (!s)
+    return false;
+  switch (s->kind)
+  {
+    case NodeKind::BreakStmt: return true;
+    case NodeKind::BlockStmt:
+      for (Stmt* c : static_cast<BlockStmt*>(s)->stmts)
+        if (statementBreaks(c))
+          return true;
+      return false;
+    case NodeKind::IfStmt: return statementBreaks(static_cast<IfStmt*>(s)->then) || statementBreaks(static_cast<IfStmt*>(s)->else_);
+    case NodeKind::TryStmt:
+      if (statementBreaks(static_cast<TryStmt*>(s)->body))
+        return true;
+      for (const TryStmt::Handler& h : static_cast<TryStmt*>(s)->handlers)
+        if (statementBreaks(h.body))
+          return true;
+      return false;
+    default: return false; // (a loop's or a switch's breaks are its own)
+  }
+}
+
+auto GlobalScope::Impl::Walker::statementEnds(Stmt* s, EndFlow& flow) -> bool
+{
+  if (!s)
+    return false;
+  auto strip = [](Expr* e)
+  {
+    while (e && e->kind == NodeKind::ParenExpr)
+      e = static_cast<ParenExpr*>(e)->inner;
+    return e;
+  };
+  // `while (true)`, `while (1)`, `for (;;)`.
+  auto alwaysTrue = [&](Node* c)
+  {
+    if (!c)
+      return true;
+    Expr* e = uint8_t(c->kind) >= uint8_t(NodeKind::NameExpr) ? strip(static_cast<Expr*>(c)) : nullptr;
+    return e && e->kind == NodeKind::LiteralExpr &&
+           (static_cast<LiteralExpr*>(e)->keyword == Kw::true_ ||
+            (static_cast<LiteralExpr*>(e)->literalKind == TokenKind::Number && spelling(static_cast<LiteralExpr*>(e)) == "1"));
+  };
+  switch (s->kind)
+  {
+    case NodeKind::ReturnStmt: return true;
+    case NodeKind::ExprStmt:
+    {
+      Expr* e = strip(static_cast<ExprStmt*>(s)->expr);
+      if (e && e->kind == NodeKind::ThrowExpr)
+        return true;
+      if (!e || e->kind != NodeKind::CallExpr)
+        return false;
+      Expr* callee = strip(static_cast<CallExpr*>(e)->callee);
+      Decl* g = callee && callee->kind == NodeKind::NameExpr     ? static_cast<NameExpr*>(callee)->resolved
+                : callee && callee->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(callee)->resolved
+                                                                 : nullptr;
+      return g && g->kind == NodeKind::FunctionDecl && declaredNoReturn(static_cast<FunctionDecl*>(g));
+    }
+    case NodeKind::BlockStmt:
+      for (Stmt* c : static_cast<BlockStmt*>(s)->stmts)
+        if (statementEnds(c, flow))
+          return true;
+      return false;
+    case NodeKind::IfStmt:
+    {
+      auto* i = static_cast<IfStmt*>(s);
+      if (i->isConstexpr && i->constexprKnown == 1)
+        return statementEnds(i->then, flow);
+      if (i->isConstexpr && i->constexprKnown == 0)
+        return statementEnds(i->else_, flow);
+      bool both = i->else_ && statementEnds(i->then, flow) && statementEnds(i->else_, flow);
+      if (!both && i->isConstexpr)
+        flow.undecided = true; // (a template's own walk: its instances decide the branch)
+      return both;
+    }
+    case NodeKind::WhileStmt: return alwaysTrue(static_cast<WhileStmt*>(s)->cond) && !statementBreaks(static_cast<WhileStmt*>(s)->body);
+    case NodeKind::ForStmt: return alwaysTrue(static_cast<ForStmt*>(s)->cond) && !statementBreaks(static_cast<ForStmt*>(s)->body);
+    case NodeKind::DoStmt:
+      return !statementBreaks(static_cast<DoStmt*>(s)->body) &&
+             (statementEnds(static_cast<DoStmt*>(s)->body, flow) || alwaysTrue(static_cast<DoStmt*>(s)->cond));
+    case NodeKind::TryStmt:
+    {
+      auto* t = static_cast<TryStmt*>(s);
+      if (!statementEnds(t->body, flow))
+        return false;
+      for (const TryStmt::Handler& h : t->handlers)
+        if (!statementEnds(h.body, flow))
+          return false;
+      return true;
+    }
+    case NodeKind::ForConstexprStmt:
+    {
+      // Its elements' bodies run in turn: one that ends ends it (`T& get() { for constexpr (auto a : alternatives(U))
+      // if constexpr (isSame<a.type, T>) return this[a]; }`, a typed union's). Not expanded yet: its instances say.
+      auto* fc = static_cast<ForConstexprStmt*>(s);
+      if (fc->elementBodies.empty())
+      {
+        flow.undecided = true;
+        return false;
+      }
+      for (Stmt* b : fc->elementBodies)
+        if (!statementBreaks(b) && statementEnds(b, flow))
+          return true;
+      return false;
+    }
+    case NodeKind::SwitchStmt:
+    {
+      // Every case's statements end (kpp has no fallthrough: one that does not leaves the switch), and a default or
+      // every enumerator of the enum it switches on is named (an enumerator naming another, `Last = Blue`, by that one).
+      auto* w = static_cast<SwitchStmt*>(s);
+      if (!w->body || w->body->kind != NodeKind::BlockStmt)
+        return false;
+      bool hasDefault = false, inGroup = false, statements = false, groupEnds = false, onlyEnumerators = true, fallsThrough = false;
+      std::unordered_set<Decl*> named;
+      auto name = [&](Expr* v)
+      {
+        v = strip(v);
+        if (v && v->kind == NodeKind::NameExpr && static_cast<NameExpr*>(v)->resolved && static_cast<NameExpr*>(v)->resolved->kind == NodeKind::EnumeratorDecl)
+          named.insert(static_cast<NameExpr*>(v)->resolved);
+        else
+          onlyEnumerators = false;
+      };
+      for (Stmt* c : static_cast<BlockStmt*>(w->body)->stmts)
+      {
+        if (c->kind == NodeKind::CaseStmt || c->kind == NodeKind::DefaultStmt)
+        {
+          if (inGroup && statements && !groupEnds && !fallsThrough) // (`fallthrough;`: the next case's statements decide)
+            return false;
+          fallsThrough = false;
+          if (c->kind == NodeKind::DefaultStmt)
+            hasDefault = true;
+          else
+          {
+            auto* k = static_cast<CaseStmt*>(c);
+            if (k->rangeEnd)
+              onlyEnumerators = false;
+            name(k->value);
+            for (Expr* v : k->moreValues)
+              name(v);
+          }
+          inGroup = true;
+          statements = false;
+          groupEnds = false;
+          continue;
+        }
+        if (statementBreaks(c))
+          return false;
+        statements = true;
+        groupEnds = groupEnds || statementEnds(c, flow);
+        fallsThrough = c->kind == NodeKind::FallthroughStmt && !groupEnds;
+      }
+      if (!inGroup || !statements || !groupEnds)
+        return false;
+      if (hasDefault)
+        return true;
+      Node* cond = w->cond;
+      Expr* ce = cond && uint8_t(cond->kind) >= uint8_t(NodeKind::NameExpr) ? strip(static_cast<Expr*>(cond)) : nullptr;
+      const Ty* ct = ce && ce->ty && ce->ty->isKnown() ? types.unqualified(types.stripRef(ce->ty)) : nullptr;
+      Decl* switched = ct && ct->kind == TyKind::Enum ? ct->decl : nullptr;
+      if (ct && ct->kind == TyKind::Class)
+        if (ClassDecl* u = impl.classDefinition(ct); u && u->isTypedUnion)
+          switched = u->tagEnum; // (a typed union's switch names its alternatives: its tag's enumerators)
+      if (!onlyEnumerators || !switched || switched->kind != NodeKind::EnumDecl || static_cast<EnumDecl*>(switched)->enumerators.empty())
+        return false;
+      for (Decl* d : static_cast<EnumDecl*>(switched)->enumerators)
+      {
+        if (d->kind != NodeKind::EnumeratorDecl || named.count(d))
+          continue;
+        Expr* alias = strip(static_cast<EnumeratorDecl*>(d)->value);
+        if (alias && alias->kind == NodeKind::NameExpr && named.count(static_cast<NameExpr*>(alias)->resolved))
+          continue;
+        return false;
+      }
+      return true;
+    }
+    default: return false;
+  }
+}
+
+auto GlobalScope::Impl::Walker::checkFunctionEnd(FunctionDecl* f, bool autoReturn, const Ty* deduced) -> void
+{
+  if (!f->body || probing || retypingElements || !file || file->isImported || (f->flags & (DF_Constructor | DF_Destructor)))
+    return;
+  bool noReturn = declaredNoReturn(f);
+  const Ty* result = nullptr;
+  if (autoReturn)
+    result = deduced;
+  else if (const Ty* ft = impl.declaredTypeOf(f, activeSubst, 0); ft && ft->kind == TyKind::Function)
+    result = ft->inner;
+  bool valued = result && result->kind != TyKind::Void;
+  if (valued && (!result->isKnown() || types.isDependent(result) || impl.containsAuto(result)))
+    valued = false; // (a template's own walk: its instances say)
+  // (a --tests build's main is __kpp_program_main)
+  bool isMain = f->name.parts.size() == 1 && !f->name.last().special && f->name.last().symbol != UINT32_MAX &&
+                (symbols.name(f->name.last().symbol) == "main" || symbols.name(f->name.last().symbol) == "__kpp_program_main") &&
+                (!f->parent || f->parent->kind == NodeKind::NamespaceDecl);
+  if ((!valued || isMain) && !noReturn)
+    return; // (main's end returns 0, as C++'s does)
+  // A goto, a label or asm: not judged (their paths are not the statements').
+  bool jumps = false;
+  std::function<void(Stmt*)> scan = [&](Stmt* s)
+  {
+    if (!s || jumps)
+      return;
+    switch (s->kind)
+    {
+      case NodeKind::GotoStmt: case NodeKind::LabelStmt: case NodeKind::AsmStmt: jumps = true; return;
+      case NodeKind::BlockStmt:
+        for (Stmt* c : static_cast<BlockStmt*>(s)->stmts)
+          scan(c);
+        return;
+      case NodeKind::IfStmt: scan(static_cast<IfStmt*>(s)->then); scan(static_cast<IfStmt*>(s)->else_); return;
+      case NodeKind::WhileStmt: scan(static_cast<WhileStmt*>(s)->body); return;
+      case NodeKind::DoStmt: scan(static_cast<DoStmt*>(s)->body); return;
+      case NodeKind::ForStmt: scan(static_cast<ForStmt*>(s)->body); return;
+      case NodeKind::RangeForStmt: scan(static_cast<RangeForStmt*>(s)->body); return;
+      case NodeKind::SwitchStmt: scan(static_cast<SwitchStmt*>(s)->body); return;
+      case NodeKind::TryStmt:
+        scan(static_cast<TryStmt*>(s)->body);
+        for (const TryStmt::Handler& h : static_cast<TryStmt*>(s)->handlers)
+          scan(h.body);
+        return;
+      default: return;
+    }
+  };
+  scan(f->body);
+  if (jumps)
+    return;
+  std::string name = impl.namePartText(f->name.last());
+  uint32_t end = f->body->kind == NodeKind::BlockStmt && static_cast<BlockStmt*>(f->body)->endToken ? static_cast<BlockStmt*>(f->body)->endToken : f->token;
+  EndFlow flow;
+  bool ends = statementEnds(f->body, flow);
+  if (noReturn)
+  {
+    // (its returns, none of a lambda's or a local class's: statements only)
+    std::function<void(Stmt*)> returns = [&](Stmt* s)
+    {
+      if (!s)
+        return;
+      switch (s->kind)
+      {
+        case NodeKind::ReturnStmt: reportHere(s->token, name + " is [[noreturn]] and returns here: throw, or call a [[noreturn]] function, instead"); return;
+        case NodeKind::BlockStmt:
+          for (Stmt* c : static_cast<BlockStmt*>(s)->stmts)
+            returns(c);
+          return;
+        case NodeKind::IfStmt: returns(static_cast<IfStmt*>(s)->then); returns(static_cast<IfStmt*>(s)->else_); return;
+        case NodeKind::WhileStmt: returns(static_cast<WhileStmt*>(s)->body); return;
+        case NodeKind::DoStmt: returns(static_cast<DoStmt*>(s)->body); return;
+        case NodeKind::ForStmt: returns(static_cast<ForStmt*>(s)->body); return;
+        case NodeKind::RangeForStmt: returns(static_cast<RangeForStmt*>(s)->body); return;
+        case NodeKind::SwitchStmt: returns(static_cast<SwitchStmt*>(s)->body); return;
+        case NodeKind::TryStmt:
+          returns(static_cast<TryStmt*>(s)->body);
+          for (const TryStmt::Handler& h : static_cast<TryStmt*>(s)->handlers)
+            returns(h.body);
+          return;
+        default: return;
+      }
+    };
+    returns(f->body);
+    if (!ends && !flow.undecided)
+      reportHere(end, name + " is [[noreturn]] and can reach its end: end it with a throw or a call of a [[noreturn]] function");
+    return;
+  }
+  if (ends || flow.undecided)
+    return;
+  reportHere(end, "control can reach the end of " + name + ", which returns " + types.toString(result, &symbols) +
+                    ": return a value there, or end that path with a throw or a call of a [[noreturn]] function");
+}
+
 auto GlobalScope::Impl::Walker::checkMisleadingIndentation(Stmt* s, Stmt* next) -> void
 {
   // (on by default; once, in the walk of the code as written: no instance, no probe, no imported C)
@@ -10405,6 +10698,7 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
       FunctionDecl* savedBodyOf = bodyOf;
       bodyOf = f;
       walkStmt(f->body);
+      checkFunctionEnd(f, autoReturn, autoReturn ? returnFrames.back() : nullptr); // (bodyOf still f: an instance's errors are its own)
       bodyOf = savedBodyOf;
       if ((impl.accessWarnings || impl.accessErrors) && !probing && !retypingElements)
       {

@@ -560,6 +560,8 @@ namespace
               pendingAttributes |= ATTR_ForeignVtable;
             else if (a == "nodiscard")
               pendingAttributes |= ATTR_NoDiscard;
+            else if (a == "noreturn")
+              pendingAttributes |= ATTR_NoReturn;
             else if (a == "no_unique_address")
               pendingAttributes |= ATTR_NoUniqueAddress;
             else if (a == "deprecated")
@@ -1824,6 +1826,9 @@ namespace
         }
       }
       size_t mark = scratch.size();
+      // (attributes written before the when are the declaration's: `[[noreturn]] when (config::platform == Platform::Windows)
+      // static void createMinidumpAndTerminate();`, the merged configurations' form; dropped until 2026-11-11)
+      carriedAttributes = pendingAttributes;
       parseDeclarationInner(scope, {});
       if (inRecovery)
         return;
@@ -2035,7 +2040,8 @@ namespace
 
     void parseDeclarationInner(Scope scope, TemplateHeader templ)
     {
-      pendingAttributes = 0;
+      pendingAttributes = carriedAttributes;
+      carriedAttributes = 0;
       skipAttributes();
       uint32_t start = pos;
       if (at(TokenKind::End))
@@ -3758,6 +3764,9 @@ namespace
       // Re-enter the generic path with pre-parsed flags by temporarily stashing them: the
       // generic parser re-parses specifiers (none left), so just call it with templ.
       size_t mark = scratch.size();
+      // (the attributes after a template's header, which parseTemplate's specifiers read: `template<class T> [[noreturn]]
+      // void fail(T)`, `template<class T> [[nodiscard]] T make()`; until 2026-11-10 dropped)
+      carriedAttributes = pendingAttributes;
       parseDeclarationInner(scope, templ);
       for (size_t i = mark; i < scratch.size(); ++i)
         static_cast<Decl*>(scratch[i])->flags |= flags;
@@ -7511,6 +7520,7 @@ namespace
     uint32_t numberedLocals = 0;     // Static locals and `_` locals numbered so far in the function at file or class level parsed now.
     uint32_t autoCount = 0;          // Type parameters invented for `auto` parameters so far in this file.
     uint16_t pendingAttributes = 0;  // [[noinline]] and friends seen before the current declaration.
+    uint16_t carriedAttributes = 0;  // a template's, read after its header, for the declaration that follows it
     uint8_t pendingPack = 0;         // C: __kpp_pack(n) after `struct`: the next class's ClassDecl::pack.
     uint32_t pendingDeprecation = UINT32_MAX; // [[deprecated("why")]]: why's token
 

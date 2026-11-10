@@ -1,18 +1,21 @@
 // Stand-in for the game's Logging for the Util smoke test: the converter turns LOG_AND_ABORT and
 // LOG_ENUM_AND_ABORT into Logging::logAndAbortOrThrow(__FILE__, __LINE__, LogLevel::Error, ...)
 // (LogLevel is the converted Util/LogLevel.kpp); here it prints the message and ends the program.
-extern "C" void abort();
+// [[noreturn]] as the game's are: the converted code ends value-returning functions with them.
+extern "C" [[noreturn]] void abort();
 
 class Logging
 {
 public:
   // (the game's takes the message's pieces: design.md 14's printf rewrite)
+  [[noreturn]]
   static void logAndAbortOrThrow(const char* file, uint32_t line, LogLevel level, std::Text text)
   {
     std::println("abort at ", std::StringView(file), ":", line, ": ", std::toString(text));
     abort();
   }
 
+  [[noreturn]]
   static void logAndAbortOrThrow(const char* file, uint32_t line, LogLevel level, const std::String& message)
   {
     std::println("abort at ", std::StringView(file), ":", line, ": ", message);
@@ -20,6 +23,7 @@ public:
   }
 
   template<typename EnumType>
+  [[noreturn]]
   static void logEnumAndAbortOrThrow(const char* file, uint32_t line, LogLevel level, EnumType value)
   {
     std::println("abort at ", std::StringView(file), ":", line, ": unknown enum value ", int(value));

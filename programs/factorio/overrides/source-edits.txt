@@ -194,6 +194,18 @@
 +   if (CrashHandler::createMinidumpOnCrash)
 +     CrashHandler::createMinidump(nullptr);
 
+# createMinidumpAndTerminate is [[noreturn]], and kpp does not let a [[noreturn]] function reach its end
+# (design.md 7, item 8). It ends with TerminateProcess, which is not [[noreturn]] (it returns when it ends
+# another process), so the edit adds a call that is: _Exit(1), the same exit code without handlers. The
+# game's other TerminateProcess(GetCurrentProcess(), 1) calls are followed by a return marked
+# `// Unreachable code` in the same way.
+@ src/Util/CrashHandler.cpp: a [[noreturn]] function ends with a call of one (TerminateProcess is not one)
+-   TerminateProcess(GetCurrentProcess(), 1);
+- }
++   TerminateProcess(GetCurrentProcess(), 1);
++   _Exit(1); // (not reached: TerminateProcess ends this process)
++ }
+
 # InterruptibleStdioStream::read on Windows: std::getline(std::cin, ...) through the console API (kpp has
 # no iostreams, docs/design.md 4): the line read with the C library's fgets on stdin, piece by piece up
 # to its line break, which is left out as getline leaves it; at the end of the input a partial line

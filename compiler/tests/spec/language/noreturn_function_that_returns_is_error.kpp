@@ -1,0 +1,18 @@
+// spec: a [[noreturn]] function may neither return nor reach its end, as C++ requires of it ([dcl.attr.noreturn] 2: undefined behavior there, an error here)
+// error: noreturn_function_that_returns_is_error.kpp:7: error: stop is [[noreturn]] and returns here: throw, or call a [[noreturn]] function, instead
+// error: noreturn_function_that_returns_is_error.kpp:14: error: drift is [[noreturn]] and can reach its end: end it with a throw or a call of a [[noreturn]] function
+[[noreturn]] void stop(int x)
+{
+  if (x > 0)
+    return;
+  throw x;
+}
+[[noreturn]] void drift(int x)
+{
+  if (x > 0)
+    throw x;
+}
+int main()
+{
+  return 0;
+}

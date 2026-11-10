@@ -1,0 +1,22 @@
+// spec: an attribute written before a declaration's `when` (design.md 19) belongs to that declaration, as one written after the condition does: a member declared `[[noreturn]] when (...)` is [[noreturn]], so its definition may not reach its end, and a free function the same
+// factorio: CrashHandler's `[[noreturn]] when (config::platform == Platform::Windows) static void createMinidumpAndTerminate();`, the merged configurations' form of a Windows-only declaration: the attribute was dropped (until 2026-11-11), and the definition, which ends with TerminateProcess, was not checked as [[noreturn]]
+// error: attribute_before_when_belongs_to_its_declaration.kpp:13: error: terminate is [[noreturn]] and can reach its end: end it with a throw or a call of a [[noreturn]] function
+// error: attribute_before_when_belongs_to_its_declaration.kpp:18: error: halt is [[noreturn]] and can reach its end: end it with a throw or a call of a [[noreturn]] function
+struct Handler
+{
+  [[noreturn]]
+  when (true) static void terminate();
+};
+void Handler::terminate()
+{
+  std::println("terminating");
+}
+[[noreturn]] when (true) void halt(int code)
+{
+  if (code > 0)
+    throw code;
+}
+int main()
+{
+  return 0;
+}

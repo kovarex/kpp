@@ -186,6 +186,23 @@
     // its line at the body's indentation, deeper than the line of the body's keyword. A tab counts to the next multiple
     // of 8 columns; a line whose indentation mixes tabs and spaces is left alone.
     void checkMisleadingIndentation(Stmt* s, Stmt* next);
+    // A function returning a value whose end control can reach is an error, as C#'s and Java's is ("not all code paths
+    // return a value"; C++ leaves it undefined, and it returned garbage): every path ends in a return, a throw, a call of
+    // a [[noreturn]] function, an endless loop, or a switch with a default (or one naming every enumerator of its enum)
+    // whose cases all end. A [[noreturn]] function may neither return nor reach its end. Judged where the body is walked
+    // as written, and in a template's instances, where its `if constexpr` are decided; not a body with a goto, a label or
+    // asm. deduced: an `auto` function's result as its returns deduced it (null: none returned a value).
+    void checkFunctionEnd(FunctionDecl* f, bool autoReturn, const Ty* deduced);
+    struct EndFlow
+    {
+      bool undecided = false; // an `if constexpr` a template's own walk has not decided decides it
+    };
+    // Whether control never leaves s at its end (statementEnds), whether a `break` in s leaves the loop or switch s is
+    // in (statementBreaks: not one of a loop or switch inside s), and whether g never returns (its [[noreturn]], or its
+    // declaration's).
+    bool statementEnds(Stmt* s, EndFlow& flow);
+    bool statementBreaks(Stmt* s);
+    bool declaredNoReturn(FunctionDecl* g);
 
     // A built-in assignment (`=`, `+=` and the others on a scalar), increment or decrement of a const
     // object is an error, as in C++ ([expr.ass]/1, [expr.pre.incr]: the operand is a modifiable

@@ -198,7 +198,7 @@ class ExceptionHolderBase
 {
 public:
   virtual ~ExceptionHolderBase() {}
-  virtual void rethrow() const = 0;
+  [[noreturn]] virtual void rethrow() const = 0; // (an override throws: rethrowException ends with it)
 };
 
 template<typename E>

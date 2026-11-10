@@ -456,6 +456,27 @@ replacements, in the order of how much code they remove:
    (still accepted) while the converted game had 4 such places, each an `#ifdef` block's contents the
    converter kept indented where it dropped the directive, until the converter dedented them (cce68cd90;
    convert.cmd's headline counts every warning). Spec language/misleading_indentation_warns.
+   `[[noreturn]]` (2026-11-10, kovarex: "ok, do [[noreturn]] then") marks a function that never
+   returns: it throws, aborts or exits. A call of one ends a path, so no return is needed after it.
+   With it, control reaching the end of a function that returns a value is an error, as C#'s and
+   Java's is: "control can reach the end of f, which returns int32: return a value there, or end that
+   path with a throw or a call of a [[noreturn]] function". C++ leaves that undefined, and kpp returned
+   garbage. A path ends at a return, a throw, a `[[noreturn]]` call, an endless loop no break leaves,
+   an if whose branches both end, or a switch whose cases all end and that has a default or names
+   every enumerator of its enum (every alternative of a typed union; `fallthrough;` goes on to the
+   next case). A try ends when its block and its handlers all do. A `for constexpr` ends when one of
+   its element bodies does. A `[[noreturn]]` function may neither return nor reach its end.
+   main's end returns 0, as in C++. A template is judged per instance, where its `if constexpr` is
+   decided, and a body with a goto, a label or asm is not judged. The attribute goes on any
+   declaration of the function (an out-of-line definition takes its class's), after a template's
+   header and before a declaration's `when` too: until then attributes there were dropped,
+   `[[nodiscard]]` included. The stdlib's exit, _Exit and abort are `[[noreturn]]`. A C function is
+   not, yet, where its header says so (`__declspec(noreturn)`, `_Noreturn`: ExitProcess, quick_exit),
+   and one that only ends a process when given its own (TerminateProcess) never is: the converted
+   game's createMinidumpAndTerminate, `[[noreturn]]`, ends with `_Exit(1)` after its
+   TerminateProcess (a source edit). Specs language/end_of_a_value_returning_function_is_error,
+   language/noreturn_ends_a_path, language/noreturn_function_that_returns_is_error,
+   kpp/attribute_before_when_belongs_to_its_declaration.
 The spellings above are the working proposal; each is settled and recorded here when the feature
 is implemented.
 

@@ -1,7 +1,7 @@
 // C standard library: process control, environment, sorting, and string-to-number conversions.
-extern "C" void exit(int status);
-extern "C" void _Exit(int status);
-extern "C" void abort();
+extern "C" [[noreturn]] void exit(int status);
+extern "C" [[noreturn]] void _Exit(int status);
+extern "C" [[noreturn]] void abort();
 extern "C" int system(const char* command);
 extern "C" int atexit(void (*func)());
 extern "C" void qsort(void* base, size_t count, size_t size, int (*compare)(const void*, const void*));
