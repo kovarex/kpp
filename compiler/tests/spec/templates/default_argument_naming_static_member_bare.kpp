@@ -1,0 +1,43 @@
+// spec: under --this-pointer (C++'s meaning of `this` and bare members), a default argument naming a class template's static data member bare reads the instance's member at the call, as the qualified name does: member functions, static ones, constructors, member templates, a class nested in it (a template or not) naming its member, in a default argument or its body, and a call made from inside another instance of the same template
+// kpp: --this-pointer
+// found: E's battery a2 (2026-11-10): `Box<int>::scale = 11; Box<int>().scaled()` gave 3, the initializer of a stray global made for the template itself, where clang gives 11
+template <typename T>
+struct Box
+{
+  static int scale;
+  int value = 0;
+  Box(int v = scale) : value(v) {}
+  int scaled(int n = scale) const { return n; }
+  static int twice(int n = scale) { return 2 * n; }
+  template <typename U> U as(U n = U(scale)) const { return n; }
+  struct Inner
+  {
+    int get(int n = scale) const { return n; }
+    int body() const { return scale; }
+  };
+  template <typename U>
+  struct Deep
+  {
+    U get(U n = U(scale)) const { return n + U(scale); }
+  };
+  int fromOther() const;
+};
+template <typename T> int Box<T>::scale = 3;
+
+template <typename T>
+int Box<T>::fromOther() const
+{
+  return Box<int>().scaled(); // Box<int>'s scale, not this instance's
+}
+
+int main()
+{
+  Box<int>::scale = 11;
+  Box<char>::scale = 22;
+  Box<int> b;
+  Box<char>::Deep<long> deep;
+  std::println(b.value, " ", Box<int>().scaled(), " ", Box<char>().scaled(), " ", Box<int>::twice(), " ", b.as<long>(), " ",
+               Box<char>::Inner().get(), " ", Box<char>().fromOther(), " ", Box<double>().scaled(), " ",
+               Box<char>::Inner().body(), " ", deep.get());
+  return 0;
+}

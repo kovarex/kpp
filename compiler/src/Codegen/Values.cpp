@@ -1366,8 +1366,12 @@ auto codegen::Emitter::staticMemberClass(VariableDecl* v, Node* e, Node* at, con
     if (const Ty* found = instantiationIn(q, owner, at))
       return found;
   if (currentClassTy)
+  {
     if (const Ty* found = instantiationIn(currentClassTy, owner, at))
       return found;
+    if (const Ty* found = enclosingInstantiationIn(currentClassTy, owner, at))
+      return found;
+  }
   if (const Ty* q = qualifierClass(e, at))
     return q;
   return nullptr; // no instantiation in sight (an alias used as the qualifier): one shared object, as for a plain class
@@ -1395,6 +1399,61 @@ auto codegen::Emitter::instantiationIn(const Ty* cls, Decl* owner, Node* at, int
     if (bt && isClass(bt) && !types.isDependent(bt))
       if (const Ty* found = instantiationIn(bt, owner, at, depth + 1))
         return found;
+  return nullptr;
+}
+
+namespace
+{
+  // The template parameters a class's instances are made with (the resolver's effectiveParams): a
+  // nested class template's instanceParams, a template's own, or, for a class that is no template,
+  // those of the template it is nested in.
+  Span<Decl*> instanceParamsOf(Decl* cls)
+  {
+    for (Decl* d = cls; d; d = d->parent)
+    {
+      if (d->kind != NodeKind::ClassDecl && d->kind != NodeKind::EnumDecl)
+        break;
+      if (d->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(d)->instanceParams.empty())
+        return static_cast<ClassDecl*>(d)->instanceParams;
+      if (!d->templateParams.empty())
+        return d->templateParams;
+    }
+    return {};
+  }
+}
+
+auto codegen::Emitter::enclosingInstantiationIn(const Ty* cls, Decl* owner, Node* at) -> const Ty*
+{
+  if (!cls || !isClass(cls))
+    return nullptr;
+  const Ty* c = canonicalClass(cls, at);
+  Span<Decl*> params = instanceParamsOf(c->decl);
+  int depth = 0;
+  for (Decl* d = c->decl->parent; d && d->kind == NodeKind::ClassDecl && depth <= maxClassNesting; d = d->parent, ++depth)
+  {
+    // The enclosing class's instance: its parameters are the first of the nested class's (a nested
+    // class that is no template has exactly the enclosing template's).
+    Span<Decl*> outer = instanceParamsOf(d);
+    std::vector<const Ty*> args;
+    if (outer.data == params.data && outer.size() == params.size())
+      args.assign(c->args.begin(), c->args.end());
+    else
+    {
+      bool pack = false;
+      for (Decl* p : outer)
+        pack = pack || static_cast<TemplateParamDecl*>(p)->isPack;
+      if (pack || outer.size() > c->args.size())
+      {
+        if (classDef(d, at) != classDef(owner, at))
+          continue;
+        unsupported(at, "a member of " + types.toString(types.classType(d, {}), &symbols) + " named in " + types.toString(c, &symbols) +
+                          ", a class nested in it whose arguments do not show its instance");
+      }
+      args.assign(c->args.begin(), c->args.begin() + outer.size());
+    }
+    if (const Ty* found = instantiationIn(types.classType(d, Span<const Ty*>{args.data(), uint32_t(args.size())}), owner, at))
+      return found;
+  }
   return nullptr;
 }
 

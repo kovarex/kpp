@@ -206,6 +206,9 @@
 
     // The instantiation of the class template owner that cls is or derives from; null if none.
     const Ty* instantiationIn(const Ty* cls, Decl* owner, Node* at, int depth = 0);
+    // The same through cls's enclosing classes (`Box<char>::Inner`, whose arguments are Box's, naming
+    // Box's static member bare): null if none encloses an instantiation of owner.
+    const Ty* enclosingInstantiationIn(const Ty* cls, Decl* owner, Node* at);
 
     // `using EmptyWidget::EmptyWidget;` in a class without constructors of its own: the base whose
     // constructors are inherited (its name, as a constructor initializer would spell it); null if none.

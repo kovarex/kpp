@@ -1132,6 +1132,13 @@ auto codegen::Emitter::callFunction(FunctionDecl* f, const TemplateArgs& args, c
         Restore<Decl*> contextRestore(initializerOf);
         initializerOf = instance;
         ArgsScope calleeArgs(*this, args.empty() ? currentArgs : &args); // CharacterModifier<double>'s ModifierValueType
+        // A bare static member is the callee's class instance's (`int scaled(int n = scale)` in Box<T>
+        // called as Box<int>().scaled(): Box<int>::scale), not the caller's class's, nor the
+        // template's own object (until 2026-11-10 a call from main read a global made for Box itself,
+        // holding the initializer: E's battery a2).
+        Restore<const Ty*> classRestore(currentClassTy);
+        if (classTy)
+          currentClassTy = classTy;
         text = argumentText(pt, value, value);
       }
       argText += std::string(argText.empty() ? "" : ", ") + text;
