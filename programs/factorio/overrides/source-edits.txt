@@ -533,6 +533,53 @@
 - }
 +
 
+@ tests/Main.cpp: Factorio's runner's own options are kpp's runner's (design.md 8.7, docs/testing.md): each is an error naming what to write instead, not an option parsed and ignored (a save or its tags still take --repeat-count)
+-   if (variables_map.count("help"))
+-   {
+-     printf("%s\n", options.help({}).c_str());
+-     return 0;
+-   }
++   if (variables_map.count("help"))
++   {
++     printf("%s\n", options.help({}).c_str());
++     return 0;
++   }
++
++   static const char* const runnerOptions[][2] = {
++     {"test", "--filter *.NAME (the runner's names are Suite.Test, * matching anything)"},
++     {"tests", "--filter *.NAME, once per test"},
++     {"tests-file", "--filter *.NAME, once per test"},
++     {"suite", "--suite NAME"},
++     {"suites", "--suite NAME, once per suite"},
++     {"skip-suites", "--skip-suite NAME, once per suite"},
++     {"from", "--from NAME"},
++     {"after", "--after NAME"},
++     {"contains", "--filter *TEXT*"},
++     {"test-contains", "--filter *.*TEXT*"},
++     {"suite-contains", "--filter *TEXT*.*"},
++     {"invert-selection", "--skip-suite NAME (the runner has no inverted selection)"},
++     {"exit-on-failure", "--exit-on-failure, before the game's options"},
++     {"repeat-count", "nothing yet (the runner has no repeat; it runs once)"},
++     {"randomize-tests-order", "--shuffle [SEED]"},
++     {"fork", "--jobs N"},
++     {"num-forks", "--jobs N"},
++     {"show-fork-wait-times", "--jobs N (the runner says nothing about waits)"},
++     {"hide-failed-fork-tasks", "--jobs N (the runner prints only the failed tests' lines)"},
++     {"randomize-fork-distribution", "--jobs N (it hands out the work the same way each run)"},
++     {"fork-cache-path", "--jobs N (its workers make their own caches)"},
++     {"is-graphics-fork", "--jobs N"},
++     {"xml", "--report FILE (one JSON line per test)"},
++     {"newlines", "nothing: the runner prints a test's lines as they are"},
++     {"interactive", "nothing: --filter, --suite and --from select tests"},
++   };
++   if (!variables_map.count("save") && !variables_map.count("add-tags"))
++     for (const auto& option : runnerOptions)
++       if (variables_map.count(option[0]))
++       {
++         printf("factorio-test: --%s is Factorio's test runner's; kpp's runner runs the tests (docs/testing.md): write %s\n", option[0], option[1]);
++         return 2;
++       }
+
 @ tests/TestRunner.cpp: an exception in the validation fails the test through the runner
 -     curTest->HandleExceptions("running post test validation");
 +     throw;
