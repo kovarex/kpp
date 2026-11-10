@@ -2046,8 +2046,20 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
       }
       if ((own.function || own.tokens) && own.subst && !own.subst->empty() && d->expr &&
           (!generic->isKnown() || types.isDependent(generic) || mentionsBound(d->expr, *own.subst)))
-        if (const Ty* typed = typeOfSignatureExpression(d->expr, own); typed && typed->isKnown() && !types.isDependent(typed))
+      {
+        const Ty* typed = typeOfSignatureExpression(d->expr, own, nullptr, nullptr, nullptr, true);
+        if (typed && typed->isKnown() && !types.isDependent(typed))
           return decltypeOfExpr(typed);
+        // An expression that does not form under the arguments, all of them known (`decltype(T::value)` with T = int,
+        // `decltype(a + b)` of a class without operator+): no type, a substitution failure ([temp.deduct] 8), never
+        // the generic walk's (until 2026-11-10 kept, so a template whose signature has it stayed a candidate with a
+        // type made up: T, void*).
+        if ((!typed || !typed->isKnown()) && mentionsBound(d->expr, *own.subst) &&
+            std::all_of(own.subst->pairs.begin(), own.subst->pairs.end(), [&](const Subst::Pair& p) {
+              return p.type && p.type->isKnown() && !types.isDependent(p.type) && !mentionsUnknown(p.type);
+            }))
+          return types.unknown();
+      }
       return generic;
     }
     case NodeKind::MemberPointerType:

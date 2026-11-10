@@ -15,6 +15,16 @@ auto GlobalScope::Impl::Walker::probedCast(const Ty* t, const Ty* operand) -> co
   return impl.convertsByOperator(from, to, 0, 0, true) ? t : unknown(Why::Unsupported);
 }
 
+auto GlobalScope::Impl::Walker::formedOnly(const Ty* t, const Expr* a, const Expr* b, const Expr* c) -> const Ty*
+{
+  if (!probing && !substituting)
+    return t;
+  for (const Expr* x : {a, b, c})
+    if (x && x->ty && !x->ty->isKnown())
+      return x->ty;
+  return t;
+}
+
 auto GlobalScope::Impl::copyElementBodies(ForConstexprStmt* f, const std::vector<const Ty*>& elements, const Subst* around, Scope* scope, FunctionDecl* function) -> void
 {
   size_t count = elements.size();
@@ -8103,7 +8113,7 @@ auto GlobalScope::Impl::Walker::typeOfBinary(BinaryExpr* b) -> const Ty*
   OperatorCall call = OperatorCall::Undecided;
   FunctionDecl* callee = nullptr;
   bool member = false;
-  const Ty* t = typeOfBinaryOperator(b, call, callee, member);
+  const Ty* t = formedOnly(typeOfBinaryOperator(b, call, callee, member), b->lhs, b->rhs);
   if (file && file->thisReference && !b->isKeyword && call != OperatorCall::Function && call != OperatorCall::Rewritten)
     switch (P(b->op))
     {
@@ -8319,6 +8329,8 @@ auto GlobalScope::Impl::Walker::typeOfBinaryOperator(BinaryExpr* b, OperatorCall
     {
       bool lp = ls->kind == TyKind::Pointer || ls->kind == TyKind::Array;
       bool rp = rs->kind == TyKind::Pointer || rs->kind == TyKind::Array;
+      if (lp && rp && op == P::Plus && (probing || substituting))
+        return unknown(Why::Operator); // two pointers do not add ([expr.add] 1): `decltype(p + q)` a substitution failure (a body's is codegen's error)
       if (lp && rp)
         return types.ptrdiffType();
       if (lp)
@@ -8553,7 +8565,7 @@ auto GlobalScope::Impl::Walker::typeOfUnary(UnaryExpr* u) -> const Ty*
   OperatorCall call = OperatorCall::Undecided;
   FunctionDecl* callee = nullptr;
   bool member = false;
-  const Ty* t = typeOfUnaryOperator(u, call, callee, member);
+  const Ty* t = formedOnly(typeOfUnaryOperator(u, call, callee, member), u->operand);
   recordOperatorCall(u, t, u->operand, nullptr, call, callee, member);
   return t;
 }
@@ -11107,7 +11119,7 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
         else if (file && !probing)
           impl.reportCheckerError(file, e->token, "the noexcept operator does not decide " + unsupported + " yet");
       }
-      return record(e, types.boolType());
+      return record(e, formedOnly(types.boolType(), n->operand));
     }
     case NodeKind::LiteralExpr: return record(e, typeOfLiteral(static_cast<LiteralExpr*>(e)));
     case NodeKind::ThisExpr: return record(e, thisType ? thisType : unknown(Why::Unsupported));
@@ -11281,6 +11293,8 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
         return record(e, value);
       }
       const Ty* other = walkExpr(c->else_);
+      if (const Ty* failed = formedOnly(nullptr, c->cond, c->then, c->else_))
+        return record(e, failed); // (an operand that does not form, while probing: nor does the conditional)
       if (!c->then)
         return record(e, cond); // Elvis
       // `o ?: b` of an Optional o and a b that is no such Optional: o's value, or b (design.md 23a: `t?->engine->power
@@ -11394,7 +11408,7 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
       // type ([over.over] 1, an explicit conversion), as an initializer's does; it took the first one
       bindTemplateAddresses(c->operand, t);
       operand = c->operand && c->operand->ty ? c->operand->ty : operand;
-      return record(e, probedCast(t, operand));
+      return record(e, formedOnly(probedCast(t, operand), c->operand));
     }
     case NodeKind::NamedCastExpr:
     {
@@ -11409,7 +11423,7 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
         operand = c->operand && c->operand->ty ? c->operand->ty : operand;
       }
       checkCastConst(c, operand, t); // `static_cast<S&&>(s)` of a const s
-      return record(e, c->castKind == Kw::static_cast_ ? probedCast(t, operand) : t);
+      return record(e, formedOnly(c->castKind == Kw::static_cast_ ? probedCast(t, operand) : t, c->operand));
     }
     case NodeKind::SizeofExpr:
     {
@@ -11423,7 +11437,10 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
         if (VariableDecl* v = unboundedArray(z->operand ? static_cast<Node*>(z->operand) : z->type))
           impl.reportCheckerError(file, e->token, "sizeof of " + std::string(symbols.name(v->name.last().symbol)) +
                                                       ", an array without a length (a flexible array member), which has no size");
-      return record(e, types.sizeType());
+      if ((probing || substituting) && z->type && !z->isPack)
+        if (const Ty* named = typeOf(z->type); !named || !named->isKnown())
+          return record(e, types.unknown()); // (`sizeof(T::value)`, read as a type, of an int: as formedOnly)
+      return record(e, formedOnly(types.sizeType(), z->operand));
     }
     case NodeKind::NewExpr:
     {
@@ -11742,6 +11759,9 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
       }
       else
         checkListNarrowing(c->args, t);
+      for (Expr* a : c->args)
+        if (const Ty* failed = formedOnly(nullptr, a))
+          return record(e, failed); // (`void(T::value)` of an int, while probing)
       return record(e, t);
     }
     case NodeKind::TypeidExpr:

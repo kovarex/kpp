@@ -1981,7 +1981,7 @@ auto GlobalScope::Impl::requirementsExtraHold(RequiresExpr* r, const std::vector
   return unknownYet ? std::nullopt : std::optional<bool>(true);
 }
 
-auto GlobalScope::Impl::typeOfSignatureExpression(Expr* e, const TypeContext& ctx, Expr** typed, const ParsedFile* lookupFile, const Ty* objectType) -> const Ty*
+auto GlobalScope::Impl::typeOfSignatureExpression(Expr* e, const TypeContext& ctx, Expr** typed, const ParsedFile* lookupFile, const Ty* objectType, bool substituting) -> const Ty*
 {
   static thread_local int nesting = 0;
   FunctionDecl* f = ctx.function;
@@ -1999,6 +1999,7 @@ auto GlobalScope::Impl::typeOfSignatureExpression(Expr* e, const TypeContext& ct
   FileOfLookups walkedFile(f ? f->file : lookupFile);
   probe.scope = ctx.scope;
   probe.activeSubst = ctx.subst;
+  probe.substituting = substituting;
   if (objectType)
     probe.thisType = types.pointer(objectType);
   else if (Decl* cls = ctx.subst && ctx.scope ? enclosingClassDecl(ctx.scope) : nullptr; cls && cls->kind == NodeKind::ClassDecl)
@@ -2735,7 +2736,8 @@ auto GlobalScope::Impl::sameFunction(FunctionDecl* a, FunctionDecl* b) -> bool
 }
 
 // Whether t names a member of a class that is no longer dependent and has no such member (what
-// substitute leaves of `typename OnlyIf<false, int>::type`): a substitution failure.
+// substitute leaves of `typename OnlyIf<false, int>::type`), or a member of a type that is no class
+// (`typename T::type` with T = int): a substitution failure.
 auto GlobalScope::Impl::namesMissingMember(const Ty* t, int depth) -> bool
 {
   if (!t || depth > 16)
@@ -2743,12 +2745,32 @@ auto GlobalScope::Impl::namesMissingMember(const Ty* t, int depth) -> bool
   if (t->kind == TyKind::DependentMember && t->inner && t->inner->kind == TyKind::Class && !types.isDependent(t->inner) &&
       std::all_of(t->inner->args.begin(), t->inner->args.end(), [](const Ty* a) { return a && a->isKnown(); }))
     return true;
+  if (t->kind == TyKind::DependentMember && t->inner && t->inner->isKnown() && t->inner->kind != TyKind::Class && t->inner->kind != TyKind::Enum &&
+      t->inner->kind != TyKind::Pack && !types.isDependent(t->inner) && !mentionsUnknown(t->inner))
+    return true;
   if (namesMissingMember(t->inner, depth + 1))
     return true;
   for (const Ty* a : t->args)
     if (namesMissingMember(a, depth + 1))
       return true;
   return false;
+}
+
+// Whether f's result or a parameter's type, as written, has a decltype (`-> decltype(t.size())`,
+// `decltype(T::value)* = nullptr`), which typing under the deduced arguments may find does not form.
+static bool signatureHasDecltype(const FunctionDecl* f)
+{
+  bool found = false;
+  auto look = [&](Type* t) {
+    if (t && !found)
+      forEachNode(t, [&](Node* n) { found = found || (n->kind == NodeKind::DecltypeType && !static_cast<DecltypeType*>(n)->isAuto); });
+  };
+  look(f->returnType);
+  look(f->trailingReturn);
+  for (Decl* p : f->params)
+    if (p && p->kind == NodeKind::ParamDecl)
+      look(static_cast<ParamDecl*>(p)->type);
+  return found;
 }
 
 // Whether t names a member of a class (`typename X<...>::type`), anywhere in it.
@@ -2930,15 +2952,17 @@ auto GlobalScope::Impl::chooseAmong(const std::vector<FunctionDecl*>& candidates
     }
     if (ok && !constraintsHold(f, deduced))
       ok = false; // `requires isIntegral<T>`: the constraint fails for these arguments
-    // SFINAE on the result ([temp.deduct] 8): a template whose result type, under the deduced
-    // arguments, names a member its class does not have (`typename OnlyIf<sizeof(T) == 4,
-    // int>::type` for a double, OnlyIf<false> having no type) is no candidate.
-    if (ok && argsConcrete && !f->templateParams.empty() && ft && ft->kind == TyKind::Function && namesDependentMember(ft->inner))
+    // SFINAE on the function type ([temp.deduct] 7, 8): a template whose result or parameter type (one no argument
+    // is given for too: `typename T::type* = nullptr`), under the deduced arguments, names a member its class does
+    // not have (`typename OnlyIf<sizeof(T) == 4, int>::type` for a double, OnlyIf<false> having no type), a member of
+    // a type that is no class (`typename T::type` with T = int), or has a decltype whose expression does not form
+    // (`-> decltype(t.size())` for an int), is no candidate. Until 2026-11-10 the result's members only.
+    if (ok && argsConcrete && !f->templateParams.empty() && ft && ft->kind == TyKind::Function && (namesDependentMember(ft) || signatureHasDecltype(f)))
     {
       // (typed again under the deduced arguments, as the call's result is: the declaration's own
       // typing leaves a value such as `sizeof(T) == 4` uncomputed)
       const Ty* typed = declaredTypeOf(f, &deduced, 0);
-      if (typed && typed->kind == TyKind::Function && (!typed->inner || !typed->inner->isKnown() || namesMissingMember(typed->inner)))
+      if (typed && typed->kind == TyKind::Function && (!typed->inner || mentionsUnknown(typed) || namesMissingMember(typed)))
         ok = false; // (a member the class does not have types as no type at all, or as that member of the class)
     }
     c.emptyText = textAt != SIZE_MAX && argTypes.size() <= textAt;

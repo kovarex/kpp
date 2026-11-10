@@ -1,0 +1,77 @@
+// spec: what does not form for the deduced arguments takes a template out of the overloads and leaves a requirement unmet ([temp.deduct] 7, 8; [expr.prim.req]): a decltype in the result or in a parameter no argument is given for, `typename T::type*` as such a parameter, and an expression whose operand does not form though its operator's type would (the comma, the casts, sizeof, noexcept, the conditional, ! and ==); for a class with the members, an int and a pointer (clang's output)
+// found by D's SFINAE batteries against clang (2026-11-10): every one held for an int, silently: a decltype that did not form kept the template's own walk's type (T, void*), a parameter no argument was given for was not checked, and those operators kept their own type whatever their operand
+template<typename T>
+T&& declv();
+struct S
+{
+  static constexpr int value = 1;
+  using type = int;
+  int size() const { return 2; }
+  S operator+(const S&) const { return S(); }
+};
+template<typename T>
+auto f1(T) -> decltype(T::value, 1) { return 1; }
+int f1(...) { return 2; }
+template<typename T>
+auto f2(T) -> decltype(void(T::value), 1) { return 1; }
+int f2(...) { return 2; }
+template<typename T>
+auto f3(T) -> decltype((void)T::value, 1) { return 1; }
+int f3(...) { return 2; }
+template<typename T>
+auto f4(T) -> decltype(static_cast<void>(T::value), 1) { return 1; }
+int f4(...) { return 2; }
+template<typename T>
+auto f5(T) -> decltype(sizeof(T::value)) { return 1; }
+int f5(...) { return 2; }
+template<typename T>
+auto f6(T) -> decltype(noexcept(T::value), 1) { return 1; }
+int f6(...) { return 2; }
+template<typename T>
+auto f7(T) -> decltype(T::value ? 1 : 2) { return 1; }
+int f7(...) { return 2; }
+template<typename T>
+auto f8(T) -> decltype(declv<T>().size()) { return 1; }
+int f8(...) { return 2; }
+template<typename T>
+auto f9(T) -> decltype(declv<T>() + declv<T>(), 1) { return 1; }
+int f9(...) { return 2; }
+template<typename T>
+int f10(T, typename T::type* = nullptr) { return 1; }
+int f10(...) { return 2; }
+template<typename T>
+int f11(T, decltype(T::value)* = nullptr) { return 1; }
+int f11(...) { return 2; }
+template<typename T>
+concept C1 = requires { (T::value, 1); };
+template<typename T>
+concept C2 = requires { sizeof(T::value); };
+template<typename T>
+concept C3 = requires(T t) { (void)t.size(); };
+template<typename T>
+concept C4 = requires(T t) { static_cast<long>(t.size()); };
+template<typename T>
+concept C5 = requires(T t) { t.size() ? 1 : 2; };
+template<typename T>
+concept C6 = requires(T t) { !t.size(); };
+template<typename T>
+concept C7 = requires(T t) { t.size() == 2; };
+template<typename T>
+concept C8 = requires(T t) { noexcept(t.size()); };
+template<typename T>
+concept C9 = requires(T t) { long(t.size()); };
+template<typename T>
+void row(std::StringView name, T t)
+{
+  std::println(name, ": ", f1(t), f2(t), f3(t), f4(t), f5(t), f6(t), f7(t), f8(t), f9(t), f10(t), f11(t), " ", C1<T>, " ", C2<T>, " ", C3<T>, " ",
+               C4<T>, " ", C5<T>, " ", C6<T>, " ", C7<T>, " ", C8<T>, " ", C9<T>);
+}
+
+int main()
+{
+  int* p = nullptr;
+  row("S", S());
+  row("int", 5);
+  row("pointer", p);
+  return 0;
+}

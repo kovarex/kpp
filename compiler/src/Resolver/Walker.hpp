@@ -94,6 +94,15 @@
     // The type of an explicit conversion of operand to t (a cast) while probing: unknown when the
     // operand is a class with no conversion operator to t (explicit ones count), t otherwise.
     const Ty* probedCast(const Ty* t, const Ty* operand);
+    // Set on the walker that types a declaration's expression under a substitution (a decltype in a
+    // signature, as deduction types it again): what does not form there is a substitution failure.
+    bool substituting = false;
+    // t, or no type when one of the operands given was typed as none, while probing or substituting:
+    // an expression whose operand does not form does not form ([temp.deduct] 8: `decltype(T::value, 1)`,
+    // `sizeof(T::value)`, `(void)t.size()` for an int). Until 2026-11-10 the comma, the casts, sizeof,
+    // noexcept and the operators kept their own type, so a template stayed a candidate and a requirement
+    // held where C++ has a substitution failure. A body's walk keeps an operand's error to the operand.
+    const Ty* formedOnly(const Ty* t, const Expr* a, const Expr* b = nullptr, const Expr* c = nullptr);
 
     int forConstexprDepth = 0; // for constexpr bodies this walk is inside (typed with the variable unbound)
     int plainElementWalks = 0; // bound to one element of a for constexpr in a function that is no template: no instance to wait for

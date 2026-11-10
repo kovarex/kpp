@@ -257,7 +257,9 @@
   // Under ctx's elementPacks, typed for that element of them, as the code generator retypes a pack
   // expansion's pattern (constExpand's). lookupFile: whose private names it sees where ctx names no
   // function (the file of the function the evaluator runs); objectType: the object `this` is there, if any.
-  const Ty* typeOfSignatureExpression(Expr* e, const TypeContext& ctx, Expr** typed = nullptr, const ParsedFile* lookupFile = nullptr, const Ty* objectType = nullptr);
+  // substituting: typed under a substitution deduction made, where what does not form is a substitution failure (Walker::formedOnly).
+  const Ty* typeOfSignatureExpression(Expr* e, const TypeContext& ctx, Expr** typed = nullptr, const ParsedFile* lookupFile = nullptr, const Ty* objectType = nullptr,
+                                      bool substituting = false);
 
   // The first name in a requires clause that names nothing (`requires (noSuchTrait<T>)`), or "".
   std::string undeclaredNameIn(Expr* e, Decl* f, const LocalStack& own, int depth = 0);
