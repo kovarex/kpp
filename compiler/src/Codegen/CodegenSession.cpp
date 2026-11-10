@@ -1969,6 +1969,57 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
         return true;
     return false;
   };
+  // An instance made for the closure of a lambda whose writer is emitted again for its moved lines alone (the same closure,
+  // sameClosures): it owns the instances of the lambda's generic call operator it asked for (`f::__lambda_..._0::operator()<int32>`,
+  // asked for by `applyAll<closure>`'s calls), whose lines are the writer's: emitted again with them, as their owner's emission
+  // asks for them again (until 2026-11-10 they kept the lines of the build before: a line added above SegmentedUnitAI::isValidEnemy
+  // left the debugger at the old line of its lambda's operator()<UniquePtr<SpiderLegSpecification>>).
+  // (the lambda by its declaration, written in a function emitted for its moved lines, in a lambda's body there too: the generic
+  // lambda SegmentedUnitAI::isValidEnemy's canTargetAnyLeg passes to Util::anyOf)
+  std::unordered_set<const Decl*> movedBodies;
+  for (FunctionDecl* f : movedLines)
+    if (!goneBodies.count(f))
+      movedBodies.insert(f);
+  std::unordered_map<const Decl*, bool> movedDeclIn;
+  auto movedDecl = [&](const Decl* d)
+  {
+    if (!d || movedBodies.empty())
+      return false;
+    auto [it, isNew] = movedDeclIn.emplace(d, false);
+    if (isNew)
+      for (const Decl* p = d->parent; p; p = p->parent)
+        if (movedBodies.count(p))
+        {
+          it->second = true;
+          break;
+        }
+    return it->second;
+  };
+  std::unordered_map<const Ty*, bool> movedClosureIn;
+  std::function<bool(const Ty*)> movedClosure = [&](const Ty* t)
+  {
+    if (!t || movedBodies.empty())
+      return false;
+    if (auto known = movedClosureIn.find(t); known != movedClosureIn.end())
+      return known->second;
+    movedClosureIn[t] = false;
+    bool found = e.isLambda(t) && movedDecl(t->decl);
+    found = found || movedClosure(t->inner);
+    for (const Ty* a : t->args)
+      found = found || movedClosure(a);
+    return movedClosureIn[t] = found;
+  };
+  auto forMovedClosure = [&](const Instantiation& inst)
+  {
+    if (movedBodies.empty())
+      return false;
+    if (movedClosure(inst.classTy))
+      return true;
+    for (const auto& pair : inst.args.pairs)
+      if (movedClosure(pair.second))
+        return true;
+    return false;
+  };
   // The classes of the members dropped for an old closure whose layouts are polymorphic: a vtable, in the modules that used it,
   // names those members (checked below: a layout kept is a vtable no one asks for its members again).
   std::vector<std::pair<const Ty*, std::string>> polymorphicDropped;
@@ -1983,7 +2034,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
       bool forOld = forOldClosure(*d.emitted);
       bool inlinesEdited = std::any_of(d.inlined.begin(), d.inlined.end(), [&](const FunctionDecl* body) { return edited.count(body) != 0 || rechecked.count(body) != 0; });
       bool layoutDropped = !droppedLayouts.empty() && usesDropped(d);
-      if (forOld || inlinesEdited || instanceOfEdited(d) || layoutDropped)
+      if (forOld || inlinesEdited || instanceOfEdited(d) || layoutDropped || forMovedClosure(*d.emitted))
       {
         owners.insert(d.owner);
         bool ownBodyEdited = false;

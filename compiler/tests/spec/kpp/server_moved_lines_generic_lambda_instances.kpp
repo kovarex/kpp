@@ -1,0 +1,78 @@
+// spec: a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile server"), with --debug-info: a line added above, then taken out, a function whose generic lambdas a template instance calls (one passed to it directly, one written in another lambda's body, as SegmentedUnitAI::isValidEnemy's canTargetAnyLeg passes one to Util::anyOf): the call operator instances the template instance asked for are emitted again with the lines they have now, as their owner is (until 2026-11-10 they kept the lines of the build before)
+// kpp: --debug-info
+//--- step: the program
+template<class F>
+int applyAll(F f) { return f(1) + f(2.5); }
+
+template<class F>
+bool anyOf(int a, int b, F f) { return f(a) || f(b); }
+
+int helper(int v)
+{
+  return v + 1;
+}
+
+int user()
+{
+  auto g = [](auto v) { return int(v * 2); };
+  auto nested = [](int limit) { return anyOf(1, limit, [limit](auto x) { return x * 2 > limit; }); };
+  return applyAll(g) + (nested(3) ? 10 : 0);
+}
+
+int main()
+{
+  std::println(helper(1), " ", user());
+  return 0;
+}
+// expect: 2 17
+//--- step: a line added above
+template<class F>
+int applyAll(F f) { return f(1) + f(2.5); }
+
+template<class F>
+bool anyOf(int a, int b, F f) { return f(a) || f(b); }
+
+int helper(int v)
+{
+  int w = v + 1;
+  return w;
+}
+
+int user()
+{
+  auto g = [](auto v) { return int(v * 2); };
+  auto nested = [](int limit) { return anyOf(1, limit, [limit](auto x) { return x * 2 > limit; }); };
+  return applyAll(g) + (nested(3) ? 10 : 0);
+}
+
+int main()
+{
+  std::println(helper(1), " ", user());
+  return 0;
+}
+// expect: 2 17
+//--- step: the line taken out again
+template<class F>
+int applyAll(F f) { return f(1) + f(2.5); }
+
+template<class F>
+bool anyOf(int a, int b, F f) { return f(a) || f(b); }
+
+int helper(int v)
+{
+  return v + 1;
+}
+
+int user()
+{
+  auto g = [](auto v) { return int(v * 2); };
+  auto nested = [](int limit) { return anyOf(1, limit, [limit](auto x) { return x * 2 > limit; }); };
+  return applyAll(g) + (nested(3) ? 10 : 0);
+}
+
+int main()
+{
+  std::println(helper(1), " ", user());
+  return 0;
+}
+// expect: 2 17
