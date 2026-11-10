@@ -411,9 +411,8 @@ auto GlobalScope::Impl::traitValue(std::string_view name, const std::vector<cons
     std::shared_lock lock(shard.mutex);
     if (auto it = shard.answers.find(key); it != shard.answers.end())
     {
-      if (recordingDependencies)
-        if (auto u = shard.uses.find(key); u != shard.uses.end())
-          replayUses(u->second);
+      if (auto u = shard.uses.find(key); u != shard.uses.end())
+        replayUses(u->second);
       if (!cachedNestingFits(it->second.needed))
         return std::nullopt;
       return it->second.value;

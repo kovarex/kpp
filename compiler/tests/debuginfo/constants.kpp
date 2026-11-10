@@ -1,0 +1,26 @@
+// A class template's static constants (debuginfo.ps1): ValuesPerOne reads MaxValue, whose value runs a function, and which the
+// member function's walk computed first (a cached answer). Built through a compile server and in its own process, with
+// --debug-info, the IR must be the same: the debug value of a constant whose evaluation ran a function is left out in both.
+template<class T>
+class Cyclic
+{
+public:
+  static constexpr T MaxValue = std::Limits<T>::max();
+  static constexpr i64 ValuesPerOne = i64(This::MaxValue) + 1;
+  static constexpr u32 FractionalBits = sizeof(T) * 8;
+  bool moveAndCheckWraparound(i64 increment)
+  {
+    i64 next = this.progress + increment;
+    this.progress = T(next);
+    return next > This::MaxValue;
+  }
+  T progress = 0;
+};
+
+int main()
+{
+  Cyclic<u16> c;
+  c.progress = 3;
+  std::println(c.moveAndCheckWraparound(70000), " ", c.progress, " ", Cyclic<u16>::FractionalBits);
+  return 0;
+}

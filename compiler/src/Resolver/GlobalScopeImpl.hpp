@@ -239,7 +239,16 @@ inline thread_local uint32_t recordingUnit = 0, unitCounter = 0;
 inline void recordUse(uint8_t kind, const void* what)
 {
   if (!recordingDependencies)
+  {
+    // A build in its own process records nothing, but a cached answer's computation keeps the bodies it ran, which its
+    // later askers hear of as their own runs (Impl::replayUses), the code generator's hooks among them: what codegen makes
+    // of an answer is then a compile server's, whichever asker computed it first (until 2026-11-10 a static constant's debug
+    // value, which a function run leaves out, was in a build in its own process and not in a server's: FixedPointCyclicProgress's
+    // ValuesPerOne, whose MaxValue an earlier asker had computed by running std::Limits<u16>::max()).
+    if (kind == USE_RanBody && usesCollector)
+      usesCollector->push_back({kind, what});
     return;
+  }
   if (usesCollector)
     usesCollector->push_back({kind, what});
   DependencyList* r = recordingInto;
@@ -261,18 +270,12 @@ inline void recordUse(uint8_t kind, const void* what)
 // What a cached answer's computation recorded (the evaluator's caches, the trait answers, the
 // specialisation cache): a later asker the cache answers read it too, so it is replayed into the
 // asker's unit (replayUses). Nested: what an inner collection gathers belongs to the outer one as
-// well. Only while recording.
+// well. In a build that records nothing, the bodies it ran alone (recordUse).
 struct CollectUses
 {
-  CollectUses()
-  {
-    if (recordingDependencies)
-      usesCollector = &uses;
-  }
+  CollectUses() { usesCollector = &uses; }
   ~CollectUses()
   {
-    if (!recordingDependencies)
-      return;
     usesCollector = saved;
     if (saved)
       saved->insert(saved->end(), uses.begin(), uses.end());

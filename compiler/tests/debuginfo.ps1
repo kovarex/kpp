@@ -204,4 +204,21 @@ foreach ($modules in '1', '64')
     exit 1
   }
 }
+# A static constant's debug value is the same through a compile server and in a build of its own process: a cached answer's
+# function runs are heard by each later asker in both, the code generator's hooks among them, which leave out a value whose
+# evaluation ran one (until 2026-11-10 a build in its own process gave Cyclic<u16>'s ValuesPerOne its value, which a server's
+# left out: MaxValue's answer, which the member function's walk had computed, ran std::Limits<u16>::max(); the game's module 130).
+$constants = Join-Path $PSScriptRoot 'debuginfo\constants.kpp'
+$cexe = Join-Path $work 'constants.exe'
+$fresh = Join-Path $work 'constants-fresh.ll'
+$served = Join-Path $work 'constants-server.ll'
+& $KppExe --quiet --debug-info --emit-llvm $fresh --exe $cexe $constants
+if ($LASTEXITCODE -ne 0) { "FAIL debug info: constants.kpp: compile"; exit 1 }
+$printed = & $cexe
+if ("$printed" -ne 'true 4467 16') { "FAIL debug info: constants.kpp printed $printed"; exit 1 }
+& $KppExe --server --quiet --debug-info --emit-llvm $served --exe $cexe $constants
+$code = $LASTEXITCODE
+& $KppExe --stop-server --quiet --debug-info --emit-llvm $served --exe $cexe $constants | Out-Null
+if ($code -ne 0) { "FAIL debug info: constants.kpp through a compile server: compile"; exit 1 }
+if ((Get-FileHash $fresh).Hash -ne (Get-FileHash $served).Hash) { "FAIL debug info: constants.kpp's IR through a compile server is not its IR in a build of its own process"; exit 1 }
 "ok   debug info"

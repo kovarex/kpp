@@ -104,7 +104,12 @@ auto GlobalScope::Impl::forgetCachedAnswers(const std::function<bool(const Colle
 auto GlobalScope::Impl::replayUses(const std::vector<CollectedUse>& uses) -> void
 {
   if (!recordingDependencies)
+  {
+    for (const auto& [kind, what] : uses)
+      if (kind == USE_RanBody)
+        ranBody(static_cast<const FunctionDecl*>(what)); // (the bodies alone: recordUse)
     return;
+  }
   for (const auto& [kind, what] : uses)
     if (kind == USE_RanBody)
       ranBody(static_cast<const FunctionDecl*>(what));
