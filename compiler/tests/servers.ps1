@@ -25,14 +25,17 @@ Copy-Item $KppExe $copy
 Set-Content -Encoding ascii "$work\one.kpp" "int main() { std::println(1); return 0; }"
 Set-Content -Encoding ascii "$work\two.kpp" "int main() { std::println(2); return 0; }"
 
-# The process ids of the servers whose logs are in the test's TEMP, by log.
+# The process ids of the servers whose logs are in the test's TEMP, by log: each log's last server.
+# (Its last `started` line, not its first line: a client that started the server writes its steps into
+# the log, and it may reach the server's pipe before the server writes `started`; the first line was
+# then the client's, and "0 servers running" failed the gate under load, 2026-11-10.)
 function Servers()
 {
   $out = @{}
   foreach ($log in @(Get-ChildItem "$work\tmp\kpp-server\*.log" -ErrorAction SilentlyContinue))
   {
-    $first = Get-Content $log.FullName -TotalCount 1
-    if ($first -match '\[(\d+)\] started') { $out[$log.FullName] = [int]$Matches[1] }
+    $last = @(Select-String -Path $log.FullName -Pattern '\[(\d+)\] started') | Select-Object -Last 1
+    if ($last) { $out[$log.FullName] = [int]$last.Matches[0].Groups[1].Value }
   }
   return $out
 }
