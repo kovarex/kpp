@@ -110,6 +110,10 @@ $steps = @(
   # vtable, kept with its layout, names them: codegen in full (rebuildLLVM declines) instead of a module that does not link.
   @{ name = 'an edit of that lambda''s writer (a new closure type)'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12 7'; codegenFull = 'a member function of a polymorphic class'; edit = { Edit 'positions.kpp' '  int r = h->run();' '  int r = h->run() + 0;' } },
   @{ name = 'that writer edit back'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12 7'; codegenFull = 'a member function of a polymorphic class'; edit = { Edit 'positions.kpp' '  int r = h->run() + 0;' '  int r = h->run();' } },
+  # A body edit read by a declaration without a body, a defaulted operator (its walk names the class, the constructor's name): built
+  # from the kept session, no longer codegen in full.
+  @{ name = 'a constructor''s body edit that a defaulted operator''s walk reads'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12 7'; edit = { Edit 'positions.kpp' 'Spot::Spot(int x, int y) : x(x), y(y) { if (x < 0) return; }' 'Spot::Spot(int x, int y) : x(x), y(y) { if (x < 0) return; if (y < 0) return; }' } },
+  @{ name = 'that constructor edit back'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12 7'; edit = { Edit 'positions.kpp' 'Spot::Spot(int x, int y) : x(x), y(y) { if (x < 0) return; if (y < 0) return; }' 'Spot::Spot(int x, int y) : x(x), y(y) { if (x < 0) return; }' } },
   @{ name = 'a body edit above a kept function with a lambda (which moves)'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12 7'; edit = { Edit 'lambdas.kpp' 'int firstHelper() { int r = 2; return r; }' 'int firstHelper() { int r = 2; r = r + 0; return r; }' } },
   @{ name = 'that body edit back'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12 7'; edit = { Edit 'lambdas.kpp' 'int firstHelper() { int r = 2; r = r + 0; return r; }' 'int firstHelper() { int r = 2; return r; }' } },
   # noexcept added to a function that calls one that may throw (B's review of 7807b4ff): on Windows its
@@ -285,9 +289,10 @@ $byName = @($ours | Where-Object { $_ -match 'codegen in full: .* read an edited
 if ($byName.Count -ne 0) { "FAIL incremental: $($byName.Count) body edits generated the program in full for a global that read the edited name: $($byName[0])"; $failed++ }
 else { "ok   incremental body edits not in full for a global that read only a free function's name" }
 $dropped = @($ours | Where-Object { $_ -match 'made by codegen dropped' })
-# (and viaHelper's lambda's writer edited and back: makeHelper's instance for its old closure)
-if ($dropped.Count -ne 8) { "FAIL incremental: $($dropped.Count) builds dropped instances codegen made, 8 expected (Panel::base, Step::operator+ and viaHelper's writer edit and back, through each server)"; $failed++ }
-else { "ok   incremental instances codegen made dropped and made anew (8)" }
+# (and positions.kpp's edits that walk it again, makeHelper's instance for viaHelper's closure among what codegen made: the
+# helperBase and viaHelper edits and back, through the executable's server; three of them through the other)
+if ($dropped.Count -ne 11) { "FAIL incremental: $($dropped.Count) builds dropped instances codegen made, 11 expected (Panel::base and Step::operator+ through each server, positions.kpp's helperBase and viaHelper edits)"; $failed++ }
+else { "ok   incremental instances codegen made dropped and made anew (11)" }
 # (12: the signature edits, the overload added and removed and unitDepth's return type edit (read by an
 # auto local), through each of two servers; the overload steps change what an instance,
 # viaScale<double>, calls: it is checked again, not built from scratch)

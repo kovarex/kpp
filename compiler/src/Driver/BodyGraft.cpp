@@ -1225,6 +1225,26 @@ bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, double collec
     for (const Decl* d : global.walksReading(edited))
       if (d->kind == NodeKind::FunctionDecl && static_cast<const FunctionDecl*>(d)->body)
         kept.changedBodies.push_back(const_cast<FunctionDecl*>(static_cast<const FunctionDecl*>(d)));
+      else if (d->kind == NodeKind::FunctionDecl)
+      {
+        // A declaration without a body: its out-of-line definition is emitted again, a defaulted
+        // function as its record says (rebuildLLVM), and a deleted or pure one has no code. (Until
+        // 2026-11-10 codegen in full: a constructor's edit is read by every walk that names its class,
+        // the defaulted operators' among them; 7 of 83 game files' one-token edits, and thread F's
+        // probe.) Still in full: an explicit instantiation, whose template's definition is the one
+        // found (its instance emitted again left one function more than a build from scratch has).
+        auto* f = const_cast<FunctionDecl*>(static_cast<const FunctionDecl*>(d));
+        Decl* def = global.definitionOf(f);
+        if (def && def != f && def->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(def)->body && def->templateParams.empty() &&
+            !global.isTemplateContext(def))
+          kept.changedBodies.push_back(static_cast<FunctionDecl*>(def));
+        else if (def && def != f && def->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(def)->body)
+          inFull(initializerOf(d) + " read an edited function");
+        else if (f->flags & DF_Default)
+          kept.changedBodies.push_back(f);
+        else if (!(f->flags & (DF_Delete | DF_Pure)))
+          inFull(initializerOf(d) + " read an edited function");
+      }
       else if (d->kind == NodeKind::VariableDecl)
         kept.changedGlobals.push_back(d); // (its constructor emitted again)
       else

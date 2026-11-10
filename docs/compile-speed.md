@@ -1441,6 +1441,23 @@ getDump, twice, put back, then nothing changed) link now, at 2.3, 2.2, 1.9 and 0
 classes/polymorphic_local_class_of_a_template_made_for_a_lambda; tests\incremental.ps1 edits a function such a
 lambda reads (built from the kept session) and the lambda's writer (in full, with the reason).
 
+**An edit read by a declaration without a body (2026-11-10, thread B).** A constructor's name is its
+class's, so every walk that names the class reads an edited constructor, the defaulted operators' among
+them: declarations without a body, for which the server ran codegen in full ("the walk of
+MapPosition::operator== read an edited function": 7 of the survey's 83 files, and thread F's probe). Now
+such a reader's out-of-line definition is emitted again, a defaulted function as its record says, and a
+deleted or pure one has no code; an explicit instantiation (its template's definition is what is found)
+still runs codegen in full. The survey's edit of those 7 files and Surface.kpp (`kpp factorio debug
+--check` through the server): 6 are built from the kept session in 1.15 to 1.63 s, where they took 4.7 to
+9.3 s; WireConnectorID.kpp and Surface.kpp stop at the next reason, a constant global that read the edited
+function and has no constructor to emit again ("the global WireConnectorID::allValues read an edited
+function, and it has no constructor to emit again"). tests\incremental.ps1: positions.kpp's Spot, a
+constructor written outside its class beside a defaulted operator==, edited and back. Seen on the way and
+not changed, the same program but not the same IR as a build from scratch: a constructor or a template
+whose body turns trivial is inlined by a build from scratch while the server's code keeps the call (a
+constructor's callers name the class, not the constructor; a template's instance stays defined), checked
+by running a program through five such edits of a template with an explicit instantiation.
+
 **A generic lambda's call operator made anew in an edit (2026-11-02, thread A, step 1).** The new
 walk's lambda is a new closure type, so its call operator for its arguments is a new instance, and
 the old lambda's is one nobody asks for: the rewalk counts the new one apart (`rewalkLambdas`, not
