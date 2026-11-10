@@ -11,12 +11,16 @@
 #include <optional>
 #include <set>
 #include <unordered_map>
+#include <unordered_set>
 
 // The member functions whose bodies go inside their classes: collectInlineBodies.
 struct InlineBodies
 {
   std::unordered_map<const Decl*, uint32_t> declarations, definitions;
   std::map<std::string, size_t> kept; // why a definition stays outside, counted
+  // The definitions whose declaration elsewhere says [[noreturn]] and they do not (collectNoreturn):
+  // the declaration goes (a namespace's, which the definition stands for), so the definition says it.
+  std::unordered_set<const Decl*> noreturn;
 };
 
 // A class's own `using super = X;` (kpp's super is built in, the first base, and nothing declares it:

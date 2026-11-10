@@ -848,7 +848,10 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
   InlineBodies inlineBodies;
   for (const ConvertInput& in : inputs)
     if (in.parsed && !in.parsed->isImported && !in.c)
+    {
       collectInlineBodies(in.parsed->decls, false, global, symbols, inlineBodies);
+      collectNoreturn(in.parsed->decls, global, inlineBodies);
+    }
   total.add("member function bodies written in their classes", inlineBodies.definitions.size());
   SuperAliases superAliases;
   for (const ConvertInput& in : inputs)
@@ -1263,7 +1266,10 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     std::vector<std::string> notEqualReview;
     text = withNotEqualsDropped(text, total, notEqualReview);
     text = withSuiteHeadersResolved(std::move(text), total);
-    text = withOneLiners(text); // (again in convertMerge, the last step, with the empty lines)
+    // (a conversion the configurations merge gets them in convertMerge, the last step, with the empty
+    // lines: here, around an #if group's marks, the texts of two configurations would differ)
+    if (!convertMarks)
+      text = withOneLiners(text);
     if (convertNativeTests && key.rfind("tests/", 0) == 0)
       text = withTestDeclarationsMarked(withLocalChecksRenamed(std::move(text), total), total);
     if (ov)

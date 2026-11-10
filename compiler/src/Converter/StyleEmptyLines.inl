@@ -396,6 +396,32 @@ inline std::string withOneLiners(const std::string& text)
   };
   std::vector<std::string> out;
   std::vector<bool> oneLiner; // per line of out: a one-liner this pass made or found
+  // Per line: whether it starts inside a function's body (code), where an `if constexpr` takes a
+  // statement without braces; at declaration scope (a class's, a namespace's) its braces are required.
+  std::vector<bool> inBody(lines.size(), false);
+  {
+    std::vector<bool> stack; // per open `{`: whether its block is code
+    for (size_t i = 0; i < code.size(); ++i)
+    {
+      inBody[i] = !stack.empty() && stack.back();
+      for (size_t j = 0; j < code[i].size(); ++j)
+        if (code[i][j] == '{')
+        {
+          bool enclosingCode = !stack.empty() && stack.back();
+          size_t head = headOf(lines, code, i, j);
+          std::string headCode;
+          for (size_t k = head; k <= i; ++k)
+            headCode += (k > head ? " " : "") + (k == i ? code[k].substr(0, j) : code[k]);
+          std::string_view h = trimmed(headCode);
+          bool declarations = hasWord(h, "class") || hasWord(h, "struct") || hasWord(h, "union") || hasWord(h, "enum") ||
+                              hasWord(h, "namespace") || hasWord(h, "extern") || h.empty() || startsWithKeyword(h, {"if"});
+          // (an `if constexpr` block at declaration scope holds declarations; one in a body, code)
+          stack.push_back(enclosingCode || !declarations);
+        }
+        else if (code[i][j] == '}' && !stack.empty())
+          stack.pop_back();
+    }
+  }
   auto isOneLiner = [&](std::string_view c)
   {
     std::string_view t = trimmed(c);
@@ -405,6 +431,42 @@ inline std::string withOneLiners(const std::string& text)
   };
   for (size_t i = 0; i < lines.size(); ++i)
   {
+    // A statement a macro left empty (`SAVE_FILE(...);` of a macro that is nothing, `do {} while (0)`,
+    // in this configuration and every other): its `;` alone on its line goes, unless it is a statement's
+    // body (`if (x)` or `else` above it).
+    if (!inside[i] && trimmed(lines[i]) == ";" && trimmed(code[i]) == ";" && !out.empty())
+    {
+      size_t previous = out.size();
+      while (previous > 0 && trimmed(out[previous - 1]).empty())
+        --previous;
+      std::string_view above = previous > 0 ? trimmed(out[previous - 1]) : std::string_view();
+      if (!endsWith(above, ")") && !endsWith(above, "else") && !endsWith(above, "do"))
+        continue;
+    }
+    // The configurations' `if constexpr (!config::finalRelease)` (convertMerge's, for an #if group)
+    // around one short statement: without braces, on its line (kovarex 2026-11-10: `if constexpr
+    // (!config::finalRelease) --Entity::count;`), or on the next one where it would not fit; not
+    // before an `else`.
+    if (i > 0 && !out.empty() && inBody[i - 1] && !inside[i - 1] && trimmed(lines[i - 1]) == trimmed(code[i - 1]) &&
+        trimmed(code[i - 1]).substr(0, 14) == "if constexpr (" && endsWith(trimmed(code[i - 1]), ")") && trimmed(lines[i]) == "{" &&
+        i + 2 < lines.size() && trimmed(lines[i + 2]) == "}" && !inside[i + 2] && shortStatement(i + 1) &&
+        !(i + 3 < lines.size() && startsWithKeyword(trimmed(code[i + 3]), {"else"})))
+    {
+      std::string head = out.back();
+      while (!head.empty() && isspace((unsigned char)head.back()))
+        head.pop_back();
+      std::string statement(trimmed(lines[i + 1]));
+      if (head.size() + 1 + statement.size() <= 130)
+        out.back() = head + " " + statement;
+      else
+      {
+        size_t indent = head.find_first_not_of(' ');
+        out.push_back(std::string(indent == std::string::npos ? 0 : indent, ' ') + "  " + statement);
+        oneLiner.push_back(false);
+      }
+      i += 2;
+      continue;
+    }
     if (i > 0 && !out.empty() && declarator(i - 1) && !inside[i])
     {
       std::string joined = out.back();

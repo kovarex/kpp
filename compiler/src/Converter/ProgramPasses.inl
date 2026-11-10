@@ -893,6 +893,44 @@ static void collectSuperAliases(Span<Decl*> decls, const ConvertInput& in, const
   }
 }
 
+// Whether a declaration says [[noreturn]]: `[[noreturn]]` among its tokens before its name, back to the
+// previous declaration's end.
+static bool saysNoreturn(const Decl* d)
+{
+  if (!d->file || !d->file->tokens || d->token >= d->file->tokens->size())
+    return false;
+  const std::vector<Token>& toks = *d->file->tokens;
+  for (uint32_t k = d->token; k > 0;)
+  {
+    --k;
+    if (toks[k].is(P::Semi) || toks[k].is(P::LBrace) || toks[k].is(P::RBrace))
+      return false;
+    if (k >= 2 && toks[k].getKind() == TokenKind::Identifier && d->file->text.substr(toks[k].offset, toks[k].length) == "noreturn" &&
+        toks[k - 1].is(P::LBracket) && toks[k - 2].is(P::LBracket))
+      return true;
+  }
+  return false;
+}
+
+// The definitions of the functions a declaration of which says [[noreturn]] where the definition does
+// not (LuaExceptionHelper.hpp's 15 functions, defined in its .cpp): the declaration of a namespace's
+// function goes, and the definition takes the attribute (thread D's check of functions that do not
+// return, which needs it on the function the program has).
+static void collectNoreturn(Span<Decl*> decls, GlobalScope& global, InlineBodies& out)
+{
+  for (Decl* d : decls)
+  {
+    // (a namespace's functions alone: a member function's declaration stays in its class, saying it)
+    if (d->kind == NodeKind::NamespaceDecl)
+      collectNoreturn(static_cast<NamespaceDecl*>(d)->decls, global, out);
+    if (d->kind != NodeKind::FunctionDecl || static_cast<FunctionDecl*>(d)->body || !saysNoreturn(d))
+      continue;
+    Decl* def = global.definitionOf(d);
+    if (def && def != d && def->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(def)->body && !saysNoreturn(def))
+      out.noreturn.insert(def);
+  }
+}
+
 static void collectInlineBodies(Span<Decl*> decls, bool inTemplate, GlobalScope& global, const SymbolTable& symbols, InlineBodies& out)
 {
   for (Decl* d : decls)

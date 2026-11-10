@@ -87,6 +87,19 @@ def debug_ranges(code):
                 break
             k += 1
         ranges.append((m.start(), k + 1))
+    # an `if constexpr (config::debug)` of one statement without braces (the converter's form for one
+    # short statement), to the statement's `;`
+    for m in re.finditer(r'\bif\s+constexpr\s*\(\s*config::debug\s*\)\s*(?=[^\s{])', code):
+        depth, k = 0, m.end()
+        while k < len(code):
+            if code[k] in '([{':
+                depth += 1
+            elif code[k] in ')]}':
+                depth -= 1
+            elif code[k] == ';' and depth == 0:
+                break
+            k += 1
+        ranges.append((m.start(), k + 1))
     # an assert's expression too: kpp's assert is nothing, its expression unchecked, where
     # config::debug is false (TransportLine's `assert(line->seen == (this->referenceSet.count(line) > 0))`)
     for m in re.finditer(r'\bassert\s*\(', code):

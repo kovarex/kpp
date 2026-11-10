@@ -289,6 +289,20 @@
                   todo(toks[f->token].offset, "a function that overrides a virtual one, whose place for override was not found");
               }
             markInlineBody(f);
+            // (a definition whose declaration says [[noreturn]], unless its body moves into that declaration)
+            if (inlineBodies && inlineBodies->noreturn.count(f) && !inlineBodies->definitions.count(f))
+            {
+              uint32_t first = f->token, start = declStart(f);
+              while (first > 0 && toks[first - 1].offset >= start)
+                --first;
+              if (spelling(first) == "template")
+                todo(toks[f->token].offset, "a template whose declaration says [[noreturn]], written without it");
+              else
+              {
+                insert(toks[first].offset, "[[noreturn]] ");
+                counts.add("[[noreturn]] carried from a declaration to the definition");
+              }
+            }
             // (an interface header's function, defined in the library's files: listed in its file,
             // the interface's own record of it once the declaration goes)
             if (isScopeHeader() && namespaceScope && !f->body && f->name.parts.size() == 1 && f->name.last().symbol != UINT32_MAX)
