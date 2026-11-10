@@ -18,6 +18,29 @@
 #include <windows.h>
 #endif
 
+// A project's or a library's own build directory: `build` beside its build.kpp, where kpp writes the
+// description (build\kpp, an older kpp's settings.kpp among it), objects and executables. kovarex's
+// libraries\zlib\build\kpp\settings.kpp, written by an older kpp, was compiled as a source of the
+// library and failed every build ("'StringView' is not declared", 2026-11-10).
+bool isBuildDirectory(const std::filesystem::path& directory)
+{
+  std::error_code ec;
+  return directory.filename() == "build" && std::filesystem::is_regular_file(directory.parent_path() / "build.kpp", ec);
+}
+
+// Whether a path under root (relative to it) is in a build directory below root.
+[[maybe_unused]] static bool underBuildDirectory(const std::filesystem::path& root, const std::filesystem::path& relative)
+{
+  std::filesystem::path at = root;
+  for (auto part = relative.begin(); part != relative.end() && std::next(part) != relative.end(); ++part)
+  {
+    at /= *part;
+    if (isBuildDirectory(at))
+      return true;
+  }
+  return false;
+}
+
 std::vector<std::filesystem::path> collectFiles(const std::filesystem::path& root,
                                                 const std::vector<std::string>& extensions, std::vector<FileStamp>* stamps)
 {
@@ -31,9 +54,15 @@ std::vector<std::filesystem::path> collectFiles(const std::filesystem::path& roo
     found.push_back({root, stamp});
   }
   else
-    for (const auto& entry : std::filesystem::recursive_directory_iterator(
-           root, std::filesystem::directory_options::skip_permission_denied))
+    for (auto it = std::filesystem::recursive_directory_iterator(root, std::filesystem::directory_options::skip_permission_denied);
+         it != std::filesystem::recursive_directory_iterator(); ++it)
     {
+      const std::filesystem::directory_entry& entry = *it;
+      if (entry.is_directory(ec) && isBuildDirectory(entry.path()))
+      {
+        it.disable_recursion_pending(); // (kpp's output, never sources)
+        continue;
+      }
       if (!entry.is_regular_file())
         continue;
       std::string extension = entry.path().extension().string();
@@ -318,6 +347,8 @@ std::vector<std::filesystem::path> collectFilesWatched(const std::filesystem::pa
       std::string extension = path.extension().string();
       if (std::find(extensions.begin(), extensions.end(), extension) == extensions.end())
         continue; // (a directory, or a file of no interest)
+      if (underBuildDirectory(root, std::filesystem::path(name)))
+        continue; // (what a build wrote: never in the listing, so no reason to list again)
       auto at = std::lower_bound(w.files.begin(), w.files.end(), path);
       if (at == w.files.end() || *at != path || !listedStamp(path, w.stamps[size_t(at - w.files.begin())]))
       {

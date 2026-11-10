@@ -346,6 +346,42 @@ void build(Project& project)
     $output = Kpp @('--no-server')
     $printed = if ($code -eq 0) { & '.\build\debug\app.exe' } else { '' }
     if ($code -ne 0 -or "$printed" -ne 'hello! app') { Fail "an executable using a library: exit $code, printed '$printed'`n$($output -join "`n")" }
+    # A library's and a project's own build\ hold what kpp wrote, never sources: a stale
+    # build\kpp\settings.kpp an older kpp wrote into a library rooted at its own directory
+    # (factorio-in-kpp's libraries\zlib, `zlib.root(".")`, on 0.2.1287: "'StringView' is not declared",
+    # kovarex 2026-11-10) is not compiled, nor one in a project rooted at its own directory.
+    foreach ($case in @(
+        # (an executable rooted at src using a library rooted at its own directory, as zlib)
+        @('flat', 'libraries\flat\build\kpp\settings.kpp',
+          "void build(Project& project)`n{`n  project.executable(`"app`", {`"src`"});`n  project.use(`"flat`");`n}"),
+        # (a project rooted at its own directory, its build.kpp left out by hand)
+        @('own', 'build\kpp\stale.kpp',
+          "void build(Project& project)`n{`n  Executable& app = project.executable(`"app`", {`".`"});`n  app.exclude(`"build.kpp`");`n}")))
+    {
+      $dir = Join-Path $work "stale-$($case[0])"
+      New-Item -ItemType Directory -Force "$dir\src", "$dir\libraries\flat", (Join-Path $dir (Split-Path $case[1])) | Out-Null
+      Push-Location $dir
+      try
+      {
+        Set-Content 'build.kpp' $case[2]
+        Set-Content 'libraries\flat\build.kpp' "void build(Project& project)`n{`n  Library& flat = project.library(`"flat`");`n  flat.version = `"1.0.0`";`n  flat.root(`".`");`n}"
+        Set-Content 'libraries\flat\flat.kpp' "int value() { return 42; }"
+        if ($case[0] -eq 'flat') { Set-Content 'src\main.kpp' "int main()`n{`n  std::println(std::toString(flat::value()));`n  return 0;`n}" }
+        else { Remove-Item -Recurse -Force 'libraries', 'src'; Set-Content 'main.kpp' "int main()`n{`n  std::println(std::toString(42));`n  return 0;`n}" }
+        Set-Content $case[1] "const StringView configurationName = `"debug`"; this does not compile"
+        $output = Kpp @('--no-server')
+        $printed = if ($code -eq 0) { & '.\build\debug\app.exe' } else { '' }
+        if ($code -ne 0 -or "$printed" -ne '42') { Fail "a stale $($case[1]) compiled as a source: exit $code, printed '$printed'`n$($output -join "`n")" }
+        # Through a compile server too: its kept listing, which a file written under build\ does not enter.
+        $output = Kpp @()
+        Set-Content $case[1] "still does not compile"
+        $output += Kpp @()
+        $printed = if ($code -eq 0) { & '.\build\debug\app.exe' } else { '' }
+        if ($code -ne 0 -or "$printed" -ne '42') { Fail "a stale $($case[1]), through the compile server: exit $code, printed '$printed'`n$($output -join "`n")" }
+        $null = Kpp @('--stop-server')
+      }
+      finally { Pop-Location }
+    }
     # Visual Studio's tree: each used library's files under Libraries\NAME (G, 2026-11-05: gorating's
     # src and every library's src were one folder "src"), the program's own under src.
     $output = (Kpp @('--no-server', '--generate-visual-studio-files')) -join "`n"

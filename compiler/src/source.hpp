@@ -20,7 +20,9 @@ struct FileStamp
 };
 
 // Recursively collects files with the given extensions under root (sorted), and with stamps each
-// one's stamp (the listing's: no file opened).
+// one's stamp (the listing's: no file opened). A project's or library's build directory under root
+// (isBuildDirectory) is left out: it holds what kpp wrote, never sources.
+bool isBuildDirectory(const std::filesystem::path& directory);
 std::vector<std::filesystem::path> collectFiles(const std::filesystem::path& root,
                                                 const std::vector<std::string>& extensions, std::vector<FileStamp>* stamps = nullptr);
 
