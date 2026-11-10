@@ -29,6 +29,16 @@ void testsSetup(const std::Vector<std::String>& arguments)
     ::exit(result);
 }
 
+// After the runner's own --help: the game's options, as its option parser says them (fmain prints
+// them for --help and returns before running anything).
+void testsHelp()
+{
+  std::String program = "factorio-test";
+  std::String help = "--help";
+  char* argv[] = {program.data(), help.data()};
+  fmain(2, argv);
+}
+
 // The name UnitTest++ gave a test, Suite/Test: the CRC files' key, which a C++ build's run shares. A
 // generated test is Suite/Generator_name, and two tests' names are no identifiers (docs/test-suites.md).
 private std::String testNameAsUnitTest()

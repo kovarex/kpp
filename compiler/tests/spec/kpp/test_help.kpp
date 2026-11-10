@@ -1,0 +1,10 @@
+// spec: the runner's --help prints its own options, then calls the program's testsHelp (its options: the game's option parser's help), and runs no test
+// test: --help
+// exit: 0
+void testsHelp()
+{
+  std::println("the program's options:");
+  std::println("  --heavy               the game's heavy mode");
+}
+
+test notRun { std::println("not reached"); }

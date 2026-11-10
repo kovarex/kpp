@@ -2,5 +2,5 @@
 test_report.kpp:7:3: check failed: s == "a\"c" (a"b == a"c)
 failed: test_report.kpp > fails
 {"test":"test_report.kpp > fails","file":"test_report.kpp","line":4,"status":"fail","seconds":0,"failures":[{"file":"test_report.kpp","line":7,"column":3,"kind":"check","expression":"s == \"a\\\"c\"","values":["a\"b","a\"c"]}]}
-{"summary":{"tests":2,"failed":1,"notRun":0}}
+{"summary":{"tests":2,"failed":1,"notRun":0,"seconds":0}}
 2 tests, 1 failed (root failures: test_report.kpp > fails)

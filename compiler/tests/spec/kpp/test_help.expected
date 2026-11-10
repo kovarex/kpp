@@ -1,0 +1,20 @@
+kpp's test runner: runs the program's tests (design.md 8.7, docs/testing.md). Its options:
+  --filter TEXT         the tests whose full name (Suite.Test, or file > test) contains TEXT, * matching anything; repeatable
+  --suite NAME          the tests of that suite (case ignored); repeatable
+  --skip-suite NAME     not that suite's tests; repeatable
+  --with-dependencies   also the suites the selected ones depend on
+  --from NAME           from that test on, in the run's order
+  --after NAME          from the test after that one on
+  --tag TAG             the suites tagged TAG, in place of the untagged ones
+  --exit-on-failure     stop after the first failed test (dependencies run first)
+  --shuffle [SEED]      a random order within the dependencies' order; prints the seed
+  --slow SECONDS        a line for each test that ran longer (300 by default)
+  --jobs N              N worker processes; the output in the suites' order all the same
+  --durations FILE      with --jobs: an earlier run's --report, each test on its own, the longest first
+  --list                the selected tests, in the run's order, without running them
+  --report FILE         one JSON line per test and a summary (- for stdout)
+  --help                this text
+The other arguments go to the program's testsSetup. Exit code 0 when every test passed, 1 when one
+failed, 2 for a bad argument.
+the program's options:
+  --heavy               the game's heavy mode

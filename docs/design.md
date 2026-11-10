@@ -852,7 +852,11 @@ suite DragBuildingBelt depends DragBuilding, TransportBelt
   N`, and one seed gives one order on every target). Names on the command line
   match case-insensitively (a convenience, as Factorio's command line has it); `--filter` matches
   the full name. A `--filter` no test matches, a `--suite` or `--skip-suite` no suite has, and a
-  `--tag` no suite has are errors, exit code 2: each would run nothing, or skip nothing, and pass. `--report` lines gain `"suite"`, `"seconds"` and `"status": "not run"`. A test that
+  `--tag` no suite has are errors, exit code 2: each would run nothing, or skip nothing, and pass. `--report` lines gain `"suite"`, `"seconds"` and `"status": "not run"`, and the summary line is
+  `{"summary":{"tests":N,"failed":N,"notRun":N,"seconds":S}}` (notRun: the tests `--exit-on-failure`
+  left). `--help` prints the runner's options, then calls the program's `void testsHelp()` (its own
+  options: the game's prints its option parser's help), and runs no test (kpp/test_help, 2026-11-10).
+  The user's guide to all of it: [testing.md](testing.md). A test that
   ran longer than 5 minutes gets a line when it ends, `slow test: Suite.Test ran longer than 300 s`
   (`--slow SECONDS` sets the limit).
 - **Hooks.** If the program defines them, the runner calls `void testsSetup(const Vector<String>&
@@ -4087,9 +4091,11 @@ human output.
 - **Running**: `--report FILE` (`-` for stdout) writes per test `{"test":...,"file":...,"line":...,
   "status":"pass"|"fail"|"crash","seconds":...,"failures":[{"file":...,"line":...,"column":...,
   "kind":"check"|"require"|"assert","expression":"v.size() == 3","values":["2","3"]}],
-  "output":"..."}` and last `{"summary":{"tests":12,"failed":1,"seconds":0.004}}`. Running one
+  "output":"..."}` and last `{"summary":{"tests":12,"failed":1,"notRun":0,"seconds":0.004}}`
+  (notRun since --exit-on-failure; `"status"` is also `"not run"`; seconds in the summary since
+  2026-11-10). Running one
   test from an editor's gutter is `--filter` with its full name. Built on 2026-10-30: everything
-  above except `seconds`, `output` and the `crash` status; `kind` may also be `exception` (an
+  above except `output` (`seconds` and the `crash` status came with --jobs); `kind` may also be `exception` (an
   exception left the test). Spec snippet kpp/test_report.
 - **Visual Studio**: the Test Explorer needs a test adapter (thread E's extension) running the two
   commands above; a failure's file, line and column open the source. A project's "Start Without

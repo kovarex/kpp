@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**2155 pass, 2 pending, 0 failing, 0 fixed** (2157 snippets, 217.8 s).
+**2156 pass, 2 pending, 0 failing, 0 fixed** (2158 snippets, 181.6 s).
 
 ## Language: statements, expressions, declarations
 
@@ -1967,6 +1967,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `kpp/test_function_called_from.kpp` | a function or class declared test may use check and require; a failure names the check, then each test function's call up to the test | pass |  |  |
 | `kpp/test_function_redeclared_without_test.kpp` | a later declaration of a test function may omit test; such a body has no frame and no check statements, and a build without tests compiles it as any function | pass |  |  |
 | `kpp/test_generate.kpp` | generate Name { addTest(name, function); } adds tests when the runner starts; they take the generator's place in the suite's order, named Suite.Generator.name | pass |  |  |
+| `kpp/test_help.kpp` | the runner's --help prints its own options, then calls the program's testsHelp (its options: the game's option parser's help), and runs no test | pass |  |  |
 | `kpp/test_hooks.kpp` | the runner calls testsSetup(the arguments it does not know) before the first test, testAfterEach() after each and testsTeardown() after the last, when the program defines them | pass |  |  |
 | `kpp/test_identifier_name.kpp` | a test's name is an identifier, also outside a suite (8.7: no quoted form); there its full name stays file > name | pass |  |  |
 | `kpp/test_in_class.kpp` | a test inside a class sees the class's private members; it is the class's static function | pass |  |  |

@@ -600,6 +600,34 @@ template<typename T = void> void testAfterEach()
 template<typename T = void> void testsTeardown()
 {
 }
+// The program's options, after the runner's own under --help (the game's: its option parser's help).
+template<typename T = void> void testsHelp()
+{
+}
+
+// --help: the runner's options (design.md 8.7, docs/testing.md), then the program's (testsHelp).
+void __kppPrintHelp()
+{
+  std::print("kpp's test runner: runs the program's tests (design.md 8.7, docs/testing.md). Its options:\n"
+             "  --filter TEXT         the tests whose full name (Suite.Test, or file > test) contains TEXT, * matching anything; repeatable\n"
+             "  --suite NAME          the tests of that suite (case ignored); repeatable\n"
+             "  --skip-suite NAME     not that suite's tests; repeatable\n"
+             "  --with-dependencies   also the suites the selected ones depend on\n"
+             "  --from NAME           from that test on, in the run's order\n"
+             "  --after NAME          from the test after that one on\n"
+             "  --tag TAG             the suites tagged TAG, in place of the untagged ones\n"
+             "  --exit-on-failure     stop after the first failed test (dependencies run first)\n"
+             "  --shuffle [SEED]      a random order within the dependencies' order; prints the seed\n"
+             "  --slow SECONDS        a line for each test that ran longer (300 by default)\n"
+             "  --jobs N              N worker processes; the output in the suites' order all the same\n"
+             "  --durations FILE      with --jobs: an earlier run's --report, each test on its own, the longest first\n"
+             "  --list                the selected tests, in the run's order, without running them\n"
+             "  --report FILE         one JSON line per test and a summary (- for stdout)\n"
+             "  --help                this text\n"
+             "The other arguments go to the program's testsSetup. Exit code 0 when every test passed, 1 when one\n"
+             "failed, 2 for a bad argument.\n");
+  testsHelp();
+}
 
 // One step of a test: true when it ran to its end; an exception that leaves it fails the test.
 bool __kppGuarded(const std::Function<void()>& step, const char* what)
@@ -1568,6 +1596,11 @@ int main(int argc, char** argv)
     }
     else if (std::strcmp(argv[i], "--list") == 0)
       list = true;
+    else if (std::strcmp(argv[i], "--help") == 0)
+    {
+      __kppPrintHelp();
+      return 0;
+    }
     else if (std::strcmp(argv[i], "--report") == 0 && i + 1 < argc)
       report = argv[++i];
     else
@@ -1641,7 +1674,7 @@ int main(int argc, char** argv)
     std::println("unknown test runner argument ", others[0],
             "; the runner takes --filter TEXT, --suite NAME, --skip-suite NAME, --with-dependencies, --from NAME, --after NAME, --tag TAG, "
             "--exit-on-failure, --shuffle [SEED], --slow SECONDS, --jobs N, --durations FILE, --list, --report FILE (- for stdout), "
-            "and the program's testsSetup the others");
+            "--help, and the program's testsSetup the others");
     return 2;
   }
   // The generators first, by file and line: their tests join the others.
@@ -1832,6 +1865,7 @@ int main(int argc, char** argv)
       }
     }
   };
+  u64 runStarted = __kppNanoseconds();
   bool jobsRan = true;
   if (jobs > 0)
   {
@@ -1871,7 +1905,8 @@ int main(int argc, char** argv)
       writeReport(__kppJsonTest(*test, passed ? "pass" : "fail", state.failures, double(took) / 1000000000.0));
     }
   testsTeardown();
-  writeReport(std::toString("{\"summary\":{\"tests\":", run + notRun, ",\"failed\":", failed, ",\"notRun\":", notRun, "}}\n"));
+  writeReport(std::toString("{\"summary\":{\"tests\":", run + notRun, ",\"failed\":", failed, ",\"notRun\":", notRun, ",\"seconds\":",
+                            double(__kppNanoseconds() - runStarted) / 1000000000.0, "}}\n"));
   if (reportFile)
     fclose(reportFile);
   std::String summary = std::toString(run + notRun, " ", std::StringView(run + notRun == 1 ? "test" : "tests"), ", ", failed, " failed");
