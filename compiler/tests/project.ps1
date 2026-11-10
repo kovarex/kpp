@@ -373,9 +373,9 @@ void build(Project& project)
         $printed = if ($code -eq 0) { & '.\build\debug\app.exe' } else { '' }
         if ($code -ne 0 -or "$printed" -ne '42') { Fail "a stale $($case[1]) compiled as a source: exit $code, printed '$printed'`n$($output -join "`n")" }
         # Through a compile server too: its kept listing, which a file written under build\ does not enter.
-        $output = Kpp @()
+        $output = Kpp @('debug')
         Set-Content $case[1] "still does not compile"
-        $output += Kpp @()
+        $output += Kpp @('debug')
         $printed = if ($code -eq 0) { & '.\build\debug\app.exe' } else { '' }
         if ($code -ne 0 -or "$printed" -ne '42') { Fail "a stale $($case[1]), through the compile server: exit $code, printed '$printed'`n$($output -join "`n")" }
         $null = Kpp @('--stop-server')
