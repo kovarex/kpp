@@ -386,6 +386,26 @@ void GlobalScope::mergeDefaultArguments(FunctionDecl* f)
         p->inheritedDefault = true;
       }
   }
+  // Then every parameter after one with a default argument has one, from this declaration or another, or is a pack
+  // ([dcl.fct.default] 4; a Text parameter, the last, takes the remaining arguments as a pack does), else C++'s "missing
+  // default argument": until 2026-11-10 `int f(int a = 1, int b)` was accepted, its default of no use (`f(5)` was
+  // codegen's "a call to f without an argument for its parameter b").
+  auto named = [&](size_t i)
+  {
+    uint32_t name = static_cast<ParamDecl*>(f->params[i])->name;
+    return name != UINT32_MAX ? std::string(impl->symbols.name(name)) : "parameter " + std::to_string(i + 1);
+  };
+  size_t first = SIZE_MAX;
+  for (size_t i = 0; i < f->params.size(); ++i)
+  {
+    auto* p = static_cast<ParamDecl*>(f->params[i]);
+    if (p->defaultValue && first == SIZE_MAX)
+      first = i;
+    if (p->defaultValue || first == SIZE_MAX || p->isPack || (i + 1 == f->params.size() && impl->namesTextLast(f)))
+      continue;
+    impl->reportCheckerError(f->file, p->token, named(i) + " needs a default argument: " + named(first) + ", before it, has one ([dcl.fct.default] 4)");
+    return;
+  }
 }
 
 std::vector<GlobalScope::LayoutStaticAssert> GlobalScope::layoutStaticAsserts()

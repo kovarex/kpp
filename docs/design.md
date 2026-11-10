@@ -2244,7 +2244,11 @@ Default arguments add up over a function's declarations in one file, as in C++ (
 with a difference that order independence makes: each declaration has them all, so a call before the
 declaration that adds one sees it (C++ rejects that call). A redeclaration of a template adds none,
 as in C++. Declarations in two files do not add up: a call that needs both is a compile error. Spec
-language/default_arguments_split_over_declarations.
+language/default_arguments_split_over_declarations. Once they add up, a parameter after one with a
+default argument has one too or is a pack, else it is an error at that parameter, as C++'s "missing
+default argument" (2026-11-10; accepted until then, the default of no use). A std::Text parameter, the
+last, takes the remaining arguments and needs none; a lambda's are checked as it is parsed, its one
+declaration. Spec language/default_argument_before_a_parameter_without_one_is_error.
 
 ### 23. Named return elision is guaranteed (decided 2026-11-04)
 kovarex, 2026-11-04: "OK, guaranteed." C++ allows a compiler to build a returned local in the

@@ -7281,6 +7281,20 @@ namespace
         Declarator d;
         parseFunctionSuffix(d);
         l->params = d.params;
+        // A lambda has one declaration: a parameter without a default argument after one with one (not a pack) is
+        // C++'s "missing default argument" ([dcl.fct.default] 4), where a function's waits for its other declarations
+        // (GlobalScope::mergeDefaultArguments).
+        bool defaulted = false;
+        for (Decl* p : d.params)
+        {
+          auto* param = static_cast<ParamDecl*>(p);
+          if (defaulted && !param->defaultValue && !param->isPack)
+          {
+            errorAt(param->token, "a parameter after one with a default argument needs one too ([dcl.fct.default] 4)");
+            break;
+          }
+          defaulted = defaulted || param->defaultValue;
+        }
         l->returnType = d.trailingReturn;
         l->isNoexcept = (d.flags & DF_Noexcept) != 0;
         l->noexceptCondition = d.noexceptCondition;

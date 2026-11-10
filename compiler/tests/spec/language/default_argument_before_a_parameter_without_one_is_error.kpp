@@ -1,0 +1,26 @@
+// spec: a parameter after one with a default argument has one too, from its declaration or another of the function, or is a pack, as in C++ ([dcl.fct.default] 4): else an error at it, a function's, a member function's, a constructor's, a function template's or a lambda's; a std::Text parameter, the last, takes the remaining arguments and needs none (until 2026-11-10 accepted, the default of no use: a call leaving out the parameter after it was codegen's "a call to f without an argument for its parameter b")
+// error: default_argument_before_a_parameter_without_one_is_error.kpp:10: error: b needs a default argument: a, before it, has one ([dcl.fct.default] 4)
+// error: default_argument_before_a_parameter_without_one_is_error.kpp:13: error: c needs a default argument: b, before it, has one ([dcl.fct.default] 4)
+// error: default_argument_before_a_parameter_without_one_is_error.kpp:14: error: b needs a default argument: a, before it, has one ([dcl.fct.default] 4)
+// error: default_argument_before_a_parameter_without_one_is_error.kpp:16: error: b needs a default argument: a, before it, has one ([dcl.fct.default] 4)
+// error: default_argument_before_a_parameter_without_one_is_error.kpp:24: error: a parameter after one with a default argument needs one too ([dcl.fct.default] 4)
+int split(int a, int b = 2);
+int split(int a = 1, int b);
+int split(int a, int b) { return a * 10 + b; }
+int missing(int a = 1, int b) { return a + b; }
+struct S
+{
+  int member(int a, int b = 2, int c) { return a + b + c; }
+  S(int a = 1, int b) {}
+};
+template<class T> int generic(T a = T{}, T b) { return a + b; }
+template<class... Ts> int packed(int a = 1, Ts... ts) { return a + int(sizeof...(ts)); }
+void say(int level = 1, std::Text message) { std::println(level, " ", message); }
+int main()
+{
+  say(2, "x");
+  say();
+  S s(1, 2);
+  auto lambda = [](int a = 1, int b) { return a + b; };
+  return split() + missing(1, 2) + s.member(1, 2, 3) + generic(1, 2) + packed() + lambda(1, 2);
+}
