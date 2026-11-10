@@ -6932,12 +6932,15 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
       ++stats.callsResolved; // a functional cast, `int64_t(x)` included when int64_t is an imported typedef
       if (n->name.parts.size() > 1 &&
           (d->kind == NodeKind::UsingAliasDecl || d->kind == NodeKind::VariableDecl ||
-           ((d->kind == NodeKind::ClassDecl || d->kind == NodeKind::EnumDecl) && d->templateParams.empty() && !impl.effectiveParams(d).empty())))
+           ((d->kind == NodeKind::ClassDecl || d->kind == NodeKind::EnumDecl) &&
+            (d->templateParams.empty() ? !impl.effectiveParams(d).empty() : impl.enclosingParamCount(d) > 0))))
       {
         // `Table::value_type(65)`: the alias as the type path reads it, with the qualifier's
         // instantiation substituted (Array<unsigned char, 4>::value_type is unsigned char);
         // `Surface::const_iterator(surface)`: the nested class of the base
         // InfiniteRectangle<Chunk*> with that base's arguments; `Flag<A>::Enum(1)`: that instance's.
+        // A class template nested in one, `Box<char>::Deep<long>()`: Deep<char, long> (until 2026-11-10
+        // Deep<T, long>, which codegen could not emit).
         NamedType written{};
         written.kind = NodeKind::NamedType;
         written.token = n->token;

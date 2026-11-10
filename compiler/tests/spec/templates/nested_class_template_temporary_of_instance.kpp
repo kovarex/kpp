@@ -1,0 +1,27 @@
+// spec: a temporary of a class template nested in a class template's instance, `Box<char>::Deep<long>()`, is of that instance's nested class (Deep<char, long>), as the same name is in a declaration and with braces
+// found: writing E's default argument snippet (2026-11-10): "codegen does not support emitting Box::Deep::get of Deep<T, long>, a class not instantiated yet", while `Box<char>::Deep<long>{}` and `Box<char>::Deep<long> d;` were right
+template <typename T>
+struct Box
+{
+  template <typename U>
+  struct Deep
+  {
+    U value = U(7);
+    Deep() {}
+    Deep(U v) : value(v) {}
+    i64 size() const { return i64(sizeof(T)) * 100 + i64(sizeof(U)); }
+  };
+  template <typename U, typename V>
+  struct Pair
+  {
+    i64 size() const { return i64(sizeof(T)) * 100 + i64(sizeof(U)) * 10 + i64(sizeof(V)); }
+  };
+};
+
+int main()
+{
+  Box<char>::Deep<i32> d;
+  std::println(Box<char>::Deep<i32>().size(), " ", Box<i16>::Deep<i64>(5).value, " ", Box<char>::Deep<i32>{}.size(), " ", d.size(), " ",
+               Box<i64>::Pair<i16, char>().size());
+  return 0;
+}
