@@ -28,7 +28,9 @@ struct RangeForStmt : Stmt { Decl* var; Expr* range; Stmt* body; FunctionDecl* b
 // `for constexpr (typename T : types<A, B>) body`, `for constexpr (int i : {1, 2, 4}) body`: var is a
 // TemplateParamDecl (a type, or a value with valueType), list a `types<...>` NamedType, a brace list of
 // constants or an expression naming a list; the body is instantiated once per element (design.md 8.2).
-struct ForConstexprStmt : Stmt { Decl* var; Node* list; Stmt* body; };
+// elementBodies: one copy of body per element, when it declares what each element has its own of (a local class or enum, a
+// static or thread_local variable: GlobalScope::Impl::copyElementBodies); elementMark: the copy this loop itself is in.
+struct ForConstexprStmt : Stmt { Decl* var; Node* list; Stmt* body; Span<Stmt*> elementBodies; uint32_t elementMark = 0; };
 struct WhileStmt : Stmt { Node* cond; Stmt* body; };
 struct DoStmt : Stmt { Stmt* body; Expr* cond; };
 // cRules: a switch of C or C++ text (an imported C header's inline function, the C++ a conversion reads): labels side by

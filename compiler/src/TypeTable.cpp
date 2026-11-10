@@ -692,6 +692,8 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols, bool qu
       return "?";
     return std::string(symbols->name(name->last().symbol));
   };
+  // Which element of a `for constexpr` a class's copy of the body is for: each element's is a type of its own.
+  auto elementOf = [](Decl* d) -> std::string { return d->elementMark ? "#e" + std::to_string(d->elementMark) : std::string(); };
   // A class or enum with the namespaces and classes around it (qualified), and a class declared
   // in a function with where it is declared, since its path alone may not be unique.
   auto declName = [&](Decl* d) -> std::string
@@ -700,11 +702,12 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols, bool qu
     if (!qualified || !d || (d->kind != NodeKind::ClassDecl && d->kind != NodeKind::EnumDecl))
       return name;
     bool local = name == "?"; // an anonymous class is told apart by where it is declared too
+    name += elementOf(d);
     for (Decl* p = d->parent; p; p = p->parent)
       if (p->kind == NodeKind::NamespaceDecl && symbols && static_cast<NamespaceDecl*>(p)->name != UINT32_MAX)
         name = std::string(symbols->name(static_cast<NamespaceDecl*>(p)->name)) + "::" + name;
       else if (p->kind == NodeKind::ClassDecl || p->kind == NodeKind::EnumDecl)
-        name = ownName(p) + "::" + name;
+        name = ownName(p) + elementOf(p) + "::" + name;
       else if (p->kind == NodeKind::FunctionDecl)
       {
         std::string function = ownName(p);

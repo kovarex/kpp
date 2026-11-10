@@ -209,6 +209,8 @@ namespace
           decl(c->var);
           node(c->list);
           stmt(c->body);
+          for (Stmt* each : c->elementBodies)
+            stmt(each);
           break;
         }
         case NodeKind::WhileStmt:

@@ -430,6 +430,9 @@ switch (type)
 A static_assert or constexpr variable in the body is checked once per element, in a function that
 is no template as in an instance (2026-11-09); an `if constexpr` whose condition is no constant is
 an error, never a test at run time.
+What each element has its own of (a local class or enum, a static or thread_local variable) has nodes of
+each element's own: a copy of the body per element, made only for a body that declares one, a local
+class seeing the loop variables as an instance's classes see its arguments (2026-11-10).
 At namespace and class scope the body may hold function definitions and explicit
 specialisations, which share their spelled name and differ by the element's type (overloads);
 it may not declare data members or variables, because there is no way to name them per element

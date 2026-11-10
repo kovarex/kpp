@@ -26,6 +26,15 @@ public:
     return copy;
   }
 
+  // One statement on its own (a `for constexpr` body for one of its elements), the references inside it to its own
+  // declarations pointed at the copies.
+  Stmt* statement(const Stmt* s)
+  {
+    Stmt* copy = stmt(s);
+    fixReferences(copy);
+    return copy;
+  }
+
   // One type on its own (a requires-expression's type requirement, probed on its copy).
   Type* typeAlone(const Type* t)
   {

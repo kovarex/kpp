@@ -56,6 +56,9 @@ struct Decl : Node
   // condition holds. whenKnown is the walk's answer (as IfStmt::constexprKnown): -1 not evaluated,
   // 0 false (no storage, nothing checked or emitted), 1 true; each instance's copy has its own.
   int8_t whenKnown = -1;
+  // Which element of a `for constexpr` this declaration's copy of the body is for (copyElementBodies; in the padding:
+  // no larger a Decl): it tells apart the names of what each element has its own of. 0: none.
+  uint32_t elementMark = 0;
   Expr* when = nullptr;
 };
 

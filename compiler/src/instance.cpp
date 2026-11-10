@@ -370,6 +370,7 @@ Stmt* InstanceCopier::stmt(const Stmt* s)
       c->var = decl(c->var);
       c->list = node(c->list);
       c->body = stmt(c->body);
+      c->elementBodies = Span<Stmt*>{}; // (each copy of the loop makes its own)
       return c;
     }
     case NodeKind::WhileStmt:

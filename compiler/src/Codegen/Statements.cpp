@@ -87,7 +87,9 @@ auto codegen::Emitter::staticLocalName(const std::string& function, VariableDecl
   else if (!owner.empty() && owner[0] == '@')
     owner = owner.substr(1);
   // (`static auto [a, b] = pair;`: its hidden object has no name, its token tells it apart.)
-  return "@\"" + owner + "::" + (v->name.empty() ? std::string("[bindings]") : sym(v->name.last().symbol)) + "." + std::to_string(v->token) + "\"";
+  // (in a `for constexpr` body: one per element, its copy's mark)
+  std::string element = v->elementMark ? "#" + std::to_string(v->elementMark) : std::string();
+  return "@\"" + owner + "::" + (v->name.empty() ? std::string("[bindings]") : sym(v->name.last().symbol)) + "." + std::to_string(v->token) + element + "\"";
 }
 
 auto codegen::Emitter::sharedStaticText(const std::string& name, VariableDecl* v, const Ty* t, uint64_t alignment) -> std::string

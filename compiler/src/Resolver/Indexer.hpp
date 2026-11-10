@@ -48,6 +48,10 @@
   void collectVisibleLocalAliases(Stmt* s, uint32_t at, LocalStack& out, int depth = 0);
 
   void indexLocalTypes(Stmt* s, Scope* scope, FunctionDecl* f, std::unordered_map<uint32_t, std::vector<ClassDecl*>>* forward = nullptr);
+  // f->elementBodies: a copy of a `for constexpr` body for each of its elements, if it declares what each element has its
+  // own of; its local classes and enums given scopes of their own under scope, and the arguments around the loop (around)
+  // with the variable bound to their element, as the classes of an instance's body have that instance's.
+  void copyElementBodies(ForConstexprStmt* f, const std::vector<const Ty*>& elements, const Subst* around, Scope* scope, FunctionDecl* function);
 
   // Calls body with each lambda in expression n, not looking into the lambdas themselves (local
   // types in a lambda's body are indexed with the body: GraphicsInterfaceDX11::logDeviceInfo's

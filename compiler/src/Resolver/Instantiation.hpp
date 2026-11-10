@@ -251,7 +251,7 @@
   };
   InstanceSubstShard instanceSubstShards[64];
   InstanceSubstShard& instanceSubstShard(const Decl* copy);
-  void recordInstanceSubst(const FunctionDecl* copy, const Subst& s);
+  void recordInstanceSubst(const Decl* copy, const Subst& s);
   // The substitution of the instance copy whose body declares the class d is (or is in), or null.
   // Only classes: the copy's own parameters and locals keep their written types, which the code
   // generator substitutes itself (packs included).

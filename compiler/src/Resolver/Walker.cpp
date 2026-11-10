@@ -15,6 +15,58 @@ auto GlobalScope::Impl::Walker::probedCast(const Ty* t, const Ty* operand) -> co
   return impl.convertsByOperator(from, to, 0, 0, true) ? t : unknown(Why::Unsupported);
 }
 
+auto GlobalScope::Impl::copyElementBodies(ForConstexprStmt* f, const std::vector<const Ty*>& elements, const Subst* around, Scope* scope, FunctionDecl* function) -> void
+{
+  size_t count = elements.size();
+  if (!f->elementBodies.empty() || count == 0)
+    return;
+  // The body is instantiated once per element (design.md 8.2). What it declares that names can reach apart from the
+  // walk (a local class or enum, a static or thread_local variable) needs nodes of each element's own; the rest is
+  // retyped in place.
+  bool own = false;
+  forEachNode(f->body, [&](Node* n)
+  {
+    own = own || (n->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(n)->lambda) || n->kind == NodeKind::EnumDecl ||
+          (n->kind == NodeKind::VariableDecl && (static_cast<Decl*>(n)->flags & (DF_Static | DF_ThreadLocal)) && !(static_cast<Decl*>(n)->flags & DF_Typedef));
+  });
+  if (!own)
+    return;
+  Arena& arena = instanceArena();
+  Span<Stmt*> bodies;
+  bodies.data = static_cast<Stmt**>(arena.allocate(sizeof(Stmt*) * count, alignof(Stmt*)));
+  bodies.count = uint32_t(count);
+  for (size_t i = 0; i < count; ++i)
+  {
+    InstanceCopier copier(arena);
+    Stmt* copy = copier.statement(f->body);
+    // Its position in the loop, and in the loops around it (the same in every run, the same element type twice two).
+    uint32_t mark = (((f->elementMark ^ 2166136261u) * 16777619u) ^ uint32_t(i + 1)) * 16777619u;
+    mark = mark ? mark : 1;
+    Subst own = around ? *around : Subst{};
+    bool bound = false;
+    for (Subst::Pair& p : own.pairs)
+      if (p.param == f->var)
+        p.type = elements[i], bound = true;
+    if (!bound)
+      own.pairs.push_back({f->var, elements[i]});
+    forEachNode(copy, [&](Node* n)
+    {
+      if (n->kind == NodeKind::ClassDecl || n->kind == NodeKind::EnumDecl || n->kind == NodeKind::VariableDecl)
+        static_cast<Decl*>(n)->elementMark = mark;
+      else if (n->kind == NodeKind::ForConstexprStmt)
+        static_cast<ForConstexprStmt*>(n)->elementMark = mark;
+      if (n->kind == NodeKind::EnumDecl || (n->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(n)->lambda))
+        recordInstanceSubst(static_cast<Decl*>(n), own);
+      // (what the walk with the variable unbound cached is not this element's)
+      if (n->kind == NodeKind::VariableDecl || n->kind == NodeKind::ParamDecl || n->kind == NodeKind::FunctionDecl || n->kind == NodeKind::UsingAliasDecl)
+        static_cast<Decl*>(n)->cachedType.store(nullptr, std::memory_order_relaxed);
+    });
+    indexLocalTypes(copy, scope, function);
+    bodies.data[i] = copy;
+  }
+  f->elementBodies = bodies;
+}
+
 auto GlobalScope::Impl::Walker::forConstexprElements(ForConstexprStmt* f, std::vector<const Ty*>& out) -> bool
 {
   auto* v = static_cast<TemplateParamDecl*>(f->var);
@@ -10490,11 +10542,6 @@ auto GlobalScope::Impl::Walker::whenHolds(Decl* d) -> bool
 
 auto GlobalScope::Impl::Walker::walkLocalDecl(Decl* d) -> void
 {
-  // The body is instantiated once per element (design.md 8.2), so each element has its own such variable, which is not
-  // built yet: an error, never one variable shared by the elements.
-  if (d->kind == NodeKind::VariableDecl && (d->flags & (DF_Static | DF_ThreadLocal)) && !(d->flags & DF_Typedef) && forConstexprDepth > 0 && !activeSubst && !probing &&
-      !retypingElements && file && !file->isImported)
-    impl.reportCheckerError(file, d->token, "a static or thread_local variable in a `for constexpr` body: one variable per element is not built yet");
   if (!whenHolds(d))
   {
     // Declared all the same, absent (whenKnown 0): a use of its name finds it, never a name of an
@@ -10716,18 +10763,21 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
       std::vector<const Ty*> elements;
       bool open = activeSubst && !returnFrames.empty() && !returnFrames.back();
       bool checked = !generic && !retypingElements && !probing;
-      if ((open || checked) && forConstexprElements(f, elements))
+      bool listed = !generic && (open || checked || f->elementBodies.empty()) && forConstexprElements(f, elements);
+      if (listed && bodyOf && !probing)
+        impl.copyElementBodies(f, elements, activeSubst, scope, bodyOf);
+      if (listed && (open || checked))
       {
         Subst bound = activeSubst ? *activeSubst : Subst{};
         bound.pairs.push_back({v, nullptr});
         const Subst* saved = activeSubst;
         plainElementWalks += !saved;
         activeSubst = &bound;
-        for (const Ty* element : elements)
+        for (size_t i = 0; i < elements.size(); ++i)
         {
-          bound.pairs.back().type = element;
+          bound.pairs.back().type = elements[i];
           size_t inner = locals.mark();
-          walkStmt(f->body);
+          walkStmt(f->elementBodies.empty() ? f->body : f->elementBodies[i]);
           locals.pop(inner);
           if (!checked && returnFrames.back())
             break;

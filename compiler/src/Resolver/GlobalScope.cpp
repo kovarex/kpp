@@ -1973,6 +1973,16 @@ TemplateArgs GlobalScope::classArgsOf(const Ty* classType)
 }
 
 // f's template parameters bound to args, `this` of objectType.
+// What is walked in a class of one element's copy of a `for constexpr` body: the loops' variables, which no declaration
+// around it has as its template parameters do, as locals of the walk.
+template<typename Locals>
+static void pushLoopVariables(Locals& locals, const Subst& subst)
+{
+  for (const Subst::Pair& p : subst.pairs)
+    if (p.param && p.param->kind == NodeKind::TemplateParamDecl && !locals.find(static_cast<TemplateParamDecl*>(p.param)->name))
+      locals.push(static_cast<TemplateParamDecl*>(p.param)->name, p.param);
+}
+
 const Ty* GlobalScope::typeFunctionFor(FunctionDecl* f, FunctionDecl* nodes, const TemplateArgs& args, const Ty* objectType, bool retypingElements,
                                        bool keepBranches)
 {
@@ -1980,6 +1990,12 @@ const Ty* GlobalScope::typeFunctionFor(FunctionDecl* f, FunctionDecl* nodes, con
   if (!f->file || !f->file->tokens)
     return nullptr;
   Subst subst = toSubst(args);
+  for (Decl* p = f; p; p = p->parent) // (`L::size()` of such a class: called with no arguments of its own)
+    if (p->elementMark && (p->kind == NodeKind::ClassDecl || p->kind == NodeKind::EnumDecl))
+    {
+      subst = impl.withInstanceSubst(f, &subst);
+      break;
+    }
   ResolveStats scratch;
   Impl::Walker w(impl, scratch, *f->file->tokens, f->file->text);
   FileOfLookups walkedFile(f->file);
@@ -1994,6 +2010,7 @@ const Ty* GlobalScope::typeFunctionFor(FunctionDecl* f, FunctionDecl* nodes, con
   for (Decl* p = f; p; p = p->parent)
     for (Decl* tp : p->templateParams)
       w.locals.push(static_cast<TemplateParamDecl*>(tp)->name, tp);
+  pushLoopVariables(w.locals, subst);
   // The qualifier of an out-of-line definition (`ScrollBar<Policy>::ScrollBar`) is looked up
   // from the definition's own namespace, where the class is visible.
   w.scope = impl.lexicalScopeOf(f);
@@ -2158,6 +2175,7 @@ Expr* GlobalScope::instanceInitializer(VariableDecl* v, const TemplateArgs& args
   for (Decl* p = v; p; p = p->parent)
     for (Decl* tp : p->templateParams)
       w.locals.push(static_cast<TemplateParamDecl*>(tp)->name, tp);
+  pushLoopVariables(w.locals, subst);
   w.scope = impl.lexicalScopeOf(v);
   if (v->name.parts.size() > 1)
     w.scope = w.semanticScopeFor(v->name);

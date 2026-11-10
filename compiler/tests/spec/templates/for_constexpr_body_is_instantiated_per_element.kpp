@@ -1,0 +1,179 @@
+// spec: a `for constexpr` body is instantiated once per element (design.md 8.2), as a C++26 expansion statement's is: a static or thread_local variable, a local class and a local enum are each element's own, the same type listed twice being two elements; a local class names the loop variable in its members' types, its member functions and its default member initializers; in a function that is no template, in an instance, nested, through `members(T)`, around `case` labels and with the return type open. Worked out by hand from [stmt.expand] (clang 19 has no expansion statements)
+// found by D's review of 54bf0d81 (2026-11-09): one variable shared by the elements, and "unknown type" for a local class naming the variable
+extern "C" int printf(const char* format, ...);
+struct Named { int a = 0; double b = 0; };
+int statics()
+{
+  int total = 0;
+  for constexpr (int v : {1, 2})
+  {
+    static int count = 0;
+    count += v;
+    total = total * 10 + count;
+  }
+  return total;
+}
+template<typename... Ts>
+int typesOfPack()
+{
+  int total = 0;
+  for constexpr (typename E : types<Ts...>)
+  {
+    struct Local
+    {
+      E value{};
+      static int size() { return sizeof(E); }
+      int doubled() const { E copy = this.value; return int(sizeof(copy)) * 2; }
+    };
+    Local l;
+    total = total * 100 + sizeof(Local) + Local::size() + l.doubled();
+  }
+  return total;
+}
+int plainLocalClass()
+{
+  int total = 0;
+  for constexpr (typename E : types<int, double, char>)
+  {
+    struct Local { E value{}; };
+    total = total * 100 + sizeof(Local);
+  }
+  return total;
+}
+int sameTypeTwice()
+{
+  int total = 0;
+  for constexpr (typename E : types<int, int>)
+  {
+    static E held{};
+    held += 3;
+    total = total * 100 + held;
+  }
+  return total;
+}
+int staticInLambda()
+{
+  int total = 0;
+  for constexpr (int v : {1, 2})
+  {
+    auto l = [] { static int n = 0; return ++n; };
+    l();
+    total = total * 10 + l();
+  }
+  return total;
+}
+int staticInMember()
+{
+  int total = 0;
+  for constexpr (int v : {1, 2})
+  {
+    struct S { static int g() { static int m = 0; return ++m; } };
+    S::g();
+    total = total * 10 + S::g();
+  }
+  return total;
+}
+int enums()
+{
+  int total = 0;
+  for constexpr (int v : {1, 2})
+  {
+    enum Kind { first = v, second = v + 10 };
+    total = total * 100 + second;
+  }
+  return total;
+}
+int nested()
+{
+  int total = 0;
+  for constexpr (int a : {1, 2})
+    for constexpr (int b : {1, 2})
+    {
+      static int count = 0;
+      count += a * b;
+      total = total * 10 + count;
+    }
+  return total;
+}
+int virtuals()
+{
+  int total = 0;
+  for constexpr (int v : {1, 2})
+  {
+    class Base { public: virtual int get() { return 0; } };
+    class Derived : public Base { public: int get() override { return v * 7; } };
+    Derived d;
+    Base* b = &d;
+    total = total * 100 + b->get();
+  }
+  return total;
+}
+template<int N>
+int inTemplate()
+{
+  int total = 0;
+  for constexpr (int v : {N, N + 1})
+  {
+    static int count = 0;
+    count += v;
+    total = total * 100 + count;
+  }
+  return total;
+}
+int reflection()
+{
+  int total = 0;
+  for constexpr (auto m : members(Named))
+  {
+    static int seen = 0;
+    ++seen;
+    total = total * 10 + seen;
+  }
+  return total;
+}
+auto openReturn()
+{
+  for constexpr (int v : {1, 2})
+  {
+    struct Local { int x = v; };
+    return Local().x;
+  }
+  return 0;
+}
+int inSwitch(int k)
+{
+  switch (k)
+  {
+    for constexpr (int v : {1, 2})
+      case v:
+      {
+        static int calls = 0;
+        return ++calls * 10 + v;
+      }
+    default:
+      return 0;
+  }
+}
+int main()
+{
+  int a1 = statics(), a2 = statics();
+  printf("statics %d %d\n", a1, a2);
+  printf("types %d\n", typesOfPack<int, double>());
+  printf("local %d\n", plainLocalClass());
+  int b1 = sameTypeTwice(), b2 = sameTypeTwice();
+  printf("twice %d %d\n", b1, b2);
+  int c1 = staticInLambda(), c2 = staticInLambda();
+  printf("lambda %d %d\n", c1, c2);
+  int d1 = staticInMember(), d2 = staticInMember();
+  printf("member %d %d\n", d1, d2);
+  printf("enum %d\n", enums());
+  printf("nested %d\n", nested());
+  printf("virtual %d\n", virtuals());
+  int e1 = inTemplate<1>(), e2 = inTemplate<1>(), e3 = inTemplate<5>();
+  printf("template %d %d %d\n", e1, e2, e3);
+  printf("reflection %d\n", reflection());
+  printf("open %d\n", openReturn());
+  int s1 = inSwitch(1), s2 = inSwitch(2), s3 = inSwitch(1), s4 = inSwitch(3);
+  printf("switch %d %d %d %d\n", s1, s2, s3, s4);
+  return 0;
+}

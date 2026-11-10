@@ -149,8 +149,13 @@ auto codegen::Emitter::forEachConstexprElement(ForConstexprStmt* f, const std::f
   else
     unsupported(f, "a for constexpr list that is neither types<...>, members(T), alternatives(U) nor a brace list of constants");
   const TemplateArgs* savedArgs = currentArgs;
+  Stmt* sharedBody = f->body;
+  if (!f->elementBodies.empty() && f->elementBodies.size() != elements.size())
+    unsupported(f, "a for constexpr whose copies of its body were made for another number of elements");
   for (size_t index = 0; index < elements.size(); ++index)
   {
+    if (!f->elementBodies.empty())
+      f->body = f->elementBodies[index]; // (what this element has its own of; the walk below types this copy)
     TemplateArgs elementArgs = original;
     bool bound = false;
     for (auto& [d, t] : elementArgs.pairs)
@@ -163,6 +168,7 @@ auto codegen::Emitter::forEachConstexprElement(ForConstexprStmt* f, const std::f
     body(index);
     currentArgs = savedArgs;
   }
+  f->body = sharedBody;
   if (!elements.empty())
     retypeForElement(original);
 }

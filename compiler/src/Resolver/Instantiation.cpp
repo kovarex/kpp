@@ -2137,6 +2137,12 @@ auto GlobalScope::Impl::declContextFor(Decl* d, DeclContext& out) -> void
   for (size_t i = chain.size(); i-- > 0;)
     for (Decl* tp : chain[i]->templateParams)
       out.params.push(static_cast<TemplateParamDecl*>(tp)->name, tp);
+  // In a class of one element's copy of a `for constexpr` body: the loops' variables, which no scope has.
+  if (std::any_of(chain.begin(), chain.end(), [](Decl* p) { return p->elementMark && (p->kind == NodeKind::ClassDecl || p->kind == NodeKind::EnumDecl); }))
+    if (const Subst* element = instanceSubstOf(d))
+      for (const Subst::Pair& p : element->pairs)
+        if (p.param && p.param->kind == NodeKind::TemplateParamDecl)
+          out.params.push(static_cast<TemplateParamDecl*>(p.param)->name, p.param);
   // Inside function bodies (a member of a class declared in one, `RailWithDirection
   // railWithDirection;` with `using RailWithDirection = ...;` before the class): the aliases,
   // classes and enums the bodies declare before it, outermost first.
@@ -2327,7 +2333,7 @@ auto GlobalScope::Impl::instanceSubstShard(const Decl* copy) -> InstanceSubstSha
   return instanceSubstShards[(reinterpret_cast<uintptr_t>(copy) >> 6) % std::size(instanceSubstShards)];
 }
 
-auto GlobalScope::Impl::recordInstanceSubst(const FunctionDecl* copy, const Subst& s) -> void
+auto GlobalScope::Impl::recordInstanceSubst(const Decl* copy, const Subst& s) -> void
 {
   Subst own = s; // copied outside the lock
   InstanceSubstShard& shard = instanceSubstShard(copy);
@@ -2341,9 +2347,20 @@ auto GlobalScope::Impl::instanceSubstOf(const Decl* d) -> const Subst*
   for (const Decl* p = d; p; p = p->parent)
   {
     if (p->kind == NodeKind::ClassDecl || p->kind == NodeKind::EnumDecl)
+    {
       inClass = true;
+      if (p->elementMark) // (a class of one element's copy of a `for constexpr` body: its arguments, the element bound)
+      {
+        InstanceSubstShard& shard = instanceSubstShard(p);
+        std::lock_guard lock(shard.mutex);
+        if (auto it = shard.substs.find(p); it != shard.substs.end())
+          return &it->second;
+      }
+    }
     else if (p->kind == NodeKind::FunctionDecl && (p->attributes & ATTR_InstanceCopy))
     {
+      if (!inClass && p->parent && p->parent->elementMark)
+        continue; // (a private copy of a member of such a class: the class's, next)
       if (!inClass)
         return nullptr;
       InstanceSubstShard& shard = instanceSubstShard(p);
