@@ -3,31 +3,31 @@
 // kpp: --target macos --sysroot {here}/macos_sdk_checked_before_the_build.sdk
 int main()
 {
-  Mutex m;
-  ConditionVariable cv;
+  std::Mutex m;
+  std::ConditionVariable cv;
   int counter = 0;
-  Vector<Thread> threads;
+  std::Vector<std::Thread> threads;
   for (int i = 0; i < 4; ++i)
-    threads.push_back(Thread([&]() { LockGuard<Mutex> g(m); ++counter; cv.notify_all(); }));
-  for (Thread& t : threads)
+    threads.push_back(std::Thread([&]() { std::LockGuard<std::Mutex> g(m); ++counter; cv.notify_all(); }));
+  for (std::Thread& t : threads)
     t.join();
-  filesystem::path dir = filesystem::temp_directory_path() / "kpp-mac";
-  filesystem::create_directories(dir);
-  for (const filesystem::directory_entry& e : filesystem::directory_iterator(dir))
-    println(e.path().string(), " ", e.is_regular_file());
-  ErrorCode ec;
-  println(filesystem::space(dir).capacity > 0, " ", filesystem::equivalent(dir, dir), " ", filesystem::hard_link_count(dir, ec));
-  auto start = SteadyClock::now();
-  thisThread::sleepFor(Milliseconds(1));
-  HashMap<String, int> map;
+  std::filesystem::path dir = std::filesystem::temp_directory_path() / "kpp-mac";
+  std::filesystem::create_directories(dir);
+  for (const std::filesystem::directory_entry& e : std::filesystem::directory_iterator(dir))
+    std::println(e.path().string(), " ", e.is_regular_file());
+  std::ErrorCode ec;
+  std::println(std::filesystem::space(dir).capacity > 0, " ", std::filesystem::equivalent(dir, dir), " ", std::filesystem::hard_link_count(dir, ec));
+  auto start = std::SteadyClock::now();
+  std::thisThread::sleepFor(std::Milliseconds(1));
+  std::HashMap<std::String, int> map;
   map["a"] = counter;
   try
   {
-    throw RuntimeError("x");
+    throw std::RuntimeError("x");
   }
-  catch (const Exception& e)
+  catch (const std::Exception& e)
   {
-    println(StringView(e.what()), " ", map["a"], " ", (SteadyClock::now() - start).count() > 0, " ", Thread::hardware_concurrency());
+    std::println(std::StringView(e.what()), " ", map["a"], " ", (std::SteadyClock::now() - start).count() > 0, " ", std::Thread::hardware_concurrency());
   }
   return 0;
 }

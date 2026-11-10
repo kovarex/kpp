@@ -11,6 +11,6 @@ int main()
     std::println("debug ", sum, " ", neighbors);
   }
   else
-    println("release ", sum, " ", skipped);
+    std::println("release ", sum, " ", skipped);
   return 0;
 }

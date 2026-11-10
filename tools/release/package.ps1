@@ -272,7 +272,7 @@ try
   if (-not $dlls -or $foreign.Count) { throw "the smoke program imports $($foreign -join ', '), which Windows does not have (all: $($dlls -join ', '))" }
   Write-Output "smoke test: built with the bundled toolchain for windows-gnu; the program imports $($dlls -join ', ')"
   # FreeBSD as installed: no --sysroot, the package's own (an ELF FreeBSD program; linked, not run).
-  Set-Content "$smoke\freebsd.kpp" "int main()`n{`n  println(`"Hello from kpp`");`n  return 0;`n}"
+  Set-Content "$smoke\freebsd.kpp" "int main()`n{`n  std::println(`"Hello from kpp`");`n  return 0;`n}"
   $output = (& "$kpp\kpp.exe" --target freebsd --exe "$smoke\freebsd.elf" "$smoke\freebsd.kpp" 2>&1 | ForEach-Object { "$_" }) -join "`n"
   $elf = if (Test-Path "$smoke\freebsd.elf") { [IO.File]::ReadAllBytes("$smoke\freebsd.elf") } else { @() }
   if ($LASTEXITCODE -ne 0 -or $elf.Count -lt 8 -or $elf[0] -ne 0x7f -or $elf[1] -ne 0x45 -or $elf[7] -ne 9) { throw "the packaged kpp did not build for FreeBSD without --sysroot:`n$output" } # (EI_OSABI 9: FreeBSD)
@@ -338,14 +338,14 @@ if (-not $NoSmokeTest)
   Set-Content "$project\src\main.kpp" @'
 int main()
 {
-  println("mariadb ", mariadb::mariaDbQuote("it's"));
+  std::println("mariadb ", mariadb::mariaDbQuote("it's"));
   try
   {
     httpclient::fetch("ftp://example.test/");
   }
   catch (const httpclient::HttpClientError& e)
   {
-    println("httpclient ", e.message);
+    std::println("httpclient ", e.message);
   }
   return 0;
 }

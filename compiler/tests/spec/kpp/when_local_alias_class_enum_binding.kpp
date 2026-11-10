@@ -25,6 +25,6 @@ int main()
   if constexpr (config::debug)
     std::println(extra, " ", probe.v, " ", x + y, " ", (int)Level::high);
   else
-    println("release");
+    std::println("release");
   return 0;
 }

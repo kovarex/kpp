@@ -17,7 +17,7 @@ public:
       debugOnlyCount(this.references);
     }
     else
-      println("release");
+      std::println("release");
   }
 };
 
@@ -31,7 +31,7 @@ int main()
   Line line;
   line.connect();
   if constexpr (!config::debug)
-    println("release main");
+    std::println("release main");
   else
     std::println("debug main ", line.references);
   return 0;

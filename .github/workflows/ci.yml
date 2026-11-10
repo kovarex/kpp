@@ -744,7 +744,7 @@ jobs:
       - name: hello world
         run: |
           mkdir -p /tmp/hello
-          printf 'int main(int argc, char** argv)\n{\n  println("hello from linux ", argc);\n  return 3;\n}\n' > /tmp/hello/hello.kpp
+          printf 'int main(int argc, char** argv)\n{\n  std::println("hello from linux ", argc);\n  return 3;\n}\n' > /tmp/hello/hello.kpp
           set +e
           out=$(compiler/build/kpp --run /tmp/hello/hello.kpp a b)
           code=$?
@@ -763,7 +763,7 @@ jobs:
           mkdir -p /tmp/served && cd /tmp/served
           kpp="$GITHUB_WORKSPACE/compiler/build/kpp"
           for text in one one two; do
-            printf 'int main()\n{\n  println("%s");\n  return 0;\n}\n' "$text" > main.kpp
+            printf 'int main()\n{\n  std::println("%s");\n  return 0;\n}\n' "$text" > main.kpp
             "$kpp" --server --exe app main.kpp
             [ "$(./app)" = "$text" ]
           done
@@ -778,7 +778,7 @@ jobs:
       - name: the compile server's crash report
         run: |
           mkdir -p /tmp/crash && cd /tmp/crash
-          printf 'int main()\n{\n  println("built");\n  return 0;\n}\n' > main.kpp
+          printf 'int main()\n{\n  std::println("built");\n  return 0;\n}\n' > main.kpp
           KPP_SERVER_CRASH_TEST=1 "$GITHUB_WORKSPACE/compiler/build/kpp" --server --exe app main.kpp 2> err.txt
           [ "$(./app)" = "built" ]
           grep -q "the compile server ended without finishing the build" err.txt
@@ -923,7 +923,7 @@ jobs:
       - name: hello world
         run: |
           mkdir -p /tmp/hello
-          printf 'int main(int argc, char** argv)\n{\n  println("hello from ", config::arch == Arch::Arm64 ? StringView("arm64") : StringView("another"), " ", argc);\n  return 3;\n}\n' > /tmp/hello/hello.kpp
+          printf 'int main(int argc, char** argv)\n{\n  std::println("hello from ", config::arch == Arch::Arm64 ? std::StringView("arm64") : std::StringView("another"), " ", argc);\n  return 3;\n}\n' > /tmp/hello/hello.kpp
           set +e
           out=$(compiler/build/kpp --run /tmp/hello/hello.kpp a b)
           code=$?

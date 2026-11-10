@@ -131,7 +131,7 @@ try
   $r = Run 'kpp' @('--version')
   if ($r.text -notmatch "(?m)^sysroot freebsd-x86_64: $([regex]::Escape("$Install\sysroots\freebsd-x86_64")) \(FreeBSD 14\.3-RELEASE") { Fail "kpp --version does not name the release's FreeBSD sysroot $Install\sysroots\freebsd-x86_64" }
   else { Pass "kpp --version: $(($r.text -split "`n") -match '^sysroot freebsd-x86_64: ')" }
-  Set-Content -Encoding ascii 'freebsd.kpp' "int main()`n{`n  println(`"Hello from kpp`");`n  return 0;`n}"
+  Set-Content -Encoding ascii 'freebsd.kpp' "int main()`n{`n  std::println(`"Hello from kpp`");`n  return 0;`n}"
   Remove-Item 'freebsd.elf' -ErrorAction SilentlyContinue
   $r = Run 'kpp' @('--target', 'freebsd', '--exe', 'freebsd.elf', 'freebsd.kpp')
   $elf = if (Test-Path 'freebsd.elf') { [IO.File]::ReadAllBytes((Resolve-Path 'freebsd.elf').Path) } else { @() }
@@ -149,7 +149,7 @@ try
   try
   {
     Set-Content -Encoding ascii 'build.kpp' "void build(Project& project)`n{`n  project.executable(`"app`", {`"src`"});`n  project.use(`"httpclient`");`n  project.use(`"mariadb`");`n}"
-    Set-Content -Encoding ascii 'src\main.kpp' "int main()`n{`n  try`n  {`n    httpclient::fetch(`"ftp://example.test/`");`n  }`n  catch (const httpclient::HttpClientError& e)`n  {`n    println(`"mariadb `", mariadb::mariaDbQuote(`"it's`"), `" httpclient `", e.message);`n  }`n  return 0;`n}"
+    Set-Content -Encoding ascii 'src\main.kpp' "int main()`n{`n  try`n  {`n    httpclient::fetch(`"ftp://example.test/`");`n  }`n  catch (const httpclient::HttpClientError& e)`n  {`n    std::println(`"mariadb `", mariadb::mariaDbQuote(`"it's`"), `" httpclient `", e.message);`n  }`n  return 0;`n}"
     Build 'httpclient and mariadb from the installation, debug' @('app', 'debug', '--toolchain', 'bundled', '--run') "mariadb 'it\'s' httpclient not an http or https address: ftp://example.test/" 'build\debug\app.exe'
     $null = Run 'kpp' @('--stop-server')
   }
@@ -175,7 +175,7 @@ void build(Project& project)
 '@
     Set-Content -Encoding ascii 'include\plus.h' 'int plus(int value);'
     Set-Content -Encoding ascii 'libs\plus\plus.c' "#include `"plus.h`"`nint plus(int value) { return value + PLUS; }"
-    Set-Content -Encoding ascii 'src\main.kpp' "extern `"C`" import `"plus.h`";`nint main()`n{`n  println(`"plus `", plus(41));`n  return 0;`n}"
+    Set-Content -Encoding ascii 'src\main.kpp' "extern `"C`" import `"plus.h`";`nint main()`n{`n  std::println(`"plus `", plus(41));`n  return 0;`n}"
     Build 'a C library, debug' @('app', 'debug', '--toolchain', 'bundled', '--run') 'plus 42' 'build\debug\app.exe'
     Build 'a C library, release, --set PLUS=2' @('app', 'release', '--toolchain', 'bundled', '--set', 'PLUS=2', '--run') 'plus 43' 'build\release\app.exe'
     $null = Run 'kpp' @('--stop-server')
