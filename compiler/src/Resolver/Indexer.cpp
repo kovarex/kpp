@@ -387,7 +387,15 @@ auto GlobalScope::Impl::pushLocalUsingEnum(UsingNameDecl* u, Scope* scope, Local
       locals.push(static_cast<EnumeratorDecl*>(en)->name, en);
 }
 
-auto GlobalScope::Impl::collectVisibleLocalAliases(Stmt* s, uint32_t at, LocalStack& out, int depth) -> void
+auto GlobalScope::Impl::elementMarkAround(const Decl* d) -> uint32_t
+{
+  for (; d && d->kind != NodeKind::FunctionDecl; d = d->parent)
+    if (d->elementMark)
+      return d->elementMark;
+  return 0;
+}
+
+auto GlobalScope::Impl::collectVisibleLocalAliases(Stmt* s, uint32_t at, LocalStack& out, int depth, uint32_t element) -> void
 {
   if (!s || s->token > at || depth > 64)
     return;
@@ -421,7 +429,7 @@ auto GlobalScope::Impl::collectVisibleLocalAliases(Stmt* s, uint32_t at, LocalSt
         found = c;
     return found;
   };
-  auto inner = [&](Stmt* st) { collectVisibleLocalAliases(st, at, out, depth + 1); };
+  auto inner = [&](Stmt* st) { collectVisibleLocalAliases(st, at, out, depth + 1, element); };
   switch (s->kind)
   {
     case NodeKind::BlockStmt:
@@ -449,7 +457,30 @@ auto GlobalScope::Impl::collectVisibleLocalAliases(Stmt* s, uint32_t at, LocalSt
       inner(static_cast<ForStmt*>(s)->body);
       break;
     case NodeKind::RangeForStmt: inner(static_cast<RangeForStmt*>(s)->body); break;
-    case NodeKind::ForConstexprStmt: inner(static_cast<ForConstexprStmt*>(s)->body); break;
+    case NodeKind::ForConstexprStmt:
+    {
+      // In one element's copy of the body: that copy (the one holding a declaration of the element's mark, a nested loop's
+      // copies included), whose classes the name sees.
+      auto* f = static_cast<ForConstexprStmt*>(s);
+      Stmt* body = f->body;
+      for (Stmt* each : f->elementBodies)
+      {
+        bool holds = false;
+        if (element)
+          forEachNode(each, [&](Node* n)
+          {
+            holds = holds || ((n->kind == NodeKind::ClassDecl || n->kind == NodeKind::EnumDecl || n->kind == NodeKind::VariableDecl) &&
+                              static_cast<Decl*>(n)->elementMark == element);
+          });
+        if (holds)
+        {
+          body = each;
+          break;
+        }
+      }
+      inner(body);
+      break;
+    }
     case NodeKind::WhileStmt: inner(static_cast<WhileStmt*>(s)->body); break;
     case NodeKind::DoStmt: inner(static_cast<DoStmt*>(s)->body); break;
     case NodeKind::SwitchStmt:

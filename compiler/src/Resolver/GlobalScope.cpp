@@ -1790,7 +1790,7 @@ std::optional<ConstValue> GlobalScope::evaluateInitializer(const Ty* t, Expr* e,
     file = context ? context->file : nullptr;
   if (context && context->kind == NodeKind::FunctionDecl && file == context->file)
     if (Stmt* body = static_cast<FunctionDecl*>(context)->body; body && body->token < e->token && (!context->endToken || e->token < context->endToken))
-      impl->collectVisibleLocalAliases(body, e->token, dc.params);
+      impl->collectVisibleLocalAliases(body, e->token, dc.params, 0, Impl::elementMarkAround(context));
   if (context && file == context->file)
   {
     // In a lambda's body (the closure as the context): the function around it, then the body.
@@ -1798,7 +1798,7 @@ std::optional<ConstValue> GlobalScope::evaluateInitializer(const Ty* t, Expr* e,
       if (p->kind == NodeKind::FunctionDecl)
       {
         if (Stmt* body = static_cast<FunctionDecl*>(p)->body; body && body->token < e->token && (!p->endToken || e->token < p->endToken))
-          impl->collectVisibleLocalAliases(body, e->token, dc.params);
+          impl->collectVisibleLocalAliases(body, e->token, dc.params, 0, Impl::elementMarkAround(context));
         break;
       }
     impl->collectLambdaBodyAliases(context, e->token, dc.params);
@@ -1859,7 +1859,7 @@ const Ty* GlobalScope::typeOfAstIn(Type* t, Decl* context, const TemplateArgs& a
         if (Stmt* body = static_cast<FunctionDecl*>(p)->body; body && body->token < t->token && (!p->endToken || t->token < p->endToken))
           around.push_back(static_cast<FunctionDecl*>(p));
     for (size_t i = around.size(); i-- > 0;)
-      impl->collectVisibleLocalAliases(around[i]->body, t->token, dc.params);
+      impl->collectVisibleLocalAliases(around[i]->body, t->token, dc.params, 0, Impl::elementMarkAround(context));
     impl->collectLambdaBodyAliases(context, t->token, dc.params); // innermost: they hide the function's
   }
   ParsedFile* file = context ? context->file : nullptr;

@@ -93,3 +93,17 @@ union enum Activity : uint8_t
 {
   { {Walking, Walk}, {Waiting, Wait} }
 };
+
+// A `for constexpr` body with a local class (a copy of the body per element), in a function that inlines elementHelper():
+// an edit of the helper emits it again, with the classes it had (2026-11-10: two more were laid out, D's review of 731741406).
+int elementHelper() { return 1; }
+int elementLocals()
+{
+  int total = 0;
+  for constexpr (typename E : types<int, double>)
+  {
+    struct Local { E v = E(2); int twice() const { return int(v) * 2; } };
+    total = total + Local{}.twice() * 10 + elementHelper();
+  }
+  return total;
+}

@@ -2146,10 +2146,11 @@ auto GlobalScope::Impl::declContextFor(Decl* d, DeclContext& out) -> void
   // Inside function bodies (a member of a class declared in one, `RailWithDirection
   // railWithDirection;` with `using RailWithDirection = ...;` before the class): the aliases,
   // classes and enums the bodies declare before it, outermost first.
+  uint32_t element = elementMarkAround(d);
   for (size_t i = chain.size(); i-- > 1;)
     if (chain[i]->kind == NodeKind::FunctionDecl)
       if (Stmt* body = static_cast<FunctionDecl*>(chain[i])->body; body && body->token < d->token)
-        collectVisibleLocalAliases(body, d->token, out.params);
+        collectVisibleLocalAliases(body, d->token, out.params, 0, element);
 }
 
 auto GlobalScope::Impl::declaredTypeOf(Decl* d, const Subst* subst, int /*depth*/) -> const Ty*

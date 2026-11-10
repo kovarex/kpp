@@ -114,6 +114,10 @@ $steps = @(
   # from the kept session, no longer codegen in full.
   @{ name = 'a constructor''s body edit that a defaulted operator''s walk reads'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12 7'; edit = { Edit 'positions.kpp' 'Spot::Spot(int x, int y) : x(x), y(y) { if (x < 0) return; }' 'Spot::Spot(int x, int y) : x(x), y(y) { if (x < 0) return; if (y < 0) return; }' } },
   @{ name = 'that constructor edit back'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12 7'; edit = { Edit 'positions.kpp' 'Spot::Spot(int x, int y) : x(x), y(y) { if (x < 0) return; if (y < 0) return; }' 'Spot::Spot(int x, int y) : x(x), y(y) { if (x < 0) return; }' } },
+  # A function whose `for constexpr` body has a local class, emitted again (it inlines the function edited): its elements'
+  # classes are the ones laid out before, as a build from scratch has one of each (until 2026-11-10 two more).
+  @{ name = 'a body edit of a function inlined into one whose for constexpr body has a local class'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12 7'; edit = { Edit 'positions.kpp' 'int elementHelper() { return 1; }' 'int elementHelper() { return 3; }' } },
+  @{ name = 'that body edit back too'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12 7'; edit = { Edit 'positions.kpp' 'int elementHelper() { return 3; }' 'int elementHelper() { return 1; }' } },
   @{ name = 'a body edit above a kept function with a lambda (which moves)'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12 7'; edit = { Edit 'lambdas.kpp' 'int firstHelper() { int r = 2; return r; }' 'int firstHelper() { int r = 2; r = r + 0; return r; }' } },
   @{ name = 'that body edit back'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12 7'; edit = { Edit 'lambdas.kpp' 'int firstHelper() { int r = 2; r = r + 0; return r; }' 'int firstHelper() { int r = 2; return r; }' } },
   # noexcept added to a function that calls one that may throw (B's review of 7807b4ff): on Windows its

@@ -367,10 +367,16 @@ Stmt* InstanceCopier::stmt(const Stmt* s)
     case NodeKind::ForConstexprStmt:
     {
       auto* c = raw(static_cast<const ForConstexprStmt*>(s));
-      c->var = decl(c->var);
+      // Each copy of the loop makes its own elements' bodies, except a private copy made for re-typing in place, whose
+      // local classes are the same types as the nodes copied, as its lambdas are (keepClosures): its elements' bodies and
+      // its variable, which they name, are those of the nodes copied, each body typed for its own element only (a function
+      // emitted again in a compile server's session lays out no second class for each).
+      if (!keepClosures)
+        c->var = decl(c->var);
       c->list = node(c->list);
       c->body = stmt(c->body);
-      c->elementBodies = Span<Stmt*>{}; // (each copy of the loop makes its own)
+      if (!keepClosures)
+        c->elementBodies = Span<Stmt*>{};
       return c;
     }
     case NodeKind::WhileStmt:

@@ -45,7 +45,12 @@
   // of the block (C++20's using-enum-declaration).
   void pushLocalUsingEnum(UsingNameDecl* u, Scope* scope, LocalStack& locals);
 
-  void collectVisibleLocalAliases(Stmt* s, uint32_t at, LocalStack& out, int depth = 0);
+  // element: the mark of the `for constexpr` element's copy of a body the name is in (elementMarkAround), whose
+  // declarations are the ones visible there, not the loop's own body's.
+  void collectVisibleLocalAliases(Stmt* s, uint32_t at, LocalStack& out, int depth = 0, uint32_t element = 0);
+  // The mark of the element's copy of a `for constexpr` body that d is in (Decl::elementMark of d or the classes and
+  // enums around it), 0 for none.
+  static uint32_t elementMarkAround(const Decl* d);
 
   void indexLocalTypes(Stmt* s, Scope* scope, FunctionDecl* f, std::unordered_map<uint32_t, std::vector<ClassDecl*>>* forward = nullptr);
   // f->elementBodies: a copy of a `for constexpr` body for each of its elements, if it declares what each element has its
