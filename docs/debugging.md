@@ -14,11 +14,13 @@ with `/DEBUG` already, for the crash report's function names).
 ## What is in it
 
 - Each function and lambda is a `DISubprogram` at its declaration's line, named by its IR name
-  (`square(int32)`, `Counter::add(int32)`). A lambda's closure is named by its file's tag and its
-  number in the file (`inspect::__lambda_f9e4fd6c_0::operator()(int32)`): the tag is a hash of the
-  file's path under its root (`std/...` for the standard library's, the root directory's name and
-  the path under it for the program's), so the name is the same wherever the sources are and
-  whatever files come before it. A file's private entities (design.md 15) carry its name and the
+  (`square(int32)`, `Counter::add(int32)`). A lambda's closure is named by a tag and its number:
+  in a function at file or class level, the function's tag and its number in the function
+  (`inspect::__lambda_ec11f6bb_0::operator()(int32)`), elsewhere its file's tag and its number in
+  the file. The file's tag is a hash of the file's path under its root (`std/...` for the standard
+  library's, the root directory's name and the path under it for the program's), a function's a hash
+  of its file's tag and its header's tokens, so the name is the same wherever the sources are and
+  whatever files come before it, and a lambda added to one function renames none of another's. A file's private entities (design.md 15) carry its name and the
   same tag (`inflate.kpp@3f0c9a12::helper(int32)`).
 - Every statement starts a line: its instructions are at the statement's first line. A `for`'s
   condition and step, a `while`'s and `do`'s condition and a range-`for`'s advance are at their own

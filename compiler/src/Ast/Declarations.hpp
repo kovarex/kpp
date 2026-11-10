@@ -153,6 +153,10 @@ struct FunctionDecl : Decl
   // type's instance mark is, which the names of its local classes carry (TypeTable.cpp), so that two
   // instances' InnerSetupHelper are two names in every run.
   uint64_t instanceMark = 0;
+  // A function at file or class level with a body: the tag its lambdas' closures and the classes and enumerations numbered in it
+  // are named by (the parser's beginNumbering: its file's tag and its header's tokens), each numbered in it, so that what another
+  // function of the file gains or loses renumbers none of them; 0 for any other function.
+  uint32_t numberingTag = 0;
   // A member function's ref qualifier (DF_RefQual says it has one): RefQualifier::LValue `f() &`,
   // which an lvalue object calls, RValue `f() &&`, which an rvalue one does ([over.match.funcs] 4).
   // Two overloads of one parameter list differing in it are two functions.
@@ -179,7 +183,9 @@ struct VariableDecl : Decl
   Expr* requiresClause = nullptr;
 };
 // A class's, an enumeration's or a static local's number (ClassDecl::number, EnumDecl::number,
-// VariableDecl::number); UINT32_MAX for any other declaration.
+// VariableDecl::number); UINT32_MAX for any other declaration. A class's or an enumeration's numbered in the body of a
+// function at file or class level has NumberInFunction set: its number is in that function (FunctionDecl::numberingTag).
+constexpr uint32_t NumberInFunction = 0x80000000u;
 inline uint32_t numberOf(const Decl* d)
 {
   switch (d->kind)

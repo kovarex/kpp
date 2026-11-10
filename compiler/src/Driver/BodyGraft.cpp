@@ -494,6 +494,7 @@ bool graftBodies(Build& kept, ChangedFile& c, std::string& why)
     bool declaresTypes = false;
     forEachNode(newF->body, [&](Node* n) { declaresTypes = declaresTypes || localType(n); });
     keptF->body = newF->body;
+    keptF->numberingTag = newF->numberingTag; // (its header's tokens are the kept one's: the tag its lambdas and types are named by)
     forEachNode(keptF->body, [&](Node* n)
     {
       if (n->kind > NodeKind::PackType && n->kind <= NodeKind::ImportDecl)

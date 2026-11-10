@@ -464,7 +464,34 @@ namespace
     void numberType(Decl* d, bool anonymous)
     {
       if (anonymous || (d->flags & DF_Specialization) || insideFunction())
-        setNumber(d, numberedTypes++);
+        setNumber(d, numberingFunction && insideFunction() ? (unitTypes++ | NumberInFunction) : numberedTypes++);
+    }
+    // A function at file or class level whose body is parsed now: its lambdas and the classes and enumerations numbered in its
+    // body count in it, named by its tag, a hash of its file's tag and its header's tokens (the first free one: two functions
+    // of one header, or a hash that is another's), so that a lambda or a class added to one function renumbers no other's: a
+    // compile server keeps their code (until 2026-11-10 they counted in their file, and one added above them generated the
+    // program in full: "a lambda or a local type was renumbered", 6.3 s for a lambda added to ElectricNetworkValues.kpp).
+    void beginNumbering(FunctionDecl* f, uint32_t bodyStart)
+    {
+      uint32_t file = out.lambdaTag ? out.lambdaTag : out.index;
+      uint32_t h = 2166136261u;
+      auto mix = [&](std::string_view s)
+      {
+        for (unsigned char c : s)
+          h = (h ^ c) * 16777619u;
+        h = (h ^ 0xffu) * 16777619u; // (between tokens)
+      };
+      char fileText[16];
+      snprintf(fileText, sizeof fileText, "%08x", file);
+      mix(fileText);
+      for (uint32_t t = f->token; t < bodyStart && t < toks.size(); ++t)
+        mix(spelling(toks[t]));
+      while (h == 0 || h == file || !numberingTags.insert(h).second)
+        h = (h ^ 0x9e3779b9u) * 16777619u;
+      f->numberingTag = h;
+      numberingFunction = f;
+      unitLambdas = 0;
+      unitTypes = 0;
     }
     template<typename T>
     T* decl(uint32_t token)
@@ -3291,6 +3318,9 @@ namespace
           f->testCode = 1; // (no frame: a line less, never a wrong one)
         if (f->flags & DF_Destructor)
           error("a function-try-block of a destructor is not supported yet");
+        const bool numbers = !numberingFunction && !insideFunction(); // (one at file or class level; a local class's member counts in its)
+        if (numbers)
+          beginNumbering(f, tryStart);
         Decl* savedParent = currentParent;
         currentParent = f;
         TryStmt* s = node<TryStmt>(tryStart);
@@ -3316,16 +3346,23 @@ namespace
         body->stmts = makeSpanOf(std::vector<Stmt*>{s});
         f->body = body;
         currentParent = savedParent;
+        if (numbers)
+          numberingFunction = nullptr;
         ++out.functionBodies;
       }
       else if (at(P::LBrace))
       {
+        const bool numbers = !numberingFunction && !insideFunction(); // (one at file or class level; a local class's member counts in its)
+        if (numbers)
+          beginNumbering(f, pos);
         Decl* savedParent = currentParent;
         currentParent = f;
         if (!roles && (inTest || testBodies.count(pos)))
           markTestFunction(f);
         f->body = parseBlock();
         currentParent = savedParent;
+        if (numbers)
+          numberingFunction = nullptr;
         ++out.functionBodies;
       }
       else if (!expect(P::Semi, "expected ';' or function body"))
@@ -7204,14 +7241,19 @@ namespace
       expect(P::RBracket, "expected ']' after captures");
       l->captures = makeSpanOf(captures);
       // The closure type: a synthetic class with a unique name, never indexed as a declaration.
-      // Named by its file's tag and the lambda's number in the file (`__lambda_6c1f0e2a_0`): the same
-      // in every run, wherever the sources are and whatever files come before it (ParsedFile::lambdaTag).
+      // Named by a tag and the lambda's number (`__lambda_6c1f0e2a_0`): in a function at file or class
+      // level, the function's tag and its number in it (beginNumbering), else its file's tag and its
+      // number among its file's others; the same in every run, wherever the sources are and whatever
+      // files come before it (ParsedFile::lambdaTag).
       ClassDecl* closure = decl<ClassDecl>(start);
       closure->keyword = Kw::struct_;
       NamePart part;
       char tag[16];
-      snprintf(tag, sizeof tag, out.lambdaTag ? "%08x" : "%u", out.lambdaTag ? out.lambdaTag : out.index);
-      part.symbol = symbols.intern("__lambda_" + std::string(tag) + "_" + std::to_string(lambdaCount++));
+      if (numberingFunction)
+        snprintf(tag, sizeof tag, "%08x", numberingFunction->numberingTag);
+      else
+        snprintf(tag, sizeof tag, out.lambdaTag ? "%08x" : "%u", out.lambdaTag ? out.lambdaTag : out.index);
+      part.symbol = symbols.intern("__lambda_" + std::string(tag) + "_" + std::to_string(numberingFunction ? unitLambdas++ : lambdaCount++));
       closure->name.parts = makeSpanOf(std::vector<NamePart>{part});
       closure->isClosure = true;
       closure->lambda = l;
@@ -7419,8 +7461,11 @@ namespace
     uint32_t kwImplicit, kwFallthrough, kwBothConst, kwClassConst, kwAccumulate, kwImport, kwAssert, kwReleaseAssert, kwCaller,
              kwConditional, kwUnderscore, kwConfig, kwNameof, kwCount, kwValues, kwStr, kwTypes, kwFromStr, kwOptional, kwUniquePtr, kwStd, kwText, kwTag, kwTagField,
              kwTagMethod, kwTypeMember, kwSuite;
-    uint32_t lambdaCount = 0;        // Lambdas parsed so far in this file.
-    uint32_t numberedTypes = 0;      // Classes and enumerations given a number so far in this file (ClassDecl::number).
+    uint32_t lambdaCount = 0;        // Lambdas parsed so far in this file outside the bodies of functions at file or class level.
+    uint32_t numberedTypes = 0;      // Classes and enumerations given a number so far in this file outside those (ClassDecl::number).
+    FunctionDecl* numberingFunction = nullptr; // The function at file or class level whose body is parsed now (beginNumbering).
+    uint32_t unitLambdas = 0, unitTypes = 0;   // Its lambdas and its numbered classes and enumerations so far.
+    std::unordered_set<uint32_t> numberingTags; // The tags this file's functions have (FunctionDecl::numberingTag).
     uint32_t numberedLocals = 0;     // Static locals and `_` locals numbered so far in the function at file or class level parsed now.
     uint32_t autoCount = 0;          // Type parameters invented for `auto` parameters so far in this file.
     uint16_t pendingAttributes = 0;  // [[noinline]] and friends seen before the current declaration.

@@ -1,6 +1,7 @@
-// Lambdas, which the code names by position (the parser numbers them in the file's order, and a
-// local type's name carries its token): an edit before one moves it, a lambda added before it
-// renumbers it, and the server must name it as a build from scratch does.
+// Lambdas, which the code names by number (the parser numbers them in their function at file or
+// class level, those outside such a function in the file's order): an edit before one moves it, a
+// lambda added before it in its function renumbers it, and the server must name it as a build from
+// scratch does.
 int firstHelper() { int r = 2; return r; }
 
 // A plain lambda with a capture (its closure a type of the shared declarations): an edit above it in
@@ -46,8 +47,9 @@ int viaLambda()
   return scaled(4.5) + viaPlain(0) + viaTemplate() + viaHolders() + viaRow() + usesCell();
 }
 
-// A global whose initializer holds lambdas: a lambda added before them in this file renumbers them,
-// and the instances made from them (Function<int(int)>'s call of each) must take the new names.
+// A global whose initializer holds lambdas, numbered in the file: a lambda added before them outside a
+// function renumbers them, and the instances made from them (Function<int(int)>'s call of each) must
+// take the new names; one added to a function renumbers none of them.
 int stepOf(int v) { return v + 1; }
 std::Function<int(int)> stepFunctions[2] = { [](int v) { return stepOf(v); }, [](int v) { return stepOf(v) * 2; } };
 int viaSteps() { return stepFunctions[0](3) + stepFunctions[1](3); }

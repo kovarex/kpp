@@ -43,15 +43,27 @@ inline std::string filePrivatePrefix(const Decl* d)
   return tag + "::";
 }
 
-// A numbered class's or enumeration's number with its file's tag, as a name carries it (`f::Local@6c1f0e2a_3`, `Flag<int>/spec6c1f0e2a_7`;
+// A numbered class's or enumeration's number with its tag, as a name carries it (`f::Local@6c1f0e2a_3`, `Flag<int>/spec6c1f0e2a_7`;
 // ClassDecl::number): the same wherever the declaration is written in its file, and unique in the program (the tag is the
-// one that names the file's lambdas). A declaration the parser gave no number: its token.
+// one that names the lambdas around it). One in a function's body is numbered in the function at file or class level it is
+// in, under that function's tag (NumberInFunction, FunctionDecl::numberingTag); any other in its file, under the file's.
+// A declaration the parser gave no number: its token.
 inline std::string numberInFile(const Decl* d)
 {
   uint32_t number = numberOf(d);
   if (number == UINT32_MAX)
     return std::to_string(d->token);
   uint32_t tag = d->file ? (d->file->lambdaTag ? d->file->lambdaTag : d->file->index) : 0;
+  if (number & NumberInFunction)
+  {
+    number &= ~NumberInFunction;
+    for (const Decl* p = d->parent; p; p = p->parent)
+      if (p->kind == NodeKind::FunctionDecl && static_cast<const FunctionDecl*>(p)->numberingTag)
+      {
+        tag = static_cast<const FunctionDecl*>(p)->numberingTag;
+        break;
+      }
+  }
   static const char digits[] = "0123456789abcdef";
   std::string text;
   for (int shift = 28; shift >= 0; shift -= 4)

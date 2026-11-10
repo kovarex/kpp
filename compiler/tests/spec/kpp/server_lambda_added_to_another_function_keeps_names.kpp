@@ -1,0 +1,127 @@
+// spec: a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile server"): a lambda and a local struct added to one function, then taken out, above another function of the file whose lambdas (one held in a std::Function, one passed to a template, a generic one) and local struct are numbered in that function, not in the file: their names stay, and the build follows the kept program (until 2026-11-10 they were numbered in their file, and the edit generated the program in full: "a lambda or a local type was renumbered", 6.3 s for a lambda added to the game's ElectricNetworkValues.kpp)
+//--- step: the program
+template<class F>
+int applyTwice(F f, int v) { return f(f(v)); }
+
+int first(int v)
+{
+  return v + 1;
+}
+
+int second(int v)
+{
+  struct Pair
+  {
+    int a;
+    int b;
+    int sum() const { return this.a + this.b; }
+  };
+  std::Function<int(int)> held = [](int x) { return x * 3; };
+  auto generic = [](auto x) { return x + x; };
+  Pair p{v, held(v)};
+  return applyTwice([](int x) { return x - 1; }, p.sum()) + generic(v);
+}
+
+int main()
+{
+  std::println(first(1), " ", second(2));
+  return 0;
+}
+// expect: 2 10
+//--- step: a lambda and a struct added to the function above
+template<class F>
+int applyTwice(F f, int v) { return f(f(v)); }
+
+int first(int v)
+{
+  struct Extra
+  {
+    int k = 10;
+  };
+  auto add = [](int x) { return x + Extra{}.k; };
+  return add(v) + 1;
+}
+
+int second(int v)
+{
+  struct Pair
+  {
+    int a;
+    int b;
+    int sum() const { return this.a + this.b; }
+  };
+  std::Function<int(int)> held = [](int x) { return x * 3; };
+  auto generic = [](auto x) { return x + x; };
+  Pair p{v, held(v)};
+  return applyTwice([](int x) { return x - 1; }, p.sum()) + generic(v);
+}
+
+int main()
+{
+  std::println(first(1), " ", second(2));
+  return 0;
+}
+// expect: 12 10
+//--- step: the second function edited
+template<class F>
+int applyTwice(F f, int v) { return f(f(v)); }
+
+int first(int v)
+{
+  struct Extra
+  {
+    int k = 10;
+  };
+  auto add = [](int x) { return x + Extra{}.k; };
+  return add(v) + 1;
+}
+
+int second(int v)
+{
+  struct Pair
+  {
+    int a;
+    int b;
+    int sum() const { return this.a * this.b; }
+  };
+  std::Function<int(int)> held = [](int x) { return x * 3; };
+  auto generic = [](auto x) { return x + x; };
+  Pair p{v, held(v)};
+  return applyTwice([](int x) { return x - 1; }, p.sum()) + generic(v);
+}
+
+int main()
+{
+  std::println(first(1), " ", second(2));
+  return 0;
+}
+// expect: 12 14
+//--- step: the lambda and the struct taken out again
+template<class F>
+int applyTwice(F f, int v) { return f(f(v)); }
+
+int first(int v)
+{
+  return v + 1;
+}
+
+int second(int v)
+{
+  struct Pair
+  {
+    int a;
+    int b;
+    int sum() const { return this.a * this.b; }
+  };
+  std::Function<int(int)> held = [](int x) { return x * 3; };
+  auto generic = [](auto x) { return x + x; };
+  Pair p{v, held(v)};
+  return applyTwice([](int x) { return x - 1; }, p.sum()) + generic(v);
+}
+
+int main()
+{
+  std::println(first(1), " ", second(2));
+  return 0;
+}
+// expect: 2 14
