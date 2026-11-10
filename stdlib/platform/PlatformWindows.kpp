@@ -92,12 +92,12 @@ namespace platform
     Lock(const Lock&) = delete;
     Lock& operator=(const Lock&) = delete;
 
-    void lock() { win32::AcquireSRWLockExclusive(win32::srwLock(&this->srw)); }
-    void unlock() { win32::ReleaseSRWLockExclusive(win32::srwLock(&this->srw)); }
-    bool tryLock() { return win32::TryAcquireSRWLockExclusive(win32::srwLock(&this->srw)) != 0; }
-    void lockShared() { win32::AcquireSRWLockShared(win32::srwLock(&this->srw)); }
-    void unlockShared() { win32::ReleaseSRWLockShared(win32::srwLock(&this->srw)); }
-    bool tryLockShared() { return win32::TryAcquireSRWLockShared(win32::srwLock(&this->srw)) != 0; }
+    void lock() { win32::AcquireSRWLockExclusive(win32::srwLock(&this.srw)); }
+    void unlock() { win32::ReleaseSRWLockExclusive(win32::srwLock(&this.srw)); }
+    bool tryLock() { return win32::TryAcquireSRWLockExclusive(win32::srwLock(&this.srw)) != 0; }
+    void lockShared() { win32::AcquireSRWLockShared(win32::srwLock(&this.srw)); }
+    void unlockShared() { win32::ReleaseSRWLockShared(win32::srwLock(&this.srw)); }
+    bool tryLockShared() { return win32::TryAcquireSRWLockShared(win32::srwLock(&this.srw)) != 0; }
 
   private:
     friend class Condition; // waits on srw
@@ -116,16 +116,16 @@ namespace platform
     Condition(const Condition&) = delete;
     Condition& operator=(const Condition&) = delete;
 
-    void notifyOne() { win32::WakeConditionVariable(win32::conditionVariable(&this->condition)); }
-    void notifyAll() { win32::WakeAllConditionVariable(win32::conditionVariable(&this->condition)); }
+    void notifyOne() { win32::WakeConditionVariable(win32::conditionVariable(&this.condition)); }
+    void notifyAll() { win32::WakeAllConditionVariable(win32::conditionVariable(&this.condition)); }
     // Unlocks lock and blocks until notified (or woken spuriously), then locks it again.
-    void wait(Lock& lock) { win32::SleepConditionVariableSRW(win32::conditionVariable(&this->condition), win32::srwLock(&lock.srw), 0xFFFFFFFFu, 0); }
+    void wait(Lock& lock) { win32::SleepConditionVariableSRW(win32::conditionVariable(&this.condition), win32::srwLock(&lock.srw), 0xFFFFFFFFu, 0); }
 
     // The same for at most d (whole milliseconds, rounded up): false when the time ran out first.
     template<typename Rep, typename Period>
     bool waitFor(Lock& lock, const Duration<Rep, Period>& d)
     {
-      return win32::SleepConditionVariableSRW(win32::conditionVariable(&this->condition), win32::srwLock(&lock.srw), waitMilliseconds(d), 0) != 0;
+      return win32::SleepConditionVariableSRW(win32::conditionVariable(&this.condition), win32::srwLock(&lock.srw), waitMilliseconds(d), 0) != 0;
     }
 
   private:

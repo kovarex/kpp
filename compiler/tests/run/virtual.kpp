@@ -12,7 +12,7 @@ public:
   virtual ~Shape() { destroyed += 1; }
   virtual int area() const = 0;
   virtual const char* name() const { return "shape"; }
-  int describe() const { return this->area() * 10 + this->id; }
+  int describe() const { return this.area() * 10 + this.id; }
 };
 
 class Square : public Shape
@@ -21,7 +21,7 @@ public:
   int side;
   Square(int id, int side) : Shape(id), side(side) {}
   ~Square() override { destroyed += 100; }
-  int area() const override { return this->side * this->side; }
+  int area() const override { return this.side * this.side; }
   const char* name() const override { return "square"; }
 };
 
@@ -31,7 +31,7 @@ public:
   int w;
   int h;
   Rect(int id, int w, int h) : Shape(id), w(w), h(h) {}
-  int area() const override { return this->w * this->h; }
+  int area() const override { return this.w * this.h; }
 };
 
 int total(const Shape& s)

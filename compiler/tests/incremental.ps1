@@ -14,7 +14,7 @@ Copy-Item "$PSScriptRoot\incremental\*.kpp" $src
 # A scoped library of the program (design.md 16), its names written ilib::name: the last steps edit it.
 $lib = Join-Path $work 'lib'
 New-Item -ItemType Directory -Force $lib | Out-Null
-Set-Content (Join-Path $lib 'ilib.kpp') "int libValue() { return 1; }`nstruct LibBox { int v = 2; int get() const { return v + libValue(); } };"
+Set-Content (Join-Path $lib 'ilib.kpp') "int libValue() { return 1; }`nstruct LibBox { int v = 2; int get() const { return this.v + libValue(); } };"
 $libRoot = @('--library-root', 'ilib', $lib) # (before the sources: the server's log names a build by its last argument)
 $KppExe = (Resolve-Path $KppExe).Path
 $failed = 0
@@ -64,9 +64,9 @@ function Edit([string]$file, [string]$old, [string]$new)
 $steps = @(
   @{ name = 'first build'; expect = '6 40 40 3 8 10 6 5 8 40 3 8 6 40 13 19 44 111 12 12 7'; edit = {} },
   @{ name = 'body edit'; expect = '6 44 44 3 8 10 6 5 8 44 3 8 6 44 13 19 44 111 12 12 7'; edit = { Edit 'shapes.kpp' 'return v * 10;' 'return v * 11;' } },
-  @{ name = 'trivial getter made two statements (callers in another file)'; expect = '7 44 44 3 8 10 6 5 8 44 3 8 6 44 13 19 44 111 12 12 7'; edit = { Edit 'shapes.kpp' 'int area() const { return width * height; }' 'int area() const { int a = height * width; return a + 1; }' } },
+  @{ name = 'trivial getter made two statements (callers in another file)'; expect = '7 44 44 3 8 10 6 5 8 44 3 8 6 44 13 19 44 111 12 12 7'; edit = { Edit 'shapes.kpp' 'int area() const { return this.width * this.height; }' 'int area() const { int a = this.height * this.width; return a + 1; }' } },
   @{ name = 'template body edit (its instance checked again)'; expect = '7 44 44 3 8 11 6 5 8 44 3 8 6 44 13 19 44 111 12 12 7'; edit = { Edit 'shapes.kpp' 'T r = v + v; return r;' 'T r = v + v; return r + 1;' } },
-  @{ name = 'class template member body edit (its instance checked again)'; expect = '7 44 44 3 8 11 7 5 8 44 3 8 6 44 13 19 44 111 12 12 7'; edit = { Edit 'shapes.kpp' 'T r = v * 3; return r;' 'T r = v * 3; return r + 1;' } },
+  @{ name = 'class template member body edit (its instance checked again)'; expect = '7 44 44 3 8 11 7 5 8 44 3 8 6 44 13 19 44 111 12 12 7'; edit = { Edit 'shapes.kpp' 'T r = this.v * 3; return r;' 'T r = this.v * 3; return r + 1;' } },
   @{ name = 'constexpr body edit (what the evaluator ran it for checked again)'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12 7'; edit = { Edit 'shapes.kpp' 'int r = 5; return r;' 'int r = 6; return r;' } },
   @{ name = 'constexpr body edit failing a static_assert in another file'; expect = '(build exit 1)'; edit = { Edit 'shapes.kpp' 'int r = 6; return r;' 'int r = 12; return r;' } },
   @{ name = 'constexpr body edit back'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12 7'; edit = { Edit 'shapes.kpp' 'int r = 12; return r;' 'int r = 6; return r;' } },
@@ -188,7 +188,7 @@ $steps = @(
   @{ name = 'a scoped library''s function body edited'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12 7'; edit = { Edit '..\lib\ilib.kpp' 'int libValue() { return 1; }' 'int libValue() { return 4; }' } },
   @{ name = 'a top-level function added to the scoped library (a whole index: its namespace)'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12 7'; full = 'an added or removed function is a top-level one of a scoped library'; edit = { Edit '..\lib\ilib.kpp' 'int libValue() { return 4; }' "int libValue() { return 4; }`nint libThird() { return 3; }" } },
   @{ name = 'that function made private to its library file'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12 7'; full = 'a change outside function bodies'; edit = { Edit '..\lib\ilib.kpp' 'int libThird()' 'private int libThird()' } },
-  @{ name = 'a constexpr member a constant global''s initializer runs (codegen ran it: its copy dropped and made anew; codegen in full: the global is a constant, no constructor)'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12 8'; codegenFull = 'the global stepOrigin read an edited function'; edit = { Edit 'shapes.kpp' 'return Step(this->v + o.v); }' 'return Step(this->v + o.v + 1); }' } },
+  @{ name = 'a constexpr member a constant global''s initializer runs (codegen ran it: its copy dropped and made anew; codegen in full: the global is a constant, no constructor)'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12 8'; codegenFull = 'the global stepOrigin read an edited function'; edit = { Edit 'shapes.kpp' 'return Step(this.v + o.v); }' 'return Step(this.v + o.v + 1); }' } },
   @{ name = 'a friend function defined in a class that argument-dependent lookup found had none, and a call of it (a whole index: the resolver''s answer for the class goes with it)'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12 8'; full = 'a change outside whole functions and data members'; edit = { Edit 'members.kpp' '  int v = 3;' "  int v = 3;`n  friend int weigh(const Weighed& w) { return w.v * 2; }"; Edit 'members.kpp' 'return weigh(w, 1); }' 'return weigh(w, 1) + weigh(w); }' } }
 )
 $n = 0

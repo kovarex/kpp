@@ -3,7 +3,7 @@ class Account
 {
 public:
   Account(int b) : balance(b) {}
-  int get() const { return this->balance; }
+  int get() const { return this.balance; }
   friend class Auditor;
   friend int peek(const Account& a);
 protected:
@@ -12,7 +12,7 @@ private:
   int balance;
   struct Secret { int code = 7; };
   static int count;
-  int helper() const { return this->balance * 2; }
+  int helper() const { return this.balance * 2; }
 };
 int Account::count = Account(1).helper();
 class Auditor
@@ -25,7 +25,7 @@ class Premium : public Account
 {
 public:
   Premium() : Account(5) {}
-  int myFee() { return this->fee; }
+  int myFee() { return this.fee; }
 };
 int thief(const Account& a) { return a.balance; }
 int thief2(Account& a) { return a.fee; }

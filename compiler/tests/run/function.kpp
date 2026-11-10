@@ -5,7 +5,7 @@ extern "C" int printf(const char* format, ...);
 struct Counter
 {
   int count = 0;
-  void operator()(int by) { this->count += by; }
+  void operator()(int by) { this.count += by; }
 };
 
 int twice(int x) { return x * 2; }
@@ -23,8 +23,8 @@ struct Button
   std::Function<void()> onClick;
   void click()
   {
-    if (this->onClick)
-      this->onClick();
+    if (this.onClick)
+      this.onClick();
   }
 };
 

@@ -543,7 +543,7 @@ util.unscoped = true;                       // its names are bare everywhere, as
   be ambiguous; thread A's check).
 - **`lib.thisReference = true`:** the library's sources and tests are written with `this` the object
   (`this.x`, `&this`, [design 23d](design.md)), whoever uses it; a program that keeps the pointer can use
-  it. kpp's options: `--this-reference-library NAME`. It goes away when that meaning becomes the default.
+  it. Since 2026-11-10 that is the only meaning: accepted, no change (design 23d).
 - **`lib.unscoped = true`:** its names are reachable only bare, never as `NAME::x` (its name is for
   diagnostics only), and share the one global scope with the
   program, the other unscoped libraries and the C imports; a clash is a compile error. The

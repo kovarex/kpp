@@ -42,32 +42,32 @@ namespace filesystem
 
     path& operator=(const WString& source)
     {
-      this->text = source;
-      return *this;
+      this.text = source;
+      return this;
     }
 
     path& operator=(const wchar_t* source)
     {
-      this->text = WString(source);
-      return *this;
+      this.text = WString(source);
+      return this;
     }
 
     path& operator=(const String& source)
     {
-      this->text = widenUtf8(source.data(), source.size());
-      return *this;
+      this.text = widenUtf8(source.data(), source.size());
+      return this;
     }
 
     path& operator=(const char* source)
     {
-      this->text = widenUtf8(source, checkedSize(strlen(source), "string too long"));
-      return *this;
+      this.text = widenUtf8(source, checkedSize(strlen(source), "string too long"));
+      return this;
     }
 
     path& assign(const path& source)
     {
-      this->text = source.text;
-      return *this;
+      this.text = source.text;
+      return this;
     }
 
     static bool isSeparator(wchar_t c) { return c == L'/' || (config::platform == Platform::Windows && c == L'\\'); }
@@ -79,7 +79,7 @@ namespace filesystem
     {
       if constexpr (config::platform != Platform::Windows)
         return 0;
-      const WString& t = this->text;
+      const WString& t = this.text;
       ContainerSize n = t.size();
       if (n >= 2 && t[1] == L':' && ((t[0] >= L'A' && t[0] <= L'Z') || (t[0] >= L'a' && t[0] <= L'z')))
         return 2;
@@ -95,23 +95,23 @@ namespace filesystem
 
     ContainerSize rootDirectoryEnd() const
     {
-      ContainerSize i = this->rootNameEnd();
-      return i < this->text.size() && path::isSeparator(this->text[i]) ? i + 1 : i;
+      ContainerSize i = this.rootNameEnd();
+      return i < this.text.size() && path::isSeparator(this.text[i]) ? i + 1 : i;
     }
 
     ContainerSize relativeStart() const
     {
-      ContainerSize i = this->rootNameEnd();
-      while (i < this->text.size() && path::isSeparator(this->text[i]))
+      ContainerSize i = this.rootNameEnd();
+      while (i < this.text.size() && path::isSeparator(this.text[i]))
         ++i;
       return i;
     }
 
     ContainerSize filenameStart() const
     {
-      ContainerSize start = this->relativeStart();
-      ContainerSize i = this->text.size();
-      while (i > start && !path::isSeparator(this->text[i - 1]))
+      ContainerSize start = this.relativeStart();
+      ContainerSize i = this.text.size();
+      while (i > start && !path::isSeparator(this.text[i - 1]))
         --i;
       return i;
     }
@@ -122,117 +122,117 @@ namespace filesystem
     path& operator/=(const path& p)
     {
       ContainerSize otherRootName = p.rootNameEnd();
-      if (p.is_absolute() || (otherRootName > 0 && p.root_name().text != this->root_name().text))
+      if (p.is_absolute() || (otherRootName > 0 && p.root_name().text != this.root_name().text))
       {
-        this->text = p.text;
-        return *this;
+        this.text = p.text;
+        return this;
       }
       if (p.has_root_directory())
       {
-        this->text = this->text.substr(0, this->rootNameEnd()) + p.text.substr(otherRootName);
-        return *this;
+        this.text = this.text.substr(0, this.rootNameEnd()) + p.text.substr(otherRootName);
+        return this;
       }
-      if (this->has_filename() || (!this->has_root_directory() && this->is_absolute()))
-        this->text.push_back(path::preferred_separator);
-      this->text.append(p.text.c_str() + otherRootName, p.text.size() - otherRootName);
-      return *this;
+      if (this.has_filename() || (!this.has_root_directory() && this.is_absolute()))
+        this.text.push_back(path::preferred_separator);
+      this.text.append(p.text.c_str() + otherRootName, p.text.size() - otherRootName);
+      return this;
     }
 
-    path& append(const path& p) { return *this /= p; }
+    path& append(const path& p) { return this /= p; }
 
     // Concatenation without a separator.
     path& operator+=(const path& p)
     {
-      this->text.append(p.text);
-      return *this;
+      this.text.append(p.text);
+      return this;
     }
 
     path& operator+=(const WString& s)
     {
-      this->text.append(s);
-      return *this;
+      this.text.append(s);
+      return this;
     }
 
     path& operator+=(const wchar_t* s)
     {
-      this->text.append(s);
-      return *this;
+      this.text.append(s);
+      return this;
     }
 
     path& operator+=(wchar_t c)
     {
-      this->text.push_back(c);
-      return *this;
+      this.text.push_back(c);
+      return this;
     }
 
     path& operator+=(const String& s)
     {
-      this->text.append(widenUtf8(s.data(), s.size()));
-      return *this;
+      this.text.append(widenUtf8(s.data(), s.size()));
+      return this;
     }
 
     path& operator+=(const char* s)
     {
-      this->text.append(widenUtf8(s, checkedSize(strlen(s), "string too long")));
-      return *this;
+      this.text.append(widenUtf8(s, checkedSize(strlen(s), "string too long")));
+      return this;
     }
 
-    path& concat(const path& p) { return *this += p; }
+    path& concat(const path& p) { return this += p; }
 
-    void clear() { this->text.clear(); }
+    void clear() { this.text.clear(); }
 
     // `/` as `\` on Windows; nothing elsewhere, where `/` is the one separator.
     path& make_preferred()
     {
       if constexpr (config::platform == Platform::Windows)
-        for (wchar_t& c : this->text)
+        for (wchar_t& c : this.text)
           if (c == L'/')
             c = L'\\';
-      return *this;
+      return this;
     }
 
     path& remove_filename()
     {
-      this->text.resize(this->filenameStart());
-      return *this;
+      this.text.resize(this.filenameStart());
+      return this;
     }
 
     path& replace_filename(const path& replacement)
     {
-      this->remove_filename();
-      return *this /= replacement;
+      this.remove_filename();
+      return this /= replacement;
     }
 
     path& replace_extension(const path& replacement)
     {
-      this->text.resize(this->text.size() - this->extension().text.size());
+      this.text.resize(this.text.size() - this.extension().text.size());
       if (!replacement.text.empty())
       {
         if (replacement.text[0] != L'.')
-          this->text.push_back(L'.');
-        this->text.append(replacement.text);
+          this.text.push_back(L'.');
+        this.text.append(replacement.text);
       }
-      return *this;
+      return this;
     }
 
-    path& replace_extension() { return this->replace_extension(path()); }
-    void swap(path& other) noexcept { std::swap(this->text, other.text); }
+    path& replace_extension() { return this.replace_extension(path()); }
+    void swap(path& other) noexcept { std::swap(this.text, other.text); }
 
-    const WString& native() const { return this->text; }
-    const wchar_t* c_str() const { return this->text.c_str(); }
+    const WString& native() const { return this.text; }
+    const wchar_t* c_str() const { return this.text.c_str(); }
     // The native string, implicitly (std::filesystem::path's operator string_type): Logger's
     // `widen(directory / "factorio-dump-current.dmp")` takes it as a WString.
-    implicit operator WString() const { return this->text; }
+    implicit operator WString() const { return this.text; }
     // The text as UTF-8 (string, u8string) or UTF-16 (wstring); the generic forms with `/`.
-    String string() const { return narrowUtf16(this->text.c_str(), this->text.size()); }
-    WString wstring() const { return this->text; }
-    String u8string() const { return this->string(); }
+    String string() const { return narrowUtf16(this.text.c_str(), this.text.size()); }
+    WString wstring() const { return this.text; }
+    String u8string() const { return this.string(); }
 
     // The generic forms are the target's C++ library's: on Windows (MSVC's STL) every `\` becomes `/`
     // and runs stay; elsewhere (libstdc++) a run of `/` is one.
     WString generic_wstring() const
     {
-      WString generic = this->text;
+      WString generic = this.text;
       if constexpr (config::platform == Platform::Windows)
       {
         for (wchar_t& c : generic)
@@ -252,58 +252,58 @@ namespace filesystem
 
     String generic_string() const
     {
-      WString generic = this->generic_wstring();
+      WString generic = this.generic_wstring();
       return narrowUtf16(generic.c_str(), generic.size());
     }
 
-    String generic_u8string() const { return this->generic_string(); }
+    String generic_u8string() const { return this.generic_string(); }
 
     // Element by element: the root names as text, then a root directory before none, then the
     // relative parts' elements as text.
     i32 compare(const path& other) const;
-    i32 compare(const WString& other) const { return this->compare(path(other)); }
-    i32 compare(const wchar_t* other) const { return this->compare(path(other)); }
+    i32 compare(const WString& other) const { return this.compare(path(other)); }
+    i32 compare(const wchar_t* other) const { return this.compare(path(other)); }
 
-    path root_name() const { return path(this->text.substr(0, this->rootNameEnd())); }
+    path root_name() const { return path(this.text.substr(0, this.rootNameEnd())); }
 
     path root_directory() const
     {
-      ContainerSize a = this->rootNameEnd();
-      return path(this->text.substr(a, this->rootDirectoryEnd() - a));
+      ContainerSize a = this.rootNameEnd();
+      return path(this.text.substr(a, this.rootDirectoryEnd() - a));
     }
 
-    path root_path() const { return path(this->text.substr(0, this->rootDirectoryEnd())); }
-    path relative_path() const { return path(this->text.substr(this->relativeStart())); }
+    path root_path() const { return path(this.text.substr(0, this.rootDirectoryEnd())); }
+    path relative_path() const { return path(this.text.substr(this.relativeStart())); }
 
     // The path without its last element (itself when it has no relative path), trailing
     // separators before that element removed.
     path parent_path() const
     {
-      ContainerSize start = this->relativeStart();
-      if (start == this->text.size())
-        return *this;
-      ContainerSize end = this->filenameStart();
-      while (end > start && path::isSeparator(this->text[end - 1]))
+      ContainerSize start = this.relativeStart();
+      if (start == this.text.size())
+        return this;
+      ContainerSize end = this.filenameStart();
+      while (end > start && path::isSeparator(this.text[end - 1]))
         --end;
       if (end == start)
-        return this->root_path();
-      return path(this->text.substr(0, end));
+        return this.root_path();
+      return path(this.text.substr(0, end));
     }
 
-    path filename() const { return path(this->text.substr(this->filenameStart())); }
+    path filename() const { return path(this.text.substr(this.filenameStart())); }
 
     // The filename without its extension; the extension is from its last `.`, unless that is its
     // first character or the filename is `.` or `..`.
     path stem() const
     {
-      WString name = this->text.substr(this->filenameStart());
+      WString name = this.text.substr(this.filenameStart());
       ContainerSize dot = path::extensionDot(name);
       return path(dot == WString::npos ? name : name.substr(0, dot));
     }
 
     path extension() const
     {
-      WString name = this->text.substr(this->filenameStart());
+      WString name = this.text.substr(this.filenameStart());
       ContainerSize dot = path::extensionDot(name);
       return path(dot == WString::npos ? WString() : name.substr(dot));
     }
@@ -316,27 +316,27 @@ namespace filesystem
       return dot == 0 ? WString::npos : dot; // (rfind's npos stays npos)
     }
 
-    bool empty() const { return this->text.empty(); }
-    bool has_root_name() const { return this->rootNameEnd() > 0; }
-    bool has_root_directory() const { return this->rootDirectoryEnd() > this->rootNameEnd(); }
-    bool has_root_path() const { return this->rootDirectoryEnd() > 0; }
-    bool has_relative_path() const { return this->relativeStart() < this->text.size(); }
-    bool has_parent_path() const { return !this->parent_path().empty(); }
-    bool has_filename() const { return this->filenameStart() < this->text.size(); }
-    bool has_stem() const { return !this->stem().empty(); }
-    bool has_extension() const { return !this->extension().empty(); }
+    bool empty() const { return this.text.empty(); }
+    bool has_root_name() const { return this.rootNameEnd() > 0; }
+    bool has_root_directory() const { return this.rootDirectoryEnd() > this.rootNameEnd(); }
+    bool has_root_path() const { return this.rootDirectoryEnd() > 0; }
+    bool has_relative_path() const { return this.relativeStart() < this.text.size(); }
+    bool has_parent_path() const { return !this.parent_path().empty(); }
+    bool has_filename() const { return this.filenameStart() < this.text.size(); }
+    bool has_stem() const { return !this.stem().empty(); }
+    bool has_extension() const { return !this.extension().empty(); }
     // Absolute on Windows: a root name and a root directory (`C:\x`, `\\server\share`); elsewhere a
     // root directory (`/x`).
-    bool is_absolute() const { return (config::platform != Platform::Windows || this->has_root_name()) && this->has_root_directory(); }
-    bool is_relative() const { return !this->is_absolute(); }
+    bool is_absolute() const { return (config::platform != Platform::Windows || this.has_root_name()) && this.has_root_directory(); }
+    bool is_relative() const { return !this.is_absolute(); }
 
     path lexically_normal() const;
     path lexically_relative(const path& base) const;
 
     path lexically_proximate(const path& base) const
     {
-      path relative = this->lexically_relative(base);
-      return relative.empty() ? *this : relative;
+      path relative = this.lexically_relative(base);
+      return relative.empty() ? this : relative;
     }
 
     pathIterator begin() const;
@@ -391,7 +391,7 @@ namespace filesystem
     pathIterator(const path* owner, ContainerSize position, ContainerSize length) : owner(owner), position(position), length(length)
     {
       if (owner && position <= owner->text.size())
-        this->element = path(owner->text.substr(position, length));
+        this.element = path(owner->text.substr(position, length));
     }
 
     // The element after the one at [position, position + length).
@@ -443,40 +443,40 @@ namespace filesystem
       return pathIterator::filenameAt(owner, owner->relativeStart());
     }
 
-    const path& operator*() const { return this->element; }
-    const path* operator->() const { return &this->element; }
+    const path& operator*() const { return this.element; }
+    const path* operator->() const { return &this.element; }
 
     pathIterator& operator++()
     {
-      *this = pathIterator::after(this->owner, this->position, this->length);
-      return *this;
+      this = pathIterator::after(this.owner, this.position, this.length);
+      return this;
     }
 
     pathIterator operator++(i32)
     {
-      pathIterator before = *this;
-      ++*this;
+      pathIterator before = this;
+      ++this;
       return before;
     }
 
     // The element before: found from the front.
     pathIterator& operator--()
     {
-      pathIterator previous = pathIterator::first(this->owner);
-      for (pathIterator next = previous; next.position != this->position; next = pathIterator::after(this->owner, next.position, next.length))
+      pathIterator previous = pathIterator::first(this.owner);
+      for (pathIterator next = previous; next.position != this.position; next = pathIterator::after(this.owner, next.position, next.length))
         previous = next;
-      *this = previous;
-      return *this;
+      this = previous;
+      return this;
     }
 
     pathIterator operator--(i32)
     {
-      pathIterator before = *this;
-      --*this;
+      pathIterator before = this;
+      --this;
       return before;
     }
 
-    bool operator==(const pathIterator& other) const { return this->owner == other.owner && this->position == other.position; }
+    bool operator==(const pathIterator& other) const { return this.owner == other.owner && this.position == other.position; }
 
   private:
     const path* owner = nullptr;
@@ -497,19 +497,19 @@ namespace filesystem
     return hash;
   }
 
-  pathIterator path::begin() const { return pathIterator::first(this); }
-  pathIterator path::end() const { return pathIterator(this, this->text.size() + 1, 0); }
+  pathIterator path::begin() const { return pathIterator::first(&this); }
+  pathIterator path::end() const { return pathIterator(&this, this.text.size() + 1, 0); }
 
   i32 path::compare(const path& other) const
   {
-    i32 names = this->root_name().text.compare(other.root_name().text);
+    i32 names = this.root_name().text.compare(other.root_name().text);
     if (names != 0)
       return names;
-    bool directory = this->has_root_directory();
+    bool directory = this.has_root_directory();
     bool otherDirectory = other.has_root_directory();
     if (directory != otherDirectory)
       return directory ? 1 : -1;
-    path relative = this->relative_path();
+    path relative = this.relative_path();
     path otherRelative = other.relative_path();
     pathIterator a = relative.begin();
     pathIterator b = otherRelative.begin();
@@ -531,11 +531,11 @@ namespace filesystem
   // what ends up empty.
   path path::lexically_normal() const
   {
-    if (this->text.empty())
+    if (this.text.empty())
       return path();
     Vector<WString> parts;
     bool trailing = false;
-    path relative = this->relative_path();
+    path relative = this.relative_path();
     for (const path& element : relative)
     {
       const WString& e = element.text;
@@ -548,7 +548,7 @@ namespace filesystem
           parts.pop_back();
           trailing = true;
         }
-        else if (!this->has_root_directory())
+        else if (!this.has_root_directory())
         {
           parts.push_back(e);
           trailing = false;
@@ -560,11 +560,11 @@ namespace filesystem
         trailing = false;
       }
     }
-    WString result = this->root_name().text;
+    WString result = this.root_name().text;
     for (wchar_t& c : result)
       if (c == L'/')
         c = path::preferred_separator;
-    if (this->has_root_directory())
+    if (this.has_root_directory())
       result.push_back(path::preferred_separator);
     for (ContainerSize i = 0; i < parts.size(); ++i)
     {
@@ -584,11 +584,11 @@ namespace filesystem
   // `.` and `..`), then the rest of this path, or `.` for none.
   path path::lexically_relative(const path& base) const
   {
-    if (this->root_name().text != base.root_name().text || this->is_absolute() != base.is_absolute() ||
-        (!this->has_root_directory() && base.has_root_directory()))
+    if (this.root_name().text != base.root_name().text || this.is_absolute() != base.is_absolute() ||
+        (!this.has_root_directory() && base.has_root_directory()))
       return path();
-    pathIterator a = this->begin();
-    pathIterator aEnd = this->end();
+    pathIterator a = this.begin();
+    pathIterator aEnd = this.end();
     pathIterator b = base.begin();
     pathIterator bEnd = base.end();
     while (a != aEnd && b != bEnd && a->text == b->text)
@@ -716,10 +716,10 @@ namespace filesystem
   public:
     file_status() {}
     file_status(file_type type, perms permissions = perms::unknown) : typeValue(type), permsValue(permissions) {}
-    file_type type() const { return this->typeValue; }
-    perms permissions() const { return this->permsValue; }
-    void type(file_type type) { this->typeValue = type; }
-    void permissions(perms permissions) { this->permsValue = permissions; }
+    file_type type() const { return this.typeValue; }
+    perms permissions() const { return this.permsValue; }
+    void type(file_type type) { this.typeValue = type; }
+    void permissions(perms permissions) { this.permsValue = permissions; }
     bool operator==(const file_status& other) const = default;
 
   private:
@@ -753,17 +753,17 @@ namespace filesystem
 
     filesystem_error(const String& what, const path& path1, ErrorCode code) : SystemError(code, what), path1Value(path1)
     {
-      this->message = what + ": " + code.message() + " [" + This::shownPath(path1) + "]";
+      this.message = what + ": " + code.message() + " [" + This::shownPath(path1) + "]";
     }
 
     filesystem_error(const String& what, const path& path1, const path& path2, ErrorCode code)
       : SystemError(code, what), path1Value(path1), path2Value(path2)
     {
-      this->message = what + ": " + code.message() + " [" + This::shownPath(path1) + "] [" + This::shownPath(path2) + "]";
+      this.message = what + ": " + code.message() + " [" + This::shownPath(path1) + "] [" + This::shownPath(path2) + "]";
     }
 
-    const path& path1() const { return this->path1Value; }
-    const path& path2() const { return this->path2Value; }
+    const path& path1() const { return this.path1Value; }
+    const path& path2() const { return this.path2Value; }
 
   private:
     static String shownPath(const path& p) { return platform::narrowWideReplacing(p.c_str(), (i32)p.native().size()); }
@@ -1032,74 +1032,74 @@ namespace filesystem
     directory_entry() {}
     directory_entry(const filesystem::path& p) : pathValue(p) {}
 
-    const filesystem::path& path() const { return this->pathValue; }
-    implicit operator const filesystem::path&() const { return this->pathValue; }
+    const filesystem::path& path() const { return this.pathValue; }
+    implicit operator const filesystem::path&() const { return this.pathValue; }
 
     void assign(const filesystem::path& p)
     {
-      this->pathValue = p;
-      this->listed = false;
+      this.pathValue = p;
+      this.listed = false;
     }
 
-    void refresh() { this->listed = false; }
+    void refresh() { this.listed = false; }
 
     // The listing's status, links followed (a link is asked anew).
     file_status status(ErrorCode& ec) const
     {
-      if (this->listed && this->info.type != file_type::symlink)
+      if (this.listed && this.info.type != file_type::symlink)
       {
         ec.clear();
-        return file_status(this->info.type, this->info.permissions);
+        return file_status(this.info.type, this.info.permissions);
       }
-      return filesystem::status(this->pathValue, ec);
+      return filesystem::status(this.pathValue, ec);
     }
 
     file_status status() const
     {
       ErrorCode ec;
-      file_status s = this->status(ec);
+      file_status s = this.status(ec);
       if (s.type() == file_type::none)
-        throw filesystem_error(String("directory_entry::status"), this->pathValue, ec);
+        throw filesystem_error(String("directory_entry::status"), this.pathValue, ec);
       return s;
     }
 
     file_status symlink_status(ErrorCode& ec) const
     {
-      if (this->listed)
+      if (this.listed)
       {
         ec.clear();
-        return file_status(this->info.type, this->info.permissions);
+        return file_status(this.info.type, this.info.permissions);
       }
-      return filesystem::symlink_status(this->pathValue, ec);
+      return filesystem::symlink_status(this.pathValue, ec);
     }
 
     file_status symlink_status() const
     {
       ErrorCode ec;
-      return this->symlink_status(ec);
+      return this.symlink_status(ec);
     }
 
-    bool exists() const { return filesystem::exists(this->status()); }
-    bool is_directory() const { return filesystem::is_directory(this->status()); }
-    bool is_regular_file() const { return filesystem::is_regular_file(this->status()); }
-    bool is_symlink() const { return filesystem::is_symlink(this->symlink_status()); }
+    bool exists() const { return filesystem::exists(this.status()); }
+    bool is_directory() const { return filesystem::is_directory(this.status()); }
+    bool is_regular_file() const { return filesystem::is_regular_file(this.status()); }
+    bool is_symlink() const { return filesystem::is_symlink(this.symlink_status()); }
 
     u64 file_size(ErrorCode& ec) const
     {
-      if (this->listed && this->info.sizeKnown)
+      if (this.listed && this.info.sizeKnown)
       {
         ec.clear();
-        return this->info.size;
+        return this.info.size;
       }
-      return filesystem::file_size(this->pathValue, ec);
+      return filesystem::file_size(this.pathValue, ec);
     }
 
     u64 file_size() const
     {
       ErrorCode ec;
-      u64 s = this->file_size(ec);
+      u64 s = this.file_size(ec);
       if (ec)
-        throw filesystem_error(String("directory_entry::file_size"), this->pathValue, ec);
+        throw filesystem_error(String("directory_entry::file_size"), this.pathValue, ec);
       return s;
     }
 
@@ -1107,28 +1107,28 @@ namespace filesystem
     // asked anew, followed).
     file_time_type last_write_time(ErrorCode& ec) const
     {
-      if (this->listed && this->info.type != file_type::symlink && this->info.type != file_type::none)
+      if (this.listed && this.info.type != file_type::symlink && this.info.type != file_type::none)
       {
         ec.clear();
-        return file_time_type(FileClock::duration(platform::fileClockTicksOf(this->info.writeTime)));
+        return file_time_type(FileClock::duration(platform::fileClockTicksOf(this.info.writeTime)));
       }
-      return filesystem::last_write_time(this->pathValue, ec);
+      return filesystem::last_write_time(this.pathValue, ec);
     }
 
     file_time_type last_write_time() const
     {
       ErrorCode ec;
-      file_time_type t = this->last_write_time(ec);
+      file_time_type t = this.last_write_time(ec);
       if (ec)
-        throw filesystem_error(String("directory_entry::last_write_time"), this->pathValue, ec);
+        throw filesystem_error(String("directory_entry::last_write_time"), this.pathValue, ec);
       return t;
     }
 
-    u64 hard_link_count(ErrorCode& ec) const { return filesystem::hard_link_count(this->pathValue, ec); }
-    u64 hard_link_count() const { return filesystem::hard_link_count(this->pathValue); }
+    u64 hard_link_count(ErrorCode& ec) const { return filesystem::hard_link_count(this.pathValue, ec); }
+    u64 hard_link_count() const { return filesystem::hard_link_count(this.pathValue); }
 
-    bool operator==(const directory_entry& other) const { return this->pathValue == other.pathValue; }
-    bool operator<(const directory_entry& other) const { return this->pathValue < other.pathValue; }
+    bool operator==(const directory_entry& other) const { return this.pathValue == other.pathValue; }
+    bool operator<(const directory_entry& other) const { return this.pathValue < other.pathValue; }
 
   private:
     friend class directory_iterator; // fills it in
@@ -1166,22 +1166,22 @@ namespace filesystem
     directory_iterator(const path& p)
     {
       ErrorCode ec;
-      this->open(p, ec);
+      this.open(p, ec);
       if (ec)
         throw filesystem_error(String("directory_iterator"), p, ec);
     }
 
-    directory_iterator(const path& p, ErrorCode& ec) { this->open(p, ec); }
+    directory_iterator(const path& p, ErrorCode& ec) { this.open(p, ec); }
 
     directory_iterator(const path& p, directory_options options)
     {
       ErrorCode ec;
-      this->open(p, ec);
+      this.open(p, ec);
       if (ec)
         throw filesystem_error(String("directory_iterator"), p, ec);
     }
 
-    directory_iterator(const path& p, directory_options options, ErrorCode& ec) { this->open(p, ec); }
+    directory_iterator(const path& p, directory_options options, ErrorCode& ec) { this.open(p, ec); }
 
     void open(const path& p, ErrorCode& ec)
     {
@@ -1190,21 +1190,21 @@ namespace filesystem
       state->directory = p;
       if (!state->reader.open(p, ec))
         return; // an error, or an empty directory (the end)
-      this->listing = state;
-      this->advance(ec);
+      this.listing = state;
+      this.advance(ec);
     }
 
     // The next entry; the end when there is none (or on an error, which ec reports).
     void advance(ErrorCode& ec)
     {
       ec.clear();
-      if (!this->listing)
+      if (!this.listing)
         return;
       WString name;
-      DirectoryListing& state = *this->listing;
+      DirectoryListing& state = *this.listing;
       if (!state.reader.next(name, state.entry.info, ec))
       {
-        this->listing = SharedPtr<DirectoryListing>();
+        this.listing = SharedPtr<DirectoryListing>();
         return;
       }
       state.entry.pathValue = state.directory / path(name);
@@ -1213,21 +1213,21 @@ namespace filesystem
 
     directory_iterator& increment(ErrorCode& ec)
     {
-      this->advance(ec);
-      return *this;
+      this.advance(ec);
+      return this;
     }
 
     directory_iterator& operator++()
     {
       ErrorCode ec;
-      this->advance(ec);
+      this.advance(ec);
       if (ec)
         throw filesystem_error(String("directory_iterator::operator++"), ec);
-      return *this;
+      return this;
     }
 
-    const directory_entry& operator*() const { return this->listing->entry; }
-    const directory_entry* operator->() const { return &this->listing->entry; }
+    const directory_entry& operator*() const { return this.listing->entry; }
+    const directory_entry* operator->() const { return &this.listing->entry; }
     bool operator==(const directory_iterator& other) const = default;
 
   private:
@@ -1267,37 +1267,37 @@ namespace filesystem
     recursive_directory_iterator(const path& p, directory_options options)
     {
       ErrorCode ec;
-      this->open(p, options, ec);
+      this.open(p, options, ec);
       if (ec)
         throw filesystem_error(String("recursive_directory_iterator"), p, ec);
     }
 
-    recursive_directory_iterator(const path& p, ErrorCode& ec) { this->open(p, directory_options::none, ec); }
-    recursive_directory_iterator(const path& p, directory_options options, ErrorCode& ec) { this->open(p, options, ec); }
+    recursive_directory_iterator(const path& p, ErrorCode& ec) { this.open(p, directory_options::none, ec); }
+    recursive_directory_iterator(const path& p, directory_options options, ErrorCode& ec) { this.open(p, options, ec); }
 
-    const directory_entry& operator*() const { return *this->listing->levels.back(); }
-    const directory_entry* operator->() const { return &*this->listing->levels.back(); }
+    const directory_entry& operator*() const { return *this.listing->levels.back(); }
+    const directory_entry* operator->() const { return &*this.listing->levels.back(); }
 
-    directory_options options() const { return this->listing ? this->listing->options : directory_options::none; }
+    directory_options options() const { return this.listing ? this.listing->options : directory_options::none; }
     // How many directories below the first one the current entry is (0 for the first one's entries).
-    i32 depth() const { return this->listing ? (i32)this->listing->levels.size() - 1 : 0; }
+    i32 depth() const { return this.listing ? (i32)this.listing->levels.size() - 1 : 0; }
     // Whether the next increment enters the current entry if it is a directory.
-    bool recursion_pending() const { return this->listing && this->listing->pending; }
+    bool recursion_pending() const { return this.listing && this.listing->pending; }
 
     void disable_recursion_pending()
     {
-      if (this->listing)
-        this->listing->pending = false;
+      if (this.listing)
+        this.listing->pending = false;
     }
 
     recursive_directory_iterator& increment(ErrorCode& ec)
     {
       ec.clear();
-      if (!this->listing)
-        return *this;
-      RecursiveListing& state = *this->listing;
+      if (!this.listing)
+        return this;
+      RecursiveListing& state = *this.listing;
       const directory_entry& entry = *state.levels.back();
-      if (state.pending && this->enters(entry))
+      if (state.pending && this.enters(entry))
       {
         directory_iterator inner(entry.path(), ec);
         if (ec)
@@ -1305,56 +1305,56 @@ namespace filesystem
           bool denied = ec == Errc::permission_denied;
           if (!denied || ((u32)state.options & (u32)directory_options::skip_permission_denied) == 0)
           {
-            this->listing = SharedPtr<RecursiveListing>();
-            return *this;
+            this.listing = SharedPtr<RecursiveListing>();
+            return this;
           }
           ec.clear();
         }
         else if (inner != directory_iterator())
         {
           state.levels.push_back(inner);
-          return *this;
+          return this;
         }
       }
       state.pending = true;
-      this->advance(ec);
-      return *this;
+      this.advance(ec);
+      return this;
     }
 
     recursive_directory_iterator& operator++()
     {
       ErrorCode ec;
-      this->increment(ec);
+      this.increment(ec);
       if (ec)
         throw filesystem_error(String("recursive_directory_iterator::operator++"), ec);
-      return *this;
+      return this;
     }
 
     // Leaves the current directory: the next entry after it one level up (the end from the top).
     void pop(ErrorCode& ec)
     {
       ec.clear();
-      if (!this->listing)
+      if (!this.listing)
         return;
-      this->listing->levels.pop_back();
-      this->listing->pending = true;
-      if (this->listing->levels.empty())
+      this.listing->levels.pop_back();
+      this.listing->pending = true;
+      if (this.listing->levels.empty())
       {
-        this->listing = SharedPtr<RecursiveListing>();
+        this.listing = SharedPtr<RecursiveListing>();
         return;
       }
-      this->advance(ec);
+      this.advance(ec);
     }
 
     void pop()
     {
       ErrorCode ec;
-      this->pop(ec);
+      this.pop(ec);
       if (ec)
         throw filesystem_error(String("recursive_directory_iterator::pop"), ec);
     }
 
-    bool operator==(const recursive_directory_iterator& other) const { return this->listing == other.listing; }
+    bool operator==(const recursive_directory_iterator& other) const { return this.listing == other.listing; }
 
   private:
     void open(const path& p, directory_options options, ErrorCode& ec)
@@ -1365,7 +1365,7 @@ namespace filesystem
       SharedPtr<RecursiveListing> state = makeShared<RecursiveListing>();
       state->options = options;
       state->levels.push_back(top);
-      this->listing = state;
+      this.listing = state;
     }
 
     // Whether the entry is a directory to enter: a real one, or a link to one with
@@ -1376,7 +1376,7 @@ namespace filesystem
       file_status own = entry.symlink_status(probe);
       if (own.type() == file_type::directory)
         return true;
-      if (own.type() != file_type::symlink || ((u32)this->listing->options & (u32)directory_options::follow_directory_symlink) == 0)
+      if (own.type() != file_type::symlink || ((u32)this.listing->options & (u32)directory_options::follow_directory_symlink) == 0)
         return false;
       return filesystem::is_directory(entry.status(probe));
     }
@@ -1384,20 +1384,20 @@ namespace filesystem
     // The next entry: the current level's next, or, when that level is done, the next one up.
     void advance(ErrorCode& ec)
     {
-      RecursiveListing& state = *this->listing;
+      RecursiveListing& state = *this.listing;
       while (!state.levels.empty())
       {
         state.levels.back().increment(ec);
         if (ec)
         {
-          this->listing = SharedPtr<RecursiveListing>();
+          this.listing = SharedPtr<RecursiveListing>();
           return;
         }
         if (state.levels.back() != directory_iterator())
           return;
         state.levels.pop_back();
       }
-      this->listing = SharedPtr<RecursiveListing>();
+      this.listing = SharedPtr<RecursiveListing>();
     }
 
     SharedPtr<RecursiveListing> listing;

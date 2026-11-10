@@ -36,70 +36,70 @@ public:
 
   ~UniquePtr()
   {
-    if (this->held)
-      D()(this->held);
+    if (this.held)
+      D()(this.held);
   }
 
   UniquePtr<T, D>& operator=(const UniquePtr<T, D>& other) = delete;
 
   UniquePtr<T, D>& operator=(nullptr_t)
   {
-    this->reset(nullptr);
-    return *this;
+    this.reset(nullptr);
+    return this;
   }
 
   UniquePtr<T, D>& operator=(UniquePtr<T, D>&& other) noexcept
   {
     // other may live inside the object this owns (`head = move(head->next)`): taken first, as
     // std's reset(r.release()), so the old object is deleted only after.
-    if (this != &other)
-      this->reset(other.release());
-    return *this;
+    if (&this != &other)
+      this.reset(other.release());
+    return this;
   }
 
   template<typename U, typename E> requires (isConvertible<U*, T*> && isConvertible<E, D> && !(isSame<U, T> && isSame<E, D>))
   UniquePtr<T, D>& operator=(UniquePtr<U, E>&& other) noexcept
   {
-    this->reset(other.release());
-    return *this;
+    this.reset(other.release());
+    return this;
   }
 
-  T* get() const { return this->held; }
+  T* get() const { return this.held; }
   // A deleter, by value (std returns a reference to the stored one; this one stores none).
   D get_deleter() const { return D(); }
-  T& operator*() const { return *this->held; }
-  T* operator->() const { return this->held; }
-  operator bool() const { return this->held != nullptr; }
-  bool operator!() const { return this->held == nullptr; }
-  bool operator==(const UniquePtr<T, D>& other) const { return this->held == other.held; }
-  bool operator==(nullptr_t) const { return this->held == nullptr; }
+  T& operator*() const { return *this.held; }
+  T* operator->() const { return this.held; }
+  operator bool() const { return this.held != nullptr; }
+  bool operator!() const { return this.held == nullptr; }
+  bool operator==(const UniquePtr<T, D>& other) const { return this.held == other.held; }
+  bool operator==(nullptr_t) const { return this.held == nullptr; }
   // Against a plain pointer, of the same class or a base of it.
   template<typename U>
-  bool operator==(const U* other) const { return this->held == other; }
+  bool operator==(const U* other) const { return this.held == other; }
 
   // Owns newPointer, then gives the old object (if any) to the deleter.
   void reset(T* newPointer)
   {
-    T* old = this->held;
-    this->held = newPointer;
+    T* old = this.held;
+    this.held = newPointer;
     if (old)
       D()(old);
   }
 
-  void reset() { this->reset(nullptr); }
+  void reset() { this.reset(nullptr); }
 
   // Gives the object up without the deleter seeing it.
   T* release()
   {
-    T* result = this->held;
-    this->held = nullptr;
+    T* result = this.held;
+    this.held = nullptr;
     return result;
   }
 
   void swap(UniquePtr<T, D>& other) noexcept
   {
-    T* tmp = this->held;
-    this->held = other.held;
+    T* tmp = this.held;
+    this.held = other.held;
     other.held = tmp;
   }
 

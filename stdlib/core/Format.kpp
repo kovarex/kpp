@@ -208,7 +208,7 @@ struct FormatString
       {
         if (p[1] != '}')
           throw LogicError("format: a { without its }");
-        ++this->holes;
+        ++this.holes;
         ++p;
       }
       else if (*p == '}')
@@ -218,10 +218,10 @@ struct FormatString
 
   consteval void checkPieces(ContainerSize pieces) const
   {
-    if (pieces != this->holes)
+    if (pieces != this.holes)
     {
       String message("format: ");
-      message << this->holes << " {} for " << pieces << StringView(pieces == 1 ? " piece" : " pieces");
+      message << this.holes << " {} for " << pieces << StringView(pieces == 1 ? " piece" : " pieces");
       throw LogicError(message);
     }
   }

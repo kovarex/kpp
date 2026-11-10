@@ -4,10 +4,10 @@ extern "C" int printf(const char* format, ...);
 struct Counter
 {
   int n = 0;
-  int get() const { return this->n; }
+  int get() const { return this.n; }
   void add(int k)
   {
-    this->n += k;
+    this.n += k;
   }
 };
 int classify(int x)
@@ -28,7 +28,7 @@ struct Note
   int id = 1;
   ~Note()
   {
-    int kept = this->id + 1;
+    int kept = this.id + 1;
     notes += kept;
   }
 };

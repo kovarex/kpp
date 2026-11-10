@@ -8,17 +8,17 @@ template<typename T>
 class DequeProbe : public std::Deque<T>
 {
 public:
-  std::ContainerSize blocks() const { return this->mapLength; }
+  std::ContainerSize blocks() const { return this.mapLength; }
 };
 class LongQueue : public std::Queue<int, DequeProbe<int>>
 {
 public:
-  std::ContainerSize blocks() const { return this->values.blocks(); }
+  std::ContainerSize blocks() const { return this.values.blocks(); }
 };
 class StackProbe : public std::Stack<std::String>
 {
 public:
-  std::String& bottom() { return this->values[0]; }
+  std::String& bottom() { return this.values[0]; }
 };
 
 uint64_t state = 4242;

@@ -20,10 +20,10 @@ struct ScrollBar
 template<typename Policy>
 ScrollBar<Policy>::ScrollBar()
 {
-  this->onDown = [this](Point p)
+  this.onDown = [&this](Point p)
   {
-    this->downMousePos = Policy::getCoordinate(p) + Policy::getCoordinate(Point{10, 20});
-    this->thumbPos = Policy::getCoordinate(p);
+    this.downMousePos = Policy::getCoordinate(p) + Policy::getCoordinate(Point{10, 20});
+    this.thumbPos = Policy::getCoordinate(p);
   };
 }
 int main()

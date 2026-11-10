@@ -29,13 +29,13 @@ struct Configuration
   std::Vector<std::String> cFlags;     // the C libraries' compiles, after kpp's own flags (clang-cl's, or clang's for windows-gnu)
   std::Vector<std::String> arguments;  // more kpp options, one per entry
 
-  void config(std::StringView name, bool value) { kppConfig(configs, name, value ? "true" : "false"); }
-  void config(std::StringView name, i32 value) { kppConfig(configs, name, std::toString(value)); }
-  void config(std::StringView name, const char* value) { kppConfig(configs, name, value); }
-  void config(std::StringView name, std::StringView value) { kppConfig(configs, name, value); }
-  void clangFlag(std::StringView flag) { clangFlags.push_back(flag); }
-  void cFlag(std::StringView flag) { cFlags.push_back(flag); }
-  void argument(std::StringView option) { arguments.push_back(option); }
+  void config(std::StringView name, bool value) { kppConfig(this.configs, name, value ? "true" : "false"); }
+  void config(std::StringView name, i32 value) { kppConfig(this.configs, name, std::toString(value)); }
+  void config(std::StringView name, const char* value) { kppConfig(this.configs, name, value); }
+  void config(std::StringView name, std::StringView value) { kppConfig(this.configs, name, value); }
+  void clangFlag(std::StringView flag) { this.clangFlags.push_back(flag); }
+  void cFlag(std::StringView flag) { this.cFlags.push_back(flag); }
+  void argument(std::StringView option) { this.arguments.push_back(option); }
 };
 
 // Where a used library is (Project::use): a directory with its build.kpp, relative to the project's
@@ -63,10 +63,10 @@ struct Dependency
   std::String path;
   std::Vector<std::String> configs; // its options, NAME=VALUE (kppConfig), without the library's name
 
-  Dependency& config(std::StringView name, bool value) { kppConfig(configs, name, value ? "true" : "false"); return *this; }
-  Dependency& config(std::StringView name, i32 value) { kppConfig(configs, name, std::toString(value)); return *this; }
-  Dependency& config(std::StringView name, const char* value) { kppConfig(configs, name, value); return *this; }
-  Dependency& config(std::StringView name, std::StringView value) { kppConfig(configs, name, value); return *this; }
+  Dependency& config(std::StringView name, bool value) { kppConfig(this.configs, name, value ? "true" : "false"); return this; }
+  Dependency& config(std::StringView name, i32 value) { kppConfig(this.configs, name, std::toString(value)); return this; }
+  Dependency& config(std::StringView name, const char* value) { kppConfig(this.configs, name, value); return this; }
+  Dependency& config(std::StringView name, std::StringView value) { kppConfig(this.configs, name, value); return this; }
 };
 
 // A system library for one platform as kpp reads it (systemLibrary(NAME, PLATFORM)): "PLATFORM NAME",
@@ -101,53 +101,53 @@ struct Executable
   std::String debugArguments;
   std::String debugDirectory;
 
-  void root(std::StringView path) { roots.push_back(path); }
-  void exclude(std::StringView path) { excluded.push_back(path); }
-  void argument(std::StringView option) { arguments.push_back(option); }
-  void linkFile(std::StringView path) { libraries.push_back(path); }
+  void root(std::StringView path) { this.roots.push_back(path); }
+  void exclude(std::StringView path) { this.excluded.push_back(path); }
+  void argument(std::StringView option) { this.arguments.push_back(option); }
+  void linkFile(std::StringView path) { this.libraries.push_back(path); }
   // linkFile's older name, until factorio-in-kpp's build.kpp says linkFile.
-  void library(std::StringView path) { libraries.push_back(path); }
-  void cInclude(std::StringView path) { cIncludes.push_back(path); }
+  void library(std::StringView path) { this.libraries.push_back(path); }
+  void cInclude(std::StringView path) { this.cIncludes.push_back(path); }
   // An include directory of the C import for one platform's build only (`cInclude("libraries/libbacktrace",
   // Platform::Linux)`), as systemLibrary(NAME, PLATFORM).
-  void cInclude(std::StringView path, Platform platform) { cIncludes.push_back(kppPlatformLibrary(path, platform)); }
+  void cInclude(std::StringView path, Platform platform) { this.cIncludes.push_back(kppPlatformLibrary(path, platform)); }
 
   // A kpp library (Project::use), for this executable only.
   Dependency& use(std::StringView name, std::StringView minimum = "")
   {
-    Dependency& d = uses.emplace_back();
+    Dependency& d = this.uses.emplace_back();
     kppUse(d, name, minimum, "");
     return d;
   }
 
   Dependency& use(std::StringView name, LibrarySource source)
   {
-    Dependency& d = uses.emplace_back();
+    Dependency& d = this.uses.emplace_back();
     kppUse(d, name, "", source.path);
     return d;
   }
 
   // A C library of the project (Project::cLibrary) by its name.
-  void link(std::StringView name) { links.push_back(name); }
+  void link(std::StringView name) { this.links.push_back(name); }
   // A system library by its name (`gdi32`): kpp's --lib -lgdi32; with a platform, only a build for it
   // (`systemLibrary("ssl", Platform::FreeBSD)`, its --target), as Library::systemLibrary. Each name is
   // linked once with its libraries' (compiler/src/Project/Build.cpp).
-  void systemLibrary(std::StringView name) { systemLibraries.push_back(name); }
-  void systemLibrary(std::StringView name, Platform platform) { systemLibraries.push_back(kppPlatformLibrary(name, platform)); }
+  void systemLibrary(std::StringView name) { this.systemLibraries.push_back(name); }
+  void systemLibrary(std::StringView name, Platform platform) { this.systemLibraries.push_back(kppPlatformLibrary(name, platform)); }
   // A .natvis file of the program's own (Visual Studio's display rules for its types), relative to the
   // project's directory: linked into the PDB of a --debug-info build for Windows with the rules kpp
   // writes for the standard library (kpp's --natvis; docs/debugging.md, "Values in Visual Studio").
-  void natvis(std::StringView path) { natvisFiles.push_back(path); }
+  void natvis(std::StringView path) { this.natvisFiles.push_back(path); }
   // A config:: constant in every configuration of this target, over the project's and the
   // configuration's.
-  void config(std::StringView name, bool value) { kppConfig(configs, name, value ? "true" : "false"); }
-  void config(std::StringView name, i32 value) { kppConfig(configs, name, std::toString(value)); }
-  void config(std::StringView name, const char* value) { kppConfig(configs, name, value); }
-  void config(std::StringView name, std::StringView value) { kppConfig(configs, name, value); }
+  void config(std::StringView name, bool value) { kppConfig(this.configs, name, value ? "true" : "false"); }
+  void config(std::StringView name, i32 value) { kppConfig(this.configs, name, std::toString(value)); }
+  void config(std::StringView name, const char* value) { kppConfig(this.configs, name, value); }
+  void config(std::StringView name, std::StringView value) { kppConfig(this.configs, name, value); }
   // A command run before the build, and one after it, in the project's directory; {exe} is the
   // executable, {configuration} the configuration.
-  void beforeBuild(std::StringView command) { beforeBuildCommand = command; }
-  void afterBuild(std::StringView command) { afterBuildCommand = command; }
+  void beforeBuild(std::StringView command) { this.beforeBuildCommand = command; }
+  void afterBuild(std::StringView command) { this.afterBuildCommand = command; }
 
   // What Run and the debugger start, when not the executable itself: the command, its arguments and
   // the directory it starts in; {exe} and {configuration} are expanded in each, as in the build steps.
@@ -155,9 +155,9 @@ struct Executable
   // configure(Cell&)'s: `cell.target.debug(...)` with a name made from cell.configuration.name.
   void debug(std::StringView command, std::StringView arguments = "", std::StringView directory = "")
   {
-    debugCommand = command;
-    debugArguments = arguments;
-    debugDirectory = directory;
+    this.debugCommand = command;
+    this.debugArguments = arguments;
+    this.debugDirectory = directory;
   }
 };
 
@@ -177,10 +177,10 @@ struct Cell
   Platform platform = Platform::Windows;
 
   // A config:: constant of this cell, over the target's.
-  void config(std::StringView name, bool value) { kppConfig(configs, name, value ? "true" : "false"); }
-  void config(std::StringView name, i32 value) { kppConfig(configs, name, std::toString(value)); }
-  void config(std::StringView name, const char* value) { kppConfig(configs, name, value); }
-  void config(std::StringView name, std::StringView value) { kppConfig(configs, name, value); }
+  void config(std::StringView name, bool value) { kppConfig(this.configs, name, value ? "true" : "false"); }
+  void config(std::StringView name, i32 value) { kppConfig(this.configs, name, std::toString(value)); }
+  void config(std::StringView name, const char* value) { kppConfig(this.configs, name, value); }
+  void config(std::StringView name, std::StringView value) { kppConfig(this.configs, name, value); }
 };
 
 // What runs when build.kpp has no configure(Cell&): its own, a function, is chosen over a template.
@@ -201,26 +201,26 @@ struct CLibrary
   std::String cppStandard;       // a C++ file's standard: c++17 (unset) or c++20
   std::String precompiled;       // its precompiled header, as its sources #include it (precompiledHeader)
 
-  void source(std::StringView path) { sources.push_back(path); }
-  void exclude(std::StringView path) { excluded.push_back(path); }
-  void include(std::StringView path) { includes.push_back(path); }
-  void define(std::StringView definition) { defines.push_back(definition); }
-  void prebuiltLibrary(std::StringView path) { prebuilt.push_back(path); }
-  void resource(std::StringView path) { resources.push_back(path); }
-  void standard(std::StringView name) { cppStandard = name; }
+  void source(std::StringView path) { this.sources.push_back(path); }
+  void exclude(std::StringView path) { this.excluded.push_back(path); }
+  void include(std::StringView path) { this.includes.push_back(path); }
+  void define(std::StringView definition) { this.defines.push_back(definition); }
+  void prebuiltLibrary(std::StringView path) { this.prebuilt.push_back(path); }
+  void resource(std::StringView path) { this.resources.push_back(path); }
+  void standard(std::StringView name) { this.cppStandard = name; }
   // A header built once and used by every source whose first directive includes it as written here
   // (`precompiledHeader("SDL_internal.h")`): its declarations are compiled once, not in each file.
   // The objects are the same as without it; a source that includes something else first, or has a
   // file of that name of its own beside it, is compiled as it is.
-  void precompiledHeader(std::StringView header) { precompiled = header; }
+  void precompiledHeader(std::StringView header) { this.precompiled = header; }
   // With a platform, only a build for it (`define("_GNU_SOURCE", Platform::Linux)`, its --target), as
   // systemLibrary's: kept as "PLATFORM ENTRY" (compiler/src/Project/CLibraryBuild.cpp, forPlatform).
-  void source(std::StringView path, Platform platform) { sources.push_back(kppPlatformLibrary(path, platform)); }
-  void exclude(std::StringView path, Platform platform) { excluded.push_back(kppPlatformLibrary(path, platform)); }
-  void include(std::StringView path, Platform platform) { includes.push_back(kppPlatformLibrary(path, platform)); }
-  void define(std::StringView definition, Platform platform) { defines.push_back(kppPlatformLibrary(definition, platform)); }
-  void prebuiltLibrary(std::StringView path, Platform platform) { prebuilt.push_back(kppPlatformLibrary(path, platform)); }
-  void resource(std::StringView path, Platform platform) { resources.push_back(kppPlatformLibrary(path, platform)); }
+  void source(std::StringView path, Platform platform) { this.sources.push_back(kppPlatformLibrary(path, platform)); }
+  void exclude(std::StringView path, Platform platform) { this.excluded.push_back(kppPlatformLibrary(path, platform)); }
+  void include(std::StringView path, Platform platform) { this.includes.push_back(kppPlatformLibrary(path, platform)); }
+  void define(std::StringView definition, Platform platform) { this.defines.push_back(kppPlatformLibrary(definition, platform)); }
+  void prebuiltLibrary(std::StringView path, Platform platform) { this.prebuilt.push_back(kppPlatformLibrary(path, platform)); }
+  void resource(std::StringView path, Platform platform) { this.resources.push_back(kppPlatformLibrary(path, platform)); }
 };
 
 // An option a kpp library declares (Library::option): what its code reads as config::LIB::NAME,
@@ -267,13 +267,13 @@ struct Library
   bool thisReference = false;
   std::Vector<std::String> systemLibraries; // systemLibrary()'s: NAME, or PLATFORM NAME (windows, linux, freebsd)
 
-  void root(std::StringView path) { roots.push_back(path); }
-  void test(std::StringView path) { testRoots.push_back(path); }
+  void root(std::StringView path) { this.roots.push_back(path); }
+  void test(std::StringView path) { this.testRoots.push_back(path); }
   // A system library every program using this one links, its own tests too: kpp's --lib -lNAME
   // (`systemLibrary("ssl")`), as Executable::systemLibrary; with a platform, only a build for it
   // (`systemLibrary("ssl", Platform::FreeBSD)`).
-  void systemLibrary(std::StringView name) { systemLibraries.push_back(name); }
-  void systemLibrary(std::StringView name, Platform platform) { systemLibraries.push_back(kppPlatformLibrary(name, platform)); }
+  void systemLibrary(std::StringView name) { this.systemLibraries.push_back(name); }
+  void systemLibrary(std::StringView name, Platform platform) { this.systemLibraries.push_back(kppPlatformLibrary(name, platform)); }
 
   // An option with its default: `option("debug", false, "Extra consistency checks")`; a string option
   // may list the values it can have: `option("mode", "fast", "Its speed", {"fast", "small"})`. Each
@@ -281,28 +281,28 @@ struct Library
   // consteval_returned_deque_reference_chained.)
   LibraryOption& option(std::StringView name, bool value, std::StringView description)
   {
-    LibraryOption& o = options.emplace_back();
+    LibraryOption& o = this.options.emplace_back();
     kppOption(o, name, "bool", value ? "true" : "false", description, false);
     return o;
   }
 
   LibraryOption& option(std::StringView name, i32 value, std::StringView description)
   {
-    LibraryOption& o = options.emplace_back();
+    LibraryOption& o = this.options.emplace_back();
     kppOption(o, name, "int", std::toString(value), description, false);
     return o;
   }
 
   LibraryOption& option(std::StringView name, const char* value, std::StringView description)
   {
-    LibraryOption& o = options.emplace_back();
+    LibraryOption& o = this.options.emplace_back();
     kppOption(o, name, "string", value, description, false);
     return o;
   }
 
   LibraryOption& option(std::StringView name, const char* value, std::StringView description, std::InitializerList<std::StringView> values)
   {
-    LibraryOption& o = options.emplace_back();
+    LibraryOption& o = this.options.emplace_back();
     kppOption(o, name, "string", value, description, false);
     for (std::StringView v : values)
       o.allowed.push_back(v);
@@ -312,21 +312,21 @@ struct Library
   // An option without a default, of type bool, int or string, which every user must set.
   LibraryOption& requiredOption(std::StringView name, std::StringView type, std::StringView description)
   {
-    LibraryOption& o = options.emplace_back();
+    LibraryOption& o = this.options.emplace_back();
     kppOption(o, name, type, "", description, true);
     return o;
   }
 
   Dependency& use(std::StringView name, std::StringView minimum = "")
   {
-    Dependency& d = uses.emplace_back();
+    Dependency& d = this.uses.emplace_back();
     kppUse(d, name, minimum, "");
     return d;
   }
 
   Dependency& use(std::StringView name, LibrarySource source)
   {
-    Dependency& d = uses.emplace_back();
+    Dependency& d = this.uses.emplace_back();
     kppUse(d, name, "", source.path);
     return d;
   }
@@ -361,7 +361,7 @@ struct Measure
   // A row: the file's text `from` (there exactly once) replaced by `to`, built, then put back, built.
   void edit(std::StringView row, std::StringView file, std::StringView from, std::StringView to)
   {
-    MeasureEdit& e = edits.emplace_back();
+    MeasureEdit& e = this.edits.emplace_back();
     e.row = row;
     e.file = file;
     e.from = from;
@@ -371,7 +371,7 @@ struct Measure
   // The other build of a row, run in --compare's directory after `touch` is touched.
   void compare(std::StringView row, std::StringView command, std::StringView touch = "")
   {
-    MeasureCompare& c = compares.emplace_back();
+    MeasureCompare& c = this.compares.emplace_back();
     c.row = row;
     c.command = command;
     c.touch = touch;
@@ -395,7 +395,7 @@ struct Project
 
   Executable& executable(std::StringView name, std::InitializerList<std::StringView> roots)
   {
-    Executable& e = executables.emplace_back();
+    Executable& e = this.executables.emplace_back();
     e.name = name;
     for (std::StringView root : roots)
       e.roots.push_back(root);
@@ -404,7 +404,7 @@ struct Project
 
   CLibrary& cLibrary(std::StringView name)
   {
-    CLibrary& c = cLibraries.emplace_back();
+    CLibrary& c = this.cLibraries.emplace_back();
     c.name = name;
     return c;
   }
@@ -412,7 +412,7 @@ struct Project
   // This project is a kpp library (struct Library).
   Library& library(std::StringView name)
   {
-    Library& l = kppLibraries.emplace_back();
+    Library& l = this.kppLibraries.emplace_back();
     l.name = name;
     return l;
   }
@@ -420,10 +420,10 @@ struct Project
   // The configuration NAME (debug, release, or one of the project's), made when new.
   Configuration& configuration(std::StringView name)
   {
-    for (Configuration& c : configurations)
+    for (Configuration& c : this.configurations)
       if (c.name == name)
         return c;
-    Configuration& c = configurations.emplace_back();
+    Configuration& c = this.configurations.emplace_back();
     c.name = name;
     return c;
   }
@@ -431,49 +431,49 @@ struct Project
   // The configuration NAME based on BASE: BASE's settings, then its own.
   Configuration& configuration(std::StringView name, std::StringView base)
   {
-    Configuration& c = this->configuration(name);
+    Configuration& c = this.configuration(name);
     c.base = base;
     return c;
   }
 
-  void argument(std::StringView option) { arguments.push_back(option); }
+  void argument(std::StringView option) { this.arguments.push_back(option); }
 
   // What `kpp measure` times, in the cell TARGET CONFIGURATION ("": the first executable; debug):
   // `project.measure("factorio").edit("Edit of one function", "src/A.kpp", "old", "new")`.
   Measure& measure(std::StringView target = "", std::StringView configuration = "debug")
   {
-    measurement.target = target;
-    measurement.configuration = configuration;
-    return measurement;
+    this.measurement.target = target;
+    this.measurement.configuration = configuration;
+    return this.measurement;
   }
 
   // A file the link takes for every executable: a .lib, -lname, a .res (kpp's --lib).
-  void linkFile(std::StringView path) { libraries.push_back(path); }
-  void cInclude(std::StringView path) { cIncludes.push_back(path); }
-  void cInclude(std::StringView path, Platform platform) { cIncludes.push_back(kppPlatformLibrary(path, platform)); }
+  void linkFile(std::StringView path) { this.libraries.push_back(path); }
+  void cInclude(std::StringView path) { this.cIncludes.push_back(path); }
+  void cInclude(std::StringView path, Platform platform) { this.cIncludes.push_back(kppPlatformLibrary(path, platform)); }
 
   // A kpp library every executable uses (docs/build.md, "kpp libraries"): use("json") finds it in
   // libraries/json, use("json", "1.4") also states the lowest version that will do, and
   // use("json", local("../json")) gives its directory.
   Dependency& use(std::StringView name, std::StringView minimum = "")
   {
-    Dependency& d = uses.emplace_back();
+    Dependency& d = this.uses.emplace_back();
     kppUse(d, name, minimum, "");
     return d;
   }
 
   Dependency& use(std::StringView name, LibrarySource source)
   {
-    Dependency& d = uses.emplace_back();
+    Dependency& d = this.uses.emplace_back();
     kppUse(d, name, "", source.path);
     return d;
   }
 
   // A config:: constant of every cell.
-  void config(std::StringView name, bool value) { kppConfig(configs, name, value ? "true" : "false"); }
-  void config(std::StringView name, i32 value) { kppConfig(configs, name, std::toString(value)); }
-  void config(std::StringView name, const char* value) { kppConfig(configs, name, value); }
-  void config(std::StringView name, std::StringView value) { kppConfig(configs, name, value); }
+  void config(std::StringView name, bool value) { kppConfig(this.configs, name, value ? "true" : "false"); }
+  void config(std::StringView name, i32 value) { kppConfig(this.configs, name, std::toString(value)); }
+  void config(std::StringView name, const char* value) { kppConfig(this.configs, name, value); }
+  void config(std::StringView name, std::StringView value) { kppConfig(this.configs, name, value); }
 
   // A value given on kpp's command line (`kpp --set GAME=D:\game`), or otherwise.
   std::String setting(std::StringView name, std::StringView otherwise) const { return kppSetting(name, otherwise); }

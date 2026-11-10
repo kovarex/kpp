@@ -23,8 +23,8 @@ struct Style
   {
     switch (flag)
     {
-      case A_DEFINED: return 1;
-      case B_DEFINED: return 2;
+      case This::A_DEFINED: return 1;
+      case This::B_DEFINED: return 2;
     }
     return 0;
   }
@@ -32,15 +32,15 @@ struct Style
 struct Base
 {
   int caret = 0;
-  void setCaret(int c) { this->caret = c; }
-  void setCaret(Rect r) { this->caret = r.x + r.y; }
+  void setCaret(int c) { this.caret = c; }
+  void setCaret(Rect r) { this.caret = r.x + r.y; }
 };
 struct Derived : Base
 {
   using super = Base;
   using super::setCaret;
-  void setCaret(const char* text) { this->caret = -1; }
-  void position(int p) { this->setCaret(Rect{p, 1, false}); }
+  void setCaret(const char* text) { this.caret = -1; }
+  void position(int p) { this.setCaret(Rect{p, 1, false}); }
 };
 enum class Kind { A, B, C };
 template<typename... Args>

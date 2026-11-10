@@ -98,88 +98,88 @@ struct Tuple : TupleLeaf<i32(sizeof...(T)), H>, TupleRest<T...>::Type
   decltype(auto) get()
   {
     if constexpr (I == 0)
-      return (static_cast<Leaf&>(*this).value);
+      return (static_cast<Leaf&>(this).value);
     else
-      return static_cast<Rest&>(*this).template get<I - 1>();
+      return static_cast<Rest&>(this).template get<I - 1>();
   }
 
   template<i32 I>
   decltype(auto) get() const
   {
     if constexpr (I == 0)
-      return (static_cast<const Leaf&>(*this).value);
+      return (static_cast<const Leaf&>(this).value);
     else
-      return static_cast<const Rest&>(*this).template get<I - 1>();
+      return static_cast<const Rest&>(this).template get<I - 1>();
   }
 
   template<i32 I>
   decltype(auto) getRvalue()
   {
     if constexpr (I == 0)
-      return static_cast<H&&>(static_cast<Leaf&>(*this).value);
+      return static_cast<H&&>(static_cast<Leaf&>(this).value);
     else
-      return static_cast<Rest&>(*this).template getRvalue<I - 1>();
+      return static_cast<Rest&>(this).template getRvalue<I - 1>();
   }
 
   // Assignment assigns element by element; an element that is a reference (a tie's) assigns what
   // it refers to.
   Tuple<H, T...>& operator=(const Tuple<H, T...>& other)
   {
-    static_cast<Leaf&>(*this).value = other.template get<0>();
-    static_cast<Rest&>(*this) = static_cast<const Rest&>(other);
-    return *this;
+    static_cast<Leaf&>(this).value = other.template get<0>();
+    static_cast<Rest&>(this) = static_cast<const Rest&>(other);
+    return this;
   }
 
   Tuple<H, T...>& operator=(Tuple<H, T...>&& other) noexcept(tupleElementNothrowMoveAssignable<H> && isNothrowMoveAssignable<Rest>)
   {
-    static_cast<Leaf&>(*this).value = other.template getRvalue<0>();
-    static_cast<Rest&>(*this) = static_cast<Rest&&>(other);
-    return *this;
+    static_cast<Leaf&>(this).value = other.template getRvalue<0>();
+    static_cast<Rest&>(this) = static_cast<Rest&&>(other);
+    return this;
   }
 
   template<typename UH, typename... UT> requires (sizeof...(UT) == sizeof...(T) && !isSame<Tuple<UH, UT...>, Tuple<H, T...>>)
   Tuple<H, T...>& operator=(const Tuple<UH, UT...>& other)
   {
-    static_cast<Leaf&>(*this).value = other.template get<0>();
-    static_cast<Rest&>(*this) = static_cast<const typename TupleRest<UT...>::Type&>(other);
-    return *this;
+    static_cast<Leaf&>(this).value = other.template get<0>();
+    static_cast<Rest&>(this) = static_cast<const typename TupleRest<UT...>::Type&>(other);
+    return this;
   }
 
   template<typename UH, typename... UT> requires (sizeof...(UT) == sizeof...(T) && !isSame<Tuple<UH, UT...>, Tuple<H, T...>>)
   Tuple<H, T...>& operator=(Tuple<UH, UT...>&& other)
   {
-    static_cast<Leaf&>(*this).value = other.template getRvalue<0>();
-    static_cast<Rest&>(*this) = static_cast<typename TupleRest<UT...>::Type&&>(other);
-    return *this;
+    static_cast<Leaf&>(this).value = other.template getRvalue<0>();
+    static_cast<Rest&>(this) = static_cast<typename TupleRest<UT...>::Type&&>(other);
+    return this;
   }
 
   // `tie(speed, force) = pair`: first to the first element, second to the second.
   template<typename U1, typename U2> requires (sizeof...(T) == 1)
   Tuple<H, T...>& operator=(const Pair<U1, U2>& pair)
   {
-    static_cast<Leaf&>(*this).value = pair.first;
-    static_cast<Rest&>(*this).template get<0>() = pair.second;
-    return *this;
+    static_cast<Leaf&>(this).value = pair.first;
+    static_cast<Rest&>(this).template get<0>() = pair.second;
+    return this;
   }
 
   template<typename U1, typename U2> requires (sizeof...(T) == 1)
   Tuple<H, T...>& operator=(Pair<U1, U2>&& pair)
   {
-    static_cast<Leaf&>(*this).value = forward<U1>(pair.first);
-    static_cast<Rest&>(*this).template get<0>() = forward<U2>(pair.second);
-    return *this;
+    static_cast<Leaf&>(this).value = forward<U1>(pair.first);
+    static_cast<Rest&>(this).template get<0>() = forward<U2>(pair.second);
+    return this;
   }
 
   // Equal element by element; ordered by the first element that differs (common.md, "Comparison").
   bool operator==(const Tuple<H, T...>& other) const
   {
-    return this->template get<0>() == other.template get<0>() && static_cast<const Rest&>(*this) == static_cast<const Rest&>(other);
+    return this.template get<0>() == other.template get<0>() && static_cast<const Rest&>(this) == static_cast<const Rest&>(other);
   }
 
   strong_ordering operator<=>(const Tuple<H, T...>& other) const
   {
-    strong_ordering order = synthThreeWay(this->template get<0>(), other.template get<0>());
-    return order != 0 ? order : static_cast<const Rest&>(*this) <=> static_cast<const Rest&>(other);
+    strong_ordering order = synthThreeWay(this.template get<0>(), other.template get<0>());
+    return order != 0 ? order : static_cast<const Rest&>(this) <=> static_cast<const Rest&>(other);
   }
 };
 

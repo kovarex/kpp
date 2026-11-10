@@ -7,7 +7,7 @@ struct Base
 };
 struct Derived : Base
 {
-  void setState(Base::State s) { this->count += s == State::CLICKED ? 10 : 1; }
+  void setState(Base::State s) { this.count += s == State::CLICKED ? 10 : 1; }
 };
 template<typename T>
 struct ScopedSetter
@@ -16,14 +16,14 @@ struct ScopedSetter
   T old;
   ScopedSetter(T& target, T value) : target(target), old(target) { target = value; }
   ScopedSetter(T& target) : target(target), old(target) {}
-  ~ScopedSetter() { this->target = this->old; }
+  ~ScopedSetter() { this.target = this.old; }
 };
 struct Widget
 {
   int size = 1;
-  Widget& grow() { this->size *= 2; return *this; }
-  Widget& shrink() { this->size -= 1; return *this; }
-  Widget& resize(bool up) { return up ? this->grow() : this->shrink(); }
+  Widget& grow() { this.size *= 2; return this; }
+  Widget& shrink() { this.size -= 1; return this; }
+  Widget& resize(bool up) { return up ? this.grow() : this.shrink(); }
 };
 struct Item
 {

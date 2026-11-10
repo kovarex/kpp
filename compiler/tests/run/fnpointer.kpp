@@ -5,11 +5,11 @@ template<typename R, typename... Args>
 struct Holder
 {
   R (*fn)(Args...) = nullptr;
-  R call(Args... args) { return this->fn(args...); }
+  R call(Args... args) { return this.fn(args...); }
 };
 void g(const Event& e) { printf("g %d\n", e.x); }
 void h(Event e) { printf("h %d\n", e.x); }
-struct Clickable { enum class ClickState { IDLE, CLICKED }; int state = 0; void set(ClickState s) { this->state = s == ClickState::CLICKED ? 2 : 1; } };
+struct Clickable { enum class ClickState { IDLE, CLICKED }; int state = 0; void set(ClickState s) { this.state = s == ClickState::CLICKED ? 2 : 1; } };
 struct Button : Clickable {};
 struct TextButton : Button {};
 int main()

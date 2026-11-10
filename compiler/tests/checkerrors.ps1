@@ -22,7 +22,7 @@ $std = (Resolve-Path "$PSScriptRoot\..\..\stdlib").Path
 $KppExe = (Resolve-Path $KppExe).Path
 
 # Two files, two modules (a session keeps its texts only then).
-[IO.File]::WriteAllText("$work\src\shape.kpp", "struct Shape { int width = 0; int height = 0; int size() const { return width; } };`nint area(const Shape& s) { return s.width * s.height; }`n")
+[IO.File]::WriteAllText("$work\src\shape.kpp", "struct Shape { int width = 0; int height = 0; int size() const { return this.width; } };`nint area(const Shape& s) { return s.width * s.height; }`n")
 $main = "int main()`n{`n  Shape square;`n  square.width = 3;`n  square.height = 3;`n  return area(square) == 9 ? 0 : 1;`n}`n"
 $frontEnd = $main.Replace('  square.height = 3;', '  sqaure.height = 3;') # the checker's: 'sqaure' is not declared
 $codegens = $main.Replace('  square.width = 3;', '  square.size = 3;')   # codegen's: a member function is no value

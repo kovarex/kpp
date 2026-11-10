@@ -10,7 +10,7 @@ class Listener
 {
 public:
   implicit Listener(i32 first) : first(first) {}
-  i32 heard() const { return this->first; }
+  i32 heard() const { return this.first; }
 
 private:
   i32 first = 0;
@@ -23,8 +23,8 @@ public:
   enum class Kind { Round, Flat };
 
   Shape(i32 size) : Listener(size), size(size) {}
-  i32 area() const { return this->size * this->size; }
-  i32 heard() const { return this->Listener::heard(); }
+  i32 area() const { return this.size * this.size; }
+  i32 heard() const { return this.Listener::heard(); }
   static i32 count();
 
   i32 size = 0;

@@ -7725,6 +7725,8 @@ void parseFile(std::vector<Token>& tokens, std::string_view text, SymbolTable& s
   Parser parser(tokens, text, symbols, out);
   parser.externC = dialect == Dialect::C;
   parser.dialect = dialect;
+  if (dialect != Dialect::KppSource) // (C++ the converter reads and C headers keep C++'s pointer, design.md 23d)
+    out.thisReference = false;
   parser.config = config;
   parser.roles = out.formatRoles;
   parser.parseTranslationUnit();

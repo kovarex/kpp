@@ -5,7 +5,7 @@ struct Guard
 {
   const char* name;
   Guard(const char* name) : name(name) { std::println("enter ", std::StringView(name)); }
-  ~Guard() { std::println("leave ", std::StringView(this->name)); }
+  ~Guard() { std::println("leave ", std::StringView(this.name)); }
 };
 
 void note(const char* text, std::CallerLocation here = caller)

@@ -93,9 +93,9 @@ public:
   __KppTestFrame() : site(__kppCallSite), outer(__kppInnermostFrame())
   {
     __kppCallSite.file = nullptr;
-    __kppInnermostFrame() = this;
+    __kppInnermostFrame() = &this;
   }
-  ~__KppTestFrame() { __kppInnermostFrame() = this->outer; }
+  ~__KppTestFrame() { __kppInnermostFrame() = this.outer; }
   __KppCallSite site;
   __KppTestFrame* outer;
 };
@@ -1050,18 +1050,18 @@ public:
     event.worker = worker;
     event.kind = kind;
     event.text = std::move(text);
-    std::LockGuard<std::Mutex> guard(this->mutex);
-    this->events.push_back(std::move(event));
-    this->ready.notifyOne();
+    std::LockGuard<std::Mutex> guard(this.mutex);
+    this.events.push_back(std::move(event));
+    this.ready.notifyOne();
   }
 
   __KppJobEvent pop()
   {
-    std::UniqueLock<std::Mutex> lock(this->mutex);
-    while (this->head == int(this->events.size()))
-      this->ready.wait(lock);
-    __KppJobEvent event = std::move(this->events[this->head]);
-    ++this->head;
+    std::UniqueLock<std::Mutex> lock(this.mutex);
+    while (this.head == int(this.events.size()))
+      this.ready.wait(lock);
+    __KppJobEvent event = std::move(this.events[this.head]);
+    ++this.head;
     return event;
   }
 
@@ -1132,42 +1132,42 @@ class __KppJobPool
 public:
   ~__KppJobPool()
   {
-    for (__KppJobWorker& worker : this->workers)
+    for (__KppJobWorker& worker : this.workers)
       if (worker.alive)
         __kppCloseWorkerInput(worker.process);
-    while (this->alive() > 0)
-      this->ended(this->events.pop());
+    while (this.alive() > 0)
+      this.ended(this.events.pop());
   }
 
   // Starts count workers; false when one could not start.
   bool start(int count, std::Vector<std::String> extra, int argc, char** argv)
   {
-    this->extra = std::move(extra);
-    this->argc = argc;
-    this->argv = argv;
-    this->workers.resize(count);
+    this.extra = std::move(extra);
+    this.argc = argc;
+    this.argv = argv;
+    this.workers.resize(count);
     bool started = true;
     for (int i = 0; i < count; ++i)
-      started = this->restart(i) && started;
+      started = this.restart(i) && started;
     return started;
   }
 
   bool restart(int index)
   {
-    __KppJobWorker& worker = this->workers[index];
-    if (!__kppStartWorker(worker.process, index + 1, this->extra, this->argc, this->argv))
+    __KppJobWorker& worker = this.workers[index];
+    if (!__kppStartWorker(worker.process, index + 1, this.extra, this.argc, this.argv))
       return false;
     worker.alive = true;
     worker.job = -1;
     worker.inTest = false;
-    worker.reader = std::Thread(__kppReadWorker, &this->events, index, worker.process.from);
+    worker.reader = std::Thread(__kppReadWorker, &this.events, index, worker.process.from);
     return true;
   }
 
   int alive() const
   {
     int count = 0;
-    for (const __KppJobWorker& worker : this->workers)
+    for (const __KppJobWorker& worker : this.workers)
       count += worker.alive ? 1 : 0;
     return count;
   }
@@ -1177,7 +1177,7 @@ public:
   {
     if (event.kind != 'X')
       return 0;
-    __KppJobWorker& worker = this->workers[event.worker];
+    __KppJobWorker& worker = this.workers[event.worker];
     worker.reader.join();
     worker.alive = false;
     return __kppEndWorker(worker.process);

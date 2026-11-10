@@ -14,37 +14,37 @@ struct Buffer
 
   Buffer(int size) : size(size)
   {
-    this->data = (int*)malloc(size * 4);
+    this.data = (int*)malloc(size * 4);
     for (int i = 0; i < size; ++i)
-      this->data[i] = i * i;
+      this.data[i] = i * i;
     ++liveBuffers;
   }
   Buffer(const Buffer& other) : size(other.size)
   {
-    this->data = (int*)malloc(other.size * 4);
-    memcpy(this->data, other.data, other.size * 4);
+    this.data = (int*)malloc(other.size * 4);
+    memcpy(this.data, other.data, other.size * 4);
     ++liveBuffers;
   }
   ~Buffer()
   {
-    free(this->data);
+    free(this.data);
     --liveBuffers;
   }
   int sum() const
   {
     int total = 0;
-    for (int i = 0; i < this->size; ++i)
-      total += this->data[i];
+    for (int i = 0; i < this.size; ++i)
+      total += this.data[i];
     return total;
   }
-  int& operator[](int index) { return this->data[index]; }
+  int& operator[](int index) { return this.data[index]; }
   Buffer& operator=(const Buffer& other)
   {
-    free(this->data);
-    this->size = other.size;
-    this->data = (int*)malloc(other.size * 4);
-    memcpy(this->data, other.data, other.size * 4);
-    return *this;
+    free(this.data);
+    this.size = other.size;
+    this.data = (int*)malloc(other.size * 4);
+    memcpy(this.data, other.data, other.size * 4);
+    return this;
   }
 };
 
@@ -55,8 +55,8 @@ struct Vec2
   Vec2 operator+(const Vec2& o) const
   {
     Vec2 r;
-    r.x = this->x + o.x;
-    r.y = this->y + o.y;
+    r.x = this.x + o.x;
+    r.y = this.y + o.y;
     return r;
   }
 };

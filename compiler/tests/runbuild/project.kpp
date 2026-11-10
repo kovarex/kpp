@@ -5,8 +5,8 @@ struct Project
   Configuration configuration = Configuration::debug;
   std::Vector<std::String> roots;
   std::Vector<std::String> includes;
-  void root(std::StringView r) { roots.push_back(std::String(r)); }
-  void include(std::StringView first, std::StringView second) { std::String s = std::String(first); s << second; includes.push_back(std::move(s)); }
+  void root(std::StringView r) { this.roots.push_back(std::String(r)); }
+  void include(std::StringView first, std::StringView second) { std::String s = std::String(first); s << second; this.includes.push_back(std::move(s)); }
 };
 std::String describe(const Project& project)
 {

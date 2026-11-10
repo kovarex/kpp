@@ -18,13 +18,13 @@ struct Counter
   {
     if constexpr (config::debug)
     {
-      ++calls;
+      ++this.calls;
       ++created;
     }
     else
-      value += pick();
+      this.value += pick();
     when (!config::debug) int skipped = 0;
-    ++value;
+    ++this.value;
   }
 };
 

@@ -12,23 +12,23 @@ public:
 
     reference& operator=(bool value)
     {
-      this->bits->set(this->position, value);
-      return *this;
+      this.bits->set(this.position, value);
+      return this;
     }
 
     reference& operator=(const reference& other)
     {
-      this->bits->set(this->position, other.bits->test(other.position));
-      return *this;
+      this.bits->set(this.position, other.bits->test(other.position));
+      return this;
     }
 
-    implicit operator bool() const { return this->bits->test(this->position); }
-    bool operator~() const { return !this->bits->test(this->position); }
+    implicit operator bool() const { return this.bits->test(this.position); }
+    bool operator~() const { return !this.bits->test(this.position); }
 
     reference& flip()
     {
-      this->bits->flip(this->position);
-      return *this;
+      this.bits->flip(this.position);
+      return this;
     }
 
   private:
@@ -36,57 +36,57 @@ public:
     ContainerSize position;
   };
 
-  bool test(ContainerSize pos) const { return (this->words[pos / 64] >> (pos % 64)) & 1; }
-  bool operator[](ContainerSize pos) const { return this->test(pos); }
-  reference operator[](ContainerSize pos) { return reference(this, pos); }
+  bool test(ContainerSize pos) const { return (this.words[pos / 64] >> (pos % 64)) & 1; }
+  bool operator[](ContainerSize pos) const { return this.test(pos); }
+  reference operator[](ContainerSize pos) { return reference(&this, pos); }
 
   Bitset<N>& set(ContainerSize pos)
   {
-    this->words[pos / 64] |= 1ull << (pos % 64);
-    return *this;
+    this.words[pos / 64] |= 1ull << (pos % 64);
+    return this;
   }
 
-  Bitset<N>& set(ContainerSize pos, bool value) { return value ? this->set(pos) : this->reset(pos); }
+  Bitset<N>& set(ContainerSize pos, bool value) { return value ? this.set(pos) : this.reset(pos); }
 
   Bitset<N>& set()
   {
     for (i32 i = 0; i < (N + 63) / 64; ++i)
-      this->words[i] = ~0ull;
-    return this->trim();
+      this.words[i] = ~0ull;
+    return this.trim();
   }
 
   Bitset<N>& reset(ContainerSize pos)
   {
-    this->words[pos / 64] &= ~(1ull << (pos % 64));
-    return *this;
+    this.words[pos / 64] &= ~(1ull << (pos % 64));
+    return this;
   }
 
   Bitset<N>& reset()
   {
     for (i32 i = 0; i < (N + 63) / 64; ++i)
-      this->words[i] = 0;
-    return *this;
+      this.words[i] = 0;
+    return this;
   }
 
   Bitset<N>& flip(ContainerSize pos)
   {
-    this->words[pos / 64] ^= 1ull << (pos % 64);
-    return *this;
+    this.words[pos / 64] ^= 1ull << (pos % 64);
+    return this;
   }
 
   Bitset<N>& flip()
   {
     for (i32 i = 0; i < (N + 63) / 64; ++i)
-      this->words[i] = ~this->words[i];
-    return this->trim();
+      this.words[i] = ~this.words[i];
+    return this.trim();
   }
 
   // The bits past N in the last word, which no operation may leave set.
   Bitset<N>& trim()
   {
     if (N % 64 != 0)
-      this->words[(N + 63) / 64 - 1] &= (1ull << (N % 64)) - 1;
-    return *this;
+      this.words[(N + 63) / 64 - 1] &= (1ull << (N % 64)) - 1;
+    return this;
   }
 
   ContainerSize count() const
@@ -94,7 +94,7 @@ public:
     ContainerSize total = 0;
     for (i32 i = 0; i < (N + 63) / 64; ++i)
     {
-      u64 w = this->words[i];
+      u64 w = this.words[i];
       while (w)
       {
         ++total;
@@ -105,22 +105,22 @@ public:
   }
 
   ContainerSize size() const { return N; }
-  bool none() const { return this->count() == 0; }
-  bool any() const { return !this->none(); }
-  bool all() const { return this->count() == N; }
+  bool none() const { return this.count() == 0; }
+  bool any() const { return !this.none(); }
+  bool all() const { return this.count() == N; }
 
   // The bits as a number, bit 0 lowest; throws Overflow when a set bit does not fit.
   u64 to_ullong() const
   {
     for (i32 i = 1; i < (N + 63) / 64; ++i)
-      if (this->words[i] != 0)
+      if (this.words[i] != 0)
         throw OverflowError(String("Bitset::to_ullong"));
-    return (N + 63) / 64 == 0 ? 0 : this->words[0];
+    return (N + 63) / 64 == 0 ? 0 : this.words[0];
   }
 
   unsigned long to_ulong() const
   {
-    u64 value = this->to_ullong();
+    u64 value = this.to_ullong();
     if (value > (u64)Limits<unsigned long>::max()) // 32 bits on Windows, 64 on Linux and FreeBSD
       throw OverflowError(String("Bitset::to_ulong"));
     return (unsigned long)value;
@@ -131,7 +131,7 @@ public:
   {
     String result;
     for (ContainerSize i = N; i-- > 0;) // bit N - 1 down to 0
-      result.push_back(this->test(i) ? one : zero);
+      result.push_back(this.test(i) ? one : zero);
     return result;
   }
 
@@ -139,7 +139,7 @@ public:
   {
     Bitset<N> result;
     for (i32 i = 0; i < (N + 63) / 64; ++i)
-      result.words[i] = this->words[i] & other.words[i];
+      result.words[i] = this.words[i] & other.words[i];
     return result;
   }
 
@@ -147,7 +147,7 @@ public:
   {
     Bitset<N> result;
     for (i32 i = 0; i < (N + 63) / 64; ++i)
-      result.words[i] = this->words[i] | other.words[i];
+      result.words[i] = this.words[i] | other.words[i];
     return result;
   }
 
@@ -155,19 +155,19 @@ public:
   {
     Bitset<N> result;
     for (i32 i = 0; i < (N + 63) / 64; ++i)
-      result.words[i] = this->words[i] ^ other.words[i];
+      result.words[i] = this.words[i] ^ other.words[i];
     return result;
   }
 
   Bitset<N> operator~() const
   {
-    Bitset<N> result = *this;
+    Bitset<N> result = this;
     return result.flip();
   }
 
-  Bitset<N>& operator&=(const Bitset<N>& other) { return *this = *this & other; }
-  Bitset<N>& operator|=(const Bitset<N>& other) { return *this = *this | other; }
-  Bitset<N>& operator^=(const Bitset<N>& other) { return *this = *this ^ other; }
+  Bitset<N>& operator&=(const Bitset<N>& other) { return this = this & other; }
+  Bitset<N>& operator|=(const Bitset<N>& other) { return this = this | other; }
+  Bitset<N>& operator^=(const Bitset<N>& other) { return this = this ^ other; }
 
   Bitset<N> operator<<(i32 shift) const
   {
@@ -178,9 +178,9 @@ public:
     {
       i32 src = i - wordShift;
       if (src >= 0)
-        result.words[i] = this->words[src] << bitShift;
+        result.words[i] = this.words[src] << bitShift;
       if (bitShift > 0 && src - 1 >= 0)
-        result.words[i] |= this->words[src - 1] >> (64 - bitShift);
+        result.words[i] |= this.words[src - 1] >> (64 - bitShift);
     }
     return result.trim();
   }
@@ -194,20 +194,20 @@ public:
     {
       i32 src = i + wordShift;
       if (src < (N + 63) / 64)
-        result.words[i] = this->words[src] >> bitShift;
+        result.words[i] = this.words[src] >> bitShift;
       if (bitShift > 0 && src + 1 < (N + 63) / 64)
-        result.words[i] |= this->words[src + 1] << (64 - bitShift);
+        result.words[i] |= this.words[src + 1] << (64 - bitShift);
     }
     return result;
   }
 
-  Bitset<N>& operator<<=(i32 shift) { return *this = *this << shift; }
-  Bitset<N>& operator>>=(i32 shift) { return *this = *this >> shift; }
+  Bitset<N>& operator<<=(i32 shift) { return this = this << shift; }
+  Bitset<N>& operator>>=(i32 shift) { return this = this >> shift; }
 
   bool operator==(const Bitset<N>& other) const
   {
     for (i32 i = 0; i < (N + 63) / 64; ++i)
-      if (this->words[i] != other.words[i])
+      if (this.words[i] != other.words[i])
         return false;
     return true;
   }

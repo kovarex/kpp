@@ -44,24 +44,24 @@ struct EnableSharedFromThisBase
   EnableSharedFromThisBase() {}
   // A copy is another object, which no SharedPtr owns yet.
   EnableSharedFromThisBase(const EnableSharedFromThisBase&) {}
-  EnableSharedFromThisBase& operator=(const EnableSharedFromThisBase&) { return *this; }
+  EnableSharedFromThisBase& operator=(const EnableSharedFromThisBase&) { return this; }
 
   ~EnableSharedFromThisBase()
   {
-    if (this->sharedSelf)
-      sharedReleaseWeak(this->sharedSelf);
+    if (this.sharedSelf)
+      sharedReleaseWeak(this.sharedSelf);
   }
 
   // Called by a SharedPtr that takes ownership of the object: kept unless an owner that still
   // lives set it before.
   void adoptSharedSelf(SharedControl* control) const
   {
-    if (this->sharedSelf && this->sharedSelf->strong.load() != 0)
+    if (this.sharedSelf && this.sharedSelf->strong.load() != 0)
       return;
     control->weak.fetchAdd(1);
-    if (this->sharedSelf)
-      sharedReleaseWeak(this->sharedSelf);
-    this->sharedSelf = control;
+    if (this.sharedSelf)
+      sharedReleaseWeak(this.sharedSelf);
+    this.sharedSelf = control;
   }
 };
 
@@ -78,13 +78,13 @@ public:
   SharedPtr(T* object)
   {
     if (object)
-      this->own(object);
+      this.own(object);
   }
 
   SharedPtr(const SharedPtr<T>& other) : pointer(other.pointer), control(other.control)
   {
-    if (this->control)
-      this->control->strong.fetchAdd(1);
+    if (this.control)
+      this.control->strong.fetchAdd(1);
   }
 
   SharedPtr(SharedPtr<T>&& other) noexcept : pointer(other.pointer), control(other.control)
@@ -98,8 +98,8 @@ public:
   template<typename U> requires (isConvertible<U*, T*> && !isSame<U, T>)
   implicit SharedPtr(const SharedPtr<U>& other) : pointer(other.pointer), control(other.control)
   {
-    if (this->control)
-      this->control->strong.fetchAdd(1);
+    if (this.control)
+      this.control->strong.fetchAdd(1);
   }
 
   template<typename U> requires (isConvertible<U*, T*> && !isSame<U, T>)
@@ -114,10 +114,10 @@ public:
   implicit SharedPtr(UniquePtr<U>&& unique)
   {
     if (U* object = unique.release())
-      this->own(object);
+      this.own(object);
   }
 
-  ~SharedPtr() { this->release(); }
+  ~SharedPtr() { this.release(); }
 
   // A SharedPtr sharing control's owners, if the object still lives; empty otherwise.
   static SharedPtr<T> locked(T* object, SharedControl* owners)
@@ -135,29 +135,29 @@ public:
   // temporary first and swapped in, as std's shared_ptr does, and the old owner is released last.
   SharedPtr<T>& operator=(const SharedPtr<T>& other)
   {
-    SharedPtr<T>(other).swap(*this);
-    return *this;
+    SharedPtr<T>(other).swap(this);
+    return this;
   }
 
   SharedPtr<T>& operator=(SharedPtr<T>&& other) noexcept
   {
-    SharedPtr<T>(move(other)).swap(*this);
-    return *this;
+    SharedPtr<T>(move(other)).swap(this);
+    return this;
   }
 
   SharedPtr<T>& operator=(nullptr_t)
   {
-    this->release();
-    return *this;
+    this.release();
+    return this;
   }
 
   // Gives up this owner: the last one deletes the object.
   // Empty before the object goes: this SharedPtr may be inside it.
   void release() noexcept
   {
-    SharedControl* owners = this->control;
-    this->pointer = nullptr;
-    this->control = nullptr;
+    SharedControl* owners = this.control;
+    this.pointer = nullptr;
+    this.control = nullptr;
     if (owners && owners->strong.fetchSub(1) == 1)
     {
       owners->destroy(owners->object);
@@ -165,48 +165,48 @@ public:
     }
   }
 
-  void reset() { this->release(); }
+  void reset() { this.release(); }
 
   void reset(T* newPointer)
   {
     SharedPtr<T> taking;
     if (newPointer)
       taking.own(newPointer);
-    taking.swap(*this);
+    taking.swap(this);
   }
 
   void swap(SharedPtr<T>& other) noexcept
   {
-    T* p = this->pointer;
-    SharedControl* c = this->control;
-    this->pointer = other.pointer;
-    this->control = other.control;
+    T* p = this.pointer;
+    SharedControl* c = this.control;
+    this.pointer = other.pointer;
+    this.control = other.control;
     other.pointer = p;
     other.control = c;
   }
 
-  T* get() const { return this->pointer; }
-  T& operator*() const { return *this->pointer; }
-  T* operator->() const { return this->pointer; }
-  operator bool() const { return this->pointer != nullptr; }
-  bool operator!() const { return this->pointer == nullptr; }
-  bool operator==(const SharedPtr<T>& other) const { return this->pointer == other.pointer; }
-  bool operator<(const SharedPtr<T>& other) const { return this->pointer < other.pointer; }
-  bool operator==(nullptr_t) const { return this->pointer == nullptr; }
-  i32 use_count() const { return this->control ? this->control->strong.load() : 0; }
-  i32 useCount() const { return this->use_count(); }
+  T* get() const { return this.pointer; }
+  T& operator*() const { return *this.pointer; }
+  T* operator->() const { return this.pointer; }
+  operator bool() const { return this.pointer != nullptr; }
+  bool operator!() const { return this.pointer == nullptr; }
+  bool operator==(const SharedPtr<T>& other) const { return this.pointer == other.pointer; }
+  bool operator<(const SharedPtr<T>& other) const { return this.pointer < other.pointer; }
+  bool operator==(nullptr_t) const { return this.pointer == nullptr; }
+  i32 use_count() const { return this.control ? this.control->strong.load() : 0; }
+  i32 useCount() const { return this.use_count(); }
 
   // A new control block for an object that has no owner yet; an object that derives from
   // EnableSharedFromThis learns its owner.
   template<typename U>
   void own(U* object)
   {
-    this->pointer = object;
-    this->control = new SharedControl();
-    this->control->destroy = &sharedDestroy<U>;
-    this->control->object = (void*)object;
+    this.pointer = object;
+    this.control = new SharedControl();
+    this.control->destroy = &sharedDestroy<U>;
+    this.control->object = (void*)object;
     if constexpr (isBaseOf<EnableSharedFromThisBase, U>)
-      object->adoptSharedSelf(this->control);
+      object->adoptSharedSelf(this.control);
   }
 
 private:
@@ -231,14 +231,14 @@ public:
 
   implicit WeakPtr(const SharedPtr<T>& shared) : pointer(shared.pointer), control(shared.control)
   {
-    if (this->control)
-      this->control->weak.fetchAdd(1);
+    if (this.control)
+      this.control->weak.fetchAdd(1);
   }
 
   WeakPtr(const WeakPtr<T>& other) : pointer(other.pointer), control(other.control)
   {
-    if (this->control)
-      this->control->weak.fetchAdd(1);
+    if (this.control)
+      this.control->weak.fetchAdd(1);
   }
 
   WeakPtr(WeakPtr<T>&& other) noexcept : pointer(other.pointer), control(other.control)
@@ -254,33 +254,33 @@ public:
       owners->weak.fetchAdd(1);
   }
 
-  ~WeakPtr() { this->release(); }
+  ~WeakPtr() { this.release(); }
 
   // As SharedPtr's: into a temporary, swapped in, the old one released last.
   WeakPtr<T>& operator=(const WeakPtr<T>& other)
   {
-    WeakPtr<T>(other).swap(*this);
-    return *this;
+    WeakPtr<T>(other).swap(this);
+    return this;
   }
 
   WeakPtr<T>& operator=(WeakPtr<T>&& other) noexcept
   {
-    WeakPtr<T>(move(other)).swap(*this);
-    return *this;
+    WeakPtr<T>(move(other)).swap(this);
+    return this;
   }
 
   WeakPtr<T>& operator=(const SharedPtr<T>& shared)
   {
-    WeakPtr<T>(shared).swap(*this);
-    return *this;
+    WeakPtr<T>(shared).swap(this);
+    return this;
   }
 
   void swap(WeakPtr<T>& other) noexcept
   {
-    T* p = this->pointer;
-    SharedControl* c = this->control;
-    this->pointer = other.pointer;
-    this->control = other.control;
+    T* p = this.pointer;
+    SharedControl* c = this.control;
+    this.pointer = other.pointer;
+    this.control = other.control;
     other.pointer = p;
     other.control = c;
   }
@@ -288,20 +288,20 @@ public:
   // Empty before the control block may go: this WeakPtr may be inside the object.
   void release() noexcept
   {
-    SharedControl* owners = this->control;
-    this->pointer = nullptr;
-    this->control = nullptr;
+    SharedControl* owners = this.control;
+    this.pointer = nullptr;
+    this.control = nullptr;
     if (owners)
       sharedReleaseWeak(owners);
   }
 
-  void reset() { this->release(); }
+  void reset() { this.release(); }
 
-  bool expired() const { return !this->control || this->control->strong.load() == 0; }
-  i32 use_count() const { return this->control ? this->control->strong.load() : 0; }
-  i32 useCount() const { return this->use_count(); }
+  bool expired() const { return !this.control || this.control->strong.load() == 0; }
+  i32 use_count() const { return this.control ? this.control->strong.load() : 0; }
+  i32 useCount() const { return this.use_count(); }
   // A SharedPtr to the object while it lives, empty otherwise.
-  SharedPtr<T> lock() const { return SharedPtr<T>::locked(this->pointer, this->control); }
+  SharedPtr<T> lock() const { return SharedPtr<T>::locked(this.pointer, this.control); }
 
 private:
   template<typename U> friend class SharedPtr;
@@ -326,7 +326,7 @@ struct EnableSharedFromThis : EnableSharedFromThisBase
 {
   SharedPtr<T> shared_from_this()
   {
-    SharedPtr<T> result = SharedPtr<T>::locked(static_cast<T*>(this), this->sharedSelf);
+    SharedPtr<T> result = SharedPtr<T>::locked(static_cast<T*>(&this), this.sharedSelf);
     if (!result)
       throw BadWeakPtr();
     return result;
@@ -334,18 +334,18 @@ struct EnableSharedFromThis : EnableSharedFromThisBase
 
   SharedPtr<const T> shared_from_this() const
   {
-    SharedPtr<const T> result = SharedPtr<const T>::locked(static_cast<const T*>(this), this->sharedSelf);
+    SharedPtr<const T> result = SharedPtr<const T>::locked(static_cast<const T*>(&this), this.sharedSelf);
     if (!result)
       throw BadWeakPtr();
     return result;
   }
 
-  WeakPtr<T> weak_from_this() { return WeakPtr<T>(static_cast<T*>(this), this->sharedSelf); }
-  WeakPtr<const T> weak_from_this() const { return WeakPtr<const T>(static_cast<const T*>(this), this->sharedSelf); }
-  SharedPtr<T> sharedFromThis() { return this->shared_from_this(); }
-  SharedPtr<const T> sharedFromThis() const { return this->shared_from_this(); }
-  WeakPtr<T> weakFromThis() { return this->weak_from_this(); }
-  WeakPtr<const T> weakFromThis() const { return this->weak_from_this(); }
+  WeakPtr<T> weak_from_this() { return WeakPtr<T>(static_cast<T*>(&this), this.sharedSelf); }
+  WeakPtr<const T> weak_from_this() const { return WeakPtr<const T>(static_cast<const T*>(&this), this.sharedSelf); }
+  SharedPtr<T> sharedFromThis() { return this.shared_from_this(); }
+  SharedPtr<const T> sharedFromThis() const { return this.shared_from_this(); }
+  WeakPtr<T> weakFromThis() { return this.weak_from_this(); }
+  WeakPtr<const T> weakFromThis() const { return this.weak_from_this(); }
 };
 
 // Atomic access to a SharedPtr (std::atomic_load, atomic_store and atomic_exchange on a
@@ -406,24 +406,24 @@ struct Atomic<SharedPtr<T>>
 
   SharedPtr<T> load() const
   {
-    this->lock.lockShared();
-    SharedPtr<T> copy = this->value;
-    this->lock.unlockShared();
+    this.lock.lockShared();
+    SharedPtr<T> copy = this.value;
+    this.lock.unlockShared();
     return copy;
   }
 
   void store(SharedPtr<T> desired)
   {
-    this->lock.lock();
-    this->value.swap(desired);
-    this->lock.unlock();
+    this.lock.lock();
+    this.value.swap(desired);
+    this.lock.unlock();
   }
 
   SharedPtr<T> exchange(SharedPtr<T> desired)
   {
-    this->lock.lock();
-    this->value.swap(desired);
-    this->lock.unlock();
+    this.lock.lock();
+    this.value.swap(desired);
+    this.lock.unlock();
     return desired;
   }
 
@@ -432,28 +432,28 @@ struct Atomic<SharedPtr<T>>
   bool compareExchange(SharedPtr<T>& expected, SharedPtr<T> desired)
   {
     SharedPtr<T> previous; // what expected held, released after the lock
-    this->lock.lock();
-    bool same = this->value.pointer == expected.pointer && this->value.control == expected.control;
+    this.lock.lock();
+    bool same = this.value.pointer == expected.pointer && this.value.control == expected.control;
     if (same)
-      this->value.swap(desired);
+      this.value.swap(desired);
     else
     {
       previous = move(expected);
-      expected = this->value;
+      expected = this.value;
     }
-    this->lock.unlock();
+    this.lock.unlock();
     return same;
   }
 
-  bool compare_exchange_strong(SharedPtr<T>& expected, SharedPtr<T> desired) { return this->compareExchange(expected, move(desired)); }
-  bool compare_exchange_weak(SharedPtr<T>& expected, SharedPtr<T> desired) { return this->compareExchange(expected, move(desired)); }
+  bool compare_exchange_strong(SharedPtr<T>& expected, SharedPtr<T> desired) { return this.compareExchange(expected, move(desired)); }
+  bool compare_exchange_weak(SharedPtr<T>& expected, SharedPtr<T> desired) { return this.compareExchange(expected, move(desired)); }
   bool is_lock_free() const { return false; }
 
-  implicit operator SharedPtr<T>() const { return this->load(); }
+  implicit operator SharedPtr<T>() const { return this.load(); }
 
   Atomic<SharedPtr<T>>& operator=(SharedPtr<T> desired)
   {
-    this->store(move(desired));
-    return *this;
+    this.store(move(desired));
+    return this;
   }
 };

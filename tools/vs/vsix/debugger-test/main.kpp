@@ -5,7 +5,7 @@ struct Square
 
   i32 area() const
   {
-    i32 result = this->side * this->side;
+    i32 result = this.side * this.side;
     return result;
   }
 };

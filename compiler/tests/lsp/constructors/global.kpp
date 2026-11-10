@@ -4,7 +4,7 @@ SuspendedContext made(GlobalContext* c) { return c; }
 
 struct GlobalContext
 {
-  void suspend() { this->suspendedContext.emplace(this); }
+  void suspend() { this.suspendedContext.emplace(this); }
 
   void forms()
   {
@@ -17,8 +17,8 @@ struct GlobalContext
     delete created;
     levelOf(this);
     SuspendedContext other(3);
-    this->optional.emplace(this);
-    this->list.emplace_back(this);
+    this.optional.emplace(this);
+    this.list.emplace_back(this);
     UniquePtr<SuspendedContext> unique = makeUnique<SuspendedContext>(this);
     SuspendedContext sum = other + other;
     if (sum && !other)

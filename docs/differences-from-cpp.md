@@ -453,10 +453,10 @@ Pinned make() { Pinned p; return p; }   // compiles: an error in C++
   member: `void setX(i32 x) { this.x = x; }`. The member a member initializer names stays bare
   (`: speed(speed)`), as do `using` declarations and declared types. All kpp code follows it, the
   stdlib and libraries too; imported headers are exempt. Today members are named bare, as in C++.
-- **Status:** `--this-warnings` lists them; the rule's errors are built under `--this-reference` (the converted game builds with it; not yet the default) ([design 23c](design.md)).
+- **Status:** built, the only meaning (2026-11-10): in every kpp file, the stdlib's too; `--this-pointer` gives a program's own files C++'s meaning for `--this-warnings`, which lists each bare member with its fix ([design 23c](design.md)).
 - **See:** [design 6][d6]; the readme's Planned.
 
-### `this` is a reference (this stage, built under `--this-reference`)
+### `this` is a reference (built)
 
 - **C++:** `this` is a pointer.
 - **kpp:** `this` is a reference everywhere (kovarex, 2026-11-07): `this.x` is the member access and
@@ -465,12 +465,12 @@ Pinned make() { Pinned p; return p; }   // compiles: an error in C++
   `this == other` compares the objects; `[&this]` captures it by reference and `[copy = this]` copies it,
   while `[this]` and `[*this]` are errors, and `[=]` never captures it; `this` is never null, so
   `if (this)` is an error. Today it is a pointer, except in an enum's methods, where it is the value.
-- **Status:** built under `--this-reference` (2026-11-09), in the program's own files; the standard
-  library keeps the pointer until the meaning becomes the default. `--this-reference-warnings` lists each
-  use that changes; the game has 185,189 lines of `this->`, 5,097 of `*this` and 8,707 using its address
+- **Status:** built, the only meaning (2026-11-10), in every kpp file, the standard library's too; C++
+  read by the converter and C headers keep C++'s pointer. `--this-pointer` gives a program's own files the
+  pointer back, for `--this-reference-warnings`, which lists each use that changes (convert.cmd's way); the game has 185,189 lines of `this->`, 5,097 of `*this` and 8,707 using its address
   ([design 23d](design.md)). Specs `language/this_is_a_reference`, `this_is_a_reference_through_bases_and_constants`,
   `this_reference_old_forms_is_error`, `this_reference_capture_of_this_is_error` and
-  `this_reference_keeps_the_pointer_in_the_standard_library`.
+  `this_reference_old_form_in_a_requires_expression_is_error`.
 - **Why:** one meaning of `this` in every place, and `*this` gone from the code.
 - **See:** [design 6][d6]; the readme's Planned.
 

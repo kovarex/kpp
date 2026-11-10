@@ -25,13 +25,13 @@ namespace gui
     static const Style& defaultStyle;
     static const int LIMIT;
     static const Style& styleStatic();
-    static int limitTwice() { return LIMIT * 2; }
+    static int limitTwice() { return This::LIMIT * 2; }
   };
 
   double Gui::scale = 1.5;
   Gui* Gui::instance = nullptr;
   const Rect Gui::fullScreen = Rect(-1, 0, 640, 480);
-  const Style& Gui::defaultStyle = styleStatic(); // unqualified: the initializer sees the class
+  const Style& Gui::defaultStyle = This::styleStatic(); // unqualified: the initializer sees the class
   const int Gui::LIMIT = 21;
 
   const Style& Gui::styleStatic()

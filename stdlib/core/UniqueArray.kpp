@@ -16,56 +16,56 @@ public:
   UniqueArray(T* array) : pointer(array) {}
   UniqueArray(const UniqueArray<T>& other) = delete;
   UniqueArray(UniqueArray<T>&& other) noexcept : pointer(other.pointer) { other.pointer = nullptr; }
-  ~UniqueArray() { delete[] this->pointer; }
+  ~UniqueArray() { delete[] this.pointer; }
 
   UniqueArray<T>& operator=(const UniqueArray<T>& other) = delete;
 
   UniqueArray<T>& operator=(UniqueArray<T>&& other) noexcept
   {
-    if (this != &other)
-      this->reset(other.release());
-    return *this;
+    if (&this != &other)
+      this.reset(other.release());
+    return this;
   }
 
   UniqueArray<T>& operator=(nullptr_t)
   {
-    this->reset();
-    return *this;
+    this.reset();
+    return this;
   }
 
-  T* get() const { return this->pointer; }
-  T& operator[](ContainerSize index) const { return this->pointer[index]; }
-  operator bool() const { return this->pointer != nullptr; }
-  bool operator!() const { return this->pointer == nullptr; }
-  bool operator==(nullptr_t) const { return this->pointer == nullptr; }
+  T* get() const { return this.pointer; }
+  T& operator[](ContainerSize index) const { return this.pointer[index]; }
+  operator bool() const { return this.pointer != nullptr; }
+  bool operator!() const { return this.pointer == nullptr; }
+  bool operator==(nullptr_t) const { return this.pointer == nullptr; }
 
   // The array, which the caller now owns (to give to `delete[]`); the UniqueArray is empty.
   T* release()
   {
-    T* array = this->pointer;
-    this->pointer = nullptr;
+    T* array = this.pointer;
+    this.pointer = nullptr;
     return array;
   }
 
   // Destroys the elements and frees the array; then the UniqueArray is empty.
-  void reset() { this->reset(nullptr); }
+  void reset() { this.reset(nullptr); }
 
   // Takes over array (made by `new T[n]`, or null), then destroys the array it had, as std's
   // reset does; resetting to the array it holds does nothing.
   void reset(T* array)
   {
-    if (array && array == this->pointer)
+    if (array && array == this.pointer)
       return;
-    T* old = this->pointer;
-    this->pointer = array;
+    T* old = this.pointer;
+    this.pointer = array;
     delete[] old;
   }
 
   // (by hand: ::swap here was swap<T*> and move<T*&> for every element type)
   void swap(UniqueArray<T>& other) noexcept
   {
-    T* mine = this->pointer;
-    this->pointer = other.pointer;
+    T* mine = this.pointer;
+    this.pointer = other.pointer;
     other.pointer = mine;
   }
 

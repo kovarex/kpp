@@ -8,7 +8,7 @@ extern "C" int printf(const char* format, ...);
 class ChurnedMap : public std::HashMap<int, int>
 {
 public:
-  std::ContainerSize slots() const { return this->table.slotCount(); }
+  std::ContainerSize slots() const { return this.table.slotCount(); }
 };
 
 uint64_t state = 12345;
@@ -26,22 +26,22 @@ struct SelfAware
   SelfAware* self;
   int value;
 
-  SelfAware() : self(this), value(0) {}
-  SelfAware(int value) : self(this), value(value) {}
-  SelfAware(const SelfAware& other) : self(this), value(other.value) {}
-  SelfAware(SelfAware&& other) : self(this), value(other.value) {}
+  SelfAware() : self(&this), value(0) {}
+  SelfAware(int value) : self(&this), value(value) {}
+  SelfAware(const SelfAware& other) : self(&this), value(other.value) {}
+  SelfAware(SelfAware&& other) : self(&this), value(other.value) {}
   SelfAware& operator=(const SelfAware& other)
   {
-    this->value = other.value;
-    return *this;
+    this.value = other.value;
+    return this;
   }
   SelfAware& operator=(SelfAware&& other)
   {
-    this->value = other.value;
-    return *this;
+    this.value = other.value;
+    return this;
   }
-  bool operator<(const SelfAware& other) const { return this->value < other.value; }
-  bool valid() const { return this->self == this; }
+  bool operator<(const SelfAware& other) const { return this.value < other.value; }
+  bool valid() const { return this.self == &this; }
 };
 
 void moves()

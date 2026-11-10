@@ -12,7 +12,7 @@ struct Style
   template<typename StyleType, typename PropertyType>
   const PropertyType* getProperty(std::UniquePtr<PropertyType> StyleType::*property) const
   {
-    return (static_cast<const StyleType*>(this)->*property).get();
+    return (static_cast<const StyleType*>(&this)->*property).get();
   }
 };
 

@@ -50,7 +50,7 @@ $sources += Join-Path $work 'returned_lambdas.kpp'
 $above = New-Object System.Text.StringBuilder
 for ($i = 0; $i -lt 500; $i++)
 {
-  [void]$above.AppendLine("struct User$i`n{`n  int v = 1;`n  void run() { v = g$i(v) + h$i(v, 2); }`n};")
+  [void]$above.AppendLine("struct User$i`n{`n  int v = 1;`n  void run() { this.v = g$i(this.v) + h$i(this.v, 2); }`n};")
   [void]$above.AppendLine("int use$i() { User$i u; u.run(); return u.v + g$i(3); }")
 }
 for ($i = 0; $i -lt 500; $i++)
@@ -142,8 +142,8 @@ for ($k = 1; $k -le $programs.Count; $k++)
 }
 $generic = New-Object System.Text.StringBuilder
 [void]$generic.AppendLine("template<typename F> struct Caller`n{`n  F f;")
-[void]$generic.AppendLine("  int a() { return f(1, 2); }`n  int b() { return f(3, 4); }")
-[void]$generic.AppendLine("  int c() { int (*p)(int, int) = f; return p(5, 6); }`n  int d() { int (*p)(int, int) = f; return p(7, 8); }`n};")
+[void]$generic.AppendLine("  int a() { return this.f(1, 2); }`n  int b() { return this.f(3, 4); }")
+[void]$generic.AppendLine("  int c() { int (*p)(int, int) = this.f; return p(5, 6); }`n  int d() { int (*p)(int, int) = this.f; return p(7, 8); }`n};")
 [void]$generic.AppendLine("template<typename F> Caller<F> caller(F f) { return Caller<F>{f}; }")
 [void]$generic.AppendLine("template<int N> struct Holder`n{`n  std::Function<int(int)> f = [](int x) { return x + N; };`n  int value = 0;")
 [void]$generic.AppendLine("  Holder() {}`n  Holder(int v) : value(v) {}`n};")

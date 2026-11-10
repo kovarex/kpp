@@ -50,35 +50,35 @@ public:
   template<typename F> requires (isSame<T, RemoveConst<F>> && !isSame<F, T>)
   ListIterator(const ListIterator<F>& other) : node(other.node) {}
 
-  T& operator*() const { return ((ListNode<RemoveConst<T>>*)this->node)->value; }
-  T* operator->() const { return &((ListNode<RemoveConst<T>>*)this->node)->value; }
+  T& operator*() const { return ((ListNode<RemoveConst<T>>*)this.node)->value; }
+  T* operator->() const { return &((ListNode<RemoveConst<T>>*)this.node)->value; }
   bool operator==(const ListIterator<T>& other) const = default;
   template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<T>> && !isSame<F, T>)
-  bool operator==(const ListIterator<F>& other) const { return this->node == other.node; }
+  bool operator==(const ListIterator<F>& other) const { return this.node == other.node; }
 
   ListIterator<T>& operator++()
   {
-    this->node = this->node->next;
-    return *this;
+    this.node = this.node->next;
+    return this;
   }
 
   ListIterator<T> operator++(i32)
   {
-    ListIterator<T> before = *this;
-    this->node = this->node->next;
+    ListIterator<T> before = this;
+    this.node = this.node->next;
     return before;
   }
 
   ListIterator<T>& operator--()
   {
-    this->node = this->node->prev;
-    return *this;
+    this.node = this.node->prev;
+    return this;
   }
 
   ListIterator<T> operator--(i32)
   {
-    ListIterator<T> before = *this;
-    this->node = this->node->prev;
+    ListIterator<T> before = this;
+    this.node = this.node->prev;
     return before;
   }
 
@@ -105,7 +105,7 @@ public:
   using pointer = T*;
   using const_pointer = const T*;
 
-  List() { this->becomeEmpty(); }
+  List() { this.becomeEmpty(); }
 
   // The constructors that build elements build them in a local List and take its nodes, so that
   // its destructor frees the elements built when one's constructor throws (this one's would not
@@ -114,80 +114,80 @@ public:
   // language/consteval_delegating_constructor_makes_the_object_in_place).
   implicit List(InitializerList<T> items)
   {
-    this->becomeEmpty();
+    this.becomeEmpty();
     List<T> built;
     for (const T& item : items)
       built.push_back(item);
-    this->take(built);
+    this.take(built);
   }
 
   // count value-initialized elements, or count copies of value.
   List(ContainerSize count)
   {
-    this->becomeEmpty();
+    this.becomeEmpty();
     List<T> built;
     built.resize(count);
-    this->take(built);
+    this.take(built);
   }
 
   List(ContainerSize count, const T& value)
   {
-    this->becomeEmpty();
+    this.becomeEmpty();
     List<T> built;
     built.resize(count, value);
-    this->take(built);
+    this.take(built);
   }
 
   // The elements of [first, last), input iterators of any kind, in order.
   template<typename InputIt> requires (!isIntegral<InputIt>)
   List(InputIt first, InputIt last)
   {
-    this->becomeEmpty();
+    this.becomeEmpty();
     List<T> built;
     for (; first != last; ++first)
       built.push_back(*first);
-    this->take(built);
+    this.take(built);
   }
 
   // `= {...}`: the listed elements, replacing the contents.
   List<T>& operator=(InitializerList<T> items)
   {
-    this->assign(items.begin(), items.end());
-    return *this;
+    this.assign(items.begin(), items.end());
+    return this;
   }
 
   List(const List<T>& other)
   {
-    this->becomeEmpty();
+    this.becomeEmpty();
     List<T> built;
     for (const T& value : other)
       built.push_back(value);
-    this->take(built);
+    this.take(built);
   }
 
   List(List<T>&& other) noexcept
   {
-    this->becomeEmpty();
-    this->take(other);
+    this.becomeEmpty();
+    this.take(other);
   }
 
-  ~List() { this->clear(); }
+  ~List() { this.clear(); }
 
   List<T>& operator=(const List<T>& other)
   {
-    if (this != &other)
-      this->assign(other.begin(), other.end());
-    return *this;
+    if (&this != &other)
+      this.assign(other.begin(), other.end());
+    return this;
   }
 
   List<T>& operator=(List<T>&& other) noexcept
   {
-    if (this != &other)
+    if (&this != &other)
     {
-      this->clear();
-      this->take(other);
+      this.clear();
+      this.take(other);
     }
-    return *this;
+    return this;
   }
 
   // Replace the contents: assigned over the elements there are, as std's, the others added or
@@ -195,84 +195,84 @@ public:
   template<typename InputIt> requires (!isIntegral<InputIt>)
   void assign(InputIt first, InputIt last)
   {
-    ListIterator<T> it = this->begin();
+    ListIterator<T> it = this.begin();
     if constexpr (requires { *it = *first; })
-      for (; it != this->end() && first != last; ++it, ++first)
+      for (; it != this.end() && first != last; ++it, ++first)
         *it = *first;
-    this->erase(it, this->end());
+    this.erase(it, this.end());
     for (; first != last; ++first)
-      this->push_back(*first);
+      this.push_back(*first);
   }
 
   void assign(ContainerSize count, const T& value)
   {
-    ListIterator<T> it = this->begin();
-    for (; it != this->end() && count > 0; ++it, --count)
+    ListIterator<T> it = this.begin();
+    for (; it != this.end() && count > 0; ++it, --count)
       *it = value;
-    this->erase(it, this->end());
-    this->insert(this->end(), count, value);
+    this.erase(it, this.end());
+    this.insert(this.end(), count, value);
   }
 
-  void assign(InitializerList<T> items) { this->assign(items.begin(), items.end()); }
+  void assign(InitializerList<T> items) { this.assign(items.begin(), items.end()); }
 
   void resize(ContainerSize newLength)
   {
-    while (this->length > newLength)
-      this->pop_back();
-    while (this->length < newLength)
-      this->emplace_back();
+    while (this.length > newLength)
+      this.pop_back();
+    while (this.length < newLength)
+      this.emplace_back();
   }
 
   // New elements are copies of value.
   void resize(ContainerSize newLength, const T& value)
   {
-    while (this->length > newLength)
-      this->pop_back();
-    if (this->length < newLength)
-      this->insert(this->end(), newLength - this->length, value);
+    while (this.length > newLength)
+      this.pop_back();
+    if (this.length < newLength)
+      this.insert(this.end(), newLength - this.length, value);
   }
 
-  ContainerSize size() const { return this->length; }
-  bool empty() const { return this->length == 0; }
+  ContainerSize size() const { return this.length; }
+  bool empty() const { return this.length == 0; }
   // A const List's elements are const through every access, as std::list's.
-  T& front() { return ((ListNode<T>*)this->sentinel.next)->value; }
-  T& back() { return ((ListNode<T>*)this->sentinel.prev)->value; }
-  const T& front() const { return ((ListNode<T>*)this->sentinel.next)->value; }
-  const T& back() const { return ((ListNode<T>*)this->sentinel.prev)->value; }
-  iterator begin() { return iterator(this->sentinel.next); }
-  iterator end() { return iterator(&this->sentinel); }
-  const_iterator begin() const { return const_iterator(this->sentinel.next); }
-  const_iterator end() const { return const_iterator((ListLinks*)&this->sentinel); }
-  const_iterator cbegin() const { return this->begin(); }
-  const_iterator cend() const { return this->end(); }
-  auto crbegin() const { return this->rbegin(); }
-  auto crend() const { return this->rend(); }
-  reverse_iterator rbegin() { return reverse_iterator(this->end()); }
-  reverse_iterator rend() { return reverse_iterator(this->begin()); }
-  const_reverse_iterator rbegin() const { return const_reverse_iterator(this->end()); }
-  const_reverse_iterator rend() const { return const_reverse_iterator(this->begin()); }
+  T& front() { return ((ListNode<T>*)this.sentinel.next)->value; }
+  T& back() { return ((ListNode<T>*)this.sentinel.prev)->value; }
+  const T& front() const { return ((ListNode<T>*)this.sentinel.next)->value; }
+  const T& back() const { return ((ListNode<T>*)this.sentinel.prev)->value; }
+  iterator begin() { return iterator(this.sentinel.next); }
+  iterator end() { return iterator(&this.sentinel); }
+  const_iterator begin() const { return const_iterator(this.sentinel.next); }
+  const_iterator end() const { return const_iterator((ListLinks*)&this.sentinel); }
+  const_iterator cbegin() const { return this.begin(); }
+  const_iterator cend() const { return this.end(); }
+  auto crbegin() const { return this.rbegin(); }
+  auto crend() const { return this.rend(); }
+  reverse_iterator rbegin() { return reverse_iterator(this.end()); }
+  reverse_iterator rend() { return reverse_iterator(this.begin()); }
+  const_reverse_iterator rbegin() const { return const_reverse_iterator(this.end()); }
+  const_reverse_iterator rend() const { return const_reverse_iterator(this.begin()); }
 
   void swap(List<T>& other) noexcept
   {
     List<T> held(move(other));
-    other = move(*this);
-    *this = move(held);
+    other = move(this);
+    this = move(held);
   }
 
-  void push_back(const T& value) { this->emplace(this->end(), value); }
-  void push_back(T&& value) { this->emplace(this->end(), move(value)); }
-  void push_front(const T& value) { this->emplace(this->begin(), value); }
-  void push_front(T&& value) { this->emplace(this->begin(), move(value)); }
+  void push_back(const T& value) { this.emplace(this.end(), value); }
+  void push_back(T&& value) { this.emplace(this.end(), move(value)); }
+  void push_front(const T& value) { this.emplace(this.begin(), value); }
+  void push_front(T&& value) { this.emplace(this.begin(), move(value)); }
   template<typename... Args>
-  T& emplace_back(Args&&... args) { return *this->emplace(this->end(), forward<Args>(args)...); }
+  T& emplace_back(Args&&... args) { return *this.emplace(this.end(), forward<Args>(args)...); }
   template<typename... Args>
-  T& emplace_front(Args&&... args) { return *this->emplace(this->begin(), forward<Args>(args)...); }
-  void pop_back() { this->erase(ListIterator<T>(this->sentinel.prev)); }
-  void pop_front() { this->erase(this->begin()); }
+  T& emplace_front(Args&&... args) { return *this.emplace(this.begin(), forward<Args>(args)...); }
+  void pop_back() { this.erase(ListIterator<T>(this.sentinel.prev)); }
+  void pop_front() { this.erase(this.begin()); }
 
   // Inserts before position; returns the new element's position.
-  ListIterator<T> insert(const_iterator position, const T& value) { return this->emplace(position, value); }
-  ListIterator<T> insert(const_iterator position, T&& value) { return this->emplace(position, move(value)); }
+  ListIterator<T> insert(const_iterator position, const T& value) { return this.emplace(position, value); }
+  ListIterator<T> insert(const_iterator position, T&& value) { return this.emplace(position, move(value)); }
 
   // count copies of value before position; returns the first one's position, or position for none.
   // Built apart and then linked in, as an insert that throws has no effects ([list.modifiers]).
@@ -281,7 +281,7 @@ public:
     List<T> built;
     for (ContainerSize i = 0; i < count; ++i)
       built.emplace_back(value);
-    return this->insertBuilt(position, built);
+    return this.insertBuilt(position, built);
   }
 
   // The elements of [first, last), input iterators of any kind, before position, in order; returns
@@ -292,19 +292,19 @@ public:
     List<T> built;
     for (; first != last; ++first)
       built.push_back(*first);
-    return this->insertBuilt(position, built);
+    return this.insertBuilt(position, built);
   }
 
-  ListIterator<T> insert(const_iterator position, InitializerList<T> items) { return this->insert(position, items.begin(), items.end()); }
+  ListIterator<T> insert(const_iterator position, InitializerList<T> items) { return this.insert(position, items.begin(), items.end()); }
 
   template<typename... Args>
   ListIterator<T> emplace(const_iterator position, Args&&... args)
   {
-    ListNode<T>* node = this->allocateNode();
+    ListNode<T>* node = this.allocateNode();
     OwnedBlock block(node); // freed when the element's constructor throws
     new (&node->value) T(forward<Args>(args)...);
     block.release();
-    return this->linkNode(iterator(position), node);
+    return this.linkNode(iterator(position), node);
   }
 
   // Removes the element at position; returns the position after it.
@@ -312,63 +312,63 @@ public:
   {
     ListLinks* next = position.node->next;
     listUnlink(position.node);
-    this->destroyNode(position.node);
-    --this->length;
+    this.destroyNode(position.node);
+    --this.length;
     return ListIterator<T>(next);
   }
 
   ListIterator<T> erase(const_iterator first, const_iterator last)
   {
     while (first != last)
-      first = this->erase(first);
+      first = this.erase(first);
     return iterator(last);
   }
 
   void clear()
   {
-    ListLinks* node = this->sentinel.next;
-    while (node != &this->sentinel)
+    ListLinks* node = this.sentinel.next;
+    while (node != &this.sentinel)
     {
       ListLinks* next = node->next;
-      this->destroyNode(node);
+      this.destroyNode(node);
       node = next;
     }
-    this->becomeEmpty();
+    this.becomeEmpty();
   }
 
   // Moves all of other's nodes before position, without copying (other ends up empty); O(1).
   void splice(const_iterator position, List<T>& other)
   {
     if (!other.empty())
-      this->moveNodes(position, other, other.begin(), other.end(), other.length);
+      this.moveNodes(position, other, other.begin(), other.end(), other.length);
   }
 
-  void splice(const_iterator position, List<T>&& other) { this->splice(position, other); }
+  void splice(const_iterator position, List<T>&& other) { this.splice(position, other); }
 
   // Moves the nodes of [first, last) from other before position, which is not among them; O(1)
   // within this list, otherwise O(their number).
   void splice(const_iterator position, List<T>& other, const_iterator first, const_iterator last)
   {
     if (first != last)
-      this->moveNodes(position, other, first, last, this == &other ? 0 : ContainerSize(distance(first, last)));
+      this.moveNodes(position, other, first, last, &this == &other ? 0 : ContainerSize(distance(first, last)));
   }
 
-  void splice(const_iterator position, List<T>&& other, const_iterator first, const_iterator last) { this->splice(position, other, first, last); }
+  void splice(const_iterator position, List<T>&& other, const_iterator first, const_iterator last) { this.splice(position, other, first, last); }
 
   // Moves the node at it from other before position.
   void splice(const_iterator position, List<T>& other, const_iterator it)
   {
     if (it.node == position.node || it.node->next == position.node)
     {
-      if (this == &other)
+      if (&this == &other)
         return;
     }
-    if (this != &other && this->length == maxContainerSize)
+    if (&this != &other && this.length == maxContainerSize)
       throwLengthError("list too long");
     listUnlink(it.node);
     --other.length;
     listLinkBefore(position.node, it.node);
-    ++this->length;
+    ++this.length;
   }
 
   // Removes every element equal to value / for which predicate is true; returns how many.
@@ -377,12 +377,12 @@ public:
     // value may be an element of this list: the equal nodes move to another list first, and are
     // destroyed only when it goes, after the last comparison (as std's, which copies nothing).
     List<T> removed;
-    for (ListIterator<T> it = this->begin(); it != this->end();)
+    for (ListIterator<T> it = this.begin(); it != this.end();)
     {
       ListIterator<T> next = it;
       ++next;
       if (*it == value)
-        removed.splice(removed.end(), *this, it);
+        removed.splice(removed.end(), this, it);
       it = next;
     }
     return removed.size();
@@ -392,10 +392,10 @@ public:
   ContainerSize removeIf(F predicate)
   {
     ContainerSize removed = 0;
-    for (ListIterator<T> it = this->begin(); it != this->end();)
+    for (ListIterator<T> it = this.begin(); it != this.end();)
       if (predicate(*it))
       {
-        it = this->erase(it);
+        it = this.erase(it);
         ++removed;
       }
       else
@@ -405,19 +405,19 @@ public:
 
   // Removes each element equal to (by == or same(previous, element)) the kept one before it; returns
   // how many.
-  ContainerSize unique() { return this->unique(EqualTo<>()); }
+  ContainerSize unique() { return this.unique(EqualTo<>()); }
 
   template<typename F>
   ContainerSize unique(F same)
   {
     ContainerSize removed = 0;
-    if (this->length < 2)
+    if (this.length < 2)
       return 0;
-    ListIterator<T> previous = this->begin();
-    for (ListIterator<T> it = ++this->begin(); it != this->end();)
+    ListIterator<T> previous = this.begin();
+    for (ListIterator<T> it = ++this.begin(); it != this.end();)
       if (same(*previous, *it))
       {
-        it = this->erase(it);
+        it = this.erase(it);
         ++removed;
       }
       else
@@ -430,59 +430,59 @@ public:
 
   void reverse()
   {
-    ListLinks* node = &this->sentinel;
+    ListLinks* node = &this.sentinel;
     do
     {
       ListLinks* next = node->next;
       node->next = node->prev;
       node->prev = next;
       node = next;
-    } while (node != &this->sentinel);
+    } while (node != &this.sentinel);
   }
 
   // Stable sort that relinks the nodes; elements do not move.
   void sort()
   {
-    this->sort([](const T& a, const T& b) { return a < b; });
+    this.sort([](const T& a, const T& b) { return a < b; });
   }
 
   template<typename F>
   void sort(F less)
   {
-    if (this->length < 2)
+    if (this.length < 2)
       return;
     Vector<ListNode<T>*> nodes;
-    nodes.reserve(this->length);
-    for (ListLinks* node = this->sentinel.next; node != &this->sentinel; node = node->next)
+    nodes.reserve(this.length);
+    for (ListLinks* node = this.sentinel.next; node != &this.sentinel; node = node->next)
       nodes.push_back((ListNode<T>*)node);
     stableSort(nodes.begin(), nodes.end(), [&](ListNode<T>* a, ListNode<T>* b) { return less(a->value, b->value); });
-    ContainerSize length = this->length;
-    this->becomeEmpty();
+    ContainerSize length = this.length;
+    this.becomeEmpty();
     for (ListNode<T>* node : nodes)
-      listLinkBefore(&this->sentinel, node);
-    this->length = length;
+      listLinkBefore(&this.sentinel, node);
+    this.length = length;
   }
 
   // Moves other's nodes into this list; both sorted ascending, the result too, with this list's
   // elements first among equivalent ones.
-  void merge(List<T>& other) { this->merge(other, Less<>()); }
-  void merge(List<T>&& other) { this->merge(other, Less<>()); }
+  void merge(List<T>& other) { this.merge(other, Less<>()); }
+  void merge(List<T>&& other) { this.merge(other, Less<>()); }
 
   template<typename F>
-  void merge(List<T>&& other, F less) { this->merge(other, less); }
+  void merge(List<T>&& other, F less) { this.merge(other, less); }
 
   template<typename F>
   void merge(List<T>& other, F less)
   {
-    if (this == &other)
+    if (&this == &other)
       return;
-    ListIterator<T> it = this->begin();
+    ListIterator<T> it = this.begin();
     while (!other.empty())
     {
       ListIterator<T> next = other.begin();
-      while (it != this->end() && !less(*next, *it))
+      while (it != this.end() && !less(*next, *it))
         ++it;
-      this->splice(it, other, next);
+      this.splice(it, other, next);
     }
   }
 
@@ -493,7 +493,7 @@ private:
     if (built.empty())
       return iterator(position);
     ListIterator<T> first = built.begin();
-    this->splice(position, built);
+    this.splice(position, built);
     return first;
   }
 
@@ -501,7 +501,7 @@ private:
   // Relinks [first, last), count nodes of other (0 when other is this list), before position.
   void moveNodes(const_iterator position, List<T>& other, const_iterator first, const_iterator last, ContainerSize count)
   {
-    if (count > maxContainerSize - this->length)
+    if (count > maxContainerSize - this.length)
       throwLengthError("list too long");
     ListLinks* head = first.node;
     ListLinks* tail = last.node->prev;
@@ -513,12 +513,12 @@ private:
     before->prev->next = head;
     before->prev = tail;
     other.length -= count;
-    this->length += count;
+    this.length += count;
   }
 
   ListNode<T>* allocateNode()
   {
-    if (this->length == maxContainerSize)
+    if (this.length == maxContainerSize)
       throwLengthError("list too long");
     return (ListNode<T>*)allocateBytes(sizeof(ListNode<T>));
   }
@@ -526,15 +526,15 @@ private:
   ListIterator<T> linkNode(ListIterator<T> position, ListNode<T>* node)
   {
     listLinkBefore(position.node, node);
-    ++this->length;
+    ++this.length;
     return ListIterator<T>(node);
   }
 
   void becomeEmpty()
   {
-    this->sentinel.prev = &this->sentinel;
-    this->sentinel.next = &this->sentinel;
-    this->length = 0;
+    this.sentinel.prev = &this.sentinel;
+    this.sentinel.next = &this.sentinel;
+    this.length = 0;
   }
 
   void destroyNode(ListLinks* node)
@@ -548,11 +548,11 @@ private:
   {
     if (other.length == 0)
       return;
-    this->sentinel.next = other.sentinel.next;
-    this->sentinel.prev = other.sentinel.prev;
-    this->sentinel.next->prev = &this->sentinel;
-    this->sentinel.prev->next = &this->sentinel;
-    this->length = other.length;
+    this.sentinel.next = other.sentinel.next;
+    this.sentinel.prev = other.sentinel.prev;
+    this.sentinel.next->prev = &this.sentinel;
+    this.sentinel.prev->next = &this.sentinel;
+    this.length = other.length;
     other.becomeEmpty();
   }
 

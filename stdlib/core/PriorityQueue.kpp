@@ -15,67 +15,67 @@ public:
 
   PriorityQueue() {}
   PriorityQueue(const Compare& compare) : compare(compare) {}
-  PriorityQueue(const Compare& compare, const Container& elements) : heap(elements), compare(compare) { this->makeHeap(); }
+  PriorityQueue(const Compare& compare, const Container& elements) : heap(elements), compare(compare) { this.makeHeap(); }
 
   // The elements of [first, last).
   template<typename It>
   PriorityQueue(It first, It last, const Compare& compare = Compare()) : compare(compare)
   {
     for (; first != last; ++first)
-      this->heap.push_back(*first);
-    this->makeHeap();
+      this.heap.push_back(*first);
+    this.makeHeap();
   }
 
-  ContainerSize size() const { return this->heap.size(); }
-  bool empty() const { return this->heap.empty(); }
-  const T& top() const { return this->heap[0]; }
+  ContainerSize size() const { return this.heap.size(); }
+  bool empty() const { return this.heap.empty(); }
+  const T& top() const { return this.heap[0]; }
 
   void push(const T& value)
   {
-    this->heap.push_back(value);
-    this->siftUp(this->heap.size() - 1);
+    this.heap.push_back(value);
+    this.siftUp(this.heap.size() - 1);
   }
 
   void push(T&& value)
   {
-    this->heap.push_back(move(value));
-    this->siftUp(this->heap.size() - 1);
+    this.heap.push_back(move(value));
+    this.siftUp(this.heap.size() - 1);
   }
 
   template<typename... Args>
   void emplace(Args&&... args)
   {
-    this->heap.emplace_back(forward<Args>(args)...);
-    this->siftUp(this->heap.size() - 1);
+    this.heap.emplace_back(forward<Args>(args)...);
+    this.siftUp(this.heap.size() - 1);
   }
 
   // Not on an empty queue (its last index would wrap to the largest size).
   void pop()
   {
-    assert(!this->heap.empty());
-    ContainerSize last = this->heap.size() - 1;
+    assert(!this.heap.empty());
+    ContainerSize last = this.heap.size() - 1;
     if (last > 0)
-      std::swap(this->heap[0], this->heap[last]);
-    this->heap.pop_back();
-    if (!this->heap.empty())
-      this->siftDown(0);
+      std::swap(this.heap[0], this.heap[last]);
+    this.heap.pop_back();
+    if (!this.heap.empty())
+      this.siftDown(0);
   }
 
   void swap(PriorityQueue<T, Container, Compare>& other) noexcept(isNothrowMoveConstructible<Container> && isNothrowMoveAssignable<Container> &&
                                                                  isNothrowMoveConstructible<Compare> && isNothrowMoveAssignable<Compare>)
   {
-    std::swap(this->heap, other.heap);
-    std::swap(this->compare, other.compare);
+    std::swap(this.heap, other.heap);
+    std::swap(this.compare, other.compare);
   }
 
   // kpp addition: removes every element.
-  void clear() { this->heap.clear(); }
+  void clear() { this.heap.clear(); }
 
 private:
   void makeHeap()
   {
-    for (ContainerSize i = this->heap.size() / 2; i-- > 0;) // size / 2 - 1 down to 0
-      this->siftDown(i);
+    for (ContainerSize i = this.heap.size() / 2; i-- > 0;) // size / 2 - 1 down to 0
+      this.siftDown(i);
   }
 
   void siftUp(ContainerSize i)
@@ -83,28 +83,28 @@ private:
     while (i > 0)
     {
       ContainerSize parent = (i - 1) / 2;
-      if (!this->compare(this->heap[parent], this->heap[i]))
+      if (!this.compare(this.heap[parent], this.heap[i]))
         break;
-      std::swap(this->heap[parent], this->heap[i]);
+      std::swap(this.heap[parent], this.heap[i]);
       i = parent;
     }
   }
 
   void siftDown(ContainerSize i)
   {
-    ContainerSize n = this->heap.size();
+    ContainerSize n = this.heap.size();
     while (i < n / 2) // while i has a child: then 2 * i + 2 <= n, which cannot wrap
     {
       ContainerSize largest = i;
       ContainerSize left = 2 * i + 1;
       ContainerSize right = 2 * i + 2;
-      if (left < n && this->compare(this->heap[largest], this->heap[left]))
+      if (left < n && this.compare(this.heap[largest], this.heap[left]))
         largest = left;
-      if (right < n && this->compare(this->heap[largest], this->heap[right]))
+      if (right < n && this.compare(this.heap[largest], this.heap[right]))
         largest = right;
       if (largest == i)
         break;
-      std::swap(this->heap[i], this->heap[largest]);
+      std::swap(this.heap[i], this.heap[largest]);
       i = largest;
     }
   }

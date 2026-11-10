@@ -68,76 +68,76 @@ public:
   template<typename Rep2, typename Period2> requires (isFloatingPoint<Rep> || (!isFloatingPoint<Rep2> && (Period2::num * Period::den) % (Period2::den * Period::num) == 0))
   implicit Duration(const Duration<Rep2, Period2>& other) : ticks(convertDuration(other, (const Duration<Rep, Period>*)nullptr).count()) {}
 
-  constexpr Rep count() const { return this->ticks; }
+  constexpr Rep count() const { return this.ticks; }
   static constexpr Duration<Rep, Period> zero() { return Duration<Rep, Period>(Rep()); }
   static constexpr Duration<Rep, Period> min() { return Duration<Rep, Period>(Limits<Rep>::lowest()); }
   static constexpr Duration<Rep, Period> max() { return Duration<Rep, Period>(Limits<Rep>::max()); }
 
   Duration<Rep, Period>& operator++()
   {
-    ++this->ticks;
-    return *this;
+    ++this.ticks;
+    return this;
   }
 
   Duration<Rep, Period>& operator--()
   {
-    --this->ticks;
-    return *this;
+    --this.ticks;
+    return this;
   }
 
-  Duration<Rep, Period> operator++(i32) { return Duration<Rep, Period>(this->ticks++); }
-  Duration<Rep, Period> operator--(i32) { return Duration<Rep, Period>(this->ticks--); }
+  Duration<Rep, Period> operator++(i32) { return Duration<Rep, Period>(this.ticks++); }
+  Duration<Rep, Period> operator--(i32) { return Duration<Rep, Period>(this.ticks--); }
 
   Duration<Rep, Period>& operator+=(const Duration<Rep, Period>& other)
   {
-    this->ticks += other.ticks;
-    return *this;
+    this.ticks += other.ticks;
+    return this;
   }
 
   Duration<Rep, Period>& operator-=(const Duration<Rep, Period>& other)
   {
-    this->ticks -= other.ticks;
-    return *this;
+    this.ticks -= other.ticks;
+    return this;
   }
 
   Duration<Rep, Period>& operator*=(const Rep& factor)
   {
-    this->ticks *= factor;
-    return *this;
+    this.ticks *= factor;
+    return this;
   }
 
   Duration<Rep, Period>& operator/=(const Rep& divisor)
   {
-    this->ticks /= divisor;
-    return *this;
+    this.ticks /= divisor;
+    return this;
   }
 
-  Duration<Rep, Period> operator+() const { return *this; }
-  Duration<Rep, Period> operator-() const { return Duration<Rep, Period>(-this->ticks); }
+  Duration<Rep, Period> operator+() const { return this; }
+  Duration<Rep, Period> operator-() const { return Duration<Rep, Period>(-this.ticks); }
 
   // The sum, difference and remainder of two durations of any types are in their common duration
   // (inCommonDuration: Milliseconds + Seconds is Milliseconds), as is the quotient of two, a count.
   template<typename Rep2, typename Period2>
   auto operator+(const Duration<Rep2, Period2>& other) const
   {
-    auto sum = inCommonDuration(*this, other);
-    sum.ticks += inCommonDuration(other, *this).count();
+    auto sum = inCommonDuration(this, other);
+    sum.ticks += inCommonDuration(other, this).count();
     return sum;
   }
 
   template<typename Rep2, typename Period2>
   auto operator-(const Duration<Rep2, Period2>& other) const
   {
-    auto difference = inCommonDuration(*this, other);
-    difference.ticks -= inCommonDuration(other, *this).count();
+    auto difference = inCommonDuration(this, other);
+    difference.ticks -= inCommonDuration(other, this).count();
     return difference;
   }
 
   template<typename Rep2, typename Period2>
   auto operator%(const Duration<Rep2, Period2>& other) const
   {
-    auto rest = inCommonDuration(*this, other);
-    rest.ticks %= inCommonDuration(other, *this).count();
+    auto rest = inCommonDuration(this, other);
+    rest.ticks %= inCommonDuration(other, this).count();
     return rest;
   }
 
@@ -145,30 +145,30 @@ public:
   template<typename Rep2, typename Period2>
   auto operator/(const Duration<Rep2, Period2>& other) const
   {
-    return inCommonDuration(*this, other).count() / inCommonDuration(other, *this).count();
+    return inCommonDuration(this, other).count() / inCommonDuration(other, this).count();
   }
 
   // Times or divided by an integer keeps the type; by a floating-point number it counts in double.
   // (Members, one per scalar type: C++ takes any rep, in the common type of the two.)
-  Duration<Rep, Period> operator*(i32 factor) const { return Duration<Rep, Period>(this->ticks * factor); }
-  Duration<Rep, Period> operator*(i64 factor) const { return Duration<Rep, Period>(this->ticks * factor); }
-  Duration<double, Period> operator*(double factor) const { return Duration<double, Period>((double)this->ticks * factor); }
-  Duration<Rep, Period> operator/(i32 divisor) const { return Duration<Rep, Period>(this->ticks / divisor); }
-  Duration<Rep, Period> operator/(i64 divisor) const { return Duration<Rep, Period>(this->ticks / divisor); }
-  Duration<double, Period> operator/(double divisor) const { return Duration<double, Period>((double)this->ticks / divisor); }
-  Duration<Rep, Period> operator%(i32 divisor) const { return Duration<Rep, Period>(this->ticks % divisor); }
-  Duration<Rep, Period> operator%(i64 divisor) const { return Duration<Rep, Period>(this->ticks % divisor); }
+  Duration<Rep, Period> operator*(i32 factor) const { return Duration<Rep, Period>(this.ticks * factor); }
+  Duration<Rep, Period> operator*(i64 factor) const { return Duration<Rep, Period>(this.ticks * factor); }
+  Duration<double, Period> operator*(double factor) const { return Duration<double, Period>((double)this.ticks * factor); }
+  Duration<Rep, Period> operator/(i32 divisor) const { return Duration<Rep, Period>(this.ticks / divisor); }
+  Duration<Rep, Period> operator/(i64 divisor) const { return Duration<Rep, Period>(this.ticks / divisor); }
+  Duration<double, Period> operator/(double divisor) const { return Duration<double, Period>((double)this.ticks / divisor); }
+  Duration<Rep, Period> operator%(i32 divisor) const { return Duration<Rep, Period>(this.ticks % divisor); }
+  Duration<Rep, Period> operator%(i64 divisor) const { return Duration<Rep, Period>(this.ticks % divisor); }
   // Comparisons with a duration of any type, in their common duration.
   template<typename Rep2, typename Period2>
-  bool operator==(const Duration<Rep2, Period2>& other) const { return compareDurations(*this, other) == 0; }
+  bool operator==(const Duration<Rep2, Period2>& other) const { return compareDurations(this, other) == 0; }
   template<typename Rep2, typename Period2>
-  bool operator<(const Duration<Rep2, Period2>& other) const { return compareDurations(*this, other) < 0; }
+  bool operator<(const Duration<Rep2, Period2>& other) const { return compareDurations(this, other) < 0; }
   template<typename Rep2, typename Period2>
-  bool operator<=(const Duration<Rep2, Period2>& other) const { return compareDurations(*this, other) <= 0; }
+  bool operator<=(const Duration<Rep2, Period2>& other) const { return compareDurations(this, other) <= 0; }
   template<typename Rep2, typename Period2>
-  bool operator>(const Duration<Rep2, Period2>& other) const { return compareDurations(*this, other) > 0; }
+  bool operator>(const Duration<Rep2, Period2>& other) const { return compareDurations(this, other) > 0; }
   template<typename Rep2, typename Period2>
-  bool operator>=(const Duration<Rep2, Period2>& other) const { return compareDurations(*this, other) >= 0; }
+  bool operator>=(const Duration<Rep2, Period2>& other) const { return compareDurations(this, other) >= 0; }
 
 private:
   Rep ticks;
@@ -320,20 +320,20 @@ public:
   template<typename Dur2>
   implicit TimePoint(const TimePoint<Clock, Dur2>& other) : sinceEpoch(other.sinceEpoch) {}
 
-  constexpr Dur time_since_epoch() const { return this->sinceEpoch; }
+  constexpr Dur time_since_epoch() const { return this.sinceEpoch; }
   static constexpr TimePoint<Clock, Dur> min() { return TimePoint<Clock, Dur>(Dur::min()); }
   static constexpr TimePoint<Clock, Dur> max() { return TimePoint<Clock, Dur>(Dur::max()); }
 
   TimePoint<Clock, Dur>& operator+=(const Dur& d)
   {
-    this->sinceEpoch += d;
-    return *this;
+    this.sinceEpoch += d;
+    return this;
   }
 
   TimePoint<Clock, Dur>& operator-=(const Dur& d)
   {
-    this->sinceEpoch -= d;
-    return *this;
+    this.sinceEpoch -= d;
+    return this;
   }
 
   // A time point plus or minus a duration, and the difference of two time points of the clock, are
@@ -343,30 +343,30 @@ public:
   template<typename R, typename P>
   auto operator+(const Duration<R, P>& d) const
   {
-    auto sinceEpoch = this->sinceEpoch + d;
+    auto sinceEpoch = this.sinceEpoch + d;
     return TimePoint<Clock, decltype(sinceEpoch)>(sinceEpoch);
   }
 
   template<typename R, typename P>
   auto operator-(const Duration<R, P>& d) const
   {
-    auto sinceEpoch = this->sinceEpoch - d;
+    auto sinceEpoch = this.sinceEpoch - d;
     return TimePoint<Clock, decltype(sinceEpoch)>(sinceEpoch);
   }
 
   template<typename Dur2>
-  auto operator-(const TimePoint<Clock, Dur2>& other) const { return this->sinceEpoch - other.sinceEpoch; }
+  auto operator-(const TimePoint<Clock, Dur2>& other) const { return this.sinceEpoch - other.sinceEpoch; }
   // Comparisons with a time point of the clock in any duration.
   template<typename Dur2>
-  bool operator==(const TimePoint<Clock, Dur2>& other) const { return this->sinceEpoch == other.sinceEpoch; }
+  bool operator==(const TimePoint<Clock, Dur2>& other) const { return this.sinceEpoch == other.sinceEpoch; }
   template<typename Dur2>
-  bool operator<(const TimePoint<Clock, Dur2>& other) const { return this->sinceEpoch < other.sinceEpoch; }
+  bool operator<(const TimePoint<Clock, Dur2>& other) const { return this.sinceEpoch < other.sinceEpoch; }
   template<typename Dur2>
-  bool operator<=(const TimePoint<Clock, Dur2>& other) const { return this->sinceEpoch <= other.sinceEpoch; }
+  bool operator<=(const TimePoint<Clock, Dur2>& other) const { return this.sinceEpoch <= other.sinceEpoch; }
   template<typename Dur2>
-  bool operator>(const TimePoint<Clock, Dur2>& other) const { return this->sinceEpoch > other.sinceEpoch; }
+  bool operator>(const TimePoint<Clock, Dur2>& other) const { return this.sinceEpoch > other.sinceEpoch; }
   template<typename Dur2>
-  bool operator>=(const TimePoint<Clock, Dur2>& other) const { return this->sinceEpoch >= other.sinceEpoch; }
+  bool operator>=(const TimePoint<Clock, Dur2>& other) const { return this.sinceEpoch >= other.sinceEpoch; }
 
 private:
   Dur sinceEpoch;
@@ -451,28 +451,28 @@ public:
 
   constexpr HoursMinutesSeconds(D d)
   {
-    this->negative = d.count() < typename D::rep(0);
-    precision whole = durationCast<precision>(this->negative ? D(-d.count()) : d);
-    this->h = durationCast<Hours>(whole);
-    whole -= durationCast<precision>(this->h);
-    this->m = durationCast<Minutes>(whole);
-    whole -= durationCast<precision>(this->m);
-    this->s = durationCast<Seconds>(whole);
-    whole -= durationCast<precision>(this->s);
-    this->rest = whole;
+    this.negative = d.count() < typename D::rep(0);
+    precision whole = durationCast<precision>(this.negative ? D(-d.count()) : d);
+    this.h = durationCast<Hours>(whole);
+    whole -= durationCast<precision>(this.h);
+    this.m = durationCast<Minutes>(whole);
+    whole -= durationCast<precision>(this.m);
+    this.s = durationCast<Seconds>(whole);
+    whole -= durationCast<precision>(this.s);
+    this.rest = whole;
   }
 
-  constexpr bool is_negative() const { return this->negative; }
-  constexpr Hours hours() const { return this->h; }
-  constexpr Minutes minutes() const { return this->m; }
-  constexpr Seconds seconds() const { return this->s; }
-  constexpr precision subseconds() const { return this->rest; }
+  constexpr bool is_negative() const { return this.negative; }
+  constexpr Hours hours() const { return this.h; }
+  constexpr Minutes minutes() const { return this.m; }
+  constexpr Seconds seconds() const { return this.s; }
+  constexpr precision subseconds() const { return this.rest; }
 
   constexpr precision to_duration() const
   {
-    precision whole = durationCast<precision>(this->h) + durationCast<precision>(this->m) + durationCast<precision>(this->s);
-    whole += this->rest;
-    return this->negative ? precision(-whole.count()) : whole;
+    precision whole = durationCast<precision>(this.h) + durationCast<precision>(this.m) + durationCast<precision>(this.s);
+    whole += this.rest;
+    return this.negative ? precision(-whole.count()) : whole;
   }
 
 private:

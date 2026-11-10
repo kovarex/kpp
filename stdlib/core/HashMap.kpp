@@ -52,43 +52,43 @@ public:
   HashIterator(u8* tags, char* slots, ContainerSize index, ContainerSize capacity) : tags(tags), slots(slots), index(index), capacity(capacity)
   {
     if constexpr (stable)
-      this->node = index < capacity && tags[index] >= 0x80 ? ((E**)slots)[index] : nullptr;
+      this.node = index < capacity && tags[index] >= 0x80 ? ((E**)slots)[index] : nullptr;
   }
 
   E* entry() const
   {
     if constexpr (stable)
-      return this->node;
+      return this.node;
     else
-      return (E*)this->slots + this->index;
+      return (E*)this.slots + this.index;
   }
 
-  E& operator*() const { return *this->entry(); }
-  E* operator->() const { return this->entry(); }
-  bool operator==(const HashIterator<E, stable>& other) const { return this->index == other.index; }
+  E& operator*() const { return *this.entry(); }
+  E* operator->() const { return this.entry(); }
+  bool operator==(const HashIterator<E, stable>& other) const { return this.index == other.index; }
   template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<E>> && !isSame<F, E>)
-  bool operator==(const HashIterator<F, stable>& other) const { return this->index == other.index; }
+  bool operator==(const HashIterator<F, stable>& other) const { return this.index == other.index; }
 
   HashIterator<E, stable>& operator++()
   {
-    ++this->index;
-    this->skipFree();
-    return *this;
+    ++this.index;
+    this.skipFree();
+    return this;
   }
 
   HashIterator<E, stable> operator++(i32)
   {
-    HashIterator<E, stable> before = *this;
-    ++*this;
+    HashIterator<E, stable> before = this;
+    ++this;
     return before;
   }
 
   void skipFree()
   {
-    while (this->index < this->capacity && this->tags[this->index] < 0x80)
-      ++this->index;
+    while (this.index < this.capacity && this.tags[this.index] < 0x80)
+      ++this.index;
     if constexpr (stable)
-      this->node = this->index < this->capacity ? ((E**)this->slots)[this->index] : nullptr;
+      this.node = this.index < this.capacity ? ((E**)this.slots)[this.index] : nullptr;
   }
 
 private:
@@ -110,38 +110,38 @@ template<typename E, typename K, typename KeyOf, typename Hasher, typename KeyEq
 class HashTable
 {
 public:
-  ContainerSize size() const { return this->count; }
-  const Hasher& hashFunction() const { return this->hasher; }
-  const KeyEqual& keyEqual() const { return this->equal; }
+  ContainerSize size() const { return this.count; }
+  const Hasher& hashFunction() const { return this.hasher; }
+  const KeyEqual& keyEqual() const { return this.equal; }
   // Slots [0, slotCount()), each in use or not: an iteration over the table's storage.
-  ContainerSize slotCount() const { return this->capacity; }
-  bool slotUsed(ContainerSize i) const { return this->tags[i] >= 0x80; }
+  ContainerSize slotCount() const { return this.capacity; }
+  bool slotUsed(ContainerSize i) const { return this.tags[i] >= 0x80; }
   HashTable() {}
   HashTable(const Hasher& hasher, const KeyEqual& equal) : hasher(hasher), equal(equal) {}
   // Delegates, so that the destructor frees the entries copied when one's copy throws.
-  HashTable(const HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>& other) : HashTable(other.hasher, other.equal) { this->copyFrom(other); }
+  HashTable(const HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>& other) : HashTable(other.hasher, other.equal) { this.copyFrom(other); }
   HashTable(HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>&& other) noexcept(isNothrowCopyConstructible<Hasher> && isNothrowCopyConstructible<KeyEqual>)
-    : hasher(other.hasher), equal(other.equal) { this->take(other); }
-  ~HashTable() { this->clear(); }
+    : hasher(other.hasher), equal(other.equal) { this.take(other); }
+  ~HashTable() { this.clear(); }
 
   // A copy taken over: an entry's copy that throws leaves this as it was.
   HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>& operator=(const HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>& other)
   {
-    if (this != &other)
-      *this = HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>(other);
-    return *this;
+    if (&this != &other)
+      this = HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>(other);
+    return this;
   }
 
   HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>& operator=(HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>&& other) noexcept(isNothrowCopyAssignable<Hasher> && isNothrowCopyAssignable<KeyEqual>)
   {
-    if (this != &other)
+    if (&this != &other)
     {
-      this->clear();
-      this->hasher = other.hasher;
-      this->equal = other.equal;
-      this->take(other);
+      this.clear();
+      this.hasher = other.hasher;
+      this.equal = other.equal;
+      this.take(other);
     }
-    return *this;
+    return this;
   }
 
   // The hash of a key: the hasher's result, mixed further unless the hasher is the library's
@@ -151,9 +151,9 @@ public:
   usize hashKey(const K& key) const
   {
     if constexpr (isSame<Hasher, Hash<K>>)
-      return this->hasher(key);
+      return this.hasher(key);
     else
-      return hashBits((u64)this->hasher(key));
+      return hashBits((u64)this.hasher(key));
   }
 
   static ContainerSize slotSize()
@@ -167,36 +167,36 @@ public:
   E* entryAt(ContainerSize slot) const
   {
     if constexpr (stable)
-      return ((E**)this->slots)[slot];
+      return ((E**)this.slots)[slot];
     else
-      return (E*)this->slots + slot;
+      return (E*)this.slots + slot;
   }
 
-  HashIterator<E, stable> iteratorAt(ContainerSize slot) const { return HashIterator<E, stable>(this->tags, this->slots, slot, this->capacity); }
+  HashIterator<E, stable> iteratorAt(ContainerSize slot) const { return HashIterator<E, stable>(this.tags, this.slots, slot, this.capacity); }
 
   HashIterator<E, stable> begin() const
   {
-    HashIterator<E, stable> first = this->iteratorAt(0);
+    HashIterator<E, stable> first = this.iteratorAt(0);
     first.skipFree();
     return first;
   }
 
-  HashIterator<E, stable> end() const { return this->iteratorAt(this->capacity); }
+  HashIterator<E, stable> end() const { return this.iteratorAt(this.capacity); }
 
   // The slot holding key, or hashNoSlot.
   ContainerSize findSlot(const K& key, usize hash) const
   {
-    if (this->capacity == 0)
+    if (this.capacity == 0)
       return hashNoSlot;
     u8 tag = hashTagOf(hash);
-    usize mask = this->capacity - 1;
+    usize mask = this.capacity - 1;
     usize i = hash & mask;
     while (true)
     {
-      u8 t = this->tags[i];
+      u8 t = this.tags[i];
       if (t == hashSlotEmpty)
         return hashNoSlot;
-      if (t == tag && this->equal(this->keyAt((ContainerSize)i), key))
+      if (t == tag && this.equal(this.keyAt((ContainerSize)i), key))
         return (ContainerSize)i;
       i = (i + 1) & mask;
     }
@@ -208,15 +208,15 @@ public:
   ContainerSize place(const K& key, usize hash, bool& found)
   {
     found = false;
-    if (this->capacity == 0)
+    if (this.capacity == 0)
       return hashNoSlot;
     u8 tag = hashTagOf(hash);
-    usize mask = this->capacity - 1;
+    usize mask = this.capacity - 1;
     usize i = hash & mask;
     ContainerSize firstDeleted = hashNoSlot;
     while (true)
     {
-      u8 t = this->tags[i];
+      u8 t = this.tags[i];
       if (t == hashSlotEmpty)
         break;
       if (t == hashSlotDeleted)
@@ -224,7 +224,7 @@ public:
         if (firstDeleted == hashNoSlot)
           firstDeleted = (ContainerSize)i;
       }
-      else if (t == tag && this->equal(this->keyAt((ContainerSize)i), key))
+      else if (t == tag && this.equal(this.keyAt((ContainerSize)i), key))
       {
         found = true;
         return (ContainerSize)i;
@@ -233,7 +233,7 @@ public:
     }
     if (firstDeleted != hashNoSlot)
       return firstDeleted;
-    if (this->used + 1 > this->capacity - this->capacity / 4) // past 3/4 (a product could wrap)
+    if (this.used + 1 > this.capacity - this.capacity / 4) // past 3/4 (a product could wrap)
       return hashNoSlot;
     return (ContainerSize)i;
   }
@@ -249,17 +249,17 @@ public:
       OwnedBlock block(entry); // freed when the entry's constructor throws
       new (entry) E(forward<Args>(args)...);
       block.release();
-      ((E**)this->slots)[slot] = entry;
+      ((E**)this.slots)[slot] = entry;
     }
     else
     {
-      entry = (E*)this->slots + slot;
+      entry = (E*)this.slots + slot;
       new (entry) E(forward<Args>(args)...);
     }
-    if (this->tags[slot] == hashSlotEmpty)
-      ++this->used;
-    this->tags[slot] = hashTagOf(hash);
-    ++this->count;
+    if (this.tags[slot] == hashSlotEmpty)
+      ++this.used;
+    this.tags[slot] = hashTagOf(hash);
+    ++this.count;
     return entry;
   }
 
@@ -279,57 +279,57 @@ public:
       OwnedBlock block(entry);
       BuiltObjects built(destroyObjects<E>);
       built.add(new (entry) E(forward<Args>(args)...));
-      usize hash = this->hashKey(KeyOf::of(*entry));
-      ContainerSize slot = this->place(KeyOf::of(*entry), hash, found);
+      usize hash = this.hashKey(KeyOf::of(*entry));
+      ContainerSize slot = this.place(KeyOf::of(*entry), hash, found);
       if (slot == hashNoSlot)
       {
-        this->grow();
-        slot = this->place(KeyOf::of(*entry), hash, found);
+        this.grow();
+        slot = this.place(KeyOf::of(*entry), hash, found);
       }
       placed = !found;
       if (found)
         return slot;
       built.keep();
       block.release();
-      if (this->tags[slot] == hashSlotEmpty)
-        ++this->used;
-      ((E**)this->slots)[slot] = entry;
-      this->tags[slot] = hashTagOf(hash);
-      ++this->count;
+      if (this.tags[slot] == hashSlotEmpty)
+        ++this.used;
+      ((E**)this.slots)[slot] = entry;
+      this.tags[slot] = hashTagOf(hash);
+      ++this.count;
       return slot;
     }
     else
     {
       E entry(forward<Args>(args)...);
-      usize hash = this->hashKey(KeyOf::of(entry));
-      ContainerSize slot = this->place(KeyOf::of(entry), hash, found);
+      usize hash = this.hashKey(KeyOf::of(entry));
+      ContainerSize slot = this.place(KeyOf::of(entry), hash, found);
       if (slot == hashNoSlot)
       {
-        this->grow();
-        slot = this->place(KeyOf::of(entry), hash, found);
+        this.grow();
+        slot = this.place(KeyOf::of(entry), hash, found);
       }
       placed = !found;
       if (!found)
-        this->emplaceAt(slot, hash, move(entry));
+        this.emplaceAt(slot, hash, move(entry));
       return slot;
     }
   }
 
   void eraseAt(ContainerSize slot)
   {
-    E* entry = this->entryAt(slot);
+    E* entry = this.entryAt(slot);
     entry->~E();
     if constexpr (stable)
       free(entry);
     // No probe path runs through this slot when the next one is empty, so it can be empty too.
-    if (this->tags[(slot + 1) & (this->capacity - 1)] == hashSlotEmpty)
+    if (this.tags[(slot + 1) & (this.capacity - 1)] == hashSlotEmpty)
     {
-      this->tags[slot] = hashSlotEmpty;
-      --this->used;
+      this.tags[slot] = hashSlotEmpty;
+      --this.used;
     }
     else
-      this->tags[slot] = hashSlotDeleted;
-    --this->count;
+      this.tags[slot] = hashSlotDeleted;
+    --this.count;
   }
 
   // Moves the entries of other whose keys are not here into this table; the rest stay in other.
@@ -342,28 +342,28 @@ public:
       if (other.tags[i] < 0x80)
         continue;
       const K& key = other.keyAt(i);
-      usize hash = this->hashKey(key);
+      usize hash = this.hashKey(key);
       bool found;
-      ContainerSize slot = this->place(key, hash, found);
+      ContainerSize slot = this.place(key, hash, found);
       if (found)
         continue;
       if (slot == hashNoSlot)
       {
-        this->grow();
-        slot = this->place(key, hash, found);
+        this.grow();
+        slot = this.place(key, hash, found);
       }
       if constexpr (stable)
       {
-        if (this->tags[slot] == hashSlotEmpty)
-          ++this->used;
-        ((E**)this->slots)[slot] = other.entryAt(i);
-        this->tags[slot] = hashTagOf(hash);
-        ++this->count;
+        if (this.tags[slot] == hashSlotEmpty)
+          ++this.used;
+        ((E**)this.slots)[slot] = other.entryAt(i);
+        this.tags[slot] = hashTagOf(hash);
+        ++this.count;
         other.releaseAt(i);
       }
       else
       {
-        this->emplaceAt(slot, hash, move(*other.entryAt(i)));
+        this.emplaceAt(slot, hash, move(*other.entryAt(i)));
         other.eraseAt(i);
       }
     }
@@ -372,21 +372,21 @@ public:
   // Empties slot without destroying its entry (its node now belongs elsewhere).
   void releaseAt(ContainerSize slot)
   {
-    if (this->tags[(slot + 1) & (this->capacity - 1)] == hashSlotEmpty)
+    if (this.tags[(slot + 1) & (this.capacity - 1)] == hashSlotEmpty)
     {
-      this->tags[slot] = hashSlotEmpty;
-      --this->used;
+      this.tags[slot] = hashSlotEmpty;
+      --this.used;
     }
     else
-      this->tags[slot] = hashSlotDeleted;
-    --this->count;
+      this.tags[slot] = hashSlotDeleted;
+    --this.count;
   }
 
   void swap(HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>& other) noexcept(isNothrowCopyConstructible<Hasher> && isNothrowCopyConstructible<KeyEqual> && isNothrowCopyAssignable<Hasher> && isNothrowCopyAssignable<KeyEqual>)
   {
     HashTable<E, K, KeyOf, Hasher, KeyEqual, stable> held(move(other));
-    other = move(*this);
-    *this = move(held);
+    other = move(this);
+    this = move(held);
   }
 
   // Twice the size, unless deleted slots made up the load: then the same size, cleared. The slots
@@ -394,16 +394,16 @@ public:
   // LengthError past it.
   void grow()
   {
-    if (this->capacity == 0)
-      this->rehash(16);
-    else if (this->count + 1 > this->capacity / 2)
+    if (this.capacity == 0)
+      this.rehash(16);
+    else if (this.count + 1 > this.capacity / 2)
     {
-      if (this->capacity > maxContainerSize / 2)
+      if (this.capacity > maxContainerSize / 2)
         throwLengthError("unordered_map/set too long");
-      this->rehash(this->capacity * 2);
+      this.rehash(this.capacity * 2);
     }
     else
-      this->rehash(this->capacity);
+      this.rehash(this.capacity);
   }
 
   // Room for n entries without growing (at 3/4 of the slots); LengthError when that takes more
@@ -417,8 +417,8 @@ public:
         throwLengthError("unordered_map/set too long");
       needed *= 2;
     }
-    if (needed > this->capacity)
-      this->rehash(needed);
+    if (needed > this.capacity)
+      this.rehash(needed);
   }
 
   // std's rehash(n): a table of at least n slots and room for the entries (at 3/4 of the slots),
@@ -426,44 +426,44 @@ public:
   // was never allocated stays so for an n of 0.
   void rehashFor(ContainerSize n)
   {
-    if (this->capacity == 0 && n == 0)
+    if (this.capacity == 0 && n == 0)
       return;
     ContainerSize needed = 16;
-    while (needed < n || needed - needed / 4 < this->count)
+    while (needed < n || needed - needed / 4 < this.count)
     {
       if (needed > maxContainerSize / 2)
         throwLengthError("unordered_map/set too long");
       needed *= 2;
     }
-    if (needed != this->capacity)
-      this->rehash(needed);
+    if (needed != this.capacity)
+      this.rehash(needed);
   }
 
   void clear()
   {
-    for (ContainerSize i = 0; i < this->capacity; ++i)
-      if (this->tags[i] >= 0x80)
+    for (ContainerSize i = 0; i < this.capacity; ++i)
+      if (this.tags[i] >= 0x80)
       {
-        E* entry = this->entryAt(i);
+        E* entry = this.entryAt(i);
         entry->~E();
         if constexpr (stable)
           free(entry);
       }
-    if (this->tags)
+    if (this.tags)
     {
-      free(this->tags);
-      free(this->slots);
+      free(this.tags);
+      free(this.slots);
     }
-    this->tags = nullptr;
-    this->slots = nullptr;
-    this->capacity = 0;
-    this->count = 0;
-    this->used = 0;
+    this.tags = nullptr;
+    this.slots = nullptr;
+    this.capacity = 0;
+    this.count = 0;
+    this.used = 0;
   }
 
 private:
   static const K& keyOf(const E& entry) { return KeyOf::of(entry); }
-  const K& keyAt(ContainerSize slot) const { return KeyOf::of(*this->entryAt(slot)); }
+  const K& keyAt(ContainerSize slot) const { return KeyOf::of(*this.entryAt(slot)); }
 
   // Both blocks before the table changes: BadAlloc leaves it as it was.
   void allocate(ContainerSize newCapacity)
@@ -476,20 +476,20 @@ private:
       throwBadAlloc();
     }
     memset(newTags, hashSlotEmpty, (usize)newCapacity);
-    this->tags = newTags;
-    this->slots = newSlots;
-    this->capacity = newCapacity;
+    this.tags = newTags;
+    this.slots = newSlots;
+    this.capacity = newCapacity;
   }
 
   // Moves the used slots into a new table of newCapacity slots, which drops the deleted ones.
   // Entries in nodes stay where they are; only the pointers move.
   void rehash(ContainerSize newCapacity)
   {
-    u8* oldTags = this->tags;
-    char* oldSlots = this->slots;
-    ContainerSize oldCapacity = this->capacity;
-    this->allocate(newCapacity);
-    this->used = this->count;
+    u8* oldTags = this.tags;
+    char* oldSlots = this.slots;
+    ContainerSize oldCapacity = this.capacity;
+    this.allocate(newCapacity);
+    this.used = this.count;
     usize mask = newCapacity - 1;
     for (ContainerSize i = 0; i < oldCapacity; ++i)
       if (oldTags[i] >= 0x80)
@@ -499,15 +499,15 @@ private:
           entry = ((E**)oldSlots)[i];
         else
           entry = (E*)oldSlots + i;
-        usize hash = this->hashKey(HashTable::keyOf(*entry));
+        usize hash = this.hashKey(HashTable::keyOf(*entry));
         usize j = hash & mask;
-        while (this->tags[j] != hashSlotEmpty)
+        while (this.tags[j] != hashSlotEmpty)
           j = (j + 1) & mask;
-        this->tags[j] = oldTags[i];
+        this.tags[j] = oldTags[i];
         if constexpr (stable)
-          ((E**)this->slots)[j] = entry;
+          ((E**)this.slots)[j] = entry;
         else
-          relocate((E*)this->slots + j, entry, 1);
+          relocate((E*)this.slots + j, entry, 1);
       }
     if (oldTags)
     {
@@ -524,7 +524,7 @@ private:
       return;
     // An entry's tag is copied, and it is counted, once it is built: when a copy throws, the table
     // holds the entries built so far (and the deleted markers), which clear() destroys.
-    this->allocate(other.capacity);
+    this.allocate(other.capacity);
     for (ContainerSize i = 0; i < other.capacity; ++i)
       if (other.tags[i] >= 0x80)
       {
@@ -534,28 +534,28 @@ private:
           OwnedBlock block(entry);
           new (entry) E(*other.entryAt(i));
           block.release();
-          ((E**)this->slots)[i] = entry;
+          ((E**)this.slots)[i] = entry;
         }
         else
-          new ((E*)this->slots + i) E(*other.entryAt(i));
-        this->tags[i] = other.tags[i];
-        ++this->count;
-        ++this->used;
+          new ((E*)this.slots + i) E(*other.entryAt(i));
+        this.tags[i] = other.tags[i];
+        ++this.count;
+        ++this.used;
       }
       else if (other.tags[i] != hashSlotEmpty)
       {
-        this->tags[i] = other.tags[i];
-        ++this->used;
+        this.tags[i] = other.tags[i];
+        ++this.used;
       }
   }
 
   void take(HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>& other)
   {
-    this->tags = other.tags;
-    this->slots = other.slots;
-    this->capacity = other.capacity;
-    this->count = other.count;
-    this->used = other.used;
+    this.tags = other.tags;
+    this.slots = other.slots;
+    this.capacity = other.capacity;
+    this.count = other.count;
+    this.used = other.used;
     other.tags = nullptr;
     other.slots = nullptr;
     other.capacity = 0;
@@ -605,81 +605,81 @@ public:
 
   HashMap() {}
   // An empty map with room for n entries before it grows.
-  HashMap(ContainerSize n, const Hasher& hasher = Hasher(), const KeyEqual& equal = KeyEqual()) : table(hasher, equal) { this->table.reserve(n); }
+  HashMap(ContainerSize n, const Hasher& hasher = Hasher(), const KeyEqual& equal = KeyEqual()) : table(hasher, equal) { this.table.reserve(n); }
 
   implicit HashMap(InitializerList<Pair<K, V>> items)
   {
     for (const Pair<K, V>& item : items)
-      this->insert(item);
+      this.insert(item);
   }
 
   // `= {...}`: the listed entries, replacing the contents.
   HashMap<K, V, Hasher, KeyEqual, stable>& operator=(InitializerList<Pair<K, V>> items)
   {
-    this->clear();
+    this.clear();
     for (const Pair<K, V>& item : items)
-      this->insert(item);
-    return *this;
+      this.insert(item);
+    return this;
   }
 
   // The entries of [first, last), as insert(entry) one by one.
   template<typename It>
-  HashMap(It first, It last) { this->insert(first, last); }
+  HashMap(It first, It last) { this.insert(first, last); }
 
-  ContainerSize size() const { return this->table.size(); }
-  bool empty() const { return this->table.size() == 0; }
-  iterator begin() { return this->table.begin(); }
-  const_iterator begin() const { return this->table.begin(); }
-  iterator end() { return this->table.end(); }
-  const_iterator end() const { return this->table.end(); }
-  const_iterator cbegin() const { return this->begin(); }
-  const_iterator cend() const { return this->end(); }
+  ContainerSize size() const { return this.table.size(); }
+  bool empty() const { return this.table.size() == 0; }
+  iterator begin() { return this.table.begin(); }
+  const_iterator begin() const { return this.table.begin(); }
+  iterator end() { return this.table.end(); }
+  const_iterator end() const { return this.table.end(); }
+  const_iterator cbegin() const { return this.begin(); }
+  const_iterator cend() const { return this.end(); }
 
   iterator find(const K& key)
   {
-    ContainerSize slot = this->table.findSlot(key, this->table.hashKey(key));
-    return slot == hashNoSlot ? this->table.end() : this->table.iteratorAt(slot);
+    ContainerSize slot = this.table.findSlot(key, this.table.hashKey(key));
+    return slot == hashNoSlot ? this.table.end() : this.table.iteratorAt(slot);
   }
 
   const_iterator find(const K& key) const
   {
-    ContainerSize slot = this->table.findSlot(key, this->table.hashKey(key));
-    return slot == hashNoSlot ? this->table.end() : this->table.iteratorAt(slot);
+    ContainerSize slot = this.table.findSlot(key, this.table.hashKey(key));
+    return slot == hashNoSlot ? this.table.end() : this.table.iteratorAt(slot);
   }
 
-  bool contains(const K& key) const { return this->table.findSlot(key, this->table.hashKey(key)) != hashNoSlot; }
-  ContainerSize count(const K& key) const { return this->contains(key) ? 1 : 0; }
+  bool contains(const K& key) const { return this.table.findSlot(key, this.table.hashKey(key)) != hashNoSlot; }
+  ContainerSize count(const K& key) const { return this.contains(key) ? 1 : 0; }
 
   // The value for key, inserted default-constructed when new.
   V& operator[](const K& key)
   {
-    usize hash = this->table.hashKey(key);
+    usize hash = this.table.hashKey(key);
     bool found;
-    ContainerSize slot = this->table.place(key, hash, found);
+    ContainerSize slot = this.table.place(key, hash, found);
     if (slot == hashNoSlot)
     {
       K copy(key); // key may be one of this map's, which growing a fast table moves
-      this->table.grow();
-      return (*this)[copy];
+      this.table.grow();
+      return (this)[copy];
     }
     if (found)
-      return this->table.entryAt(slot)->second;
-    return this->table.emplaceAt(slot, hash, inPlaceSecond, key)->second;
+      return this.table.entryAt(slot)->second;
+    return this.table.emplaceAt(slot, hash, inPlaceSecond, key)->second;
   }
 
   // The value of key's entry; throws OutOfRange when there is none.
   V& at(const K& key)
   {
-    HashIterator<Pair<K, V>, stable> at = this->find(key);
-    if (at == this->end())
+    HashIterator<Pair<K, V>, stable> at = this.find(key);
+    if (at == this.end())
       throwOutOfRange("HashMap::at: key not found");
     return at->second;
   }
 
   const V& at(const K& key) const
   {
-    HashIterator<const Pair<K, V>, stable> at = this->find(key);
-    if (at == this->end())
+    HashIterator<const Pair<K, V>, stable> at = this.find(key);
+    if (at == this.end())
       throwOutOfRange("HashMap::at: key not found");
     return at->second;
   }
@@ -687,33 +687,33 @@ public:
   // The entry with the key and whether it was inserted (an existing value is kept).
   Pair<HashIterator<Pair<K, V>, stable>, bool> insert(const Pair<K, V>& entry)
   {
-    usize hash = this->table.hashKey(entry.first);
+    usize hash = this.table.hashKey(entry.first);
     bool found;
-    ContainerSize slot = this->table.place(entry.first, hash, found);
+    ContainerSize slot = this.table.place(entry.first, hash, found);
     if (slot == hashNoSlot)
     {
       Pair<K, V> copy(entry);
-      this->table.grow();
-      return this->insert(move(copy));
+      this.table.grow();
+      return this.insert(move(copy));
     }
     if (!found)
-      this->table.emplaceAt(slot, hash, entry);
-    return Pair<HashIterator<Pair<K, V>, stable>, bool>(this->table.iteratorAt(slot), !found);
+      this.table.emplaceAt(slot, hash, entry);
+    return Pair<HashIterator<Pair<K, V>, stable>, bool>(this.table.iteratorAt(slot), !found);
   }
 
   Pair<HashIterator<Pair<K, V>, stable>, bool> insert(Pair<K, V>&& entry)
   {
-    usize hash = this->table.hashKey(entry.first);
+    usize hash = this.table.hashKey(entry.first);
     bool found;
-    ContainerSize slot = this->table.place(entry.first, hash, found);
+    ContainerSize slot = this.table.place(entry.first, hash, found);
     if (slot == hashNoSlot)
     {
-      this->table.grow();
-      return this->insert(move(entry));
+      this.table.grow();
+      return this.insert(move(entry));
     }
     if (!found)
-      this->table.emplaceAt(slot, hash, move(entry));
-    return Pair<HashIterator<Pair<K, V>, stable>, bool>(this->table.iteratorAt(slot), !found);
+      this.table.emplaceAt(slot, hash, move(entry));
+    return Pair<HashIterator<Pair<K, V>, stable>, bool>(this.table.iteratorAt(slot), !found);
   }
 
   // The entry built from the arguments, in its node (HashMap) as std's, inserted when its key is new.
@@ -721,8 +721,8 @@ public:
   Pair<HashIterator<Pair<K, V>, stable>, bool> emplace(Args&&... args)
   {
     bool placed;
-    ContainerSize slot = this->table.emplaceEntry(placed, forward<Args>(args)...);
-    return Pair<HashIterator<Pair<K, V>, stable>, bool>(this->table.iteratorAt(slot), placed);
+    ContainerSize slot = this.table.emplaceEntry(placed, forward<Args>(args)...);
+    return Pair<HashIterator<Pair<K, V>, stable>, bool>(this.table.iteratorAt(slot), placed);
   }
 
   // emplace(key, value): the key looked up first, as std's do, and the entry built in its slot only
@@ -730,134 +730,134 @@ public:
   template<typename KArg, typename VArg> requires (isSame<RemoveCvRef<KArg>, K>)
   Pair<HashIterator<Pair<K, V>, stable>, bool> emplace(KArg&& key, VArg&& value)
   {
-    usize hash = this->table.hashKey(key);
+    usize hash = this.table.hashKey(key);
     bool found;
-    ContainerSize slot = this->table.place(key, hash, found);
+    ContainerSize slot = this.table.place(key, hash, found);
     if (slot == hashNoSlot) // growing moves a fast table's entries, which key and value may be
-      return this->insert(Pair<K, V>(forward<KArg>(key), forward<VArg>(value)));
+      return this.insert(Pair<K, V>(forward<KArg>(key), forward<VArg>(value)));
     if (!found)
-      this->table.emplaceAt(slot, hash, forward<KArg>(key), forward<VArg>(value));
-    return Pair<HashIterator<Pair<K, V>, stable>, bool>(this->table.iteratorAt(slot), !found);
+      this.table.emplaceAt(slot, hash, forward<KArg>(key), forward<VArg>(value));
+    return Pair<HashIterator<Pair<K, V>, stable>, bool>(this.table.iteratorAt(slot), !found);
   }
 
   // Builds the value from the arguments, in its entry, only when the key is new.
   template<typename... Args>
   Pair<HashIterator<Pair<K, V>, stable>, bool> try_emplace(const K& key, Args&&... args)
   {
-    usize hash = this->table.hashKey(key);
+    usize hash = this.table.hashKey(key);
     bool found;
-    ContainerSize slot = this->table.place(key, hash, found);
+    ContainerSize slot = this.table.place(key, hash, found);
     if (slot == hashNoSlot)
     {
       // Grow, then look for the key's place again (key may be one of a fast table's keys, which
       // growing moves: copied first).
       K copy(key);
-      this->table.grow();
-      slot = this->table.place(copy, hash, found);
-      this->table.emplaceAt(slot, hash, inPlaceSecond, move(copy), forward<Args>(args)...);
-      return Pair<HashIterator<Pair<K, V>, stable>, bool>(this->table.iteratorAt(slot), true);
+      this.table.grow();
+      slot = this.table.place(copy, hash, found);
+      this.table.emplaceAt(slot, hash, inPlaceSecond, move(copy), forward<Args>(args)...);
+      return Pair<HashIterator<Pair<K, V>, stable>, bool>(this.table.iteratorAt(slot), true);
     }
     if (!found)
-      this->table.emplaceAt(slot, hash, inPlaceSecond, key, forward<Args>(args)...);
-    return Pair<HashIterator<Pair<K, V>, stable>, bool>(this->table.iteratorAt(slot), !found);
+      this.table.emplaceAt(slot, hash, inPlaceSecond, key, forward<Args>(args)...);
+    return Pair<HashIterator<Pair<K, V>, stable>, bool>(this.table.iteratorAt(slot), !found);
   }
 
   // An rvalue key is moved into the new entry, not copied (only a K rvalue itself, as Map's).
   template<typename KK, typename... Args> requires (isSame<KK, K>)
   Pair<HashIterator<Pair<K, V>, stable>, bool> try_emplace(KK&& key, Args&&... args)
   {
-    usize hash = this->table.hashKey(key);
+    usize hash = this.table.hashKey(key);
     bool found;
-    ContainerSize slot = this->table.place(key, hash, found);
+    ContainerSize slot = this.table.place(key, hash, found);
     if (slot == hashNoSlot)
     {
       // Grow, then look for the key's place again (an rvalue key is no key of this table).
-      this->table.grow();
-      slot = this->table.place(key, hash, found);
+      this.table.grow();
+      slot = this.table.place(key, hash, found);
     }
     if (!found)
-      this->table.emplaceAt(slot, hash, inPlaceSecond, move(key), forward<Args>(args)...);
-    return Pair<HashIterator<Pair<K, V>, stable>, bool>(this->table.iteratorAt(slot), !found);
+      this.table.emplaceAt(slot, hash, inPlaceSecond, move(key), forward<Args>(args)...);
+    return Pair<HashIterator<Pair<K, V>, stable>, bool>(this.table.iteratorAt(slot), !found);
   }
 
   // With a position hint, which a hash table does not need: the entry's position, new or found.
   template<typename... Args>
   iterator try_emplace(const_iterator hint, const K& key, Args&&... args)
   {
-    return this->try_emplace(key, forward<Args>(args)...).first;
+    return this.try_emplace(key, forward<Args>(args)...).first;
   }
 
   template<typename KK, typename... Args> requires (isSame<KK, K>)
   iterator try_emplace(const_iterator hint, KK&& key, Args&&... args)
   {
-    return this->try_emplace(move(key), forward<Args>(args)...).first;
+    return this.try_emplace(move(key), forward<Args>(args)...).first;
   }
 
   // Inserts, or assigns value to the existing entry.
   Pair<HashIterator<Pair<K, V>, stable>, bool> insert_or_assign(const K& key, const V& value)
   {
-    Pair<HashIterator<Pair<K, V>, stable>, bool> result = this->try_emplace(key, value);
+    Pair<HashIterator<Pair<K, V>, stable>, bool> result = this.try_emplace(key, value);
     if (!result.second)
       result.first->second = value;
     return result;
   }
 
   // kpp's shorthand: true when the key was new (an existing value is kept).
-  bool insert(const K& key, const V& value) { return this->try_emplace(key, value).second; }
+  bool insert(const K& key, const V& value) { return this.try_emplace(key, value).second; }
 
   // The number of entries removed (0 or 1).
   ContainerSize erase(const K& key)
   {
-    ContainerSize slot = this->table.findSlot(key, this->table.hashKey(key));
+    ContainerSize slot = this.table.findSlot(key, this.table.hashKey(key));
     if (slot == hashNoSlot)
       return 0;
-    this->table.eraseAt(slot);
+    this.table.eraseAt(slot);
     return 1;
   }
 
   // Removes the entry at position; returns the position of the next one.
   iterator erase(const_iterator position)
   {
-    this->table.eraseAt(position.index);
+    this.table.eraseAt(position.index);
     HashIterator<Pair<K, V>, stable> next(position);
     ++next;
     return next;
   }
 
   // Inserts as insert(entry) does; the hint is accepted for compatibility and not needed.
-  iterator insert(const_iterator hint, const Pair<K, V>& entry) { return this->insert(entry).first; }
-  iterator insert(const_iterator hint, Pair<K, V>&& entry) { return this->insert(move(entry)).first; }
+  iterator insert(const_iterator hint, const Pair<K, V>& entry) { return this.insert(entry).first; }
+  iterator insert(const_iterator hint, Pair<K, V>&& entry) { return this.insert(move(entry)).first; }
 
   template<typename... Args>
-  iterator emplace_hint(const_iterator hint, Args&&... args) { return this->emplace(forward<Args>(args)...).first; }
+  iterator emplace_hint(const_iterator hint, Args&&... args) { return this.emplace(forward<Args>(args)...).first; }
 
   // Inserts copies of the entries of [first, last).
   template<typename It>
   void insert(It first, It last)
   {
     for (; first != last; ++first)
-      this->insert(*first);
+      this.insert(*first);
   }
 
   // Moves the entries of other whose keys are not here into this map; the rest stay in other.
-  void merge(HashMap<K, V, Hasher, KeyEqual, stable>& other) { this->table.mergeFrom(other.table); }
+  void merge(HashMap<K, V, Hasher, KeyEqual, stable>& other) { this.table.mergeFrom(other.table); }
 
-  void swap(HashMap<K, V, Hasher, KeyEqual, stable>& other) noexcept(isNothrowCopyConstructible<Hasher> && isNothrowCopyConstructible<KeyEqual> && isNothrowCopyAssignable<Hasher> && isNothrowCopyAssignable<KeyEqual>) { this->table.swap(other.table); }
-  void clear() { this->table.clear(); }
-  void reserve(ContainerSize n) { this->table.reserve(n); }
+  void swap(HashMap<K, V, Hasher, KeyEqual, stable>& other) noexcept(isNothrowCopyConstructible<Hasher> && isNothrowCopyConstructible<KeyEqual> && isNothrowCopyAssignable<Hasher> && isNothrowCopyAssignable<KeyEqual>) { this.table.swap(other.table); }
+  void clear() { this.table.clear(); }
+  void reserve(ContainerSize n) { this.table.reserve(n); }
   // std's rehash(n): at least n slots and room for the entries; it may shrink the table.
-  void rehash(ContainerSize n) { this->table.rehashFor(n); }
-  Hasher hash_function() const { return this->table.hashFunction(); }
-  KeyEqual key_eq() const { return this->table.keyEqual(); }
+  void rehash(ContainerSize n) { this.table.rehashFor(n); }
+  Hasher hash_function() const { return this.table.hashFunction(); }
+  KeyEqual key_eq() const { return this.table.keyEqual(); }
 
   // Calls f(key, value) for every entry.
   template<typename F>
   void forEach(F f)
   {
-    for (ContainerSize i = 0; i < this->table.slotCount(); ++i)
-      if (this->table.slotUsed(i))
+    for (ContainerSize i = 0; i < this.table.slotCount(); ++i)
+      if (this.table.slotUsed(i))
       {
-        Pair<K, V>* entry = this->table.entryAt(i);
+        Pair<K, V>* entry = this.table.entryAt(i);
         f(entry->first, entry->second);
       }
   }
@@ -902,73 +902,73 @@ public:
 
   HashSet() {}
   // An empty set with room for n values before it grows.
-  HashSet(ContainerSize n, const Hasher& hasher = Hasher(), const KeyEqual& equal = KeyEqual()) : table(hasher, equal) { this->table.reserve(n); }
+  HashSet(ContainerSize n, const Hasher& hasher = Hasher(), const KeyEqual& equal = KeyEqual()) : table(hasher, equal) { this.table.reserve(n); }
 
   implicit HashSet(InitializerList<T> items)
   {
     for (const T& value : items)
-      this->insert(value);
+      this.insert(value);
   }
 
   // `= {...}`: the listed values, replacing the contents.
   HashSet<T, Hasher, KeyEqual, stable>& operator=(InitializerList<T> items)
   {
-    this->clear();
+    this.clear();
     for (const T& item : items)
-      this->insert(item);
-    return *this;
+      this.insert(item);
+    return this;
   }
 
   // The values of [first, last), as insert(value) one by one.
   template<typename It>
-  HashSet(It first, It last) { this->insert(first, last); }
+  HashSet(It first, It last) { this.insert(first, last); }
 
-  ContainerSize size() const { return this->table.size(); }
-  bool empty() const { return this->table.size() == 0; }
-  const_iterator begin() const { return this->table.begin(); }
-  const_iterator end() const { return this->table.end(); }
-  const_iterator cbegin() const { return this->begin(); }
-  const_iterator cend() const { return this->end(); }
+  ContainerSize size() const { return this.table.size(); }
+  bool empty() const { return this.table.size() == 0; }
+  const_iterator begin() const { return this.table.begin(); }
+  const_iterator end() const { return this.table.end(); }
+  const_iterator cbegin() const { return this.begin(); }
+  const_iterator cend() const { return this.end(); }
 
   const_iterator find(const T& value) const
   {
-    ContainerSize slot = this->table.findSlot(value, this->table.hashKey(value));
-    return slot == hashNoSlot ? this->table.end() : this->table.iteratorAt(slot);
+    ContainerSize slot = this.table.findSlot(value, this.table.hashKey(value));
+    return slot == hashNoSlot ? this.table.end() : this.table.iteratorAt(slot);
   }
 
-  bool contains(const T& value) const { return this->table.findSlot(value, this->table.hashKey(value)) != hashNoSlot; }
-  ContainerSize count(const T& value) const { return this->contains(value) ? 1 : 0; }
+  bool contains(const T& value) const { return this.table.findSlot(value, this.table.hashKey(value)) != hashNoSlot; }
+  ContainerSize count(const T& value) const { return this.contains(value) ? 1 : 0; }
 
   // The entry with the value and whether it was inserted.
   Pair<iterator, bool> insert(const T& value)
   {
-    usize hash = this->table.hashKey(value);
+    usize hash = this.table.hashKey(value);
     bool found;
-    ContainerSize slot = this->table.place(value, hash, found);
+    ContainerSize slot = this.table.place(value, hash, found);
     if (slot == hashNoSlot)
     {
       T copy(value);
-      this->table.grow();
-      return this->insert(move(copy));
+      this.table.grow();
+      return this.insert(move(copy));
     }
     if (!found)
-      this->table.emplaceAt(slot, hash, value);
-    return Pair<HashIterator<T, stable>, bool>(this->table.iteratorAt(slot), !found);
+      this.table.emplaceAt(slot, hash, value);
+    return Pair<HashIterator<T, stable>, bool>(this.table.iteratorAt(slot), !found);
   }
 
   Pair<iterator, bool> insert(T&& value)
   {
-    usize hash = this->table.hashKey(value);
+    usize hash = this.table.hashKey(value);
     bool found;
-    ContainerSize slot = this->table.place(value, hash, found);
+    ContainerSize slot = this.table.place(value, hash, found);
     if (slot == hashNoSlot)
     {
-      this->table.grow();
-      return this->insert(move(value));
+      this.table.grow();
+      return this.insert(move(value));
     }
     if (!found)
-      this->table.emplaceAt(slot, hash, move(value));
-    return Pair<HashIterator<T, stable>, bool>(this->table.iteratorAt(slot), !found);
+      this.table.emplaceAt(slot, hash, move(value));
+    return Pair<HashIterator<T, stable>, bool>(this.table.iteratorAt(slot), !found);
   }
 
   // The value built from the arguments, in its node (HashSet) as std's, inserted when it is new.
@@ -976,49 +976,49 @@ public:
   Pair<iterator, bool> emplace(Args&&... args)
   {
     bool placed;
-    ContainerSize slot = this->table.emplaceEntry(placed, forward<Args>(args)...);
-    return Pair<iterator, bool>(this->table.iteratorAt(slot), placed);
+    ContainerSize slot = this.table.emplaceEntry(placed, forward<Args>(args)...);
+    return Pair<iterator, bool>(this.table.iteratorAt(slot), placed);
   }
 
   // The number of values removed (0 or 1).
   ContainerSize erase(const T& value)
   {
-    ContainerSize slot = this->table.findSlot(value, this->table.hashKey(value));
+    ContainerSize slot = this.table.findSlot(value, this.table.hashKey(value));
     if (slot == hashNoSlot)
       return 0;
-    this->table.eraseAt(slot);
+    this.table.eraseAt(slot);
     return 1;
   }
 
   iterator erase(const_iterator position)
   {
-    this->table.eraseAt(position.index);
+    this.table.eraseAt(position.index);
     HashIterator<T, stable> next(position);
     ++next;
     return next;
   }
 
-  iterator insert(const_iterator hint, const T& value) { return this->insert(value).first; }
-  iterator insert(const_iterator hint, T&& value) { return this->insert(move(value)).first; }
+  iterator insert(const_iterator hint, const T& value) { return this.insert(value).first; }
+  iterator insert(const_iterator hint, T&& value) { return this.insert(move(value)).first; }
   template<typename... Args>
-  iterator emplace_hint(const_iterator hint, Args&&... args) { return this->emplace(forward<Args>(args)...).first; }
+  iterator emplace_hint(const_iterator hint, Args&&... args) { return this.emplace(forward<Args>(args)...).first; }
 
   template<typename It>
   void insert(It first, It last)
   {
     for (; first != last; ++first)
-      this->insert(*first);
+      this.insert(*first);
   }
 
-  void merge(HashSet<T, Hasher, KeyEqual, stable>& other) { this->table.mergeFrom(other.table); }
+  void merge(HashSet<T, Hasher, KeyEqual, stable>& other) { this.table.mergeFrom(other.table); }
 
-  void swap(HashSet<T, Hasher, KeyEqual, stable>& other) noexcept(isNothrowCopyConstructible<Hasher> && isNothrowCopyConstructible<KeyEqual> && isNothrowCopyAssignable<Hasher> && isNothrowCopyAssignable<KeyEqual>) { this->table.swap(other.table); }
-  void clear() { this->table.clear(); }
-  void reserve(ContainerSize n) { this->table.reserve(n); }
+  void swap(HashSet<T, Hasher, KeyEqual, stable>& other) noexcept(isNothrowCopyConstructible<Hasher> && isNothrowCopyConstructible<KeyEqual> && isNothrowCopyAssignable<Hasher> && isNothrowCopyAssignable<KeyEqual>) { this.table.swap(other.table); }
+  void clear() { this.table.clear(); }
+  void reserve(ContainerSize n) { this.table.reserve(n); }
   // std's rehash(n): at least n slots and room for the entries; it may shrink the table.
-  void rehash(ContainerSize n) { this->table.rehashFor(n); }
-  Hasher hash_function() const { return this->table.hashFunction(); }
-  KeyEqual key_eq() const { return this->table.keyEqual(); }
+  void rehash(ContainerSize n) { this.table.rehashFor(n); }
+  Hasher hash_function() const { return this.table.hashFunction(); }
+  KeyEqual key_eq() const { return this.table.keyEqual(); }
 
 private:
   HashTable<T, T, HashSetKey<T>, Hasher, KeyEqual, stable> table;

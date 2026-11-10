@@ -48,7 +48,7 @@ struct ThreadArguments<T, Rest...>
   ThreadArguments<Rest...> rest;
   ThreadArguments(T value, Rest... rest) : value(move(value)), rest(move(rest)...) {}
   template<typename F, typename... Taken>
-  void invokeWith(F& function, Taken&&... taken) { this->rest.invokeWith(function, forward<Taken>(taken)..., move(this->value)); }
+  void invokeWith(F& function, Taken&&... taken) { this.rest.invokeWith(function, forward<Taken>(taken)..., move(this.value)); }
 };
 
 // What a new thread runs, on the heap: the function and its arguments, called once on the thread,
@@ -100,13 +100,13 @@ public:
   {
     ThreadCall<F, Args...>* call = new ThreadCall<F, Args...>(move(function), move(arguments)...);
     unsigned long id = 0;
-    this->handle = platform::startThread(&ThreadCall<F, Args...>::start, call, &id);
-    if (!this->handle)
+    this.handle = platform::startThread(&ThreadCall<F, Args...>::start, call, &id);
+    if (!this.handle)
     {
       delete call;
       throw SystemError(make_error_code(Errc::resource_unavailable_try_again), "Thread");
     }
-    this->threadId = Id(id);
+    this.threadId = Id(id);
   }
 
   Thread(const Thread&) = delete;
@@ -122,57 +122,57 @@ public:
   // A Thread still joinable here ends the program (std::thread calls std::terminate).
   Thread& operator=(Thread&& other) noexcept
   {
-    release_assert(!this->joinable());
-    this->handle = other.handle;
-    this->threadId = other.threadId;
+    release_assert(!this.joinable());
+    this.handle = other.handle;
+    this.threadId = other.threadId;
     other.handle = nullptr;
     other.threadId = Id();
-    return *this;
+    return this;
   }
 
   // A Thread still joinable here ends the program (std::thread calls std::terminate).
-  ~Thread() { release_assert(!this->joinable()); }
+  ~Thread() { release_assert(!this.joinable()); }
 
-  bool joinable() const { return this->handle != nullptr; }
+  bool joinable() const { return this.handle != nullptr; }
 
   // Waits until the thread has finished; then the Thread is not joinable. Throws SystemError:
   // invalid_argument when it is not joinable, resource_deadlock_would_occur when it is the
   // calling thread.
   void join()
   {
-    if (!this->joinable())
+    if (!this.joinable())
       throw SystemError(make_error_code(Errc::invalid_argument), "Thread::join");
-    if (this->threadId == thisThread::getId())
+    if (this.threadId == thisThread::getId())
       throw SystemError(make_error_code(Errc::resource_deadlock_would_occur), "Thread::join");
-    platform::joinThread(this->handle);
-    this->handle = nullptr;
-    this->threadId = Id();
+    platform::joinThread(this.handle);
+    this.handle = nullptr;
+    this.threadId = Id();
   }
 
   // Lets the thread run on its own; the Thread is not joinable any more. Throws SystemError
   // (invalid_argument) when it is not joinable.
   void detach()
   {
-    if (!this->joinable())
+    if (!this.joinable())
       throw SystemError(make_error_code(Errc::invalid_argument), "Thread::detach");
-    platform::detachThread(this->handle);
-    this->handle = nullptr;
-    this->threadId = Id();
+    platform::detachThread(this.handle);
+    this.handle = nullptr;
+    this.threadId = Id();
   }
 
   void swap(Thread& other)
   {
-    std::swap(this->handle, other.handle);
-    std::swap(this->threadId, other.threadId);
+    std::swap(this.handle, other.handle);
+    std::swap(this.threadId, other.threadId);
   }
 
   // The thread's Id, or Id() when not joinable.
-  Id getId() const { return this->threadId; }
-  Id get_id() const { return this->threadId; }
+  Id getId() const { return this.threadId; }
+  Id get_id() const { return this.threadId; }
   // The system's handle of the thread (a Windows HANDLE; elsewhere its pthread_t), or null when not
   // joinable.
-  void* nativeHandle() const { return this->handle; }
-  void* native_handle() const { return this->handle; }
+  void* nativeHandle() const { return this.handle; }
+  void* native_handle() const { return this.handle; }
   // How many threads can run at once: the machine's logical processors (on Windows in all its
   // processor groups; elsewhere those online) (std::thread::hardware_concurrency, which may also say 0
   // for "not known"; this never does).
@@ -222,10 +222,10 @@ public:
   Mutex(const Mutex&) = delete;
   Mutex& operator=(const Mutex&) = delete;
 
-  void lock() { this->lock_.lock(); }
-  void unlock() { this->lock_.unlock(); }
-  bool tryLock() { return this->lock_.tryLock(); }
-  bool try_lock() { return this->tryLock(); }
+  void lock() { this.lock_.lock(); }
+  void unlock() { this.lock_.unlock(); }
+  bool tryLock() { return this.lock_.tryLock(); }
+  bool try_lock() { return this.tryLock(); }
 
 private:
   friend class ConditionVariable; // waits on lock_
@@ -243,39 +243,39 @@ public:
   void lock()
   {
     unsigned long self = platform::currentThreadId();
-    if (this->owner.load() == self)
+    if (this.owner.load() == self)
     {
-      ++this->depth;
+      ++this.depth;
       return;
     }
-    this->mutex.lock();
-    this->owner.store(self);
-    this->depth = 1;
+    this.mutex.lock();
+    this.owner.store(self);
+    this.depth = 1;
   }
 
   bool tryLock()
   {
     unsigned long self = platform::currentThreadId();
-    if (this->owner.load() == self)
+    if (this.owner.load() == self)
     {
-      ++this->depth;
+      ++this.depth;
       return true;
     }
-    if (!this->mutex.tryLock())
+    if (!this.mutex.tryLock())
       return false;
-    this->owner.store(self);
-    this->depth = 1;
+    this.owner.store(self);
+    this.depth = 1;
     return true;
   }
 
-  bool try_lock() { return this->tryLock(); }
+  bool try_lock() { return this.tryLock(); }
 
   void unlock()
   {
-    if (--this->depth == 0)
+    if (--this.depth == 0)
     {
-      this->owner.store(0);
-      this->mutex.unlock();
+      this.owner.store(0);
+      this.mutex.unlock();
     }
   }
 
@@ -293,16 +293,16 @@ public:
   SharedMutex(const SharedMutex&) = delete;
   SharedMutex& operator=(const SharedMutex&) = delete;
 
-  void lock() { this->lock_.lock(); }
-  void unlock() { this->lock_.unlock(); }
-  bool tryLock() { return this->lock_.tryLock(); }
-  bool try_lock() { return this->tryLock(); }
-  void lockShared() { this->lock_.lockShared(); }
-  void unlockShared() { this->lock_.unlockShared(); }
-  bool tryLockShared() { return this->lock_.tryLockShared(); }
-  void lock_shared() { this->lockShared(); }
-  void unlock_shared() { this->unlockShared(); }
-  bool try_lock_shared() { return this->tryLockShared(); }
+  void lock() { this.lock_.lock(); }
+  void unlock() { this.lock_.unlock(); }
+  bool tryLock() { return this.lock_.tryLock(); }
+  bool try_lock() { return this.tryLock(); }
+  void lockShared() { this.lock_.lockShared(); }
+  void unlockShared() { this.lock_.unlockShared(); }
+  bool tryLockShared() { return this.lock_.tryLockShared(); }
+  void lock_shared() { this.lockShared(); }
+  void unlock_shared() { this.unlockShared(); }
+  bool try_lock_shared() { return this.tryLockShared(); }
 
 private:
   platform::SharedLock lock_;
@@ -327,7 +327,7 @@ public:
   LockGuard(M& mutex, AdoptLock) : mutex(mutex) {}
   LockGuard(const LockGuard<M>&) = delete;
   LockGuard<M>& operator=(const LockGuard<M>&) = delete;
-  ~LockGuard() { this->mutex.unlock(); }
+  ~LockGuard() { this.mutex.unlock(); }
 
 private:
   M& mutex;
@@ -390,25 +390,25 @@ class ScopedLock
 public:
   ScopedLock(M&... mutexes)
   {
-    this->take(mutexes...);
-    lockWithoutDeadlock(this->held, sizeof...(M));
+    this.take(mutexes...);
+    lockWithoutDeadlock(this.held, sizeof...(M));
   }
 
-  ScopedLock(AdoptLock, M&... mutexes) { this->take(mutexes...); }
+  ScopedLock(AdoptLock, M&... mutexes) { this.take(mutexes...); }
   ScopedLock(const ScopedLock&) = delete;
   ScopedLock& operator=(const ScopedLock&) = delete;
 
   ~ScopedLock()
   {
     for (ContainerSize i = 0; i < sizeof...(M); ++i)
-      this->held[i].unlock(this->held[i].mutex);
+      this.held[i].unlock(this.held[i].mutex);
   }
 
 private:
   void take(M&... mutexes)
   {
     ContainerSize i = 0;
-    ((this->held[i++] = scopedLockMutexOf(mutexes)), ...);
+    ((this.held[i++] = scopedLockMutexOf(mutexes)), ...);
   }
 
   ScopedLockMutex held[sizeof...(M) > 0 ? sizeof...(M) : 1]; // (one unused for no mutex: std::scoped_lock<> holds nothing)
@@ -430,7 +430,7 @@ public:
   ScopedLock(AdoptLock, M& mutex) : mutex(mutex) {}
   ScopedLock(const ScopedLock<M>&) = delete;
   ScopedLock<M>& operator=(const ScopedLock<M>&) = delete;
-  ~ScopedLock() { this->mutex.unlock(); }
+  ~ScopedLock() { this.mutex.unlock(); }
 
 private:
   M& mutex;
@@ -479,7 +479,7 @@ public:
   UniqueLock() {}
   UniqueLock(M& mutex) : mutex_(&mutex), owns(true) { mutex.lock(); }
   UniqueLock(M& mutex, DeferLock) : mutex_(&mutex) {}
-  UniqueLock(M& mutex, TryToLock) : mutex_(&mutex) { this->owns = mutex.try_lock(); }
+  UniqueLock(M& mutex, TryToLock) : mutex_(&mutex) { this.owns = mutex.try_lock(); }
   UniqueLock(M& mutex, AdoptLock) : mutex_(&mutex), owns(true) {}
   UniqueLock(const UniqueLock<M>&) = delete;
   UniqueLock<M>& operator=(const UniqueLock<M>&) = delete;
@@ -492,73 +492,73 @@ public:
 
   UniqueLock<M>& operator=(UniqueLock<M>&& other) noexcept
   {
-    if (this != &other)
+    if (&this != &other)
     {
-      if (this->owns)
-        this->mutex_->unlock();
-      this->mutex_ = other.mutex_;
-      this->owns = other.owns;
+      if (this.owns)
+        this.mutex_->unlock();
+      this.mutex_ = other.mutex_;
+      this.owns = other.owns;
       other.mutex_ = nullptr;
       other.owns = false;
     }
-    return *this;
+    return this;
   }
 
   ~UniqueLock()
   {
-    if (this->owns)
-      this->mutex_->unlock();
+    if (this.owns)
+      this.mutex_->unlock();
   }
 
   void lock()
   {
-    this->checkLockable("UniqueLock::lock");
-    this->mutex_->lock();
-    this->owns = true;
+    this.checkLockable("UniqueLock::lock");
+    this.mutex_->lock();
+    this.owns = true;
   }
 
   bool tryLock()
   {
-    this->checkLockable("UniqueLock::try_lock");
-    this->owns = this->mutex_->try_lock();
-    return this->owns;
+    this.checkLockable("UniqueLock::try_lock");
+    this.owns = this.mutex_->try_lock();
+    return this.owns;
   }
 
-  bool try_lock() { return this->tryLock(); }
+  bool try_lock() { return this.tryLock(); }
 
   void unlock()
   {
-    if (!this->owns)
+    if (!this.owns)
       throw SystemError(make_error_code(Errc::operation_not_permitted), "UniqueLock::unlock");
-    this->mutex_->unlock();
-    this->owns = false;
+    this.mutex_->unlock();
+    this.owns = false;
   }
 
   // Lets go of the mutex without unlocking it, and returns it.
   M* release()
   {
-    M* mutex = this->mutex_;
-    this->mutex_ = nullptr;
-    this->owns = false;
+    M* mutex = this.mutex_;
+    this.mutex_ = nullptr;
+    this.owns = false;
     return mutex;
   }
 
   void swap(UniqueLock<M>& other)
   {
-    std::swap(this->mutex_, other.mutex_);
-    std::swap(this->owns, other.owns);
+    std::swap(this.mutex_, other.mutex_);
+    std::swap(this.owns, other.owns);
   }
 
-  M* mutex() const { return this->mutex_; }
-  bool ownsLock() const { return this->owns; }
-  bool owns_lock() const { return this->owns; }
-  operator bool() const { return this->owns; }
+  M* mutex() const { return this.mutex_; }
+  bool ownsLock() const { return this.owns; }
+  bool owns_lock() const { return this.owns; }
+  operator bool() const { return this.owns; }
 
   void checkLockable(const char* what) const
   {
-    if (!this->mutex_)
+    if (!this.mutex_)
       throw SystemError(make_error_code(Errc::operation_not_permitted), what);
-    if (this->owns)
+    if (this.owns)
       throw SystemError(make_error_code(Errc::resource_deadlock_would_occur), what);
   }
 
@@ -576,7 +576,7 @@ public:
   SharedLock() {}
   SharedLock(M& mutex) : mutex_(&mutex), owns(true) { mutex.lockShared(); }
   SharedLock(M& mutex, DeferLock) : mutex_(&mutex) {}
-  SharedLock(M& mutex, TryToLock) : mutex_(&mutex) { this->owns = mutex.tryLockShared(); }
+  SharedLock(M& mutex, TryToLock) : mutex_(&mutex) { this.owns = mutex.tryLockShared(); }
   SharedLock(M& mutex, AdoptLock) : mutex_(&mutex), owns(true) {}
   SharedLock(const SharedLock<M>&) = delete;
   SharedLock<M>& operator=(const SharedLock<M>&) = delete;
@@ -589,72 +589,72 @@ public:
 
   SharedLock<M>& operator=(SharedLock<M>&& other) noexcept
   {
-    if (this != &other)
+    if (&this != &other)
     {
-      if (this->owns)
-        this->mutex_->unlockShared();
-      this->mutex_ = other.mutex_;
-      this->owns = other.owns;
+      if (this.owns)
+        this.mutex_->unlockShared();
+      this.mutex_ = other.mutex_;
+      this.owns = other.owns;
       other.mutex_ = nullptr;
       other.owns = false;
     }
-    return *this;
+    return this;
   }
 
   ~SharedLock()
   {
-    if (this->owns)
-      this->mutex_->unlockShared();
+    if (this.owns)
+      this.mutex_->unlockShared();
   }
 
   void lock()
   {
-    this->checkLockable("SharedLock::lock");
-    this->mutex_->lockShared();
-    this->owns = true;
+    this.checkLockable("SharedLock::lock");
+    this.mutex_->lockShared();
+    this.owns = true;
   }
 
   bool tryLock()
   {
-    this->checkLockable("SharedLock::try_lock");
-    this->owns = this->mutex_->tryLockShared();
-    return this->owns;
+    this.checkLockable("SharedLock::try_lock");
+    this.owns = this.mutex_->tryLockShared();
+    return this.owns;
   }
 
-  bool try_lock() { return this->tryLock(); }
+  bool try_lock() { return this.tryLock(); }
 
   void unlock()
   {
-    if (!this->owns)
+    if (!this.owns)
       throw SystemError(make_error_code(Errc::operation_not_permitted), "SharedLock::unlock");
-    this->mutex_->unlockShared();
-    this->owns = false;
+    this.mutex_->unlockShared();
+    this.owns = false;
   }
 
   M* release()
   {
-    M* mutex = this->mutex_;
-    this->mutex_ = nullptr;
-    this->owns = false;
+    M* mutex = this.mutex_;
+    this.mutex_ = nullptr;
+    this.owns = false;
     return mutex;
   }
 
   void swap(SharedLock<M>& other)
   {
-    std::swap(this->mutex_, other.mutex_);
-    std::swap(this->owns, other.owns);
+    std::swap(this.mutex_, other.mutex_);
+    std::swap(this.owns, other.owns);
   }
 
-  M* mutex() const { return this->mutex_; }
-  bool ownsLock() const { return this->owns; }
-  bool owns_lock() const { return this->owns; }
-  operator bool() const { return this->owns; }
+  M* mutex() const { return this.mutex_; }
+  bool ownsLock() const { return this.owns; }
+  bool owns_lock() const { return this.owns; }
+  operator bool() const { return this.owns; }
 
   void checkLockable(const char* what) const
   {
-    if (!this->mutex_)
+    if (!this.mutex_)
       throw SystemError(make_error_code(Errc::operation_not_permitted), what);
-    if (this->owns)
+    if (this.owns)
       throw SystemError(make_error_code(Errc::resource_deadlock_would_occur), what);
   }
 
@@ -677,19 +677,19 @@ public:
   ConditionVariable(const ConditionVariable&) = delete;
   ConditionVariable& operator=(const ConditionVariable&) = delete;
 
-  void notifyOne() { this->condition.notifyOne(); }
-  void notifyAll() { this->condition.notifyAll(); }
-  void notify_one() { this->notifyOne(); }
-  void notify_all() { this->notifyAll(); }
+  void notifyOne() { this.condition.notifyOne(); }
+  void notifyAll() { this.condition.notifyAll(); }
+  void notify_one() { this.notifyOne(); }
+  void notify_all() { this.notifyAll(); }
 
   // Unlocks lock's mutex and blocks until notified (or woken spuriously), then locks it again.
-  void wait(UniqueLock<Mutex>& lock) { this->condition.wait(lock.mutex()->lock_); }
+  void wait(UniqueLock<Mutex>& lock) { this.condition.wait(lock.mutex()->lock_); }
 
   template<typename Predicate>
   void wait(UniqueLock<Mutex>& lock, Predicate ready)
   {
     while (!ready())
-      this->wait(lock);
+      this.wait(lock);
   }
 
   template<typename Clock, typename Dur>
@@ -700,7 +700,7 @@ public:
       auto now = Clock::now();
       if (!(now < t))
         return CvStatus::timeout;
-      if (this->condition.waitFor(lock.mutex()->lock_, t - now))
+      if (this.condition.waitFor(lock.mutex()->lock_, t - now))
         return CvStatus::no_timeout; // woken: by a notify, or spuriously
       // The system's timer ended the wait, which can be a little before t on t's clock: the rest.
     }
@@ -711,28 +711,28 @@ public:
   bool waitUntil(UniqueLock<Mutex>& lock, const TimePoint<Clock, Dur>& t, Predicate ready)
   {
     while (!ready())
-      if (this->waitUntil(lock, t) == CvStatus::timeout)
+      if (this.waitUntil(lock, t) == CvStatus::timeout)
         return ready();
     return true;
   }
 
   template<typename Rep, typename Period>
-  CvStatus waitFor(UniqueLock<Mutex>& lock, const Duration<Rep, Period>& d) { return this->waitUntil(lock, SteadyClock::now() + d); }
+  CvStatus waitFor(UniqueLock<Mutex>& lock, const Duration<Rep, Period>& d) { return this.waitUntil(lock, SteadyClock::now() + d); }
 
   template<typename Rep, typename Period, typename Predicate>
   bool waitFor(UniqueLock<Mutex>& lock, const Duration<Rep, Period>& d, Predicate ready)
   {
-    return this->waitUntil(lock, SteadyClock::now() + d, move(ready));
+    return this.waitUntil(lock, SteadyClock::now() + d, move(ready));
   }
 
   template<typename Clock, typename Dur>
-  CvStatus wait_until(UniqueLock<Mutex>& lock, const TimePoint<Clock, Dur>& t) { return this->waitUntil(lock, t); }
+  CvStatus wait_until(UniqueLock<Mutex>& lock, const TimePoint<Clock, Dur>& t) { return this.waitUntil(lock, t); }
   template<typename Clock, typename Dur, typename Predicate>
-  bool wait_until(UniqueLock<Mutex>& lock, const TimePoint<Clock, Dur>& t, Predicate ready) { return this->waitUntil(lock, t, move(ready)); }
+  bool wait_until(UniqueLock<Mutex>& lock, const TimePoint<Clock, Dur>& t, Predicate ready) { return this.waitUntil(lock, t, move(ready)); }
   template<typename Rep, typename Period>
-  CvStatus wait_for(UniqueLock<Mutex>& lock, const Duration<Rep, Period>& d) { return this->waitFor(lock, d); }
+  CvStatus wait_for(UniqueLock<Mutex>& lock, const Duration<Rep, Period>& d) { return this.waitFor(lock, d); }
   template<typename Rep, typename Period, typename Predicate>
-  bool wait_for(UniqueLock<Mutex>& lock, const Duration<Rep, Period>& d, Predicate ready) { return this->waitFor(lock, d, move(ready)); }
+  bool wait_for(UniqueLock<Mutex>& lock, const Duration<Rep, Period>& d, Predicate ready) { return this.waitFor(lock, d, move(ready)); }
 
 private:
   platform::Condition condition;
@@ -808,44 +808,44 @@ struct Atomic
     return v;
   }
 
-  Word* word() const { return (Word*)&this->value; }
+  Word* word() const { return (Word*)&this.value; }
 
   T load() const noexcept
   {
     if constexpr (sizeof(T) == 8)
-      return Atomic::valueOf((Word)kpp_atomic_load64((const i64*)this->word()));
+      return Atomic::valueOf((Word)kpp_atomic_load64((const i64*)this.word()));
     else if constexpr (sizeof(T) == 4)
-      return Atomic::valueOf((Word)kpp_atomic_load32((const long*)this->word()));
+      return Atomic::valueOf((Word)kpp_atomic_load32((const long*)this.word()));
     else if constexpr (sizeof(T) == 2)
-      return Atomic::valueOf(kpp_atomic_load16((const u16*)this->word()));
+      return Atomic::valueOf(kpp_atomic_load16((const u16*)this.word()));
     else
-      return Atomic::valueOf(kpp_atomic_load8((const u8*)this->word()));
+      return Atomic::valueOf(kpp_atomic_load8((const u8*)this.word()));
   }
 
   void store(T v) noexcept
   {
     Word w = Atomic::wordOf(v);
     if constexpr (sizeof(T) == 8)
-      kpp_atomic_store64((i64*)this->word(), (i64)w);
+      kpp_atomic_store64((i64*)this.word(), (i64)w);
     else if constexpr (sizeof(T) == 4)
-      kpp_atomic_store32((long*)this->word(), (long)w);
+      kpp_atomic_store32((long*)this.word(), (long)w);
     else if constexpr (sizeof(T) == 2)
-      kpp_atomic_store16((u16*)this->word(), w);
+      kpp_atomic_store16((u16*)this.word(), w);
     else
-      kpp_atomic_store8((u8*)this->word(), w);
+      kpp_atomic_store8((u8*)this.word(), w);
   }
 
   T exchange(T v) noexcept
   {
     Word w = Atomic::wordOf(v);
     if constexpr (sizeof(T) == 8)
-      return Atomic::valueOf((Word)kpp_atomic_exchange64((i64*)this->word(), (i64)w));
+      return Atomic::valueOf((Word)kpp_atomic_exchange64((i64*)this.word(), (i64)w));
     else if constexpr (sizeof(T) == 4)
-      return Atomic::valueOf((Word)kpp_atomic_exchange32((long*)this->word(), (long)w));
+      return Atomic::valueOf((Word)kpp_atomic_exchange32((long*)this.word(), (long)w));
     else if constexpr (sizeof(T) == 2)
-      return Atomic::valueOf(kpp_atomic_exchange16((u16*)this->word(), w));
+      return Atomic::valueOf(kpp_atomic_exchange16((u16*)this.word(), w));
     else
-      return Atomic::valueOf(kpp_atomic_exchange8((u8*)this->word(), w));
+      return Atomic::valueOf(kpp_atomic_exchange8((u8*)this.word(), w));
   }
 
   // True when the value had expected's bits and now has desired's; otherwise false, and expected
@@ -856,41 +856,41 @@ struct Atomic
     Word next = Atomic::wordOf(desired);
     Word seen;
     if constexpr (sizeof(T) == 8)
-      seen = (Word)kpp_atomic_cas64((i64*)this->word(), (i64)next, (i64)want);
+      seen = (Word)kpp_atomic_cas64((i64*)this.word(), (i64)next, (i64)want);
     else if constexpr (sizeof(T) == 4)
-      seen = (Word)kpp_atomic_cas32((long*)this->word(), (long)next, (long)want);
+      seen = (Word)kpp_atomic_cas32((long*)this.word(), (long)next, (long)want);
     else if constexpr (sizeof(T) == 2)
-      seen = kpp_atomic_cas16((u16*)this->word(), next, want);
+      seen = kpp_atomic_cas16((u16*)this.word(), next, want);
     else
-      seen = kpp_atomic_cas8((u8*)this->word(), next, want);
+      seen = kpp_atomic_cas8((u8*)this.word(), next, want);
     if (seen == want)
       return true;
     expected = Atomic::valueOf(seen);
     return false;
   }
 
-  bool compare_exchange_strong(T& expected, T desired) noexcept { return this->compareExchange(expected, desired); }
-  bool compare_exchange_weak(T& expected, T desired) noexcept { return this->compareExchange(expected, desired); }
+  bool compare_exchange_strong(T& expected, T desired) noexcept { return this.compareExchange(expected, desired); }
+  bool compare_exchange_weak(T& expected, T desired) noexcept { return this.compareExchange(expected, desired); }
 
   // The same with memory orders (each sequentially consistent: MemoryOrder).
-  T load(MemoryOrder order) const noexcept { return this->load(); }
-  void store(T v, MemoryOrder order) noexcept { this->store(v); }
-  T exchange(T v, MemoryOrder order) noexcept { return this->exchange(v); }
-  bool compareExchange(T& expected, T desired, MemoryOrder order) noexcept { return this->compareExchange(expected, desired); }
-  bool compareExchange(T& expected, T desired, MemoryOrder success, MemoryOrder failure) noexcept { return this->compareExchange(expected, desired); }
-  bool compare_exchange_strong(T& expected, T desired, MemoryOrder order) noexcept { return this->compareExchange(expected, desired); }
-  bool compare_exchange_strong(T& expected, T desired, MemoryOrder success, MemoryOrder failure) noexcept { return this->compareExchange(expected, desired); }
-  bool compare_exchange_weak(T& expected, T desired, MemoryOrder order) noexcept { return this->compareExchange(expected, desired); }
-  bool compare_exchange_weak(T& expected, T desired, MemoryOrder success, MemoryOrder failure) noexcept { return this->compareExchange(expected, desired); }
-  void wait(T old, MemoryOrder order) const { this->wait(old); }
+  T load(MemoryOrder order) const noexcept { return this.load(); }
+  void store(T v, MemoryOrder order) noexcept { this.store(v); }
+  T exchange(T v, MemoryOrder order) noexcept { return this.exchange(v); }
+  bool compareExchange(T& expected, T desired, MemoryOrder order) noexcept { return this.compareExchange(expected, desired); }
+  bool compareExchange(T& expected, T desired, MemoryOrder success, MemoryOrder failure) noexcept { return this.compareExchange(expected, desired); }
+  bool compare_exchange_strong(T& expected, T desired, MemoryOrder order) noexcept { return this.compareExchange(expected, desired); }
+  bool compare_exchange_strong(T& expected, T desired, MemoryOrder success, MemoryOrder failure) noexcept { return this.compareExchange(expected, desired); }
+  bool compare_exchange_weak(T& expected, T desired, MemoryOrder order) noexcept { return this.compareExchange(expected, desired); }
+  bool compare_exchange_weak(T& expected, T desired, MemoryOrder success, MemoryOrder failure) noexcept { return this.compareExchange(expected, desired); }
+  void wait(T old, MemoryOrder order) const { this.wait(old); }
 
   // An integer's bits and-ed, or-ed or xor-ed with mask (std::atomic::fetch_and, fetch_or,
   // fetch_xor): the value before, one indivisible step (a compare-exchange loop).
   T fetchAnd(T mask) noexcept
     requires isIntegral<T> && !isSame<T, bool>
   {
-    T seen = this->load();
-    while (!this->compareExchange(seen, (T)(seen & mask)))
+    T seen = this.load();
+    while (!this.compareExchange(seen, (T)(seen & mask)))
     {
     }
     return seen;
@@ -899,8 +899,8 @@ struct Atomic
   T fetchOr(T mask) noexcept
     requires isIntegral<T> && !isSame<T, bool>
   {
-    T seen = this->load();
-    while (!this->compareExchange(seen, (T)(seen | mask)))
+    T seen = this.load();
+    while (!this.compareExchange(seen, (T)(seen | mask)))
     {
     }
     return seen;
@@ -909,40 +909,40 @@ struct Atomic
   T fetchXor(T mask) noexcept
     requires isIntegral<T> && !isSame<T, bool>
   {
-    T seen = this->load();
-    while (!this->compareExchange(seen, (T)(seen ^ mask)))
+    T seen = this.load();
+    while (!this.compareExchange(seen, (T)(seen ^ mask)))
     {
     }
     return seen;
   }
 
-  T fetch_and(T mask, MemoryOrder order = MemoryOrder::seq_cst) noexcept requires isIntegral<T> && !isSame<T, bool> { return this->fetchAnd(mask); }
-  T fetch_or(T mask, MemoryOrder order = MemoryOrder::seq_cst) noexcept requires isIntegral<T> && !isSame<T, bool> { return this->fetchOr(mask); }
-  T fetch_xor(T mask, MemoryOrder order = MemoryOrder::seq_cst) noexcept requires isIntegral<T> && !isSame<T, bool> { return this->fetchXor(mask); }
-  T operator&=(T mask) requires isIntegral<T> && !isSame<T, bool> { return (T)(this->fetchAnd(mask) & mask); }
-  T operator|=(T mask) requires isIntegral<T> && !isSame<T, bool> { return (T)(this->fetchOr(mask) | mask); }
+  T fetch_and(T mask, MemoryOrder order = MemoryOrder::seq_cst) noexcept requires isIntegral<T> && !isSame<T, bool> { return this.fetchAnd(mask); }
+  T fetch_or(T mask, MemoryOrder order = MemoryOrder::seq_cst) noexcept requires isIntegral<T> && !isSame<T, bool> { return this.fetchOr(mask); }
+  T fetch_xor(T mask, MemoryOrder order = MemoryOrder::seq_cst) noexcept requires isIntegral<T> && !isSame<T, bool> { return this.fetchXor(mask); }
+  T operator&=(T mask) requires isIntegral<T> && !isSame<T, bool> { return (T)(this.fetchAnd(mask) & mask); }
+  T operator|=(T mask) requires isIntegral<T> && !isSame<T, bool> { return (T)(this.fetchOr(mask) | mask); }
 
-  T operator^=(T mask) requires isIntegral<T> && !isSame<T, bool> { return (T)(this->fetchXor(mask) ^ mask); }
+  T operator^=(T mask) requires isIntegral<T> && !isSame<T, bool> { return (T)(this.fetchXor(mask) ^ mask); }
 
   // A pointer moved by delta elements (std::atomic<T*>::fetch_add): the pointer before.
   T fetchAdd(i64 delta) noexcept
     requires isPointer<T>
   {
     i64 bytes = delta * (i64)sizeof(RemovePointer<T>);
-    Word before = (Word)kpp_atomic_add64((i64*)this->word(), bytes);
+    Word before = (Word)kpp_atomic_add64((i64*)this.word(), bytes);
     return Atomic::valueOf(before);
   }
 
-  T fetchSub(i64 delta) noexcept requires isPointer<T> { return this->fetchAdd(-delta); }
-  T fetch_add(i64 delta, MemoryOrder order = MemoryOrder::seq_cst) noexcept requires isPointer<T> { return this->fetchAdd(delta); }
-  T fetch_sub(i64 delta, MemoryOrder order = MemoryOrder::seq_cst) noexcept requires isPointer<T> { return this->fetchAdd(-delta); }
-  T operator++() requires isPointer<T> { return this->fetchAdd((i64)1) + 1; }
-  T operator++(i32) requires isPointer<T> { return this->fetchAdd((i64)1); }
-  T operator--() requires isPointer<T> { return this->fetchAdd((i64)-1) - 1; }
-  T operator--(i32) requires isPointer<T> { return this->fetchAdd((i64)-1); }
-  T operator+=(i64 delta) requires isPointer<T> { return this->fetchAdd(delta) + delta; }
+  T fetchSub(i64 delta) noexcept requires isPointer<T> { return this.fetchAdd(-delta); }
+  T fetch_add(i64 delta, MemoryOrder order = MemoryOrder::seq_cst) noexcept requires isPointer<T> { return this.fetchAdd(delta); }
+  T fetch_sub(i64 delta, MemoryOrder order = MemoryOrder::seq_cst) noexcept requires isPointer<T> { return this.fetchAdd(-delta); }
+  T operator++() requires isPointer<T> { return this.fetchAdd((i64)1) + 1; }
+  T operator++(i32) requires isPointer<T> { return this.fetchAdd((i64)1); }
+  T operator--() requires isPointer<T> { return this.fetchAdd((i64)-1) - 1; }
+  T operator--(i32) requires isPointer<T> { return this.fetchAdd((i64)-1); }
+  T operator+=(i64 delta) requires isPointer<T> { return this.fetchAdd(delta) + delta; }
 
-  T operator-=(i64 delta) requires isPointer<T> { return this->fetchAdd(-delta) - delta; }
+  T operator-=(i64 delta) requires isPointer<T> { return this.fetchAdd(-delta) - delta; }
 
   // The value before adding delta.
   T fetchAdd(T delta) noexcept
@@ -950,8 +950,8 @@ struct Atomic
   {
     if constexpr (isFloatingPoint<T>)
     {
-      T seen = this->load();
-      while (!this->compareExchange(seen, seen + delta))
+      T seen = this.load();
+      while (!this.compareExchange(seen, seen + delta))
       {
       }
       return seen;
@@ -960,45 +960,45 @@ struct Atomic
     {
       Word w = Atomic::wordOf(delta);
       if constexpr (sizeof(T) == 8)
-        return Atomic::valueOf((Word)kpp_atomic_add64((i64*)this->word(), (i64)w));
+        return Atomic::valueOf((Word)kpp_atomic_add64((i64*)this.word(), (i64)w));
       else if constexpr (sizeof(T) == 4)
-        return Atomic::valueOf((Word)kpp_atomic_add32((long*)this->word(), (long)w));
+        return Atomic::valueOf((Word)kpp_atomic_add32((long*)this.word(), (long)w));
       else if constexpr (sizeof(T) == 2)
-        return Atomic::valueOf(kpp_atomic_add16((u16*)this->word(), w));
+        return Atomic::valueOf(kpp_atomic_add16((u16*)this.word(), w));
       else
-        return Atomic::valueOf(kpp_atomic_add8((u8*)this->word(), w));
+        return Atomic::valueOf(kpp_atomic_add8((u8*)this.word(), w));
     }
   }
 
-  T fetch_add(T delta, MemoryOrder order = MemoryOrder::seq_cst) noexcept requires (!isPointer<T>) { return this->fetchAdd(delta); }
+  T fetch_add(T delta, MemoryOrder order = MemoryOrder::seq_cst) noexcept requires (!isPointer<T>) { return this.fetchAdd(delta); }
 
   T fetchSub(T delta) noexcept
     requires (!isPointer<T>)
   {
     if constexpr (isFloatingPoint<T>)
-      return this->fetchAdd(-delta);
+      return this.fetchAdd(-delta);
     else
-      return this->fetchAdd((T)(0 - delta));
+      return this.fetchAdd((T)(0 - delta));
   }
 
-  T fetch_sub(T delta, MemoryOrder order = MemoryOrder::seq_cst) noexcept requires (!isPointer<T>) { return this->fetchSub(delta); }
+  T fetch_sub(T delta, MemoryOrder order = MemoryOrder::seq_cst) noexcept requires (!isPointer<T>) { return this.fetchSub(delta); }
   bool is_lock_free() const { return true; }
 
-  implicit operator T() const { return this->load(); }
+  implicit operator T() const { return this.load(); }
 
   Atomic<T>& operator=(T v)
   {
-    this->store(v);
-    return *this;
+    this.store(v);
+    return this;
   }
 
-  T operator++() requires (!isPointer<T>) { return this->fetchAdd(1) + 1; }
-  T operator++(i32) requires (!isPointer<T>) { return this->fetchAdd(1); }
-  T operator--() requires (!isPointer<T>) { return this->fetchSub(1) - 1; }
-  T operator--(i32) requires (!isPointer<T>) { return this->fetchSub(1); }
-  T operator+=(T delta) requires (!isPointer<T>) { return this->fetchAdd(delta) + delta; }
-  T operator-=(T delta) requires (!isPointer<T>) { return this->fetchSub(delta) - delta; }
-  bool operator==(T other) const { return this->load() == other; }
+  T operator++() requires (!isPointer<T>) { return this.fetchAdd(1) + 1; }
+  T operator++(i32) requires (!isPointer<T>) { return this.fetchAdd(1); }
+  T operator--() requires (!isPointer<T>) { return this.fetchSub(1) - 1; }
+  T operator--(i32) requires (!isPointer<T>) { return this.fetchSub(1); }
+  T operator+=(T delta) requires (!isPointer<T>) { return this.fetchAdd(delta) + delta; }
+  T operator-=(T delta) requires (!isPointer<T>) { return this.fetchSub(delta) - delta; }
+  bool operator==(T other) const { return this.load() == other; }
 
   // Blocks while the value's bits are old's (std::atomic::wait); a notify after a store that
   // changed them wakes it. Waiters and notifiers meet at the lock and condition variable of
@@ -1006,95 +1006,95 @@ struct Atomic
   // wakes under it, so a store and notify between the check and the sleep cannot be missed.
   void wait(T old) const
   {
-    AtomicWaitSlot& slot = atomicWaitSlot(this);
+    AtomicWaitSlot& slot = atomicWaitSlot(&this);
     Word oldWord = Atomic::wordOf(old);
     slot.lock.lock();
-    while (Atomic::wordOf(this->load()) == oldWord)
+    while (Atomic::wordOf(this.load()) == oldWord)
       slot.condition.wait(slot.lock);
     slot.lock.unlock();
   }
 
   // Wakes the waiters on this Atomic. notifyOne wakes all of the slot's waiters too (each checks
   // its own value again and sleeps on), which C++'s "at least one" allows.
-  void notifyOne() { atomicNotify(this); }
-  void notifyAll() { atomicNotify(this); }
-  void notify_one() { atomicNotify(this); }
-  void notify_all() { atomicNotify(this); }
+  void notifyOne() { atomicNotify(&this); }
+  void notifyAll() { atomicNotify(&this); }
+  void notify_one() { atomicNotify(&this); }
+  void notify_all() { atomicNotify(&this); }
 
   // The same on a volatile Atomic, as std::atomic has each member (`volatile std::atomic<sig_atomic_t>` written
   // by a signal handler): each operation is atomic already, so volatile changes nothing it does.
-  Atomic<T>& self() const volatile { return *const_cast<Atomic<T>*>(this); }
+  Atomic<T>& self() const volatile { return *const_cast<Atomic<T>*>(&this); }
   bool is_lock_free() const volatile { return true; }
-  T load() const volatile noexcept { return this->self().load(); }
-  T load(MemoryOrder order) const volatile noexcept { return this->self().load(); }
-  void store(T v) volatile noexcept { this->self().store(v); }
-  void store(T v, MemoryOrder order) volatile noexcept { this->self().store(v); }
-  T exchange(T v) volatile noexcept { return this->self().exchange(v); }
-  T exchange(T v, MemoryOrder order) volatile noexcept { return this->self().exchange(v); }
-  bool compareExchange(T& expected, T desired) volatile noexcept { return this->self().compareExchange(expected, desired); }
-  bool compareExchange(T& expected, T desired, MemoryOrder order) volatile noexcept { return this->self().compareExchange(expected, desired); }
+  T load() const volatile noexcept { return this.self().load(); }
+  T load(MemoryOrder order) const volatile noexcept { return this.self().load(); }
+  void store(T v) volatile noexcept { this.self().store(v); }
+  void store(T v, MemoryOrder order) volatile noexcept { this.self().store(v); }
+  T exchange(T v) volatile noexcept { return this.self().exchange(v); }
+  T exchange(T v, MemoryOrder order) volatile noexcept { return this.self().exchange(v); }
+  bool compareExchange(T& expected, T desired) volatile noexcept { return this.self().compareExchange(expected, desired); }
+  bool compareExchange(T& expected, T desired, MemoryOrder order) volatile noexcept { return this.self().compareExchange(expected, desired); }
 
   bool compareExchange(T& expected, T desired, MemoryOrder success, MemoryOrder failure) volatile noexcept
   {
-    return this->self().compareExchange(expected, desired);
+    return this.self().compareExchange(expected, desired);
   }
 
-  bool compare_exchange_strong(T& expected, T desired) volatile noexcept { return this->self().compareExchange(expected, desired); }
-  bool compare_exchange_strong(T& expected, T desired, MemoryOrder order) volatile noexcept { return this->self().compareExchange(expected, desired); }
+  bool compare_exchange_strong(T& expected, T desired) volatile noexcept { return this.self().compareExchange(expected, desired); }
+  bool compare_exchange_strong(T& expected, T desired, MemoryOrder order) volatile noexcept { return this.self().compareExchange(expected, desired); }
 
   bool compare_exchange_strong(T& expected, T desired, MemoryOrder success, MemoryOrder failure) volatile noexcept
   {
-    return this->self().compareExchange(expected, desired);
+    return this.self().compareExchange(expected, desired);
   }
 
-  bool compare_exchange_weak(T& expected, T desired) volatile noexcept { return this->self().compareExchange(expected, desired); }
-  bool compare_exchange_weak(T& expected, T desired, MemoryOrder order) volatile noexcept { return this->self().compareExchange(expected, desired); }
+  bool compare_exchange_weak(T& expected, T desired) volatile noexcept { return this.self().compareExchange(expected, desired); }
+  bool compare_exchange_weak(T& expected, T desired, MemoryOrder order) volatile noexcept { return this.self().compareExchange(expected, desired); }
 
   bool compare_exchange_weak(T& expected, T desired, MemoryOrder success, MemoryOrder failure) volatile noexcept
   {
-    return this->self().compareExchange(expected, desired);
+    return this.self().compareExchange(expected, desired);
   }
 
-  T fetchAnd(T mask) volatile noexcept requires isIntegral<T> && !isSame<T, bool> { return this->self().fetchAnd(mask); }
-  T fetchOr(T mask) volatile noexcept requires isIntegral<T> && !isSame<T, bool> { return this->self().fetchOr(mask); }
-  T fetchXor(T mask) volatile noexcept requires isIntegral<T> && !isSame<T, bool> { return this->self().fetchXor(mask); }
-  T fetch_and(T mask, MemoryOrder order = MemoryOrder::seq_cst) volatile noexcept requires isIntegral<T> && !isSame<T, bool> { return this->self().fetchAnd(mask); }
-  T fetch_or(T mask, MemoryOrder order = MemoryOrder::seq_cst) volatile noexcept requires isIntegral<T> && !isSame<T, bool> { return this->self().fetchOr(mask); }
-  T fetch_xor(T mask, MemoryOrder order = MemoryOrder::seq_cst) volatile noexcept requires isIntegral<T> && !isSame<T, bool> { return this->self().fetchXor(mask); }
-  T operator&=(T mask) volatile noexcept requires isIntegral<T> && !isSame<T, bool> { return this->self() &= mask; }
-  T operator|=(T mask) volatile noexcept requires isIntegral<T> && !isSame<T, bool> { return this->self() |= mask; }
-  T operator^=(T mask) volatile noexcept requires isIntegral<T> && !isSame<T, bool> { return this->self() ^= mask; }
-  T fetchAdd(i64 delta) volatile noexcept requires isPointer<T> { return this->self().fetchAdd(delta); }
-  T fetchSub(i64 delta) volatile noexcept requires isPointer<T> { return this->self().fetchAdd(-delta); }
-  T fetch_add(i64 delta, MemoryOrder order = MemoryOrder::seq_cst) volatile noexcept requires isPointer<T> { return this->self().fetchAdd(delta); }
-  T fetch_sub(i64 delta, MemoryOrder order = MemoryOrder::seq_cst) volatile noexcept requires isPointer<T> { return this->self().fetchAdd(-delta); }
-  T operator+=(i64 delta) volatile noexcept requires isPointer<T> { return this->self() += delta; }
-  T operator-=(i64 delta) volatile noexcept requires isPointer<T> { return this->self() -= delta; }
-  T fetchAdd(T delta) volatile noexcept requires (!isPointer<T>) { return this->self().fetchAdd(delta); }
-  T fetchSub(T delta) volatile noexcept requires (!isPointer<T>) { return this->self().fetchSub(delta); }
-  T fetch_add(T delta, MemoryOrder order = MemoryOrder::seq_cst) volatile noexcept requires (!isPointer<T>) { return this->self().fetchAdd(delta); }
-  T fetch_sub(T delta, MemoryOrder order = MemoryOrder::seq_cst) volatile noexcept requires (!isPointer<T>) { return this->self().fetchSub(delta); }
-  T operator+=(T delta) volatile noexcept requires (!isPointer<T>) { return this->self() += delta; }
-  T operator-=(T delta) volatile noexcept requires (!isPointer<T>) { return this->self() -= delta; }
-  T operator++() volatile noexcept { return ++this->self(); }
-  T operator++(i32) volatile noexcept { return this->self()++; }
-  T operator--() volatile noexcept { return --this->self(); }
-  T operator--(i32) volatile noexcept { return this->self()--; }
-  implicit operator T() const volatile noexcept { return this->self().load(); }
+  T fetchAnd(T mask) volatile noexcept requires isIntegral<T> && !isSame<T, bool> { return this.self().fetchAnd(mask); }
+  T fetchOr(T mask) volatile noexcept requires isIntegral<T> && !isSame<T, bool> { return this.self().fetchOr(mask); }
+  T fetchXor(T mask) volatile noexcept requires isIntegral<T> && !isSame<T, bool> { return this.self().fetchXor(mask); }
+  T fetch_and(T mask, MemoryOrder order = MemoryOrder::seq_cst) volatile noexcept requires isIntegral<T> && !isSame<T, bool> { return this.self().fetchAnd(mask); }
+  T fetch_or(T mask, MemoryOrder order = MemoryOrder::seq_cst) volatile noexcept requires isIntegral<T> && !isSame<T, bool> { return this.self().fetchOr(mask); }
+  T fetch_xor(T mask, MemoryOrder order = MemoryOrder::seq_cst) volatile noexcept requires isIntegral<T> && !isSame<T, bool> { return this.self().fetchXor(mask); }
+  T operator&=(T mask) volatile noexcept requires isIntegral<T> && !isSame<T, bool> { return this.self() &= mask; }
+  T operator|=(T mask) volatile noexcept requires isIntegral<T> && !isSame<T, bool> { return this.self() |= mask; }
+  T operator^=(T mask) volatile noexcept requires isIntegral<T> && !isSame<T, bool> { return this.self() ^= mask; }
+  T fetchAdd(i64 delta) volatile noexcept requires isPointer<T> { return this.self().fetchAdd(delta); }
+  T fetchSub(i64 delta) volatile noexcept requires isPointer<T> { return this.self().fetchAdd(-delta); }
+  T fetch_add(i64 delta, MemoryOrder order = MemoryOrder::seq_cst) volatile noexcept requires isPointer<T> { return this.self().fetchAdd(delta); }
+  T fetch_sub(i64 delta, MemoryOrder order = MemoryOrder::seq_cst) volatile noexcept requires isPointer<T> { return this.self().fetchAdd(-delta); }
+  T operator+=(i64 delta) volatile noexcept requires isPointer<T> { return this.self() += delta; }
+  T operator-=(i64 delta) volatile noexcept requires isPointer<T> { return this.self() -= delta; }
+  T fetchAdd(T delta) volatile noexcept requires (!isPointer<T>) { return this.self().fetchAdd(delta); }
+  T fetchSub(T delta) volatile noexcept requires (!isPointer<T>) { return this.self().fetchSub(delta); }
+  T fetch_add(T delta, MemoryOrder order = MemoryOrder::seq_cst) volatile noexcept requires (!isPointer<T>) { return this.self().fetchAdd(delta); }
+  T fetch_sub(T delta, MemoryOrder order = MemoryOrder::seq_cst) volatile noexcept requires (!isPointer<T>) { return this.self().fetchSub(delta); }
+  T operator+=(T delta) volatile noexcept requires (!isPointer<T>) { return this.self() += delta; }
+  T operator-=(T delta) volatile noexcept requires (!isPointer<T>) { return this.self() -= delta; }
+  T operator++() volatile noexcept { return ++this.self(); }
+  T operator++(i32) volatile noexcept { return this.self()++; }
+  T operator--() volatile noexcept { return --this.self(); }
+  T operator--(i32) volatile noexcept { return this.self()--; }
+  implicit operator T() const volatile noexcept { return this.self().load(); }
 
   T operator=(T v) volatile noexcept
   {
-    this->self().store(v);
+    this.self().store(v);
     return v;
   }
 
-  bool operator==(T other) const volatile { return this->self().load() == other; }
-  void wait(T old) const volatile { this->self().wait(old); }
-  void wait(T old, MemoryOrder order) const volatile { this->self().wait(old); }
-  void notifyOne() volatile { atomicNotify(&this->self()); }
-  void notifyAll() volatile { atomicNotify(&this->self()); }
-  void notify_one() volatile { atomicNotify(&this->self()); }
-  void notify_all() volatile { atomicNotify(&this->self()); }
+  bool operator==(T other) const volatile { return this.self().load() == other; }
+  void wait(T old) const volatile { this.self().wait(old); }
+  void wait(T old, MemoryOrder order) const volatile { this.self().wait(old); }
+  void notifyOne() volatile { atomicNotify(&this.self()); }
+  void notifyAll() volatile { atomicNotify(&this.self()); }
+  void notify_one() volatile { atomicNotify(&this.self()); }
+  void notify_all() volatile { atomicNotify(&this.self()); }
 };
 
 // The lock and condition variable that Atomic::wait sleeps on, one of 64 picked by the Atomic's

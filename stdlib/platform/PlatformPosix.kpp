@@ -112,18 +112,18 @@ namespace platform
   public:
     Lock()
     {
-      memset(this->storage, 0, sizeof(this->storage));
-      this->storage[0] = mutexSignature;
+      memset(this.storage, 0, sizeof(this.storage));
+      this.storage[0] = mutexSignature;
     }
 
-    posix::pthread_mutex_t* mutex() { return (posix::pthread_mutex_t*)this->storage; }
+    posix::pthread_mutex_t* mutex() { return (posix::pthread_mutex_t*)this.storage; }
     Lock(const Lock&) = delete;
     Lock& operator=(const Lock&) = delete;
-    ~Lock() { posix::pthread_mutex_destroy(this->mutex()); }
+    ~Lock() { posix::pthread_mutex_destroy(this.mutex()); }
 
-    void lock() { posix::pthread_mutex_lock(this->mutex()); }
-    void unlock() { posix::pthread_mutex_unlock(this->mutex()); }
-    bool tryLock() { return posix::pthread_mutex_trylock(this->mutex()) == 0; }
+    void lock() { posix::pthread_mutex_lock(this.mutex()); }
+    void unlock() { posix::pthread_mutex_unlock(this.mutex()); }
+    bool tryLock() { return posix::pthread_mutex_trylock(this.mutex()) == 0; }
 
   private:
     u64 storage[mutexWords];
@@ -136,21 +136,21 @@ namespace platform
   public:
     SharedLock()
     {
-      memset(this->storage, 0, sizeof(this->storage));
-      this->storage[0] = rwlockSignature;
+      memset(this.storage, 0, sizeof(this.storage));
+      this.storage[0] = rwlockSignature;
     }
 
-    posix::pthread_rwlock_t* rwlock() { return (posix::pthread_rwlock_t*)this->storage; }
+    posix::pthread_rwlock_t* rwlock() { return (posix::pthread_rwlock_t*)this.storage; }
     SharedLock(const SharedLock&) = delete;
     SharedLock& operator=(const SharedLock&) = delete;
-    ~SharedLock() { posix::pthread_rwlock_destroy(this->rwlock()); }
+    ~SharedLock() { posix::pthread_rwlock_destroy(this.rwlock()); }
 
-    void lock() { posix::pthread_rwlock_wrlock(this->rwlock()); }
-    void unlock() { posix::pthread_rwlock_unlock(this->rwlock()); }
-    bool tryLock() { return posix::pthread_rwlock_trywrlock(this->rwlock()) == 0; }
-    void lockShared() { posix::pthread_rwlock_rdlock(this->rwlock()); }
-    void unlockShared() { posix::pthread_rwlock_unlock(this->rwlock()); }
-    bool tryLockShared() { return posix::pthread_rwlock_tryrdlock(this->rwlock()) == 0; }
+    void lock() { posix::pthread_rwlock_wrlock(this.rwlock()); }
+    void unlock() { posix::pthread_rwlock_unlock(this.rwlock()); }
+    bool tryLock() { return posix::pthread_rwlock_trywrlock(this.rwlock()) == 0; }
+    void lockShared() { posix::pthread_rwlock_rdlock(this.rwlock()); }
+    void unlockShared() { posix::pthread_rwlock_unlock(this.rwlock()); }
+    bool tryLockShared() { return posix::pthread_rwlock_tryrdlock(this.rwlock()) == 0; }
 
   private:
     u64 storage[rwlockWords];
@@ -163,19 +163,19 @@ namespace platform
   public:
     Condition()
     {
-      memset(this->storage, 0, sizeof(this->storage));
-      this->storage[0] = conditionSignature;
+      memset(this.storage, 0, sizeof(this.storage));
+      this.storage[0] = conditionSignature;
     }
 
-    posix::pthread_cond_t* cond() { return (posix::pthread_cond_t*)this->storage; }
+    posix::pthread_cond_t* cond() { return (posix::pthread_cond_t*)this.storage; }
     Condition(const Condition&) = delete;
     Condition& operator=(const Condition&) = delete;
-    ~Condition() { posix::pthread_cond_destroy(this->cond()); }
+    ~Condition() { posix::pthread_cond_destroy(this.cond()); }
 
-    void notifyOne() { posix::pthread_cond_signal(this->cond()); }
-    void notifyAll() { posix::pthread_cond_broadcast(this->cond()); }
+    void notifyOne() { posix::pthread_cond_signal(this.cond()); }
+    void notifyAll() { posix::pthread_cond_broadcast(this.cond()); }
     // Unlocks lock and blocks until notified (or woken spuriously), then locks it again.
-    void wait(Lock& lock) { posix::pthread_cond_wait(this->cond(), lock.mutex()); }
+    void wait(Lock& lock) { posix::pthread_cond_wait(this.cond(), lock.mutex()); }
 
     // The same for at most d: false when the time ran out first. The deadline is on the realtime
     // clock, the condition's: a change of the system time ends the wait early or late, and the
@@ -194,7 +194,7 @@ namespace platform
         deadline.seconds += 1;
         deadline.nanoseconds -= 1000000000;
       }
-      return posix::pthread_cond_timedwait(this->cond(), lock.mutex(), (const timespec*)&deadline) == 0;
+      return posix::pthread_cond_timedwait(this.cond(), lock.mutex(), (const timespec*)&deadline) == 0;
     }
 
   private:

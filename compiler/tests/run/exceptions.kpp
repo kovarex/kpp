@@ -12,7 +12,7 @@ struct Tracker
   ~Tracker()
   {
     live -= 1;
-    printf("~Tracker(%d)\n", this->id);
+    printf("~Tracker(%d)\n", this.id);
   }
 };
 

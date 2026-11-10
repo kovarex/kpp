@@ -10,7 +10,7 @@ class Widget
 public:
   const Style* getStyle() const
   {
-    if (Style* s = const_cast<Widget*>(this)->getStyle())
+    if (Style* s = const_cast<Widget*>(&this)->getStyle())
       return s;
     return &Widget::fallback;
   }
@@ -18,10 +18,10 @@ public:
   virtual int kind() const { return 1; }
   static Style fallback;
 
-  int paddingConst() const { const Style* s = this->getStyle(); return s ? s->pad : -1; } // the const overload: 3
-  int paddingMutable() { const Style* s = this->getStyle(); return s ? s->pad : -1; }     // the virtual one: null -> -1
-  int viaConstRef() { const Widget& w = *this; return w.getStyle()->pad; }
-  int viaPointerToConst() { const Widget* w = this; return w->getStyle()->pad; }
+  int paddingConst() const { const Style* s = this.getStyle(); return s ? s->pad : -1; } // the const overload: 3
+  int paddingMutable() { const Style* s = this.getStyle(); return s ? s->pad : -1; }     // the virtual one: null -> -1
+  int viaConstRef() { const Widget& w = this; return w.getStyle()->pad; }
+  int viaPointerToConst() { const Widget* w = &this; return w->getStyle()->pad; }
 };
 Style Widget::fallback;
 
@@ -29,7 +29,7 @@ class Styled : public Widget
 {
 public:
   Style own;
-  Style* getStyle() override { return &this->own; }
+  Style* getStyle() override { return &this.own; }
   int kind() const override { return 2; }
 };
 

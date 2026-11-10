@@ -3,7 +3,7 @@ struct Shape
 {
   int width = 0;
   int height = 0;
-  int area() const { return width * height; }
+  int area() const { return this.width * this.height; }
 };
 
 int totalArea(const Vector<Shape>& shapes)

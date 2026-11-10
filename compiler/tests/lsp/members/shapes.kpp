@@ -8,10 +8,10 @@ struct Shape
   static i32 count;
   static i32 made() { return Shape::count; }
   i32 width = 1;
-  i32 area() const { return this->width; }
+  i32 area() const { return this.width; }
   i32 twice() const
   {
-    return this->area() * 2;
+    return this.area() * 2;
   }
   i32 counted() const
   {

@@ -10,11 +10,11 @@ struct Buffer
   using iterator = T*;
 
   int size() const { return N; }
-  T* data() { return this->items; }
-  T& operator[](int i) { return this->items[i]; }
-  T* begin() { return this->items; }
-  T* end() { return this->items + N; }
-  int bytes() const { return (int)sizeof(this->items); }
+  T* data() { return this.items; }
+  T& operator[](int i) { return this.items[i]; }
+  T* begin() { return this.items; }
+  T* end() { return this.items + N; }
+  int bytes() const { return (int)sizeof(this.items); }
 };
 
 template<typename T, bool Checked = true, int Scale = 2>

@@ -18,14 +18,14 @@ public:
 struct Targeter
 {
   Base* target = nullptr;
-  void attachTo(Base* b) { this->target = b; }
+  void attachTo(Base* b) { this.target = b; }
 };
 
 template<class T>
 struct Holder : Targeter
 {
-  void operator=(T* t) { this->attachTo(t); }
-  void set(T* t) { this->attachTo(t); }
+  void operator=(T* t) { this.attachTo(t); }
+  void set(T* t) { this.attachTo(t); }
 };
 
 static int tagOf(const Base* b) { return b->tag; }

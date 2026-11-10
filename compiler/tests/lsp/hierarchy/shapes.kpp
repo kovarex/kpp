@@ -9,7 +9,7 @@ public:
 class Square : public Shape
 {
 public:
-  i32 area() const override { return this->side * this->side; }
+  i32 area() const override { return this.side * this.side; }
   i32 side = 2;
 };
 
@@ -20,7 +20,7 @@ class Cube : public Square
 public:
   i32 area() const override
   {
-    return 6 * this->side * this->side;
+    return 6 * this.side * this.side;
   }
 };
 

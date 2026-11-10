@@ -1,9 +1,8 @@
 // spec: the noexcept operator counts what an expression calls without naming it: implicit and defaulted constructors by their parts and default member initializers, a by-value parameter's copy and conversion, a conversion operator, default arguments, a temporary's destructor; and inside a template, `noexcept(T())`, `noexcept(noexcept(a = b))` of a function template and of a member of a class template, answered under the instance's arguments; clang's output
-// this: pointer
 extern "C" int printf(const char* format, ...);
 template <typename T> T&& dv() noexcept;
-struct Quiet { Quiet() noexcept {} implicit Quiet(int) noexcept {} Quiet(const Quiet&) noexcept {} Quiet(Quiet&&) noexcept {} Quiet& operator=(const Quiet&) noexcept { return *this; } };
-struct Loud { Loud() {} implicit Loud(int) {} Loud(const Loud&) {} Loud(Loud&&) {} Loud& operator=(const Loud&) { return *this; } };
+struct Quiet { Quiet() noexcept {} implicit Quiet(int) noexcept {} Quiet(const Quiet&) noexcept {} Quiet(Quiet&&) noexcept {} Quiet& operator=(const Quiet&) noexcept { return this; } };
+struct Loud { Loud() {} implicit Loud(int) {} Loud(const Loud&) {} Loud(Loud&&) {} Loud& operator=(const Loud&) { return this; } };
 struct MoveQuiet { MoveQuiet() noexcept {} MoveQuiet(const MoveQuiet&) {} MoveQuiet(MoveQuiet&&) noexcept {} };
 struct ImplicitQuiet { Quiet q; int i = 1; };
 struct ImplicitLoud { Loud l; };
@@ -35,7 +34,7 @@ template <typename T> constexpr bool canCopy() { return noexcept(T(dv<const T&>(
 template <typename T> constexpr bool canMake() { return noexcept(T()); }
 template <typename T> constexpr bool canAssign() { return noexcept(dv<T&>() = dv<const T&>()); }
 template <typename T> void swapLike(T& a, T& b) noexcept(noexcept(T(static_cast<T&&>(a))) && noexcept(a = b)) {}
-template <typename T> struct Box { T v; void set(const T& x) noexcept(noexcept(v = x)) { v = x; } };
+template <typename T> struct Box { T v; void set(const T& x) noexcept(noexcept(this.v = x)) { this.v = x; } };
 int main()
 {
   Quiet q;

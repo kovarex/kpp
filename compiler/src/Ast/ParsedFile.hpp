@@ -54,7 +54,7 @@ struct ParsedFile
   // `this` is the object here (design.md 23d, --this-reference; set by the driver): the program's own
   // files and its libraries', not the standard library's (converted when the meaning becomes the default).
   bool stdScope = false; // the build's --std-scope: the parser writes the library's names that the language means as ::std::X
-  bool thisReference = false;
+  bool thisReference = true;
   Scope* privateScope = nullptr; // Its `private` top-level names (design.md 15), set by the resolver's index.
   // The library it is a file of (design.md 16; set by the driver): its name, empty for the program's
   // files and the standard library's; for a scoped library also the name's symbol, and the namespace

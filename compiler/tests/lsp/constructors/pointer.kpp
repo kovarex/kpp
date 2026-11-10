@@ -5,19 +5,19 @@ class UniquePointer
 {
 public:
   UniquePointer() = default;
-  ~UniquePointer() { this->reset(nullptr); }
+  ~UniquePointer() { this.reset(nullptr); }
 
   template<class... Ts>
-  void emplace(Ts&&... values) { this->reset(construct(forward<Ts>(values)...)); }
+  void emplace(Ts&&... values) { this.reset(This::construct(forward<Ts>(values)...)); }
 
   void reset(T* other)
   {
-    if (this->value)
-      delete this->value;
-    this->value = other;
+    if (this.value)
+      delete this.value;
+    this.value = other;
   }
 
-  T* get() const { return this->value; }
+  T* get() const { return this.value; }
 
   template<class... Ts>
   static T* construct(Ts&&... values) { return new T(forward<Ts>(values)...); }

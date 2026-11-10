@@ -15,7 +15,7 @@ class VerticalFlow : public Layout, public Tag
 {
 public:
   int rows = 3;
-  int size() override { return this->rows; }
+  int size() override { return this.rows; }
 };
 int main()
 {

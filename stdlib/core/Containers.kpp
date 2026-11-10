@@ -20,47 +20,47 @@ struct Array
   ContainerSize size() const { return N; }
   ContainerSize max_size() const { return N; }
   bool empty() const { return N == 0; }
-  T& operator[](ContainerSize index) { return this->items[index]; }
-  const T& operator[](ContainerSize index) const { return this->items[index]; }
+  T& operator[](ContainerSize index) { return this.items[index]; }
+  const T& operator[](ContainerSize index) const { return this.items[index]; }
 
   // Throws OutOfRange for an index outside [0, N).
   T& at(ContainerSize index)
   {
     if (index >= N)
       throwOutOfRange("Array::at: index out of range");
-    return this->items[index];
+    return this.items[index];
   }
 
   const T& at(ContainerSize index) const
   {
     if (index >= N)
       throwOutOfRange("Array::at: index out of range");
-    return this->items[index];
+    return this.items[index];
   }
 
-  T* data() { return this->items; }
-  const T* data() const { return this->items; }
-  T* begin() { return this->items; }
-  T* end() { return this->items + N; }
-  const T* begin() const { return this->items; }
-  const T* end() const { return this->items + N; }
-  const T* cbegin() const { return this->begin(); }
-  const T* cend() const { return this->end(); }
-  ReverseIterator<T*> rbegin() { return ReverseIterator<T*>(this->end()); }
-  ReverseIterator<T*> rend() { return ReverseIterator<T*>(this->begin()); }
-  ReverseIterator<const T*> rbegin() const { return ReverseIterator<const T*>(this->end()); }
-  ReverseIterator<const T*> rend() const { return ReverseIterator<const T*>(this->begin()); }
-  ReverseIterator<const T*> crbegin() const { return this->rbegin(); }
-  ReverseIterator<const T*> crend() const { return this->rend(); }
-  T& front() { return this->items[0]; }
-  T& back() { return this->items[N - 1]; }
-  const T& front() const { return this->items[0]; }
-  const T& back() const { return this->items[N - 1]; }
+  T* data() { return this.items; }
+  const T* data() const { return this.items; }
+  T* begin() { return this.items; }
+  T* end() { return this.items + N; }
+  const T* begin() const { return this.items; }
+  const T* end() const { return this.items + N; }
+  const T* cbegin() const { return this.begin(); }
+  const T* cend() const { return this.end(); }
+  ReverseIterator<T*> rbegin() { return ReverseIterator<T*>(this.end()); }
+  ReverseIterator<T*> rend() { return ReverseIterator<T*>(this.begin()); }
+  ReverseIterator<const T*> rbegin() const { return ReverseIterator<const T*>(this.end()); }
+  ReverseIterator<const T*> rend() const { return ReverseIterator<const T*>(this.begin()); }
+  ReverseIterator<const T*> crbegin() const { return this.rbegin(); }
+  ReverseIterator<const T*> crend() const { return this.rend(); }
+  T& front() { return this.items[0]; }
+  T& back() { return this.items[N - 1]; }
+  const T& front() const { return this.items[0]; }
+  const T& back() const { return this.items[N - 1]; }
 
   void fill(const T& value)
   {
     for (ContainerSize i = 0; i < N; ++i)
-      this->items[i] = value;
+      this.items[i] = value;
   }
 
   // Exchanges the elements one by one (std::array::swap).
@@ -68,8 +68,8 @@ struct Array
   {
     for (ContainerSize i = 0; i < N; ++i)
     {
-      T held = move(this->items[i]);
-      this->items[i] = move(other.items[i]);
+      T held = move(this.items[i]);
+      this.items[i] = move(other.items[i]);
       other.items[i] = move(held);
     }
   }
@@ -111,19 +111,19 @@ struct Array<T, 0>
   ContainerSize size() const { return 0; }
   ContainerSize max_size() const { return 0; }
   bool empty() const { return true; }
-  T& operator[](ContainerSize index) { return *this->data(); }
-  const T& operator[](ContainerSize index) const { return *this->data(); }
+  T& operator[](ContainerSize index) { return *this.data(); }
+  const T& operator[](ContainerSize index) const { return *this.data(); }
 
   T& at(ContainerSize index)
   {
     throwOutOfRange("Array::at: index out of range");
-    return *this->data();
+    return *this.data();
   }
 
   const T& at(ContainerSize index) const
   {
     throwOutOfRange("Array::at: index out of range");
-    return *this->data();
+    return *this.data();
   }
 
   T* data() { return nullptr; }
@@ -138,12 +138,12 @@ struct Array<T, 0>
   ReverseIterator<T*> rend() { return ReverseIterator<T*>(nullptr); }
   ReverseIterator<const T*> rbegin() const { return ReverseIterator<const T*>(nullptr); }
   ReverseIterator<const T*> rend() const { return ReverseIterator<const T*>(nullptr); }
-  ReverseIterator<const T*> crbegin() const { return this->rbegin(); }
-  ReverseIterator<const T*> crend() const { return this->rend(); }
-  T& front() { return *this->data(); }
-  T& back() { return *this->data(); }
-  const T& front() const { return *this->data(); }
-  const T& back() const { return *this->data(); }
+  ReverseIterator<const T*> crbegin() const { return this.rbegin(); }
+  ReverseIterator<const T*> crend() const { return this.rend(); }
+  T& front() { return *this.data(); }
+  T& back() { return *this.data(); }
+  const T& front() const { return *this.data(); }
+  const T& back() const { return *this.data(); }
   void fill(const T& value) {}
   void swap(Array<T, 0>& other) noexcept {}
 };
@@ -220,32 +220,32 @@ public:
   template<typename U, ContainerSize N> requires (Extent != dynamicExtent && N == dynamicExtent && isConvertible<U*, T*>)
   Span(const Span<U, N>& other) : items(other.items), length(other.length) {}
 
-  ContainerSize size() const { return this->length; }
-  usize size_bytes() const { return (usize)this->length * sizeof(T); }
-  bool empty() const { return this->length == 0; }
-  T& operator[](ContainerSize index) const { return this->items[index]; }
-  T* data() const { return this->items; }
-  T* begin() const { return this->items; }
-  T* end() const { return this->items + this->length; }
-  T* cbegin() const { return this->begin(); }
-  T* cend() const { return this->end(); }
+  ContainerSize size() const { return this.length; }
+  usize size_bytes() const { return (usize)this.length * sizeof(T); }
+  bool empty() const { return this.length == 0; }
+  T& operator[](ContainerSize index) const { return this.items[index]; }
+  T* data() const { return this.items; }
+  T* begin() const { return this.items; }
+  T* end() const { return this.items + this.length; }
+  T* cbegin() const { return this.begin(); }
+  T* cend() const { return this.end(); }
   // From the last element back (std::span's rbegin and rend).
-  ReverseIterator<T*> rbegin() const { return ReverseIterator<T*>(this->end()); }
-  ReverseIterator<T*> rend() const { return ReverseIterator<T*>(this->begin()); }
-  ReverseIterator<T*> crbegin() const { return this->rbegin(); }
-  ReverseIterator<T*> crend() const { return this->rend(); }
-  T& front() const { return this->items[0]; }
-  T& back() const { return this->items[this->length - 1]; }
+  ReverseIterator<T*> rbegin() const { return ReverseIterator<T*>(this.end()); }
+  ReverseIterator<T*> rend() const { return ReverseIterator<T*>(this.begin()); }
+  ReverseIterator<T*> crbegin() const { return this.rbegin(); }
+  ReverseIterator<T*> crend() const { return this.rend(); }
+  T& front() const { return this.items[0]; }
+  T& back() const { return this.items[this.length - 1]; }
 
   // A count of dynamicExtent (std::span's default) is the rest from offset.
   Span<T> subspan(ContainerSize offset, ContainerSize count) const
   {
-    return Span<T>(this->items + offset, count == dynamicExtent ? this->length - offset : count);
+    return Span<T>(this.items + offset, count == dynamicExtent ? this.length - offset : count);
   }
 
-  Span<T> subspan(ContainerSize offset) const { return Span<T>(this->items + offset, this->length - offset); }
-  Span<T> first(ContainerSize count) const { return Span<T>(this->items, count); }
-  Span<T> last(ContainerSize count) const { return Span<T>(this->items + this->length - count, count); }
+  Span<T> subspan(ContainerSize offset) const { return Span<T>(this.items + offset, this.length - offset); }
+  Span<T> first(ContainerSize count) const { return Span<T>(this.items, count); }
+  Span<T> last(ContainerSize count) const { return Span<T>(this.items + this.length - count, count); }
 
 private:
   T* items = nullptr;

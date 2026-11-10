@@ -28,7 +28,7 @@ struct Hold
 {
   T held;
   Hold(T t) : held(t) {}
-  int operator()(int v) { return held(v); }
+  int operator()(int v) { return this.held(v); }
 };
 template<class T>
 Hold<T> hold(T t) { return Hold<T>(t); }

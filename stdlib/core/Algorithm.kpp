@@ -911,11 +911,11 @@ public:
   template<typename U>
   implicit ReverseIterator(const ReverseIterator<U>& other) : current(other.current) {}
 
-  It base() const { return this->current; }
+  It base() const { return this.current; }
 
   reference operator*() const
   {
-    It before = this->current;
+    It before = this.current;
     --before;
     return *before;
   }
@@ -923,73 +923,73 @@ public:
   pointer operator->() const
   {
     if constexpr (isPointer<It>)
-      return this->current - 1;
+      return this.current - 1;
     else
-      return &**this;
+      return &*this;
   }
 
-  reference operator[](difference_type n) const { return *(*this + n); }
+  reference operator[](difference_type n) const { return *(this + n); }
 
   ReverseIterator<It>& operator++()
   {
-    --this->current;
-    return *this;
+    --this.current;
+    return this;
   }
 
   ReverseIterator<It> operator++(i32)
   {
-    ReverseIterator<It> before = *this;
-    --this->current;
+    ReverseIterator<It> before = this;
+    --this.current;
     return before;
   }
 
   ReverseIterator<It>& operator--()
   {
-    ++this->current;
-    return *this;
+    ++this.current;
+    return this;
   }
 
   ReverseIterator<It> operator--(i32)
   {
-    ReverseIterator<It> before = *this;
-    ++this->current;
+    ReverseIterator<It> before = this;
+    ++this.current;
     return before;
   }
 
   ReverseIterator<It>& operator+=(difference_type n)
   {
-    this->current -= n;
-    return *this;
+    this.current -= n;
+    return this;
   }
 
   ReverseIterator<It>& operator-=(difference_type n)
   {
-    this->current += n;
-    return *this;
+    this.current += n;
+    return this;
   }
 
-  ReverseIterator<It> operator+(difference_type n) const { return ReverseIterator<It>(this->current - n); }
-  ReverseIterator<It> operator-(difference_type n) const { return ReverseIterator<It>(this->current + n); }
-  difference_type operator-(const ReverseIterator<It>& other) const { return other.current - this->current; }
+  ReverseIterator<It> operator+(difference_type n) const { return ReverseIterator<It>(this.current - n); }
+  ReverseIterator<It> operator-(difference_type n) const { return ReverseIterator<It>(this.current + n); }
+  difference_type operator-(const ReverseIterator<It>& other) const { return other.current - this.current; }
   template<typename U>
-  difference_type operator-(const ReverseIterator<U>& other) const { return other.current - this->current; }
+  difference_type operator-(const ReverseIterator<U>& other) const { return other.current - this.current; }
 
   // Comparisons with a reverse iterator of the same It, and of another (const and non-const).
   bool operator==(const ReverseIterator<It>& other) const = default;
-  bool operator<(const ReverseIterator<It>& other) const { return other.current < this->current; }
-  bool operator>(const ReverseIterator<It>& other) const { return this->current < other.current; }
-  bool operator<=(const ReverseIterator<It>& other) const { return !(this->current < other.current); }
-  bool operator>=(const ReverseIterator<It>& other) const { return !(other.current < this->current); }
+  bool operator<(const ReverseIterator<It>& other) const { return other.current < this.current; }
+  bool operator>(const ReverseIterator<It>& other) const { return this.current < other.current; }
+  bool operator<=(const ReverseIterator<It>& other) const { return !(this.current < other.current); }
+  bool operator>=(const ReverseIterator<It>& other) const { return !(other.current < this.current); }
   template<typename U>
-  bool operator==(const ReverseIterator<U>& other) const { return this->current == other.current; }
+  bool operator==(const ReverseIterator<U>& other) const { return this.current == other.current; }
   template<typename U>
-  bool operator<(const ReverseIterator<U>& other) const { return other.current < this->current; }
+  bool operator<(const ReverseIterator<U>& other) const { return other.current < this.current; }
   template<typename U>
-  bool operator>(const ReverseIterator<U>& other) const { return this->current < other.current; }
+  bool operator>(const ReverseIterator<U>& other) const { return this.current < other.current; }
   template<typename U>
-  bool operator<=(const ReverseIterator<U>& other) const { return !(this->current < other.current); }
+  bool operator<=(const ReverseIterator<U>& other) const { return !(this.current < other.current); }
   template<typename U>
-  bool operator>=(const ReverseIterator<U>& other) const { return !(other.current < this->current); }
+  bool operator>=(const ReverseIterator<U>& other) const { return !(other.current < this.current); }
 
 protected: // as std::reverse_iterator's current
   template<typename U> friend class ReverseIterator;

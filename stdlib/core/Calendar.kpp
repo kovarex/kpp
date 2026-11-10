@@ -177,28 +177,28 @@ struct CalendarReader
   ContainerSize at = 0; // a position in text, a size as the library's are
   bool ok = true;
 
-  bool atEnd() const { return this->at == this->text.size(); }
+  bool atEnd() const { return this.at == this.text.size(); }
 
   // Exactly n digits.
   i32 digits(i32 n)
   {
     i32 value = 0;
-    if (!this->ok || this->at + n > this->text.size())
+    if (!this.ok || this.at + n > this.text.size())
     {
-      this->ok = false;
+      this.ok = false;
       return 0;
     }
     for (i32 i = 0; i < n; ++i)
     {
-      char c = this->text[this->at + i];
+      char c = this.text[this.at + i];
       if (c < '0' || c > '9')
       {
-        this->ok = false;
+        this.ok = false;
         return 0;
       }
       value = value * 10 + (c - '0');
     }
-    this->at += n;
+    this.at += n;
     return value;
   }
 
@@ -206,38 +206,38 @@ struct CalendarReader
   void literal(const char* word)
   {
     ContainerSize n = ContainerSize(strlen(word));
-    if (!this->ok || this->at + n > this->text.size() || this->text.substr(this->at, n) != StringView(word))
+    if (!this.ok || this.at + n > this.text.size() || this.text.substr(this.at, n) != StringView(word))
     {
-      this->ok = false;
+      this.ok = false;
       return;
     }
-    this->at += n;
+    this.at += n;
   }
 
   // One of the names; returns its index.
   i32 name(const char* const* names, i32 count)
   {
-    for (i32 i = 0; i < count && this->ok; ++i)
+    for (i32 i = 0; i < count && this.ok; ++i)
     {
       ContainerSize n = ContainerSize(strlen(names[i]));
-      if (this->at + n <= this->text.size() && this->text.substr(this->at, n) == StringView(names[i]))
+      if (this.at + n <= this.text.size() && this.text.substr(this.at, n) == StringView(names[i]))
       {
-        this->at += n;
+        this.at += n;
         return i;
       }
     }
-    this->ok = false;
+    this.ok = false;
     return 0;
   }
 
   // HH:MM:SS.
   void timeOfDay(CivilTime& c)
   {
-    c.hour = this->digits(2);
-    this->literal(":");
-    c.minute = this->digits(2);
-    this->literal(":");
-    c.second = this->digits(2);
+    c.hour = this.digits(2);
+    this.literal(":");
+    c.minute = this.digits(2);
+    this.literal(":");
+    c.second = this.digits(2);
   }
 };
 

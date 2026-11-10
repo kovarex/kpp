@@ -3,7 +3,7 @@ struct Order
   int lines = 0;
   int total() const;
 };
-int Order::total() const { return lines; }
+int Order::total() const { return this.lines; }
 enum class OrderState { Open, Paid };
 using OrderId = int;
 const int maxOrders = 10;

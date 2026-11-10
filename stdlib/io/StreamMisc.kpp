@@ -23,21 +23,21 @@ public:
 
   IstreambufIterator(InFileStream& s) : stream(&s)
   {
-    this->current = s.rawGet();
+    this.current = s.rawGet();
   }
 
-  Char operator*() const { return (Char)this->current; }
+  Char operator*() const { return (Char)this.current; }
 
   IstreambufIterator& operator++()
   {
-    if (this->stream)
-      this->current = this->stream->rawGet();
-    return *this;
+    if (this.stream)
+      this.current = this.stream->rawGet();
+    return this;
   }
 
   bool operator==(const IstreambufIterator& other) const
   {
-    bool thisEnd = this->current == -1;
+    bool thisEnd = this.current == -1;
     bool otherEnd = other.current == -1;
     return thisEnd == otherEnd;
   }

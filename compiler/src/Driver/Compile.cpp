@@ -81,7 +81,9 @@ int compile(int argc, char** argv)
     else if (arg == "--this-warnings")
       options.thisWarnings = true;
     else if (arg == "--this-reference")
-      options.thisReference = true;
+      options.thisReference = true; // (the only meaning: accepted, no change)
+    else if (arg == "--this-pointer")
+      options.thisPointer = true;
     else if (arg == "--std-scope" || arg == "--no-std-scope")
       options.stdScope = arg == "--std-scope";
     else if (arg == "--this-reference-library" && i + 1 < argc)

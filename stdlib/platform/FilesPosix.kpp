@@ -103,7 +103,7 @@ namespace platform
     u64 at64(i32 offset) const
     {
       u64 value = 0;
-      memcpy(&value, (const char*)this->words + offset, 8);
+      memcpy(&value, (const char*)this.words + offset, 8);
       return value;
     }
 
@@ -111,7 +111,7 @@ namespace platform
     u32 mode() const
     {
       u16 value = 0;
-      memcpy(&value, (const char*)this->words + statModeOffset, 2);
+      memcpy(&value, (const char*)this.words + statModeOffset, 2);
       return value;
     }
   };
@@ -186,20 +186,20 @@ namespace platform
 
     ~DirectoryReader()
     {
-      if (this->directory)
-        posix::closedir(this->directory);
+      if (this.directory)
+        posix::closedir(this.directory);
     }
 
     // False on an error (ec); a directory without entries opens, and next() ends at once.
     bool open(const filesystem::path& p, ErrorCode& ec)
     {
-      this->directory = posix::opendir(utf8Of(p).c_str());
-      if (!this->directory)
+      this.directory = posix::opendir(utf8Of(p).c_str());
+      if (!this.directory)
       {
         ec = lastFileError();
         return false;
       }
-      this->path = p;
+      this.path = p;
       ec.clear();
       return true;
     }
@@ -211,7 +211,7 @@ namespace platform
       for (;;)
       {
         *errnoLocation() = 0;
-        dirent* entry = posix::readdir(this->directory);
+        dirent* entry = posix::readdir(this.directory);
         if (!entry)
         {
           if (*errnoLocation() != 0)
@@ -223,7 +223,7 @@ namespace platform
           continue;
         name = widenUtf8(found, (i32)strlen(found));
         ErrorCode probe;
-        if (!fileInfo(this->path / filesystem::path(name), false, info, probe))
+        if (!fileInfo(this.path / filesystem::path(name), false, info, probe))
           info = filesystem::FileInfo(); // gone since the listing: asked anew when it matters
         return true;
       }

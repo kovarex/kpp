@@ -22,8 +22,8 @@ struct Text
   // Every piece appended to out, in order.
   void appendTo(String& out) const
   {
-    for (ContainerSize i = 0; i < this->count; ++i)
-      this->pieces[i].append(this->pieces[i].object, out);
+    for (ContainerSize i = 0; i < this.count; ++i)
+      this.pieces[i].append(this.pieces[i].object, out);
   }
 };
 

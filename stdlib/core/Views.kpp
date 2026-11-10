@@ -17,7 +17,7 @@ struct ViewedRange
 
   ViewedRange() {}
   ViewedRange(const Range& range) : range((Range*)&range) {}
-  Range& get() const { return *this->range; }
+  Range& get() const { return *this.range; }
 };
 
 template<typename Range>
@@ -27,7 +27,7 @@ struct ViewedRange<Range, true>
 
   ViewedRange() {}
   ViewedRange(const Range& range) : range(range) {}
-  const Range& get() const { return this->range; }
+  const Range& get() const { return this.range; }
 };
 
 // --- Subrange ---
@@ -40,10 +40,10 @@ public:
   Subrange() {}
   Subrange(It first, It last) : first(first), last(last) {}
 
-  It begin() const { return this->first; }
-  It end() const { return this->last; }
-  bool empty() const { return this->first == this->last; }
-  i64 size() const { return distance(this->first, this->last); }
+  It begin() const { return this.first; }
+  It end() const { return this.last; }
+  bool empty() const { return this.first == this.last; }
+  i64 size() const { return distance(this.first, this.last); }
 
 private:
   It first;
@@ -65,55 +65,55 @@ public:
   IotaIterator() : value() {}
   IotaIterator(T value) : value(value) {}
 
-  T operator*() const { return this->value; } // a value, as std::views::iota's: a copy of the iterator may give it
-  T operator[](i64 n) const { return (T)(this->value + n); }
+  T operator*() const { return this.value; } // a value, as std::views::iota's: a copy of the iterator may give it
+  T operator[](i64 n) const { return (T)(this.value + n); }
 
   IotaIterator<T>& operator++()
   {
-    ++this->value;
-    return *this;
+    ++this.value;
+    return this;
   }
 
   IotaIterator<T> operator++(i32)
   {
-    IotaIterator<T> before = *this;
-    ++this->value;
+    IotaIterator<T> before = this;
+    ++this.value;
     return before;
   }
 
   IotaIterator<T>& operator--()
   {
-    --this->value;
-    return *this;
+    --this.value;
+    return this;
   }
 
   IotaIterator<T> operator--(i32)
   {
-    IotaIterator<T> before = *this;
-    --this->value;
+    IotaIterator<T> before = this;
+    --this.value;
     return before;
   }
 
   IotaIterator<T>& operator+=(i64 n)
   {
-    this->value = (T)(this->value + n);
-    return *this;
+    this.value = (T)(this.value + n);
+    return this;
   }
 
   IotaIterator<T>& operator-=(i64 n)
   {
-    this->value = (T)(this->value - n);
-    return *this;
+    this.value = (T)(this.value - n);
+    return this;
   }
 
-  IotaIterator<T> operator+(i64 n) const { return IotaIterator<T>((T)(this->value + n)); }
-  IotaIterator<T> operator-(i64 n) const { return IotaIterator<T>((T)(this->value - n)); }
-  i64 operator-(const IotaIterator<T>& other) const { return (i64)this->value - (i64)other.value; }
-  bool operator==(const IotaIterator<T>& other) const { return this->value == other.value; }
-  bool operator<(const IotaIterator<T>& other) const { return this->value < other.value; }
-  bool operator>(const IotaIterator<T>& other) const { return other.value < this->value; }
-  bool operator<=(const IotaIterator<T>& other) const { return !(other.value < this->value); }
-  bool operator>=(const IotaIterator<T>& other) const { return !(this->value < other.value); }
+  IotaIterator<T> operator+(i64 n) const { return IotaIterator<T>((T)(this.value + n)); }
+  IotaIterator<T> operator-(i64 n) const { return IotaIterator<T>((T)(this.value - n)); }
+  i64 operator-(const IotaIterator<T>& other) const { return (i64)this.value - (i64)other.value; }
+  bool operator==(const IotaIterator<T>& other) const { return this.value == other.value; }
+  bool operator<(const IotaIterator<T>& other) const { return this.value < other.value; }
+  bool operator>(const IotaIterator<T>& other) const { return other.value < this.value; }
+  bool operator<=(const IotaIterator<T>& other) const { return !(other.value < this.value); }
+  bool operator>=(const IotaIterator<T>& other) const { return !(this.value < other.value); }
 
 private:
   T value;
@@ -127,10 +127,10 @@ public:
   IotaView() : first(), last() {}
   IotaView(T first, T last) : first(first), last(last) {}
 
-  IotaIterator<T> begin() const { return IotaIterator<T>(this->first); }
-  IotaIterator<T> end() const { return IotaIterator<T>(this->last); }
-  bool empty() const { return !(this->first < this->last); }
-  i64 size() const { return this->first < this->last ? (i64)this->last - (i64)this->first : 0; }
+  IotaIterator<T> begin() const { return IotaIterator<T>(this.first); }
+  IotaIterator<T> end() const { return IotaIterator<T>(this.last); }
+  bool empty() const { return !(this.first < this.last); }
+  i64 size() const { return this.first < this.last ? (i64)this.last - (i64)this.first : 0; }
 
 private:
   T first;
@@ -156,28 +156,28 @@ public:
   TransformIterator(It position, const F* f) : position(position), f(f) {}
 
   // f of the element, with the reference f returns.
-  decltype(auto) operator*() const { return (*this->f)(*this->position); }
+  decltype(auto) operator*() const { return (*this.f)(*this.position); }
 
   TransformIterator<It, F>& operator++()
   {
-    ++this->position;
-    return *this;
+    ++this.position;
+    return this;
   }
 
   TransformIterator<It, F>& operator--()
   {
-    --this->position;
-    return *this;
+    --this.position;
+    return this;
   }
 
   TransformIterator<It, F>& operator+=(i64 n)
   {
-    advance(this->position, n);
-    return *this;
+    advance(this.position, n);
+    return this;
   }
 
-  i64 operator-(const TransformIterator<It, F>& other) const { return distance(other.position, this->position); }
-  bool operator==(const TransformIterator<It, F>& other) const { return this->position == other.position; }
+  i64 operator-(const TransformIterator<It, F>& other) const { return distance(other.position, this.position); }
+  bool operator==(const TransformIterator<It, F>& other) const { return this.position == other.position; }
 
 private:
   It position;
@@ -191,18 +191,18 @@ class TransformView : public ViewBase
 public:
   TransformView(const Range& range, F f) : base(range), f(f) {}
 
-  auto begin() const { return TransformIterator<decltype(this->base.get().begin()), F>(this->base.get().begin(), &this->f); }
-  auto end() const { return TransformIterator<decltype(this->base.get().begin()), F>(this->base.get().end(), &this->f); }
-  bool empty() const { return this->base.get().begin() == this->base.get().end(); }
-  i64 size() const { return distance(this->base.get().begin(), this->base.get().end()); }
+  auto begin() const { return TransformIterator<decltype(this.base.get().begin()), F>(this.base.get().begin(), &this.f); }
+  auto end() const { return TransformIterator<decltype(this.base.get().begin()), F>(this.base.get().end(), &this.f); }
+  bool empty() const { return this.base.get().begin() == this.base.get().end(); }
+  i64 size() const { return distance(this.base.get().begin(), this.base.get().end()); }
   // The function of the first (last) element, with the reference it returns, as std's
   // view_interface gives them (TerritoryManager's `&getAllTerritories().front()`); the range is
   // not empty, and back() takes a bidirectional one.
-  decltype(auto) front() const { return *this->begin(); }
+  decltype(auto) front() const { return *this.begin(); }
 
   decltype(auto) back() const
   {
-    auto last = this->end();
+    auto last = this.end();
     --last;
     return *last;
   }
@@ -244,24 +244,24 @@ public:
 
   decltype(auto) operator*() const
   {
-    It before = this->position;
+    It before = this.position;
     --before;
     return *before;
   }
 
   ReverseViewIterator<It>& operator++()
   {
-    --this->position;
-    return *this;
+    --this.position;
+    return this;
   }
 
   ReverseViewIterator<It>& operator--()
   {
-    ++this->position;
-    return *this;
+    ++this.position;
+    return this;
   }
 
-  bool operator==(const ReverseViewIterator<It>& other) const { return this->position == other.position; }
+  bool operator==(const ReverseViewIterator<It>& other) const { return this.position == other.position; }
 
 private:
   It position; // one past the element *this yields
@@ -274,10 +274,10 @@ class ReverseView : public ViewBase
 public:
   ReverseView(const Range& range) : base(range) {}
 
-  auto begin() const { return ReverseViewIterator<decltype(this->base.get().end())>(this->base.get().end()); }
-  auto end() const { return ReverseViewIterator<decltype(this->base.get().end())>(this->base.get().begin()); }
-  bool empty() const { return this->base.get().begin() == this->base.get().end(); }
-  i64 size() const { return distance(this->base.get().begin(), this->base.get().end()); }
+  auto begin() const { return ReverseViewIterator<decltype(this.base.get().end())>(this.base.get().end()); }
+  auto end() const { return ReverseViewIterator<decltype(this.base.get().end())>(this.base.get().begin()); }
+  bool empty() const { return this.base.get().begin() == this.base.get().end(); }
+  i64 size() const { return distance(this.base.get().begin(), this.base.get().end()); }
 
 private:
   ViewedRange<Range> base;

@@ -20,7 +20,7 @@ struct Counter
   int count = 0;
   void run()
   {
-    auto bump = [this](int by) { this->count += by; };
+    auto bump = [&this](int by) { this.count += by; };
     bump(2);
     bump(3);
   }

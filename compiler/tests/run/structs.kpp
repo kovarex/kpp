@@ -4,13 +4,13 @@ extern "C" int printf(const char* format, ...);
 struct Base
 {
   int id;
-  int twice() const { return this->id * 2; }
+  int twice() const { return this.id * 2; }
 };
 
 struct Derived : Base
 {
   int extra;
-  int sum() const { return this->twice() + this->extra; }
+  int sum() const { return this.twice() + this.extra; }
 };
 
 struct TwoLists

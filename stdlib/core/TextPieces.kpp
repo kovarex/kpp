@@ -33,15 +33,15 @@ struct DigitsText
   {
     char buffer[24];
     i32 n = 0;
-    u64 rest = this->value;
+    u64 rest = this.value;
     do
     {
-      i32 digit = i32(rest % (u64)this->base);
-      buffer[n] = char(digit < 10 ? '0' + digit : (this->upper ? 'A' : 'a') + digit - 10);
+      i32 digit = i32(rest % (u64)this.base);
+      buffer[n] = char(digit < 10 ? '0' + digit : (this.upper ? 'A' : 'a') + digit - 10);
       ++n;
-      rest /= (u64)this->base;
+      rest /= (u64)this.base;
     } while (rest != 0);
-    for (i32 i = n; i < this->digits; ++i)
+    for (i32 i = n; i < this.digits; ++i)
       out.append('0');
     while (n > 0)
     {
@@ -81,19 +81,19 @@ struct FloatingText
 
   void appendTo(String& out) const
   {
-    if (this->value != this->value)
+    if (this.value != this.value)
     {
       out.append("nan");
       return;
     }
-    if (this->value != 0 && this->value * 0.5 == this->value)
+    if (this.value != 0 && this.value * 0.5 == this.value)
     {
-      out.append(this->value > 0 ? "inf" : "-inf");
+      out.append(this.value > 0 ? "inf" : "-inf");
       return;
     }
-    const char* format = this->conversion == 'f' ? "%.*f" : this->conversion == 'g' ? "%.*g" : "%.*e";
+    const char* format = this.conversion == 'f' ? "%.*f" : this.conversion == 'g' ? "%.*g" : "%.*e";
     char buffer[64];
-    i32 n = snprintf(buffer, 64, format, this->precision, this->value);
+    i32 n = snprintf(buffer, 64, format, this.precision, this.value);
     if (n < 64)
     {
       out.append(buffer, n);
@@ -101,7 +101,7 @@ struct FloatingText
     }
     // (1e308 has 309 digits before the point)
     char* large = (char*)malloc(usize(n) + 1);
-    snprintf(large, usize(n) + 1, format, this->precision, this->value);
+    snprintf(large, usize(n) + 1, format, this.precision, this.value);
     out.append(large, n);
     free(large);
   }
@@ -126,7 +126,7 @@ struct SignedText
   void appendTo(String& out) const
   {
     String text;
-    appendPieceText(this->value, text);
+    appendPieceText(this.value, text);
     if (text.size() == 0 || text[0] != '-')
       out.append('+');
     out.append(text);
@@ -150,16 +150,16 @@ struct AlignedText
   void appendTo(String& out) const
   {
     String text;
-    appendPieceText(this->value, text);
-    bool left = this->left || this->width < 0;
-    i32 count = (this->width < 0 ? -this->width : this->width) - i32(text.size());
+    appendPieceText(this.value, text);
+    bool left = this.left || this.width < 0;
+    i32 count = (this.width < 0 ? -this.width : this.width) - i32(text.size());
     if (!left)
       for (i32 i = 0; i < count; ++i)
-        out.append(this->fill);
+        out.append(this.fill);
     out.append(text);
     if (left)
       for (i32 i = 0; i < count; ++i)
-        out.append(this->fill);
+        out.append(this.fill);
   }
 };
 
@@ -179,8 +179,8 @@ struct ZeroPaddedText
   void appendTo(String& out) const
   {
     String text;
-    appendPieceText(this->value, text);
-    i32 count = this->width - i32(text.size());
+    appendPieceText(this.value, text);
+    i32 count = this.width - i32(text.size());
     usize from = 0;
     bool sign = text.size() > 0 && (text[0] == '-' || text[0] == '+' || text[0] == ' ');
     char first = text.size() > usize(sign) ? text[usize(sign)] : '0';
@@ -211,7 +211,7 @@ struct AddressText
 {
   const void* pointer;
 
-  void appendTo(String& out) const { DigitsText{(u64)this->pointer, 16, 16, true}.appendTo(out); }
+  void appendTo(String& out) const { DigitsText{(u64)this.pointer, 16, 16, true}.appendTo(out); }
 };
 
 AddressText address(const void* pointer) { return AddressText{pointer}; }

@@ -30,35 +30,35 @@ public:
   // (std::default_random_engine's default_seed); RandomDevice is the nondeterministic source.
   static constexpr u64 default_seed = 1;
 
-  DefaultRandomEngine() { this->seed(This::default_seed); }
+  DefaultRandomEngine() { this.seed(This::default_seed); }
 
   DefaultRandomEngine(u64 seed)
   {
-    this->state[0] = seed;
-    this->state[1] = seed * 6364136223846793005ull + 1;
-    this->state[2] = this->state[1] * 6364136223846793005ull + 1;
-    this->state[3] = this->state[2] * 6364136223846793005ull + 1;
+    this.state[0] = seed;
+    this.state[1] = seed * 6364136223846793005ull + 1;
+    this.state[2] = this.state[1] * 6364136223846793005ull + 1;
+    this.state[3] = this.state[2] * 6364136223846793005ull + 1;
   }
 
   void seed(u64 s)
   {
-    this->state[0] = s;
-    this->state[1] = s * 6364136223846793005ull + 1;
-    this->state[2] = this->state[1] * 6364136223846793005ull + 1;
-    this->state[3] = this->state[2] * 6364136223846793005ull + 1;
+    this.state[0] = s;
+    this.state[1] = s * 6364136223846793005ull + 1;
+    this.state[2] = this.state[1] * 6364136223846793005ull + 1;
+    this.state[3] = this.state[2] * 6364136223846793005ull + 1;
   }
 
   u64 operator()()
   {
-    u64 result = this->state[1] * 5;
+    u64 result = this.state[1] * 5;
     result = (result << 7 | result >> 57) * 9;
-    u64 t = this->state[1] << 17;
-    this->state[2] ^= this->state[0];
-    this->state[3] ^= this->state[1];
-    this->state[1] ^= this->state[2];
-    this->state[0] ^= this->state[3];
-    this->state[2] ^= t;
-    this->state[3] = (this->state[3] << 45) | (this->state[3] >> 19);
+    u64 t = this.state[1] << 17;
+    this.state[2] ^= this.state[0];
+    this.state[3] ^= this.state[1];
+    this.state[1] ^= this.state[2];
+    this.state[0] ^= this.state[3];
+    this.state[2] ^= t;
+    this.state[3] = (this.state[3] << 45) | (this.state[3] >> 19);
     return result;
   }
 
@@ -70,7 +70,7 @@ public:
   void discard(u64 count)
   {
     for (u64 i = 0; i < count; ++i)
-      (*this)();
+      (this)();
   }
 
 private:
@@ -136,11 +136,11 @@ public:
   IntType operator()(Engine& engine)
   {
     // In u64, where the difference cannot wrap.
-    return (IntType)((u64)this->low + uniformUpTo(engine, (u64)this->high - (u64)this->low));
+    return (IntType)((u64)this.low + uniformUpTo(engine, (u64)this.high - (u64)this.low));
   }
 
-  IntType a() const { return this->low; }
-  IntType b() const { return this->high; }
+  IntType a() const { return this.low; }
+  IntType b() const { return this.high; }
 
 private:
   IntType low;

@@ -83,21 +83,21 @@ public:
 
   ~BuiltObjects()
   {
-    if (this->built != 0)
-      this->destroy(this->first, this->built);
+    if (this.built != 0)
+      this.destroy(this.first, this.built);
   }
 
   // The object just built counts: the first one added is where they start, the others follow it.
   void add(void* object)
   {
-    if (this->built == 0)
-      this->first = object;
-    ++this->built;
+    if (this.built == 0)
+      this.first = object;
+    ++this.built;
   }
 
-  i64 count() const { return this->built; }
+  i64 count() const { return this.built; }
   // The objects built stay: the destructor leaves them.
-  void keep() { this->built = 0; }
+  void keep() { this.built = 0; }
 
 private:
   void (*destroy)(void*, i64);
@@ -117,12 +117,12 @@ public:
 
   ~OwnedBlock()
   {
-    if (this->block)
-      free(this->block);
+    if (this.block)
+      free(this.block);
   }
 
   // The block stays: the destructor leaves it.
-  void release() { this->block = nullptr; }
+  void release() { this.block = nullptr; }
 
 private:
   void* block;
@@ -305,23 +305,23 @@ struct Pair
   template<typename U1, typename U2>
   Pair<A, B>& operator=(const Pair<U1, U2>& other)
   {
-    this->first = other.first;
-    this->second = other.second;
-    return *this;
+    this.first = other.first;
+    this.second = other.second;
+    return this;
   }
 
   template<typename U1, typename U2>
   Pair<A, B>& operator=(Pair<U1, U2>&& other)
   {
-    this->first = forward<U1>(other.first);
-    this->second = forward<U2>(other.second);
-    return *this;
+    this.first = forward<U1>(other.first);
+    this.second = forward<U2>(other.second);
+    return this;
   }
 
   void swap(Pair<A, B>& other) noexcept(isNothrowMoveConstructible<A> && isNothrowMoveAssignable<A> && isNothrowMoveConstructible<B> && isNothrowMoveAssignable<B>)
   {
-    std::swap(this->first, other.first);
-    std::swap(this->second, other.second);
+    std::swap(this.first, other.first);
+    std::swap(this.second, other.second);
   }
 };
 
@@ -385,12 +385,12 @@ struct strong_ordering
   // std::partial_ordering's: neither less, equal nor greater (a NaN against anything); every
   // comparison with 0 is false.
   static inline const strong_ordering unordered = strong_ordering(2);
-  constexpr bool operator==(const strong_ordering& other) const { return this->value == other.value; }
-  constexpr bool operator==(i32 zero) const { return this->value == zero; }
-  constexpr bool operator<(i32 zero) const { return this->value < zero; }
-  constexpr bool operator>(i32 zero) const { return this->value > zero && this->value != 2; }
-  constexpr bool operator<=(i32 zero) const { return this->value <= zero; }
-  constexpr bool operator>=(i32 zero) const { return this->value >= zero && this->value != 2; }
+  constexpr bool operator==(const strong_ordering& other) const { return this.value == other.value; }
+  constexpr bool operator==(i32 zero) const { return this.value == zero; }
+  constexpr bool operator<(i32 zero) const { return this.value < zero; }
+  constexpr bool operator>(i32 zero) const { return this.value > zero && this.value != 2; }
+  constexpr bool operator<=(i32 zero) const { return this.value <= zero; }
+  constexpr bool operator>=(i32 zero) const { return this.value >= zero && this.value != 2; }
 };
 
 using weak_ordering = strong_ordering;
@@ -585,7 +585,7 @@ public:
   Exception() {}
   Exception(const String& message) : message(message) {}
   virtual ~Exception() {}
-  virtual const char* what() const noexcept { return this->message.c_str(); }
+  virtual const char* what() const noexcept { return this.message.c_str(); }
 };
 
 class RuntimeError : public Exception

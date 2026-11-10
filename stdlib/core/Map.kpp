@@ -338,35 +338,35 @@ public:
   template<typename F> requires (isSame<E, RemoveConst<F>> && !isSame<F, E>)
   RbIterator(const RbIterator<F>& other) : node(other.node) {}
 
-  E& operator*() const { return ((RbNode<RemoveConst<E>>*)this->node)->entry; }
-  E* operator->() const { return &((RbNode<RemoveConst<E>>*)this->node)->entry; }
+  E& operator*() const { return ((RbNode<RemoveConst<E>>*)this.node)->entry; }
+  E* operator->() const { return &((RbNode<RemoveConst<E>>*)this.node)->entry; }
   bool operator==(const RbIterator<E>& other) const = default;
   template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<E>> && !isSame<F, E>)
-  bool operator==(const RbIterator<F>& other) const { return this->node == other.node; }
+  bool operator==(const RbIterator<F>& other) const { return this.node == other.node; }
 
   RbIterator<E>& operator++()
   {
-    this->node = rbNext(this->node);
-    return *this;
+    this.node = rbNext(this.node);
+    return this;
   }
 
   RbIterator<E> operator++(i32)
   {
-    RbIterator<E> before = *this;
-    this->node = rbNext(this->node);
+    RbIterator<E> before = this;
+    this.node = rbNext(this.node);
     return before;
   }
 
   RbIterator<E>& operator--()
   {
-    this->node = rbPrevious(this->node);
-    return *this;
+    this.node = rbPrevious(this.node);
+    return this;
   }
 
   RbIterator<E> operator--(i32)
   {
-    RbIterator<E> before = *this;
-    this->node = rbPrevious(this->node);
+    RbIterator<E> before = this;
+    this.node = rbPrevious(this.node);
     return before;
   }
 
@@ -388,43 +388,43 @@ template<typename E, typename K, typename KeyOf, typename Compare>
 class RbTree
 {
 public:
-  ContainerSize size() const { return this->count; }
-  const Compare& keyCompare() const { return this->compare; }
-  RbTree() { this->becomeEmpty(); }
-  RbTree(const Compare& compare) : compare(compare) { this->becomeEmpty(); }
+  ContainerSize size() const { return this.count; }
+  const Compare& keyCompare() const { return this.compare; }
+  RbTree() { this.becomeEmpty(); }
+  RbTree(const Compare& compare) : compare(compare) { this.becomeEmpty(); }
 
   // Delegates, so that the destructor frees the nodes copied when an entry's copy throws.
-  RbTree(const RbTree<E, K, KeyOf, Compare>& other) : RbTree(other.compare) { this->copyFrom(other); }
+  RbTree(const RbTree<E, K, KeyOf, Compare>& other) : RbTree(other.compare) { this.copyFrom(other); }
 
   RbTree(RbTree<E, K, KeyOf, Compare>&& other) noexcept(isNothrowCopyConstructible<Compare>) : compare(other.compare)
   {
-    this->becomeEmpty();
-    this->take(other);
+    this.becomeEmpty();
+    this.take(other);
   }
 
-  ~RbTree() { this->clear(); }
+  ~RbTree() { this.clear(); }
 
   // A copy taken over: an entry's copy that throws leaves this as it was.
   RbTree<E, K, KeyOf, Compare>& operator=(const RbTree<E, K, KeyOf, Compare>& other)
   {
-    if (this != &other)
-      *this = RbTree<E, K, KeyOf, Compare>(other);
-    return *this;
+    if (&this != &other)
+      this = RbTree<E, K, KeyOf, Compare>(other);
+    return this;
   }
 
   RbTree<E, K, KeyOf, Compare>& operator=(RbTree<E, K, KeyOf, Compare>&& other) noexcept(isNothrowCopyAssignable<Compare>)
   {
-    if (this != &other)
+    if (&this != &other)
     {
-      this->clear();
-      this->compare = other.compare;
-      this->take(other);
+      this.clear();
+      this.compare = other.compare;
+      this.take(other);
     }
-    return *this;
+    return this;
   }
 
-  RbIterator<E> begin() const { return RbIterator<E>(this->header.left); }
-  RbIterator<E> end() const { return RbIterator<E>((RbNodeBase*)&this->header); }
+  RbIterator<E> begin() const { return RbIterator<E>(this.header.left); }
+  RbIterator<E> end() const { return RbIterator<E>((RbNodeBase*)&this.header); }
 
   // The lookups take a key of any type when the comparator is transparent (`Less<>`), and convert
   // any other argument to K once, before the search, otherwise.
@@ -436,15 +436,15 @@ public:
     if constexpr (!isTransparent<Compare> && !isSame<RemoveCvRef<Key>, RemoveCvRef<K>>)
     {
       const K& converted = key;
-      return this->lowerBound(converted);
+      return this.lowerBound(converted);
     }
     else
     {
-      RbNodeBase* result = (RbNodeBase*)&this->header;
-      RbNodeBase* node = this->header.parent;
+      RbNodeBase* result = (RbNodeBase*)&this.header;
+      RbNodeBase* node = this.header.parent;
       while (node)
       {
-        if (this->compare(RbTree::keyOf(node), key))
+        if (this.compare(RbTree::keyOf(node), key))
           node = node->right;
         else
         {
@@ -463,15 +463,15 @@ public:
     if constexpr (!isTransparent<Compare> && !isSame<RemoveCvRef<Key>, RemoveCvRef<K>>)
     {
       const K& converted = key;
-      return this->upperBound(converted);
+      return this.upperBound(converted);
     }
     else
     {
-      RbNodeBase* result = (RbNodeBase*)&this->header;
-      RbNodeBase* node = this->header.parent;
+      RbNodeBase* result = (RbNodeBase*)&this.header;
+      RbNodeBase* node = this.header.parent;
       while (node)
       {
-        if (this->compare(key, RbTree::keyOf(node)))
+        if (this.compare(key, RbTree::keyOf(node)))
         {
           result = node;
           node = node->left;
@@ -490,13 +490,13 @@ public:
     if constexpr (!isTransparent<Compare> && !isSame<RemoveCvRef<Key>, RemoveCvRef<K>>)
     {
       const K& converted = key;
-      return this->find(converted);
+      return this.find(converted);
     }
     else
     {
-      RbIterator<E> at = this->lowerBound(key);
-      if (at.node == &this->header || this->compare(key, RbTree::keyOf(at.node)))
-        return this->end();
+      RbIterator<E> at = this.lowerBound(key);
+      if (at.node == &this.header || this.compare(key, RbTree::keyOf(at.node)))
+        return this.end();
       return at;
     }
   }
@@ -507,29 +507,29 @@ public:
     if constexpr (!isTransparent<Compare> && !isSame<RemoveCvRef<Key>, RemoveCvRef<K>>)
     {
       const K& converted = key;
-      return this->countOf(converted);
+      return this.countOf(converted);
     }
     else
     {
       ContainerSize n = 0;
-      for (RbIterator<E> at = this->lowerBound(key); at.node != &this->header && !this->compare(key, RbTree::keyOf(at.node)); ++at)
+      for (RbIterator<E> at = this.lowerBound(key); at.node != &this.header && !this.compare(key, RbTree::keyOf(at.node)); ++at)
         ++n;
       return n;
     }
   }
 
   // Adds entry after any entries with an equal key and returns where it went.
-  RbIterator<E> insertEqual(E&& entry) { return this->emplaceEqual(move(entry)); }
+  RbIterator<E> insertEqual(E&& entry) { return this.emplaceEqual(move(entry)); }
 
   // The same with the entry constructed in its node from the arguments.
   template<typename... Args>
   RbIterator<E> emplaceEqual(Args&&... args)
   {
-    RbNode<E>* node = this->newNode(forward<Args>(args)...);
+    RbNode<E>* node = this.newNode(forward<Args>(args)...);
     RbNodeBase* parent;
     bool asLeft;
-    this->equalPosition(RbTree::keyOf(node), parent, asLeft);
-    return this->link(node, parent, asLeft);
+    this.equalPosition(RbTree::keyOf(node), parent, asLeft);
+    return this.link(node, parent, asLeft);
   }
 
   // A unique key's entry constructed in its node from the arguments, std::map::emplace's order:
@@ -538,29 +538,29 @@ public:
   template<typename... Args>
   Pair<RbIterator<E>, bool> emplaceUnique(Args&&... args)
   {
-    RbNode<E>* node = this->newNode(forward<Args>(args)...);
-    RbIterator<E> at = this->find(RbTree::keyOf(node));
-    if (at != this->end())
+    RbNode<E>* node = this.newNode(forward<Args>(args)...);
+    RbIterator<E> at = this.find(RbTree::keyOf(node));
+    if (at != this.end())
     {
-      this->destroyNode(node);
+      this.destroyNode(node);
       return Pair<RbIterator<E>, bool>(at, false);
     }
     RbNodeBase* parent;
     bool asLeft;
-    this->equalPosition(RbTree::keyOf(node), parent, asLeft);
-    return Pair<RbIterator<E>, bool>(this->link(node, parent, asLeft), true);
+    this.equalPosition(RbTree::keyOf(node), parent, asLeft);
+    return Pair<RbIterator<E>, bool>(this.link(node, parent, asLeft), true);
   }
 
   // Where insertEqual links a node with key: under parent, on its left or right.
   void equalPosition(const K& key, RbNodeBase*& parent, bool& asLeft) const
   {
-    parent = (RbNodeBase*)&this->header;
+    parent = (RbNodeBase*)&this.header;
     asLeft = true;
-    RbNodeBase* node = this->header.parent;
+    RbNodeBase* node = this.header.parent;
     while (node)
     {
       parent = node;
-      asLeft = this->compare(key, RbTree::keyOf(node));
+      asLeft = this.compare(key, RbTree::keyOf(node));
       node = asLeft ? node->left : node->right;
     }
   }
@@ -570,13 +570,13 @@ public:
   // caller searches from the root instead. Inserting at a right hint is O(1) amortized.
   bool hintPosition(RbNodeBase* hint, const K& key, bool unique, RbNodeBase*& parent, bool& asLeft) const
   {
-    RbNodeBase* header = (RbNodeBase*)&this->header;
-    if (hint != header && (unique ? !this->compare(key, RbTree::keyOf(hint)) : this->compare(RbTree::keyOf(hint), key)))
+    RbNodeBase* header = (RbNodeBase*)&this.header;
+    if (hint != header && (unique ? !this.compare(key, RbTree::keyOf(hint)) : this.compare(RbTree::keyOf(hint), key)))
       return false;
     if (hint != header->left)
     {
       RbNodeBase* before = rbPrevious(hint);
-      if (unique ? !this->compare(RbTree::keyOf(before), key) : this->compare(key, RbTree::keyOf(before)))
+      if (unique ? !this.compare(RbTree::keyOf(before), key) : this.compare(key, RbTree::keyOf(before)))
         return false;
       if (!before->right)
       {
@@ -595,7 +595,7 @@ public:
   template<typename... Args>
   RbNode<E>* newNode(Args&&... args)
   {
-    if (this->count == maxContainerSize) // its count is a size (core/Sizes.kpp)
+    if (this.count == maxContainerSize) // its count is a size (core/Sizes.kpp)
       throwLengthError("map/set too long");
     RbNode<E>* node = (RbNode<E>*)allocateBytes(sizeof(RbNode<E>));
     OwnedBlock block(node); // freed when the entry's constructor throws
@@ -606,49 +606,49 @@ public:
 
   RbIterator<E> link(RbNode<E>* node, RbNodeBase* parent, bool asLeft)
   {
-    rbInsertAndRebalance(asLeft, node, parent, this->header);
-    ++this->count;
+    rbInsertAndRebalance(asLeft, node, parent, this.header);
+    ++this.count;
     return RbIterator<E>(node);
   }
 
   // Takes the node at position out of the tree, entry and all.
   RbNode<E>* unlink(RbIterator<E> position)
   {
-    rbEraseAndRebalance(position.node, this->header);
-    --this->count;
+    rbEraseAndRebalance(position.node, this.header);
+    --this.count;
     return (RbNode<E>*)position.node;
   }
 
   void swap(RbTree<E, K, KeyOf, Compare>& other) noexcept(isNothrowCopyConstructible<Compare> && isNothrowCopyAssignable<Compare>)
   {
     RbTree<E, K, KeyOf, Compare> held(move(other));
-    other = move(*this);
-    *this = move(held);
+    other = move(this);
+    this = move(held);
   }
 
   // Removes the entry at position; returns the position after it.
   RbIterator<E> erase(RbIterator<E> position)
   {
     RbNodeBase* next = rbNext(position.node);
-    rbEraseAndRebalance(position.node, this->header);
-    this->destroyNode(position.node);
-    --this->count;
+    rbEraseAndRebalance(position.node, this.header);
+    this.destroyNode(position.node);
+    --this.count;
     return RbIterator<E>(next);
   }
 
   RbIterator<E> erase(RbIterator<E> first, RbIterator<E> last)
   {
     while (first != last)
-      first = this->erase(first);
+      first = this.erase(first);
     return last;
   }
 
   void clear()
   {
-    if (this->header.parent)
-      this->destroySubtree(this->header.parent);
-    this->becomeEmpty();
-    this->count = 0;
+    if (this.header.parent)
+      this.destroySubtree(this.header.parent);
+    this.becomeEmpty();
+    this.count = 0;
   }
 
 private:
@@ -656,10 +656,10 @@ private:
 
   void becomeEmpty()
   {
-    this->header.parent = nullptr;
-    this->header.left = &this->header;
-    this->header.right = &this->header;
-    this->header.red = true;
+    this.header.parent = nullptr;
+    this.header.left = &this.header;
+    this.header.right = &this.header;
+    this.header.red = true;
   }
 
   void destroyNode(RbNodeBase* node)
@@ -673,9 +673,9 @@ private:
     while (node)
     {
       if (node->right)
-        this->destroySubtree(node->right);
+        this.destroySubtree(node->right);
       RbNodeBase* left = node->left;
-      this->destroyNode(node);
+      this.destroyNode(node);
       node = left;
     }
   }
@@ -695,19 +695,19 @@ private:
     node->right = nullptr;
     link = node;
     if (source->left)
-      this->clone(source->left, node, node->left);
+      this.clone(source->left, node, node->left);
     if (source->right)
-      this->clone(source->right, node, node->right);
+      this.clone(source->right, node, node->right);
   }
 
   void copyFrom(const RbTree<E, K, KeyOf, Compare>& other)
   {
     if (!other.header.parent)
       return;
-    this->clone(other.header.parent, &this->header, this->header.parent);
-    this->header.left = rbMinimum(this->header.parent);
-    this->header.right = rbMaximum(this->header.parent);
-    this->count = other.count;
+    this.clone(other.header.parent, &this.header, this.header.parent);
+    this.header.left = rbMinimum(this.header.parent);
+    this.header.right = rbMaximum(this.header.parent);
+    this.count = other.count;
   }
 
   // Takes other's nodes; the root has to point at this header instead.
@@ -715,11 +715,11 @@ private:
   {
     if (!other.header.parent)
       return;
-    this->header.parent = other.header.parent;
-    this->header.left = other.header.left;
-    this->header.right = other.header.right;
-    this->header.parent->parent = &this->header;
-    this->count = other.count;
+    this.header.parent = other.header.parent;
+    this.header.left = other.header.left;
+    this.header.right = other.header.right;
+    this.header.parent->parent = &this.header;
+    this.count = other.count;
     other.becomeEmpty();
     other.count = 0;
   }
@@ -747,29 +747,29 @@ public:
   MapNodeHandle(RbNode<Pair<K, V>>* node) : node(node) {}
   MapNodeHandle(MapNodeHandle<K, V>&& other) noexcept : node(other.node) { other.node = nullptr; }
   MapNodeHandle(const MapNodeHandle<K, V>& other) = delete;
-  ~MapNodeHandle() { this->reset(); }
+  ~MapNodeHandle() { this.reset(); }
 
   MapNodeHandle<K, V>& operator=(MapNodeHandle<K, V>&& other) noexcept
   {
-    if (this != &other)
+    if (&this != &other)
     {
-      this->reset();
-      this->node = other.node;
+      this.reset();
+      this.node = other.node;
       other.node = nullptr;
     }
-    return *this;
+    return this;
   }
 
-  bool empty() const { return this->node == nullptr; }
-  operator bool() const { return this->node != nullptr; }
-  K& key() const { return this->node->entry.first; }
-  V& mapped() const { return this->node->entry.second; }
+  bool empty() const { return this.node == nullptr; }
+  operator bool() const { return this.node != nullptr; }
+  K& key() const { return this.node->entry.first; }
+  V& mapped() const { return this.node->entry.second; }
 
   void reset()
   {
-    if (this->node)
-      rbFreeNode(this->node);
-    this->node = nullptr;
+    if (this.node)
+      rbFreeNode(this.node);
+    this.node = nullptr;
   }
 
 private:
@@ -788,28 +788,28 @@ public:
   SetNodeHandle(RbNode<T>* node) : node(node) {}
   SetNodeHandle(SetNodeHandle<T>&& other) noexcept : node(other.node) { other.node = nullptr; }
   SetNodeHandle(const SetNodeHandle<T>& other) = delete;
-  ~SetNodeHandle() { this->reset(); }
+  ~SetNodeHandle() { this.reset(); }
 
   SetNodeHandle<T>& operator=(SetNodeHandle<T>&& other) noexcept
   {
-    if (this != &other)
+    if (&this != &other)
     {
-      this->reset();
-      this->node = other.node;
+      this.reset();
+      this.node = other.node;
       other.node = nullptr;
     }
-    return *this;
+    return this;
   }
 
-  bool empty() const { return this->node == nullptr; }
-  operator bool() const { return this->node != nullptr; }
-  T& value() const { return this->node->entry; }
+  bool empty() const { return this.node == nullptr; }
+  operator bool() const { return this.node != nullptr; }
+  T& value() const { return this.node->entry; }
 
   void reset()
   {
-    if (this->node)
-      rbFreeNode(this->node);
-    this->node = nullptr;
+    if (this.node)
+      rbFreeNode(this.node);
+    this.node = nullptr;
   }
 
 private:
@@ -868,111 +868,111 @@ public:
   implicit Map(InitializerList<Pair<K, V>> items, const Compare& compare = Compare()) : tree(compare)
   {
     for (const Pair<K, V>& item : items)
-      this->insert(item);
+      this.insert(item);
   }
 
   // `= {...}`: the listed entries, replacing the contents (later duplicates as in the
   // list constructor).
   Map<K, V, Compare>& operator=(InitializerList<Pair<K, V>> items)
   {
-    this->clear();
+    this.clear();
     for (const Pair<K, V>& item : items)
-      this->insert(item);
-    return *this;
+      this.insert(item);
+    return this;
   }
 
   // The entries of [first, last), as insert(entry) one by one.
   template<typename It>
-  Map(It first, It last, const Compare& compare = Compare()) : tree(compare) { this->insert(first, last); }
+  Map(It first, It last, const Compare& compare = Compare()) : tree(compare) { this.insert(first, last); }
 
-  ContainerSize size() const { return this->tree.size(); }
-  bool empty() const { return this->tree.size() == 0; }
+  ContainerSize size() const { return this.tree.size(); }
+  bool empty() const { return this.tree.size() == 0; }
   // A const Map's positions are const_iterators: its entries are not changed through them.
-  iterator begin() { return this->tree.begin(); }
-  iterator end() { return this->tree.end(); }
-  const_iterator begin() const { return this->tree.begin(); }
-  const_iterator end() const { return this->tree.end(); }
-  const_iterator cbegin() const { return this->begin(); }
-  const_iterator cend() const { return this->end(); }
-  const_reverse_iterator crbegin() const { return this->rbegin(); }
-  const_reverse_iterator crend() const { return this->rend(); }
-  Compare key_comp() const { return this->tree.keyCompare(); }
+  iterator begin() { return this.tree.begin(); }
+  iterator end() { return this.tree.end(); }
+  const_iterator begin() const { return this.tree.begin(); }
+  const_iterator end() const { return this.tree.end(); }
+  const_iterator cbegin() const { return this.begin(); }
+  const_iterator cend() const { return this.end(); }
+  const_reverse_iterator crbegin() const { return this.rbegin(); }
+  const_reverse_iterator crend() const { return this.rend(); }
+  Compare key_comp() const { return this.tree.keyCompare(); }
 
   // The lookups by K, and by any other type: with a transparent comparator that key itself is
   // compared, otherwise it is converted to K first.
-  iterator find(const K& key) { return this->tree.find(key); }
+  iterator find(const K& key) { return this.tree.find(key); }
   template<typename Key>
-  iterator find(const Key& key) { return this->tree.find(key); }
-  const_iterator find(const K& key) const { return this->tree.find(key); }
+  iterator find(const Key& key) { return this.tree.find(key); }
+  const_iterator find(const K& key) const { return this.tree.find(key); }
   template<typename Key>
-  const_iterator find(const Key& key) const { return this->tree.find(key); }
-  bool contains(const K& key) const { return this->tree.find(key) != this->tree.end(); }
+  const_iterator find(const Key& key) const { return this.tree.find(key); }
+  bool contains(const K& key) const { return this.tree.find(key) != this.tree.end(); }
   template<typename Key>
-  bool contains(const Key& key) const { return this->tree.find(key) != this->tree.end(); }
-  ContainerSize count(const K& key) const { return this->contains(key) ? 1 : 0; }
+  bool contains(const Key& key) const { return this.tree.find(key) != this.tree.end(); }
+  ContainerSize count(const K& key) const { return this.contains(key) ? 1 : 0; }
   template<typename Key>
-  ContainerSize count(const Key& key) const { return this->tree.countOf(key); }
-  iterator lowerBound(const K& key) { return this->tree.lowerBound(key); }
+  ContainerSize count(const Key& key) const { return this.tree.countOf(key); }
+  iterator lowerBound(const K& key) { return this.tree.lowerBound(key); }
   template<typename Key>
-  iterator lowerBound(const Key& key) { return this->tree.lowerBound(key); }
-  const_iterator lowerBound(const K& key) const { return this->tree.lowerBound(key); }
+  iterator lowerBound(const Key& key) { return this.tree.lowerBound(key); }
+  const_iterator lowerBound(const K& key) const { return this.tree.lowerBound(key); }
   template<typename Key>
-  const_iterator lowerBound(const Key& key) const { return this->tree.lowerBound(key); }
-  iterator lower_bound(const K& key) { return this->tree.lowerBound(key); }
+  const_iterator lowerBound(const Key& key) const { return this.tree.lowerBound(key); }
+  iterator lower_bound(const K& key) { return this.tree.lowerBound(key); }
   template<typename Key>
-  iterator lower_bound(const Key& key) { return this->tree.lowerBound(key); }
-  const_iterator lower_bound(const K& key) const { return this->tree.lowerBound(key); }
+  iterator lower_bound(const Key& key) { return this.tree.lowerBound(key); }
+  const_iterator lower_bound(const K& key) const { return this.tree.lowerBound(key); }
   template<typename Key>
-  const_iterator lower_bound(const Key& key) const { return this->tree.lowerBound(key); }
-  iterator upperBound(const K& key) { return this->tree.upperBound(key); }
+  const_iterator lower_bound(const Key& key) const { return this.tree.lowerBound(key); }
+  iterator upperBound(const K& key) { return this.tree.upperBound(key); }
   template<typename Key>
-  iterator upperBound(const Key& key) { return this->tree.upperBound(key); }
-  const_iterator upperBound(const K& key) const { return this->tree.upperBound(key); }
+  iterator upperBound(const Key& key) { return this.tree.upperBound(key); }
+  const_iterator upperBound(const K& key) const { return this.tree.upperBound(key); }
   template<typename Key>
-  const_iterator upperBound(const Key& key) const { return this->tree.upperBound(key); }
-  iterator upper_bound(const K& key) { return this->tree.upperBound(key); }
+  const_iterator upperBound(const Key& key) const { return this.tree.upperBound(key); }
+  iterator upper_bound(const K& key) { return this.tree.upperBound(key); }
   template<typename Key>
-  iterator upper_bound(const Key& key) { return this->tree.upperBound(key); }
-  const_iterator upper_bound(const K& key) const { return this->tree.upperBound(key); }
+  iterator upper_bound(const Key& key) { return this.tree.upperBound(key); }
+  const_iterator upper_bound(const K& key) const { return this.tree.upperBound(key); }
   template<typename Key>
-  const_iterator upper_bound(const Key& key) const { return this->tree.upperBound(key); }
-  Pair<iterator, iterator> equal_range(const K& key) { return Pair<iterator, iterator>(this->tree.lowerBound(key), this->tree.upperBound(key)); }
+  const_iterator upper_bound(const Key& key) const { return this.tree.upperBound(key); }
+  Pair<iterator, iterator> equal_range(const K& key) { return Pair<iterator, iterator>(this.tree.lowerBound(key), this.tree.upperBound(key)); }
   template<typename Key>
-  Pair<iterator, iterator> equal_range(const Key& key) { return Pair<iterator, iterator>(this->tree.lowerBound(key), this->tree.upperBound(key)); }
+  Pair<iterator, iterator> equal_range(const Key& key) { return Pair<iterator, iterator>(this.tree.lowerBound(key), this.tree.upperBound(key)); }
 
   Pair<const_iterator, const_iterator> equal_range(const K& key) const
   {
-    return Pair<const_iterator, const_iterator>(this->tree.lowerBound(key), this->tree.upperBound(key));
+    return Pair<const_iterator, const_iterator>(this.tree.lowerBound(key), this.tree.upperBound(key));
   }
 
   template<typename Key>
   Pair<const_iterator, const_iterator> equal_range(const Key& key) const
   {
-    return Pair<const_iterator, const_iterator>(this->tree.lowerBound(key), this->tree.upperBound(key));
+    return Pair<const_iterator, const_iterator>(this.tree.lowerBound(key), this.tree.upperBound(key));
   }
 
   // The value for key, inserted default-constructed when new.
   V& operator[](const K& key)
   {
-    RbIterator<Pair<K, V>> at = this->tree.lowerBound(key);
-    if (at != this->tree.end() && !this->tree.keyCompare()(key, at->first))
+    RbIterator<Pair<K, V>> at = this.tree.lowerBound(key);
+    if (at != this.tree.end() && !this.tree.keyCompare()(key, at->first))
       return at->second;
-    return this->tree.emplaceEqual(inPlaceSecond, key)->second;
+    return this.tree.emplaceEqual(inPlaceSecond, key)->second;
   }
 
   // The value of key's entry; throws OutOfRange when there is none.
   V& at(const K& key)
   {
-    RbIterator<Pair<K, V>> at = this->tree.find(key);
-    if (at == this->tree.end())
+    RbIterator<Pair<K, V>> at = this.tree.find(key);
+    if (at == this.tree.end())
       throwOutOfRange("Map::at: key not found");
     return at->second;
   }
 
   const V& at(const K& key) const
   {
-    RbIterator<Pair<K, V>> at = this->tree.find(key);
-    if (at == this->tree.end())
+    RbIterator<Pair<K, V>> at = this.tree.find(key);
+    if (at == this.tree.end())
       throwOutOfRange("Map::at: key not found");
     return at->second;
   }
@@ -980,43 +980,43 @@ public:
   // std::map::insert: the entry with the key and whether it was added (an existing value is kept).
   Pair<RbIterator<Pair<K, V>>, bool> insert(const Pair<K, V>& entry)
   {
-    RbIterator<Pair<K, V>> at = this->tree.find(entry.first);
-    if (at != this->tree.end())
+    RbIterator<Pair<K, V>> at = this.tree.find(entry.first);
+    if (at != this.tree.end())
       return Pair<RbIterator<Pair<K, V>>, bool>(at, false);
-    return Pair<RbIterator<Pair<K, V>>, bool>(this->tree.insertEqual(Pair<K, V>(entry)), true);
+    return Pair<RbIterator<Pair<K, V>>, bool>(this.tree.insertEqual(Pair<K, V>(entry)), true);
   }
 
   Pair<RbIterator<Pair<K, V>>, bool> insert(Pair<K, V>&& entry)
   {
-    RbIterator<Pair<K, V>> at = this->tree.find(entry.first);
-    if (at != this->tree.end())
+    RbIterator<Pair<K, V>> at = this.tree.find(entry.first);
+    if (at != this.tree.end())
       return Pair<RbIterator<Pair<K, V>>, bool>(at, false);
-    return Pair<RbIterator<Pair<K, V>>, bool>(this->tree.insertEqual(move(entry)), true);
+    return Pair<RbIterator<Pair<K, V>>, bool>(this.tree.insertEqual(move(entry)), true);
   }
 
   // std::map::emplace: the entry built from the arguments, unless its key is there already.
   template<typename... Args>
-  Pair<RbIterator<Pair<K, V>>, bool> emplace(Args&&... args) { return this->tree.emplaceUnique(forward<Args>(args)...); }
+  Pair<RbIterator<Pair<K, V>>, bool> emplace(Args&&... args) { return this.tree.emplaceUnique(forward<Args>(args)...); }
 
   // emplace(key, value...): the key looked up first, as std's do, so an existing key builds no
   // entry; a new one is built in its node.
   template<typename KArg, typename... VArgs> requires (isSame<RemoveCvRef<KArg>, K>)
   Pair<RbIterator<Pair<K, V>>, bool> emplace(KArg&& key, VArgs&&... values)
   {
-    RbIterator<Pair<K, V>> at = this->tree.find(key);
-    if (at != this->tree.end())
+    RbIterator<Pair<K, V>> at = this.tree.find(key);
+    if (at != this.tree.end())
       return Pair<RbIterator<Pair<K, V>>, bool>(at, false);
-    return Pair<RbIterator<Pair<K, V>>, bool>(this->tree.emplaceEqual(forward<KArg>(key), forward<VArgs>(values)...), true);
+    return Pair<RbIterator<Pair<K, V>>, bool>(this.tree.emplaceEqual(forward<KArg>(key), forward<VArgs>(values)...), true);
   }
 
   // std::map::try_emplace: builds the value from the arguments, in its node, only when the key is new.
   template<typename... Args>
   Pair<RbIterator<Pair<K, V>>, bool> try_emplace(const K& key, Args&&... args)
   {
-    RbIterator<Pair<K, V>> at = this->tree.find(key);
-    if (at != this->tree.end())
+    RbIterator<Pair<K, V>> at = this.tree.find(key);
+    if (at != this.tree.end())
       return Pair<RbIterator<Pair<K, V>>, bool>(at, false);
-    return Pair<RbIterator<Pair<K, V>>, bool>(this->tree.emplaceEqual(inPlaceSecond, key, forward<Args>(args)...), true);
+    return Pair<RbIterator<Pair<K, V>>, bool>(this.tree.emplaceEqual(inPlaceSecond, key, forward<Args>(args)...), true);
   }
 
   // An rvalue key is moved into the new entry, not copied (the map deserialiser's
@@ -1025,10 +1025,10 @@ public:
   template<typename KK, typename... Args> requires (isSame<KK, K>)
   Pair<RbIterator<Pair<K, V>>, bool> try_emplace(KK&& key, Args&&... args)
   {
-    RbIterator<Pair<K, V>> at = this->tree.find(key);
-    if (at != this->tree.end())
+    RbIterator<Pair<K, V>> at = this.tree.find(key);
+    if (at != this.tree.end())
       return Pair<RbIterator<Pair<K, V>>, bool>(at, false);
-    return Pair<RbIterator<Pair<K, V>>, bool>(this->tree.emplaceEqual(inPlaceSecond, move(key), forward<Args>(args)...), true);
+    return Pair<RbIterator<Pair<K, V>>, bool>(this.tree.emplaceEqual(inPlaceSecond, move(key), forward<Args>(args)...), true);
   }
 
   // With a position hint (ScriptRendering's `objectMapping.try_emplace(objectMapping.end(), id,
@@ -1036,13 +1036,13 @@ public:
   template<typename... Args>
   iterator try_emplace(const_iterator hint, const K& key, Args&&... args)
   {
-    return this->try_emplace(key, forward<Args>(args)...).first;
+    return this.try_emplace(key, forward<Args>(args)...).first;
   }
 
   template<typename KK, typename... Args> requires (isSame<KK, K>)
   iterator try_emplace(const_iterator hint, KK&& key, Args&&... args)
   {
-    return this->try_emplace(move(key), forward<Args>(args)...).first;
+    return this.try_emplace(move(key), forward<Args>(args)...).first;
   }
 
   // std::map::insert_or_assign: inserts the entry when the key is new (the value built from value,
@@ -1051,7 +1051,7 @@ public:
   template<typename M>
   Pair<RbIterator<Pair<K, V>>, bool> insert_or_assign(const K& key, M&& value)
   {
-    Pair<RbIterator<Pair<K, V>>, bool> result = this->try_emplace(key, forward<M>(value));
+    Pair<RbIterator<Pair<K, V>>, bool> result = this.try_emplace(key, forward<M>(value));
     if (!result.second)
       result.first->second = forward<M>(value); // (try_emplace left value alone: the key was there)
     return result;
@@ -1060,7 +1060,7 @@ public:
   template<typename KK, typename M> requires (isSame<KK, K>)
   Pair<RbIterator<Pair<K, V>>, bool> insert_or_assign(KK&& key, M&& value)
   {
-    Pair<RbIterator<Pair<K, V>>, bool> result = this->try_emplace(move(key), forward<M>(value));
+    Pair<RbIterator<Pair<K, V>>, bool> result = this.try_emplace(move(key), forward<M>(value));
     if (!result.second)
       result.first->second = forward<M>(value);
     return result;
@@ -1070,75 +1070,75 @@ public:
   template<typename M>
   iterator insert_or_assign(const_iterator hint, const K& key, M&& value)
   {
-    return this->insert_or_assign(key, forward<M>(value)).first;
+    return this.insert_or_assign(key, forward<M>(value)).first;
   }
 
   template<typename KK, typename M> requires (isSame<KK, K>)
   iterator insert_or_assign(const_iterator hint, KK&& key, M&& value)
   {
-    return this->insert_or_assign(move(key), forward<M>(value)).first;
+    return this.insert_or_assign(move(key), forward<M>(value)).first;
   }
 
   // kpp's shorthand: true when the key was new.
-  bool insert(const K& key, const V& value) { return this->insert(Pair<K, V>(key, value)).second; }
+  bool insert(const K& key, const V& value) { return this.insert(Pair<K, V>(key, value)).second; }
 
   // The number of entries removed (0 or 1).
   ContainerSize erase(const K& key)
   {
-    RbIterator<Pair<K, V>> at = this->tree.find(key);
-    if (at == this->tree.end())
+    RbIterator<Pair<K, V>> at = this.tree.find(key);
+    if (at == this.tree.end())
       return 0;
-    this->tree.erase(at);
+    this.tree.erase(at);
     return 1;
   }
 
-  iterator erase(const_iterator position) { return this->tree.erase(iterator(position)); }
-  iterator erase(const_iterator first, const_iterator last) { return this->tree.erase(iterator(first), iterator(last)); }
-  reverse_iterator rbegin() { return reverse_iterator(this->tree.end()); }
-  reverse_iterator rend() { return reverse_iterator(this->tree.begin()); }
-  const_reverse_iterator rbegin() const { return const_reverse_iterator(this->tree.end()); }
-  const_reverse_iterator rend() const { return const_reverse_iterator(this->tree.begin()); }
+  iterator erase(const_iterator position) { return this.tree.erase(iterator(position)); }
+  iterator erase(const_iterator first, const_iterator last) { return this.tree.erase(iterator(first), iterator(last)); }
+  reverse_iterator rbegin() { return reverse_iterator(this.tree.end()); }
+  reverse_iterator rend() { return reverse_iterator(this.tree.begin()); }
+  const_reverse_iterator rbegin() const { return const_reverse_iterator(this.tree.end()); }
+  const_reverse_iterator rend() const { return const_reverse_iterator(this.tree.begin()); }
   // Inserts as insert(entry) does; hint, a position next to where the entry belongs, makes it
   // O(1) amortized when the entry goes right before hint.
-  iterator insert(const_iterator hint, const Pair<K, V>& entry) { return this->insert(hint, Pair<K, V>(entry)); }
+  iterator insert(const_iterator hint, const Pair<K, V>& entry) { return this.insert(hint, Pair<K, V>(entry)); }
 
   iterator insert(const_iterator hint, Pair<K, V>&& entry)
   {
     RbNodeBase* parent;
     bool asLeft;
-    if (!this->tree.hintPosition(hint.node, entry.first, true, parent, asLeft))
-      return this->insert(move(entry)).first;
-    return this->tree.link(this->tree.newNode(move(entry)), parent, asLeft);
+    if (!this.tree.hintPosition(hint.node, entry.first, true, parent, asLeft))
+      return this.insert(move(entry)).first;
+    return this.tree.link(this.tree.newNode(move(entry)), parent, asLeft);
   }
 
   template<typename... Args>
-  iterator emplace_hint(const_iterator hint, Args&&... args) { return this->insert(hint, Pair<K, V>(forward<Args>(args)...)); }
+  iterator emplace_hint(const_iterator hint, Args&&... args) { return this.insert(hint, Pair<K, V>(forward<Args>(args)...)); }
 
   // Inserts copies of the entries of [first, last), as insert(entry) does.
   template<typename It>
   void insert(It first, It last)
   {
     for (; first != last; ++first)
-      this->insert(*first);
+      this.insert(*first);
   }
 
   // Inserts the listed entries, as insert(entry) does one by one (std's insert({...})).
   void insert(InitializerList<Pair<K, V>> items)
   {
     for (const Pair<K, V>& item : items)
-      this->insert(item);
+      this.insert(item);
   }
 
   // Takes the entry at position out, together with its node: no copy, and pointers and references
   // to it stay valid while it is in the handle and after it is inserted somewhere.
-  MapNodeHandle<K, V> extract(const_iterator position) { return MapNodeHandle<K, V>(this->tree.unlink(iterator(position))); }
+  MapNodeHandle<K, V> extract(const_iterator position) { return MapNodeHandle<K, V>(this.tree.unlink(iterator(position))); }
 
   MapNodeHandle<K, V> extract(const K& key)
   {
-    RbIterator<Pair<K, V>> at = this->tree.find(key);
-    if (at == this->tree.end())
+    RbIterator<Pair<K, V>> at = this.tree.find(key);
+    if (at == this.tree.end())
       return MapNodeHandle<K, V>();
-    return MapNodeHandle<K, V>(this->tree.unlink(at));
+    return MapNodeHandle<K, V>(this.tree.unlink(at));
   }
 
   NodeInsertReturn<RbIterator<Pair<K, V>>, MapNodeHandle<K, V>> insert(MapNodeHandle<K, V>&& handle)
@@ -1146,11 +1146,11 @@ public:
     NodeInsertReturn<RbIterator<Pair<K, V>>, MapNodeHandle<K, V>> result;
     if (handle.empty())
     {
-      result.position = this->tree.end();
+      result.position = this.tree.end();
       return result;
     }
-    RbIterator<Pair<K, V>> at = this->tree.find(handle.key());
-    if (at != this->tree.end())
+    RbIterator<Pair<K, V>> at = this.tree.find(handle.key());
+    if (at != this.tree.end())
     {
       result.position = at;
       result.node = move(handle);
@@ -1158,8 +1158,8 @@ public:
     }
     RbNodeBase* parent;
     bool asLeft;
-    this->tree.equalPosition(handle.key(), parent, asLeft);
-    result.position = this->tree.link(handle.node, parent, asLeft);
+    this.tree.equalPosition(handle.key(), parent, asLeft);
+    result.position = this.tree.link(handle.node, parent, asLeft);
     handle.node = nullptr;
     result.inserted = true;
     return result;
@@ -1174,20 +1174,20 @@ public:
     {
       RbIterator<Pair<K, V>> next = it;
       ++next;
-      if (!this->contains(it->first))
+      if (!this.contains(it->first))
       {
         RbNode<Pair<K, V>>* node = other.tree.unlink(it);
         RbNodeBase* parent;
         bool asLeft;
-        this->tree.equalPosition(node->entry.first, parent, asLeft);
-        this->tree.link(node, parent, asLeft);
+        this.tree.equalPosition(node->entry.first, parent, asLeft);
+        this.tree.link(node, parent, asLeft);
       }
       it = next;
     }
   }
 
-  void swap(Map<K, V, Compare>& other) noexcept(isNothrowCopyConstructible<Compare> && isNothrowCopyAssignable<Compare>) { this->tree.swap(other.tree); }
-  void clear() { this->tree.clear(); }
+  void swap(Map<K, V, Compare>& other) noexcept(isNothrowCopyConstructible<Compare> && isNothrowCopyAssignable<Compare>) { this.tree.swap(other.tree); }
+  void clear() { this.tree.clear(); }
 
 private:
   RbTree<Pair<K, V>, K, MapKey<K, V>, Compare> tree;
@@ -1226,135 +1226,135 @@ public:
   implicit Set(InitializerList<T> items, const Compare& compare = Compare()) : tree(compare)
   {
     for (const T& value : items)
-      this->insert(value);
+      this.insert(value);
   }
 
   // `= {...}`: the listed values, replacing the contents (later duplicates as in the
   // list constructor).
   Set<T, Compare>& operator=(InitializerList<T> items)
   {
-    this->clear();
+    this.clear();
     for (const T& item : items)
-      this->insert(item);
-    return *this;
+      this.insert(item);
+    return this;
   }
 
   // The values of [first, last), as insert(value) one by one.
   template<typename It>
-  Set(It first, It last, const Compare& compare = Compare()) : tree(compare) { this->insert(first, last); }
+  Set(It first, It last, const Compare& compare = Compare()) : tree(compare) { this.insert(first, last); }
 
-  ContainerSize size() const { return this->tree.size(); }
-  bool empty() const { return this->tree.size() == 0; }
-  const_iterator begin() const { return this->tree.begin(); }
-  const_iterator end() const { return this->tree.end(); }
-  const_iterator cbegin() const { return this->begin(); }
-  const_iterator cend() const { return this->end(); }
-  auto crbegin() const { return this->rbegin(); }
-  auto crend() const { return this->rend(); }
-  Compare key_comp() const { return this->tree.keyCompare(); }
+  ContainerSize size() const { return this.tree.size(); }
+  bool empty() const { return this.tree.size() == 0; }
+  const_iterator begin() const { return this.tree.begin(); }
+  const_iterator end() const { return this.tree.end(); }
+  const_iterator cbegin() const { return this.begin(); }
+  const_iterator cend() const { return this.end(); }
+  auto crbegin() const { return this.rbegin(); }
+  auto crend() const { return this.rend(); }
+  Compare key_comp() const { return this.tree.keyCompare(); }
 
   // The lookups by T, and by any other type: with a transparent comparator that key itself is
   // compared, otherwise it is converted to T first.
-  const_iterator find(const T& value) const { return this->tree.find(value); }
+  const_iterator find(const T& value) const { return this.tree.find(value); }
   template<typename Key>
-  const_iterator find(const Key& key) const { return this->tree.find(key); }
-  bool contains(const T& value) const { return this->tree.find(value) != this->tree.end(); }
+  const_iterator find(const Key& key) const { return this.tree.find(key); }
+  bool contains(const T& value) const { return this.tree.find(value) != this.tree.end(); }
   template<typename Key>
-  bool contains(const Key& key) const { return this->tree.find(key) != this->tree.end(); }
-  ContainerSize count(const T& value) const { return this->contains(value) ? 1 : 0; }
+  bool contains(const Key& key) const { return this.tree.find(key) != this.tree.end(); }
+  ContainerSize count(const T& value) const { return this.contains(value) ? 1 : 0; }
   template<typename Key>
-  ContainerSize count(const Key& key) const { return this->tree.countOf(key); }
-  const_iterator lowerBound(const T& value) const { return this->tree.lowerBound(value); }
+  ContainerSize count(const Key& key) const { return this.tree.countOf(key); }
+  const_iterator lowerBound(const T& value) const { return this.tree.lowerBound(value); }
   template<typename Key>
-  const_iterator lowerBound(const Key& key) const { return this->tree.lowerBound(key); }
-  const_iterator lower_bound(const T& value) const { return this->tree.lowerBound(value); }
+  const_iterator lowerBound(const Key& key) const { return this.tree.lowerBound(key); }
+  const_iterator lower_bound(const T& value) const { return this.tree.lowerBound(value); }
   template<typename Key>
-  const_iterator lower_bound(const Key& key) const { return this->tree.lowerBound(key); }
-  const_iterator upperBound(const T& value) const { return this->tree.upperBound(value); }
+  const_iterator lower_bound(const Key& key) const { return this.tree.lowerBound(key); }
+  const_iterator upperBound(const T& value) const { return this.tree.upperBound(value); }
   template<typename Key>
-  const_iterator upperBound(const Key& key) const { return this->tree.upperBound(key); }
-  const_iterator upper_bound(const T& value) const { return this->tree.upperBound(value); }
+  const_iterator upperBound(const Key& key) const { return this.tree.upperBound(key); }
+  const_iterator upper_bound(const T& value) const { return this.tree.upperBound(value); }
   template<typename Key>
-  const_iterator upper_bound(const Key& key) const { return this->tree.upperBound(key); }
-  Pair<const_iterator, const_iterator> equal_range(const T& value) const { return Pair<const_iterator, const_iterator>(this->tree.lowerBound(value), this->tree.upperBound(value)); }
+  const_iterator upper_bound(const Key& key) const { return this.tree.upperBound(key); }
+  Pair<const_iterator, const_iterator> equal_range(const T& value) const { return Pair<const_iterator, const_iterator>(this.tree.lowerBound(value), this.tree.upperBound(value)); }
   template<typename Key>
-  Pair<const_iterator, const_iterator> equal_range(const Key& key) const { return Pair<const_iterator, const_iterator>(this->tree.lowerBound(key), this->tree.upperBound(key)); }
+  Pair<const_iterator, const_iterator> equal_range(const Key& key) const { return Pair<const_iterator, const_iterator>(this.tree.lowerBound(key), this.tree.upperBound(key)); }
 
   // std::set::insert: the entry with the value and whether it was added.
   Pair<iterator, bool> insert(const T& value)
   {
-    RbIterator<T> at = this->tree.find(value);
-    if (at != this->tree.end())
+    RbIterator<T> at = this.tree.find(value);
+    if (at != this.tree.end())
       return Pair<RbIterator<T>, bool>(at, false);
-    return Pair<RbIterator<T>, bool>(this->tree.insertEqual(T(value)), true);
+    return Pair<RbIterator<T>, bool>(this.tree.insertEqual(T(value)), true);
   }
 
   Pair<iterator, bool> insert(T&& value)
   {
-    RbIterator<T> at = this->tree.find(value);
-    if (at != this->tree.end())
+    RbIterator<T> at = this.tree.find(value);
+    if (at != this.tree.end())
       return Pair<RbIterator<T>, bool>(at, false);
-    return Pair<RbIterator<T>, bool>(this->tree.insertEqual(move(value)), true);
+    return Pair<RbIterator<T>, bool>(this.tree.insertEqual(move(value)), true);
   }
 
   template<typename... Args>
-  Pair<iterator, bool> emplace(Args&&... args) { return this->tree.emplaceUnique(forward<Args>(args)...); }
+  Pair<iterator, bool> emplace(Args&&... args) { return this.tree.emplaceUnique(forward<Args>(args)...); }
 
   // The number of values removed (0 or 1).
   ContainerSize erase(const T& value)
   {
-    RbIterator<T> at = this->tree.find(value);
-    if (at == this->tree.end())
+    RbIterator<T> at = this.tree.find(value);
+    if (at == this.tree.end())
       return 0;
-    this->tree.erase(at);
+    this.tree.erase(at);
     return 1;
   }
 
-  iterator erase(const_iterator position) { return this->tree.erase(RbIterator<T>(position)); }
-  iterator erase(const_iterator first, const_iterator last) { return this->tree.erase(RbIterator<T>(first), RbIterator<T>(last)); }
-  const_reverse_iterator rbegin() const { return const_reverse_iterator(this->tree.end()); }
-  const_reverse_iterator rend() const { return const_reverse_iterator(this->tree.begin()); }
+  iterator erase(const_iterator position) { return this.tree.erase(RbIterator<T>(position)); }
+  iterator erase(const_iterator first, const_iterator last) { return this.tree.erase(RbIterator<T>(first), RbIterator<T>(last)); }
+  const_reverse_iterator rbegin() const { return const_reverse_iterator(this.tree.end()); }
+  const_reverse_iterator rend() const { return const_reverse_iterator(this.tree.begin()); }
   // Inserts as insert(entry) does; hint, a position next to where the entry belongs, makes it
   // O(1) amortized when the entry goes right before hint.
-  iterator insert(const_iterator hint, const T& entry) { return this->insert(hint, T(entry)); }
+  iterator insert(const_iterator hint, const T& entry) { return this.insert(hint, T(entry)); }
 
   iterator insert(const_iterator hint, T&& entry)
   {
     RbNodeBase* parent;
     bool asLeft;
-    if (!this->tree.hintPosition(hint.node, entry, true, parent, asLeft))
-      return this->insert(move(entry)).first;
-    return this->tree.link(this->tree.newNode(move(entry)), parent, asLeft);
+    if (!this.tree.hintPosition(hint.node, entry, true, parent, asLeft))
+      return this.insert(move(entry)).first;
+    return this.tree.link(this.tree.newNode(move(entry)), parent, asLeft);
   }
 
   template<typename... Args>
-  iterator emplace_hint(const_iterator hint, Args&&... args) { return this->insert(hint, T(forward<Args>(args)...)); }
+  iterator emplace_hint(const_iterator hint, Args&&... args) { return this.insert(hint, T(forward<Args>(args)...)); }
 
   // Inserts copies of the entries of [first, last), as insert(entry) does.
   template<typename It>
   void insert(It first, It last)
   {
     for (; first != last; ++first)
-      this->insert(*first);
+      this.insert(*first);
   }
 
   // Inserts the listed entries, as insert(entry) does one by one (std's insert({...})).
   void insert(InitializerList<T> items)
   {
     for (const T& item : items)
-      this->insert(item);
+      this.insert(item);
   }
 
   // Takes the entry at position out, together with its node: no copy, and pointers and references
   // to it stay valid while it is in the handle and after it is inserted somewhere.
-  SetNodeHandle<T> extract(const_iterator position) { return SetNodeHandle<T>(this->tree.unlink(RbIterator<T>(position))); }
+  SetNodeHandle<T> extract(const_iterator position) { return SetNodeHandle<T>(this.tree.unlink(RbIterator<T>(position))); }
 
   SetNodeHandle<T> extract(const T& key)
   {
-    RbIterator<T> at = this->tree.find(key);
-    if (at == this->tree.end())
+    RbIterator<T> at = this.tree.find(key);
+    if (at == this.tree.end())
       return SetNodeHandle<T>();
-    return SetNodeHandle<T>(this->tree.unlink(at));
+    return SetNodeHandle<T>(this.tree.unlink(at));
   }
 
   NodeInsertReturn<iterator, SetNodeHandle<T>> insert(SetNodeHandle<T>&& handle)
@@ -1362,11 +1362,11 @@ public:
     NodeInsertReturn<iterator, SetNodeHandle<T>> result;
     if (handle.empty())
     {
-      result.position = this->tree.end();
+      result.position = this.tree.end();
       return result;
     }
-    RbIterator<T> at = this->tree.find(handle.value());
-    if (at != this->tree.end())
+    RbIterator<T> at = this.tree.find(handle.value());
+    if (at != this.tree.end())
     {
       result.position = at;
       result.node = move(handle);
@@ -1374,8 +1374,8 @@ public:
     }
     RbNodeBase* parent;
     bool asLeft;
-    this->tree.equalPosition(handle.value(), parent, asLeft);
-    result.position = this->tree.link(handle.node, parent, asLeft);
+    this.tree.equalPosition(handle.value(), parent, asLeft);
+    result.position = this.tree.link(handle.node, parent, asLeft);
     handle.node = nullptr;
     result.inserted = true;
     return result;
@@ -1390,20 +1390,20 @@ public:
     {
       RbIterator<T> next = it;
       ++next;
-      if (!this->contains(*it))
+      if (!this.contains(*it))
       {
         RbNode<T>* node = other.tree.unlink(it);
         RbNodeBase* parent;
         bool asLeft;
-        this->tree.equalPosition(node->entry, parent, asLeft);
-        this->tree.link(node, parent, asLeft);
+        this.tree.equalPosition(node->entry, parent, asLeft);
+        this.tree.link(node, parent, asLeft);
       }
       it = next;
     }
   }
 
-  void swap(Set<T, Compare>& other) noexcept(isNothrowCopyConstructible<Compare> && isNothrowCopyAssignable<Compare>) { this->tree.swap(other.tree); }
-  void clear() { this->tree.clear(); }
+  void swap(Set<T, Compare>& other) noexcept(isNothrowCopyConstructible<Compare> && isNothrowCopyAssignable<Compare>) { this.tree.swap(other.tree); }
+  void clear() { this.tree.clear(); }
 
 private:
   RbTree<T, T, SetKey<T>, Compare> tree;
@@ -1443,144 +1443,144 @@ public:
   implicit MultiMap(InitializerList<Pair<K, V>> items, const Compare& compare = Compare()) : tree(compare)
   {
     for (const Pair<K, V>& item : items)
-      this->insert(item);
+      this.insert(item);
   }
 
   // `= {...}`: the listed entries, replacing the contents.
   MultiMap<K, V, Compare>& operator=(InitializerList<Pair<K, V>> items)
   {
-    this->clear();
+    this.clear();
     for (const Pair<K, V>& item : items)
-      this->insert(item);
-    return *this;
+      this.insert(item);
+    return this;
   }
 
   template<typename It>
-  MultiMap(It first, It last, const Compare& compare = Compare()) : tree(compare) { this->insert(first, last); }
+  MultiMap(It first, It last, const Compare& compare = Compare()) : tree(compare) { this.insert(first, last); }
 
-  ContainerSize size() const { return this->tree.size(); }
-  bool empty() const { return this->tree.size() == 0; }
-  iterator begin() { return this->tree.begin(); }
-  const_iterator begin() const { return this->tree.begin(); }
-  iterator end() { return this->tree.end(); }
-  const_iterator end() const { return this->tree.end(); }
-  const_iterator cbegin() const { return this->begin(); }
-  const_iterator cend() const { return this->end(); }
-  auto crbegin() const { return this->rbegin(); }
-  auto crend() const { return this->rend(); }
-  Compare key_comp() const { return this->tree.keyCompare(); }
+  ContainerSize size() const { return this.tree.size(); }
+  bool empty() const { return this.tree.size() == 0; }
+  iterator begin() { return this.tree.begin(); }
+  const_iterator begin() const { return this.tree.begin(); }
+  iterator end() { return this.tree.end(); }
+  const_iterator end() const { return this.tree.end(); }
+  const_iterator cbegin() const { return this.begin(); }
+  const_iterator cend() const { return this.end(); }
+  auto crbegin() const { return this.rbegin(); }
+  auto crend() const { return this.rend(); }
+  Compare key_comp() const { return this.tree.keyCompare(); }
 
   // The lookups by K, and by any other type as in Map.
-  iterator find(const K& key) { return this->tree.find(key); }
-  const_iterator find(const K& key) const { return this->tree.find(key); }
+  iterator find(const K& key) { return this.tree.find(key); }
+  const_iterator find(const K& key) const { return this.tree.find(key); }
   template<typename Key>
-  iterator find(const Key& key) { return this->tree.find(key); }
+  iterator find(const Key& key) { return this.tree.find(key); }
   template<typename Key>
-  const_iterator find(const Key& key) const { return this->tree.find(key); }
-  bool contains(const K& key) const { return this->tree.find(key) != this->tree.end(); }
+  const_iterator find(const Key& key) const { return this.tree.find(key); }
+  bool contains(const K& key) const { return this.tree.find(key) != this.tree.end(); }
   template<typename Key>
-  bool contains(const Key& key) const { return this->tree.find(key) != this->tree.end(); }
-  ContainerSize count(const K& key) const { return this->tree.countOf(key); }
+  bool contains(const Key& key) const { return this.tree.find(key) != this.tree.end(); }
+  ContainerSize count(const K& key) const { return this.tree.countOf(key); }
   template<typename Key>
-  ContainerSize count(const Key& key) const { return this->tree.countOf(key); }
-  iterator lowerBound(const K& key) { return this->tree.lowerBound(key); }
-  const_iterator lowerBound(const K& key) const { return this->tree.lowerBound(key); }
+  ContainerSize count(const Key& key) const { return this.tree.countOf(key); }
+  iterator lowerBound(const K& key) { return this.tree.lowerBound(key); }
+  const_iterator lowerBound(const K& key) const { return this.tree.lowerBound(key); }
   template<typename Key>
-  iterator lowerBound(const Key& key) { return this->tree.lowerBound(key); }
+  iterator lowerBound(const Key& key) { return this.tree.lowerBound(key); }
   template<typename Key>
-  const_iterator lowerBound(const Key& key) const { return this->tree.lowerBound(key); }
-  iterator lower_bound(const K& key) { return this->tree.lowerBound(key); }
-  const_iterator lower_bound(const K& key) const { return this->tree.lowerBound(key); }
+  const_iterator lowerBound(const Key& key) const { return this.tree.lowerBound(key); }
+  iterator lower_bound(const K& key) { return this.tree.lowerBound(key); }
+  const_iterator lower_bound(const K& key) const { return this.tree.lowerBound(key); }
   template<typename Key>
-  iterator lower_bound(const Key& key) { return this->tree.lowerBound(key); }
+  iterator lower_bound(const Key& key) { return this.tree.lowerBound(key); }
   template<typename Key>
-  const_iterator lower_bound(const Key& key) const { return this->tree.lowerBound(key); }
-  iterator upperBound(const K& key) { return this->tree.upperBound(key); }
-  const_iterator upperBound(const K& key) const { return this->tree.upperBound(key); }
+  const_iterator lower_bound(const Key& key) const { return this.tree.lowerBound(key); }
+  iterator upperBound(const K& key) { return this.tree.upperBound(key); }
+  const_iterator upperBound(const K& key) const { return this.tree.upperBound(key); }
   template<typename Key>
-  iterator upperBound(const Key& key) { return this->tree.upperBound(key); }
+  iterator upperBound(const Key& key) { return this.tree.upperBound(key); }
   template<typename Key>
-  const_iterator upperBound(const Key& key) const { return this->tree.upperBound(key); }
-  iterator upper_bound(const K& key) { return this->tree.upperBound(key); }
-  const_iterator upper_bound(const K& key) const { return this->tree.upperBound(key); }
+  const_iterator upperBound(const Key& key) const { return this.tree.upperBound(key); }
+  iterator upper_bound(const K& key) { return this.tree.upperBound(key); }
+  const_iterator upper_bound(const K& key) const { return this.tree.upperBound(key); }
   template<typename Key>
-  iterator upper_bound(const Key& key) { return this->tree.upperBound(key); }
+  iterator upper_bound(const Key& key) { return this.tree.upperBound(key); }
   template<typename Key>
-  const_iterator upper_bound(const Key& key) const { return this->tree.upperBound(key); }
-  Pair<iterator, iterator> equal_range(const K& key) { return Pair<iterator, iterator>(this->tree.lowerBound(key), this->tree.upperBound(key)); }
-  Pair<const_iterator, const_iterator> equal_range(const K& key) const { return Pair<const_iterator, const_iterator>(this->tree.lowerBound(key), this->tree.upperBound(key)); }
+  const_iterator upper_bound(const Key& key) const { return this.tree.upperBound(key); }
+  Pair<iterator, iterator> equal_range(const K& key) { return Pair<iterator, iterator>(this.tree.lowerBound(key), this.tree.upperBound(key)); }
+  Pair<const_iterator, const_iterator> equal_range(const K& key) const { return Pair<const_iterator, const_iterator>(this.tree.lowerBound(key), this.tree.upperBound(key)); }
   template<typename Key>
-  Pair<iterator, iterator> equal_range(const Key& key) { return Pair<iterator, iterator>(this->tree.lowerBound(key), this->tree.upperBound(key)); }
+  Pair<iterator, iterator> equal_range(const Key& key) { return Pair<iterator, iterator>(this.tree.lowerBound(key), this.tree.upperBound(key)); }
   template<typename Key>
-  Pair<const_iterator, const_iterator> equal_range(const Key& key) const { return Pair<const_iterator, const_iterator>(this->tree.lowerBound(key), this->tree.upperBound(key)); }
+  Pair<const_iterator, const_iterator> equal_range(const Key& key) const { return Pair<const_iterator, const_iterator>(this.tree.lowerBound(key), this.tree.upperBound(key)); }
 
-  RbIterator<Pair<K, V>> insert(const Pair<K, V>& entry) { return this->tree.insertEqual(Pair<K, V>(entry)); }
-  RbIterator<Pair<K, V>> insert(Pair<K, V>&& entry) { return this->tree.insertEqual(move(entry)); }
+  RbIterator<Pair<K, V>> insert(const Pair<K, V>& entry) { return this.tree.insertEqual(Pair<K, V>(entry)); }
+  RbIterator<Pair<K, V>> insert(Pair<K, V>&& entry) { return this.tree.insertEqual(move(entry)); }
   template<typename... Args>
-  RbIterator<Pair<K, V>> emplace(Args&&... args) { return this->tree.emplaceEqual(forward<Args>(args)...); }
-  RbIterator<Pair<K, V>> insert(const K& key, const V& value) { return this->tree.insertEqual(Pair<K, V>(key, value)); }
+  RbIterator<Pair<K, V>> emplace(Args&&... args) { return this.tree.emplaceEqual(forward<Args>(args)...); }
+  RbIterator<Pair<K, V>> insert(const K& key, const V& value) { return this.tree.insertEqual(Pair<K, V>(key, value)); }
 
   // Removes every entry with key; returns how many.
   ContainerSize erase(const K& key)
   {
-    RbIterator<Pair<K, V>> first = this->tree.lowerBound(key);
-    RbIterator<Pair<K, V>> last = this->tree.upperBound(key);
+    RbIterator<Pair<K, V>> first = this.tree.lowerBound(key);
+    RbIterator<Pair<K, V>> last = this.tree.upperBound(key);
     ContainerSize removed = 0;
     while (first != last)
     {
-      first = this->tree.erase(first);
+      first = this.tree.erase(first);
       ++removed;
     }
     return removed;
   }
 
-  iterator erase(const_iterator position) { return this->tree.erase(iterator(position)); }
-  iterator erase(const_iterator first, const_iterator last) { return this->tree.erase(iterator(first), iterator(last)); }
-  reverse_iterator rbegin() { return reverse_iterator(this->tree.end()); }
-  reverse_iterator rend() { return reverse_iterator(this->tree.begin()); }
-  const_reverse_iterator rbegin() const { return const_reverse_iterator(this->tree.end()); }
-  const_reverse_iterator rend() const { return const_reverse_iterator(this->tree.begin()); }
+  iterator erase(const_iterator position) { return this.tree.erase(iterator(position)); }
+  iterator erase(const_iterator first, const_iterator last) { return this.tree.erase(iterator(first), iterator(last)); }
+  reverse_iterator rbegin() { return reverse_iterator(this.tree.end()); }
+  reverse_iterator rend() { return reverse_iterator(this.tree.begin()); }
+  const_reverse_iterator rbegin() const { return const_reverse_iterator(this.tree.end()); }
+  const_reverse_iterator rend() const { return const_reverse_iterator(this.tree.begin()); }
   // Inserts as insert(entry) does; hint, a position next to where the entry belongs, makes it
   // O(1) amortized when the entry goes right before hint.
-  iterator insert(const_iterator hint, const Pair<K, V>& entry) { return this->insert(hint, Pair<K, V>(entry)); }
+  iterator insert(const_iterator hint, const Pair<K, V>& entry) { return this.insert(hint, Pair<K, V>(entry)); }
 
   iterator insert(const_iterator hint, Pair<K, V>&& entry)
   {
     RbNodeBase* parent;
     bool asLeft;
-    if (!this->tree.hintPosition(hint.node, entry.first, false, parent, asLeft))
-      return this->insert(move(entry));
-    return this->tree.link(this->tree.newNode(move(entry)), parent, asLeft);
+    if (!this.tree.hintPosition(hint.node, entry.first, false, parent, asLeft))
+      return this.insert(move(entry));
+    return this.tree.link(this.tree.newNode(move(entry)), parent, asLeft);
   }
 
   template<typename... Args>
-  iterator emplace_hint(const_iterator hint, Args&&... args) { return this->insert(hint, Pair<K, V>(forward<Args>(args)...)); }
+  iterator emplace_hint(const_iterator hint, Args&&... args) { return this.insert(hint, Pair<K, V>(forward<Args>(args)...)); }
 
   // Inserts copies of the entries of [first, last), as insert(entry) does.
   template<typename It>
   void insert(It first, It last)
   {
     for (; first != last; ++first)
-      this->insert(*first);
+      this.insert(*first);
   }
 
   // Inserts the listed entries, as insert(entry) does one by one (std's insert({...})).
   void insert(InitializerList<Pair<K, V>> items)
   {
     for (const Pair<K, V>& item : items)
-      this->insert(item);
+      this.insert(item);
   }
 
   // Takes the entry at position out, together with its node: no copy, and pointers and references
   // to it stay valid while it is in the handle and after it is inserted somewhere.
-  MapNodeHandle<K, V> extract(const_iterator position) { return MapNodeHandle<K, V>(this->tree.unlink(iterator(position))); }
+  MapNodeHandle<K, V> extract(const_iterator position) { return MapNodeHandle<K, V>(this.tree.unlink(iterator(position))); }
 
   MapNodeHandle<K, V> extract(const K& key)
   {
-    RbIterator<Pair<K, V>> at = this->tree.find(key);
-    if (at == this->tree.end())
+    RbIterator<Pair<K, V>> at = this.tree.find(key);
+    if (at == this.tree.end())
       return MapNodeHandle<K, V>();
-    return MapNodeHandle<K, V>(this->tree.unlink(at));
+    return MapNodeHandle<K, V>(this.tree.unlink(at));
   }
 
   // Inserts the handle's node (after equivalent keys); returns its position, or end() for an
@@ -1588,11 +1588,11 @@ public:
   RbIterator<Pair<K, V>> insert(MapNodeHandle<K, V>&& handle)
   {
     if (handle.empty())
-      return this->tree.end();
+      return this.tree.end();
     RbNodeBase* parent;
     bool asLeft;
-    this->tree.equalPosition(handle.key(), parent, asLeft);
-    RbIterator<Pair<K, V>> at = this->tree.link(handle.node, parent, asLeft);
+    this.tree.equalPosition(handle.key(), parent, asLeft);
+    RbIterator<Pair<K, V>> at = this.tree.link(handle.node, parent, asLeft);
     handle.node = nullptr;
     return at;
   }
@@ -1606,13 +1606,13 @@ public:
       RbNode<Pair<K, V>>* node = other.tree.unlink(other.tree.begin());
       RbNodeBase* parent;
       bool asLeft;
-      this->tree.equalPosition(node->entry.first, parent, asLeft);
-      this->tree.link(node, parent, asLeft);
+      this.tree.equalPosition(node->entry.first, parent, asLeft);
+      this.tree.link(node, parent, asLeft);
     }
   }
 
-  void swap(MultiMap<K, V, Compare>& other) noexcept(isNothrowCopyConstructible<Compare> && isNothrowCopyAssignable<Compare>) { this->tree.swap(other.tree); }
-  void clear() { this->tree.clear(); }
+  void swap(MultiMap<K, V, Compare>& other) noexcept(isNothrowCopyConstructible<Compare> && isNothrowCopyAssignable<Compare>) { this.tree.swap(other.tree); }
+  void clear() { this.tree.clear(); }
 
 private:
   RbTree<Pair<K, V>, K, MapKey<K, V>, Compare> tree;
@@ -1651,121 +1651,121 @@ public:
   implicit MultiSet(InitializerList<T> items, const Compare& compare = Compare()) : tree(compare)
   {
     for (const T& value : items)
-      this->insert(value);
+      this.insert(value);
   }
 
   // `= {...}`: the listed values, replacing the contents.
   MultiSet<T, Compare>& operator=(InitializerList<T> items)
   {
-    this->clear();
+    this.clear();
     for (const T& item : items)
-      this->insert(item);
-    return *this;
+      this.insert(item);
+    return this;
   }
 
   template<typename It>
-  MultiSet(It first, It last, const Compare& compare = Compare()) : tree(compare) { this->insert(first, last); }
+  MultiSet(It first, It last, const Compare& compare = Compare()) : tree(compare) { this.insert(first, last); }
 
-  ContainerSize size() const { return this->tree.size(); }
-  bool empty() const { return this->tree.size() == 0; }
-  const_iterator begin() const { return this->tree.begin(); }
-  const_iterator end() const { return this->tree.end(); }
-  const_iterator cbegin() const { return this->begin(); }
-  const_iterator cend() const { return this->end(); }
-  auto crbegin() const { return this->rbegin(); }
-  auto crend() const { return this->rend(); }
-  Compare key_comp() const { return this->tree.keyCompare(); }
+  ContainerSize size() const { return this.tree.size(); }
+  bool empty() const { return this.tree.size() == 0; }
+  const_iterator begin() const { return this.tree.begin(); }
+  const_iterator end() const { return this.tree.end(); }
+  const_iterator cbegin() const { return this.begin(); }
+  const_iterator cend() const { return this.end(); }
+  auto crbegin() const { return this.rbegin(); }
+  auto crend() const { return this.rend(); }
+  Compare key_comp() const { return this.tree.keyCompare(); }
 
   // The lookups by T, and by any other type as in Set.
-  const_iterator find(const T& value) const { return this->tree.find(value); }
+  const_iterator find(const T& value) const { return this.tree.find(value); }
   template<typename Key>
-  const_iterator find(const Key& key) const { return this->tree.find(key); }
-  bool contains(const T& value) const { return this->tree.find(value) != this->tree.end(); }
+  const_iterator find(const Key& key) const { return this.tree.find(key); }
+  bool contains(const T& value) const { return this.tree.find(value) != this.tree.end(); }
   template<typename Key>
-  bool contains(const Key& key) const { return this->tree.find(key) != this->tree.end(); }
-  ContainerSize count(const T& value) const { return this->tree.countOf(value); }
+  bool contains(const Key& key) const { return this.tree.find(key) != this.tree.end(); }
+  ContainerSize count(const T& value) const { return this.tree.countOf(value); }
   template<typename Key>
-  ContainerSize count(const Key& key) const { return this->tree.countOf(key); }
-  const_iterator lowerBound(const T& value) const { return this->tree.lowerBound(value); }
+  ContainerSize count(const Key& key) const { return this.tree.countOf(key); }
+  const_iterator lowerBound(const T& value) const { return this.tree.lowerBound(value); }
   template<typename Key>
-  const_iterator lowerBound(const Key& key) const { return this->tree.lowerBound(key); }
-  const_iterator lower_bound(const T& value) const { return this->tree.lowerBound(value); }
+  const_iterator lowerBound(const Key& key) const { return this.tree.lowerBound(key); }
+  const_iterator lower_bound(const T& value) const { return this.tree.lowerBound(value); }
   template<typename Key>
-  const_iterator lower_bound(const Key& key) const { return this->tree.lowerBound(key); }
-  const_iterator upperBound(const T& value) const { return this->tree.upperBound(value); }
+  const_iterator lower_bound(const Key& key) const { return this.tree.lowerBound(key); }
+  const_iterator upperBound(const T& value) const { return this.tree.upperBound(value); }
   template<typename Key>
-  const_iterator upperBound(const Key& key) const { return this->tree.upperBound(key); }
-  const_iterator upper_bound(const T& value) const { return this->tree.upperBound(value); }
+  const_iterator upperBound(const Key& key) const { return this.tree.upperBound(key); }
+  const_iterator upper_bound(const T& value) const { return this.tree.upperBound(value); }
   template<typename Key>
-  const_iterator upper_bound(const Key& key) const { return this->tree.upperBound(key); }
-  Pair<const_iterator, const_iterator> equal_range(const T& value) const { return Pair<const_iterator, const_iterator>(this->tree.lowerBound(value), this->tree.upperBound(value)); }
+  const_iterator upper_bound(const Key& key) const { return this.tree.upperBound(key); }
+  Pair<const_iterator, const_iterator> equal_range(const T& value) const { return Pair<const_iterator, const_iterator>(this.tree.lowerBound(value), this.tree.upperBound(value)); }
   template<typename Key>
-  Pair<const_iterator, const_iterator> equal_range(const Key& key) const { return Pair<const_iterator, const_iterator>(this->tree.lowerBound(key), this->tree.upperBound(key)); }
+  Pair<const_iterator, const_iterator> equal_range(const Key& key) const { return Pair<const_iterator, const_iterator>(this.tree.lowerBound(key), this.tree.upperBound(key)); }
 
-  iterator insert(const T& value) { return this->tree.insertEqual(T(value)); }
-  iterator insert(T&& value) { return this->tree.insertEqual(move(value)); }
+  iterator insert(const T& value) { return this.tree.insertEqual(T(value)); }
+  iterator insert(T&& value) { return this.tree.insertEqual(move(value)); }
   template<typename... Args>
-  iterator emplace(Args&&... args) { return this->tree.emplaceEqual(forward<Args>(args)...); }
+  iterator emplace(Args&&... args) { return this.tree.emplaceEqual(forward<Args>(args)...); }
 
   // Removes every value equal to value; returns how many.
   ContainerSize erase(const T& value)
   {
-    RbIterator<T> first = this->tree.lowerBound(value);
-    RbIterator<T> last = this->tree.upperBound(value);
+    RbIterator<T> first = this.tree.lowerBound(value);
+    RbIterator<T> last = this.tree.upperBound(value);
     ContainerSize removed = 0;
     while (first != last)
     {
-      first = this->tree.erase(first);
+      first = this.tree.erase(first);
       ++removed;
     }
     return removed;
   }
 
-  iterator erase(const_iterator position) { return this->tree.erase(RbIterator<T>(position)); }
-  iterator erase(const_iterator first, const_iterator last) { return this->tree.erase(RbIterator<T>(first), RbIterator<T>(last)); }
-  const_reverse_iterator rbegin() const { return const_reverse_iterator(this->tree.end()); }
-  const_reverse_iterator rend() const { return const_reverse_iterator(this->tree.begin()); }
+  iterator erase(const_iterator position) { return this.tree.erase(RbIterator<T>(position)); }
+  iterator erase(const_iterator first, const_iterator last) { return this.tree.erase(RbIterator<T>(first), RbIterator<T>(last)); }
+  const_reverse_iterator rbegin() const { return const_reverse_iterator(this.tree.end()); }
+  const_reverse_iterator rend() const { return const_reverse_iterator(this.tree.begin()); }
   // Inserts as insert(entry) does; hint, a position next to where the entry belongs, makes it
   // O(1) amortized when the entry goes right before hint.
-  iterator insert(const_iterator hint, const T& entry) { return this->insert(hint, T(entry)); }
+  iterator insert(const_iterator hint, const T& entry) { return this.insert(hint, T(entry)); }
 
   iterator insert(const_iterator hint, T&& entry)
   {
     RbNodeBase* parent;
     bool asLeft;
-    if (!this->tree.hintPosition(hint.node, entry, false, parent, asLeft))
-      return this->insert(move(entry));
-    return this->tree.link(this->tree.newNode(move(entry)), parent, asLeft);
+    if (!this.tree.hintPosition(hint.node, entry, false, parent, asLeft))
+      return this.insert(move(entry));
+    return this.tree.link(this.tree.newNode(move(entry)), parent, asLeft);
   }
 
   template<typename... Args>
-  iterator emplace_hint(const_iterator hint, Args&&... args) { return this->insert(hint, T(forward<Args>(args)...)); }
+  iterator emplace_hint(const_iterator hint, Args&&... args) { return this.insert(hint, T(forward<Args>(args)...)); }
 
   // Inserts copies of the entries of [first, last), as insert(entry) does.
   template<typename It>
   void insert(It first, It last)
   {
     for (; first != last; ++first)
-      this->insert(*first);
+      this.insert(*first);
   }
 
   // Inserts the listed entries, as insert(entry) does one by one (std's insert({...})).
   void insert(InitializerList<T> items)
   {
     for (const T& item : items)
-      this->insert(item);
+      this.insert(item);
   }
 
   // Takes the entry at position out, together with its node: no copy, and pointers and references
   // to it stay valid while it is in the handle and after it is inserted somewhere.
-  SetNodeHandle<T> extract(const_iterator position) { return SetNodeHandle<T>(this->tree.unlink(RbIterator<T>(position))); }
+  SetNodeHandle<T> extract(const_iterator position) { return SetNodeHandle<T>(this.tree.unlink(RbIterator<T>(position))); }
 
   SetNodeHandle<T> extract(const T& key)
   {
-    RbIterator<T> at = this->tree.find(key);
-    if (at == this->tree.end())
+    RbIterator<T> at = this.tree.find(key);
+    if (at == this.tree.end())
       return SetNodeHandle<T>();
-    return SetNodeHandle<T>(this->tree.unlink(at));
+    return SetNodeHandle<T>(this.tree.unlink(at));
   }
 
   // Inserts the handle's node (after equivalent keys); returns its position, or end() for an
@@ -1773,11 +1773,11 @@ public:
   iterator insert(SetNodeHandle<T>&& handle)
   {
     if (handle.empty())
-      return this->tree.end();
+      return this.tree.end();
     RbNodeBase* parent;
     bool asLeft;
-    this->tree.equalPosition(handle.value(), parent, asLeft);
-    RbIterator<T> at = this->tree.link(handle.node, parent, asLeft);
+    this.tree.equalPosition(handle.value(), parent, asLeft);
+    RbIterator<T> at = this.tree.link(handle.node, parent, asLeft);
     handle.node = nullptr;
     return at;
   }
@@ -1791,13 +1791,13 @@ public:
       RbNode<T>* node = other.tree.unlink(other.tree.begin());
       RbNodeBase* parent;
       bool asLeft;
-      this->tree.equalPosition(node->entry, parent, asLeft);
-      this->tree.link(node, parent, asLeft);
+      this.tree.equalPosition(node->entry, parent, asLeft);
+      this.tree.link(node, parent, asLeft);
     }
   }
 
-  void swap(MultiSet<T, Compare>& other) noexcept(isNothrowCopyConstructible<Compare> && isNothrowCopyAssignable<Compare>) { this->tree.swap(other.tree); }
-  void clear() { this->tree.clear(); }
+  void swap(MultiSet<T, Compare>& other) noexcept(isNothrowCopyConstructible<Compare> && isNothrowCopyAssignable<Compare>) { this.tree.swap(other.tree); }
+  void clear() { this.tree.clear(); }
 
 private:
   RbTree<T, T, SetKey<T>, Compare> tree;

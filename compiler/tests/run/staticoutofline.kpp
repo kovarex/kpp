@@ -32,7 +32,7 @@ namespace demo
     return (int)parts.size();
   }
 
-  int Text::instanceSize() const { return this->size; }
+  int Text::instanceSize() const { return this.size; }
 }
 
 int main()

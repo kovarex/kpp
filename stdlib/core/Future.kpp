@@ -34,19 +34,19 @@ struct SharedState
 
   ~SharedState()
   {
-    if (this->worker.joinable())
-      this->worker.join();
+    if (this.worker.joinable())
+      this.worker.join();
   }
 
   // The Promise is gone with nothing set: ready with a broken promise ([futures.promise] 9).
   void abandon()
   {
-    LockGuard<Mutex> guard(this->mutex);
-    if (this->ready)
+    LockGuard<Mutex> guard(this.mutex);
+    if (this.ready)
       return;
-    this->exception = makeExceptionPtr(FutureError(FutureErrc::brokenPromise));
-    this->ready = true;
-    this->cv.notifyAll();
+    this.exception = makeExceptionPtr(FutureError(FutureErrc::brokenPromise));
+    this.ready = true;
+    this.cv.notifyAll();
   }
 
   // The deferred function runs once, on the thread that takes it first (under the lock); the
@@ -56,64 +56,64 @@ struct SharedState
   {
     Function<void()> run;
     {
-      LockGuard<Mutex> guard(this->mutex);
-      if (!this->deferred)
+      LockGuard<Mutex> guard(this.mutex);
+      if (!this.deferred)
         return;
-      run = move(this->deferred);
-      this->deferred = nullptr;
+      run = move(this.deferred);
+      this.deferred = nullptr;
     }
     run();
   }
 
   void set(const T& v)
   {
-    LockGuard<Mutex> guard(this->mutex);
-    this->value = v;
-    this->ready = true;
-    this->cv.notifyAll();
+    LockGuard<Mutex> guard(this.mutex);
+    this.value = v;
+    this.ready = true;
+    this.cv.notifyAll();
   }
 
   void set(T&& v)
   {
-    LockGuard<Mutex> guard(this->mutex);
-    this->value = move(v);
-    this->ready = true;
-    this->cv.notifyAll();
+    LockGuard<Mutex> guard(this.mutex);
+    this.value = move(v);
+    this.ready = true;
+    this.cv.notifyAll();
   }
 
   void setException(ExceptionPtr e)
   {
-    LockGuard<Mutex> guard(this->mutex);
-    this->exception = e;
-    this->ready = true;
-    this->cv.notifyAll();
+    LockGuard<Mutex> guard(this.mutex);
+    this.exception = e;
+    this.ready = true;
+    this.cv.notifyAll();
   }
 
   // The value, once it is there; an exception set instead is thrown here.
   T& get()
   {
-    this->runDeferred();
-    UniqueLock<Mutex> lock(this->mutex);
-    this->cv.wait(lock, [this]() -> bool { return this->ready; });
-    if (this->exception)
-      rethrowException(this->exception);
-    return this->value.value();
+    this.runDeferred();
+    UniqueLock<Mutex> lock(this.mutex);
+    this.cv.wait(lock, [&this]() -> bool { return this.ready; });
+    if (this.exception)
+      rethrowException(this.exception);
+    return this.value.value();
   }
 
   void wait()
   {
-    this->runDeferred();
-    UniqueLock<Mutex> lock(this->mutex);
-    this->cv.wait(lock, [this]() -> bool { return this->ready; });
+    this.runDeferred();
+    UniqueLock<Mutex> lock(this.mutex);
+    this.cv.wait(lock, [&this]() -> bool { return this.ready; });
   }
 
   template<typename Rep, typename Period>
   FutureStatus waitFor(const Duration<Rep, Period>& d)
   {
-    UniqueLock<Mutex> lock(this->mutex);
-    if (this->deferred)
+    UniqueLock<Mutex> lock(this.mutex);
+    if (this.deferred)
       return FutureStatus::deferred;
-    return this->cv.waitFor(lock, d, [this]() -> bool { return this->ready; }) ? FutureStatus::ready : FutureStatus::timeout;
+    return this.cv.waitFor(lock, d, [&this]() -> bool { return this.ready; }) ? FutureStatus::ready : FutureStatus::timeout;
   }
 };
 
@@ -129,18 +129,18 @@ struct SharedState<void>
 
   ~SharedState()
   {
-    if (this->worker.joinable())
-      this->worker.join();
+    if (this.worker.joinable())
+      this.worker.join();
   }
 
   void abandon()
   {
-    LockGuard<Mutex> guard(this->mutex);
-    if (this->ready)
+    LockGuard<Mutex> guard(this.mutex);
+    if (this.ready)
       return;
-    this->exception = makeExceptionPtr(FutureError(FutureErrc::brokenPromise));
-    this->ready = true;
-    this->cv.notifyAll();
+    this.exception = makeExceptionPtr(FutureError(FutureErrc::brokenPromise));
+    this.ready = true;
+    this.cv.notifyAll();
   }
 
   // The deferred function runs once, on the thread that takes it first (under the lock); the
@@ -150,53 +150,53 @@ struct SharedState<void>
   {
     Function<void()> run;
     {
-      LockGuard<Mutex> guard(this->mutex);
-      if (!this->deferred)
+      LockGuard<Mutex> guard(this.mutex);
+      if (!this.deferred)
         return;
-      run = move(this->deferred);
-      this->deferred = nullptr;
+      run = move(this.deferred);
+      this.deferred = nullptr;
     }
     run();
   }
 
   void set()
   {
-    LockGuard<Mutex> guard(this->mutex);
-    this->ready = true;
-    this->cv.notifyAll();
+    LockGuard<Mutex> guard(this.mutex);
+    this.ready = true;
+    this.cv.notifyAll();
   }
 
   void setException(ExceptionPtr e)
   {
-    LockGuard<Mutex> guard(this->mutex);
-    this->exception = e;
-    this->ready = true;
-    this->cv.notifyAll();
+    LockGuard<Mutex> guard(this.mutex);
+    this.exception = e;
+    this.ready = true;
+    this.cv.notifyAll();
   }
 
   void get()
   {
-    this->runDeferred();
-    UniqueLock<Mutex> lock(this->mutex);
-    this->cv.wait(lock, [this]() -> bool { return this->ready; });
-    if (this->exception)
-      rethrowException(this->exception);
+    this.runDeferred();
+    UniqueLock<Mutex> lock(this.mutex);
+    this.cv.wait(lock, [&this]() -> bool { return this.ready; });
+    if (this.exception)
+      rethrowException(this.exception);
   }
 
   void wait()
   {
-    this->runDeferred();
-    UniqueLock<Mutex> lock(this->mutex);
-    this->cv.wait(lock, [this]() -> bool { return this->ready; });
+    this.runDeferred();
+    UniqueLock<Mutex> lock(this.mutex);
+    this.cv.wait(lock, [&this]() -> bool { return this.ready; });
   }
 
   template<typename Rep, typename Period>
   FutureStatus waitFor(const Duration<Rep, Period>& d)
   {
-    UniqueLock<Mutex> lock(this->mutex);
-    if (this->deferred)
+    UniqueLock<Mutex> lock(this.mutex);
+    if (this.deferred)
       return FutureStatus::deferred;
-    return this->cv.waitFor(lock, d, [this]() -> bool { return this->ready; }) ? FutureStatus::ready : FutureStatus::timeout;
+    return this.cv.waitFor(lock, d, [&this]() -> bool { return this.ready; }) ? FutureStatus::ready : FutureStatus::timeout;
   }
 };
 
@@ -212,26 +212,26 @@ public:
 
   Future<T>& operator=(Future<T>&& other) noexcept
   {
-    this->state = move(other.state);
-    return *this;
+    this.state = move(other.state);
+    return this;
   }
 
-  bool valid() const { return (bool)this->state; }
+  bool valid() const { return (bool)this.state; }
 
   // Releases the state, as std::future::get does: valid() is false after it (ThreadedBufferedReadStream
   // asserts that once it has waited for its worker).
   T get()
   {
-    SharedPtr<SharedState<T>> held = move(this->state);
+    SharedPtr<SharedState<T>> held = move(this.state);
     return move(held->get());
   }
 
-  void wait() const { this->state->wait(); }
+  void wait() const { this.state->wait(); }
 
   template<typename Rep, typename Period>
-  FutureStatus wait_for(const Duration<Rep, Period>& d) const { return this->state->waitFor(d); }
+  FutureStatus wait_for(const Duration<Rep, Period>& d) const { return this.state->waitFor(d); }
   template<typename Rep, typename Period>
-  FutureStatus waitFor(const Duration<Rep, Period>& d) const { return this->state->waitFor(d); }
+  FutureStatus waitFor(const Duration<Rep, Period>& d) const { return this.state->waitFor(d); }
 
 private:
   template<typename U> friend class SharedFuture;
@@ -251,23 +251,23 @@ public:
 
   Future<void>& operator=(Future<void>&& other) noexcept
   {
-    this->state = move(other.state);
-    return *this;
+    this.state = move(other.state);
+    return this;
   }
 
-  bool valid() const { return (bool)this->state; }
+  bool valid() const { return (bool)this.state; }
 
   void get()
   {
-    SharedPtr<SharedState<void>> held = move(this->state); // released, as Future<T>::get does
+    SharedPtr<SharedState<void>> held = move(this.state); // released, as Future<T>::get does
     held->get();
   }
 
-  void wait() const { this->state->wait(); }
+  void wait() const { this.state->wait(); }
   template<typename Rep, typename Period>
-  FutureStatus wait_for(const Duration<Rep, Period>& d) const { return this->state->waitFor(d); }
+  FutureStatus wait_for(const Duration<Rep, Period>& d) const { return this.state->waitFor(d); }
   template<typename Rep, typename Period>
-  FutureStatus waitFor(const Duration<Rep, Period>& d) const { return this->state->waitFor(d); }
+  FutureStatus waitFor(const Duration<Rep, Period>& d) const { return this.state->waitFor(d); }
 
 private:
   SharedPtr<SharedState<void>> state;
@@ -281,11 +281,11 @@ public:
   implicit SharedFuture(Future<T>&& f) noexcept : state(move(f.state)) {}
   SharedFuture(const SharedFuture<T>& other) : state(other.state) {}
 
-  bool valid() const { return (bool)this->state; }
-  const T& get() const { return this->state->get(); }
-  void wait() const { this->state->wait(); }
+  bool valid() const { return (bool)this.state; }
+  const T& get() const { return this.state->get(); }
+  void wait() const { this.state->wait(); }
   template<typename Rep, typename Period>
-  FutureStatus wait_for(const Duration<Rep, Period>& d) const { return this->state->waitFor(d); }
+  FutureStatus wait_for(const Duration<Rep, Period>& d) const { return this.state->waitFor(d); }
 
 private:
   SharedPtr<SharedState<T>> state;
@@ -303,27 +303,27 @@ public:
   // A Promise that set nothing leaves its Future ready with a broken promise, never waiting forever.
   ~Promise()
   {
-    if (this->state)
-      this->state->abandon();
+    if (this.state)
+      this.state->abandon();
   }
 
   Promise<T>& operator=(Promise<T>&& other) noexcept
   {
-    if (this->state)
-      this->state->abandon();
-    this->state = move(other.state);
-    return *this;
+    if (this.state)
+      this.state->abandon();
+    this.state = move(other.state);
+    return this;
   }
 
-  Future<T> get_future() { return Future<T>(this->state); }
-  Future<T> getFuture() { return Future<T>(this->state); }
+  Future<T> get_future() { return Future<T>(this.state); }
+  Future<T> getFuture() { return Future<T>(this.state); }
 
-  void set_value(const T& value) { this->state->set(value); }
-  void set_value(T&& value) { this->state->set(move(value)); }
-  void setValue(const T& value) { this->state->set(value); }
-  void setValue(T&& value) { this->state->set(move(value)); }
+  void set_value(const T& value) { this.state->set(value); }
+  void set_value(T&& value) { this.state->set(move(value)); }
+  void setValue(const T& value) { this.state->set(value); }
+  void setValue(T&& value) { this.state->set(move(value)); }
 
-  void set_exception(ExceptionPtr e) { this->state->setException(e); }
+  void set_exception(ExceptionPtr e) { this.state->setException(e); }
 
 private:
   SharedPtr<SharedState<T>> state;
@@ -340,23 +340,23 @@ public:
 
   ~Promise()
   {
-    if (this->state)
-      this->state->abandon();
+    if (this.state)
+      this.state->abandon();
   }
 
   Promise<void>& operator=(Promise<void>&& other) noexcept
   {
-    if (this->state)
-      this->state->abandon();
-    this->state = move(other.state);
-    return *this;
+    if (this.state)
+      this.state->abandon();
+    this.state = move(other.state);
+    return this;
   }
 
-  Future<void> get_future() { return Future<void>(this->state); }
-  Future<void> getFuture() { return Future<void>(this->state); }
-  void set_value() { this->state->set(); }
-  void setValue() { this->state->set(); }
-  void set_exception(ExceptionPtr e) { this->state->setException(e); }
+  Future<void> get_future() { return Future<void>(this.state); }
+  Future<void> getFuture() { return Future<void>(this.state); }
+  void set_value() { this.state->set(); }
+  void setValue() { this.state->set(); }
+  void set_exception(ExceptionPtr e) { this.state->setException(e); }
 
 private:
   SharedPtr<SharedState<void>> state;

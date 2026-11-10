@@ -77,26 +77,26 @@ struct OptionalCopiedValue
   OptionalCopiedValue(const OptionalCopiedValue<T>& other) : present(other.present)
   {
     if (other.present)
-      new (&this->storage.value) T(other.storage.value);
+      new (&this.storage.value) T(other.storage.value);
   }
 
   // The value moved over; the source keeps its state (present, with a moved-from value).
   OptionalCopiedValue(OptionalCopiedValue<T>&& other) noexcept(isNothrowMoveConstructible<T>) : present(other.present)
   {
     if (other.present)
-      new (&this->storage.value) T(move(other.storage.value));
+      new (&this.storage.value) T(move(other.storage.value));
   }
 
   OptionalCopiedValue<T>& operator=(const OptionalCopiedValue<T>& other)
   {
-    optionalAssign<T>(*this, other.present, other.storage.value);
-    return *this;
+    optionalAssign<T>(this, other.present, other.storage.value);
+    return this;
   }
 
   OptionalCopiedValue<T>& operator=(OptionalCopiedValue<T>&& other) noexcept(isNothrowMoveConstructible<T> && isNothrowMoveAssignable<T>)
   {
-    optionalAssign<T>(*this, other.present, move(other.storage.value));
-    return *this;
+    optionalAssign<T>(this, other.present, move(other.storage.value));
+    return this;
   }
 };
 
@@ -111,31 +111,31 @@ struct OptionalOwnedValue
   OptionalOwnedValue(const OptionalOwnedValue<T>& other) : present(other.present)
   {
     if (other.present)
-      new (&this->storage.value) T(other.storage.value);
+      new (&this.storage.value) T(other.storage.value);
   }
 
   OptionalOwnedValue(OptionalOwnedValue<T>&& other) noexcept(isNothrowMoveConstructible<T>) : present(other.present)
   {
     if (other.present)
-      new (&this->storage.value) T(move(other.storage.value));
+      new (&this.storage.value) T(move(other.storage.value));
   }
 
   ~OptionalOwnedValue()
   {
-    if (this->present)
-      this->storage.value.~T();
+    if (this.present)
+      this.storage.value.~T();
   }
 
   OptionalOwnedValue<T>& operator=(const OptionalOwnedValue<T>& other)
   {
-    optionalAssign<T>(*this, other.present, other.storage.value);
-    return *this;
+    optionalAssign<T>(this, other.present, other.storage.value);
+    return this;
   }
 
   OptionalOwnedValue<T>& operator=(OptionalOwnedValue<T>&& other) noexcept(isNothrowMoveConstructible<T> && isNothrowMoveAssignable<T>)
   {
-    optionalAssign<T>(*this, other.present, move(other.storage.value));
-    return *this;
+    optionalAssign<T>(this, other.present, move(other.storage.value));
+    return this;
   }
 };
 
@@ -168,22 +168,22 @@ void optionalAssign(O& target, bool present, V&& value)
 template<typename T>
 struct Optional : OptionalValue<T>
 {
-  T* slot() { return &this->storage.value; }
-  const T* slot() const { return &this->storage.value; }
+  T* slot() { return &this.storage.value; }
+  const T* slot() const { return &this.storage.value; }
 
   Optional() {}
   implicit Optional(NullOpt) {}
 
   implicit Optional(const T& v)
   {
-    new (this->slot()) T(v);
-    this->present = true;
+    new (this.slot()) T(v);
+    this.present = true;
   }
 
   implicit Optional(T&& v)
   {
-    new (this->slot()) T(move(v));
-    this->present = true;
+    new (this.slot()) T(move(v));
+    this.present = true;
   }
 
   // From a value of another type a T is built from (std::optional's converting constructor),
@@ -194,8 +194,8 @@ struct Optional : OptionalValue<T>
     requires(!isSame<RemoveCvRef<U>, T> && !isSame<RemoveCvRef<U>, InPlaceTag> && !isSame<RemoveCvRef<U>, NullOpt> &&
              !IsOptional<RemoveCvRef<U>>::value && isConstructible<T, U>)
   {
-    new (this->slot()) T(forward<U>(v));
-    this->present = true;
+    new (this.slot()) T(forward<U>(v));
+    this.present = true;
   }
 
   // From an Optional of another type whose value converts (std::optional's converting
@@ -205,8 +205,8 @@ struct Optional : OptionalValue<T>
   {
     if (other.hasValue())
     {
-      new (this->slot()) T(*other.slot());
-      this->present = true;
+      new (this.slot()) T(*other.slot());
+      this.present = true;
     }
   }
 
@@ -214,38 +214,38 @@ struct Optional : OptionalValue<T>
   template<typename... Args>
   Optional(InPlaceTag, Args&&... args)
   {
-    new (this->slot()) T(forward<Args>(args)...);
-    this->present = true;
+    new (this.slot()) T(forward<Args>(args)...);
+    this.present = true;
   }
 
   Optional<T>& operator=(NullOpt)
   {
-    this->reset();
-    return *this;
+    this.reset();
+    return this;
   }
 
   Optional<T>& operator=(const T& v)
   {
-    if (this->present)
-      *this->slot() = v;
+    if (this.present)
+      *this.slot() = v;
     else
     {
-      new (this->slot()) T(v);
-      this->present = true;
+      new (this.slot()) T(v);
+      this.present = true;
     }
-    return *this;
+    return this;
   }
 
   Optional<T>& operator=(T&& v)
   {
-    if (this->present)
-      *this->slot() = move(v);
+    if (this.present)
+      *this.slot() = move(v);
     else
     {
-      new (this->slot()) T(move(v));
-      this->present = true;
+      new (this.slot()) T(move(v));
+      this.present = true;
     }
-    return *this;
+    return this;
   }
 
   // From a value of another type (std::optional's converting assignment, constrained as std's on T
@@ -257,14 +257,14 @@ struct Optional : OptionalValue<T>
     requires(!IsOptional<RemoveCvRef<U>>::value && !isSame<RemoveCvRef<U>, T> && !isSame<RemoveCvRef<U>, NullOpt> &&
              isConstructible<T, U> && requires(T& t, U&& u) { t = forward<U>(u); })
   {
-    if (this->present)
-      *this->slot() = forward<U>(v);
+    if (this.present)
+      *this.slot() = forward<U>(v);
     else
     {
-      new (this->slot()) T(forward<U>(v));
-      this->present = true;
+      new (this.slot()) T(forward<U>(v));
+      this.present = true;
     }
-    return *this;
+    return this;
   }
 
   // From an Optional of another type (std::optional's converting assignments): empty from empty,
@@ -274,15 +274,15 @@ struct Optional : OptionalValue<T>
     requires(!isSame<U, T> && isConstructible<T, const U&> && requires(T& t, const U& u) { t = u; } && !optionalTakesOptional<T, U>)
   {
     if (!other.hasValue())
-      this->reset();
-    else if (this->present)
-      *this->slot() = *other.slot();
+      this.reset();
+    else if (this.present)
+      *this.slot() = *other.slot();
     else
     {
-      new (this->slot()) T(*other.slot());
-      this->present = true;
+      new (this.slot()) T(*other.slot());
+      this.present = true;
     }
-    return *this;
+    return this;
   }
 
   template<typename U>
@@ -290,86 +290,86 @@ struct Optional : OptionalValue<T>
     requires(!isSame<U, T> && isConstructible<T, U> && requires(T& t, U&& u) { t = move(u); } && !optionalTakesOptional<T, U>)
   {
     if (!other.hasValue())
-      this->reset();
-    else if (this->present)
-      *this->slot() = move(*other.slot());
+      this.reset();
+    else if (this.present)
+      *this.slot() = move(*other.slot());
     else
     {
-      new (this->slot()) T(move(*other.slot()));
-      this->present = true;
+      new (this.slot()) T(move(*other.slot()));
+      this.present = true;
     }
-    return *this;
+    return this;
   }
 
   // Comparisons with a value of any type the held one compares with (`source == entity` for an
   // Optional<Targeter<Entity>>, `maxSpeed <= 0`): an empty Optional equals no value and orders
   // before every value.
   template<typename U>
-  bool operator==(const U& v) const requires(!IsOptional<U>::value && !isSame<U, NullOpt>) { return this->present && *this->slot() == v; }
+  bool operator==(const U& v) const requires(!IsOptional<U>::value && !isSame<U, NullOpt>) { return this.present && *this.slot() == v; }
 
   template<typename U>
   strong_ordering operator<=>(const U& v) const requires(!IsOptional<U>::value && !isSame<U, NullOpt>)
   {
-    return this->present ? synthThreeWay(*this->slot(), v) : strong_ordering::less;
+    return this.present ? synthThreeWay(*this.slot(), v) : strong_ordering::less;
   }
 
   bool operator==(const Optional<T>& other) const
   {
-    if (this->present != other.present)
+    if (this.present != other.present)
       return false;
-    return !this->present || *this->slot() == *other.slot();
+    return !this.present || *this.slot() == *other.slot();
   }
 
-  bool operator==(NullOpt) const { return !this->present; }
+  bool operator==(NullOpt) const { return !this.present; }
 
   // An absent optional orders before every present one.
   bool operator<(const Optional<T>& other) const
   {
     if (!other.present)
       return false;
-    return !this->present || *this->slot() < *other.slot();
+    return !this.present || *this.slot() < *other.slot();
   }
 
   strong_ordering operator<=>(const Optional<T>& other) const
   {
-    if (this->present && other.present)
-      return synthThreeWay(*this->slot(), *other.slot());
-    return this->present ? strong_ordering::greater : other.present ? strong_ordering::less : strong_ordering::equal;
+    if (this.present && other.present)
+      return synthThreeWay(*this.slot(), *other.slot());
+    return this.present ? strong_ordering::greater : other.present ? strong_ordering::less : strong_ordering::equal;
   }
 
-  bool hasValue() const { return this->present; }
-  bool has_value() const { return this->present; }
-  operator bool() const { return this->present; }
-  bool operator!() const { return !this->present; }
+  bool hasValue() const { return this.present; }
+  bool has_value() const { return this.present; }
+  operator bool() const { return this.present; }
+  bool operator!() const { return !this.present; }
 
   T& value()
   {
-    if (!this->present)
+    if (!this.present)
       throw BadOptionalAccess();
-    return *this->slot();
+    return *this.slot();
   }
 
   const T& value() const
   {
-    if (!this->present)
+    if (!this.present)
       throw BadOptionalAccess();
-    return *this->slot();
+    return *this.slot();
   }
 
   // The value, unchecked: on an empty Optional the program is wrong.
-  T& operator*() { return *this->slot(); }
-  const T& operator*() const { return *this->slot(); }
-  T* operator->() { return this->slot(); }
-  const T* operator->() const { return this->slot(); }
+  T& operator*() { return *this.slot(); }
+  const T& operator*() const { return *this.slot(); }
+  T* operator->() { return this.slot(); }
+  const T* operator->() const { return this.slot(); }
   // The value, or fallback converted to T when empty (std::optional's value_or:
   // TerritoryManager's `territory.value_or(nullptr)`).
   template<typename U>
-  T value_or(U&& fallback) const { return this->present ? *this->slot() : T(forward<U>(fallback)); }
+  T value_or(U&& fallback) const { return this.present ? *this.slot() : T(forward<U>(fallback)); }
 
   T valueOr(const T& fallback) const
   {
-    if (this->present)
-      return *this->slot();
+    if (this.present)
+      return *this.slot();
     return fallback;
   }
 
@@ -378,19 +378,19 @@ struct Optional : OptionalValue<T>
   template<typename... Args>
   T& emplace(Args&&... args)
   {
-    this->reset();
-    new (this->slot()) T(forward<Args>(args)...);
-    this->present = true;
-    return *this->slot();
+    this.reset();
+    new (this.slot()) T(forward<Args>(args)...);
+    this.present = true;
+    return *this.slot();
   }
 
   // Gives the value up: it is destroyed at once.
   void reset()
   {
-    if (this->present)
+    if (this.present)
     {
-      this->present = false;
-      this->slot()->~T();
+      this.present = false;
+      this.slot()->~T();
     }
   }
 
@@ -398,28 +398,28 @@ struct Optional : OptionalValue<T>
   // where it was.
   void swap(Optional<T>& other) noexcept(isNothrowMoveConstructible<T> && isNothrowMoveAssignable<T>)
   {
-    if (this->present && other.present)
-      std::swap(**this, *other);
-    else if (this->present)
+    if (this.present && other.present)
+      std::swap(*this, *other);
+    else if (this.present)
     {
-      other.emplace(move(**this));
-      this->reset();
+      other.emplace(move(*this));
+      this.reset();
     }
     else if (other.present)
     {
-      this->emplace(move(*other));
+      this.emplace(move(*other));
       other.reset();
     }
   }
 
   // Kept from the game's own Optional (not in the specification): get() and operator~ are the
   // unchecked value, set(v) assigns, clear() resets, emptyValue() is T().
-  T& get() { return *this->slot(); }
-  const T& get() const { return *this->slot(); }
-  void set(const T& v) { *this = v; }
-  void clear() { this->reset(); }
-  T& operator~() { return *this->slot(); }
-  const T& operator~() const { return *this->slot(); }
+  T& get() { return *this.slot(); }
+  const T& get() const { return *this.slot(); }
+  void set(const T& v) { this = v; }
+  void clear() { this.reset(); }
+  T& operator~() { return *this.slot(); }
+  const T& operator~() const { return *this.slot(); }
   static constexpr T emptyValue() { return T(); }
 };
 

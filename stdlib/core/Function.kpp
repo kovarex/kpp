@@ -38,10 +38,10 @@ struct FunctionImpl
     if constexpr (isPointer<F>)
       if (callable == nullptr)
         return;
-    this->target = new F(move(callable));
-    this->invoke = &FunctionImpl<R, Args...>::call<F>;
-    this->destroy = &FunctionImpl<R, Args...>::destroyAs<F>;
-    this->clone = FunctionImpl<R, Args...>::cloneFor<F>();
+    this.target = new F(move(callable));
+    this.invoke = &FunctionImpl<R, Args...>::call<F>;
+    this.destroy = &FunctionImpl<R, Args...>::destroyAs<F>;
+    this.clone = FunctionImpl<R, Args...>::cloneFor<F>();
   }
 
   FunctionImpl(const FunctionImpl<R, Args...>& other)
@@ -56,62 +56,62 @@ struct FunctionImpl
 
   ~FunctionImpl()
   {
-    if (this->target)
-      this->destroy(this->target);
+    if (this.target)
+      this.destroy(this.target);
   }
 
   FunctionImpl<R, Args...>& operator=(const FunctionImpl<R, Args...>& other)
   {
-    if (this == &other)
-      return *this;
-    if (this->target)
-      this->destroy(this->target);
-    this->target = other.target ? other.clone(other.target) : nullptr;
-    this->invoke = other.invoke;
-    this->destroy = other.destroy;
-    this->clone = other.clone;
-    return *this;
+    if (&this == &other)
+      return this;
+    if (this.target)
+      this.destroy(this.target);
+    this.target = other.target ? other.clone(other.target) : nullptr;
+    this.invoke = other.invoke;
+    this.destroy = other.destroy;
+    this.clone = other.clone;
+    return this;
   }
 
   FunctionImpl<R, Args...>& operator=(FunctionImpl<R, Args...>&& other) noexcept
   {
-    if (this == &other)
-      return *this;
-    if (this->target)
-      this->destroy(this->target);
-    this->target = other.target;
-    this->invoke = other.invoke;
-    this->destroy = other.destroy;
-    this->clone = other.clone;
+    if (&this == &other)
+      return this;
+    if (this.target)
+      this.destroy(this.target);
+    this.target = other.target;
+    this.invoke = other.invoke;
+    this.destroy = other.destroy;
+    this.clone = other.clone;
     other.target = nullptr;
-    return *this;
+    return this;
   }
 
   FunctionImpl<R, Args...>& operator=(nullptr_t)
   {
-    this->reset();
-    return *this;
+    this.reset();
+    return this;
   }
 
-  operator bool() const { return this->target != nullptr; }
-  bool operator!() const { return this->target == nullptr; }
-  bool operator==(nullptr_t) const { return this->target == nullptr; }
+  operator bool() const { return this.target != nullptr; }
+  bool operator!() const { return this.target == nullptr; }
+  bool operator==(nullptr_t) const { return this.target == nullptr; }
 
   R operator()(Args... args) const
   {
-    if (!this->target)
+    if (!this.target)
       throw BadFunctionCall();
-    return this->invoke(this->target, forward<Args>(args)...);
+    return this.invoke(this.target, forward<Args>(args)...);
   }
 
   void reset()
   {
-    if (this->target)
-      this->destroy(this->target);
-    this->target = nullptr;
-    this->invoke = nullptr;
-    this->destroy = nullptr;
-    this->clone = nullptr;
+    if (this.target)
+      this.destroy(this.target);
+    this.target = nullptr;
+    this.invoke = nullptr;
+    this.destroy = nullptr;
+    this.clone = nullptr;
   }
 
   // The three operations of a callable of type F, taken by address in the constructor.
@@ -151,13 +151,13 @@ public:
   // (classes/deleted_constructor_beside_implicit_copy, pending), so it waits for that fix.
   implicit ReferenceWrapper(T& value) : pointer(&value) {}
 
-  T& get() const { return *this->pointer; }
-  implicit operator T&() const { return *this->pointer; }
+  T& get() const { return *this.pointer; }
+  implicit operator T&() const { return *this.pointer; }
 
   template<typename... CallArgs>
   decltype(auto) operator()(CallArgs&&... args) const
   {
-    return (*this->pointer)(forward<CallArgs>(args)...);
+    return (*this.pointer)(forward<CallArgs>(args)...);
   }
 
 private:

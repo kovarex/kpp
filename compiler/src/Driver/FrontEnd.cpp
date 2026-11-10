@@ -294,15 +294,13 @@ void runParse(Build& build)
           parsed[i]->libraryScope = symbols.intern("std");
         }
       }
-      // (the standard library and what kpp generates, `<tests>.kpp` and `<config>`, keep C++'s pointer until the
-      // meaning becomes the default, design.md 23d)
-      parsed[i]->thisReference = options.thisReference && !parsed[i]->isLibrary && !(parsed[i]->path.size() && parsed[i]->path[0] == '<');
+      // `this` is the object (design.md 23d): --this-reference is accepted and changes nothing; --this-pointer gives the program's own
+      // files C++'s pointer, for the warnings that convert from it (the standard library has the only meaning)
+      parsed[i]->thisReference = !options.thisPointer || parsed[i]->isLibrary;
       if (i < build.fileLibrary.size() && build.fileLibrary[i] >= 0)
       {
         const Options::LibraryRoot& root = options.libraryRoots[size_t(build.fileLibrary[i])];
         parsed[i]->library = root.name;
-        if (std::find(options.thisReferenceLibraries.begin(), options.thisReferenceLibraries.end(), root.name) != options.thisReferenceLibraries.end())
-          parsed[i]->thisReference = !parsed[i]->isLibrary;
         if (root.scoped)
           parsed[i]->libraryScope = symbols.intern(root.name);
       }

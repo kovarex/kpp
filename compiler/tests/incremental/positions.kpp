@@ -5,7 +5,7 @@ int positionHelper() { return 1; }
 // A local class and enumeration, a static local, a lambda.
 int withLocals()
 {
-  struct Local { int v = 2; int get() const { return v + positionHelper(); } };
+  struct Local { int v = 2; int get() const { return this.v + positionHelper(); } };
   enum Mode { First, Second };
   static int calls = 0;
   calls = calls + 1;
@@ -50,7 +50,7 @@ Helper* makeHelper(F&& f)
   {
   public:
     Inner(F&& g) : g(std::move(g)) {}
-    virtual int run() override { return g(); }
+    virtual int run() override { return this.g(); }
     F g;
   };
   return new Inner(std::move(f));
@@ -102,7 +102,7 @@ int elementLocals()
   int total = 0;
   for constexpr (typename E : types<int, double>)
   {
-    struct Local { E v = E(2); int twice() const { return int(v) * 2; } };
+    struct Local { E v = E(2); int twice() const { return int(this.v) * 2; } };
     total = total + Local{}.twice() * 10 + elementHelper();
   }
   return total;

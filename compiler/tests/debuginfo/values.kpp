@@ -34,14 +34,14 @@ namespace game
   class Square : public Shape
   {
   public:
-    int area() const override { return this->side * this->side; }
+    int area() const override { return this.side * this.side; }
     // The object in a lambda: by reference (`this` in its operator, the class's pointer) and copied by
     // an init-capture (design.md 23d: once `this` is the object these are `[&this]`, `this.side` and
     // `[held = this]`, and values.expected stays as it is).
     int sideBy(int k) const
     {
-      auto grow = [this](int by) { return this->side * by; };
-      auto copied = [held = *this](int by) { return held.side + by; };
+      auto grow = [&this](int by) { return this.side * by; };
+      auto copied = [held = this](int by) { return held.side + by; };
       return grow(k) + copied(k);
     }
     int side = 3;
@@ -83,8 +83,8 @@ public:
   int count = 0;
   int bump(int by)
   {
-    count += by;
-    return count - by;
+    this.count += by;
+    return this.count - by;
   }
 };
 
@@ -162,13 +162,13 @@ class Qualified
 {
 public:
   int v = 3;
-  int plainOne() { return v; }
-  int constOne() const { return v; }
-  int volatileOne() volatile { return v; }
-  int bothOne() const volatile { return v; }
-  int leftOne() & { return v; }
-  int rightOne() && { return v; }
-  int noThrowOne() const noexcept { return v; }
+  int plainOne() { return this.v; }
+  int constOne() const { return this.v; }
+  int volatileOne() volatile { return this.v; }
+  int bothOne() const volatile { return this.v; }
+  int leftOne() & { return this.v; }
+  int rightOne() && { return this.v; }
+  int noThrowOne() const noexcept { return this.v; }
 };
 int functionTypes(int x)
 {

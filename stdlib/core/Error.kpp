@@ -49,7 +49,7 @@ struct ErrorCategory
   bool system = false;
 
   bool operator==(const ErrorCategory& other) const = default;
-  const char* name() const { return this->system ? "system" : "generic"; }
+  const char* name() const { return this.system ? "system" : "generic"; }
 };
 
 ErrorCategory genericCategory() { return ErrorCategory{false}; }
@@ -134,41 +134,41 @@ public:
   ErrorCode() {}
   ErrorCode(i32 value, ErrorCategory category) : value_(value), category_(category) {}
 
-  i32 value() const { return this->value_; }
-  ErrorCategory category() const { return this->category_; }
-  operator bool() const { return this->value_ != 0; }
+  i32 value() const { return this.value_; }
+  ErrorCategory category() const { return this.category_; }
+  operator bool() const { return this.value_ != 0; }
 
   void clear()
   {
-    this->value_ = 0;
-    this->category_ = systemCategory();
+    this.value_ = 0;
+    this.category_ = systemCategory();
   }
 
   void assign(i32 value, ErrorCategory category)
   {
-    this->value_ = value;
-    this->category_ = category;
+    this.value_ = value;
+    this.category_ = category;
   }
 
   // The text the system has for the value: platform::systemErrorMessage's for a system error (Windows'
   // FormatMessage), strerror's for errno.
   String message() const
   {
-    if (!this->category_.system)
-      return String(strerror(this->value_));
-    return platform::systemErrorMessage(this->value_);
+    if (!this.category_.system)
+      return String(strerror(this.value_));
+    return platform::systemErrorMessage(this.value_);
   }
 
   bool operator==(const ErrorCode& other) const = default;
 
   bool operator==(Errc condition) const
   {
-    if (this->value_ == 0)
+    if (this.value_ == 0)
       return false;
-    if (!this->category_.system)
-      return this->value_ == i32(condition);
+    if (!this.category_.system)
+      return this.value_ == i32(condition);
     // (errcOfSystemError's 0 is no condition, which equals no Errc, not even the one of value 0)
-    i32 meant = platform::errcOfSystemError(this->value_);
+    i32 meant = platform::errcOfSystemError(this.value_);
     return meant != 0 && meant == i32(condition);
   }
 
@@ -189,7 +189,7 @@ public:
   SystemError() {}
   SystemError(ErrorCode code) : RuntimeError(code.message()), code_(code) {}
   SystemError(ErrorCode code, const String& what) : RuntimeError(what + ": " + code.message()), code_(code) {}
-  const ErrorCode& code() const { return this->code_; }
+  const ErrorCode& code() const { return this.code_; }
 };
 
 // Exception pointers (std::exception_ptr): a shared handle to a copy of an exception, thrown again
@@ -208,7 +208,7 @@ class ExceptionHolder : public ExceptionHolderBase
 public:
   E exception;
   ExceptionHolder(const E& exception) : exception(exception) {}
-  void rethrow() const override { throw this->exception; }
+  void rethrow() const override { throw this.exception; }
 };
 
 class ExceptionPtr
@@ -216,7 +216,7 @@ class ExceptionPtr
 public:
   ExceptionPtr() {}
   implicit ExceptionPtr(nullptr_t) {}
-  operator bool() const { return (bool)this->holder; }
+  operator bool() const { return (bool)this.holder; }
   bool operator==(const ExceptionPtr& other) const = default;
 
 private:
@@ -315,12 +315,12 @@ public:
   void* object;
   void* typeinfo;
   CapturedExceptionHolder(void* object, void* typeinfo) : object(object), typeinfo(typeinfo) {}
-  ~CapturedExceptionHolder() override { kpp_captured_release(this->object); }
+  ~CapturedExceptionHolder() override { kpp_captured_release(this.object); }
 
   void rethrow() const override
   {
-    retainCapturedException(this->object); // (the throw's own reference, which its handler's end drops)
-    kpp_throw(this->object, this->typeinfo, kpp_captured_release);
+    retainCapturedException(this.object); // (the throw's own reference, which its handler's end drops)
+    kpp_throw(this.object, this.typeinfo, kpp_captured_release);
   }
 };
 

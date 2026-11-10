@@ -23,9 +23,9 @@ struct MemFnWrapper
   MemFnWrapper(R C::*pmf) : pmf(pmf) {}
 
   template<typename... Args>
-  auto operator()(C& obj, Args... args) -> decltype((obj.*pmf)(args...))
+  auto operator()(C& obj, Args... args) -> decltype((obj.*this.pmf)(args...))
   {
-    return (obj.*pmf)(args...);
+    return (obj.*this.pmf)(args...);
   }
 };
 

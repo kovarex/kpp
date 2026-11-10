@@ -8,9 +8,6 @@ snippet says what it is about:
     // factorio: 32235 uses in 4539 files        (from the construct survey, optional)
     // pending: no generic lambdas yet           (a known gap: the snippet is expected to fail)
     // pending on windows linux: why            (a known gap of those targets alone: windows, windows-gnu, linux, freebsd)
-    // this: pointer                            (`this` keeps C++'s pointer here: the snippet is about that or
-                                                 the warnings that convert from it; every other snippet builds with
-                                                 --this-reference until that is the only meaning)
     // kpp: --release                           (kpp options this snippet is always built with: a
                                                   gap that only one configuration shows; {here} is the
                                                   snippet's directory)
@@ -142,12 +139,8 @@ SDL_INCLUDE = os.environ.get("KPP_SDL_INCLUDE", r"C:\Factorio\libraries\SDL3\inc
 EXTRA = ["--cinclude", SDL_INCLUDE] if os.path.isdir(SDL_INCLUDE) else []
 # Headers written for the interop snippets themselves (C constructs the system headers lack).
 EXTRA += ["--cinclude", os.path.join(HERE, "interop")]
-# `this` is the object in every snippet (design.md 23d), until that is the language's only meaning: but for those
-# about the old meaning or the warnings that convert from it (`// this: pointer`).
-THIS_REFERENCE = ["--this-reference"]
-
 def extra_for(info):
-    return EXTRA + ([] if info["this"] == "pointer" else THIS_REFERENCE)
+    return EXTRA
 OUT = os.path.join(COMPILER, "build", "spec")
 SNIPPETS = HERE
 DOC = os.path.join(ROOT, "docs", "spec-status.md")

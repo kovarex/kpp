@@ -21,16 +21,16 @@ struct Tracker
   }
   Tracker& operator=(const Tracker& other)
   {
-    this->id = other.id;
+    this.id = other.id;
     ++copyAssigns;
-    return *this;
+    return this;
   }
   Tracker& operator=(Tracker&& other)
   {
-    this->id = other.id;
+    this.id = other.id;
     other.movedFrom = true;
     ++moveAssigns;
-    return *this;
+    return this;
   }
 };
 

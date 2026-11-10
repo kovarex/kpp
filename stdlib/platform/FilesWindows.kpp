@@ -262,8 +262,8 @@ namespace platform
 
     ~DirectoryReader()
     {
-      if (this->find != invalidHandle)
-        win32::FindClose(this->find);
+      if (this.find != invalidHandle)
+        win32::FindClose(this.find);
     }
 
     // False on an error (ec), or when the directory is there but empty (no ec).
@@ -271,8 +271,8 @@ namespace platform
     {
       ec.clear();
       filesystem::path pattern = p / filesystem::path(L"*");
-      this->find = win32::FindFirstFileW(pattern.c_str(), (_WIN32_FIND_DATAW*)(void*)&this->data);
-      if (this->find == invalidHandle)
+      this.find = win32::FindFirstFileW(pattern.c_str(), (_WIN32_FIND_DATAW*)(void*)&this.data);
+      if (this.find == invalidHandle)
       {
         // ERROR_FILE_NOT_FOUND or ERROR_NO_MORE_FILES on a directory that is there: an empty
         // listing; on a missing one, its own error.
@@ -289,7 +289,7 @@ namespace platform
         }
         return false;
       }
-      this->pending = true;
+      this.pending = true;
       return true;
     }
 
@@ -299,19 +299,19 @@ namespace platform
       ec.clear();
       for (;;)
       {
-        if (!this->pending && !win32::FindNextFileW(this->find, (_WIN32_FIND_DATAW*)(void*)&this->data))
+        if (!this.pending && !win32::FindNextFileW(this.find, (_WIN32_FIND_DATAW*)(void*)&this.data))
         {
           i32 error = (i32)win32::GetLastError();
           if (error != 18)
             ec = ErrorCode(error, systemCategory());
           return false;
         }
-        this->pending = false;
-        const wchar_t* found = this->data.name;
+        this.pending = false;
+        const wchar_t* found = this.data.name;
         if (found[0] == L'.' && (found[1] == 0 || (found[1] == L'.' && found[2] == 0)))
           continue;
         name = WString(found);
-        info = infoOfAttributes(this->data.attributes, this->data.sizeHigh, this->data.sizeLow, this->data.write);
+        info = infoOfAttributes(this.data.attributes, this.data.sizeHigh, this.data.sizeLow, this.data.write);
         return true;
       }
     }

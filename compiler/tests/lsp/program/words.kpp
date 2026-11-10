@@ -6,8 +6,8 @@ struct Gauge
   when (config::tests) i32 probes = 0;
 
   implicit Gauge(i32 h) : hits(h) {}
-  bool check(i32 x) const { return x == this->hits; }
-  bool same(const This& other) const { return this->hits == other.hits; }
+  bool check(i32 x) const { return x == this.hits; }
+  bool same(const This& other) const { return this.hits == other.hits; }
 };
 
 i32 gaugeStep(i32 kind)

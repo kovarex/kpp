@@ -17,12 +17,12 @@ namespace gui
   template<typename Policy>
   void ScrollBar<Policy>::setValue(int v, bool clamp)
   {
-    this->value = clamp && v > 100 ? 100 : v;
+    this.value = clamp && v > 100 ? 100 : v;
   }
   template<typename Policy>
   int ScrollBar<Policy>::getValue() const
   {
-    return this->value;
+    return this.value;
   }
   template<typename Policy>
   int ScrollBar<Policy>::twice(int x)

@@ -4,7 +4,7 @@ struct Clickable
 {
   enum class ClickState { DEFAULT, HOVERED, CLICKED };
   int state = 0;
-  void setMouseLeaveState(ClickState s) { this->state = s == ClickState::CLICKED ? 2 : 1; }
+  void setMouseLeaveState(ClickState s) { this.state = s == ClickState::CLICKED ? 2 : 1; }
 };
 struct Button : Clickable {};
 struct TextButton : Button {};
@@ -19,7 +19,7 @@ struct ScrollBar
 template<typename Policy>
 ScrollBar<Policy>::ScrollBar(const Style* parentStyle) : style(*parentStyle)
 {
-  this->thumb.setMouseLeaveState(TextButton::ClickState::CLICKED);
+  this.thumb.setMouseLeaveState(TextButton::ClickState::CLICKED);
 }
 struct VerticalPolicy {};
 int main()

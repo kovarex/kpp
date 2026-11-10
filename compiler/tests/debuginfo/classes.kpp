@@ -16,7 +16,7 @@ public:
 class Part0 : public Base
 {
 public:
-  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 weight() const override { return this.id + this.pair[1]; }
   i32 id = 0;
   double scale = 0.5;
   i32 pair[2] = {0, 1};
@@ -26,7 +26,7 @@ public:
 class Part1
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 1;
   double scale = 1.5;
   i32 pair[2] = {1, 2};
@@ -36,7 +36,7 @@ public:
 class Part2
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 2;
   double scale = 2.5;
   i32 pair[2] = {2, 3};
@@ -46,7 +46,7 @@ public:
 class Part3
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 3;
   double scale = 3.5;
   i32 pair[2] = {3, 4};
@@ -56,7 +56,7 @@ public:
 class Part4 : public Base
 {
 public:
-  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 weight() const override { return this.id + this.pair[1]; }
   i32 id = 4;
   double scale = 4.5;
   i32 pair[2] = {4, 5};
@@ -66,7 +66,7 @@ public:
 class Part5
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 5;
   double scale = 5.5;
   i32 pair[2] = {5, 6};
@@ -76,7 +76,7 @@ public:
 class Part6
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 6;
   double scale = 6.5;
   i32 pair[2] = {6, 7};
@@ -86,7 +86,7 @@ public:
 class Part7
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 7;
   double scale = 7.5;
   i32 pair[2] = {7, 8};
@@ -96,7 +96,7 @@ public:
 class Part8 : public Base
 {
 public:
-  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 weight() const override { return this.id + this.pair[1]; }
   i32 id = 8;
   double scale = 8.5;
   i32 pair[2] = {8, 9};
@@ -106,7 +106,7 @@ public:
 class Part9
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 9;
   double scale = 9.5;
   i32 pair[2] = {9, 10};
@@ -116,7 +116,7 @@ public:
 class Part10
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 10;
   double scale = 10.5;
   i32 pair[2] = {10, 11};
@@ -126,7 +126,7 @@ public:
 class Part11
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 11;
   double scale = 11.5;
   i32 pair[2] = {11, 12};
@@ -136,7 +136,7 @@ public:
 class Part12 : public Base
 {
 public:
-  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 weight() const override { return this.id + this.pair[1]; }
   i32 id = 12;
   double scale = 12.5;
   i32 pair[2] = {12, 13};
@@ -146,7 +146,7 @@ public:
 class Part13
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 13;
   double scale = 13.5;
   i32 pair[2] = {13, 14};
@@ -156,7 +156,7 @@ public:
 class Part14
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 14;
   double scale = 14.5;
   i32 pair[2] = {14, 15};
@@ -166,7 +166,7 @@ public:
 class Part15
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 15;
   double scale = 15.5;
   i32 pair[2] = {15, 16};
@@ -176,7 +176,7 @@ public:
 class Part16 : public Base
 {
 public:
-  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 weight() const override { return this.id + this.pair[1]; }
   i32 id = 16;
   double scale = 16.5;
   i32 pair[2] = {16, 17};
@@ -186,7 +186,7 @@ public:
 class Part17
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 17;
   double scale = 17.5;
   i32 pair[2] = {17, 18};
@@ -196,7 +196,7 @@ public:
 class Part18
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 18;
   double scale = 18.5;
   i32 pair[2] = {18, 19};
@@ -206,7 +206,7 @@ public:
 class Part19
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 19;
   double scale = 19.5;
   i32 pair[2] = {19, 20};
@@ -216,7 +216,7 @@ public:
 class Part20 : public Base
 {
 public:
-  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 weight() const override { return this.id + this.pair[1]; }
   i32 id = 20;
   double scale = 20.5;
   i32 pair[2] = {20, 21};
@@ -226,7 +226,7 @@ public:
 class Part21
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 21;
   double scale = 21.5;
   i32 pair[2] = {21, 22};
@@ -236,7 +236,7 @@ public:
 class Part22
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 22;
   double scale = 22.5;
   i32 pair[2] = {22, 23};
@@ -246,7 +246,7 @@ public:
 class Part23
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 23;
   double scale = 23.5;
   i32 pair[2] = {23, 24};
@@ -256,7 +256,7 @@ public:
 class Part24 : public Base
 {
 public:
-  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 weight() const override { return this.id + this.pair[1]; }
   i32 id = 24;
   double scale = 24.5;
   i32 pair[2] = {24, 25};
@@ -266,7 +266,7 @@ public:
 class Part25
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 25;
   double scale = 25.5;
   i32 pair[2] = {25, 26};
@@ -276,7 +276,7 @@ public:
 class Part26
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 26;
   double scale = 26.5;
   i32 pair[2] = {26, 27};
@@ -286,7 +286,7 @@ public:
 class Part27
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 27;
   double scale = 27.5;
   i32 pair[2] = {27, 28};
@@ -296,7 +296,7 @@ public:
 class Part28 : public Base
 {
 public:
-  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 weight() const override { return this.id + this.pair[1]; }
   i32 id = 28;
   double scale = 28.5;
   i32 pair[2] = {28, 29};
@@ -306,7 +306,7 @@ public:
 class Part29
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 29;
   double scale = 29.5;
   i32 pair[2] = {29, 30};
@@ -316,7 +316,7 @@ public:
 class Part30
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 30;
   double scale = 30.5;
   i32 pair[2] = {30, 31};
@@ -326,7 +326,7 @@ public:
 class Part31
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 31;
   double scale = 31.5;
   i32 pair[2] = {31, 32};
@@ -336,7 +336,7 @@ public:
 class Part32 : public Base
 {
 public:
-  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 weight() const override { return this.id + this.pair[1]; }
   i32 id = 32;
   double scale = 32.5;
   i32 pair[2] = {32, 33};
@@ -346,7 +346,7 @@ public:
 class Part33
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 33;
   double scale = 33.5;
   i32 pair[2] = {33, 34};
@@ -356,7 +356,7 @@ public:
 class Part34
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 34;
   double scale = 34.5;
   i32 pair[2] = {34, 35};
@@ -366,7 +366,7 @@ public:
 class Part35
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 35;
   double scale = 35.5;
   i32 pair[2] = {35, 36};
@@ -376,7 +376,7 @@ public:
 class Part36 : public Base
 {
 public:
-  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 weight() const override { return this.id + this.pair[1]; }
   i32 id = 36;
   double scale = 36.5;
   i32 pair[2] = {36, 37};
@@ -386,7 +386,7 @@ public:
 class Part37
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 37;
   double scale = 37.5;
   i32 pair[2] = {37, 38};
@@ -396,7 +396,7 @@ public:
 class Part38
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 38;
   double scale = 38.5;
   i32 pair[2] = {38, 39};
@@ -406,7 +406,7 @@ public:
 class Part39
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 39;
   double scale = 39.5;
   i32 pair[2] = {39, 40};
@@ -416,7 +416,7 @@ public:
 class Part40 : public Base
 {
 public:
-  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 weight() const override { return this.id + this.pair[1]; }
   i32 id = 40;
   double scale = 40.5;
   i32 pair[2] = {40, 41};
@@ -426,7 +426,7 @@ public:
 class Part41
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 41;
   double scale = 41.5;
   i32 pair[2] = {41, 42};
@@ -436,7 +436,7 @@ public:
 class Part42
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 42;
   double scale = 42.5;
   i32 pair[2] = {42, 43};
@@ -446,7 +446,7 @@ public:
 class Part43
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 43;
   double scale = 43.5;
   i32 pair[2] = {43, 44};
@@ -456,7 +456,7 @@ public:
 class Part44 : public Base
 {
 public:
-  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 weight() const override { return this.id + this.pair[1]; }
   i32 id = 44;
   double scale = 44.5;
   i32 pair[2] = {44, 45};
@@ -466,7 +466,7 @@ public:
 class Part45
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 45;
   double scale = 45.5;
   i32 pair[2] = {45, 46};
@@ -476,7 +476,7 @@ public:
 class Part46
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 46;
   double scale = 46.5;
   i32 pair[2] = {46, 47};
@@ -486,7 +486,7 @@ public:
 class Part47
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 47;
   double scale = 47.5;
   i32 pair[2] = {47, 48};
@@ -496,7 +496,7 @@ public:
 class Part48 : public Base
 {
 public:
-  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 weight() const override { return this.id + this.pair[1]; }
   i32 id = 48;
   double scale = 48.5;
   i32 pair[2] = {48, 49};
@@ -506,7 +506,7 @@ public:
 class Part49
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 49;
   double scale = 49.5;
   i32 pair[2] = {49, 50};
@@ -516,7 +516,7 @@ public:
 class Part50
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 50;
   double scale = 50.5;
   i32 pair[2] = {50, 51};
@@ -526,7 +526,7 @@ public:
 class Part51
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 51;
   double scale = 51.5;
   i32 pair[2] = {51, 52};
@@ -536,7 +536,7 @@ public:
 class Part52 : public Base
 {
 public:
-  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 weight() const override { return this.id + this.pair[1]; }
   i32 id = 52;
   double scale = 52.5;
   i32 pair[2] = {52, 53};
@@ -546,7 +546,7 @@ public:
 class Part53
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 53;
   double scale = 53.5;
   i32 pair[2] = {53, 54};
@@ -556,7 +556,7 @@ public:
 class Part54
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 54;
   double scale = 54.5;
   i32 pair[2] = {54, 55};
@@ -566,7 +566,7 @@ public:
 class Part55
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 55;
   double scale = 55.5;
   i32 pair[2] = {55, 56};
@@ -576,7 +576,7 @@ public:
 class Part56 : public Base
 {
 public:
-  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 weight() const override { return this.id + this.pair[1]; }
   i32 id = 56;
   double scale = 56.5;
   i32 pair[2] = {56, 57};
@@ -586,7 +586,7 @@ public:
 class Part57
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 57;
   double scale = 57.5;
   i32 pair[2] = {57, 58};
@@ -596,7 +596,7 @@ public:
 class Part58
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 58;
   double scale = 58.5;
   i32 pair[2] = {58, 59};
@@ -606,7 +606,7 @@ public:
 class Part59
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 59;
   double scale = 59.5;
   i32 pair[2] = {59, 60};
@@ -616,7 +616,7 @@ public:
 class Part60 : public Base
 {
 public:
-  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 weight() const override { return this.id + this.pair[1]; }
   i32 id = 60;
   double scale = 60.5;
   i32 pair[2] = {60, 61};
@@ -626,7 +626,7 @@ public:
 class Part61
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 61;
   double scale = 61.5;
   i32 pair[2] = {61, 62};
@@ -636,7 +636,7 @@ public:
 class Part62
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 62;
   double scale = 62.5;
   i32 pair[2] = {62, 63};
@@ -646,7 +646,7 @@ public:
 class Part63
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 63;
   double scale = 63.5;
   i32 pair[2] = {63, 64};
@@ -656,7 +656,7 @@ public:
 class Part64 : public Base
 {
 public:
-  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 weight() const override { return this.id + this.pair[1]; }
   i32 id = 64;
   double scale = 64.5;
   i32 pair[2] = {64, 65};
@@ -666,7 +666,7 @@ public:
 class Part65
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 65;
   double scale = 65.5;
   i32 pair[2] = {65, 66};
@@ -676,7 +676,7 @@ public:
 class Part66
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 66;
   double scale = 66.5;
   i32 pair[2] = {66, 67};
@@ -686,7 +686,7 @@ public:
 class Part67
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 67;
   double scale = 67.5;
   i32 pair[2] = {67, 68};
@@ -696,7 +696,7 @@ public:
 class Part68 : public Base
 {
 public:
-  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 weight() const override { return this.id + this.pair[1]; }
   i32 id = 68;
   double scale = 68.5;
   i32 pair[2] = {68, 69};
@@ -706,7 +706,7 @@ public:
 class Part69
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 69;
   double scale = 69.5;
   i32 pair[2] = {69, 70};
@@ -716,7 +716,7 @@ public:
 class Part70
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 70;
   double scale = 70.5;
   i32 pair[2] = {70, 71};
@@ -726,7 +726,7 @@ public:
 class Part71
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 71;
   double scale = 71.5;
   i32 pair[2] = {71, 72};
@@ -736,7 +736,7 @@ public:
 class Part72 : public Base
 {
 public:
-  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 weight() const override { return this.id + this.pair[1]; }
   i32 id = 72;
   double scale = 72.5;
   i32 pair[2] = {72, 73};
@@ -746,7 +746,7 @@ public:
 class Part73
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 73;
   double scale = 73.5;
   i32 pair[2] = {73, 74};
@@ -756,7 +756,7 @@ public:
 class Part74
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 74;
   double scale = 74.5;
   i32 pair[2] = {74, 75};
@@ -766,7 +766,7 @@ public:
 class Part75
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 75;
   double scale = 75.5;
   i32 pair[2] = {75, 76};
@@ -776,7 +776,7 @@ public:
 class Part76 : public Base
 {
 public:
-  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 weight() const override { return this.id + this.pair[1]; }
   i32 id = 76;
   double scale = 76.5;
   i32 pair[2] = {76, 77};
@@ -786,7 +786,7 @@ public:
 class Part77
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 77;
   double scale = 77.5;
   i32 pair[2] = {77, 78};
@@ -796,7 +796,7 @@ public:
 class Part78
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 78;
   double scale = 78.5;
   i32 pair[2] = {78, 79};
@@ -806,7 +806,7 @@ public:
 class Part79
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 79;
   double scale = 79.5;
   i32 pair[2] = {79, 80};
@@ -816,7 +816,7 @@ public:
 class Part80 : public Base
 {
 public:
-  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 weight() const override { return this.id + this.pair[1]; }
   i32 id = 80;
   double scale = 80.5;
   i32 pair[2] = {80, 81};
@@ -826,7 +826,7 @@ public:
 class Part81
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 81;
   double scale = 81.5;
   i32 pair[2] = {81, 82};
@@ -836,7 +836,7 @@ public:
 class Part82
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 82;
   double scale = 82.5;
   i32 pair[2] = {82, 83};
@@ -846,7 +846,7 @@ public:
 class Part83
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 83;
   double scale = 83.5;
   i32 pair[2] = {83, 84};
@@ -856,7 +856,7 @@ public:
 class Part84 : public Base
 {
 public:
-  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 weight() const override { return this.id + this.pair[1]; }
   i32 id = 84;
   double scale = 84.5;
   i32 pair[2] = {84, 85};
@@ -866,7 +866,7 @@ public:
 class Part85
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 85;
   double scale = 85.5;
   i32 pair[2] = {85, 86};
@@ -876,7 +876,7 @@ public:
 class Part86
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 86;
   double scale = 86.5;
   i32 pair[2] = {86, 87};
@@ -886,7 +886,7 @@ public:
 class Part87
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 87;
   double scale = 87.5;
   i32 pair[2] = {87, 88};
@@ -896,7 +896,7 @@ public:
 class Part88 : public Base
 {
 public:
-  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 weight() const override { return this.id + this.pair[1]; }
   i32 id = 88;
   double scale = 88.5;
   i32 pair[2] = {88, 89};
@@ -906,7 +906,7 @@ public:
 class Part89
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 89;
   double scale = 89.5;
   i32 pair[2] = {89, 90};
@@ -916,7 +916,7 @@ public:
 class Part90
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 90;
   double scale = 90.5;
   i32 pair[2] = {90, 91};
@@ -926,7 +926,7 @@ public:
 class Part91
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 91;
   double scale = 91.5;
   i32 pair[2] = {91, 92};
@@ -936,7 +936,7 @@ public:
 class Part92 : public Base
 {
 public:
-  i32 weight() const override { return this->id + this->pair[1]; }
+  i32 weight() const override { return this.id + this.pair[1]; }
   i32 id = 92;
   double scale = 92.5;
   i32 pair[2] = {92, 93};
@@ -946,7 +946,7 @@ public:
 class Part93
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 93;
   double scale = 93.5;
   i32 pair[2] = {93, 94};
@@ -956,7 +956,7 @@ public:
 class Part94
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 94;
   double scale = 94.5;
   i32 pair[2] = {94, 95};
@@ -966,7 +966,7 @@ public:
 class Part95
 {
 public:
-  i32 total() const { return this->id + this->pair[1]; }
+  i32 total() const { return this.id + this.pair[1]; }
   i32 id = 95;
   double scale = 95.5;
   i32 pair[2] = {95, 96};

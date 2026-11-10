@@ -2473,7 +2473,12 @@ either: the count stays a safety check, and converted code relying on the old lo
 
 Spec: language/this_warnings_mode.
 
-### 23d. `this` is a reference (decided 2026-11-07; built under --this-reference 2026-11-09)
+### 23d. `this` is a reference (decided 2026-11-07; built under --this-reference 2026-11-09; the only meaning 2026-11-10)
+The only meaning since 2026-11-10 (step 4 of A's plan): every kpp file, the stdlib's too; C++ the converter reads and C headers
+keep C++'s pointer. `--this-reference` and `lib.thisReference` are accepted and change nothing. `--this-pointer` gives the
+program's own files C++'s meaning, for the warnings that convert from it (`--this-warnings`, `--this-reference-warnings`):
+convert.cmd's passes over the converter's output before its this pass. `auto p = this;` copies the object, as any reference
+would, with no error or warning (kovarex, 2026-11-10: "this is a reference, so it tries to do a copy").
 kovarex answered Q13 to Q17 on 2026-11-07, as recommended but for Q13. `this` names the object, everywhere:
 - **Member access is `this.x`** (Q13 a), the only form; `this->x` is the class's `operator->`, as on any
   object. Required `this.` (23c) is this rule's spelling. The game has 182,657 lines with `this->` for the
