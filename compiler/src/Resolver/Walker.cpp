@@ -7255,17 +7255,43 @@ auto GlobalScope::Impl::Walker::callResultOfValue(const Ty* t, CallExpr* c, cons
         return std::string(symbols.name(s));
     return "the function called";
   };
+  // While probing or substituting, an argument no conversion takes to its parameter makes the call none: `requires(F f)
+  // { f(1); }` of an `int (*)(int*)` is unmet ([expr.call] 7). Until 2026-11-10 it held, the count and the reference
+  // bindings alone checked (a body's call is codegen's error, as before). A literal 0 still reaches a pointer.
+  auto argumentsConvert = [&](Span<const Ty*> params)
+  {
+    if (!c || (!probing && !substituting))
+      return true;
+    for (size_t i = 0; i < c->args.size() && i < params.size(); ++i)
+    {
+      Expr* a = c->args[i];
+      const Ty* given = a && a->ty ? argumentType(a, a->ty, types) : nullptr;
+      const Ty* param = params[i];
+      if (!given || !given->isKnown() || types.isDependent(given) || !param || !param->isKnown() || types.isDependent(param) ||
+          param->kind == TyKind::Pack || impl.conversionRank(given, param, 0) < NotViable)
+        continue;
+      Expr* x = a;
+      while (x && x->kind == NodeKind::ParenExpr)
+        x = static_cast<ParenExpr*>(x)->inner;
+      const Ty* target = types.unqualified(types.stripRef(param));
+      if (x && x->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(x)->literalKind == TokenKind::Number &&
+          isZeroLiteral(spelling(static_cast<LiteralExpr*>(x))) && (target->kind == TyKind::Pointer || target->kind == TyKind::MemberPointer))
+        continue;
+      return false;
+    }
+    return true;
+  };
   if (t->kind == TyKind::Function)
   {
     if (c && !checkArgumentCount(nullptr, t, false, c->args, c->token, calleeName()))
       checkReferenceBindings(calleeName(), {}, t->args, c->args);
-    return t->inner;
+    return argumentsConvert(t->args) ? t->inner : unknown(Why::Overload);
   }
   if (t->kind == TyKind::Pointer && t->inner->kind == TyKind::Function)
   {
     if (c && !checkArgumentCount(nullptr, t->inner, false, c->args, c->token, calleeName())) // `pointer(1, 2)` with an `int (*)(int)`
       checkReferenceBindings(calleeName(), {}, t->inner->args, c->args); // `pointer(d)` with a `void (*)(Base&&)`
-    return t->inner->inner;
+    return argumentsConvert(t->inner->args) ? t->inner->inner : unknown(Why::Overload);
   }
   if (t->kind == TyKind::Lambda)
   {
@@ -7273,6 +7299,8 @@ auto GlobalScope::Impl::Walker::callResultOfValue(const Ty* t, CallExpr* c, cons
       return genericLambdaCall(t, c, written);
     if (LambdaExpr* l = Impl::lambdaOf(t); c && l)
       checkReferenceBindings(calleeName(), l->params, t->args, c->args); // `lambda(d)` with `[](Base&& x)`
+    if (!argumentsConvert(t->args))
+      return unknown(Why::Overload);
     return t->inner ? t->inner : unknown(Why::AutoReturn);
   }
   if (t->kind == TyKind::Class)

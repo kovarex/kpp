@@ -1,0 +1,20 @@
+// spec: a call through a function pointer or a lambda whose argument no conversion takes to its parameter does not form: a requirement on it is unmet and a template whose signature makes it gives way ([expr.call] 7, [temp.deduct] 8); a literal 0 still reaches a pointer (clang's output)
+// found by D's concepts battery against clang (2026-11-10): `requires(F f) { f(1); }` held for an `int (*)(int*)`, silently, only the count and the reference bindings checked
+int takesPtr(int* p) { return p ? 1 : 2; }
+int takesInt(int v) { return v; }
+template<typename F>
+concept CallableWithInt = requires(F f) { f(1); };
+template<typename F>
+concept CallableWithZero = requires(F f) { f(0); };
+template<typename F>
+auto viaDecltype(F f, int) -> decltype(f(1), 1) { return 1; }
+template<typename F>
+int viaDecltype(F, long) { return 2; }
+
+int main()
+{
+  auto lam = [](int* p) { return p ? 1 : 2; };
+  std::println(CallableWithInt<int (*)(int*)>, " ", CallableWithInt<int (*)(int)>, " ", CallableWithInt<decltype(lam)>, " ", CallableWithZero<int (*)(int*)>);
+  std::println(viaDecltype(&takesPtr, 0), " ", viaDecltype(&takesInt, 0), " ", viaDecltype(lam, 0));
+  return 0;
+}
