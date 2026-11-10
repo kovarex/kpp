@@ -1,0 +1,20 @@
+// spec: a name nothing declares in a requires-expression is an error where it is written, as in C++ (a name that depends on no parameter is looked up where the template is written, [temp.res]), never a requirement silently false, nor true for a type requirement: an expression requirement, a type requirement, a parameter's type, a nested and a compound requirement, in a concept, in a function template's if constexpr and in a function that is no template. A call whose arguments depend on a parameter is its instances' to judge (argument-dependent lookup may find the function): its requirement is false there, as clang has it (`Dependent<int>`).
+// error: requires_expression_naming_nothing_declared_is_error.kpp:11: error: 'undeclaredThing' is not declared
+// error: requires_expression_naming_nothing_declared_is_error.kpp:12: error: 'UndeclaredType' is not declared
+// error: requires_expression_naming_nothing_declared_is_error.kpp:13: error: 'undeclaredFlag' is not declared
+// error: requires_expression_naming_nothing_declared_is_error.kpp:14: error: 'undeclaredCall' is not declared
+// error: requires_expression_naming_nothing_declared_is_error.kpp:15: error: 'UndeclaredParam' is not declared
+// error: requires_expression_naming_nothing_declared_is_error.kpp:18: error: 'undeclaredInIf' is not declared
+// error: requires_expression_naming_nothing_declared_is_error.kpp:19: error: 'undeclaredInPlain' is not declared
+// factorio: none; found by K's step 4 of the std move, where a bare library name in such places was silently false (clashes/allowed/a.kpp's VoidT, in a specialization)
+template<class U> concept IsInt = std::isSame<U, int>;
+template<class T> concept Plain = requires { undeclaredThing(); };
+template<class T> concept TypeReq = requires { typename UndeclaredType; };
+template<class T> concept Nested = requires { requires undeclaredFlag; };
+template<class T> concept Compound = requires(T t) { { undeclaredCall() } -> IsInt; };
+template<class T> concept InParams = requires(UndeclaredParam p) { p; };
+template<class T> concept Dependent = requires(T t) { foo(t); t.member(); typename T::Inner; };
+static_assert(!Dependent<int>);
+template<class T> int pick() { if constexpr (requires { undeclaredInIf(); }) return 1; else return 2; }
+int plainFunction() { if constexpr (requires { undeclaredInPlain(); }) return 1; else return 2; }
+int main() { return pick<int>() + plainFunction(); }

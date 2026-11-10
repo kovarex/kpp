@@ -78,6 +78,17 @@
     // the class has an operator for it, since a requirement holds exactly when it is valid.
     bool probing = false;
     bool inSpecializationPattern = false; // a class specialization's arguments, which no instance walks again
+    // A probe's names that nothing declares, kept for the walker that made it (a requires-expression in a template's own
+    // walk or in a function that is no template), which reports them: in a requirement that depends on nothing they are
+    // an error as anywhere, never a requirement false (C++'s two phases; until 2026-11-10 silently false, or true for a
+    // type requirement). Null: none kept.
+    struct UndeclaredSeen
+    {
+      QualifiedName name;
+      uint32_t token;
+      bool dependentCall;
+    };
+    std::vector<UndeclaredSeen>* undeclaredSink = nullptr;
     bool walkingQueued = false; // a queued walk (Impl::DeclWalk): its own declaration is walked here, not queued again
 
     // The type of an explicit conversion of operand to t (a cast) while probing: unknown when the
@@ -146,6 +157,10 @@
     void checkNotLibrary(const Type* type, uint32_t token);
 
     void reportUndeclared(const QualifiedName& name, uint32_t token, const NameExpr* at = nullptr, bool dependentCall = false);
+    // The names a variable template specialization's arguments write (`hasBig<T, VoidT<typename T::Big>>`): one nothing
+    // declares is an error, as in C++ (until 2026-11-10 the specialization silently matched nothing, and its instances were
+    // the primary's); one whose qualifier depends on a parameter is its instances' to judge. A class's: walkClass.
+    void checkSpecializationNames(Decl* d, const QualifiedName& name);
 
     // An error in an instance's body: counts once its function is emitted (an `if constexpr` branch
     // the walk could not decide may be the discarded one, and a member of a class template's

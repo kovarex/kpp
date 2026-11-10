@@ -1,0 +1,17 @@
+// spec: a name nothing declares in a specialization's arguments is an error, as in C++: a variable template's partial and explicit specializations, and a class template's partial specialization (walkClass's, since 7e6b1d2bc). A variable template's was taken silently, for a specialization that matched nothing, so its instances were the primary's: `hasBig<Large>` false (clashes/allowed/a.kpp's bare `VoidT` once the library moved into std), `full<int>` 0. A qualifier that depends on a parameter (`typename T::Small`) is its instances' to judge.
+// error: specialization_argument_naming_nothing_declared_is_error.kpp:7: error: 'VoidT' is not declared; did you mean std::VoidT?
+// error: specialization_argument_naming_nothing_declared_is_error.kpp:9: error: 'UndeclaredFull' is not declared
+// error: specialization_argument_naming_nothing_declared_is_error.kpp:11: error: 'UndeclaredInClass' is not declared
+// factorio: none; found by K's step 4 of the std move (K-std-step4-for-threads.md)
+template<class T, class = void> constexpr bool hasBig = false;
+template<class T> constexpr bool hasBig<T, VoidT<typename T::Big>> = true;
+template<class T> constexpr int full = 0;
+template<> constexpr int full<UndeclaredFull> = 1;
+template<class T, class U> struct Pair { };
+template<class T> struct Pair<T, UndeclaredInClass<T>> { };
+template<class T> constexpr bool pointer = false;
+template<class T> constexpr bool pointer<T*> = true;
+template<class T, class = void> constexpr bool hasSmall = false;
+template<class T> constexpr bool hasSmall<T, std::VoidT<typename T::Small>> = true;
+struct Large { using Big = int; using Small = char; };
+int main() { return hasSmall<Large> && pointer<int*> ? 0 : 1; }

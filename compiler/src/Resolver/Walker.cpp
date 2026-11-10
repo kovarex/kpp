@@ -277,6 +277,11 @@ auto GlobalScope::Impl::Walker::scopedEnumeratorNamed(uint32_t symbol) -> std::s
 
 auto GlobalScope::Impl::Walker::reportUndeclared(const QualifiedName& name, uint32_t token, const NameExpr* at, bool dependentCall) -> void
 {
+  if (probing && undeclaredSink && !(at && at == undeclaredLater) && !name.parts.empty() && name.parts[0].symbol != UINT32_MAX)
+  {
+    undeclaredSink->push_back({name, token, dependentCall}); // (the walker that made the probe judges it)
+    return;
+  }
   if ((at && at == undeclaredLater) || !file || file->isImported || probing || name.parts.empty() || name.parts[0].symbol == UINT32_MAX)
     return;
   // `util::LIMIT` of an unscoped library util, whose names are bare (design.md 16).
@@ -1582,7 +1587,7 @@ auto GlobalScope::Impl::Walker::resolveTypeName(NamedType* t) -> void
       // A type name nothing declares is an error where it is written, as an undeclared name is
       // (not `class X` in a template argument, which declares X; not a value trait, isConst<T>,
       // written where a type may be; not in a template's own walk: its instances say).
-      if (!t->elaborated && !impl.boolTraitPart(t->name, scope, &locals, 0) && (!inGenericTemplate() || inSpecializationPattern))
+      if (!t->elaborated && !impl.boolTraitPart(t->name, scope, &locals, 0) && (!inGenericTemplate() || inSpecializationPattern || undeclaredSink))
         reportUndeclared(t->name, t->token);
     }
   }
@@ -9671,6 +9676,46 @@ auto GlobalScope::Impl::Walker::checkNotThis(uint32_t symbol, uint32_t token) ->
     impl.reportCheckerError(file, token, "`This` is a keyword: it names the class the code is in");
 }
 
+auto GlobalScope::Impl::Walker::checkSpecializationNames(Decl* d, const QualifiedName& name) -> void
+{
+  // (a variable's partial specialization is one by the arguments its name has: `template<class T> bool hasBig<T, ...>`)
+  if (probing || activeSubst || !file || file->isImported || name.empty() || !name.last().hasTemplateArgs ||
+      !((d->flags & DF_Specialization) || d->kind == NodeKind::VariableDecl))
+    return;
+  LocalStack own;
+  impl.pushEnclosingTemplateParams(d, own);
+  Scope* at = impl.lexicalScopeOf(d);
+  auto check = [&](const QualifiedName& written, uint32_t token)
+  {
+    if (written.empty() || written.parts[0].symbol == UINT32_MAX || written.typeQualifier || written.last().special)
+      return;
+    if (written.parts.size() == 1 && impl.builtinByName(written.parts[0].symbol))
+      return;
+    if (impl.typeTraitPart(written, at, &own, 0) || impl.boolTraitPart(written, at, &own, 0))
+      return;
+    if (impl.lookupQualified(written, at, &own, 0).found != Found::No)
+      return;
+    // (`typename T::Big`: a qualifier that is a parameter, or names a member of one, is the instances')
+    for (size_t i = 1; i < written.parts.size(); ++i)
+    {
+      QualifiedName qualifier = written;
+      qualifier.parts.count = uint32_t(i);
+      Lookup q = impl.lookupQualified(qualifier, at, &own, 0);
+      if (q.found == Found::Dependent || (q.decl && q.decl->kind == NodeKind::TemplateParamDecl))
+        return;
+    }
+    reportUndeclared(written, token);
+  };
+  for (Node* arg : name.last().templateArgs)
+    forEachNode(arg, [&](Node* n)
+    {
+      if (n->kind == NodeKind::NamedType && !static_cast<NamedType*>(n)->elaborated)
+        check(static_cast<NamedType*>(n)->name, n->token);
+      else if (n->kind == NodeKind::NameExpr)
+        check(static_cast<NameExpr*>(n)->name, n->token);
+    });
+}
+
 auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
 {
   if (!d)
@@ -9678,7 +9723,7 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
   walkWhenCondition(d);
   switch (d->kind) // (nothing in kpp code is named `This`: design.md 23c)
   {
-    case NodeKind::ClassDecl:
+    case NodeKind::ClassDecl: // (a class specialization's arguments: walkClass's inSpecializationPattern)
       if (const QualifiedName& n = static_cast<ClassDecl*>(d)->name; !n.empty())
         checkNotThis(n.last().symbol, d->token);
       break;
@@ -9692,7 +9737,10 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
       break;
     case NodeKind::VariableDecl:
       if (const QualifiedName& n = static_cast<VariableDecl*>(d)->name; !n.empty())
+      {
         checkNotThis(n.last().symbol, d->token);
+        checkSpecializationNames(d, n);
+      }
       break;
     default: break;
   }
@@ -11721,6 +11769,15 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
       probe.thisType = thisType;
       probe.probing = true;
       probe.probedFile = file ? file : probedFile;
+      // In a template's own walk (or a function that is no template): a name nothing declares, unless a call's arguments
+      // depend on the parameters (argument-dependent lookup finds its function in an instance, or none: the requirement
+      // false), is this walk's error. An instance's probe sees the arguments, no longer what depends on them.
+      // (a requires-expression inside such a probe's: its names to the same walker, `requires requires { ... }`)
+      std::vector<UndeclaredSeen> undeclared;
+      if (!probing && !activeSubst && (file || probedFile))
+        probe.undeclaredSink = &undeclared;
+      else if (probing && undeclaredSink)
+        probe.undeclaredSink = undeclaredSink;
       for (Decl* p : r->params)
       {
         // As the walk sees its type (`requires(const T& value)` in `[]<class T>(T) { ... }`, or
@@ -11775,6 +11832,12 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
           if (std::optional<bool> extra = impl.requirementsExtraHold(r, resultTypes, owner, activeSubst ? *activeSubst : none); extra && !*extra)
             satisfied = false;
       }
+      // A nested requirement (`requires flag<T>;`), which requirementsExtraHold evaluates: its names, for the same errors.
+      if (probe.undeclaredSink)
+        for (Expr* n : r->nested)
+          probe.walkExpr(copier.expression(n));
+      for (const UndeclaredSeen& u : undeclared)
+        reportUndeclared(u.name, u.token, nullptr, u.dependentCall);
       r->satisfied = satisfied;
       return record(e, types.boolType());
     }
