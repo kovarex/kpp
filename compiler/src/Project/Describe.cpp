@@ -180,6 +180,14 @@ namespace projects
     return nullptr;
   }
 
+  const Program* findUnavailableCell(const Description& d, const std::string& target, const std::string& configuration)
+  {
+    for (const Program& p : d.unavailable)
+      if (p.name == target && p.configuration == configuration)
+        return &p;
+    return nullptr;
+  }
+
   // The targets, in build.kpp's order.
   std::vector<std::string> targetNames(const Description& d)
   {

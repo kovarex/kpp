@@ -650,6 +650,7 @@ namespace projects
       if (findConfiguration(d, name))
         configurations.push_back(name);
       else if (std::any_of(d.programs.begin(), d.programs.end(), [&](const Program& p) { return p.name == name; }) ||
+               std::any_of(d.unavailable.begin(), d.unavailable.end(), [&](const Program& p) { return p.name == name; }) ||
                (request.test && std::any_of(d.libraries.begin(), d.libraries.end(), [&](const KppLibrary& l) { return l.name == name; })))
         targets.push_back(name);
       else
@@ -674,6 +675,20 @@ namespace projects
       for (const Program& p : d.programs)
         if (p.configuration == configuration && (targets.empty() || std::find(targets.begin(), targets.end(), p.name) != targets.end()))
           chosen.push_back(&p);
+    // A cell that does not exist (Cell::unavailable): named, an error with build.kpp's reason; in a
+    // build of every target, left out with a notice.
+    for (const std::string& configuration : configurations)
+      for (const Program& p : d.unavailable)
+        if (p.configuration == configuration)
+        {
+          if (std::find(targets.begin(), targets.end(), p.name) != targets.end())
+          {
+            fprintf(stderr, "error: %s has no %s configuration: %s\n", p.name.c_str(), configuration.c_str(), p.unavailable.c_str());
+            return 2;
+          }
+          if (targets.empty())
+            printf("kpp: %s (%s) left out: %s\n", p.name.c_str(), configuration.c_str(), p.unavailable.c_str());
+        }
     // kpp options: each chosen cell's libraries, scoped or unscoped, and their options, with their
     // values and who set them (a library project: its own and its libraries', in each configuration).
     if (request.options)

@@ -82,6 +82,7 @@ namespace projects
     std::vector<std::string> natvis; // Executable::natvis's files, relative to the project
     std::string beforeBuild, afterBuild, debugCommand, debugArguments, debugDirectory;
     std::string platform; // the platform configure(cell) saw (Cell::platform): windows, linux, freebsd
+    std::string unavailable; // Cell::unavailable's reason: the cell is not built (Description::unavailable)
     std::vector<Use> uses;
     std::vector<ProjectOption> options; // after resolveUses: its libraries' options, with their values
     std::vector<ProjectLibrary> kppLibraries; // after resolveUses: the kpp libraries it uses
@@ -128,6 +129,7 @@ namespace projects
   {
     std::vector<Configuration> configurations;
     std::vector<Program> programs;
+    std::vector<Program> unavailable; // the cells configure(cell) said do not exist (Cell::unavailable), not in programs
     std::vector<CLibrary> cLibraries;
     std::vector<KppLibrary> libraries;
     Measurement measurement;
@@ -223,6 +225,8 @@ namespace projects
   std::string settingsSource(const fs::path& root, const Request& request);
   const Configuration* findConfiguration(const Description& d, const std::string& name);
   const Program* findCell(const Description& d, const std::string& target, const std::string& configuration);
+  // The cell configure(cell) said does not exist (Cell::unavailable), or null.
+  const Program* findUnavailableCell(const Description& d, const std::string& target, const std::string& configuration);
   std::vector<std::string> targetNames(const Description& d);
   int runAndRead(const std::string& command, std::string& out);
   // A description's cache: cache, else root's build\kpp (describe()).

@@ -614,7 +614,9 @@ if (Run 'syslibs')
 # and fastdebug (debug's constants, optimized: no incremental link's .ilk), config constants set for
 # the project, a configuration, a target and one cell (configure), the command line's --config over
 # them all, `kpp TARGET CONFIGURATION` in either order, the Visual Studio solution's configurations,
-# and three errors: a base that is not declared, a target named as a configuration, an unknown name.
+# a cell that does not exist (Cell::unavailable: named, an error with its reason; in a build of every
+# target, left out with a notice; no such configuration in its Visual Studio project), and three
+# errors: a base that is not declared, a target named as a configuration, an unknown name.
 if (Run 'matrix')
 {
   $matrix = Join-Path $work 'matrix'
@@ -647,6 +649,9 @@ void configure(Cell& cell)
 {
   if (cell.configuration.name == "release" && cell.target.name == "main")
     cell.config("steam", true);
+  // (as Factorio's tests in final: a cell that does not exist)
+  if (cell.configuration.name == "fastdebug" && cell.target.name == "checks")
+    cell.unavailable("checks is built in debug and release only");
   // Factorio's layout, a name per configuration that is not the configuration's own (bin\Releasex64):
   // made here, for the build step and the debugger alike.
   if (cell.target.name == "main")
@@ -669,10 +674,15 @@ void configure(Cell& cell)
       if ($code -ne 0 -or $output[-1] -ne $case[1]) { Fail "kpp $($case[0] -join ' ') --run printed '$($output[-1])', not '$($case[1])'`n$($output -join "`n")" }
     }
     if (-not (Test-Path 'build\debug\main.ilk') -or (Test-Path 'build\fastdebug\main.ilk')) { Fail 'fastdebug is not optimized: debug has main.ilk, fastdebug must not' }
+    $output = (Kpp @('checks', 'fastdebug', '--no-server')) -join "`n"
+    if ($code -ne 2 -or $output -notmatch 'error: checks has no fastdebug configuration: checks is built in debug and release only') { Fail "kpp checks fastdebug, a cell that does not exist: exit $code`n$output" }
+    $output = (Kpp @('fastdebug', '--no-server')) -join "`n"
+    if ($code -ne 0 -or $output -notmatch 'kpp: checks \(fastdebug\) left out: checks is built in debug and release only' -or (Test-Path 'build\fastdebug\checks.exe')) { Fail "kpp fastdebug, every target: exit $code`n$output" }
     $output = Kpp @('--no-server', '--generate-visual-studio-files')
     $solution = Get-Content 'build\visual-studio\matrix.sln' -Raw
     $project = Get-Content 'build\visual-studio\main.vcxproj' -Raw
     if ($code -ne 0 -or $solution -notmatch 'Fastdebug\|x64 = Fastdebug\|x64' -or $project -notmatch 'main fastdebug --msvc-diagnostics') { Fail "the solution's configurations`n$($output -join "`n")" }
+    if ((Get-Content 'build\visual-studio\checks.vcxproj' -Raw) -match 'checks fastdebug') { Fail 'checks.vcxproj has a fastdebug configuration, which build.kpp says does not exist' }
     # Each configuration's debugger starts its own copy: configure(Cell&)'s name, debug()'s {configuration}.
     foreach ($copy in 'bin\Debugx64\main.exe', 'bin\Releasex64\main.exe', 'bin\FastDebugx64\main.exe', 'copies\release\checks.exe')
     {

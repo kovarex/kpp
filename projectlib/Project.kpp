@@ -175,6 +175,13 @@ struct Cell
   // around a cmd command). A --target that configure(cell) adds is not in it, and kpp stops the build
   // when the platform it builds for is not this one.
   Platform platform = Platform::Windows;
+  // Why this cell is not built (unavailable()): "" when it is.
+  std::String unavailableReason;
+
+  // This cell does not exist: `kpp TARGET CONFIGURATION` names the reason instead of building it, a
+  // build of several cells leaves it out, and the IDE files have no such configuration of the target
+  // (Factorio's tests in final, which its FinalRelease leaves out what they use).
+  void unavailable(std::StringView reason) { this.unavailableReason = reason; }
 
   // A config:: constant of this cell, over the target's.
   void config(std::StringView name, bool value) { kppConfig(this.configs, name, value ? "true" : "false"); }
@@ -652,6 +659,7 @@ void kppCell(std::String& out, const Project& project, const Executable& target,
   out << resolved.name;
   out << '\n';
   kppLine(out, "platform", config::platformName(cell.platform));
+  kppLine(out, "unavailable", cell.unavailableReason);
   kppConfigurationLines(out, project, cell.configuration);
   kppConfigs(out, "target", e.configs);
   kppConfigs(out, "cell", cell.configs);

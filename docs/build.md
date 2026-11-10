@@ -803,7 +803,12 @@ void configure(Cell& cell)
   cell.target.afterBuild(...)`. describe.txt keeps it (`platform linux`), and kpp checks it against
   the platform it builds the cell for: a `--target` that configure(cell) adds itself comes too late
   for `cell.platform`, and that build stops before it starts, never a Linux build that runs Windows'
-  steps (2026-11-05, for the game's Linux build). A build.kpp without one gets projectlib's,
+  steps (2026-11-05, for the game's Linux build). `cell.unavailable(REASON)` says the cell does not
+  exist: `kpp TARGET CONFIGURATION` is the error `TARGET has no CONFIGURATION configuration: REASON`
+  (exit code 2) instead of a build, a build of every target leaves it out with the notice `kpp:
+  TARGET (CONFIGURATION) left out: REASON`, and the target's Visual Studio project has no such
+  configuration (2026-11-10: factorio-test in final, whose code FinalRelease leaves out, as Factorio's
+  own build has no FinalRelease of its tests). describe.txt keeps it (`unavailable REASON`). A build.kpp without one gets projectlib's,
   a template that does nothing (a function is chosen over a template). It runs for every cell, not
   lazily for the ones built: the description is computed once and kept (above), the Visual Studio
   files and the language server need every cell, and a cell costs little. Measured 2026-11-01 on

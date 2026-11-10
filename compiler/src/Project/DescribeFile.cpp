@@ -91,6 +91,7 @@ namespace projects
       {"cinclude", InProgram, [](Reading& r, const std::string& v) { r.d.programs.back().cIncludes.push_back(v); }},
       {"before-build", InProgram, [](Reading& r, const std::string& v) { r.d.programs.back().beforeBuild = v; }},
       {"platform", InProgram, [](Reading& r, const std::string& v) { r.d.programs.back().platform = v; }},
+      {"unavailable", InProgram, [](Reading& r, const std::string& v) { r.d.programs.back().unavailable = v; }},
       {"after-build", InProgram, [](Reading& r, const std::string& v) { r.d.programs.back().afterBuild = v; }},
       {"debug-command", InProgram, [](Reading& r, const std::string& v) { r.d.programs.back().debugCommand = v; }},
       {"debug-arguments", InProgram, [](Reading& r, const std::string& v) { r.d.programs.back().debugArguments = v; }},
@@ -180,6 +181,15 @@ namespace projects
         r.error.clear();
       }
     }
+    // (a cell that does not exist is kept apart: every use of programs builds, checks or lists cells)
+    for (size_t i = 0; i < d.programs.size();)
+      if (!d.programs[i].unavailable.empty())
+      {
+        d.unavailable.push_back(std::move(d.programs[i]));
+        d.programs.erase(d.programs.begin() + i);
+      }
+      else
+        ++i;
     return d;
   }
 }

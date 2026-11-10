@@ -232,6 +232,11 @@ bool projectCheckArguments(const std::filesystem::path& directory, const Project
   else if (!check.target.empty())
   {
     const Program* named = findCell(d, check.target, configuration->name);
+    if (const Program* none = named ? nullptr : findUnavailableCell(d, check.target, configuration->name))
+    {
+      error = check.target + " has no " + configuration->name + " configuration: " + none->unavailable;
+      return true;
+    }
     if (!named)
     {
       error = "build.kpp describes no executable " + check.target;
