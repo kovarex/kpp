@@ -1230,8 +1230,10 @@ auto GlobalScope::Impl::appendDefaultPatterns(Decl* primary, std::vector<const T
 }
 
 // The decltype types a template argument writes (a type, or an expression's: none), through every
-// type and template argument list it holds: `void_t<decltype(static_cast<T*>(nullptr)->size())>`.
-static void decltypesIn(Node* n, std::vector<DecltypeType*>& out, int depth = 0)
+// type and template argument list it holds: `void_t<decltype(static_cast<T*>(nullptr)->size())>`;
+// with qualified, the qualified names of types too (`void_t<typename T::type>`), which an alias
+// template's arguments may hold and its type drop.
+static void decltypesIn(Node* n, std::vector<Type*>& out, int depth = 0, bool qualified = false)
 {
   if (!n || depth > 32)
     return;
@@ -1239,21 +1241,26 @@ static void decltypesIn(Node* n, std::vector<DecltypeType*>& out, int depth = 0)
   {
     case NodeKind::DecltypeType: out.push_back(static_cast<DecltypeType*>(n)); return;
     case NodeKind::NamedType:
-      for (const NamePart& part : static_cast<NamedType*>(n)->name.parts)
+    {
+      auto* named = static_cast<NamedType*>(n);
+      if (qualified && (named->name.parts.size() > 1 || named->name.typeQualifier))
+        out.push_back(named);
+      for (const NamePart& part : named->name.parts)
         for (Node* a : part.templateArgs)
-          decltypesIn(a, out, depth + 1);
+          decltypesIn(a, out, depth + 1, qualified);
       return;
-    case NodeKind::PointerType: decltypesIn(static_cast<PointerType*>(n)->pointee, out, depth + 1); return;
-    case NodeKind::LRefType: decltypesIn(static_cast<LRefType*>(n)->referenced, out, depth + 1); return;
-    case NodeKind::RRefType: decltypesIn(static_cast<RRefType*>(n)->referenced, out, depth + 1); return;
-    case NodeKind::ConstType: decltypesIn(static_cast<ConstType*>(n)->inner, out, depth + 1); return;
-    case NodeKind::ArrayType: decltypesIn(static_cast<ArrayType*>(n)->element, out, depth + 1); return;
-    case NodeKind::FunctionType: decltypesIn(static_cast<FunctionType*>(n)->result, out, depth + 1); return;
+    }
+    case NodeKind::PointerType: decltypesIn(static_cast<PointerType*>(n)->pointee, out, depth + 1, qualified); return;
+    case NodeKind::LRefType: decltypesIn(static_cast<LRefType*>(n)->referenced, out, depth + 1, qualified); return;
+    case NodeKind::RRefType: decltypesIn(static_cast<RRefType*>(n)->referenced, out, depth + 1, qualified); return;
+    case NodeKind::ConstType: decltypesIn(static_cast<ConstType*>(n)->inner, out, depth + 1, qualified); return;
+    case NodeKind::ArrayType: decltypesIn(static_cast<ArrayType*>(n)->element, out, depth + 1, qualified); return;
+    case NodeKind::FunctionType: decltypesIn(static_cast<FunctionType*>(n)->result, out, depth + 1, qualified); return;
     case NodeKind::MemberPointerType:
-      decltypesIn(static_cast<MemberPointerType*>(n)->classType, out, depth + 1);
-      decltypesIn(static_cast<MemberPointerType*>(n)->pointee, out, depth + 1);
+      decltypesIn(static_cast<MemberPointerType*>(n)->classType, out, depth + 1, qualified);
+      decltypesIn(static_cast<MemberPointerType*>(n)->pointee, out, depth + 1, qualified);
       return;
-    case NodeKind::PackType: decltypesIn(static_cast<PackType*>(n)->pattern, out, depth + 1); return;
+    case NodeKind::PackType: decltypesIn(static_cast<PackType*>(n)->pattern, out, depth + 1, qualified); return;
     default: return;
   }
 }
@@ -1392,28 +1399,29 @@ auto GlobalScope::Impl::matchPatterns(ClassDecl* c, Decl* primary, const std::ve
       return false;
     deduced.push_back(t);
   }
-  // C++'s substitution failure ([temp.class.spec.match] 2, [temp.deduct] 8): a decltype the
-  // arguments write must form under the arguments deduced, or the specialization does not match.
-  // `HasSize<T, void_t<decltype(static_cast<T*>(nullptr)->size())>>` (the detection idiom) made
-  // its second pattern void, the alias dropping its argument, so that it matched every T: D,
-  // 2026-11-06, HasSize<B>::value was true for a B without size(). Only for arguments all known
-  // (an instance's, not another specialization's patterns in partial ordering).
+  // C++'s substitution failure ([temp.class.spec.match] 2, [temp.deduct] 8): a decltype or a qualified
+  // type name the arguments write must form under the arguments deduced, or the specialization does
+  // not match. `HasSize<T, void_t<decltype(static_cast<T*>(nullptr)->size())>>` (the detection idiom)
+  // made its second pattern void, the alias dropping its argument, so that it matched every T: D,
+  // 2026-11-06, HasSize<B>::value was true for a B without size(); so did `void_t<typename T::type>`
+  // until 2026-11-10 (HasType<int> true). Only for arguments all known (an instance's, not another
+  // specialization's patterns in partial ordering).
   bool concrete = true;
   for (const Subst::Pair& q : s.pairs)
     concrete = concrete && q.type && q.type->isKnown() && !types.isDependent(q.type);
   if (concrete)
   {
-    std::vector<DecltypeType*> decltypes;
+    std::vector<Type*> forming;
     for (Node* a : part.templateArgs)
-      decltypesIn(a, decltypes);
-    if (!decltypes.empty())
+      decltypesIn(a, forming, 0, true);
+    if (!forming.empty())
     {
       LocalStack own;
       for (Decl* p : c->templateParams)
         own.push(static_cast<TemplateParamDecl*>(p)->name, p);
       TypeContext sctx{lexicalScopeOf(c), &own, &s, c->file ? c->file->tokens : nullptr, c->file ? c->file->text : std::string_view()};
-      for (DecltypeType* d : decltypes)
-        if (const Ty* t = convertType(d, sctx, depth + 1); !t || !t->isKnown() || types.isDependent(t) || mentionsUnknown(t))
+      for (Type* d : forming)
+        if (const Ty* t = convertType(d, sctx, depth + 1); !t || !t->isKnown() || types.isDependent(t) || mentionsUnknown(t) || namesMissingMember(t))
           return false;
     }
   }

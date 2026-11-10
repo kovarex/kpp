@@ -1,0 +1,42 @@
+// spec: the detection idiom over a member type, `struct HasType<T, VoidT<typename T::type>>`, matches only a T that has the member: the alias's type drops its argument, but the argument must still form for the specialization to match ([temp.class.spec.match] 2, [temp.alias]; CWG 1558); for a class without it, an int, a pointer and a double, and through a nested class (clang's output)
+// found by D's detection battery against clang (2026-11-10): the specialization matched every T, as `VoidT<typename T::type>` was void whatever T was, silently (HasType<int> true)
+template<typename...>
+using VoidT = void;
+template<typename T, typename = void>
+struct HasType
+{
+  static constexpr bool value = false;
+};
+template<typename T>
+struct HasType<T, VoidT<typename T::type>>
+{
+  static constexpr bool value = true;
+};
+template<typename T, typename = void>
+struct HasInner
+{
+  static constexpr bool value = false;
+};
+template<typename T>
+struct HasInner<T, VoidT<typename T::Inner::type>>
+{
+  static constexpr bool value = true;
+};
+struct S
+{
+  using type = int;
+  struct Inner
+  {
+    using type = char;
+  };
+};
+struct E
+{
+};
+
+int main()
+{
+  std::println(HasType<S>::value, " ", HasType<E>::value, " ", HasType<int>::value, " ", HasType<int*>::value, " ", HasType<double>::value);
+  std::println(HasInner<S>::value, " ", HasInner<E>::value, " ", HasInner<int>::value);
+  return 0;
+}
