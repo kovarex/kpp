@@ -88,15 +88,8 @@
 
   // The namespaces argument-dependent lookup searches for an argument of type t: a class's or an
   // enumeration's innermost enclosing namespace, the global one too, and those of a class
-  // instance's type arguments. Without --std-scope the library's classes, declared in the global
-  // namespace as if they were std's, have none: no program's function is found through them.
+  // instance's type arguments.
   void associatedNamespaces(const Ty* t, std::vector<Scope*>& out, int depth = 0, std::vector<const Ty*>* visited = nullptr);
-
-  // l without the library's functions: the program's functions of the global namespace, which is
-  // all argument-dependent lookup finds there (without --std-scope the library's are declared
-  // there as well, as if they were std's). Its decl is null when none is left. Kept with the
-  // merged sets (forgetMergedOverloads).
-  Lookup withoutLibraryFunctions(const Lookup& l);
 
   // The friend functions defined in a class (hidden friends: static members to the compiler, the
   // parser's DF_Static) named symbol, which no lookup finds but argument-dependent lookup through an
@@ -214,19 +207,6 @@
   // A lookup in s, and in the global scope (`::helper`) first in the private names of the file the
   // lookup from context is made for (design.md 15), which hide the global ones there.
   bool lookupInScopeOrPrivate(Scope* s, Scope* context, uint32_t symbol, Lookup& out, int depth);
-
-  // --std-scope's bridge, until every program writes std:: (the fallback of the move into std): a name the global
-  // scope does not declare is looked up in std, and functions of a name both declare are one overload set, as
-  // they were when the library's names were global. `out` is what the global scope found (found); whether there is
-  // anything now.
-  bool bridgedToStd(uint32_t symbol, Lookup& out, bool found, int depth, Scope* context);
-
-  // The name with the bridge out of it: what it finds once every program writes std::.
-  Lookup lookupWithoutBridge(uint32_t symbol, Scope* context, const LocalStack* locals, bool qualifierOnly, bool global);
-
-  // The same bridge for a declaration: `template<> struct Hash<Key>` written bare specializes std's Hash, when the
-  // global scope has no such template of its own.
-  void moveBareSpecializationsToStd();
 
   // A class specialization at the top level whose template nothing there declares: an error (one in std is std::X).
   void reportSpecializationsOfNothing();

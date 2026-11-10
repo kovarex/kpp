@@ -1,6 +1,5 @@
-// spec: --std-scope: a program's own Exception holding a String is not taken for the library's (the code generator reads the library's message by its class)
+// spec: a program's own Exception holding a String is not taken for the library's (the code generator reads the library's message by its class)
 // factorio: none yet
-// kpp: --std-scope
 struct Exception
 {
   std::String text;

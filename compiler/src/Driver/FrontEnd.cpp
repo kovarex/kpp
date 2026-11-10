@@ -281,9 +281,8 @@ void runParse(Build& build)
       parsed[i]->lambdaTag = i < build.lambdaTags.size() ? build.lambdaTags[i] : 0;
       std::string library = options.libraryRoot.string();
       parsed[i]->isLibrary = !library.empty() && parsed[i]->path.compare(0, library.size(), library) == 0;
-      parsed[i]->stdScope = options.stdScope;
-      // --std-scope: the standard library is the scoped library std (design.md 16), but for C's names, which clib/ declares.
-      if (options.stdScope && parsed[i]->isLibrary)
+      // The standard library is the scoped library std (design.md 16), but for C's names, which clib/ declares.
+      if (parsed[i]->isLibrary)
       {
         std::string_view inside = std::string_view(parsed[i]->path).substr(library.size());
         while (!inside.empty() && (inside[0] == '/' || inside[0] == '\\'))
@@ -473,18 +472,12 @@ void runResolve(Build& build)
     global.enableAccessErrors(); // (not the C++ a conversion reads: its friends, its quirks)
   if (options.structRule && options.convertDir.empty()) // (not the C++ a conversion reads, whose structs may break it)
     global.enableStructRule();
-  const char* stdUses = getenv("KPP_STD_USES"); // (the rewrite to std::, tools/std/rewrite.py: each compile leaves a file there)
   global.resolveAll(parsed.size(), options.threads, [&](size_t i) { global.resolveFile(*parsed[i], lexed[i].tokens, files[i].text, stats[i]); });
   build.resolveTime = seconds(Clock::now() - start);
   // What the reports count is the resolve's: codegen instantiates more afterwards.
   global.resolveDone();
   build.instantiation = global.instantiationStats();
   build.instanceStats = global.instanceStats();
-  if (stdUses)
-  {
-    std::ofstream out(std::filesystem::path(stdUses) / (std::to_string(std::random_device{}()) + "-" + std::to_string(std::random_device{}()) + ".txt"), std::ios::binary);
-    out << global.stdUsesText();
-  }
   reportResolve(build);
 }
 

@@ -741,15 +741,6 @@ auto GlobalScope::Impl::lookupUnqualified(uint32_t symbol, Scope* context, const
       via = viaFound ? sameNameTogether(via, one, depth) : one;
       viaFound = true;
     }
-    if (s == &root && stdScope)
-    {
-      Lookup bridged = own;
-      if (bridgedToStd(symbol, bridged, ownFound, depth, context) && found(bridged))
-      {
-        own = bridged;
-        ownFound = true;
-      }
-    }
     if (ownFound && viaFound)
       return sameNameTogether(own, via, depth);
     if (ownFound)
@@ -852,9 +843,8 @@ auto GlobalScope::Impl::associatedNamespaces(const Ty* t, std::vector<Scope*>& o
   while (s && s->kind != ScopeKind::Namespace)
     s = s->parent;
   // (The global namespace is one as any other ([basic.lookup.argdep] 2): a program's `hashOf(Key)` for its global Key, from
-  // a namespace with a hashOf of its own, or from std. Not through the library's classes, without --std-scope declared there as if they were std's.)
-  bool libraryClassAtRoot = s == &root && !stdScope && t->decl->file && t->decl->file->isLibrary;
-  if (s && !libraryClassAtRoot && std::find(out.begin(), out.end(), s) == out.end())
+  // a namespace with a hashOf of its own, or from std.)
+  if (s && std::find(out.begin(), out.end(), s) == out.end())
     out.push_back(s);
   if (t->kind == TyKind::Class)
   {
@@ -1038,32 +1028,6 @@ auto GlobalScope::Impl::mergeOverloads(const Lookup& a, const Lookup& b) -> Look
   }
   Lookup out = a;
   out.overloads = merged.get();
-  return out;
-}
-
-auto GlobalScope::Impl::withoutLibraryFunctions(const Lookup& l) -> Lookup
-{
-  auto ofLibrary = [](const Entry& e) { return e.decl && e.decl->file && e.decl->file->isLibrary; };
-  if (!l.overloads || std::none_of(l.overloads->begin(), l.overloads->end(), ofLibrary))
-    return l;
-  std::lock_guard lock(mergedOverloadsMutex);
-  std::unique_ptr<std::vector<Entry>>& kept = mergedOverloads[{l.overloads, nullptr}]; // (a merge's second set is never null)
-  if (!kept)
-  {
-    kept = std::make_unique<std::vector<Entry>>();
-    for (const Entry& e : *l.overloads)
-      if (!ofLibrary(e))
-        kept->push_back(e);
-  }
-  Lookup out = l;
-  out.overloads = kept.get();
-  out.decl = nullptr;
-  if (!kept->empty())
-  {
-    Entry e = pick(*kept);
-    out.decl = e.decl;
-    out.scope = e.scope ? e.scope : scopeOfEntry(e, 0);
-  }
   return out;
 }
 
@@ -1634,64 +1598,6 @@ auto GlobalScope::Impl::lookupInScopeOrPrivate(Scope* s, Scope* context, uint32_
   return lookupInScope(s, symbol, out, depth);
 }
 
-static thread_local bool bridgeOff = false;
-
-auto GlobalScope::Impl::lookupWithoutBridge(uint32_t symbol, Scope* context, const LocalStack* locals, bool qualifierOnly, bool global) -> Lookup
-{
-  bridgeOff = true;
-  Lookup l;
-  if (global)
-    lookupInScope(&root, symbol, l, 0);
-  else
-    l = lookupUnqualified(symbol, context, locals, 0, qualifierOnly);
-  bridgeOff = false;
-  return l;
-}
-
-auto GlobalScope::Impl::bridgedToStd(uint32_t symbol, Lookup& out, bool found, int depth, Scope* context) -> bool
-{
-  (void)context;
-  if (noBridge)
-    return found;
-  Lookup library;
-  if (!stdScope || bridgeOff || !lookupInScope(stdScope, symbol, library, depth))
-    return found;
-  if (!found)
-    out = library;
-  else if (out.decl && out.decl->kind == NodeKind::FunctionDecl && library.decl && library.decl->kind == NodeKind::FunctionDecl)
-    out = sameNameTogether(out, library, depth);
-  return true;
-}
-
-auto GlobalScope::Impl::moveBareSpecializationsToStd() -> void
-{
-  if (!stdScope || noBridge)
-    return;
-  for (uint32_t i = 0; i < root.shardCount; ++i)
-  {
-    std::vector<uint32_t> emptied;
-    for (auto& [symbol, entries] : root.shards[i].map)
-    {
-      auto isSpecialization = [](const Entry& e) { return e.decl && e.decl->kind == NodeKind::ClassDecl && (e.decl->flags & DF_Specialization); };
-      if (std::none_of(entries.begin(), entries.end(), isSpecialization) || !stdScope->find(symbol) ||
-          std::any_of(entries.begin(), entries.end(), [](const Entry& e) { return e.decl && e.decl->kind == NodeKind::ClassDecl && !(e.decl->flags & DF_Specialization); }))
-        continue;
-      for (const Entry& e : entries)
-        if (isSpecialization(e))
-        {
-          stdScope->add(symbol, e.decl, e.scope);
-          if (recordingStdUses && e.decl->file && !e.decl->file->isLibrary)
-            stdUses.push_back({e.decl->file, e.decl->token, 'S', symbol, nullptr});
-        }
-      entries.erase(std::remove_if(entries.begin(), entries.end(), isSpecialization), entries.end());
-      if (entries.empty())
-        emptied.push_back(symbol);
-    }
-    for (uint32_t symbol : emptied)
-      root.shards[i].map.erase(symbol);
-  }
-}
-
 auto GlobalScope::Impl::reportSpecializationsOfNothing() -> void
 {
   for (uint32_t i = 0; i < root.shardCount; ++i)
@@ -1785,8 +1691,6 @@ auto GlobalScope::Impl::lookupWritten(const QualifiedName& name, Scope* context,
     if (current)
     {
       lookupInScopeOrPrivate(current, context, part.symbol, step, depth);
-      if (i == 0 && current == &root && stdScope)
-        bridgedToStd(part.symbol, step, step.found != Found::No, depth, context);
       if (currentTy)
         lookupThroughBaseInstances(currentTy, part.symbol, step, depth); // `G<0>::type` with G<N> : E<N> and E<0> a specialisation
       if (step.found == Found::No)

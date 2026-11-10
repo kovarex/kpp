@@ -50,8 +50,6 @@ void usage(FILE* out)
           "                list of the marks it may drop; docs/design.md \"Explicit by default\"); no other change\n"
           "  --this-warnings  warn of each unqualified name that finds a data member or a member function, which\n"
           "                required `this.` writes `this.x` (the readme's Planned); no error, no other change\n"
-          "  --no-std-scope  the standard library's names global, not in the scoped library std (docs/design.md 16),\n"
-          "                to compare with; in std a bare name that finds nothing still finds the library's, until the rewrite is done\n"
           "  --this-pointer  the program's own files keep C++'s `this` (the pointer, a bare name a member), for\n"
           "                --this-warnings and --this-reference-warnings, the warnings that convert from it (docs/design.md 23c, 23d)\n"
           "  --plain-enum-warnings  warn of each plain (unscoped) enum and each use of its enumerators by kind (bits,\n"

@@ -1,6 +1,5 @@
-// spec: --std-scope: std::Conditional and the other built-in traits work qualified, and a program's own template of such a name is that template, never the trait (a silent wrong answer otherwise)
+// spec: std::Conditional and the other built-in traits work qualified, and a program's own template of such a name is that template, never the trait (a silent wrong answer otherwise)
 // factorio: none yet
-// kpp: --std-scope
 template<bool B, typename T, typename F> struct Conditional
 {
   static constexpr int mine = 11;

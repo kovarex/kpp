@@ -526,13 +526,13 @@ payload, stored as the tag plus storage for the largest alternative.
 ```
 union enum Property : u8
 {
-  { {int, Integer}, {double, Double}, {String, Text}, {String, Comment} }
-  String str() const;
+  { {int, Integer}, {double, Double}, {std::String, Text}, {std::String, Comment} }
+  std::String str() const;
 };
 Property p;
 p[Integer] = 5;                        // sets the tag, constructs the value (destroying the old one)
 if (p == Property::Integer) use(p[Integer]);   // p[Integer] on another tag: release_assert
-switch (p) { case Integer: return format("{}", p[Integer]); case Text: return p[Text]; ... }
+switch (p) { case Integer: return std::format("{}", p[Integer]); case Text: return p[Text]; ... }
 ```
 Alternatives are listed by `alternatives(Property)` for reflection. `InputAction`,
 `EditorAction`, `NetworkMessage`, `UpgradableEntity` in Factorio are this shape.
@@ -1977,10 +1977,10 @@ The compiler's built-in traits belong to `std` as the library's templates do: `s
 what the language means by a library name is that name, not whatever the program calls so (`T^` is `::std::UniquePtr<T>`).
 
 Built (2026-11-10): every tree writes `std::`, and a bare `String` is "'String' is not declared; did you mean std::String?".
-A class in a message is `std::Map`. `KPP_STD_BRIDGE=1` brings back, for one compile, the bridge the move went through (a name
-the global scope lacks is std's, functions of one name in both one overload set, a bare specialization std's template), so
-that `tools/std/rewrite.py` can rewrite a branch written before the move; never in a build. `--no-std-scope` compiles the
-library's names as global, to compare with (nothing written `std::` compiles so).
+A class in a message is `std::Map`. The bridge the move went through (a name the global scope lacks is std's), its recorder
+(`KPP_STD_USES`) and `--no-std-scope` are gone (step 6, 2026-11-10). A branch written before the move is brought over by
+compiling it and running `tools/std/rewrite.py ERRORS` on the errors, which writes std:: before each name a "did you mean
+std::X?" names; again until none is left.
 
 Argument-dependent lookup follows C++ here: a base class's namespace is associated, and with `std` scoped the global namespace is
 one (a library template's `hashOf(key)` finds a program's global `hashOf(Key)`).
@@ -3811,7 +3811,7 @@ the arguments after the file; the exit code is the program's.
 // hello.kpp
 int main(int argc, char** argv)
 {
-  println("hello, ", argc - 1, " arguments");
+  std::println("hello, ", argc - 1, " arguments");
   return 0;
 }
 ```

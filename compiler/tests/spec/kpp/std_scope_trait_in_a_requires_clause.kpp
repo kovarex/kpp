@@ -1,6 +1,5 @@
-// spec: --std-scope: a requires clause evaluates a built-in trait written qualified, std::isSigned<T>, as it does a bare one
+// spec: a requires clause evaluates a built-in trait written qualified, std::isSigned<T>, as it does a bare one
 // factorio: StringUtil's strToIntInternal, and every other converted requires clause over a trait
-// kpp: --std-scope
 template<typename T> requires std::isSigned<T>
 T pick(T a)
 {

@@ -1,6 +1,5 @@
-// spec: --std-scope: a library template's hashOf(key) finds a program's global hashOf(Key) through the key's namespace, the global one, beside the library's own overloads ([basic.lookup.argdep])
+// spec: a library template's hashOf(key) finds a program's global hashOf(Key) through the key's namespace, the global one, beside the library's own overloads ([basic.lookup.argdep])
 // factorio: none yet
-// kpp: --std-scope
 struct Key
 {
   int value;

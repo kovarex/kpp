@@ -1568,7 +1568,7 @@ namespace
         optional.templateArgs = makeSpanOf(std::vector<Node*>{selfArg});
         NamedType* result = node<NamedType>(start);
         result->name.parts = libraryNameParts(optional);
-        result->name.global = out.stdScope;
+        result->name.global = true;
         from->returnType = result;
         BuiltinType* ch = node<BuiltinType>(start);
         ch->keyword = Kw::char_;
@@ -7381,12 +7381,10 @@ namespace
     uint8_t pendingPack = 0;         // C: __kpp_pack(n) after `struct`: the next class's ClassDecl::pack.
     uint32_t pendingDeprecation = UINT32_MAX; // [[deprecated("why")]]: why's token
 
-    // A name the language itself means as the library's (`T^`'s UniquePtr, fromStr's Optional): `std::X` under
-    // --std-scope, written ::-global by the caller, so that a program's own X never changes what it means.
+    // A name the language itself means as the library's (`T^`'s UniquePtr, fromStr's Optional): `std::X`, written
+    // ::-global by the caller, so that a program's own X never changes what it means.
     Span<NamePart> libraryNameParts(const NamePart& part)
     {
-      if (!out.stdScope)
-        return makeSpanOf(std::vector<NamePart>{part});
       NamePart scope;
       scope.symbol = kwStd;
       return makeSpanOf(std::vector<NamePart>{scope, part});

@@ -676,7 +676,6 @@ def main():
     ap.add_argument("--no-doc", action="store_true")
     ap.add_argument("--release", action="store_true")
     ap.add_argument("--debug-info", action="store_true")
-    ap.add_argument("--std-scope", action="store_true")
     ap.add_argument("--target", choices=["linux", "linux-arm64", "freebsd", "windows-gnu", "macos", "macos-x64"])
     ap.add_argument("--shard", default="")
     ap.add_argument("--out", default="")
@@ -706,7 +705,7 @@ def main():
         print("spec: FAILED: bad --shard"); return 2
     if shard:
         args.no_doc = True
-    for flag in ("release", "debug_info", "std_scope"):
+    for flag in ("release", "debug_info"):
         if getattr(args, flag):
             option = "--" + flag.replace("_", "-")
             EXTRA.append(option)

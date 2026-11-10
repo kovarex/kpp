@@ -84,8 +84,6 @@ int compile(int argc, char** argv)
       options.thisReference = true; // (the only meaning: accepted, no change)
     else if (arg == "--this-pointer")
       options.thisPointer = true;
-    else if (arg == "--std-scope" || arg == "--no-std-scope")
-      options.stdScope = arg == "--std-scope";
     else if (arg == "--this-reference-library" && i + 1 < argc)
       options.thisReferenceLibraries.push_back(argv[++i]);
     else if (arg == "--explicit-by-default")
@@ -629,25 +627,16 @@ int compile(int argc, char** argv)
     // --tests: the runner is one more source file (tests.hpp).
     if (options.configValues.count("tests") && options.configValues["tests"].number)
     {
-      // (the runner names the library's classes a program may name too; --no-std-scope has them global)
-      auto forScope = [&](std::string text)
-      {
-        if (!options.stdScope)
-          for (const char* name : {"std::Vector<", "std::Optional<"})
-            for (size_t at = text.find(name); at != std::string::npos; at = text.find(name, at))
-              text.erase(at, 5);
-        return text;
-      };
       SourceFile runner;
       runner.path = testRunnerPath;
-      runner.text = forScope(testRunnerSource());
+      runner.text = testRunnerSource();
       totalBytes += runner.text.size();
       files.push_back(std::move(runner));
       for (auto [path, text] : {std::pair(testRunnerWindowsPath, testRunnerWindowsSource()), std::pair(testRunnerPosixPath, testRunnerPosixSource())})
       {
         SourceFile platform;
         platform.path = path;
-        platform.text = forScope(std::move(text));
+        platform.text = std::move(text);
         totalBytes += platform.text.size();
         files.push_back(std::move(platform));
       }

@@ -202,7 +202,6 @@ void GlobalScope::finishIndex()
     }
   }
   impl->deferredVariables.clear();
-  impl->moveBareSpecializationsToStd();
   impl->reportSpecializationsOfNothing();
   std::unordered_set<Scope*> seen;
   impl->sortEntries(&impl->root, seen);
@@ -792,34 +791,6 @@ FunctionDecl* GlobalScope::findFreeOperator(uint32_t punctuator, const Ty* lhs, 
 FunctionDecl* GlobalScope::findFreeFunction(std::string_view name, const std::vector<const Ty*>& argTypes, Decl* context)
 {
   return findFree(impl->symbols.intern(name), argTypes, context);
-}
-
-std::string GlobalScope::stdUsesText()
-{
-  std::set<std::string> lines;
-  for (const Impl::StdUse& use : impl->stdUses)
-  {
-    char kind = use.kind;
-    if (use.call)
-    {
-      // What the call took: a program's own function (a hidden friend, by argument-dependent lookup) or C's (clib/) stays bare.
-      const Decl* chosen = use.call->resolved;
-      if (chosen && chosen->kind == NodeKind::FunctionDecl && !(chosen->file && chosen->file->isLibrary && chosen->file->libraryScope != UINT32_MAX))
-        continue;
-      if (kind == 'M' && !chosen)
-        kind = 'U'; // (decided per instance: for a reader)
-    }
-    uint32_t offset = (*use.file->tokens)[use.token].offset;
-    size_t line = 1 + size_t(std::count(use.file->text.begin(), use.file->text.begin() + std::min<size_t>(offset, use.file->text.size()), '\n'));
-    std::error_code absoluteError; // (a path relative to where the compile ran, a test's own directory: absolute, for the tool)
-    std::string path = use.file->path.starts_with('<') ? use.file->path : std::filesystem::absolute(use.file->path, absoluteError).string();
-    lines.insert(std::string(1, kind) + "\t" + path + "\t" + std::to_string(offset) + "\t" + std::string(impl->symbols.name(use.symbol)) + "\t" +
-                 std::to_string(line) + "\n");
-  }
-  std::string out;
-  for (const std::string& line : lines)
-    out += line;
-  return out;
 }
 
 FunctionDecl* GlobalScope::libraryFunction(std::string_view name)
