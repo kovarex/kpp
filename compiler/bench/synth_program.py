@@ -3,11 +3,13 @@
 Usage: python synth_program.py <modules> <out-dir>
 
 Each module is one file with 10 classes; every class has fields, a constructor, plain methods
-that do arithmetic over the fields and call methods of classes in other modules, one virtual
-method overriding a shared base, and a function using Vector<int>. The shape follows Factorio's
-averages (about 9 function bodies per 1,000 lines of declarations... roughly 170 lines per file,
-15-line methods), so N modules ~ N * 300 lines. main() touches one object per class so nothing
-is dead code. Everything stays inside the kpp v0 subset codegen supports today.
+that do arithmetic over the fields and call methods of classes in other modules, two virtual
+methods overriding a shared base, and a function using std::Vector<int>. The shape follows
+Factorio's averages (about 9 function bodies per 1,000 lines of declarations... roughly 170 lines
+per file, 15-line methods), so N modules ~ N * 300 lines. main() touches one object per class so
+nothing is dead code. The code is today's kpp: classes, not structs, since they have virtual
+functions (a struct is a public value type); members named `this.x` (design.md 23c and 23d); the
+standard library's names written `std::` (design.md 16).
 """
 import os, sys
 
@@ -21,12 +23,13 @@ def write(path, text):
         f.write(text)
 
 common = """// Shared base of every generated class.
-struct Shape
+class Shape
 {
+public:
   int id = 0;
   virtual ~Shape() {}
   virtual int area() const { return 0; }
-  virtual int weight() const { return this->id; }
+  virtual int weight() const { return this.id; }
 };
 
 int mix(int a, int b) { return (a * 31 + b) ^ (a >> 3); }
@@ -38,34 +41,35 @@ for m in range(modules):
     for c in range(CLASSES):
         name = "C%d_%d" % (m, c)
         other = "C%d_%d" % ((m + 1) % modules, (c + 3) % CLASSES)
-        lines.append("struct %s : Shape" % name)
+        lines.append("class %s : public Shape" % name)
         lines.append("{")
+        lines.append("public:")
         lines.append("  int a; int b; int c;")
         lines.append("  std::Vector<int> items;")
-        lines.append("  %s(int seed) : a(seed), b(seed * 7 + %d), c(seed - %d) { this->id = seed; }" % (name, c, m))
-        lines.append("  int area() const override { return this->a * this->b + this->c; }")
-        lines.append("  int weight() const override { return mix(this->a, this->b) + Shape::weight(); }")
+        lines.append("  %s(int seed) : a(seed), b(seed * 7 + %d), c(seed - %d) { this.id = seed; }" % (name, c, m))
+        lines.append("  int area() const override { return this.a * this.b + this.c; }")
+        lines.append("  int weight() const override { return mix(this.a, this.b) + this.Shape::weight(); }")
         for k in range(5):
             lines.append("  int step%d(int x) const" % k)
             lines.append("  {")
-            lines.append("    int total = this->a + x * %d;" % (k + 1))
+            lines.append("    int total = this.a + x * %d;" % (k + 1))
             lines.append("    for (int i = 0; i < 4; ++i)")
-            lines.append("      total = mix(total, this->b + i * %d);" % (k + 2))
+            lines.append("      total = mix(total, this.b + i * %d);" % (k + 2))
             lines.append("    if (total %% 7 == %d)" % k)
-            lines.append("      total += this->c;")
+            lines.append("      total += this.c;")
             lines.append("    else")
-            lines.append("      total -= this->c >> 1;")
+            lines.append("      total -= this.c >> 1;")
             lines.append("    return total;")
             lines.append("  }")
         lines.append("  int run(int rounds)")
         lines.append("  {")
-        lines.append("    this->items.clear();")
+        lines.append("    this.items.clear();")
         lines.append("    for (int r = 0; r < rounds; ++r)")
-        lines.append("      this->items.push_back(this->step%d(r) + this->step%d(r * 2));" % (c % 5, (c + 1) % 5))
+        lines.append("      this.items.push_back(this.step%d(r) + this.step%d(r * 2));" % (c % 5, (c + 1) % 5))
         lines.append("    int sum = 0;")
-        lines.append("    for (int v : this->items)")
+        lines.append("    for (int v : this.items)")
         lines.append("      sum = mix(sum, v);")
-        lines.append("    %s neighbour(this->a + 1);" % other)
+        lines.append("    %s neighbour(this.a + 1);" % other)
         lines.append("    return sum + neighbour.area() + neighbour.step%d(sum);" % ((c + 2) % 5))
         lines.append("  }")
         lines.append("};")
