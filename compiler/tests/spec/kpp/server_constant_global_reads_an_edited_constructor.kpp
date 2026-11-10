@@ -1,0 +1,73 @@
+// spec: a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile server"): constant globals in another file whose initializers run an edited constructor, one only ever folded into the code that reads it (scale) and one defined, its address taken (anchor): the constructor edited without changing their values, then changing them, the program printing each time what a build from scratch prints (as Factorio's CargoPod::processionSpawnOffset read Util/Vector.kpp's constructor, which ran codegen in full)
+//--- step: the program
+struct V
+{
+  double x = 0;
+  V() {}
+  V(double a, int b) { this.x = a * b; }
+};
+int main()
+{
+  std::println(scaled(), " ", anchor().x);
+  return 0;
+}
+// expect: 3 5
+//--- file: globals.kpp
+const V scale = V(1.5, 2);
+const V other = V(2.5, 2);
+double scaled() { return scale.x; }
+const V& anchor() { return other; }
+//--- step: the constructor edited, the values the same
+struct V
+{
+  double x = 0;
+  V() {}
+  V(double a, int b) { this.x = a * b + 0.0; }
+};
+int main()
+{
+  std::println(scaled(), " ", anchor().x);
+  return 0;
+}
+// expect: 3 5
+//--- file: globals.kpp
+const V scale = V(1.5, 2);
+const V other = V(2.5, 2);
+double scaled() { return scale.x; }
+const V& anchor() { return other; }
+//--- step: the constructor edited, the values changed
+struct V
+{
+  double x = 0;
+  V() {}
+  V(double a, int b) { this.x = a * b + 1; }
+};
+int main()
+{
+  std::println(scaled(), " ", anchor().x);
+  return 0;
+}
+// expect: 4 6
+//--- file: globals.kpp
+const V scale = V(1.5, 2);
+const V other = V(2.5, 2);
+double scaled() { return scale.x; }
+const V& anchor() { return other; }
+//--- step: back to the first
+struct V
+{
+  double x = 0;
+  V() {}
+  V(double a, int b) { this.x = a * b; }
+};
+int main()
+{
+  std::println(scaled(), " ", anchor().x);
+  return 0;
+}
+// expect: 3 5
+//--- file: globals.kpp
+const V scale = V(1.5, 2);
+const V other = V(2.5, 2);
+double scaled() { return scale.x; }
+const V& anchor() { return other; }

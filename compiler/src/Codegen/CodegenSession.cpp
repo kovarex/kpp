@@ -1452,6 +1452,75 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   return std::move(result);
 }
 
+// A constant global whose initializer read an edited function (no constructor to emit again). One
+// codegen never defined: its value reached the code only through folds, each of which ran its
+// initializer, the edited function too, and recorded what it ran (the interpreter's `ran` hook,
+// Shared::Definition::inlined): those functions are emitted again, and the global has nothing of its
+// own. One it defined is constant data in the shared declarations, every module's: its value made
+// again with the new bodies (globalForOnce, what it appends then taken back), the same definition as
+// the kept one changes nothing. Another value, a definition with more beside it, or none (it fails, or
+// wants a constructor now), and a template's member (one global per instance), are codegen in full, as
+// before 2026-11-10 every one was (Util/Vector.kpp's constructor read by CargoPod::processionSpawnOffset,
+// stdlib Vector's by UtilityConstants::colorFilters).
+static bool keptConstantGlobal(Shared& sh, Emitter& e, const Decl* g)
+{
+  if (g->kind != NodeKind::VariableDecl)
+    return false;
+  auto* v = const_cast<VariableDecl*>(static_cast<const VariableDecl*>(g));
+  if (e.global.isTemplateContext(v))
+    return false;
+  if (Decl* owner = e.global.owningClass(v); owner && (!owner->templateParams.empty() || e.global.isTemplateContext(owner)))
+    return false;
+  // (the map's key is the declaration a use named: a static member's in its class, whose definition the
+  // reader is)
+  auto named = sh.globals.find(v);
+  for (auto it = sh.globals.begin(); named == sh.globals.end() && it != sh.globals.end(); ++it)
+    if (it->first->kind == NodeKind::VariableDecl && e.variableDefinition(static_cast<VariableDecl*>(it->first)) == v)
+      named = it;
+  if (named == sh.globals.end())
+    return true;
+  v = static_cast<VariableDecl*>(named->first);
+  const std::string name = named->second;
+  // The kept definition: `$name = comdat any` and `name = linkonce_odr ...`, one line each.
+  std::string_view text = sh.decls.text;
+  auto lineOf = [&](const std::string& head) -> std::string_view
+  {
+    for (size_t at = text.find(head); at != std::string_view::npos; at = text.find(head, at + 1))
+      if (at == 0 || text[at - 1] == '\n')
+        return text.substr(at, text.find('\n', at) - at + 1);
+    return {};
+  };
+  std::string_view comdat = lineOf("$" + name.substr(1) + " = comdat any\n");
+  std::string_view kept = lineOf(name + " = linkonce_odr ");
+  if (comdat.empty() || kept.empty())
+    return false;
+  auto lock = e.sharedLock();
+  size_t entriesBefore = sh.decls.entries.size(), errorsBefore = e.errors.size(), inlinedBefore = e.inlinedNow.size();
+  size_t hiddenBefore = e.hiddenErrors;
+  bool same = false;
+  sh.globals.erase(named);
+  std::vector<const FunctionDecl*> ran; // (what the new evaluation runs: its record anew, Shared::constantGlobals)
+  Restore<std::vector<const FunctionDecl*>*> ranRestore(e.globalRan);
+  e.globalRan = &ran;
+  try
+  {
+    std::string again = e.globalForOnce(v, v, nullptr);
+    std::vector<std::string>& added = sh.decls.entries;
+    same = again == name && added.size() == entriesBefore + 2 && e.errors.size() == errorsBefore && e.hiddenErrors == hiddenBefore &&
+           ((added[entriesBefore] == comdat && added[entriesBefore + 1] == kept) || (added[entriesBefore] == kept && added[entriesBefore + 1] == comdat));
+  }
+  catch (Emitter::Unsupported&)
+  {
+  }
+  sh.decls.entries.resize(std::min(sh.decls.entries.size(), entriesBefore));
+  e.errors.resize(std::min(e.errors.size(), errorsBefore));
+  e.hiddenErrors = hiddenBefore;
+  if (e.inlinedNow.size() > inlinedBefore)
+    e.inlinedNow.resize(inlinedBefore);
+  sh.globals[v] = name;
+  return same;
+}
+
 static CodegenResult rebuildModules(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies, const std::vector<FunctionDecl*>& movedLines,
                                     const std::vector<FunctionDecl*>& replaced, const std::vector<FunctionDecl*>& added,
                                     const std::vector<FunctionDecl*>& removed, const std::vector<const Decl*>& changedLayouts,
@@ -1573,11 +1642,14 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
   }
   // The globals whose initializers read an edited function: their constructors (with their lambdas
   // and static InitializerList arrays) go and are emitted again, as their first use emitted them. One
-  // with no constructor (a constant, in the shared declarations) is codegen in full.
+  // with no constructor (a constant: folded, or in the shared declarations) stays when its value is the
+  // one it had (keptConstantGlobal), else codegen is in full.
   std::vector<Shared::GlobalInit> globalsAgain;
   for (const Decl* g : changedGlobals)
   {
     auto it = sh.globalInitsOf.find(g);
+    if (it == sh.globalInitsOf.end() && keptConstantGlobal(sh, e, g))
+      continue;
     if (it == sh.globalInitsOf.end())
     {
       out.declined = "the global " + e.global.qualifiedName(const_cast<Decl*>(g)) + " read an edited function, and it has no constructor to emit again";
@@ -1600,6 +1672,27 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
   // in the module that asked for it).
   std::unordered_set<const FunctionDecl*> edited(changedBodies.begin(), changedBodies.end());
   edited.insert(removed.begin(), removed.end());
+  // The constant globals whose evaluation ran a changed or removed body: their data made again, kept
+  // when it is the same (keptConstantGlobal), else codegen in full. No walk records that a global's
+  // initializer read a constructor, so the readers above miss them: until 2026-11-10 a constant `const V
+  // scale = V(1.5, 2)` kept the value of the constructor before its edit, silently (`3 5` where a build
+  // from scratch printed `4 6`, kpp/server_constant_global_reads_an_edited_constructor).
+  {
+    std::vector<std::string> ranEdited;
+    for (const auto& [name, c] : sh.constantGlobals)
+      if (std::any_of(c.ran.begin(), c.ran.end(), [&](const FunctionDecl* f) { return edited.count(f) != 0; }))
+        ranEdited.push_back(name);
+    std::sort(ranEdited.begin(), ranEdited.end());
+    for (const std::string& name : ranEdited)
+    {
+      const Shared::ConstantGlobal c = sh.constantGlobals.at(name);
+      if (c.classTy || !keptConstantGlobal(sh, e, c.v))
+      {
+        out.declined = "the constant global " + name + " ran an edited function, and its value is not the one kept";
+        return out;
+      }
+    }
+  }
   // An instance whose template's body (the definition it is emitted from, as written: an
   // out-of-line one, an explicit specialisation) changed is emitted again too, from the copy the
   // resolver checked again.

@@ -314,6 +314,17 @@ namespace codegen
     std::unordered_set<std::string> startupFunctions; // the functions startups names (a server's build emits one again)
     std::unordered_map<std::string, GlobalInit> globalInits;
     std::unordered_map<const Decl*, std::vector<std::string>> globalInitsOf;
+    // A global defined with no constructor (constant data, globalForOnce), by its IR name: the declaration
+    // its use named, its class (a template's instance, else null) and the bodies its evaluation ran (as
+    // written: noteInlined's). A server's build checks it again when one of them changed
+    // (rebuildModules: keptConstantGlobal), as no walk records that it read a constructor.
+    struct ConstantGlobal
+    {
+      VariableDecl* v = nullptr;
+      const Ty* classTy = nullptr;
+      std::vector<const FunctionDecl*> ran;
+    };
+    std::unordered_map<std::string, ConstantGlobal> constantGlobals;
     std::unordered_map<std::string, std::string> threadLocalInits; // a thread_local global built per thread -> the function building it
     std::vector<std::unordered_set<std::string>> vtablesIn; // per module: the vtables it already has
     std::unordered_map<ParsedFile*, unsigned> fileModule;   // file -> module

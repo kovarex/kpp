@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**2088 pass, 3 pending, 0 failing, 0 fixed** (2091 snippets, 337.7 s).
+**2089 pass, 3 pending, 0 failing, 0 fixed** (2092 snippets, 327.3 s).
 
 ## Language: statements, expressions, declarations
 
@@ -1852,6 +1852,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `kpp/server_auto_lambda_used_above_edited.kpp` | a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile server"): a namespace-scope `auto` lambda called above its declaration by a member function, its body edited, then its parameter made generic: the use above calls the edited lambda each time | pass |  |  |
 | `kpp/server_body_edit_beside_false_when.kpp` | a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile server"): a file with a false `when` (design.md 19) at namespace and class scope takes a body's edit as an edit of that body, the absent declarations' names still hiding outer ones; a use of one is still the error | pass |  |  |
 | `kpp/server_build_after_an_error_compiles_what_it_left.kpp` | a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile server"): a build that fails with the checker's error after codegen assembled a changed module compiles no object, and the next build, whose module text is the failed build's, compiles it then: the program prints the new value, never the object from before the edit (an unchanged module keeps its object; the static_assert case from thread K's stale constant, 2026-11-07) | pass |  |  |
+| `kpp/server_constant_global_reads_an_edited_constructor.kpp` | a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile server"): constant globals in another file whose initializers run an edited constructor, one only ever folded into the code that reads it (scale) and one defined, its address taken (anchor): the constructor edited without changing their values, then changing them, the program printing each time what a build from scratch prints (as Factorio's CargoPod::processionSpawnOffset read Util/Vector.kpp's constructor, which ran codegen in full) | pass |  |  |
 | `kpp/server_endless_template_bases_then_fixed.kpp` | a compile server's build after endless template bases are fixed builds every class template: the limit's stop of code generation is that build's alone | pass |  |  |
 | `kpp/server_keeps_the_errors_of_the_old_this_forms.kpp` | a compile server's next build still reports C++'s forms of `this` in code the edit did not touch: the walker repairs what it reported so that one mistake says one error, and the repaired tree is what the server walks again | pass |  |  |
 | `kpp/server_kept_error_moves_with_its_line.kpp` | a compile server's build after an edit above an error the edit leaves alone reports that error at its new line, as a build from scratch does (typed checker errors keep their place, not their text: design.md 24) | pass |  |  |

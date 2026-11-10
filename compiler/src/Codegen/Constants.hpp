@@ -179,7 +179,11 @@
     {
       if (moduleCount > 1)
         inlinedNow.push_back(written);
+      if (globalRan)
+        globalRan->push_back(written);
     }
+    // While a global's initializer is evaluated (globalFor): the bodies it runs (Shared::ConstantGlobal::ran).
+    std::vector<const FunctionDecl*>* globalRan = nullptr;
 
     // A changed layout (rebuildLLVM): every answer this emitter remembers from layouts goes.
     void forgetLayoutAnswers();

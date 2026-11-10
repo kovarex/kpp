@@ -736,6 +736,24 @@ auto codegen::Emitter::globalFor(VariableDecl* v, Node* at, const Ty* classTy) -
     return mine;
   }
   std::string name;
+  // The bodies its initializer's evaluation runs, before the lock and under it, those of a global it
+  // reads too (added to the one evaluated around it on the way out): a constant's record
+  // (Shared::constantGlobals, globalForOnce).
+  std::vector<const FunctionDecl*> ran;
+  struct RanScope
+  {
+    ~RanScope()
+    {
+      slot = around;
+      if (around)
+        around->insert(around->end(), ran.begin(), ran.end());
+    }
+
+    std::vector<const FunctionDecl*>*& slot;
+    std::vector<const FunctionDecl*>* around;
+    std::vector<const FunctionDecl*>& ran;
+  } ranScope{globalRan, globalRan, ran};
+  globalRan = &ran;
   // Not yet defined (and not under the lock already): its initializer evaluated first, the lock
   // not held. What that noted and numbered is taken back unless globalForOnce takes the values.
   PreEvaluated pre;
@@ -1072,6 +1090,15 @@ auto codegen::Emitter::globalForOnce(VariableDecl* v, Node* at, const Ty* classT
   {
     constructed = true;
     init = "zeroinitializer";
+  }
+  // Constant data: what its evaluation ran is kept with it, for a server's build that changes one of
+  // those bodies (Shared::constantGlobals).
+  if (!constructed && globalRan)
+  {
+    std::vector<const FunctionDecl*> bodies = *globalRan;
+    std::sort(bodies.begin(), bodies.end());
+    bodies.erase(std::unique(bodies.begin(), bodies.end()), bodies.end());
+    sh.constantGlobals[name] = Shared::ConstantGlobal{v, classTy, std::move(bodies)};
   }
   // Defined in every module, merged by the linker (one instance per program). Two entries: the
   // shared text is sorted, and the definition (an `@` line) has to come after the struct types
