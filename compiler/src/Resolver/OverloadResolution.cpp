@@ -1685,7 +1685,20 @@ auto GlobalScope::Impl::constraintValue(Expr* e, Decl* f, const Subst& s, int de
       if (VariableDecl* concept_ = conceptOf(lookupQualified(n->name, ctx.scope, &own, depth + 1).decl))
         return conceptValue(concept_, n->name.last(), ctx, depth + 1);
   }
-  return constCondition(e, ctx, depth + 1);
+  if (std::optional<bool> v = constCondition(e, ctx, depth + 1))
+    return v;
+  // An atomic constraint whose expression does not form for known arguments (`T::value` of a T that has none): a
+  // substitution failure, so not satisfied ([temp.constr.atomic] 3), as a trait's arguments above. One that forms and
+  // is no constant the compiler evaluates stays unknown, its callers' error, never a guess; so does one naming what
+  // nothing declares (`requires (noSuchTrait<T>)`: no substitution fails there, the callers name it).
+  for (Decl* p = f; p; p = p->parent)
+    for (Decl* tp : p->templateParams)
+      if (const Ty* t = s.find(tp); !t || !t->isKnown() || types.isDependent(t) || mentionsUnknown(t))
+        return std::nullopt;
+  const Ty* t = typeOfSignatureExpression(e, ctx, nullptr, f->file);
+  if (t && t->isKnown())
+    return std::nullopt;
+  return undeclaredNameIn(e, f, own, depth + 1).empty() ? std::optional<bool>(false) : std::nullopt;
 }
 
 auto GlobalScope::Impl::primaryVariableTemplate(const Lookup& l) -> VariableDecl*

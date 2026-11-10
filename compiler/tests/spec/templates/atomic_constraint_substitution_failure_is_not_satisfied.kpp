@@ -1,0 +1,41 @@
+// spec: an atomic constraint whose expression does not form for the arguments (`T::value` of a T that has none) is not satisfied, as C++ has it ([temp.constr.atomic] 3): as a value, in a static_assert, in an if constexpr, in a requires clause choosing an overload, and as an operand of || and && (clang's output)
+// found by D's concepts battery against clang (2026-11-10): each of these was an error ("a variable template whose value is not a constant yet", "the requires clause of pick cannot be evaluated for T = int16", "static assertion whose condition the compiler cannot evaluate yet", "the condition of an if constexpr is not a constant expression")
+template<typename T>
+concept HasTrueValue = T::value;
+template<typename T>
+concept ByteOrValue = sizeof(T) == 1 || T::value;
+template<typename T>
+concept HugeAndValue = sizeof(T) > 100 && T::value;
+struct Yes
+{
+  int pad;
+  static constexpr bool value = true;
+};
+struct No
+{
+  int pad;
+  static constexpr bool value = false;
+};
+template<typename T>
+int pick(T) { return 1; }
+template<typename T>
+  requires HasTrueValue<T>
+int pick(T) { return 2; }
+template<typename T>
+int test()
+{
+  if constexpr (HasTrueValue<T>)
+    return 1;
+  else
+    return 0;
+}
+static_assert(!HasTrueValue<short> && HasTrueValue<Yes> && !HasTrueValue<No>);
+
+int main()
+{
+  short s = 1;
+  std::println(HasTrueValue<Yes>, " ", HasTrueValue<No>, " ", HasTrueValue<short>, " ", HasTrueValue<int*>);
+  std::println(ByteOrValue<char>, " ", ByteOrValue<short>, " ", ByteOrValue<Yes>, " ", HugeAndValue<int>);
+  std::println(pick(s), " ", pick(Yes()), " ", pick(No()), " ", test<short>(), " ", test<Yes>());
+  return 0;
+}

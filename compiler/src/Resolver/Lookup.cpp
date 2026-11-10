@@ -1751,6 +1751,12 @@ auto GlobalScope::Impl::lookupWritten(const QualifiedName& name, Scope* context,
           currentTy = nullptr;
           continue;
         }
+        // `T::value` with T = short (or a pointer, a reference, an array, a function): no class, so it names nothing,
+        // a substitution failure (until 2026-11-10 dependent on T, so the name was T itself: `concept C = T::value;`
+        // was "not a constant yet" for C<short>, where C++ has it not satisfied).
+        if (sub && sub->isKnown() && sub->kind != TyKind::Class && sub->kind != TyKind::Enum && sub->kind != TyKind::Pack &&
+            !types.isDependent(sub) && !mentionsUnknown(sub))
+          return {};
       }
       out = step;
       out.found = Found::Dependent;

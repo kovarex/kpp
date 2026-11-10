@@ -1,0 +1,28 @@
+// spec: `T::value` with T a type that is no class (int, a pointer, double) names nothing, a substitution failure ([temp.deduct] 8, [expr.prim.req.simple]): a default template argument `typename = decltype(T::value)` takes its template out of the overloads, and a requires-expression's `T::value;` is not met, in a concept and in an if constexpr (clang's output)
+// found by D's SFINAE battery against clang (2026-11-10): the lookup took `T::value` with T = int for T itself, so every one of these held, silently (`1 1 1` and `1 1 1 1 1`)
+struct V
+{
+  static constexpr int value = 7;
+};
+template<typename T, typename = decltype(T::value)>
+int g(T, int) { return 1; }
+template<typename T>
+int g(T, long) { return 2; }
+template<typename T>
+concept HasValue = requires { T::value; };
+template<typename T>
+bool hasValue()
+{
+  if constexpr (requires { T::value; })
+    return true;
+  else
+    return false;
+}
+
+int main()
+{
+  int* p = nullptr;
+  std::println(g(5, 0), " ", g(V(), 0), " ", g(p, 0));
+  std::println(HasValue<int>, " ", HasValue<V>, " ", HasValue<int*>, " ", hasValue<double>(), " ", hasValue<V>());
+  return 0;
+}
