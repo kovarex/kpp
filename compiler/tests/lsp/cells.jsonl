@@ -24,5 +24,12 @@
 {"jsonrpc":"2.0","id":6,"method":"kpp/selectCell","params":{"target":"game","configuration":"release"}}
 {"jsonrpc":"2.0","id":7,"method":"kpp/selectCell","params":{"target":"tool","configuration":"Debug"}}
 {"jsonrpc":"2.0","id":8,"method":"textDocument/definition","params":{"textDocument":{"uri":"$ROOT/src/tool/main.kpp"},"position":{"line":2,"character":16}}}
+// A file the cell does not compile, opened: the game's main in the tool's cell (Visual Studio's startup project the tool). The
+// game's cell in the same configuration, the one that has it, is checked instead (kpp/activeCell), and its names resolve.
+{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$ROOT/src/game/main.kpp","languageId":"kpp","version":1,"text":"// The game's release cell does not compile.\nstatic_assert(config::debug, \"the game is built in debug only\");\nwhen (config::debug) int debugFrames = 0;\nint loud() { return sound::volume() + 1; }\n\nint main()\n{\n  std::println(shared());\n  return 0;\n}\n"}}}
+{"jsonrpc":"2.0","id":9,"method":"textDocument/definition","params":{"textDocument":{"uri":"$ROOT/src/game/main.kpp"},"position":{"line":7,"character":16}}}
+// A file both cells compile keeps the cell: the game's.
+{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$ROOT/src/common/shared.kpp","languageId":"kpp","version":1,"text":"int shared() { return 1; }\n"}}}
+{"jsonrpc":"2.0","id":10,"method":"textDocument/definition","params":{"textDocument":{"uri":"$ROOT/src/game/main.kpp"},"position":{"line":7,"character":16}}}
 {"jsonrpc":"2.0","id":99,"method":"shutdown"}
 {"jsonrpc":"2.0","method":"exit"}

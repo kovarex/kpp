@@ -948,6 +948,7 @@ namespace
           }
           project = wanted;
           key = cellKey(project);
+          projectCellsKnown = cells;
           // build.kpp's folder, found as kpp finds it (Visual Studio's root is a generated solution's
           // folder below it): hover gives the paths in it from there.
           projectFolder.clear();
@@ -1116,6 +1117,54 @@ namespace
         .set("severity", d.severity)
         .set("source", "kpp")
         .set("message", d.message);
+    }
+
+    // Whether file is among cell's sources: under one of its roots (a folder, or the file itself) and
+    // under none of what it leaves out.
+    static bool cellHolds(const ProjectCell& cell, const fs::path& file)
+    {
+      std::string key = overlayKey(file);
+      auto under = [&](const std::string& at)
+      {
+        std::string root = overlayKey(fs::path(at));
+        while (!root.empty() && (root.back() == '/' || root.back() == '\\'))
+          root.pop_back();
+        return key == root || (key.size() > root.size() && key.compare(0, root.size(), root) == 0 && (key[root.size()] == '/' || key[root.size()] == '\\'));
+      };
+      return std::any_of(cell.roots.begin(), cell.roots.end(), under) && std::none_of(cell.excluded.begin(), cell.excluded.end(), under);
+    }
+
+    // A file opened that the cell checked does not compile, but another target's cell of the same
+    // configuration does (a test runner's main beside the game's, a second executable's own files): that
+    // cell is checked instead, so that the file has its colors, hover and navigation (kovarex,
+    // 2026-11-10: tests\Main.kpp had none while the game was Visual Studio's startup project). Only when
+    // a file is opened, never on a request, so that two files of two cells shown side by side do not
+    // switch the cell back and forth; the client's next kpp/selectCell (another startup project or
+    // configuration) chooses again. A file every cell has (most of a program's) keeps the cell.
+    void checkOpenedInItsCell(const char* self, const fs::path& file)
+    {
+      if (activeCell.empty() || !explicitArguments.empty() || projectCellsKnown.empty())
+        return;
+      bool held = false;
+      const ProjectCell* other = nullptr;
+      for (const ProjectCell& c : projectCellsKnown)
+      {
+        if (c.configuration != project.configuration || !cellHolds(c, file))
+          continue;
+        if (project.target.empty() || c.target == project.target)
+          held = true;
+        else if (!other)
+          other = &c;
+      }
+      if (held || !other)
+        return;
+      ProjectCheck wanted = project;
+      wanted.target = other->target;
+      std::string error, from = cellName(project);
+      if (chooseArguments(self, wanted, error))
+        log("%s is not among the sources of %s: %s is checked", file.string().c_str(), from.c_str(), cellName(project).c_str());
+      else
+        log("%s is not among the sources of %s, and %s: %s", file.string().c_str(), from.c_str(), other->target.c_str(), error.c_str());
     }
 
     // Builds the program as the documents are now and publishes what changed in its diagnostics.
@@ -3699,7 +3748,10 @@ namespace
       if (method == "exit")
         return false;
       if (method == "textDocument/didOpen")
+      {
         open(params);
+        checkOpenedInItsCell(self, uriToPath(params["textDocument"]["uri"].text));
+      }
       else if (method == "textDocument/didChange")
         change(params);
       else if (method == "textDocument/didClose")
@@ -3813,6 +3865,7 @@ namespace
     std::vector<std::string> checkArguments;    // what a check builds (empty: nothing to check)
     std::map<std::string, Cell> parkedCells;    // by cellKey
     std::string activeCell;                     // cellKey of the cell checked now ("": no build.kpp's)
+    std::vector<ProjectCell> projectCellsKnown; // build.kpp's cells as the last choice of a cell read them (checkOpenedInItsCell)
     std::vector<ProjectOption> activeOptions;   // its libraries' options (every target's, for all of them)
     std::vector<std::string> activeArguments;   // what the process's kept build was made with
     std::string announcedCell = "\n";          // the cell kpp/activeCell last named

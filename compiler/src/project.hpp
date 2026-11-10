@@ -63,5 +63,8 @@ struct ProjectCell
   std::string target, configuration, visualStudio;
   std::vector<ProjectOption> options;    // the libraries' options in this cell, library by library
   std::vector<ProjectLibrary> libraries; // the kpp libraries it uses, in kpp's order
+  // Its sources: the folders and files it compiles, its libraries' too, and what it leaves out of them
+  // (absolute; the language server's choice of a cell for a file, docs/editors.md "Cells").
+  std::vector<std::string> roots, excluded;
 };
 bool projectCells(const std::filesystem::path& directory, const ProjectCheck& check, std::vector<ProjectCell>& cells, std::string& error);

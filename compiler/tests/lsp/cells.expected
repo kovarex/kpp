@@ -20,4 +20,7 @@
 {"jsonrpc":"2.0","method":"kpp/activeCell","params":{"target":"tool","configuration":"debug"}}
 {"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":"$ROOT/src/game/main.kpp","diagnostics":[]}}
 {"jsonrpc":"2.0","id":8,"result":{"uri":"$ROOT/src/common/shared.kpp","range":{"start":{"line":0,"character":4},"end":{"line":0,"character":10}}}}
+{"jsonrpc":"2.0","method":"kpp/activeCell","params":{"target":"game","configuration":"debug"}}
+{"jsonrpc":"2.0","id":9,"result":{"uri":"$ROOT/src/common/shared.kpp","range":{"start":{"line":0,"character":4},"end":{"line":0,"character":10}}}}
+{"jsonrpc":"2.0","id":10,"result":{"uri":"$ROOT/src/common/shared.kpp","range":{"start":{"line":0,"character":4},"end":{"line":0,"character":10}}}}
 {"jsonrpc":"2.0","id":99,"result":null}

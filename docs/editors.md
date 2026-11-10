@@ -66,6 +66,13 @@ Status (2026-11-03):
     same settings, or `kpp/selectCell`; Visual Studio (its extension, not built yet) its active
     solution configuration and startup project, with `kpp/selectCell` when either changes. A cell
     build.kpp does not have is shown as an error and the checked cell stays.
+  - A file opened (`textDocument/didOpen`) that the checked cell does not compile, while another
+    target's cell in the same configuration does, makes that cell the checked one (`kpp/activeCell`
+    tells the client): the game's tests\Main.kpp opened while the game is the startup project is
+    checked in factorio-test, where it had no colors, hover or navigation (kovarex, 2026-11-10). Only
+    on opening a file, never on a request, so that files of two cells side by side do not switch it
+    back and forth; a file every cell compiles keeps the cell, and the client's next
+    `kpp/selectCell` chooses again. tests\lsp\cells covers it.
 - **Capabilities:**
   - incremental text sync;
   - pushed diagnostics (`textDocument/publishDiagnostics`, source `kpp`), also for files the
@@ -271,7 +278,7 @@ Studio. `tools\vs\install.cmd`, the grammar alone, is not needed with it.
   target, named after it), the startup project is the target and the active configuration is the
   configuration. The server starts in that cell (initializationOptions). Picking another
   configuration or startup project sends `kpp/selectCell`, and the status bar shows the server's
-  answer. In a folder, or in a solution kpp did not write, the server checks every target in
+  answer. Opening a file only another target compiles checks that target's cell (see "Cells"). In a folder, or in a solution kpp did not write, the server checks every target in
   debug.
 
 ## Other editors

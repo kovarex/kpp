@@ -175,7 +175,21 @@ bool projectCells(const std::filesystem::path& directory, const ProjectCheck& ch
         p = &library;
       }
       if (p)
-        cells.push_back({target, c.name, visualStudioName(c.name), p->options, p->kppLibraries});
+      {
+        ProjectCell cell{target, c.name, visualStudioName(c.name), p->options, p->kppLibraries};
+        for (const std::string& r : p->roots)
+          cell.roots.push_back(rooted(root, r).lexically_normal().string());
+        for (const std::string& e : p->excluded)
+          cell.excluded.push_back(rooted(root, e).lexically_normal().string());
+        for (const ProjectLibrary& l : p->kppLibraries)
+        {
+          for (const std::string& r : l.roots)
+            cell.roots.push_back(rooted(root, r).lexically_normal().string());
+          for (const std::string& e : l.excluded)
+            cell.excluded.push_back(rooted(root, e).lexically_normal().string());
+        }
+        cells.push_back(std::move(cell));
+      }
     }
   return true;
 }
