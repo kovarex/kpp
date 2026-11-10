@@ -901,6 +901,7 @@
       convertBlanked();
       convertTokens();
       convertDecls(in.parsed->decls, true);
+      dropExplicitInstantiationsWithoutEffect();
       if (in.c)
       {
         convertC(in.parsed->decls);

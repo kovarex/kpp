@@ -49,3 +49,25 @@ namespace inner
     int value() const;
   };
 }
+
+// Explicit instantiations: one whose class builds nothing at startup goes; one with a static data member
+// that runs code at startup stays (that member is built where the line is).
+struct Registration
+{
+  Registration() { ++Registration::count; }
+  static int count;
+};
+
+template<class T>
+class Plain
+{
+public:
+  T value = T();
+};
+
+template<class T>
+class Registered
+{
+public:
+  static Registration registration;
+};

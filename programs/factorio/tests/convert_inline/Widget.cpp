@@ -69,3 +69,9 @@ namespace inner
     return 1;
   }
 }
+
+int Registration::count = 0;
+template<class T> Registration Registered<T>::registration;
+
+template class Plain<int>;
+template class Registered<int>;

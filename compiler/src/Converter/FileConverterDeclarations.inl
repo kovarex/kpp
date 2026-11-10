@@ -477,6 +477,60 @@
       insert(endOffset(f->endToken - 1), "/*}kpp:def:" + id + "*/");
     }
 
+    // Whether an explicit instantiation of the class has an effect in kpp, where the whole program is compiled
+    // together and what is used is instantiated: the instance's own static data members that run code at
+    // startup are built (design.md, codegen's collectInstanceStartupGlobals, which reads no base class). Told
+    // as it does, but for a member with no initializer, whose type's construction is codegen's to know: it stays.
+    bool instanceRunsAtStartup(const Ty* cls)
+    {
+      Decl* d = global.definitionOf(cls->decl);
+      if (!d || d->kind != NodeKind::ClassDecl)
+        return true;
+      for (Decl* m : static_cast<ClassDecl*>(d)->members)
+      {
+        if (m->kind != NodeKind::VariableDecl || !(m->flags & DF_Static) || (m->flags & (DF_Typedef | DF_Constexpr | DF_ThreadLocal)) || m->isTemplate)
+          continue;
+        Decl* definition = global.definitionOf(m);
+        auto* v = definition && definition->kind == NodeKind::VariableDecl ? static_cast<VariableDecl*>(definition) : static_cast<VariableDecl*>(m);
+        if ((v->flags & (DF_Constexpr | DF_ThreadLocal)) || (v->init && v->init->kind == NodeKind::LiteralExpr))
+          continue;
+        return true;
+      }
+      return false;
+    }
+
+    // `template class X<int>;` lines that do nothing go (kovarex 2026-11-09); one whose class is not known to the
+    // converter stays, as does a line a macro's use writes (its tokens are not a line of their own).
+    void dropExplicitInstantiationsWithoutEffect()
+    {
+      if (in.c || !in.parsed)
+        return;
+      std::map<uint32_t, const Ty*> known;
+      for (auto& [cls, token] : global.explicitInstantiationsOf(*in.parsed))
+        known[token] = cls;
+      for (auto& [named, where] : in.parsed->explicitInstantiations)
+      {
+        // (the record's token is the class keyword's: `template class X<int>;`)
+        uint32_t keyword = named->token;
+        auto cls = known.find(keyword);
+        if (keyword < 1 || keyword >= toks.size() || !(toks[keyword].is(Kw::class_) || toks[keyword].is(Kw::struct_)) || !toks[keyword - 1].is(Kw::template_) ||
+            (keyword >= 2 && toks[keyword - 2].is(Kw::extern_)))
+          continue;
+        uint32_t end = keyword;
+        while (end < toks.size() && !toks[end].is(P::Semi) && !toks[end].is(P::LBrace) && toks[end].getKind() != TokenKind::End)
+          ++end;
+        if (end >= toks.size() || !toks[end].is(P::Semi))
+          continue;
+        if (cls == known.end() || instanceRunsAtStartup(cls->second))
+        {
+          counts.add("explicit instantiations of classes kept: a static data member runs code at startup, or the class is not known here");
+          continue;
+        }
+        remove(toks[keyword - 1].offset, lineEndAfter(endOffset(end)) - toks[keyword - 1].offset);
+        counts.add("explicit instantiations of classes removed: no effect in kpp");
+      }
+    }
+
     void directInitialization(VariableDecl* v)
     {
       // (C has no `T x(args)` object: its parentheses after a name are a function's, `double
