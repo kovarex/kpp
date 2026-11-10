@@ -84,6 +84,18 @@ Spot::Spot(int x, int y) : x(x), y(y) { if (x < 0) return; }
 
 int spotsEqual() { return Spot(1, 2) == Spot(1, 2) ? 1 : 0; }
 
+// Declarations with no code that name the class, so the constructor: an alias, a using-declaration of a member and a
+// static_assert. An edit of the constructor's body leaves them be (until 2026-11-10 codegen in full: "the walk of SpotMarker::?
+// read an edited function", the game's `using super = FloatingGuiWindow;` in 20 classes).
+class SpotMarker : public Spot
+{
+  using super = Spot;
+public:
+  using super::x;
+  SpotMarker() : Spot(3, 4) {}
+};
+static_assert(sizeof(Spot) == 8);
+
 int positionsTotal = withLocals() + templateStatics(2) + templateStatics(2.5) + viaHelper() + spotsEqual();
 
 // A union enum's generated tag() has no `{` to pair: the file stays incremental (2026-11-10).

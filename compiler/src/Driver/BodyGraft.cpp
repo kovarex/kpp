@@ -1293,6 +1293,14 @@ bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, double collec
       }
       else if (d->kind == NodeKind::VariableDecl)
         kept.changedGlobals.push_back(d); // (its constructor emitted again)
+      else if (d->kind == NodeKind::UsingAliasDecl || d->kind == NodeKind::UsingNameDecl || d->kind == NodeKind::StaticAssertDecl ||
+               d->kind == NodeKind::UsingDirectiveDecl || d->kind == NodeKind::DeductionGuideDecl || d->kind == NodeKind::EmptyDecl)
+      {
+        // No code holds what it read: an alias, a using-declaration (an inherited constructor's code is its callers'), a
+        // static_assert (checked again by its walk). A type it gives that ran the edited body is a build from scratch already
+        // ("a declared type ran a changed body"). Until 2026-11-10 codegen in full: a constructor's name is its class's, which
+        // `using super = Base;` names (20 of the game's classes for FloatingGuiWindow's), 3 of 83 one-token edits of the game.
+      }
       else
         inFull(initializerOf(d) + " read an edited function");
   }
