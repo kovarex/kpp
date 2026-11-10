@@ -1716,7 +1716,8 @@ auto GlobalScope::Impl::primaryVariableTemplate(const Lookup& l) -> VariableDecl
   return nullptr;
 }
 
-auto GlobalScope::Impl::variableTemplateSource(VariableDecl* v, const NamePart& part, const TypeContext& ctx, int depth, bool dependent, Subst& out) -> VariableDecl*
+auto GlobalScope::Impl::variableTemplateSource(VariableDecl* v, const NamePart& part, const TypeContext& ctx, int depth, bool dependent, Subst& out,
+                                               std::string* unsatisfied) -> VariableDecl*
 {
   size_t n = v->templateParams.size();
   if (n == 0 || depth > 16)
@@ -1761,6 +1762,20 @@ auto GlobalScope::Impl::variableTemplateSource(VariableDecl* v, const NamePart& 
     args.push_back(q.type);
   Subst specialised;
   VariableDecl* source = lastParam->isPack ? v : variableSpecialization(v, args, specialised);
+  // The primary for arguments all known: its constraints must hold (`template<class T> requires Big<T> constexpr int
+  // v = ...;` named as v<char> is an error, [temp.names] 8; until 2026-11-10 the requires clause was dropped).
+  if (source == v && std::all_of(args.begin(), args.end(), [&](const Ty* a) { return a && a->isKnown() && !types.isDependent(a) && !mentionsUnknown(a); }))
+    if (std::optional<bool> holds = variableConstraintsHold(v, bound); !holds || !*holds)
+    {
+      if (unsatisfied)
+      {
+        std::string given;
+        for (const Subst::Pair& q : bound.pairs)
+          given += (given.empty() ? "" : ", ") + std::string(symbols.name(static_cast<TemplateParamDecl*>(q.param)->name)) + " = " + types.toString(q.type, &symbols);
+        *unsatisfied = "the constraints of " + debugName(v->name.last().symbol) + (holds ? " are not satisfied" : " cannot be evaluated") + " for " + given;
+      }
+      return nullptr;
+    }
   if (source)
     out = source == v ? bound : specialised;
   return source;
@@ -1780,10 +1795,10 @@ auto GlobalScope::Impl::variableTemplateValue(VariableDecl* v, const NamePart& p
   return constAsDeclared(constInitValue(source->init, vctx, depth + 1), source->type ? convertType(source->type, vctx, depth + 1) : nullptr);
 }
 
-auto GlobalScope::Impl::variableTemplateType(VariableDecl* v, const NamePart& part, const TypeContext& ctx) -> const Ty*
+auto GlobalScope::Impl::variableTemplateType(VariableDecl* v, const NamePart& part, const TypeContext& ctx, std::string* unsatisfied) -> const Ty*
 {
   Subst sourceSubst;
-  VariableDecl* source = variableTemplateSource(v, part, ctx, 0, true, sourceSubst);
+  VariableDecl* source = variableTemplateSource(v, part, ctx, 0, true, sourceSubst, unsatisfied);
   if (!source)
     return nullptr;
   if (ctx.subst) // inside an instance: its arguments stay for what the declaration names of its own
@@ -1843,7 +1858,23 @@ auto GlobalScope::Impl::conceptHolds(VariableDecl* concept_, const std::vector<c
       break;
     }
     if (i >= given.size())
-      return std::nullopt; // fewer arguments than parameters (defaults: not read here)
+    {
+      // `SameAsU<int>` of `template<class T, class U = int> concept SameAsU`: the default, under the arguments before it
+      // (until 2026-11-10 not read: such a concept-id was "a static assertion whose condition the compiler cannot evaluate
+      // yet", a value "not a constant yet").
+      if (!param->defaultArg)
+        return std::nullopt;
+      LocalStack own;
+      for (Decl* p : concept_->templateParams)
+        own.push(static_cast<TemplateParamDecl*>(p)->name, p);
+      TypeContext dctx{lexicalScopeOf(concept_), &own, &cs, concept_->file ? concept_->file->tokens : nullptr,
+                       concept_->file ? concept_->file->text : std::string_view()};
+      const Ty* t = templateArgument(param->defaultArg, param, dctx, depth + 1);
+      if (!t || !t->isKnown() || types.isDependent(t) || mentionsUnknown(t))
+        return std::nullopt;
+      cs.pairs.push_back({param, t});
+      continue;
+    }
     cs.pairs.push_back({param, given[i]});
   }
   if (given.size() > n && !static_cast<TemplateParamDecl*>(concept_->templateParams[n - 1])->isPack)
@@ -2291,6 +2322,8 @@ auto GlobalScope::Impl::associatedConstraints(NormalConstraint& n, Decl* f, cons
     conjoin(normalizeConstraint(n, static_cast<FunctionDecl*>(f)->requiresClause, f, s, 1));
   else if (f->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(f)->requiresClause)
     conjoin(normalizeConstraint(n, static_cast<ClassDecl*>(f)->requiresClause, f, s, 1));
+  else if (f->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(f)->requiresClause)
+    conjoin(normalizeConstraint(n, static_cast<VariableDecl*>(f)->requiresClause, f, s, 1)); // (a variable template's partial specialization)
   return root;
 }
 

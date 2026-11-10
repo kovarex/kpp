@@ -1,0 +1,16 @@
+// spec: a concept's template parameter may have a default, read when a concept-id names fewer arguments ([temp.param] 10): `SameAs<int>` of `template<typename T, typename U = int> concept SameAs`, a constant one computed from the arguments before it, and a type-constraint naming such a concept (clang's output)
+// found by D's concepts battery against clang (2026-11-10): the default was not read, so such a concept-id was "a static assertion whose condition the compiler cannot evaluate yet", and "not a constant yet" as a value
+template<typename T, typename U = int>
+concept SameAs = std::IsSame<T, U>::value;
+template<typename T, int N = sizeof(T)>
+concept AtLeast4 = N >= 4;
+static_assert(SameAs<int> && !SameAs<char> && SameAs<char, char>);
+template<SameAs T>
+int pick(T) { return 1; }
+int pick(...) { return 2; }
+
+int main()
+{
+  std::println(SameAs<int>, " ", SameAs<char>, " ", AtLeast4<int>, " ", AtLeast4<char>, " ", pick(5), " ", pick('c'));
+  return 0;
+}

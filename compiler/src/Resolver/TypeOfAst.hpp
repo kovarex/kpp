@@ -77,6 +77,9 @@
   // specialisations, the most specialised of them (its parameters bound in out); the primary
   // when none matches. Null when the matches are ambiguous.
   VariableDecl* variableSpecialization(VariableDecl* primary, const std::vector<const Ty*>& args, Subst& out);
+  // Whether variable template v's constrained template parameters' constraints and its requires clause hold
+  // under s: nullopt when they cannot be evaluated yet.
+  std::optional<bool> variableConstraintsHold(VariableDecl* v, const Subst& s);
 
   // --- builtin type traits ---
 

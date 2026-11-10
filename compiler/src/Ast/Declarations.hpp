@@ -174,6 +174,9 @@ struct VariableDecl : Decl
   Expr* bitfield = nullptr;
   Span<Expr*> structuredBindings; // NameExpr* for `auto [a, b] = ...`
   Expr* alignment = nullptr; // alignas(N) on the variable or data member
+  // A variable template's (`template<class T> requires Small<T> constexpr int v<T*> = 1;`): a partial
+  // specialization matches only where it holds, and a use of the primary must satisfy it.
+  Expr* requiresClause = nullptr;
 };
 // A class's, an enumeration's or a static local's number (ClassDecl::number, EnumDecl::number,
 // VariableDecl::number); UINT32_MAX for any other declaration.

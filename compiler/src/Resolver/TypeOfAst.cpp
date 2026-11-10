@@ -37,6 +37,27 @@ auto GlobalScope::Impl::wellFormedArgument(Node* n, const TypeContext& ctx, int 
   return t && t->isKnown();
 }
 
+auto GlobalScope::Impl::variableConstraintsHold(VariableDecl* v, const Subst& s) -> std::optional<bool>
+{
+  bool unknownYet = false;
+  for (Decl* tp : v->templateParams)
+    if (tp && tp->kind == NodeKind::TemplateParamDecl)
+    {
+      std::optional<bool> holds = typeConstraintHolds(static_cast<TemplateParamDecl*>(tp), v, s, 1);
+      if (holds && !*holds)
+        return false;
+      unknownYet = unknownYet || !holds;
+    }
+  if (v->requiresClause)
+  {
+    std::optional<bool> holds = constraintValue(v->requiresClause, v, s);
+    if (holds && !*holds)
+      return false;
+    unknownYet = unknownYet || !holds;
+  }
+  return unknownYet ? std::nullopt : std::optional<bool>(true);
+}
+
 auto GlobalScope::Impl::variableSpecialization(VariableDecl* primary, const std::vector<const Ty*>& args, Subst& out) -> VariableDecl*
 {
   if (primary->name.empty() || args.empty())
@@ -99,6 +120,17 @@ auto GlobalScope::Impl::variableSpecialization(VariableDecl* primary, const std:
     TypeContext dctx{sctx.scope, sctx.locals, &m.s, sctx.tokens, sctx.text};
     for (Node* w : written)
       ok = ok && wellFormedArgument(w, dctx);
+    // Its constrained template parameters' constraints and its requires clause, for the arguments deduced, as a class's
+    // partial specialization's ([temp.spec.partial.match] 2, matchSpecialization): until 2026-11-10 never checked (the
+    // requires clause was dropped), so `template<Integral T> constexpr int v<T> = 1;` matched a double, silently.
+    if (ok)
+      if (std::optional<bool> holds = variableConstraintsHold(v, m.s); !holds || !*holds)
+      {
+        if (!holds)
+          reportCheckerError(v->file, v->token, "the constraints of a partial specialization of " + debugName(primary->name.last().symbol) +
+                                                    " cannot be evaluated for its arguments");
+        ok = false;
+      }
     if (ok)
       matches.push_back(std::move(m));
   }
@@ -135,11 +167,18 @@ auto GlobalScope::Impl::variableSpecialization(VariableDecl* primary, const std:
     }
     return true;
   };
+  // m beats o when it is more specialized, or as specialized either way and more constrained ([temp.func.order] 6.2.2:
+  // `template<Integral T> v<T>` and `template<class T> requires Integral<T> && Big<T> v<T>`, the second for a long).
+  auto beats = [&](const Match& m, const Match& o)
+  {
+    bool mo = atLeastAs(m, o), om = atLeastAs(o, m);
+    return (mo && !om) || (mo && om && constraintsSubsume(m.v, o.v) && !constraintsSubsume(o.v, m.v));
+  };
   for (const Match& m : matches)
   {
     bool best = true;
     for (const Match& o : matches)
-      if (&o != &m && !(atLeastAs(m, o) && !atLeastAs(o, m)))
+      if (&o != &m && !beats(m, o))
         best = false;
     if (best)
     {

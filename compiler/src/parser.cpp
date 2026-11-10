@@ -331,6 +331,13 @@ namespace
         error("coroutines are not supported");
     }
 
+    // An error at a token read before (a template header's requires clause, on a declaration that takes none).
+    void errorAt(uint32_t token, const char* message)
+    {
+      allErrors.push_back({token, message});
+      out.diagnostics.push_back({token, message});
+    }
+
     void error(const char* message)
     {
       allErrors.push_back({pos, message});
@@ -2165,6 +2172,8 @@ namespace
         if (!parseQualifiedName(v->name, false, false))
           error("expected concept name");
         expect(P::Assign, "expected '='");
+        if (templ.requiresClause)
+          errorAt(templ.requiresClause->token, "a concept has no requires clause: its definition is its constraint ([temp.concept] 4)");
         v->templateParams = templ.params;
         v->isTemplate = templ.present;
         // The parameters of a requires-expression in it (`requires(const T& value)`) belong to the
@@ -2482,6 +2491,9 @@ namespace
         v->structuredBindings = d.structuredBindings;
         v->templateParams = templ.params;
         v->isTemplate = templ.present;
+        // (until 2026-11-10 dropped: a constrained partial specialization matched every argument, silently)
+        v->requiresClause = templ.requiresClause;
+        adoptRequiresParams(v->requiresClause, v);
         // A variable template's initializer belongs to it, as a concept's does: the parameters of
         // a requires-expression in it (`requires (T& t) { t.begin(); }`) name its parameters.
         Decl* savedParent = currentParent;
@@ -3523,6 +3535,8 @@ namespace
       {
         UsingAliasDecl* u = decl<UsingAliasDecl>(start);
         u->name = tok().id;
+        if (templ.requiresClause)
+          errorAt(templ.requiresClause->token, "a requires clause on an alias template is not supported yet (it was dropped until 2026-11-10)");
         u->templateParams = templ.params;
         u->isTemplate = templ.present;
         advance();

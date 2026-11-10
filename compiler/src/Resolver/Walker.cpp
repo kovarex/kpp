@@ -1864,8 +1864,23 @@ auto GlobalScope::Impl::Walker::typeOfResolvedName(const Lookup& l, const NamePa
       if (lastPart.hasTemplateArgs && Impl::conceptOf(d))
         return types.boolType(); // `has_load<T, Input>` as a value: a concept-id is a bool
       if (lastPart.hasTemplateArgs && !d->templateParams.empty())
-        if (const Ty* t = impl.variableTemplateType(static_cast<VariableDecl*>(d), lastPart, ctx()))
+      {
+        std::string unsatisfied;
+        if (const Ty* t = impl.variableTemplateType(static_cast<VariableDecl*>(d), lastPart, ctx(), &unsatisfied))
           return t; // `two_v<int>`: T is int here
+        if (!unsatisfied.empty())
+        {
+          // `v<char>` of a `template<class T> requires Big<T> constexpr int v`: an error, a substitution failure while probing
+          if (file && !probing && !file->isImported)
+          {
+            if (activeSubst)
+              reportInInstance(e ? e->token : 0, unsatisfied);
+            else
+              impl.reportCheckerError(file, e ? e->token : 0, unsatisfied);
+          }
+          return unknown(Why::Name);
+        }
+      }
       if (l.found == Found::Local)
         if (const Ty* walked = locals.deducedTypeOf(d); walked && !impl.containsAuto(walked))
           return walked; // the type this walk gave the local (a class of the function's own, under an instance's arguments)

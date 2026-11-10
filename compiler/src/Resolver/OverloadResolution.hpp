@@ -200,8 +200,11 @@
   // The specialisation of variable template v the arguments part writes pick, read under ctx
   // (variableSpecialization), and its arguments: a trailing pack takes the rest, defaults fill the
   // end. Null while an argument is unknown, or dependent unless dependent is allowed (typing a
-  // template's own body), or when two specialisations match equally well.
-  VariableDecl* variableTemplateSource(VariableDecl* v, const NamePart& part, const TypeContext& ctx, int depth, bool dependent, Subst& out);
+  // template's own body), or when two specialisations match equally well. Null too when the primary
+  // is picked and its constraints do not hold for known arguments ([temp.names] 8): unsatisfied, when
+  // given, then says so.
+  VariableDecl* variableTemplateSource(VariableDecl* v, const NamePart& part, const TypeContext& ctx, int depth, bool dependent, Subst& out,
+                                       std::string* unsatisfied = nullptr);
 
   // The value of variable template v for the arguments part writes, read under ctx: the
   // initializer of the specialisation they pick, evaluated with them bound. nullopt while an
@@ -209,8 +212,8 @@
   std::optional<ConstValue> variableTemplateValue(VariableDecl* v, const NamePart& part, const TypeContext& ctx, int depth);
 
   // The type of `two_v<int>`: the declared type of the specialisation the arguments pick, with them
-  // bound (`T` is int); null when they pick none.
-  const Ty* variableTemplateType(VariableDecl* v, const NamePart& part, const TypeContext& ctx);
+  // bound (`T` is int); null when they pick none (unsatisfied: as variableTemplateSource's).
+  const Ty* variableTemplateType(VariableDecl* v, const NamePart& part, const TypeContext& ctx, std::string* unsatisfied = nullptr);
 
   // The concept d declares (`template<class T> concept C = ...;`, a variable template with no
   // type), or null.
