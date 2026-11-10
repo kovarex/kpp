@@ -202,8 +202,9 @@ def check(path, text):
         # An expanded definition among declarations: an empty line around it.
         if enclosing != 'declarations' or own == 'expression':
             continue
+        # (the comment right above it is its own, a `/** ... */` as a `//`: a line of comment and nothing else)
         top = head
-        while top > 0 and lines[top - 1].strip().startswith('//'):
+        while top > 0 and lines[top - 1].strip() != '' and code[top - 1].strip() == '':
             top -= 1
         if top > 0:  # (head -1: no line of its own)
             prev = code[top - 1].strip()

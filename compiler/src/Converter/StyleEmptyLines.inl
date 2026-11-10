@@ -278,8 +278,9 @@ inline std::string withStyleEmptyLinesOnce(const std::string& text)
           found[ci] |= EmptyBeforeClose;
         if (!enclosingDeclarations || !open.definition)
           continue;
+        // (the comment right above it is its own, a `/** ... */` as a `//`: a line of comment and nothing else)
         size_t top = open.head;
-        while (top > 0 && trimmed(lines[top - 1]).substr(0, 2) == "//")
+        while (top > 0 && !empty(top - 1) && trimmed(code[top - 1]).empty())
           --top;
         if (top > 0)
         {
