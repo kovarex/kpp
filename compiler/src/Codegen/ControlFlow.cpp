@@ -679,7 +679,7 @@ auto codegen::Emitter::switchStatement(SwitchStmt* sw) -> void
   {
     startBlock(invalidL);
     auto [line, column] = lineColumnOf(sw->token);
-    emitCall("", "void @kpp_assert_failed(ptr " + cStringConstant(programPathOf(currentFile)) + ", i32 " + std::to_string(line) + ", i32 " +
+    emitCall("", "void @kpp_assert_failed(ptr " + cStringConstant(programPathOf(currentFile)) + ", i32 " + lineOperand(line) + ", i32 " +
                      std::to_string(column) + ", ptr " + cStringConstant("invalid value in switch on " + qualifiedName(condTy->decl)) + ")", false);
     fn += "  unreachable\n";
     usesAssert = true;

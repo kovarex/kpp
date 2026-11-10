@@ -21,7 +21,8 @@ namespace driver
   };
 
   // The CodeView line tables of a COFF object (its .debug$S sections' line subsections), each entry of a
-  // file the maps name given its line after: true when every one was, the object rewritten in place.
+  // file the maps name given its line after, and so each of its asserts' lines (the file's assert line
+  // section, lineSlotSection in codegen.hpp): true when every one was, the object rewritten in place.
   // False, why said and the object as it was, when an entry's line is in no map's lines (the module is
   // then compiled), or the object is no COFF this reads.
   bool patchLineTables(const std::string& object, const std::vector<LineMap>& maps, std::string& why);

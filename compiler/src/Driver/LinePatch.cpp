@@ -1,5 +1,6 @@
 // The driver: patching a COFF object's CodeView line tables for lines an edit moved (LinePatch.hpp).
 #include "LinePatch.hpp"
+#include "codegen.hpp"
 
 #include <algorithm>
 #include <array>
@@ -50,6 +51,32 @@ namespace driver
       for (size_t i = 0; i < size; ++i)
         crc = table[(crc ^ (unsigned char)data[i]) & 0xff] ^ (crc >> 8);
       return crc;
+    }
+
+    // A section header's name (8 bytes, or `/offset` into the string table at strings) and a symbol's (8 bytes, or 4 zeros and
+    // the offset): the name.
+    std::string sectionName(const std::string& b, size_t header, size_t strings)
+    {
+      std::string_view raw(b.data() + header, strnlen(b.data() + header, 8));
+      if (raw.empty() || raw[0] != '/' || raw.size() < 2 || raw[1] == '/')
+        return std::string(raw);
+      size_t offset = 0;
+      for (char c : raw.substr(1))
+        if (isdigit((unsigned char)c))
+          offset = offset * 10 + size_t(c - '0');
+      if (strings + offset >= b.size())
+        return std::string();
+      return std::string(b.data() + strings + offset, strnlen(b.data() + strings + offset, b.size() - strings - offset));
+    }
+
+    std::string symbolName(const std::string& b, size_t at, size_t strings)
+    {
+      if (read32(b, at) != 0)
+        return std::string(b.data() + at, strnlen(b.data() + at, 8));
+      size_t offset = read32(b, at + 4);
+      if (strings + offset >= b.size())
+        return std::string();
+      return std::string(b.data() + strings + offset, strnlen(b.data() + strings + offset, b.size() - strings - offset));
     }
 
     // A path as Windows compares it: case and separators aside.
@@ -126,6 +153,40 @@ namespace driver
       return why = "the symbol table runs past the file", false;
     if (headers + sections * 40 > b.size())
       return why = "the section headers run past the file", false;
+    const size_t strings = symbols + symbolCount * symbolSize; // (the string table, after the symbols)
+    auto moved = [](const LineMap& m, uint32_t line, uint32_t& to)
+    {
+      auto it = std::lower_bound(m.lines.begin(), m.lines.end(), std::pair<uint32_t, uint32_t>{line, 0});
+      if (it == m.lines.end() || it->first != line)
+        return false;
+      to = it->second;
+      return true;
+    };
+    std::string patched = b;
+    std::vector<bool> changed(sections, false); // (the sections a line moved in: their checksums anew)
+    // The asserts' lines of a moved file (codegen's lineOperand: an i32 each in its file's section, lineSlotSection), each given
+    // its line after the edit.
+    for (const LineMap& m : maps)
+    {
+      std::string name = lineSlotSection(m.file);
+      for (size_t s = 0; s < sections; ++s)
+      {
+        size_t h = headers + s * 40;
+        if (sectionName(b, h, strings) != name)
+          continue;
+        size_t size = read32(b, h + 16), at = read32(b, h + 20);
+        if (size % 4 != 0 || at + size > b.size() || read16(b, h + 32) != 0) // (no relocations in it)
+          return why = "an assert line section is not lines alone", false;
+        for (size_t i = 0; i < size; i += 4)
+        {
+          uint32_t line = read32(b, at + i), to = 0;
+          if (!moved(m, line, to))
+            return why = "assert line " + std::to_string(line) + " of " + m.file + " has no place after the edit", false;
+          write32(patched, at + i, to);
+          changed[s] = changed[s] || to != line;
+        }
+      }
+    }
     // Every .debug$S section's subsections; the one string table and file checksum table they share.
     std::vector<Subsection> all;
     for (size_t s = 0; s < sections; ++s)
@@ -137,18 +198,18 @@ namespace driver
       if (at + size > b.size() || !subsectionsOf(b, at, size, s, all))
         return why = "a .debug$S section is not CodeView's", false;
     }
-    const Subsection* strings = nullptr;
+    const Subsection* lineStrings = nullptr; // (CodeView's string table: its files' names)
     const Subsection* checksums = nullptr;
     for (const Subsection& sub : all)
     {
       if (sub.kind != 0xf3 && sub.kind != 0xf4)
         continue;
-      const Subsection*& slot = sub.kind == 0xf3 ? strings : checksums;
+      const Subsection*& slot = sub.kind == 0xf3 ? lineStrings : checksums;
       if (slot)
         return why = "two string or file checksum tables", false;
       slot = &sub;
     }
-    if (!strings || !checksums)
+    if (!lineStrings || !checksums)
       return why = "no string or file checksum table", false;
     // The file checksum entries whose files the maps name, by their offset in the table (what a line
     // block names its file by).
@@ -157,16 +218,16 @@ namespace driver
     {
       uint32_t name = read32(b, checksums->data + at);
       uint8_t bytes = uint8_t(b[checksums->data + at + 4]);
-      if (name >= strings->size)
+      if (name >= lineStrings->size)
         return why = "a file name past the string table", false;
-      const char* text = b.data() + strings->data + name;
-      std::string key = pathKey(std::string_view(text, strnlen(text, strings->size - name)));
+      const char* text = b.data() + lineStrings->data + name;
+      std::string key = pathKey(std::string_view(text, strnlen(text, lineStrings->size - name)));
       for (const LineMap& m : maps)
         if (pathKey(m.file) == key)
           mapped.push_back({uint32_t(at), &m});
       at += (6 + bytes + 3) & ~size_t(3);
     }
-    if (mapped.empty())
+    if (mapped.empty() && std::find(changed.begin(), changed.end(), true) == changed.end())
       return true; // (nothing of the moved files here: the object stays as it is)
     auto mapOf = [&](uint32_t file) -> const LineMap*
     {
@@ -175,16 +236,6 @@ namespace driver
           return m;
       return nullptr;
     };
-    auto moved = [](const LineMap& m, uint32_t line, uint32_t& to)
-    {
-      auto it = std::lower_bound(m.lines.begin(), m.lines.end(), std::pair<uint32_t, uint32_t>{line, 0});
-      if (it == m.lines.end() || it->first != line)
-        return false;
-      to = it->second;
-      return true;
-    };
-    std::string patched = b;
-    std::vector<bool> changed(sections, false); // (the .debug$S sections a line moved in: their checksums anew)
     for (const Subsection& sub : all)
     {
       // An inlinee's source line names its file too: none in kpp's objects (no inline sites at -O0);
@@ -240,7 +291,7 @@ namespace driver
       int64_t number = big ? int64_t(int32_t(read32(b, at + 12))) : int64_t(int16_t(read16(b, at + 12)));
       uint8_t storage = uint8_t(b[at + (big ? 18 : 16)]), aux = uint8_t(b[at + (big ? 19 : 17)]);
       if (storage == 3 && aux >= 1 && value == 0 && number >= 1 && size_t(number) <= sections && changed[size_t(number) - 1] &&
-          memcmp(b.data() + at, ".debug$S", 8) == 0)
+          symbolName(b, at, strings) == sectionName(b, headers + size_t(number - 1) * 40, strings))
       {
         size_t h = headers + size_t(number - 1) * 40;
         size_t size = read32(b, h + 16), data = read32(b, h + 20);

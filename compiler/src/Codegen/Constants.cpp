@@ -2,6 +2,7 @@
 // body in Codegen/Emitter.hpp. A translation unit of its own since 2026-11-05 (codegen.cpp split,
 // stage 2), moved without a change.
 #include "Emitter.hpp"
+#include <filesystem>
 
 auto codegen::Emitter::spelling(uint32_t token) const -> std::string_view
 {
@@ -719,6 +720,30 @@ auto codegen::Emitter::floatConstant(double value, uint8_t bits) -> std::string
   char buf[32];
   snprintf(buf, sizeof buf, "0x%016llX", (unsigned long long)raw);
   return buf;
+}
+
+auto codegen::Emitter::lineOperand(uint32_t line) -> std::string
+{
+  if (!sh.fullDebugInfo || sh.importableModules || !sh.target.windows() || !currentFile)
+    return std::to_string(line);
+  std::string& section = lineSections[currentFile];
+  if (section.empty())
+  {
+    std::error_code ec;
+    std::string path = std::filesystem::absolute(currentFile->path, ec).string(); // (as debugFileOf, a LineMap, names it)
+    section = lineSlotSection(ec ? currentFile->path : path);
+  }
+  std::string function = currentFunctionName;
+  if (function.rfind("@\"", 0) == 0)
+    function = function.substr(2, function.size() - 3);
+  else if (!function.empty() && function[0] == '@')
+    function = function.substr(1);
+  // (named by the emission's count, not the line: the function's code is the same wherever its asserts are)
+  std::string name = "@\"" + function + ".line." + std::to_string(lineSlots++) + "\"";
+  addOwnedEntry(name + " = private constant i32 " + std::to_string(line) + ", section \"" + section + "\", align 4\n");
+  std::string value = newTemp();
+  fn += "  " + value + " = load i32, ptr " + name + "\n";
+  return value;
 }
 
 auto codegen::Emitter::lineColumnOf(uint32_t token) -> std::pair<uint32_t, uint32_t>

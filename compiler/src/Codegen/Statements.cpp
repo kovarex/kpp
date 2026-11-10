@@ -1296,14 +1296,14 @@ auto codegen::Emitter::statement(Stmt* s) -> void
       {
         // check, require and fail in a test (design.md 8.6, 8.7): the test runner records the
         // failure; a require's or a fail's call throws to end the test (compiler/src/tests.cpp).
-        emitCall("", "void @kpp_check_failed(ptr " + cStringConstant(programPathOf(currentFile)) + ", i32 " + std::to_string(line) + ", i32 " +
+        emitCall("", "void @kpp_check_failed(ptr " + cStringConstant(programPathOf(currentFile)) + ", i32 " + lineOperand(line) + ", i32 " +
                          std::to_string(column) + ", ptr " + cStringConstant(sourceText(a->startToken, a->endToken)) + ", i32 " +
                          std::to_string(a->testKind) + ")", a->testKind >= 2);
         emitBranch(okL);
         startBlock(okL);
         break;
       }
-      emitCall("", "void @kpp_assert_failed(ptr " + cStringConstant(programPathOf(currentFile)) + ", i32 " + std::to_string(line) + ", i32 " +
+      emitCall("", "void @kpp_assert_failed(ptr " + cStringConstant(programPathOf(currentFile)) + ", i32 " + lineOperand(line) + ", i32 " +
                        std::to_string(column) + ", ptr " + cStringConstant(sourceText(a->startToken, a->endToken)) + ")", false);
       fn += "  unreachable\n";
       usesAssert = true;

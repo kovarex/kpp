@@ -1676,7 +1676,7 @@ auto codegen::Emitter::throwFromLibrary(const char* name, Node* at, const std::s
     return;
   }
   auto [line, column] = lineColumnOf(at->token);
-  emitCall("", "void @kpp_assert_failed(ptr " + cStringConstant(programPathOf(currentFile)) + ", i32 " + std::to_string(line) + ", i32 " +
+  emitCall("", "void @kpp_assert_failed(ptr " + cStringConstant(programPathOf(currentFile)) + ", i32 " + lineOperand(line) + ", i32 " +
                    std::to_string(column) + ", ptr " + cStringConstant(stop) + ")", false);
   fn += "  unreachable\n";
   usesAssert = true;

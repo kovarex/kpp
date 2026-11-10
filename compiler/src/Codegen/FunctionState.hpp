@@ -150,6 +150,7 @@
     // The static InitializerList arrays and catch filters this emission has named: their names carry this number, in the
     // order the emission meets them, not their tokens (a compile server keeps the code of a function an edit above it moved).
     uint32_t namedPlaces = 0;
+    uint32_t lineSlots = 0; // the line constants this emission has named (lineOperand), in the order it meets them
     bool blockTerminated = false;
     std::string currentBlock = "entry";
     // The body being emitted: the function's, or the lambda's whose call operator is (its static

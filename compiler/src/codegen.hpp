@@ -4,10 +4,30 @@
 #include "Ast/Ast.hpp"
 #include "resolver.hpp"
 #include "target.hpp"
+#include <cctype>
+#include <cstdio>
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
+
+// The COFF section an assert's line is in (--debug-info on Windows, Emitter::lineOperand): `.kpplin$` and an FNV hash of its
+// file's absolute path (the debug info's, a driver::LineMap's file), lowercased with `\` for `/`, so that a compile server's
+// patch of a kept object (driver::patchLineTables) finds a moved file's asserts by the section's name. The linker groups the
+// sections into one, `.kpplin`.
+inline std::string lineSlotSection(std::string_view absolutePath)
+{
+  uint32_t h = 2166136261u;
+  for (char c : absolutePath)
+  {
+    char k = c == '/' ? '\\' : char(tolower((unsigned char)c));
+    h = (h ^ (unsigned char)k) * 16777619u;
+  }
+  char text[24];
+  snprintf(text, sizeof text, ".kpplin$%08x", h);
+  return text;
+}
 
 // A class the debug information defines (--debug-info with variables), by the name its definition
 // gives it (debuggerClassName, Codegen/DebugInfo.inl): what the .natvis's per-instance rules name and

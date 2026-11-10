@@ -133,6 +133,13 @@
 
     // Line and column (1-based) of a token of the current file.
     std::pair<uint32_t, uint32_t> lineColumnOf(uint32_t token);
+    // A line of the current file as an assert's or a check's call takes it (`i32` operand): in a build a compile server may
+    // patch the lines of (--debug-info for Windows, no importable modules), loaded from a constant of its own in its file's
+    // line section (lineSlotSection), so that an edit that only moves the line changes that constant, which the patch of the
+    // kept object rewrites, and not the function's code (kovarex, 2026-11-10: "lets try that"; until then the line was the
+    // call's operand, and moving an assert compiled its module again: AtlasBuilder.kpp's). Elsewhere the line itself.
+    std::string lineOperand(uint32_t line);
+    std::unordered_map<const ParsedFile*, std::string> lineSections; // a file's line section (lineOperand)
 
     // The source text from one token up to (not including) another.
     std::string sourceText(uint32_t fromToken, uint32_t toToken);

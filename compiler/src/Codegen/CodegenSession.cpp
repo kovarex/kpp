@@ -1470,7 +1470,26 @@ static std::string withoutLines(std::string_view text)
     from = digits;
   }
   out.append(text.substr(from));
-  return out;
+  // An assert's line constant (Emitter::lineOperand: `@"f.line.0" = private constant i32 42, section ".kpplin$..."`), whose
+  // value the patch rewrites as it does the line tables.
+  static constexpr std::string_view slot = "private constant i32 ", section = ", section \".kpplin$";
+  if (out.find(section) == std::string::npos)
+    return out;
+  std::string result;
+  result.reserve(out.size());
+  from = 0;
+  for (size_t at = out.find(slot); at != std::string::npos; at = out.find(slot, at + slot.size()))
+  {
+    size_t digits = at + slot.size(), end = digits;
+    while (end < out.size() && isdigit((unsigned char)out[end]))
+      ++end;
+    if (end == digits || out.compare(end, section.size(), section) != 0)
+      continue;
+    result.append(out, from, digits - from);
+    from = end;
+  }
+  result.append(out, from, std::string::npos);
+  return result;
 }
 
 // Whether two lists of texts (each sorted) are the same but for their debug lines: their texts with the

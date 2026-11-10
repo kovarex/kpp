@@ -108,7 +108,7 @@ auto codegen::Emitter::alternativeLvalue(ClassDecl* c, Value base, IndexExpr* i,
     fn += "  br i1 " + same + ", label %" + okL + ", label %" + failL + "\n";
     startBlock(failL);
     auto [line, column] = lineColumnOf(at->token);
-    emitCall("", "void @kpp_assert_failed(ptr " + cStringConstant(programPathOf(currentFile)) + ", i32 " + std::to_string(line) + ", i32 " +
+    emitCall("", "void @kpp_assert_failed(ptr " + cStringConstant(programPathOf(currentFile)) + ", i32 " + lineOperand(line) + ", i32 " +
                      std::to_string(column) + ", ptr " + cStringConstant("the typed union holds another alternative") + ")", false);
     fn += "  unreachable\n";
     usesAssert = true;
