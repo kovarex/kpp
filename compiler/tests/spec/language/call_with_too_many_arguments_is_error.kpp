@@ -1,0 +1,76 @@
+// spec: a call gives a function as many arguments as it takes, or the default arguments make up: one too many (C++'s "too many arguments to function call") or one too few is an error, also where the name has one function, a member, a static member, a function of a namespace or a base, through a using-declaration, a hidden friend, a pointer to a function or a class's operator(). Until 2026-11-10 an extra argument was dropped there, silently: `f(1)` of `int f()` ran f (thread C's find). C's `...` and a pack take any number.
+// error: call_with_too_many_arguments_is_error.kpp:28: error: the call of get gives 1 argument, and get takes no argument: an argument is never dropped
+// error: call_with_too_many_arguments_is_error.kpp:41: error: the call of value gives 1 argument, and value takes no argument: an argument is never dropped
+// error: call_with_too_many_arguments_is_error.kpp:58: error: the call of none gives 1 argument, and none takes no argument: an argument is never dropped
+// error: call_with_too_many_arguments_is_error.kpp:59: error: the call of one gives 2 arguments, and one takes 1 argument: an argument is never dropped
+// error: call_with_too_many_arguments_is_error.kpp:60: error: the call of defaulted gives 3 arguments, and defaulted takes at most 2 arguments: an argument is never dropped
+// error: call_with_too_many_arguments_is_error.kpp:61: error: the call of get gives 1 argument, and get takes no argument: an argument is never dropped
+// error: call_with_too_many_arguments_is_error.kpp:62: error: the call of add gives 3 arguments, and add takes at most 2 arguments: an argument is never dropped
+// error: call_with_too_many_arguments_is_error.kpp:63: error: the call of count gives 1 argument, and count takes no argument: an argument is never dropped
+// error: call_with_too_many_arguments_is_error.kpp:64: error: the call of count gives 1 argument, and count takes no argument: an argument is never dropped
+// error: call_with_too_many_arguments_is_error.kpp:65: error: the call of f gives 1 argument, and f takes no argument: an argument is never dropped
+// error: call_with_too_many_arguments_is_error.kpp:66: error: the call of f gives 1 argument, and f takes no argument: an argument is never dropped
+// error: call_with_too_many_arguments_is_error.kpp:67: error: the call of show gives 2 arguments, and show takes 1 argument: an argument is never dropped
+// error: call_with_too_many_arguments_is_error.kpp:69: error: the call of pointer gives 2 arguments, and pointer takes 1 argument: an argument is never dropped
+// error: call_with_too_many_arguments_is_error.kpp:71: error: the call of call gives 2 arguments, and call takes 1 argument: an argument is never dropped
+// error: call_with_too_many_arguments_is_error.kpp:72: error: the call of one gives no argument, and one takes 1 argument
+// error: call_with_too_many_arguments_is_error.kpp:73: error: the call of defaulted gives no argument, and defaulted takes at least 1 argument
+// factorio: TechnologyPrototype::checkForNonContiguousLevels's LevelRange::toString(), whose `this.toString(this.minLevel)` called itself with the argument dropped, forever (found by C before the std:: conversion)
+int none() { return 7; }
+int one(int a) { return a; }
+int defaulted(int a, int b = 2) { return a + b; }
+struct S
+{
+  int v;
+  int get() const { return 7; }
+  int add(int a, int b = 1) const { return a + b; }
+  static int count() { return 3; }
+  int self() const { return this.get(1); }
+};
+namespace n
+{
+  int f() { return 4; }
+}
+using n::f;
+struct Base
+{
+  int value() const { return 1; }
+};
+struct Derived : Base
+{
+  int twice() const { return Base::value(9); }
+};
+struct Held
+{
+  int v = 2;
+  friend int show(const Held& h) { return h.v; }
+};
+struct Callable
+{
+  int operator()(int a) const { return a; }
+};
+extern "C" int printf(const char*, ...);
+template<class... T> int howMany(T... t) { return int(sizeof...(T)); }
+
+int main()
+{
+  S s{5};
+  int total = none(1);
+  total += one(1, 2);
+  total += defaulted(1, 2, 3);
+  total += s.get(1);
+  total += s.add(1, 2, 3);
+  total += S::count(1);
+  total += s.count(1);
+  total += n::f(1);
+  total += f(1);
+  total += show(Held{}, 1);
+  int (*pointer)(int) = one;
+  total += pointer(1, 2);
+  Callable call;
+  total += call(1, 2);
+  total += one();
+  total += defaulted();
+  total += defaulted(1) + s.add(1) + howMany(1, 2, 3) + printf("%d %d\n", 1, 2);
+  return total;
+}

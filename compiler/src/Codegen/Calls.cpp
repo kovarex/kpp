@@ -1007,6 +1007,13 @@ auto codegen::Emitter::callFunction(FunctionDecl* f, const TemplateArgs& args, c
     return defaultedCall(f, classTy, thisArg, callArgs, at);
   if (!conditionHolds(f))
     return {"", types.voidType(), false}; // conditional(false): no call, arguments not evaluated
+  // More arguments than parameters (no C `...`, no pack) is never a call that drops some: the checker's error, and this one
+  // where it let one through (until 2026-11-10 a trivial function's inlined body took the first ones, silently).
+  if (!(f->flags & DF_Variadic) && leading.size() + callArgs.size() > f->params.size() &&
+      std::none_of(f->params.begin(), f->params.end(), [](Decl* p) { return static_cast<ParamDecl*>(p)->isPack; }) &&
+      std::none_of(callArgs.begin(), callArgs.end(), [&](Expr* e) { return isPackExpansion(e); }))
+    unsupported(at, "a call to " + qualifiedName(f) + " with " + std::to_string(leading.size() + callArgs.size()) + " arguments, which takes " +
+                      std::to_string(f->params.size()) + " (and the overload resolution let it through)");
   if (indirect.empty() && sh.inlineTrivial && leading.empty() && !emitted && !isCheckedCall(callArgs, at))
   {
     if (std::optional<Value> v = inlinedIdentity(f, args, callArgs, at))

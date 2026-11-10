@@ -5454,6 +5454,50 @@ auto GlobalScope::Impl::Walker::checkScalarArguments(FunctionDecl* f, const Ty* 
       objectThisWherePointer(args[i], nullptr, true);
 }
 
+auto GlobalScope::Impl::Walker::checkArgumentCount(const Span<Decl*>* params, const Ty* fnTy, bool variadic, const Span<Expr*>& args, uint32_t token, const std::string& callee) -> bool
+{
+  if (probing)
+    return false;
+  for (Expr* a : args)
+    if (a && a->kind == NodeKind::UnaryExpr && static_cast<UnaryExpr*>(a)->postfix && P(static_cast<UnaryExpr*>(a)->op) == P::Ellipsis)
+      return false; // (`f(rest...)`: as many as the pack's elements)
+  size_t total = 0, required = 0;
+  if (params)
+    for (Decl* p : *params)
+    {
+      auto* pd = static_cast<ParamDecl*>(p);
+      if (pd->isPack)
+        return false;
+      ++total;
+      required += !pd->defaultValue;
+    }
+  else if (fnTy && fnTy->kind == TyKind::Function)
+  {
+    for (const Ty* a : fnTy->args)
+      if (!a || a->kind == TyKind::Pack || types.isDependent(a))
+        return false;
+    total = required = fnTy->args.size();
+    variadic = variadic || fnTy->variadic;
+  }
+  else
+    return false;
+  // A Text parameter, the last (design.md 14), takes the remaining arguments, however many, and none.
+  if (total > 0 && fnTy && fnTy->kind == TyKind::Function && impl.textParameterOf(fnTy) == total - 1)
+  {
+    variadic = true;
+    required = std::min(required, total - 1);
+  }
+  size_t given = args.size();
+  bool tooMany = given > total && !variadic;
+  if (!tooMany && given >= required)
+    return false;
+  auto count = [](size_t n) { return n == 0 ? std::string("no argument") : n == 1 ? std::string("1 argument") : std::to_string(n) + " arguments"; };
+  std::string takes = required == total ? count(total) : tooMany ? "at most " + count(total) : "at least " + count(required);
+  reportHere(token, "the call of " + callee + " gives " + count(given) + ", and " + callee + " takes " + takes +
+                        (tooMany ? ": an argument is never dropped" : ""));
+  return true;
+}
+
 auto GlobalScope::Impl::Walker::checkReferenceArguments(FunctionDecl* f, const Ty* fnTy, const Span<Expr*>& args, const std::string& callee) -> void
 {
   if (!f || !f->templateParams.empty() || !fnTy || fnTy->kind != TyKind::Function)
@@ -6829,8 +6873,10 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
                                      c->token); // `k(&c)` with k(int*) and k(double*)
           reportDeductionConflict(d, l.overloads, argTypes, n->name.last(), nullptr, c->token); // `refConv(1, 2.0)` for `refConv(const T&, T)`
         }
-        else // `takeInt(item)` with a UniquePtr<Item>: a class where a parameter is a scalar, the checker's error
+        else if (auto* only = static_cast<FunctionDecl*>(d); !checkArgumentCount(&only->params, impl.declaredTypeOf(d, classSubst, 0), (only->flags & DF_Variadic) != 0, c->args, c->token,
+                                                                                    impl.namePartText(n->name.last())))
         {
+          // `takeInt(item)` with a UniquePtr<Item>: a class where a parameter is a scalar, the checker's error
           checkScalarArguments(static_cast<FunctionDecl*>(d), impl.declaredTypeOf(d, classSubst, 0), c->args);
           checkExplicitArguments(static_cast<FunctionDecl*>(d), impl.declaredTypeOf(d, classSubst, 0), c->args);
           checkReferenceArguments(static_cast<FunctionDecl*>(d), impl.declaredTypeOf(d, classSubst, 0), c->args); // `setHalf(i)` for a double&
@@ -7016,8 +7062,10 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
             reportNoMatchingMember(r.decl, r.overloads, object, symbol, argTypes, m->token); // `s.find("x", 0, 5)`: String has no find of three
           reportDeductionConflict(r.decl, r.overloads, argTypes, last, object, m->token); // `box.both(1, 'c')` for `both(T, T)`
         }
-        else // `counter.add(item)` with a UniquePtr<Item>, as for a name
+        else if (auto* only = static_cast<FunctionDecl*>(r.decl);
+                 !checkArgumentCount(&only->params, impl.declaredTypeOf(r.decl, &r.subst, 0), (only->flags & DF_Variadic) != 0, c->args, c->token, impl.namePartText(last)))
         {
+          // `counter.add(item)` with a UniquePtr<Item>, as for a name
           checkScalarArguments(static_cast<FunctionDecl*>(r.decl), impl.declaredTypeOf(r.decl, &r.subst, 0), c->args);
           checkExplicitArguments(static_cast<FunctionDecl*>(r.decl), impl.declaredTypeOf(r.decl, &r.subst, 0), c->args);
           checkReferenceArguments(static_cast<FunctionDecl*>(r.decl), impl.declaredTypeOf(r.decl, &r.subst, 0), c->args);
@@ -7124,13 +7172,13 @@ auto GlobalScope::Impl::Walker::callResultOfValue(const Ty* t, CallExpr* c, cons
   };
   if (t->kind == TyKind::Function)
   {
-    if (c)
+    if (c && !checkArgumentCount(nullptr, t, false, c->args, c->token, calleeName()))
       checkReferenceBindings(calleeName(), {}, t->args, c->args);
     return t->inner;
   }
   if (t->kind == TyKind::Pointer && t->inner->kind == TyKind::Function)
   {
-    if (c)
+    if (c && !checkArgumentCount(nullptr, t->inner, false, c->args, c->token, calleeName())) // `pointer(1, 2)` with an `int (*)(int)`
       checkReferenceBindings(calleeName(), {}, t->inner->args, c->args); // `pointer(d)` with a `void (*)(Base&&)`
     return t->inner->inner;
   }
@@ -7187,7 +7235,9 @@ auto GlobalScope::Impl::Walker::callResultOfValue(const Ty* t, CallExpr* c, cons
       }
       if (const Ty* through = surrogateCall())
         return through;
-      if (onlyPlainCandidate(r.decl, r.overloads)) // `sink(d)` with a `void operator()(Base&& x)`, as for a name
+      if (onlyPlainCandidate(r.decl, r.overloads) && // `sink(d)` with a `void operator()(Base&& x)`, as for a name
+          !checkArgumentCount(&static_cast<FunctionDecl*>(r.decl)->params, impl.declaredTypeOf(r.decl, &r.subst, 0), (r.decl->flags & DF_Variadic) != 0, c->args, c->token,
+                              calleeName()))
         checkReferenceArguments(static_cast<FunctionDecl*>(r.decl), impl.declaredTypeOf(r.decl, &r.subst, 0), c->args, calleeName());
       return unknown(Why::Overload);
     }

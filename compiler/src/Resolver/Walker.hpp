@@ -733,6 +733,13 @@
     // The same call's arguments for its reference parameters (checkReferenceBindings), f named by
     // callee if given (`sink(d)` of a class's operator()).
     void checkReferenceArguments(FunctionDecl* f, const Ty* fnTy, const Span<Expr*>& args, const std::string& callee = {});
+    // How many arguments a call gives against what its callee takes, callee its name in the message: params (their
+    // default arguments and a pack counted), or, null, the type fnTy's (through a pointer to a function); variadic, C's
+    // `...`; a last Text parameter (fnTy's) takes any number. Too many (C++'s "too many arguments to function call") or too
+    // few is an error. For the single plain
+    // candidate pickOverload did not take, through a pointer, a closure: until 2026-11-10 an extra argument was dropped
+    // there, silently (thread C's find). True when it reported one.
+    bool checkArgumentCount(const Span<Decl*>* params, const Ty* fnTy, bool variadic, const Span<Expr*>& args, uint32_t token, const std::string& callee);
     // A call's arguments for its reference parameters (paramTypes: the parameters' types, params:
     // their declarations, empty through a pointer to a function), callee its name in the message. Each
     // non-const lvalue reference must be given an lvalue of its type or of a class derived from it
