@@ -5478,10 +5478,26 @@ auto GlobalScope::Impl::Walker::checkScalarArguments(FunctionDecl* f, const Ty* 
     return;
   for (size_t i = 0; i < args.size() && i < fnTy->args.size(); ++i)
     if (args[i] && args[i]->kind != NodeKind::BraceInitExpr && argTypes[i] && argTypes[i]->kind != TyKind::Pack)
+    {
       checkClassToScalar(argTypes[i], fnTy->args[i], args[i]->token, ambiguousOnly, args[i]);
+      if (!ambiguousOnly)
+        checkPointerToScalar(argTypes[i], fnTy->args[i], args[i]);
+    }
   if (fnTy->variadic) // `printf("%p", this)`: C's `...` would take the object itself
     for (size_t i = fnTy->args.size(); i < args.size(); ++i)
       objectThisWherePointer(args[i], nullptr, true);
+}
+
+auto GlobalScope::Impl::Walker::checkPointerToScalar(const Ty* given, const Ty* param, Expr* arg) -> void
+{
+  const Ty* a = given ? types.decay(given) : nullptr;
+  const Ty* p = param ? types.unqualified(types.stripRef(param)) : nullptr;
+  if (!a || a->kind != TyKind::Pointer || !p || !p->isKnown() || types.isDependent(p) || types.isDependent(a))
+    return;
+  if (p->kind != TyKind::Int && p->kind != TyKind::Char && p->kind != TyKind::Float && p->kind != TyKind::Enum)
+    return;
+  reportHere(arg->token, "a pointer (" + types.toString(a, &symbols) + ") does not convert to " + types.toString(p, &symbols) +
+                           " without a cast: a pointer converts to bool and to other pointers only");
 }
 
 auto GlobalScope::Impl::Walker::checkArgumentCount(const Span<Decl*>* params, const Ty* fnTy, bool variadic, const Span<Expr*>& args, uint32_t token, const std::string& callee) -> bool

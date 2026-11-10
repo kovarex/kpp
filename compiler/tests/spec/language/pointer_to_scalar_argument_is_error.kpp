@@ -1,0 +1,21 @@
+// spec: a pointer passed where a single candidate takes an integer, a floating-point value or an enumeration is the checker's error, as in C++ (a pointer converts to bool and to other pointers only, [conv.bool], [conv.ptr]); to bool it converts
+// found by thread E's battery a5 (2026-11-10): only the code generator refused these, as a gap of its own ("does not support passing a pointer (int32*) where int64 is expected yet")
+// error: pointer_to_scalar_argument_is_error.kpp:16: error: a pointer (int32*) does not convert to int64 without a cast
+// error: pointer_to_scalar_argument_is_error.kpp:17: error: a pointer (void(int32)*) does not convert to double without a cast
+// error: pointer_to_scalar_argument_is_error.kpp:18: error: a pointer (int32*) does not convert to Mode without a cast
+enum class Mode { On, Off };
+int wide(i64 v) { return 1; }
+int real(double v) { return 2; }
+int mode(Mode m) { return 3; }
+int flag(bool b) { return b ? 4 : 0; }
+void plain(int) {}
+
+int main()
+{
+  int x = 0;
+  int a = wide(&x);
+  int b = real(&plain);
+  int c = mode(&x);
+  int d = flag(&x);
+  return a + b + c + d;
+}

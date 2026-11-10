@@ -744,6 +744,10 @@
     // Each argument of a call of f (fnTy: its type), the single plain candidate whose parameters the arguments do not
     // fit (pickOverload chose none), that is a class where its parameter is a scalar, checked (checkClassToScalar). Not
     // for a function template's call, nor one with an expansion among its arguments.
+    // `g(&plain)` with g(long), h(double) or an enumeration: a pointer converts to no integer, character,
+    // floating-point or enumeration type (to bool it does, [conv.bool]), the checker's error for a single
+    // candidate (the code generator's "does not support passing a pointer where long is expected" before).
+    void checkPointerToScalar(const Ty* given, const Ty* param, Expr* arg);
     void checkScalarArguments(FunctionDecl* f, const Ty* fnTy, const Span<Expr*>& args, bool ambiguousOnly = false);
     // The same call's arguments for its reference parameters (checkReferenceBindings), f named by
     // callee if given (`sink(d)` of a class's operator()).
