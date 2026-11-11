@@ -507,7 +507,15 @@ auto GlobalScope::Impl::Walker::statementBreaks(Stmt* s) -> bool
         if (statementBreaks(c))
           return true;
       return false;
-    case NodeKind::IfStmt: return statementBreaks(static_cast<IfStmt*>(s)->then) || statementBreaks(static_cast<IfStmt*>(s)->else_);
+    case NodeKind::IfStmt:
+      // An else-if chain's links in turn, not by a recursion per link (a chain of 100,000 links is no nesting).
+      for (auto* i = static_cast<IfStmt*>(s);; i = static_cast<IfStmt*>(i->else_))
+      {
+        if (statementBreaks(i->then))
+          return true;
+        if (!i->else_ || i->else_->kind != NodeKind::IfStmt)
+          return statementBreaks(i->else_);
+      }
     case NodeKind::TryStmt:
       if (statementBreaks(static_cast<TryStmt*>(s)->body))
         return true;
@@ -562,15 +570,39 @@ auto GlobalScope::Impl::Walker::statementEnds(Stmt* s, EndFlow& flow) -> bool
       return false;
     case NodeKind::IfStmt:
     {
-      auto* i = static_cast<IfStmt*>(s);
-      if (i->isConstexpr && i->constexprKnown == 1)
-        return statementEnds(i->then, flow);
-      if (i->isConstexpr && i->constexprKnown == 0)
-        return statementEnds(i->else_, flow);
-      bool both = i->else_ && statementEnds(i->then, flow) && statementEnds(i->else_, flow);
-      if (!both && i->isConstexpr)
-        flow.undecided = true; // (a template's own walk: its instances decide the branch)
-      return both;
+      // A decided if constexpr ends where its branch does; another if where both of its branches do. An
+      // else-if chain's links are followed in turn, not by a recursion per link (a chain of 100,000 links is
+      // no nesting). An undecided if constexpr that does not end leaves the question to the instances
+      // (a template's own walk), and so does one whose answer is a later link's.
+      bool undecidedOnTheWay = false;
+      for (auto* i = static_cast<IfStmt*>(s);;)
+      {
+        Stmt* next = nullptr;
+        if (i->isConstexpr && i->constexprKnown == 1)
+          next = i->then;
+        else if (i->isConstexpr && i->constexprKnown == 0)
+          next = i->else_;
+        else
+        {
+          if (!i->else_ || !statementEnds(i->then, flow))
+          {
+            if (i->isConstexpr || undecidedOnTheWay)
+              flow.undecided = true;
+            return false;
+          }
+          undecidedOnTheWay = undecidedOnTheWay || i->isConstexpr;
+          next = i->else_;
+        }
+        if (next && next->kind == NodeKind::IfStmt)
+        {
+          i = static_cast<IfStmt*>(next);
+          continue;
+        }
+        bool ends = statementEnds(next, flow);
+        if (!ends && undecidedOnTheWay)
+          flow.undecided = true;
+        return ends;
+      }
     }
     case NodeKind::WhileStmt: return alwaysTrue(static_cast<WhileStmt*>(s)->cond) && !statementBreaks(static_cast<WhileStmt*>(s)->body);
     case NodeKind::ForStmt: return alwaysTrue(static_cast<ForStmt*>(s)->cond) && !statementBreaks(static_cast<ForStmt*>(s)->body);
@@ -708,7 +740,13 @@ auto GlobalScope::Impl::Walker::checkFunctionEnd(FunctionDecl* f, bool autoRetur
         for (Stmt* c : static_cast<BlockStmt*>(s)->stmts)
           scan(c);
         return;
-      case NodeKind::IfStmt: scan(static_cast<IfStmt*>(s)->then); scan(static_cast<IfStmt*>(s)->else_); return;
+      case NodeKind::IfStmt:
+        for (auto* i = static_cast<IfStmt*>(s);; i = static_cast<IfStmt*>(i->else_)) // (an else-if chain's links in turn)
+        {
+          scan(i->then);
+          if (!i->else_ || i->else_->kind != NodeKind::IfStmt)
+            return scan(i->else_);
+        }
       case NodeKind::WhileStmt: scan(static_cast<WhileStmt*>(s)->body); return;
       case NodeKind::DoStmt: scan(static_cast<DoStmt*>(s)->body); return;
       case NodeKind::ForStmt: scan(static_cast<ForStmt*>(s)->body); return;
@@ -743,7 +781,13 @@ auto GlobalScope::Impl::Walker::checkFunctionEnd(FunctionDecl* f, bool autoRetur
           for (Stmt* c : static_cast<BlockStmt*>(s)->stmts)
             returns(c);
           return;
-        case NodeKind::IfStmt: returns(static_cast<IfStmt*>(s)->then); returns(static_cast<IfStmt*>(s)->else_); return;
+        case NodeKind::IfStmt:
+          for (auto* i = static_cast<IfStmt*>(s);; i = static_cast<IfStmt*>(i->else_)) // (an else-if chain's links in turn)
+          {
+            returns(i->then);
+            if (!i->else_ || i->else_->kind != NodeKind::IfStmt)
+              return returns(i->else_);
+          }
         case NodeKind::WhileStmt: returns(static_cast<WhileStmt*>(s)->body); return;
         case NodeKind::DoStmt: returns(static_cast<DoStmt*>(s)->body); return;
         case NodeKind::ForStmt: returns(static_cast<ForStmt*>(s)->body); return;

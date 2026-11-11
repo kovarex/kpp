@@ -918,16 +918,33 @@ auto codegen::Emitter::endIteration(bool declares, size_t outside, const std::st
   emitBranch(condLabel);
 }
 
+auto codegen::Emitter::constexprTaken(IfStmt* i) -> std::optional<bool>
+{
+  if (!i->isConstexpr)
+    return std::nullopt;
+  if (i->constexprKnown >= 0)
+    return i->constexprKnown != 0; // (the resolver folded it as it instantiated the function)
+  if (!i->init && i->cond && i->cond->kind != NodeKind::VariableDecl && i->cond->kind != NodeKind::DeclStmt)
+    return evalCondition(static_cast<Expr*>(i->cond));
+  return std::nullopt;
+}
+
 auto codegen::Emitter::ifChain(IfStmt* first) -> void
 {
   // Each link of `if (a) ... else if (b) ... else if (c) ...` as statement() emits it as its else branch's
   // substatement, here in one frame, not by a recursion per link: a chain of thousands of branches is no
   // nesting (until 2026-11-10 one of 2048 was "expression nested too deeply"; D's note). The links stay
   // open until the last one's end: then each one's end, as the recursion's returns made them.
+  // A link whose head declares nothing has nothing in its scope or in its else branch's (the next link
+  // opens its own): those two close at once, where closing them emits nothing, and not at the chain's
+  // end. A return, a break or a continue walks the scopes it leaves, so a chain of 100,000 links that
+  // kept two open each took a minute of codegen when its branches returned (kovarex, 2026-11-11: "What
+  // about the else-if chain?"). A link that declares keeps them: its variable is the later links' too.
   struct Open
   {
     std::string endLabel;
     uint32_t debugBlock; // (statement()'s guard restores it as a link's statement ends)
+    bool scopes;         // its own scope and its else branch's are still open
   };
   std::vector<Open> open;
   for (IfStmt* i = first;;)
@@ -956,8 +973,12 @@ auto codegen::Emitter::ifChain(IfStmt* first) -> void
       break;
     }
     startBlock(eL);
-    pushScope(); // (subStatement's, for the else branch)
-    open.push_back({jL, debugBlock});
+    bool keep = declaresInHead(i) || !scopes.back().empty();
+    if (keep)
+      pushScope(); // (subStatement's, for the else branch)
+    else
+      popScope(); // (empty: nothing to destroy, no line to mark)
+    open.push_back({jL, debugBlock, keep});
     if (declaresInHead(next)) // (what statement() does before an if's own work)
       openDebugBlock(next);
     debugLine(next);
@@ -966,10 +987,12 @@ auto codegen::Emitter::ifChain(IfStmt* first) -> void
   for (size_t k = open.size(); k-- > 0;)
   {
     debugBlock = open[k].debugBlock;
-    popScope(); // the else branch's
+    if (open[k].scopes)
+      popScope(); // the else branch's
     emitBranch(open[k].endLabel);
     startBlock(open[k].endLabel);
-    popScope(); // the link's own
+    if (open[k].scopes)
+      popScope(); // the link's own
   }
 }
 
@@ -1259,19 +1282,27 @@ auto codegen::Emitter::statement(Stmt* s) -> void
         subStatement(i->ifConsteval == 1 ? i->else_ : i->then);
         break;
       }
-      if (i->isConstexpr && i->constexprKnown >= 0)
+      if (std::optional<bool> known = constexprTaken(i))
       {
-        // The resolver already folded this if constexpr during instantiation.
-        subStatement(i->constexprKnown ? i->then : i->else_);
+        // Only the taken branch exists. When that is the next link of an `else if constexpr` chain, decided
+        // too, the link is followed here, as statement() would start it (its line), and not by a
+        // recursion per link: one of about 2048 was "statement nested too deeply" (kovarex, 2026-11-11:
+        // "What about the else-if chain?"). The scopes the recursion opened around each link were empty.
+        Stmt* taken = *known ? i->then : i->else_;
+        while (taken && taken->kind == NodeKind::IfStmt)
+        {
+          auto* link = static_cast<IfStmt*>(taken);
+          if (link->ifConsteval || declaresInHead(link))
+            break;
+          std::optional<bool> next = constexprTaken(link);
+          if (!next)
+            break;
+          debugLine(link);
+          taken = *next ? link->then : link->else_;
+        }
+        subStatement(taken);
         break;
       }
-      if (i->isConstexpr && !i->init && i->cond && i->cond->kind != NodeKind::VariableDecl && i->cond->kind != NodeKind::DeclStmt)
-        if (std::optional<bool> known = evalCondition(static_cast<Expr*>(i->cond)))
-        {
-          // if constexpr with a known condition: only the taken branch exists.
-          subStatement(*known ? i->then : i->else_);
-          break;
-        }
       if (i->isConstexpr) // ([stmt.if] 2: never a test at run time; here, with the layouts `sizeof` may need that the resolver has not)
         fail(s, "the condition of an if constexpr is not a constant expression");
       ifChain(i);

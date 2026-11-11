@@ -149,6 +149,9 @@
     void statement(Stmt* s);
     // A run-time if and the plain ifs of its `else if` chain, without a recursion per link.
     void ifChain(IfStmt* first);
+    // The branch an if constexpr takes, when its condition is decided (the resolver's, or evaluated here); none
+    // for a run-time if, or a condition that is no constant expression.
+    std::optional<bool> constexprTaken(IfStmt* i);
     // The end of a loop's body, back to condLabel. A variable its condition declared (declares)
     // ends here each time; one with a destructor also at falseLabel, the way out when the condition
     // is false, which goes on to endLabel. The scope of such a variable closes here.

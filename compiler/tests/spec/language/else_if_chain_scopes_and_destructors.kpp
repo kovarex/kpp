@@ -1,0 +1,66 @@
+// spec: in an `else if` chain, a link whose head declares a variable keeps it for the later links and the end of the chain, and one that declares nothing keeps nothing open: a return, a break or a continue in any link destroys the objects of the links that declared them, the innermost first, and those of the branch it leaves, as C++ does (clang's output); codegen closes a plain link's scopes as it passes it, so that a jump from a chain of 100,000 links is no walk through 200,000 of them (kovarex, 2026-11-11: "What about the else-if chain?")
+struct Noisy
+{
+  int v;
+  Noisy(int v) : v(v) {}
+  ~Noisy() { std::println("~", this.v); }
+  operator bool() const { return this.v != 0; }
+};
+
+int chain(int x)
+{
+  if (x == 0)
+    return 0;
+  else if (Noisy a{1}; x == 1)
+    return 10;
+  else if (x == 2)
+    return 20;
+  else if (Noisy b{2}; x == 3)
+    return 30 + b.v;
+  else if (x == 4)
+    return 40 + a.v;
+  else if (Noisy c{x})
+  {
+    if (x == 5)
+      return 50;
+    Noisy d{x * 100};
+    if (x == 6)
+      return 60 + c.v + d.v;
+  }
+  else if (x == 7)
+    return 70;
+  return -1;
+}
+
+int loop(int stop)
+{
+  int sum = 0;
+  for (int i = 0; i < 8; ++i)
+  {
+    if (i == 1)
+      continue;
+    else if (Noisy n{i * 10 + 1}; i == stop)
+      break;
+    else if (i == 3)
+      continue;
+    else if (Noisy m{i * 100 + 1}; i == 5)
+      continue;
+    else if (i == 6)
+      sum += 1000;
+    else
+      sum += i;
+  }
+  return sum;
+}
+
+int main()
+{
+  for (int x = 0; x < 8; ++x)
+  {
+    int r = chain(x);
+    std::println("chain(", x, ") = ", r);
+  }
+  int s = loop(6);
+  std::println("loop = ", s);
+  return 0;
+}
