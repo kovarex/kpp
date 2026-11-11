@@ -1,0 +1,102 @@
+// spec: what is not a read before any assignment (kovarex, 2026-11-11: zero is the rule, and only a read the compiler can prove comes first is an error): a local assigned on some path to the read (an if, a loop's body for its next pass, a case that goes on to the next), one whose address is taken, that a function or a lambda takes by reference or a kpp enum's method that is not const is called on first, one a try's block assigns for its handler, sizeof's and decltype's operand (not evaluated), `(void)x;`, and an array or a class object, which the check leaves alone; a read on a path where nothing was assigned has the zero kpp gives every local without an initializer
+void set(int& r) { r = 4; }
+int maybe(bool c)
+{
+  int x;
+  if (c)
+    x = 1;
+  return x;
+}
+int laterPass(int n)
+{
+  int last;
+  int sum = 0;
+  for (int i = 0; i < n; ++i)
+  {
+    sum += last;
+    last = i;
+  }
+  return sum;
+}
+int byReference()
+{
+  int y;
+  set(y);
+  return y;
+}
+int throughAddress()
+{
+  int z;
+  int* p = &z;
+  *p = 3;
+  return z;
+}
+int lambdaByReference()
+{
+  int w;
+  auto f = [&]() { w = 5; };
+  f();
+  return w;
+}
+int unevaluated()
+{
+  int u;
+  return int(sizeof(u)) + int(sizeof(decltype(u)));
+}
+int fallsIntoNext(int k)
+{
+  int v;
+  switch (k)
+  {
+    case 1:
+      v = 7;
+      fallthrough;
+    case 2:
+      return v;
+    default:
+      return -1;
+  }
+}
+int inHandler()
+{
+  int h;
+  try
+  {
+    h = 9;
+    throw 1;
+  }
+  catch (int)
+  {
+    return h;
+  }
+}
+int notJudged()
+{
+  int a[3];
+  std::String s;
+  return a[1] + int(s.size());
+}
+int voided()
+{
+  int v;
+  (void)v;
+  return 0;
+}
+enum class Light : u8
+{
+  { Off, On }
+  void switchOn() { this = On; }
+  bool lit() const { return this == On; }
+};
+int methodAssigns()
+{
+  Light l;
+  l.switchOn();
+  return l.lit() ? 1 : 0;
+}
+int main()
+{
+  std::println(maybe(true), " ", maybe(false), " ", laterPass(4), " ", byReference(), " ", throughAddress(), " ", lambdaByReference(), " ", unevaluated(), " ",
+               fallsIntoNext(1), " ", fallsIntoNext(2), " ", inHandler(), " ", notJudged(), " ", voided(), " ", methodAssigns());
+  return 0;
+}

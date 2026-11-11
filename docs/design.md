@@ -495,6 +495,23 @@ replacements, in the order of how much code they remove:
    standard library, the libraries, the spec and the tests are); `tools/unused/fix.py` writes
    `[[maybe_unused]]` where a compile's errors (`--diagnostic-columns`) point, a capture left to a hand.
    Specs kpp/unused_names_are_errors, kpp/unused_names_kept_or_exempt.
+   A local read before anything is assigned to it is an error (2026-11-11, kovarex's "ok" to item 2 of thread
+   D's survey: zero is the rule for what has no initializer, "Sanitizers and debug checks" below, and a read the
+   compiler can prove comes first is an error): "the local x is read before anything is assigned to it (it is
+   still the zero kpp gives it): initialize it where it is declared". A local of a scalar type (a number, an
+   enum, a pointer) declared without an initializer, read where nothing that may assign it came first on any
+   path from its declaration. What may assign it: an assignment (`+=` and `++` read it first), its address, a
+   reference to it that is not const (a parameter, a local, a cast, a lambda's capture), a kpp enum's method
+   that is not const called on it (`this = North;`; a const one reads it), a constructor given it (it may take
+   it by reference), a call or an operator the walk left undecided (a template's `stream >> x`), asm. A loop's pass after the first finds assigned what any pass may assign, a try's handler what its block
+   may, a case what the case going on into it may. A read that only some paths reach unassigned is not judged
+   (C++ compilers' "may be used uninitialized"): it reads the zero. Not judged: a class object, an array, a
+   body with a goto or a label; no read is sizeof's, decltype's or noexcept's operand, nor `(void)x;`. Each
+   local once, at its first such read; a template once, in its own walk; a lambda's body as its own (a capture
+   by copy reads the local where the lambda is made, one by reference may assign it). The converted game in
+   debug, release and final, the standard library on Windows, Linux and FreeBSD and the spec have none
+   (Walker::checkReadBeforeAssignment, Resolver/ReadBeforeAssignment.cpp). Specs
+   language/read_before_assignment_is_error, language/read_before_assignment_only_where_certain.
 The spellings above are the working proposal; each is settled and recorded here when the feature
 is implemented.
 
@@ -5288,7 +5305,7 @@ just have it, and create one or two extra debug config targets for factorio with
   default (but possible to control by something)". The bounds checks are built (56e58decb). The fills
   are not: kpp zeroes what has no initializer (locals, members, `new T`), and that zero is the rule
   (kovarex's answer to D's survey of missing checks, 2026-11-11), so there is no garbage to show;
-  a read before the first assignment becomes D's compile error instead.
+  a local's read before anything is assigned to it is a compile error instead (section 7, item 8).
 - A shift count is taken modulo the width of the shifted (promoted) type, at run time and in a
   constant: `x << n` is `x << (n & 31)` for an int32 (kovarex, 2026-11-11: "make it supported the way
   game tests expected"). C++ leaves a count outside 0 to the width minus one undefined; x86 and AArch64

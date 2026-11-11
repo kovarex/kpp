@@ -1,0 +1,103 @@
+// spec: a local of a scalar type declared without an initializer and read where nothing can have been assigned to it yet, on every path from its declaration, is an error (kovarex, 2026-11-11, thread D's survey of missing checks, item 2: zero is the rule, and a read the compiler can prove comes before any assignment is an error): a plain read, `+=` and `++` (which read first), a pointer compared, a read after a branch that returned, in a loop's condition, in a case the switch enters only from its start, a copy into a lambda, a const method of a kpp enum called on it, in a lambda's body and in a template; each local once, at its first such read
+// error: read_before_assignment_is_error.kpp:17: error: the local x is read before anything is assigned to it (it is still the zero kpp gives it): initialize it where it is declared
+// error: read_before_assignment_is_error.kpp:22: error: the local total is read before anything is assigned to it (it is still the zero kpp gives it): initialize it where it is declared
+// error: read_before_assignment_is_error.kpp:28: error: the local n is read before anything is assigned to it (it is still the zero kpp gives it): initialize it where it is declared
+// error: read_before_assignment_is_error.kpp:34: error: the local p is read before anything is assigned to it (it is still the zero kpp gives it): initialize it where it is declared
+// error: read_before_assignment_is_error.kpp:41: error: the local y is read before anything is assigned to it (it is still the zero kpp gives it): initialize it where it is declared
+// error: read_before_assignment_is_error.kpp:46: error: the local limit is read before anything is assigned to it (it is still the zero kpp gives it): initialize it where it is declared
+// error: read_before_assignment_is_error.kpp:59: error: the local v is read before anything is assigned to it (it is still the zero kpp gives it): initialize it where it is declared
+// error: read_before_assignment_is_error.kpp:67: error: the local c is read before anything is assigned to it (it is still the zero kpp gives it): initialize it where it is declared
+// error: read_before_assignment_is_error.kpp:73: error: the local twice is read before anything is assigned to it (it is still the zero kpp gives it): initialize it where it is declared
+// error: read_before_assignment_is_error.kpp:82: error: the local inner is read before anything is assigned to it (it is still the zero kpp gives it): initialize it where it is declared
+// error: read_before_assignment_is_error.kpp:90: error: the local count is read before anything is assigned to it (it is still the zero kpp gives it): initialize it where it is declared
+// error: read_before_assignment_is_error.kpp:101: error: the local l is read before anything is assigned to it (it is still the zero kpp gives it): initialize it where it is declared
+int plain()
+{
+  int x;
+  return x + 1;
+}
+int compound(int k)
+{
+  int total;
+  total += k;
+  return total;
+}
+int counted()
+{
+  int n;
+  n++;
+  return n;
+}
+bool pointer()
+{
+  int* p;
+  return p != nullptr;
+}
+int afterReturn(bool c)
+{
+  int y;
+  if (c)
+    return 1;
+  return y;
+}
+int loopCondition(int k)
+{
+  int limit;
+  for (int i = 0; i < limit; ++i)
+    k += i;
+  return k;
+}
+int directCase(int k)
+{
+  int v;
+  switch (k)
+  {
+    case 1:
+      v = 10;
+      return v;
+    case 2:
+      return v;
+    default:
+      return 0;
+  }
+}
+int copied()
+{
+  int c;
+  auto f = [c]() { return c; };
+  return f();
+}
+int once()
+{
+  int twice;
+  int a = twice;
+  int b = twice;
+  return a + b;
+}
+int inLambda()
+{
+  auto f = []()
+  {
+    int inner;
+    return inner * 2;
+  };
+  return f();
+}
+template<class T>
+T inTemplate(T value)
+{
+  int count;
+  return value + T(count * 2);
+}
+enum class Light : u8
+{
+  { Off, On }
+  void switchOn() { this = On; }
+  bool lit() const { return this == On; }
+};
+bool constMethod()
+{
+  Light l;
+  return l.lit();
+}
+int main() { return plain() + compound(1) + counted() + int(pointer()) + afterReturn(false) + loopCondition(2) + directCase(2) + copied() + once() + inLambda() + inTemplate(1) + int(constMethod()); }

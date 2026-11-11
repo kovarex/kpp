@@ -648,6 +648,18 @@ p[Property::Text] = String("hello");
   game is free of them; `tools/unused/fix.py` marks what a compile reports.
 - **See:** [design 7][d7], item 8; specs `kpp/unused_names_are_errors`, `kpp/unused_names_kept_or_exempt`.
 
+### A local without an initializer is zero, and reading it first is an error (built)
+
+- **C++:** a local of a scalar type declared without an initializer has an indeterminate value; reading
+  it is undefined, and compilers warn (-Wuninitialized, -Wsometimes-uninitialized).
+- **kpp:** kpp zeroes it, and the zero is the rule (kovarex, 2026-11-11). A read the compiler can prove
+  comes before anything is assigned to it, on every path from its declaration, is a compile error:
+  `int x; return x + 1;`. Write `int x = 0;` when the zero is meant. A read that only some paths reach
+  unassigned (`if (c) x = 1; return x;`) is not an error and reads the zero. Class objects and arrays are
+  not judged.
+- **See:** [design 7][d7], item 8; specs `language/read_before_assignment_is_error`,
+  `language/read_before_assignment_only_where_certain`.
+
 ### `?->` and `?:` (built)
 
 - **C++:** neither (`?:` is a GNU extension).

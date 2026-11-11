@@ -11080,6 +11080,7 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
       walkStmt(f->body);
       checkFunctionEnd(f, autoReturn, autoReturn ? returnFrames.back() : nullptr); // (bodyOf still f: an instance's errors are its own)
       checkUnusedNames(f);
+      checkReadBeforeAssignment(f);
       bodyOf = savedBodyOf;
       if ((impl.accessWarnings || impl.accessErrors) && !probing && !retypingElements)
       {
