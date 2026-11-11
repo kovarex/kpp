@@ -638,19 +638,19 @@ auto GlobalScope::Impl::Walker::statementEnds(Stmt* s, EndFlow& flow) -> bool
     case NodeKind::SwitchStmt:
     {
       // Every case's statements end (kpp has no fallthrough: one that does not leaves the switch), and a default or
-      // every enumerator of the enum it switches on is named (an enumerator naming another, `Last = Blue`, by that one).
+      // every enumerator of the enum it switches on is named (an enumerator naming another, `Last = Blue`, by that one),
+      // whatever else is named: a constant of the enum that is no enumerator (thread B, 2026-11-11: `static constexpr
+      // Dir None = Dir(16);` beside the four directions), a range (what it spans is not counted).
       auto* w = static_cast<SwitchStmt*>(s);
       if (!w->body || w->body->kind != NodeKind::BlockStmt)
         return false;
-      bool hasDefault = false, inGroup = false, statements = false, groupEnds = false, onlyEnumerators = true, fallsThrough = false;
+      bool hasDefault = false, inGroup = false, statements = false, groupEnds = false, fallsThrough = false;
       std::unordered_set<Decl*> named;
       auto name = [&](Expr* v)
       {
         v = strip(v);
         if (v && v->kind == NodeKind::NameExpr && static_cast<NameExpr*>(v)->resolved && static_cast<NameExpr*>(v)->resolved->kind == NodeKind::EnumeratorDecl)
           named.insert(static_cast<NameExpr*>(v)->resolved);
-        else
-          onlyEnumerators = false;
       };
       for (Stmt* c : static_cast<BlockStmt*>(w->body)->stmts)
       {
@@ -664,9 +664,8 @@ auto GlobalScope::Impl::Walker::statementEnds(Stmt* s, EndFlow& flow) -> bool
           else
           {
             auto* k = static_cast<CaseStmt*>(c);
-            if (k->rangeEnd)
-              onlyEnumerators = false;
-            name(k->value);
+            if (!k->rangeEnd)
+              name(k->value);
             for (Expr* v : k->moreValues)
               name(v);
           }
@@ -692,7 +691,7 @@ auto GlobalScope::Impl::Walker::statementEnds(Stmt* s, EndFlow& flow) -> bool
       if (ct && ct->kind == TyKind::Class)
         if (ClassDecl* u = impl.classDefinition(ct); u && u->isTypedUnion)
           switched = u->tagEnum; // (a typed union's switch names its alternatives: its tag's enumerators)
-      if (!onlyEnumerators || !switched || switched->kind != NodeKind::EnumDecl || static_cast<EnumDecl*>(switched)->enumerators.empty())
+      if (!switched || switched->kind != NodeKind::EnumDecl || static_cast<EnumDecl*>(switched)->enumerators.empty())
         return false;
       for (Decl* d : static_cast<EnumDecl*>(switched)->enumerators)
       {

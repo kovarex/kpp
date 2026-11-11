@@ -1,4 +1,4 @@
-// spec: a path ends, so that no return is needed after it, at a throw, at a call of a [[noreturn]] function (a free function, one whose declaration alone says it, a member, a static member template whose attribute follows its header, abort()), in an endless loop, at a switch whose cases all end and that names every enumerator of its enum or has a default (a case may go on to the next by `fallthrough;`), at a try whose block and handlers all end, and in a template at the branch its instance takes
+// spec: a path ends, so that no return is needed after it, at a throw, at a call of a [[noreturn]] function (a free function, one whose declaration alone says it, a member, a static member template whose attribute follows its header, abort()), in an endless loop, at a switch whose cases all end and that names every enumerator of its enum (whatever else it names: a constant of the enum that is no enumerator, as thread B's `static constexpr Dir None = Dir(16);` is) or has a default (a case may go on to the next by `fallthrough;`), at a try whose block and handlers all end, and in a template at the branch its instance takes
 struct Failure
 {
   int code;
@@ -14,6 +14,11 @@ struct Checker
   static void rejectAny(T value) { throw Failure{int(value) + 300}; }
 };
 enum class Color { Red, Green, Blue };
+enum class Heading : u8
+{
+  { North, East, South, West }
+  static constexpr Heading Nowhere = Heading(16);
+};
 int viaThrow(int x) { if (x > 0) return x; throw Failure{x}; }
 int viaFree(int x) { if (x > 0) return x; fail(x); }
 int viaDeclared(int x) { if (x > 0) return x; declaredOnly(x); }
@@ -29,6 +34,17 @@ int viaSwitch(Color c)
     case Color::Red: return 1;
     case Color::Green: return 2;
     case Color::Blue: return 3;
+  }
+}
+int viaSwitchNamingMore(Heading h)
+{
+  switch (h)
+  {
+    case Heading::North: return 1;
+    case Heading::East: return 2;
+    case Heading::South: return 3;
+    case Heading::West: return 4;
+    case Heading::Nowhere: return 0;
   }
 }
 int viaFallthrough(int x)
@@ -66,6 +82,6 @@ int main()
 {
   Checker c;
   std::println(viaThrow(1), " ", viaFree(2), " ", viaDeclared(3), " ", viaMember(c, 4), " ", viaTemplate(5), " ", viaAbort(6), " ", viaLoop(3), " ", viaFor(2),
-               " ", viaSwitch(Color::Blue), " ", viaFallthrough(1), " ", viaTry(-5), " ", viaConstexpr(1));
+               " ", viaSwitch(Color::Blue), " ", viaSwitchNamingMore(Heading::West), " ", viaSwitchNamingMore(Heading::Nowhere), " ", viaFallthrough(1), " ", viaTry(-5), " ", viaConstexpr(1));
   return 0;
 }
