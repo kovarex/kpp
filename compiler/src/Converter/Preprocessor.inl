@@ -541,7 +541,7 @@
     {"optional", "std::Optional"}, {"map", "std::Map"}, {"set", "std::Set"}, {"unordered_map", "std::HashMap"}, {"unordered_set", "std::HashSet"},
     {"deque", "std::Deque"}, {"list", "std::List"}, {"array", "std::Array"}, {"span", "std::Span"}, {"dynamic_extent", "std::dynamicExtent"}, {"unique_ptr", "std::UniquePtr"}, {"default_delete", "std::DefaultDelete"}, {"queue", "std::Queue"},
     {"replace", "std::replace"}, {"advance", "std::advance"}, {"make_optional", "std::makeOptional"}, {"clock", "::clock"}, {"abort", "::abort"},
-    {"shared_ptr", "std::SharedPtr"}, {"weak_ptr", "std::WeakPtr"}, {"function", "std::Function"}, {"tuple", "std::Tuple"}, {"variant", "std::Variant"},
+    {"shared_ptr", "std::SharedPtr"}, {"weak_ptr", "std::WeakPtr"}, {"function", "std::Function"}, {"identity", "std::Identity"}, {"tuple", "std::Tuple"}, {"variant", "std::Variant"},
     {"initializer_list", "std::InitializerList"}, {"numeric_limits", "std::Limits"}, {"endian", "std::Endian"}, {"runtime_error", "std::RuntimeError"},
     {"strong_ordering", "std::strong_ordering"}, {"weak_ordering", "std::weak_ordering"}, {"partial_ordering", "std::partial_ordering"},
     {"logic_error", "std::LogicError"}, {"exception", "std::Exception"}, {"out_of_range", "std::OutOfRange"}, {"invalid_argument", "std::InvalidArgument"},

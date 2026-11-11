@@ -1003,6 +1003,16 @@ ReverseIterator<It> operator+(typename ReverseIterator<It>::difference_type n, c
 
 // --- Comparator objects ---
 
+// std::identity: its argument as it is, the projection that projects nothing (an algorithm's default
+// projection, as Factorio's ControlSettings passes it).
+struct Identity
+{
+  using is_transparent = void;
+
+  template<typename T>
+  constexpr T&& operator()(T&& value) const noexcept { return forward<T>(value); }
+};
+
 // Comparator objects (std::less, std::greater, std::equal_to): `Less<T>` compares two T with <,
 // the transparent `Less<>` compares any two operands (and says so with `is_transparent`), so
 // `Map<String, V, Less<>>` can look a String up by a StringView.

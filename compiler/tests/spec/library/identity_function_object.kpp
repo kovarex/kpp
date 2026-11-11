@@ -1,0 +1,20 @@
+// spec: std::Identity is std::identity: it returns its argument as it is, as the same reference (the algorithms' default projection; Factorio's ControlSettings passes std::identity{})
+template<typename It, typename Projection = std::Identity>
+i32 sum(It first, It last, Projection project = {})
+{
+  i32 total = 0;
+  for (; first != last; ++first)
+    total += project(*first);
+  return total;
+}
+
+int main()
+{
+  std::Vector<i32> values = {1, 2, 3};
+  std::println(sum(values.begin(), values.end()), " ", sum(values.begin(), values.end(), [](i32 v) { return v * 10; }));
+  i32 x = 5;
+  i32& same = std::Identity{}(x);
+  same = 7;
+  std::println(x, " ", &same == &x);
+  return 0;
+}

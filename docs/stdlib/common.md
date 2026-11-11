@@ -53,8 +53,8 @@ equal values must have equal hashes. A container keeps a copy of its comparator 
 key equality), made when the container is constructed and copied along with it, so comparators
 that carry state work.
 
-The function objects: `Less<T>` (`a < b`), `Greater<T>` (`b < a`), `EqualTo<T>` (`a == b`) and
-`Hash<T>` (`hashOf(a)`). `Less<>`, `Greater<>` and `EqualTo<>` (T left at its default, void)
+The function objects: `Less<T>` (`a < b`), `Greater<T>` (`b < a`), `EqualTo<T>` (`a == b`),
+`Hash<T>` (`hashOf(a)`) and `Identity` (std::identity: its argument as it is, as the same reference). `Less<>`, `Greater<>` and `EqualTo<>` (T left at its default, void)
 take operands of any two types and are **transparent**: they declare a member type
 `is_transparent`. When an ordered container's comparator is transparent (any comparator that
 declares `is_transparent`; `isTransparent<C>` tells), its lookups (find, contains, count,

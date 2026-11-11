@@ -1408,7 +1408,6 @@ src/Util/RotatedBoundingBox.kpp: RotatedBoundingBox::RotatedBoundingBox(bounding
 src/Util/SSE.kpp: float32x4::float32x4(value)
 src/Util/SSE.kpp: float64x2::float64x2(value)
 src/Util/ScopedBind.kpp: ScopedBind::ScopedBind(object)
-src/Util/SignalConnection.kpp: ScopedSignalConnection::ScopedSignalConnection(other)
 src/Util/SimpleMemoryPool.kpp: SimpleMemoryPool::SimpleMemoryPool(firstCapacity)
 src/Util/SizeOptimizedUInt.kpp: SizeOptimizedUInt32::SizeOptimizedUInt32(value)
 src/Util/Streams/BufferedFileWriteStream.kpp: BufferedFileWriteStream::BufferedFileWriteStream(fp)

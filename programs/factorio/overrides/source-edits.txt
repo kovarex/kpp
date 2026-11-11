@@ -1658,3 +1658,13 @@
 - #endif
 +   if constexpr (BuildConstants::IsASAN)
 +     return;
+
+@ src/Gui/GuiUtil.cpp: kpp's Function deduces no signature from a lambda yet (std::function's deduction guide): the signature written
+-   std::function f = [&widget, controlInputs = controlInputs]
++   std::function<void()> f = [&widget, controlInputs = controlInputs]
+
+@ tests/TestRailDirection.cpp: RailDirection::str() is a C string, and `==` of two char pointers in a check is kpp's error (it compared addresses): CHECK_EQUAL compared the text
+-     CHECK_EQUAL(RailDirection(RailDirection::Front).str(), "Front");
+-     CHECK_EQUAL(RailDirection(RailDirection::Back).str(), "Back");
++     CHECK_EQUAL(std::string_view(RailDirection(RailDirection::Front).str()), "Front");
++     CHECK_EQUAL(std::string_view(RailDirection(RailDirection::Back).str()), "Back");
