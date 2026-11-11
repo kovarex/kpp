@@ -940,10 +940,11 @@
     // A local, parameter or lambda capture nothing in f uses, and a local only ever assigned: errors (kovarex,
     // 2026-11-11; --unused-checks until the library and the converted game are free of them).
     void checkUnusedNames(FunctionDecl* f);
-    // A local of a scalar type read where nothing can have been assigned to it yet, on every path from its declaration:
-    // an error (kovarex, 2026-11-11; ReadBeforeAssignment.cpp). kpp zeroes it, and the zero is the rule.
-    void checkReadBeforeAssignment(FunctionDecl* f);
-    struct ReadBeforeAssignment;
+    // The checks that follow f's paths (kovarex, 2026-11-11; FlowChecks.cpp): a local of a scalar type read where nothing
+    // can have been assigned to it yet (kpp zeroes it, and the zero is the rule), an integer division by a constant 0 and
+    // a constant index outside a built-in array, where they run. Each an error.
+    void checkFlow(FunctionDecl* f);
+    struct FlowChecks;
     // Whether member function f overrides a virtual function of a base without saying so (`override`).
     bool overridesBaseVirtual(FunctionDecl* f);
     // `a != b` is only ever `!(a == b)` (kovarex, 2026-11-09): a declared operator!= that returns bool is an error

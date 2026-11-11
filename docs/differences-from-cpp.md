@@ -660,6 +660,16 @@ p[Property::Text] = String("hello");
 - **See:** [design 7][d7], item 8; specs `language/read_before_assignment_is_error`,
   `language/read_before_assignment_only_where_certain`.
 
+### A constant division by zero or index outside an array is an error (built)
+
+- **C++:** undefined behavior; MSVC refuses `x / 0` and clang warns (-Wdivision-by-zero, -Warray-bounds).
+- **kpp:** a compile error where it runs: an integer `/`, `%`, `/=` or `%=` whose divisor is a constant 0,
+  and a constant index outside a built-in array (`a[3]` of 3 elements, `a[-1]`; `&a[3]` is the pointer past
+  the end). A branch a constant decides away is not judged (`if (shards != 0) h % shards`). A shift by more
+  than the width is not an error: kpp takes the count modulo the width.
+- **See:** [design 7][d7], item 8; specs `language/constant_division_by_zero_is_error`,
+  `language/constant_index_outside_an_array_is_error`, `language/constant_mistakes_only_where_they_run`.
+
 ### `?->` and `?:` (built)
 
 - **C++:** neither (`?:` is a GNU extension).

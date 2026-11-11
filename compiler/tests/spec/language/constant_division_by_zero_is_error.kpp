@@ -1,0 +1,26 @@
+// spec: an integer division or remainder by a constant 0 is an error where it runs (kovarex, 2026-11-11, item 3 of thread D's survey of missing checks; C++ leaves it undefined, MSVC refuses `x / 0` and clang warns): `/`, `%`, `/=` and `%=` of integers whose divisor is a constant 0, a literal, a constexpr variable or a constant expression of them (language/constant_mistakes_only_where_they_run: what is not one)
+// error: constant_division_by_zero_is_error.kpp:8: error: division by zero: the divisor of this integer `/` is the constant 0
+// error: constant_division_by_zero_is_error.kpp:9: error: division by zero: the divisor of this integer `%` is the constant 0
+// error: constant_division_by_zero_is_error.kpp:12: error: division by zero: the divisor of this integer `/=` is the constant 0
+// error: constant_division_by_zero_is_error.kpp:19: error: division by zero: the divisor of this integer `%` is the constant 0
+// error: constant_division_by_zero_is_error.kpp:23: error: division by zero: the divisor of this integer `%=` is the constant 0
+constexpr int none = 0;
+int literal(int x) { return x / 0; }
+int remainder(int x) { return x % none; }
+int compound(int x)
+{
+  x /= none * 2;
+  return x;
+}
+int afterBranch(int x)
+{
+  if (x > 0)
+    x += 1;
+  return x % (none + 0);
+}
+unsigned remainderAssigned(unsigned x)
+{
+  x %= none;
+  return x;
+}
+int main() { return literal(1) + remainder(2) + compound(3) + afterBranch(4) + int(remainderAssigned(5)); }

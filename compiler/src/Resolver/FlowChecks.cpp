@@ -1,10 +1,13 @@
-// GlobalScope::Impl::Walker::checkReadBeforeAssignment (its declaration in Walker.hpp): a local read before anything is
-// assigned to it is an error (kovarex, 2026-11-11, item 2 of thread D's survey of missing checks: "ok" to "zero becomes
-// the official rule, and a read before any assignment that the compiler can prove is an error"). kpp zeroes a local
-// declared without an initializer, so such a read is defined, the zero; in C++ it is undefined, and in either it is
-// nearly always a mistake: `int x = 0;` says the zero is meant. Proven: on every path from the declaration to the read,
-// nothing that may assign the local comes first. A read only some paths reach unassigned is not judged (C++ compilers'
-// "may be used uninitialized"): its value is the zero kpp gives it.
+// GlobalScope::Impl::Walker::checkFlow (its declaration in Walker.hpp): the checks that follow a body's paths, after the
+// walk typed it (kovarex, 2026-11-11, items 2 and 3 of thread D's survey of missing checks), each an error:
+// - A local read before anything is assigned to it ("ok" to "zero becomes the official rule, and a read before any
+//   assignment that the compiler can prove is an error"). kpp zeroes a local declared without an initializer, so such a
+//   read is defined, the zero; in C++ it is undefined, and in either it is nearly always a mistake: `int x = 0;` says
+//   the zero is meant. Proven: on every path from the declaration to the read, nothing that may assign the local comes
+//   first. A read only some paths reach unassigned is not judged (C++ compilers' "may be used uninitialized"): its value
+//   is the zero kpp gives it.
+// - An integer division or remainder by a constant 0, and a constant index outside a built-in array, where they run: a
+//   branch a constant decides away is not judged (`if (shards != 0) h % shards` with a constexpr 0).
 #include "GlobalScopeImpl.hpp"
 #include "../Ast/AstWalk.hpp"
 #include <algorithm>
@@ -88,16 +91,18 @@ bool nested(const Node* n) { return n->kind == NodeKind::FunctionDecl || n->kind
 }
 
 // (a member of the Walker, which may name GlobalScope's Impl)
-struct GlobalScope::Impl::Walker::ReadBeforeAssignment
+struct GlobalScope::Impl::Walker::FlowChecks
 {
 public:
-  explicit ReadBeforeAssignment(Walker& w) : w(w) {}
+  explicit FlowChecks(Walker& w) : w(w) {}
 
   // One body, a function's or a lambda's (a lambda's locals are its own; what it captures is the enclosing body's).
   void run(Span<Decl*> params, Stmt* body)
   {
-    if (!body || this->hasJumps(body))
-      return;
+    if (!body || this->contains(body, {NodeKind::ErrorStmt, NodeKind::ErrorExpr}))
+      return; // (what the parser could not read)
+    // A goto or a label: the paths are not the statements', so no read is judged; what a constant decides still is.
+    this->judgeReads = !this->contains(body, {NodeKind::GotoStmt, NodeKind::LabelStmt});
     for (Decl* p : params)
       if (p && p->kind == NodeKind::ParamDecl)
         this->visible.emplace_back(static_cast<ParamDecl*>(p)->name, UINT32_MAX);
@@ -116,17 +121,147 @@ private:
   // `[x]` names.
   std::vector<std::pair<uint32_t, uint32_t>> visible;
   std::vector<std::vector<Flow>*> exits; // where a break goes: the innermost loop's or switch's paths out, last
+  bool judgeReads = true;
+  Expr* addressOf = nullptr; // the operand of the `&` being walked: `&a[3]`, the pointer past an array's end
 
-  // A goto or a label (the paths are not the statements'), or what the parser could not read: nothing judged.
-  bool hasJumps(Stmt* body)
+  // Whether the body (not a nested function's, class's or lambda's) has a node of one of these kinds.
+  bool contains(Stmt* body, std::initializer_list<NodeKind> kinds)
   {
-    bool jumps = false;
+    bool found = false;
     forEachNodeExcept(body, [&](Node* n)
     {
-      if (n->kind == NodeKind::GotoStmt || n->kind == NodeKind::LabelStmt || n->kind == NodeKind::ErrorStmt || n->kind == NodeKind::ErrorExpr)
-        jumps = true;
+      for (NodeKind k : kinds)
+        found = found || n->kind == k;
     }, [&](Node* n) { return nested(n) || n->kind == NodeKind::LambdaExpr; });
-    return jumps;
+    return found;
+  }
+
+  // Whether e is made only of what a constant is made of: literals, enumerators, variables of a namespace (or a class's
+  // static ones), operators, casts, sizeof a type and calls of constexpr functions on them. Only such an expression is
+  // evaluated here, after the walk: a local's name, a member's or a name the walk did not resolve is not one (the walk's
+  // scopes are gone, and the evaluator would look there).
+  bool constantShaped(Expr* e, int depth = 0)
+  {
+    e = strip(e);
+    if (!e || depth > 64)
+      return false;
+    switch (e->kind)
+    {
+      case NodeKind::LiteralExpr:
+        return true;
+      case NodeKind::NameExpr:
+      {
+        Decl* d = static_cast<NameExpr*>(e)->resolved;
+        if (!d)
+          return false;
+        if (d->kind == NodeKind::EnumeratorDecl)
+          return true;
+        return d->kind == NodeKind::VariableDecl &&
+               (!d->parent || d->parent->kind == NodeKind::NamespaceDecl || (d->parent->kind == NodeKind::ClassDecl && (d->flags & DF_Static)));
+      }
+      case NodeKind::UnaryExpr:
+      {
+        auto* u = static_cast<UnaryExpr*>(e);
+        P op = P(u->op);
+        return !u->isKeyword && u->call == OperatorCall::Builtin && op != P::PlusPlus && op != P::MinusMinus && op != P::Amp && op != P::Star &&
+               this->constantShaped(u->operand, depth + 1);
+      }
+      case NodeKind::BinaryExpr:
+      {
+        auto* b = static_cast<BinaryExpr*>(e);
+        return b->call == OperatorCall::Builtin && (b->isKeyword || (!Walker::isAssignmentOp(P(b->op)) && P(b->op) != P::Comma)) &&
+               this->constantShaped(b->lhs, depth + 1) && this->constantShaped(b->rhs, depth + 1);
+      }
+      case NodeKind::ConditionalExpr:
+      {
+        auto* c = static_cast<ConditionalExpr*>(e);
+        return c->then && this->constantShaped(c->cond, depth + 1) && this->constantShaped(c->then, depth + 1) && this->constantShaped(c->else_, depth + 1);
+      }
+      case NodeKind::CastExpr: return this->constantShaped(static_cast<CastExpr*>(e)->operand, depth + 1);
+      case NodeKind::NamedCastExpr: return this->constantShaped(static_cast<NamedCastExpr*>(e)->operand, depth + 1);
+      case NodeKind::FunctionalCastExpr:
+        for (Expr* a : static_cast<FunctionalCastExpr*>(e)->args)
+          if (!this->constantShaped(a, depth + 1))
+            return false;
+        return static_cast<FunctionalCastExpr*>(e)->args.size() == 1;
+      case NodeKind::SizeofExpr: return static_cast<SizeofExpr*>(e)->type && !static_cast<SizeofExpr*>(e)->operand;
+      case NodeKind::CallExpr:
+      {
+        auto* c = static_cast<CallExpr*>(e);
+        Expr* callee = strip(c->callee);
+        Decl* g = callee && callee->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(callee)->resolved : nullptr;
+        if (!g || g->kind != NodeKind::FunctionDecl || !(g->flags & (DF_Constexpr | DF_Consteval)))
+          return false;
+        for (Expr* a : c->args)
+          if (!this->constantShaped(a, depth + 1))
+            return false;
+        return true;
+      }
+      default:
+        return false;
+    }
+  }
+
+  // e's value when it is a constant, else none.
+  std::optional<int64_t> valueOf(Expr* e)
+  {
+    if (!e || !this->constantShaped(e))
+      return std::nullopt;
+    return this->w.impl.constEval(e, this->w.ctx());
+  }
+
+  // A condition's value when it is a constant (`shards != 0` of a constexpr shards), else none.
+  std::optional<bool> constant(Node* c)
+  {
+    if (!c || uint8_t(c->kind) < uint8_t(NodeKind::NameExpr))
+      return std::nullopt;
+    std::optional<int64_t> v = this->valueOf(static_cast<Expr*>(c));
+    return v ? std::optional<bool>(*v != 0) : std::nullopt;
+  }
+
+  void report(Expr* at, const std::string& message) { this->w.impl.reportCheckerError(this->w.file, strip(at)->token, message); }
+
+  // An integer `/` or `%` (or `/=`, `%=`) whose divisor is a constant 0.
+  void divisor(BinaryExpr* b, const char* op, const Flow& flow)
+  {
+    if (!flow.reachable || b->call != OperatorCall::Builtin || !b->ty || !b->ty->isKnown())
+      return;
+    const Ty* t = this->w.types.unqualified(this->w.types.stripRef(b->ty));
+    if (t->kind != TyKind::Int && t->kind != TyKind::Char && t->kind != TyKind::Bool && t->kind != TyKind::Enum)
+      return; // (a floating division by 0 is IEEE's infinity or NaN)
+    if (std::optional<int64_t> v = this->valueOf(b->rhs); v && *v == 0)
+      this->report(b->rhs, std::string("division by zero: the divisor of this integer `") + op + "` is the constant 0");
+  }
+
+  // Whether e names a class's last data member (C's flexible array: `int data[1];` at a struct's end, indexed past it in
+  // memory allocated larger, as clang takes every trailing array).
+  bool trailingMember(Expr* e)
+  {
+    e = strip(e);
+    Decl* m = e && e->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(e)->resolved : nullptr;
+    if (!m || m->kind != NodeKind::VariableDecl || !m->parent || m->parent->kind != NodeKind::ClassDecl)
+      return false;
+    Decl* last = nullptr;
+    for (Decl* d : membersRead(static_cast<ClassDecl*>(m->parent)))
+      if (d->kind == NodeKind::VariableDecl && !(d->flags & (DF_Static | DF_Typedef)))
+        last = d;
+    return last == m;
+  }
+
+  // A built-in array's constant index outside it: `a[3]` of 3 elements (but `&a[3]`, the pointer past its end), `a[-1]`.
+  void checkIndex(IndexExpr* x, bool addressed, const Flow& flow)
+  {
+    if (!flow.reachable || x->args.size() != 1 || !x->base->ty || !x->base->ty->isKnown())
+      return;
+    const Ty* t = this->w.types.unqualified(this->w.types.stripRef(x->base->ty));
+    if (t->kind != TyKind::Array || t->count == 0 || this->w.types.isDependent(t) || this->trailingMember(x->base))
+      return;
+    std::optional<int64_t> v = this->valueOf(x->args[0]);
+    int64_t n = int64_t(t->count);
+    if (!v || (*v >= 0 && (*v < n || (*v == n && addressed))))
+      return;
+    this->report(x->args[0], "the constant index " + std::to_string(*v) + " is outside the array's " + std::to_string(n) + " elements (" +
+                               this->w.types.toString(t, &this->w.symbols) + ", 0 to " + std::to_string(n - 1) + ")");
   }
 
   // The followed local a bare name is (through parentheses), or UINT32_MAX.
@@ -421,7 +556,7 @@ private:
 
   void read(uint32_t i, uint32_t token, Flow& flow)
   {
-    if (i == UINT32_MAX || !flow.reachable || !flow.has(i) || this->reported[i])
+    if (i == UINT32_MAX || !this->judgeReads || !flow.reachable || !flow.has(i) || this->reported[i])
       return;
     this->reported[i] = true;
     std::string name(this->w.symbols.name(this->locals[i]->name.last().symbol));
@@ -500,6 +635,8 @@ private:
   {
     if (!s)
       return;
+    if (!this->judgeReads)
+      flow.reachable = true; // (a label may lead anywhere)
     size_t scope = this->visible.size();
     switch (s->kind)
     {
@@ -523,12 +660,15 @@ private:
         {
           this->stmt(i->init, flow);
           Stmt* next = nullptr;
-          if (i->isConstexpr && i->constexprKnown >= 0)
-            next = i->constexprKnown ? i->then : i->else_; // (the branch the walk dropped never runs)
+          std::optional<bool> decided = i->isConstexpr && i->constexprKnown >= 0 ? std::optional<bool>(i->constexprKnown == 1)
+                                        : i->isConstexpr || i->ifConsteval       ? std::nullopt
+                                                                                 : this->constant(i->cond);
+          if (!i->isConstexpr && !i->ifConsteval)
+            this->condition(i->cond, flow);
+          if (decided)
+            next = *decided ? i->then : i->else_; // (the branch the walk dropped, or a constant decides away, never runs)
           else
           {
-            if (!i->ifConsteval)
-              this->condition(i->cond, flow);
             Flow taken = flow;
             this->stmt(i->then, taken);
             after.join(taken);
@@ -765,6 +905,9 @@ private:
         if (logical && b->call != OperatorCall::Function)
         {
           this->expr(b->lhs, flow);
+          bool andOp = b->isKeyword ? Kw(b->op) == Kw::and_ : P(b->op) == P::AndAnd;
+          if (std::optional<bool> left = this->constant(b->lhs); left && *left != andOp)
+            break; // (`false && x`, `true || x`: x never runs)
           Flow right = flow;
           this->expr(b->rhs, right);
           flow.join(right);
@@ -774,6 +917,8 @@ private:
         {
           // (the right side first, [expr.ass] 1; a compound assignment reads the left before it assigns it)
           this->expr(b->rhs, flow);
+          if (P(b->op) == P::SlashAssign || P(b->op) == P::PercentAssign)
+            this->divisor(b, P(b->op) == P::SlashAssign ? "/=" : "%=", flow);
           if (uint32_t i = this->followed(b->lhs); i != UINT32_MAX)
           {
             if (P(b->op) != P::Assign)
@@ -786,6 +931,8 @@ private:
         }
         Expr* operands[2] = {b->lhs, b->rhs};
         this->arguments(Span<Expr*>{operands, 2}, [&](size_t k) { return this->operandTaken(b, int(k)); }, flow);
+        if (!b->isKeyword && (P(b->op) == P::Slash || P(b->op) == P::Percent))
+          this->divisor(b, P(b->op) == P::Slash ? "/" : "%", flow);
         break;
       }
       case NodeKind::UnaryExpr:
@@ -800,6 +947,13 @@ private:
           this->read(i, strip(u->operand)->token, flow);
           flow.remove(i);
         }
+        else if (op == P::Amp && !u->isKeyword && u->call != OperatorCall::Function)
+        {
+          Expr* outer = this->addressOf;
+          this->addressOf = strip(u->operand);
+          this->expr(u->operand, flow);
+          this->addressOf = outer;
+        }
         else
           this->expr(u->operand, flow);
         break;
@@ -813,6 +967,11 @@ private:
           Flow other = flow; // `a ?: b`: b only when a is not set
           this->expr(c->else_, other);
           flow.join(other);
+          break;
+        }
+        if (std::optional<bool> decided = this->constant(c->cond))
+        {
+          this->expr(*decided ? c->then : c->else_, flow); // (the other never runs)
           break;
         }
         Flow yes = flow;
@@ -867,9 +1026,12 @@ private:
       case NodeKind::IndexExpr:
       {
         auto* x = static_cast<IndexExpr*>(e);
+        bool addressed = e == this->addressOf;
+        this->addressOf = nullptr;
         this->expr(x->base, flow);
         for (Expr* a : x->args)
           this->expr(a, flow);
+        this->checkIndex(x, addressed, flow);
         break;
       }
       case NodeKind::MemberExpr:
@@ -934,19 +1096,19 @@ private:
   }
 };
 
-auto GlobalScope::Impl::Walker::checkReadBeforeAssignment(FunctionDecl* f) -> void
+auto GlobalScope::Impl::Walker::checkFlow(FunctionDecl* f) -> void
 {
   // Once, in the walk as written (a template's own walk: its instances share its body), reported there itself as
   // checkUnusedNames does.
   if (!f || !f->body || probing || activeSubst || retypingElements || !file || file->isImported)
     return;
-  ReadBeforeAssignment body(*this);
+  FlowChecks body(*this);
   body.run(f->params, f->body);
   // Each lambda in it on its own, its locals its own (and one in a lambda when that lambda is judged).
   std::vector<LambdaExpr*> lambdas = std::move(body.lambdas);
   for (size_t i = 0; i < lambdas.size(); ++i)
   {
-    ReadBeforeAssignment lambda(*this);
+    FlowChecks lambda(*this);
     lambda.run(lambdas[i]->params, lambdas[i]->body);
     lambdas.insert(lambdas.end(), lambda.lambdas.begin(), lambda.lambdas.end());
   }

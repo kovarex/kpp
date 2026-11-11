@@ -1,0 +1,18 @@
+// spec: a constant index outside a built-in array is an error where it runs (kovarex, 2026-11-11, item 3 of thread D's survey of missing checks; C++ leaves it undefined and clang warns): past the end, written or read (`a[3]` of 3 elements), before the start (`a[-1]`), a row's bound and the rows' in an array of arrays (named `int32[2][3]`, outer bound first, as C++ spells it), a constexpr index, and `&a[4]` (only `&a[3]`, the pointer past the end, is one)
+// error: constant_index_outside_an_array_is_error.kpp:11: error: the constant index 3 is outside the array's 3 elements (int32[3], 0 to 2)
+// error: constant_index_outside_an_array_is_error.kpp:13: error: the constant index -1 is outside the array's 3 elements (int32[3], 0 to 2)
+// error: constant_index_outside_an_array_is_error.kpp:14: error: the constant index 3 is outside the array's 3 elements (int32[3], 0 to 2)
+// error: constant_index_outside_an_array_is_error.kpp:15: error: the constant index 2 is outside the array's 2 elements (int32[2][3], 0 to 1)
+// error: constant_index_outside_an_array_is_error.kpp:16: error: the constant index 4 is outside the array's 3 elements (int32[3], 0 to 2)
+constexpr int last = 3;
+int main()
+{
+  int a[3] = {1, 2, 3};
+  a[3] = 4;
+  int m[2][3] = {};
+  int before = a[-1];
+  int row = m[1][last];
+  int far = m[2][0];
+  int* past = &a[4];
+  return a[0] + before + row + far + *past;
+}

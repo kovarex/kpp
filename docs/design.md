@@ -510,8 +510,23 @@ replacements, in the order of how much code they remove:
    local once, at its first such read; a template once, in its own walk; a lambda's body as its own (a capture
    by copy reads the local where the lambda is made, one by reference may assign it). The converted game in
    debug, release and final, the standard library on Windows, Linux and FreeBSD and the spec have none
-   (Walker::checkReadBeforeAssignment, Resolver/ReadBeforeAssignment.cpp). Specs
-   language/read_before_assignment_is_error, language/read_before_assignment_only_where_certain.
+   (Walker::checkFlow, Resolver/FlowChecks.cpp). Specs language/read_before_assignment_is_error,
+   language/read_before_assignment_only_where_certain.
+   An integer division or remainder by a constant 0 and a constant index outside a built-in array are errors
+   where they run (2026-11-11, kovarex's answer to item 3 of thread D's survey: not a shift by more than the
+   width, which is taken modulo it, section "Sanitizers and debug checks", nor signed overflow, which wraps):
+   "division by zero: the divisor of this integer `/` is the constant 0", "the constant index 3 is outside the
+   array's 3 elements (int32[3], 0 to 2)". A constant is what the evaluator computes from literals,
+   enumerators, a namespace's variables and a class's static ones, operators, casts, sizeof a type and calls
+   of constexpr functions; a local's value is not taken as one. Not judged: a branch a constant decides away
+   (`if (shards != 0) h % shards`, `n > 0 ? h / n : 0`, `false && x`), `&a[3]` (the pointer past the end),
+   sizeof's operand, a floating division (IEEE's infinity), a class's last data member (C's flexible array,
+   `int data[1];`, as clang takes every trailing array), what in a template depends on its parameters. Only a
+   built-in array (std::Array's operator[] checks its index in debug builds). Checked by the same walk of a
+   body's paths as a read before assignment, and as a body with a goto may be entered anywhere, there every
+   statement is taken as reached. An array of arrays is named as C++ spells it, the outer bound first
+   (`int32[2][3]`; it was `int32[3][2]` in every message). Specs language/constant_division_by_zero_is_error,
+   language/constant_index_outside_an_array_is_error, language/constant_mistakes_only_where_they_run.
 The spellings above are the working proposal; each is settled and recorded here when the feature
 is implemented.
 

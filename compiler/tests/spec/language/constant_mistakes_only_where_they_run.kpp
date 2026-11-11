@@ -1,0 +1,29 @@
+// spec: what a constant division by zero or a constant index outside an array is not (kovarex, 2026-11-11, item 3 of thread D's survey of missing checks): a division a branch a constant decides away never runs (`if (shards != 0) ... % shards` with a constexpr 0), a floating division by 0.0 is IEEE's infinity, `&a[3]` of a 3-element array is the pointer past its end, sizeof's operand is not evaluated, and a trailing array member of size 1 is C's flexible array (`int data[1];` at a struct's end, indexed past it in memory allocated larger)
+constexpr int shards = 0;
+int bucket(int hash)
+{
+  if (shards != 0)
+    return hash % shards;
+  return hash;
+}
+int pick(int hash) { return shards > 0 ? hash / shards : -1; }
+struct Packet
+{
+  int length;
+  int data[1];
+};
+int main()
+{
+  int a[3] = {1, 2, 3};
+  int* end = &a[3];
+  double infinity = 1.0 / 0.0;
+  int sum = 0;
+  for (int* p = a; p != end; ++p)
+    sum += *p;
+  auto* packet = static_cast<Packet*>(std::malloc(sizeof(Packet) + 2 * sizeof(int)));
+  packet->data[0] = 4;
+  packet->data[2] = 6;
+  std::println(bucket(7), " ", pick(7), " ", sum, " ", infinity > 1e300, " ", int(sizeof(a[5])), " ", packet->data[0] + packet->data[2]);
+  std::free(packet);
+  return 0;
+}

@@ -806,7 +806,16 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols, bool qu
     case TyKind::Pointer: s += toString(t->inner, symbols, qualified) + "*"; break;
     case TyKind::LRef: s += toString(t->inner, symbols, qualified) + "&"; break;
     case TyKind::RRef: s += toString(t->inner, symbols, qualified) + "&&"; break;
-    case TyKind::Array: s += toString(t->inner, symbols, qualified) + "[" + (t->decl ? declName(t->decl) : t->count ? std::to_string(t->count) : "") + "]"; break;
+    case TyKind::Array:
+    {
+      // An array of arrays as C++ spells it, the outer bound first: `int32[2][3]` is two rows of three.
+      std::string bounds;
+      const Ty* a = t;
+      for (; a && a->kind == TyKind::Array; a = a->inner)
+        bounds += "[" + (a->decl ? declName(a->decl) : a->count ? std::to_string(a->count) : std::string()) + "]";
+      s += toString(a, symbols, qualified) + bounds;
+      break;
+    }
     case TyKind::Lambda:
       if (t->decl)
       {
