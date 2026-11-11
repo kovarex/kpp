@@ -491,15 +491,20 @@ auto codegen::Emitter::arithmetic(P op, Value l, Value r, Node* at) -> Value
       fn += "  " + divisor + " = select i1 " + zero + ", " + t + " 1, " + t + " " + r.text + "\n";
       r.text = divisor;
     }
-    if ((op == P::Shl || op == P::Shr) && checksUndefined(at))
+  }
+  // A shift count is taken modulo the width, as x86 and AArch64 shift (kovarex, 2026-11-11: "make it supported the way
+  // game tests expected"; the arithmetic combinator's `<<` and `>>` of any two signals, and the game's tests of
+  // INT32_MIN << INT32_MAX): C++ leaves a count outside 0 to the width minus one undefined, and LLVM's shift gives
+  // poison, which an optimized build may fold into anything. A constant count in range needs no mask.
+  if ((op == P::Shl || op == P::Shr) && !isFloat)
+  {
+    uint64_t width = sizeOf(ct, at) * 8;
+    bool inRange = !r.text.empty() && std::all_of(r.text.begin(), r.text.end(), [](char c) { return c >= '0' && c <= '9'; }) &&
+                   r.text.size() < 4 && std::stoull(r.text) < width;
+    if (!inRange)
     {
-      // (the count, converted to the shifted type: a negative one is as large as an unsigned one)
-      std::string outOfRange = newTemp();
-      fn += "  " + outOfRange + " = icmp uge " + t + " " + r.text + ", " + std::to_string(bits) + "\n";
-      undefinedCheck(outOfRange, "a shift count outside 0 to " + std::to_string(bits - 1) + " (" + name + ")", at);
-      // (a hook that returns: the count masked, as x86 shifts, never LLVM's poison)
       std::string masked = newTemp();
-      fn += "  " + masked + " = and " + t + " " + r.text + ", " + std::to_string(bits - 1) + "\n";
+      fn += "  " + masked + " = and " + llType(ct, at) + " " + r.text + ", " + std::to_string(width - 1) + "\n";
       r.text = masked;
     }
   }

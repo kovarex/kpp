@@ -3468,7 +3468,7 @@ declared with, bool, char, float or double) and C++'s arithmetic on them (ConstA
 with every suffix and escape, integral promotion and the usual arithmetic conversions, modular
 conversions between integer types, shifts in the promoted left type, IEEE `+ - * /` and
 comparisons), in two modes: *Required* for the checker, where a signed overflow, a division by
-zero (a floating one too), a floating result that is a NaN, a shift by the width or more, a float
+zero (a floating one too), a floating result that is a NaN, a float
 out of an integer's range, or a value out of the range of values of an enumeration declared without
 an underlying type ([dcl.enum]/8: `(E)2` for `enum E { A, B }`) fails the constant with
 its reason (each as clang 19 refuses it; a floating overflow to an infinity stays a constant, as
@@ -5252,7 +5252,7 @@ just have it, and create one or two extra debug config targets for factorio with
   (ThreadSanitizer, Linux only), a configuration's `sanitize(NAME)` in build.kpp, and the constants
   `config::sanitizeAddress` and `config::sanitizeThread` (build.md, "Sanitizers"). A sanitizer kpp
   cannot give for a target is an error, never a build without it.
-- Built: `--sanitize undefined`, kpp's own checks of division by zero, shift counts and float to
+- Built: `--sanitize undefined`, kpp's own checks of division by zero and float to
   integer conversions, through the assert hook (no runtime library), and `--sanitize overflow` for
   signed overflow, which kpp wraps as Factorio's -fwrapv builds do (so not undefined there, and a
   sanitizer of its own). kovarex, 2026-11-11: "I would make ubsan as its own debug build target for
@@ -5261,7 +5261,16 @@ just have it, and create one or two extra debug config targets for factorio with
 - kovarex, 2026-11-11: "Yes, debug containers should check bounds on debug" (the standard library's
   owner: Vector, Array, String, StringView, Deque and the rest, with config::debug), and MSVC's debug
   fills (0xCC in locals without an initializer, 0xCD/0xDD/0xFD around kpp's heap blocks): "yes, on by
-  default (but possible to control by something)". Both are to be built.
+  default (but possible to control by something)". The bounds checks are built (56e58decb). The fills
+  are not: kpp zeroes what has no initializer (locals, members, `new T`), and that zero is the rule
+  (kovarex's answer to D's survey of missing checks, 2026-11-11), so there is no garbage to show;
+  a read before the first assignment becomes D's compile error instead.
+- A shift count is taken modulo the width of the shifted (promoted) type, at run time and in a
+  constant: `x << n` is `x << (n & 31)` for an int32 (kovarex, 2026-11-11: "make it supported the way
+  game tests expected"). C++ leaves a count outside 0 to the width minus one undefined; x86 and AArch64
+  mask it, and the game's arithmetic combinator and its tests rely on that (INT32_MIN << INT32_MAX is
+  0). kpp emits the mask (free on both), so an optimized build cannot fold LLVM's poison into anything
+  else. Spec language/shift_count_taken_modulo_width.
 
 ## kpp format (decided 2026-11-08, kovarex's answers to thread F's design)
 

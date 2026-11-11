@@ -141,22 +141,22 @@ at all: UBSan's checks are written by clang's front end, not by an LLVM pass, so
 - `--sanitize undefined` (kpp's own, every target, either back end, no runtime library): what C++
   leaves undefined in integer arithmetic and conversions is checked where it runs, and calls the
   assert hook with the file, line and column and a message in the constant evaluator's words: a
-  division or remainder by zero and INT_MIN / -1 (`a division by zero`), a shift count outside 0 to
-  the width minus one, a negative one too (`a shift count outside 0 to 31 (int32)`), and a float or
+  division or remainder by zero and INT_MIN / -1 (`a division by zero`), and a float or
   double converted to an integer that cannot hold it (`a floating value out of the range of uint8`:
   Factorio's own UBSan build checked this alone). `--sanitize overflow` adds signed overflow of
   `+ - *` and unary minus (`signed overflow in int32 (addition)`), a sanitizer of its own because kpp's
   signed arithmetic wraps, as Factorio's builds do with -fwrapv (its circuit network relies on it).
   Unsigned arithmetic wraps, as defined, and imported C keeps C's behaviour. A hook that returns (a
-  test's) goes on: the arithmetic wrapped, a division by 1 in place of the processor's trap, a shift
-  count masked as x86 masks it. A check in a trivial callee inlined in its caller holds the callee's
+  test's) goes on: the arithmetic wrapped, a division by 1 in place of the processor's trap. A shift
+  count is no check: kpp takes it modulo the width, defined (design.md, "Sanitizers and debug checks"). A check in a trivial callee inlined in its caller holds the callee's
   line, which a compile server patches or emits again when an edit moves it (2d4a165c9). `config::sanitizeUndefined` and
   `config::sanitizeOverflow` say they are on. Both go with `address` or `thread`.
 - The game's tests under `--sanitize undefined,overflow` (factorio-in-kpp 6245f6046, debug, 2026-11-11):
   264 of 9481 fail, at 13 places. `undefined` alone: SmallProgressValue's `u8(value * 254)` given 254
   where a byte was meant (222 tests; the value came from a miscompiled copy assignment,
-  spec classes/copy_assignment_beats_assignment_from_conversion) and the arithmetic combinator's
-  shifts by 32 or more (2 tests: C++'s undefined behaviour, which x86 masks). The other 11 places are
+  spec classes/copy_assignment_beats_assignment_from_conversion, fixed by D) and the arithmetic
+  combinator's shifts by 32 or more (2 tests: C++'s undefined behaviour, which x86 masks, and the
+  game's tests expect; kpp has taken a shift count modulo the width since). The other 11 places are
   signed overflow the game means to wrap (the circuit network's arithmetic, Math::addSat,
   RandomGenerator's seed, TechnologyGraphGui's empty layer range, StringUtil's -INT64_MIN).
 - The sanitizer is part of each module's cache key (it goes with `--clang-flags`), and a sanitized

@@ -558,6 +558,15 @@ enum class Direction : u8
 - **Why:** adding a value finds every switch, and a corrupted byte stops the program where it is seen.
 - **See:** [design 8.4][d8]; spec `kpp/typed_unions_switch_copy`.
 
+### A shift count is taken modulo the width (built)
+
+- **C++:** a shift by a negative count, or by the width of the promoted left operand or more, is undefined.
+- **kpp:** the count is taken modulo the width, at run time and in a constant: `x << n` is `x << (n & 31)` for an
+  int32, `x << (n & 63)` for an int64, so `1 << 33` is 2 and `INT32_MIN << INT32_MAX` is 0.
+- **Why:** x86 and AArch64 shift so, and Factorio's arithmetic combinator and its tests rely on it; defined, an
+  optimized build cannot turn it into something else.
+- **See:** spec `language/shift_count_taken_modulo_width`.
+
 ### Running off the end of a function that returns a value stops (built)
 
 - **C++:** undefined behavior: an exhaustive `switch` over a plain enum given a value no case names, and the

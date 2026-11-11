@@ -48,8 +48,8 @@ enum class ConstMode : uint8_t
   // constexpr): a signed overflow fails it, as in C++.
   Required,
   // The code generator folding a run-time expression: signed arithmetic wraps, as the emitted
-  // code's does; what the emitted code leaves undefined (a division by zero, a shift by the
-  // width) is no constant.
+  // code's does, and a shift count is taken modulo the width, as at run time; what the
+  // emitted code leaves undefined (a division by zero) is no constant.
   Fold,
 };
 

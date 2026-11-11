@@ -1,0 +1,21 @@
+// spec: a shift count is taken modulo the width of the shifted (promoted) type, as x86 and AArch64 shift: `x << n` is `x << (n & 31)` for an int32 and `x << (n & 63)` for an int64, a negative count too, at run time and in a constant alike (kovarex, 2026-11-11: "make it supported the way game tests expected"). C++ leaves a count outside 0 to the width minus one undefined, and LLVM's shift gives poison there, which an optimized build may fold into anything
+// factorio: the arithmetic combinator's `<<` and `>>` of any two signals (ArithmeticCombinatorControlBehavior), and its tests: INT32_MIN << INT32_MAX is 0, -1 << INT32_MAX is INT32_MIN, -9999 << -298301000 is -251658240
+static_assert((1 << 33) == 2);
+static_assert((-1 >> 40) == -1);
+static_assert((1u << -1) == 0x80000000u);
+static_assert((i64(1) << 65) == 2);
+
+int shiftLeft(int value, int count) { return value << count; }
+int shiftRight(int value, int count) { return value >> count; }
+
+int main(int argc, char** argv)
+{
+  std::println(shiftLeft(-9999, -298301000), " ", shiftLeft(-2147483647 - argc, 2147483647), " ", shiftLeft(-argc, 2147483647));
+  std::println(shiftLeft(3, 8), " ", shiftLeft(1, 32 + argc), " ", shiftRight(-9999, -298301000), " ", shiftRight(1024, 34 + argc));
+  i64 wide = argc;
+  std::println(wide << (64 + argc), " ", wide << -argc);
+  int bits = 1;
+  bits <<= 36 + argc;
+  std::println(bits);
+  return 0;
+}

@@ -537,17 +537,16 @@ std::optional<ConstValue> ConstArith::binary(P op, const ConstValue& l, const Co
   }
   if (op == P::Shl || op == P::Shr)
   {
-    // The promoted left operand's type; a count outside [0, width) is undefined, so no constant.
+    // The promoted left operand's type; the count is taken modulo its width, as kpp's run-time shift
+    // takes it (kovarex, 2026-11-11; C++ leaves a count outside [0, width) undefined): `1 << 33` is 2.
     IntType it = promoted(intTypeOf(l));
-    __int128 count = exactOf(r.i, intTypeOf(r).isUnsigned);
-    if (count < 0 || count >= it.bits)
-      return fail("a shift by " + std::to_string(int64_t(count)) + " of a " + typeName(it.bits, it.isUnsigned));
+    int count = int(uint64_t(r.i) & uint64_t(it.bits - 1));
     int64_t a = normalise(l.i, it);
     if (op == P::Shl)
-      return ConstValue::integer(normalise(int64_t(uint64_t(a) << int(count)), it), tyOf(it)); // C++20: modulo 2^width
+      return ConstValue::integer(normalise(int64_t(uint64_t(a) << count), it), tyOf(it)); // C++20: modulo 2^width
     if (it.isUnsigned)
-      return ConstValue::integer(normalise(int64_t(uint64_t(a) >> int(count)), it), tyOf(it));
-    return ConstValue::integer(normalise(a >> int(count), it), tyOf(it));
+      return ConstValue::integer(normalise(int64_t(uint64_t(a) >> count), it), tyOf(it));
+    return ConstValue::integer(normalise(a >> count, it), tyOf(it));
   }
   IntType it = common(promoted(intTypeOf(l)), promoted(intTypeOf(r)));
   __int128 a = exactOf(normalise(l.i, it), it.isUnsigned), b = exactOf(normalise(r.i, it), it.isUnsigned);
