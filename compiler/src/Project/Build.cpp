@@ -396,10 +396,36 @@ namespace projects
     if (librariesBuilt && (linkPending || (code == 0 && libraryWork)) && fs::exists(command, ec))
     {
       auto linkStart = Clock::now();
+      // The linker's own words go to <exe>.link.txt when kpp writes the link with --keep-going (factorio-in-kpp's
+      // tests): a failed link shows them (kovarex, 2026-11-11: "the link failed (exit 1104)" alone, link.exe's
+      // LNK1104 "cannot open file ..." unseen in the file). Cleared first, so that an earlier link's are never shown.
+      fs::path linkOutput = exe.string() + ".link.txt";
+      fs::remove(linkOutput, ec);
       int rc = host::shell(readText(command));
       linkSeconds = since(linkStart);
       if (rc != 0)
       {
+        std::string said = readText(linkOutput);
+        size_t shown = 0, lines = 0;
+        for (size_t at = 0, end; at < said.size(); at = end + 1)
+        {
+          end = said.find('\n', at);
+          if (end == std::string::npos)
+            end = said.size();
+          std::string line = said.substr(at, end - at);
+          if (!line.empty() && line.back() == '\r')
+            line.pop_back();
+          if (line.empty())
+            continue;
+          ++lines;
+          if (shown < 40)
+          {
+            fprintf(stderr, "%s\n", line.c_str());
+            ++shown;
+          }
+        }
+        if (lines > shown)
+          fprintf(stderr, "(%zu more lines in %s)\n", lines - shown, linkOutput.string().c_str());
         fprintf(stderr, "error: %s (%s): the link failed (exit %d)\n", p.name.c_str(), p.configuration.c_str(), rc);
         code = 1;
       }

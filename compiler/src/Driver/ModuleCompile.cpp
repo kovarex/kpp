@@ -985,6 +985,11 @@ void runCodegen(Build& build)
   report("clang:   %.3f s (%s, %zu modules on %u threads, %d unchanged%s) + link %.3f s (exit %d)\n", compileTime, level, cg.modules.size(),
          options.threads, cached.load(), during.c_str(), seconds(Clock::now() - start), rc);
   if (rc != 0)
+  {
+    // (the linker's words, sent to a file under --keep-going: where they are; a project build shows them)
+    if (options.keepGoing)
+      fprintf(stderr, "error: the link failed (exit %d); the linker's output is in %s.link.txt\n", rc, options.exe.c_str());
     codegenExit = 1;
+  }
 }
 }

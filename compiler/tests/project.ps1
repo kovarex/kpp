@@ -940,6 +940,11 @@ if (Run 'linkinputs')
       if ($code -ne 0 -or -not $inPdb) { Fail "a .natvis edited alone, through the compile server: the PDB has no $rule`: exit $code`n$output" }
       Kpp @('debug') | Out-Null # (nothing changed: the server keeps the build, which the next one replays)
     }
+    # A failed link shows the linker's own words, which --keep-going sends to app.exe.link.txt (kovarex, 2026-11-11:
+    # "the link failed (exit 1104)" alone, link.exe's LNK1104 unseen): a library that is not there.
+    Set-Content 'build.kpp' "void build(Project& project)`n{`n  Executable& app = project.executable(`"app`", {`"src`"});`n  app.argument(`"--keep-going`");`n  app.linkFile(`"nowhere-to-be-found.lib`");`n}"
+    $output = (Kpp @('release')) -join "`n"
+    if ($code -eq 0 -or $output -notmatch 'nowhere-to-be-found' -or $output -notmatch 'the link failed') { Fail "a failed link without the linker's message: exit $code`n$output" }
     Kpp @('--stop-server') | Out-Null
   }
   finally { Pop-Location }
