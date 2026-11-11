@@ -482,10 +482,119 @@ namespace
         ++column;
     return f->path + ":" + std::to_string(line) + ":" + std::to_string(column);
   }
+
+  // The natvis rule of one class instance with a debugValue() (DebugValue above): the class shown as
+  // its debugValue's result: a number, an enumeration or a pointer as its value; a member that is a
+  // class as that class's view and expansion; a Span (std::Span(pointer, length)) as its length and
+  // elements. Each `if (CONDITION) return` is a case of the rule. False without a debugValue, and
+  // false with message (FILE:LINE:COLUMN: error: ...) for one the rule cannot say.
+  bool debugValueRule(GlobalScope& global, const SymbolTable& symbols, const DebugClass& d, std::string& out, std::string& message)
+  {
+    TypeTable& types = global.types();
+    if (!d.type || !d.type->decl || d.type->decl->kind != NodeKind::ClassDecl)
+      return false;
+    Decl* defined = global.definitionOf(d.type->decl);
+    if (!defined || defined->kind != NodeKind::ClassDecl || !defined->file || defined->file->isImported)
+      return false;
+    auto* cls = static_cast<ClassDecl*>(defined);
+    for (Decl* member : cls->members)
+    {
+      if (!isDebugValue(member, symbols) || static_cast<FunctionDecl*>(member)->name.parts.size() != 1)
+        continue;
+      auto* f = static_cast<FunctionDecl*>(member);
+      auto error = [&](const ParsedFile* file, const Node* at, const std::string& what)
+      {
+        message = placeOf(file, at) + ": error: " + what + " (docs/debugging.md, \"debugValue\")";
+        return false;
+      };
+      if (!f->params.empty() || !(f->flags & DF_Const) || (f->flags & DF_Static) || !f->templateParams.empty())
+        return error(f->file, f, "debugValue, which the debugger shows " + d.name + " as, is a const member function without parameters");
+      TemplateArgs args = global.classArgsOf(d.type);
+      Decl* body = args.empty() ? global.definitionOf(f) : global.definitionOf(f, args);
+      auto* def = body && body->kind == NodeKind::FunctionDecl ? static_cast<FunctionDecl*>(body) : f;
+      FunctionDecl* instance = args.empty() || !def->body ? def : global.instanceBody(def, args, d.type);
+      DebugValue v{global, symbols, def->file, instance, args};
+      std::vector<std::pair<Expr*, Expr*>> cases;
+      auto cannot = [&]()
+      {
+        return error(v.atFile ? v.atFile : def->file, v.at ? v.at : def, "debugValue of " + d.name + " cannot be shown by the debugger: " + v.why);
+      };
+      if (!debugCases(v, instance, cases))
+        return cannot();
+      // What it returns: its result type.
+      const Ty* shown = global.typeOfDeclIn(f, args);
+      shown = shown && shown->kind == TyKind::Function && shown->inner ? types.unqualified(types.stripRef(shown->inner)) : nullptr;
+      bool number = shown && (shown->isArithmetic() || shown->kind == TyKind::Enum || shown->kind == TyKind::Pointer);
+      bool span = shown && shown->kind == TyKind::Class && shown->decl && shown->decl->kind == NodeKind::ClassDecl && shown->decl->file &&
+                  shown->decl->file->isLibrary && nameOf(static_cast<const ClassDecl*>(shown->decl)->name, symbols) == "Span"; // (the library's Span)
+      std::string displays, items;
+      bool failed = false;
+      for (const auto& [condition, value] : cases)
+      {
+        std::string when;
+        if (condition && !natvisExpression(v, condition, when))
+        {
+          failed = true;
+          break;
+        }
+        std::string attribute = condition ? " Condition=\"" + escape(when) + "\"" : std::string();
+        Expr* pointer = nullptr;
+        Expr* length = nullptr;
+        if (span)
+        {
+          std::string data, size;
+          if (!spanParts(value, pointer, length))
+          {
+            fail(v, value, "a Span other than one made of a pointer and a length (`Span(this.data, this.size)`)");
+            failed = true;
+            break;
+          }
+          if (!natvisExpression(v, pointer, data) || !natvisExpression(v, length, size))
+          {
+            failed = true;
+            break;
+          }
+          if (length->ty && types.unqualified(types.stripRef(length->ty))->kind == TyKind::Pointer)
+            size = "(" + size + ") - (" + data + ")"; // (Span(first, last))
+          displays += "    <DisplayString" + attribute + ">{{length={" + escape(size) + "}}}</DisplayString>\n";
+          items += "      <ArrayItems" + attribute + ">\n"
+                   "        <Size>" + escape(size) + "</Size>\n"
+                   "        <ValuePointer>" + escape(data) + "</ValuePointer>\n"
+                   "      </ArrayItems>\n";
+          continue;
+        }
+        std::string expression;
+        if (!natvisExpression(v, value, expression))
+        {
+          failed = true;
+          break;
+        }
+        bool path = expression.find_first_of(" ()") == std::string::npos; // (a member, or a chain of them)
+        if (!number && !(shown && shown->kind == TyKind::Class && path))
+        {
+          fail(v, value, "a value other than a number, a pointer, an enumeration, a data member that is a class or a Span: " +
+                           (shown ? types.toString(shown, &symbols) : std::string("this")));
+          failed = true;
+          break;
+        }
+        displays += "    <DisplayString" + attribute + ">{" + escape(expression) + (shown->kind == TyKind::Float ? ",g" : "") + "}</DisplayString>\n";
+        if (!number)
+          items += "      <ExpandedItem" + attribute + ">" + escape(expression) + "</ExpandedItem>\n";
+      }
+      if (failed)
+        return cannot();
+      out = "  <Type Name=\"" + escape(d.name) + "\">\n" + displays;
+      if (!items.empty())
+        out += "    <Expand>\n" + items + "    </Expand>\n";
+      out += "  </Type>\n";
+      return true;
+    }
+    return false;
+  }
 }
 
 std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& global, const SymbolTable& symbols, const std::vector<DebugClass>& classes,
-                       std::vector<std::string>& problems, std::vector<std::string>& errors)
+                       std::vector<std::string>& problems)
 {
   // The library's class definitions at namespace scope, by name.
   // A specialization (`Vector<bool>`) is named with /spec<token> in the PDB (B's names): a wildcard
@@ -911,120 +1020,25 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
              "  </Type>\n";
     }
   }
-  // A type's debugValue() (DebugValue above): its rule, one per instance, the class shown as its
-  // debugValue's result: a number, an enumeration or a pointer as its value; a member that is a
-  // class as that class's view and expansion; a Span (std::Span(pointer, length)) as its length and
-  // elements. Each `if (CONDITION) return` is a case of the rule. A body the rule cannot say is an error.
+  // A type's debugValue() (DebugValue above): its rule, one per instance (debugValueRule).
   for (const DebugClass& d : classes)
   {
-    if (!d.type || !d.type->decl || d.type->decl->kind != NodeKind::ClassDecl)
-      continue;
-    Decl* defined = global.definitionOf(d.type->decl);
-    if (!defined || defined->kind != NodeKind::ClassDecl || !defined->file || defined->file->isImported)
-      continue;
-    auto* cls = static_cast<ClassDecl*>(defined);
-    for (Decl* member : cls->members)
-    {
-      if (!isDebugValue(member, symbols) || static_cast<FunctionDecl*>(member)->name.parts.size() != 1)
-        continue;
-      auto* f = static_cast<FunctionDecl*>(member);
-      auto error = [&](const ParsedFile* file, const Node* at, const std::string& what)
-      {
-        std::string line = placeOf(file, at) + ": error: " + what + " (docs/debugging.md, \"debugValue\")";
-        if (std::find(errors.begin(), errors.end(), line) == errors.end())
-          errors.push_back(line);
-      };
-      if (!f->params.empty() || !(f->flags & DF_Const) || (f->flags & DF_Static) || !f->templateParams.empty())
-      {
-        error(f->file, f, "debugValue, which the debugger shows " + d.name + " as, is a const member function without parameters");
-        continue;
-      }
-      TemplateArgs args = global.classArgsOf(d.type);
-      Decl* body = args.empty() ? global.definitionOf(f) : global.definitionOf(f, args);
-      auto* def = body && body->kind == NodeKind::FunctionDecl ? static_cast<FunctionDecl*>(body) : f;
-      FunctionDecl* instance = args.empty() || !def->body ? def : global.instanceBody(def, args, d.type);
-      DebugValue v{global, symbols, def->file, instance, args};
-      std::vector<std::pair<Expr*, Expr*>> cases;
-      auto cannot = [&]()
-      {
-        error(v.atFile ? v.atFile : def->file, v.at ? v.at : def, "debugValue of " + d.name + " cannot be shown by the debugger: " + v.why);
-      };
-      if (!debugCases(v, instance, cases))
-      {
-        cannot();
-        continue;
-      }
-      // What it returns: its result type.
-      const Ty* shown = global.typeOfDeclIn(f, args);
-      shown = shown && shown->kind == TyKind::Function && shown->inner ? types.unqualified(types.stripRef(shown->inner)) : nullptr;
-      bool number = shown && (shown->isArithmetic() || shown->kind == TyKind::Enum || shown->kind == TyKind::Pointer);
-      bool span = shown && shown->kind == TyKind::Class && shown->decl && shown->decl->kind == NodeKind::ClassDecl && shown->decl->file &&
-                  shown->decl->file->isLibrary && nameOf(static_cast<const ClassDecl*>(shown->decl)->name, symbols) == "Span"; // (the library's Span)
-      std::string displays, items;
-      bool failed = false;
-      for (const auto& [condition, value] : cases)
-      {
-        std::string when;
-        if (condition && !natvisExpression(v, condition, when))
-        {
-          failed = true;
-          break;
-        }
-        std::string attribute = condition ? " Condition=\"" + escape(when) + "\"" : std::string();
-        Expr* pointer = nullptr;
-        Expr* length = nullptr;
-        if (span)
-        {
-          std::string data, size;
-          if (!spanParts(value, pointer, length))
-          {
-            fail(v, value, "a Span other than one made of a pointer and a length (`Span(this.data, this.size)`)");
-            failed = true;
-            break;
-          }
-          if (!natvisExpression(v, pointer, data) || !natvisExpression(v, length, size))
-          {
-            failed = true;
-            break;
-          }
-          if (length->ty && types.unqualified(types.stripRef(length->ty))->kind == TyKind::Pointer)
-            size = "(" + size + ") - (" + data + ")"; // (Span(first, last))
-          displays += "    <DisplayString" + attribute + ">{{length={" + escape(size) + "}}}</DisplayString>\n";
-          items += "      <ArrayItems" + attribute + ">\n"
-                   "        <Size>" + escape(size) + "</Size>\n"
-                   "        <ValuePointer>" + escape(data) + "</ValuePointer>\n"
-                   "      </ArrayItems>\n";
-          continue;
-        }
-        std::string expression;
-        if (!natvisExpression(v, value, expression))
-        {
-          failed = true;
-          break;
-        }
-        bool path = expression.find_first_of(" ()") == std::string::npos; // (a member, or a chain of them)
-        if (!number && !(shown && shown->kind == TyKind::Class && path))
-        {
-          fail(v, value, "a value other than a number, a pointer, an enumeration, a data member that is a class or a Span: " +
-                           (shown ? types.toString(shown, &symbols) : std::string("this")));
-          failed = true;
-          break;
-        }
-        displays += "    <DisplayString" + attribute + ">{" + escape(expression) + (shown->kind == TyKind::Float ? ",g" : "") + "}</DisplayString>\n";
-        if (!number)
-          items += "      <ExpandedItem" + attribute + ">" + escape(expression) + "</ExpandedItem>\n";
-      }
-      if (failed)
-      {
-        cannot();
-        continue;
-      }
-      out += "  <Type Name=\"" + escape(d.name) + "\">\n" + displays;
-      if (!items.empty())
-        out += "    <Expand>\n" + items + "    </Expand>\n";
-      out += "  </Type>\n";
-    }
+    std::string rule, error;
+    if (debugValueRule(global, symbols, d, rule, error))
+      out += rule;
   }
   out += "</AutoVisualizer>\n";
   return out;
+}
+
+std::vector<std::string> debugValueErrors(GlobalScope& global, const SymbolTable& symbols, const std::vector<DebugClass>& classes)
+{
+  std::vector<std::string> errors;
+  for (const DebugClass& d : classes)
+  {
+    std::string rule, error;
+    if (!debugValueRule(global, symbols, d, rule, error) && !error.empty() && std::find(errors.begin(), errors.end(), error) == errors.end())
+      errors.push_back(error);
+  }
+  return errors;
 }

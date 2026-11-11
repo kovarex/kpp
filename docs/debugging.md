@@ -380,9 +380,8 @@ struct Buffer { std::Span<i32> debugValue() const { return std::Span<i32>(this.d
 - **Anything else is a compile error** at its place, naming what it was: a call of any other function, an
   operator function, a local, a statement other than those `if`s and `return`, a debugValue that is not
   const or takes parameters ("FILE:LINE:COLUMN: error: debugValue of Counted cannot be shown by the
-  debugger: a call ..."). The errors come from the build that writes the .natvis: a Windows build with
-  `--debug-info`. A build without debug information, and the language server's check, do not translate
-  debugValue yet.
+  debugger: a call ..."), in every build and in the language server's check (codegen lists the classes laid
+  out that have a debugValue, CodegenResult::debugValueClasses; the driver translates each), on every target.
 - **Not yet** (design.md 26, Open): loops (a linked list's nodes), the standard library's own rules
   written as debugValue methods, the converted game's FixedPointNumber; and LLDB and GDB, once kpp writes
   DWARF (stage 2).

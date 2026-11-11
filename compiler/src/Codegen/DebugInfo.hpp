@@ -132,6 +132,9 @@
     // (Shared::onEmitters). A compile server's build makes the definitions of the classes it named
     // itself (their types are its own) and keeps the others'.
     void homeDebugClasses();
+    // The classes laid out (Shared::structs) whose definition has a member function debugValue, with
+    // their debugger names, sorted by name: Shared::debugValueClasses and the build's result. Every build.
+    void findDebugValueClasses();
 
     // The definition with line information: every instruction gets the line of the statement whose
     // marker (`  ;@LINE`, from statement()) precedes it, those before the first the declaration's

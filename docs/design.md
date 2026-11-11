@@ -2846,9 +2846,8 @@ other options (hand-written files, a format string, calling the program's code):
 - **Built (natvis, 2026-11-11, thread F):** compiler/src/natvis.cpp translates debugValue per class instance
   (docs/debugging.md, "debugValue"): `if (C) return E;` cases and a final `return E;`; members, constants
   folded under the instance's arguments, operators, number casts, another type's debugValue inlined; a number,
-  enumeration or pointer, a class member (its view and expansion) or a Span (pointer and length) returned. Its
-  errors come from a Windows `--debug-info` build (the one that writes the .natvis): a build without debug
-  information and the language server's check do not translate it yet.
+  enumeration or pointer, a class member (its view and expansion) or a Span (pointer and length) returned. A
+  body outside that is an error in every build and in the language server's check.
 
 ## Code packages (proposed 2026-10-27, decided 2026-11-04)
 

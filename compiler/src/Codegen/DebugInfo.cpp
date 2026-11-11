@@ -779,6 +779,28 @@ auto codegen::Emitter::homeDebugClasses() -> void
   sh.result.debugClasses = sh.debugClasses; // (a build from scratch's result; a compile server's rebuild takes them in rebuildLLVM)
 }
 
+auto codegen::Emitter::findDebugValueClasses() -> void
+{
+  sh.debugValueClasses.clear();
+  for (const auto& [type, info] : sh.structs)
+  {
+    if (!type || type->kind != TyKind::Class || !type->decl || type->decl->kind != NodeKind::ClassDecl || !info.complete || info.failed)
+      continue;
+    Decl* defined = global.definitionOf(type->decl);
+    if (!defined || defined->kind != NodeKind::ClassDecl || !defined->file || defined->file->isImported)
+      continue;
+    for (Decl* m : static_cast<ClassDecl*>(defined)->members)
+      if (m->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(m)->name.parts.size() == 1 &&
+          static_cast<FunctionDecl*>(m)->name.last().symbol != UINT32_MAX && sym(static_cast<FunctionDecl*>(m)->name.last().symbol) == "debugValue")
+      {
+        sh.debugValueClasses.push_back({type, debuggerClassName(type)});
+        break;
+      }
+  }
+  std::sort(sh.debugValueClasses.begin(), sh.debugValueClasses.end(), [](const DebugClass& a, const DebugClass& b) { return a.name < b.name; });
+  sh.result.debugValueClasses = sh.debugValueClasses; // (a build from scratch's result; rebuildLLVM takes them for a rebuild)
+}
+
 auto codegen::Emitter::debugLines(std::string header, size_t declLine) -> std::string
 {
   size_t name = header.find('@');

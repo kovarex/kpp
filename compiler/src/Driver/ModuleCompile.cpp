@@ -610,6 +610,13 @@ void runCodegen(Build& build)
     fprintf(stderr, "%s\n", e.c_str());
   if (!cg.errors.empty())
     codegenExit = 1;
+  // A debugValue() the debugger cannot compute is the build's error, in every build and the language
+  // server's check (docs/debugging.md, "debugValue").
+  for (const std::string& error : debugValueErrors(global, symbols, cg.debugValueClasses))
+  {
+    fprintf(stderr, "%s\n", error.c_str());
+    codegenExit = 1;
+  }
   reportCheckerErrors(global, true, cg.instanceAssertsChecked);
   reportAccessWarnings(build);
   reportReturnCopyWarnings(build);
@@ -679,18 +686,10 @@ void runCodegen(Build& build)
     std::vector<ParsedFile*> files;
     for (const std::unique_ptr<ParsedFile>& p : parsed)
       files.push_back(p.get());
-    std::vector<std::string> problems, natvisErrors;
-    std::string natvis = makeNatvis(files, global, symbols, cg.debugClasses, problems, natvisErrors);
+    std::vector<std::string> problems;
+    std::string natvis = makeNatvis(files, global, symbols, cg.debugClasses, problems);
     for (const std::string& problem : problems)
       fprintf(stderr, "warning: natvis: %s\n", problem.c_str());
-    // A debugValue() the debugger cannot compute is the build's error (docs/debugging.md, "debugValue").
-    for (const std::string& error : natvisErrors)
-      fprintf(stderr, "%s\n", error.c_str());
-    if (!natvisErrors.empty())
-    {
-      codegenExit = 1;
-      stop = stop || !options.keepGoing;
-    }
     if (!writeFile(natvisPath(options), natvis))
       fprintf(stderr, "error: cannot write %s\n", natvisPath(options).c_str());
     // The program's own .natvis files, one path a line, for what cannot read them out of the PDB: Visual

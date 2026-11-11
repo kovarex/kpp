@@ -56,7 +56,7 @@ if ($d) { "FAIL natvis: its rules differ from natvis\values.expected"; $names | 
 
 # debugValue() (docs/debugging.md, "debugValue"): Fixed<8>'s rule computes its value with its own
 # scale, Item's shows its name and expands to it; a body the debugger cannot compute (a call, a
-# non-const debugValue) is the build's error, naming the file and line.
+# non-const debugValue) is the build's error, naming the file and line, with or without debug information.
 $types = @(([xml](Get-Content $natvis -Raw)).AutoVisualizer.Type)
 $fixed = @($types | Where-Object { $_.Name -eq 'Fixed<8>' })[0]
 $item = @($types | Where-Object { $_.Name -eq 'Item' })[0]
@@ -79,6 +79,16 @@ $log = $log -join "`n"
 if ($code -eq 0 -or $log -notmatch 'debugvalue-errors\.kpp:4:\d+: error: debugValue of Counted cannot be shown by the debugger: a call' -or
     $log -notmatch 'debugvalue-errors\.kpp:10:\d+: error: debugValue, which the debugger shows Moving as, is a const member function without parameters')
 { "FAIL natvis: debugValue bodies the debugger cannot compute: exit $code`n$log"; exit 1 }
+# The same errors in a build without debug information, and in a check (the language server's).
+foreach ($mode in @('--exe', (Join-Path $work 'debugvalue-plain.exe')), @('--check'))
+{
+  $ErrorActionPreference = 'Continue'
+  $log = (& $KppExe --quiet @mode $bad 2>&1 | ForEach-Object { "$_" }) -join "`n"
+  $code = $LASTEXITCODE
+  $ErrorActionPreference = 'Stop'
+  if ($code -eq 0 -or $log -notmatch 'debugvalue-errors\.kpp:4:\d+: error: debugValue of Counted cannot be shown by the debugger: a call')
+  { "FAIL natvis: debugValue's errors in a build with $($mode[0]) alone: exit $code`n$log"; exit 1 }
+}
 
 # A program's own .natvis (build.kpp's Executable::natvis, kpp's --natvis): natvis\project builds
 # values.kpp with point.natvis; its debug build's PDB holds both that file and the one kpp writes.

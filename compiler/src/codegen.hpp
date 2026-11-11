@@ -63,6 +63,9 @@ struct CodegenResult
   std::string declined;             // rebuildLLVM: why it did not rebuild (rebuilt false), for the server's log
   size_t instanceAssertsChecked = 0; // the class template instances whose static_asserts it checked (GlobalScope::checkerErrors)
   std::vector<DebugClass> debugClasses; // --debug-info: the classes the program's modules define, sorted by name
+  // Every build: the classes laid out whose definition has a debugValue() (docs/debugging.md, "debugValue"),
+  // sorted by name, whose bodies the driver checks (debugValueErrors) whether or not it writes a .natvis.
+  std::vector<DebugClass> debugValueClasses;
 };
 
 // Codegen's state kept between builds by the compile server (docs/compile-speed.md, step 5b): the

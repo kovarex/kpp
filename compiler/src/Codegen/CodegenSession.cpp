@@ -1605,7 +1605,10 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
   // build named a class), whatever path the rebuild took: one place, so that no return of it
   // gives the natvis an empty list. (A build from scratch's homeDebugClasses fills its result.)
   if (rebuilt && session.shared)
+  {
     out.debugClasses = session.shared->debugClasses;
+    out.debugValueClasses = session.shared->debugValueClasses;
+  }
   return out;
 }
 

@@ -1166,6 +1166,7 @@ auto codegen::Emitter::prepareModuleTexts() -> void
   sh.homeNames.clear();
   if (sh.fullDebugInfo)
     homeDebugClasses();
+  findDebugValueClasses(); // (every build: the driver checks their debugValue)
   if (!sh.homeGlobals)
     return;
   sh.homeNames.assign(moduleCount, {});

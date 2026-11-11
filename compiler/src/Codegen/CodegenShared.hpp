@@ -492,6 +492,7 @@ namespace codegen
     uint32_t debugGeneration = 0;
     std::vector<std::vector<uint64_t>> debugHomes; // per module, the classes it defines (their keys, in order)
     std::vector<DebugClass> debugClasses;          // those classes with their names (CodegenResult::debugClasses), made with debugHomes
+    std::vector<DebugClass> debugValueClasses;     // CodegenResult::debugValueClasses (Emitter::findDebugValueClasses)
     // Work after the emission on every emitter of the build at once, each on a thread of its own
     // (the caller's thread runs the first): homeDebugClasses' levels. Set by the session that made
     // the emitters, which outlive the build with this state; unset, the caller does the work alone.
