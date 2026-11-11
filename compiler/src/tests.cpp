@@ -1758,7 +1758,10 @@ int main(int argc, char** argv)
     }
     pool.started = pool.start(int(std::min(jobs, u64(1000))), std::move(extra), argc, argv);
   }
-  if (!list)
+  // (--list too where generators make tests: a generator may read what the setup made, as the game's Saves
+  // suite lists the saves under the data path its setup reads, kovarex 2026-11-12)
+  bool setup = !list || !state.generators.empty();
+  if (setup)
   {
     try
     {
@@ -1770,7 +1773,7 @@ int main(int argc, char** argv)
       return 2;
     }
   }
-  if (!others.empty() && (list || state.noSetup))
+  if (!others.empty() && (!setup || state.noSetup))
   {
     std::println("unknown test runner argument ", others[0],
             "; the runner takes --filter TEXT, --suite NAME, --skip-suite NAME, --with-dependencies, --from NAME, --after NAME, --tag TAG, "

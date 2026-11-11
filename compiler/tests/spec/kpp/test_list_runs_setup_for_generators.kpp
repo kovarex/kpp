@@ -1,0 +1,16 @@
+// spec: --list runs testsSetup before the generators when there are any, as a run does, since a generator may read what the setup made (the game's Saves suite lists its saves under the data path the setup reads; --list crashed on the null pointer, silently, kovarex 2026-11-12)
+// test: --list
+// exit: 0
+i32* count = nullptr;
+i32 storage = 2;
+
+void testsSetup(const std::Vector<std::String>& arguments) { count = &storage; }
+
+suite Numbers
+{
+  generate Each
+  {
+    for (i32 i = 0; i < *count; ++i)
+      this.addTest(std::toString("n", i).c_str(), [i] { check(i >= 0); });
+  }
+}
