@@ -29,6 +29,9 @@ $env:KPP_CHECK_BARRIER = '1'
 # No shared object cache from the caller's environment (KPP_OBJECT_CACHE): checks count the modules a
 # build compiles (tests\incremental.ps1); tests\objectcache.ps1 sets its own.
 Remove-Item Env:KPP_OBJECT_CACHE -ErrorAction SilentlyContinue
+# The C libraries' object cache (KPP_CLIB_CACHE, docs/build.md) of the tests' own, not the user's: they
+# build many small C libraries, and checks count what a build compiles.
+$env:KPP_CLIB_CACHE = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\build\tests\clib-cache'))
 if ($Jobs -le 0) { $Jobs = [Math]::Max(4, [Math]::Min(12, [int]([Environment]::ProcessorCount / 3))) }
 
 # The checks. Kind: e2e (an end-to-end program: counted apart), check (counted in "checks"). Skip: an

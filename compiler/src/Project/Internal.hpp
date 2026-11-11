@@ -204,6 +204,16 @@ namespace projects
     };
     std::vector<Precompiled> pchs;
     std::vector<int> usesPch;
+    // The object cache's view of each compile (docs/build.md, "The object cache"), by compile: its
+    // source, object and dependency file, and its command with the project's directory written as
+    // <root> (`key`); root: that directory as the flags spell it.
+    struct Cached
+    {
+      fs::path source, object, dependencies;
+      std::string key;
+    };
+    std::vector<Cached> cached;
+    std::string root;
   };
 
   // What Run and the debugger start (Executable::debug): the program, its arguments and its directory,
