@@ -8,7 +8,8 @@ A lambda's capture nothing uses is listed, not written: remove it from the captu
     python tools/unused/fix.py ROOT errors.txt       (ROOT: only files below it are written)
 
 Prints how many were applied, left (outside ROOT, a capture) and mismatched (the name not after the column: nothing
-written there). Line endings are kept as each file has them.
+written there). A file is written byte for byte as it was apart from the insertions: kpp's column counts bytes from
+the line's start, and a converted C library's file may be in another encoding than UTF-8 (minizip's, Latin-1).
 """
 import os, re, sys
 
@@ -41,20 +42,19 @@ def main():
             edits.setdefault(path, set()).add((int(m['line']), int(m['col']), k['local'] or k['param']))
     applied = mismatched = 0
     for path, wanted in sorted(edits.items()):
-        data = open(path, 'rb').read().decode('utf-8')
-        newline = '\r\n' if '\r\n' in data else '\n'
-        lines = data.split(newline)
+        # (lines as the lexer counts them, each \n; a \r stays at its line's end)
+        lines = open(path, 'rb').read().split(b'\n')
         # (the last first: an insertion moves what follows it on its line)
         for line, col, name in sorted(wanted, reverse=True):
-            text = lines[line - 1] if line - 1 < len(lines) else ''
+            text = lines[line - 1] if line - 1 < len(lines) else b''
             at = col - 1
-            if at > len(text) or not re.search(r'\b' + re.escape(name) + r'\b', text[at:]) or text[at:].startswith('[[maybe_unused]]'):
+            if at > len(text) or not re.search(rb'\b' + re.escape(name.encode('utf-8')) + rb'\b', text[at:]) or text[at:].startswith(b'[[maybe_unused]]'):
                 mismatched += 1
                 print('mismatched: %s:%d:%d %s' % (path, line, col, name))
                 continue
-            lines[line - 1] = text[:at] + '[[maybe_unused]] ' + text[at:]
+            lines[line - 1] = text[:at] + b'[[maybe_unused]] ' + text[at:]
             applied += 1
-        open(path, 'wb').write(newline.join(lines).encode('utf-8'))
+        open(path, 'wb').write(b'\n'.join(lines))
     for l in left:
         print('left: ' + l)
     print('unused: %d applied, %d left, %d mismatched' % (applied, len(left), mismatched))

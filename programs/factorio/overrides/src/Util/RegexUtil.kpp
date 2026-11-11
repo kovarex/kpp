@@ -138,7 +138,7 @@ public:
     return RE2::parseAll(groups + 1, args...);
   }
 
-  static bool parseAll(const re2::StringPiece* groups) { return true; }
+  static bool parseAll([[maybe_unused]] const re2::StringPiece* groups) { return true; }
 
   template<typename T, typename... Rest>
   static bool parseAll(const re2::StringPiece* groups, T first, Rest... rest)
@@ -150,7 +150,7 @@ public:
   static bool parseInto(std::StringView text, void* target) { return RE2::parse(text, (T*)target); }
 
   // A nullptr target skips its group, as RE2's Arg(nullptr) does.
-  static bool parse(std::StringView text, nullptr_t) { return true; }
+  static bool parse([[maybe_unused]] std::StringView text, nullptr_t) { return true; }
 
   static bool parse(std::StringView text, re2::StringPiece* out)
   {

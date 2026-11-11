@@ -258,6 +258,30 @@ if exist kpp\Util rd /s /q kpp\Util
 if exist kpp\src\Util xcopy /s /y /q /i kpp\src\Util kpp\Util >nul
 %KPP% --convert-this-reference %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests || goto :failed
 set CINC=%CINC% --this-reference
+rem Unused names are errors (kovarex, 2026-11-11; design.md 7, item 8): a local, a parameter nothing uses gets
+rem [[maybe_unused]] where kpp's --unused-checks finds it, in kpp\ and in the checkout, in each configuration and
+rem platform the this pass builds (..\..\tools\unused\fix.py; it fails on a place it cannot mark, and lists a
+rem lambda's capture nothing uses, for a hand). None is in Factorio's own code: they are the C libraries'
+rem (minizip, trio, StackWalker, Lua) and what the conversion leaves (testAssertFailed's column, a lambda only
+rem an __except used, macros folded into literals, a [[maybe_unused]] lost when a definition is merged).
+set STEP=the unused pass
+set UNUSED=--std ..\..\stdlib %CINC% --unused-checks --diagnostic-columns --errors 0 --unresolved 0 --check
+%KPP% %UNUSED% kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\crc32fast %CLIBKPP% kpp\src > nul 2> kpp\unused-debug.txt
+%KPP% %UNUSED% --release kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\crc32fast %CLIBKPP% kpp\src > nul 2> kpp\unused-release.txt
+%KPP% %UNUSED% --release --config finalRelease=true kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\crc32fast %CLIBKPP% kpp\src > nul 2> kpp\unused-final.txt
+python -I ..\..\tools\unused\fix.py kpp kpp\unused-debug.txt kpp\unused-release.txt kpp\unused-final.txt || goto :failed
+rem (kpp\Util is a copy of kpp\src\Util, made before the fixes: again)
+if exist kpp\Util rd /s /q kpp\Util
+if exist kpp\src\Util xcopy /s /y /q /i kpp\src\Util kpp\Util >nul
+%KPP% %UNUSED% --ext .kpp --tests %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests > nul 2> kpp\unused-whole.txt
+%KPP% %UNUSED% --ext .kpp --release %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %WHOLE%\src > nul 2> kpp\unused-whole-release.txt
+%KPP% %UNUSED% --ext .kpp --release --config finalRelease=true %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %WHOLE%\src > nul 2> kpp\unused-whole-final.txt
+set UNUSEDFILES=kpp\unused-whole.txt kpp\unused-whole-release.txt kpp\unused-whole-final.txt
+if not "%CONVERT_LINUX%"=="0" %KPP% %UNUSED% --cinclude %FACTORIO%\libraries\libbacktrace --target linux --sysroot %GAMESYSROOT% --ext .kpp --tests %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests > nul 2> kpp\unused-linux.txt
+if not "%CONVERT_LINUX%"=="0" %KPP% %UNUSED% --cinclude %FACTORIO%\libraries\libbacktrace --target linux --sysroot %GAMESYSROOT% --release --config finalRelease=true --ext .kpp %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\Lua %L%\crc32fast %CLIBWHOLE% %WHOLE%\src > nul 2> kpp\unused-linux-final.txt
+if not "%CONVERT_LINUX%"=="0" %KPP% %UNUSED% --cinclude %FACTORIO%\libraries\libbacktrace --target freebsd --sysroot ..\..\compiler\build\sysroots\freebsd-x86_64 --ext .kpp --tests %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests > nul 2> kpp\unused-freebsd.txt
+if not "%CONVERT_LINUX%"=="0" set UNUSEDFILES=%UNUSEDFILES% kpp\unused-linux.txt kpp\unused-linux-final.txt kpp\unused-freebsd.txt
+python -I ..\..\tools\unused\fix.py "%WHOLE%" %UNUSEDFILES% || goto :failed
 rem The headline number (docs/path-to-factorio.md, "The headline number: how it is measured"):
 rem stderr lines of the full build of exactly CommonUtil, Agui, cxxopts, StackWalker, Lua, crc32fast, the C
 rem libraries and src, not the kpp\Util copy.
