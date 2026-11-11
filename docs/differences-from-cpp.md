@@ -855,6 +855,15 @@ struct S1 : B16 { int y; };   // 32 bytes; 16 with MSVC's layout
 - **Why:** one method writes a deep hierarchy in one buffer, and templates need no special case.
 - **See:** [design 14][d14]; spec `language/append_to_on_built_in_types`.
 
+### A type says what the debugger shows through `debugValue` (this stage)
+
+- **C++:** a .natvis file, GDB or LLDB Python, written apart from the type and per debugger.
+- **kpp:** `T debugValue() const`, a member the language knows: the debugger shows the type as what it
+  returns. Its body is translated into each debugger's description and must be translatable (no calls, no
+  writes), or it is a compile error.
+- **Why:** one description in the type's own code, checked by the compiler, for every debugger.
+- **See:** [design 26][d26].
+
 ### `<<` is String's only append (built)
 
 - **C++:** `s += 65` appends a character.
@@ -957,6 +966,7 @@ rejects (thread J's conversion battery, 2026-11-08; the specs say which compiler
 [d12]: design.md#12-the-build-description-buildkpp-decided-2026-10-31
 [d13]: design.md#13-integer-types-and-sizes-decided-2026-11-01
 [d14]: design.md#14-text-output-arguments-in-sequence-text-appendto-and--decided-2026-11-01
+[d26]: design.md#26-debugvalue-what-the-debugger-shows-decided-2026-11-11
 [d15]: design.md#15-file-local-names-private-at-file-scope-decided-2026-11-01
 [d16]: design.md#16-library-scopes-qualified-by-default-a-library-may-be-unscoped-decided-2026-11-01
 [d19]: design.md#19-conditional-declarations-when-condition-declaration-decided-2026-11-03

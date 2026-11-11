@@ -2811,6 +2811,39 @@ clang has worked this way since version 15 for std::move, std::forward, std::as_
   instance, whose argument may be what made the object const. Spec kpp/move_of_a_const_object_is_a_warning.
 - **Not built.** addressof: the library declares none, and the game uses none.
 
+### 26. `debugValue`: what the debugger shows (decided 2026-11-11)
+kovarex, 2026-11-11: a type says what the debugger shows with one method the language knows, as `appendTo` (14)
+is the one it knows for text: no attribute, one form, the return type saying what it is. The research and the
+other options (hand-written files, a format string, calling the program's code): the 2026-11-11 proposal,
+"Debugger views for kpp types" (prior art: natvis, GDB and LLDB formatters, LLDB's formatter bytecode, Swift's
+`@DebugDescription`, Rust's `debugger_visualizer`, C#'s `DebuggerDisplay`).
+- **The method.** `T debugValue() const`. A type that has it shows in the debugger as what it returns, with that
+  value's own view: a number or a String as itself, a Span or a container as its elements, a class as its
+  members. One method gives both the line in the watch window and the expansion.
+
+  ```
+  // FixedPointNumberTemplate: shows 1.5
+  f64 debugValue() const { return f64(this.value) * (1.0 / This::ValuesPerOne); }
+  // a container: shows {length=3}, expands to its elements
+  Span<T> debugValue() const { return Span(this.data, this.size); }
+  ```
+- **A type without it** shows its members, each by its own view: MapPosition needs nothing, its x and y being
+  FixedPointNumbers.
+- **Nothing runs in the debuggee.** kpp translates the body into each debugger's own description, per template
+  instance (constants such as `ValuesPerOne` folded), so a view works on a crash dump and every instance the
+  program uses has its rule. The body is held to what translates: member reads, arithmetic, comparisons, `?:`,
+  `if` and `return`, casts, constants, enumerators, pointer reads, and the `debugValue` of other types; no
+  allocation, no writes, no calls of other functions. A body outside that is a compile error in the type's own
+  file, so a renamed member never leaves a stale rule.
+- **Otherwise an ordinary method:** the program and its tests call it.
+- **Output.** natvis first (Windows, the natvis kpp already writes into the PDB, thread F); LLDB (formatter bytecode
+  in the binary, or Python where a loop is needed) and GDB (Python in `.debug_gdb_scripts`) once kpp writes DWARF
+  (stage 2).
+- **Open.** Loops in a body (a linked list, a tree: natvis's CustomListItems has them, LLDB's bytecode does not);
+  moving the standard library's rules from compiler/src/natvis.cpp into `debugValue` methods in the library;
+  the converted game's FixedPointNumber gaining one (thread C) instead of factorio.natvis's six rules; a type's
+  `appendTo` that only chains `out << member` becoming its view with no `debugValue`.
+
 ## Code packages (proposed 2026-10-27, decided 2026-11-04)
 
 **Decided** (kovarex, 2026-11-04): a directory is a package, named after the directory; an optional
