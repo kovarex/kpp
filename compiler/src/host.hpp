@@ -153,6 +153,12 @@ namespace host
   // How busy the machine is, every core, over the next second, in percent; -1 where kpp cannot
   // tell (macOS so far).
   int machineLoad();
+  // CPU time the machine's cores have been busy since it started, in seconds, every core summed; -1
+  // where kpp cannot tell (macOS, FreeBSD so far). Two readings give how busy it was between them.
+  double machineBusySeconds();
+  // CPU time every process in group's job has used, ended ones included, in seconds; -1 where kpp
+  // cannot tell (POSIX: a group has no job).
+  double groupCpuSeconds(const PriorityGroup& group);
 
   // A file held open: shared by every holder (a run in its directory, run.cpp), or alone (the
   // cleanup, which deletes the directory only then). release() lets it go; the destructor too.

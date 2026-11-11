@@ -1,6 +1,7 @@
 // kpp measure (docs/build.md, "kpp measure"): a project's builds timed on this machine.
 // (Moved out of project.cpp on 2026-11-05 without a change.)
 #include "Project/Internal.hpp"
+#include <thread>
 
 namespace projects
 {
@@ -23,6 +24,16 @@ namespace projects
   std::string machine() { return host::machineDescription(); }
   int machineLoad() { return host::machineLoad(); }
 
+  // Every command measure runs is in one job (a PriorityGroup raised to the normal priority at once),
+  // the compile server it starts included (a client leaves its job only where the job lets it, and
+  // this one does not), so that the job's CPU time is the measured builds' own and the rest of the
+  // machine's busy time during a build is other work (other programs, other users' builds): kovarex's
+  // whole build took 59 s where measure had said 14.2 s, everything 3 to 4 times slower, and measure
+  // had only checked the load in the second before each round (2026-11-11).
+  host::PriorityGroup measuredJob;
+  // The other work during the last timed command: its CPU time in seconds (-1: unknown here).
+  double otherWorkSeconds = -1;
+
   // Runs a command line in directory, its output appended to log: its exit code, and its wall time
   // from start to exit.
   int timed(const std::string& command, const fs::path& directory, const fs::path& log, double& seconds)
@@ -35,10 +46,14 @@ namespace projects
     host::Run how;
     how.directory = directory;
     how.appendTo = log;
+    how.group = measuredJob.job ? &measuredJob : nullptr;
     std::string why;
+    double busy0 = host::machineBusySeconds(), own0 = host::groupCpuSeconds(measuredJob);
     auto start = std::chrono::steady_clock::now();
     int code = host::runCommandLine(command, how, why);
     seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    double busy1 = host::machineBusySeconds(), own1 = host::groupCpuSeconds(measuredJob);
+    otherWorkSeconds = busy0 < 0 || busy1 < 0 || own0 < 0 || own1 < 0 ? -1 : std::max(0.0, (busy1 - busy0) - (own1 - own0));
     return code;
   }
   fs::file_time_type writtenAt(const fs::path& path)
@@ -195,6 +210,7 @@ namespace projects
     {
       std::string name, compare;
       std::vector<double> kpp, other;
+      std::vector<double> busy; // per round: other work during kpp's build, in percent of the machine (-1: unknown)
     };
     std::vector<Row> rows;
     for (const Measurement::Edit& e : m.edits)
@@ -225,7 +241,15 @@ namespace projects
         if (writtenAt(exe) <= before)
           return fail("kpp " + t + " " + configuration + " wrote no new " + exe.string() + ": not a build of the change"), false;
         row->kpp.push_back(seconds);
-        printf("  %-62s %7.2f s\n", row->name.c_str(), seconds);
+        // Other work during the build: the machine's busy time beside the job's (timed's), in percent
+        // of every hardware thread for the build's wall time.
+        unsigned threads = std::max(1u, std::thread::hardware_concurrency());
+        double busy = otherWorkSeconds < 0 || seconds <= 0 ? -1 : 100.0 * otherWorkSeconds / (seconds * threads);
+        row->busy.push_back(busy);
+        if (busy < 0)
+          printf("  %-62s %7.2f s\n", row->name.c_str(), seconds);
+        else
+          printf("  %-62s %7.2f s  (other work: %.0f%% of the machine)\n", row->name.c_str(), seconds, busy);
         fflush(stdout);
       }
       return true;
@@ -257,6 +281,12 @@ namespace projects
       return !fs::exists(directory) || (fail("could not delete " + directory.string() + " (a program holding a file in it?)"), false);
     };
 
+    // Every command in measure's job, at the normal priority (the group starts below it), and the
+    // compile server too: one already running (a user's own) is stopped first, so that the edits'
+    // server is started in the job and its work is the builds' own.
+    measuredJob.raise();
+    if (!stopAll())
+      return 1;
     std::vector<int> loads;
     for (int round = 1; round <= rounds; ++round)
     {
@@ -310,16 +340,42 @@ namespace projects
     std::string loadText;
     for (int load : loads)
       loadText += (loadText.empty() ? "" : ", ") + (load < 0 ? std::string("?") : std::to_string(load) + "%");
-    printf("\n%s (%s), %s; %s %s, the machine %s busy before each round; wall time from start to exit, average of %d round%s\n\n",
+    // Other work during the builds: the most of any build. Above 10% of the machine a row is not a
+    // quiet machine's, and the table says so (a * on such rows, a line under it).
+    const double quiet = 10;
+    double mostBusy = -1;
+    for (const Row& row : rows)
+      for (double busy : row.busy)
+        mostBusy = std::max(mostBusy, busy);
+    auto marked = [&](const Row& row)
+    {
+      for (double busy : row.busy)
+        if (busy > quiet)
+          return true;
+      return false;
+    };
+    char busyText[96];
+    if (mostBusy < 0)
+      snprintf(busyText, sizeof busyText, "other work during the builds unknown on this host");
+    else
+      snprintf(busyText, sizeof busyText, "other work during the builds at most %.0f%% of the machine", mostBusy);
+    printf("\n%s (%s), %s; %s %s, the machine %s busy before each round, %s; wall time from start to exit, average of %d round%s\n\n",
            version.c_str(), std::string(kppCommit()).substr(0, 8).c_str(), machine().c_str(), target.c_str(), configuration.c_str(),
-           loadText.c_str(), rounds, rounds == 1 ? "" : "s");
+           loadText.c_str(), busyText, rounds, rounds == 1 ? "" : "s");
     bool compared = !compareDirectory.empty();
     printf(compared ? "| | %s | compared |\n|---|---:|---:|\n" : "| | %s |\n|---|---:|\n", version.c_str());
+    bool anyMarked = false;
     for (const Row& row : rows)
+    {
+      std::string name = row.name + (marked(row) ? " *" : "");
+      anyMarked = anyMarked || marked(row);
       if (compared)
-        printf("| %s | %s | %s |\n", row.name.c_str(), average(row.kpp).c_str(), average(row.other).c_str());
+        printf("| %s | %s | %s |\n", name.c_str(), average(row.kpp).c_str(), average(row.other).c_str());
       else
-        printf("| %s | %s |\n", row.name.c_str(), average(row.kpp).c_str());
+        printf("| %s | %s |\n", name.c_str(), average(row.kpp).c_str());
+    }
+    if (anyMarked)
+      printf("\n* other work took more than %.0f%% of the machine during a round of this row: not a quiet machine's time\n", quiet);
     return 0;
   }
 }

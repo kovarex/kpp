@@ -454,6 +454,23 @@ namespace host
     return all ? int(100.0 * double(all - idled) / double(all) + 0.5) : 0;
   }
 
+  double machineBusySeconds()
+  {
+    FILETIME idle, kernel, user;
+    if (!GetSystemTimes(&idle, &kernel, &user))
+      return -1;
+    auto ticks = [](const FILETIME& t) { return (uint64_t(t.dwHighDateTime) << 32) | t.dwLowDateTime; };
+    return double(ticks(kernel) + ticks(user) - ticks(idle)) / 1e7; // (kernel time includes idle; 100 ns ticks)
+  }
+
+  double groupCpuSeconds(const PriorityGroup& group)
+  {
+    JOBOBJECT_BASIC_ACCOUNTING_INFORMATION info{};
+    if (!group.job || !QueryInformationJobObject(HANDLE(group.job), JobObjectBasicAccountingInformation, &info, sizeof info, nullptr))
+      return -1;
+    return double(info.TotalUserTime.QuadPart + info.TotalKernelTime.QuadPart) / 1e7;
+  }
+
   bool FileLock::shared(const fs::path& path)
   {
     release();
@@ -850,6 +867,30 @@ namespace host
       snprintf(line, sizeof line, "%s, %u threads, %.0f GB", cpu.c_str(), threads, memory);
     return line;
   }
+
+  double machineBusySeconds()
+  {
+#if defined(__linux__)
+    FILE* f = fopen("/proc/stat", "r");
+    if (!f)
+      return -1;
+    unsigned long long v[8] = {};
+    int n = fscanf(f, "cpu %llu %llu %llu %llu %llu %llu %llu %llu", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5], &v[6], &v[7]);
+    fclose(f);
+    if (n < 4)
+      return -1;
+    unsigned long long busy = 0;
+    for (int i = 0; i < n; ++i)
+      if (i != 3 && i != 4) // (idle, iowait)
+        busy += v[i];
+    long hz = sysconf(_SC_CLK_TCK);
+    return hz > 0 ? double(busy) / double(hz) : -1;
+#else
+    return -1;
+#endif
+  }
+
+  double groupCpuSeconds(const PriorityGroup&) { return -1; }
 
   int machineLoad()
   {

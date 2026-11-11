@@ -1003,12 +1003,15 @@ void build(Project& project)
     # decimals: within 0.1 s), one decimal, and the heading says so.
     $output = (Kpp @('measure', '--rounds', '2')) -join "`n"
     if ($code -ne 0 -or $output -notmatch 'average of 2 rounds') { Fail "kpp measure: exit $code, no `"average of 2 rounds`"`n$output" }
+    # (and how busy other work kept the machine during each build, H 2026-11-12: a round's line ends
+    # with it, the heading has the most of them, a row above 10% is marked *)
+    if ($output -notmatch 'other work during the builds at most \d+% of the machine') { Fail "kpp measure: no `"other work during the builds at most N% of the machine`"`n$output" }
     foreach ($row in 'Edit of one function', 'Edit of one function, undone', 'Clean build of hello, libraries already built',
                      'Whole build of hello.exe, every library included', 'Whole build of again.exe, every library included')
     {
       $name = [regex]::Escape($row)
-      $rounds = @([regex]::Matches($output, "(?m)^  $name +([\d.]+) s$") | ForEach-Object { [double]$_.Groups[1].Value })
-      $table = [regex]::Match($output, "(?m)^\| $name \| (\d+\.\d) s \|$")
+      $rounds = @([regex]::Matches($output, "(?m)^  $name +([\d.]+) s  \(other work: \d+% of the machine\)$") | ForEach-Object { [double]$_.Groups[1].Value })
+      $table = [regex]::Match($output, "(?m)^\| $name(?: \*)? \| (\d+\.\d) s \|$")
       if ($rounds.Count -ne 2 -or -not $table.Success -or [math]::Abs([double]$table.Groups[1].Value - ($rounds[0] + $rounds[1]) / 2) -gt 0.1)
       { Fail "kpp measure: the row `"$row`": rounds [$($rounds -join ', ')], table [$($table.Value)]`n$output"; break }
     }
