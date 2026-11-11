@@ -669,9 +669,10 @@ int compile(int argc, char** argv)
       options.clangFlags += (options.clangFlags.empty() ? "" : " ") + flag;
       options.libs.push_back(flag);
       // (AddressSanitizer's runtime exports its interface from the executable, so link.exe would write an
-      // import library and an .exp beside it, and say so on every build)
+      // import library and an .exp beside it, and say so on every build; lld-link, an optimized build's
+      // and the bundled toolchain's, takes /NOIMPLIB and has no /NOEXP)
       if (options.target.msvc())
-        options.libs.push_back("-Wl,/NOIMPLIB,/NOEXP");
+        options.libs.push_back(options.optimize || bundledToolchain() ? "-Wl,/NOIMPLIB" : "-Wl,/NOIMPLIB,/NOEXP");
       // (link.exe ignores /INCREMENTAL for objects with ASan's metadata, with warning LNK4300: a project's
       // debug configuration asks for it, and a sanitized one based on debug links whole instead)
       options.incrementalLink = false;
