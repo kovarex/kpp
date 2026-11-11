@@ -470,13 +470,16 @@ replacements, in the order of how much code they remove:
    decided, and a body with a goto, a label or asm is not judged. The attribute goes on any
    declaration of the function (an out-of-line definition takes its class's), after a template's
    header and before a declaration's `when` too: until then attributes there were dropped,
-   `[[nodiscard]]` included. The stdlib's exit, _Exit and abort are `[[noreturn]]`. A C function is
-   not, yet, where its header says so (`__declspec(noreturn)`, `_Noreturn`: ExitProcess, quick_exit),
-   and one that only ends a process when given its own (TerminateProcess) never is: the converted
-   game's createMinidumpAndTerminate, `[[noreturn]]`, ends with `_Exit(1)` after its
-   TerminateProcess (a source edit). Specs language/end_of_a_value_returning_function_is_error,
-   language/noreturn_ends_a_path, language/noreturn_function_that_returns_is_error,
-   kpp/attribute_before_when_belongs_to_its_declaration.
+   `[[nodiscard]]` included. The stdlib's exit, _Exit and abort are `[[noreturn]]`, and so is a C
+   function whose header says so (since 2026-11-11): `__declspec(noreturn)` (the UCRT's exit and
+   quick_exit, windows.h's ExitProcess), `__attribute__((noreturn))` before the declaration or after
+   its parameters (glibc's, MinGW-w64's) and C11's `_Noreturn` (FreeBSD's, musl's); a parameter's
+   attribute is the parameter's (a callback that does not return). One that ends a process only when
+   given its own (TerminateProcess) is not: the converted game's createMinidumpAndTerminate,
+   `[[noreturn]]`, ends with `_Exit(1)` after its TerminateProcess (a source edit). Specs
+   language/end_of_a_value_returning_function_is_error, language/noreturn_ends_a_path,
+   language/noreturn_function_that_returns_is_error, kpp/attribute_before_when_belongs_to_its_declaration,
+   interop/c_header_noreturn_ends_a_path, interop/c_header_noreturn_callback_parameter.
 The spellings above are the working proposal; each is settled and recorded here when the feature
 is implemented.
 

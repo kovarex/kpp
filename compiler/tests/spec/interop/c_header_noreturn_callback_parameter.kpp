@@ -1,0 +1,14 @@
+// spec: a noreturn attribute on a C function's parameter, a callback that does not return (`void (*handler)(int) __attribute__((noreturn))`), is the parameter's, not the function's: a function that returns a value and ends with a call of the function taking that callback can still reach its end
+// factorio: none; a parameter's attributes went to its function until 2026-11-11, which only mattered once kpp read noreturn from C headers
+// error: c_header_noreturn_callback_parameter.kpp:10: error: control can reach the end of installed, which returns int32: return a value there, or end that path with a throw or a call of a [[noreturn]] function
+extern "C" import "c_header_noreturn_callback_parameter.h";
+int installed(int x)
+{
+  if (x > 0)
+    return x;
+  set_fatal_handler(nullptr);
+}
+int main()
+{
+  return installed(1) - 1;
+}

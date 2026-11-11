@@ -1,4 +1,4 @@
-// spec: clang's nullability qualifiers (`_Nonnull`, `_Nullable`, `_Null_unspecified`), C99's `restrict` before a parameter's name and C11's `_Noreturn` in an imported C header change nothing in a declaration: a struct keeps every member (its layout is C's) and the functions are declared (`32 10 12`)
+// spec: clang's nullability qualifiers (`_Nonnull`, `_Nullable`, `_Null_unspecified`) and C99's `restrict` before a parameter's name in an imported C header change nothing in a declaration, and C11's `_Noreturn` only says that the function does not return (interop/c_header_noreturn_ends_a_path): a struct keeps every member (its layout is C's) and the functions are declared (`32 10 12`)
 // factorio: none; kpp.net's FreeBSD 14.3 headers have them: stdio.h's FILE (`int (* _Nullable _close)(void *)`), pthread.h's `pthread_mutex_t * restrict __mutex`, stdlib.h's `_Noreturn void exit(int)` (B's review of I's FreeBSD target)
 extern "C" import "c_import_nullability_restrict_noreturn.h";
 

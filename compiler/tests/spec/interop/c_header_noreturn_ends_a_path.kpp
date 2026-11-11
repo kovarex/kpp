@@ -1,0 +1,37 @@
+// spec: a C header's function that does not return, as the header says it (GNU's __attribute__((noreturn)) before the declaration or after its parameters, C11's _Noreturn, MSVC's __declspec(noreturn)), ends a path as a [[noreturn]] kpp function does: a function that returns a value may end with a call of one (`3 8 15 24`)
+// factorio: none yet; the C libraries' exits as their headers declare them: the UCRT's `__declspec(noreturn) void quick_exit(int)` (the game calls quick_exit), glibc's `exit (int) __attribute__ ((__noreturn__))`, FreeBSD's `_Noreturn void abort(void)`, windows.h's ExitProcess (DECLSPEC_NORETURN); kpp read none of them until 2026-11-11
+extern "C" import "c_header_noreturn_ends_a_path.h";
+
+int viaBefore(int x)
+{
+  if (x > 0)
+    return x * 3;
+  fail_before(1);
+}
+
+int viaAfter(int x)
+{
+  if (x > 0)
+    return x * 4;
+  fail_after(2);
+}
+
+int viaC11(int x)
+{
+  if (x > 0)
+    return x * 5;
+  fail_c11(3);
+}
+
+int viaDeclspec(int x)
+{
+  if (x > 0)
+    return x * 6;
+  fail_declspec(4);
+}
+
+int main()
+{
+  std::println(viaBefore(1), " ", viaAfter(2), " ", viaC11(3), " ", viaDeclspec(4));
+  return 0;
+}

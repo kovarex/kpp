@@ -560,8 +560,9 @@ namespace
               pendingAttributes |= ATTR_ForeignVtable;
             else if (a == "nodiscard")
               pendingAttributes |= ATTR_NoDiscard;
-            else if (a == "noreturn")
-              pendingAttributes |= ATTR_NoReturn;
+            else if (a == "noreturn" || a == "__noreturn__" || a == "_Noreturn" ||
+                     ((a == "gnu" || a == "__gnu__") && at(P::ColonColon, 1) && atIdent(2) && (spelling(2) == "noreturn" || spelling(2) == "__noreturn__")))
+              pendingAttributes |= ATTR_NoReturn; // (C23's spellings and GNU's, a C header's: `[[__noreturn__]]`, `[[gnu::noreturn]]`)
             else if (a == "no_unique_address")
               pendingAttributes |= ATTR_NoUniqueAddress;
             else if (a == "deprecated")
@@ -657,7 +658,7 @@ namespace
         else if (atIdent() && (spelling() == "__declspec" || spelling() == "__attribute__" || spelling() == "__pragma" ||
                                spelling() == "alignas") && at(P::LParen, 1))
         {
-          bool gnu = spelling() == "__attribute__";
+          bool gnu = spelling() == "__attribute__", declspec = spelling() == "__declspec";
           advance();
           uint32_t from = pos;
           skipBalanced();
@@ -665,6 +666,12 @@ namespace
             for (uint32_t i = from; i < pos && i < toks.size(); ++i)
               if (toks[i].getKind() == TokenKind::Identifier && (spelling(toks[i]) == "__vector_size__" || spelling(toks[i]) == "vector_size"))
                 sawVectorSize = true;
+          // MSVC's and GNU's noreturn, a C header's way to say what [[noreturn]] says: the UCRT's `__declspec(noreturn) void
+          // exit(int)`, windows.h's ExitProcess (DECLSPEC_NORETURN), glibc's `exit (int) __attribute__ ((__noreturn__))`
+          if (gnu || declspec)
+            for (uint32_t i = from; i < pos && i < toks.size(); ++i)
+              if (toks[i].getKind() == TokenKind::Identifier && (spelling(toks[i]) == "noreturn" || spelling(toks[i]) == "__noreturn__"))
+                pendingAttributes |= ATTR_NoReturn;
         }
         else if (atIdent() && (spelling() == "__forceinline" || spelling() == "__inline" || spelling() == "__inline__" || spelling() == "__cdecl" ||
                                spelling() == "__stdcall" || spelling() == "__fastcall" || spelling() == "__vectorcall" ||
@@ -672,6 +679,11 @@ namespace
                                spelling() == "__ptr64" || spelling() == "__ptr32" || spelling() == "__sptr" ||
                                spelling() == "__uptr" || spelling() == "__clrcall" || spelling() == "__w64"))
           advance();
+        else if (isC() && atIdent() && spelling() == "_Noreturn")
+        {
+          pendingAttributes |= ATTR_NoReturn; // C11's function specifier: FreeBSD's and musl's stdlib.h, `_Noreturn void abort(void);`
+          advance();
+        }
         else if (at(TokenKind::Directive))
           advance();
         else
@@ -3060,6 +3072,9 @@ namespace
     {
       expect(P::LParen, "expected '('");
       size_t mark = scratch.size();
+      // A parameter's attributes are its own, not the function's: `void set_fatal_handler(void (*handler)(int)
+      // __attribute__((noreturn)))` takes a callback that does not return, and returns itself.
+      uint16_t functionAttributes = pendingAttributes;
       if (at(Kw::void_) && at(P::RParen, 1))
         advance(); // C's `(void)`: no parameters
       else if (!at(P::RParen))
@@ -3080,6 +3095,7 @@ namespace
         }
       }
       d.params = makeSpan<Decl*>(mark);
+      pendingAttributes = functionAttributes;
       if (!expect(P::RParen, "expected ')' after parameters"))
         return;
       for (;;)
@@ -7798,10 +7814,12 @@ void parseFile(std::vector<Token>& tokens, std::string_view text, SymbolTable& s
     // `__restrict__` (MSVC's `__restrict`), and `__attribute__((...))` where MSVC's put a calling convention, between a declaration's type
     // and its name and inside a declarator (`typedef int (__attribute__((__cdecl__)) *f)(int)`).
     // Both go, except the attributes that say something about a type (vector_size, aligned, packed,
-    // mode), which stay where the declaration grammar takes them. So do what says nothing about a
-    // declaration's type or layout wherever it stands: C99's `restrict` (`pthread_mutex_t * restrict
-    // __mutex`), C11's `_Noreturn`, and clang's nullability qualifiers (FreeBSD's headers:
-    // `int (* _Nullable _close)(void *)` in stdio.h's FILE, `const sigset_t * _Nonnull restrict`).
+    // mode), which stay where the declaration grammar takes them, and noreturn, which the parser reads
+    // before a declaration and after its parameters (glibc's `exit (int __status) __attribute__
+    // ((__noreturn__))`). So do what says nothing about a declaration's type or layout wherever it
+    // stands: C99's `restrict` (`pthread_mutex_t * restrict __mutex`) and clang's nullability
+    // qualifiers (FreeBSD's headers: `int (* _Nullable _close)(void *)` in stdio.h's FILE,
+    // `const sigset_t * _Nonnull restrict`). C11's `_Noreturn` stays: the parser reads it.
     auto spelled = [&](const Token& t) { return std::string_view(text.data() + t.offset, t.length); };
     auto identifier = [&](const Token& t, std::string_view s) { return TokenKind(t.kind) == TokenKind::Identifier && spelled(t) == s; };
     auto meaningless = [&](const Token& t)
@@ -7809,7 +7827,7 @@ void parseFile(std::vector<Token>& tokens, std::string_view text, SymbolTable& s
       if (TokenKind(t.kind) != TokenKind::Identifier)
         return false;
       std::string_view s = spelled(t);
-      return s == "__extension__" || s == "__restrict__" || s == "restrict" || s == "_Noreturn" || s == "_Nonnull" || s == "_Nullable" ||
+      return s == "__extension__" || s == "__restrict__" || s == "restrict" || s == "_Nonnull" || s == "_Nullable" ||
              s == "_Nullable_result" || s == "_Null_unspecified";
     };
     std::vector<Token> kept;
@@ -7835,6 +7853,8 @@ void parseFile(std::vector<Token>& tokens, std::string_view text, SymbolTable& s
             if (a.size() > 4 && a.starts_with("__") && a.ends_with("__"))
               a = a.substr(2, a.size() - 4);
             if (a == "vector_size" || a == "aligned" || a == "align" || a == "packed" || a == "mode")
+              typeAttribute = true;
+            else if (a == "noreturn") // (kept for the parser, which reads it: the function never returns)
               typeAttribute = true;
           }
         }
