@@ -1,4 +1,4 @@
-// spec: what the likely slips' errors leave alone, under --slip-checks: an assignment in its own parentheses as a condition, an assignment compared, a called function, an empty block, a switch with a default or naming every enumerator, a floating division, an exact division of constants (`3600 / 2`), an integer division said to truncate (`double(x / 2)`), an `else` indented as its own if's, `return std::move` of a member or of a parameter
+// spec: what the likely slips' errors leave alone, under --slip-checks: an assignment in its own parentheses as a condition, an assignment compared, a called function, an empty block, a switch with a default or naming every enumerator's value (`LastValidType = Text` by `case Message::Text:`, thread C's rule), a floating division, an exact division of constants (`3600 / 2`), an integer division said to truncate (`double(x / 2)`), an `else` indented as its own if's, `return std::move` of a member or of a parameter
 // kpp: --slip-checks
 enum class Color { Red, Green, Blue };
 bool ready() { return true; }
@@ -10,6 +10,16 @@ struct Holder
   std::String take() { return std::move(this.text); }
 };
 std::String passOn(std::String s) { return std::move(s); }
+enum class Message { Empty, Text, LastValidType = Text };
+int messages(Message m)
+{
+  switch (m)
+  {
+    case Message::Empty: return 1;
+    case Message::Text: return 2;
+  }
+  return 0;
+}
 int main()
 {
   int x = 3;
@@ -51,6 +61,6 @@ int main()
   else
     r = 2;
   Holder h;
-  std::println(sum, " ", code, " ", half, " ", hours, " ", whole, " ", r, " ", h.take(), " ", passOn("passed"));
+  std::println(sum, " ", code, " ", half, " ", hours, " ", whole, " ", r, " ", h.take(), " ", passOn("passed"), " ", messages(Message::LastValidType));
   return 0;
 }

@@ -1,0 +1,17 @@
+// spec: a local read in its own initializer is an error (kovarex, 2026-11-11, item 2 of thread D's survey of missing checks: a local read before it has a value; C++ leaves it undefined, and kpp, which zeroes only what has no initializer, read garbage: `int x = x + 1;` gave 65): a read of it, a class's too; its address (`void* self = &self;`, `Node n{&n};`) and sizeof's operand are no reads
+// error: local_read_in_its_own_initializer_is_error.kpp:10: error: the local x is read in its own initializer, before it has a value
+// error: local_read_in_its_own_initializer_is_error.kpp:14: error: the local t is read in its own initializer, before it has a value
+struct Node
+{
+  Node* next = nullptr;
+};
+int f(int y)
+{
+  int x = x + y;
+  void* self = &self;
+  Node n{&n};
+  int s = int(sizeof(s));
+  std::String t = t + "a";
+  return x + s + int(t.size()) + (self != nullptr) + (n.next != nullptr);
+}
+int main() { return f(1); }

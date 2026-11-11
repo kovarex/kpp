@@ -1,0 +1,23 @@
+// spec: a member of a scalar type that a constructor's initializers read before it is initialized is an error (kovarex, 2026-11-11, item 2 of thread D's survey of missing checks; clang's -Wuninitialized warns): the bases are initialized first, then the members in their declaration order whatever the list's order, so a base's initializer reads every member uninitialized and a member's those declared after it; their addresses are no reads
+// error: member_read_before_its_initialization_is_error.kpp:15: error: the member first is read before it is initialized: the bases are initialized before the members
+// error: member_read_before_its_initialization_is_error.kpp:15: error: the member second is read before it is initialized: members are initialized in their declaration order, second after first
+struct Base
+{
+  int seen;
+  Base(int v) : seen(v) {}
+};
+struct Pair : Base
+{
+  int first;
+  int second;
+  int* where;
+  int third = 3;
+  Pair(int v) : Base(this.first), second(v), first(this.second + 1), where(&this.third) {}
+  Pair(int v, int w) : Base(v), first(v), second(this.first + w), where(&this.first) {}
+};
+int main()
+{
+  Pair a(1);
+  Pair b(1, 2);
+  return a.first + b.second;
+}

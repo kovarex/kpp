@@ -1,0 +1,29 @@
+// spec: a reference or a pointer to a local returned is an error (thread D's survey of missing checks, a silent wrong answer: what the caller reads there is garbage; clang's -Wreturn-stack-address warns): a local's, a parameter's taken by value, in a lambda too; not a global's, a static local's or a reference parameter's
+// error: reference_to_a_local_returned_is_error.kpp:10: error: this returns a reference to the local x, which ends when the function returns: return it by value, or what outlives the call
+// error: reference_to_a_local_returned_is_error.kpp:15: error: this returns a pointer to the local y, which ends when the function returns: return it by value, or what outlives the call
+// error: reference_to_a_local_returned_is_error.kpp:17: error: this returns a reference to the parameter value, which ends when the function returns: return it by value, or what outlives the call
+// error: reference_to_a_local_returned_is_error.kpp:27: error: this returns a reference to the local z, which ends when the function returns: return it by value, or what outlives the call
+int global = 5;
+int& refLocal()
+{
+  int x = 1;
+  return x;
+}
+int* pointerLocal()
+{
+  int y = 2;
+  return &y;
+}
+const int& refParam(int value) { return value; }
+int& refGlobal() { return global; }
+const int& refRefParam(const int& value) { return value; }
+int& refStatic()
+{
+  static int kept = 3;
+  return kept;
+}
+int main()
+{
+  auto lambda = []() -> int& { int z = 4; return z; };
+  return refLocal() + *pointerLocal() + refParam(1) + refGlobal() + refRefParam(2) + refStatic() + lambda();
+}

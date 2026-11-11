@@ -660,6 +660,24 @@ p[Property::Text] = String("hello");
 - **See:** [design 7][d7], item 8; specs `language/read_before_assignment_is_error`,
   `language/read_before_assignment_only_where_certain`.
 
+### Reading a local in its own initializer, or a member before its initializer, is an error (built)
+
+- **C++:** undefined behavior; compilers warn (-Wuninitialized).
+- **kpp:** a compile error: `int x = x + 1;`, and a constructor's initializer reading a member of a scalar type
+  that is initialized later (members are initialized in their declaration order, after the bases). Taking its
+  address is no read.
+- **See:** [design 7][d7], item 8; specs `language/local_read_in_its_own_initializer_is_error`,
+  `language/member_read_before_its_initialization_is_error`.
+
+### Returning a reference to a local, and sizeof of an array parameter, are errors (built)
+
+- **C++:** undefined behavior (the reference dangles), and a pointer's size; compilers warn
+  (-Wreturn-stack-address, -Wsizeof-array-argument).
+- **kpp:** compile errors: a reference or pointer to a local (or a parameter taken by value) returned, and
+  sizeof of a parameter declared as an array.
+- **See:** [design 7][d7], item 8; specs `language/reference_to_a_local_returned_is_error`,
+  `language/sizeof_of_an_array_parameter_is_error`.
+
 ### A constant division by zero or index outside an array is an error (built)
 
 - **C++:** undefined behavior; MSVC refuses `x / 0` and clang warns (-Wdivision-by-zero, -Warray-bounds).

@@ -512,6 +512,19 @@ replacements, in the order of how much code they remove:
    debug, release and final, the standard library on Windows, Linux and FreeBSD and the spec have none
    (Walker::checkFlow, Resolver/FlowChecks.cpp). Specs language/read_before_assignment_is_error,
    language/read_before_assignment_only_where_certain.
+   Item 2's other reads before a value are errors too. A local read in its own initializer ("the local x is
+   read in its own initializer, before it has a value": `int x = x + 1;` read garbage, as kpp zeroes only what
+   has no initializer), any type; its address and sizeof are no reads. And a member of a scalar type that a
+   constructor's initializers read before it is initialized ("the member second is read before it is
+   initialized: members are initialized in their declaration order, second after first"): the bases first,
+   then the members in their declaration order whatever the list's order. A member's default initializer is
+   the class's and is not judged there. Specs language/local_read_in_its_own_initializer_is_error,
+   language/member_read_before_its_initialization_is_error.
+   Two more silent wrong answers of the survey are errors on the same walk (no game place, so on at once): a
+   reference or pointer to a local returned ("this returns a reference to the local x, which ends when the
+   function returns": a local's, a by-value parameter's, a lambda's own), and sizeof of a parameter declared
+   as an array ("sizeof(values) is a pointer's size"). Specs language/reference_to_a_local_returned_is_error,
+   language/sizeof_of_an_array_parameter_is_error.
    An integer division or remainder by a constant 0 and a constant index outside a built-in array are errors
    where they run (2026-11-11, kovarex's answer to item 3 of thread D's survey: not a shift by more than the
    width, which is taken modulo it, section "Sanitizers and debug checks", nor signed overflow, which wraps):
@@ -538,14 +551,17 @@ replacements, in the order of how much code they remove:
    - an assignment `=` as the condition of an if, a while, a do or a for (in its own parentheses it is
      meant: `if ((p = find()))`; a compound one, `while (bits >>= 1)`, is no mistyped `==`);
    - an `if` or `else` whose body is `;` (an empty block, `{}`, says it on purpose);
-   - a switch on an enum that names neither every enumerator nor a default (a kpp enum's names every value
-     by its own rule; a C or C++ text's switch, cRules, and one with a case range are not judged);
+   - a switch on an enum that names neither every enumerator's value nor a default: an enumerator is covered
+     by a case of its value, whatever names it, since C++ cannot name two of one value (`LastValidType =
+     Empty`, StackWalker's `case 7:` for SymDia; thread C's rule, 2026-11-12). A kpp enum's switch names every
+     value by its own rule; a C or C++ text's switch (cRules), one with a case range and one with a value the
+     walk cannot evaluate are not judged;
    - an integer division stored in a floating variable, assigned to one or returned as one
      (`double h = a / b;`): it truncates first. `double(a) / b`, or `double(a / b)` when the truncation is
      meant; constants that divide exactly (`3600 / 2`) are not one.
-   The last four are under `--slip-checks` until the game is free of them: it has 31 (13 assignments as
-   conditions, 8 empty bodies, 8 enum switches, among them NetworkMessage's LastValidType, and 2 divisions,
-   ChartRenderer's `64 / alert.sprite->getFinalWidth()` among them). Specs
+   The last four are under `--slip-checks` until the game is free of them: it has 24 (13 assignments as
+   conditions, 8 empty bodies, StackWalker's switch without NumSymTypes, and 2 divisions, ChartRenderer's
+   `64 / alert.sprite->getFinalWidth()` among them). Specs
    language/function_name_as_a_condition_is_error, language/else_indented_as_an_outer_if_is_error,
    language/return_std_move_of_a_local_is_error, kpp/slip_checks_are_errors, kpp/slips_that_are_not.
 The spellings above are the working proposal; each is settled and recorded here when the feature

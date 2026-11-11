@@ -1,0 +1,12 @@
+// spec: sizeof of a parameter declared as an array is an error (thread D's survey of missing checks, a silent wrong answer: it is a pointer's size, the parameter a pointer to its first element; clang's -Wsizeof-array-argument warns): `sizeof(values)` and `sizeof values` of `int values[4]`, not a local array's nor a pointer's
+// error: sizeof_of_an_array_parameter_is_error.kpp:6: error: sizeof(values) is a pointer's size: the parameter values, declared as an array, is a pointer to its first element
+int sizes(int values[4], int* plain)
+{
+  int local[4] = {};
+  return int(sizeof(values)) + int(sizeof local) + int(sizeof(plain)) + int(sizeof values);
+}
+int main()
+{
+  int v[4] = {};
+  return sizes(v, v);
+}

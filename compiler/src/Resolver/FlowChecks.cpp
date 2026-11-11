@@ -1,13 +1,16 @@
 // GlobalScope::Impl::Walker::checkFlow (its declaration in Walker.hpp): the checks that follow a body's paths, after the
 // walk typed it (kovarex, 2026-11-11, items 2 and 3 of thread D's survey of missing checks), each an error:
 // - A local read before anything is assigned to it ("ok" to "zero becomes the official rule, and a read before any
-//   assignment that the compiler can prove is an error"). kpp zeroes a local declared without an initializer, so such a
+//   assignment that the compiler can prove is an error"), a local read in its own initializer, and a member a
+//   constructor's initializers read before it is initialized (members are initialized in their declaration order). kpp zeroes a local declared without an initializer, so such a
 //   read is defined, the zero; in C++ it is undefined, and in either it is nearly always a mistake: `int x = 0;` says
 //   the zero is meant. Proven: on every path from the declaration to the read, nothing that may assign the local comes
 //   first. A read only some paths reach unassigned is not judged (C++ compilers' "may be used uninitialized"): its value
 //   is the zero kpp gives it.
 // - An integer division or remainder by a constant 0, and a constant index outside a built-in array, where they run: a
 //   branch a constant decides away is not judged (`if (shards != 0) h % shards` with a constexpr 0).
+// - A reference or pointer to a local returned (`int& f() { int x; return x; }`, `return &x;`), and sizeof of an array
+//   parameter (a pointer's size): no silent wrong answers.
 // - The likely slips (item 4: "make these errors, but not warnings? What is the reason to have them in the code
 //   anyway?"): a function's name as a condition, an `else` indented as an outer `if`'s, `return std::move(x)` of a
 //   local; and, while the game still has them (--slip-checks), an assignment as a condition, an `if` whose body is
@@ -112,12 +115,85 @@ public:
     this->judgeReads = !this->contains(body, {NodeKind::GotoStmt, NodeKind::LabelStmt});
     for (Decl* p : params)
       if (p && p->kind == NodeKind::ParamDecl)
+      {
         this->visible.emplace_back(static_cast<ParamDecl*>(p)->name, UINT32_MAX);
+        if (const Ty* t = p->cachedType.load(std::memory_order_acquire); t && t->isKnown() && !t->isReference() && !this->w.types.isDependent(t))
+          this->ownLocals.insert(p);
+      }
     Flow flow;
     this->stmt(body, flow);
   }
 
   std::vector<LambdaExpr*> lambdas; // the lambdas the body makes, each judged on its own after it
+
+  // A constructor's initializers: a member of a scalar type read before it is initialized (`: second(v),
+  // first(this.second + 1)` with first declared first). The bases are initialized first, then the members in their
+  // declaration order, whatever the list's order: a base's initializer finds every member uninitialized, a member's
+  // those declared after it and itself. A member the list does not name is initialized where it stands too (its default
+  // initializer, not judged here: it is the class's, the same in every constructor).
+  void constructor(FunctionDecl* f)
+  {
+    Decl* owner = this->w.impl.owningClassOf(f);
+    if (!owner || owner->kind != NodeKind::ClassDecl || f->ctorInits.empty())
+      return;
+    for (const FunctionDecl::CtorInit& init : f->ctorInits)
+      for (Expr* a : init.args)
+        if (a && this->contains(nullptr, a, {NodeKind::ErrorExpr}))
+          return;
+    auto* cls = static_cast<ClassDecl*>(owner);
+    std::vector<VariableDecl*> fields;
+    for (Decl* d : membersRead(cls))
+      if (d->kind == NodeKind::VariableDecl && !(d->flags & (DF_Static | DF_Typedef)) && !static_cast<VariableDecl*>(d)->name.empty() &&
+          static_cast<VariableDecl*>(d)->name.last().symbol != UINT32_MAX)
+        fields.push_back(static_cast<VariableDecl*>(d));
+    Flow flow;
+    for (VariableDecl* v : fields)
+    {
+      const Ty* t = this->typeOf(v);
+      if (!t || this->w.types.isDependent(t) || v->when)
+        continue;
+      switch (t->kind)
+      {
+        case TyKind::Bool: case TyKind::Char: case TyKind::Int: case TyKind::Float: case TyKind::Enum: case TyKind::Pointer: case TyKind::MemberPointer:
+          break;
+        default:
+          continue;
+      }
+      uint32_t i = uint32_t(this->locals.size());
+      this->index.emplace(v, i);
+      this->locals.push_back(v);
+      this->reported.push_back(false);
+      flow.add(i);
+    }
+    if (this->locals.empty())
+      return;
+    this->constructing = cls;
+    auto fieldOf = [&](const FunctionDecl::CtorInit& init) -> VariableDecl*
+    {
+      if (init.member.parts.size() != 1)
+        return nullptr;
+      for (VariableDecl* v : fields)
+        if (v->name.last().symbol == init.member.parts[0].symbol)
+          return v;
+      return nullptr;
+    };
+    for (const FunctionDecl::CtorInit& init : f->ctorInits)
+      if (!fieldOf(init))
+        for (Expr* a : init.args)
+          this->expr(a, flow); // (a base's, or the constructor delegated to)
+    for (VariableDecl* v : fields)
+    {
+      this->initializingMember = v;
+      for (const FunctionDecl::CtorInit& init : f->ctorInits)
+        if (fieldOf(init) == v)
+          for (Expr* a : init.args)
+            this->expr(a, flow);
+      if (auto it = this->index.find(v); it != this->index.end())
+        flow.remove(it->second);
+    }
+    this->constructing = nullptr;
+    this->initializingMember = nullptr;
+  }
 
 private:
   Walker& w;
@@ -131,6 +207,12 @@ private:
   bool judgeReads = true;
   Expr* addressOf = nullptr; // the operand of the `&` being walked: `&a[3]`, the pointer past an array's end
   const Ty* result = nullptr; // what the body returns
+  VariableDecl* initializing = nullptr; // the local whose initializer is being walked: a read of it there has no value
+  bool aggregateInitializing = false;   // ... a brace list, whose elements are initialized in order ([dcl.init.aggr] 7)
+  Expr* elementBase = nullptr;          // the initialized local as `arr[0]`'s or `p.x`'s base there: an element read
+  std::unordered_set<const Decl*> ownLocals; // the body's own locals (not static) and parameters taken by value
+  ClassDecl* constructing = nullptr;    // a constructor's class, while its initializers are walked: its members are followed
+  VariableDecl* initializingMember = nullptr; // the member whose initializer is walked (null: a base's or the delegated one)
 
   // A token's line: where it starts, its indentation in columns (a tab to the next multiple of 8), whether that mixes
   // tabs and spaces, and whether the token is the first thing on it (as Walker::checkMisleadingIndentation reads it).
@@ -236,11 +318,12 @@ private:
     this->report(e, "the function " + name + " is always true here (a function's address is never null): call it, `" + name + "()`");
   }
 
-  // Whether the body (not a nested function's, class's or lambda's) has a node of one of these kinds.
-  bool contains(Stmt* body, std::initializer_list<NodeKind> kinds)
+  // Whether the body (not a nested function's, class's or lambda's), or the expression, has a node of one of these kinds.
+  bool contains(Stmt* body, std::initializer_list<NodeKind> kinds) { return this->contains(body, nullptr, kinds); }
+  bool contains(Stmt* body, Expr* expression, std::initializer_list<NodeKind> kinds)
   {
     bool found = false;
-    forEachNodeExcept(body, [&](Node* n)
+    forEachNodeExcept(body ? static_cast<Node*>(body) : expression, [&](Node* n)
     {
       for (NodeKind k : kinds)
         found = found || n->kind == k;
@@ -376,14 +459,29 @@ private:
                                this->w.types.toString(t, &this->w.symbols) + ", 0 to " + std::to_string(n - 1) + ")");
   }
 
-  // The followed local a bare name is (through parentheses), or UINT32_MAX.
+  // The followed local a bare name is (through parentheses), or UINT32_MAX; in a constructor's initializers, the
+  // followed member `this.m` (or `this->m`, a bare m) names.
   uint32_t followed(Expr* e) const
   {
     e = strip(e);
-    if (!e || e->kind != NodeKind::NameExpr)
-      return UINT32_MAX;
-    auto it = this->index.find(static_cast<NameExpr*>(e)->resolved);
+    Decl* d = !e                                  ? nullptr
+              : e->kind == NodeKind::NameExpr     ? static_cast<NameExpr*>(e)->resolved
+              : e->kind == NodeKind::MemberExpr && this->constructing && thisObject(static_cast<MemberExpr*>(e)->base) ? static_cast<MemberExpr*>(e)->resolved
+                                                  : nullptr;
+    auto it = d ? this->index.find(d) : this->index.end();
     return it == this->index.end() ? UINT32_MAX : it->second;
+  }
+
+  // `this` as the object (kpp's `this`, the parser's implicit `*this`) or as the pointer (`this->m`).
+  static bool thisObject(Expr* e)
+  {
+    e = strip(e);
+    if (!e)
+      return false;
+    if (e->kind == NodeKind::ThisExpr)
+      return true;
+    return e->kind == NodeKind::UnaryExpr && static_cast<UnaryExpr*>(e)->implicitThis && strip(static_cast<UnaryExpr*>(e)->operand) &&
+           strip(static_cast<UnaryExpr*>(e)->operand)->kind == NodeKind::ThisExpr;
   }
 
   // The type a declared variable has (null: not known).
@@ -672,12 +770,22 @@ private:
       return;
     this->reported[i] = true;
     std::string name(this->w.symbols.name(this->locals[i]->name.last().symbol));
-    this->w.impl.reportCheckerError(this->w.file, token,
-                                    "the local " + name + " is read before anything is assigned to it (it is still the zero kpp gives it): initialize it where it is declared");
+    if (this->constructing)
+      this->w.impl.reportCheckerError(this->w.file, token, "the member " + name + " is read before it is initialized: " +
+                                                             (this->initializingMember
+                                                                ? "members are initialized in their declaration order, " + name + " after " +
+                                                                    std::string(this->w.symbols.name(this->initializingMember->name.last().symbol))
+                                                                : std::string("the bases are initialized before the members")));
+    else
+      this->w.impl.reportCheckerError(this->w.file, token,
+                                      "the local " + name + " is read before anything is assigned to it (it is still the zero kpp gives it): initialize it where it is declared");
   }
 
   void declare(VariableDecl* v, Flow& flow)
   {
+    if (!(v->flags & (DF_Static | DF_ThreadLocal | DF_Extern)) && !v->tupleBinding && v->structuredBindings.empty())
+      if (const Ty* t = this->typeOf(v); t && !t->isReference())
+        this->ownLocals.insert(v);
     if (v->init)
     {
       this->floatContext(v->init, this->typeOf(v), flow);
@@ -686,7 +794,17 @@ private:
       if (bound != UINT32_MAX && bindsWritable(this->typeOf(v)))
         flow.remove(bound);
       else
+      {
+        VariableDecl* outer = this->initializing;
+        bool outerAggregate = this->aggregateInitializing;
+        this->initializing = !v->name.empty() && v->name.last().symbol != UINT32_MAX && !(v->flags & (DF_Static | DF_ThreadLocal | DF_Extern)) ? v : nullptr;
+        // (`int arr[3] = {b, arr[0] + 1, b}`, `P p{a, p.x * 2}`: an element or member a brace list reads, in order
+        // after its own, has its value; the whole object read there is what has none)
+        this->aggregateInitializing = strip(v->init) && strip(v->init)->kind == NodeKind::BraceInitExpr;
         this->expr(v->init, flow);
+        this->initializing = outer;
+        this->aggregateInitializing = outerAggregate;
+      }
     }
     uint32_t symbol = v->name.empty() ? UINT32_MAX : v->name.last().symbol;
     if (!this->follows(v))
@@ -890,6 +1008,7 @@ private:
       {
         Expr* value = static_cast<ReturnStmt*>(s)->value;
         this->movedReturn(value, flow);
+        this->danglingReturn(value, flow);
         this->floatContext(value, this->result, flow);
         this->expr(value, flow);
         flow.reachable = false;
@@ -936,6 +1055,49 @@ private:
     this->visible.resize(scope);
   }
 
+  // A reference to a local returned (`int& f() { int x; return x; }`), or a pointer to one (`return &x;`): it ends when the
+  // function returns, and what the caller reads there is garbage.
+  void danglingReturn(Expr* value, const Flow& flow)
+  {
+    value = strip(value);
+    if (!flow.reachable || !value || !this->result || !this->result->isKnown())
+      return;
+    bool reference = this->result->isReference();
+    bool pointer = this->w.types.unqualified(this->result)->kind == TyKind::Pointer;
+    if (!reference && !pointer)
+      return;
+    Expr* named = value;
+    if (pointer)
+    {
+      if (value->kind != NodeKind::UnaryExpr || static_cast<UnaryExpr*>(value)->isKeyword || P(static_cast<UnaryExpr*>(value)->op) != P::Amp ||
+          static_cast<UnaryExpr*>(value)->call == OperatorCall::Function)
+        return;
+      named = strip(static_cast<UnaryExpr*>(value)->operand);
+    }
+    Decl* d = named && named->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(named)->resolved : nullptr;
+    if (!d || !this->ownLocals.count(d))
+      return;
+    uint32_t symbol = d->kind == NodeKind::ParamDecl ? static_cast<ParamDecl*>(d)->name
+                      : static_cast<VariableDecl*>(d)->name.empty() ? UINT32_MAX : static_cast<VariableDecl*>(d)->name.last().symbol;
+    std::string name = symbol == UINT32_MAX ? std::string("?") : std::string(this->w.symbols.name(symbol));
+    this->report(value, std::string("this returns a ") + (reference ? "reference" : "pointer") + " to the " +
+                          (d->kind == NodeKind::ParamDecl ? "parameter " : "local ") + name +
+                          ", which ends when the function returns: return it by value, or what outlives the call");
+  }
+
+  // sizeof of a parameter declared as an array (`int values[4]`): the parameter is a pointer, and its size a pointer's.
+  void arrayParameterSize(SizeofExpr* s)
+  {
+    Expr* operand = strip(s->operand);
+    Decl* d = operand && operand->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(operand)->resolved
+              : s->type && s->type->kind == NodeKind::NamedType ? static_cast<NamedType*>(s->type)->resolved // (`sizeof(values)`, read as a type)
+                                                                 : nullptr;
+    if (!d || d->kind != NodeKind::ParamDecl || !static_cast<ParamDecl*>(d)->type || static_cast<ParamDecl*>(d)->type->kind != NodeKind::ArrayType)
+      return;
+    std::string name(this->w.symbols.name(static_cast<ParamDecl*>(d)->name));
+    this->report(s, "sizeof(" + name + ") is a pointer's size: the parameter " + name + ", declared as an array, is a pointer to its first element");
+  }
+
   // `return std::move(x)` of a local of the type returned: kpp builds a returned local in place, which the move stops.
   void movedReturn(Expr* value, const Flow& flow)
   {
@@ -964,7 +1126,9 @@ private:
   }
 
   // A switch on an enum (not a kpp enum, whose switch names every value by its own rule) that names neither every
-  // enumerator nor a default: a value it leaves out does nothing, silently.
+  // enumerator's value nor a default: a value it leaves out does nothing, silently. An enumerator is covered by a case
+  // of its value, whatever names it (C++ cannot name two of one value: `LastValidType = Empty`, `case 7:` for SymDia;
+  // thread C, 2026-11-12).
   void enumCoverage(SwitchStmt* sw, BlockStmt* block, const Flow& flow)
   {
     if (!slipChecksOn() || !flow.reachable || !block || sw->cRules)
@@ -977,7 +1141,7 @@ private:
     auto* en = static_cast<EnumDecl*>(ct->decl);
     if (en->isKpp || en->enumerators.empty())
       return;
-    std::unordered_set<Decl*> named;
+    std::unordered_set<int64_t> values;
     for (Stmt* c : block->stmts)
       if (c->kind == NodeKind::DefaultStmt)
         return;
@@ -986,25 +1150,24 @@ private:
         auto* k = static_cast<CaseStmt*>(c);
         if (k->rangeEnd)
           return; // (what a range spans is not counted: not judged)
-        auto name = [&](Expr* v)
+        for (size_t m = 0; m <= k->moreValues.size(); ++m)
         {
-          v = strip(v);
-          if (v && v->kind == NodeKind::NameExpr && static_cast<NameExpr*>(v)->resolved)
-            named.insert(static_cast<NameExpr*>(v)->resolved);
-        };
-        name(k->value);
-        for (Expr* v : k->moreValues)
-          name(v);
+          std::optional<int64_t> v = this->valueOf(m == 0 ? k->value : k->moreValues[m - 1]);
+          if (!v)
+            return; // (a case whose value is not known here: not judged)
+          values.insert(*v);
+        }
       }
     std::vector<std::string> missing;
     for (Decl* d : en->enumerators)
     {
-      if (d->kind != NodeKind::EnumeratorDecl || named.count(d))
+      if (d->kind != NodeKind::EnumeratorDecl)
         continue;
-      Expr* alias = strip(static_cast<EnumeratorDecl*>(d)->value);
-      if (alias && alias->kind == NodeKind::NameExpr && named.count(static_cast<NameExpr*>(alias)->resolved))
-        continue; // (`Last = Blue`, named by that one)
-      missing.push_back(this->w.impl.debugName(static_cast<EnumeratorDecl*>(d)->name));
+      std::optional<int64_t> v = this->w.impl.constOfDecl(d, this->w.ctx(), 0);
+      if (!v)
+        return; // (an enumerator whose value is not known: not judged)
+      if (!values.count(*v))
+        missing.push_back(this->w.impl.debugName(static_cast<EnumeratorDecl*>(d)->name));
     }
     if (missing.empty())
       return;
@@ -1129,6 +1292,14 @@ private:
     switch (e->kind)
     {
       case NodeKind::NameExpr:
+        if (Decl* d = static_cast<NameExpr*>(e)->resolved; d && d == this->initializing && e != this->addressOf && e != this->elementBase && flow.reachable)
+        {
+          // `int x = x + 1;`: the local is in scope in its own initializer, and has no value there yet (no zero either:
+          // kpp zeroes only what has no initializer)
+          this->initializing = nullptr;
+          this->report(e, "the local " + std::string(this->w.symbols.name(static_cast<VariableDecl*>(d)->name.last().symbol)) +
+                            " is read in its own initializer, before it has a value");
+        }
         this->read(this->followed(e), e->token, flow);
         break;
       case NodeKind::BinaryExpr:
@@ -1268,15 +1439,30 @@ private:
         auto* x = static_cast<IndexExpr*>(e);
         bool addressed = e == this->addressOf;
         this->addressOf = nullptr;
+        Expr* outerElement = this->elementBase;
+        if (this->aggregateInitializing && strip(x->base) && strip(x->base)->kind == NodeKind::NameExpr &&
+            static_cast<NameExpr*>(strip(x->base))->resolved == this->initializing)
+          this->elementBase = strip(x->base);
         this->expr(x->base, flow);
+        this->elementBase = outerElement;
         for (Expr* a : x->args)
           this->expr(a, flow);
         this->checkIndex(x, addressed, flow);
         break;
       }
       case NodeKind::MemberExpr:
-        this->expr(static_cast<MemberExpr*>(e)->base, flow);
+        if (Expr* base = strip(static_cast<MemberExpr*>(e)->base); this->aggregateInitializing && base && base->kind == NodeKind::NameExpr &&
+            static_cast<NameExpr*>(base)->resolved == this->initializing)
+        {
+          Expr* outerElement = this->elementBase;
+          this->elementBase = base;
+          this->expr(base, flow);
+          this->elementBase = outerElement;
+        }
+        else
+          this->expr(static_cast<MemberExpr*>(e)->base, flow);
         this->expr(static_cast<MemberExpr*>(e)->dynamicMember, flow);
+        this->read(this->followed(e), e->token, flow); // (a constructor's member, in its initializers)
         break;
       case NodeKind::FunctionalCastExpr:
       {
@@ -1325,7 +1511,11 @@ private:
         this->expr(static_cast<FoldExpr*>(e)->lhs, flow);
         this->expr(static_cast<FoldExpr*>(e)->rhs, flow);
         break;
-      case NodeKind::LiteralExpr: case NodeKind::ThisExpr: case NodeKind::CallerExpr: case NodeKind::NameofExpr: case NodeKind::SizeofExpr:
+      case NodeKind::SizeofExpr:
+        if (flow.reachable && static_cast<SizeofExpr*>(e)->sizeofKind == Kw::sizeof_ && !static_cast<SizeofExpr*>(e)->isPack)
+          this->arrayParameterSize(static_cast<SizeofExpr*>(e));
+        break; // (its operand is not evaluated)
+      case NodeKind::LiteralExpr: case NodeKind::ThisExpr: case NodeKind::CallerExpr: case NodeKind::NameofExpr:
       case NodeKind::NoexceptExpr: case NodeKind::TypeidExpr: case NodeKind::RequiresExpr: case NodeKind::DefaultValueExpr:
       case NodeKind::HeldExpr:
         break; // (none evaluates a local's value: sizeof's, noexcept's and typeid's operand is not evaluated)
@@ -1342,6 +1532,11 @@ auto GlobalScope::Impl::Walker::checkFlow(FunctionDecl* f) -> void
   // checkUnusedNames does.
   if (!f || !f->body || probing || activeSubst || retypingElements || !file || file->isImported)
     return;
+  if (f->flags & DF_Constructor)
+  {
+    FlowChecks initializers(*this);
+    initializers.constructor(f);
+  }
   FlowChecks body(*this);
   const Ty* ft = impl.declaredTypeOf(f, nullptr, 0);
   body.run(f->params, f->body, ft && ft->kind == TyKind::Function && ft->inner && ft->inner->isKnown() && !types.isDependent(ft->inner) ? ft->inner : nullptr);
