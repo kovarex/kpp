@@ -444,9 +444,8 @@ inline std::string withOneLiners(const std::string& text)
         continue;
     }
     // The configurations' `if constexpr (!config::finalRelease)` (convertMerge's, for an #if group)
-    // around one short statement: without braces, on its line (kovarex 2026-11-10: `if constexpr
-    // (!config::finalRelease) --Entity::count;`), or on the next one where it would not fit; not
-    // before an `else`.
+    // around one short statement: without braces, the statement on the next line, indented, as
+    // Factorio writes an if's one statement (kovarex 2026-11-11); not before an `else`.
     if (i > 0 && !out.empty() && inBody[i - 1] && !inside[i - 1] && trimmed(lines[i - 1]) == trimmed(code[i - 1]) &&
         trimmed(code[i - 1]).substr(0, 14) == "if constexpr (" && endsWith(trimmed(code[i - 1]), ")") && trimmed(lines[i]) == "{" &&
         i + 2 < lines.size() && trimmed(lines[i + 2]) == "}" && !inside[i + 2] && shortStatement(i + 1) &&
@@ -455,15 +454,11 @@ inline std::string withOneLiners(const std::string& text)
       std::string head = out.back();
       while (!head.empty() && isspace((unsigned char)head.back()))
         head.pop_back();
+      // (the statement on the next line, indented, as the game writes an if's one statement)
       std::string statement(trimmed(lines[i + 1]));
-      if (head.size() + 1 + statement.size() <= 130)
-        out.back() = head + " " + statement;
-      else
-      {
-        size_t indent = head.find_first_not_of(' ');
-        out.push_back(std::string(indent == std::string::npos ? 0 : indent, ' ') + "  " + statement);
-        oneLiner.push_back(false);
-      }
+      size_t indent = head.find_first_not_of(' ');
+      out.push_back(std::string(indent == std::string::npos ? 0 : indent, ' ') + "  " + statement);
+      oneLiner.push_back(false);
       i += 2;
       continue;
     }
