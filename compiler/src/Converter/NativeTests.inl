@@ -69,8 +69,9 @@ static std::string withTestMarksResolved(std::string text)
       });
       out = loose ? "(" + inner + ")" : inner;
       // (a char pointer that is visibly one: CHECK_EQUAL compared its text, and `==` of two char
-      // pointers in a check is an error; the others the compiler points out)
-      for (const char* call : {".c_str()", "->c_str()", ".what()", "->what()", ".get<const char*>()", "->get<const char*>()"})
+      // pointers in a check is an error; the others the compiler points out. `.str()` gives text, a
+      // String or a char pointer, RailDirection's `const char* str() const`: a StringView either way)
+      for (const char* call : {".c_str()", "->c_str()", ".what()", "->what()", ".get<const char*>()", "->get<const char*>()", ".str()", "->str()"})
         if (!loose && inner.size() > strlen(call) && inner.compare(inner.size() - strlen(call), strlen(call), call) == 0)
           out = "std::StringView(" + inner + ")";
     }

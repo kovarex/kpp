@@ -1,0 +1,8 @@
+// spec: a generic lambda has no one signature, so `std::Function f = [](auto x) {...};` deduces nothing and is an error, as std::function's deduction guide fails for it in C++ (clang: "no viable constructor or deduction guide"); a Function written with its signature takes the lambda
+// error: function_from_generic_lambda_is_not_deduced_is_error.kpp:6: error: no constructor or deduction guide of std::Function<Signature> deduces its arguments from (__lambda_
+int main()
+{
+  std::Function<int(int)> written = [](auto x) { return x + 1; };
+  std::Function deduced = [](auto x) { return x + 1; };
+  return written(1) - 2;
+}

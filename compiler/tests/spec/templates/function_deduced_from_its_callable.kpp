@@ -1,0 +1,19 @@
+// spec: `std::Function f = callable;` deduces the signature, as C++'s deduction guides for std::function do: a function's name or a pointer to it, a lambda (capturing, mutable, its result written), and a class whose one operator() is no template give Function<R(A...)> (`15 8 10 3 42 42`, clang's for std::function)
+// factorio: GuiUtil::automaticallySetMouseButtonFilter's `std::function filter = [...](...) {...};` (the game after 2026-11-11's pull; thread C worked around it in the conversion)
+int twice(int x) { return x * 2; }
+struct Doubler
+{
+  int operator()(int x) const { return x * 2; }
+};
+int main()
+{
+  int base = 10;
+  std::Function f = [base](int x) { return x + base; };
+  std::Function g = &twice;
+  std::Function name = twice;
+  std::Function size = [](const std::String& s) -> usize { return s.size(); };
+  std::Function product = [](int a, int b) mutable { return a * b; };
+  std::Function doubler = Doubler();
+  std::println(f(5), " ", g(4), " ", name(5), " ", size(std::String("abc")), " ", product(6, 7), " ", doubler(21));
+  return 0;
+}

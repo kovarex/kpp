@@ -1227,15 +1227,56 @@ auto GlobalScope::Impl::strictlyBetter(const std::vector<int>& a, const std::vec
 
 auto GlobalScope::Impl::deduceClassArgs(const Ty* primary, const std::vector<const Ty*>& argTypes, bool copyInit) -> const Ty*
 {
+  // (A class template only declared has no scope: the library's Function, a name for FunctionImpl, whose
+  // deduction guides deduce it all the same, `Function f = [](int x) { return x; };`.)
   Scope* s = classScopeOf(primary);
-  if (!s || !s->owner || s->owner->kind != NodeKind::ClassDecl)
+  ClassDecl* cls = s && s->owner && s->owner->kind == NodeKind::ClassDecl ? static_cast<ClassDecl*>(s->owner)
+                   : primary && primary->decl && primary->decl->kind == NodeKind::ClassDecl && isLibraryFunction(primary->decl, false)
+                     ? static_cast<ClassDecl*>(primary->decl)
+                     : nullptr;
+  if (!cls)
     return nullptr;
-  auto* cls = static_cast<ClassDecl*>(s->owner);
   // `Pairish p = Pairish<int, double>(1, 2.5);`, `Duration budget = Milliseconds(5);`: a value of
   // an instantiation of the same template gives its arguments (C++'s copy deduction candidate).
   if (argTypes.size() == 1 && argTypes[0])
     if (const Ty* a = types.unqualified(types.stripRef(argTypes[0])); a && a->kind == TyKind::Class && ((a->decl == cls && !a->args.empty()) || !primaryArgumentsOf(a, cls, 0).empty()))
       return a;
+  // The library's Function from one callable, as C++'s deduction guides for std::function deduce it: a function (or a
+  // pointer to one), a lambda, or a class whose one operator() is no template (`Function f = [base](int x) { return x +
+  // base; };`, `Function g = &twice;`, `Function d = Doubler();`): Function<R(A...)>, which is FunctionImpl<R, A...>. A
+  // generic lambda or a template or overloaded operator() has no one signature: no deduction, as in C++. (The guides
+  // could not be the library's: Function is only declared, a name, and a closure type's operator() is no member kpp
+  // names; thread C's GuiUtil had `std::function filter = [...](...) {...};`, 2026-11-11.)
+  if (isLibraryFunction(cls, false) && argTypes.size() == 1 && argTypes[0])
+  {
+    const Ty* a = types.decay(types.unqualified(types.stripRef(argTypes[0])));
+    const Ty* callee = a && (a->kind == TyKind::Lambda || a->kind == TyKind::Function) ? a
+                       : a && a->kind == TyKind::Pointer && a->inner && a->inner->kind == TyKind::Function ? a->inner
+                                                                                                           : nullptr;
+    if (a && a->kind == TyKind::Class && !isFunctionImpl(a))
+      if (Scope* cs = classScopeOf(a))
+      {
+        Lookup call;
+        if (lookupInScope(cs, opSymbols[uint32_t(P::LParen)], call, 0) && call.decl && call.decl->kind == NodeKind::FunctionDecl &&
+            (!call.overloads || call.overloads->size() == 1) && call.decl->templateParams.empty())
+        {
+          Subst classArgs = substFor(a);
+          callee = declaredTypeOf(call.decl, classArgs.empty() ? nullptr : &classArgs, 0);
+        }
+      }
+    if (callee && (callee->kind == TyKind::Lambda || callee->kind == TyKind::Function) && callee->inner && callee->inner->isKnown() &&
+        !types.isDependent(callee) && !mentionsUnknown(callee))
+    {
+      Lookup implLookup;
+      if (lookupInScope(stdlibScope(), functionImplSymbolId(), implLookup, 0) && implLookup.scope && implLookup.scope->owner)
+      {
+        std::vector<const Ty*> implArgs{callee->inner};
+        for (const Ty* p : callee->args)
+          implArgs.push_back(p);
+        return types.classType(implLookup.scope->owner, Span<const Ty*>{implArgs.data(), uint32_t(implArgs.size())});
+      }
+    }
+  }
   std::vector<int> guideRanks;
   const Ty* fromGuide = deduceFromGuides(cls, argTypes, copyInit, guideRanks);
   // The class's arguments from what d deduced: what it does not say takes its default, a pack is empty.
