@@ -1,4 +1,4 @@
-// spec: a failed check of a call (or of !call) shows its arguments' values as the function took them, as a comparison shows its operands'
+// spec: a failed check of a call (or of !call) shows its arguments' values as the function took them, as a comparison shows its operands', each after its text (`x = 1.52`) but a literal's alone; when one cannot be shown (no toString, or the callee owned it), none is
 // test:
 // exit: 1
 bool isClose(double a, double b, double tolerance) { return a - b <= tolerance && b - a <= tolerance; }

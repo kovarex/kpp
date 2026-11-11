@@ -799,14 +799,15 @@ suite DragBuildingBelt depends DragBuilding, TransportBelt
   and is the caught exception; `checkThrows<T>(expr)` is an `Optional<T>` and continues. These are
   statements of the language, as `check` is: kpp has no lazily evaluated arguments.
 - **Values in a failure.** Besides a top-level comparison's two operands (8.6), a top-level call
-  shows its arguments' values, `!call` too: `check failed: isClose(x, 1.5, 0.01) (1.52, 1.5,
-  0.01)`, so `CHECK_CLOSE`, `CHECK_BETWEEN` and `CHECK_CONTAINS` become ordinary functions. The
+  shows its arguments' values, `!call` too, each after its text unless it is a literal (a number, a
+  string or character literal, true, false, nullptr; kovarex 2026-11-11): `check failed: isClose(x,
+  1.5, 0.01) (x = 1.52, 1.5, 0.01)`, so `CHECK_CLOSE`, `CHECK_BETWEEN` and `CHECK_CONTAINS` become ordinary functions. The
   values are the ones the function took, after their conversions, so the check means what the call
   alone means and each argument is evaluated once; `--report` lists them as `values`. The compiler
   keeps them where the call has them, and a check that passes runs nothing for them, except that a
   class by value is copied bytewise first (the callee may change it). So what a reference parameter
-  shows is the object as the call left it, a class by value with a destructor shows `?` (the callee
-  destroyed it), as do an `InitializerList` and a value `__kppShow` cannot say, a null pointer shows `null`, an argument left
+  shows is the object as the call left it; a class by value with a destructor has no value (the callee
+  destroyed it), nor has an `InitializerList`; a null pointer shows `null`, an argument left
   to its default is not listed, and a `char*` is read as C text. A call of a function or a member
   function has them; a call through a pointer or of a closure has none. The checked call is not
   inlined by kpp. Its cost, measured on the game's tests (52,089 checks, 2026-11-07): kpp of
@@ -815,6 +816,12 @@ suite DragBuildingBelt depends DragBuilding, TransportBelt
   19.5, 19.5) against 19.2 s (19.3, 19.2, 19.2), factorio-test.exe 522,752 bytes larger (0.37%),
   and the 9,501 tests in 16 shards (suites.py --shards 16) 67.4 s (67.4, 67.4) against 67.7 s
   (68.4, 66.9): no difference beyond the noise.
+- **Values are shown only when every one prints** (kovarex, 2026-11-11): a value prints through
+  kpp's toString convention (its type's `appendTo`, design.md 14, or else its `str()`; a number, a
+  bool, a character, text, a null pointer). When one of a comparison's operands or of a call's
+  arguments cannot print, or has no value, the failure shows the expression and its location
+  alone: `check failed: takesOpaque(o, nullptr, nullptr)`, never a `?` or one side. The standard
+  library's containers print later (no `appendTo` yet).
 - **Integers in a check compare by value.** Inside `check` and `require`, a comparison of a signed
   and an unsigned integer compares their values (`std::cmp_equal`'s rule): `check(-1 ==
   4294967295u)` fails, which outside a check (design.md:1029, the signed side converted) is true.

@@ -147,6 +147,7 @@ struct __KppTestState
   std::String right;
   const char* op = "";
   std::Vector<std::String> arguments; // a failed call's
+  bool argumentUnshown = false;       // one of them has no text: then none is shown
   bool working = false;     // in a worker process of --jobs: what the runner says goes to workerOut
   i64 workerOut = 0;
   int worker = 0;           // testWorker
@@ -365,17 +366,110 @@ template<typename L, typename R> bool __kppGreaterEqual(const L& l, const R& r)
     return l >= r || __kppNote(l, r, ">=");
 }
 
-// One argument of a failed check's call (design.md 8.7), which the compiler calls; `?` for one it
-// cannot show or has no value of.
+// One argument of a failed check's call (design.md 8.7), which the compiler calls. One it cannot
+// show (no toString) or has no value of (the callee owned it) leaves the call's values out.
 template<typename T> void __kppCallValue(const T& value)
 {
+  __KppTestState& state = __kppTestState();
   std::String text;
-  __kppTestState().arguments.push_back(__kppShow(value, text) ? text : std::String("?"));
+  if (__kppShow(value, text))
+    state.arguments.push_back(text);
+  else
+  {
+    state.arguments.push_back(std::String());
+    state.argumentUnshown = true;
+  }
 }
 
 void __kppCallValue()
 {
-  __kppTestState().arguments.push_back(std::String("?"));
+  __KppTestState& state = __kppTestState();
+  state.arguments.push_back(std::String());
+  state.argumentUnshown = true;
+}
+
+// The source text of each argument of the call that a check's text is (`!f(a, g(b))`: `a`,
+// `g(b)`), from the parentheses that close it; none when the text is no such call.
+std::Vector<std::String> __kppArgumentTexts(const char* text)
+{
+  std::Vector<std::String> arguments;
+  int length = int(std::strlen(text));
+  while (length > 0 && (text[length - 1] == ' ' || text[length - 1] == '\t'))
+    --length;
+  if (length == 0 || text[length - 1] != ')')
+    return arguments;
+  // (the call's own '(': the one at depth 0 whose ')' ends the text, string and char literals skipped)
+  int depth = 0, open = -1;
+  for (int i = 0; i < length; ++i)
+  {
+    char c = text[i];
+    if (c == '"' || c == '\'')
+    {
+      for (++i; i < length && text[i] != c; ++i)
+        if (text[i] == '\\')
+          ++i;
+    }
+    else if (c == '(' || c == '[' || c == '{')
+    {
+      if (depth == 0 && c == '(')
+        open = i;
+      ++depth;
+    }
+    else if (c == ')' || c == ']' || c == '}')
+      --depth;
+  }
+  if (open < 0 || depth != 0)
+    return arguments;
+  int start = open + 1;
+  depth = 0;
+  for (int i = open + 1; i < length - 1; ++i)
+  {
+    char c = text[i];
+    if (c == '"' || c == '\'')
+    {
+      for (++i; i < length - 1 && text[i] != c; ++i)
+        if (text[i] == '\\')
+          ++i;
+    }
+    else if (c == '(' || c == '[' || c == '{')
+      ++depth;
+    else if (c == ')' || c == ']' || c == '}')
+      --depth;
+    else if (c == ',' && depth == 0)
+    {
+      arguments.push_back(__kppTrimmed(text + start, i - start));
+      start = i + 1;
+    }
+  }
+  std::String last = __kppTrimmed(text + start, length - 1 - start);
+  if (!last.empty() || !arguments.empty())
+    arguments.push_back(last);
+  return arguments;
+}
+
+// Text without the blanks around it.
+std::String __kppTrimmed(const char* text, int length)
+{
+  int from = 0;
+  while (from < length && (text[from] == ' ' || text[from] == '\t'))
+    ++from;
+  while (length > from && (text[length - 1] == ' ' || text[length - 1] == '\t'))
+    --length;
+  return std::String(std::StringView(text + from, usize(length - from)));
+}
+
+// Whether an argument's text is a literal, whose value says itself: a number (signed or not), a
+// string or character literal, true, false or nullptr.
+bool __kppIsLiteral(const std::String& text)
+{
+  const char* c = text.c_str();
+  if (c[0] == '-' || c[0] == '+')
+    ++c;
+  if ((c[0] >= '0' && c[0] <= '9') || (c[0] == '.' && c[1] >= '0' && c[1] <= '9'))
+    return true;
+  if (text.c_str()[0] == '"' || text.c_str()[0] == '\'')
+    return true;
+  return text == "true" || text == "false" || text == "nullptr";
 }
 
 // A check's message (design.md 8.7: `check(cond, arguments...)`, `fail(arguments...)`), as println
@@ -442,14 +536,20 @@ void __kppFail(const char* file, int line, int column, const char* kind, const c
     failure.right = state.right;
     shown << " (" << state.left << " " << std::StringView(state.op) << " " << state.right << ")";
   }
-  else if (!state.arguments.empty())
+  else if (!state.arguments.empty() && !state.argumentUnshown)
   {
+    // (each argument by its text, `x = 1.52`, but a literal's value alone: `1.5`; the texts only when
+    // there is one for each value)
     failure.arguments = state.arguments;
+    std::Vector<std::String> texts = __kppArgumentTexts(text);
+    bool labelled = texts.size() == state.arguments.size();
     shown << " (";
     for (int i = 0; i < int(state.arguments.size()); ++i)
     {
       if (i > 0)
         shown.append(", ");
+      if (labelled && !__kppIsLiteral(texts[i]))
+        shown << texts[i] << " = ";
       shown << state.arguments[i];
     }
     shown << ")";
@@ -467,6 +567,7 @@ void __kppFail(const char* file, int line, int column, const char* kind, const c
   }
   state.hasValues = false;
   state.arguments.clear();
+  state.argumentUnshown = false;
   state.note = std::String();
   state.hasMessage = false;
   state.failures.push_back(failure);
