@@ -1292,9 +1292,16 @@ and a used library that declares C libraries is an error. What it could still po
 - A used library's `use(NAME, local(PATH))` names a directory inside the one holding the library, its
   own or a sibling's (factorio-in-kpp's minizip uses `../zlib`); the project's own build.kpp may name any.
 
+- A used library's `extern "C" import` (a file under a `--library-root`) names a header of the include
+  directories: a relative path without `..` or a drive, which clang finds only in the target's system
+  directories and the project's own `--cinclude` ones; an absolute path or one with `..` is an error
+  before clang runs (kovarex, 2026-11-11: "allow reading its own directory + system headers, not
+  anywhere on the disc"; Driver/CImport.cpp; specs interop/library_c_import_*). A used library cannot
+  give clang C text of its own, so it has no `#include` or `#embed` of a path either.
+
 What it cannot be kept from: a used library's code runs natively wherever the program or its tests run
-(as in every language's packages), its sources' `extern "C" import` runs clang's preprocessor, which
-reads any header path (open question below), and its build.kpp sees the command line's `--set` values.
+(as in every language's packages; kovarex: "that is general problem, I just wanted the build running to
+not be dangerous"), and its build.kpp sees the command line's `--set` values.
 
 **The game's DEBUG as config::debug (decided by kovarex, 2026-11-02).** "Obviously we need B the
 proper way, we need to have debug and release configuration working properly." The converter
@@ -5559,10 +5566,8 @@ and before a body's `{` it keeps that brace on its own line under `braces = end-
   or integer), which pieces come next.
 
 - **Hardening what a used library can do, the rest** (thread audit, 2026-11-11; section 12, "What a
-  library's build.kpp can do"): (1) a used library's `extern "C" import "PATH"` makes clang read any
-  file the user can read (an absolute or `..` path, `#include`, C23's `#embed`) and can put its bytes
-  into the program: confine a used library's import paths to its directory and the target's system
-  include directories? (B's C import.) (2) A used library's build.kpp reads the command line's `--set`
+  library's build.kpp can do"): (1) answered 2026-11-11, a used library's C imports name headers of the
+  include directories; (2) a used library's build.kpp reads the command line's `--set`
   values: give it none? (3) The registry (none yet): pin each library by its content's hash in
   build.lock, and show what changed in a library's build.kpp and C imports when an update is taken?
 

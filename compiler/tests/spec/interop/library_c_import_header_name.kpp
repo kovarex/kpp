@@ -1,0 +1,7 @@
+// spec: a used library's `extern "C" import` of a header by its name, which the include directories have, imports it (kovarex 2026-11-11; design.md 12, "What a library's build.kpp can do")
+// factorio: the game's libraries import their headers by name (zlib's string.h)
+int main()
+{
+  std::println(names::length("four"));
+  return 0;
+}

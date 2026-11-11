@@ -998,17 +998,73 @@ size_t leaveOutLibraryFunctions(std::vector<std::unique_ptr<ParsedFile>>& parsed
   return leftOut;
 }
 
+// Whether file is a used library's: under one of the --library-root directories (or that file).
+static bool inUsedLibrary(const std::filesystem::path& file, const Options& options)
+{
+  // (both absolute, links followed and Windows' letter case as the disk has it: a relative or
+  // differently written root never makes a library's file the program's)
+  std::error_code ec;
+  std::filesystem::path at = std::filesystem::weakly_canonical(std::filesystem::absolute(file, ec), ec);
+  if (at.empty())
+    at = std::filesystem::absolute(file, ec).lexically_normal();
+  for (const Options::LibraryRoot& l : options.libraryRoots)
+  {
+    std::error_code ec2;
+    std::filesystem::path dir = std::filesystem::weakly_canonical(std::filesystem::absolute(l.dir, ec2), ec2);
+    if (dir.empty())
+      dir = std::filesystem::absolute(l.dir, ec2).lexically_normal();
+    std::filesystem::path relative = at.lexically_relative(dir);
+    if (!relative.empty() && *relative.begin() != "..")
+      return true;
+  }
+  return false;
+}
+
+// A header's name as the include directories have it (sys/socket.h, winsock2.h): relative, with no
+// drive, no `..` and nothing a path could reach another directory through.
+static bool isHeaderName(const std::string& path)
+{
+  if (path.empty() || path[0] == '/' || path[0] == '\\' || path.find(':') != std::string::npos)
+    return false;
+  size_t start = 0;
+  while (start <= path.size())
+  {
+    size_t end = path.find_first_of("/\\", start);
+    if (end == std::string::npos)
+      end = path.size();
+    std::string_view part(path.data() + start, end - start);
+    if (part.empty() || part == "..")
+      return false;
+    start = end + 1;
+  }
+  return true;
+}
+
 void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexed, std::vector<std::unique_ptr<ParsedFile>>& parsed,
                     SymbolTable& symbols, const Options& options)
 {
   std::vector<std::string> headers;
   std::vector<std::string> importedAt; // each header's first `extern "C" import`, `file:line`
+  bool refused = false;                // a used library's import of a file outside the include directories
   for (size_t i = 0; i < parsed.size(); ++i)
     for (Decl* d : parsed[i]->decls)
       if (d->kind == NodeKind::ImportDecl)
       {
         const Token& t = lexed[i].tokens[static_cast<ImportDecl*>(d)->pathToken];
         std::string path = files[i].text.substr(t.offset + 1, t.length - 2);
+        // A used library's import (a file under a --library-root) names a header the include
+        // directories have: a relative path without `..` or a drive, which clang finds only in the
+        // target's system directories and the project's own --cinclude ones, never a file elsewhere
+        // on the disk (kovarex, 2026-11-11; design.md 12, "What a library's build.kpp can do").
+        if (inUsedLibrary(files[i].path, options) && !isHeaderName(path))
+        {
+          size_t line = 1 + size_t(std::count(files[i].text.begin(), files[i].text.begin() + t.offset, '\n'));
+          fprintf(stderr, "%s:%zu: error: a library imports the C header \"%s\": a library's import names a header of the include "
+                          "directories (a relative path without .. or a drive), never a file elsewhere on the disk\n",
+                  files[i].path.string().c_str(), line, path.c_str());
+          refused = true;
+          continue;
+        }
         if (std::find(headers.begin(), headers.end(), path) == headers.end())
         {
           headers.push_back(path);
@@ -1016,6 +1072,11 @@ void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexe
           importedAt.push_back(files[i].path.string() + ":" + std::to_string(line));
         }
       }
+  if (refused)
+  {
+    codegenExit = 1;
+    return;
+  }
   if (headers.empty())
     return;
   auto importStart = std::chrono::steady_clock::now();

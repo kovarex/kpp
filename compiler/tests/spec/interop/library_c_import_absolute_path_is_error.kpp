@@ -1,0 +1,4 @@
+// spec: a used library's `extern "C" import` names a header of the include directories: an absolute path would let it read any file on the disk, and is an error (kovarex 2026-11-11; design.md 12, "What a library's build.kpp can do")
+// factorio: none: the game's libraries import headers by name
+// error: a library imports the C header "/outside/header.h"
+int main() { return leaky::value(); }
