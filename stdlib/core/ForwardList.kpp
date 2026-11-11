@@ -158,7 +158,13 @@ public:
   void swap(ForwardList<T>& other) noexcept { std::swap(this.beforeHead.next, other.beforeHead.next); }
 
   bool empty() const { return this.beforeHead.next == nullptr; }
-  T& front() const { return ((ForwardNode<T>*)this.beforeHead.next)->value; }
+
+  T& front() const
+  {
+    assert(!this.empty());
+    return ((ForwardNode<T>*)this.beforeHead.next)->value;
+  }
+
   ForwardIterator<T> before_begin() const { return ForwardIterator<T>((ForwardLinks*)&this.beforeHead); }
   ForwardIterator<T> begin() const { return ForwardIterator<T>(this.beforeHead.next); }
   ForwardIterator<T> end() const { return ForwardIterator<T>(nullptr); }
@@ -170,7 +176,12 @@ public:
   void push_front(T&& value) { this.insert_after(this.before_begin(), move(value)); }
   template<typename... Args>
   T& emplace_front(Args&&... args) { return *this.emplace_after(this.before_begin(), forward<Args>(args)...); }
-  void pop_front() { this.erase_after(this.before_begin()); }
+
+  void pop_front()
+  {
+    assert(!this.empty());
+    this.erase_after(this.before_begin());
+  }
 
   // Inserts after position; returns the new element's position.
   ForwardIterator<T> insert_after(ForwardIterator<T> position, const T& value) { return this.emplace_after(position, value); }

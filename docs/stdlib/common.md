@@ -101,9 +101,19 @@ more.
 ## Errors
 
 Calling a function outside its preconditions (an index past the end, `front()` on an empty
-container, `*end()`, an iterator of another container) is undefined behaviour: the library does
-not check. The exceptions are the checked accessors, which say so on their page (`at()` throws
-OutOfRange for an index or key that is not there).
+container, `*end()`, an iterator of another container) is undefined behaviour. The exceptions are
+the checked accessors, which say so on their page (`at()` throws OutOfRange for an index or key
+that is not there).
+
+A debug build (`config::debug`) checks the commonest of them with `assert` (kovarex, 2026-11-11:
+"debug containers should check bounds on debug"): `operator[]` past the end of Vector, Array, Span,
+String (whose `s[s.size()]` is its terminator, as C++'s), StringView and Deque; `front()`, `back()`
+and their pops on an empty Vector, String, StringView, Deque, List or ForwardList; `*` of an empty
+Optional. A failure is `assertion failed: index < this.length` at the library's line, through the
+program's `kpp_assert_failed` (a test fails). A release build checks none of it. Vector's and
+Array's iterators are pointers, so `*end()` of them is not checked. Measured on the game's 9,481
+debug tests (factorio-test.exe of both, interleaved, the machine loaded): 68.9 to 74.7 s without
+the checks, 74.7 to 92.7 s with them (+8 to +24%).
 
 ## Comparison
 

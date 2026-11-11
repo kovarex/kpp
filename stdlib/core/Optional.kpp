@@ -357,8 +357,18 @@ struct Optional : OptionalValue<T>
   }
 
   // The value, unchecked: on an empty Optional the program is wrong.
-  T& operator*() { return *this.slot(); }
-  const T& operator*() const { return *this.slot(); }
+  T& operator*()
+  {
+    assert(this.hasValue());
+    return *this.slot();
+  }
+
+  const T& operator*() const
+  {
+    assert(this.hasValue());
+    return *this.slot();
+  }
+
   T* operator->() { return this.slot(); }
   const T* operator->() const { return this.slot(); }
   // The value, or fallback converted to T when empty (std::optional's value_or:

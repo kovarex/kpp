@@ -1,0 +1,13 @@
+assertion failed: index < this.length
+assertion failed: this.length > 0
+assertion failed: this.length > 0
+assertion failed: this.length > 0
+assertion failed: index < N
+assertion failed: index <= this.size()
+assertion failed: !this.empty()
+assertion failed: index < this.byteCount
+assertion failed: this.length > 0
+assertion failed: this.length > 0
+assertion failed: index < this.length
+assertion failed: this.hasValue()
+0

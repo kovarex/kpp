@@ -28,7 +28,13 @@ public:
   // Its text, appended (design.md 14: the conversion every type has).
   void appendTo(String& out) const { out.append(this.chars, this.byteCount); }
   bool empty() const { return this.byteCount == 0; }
-  const char& operator[](ContainerSize index) const { return this.chars[index]; }
+
+  const char& operator[](ContainerSize index) const
+  {
+    assert(index < this.byteCount);
+    return this.chars[index];
+  }
+
   const char* begin() const { return this.chars; }
   const char* end() const { return this.chars + this.byteCount; }
   const char* cbegin() const { return this.begin(); }
@@ -37,8 +43,19 @@ public:
   ReverseIterator<const char*> rend() const { return ReverseIterator<const char*>(this.begin()); }
   ReverseIterator<const char*> crbegin() const { return this.rbegin(); }
   ReverseIterator<const char*> crend() const { return this.rend(); }
-  const char& front() const { return this.chars[0]; }
-  const char& back() const { return this.chars[this.byteCount - 1]; }
+
+  const char& front() const
+  {
+    assert(this.byteCount > 0);
+    return this.chars[0];
+  }
+
+  const char& back() const
+  {
+    assert(this.byteCount > 0);
+    return this.chars[this.byteCount - 1];
+  }
+
   ContainerSize max_size() const { return maxContainerSize; }
 
   // Throws OutOfRange for an index outside [0, size()).

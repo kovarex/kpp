@@ -144,9 +144,19 @@ public:
 
   ContainerSize size() const { return this.length; }
   bool empty() const { return this.length == 0; }
+
   // A const Deque's elements are const through every access, as std::deque's.
-  T& operator[](ContainerSize index) { return *this.slotAt(this.start + index); }
-  const T& operator[](ContainerSize index) const { return *this.slotAt(this.start + index); }
+  T& operator[](ContainerSize index)
+  {
+    assert(index < this.length);
+    return *this.slotAt(this.start + index);
+  }
+
+  const T& operator[](ContainerSize index) const
+  {
+    assert(index < this.length);
+    return *this.slotAt(this.start + index);
+  }
 
   // Throws OutOfRange for an index outside [0, size()).
   T& at(ContainerSize index)
@@ -163,10 +173,30 @@ public:
     return (this)[index];
   }
 
-  T& front() { return *this.slotAt(this.start); }
-  T& back() { return *this.slotAt(this.start + this.length - 1); }
-  const T& front() const { return *this.slotAt(this.start); }
-  const T& back() const { return *this.slotAt(this.start + this.length - 1); }
+  T& front()
+  {
+    assert(this.length > 0);
+    return *this.slotAt(this.start);
+  }
+
+  T& back()
+  {
+    assert(this.length > 0);
+    return *this.slotAt(this.start + this.length - 1);
+  }
+
+  const T& front() const
+  {
+    assert(this.length > 0);
+    return *this.slotAt(this.start);
+  }
+
+  const T& back() const
+  {
+    assert(this.length > 0);
+    return *this.slotAt(this.start + this.length - 1);
+  }
+
   iterator begin() { return this.iteratorAt(0); }
   iterator end() { return this.iteratorAt(this.length); }
   const_iterator begin() const { return const_iterator(this.map, this.start); }
@@ -214,6 +244,7 @@ public:
 
   void pop_back()
   {
+    assert(this.length > 0);
     --this.length;
     ContainerSize position = this.start + this.length;
     this.slotAt(position)->~T();
@@ -223,6 +254,7 @@ public:
 
   void pop_front()
   {
+    assert(this.length > 0);
     ContainerSize position = this.start;
     this.slotAt(position)->~T();
     ++this.start;

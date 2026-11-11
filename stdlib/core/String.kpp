@@ -129,7 +129,13 @@ public:
   void appendTo(String& out) const { out.append(this.data(), this.size()); }
   char* data() { return this.isLarge() ? this.heapChars : this.smallChars; }
   const char* data() const { return this.isLarge() ? this.heapChars : this.smallChars; }
-  const char& operator[](ContainerSize index) const { return this.data()[index]; } // a reference, as std::string's: `&s[i]` of a const String
+
+  // A reference, as std::string's: `&s[i]` of a const String; s[s.size()] is the terminator, as C++'s.
+  const char& operator[](ContainerSize index) const
+  {
+    assert(index <= this.size());
+    return this.data()[index];
+  }
 
   // Throws OutOfRange for an index outside [0, size()).
   char& at(ContainerSize index)
@@ -146,7 +152,12 @@ public:
     return this.data()[index];
   }
 
-  char& operator[](ContainerSize index) { return this.data()[index]; }
+  char& operator[](ContainerSize index)
+  {
+    assert(index <= this.size());
+    return this.data()[index];
+  }
+
   char* begin() { return this.data(); }
   char* end() { return this.data() + this.size(); }
   // The bytes from the last to the first (ZipPackage's `*path.string().rbegin() == '/'`).
@@ -160,10 +171,30 @@ public:
   const char* end() const { return this.data() + this.size(); }
   const char* cbegin() const { return this.data(); }
   const char* cend() const { return this.data() + this.size(); }
-  char& back() { return this.data()[this.size() - 1]; }
-  const char& back() const { return this.data()[this.size() - 1]; }
-  char& front() { return this.data()[0]; }
-  const char& front() const { return this.data()[0]; }
+
+  char& back()
+  {
+    assert(!this.empty());
+    return this.data()[this.size() - 1];
+  }
+
+  const char& back() const
+  {
+    assert(!this.empty());
+    return this.data()[this.size() - 1];
+  }
+
+  char& front()
+  {
+    assert(!this.empty());
+    return this.data()[0];
+  }
+
+  const char& front() const
+  {
+    assert(!this.empty());
+    return this.data()[0];
+  }
 
   void push_back(char c) { this.append(c); }
 

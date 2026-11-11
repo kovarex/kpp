@@ -104,11 +104,31 @@ public:
   T* data() { return this.items; }
   const T* data() const { return this.items; }
   bool empty() const { return this.length == 0; }
-  T& operator[](ContainerSize index) { return this.items[index]; }
-  const T& operator[](ContainerSize index) const { return this.items[index]; }
 
-  T& back() { return this.items[this.length - 1]; }
-  const T& back() const { return this.items[this.length - 1]; }
+  T& operator[](ContainerSize index)
+  {
+    assert(index < this.length);
+    return this.items[index];
+  }
+
+  const T& operator[](ContainerSize index) const
+  {
+    assert(index < this.length);
+    return this.items[index];
+  }
+
+  T& back()
+  {
+    assert(this.length > 0);
+    return this.items[this.length - 1];
+  }
+
+  const T& back() const
+  {
+    assert(this.length > 0);
+    return this.items[this.length - 1];
+  }
+
   T* begin() { return this.items; }
   T* end() { return this.items + this.length; }
   const T* begin() const { return this.items; }
@@ -272,8 +292,17 @@ public:
     return this.items[this.length - 1];
   }
 
-  T& front() { return this.items[0]; }
-  const T& front() const { return this.items[0]; }
+  T& front()
+  {
+    assert(this.length > 0);
+    return this.items[0];
+  }
+
+  const T& front() const
+  {
+    assert(this.length > 0);
+    return this.items[0];
+  }
 
   // New elements are default-constructed (zero for numbers).
   void resize(ContainerSize newLength)

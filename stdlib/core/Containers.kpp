@@ -20,8 +20,18 @@ struct Array
   ContainerSize size() const { return N; }
   ContainerSize max_size() const { return N; }
   bool empty() const { return N == 0; }
-  T& operator[](ContainerSize index) { return this.items[index]; }
-  const T& operator[](ContainerSize index) const { return this.items[index]; }
+
+  T& operator[](ContainerSize index)
+  {
+    assert(index < N);
+    return this.items[index];
+  }
+
+  const T& operator[](ContainerSize index) const
+  {
+    assert(index < N);
+    return this.items[index];
+  }
 
   // Throws OutOfRange for an index outside [0, N).
   T& at(ContainerSize index)
@@ -223,7 +233,13 @@ public:
   ContainerSize size() const { return this.length; }
   usize size_bytes() const { return (usize)this.length * sizeof(T); }
   bool empty() const { return this.length == 0; }
-  T& operator[](ContainerSize index) const { return this.items[index]; }
+
+  T& operator[](ContainerSize index) const
+  {
+    assert(index < this.length);
+    return this.items[index];
+  }
+
   T* data() const { return this.items; }
   T* begin() const { return this.items; }
   T* end() const { return this.items + this.length; }

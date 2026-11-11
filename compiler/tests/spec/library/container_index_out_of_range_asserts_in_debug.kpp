@@ -1,0 +1,55 @@
+// spec: in a debug build (config::debug) the containers check what C++ leaves undefined (kovarex, 2026-11-11: "debug containers should check bounds on debug"): Vector's operator[] past its size is an assertion failure, as are front, back and pop on an empty container and every other container's index; a release build checks none of it; the program's kpp_assert_failed, which a program may define (design.md, assert), reports each failure here and lets the next check run
+// run:
+extern "C" void kpp_assert_failed(const char* file, i32 line, i32 column, const char* text)
+{
+  std::println("assertion failed: ", std::StringView(text));
+  throw 1;
+}
+
+template<typename F>
+void expectFailure(const char* what, F f)
+{
+  try
+  {
+    f();
+    std::println(std::StringView(what), ": no failure");
+  }
+  catch (i32)
+  {
+  }
+}
+
+int main(int argc, char** argv)
+{
+  // (a release build checks none of it: what follows would read past the containers)
+  if constexpr (!config::debug)
+  {
+    std::println("release: unchecked");
+    return 0;
+  }
+  i32 three = argc + 2;
+  std::Vector<i32> vector = {1, 2, 3};
+  expectFailure("Vector index", [&] { std::println(vector[three]); });
+  std::Vector<i32> none;
+  expectFailure("Vector front", [&] { std::println(none.front()); });
+  expectFailure("Vector back", [&] { std::println(none.back()); });
+  expectFailure("Vector pop_back", [&] { none.pop_back(); });
+  std::Array<i32, 3> array = {1, 2, 3};
+  expectFailure("Array index", [&] { std::println(array[three]); });
+  std::String string = "abc";
+  expectFailure("String index", [&] { std::println(string[three + 1]); });
+  std::String empty;
+  expectFailure("String back", [&] { std::println(empty.back()); });
+  std::StringView view = "abc";
+  expectFailure("StringView index", [&] { std::println(view[three]); });
+  std::Deque<i32> deque;
+  expectFailure("Deque front", [&] { std::println(deque.front()); });
+  expectFailure("Deque pop_front", [&] { deque.pop_front(); });
+  std::Span<i32> span(vector.data(), 3);
+  expectFailure("Span index", [&] { std::println(span[three]); });
+  std::Optional<i32> nothing;
+  expectFailure("Optional value", [&] { std::println(*nothing); });
+  // (a String's terminator stays readable, as C++'s s[s.size()])
+  std::println(i32(string[three]));
+  return 0;
+}

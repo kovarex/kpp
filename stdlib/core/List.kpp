@@ -234,11 +234,32 @@ public:
 
   ContainerSize size() const { return this.length; }
   bool empty() const { return this.length == 0; }
+
   // A const List's elements are const through every access, as std::list's.
-  T& front() { return ((ListNode<T>*)this.sentinel.next)->value; }
-  T& back() { return ((ListNode<T>*)this.sentinel.prev)->value; }
-  const T& front() const { return ((ListNode<T>*)this.sentinel.next)->value; }
-  const T& back() const { return ((ListNode<T>*)this.sentinel.prev)->value; }
+  T& front()
+  {
+    assert(!this.empty());
+    return ((ListNode<T>*)this.sentinel.next)->value;
+  }
+
+  T& back()
+  {
+    assert(!this.empty());
+    return ((ListNode<T>*)this.sentinel.prev)->value;
+  }
+
+  const T& front() const
+  {
+    assert(!this.empty());
+    return ((ListNode<T>*)this.sentinel.next)->value;
+  }
+
+  const T& back() const
+  {
+    assert(!this.empty());
+    return ((ListNode<T>*)this.sentinel.prev)->value;
+  }
+
   iterator begin() { return iterator(this.sentinel.next); }
   iterator end() { return iterator(&this.sentinel); }
   const_iterator begin() const { return const_iterator(this.sentinel.next); }
@@ -267,8 +288,18 @@ public:
   T& emplace_back(Args&&... args) { return *this.emplace(this.end(), forward<Args>(args)...); }
   template<typename... Args>
   T& emplace_front(Args&&... args) { return *this.emplace(this.begin(), forward<Args>(args)...); }
-  void pop_back() { this.erase(ListIterator<T>(this.sentinel.prev)); }
-  void pop_front() { this.erase(this.begin()); }
+
+  void pop_back()
+  {
+    assert(!this.empty());
+    this.erase(ListIterator<T>(this.sentinel.prev));
+  }
+
+  void pop_front()
+  {
+    assert(!this.empty());
+    this.erase(this.begin());
+  }
 
   // Inserts before position; returns the new element's position.
   ListIterator<T> insert(const_iterator position, const T& value) { return this.emplace(position, value); }
