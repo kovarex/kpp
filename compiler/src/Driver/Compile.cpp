@@ -672,6 +672,9 @@ int compile(int argc, char** argv)
       // import library and an .exp beside it, and say so on every build)
       if (options.target.msvc())
         options.libs.push_back("-Wl,/NOIMPLIB,/NOEXP");
+      // (link.exe ignores /INCREMENTAL for objects with ASan's metadata, with warning LNK4300: a project's
+      // debug configuration asks for it, and a sanitized one based on debug links whole instead)
+      options.incrementalLink = false;
     }
     // config:: constants declared in source with their defaults (config.cpp), read before any file is
     // parsed: the parser's declaration-scope if constexpr, when and requires read their values.
