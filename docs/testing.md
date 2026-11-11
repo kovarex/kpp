@@ -94,6 +94,36 @@ The runner's options: `--filter TEXT` (the full name, `*` matching anything), `-
 `--report FILE` (`-` for stdout: one JSON line per test, then a summary line) and `--help`. The exit
 code is 0 when every test passed, 1 when one failed, 2 for a bad argument.
 
+## Interactive mode: `-i`
+
+`-i` (or `--interactive`) runs the program's `testsSetup` and generators once, then shows a menu, and
+a key chooses what runs (kovarex, 2026-11-12, as Factorio's own test program had it, so that a run's
+selection is not typed on the command line each time):
+
+- **space**: the last choice again (kept between runs);
+- **a**: all the tests, in parallel: worker processes as `--jobs` starts them, as many as Factorio's
+  test program used (the hardware threads, 1 to 64, then the program's `testsWorkers(count)`);
+- **A**: all the tests, in this process;
+- **t** / **s**: a test or a suite, found by typing part of its name: each key shows how many match
+  and the highlighted one; up and down move it, Enter takes it, Escape goes back;
+- **v**: the test whose name is on the clipboard (a filter when it is no test's whole name);
+- **f**: the tests that failed in the last run (kept between runs);
+- **q**: quit (`testsTeardown` runs then);
+- **T**, **S**, **V**, **F**: the same, with the suites they depend on.
+
+The chosen tests run in the same process, so a debugger's breakpoints hold: in Visual Studio, put
+`-i` in the project's Command Arguments and press F5. The menu then shows again. The last choice
+and the failed tests are kept in `<executable>.interactive` beside the executable. On a console the
+runner reads one key at a time; from a pipe or a file (a script, `compiler/tests/interactive.ps1`)
+it reads bytes, Enter being `\r`. On Linux and FreeBSD a key counts once Enter is pressed, and `v`
+has no clipboard yet.
+
+A program adds keys of its own with two functions: `std::String testsInteractiveKeys()`, the text
+added to the menu's last line, and `bool testsInteractiveKey(int key)`, true when the key was its
+(the game's `h` turns its heavy mode on and off). For `a`'s workers, `testsWorkerArguments()` adds
+arguments to their command line (the game's `--heavy-mode`) and `testsWorkers(count)` sets how many
+start (heavy mode's fewer, as Factorio's). `--jobs` does not apply in this mode.
+
 ## Parallel runs: `--jobs N`
 
 `--jobs N` runs the tests in N worker processes (processes, not threads: tests may use globals).

@@ -1,0 +1,10 @@
+suite Basics
+{
+  test adds { check(1 + 1 == 2); }
+  test fails { check(1 + 1 == 3); }
+}
+suite Later depends Basics
+{
+  test uses { check(2 * 2 == 4); }
+}
+test outside { check(true); }

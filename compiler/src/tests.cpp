@@ -724,6 +724,8 @@ void __kppPrintHelp()
              "  --durations FILE      with --jobs: an earlier run's --report, each test on its own, the longest first\n"
              "  --list                the selected tests, in the run's order, without running them\n"
              "  --report FILE         one JSON line per test and a summary (- for stdout)\n"
+             "  -i, --interactive     a menu: a key chooses the tests (a all in parallel, A all here, a test or a suite\n"
+             "                        found by typing, the clipboard's, the failed ones; space again), they run, again until q\n"
              "  --help                this text\n"
              "The other arguments go to the program's testsSetup. Exit code 0 when every test passed, 1 when one\n"
              "failed, 2 for a bad argument.\n");
@@ -1628,6 +1630,396 @@ template<typename Finished> bool __kppRunJobs(const std::Vector<const __KppTest*
   return pool.started && ran && ended;
 }
 
+// -i, --interactive (kovarex 2026-11-12, as Factorio's test program had it: a run's selection chosen by
+// a key instead of typed on the command line each time). testsSetup and the generators have run once;
+// the menu shows, a key chooses, the choice runs in this process (so a debugger's breakpoints hold, and
+// Visual Studio's F5 with -i in the command arguments works), then the menu again until q. Keys, as
+// Factorio's: space the last choice again, a all in parallel (worker processes, as --jobs, their count
+// Factorio's: the hardware threads, 1 to 64, then testsWorkers), A all in this process, t a test and s
+// a suite found by typing part of the name (up and down move among the matches, Enter takes one,
+// Escape goes back), v the test whose name is on the clipboard, f the tests that failed last, q quit;
+// T, S, V and F the same with the suites it depends on. The last choice and the failed tests are kept
+// in <executable>.interactive for the next run. A program's own keys: testsInteractiveKeys() (its line
+// in the menu) and testsInteractiveKey(key) (true when the key was its), the game's h for its heavy
+// mode; testsWorkers(count) sets the workers' count and testsWorkerArguments() adds to their command
+// line (the game's heavy mode: fewer workers, as Factorio's, each told --heavy-mode).
+template<typename T = void> std::String testsInteractiveKeys()
+{
+  return std::String();
+}
+template<typename T = void> bool testsInteractiveKey([[maybe_unused]] int key)
+{
+  return false;
+}
+template<typename T = void> int testsWorkers(int count)
+{
+  return count;
+}
+template<typename T = void> std::Vector<std::String> testsWorkerArguments()
+{
+  return std::Vector<std::String>();
+}
+
+// The parallel runs' worker count, Factorio's (ForkLogic::runFork with --num-forks 0): the hardware
+// threads, 1 to 64, then the program's testsWorkers.
+int __kppWorkerCount()
+{
+  int count = int(std::Thread::hardwareConcurrency());
+  count = count < 1 ? 1 : count > 64 ? 64 : count;
+  int chosen = testsWorkers(count);
+  return chosen < 1 ? 1 : chosen;
+}
+
+// One byte of the standard input, -1 at its end (-i's keys where they come from a pipe or a line).
+int __kppReadKey()
+{
+  unsigned char c = 0;
+  return fread(&c, 1, 1, stdin) == 1 ? int(c) : -1;
+}
+
+struct __KppChoice
+{
+  std::String kind; // all, test, suite, filter, failed; empty: none yet
+  bool dependencies = false;
+  bool parallel = false; // a: in worker processes
+  std::String text; // the test's full name, the suite's name, the filter
+};
+
+std::String __kppLowered(const std::String& text)
+{
+  std::String lowered;
+  for (std::ContainerSize i = 0; i < text.size(); ++i)
+  {
+    char c = text[i];
+    lowered.append(c >= 'A' && c <= 'Z' ? char(c - 'A' + 'a') : c);
+  }
+  return lowered;
+}
+
+bool __kppHas(const std::String& text, const std::String& part)
+{
+  return __kppLowered(text).find(__kppLowered(part).c_str()) != std::String::npos;
+}
+
+std::String __kppDescribed(const __KppChoice& choice, int failedCount)
+{
+  std::String text;
+  if (choice.kind.empty())
+    return std::String("nothing yet");
+  if (choice.kind == std::String("all"))
+    text << "all the tests" << std::StringView(choice.parallel ? ", in parallel" : ", in this process");
+  else if (choice.kind == std::String("failed"))
+    text << "the failed tests (" << failedCount << ")";
+  else
+    text << choice.kind << " " << choice.text;
+  if (choice.dependencies)
+    text << ", with the suites it depends on";
+  return text;
+}
+
+// <executable>.interactive: `last KIND FLAGS TEXT` (FLAGS: d with dependencies, p in parallel, or 0),
+// then `failed NAME` per failed test.
+void __kppLoadInteractive(const std::String& path, __KppChoice& last, std::Vector<std::String>& failed)
+{
+  std::InFileStream in(path);
+  std::String line;
+  while (std::getline(in, line))
+  {
+    if (!line.empty() && line[line.size() - 1] == '\r')
+      line.erase(line.size() - 1);
+    if (line.find("last ") == 0)
+    {
+      std::String rest(line, 5);
+      std::ContainerSize space = rest.find(" ");
+      if (space == std::String::npos || space + 2 > rest.size())
+        continue;
+      last.kind = std::String(rest, 0, space);
+      std::ContainerSize flags = space + 1, end = rest.find(" ", flags);
+      std::String given = end == std::String::npos ? std::String(rest, flags) : std::String(rest, flags, end - flags);
+      last.dependencies = given.find("d") != std::String::npos || given == std::String("1");
+      last.parallel = given.find("p") != std::String::npos;
+      last.text = end != std::String::npos ? std::String(rest, end + 1) : std::String();
+    }
+    else if (line.find("failed ") == 0)
+      failed.push_back(std::String(line, 7));
+  }
+}
+
+void __kppSaveInteractive(const std::String& path, const __KppChoice& last, const std::Vector<std::String>& failed)
+{
+  FILE* f = fopen(path.c_str(), "w");
+  if (!f)
+    return;
+  std::String text;
+  if (!last.kind.empty())
+  {
+    std::String flags;
+    if (last.dependencies)
+      flags << "d";
+    if (last.parallel)
+      flags << "p";
+    text << "last " << last.kind << " " << std::StringView(flags.empty() ? "0" : flags.c_str()) << " " << last.text << "\n";
+  }
+  for (const std::String& name : failed)
+    text << "failed " << name << "\n";
+  fputs(text.c_str(), f);
+  fclose(f);
+}
+
+// A search as the name is typed: each key shows the count and the highlighted match on one line;
+// up and down move it, Enter takes it, Escape (or the end of the input) goes back.
+bool __kppSearch(const char* what, const std::Vector<std::String>& names, std::String& picked)
+{
+  std::String query;
+  int at = 0;
+  while (true)
+  {
+    std::Vector<int> hits;
+    for (int i = 0; i < int(names.size()); ++i)
+      if (__kppHas(names[i], query))
+        hits.push_back(i);
+    if (at >= int(hits.size()))
+      at = hits.empty() ? 0 : int(hits.size()) - 1;
+    std::String line;
+    line << std::StringView(what) << ": " << query << "  (" << int(hits.size()) << " results)";
+    if (!hits.empty())
+      line << "  " << at + 1 << ": " << names[hits[at]];
+    if (line.size() > 118)
+      line.erase(118);
+    while (line.size() < 118)
+      line.append(' ');
+    std::print("\r", line);
+    fflush(stdout);
+    int key = __kppKey();
+    if (key < 0 || key == 27)
+    {
+      std::println("");
+      return false;
+    }
+    if (key == '\r' || key == '\n')
+    {
+      std::println("");
+      if (hits.empty())
+        return false;
+      picked = names[hits[at]];
+      return true;
+    }
+    if (key == 8 || key == 127)
+    {
+      if (!query.empty())
+        query.erase(query.size() - 1);
+      at = 0;
+    }
+    else if (key == 1072) // (up)
+      at = at > 0 ? at - 1 : 0;
+    else if (key == 1080) // (down)
+      at = at + 1 < int(hits.size()) ? at + 1 : at;
+    else if (key >= 32 && key < 127)
+    {
+      query.append(char(key));
+      at = 0;
+    }
+  }
+}
+
+// What a choice selects, in the run's order: as the command line's selection does, the suites its
+// tests depend on too with dependencies; --skip-suite and --tag as given (all: the untagged suites, or
+// those tagged so).
+std::Vector<const __KppTest*> __kppChosen(const __KppChoice& choice, const std::Vector<std::String>& failed, const std::Vector<const char*>& skipSuites,
+                                         const char* tag)
+{
+  __KppTestState& state = __kppTestState();
+  for (__KppSuite& suite : state.suites)
+  {
+    suite.needed = false;
+    suite.failed = false;
+  }
+  auto skipped = [&](const __KppSuite* suite)
+  {
+    for (const char* name : skipSuites)
+      if (suite && __kppSameName(suite->name.c_str(), name))
+        return true;
+    return false;
+  };
+  std::Vector<bool> isChosen;
+  for (const __KppTest& test : state.tests)
+  {
+    const __KppSuite* suite = test.suite[0] != 0 ? __kppSuite(test.suite) : nullptr;
+    bool chosen = false;
+    if (choice.kind == std::String("all"))
+      chosen = tag ? __kppHasTag(suite, tag) : !suite || suite->tags.empty();
+    else if (choice.kind == std::String("test"))
+      chosen = test.fullName == choice.text;
+    else if (choice.kind == std::String("suite"))
+      chosen = suite && __kppSameName(suite->name.c_str(), choice.text.c_str());
+    else if (choice.kind == std::String("filter"))
+      chosen = __kppMatches(test.fullName.c_str(), choice.text.c_str());
+    else if (choice.kind == std::String("failed"))
+      for (const std::String& name : failed)
+        chosen = chosen || test.fullName == name;
+    chosen = chosen && !skipped(suite);
+    isChosen.push_back(chosen);
+    if (chosen && suite && choice.dependencies)
+      __kppMarkNeeded(*suite);
+  }
+  std::Vector<const __KppTest*> selected;
+  for (int i = 0; i < int(state.tests.size()); ++i)
+  {
+    const __KppSuite* suite = state.tests[i].suite[0] != 0 ? __kppSuite(state.tests[i].suite) : nullptr;
+    if (isChosen[i] || (suite && suite->needed && !skipped(suite)))
+      selected.push_back(&state.tests[i]);
+  }
+  return selected;
+}
+
+int __kppInteractive(int argc, char** argv, const std::Vector<const char*>& skipSuites, const char* tag, u64 slowSeconds)
+{
+  const char* executable = argv[0];
+  __KppTestState& state = __kppTestState();
+  std::String path = std::toString(std::StringView(executable), ".interactive");
+  if (path.find(".exe.interactive") != std::String::npos)
+    path.erase(path.find(".exe.interactive"), 4);
+  __KppChoice last;
+  std::Vector<std::String> failed;
+  __kppLoadInteractive(path, last, failed);
+  std::Vector<std::String> testNames, suiteNames;
+  for (const __KppTest& test : state.tests)
+    testNames.push_back(test.fullName);
+  for (const __KppSuite& suite : state.suites)
+    suiteNames.push_back(suite.name);
+  while (true)
+  {
+    std::println("");
+    std::println("tests, interactive (", int(state.tests.size()), " tests): [space] again: ", __kppDescribed(last, int(failed.size())));
+    std::println("  [a] all in parallel (", __kppWorkerCount(), " workers)   [A] all in this process   [t] a test   [s] a suite   [v] the test named on the clipboard");
+    std::println("  [f] the failed ones (", int(failed.size()), ")   [q] quit   T, S, V, F: the same with the suites it depends on", testsInteractiveKeys());
+    fflush(stdout);
+    int key = __kppKey();
+    while (key == '\r' || key == '\n')
+      key = __kppKey();
+    if (key < 0 || key == 'q' || key == 'Q' || key == 3)
+      break;
+    __KppChoice choice;
+    bool dependencies = key >= 'A' && key <= 'Z';
+    int lower = dependencies ? key - 'A' + 'a' : key;
+    if (key == ' ')
+      choice = last;
+    else if (lower == 'a')
+    {
+      choice.kind = std::String("all");
+      choice.parallel = key == 'a';
+      dependencies = false; // (A: all in this process, as Factorio's; all has no dependencies to add)
+    }
+    else if (lower == 't')
+    {
+      std::String picked;
+      if (!__kppSearch("test", testNames, picked))
+        continue;
+      choice.kind = std::String("test");
+      choice.text = picked;
+    }
+    else if (lower == 's')
+    {
+      std::String picked;
+      if (!__kppSearch("suite", suiteNames, picked))
+        continue;
+      choice.kind = std::String("suite");
+      choice.text = picked;
+    }
+    else if (lower == 'v')
+    {
+      std::String named = __kppClipboardText();
+      if (named.empty())
+      {
+        std::println("the clipboard holds no text");
+        continue;
+      }
+      bool exact = false;
+      for (const std::String& name : testNames)
+        exact = exact || name == named;
+      choice.kind = std::String(exact ? "test" : "filter");
+      choice.text = named;
+    }
+    else if (lower == 'f')
+    {
+      if (failed.empty())
+      {
+        std::println("no test failed last time");
+        continue;
+      }
+      choice.kind = std::String("failed");
+    }
+    else
+    {
+      if (!testsInteractiveKey(key))
+        std::println("no such key");
+      continue;
+    }
+    if (key != ' ')
+      choice.dependencies = dependencies;
+    if (choice.kind.empty())
+    {
+      std::println("nothing chosen yet");
+      continue;
+    }
+    std::Vector<std::String> lastFailed = failed;
+    std::Vector<const __KppTest*> selected = __kppChosen(choice, lastFailed, skipSuites, tag);
+    if (selected.empty())
+    {
+      std::println("no test: ", __kppDescribed(choice, int(lastFailed.size())));
+      continue;
+    }
+    std::println("running ", int(selected.size()), " ", std::StringView(selected.size() == 1 ? "test" : "tests"), ": ",
+                 __kppDescribed(choice, int(lastFailed.size())));
+    fflush(stdout);
+    failed.clear();
+    u64 started = __kppNanoseconds();
+    int notRun = 0;
+    if (choice.parallel)
+    {
+      // As --jobs: the workers run this program with its arguments (-i a worker's selection does
+      // not change: all is the selection without arguments), testsSetup each, the tests given out.
+      __KppJobPool pool;
+      pool.started = pool.start(__kppWorkerCount(), testsWorkerArguments(), argc, argv);
+      bool ran = __kppRunJobs(selected, pool, nullptr, false, [&](int position, const __KppJobTest& result)
+      {
+        std::print(result.printed);
+        if (!result.finished)
+          ++notRun;
+        else if (!result.passed)
+        {
+          failed.push_back(selected[position]->fullName);
+          if (!result.crashed.empty())
+            std::println("failed: ", selected[position]->fullName, " (it crashed: ", result.crashed, ")");
+          else
+            std::println("failed: ", selected[position]->fullName);
+        }
+      });
+      if (!ran)
+        std::println("the workers did not run every test");
+    }
+    else
+      for (const __KppTest* test : selected)
+      {
+        u64 took = 0;
+        if (!__kppRunOne(test, slowSeconds, &took))
+        {
+          failed.push_back(test->fullName);
+          std::println("failed: ", test->fullName);
+        }
+      }
+    if (notRun > 0)
+      std::println(notRun, " not run");
+    u64 ms = (__kppNanoseconds() - started) / 1000000;
+    std::println(int(selected.size()), " ", std::StringView(selected.size() == 1 ? "test" : "tests"), ", ", int(failed.size()), " failed (",
+                 ms / 1000, ".", std::StringView(ms % 1000 < 100 ? "0" : ""), std::StringView(ms % 1000 < 10 ? "0" : ""), ms % 1000, " s)");
+    last = choice;
+    __kppSaveInteractive(path, last, failed);
+  }
+  testsTeardown();
+  return 0;
+}
+
 int main(int argc, char** argv)
 {
   std::Vector<const char*> filters, onlySuites, skipSuites;
@@ -1643,9 +2035,12 @@ int main(int argc, char** argv)
   u64 jobs = 0;
   const char* durations = nullptr;
   u64 workerIn = 0, workerOut = 0, workerIndex = 0;
+  bool interactive = false;
   for (int i = 1; i < argc; ++i)
   {
-    if (std::strcmp(argv[i], "--filter") == 0 && i + 1 < argc)
+    if (std::strcmp(argv[i], "-i") == 0 || std::strcmp(argv[i], "--interactive") == 0)
+      interactive = true;
+    else if (std::strcmp(argv[i], "--filter") == 0 && i + 1 < argc)
       filters.push_back(argv[++i]);
     else if (std::strcmp(argv[i], "--suite") == 0 && i + 1 < argc)
       onlySuites.push_back(argv[++i]);
@@ -1716,6 +2111,8 @@ int main(int argc, char** argv)
     report = nullptr; // (the first process's)
     jobs = 0;
   }
+  else if (interactive)
+    jobs = 0; // (its tests run in this process: a debugger's breakpoints hold)
   else if (durations && jobs == 0)
   {
     std::println("--durations orders the tests of --jobs: give --jobs N too");
@@ -1778,7 +2175,7 @@ int main(int argc, char** argv)
     std::println("unknown test runner argument ", others[0],
             "; the runner takes --filter TEXT, --suite NAME, --skip-suite NAME, --with-dependencies, --from NAME, --after NAME, --tag TAG, "
             "--exit-on-failure, --shuffle [SEED], --slow SECONDS, --jobs N, --durations FILE, --list, --report FILE (- for stdout), "
-            "--help, and the program's testsSetup the others");
+            "-i (--interactive), --help, and the program's testsSetup the others");
     return 2;
   }
   // The generators first, by file and line: their tests join the others.
@@ -1837,6 +2234,8 @@ int main(int argc, char** argv)
       return a.order != b.order ? a.order < b.order : a.shuffled < b.shuffled;
     });
   }
+  if (interactive && !state.working)
+    return __kppInteractive(argc, argv, skipSuites, tag, slowSeconds);
 
   // A filter no test matches, or a suite or tag no suite has, is a mistake on the command line: it
   // would run nothing and pass.
@@ -2055,6 +2454,7 @@ std::string testRunnerWindowsSource()
 struct _STARTUPINFOW;
 struct _PROCESS_INFORMATION;
 struct _OVERLAPPED;
+struct HWND__;
 
 namespace __kppWin32
 {
@@ -2066,6 +2466,51 @@ namespace __kppWin32
   extern "C" int GetExitCodeProcess(void* process, unsigned long* code);
   extern "C" int ReadFile(void* file, void* buffer, unsigned long size, unsigned long* read, _OVERLAPPED* overlapped);
   extern "C" int WriteFile(void* file, const void* buffer, unsigned long size, unsigned long* written, _OVERLAPPED* overlapped);
+  extern "C" int _getch();
+  extern "C" int _isatty(int file);
+  extern "C" int OpenClipboard(HWND__* owner);
+  extern "C" int CloseClipboard();
+  extern "C" void* GetClipboardData(unsigned int format);
+  extern "C" void* GlobalLock(void* memory);
+  extern "C" int GlobalUnlock(void* memory);
+}
+
+// -i's keys: one key without Enter (the console's); an arrow as 1000 and its scan code (up 1072, down
+// 1080).
+int __kppKey()
+{
+  if (!__kppWin32::_isatty(0)) // (input from a pipe or a file: a script's, a test's)
+    return __kppReadKey();
+  int c = __kppWin32::_getch();
+  if (c == 0 || c == 224)
+    return 1000 + __kppWin32::_getch();
+  return c;
+}
+
+// -i's v: the clipboard's text (CF_UNICODETEXT), without the line ends and spaces around it.
+std::String __kppClipboardText()
+{
+  std::String text;
+  if (!__kppWin32::OpenClipboard(nullptr))
+    return text;
+  if (void* data = __kppWin32::GetClipboardData(13))
+    if (const wchar_t* wide = (const wchar_t*)__kppWin32::GlobalLock(data))
+    {
+      int count = std::win32::WideCharToMultiByte(65001, 0, wide, -1, nullptr, 0, nullptr, nullptr);
+      if (count > 1)
+      {
+        text.resize(std::ContainerSize(count));
+        std::win32::WideCharToMultiByte(65001, 0, wide, -1, text.data(), count, nullptr, nullptr);
+        text.resize(std::ContainerSize(count - 1));
+      }
+      __kppWin32::GlobalUnlock(data);
+    }
+  __kppWin32::CloseClipboard();
+  while (!text.empty() && (text[text.size() - 1] == '\n' || text[text.size() - 1] == '\r' || text[text.size() - 1] == ' ' || text[text.size() - 1] == '\t'))
+    text.erase(text.size() - 1);
+  while (!text.empty() && (text[0] == ' ' || text[0] == '\t'))
+    text.erase(0, 1);
+  return text;
 }
 
 struct __KppWorkerProcess
@@ -2167,6 +2612,19 @@ namespace __kppPosix
   extern "C" i64 write(int file, const void* buffer, size_t size);
   extern "C" int close(int file);
   extern "C" void _exit(int code);
+}
+
+// -i's keys: the terminal gives a line at a time here (no raw mode yet), so a key counts once Enter
+// is pressed; a search takes what was typed, Enter its first match.
+int __kppKey()
+{
+  return __kppReadKey();
+}
+
+// -i's v: no clipboard here yet.
+std::String __kppClipboardText()
+{
+  return std::String();
 }
 
 struct __KppWorkerProcess

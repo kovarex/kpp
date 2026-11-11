@@ -107,6 +107,7 @@ Add 'format ours' @('python', '-I', 'tests\format\run_format.py', '--corpus', 'o
 # with its README.md's first paragraph and the names each file declares.
 Add 'packages' (PsCheck 'tests\packages.ps1') -seconds 1
 Add 'lsp' (PsCheck 'tests\lsp.ps1') -seconds 9
+Add 'interactive' (PsCheck 'tests\interactive.ps1') -seconds 6
 # kpp format (docs/format.md): files in the style stay as they are, tests\format\fix\ files format to
 # their .expected, and formatting the result again changes nothing.
 Add 'format' (PsCheck 'tests\format.ps1') -seconds 2

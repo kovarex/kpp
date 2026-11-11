@@ -13,6 +13,8 @@ kpp's test runner: runs the program's tests (design.md 8.7, docs/testing.md). It
   --durations FILE      with --jobs: an earlier run's --report, each test on its own, the longest first
   --list                the selected tests, in the run's order, without running them
   --report FILE         one JSON line per test and a summary (- for stdout)
+  -i, --interactive     a menu: a key chooses the tests (a all in parallel, A all here, a test or a suite
+                        found by typing, the clipboard's, the failed ones; space again), they run, again until q
   --help                this text
 The other arguments go to the program's testsSetup. Exit code 0 when every test passed, 1 when one
 failed, 2 for a bad argument.

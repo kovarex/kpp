@@ -1,0 +1,10 @@
+bool heavy = false;
+std::String testsInteractiveKeys() { return std::String(", h heavy mode (") + std::String(heavy ? "on" : "off") + std::String(")"); }
+bool testsInteractiveKey(int key)
+{
+  if (key != 'h')
+    return false;
+  heavy = !heavy;
+  std::println("heavy mode ", std::StringView(heavy ? "on" : "off"));
+  return true;
+}
