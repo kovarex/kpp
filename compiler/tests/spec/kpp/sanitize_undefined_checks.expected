@@ -16,11 +16,8 @@ line 21: a shift count outside 0 to 31 (int32)
 line 22: a shift count outside 0 to 31 (int32)
 0
 line 24: a floating value out of the range of int32
--2147483648
 line 26: a floating value out of the range of uint32
-4294967295
 9200000000000000000
 line 29: a floating value out of the range of int64
--9223372036854775808
 0
 2147483648
