@@ -1707,6 +1707,18 @@ namespace
       return "As in " + cell + ".";
     }
 
+    // A class's built-in `super` (the parser's implicit `using super = FirstBase;`, design.md 23f): the
+    // class its first base names, as the base clause's name resolves (that name's occurrence), or null.
+    Decl* superBase(const KeptProgram& program, const Decl* d)
+    {
+      if (d->kind != NodeKind::UsingAliasDecl || !(d->flags & DF_Implicit) || !d->file ||
+          program.symbols->name(static_cast<const UsingAliasDecl*>(d)->name) != "super")
+        return nullptr;
+      const std::vector<Occurrence>& list = occurrencesOf(d->file);
+      auto it = std::lower_bound(list.begin(), list.end(), d->token, [](const Occurrence& x, uint32_t t) { return x.token < t; });
+      return it != list.end() && it->token == d->token ? it->decl : nullptr;
+    }
+
     Json hover(const Json& params)
     {
       Json result;
@@ -1717,6 +1729,15 @@ namespace
         if (!o)
           return;
         Decl* d = o->decl;
+        // `super`: the first base it names (its class's hover), and that it is the built-in alias.
+        std::string super;
+        if (Decl* base = superBase(program, d))
+        {
+          const Decl* owner = d->parent;
+          super = "\n\n" + code("super") + ", built in: the first base of " +
+                  code(owner ? program.global->qualifiedName(const_cast<Decl*>(owner)) : std::string("its class")) + " (design.md 23f).";
+          d = base;
+        }
         std::string value = markdownHover ? "```kpp\n" + declarationText(program, d) + "\n```\n" : declarationText(program, d) + "\n";
         std::string where = kindWord(d);
         std::string qualified = program.global->qualifiedName(d);
@@ -1731,6 +1752,7 @@ namespace
         value += where;
         if (qualified.rfind("config::", 0) == 0 && !activeCell.empty())
           value += "\n\n" + configNote(qualified.substr(8));
+        value += super;
         if (std::string comment = commentAbove(d); !comment.empty())
           value += "\n\n" + comment;
         result = Json::object()
@@ -1751,6 +1773,8 @@ namespace
         if (!o)
           return;
         Decl* d = o->decl;
+        if (Decl* base = superBase(program, d)) // (`super` is its first base: go to that class)
+          d = base;
         Decl* target = d;
         if (declaration)
           target = canonical(*program.global, d);
@@ -3411,7 +3435,7 @@ namespace
     // ---- semantic tokens ----
 
     // The legend's token types, in order (semanticTokensProvider.legend). kppKeyword: a word only kpp
-    // has, where it is one (docs/ide.md, "Colors"): ParsedFile::kppWords, `This` and `when`.
+    // has, where it is one (docs/ide.md, "Colors"): ParsedFile::kppWords, `This`, `super` and `when`.
     static constexpr const char* tokenTypes[] = {"namespace", "type", "class", "enum", "struct", "typeParameter", "parameter", "variable",
                                                  "property", "enumMember", "function", "method", "kppKeyword"};
     enum : int { TypeKppKeyword = 12 };
@@ -3477,9 +3501,10 @@ namespace
         };
         for (uint32_t offset : f->kppWords)
           colored.push_back({offset, wordLength(offset), TypeKppKeyword, 0});
-        if (!f->isImported) // (C code has `This` and `when` as names)
+        if (!f->isImported) // (C code has `This`, `super` and `when` as names)
           for (const Token& t : *f->tokens)
-            if (t.is(Kw::when_) || (t.getKind() == TokenKind::Identifier && f->text.substr(t.offset, t.length) == "This"))
+            if (t.is(Kw::when_) ||
+                (t.getKind() == TokenKind::Identifier && (f->text.substr(t.offset, t.length) == "This" || f->text.substr(t.offset, t.length) == "super")))
               colored.push_back({t.offset, t.length, TypeKppKeyword, 0});
         for (const Occurrence& o : occurrencesOf(f))
         {

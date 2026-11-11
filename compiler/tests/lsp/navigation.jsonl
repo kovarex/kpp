@@ -16,5 +16,9 @@
 // side's occurrences: its declaration and four uses.
 {"jsonrpc":"2.0","id":9,"method":"textDocument/documentHighlight","params":{"textDocument":{"uri":"$ROOT/shapes.kpp"},"position":{"line":12,"character":7}}}
 {"jsonrpc":"2.0","id":10,"method":"textDocument/foldingRange","params":{"textDocument":{"uri":"$ROOT/shapes.kpp"}}}
+// `super`: go to definition is its first base, Counter; hover says it is the built-in alias; its color is a kpp word (kppKeyword).
+{"jsonrpc":"2.0","id":30,"method":"textDocument/definition","params":{"textDocument":{"uri":"$ROOT/shapes.kpp"},"position":{"line":42,"character":34}}}
+{"jsonrpc":"2.0","id":31,"method":"textDocument/hover","params":{"textDocument":{"uri":"$ROOT/shapes.kpp"},"position":{"line":42,"character":34}}}
+{"jsonrpc":"2.0","id":32,"method":"textDocument/semanticTokens/full","params":{"textDocument":{"uri":"$ROOT/shapes.kpp"}}}
 {"jsonrpc":"2.0","id":11,"method":"shutdown"}
 {"jsonrpc":"2.0","method":"exit"}

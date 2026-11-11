@@ -56,7 +56,7 @@
           "beginCaptures": { "1": { "name": "keyword.other.kpp-word.kpp" } },
           "patterns": [{ "name": "keyword.other.kpp-word.kpp", "match": "\\b(?:depends|tags)\\b" }]
         },
-        { "name": "keyword.other.kpp-word.kpp", "match": "\\b(?:implicit|both_const|class_const|accumulate|when|This)\\b" },
+        { "name": "keyword.other.kpp-word.kpp", "match": "\\b(?:implicit|both_const|class_const|accumulate|when|This|super)\\b" },
         { "name": "keyword.other.kpp-word.kpp", "match": "\\bimport\\b(?=\\s*\")" },
         {
           "match": "(?<==)\\s*\\b(caller)\\b(?=\\s*[,)])",

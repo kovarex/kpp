@@ -31,3 +31,14 @@ i32 main()
   std::println(shape.area());
   return 0;
 }
+
+// `super`, built in (design.md 23f): the class's first base, colored as a kpp word.
+struct Counter
+{
+  i32 count() const { return 1; }
+};
+
+struct Twice : Counter
+{
+  i32 count() const { return 2 * super::count(); }
+};
