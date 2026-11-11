@@ -35,7 +35,8 @@ only the choice of kpp's arguments.
 | `--opt-level N` | clang's `-O` for an optimized build's modules and its link: 2 (the default) or 3 |
 | `--lib F` | passed to the link: a `.lib`, `-lname`, `-Wl,/OPT`, a `.res` |
 | `--cinclude D` | a directory searched by the C headers the code imports |
-| `--clang-flags F` | more flags for clang's compile of the modules (`-fsanitize=address`) |
+| `--clang-flags F` | more flags for clang's compile of the modules |
+| `--sanitize L` | clang's sanitizers, `address` or `thread` ("Sanitizers" below); `config::sanitizeAddress` and `config::sanitizeThread` say which |
 | `--incremental-link` | debug builds only: link.exe `/INCREMENTAL`, so the next link redoes only changed objects; the modules have no section per function (the link keeps every function) |
 | `--file-prefix-map FROM=TO` | the source paths the program's text holds (an assertion's message, a `CallerLocation`'s file) start with TO in place of the directory FROM, `/` between names; diagnostics and debug info keep theirs. kpp's release and final builds pass the standard library's as `stdlib`, each kpp library's as its name, and the project's as nothing (`src/main.kpp`), so that a release binary holds no path of the machine that built it |
 | `--no-inline` | kpp emits no trivial function into its callers (a diagnostic tool; inlining is on by default) |
@@ -126,6 +127,35 @@ new[], the C runtime's strdup) must return the block rpmalloc's heap of that thr
 next. Its last line is `allocator: rpmalloc 1.4.5`, or `allocator: not rpmalloc 1.4.5: ...`
 naming the ones that went elsewhere, with exit code 1. run_tests' project test and CI's Linux
 jobs run it. A build with the override taken out fails it on all six.
+
+**Sanitizers (2026-11-11).** `--sanitize address` builds with AddressSanitizer: every load and
+store of kpp's code is checked, and a use after free, a heap or stack overflow or a use after return
+stops the program with ASan's report and exit code 1. `--sanitize thread` builds with ThreadSanitizer,
+for Linux only (clang has no runtime for Windows): an error for another target, never a build without
+it. kpp writes `sanitize_address` (or `sanitize_thread`) on every function it defines and passes
+`-fsanitize=...` to clang's compile and link. The attribute is what clang's instrumentation looks for:
+clang's front end adds it to C++, and kpp's IR had none, so until 2026-11-11 `--clang-flags
+-fsanitize=address` (with `--lib -fsanitize=address`) linked ASan's allocator alone, which finds a
+double free and nothing that reads or writes. clang's `-fsanitize=undefined` does nothing on kpp's IR
+at all: UBSan's checks are written by clang's front end, not by an LLVM pass (kpp's own checks are
+the plan: the sanitizer proposal, https://claude.ai/artifact/QqDrHdBo5Yxba87MjicSmY).
+- The sanitizer is part of each module's cache key (it goes with `--clang-flags`), and a sanitized
+  build is clang's: the back end in kpp steps aside, as for `--clang-flags`.
+- Windows (MSVC): ASan is linked statically, with `/NOIMPLIB /NOEXP` (its runtime exports its
+  interface from the executable, and link.exe would write an import library beside it on every
+  build). windows-gnu: MinGW-w64's ASan is a DLL only, so kpp copies llvm-mingw's
+  `libclang_rt.asan_dynamic-x86_64.dll`, `libc++.dll` and `libunwind.dll` beside the executable.
+  Linux: clang links it statically (Ubuntu's clang-19 has it in libclang-rt-19-dev). FreeBSD and
+  macOS: an error, kpp's toolchain has no runtime for them.
+- C libraries kpp compiles and the prebuilt libraries it links are not instrumented (a
+  configuration's `cFlag("-fsanitize=address")` adds kpp's C libraries); their memory still comes
+  from ASan's malloc.
+- A configuration in build.kpp: `project.configuration("asan", "debug").sanitize("address");`. Such a
+  configuration never links incrementally (link.exe's /INCREMENTAL and ASan's runtime do not go
+  together).
+- Measured on the game's tests (tests.cmd, factorio-in-kpp 6eb91726a, 16 shards, one round each,
+  clang's back end both): the build 17 s debug, 31 s with ASan; the run 72 s, 191 s; factorio-test.exe
+  144 MB, 410 MB; 9481 tests passed both ways, with no ASan report.
 
 **Programs describe their builds in .cmd scripts.** `programs/factorio/link-settings.cmd` sets
 `KPP`, `CINC` (8 `--cinclude`) and `LIBS` (19 libraries of the game's C++ build, 21 Windows
@@ -771,6 +801,7 @@ void configure(Cell& cell)
     incremental link;
   - `debugInfo`: line tables and a PDB (Linux and FreeBSD: DWARF; an optimized build's in NAME.debug beside the executable, which keeps a .gnu_debuglink to it);
   - `clangFlag(F)` (kpp `--clang-flags`) and `argument(OPTION)` (any kpp option);
+  - `sanitize(NAME)`: a sanitizer, `address` or `thread` (kpp `--sanitize`, "Sanitizers" above);
   - `cFlag(F)`: one more flag for its C libraries' compiles, after kpp's own (clang-cl's, or clang's
     for windows-gnu). A configuration with C flags builds its C libraries in a directory of those
     flags' own, `build\clib\flags-HASH`, which configurations with the same flags share: building it

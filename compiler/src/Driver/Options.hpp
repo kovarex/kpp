@@ -77,7 +77,9 @@
     bool keepGoing = false;        // --keep-going: compile and link what codegen emitted despite its errors
     bool stubMissing = false;      // --stub-missing (with --keep-going): what was left out aborts with its name when called
     bool noInline = false;         // --no-inline: every call stays a call (no trivial callee emitted in its caller)
-    std::string clangFlags;        // --clang-flags: more flags for compiling the modules (-fsanitize=address)
+    std::string clangFlags;        // --clang-flags: more flags for compiling the modules
+    bool sanitizeAddress = false;  // --sanitize address: AddressSanitizer (every function kpp defines checked, its runtime linked)
+    bool sanitizeThread = false;   // --sanitize thread: ThreadSanitizer (Linux)
     bool incrementalLink = false;  // --incremental-link: a debug build's link redoes only the objects that changed
     bool deferLink = false;        // --defer-link: the link command written for kpp to run (Project/Build.cpp), not run
     bool verifyIncremental = false; // --verify-incremental: a compile server's build checked against one from scratch (server.cpp);

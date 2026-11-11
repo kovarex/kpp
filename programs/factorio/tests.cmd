@@ -14,8 +14,8 @@ rem build's: 9006 tests passed (2026-10-29). `tests.cmd --baseline` runs the C++
 rem C:\Factorio\bin\Releasex64vs2022\factorio-test.exe the same way (its own write directory
 rem kpp\tests-baseline\run) to measure that again. A stub or a failed assertion ends the run where it
 rem is reached: suites.py runs the built binary one suite per process instead, and crashes.py tallies
-rem what stopped each suite. `tests.cmd --asan` builds with AddressSanitizer (kpp's --clang-flags
-rem -fsanitize=address, the ASan runtime linked) into kpp\tests-asan\factorio-test.exe and runs it
+rem what stopped each suite. `tests.cmd --asan` builds with AddressSanitizer (kpp's --sanitize address,
+rem every load and store checked; docs/build.md, "Sanitizers") into kpp\tests-asan\factorio-test.exe and runs it
 rem with the runtime's directory (VS 2022's clang 19) on PATH; to run that binary with suites.py, put
 rem the directory on PATH too. The game's own signal handler reports a segfault before ASan can, so a
 rem read through a wild pointer still shows only as "Received SIGSEGV"; a use after free or an
@@ -63,7 +63,7 @@ if %BASELINE%==1 set OUT=%HERE%kpp\tests-baseline
 if %BASELINEDEBUG%==1 set OUT=%HERE%kpp\tests-baseline-debug
 set SANITIZE=
 if %ASAN%==1 set OUT=%HERE%kpp\tests-asan
-if %ASAN%==1 set SANITIZE=--clang-flags -fsanitize=address --lib -fsanitize=address
+if %ASAN%==1 set SANITIZE=--sanitize address
 if %ASAN%==1 set "PATH=%ASANRUNTIME%;%PATH%"
 if %RELEASE%==1 set OUT=%HERE%kpp\tests-release
 if %RELEASE%==1 set SANITIZE=%SANITIZE% --release

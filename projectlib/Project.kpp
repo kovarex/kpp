@@ -26,6 +26,7 @@ struct Configuration
   std::Optional<bool> debugInfo;  // line tables, in a PDB (Linux, FreeBSD: DWARF, a release build's in NAME.debug) (kpp --debug-info)
   std::Vector<std::String> configs;    // config:: constants, NAME=VALUE (kppConfig)
   std::Vector<std::String> clangFlags; // kpp's --clang-flags, joined by blanks
+  std::Vector<std::String> sanitizers; // kpp's --sanitize: address, thread (docs/build.md, "Sanitizers")
   std::Vector<std::String> cFlags;     // the C libraries' compiles, after kpp's own flags (clang-cl's, or clang's for windows-gnu)
   std::Vector<std::String> arguments;  // more kpp options, one per entry
 
@@ -34,6 +35,7 @@ struct Configuration
   void config(std::StringView name, const char* value) { kppConfig(this.configs, name, value); }
   void config(std::StringView name, std::StringView value) { kppConfig(this.configs, name, value); }
   void clangFlag(std::StringView flag) { this.clangFlags.push_back(flag); }
+  void sanitize(std::StringView sanitizer) { this.sanitizers.push_back(sanitizer); }
   void cFlag(std::StringView flag) { this.cFlags.push_back(flag); }
   void argument(std::StringView option) { this.arguments.push_back(option); }
 };
@@ -589,6 +591,7 @@ void kppResolve(const Project& project, const Configuration& configuration, Conf
       resolved.debugInfo = c.debugInfo;
     kppAppend(resolved.configs, c.configs);
     kppAppend(resolved.clangFlags, c.clangFlags);
+    kppAppend(resolved.sanitizers, c.sanitizers);
     kppAppend(resolved.cFlags, c.cFlags);
     kppAppend(resolved.arguments, c.arguments);
   }
@@ -602,6 +605,7 @@ void kppConfigurationLines(std::String& out, const Project& project, const Confi
   kppConfigs(out, "project", project.configs);
   kppConfigs(out, "configuration", c.configs);
   kppLines(out, "clang-flag", c.clangFlags);
+  kppLines(out, "sanitize", c.sanitizers);
   kppLines(out, "c-flag", c.cFlags);
 }
 

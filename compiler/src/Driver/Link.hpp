@@ -12,6 +12,7 @@
 
 
   std::string linkFlags(const Options& options, bool wideEntry);
+  void placeSanitizerRuntime(const Options& options);
 
 
   // What follows the link of an optimized ELF build with --debug-info (` && llvm-objcopy ...`): its

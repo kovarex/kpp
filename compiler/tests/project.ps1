@@ -33,7 +33,7 @@ function Kpp([string[]]$arguments)
 
 # The sections, each started as `project.ps1 -Section NAME`, its output kept and shown in this order,
 # its exit code its failures; one that stops on an error of its own (not a Fail) is a failure too.
-$sections = 'basic', 'clibs', 'libraries', 'syslibs', 'matrix', 'outside', 'runfile', 'measure', 'paths', 'readonly', 'linkinputs', 'pch'
+$sections = 'basic', 'clibs', 'libraries', 'syslibs', 'matrix', 'sanitize', 'outside', 'runfile', 'measure', 'paths', 'readonly', 'linkinputs', 'pch'
 function Run([string]$name) { return $Section -eq $name }
 if (-not $Section)
 {
@@ -607,6 +607,32 @@ if (Run 'syslibs')
     Set-Content 'build.kpp' ($convApp -replace '(?m)^  app\.argument.*\r?\n', '')
     $output = (Kpp @('--no-server')) -join "`n"
     if ($code -eq 0 -or $output -notmatch 'conv\.h') { Fail "without --ext .kpp, the library's C header is a source (an error in conv.h): exit $code`n$output" }
+  }
+  finally { Pop-Location }
+}
+# A configuration with a sanitizer (docs/build.md, "Sanitizers"): build.kpp's sanitize("address")
+# on a configuration based on debug reaches kpp as --sanitize address. Its program reads
+# config::sanitizeAddress (true there, false in debug), and a read after delete stops it with
+# AddressSanitizer's report and exit code 1, where the debug build reads the freed value.
+if (Run 'sanitize')
+{
+  $sanitize = Join-Path $work 'sanitize'
+  New-Item -ItemType Directory -Force "$sanitize\src" | Out-Null
+  Push-Location $sanitize
+  try
+  {
+    Set-Content 'src\main.kpp' "int main(int argc, char** argv)`n{`n  std::println(`"asan `", config::sanitizeAddress);`n  int* block = new int[4];`n  block[1] = 7;`n  delete[] block;`n  return argc > 1 ? block[argc - 1] - 7 : 0;`n}"
+    Set-Content 'build.kpp' "void build(Project& project)`n{`n  project.executable(`"app`", {`"src`"});`n  project.configuration(`"asan`", `"debug`").sanitize(`"address`");`n}"
+    foreach ($case in @(@('debug', 'asan false'), @('asan', 'asan true')))
+    {
+      $output = Kpp @($case[0], '--no-server', '--run')
+      if ($code -ne 0 -or $output[-1] -ne $case[1]) { Fail "kpp $($case[0]) --run printed '$($output[-1])', not '$($case[1])'`n$($output -join "`n")" }
+    }
+    $ErrorActionPreference = 'Continue'
+    $report = & 'build\asan\app.exe' 'freed' 2>&1 | ForEach-Object { "$_" }
+    $asanCode = $LASTEXITCODE
+    $ErrorActionPreference = 'Stop'
+    if ($asanCode -ne 1 -or ($report -join "`n") -notmatch 'AddressSanitizer: heap-use-after-free') { Fail "build\asan\app.exe freed: exit $asanCode, no heap-use-after-free report`n$($report -join "`n")" }
   }
   finally { Pop-Location }
 }

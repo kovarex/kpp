@@ -1,0 +1,4 @@
+// spec: config::sanitizeAddress is kpp's own (`--sanitize`): a program may not declare it
+// error: config::sanitizeAddress is kpp's own (--release, --target, --tests, --sanitize): it is not declared in source
+config bool sanitizeAddress = false;
+int main() { return 0; }

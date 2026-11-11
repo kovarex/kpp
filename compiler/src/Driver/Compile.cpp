@@ -159,6 +159,27 @@ int compile(int argc, char** argv)
       options.noInline = true;
     else if (arg == "--clang-flags" && i + 1 < argc)
       options.clangFlags = argv[++i];
+    else if (arg == "--sanitize" && i + 1 < argc)
+    {
+      std::string list = argv[++i];
+      for (size_t from = 0;;)
+      {
+        size_t comma = list.find(',', from);
+        std::string name = list.substr(from, comma == std::string::npos ? std::string::npos : comma - from);
+        if (name == "address")
+          options.sanitizeAddress = true;
+        else if (name == "thread")
+          options.sanitizeThread = true;
+        else
+        {
+          fprintf(stderr, "--sanitize %s: '%s' is not a sanitizer kpp has: address or thread\n", list.c_str(), name.c_str());
+          return 2;
+        }
+        if (comma == std::string::npos)
+          break;
+        from = comma + 1;
+      }
+    }
     else if (arg == "--lto" && i + 1 < argc)
     {
       std::string mode = argv[++i];
@@ -614,6 +635,43 @@ int compile(int argc, char** argv)
     {
       fprintf(stderr, "--incremental-link is link.exe's, for --target windows\n");
       return 2;
+    }
+    // Sanitizers (docs/build.md, "Sanitizers"): clang instruments only the functions that carry the
+    // sanitizer's attribute, which forTarget writes on every definition. -fsanitize alone (--clang-flags,
+    // before 2026-11-11) linked AddressSanitizer's allocator and checked no load or store of kpp's code.
+    if (options.sanitizeAddress && options.sanitizeThread)
+    {
+      fprintf(stderr, "--sanitize address,thread: AddressSanitizer and ThreadSanitizer do not go together (clang refuses both)\n");
+      return 2;
+    }
+    if (options.sanitizeThread && options.target.os != Target::Os::Linux)
+    {
+      fprintf(stderr, "--sanitize thread: ThreadSanitizer has a runtime for Linux only, not for --target %s\n", options.target.name.c_str());
+      return 2;
+    }
+    if (options.sanitizeAddress && options.target.os != Target::Os::Windows && options.target.os != Target::Os::Linux)
+    {
+      fprintf(stderr, "--sanitize address: AddressSanitizer's runtime for --target %s is not in kpp's toolchain (Windows' and Linux' are)\n",
+              options.target.name.c_str());
+      return 2;
+    }
+    for (const char* name : {"sanitizeAddress", "sanitizeThread"})
+      if (options.configValues.count(name))
+      {
+        fprintf(stderr, "--config %s: it is --sanitize's\n", name);
+        return 2;
+      }
+    options.configValues["sanitizeAddress"] = parseConfigValue(options.sanitizeAddress ? "true" : "false");
+    options.configValues["sanitizeThread"] = parseConfigValue(options.sanitizeThread ? "true" : "false");
+    if (options.sanitizeAddress || options.sanitizeThread)
+    {
+      std::string flag = options.sanitizeAddress ? "-fsanitize=address" : "-fsanitize=thread";
+      options.clangFlags += (options.clangFlags.empty() ? "" : " ") + flag;
+      options.libs.push_back(flag);
+      // (AddressSanitizer's runtime exports its interface from the executable, so link.exe would write an
+      // import library and an .exp beside it, and say so on every build)
+      if (options.target.msvc())
+        options.libs.push_back("-Wl,/NOIMPLIB,/NOEXP");
     }
     // config:: constants declared in source with their defaults (config.cpp), read before any file is
     // parsed: the parser's declaration-scope if constexpr, when and requires read their values.

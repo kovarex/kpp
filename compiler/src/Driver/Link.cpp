@@ -42,6 +42,38 @@ void requireLld()
   codegenExit = 1;
 }
 
+// --sanitize address for windows-gnu: MinGW-w64's AddressSanitizer is a DLL only (llvm-mingw's
+// libclang_rt.asan_dynamic-x86_64.dll, beside its clang, which needs that toolchain's libc++.dll and
+// libunwind.dll), so the executable gets a copy of each beside it and runs from anywhere. MSVC's and
+// Linux's runtimes are linked statically: nothing to place.
+void placeSanitizerRuntime(const Options& options)
+{
+  if (!options.sanitizeAddress || !options.target.gnu || options.exe.empty())
+    return;
+  std::error_code ec;
+  std::filesystem::path clang = std::filesystem::canonical(clangPath(), ec);
+  std::filesystem::path into = std::filesystem::absolute(options.exe, ec).parent_path();
+  std::filesystem::create_directories(into, ec);
+  for (const char* name : {"libclang_rt.asan_dynamic-x86_64.dll", "libc++.dll", "libunwind.dll"})
+  {
+    std::filesystem::path from = clang.parent_path() / name;
+    if (!std::filesystem::exists(from, ec))
+    {
+      fprintf(stderr, "error: --sanitize address for %s needs AddressSanitizer's runtime, %s, beside %s, which has none\n", options.target.name.c_str(), name,
+              clang.string().c_str());
+      codegenExit = 1;
+      return;
+    }
+    std::filesystem::copy_file(from, into / name, std::filesystem::copy_options::update_existing, ec);
+    if (ec)
+    {
+      fprintf(stderr, "error: cannot copy %s to %s: %s\n", from.string().c_str(), into.string().c_str(), ec.message().c_str());
+      codegenExit = 1;
+      return;
+    }
+  }
+}
+
 std::string linkFlags(const Options& options, bool wideEntry)
 {
   if (options.target.gnu || !options.target.windows())

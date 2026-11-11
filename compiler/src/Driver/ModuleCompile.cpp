@@ -65,15 +65,18 @@ std::string withoutComdats(const std::string& text)
   return out;
 }
 
-std::string withUnwindTables(const std::string& text);
+std::string withUnwindTables(const std::string& text, const char* attributes);
 
-// A module's text as its target takes it: every function with unwind tables, and no COMDAT on Mach-O.
-std::string forTarget(const std::string& text, const Target& target)
+// A module's text as its target takes it: every function with unwind tables (and the sanitizer's
+// attribute, without which clang's instrumentation leaves a function out: --sanitize), and no COMDAT
+// on Mach-O.
+std::string forTarget(const std::string& text, const Options& options)
 {
-  return target.mac() ? withoutComdats(withUnwindTables(text)) : withUnwindTables(text);
+  const char* attributes = options.sanitizeAddress ? " uwtable sanitize_address" : options.sanitizeThread ? " uwtable sanitize_thread" : " uwtable";
+  return options.target.mac() ? withoutComdats(withUnwindTables(text, attributes)) : withUnwindTables(text, attributes);
 }
 
-std::string withUnwindTables(const std::string& text)
+std::string withUnwindTables(const std::string& text, const char* attributes)
 {
   std::string out;
   out.reserve(text.size() + text.size() / 64);
@@ -97,7 +100,7 @@ std::string withUnwindTables(const std::string& text)
     if (close == std::string::npos)
       continue; // (no definition kpp writes)
     out.append(text, from, close + 1 - from);
-    out += " uwtable";
+    out += attributes;
     from = close + 1;
   }
   out.append(text, from, std::string::npos);
@@ -695,9 +698,10 @@ void runCodegen(Build& build)
   if (cg.modules.empty())
   {
     std::string llPath = options.emitLLVM.empty() ? options.exe + ".ll" : options.emitLLVM;
-    cg.ir = forTarget(cg.ir, options.target);
+    cg.ir = forTarget(cg.ir, options);
     if (!writeFile(llPath, cg.ir) || options.exe.empty() || stop)
       return;
+    placeSanitizerRuntime(options);
     std::string command = "\"" + clang + "\" " + level + targetFlags(options) + " -w " + compileFlags + " \"" + llPath + "\" -o \"" + options.exe + "\" " +
                           (fullLTO ? "-fuse-ld=lld " + ltoLinkFlags(options) + " " : std::string()) + linkFlags(options, wideEntry(parsed, symbols, options.target)) +
                           splitDebugInfoCommand(options);
@@ -779,7 +783,7 @@ void runCodegen(Build& build)
     }
     std::string hashText;
     if (!inProcess)
-      cg.modules[k] = forTarget(cg.modules[k], options.target); // (before its hash: an object made without them is made again)
+      cg.modules[k] = forTarget(cg.modules[k], options); // (before its hash: an object made without them is made again)
     if (unchangedObject(k, cg.modules[k], level, hashText))
       return;
     // A text that changed only in its debug lines (an edit moved them): the kept object's line tables
@@ -937,6 +941,7 @@ void runCodegen(Build& build)
     response += "-fuse-ld=lld\n-flto\n" + optLevel + "\n";
   for (const std::string& flag : splitFlags(ltoLinkFlags(options)))
     response += flag + "\n";
+  placeSanitizerRuntime(options);
   for (const std::string& flag : splitFlags(linkFlags(options, wideEntry(parsed, symbols, options.target))))
   {
     // A library under "C:\Program Files (x86)\..." (the Windows SDK's) stays one argument.

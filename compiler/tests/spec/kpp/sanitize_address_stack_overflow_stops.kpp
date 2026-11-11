@@ -1,0 +1,22 @@
+// spec: `--sanitize address` checks a local array's bounds: a write one past its end stops the program with AddressSanitizer's report (exit code 3, from a death callback the program gives ASan's runtime)
+// kpp: --sanitize address
+// run:
+// exit: 3
+// AddressSanitizer's runtime calls this as it stops the program, after its report: exit code 3 says it stopped it.
+extern "C" void __asan_set_death_callback(void (*callback)());
+extern "C" void _exit(i32 code);
+void stoppedBySanitizer() { _exit(3); }
+
+int fill(int count)
+{
+  int values[4];
+  for (int i = 0; i < count; ++i)
+    values[i] = i;
+  return values[0];
+}
+
+int main(int argc, char** argv)
+{
+  __asan_set_death_callback(stoppedBySanitizer);
+  return fill(argc + 4);
+}

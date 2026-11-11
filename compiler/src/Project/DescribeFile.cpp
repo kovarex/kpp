@@ -75,6 +75,7 @@ namespace projects
          configurationOf(r).configs.push_back(blank == std::string::npos ? "" : v.substr(blank + 1));
        }},
       {"clang-flag", InConfiguration | InProgram, [](Reading& r, const std::string& v) { configurationOf(r).clangFlags.push_back(v); }},
+      {"sanitize", InConfiguration | InProgram, [](Reading& r, const std::string& v) { configurationOf(r).sanitizers.push_back(v); }},
       {"c-flag", InConfiguration | InProgram, [](Reading& r, const std::string& v) { configurationOf(r).cFlags.push_back(v); }},
       {"argument", InConfiguration | InProgram, [](Reading& r, const std::string& v) { configurationOf(r).arguments.push_back(v); }},
       // A cell's and a kpp library's uses.

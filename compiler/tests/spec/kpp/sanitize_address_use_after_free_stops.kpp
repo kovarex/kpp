@@ -1,0 +1,17 @@
+// spec: `--sanitize address` checks every load and store of kpp's code: a read of a block after its delete stops the program with AddressSanitizer's report (exit code 3, from a death callback the program gives ASan's runtime). clang instruments only a function that carries `sanitize_address`, which kpp writes on every definition: until 2026-11-11 `--clang-flags -fsanitize=address` linked ASan's allocator alone, and the read gave the freed value, silently
+// kpp: --sanitize address
+// run:
+// exit: 3
+// AddressSanitizer's runtime calls this as it stops the program, after its report: exit code 3 says it stopped it.
+extern "C" void __asan_set_death_callback(void (*callback)());
+extern "C" void _exit(i32 code);
+void stoppedBySanitizer() { _exit(3); }
+
+int main(int argc, char** argv)
+{
+  __asan_set_death_callback(stoppedBySanitizer);
+  int* block = new int[4];
+  block[1] = 7;
+  delete[] block;
+  return block[argc] == 7 ? 0 : 4;
+}

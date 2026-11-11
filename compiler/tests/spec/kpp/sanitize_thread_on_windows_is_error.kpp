@@ -1,0 +1,6 @@
+// spec: `--sanitize thread` for a Windows target is refused: ThreadSanitizer has no runtime there (clang's is Linux's, FreeBSD's and macOS's; kpp offers Linux's)
+// target: windows (ThreadSanitizer's runtime is not there)
+// kpp: --sanitize thread
+// exit: 2
+// error: --sanitize thread: ThreadSanitizer has a runtime for Linux only
+int main() { return 0; }

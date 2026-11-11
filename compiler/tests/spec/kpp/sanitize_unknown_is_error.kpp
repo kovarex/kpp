@@ -1,0 +1,5 @@
+// spec: `--sanitize` takes address or thread; another name is refused, not ignored (undefined: kpp's own checks, not built yet)
+// kpp: --sanitize address,undefined
+// exit: 2
+// error: --sanitize address,undefined: 'undefined' is not a sanitizer kpp has: address or thread
+int main() { return 0; }

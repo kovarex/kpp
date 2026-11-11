@@ -67,6 +67,7 @@ namespace projects
     std::string name;
     bool optimize = false, debugInfo = false;
     std::vector<std::string> configs, clangFlags, arguments;
+    std::vector<std::string> sanitizers; // kpp's --sanitize (build.kpp's sanitize)
     std::vector<std::string> cFlags; // its C libraries' compiles, after kpp's own flags (build.kpp's cFlag)
     std::vector<std::string> configFrom; // per config, who set it: project, configuration, target, cell, option
   };

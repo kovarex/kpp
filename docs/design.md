@@ -5166,6 +5166,19 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   it is missing or wrong, kpp says what to have, where it comes from and how to give it (stage 8's M0,
   below).
 
+## Sanitizers and debug checks (2026-11-11)
+kovarex, 2026-11-11, on the sanitizer proposal (https://claude.ai/artifact/QqDrHdBo5Yxba87MjicSmY): "can we
+just have it, and create one or two extra debug config targets for factorio with these checks on?"
+- Built: `--sanitize address` (AddressSanitizer, Windows and Linux) and `--sanitize thread`
+  (ThreadSanitizer, Linux only), a configuration's `sanitize(NAME)` in build.kpp, and the constants
+  `config::sanitizeAddress` and `config::sanitizeThread` (build.md, "Sanitizers"). A sanitizer kpp
+  cannot give for a target is an error, never a build without it.
+- Next, in the proposal's order: kpp's own undefined-behaviour checks (`--sanitize undefined`: signed
+  overflow, division by zero, shifts, float to integer out of range, through the assert hook, so no
+  runtime library), bounds checks in the standard library's containers in debug builds, and
+  MSVC's debug fills (0xCC in locals without an initializer, 0xCD/0xDD/0xFD around kpp's heap blocks).
+  Whether the last two are on in every debug build waits for their measurements on the game's tests.
+
 ## kpp format (decided 2026-11-08, kovarex's answers to thread F's design)
 
 `kpp format` lays out kpp source in kpp's style, built on the compiler's lexer and parser (the parser's

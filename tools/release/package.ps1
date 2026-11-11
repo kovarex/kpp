@@ -145,6 +145,10 @@ foreach ($file in 'clang.exe', 'clang-19.exe', 'ld.lld.exe', 'llvm-ar.exe', 'llv
 CopyTree "$llvmMingw\include" "$kpp\include"
 CopyTree "$llvmMingw\lib\clang\19\include" "$kpp\lib\clang\19\include"
 Copy-Item "$llvmMingw\lib\clang\19\lib\windows\libclang_rt.builtins-x86_64.a" "$kpp\lib\clang\19\lib\windows"
+# AddressSanitizer, for kpp --sanitize address (docs/build.md, "Sanitizers"): its libraries, and its DLL,
+# which kpp copies beside a sanitized executable (MinGW-w64's ASan is a DLL only).
+Copy-Item "$llvmMingw\lib\clang\19\lib\windows\libclang_rt.asan*-x86_64*" "$kpp\lib\clang\19\lib\windows"
+Copy-Item "$llvmMingw\bin\libclang_rt.asan_dynamic-x86_64.dll" "$kpp\bin"
 CopyTree "$llvmMingw\x86_64-w64-mingw32\lib" "$kpp\x86_64-w64-mingw32\lib"
 CopyTree "$llvmMingw\x86_64-w64-mingw32\share\mingw32" "$kpp\x86_64-w64-mingw32\share\mingw32"
 Copy-Item "$llvmMingw\LICENSE.TXT" "$kpp\LICENSE-llvm-mingw.txt"

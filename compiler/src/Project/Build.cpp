@@ -121,7 +121,8 @@ namespace projects
     // toolchain's lld links whole, and so does ld.lld for Linux and FreeBSD. (A list, `msvc,bundled`,
     // is the one of it this machine has.)
     std::string toolchain = toolchainOf(p, request);
-    if (!p.optimize && targetPlatform(p, request) == "windows" && toolchain != "bundled" &&
+    // (not with a sanitizer: AddressSanitizer's runtime and link.exe's incremental link do not go together)
+    if (!p.optimize && p.sanitizers.empty() && targetPlatform(p, request) == "windows" && toolchain != "bundled" &&
         (toolchain == "msvc" || (selectToolchain(compilerPath(), toolchain).empty() && !bundledToolchain())))
       args.push_back("--incremental-link");
     for (const std::string& c : p.configs)
@@ -131,6 +132,12 @@ namespace projects
       clangFlags += (clangFlags.empty() ? "" : " ") + f;
     if (!clangFlags.empty())
       args.push_back("--clang-flags"), args.push_back(clangFlags);
+    std::string sanitizers;
+    for (const std::string& s : p.sanitizers)
+      if (("," + sanitizers + ",").find("," + s + ",") == std::string::npos)
+        sanitizers += (sanitizers.empty() ? "" : ",") + s;
+    if (!sanitizers.empty())
+      args.push_back("--sanitize"), args.push_back(sanitizers);
     for (const std::string& a : p.arguments)
       args.push_back(a);
     // The C import's include directories, another platform's left out (cInclude(path, Platform),

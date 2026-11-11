@@ -5,3 +5,4 @@
 # A known failure is reported as "known"; one that starts working fails the run until its line goes,
 # and so does a line naming no snippet. Pending snippets are known failures without a line here.
 # From CI run 41650507690 (2026-11-03, H's lists), less what has been fixed since.
+build kpp/sanitize_config_constants  --sanitize address: kpp has no AddressSanitizer runtime for FreeBSD (an error, not a link without it)
