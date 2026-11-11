@@ -13,7 +13,7 @@ struct Finder
   constexpr static int typeIndex() { return std::isSame<TypeToFind, Head> ? int(sizeof...(Tail) + 1) : Finder::typeIndex<TypeToFind, Tail...>(); }
 
   template<size_t Index>
-  static int assignIf(int x) { return -1; }
+  static int assignIf([[maybe_unused]] int x) { return -1; }
 
   template<size_t Index, class Head, class... Tail>
   static int assignIf(int x) { return x == int(Index) ? int(Index) : Finder::assignIf<Index + 1, Tail...>(x); }

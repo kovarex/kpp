@@ -3,7 +3,7 @@
 template<typename T> requires std::isIntegral<T>
 T twice(T v) { return v * 2; }
 template<typename T> requires (!std::isIntegral<T>)
-std::String twice(T v) { return std::String("not integral"); }
+std::String twice([[maybe_unused]] T v) { return std::String("not integral"); }
 int main()
 {
   std::println(twice(21), " ", twice(1.5));

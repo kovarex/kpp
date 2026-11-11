@@ -4,7 +4,7 @@ template<int N> struct G : G<N + 1> { };
 template<class T> struct Box { T v = 7; };
 int main()
 {
-  G<0> g;
+  [[maybe_unused]] G<0> g;
   Box<int> b;
   std::println(b.v);
   return 0;
@@ -16,7 +16,7 @@ template<> struct G<3> { };
 template<class T> struct Box { T v = 7; };
 int main()
 {
-  G<0> g;
+  [[maybe_unused]] G<0> g;
   Box<int> b;
   std::println(b.v);
   return 0;

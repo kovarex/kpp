@@ -52,6 +52,6 @@ int main()
   try { Defaulted d; } catch (...) { std::println("| defaulted"); }
   try { MemInit m; } catch (...) { std::println("| mem-init"); }
   try { FromBase f; } catch (...) { std::println("| from base"); }
-  try { Implicit* p = new Implicit(); } catch (...) { std::println("| new implicit"); }
+  try { [[maybe_unused]] Implicit* p = new Implicit(); } catch (...) { std::println("| new implicit"); }
   return 0;
 }

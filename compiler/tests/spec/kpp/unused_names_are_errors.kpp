@@ -1,0 +1,40 @@
+// spec: a local nothing uses, a local only ever assigned (`=`, `+=`, `++` as a statement), a parameter nothing uses and a lambda's capture nothing uses are errors (kovarex, 2026-11-11: thread D's survey of missing checks, item 1), in plain functions, lambdas, function templates and class templates' members, each once; `(void)x;` or [[maybe_unused]] keeps one (kpp/unused_names_kept_or_exempt)
+// kpp: --unused-checks
+// error: unused_names_are_errors.kpp:13: error: the parameter unusedParameter of compute is never used: use it, or keep it with `(void)unusedParameter;` or [[maybe_unused]]
+// error: unused_names_are_errors.kpp:15: error: the local never is never used: remove it, or keep it with `(void)never;` or [[maybe_unused]]
+// error: unused_names_are_errors.kpp:16: error: the local onlySet is assigned but never read: remove it, or keep it with `(void)onlySet;` or [[maybe_unused]]
+// error: unused_names_are_errors.kpp:18: error: the local counted is assigned but never read: remove it, or keep it with `(void)counted;` or [[maybe_unused]]
+// error: unused_names_are_errors.kpp:20: error: the local added is assigned but never read: remove it, or keep it with `(void)added;` or [[maybe_unused]]
+// error: unused_names_are_errors.kpp:24: error: the lambda captures captured and never uses it: remove it from the captures
+// error: unused_names_are_errors.kpp:24: error: the parameter q of the lambda is never used: use it, or keep it with `(void)q;` or [[maybe_unused]]
+// error: unused_names_are_errors.kpp:28: error: the parameter unusedInTemplate of pick is never used: use it, or keep it with `(void)unusedInTemplate;` or [[maybe_unused]]
+// error: unused_names_are_errors.kpp:33: error: the parameter unusedInMember of get is never used: use it, or keep it with `(void)unusedInMember;` or [[maybe_unused]]
+// error: unused_names_are_errors.kpp:34: error: the parameter i of operator[] is never used: use it, or keep it with `(void)i;` or [[maybe_unused]]
+int compute(int used, int unusedParameter)
+{
+  int never = 5;
+  int onlySet = 1;
+  onlySet = 2;
+  int counted = 0;
+  counted++;
+  int added = 0;
+  added += used;
+  int read = used + 1;
+  int captured = 3;
+  auto f = [captured](int p, int q) { return p; };
+  return read + f(1, 2);
+}
+template<class T>
+T pick(T value, int unusedInTemplate) { return value; }
+template<class T>
+struct Box
+{
+  T value{};
+  int get(int unusedInMember) const { return 1; }
+  T operator[](int i) const { return this.value; }
+};
+int main()
+{
+  Box<int> box;
+  return compute(1, 2) + pick(3, 4) + box.get(5) + box[0];
+}

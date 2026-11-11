@@ -1,6 +1,6 @@
 // spec: a program's own global function with a library function's parameters and another result is the program's: own `int toString(int)` (clang 101), no ambiguity with std::toString(int)
 // factorio: none yet; D's review of c5253532 (2026-11-09)
-int toString(int value)
+int toString([[maybe_unused]] int value)
 {
   return 101;
 }

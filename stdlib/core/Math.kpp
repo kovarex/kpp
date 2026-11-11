@@ -59,11 +59,11 @@ bool isinf(float value) { return value == value && value != 0.0f && value * 2.0f
 bool isfinite(double value) { return !isnan(value) && !isinf(value); }
 bool isfinite(float value) { return !isnan(value) && !isinf(value); }
 template<typename T> requires isIntegral<T>
-bool isnan(T value) { return false; }
+bool isnan([[maybe_unused]] T value) { return false; }
 template<typename T> requires isIntegral<T>
-bool isinf(T value) { return false; }
+bool isinf([[maybe_unused]] T value) { return false; }
 template<typename T> requires isIntegral<T>
-bool isfinite(T value) { return true; }
+bool isfinite([[maybe_unused]] T value) { return true; }
 
 // The sign bit: of a negative zero and of a NaN too (0.0 / 0.0 is a negative NaN on x86-64, so
 // std::signbit of it is true; a comparison never told it).

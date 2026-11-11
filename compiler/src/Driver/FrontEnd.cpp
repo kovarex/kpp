@@ -462,6 +462,7 @@ void runResolve(Build& build)
     global.enableAccessWarnings();
   setZeroNullWarnings(options.zeroNullWarnings); // (the walks' notes and codegen's)
   setIndentationWarnings(options.indentationWarnings);
+  setUnusedChecks(options.unusedChecks);
   setThisWarnings(options.thisWarnings);
   setImplicitUses(!options.implicitUses.empty());
   setThisReference(options.thisReference);

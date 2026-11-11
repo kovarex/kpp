@@ -3,10 +3,10 @@
 // error: function_defined_twice_is_error.kpp:5: error: the function twice is defined twice (first at line 4)
 int twice(int v) { return v; }
 int twice(int v) { return v + 1; }
-int wide(int v) { return 1; }
-int wide(long v) { return 2; }
-int narrow(char v) { return 1; }
-int narrow(signed char v) { return 2; }
+int wide([[maybe_unused]] int v) { return 1; }
+int wide([[maybe_unused]] long v) { return 2; }
+int narrow([[maybe_unused]] char v) { return 1; }
+int narrow([[maybe_unused]] signed char v) { return 2; }
 int declaredThenDefined(int v);
 int declaredThenDefined(int v) { return v; }
 int main()

@@ -20,16 +20,16 @@ constexpr int moved()
 struct Acc
 {
   int n = 0;
-  int operator<<(const Acc& o) const { return 1; }
-  int operator<<(Acc&& o) const { return 2; }
+  int operator<<([[maybe_unused]] const Acc& o) const { return 1; }
+  int operator<<([[maybe_unused]] Acc&& o) const { return 2; }
 };
 struct Fn
 {
-  int operator()(const Acc& a) const { return 10; }
-  int operator()(Acc&& a) const { return 20; }
+  int operator()([[maybe_unused]] const Acc& a) const { return 10; }
+  int operator()([[maybe_unused]] Acc&& a) const { return 20; }
 };
-int operator+(const Acc& a, const Acc& b) { return 100; }
-int operator+(const Acc& a, Acc&& b) { return 200; }
+int operator+([[maybe_unused]] const Acc& a, [[maybe_unused]] const Acc& b) { return 100; }
+int operator+([[maybe_unused]] const Acc& a, [[maybe_unused]] Acc&& b) { return 200; }
 constexpr int chosen()
 {
   Acc a;

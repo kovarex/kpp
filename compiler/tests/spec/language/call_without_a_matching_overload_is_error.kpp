@@ -7,22 +7,22 @@
 // error: call_without_a_matching_overload_is_error.kpp:38: error: no overload of shapes::area takes (Box)
 // error: call_without_a_matching_overload_is_error.kpp:39: error: no overload of describe takes (Box, int32)
 int k(int* p) { return *p; }
-int k(double* p) { return 2; }
+int k([[maybe_unused]] double* p) { return 2; }
 int pick(int a) { return a; }
-int pick(double a) { return 2; }
+int pick([[maybe_unused]] double a) { return 2; }
 namespace shapes
 {
   struct Box { int w = 1; };
   int area(int side) { return side * side; }
-  int area(double side) { return 3; }
+  int area([[maybe_unused]] double side) { return 3; }
   int describe(const Box& box) { return box.w; }
-  int describe(const Box& box, const char* name) { return 2; }
+  int describe([[maybe_unused]] const Box& box, [[maybe_unused]] const char* name) { return 2; }
 }
 struct Counter
 {
   int total() { return add("no"); }
   int add(int n) { return n; }
-  int add(double n) { return 2; }
+  int add([[maybe_unused]] double n) { return 2; }
 };
 int main()
 {

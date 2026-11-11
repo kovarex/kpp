@@ -4,7 +4,7 @@
 // error: fold_operators_differ_is_error.kpp:8: error: a fold expression's two operators must be the same ([expr.prim.fold] 3)
 // error: fold_operators_differ_is_error.kpp:9: error: a fold expression's two operators must be the same ([expr.prim.fold] 3)
 template<typename... Ts> int plusMinus(Ts... a) { return (a + ... - 1); }
-template<typename... Ts> int assigns(int r, Ts... a) { return (r += ... -= a); }
+template<typename... Ts> int assigns([[maybe_unused]] int r, Ts... a) { return (r += ... -= a); }
 template<typename... Ts> int commaPlus(Ts... a) { return (a , ... + 1); }
 template<typename... Ts> int plusComma(Ts... a) { return (a + ... , 1); }
 int main() { return 0; }

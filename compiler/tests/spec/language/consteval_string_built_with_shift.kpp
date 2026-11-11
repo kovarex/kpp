@@ -32,7 +32,7 @@ struct Holes
   }
   consteval void checkPieces(std::ContainerSize pieces) const { check(this.holes, int(pieces)); }
 };
-int count(Holes pattern, std::Text pieces) { return int(pieces.count); }
+int count([[maybe_unused]] Holes pattern, std::Text pieces) { return int(pieces.count); }
 static_assert(chainedLength() == 5);
 static_assert(throughReference() == 4);
 static_assert(check(2, 2) == 2);

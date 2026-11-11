@@ -4,7 +4,7 @@ struct Input {};
 struct Thing
 {
   int v = 0;
-  void load(Input& in) { this.v = 7; }
+  void load([[maybe_unused]] Input& in) { this.v = 7; }
 };
 struct Other
 {
@@ -13,12 +13,12 @@ struct Other
 struct WithArg
 {
   int v = 0;
-  void load(Input& in, int extra) { this.v = extra; }
+  void load([[maybe_unused]] Input& in, int extra) { this.v = extra; }
 };
 template<typename T, typename DeserialiserType, typename... Args>
 concept has_load = requires(T& result, DeserialiserType& input, Args&&... args) { result.load(input, std::forward<Args>(args)...); };
 template<class T, typename... Args>
-const char* how(T& result, Args&&... args)
+const char* how([[maybe_unused]] T& result, Args&&... args)
 {
   if constexpr (has_load<T, Input, Args&&...>)
     return "load";

@@ -121,16 +121,16 @@ struct Array<T, 0>
   ContainerSize size() const { return 0; }
   ContainerSize max_size() const { return 0; }
   bool empty() const { return true; }
-  T& operator[](ContainerSize index) { return *this.data(); }
-  const T& operator[](ContainerSize index) const { return *this.data(); }
+  T& operator[]([[maybe_unused]] ContainerSize index) { return *this.data(); }
+  const T& operator[]([[maybe_unused]] ContainerSize index) const { return *this.data(); }
 
-  T& at(ContainerSize index)
+  T& at([[maybe_unused]] ContainerSize index)
   {
     throwOutOfRange("Array::at: index out of range");
     return *this.data();
   }
 
-  const T& at(ContainerSize index) const
+  const T& at([[maybe_unused]] ContainerSize index) const
   {
     throwOutOfRange("Array::at: index out of range");
     return *this.data();

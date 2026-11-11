@@ -15,12 +15,12 @@ int main()
 {
   a() = 2;
   c() += 1;
-  int x = d();
+  [[maybe_unused]] int x = d();
   x = 9;
   std::println(global, " ", b());
   Box bx{5, 6};
   first(bx) = 50;
-  int y = second(bx);
+  [[maybe_unused]] int y = second(bx);
   y = 60;
   auto lam = [](Box& q) -> decltype(auto) { return (q.w); };
   lam(bx) += 1;
@@ -29,7 +29,7 @@ int main()
   r = 10;
   decltype(auto) p = (global);
   p += 1;
-  decltype(auto) copy = global;
+  [[maybe_unused]] decltype(auto) copy = global;
   copy = 100;
   std::println(global);
   return 0;

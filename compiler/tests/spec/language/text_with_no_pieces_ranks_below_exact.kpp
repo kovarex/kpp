@@ -1,12 +1,12 @@
 // spec: a Text parameter that takes no pieces ranks below an overload taking the same arguments without one: make(String) beside make(String&&, Text) given one String takes make(String) (C++ would call that pair ambiguous; design.md 14 decides it), and a Text taking pieces ranks as C's `...` per piece, so an exact overload wins and the Text one takes what no other does (`String String Exact Text IntText`)
 // factorio: PropertyItem's makeProperty(String value) beside makeProperty(String&& type, Text text), formerly (std::string&& type, const char* format, ...), after the converter's printf rewrite
 extern "C" import "stdio.h";
-void make(std::String value) { printf("String "); }
-void make(std::String&& type, std::Text text) { printf("Text "); }
-void put(std::String&& name, int value) { printf("Exact "); }
-void put(std::String&& name, std::Text text) { printf("Text "); }
-void pair(std::Text text) { printf("Text "); }
-void pair(int value, std::Text text) { printf("IntText "); }
+void make([[maybe_unused]] std::String value) { printf("String "); }
+void make([[maybe_unused]] std::String&& type, [[maybe_unused]] std::Text text) { printf("Text "); }
+void put([[maybe_unused]] std::String&& name, [[maybe_unused]] int value) { printf("Exact "); }
+void put([[maybe_unused]] std::String&& name, [[maybe_unused]] std::Text text) { printf("Text "); }
+void pair([[maybe_unused]] std::Text text) { printf("Text "); }
+void pair([[maybe_unused]] int value, [[maybe_unused]] std::Text text) { printf("IntText "); }
 int main()
 {
   make(std::String("a"));

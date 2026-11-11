@@ -2,12 +2,12 @@
 // factorio: found by the templates thread comparing overload choices against clang 19 on generated calls: the tie was never reported for templates (their types are dependent), and codegen called the first declared (silent)
 // error: unordered_function_templates_are_ambiguous.kpp:12: error: the call of byValueOrRef with (int32&) is ambiguous
 // error: unordered_function_templates_are_ambiguous.kpp:13: error: the call of byValueOrConstRef with (int32) is ambiguous
-template<typename T> int byValueOrRef(T v) { return 1; }
-template<typename T> int byValueOrRef(T& v) { return 2; }
-template<typename T> int byValueOrConstRef(T v) { return 1; }
-template<typename T> int byValueOrConstRef(const T& v) { return 2; }
-template<typename T> int refOrForwarding(T& v) { return 1; }
-template<typename T> int refOrForwarding(T&& v) { return 2; }
+template<typename T> int byValueOrRef([[maybe_unused]] T v) { return 1; }
+template<typename T> int byValueOrRef([[maybe_unused]] T& v) { return 2; }
+template<typename T> int byValueOrConstRef([[maybe_unused]] T v) { return 1; }
+template<typename T> int byValueOrConstRef([[maybe_unused]] const T& v) { return 2; }
+template<typename T> int refOrForwarding([[maybe_unused]] T& v) { return 1; }
+template<typename T> int refOrForwarding([[maybe_unused]] T&& v) { return 2; }
 int lvalue() { int i = 1; return refOrForwarding(i); }
 int ref() { int i = 1; return byValueOrRef(i); }
 int constRef() { return byValueOrConstRef(1); }

@@ -1,7 +1,7 @@
 // spec: a function's name passed to a pointer to function picks, from its overload set, the function whose type the target needs, a function template among them or not ([over.over]): here the plain function, whose type the pointer names (`5`)
 // pending: codegen does not support taking the address of a function template without all its arguments: the template is taken for the address. Found with the library's sample(first, last, out, n, g) beside the imgui smoke test's own `static float sample(void*, int)` (K, 2026-11-07); D
 template<typename InIt, typename OutIt, typename G>
-OutIt pick(InIt first, InIt last, OutIt out, i64 n, G&& g) { return out; }
+OutIt pick([[maybe_unused]] InIt first, [[maybe_unused]] InIt last, OutIt out, [[maybe_unused]] i64 n, [[maybe_unused]] G&& g) { return out; }
 
 static float pick(void* data, int index) { return ((float*)data)[index] * 2.0f; }
 

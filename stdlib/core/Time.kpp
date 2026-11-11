@@ -179,7 +179,7 @@ private:
 // computed as std's in the common type of the reps and intmax_t: a u64 when either rep is a 64-bit
 // unsigned type, an i64 otherwise.
 template<typename ToRep, typename ToPeriod, typename Rep, typename Period>
-Duration<ToRep, ToPeriod> convertDuration(const Duration<Rep, Period>& d, const Duration<ToRep, ToPeriod>* target)
+Duration<ToRep, ToPeriod> convertDuration(const Duration<Rep, Period>& d, [[maybe_unused]] const Duration<ToRep, ToPeriod>* target)
 {
   // The factor (Period::num / Period::den) / (ToPeriod::num / ToPeriod::den), reduced before it is
   // multiplied out (RatioDivide's).

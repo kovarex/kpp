@@ -90,7 +90,7 @@ int fill(const IntList& l) { return l.count; }
 int scalar(int v) { return v; }
 int fixed(i32 v) { return v; }
 int pointer(const int* p) { return p ? *p : 0; }
-template <typename T> int generic(T t, geo::Point p) { return p.x; }
+template <typename T> int generic([[maybe_unused]] T t, geo::Point p) { return p.x; }
 int main()
 {
   Outer o;

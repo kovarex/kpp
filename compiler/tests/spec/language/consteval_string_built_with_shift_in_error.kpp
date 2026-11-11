@@ -17,7 +17,7 @@ struct Holes
       throw std::LogicError(message);
   }
 };
-int count(Holes pattern, std::Text pieces) { return int(pieces.count); }
+int count([[maybe_unused]] Holes pattern, std::Text pieces) { return int(pieces.count); }
 int main()
 {
   return count("{} {}", 1);

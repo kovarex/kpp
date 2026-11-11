@@ -3,9 +3,9 @@ class Entity
 {
 public:
   virtual int inventory(uint8_t index) { return 1; }
-  int inventory(uint8_t index) const { return 2; }
-  int name(int x) { return 10; }
-  int name(const char* s) { return 11; }
+  int inventory([[maybe_unused]] uint8_t index) const { return 2; }
+  int name([[maybe_unused]] int x) { return 10; }
+  int name([[maybe_unused]] const char* s) { return 11; }
   virtual ~Entity() = default;
 };
 class Turret : public Entity
@@ -13,7 +13,7 @@ class Turret : public Entity
 public:
   int inventory(uint8_t index) override { return 3; }
   using Entity::inventory;
-  int name(int x) { return 20; }
+  int name([[maybe_unused]] int x) { return 20; }
   using Entity::name;
 };
 int main()

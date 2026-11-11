@@ -18,8 +18,8 @@ union enum Maybe : uint8_t
 struct S { int x = 1; double y = 2.5; };
 
 int take(AIState s) { return s == AIState::Attack ? s[AIState::Attack].target : -1; }
-int pick(const AIState& s) { return 1; }
-int pick(int x) { return 2; }
+int pick([[maybe_unused]] const AIState& s) { return 1; }
+int pick([[maybe_unused]] int x) { return 2; }
 
 int main()
 {

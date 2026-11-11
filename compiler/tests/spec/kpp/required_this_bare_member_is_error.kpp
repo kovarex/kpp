@@ -29,7 +29,7 @@ public:
     State st = State::Moving;
     Wheel w;
     int h = helper(2) + v + w.r + (st == State::Moving ? 1 : 0);
-    int twice = [&]() { return speed * 2; }() + h;
+    [[maybe_unused]] int twice = [&]() { return speed * 2; }() + h;
   }
   int doubled = speed * 2;
   Train(int s) : speed(s) {}

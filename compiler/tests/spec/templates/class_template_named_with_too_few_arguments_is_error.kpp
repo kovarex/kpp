@@ -18,9 +18,9 @@ template<class T> struct Outer
   Inner<T, T> fine;
 };
 Pair<int> global;
-int use(Arr<int> a) { return 0; }
-int none(Def<> d) { return 0; }
-int empty(Variadic<> v) { return 0; }
+int use([[maybe_unused]] Arr<int> a) { return 0; }
+int none([[maybe_unused]] Def<> d) { return 0; }
+int empty([[maybe_unused]] Variadic<> v) { return 0; }
 int main()
 {
   Pair<int> p;

@@ -9,19 +9,19 @@ class Text2
 {
 public:
   int size = 3;
-  bool has(std::StringView part, int from = 0) const { return false; }
+  bool has([[maybe_unused]] std::StringView part, [[maybe_unused]] int from = 0) const { return false; }
   std::String str() const { return std::String("text2"); }
 };
 bool isTrivial(int a) { return a == 0; }
-bool takesOpaque(const Opaque& o, Opaque* p, const char* c) { return false; }
+bool takesOpaque([[maybe_unused]] const Opaque& o, [[maybe_unused]] Opaque* p, [[maybe_unused]] const char* c) { return false; }
 bool shortens(std::StringView text) { text = text.substr(1); return false; }
 bool owns(std::String text) { text << "more"; return false; }
-bool reference(const std::String& text, int& counter) { ++counter; return false; }
-bool withDefault(int a, int b = 7) { return false; }
-bool classValue(const Text2& t, bool flag, char letter) { return false; }
-template<typename T> bool generic(T value) { return false; }
-bool evaluatedOnce(int value) { return false; }
-bool inList(std::InitializerList<int> list, int value) { return false; }
+bool reference([[maybe_unused]] const std::String& text, int& counter) { ++counter; return false; }
+bool withDefault([[maybe_unused]] int a, [[maybe_unused]] int b = 7) { return false; }
+bool classValue([[maybe_unused]] const Text2& t, [[maybe_unused]] bool flag, [[maybe_unused]] char letter) { return false; }
+template<typename T> bool generic([[maybe_unused]] T value) { return false; }
+bool evaluatedOnce([[maybe_unused]] int value) { return false; }
+bool inList([[maybe_unused]] std::InitializerList<int> list, [[maybe_unused]] int value) { return false; }
 int calls = 0;
 int counted() { return ++calls; }
 

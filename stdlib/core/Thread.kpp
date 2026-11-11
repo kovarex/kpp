@@ -763,9 +763,9 @@ const MemoryOrder memory_order_seq_cst = MemoryOrder::seq_cst;
 // its own, which orders every access before it against every access after it, as a sequentially
 // consistent fence; the call keeps the compiler from moving accesses across it too.
 i32 atomicFenceWord = 0;
-void atomicThreadFence(MemoryOrder order = MemoryOrder::seq_cst) { kpp_atomic_exchange32((long*)&atomicFenceWord, 0); }
+void atomicThreadFence([[maybe_unused]] MemoryOrder order = MemoryOrder::seq_cst) { kpp_atomic_exchange32((long*)&atomicFenceWord, 0); }
 void atomic_thread_fence(MemoryOrder order) { atomicThreadFence(order); }
-void atomicSignalFence(MemoryOrder order = MemoryOrder::seq_cst) { kpp_atomic_exchange32((long*)&atomicFenceWord, 0); }
+void atomicSignalFence([[maybe_unused]] MemoryOrder order = MemoryOrder::seq_cst) { kpp_atomic_exchange32((long*)&atomicFenceWord, 0); }
 void atomic_signal_fence(MemoryOrder order) { atomicSignalFence(order); }
 
 // The unsigned integer of each size the atomic instructions work on.
@@ -873,16 +873,16 @@ struct Atomic
   bool compare_exchange_weak(T& expected, T desired) noexcept { return this.compareExchange(expected, desired); }
 
   // The same with memory orders (each sequentially consistent: MemoryOrder).
-  T load(MemoryOrder order) const noexcept { return this.load(); }
-  void store(T v, MemoryOrder order) noexcept { this.store(v); }
-  T exchange(T v, MemoryOrder order) noexcept { return this.exchange(v); }
-  bool compareExchange(T& expected, T desired, MemoryOrder order) noexcept { return this.compareExchange(expected, desired); }
-  bool compareExchange(T& expected, T desired, MemoryOrder success, MemoryOrder failure) noexcept { return this.compareExchange(expected, desired); }
-  bool compare_exchange_strong(T& expected, T desired, MemoryOrder order) noexcept { return this.compareExchange(expected, desired); }
-  bool compare_exchange_strong(T& expected, T desired, MemoryOrder success, MemoryOrder failure) noexcept { return this.compareExchange(expected, desired); }
-  bool compare_exchange_weak(T& expected, T desired, MemoryOrder order) noexcept { return this.compareExchange(expected, desired); }
-  bool compare_exchange_weak(T& expected, T desired, MemoryOrder success, MemoryOrder failure) noexcept { return this.compareExchange(expected, desired); }
-  void wait(T old, MemoryOrder order) const { this.wait(old); }
+  T load([[maybe_unused]] MemoryOrder order) const noexcept { return this.load(); }
+  void store(T v, [[maybe_unused]] MemoryOrder order) noexcept { this.store(v); }
+  T exchange(T v, [[maybe_unused]] MemoryOrder order) noexcept { return this.exchange(v); }
+  bool compareExchange(T& expected, T desired, [[maybe_unused]] MemoryOrder order) noexcept { return this.compareExchange(expected, desired); }
+  bool compareExchange(T& expected, T desired, [[maybe_unused]] MemoryOrder success, [[maybe_unused]] MemoryOrder failure) noexcept { return this.compareExchange(expected, desired); }
+  bool compare_exchange_strong(T& expected, T desired, [[maybe_unused]] MemoryOrder order) noexcept { return this.compareExchange(expected, desired); }
+  bool compare_exchange_strong(T& expected, T desired, [[maybe_unused]] MemoryOrder success, [[maybe_unused]] MemoryOrder failure) noexcept { return this.compareExchange(expected, desired); }
+  bool compare_exchange_weak(T& expected, T desired, [[maybe_unused]] MemoryOrder order) noexcept { return this.compareExchange(expected, desired); }
+  bool compare_exchange_weak(T& expected, T desired, [[maybe_unused]] MemoryOrder success, [[maybe_unused]] MemoryOrder failure) noexcept { return this.compareExchange(expected, desired); }
+  void wait(T old, [[maybe_unused]] MemoryOrder order) const { this.wait(old); }
 
   // An integer's bits and-ed, or-ed or xor-ed with mask (std::atomic::fetch_and, fetch_or,
   // fetch_xor): the value before, one indivisible step (a compare-exchange loop).
@@ -916,9 +916,9 @@ struct Atomic
     return seen;
   }
 
-  T fetch_and(T mask, MemoryOrder order = MemoryOrder::seq_cst) noexcept requires isIntegral<T> && !isSame<T, bool> { return this.fetchAnd(mask); }
-  T fetch_or(T mask, MemoryOrder order = MemoryOrder::seq_cst) noexcept requires isIntegral<T> && !isSame<T, bool> { return this.fetchOr(mask); }
-  T fetch_xor(T mask, MemoryOrder order = MemoryOrder::seq_cst) noexcept requires isIntegral<T> && !isSame<T, bool> { return this.fetchXor(mask); }
+  T fetch_and(T mask, [[maybe_unused]] MemoryOrder order = MemoryOrder::seq_cst) noexcept requires isIntegral<T> && !isSame<T, bool> { return this.fetchAnd(mask); }
+  T fetch_or(T mask, [[maybe_unused]] MemoryOrder order = MemoryOrder::seq_cst) noexcept requires isIntegral<T> && !isSame<T, bool> { return this.fetchOr(mask); }
+  T fetch_xor(T mask, [[maybe_unused]] MemoryOrder order = MemoryOrder::seq_cst) noexcept requires isIntegral<T> && !isSame<T, bool> { return this.fetchXor(mask); }
   T operator&=(T mask) requires isIntegral<T> && !isSame<T, bool> { return (T)(this.fetchAnd(mask) & mask); }
   T operator|=(T mask) requires isIntegral<T> && !isSame<T, bool> { return (T)(this.fetchOr(mask) | mask); }
 
@@ -934,8 +934,8 @@ struct Atomic
   }
 
   T fetchSub(i64 delta) noexcept requires isPointer<T> { return this.fetchAdd(-delta); }
-  T fetch_add(i64 delta, MemoryOrder order = MemoryOrder::seq_cst) noexcept requires isPointer<T> { return this.fetchAdd(delta); }
-  T fetch_sub(i64 delta, MemoryOrder order = MemoryOrder::seq_cst) noexcept requires isPointer<T> { return this.fetchAdd(-delta); }
+  T fetch_add(i64 delta, [[maybe_unused]] MemoryOrder order = MemoryOrder::seq_cst) noexcept requires isPointer<T> { return this.fetchAdd(delta); }
+  T fetch_sub(i64 delta, [[maybe_unused]] MemoryOrder order = MemoryOrder::seq_cst) noexcept requires isPointer<T> { return this.fetchAdd(-delta); }
   T operator++() requires isPointer<T> { return this.fetchAdd((i64)1) + 1; }
   T operator++(i32) requires isPointer<T> { return this.fetchAdd((i64)1); }
   T operator--() requires isPointer<T> { return this.fetchAdd((i64)-1) - 1; }
@@ -970,7 +970,7 @@ struct Atomic
     }
   }
 
-  T fetch_add(T delta, MemoryOrder order = MemoryOrder::seq_cst) noexcept requires (!isPointer<T>) { return this.fetchAdd(delta); }
+  T fetch_add(T delta, [[maybe_unused]] MemoryOrder order = MemoryOrder::seq_cst) noexcept requires (!isPointer<T>) { return this.fetchAdd(delta); }
 
   T fetchSub(T delta) noexcept
     requires (!isPointer<T>)
@@ -981,7 +981,7 @@ struct Atomic
       return this.fetchAdd((T)(0 - delta));
   }
 
-  T fetch_sub(T delta, MemoryOrder order = MemoryOrder::seq_cst) noexcept requires (!isPointer<T>) { return this.fetchSub(delta); }
+  T fetch_sub(T delta, [[maybe_unused]] MemoryOrder order = MemoryOrder::seq_cst) noexcept requires (!isPointer<T>) { return this.fetchSub(delta); }
   bool is_lock_free() const { return true; }
 
   implicit operator T() const { return this.load(); }
@@ -1026,31 +1026,31 @@ struct Atomic
   Atomic<T>& self() const volatile { return *const_cast<Atomic<T>*>(&this); }
   bool is_lock_free() const volatile { return true; }
   T load() const volatile noexcept { return this.self().load(); }
-  T load(MemoryOrder order) const volatile noexcept { return this.self().load(); }
+  T load([[maybe_unused]] MemoryOrder order) const volatile noexcept { return this.self().load(); }
   void store(T v) volatile noexcept { this.self().store(v); }
-  void store(T v, MemoryOrder order) volatile noexcept { this.self().store(v); }
+  void store(T v, [[maybe_unused]] MemoryOrder order) volatile noexcept { this.self().store(v); }
   T exchange(T v) volatile noexcept { return this.self().exchange(v); }
-  T exchange(T v, MemoryOrder order) volatile noexcept { return this.self().exchange(v); }
+  T exchange(T v, [[maybe_unused]] MemoryOrder order) volatile noexcept { return this.self().exchange(v); }
   bool compareExchange(T& expected, T desired) volatile noexcept { return this.self().compareExchange(expected, desired); }
-  bool compareExchange(T& expected, T desired, MemoryOrder order) volatile noexcept { return this.self().compareExchange(expected, desired); }
+  bool compareExchange(T& expected, T desired, [[maybe_unused]] MemoryOrder order) volatile noexcept { return this.self().compareExchange(expected, desired); }
 
-  bool compareExchange(T& expected, T desired, MemoryOrder success, MemoryOrder failure) volatile noexcept
+  bool compareExchange(T& expected, T desired, [[maybe_unused]] MemoryOrder success, [[maybe_unused]] MemoryOrder failure) volatile noexcept
   {
     return this.self().compareExchange(expected, desired);
   }
 
   bool compare_exchange_strong(T& expected, T desired) volatile noexcept { return this.self().compareExchange(expected, desired); }
-  bool compare_exchange_strong(T& expected, T desired, MemoryOrder order) volatile noexcept { return this.self().compareExchange(expected, desired); }
+  bool compare_exchange_strong(T& expected, T desired, [[maybe_unused]] MemoryOrder order) volatile noexcept { return this.self().compareExchange(expected, desired); }
 
-  bool compare_exchange_strong(T& expected, T desired, MemoryOrder success, MemoryOrder failure) volatile noexcept
+  bool compare_exchange_strong(T& expected, T desired, [[maybe_unused]] MemoryOrder success, [[maybe_unused]] MemoryOrder failure) volatile noexcept
   {
     return this.self().compareExchange(expected, desired);
   }
 
   bool compare_exchange_weak(T& expected, T desired) volatile noexcept { return this.self().compareExchange(expected, desired); }
-  bool compare_exchange_weak(T& expected, T desired, MemoryOrder order) volatile noexcept { return this.self().compareExchange(expected, desired); }
+  bool compare_exchange_weak(T& expected, T desired, [[maybe_unused]] MemoryOrder order) volatile noexcept { return this.self().compareExchange(expected, desired); }
 
-  bool compare_exchange_weak(T& expected, T desired, MemoryOrder success, MemoryOrder failure) volatile noexcept
+  bool compare_exchange_weak(T& expected, T desired, [[maybe_unused]] MemoryOrder success, [[maybe_unused]] MemoryOrder failure) volatile noexcept
   {
     return this.self().compareExchange(expected, desired);
   }
@@ -1058,22 +1058,22 @@ struct Atomic
   T fetchAnd(T mask) volatile noexcept requires isIntegral<T> && !isSame<T, bool> { return this.self().fetchAnd(mask); }
   T fetchOr(T mask) volatile noexcept requires isIntegral<T> && !isSame<T, bool> { return this.self().fetchOr(mask); }
   T fetchXor(T mask) volatile noexcept requires isIntegral<T> && !isSame<T, bool> { return this.self().fetchXor(mask); }
-  T fetch_and(T mask, MemoryOrder order = MemoryOrder::seq_cst) volatile noexcept requires isIntegral<T> && !isSame<T, bool> { return this.self().fetchAnd(mask); }
-  T fetch_or(T mask, MemoryOrder order = MemoryOrder::seq_cst) volatile noexcept requires isIntegral<T> && !isSame<T, bool> { return this.self().fetchOr(mask); }
-  T fetch_xor(T mask, MemoryOrder order = MemoryOrder::seq_cst) volatile noexcept requires isIntegral<T> && !isSame<T, bool> { return this.self().fetchXor(mask); }
+  T fetch_and(T mask, [[maybe_unused]] MemoryOrder order = MemoryOrder::seq_cst) volatile noexcept requires isIntegral<T> && !isSame<T, bool> { return this.self().fetchAnd(mask); }
+  T fetch_or(T mask, [[maybe_unused]] MemoryOrder order = MemoryOrder::seq_cst) volatile noexcept requires isIntegral<T> && !isSame<T, bool> { return this.self().fetchOr(mask); }
+  T fetch_xor(T mask, [[maybe_unused]] MemoryOrder order = MemoryOrder::seq_cst) volatile noexcept requires isIntegral<T> && !isSame<T, bool> { return this.self().fetchXor(mask); }
   T operator&=(T mask) volatile noexcept requires isIntegral<T> && !isSame<T, bool> { return this.self() &= mask; }
   T operator|=(T mask) volatile noexcept requires isIntegral<T> && !isSame<T, bool> { return this.self() |= mask; }
   T operator^=(T mask) volatile noexcept requires isIntegral<T> && !isSame<T, bool> { return this.self() ^= mask; }
   T fetchAdd(i64 delta) volatile noexcept requires isPointer<T> { return this.self().fetchAdd(delta); }
   T fetchSub(i64 delta) volatile noexcept requires isPointer<T> { return this.self().fetchAdd(-delta); }
-  T fetch_add(i64 delta, MemoryOrder order = MemoryOrder::seq_cst) volatile noexcept requires isPointer<T> { return this.self().fetchAdd(delta); }
-  T fetch_sub(i64 delta, MemoryOrder order = MemoryOrder::seq_cst) volatile noexcept requires isPointer<T> { return this.self().fetchAdd(-delta); }
+  T fetch_add(i64 delta, [[maybe_unused]] MemoryOrder order = MemoryOrder::seq_cst) volatile noexcept requires isPointer<T> { return this.self().fetchAdd(delta); }
+  T fetch_sub(i64 delta, [[maybe_unused]] MemoryOrder order = MemoryOrder::seq_cst) volatile noexcept requires isPointer<T> { return this.self().fetchAdd(-delta); }
   T operator+=(i64 delta) volatile noexcept requires isPointer<T> { return this.self() += delta; }
   T operator-=(i64 delta) volatile noexcept requires isPointer<T> { return this.self() -= delta; }
   T fetchAdd(T delta) volatile noexcept requires (!isPointer<T>) { return this.self().fetchAdd(delta); }
   T fetchSub(T delta) volatile noexcept requires (!isPointer<T>) { return this.self().fetchSub(delta); }
-  T fetch_add(T delta, MemoryOrder order = MemoryOrder::seq_cst) volatile noexcept requires (!isPointer<T>) { return this.self().fetchAdd(delta); }
-  T fetch_sub(T delta, MemoryOrder order = MemoryOrder::seq_cst) volatile noexcept requires (!isPointer<T>) { return this.self().fetchSub(delta); }
+  T fetch_add(T delta, [[maybe_unused]] MemoryOrder order = MemoryOrder::seq_cst) volatile noexcept requires (!isPointer<T>) { return this.self().fetchAdd(delta); }
+  T fetch_sub(T delta, [[maybe_unused]] MemoryOrder order = MemoryOrder::seq_cst) volatile noexcept requires (!isPointer<T>) { return this.self().fetchSub(delta); }
   T operator+=(T delta) volatile noexcept requires (!isPointer<T>) { return this.self() += delta; }
   T operator-=(T delta) volatile noexcept requires (!isPointer<T>) { return this.self() -= delta; }
   T operator++() volatile noexcept { return ++this.self(); }
@@ -1090,7 +1090,7 @@ struct Atomic
 
   bool operator==(T other) const volatile { return this.self().load() == other; }
   void wait(T old) const volatile { this.self().wait(old); }
-  void wait(T old, MemoryOrder order) const volatile { this.self().wait(old); }
+  void wait(T old, [[maybe_unused]] MemoryOrder order) const volatile { this.self().wait(old); }
   void notifyOne() volatile { atomicNotify(&this.self()); }
   void notifyAll() volatile { atomicNotify(&this.self()); }
   void notify_one() volatile { atomicNotify(&this.self()); }

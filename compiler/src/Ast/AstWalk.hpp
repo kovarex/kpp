@@ -9,6 +9,9 @@
 
 void forEachNode(Span<Decl*> decls, const std::function<void(Node*)>& each);
 void forEachNode(Node* root, const std::function<void(Node*)>& each);
+// As forEachNode from root, where a node prune returns true for is visited and what lies under it is not (a local
+// class's members, which are walked as their own functions).
+void forEachNodeExcept(Node* root, const std::function<void(Node*)>& each, const std::function<bool(Node*)>& prune);
 
 // Sets QualifiedName::requiresThis on the bare names of a file under --this-reference (its parser's last step).
 void markRequiredThis(Span<Decl*> decls);

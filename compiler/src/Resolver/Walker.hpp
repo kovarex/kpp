@@ -937,6 +937,11 @@
     // A member function marked override must override a virtual function of a base (C++
     // [class.virtual]): an error where it overrides none, in a class or a class template's instance.
     void checkOverride(FunctionDecl* f);
+    // A local, parameter or lambda capture nothing in f uses, and a local only ever assigned: errors (kovarex,
+    // 2026-11-11; --unused-checks until the library and the converted game are free of them).
+    void checkUnusedNames(FunctionDecl* f);
+    // Whether member function f overrides a virtual function of a base without saying so (`override`).
+    bool overridesBaseVirtual(FunctionDecl* f);
     // `a != b` is only ever `!(a == b)` (kovarex, 2026-11-09): a declared operator!= that returns bool is an error
     // at its declaration, a member or a free function, written, defaulted or a template, used or not.
     void checkNotEqualOperator(FunctionDecl* f);

@@ -2,10 +2,10 @@
 // factorio: OpenableObjectWrapper's getPrototypeInfoStatic(const PrototypeBase*, ...) beside getPrototypeInfoStatic(const void*, ...) given each prototype type (29 calls), and makeExtra(const Sprite*) beside makeExtra(const void*) given a const LayeredSprite*
 struct Base { int id = 1; };
 struct Derived : Base { int more = 2; };
-const char* info(const void* p) { return "void"; }
-const char* info(const Base* p) { return "base"; }
-const char* other(const Base* p) { return "base"; }
-const char* other(const void* p) { return "void"; }
+const char* info([[maybe_unused]] const void* p) { return "void"; }
+const char* info([[maybe_unused]] const Base* p) { return "base"; }
+const char* other([[maybe_unused]] const Base* p) { return "base"; }
+const char* other([[maybe_unused]] const void* p) { return "void"; }
 int main()
 {
   Derived d;

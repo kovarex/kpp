@@ -11,7 +11,7 @@ struct Ring
 };
 int main()
 {
-  Ring<int, 3> a, b;
+  [[maybe_unused]] Ring<int, 3> a, b;
   Ring<std::String, 2> s;
   for (int i = 0; i < 4; ++i)
     a.push(i * 10);

@@ -1,8 +1,8 @@
 // spec: a brace list argument deduces only an InitializerList<P> parameter; for any other parameter it is a non-deduced context
 // found in CommonUtil StringUtil: concat(const Args&...) calls concat({args...}) beside concat(InitializerList<StringView>), which must win
 template<typename T>
-int pick(const T& value) { return 1; }
-int pick(std::InitializerList<int> values) { return 2; }
+int pick([[maybe_unused]] const T& value) { return 1; }
+int pick([[maybe_unused]] std::InitializerList<int> values) { return 2; }
 
 template<typename T>
 T sum(std::InitializerList<T> values)

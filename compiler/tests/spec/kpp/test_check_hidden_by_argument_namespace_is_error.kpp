@@ -9,7 +9,7 @@ namespace signals
     operator bool() const { return true; }
   };
 
-  bool check(const Value& value, int expected) { return false; }
+  bool check([[maybe_unused]] const Value& value, [[maybe_unused]] int expected) { return false; }
 }
 
 test argumentNamespace

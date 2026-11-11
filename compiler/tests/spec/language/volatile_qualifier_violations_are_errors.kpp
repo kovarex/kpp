@@ -77,28 +77,28 @@ const int& retConstRef() { return v; }
 S retValue() { return s; }
 void violations()
 {
-  int& r1 = v;
-  const int& r2 = v;
-  int&& r3 = static_cast<volatile int&&>(v);
-  int& r4 = s.x;
+  [[maybe_unused]] int& r1 = v;
+  [[maybe_unused]] const int& r2 = v;
+  [[maybe_unused]] int&& r3 = static_cast<volatile int&&>(v);
+  [[maybe_unused]] int& r4 = s.x;
   S& r5 = s;
   const S& r6 = s;
   S& r7 = d;
-  int (&r8)[2] = a;
+  [[maybe_unused]] int (&r8)[2] = a;
   takeRef(v);
   takeConstRef(v);
   takeSRef(s);
   takeConstSRef(s);
   takeSRRef(static_cast<volatile S&&>(s));
   takeSValue(s);
-  S t1 = s;
+  [[maybe_unused]] S t1 = s;
   S t2;
   s = t2;
   t2 = s;
-  int* p1 = static_cast<int*>(&v);
-  int* p2 = reinterpret_cast<int*>(&v);
-  int& r9 = static_cast<int&>(v);
-  int& r10 = reinterpret_cast<int&>(v);
+  [[maybe_unused]] int* p1 = static_cast<int*>(&v);
+  [[maybe_unused]] int* p2 = reinterpret_cast<int*>(&v);
+  [[maybe_unused]] int& r9 = static_cast<int&>(v);
+  [[maybe_unused]] int& r10 = reinterpret_cast<int&>(v);
   S& r11 = static_cast<S&>(s);
   s.get();
   s.cget();
@@ -110,7 +110,7 @@ void violations()
   rs.get();
   o();
   o[0];
-  int x = o + 1;
+  [[maybe_unused]] int x = o + 1;
   for (int& e : a)
     e = 1;
 }

@@ -4,10 +4,10 @@ extern "C" int printf(const char* format, ...);
 int fun(int x) { return x + 1; }
 int twice(int x) { return 2 * x; }
 template<class T> int pick(T* f) { return f(10); }
-int pick(bool b) { return -1; }
+int pick([[maybe_unused]] bool b) { return -1; }
 template<class T> int only(T* f) { return f(20); }
 template<class T> int constPointer(T* const f) { return f(30); }
-template<class T> int ordered(T f) { return 100; }
+template<class T> int ordered([[maybe_unused]] T f) { return 100; }
 template<class T> int ordered(T* f) { return 200 + f(1); }
 template<class T> int twoOf(T* f, T* g) { return f(3) * 10 + g(3); }
 int main()

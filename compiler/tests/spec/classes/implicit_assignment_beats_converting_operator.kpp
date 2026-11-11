@@ -34,7 +34,7 @@ class Templated
 {
 public:
   template<class U>
-  void operator=(const U& u) { std::println("Templated::operator=<U>"); this.value = 99; }
+  void operator=([[maybe_unused]] const U& u) { std::println("Templated::operator=<U>"); this.value = 99; }
   int value = 3;
 };
 // a converting operator= that is the only way: still called

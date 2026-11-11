@@ -11,7 +11,7 @@ struct WithBool
 };
 
 template<class T>
-int test(T v)
+int test([[maybe_unused]] T v)
 {
   if constexpr (requires(T instance) { bool(instance); })
     return 1;

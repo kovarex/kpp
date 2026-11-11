@@ -6,7 +6,7 @@ inline constexpr bool is_memcpy_loadable = std::isFundamental<T> && !std::isPoin
 struct Point { int x; int y; };
 
 template<class VectorType>
-int loadVector(const VectorType& target)
+int loadVector([[maybe_unused]] const VectorType& target)
 {
   using T = VectorType::value_type;
   if constexpr (is_memcpy_loadable<T>)

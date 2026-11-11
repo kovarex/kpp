@@ -14,7 +14,7 @@ namespace Helper
     return id;
   }
 
-  template<> FluidID parse<FluidID>(int index, const char* debugName)
+  template<> FluidID parse<FluidID>(int index, [[maybe_unused]] const char* debugName)
   {
     FluidID id;
     id.value = index + 100;
@@ -28,9 +28,9 @@ namespace Helper
 
 struct Box
 {
-  template<class T> int put(T value) { return 1; }
+  template<class T> int put([[maybe_unused]] T value) { return 1; }
 };
-template<> int Box::put<double>(double value) { return 2; }
+template<> int Box::put<double>([[maybe_unused]] double value) { return 2; }
 
 int main()
 {

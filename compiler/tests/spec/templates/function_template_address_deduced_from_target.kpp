@@ -12,11 +12,11 @@ const Expr& construct(Args&&... args)
 }
 struct Neg
 {
-  static int index(const Expr& e) { return 1; }
+  static int index([[maybe_unused]] const Expr& e) { return 1; }
 };
 struct Add
 {
-  static int index(const Expr& a, const Expr& b) { return 2; }
+  static int index([[maybe_unused]] const Expr& a, [[maybe_unused]] const Expr& b) { return 2; }
 };
 struct Case
 {

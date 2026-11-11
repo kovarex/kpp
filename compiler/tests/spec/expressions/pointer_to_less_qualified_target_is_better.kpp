@@ -3,12 +3,12 @@ struct Entity
 {
   int id = 7;
 };
-int which(Entity* e) { return 1; }
-int which(const Entity* e) { return 2; }
+int which([[maybe_unused]] Entity* e) { return 1; }
+int which([[maybe_unused]] const Entity* e) { return 2; }
 struct Proxy
 {
-  static int forEntity(const Entity* e) { return 20; }
-  static int forEntity(Entity* e) { return 10; }
+  static int forEntity([[maybe_unused]] const Entity* e) { return 20; }
+  static int forEntity([[maybe_unused]] Entity* e) { return 10; }
 };
 int main()
 {

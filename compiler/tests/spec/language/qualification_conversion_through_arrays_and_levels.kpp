@@ -1,20 +1,20 @@
 // spec: a qualification conversion adds const through an array's elements and at deeper pointer levels ([conv.qual]; an array's cv is its elements', [basic.type.qualifier] 3) and ranks as an exact match: given `int a[2]`, &a takes `const int (*)[2]` over `const void*` and over bool, `int**` takes `const int* const*` over `const void*` but never `const int**`, `int (*)[2]` converts to `int (*)[]`, a `const int (*)[2]` never to `int (*)[2]`, and `int (**)[2]` converts to `const int (* const*)[2]` (`1 1 1 2 1 2 1`, clang's)
 // found by thread E's battery a5 (2026-11-10): `int (*)[2]` to `const int (*)[2]` was refused for a single candidate ("does not convert without a cast"), and with an overload beside it the checker took that one, q(const void*) and w(bool), a silent wrong answer
 extern "C" import "stdio.h";
-int q(const int (*p)[2]) { return 1; }
-int q(const void* p) { return 2; }
-int w(const int (*p)[2]) { return 1; }
-int w(bool b) { return 2; }
-int m(const int* const* p) { return 1; }
-int m(const void* p) { return 2; }
-int n(const int** p) { return 1; }
-int n(const void* p) { return 2; }
-int u(int (*p)[]) { return 1; }
-int u(const void* p) { return 2; }
-int d(int (*p)[2]) { return 1; }
-int d(const void* p) { return 2; }
-int k(const int (* const* p)[2]) { return 1; }
-int k(const void* p) { return 2; }
+int q([[maybe_unused]] const int (*p)[2]) { return 1; }
+int q([[maybe_unused]] const void* p) { return 2; }
+int w([[maybe_unused]] const int (*p)[2]) { return 1; }
+int w([[maybe_unused]] bool b) { return 2; }
+int m([[maybe_unused]] const int* const* p) { return 1; }
+int m([[maybe_unused]] const void* p) { return 2; }
+int n([[maybe_unused]] const int** p) { return 1; }
+int n([[maybe_unused]] const void* p) { return 2; }
+int u([[maybe_unused]] int (*p)[]) { return 1; }
+int u([[maybe_unused]] const void* p) { return 2; }
+int d([[maybe_unused]] int (*p)[2]) { return 1; }
+int d([[maybe_unused]] const void* p) { return 2; }
+int k([[maybe_unused]] const int (* const* p)[2]) { return 1; }
+int k([[maybe_unused]] const void* p) { return 2; }
 
 int main()
 {

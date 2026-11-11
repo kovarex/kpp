@@ -6,9 +6,9 @@ struct Box
 {
   i32 value = 0;
   void put(i32 v) = delete;
-  void put(f64 v) { this.value = 1; }
+  void put([[maybe_unused]] f64 v) { this.value = 1; }
   i32 operator+(i32 v) const = delete;
-  i32 operator+(f64 v) const { return 2; }
+  i32 operator+([[maybe_unused]] f64 v) const { return 2; }
 };
 template<typename T> void take(T v) = delete;
 template<> void take<i32>(i32 v) {}

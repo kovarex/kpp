@@ -5,7 +5,7 @@ constexpr bool operator!(Flags f) { return f == Flags::All; }
 constexpr Flags operator~(Flags f) { return Flags(~unsigned(f) & 3u); }
 enum Plain { P0, P1, P2 };
 constexpr int operator-(Plain p) { return 100 + int(p); }
-constexpr int operator+(Plain a, Plain b) { return 1000; }
+constexpr int operator+([[maybe_unused]] Plain a, [[maybe_unused]] Plain b) { return 1000; }
 enum class Dir { N, E, S, W };
 constexpr Dir& operator++(Dir& d)
 {

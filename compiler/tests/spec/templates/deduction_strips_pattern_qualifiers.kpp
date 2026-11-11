@@ -10,8 +10,8 @@ const ResultType* castTo(const SourceType* prototype)
   else
     return ResultType::caster(prototype);
 }
-template<class S> const char* which(const S* p) { return kind<S>(); }
-template<class S> const char* which2(S* p) { return kind<S>(); }
+template<class S> const char* which([[maybe_unused]] const S* p) { return kind<S>(); }
+template<class S> const char* which2([[maybe_unused]] S* p) { return kind<S>(); }
 int main()
 {
   const Proto p;

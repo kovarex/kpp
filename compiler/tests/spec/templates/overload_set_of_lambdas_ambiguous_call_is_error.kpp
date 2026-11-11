@@ -6,6 +6,6 @@ template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;
 
 int main()
 {
-  Overload o{[](int x) { return 1; }, [](int y) { return 2; }};
+  Overload o{[]([[maybe_unused]] int x) { return 1; }, []([[maybe_unused]] int y) { return 2; }};
   return o(5);
 }

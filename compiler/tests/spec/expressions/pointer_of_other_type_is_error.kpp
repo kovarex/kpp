@@ -12,8 +12,8 @@ float f = 1;
 const int c = 2;
 int* initialised() { int* q = &f; return q; }
 int* returned() { return &c; }
-void assigned(int** pp) { const int** cpp = nullptr; cpp = pp; }
-void derived(Base* base) { Derived* d = base; }
+void assigned(int** pp) { [[maybe_unused]] const int** cpp = nullptr; cpp = pp; }
+void derived(Base* base) { [[maybe_unused]] Derived* d = base; }
 void argument() { write(&c); }
 int main()
 {

@@ -3,14 +3,14 @@
 struct Base { int x = 1; };
 struct Derived : Base { int y = 2; };
 struct FromInt { implicit FromInt(int v) {} };
-int a(FromInt v) { return 1; }
+int a([[maybe_unused]] FromInt v) { return 1; }
 int a(...) { return 2; }
 int b(...) { return 1; }
-int b(double v) { return 2; }
+int b([[maybe_unused]] double v) { return 2; }
 int c(...) { return 1; }
-int c(const Base& v) { return 2; }
-int d(int first, ...) { return 1; }
-int d(int first, double second) { return 2; }
+int c([[maybe_unused]] const Base& v) { return 2; }
+int d([[maybe_unused]] int first, ...) { return 1; }
+int d([[maybe_unused]] int first, [[maybe_unused]] double second) { return 2; }
 int main()
 {
   Derived derived;

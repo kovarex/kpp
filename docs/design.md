@@ -480,6 +480,21 @@ replacements, in the order of how much code they remove:
    language/end_of_a_value_returning_function_is_error, language/noreturn_ends_a_path,
    language/noreturn_function_that_returns_is_error, kpp/attribute_before_when_belongs_to_its_declaration,
    interop/c_header_noreturn_ends_a_path, interop/c_header_noreturn_callback_parameter.
+   Unused names are errors (2026-11-11, kovarex: "just keep the (void)name; or [[maybe_unused]] for now.
+   Just don't make it error for empty methods/functions"; item 1 of thread D's survey of missing checks): a
+   local nothing uses, a local only ever assigned (`x = e;`, `x += e;`, `++x;` as statements; a value used,
+   `a[i++]`, reads it), a parameter nothing uses and a lambda's capture its body never names. `(void)x;`
+   (a use) or `[[maybe_unused]]` keeps one, and the unnamed local `_` needs neither. A parameter is not
+   judged in an empty body, a virtual function, an override (written so or found so) or main (the system's
+   signature); nor a pack or an unnamed one. A class object whose making or ending does something (a
+   guard, a class with a constructor or destructor of its own, or a member or base with one), a reference
+   to a class (it may keep a temporary alive) and a lambda that copies what it captures are used by being
+   there, as C++ compilers take them; so is a condition's variable. A name counts wherever it is spelled:
+   a template's argument (`Sequence<count>`), a local class's member, a decltype qualifier. A template is
+   judged once, in its own walk. Under `--unused-checks` until the converted game is free of them (the
+   standard library, the libraries, the spec and the tests are); `tools/unused/fix.py` writes
+   `[[maybe_unused]]` where a compile's errors (`--diagnostic-columns`) point, a capture left to a hand.
+   Specs kpp/unused_names_are_errors, kpp/unused_names_kept_or_exempt.
 The spellings above are the working proposal; each is settled and recorded here when the feature
 is implemented.
 

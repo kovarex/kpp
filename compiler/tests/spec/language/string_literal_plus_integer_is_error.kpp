@@ -9,6 +9,6 @@ int main()
   const char* b = 2 + "abc";
   const char* c = "abc" - 0;
   const char* d = &"abc"[1];
-  auto e = "a" + "b";
+  [[maybe_unused]] auto e = "a" + "b";
   return a == d && b && c ? 0 : 1;
 }

@@ -389,7 +389,7 @@ SharedPtr<T> atomicExchange(SharedPtr<T>* p, SharedPtr<T> desired)
 }
 
 template<typename T>
-bool atomicIsLockFree(const SharedPtr<T>* p) { return false; }
+bool atomicIsLockFree([[maybe_unused]] const SharedPtr<T>* p) { return false; }
 
 template<typename T>
 struct Atomic<SharedPtr<T>>

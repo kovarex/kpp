@@ -9,7 +9,7 @@ public:
   int b() const { return 2; }
   int c() & { return 3; }
 };
-void e1() { int (C::*p)() = &C::b; }
-void e2() { int (C::*p)() const = &C::a; }
-void e3() { int (C::*p)() = &C::c; }
+void e1() { [[maybe_unused]] int (C::*p)() = &C::b; }
+void e2() { [[maybe_unused]] int (C::*p)() const = &C::a; }
+void e3() { [[maybe_unused]] int (C::*p)() = &C::c; }
 int main() { return 0; }

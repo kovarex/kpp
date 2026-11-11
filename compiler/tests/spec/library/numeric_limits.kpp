@@ -2,7 +2,7 @@
 // factorio: 604 numeric_limits uses (max 502, min 77, infinity 23, lowest 18, digits 3, is_signed 2 in cxxopts' integer parser)
 enum class Color { Red };
 template<typename T>
-void parse(const char* text)
+void parse([[maybe_unused]] const char* text)
 {
   using US = std::MakeUnsigned<T>;
   constexpr auto umax = std::Limits<US>::max();

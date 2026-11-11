@@ -637,6 +637,17 @@ p[Property::Text] = String("hello");
 - **See:** [design 7][d7], item 8; specs `language/end_of_a_value_returning_function_is_error`, `language/noreturn_ends_a_path`,
   `language/noreturn_function_that_returns_is_error`.
 
+### Unused names are errors (this stage)
+
+- **C++:** compilers warn, where asked (-Wunused-variable, -Wunused-parameter, -Wunused-but-set-variable,
+  -Wunused-lambda-capture).
+- **kpp:** a local nothing uses, a local only ever assigned, a parameter nothing uses and a lambda capture
+  nothing uses are compile errors (kovarex, 2026-11-11); `(void)x;` or `[[maybe_unused]]` keeps one, and the
+  unnamed `_` needs neither. Not a parameter of an empty body, a virtual function, an override or main, nor a
+  class object whose making or ending does something (a guard). Behind `--unused-checks` until the converted
+  game is free of them; `tools/unused/fix.py` marks what a compile reports.
+- **See:** [design 7][d7], item 8; specs `kpp/unused_names_are_errors`, `kpp/unused_names_kept_or_exempt`.
+
 ### `?->` and `?:` (built)
 
 - **C++:** neither (`?:` is a GNU extension).

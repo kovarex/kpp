@@ -5,9 +5,9 @@ constexpr bool hasBegin = requires (T& t) { t.begin(); };
 template<typename T>
 struct Reversed { T* iterable; };
 template<typename C> requires hasBegin<C>
-int which(C& c) { return 1; }
+int which([[maybe_unused]] C& c) { return 1; }
 template<typename T>
-int which(Reversed<T> w) { return 2; }
+int which([[maybe_unused]] Reversed<T> w) { return 2; }
 int main()
 {
   std::Vector<int> v;

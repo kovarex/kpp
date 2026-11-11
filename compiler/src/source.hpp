@@ -119,6 +119,9 @@ bool zeroNullWarningsOn();
 // (Walker::checkMisleadingIndentation).
 void setIndentationWarnings(bool on);
 bool indentationWarningsOn();
+// Whether a local, parameter or lambda capture nothing uses is an error (--unused-checks; Walker::checkUnusedNames).
+void setUnusedChecks(bool on);
+bool unusedChecksOn();
 void noteZeroNullWarning(const std::string& warning);
 std::vector<std::string> takeZeroNullWarnings();
 // Whether the literal 0 at token of file is reported for the first time in this build (the walk

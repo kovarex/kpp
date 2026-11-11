@@ -6,7 +6,7 @@ template<class T>
 concept Small = sizeof(T) <= 4;
 
 int pick(Kind k) { return 10 + int(k); }
-int pick(double d) { return 99; }
+int pick([[maybe_unused]] double d) { return 99; }
 
 template<class X>
 const char* describe(X) { return "other"; }
@@ -20,7 +20,7 @@ template<Kind K>
 const char* deduced() { return describe(K); }
 
 template<Small T>
-int constrained(T value) { return int(sizeof(T)); }
+int constrained([[maybe_unused]] T value) { return int(sizeof(T)); }
 
 int main()
 {

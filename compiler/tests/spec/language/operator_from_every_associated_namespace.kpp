@@ -6,7 +6,7 @@ namespace base
   {
     int kind = 1;
   };
-  Text operator/(const Text& a, const Text& b) { return Text{}; }
+  Text operator/([[maybe_unused]] const Text& a, [[maybe_unused]] const Text& b) { return Text{}; }
 }
 namespace ext
 {
@@ -14,7 +14,7 @@ namespace ext
   {
     Wrapped() { this.kind = 2; }
   };
-  Wrapped operator/(const base::Text& a, const Wrapped& b) { return Wrapped(); }
+  Wrapped operator/([[maybe_unused]] const base::Text& a, [[maybe_unused]] const Wrapped& b) { return Wrapped(); }
 }
 int main()
 {

@@ -10,14 +10,14 @@ template<class T> struct IsRef<T&>
 {
   static constexpr int v = 1;
 };
-template<class T> int a(const T& x) { return 1; }
-template<class T> int a(T&& x) { return 2; }
-int c(int (&f)(int)) { return 1; }
-int c(int (&&f)(int)) { return 2; }
+template<class T> int a([[maybe_unused]] const T& x) { return 1; }
+template<class T> int a([[maybe_unused]] T&& x) { return 2; }
+int c([[maybe_unused]] int (&f)(int)) { return 1; }
+int c([[maybe_unused]] int (&&f)(int)) { return 2; }
 template<class T> int whatT(T&& x) { return IsRef<T>::v * 10 + x(4); }
 template<class... Ts> int pack(const Ts&... x) { return 1; }
 template<class... Ts> int pack(Ts&&... x) { return 2; }
-template<class T, class... Ts> int headT(T&& h, Ts&&... x) { return IsRef<T>::v * 10 + (IsRef<Ts>::v + ...); }
+template<class T, class... Ts> int headT([[maybe_unused]] T&& h, Ts&&... x) { return IsRef<T>::v * 10 + (IsRef<Ts>::v + ...); }
 template<class... Ts> int sizes(const Ts&... x) { return (int(sizeof(x)) + ... + 0); }
 template<class... Ts> int sizesRef(Ts&... x) { return (int(sizeof(x)) + ... + 0); }
 int main()

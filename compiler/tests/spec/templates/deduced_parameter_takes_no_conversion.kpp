@@ -24,8 +24,8 @@ bool operator==(const B& lhs, const Opt<B>& rhs) { return lhs == rhs.base; }
 struct Derived : Opt<int> {};
 
 template<class T>
-int fromOpt(const Opt<T>& o) { return 1; }
-int fromOpt(double d) { return 2; }
+int fromOpt([[maybe_unused]] const Opt<T>& o) { return 1; }
+int fromOpt([[maybe_unused]] double d) { return 2; }
 
 int main()
 {

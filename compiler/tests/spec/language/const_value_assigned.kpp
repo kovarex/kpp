@@ -19,7 +19,7 @@ int main()
   cb.get() = 7;
   const int c = 3;
   c += 1;
-  const volatile int cv = 3;
+  [[maybe_unused]] const volatile int cv = 3;
   cv = 4;
   std::println(x, " ", b.value, " ", c);
   return 0;

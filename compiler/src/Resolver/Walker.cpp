@@ -1,6 +1,7 @@
 // GlobalScope::Impl::Walker, phase 2: the Walker, which types and checks bodies (its class in Walker.hpp): a
 // translation unit of its own since 2026-11-05 (resolver.cpp split, stage 2), moved without a change.
 #include "GlobalScopeImpl.hpp"
+#include "../Ast/AstWalk.hpp"
 #include "sse_macros.hpp"
 #include <cmath> // std::isnan, isinf, fabs (MSVC's headers brought it in by chance; libstdc++'s do not)
 
@@ -810,6 +811,320 @@ auto GlobalScope::Impl::Walker::checkFunctionEnd(FunctionDecl* f, bool autoRetur
     return;
   reportHere(end, "control can reach the end of " + name + ", which returns " + types.toString(result, &symbols) +
                     ": return a value there, or end that path with a throw or a call of a [[noreturn]] function");
+}
+
+auto GlobalScope::Impl::Walker::checkUnusedNames(FunctionDecl* f) -> void
+{
+  // kovarex, 2026-11-11 (thread D's survey of missing checks, item 1): a local nothing uses, a local only ever
+  // assigned, a parameter nothing uses and a lambda's capture nothing uses are errors; `(void)x;` (a use) or
+  // [[maybe_unused]] keeps one. Once, in the walk as written: a template's own walk, whose names its instances
+  // share. Not a parameter of an empty body, nor of a virtual function or one that overrides, whose signature is
+  // another's. A class object whose making or ending does something (a lock, a timer) is used by being there, as
+  // C++ compilers take it, and so is a reference that keeps a temporary alive. --unused-checks until the standard
+  // library and the converted game are free of them.
+  if (!unusedChecksOn() || !f || !f->body || probing || activeSubst || retypingElements || !file || file->isImported)
+    return;
+  // (reported in a template's own walk too, where reportHere leaves errors to the instances: once for all of them)
+  auto report = [&](uint32_t token, const std::string& message) { impl.reportCheckerError(file, token, message); };
+  struct Uses
+  {
+    uint32_t reads = 0, writes = 0;
+  };
+  std::unordered_map<const Decl*, Uses> uses;
+  std::vector<VariableDecl*> locals;
+  std::vector<LambdaExpr*> lambdas;
+  std::unordered_set<const Node*> written;   // a statement's assignment's left side, or its ++'s or --'s operand: set, not read
+  std::unordered_set<const Decl*> condition; // `if (auto p = find())`: its value is the condition's
+  std::unordered_set<uint32_t> namedAsType;  // a bare name the parser read as a type, a template's argument (`Sequence<count>`)
+  std::unordered_set<const Node*> discarded; // an if constexpr's branch the walk dropped: nothing in it was resolved
+  auto strip = [](Expr* e)
+  {
+    while (e && e->kind == NodeKind::ParenExpr)
+      e = static_cast<ParenExpr*>(e)->inner;
+    return e;
+  };
+  auto conditionOf = [&](Node* c)
+  {
+    if (c && c->kind == NodeKind::DeclStmt)
+      for (Decl* d : static_cast<DeclStmt*>(c)->decls)
+        condition.insert(d);
+  };
+  // A statement that only sets a name: `x = e;`, `x += e;`, `++x;`, `x--;`, a for's step, either side of a comma
+  // there. A value used (`a[i++]`, `if (n-- == 0)`, `y = (x = e)`) reads the name.
+  std::function<void(Expr*)> statementWrites = [&](Expr* e)
+  {
+    e = strip(e);
+    if (!e)
+      return;
+    if (e->kind == NodeKind::BinaryExpr && !static_cast<BinaryExpr*>(e)->isKeyword)
+    {
+      auto* b = static_cast<BinaryExpr*>(e);
+      if (P(b->op) == P::Comma)
+      {
+        statementWrites(b->lhs);
+        statementWrites(b->rhs);
+      }
+      else if (isAssignmentOp(P(b->op)))
+        if (Expr* l = strip(b->lhs); l && l->kind == NodeKind::NameExpr)
+          written.insert(l);
+    }
+    else if (e->kind == NodeKind::UnaryExpr && !static_cast<UnaryExpr*>(e)->isKeyword &&
+             (P(static_cast<UnaryExpr*>(e)->op) == P::PlusPlus || P(static_cast<UnaryExpr*>(e)->op) == P::MinusMinus))
+      if (Expr* o = strip(static_cast<UnaryExpr*>(e)->operand); o && o->kind == NodeKind::NameExpr)
+        written.insert(o);
+  };
+  std::vector<Node*> nested; // a local class (its members' bodies are walked as functions of their own)
+  auto ownBody = [&](Node* n)
+  {
+    return discarded.count(n) || (n != f && (n->kind == NodeKind::ClassDecl || n->kind == NodeKind::FunctionDecl));
+  };
+  forEachNodeExcept(f, [&](Node* n)
+  {
+    if (discarded.count(n))
+      return;
+    if (n != f && (n->kind == NodeKind::ClassDecl || n->kind == NodeKind::FunctionDecl))
+    {
+      nested.push_back(n);
+      return;
+    }
+    switch (n->kind)
+    {
+      case NodeKind::DeclStmt:
+        for (Decl* d : static_cast<DeclStmt*>(n)->decls)
+          if (d && d->kind == NodeKind::VariableDecl)
+            locals.push_back(static_cast<VariableDecl*>(d));
+        break;
+      case NodeKind::IfStmt:
+      {
+        auto* i = static_cast<IfStmt*>(n);
+        conditionOf(i->cond);
+        if (i->isConstexpr && i->constexprKnown >= 0)
+          discarded.insert(i->constexprKnown ? static_cast<Node*>(i->else_) : static_cast<Node*>(i->then));
+        break;
+      }
+      case NodeKind::ExprStmt: statementWrites(static_cast<ExprStmt*>(n)->expr); break;
+      case NodeKind::WhileStmt: conditionOf(static_cast<WhileStmt*>(n)->cond); break;
+      case NodeKind::SwitchStmt: conditionOf(static_cast<SwitchStmt*>(n)->cond); break;
+      case NodeKind::ForStmt:
+        conditionOf(static_cast<ForStmt*>(n)->cond);
+        statementWrites(static_cast<ForStmt*>(n)->step);
+        break;
+      case NodeKind::NamedType:
+        if (const QualifiedName& q = static_cast<NamedType*>(n)->name; q.parts.size() == 1 && !q.global)
+          namedAsType.insert(q.parts[0].symbol);
+        break;
+      case NodeKind::LambdaExpr: lambdas.push_back(static_cast<LambdaExpr*>(n)); break;
+      case NodeKind::NameExpr:
+        if (Decl* d = static_cast<NameExpr*>(n)->resolved)
+          ++(written.count(n) ? uses[d].writes : uses[d].reads);
+        else if (const QualifiedName& q = static_cast<NameExpr*>(n)->name; q.parts.size() == 1 && !q.global)
+          namedAsType.insert(q.parts[0].symbol); // (unresolved here, a decltype qualifier's `decltype(s)::g()`: what it spells)
+        break;
+      default:
+        break;
+    }
+  }, ownBody);
+  // What an if constexpr's dropped branch names is a use too, by its spelling (the walk resolved nothing there): a
+  // local only another configuration reads (`if constexpr (config::debug) log(verbose);`), as C++ counts it.
+  for (const Node* n : discarded)
+    if (n)
+      forEachNode(const_cast<Node*>(n), [&](Node* m)
+      {
+        const QualifiedName* q = m->kind == NodeKind::NameExpr    ? &static_cast<NameExpr*>(m)->name
+                                 : m->kind == NodeKind::NamedType ? &static_cast<NamedType*>(m)->name
+                                                                  : nullptr;
+        if (q && q->parts.size() == 1 && !q->global)
+          namedAsType.insert(q->parts[0].symbol);
+      });
+  // What a local class's member functions name is a use of the function's locals (`constexpr int k = 4; class Local {
+  // int get() { return k; } };`): read, wherever it stands there.
+  for (Node* n : nested)
+    forEachNode(n, [&](Node* m)
+    {
+      if (m->kind == NodeKind::NameExpr)
+      {
+        if (Decl* d = static_cast<NameExpr*>(m)->resolved)
+          ++uses[d].reads;
+        else if (const QualifiedName& q = static_cast<NameExpr*>(m)->name; q.parts.size() == 1 && !q.global)
+          namedAsType.insert(q.parts[0].symbol);
+      }
+      else if (m->kind == NodeKind::NamedType)
+        if (const QualifiedName& q = static_cast<NamedType*>(m)->name; q.parts.size() == 1 && !q.global)
+          namedAsType.insert(q.parts[0].symbol);
+    });
+  // Whether making or ending an object of type t does nothing a program sees: no class with a constructor or a
+  // destructor of its own (nor a base or member with one), no reference to a class (it may keep a temporary alive).
+  std::function<bool(const Ty*, int)> plain = [&](const Ty* t, int depth) -> bool
+  {
+    if (!t || depth > 16)
+      return false;
+    if (t->isReference())
+      return types.unqualified(types.stripRef(t))->kind != TyKind::Class;
+    t = types.unqualified(t);
+    while (t->kind == TyKind::Array && t->inner)
+      t = types.unqualified(t->inner);
+    if (t->kind != TyKind::Class)
+      return true;
+    ClassDecl* def = impl.classDefinition(t);
+    if (!def || def->isTypedUnion || impl.triviallyDestructible(t) != std::optional<bool>(true))
+      return false;
+    for (Decl* m : membersRead(def))
+      if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor) && !(m->flags & DF_Default))
+        return false;
+      else if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef)) &&
+               !plain(impl.declaredTypeOf(m, nullptr, 0), depth + 1))
+        return false;
+    std::vector<const Ty*> bases;
+    impl.directBases(t, def, bases);
+    for (const Ty* b : bases)
+      if (!plain(b, depth + 1))
+        return false;
+    return true;
+  };
+  auto nameOf = [&](const VariableDecl* v) { return std::string(symbols.name(v->name.last().symbol)); };
+  // A capture named in a lambda's list is a use of the variable (as clang takes it): one its body never names is the
+  // capture's error alone.
+  for (LambdaExpr* l : lambdas)
+    for (const LambdaCapture& c : l->captures)
+      if (!c.isThis && !c.init && c.symbol != UINT32_MAX)
+      {
+        for (VariableDecl* v : locals)
+          if (!v->name.empty() && v->name.last().symbol == c.symbol)
+            ++uses[v].reads;
+        for (Decl* p : f->params)
+          if (static_cast<ParamDecl*>(p)->name == c.symbol)
+            ++uses[p].reads;
+      }
+  for (VariableDecl* v : locals)
+  {
+    if (v->name.empty() || v->name.last().symbol == UINT32_MAX || (v->attributes & ATTR_MaybeUnused) || v->when || condition.count(v) ||
+        !v->structuredBindings.empty() || v->tupleBinding || (v->flags & (DF_Extern | DF_Typedef)))
+      continue;
+    auto u = uses.find(v);
+    if ((u != uses.end() && u->second.reads) || namedAsType.count(v->name.last().symbol))
+      continue;
+    const Ty* t = v->cachedType.load(std::memory_order_acquire);
+    if (!t)
+      t = impl.declaredTypeOf(v, nullptr, 0);
+    if (!t || !t->isKnown() || types.isDependent(t) || Impl::mentionsUnknown(t) || impl.containsAuto(t) || !plain(t, 0))
+      continue;
+    // A lambda that copies what it captures (`[t]`, `[=]`, `[x = make()]`) makes those copies: a class's copy or ending
+    // may do something (`auto byCopy = [tracker] {};`), so it is used by being there, as a class object is.
+    if (Expr* init = strip(v->init); init && init->kind == NodeKind::LambdaExpr)
+    {
+      auto* l = static_cast<LambdaExpr*>(init);
+      bool copies = l->defaultCapture == 1;
+      for (const LambdaCapture& c : l->captures)
+        copies = copies || (!c.isThis && !c.byRef);
+      if (copies)
+        continue;
+    }
+    std::string name = nameOf(v);
+    if (u == uses.end() || !u->second.writes)
+      report(v->token, "the local " + name + " is never used: remove it, or keep it with `(void)" + name + ";` or [[maybe_unused]]");
+    else if (const Ty* s = types.unqualified(t); !t->isReference() && (s->isArithmetic() || s->kind == TyKind::Enum || s->kind == TyKind::Pointer))
+      report(v->token, "the local " + name + " is assigned but never read: remove it, or keep it with `(void)" + name + ";` or [[maybe_unused]]");
+  }
+  // A virtual function's or an override's parameters are its base's signature: not judged, written so or found so.
+  FunctionDecl* declared = impl.declarationOfDefinition(f);
+  uint32_t flags = f->flags | (declared ? declared->flags : 0);
+  bool signatureOfAnother = (flags & (DF_Virtual | DF_Override | DF_Pure | DF_Final)) != 0 || overridesBaseVirtual(declared ? declared : f);
+  auto emptyBody = [](Stmt* body)
+  {
+    if (!body || body->kind != NodeKind::BlockStmt)
+      return false;
+    for (Stmt* s : static_cast<BlockStmt*>(body)->stmts)
+      if (s && s->kind != NodeKind::EmptyStmt)
+        return false;
+    return true;
+  };
+  auto checkParams = [&](Span<Decl*> params, Stmt* body, const std::string& of)
+  {
+    if (emptyBody(body))
+      return;
+    for (Decl* p : params)
+    {
+      auto* pd = static_cast<ParamDecl*>(p);
+      if (pd->name == UINT32_MAX || pd->isPack || (pd->attributes & ATTR_MaybeUnused) || uses.count(pd) || namedAsType.count(pd->name))
+        continue;
+      std::string name(symbols.name(pd->name));
+      report(pd->token, "the parameter " + name + " of " + of + " is never used: use it, or keep it with `(void)" + name + ";` or [[maybe_unused]]");
+    }
+  };
+  bool postfixDummy = !f->name.empty() && f->name.last().special == 2 &&
+                      (P(f->name.last().opToken) == P::PlusPlus || P(f->name.last().opToken) == P::MinusMinus);
+  // main's parameters are the program's signature, the system's to give (`int main(int argc, char** argv)`).
+  bool programMain = f->name.parts.size() == 1 && !f->name.last().special && (!f->parent || f->parent->kind == NodeKind::NamespaceDecl) &&
+                     (symbols.name(f->name.last().symbol) == "main" || symbols.name(f->name.last().symbol) == "__kpp_program_main");
+  std::string functionName = impl.namePartText(f->name.last());
+  if (!f->name.empty() && f->name.last().special == 2)
+  {
+    P op = P(f->name.last().opToken);
+    functionName = "operator" + (op == P::LParen ? std::string("()") : op == P::LBracket ? std::string("[]") : std::string(punctuatorSpelling(op)));
+  }
+  if (!signatureOfAnother && !(f->flags & (DF_Default | DF_Delete)) && !postfixDummy && !programMain)
+    checkParams(f->params, f->body, functionName);
+  for (LambdaExpr* l : lambdas)
+  {
+    checkParams(l->params, l->body, "the lambda");
+    // Its captures named one by one (not `this`, not an init-capture, not one a pack expands): each its body names.
+    std::unordered_set<uint32_t> named;
+    forEachNodeExcept(l->body, [&](Node* n)
+    {
+      if (n->kind == NodeKind::NamedType)
+        if (const QualifiedName& q = static_cast<NamedType*>(n)->name; q.parts.size() == 1 && !q.global)
+          named.insert(q.parts[0].symbol);
+      if (n->kind == NodeKind::NameExpr)
+        if (const QualifiedName& q = static_cast<NameExpr*>(n)->name; q.parts.size() == 1 && !q.global)
+          named.insert(q.parts[0].symbol); // (as written: a for constexpr's variable resolves to no local)
+    }, ownBody);
+    for (const LambdaCapture& c : l->captures)
+    {
+      if (c.isThis || c.init || c.isPack || c.symbol == UINT32_MAX || named.count(c.symbol))
+        continue;
+      // By copy, a class whose copy or ending does something keeps that alive (a SharedPtr): used by being there.
+      bool kept = false;
+      if (!c.byRef)
+        for (VariableDecl* v : locals)
+          if (!v->name.empty() && v->name.last().symbol == c.symbol)
+          {
+            const Ty* t = v->cachedType.load(std::memory_order_acquire);
+            kept = kept || !t || !plain(t, 0);
+          }
+      if (!kept)
+        report(l->token, "the lambda captures " + std::string(symbols.name(c.symbol)) + " and never uses it: remove it from the captures");
+    }
+  }
+}
+
+auto GlobalScope::Impl::Walker::overridesBaseVirtual(FunctionDecl* f) -> bool
+{
+  // A function of a class with a base whose virtual function of the same name it overrides (the override not written).
+  ClassDecl* cls = f && f->parent && f->parent->kind == NodeKind::ClassDecl ? static_cast<ClassDecl*>(f->parent) : nullptr;
+  if (!cls || f->name.empty() || (f->flags & (DF_Static | DF_Constructor | DF_Destructor)))
+    return false;
+  std::function<bool(const Ty*, ClassDecl*, int)> search = [&](const Ty* t, ClassDecl* c, int depth) -> bool
+  {
+    if (!t || !c || depth > 64)
+      return false;
+    std::vector<const Ty*> bases;
+    if (!impl.directBases(t, c, bases))
+      return !c->bases.empty(); // (bases not known here: as if one had it)
+    for (const Ty* bt : bases)
+    {
+      ClassDecl* bd = bt && bt->kind == TyKind::Class ? impl.classDefinition(bt) : nullptr;
+      if (!bd)
+        return true; // (a base not known here: as if it had one)
+      for (Decl* m : membersRead(bd))
+        if (m->kind == NodeKind::FunctionDecl && (m->flags & (DF_Virtual | DF_Override | DF_Pure)) && !static_cast<FunctionDecl*>(m)->name.empty() &&
+            static_cast<FunctionDecl*>(m)->name.last().symbol == f->name.last().symbol && static_cast<FunctionDecl*>(m)->name.last().special == f->name.last().special)
+          return true;
+      if (search(bt, bd, depth + 1))
+        return true;
+    }
+    return false;
+  };
+  return search(impl.selfType(cls), cls, 0);
 }
 
 auto GlobalScope::Impl::Walker::checkMisleadingIndentation(Stmt* s, Stmt* next) -> void
@@ -10761,6 +11076,7 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
       bodyOf = f;
       walkStmt(f->body);
       checkFunctionEnd(f, autoReturn, autoReturn ? returnFrames.back() : nullptr); // (bodyOf still f: an instance's errors are its own)
+      checkUnusedNames(f);
       bodyOf = savedBodyOf;
       if ((impl.accessWarnings || impl.accessErrors) && !probing && !retypingElements)
       {

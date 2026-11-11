@@ -1,6 +1,6 @@
 // spec: in a debug build (config::debug) the containers check what C++ leaves undefined (kovarex, 2026-11-11: "debug containers should check bounds on debug"): Vector's operator[] past its size is an assertion failure, as are front, back and pop on an empty container and every other container's index; a release build checks none of it; the program's kpp_assert_failed, which a program may define (design.md, assert), reports each failure here and lets the next check run
 // run:
-extern "C" void kpp_assert_failed(const char* file, i32 line, i32 column, const char* text)
+extern "C" void kpp_assert_failed([[maybe_unused]] const char* file, [[maybe_unused]] i32 line, [[maybe_unused]] i32 column, const char* text)
 {
   std::println("assertion failed: ", std::StringView(text));
   throw 1;

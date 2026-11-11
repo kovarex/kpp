@@ -14,6 +14,6 @@ int main()
   int a = S<const int, int*>::v();
   int b = S<const char, char*>::Inner::w();
   int (*f)() = &S<const int, char*>::v;
-  S<const long, long*>::Inner x;
+  [[maybe_unused]] S<const long, long*>::Inner x;
   return a + b + f() + g<int>();
 }

@@ -35,8 +35,8 @@ struct Tracker
 };
 
 void byValue(Tracker t) {}
-const char* byRef(const Tracker& t) { return "ref"; }
-const char* byRef(Tracker&& t) { return "rvalue"; }
+const char* byRef([[maybe_unused]] const Tracker& t) { return "ref"; }
+const char* byRef([[maybe_unused]] Tracker&& t) { return "rvalue"; }
 
 // No copy or move constructor of its own: members are copied or moved one by one.
 struct Holder

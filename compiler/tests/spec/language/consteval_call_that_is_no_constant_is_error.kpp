@@ -13,7 +13,7 @@ struct Pattern
       throw "too many holes";
   }
 };
-int use(Pattern pattern) { return 0; }
+int use([[maybe_unused]] Pattern pattern) { return 0; }
 int main()
 {
   int n = atoi("3");

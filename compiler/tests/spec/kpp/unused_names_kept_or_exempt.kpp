@@ -1,0 +1,85 @@
+// spec: what --unused-checks takes as used or keeps (kovarex, 2026-11-11): `(void)x;`, [[maybe_unused]] on a local or a parameter, the unnamed `_`; a value read in an expression (`a[i++]`, `n-- > 0`); a name a template's argument spells (`Sequence<count>`), a local class's member reads, or a decltype qualifier names; a capture the lambda's body reads (a for constexpr's variable too); a class object whose making or ending does something (a guard) and a lambda that copies one; a condition's variable; the parameters of an empty body, of a virtual function and its override, of main, a pack and an unnamed one; a local declared in an if constexpr branch the walk drops, and one only such a branch reads (`guard 2 1 3 4 5 6 7`, then `unguard` for the guard and for the lambda's copy of it)
+// kpp: --unused-checks
+struct Guard
+{
+  Guard() { std::print("guard "); }
+  ~Guard() { std::println("unguard"); }
+};
+class Base
+{
+public:
+  virtual int value(int ignoredInBase) const { return 1; }
+  virtual ~Base() {}
+};
+class Derived : public Base
+{
+public:
+  int value(int ignoredInOverride) const override { return 2; }
+};
+template<int N>
+struct Sequence
+{
+  static constexpr int size = N;
+};
+struct Shape
+{
+  static int sides() { return 4; }
+};
+void hook(int ignoredInEmpty) {}
+template<class... Args>
+int count(Args... args) { return int(sizeof...(Args)); }
+int unnamed(int) { return 0; }
+int reads(int x)
+{
+  int kept = 7;
+  (void)kept;
+  [[maybe_unused]] int marked = 8;
+  auto _ = x + 1;
+  int values[3] = {1, 2, 3};
+  int i = 0;
+  int first = values[i++];
+  int n = 1;
+  if (n-- > 0)
+    ++first;
+  constexpr int length = 3;
+  Sequence<length> sequence;
+  Shape shape;
+  int viaQualifier = decltype(shape)::sides();
+  constexpr int k = 5;
+  class Local
+  {
+  public:
+    int get() { return k; }
+  };
+  if constexpr (false)
+  {
+    int dropped = 9;
+  }
+  int readWhenFalse = 10;
+  if constexpr (false)
+    std::println(readWhenFalse);
+  return first + sequence.size + viaQualifier + Local().get() - 13;
+}
+int keeps([[maybe_unused]] int a, int b)
+{
+  (void)b;
+  return 0;
+}
+int main(int argc, char** argv)
+{
+  Guard guard;
+  auto copiesGuard = [guard] {};
+  if (int found = 2)
+    std::print(found, " ");
+  Derived d;
+  hook(0);
+  int total = reads(0) + keeps(0, 0) + count(1, 2) + unnamed(0) + d.value(0);
+  int sum = 0;
+  for constexpr (int v : {1, 2})
+  {
+    auto add = [v, &sum] { sum += v; };
+    add();
+  }
+  std::println(total - 4, " ", sum, " 4 5 6 7");
+  return 0;
+}

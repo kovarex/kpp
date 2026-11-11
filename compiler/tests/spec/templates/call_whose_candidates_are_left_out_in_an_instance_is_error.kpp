@@ -1,6 +1,6 @@
 // spec: a call in a function template's instance that no candidate takes, each a template left out for its result type, which does not form with the arguments it deduces ([temp.deduct] 8), is an error naming the reason and the instance's arguments (until 2026-11-10 codegen's "a call that did not resolve" alone)
 // error: call_whose_candidates_are_left_out_in_an_instance_is_error.kpp:4: error: no pick takes (int32): with T = int32, its result type does not form (line 3) (in U = int32)
-template<class T> auto pick(T x) -> typename T::Value { return {}; }
+template<class T> auto pick([[maybe_unused]] T x) -> typename T::Value { return {}; }
 template<class U> int inside(U u) { return pick(u); }
 struct Valued
 {

@@ -8,6 +8,6 @@ struct OnlyPlain
 int main()
 {
   char buffer[16];
-  OnlyPlain* a = new (&buffer[0]) OnlyPlain;
+  [[maybe_unused]] OnlyPlain* a = new (&buffer[0]) OnlyPlain;
   return 0;
 }

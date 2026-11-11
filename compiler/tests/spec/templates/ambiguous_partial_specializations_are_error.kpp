@@ -13,6 +13,6 @@ template<class T, int N> struct K<T[N]> { static constexpr int v = 4; };
 int main()
 {
   std::println(S<Box<int>, int>::v, " ", K<const int[3]>::v);
-  S<Box<int>, int> s;
+  [[maybe_unused]] S<Box<int>, int> s;
   return 0;
 }

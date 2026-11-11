@@ -6,8 +6,8 @@ struct Item
 template<class T>
 struct Sink
 {
-  void take(const T& v) { std::print("copy "); }
-  void take(T&& v) { std::print("move "); }
+  void take([[maybe_unused]] const T& v) { std::print("copy "); }
+  void take([[maybe_unused]] T&& v) { std::print("move "); }
 };
 int main()
 {

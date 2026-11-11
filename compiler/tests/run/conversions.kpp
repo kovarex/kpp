@@ -39,7 +39,7 @@ struct Derived : Base
 {
   using Inherited = Base;
   using Inherited::setCaret;
-  void setCaret(const char* text) { this.caret = -1; }
+  void setCaret([[maybe_unused]] const char* text) { this.caret = -1; }
   void position(int p) { this.setCaret(Rect{p, 1, false}); }
 };
 enum class Kind { A, B, C };

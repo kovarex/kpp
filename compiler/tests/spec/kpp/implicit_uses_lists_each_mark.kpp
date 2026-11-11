@@ -41,8 +41,8 @@ template<class T> struct Box
   implicit Box(T x) : value(x) {}
 };
 int take(Used u) { return u.v; }
-int pick(Candidate c) { return 1; }
-int pick(int i) { return 2; }
+int pick([[maybe_unused]] Candidate c) { return 1; }
+int pick([[maybe_unused]] int i) { return 2; }
 template<class T> int onlyIfConvertible() requires std::isConvertible<double, T> { return 7; }
 int main()
 {

@@ -7,7 +7,7 @@ namespace Helpers
   T thrice(T x) { return 3 * x; }
   struct Builder { int value = 7; };
 }
-int twice(double x) { return -1; }
+int twice([[maybe_unused]] double x) { return -1; }
 int useHelpers(int x)
 {
   using namespace Helpers;

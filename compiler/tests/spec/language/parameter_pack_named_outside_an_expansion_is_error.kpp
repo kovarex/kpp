@@ -14,7 +14,7 @@ int notInstantiated(Ts... args)
   int fine = sumAll(args...) + (int)sizeof...(args) + (0 + ... + args);
   int beside = sumAll(args, args...);
   int alone = sumAll(args);
-  auto lambda = [](auto... xs) { return sumAll(xs); };
+  [[maybe_unused]] auto lambda = [](auto... xs) { return sumAll(xs); };
   return fine + beside + alone;
 }
 int main() { return 0; }

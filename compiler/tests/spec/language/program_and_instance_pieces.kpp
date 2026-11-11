@@ -29,7 +29,7 @@ int counter()
   calls = calls + 1;
   return calls;
 }
-template<typename T> int countTwice(T unused)
+template<typename T> int countTwice([[maybe_unused]] T unused)
 {
   counter();
   return counter();
@@ -68,7 +68,7 @@ int risky(int n)
 }
 
 // A string literal both pieces name.
-template<typename T> const char* label(T unused) { return "ok"; }
+template<typename T> const char* label([[maybe_unused]] T unused) { return "ok"; }
 
 template<typename T> struct Registry
 {

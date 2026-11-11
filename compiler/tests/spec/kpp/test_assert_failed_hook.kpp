@@ -1,7 +1,7 @@
 // spec: a program's testAssertFailed replaces what a failing assert does in a test build (the game's throws, and its tests check that)
 // test:
 // exit: 0
-void testAssertFailed(const char* file, int line, int column, const char* text)
+void testAssertFailed([[maybe_unused]] const char* file, [[maybe_unused]] int line, [[maybe_unused]] int column, const char* text)
 {
   throw std::RuntimeError(std::String(text));
 }

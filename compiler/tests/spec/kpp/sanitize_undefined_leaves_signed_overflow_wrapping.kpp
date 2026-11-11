@@ -1,6 +1,6 @@
 // spec: `--sanitize undefined` alone does not check signed overflow: kpp's signed arithmetic wraps (as Factorio's builds with -fwrapv, whose UBSan build checked float to integer conversions alone), and `--sanitize overflow` is the sanitizer that reports it; a division by zero is checked
 // kpp: --sanitize undefined
-extern "C" void kpp_assert_failed(const char* file, i32 line, i32 column, const char* text)
+extern "C" void kpp_assert_failed([[maybe_unused]] const char* file, i32 line, [[maybe_unused]] i32 column, const char* text)
 {
   std::println("line ", line, ": ", std::StringView(text));
 }

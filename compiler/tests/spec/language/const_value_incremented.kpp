@@ -12,7 +12,7 @@ int main()
   const int c = 2;
   Box b;
   const Box fixed;
-  int y = 3;
+  [[maybe_unused]] int y = 3;
   ++c;
   c--;
   ++*p;

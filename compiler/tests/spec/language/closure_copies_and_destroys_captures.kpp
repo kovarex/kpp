@@ -20,7 +20,7 @@ int main()
   {
     Tracker t2;
     auto byCopy2 = [t2]() {};
-    auto copied = byCopy2;
+    [[maybe_unused]] auto copied = byCopy2;
   }
   std::print("b ", live, " ");
   {

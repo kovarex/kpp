@@ -10,7 +10,7 @@ struct Derived : Base
     return true;
   }
 };
-int empty(const Base& base)
+int empty([[maybe_unused]] const Base& base)
 {
   return 7;
 }

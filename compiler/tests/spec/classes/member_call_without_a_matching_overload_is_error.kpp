@@ -6,7 +6,7 @@
 struct Box
 {
   int get(int a) const { return a; }
-  int get(double a) const { return 2; }
+  int get([[maybe_unused]] double a) const { return 2; }
 };
 int main()
 {

@@ -3,12 +3,12 @@
 class Entity { public: virtual ~Entity() = default; };
 class Unit : public Entity { public:};
 class Spider : public Unit { public:};
-int pick(const Entity* e) { return 1; }
-int pick(Entity* e) { return 2; }
-int nearer(Entity* e) { return 3; }
-int nearer(Unit* u) { return 4; }
-int byRef(const Entity& e) { return 5; }
-int byRef(Entity& e) { return 6; }
+int pick([[maybe_unused]] const Entity* e) { return 1; }
+int pick([[maybe_unused]] Entity* e) { return 2; }
+int nearer([[maybe_unused]] Entity* e) { return 3; }
+int nearer([[maybe_unused]] Unit* u) { return 4; }
+int byRef([[maybe_unused]] const Entity& e) { return 5; }
+int byRef([[maybe_unused]] Entity& e) { return 6; }
 int main()
 {
   Spider spider;

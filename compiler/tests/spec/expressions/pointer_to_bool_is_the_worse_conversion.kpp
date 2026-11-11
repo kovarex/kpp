@@ -3,16 +3,16 @@
 struct Base { int x = 1; };
 struct Derived : Base { int y = 2; };
 enum E { E0, E1 };
-int toVoid(bool b) { return 1; }
-int toVoid(const void* p) { return 2; }
-int fromArray(void* p) { return 1; }
-int fromArray(bool b) { return 2; }
-int toBase(bool b) { return 1; }
-int toBase(const Base* p) { return 2; }
-int member(bool b) { return 1; }
-int member(E e) { return 2; }
-int constChars(void* p) { return 1; }
-int constChars(const void* p) { return 2; }
+int toVoid([[maybe_unused]] bool b) { return 1; }
+int toVoid([[maybe_unused]] const void* p) { return 2; }
+int fromArray([[maybe_unused]] void* p) { return 1; }
+int fromArray([[maybe_unused]] bool b) { return 2; }
+int toBase([[maybe_unused]] bool b) { return 1; }
+int toBase([[maybe_unused]] const Base* p) { return 2; }
+int member([[maybe_unused]] bool b) { return 1; }
+int member([[maybe_unused]] E e) { return 2; }
+int constChars([[maybe_unused]] void* p) { return 1; }
+int constChars([[maybe_unused]] const void* p) { return 2; }
 int main()
 {
   Derived d;

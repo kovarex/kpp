@@ -21,7 +21,7 @@ struct Net
   }
 };
 template<bool ForLogistics>
-auto* Net::maybeGet(int x) const
+auto* Net::maybeGet([[maybe_unused]] int x) const
 {
   if constexpr (ForLogistics)
     return &this.a;

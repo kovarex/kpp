@@ -9,13 +9,13 @@ struct Flag<false> : std::FalseType {};
 const char* pick(std::TrueType) { return "signed"; }
 const char* pick(std::FalseType) { return "unsigned"; }
 template<typename T>
-const char* bySign(T value)
+const char* bySign([[maybe_unused]] T value)
 {
   constexpr bool sign = std::isSigned<T>;
   return pick(Flag<sign>());
 }
 template<typename T>
-const char* byTrait(T value) { return pick(std::IntegralConstant<bool, std::isSigned<T>>()); }
+const char* byTrait([[maybe_unused]] T value) { return pick(std::IntegralConstant<bool, std::isSigned<T>>()); }
 int main()
 {
   std::println(std::StringView(bySign(-1)), " ", std::StringView(bySign(1u)), " ", std::StringView(byTrait(-1)), " ", std::StringView(byTrait(1u)));

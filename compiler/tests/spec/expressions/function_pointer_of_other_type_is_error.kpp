@@ -4,6 +4,6 @@
 void takesInt(int* x) {}
 int main()
 {
-  void (*p)(void**) = &takesInt;
+  [[maybe_unused]] void (*p)(void**) = &takesInt;
   return 0;
 }

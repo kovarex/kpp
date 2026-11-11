@@ -569,7 +569,7 @@ struct MarkdownInlineParser
     {
       ++k;
       bool ok = true;
-      i32 labels = 0;
+      [[maybe_unused]] i32 labels = 0;
       while (ok)
       {
         i32 labelStart = k;

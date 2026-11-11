@@ -7,9 +7,9 @@ template<class T> struct Box
 {
   T value;
 };
-template<class T> Box<Undeclared> wrap(T x) { return {}; }
-template<class T> int take(T x, Missing y) { return 1; }
-template<class T> Absent unused(T x) { return {}; }
+template<class T> Box<Undeclared> wrap([[maybe_unused]] T x) { return {}; }
+template<class T> int take([[maybe_unused]] T x, [[maybe_unused]] Missing y) { return 1; }
+template<class T> Absent unused([[maybe_unused]] T x) { return {}; }
 template<class T> struct Holder
 {
   Nowhere get() const { return {}; }

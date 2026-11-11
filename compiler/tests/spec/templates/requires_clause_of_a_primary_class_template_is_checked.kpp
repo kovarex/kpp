@@ -21,14 +21,14 @@ int main()
 {
   S<int> ok;
   R<short> ok2;
-  S<double> bad;
-  R<char> bad2;
+  [[maybe_unused]] S<double> bad;
+  [[maybe_unused]] R<char> bad2;
   int a = S<long long>::v();
   int b = S<double>::Inner::w();
   int c = C<double>::v();
   W w1(1);
   W w2(2.5);
   E<char> e1;
-  E<double> e2;
+  [[maybe_unused]] E<double> e2;
   return a + b + c + g<double>() + ok.t + ok2.t + w1.t + e1.v;
 }

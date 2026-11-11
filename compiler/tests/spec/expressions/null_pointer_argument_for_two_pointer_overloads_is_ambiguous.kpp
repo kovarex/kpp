@@ -4,11 +4,11 @@
 // error: null_pointer_argument_for_two_pointer_overloads_is_ambiguous.kpp:13: error: the call of take with (int32) is ambiguous between int32(const int32*)
 // error: null_pointer_argument_for_two_pointer_overloads_is_ambiguous.kpp:14: error: nullptr does not convert to bool without a cast
 struct Base { int x = 1; };
-int pick(Base* p) { return 1; }
-int pick(const Base* p) { return 2; }
-int take(int* p) { return 1; }
-int take(const int* p) { return 2; }
-int flag(bool b) { return 1; }
+int pick([[maybe_unused]] Base* p) { return 1; }
+int pick([[maybe_unused]] const Base* p) { return 2; }
+int take([[maybe_unused]] int* p) { return 1; }
+int take([[maybe_unused]] const int* p) { return 2; }
+int flag([[maybe_unused]] bool b) { return 1; }
 int nulls() { return pick(nullptr); }
 int zeros() { return take(0); }
 int bools() { return flag(nullptr); }

@@ -13,8 +13,8 @@ struct NoDefault
 };
 int main()
 {
-  int tooMany[2](1, 2, 3);
-  Duo noElision[2](1, 2);
+  [[maybe_unused]] int tooMany[2](1, 2, 3);
+  [[maybe_unused]] Duo noElision[2](1, 2);
   NoDefault leftOver[2](5);
   return 0;
 }

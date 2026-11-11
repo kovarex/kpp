@@ -9,12 +9,12 @@ struct Wrapped
 {
   implicit Wrapped(int value) {}
 };
-void f(int value) { printf("int "); }
-void f(std::Text text) { printf("Text "); }
-void g(const Point& p) { printf("Point "); }
-void g(std::Text text) { printf("Text "); }
-void h(Wrapped w) { printf("Wrapped "); }
-void h(std::Text text) { printf("Text "); }
+void f([[maybe_unused]] int value) { printf("int "); }
+void f([[maybe_unused]] std::Text text) { printf("Text "); }
+void g([[maybe_unused]] const Point& p) { printf("Point "); }
+void g([[maybe_unused]] std::Text text) { printf("Text "); }
+void h([[maybe_unused]] Wrapped w) { printf("Wrapped "); }
+void h([[maybe_unused]] std::Text text) { printf("Text "); }
 int main()
 {
   Point p;

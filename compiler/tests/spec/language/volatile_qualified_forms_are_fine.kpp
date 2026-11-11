@@ -17,8 +17,8 @@ volatile S s;
 const volatile S cvs{};
 volatile int a[2] = {1, 2};
 volatile V vv{3};
-template<class T> int sizeOfRef(T& t) { return (int)sizeof(T); }
-template<class T> int sizeOfConstRef(const T& t) { return (int)sizeof(T); }
+template<class T> int sizeOfRef([[maybe_unused]] T& t) { return (int)sizeof(T); }
+template<class T> int sizeOfConstRef([[maybe_unused]] const T& t) { return (int)sizeof(T); }
 
 int main()
 {

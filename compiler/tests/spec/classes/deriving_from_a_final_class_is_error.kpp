@@ -38,11 +38,11 @@ template<class... Ts> class All : public Ts...
 };
 int main()
 {
-  FromSealed s;
+  [[maybe_unused]] FromSealed s;
   Quiet q;
   Loud l;
-  Over<Sealed> o;
+  [[maybe_unused]] Over<Sealed> o;
   Over<Open> fine;
-  All<Open, Sealed> both;
+  [[maybe_unused]] All<Open, Sealed> both;
   return fine.y;
 }

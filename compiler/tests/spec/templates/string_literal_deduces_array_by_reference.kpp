@@ -2,12 +2,12 @@
 // found while packing Text arguments (design.md 14): TextPiece's `template<typename T> TextPiece(const T&)` was given T = const char* for "Point ", so sizeof(T) was 8 where C++ has 7
 // factorio: UnitTest++'s CheckStartsWith(const Actual&, const Prefix&) asks isArray<Prefix> && isSame<RemoveExtent<Prefix>, char> of CHECK_STARTS_WITH(result, "{") (TestPump, TestLocalisation)
 extern "C" import "stdio.h";
-template<typename T> int sizeByReference(const T& value) { return int(sizeof(T)); }
+template<typename T> int sizeByReference([[maybe_unused]] const T& value) { return int(sizeof(T)); }
 template<typename T> int sizeForwarded(T&& value) { return int(sizeof(value)); }
-template<typename T> int sizeByValue(T value) { return int(sizeof(T)); }
-template<typename T> int charArray(const T& value) { return std::isArray<T> && std::isSame<std::RemoveExtent<T>, char> ? 1 : 0; }
+template<typename T> int sizeByValue([[maybe_unused]] T value) { return int(sizeof(T)); }
+template<typename T> int charArray([[maybe_unused]] const T& value) { return std::isArray<T> && std::isSame<std::RemoveExtent<T>, char> ? 1 : 0; }
 using ConstChars3 = const char[3];
-template<typename T> int constCharArray(T&& value) { return std::isSame<std::RemoveReference<T>, ConstChars3> ? 1 : 0; }
+template<typename T> int constCharArray([[maybe_unused]] T&& value) { return std::isSame<std::RemoveReference<T>, ConstChars3> ? 1 : 0; }
 struct Piece
 {
   int n = 0;

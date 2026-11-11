@@ -50,6 +50,8 @@ namespace
       if (!first(t))
         return;
       each(t);
+      if (prune && (*prune)(t))
+        return; // (visited, what lies under it not: forEachNodeExcept)
       switch (t->kind)
       {
         case NodeKind::NamedType: name(static_cast<NamedType*>(t)->name); break;
@@ -82,6 +84,8 @@ namespace
       if (!first(d))
         return;
       each(d);
+      if (prune && (*prune)(d))
+        return; // (visited, what lies under it not: forEachNodeExcept)
       decls(d->templateParams);
       expr(d->when);
       switch (d->kind)
@@ -168,6 +172,8 @@ namespace
       if (!first(s))
         return;
       each(s);
+      if (prune && (*prune)(s))
+        return; // (visited, what lies under it not: forEachNodeExcept)
       switch (s->kind)
       {
         case NodeKind::BlockStmt:
@@ -256,6 +262,8 @@ namespace
       if (!first(e))
         return;
       each(e);
+      if (prune && (*prune)(e))
+        return; // (visited, what lies under it not: forEachNodeExcept)
       switch (e->kind)
       {
         case NodeKind::NameExpr: name(static_cast<NameExpr*>(e)->name); break;
@@ -357,6 +365,7 @@ namespace
 
     const std::function<void(Node*)>& each;
     std::unordered_set<const Node*> seen; // a node reached twice (an init-capture's expression) is visited once
+    const std::function<bool(Node*)>* prune = nullptr;
   };
 }
 
@@ -369,6 +378,12 @@ void forEachNode(Span<Decl*> decls, const std::function<void(Node*)>& each)
 void forEachNode(Node* root, const std::function<void(Node*)>& each)
 {
   Walk w{each, {}};
+  w.node(root);
+}
+
+void forEachNodeExcept(Node* root, const std::function<void(Node*)>& each, const std::function<bool(Node*)>& prune)
+{
+  Walk w{each, {}, &prune};
   w.node(root);
 }
 

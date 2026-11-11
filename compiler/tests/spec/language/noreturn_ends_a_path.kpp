@@ -55,7 +55,7 @@ int viaTry(int x)
   }
 }
 template<class T>
-int viaConstexpr(T x)
+int viaConstexpr([[maybe_unused]] T x)
 {
   if constexpr (sizeof(T) == 4)
     return 4;

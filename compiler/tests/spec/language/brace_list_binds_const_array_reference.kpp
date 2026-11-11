@@ -3,10 +3,10 @@
 // explicit by default leaves one way to pass a temporary array, braces named by an alias of the array type (`Three{1, 2, 3}`, a function argument's braces naming their type; the error has no fix clause, as `const int[3]{...}` is no type C++ can write), which codegen refused ("does not support the expression kind BraceInitExpr", D, 2026-11-08, with the flip) until B's arrayTemporary the same day (a reference variable's and a range's: language/temporary_array_lives_as_long_as_its_reference)
 struct Point { int x; int y; };
 int sum(const int (&a)[3]) { return a[0] + a[1] + a[2]; }
-int near(const int (&a)[2]) { return 1; }
-int near(Point p) { return 2; }
-int pick(const int (&a)[3]) { return 1; }
-int pick(std::InitializerList<int> list) { return 2; }
+int near([[maybe_unused]] const int (&a)[2]) { return 1; }
+int near([[maybe_unused]] Point p) { return 2; }
+int pick([[maybe_unused]] const int (&a)[3]) { return 1; }
+int pick([[maybe_unused]] std::InitializerList<int> list) { return 2; }
 // (explicit by default, design.md: a function argument's braces name their type, an array type through an alias,
 // but an InitializerList parameter's)
 using Three = const int[3];

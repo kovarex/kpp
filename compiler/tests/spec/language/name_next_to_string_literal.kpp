@@ -4,7 +4,7 @@
 static const char* const BULLET = "*";
 int main()
 {
-  const char* joined = "a" "b" "c";
+  [[maybe_unused]] const char* joined = "a" "b" "c";
   const char* wrong = "x" BULLET "y";
   println(joined, " ", wrong);
   return 0;

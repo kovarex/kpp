@@ -6,10 +6,10 @@ struct Abs {};
 struct Fn
 {
   template<class Expression>
-  static int create(std::Vector<const char*>&& names) { return 1; }
+  static int create([[maybe_unused]] std::Vector<const char*>&& names) { return 1; }
 
   template<Mode M>
-  static int create(std::Vector<const char*>&& names) { return M == Mode::Cell ? 2 : 3; }
+  static int create([[maybe_unused]] std::Vector<const char*>&& names) { return M == Mode::Cell ? 2 : 3; }
 };
 
 int main()

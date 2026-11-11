@@ -12,7 +12,7 @@ namespace Usage
 {
   // Neither is in its operands' namespace: found from Usage only, not by argument-dependent lookup.
   // operator| answers 40, not the bitwise or's 3, so a call that skips it shows.
-  Flags::Bits operator|(Flags::Bits x, Flags::Bits y) { return Flags::Bits(40); }
+  Flags::Bits operator|([[maybe_unused]] Flags::Bits x, [[maybe_unused]] Flags::Bits y) { return Flags::Bits(40); }
   bool operator==(const Shapes::Point& a, const Shapes::Point& b) { return a.x == b.x; }
 }
 namespace Algorithms

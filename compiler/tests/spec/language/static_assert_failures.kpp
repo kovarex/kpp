@@ -30,7 +30,7 @@ int main()
 {
   static_assert(false, "in a function");
   static_assert(counter == 3, "a variable");
-  Box<int*> b;
+  [[maybe_unused]] Box<int*> b;
   std::println(describe<float>());
   return 0;
 }

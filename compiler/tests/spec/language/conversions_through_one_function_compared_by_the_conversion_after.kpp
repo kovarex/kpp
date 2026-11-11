@@ -10,7 +10,7 @@ struct K
 struct P
 {
   int v;
-  implicit P(int a, double b = 0.5) : v(a * 10) { printf("P(int;double) "); }
+  implicit P(int a, [[maybe_unused]] double b = 0.5) : v(a * 10) { printf("P(int;double) "); }
   implicit P(long x) : v((int)x + 1) { printf("P(long) "); }
 };
 struct H

@@ -7,7 +7,7 @@ struct Choose<false, T, F> { using Type = F; };
 using Size = typename Choose<true, unsigned, unsigned long long>::Type;
 
 template<typename T, Size N>
-Size countOf(T (&array)[N]) { return N; }
+Size countOf([[maybe_unused]] T (&array)[N]) { return N; }
 
 template<typename T>
 struct View

@@ -16,7 +16,7 @@ int main()
   takePtr(item);
   Counter counter;
   counter.add(item);
-  int count = item;
-  Item* raw = item;
+  [[maybe_unused]] int count = item;
+  [[maybe_unused]] Item* raw = item;
   return 0;
 }

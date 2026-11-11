@@ -42,10 +42,10 @@ struct Callable
   int operator()() const { return 5; }
 };
 
-template<class T> int pick(T& value) { return 1; }
-int pick(long value) { return 2; }
-int pick(const Point& value) { return 3; }
-int pick(std::Function<int()> f) { return 4; }
+template<class T> int pick([[maybe_unused]] T& value) { return 1; }
+int pick([[maybe_unused]] long value) { return 2; }
+int pick([[maybe_unused]] const Point& value) { return 3; }
+int pick([[maybe_unused]] std::Function<int()> f) { return 4; }
 
 Point makePoint() { return Point(); }
 

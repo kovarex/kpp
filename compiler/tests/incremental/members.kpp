@@ -5,17 +5,17 @@
 // had none (the resolver keeps that answer: the edit must take it back).
 struct UsingBase
 {
-  int f(int v) { return 1; }
+  int f([[maybe_unused]] int v) { return 1; }
 };
 struct UsingDerived : UsingBase
 {
   using UsingBase::f;
-  int f(double v) { return 2; }
+  int f([[maybe_unused]] double v) { return 2; }
 };
 
 struct EdgeBase
 {
-  int m(int v) { return 1; }
+  int m([[maybe_unused]] int v) { return 1; }
 };
 struct EdgeDerived : EdgeBase
 {

@@ -10,11 +10,11 @@ namespace n
   };
 }
 int f(const n::S& s) { return s.v; }
-int twice(Key k) { return 1; }
+int twice([[maybe_unused]] Key k) { return 1; }
 namespace lib
 {
   int f(int v) { return v; }
-  int twice(Key k) { return 2; }
+  int twice([[maybe_unused]] Key k) { return 2; }
   int g(n::S s) { return f(s); }
   int h(Key k) { return twice(k); }
 }

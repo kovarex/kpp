@@ -5,7 +5,7 @@ template<typename F, typename T>
 const char* forEach(F f, T value) { return f(value); }
 auto outer()
 {
-  return [](auto value) { return where(); };
+  return []([[maybe_unused]] auto value) { return where(); };
 }
 const char* first() { return forEach(outer(), 1); }
 const char* second() { return forEach(outer(), 2.0); }

@@ -2,10 +2,10 @@
 enum Wide : uint32_t { WideValue = 1 };
 enum Small : uint8_t { SmallValue = 2 };
 enum Plain { PlainValue = 3 };
-const char* push(const int32_t& value) { return "signed"; }
-const char* push(const uint32_t& value) { return "unsigned"; }
-const char* take(int32_t value) { return "int32"; }
-const char* take(uint8_t value) { return "uint8"; }
+const char* push([[maybe_unused]] const int32_t& value) { return "signed"; }
+const char* push([[maybe_unused]] const uint32_t& value) { return "unsigned"; }
+const char* take([[maybe_unused]] int32_t value) { return "int32"; }
+const char* take([[maybe_unused]] uint8_t value) { return "uint8"; }
 int main()
 {
   std::println(std::StringView(push(WideValue)), " ", std::StringView(push(PlainValue)), " ", std::StringView(take(SmallValue)), " ", std::StringView(take(PlainValue)));

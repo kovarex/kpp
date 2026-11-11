@@ -684,7 +684,7 @@ extern "C" void kpp_check_failed(const char* file, int line, int column, const c
 
 // The hooks a program may define (design.md 8.7). The program's own, a function, is the better
 // match for a call than these templates, which say that it has none.
-template<typename T = void> void testsSetup(const std::Vector<std::String>& arguments)
+template<typename T = void> void testsSetup([[maybe_unused]] const std::Vector<std::String>& arguments)
 {
   __kppTestState().noSetup = true;
 }
@@ -2073,7 +2073,8 @@ struct __KppWorkerProcess
 };
 
 // (the worker's command line is this one's, whatever it quotes, and the worker's own arguments)
-bool __kppStartWorker(__KppWorkerProcess& worker, int index, const std::Vector<std::String>& extra, int argc, char** argv)
+bool __kppStartWorker(__KppWorkerProcess& worker, int index, const std::Vector<std::String>& extra, [[maybe_unused]] int argc,
+                      [[maybe_unused]] char** argv)
 {
   u64 attributes[3] = {24, 0, 1}; // SECURITY_ATTRIBUTES: its size, no descriptor, inherited
   void* commandsIn = nullptr;

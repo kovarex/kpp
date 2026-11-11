@@ -565,6 +565,8 @@ namespace
               pendingAttributes |= ATTR_NoReturn; // (C23's spellings and GNU's, a C header's: `[[__noreturn__]]`, `[[gnu::noreturn]]`)
             else if (a == "no_unique_address")
               pendingAttributes |= ATTR_NoUniqueAddress;
+            else if (a == "maybe_unused" || a == "__maybe_unused__")
+              pendingAttributes |= ATTR_MaybeUnused;
             else if (a == "deprecated")
             {
               pendingAttributes |= ATTR_Deprecated;
@@ -2523,6 +2525,7 @@ namespace
           NamePart part;
           part.symbol = symbols.intern("_" + std::to_string(numberedLocals++));
           v->name.parts = makeSpanOf(std::vector<NamePart>{part});
+          v->attributes |= ATTR_MaybeUnused; // (unnamed: nothing uses it by name, Walker::checkUnusedNames)
         }
         v->flags |= flags | d.flags;
         if (scope == Scope::Local && (v->flags & (DF_Static | DF_ThreadLocal)))
@@ -2534,6 +2537,7 @@ namespace
             error("[[no_unique_address]] is for a data member that is no bit field");
           v->attributes |= ATTR_NoUniqueAddress;
         }
+        v->attributes |= pendingAttributes & ATTR_MaybeUnused; // (nothing need use it: Walker::checkUnusedNames)
         v->structuredBindings = d.structuredBindings;
         v->templateParams = templ.params;
         v->isTemplate = templ.present;
@@ -3172,6 +3176,9 @@ namespace
 
     Decl* parseParameter()
     {
+      // (its own attributes, not its function's, nor an earlier parameter's: `[[maybe_unused]] int x`)
+      Restore<uint16_t> restoreAttributes(pendingAttributes);
+      pendingAttributes = 0;
       uint32_t start = pos;
       skipAttributes();
       uint32_t flags = 0;
@@ -3197,6 +3204,7 @@ namespace
       parseDeclarator(d, Scope::Local);
       p->type = d.type;
       p->isPack = p->isPack || d.isPack;
+      p->attributes |= pendingAttributes & ATTR_MaybeUnused;
       if (!d.name.empty())
         p->name = d.name.last().symbol;
       if (d.isFunction)
@@ -5663,6 +5671,7 @@ namespace
       uint32_t start = pos;
       DeclStmt* s = node<DeclStmt>(start);
       size_t mark = scratch.size();
+      carriedAttributes = pendingAttributes & ATTR_MaybeUnused; // (the statement read `[[maybe_unused]] int x;`'s attribute)
       parseDeclarationInner(Scope::Local, {});
       s->decls = makeSpan<Decl*>(mark);
       return s;

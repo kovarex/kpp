@@ -2,16 +2,16 @@
 // found by thread J's overload battery (c3-3, 2026-11-07)
 // error: call_whose_every_template_deduction_conflicts_is_error.kpp:22: error: no refConv takes (int32, double): T deduced as int32 from argument 1 and as double from argument 2
 // error: call_whose_every_template_deduction_conflicts_is_error.kpp:23: error: no Box::both takes (int32, char): T deduced as int32 from argument 1 and as char from argument 2
-template<class T> int refConv(const T& a, T b) { return 1; }
+template<class T> int refConv([[maybe_unused]] const T& a, [[maybe_unused]] T b) { return 1; }
 struct Box
 {
-  template<class T> int both(T a, T b) { return 2; }
+  template<class T> int both([[maybe_unused]] T a, [[maybe_unused]] T b) { return 2; }
 };
-template<class T> int pick(T a, T b) { return 3; }
-int pick(int a, double b) { return 4; }
+template<class T> int pick([[maybe_unused]] T a, [[maybe_unused]] T b) { return 3; }
+int pick([[maybe_unused]] int a, [[maybe_unused]] double b) { return 4; }
 template<class T> struct Holder
 {
-  template<class U> int put(const T& a, const T& b, U c) { return 5; }
+  template<class U> int put([[maybe_unused]] const T& a, [[maybe_unused]] const T& b, [[maybe_unused]] U c) { return 5; }
 };
 template<class T> T larger(T a, T b) { return a < b ? b : a; }
 int main()

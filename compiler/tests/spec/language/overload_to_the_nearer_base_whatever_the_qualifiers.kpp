@@ -12,34 +12,34 @@ class D : public B
 class DD : public D
 {
 };
-int p1(const D* a) { return 1; }
-int p1(B* a) { return 2; }
-int p2(D* a) { return 1; }
-int p2(const B* a) { return 2; }
-int r1(const D& a) { return 1; }
-int r1(B& a) { return 2; }
-int r2(D& a) { return 1; }
-int r2(const B& a) { return 2; }
-int p3(D* a) { return 1; }
-int p3(const B* const& a) { return 2; }
-int v1(const volatile D* a) { return 1; }
-int v1(B* a) { return 2; }
-int w1(const B* a) { return 1; }
-int w1(void* a) { return 2; }
-int w2(B* a) { return 1; }
-int w2(const void* a) { return 2; }
-int m1(B a) { return 1; }
-int m1(D& a) { return 2; }
-int m2(D a) { return 1; }
-int m2(const B& a) { return 2; }
-int m3(B a) { return 1; }
-int m3(const D& a) { return 2; }
-int m4(D a) { return 1; }
-int m4(B& a) { return 2; }
-int m5(B a) { return 1; }
-int m5(D a) { return 2; }
-int same1(const D* a) { return 1; }
-int same1(D* a) { return 2; }
+int p1([[maybe_unused]] const D* a) { return 1; }
+int p1([[maybe_unused]] B* a) { return 2; }
+int p2([[maybe_unused]] D* a) { return 1; }
+int p2([[maybe_unused]] const B* a) { return 2; }
+int r1([[maybe_unused]] const D& a) { return 1; }
+int r1([[maybe_unused]] B& a) { return 2; }
+int r2([[maybe_unused]] D& a) { return 1; }
+int r2([[maybe_unused]] const B& a) { return 2; }
+int p3([[maybe_unused]] D* a) { return 1; }
+int p3([[maybe_unused]] const B* const& a) { return 2; }
+int v1([[maybe_unused]] const volatile D* a) { return 1; }
+int v1([[maybe_unused]] B* a) { return 2; }
+int w1([[maybe_unused]] const B* a) { return 1; }
+int w1([[maybe_unused]] void* a) { return 2; }
+int w2([[maybe_unused]] B* a) { return 1; }
+int w2([[maybe_unused]] const void* a) { return 2; }
+int m1([[maybe_unused]] B a) { return 1; }
+int m1([[maybe_unused]] D& a) { return 2; }
+int m2([[maybe_unused]] D a) { return 1; }
+int m2([[maybe_unused]] const B& a) { return 2; }
+int m3([[maybe_unused]] B a) { return 1; }
+int m3([[maybe_unused]] const D& a) { return 2; }
+int m4([[maybe_unused]] D a) { return 1; }
+int m4([[maybe_unused]] B& a) { return 2; }
+int m5([[maybe_unused]] B a) { return 1; }
+int m5([[maybe_unused]] D a) { return 2; }
+int same1([[maybe_unused]] const D* a) { return 1; }
+int same1([[maybe_unused]] D* a) { return 2; }
 int main()
 {
   DD dd;

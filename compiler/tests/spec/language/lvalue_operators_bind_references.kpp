@@ -6,7 +6,7 @@ int pick(int& r)
   r += 100;
   return 1;
 }
-int pick(long& r) { return 2; }
+int pick([[maybe_unused]] long& r) { return 2; }
 int main()
 {
   int x = 0;

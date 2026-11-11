@@ -85,7 +85,7 @@ int main()
   row<TemplateCtor>("TemplateCtor"); row<TemplateCopyish>("TemplateCopyish"); row<CopyFromNonConst>("CopyFromNonConst"); row<ConvOp>("ConvOp"); row<ExplicitConv>("ExplicitConv"); row<NoexDefault>("NoexDefault"); row<AssignOnlyInt>("AssignOnlyInt");
   row<Tmpl<int>>("Tmpl<int>"); row<Tmpl<UserCopy>>("Tmpl<UserCopy>"); row<Tmpl<MoveOnly>>("Tmpl<MoveOnly>"); row<Tmpl<int&>>("Tmpl<int&>");
   row<const Pod>("const Pod"); row<const UserCopy>("const UserCopy"); row<const MoveOnly>("const MoveOnly"); row<volatile int>("volatile int"); row<volatile Pod>("volatile Pod");
-  auto l1 = [] {}; int cap = 0; auto l2 = [cap] { return cap; }; auto l3 = [&cap] { return cap; };
+  auto l1 = [] {}; int cap = 0; auto l2 = [cap] { return cap; }; [[maybe_unused]] auto l3 = [&cap] { return cap; };
   row<decltype(l1)>("lambda");
   printf("%d%d%d%d%d%d%d%d %d%d%d%d\n", std::isConvertible<int, double>, std::isConvertible<double, int>, std::isConvertible<int*, void*>, std::isConvertible<void*, int*>, std::isConvertible<Poly*, Empty*>, std::isConvertible<PolyDerived*, Poly*>, std::isConvertible<Poly*, PolyDerived*>, std::isConvertible<int, ArgCtor>, std::isConvertible<int, ExplicitCtor>, std::isConvertible<ConvOp, int>, std::isConvertible<ExplicitConv, int>, std::isConvertible<int, void>);
   printf("%d%d%d%d%d%d%d\n", std::isBaseOf<Poly, PolyDerived>, std::isBaseOf<PolyDerived, Poly>, std::isBaseOf<Poly, Poly>, std::isBaseOf<int, int>, std::isBaseOf<Pod, DerivedPod>, std::isBaseOf<Abstract, Concrete>, std::isBaseOf<Empty, Poly>);

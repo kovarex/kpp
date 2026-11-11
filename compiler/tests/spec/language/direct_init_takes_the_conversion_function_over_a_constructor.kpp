@@ -8,7 +8,7 @@ struct A
   A(const A& o) : v(o.v) { printf("A(c) "); }
   A(A&& o) : v(o.v) { printf("A(m) "); }
   implicit A(char c) : v(c) { printf("A(char) "); }
-  implicit A(int a, double b = 0.5) : v(a + 100) { printf("A(int;double) "); }
+  implicit A(int a, [[maybe_unused]] double b = 0.5) : v(a + 100) { printf("A(int;double) "); }
 };
 struct B
 {

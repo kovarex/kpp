@@ -18,7 +18,7 @@ class Base
 {
 public:
   int x = 4;
-  int32_t read(lua_State* L) { return this.x * 10; }
+  int32_t read([[maybe_unused]] lua_State* L) { return this.x * 10; }
 protected:
   template<class T>
   static int setUp()

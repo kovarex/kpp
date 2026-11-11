@@ -3,7 +3,7 @@
 int main()
 {
   int calls = 0;
-  auto generic = [&](auto& value, int kind, bool load = true) { if (load) calls += kind; };
+  auto generic = [&]([[maybe_unused]] auto& value, int kind, bool load = true) { if (load) calls += kind; };
   int x = 0;
   generic(x, 1);
   generic(x, 2, false);

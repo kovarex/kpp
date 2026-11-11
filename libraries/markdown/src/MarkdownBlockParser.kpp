@@ -124,7 +124,7 @@ struct MarkdownBlockParser
     return type == MarkdownType::paragraph || type == MarkdownType::codeBlock || type == MarkdownType::htmlBlock;
   }
 
-  MarkdownNode* addChild(MarkdownType type, i32 offset)
+  MarkdownNode* addChild(MarkdownType type, [[maybe_unused]] i32 offset)
   {
     while (!MarkdownBlockParser::canContain(this.tip->type, type))
       this.finalize(this.tip, this.lineNumber - 1);
@@ -241,7 +241,7 @@ struct MarkdownBlockParser
     this.lineNumber += 1;
     this.line = text;
 
-    bool allMatched = true;
+    [[maybe_unused]] bool allMatched = true;
     while (container->lastChild && container->lastChild->open)
     {
       container = container->lastChild;
@@ -749,7 +749,7 @@ struct MarkdownBlockParser
     }
   }
 
-  i32 tableContinues(MarkdownNode* table) { return 0; }
+  i32 tableContinues([[maybe_unused]] MarkdownNode* table) { return 0; }
 
   void addTableRow(MarkdownNode* table)
   {

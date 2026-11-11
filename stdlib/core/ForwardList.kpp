@@ -316,7 +316,7 @@ public:
   void splice_after(ForwardIterator<T> position, ForwardList<T>&& other) { this.splice_after(position, other); }
 
   // Moves the node after it (in other, which may be this list) after position.
-  void splice_after(ForwardIterator<T> position, ForwardList<T>& other, ForwardIterator<T> it)
+  void splice_after(ForwardIterator<T> position, [[maybe_unused]] ForwardList<T>& other, ForwardIterator<T> it)
   {
     ForwardLinks* moved = it.node->next;
     if (position.node == it.node || position.node == moved)
@@ -330,7 +330,7 @@ public:
 
   // Moves the nodes strictly between first and last (in other, which may be this list; position is
   // not among them) after position.
-  void splice_after(ForwardIterator<T> position, ForwardList<T>& other, ForwardIterator<T> first, ForwardIterator<T> last)
+  void splice_after(ForwardIterator<T> position, [[maybe_unused]] ForwardList<T>& other, ForwardIterator<T> first, ForwardIterator<T> last)
   {
     if (first.node->next == last.node)
       return;

@@ -6,23 +6,23 @@ struct Two
   int a = 0;
   int b = 0;
   int c = 0;
-  Two& set(std::StringView name, i32 value)
+  Two& set([[maybe_unused]] std::StringView name, i32 value)
   {
     this.a = value;
     return this;
   }
-  Two& set(std::StringView name, bool value)
+  Two& set([[maybe_unused]] std::StringView name, bool value)
   {
     this.b = value ? 1 : 0;
     return this;
   }
-  Two& set(std::StringView name, std::StringView value)
+  Two& set([[maybe_unused]] std::StringView name, std::StringView value)
   {
     this.c = int(value.size());
     return this;
   }
-  int& operator[](i32 i) { return this.a; }
-  int& operator[](std::StringView name) { return this.c; }
+  int& operator[]([[maybe_unused]] i32 i) { return this.a; }
+  int& operator[]([[maybe_unused]] std::StringView name) { return this.c; }
 };
 int chained()
 {

@@ -11,7 +11,7 @@ int main()
   grid[Point{3, 4}] = 34;
   std::HashSet<Point, PointHash, SameX> columns;
   columns.insert(Point{1, 1});
-  std::HashSet<Point, std::Hash<int>, SameX>* unused = nullptr;
+  [[maybe_unused]] std::HashSet<Point, std::Hash<int>, SameX>* unused = nullptr;
   std::HashMap<double, int> byDouble;
   byDouble[0.5] = 1;
   byDouble[-0.0] = 2;

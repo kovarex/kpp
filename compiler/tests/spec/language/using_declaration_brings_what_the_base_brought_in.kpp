@@ -4,13 +4,13 @@ extern "C" int printf(const char* format, ...);
 class A
 {
 public:
-  int g(char x) { printf("A::g(char) "); return 1; }
-  int g(unsigned x) { printf("A::g(unsigned) "); return 2; }
+  int g([[maybe_unused]] char x) { printf("A::g(char) "); return 1; }
+  int g([[maybe_unused]] unsigned x) { printf("A::g(unsigned) "); return 2; }
 };
 class B : public A
 {
 public:
-  int g(long x) { printf("B::g(long) "); return 3; }
+  int g([[maybe_unused]] long x) { printf("B::g(long) "); return 3; }
   using A::g;
 };
 class C : public B
@@ -21,7 +21,7 @@ public:
 class D : public B
 {
 public:
-  int g(double x) { printf("D::g(double) "); return 4; }
+  int g([[maybe_unused]] double x) { printf("D::g(double) "); return 4; }
   using B::g;
 };
 int main()

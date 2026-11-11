@@ -1207,6 +1207,7 @@ namespace
 namespace
 {
   std::atomic<bool> indentationWarningsEnabled{true};
+  std::atomic<bool> unusedChecksEnabled{false};
   std::atomic<bool> zeroNullWarningsEnabled{false};
   std::mutex zeroNullMutex;
   std::set<std::string> zeroNullNotes; // (sorted, each token once)
@@ -1367,6 +1368,10 @@ bool zeroNullWarningsOn() { return zeroNullWarningsEnabled; }
 void setIndentationWarnings(bool on) { indentationWarningsEnabled = on; }
 
 bool indentationWarningsOn() { return indentationWarningsEnabled; }
+
+void setUnusedChecks(bool on) { unusedChecksEnabled = on; }
+
+bool unusedChecksOn() { return unusedChecksEnabled; }
 
 void noteZeroNullWarning(const std::string& warning)
 {

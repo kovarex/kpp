@@ -5,7 +5,7 @@
 // error: consteval_malloc_errors.kpp:14: error: static assertion whose condition is no constant: free of memory malloc did not allocate (new allocated it at consteval_malloc_errors.kpp:10)
 // error: consteval_malloc_errors.kpp:15: error: static assertion whose condition is no constant: delete of memory malloc allocated at consteval_malloc_errors.kpp:11
 extern "C" import "stdlib.h";
-constexpr int leaks() { void* p = malloc(4); return 1; }
+constexpr int leaks() { [[maybe_unused]] void* p = malloc(4); return 1; }
 constexpr int twice() { void* p = malloc(4); free(p); free(p); return 1; }
 constexpr int freesNew() { int* p = new int(3); free(p); return 1; }
 constexpr int deletesMalloc() { int* p = (int*)malloc(sizeof(int)); delete p; return 1; }

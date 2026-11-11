@@ -7,7 +7,7 @@ struct Counted { int a; Counted() { this.a = 7; } };
 const Tag tag;
 const Defaults defaults;
 const Counted counted;
-constexpr int one(Tag t) { return 1; }
+constexpr int one([[maybe_unused]] Tag t) { return 1; }
 static_assert(one(tag) == 1);
 constexpr int fromDefaults = defaults.a * 10 + defaults.b;
 constexpr int fromConstructor = counted.a;

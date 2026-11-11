@@ -13,7 +13,7 @@ public:
   bool on;
   operator bool() const { return this.on; }
 };
-bool operator!(const Flag& f) { return true; }
+bool operator!([[maybe_unused]] const Flag& f) { return true; }
 int calls = 0;
 Coin make() { ++calls; return Coin(4); }
 int main()

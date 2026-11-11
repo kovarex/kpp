@@ -1,9 +1,9 @@
 // spec: an exact match of a function template beats a non-template that needs a conversion (`template<class T> int pick(T&)` takes an int lvalue over `int pick(double)`); the non-template wins only when the two conversions tie
-template<class T> int pick(T& value) { return 1; }
-int pick(double value) { return 2; }
+template<class T> int pick([[maybe_unused]] T& value) { return 1; }
+int pick([[maybe_unused]] double value) { return 2; }
 
-template<class T> int same(const T& value) { return 1; }
-int same(const int& value) { return 2; }
+template<class T> int same([[maybe_unused]] const T& value) { return 1; }
+int same([[maybe_unused]] const int& value) { return 2; }
 
 int main()
 {

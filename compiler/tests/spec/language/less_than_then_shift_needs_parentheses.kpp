@@ -17,7 +17,7 @@ int main()
   int y = 64;
   bool a = x < y >> 2;
   bool b = x < (y >> 2);
-  Box<Box<int>> box;
+  [[maybe_unused]] Box<Box<int>> box;
   int c = Box<Box<int>>::v;
   bool d = std::isSame<Box<Box<int>>, Box<Box<int>>>;
   W<int> w;

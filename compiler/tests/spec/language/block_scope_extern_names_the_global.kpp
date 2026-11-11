@@ -5,7 +5,7 @@ int shadowed = 1;
 int plainUse() { extern int shadowed; return shadowed; }
 int oneShadow()
 {
-  int shadowed = 2;
+  [[maybe_unused]] int shadowed = 2;
   {
     extern int shadowed;
     return shadowed;
@@ -22,7 +22,7 @@ namespace n
   int inner = 6;
   int useInner()
   {
-    int inner = 0;
+    [[maybe_unused]] int inner = 0;
     {
       extern int inner;
       return inner;

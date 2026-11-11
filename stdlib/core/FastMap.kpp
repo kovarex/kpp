@@ -752,13 +752,13 @@ public:
 
   // With a position hint, which is not needed: the entry's position, new or found.
   template<typename... Args>
-  iterator try_emplace(const_iterator hint, const K& key, Args&&... args)
+  iterator try_emplace([[maybe_unused]] const_iterator hint, const K& key, Args&&... args)
   {
     return this.try_emplace(key, forward<Args>(args)...).first;
   }
 
   template<typename KK, typename... Args> requires (isSame<KK, K>)
-  iterator try_emplace(const_iterator hint, KK&& key, Args&&... args)
+  iterator try_emplace([[maybe_unused]] const_iterator hint, KK&& key, Args&&... args)
   {
     return this.try_emplace(move(key), forward<Args>(args)...).first;
   }
@@ -786,10 +786,10 @@ public:
   reverse_iterator rend() { return reverse_iterator(this.tree.begin()); }
   const_reverse_iterator rend() const { return const_reverse_iterator(this.tree.begin()); }
   // Inserts as insert(entry) does (the hint is not used: O(log n) either way).
-  iterator insert(const_iterator hint, const Pair<K, V>& entry) { return this.insert(entry).first; }
-  iterator insert(const_iterator hint, Pair<K, V>&& entry) { return this.insert(move(entry)).first; }
+  iterator insert([[maybe_unused]] const_iterator hint, const Pair<K, V>& entry) { return this.insert(entry).first; }
+  iterator insert([[maybe_unused]] const_iterator hint, Pair<K, V>&& entry) { return this.insert(move(entry)).first; }
   template<typename... Args>
-  iterator emplace_hint(const_iterator hint, Args&&... args) { return this.insert(Pair<K, V>(forward<Args>(args)...)).first; }
+  iterator emplace_hint([[maybe_unused]] const_iterator hint, Args&&... args) { return this.insert(Pair<K, V>(forward<Args>(args)...)).first; }
 
   template<typename It>
   void insert(It first, It last)
@@ -918,10 +918,10 @@ public:
   const_reverse_iterator rbegin() const { return const_reverse_iterator(this.tree.end()); }
   const_reverse_iterator rend() const { return const_reverse_iterator(this.tree.begin()); }
   // Inserts as insert(entry) does (the hint is not used: O(log n) either way).
-  iterator insert(const_iterator hint, const T& entry) { return this.insert(entry).first; }
-  iterator insert(const_iterator hint, T&& entry) { return this.insert(move(entry)).first; }
+  iterator insert([[maybe_unused]] const_iterator hint, const T& entry) { return this.insert(entry).first; }
+  iterator insert([[maybe_unused]] const_iterator hint, T&& entry) { return this.insert(move(entry)).first; }
   template<typename... Args>
-  iterator emplace_hint(const_iterator hint, Args&&... args) { return this.insert(T(forward<Args>(args)...)).first; }
+  iterator emplace_hint([[maybe_unused]] const_iterator hint, Args&&... args) { return this.insert(T(forward<Args>(args)...)).first; }
 
   template<typename It>
   void insert(It first, It last)

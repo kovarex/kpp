@@ -22,7 +22,7 @@ struct B
   int v;
   implicit B(long x) : v((int)x + 1) { printf("B(long) "); }
   implicit B(A& a) : v(a.v + 10) { printf("B(A&) "); }
-  B(int a, double b = 0.5) : v(a + 100) { printf("B(int;double) "); }
+  B(int a, [[maybe_unused]] double b = 0.5) : v(a + 100) { printf("B(int;double) "); }
   ~B() { printf("~B "); }
 };
 int f(double&&) { return 1; }

@@ -15,7 +15,7 @@ public:
   implicit Other(double d) : tag(8) {}
 };
 int operator+(const Other& a, const Other& b) { return a.tag + b.tag; }
-int operator-(const Num& n) { return 42; }
+int operator-([[maybe_unused]] const Num& n) { return 42; }
 int main()
 {
   Num n(2.5);

@@ -18,9 +18,9 @@ struct Two
 struct NoBool {};
 int main()
 {
-  Holder<int*> fine;
-  Holder<NoBool> bad;
-  Two<int, char> ok;
-  Two<int, double> wrong;
+  [[maybe_unused]] Holder<int*> fine;
+  [[maybe_unused]] Holder<NoBool> bad;
+  [[maybe_unused]] Two<int, char> ok;
+  [[maybe_unused]] Two<int, double> wrong;
   return 0;
 }

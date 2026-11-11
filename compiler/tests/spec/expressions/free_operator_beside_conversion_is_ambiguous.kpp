@@ -21,8 +21,8 @@ public:
   implicit Other(const Num& n) {}
   implicit Other(const Flag& f) {}
 };
-int operator-(const Other& o) { return 7; }
-bool operator!(const Other& o) { return true; }
+int operator-([[maybe_unused]] const Other& o) { return 7; }
+bool operator!([[maybe_unused]] const Other& o) { return true; }
 int main()
 {
   Num n(2.5);

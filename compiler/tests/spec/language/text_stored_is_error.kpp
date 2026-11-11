@@ -16,11 +16,11 @@ std::Function<void()> later;
 void keep(std::Text text)
 {
   std::Vector<std::Text> all;
-  std::Text* pointer = &text;
-  later = [=] { std::Text inner = text; };
+  [[maybe_unused]] std::Text* pointer = &text;
+  later = [=] { [[maybe_unused]] std::Text inner = text; };
 }
 int main()
 {
-  std::Text made = {"a"};
+  [[maybe_unused]] std::Text made = {"a"};
   return 0;
 }

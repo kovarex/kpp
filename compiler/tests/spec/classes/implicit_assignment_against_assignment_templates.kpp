@@ -3,14 +3,14 @@ class Fwd
 {
 public:
   template<class U>
-  void operator=(U&& u) { std::println("Fwd::operator=<U&&>"); this.value = 50; }
+  void operator=([[maybe_unused]] U&& u) { std::println("Fwd::operator=<U&&>"); this.value = 50; }
   int value = 4;
 };
 class FwdDtor
 {
 public:
   template<class U>
-  void operator=(U&& u) { std::println("FwdDtor::operator=<U&&>"); this.value = 60; }
+  void operator=([[maybe_unused]] U&& u) { std::println("FwdDtor::operator=<U&&>"); this.value = 60; }
   ~FwdDtor() {}
   int value = 5;
 };

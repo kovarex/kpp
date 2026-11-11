@@ -45,7 +45,7 @@ int takeDtor(Dtor& o) { return o.v; }
 template<typename T> struct IsL { static constexpr int v = 2; };
 template<typename T> struct IsL<T&> { static constexpr int v = 1; };
 template<typename T>
-int kindOf(T&& t) { return IsL<T>::v; }
+int kindOf([[maybe_unused]] T&& t) { return IsL<T>::v; }
 int main()
 {
   Ops o, o2;

@@ -3,7 +3,7 @@
 // error: 'a' is a variable, not a type: `a * b;` and `a b;` declare b, `T f(a)` at namespace scope a function (design.md 22)
 int main()
 {
-  int a = 2, c = 3;
+  [[maybe_unused]] int a = 2, c = 3;
   a * c;
   a d = 3;
   return c + d;

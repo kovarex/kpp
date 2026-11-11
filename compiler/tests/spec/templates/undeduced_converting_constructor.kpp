@@ -6,10 +6,10 @@ public:
   virtual ~Widget() {}
   int id = 0;
 };
-static int collapsible(std::UniquePtr<Widget> collapsed, std::UniquePtr<Widget> expanded) { return 1; }
-static int collapsible(std::UniquePtr<Widget> expanded) { return 2; }
-static int collapsible(const std::String& collapsed, std::UniquePtr<Widget> expanded) { return 3; }
-static int collapsible(std::String&& collapsed, std::UniquePtr<Widget> expanded) { return 4; }
+static int collapsible([[maybe_unused]] std::UniquePtr<Widget> collapsed, [[maybe_unused]] std::UniquePtr<Widget> expanded) { return 1; }
+static int collapsible([[maybe_unused]] std::UniquePtr<Widget> expanded) { return 2; }
+static int collapsible([[maybe_unused]] const std::String& collapsed, [[maybe_unused]] std::UniquePtr<Widget> expanded) { return 3; }
+static int collapsible([[maybe_unused]] std::String&& collapsed, [[maybe_unused]] std::UniquePtr<Widget> expanded) { return 4; }
 int main()
 {
   bool loaded = true;

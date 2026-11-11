@@ -2,12 +2,12 @@
 // factorio: found by the templates thread comparing overload choices against clang 19 on generated calls: the identity and the qualification conversion tied, and partial ordering took `f(const T*)` (silent)
 struct Base { int x = 1; };
 struct Derived : Base { int y = 2; };
-template<typename T> int f(const T* p) { return 1; }
-template<typename T> int f(const T& r) { return 2; }
-template<typename T> int g(const T* p) { return 1; }
-template<typename T> int g(T& r) { return 2; }
-int h(const Base* p) { return 1; }
-int h(Base* const& r) { return 2; }
+template<typename T> int f([[maybe_unused]] const T* p) { return 1; }
+template<typename T> int f([[maybe_unused]] const T& r) { return 2; }
+template<typename T> int g([[maybe_unused]] const T* p) { return 1; }
+template<typename T> int g([[maybe_unused]] T& r) { return 2; }
+int h([[maybe_unused]] const Base* p) { return 1; }
+int h([[maybe_unused]] Base* const& r) { return 2; }
 int main()
 {
   Derived derived;

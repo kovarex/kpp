@@ -13,7 +13,7 @@ struct Evens
   int made = 0;
 };
 int evenValues[4] = {0, 2, 4, 6};
-const int* begin(Evens& e) { return evenValues; }
+const int* begin([[maybe_unused]] Evens& e) { return evenValues; }
 const int* end(Evens& e) { return evenValues + e.count; }
 
 int evensMade = 0;

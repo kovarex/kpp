@@ -5,12 +5,12 @@ class Shape
 public:
   int size = 2;
   int scaled(int k) const { return this.size * k; }
-  int scaled(const char* name) const { return 100; }
+  int scaled([[maybe_unused]] const char* name) const { return 100; }
   static int area(int side) { return side * side; }
-  static int area(const char* name) { return 5; }
+  static int area([[maybe_unused]] const char* name) { return 5; }
 };
 int twice(int x) { return 2 * x; }
-int twice(double x) { return 3; }
+int twice([[maybe_unused]] double x) { return 3; }
 template<typename T>
 T doubled(T x) { return x + x; }
 using AreaFn = int (*)(const char*);

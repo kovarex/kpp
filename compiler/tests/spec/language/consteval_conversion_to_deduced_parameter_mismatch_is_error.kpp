@@ -15,7 +15,7 @@ struct Counted
   }
 };
 template<typename... A>
-int takeMany(Counted<sizeof...(A)> c, const A&... args)
+int takeMany([[maybe_unused]] Counted<sizeof...(A)> c, const A&... args)
 {
   return int(sizeof...(A));
 }

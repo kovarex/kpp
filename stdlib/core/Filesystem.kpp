@@ -1173,7 +1173,7 @@ namespace filesystem
 
     directory_iterator(const path& p, ErrorCode& ec) { this.open(p, ec); }
 
-    directory_iterator(const path& p, directory_options options)
+    directory_iterator(const path& p, [[maybe_unused]] directory_options options)
     {
       ErrorCode ec;
       this.open(p, ec);
@@ -1181,7 +1181,7 @@ namespace filesystem
         throw filesystem_error(String("directory_iterator"), p, ec);
     }
 
-    directory_iterator(const path& p, directory_options options, ErrorCode& ec) { this.open(p, ec); }
+    directory_iterator(const path& p, [[maybe_unused]] directory_options options, ErrorCode& ec) { this.open(p, ec); }
 
     void open(const path& p, ErrorCode& ec)
     {
@@ -1235,7 +1235,7 @@ namespace filesystem
   };
 
   directory_iterator begin(directory_iterator it) { return it; }
-  directory_iterator end(const directory_iterator& it) { return directory_iterator(); }
+  directory_iterator end([[maybe_unused]] const directory_iterator& it) { return directory_iterator(); }
 
   // A recursive listing in progress, which copies of a recursive_directory_iterator share: the
   // directories open from the top one down, each at its position.
@@ -1404,7 +1404,7 @@ namespace filesystem
   };
 
   recursive_directory_iterator begin(recursive_directory_iterator it) { return it; }
-  recursive_directory_iterator end(const recursive_directory_iterator& it) { return recursive_directory_iterator(); }
+  recursive_directory_iterator end([[maybe_unused]] const recursive_directory_iterator& it) { return recursive_directory_iterator(); }
 
   // --- paths from the system ---
 

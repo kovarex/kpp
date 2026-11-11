@@ -2,8 +2,8 @@
 // factorio: found by the templates thread comparing overload choices against clang 19 on generated calls: the by-value candidate won (silent)
 // error: user_conversion_by_value_or_const_reference_is_ambiguous.kpp:7: error: the call of f with (float&) is ambiguous
 struct FromInt { implicit FromInt(int v) {} };
-int f(FromInt v) { return 1; }
-int f(const FromInt& v) { return 2; }
+int f([[maybe_unused]] FromInt v) { return 1; }
+int f([[maybe_unused]] const FromInt& v) { return 2; }
 int fromFloat() { float x = 1.5f; return f(x); }
 int main()
 {

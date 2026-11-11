@@ -42,7 +42,7 @@ int main()
   int a3 = m(9);
   std::println(a1, " ", a2, " ", a3);
   int total = 0;
-  Overload r{[&total](int x) { total += x; return total; }, [&total](const char* s) { total += 1000; return total; }};
+  Overload r{[&total](int x) { total += x; return total; }, [&total]([[maybe_unused]] const char* s) { total += 1000; return total; }};
   r(3);
   r("x");
   r(4);

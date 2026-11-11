@@ -5,17 +5,17 @@ struct S : Base
 {
   int one(int x) { return x; }
   int two(int x) { return x; }
-  int two(double x) { return 2; }
+  int two([[maybe_unused]] double x) { return 2; }
   template<class B> int own(int x) { return x; }
   static int sone(int x) { return x; }
   static int stwo(int x) { return x; }
-  static int stwo(double x) { return 2; }
+  static int stwo([[maybe_unused]] double x) { return 2; }
   template<class B> static int stmpl(int x) { return x; }
   int field = 0;
 };
 int freeOne(int x) { return x; }
 int freeTwo(int x) { return x; }
-int freeTwo(double x) { return 2; }
+int freeTwo([[maybe_unused]] double x) { return 2; }
 template<class B> int freeTmpl(int x) { return x; }
 template<class T> concept HasOne = requires { &T::one; };
 template<class T> concept HasTwo = requires { &T::two; };

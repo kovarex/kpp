@@ -1,7 +1,7 @@
 // spec: a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile server"), with --debug-info: an assert that a comment line added above it moves, then an edit of the function above, then three lines taken out, reports its line after each edit (the program's own kpp_assert_failed prints it), and its function's code is the one it had (the comment's edit patches the kept object, its module's code the same): the line is a constant of the module's assert line section, which the patch of the kept object rewrites with the line tables (kovarex, 2026-11-10: "Ok, lets try that"; until then the line was the call's operand, and an edit above an assert compiled its module again)
 // kpp: --debug-info
 //--- step: the program
-extern "C" void kpp_assert_failed(const char* file, i32 line, i32 column, const char* text)
+extern "C" void kpp_assert_failed([[maybe_unused]] const char* file, i32 line, i32 column, const char* text)
 {
   std::println("assertion at line ", line, ", column ", column, ": ", std::StringView(text));
   exit(0);
@@ -26,7 +26,7 @@ int main()
 // expect: 2
 // expect: assertion at line 14, column 3: v < 3
 //--- step: a comment line added above the asserting function
-extern "C" void kpp_assert_failed(const char* file, i32 line, i32 column, const char* text)
+extern "C" void kpp_assert_failed([[maybe_unused]] const char* file, i32 line, i32 column, const char* text)
 {
   std::println("assertion at line ", line, ", column ", column, ": ", std::StringView(text));
   exit(0);
@@ -52,7 +52,7 @@ int main()
 // expect: 2
 // expect: assertion at line 15, column 3: v < 3
 //--- step: the function above given a line
-extern "C" void kpp_assert_failed(const char* file, i32 line, i32 column, const char* text)
+extern "C" void kpp_assert_failed([[maybe_unused]] const char* file, i32 line, i32 column, const char* text)
 {
   std::println("assertion at line ", line, ", column ", column, ": ", std::StringView(text));
   exit(0);
@@ -79,7 +79,7 @@ int main()
 // expect: 2
 // expect: assertion at line 16, column 3: v < 3
 //--- step: three lines taken out above
-extern "C" void kpp_assert_failed(const char* file, i32 line, i32 column, const char* text)
+extern "C" void kpp_assert_failed([[maybe_unused]] const char* file, i32 line, i32 column, const char* text)
 {
   std::println("assertion at line ", line, ", column ", column, ": ", std::StringView(text));
   exit(0);

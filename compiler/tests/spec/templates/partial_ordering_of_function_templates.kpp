@@ -1,10 +1,10 @@
 // spec: partial ordering of function templates: when two templates take a call's arguments equally well, the more specialised one is chosen (`f(Vector<T>)` over `f(T&)`, `g(T*)` over `g(T)`, `h(const Pair2<A, B>&)` over `h(const T&)`, `contains(const Vector<T>&, const T&)` over `contains(const Vector<T>&, Pred)`; between references `const C&` over `C&` and `T&` over `T&&` for an lvalue; no pack over one that takes no argument)
 // found in CommonUtil's reverse wrappers: `template<class T> auto begin(ReversionWrapperByReference<T> w)` against the library's `template<typename C> auto begin(C& c)`, which tie behind every reversed range-for (language/range_for_free_begin_end); and in CommonUtil's Util::contains, where a value went to the predicate overload and failed inside with `ID has no operator()`
-template<class T> int f(T& x) { return 1; }
-template<class T> int f(std::Vector<T> x) { return 2; }
+template<class T> int f([[maybe_unused]] T& x) { return 1; }
+template<class T> int f([[maybe_unused]] std::Vector<T> x) { return 2; }
 
-template<class T> int g(T x) { return 1; }
-template<class T> int g(T* x) { return 2; }
+template<class T> int g([[maybe_unused]] T x) { return 1; }
+template<class T> int g([[maybe_unused]] T* x) { return 2; }
 
 template<class A, class B>
 struct Pair2
@@ -12,26 +12,26 @@ struct Pair2
   A a;
   B b;
 };
-template<class T> int h(const T& x) { return 1; }
-template<class A, class B> int h(const Pair2<A, B>& x) { return 2; }
+template<class T> int h([[maybe_unused]] const T& x) { return 1; }
+template<class A, class B> int h([[maybe_unused]] const Pair2<A, B>& x) { return 2; }
 
 // CommonUtil's Util::contains: a value against a predicate, both taking the vector the same way
-template<class T> int contains(const std::Vector<T>& v, const T& value) { return 1; }
-template<class T, class Pred> int contains(const std::Vector<T>& v, Pred pred) { return 2; }
+template<class T> int contains([[maybe_unused]] const std::Vector<T>& v, [[maybe_unused]] const T& value) { return 1; }
+template<class T, class Pred> int contains([[maybe_unused]] const std::Vector<T>& v, [[maybe_unused]] Pred pred) { return 2; }
 
 // Two references that deduce both ways: the more qualified one (the library's begin/end), then
 // the lvalue one (CommonUtil's reverse wrappers)
-template<class C> int first(C& c) { return 1; }
-template<class C> int first(const C& c) { return 2; }
-template<class T> int wrap(T& value) { return 1; }
-template<class T> int wrap(T&& value) { return 2; }
+template<class C> int first([[maybe_unused]] C& c) { return 1; }
+template<class C> int first([[maybe_unused]] const C& c) { return 2; }
+template<class T> int wrap([[maybe_unused]] T& value) { return 1; }
+template<class T> int wrap([[maybe_unused]] T&& value) { return 2; }
 
 // A trailing pack: none beats one that takes no argument (FlatMap's private_do_emplace), a
 // parameter beats a pack's (MapDeserialiser's load)
-template<class K, class... Args> int emplace(int at, K&& key, Args&&... values) { return 1; }
-template<class K> int emplace(int at, K&& key) { return 2; }
+template<class K, class... Args> int emplace([[maybe_unused]] int at, [[maybe_unused]] K&& key, Args&&... values) { return 1; }
+template<class K> int emplace([[maybe_unused]] int at, [[maybe_unused]] K&& key) { return 2; }
 template<class... Args> int load(Args&&... args) { return 1; }
-template<class T, class... Args> int load(T& result, Args&&... args) { return 2; }
+template<class T, class... Args> int load([[maybe_unused]] T& result, Args&&... args) { return 2; }
 
 int main()
 {

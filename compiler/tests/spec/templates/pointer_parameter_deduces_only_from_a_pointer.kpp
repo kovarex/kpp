@@ -7,16 +7,16 @@ class ToPtr
 public:
   implicit operator int*() const { return nullptr; }
 };
-template<class T> int both(T* p, T q) { return 1; }
-int both(const char* p, short q) { return 2; }
-template<class T> int convertible(T* p) { return 1; }
-int convertible(int* p, int extra = 0) { return 2; }
-template<class T> int a(const T* p) { return 80; }
-template<class T> int a(T& p) { return 81; }
-template<class T> int onlyConst(const T* p) { return 1; }
+template<class T> int both([[maybe_unused]] T* p, [[maybe_unused]] T q) { return 1; }
+int both([[maybe_unused]] const char* p, [[maybe_unused]] short q) { return 2; }
+template<class T> int convertible([[maybe_unused]] T* p) { return 1; }
+int convertible([[maybe_unused]] int* p, [[maybe_unused]] int extra = 0) { return 2; }
+template<class T> int a([[maybe_unused]] const T* p) { return 80; }
+template<class T> int a([[maybe_unused]] T& p) { return 81; }
+template<class T> int onlyConst([[maybe_unused]] const T* p) { return 1; }
 int onlyConst(...) { return 2; }
-template<class T> int pointerToPointer(T** p) { return 1; }
-int pointerToPointer(void* p) { return 2; }
+template<class T> int pointerToPointer([[maybe_unused]] T** p) { return 1; }
+int pointerToPointer([[maybe_unused]] void* p) { return 2; }
 template<class T> int given(T* p) { return p == nullptr ? 7 : 8; }
 int main()
 {

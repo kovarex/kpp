@@ -6,8 +6,8 @@ struct A
   constexpr A operator+(int k) const { return A{this.v + k}; }
   constexpr A operator*(int k) const { return A{this.v * k}; }
 };
-constexpr A operator+(const A& a, double d) { return A{a.v + 100}; }
-constexpr A operator*(const A& a, long long k) { return A{a.v + 1000}; }
+constexpr A operator+(const A& a, [[maybe_unused]] double d) { return A{a.v + 100}; }
+constexpr A operator*(const A& a, [[maybe_unused]] long long k) { return A{a.v + 1000}; }
 
 constexpr A made = A{1} + 1.5;
 constexpr A tied = A{1} * 3;

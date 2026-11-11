@@ -10,7 +10,7 @@ namespace kpp
   enum class Dir : uint8_t { North, South };
   int main(int argc, char** argv)
   {
-    auto s = "str\"ing" + u8"utf" + R"x(raw ")" )x" + L'c';
+    [[maybe_unused]] auto s = "str\"ing" + u8"utf" + R"x(raw ")" )x" + L'c';
     int n = 0x1'000'000 + 1e+5 + 10u;
     return argc <=> n ?: argv?->length;
   }

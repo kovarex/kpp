@@ -489,7 +489,7 @@ namespace platform
   }
 
   // A symbolic link at link to target: symlink (a directory's link is no different here).
-  bool createSymlink(const filesystem::path& target, const filesystem::path& link, bool directory, ErrorCode& ec)
+  bool createSymlink(const filesystem::path& target, const filesystem::path& link, [[maybe_unused]] bool directory, ErrorCode& ec)
   {
     if (posix::symlink(utf8Of(target).c_str(), utf8Of(link).c_str()) != 0)
     {

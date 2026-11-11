@@ -1,6 +1,6 @@
 // spec: a program's own global function takes a call the library's overload of that name would fit better: own `int toString(long long)` called as `toString(1)` is the program's (clang 201): with std scoped the library's is std::toString and no candidate
 // factorio: none yet; D's review of c5253532 (2026-11-09)
-int toString(long long value)
+int toString([[maybe_unused]] long long value)
 {
   return 201;
 }

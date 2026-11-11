@@ -35,7 +35,7 @@ template<> struct Reader<13> { static int read(int i) { return c13[i]; } };
 template<> struct Reader<14> { static int read(int i) { return c14[i]; } };
 template<> struct Reader<15> { static int read(int i) { return c15[i]; } };
 template<int N> int sum(int i) { return Reader<N>::read(i) + sum<N - 1>(i); }
-template<> int sum<-1>(int i) { return 0; }
+template<> int sum<-1>([[maybe_unused]] int i) { return 0; }
 int main(int argc, char** argv)
 {
   printf("%d\n", sum<15>(argc - 1));

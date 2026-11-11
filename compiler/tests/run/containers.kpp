@@ -9,7 +9,7 @@ int main()
   ages[std::String("ann")] = 32;
   ages[std::String("cy")] += 5;
   int total = 0;
-  ages.forEach([&](const std::String& name, int age) { total += age; });
+  ages.forEach([&]([[maybe_unused]] const std::String& name, int age) { total += age; });
   int* bob = &ages.find(std::String("bob"))->second;
   bool hasDan = ages.contains(std::String("dan"));
   printf("%zu %d %d %d %d\n", ages.size(), total, *bob, hasDan ? 1 : 0, ages.erase(std::String("bob")) ? 1 : 0);

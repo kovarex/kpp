@@ -1034,13 +1034,13 @@ public:
   // With a position hint (ScriptRendering's `objectMapping.try_emplace(objectMapping.end(), id,
   // move(item))`): the hint is not needed; the entry's position, new or found.
   template<typename... Args>
-  iterator try_emplace(const_iterator hint, const K& key, Args&&... args)
+  iterator try_emplace([[maybe_unused]] const_iterator hint, const K& key, Args&&... args)
   {
     return this.try_emplace(key, forward<Args>(args)...).first;
   }
 
   template<typename KK, typename... Args> requires (isSame<KK, K>)
-  iterator try_emplace(const_iterator hint, KK&& key, Args&&... args)
+  iterator try_emplace([[maybe_unused]] const_iterator hint, KK&& key, Args&&... args)
   {
     return this.try_emplace(move(key), forward<Args>(args)...).first;
   }
@@ -1068,13 +1068,13 @@ public:
 
   // With a position hint, not needed: the entry's position, new or found.
   template<typename M>
-  iterator insert_or_assign(const_iterator hint, const K& key, M&& value)
+  iterator insert_or_assign([[maybe_unused]] const_iterator hint, const K& key, M&& value)
   {
     return this.insert_or_assign(key, forward<M>(value)).first;
   }
 
   template<typename KK, typename M> requires (isSame<KK, K>)
-  iterator insert_or_assign(const_iterator hint, KK&& key, M&& value)
+  iterator insert_or_assign([[maybe_unused]] const_iterator hint, KK&& key, M&& value)
   {
     return this.insert_or_assign(move(key), forward<M>(value)).first;
   }

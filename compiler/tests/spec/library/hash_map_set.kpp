@@ -11,7 +11,7 @@ int main()
   counts.erase(std::String("z"));
   int* found = &counts.find(std::String("y"))->second;
   int total = 0;
-  counts.forEach([&](const std::String& k, int v) { total += v; });
+  counts.forEach([&]([[maybe_unused]] const std::String& k, int v) { total += v; });
   std::HashSet<int> seen;
   seen.insert(3);
   seen.insert(3);

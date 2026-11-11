@@ -9,7 +9,7 @@ struct Desc
   int getCount() const { return this.count; }
 };
 template <class ValueType>
-int check(const Desc& d, ValueType (Desc::*getter)() const)
+int check([[maybe_unused]] const Desc& d, [[maybe_unused]] ValueType (Desc::*getter)() const)
 {
   return int(sizeof(ValueType)) * 0 + 1;
 }

@@ -6,7 +6,7 @@ namespace Colors
   int shade = 7;
   struct Pen { int width = 2; };
   int mix(int a) { return a + 1; }
-  int mix(double a) { return 3; }
+  int mix([[maybe_unused]] double a) { return 3; }
 }
 using Colors::Red;
 using Colors::shade;

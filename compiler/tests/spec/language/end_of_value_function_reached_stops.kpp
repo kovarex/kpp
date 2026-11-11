@@ -1,5 +1,5 @@
 // spec: control reaching the end of a function that returns a value (C++'s undefined behavior: here an exhaustive switch over a C++-style enum given a value no case names, `Mode(7)`) calls the assert hook with its closing brace's line and column and a message, as a kpp enum's switch does on a value outside its cases; a lambda's too. The default hook stops the program; this one prints and returns, and the function then gives zero (until 2026-11-10 it gave zero, silently: D's note)
-extern "C" void kpp_assert_failed(const char* file, i32 line, i32 column, const char* text)
+extern "C" void kpp_assert_failed([[maybe_unused]] const char* file, i32 line, i32 column, const char* text)
 {
   std::println("stopped at line ", line, ", column ", column, ": ", std::StringView(text));
 }

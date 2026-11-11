@@ -1,7 +1,7 @@
 // spec: under --jobs a worker that ends outside a test (here in its testsSetup, each time it is started again) fails no test: the other process runs them all (the tests print nothing: what a test prints goes straight to the shared stdout, in the order the workers run)
 // test: --jobs 2
 // exit: 0
-void testsSetup(const std::Vector<std::String>& arguments)
+void testsSetup([[maybe_unused]] const std::Vector<std::String>& arguments)
 {
   if (testWorker() == 1)
     ::exit(3);

@@ -15,7 +15,7 @@ struct CountedFormat
       throw std::LogicError("format: the {} and the pieces do not pair up");
   }
 };
-std::String formatPieces(const char* pattern, std::Text args)
+std::String formatPieces([[maybe_unused]] const char* pattern, std::Text args)
 {
   std::String out;
   args.appendTo(out);

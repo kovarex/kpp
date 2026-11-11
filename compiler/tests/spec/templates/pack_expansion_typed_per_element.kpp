@@ -1,8 +1,8 @@
 // spec: a pack expansion `forward<Args>(args)...` inside an instantiation is typed once per element, so the call it is passed to picks its overload from the elements' types
 // found in the stdlib (makeShared, makeUnique, emplace_back: `new T(forward<Args>(args)...)`, 3,957 untyped expansions in the game's instantiations) and wherever a forwarding call has overloads
-int pick(int a) { return 1; }
-int pick(int a, const std::String& b) { return 2; }
-int pick(double a, double b) { return 3; }
+int pick([[maybe_unused]] int a) { return 1; }
+int pick([[maybe_unused]] int a, [[maybe_unused]] const std::String& b) { return 2; }
+int pick([[maybe_unused]] double a, [[maybe_unused]] double b) { return 3; }
 
 template<class... Args>
 int call(Args&&... args) { return pick(std::forward<Args>(args)...); }
