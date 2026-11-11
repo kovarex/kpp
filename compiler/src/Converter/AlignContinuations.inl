@@ -310,7 +310,19 @@ inline std::string alignedAsBefore(const std::string& before, const std::string&
       continue;
     std::vector<std::string_view> p = pieces(x), q = pieces(y);
     if (p.size() > 400 || q.size() > 400)
-      return after; // (a line too long to match: nothing moves)
+    {
+      // (a line too long to match piece by piece, Entity::str()'s: what changed is what lies between the
+      // text the two have in common at the start and at the end; it was every line's alignment of the
+      // file left as it was, kovarex's TriggerContext arguments a column off, 2026-11-11)
+      size_t prefix = 0;
+      while (prefix < x.size() && prefix < y.size() && x[prefix] == y[prefix])
+        ++prefix;
+      size_t suffix = 0;
+      while (suffix < x.size() - prefix && suffix < y.size() - prefix && x[x.size() - 1 - suffix] == y[y.size() - 1 - suffix])
+        ++suffix;
+      edits.push_back({uint32_t(b[l].first + prefix), uint32_t(x.size() - prefix - suffix), std::string(y.substr(prefix, y.size() - prefix - suffix))});
+      continue;
+    }
     // The longest common subsequence of the pieces; the rest is what changed.
     std::vector<std::vector<uint16_t>> lcs(p.size() + 1, std::vector<uint16_t>(q.size() + 1, 0));
     for (size_t i = p.size(); i-- > 0;)
