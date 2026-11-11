@@ -1338,7 +1338,8 @@ auto GlobalScope::Impl::Walker::reportCheck(uint32_t token, const std::string& m
 auto GlobalScope::Impl::Walker::dropsObjectQualifier(FunctionDecl* f, const Ty* objectTy) -> bool
 {
   const Ty* o = objectTy ? types.stripRef(objectTy) : nullptr;
-  return f && o && o->isKnown() && o->kind == TyKind::Class && !(f->flags & (DF_Static | DF_Constructor | DF_Destructor)) &&
+  // (a kpp enum's method too: one that is not const changes the value it is called on)
+  return f && o && o->isKnown() && (o->kind == TyKind::Class || o->kind == TyKind::Enum) && !(f->flags & (DF_Static | DF_Constructor | DF_Destructor)) &&
          ((o->isConst && !(f->flags & DF_Const)) || (o->isVolatile && !(f->flags & DF_Volatile)));
 }
 
@@ -11071,6 +11072,9 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
       else if ((f->flags & (DF_Const | DF_Volatile)) && thisType && thisType->kind == TyKind::Pointer)
         thisType = impl.types.pointer(impl.types.qualified(thisType->inner, thisType->inner->isConst || (f->flags & DF_Const), // `const C* this` in a const method,
                                                            thisType->inner->isVolatile || (f->flags & DF_Volatile)));       // `volatile C* this` in a volatile one
+      else if ((f->flags & (DF_Const | DF_Volatile)) && thisType && thisType->kind == TyKind::LRef)
+        thisType = impl.types.lref(impl.types.qualified(thisType->inner, thisType->inner->isConst || (f->flags & DF_Const), // an enum's: `const E& this`
+                                                        thisType->inner->isVolatile || (f->flags & DF_Volatile)));          // (2026-11-11: it was assignable)
       FunctionDecl* savedBodyOf = bodyOf;
       bodyOf = f;
       walkStmt(f->body);

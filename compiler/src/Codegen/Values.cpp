@@ -1083,6 +1083,15 @@ auto codegen::Emitter::lvalue(Expr* e) -> std::string
       }
       break;
     }
+    case NodeKind::ThisExpr:
+    {
+      // In an enum's method `this` is the value at the place the method was called on (Operators.cpp's call: the
+      // object's for a method that is not const), which an assignment changes (until 2026-11-11 a copy of it).
+      const Ty* t = e->ty ? types.stripRef(e->ty) : nullptr;
+      if (t && t->kind == TyKind::Enum)
+        return thisPointer(e);
+      break;
+    }
     default:
       break;
   }

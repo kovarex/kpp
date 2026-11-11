@@ -581,6 +581,12 @@ switch (d) { case Direction::North: ... } // exhaustive, no default; an invalid 
 ```
 Inside the enum's methods `this` is the value and the enumerators are in scope unqualified.
 Comparison, copying and `switch` work on the value; the underlying type is explicit or `i32`.
+A method that is not const changes the value it is called on, as a class's method changes its object
+(`void turn() { this = Direction(...); }`, then `d.turn()` changes d); a const method's `this` is const, and
+a method that is not const is not called on a const value (2026-11-11, thread B: until then a call passed a
+copy and the assignment changed a copy of that, silently; asked of kovarex, who may make assigning `this` an
+error instead). Specs kpp/enum_method_changes_the_value_it_is_called_on,
+enum_const_method_assigning_this_is_error, enum_method_not_const_on_a_const_value_is_error.
 Done 2026-10-24: the brace block, methods with `this` as the value, `count`, `values`, the
 generated or hand-written `str()`, `switch` without `default` that must name every value (a
 compile error otherwise) and aborts on a value outside them; `nameof(x)` from 8.3. A plain C++

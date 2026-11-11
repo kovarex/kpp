@@ -1,0 +1,14 @@
+// spec: in a const method of a kpp enum `this` is const: assigning it is an error, as a const method of a class cannot assign its members (until 2026-11-11 it compiled and changed a copy)
+// error: enum_const_method_assigning_this_is_error.kpp:6: error: assignment to a const value
+enum class Dir : u8
+{
+  { North, East, South, West }
+  void turn() const { this = Dir((u8(this) + 1) & 3); }
+};
+
+int main()
+{
+  Dir d = Dir::East;
+  d.turn();
+  return 0;
+}

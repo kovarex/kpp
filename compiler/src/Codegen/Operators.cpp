@@ -906,6 +906,14 @@ auto codegen::Emitter::callValue(CallExpr* c, const std::string& sret) -> Value
           thisArg = p.text;
           objectTy = p.ty->inner;
         }
+        else if (const Ty* bt = m->base->ty ? types.stripRef(m->base->ty) : nullptr; bt && bt->kind == TyKind::Enum && !(f->flags & DF_Const))
+        {
+          // A method of an enum that is not const changes the value it is called on, as a class's changes its object: `this`
+          // is that value's place (a temporary's for a value). Until 2026-11-11 every call passed a copy, and `d.turn()` left
+          // d as it was, silently (kpp/enum_method_changes_the_value_it_is_called_on).
+          thisArg = lvalue(m->base);
+          objectTy = bt;
+        }
         else
         {
           Value o = rvalue(m->base);
@@ -916,7 +924,7 @@ auto codegen::Emitter::callValue(CallExpr* c, const std::string& sret) -> Value
           }
           else if (o.ty && types.stripRef(o.ty)->kind == TyKind::Enum)
           {
-            // A method of an enum: `this` is the value, passed by its address.
+            // A const method of an enum: `this` is the value, passed by its address (a copy's).
             const Ty* et = types.stripRef(o.ty);
             std::string slot = "%v" + std::to_string(temp++);
             allocas += "  " + slot + " = alloca " + llType(et, c) + "\n";
