@@ -725,7 +725,7 @@ auto codegen::Emitter::floatConstant(double value, uint8_t bits) -> std::string
 
 auto codegen::Emitter::lineOperand(uint32_t line) -> std::string
 {
-  if (!sh.fullDebugInfo || sh.importableModules || !sh.target.windows() || !currentFile)
+  if (!sh.patchableLines || !currentFile)
     return std::to_string(line);
   std::string& section = lineSections[currentFile];
   if (section.empty())
@@ -809,14 +809,13 @@ auto codegen::Emitter::lineColumnOf(uint32_t token) -> std::pair<uint32_t, uint3
 {
   const std::vector<Token>& toks = *currentFile->tokens;
   const Token& t = toks[std::min<size_t>(token, toks.size() - 1)];
-  uint32_t line = 1, lineStart = 0;
-  for (uint32_t i = 0; i < t.offset && i < currentFile->text.size(); ++i)
-    if (currentFile->text[i] == '\n')
-    {
-      ++line;
-      lineStart = i + 1;
-    }
-  return {line, t.offset - lineStart + 1};
+  // (the file's line starts, once: each position counted its lines from the file's start)
+  const LineStarts& starts = lineStarts.try_emplace(currentFile, currentFile->text).first->second;
+  uint32_t line = uint32_t(starts.line(t.offset)), column = uint32_t(starts.column(t.offset));
+  // A position the code holds: an edit that moves it emits the function again (Shared::Definition::positions).
+  if (moduleCount > 1)
+    positionsNow.push_back({currentFile, line});
+  return {line, column};
 }
 
 auto codegen::Emitter::sourceText(uint32_t fromToken, uint32_t toToken) -> std::string
@@ -846,7 +845,8 @@ auto codegen::Emitter::callerLocation(const Ty* pt, Node* at) -> std::string
   FunctionDecl* named = writtenIn && writtenIn->kind == NodeKind::FunctionDecl ? static_cast<FunctionDecl*>(writtenIn) : currentFunction;
   std::string function = named ? qualifiedName(named) : std::string();
   fn += "  store ptr " + cStringConstant(programPathOf(currentFile)) + ", ptr " + gep(info.name, addr, 0) + "\n";
-  fn += "  store i32 " + std::to_string(line) + ", ptr " + gep(info.name, addr, 1) + "\n";
+  std::string lineValue = lineOperand(line); // (its load first)
+  fn += "  store i32 " + lineValue + ", ptr " + gep(info.name, addr, 1) + "\n";
   fn += "  store i32 " + std::to_string(column) + ", ptr " + gep(info.name, addr, 2) + "\n";
   fn += "  store ptr " + cStringConstant(function) + ", ptr " + gep(info.name, addr, 3) + "\n";
   return addr;
@@ -905,6 +905,15 @@ auto codegen::Emitter::addDefinition(const std::string& name, const std::string&
     definition.layouts = std::move(layoutsNow);
     layoutsNow.clear();
   }
+  if ((name == owner || onDemand) && !positionsNow.empty())
+  {
+    // The positions it and its lambdas hold (a global's constructor: its own; an operator emitted on demand: its own, emitted
+    // again with its writer).
+    std::sort(positionsNow.begin(), positionsNow.end());
+    positionsNow.erase(std::unique(positionsNow.begin(), positionsNow.end()), positionsNow.end());
+    definition.positions = std::move(positionsNow);
+    positionsNow.clear();
+  }
   if (!ownItself && (name == owner || onDemand) && !inlinedNow.empty())
   {
     // The function's own definition, its emission done: what it and its lambdas inlined. (What
@@ -920,6 +929,8 @@ auto codegen::Emitter::addDefinition(const std::string& name, const std::string&
     definition.emitted = std::make_unique<Instantiation>(emittingNow); // an instance, or a user of layouts: emitted again when they change
   else if (onDemand && !definition.layouts.empty())
     definition.emitted = std::make_unique<Instantiation>(Instantiation{onDemandNow.writer, {}, nullptr, currentModule, "", "", 0});
+  if (!ownItself && !definition.emitted && !definition.positions.empty())
+    definition.emitted = std::make_unique<Instantiation>(onDemand ? Instantiation{onDemandNow.writer, {}, nullptr, currentModule, "", "", 0} : emittingNow);
   std::lock_guard lock(sh.definitionsMutex);
   sh.definitions[currentModule].push_back(std::move(definition));
   definedIn[name] = currentModule;

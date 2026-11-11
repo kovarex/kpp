@@ -5,6 +5,7 @@
 #include "resolver.hpp"
 #include "target.hpp"
 #include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <functional>
 #include <memory>
@@ -53,8 +54,9 @@ struct CodegenResult
   size_t functions = 0;
   size_t structs = 0;
   std::vector<bool> changedModules; // rebuildLLVM: which modules it assembled again (the others' texts are empty here)
-  // rebuildLLVM, --debug-info: of those, the ones whose texts changed only in their debug lines (a function emitted again because
-  // an edit moved its lines, its code the one it had): their objects' line tables are patched, not compiled (driver::patchLineTables)
+  // rebuildLLVM: of those, the ones whose texts changed only in their lines (a function emitted again because an edit moved its
+  // lines or its positions, its code the one it had: debug lines, assert lines in a build of Shared::patchableLines): their objects'
+  // line tables and assert lines are patched, not compiled (driver::patchLineTables)
   std::vector<bool> linesOnlyModules;
   // With a PieceStream: the program pieces whose object the stream compiles, its text being modules[k]
   // (handed over at level 0's barrier, the same at the end).
@@ -155,6 +157,9 @@ unsigned codegenOutputModules(unsigned moduleCount, bool debug, bool optimize);
 // only what was made for those goes; a function emitted again with the body it had keeps what was made for its closures.
 // movedLines (--debug-info): functions kept as they were whose lines an edit moved: emitted again for their line tables
 // (a template's: its instances), and nothing else with them, not their callers (inlined code carries no lines of its callee).
+// movedPositions (every build): the files whose kept tokens an edit moved, with each kept line's place now: what holds a
+// position whose line or column moved (Shared::Definition::positions: an assert's, a test call's, a caller location's, an
+// inlined callee's) is emitted again.
 // A build that assembled modules and compiled none of them (it stopped at an error outside codegen: the
 // checker's): those modules (changedModules, a build's result; empty: all of them, a build in full)
 // are assembled again by the next build, whose own changes may leave their texts as this build had
@@ -162,7 +167,20 @@ unsigned codegenOutputModules(unsigned moduleCount, bool debug, bool optimize);
 // fixed static_assert linked the object from before the edit, silently; thread K, 2026-11-07).
 void unassembledAgain(CodegenSession& session, const std::vector<bool>& changedModules);
 
+// A file whose kept tokens an edit moved (a compile server's build, remapKeptFile): each line before the edit that a kept token
+// is on, all of them on one line now, with that line (sorted, from 1: a line whose tokens are on two lines now is left out), the
+// lines before the edit on which a kept token's column changed (sorted), or all: every position in it counts as moved (the kept
+// code is older than the edit before it: a build between them generated no code).
+struct MovedPositions
+{
+  const ParsedFile* file = nullptr;
+  std::vector<std::pair<uint32_t, uint32_t>> lines;
+  std::vector<uint32_t> columnsMoved;
+  bool all = false;
+};
+
 CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies, const std::vector<FunctionDecl*>& movedLines,
-                          const std::vector<FunctionDecl*>& replaced, const std::vector<FunctionDecl*>& added, const std::vector<FunctionDecl*>& removed, const std::vector<const Decl*>& changedLayouts,
+                          const std::vector<MovedPositions>& movedPositions, const std::vector<FunctionDecl*>& replaced,
+                          const std::vector<FunctionDecl*>& added, const std::vector<FunctionDecl*>& removed, const std::vector<const Decl*>& changedLayouts,
                           const std::vector<const Decl*>& instancesOf, const std::vector<const Decl*>& changedGlobals,
                           const std::vector<const Ty*>& droppedClasses, bool& rebuilt);

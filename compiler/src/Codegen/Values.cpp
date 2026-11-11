@@ -1146,6 +1146,9 @@ auto codegen::Emitter::emitGlobalConstructor(VariableDecl* v, const std::string&
     std::vector<const FunctionDecl*> saved;
   } inlinedRestore{inlinedNow, std::move(inlinedNow)};
   inlinedNow.clear();
+  // The positions its code holds are its own (Shared::Definition::positions: an edit that moves one emits it again).
+  Restore positionsRestore(positionsNow, std::move(positionsNow));
+  positionsNow.clear();
   struct NameRestore
   {
     ~NameRestore() { name = savedName, requestedBy = savedRequestedBy; }

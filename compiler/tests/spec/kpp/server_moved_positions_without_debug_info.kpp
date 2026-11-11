@@ -1,0 +1,201 @@
+// spec: a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile server"), without --debug-info: an assert, an assert in a template's instance and a caller location (`caller`), in functions the server keeps, report their lines and columns as they are after each edit that moves them (a comment line added above, a line added to the function above, the asserting function's statements indented further, which moves their columns alone, then two lines taken out): the code of a kept function holding a position an edit moved is emitted again, its lines patched in the kept object where the code is the same (the sanitizer thread's report, 2026-11-11: until then a kept function's assert line was the build's before, "--verify-incremental: ... what it wrote differs")
+//--- step: the program
+extern "C" void kpp_assert_failed(const char* file, i32 line, i32 column, const char* text)
+{
+  std::println("assertion at line ", line, ", column ", column, ": ", std::StringView(text));
+  exit(0);
+}
+
+int where(std::CallerLocation here = caller)
+{
+  return int(here.line()) * 100 + int(here.column());
+}
+
+int helper(int v)
+{
+  return v + 1;
+}
+
+template<class T>
+T bounded(T v)
+{
+  release_assert(v < T(100));
+  return v;
+}
+
+int checked(int v)
+{
+  std::println("called at ", where());
+  release_assert(v < 3);
+  return v;
+}
+
+int main()
+{
+  std::println(helper(1), " ", bounded(7));
+  return checked(5);
+}
+// expect: 2 7
+// expect: called at 2630
+// expect: assertion at line 27, column 3: v < 3
+//--- step: a comment line added above
+extern "C" void kpp_assert_failed(const char* file, i32 line, i32 column, const char* text)
+{
+  std::println("assertion at line ", line, ", column ", column, ": ", std::StringView(text));
+  exit(0);
+}
+
+int where(std::CallerLocation here = caller)
+{
+  return int(here.line()) * 100 + int(here.column());
+}
+
+// a comment
+int helper(int v)
+{
+  return v + 1;
+}
+
+template<class T>
+T bounded(T v)
+{
+  release_assert(v < T(100));
+  return v;
+}
+
+int checked(int v)
+{
+  std::println("called at ", where());
+  release_assert(v < 3);
+  return v;
+}
+
+int main()
+{
+  std::println(helper(1), " ", bounded(7));
+  return checked(5);
+}
+// expect: 2 7
+// expect: called at 2730
+// expect: assertion at line 28, column 3: v < 3
+//--- step: the function above given a line
+extern "C" void kpp_assert_failed(const char* file, i32 line, i32 column, const char* text)
+{
+  std::println("assertion at line ", line, ", column ", column, ": ", std::StringView(text));
+  exit(0);
+}
+
+int where(std::CallerLocation here = caller)
+{
+  return int(here.line()) * 100 + int(here.column());
+}
+
+// a comment
+int helper(int v)
+{
+  int w = v;
+  return w + 1;
+}
+
+template<class T>
+T bounded(T v)
+{
+  release_assert(v < T(100));
+  return v;
+}
+
+int checked(int v)
+{
+  std::println("called at ", where());
+  release_assert(v < 3);
+  return v;
+}
+
+int main()
+{
+  std::println(helper(1), " ", bounded(7));
+  return checked(5);
+}
+// expect: 2 7
+// expect: called at 2830
+// expect: assertion at line 29, column 3: v < 3
+//--- step: the asserting function's statements indented further
+extern "C" void kpp_assert_failed(const char* file, i32 line, i32 column, const char* text)
+{
+  std::println("assertion at line ", line, ", column ", column, ": ", std::StringView(text));
+  exit(0);
+}
+
+int where(std::CallerLocation here = caller)
+{
+  return int(here.line()) * 100 + int(here.column());
+}
+
+// a comment
+int helper(int v)
+{
+  int w = v;
+  return w + 1;
+}
+
+template<class T>
+T bounded(T v)
+{
+  release_assert(v < T(100));
+  return v;
+}
+
+int checked(int v)
+{
+    std::println("called at ", where());
+    release_assert(v < 3);
+    return v;
+}
+
+int main()
+{
+  std::println(helper(1), " ", bounded(7));
+  return checked(5);
+}
+// expect: 2 7
+// expect: called at 2832
+// expect: assertion at line 29, column 5: v < 3
+//--- step: two lines taken out above
+extern "C" void kpp_assert_failed(const char* file, i32 line, i32 column, const char* text)
+{
+  std::println("assertion at line ", line, ", column ", column, ": ", std::StringView(text));
+  exit(0);
+}
+
+int where(std::CallerLocation here = caller)
+{
+  return int(here.line()) * 100 + int(here.column());
+}
+
+int helper(int v)
+{
+  return v + 1;
+}
+
+template<class T>
+T bounded(T v)
+{
+  release_assert(v < T(100));
+  return v;
+}
+
+int checked(int v)
+{
+    std::println("called at ", where());
+    release_assert(v < 3);
+    return v;
+}
+
+int main()
+{
+  std::println(helper(1), " ", bounded(7));
+  return checked(5);
+}
+// expect: 2 7
+// expect: called at 2632
+// expect: assertion at line 27, column 5: v < 3

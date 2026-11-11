@@ -360,19 +360,21 @@ bool remapKeptFile(Build& kept, ParsedFile& file, const std::vector<uint32_t>& m
   });
   if (renumbered)
     kept.positionalCodegenInFull = true;
-  // --debug-info: a kept function's text has its lines (DISubprogram, its DILocations), which the
-  // edit moved when it is below the edit or was reformatted: emitted again, for that alone (its
-  // callers' code is not touched: inlined code carries no lines of its callee). Until 2026-11-10 its
-  // lines went stale unless an edit happened to run codegen in full.
-  if (kept.options.debugInfo)
+  // The kept tokens an edit moved (below the edit, or on a reformatted line): their lines and columns, which code holds where
+  // it is a position (an assert's, a check's, a test call's, a caller location's: codegen emits again what holds one that
+  // moved, its Shared::Definition::positions, in every build: until 2026-11-11 without --debug-info a kept function's assert
+  // said the line it had before the edit, the sanitizer thread's report), and with --debug-info their lines, which a kept
+  // function's text has (DISubprogram, its DILocations): emitted again, for that alone (its callers' code is not touched:
+  // inlined code carries no lines of its callee). Until 2026-11-10 its lines went stale unless an edit happened to run
+  // codegen in full. Each kept line's line after the edit is the file's line map, which patches the kept objects' line tables
+  // and assert lines; a line whose tokens went to two lines has none.
+  std::vector<bool> lineMoved(file.tokens->size(), false); // (each kept token's: its line is another now)
   {
     const std::vector<Token>& before = *file.tokens;
     const std::vector<Token>& after = *fresh.tokens;
     LineStarts oldLines(file.text), newLines(fresh.text);
-    std::vector<bool> lineMoved(before.size(), false);
-    // (each kept token's line before and after: the file's line map, which patches the kept objects'
-    // line tables; a line whose tokens went to two lines has none)
     std::vector<std::pair<uint32_t, uint32_t>> lines;
+    std::vector<uint32_t> columnsMoved;
     bool anyMoved = false;
     for (size_t t = 0; t < before.size() && t < map.size(); ++t)
       if (map[t] != UINT32_MAX && map[t] < after.size())
@@ -381,8 +383,10 @@ bool remapKeptFile(Build& kept, ParsedFile& file, const std::vector<uint32_t>& m
         lineMoved[t] = from != to;
         anyMoved = anyMoved || lineMoved[t];
         lines.push_back({from, to});
+        if (oldLines.column(before[t].offset) != newLines.column(after[map[t]].offset))
+          columnsMoved.push_back(from);
       }
-    if (anyMoved)
+    if (anyMoved || !columnsMoved.empty())
     {
       std::sort(lines.begin(), lines.end());
       lines.erase(std::unique(lines.begin(), lines.end()), lines.end());
@@ -390,12 +394,22 @@ bool remapKeptFile(Build& kept, ParsedFile& file, const std::vector<uint32_t>& m
       for (size_t i = 0; i < lines.size(); ++i)
         if ((i == 0 || lines[i - 1].first != lines[i].first) && (i + 1 == lines.size() || lines[i + 1].first != lines[i].first))
           single.push_back(lines[i]);
-      std::error_code ec;
-      std::string path = std::filesystem::absolute(file.path, ec).string(); // (as codegen's debugFileOf names it)
-      if (ec)
-        path = file.path;
-      kept.lineMaps.push_back({path, std::move(single)});
+      std::sort(columnsMoved.begin(), columnsMoved.end());
+      columnsMoved.erase(std::unique(columnsMoved.begin(), columnsMoved.end()), columnsMoved.end());
+      if (anyMoved)
+      {
+        std::error_code ec;
+        std::string path = std::filesystem::absolute(file.path, ec).string(); // (as codegen's debugFileOf names it)
+        if (ec)
+          path = file.path;
+        kept.lineMaps.push_back({path, single});
+      }
+      kept.movedPositions.push_back({&file, std::move(single), std::move(columnsMoved), false});
     }
+  }
+  if (kept.options.debugInfo)
+  {
+    const std::vector<Token>& before = *file.tokens;
     std::vector<DeclaredFunction> functions;
     std::vector<Decl*> containers;
     collectFunctions(file.decls, nullptr, false, functions, containers);
@@ -943,6 +957,7 @@ bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, double collec
   // and globals (functions added or removed, layouts, instances), or could not follow then, makes
   // it run in full.
   std::vector<FunctionDecl*> carriedBodies, carriedMovedLines, carriedReplaced;
+  std::vector<MovedPositions> carriedPositions;
   std::vector<const Decl*> carriedGlobals;
   std::vector<const Ty*> carriedDropped; // (the types it dropped: their names and layouts are still codegen's)
   bool carriedInFull = false;
@@ -950,6 +965,7 @@ bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, double collec
   {
     carriedBodies = kept.changedBodies;
     carriedMovedLines = kept.movedLines;
+    carriedPositions = kept.movedPositions;
     carriedReplaced = kept.replacedBodies;
     carriedGlobals = kept.changedGlobals;
     carriedDropped = kept.droppedClasses;
@@ -959,6 +975,7 @@ bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, double collec
   kept.changedBodies.clear();
   kept.movedLines.clear();
   kept.lineMaps.clear();
+  kept.movedPositions.clear();
   const bool behind = kept.codegenBehind; // (the kept objects are older than the last build: its lines moved too)
   kept.replacedBodies.clear();
   kept.addedFunctions.clear();
@@ -1314,6 +1331,11 @@ bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, double collec
         kept.changedBodies.push_back(f);
     if (behind)
       kept.lineMaps.clear(); // (the kept objects' lines moved twice: compiled)
+    for (MovedPositions& m : carriedPositions)
+      kept.movedPositions.push_back(std::move(m));
+    if (behind)
+      for (MovedPositions& m : kept.movedPositions)
+        m.all = true; // (the kept code's positions are older than either edit: every one of these files' moved)
     for (FunctionDecl* f : carriedMovedLines)
       if (!removed.count(f))
         kept.movedLines.push_back(f);

@@ -1,0 +1,144 @@
+// spec: a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile server"), without --debug-info: a caller location (`caller`) taken in a local class's member function, a lambda, a generic lambda's instance that a template calls, and a global's initializer, each kept by the server below an edit that moves it, says its line after each edit: what holds the position, the function that wrote the lambda or the class or the global's constructor, is emitted again (until 2026-11-11 each kept the line of the build before)
+//--- step: the program
+int where(std::CallerLocation here = caller)
+{
+  return int(here.line()) * 100 + int(here.column());
+}
+
+int helper(int v)
+{
+  return v + 1;
+}
+
+template<class F>
+int applyTo(F f) { return f(1); }
+
+int fromGlobal = [] { return where(); }();
+
+int checked(int v)
+{
+  struct Local
+  {
+    int at() const { return where(); }
+  };
+  auto plain = [] { return where(); };
+  auto generic = [](auto x) { return where() + x - x; };
+  std::println(Local{}.at(), " ", plain(), " ", applyTo(generic), " ", fromGlobal);
+  return v;
+}
+
+int main()
+{
+  std::println(helper(1));
+  return checked(0);
+}
+// expect: 2
+// expect: 2029 2228 2338 1430
+//--- step: a comment line added above
+int where(std::CallerLocation here = caller)
+{
+  return int(here.line()) * 100 + int(here.column());
+}
+
+// a comment
+int helper(int v)
+{
+  return v + 1;
+}
+
+template<class F>
+int applyTo(F f) { return f(1); }
+
+int fromGlobal = [] { return where(); }();
+
+int checked(int v)
+{
+  struct Local
+  {
+    int at() const { return where(); }
+  };
+  auto plain = [] { return where(); };
+  auto generic = [](auto x) { return where() + x - x; };
+  std::println(Local{}.at(), " ", plain(), " ", applyTo(generic), " ", fromGlobal);
+  return v;
+}
+
+int main()
+{
+  std::println(helper(1));
+  return checked(0);
+}
+// expect: 2
+// expect: 2129 2328 2438 1530
+//--- step: the function above given a line
+int where(std::CallerLocation here = caller)
+{
+  return int(here.line()) * 100 + int(here.column());
+}
+
+// a comment
+int helper(int v)
+{
+  int w = v;
+  return w + 1;
+}
+
+template<class F>
+int applyTo(F f) { return f(1); }
+
+int fromGlobal = [] { return where(); }();
+
+int checked(int v)
+{
+  struct Local
+  {
+    int at() const { return where(); }
+  };
+  auto plain = [] { return where(); };
+  auto generic = [](auto x) { return where() + x - x; };
+  std::println(Local{}.at(), " ", plain(), " ", applyTo(generic), " ", fromGlobal);
+  return v;
+}
+
+int main()
+{
+  std::println(helper(1));
+  return checked(0);
+}
+// expect: 2
+// expect: 2229 2428 2538 1630
+//--- step: two lines taken out above
+int where(std::CallerLocation here = caller)
+{
+  return int(here.line()) * 100 + int(here.column());
+}
+
+int helper(int v)
+{
+  return v + 1;
+}
+
+template<class F>
+int applyTo(F f) { return f(1); }
+
+int fromGlobal = [] { return where(); }();
+
+int checked(int v)
+{
+  struct Local
+  {
+    int at() const { return where(); }
+  };
+  auto plain = [] { return where(); };
+  auto generic = [](auto x) { return where() + x - x; };
+  std::println(Local{}.at(), " ", plain(), " ", applyTo(generic), " ", fromGlobal);
+  return v;
+}
+
+int main()
+{
+  std::println(helper(1));
+  return checked(0);
+}
+// expect: 2
+// expect: 2029 2228 2338 1430

@@ -209,12 +209,14 @@ namespace driver
         return why = "two string or file checksum tables", false;
       slot = &sub;
     }
-    if (!lineStrings || !checksums)
+    // (an object of a build without --debug-info has no line tables: its assert lines alone)
+    bool lineTables = std::any_of(all.begin(), all.end(), [](const Subsection& sub) { return sub.kind == 0xf2 || sub.kind == 0xf6; });
+    if (lineTables && (!lineStrings || !checksums))
       return why = "no string or file checksum table", false;
     // The file checksum entries whose files the maps name, by their offset in the table (what a line
     // block names its file by).
     std::vector<std::pair<uint32_t, const LineMap*>> mapped;
-    for (size_t at = 0; at + 6 <= checksums->size;)
+    for (size_t at = 0; lineTables && at + 6 <= checksums->size;)
     {
       uint32_t name = read32(b, checksums->data + at);
       uint8_t bytes = uint8_t(b[checksums->data + at + 4]);

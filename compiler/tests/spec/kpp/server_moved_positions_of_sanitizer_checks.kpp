@@ -1,0 +1,75 @@
+// spec: a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile server"), with --sanitize undefined: a division's check in a trivial function below an edit that moves it, called by main above the edit, reports its line after each edit (the program's own hook prints it and returns, and the division goes on by 1): the code holding the check's position is emitted again, the callee's, and its caller's where trivial callees are emitted in their callers (until 2026-11-11 a kept function's check said the line of the build before, the sanitizer thread's report)
+// kpp: --sanitize undefined
+//--- step: the program
+extern "C" void kpp_assert_failed(const char* file, i32 line, i32 column, const char* text)
+{
+  std::println("stopped at line ", line, ", column ", column, ": ", std::StringView(text));
+}
+
+int main()
+{
+  int zero = 0;
+  std::println(ratio(10, zero));
+  return 0;
+}
+
+int helper(int v)
+{
+  return v + 1;
+}
+
+int ratio(int a, int b)
+{
+  return a / b;
+}
+// expect: stopped at line 20, column 12: a division by zero
+// expect: 10
+//--- step: a comment line added above
+extern "C" void kpp_assert_failed(const char* file, i32 line, i32 column, const char* text)
+{
+  std::println("stopped at line ", line, ", column ", column, ": ", std::StringView(text));
+}
+
+int main()
+{
+  int zero = 0;
+  std::println(ratio(10, zero));
+  return 0;
+}
+// a comment
+
+int helper(int v)
+{
+  return v + 1;
+}
+
+int ratio(int a, int b)
+{
+  return a / b;
+}
+// expect: stopped at line 21, column 12: a division by zero
+// expect: 10
+//--- step: the comment taken out
+extern "C" void kpp_assert_failed(const char* file, i32 line, i32 column, const char* text)
+{
+  std::println("stopped at line ", line, ", column ", column, ": ", std::StringView(text));
+}
+
+int main()
+{
+  int zero = 0;
+  std::println(ratio(10, zero));
+  return 0;
+}
+
+int helper(int v)
+{
+  return v + 1;
+}
+
+int ratio(int a, int b)
+{
+  return a / b;
+}
+// expect: stopped at line 20, column 12: a division by zero
+// expect: 10

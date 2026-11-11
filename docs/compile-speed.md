@@ -1458,6 +1458,32 @@ whose body turns trivial is inlined by a build from scratch while the server's c
 constructor's callers name the class, not the constructor; a template's instance stays defined), checked
 by running a program through five such edits of a template with an explicit instantiation.
 
+**Positions in code, in every build (2026-11-11, thread B; the sanitizer thread's report).** Code holds
+source positions: an assert's line and column, a check's, a switch's or a typed union's stop, a test call's
+"called from here", a caller location's (`caller`). Without `--debug-info` nothing emitted a kept function
+again when an edit above it moved them, so its assert said the line it had before the edit
+(`--verify-incremental: ... what it wrote differs` on a spec's step with an assert added); with it, only
+the functions whose own tokens moved were (`movedLines`). Now each definition records the positions its
+code holds (`Shared::Definition::positions`: file and line, its lambdas' and inlined callees' included, a
+global's constructor its own), `remapKeptFile` gives codegen each edited file's kept lines before and after
+and the lines whose tokens' columns changed (`MovedPositions`, every build), and `rebuildLLVM` emits again,
+with the body it had, whatever holds a position whose line or column moved: a function, an instance, a
+lambda's writer, a global's constructor (anything else declines the rebuild). In an unoptimized build for
+Windows the lines are constants of the file's assert line section whether or not it has `--debug-info`
+(`Shared::patchableLines`, `Emitter::lineOperand`; a caller location's and a test call's line too), so a
+module whose code is the same but for them is patched, not compiled (the patch reads an object without
+CodeView too); a column moved, or a release build, compiles it. Every position codegen takes through
+`Emitter::lineColumnOf` is recorded, so `--sanitize undefined`'s and `overflow`'s checks (a position in
+most arithmetic) take the same path, and so does a trivial callee holding one: a5d03f7d8 keeps such a
+build from emitting trivial callees in their callers for this reason alone, and with them emitted there
+(tried with a local switch) the caller that inlined a moved check is emitted again and patched, and the
+server's 22 specs pass under `--sanitize undefined,overflow` either way. Specs
+kpp/server_moved_positions_without_debug_info (an assert, a template instance's assert and a caller
+location, then the asserting function indented further: columns alone),
+kpp/server_moved_positions_in_lambdas_local_classes_and_globals,
+kpp/server_moved_positions_of_checks_and_test_calls (each of the three fails without the re-emission and
+passes with `--debug-info` and in release too) and kpp/server_moved_positions_of_sanitizer_checks.
+
 **A generic lambda's call operator made anew in an edit (2026-11-02, thread A, step 1).** The new
 walk's lambda is a new closure type, so its call operator for its arguments is a new instance, and
 the old lambda's is one nobody asks for: the rewalk counts the new one apart (`rewalkLambdas`, not

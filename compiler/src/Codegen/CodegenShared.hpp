@@ -207,7 +207,12 @@ namespace codegen
       // this function's emission holds, its lambdas' included (Emitter::noteInlined): an edit of one
       // of those bodies changes this text, and rebuildLLVM emits it again as `emitted` says.
       std::vector<const FunctionDecl*> inlined;
-      // How it was emitted: set with inlined, and for every instance's own definition (an edit of its
+      // The source positions its code holds (Emitter::lineColumnOf: an assert's line and column, a check's, a switch's or a
+      // typed union's stop, a test call's, a caller location's), its lambdas' and its inlined callees' included, each by its
+      // file and line, sorted: an edit that moves one emits it again (rebuildLLVM's movedPositions), in every build. A
+      // global's constructor has its own.
+      std::vector<std::pair<const ParsedFile*, uint32_t>> positions;
+      // How it was emitted: set with inlined or positions, and for every instance's own definition (an edit of its
       // template's body, as written, emits it again).
       std::unique_ptr<Instantiation> emitted;
       // The class types whose layouts (or answers computed from them: size, destruction, bitwise
@@ -463,6 +468,9 @@ namespace codegen
     bool sanitizeOverflow = false;                       // --sanitize overflow: signed overflow, Emitter::undefinedCheck
     bool debugInfo = false;                              // --debug-info: line tables for the debugger (Emitter::debugLines)
     bool fullDebugInfo = false;                          // --debug-info unoptimized: variables and types too (Emitter::debugVariable)
+    // An unoptimized build for Windows with no importable modules, --debug-info or not: the lines in its code are constants
+    // (Emitter::lineOperand) that a compile server's patch of a kept object rewrites (driver::patchLineTables).
+    bool patchableLines = false;
     // Those types, in shards by key, each under a lock of its own: under the shared lock, which every
     // emitter's other work takes too, 32 emitters asking for types and member functions at once spun or
     // slept on it in 60% of homeDebugClasses' samples in the game's debug build. Each shard also has the

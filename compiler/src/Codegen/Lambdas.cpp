@@ -1090,6 +1090,7 @@ auto codegen::Emitter::emitCallOperatorOnDemand(const Ty* t, const Ty* callTy, c
       e.currentModule = module;
       e.owner = std::move(owner);
       e.inlinedNow = std::move(inlined);
+      e.positionsNow = std::move(positions);
       e.onDemandNow = std::move(onDemand);
     }
 
@@ -1097,9 +1098,11 @@ auto codegen::Emitter::emitCallOperatorOnDemand(const Ty* t, const Ty* callTy, c
     unsigned module;
     std::string owner;
     std::vector<const FunctionDecl*> inlined;
+    std::vector<std::pair<const ParsedFile*, uint32_t>> positions;
     OnDemand onDemand;
-  } restore{*this, currentModule, owner, std::move(inlinedNow), onDemandNow};
+  } restore{*this, currentModule, owner, std::move(inlinedNow), std::move(positionsNow), onDemandNow};
   inlinedNow.clear();
+  positionsNow.clear();
   if (moduleCount > 1)
     currentModule = lambdaHome(l, name);
   owner = functionName(writerFunction, {}, nullptr);

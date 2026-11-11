@@ -579,7 +579,8 @@ def run_steps(path, info, work, options, result):
                 r = subprocess.run(run_program(exe), env=program_env(exe), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
             except subprocess.TimeoutExpired:
                 result["status"] = "FAIL"; result["note"] = f"{step}: the program timed out"; return result
-            got, want = normalise(r.stdout), normalise("\n".join(expect))
+            # (the source by its name alone, as a test snippet's run prints it: a step's is built in the work directory)
+            got, want = normalise(r.stdout.replace(os.path.join(work, ""), "")), normalise("\n".join(expect))
             if got != want:
                 result["status"] = "FAIL"
                 result["note"] = f"{step}: printed `{got.splitlines()[0] if got else ''}`, expected `{want.splitlines()[0] if want else ''}`"

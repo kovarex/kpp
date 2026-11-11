@@ -89,10 +89,14 @@
     bool positionalCodegenInFull = false;
     // --debug-info: the kept functions whose lines an edit moved (emitted again for their line tables, not for their code).
     std::vector<FunctionDecl*> movedLines;
-    // --debug-info: the files whose lines an edit moved, with their lines before and after (remapKeptFile): the kept objects of
-    // the modules whose texts changed only in their debug lines are patched by these instead of compiled (LinePatch.hpp). None
-    // when the lines moved since the kept objects are not this build's edit alone (a build before it generated no code).
+    // The files whose lines an edit moved, with their lines before and after (remapKeptFile): the kept objects of the modules
+    // whose texts changed only in their lines (debug lines, assert lines) are patched by these instead of compiled
+    // (LinePatch.hpp). None when the lines moved since the kept objects are not this build's edit alone (a build before it
+    // generated no code).
     std::vector<LineMap> lineMaps;
+    // The files whose kept tokens an edit moved, lines or columns (remapKeptFile, every build): codegen emits again what holds a
+    // position that moved (rebuildLLVM). All of a file's when a build before generated no code.
+    std::vector<MovedPositions> movedPositions;
     // The functions whose bodies this build replaced (changedBodies holds their readers too, emitted again with the bodies they
     // had): their lambdas' closures are new types, what was made for the old ones goes (rebuildLLVM).
     std::vector<FunctionDecl*> replacedBodies;

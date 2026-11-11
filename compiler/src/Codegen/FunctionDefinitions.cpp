@@ -211,6 +211,7 @@ auto codegen::Emitter::emitFunction(FunctionDecl* original, const TemplateArgs& 
     emittingName = currentFunctionName;
     emittingNow = {original, args, classTy, currentModule, currentRequestedBy, nameOverride, currentDepth, currentRequestedByContext};
     inlinedNow.clear();
+    positionsNow.clear();
     layoutsNow.clear();
     // One of the program's own functions (a level-0 item): what it owns goes in its module's
     // program piece (Shared::splitPieces).

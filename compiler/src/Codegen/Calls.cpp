@@ -872,7 +872,7 @@ auto codegen::Emitter::noteTestCall(FunctionDecl* f, const TemplateArgs& args, N
   if (!definition || definition->kind != NodeKind::FunctionDecl || static_cast<FunctionDecl*>(definition)->testCode != 2)
     return;
   auto [line, column] = lineColumnOf(at->kind == NodeKind::CallExpr ? static_cast<CallExpr*>(at)->callee->token : at->token);
-  emitCall("", "void @kpp_test_call(ptr " + cStringConstant(programPathOf(currentFile)) + ", i32 " + std::to_string(line) + ", i32 " +
+  emitCall("", "void @kpp_test_call(ptr " + cStringConstant(programPathOf(currentFile)) + ", i32 " + lineOperand(line) + ", i32 " +
                    std::to_string(column) + ")", false);
 }
 

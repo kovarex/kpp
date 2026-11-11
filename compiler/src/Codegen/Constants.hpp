@@ -134,10 +134,11 @@
     // Line and column (1-based) of a token of the current file.
     std::pair<uint32_t, uint32_t> lineColumnOf(uint32_t token);
     // A line of the current file as an assert's or a check's call takes it (`i32` operand): in a build a compile server may
-    // patch the lines of (--debug-info for Windows, no importable modules), loaded from a constant of its own in its file's
-    // line section (lineSlotSection), so that an edit that only moves the line changes that constant, which the patch of the
-    // kept object rewrites, and not the function's code (kovarex, 2026-11-10: "lets try that"; until then the line was the
-    // call's operand, and moving an assert compiled its module again: AtlasBuilder.kpp's). Elsewhere the line itself.
+    // patch the lines of (Shared::patchableLines: unoptimized, for Windows, no importable modules), loaded from a constant of its
+    // own in its file's line section (lineSlotSection), so that an edit that only moves the line changes that constant, which
+    // the patch of the kept object rewrites, and not the function's code (kovarex, 2026-11-10: "lets try that"; until then the
+    // line was the call's operand, and moving an assert compiled its module again: AtlasBuilder.kpp's; until 2026-11-11 with
+    // --debug-info alone). Elsewhere the line itself.
     std::string lineOperand(uint32_t line);
     // Control reaching the end of a function that returns a value (C++'s undefined behavior: an exhaustive switch over a
     // C++-style enum given a value no case names): the assert hook, with the line and column of the body's closing brace,
@@ -185,6 +186,7 @@
     Instantiation emittingNow{}; // how that function is emitted (what rebuildLLVM emits again)
     std::string emittingName;    // its IR name (the owner while it is emitted)
     std::vector<const FunctionDecl*> inlinedNow; // the bodies its emission inlined so far
+    std::vector<std::pair<const ParsedFile*, uint32_t>> positionsNow; // the positions its code holds so far (lineColumnOf)
     std::vector<const Ty*> layoutsNow;           // the class layouts its emission used so far (noteLayout)
     struct OnDemand
     {

@@ -777,6 +777,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   // A release build (ThinLTO) puts its short definitions in modules of their own (Emitter::placeShortDefinitions).
   if (!debug && sh.moduleCount >= 2)
     sh.importableModules = sh.moduleCount / 2;
+  sh.patchableLines = !optimize && sh.target.windows() && !sh.importableModules;
   // A debug build of several modules, not optimized, has each in two pieces (Shared::splitPieces).
   sh.splitPieces = codegenOutputModules(sh.moduleCount, debug, optimize) != sh.moduleCount;
   // Every module's first lines, with the attribute group its calls name (#0: the post-invoke nop's,
@@ -1407,7 +1408,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     session->usable = true;
     auto start = std::chrono::steady_clock::now();
     bool rebuilt = false;
-    CodegenResult again = rebuildLLVM(*session, picked, {}, {}, {}, {}, {}, {}, {}, {}, rebuilt);
+    CodegenResult again = rebuildLLVM(*session, picked, {}, {}, {}, {}, {}, {}, {}, {}, {}, rebuilt);
     double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
     shared = std::move(session->shared);
     emitters = std::move(session->emitters);
@@ -1594,18 +1595,19 @@ static bool keptConstantGlobal(Shared& sh, Emitter& e, const Decl* g)
 }
 
 static CodegenResult rebuildModules(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies, const std::vector<FunctionDecl*>& movedLines,
-                                    const std::vector<FunctionDecl*>& replaced, const std::vector<FunctionDecl*>& added,
-                                    const std::vector<FunctionDecl*>& removed, const std::vector<const Decl*>& changedLayouts,
-                                    const std::vector<const Decl*>& instancesOf, const std::vector<const Decl*>& changedGlobals,
-                                    const std::vector<const Ty*>& droppedClasses, bool& rebuilt);
+                                    const std::vector<MovedPositions>& movedPositions, const std::vector<FunctionDecl*>& replaced,
+                                    const std::vector<FunctionDecl*>& added, const std::vector<FunctionDecl*>& removed,
+                                    const std::vector<const Decl*>& changedLayouts, const std::vector<const Decl*>& instancesOf,
+                                    const std::vector<const Decl*>& changedGlobals, const std::vector<const Ty*>& droppedClasses, bool& rebuilt);
 
 CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies, const std::vector<FunctionDecl*>& movedLines,
-                          const std::vector<FunctionDecl*>& replaced, const std::vector<FunctionDecl*>& added, const std::vector<FunctionDecl*>& removed,
+                          const std::vector<MovedPositions>& movedPositions, const std::vector<FunctionDecl*>& replaced,
+                          const std::vector<FunctionDecl*>& added, const std::vector<FunctionDecl*>& removed,
                           const std::vector<const Decl*>& changedLayouts, const std::vector<const Decl*>& instancesOf,
                           const std::vector<const Decl*>& changedGlobals, const std::vector<const Ty*>& droppedClasses, bool& rebuilt)
 {
-  CodegenResult out =
-    rebuildModules(session, changedBodies, movedLines, replaced, added, removed, changedLayouts, instancesOf, changedGlobals, droppedClasses, rebuilt);
+  CodegenResult out = rebuildModules(session, changedBodies, movedLines, movedPositions, replaced, added, removed, changedLayouts, instancesOf,
+                                     changedGlobals, droppedClasses, rebuilt);
   // The classes every module defines (the session's, made again by homeDebugClasses when this
   // build named a class), whatever path the rebuild took: one place, so that no return of it
   // gives the natvis an empty list. (A build from scratch's homeDebugClasses fills its result.)
@@ -1631,10 +1633,10 @@ void unassembledAgain(CodegenSession& session, const std::vector<bool>& changedM
 }
 
 static CodegenResult rebuildModules(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies, const std::vector<FunctionDecl*>& movedLines,
-                                    const std::vector<FunctionDecl*>& replaced, const std::vector<FunctionDecl*>& added,
-                                    const std::vector<FunctionDecl*>& removed, const std::vector<const Decl*>& changedLayouts,
-                                    const std::vector<const Decl*>& instancesOf, const std::vector<const Decl*>& changedGlobals,
-                                    const std::vector<const Ty*>& droppedClasses, bool& rebuilt)
+                                    const std::vector<MovedPositions>& movedPositions, const std::vector<FunctionDecl*>& replaced,
+                                    const std::vector<FunctionDecl*>& added, const std::vector<FunctionDecl*>& removed,
+                                    const std::vector<const Decl*>& changedLayouts, const std::vector<const Decl*>& instancesOf,
+                                    const std::vector<const Decl*>& changedGlobals, const std::vector<const Ty*>& droppedClasses, bool& rebuilt)
 {
   rebuilt = false;
   CodegenResult out;
@@ -1749,6 +1751,50 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
         sameClosures.insert(fnName); // (its initializer is the one it had)
       }
   }
+  // Code holding a source position an edit moved (Shared::Definition::positions: an assert's line and column, a check's, a test
+  // call's, a caller location's, in its own body or an inlined callee's or a default argument's) is emitted again with the body it
+  // had, in every build: its text is then a build from scratch's, and where only its lines changed its object is patched, not
+  // compiled (Shared::patchableLines). A position is moved when its line is another now, or none (its tokens on two lines now), or
+  // a token of its line has another column. Until 2026-11-11 a kept function's assert said the line it had before the edit unless
+  // --debug-info emitted the function again for its line tables (the sanitizer thread's report: `--verify-incremental: ... what it
+  // wrote differs`), and with it a trivial callee's position in its caller's kept code.
+  auto positionMoved = [&](const std::pair<const ParsedFile*, uint32_t>& p)
+  {
+    for (const MovedPositions& m : movedPositions)
+    {
+      if (m.file != p.first)
+        continue;
+      if (m.all)
+        return true;
+      auto it = std::lower_bound(m.lines.begin(), m.lines.end(), std::pair<uint32_t, uint32_t>{p.second, 0});
+      if (it == m.lines.end() || it->first != p.second || it->second != p.second ||
+          std::binary_search(m.columnsMoved.begin(), m.columnsMoved.end(), p.second))
+        return true;
+    }
+    return false;
+  };
+  std::unordered_set<std::string> positionsMovedIn; // (the owners emitted again for their positions alone: by the definitions' pass)
+  if (!movedPositions.empty())
+    for (unsigned k = 0; k < sh.moduleCount; ++k)
+      for (const Shared::Definition& d : sh.definitions[k])
+      {
+        if (d.positions.empty() || !std::any_of(d.positions.begin(), d.positions.end(), positionMoved) || owners.count(d.owner) ||
+            positionsMovedIn.count(d.owner))
+          continue;
+        if (d.emitted)
+          positionsMovedIn.insert(d.owner);
+        else if (auto g = sh.globalInits.find(d.name); g != sh.globalInits.end() && d.owner == d.name)
+        {
+          owners.insert(d.name);
+          globalsAgain.push_back(g->second);
+        }
+        else
+        {
+          out.declined = d.name + " holds a source position an edit moved, and nothing emits it again on its own";
+          return out;
+        }
+        sameClosures.insert(d.owner); // (the body it had: its lambdas' closures are the types they were)
+      }
   // Each emitter's verdicts on which callees are trivial (inlined) were taken on the old bodies:
   // taken again. (A changed body that is trivial now is inlined by callers that only called it
   // before, which codegen does not know: the server passes an edited function's callers too.)
@@ -2043,7 +2089,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
       bool forOld = forOldClosure(*d.emitted);
       bool inlinesEdited = std::any_of(d.inlined.begin(), d.inlined.end(), [&](const FunctionDecl* body) { return edited.count(body) != 0 || rechecked.count(body) != 0; });
       bool layoutDropped = !droppedLayouts.empty() && usesDropped(d);
-      if (forOld || inlinesEdited || instanceOfEdited(d) || layoutDropped || forMovedClosure(*d.emitted))
+      if (forOld || inlinesEdited || instanceOfEdited(d) || layoutDropped || forMovedClosure(*d.emitted) || positionsMovedIn.count(d.owner))
       {
         owners.insert(d.owner);
         bool ownBodyEdited = false;
@@ -2623,7 +2669,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     return out;
   }
   std::vector<unsigned> which;
-  std::vector<bool> linesOnly(sh.moduleCount, false); // (texts changed in their debug lines alone: linesOnlyModules)
+  std::vector<bool> linesOnly(sh.moduleCount, false); // (texts changed in their lines alone, debug or assert lines: linesOnlyModules)
   for (unsigned k = 0; k < sh.moduleCount; ++k)
   {
     Dropped& was = dropped[k];
@@ -2639,10 +2685,9 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     bool same = !declared && defs.size() - was.keptDefinitions == was.definitions.size() &&
                 std::equal(was.definitions.begin(), was.definitions.end(), defs.begin() + was.keptDefinitions,
                            [](const std::string& a, const Shared::Definition& b) { return a == b.text; });
-    // (or the same but for its debug lines: a function emitted again because an edit moved its lines,
-    // its code the one it had; the server patches the object's line tables, LinePatch.hpp)
-    bool linesCandidate = !same && !declared && !layoutsReplaced && sh.fullDebugInfo && !sh.importableModules &&
-                          defs.size() - was.keptDefinitions == was.definitions.size();
+    // (or the same but for its lines: a function emitted again because an edit moved its lines or its positions, its code the
+    // one it had; the server patches the object's line tables and assert lines, LinePatch.hpp)
+    bool linesCandidate = !same && !declared && !layoutsReplaced && sh.patchableLines && defs.size() - was.keptDefinitions == was.definitions.size();
     if (same || linesCandidate)
     {
       std::vector<std::string> ownedNow;
@@ -2651,7 +2696,9 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
       std::sort(ownedNow.begin(), ownedNow.end());
       if (same)
         same = ownedNow == was.owned;
-      else
+      // (its definitions the same but for their debug lines, its owned entries but for their lines; without --debug-info its
+      // definitions are the same, and its assert lines' constants changed alone)
+      if (!same && !layoutsReplaced && sh.patchableLines)
         linesOnly[k] = sameButLines(was.definitions, defs.begin() + was.keptDefinitions, defs.end()) && sameButLines(was.owned, ownedNow);
     }
     std::inplace_merge(defs.begin(), defs.begin() + was.keptDefinitions, defs.end(), byText);

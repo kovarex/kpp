@@ -375,8 +375,8 @@ void runCodegen(Build& build)
   const unsigned outputModules = codegenOutputModules(modules, options.debug, options.optimize); // (a debug build's modules in two pieces each)
   if (build.rebuildCodegen && build.codegen && build.moduleBytes.size() == outputModules)
   {
-    cg = rebuildLLVM(*build.codegen, build.changedBodies, build.movedLines, build.replacedBodies, build.addedFunctions, build.removedFunctions, build.changedLayouts, build.instancesOf,
-                     build.changedGlobals, build.droppedClasses, rebuilt);
+    cg = rebuildLLVM(*build.codegen, build.changedBodies, build.movedLines, build.movedPositions, build.replacedBodies, build.addedFunctions, build.removedFunctions,
+                     build.changedLayouts, build.instancesOf, build.changedGlobals, build.droppedClasses, rebuilt);
     logBuildNote(!rebuilt              ? "codegen: rebuildLLVM declined (" + cg.declined + "), the program generated in full"
                  : cg.failed()        ? "codegen: the session kept across " + std::to_string(cg.errors.size() + cg.hiddenErrors) + " error(s), " +
                                             std::to_string(cg.emittedAgain) + " function(s) emitted again"
@@ -795,8 +795,8 @@ void runCodegen(Build& build)
       cg.modules[k] = forTarget(cg.modules[k], options); // (before its hash: an object made without them is made again)
     if (unchangedObject(k, cg.modules[k], level, hashText))
       return;
-    // A text that changed only in its debug lines (an edit moved them): the kept object's line tables
-    // patched, as the edit's line maps say (kovarex, 2026-11-10), its hash file written once it is.
+    // A text that changed only in its lines (an edit moved them: debug lines, assert lines): the kept object's line tables and
+    // assert lines patched, as the edit's line maps say (kovarex, 2026-11-10), its hash file written once it is.
     if (k < cg.linesOnlyModules.size() && cg.linesOnlyModules[k] && !build.lineMaps.empty() && options.target.windows())
     {
       std::string hashPath = options.exe + "." + std::to_string(k) + ".hash", why;
@@ -875,7 +875,7 @@ void runCodegen(Build& build)
     parallelFor(cg.modules.size(), options.threads, compileEnd);
   double compileTime = seconds(Clock::now() - start);
   if (int patched = patchedObjects.load())
-    logBuildNote(std::to_string(patched) + " object(s) of modules whose debug lines alone changed patched, not compiled");
+    logBuildNote(std::to_string(patched) + " object(s) of modules whose lines alone changed patched, not compiled");
   std::string during = backEnd ? ", " + std::to_string(backEnd->duringCodegen()) + " during codegen" : ""; // (step 4's P2)
   // A module clang or LLVM rejected is an error of the build whatever --quiet says, with what it said
   // (its first lines): with --keep-going the link goes on without its object and reports what it
