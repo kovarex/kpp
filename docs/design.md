@@ -527,6 +527,27 @@ replacements, in the order of how much code they remove:
    statement is taken as reached. An array of arrays is named as C++ spells it, the outer bound first
    (`int32[2][3]`; it was `int32[3][2]` in every message). Specs language/constant_division_by_zero_is_error,
    language/constant_index_outside_an_array_is_error, language/constant_mistakes_only_where_they_run.
+   The likely slips are errors (2026-11-11, kovarex's answer to item 4 of thread D's survey, which proposed
+   warnings: "Maybe, make these errors, but not warnings? What is the reason to have them in the code
+   anyway?"), judged on the same walk of a body's paths, where they run:
+   - a function's name where a truth value is taken (a condition, `!`, `&&`, `||`, `?:`), or its address:
+     always true. "the function ready is always true here (a function's address is never null): call it";
+   - an `else` indented as an outer `if`'s that belongs to the inner `if` it follows (C++'s dangling else);
+   - `return std::move(x)` of a local of the type returned: kpp builds a returned local in place, which the
+     move stops. A member's or a parameter's move is not one;
+   - an assignment `=` as the condition of an if, a while, a do or a for (in its own parentheses it is
+     meant: `if ((p = find()))`; a compound one, `while (bits >>= 1)`, is no mistyped `==`);
+   - an `if` or `else` whose body is `;` (an empty block, `{}`, says it on purpose);
+   - a switch on an enum that names neither every enumerator nor a default (a kpp enum's names every value
+     by its own rule; a C or C++ text's switch, cRules, and one with a case range are not judged);
+   - an integer division stored in a floating variable, assigned to one or returned as one
+     (`double h = a / b;`): it truncates first. `double(a) / b`, or `double(a / b)` when the truncation is
+     meant; constants that divide exactly (`3600 / 2`) are not one.
+   The last four are under `--slip-checks` until the game is free of them: it has 31 (13 assignments as
+   conditions, 8 empty bodies, 8 enum switches, among them NetworkMessage's LastValidType, and 2 divisions,
+   ChartRenderer's `64 / alert.sprite->getFinalWidth()` among them). Specs
+   language/function_name_as_a_condition_is_error, language/else_indented_as_an_outer_if_is_error,
+   language/return_std_move_of_a_local_is_error, kpp/slip_checks_are_errors, kpp/slips_that_are_not.
 The spellings above are the working proposal; each is settled and recorded here when the feature
 is implemented.
 

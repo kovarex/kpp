@@ -1,0 +1,19 @@
+// spec: `return std::move(x)` of a local of the type returned, through parentheses too, is an error (kovarex, 2026-11-11, item 4 of thread D's survey of missing checks; clang's -Wpessimizing-move warns): kpp builds a returned local in place, which the move stops; a member's or a parameter's move is not one (kpp/slips_that_are_not)
+// error: return_std_move_of_a_local_is_error.kpp:12: error: `return std::move(b)` moves a local that kpp builds in place where it is returned: write `return b;`
+// error: return_std_move_of_a_local_is_error.kpp:17: error: `return std::move(s)` moves a local that kpp builds in place where it is returned: write `return s;`
+struct Big
+{
+  int values[4] = {};
+};
+Big make()
+{
+  Big b;
+  b.values[0] = 1;
+  return std::move(b);
+}
+std::String text()
+{
+  std::String s = "a";
+  return (std::move(s));
+}
+int main() { return make().values[0] + int(text().size()); }

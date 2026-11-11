@@ -1,0 +1,48 @@
+// spec: under --slip-checks (on by default once the game is free of them) the likely slips are errors (kovarex, 2026-11-11, item 4 of thread D's survey of missing checks: "make these errors, but not warnings? What is the reason to have them in the code anyway?"): an assignment as the condition of an if, a while or a for (in its own parentheses it is meant, kpp/slips_that_are_not), an `if` or `else` whose body is `;`, a switch on an enum that names neither every enumerator nor a default, an integer division stored in a floating variable or returned as one
+// kpp: --slip-checks
+// error: slip_checks_are_errors.kpp:17: error: an assignment as a condition: compare with `==`, or put the assignment in its own parentheses when it is meant (`if ((x = f()))`)
+// error: slip_checks_are_errors.kpp:19: error: an assignment as a condition: compare with `==`, or put the assignment in its own parentheses when it is meant (`if ((x = f()))`)
+// error: slip_checks_are_errors.kpp:21: error: an assignment as a condition: compare with `==`, or put the assignment in its own parentheses when it is meant (`if ((x = f()))`)
+// error: slip_checks_are_errors.kpp:27: error: an `if` whose body is an empty statement (`;`) does nothing: remove it, or write its body
+// error: slip_checks_are_errors.kpp:30: error: an `else` whose body is an empty statement (`;`) does nothing: remove it, or write its body
+// error: slip_checks_are_errors.kpp:35: error: the switch on Color names neither Color::Blue, Color::Alpha nor a default: name them, or add `default:` (what it leaves out does nothing)
+// error: slip_checks_are_errors.kpp:44: error: an integer division converted to double: it truncates first; divide in floating point (`double(a) / b`), or say the truncation is meant (`double(a / b)`)
+// error: slip_checks_are_errors.kpp:45: error: an integer division converted to double: it truncates first; divide in floating point (`double(a) / b`), or say the truncation is meant (`double(a / b)`)
+// error: slip_checks_are_errors.kpp:46: error: an integer division converted to double: it truncates first; divide in floating point (`double(a) / b`), or say the truncation is meant (`double(a / b)`)
+enum class Color { Red, Green, Blue, Alpha };
+int* find(int* p) { return p; }
+int conditions(int x)
+{
+  int* p = nullptr;
+  if (p = find(&x))
+    x += 1;
+  while (x = x - 1)
+    break;
+  for (int i = 0; i = 5;)
+    break;
+  return x > 0 ? 1 : (p = nullptr) ? 2 : 3;
+}
+int emptyBodies(int x)
+{
+  if (x > 0);
+  if (x > 1)
+    return 1;
+  else;
+  return 0;
+}
+int colors(Color c)
+{
+  switch (c)
+  {
+    case Color::Red: return 1;
+    case Color::Green: return 2;
+  }
+  return 0;
+}
+double half(int a, int b)
+{
+  double h = a / b;
+  h = a / 2;
+  return a / b;
+}
+int main() { return conditions(3) + emptyBodies(2) + colors(Color::Red) + int(half(3, 2)); }

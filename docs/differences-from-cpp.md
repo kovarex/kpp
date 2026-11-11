@@ -670,6 +670,19 @@ p[Property::Text] = String("hello");
 - **See:** [design 7][d7], item 8; specs `language/constant_division_by_zero_is_error`,
   `language/constant_index_outside_an_array_is_error`, `language/constant_mistakes_only_where_they_run`.
 
+### Likely slips are errors (built, four of them this stage)
+
+- **C++:** compilers warn, some by default: a function's name as a condition (-Wpointer-bool-conversion), a
+  dangling `else` (-Wdangling-else), `return std::move(local)` (-Wpessimizing-move), `if (x = f())`
+  (-Wparentheses), `if (x);` (-Wempty-body), a switch on an enum leaving enumerators out (-Wswitch), an
+  integer division stored in a `double` (clang-tidy).
+- **kpp:** each is a compile error where it runs (kovarex, 2026-11-11). `if ((x = f()))` says the assignment is
+  meant, `{}` an empty body, `default:` the enumerators left out, `double(a / b)` the truncation. The last four
+  are behind `--slip-checks` until the game is free of them.
+- **See:** [design 7][d7], item 8; specs `language/function_name_as_a_condition_is_error`,
+  `language/else_indented_as_an_outer_if_is_error`, `language/return_std_move_of_a_local_is_error`,
+  `kpp/slip_checks_are_errors`, `kpp/slips_that_are_not`.
+
 ### `?->` and `?:` (built)
 
 - **C++:** neither (`?:` is a GNU extension).

@@ -1,0 +1,18 @@
+// spec: a function's name where a truth value is taken (a condition, `!`, `&&`, `||`, `?:`), or its address, is an error (kovarex, 2026-11-11, item 4 of thread D's survey of missing checks; clang's -Wpointer-bool-conversion warns): a function's address is never null, so it is always true; call it
+// error: function_name_as_a_condition_is_error.kpp:12: error: the function ready is always true here (a function's address is never null): call it, `ready()`
+// error: function_name_as_a_condition_is_error.kpp:14: error: the function open is always true here (a function's address is never null): call it, `open()`
+// error: function_name_as_a_condition_is_error.kpp:16: error: the function ready is always true here (a function's address is never null): call it, `ready()`
+bool ready() { return true; }
+struct Gate
+{
+  static bool open() { return false; }
+};
+int check(int x)
+{
+  if (ready)
+    x += 1;
+  while (!Gate::open)
+    break;
+  return x > 0 && ready ? 1 : (&ready ? 2 : 3);
+}
+int main() { return check(1); }

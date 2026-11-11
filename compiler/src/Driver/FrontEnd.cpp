@@ -463,6 +463,7 @@ void runResolve(Build& build)
   setZeroNullWarnings(options.zeroNullWarnings); // (the walks' notes and codegen's)
   setIndentationWarnings(options.indentationWarnings);
   setUnusedChecks(options.unusedChecks);
+  setSlipChecks(options.slipChecks);
   setThisWarnings(options.thisWarnings);
   setImplicitUses(!options.implicitUses.empty());
   setThisReference(options.thisReference);

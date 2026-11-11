@@ -1,0 +1,13 @@
+// spec: an `else` indented as an outer `if`'s that belongs to the inner `if` it follows (C++'s dangling else) is an error (kovarex, 2026-11-11, item 4 of thread D's survey of missing checks; clang's -Wdangling-else warns of every such else): braces on the inner `if` say which
+// error: else_indented_as_an_outer_if_is_error.kpp:9: error: this `else` is indented as the `if` on line 6, but belongs to the `if` on line 7: put that inner `if` in braces, or indent the `else` as its own
+int pick(bool a, bool b)
+{
+  int r = 0;
+  if (a)
+    if (b)
+      r = 1;
+  else
+    r = 2;
+  return r;
+}
+int main() { return pick(true, false); }

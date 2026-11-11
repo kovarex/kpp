@@ -122,6 +122,11 @@ bool indentationWarningsOn();
 // Whether a local, parameter or lambda capture nothing uses is an error (--unused-checks; Walker::checkUnusedNames).
 void setUnusedChecks(bool on);
 bool unusedChecksOn();
+// Whether the likely slips the game still has are errors (--slip-checks; Walker::FlowChecks): an assignment as a
+// condition, an `if` whose body is `;`, a switch on an enum naming neither every enumerator nor a default, an integer
+// division stored in a floating variable or returned as one.
+void setSlipChecks(bool on);
+bool slipChecksOn();
 void noteZeroNullWarning(const std::string& warning);
 std::vector<std::string> takeZeroNullWarnings();
 // Whether the literal 0 at token of file is reported for the first time in this build (the walk

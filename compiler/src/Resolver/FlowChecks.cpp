@@ -8,6 +8,11 @@
 //   is the zero kpp gives it.
 // - An integer division or remainder by a constant 0, and a constant index outside a built-in array, where they run: a
 //   branch a constant decides away is not judged (`if (shards != 0) h % shards` with a constexpr 0).
+// - The likely slips (item 4: "make these errors, but not warnings? What is the reason to have them in the code
+//   anyway?"): a function's name as a condition, an `else` indented as an outer `if`'s, `return std::move(x)` of a
+//   local; and, while the game still has them (--slip-checks), an assignment as a condition, an `if` whose body is
+//   `;`, a switch on an enum naming neither every enumerator nor a default, an integer division stored in a floating
+//   variable or returned as one.
 #include "GlobalScopeImpl.hpp"
 #include "../Ast/AstWalk.hpp"
 #include <algorithm>
@@ -96,9 +101,11 @@ struct GlobalScope::Impl::Walker::FlowChecks
 public:
   explicit FlowChecks(Walker& w) : w(w) {}
 
-  // One body, a function's or a lambda's (a lambda's locals are its own; what it captures is the enclosing body's).
-  void run(Span<Decl*> params, Stmt* body)
+  // One body, a function's or a lambda's (a lambda's locals are its own; what it captures is the enclosing body's);
+  // result: what it returns (null: not known, a lambda's deduced one).
+  void run(Span<Decl*> params, Stmt* body, const Ty* result)
   {
+    this->result = result;
     if (!body || this->contains(body, {NodeKind::ErrorStmt, NodeKind::ErrorExpr}))
       return; // (what the parser could not read)
     // A goto or a label: the paths are not the statements', so no read is judged; what a constant decides still is.
@@ -123,6 +130,111 @@ private:
   std::vector<std::vector<Flow>*> exits; // where a break goes: the innermost loop's or switch's paths out, last
   bool judgeReads = true;
   Expr* addressOf = nullptr; // the operand of the `&` being walked: `&a[3]`, the pointer past an array's end
+  const Ty* result = nullptr; // what the body returns
+
+  // A token's line: where it starts, its indentation in columns (a tab to the next multiple of 8), whether that mixes
+  // tabs and spaces, and whether the token is the first thing on it (as Walker::checkMisleadingIndentation reads it).
+  struct Place
+  {
+    size_t lineStart = 0;
+    int indent = 0;
+    bool mixed = false;
+    bool first = true;
+  };
+  Place place(uint32_t token)
+  {
+    Place p;
+    if (token >= this->w.tokens.size())
+    {
+      p.mixed = true;
+      return p;
+    }
+    std::string_view text = this->w.text;
+    size_t offset = std::min<size_t>(this->w.tokens[token].offset, text.size());
+    size_t newline = offset == 0 ? std::string_view::npos : text.rfind('\n', offset - 1);
+    p.lineStart = newline == std::string_view::npos ? 0 : newline + 1;
+    bool tab = false, space = false, leading = true;
+    for (size_t i = p.lineStart; i < offset; ++i)
+    {
+      char c = text[i];
+      if (leading && c == ' ')
+        ++p.indent, space = true;
+      else if (leading && c == '\t')
+        p.indent = (p.indent / 8 + 1) * 8, tab = true;
+      else
+      {
+        leading = false;
+        p.first = false;
+      }
+    }
+    p.mixed = tab && space;
+    return p;
+  }
+  size_t lineOf(size_t lineStart) { return 1 + size_t(std::count(this->w.text.begin(), this->w.text.begin() + lineStart, '\n')); }
+
+  static bool floating(const Ty* t) { return t && t->isKnown() && t->kind != TyKind::Unknown && (t->isReference() ? t->inner : t) && (t->isReference() ? t->inner : t)->kind == TyKind::Float; }
+
+  // An integer `/` (through parentheses): what truncates before a floating context takes its value.
+  BinaryExpr* integerDivision(Expr* e)
+  {
+    e = strip(e);
+    if (!e || e->kind != NodeKind::BinaryExpr)
+      return nullptr;
+    auto* b = static_cast<BinaryExpr*>(e);
+    if (b->isKeyword || P(b->op) != P::Slash || b->call != OperatorCall::Builtin || !b->ty || !b->ty->isKnown())
+      return nullptr;
+    const Ty* t = this->w.types.unqualified(this->w.types.stripRef(b->ty));
+    return t->kind == TyKind::Int || t->kind == TyKind::Char || t->kind == TyKind::Bool ? b : nullptr;
+  }
+
+  // An integer division whose value is stored in a floating variable or returned as one (`double h = 1 / 2;`): it
+  // truncated first. Not one of constants that divide exactly (`3600 / 2`).
+  void floatContext(Expr* value, const Ty* target, const Flow& flow)
+  {
+    if (!slipChecksOn() || !flow.reachable || !floating(target))
+      return;
+    BinaryExpr* d = this->integerDivision(value);
+    std::optional<int64_t> dividend = d ? this->valueOf(d->lhs) : std::nullopt, divisor = d ? this->valueOf(d->rhs) : std::nullopt;
+    if (d && dividend && divisor && *divisor != 0 && *dividend % *divisor == 0)
+      d = nullptr; // (`3600 / 2`: nothing truncated)
+    if (d)
+    {
+      std::string type = this->w.types.toString(this->w.types.unqualified(this->w.types.stripRef(target)), &this->w.symbols);
+      this->report(d, "an integer division converted to " + type + ": it truncates first; divide in floating point (`" + type + "(a) / b`), or say the " +
+                        "truncation is meant (`" + type + "(a / b)`)");
+    }
+  }
+
+  // A condition that is always true or a likely slip: a function's name (its address, never null), and an assignment
+  // not in its own parentheses (`if (x = f())`: `if ((x = f()))` says it is meant).
+  void conditionShape(Node* c, const Flow& flow)
+  {
+    if (!c || !flow.reachable || uint8_t(c->kind) < uint8_t(NodeKind::NameExpr))
+      return;
+    auto* e = static_cast<Expr*>(c);
+    this->functionAsValue(e, flow);
+    if (slipChecksOn() && e->kind == NodeKind::BinaryExpr && !static_cast<BinaryExpr*>(e)->isKeyword &&
+        P(static_cast<BinaryExpr*>(e)->op) == P::Assign) // (`while (bits >>= 1)` is no `==` mistyped)
+      this->report(e, "an assignment as a condition: compare with `==`, or put the assignment in its own parentheses when it is meant "
+                      "(`if ((x = f()))`)");
+  }
+
+  // A function's name where a truth value is taken (a condition, `!`, `&&`, `||`): its address, always true.
+  void functionAsValue(Expr* e, const Flow& flow)
+  {
+    e = strip(e);
+    if (!e || !flow.reachable)
+      return;
+    if (e->kind == NodeKind::UnaryExpr && !static_cast<UnaryExpr*>(e)->isKeyword && P(static_cast<UnaryExpr*>(e)->op) == P::Amp &&
+        static_cast<UnaryExpr*>(e)->call != OperatorCall::Function)
+      e = strip(static_cast<UnaryExpr*>(e)->operand);
+    Decl* d = e->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(e)->resolved : nullptr;
+    if (!d || d->kind != NodeKind::FunctionDecl)
+      return;
+    auto* f = static_cast<FunctionDecl*>(d);
+    std::string name = f->name.empty() ? std::string("?") : this->w.impl.namePartText(f->name.last());
+    this->report(e, "the function " + name + " is always true here (a function's address is never null): call it, `" + name + "()`");
+  }
 
   // Whether the body (not a nested function's, class's or lambda's) has a node of one of these kinds.
   bool contains(Stmt* body, std::initializer_list<NodeKind> kinds)
@@ -568,6 +680,7 @@ private:
   {
     if (v->init)
     {
+      this->floatContext(v->init, this->typeOf(v), flow);
       // A reference that is not const may assign what it is bound to, from here on; a value or a const reference reads it.
       uint32_t bound = this->followed(v->init);
       if (bound != UINT32_MAX && bindsWritable(this->typeOf(v)))
@@ -659,6 +772,9 @@ private:
         for (auto* i = static_cast<IfStmt*>(s);;)
         {
           this->stmt(i->init, flow);
+          if (!i->isConstexpr && !i->ifConsteval)
+            this->conditionShape(i->cond, flow);
+          this->ifShape(i, flow);
           Stmt* next = nullptr;
           std::optional<bool> decided = i->isConstexpr && i->constexprKnown >= 0 ? std::optional<bool>(i->constexprKnown == 1)
                                         : i->isConstexpr || i->ifConsteval       ? std::nullopt
@@ -692,6 +808,7 @@ private:
         bool endless = this->alwaysTrue(l->cond);
         this->loop(s, flow, [&](Flow& pass)
         {
+          this->conditionShape(l->cond, pass);
           this->condition(l->cond, pass);
           if (!endless)
             this->exits.back()->push_back(pass); // (the condition false)
@@ -708,6 +825,7 @@ private:
           Flow start = pass;
           this->stmt(l->body, pass);
           pass.join(start); // (a continue goes to the condition too: with what the start has, as nothing else in a loop assigns)
+          this->conditionShape(l->cond, pass);
           this->expr(l->cond, pass);
           if (!endless)
             this->exits.back()->push_back(pass);
@@ -721,6 +839,7 @@ private:
         bool endless = this->alwaysTrue(l->cond);
         this->loop(s, flow, [&](Flow& pass)
         {
+          this->conditionShape(l->cond, pass);
           this->condition(l->cond, pass);
           if (!endless)
             this->exits.back()->push_back(pass);
@@ -768,9 +887,14 @@ private:
         this->switchStmt(static_cast<SwitchStmt*>(s), flow);
         break;
       case NodeKind::ReturnStmt:
-        this->expr(static_cast<ReturnStmt*>(s)->value, flow);
+      {
+        Expr* value = static_cast<ReturnStmt*>(s)->value;
+        this->movedReturn(value, flow);
+        this->floatContext(value, this->result, flow);
+        this->expr(value, flow);
         flow.reachable = false;
         break;
+      }
       case NodeKind::BreakStmt:
         if (!this->exits.empty())
           this->exits.back()->push_back(flow);
@@ -812,10 +936,119 @@ private:
     this->visible.resize(scope);
   }
 
+  // `return std::move(x)` of a local of the type returned: kpp builds a returned local in place, which the move stops.
+  void movedReturn(Expr* value, const Flow& flow)
+  {
+    value = strip(value);
+    if (!flow.reachable || !value || value->kind != NodeKind::CallExpr || static_cast<CallExpr*>(value)->args.size() != 1)
+      return;
+    auto* c = static_cast<CallExpr*>(value);
+    Expr* callee = strip(c->callee);
+    Decl* g = callee && callee->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(callee)->resolved : nullptr;
+    if (!g || g->kind != NodeKind::FunctionDecl || static_cast<FunctionDecl*>(g)->name.empty() || static_cast<FunctionDecl*>(g)->name.last().special ||
+        static_cast<FunctionDecl*>(g)->name.last().symbol == UINT32_MAX ||
+        this->w.symbols.name(static_cast<FunctionDecl*>(g)->name.last().symbol) != "move" || !g->parent || g->parent->kind != NodeKind::NamespaceDecl ||
+        static_cast<NamespaceDecl*>(g->parent)->name == UINT32_MAX || this->w.symbols.name(static_cast<NamespaceDecl*>(g->parent)->name) != "std")
+      return;
+    Expr* moved = strip(c->args[0]);
+    Decl* v = moved && moved->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(moved)->resolved : nullptr;
+    if (!v || v->kind != NodeKind::VariableDecl || !v->parent || v->parent->kind != NodeKind::FunctionDecl ||
+        (v->flags & (DF_Static | DF_Extern | DF_ThreadLocal)) || static_cast<VariableDecl*>(v)->name.empty() ||
+        static_cast<VariableDecl*>(v)->name.last().symbol == UINT32_MAX)
+      return; // (a local's, not a parameter's, a static's or a member's)
+    const Ty* t = this->typeOf(static_cast<VariableDecl*>(v));
+    if (!t || t->isReference() || !this->result || this->w.types.unqualified(t) != this->w.types.unqualified(this->result))
+      return; // (a conversion to the type returned may take the move)
+    std::string name(this->w.symbols.name(static_cast<VariableDecl*>(v)->name.last().symbol));
+    this->report(value, "`return std::move(" + name + ")` moves a local that kpp builds in place where it is returned: write `return " + name + ";`");
+  }
+
+  // A switch on an enum (not a kpp enum, whose switch names every value by its own rule) that names neither every
+  // enumerator nor a default: a value it leaves out does nothing, silently.
+  void enumCoverage(SwitchStmt* sw, BlockStmt* block, const Flow& flow)
+  {
+    if (!slipChecksOn() || !flow.reachable || !block || sw->cRules)
+      return;
+    Node* cond = sw->cond;
+    Expr* ce = cond && uint8_t(cond->kind) >= uint8_t(NodeKind::NameExpr) ? strip(static_cast<Expr*>(cond)) : nullptr;
+    const Ty* ct = ce && ce->ty && ce->ty->isKnown() ? this->w.types.unqualified(this->w.types.stripRef(ce->ty)) : nullptr;
+    if (!ct || ct->kind != TyKind::Enum || !ct->decl || ct->decl->kind != NodeKind::EnumDecl)
+      return;
+    auto* en = static_cast<EnumDecl*>(ct->decl);
+    if (en->isKpp || en->enumerators.empty())
+      return;
+    std::unordered_set<Decl*> named;
+    for (Stmt* c : block->stmts)
+      if (c->kind == NodeKind::DefaultStmt)
+        return;
+      else if (c->kind == NodeKind::CaseStmt)
+      {
+        auto* k = static_cast<CaseStmt*>(c);
+        if (k->rangeEnd)
+          return; // (what a range spans is not counted: not judged)
+        auto name = [&](Expr* v)
+        {
+          v = strip(v);
+          if (v && v->kind == NodeKind::NameExpr && static_cast<NameExpr*>(v)->resolved)
+            named.insert(static_cast<NameExpr*>(v)->resolved);
+        };
+        name(k->value);
+        for (Expr* v : k->moreValues)
+          name(v);
+      }
+    std::vector<std::string> missing;
+    for (Decl* d : en->enumerators)
+    {
+      if (d->kind != NodeKind::EnumeratorDecl || named.count(d))
+        continue;
+      Expr* alias = strip(static_cast<EnumeratorDecl*>(d)->value);
+      if (alias && alias->kind == NodeKind::NameExpr && named.count(static_cast<NameExpr*>(alias)->resolved))
+        continue; // (`Last = Blue`, named by that one)
+      missing.push_back(this->w.impl.debugName(static_cast<EnumeratorDecl*>(d)->name));
+    }
+    if (missing.empty())
+      return;
+    std::string list;
+    for (size_t k = 0; k < missing.size() && k < 3; ++k)
+      list += (k ? ", " : "") + (en->name.empty() ? std::string() : this->w.impl.debugName(en->name.last().symbol) + "::") + missing[k];
+    if (missing.size() > 3)
+      list += " and " + std::to_string(missing.size() - 3) + " more";
+    this->report(static_cast<Expr*>(ce), "the switch on " + this->w.types.toString(ct, &this->w.symbols) + " names neither " + list +
+                                             " nor a default: name them, or add `default:` (what it leaves out does nothing)");
+  }
+
+  // An `if` whose body (or else) is an empty statement, `if (x);`: it does nothing. An `else` indented as an outer
+  // `if`'s while it belongs to the inner one it follows (`if (a)` / `  if (b) x();` / `else y();`).
+  void ifShape(IfStmt* i, const Flow& flow)
+  {
+    if (!flow.reachable)
+      return;
+    if (slipChecksOn() && ((i->then && i->then->kind == NodeKind::EmptyStmt) || (i->else_ && i->else_->kind == NodeKind::EmptyStmt)))
+      this->w.impl.reportCheckerError(this->w.file, (i->then && i->then->kind == NodeKind::EmptyStmt ? i->then : i->else_)->token,
+                                      std::string("an `") + (i->then && i->then->kind == NodeKind::EmptyStmt ? "if" : "else") +
+                                        "` whose body is an empty statement (`;`) does nothing: remove it, or write its body");
+    if (i->else_ || !i->then || i->then->kind != NodeKind::IfStmt)
+      return;
+    auto* inner = static_cast<IfStmt*>(i->then);
+    if (!inner->else_ || inner->else_->token == 0)
+      return;
+    uint32_t elseToken = inner->else_->token - 1;
+    if (elseToken >= this->w.tokens.size() || !this->w.tokens[elseToken].is(Kw::else_))
+      return;
+    Place outer = this->place(i->token), in = this->place(inner->token), e = this->place(elseToken);
+    if (outer.mixed || in.mixed || e.mixed || !e.first || !outer.first || !in.first || outer.lineStart == in.lineStart || e.indent != outer.indent ||
+        e.indent == in.indent)
+      return;
+    this->w.impl.reportCheckerError(this->w.file, elseToken, "this `else` is indented as the `if` on line " + std::to_string(this->lineOf(outer.lineStart)) +
+                                                              ", but belongs to the `if` on line " + std::to_string(this->lineOf(in.lineStart)) +
+                                                              ": put that inner `if` in braces, or indent the `else` as its own");
+  }
+
   void switchStmt(SwitchStmt* sw, Flow& flow)
   {
     this->stmt(sw->init, flow);
     this->condition(sw->cond, flow);
+    this->enumCoverage(sw, sw->body && sw->body->kind == NodeKind::BlockStmt ? static_cast<BlockStmt*>(sw->body) : nullptr, flow);
     Flow head = flow;
     std::vector<Flow> out;
     this->exits.push_back(&out);
@@ -904,6 +1137,8 @@ private:
         bool logical = b->isKeyword ? (Kw(b->op) == Kw::and_ || Kw(b->op) == Kw::or_) : (P(b->op) == P::AndAnd || P(b->op) == P::OrOr);
         if (logical && b->call != OperatorCall::Function)
         {
+          this->functionAsValue(b->lhs, flow);
+          this->functionAsValue(b->rhs, flow);
           this->expr(b->lhs, flow);
           bool andOp = b->isKeyword ? Kw(b->op) == Kw::and_ : P(b->op) == P::AndAnd;
           if (std::optional<bool> left = this->constant(b->lhs); left && *left != andOp)
@@ -916,6 +1151,7 @@ private:
         if (!b->isKeyword && Walker::isAssignmentOp(P(b->op)) && b->call != OperatorCall::Function)
         {
           // (the right side first, [expr.ass] 1; a compound assignment reads the left before it assigns it)
+          this->floatContext(b->rhs, b->lhs->ty, flow);
           this->expr(b->rhs, flow);
           if (P(b->op) == P::SlashAssign || P(b->op) == P::PercentAssign)
             this->divisor(b, P(b->op) == P::SlashAssign ? "/=" : "%=", flow);
@@ -939,6 +1175,8 @@ private:
       {
         auto* u = static_cast<UnaryExpr*>(e);
         P op = P(u->op);
+        if (op == P::Bang && !u->isKeyword && u->call != OperatorCall::Function)
+          this->functionAsValue(u->operand, flow);
         uint32_t i = u->isKeyword || u->call == OperatorCall::Function ? UINT32_MAX : this->followed(u->operand);
         if (i != UINT32_MAX && op == P::Amp)
           flow.remove(i); // (its address: anything may assign it through that)
@@ -961,6 +1199,8 @@ private:
       case NodeKind::ConditionalExpr:
       {
         auto* c = static_cast<ConditionalExpr*>(e);
+        if (c->then)
+          this->conditionShape(c->cond, flow);
         this->expr(c->cond, flow);
         if (!c->then)
         {
@@ -1103,13 +1343,16 @@ auto GlobalScope::Impl::Walker::checkFlow(FunctionDecl* f) -> void
   if (!f || !f->body || probing || activeSubst || retypingElements || !file || file->isImported)
     return;
   FlowChecks body(*this);
-  body.run(f->params, f->body);
+  const Ty* ft = impl.declaredTypeOf(f, nullptr, 0);
+  body.run(f->params, f->body, ft && ft->kind == TyKind::Function && ft->inner && ft->inner->isKnown() && !types.isDependent(ft->inner) ? ft->inner : nullptr);
   // Each lambda in it on its own, its locals its own (and one in a lambda when that lambda is judged).
   std::vector<LambdaExpr*> lambdas = std::move(body.lambdas);
   for (size_t i = 0; i < lambdas.size(); ++i)
   {
     FlowChecks lambda(*this);
-    lambda.run(lambdas[i]->params, lambdas[i]->body);
+    const Ty* lt = lambdas[i]->ty;
+    lambda.run(lambdas[i]->params, lambdas[i]->body,
+               lt && lt->kind == TyKind::Lambda && lt->inner && lt->inner->isKnown() && !types.isDependent(lt->inner) ? lt->inner : nullptr);
     lambdas.insert(lambdas.end(), lambda.lambdas.begin(), lambda.lambdas.end());
   }
 }

@@ -82,6 +82,8 @@ int compile(int argc, char** argv)
       options.indentationWarnings = true;
     else if (arg == "--unused-checks")
       options.unusedChecks = true;
+    else if (arg == "--slip-checks")
+      options.slipChecks = true;
     else if (arg == "--this-warnings")
       options.thisWarnings = true;
     else if (arg == "--this-reference")

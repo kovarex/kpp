@@ -1,0 +1,56 @@
+// spec: what the likely slips' errors leave alone, under --slip-checks: an assignment in its own parentheses as a condition, an assignment compared, a called function, an empty block, a switch with a default or naming every enumerator, a floating division, an exact division of constants (`3600 / 2`), an integer division said to truncate (`double(x / 2)`), an `else` indented as its own if's, `return std::move` of a member or of a parameter
+// kpp: --slip-checks
+enum class Color { Red, Green, Blue };
+bool ready() { return true; }
+int* find(int* p) { return p; }
+int next(int& left) { return left > 0 ? left-- : 0; }
+struct Holder
+{
+  std::String text = "kept";
+  std::String take() { return std::move(this.text); }
+};
+std::String passOn(std::String s) { return std::move(s); }
+int main()
+{
+  int x = 3;
+  int* p = nullptr;
+  if ((p = find(&x)))
+    x += 1;
+  int left = 2;
+  int c = 0;
+  int sum = 0;
+  while ((c = next(left)) != 0)
+    sum += c;
+  if (ready())
+    sum += 10;
+  if (x > 100)
+  {
+  }
+  Color color = Color::Blue;
+  int code = 0;
+  switch (color)
+  {
+    case Color::Red: code = 1;
+    default: code = 2;
+  }
+  switch (color)
+  {
+    case Color::Red: code += 10;
+    case Color::Green: code += 20;
+    case Color::Blue: code += 30;
+  }
+  double half = double(x) / 2;
+  double hours = 3600 / 2;
+  double whole = double(x / 2);
+  int r = 0;
+  if (x > 0)
+  {
+    if (x > 10)
+      r = 1;
+  }
+  else
+    r = 2;
+  Holder h;
+  std::println(sum, " ", code, " ", half, " ", hours, " ", whole, " ", r, " ", h.take(), " ", passOn("passed"));
+  return 0;
+}

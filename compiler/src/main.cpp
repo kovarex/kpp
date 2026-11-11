@@ -58,7 +58,7 @@ namespace
 {
   const std::pair<const char*, int> compileOptions[] = {
     {"-j", 1}, {"--ext", 1}, {"--repeat", 1}, {"--dump", 0}, {"--lex-only", 0}, {"--errors", 1}, {"--unresolved", 1},
-    {"--why", 1}, {"--why-at", 1}, {"--access-warnings", 0}, {"--return-copy-warnings", 0}, {"--zero-null-warnings", 0}, {"--indentation-warnings", 0}, {"--unused-checks", 0}, {"--this-warnings", 0}, {"--this-pointer", 0}, {"--this-reference-warnings", 0}, {"--this-reference", 0}, {"--plain-enum-warnings", 0}, {"--explicit-by-default", 0}, {"--no-implicit-fallthrough", 0}, {"--struct-rule", 0}, {"--c-type-warnings", 0},
+    {"--why", 1}, {"--why-at", 1}, {"--access-warnings", 0}, {"--return-copy-warnings", 0}, {"--zero-null-warnings", 0}, {"--indentation-warnings", 0}, {"--unused-checks", 0}, {"--slip-checks", 0}, {"--this-warnings", 0}, {"--this-pointer", 0}, {"--this-reference-warnings", 0}, {"--this-reference", 0}, {"--plain-enum-warnings", 0}, {"--explicit-by-default", 0}, {"--no-implicit-fallthrough", 0}, {"--struct-rule", 0}, {"--c-type-warnings", 0},
     {"--quiet", 0}, {"--msvc-diagnostics", 0}, {"--diagnostic-columns", 0}, {"--check", 0}, {"--packages", 0}, {"--emit-llvm", 1},
     {"--exe", 1}, {"--run-build", 1}, {"--std", 1}, {"--no-std", 0}, {"--cinclude", 1}, {"--incremental-link", 0}, {"--defer-link", 0},
     {"--toolchain", 1}, {"--debug-info", 0}, {"--optimize", 0}, {"--no-optimize", 0}, {"--target", 1},
