@@ -233,7 +233,9 @@ memory limits: Starlark's sandbox, without a second language.
   function can compute (loops, functions, the standard
   library), but it can only describe: it fills in a `Project`, and kpp builds what that says.
 - **It cannot act.** It cannot read a file, start a process or call C. That is the interpreter's
-  existing limit, so no separate sandbox is needed.
+  existing limit, so no separate sandbox is needed. What a used library's description can still point
+  kpp at (its roots, system libraries and use() paths) is confined, and the rest of a used library's
+  description is not taken: design.md, "What a library's build.kpp can do".
 - **Its errors are kpp errors**, with the same Error List, colouring and IDE navigation.
 - **The program does not see build.kpp's declarations.** What crosses over are the `config::`
   constants the build sets.

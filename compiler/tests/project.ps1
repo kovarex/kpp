@@ -408,6 +408,31 @@ void build(Project& project)
     $output = (Kpp @('--no-server')) -join "`n"
     if ($code -eq 0 -or $output -notmatch 'the library "te-xt" needs a name that is an identifier') { Fail "a library named te-xt: exit $code`n$output" }
     Set-Content 'libraries\text\build.kpp' $text
+    # What a used library's build.kpp may point kpp at (docs/design.md, "What a library's build.kpp can
+    # do"): its roots and test roots inside its directory, system libraries that are names, use() paths
+    # inside the directory holding it. Each other one is an error before anything of it is read.
+    $outside = (Split-Path $app)
+    foreach ($case in @(
+        @('text.root("../../src");', "the library text's root \.\./\.\./src is outside its directory"),
+        @('text.test("../greet");', "the library text's root \.\./greet is outside its directory"),
+        @("text.root(`"$($outside -replace '\\', '/')`");", "the library text's root .* is outside its directory"),
+        @('text.systemLibrary("-lother");', 'the system library "-lother" is not a library''s name'),
+        @('text.systemLibrary("../lib/other");', 'the system library "\.\./lib/other" is not a library''s name'),
+        @('text.systemLibrary("other lib", Platform::Windows);', 'the system library "other lib" is not a library''s name')))
+    {
+      Set-Content 'libraries\text\build.kpp' ($text -replace '\}$', "  $($case[0])`n}")
+      $output = (Kpp @('--no-server')) -join "`n"
+      if ($code -eq 0 -or $output -notmatch $case[1]) { Fail "a used library's build.kpp, $($case[0]): exit $code`n$output" }
+    }
+    Set-Content 'libraries\text\build.kpp' $text
+    Set-Content 'libraries\greet\build.kpp' ($greet -replace 'greet.use\("text"\);', 'greet.use("text", local("../../../elsewhere/text"));')
+    $output = (Kpp @('--no-server')) -join "`n"
+    if ($code -eq 0 -or $output -notmatch 'the library text is used from .*elsewhere\\text, outside .*libraries: a used library''s use\(\) paths stay') { Fail "a used library's use() path outside its directory's: exit $code`n$output" }
+    # (a sibling, as factorio-in-kpp's minizip uses "../zlib")
+    Set-Content 'libraries\greet\build.kpp' ($greet -replace 'greet.use\("text"\);', 'greet.use("text", local("../text"));')
+    $output = (Kpp @('--no-server')) -join "`n"
+    if ($code -ne 0) { Fail "a used library's use() path to its sibling: exit $code`n$output" }
+    Set-Content 'libraries\greet\build.kpp' $greet
     foreach ($case in @(
         @('greet.requiredOption("volume", "int", "how loud");', '', 'the library greet needs its option volume \(int: how loud\), which nothing sets for app debug'),
         @('', '  project.config("greet::colour", "red");', 'greet::colour is set by the project \(project.config\), and the library greet has no option colour \(its options: suffix\)'),

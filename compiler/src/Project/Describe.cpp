@@ -228,6 +228,36 @@ namespace projects
 
   fs::path descriptionCache(const fs::path& root, const fs::path& cache) { return cache.empty() ? root / "build" / "kpp" : cache; }
 
+  // Whether path is directory or under it, after the links and junctions of both are followed (a
+  // root that is a junction to elsewhere is elsewhere) and with Windows' letter case.
+  bool isInside(const fs::path& directory, const fs::path& path)
+  {
+    std::error_code ec, ec2;
+    fs::path d = fs::weakly_canonical(fs::absolute(directory, ec), ec);
+    fs::path p = fs::weakly_canonical(fs::absolute(path, ec2), ec2);
+    if (ec || ec2)
+      return false;
+    fs::path relative = p.lexically_relative(d);
+    if (relative.empty())
+      return false;
+    for (const fs::path& part : relative)
+      if (part == "..")
+        return false;
+    return true;
+  }
+
+  // A system library's name as Library::systemLibrary and Executable::systemLibrary give it: kpp
+  // passes it as -lNAME, so it is a name the linker searches for (ssl, gdi32, libssl.a after a ':'),
+  // never a path (/, \, ..) nor something an option could be read from (a leading -, a blank, a quote).
+  bool isSystemLibraryName(const std::string& name)
+  {
+    size_t start = !name.empty() && name[0] == ':' ? 1 : 0;
+    if (name.size() == start || name[start] == '-' || name.find("..") != std::string::npos)
+      return false;
+    return std::all_of(name.begin() + start, name.end(),
+                       [](char c) { return isalnum((unsigned char)c) || c == '_' || c == '.' || c == '+' || c == '-'; });
+  }
+
   std::string describeCommand(const fs::path& root, const Request& request, const fs::path& cache)
   {
     std::vector<std::string> args = describeArguments(root, request, cache);
@@ -295,6 +325,37 @@ namespace projects
                 file.c_str(), l.name.c_str(), l.name.c_str());
         out.errors.push_back(l.name);
       }
+    // What a build.kpp may point kpp at (docs/design.md, "What a library's build.kpp can do"): a
+    // library's roots and test roots are inside its directory, and a system library is a name the
+    // linker searches for, never a path or an option. Checked before any file of a root is read.
+    for (const KppLibrary& l : out.libraries)
+      for (const std::vector<std::string>* list : {&l.roots, &l.testRoots})
+        for (const std::string& r : *list)
+          if (!isInside(root, rooted(root, r)))
+          {
+            fprintf(stderr, "%s: error: the library %s's root %s is outside its directory %s: a library's roots and test roots are inside it\n",
+                    file.c_str(), l.name.c_str(), r.c_str(), fs::absolute(root, ec).lexically_normal().string().c_str());
+            out.errors.push_back(r);
+          }
+    std::vector<const std::vector<std::string>*> systemLists;
+    for (const Program& p : out.programs)
+      systemLists.push_back(&p.systemLibraries);
+    for (const KppLibrary& l : out.libraries)
+      systemLists.push_back(&l.systemLibraries);
+    for (const std::vector<std::string>* list : systemLists)
+      for (const std::string& s : *list)
+      {
+        std::string name = s.find(' ') == std::string::npos ? s : s.substr(s.find(' ') + 1);
+        if (!isSystemLibraryName(name))
+        {
+          fprintf(stderr, "%s: error: the system library \"%s\" is not a library's name (letters, digits, _ . + -, not starting with -, "
+                          "optionally after one :), which the linker would take as a path or an option\n",
+                  file.c_str(), name.c_str());
+          out.errors.push_back(name);
+        }
+      }
+    if (!out.errors.empty())
+      return false;
     // A library's config:: constants declared in its source (`config i32 level = 6;`, config.cpp;
     // design.md, "config:: defaults in source") are its options as option()'s are: set by its users,
     // checked, listed by `kpp options` with the default. One name declared both ways is an error.
@@ -403,6 +464,15 @@ namespace projects
         directory = official;
       directory = fs::absolute(directory, ec).lexically_normal();
       std::string user = (by / "build.kpp").string();
+      // A used library's use(NAME, local(PATH)) names a library inside the directory that holds it,
+      // its own or a sibling's (minizip's "../zlib"); the project's own build.kpp may name any
+      // (docs/design.md, "What a library's build.kpp can do").
+      if (!use.path.empty() && !fs::equivalent(by, project, ec) && !isInside(by.parent_path(), directory))
+      {
+        fprintf(stderr, "%s: error: the library %s is used from %s, outside %s: a used library's use() paths stay in the directory that holds it\n",
+                user.c_str(), use.name.c_str(), directory.string().c_str(), fs::absolute(by.parent_path(), ec).lexically_normal().string().c_str());
+        return false;
+      }
       auto same = std::find_if(found.begin(), found.end(), [&](const Found& f) { return f.name == use.name; });
       if (same != found.end() && same->directory != directory)
       {

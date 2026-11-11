@@ -1269,6 +1269,33 @@ options (`kpp options` shows the default and where it is declared). option() sta
 source declarations replace it is open. Details: [build.md](build.md), "config:: defaults in
 source"; specs tests/spec/kpp/config_default_*.
 
+**What a library's build.kpp can do (audited 2026-11-11 at kovarex's request: "can a bad-actor
+library added to my project, through its build.kpp, do something unexpected on my computer?").**
+A build.kpp runs in the compile-time interpreter, in a kpp process of its own (Project/Describe.cpp,
+describeCommand), compiled with projectlib and the settings kpp writes: it cannot read or write a file,
+start a process, reach the network or the environment, or call C (a function without a body is no
+constant; the interpreter runs memcpy, memmove, memset, memcmp, memchr, strcmp and strlen itself, on
+its own values), and its steps and memory are bounded. Its one output is the description text, which
+kpp parses; a used library's description is untrusted, since its build.kpp may overload projectlib's
+helpers and write any text. Of a used library's description kpp takes only its library section (name,
+version, licence, minimum kpp, roots, use(), system libraries, options, unscoped, thisReference): its
+executables, configurations, before- and after-build commands, debug commands, compiler and linker
+arguments, C include directories and `kpp measure` commands are the project's own build.kpp's alone,
+and a used library that declares C libraries is an error. What it could still point kpp at is checked
+(Project/Describe.cpp; tests/project.ps1, section libraries):
+- A library's roots and test roots are inside its directory, after links and junctions are followed;
+  one outside is an error before any file of it is read (it would put any directory's .kpp files into
+  the program).
+- A system library (`systemLibrary(NAME)`) is a name: letters, digits, `_ . + -`, not starting with
+  `-`, optionally after one `:` (`:libssl.a`); kpp passes it to the linker as `-lNAME`, and a path or
+  a name read as an option is an error, for a project's own too.
+- A used library's `use(NAME, local(PATH))` names a directory inside the one holding the library, its
+  own or a sibling's (factorio-in-kpp's minizip uses `../zlib`); the project's own build.kpp may name any.
+
+What it cannot be kept from: a used library's code runs natively wherever the program or its tests run
+(as in every language's packages), its sources' `extern "C" import` runs clang's preprocessor, which
+reads any header path (open question below), and its build.kpp sees the command line's `--set` values.
+
 **The game's DEBUG as config::debug (decided by kovarex, 2026-11-02).** "Obviously we need B the
 proper way, we need to have debug and release configuration working properly." The converter
 preprocessed the game as Factorio's FastDebug (DEBUG and _DEBUG defined), so the kpp release build
@@ -5530,6 +5557,14 @@ and before a body's `{` it keeps that brace on its own line under `braces = end-
   decoupled from Factorio. No code or design write-up before then. Open until then: the licence label
   of the moved code, stdlib or libraries/ for each piece, PropertyTree's node size, JSON numbers (double
   or integer), which pieces come next.
+
+- **Hardening what a used library can do, the rest** (thread audit, 2026-11-11; section 12, "What a
+  library's build.kpp can do"): (1) a used library's `extern "C" import "PATH"` makes clang read any
+  file the user can read (an absolute or `..` path, `#include`, C23's `#embed`) and can put its bytes
+  into the program: confine a used library's import paths to its directory and the target's system
+  include directories? (B's C import.) (2) A used library's build.kpp reads the command line's `--set`
+  values: give it none? (3) The registry (none yet): pin each library by its content's hash in
+  build.lock, and show what changed in a library's build.kpp and C imports when an update is taken?
 
 ## Roadmap
 
