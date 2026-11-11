@@ -1,0 +1,52 @@
+// spec: two classes' nested classes of one name, each defined outside its class (`class First::Resolver : public Base { ... }`), are two classes: each is its class's (First::Resolver, Second::Resolver), as written inside it. Both were named Resolver, their virtual functions one name defined twice (Factorio's CollisionMaskConnector::Resolver beside TileCollisionMaskConnector::Resolver).
+class Base
+{
+public:
+  virtual i32 id() = 0;
+};
+
+class First
+{
+public:
+  class Resolver;
+  i32 make();
+};
+
+class Second
+{
+public:
+  class Resolver;
+  i32 make();
+};
+
+class First::Resolver : public Base
+{
+public:
+  virtual i32 id() override { return 1; }
+};
+
+class Second::Resolver : public Base
+{
+public:
+  virtual i32 id() override { return 2; }
+};
+
+i32 First::make()
+{
+  First::Resolver r;
+  return r.id();
+}
+
+i32 Second::make()
+{
+  Second::Resolver r;
+  return r.id();
+}
+
+int main()
+{
+  First a;
+  Second b;
+  std::println(a.make(), " ", b.make());
+  return 0;
+}

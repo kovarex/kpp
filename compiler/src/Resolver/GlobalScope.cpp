@@ -143,6 +143,10 @@ void GlobalScope::finishIndex()
         static_cast<ClassDecl*>(d)->name = simple;
       else
         static_cast<EnumDecl*>(d)->name = simple;
+      // Declared where it is found: `class First::Resolver` is First's (its names and its members' are
+      // First::Resolver's, a second class's Resolver another), as written inside First.
+      if (l.scope->owner)
+        d->parent = l.scope->owner;
       impl->indexDecl(d, l.scope);
     }
   }
