@@ -149,8 +149,8 @@ at all: UBSan's checks are written by clang's front end, not by an LLVM pass, so
   signed arithmetic wraps, as Factorio's builds do with -fwrapv (its circuit network relies on it).
   Unsigned arithmetic wraps, as defined, and imported C keeps C's behaviour. A hook that returns (a
   test's) goes on: the arithmetic wrapped, a division by 1 in place of the processor's trap, a shift
-  count masked as x86 masks it. Trivial callees are not inlined in such a build: a check in an inlined
-  body would hold its callee's line in the caller's code. `config::sanitizeUndefined` and
+  count masked as x86 masks it. A check in a trivial callee inlined in its caller holds the callee's
+  line, which a compile server patches or emits again when an edit moves it (2d4a165c9). `config::sanitizeUndefined` and
   `config::sanitizeOverflow` say they are on. Both go with `address` or `thread`.
 - The game's tests under `--sanitize undefined,overflow` (factorio-in-kpp 6245f6046, debug, 2026-11-11):
   264 of 9481 fail, at 13 places. `undefined` alone: SmallProgressValue's `u8(value * 254)` given 254
