@@ -1,0 +1,36 @@
+// spec: the fix of a function argument's braces names a container of data members' pointers too (`Inputs<i32 Settings::*>{...}`): a class template's parameter takes the member pointer type in kpp's spelling, `MEMBER CLASS::*` (the game's SmallVector<ControlInput ControlSettings::*, 4> of a template base's alias, Factorio 349aad210c2's CraftingGui; until then the message had no fix, and the converter could not apply it); a parameter its class writes by `super::` is named so too, not by `super::`, which at the call is another class's (SimpleSlot's, called from ItemSpawnGui)
+// kpp: --no-std
+// error: explicit_by_default_braced_argument_of_member_pointers_is_error.kpp:34: error: the braces of a function argument name their type: write `Inputs<i32 Settings::*>{&Settings::craft, &Settings::craftAll}`, not `{&Settings::craft, &Settings::craftAll}` (design.md "Explicit by default")
+// error: explicit_by_default_braced_argument_of_member_pointers_is_error.kpp:35: error: the braces of a function argument name their type: write `Inputs<i32 Settings::*>{&Settings::craft, &Settings::craftAll}`, not `{&Settings::craft, &Settings::craftAll}` (design.md "Explicit by default")
+struct Settings
+{
+  int craft;
+  int craftAll;
+};
+template<typename T> struct Inputs
+{
+  T first;
+  T second;
+};
+template<typename ID> struct Button
+{
+  using ControlInputs = Inputs<int Settings::*>;
+};
+template<typename ID> struct Slot : Button<ID>
+{
+  static int count(const typename Button<ID>::ControlInputs& inputs) { return inputs.first ? 1 : 0; }
+};
+// (a parameter written by its class's super: words of that class, the type in kpp's spelling at the call)
+struct Base2
+{
+  using Inputs2 = Inputs<int Settings::*>;
+};
+struct User : Base2
+{
+  static int take(const super::Inputs2& inputs) { return inputs.first ? 1 : 0; }
+};
+int main()
+{
+  int a = Slot<int>::count({&Settings::craft, &Settings::craftAll});
+  return a + User::take({&Settings::craft, &Settings::craftAll});
+}

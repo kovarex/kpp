@@ -5859,8 +5859,16 @@ auto GlobalScope::Impl::Walker::kppSpelling(const Ty* t, int depth) -> std::stri
       }
       return cv + s;
     }
+    case TyKind::MemberPointer:
+    {
+      // (a data member's pointer, `ControlInput ControlSettings::*`: the game's SmallVector of them, given braces)
+      if (!t->inner || t->inner->kind == TyKind::Function || t->args.empty())
+        return {};
+      std::string member = kppSpelling(t->inner, depth + 1), cls = kppSpelling(t->args[0], depth + 1);
+      return member.empty() || cls.empty() ? std::string() : member + " " + cls + "::*" + (t->isConst ? " const" : "");
+    }
     default:
-      return {}; // (a function, an array, a member pointer, a closure: no name to write before braces)
+      return {}; // (a function, an array, a member function's pointer, a closure: no name to write before braces)
   }
 }
 
@@ -5934,6 +5942,14 @@ auto GlobalScope::Impl::Walker::spelledParameterType(ParamDecl* p, const Ty* to)
         };
         if (!unqualifiedArgument(named->name, 0))
         {
+          // (`super::ControlInputs`, `This::X`: words of the parameter's own class, another at the call (the
+          // game's SimpleSlot, called from ItemSpawnGui): the type in kpp's spelling below)
+          std::string_view first = named->name.parts.empty() || named->name.parts[0].symbol == UINT32_MAX
+                                     ? std::string_view()
+                                     : std::string_view(symbols.name(named->name.parts[0].symbol));
+          bool relative = !named->name.global && named->name.parts.size() > 1 && (first == "super" || first == "This");
+          if (relative)
+            return kppSpelling(to ? types.unqualified(types.stripRef(to)) : nullptr);
           if (named->name.parts.size() > 1 || named->name.global)
             return text;
           Decl* found = impl.lookupQualified(named->name, dc.scope, &dc.params, 0).decl;
