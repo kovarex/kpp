@@ -1613,3 +1613,48 @@
 -       stringstream_parser(text, value);
 -     }
 + 
+
+@ src/BuildConstants.hpp: the sanitizer the build checks with is kpp's config::sanitizeAddress (kpp --sanitize address), where Factorio's build defines ASAN
+- #ifdef ASAN
+-   static constexpr bool IsASAN = true;
+- #else
+-   static constexpr bool IsASAN = false;
+- #endif
++   static constexpr bool IsASAN = KPP_SANITIZE_ADDRESS;
+
+@ src/BuildConstants.hpp: and config::sanitizeThread (kpp --sanitize thread), where it defines TSAN
+- #ifdef TSAN
+-   static constexpr bool IsTSAN = true;
+- #else
+-   static constexpr bool IsTSAN = false;
+- #endif
++   static constexpr bool IsTSAN = KPP_SANITIZE_THREAD;
+
+@ src/Util/Gui.cpp: AddressSanitizer reports the leaks itself in a sanitized build (config::sanitizeAddress, BuildConstants::IsASAN), where the compiler's __SANITIZE_ADDRESS__ said so
+- #ifdef __SANITIZE_ADDRESS__
+- #ifdef DEBUG
+-   agui::Widget::widgets.clear();
+- #endif
+-   return;
+- #endif
++   if constexpr (BuildConstants::IsASAN)
++   {
++ #ifdef DEBUG
++     agui::Widget::widgets.clear();
++ #endif
++     return;
++   }
+
+@ src/Main.cpp: leaked entities abort only where AddressSanitizer does not report them (BuildConstants::IsASAN)
+- #ifndef __SANITIZE_ADDRESS__
+-       abort();
+- #endif
++       if constexpr (!BuildConstants::IsASAN)
++         abort();
+
+@ tests/TestRunner.cpp: no leak check of the test's widgets where AddressSanitizer reports leaks (BuildConstants::IsASAN)
+- #ifdef __SANITIZE_ADDRESS__
+-   return;
+- #endif
++   if constexpr (BuildConstants::IsASAN)
++     return;

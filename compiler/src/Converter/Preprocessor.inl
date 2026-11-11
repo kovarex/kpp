@@ -269,6 +269,10 @@
     // errno: the stdlib's accessor, one spelling on every platform (_errno() on Windows, glibc's
     // __errno_location(), FreeBSD's __error()).
     {"errno", "(*std::platform::errnoLocation())"},
+    // The sanitizers the build checks with (kpp --sanitize, build.md "Sanitizers"): the game's ASAN and
+    // TSAN (BuildConstants' IsASAN, IsTSAN) and __SANITIZE_ADDRESS__ branches, which source-edits.txt
+    // writes with these names.
+    {"KPP_SANITIZE_ADDRESS", "config::sanitizeAddress"}, {"KPP_SANITIZE_THREAD", "config::sanitizeThread"},
     // SDL_stdinc.h's format for an Sint64, which SDLWindow concatenates with a literal (Windows').
     {"SDL_PRIs64", "\"I64d\""},
     // C headers' constants that are casts, which the C import does not take for constants (signal.h,

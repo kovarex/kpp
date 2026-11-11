@@ -137,6 +137,8 @@ void testsTeardown()
     if (Entity::count != 0)
     {
       std::print("leaked ", usize(Entity::count.load()), " entities\n");
-      ::abort();
+      // (AddressSanitizer reports the leaks itself in a sanitized build, as Factorio's __SANITIZE_ADDRESS__)
+      if constexpr (!config::sanitizeAddress)
+        ::abort();
     }
 }

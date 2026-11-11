@@ -2,9 +2,9 @@
 # `if constexpr (config::debug)` or `(config::finalRelease)` (a part of an expression), each taken
 # from one configuration for all builds: FILE GROUP debug|release|final  why. (design.md 12, "The game's
 # DEBUG as config::debug"; docs/final-release.md)
-src/Main.kpp Main.cpp:25 release  the create-console option (cxxopts' add_options chain) exists in Release only; declared in both, the debug build reads it nowhere (its use is `if constexpr (!config::debug)`), where C++'s debug build rejects it as unknown
+src/Main.kpp Main.cpp:24 release  the create-console option (cxxopts' add_options chain) exists in Release only; declared in both, the debug build reads it nowhere (its use is `if constexpr (!config::debug)`), where C++'s debug build rejects it as unknown
 src/Graphics/SpriteLoaders.kpp SpriteLoaders.cpp:2 release  PACKAGED_BUILD leaves out `if (data.likelyFromInternalMod)` before the 16-bit check (an if's condition): FinalRelease refuses every 16-bit sprite when high bit depth is disallowed, kpp's final build only the internal mods' as Release does
 src/Gui/GraphicsSettingsGui.kpp GraphicsSettingsGui.cpp:6 release  `<< this->developerOptionsFrame` in the general part's flow chain, which FinalRelease leaves out: kpp's final build shows the developer options frame
-src/Main.kpp Main.cpp:13 release  the add-tags option (cxxopts' add_options chain), which FinalRelease leaves out: kpp's final build accepts it
-src/Main.kpp Main.cpp:21 release  the runtime-sprite-reload option (cxxopts' add_options chain), which FinalRelease leaves out: kpp's final build accepts it
+src/Main.kpp Main.cpp:12 release  the add-tags option (cxxopts' add_options chain), which FinalRelease leaves out: kpp's final build accepts it
+src/Main.kpp Main.cpp:20 release  the runtime-sprite-reload option (cxxopts' add_options chain), which FinalRelease leaves out: kpp's final build accepts it
 tests/Main.kpp Main.cpp:8 release  the tests' add-tags option (cxxopts' add_options chain), which FinalRelease leaves out: kpp's final tests accept it
