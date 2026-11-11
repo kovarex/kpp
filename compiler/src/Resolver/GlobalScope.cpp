@@ -170,7 +170,9 @@ void GlobalScope::finishIndex()
       else if (Scope* partial = impl->partialSpecializationScope(qualifier, l, context, v->templateParams, v->file))
         l.scope = partial; // `template<class T> int Box<T*>::made = 20;`: the partial specialisation's, never the primary's
     }
-    if (l.scope && l.scope->kind == ScopeKind::Class)
+    // (a kpp enum's static data member too, `const std::Array<Dir, 2> Dir::vertical = {...};`: until 2026-11-11 the definition was
+    // another variable, and the member read zeros, silently)
+    if (l.scope && (l.scope->kind == ScopeKind::Class || l.scope->kind == ScopeKind::Enum))
     {
       // `template<> const uint32_t ElectricNetworkStatistics::smoothingTicks = 0;` (an instance of
       // a class template, through an alias or with its arguments): that instance's definition

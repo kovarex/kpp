@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**2200 pass, 2 pending, 0 failing, 0 fixed** (2202 snippets, 127.4 s).
+**2201 pass, 2 pending, 0 failing, 0 fixed** (2203 snippets, 183.2 s).
 
 ## Language: statements, expressions, declarations
 
@@ -1853,6 +1853,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `kpp/enum_method_not_const_on_a_const_value_is_error.kpp` | a method of a kpp enum that is not const changes its value, so it is not called on a const one, as a class's is not on a const object (until 2026-11-11 it compiled and changed a copy) | pass |  |  |
 | `kpp/enum_method_of_class_template.kpp` | a real enum of a class template: its methods, str() and fromStr() are the instance's, as wide as its underlying type, with values the arguments decide | pass |  |  |
 | `kpp/enum_of_a_class_template_instance.kpp` | count, values, kppEnumeratorName and UnderlyingType of an enumeration of a class template are the instance's: its width, its enumerators (`Tm<3>` and `Tm<7>` share no table) | pass |  |  |
+| `kpp/enum_static_member_defined_after_the_enum.kpp` | a static data member of a kpp enum, declared in the enum and defined after it, has its definition's value, as a class's does; a static member function defined after it too (until 2026-11-11 the data member's definition was another variable, and the member read zeros, silently: the game's Direction::straightDirections, every element North) | pass |  |  |
 | `kpp/enumerator_cycle_is_error.kpp` | enumerators whose values name each other in a cycle are an error, not a value | pass |  |  |
 | `kpp/enumerator_names_a_later_enumerator.kpp` | an enumerator's value may name a later enumerator of its enumeration (kpp's order independence, design.md 2): `enum { X = K, K = 3, Y = K * 2, Z }` is 3 3 6 7, in a class, at namespace scope, in an enum class, and from an enumerator after it that counts up from a written one; a cycle is still an error | pass |  |  |
 | `kpp/explicit_by_default.kpp` | explicit by default (design.md "Explicit by default"): what is marked `implicit` converts, an `implicit(cond)` while cond holds; direct-initialization takes an unmarked constructor, and so do `return {x, y};` and `Color c = {1, 0, 0};` (two or more values); `{}` takes a default constructor and a copy an unmarked copy constructor (never conversions); a contextual conversion takes an unmarked `operator bool`; a switch a marked conversion; an inherited constructor keeps its base's mark; class template argument deduction by copy takes an implicit constructor; a function argument's braces name their type (`Agg{20, 30}`) unless the parameter is an InitializerList, inside whose braces nested ones name none (rule 1) | pass |  |  |

@@ -1,0 +1,18 @@
+// spec: a static data member of a kpp enum, declared in the enum and defined after it, has its definition's value, as a class's does; a static member function defined after it too (until 2026-11-11 the data member's definition was another variable, and the member read zeros, silently: the game's Direction::straightDirections, every element North)
+enum class Dir : u8
+{
+  { North, East, South, West }
+  static const std::Array<Dir, 2> vertical;
+  static const int weight;
+  static Dir fromIndex(int index);
+};
+
+const std::Array<Dir, 2> Dir::vertical = { Dir::South, Dir::West };
+const int Dir::weight = 7;
+Dir Dir::fromIndex(int index) { return Dir(index & 3); }
+
+int main()
+{
+  std::println(int(Dir::vertical[0]), " ", int(Dir::vertical[1]), " ", Dir::weight, " ", int(Dir::fromIndex(5)));
+  return 0;
+}
