@@ -6,6 +6,8 @@
 #include "codegen.hpp"
 #include "resolver.hpp"
 #include "TypeTable.hpp"
+#include <algorithm>
+#include <cstdio>
 #include <functional>
 #include <map>
 #include <set>
@@ -90,10 +92,400 @@ namespace
       }
     return false;
   }
+
+  // A type's debugValue() (docs/debugging.md, "debugValue"; design.md 26): a const member function of
+  // that name and no parameters, whose body the debugger's natvis expressions can say, translated per
+  // class instance. Its body is `return EXPRESSION;`, after `if (CONDITION) return EXPRESSION;`s. An
+  // expression reads the object's data members (`this.x`, chains of members and pointers), folds what
+  // reads none to a constant under the instance's arguments (`This::ValuesPerOne`, an enumerator), and
+  // keeps arithmetic, comparisons, `!`, `?:`, casts to a number type and another type's debugValue()
+  // (its body inlined on that member), each as natvis writes it. Anything else (another call, an
+  // operator function, a local) is the build's error, with what it was: a view kpp cannot write is
+  // never left raw in silence.
+  struct DebugValue
+  {
+    GlobalScope& global;
+    const SymbolTable& symbols;
+    ParsedFile* file;
+    Decl* context;
+    const TemplateArgs& args;
+    std::string prefix = {}; // the member the object is, for an inlined debugValue: `speed.`
+    int depth = 0;
+    std::string why = {};      // the first thing that could not be said
+    Node* at = nullptr;        // where
+    const ParsedFile* atFile = nullptr;
+  };
+
+  bool fail(DebugValue& v, Node* at, std::string why)
+  {
+    if (v.why.empty())
+    {
+      v.why = std::move(why);
+      v.at = at;
+      v.atFile = v.file;
+    }
+    return false;
+  }
+
+  // A number type as natvis's C casts name it; empty for another.
+  std::string natvisNumberType(const Ty* t)
+  {
+    if (!t)
+      return {};
+    switch (t->kind)
+    {
+    case TyKind::Bool: return "bool";
+    case TyKind::Float: return t->bits == 32 ? "float" : t->bits == 64 ? "double" : "";
+    case TyKind::Char: case TyKind::Int:
+      switch (t->bits)
+      {
+      case 8: return t->isUnsigned ? "unsigned char" : "char";
+      case 16: return t->isUnsigned ? "unsigned short" : "short";
+      case 32: return t->isUnsigned ? "unsigned int" : "int";
+      case 64: return t->isUnsigned ? "unsigned __int64" : "__int64";
+      default: return {};
+      }
+    default: return {};
+    }
+  }
+
+  bool isDebugValue(const Decl* d, const SymbolTable& symbols)
+  {
+    if (!d || d->kind != NodeKind::FunctionDecl)
+      return false;
+    const QualifiedName& name = static_cast<const FunctionDecl*>(d)->name;
+    return !name.parts.empty() && name.last().symbol != UINT32_MAX && symbols.name(name.last().symbol) == "debugValue";
+  }
+
+  // Whether e reads the object (a data member, `this`): what does not is folded to a constant.
+  bool readsObject(Node* n)
+  {
+    if (!n)
+      return false;
+    switch (n->kind)
+    {
+    case NodeKind::ThisExpr: return true;
+    case NodeKind::NameExpr:
+    {
+      Decl* d = static_cast<NameExpr*>(n)->resolved;
+      return d && d->kind == NodeKind::VariableDecl && !(d->flags & DF_Static) && d->parent && d->parent->kind == NodeKind::ClassDecl;
+    }
+    case NodeKind::MemberExpr: return readsObject(static_cast<MemberExpr*>(n)->base);
+    case NodeKind::ParenExpr: return readsObject(static_cast<ParenExpr*>(n)->inner);
+    case NodeKind::UnaryExpr: return readsObject(static_cast<UnaryExpr*>(n)->operand);
+    case NodeKind::BinaryExpr: return readsObject(static_cast<BinaryExpr*>(n)->lhs) || readsObject(static_cast<BinaryExpr*>(n)->rhs);
+    case NodeKind::ConditionalExpr:
+    {
+      auto* c = static_cast<ConditionalExpr*>(n);
+      return readsObject(c->cond) || readsObject(c->then) || readsObject(c->else_);
+    }
+    case NodeKind::CastExpr: return readsObject(static_cast<CastExpr*>(n)->operand);
+    case NodeKind::NamedCastExpr: return readsObject(static_cast<NamedCastExpr*>(n)->operand);
+    case NodeKind::FunctionalCastExpr:
+      for (Expr* a : static_cast<FunctionalCastExpr*>(n)->args)
+        if (readsObject(a))
+          return true;
+      return false;
+    case NodeKind::BraceInitExpr:
+      for (Expr* a : static_cast<BraceInitExpr*>(n)->args)
+        if (readsObject(a))
+          return true;
+      return false;
+    case NodeKind::CallExpr:
+      for (Expr* a : static_cast<CallExpr*>(n)->args)
+        if (readsObject(a))
+          return true;
+      return readsObject(static_cast<CallExpr*>(n)->callee);
+    default: return false;
+    }
+  }
+
+  // A constant as a natvis literal: an integer as itself, a floating one with its digits (a dot
+  // or an exponent, so that natvis computes in floating point).
+  std::string natvisConstant(const ConstValue& c)
+  {
+    if (c.kind == ConstValue::Kind::Float)
+    {
+      char buffer[64];
+      snprintf(buffer, sizeof(buffer), "%.17g", c.f);
+      std::string text = buffer;
+      if (text.find_first_of(".einn") == std::string::npos)
+        text += ".0";
+      return text;
+    }
+    return std::to_string(c.i);
+  }
+
+  // The object itself, as a member's base: `this.x` (C++'s `this->x`, the parser's implicit `*this`).
+  bool isThisObject(Expr* e)
+  {
+    while (e && e->kind == NodeKind::ParenExpr)
+      e = static_cast<ParenExpr*>(e)->inner;
+    if (!e)
+      return false;
+    if (e->kind == NodeKind::ThisExpr)
+      return true;
+    return e->kind == NodeKind::UnaryExpr && static_cast<UnaryExpr*>(e)->implicitThis;
+  }
+
+  // The body of a debugValue as natvis cases: (condition, value), the last one's condition empty.
+  // False, with v's why, for a body of another shape.
+  bool debugCases(DebugValue& v, FunctionDecl* f, std::vector<std::pair<Expr*, Expr*>>& cases)
+  {
+    if (!f || !f->body || f->body->kind != NodeKind::BlockStmt)
+      return fail(v, f, "it has no body here");
+    for (Stmt* s : static_cast<BlockStmt*>(f->body)->stmts)
+    {
+      if (!cases.empty() && !cases.back().first)
+        return fail(v, s, "a statement after its last return");
+      auto returned = [&](Stmt* r) -> Expr*
+      {
+        while (r && r->kind == NodeKind::BlockStmt && static_cast<BlockStmt*>(r)->stmts.size() == 1)
+          r = static_cast<BlockStmt*>(r)->stmts[0];
+        return r && r->kind == NodeKind::ReturnStmt ? static_cast<ReturnStmt*>(r)->value : nullptr;
+      };
+      if (s->kind == NodeKind::ReturnStmt && static_cast<ReturnStmt*>(s)->value)
+        cases.push_back({nullptr, static_cast<ReturnStmt*>(s)->value});
+      else if (s->kind == NodeKind::IfStmt)
+      {
+        auto* i = static_cast<IfStmt*>(s);
+        Expr* then = returned(i->then);
+        if (i->init || i->isConstexpr || i->ifConsteval || !i->cond || i->cond->kind == NodeKind::DeclStmt || !then)
+          return fail(v, s, "an `if` other than `if (CONDITION) return EXPRESSION;`");
+        cases.push_back({static_cast<Expr*>(i->cond), then});
+        if (i->else_)
+        {
+          Expr* otherwise = returned(i->else_);
+          if (!otherwise)
+            return fail(v, i->else_, "an `else` other than `else return EXPRESSION;`");
+          cases.push_back({nullptr, otherwise});
+        }
+      }
+      else
+        return fail(v, s, "a statement other than `if (CONDITION) return EXPRESSION;` and `return EXPRESSION;`");
+    }
+    if (cases.empty() || cases.back().first)
+      return fail(v, f, "no `return EXPRESSION;` at its end");
+    return true;
+  }
+
+  bool natvisExpression(DebugValue& v, Expr* e, std::string& out);
+
+  // Another type's debugValue() called on a member of this one (`this.speed.debugValue()`): its body,
+  // one `return EXPRESSION;`, inlined with that member as its object.
+  bool inlinedDebugValue(DebugValue& v, CallExpr* c, std::string& out)
+  {
+    auto* m = static_cast<MemberExpr*>(c->callee);
+    std::string base;
+    if (isThisObject(m->base))
+      return fail(v, c, "a call of its own debugValue");
+    if (!natvisExpression(v, m->base, base))
+      return false;
+    const Ty* object = m->base->ty;
+    TypeTable& types = v.global.types();
+    if (object)
+      object = types.unqualified(types.stripRef(object));
+    if (object && m->op == P::Arrow && object->kind == TyKind::Pointer)
+      object = object->inner ? types.unqualified(object->inner) : nullptr;
+    if (!object || object->kind != TyKind::Class || !object->decl || v.depth > 8)
+      return fail(v, c, "a debugValue of something other than a class member");
+    TemplateArgs args = v.global.classArgsOf(object);
+    Decl* declared = m->resolved;
+    Decl* defined = args.empty() ? v.global.definitionOf(declared) : v.global.definitionOf(declared, args);
+    auto* def = defined && defined->kind == NodeKind::FunctionDecl ? static_cast<FunctionDecl*>(defined) : static_cast<FunctionDecl*>(declared);
+    FunctionDecl* instance = args.empty() ? def : v.global.instanceBody(def, args, object);
+    DebugValue inner{v.global, v.symbols, def->file, instance, args, v.prefix + base + (m->op == P::Arrow ? "->" : "."), v.depth + 1};
+    std::vector<std::pair<Expr*, Expr*>> cases;
+    bool done = debugCases(inner, instance, cases);
+    if (done && cases.size() != 1)
+      done = fail(inner, instance, "its `if`s, which an expression of another debugValue cannot hold");
+    std::string value;
+    if (done && natvisExpression(inner, cases[0].second, value))
+    {
+      out = "(" + value + ")";
+      return true;
+    }
+    if (v.why.empty())
+    {
+      v.why = "the debugValue it calls: " + inner.why;
+      v.at = inner.at;
+      v.atFile = inner.atFile;
+    }
+    return false;
+  }
+
+  bool natvisExpression(DebugValue& v, Expr* e, std::string& out)
+  {
+    if (!e)
+      return fail(v, e, "an expression the parser left out");
+    if (!readsObject(e))
+    {
+      ConstHooks hooks;
+      std::optional<ConstValue> value = v.global.evaluate(e, v.file, v.context, v.args, hooks);
+      GlobalScope::clearConstantReason();
+      if (!value || (value->kind != ConstValue::Kind::Int && value->kind != ConstValue::Kind::Float))
+        return fail(v, e, "a value that reads no member and is no number constant");
+      out = natvisConstant(*value);
+      if (!out.empty() && out[0] == '-')
+        out = "(" + out + ")";
+      return true;
+    }
+    switch (e->kind)
+    {
+    case NodeKind::ParenExpr:
+    {
+      std::string inner;
+      if (!natvisExpression(v, static_cast<ParenExpr*>(e)->inner, inner))
+        return false;
+      out = "(" + inner + ")";
+      return true;
+    }
+    case NodeKind::NameExpr: // a data member, `this.` implicit
+    {
+      auto* n = static_cast<NameExpr*>(e);
+      out = v.prefix + std::string(v.symbols.name(n->name.last().symbol));
+      return true;
+    }
+    case NodeKind::MemberExpr:
+    {
+      auto* m = static_cast<MemberExpr*>(e);
+      Decl* d = m->resolved;
+      if (m->dynamicMember || !d || d->kind != NodeKind::VariableDecl || (d->flags & DF_Static))
+        return fail(v, e, "a member that is no data member");
+      std::string name(v.symbols.name(m->member.last().symbol));
+      if (isThisObject(m->base))
+      {
+        out = v.prefix + name;
+        return true;
+      }
+      std::string base;
+      if (!natvisExpression(v, m->base, base))
+        return false;
+      out = base + (m->op == P::Arrow ? "->" : ".") + name;
+      return true;
+    }
+    case NodeKind::UnaryExpr:
+    {
+      auto* u = static_cast<UnaryExpr*>(e);
+      if (u->implicitThis)
+        return fail(v, e, "the object itself, which has no value to show");
+      if (u->callee || u->call == OperatorCall::Function || u->postfix || u->isKeyword)
+        return fail(v, e, "an operator that calls a function or changes a value");
+      P op = P(u->op);
+      if (op != P::Minus && op != P::Plus && op != P::Bang && op != P::Tilde && op != P::Star)
+        return fail(v, e, "the operator " + std::string(punctuatorSpelling(op)));
+      std::string operand;
+      if (!natvisExpression(v, u->operand, operand))
+        return false;
+      out = std::string(punctuatorSpelling(op)) + operand;
+      return true;
+    }
+    case NodeKind::BinaryExpr:
+    {
+      auto* b = static_cast<BinaryExpr*>(e);
+      if (b->callee || b->call == OperatorCall::Function || b->call == OperatorCall::Rewritten || b->isKeyword)
+        return fail(v, e, "an operator function");
+      P op = P(b->op);
+      static const P allowed[] = {P::Plus, P::Minus, P::Star, P::Slash, P::Percent, P::Shl, P::Shr, P::Amp, P::Pipe, P::Caret,
+                                  P::Less, P::Greater, P::LessEq, P::GreaterEq, P::EqEq, P::NotEq, P::AndAnd, P::OrOr};
+      if (std::find(std::begin(allowed), std::end(allowed), op) == std::end(allowed))
+        return fail(v, e, "the operator " + std::string(punctuatorSpelling(op)));
+      std::string lhs, rhs;
+      if (!natvisExpression(v, b->lhs, lhs) || !natvisExpression(v, b->rhs, rhs))
+        return false;
+      out = lhs + " " + std::string(punctuatorSpelling(op)) + " " + rhs;
+      return true;
+    }
+    case NodeKind::ConditionalExpr:
+    {
+      auto* c = static_cast<ConditionalExpr*>(e);
+      if (!c->then)
+        return fail(v, e, "the operator ?:");
+      std::string cond, then, otherwise;
+      if (!natvisExpression(v, c->cond, cond) || !natvisExpression(v, c->then, then) || !natvisExpression(v, c->else_, otherwise))
+        return false;
+      out = "(" + cond + " ? " + then + " : " + otherwise + ")";
+      return true;
+    }
+    case NodeKind::CastExpr: case NodeKind::NamedCastExpr: case NodeKind::FunctionalCastExpr:
+    {
+      Expr* operand = e->kind == NodeKind::CastExpr ? static_cast<CastExpr*>(e)->operand
+                      : e->kind == NodeKind::NamedCastExpr ? static_cast<NamedCastExpr*>(e)->operand
+                      : static_cast<FunctionalCastExpr*>(e)->args.size() == 1 ? static_cast<FunctionalCastExpr*>(e)->args[0] : nullptr;
+      if (e->kind == NodeKind::NamedCastExpr && static_cast<NamedCastExpr*>(e)->castKind != Kw::static_cast_)
+        return fail(v, e, "a cast other than to a number type");
+      std::string type = natvisNumberType(e->ty);
+      if (!operand || type.empty())
+        return fail(v, e, "a cast other than to a number type");
+      std::string inner;
+      if (!natvisExpression(v, operand, inner))
+        return false;
+      out = "(" + type + ")(" + inner + ")";
+      return true;
+    }
+    case NodeKind::CallExpr:
+    {
+      auto* c = static_cast<CallExpr*>(e);
+      // Another type's debugValue(), on a member.
+      if (c->callee && c->callee->kind == NodeKind::MemberExpr && c->args.empty() && isDebugValue(static_cast<MemberExpr*>(c->callee)->resolved, v.symbols))
+        return inlinedDebugValue(v, c, out);
+      // A number type's name called with one value is its conversion: `f64(this.value)` (f64 the
+      // library's alias of double; a type's name is no declaration the call resolved, as a function's is).
+      Decl* callee = c->callee && c->callee->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(c->callee)->resolved : nullptr;
+      bool typeName = c->callee && c->callee->kind == NodeKind::NameExpr &&
+                      (!callee || callee->kind == NodeKind::UsingAliasDecl || (callee->kind == NodeKind::VariableDecl && (callee->flags & DF_Typedef)));
+      std::string type = natvisNumberType(e->ty);
+      if (!typeName || c->args.size() != 1 || type.empty())
+        return fail(v, e, "a call (debugValue's body is the debugger's expression: data members, constants, operators and other types' debugValue)");
+      std::string inner;
+      if (!natvisExpression(v, c->args[0], inner))
+        return false;
+      out = "(" + type + ")(" + inner + ")";
+      return true;
+    }
+    default: return fail(v, e, "this kind of expression");
+    }
+  }
+
+  // A Span's construction from a pointer and a length (`Span(this.data, this.size)`): their two
+  // expressions. False when e is no such construction.
+  bool spanParts(Expr* e, Expr*& pointer, Expr*& length)
+  {
+    while (e && e->kind == NodeKind::ParenExpr)
+      e = static_cast<ParenExpr*>(e)->inner;
+    Span<Expr*> args;
+    if (e && e->kind == NodeKind::CallExpr)
+      args = static_cast<CallExpr*>(e)->args;
+    else if (e && e->kind == NodeKind::FunctionalCastExpr)
+      args = static_cast<FunctionalCastExpr*>(e)->args;
+    else if (e && e->kind == NodeKind::BraceInitExpr)
+      args = static_cast<BraceInitExpr*>(e)->args;
+    else
+      return false;
+    if (args.size() != 2)
+      return false;
+    pointer = args[0];
+    length = args[1];
+    return true;
+  }
+
+  // FILE:LINE:COLUMN of a node's token, as the compiler's diagnostics give a place.
+  std::string placeOf(const ParsedFile* f, const Node* n)
+  {
+    if (!f || !n || !f->tokens || n->token >= f->tokens->size())
+      return f ? f->path : std::string();
+    size_t offset = (*f->tokens)[n->token].offset, line = 1, column = 1;
+    for (size_t i = 0; i < offset && i < f->text.size(); ++i)
+      if (f->text[i] == '\n')
+        ++line, column = 1;
+      else
+        ++column;
+    return f->path + ":" + std::to_string(line) + ":" + std::to_string(column);
+  }
 }
 
 std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& global, const SymbolTable& symbols, const std::vector<DebugClass>& classes,
-                       std::vector<std::string>& problems)
+                       std::vector<std::string>& problems, std::vector<std::string>& errors)
 {
   // The library's class definitions at namespace scope, by name.
   // A specialization (`Vector<bool>`) is named with /spec<token> in the PDB (B's names): a wildcard
@@ -517,6 +909,120 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
              "      <Item Name=\"[tag]\">" + tag + "</Item>\n" + items +
              "    </Expand>\n"
              "  </Type>\n";
+    }
+  }
+  // A type's debugValue() (DebugValue above): its rule, one per instance, the class shown as its
+  // debugValue's result: a number, an enumeration or a pointer as its value; a member that is a
+  // class as that class's view and expansion; a Span (std::Span(pointer, length)) as its length and
+  // elements. Each `if (CONDITION) return` is a case of the rule. A body the rule cannot say is an error.
+  for (const DebugClass& d : classes)
+  {
+    if (!d.type || !d.type->decl || d.type->decl->kind != NodeKind::ClassDecl)
+      continue;
+    Decl* defined = global.definitionOf(d.type->decl);
+    if (!defined || defined->kind != NodeKind::ClassDecl || !defined->file || defined->file->isImported)
+      continue;
+    auto* cls = static_cast<ClassDecl*>(defined);
+    for (Decl* member : cls->members)
+    {
+      if (!isDebugValue(member, symbols) || static_cast<FunctionDecl*>(member)->name.parts.size() != 1)
+        continue;
+      auto* f = static_cast<FunctionDecl*>(member);
+      auto error = [&](const ParsedFile* file, const Node* at, const std::string& what)
+      {
+        std::string line = placeOf(file, at) + ": error: " + what + " (docs/debugging.md, \"debugValue\")";
+        if (std::find(errors.begin(), errors.end(), line) == errors.end())
+          errors.push_back(line);
+      };
+      if (!f->params.empty() || !(f->flags & DF_Const) || (f->flags & DF_Static) || !f->templateParams.empty())
+      {
+        error(f->file, f, "debugValue, which the debugger shows " + d.name + " as, is a const member function without parameters");
+        continue;
+      }
+      TemplateArgs args = global.classArgsOf(d.type);
+      Decl* body = args.empty() ? global.definitionOf(f) : global.definitionOf(f, args);
+      auto* def = body && body->kind == NodeKind::FunctionDecl ? static_cast<FunctionDecl*>(body) : f;
+      FunctionDecl* instance = args.empty() || !def->body ? def : global.instanceBody(def, args, d.type);
+      DebugValue v{global, symbols, def->file, instance, args};
+      std::vector<std::pair<Expr*, Expr*>> cases;
+      auto cannot = [&]()
+      {
+        error(v.atFile ? v.atFile : def->file, v.at ? v.at : def, "debugValue of " + d.name + " cannot be shown by the debugger: " + v.why);
+      };
+      if (!debugCases(v, instance, cases))
+      {
+        cannot();
+        continue;
+      }
+      // What it returns: its result type.
+      const Ty* shown = global.typeOfDeclIn(f, args);
+      shown = shown && shown->kind == TyKind::Function && shown->inner ? types.unqualified(types.stripRef(shown->inner)) : nullptr;
+      bool number = shown && (shown->isArithmetic() || shown->kind == TyKind::Enum || shown->kind == TyKind::Pointer);
+      bool span = shown && shown->kind == TyKind::Class && shown->decl && shown->decl->kind == NodeKind::ClassDecl && shown->decl->file &&
+                  shown->decl->file->isLibrary && nameOf(static_cast<const ClassDecl*>(shown->decl)->name, symbols) == "Span"; // (the library's Span)
+      std::string displays, items;
+      bool failed = false;
+      for (const auto& [condition, value] : cases)
+      {
+        std::string when;
+        if (condition && !natvisExpression(v, condition, when))
+        {
+          failed = true;
+          break;
+        }
+        std::string attribute = condition ? " Condition=\"" + escape(when) + "\"" : std::string();
+        Expr* pointer = nullptr;
+        Expr* length = nullptr;
+        if (span)
+        {
+          std::string data, size;
+          if (!spanParts(value, pointer, length))
+          {
+            fail(v, value, "a Span other than one made of a pointer and a length (`Span(this.data, this.size)`)");
+            failed = true;
+            break;
+          }
+          if (!natvisExpression(v, pointer, data) || !natvisExpression(v, length, size))
+          {
+            failed = true;
+            break;
+          }
+          if (length->ty && types.unqualified(types.stripRef(length->ty))->kind == TyKind::Pointer)
+            size = "(" + size + ") - (" + data + ")"; // (Span(first, last))
+          displays += "    <DisplayString" + attribute + ">{{length={" + escape(size) + "}}}</DisplayString>\n";
+          items += "      <ArrayItems" + attribute + ">\n"
+                   "        <Size>" + escape(size) + "</Size>\n"
+                   "        <ValuePointer>" + escape(data) + "</ValuePointer>\n"
+                   "      </ArrayItems>\n";
+          continue;
+        }
+        std::string expression;
+        if (!natvisExpression(v, value, expression))
+        {
+          failed = true;
+          break;
+        }
+        bool path = expression.find_first_of(" ()") == std::string::npos; // (a member, or a chain of them)
+        if (!number && !(shown && shown->kind == TyKind::Class && path))
+        {
+          fail(v, value, "a value other than a number, a pointer, an enumeration, a data member that is a class or a Span: " +
+                           (shown ? types.toString(shown, &symbols) : std::string("this")));
+          failed = true;
+          break;
+        }
+        displays += "    <DisplayString" + attribute + ">{" + escape(expression) + (shown->kind == TyKind::Float ? ",g" : "") + "}</DisplayString>\n";
+        if (!number)
+          items += "      <ExpandedItem" + attribute + ">" + escape(expression) + "</ExpandedItem>\n";
+      }
+      if (failed)
+      {
+        cannot();
+        continue;
+      }
+      out += "  <Type Name=\"" + escape(d.name) + "\">\n" + displays;
+      if (!items.empty())
+        out += "    <Expand>\n" + items + "    </Expand>\n";
+      out += "  </Type>\n";
     }
   }
   out += "</AutoVisualizer>\n";

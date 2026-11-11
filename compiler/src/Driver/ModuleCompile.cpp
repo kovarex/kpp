@@ -679,10 +679,18 @@ void runCodegen(Build& build)
     std::vector<ParsedFile*> files;
     for (const std::unique_ptr<ParsedFile>& p : parsed)
       files.push_back(p.get());
-    std::vector<std::string> problems;
-    std::string natvis = makeNatvis(files, global, symbols, cg.debugClasses, problems);
+    std::vector<std::string> problems, natvisErrors;
+    std::string natvis = makeNatvis(files, global, symbols, cg.debugClasses, problems, natvisErrors);
     for (const std::string& problem : problems)
       fprintf(stderr, "warning: natvis: %s\n", problem.c_str());
+    // A debugValue() the debugger cannot compute is the build's error (docs/debugging.md, "debugValue").
+    for (const std::string& error : natvisErrors)
+      fprintf(stderr, "%s\n", error.c_str());
+    if (!natvisErrors.empty())
+    {
+      codegenExit = 1;
+      stop = stop || !options.keepGoing;
+    }
     if (!writeFile(natvisPath(options), natvis))
       fprintf(stderr, "error: cannot write %s\n", natvisPath(options).c_str());
     // The program's own .natvis files, one path a line, for what cannot read them out of the PDB: Visual

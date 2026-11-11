@@ -23,3 +23,8 @@ std::ForwardList<int32>
 std::RbTree<int32, int32, std::SetKey<int32>, std::Less<int32> >
 std::RbTree<std::Pair<std::String, int32>, std::String, std::MapKey<std::String, int32>, std::Less<std::String> >
 Property
+Buffer
+Fixed<12>
+Fixed<8>
+Item
+Load
