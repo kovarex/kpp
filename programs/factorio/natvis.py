@@ -25,6 +25,11 @@ STD = [
     ("data._Mypair._Myval2", "data.pointer"),  # Inventory's std::unique_ptr<ItemStack[]>
 ]
 
+# Rules left out (design.md 26, kovarex 2026-11-11: a type's debugValue is what the debugger shows): the
+# types that have a debugValue in the converted game (overrides/source-edits.txt), and those whose
+# members already show what the rule did (MapPosition's x and y, FixedPointNumbers; a Vector's x and y).
+DEBUG_VALUE = r"FixedPointNumberTemplate&lt;[^\"]*&gt;|RealOrientation|SmallVector&lt;[^\"]*&gt;|MapPosition|Vector|Vector2f"
+
 
 def enumBodies(converted):
     """(outer class, enum name) -> {enumerator: value} for each enum nested in a class of CONVERTED."""
@@ -66,6 +71,13 @@ def main():
         text = f.read()
     enums = enumBodies(converted)
     errors = []
+    dropped = []
+
+    def drop(m):
+        dropped.append(m.group(1).replace("&lt;", "<").replace("&gt;", ">"))
+        return ""
+
+    text = re.sub(r'[ \t]*<Type Name="(' + DEBUG_VALUE + r')">.*?</Type>[ \t]*\r?\n', drop, text, flags=re.S)
     pieces = re.split(r"(<!--.*?-->)", text, flags=re.S)
     for i in range(0, len(pieces), 2):  # the even pieces are outside comments
         piece = pieces[i]
@@ -88,7 +100,8 @@ def main():
             print("natvis.py: " + e)
         return 1
     header = ("<!-- Factorio's utils/tools/vs15/Visualizers/factorio.natvis, written by kpp's programs/factorio/natvis.py:\n"
-              "     scoped enumerators as their values, MSVC's library members as kpp's stdlib's. -->\n")
+              "     scoped enumerators as their values, MSVC's library members as kpp's stdlib's; without the rules of\n"
+              "     " + ", ".join(dropped) + ", which their debugValue or their members show. -->\n")
     result = "".join(pieces)
     decl = result.find("?>")
     result = result[:decl + 2] + "\n" + header + result[decl + 2:].lstrip("\r\n") if decl >= 0 else header + result
