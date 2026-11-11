@@ -145,6 +145,14 @@
     // note). The function's zero return stays after the call, as after a throw (emitThrow): the optimizer never proves it
     // noreturn, and a hook that returns (a test's) gets the zero.
     void endReached(Stmt* body);
+    // --sanitize undefined: a branch on `failed` (an i1) to a call of the assert hook with `at`'s place
+    // and `what`; a hook that returns goes on with the result as computed (wrapped).
+    void undefinedCheck(const std::string& failed, const std::string& what, Node* at);
+    // Whether code at `at` gets --sanitize's checks: kpp's and the library's, not imported C's.
+    bool checksUndefined(Node* at) const;
+    bool checksOverflow(Node* at) const;
+    // `value` (a float or double) converted to the integer type `to`: out of its range is undefined.
+    void checkFloatToInteger(const std::string& value, const Ty* from, const Ty* to, Node* at);
     std::unordered_map<const ParsedFile*, std::string> lineSections; // a file's line section (lineOperand)
 
     // The source text from one token up to (not including) another.

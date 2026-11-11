@@ -451,6 +451,58 @@ auto codegen::Emitter::arithmetic(P op, Value l, Value r, Node* at) -> Value
   }
   bool isFloat = ct->kind == TyKind::Float;
   bool isUnsigned = ct->isUnsigned;
+  if (!isFloat && ct->kind != TyKind::Bool && (checksUndefined(at) || checksOverflow(at)))
+  {
+    std::string t = llType(ct, at);
+    unsigned bits = unsigned(sizeOf(ct, at) * 8);
+    std::string name = std::string(isUnsigned ? "uint" : "int") + std::to_string(bits);
+    if (!isUnsigned && (op == P::Plus || op == P::Minus || op == P::Star) && checksOverflow(at))
+    {
+      const char* what = op == P::Plus ? "addition" : op == P::Minus ? "subtraction" : "multiplication";
+      std::string intrinsic = std::string("@llvm.") + (op == P::Plus ? "sadd" : op == P::Minus ? "ssub" : "smul") + ".with.overflow." + t;
+      if (declaredNames.claim(intrinsic))
+        decls += "declare {" + t + ", i1} " + intrinsic + "(" + t + ", " + t + ")\n";
+      std::string pair = newTemp(), over = newTemp();
+      fn += "  " + pair + " = call {" + t + ", i1} " + intrinsic + "(" + t + " " + l.text + ", " + t + " " + r.text + ")\n";
+      fn += "  " + res + " = extractvalue {" + t + ", i1} " + pair + ", 0\n";
+      fn += "  " + over + " = extractvalue {" + t + ", i1} " + pair + ", 1\n";
+      undefinedCheck(over, "signed overflow in " + name + " (" + what + ")", at);
+      return {res, ct};
+    }
+    if ((op == P::Slash || op == P::Percent) && checksUndefined(at))
+    {
+      std::string zero = newTemp();
+      fn += "  " + zero + " = icmp eq " + t + " " + r.text + ", 0\n";
+      undefinedCheck(zero, "a division by zero", at);
+      if (!isUnsigned)
+      {
+        std::string lowest = "-" + std::to_string(uint64_t(1) << (bits - 1));
+        std::string isLowest = newTemp(), minusOne = newTemp(), both = newTemp();
+        fn += "  " + isLowest + " = icmp eq " + t + " " + l.text + ", " + lowest + "\n";
+        fn += "  " + minusOne + " = icmp eq " + t + " " + r.text + ", -1\n";
+        fn += "  " + both + " = and i1 " + isLowest + ", " + minusOne + "\n";
+        undefinedCheck(both, "signed overflow in " + name + " (division)", at);
+        std::string either = newTemp();
+        fn += "  " + either + " = or i1 " + zero + ", " + both + "\n";
+        zero = either;
+      }
+      // (a hook that returns: the division by 1, never the processor's trap; INT_MIN / -1 gives INT_MIN)
+      std::string divisor = newTemp();
+      fn += "  " + divisor + " = select i1 " + zero + ", " + t + " 1, " + t + " " + r.text + "\n";
+      r.text = divisor;
+    }
+    if ((op == P::Shl || op == P::Shr) && checksUndefined(at))
+    {
+      // (the count, converted to the shifted type: a negative one is as large as an unsigned one)
+      std::string outOfRange = newTemp();
+      fn += "  " + outOfRange + " = icmp uge " + t + " " + r.text + ", " + std::to_string(bits) + "\n";
+      undefinedCheck(outOfRange, "a shift count outside 0 to " + std::to_string(bits - 1) + " (" + name + ")", at);
+      // (a hook that returns: the count masked, as x86 shifts, never LLVM's poison)
+      std::string masked = newTemp();
+      fn += "  " + masked + " = and " + t + " " + r.text + ", " + std::to_string(bits - 1) + "\n";
+      r.text = masked;
+    }
+  }
   const char* ins = nullptr;
   switch (op)
   {

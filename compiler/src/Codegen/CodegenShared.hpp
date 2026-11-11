@@ -459,6 +459,8 @@ namespace codegen
     std::unordered_map<std::string, FunctionDecl*> erroring;
     std::vector<bool> unassembled;
     bool inlineTrivial = true;                           // trivial callees emitted in their callers (--no-inline: false)
+    bool sanitizeUndefined = false;                      // --sanitize undefined: Emitter::undefinedCheck
+    bool sanitizeOverflow = false;                       // --sanitize overflow: signed overflow, Emitter::undefinedCheck
     bool debugInfo = false;                              // --debug-info: line tables for the debugger (Emitter::debugLines)
     bool fullDebugInfo = false;                          // --debug-info unoptimized: variables and types too (Emitter::debugVariable)
     // Those types, in shards by key, each under a lock of its own: under the shared lock, which every

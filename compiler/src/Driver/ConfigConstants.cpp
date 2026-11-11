@@ -122,7 +122,8 @@ bool configDeclarations(const std::vector<SourceFile>& files, size_t count, cons
       if (i < fileLibrary.size() && fileLibrary[i] >= 0 && !options.libraryRoots[size_t(fileLibrary[i])].name.empty())
         d.name = options.libraryRoots[size_t(fileLibrary[i])].name + "::" + d.name;
       else if (d.name == "debug" || d.name == "platform" || d.name == "platformName" || d.name == "arch" || d.name == "mingw" ||
-               d.name == "tests" || d.name == "sanitizeAddress" || d.name == "sanitizeThread")
+               d.name == "tests" || d.name == "sanitizeAddress" || d.name == "sanitizeThread" ||
+               d.name == "sanitizeUndefined" || d.name == "sanitizeOverflow")
       {
         report(path, d.line, d.column, "config::" + d.name + " is kpp's own (--release, --target, --tests, --sanitize): it is not declared in source");
         continue;

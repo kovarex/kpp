@@ -577,6 +577,8 @@ void runCodegen(Build& build)
                                   .threads = options.codegenThreads ? options.codegenThreads : options.threads,
                                   .stubMissing = despiteErrors && options.stubMissing,
                                   .inlineTrivial = !options.noInline,
+                                  .sanitizeUndefined = options.sanitizeUndefined,
+                                  .sanitizeOverflow = options.sanitizeOverflow,
                                   .debugInfo = options.debugInfo,
                                   .target = &options.target,
                                   .optimize = options.optimize != 0}; // (resolved to 0 or 1 by now)

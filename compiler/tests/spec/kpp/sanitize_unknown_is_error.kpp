@@ -1,5 +1,5 @@
-// spec: `--sanitize` takes address or thread; another name is refused, not ignored (undefined: kpp's own checks, not built yet)
-// kpp: --sanitize address,undefined
+// spec: `--sanitize` takes address, thread, undefined or overflow; another name is refused, not ignored (memory: clang's MemorySanitizer, which kpp does not offer)
+// kpp: --sanitize address,memory
 // exit: 2
-// error: --sanitize address,undefined: 'undefined' is not a sanitizer kpp has: address or thread
+// error: --sanitize address,memory: 'memory' is not a sanitizer kpp has: address, thread, undefined or overflow
 int main() { return 0; }

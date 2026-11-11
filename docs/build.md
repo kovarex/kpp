@@ -36,7 +36,7 @@ only the choice of kpp's arguments.
 | `--lib F` | passed to the link: a `.lib`, `-lname`, `-Wl,/OPT`, a `.res` |
 | `--cinclude D` | a directory searched by the C headers the code imports |
 | `--clang-flags F` | more flags for clang's compile of the modules |
-| `--sanitize L` | clang's sanitizers, `address` or `thread` ("Sanitizers" below); `config::sanitizeAddress` and `config::sanitizeThread` say which |
+| `--sanitize L` | sanitizers, `address`, `thread` (clang's), `undefined` and `overflow` (kpp's own) ("Sanitizers" below); `config::sanitizeAddress`, `config::sanitizeThread`, `config::sanitizeUndefined` and `config::sanitizeOverflow` say which |
 | `--incremental-link` | debug builds only: link.exe `/INCREMENTAL`, so the next link redoes only changed objects; the modules have no section per function (the link keeps every function) |
 | `--file-prefix-map FROM=TO` | the source paths the program's text holds (an assertion's message, a `CallerLocation`'s file) start with TO in place of the directory FROM, `/` between names; diagnostics and debug info keep theirs. kpp's release and final builds pass the standard library's as `stdlib`, each kpp library's as its name, and the project's as nothing (`src/main.kpp`), so that a release binary holds no path of the machine that built it |
 | `--no-inline` | kpp emits no trivial function into its callers (a diagnostic tool; inlining is on by default) |
@@ -137,8 +137,28 @@ it. kpp writes `sanitize_address` (or `sanitize_thread`) on every function it de
 clang's front end adds it to C++, and kpp's IR had none, so until 2026-11-11 `--clang-flags
 -fsanitize=address` (with `--lib -fsanitize=address`) linked ASan's allocator alone, which finds a
 double free and nothing that reads or writes. clang's `-fsanitize=undefined` does nothing on kpp's IR
-at all: UBSan's checks are written by clang's front end, not by an LLVM pass (kpp's own checks are
-the plan: the sanitizer proposal, https://claude.ai/artifact/QqDrHdBo5Yxba87MjicSmY).
+at all: UBSan's checks are written by clang's front end, not by an LLVM pass, so kpp has its own.
+- `--sanitize undefined` (kpp's own, every target, either back end, no runtime library): what C++
+  leaves undefined in integer arithmetic and conversions is checked where it runs, and calls the
+  assert hook with the file, line and column and a message in the constant evaluator's words: a
+  division or remainder by zero and INT_MIN / -1 (`a division by zero`), a shift count outside 0 to
+  the width minus one, a negative one too (`a shift count outside 0 to 31 (int32)`), and a float or
+  double converted to an integer that cannot hold it (`a floating value out of the range of uint8`:
+  Factorio's own UBSan build checked this alone). `--sanitize overflow` adds signed overflow of
+  `+ - *` and unary minus (`signed overflow in int32 (addition)`), a sanitizer of its own because kpp's
+  signed arithmetic wraps, as Factorio's builds do with -fwrapv (its circuit network relies on it).
+  Unsigned arithmetic wraps, as defined, and imported C keeps C's behaviour. A hook that returns (a
+  test's) goes on: the arithmetic wrapped, a division by 1 in place of the processor's trap, a shift
+  count masked as x86 masks it. Trivial callees are not inlined in such a build: a check in an inlined
+  body would hold its callee's line in the caller's code. `config::sanitizeUndefined` and
+  `config::sanitizeOverflow` say they are on. Both go with `address` or `thread`.
+- The game's tests under `--sanitize undefined,overflow` (factorio-in-kpp 6245f6046, debug, 2026-11-11):
+  264 of 9481 fail, at 13 places. `undefined` alone: SmallProgressValue's `u8(value * 254)` given 254
+  where a byte was meant (222 tests; the value came from a miscompiled copy assignment,
+  spec classes/copy_assignment_beats_assignment_from_conversion) and the arithmetic combinator's
+  shifts by 32 or more (2 tests: C++'s undefined behaviour, which x86 masks). The other 11 places are
+  signed overflow the game means to wrap (the circuit network's arithmetic, Math::addSat,
+  RandomGenerator's seed, TechnologyGraphGui's empty layer range, StringUtil's -INT64_MIN).
 - The sanitizer is part of each module's cache key (it goes with `--clang-flags`), and a sanitized
   build is clang's: the back end in kpp steps aside, as for `--clang-flags`.
 - Windows (MSVC): ASan is linked statically, with `/NOIMPLIB /NOEXP` (its runtime exports its
@@ -803,7 +823,7 @@ void configure(Cell& cell)
     incremental link;
   - `debugInfo`: line tables and a PDB (Linux and FreeBSD: DWARF; an optimized build's in NAME.debug beside the executable, which keeps a .gnu_debuglink to it);
   - `clangFlag(F)` (kpp `--clang-flags`) and `argument(OPTION)` (any kpp option);
-  - `sanitize(NAME)`: a sanitizer, `address` or `thread` (kpp `--sanitize`, "Sanitizers" above);
+  - `sanitize(NAME)`: a sanitizer, `address`, `thread`, `undefined` or `overflow` (kpp `--sanitize`, "Sanitizers" above);
   - `cFlag(F)`: one more flag for its C libraries' compiles, after kpp's own (clang-cl's, or clang's
     for windows-gnu). A configuration with C flags builds its C libraries in a directory of those
     flags' own, `build\clib\flags-HASH`, which configurations with the same flags share: building it

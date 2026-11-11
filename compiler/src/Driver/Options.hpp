@@ -80,6 +80,8 @@
     std::string clangFlags;        // --clang-flags: more flags for compiling the modules
     bool sanitizeAddress = false;  // --sanitize address: AddressSanitizer (every function kpp defines checked, its runtime linked)
     bool sanitizeThread = false;   // --sanitize thread: ThreadSanitizer (Linux)
+    bool sanitizeUndefined = false; // --sanitize undefined: kpp's own checks of undefined behaviour, through the assert hook
+    bool sanitizeOverflow = false;  // --sanitize overflow: signed overflow, which kpp wraps, checked the same way
     bool incrementalLink = false;  // --incremental-link: a debug build's link redoes only the objects that changed
     bool deferLink = false;        // --defer-link: the link command written for kpp to run (Project/Build.cpp), not run
     bool verifyIncremental = false; // --verify-incremental: a compile server's build checked against one from scratch (server.cpp);

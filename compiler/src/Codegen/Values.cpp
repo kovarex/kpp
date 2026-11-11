@@ -363,6 +363,8 @@ auto codegen::Emitter::convert(Value v, const Ty* to, Node* at, bool explicitCas
   }
   if (fk == TyKind::Float && (tk == TyKind::Int || tk == TyKind::Char))
   {
+    if (checksUndefined(at))
+      checkFloatToInteger(v.text, from, to, at);
     fn += "  " + result() + " = " + (unsignedOf(to) ? "fptoui" : "fptosi") + " " + fromT + " " + v.text + " to " + toT + "\n";
     return {r, to};
   }

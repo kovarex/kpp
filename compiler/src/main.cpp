@@ -62,7 +62,7 @@ namespace
     {"--quiet", 0}, {"--msvc-diagnostics", 0}, {"--diagnostic-columns", 0}, {"--check", 0}, {"--packages", 0}, {"--emit-llvm", 1},
     {"--exe", 1}, {"--run-build", 1}, {"--std", 1}, {"--no-std", 0}, {"--cinclude", 1}, {"--incremental-link", 0}, {"--defer-link", 0},
     {"--toolchain", 1}, {"--debug-info", 0}, {"--optimize", 0}, {"--no-optimize", 0}, {"--target", 1},
-    {"--sysroot", 1}, {"--keep-going", 0}, {"--stub-missing", 0}, {"--no-inline", 0}, {"--clang-flags", 1}, {"--lto", 1}, {"--lto-partitions", 1},
+    {"--sysroot", 1}, {"--keep-going", 0}, {"--stub-missing", 0}, {"--no-inline", 0}, {"--clang-flags", 1}, {"--sanitize", 1}, {"--lto", 1}, {"--lto-partitions", 1},
     {"--opt-level", 1},
     {"--codegen-threads", 1}, {"--lib", 1}, {"--keep-symbol", 1}, {"--exclude", 1}, {"--file-prefix-map", 1},{"--this-reference-library", 1}, {"--library-root", 2}, {"--unscoped-library-root", 2},
     {"--config", 1}, {"--release", 0}, {"--tests", 0}, {"--modules", 1}, {"--convert", 1},

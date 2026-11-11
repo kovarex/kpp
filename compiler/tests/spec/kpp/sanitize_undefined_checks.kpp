@@ -1,0 +1,34 @@
+// spec: `--sanitize undefined` checks what C++ leaves undefined in integer arithmetic and conversions, at run time, through the assert hook (its file, line, column and a message, as an assert's), and `--sanitize overflow` adds signed overflow of +, -, * and unary minus (which kpp wraps, as Factorio's -fwrapv build does, so it is a sanitizer of its own): a division or remainder by zero, INT_MIN / -1, a shift count outside 0 to the width minus one (a negative one too), and a float or double converted to an integer that cannot hold it (Factorio's own UBSan build checked this alone). Unsigned arithmetic wraps, as defined, and is not checked. The program's hook prints and returns, and the result is as computed. Without the option nothing is checked (C++'s undefined behaviour, which x86 wraps)
+// kpp: --sanitize undefined,overflow
+extern "C" void kpp_assert_failed(const char* file, i32 line, i32 column, const char* text)
+{
+  std::println("line ", line, ": ", std::StringView(text));
+}
+
+int main(int argc, char** argv)
+{
+  int big = 2147483647, small = -2147483647 - argc;
+  int zero = argc - 1, minusOne = -argc;
+  std::println(big + argc);
+  std::println(small - argc);
+  std::println(big * (argc + 1));
+  std::println(-small);
+  int quotient = big / (zero + 2);
+  std::println(quotient);
+  std::println(big % zero);
+  std::println(small / minusOne);
+  int count = 31 + argc;
+  std::println(1 << count);
+  std::println(1 >> (zero - 1));
+  double huge = 3e9 * argc;
+  std::println(int(huge));
+  float negative = -1.5f * float(argc);
+  std::println(u32(negative));
+  i64 wide = i64(9.2e18 * argc);
+  std::println(wide);
+  std::println(i64(1e19 * double(argc)));
+  u32 wrap = 4294967295u;
+  std::println(wrap + u32(argc));
+  std::println(i64(big) + argc);
+  return 0;
+}

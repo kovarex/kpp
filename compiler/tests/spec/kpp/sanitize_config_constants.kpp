@@ -1,8 +1,8 @@
-// spec: config::sanitizeAddress and config::sanitizeThread are kpp's own constants, true when `--sanitize` names that sanitizer, false otherwise, for code that does something else under one (the game's BuildConstants::IsASAN)
+// spec: config::sanitizeAddress, config::sanitizeThread, config::sanitizeUndefined and config::sanitizeOverflow are kpp's own constants, true when `--sanitize` names that sanitizer, false otherwise, for code that does something else under one (the game's BuildConstants::IsASAN)
 // kpp: --sanitize address
 int main()
 {
-  std::println(config::sanitizeAddress, " ", config::sanitizeThread);
+  std::println(config::sanitizeAddress, " ", config::sanitizeThread, " ", config::sanitizeUndefined, " ", config::sanitizeOverflow);
   if constexpr (config::sanitizeAddress)
     std::println("address");
   return 0;

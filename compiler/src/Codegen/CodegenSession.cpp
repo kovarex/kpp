@@ -765,7 +765,12 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   sh.despiteErrors = despiteErrors;
   if (target)
     sh.target = *target;
-  sh.inlineTrivial = inlineTrivial;
+  sh.sanitizeUndefined = options.sanitizeUndefined;
+  sh.sanitizeOverflow = options.sanitizeOverflow;
+  // (--sanitize undefined or overflow: no trivial callee is emitted in its caller. A check in an inlined body would
+  // hold its callee's line in the caller's code, which a compile server does not emit again when only
+  // that callee's file moved lines: --verify-incremental found the kept module's text stale.)
+  sh.inlineTrivial = inlineTrivial && !options.sanitizeUndefined && !options.sanitizeOverflow;
   sh.debugInfo = debugInfo;
   sh.fullDebugInfo = debugInfo && !optimize; // (an optimized build keeps its line tables alone)
   sh.setModules(moduleCount);

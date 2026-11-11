@@ -5252,11 +5252,16 @@ just have it, and create one or two extra debug config targets for factorio with
   (ThreadSanitizer, Linux only), a configuration's `sanitize(NAME)` in build.kpp, and the constants
   `config::sanitizeAddress` and `config::sanitizeThread` (build.md, "Sanitizers"). A sanitizer kpp
   cannot give for a target is an error, never a build without it.
-- Next, in the proposal's order: kpp's own undefined-behaviour checks (`--sanitize undefined`: signed
-  overflow, division by zero, shifts, float to integer out of range, through the assert hook, so no
-  runtime library), bounds checks in the standard library's containers in debug builds, and
-  MSVC's debug fills (0xCC in locals without an initializer, 0xCD/0xDD/0xFD around kpp's heap blocks).
-  Whether the last two are on in every debug build waits for their measurements on the game's tests.
+- Built: `--sanitize undefined`, kpp's own checks of division by zero, shift counts and float to
+  integer conversions, through the assert hook (no runtime library), and `--sanitize overflow` for
+  signed overflow, which kpp wraps as Factorio's -fwrapv builds do (so not undefined there, and a
+  sanitizer of its own). kovarex, 2026-11-11: "I would make ubsan as its own debug build target for
+  now" (factorio-in-kpp's debug-ubsan); MSVC has nothing alike (its /RTC checks stack frames,
+  uninitialized locals and, optionally, narrowing casts, and Factorio's Windows Debug passes no /RTC).
+- kovarex, 2026-11-11: "Yes, debug containers should check bounds on debug" (the standard library's
+  owner: Vector, Array, String, StringView, Deque and the rest, with config::debug), and MSVC's debug
+  fills (0xCC in locals without an initializer, 0xCD/0xDD/0xFD around kpp's heap blocks): "yes, on by
+  default (but possible to control by something)". Both are to be built.
 
 ## kpp format (decided 2026-11-08, kovarex's answers to thread F's design)
 

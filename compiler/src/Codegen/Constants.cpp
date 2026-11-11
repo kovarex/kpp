@@ -2,6 +2,7 @@
 // body in Codegen/Emitter.hpp. A translation unit of its own since 2026-11-05 (codegen.cpp split,
 // stage 2), moved without a change.
 #include "Emitter.hpp"
+#include <cmath>
 #include <filesystem>
 
 auto codegen::Emitter::spelling(uint32_t token) const -> std::string_view
@@ -755,6 +756,53 @@ auto codegen::Emitter::endReached(Stmt* body) -> void
   emitCall("", "void @kpp_assert_failed(ptr " + cStringConstant(programPathOf(currentFile)) + ", i32 " + lineOperand(line) + ", i32 " +
                    std::to_string(column) + ", ptr " + cStringConstant("control reached the end of a function that returns a value") + ")", false);
   usesAssert = true;
+}
+
+auto codegen::Emitter::checksUndefined(Node* at) const -> bool
+{
+  // (kpp's code and the library's; imported C keeps C's behaviour)
+  return sh.sanitizeUndefined && at && currentFile && !currentFile->isImported;
+}
+
+auto codegen::Emitter::checksOverflow(Node* at) const -> bool
+{
+  return sh.sanitizeOverflow && at && currentFile && !currentFile->isImported;
+}
+
+auto codegen::Emitter::undefinedCheck(const std::string& failed, const std::string& what, Node* at) -> void
+{
+  std::string bad = newLabel("ub.fail"), ok = newLabel("ub.ok");
+  fn += "  br i1 " + failed + ", label %" + bad + ", label %" + ok + "\n";
+  startBlock(bad);
+  auto [line, column] = lineColumnOf(at->token);
+  emitCall("", "void @kpp_assert_failed(ptr " + cStringConstant(programPathOf(currentFile)) + ", i32 " + lineOperand(line) + ", i32 " +
+                   std::to_string(column) + ", ptr " + cStringConstant(what) + ")", false);
+  usesAssert = true;
+  emitBranch(ok);
+  startBlock(ok);
+}
+
+auto codegen::Emitter::checkFloatToInteger(const std::string& value, const Ty* from, const Ty* to, Node* at) -> void
+{
+  // Compared as a double: a float widens exactly. In range: above the lowest value minus one (the
+  // conversion truncates toward zero) and below the highest plus one, both powers of two or exact
+  // below 2^53; a NaN is neither. For 64 bits the lowest minus one is no double: at or above it.
+  unsigned bits = unsigned(sizeOf(to, at) * 8);
+  bool isUnsigned = to->isUnsigned;
+  std::string v = value;
+  if (sizeOf(from, at) == 4)
+  {
+    v = newTemp();
+    fn += "  " + v + " = fpext float " + value + " to double\n";
+  }
+  double high = std::ldexp(1.0, int(isUnsigned ? bits : bits - 1));
+  double low = isUnsigned ? -1.0 : -std::ldexp(1.0, int(bits - 1)) - (bits <= 52 ? 1.0 : 0.0);
+  std::string above = newTemp(), below = newTemp(), inRange = newTemp(), out = newTemp();
+  fn += "  " + above + " = fcmp " + (!isUnsigned && bits > 52 ? "oge" : "ogt") + " double " + v + ", " + floatConstant(low, 64) + "\n";
+  fn += "  " + below + " = fcmp olt double " + v + ", " + floatConstant(high, 64) + "\n";
+  fn += "  " + inRange + " = and i1 " + above + ", " + below + "\n";
+  fn += "  " + out + " = xor i1 " + inRange + ", true\n";
+  undefinedCheck(out, std::string("a floating value out of the range of ") + (isUnsigned ? "uint" : "int") + std::to_string(bits), at);
 }
 
 auto codegen::Emitter::lineColumnOf(uint32_t token) -> std::pair<uint32_t, uint32_t>

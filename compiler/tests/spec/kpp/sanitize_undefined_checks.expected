@@ -1,0 +1,26 @@
+line 12: signed overflow in int32 (addition)
+-2147483648
+line 13: signed overflow in int32 (subtraction)
+2147483647
+line 14: signed overflow in int32 (multiplication)
+-2
+line 15: signed overflow in int32 (negation)
+-2147483648
+1073741823
+line 18: a division by zero
+0
+line 19: signed overflow in int32 (division)
+-2147483648
+line 21: a shift count outside 0 to 31 (int32)
+1
+line 22: a shift count outside 0 to 31 (int32)
+0
+line 24: a floating value out of the range of int32
+-2147483648
+line 26: a floating value out of the range of uint32
+4294967295
+9200000000000000000
+line 29: a floating value out of the range of int64
+-9223372036854775808
+0
+2147483648

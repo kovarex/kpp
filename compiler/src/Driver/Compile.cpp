@@ -170,9 +170,13 @@ int compile(int argc, char** argv)
           options.sanitizeAddress = true;
         else if (name == "thread")
           options.sanitizeThread = true;
+        else if (name == "undefined")
+          options.sanitizeUndefined = true;
+        else if (name == "overflow")
+          options.sanitizeOverflow = true;
         else
         {
-          fprintf(stderr, "--sanitize %s: '%s' is not a sanitizer kpp has: address or thread\n", list.c_str(), name.c_str());
+          fprintf(stderr, "--sanitize %s: '%s' is not a sanitizer kpp has: address, thread, undefined or overflow\n", list.c_str(), name.c_str());
           return 2;
         }
         if (comma == std::string::npos)
@@ -655,7 +659,7 @@ int compile(int argc, char** argv)
               options.target.name.c_str());
       return 2;
     }
-    for (const char* name : {"sanitizeAddress", "sanitizeThread"})
+    for (const char* name : {"sanitizeAddress", "sanitizeThread", "sanitizeUndefined", "sanitizeOverflow"})
       if (options.configValues.count(name))
       {
         fprintf(stderr, "--config %s: it is --sanitize's\n", name);
@@ -663,6 +667,8 @@ int compile(int argc, char** argv)
       }
     options.configValues["sanitizeAddress"] = parseConfigValue(options.sanitizeAddress ? "true" : "false");
     options.configValues["sanitizeThread"] = parseConfigValue(options.sanitizeThread ? "true" : "false");
+    options.configValues["sanitizeUndefined"] = parseConfigValue(options.sanitizeUndefined ? "true" : "false");
+    options.configValues["sanitizeOverflow"] = parseConfigValue(options.sanitizeOverflow ? "true" : "false");
     if (options.sanitizeAddress || options.sanitizeThread)
     {
       std::string flag = options.sanitizeAddress ? "-fsanitize=address" : "-fsanitize=thread";

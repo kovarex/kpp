@@ -107,6 +107,11 @@ struct CodegenOptions
   // Calls of trivial functions are emitted as the callees' bodies (docs/compile-speed.md, "Design:
   // inlining trivial functions in kpp"); false (--no-inline) keeps every call.
   bool inlineTrivial = true;
+  // --sanitize undefined: signed overflow, a division by zero, a shift count out of range and a float
+  // converted to an integer that cannot hold it call the assert hook (Emitter::undefinedCheck).
+  bool sanitizeUndefined = false;
+  // --sanitize overflow: signed overflow of + - * and unary minus (which kpp wraps, as -fwrapv) calls it too.
+  bool sanitizeOverflow = false;
   // --debug-info: line tables, each statement's instructions at its line, so that a debugger steps
   // through the kpp source (docs/debugging.md).
   bool debugInfo = false;

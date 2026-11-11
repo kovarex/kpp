@@ -2311,6 +2311,17 @@ auto codegen::Emitter::unary(UnaryExpr* u) -> Value
       std::string r = newTemp();
       if (c.ty->kind == TyKind::Float)
         fn += "  " + r + " = fneg " + llType(c.ty, u) + " " + c.text + "\n";
+      else if (!c.ty->isUnsigned && c.ty->kind != TyKind::Bool && checksOverflow(u))
+      {
+        // (--sanitize overflow: -INT_MIN overflows)
+        std::string t = llType(c.ty, u), intrinsic = "@llvm.ssub.with.overflow." + t, pair = newTemp(), over = newTemp();
+        if (declaredNames.claim(intrinsic))
+          decls += "declare {" + t + ", i1} " + intrinsic + "(" + t + ", " + t + ")\n";
+        fn += "  " + pair + " = call {" + t + ", i1} " + intrinsic + "(" + t + " 0, " + t + " " + c.text + ")\n";
+        fn += "  " + r + " = extractvalue {" + t + ", i1} " + pair + ", 0\n";
+        fn += "  " + over + " = extractvalue {" + t + ", i1} " + pair + ", 1\n";
+        undefinedCheck(over, "signed overflow in int" + std::to_string(sizeOf(c.ty, u) * 8) + " (negation)", u);
+      }
       else
         fn += "  " + r + " = sub " + llType(c.ty, u) + " 0, " + c.text + "\n";
       return {r, c.ty};
