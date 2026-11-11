@@ -1683,6 +1683,12 @@ bool GlobalScope::freeOperatorBeatsMember(FunctionDecl* f, const TemplateArgs& f
   return impl->freeOperatorBeatsMember(f, toSubst(freeArgs), member, toSubst(memberArgs), lhs, rhs, 2);
 }
 
+bool GlobalScope::implicitAssignmentBeats(FunctionDecl* member, const TemplateArgs& memberArgs, const Ty* lhs, const Ty* rhs)
+{
+  const Ty* self = lhs ? impl->types.unqualified(impl->types.stripRef(lhs)) : nullptr;
+  return self && self->kind == TyKind::Class && impl->implicitAssignmentBeats(impl->classDefinition(self), self, member, toSubst(memberArgs), rhs);
+}
+
 const Ty* GlobalScope::typeInInstanceOf(Decl* d, const Decl* in)
 {
   const Subst* s = impl->instanceSubstOf(in); // (an entry is kept once recorded)

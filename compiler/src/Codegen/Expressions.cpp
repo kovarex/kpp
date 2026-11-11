@@ -2574,6 +2574,15 @@ auto codegen::Emitter::binary(BinaryExpr* b) -> Value
       member = nullptr;
       implicitAssignment = true;
     }
+    // An operator= that is no copy or move assignment, which needs a conversion for the right operand, against the class's
+    // implicit copy or move assignment, an exact match: the implicit one, as the checker chooses (Impl::implicitAssignmentBeats;
+    // SmallProgressValue's `c = a.progress` went through its `operator=(f32)` and `implicit operator f32()`).
+    if (member && op == P::Assign && b->rhs && b->rhs->ty && b->rhs->ty->isKnown() &&
+        global.implicitAssignmentBeats(member, global.classArgsOf(foundIn), types.unqualified(lt), argumentType(b->rhs, b->rhs->ty, types)))
+    {
+      member = nullptr;
+      implicitAssignment = true;
+    }
     // `one < 1.5` that the checker rewrote as `(one <=> 1.5) < 0`, `w != x` as `!(w == x)`, each a
     // better match than the class's own operator (Walker::rewrittenBeats): neither the member nor a
     // free operator of its own.

@@ -1,0 +1,12 @@
+Fwd::operator=<U&&>
+fwd lvalue 50
+fwd const 4
+fwd rvalue 4
+FwdDtor::operator=<U&&>
+dtor rvalue 60
+FwdDtor::operator=<U&&>
+dtor lvalue 60
+box 9
+Box::operator=(f32)
+box float 2
+holds 13 14

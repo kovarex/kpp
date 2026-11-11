@@ -2907,6 +2907,12 @@ auto codegen::Emitter::assignObject(const std::string& dst, const std::string& s
   // members too, unless a using-declaration brought the base's in.
   if (op && foundIn && foundIn != canonicalClass(t, at) && !declaresAssignment(t, at, true))
     op = nullptr;
+  // The class's implicit copy or move assignment beats an operator= that needs a conversion for the object, and a template
+  // that only ties with it, as the checker decides (Impl::implicitAssignmentBeats): SmallProgressValue's `void operator=(f32)`
+  // beside `implicit operator f32()` took the copy of the PeerInfo holding one, with the member's address as the float (the
+  // sanitizer thread's find in the game's ClientPeerInfo, 2026-11-11).
+  if (op && global.implicitAssignmentBeats(op, global.classArgsOf(foundIn), t, argTypes[0]))
+    op = nullptr;
   bool defaulted = op && (op->flags & DF_Default);
   // Without a move assignment, declared or implicit, a move is a copy, its source left as it is
   // ([class.copy.assign] 4); `operator=(const T&) = default` is the copy assignment.
@@ -3002,6 +3008,8 @@ auto codegen::Emitter::assignmentDeleted(const Ty* t, bool move, Node* at, int d
   FunctionDecl* op = declaresAssignment(t, at) ? findMemberFunction(t, "operator=", argTypes, t, at, &foundIn) : nullptr;
   if (op && foundIn && foundIn != canonicalClass(t, at) && !declaresAssignment(t, at, true))
     op = nullptr; // (a base's, which the implicit one hides: as assignObject)
+  if (op && global.implicitAssignmentBeats(op, global.classArgsOf(foundIn), t, argTypes[0]))
+    op = nullptr; // (one the implicit assignment beats: as assignObject)
   if (op && !(op->flags & DF_Default))
     return (op->flags & DF_Delete) != 0; // its own: deleted, or one that assigns as it is written
   ClassDecl* c = classDef(t->decl, at);

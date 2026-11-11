@@ -1,0 +1,15 @@
+copy 101
+move 127
+Progress::operator=(f32)
+float 63
+logged 42
+logged rvalue 7
+Logged::operator=(int)
+logged int 5
+derived 10 20
+Derived::operator=(const Base&)
+from base 30 20
+templated 3
+Meters::operator=(int)
+meters 12
+holder 77 88 5 6

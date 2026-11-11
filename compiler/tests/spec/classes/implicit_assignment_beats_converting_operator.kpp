@@ -1,0 +1,99 @@
+// spec: a class's implicit copy or move assignment is a candidate beside the operator= it declares ([class.copy.assign] 2, 4; [over.match.best]): an operand of the class binds to it as it is, so it beats an operator= that takes the operand through a conversion (a conversion operator, a base class reference) and a template that only ties with it; the class's own copy assignment is implicit still with a destructor of its own (Logged); an operator= that is the only way (Meters) is called; a class holding such members copies them member by member with their implicit copy assignment (clang's output)
+// factorio: SmallProgressValue in ClientPeerInfo (classes/copy_assignment_beats_assignment_from_conversion); kpp called the converting operator= (or the template), and a member copy passed the member's address as its argument
+class Progress
+{
+public:
+  Progress() = default;
+  implicit Progress(f32 v) : value(u8(v * 254.0f)) {}
+  void operator=(f32 v) { std::println("Progress::operator=(f32)"); this.value = u8(v * 254.0f); }
+  implicit operator f32() const { return f32(this.value) / 254.0f; }
+  u8 value = 255;
+};
+// a destructor of its own: the copy assignment is implicit still, the move assignment is not declared
+class Logged
+{
+public:
+  Logged() = default;
+  void operator=(int v) { std::println("Logged::operator=(int)"); this.value = v; }
+  implicit operator int() const { return this.value + 1000; }
+  ~Logged() {}
+  int value = 7;
+};
+// an operator= taking a base: the implicit copy assignment of the derived class beats it for a derived object
+struct Base
+{
+  int b = 1;
+};
+struct Derived : Base
+{
+  void operator=(const Base& other) { std::println("Derived::operator=(const Base&)"); this.b = other.b; }
+  int d = 2;
+};
+// a template operator=: left as it is
+class Templated
+{
+public:
+  template<class U>
+  void operator=(const U& u) { std::println("Templated::operator=<U>"); this.value = 99; }
+  int value = 3;
+};
+// a converting operator= that is the only way: still called
+class Meters
+{
+public:
+  void operator=(int v) { std::println("Meters::operator=(int)"); this.value = v; }
+  int value = 0;
+};
+struct Holder
+{
+  Progress p;
+  Logged l;
+  Derived d;
+};
+int main()
+{
+  Progress a;
+  a.value = 101;
+  Progress c;
+  c = a;
+  std::println("copy ", int(c.value));
+  c = Progress(0.5f);
+  std::println("move ", int(c.value));
+  c = 0.25f;
+  std::println("float ", int(c.value));
+  Logged x;
+  x.value = 42;
+  Logged y;
+  y = x;
+  std::println("logged ", y.value);
+  y = Logged();
+  std::println("logged rvalue ", y.value);
+  y = 5;
+  std::println("logged int ", y.value);
+  Derived d1;
+  d1.b = 10;
+  d1.d = 20;
+  Derived d2;
+  d2 = d1;
+  std::println("derived ", d2.b, " ", d2.d);
+  Base base;
+  base.b = 30;
+  d2 = base;
+  std::println("from base ", d2.b, " ", d2.d);
+  Templated t1;
+  Templated t2;
+  t2 = t1;
+  std::println("templated ", t2.value);
+  Meters m;
+  m = 12;
+  std::println("meters ", m.value);
+  Holder h1;
+  h1.p.value = 77;
+  h1.l.value = 88;
+  h1.d.b = 5;
+  h1.d.d = 6;
+  Holder h2;
+  h2 = h1;
+  std::println("holder ", int(h2.p.value), " ", h2.l.value, " ", h2.d.b, " ", h2.d.d);
+  return 0;
+}

@@ -772,6 +772,9 @@ public:
   // those of the class member was found in.
   bool freeOperatorBeatsMember(FunctionDecl* f, const TemplateArgs& freeArgs, FunctionDecl* member, const TemplateArgs& memberArgs, const Ty* lhs,
                                const Ty* rhs);
+  // Whether the implicit copy or move assignment of class lhs beats member, the operator= of lhs's class codegen found for
+  // rhs (memberArgs: the class's arguments), as the checker decides it: Impl::implicitAssignmentBeats.
+  bool implicitAssignmentBeats(FunctionDecl* member, const TemplateArgs& memberArgs, const Ty* lhs, const Ty* rhs);
   // Adds to args what f's own template parameters deduce to from the argument types (for a
   // constructor template chosen by code generation; args holds the class's arguments).
   void deduceArgs(FunctionDecl* f, const std::vector<const Ty*>& argTypes, TemplateArgs& args);

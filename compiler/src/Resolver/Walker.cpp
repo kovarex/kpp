@@ -8056,6 +8056,8 @@ auto GlobalScope::Impl::Walker::operatorFunction(P op, const Ty* lhs, const Ty* 
       // were (classes/implicit_assignment_hides_base_operator).
       if (f && op == P::Assign && f->parent && !callableAssignment(impl.classDefinition(l), f))
         f = nullptr;
+      if (f && op == P::Assign && arity == 2 && impl.implicitAssignmentBeats(impl.classDefinition(l), l, f, r.subst, rhs))
+        f = nullptr;
       if (f)
       {
         if (!dropsObjectQualifier(f, lhs))

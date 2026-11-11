@@ -1,0 +1,36 @@
+// spec: a class that declares `operator=(f32)` beside an `implicit operator f32()` still has its implicit copy assignment, and assigning one object to another picks it (an exact match, [over.match.best]), never `operator=(f32)` through the conversion: `c = a.progress` copies the byte, and a class holding one (PeerInfo) copies it member by member with that copy assignment
+// found by --sanitize undefined in the game's tests (the sanitizer thread, 2026-11-11): ClientsPeerInfo::addClientPeerInfo's `clientPeerInfo[peerID] = newPeer` called SmallProgressValue::operator=(float) with 254 for a value of 127 (the member copy passes a wrong value), and `c = a.progress` goes through operator f32 and back, losing the exact byte
+// factorio: SmallProgressValue (src/Util/SmallProgressValue.hpp) in ClientPeerInfo
+class SmallProgressValue
+{
+public:
+  SmallProgressValue() = default;
+  implicit SmallProgressValue(f32 value) : value(u8(value * 254.0)) {}
+  void operator=(f32 value)
+  {
+    std::println("operator=(f32) given ", value);
+    this.value = u8(value * 254);
+  }
+  implicit operator f32() const { return (f32)this.value / 254.0f; }
+  u8 value = 255;
+};
+
+struct PeerInfo
+{
+  std::String name;
+  SmallProgressValue progress;
+};
+
+int main()
+{
+  PeerInfo a;
+  a.progress = 0.5f;
+  a.progress.value = 101;
+  PeerInfo b;
+  b = a;
+  std::println(int(b.progress.value));
+  SmallProgressValue c;
+  c = a.progress;
+  std::println(int(c.value));
+  return 0;
+}

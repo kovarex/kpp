@@ -3588,6 +3588,49 @@ auto GlobalScope::Impl::memberOperatorExact(FunctionDecl* f, const Subst& subst,
   return ranks.empty() || arity < 2 || ranks[1] == 0;
 }
 
+auto GlobalScope::Impl::implicitAssignmentBeats(ClassDecl* def, const Ty* self, FunctionDecl* f, const Subst& subst, const Ty* rhs) -> bool
+{
+  // A class that declares no copy assignment has an implicit one ([class.copy.assign] 2; deleted where the class
+  // declares a move constructor or a move assignment), and a move assignment where it declares none of those nor a
+  // destructor (4). It is a candidate beside the operator= the class declares ([over.match.oper] 3, [over.match.funcs]):
+  // binding an operand of the class as it is, it beats an operator= that needs a conversion, and on a tie a template
+  // ([over.match.best] 2.4). SmallProgressValue's `c = a.progress` with `void operator=(f32)` beside `implicit operator
+  // f32()` went through the float, and a copy of the PeerInfo holding one called it for the member (the sanitizer
+  // thread's find in the game's ClientPeerInfo, 2026-11-11); `t2 = t1` called a `template<class U> operator=(const U&)`.
+  // A forwarding `operator=(U&&)` still takes a non-const lvalue (`T&` binds it better than `const T&`), and an rvalue
+  // where the class has no move assignment.
+  if (!def || !self || !f || !rhs || f->parent != def || f->params.size() != 1 || (f->templateParams.empty() && selfParameter(f->params[0], def)))
+    return false;
+  SpecialMembers special = specialMembersOf(def);
+  if (special.copyAssign || special.copyAssignNonConst || !rhs->isKnown() || types.isDependent(rhs))
+    return false;
+  Subst deduced = subst;
+  if (!f->templateParams.empty())
+  {
+    deduceCall(f, declaredTypeOf(f, deduced.empty() ? nullptr : &deduced, 0), {rhs}, deduced);
+    fillDefaultTemplateArgs(f, deduced);
+    for (Decl* p : f->templateParams)
+      if (!deduced.find(p))
+        return false; // (not decided here)
+  }
+  const Ty* param = declaredTypeOf(f->params[0], deduced.empty() ? nullptr : &deduced, 0);
+  if (!param || !param->isKnown() || types.isDependent(param) || mentionsUnknown(param))
+    return false;
+  // A class taken by value ranks as a `const&` would: C++ tells a binding that adds const from one that does not only
+  // between two reference bindings ([over.ics.rank] 3.2.6), and copying an object of the class is no conversion.
+  if (!param->isReference() && types.unqualified(param)->kind == TyKind::Class)
+    param = types.lref(types.qualified(types.unqualified(param), true, false));
+  // The implicit one's parameter: `T&&` for an rvalue where the class has the move assignment, else `const T&`.
+  const Ty* own = types.unqualified(types.stripRef(self));
+  bool implicitMove = !special.copyCtor && !special.copyCtorNonConst && !special.moveCtor && !special.moveAssign && !special.destructor;
+  const Ty* implicitParam = rhs->kind != TyKind::LRef && implicitMove ? types.rref(own) : types.lref(types.qualified(own, true, false));
+  int implicitRank = conversionRank(rhs, implicitParam, 0);
+  if (implicitRank >= NotViable)
+    return false;
+  int rank = conversionRank(rhs, param, 0);
+  return implicitRank < rank || (implicitRank == rank && !f->templateParams.empty());
+}
+
 auto GlobalScope::Impl::freeOperatorBeatsMember(FunctionDecl* free, const Subst& freeSubst, FunctionDecl* member, const Subst& memberSubst,
                                                          const Ty* lhs, const Ty* rhs, size_t arity) -> bool
 {

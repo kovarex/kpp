@@ -459,6 +459,11 @@
   std::vector<int> binaryOperatorRanks(FunctionDecl* f, const Subst& subst, bool member, const Ty* lhs, const Ty* rhs);
   // Whether member operator f takes the operands with no conversion (no free one can be better).
   bool memberOperatorExact(FunctionDecl* f, const Subst& subst, const Ty* rhs, size_t arity);
+  // Whether class def's implicit copy or move assignment beats f, the operator= def declares that lookup chose for the right
+  // operand rhs (self: the left operand's class; subst: the arguments f is read under): taking rhs as it is, an exact match,
+  // against a non-template operator= that needs a conversion ([class.copy.assign] 1, 2, 4; [over.match.best]). The
+  // checker's choice (Walker::operatorFunction) and codegen's (GlobalScope::implicitAssignmentBeats) alike.
+  bool implicitAssignmentBeats(ClassDecl* def, const Ty* self, FunctionDecl* f, const Subst& subst, const Ty* rhs);
   // Whether free operator free (freeSubst: its class's arguments, a friend's) takes lhs and rhs
   // strictly better than member operator member: no worse for either operand, better for one. Not a
   // template, nor a unary operator (a member is kept there).

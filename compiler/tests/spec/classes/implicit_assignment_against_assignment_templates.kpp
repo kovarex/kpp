@@ -1,0 +1,63 @@
+// spec: an operator= template against the implicit copy or move assignment, as C++ ranks them ([over.ics.rank] 3.2.3, 3.2.6; [over.match.best] 2.4): a forwarding `operator=(U&&)` takes a non-const lvalue (`T&` binds it better than the implicit `const T&`) and an rvalue where the class has no move assignment (a destructor of its own), the implicit assignment a const lvalue and an rvalue where it has one (a tie, which the non-template wins); a class template's implicit copy assignment beats its `operator=(f32)` as a class's does, also member by member (clang's output)
+class Fwd
+{
+public:
+  template<class U>
+  void operator=(U&& u) { std::println("Fwd::operator=<U&&>"); this.value = 50; }
+  int value = 4;
+};
+class FwdDtor
+{
+public:
+  template<class U>
+  void operator=(U&& u) { std::println("FwdDtor::operator=<U&&>"); this.value = 60; }
+  ~FwdDtor() {}
+  int value = 5;
+};
+template<class T>
+class Box
+{
+public:
+  void operator=(f32 v) { std::println("Box::operator=(f32)"); this.value = T(v); }
+  implicit operator f32() const { return f32(this.value); }
+  T value = T(1);
+};
+struct HoldsBox
+{
+  Box<int> box;
+  int tail = 0;
+};
+int main()
+{
+  Fwd f1;
+  Fwd f2;
+  f2 = f1;
+  std::println("fwd lvalue ", f2.value);
+  const Fwd cf;
+  f2 = cf;
+  std::println("fwd const ", f2.value);
+  f2.value = 77;
+  f2 = Fwd();
+  std::println("fwd rvalue ", f2.value);
+  FwdDtor d1;
+  FwdDtor d2;
+  d2 = FwdDtor();
+  std::println("dtor rvalue ", d2.value);
+  d2.value = 1;
+  d2 = d1;
+  std::println("dtor lvalue ", d2.value);
+  Box<int> b1;
+  b1.value = 9;
+  Box<int> b2;
+  b2 = b1;
+  std::println("box ", b2.value);
+  b2 = 2.0f;
+  std::println("box float ", b2.value);
+  HoldsBox h1;
+  h1.box.value = 13;
+  h1.tail = 14;
+  HoldsBox h2;
+  h2 = h1;
+  std::println("holds ", h2.box.value, " ", h2.tail);
+  return 0;
+}
