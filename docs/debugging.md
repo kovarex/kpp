@@ -412,6 +412,9 @@ It is two debugger engine (Concord) components in kpp-visualstudio.vsix:
   (`--natvis`, listed in `NAME.natvis-files`). Moved without those files, the program's values show raw.
   A type with an `<Intrinsic>` is not applied from a file given this way, so kpp's rules write those
   expressions out (a program's own natvis should too; factorio.natvis has none).
+  The context keeps the symbols connection Visual Studio gave the frame's, and the files are compiled
+  for it: until 2026-11-12 a value's own line had its rule and its members, expanded on that connection,
+  showed raw (a MapPosition's x as `{value=384}` where its line showed `x=1.5`; kovarex).
 
 The debug information stays C++'s, and objects keep naming their compiler `kpp 0.2.5`. Tried and not
 used: a component in front of the C++ evaluator, filtered on C++ (what it passes on comes back to it,

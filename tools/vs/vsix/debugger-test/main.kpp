@@ -16,15 +16,23 @@ struct Corner
   i32 y = 2;
 };
 
+// (members with rules: shown by them when the value is expanded)
+struct Held
+{
+  Corner corner;
+  std::String label = "held";
+};
+
 i32 main()
 {
   Square square;
   square.side = 7;
-  Vector<i32> numbers = {1, 2, 3};
-  String name = "kpp";
-  Deque<i32> queue;
+  std::Vector<i32> numbers = {1, 2, 3};
+  std::String name = "kpp";
+  std::Deque<i32> queue;
   queue.push_back(5);
   Corner corner;
-  println(square.area(), " ", numbers.size(), " ", name, " ", queue.size(), " ", corner.x);
+  Held held;
+  std::println(square.area(), " ", numbers.size(), " ", name, " ", queue.size(), " ", corner.x, " ", held.label);
   return 0;
 }

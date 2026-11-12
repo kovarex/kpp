@@ -104,6 +104,10 @@ try
   Expect 'name' '"kpp"'
   Expect 'queue' '{ length=1 }'
   Expect 'corner' 'corner 1 2'
+  # A value's members by their rules when it is expanded, the program's and kpp's (until 2026-11-12 they
+  # showed raw in a kpp frame: a MapPosition's x as {value=384}).
+  $members = @((Value 'held').DataMembers | ForEach-Object { "$($_.Name)=$($_.Value)" }) -join ', '
+  Check "a value's members by their rules" ($members -eq 'corner=corner 1 2, label="held"') $members
   $stack = @($dte.Debugger.CurrentThread.StackFrames | ForEach-Object { "$($_.Language)" })
   Check "C++ frames stay C++" ($stack -contains 'C++') ($stack -join ', ')
   $dte.Debugger.Stop($true)

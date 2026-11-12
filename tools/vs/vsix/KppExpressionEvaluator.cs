@@ -28,6 +28,9 @@ public sealed class KppExpressionEvaluator : IDkmLanguageExpressionEvaluator, ID
     // The C++ context of a kpp frame. Visual Studio applies the natvis in a PDB in the context it makes for a
     // C++ frame alone, so the program's rules are given here: the .natvis files kpp writes or lists beside the
     // executable, compiled once per inspection session (a stop). A module without one shows its values raw.
+    // The context keeps the caller's symbols connection, and the rules are compiled for it: without it a
+    // value's own line had its rule and its members did not (a MapPosition's x showed {value=384} where the
+    // MapPosition's line showed x=1.5; kovarex, 2026-11-12), the C++ evaluator expanding them on that connection.
     private static DkmInspectionContext AsCpp(DkmInspectionContext c, DkmStackWalkFrame? frame = null)
     {
         DkmLanguage cpp = CppOf(c);
@@ -38,7 +41,8 @@ public sealed class KppExpressionEvaluator : IDkmLanguageExpressionEvaluator, ID
             natvis = found;
             priority = DkmCompiledVisualizationDataPriority.High;
         }
-        return DkmInspectionContext.Create(c.InspectionSession, c.RuntimeInstance, c.Thread, c.Timeout, c.EvaluationFlags, c.FuncEvalFlags, c.Radix, cpp, c.ReturnValue, natvis, priority, c.ReturnValues);
+        return DkmInspectionContext.Create(c.InspectionSession, c.RuntimeInstance, c.Thread, c.Timeout, c.EvaluationFlags, c.FuncEvalFlags, c.Radix, cpp, c.ReturnValue, natvis, priority, c.ReturnValues,
+                                           c.SymbolsConnection);
     }
 
     private sealed class SessionNatvis : DkmDataItem
@@ -68,7 +72,7 @@ public sealed class KppExpressionEvaluator : IDkmLanguageExpressionEvaluator, ID
                 var files = new System.Collections.Generic.List<string> { path };
                 if (System.IO.File.Exists(path + "-files")) // (the program's own, build.kpp's natvis)
                     files.AddRange(System.Linq.Enumerable.Where(System.IO.File.ReadAllLines(path + "-files"), System.IO.File.Exists));
-                compiled = DkmCompiledVisualizationData.Create(cpp, session, null);
+                compiled = c.SymbolsConnection != null ? DkmCompiledVisualizationData.Create(cpp, session, c.SymbolsConnection, null) : DkmCompiledVisualizationData.Create(cpp, session, null);
                 compiled.Initialize(files.ToArray());
             }
             known.Compiled[module] = compiled;
@@ -99,7 +103,7 @@ public sealed class KppExpressionEvaluator : IDkmLanguageExpressionEvaluator, ID
     // (results and enumerations carry the C++ context, so Concord sends these to the C++ evaluator itself)
     void IDkmLanguageExpressionEvaluator.GetChildren(DkmEvaluationResult result, DkmWorkList workList, int initialRequestSize, DkmInspectionContext inspectionContext,
                                                      DkmCompletionRoutine<DkmGetChildrenAsyncResult> completionRoutine) =>
-        result.GetChildren(workList, initialRequestSize, AsCpp(inspectionContext), completionRoutine);
+        result.GetChildren(workList, initialRequestSize, AsCpp(inspectionContext, result.StackFrame), completionRoutine);
 
     void IDkmLanguageExpressionEvaluator.GetItems(DkmEvaluationResultEnumContext enumContext, DkmWorkList workList, int startIndex, int count,
                                                   DkmCompletionRoutine<DkmEvaluationEnumAsyncResult> completionRoutine) =>
