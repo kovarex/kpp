@@ -2974,6 +2974,46 @@ other options (hand-written files, a format string, calling the program's code):
   constants, `switch`, a `[[noreturn]]` end, a `str()` returning text inlined with its cases, std::Text pieces,
   choices between texts, conversions to bool and to String.
 
+### 27. `flags`: a set of named bits (decided 2026-11-12)
+kovarex, 2026-11-12, on the game's eleven flag classes and their debugger rows ("I don't like that it is too
+separate things, the enum, and the Flags definition, can we make better?"): a set of flags is a declaration
+of its own, as `enum` is, so the names and the type are one thing. Prior art: C#'s `[Flags] enum`, Swift's
+`OptionSet`, Rust's `bitflags!`, Qt's `QFlags`.
+
+```
+flags EntityUsage : u16
+{
+  TO_BE_UPGRADED,                         // bit 0
+  OWNED_BY_GHOST = 2,                     // bit 1 was removed: it stays unused
+  TO_BE_LOOTED,                           // bit 3
+  INVENTORY_SIZE_OVERRIDE = TO_BE_LOOTED, // the same bit, a second name
+  SAVED = 11,                             // bits 4 to 10 unused
+};
+
+EntityUsage usage;                        // the set, stored in a u16, empty at first
+usage |= EntityUsage::TO_BE_DELETED;
+usage &= ~EntityUsage::SAVED;
+if (usage & EntityUsage::OWNED_BY_GHOST) ...
+```
+
+- **The declaration** names the type, its storage (an unsigned integer type, `u32` when none is written) and
+  its flags. A flag's bit is its position after the one before it, the first's 0; `NAME = N` gives it bit N
+  by hand (kovarex: "for backwards compatibility when flag is removed and such"), the names after it
+  continuing from there; `NAME = OTHER` names the same bit again. A bit outside the storage type, or a bit
+  two names have without `= OTHER`, is an error.
+- **A value of the type is a set**; each name is the set of its one bit (`EntityUsage::SAVED`). `|`, `&`, `^`
+  and `~` of sets give a set (`~` within the declared bits), `|=`, `&=`, `^=` change one, `==` compares; a set
+  is true when it is not empty, so `if (usage & EntityUsage::X)` reads as before. `contains(set)`, `empty()`,
+  `bits()` (the storage integer) and `fromBits(n)` complete it; no integer converts to a set implicitly.
+- **It saves as its number**: a savegame keeps its bits, whatever names change, so bits by hand keep old
+  saves loading.
+- **Its views come with it** (26): the debugger shows the set's bits and a row per flag (true or false), and
+  printing it gives the names of the set flags, `OWNED_BY_GHOST | SAVED` (`{}` when empty).
+- **Open.** The converted game's mask classes (EntityUsageBitMask and six others, a u16 or u32 with
+  `static constexpr` masks, about 188 uses for the two entity masks) become `flags` declarations, their uses
+  respelt where needed (thread F with C, a game PR); the four sets indexed by an enum (SpriteFlags,
+  OtherSpriteOptions, DrawingFlags, TileMaterialDataFlags over SmallBitset) after them.
+
 ## Code packages (proposed 2026-10-27, decided 2026-11-04)
 
 **Decided** (kovarex, 2026-11-04): a directory is a package, named after the directory; an optional

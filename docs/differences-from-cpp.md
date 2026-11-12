@@ -931,6 +931,15 @@ struct S1 : B16 { int y; };   // 32 bytes; 16 with MSVC's layout
 - **Why:** one method writes a deep hierarchy in one buffer, and templates need no special case.
 - **See:** [design 14][d14]; spec `language/append_to_on_built_in_types`.
 
+### A set of flags is a declaration of its own: `flags` (this stage)
+
+- **C++:** an enum of masks (`1 << n`) or a class of `static constexpr` integers, combined with `|` and `&`
+  on the raw integer; a library type such as `std::bitset` indexed by an enum.
+- **kpp:** `flags Name : u16 { A, B, C = 7 };`: the type is the set, each name the set of its bit (by position,
+  or by hand), with `|`, `&`, `~`, `contains`, a debugger view of a row per flag and printing as `A | C`.
+- **Why:** the names and the type are one thing, nobody writes `1 << n`, and the debugger and logs show names.
+- **See:** [design 27][d27].
+
 ### A type says what the debugger shows through `debugValue` (built)
 
 - **C++:** a .natvis file, GDB or LLDB Python, written apart from the type and per debugger.
@@ -1043,6 +1052,7 @@ rejects (thread J's conversion battery, 2026-11-08; the specs say which compiler
 [d13]: design.md#13-integer-types-and-sizes-decided-2026-11-01
 [d14]: design.md#14-text-output-arguments-in-sequence-text-appendto-and--decided-2026-11-01
 [d26]: design.md#26-debugvalue-what-the-debugger-shows-decided-2026-11-11
+[d27]: design.md#27-flags-a-set-of-named-bits-decided-2026-11-12
 [dbgv]: debugging.md#debugvalue
 [d15]: design.md#15-file-local-names-private-at-file-scope-decided-2026-11-01
 [d16]: design.md#16-library-scopes-qualified-by-default-a-library-may-be-unscoped-decided-2026-11-01
