@@ -2925,9 +2925,11 @@ other options (hand-written files, a format string, calling the program's code):
 - **Nothing runs in the debuggee.** kpp translates the body into each debugger's own description, per template
   instance (constants such as `ValuesPerOne` folded), so a view works on a crash dump and every instance the
   program uses has its rule. The body is held to what translates: member reads, arithmetic, comparisons, `?:`,
-  `if` and `return`, casts, constants, enumerators, pointer reads, and the `debugValue` of other types; no
-  allocation, no writes, no calls of other functions. A body outside that is a compile error in the type's own
-  file, so a renamed member never leaves a stale rule.
+  `if` and `return`, casts, constants, enumerators, pointer reads, and calls of const member functions without
+  arguments whose bodies are held to the same (inlined: the type's own conversion, `return this.toDouble();`,
+  kovarex 2026-11-12: "Why not use what we already have?"; a member's `debugValue`); no allocation, no writes,
+  no calls of other functions. A body outside that is a compile error in the type's own file, so a renamed
+  member never leaves a stale rule.
 - **Otherwise an ordinary method:** the program and its tests call it.
 - **Output.** natvis first (Windows, the natvis kpp already writes into the PDB, thread F); LLDB (formatter bytecode
   in the binary, or Python where a loop is needed) and GDB (Python in `.debug_gdb_scripts`) once kpp writes DWARF
@@ -2938,7 +2940,8 @@ other options (hand-written files, a format string, calling the program's code):
   `appendTo` that only chains `out << member` becoming its view with no `debugValue`.
 - **Built (natvis, 2026-11-11, thread F):** compiler/src/natvis.cpp translates debugValue per class instance
   (docs/debugging.md, "debugValue"): `if (C) return E;` cases and a final `return E;`; members, constants
-  folded under the instance's arguments, operators, number casts, another type's debugValue inlined; a number,
+  folded under the instance's arguments (a constexpr local's too), operators, number casts, a const member
+  function's call inlined (the object's own, 2026-11-12, or a member's); a number,
   enumeration or pointer, a class member (its view and expansion) or a Span (pointer and length) returned. A
   body outside that is an error in every build and in the language server's check.
 

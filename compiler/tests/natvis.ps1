@@ -55,7 +55,7 @@ $d = Compare-Object @(Get-Content $expectedPath) $names -SyncWindow 0
 if ($d) { "FAIL natvis: its rules differ from natvis\values.expected"; $names | ForEach-Object { "  $_" }; exit 1 }
 
 # debugValue() (docs/debugging.md, "debugValue"): Fixed<8>'s rule computes its value with its own
-# scale, Item's shows its name and expands to it; a body the debugger cannot compute (a call, a
+# scale, Item's shows its name and expands to it, Angle's inlines its toTurns(); a body the debugger cannot compute (a free function's call, a
 # non-const debugValue) is the build's error, naming the file and line, with or without debug information.
 $types = @(([xml](Get-Content $natvis -Raw)).AutoVisualizer.Type)
 $fixed = @($types | Where-Object { $_.Name -eq 'Fixed<8>' })[0]
@@ -65,18 +65,20 @@ if (-not $item -or $item.DisplayString -ne '{name}' -or $item.Expand.ExpandedIte
 $load = @($types | Where-Object { $_.Name -eq 'Load' })[0]
 $shown = @($load.ChildNodes | Where-Object { $_.LocalName -eq 'DisplayString' } | ForEach-Object { "$($_.GetAttribute('Condition'))|$($_.InnerText)" }) -join ' '
 if ($shown -ne 'empty|{0,g} |{((double)(weight.value) * 0.000244140625) * 2,g}') { "FAIL natvis: Load's debugValue rule is '$shown'"; exit 1 }
+$angle = @($types | Where-Object { $_.Name -eq 'Angle' })[0]
+if (-not $angle -or $angle.DisplayString -ne '{((double)(value) * 2.3283064365386963e-10),g}') { "FAIL natvis: Angle's debugValue rule is '$($angle.DisplayString)'"; exit 1 }
 $buffer = @($types | Where-Object { $_.Name -eq 'Buffer' })[0]
 if ($buffer.DisplayString -ne '{{length={size}}}' -or $buffer.Expand.ArrayItems.Size -ne 'size' -or $buffer.Expand.ArrayItems.ValuePointer -ne 'data')
 { "FAIL natvis: Buffer's debugValue rule is '$($buffer.DisplayString)'"; exit 1 }
 $bad = Join-Path $work 'debugvalue-errors.kpp'
-[IO.File]::WriteAllText($bad, "struct Counted`n{`n  i32 count() const { return this.n; }`n  i32 debugValue() const { return this.count(); }`n  i32 n = 0;`n};`n`n" +
+[IO.File]::WriteAllText($bad, "i32 twice(i32 x) { return 2 * x; }`nstruct Counted`n{`n  i32 debugValue() const { return twice(this.n); }`n  i32 n = 0;`n};`n`n" +
   "struct Moving`n{`n  i32 debugValue() { return this.speed; }`n  i32 speed = 0;`n};`n`nint main()`n{`n  Counted c;`n  Moving m;`n  return c.n + m.speed;`n}`n")
 $ErrorActionPreference = 'Continue'
 $log = & $KppExe --quiet --debug-info --exe (Join-Path $work 'debugvalue-errors.exe') $bad 2>&1 | ForEach-Object { "$_" }
 $code = $LASTEXITCODE
 $ErrorActionPreference = 'Stop'
 $log = $log -join "`n"
-if ($code -eq 0 -or $log -notmatch 'debugvalue-errors\.kpp:4:\d+: error: debugValue of Counted cannot be shown by the debugger: a call' -or
+if ($code -eq 0 -or $log -notmatch 'debugvalue-errors\.kpp:4:\d+: error: debugValue of Counted cannot be shown by the debugger: a call other than of a const member function' -or
     $log -notmatch 'debugvalue-errors\.kpp:10:\d+: error: debugValue, which the debugger shows Moving as, is a const member function without parameters')
 { "FAIL natvis: debugValue bodies the debugger cannot compute: exit $code`n$log"; exit 1 }
 # The same errors in a build without debug information, and in a check (the language server's).
@@ -86,7 +88,7 @@ foreach ($mode in @('--exe', (Join-Path $work 'debugvalue-plain.exe')), @('--che
   $log = (& $KppExe --quiet @mode $bad 2>&1 | ForEach-Object { "$_" }) -join "`n"
   $code = $LASTEXITCODE
   $ErrorActionPreference = 'Stop'
-  if ($code -eq 0 -or $log -notmatch 'debugvalue-errors\.kpp:4:\d+: error: debugValue of Counted cannot be shown by the debugger: a call')
+  if ($code -eq 0 -or $log -notmatch 'debugvalue-errors\.kpp:4:\d+: error: debugValue of Counted cannot be shown by the debugger: a call other than of a const member function')
   { "FAIL natvis: debugValue's errors in a build with $($mode[0]) alone: exit $code`n$log"; exit 1 }
 }
 

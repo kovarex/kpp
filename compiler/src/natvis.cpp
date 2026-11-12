@@ -98,10 +98,12 @@ namespace
   // class instance. Its body is `return EXPRESSION;`, after `if (CONDITION) return EXPRESSION;`s. An
   // expression reads the object's data members (`this.x`, chains of members and pointers), folds what
   // reads none to a constant under the instance's arguments (`This::ValuesPerOne`, an enumerator), and
-  // keeps arithmetic, comparisons, `!`, `?:`, casts to a number type and another type's debugValue()
-  // (its body inlined on that member), each as natvis writes it. Anything else (another call, an
-  // operator function, a local) is the build's error, with what it was: a view kpp cannot write is
-  // never left raw in silence.
+  // keeps arithmetic, comparisons, `!`, `?:` and casts to a number type, each as natvis writes it. A
+  // call of a const member function without arguments, the object's own (`this.toDouble()`, kovarex
+  // 2026-11-12: "Why not use what we already have?") or a member's (`this.weight.debugValue()`), is its
+  // body inlined on that object, held to the same rules; a constexpr local is its constant. Anything
+  // else (another call, an operator function, a variable) is the build's error, with what it was: a
+  // view kpp cannot write is never left raw in silence.
   struct DebugValue
   {
     GlobalScope& global;
@@ -109,8 +111,9 @@ namespace
     ParsedFile* file;
     Decl* context;
     const TemplateArgs& args;
-    std::string prefix = {}; // the member the object is, for an inlined debugValue: `speed.`
+    std::string prefix = {}; // the member the object is, for an inlined call: `speed.`
     int depth = 0;
+    const Ty* self = nullptr; // the object's class (the instance)
     std::string why = {};      // the first thing that could not be said
     Node* at = nullptr;        // where
     const ParsedFile* atFile = nullptr;
@@ -246,6 +249,10 @@ namespace
       };
       if (s->kind == NodeKind::ReturnStmt && static_cast<ReturnStmt*>(s)->value)
         cases.push_back({nullptr, static_cast<ReturnStmt*>(s)->value});
+      else if (s->kind == NodeKind::DeclStmt && !static_cast<DeclStmt*>(s)->decls.empty() &&
+               std::all_of(static_cast<DeclStmt*>(s)->decls.begin(), static_cast<DeclStmt*>(s)->decls.end(),
+                           [](Decl* d) { return d->kind == NodeKind::VariableDecl && (d->flags & DF_Constexpr); }))
+        continue; // (a constexpr local: its uses fold to its value)
       else if (s->kind == NodeKind::IfStmt)
       {
         auto* i = static_cast<IfStmt*>(s);
@@ -271,34 +278,49 @@ namespace
 
   bool natvisExpression(DebugValue& v, Expr* e, std::string& out);
 
-  // Another type's debugValue() called on a member of this one (`this.speed.debugValue()`): its body,
-  // one `return EXPRESSION;`, inlined with that member as its object.
-  bool inlinedDebugValue(DebugValue& v, CallExpr* c, std::string& out)
+  // A call of a const member function without arguments (`this.toDouble()`, `this.speed.debugValue()`):
+  // its body, one `return EXPRESSION;` after constexpr locals, inlined with that object (the call's
+  // own object, or that member) as its object.
+  bool inlinedCall(DebugValue& v, CallExpr* c, std::string& out)
   {
     auto* m = static_cast<MemberExpr*>(c->callee);
+    auto* called = static_cast<FunctionDecl*>(m->resolved);
+    if (!(called->flags & DF_Const) || (called->flags & (DF_Static | DF_Virtual | DF_Override)) || !called->templateParams.empty() || !called->params.empty())
+      return fail(v, c, "a call of a function other than a const, non-virtual member function without parameters");
     std::string base;
-    if (isThisObject(m->base))
-      return fail(v, c, "a call of its own debugValue");
-    if (!natvisExpression(v, m->base, base))
-      return false;
-    const Ty* object = m->base->ty;
+    const Ty* object = nullptr;
     TypeTable& types = v.global.types();
-    if (object)
-      object = types.unqualified(types.stripRef(object));
-    if (object && m->op == P::Arrow && object->kind == TyKind::Pointer)
-      object = object->inner ? types.unqualified(object->inner) : nullptr;
-    if (!object || object->kind != TyKind::Class || !object->decl || v.depth > 8)
-      return fail(v, c, "a debugValue of something other than a class member");
+    if (isThisObject(m->base))
+    {
+      if (isDebugValue(called, v.symbols))
+        return fail(v, c, "a call of its own debugValue");
+      object = v.self;
+    }
+    else
+    {
+      if (!natvisExpression(v, m->base, base))
+        return false;
+      base += m->op == P::Arrow ? "->" : ".";
+      object = m->base->ty;
+      if (object)
+        object = types.unqualified(types.stripRef(object));
+      if (object && m->op == P::Arrow && object->kind == TyKind::Pointer)
+        object = object->inner ? types.unqualified(object->inner) : nullptr;
+    }
+    if (!object || object->kind != TyKind::Class || !object->decl)
+      return fail(v, c, "a call on something other than the object or a member that is a class");
+    if (v.depth > 8)
+      return fail(v, c, "calls nested deeper than 8");
     TemplateArgs args = v.global.classArgsOf(object);
-    Decl* declared = m->resolved;
+    Decl* declared = called;
     Decl* defined = args.empty() ? v.global.definitionOf(declared) : v.global.definitionOf(declared, args);
     auto* def = defined && defined->kind == NodeKind::FunctionDecl ? static_cast<FunctionDecl*>(defined) : static_cast<FunctionDecl*>(declared);
     FunctionDecl* instance = args.empty() ? def : v.global.instanceBody(def, args, object);
-    DebugValue inner{v.global, v.symbols, def->file, instance, args, v.prefix + base + (m->op == P::Arrow ? "->" : "."), v.depth + 1};
+    DebugValue inner{v.global, v.symbols, def->file, instance, args, v.prefix + base, v.depth + 1, object};
     std::vector<std::pair<Expr*, Expr*>> cases;
     bool done = debugCases(inner, instance, cases);
     if (done && cases.size() != 1)
-      done = fail(inner, instance, "its `if`s, which an expression of another debugValue cannot hold");
+      done = fail(inner, instance, "its `if`s, which an expression of the function it is called in cannot hold");
     std::string value;
     if (done && natvisExpression(inner, cases[0].second, value))
     {
@@ -307,7 +329,7 @@ namespace
     }
     if (v.why.empty())
     {
-      v.why = "the debugValue it calls: " + inner.why;
+      v.why = "the function it calls, " + std::string(v.symbols.name(called->name.last().symbol)) + ": " + inner.why;
       v.at = inner.at;
       v.atFile = inner.atFile;
     }
@@ -426,9 +448,10 @@ namespace
     case NodeKind::CallExpr:
     {
       auto* c = static_cast<CallExpr*>(e);
-      // Another type's debugValue(), on a member.
-      if (c->callee && c->callee->kind == NodeKind::MemberExpr && c->args.empty() && isDebugValue(static_cast<MemberExpr*>(c->callee)->resolved, v.symbols))
-        return inlinedDebugValue(v, c, out);
+      // A const member function's call, inlined: the object's own (`this.toDouble()`) or a member's.
+      if (c->callee && c->callee->kind == NodeKind::MemberExpr && c->args.empty() && static_cast<MemberExpr*>(c->callee)->resolved &&
+          static_cast<MemberExpr*>(c->callee)->resolved->kind == NodeKind::FunctionDecl)
+        return inlinedCall(v, c, out);
       // A number type's name called with one value is its conversion: `f64(this.value)` (f64 the
       // library's alias of double; a type's name is no declaration the call resolved, as a function's is).
       Decl* callee = c->callee && c->callee->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(c->callee)->resolved : nullptr;
@@ -436,7 +459,7 @@ namespace
                       (!callee || callee->kind == NodeKind::UsingAliasDecl || (callee->kind == NodeKind::VariableDecl && (callee->flags & DF_Typedef)));
       std::string type = natvisNumberType(e->ty);
       if (!typeName || c->args.size() != 1 || type.empty())
-        return fail(v, e, "a call (debugValue's body is the debugger's expression: data members, constants, operators and other types' debugValue)");
+        return fail(v, e, "a call other than of a const member function (debugValue's body is the debugger's expression: data members, constants, operators and const member functions with such bodies)");
       std::string inner;
       if (!natvisExpression(v, c->args[0], inner))
         return false;
@@ -513,7 +536,7 @@ namespace
       Decl* body = args.empty() ? global.definitionOf(f) : global.definitionOf(f, args);
       auto* def = body && body->kind == NodeKind::FunctionDecl ? static_cast<FunctionDecl*>(body) : f;
       FunctionDecl* instance = args.empty() || !def->body ? def : global.instanceBody(def, args, d.type);
-      DebugValue v{global, symbols, def->file, instance, args};
+      DebugValue v{global, symbols, def->file, instance, args, "", 0, d.type};
       std::vector<std::pair<Expr*, Expr*>> cases;
       auto cannot = [&]()
       {

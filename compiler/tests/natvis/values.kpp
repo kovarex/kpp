@@ -2,7 +2,8 @@
 // docs/debugging.md, "Values in Visual Studio"): a value of each library type it has a rule for, and
 // a typed union; containers with more than one block or node. And debugValue() (docs/debugging.md,
 // "debugValue"): a fixed-point number shown as its value, a rule per instance; a class shown as its
-// String member; one with an `if` and another type's debugValue; one shown as a Span's elements.
+// String member; one with an `if` and another type's debugValue; one shown as a Span's elements; one
+// through its own conversion, a constexpr local in it.
 struct Point
 {
   int x = 0;
@@ -38,6 +39,13 @@ struct Load
   Fixed<12> weight;
 };
 
+struct Angle
+{
+  constexpr f64 toTurns() const { constexpr f64 PerStep = 1.0 / 4294967296.0; return f64(this.value) * PerStep; }
+  f64 debugValue() const { return this.toTurns(); }
+  u32 value = 0;
+};
+
 struct Buffer
 {
   std::Span<i32> debugValue() const { return std::Span<i32>(this.data, this.size); }
@@ -59,6 +67,8 @@ int main()
   Load load;
   load.weight.value = 2048;
   i32 held[3] = {4, 5, 6};
+  Angle angle;
+  angle.value = 1073741824;
   Buffer buffer;
   buffer.data = held;
   buffer.size = 3;

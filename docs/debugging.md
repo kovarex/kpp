@@ -371,14 +371,17 @@ struct Buffer { std::Span<i32> debugValue() const { return std::Span<i32>(this.d
   constant under the instance's arguments (`This::ValuesPerOne`, an enumerator, `1.0 / 256`), so
   `Fixed<8>` shows `{(double)(value) * 0.00390625,g}` and `Fixed<12>` its own scale; arithmetic,
   comparisons, `!`, `~`, `?:` and casts to a number type (`f64(x)`, `(i32)x`, `static_cast`) stay as natvis
-  writes them; another type's debugValue on a member (`this.weight.debugValue()`) is that body inlined
-  on the member (one `return`, no `if`).
+  writes them; a call of a const member function without arguments, non-virtual, is its body inlined on
+  its object (one `return`, after constexpr locals, no `if`): the type's own conversion
+  (`f64 debugValue() const { return this.toDouble(); }`, kovarex 2026-11-12), another type's debugValue on
+  a member (`this.weight.debugValue()`). A constexpr local (`constexpr f64 PerStep = 1.0 / 4294967296.0;`)
+  folds to its value.
 - **What it returns** says how the type shows: a number, a bool, an enumeration or a pointer as that
   value (a floating one with `,g`, `1.5` and not `1.5000000000000000`); a data member that is a class
   as that class's view, and its expansion (`ExpandedItem`); a `std::Span` made of a pointer and a length
   (or two pointers) as `{length=N}` and its elements (`ArrayItems`). Any other type returned is an error.
-- **Anything else is a compile error** at its place, naming what it was: a call of any other function, an
-  operator function, a local, a statement other than those `if`s and `return`, a debugValue that is not
+- **Anything else is a compile error** at its place, naming what it was: a call of any other function
+  (a free function, a virtual or non-const one, one with arguments), an operator function, a variable, a statement other than those `if`s and `return`, a debugValue that is not
   const or takes parameters ("FILE:LINE:COLUMN: error: debugValue of Counted cannot be shown by the
   debugger: a call ..."), in every build and in the language server's check (codegen lists the classes laid
   out that have a debugValue, CodegenResult::debugValueClasses; the driver translates each), on every target.
