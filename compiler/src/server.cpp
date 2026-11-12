@@ -95,6 +95,40 @@ namespace
   // the server's log when it started one.
   std::vector<std::string> startSteps;
 
+  // How long a client waits for a server's pipe: 20 s for one it did not start, 120 s while the process it started runs (and
+  // a stop, while the server it waits for is still starting). A server makes its pipe before anything else, so that wait is
+  // the process's start alone, which a loaded machine can make long (Windows' scan of the new copy, the loader); building in
+  // the client instead made the same cold full build and left the server cold, to make that build again at the next one (H,
+  // 2026-11-12: servers.ps1's server came up after the client's 20 s, beside other work). A wait past waitNoteMs says so on
+  // stderr, once.
+  constexpr int connectWaitMs = 20000, startedServerWaitMs = 120000, waitNoteMs = 10000;
+
+  // A wait for the server this client started, past waitNoteMs: one line on stderr saying what it waits for.
+  void noteWaitingForServer(bool& told, std::chrono::steady_clock::time_point since, unsigned long process)
+  {
+    if (told || std::chrono::steady_clock::now() - since < std::chrono::milliseconds(waitNoteMs))
+      return;
+    told = true;
+    fprintf(stderr, "kpp: waiting for the compile server this build started (process %lu), %d s so far\n", process, waitNoteMs / 1000);
+    fflush(stderr);
+  }
+
+  // The seconds since start, as a log line has them ("1.25 s").
+  std::string secondsSince(std::chrono::steady_clock::time_point start)
+  {
+    char text[32];
+    snprintf(text, sizeof text, "%.2f s", std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
+    return text;
+  }
+
+  // KPP_SERVER_START_DELAY_MS (servers.ps1): a server waits that long before it makes its pipe, as a slow start on a loaded
+  // machine does.
+  void delayServerStartForTest()
+  {
+    if (const char* delay = getenv("KPP_SERVER_START_DELAY_MS"))
+      std::this_thread::sleep_for(std::chrono::milliseconds(atoi(delay)));
+  }
+
   // KEY.args: what a server builds, its working directory and arguments, each ended by a zero byte,
   // written by the client that starts it; stopServers finds a project's servers by them.
   std::string argumentsPath(const std::string& key) { return serverDirectory() + key + ".args"; }
@@ -355,10 +389,12 @@ namespace
 
   // Connects to the server's pipe, waiting while another client is being served. why, when given: the
   // reason it could not. server, when given: the process just started for it, whose early end (other
-  // than losing the key to another server, exit 1) is the answer without waiting for the pipe.
+  // than losing the key to another server, exit 1) is the answer without waiting for the pipe; while it
+  // runs, the wait is up to startedServerWaitMs, with a line on stderr past waitNoteMs.
   HANDLE connectPipe(const std::string& name, DWORD waitMs, std::string* why = nullptr, HANDLE server = nullptr)
   {
     auto start = std::chrono::steady_clock::now();
+    bool told = false;
     for (;;)
     {
       HANDLE h = CreateFileA(name.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
@@ -393,12 +429,15 @@ namespace
         }
         server = nullptr;
       }
-      if (std::chrono::steady_clock::now() - start > std::chrono::milliseconds(waitMs))
+      DWORD limit = server ? std::max<DWORD>(waitMs, startedServerWaitMs) : waitMs;
+      if (std::chrono::steady_clock::now() - start > std::chrono::milliseconds(limit))
       {
         if (why)
-          *why = "the pipe " + name + " could not be opened in " + std::to_string(waitMs / 1000) + " s (" + errorText(error) + "): the server did not create it";
+          *why = "the pipe " + name + " could not be opened in " + std::to_string(limit / 1000) + " s (" + errorText(error) + "): the server did not create it";
         return INVALID_HANDLE_VALUE;
       }
+      if (server)
+        noteWaitingForServer(told, start, GetProcessId(server));
       Sleep(20);
     }
   }
@@ -554,9 +593,20 @@ namespace
     return held;
   }
 
+  // A server this client started: its process, and whether and how it ended (set by the thread that reaps it).
+  struct StartedServer
+  {
+    pid_t pid = 0;
+    std::atomic<bool> ended{false};
+    std::atomic<int> status{0};
+  };
+
   // Connects to the server's socket. A busy server accepts the next client when its build is done:
-  // connect() is queued till then (listen's backlog), as Windows' WaitNamedPipe waits.
-  int connectPipe(const std::string& name, int waitMs, std::string* why = nullptr)
+  // connect() is queued till then (listen's backlog), as Windows' WaitNamedPipe waits. why, when given:
+  // the reason it could not. server, when given: the process just started for it, whose early end
+  // (other than losing the key to another server, exit 1) is the answer without waiting; while it runs,
+  // the wait is up to startedServerWaitMs, with a line on stderr past waitNoteMs.
+  int connectPipe(const std::string& name, int waitMs, std::string* why = nullptr, const StartedServer* server = nullptr)
   {
     sockaddr_un address{};
     address.sun_family = AF_UNIX;
@@ -564,6 +614,7 @@ namespace
       return -1;
     memcpy(address.sun_path, name.c_str(), name.size() + 1);
     auto start = std::chrono::steady_clock::now();
+    bool told = false;
     for (;;)
     {
       int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
@@ -571,9 +622,29 @@ namespace
         return -1;
       if (connect(fd, reinterpret_cast<sockaddr*>(&address), sizeof address) == 0)
         return fd;
+      int error = errno;
       close(fd);
-      if (std::chrono::steady_clock::now() - start > std::chrono::milliseconds(waitMs))
+      if (server && server->ended)
+      {
+        int status = server->status;
+        if (!WIFEXITED(status) || WEXITSTATUS(status) != 1)
+        {
+          if (why)
+            *why = WIFEXITED(status) ? "the server ended as it started, with exit code " + std::to_string(WEXITSTATUS(status))
+                                     : "the server ended as it started, by signal " + std::to_string(WIFSIGNALED(status) ? WTERMSIG(status) : 0);
+          return -1;
+        }
+        server = nullptr; // (another server has the key: its socket comes)
+      }
+      int limit = server ? std::max(waitMs, startedServerWaitMs) : waitMs;
+      if (std::chrono::steady_clock::now() - start > std::chrono::milliseconds(limit))
+      {
+        if (why)
+          *why = "the socket " + name + " could not be reached in " + std::to_string(limit / 1000) + " s (" + strerror(error) + "): the server did not create it";
         return -1;
+      }
+      if (server)
+        noteWaitingForServer(told, start, (unsigned long)server->pid);
       std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
   }
@@ -601,7 +672,8 @@ namespace
 
   // Starts a server for the key: kpp itself, in a session of its own (no copy: a running executable
   // can be replaced on POSIX), its streams the null device. The client holds KEY.starting meanwhile.
-  bool startServer(const std::string& exe, const std::string& key, const std::string& cwd, std::string& why)
+  // started: the process, for the client's wait (connectPipe).
+  bool startServer(const std::string& exe, const std::string& key, const std::string& cwd, std::string& why, std::shared_ptr<StartedServer>& started)
   {
     std::string dir = serverDirectory();
     mkdir(dir.c_str(), 0700);
@@ -630,7 +702,14 @@ namespace
       return false;
     }
     // (reaped by a thread of its own: the client may live on, and the server's end is no zombie)
-    std::thread([pid] { int status = 0; waitpid(pid, &status, 0); }).detach();
+    started = std::make_shared<StartedServer>();
+    started->pid = pid;
+    std::thread([started] {
+      int status = 0;
+      waitpid(started->pid, &status, 0);
+      started->status = status;
+      started->ended = true;
+    }).detach();
     return true;
   }
 
@@ -1523,6 +1602,7 @@ int runClient(int argc, char** argv, CompileFunction compile)
   std::string noServer; // why no server could be reached
   Channel pipe = connectPipe(name, 0, &noServer);
   bool startedOne = pipe == noChannel;
+  std::chrono::steady_clock::time_point startedAt; // (when this client began to start one)
   if (pipe == noChannel)
   {
     startSteps.push_back("connect, before starting one: " + noServer);
@@ -1543,16 +1623,18 @@ int runClient(int argc, char** argv, CompileFunction compile)
 #endif
     if (FILE* f = fopen(argumentsPath(key).c_str(), "wb"))
       fwrite(record.data(), 1, record.size(), f), fclose(f);
+    startedAt = std::chrono::steady_clock::now();
 #ifdef _WIN32
     HANDLE started = nullptr;
     if (startServer(exe, key, cwd, noServer, started))
     {
-      pipe = connectPipe(name, 20000, &noServer, started);
+      pipe = connectPipe(name, connectWaitMs, &noServer, started);
       CloseHandle(started);
     }
 #else
-    if (startServer(exe, key, cwd, noServer))
-      pipe = connectPipe(name, 20000, &noServer);
+    std::shared_ptr<StartedServer> started;
+    if (startServer(exe, key, cwd, noServer, started))
+      pipe = connectPipe(name, connectWaitMs, &noServer, started.get());
 #endif
     else
       remove(argumentsPath(key).c_str());
@@ -1583,7 +1665,7 @@ int runClient(int argc, char** argv, CompileFunction compile)
   // (in the log's own form: a time and the client's process id)
   if (startedOne)
   {
-    startSteps.push_back("connect: reached");
+    startSteps.push_back("connect: reached, " + secondsSince(startedAt) + " after starting the server");
     std::string own = serverLog;
     serverLog = logPath(key);
     for (const std::string& step : startSteps)
@@ -1708,6 +1790,7 @@ static void crashLogged(int sig, siginfo_t* info, void*)
 // it (a stale one from a server that crashed is removed first: the lock says no one serves it).
 int runServer(const char* key, const char* origin, const char* stamp, CompileFunction compile)
 {
+  delayServerStartForTest();
   std::string dir = serverDirectory();
   mkdir(dir.c_str(), 0700);
   int lock = open(lockPath(key).c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0600);
@@ -1794,6 +1877,7 @@ int runServer(const char* key, const char* origin, const char* stamp, CompileFun
 #else
 int runServer(const char* key, const char* origin, const char* stamp, CompileFunction compile)
 {
+  delayServerStartForTest();
   std::string name = pipeName(key);
   HANDLE pipe = CreateNamedPipeA(name.c_str(), PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE,
                                  PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS, 1, 1 << 16, 1 << 16, 0, nullptr);
@@ -1887,20 +1971,23 @@ namespace
     // yet: its copy of kpp, KEY.exe, is in use (running, or held by the client that starts it), so
     // that it cannot be opened for deletion. It is waited for as its client waits, never left
     // running unseen (thread H, 2026-11-05: a stop could miss a server that came up a moment later).
+    // (as long as it is still starting, up to startedServerWaitMs)
 #ifdef _WIN32
-    if (pipe == INVALID_HANDLE_VALUE)
+    auto starting = [&]
     {
       HANDLE copy = CreateFileA((serverDirectory() + key + ".exe").c_str(), DELETE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
-      if (copy != INVALID_HANDLE_VALUE)
-        CloseHandle(copy);
-      else if (GetLastError() == ERROR_SHARING_VIOLATION)
-        pipe = connectPipe(pipeName(key), 20000);
-    }
+      if (copy == INVALID_HANDLE_VALUE)
+        return GetLastError() == ERROR_SHARING_VIOLATION;
+      CloseHandle(copy);
+      return false;
+    };
 #else
     // (POSIX: its KEY.lock held, or KEY.starting by the client that starts it)
-    if (pipe == noChannel && (lockHeld(lockPath(key)) || lockHeld(startingPath(key))))
-      pipe = connectPipe(pipeName(key), 20000);
+    auto starting = [&] { return lockHeld(lockPath(key)) || lockHeld(startingPath(key)); };
 #endif
+    for (auto start = std::chrono::steady_clock::now();
+         pipe == noChannel && std::chrono::steady_clock::now() - start < std::chrono::milliseconds(startedServerWaitMs) && starting();)
+      pipe = connectPipe(pipeName(key), 1000);
     remove(argumentsPath(key).c_str());
     if (pipe == noChannel)
       return false;

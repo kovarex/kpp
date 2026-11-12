@@ -211,6 +211,25 @@ $ErrorActionPreference = 'Continue'
 & $copy --stop-all-servers 2>&1 | Out-Null
 $ErrorActionPreference = 'Stop'
 
+# 5. A client waits for the server it started while that process runs, up to 120 s: the pipe, a server's first work, came
+# 21 s late here (KPP_SERVER_START_DELAY_MS), past the 20 s after which a client built in its own process until 2026-11-12
+# (H: beside other work a server came up after that, and the client made the same full build itself). A line after 10 s
+# says what the client waits for, and the server's log has how long the connect took.
+$env:KPP_SERVER_START_DELAY_MS = '21000'
+$ErrorActionPreference = 'Continue'
+$report = & $copy --server --std $std --exe "$work\two.exe" "$work\two.kpp" 2>&1 | Out-String
+$code = $LASTEXITCODE
+$ErrorActionPreference = 'Stop'
+Remove-Item env:KPP_SERVER_START_DELAY_MS
+$reached = @(Select-String -Path "$work\tmp\kpp-server\*.log" -Pattern 'client: connect: reached, ([\d.]+) s after starting the server' |
+  ForEach-Object { [double]::Parse($_.Matches[0].Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture) })
+if ($code -ne 0 -or $report -match 'no compile server could be reached') { Fail "a server whose pipe came 21 s late: the client did not wait for it (exit $code): $report" }
+elseif ($report -notmatch 'waiting for the compile server this build started \(process \d+\), 10 s so far') { Fail "a server whose pipe came 21 s late: no line says what the client waits for: $report" }
+elseif (-not ($reached | Where-Object { $_ -ge 21 })) { Fail "a server whose pipe came 21 s late: its log does not say the connect took that long ($($reached -join ', ') s)" }
+$ErrorActionPreference = 'Continue'
+& $copy --stop-all-servers 2>&1 | Out-Null
+$ErrorActionPreference = 'Stop'
+
 # A client that reaches no server builds in its own process and says why (kovarex's obyvak, 2026-11-10: the
 # message alone said nothing of the reason). A TEMP that cannot be written; a KEY.exe that is no program; a
 # pipe of the key that this client may not open (a server run elevated).
@@ -257,5 +276,5 @@ else
 }
 
 StopLeftovers
-if ($failed -eq 0) { "ok   servers: one exits when its kpp changes, --stop-all-servers stops them all, stale server files go, one server writes each client's diagnostic form, Visual Studio's own variables leave a replay a replay" }
+if ($failed -eq 0) { "ok   servers: one exits when its kpp changes, --stop-all-servers stops them all, stale server files go, one server writes each client's diagnostic form, Visual Studio's own variables leave a replay a replay, a client waits for a server that starts slowly" }
 exit $failed

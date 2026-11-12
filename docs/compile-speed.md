@@ -863,7 +863,13 @@ set (they are in its key, or hashed and checked per build).
   `KEY.exe --serve KEY ORIGIN STAMP` (ORIGIN the kpp the client ran, STAMP its size and write
   time, as the key has them) in a new process group with a console of its own and no window
   (CREATE_NO_WINDOW), in the client's directory, inheriting no handles; it then waits
-  up to 20 s for the pipe. (It was started without a console, DETACHED_PROCESS, until a small
+  for the pipe while that process runs, up to 120 s, saying so on stderr after 10 s ("kpp: waiting for
+  the compile server this build started (process N), 10 s so far"), and 20 s for a server it did not
+  start. The pipe is a server's first work, so the wait is its process's start alone, which a loaded
+  machine stretched past the 20 s a client waited until 2026-11-12; the client then made the same full
+  build in its own process and left the server cold, to make it again at the next build (H, beside
+  other work). The server's log gets how long it took ("client: connect: reached, 0.02 s after
+  starting the server"), and a stop waits as long for a server that is still starting. (It was started without a console, DETACHED_PROCESS, until a small
   program's edit through the server measured slower than a new process: every cmd, clang and link a
   build starts was then given a console of its own, about 30 ms each. A 10-line program, a body
   edit per round, 10 interleaved rounds (C:\kpp-sandbox\scratch\resolver\small): master d98f13b9's server 186 to
@@ -903,8 +909,9 @@ set (they are in its key, or hashed and checked per build).
   one server and by a new process after each edit (a body, a signature, a class's layout, a new
   file, the file removed); stdout, stderr (timings masked) and the IR must be identical and the
   server's program must print what the step expects. tests/servers.ps1 (in run_tests): a server
-  exits within 20 s of its kpp being written again, and --stop-all-servers stops two servers of
-  two programs (the servers of a TEMP of the test's own).
+  exits within 20 s of its kpp being written again, --stop-all-servers stops two servers of
+  two programs (the servers of a TEMP of the test's own), and a client waits for a server whose pipe
+  comes 21 s late (KPP_SERVER_START_DELAY_MS, the server's test delay).
 
 Step 1's numbers (full game as run.cmd builds it, frozen tree, no-change rebuild, three
 alternating pairs on the shared machine): fresh process 19.4, 23.1, 19.2 s; through the server
