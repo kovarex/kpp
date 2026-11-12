@@ -381,7 +381,11 @@ struct Buffer { std::Span<i32> debugValue() const { return std::Span<i32>(this.d
   as text (2026-11-12, kovarex's plan to replace the game's factorio.natvis): its string literals as they
   are, `std::toString(x)` and other values each as `{x}` by its own view (a String without quotes, an 8-bit
   integer as its number), so `"{index=" + std::toString(this.index) + "}"` shows `{index=7}` and the
-  program calling it gets the same text; a data member that is a class
+  program calling it gets the same text; an enumeration cast from a member (`Enum(this.value)`) as its
+  enumerator's name; a class pointer as itself, expanding to the object; a `std::StringView` of a `char`
+  array, or of a pointer and a length, as its characters (`{text,sb}`, `{p,[n]sb}`). A cast may name a
+  number type, an enumeration, or a pointer or reference to a class, the object itself too:
+  `static_cast<const Entity&>(this).position` reads the derived class's member (`(*(Entity*)this).position`); a data member that is a class
   as that class's view, and its expansion (`ExpandedItem`); a `std::Span` made of a pointer and a length
   (or two pointers) as `{length=N}` and its elements (`ArrayItems`). Any other type returned is an error.
 - **Anything else is a compile error** at its place, naming what it was: a call of any other function

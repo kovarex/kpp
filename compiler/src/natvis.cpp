@@ -152,6 +152,38 @@ namespace
     }
   }
 
+  // A cast's type as natvis writes it: a number type's C name, an enumeration's or a class pointer's debugger
+  // name (Direction::Enum, Entity*). reference: a reference to a class, cast as a pointer and read through.
+  std::string natvisCastType(GlobalScope& global, const SymbolTable& symbols, const Ty* t, bool& reference)
+  {
+    reference = false;
+    if (!t)
+      return {};
+    TypeTable& types = global.types();
+    if (t->isReference())
+    {
+      const Ty* object = types.unqualified(types.stripRef(t));
+      if (object && object->kind == TyKind::Class)
+      {
+        reference = true;
+        return types.toString(object, &symbols, true) + "*";
+      }
+      return {};
+    }
+    t = types.unqualified(t);
+    if (std::string number = natvisNumberType(t); !number.empty())
+      return number;
+    if (t->kind == TyKind::Enum)
+      return types.toString(t, &symbols, true);
+    if (t->kind == TyKind::Pointer && t->inner)
+    {
+      const Ty* object = types.unqualified(t->inner);
+      if (object->kind == TyKind::Class || object->kind == TyKind::Char || natvisNumberType(object) != "")
+        return (object->kind == TyKind::Class ? types.toString(object, &symbols, true) : natvisNumberType(object).empty() ? std::string("char") : natvisNumberType(object)) + "*";
+    }
+    return {};
+  }
+
   bool isDebugValue(const Decl* d, const SymbolTable& symbols)
   {
     if (!d || d->kind != NodeKind::FunctionDecl)
@@ -336,6 +368,23 @@ namespace
     return false;
   }
 
+  // A cast of operand to type (natvisCastType): `(T)(x)`; to a reference, `(*(T*)&x)`, the object itself
+  // `(*(T*)this)` (`static_cast<const Entity&>(this).position`).
+  bool natvisCast(DebugValue& v, Expr* operand, const std::string& type, bool reference, std::string& out)
+  {
+    std::string inner;
+    if (reference && isThisObject(operand))
+      inner = v.prefix.empty() ? "this"
+              : v.prefix.back() == '.' ? "&" + v.prefix.substr(0, v.prefix.size() - 1) // (a member: its address)
+                                       : v.prefix.substr(0, v.prefix.size() - 2); // (`p->`: the pointer)
+    else if (!natvisExpression(v, operand, inner))
+      return false;
+    else if (reference)
+      inner = "&(" + inner + ")";
+    out = reference ? "(*(" + type + ")" + inner + ")" : "(" + type + ")(" + inner + ")";
+    return true;
+  }
+
   bool natvisExpression(DebugValue& v, Expr* e, std::string& out)
   {
     if (!e)
@@ -435,15 +484,12 @@ namespace
                       : e->kind == NodeKind::NamedCastExpr ? static_cast<NamedCastExpr*>(e)->operand
                       : static_cast<FunctionalCastExpr*>(e)->args.size() == 1 ? static_cast<FunctionalCastExpr*>(e)->args[0] : nullptr;
       if (e->kind == NodeKind::NamedCastExpr && static_cast<NamedCastExpr*>(e)->castKind != Kw::static_cast_)
-        return fail(v, e, "a cast other than to a number type");
-      std::string type = natvisNumberType(e->ty);
+        return fail(v, e, "a cast other than static_cast, a C cast or a type's name");
+      bool reference = false;
+      std::string type = natvisCastType(v.global, v.symbols, e->ty, reference);
       if (!operand || type.empty())
-        return fail(v, e, "a cast other than to a number type");
-      std::string inner;
-      if (!natvisExpression(v, operand, inner))
-        return false;
-      out = "(" + type + ")(" + inner + ")";
-      return true;
+        return fail(v, e, "a cast other than to a number, an enumeration, or a pointer or reference to a class");
+      return natvisCast(v, operand, type, reference, out);
     }
     case NodeKind::CallExpr:
     {
@@ -456,15 +502,13 @@ namespace
       // library's alias of double; a type's name is no declaration the call resolved, as a function's is).
       Decl* callee = c->callee && c->callee->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(c->callee)->resolved : nullptr;
       bool typeName = c->callee && c->callee->kind == NodeKind::NameExpr &&
-                      (!callee || callee->kind == NodeKind::UsingAliasDecl || (callee->kind == NodeKind::VariableDecl && (callee->flags & DF_Typedef)));
-      std::string type = natvisNumberType(e->ty);
-      if (!typeName || c->args.size() != 1 || type.empty())
+                      (!callee || callee->kind == NodeKind::UsingAliasDecl || callee->kind == NodeKind::EnumDecl ||
+                       (callee->kind == NodeKind::VariableDecl && (callee->flags & DF_Typedef)));
+      bool reference = false;
+      std::string type = natvisCastType(v.global, v.symbols, e->ty, reference);
+      if (!typeName || c->args.size() != 1 || type.empty() || reference)
         return fail(v, e, "a call other than of a const member function (debugValue's body is the debugger's expression: data members, constants, operators and const member functions with such bodies)");
-      std::string inner;
-      if (!natvisExpression(v, c->args[0], inner))
-        return false;
-      out = "(" + type + ")(" + inner + ")";
-      return true;
+      return natvisCast(v, c->args[0], type, false, out);
     }
     default: return fail(v, e, "this kind of expression");
     }
@@ -578,7 +622,11 @@ namespace
     const Ty* shown = value->ty ? types.unqualified(types.stripRef(value->ty)) : nullptr;
     if (shown && shown->kind == TyKind::Int && shown->bits == 8)
       expression = "(int)(" + expression + ")"; // (a u8 or i8 as its number, not a character)
-    out += "{" + expression + (shown && shown->kind == TyKind::Float ? ",g" : isLibraryClass(shown, v.symbols, "String") ? ",sb" : "") + "}";
+    bool characters = shown && (shown->kind == TyKind::Pointer || shown->kind == TyKind::Array) && shown->inner &&
+                      types.unqualified(shown->inner)->kind == TyKind::Char; // (a char array or pointer: its text)
+    out += "{" + expression +
+           (shown && shown->kind == TyKind::Float ? ",g" : isLibraryClass(shown, v.symbols, "String") || isLibraryClass(shown, v.symbols, "StringView") || characters ? ",sb" : "") +
+           "}";
     return true;
   }
 
@@ -640,6 +688,7 @@ namespace
       bool number = shown && (shown->isArithmetic() || shown->kind == TyKind::Enum || shown->kind == TyKind::Pointer);
       bool span = isLibraryClass(shown, symbols, "Span"); // (the library's Span)
       bool text = isLibraryClass(shown, symbols, "String"); // (a text view: its pieces)
+      bool view = isLibraryClass(shown, symbols, "StringView"); // (characters: a pointer, or a pointer and a length)
       std::string displays, items;
       bool failed = false;
       for (const auto& [condition, value] : cases)
@@ -676,6 +725,34 @@ namespace
                    "      </ArrayItems>\n";
           continue;
         }
+        if (view)
+        {
+          // std::StringView(chars) or std::StringView(pointer, length): the characters as text.
+          Expr* made = value;
+          while (made && made->kind == NodeKind::ParenExpr)
+            made = static_cast<ParenExpr*>(made)->inner;
+          Span<Expr*> args;
+          if (made && made->kind == NodeKind::CallExpr)
+            args = static_cast<CallExpr*>(made)->args;
+          else if (made && made->kind == NodeKind::FunctionalCastExpr)
+            args = static_cast<FunctionalCastExpr*>(made)->args;
+          else if (made && made->kind == NodeKind::BraceInitExpr)
+            args = static_cast<BraceInitExpr*>(made)->args;
+          std::string chars, length;
+          if (args.size() < 1 || args.size() > 2)
+          {
+            fail(v, value, "a StringView other than one made of characters, or of a pointer and a length (`std::StringView(this.text)`)");
+            failed = true;
+            break;
+          }
+          if (!natvisExpression(v, args[0], chars) || (args.size() == 2 && !natvisExpression(v, args[1], length)))
+          {
+            failed = true;
+            break;
+          }
+          displays += "    <DisplayString" + attribute + ">{" + escape(chars) + (args.size() == 2 ? ",[" + escape(length) + "]sb" : ",sb") + "}</DisplayString>\n";
+          continue;
+        }
         if (text)
         {
           std::string display;
@@ -702,8 +779,8 @@ namespace
           break;
         }
         displays += "    <DisplayString" + attribute + ">{" + escape(expression) + (shown->kind == TyKind::Float ? ",g" : "") + "}</DisplayString>\n";
-        if (!number)
-          items += "      <ExpandedItem" + attribute + ">" + escape(expression) + "</ExpandedItem>\n";
+        if (!number || (shown->kind == TyKind::Pointer && shown->inner && types.unqualified(shown->inner)->kind == TyKind::Class))
+          items += "      <ExpandedItem" + attribute + ">" + escape(expression) + "</ExpandedItem>\n"; // (a class, or the object a class pointer points to)
       }
       if (failed)
         return cannot();

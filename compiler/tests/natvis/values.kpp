@@ -3,7 +3,8 @@
 // a typed union; containers with more than one block or node. And debugValue() (docs/debugging.md,
 // "debugValue"): a fixed-point number shown as its value, a rule per instance; a class shown as its
 // String member; one with an `if` and another type's debugValue; one shown as a Span's elements; one
-// through its own conversion, a constexpr local in it; text views, a std::String built with +.
+// through its own conversion, a constexpr local in it; text views, a std::String built with +; an
+// enumeration's name, a cast to a derived class, a pointer to its template argument, characters as text.
 struct Point
 {
   int x = 0;
@@ -65,6 +66,45 @@ struct Stack
   f64 weight = 0;
 };
 
+struct Heading
+{
+  enum class Enum : u8 { North, East, South, West };
+  Enum debugValue() const { return Enum(this.value); }
+  u8 value = 0;
+};
+
+struct Shape
+{
+  std::String debugValue() const { return "side " + std::toString(static_cast<const Square&>(this).side); }
+  i32 kind = 0;
+};
+
+struct Square : Shape
+{
+  i32 side = 4;
+};
+
+template<class T>
+struct Pointing
+{
+  T* debugValue() const { return static_cast<T*>(this.target); }
+  void* target = nullptr;
+};
+
+struct Short
+{
+  std::StringView debugValue() const
+  {
+    if (this.onHeap == 0)
+      return std::StringView(this.inPlace);
+    return std::StringView(this.heap, this.length);
+  }
+  u8 onHeap = 0;
+  char inPlace[8] = {};
+  const char* heap = nullptr;
+  usize length = 0;
+};
+
 struct Buffer
 {
   std::Span<i32> debugValue() const { return std::Span<i32>(this.data, this.size); }
@@ -94,6 +134,14 @@ int main()
   stack.name = "gear";
   stack.count = 3;
   stack.weight = 1.5;
+  Heading heading;
+  heading.value = 2;
+  Square square;
+  Pointing<Square> pointing;
+  pointing.target = &square;
+  Short name;
+  name.inPlace[0] = 'o';
+  name.inPlace[1] = 'k';
   Buffer buffer;
   buffer.data = held;
   buffer.size = 3;

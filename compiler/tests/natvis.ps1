@@ -72,6 +72,13 @@ $shown = @($force.ChildNodes | Where-Object { $_.LocalName -eq 'DisplayString' }
 if ($shown -ne 'index == 1|player |{{index={(int)(index)}}}') { "FAIL natvis: Force's text view is '$shown'"; exit 1 }
 $stack = @($types | Where-Object { $_.Name -eq 'Stack' })[0]
 if (-not $stack -or $stack.DisplayString -ne '{count} x {name,sb} ({weight,g})') { "FAIL natvis: Stack's text view is '$($stack.DisplayString)'"; exit 1 }
+function Displays([string]$name) { @(@($types | Where-Object { $_.Name -eq $name })[0].ChildNodes | Where-Object { $_.LocalName -eq 'DisplayString' } | ForEach-Object { "$($_.GetAttribute('Condition'))|$($_.InnerText)" }) -join ' ' }
+foreach ($case in @(@('Heading', '|{(Heading::Enum)(value)}'), @('Shape', '|side {(*(Square*)this).side}'), @('Pointing<Square>', '|{(Square*)(target)}'),
+                    @('Short', 'onHeap == 0|{inPlace,sb} |{heap,[length]sb}')))
+{
+  $shown = Displays $case[0]
+  if ($shown -ne $case[1]) { "FAIL natvis: $($case[0])'s debugValue rule is '$shown', not '$($case[1])'"; exit 1 }
+}
 $buffer = @($types | Where-Object { $_.Name -eq 'Buffer' })[0]
 if ($buffer.DisplayString -ne '{{length={size}}}' -or $buffer.Expand.ArrayItems.Size -ne 'size' -or $buffer.Expand.ArrayItems.ValuePointer -ne 'data')
 { "FAIL natvis: Buffer's debugValue rule is '$($buffer.DisplayString)'"; exit 1 }

@@ -2967,7 +2967,8 @@ other options (hand-written files, a format string, calling the program's code):
   folded under the instance's arguments (a constexpr local's too), operators, number casts, a const member
   function's call inlined (the object's own, 2026-11-12, or a member's); a number,
   enumeration or pointer, a class member (its view and expansion), a Span (pointer and length) or a text view
-  (a `std::String` of literals and values joined with `+`, 2026-11-12) returned. A
+  (a `std::String` of literals and values joined with `+`, 2026-11-12), an enumeration, a class pointer or
+  characters (`std::StringView`) returned; casts to enumerations and to class pointers and references. A
   body outside that is an error in every build and in the language server's check.
 
 ## Code packages (proposed 2026-10-27, decided 2026-11-04)
