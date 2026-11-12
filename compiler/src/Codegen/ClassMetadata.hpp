@@ -142,6 +142,16 @@
     // Default construction: zero, then default member initializers, then class members' and
     // bases' constructors.
     void defaultConstruct(const std::string& addr, const Ty* t, Node* at);
+    // A kpp enum's constructors (kovarex, 2026-11-11: `Direction() { this = None; }`), which make its values as a class's
+    // make its objects (GlobalScope::enumWithConstructors): whether a value of t made from args is made by one, t an enum
+    // declaring them and args no conversion (one number or enumeration value: `Dir(2)`, `Dir{other}`). No args: its
+    // default one.
+    bool enumConstructs(const Ty* t, Span<Expr*> args);
+    // The value of the kpp enum t at addr, made by the constructor args choose (none: its default one); an error when none
+    // takes them.
+    void constructEnum(const std::string& addr, const Ty* t, Span<Expr*> args, Node* at);
+    // constructEnum's value as an operand (`Dir()`, `Dir(1, 2)`, `return {};`).
+    Value constructedEnum(const Ty* t, Span<Expr*> args, Node* at);
 
     // The class a constructor initializer of class t names (`super(v)` with `using super = ...`,
     // `Chain<Tail...>(tail...)`): its name converted as a type in the class under the class's

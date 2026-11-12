@@ -659,6 +659,24 @@ enum_const_method_assigning_this_is_error, enum_method_not_const_on_a_const_valu
 member declared in the enum and defined after it (`const std::Array<Dir, 2> Dir::vertical = {...};`) is that
 member, as a class's is (2026-11-11: the definition was another variable, and the member read zeros, silently;
 spec kpp/enum_static_member_defined_after_the_enum).
+An enum may declare constructors, as a class does (kovarex, 2026-11-11, on the Direction class turned into
+an enum: "Direction class had default constructor to set the direction to none"; `Direction() { this = None; }`).
+Its default constructor makes every value of it that has no initializer, wherever kpp would make it zero: a
+local, a global, a static, a member, an array's elements, `E()`, `E{}`, `return {};`, new and new[], a
+container's new elements, the members of an aggregate its braces leave out. One with parameters makes `E(args)`,
+`E x(args);`, `E x{args}` and a member initializer's `m(args)`; `this` is the value made, as in its methods.
+`E(x)` of one number or enumeration value stays the conversion, so a constructor taking one is an error at its
+declaration, as is a member initializer (an enum has no members); a value made without an initializer of an
+enum that has constructors and no default one is an error. A conversion operator converts the value as a
+class's converts its object (`operator bool() const`, explicit unless marked implicit: a condition, `!`, `&&`,
+`||`, `?:`, a cast). Every kpp enum has the generated `const char* enumeratorName() const`: the enumerator's
+name, or null for a value that is none (`str()` gives "?"); a hand-written one replaces it. The constant
+evaluation runs an enum's constructors as a class's, `this` the value: `E()`, `E(args)`, `{}` and a member
+without an initializer are constants, and a constant global holding one is constant data, as one holding C++'s
+Direction with its constexpr default constructor was (an enum's other methods are not evaluated yet: no
+constant). Specs kpp/enum_constructors, enum_constructors_everywhere, enum_constructor_in_constant_evaluation,
+enum_conversion_operator, enum_enumerator_name, enum_without_default_constructor_made_without_initializer_is_error,
+enum_constructor_taking_one_number_is_error, enum_constructor_member_initializer_is_error.
 Done 2026-10-24: the brace block, methods with `this` as the value, `count`, `values`, the
 generated or hand-written `str()`, `switch` without `default` that must name every value (a
 compile error otherwise) and aborts on a value outside them; `nameof(x)` from 8.3. A plain C++

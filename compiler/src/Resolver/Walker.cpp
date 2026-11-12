@@ -5996,6 +5996,27 @@ auto GlobalScope::Impl::Walker::reportExplicitError(uint32_t token, const std::s
     impl.reportCheckerError(file, token, message);
 }
 
+auto GlobalScope::Impl::Walker::checkEnumConstructor(FunctionDecl* f) -> void
+{
+  // (once, at the declaration as written)
+  if (!f || !(f->flags & DF_Constructor) || probing || activeSubst || retypingElements || !file || file->isImported)
+    return;
+  Decl* owner = impl.owningClassOf(f);
+  if (!owner || owner->kind != NodeKind::EnumDecl || static_cast<EnumDecl*>(owner)->name.empty())
+    return;
+  if (!f->ctorInits.empty())
+    impl.reportCheckerError(file, f->token, "an enum's constructor has no members to initialize: it assigns `this` in its body");
+  if (!f->templateParams.empty() || f->params.empty() || !impl.takesArgumentCount(f, 1))
+    return;
+  const Ty* p = impl.declaredTypeOf(f->params[0], nullptr, 0);
+  const Ty* u = p && p->isKnown() && !types.isDependent(p) ? types.unqualified(types.stripRef(p)) : nullptr;
+  if (!u || !(u->isArithmetic() || u->kind == TyKind::Enum))
+    return;
+  std::string name(symbols.name(static_cast<EnumDecl*>(owner)->name.last().symbol));
+  impl.reportCheckerError(file, f->token, "this constructor of " + name + " takes one " + types.toString(u, &symbols) + ", which it is never called with: " +
+                                              name + "(x) of a number or an enumeration value is its conversion");
+}
+
 auto GlobalScope::Impl::Walker::checkConversionMark(FunctionDecl* f) -> void
 {
   // (once, at the declaration that has the word: its walk as written, not an instance's)
@@ -11012,6 +11033,7 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
       checkOverride(f);
       checkNotEqualOperator(f);
       checkConversionMark(f);
+      checkEnumConstructor(f);
       Decl* initialized = f->ctorInits.empty() ? nullptr : impl.owningClassOf(f);
       for (FunctionDecl::CtorInit& init : f->ctorInits)
       {

@@ -71,6 +71,13 @@ auto codegen::Emitter::enumUnderlying(Decl* d) -> const Ty*
 
 auto codegen::Emitter::storeZero(const Ty* t, const std::string& addr, Node* at) -> void
 {
+  // A kpp enum with constructors: a value kpp would make zero, its default constructor makes (kovarex, 2026-11-11: `Dir d;`,
+  // a member, an element, `new Dir`, a typed union's alternative).
+  if (t->kind == TyKind::Enum && global.enumWithConstructors(t))
+  {
+    constructEnum(addr, t, {}, at);
+    return;
+  }
   // An empty class has no state to clear, and as a base it may have no bytes of its own (laid
   // out with no size: its byte would be the next member's, or past the object).
   if (isClass(t) && structFor(t, at).empty)

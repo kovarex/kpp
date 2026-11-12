@@ -1,0 +1,14 @@
+// spec: a kpp enum has no members, so its constructor has no member initializers: it assigns `this` in its body (kovarex, 2026-11-11)
+// error: enum_constructor_member_initializer_is_error.kpp:6: error: an enum's constructor has no members to initialize: it assigns `this` in its body
+enum class Dir : u8
+{
+  { North, East, South, West }
+  Dir() : value(1) {}
+};
+
+int main()
+{
+  Dir d;
+  std::println(d);
+  return 0;
+}

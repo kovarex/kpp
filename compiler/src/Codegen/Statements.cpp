@@ -297,6 +297,8 @@ auto codegen::Emitter::staticLocal(VariableDecl* v, const Ty* t) -> void
     initializeFrom(name, t, v->init, v, scalarContext(t, v->bracedInit)); // (`static bool b = x;` copies, `static bool b{x};` does not)
   else if (isClass(t))
     defaultConstruct(name, t, v);
+  else if (global.enumWithConstructors(t))
+    constructEnum(name, t, {}, v); // `static Dir d;`: a kpp enum's default constructor (kovarex, 2026-11-11)
   else if (t->kind == TyKind::Array && needsConstruction(t, v))
     constructArray(name, t, v);
   destroyTemps(); // (the claim's cleanup with them: the initializer returned)

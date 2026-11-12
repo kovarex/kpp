@@ -789,6 +789,8 @@ auto codegen::Emitter::callValue(CallExpr* c, const std::string& sret) -> Value
           statementTemps.push_back({addr, t});
         return {addr, t, sret.empty()};
       }
+      if (enumConstructs(t, c->args))
+        return constructedEnum(t, c->args, c); // `Dir()`, `Dir(1, 2)`, `Dir(input)`: a kpp enum's constructor (kovarex, 2026-11-11)
       if (c->args.size() == 1 && isPackExpansion(c->args[0]))
       {
         // `T(forward<Args>(args)...)` with a scalar T: the pack's one element, re-typed for it.

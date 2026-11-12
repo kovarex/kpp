@@ -505,9 +505,11 @@ private:
       return false;
     switch (t->kind)
     {
-      case TyKind::Bool: case TyKind::Char: case TyKind::Int: case TyKind::Float: case TyKind::Enum: case TyKind::Pointer:
-      case TyKind::Nullptr: case TyKind::MemberPointer:
+      case TyKind::Bool: case TyKind::Char: case TyKind::Int: case TyKind::Float: case TyKind::Pointer: case TyKind::Nullptr:
+      case TyKind::MemberPointer:
         return true;
+      case TyKind::Enum:
+        return !this->w.impl.enumWithConstructors(t); // (one with constructors: its default one makes it, kovarex 2026-11-11)
       default:
         return false;
     }

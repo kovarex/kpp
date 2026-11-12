@@ -302,7 +302,7 @@ auto codegen::Emitter::useFunctionOnce(FunctionDecl* f, const TemplateArgs& args
       fprintf(stderr, "declare %s: def %s, def flags %x, def body %d, f flags %x, f body %d\n", name.c_str(), def == f ? "self" : "other", def->flags,
               def->body != nullptr, f->flags, f->body != nullptr);
   }
-  if (f->builtin == BUILTIN_EnumStr)
+  if (f->builtin == BUILTIN_EnumStr || f->builtin == BUILTIN_EnumEnumeratorName)
   {
     emitEnumStr(f, name, classTy);
     return name;
@@ -410,7 +410,8 @@ auto codegen::Emitter::emitEnumStr(FunctionDecl* f, const std::string& name, con
     }
   shared += "$" + name.substr(1) + " = comdat any\n"
             "define linkonce_odr ptr " + name + "(ptr %this) comdat {\nentry:\n  %v = load " + k + ", ptr %this\n  switch " + k +
-            " %v, label %other [\n" + cases + "  ]\n" + blocks + "other:\n  ret ptr " + cStringConstant("?") + "\n}\n";
+            " %v, label %other [\n" + cases + "  ]\n" + blocks + "other:\n  ret ptr " +
+            (f->builtin == BUILTIN_EnumEnumeratorName ? std::string("null") : cStringConstant("?")) + "\n}\n"; // (enumeratorName(): null for a value that is none)
   emittingShared = false;
 }
 
@@ -1487,6 +1488,8 @@ auto codegen::Emitter::braceScalar(BraceInitExpr* list, const Ty* t, Node* at) -
   t = types.unqualified(types.stripRef(t));
   if (!t->isKnown() || isAggregate(t))
     unsupported(at, "a brace list as a value of " + types.toString(t, &symbols));
+  if (list->designators.empty() && enumConstructs(t, list->args))
+    return constructedEnum(t, list->args, at); // `return {};`, `f({})`, `d = {}`: a kpp enum's constructor (kovarex, 2026-11-11)
   if (list->args.empty())
   {
     if (t->kind == TyKind::Pointer || t->kind == TyKind::Nullptr)

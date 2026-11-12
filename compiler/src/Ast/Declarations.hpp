@@ -33,7 +33,7 @@ constexpr uint16_t ATTR_ForeignVtable = 2048; // [[foreign_vtable]] on a class: 
 constexpr uint16_t ATTR_NoReturn = 4096; // [[noreturn]] on a function: it never returns (it throws, aborts or exits); a call of it ends a path (Walker::checkFunctionEnd)
 constexpr uint16_t ATTR_MaybeUnused = 8192; // [[maybe_unused]] on a variable, parameter, data member or function: nothing need use it (Walker::checkUnusedNames)
 constexpr uint8_t ATTR_MemberSpecialization = 128; // `template<> R UpdateBuffer::f()` through an alias of a class template's instance (finishIndex)
-constexpr uint8_t BUILTIN_EnumCount = 1, BUILTIN_EnumValues = 2, BUILTIN_EnumStr = 3, BUILTIN_EnumFromStr = 4; // Decl::builtin: generated enum members
+constexpr uint8_t BUILTIN_EnumCount = 1, BUILTIN_EnumValues = 2, BUILTIN_EnumStr = 3, BUILTIN_EnumFromStr = 4, BUILTIN_EnumEnumeratorName = 5; // Decl::builtin: generated enum members
 
 struct Decl : Node
 {

@@ -1,0 +1,13 @@
+// spec: a kpp enum's constructor taking one number or enumeration value would never run, as `E(x)` of one is the enum's conversion: an error at its declaration (kovarex, 2026-11-11), never a call that silently converts instead
+// error: enum_constructor_taking_one_number_is_error.kpp:6: error: this constructor of Dir takes one int32, which it is never called with: Dir(x) of a number or an enumeration value is its conversion
+enum class Dir : u8
+{
+  { North, East, South, West }
+  Dir(int raw) { this = Dir(raw & 3); }
+};
+
+int main()
+{
+  std::println(Dir(5));
+  return 0;
+}

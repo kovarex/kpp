@@ -1517,6 +1517,8 @@ auto GlobalScope::Impl::defaultConstructible(const Ty* t, int depth) -> std::opt
     u = types.unqualified(u->inner);
   if (u->kind == TyKind::Void || u->kind == TyKind::Function)
     return false;
+  if (enumWithConstructors(u))
+    return chooseConstructor(u, {}, nullptr, nullptr) != nullptr; // a kpp enum's: one of its constructors takes none (kovarex, 2026-11-11)
   if (u->kind == TyKind::Lambda)
   {
     // [expr.prim.lambda.closure] 13: a defaulted default constructor without a lambda-capture, none
@@ -1625,6 +1627,8 @@ auto GlobalScope::Impl::triviallyDefaultConstructible(const Ty* t, int depth) ->
     return false; // `int[]`: no object of it, as the libraries answer
   if (closureWithCaptures(t))
     return false; // a closure of a lambda-capture has no default constructor
+  if (enumWithConstructors(t))
+    return false; // a kpp enum whose constructors make its values (kovarex, 2026-11-11)
   TrivialSubject s = trivialSubject(t);
   if (!s.cls)
     return s.answer;
@@ -1678,6 +1682,12 @@ auto GlobalScope::Impl::nothrowDefaultConstructionUncached(const Ty* t) -> std::
   const Ty* u = types.unqualified(types.stripRef(t));
   while (u->kind == TyKind::Array)
     u = types.unqualified(u->inner);
+  if (enumWithConstructors(u))
+  {
+    // A kpp enum's default constructor (kovarex, 2026-11-11): as its noexcept says.
+    FunctionDecl* f = chooseConstructor(u, {}, nullptr, nullptr);
+    return f && (f->flags & DF_Noexcept) && !f->noexceptCondition;
+  }
   if (u->kind != TyKind::Class)
     return true; // a scalar, a pointer, an enum, a closure without captures: nothing runs
   ClassDecl* def = classDefinition(u);
@@ -2147,7 +2157,8 @@ auto GlobalScope::Impl::traitObjectValue(const Ty* cls, int depth) -> std::optio
   pushEnclosingTemplateParams(v, own);
   TypeContext vctx{lexicalScopeOf(v), &own, sub.pairs.empty() ? nullptr : &sub, def->file ? def->file->tokens : nullptr,
                    def->file ? def->file->text : std::string_view()};
-  return constAsDeclared(constInitValue(def->init, vctx, depth + 1), v->type ? convertType(v->type, vctx, depth + 1) : nullptr);
+  const Ty* declared = v->type ? convertType(v->type, vctx, depth + 1) : nullptr;
+  return constAsDeclared(constInitValue(def->init, vctx, depth + 1, declared), declared);
 }
 
 auto GlobalScope::Impl::namesTupleBinding(const Expr* e) -> bool

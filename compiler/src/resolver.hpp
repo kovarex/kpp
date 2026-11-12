@@ -711,6 +711,11 @@ public:
   // constructor (under explicit by default: none not marked implicit) makes.
   FunctionDecl* chooseConstructor(const Ty* classType, const std::vector<const Ty*>& argTypes,
                                   const std::vector<bool>* nullConstants = nullptr, const Ty** inheritedFrom = nullptr, bool implicitOnly = false);
+  // A kpp enum that declares constructors (kovarex, 2026-11-11: `Direction() { this = None; }`): its definition; null for
+  // any other type, and for an enum declaring none. Its values are made by them as a class's objects are: one without an
+  // initializer (a local, a member, an element, `E()`, `E{}`) by its default constructor; `E(x)` of one number or
+  // enumeration value stays the conversion. chooseConstructor chooses among them.
+  EnumDecl* enumWithConstructors(const Ty* t);
   // Which conversion operator of class `from` (own or a base's, the class first, then each base
   // level) a conversion runs (design.md 24: one rule for codegen, the interpreter and the checker), or
   // null. ToType: to `to` (implicit, or an explicit cast with explicitCast): the operator to `to`

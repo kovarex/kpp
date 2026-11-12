@@ -862,6 +862,9 @@
     // operator's plain `explicit` ("remove `explicit`") and `explicit(cond)` ("write `implicit(...)`, not
     // `explicit(cond)`", the condition turned round), at the word.
     void checkConversionMark(FunctionDecl* f);
+    // A kpp enum's constructor (kovarex, 2026-11-11): one taking a single number or enumeration value, which would never
+    // run (`E(x)` of one is the enum's conversion), and one with member initializers (an enum has no members) are errors.
+    void checkEnumConstructor(FunctionDecl* f);
     // A function argument's outermost braces that name no type, of a call of f (fnTy: its type): `draw({1, 0, 0})`,
     // "write `Color{1, 0, 0}`, not `{1, 0, 0}`", whatever they reach (a constructor, an aggregate, a container,
     // `{}`); not for an InitializerList parameter, nor one a template parameter would be deduced from (no C++

@@ -59,6 +59,9 @@
   // The base classes (as instances, under p's arguments) whose constructors class def of type p
   // inherits with `using Vector2::Vector2;`, and those they inherit in turn.
   void inheritedConstructorSources(ClassDecl* def, const Ty* p, std::vector<const Ty*>& out, int depth, int level = 0);
+  // A kpp enum that declares constructors (kovarex, 2026-11-11: `Direction() { this = None; }`): its definition; null for
+  // any other type, and for an enum declaring none (GlobalScope::enumWithConstructors).
+  EnumDecl* enumWithConstructors(const Ty* t);
   // The one rule for which constructor a construction runs (design.md 24; GlobalScope::chooseConstructor).
   FunctionDecl* chooseConstructor(const Ty* classType, const std::vector<const Ty*>& argTypes, const std::vector<bool>* nullConstants,
                                   const Ty** inheritedFrom, bool implicitOnly = false, bool* ambiguous = nullptr);

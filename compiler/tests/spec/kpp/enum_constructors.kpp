@@ -1,0 +1,40 @@
+// spec: a kpp enum may declare constructors, as a class does (kovarex, 2026-11-11): its default constructor makes a value declared without an initializer (a local, a global, a member, an array's elements, `E()`, a container's new elements, a member of a constant global), one with parameters makes `E(args)`, `E x(args);` and a member initializer's `m(args)`; `this` is the value being made, as in its methods. `E(x)` of one number stays the conversion (until then a constructor in an enum was a parse error, and a value declared without an initializer was zero)
+enum class Dir : u8
+{
+  { North, East, South, West, None }
+  Dir() { this = None; }
+  Dir(int a, int b) { this = Dir((a + b) & 3); }
+};
+
+class Holder
+{
+public:
+  Dir facing;
+  Dir other = Dir::East;
+};
+
+class Built
+{
+public:
+  Built(int a) : made(a, 1) {}
+  Dir made;
+};
+
+Dir global;
+const Holder constantHolder;
+
+int main()
+{
+  Dir local;
+  Dir made(1, 2);
+  Dir cast = Dir(2);
+  Dir value = Dir();
+  Dir row[3];
+  Holder holder;
+  Built built(2);
+  std::Vector<Dir> grown;
+  grown.resize(2);
+  std::println(local, " ", made, " ", cast, " ", value, " ", row[0], " ", row[2], " ", holder.facing, " ", holder.other, " ", built.made, " ", grown[1], " ",
+               global, " ", constantHolder.facing);
+  return 0;
+}

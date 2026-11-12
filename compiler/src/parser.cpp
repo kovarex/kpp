@@ -54,6 +54,7 @@ namespace
       kwCount = symbols.intern("count");
       kwValues = symbols.intern("values");
       kwStr = symbols.intern("str");
+      kwEnumeratorName = symbols.intern("enumeratorName");
       kwTypes = symbols.intern("types");
       kwFromStr = symbols.intern("fromStr");
       kwOptional = symbols.intern("Optional");
@@ -1550,12 +1551,13 @@ namespace
     // Parses one declaration (possibly producing several Decl nodes, e.g. `int a, b;`) and pushes
     // the results onto scratch.
     // Generated members of a kpp enum: `static const int count`, `static const E values[]`,
-    // `const char* str() const` and `static Optional<E> fromStr(const char* text)` (unless written
-    // by hand). Their bodies and initializers come from the compiler (Decl::builtin), not from the
-    // AST.
+    // `const char* str() const`, `const char* enumeratorName() const` (the enumerator's name, null for a
+    // value that is none: kovarex, 2026-11-11) and `static Optional<E> fromStr(const char* text)` (unless
+    // written by hand). Their bodies and initializers come from the compiler (Decl::builtin), not from
+    // the AST.
     void addEnumBuiltins(EnumDecl* e, uint32_t start, size_t mark)
     {
-      bool hasStr = false, hasFromStr = false;
+      bool hasStr = false, hasFromStr = false, hasEnumeratorName = false;
       for (size_t i = mark; i < scratch.size(); ++i)
       {
         Node* n = scratch[i];
@@ -1566,6 +1568,8 @@ namespace
             hasStr = true;
           if (f->name.parts.size() == 1 && f->name.parts[0].symbol == kwFromStr)
             hasFromStr = true;
+          if (f->name.parts.size() == 1 && f->name.parts[0].symbol == kwEnumeratorName)
+            hasEnumeratorName = true;
         }
       }
       NamePart part;
@@ -1607,6 +1611,22 @@ namespace
         part.symbol = kwStr;
         str->name.parts = makeSpanOf(std::vector<NamePart>{part});
         pushDecl(str);
+      }
+      if (!hasEnumeratorName)
+      {
+        FunctionDecl* name = decl<FunctionDecl>(start);
+        name->flags |= DF_Const;
+        name->builtin = BUILTIN_EnumEnumeratorName;
+        BuiltinType* ch = node<BuiltinType>(start);
+        ch->keyword = Kw::char_;
+        ConstType* constChar = node<ConstType>(start);
+        constChar->inner = ch;
+        PointerType* pointer = node<PointerType>(start);
+        pointer->pointee = constChar;
+        name->returnType = pointer;
+        part.symbol = kwEnumeratorName;
+        name->name.parts = makeSpanOf(std::vector<NamePart>{part});
+        pushDecl(name);
       }
       if (!hasFromStr)
       {
@@ -2589,6 +2609,10 @@ namespace
       if (name.parts.size() >= 2 && name.parts[name.parts.size() - 2].symbol == last.symbol)
         return true;
       if (scope == Scope::Class && name.parts.size() == 1 && last.symbol == currentClassName)
+        return true;
+      // A kpp enum's constructor (kovarex, 2026-11-11): `Direction() { this = None; }` in its body.
+      if (scope == Scope::Enum && name.parts.size() == 1 && currentParent && currentParent->kind == NodeKind::EnumDecl &&
+          !static_cast<EnumDecl*>(currentParent)->name.empty() && last.symbol == static_cast<EnumDecl*>(currentParent)->name.last().symbol)
         return true;
       return false;
     }
@@ -7535,7 +7559,8 @@ namespace
     uint32_t testCount = 0;   // Tests parsed so far in this file.
     uint32_t kwThisType;
     uint32_t kwImplicit, kwFallthrough, kwBothConst, kwClassConst, kwSuper, kwAccumulate, kwImport, kwAssert, kwReleaseAssert, kwCaller,
-             kwConditional, kwUnderscore, kwConfig, kwNameof, kwCount, kwValues, kwStr, kwTypes, kwFromStr, kwOptional, kwUniquePtr, kwStd, kwText, kwTag, kwTagField,
+             kwConditional, kwUnderscore, kwConfig, kwNameof, kwCount, kwValues, kwStr, kwEnumeratorName, kwTypes, kwFromStr, kwOptional, kwUniquePtr, kwStd, kwText, kwTag,
+             kwTagField,
              kwTagMethod, kwTypeMember, kwSuite;
     uint32_t lambdaCount = 0;        // Lambdas parsed so far in this file outside the bodies of functions at file or class level.
     uint32_t numberedTypes = 0;      // Classes and enumerations given a number so far in this file outside those (ClassDecl::number).

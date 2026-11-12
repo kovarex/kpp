@@ -349,6 +349,8 @@ auto codegen::Emitter::needsConstruction(const Ty* t, Node* at, int depth) -> bo
   t = types.stripRef(t);
   if (t->kind == TyKind::Array)
     return needsConstruction(t->inner, at, depth);
+  if (t->kind == TyKind::Enum)
+    return global.enumWithConstructors(t) != nullptr; // a kpp enum's default constructor makes it (kovarex, 2026-11-11)
   if (!isClass(t) || !t->decl || depth > maxClassNesting)
     return false;
   if (hasUserConstructors(classDef(t->decl, at)))
@@ -693,6 +695,44 @@ auto codegen::Emitter::defaultConstruct(const std::string& addr, const Ty* t, No
   }
   storeZero(t, addr, at);
   initializeMembers(addr, t, {}, at);
+}
+
+auto codegen::Emitter::enumConstructs(const Ty* t, Span<Expr*> args) -> bool
+{
+  if (!t || !global.enumWithConstructors(t))
+    return false;
+  std::vector<const Ty*> argTypes = argTypesOf(args);
+  if (argTypes.size() != 1)
+    return true;
+  const Ty* a = argTypes[0] ? types.unqualified(types.stripRef(argTypes[0])) : nullptr;
+  return !a || !(a->isArithmetic() || a->kind == TyKind::Enum);
+}
+
+auto codegen::Emitter::constructEnum(const std::string& addr, const Ty* t, Span<Expr*> args, Node* at) -> void
+{
+  const Ty* e = types.unqualified(types.stripRef(t));
+  std::vector<const Ty*> argTypes = argTypesOf(args);
+  FunctionDecl* ctor = global.chooseConstructor(e, argTypes);
+  if (!ctor)
+  {
+    std::string list;
+    for (const Ty* a : argTypes)
+      list += (list.empty() ? "" : ", ") + (a ? types.toString(a, &symbols) : std::string("?"));
+    fail(at, argTypes.empty() ? "a value of " + types.toString(e, &symbols) + " is made without an initializer, and no constructor of it takes none"
+                              : "no constructor of " + types.toString(e, &symbols) + " takes (" + list + ")");
+  }
+  const Ty* instance = enumInstance(e);
+  callFunction(ctor, instance ? global.classArgsOf(instance) : TemplateArgs{}, instance, addr, "", args, at);
+}
+
+auto codegen::Emitter::constructedEnum(const Ty* t, Span<Expr*> args, Node* at) -> Value
+{
+  const Ty* e = types.unqualified(types.stripRef(t));
+  std::string slot = newObjectSlot(e, at);
+  constructEnum(slot, e, args, at);
+  std::string v = newTemp();
+  fn += "  " + v + " = load " + llType(e, at) + ", ptr " + slot + "\n";
+  return {v, e};
 }
 
 auto codegen::Emitter::initializerClass(const Ty* t, const FunctionDecl::CtorInit& init, Node* at, const TemplateArgs* args) -> const Ty*
@@ -1046,6 +1086,8 @@ auto codegen::Emitter::initializeMembers(const std::string& addr, const Ty* t, S
             const Ty* ft = unionMemberType(t, d, at);
             if (isClass(ft))
               constructInto(addr, ft, init->args, at);
+            else if (enumConstructs(ft, init->args))
+              constructEnum(addr, ft, init->args, at); // a kpp enum's constructor (kovarex, 2026-11-11)
             else if (init->args.empty())
               storeZero(ft, addr, at); // `: raw()`: value-initialized
             else if (init->args.size() == 1)
@@ -1117,6 +1159,8 @@ auto codegen::Emitter::initializeMembers(const std::string& addr, const Ty* t, S
     {
       if (isClass(ft))
         constructInto(fieldAddr, ft, init->args, at);
+      else if (enumConstructs(ft, init->args))
+        constructEnum(fieldAddr, ft, init->args, at); // `made(a, 1)`, `made()`: a kpp enum's constructor (kovarex, 2026-11-11)
       else if (isLambda(ft) && init->args.size() == 1)
         withSingleElement(init->args[0], at, [&](Expr* one) { initializeFrom(fieldAddr, ft, one, at); }); // `f(f)`: the closure's bytes, not its address
       else if (size_t values = expandedCount(init->args, at); values == 0)
@@ -1225,6 +1269,8 @@ auto codegen::Emitter::initializeAnonymous(const std::string& addr, const Ty* t,
   }
   if (isClass(mt))
     constructInto(addr, mt, init->args, at);
+  else if (enumConstructs(mt, init->args))
+    constructEnum(addr, mt, init->args, at); // a kpp enum's constructor (kovarex, 2026-11-11)
   else if (size_t values = expandedCount(init->args, at); values == 0)
     storeZero(mt, addr, at);
   else if (values == 1)
@@ -1906,6 +1952,8 @@ auto codegen::Emitter::initializeAggregateMember(const std::string& addr, const 
     withMemberInitializer(addr, t, v, [&](Expr* value) { initializeFrom(fieldAddr, ft, value, v, scalarContext(ft, v->bracedInit)); });
   else if (isClass(ft))
     defaultConstruct(fieldAddr, ft, at);
+  else if (global.enumWithConstructors(ft))
+    constructEnum(fieldAddr, ft, {}, at); // a kpp enum's default constructor (kovarex, 2026-11-11)
   else if (ft->kind == TyKind::Array && (needsDestruction(ft, at) || needsConstruction(ft, at))) // elements with constructors or default member initializers
     constructArray(fieldAddr, ft, at);
   if (!reference && !info.isUnion)
@@ -3365,6 +3413,11 @@ auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr
       // (initializeArrayElements); the rest of a scalar array zero.
       storeZero(t, addr, at);
       initializeArrayElements(addr, t, bi->args, at);
+      return;
+    }
+    if (bi->designators.empty() && enumConstructs(t, bi->args))
+    {
+      constructEnum(addr, t, bi->args, at); // `Dir d{1, 2};`: a kpp enum's constructor (kovarex, 2026-11-11)
       return;
     }
     if (bi->args.size() != 1)

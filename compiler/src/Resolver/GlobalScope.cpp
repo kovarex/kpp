@@ -1969,6 +1969,11 @@ FunctionDecl* GlobalScope::chooseConstructor(const Ty* classType, const std::vec
   return impl->chooseConstructor(classType, argTypes, nullConstants, inheritedFrom, implicitOnly);
 }
 
+EnumDecl* GlobalScope::enumWithConstructors(const Ty* t)
+{
+  return impl->enumWithConstructors(t);
+}
+
 FunctionDecl* GlobalScope::chooseConversion(const Ty* from, const Ty* to, ConversionKind kind, bool explicitCast, const Ty** foundIn, TemplateArgs* opArgs,
                                             bool contextualBool)
 {

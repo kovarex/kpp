@@ -1,0 +1,14 @@
+// spec: a kpp enum that declares constructors but no default one makes no value without an initializer, as a class with constructors and no default one makes no object: an error, never the zero (kovarex, 2026-11-11)
+// error: enum_without_default_constructor_made_without_initializer_is_error.kpp:11: error: a value of Dir is made without an initializer, and no constructor of it takes none
+enum class Dir : u8
+{
+  { North, East, South, West }
+  Dir(int a, int b) { this = Dir((a + b) & 3); }
+};
+
+int main()
+{
+  Dir d;
+  std::println(d, Dir(1, 2));
+  return 0;
+}

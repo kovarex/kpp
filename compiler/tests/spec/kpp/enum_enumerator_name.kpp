@@ -1,0 +1,19 @@
+// spec: every kpp enum has the generated method enumeratorName(), the name of the enumerator the value is, or null for a value that is none (kovarex, 2026-11-11: a method of the value, not std::kppEnumeratorName(this)); a hand-written one replaces it, as str()'s does
+enum class Dir : u8
+{
+  { North, East, South, West, None }
+  const char* str() const
+  {
+    const char* name = this == None ? nullptr : this.enumeratorName();
+    return name ? name : "";
+  }
+};
+
+int main()
+{
+  Dir d = Dir::East;
+  Dir none = Dir::None;
+  Dir other = Dir(9);
+  std::println(std::StringView(d.enumeratorName()), " ", std::StringView(none.enumeratorName()), " ", other.enumeratorName() == nullptr, " [", std::StringView(none.str()), "]");
+  return 0;
+}

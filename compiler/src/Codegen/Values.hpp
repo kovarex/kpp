@@ -24,6 +24,10 @@
     // A class's (non-explicit) conversion operator to an enum or an integer, own or inherited, or
     // null: what a switch on the object switches on.
     FunctionDecl* integralConversionOperator(const Ty* from, Node* at, const Ty** foundIn = nullptr);
+    // A kpp enum's conversion operator to `to` (kovarex, 2026-11-11: as a class's): an explicit one (kpp's default) where a
+    // condition, an operand of ! && || ?:, a direct-initialization or a cast converts (contextual), an implicit one anywhere;
+    // null when the enum declares none.
+    FunctionDecl* enumConversionOperator(const Ty* from, const Ty* to, bool contextual);
 
     // The conversion operator the one rule chooses (GlobalScope::chooseConversion, design.md 24), the
     // class declaring it canonical.

@@ -1,0 +1,18 @@
+// spec: a kpp enum's conversion operator converts its value as a class's does (kovarex, 2026-11-11): `operator bool()`, explicit as kpp's conversion operators are unless marked implicit, is the value's truth in a condition, under `!`, `&&`, `||` and `?:` (until then a compile error: an enum class converts to bool only by a cast)
+enum class Dir : u8
+{
+  { North, East, South, West, None }
+  operator bool() const { return this != None; }
+};
+
+int main()
+{
+  Dir east = Dir::East;
+  Dir none = Dir::None;
+  if (east)
+    std::println("east is a direction");
+  if (!none)
+    std::println("none is none");
+  std::println(east && !none, " ", none || east, " ", none ? 1 : 2);
+  return 0;
+}

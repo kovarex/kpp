@@ -1,0 +1,29 @@
+// spec: the constant evaluation runs a kpp enum's constructor, as it runs a class's (kovarex, 2026-11-11): `E()`, `E(args)`, `{}` and a value without an initializer (a member of a constant object) are constants, so a constant global holding one is constant data, as C++'s with a constexpr constructor is (until then no constant: a constexpr one was an error, another built at startup)
+enum class Dir : u8
+{
+  { North, East, South, West, None }
+  Dir() { this = None; }
+  Dir(int a, int b) { this = Dir((a + b) & 3); }
+};
+
+class Holder
+{
+public:
+  Dir facing;
+  Dir other = Dir(2, 3);
+};
+
+constexpr Dir constantDefault = Dir();
+constexpr Dir constantMade = Dir(1, 2);
+constexpr Dir constantBraced = {};
+constexpr Holder constantHolder;
+static_assert(constantDefault == Dir::None);
+static_assert(constantMade == Dir::West);
+static_assert(constantBraced == Dir::None);
+static_assert(constantHolder.facing == Dir::None && constantHolder.other == Dir::East);
+
+int main()
+{
+  std::println(constantDefault, " ", constantMade, " ", constantBraced, " ", constantHolder.facing, " ", constantHolder.other);
+  return 0;
+}

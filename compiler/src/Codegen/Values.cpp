@@ -59,6 +59,27 @@ auto codegen::Emitter::integralConversionOperator(const Ty* from, Node* at, cons
   return conversionOf(from, nullptr, GlobalScope::ConversionKind::ToIntegral, false, at, foundIn, nullptr);
 }
 
+auto codegen::Emitter::enumConversionOperator(const Ty* from, const Ty* to, bool contextual) -> FunctionDecl*
+{
+  const Ty* f = from ? types.unqualified(types.stripRef(from)) : nullptr;
+  const Ty* want = to ? types.unqualified(types.stripRef(to)) : nullptr;
+  if (!f || !want || f->kind != TyKind::Enum || !f->decl || f->decl->kind != NodeKind::EnumDecl)
+    return nullptr;
+  Decl* defined = global.definitionOf(f->decl);
+  auto* e = static_cast<EnumDecl*>(defined && defined->kind == NodeKind::EnumDecl ? defined : f->decl);
+  if (!e->isKpp)
+    return nullptr;
+  for (Decl* m : e->members)
+  {
+    if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Conversion) || (!contextual && !(m->flags & DF_Implicit)))
+      continue;
+    const Ty* ft = declType(m);
+    if (ft && ft->kind == TyKind::Function && ft->inner && types.unqualified(types.stripRef(ft->inner)) == want)
+      return static_cast<FunctionDecl*>(m);
+  }
+  return nullptr;
+}
+
 auto codegen::Emitter::callConversion(FunctionDecl* op, const Ty* objectTy, const Ty* owner, const std::string& addr, Node* at, const TemplateArgs* opArgs,
                                       bool keepReference, const std::string& sret) -> Value
 {
@@ -119,6 +140,18 @@ auto codegen::Emitter::convert(Value v, const Ty* to, Node* at, bool explicitCas
   // A value whose type the checker did not find is no pointer to compare with null or pass on.
   if (!from->isKnown())
     unsupported(at, "a conversion from a value of unknown type to " + types.toString(to, &symbols));
+  // A kpp enum's own conversion operator (`operator bool() const`, kovarex 2026-11-11), called on the value as a class's is on
+  // its object: the value in a slot of its own, `this` there.
+  if (from->kind == TyKind::Enum)
+    if (FunctionDecl* op = enumConversionOperator(from, to, explicitCast || context != ConversionContext::Copy))
+    {
+      const Ty* et = types.unqualified(from);
+      std::string slot = newObjectSlot(et, at);
+      fn += "  store " + llType(et, at) + " " + v.text + ", ptr " + slot + "\n";
+      const Ty* instance = enumInstance(et);
+      Value result = callFunction(op, instance ? global.classArgsOf(instance) : TemplateArgs{}, instance, slot, "", {}, at);
+      return convert(callRvalue(result, at), to, at);
+    }
   // C++'s enumeration conversions ([conv.prom] 3, [expr.static.cast] 10): nothing converts to an
   // enumeration without a cast (an integer, a bool, a floating value, another enumeration), and a
   // scoped one (enum class) converts to nothing; an unscoped one to a number is implicit. Until
@@ -1199,6 +1232,8 @@ auto codegen::Emitter::emitGlobalConstructor(VariableDecl* v, const std::string&
       initializeFrom(name, t, init, at, scalarContext(t, def->bracedInit)); // (`bool g = x;` copies, `bool g{x};` does not)
     else if (builds && isClass(t))
       defaultConstruct(name, t, at);
+    else if (builds && global.enumWithConstructors(t))
+      constructEnum(name, t, {}, at); // `Dir d;` of static storage: a kpp enum's default constructor (kovarex, 2026-11-11)
     else if (builds && t->kind == TyKind::Array)
       constructArray(name, t, at); // `static Style styles[3];`
     destroyTemps();

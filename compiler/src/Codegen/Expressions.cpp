@@ -911,6 +911,10 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
       }
       if (t->kind == TyKind::Array) // (arrayTemporary makes one for a reference to an array, an aggregate's reference member and a pointer parameter: isArrayBraces)
         unsupported(e, "a temporary array (`" + types.toString(t, &symbols) + "{...}`) other than for a reference to an array or a pointer parameter");
+      // A kpp enum's constructor (kovarex, 2026-11-11): `Dir()`, `Dir{}`, `Dir(1, 2)`, `Dir d(input);`; `Dir(2)` stays its conversion.
+      if (Span<Expr*> values = c->braced && c->args.size() == 1 && c->args[0]->kind == NodeKind::BraceInitExpr ? static_cast<BraceInitExpr*>(c->args[0])->args : c->args;
+          enumConstructs(t, values))
+        return constructedEnum(t, values, e);
       // `value_type{forward<Args>(args)...}` with a scalar value_type: as `T(...)` below.
       Span<Expr*> args = c->args;
       if (args.size() == 1 && args[0]->kind == NodeKind::BraceInitExpr && !static_cast<BraceInitExpr*>(args[0])->text && static_cast<BraceInitExpr*>(args[0])->args.size() == 1 &&
@@ -1232,7 +1236,10 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
         emitCall(r + " = ", "ptr @malloc(i64 " + std::to_string(sizeOf(t, e)) + ")", false);
         checkAllocation(r, e);
       }
-      if (isClass(t) && (n->placement.empty() || n->deallocator))
+      // (a kpp enum's constructor makes its value as a class's makes an object: kovarex, 2026-11-11)
+      Span<Expr*> enumValues = n->args.size() == 1 && n->args[0]->kind == NodeKind::BraceInitExpr ? static_cast<BraceInitExpr*>(n->args[0])->args : n->args;
+      bool enumConstructor = !isClass(t) && enumConstructs(t, enumValues);
+      if ((isClass(t) || enumConstructor) && (n->placement.empty() || n->deallocator))
       {
         // A constructor that throws gives the memory back, as C++'s new does: freed while the
         // constructor runs if an exception leaves it, and only then; by the class's operator
@@ -1247,11 +1254,16 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
           allocation.freeCall = globalFreeCall(r, std::to_string(sizeOf(t, e)), false, e);
         statementTemps.push_back(allocation);
         size_t at = statementTemps.size() - 1;
-        constructInto(r, t, n->args, e);
+        if (enumConstructor)
+          constructEnum(r, t, enumValues, e);
+        else
+          constructInto(r, t, n->args, e);
         statementTemps.erase(statementTemps.begin() + at);
       }
       else if (isClass(t))
         constructInto(r, t, n->args, e);
+      else if (enumConstructor)
+        constructEnum(r, t, enumValues, e); // `new (p) Dir(args...)`
       else if (isLambda(t) && n->args.size() == 1)
         initializeFrom(r, t, n->args[0], e); // `new F(callable)` with F a lambda type: the closure, copied
       else if (n->args.size() == 1 && isPackExpansion(n->args[0]))
@@ -1838,7 +1850,7 @@ auto codegen::Emitter::arrayNew(NewExpr* n, const Ty* t, Expr* sizeExpr) -> std:
     elements.countSlot = builtSlot;
     statementTemps.push_back(elements);
   }
-  bool scalar = !isClass(t) && t->kind != TyKind::Array;
+  bool scalar = !isClass(t) && t->kind != TyKind::Array && !global.enumWithConstructors(t); // (a kpp enum's elements: its default constructor)
   if (scalar && valueInit)
   {
     if (declaredNames.claim("@llvm.memset.p0.i64"))
@@ -1878,6 +1890,8 @@ auto codegen::Emitter::arrayNew(NewExpr* n, const Ty* t, Expr* sizeExpr) -> std:
     fn += "  " + element + " = getelementptr inbounds " + llType(t, n) + ", ptr " + base + ", i64 " + index + "\n";
     if (isClass(t))
       defaultConstruct(element, t, n);
+    else if (global.enumWithConstructors(t))
+      constructEnum(element, t, {}, n);
     else
       constructArray(element, t, n);
     std::string next = newTemp();

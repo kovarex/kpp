@@ -406,8 +406,11 @@ auto codegen::Emitter::emitFunction(FunctionDecl* original, const TemplateArgs& 
       currentClassTy = nullptr;
       return;
     }
-    // (a constructor's function-try-block runs them inside its try: tryBody)
-    if ((f->flags & DF_Constructor) && !constructorTryOf(f))
+    // (a constructor's function-try-block runs them inside its try: tryBody; a kpp enum's constructor has no members to
+    // initialize, kovarex 2026-11-11)
+    if ((f->flags & DF_Constructor) && !isClass(currentClassTy) && !f->ctorInits.empty() && !global.checkerErrorWithin(f->file, f->token, f->token))
+      fail(f, "an enum's constructor has no members to initialize: it assigns `this` in its body");
+    if ((f->flags & DF_Constructor) && isClass(currentClassTy) && !constructorTryOf(f))
     {
       std::string held = holdTestCall(f);
       initializeMembers(thisPointer(f), currentClassTy, f->ctorInits, f, true);

@@ -394,7 +394,8 @@ auto codegen::Emitter::tryBody(TryStmt* t) -> void
   // A constructor's function-try-block: its member initializers inside the try, in a scope of
   // their own, so that an exception destroys the subobjects made before the handler runs.
   pushScope();
-  initializeMembers(thisPointer(currentFunction), currentClassTy, currentFunction->ctorInits, currentFunction, true);
+  if (isClass(currentClassTy)) // (a kpp enum's constructor has no members)
+    initializeMembers(thisPointer(currentFunction), currentClassTy, currentFunction->ctorInits, currentFunction, true);
   destroyTemps();
   statement(t->body);
   popScope();

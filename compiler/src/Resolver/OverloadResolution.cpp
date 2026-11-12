@@ -172,6 +172,26 @@ auto GlobalScope::Impl::classScopeOf(const Ty* t) -> Scope*
   return scopeOfEntry(e, 0);
 }
 
+auto GlobalScope::Impl::enumWithConstructors(const Ty* t) -> EnumDecl*
+{
+  t = t ? types.unqualified(types.stripRef(t)) : nullptr;
+  if (!t || t->kind != TyKind::Enum || !t->decl)
+    return nullptr;
+  Decl* def = t->decl;
+  if (!def->ownScope)
+  {
+    Entry e{def, nullptr};
+    if (Scope* s = scopeOfEntry(e, 0))
+      def = s->owner;
+  }
+  if (!def || def->kind != NodeKind::EnumDecl || !static_cast<EnumDecl*>(def)->isKpp)
+    return nullptr;
+  for (Decl* m : static_cast<EnumDecl*>(def)->members)
+    if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor))
+      return static_cast<EnumDecl*>(def);
+  return nullptr;
+}
+
 // design.md 24: the one rule for which constructor a construction runs, for codegen, the interpreter
 // and the checker (GlobalScope::chooseConstructor says what it does). implicitOnly: an implicit
 // conversion, which no explicit constructor makes (an explicit(cond) template's cond is decided by
@@ -184,6 +204,24 @@ auto GlobalScope::Impl::chooseConstructor(const Ty* classType, const std::vector
   if (ambiguousOut)
     *ambiguousOut = false;
   const Ty* p = classType ? types.unqualified(types.stripRef(classType)) : nullptr;
+  if (p && p->kind == TyKind::Enum)
+  {
+    // A kpp enum's own constructors (kovarex, 2026-11-11), chosen as a class's; an enum inherits none.
+    EnumDecl* e = types.isDependent(p) ? nullptr : enumWithConstructors(p);
+    if (!e)
+      return nullptr;
+    Subst own = substFor(p);
+    std::vector<FunctionDecl*> candidates;
+    for (Decl* m : e->members)
+      if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor))
+        if (auto* f = static_cast<FunctionDecl*>(m); !implicitOnly || (f->explicitCondition && !f->templateParams.empty()) || !isExplicit(f, own.empty() ? nullptr : &own))
+          candidates.push_back(f);
+    bool ambiguous = false;
+    FunctionDecl* chosen = candidates.empty() ? nullptr : chooseAmong(candidates, argTypes, own.empty() ? nullptr : &own, nullptr, ambiguous, nullptr, nullConstants);
+    if (ambiguousOut)
+      *ambiguousOut = ambiguous;
+    return chosen;
+  }
   ClassDecl* def = p && p->kind == TyKind::Class ? classDefinition(p) : nullptr;
   if (!def || types.isDependent(p))
     return nullptr;
@@ -1869,7 +1907,8 @@ auto GlobalScope::Impl::variableTemplateValue(VariableDecl* v, const NamePart& p
   TypeContext vctx{lexicalScopeOf(source), &sourceOwn, &sourceSubst, source->file ? source->file->tokens : nullptr,
                    source->file ? source->file->text : std::string_view()};
   vctx.variableTemplate = source;
-  return constAsDeclared(constInitValue(source->init, vctx, depth + 1), source->type ? convertType(source->type, vctx, depth + 1) : nullptr);
+  const Ty* declared = source->type ? convertType(source->type, vctx, depth + 1) : nullptr;
+  return constAsDeclared(constInitValue(source->init, vctx, depth + 1, declared), declared);
 }
 
 auto GlobalScope::Impl::variableTemplateType(VariableDecl* v, const NamePart& part, const TypeContext& ctx, std::string* unsatisfied) -> const Ty*

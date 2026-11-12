@@ -1,0 +1,109 @@
+// spec: a kpp enum's default constructor makes every value of it that has no initializer, wherever kpp would make it zero (kovarex, 2026-11-11): new and new[], `{}` (a variable's, a return's, an argument's, an assignment's, a default argument's), an aggregate's and an array's members the braces leave out, a static local, a container's new elements, an Optional's emplace, `T()` in a template, a lambda's capture, a member initializer `m()`; constant globals never take the zero (the constant evaluation runs the constructor: enum_constructor_in_constant_evaluation); `E(x)` of a class value is a constructor, of an enumeration value a copy
+enum class Dir : u8
+{
+  { North, East, South, West, None }
+  Dir() { this = None; }
+  Dir(int a, int b) { this = Dir((a + b) & 3); }
+  Dir(const Source& s) { this = Dir(s.value & 3); }
+};
+
+class Source
+{
+public:
+  int value = 0;
+};
+
+class Plain
+{
+public:
+  Dir a;
+  int x;
+  Dir b;
+};
+
+class WithConstructor
+{
+public:
+  WithConstructor() {}
+  WithConstructor(int a) : made(a, 2), empty() {}
+  Dir made;
+  Dir empty;
+};
+
+template<typename T>
+T make()
+{
+  return T();
+}
+
+Dir returnsBraces() { return {}; }
+Dir passes(Dir d) { return d; }
+Dir defaulted(Dir d = Dir()) { return d; }
+Dir defaultedBraces(Dir d = {}) { return d; }
+
+Dir staticOne()
+{
+  static Dir kept;
+  return kept;
+}
+
+const WithConstructor constantBuilt = WithConstructor(1);
+const Plain constantPlain{Dir::East};
+const Dir constantBraced = {};
+const Dir constantMade = Dir(2, 3);
+Dir globalArray[2];
+
+int main()
+{
+  Dir* one = new Dir;
+  Dir* two = new Dir();
+  Dir* three = new Dir(1, 1);
+  Dir* row = new Dir[3];
+  Dir* rowValue = new Dir[2]();
+  std::println(*one, " ", *two, " ", *three, " ", row[0], " ", row[2], " ", rowValue[1]);
+  delete one;
+  delete two;
+  delete three;
+  delete[] row;
+  delete[] rowValue;
+
+  Dir braced{};
+  Dir assigned = {};
+  Dir pair{3, 3};
+  Dir later = Dir::East;
+  later = {};
+  std::println(braced, " ", assigned, " ", pair, " ", returnsBraces(), " ", passes(Dir{}), " ", defaulted(), " ", defaultedBraces(), " ", later);
+
+  Plain plain{};
+  Plain partial{Dir::East};
+  Plain designated{.x = 3};
+  Dir partialArray[3] = {Dir::West};
+  std::Array<Dir, 2> array;
+  std::println(plain.a, " ", plain.b, " ", partial.a, " ", partial.b, " ", designated.a, " ", designated.x, " ", designated.b, " ", partialArray[0], " ",
+               partialArray[2], " ", array[1]);
+
+  std::Optional<Dir> optional;
+  optional.emplace();
+  WithConstructor built(1);
+  WithConstructor builtDefault;
+  auto lambda = [d = Dir()]() { return d; };
+  bool flag = true;
+  std::println(staticOne(), " ", *optional, " ", make<Dir>(), " ", built.made, " ", built.empty, " ", builtDefault.made, " ", lambda(), " ",
+               flag ? Dir() : Dir::East);
+
+  Source source;
+  source.value = 6;
+  Dir fromSource = Dir(source);
+  Dir fromSourceDirect(source);
+  Dir copy = Dir(Dir::East);
+  std::Vector<Dir> counted(2);
+  std::Vector<Dir> emplaced;
+  emplaced.emplace_back();
+  emplaced.resize(3);
+  std::Map<int, Dir> map;
+  std::println(fromSource, " ", fromSourceDirect, " ", copy, " ", counted[1], " ", emplaced[0], " ", emplaced[2], " ", map[5]);
+
+  std::println(constantBuilt.made, " ", constantBuilt.empty, " ", constantPlain.a, " ", constantPlain.b, " ", constantBraced, " ", constantMade, " ",
+               globalArray[1]);
+  return 0;
+}

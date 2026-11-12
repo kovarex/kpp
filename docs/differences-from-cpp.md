@@ -530,9 +530,11 @@ function that runs every level of a hierarchy. See the readme's Planned.
 
 - **C++:** an enum has values only.
 - **kpp:** the values go in an inner block, then methods, in which `this` is the value and the
-  enumerators are in scope. It has `count`, `values`, `str()` and `fromStr()`, generated or hand-written,
-  and the underlying type is `i32` unless written. A plain `enum class` without the inner block keeps
-  C++'s rules.
+  enumerators are in scope. It has `count`, `values`, `str()`, `enumeratorName()` and `fromStr()`,
+  generated or hand-written, and the underlying type is `i32` unless written. It may declare constructors,
+  whose default one makes each value declared without an initializer (`Direction() { this = None; }`;
+  `E(x)` of one number stays the conversion), and conversion operators, as a class's (kovarex, 2026-11-11).
+  A plain `enum class` without the inner block keeps C++'s rules.
 - **Why:** it replaces the hand-written tables and macros beside each enum.
 - **Names:** outside the enum an enumerator is `Direction::North`, in a case label too; no bare label and
   no `.North` shorthand (kovarex, 2026-11-07). Inside the enum's own methods `North`, `Direction::North`
@@ -540,7 +542,7 @@ function that runs every level of a hierarchy. See the readme's Planned.
   `language/scoped_enumerator_needs_its_enum`).
 - **No plain enums** (decided, not built): kpp code has only `enum class` (kovarex, 2026-11-07); imported
   headers keep theirs. `--plain-enum-warnings` lists them; the game has 208 ([design 8.4](design.md)).
-- **See:** [design 8.4][d8]; spec `kpp/enum_from_str`; the [readme](../readme.md#less-boilerplate).
+- **See:** [design 8.4][d8]; specs `kpp/enum_from_str`, `kpp/enum_constructors`; the [readme](../readme.md#less-boilerplate).
 
 ```cpp
 enum class Direction : u8

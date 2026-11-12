@@ -614,11 +614,13 @@ auto GlobalScope::Impl::constAsDeclared(std::optional<ConstValue> v, const Ty* t
   }
 }
 
-auto GlobalScope::Impl::constInitValue(Expr* init, const TypeContext& ctx, int depth) -> std::optional<ConstValue>
+auto GlobalScope::Impl::constInitValue(Expr* init, const TypeContext& ctx, int depth, const Ty* declared) -> std::optional<ConstValue>
 {
   if (init && init->kind == NodeKind::BraceInitExpr)
   {
     auto* b = static_cast<BraceInitExpr*>(init);
+    if (b->args.empty() && declared && enumWithConstructors(declared))
+      return constEnumConstruct(declared, {}, depth + 1); // `Dir d = {};`: its default constructor
     if (b->args.empty())
       return ConstValue::integer(0);
     return b->args.size() == 1 ? constValue(b->args[0], ctx, depth) : std::nullopt;
@@ -792,8 +794,11 @@ auto GlobalScope::Impl::constValueIn(Expr* e, const TypeContext& ctx, int depth)
     case NodeKind::DeleteExpr: return constDelete(static_cast<DeleteExpr*>(e), ctx, depth);
     case NodeKind::ThisExpr:
     {
-      // `this` as a pointer: the address of the object the function runs on.
+      // `this` as a pointer: the address of the object the function runs on; in a kpp enum's constructor, the value
+      // it makes (design.md 8.4: `this` is the value; constEnumConstruct).
       std::optional<ConstPlace> self = constThisPlace(ctx);
+      if (self && self->type && types.unqualified(types.stripRef(self->type))->kind == TyKind::Enum)
+        return constRead(*self);
       if (!self || !self->type || !constAddressable(*self))
         return std::nullopt;
       return ConstValue::address(types.pointer(self->type), constStorageTarget(*self));
@@ -848,6 +853,15 @@ auto GlobalScope::Impl::constValueIn(Expr* e, const TypeContext& ctx, int depth)
           t = deduced;
       if (std::optional<std::optional<ConstValue>> made = constClassCast(f, t, ctx, depth))
         return *made;
+      if (enumWithConstructors(t) && (noValue || f->args.size() > 1))
+      {
+        // `Dir()`, `Dir(1, 2)` of a kpp enum with constructors: the one the arguments choose makes it (kovarex, 2026-11-11),
+        // never the zero (`Dir(2)` of one number stays the conversion below).
+        std::vector<ConstValue> values;
+        if (!noValue && !constArguments(f->args, ctx, depth, values))
+          return std::nullopt;
+        return constEnumConstruct(t, values, depth + 1);
+      }
       if (noValue)
         return constConverted(ConstValue::integer(0), t); // `int()`, `T{}`: zero
       Expr* arg = f->args.size() == 1 ? f->args[0] : nullptr;
@@ -2003,7 +2017,7 @@ auto GlobalScope::Impl::constCall(CallExpr* c, const TypeContext& ctx, int depth
   {
     const Ty* to = typeTrait(*traitPart, ctx, depth + 1);
     to = to && to->isKnown() ? types.unqualified(to) : nullptr;
-    if (to && (to->isArithmetic() || to->kind == TyKind::Enum) && c->args.size() <= 1)
+    if (to && (to->isArithmetic() || to->kind == TyKind::Enum) && c->args.size() <= 1 && !(c->args.empty() && enumWithConstructors(to)))
       return c->args.empty() ? constConverted(ConstValue::integer(0), to) : constConverted(constValue(c->args[0], ctx, depth + 1), to);
     if (to && to->kind == TyKind::Class && !isUndeducedClassTemplate(to))
     {
@@ -2055,11 +2069,22 @@ auto GlobalScope::Impl::constCall(CallExpr* c, const TypeContext& ctx, int depth
         named.resolved = d;
       to = types.unqualified(convertType(&named, ctx, depth + 1));
     }
+    if (to && c->args.empty() && enumWithConstructors(to))
+      return constEnumConstruct(to, {}, depth + 1); // `Dir()` of a kpp enum with constructors: its default one (kovarex, 2026-11-11)
     if (to && (to->isArithmetic() || to->kind == TyKind::Enum))
       return c->args.empty() ? constConverted(ConstValue::integer(0), to) : constConverted(constValue(c->args[0], ctx, depth + 1), to);
     if (d && d->kind == NodeKind::EnumDecl)
       return std::nullopt; // an enumeration the checker cannot convert
   }
+  // `Dir(1, 2)`: the constructor of a kpp enum its arguments choose (kovarex, 2026-11-11).
+  if (d && d->kind == NodeKind::EnumDecl && c->args.size() > 1)
+    if (const Ty* made = c->ty ? types.unqualified(types.stripRef(c->ty)) : nullptr; made && enumWithConstructors(made))
+    {
+      std::vector<ConstValue> values;
+      if (!constArguments(c->args, ctx, depth, values))
+        return std::nullopt;
+      return constEnumConstruct(made, values, depth + 1);
+    }
   if (!d)
     return std::nullopt;
   if (d->kind == NodeKind::ClassDecl && c->args.empty())
@@ -2076,7 +2101,8 @@ auto GlobalScope::Impl::constCall(CallExpr* c, const TypeContext& ctx, int depth
     if (VariableDecl* v = findStaticBoolValue(static_cast<ClassDecl*>(d), depth + 1))
     {
       TypeContext vctx{lexicalScopeOf(v), nullptr, nullptr, v->file ? v->file->tokens : nullptr, v->file ? v->file->text : std::string_view()};
-      return constAsDeclared(constInitValue(constInitializerOf(v, nullptr), vctx, depth + 1), v->type ? convertType(v->type, vctx, depth + 1) : nullptr);
+      const Ty* declared = v->type ? convertType(v->type, vctx, depth + 1) : nullptr;
+      return constAsDeclared(constInitValue(constInitializerOf(v, nullptr), vctx, depth + 1, declared), declared);
     }
     if (const Ty* t = convertType(&named, ctx, depth + 1); t && t->kind == TyKind::Class)
       return constEmpty(t, true, depth + 1); // `Point()`: value-initialized
@@ -3678,6 +3704,8 @@ auto GlobalScope::Impl::constEmpty(const Ty* t, bool zero, int depth, const Cons
   t = t ? types.unqualified(types.stripRef(t)) : nullptr;
   if (!t || depth > maxNestedLevels)
     return std::nullopt;
+  if (t->kind == TyKind::Enum && enumWithConstructors(t))
+    return constEnumConstruct(t, {}, depth + 1); // a kpp enum's default constructor makes it (kovarex, 2026-11-11), never the zero
   if (t->isArithmetic() || t->kind == TyKind::Enum || t->kind == TyKind::Pointer)
     return zero ? constConverted(ConstValue::integer(0), t) : std::optional<ConstValue>(ConstValue::unset(t));
   if (t->kind == TyKind::Array)
@@ -4212,7 +4240,7 @@ auto GlobalScope::Impl::constInitializeIn(const Ty* t, Expr* init, const TypeCon
       return converted(*value);
     return constConvertTo(value, u, depth);
   }
-  std::optional<ConstValue> v = constInitValue(init, ctx, depth);
+  std::optional<ConstValue> v = constInitValue(init, ctx, depth, u);
   if (v && u && v->isObject() && v->type && !v->type->isBraceList() && types.unqualified(types.stripRef(v->type))->kind == TyKind::Class &&
       (u->isArithmetic() || u->kind == TyKind::Enum || u->kind == TyKind::Pointer))
     return constByConversionOperator(*v, t, depth); // `int x = result;`
@@ -5832,6 +5860,61 @@ auto GlobalScope::Impl::constRangeEnd(const ConstValue& range, uint32_t symbol, 
     return std::nullopt;
   std::optional<ConstValue> self = range;
   return constCallOn(f, subst, {}, &self, depth + 1, at);
+}
+
+auto GlobalScope::Impl::constEnumConstruct(const Ty* t, const std::vector<ConstValue>& args, int depth) -> std::optional<ConstValue>
+{
+  EvaluationCall call; // (past the bound: its why is set)
+  if (!call.ok)
+    return std::nullopt;
+  t = t ? types.unqualified(types.stripRef(t)) : nullptr;
+  auto none = [&](const std::string& why) -> std::optional<ConstValue> {
+    if (constWhy().empty())
+      constWhy() = "a value of " + types.toString(t, &symbols) + " made by its constructor: " + why;
+    return std::nullopt;
+  };
+  if (!t || !enumWithConstructors(t))
+    return std::nullopt;
+  if (!t->args.empty())
+    return none("an enum of a class template's instance, whose constructors the constant evaluation does not run yet");
+  std::vector<const Ty*> argTypes;
+  for (const ConstValue& a : args)
+    argTypes.push_back(a.type);
+  FunctionDecl* ctor = chooseConstructor(t, argTypes, nullptr, nullptr);
+  if (!ctor)
+    return none(args.empty() ? "none takes no arguments" : "none takes these arguments");
+  FunctionDecl* def = ctor->body ? ctor : constDefinition(ctor);
+  if (!def || !def->body || def->params.size() != ctor->params.size() || !ctor->templateParams.empty())
+    return none("its body is not where the constant evaluation sees it");
+  depth = 0; // as a function's body (constRun): the call guard bounds the chain
+  TypeContext fctx{lexicalScopeOf(ctor), nullptr, nullptr, def->file ? def->file->tokens : nullptr, def->file ? def->file->text : std::string_view()};
+  std::vector<ConstBinding> env;
+  ConstFrame frame(&env);
+  ConstRunning running(def->file);
+  fctx.env = &env;
+  for (size_t i = 0; i < def->params.size(); ++i)
+  {
+    auto* p = static_cast<ParamDecl*>(def->params[i]);
+    if (p->isPack)
+      return none("a parameter pack");
+    Expr* defaultValue = p->defaultValue ? p->defaultValue : static_cast<ParamDecl*>(ctor->params[i])->defaultValue;
+    const Ty* type = p->type ? convertType(p->type, fctx, depth + 1) : nullptr;
+    if (!constBindParameter(p, type, i, args, defaultValue, fctx, depth, nullptr, nullptr, env))
+      return std::nullopt;
+  }
+  size_t self = env.size();
+  env.push_back(constBinding(constThisSymbol, ConstValue::unset(t), t));
+  env.back().writable = true;
+  std::optional<ConstValue> result;
+  ConstFlow flow = constStatement(def->body, fctx, env, result, depth + 1);
+  if (flow != ConstFlow::Next && flow != ConstFlow::Returned)
+    return std::nullopt;
+  ConstValue made = env[self].value;
+  if (!constEndLocals(env, 0, depth, true))
+    return std::nullopt;
+  if (!made.isScalar())
+    return none("its constructor gives `this` no value");
+  return constConverted(made, t);
 }
 
 auto GlobalScope::Impl::constRunConstructor(FunctionDecl* ctor, const Ty* t, const std::vector<ConstValue>& args, int depth, const Subst* own, FunctionDecl* declared, const std::vector<std::optional<ConstPlace>>* places, const ConstPlace* target,
@@ -7696,6 +7779,9 @@ auto GlobalScope::Impl::constPlaceOf(Expr* e, const TypeContext& ctx, int depth,
     e = static_cast<ParenExpr*>(e)->inner;
   if (!e || depth > maxNestedLevels)
     return std::nullopt;
+  if (e->kind == NodeKind::ThisExpr)
+    if (std::optional<ConstPlace> self = constThisPlace(ctx); self && self->type && types.unqualified(types.stripRef(self->type))->kind == TyKind::Enum)
+      return self; // `this = None;` in a kpp enum's constructor: the value it makes (constEnumConstruct)
   if (e->kind == NodeKind::NameExpr)
   {
     if (std::optional<ConstPlace> local = constLocal(e, ctx))

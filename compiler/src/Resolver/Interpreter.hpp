@@ -96,7 +96,8 @@
   std::optional<ConstValue> constAsDeclared(std::optional<ConstValue> v, const Ty* t);
 
   // A scalar's initializer: `= value`, `{value}`, `{}` (zero).
-  std::optional<ConstValue> constInitValue(Expr* init, const TypeContext& ctx, int depth);
+  // declared: the type initialized, when known (`{}` of a kpp enum with constructors is no zero: enumWithConstructors).
+  std::optional<ConstValue> constInitValue(Expr* init, const TypeContext& ctx, int depth, const Ty* declared = nullptr);
 
   // The class type of an object a member is named through (`layers.size()`, `p->value`): the
   // walk's type when it holds for every instance, else the expression typed under ctx; null when
@@ -767,6 +768,10 @@
   // function's, a parameter binds by them (constBindParameter).
   std::optional<ConstValue> constRunConstructor(FunctionDecl* ctor, const Ty* t, const std::vector<ConstValue>& args, int depth, const Subst* own = nullptr, FunctionDecl* declared = nullptr, const std::vector<std::optional<ConstPlace>>* places = nullptr, const ConstPlace* target = nullptr,
                                                 const std::vector<uint8_t>* categories = nullptr);
+  // A value of the kpp enum t made by the constructor its arguments choose (none: its default one; kovarex, 2026-11-11):
+  // the body run with `this` the value, as a method's, unset until the body assigns it. No constant for an enum of a
+  // class template's instance yet, nor for one whose constructors take none of these.
+  std::optional<ConstValue> constEnumConstruct(const Ty* t, const std::vector<ConstValue>& args, int depth);
 
   // A constructor's body run with `this` the object its initializers made: the object as the
   // body leaves it; with target, written there first and run on it there.
