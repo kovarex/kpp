@@ -23,6 +23,10 @@ struct Held
   std::String label = "held";
 };
 
+// (a set of flags: the names of the flags set, design.md 27)
+flags Marks : u8 { Red, Green, Blue = 5 };
+flags Wide { F0, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, F13, F14, F15, F16, F17, F18, F19 };
+
 i32 main()
 {
   Square square;
@@ -33,6 +37,10 @@ i32 main()
   queue.push_back(5);
   Corner corner;
   Held held;
-  std::println(square.area(), " ", numbers.size(), " ", name, " ", queue.size(), " ", corner.x, " ", held.label);
+  Marks none;
+  Marks one = Marks::Green;
+  Marks many = Marks::Red | Marks::Blue | Marks::fromBits(64);
+  Wide wide = Wide::fromBits(0xfffff);
+  std::println(square.area(), " ", numbers.size(), " ", name, " ", queue.size(), " ", corner.x, " ", held.label, " ", none, " ", one, " ", many, " ", wide);
   return 0;
 }

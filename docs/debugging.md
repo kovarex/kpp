@@ -409,10 +409,15 @@ struct Buffer { std::Span<i32> debugValue() const { return std::Span<i32>(this.d
 - tests\natvis.ps1 checks the rules of natvis\values.kpp's Fixed<8>, Item, Load and Buffer and the errors
   of two bodies the debugger cannot compute; in Visual Studio (exe-check, 2026-11-11) `item` showed
   `"gear"` (`gear` since text views, 2026-11-12), `item.speed` `1.5`, `load` `1`, `buffer` `{length=3}` with `[0] 4`, `[1] 5`, `[2] 6`.
-- **A set of flags** (`flags`, design.md 27) has its view without a debugValue: the one flag set by its
-  name (`OWNED`), `{}` when none is, its bits otherwise (`{bits=0xc}`), and a row per flag's name, true or
-  false (a second name of a bit too), with `[bits]`. A debugValue of its own replaces it. tests\natvis.ps1
-  checks natvis\values.kpp's Usage.
+- **A set of flags** (`flags`, design.md 27) has its view without a debugValue: the names of the flags set,
+  `Red | Blue` (kovarex, 2026-11-12: "it will show all the named flags when more is selected in the form of A |
+  B | C | D"), a bit no flag names as its number at the end (`Red | Blue | 64`), `{}` when none is; and a row
+  per flag's name, true or false (a second name of a bit too), with `[bits]`. Natvis has no loop, so the value
+  line is a chain of views of the one object, a view a flag (`kpp0`, `kpp1`, ...: its name when set, ` | ` and
+  the next view when a later bit is set too, `{*this,view(kpp1)}`); Visual Studio drops a display's leading
+  spaces, so the separator goes after a name. A debugValue of its own replaces it. tests\natvis.ps1 checks
+  natvis\values.kpp's Usage; tools\vs\vsix\debugger-check.ps1 (2026-11-13) saw `{}`, `Green`, `Red | Blue |
+  64` and a set of 20 flags in full in Visual Studio.
 
 ### this in the watch window
 

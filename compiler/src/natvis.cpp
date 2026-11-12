@@ -1158,20 +1158,56 @@ namespace
     auto* cls = static_cast<ClassDecl*>(defined);
     if (!cls->flagBits.empty() && std::none_of(cls->members.begin(), cls->members.end(), [&](Decl* m) { return isDebugValue(m, symbols); }))
     {
-      // A set of flags (design.md 27): the flag's name when one is set, {} when none, else its bits; a row per
-      // flag's name, true or false, and its bits.
-      std::string displays = "    <DisplayString Condition=\"__kpp_bits == 0\">{{}}</DisplayString>\n", items;
+      // A set of flags (design.md 27): the names of the flags set, `A | B | C` (kovarex, 2026-11-12), `{}` when none, the bits
+      // no flag names as their number; a row per flag's name, true or false, and its bits. Natvis has no loop and no texts to
+      // join, so the value line is a chain of views of the one object, one a flag in the order of their bits (a second name
+      // left out): kpp<i> shows its flag's name when it is set, ` | ` and the next view when a later bit is set too
+      // (`NAME | {*this,view(kpp3)}`: Visual Studio drops a text's leading spaces, so the separator goes after a name), else
+      // the next view. The last shows the bits no flag names. The named views stand first: the default display, last,
+      // starts the chain.
+      std::vector<std::pair<unsigned, std::string>> named;
+      unsigned long long declared = 0;
+      std::string items;
       for (const ClassDecl::Flag& flag : cls->flagBits)
       {
         char mask[24];
         snprintf(mask, sizeof mask, "0x%llx", 1ull << flag.bit);
         std::string name(symbols.name(flag.name));
         if (!flag.alias)
-          displays += "    <DisplayString Condition=\"__kpp_bits == " + std::string(mask) + "\">" + escape(name) + "</DisplayString>\n";
+        {
+          named.push_back({flag.bit, name});
+          declared |= 1ull << flag.bit;
+        }
         items += "      <Item Name=\"" + escape(name) + "\">" + escape("(__kpp_bits & " + std::string(mask) + ") != 0") + "</Item>\n";
       }
-      out = "  <Type Name=\"" + escape(d.name) + "\">\n" + displays + "    <DisplayString>{{bits={__kpp_bits,x}}}</DisplayString>\n    <Expand>\n" + items +
-            "      <Item Name=\"[bits]\">__kpp_bits,x</Item>\n    </Expand>\n  </Type>\n";
+      std::stable_sort(named.begin(), named.end(), [](const auto& x, const auto& y) { return x.first < y.first; });
+      auto hex = [](unsigned long long v)
+      {
+        char text[24];
+        snprintf(text, sizeof text, "0x%llx", v);
+        return std::string(text);
+      };
+      auto view = [](size_t i) { return "kpp" + std::to_string(i); };
+      auto shown = [&](const std::string& in, const std::string& condition, const std::string& text)
+      {
+        return "    <DisplayString" + (in.empty() ? std::string() : " IncludeView=\"" + in + "\"") +
+               (condition.empty() ? std::string() : " Condition=\"" + escape(condition) + "\"") + ">" + escape(text) + "</DisplayString>\n";
+      };
+      std::string unnamed = "(unsigned long long)(__kpp_bits & " + hex(~declared) + ")";
+      std::string displays;
+      unsigned long long later = ~0ull;
+      for (size_t i = 0; i < named.size(); ++i)
+      {
+        later &= ~(1ull << named[i].first);
+        std::string set = "(__kpp_bits & " + hex(1ull << named[i].first) + ") != 0";
+        displays += shown(view(i), set + " && (__kpp_bits & " + hex(later) + ") != 0", named[i].second + " | {*this,view(" + view(i + 1) + ")}");
+        displays += shown(view(i), set, named[i].second);
+        displays += shown(view(i), "", "{*this,view(" + view(i + 1) + ")}");
+      }
+      displays += shown(view(named.size()), "", "{" + unnamed + "}");
+      displays += shown("", "__kpp_bits == 0", "{{}}");
+      displays += shown("", "", "{*this,view(" + view(0) + ")}");
+      out = "  <Type Name=\"" + escape(d.name) + "\">\n" + displays + "    <Expand>\n" + items + "      <Item Name=\"[bits]\">__kpp_bits,x</Item>\n    </Expand>\n  </Type>\n";
       return true;
     }
     for (Decl* member : cls->members)

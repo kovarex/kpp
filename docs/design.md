@@ -3036,8 +3036,8 @@ if (usage & EntityUsage::OWNED_BY_GHOST) ...
   saves loading. `fromBits` keeps bits no flag names.
 - **Its views come with it** (26): printing it gives the names of the set flags, `OWNED_BY_GHOST | SAVED`
   (`{}` when empty; a bit no flag names as its number, `SAVED | 32768`; a second name never). The debugger
-  shows the one flag set by its name, `{}`, or the bits otherwise, and a row per name, true or false, with
-  the bits (a type's own debugValue replaces the view).
+  shows the same names, `Red | Blue | 64` (kovarex, 2026-11-12; a chain of natvis views, debugging.md), and a row
+  per name, true or false, with the bits (a type's own debugValue replaces the view).
 - **How**: the parser writes the class the declaration stands for (spliceFlags, as a test's code): the set in
   a private `__kpp_bits`, each flag a `static constexpr` set located at its name, the operators and appendTo
   written for it (ClassDecl::flagBits tells the debugger's view its flags). The formatter formats it as a kpp
