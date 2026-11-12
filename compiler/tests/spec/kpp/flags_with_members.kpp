@@ -1,0 +1,25 @@
+// spec: a flags declaration's flags may stand in a block of their own with members after it, as a kpp enum's values (kovarex, 2026-11-12, on EntityUsageBitMask's valueForSaving: "Couldn't we make the flags structure similar as enum class change in kpp, so it can have methods?"): methods, operators and named combinations of flags, which are constants of the type, not flags (printing never names them)
+flags EntityUsage : u16
+{
+  {
+    TO_BE_UPGRADED,
+    FOUND_BY_ENTITY_ITERATOR = 6,
+    PROTECTED,
+    SAVED = 12,
+    SETUP,
+    NON_EMPTY_TARGETER = SAVED,
+  }
+  static constexpr EntityUsage ADDITIONAL_VOLATILE = This::SAVED | This::SETUP | This::FOUND_BY_ENTITY_ITERATOR;
+  u16 valueForSaving() const { return (this & ~This::ADDITIONAL_VOLATILE).bits(); }
+  static EntityUsage loaded(u16 value) { return This::fromBits(value) & ~This::ADDITIONAL_VOLATILE; }
+  bool isProtected() const { return this.has(This::PROTECTED); }
+};
+
+int main()
+{
+  EntityUsage usage = EntityUsage::PROTECTED | EntityUsage::SAVED | EntityUsage::TO_BE_UPGRADED;
+  std::println(usage, " ", usage.valueForSaving(), " ", usage.isProtected());
+  EntityUsage again = EntityUsage::loaded(u16(0x3081));
+  std::println(again, " ", EntityUsage::ADDITIONAL_VOLATILE, " ", EntityUsage::NON_EMPTY_TARGETER);
+  return 0;
+}

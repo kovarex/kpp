@@ -1156,6 +1156,24 @@ namespace
     if (!defined || defined->kind != NodeKind::ClassDecl || !defined->file || defined->file->isImported)
       return false;
     auto* cls = static_cast<ClassDecl*>(defined);
+    if (!cls->flagBits.empty() && std::none_of(cls->members.begin(), cls->members.end(), [&](Decl* m) { return isDebugValue(m, symbols); }))
+    {
+      // A set of flags (design.md 27): the flag's name when one is set, {} when none, else its bits; a row per
+      // flag's name, true or false, and its bits.
+      std::string displays = "    <DisplayString Condition=\"__kpp_bits == 0\">{{}}</DisplayString>\n", items;
+      for (const ClassDecl::Flag& flag : cls->flagBits)
+      {
+        char mask[24];
+        snprintf(mask, sizeof mask, "0x%llx", 1ull << flag.bit);
+        std::string name(symbols.name(flag.name));
+        if (!flag.alias)
+          displays += "    <DisplayString Condition=\"__kpp_bits == " + std::string(mask) + "\">" + escape(name) + "</DisplayString>\n";
+        items += "      <Item Name=\"" + escape(name) + "\">" + escape("(__kpp_bits & " + std::string(mask) + ") != 0") + "</Item>\n";
+      }
+      out = "  <Type Name=\"" + escape(d.name) + "\">\n" + displays + "    <DisplayString>{{bits={__kpp_bits,x}}}</DisplayString>\n    <Expand>\n" + items +
+            "      <Item Name=\"[bits]\">__kpp_bits,x</Item>\n    </Expand>\n  </Type>\n";
+      return true;
+    }
     for (Decl* member : cls->members)
     {
       if (!isDebugValue(member, symbols) || static_cast<FunctionDecl*>(member)->name.parts.size() != 1)

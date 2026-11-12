@@ -15,6 +15,27 @@ namespace game
 
   enum class Small { A, B };
 
+  // A kpp enum: its values in a block of their own, members after it, as a class's.
+  enum class Turn : u8
+  {
+    { Left, Right }
+    Turn flipped() const { return this == Turn::Left ? Turn::Right : Turn::Left; }
+  };
+
+  // A set of flags (design.md 27), short and with members.
+  flags Usage : u16 { Upgraded, Saved = 12 };
+
+  flags Marks
+  {
+    {
+      Red,
+      Green,
+      Blue = 7,
+    }
+    static constexpr Marks Warm = This::Red | This::Blue;
+    bool isWarm() const { return this.has(This::Warm); }
+  };
+
   template<typename T>
   struct Box
   {

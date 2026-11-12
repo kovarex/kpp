@@ -1,0 +1,9 @@
+true {}
+2057 TO_BE_UPGRADED | TO_BE_LOOTED | SAVED
+override
+not owned
+TO_BE_UPGRADED | TO_BE_LOOTED true false true false
+TO_BE_LOOTED true false
+OWNED_BY_GHOST | SETUP
+TO_BE_UPGRADED | 32768
+A | C 5 4 2

@@ -931,12 +931,14 @@ struct S1 : B16 { int y; };   // 32 bytes; 16 with MSVC's layout
 - **Why:** one method writes a deep hierarchy in one buffer, and templates need no special case.
 - **See:** [design 14][d14]; spec `language/append_to_on_built_in_types`.
 
-### A set of flags is a declaration of its own: `flags` (this stage)
+### A set of flags is a declaration of its own: `flags` (built)
 
 - **C++:** an enum of masks (`1 << n`) or a class of `static constexpr` integers, combined with `|` and `&`
   on the raw integer; a library type such as `std::bitset` indexed by an enum.
 - **kpp:** `flags Name : u16 { A, B, C = 7 };`: the type is the set, each name the set of its bit (by position,
-  or by hand), with `|`, `&`, `~`, `contains`, a debugger view of a row per flag and printing as `A | C`.
+  or by hand), with `|`, `&`, `~`, `has`, `hasAny`, `set`, a debugger view of a row per flag and printing as `A | C`; members
+  after the flags' own block, as a kpp enum's. No integer converts to a set or back but through `fromBits` and
+  `bits()`.
 - **Why:** the names and the type are one thing, nobody writes `1 << n`, and the debugger and logs show names.
 - **See:** [design 27][d27].
 

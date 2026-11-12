@@ -1,0 +1,50 @@
+// spec: `flags NAME : STORAGE { ... }` declares a set of named bits (design.md 27): each flag's bit is the one after the last's, the first's 0, or written by hand (`= N`), `= OTHER` a second name of a bit; a value is a set, each name the set of its one bit, with |, &, ^, ~ (within the declared bits), |=, &=, ^=, ==, has (every flag of a set), hasAny, set(flags, on), empty, bits, fromBits, true when not empty; printing gives the names of the set flags (`A | C`, `{}` for none, a bit no flag names as its number)
+flags Usage : u16
+{
+  TO_BE_UPGRADED,
+  OWNED_BY_GHOST = 2,
+  TO_BE_LOOTED,
+  INVENTORY_SIZE_OVERRIDE = TO_BE_LOOTED,
+  SAVED = 11,
+  SETUP,
+};
+
+flags Small { A, B, C };
+
+constexpr Usage volatileFlags = Usage::SAVED | Usage::SETUP;
+static_assert(volatileFlags.bits() == 0x1800);
+static_assert(Usage::INVENTORY_SIZE_OVERRIDE == Usage::TO_BE_LOOTED);
+static_assert((~Usage::SAVED).bits() == 0x100d);
+
+int main()
+{
+  Usage usage;
+  std::println(usage.empty(), " ", usage);
+  usage |= Usage::TO_BE_LOOTED;
+  usage |= Usage::SAVED | Usage::TO_BE_UPGRADED;
+  std::println(usage.bits(), " ", usage);
+  if (usage & Usage::INVENTORY_SIZE_OVERRIDE)
+    std::println("override");
+  if (!(usage & Usage::OWNED_BY_GHOST))
+    std::println("not owned");
+  usage &= ~volatileFlags;
+  std::println(usage,
+               " ",
+               usage.has(Usage::TO_BE_UPGRADED | Usage::TO_BE_LOOTED),
+               " ",
+               usage.has(Usage::SETUP | Usage::TO_BE_LOOTED),
+               " ",
+               usage.hasAny(Usage::SETUP | Usage::TO_BE_LOOTED),
+               " ",
+               usage.hasAny(Usage::SETUP | Usage::SAVED));
+  usage ^= Usage::TO_BE_UPGRADED;
+  std::println(usage, " ", usage == Usage::TO_BE_LOOTED, " ", usage != Usage::TO_BE_LOOTED);
+  usage.set(Usage::OWNED_BY_GHOST | Usage::SETUP, true);
+  usage.set(Usage::TO_BE_LOOTED, false);
+  std::println(usage);
+  Usage loaded = Usage::fromBits(u16(0x8001));
+  std::println(loaded);
+  Small small = Small::A ^ Small::C;
+  std::println(small, " ", small.bits(), " ", sizeof(Small), " ", sizeof(Usage));
+  return 0;
+}

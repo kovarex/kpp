@@ -79,11 +79,16 @@ foreach ($case in @(@('Heading', '|{(Heading::Enum)(value)}'), @('Shape', '|side
                     # named constant, std::Text pieces and a choice between texts, a member's conversion to String
                     @('Sign', "value == 0|> value == 1|< value == 2|$([char]0x2265) |?"), @('Team', '(index == 1)|red |{{index={(int)(index)}}}'),
                     @('Release', '(branch.version != 0)|{(unsigned int)(major)}.{(unsigned int)(minor)} (branch) |{(unsigned int)(major)}.{(unsigned int)(minor)}'),
-                    @('Station', '|{name.value,sb}')))
+                    @('Station', '|{name.value,sb}'),
+                    # a set of flags: the one flag set, none, its bits
+                    @('Usage', '__kpp_bits == 0|{{}} __kpp_bits == 0x1|UPGRADED __kpp_bits == 0x4|OWNED __kpp_bits == 0x8|LOOTED |{{bits={__kpp_bits,x}}}')))
 {
   $shown = Displays $case[0]
   if ($shown -ne $case[1]) { "FAIL natvis: $($case[0])'s debugValue rule is '$shown', not '$($case[1])'"; exit 1 }
 }
+$rows = @(@(@($types | Where-Object { $_.Name -eq 'Usage' })[0].Expand.Item) | ForEach-Object { "$($_.Name)=$($_.InnerText)" }) -join ' '
+if ($rows -ne 'UPGRADED=(__kpp_bits & 0x1) != 0 OWNED=(__kpp_bits & 0x4) != 0 LOOTED=(__kpp_bits & 0x8) != 0 OVERRIDE=(__kpp_bits & 0x8) != 0 [bits]=__kpp_bits,x')
+{ "FAIL natvis: Usage's rows are '$rows'"; exit 1 }
 $buffer = @($types | Where-Object { $_.Name -eq 'Buffer' })[0]
 if ($buffer.DisplayString -ne '{{length={size}}}' -or $buffer.Expand.ArrayItems.Size -ne 'size' -or $buffer.Expand.ArrayItems.ValuePointer -ne 'data')
 { "FAIL natvis: Buffer's debugValue rule is '$($buffer.DisplayString)'"; exit 1 }

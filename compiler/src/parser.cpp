@@ -43,6 +43,7 @@ namespace
     {
       kwImport = symbols.intern("import");
       kwSuite = symbols.intern("SUITE");
+      kwFlags = symbols.intern("flags");
       kwAssert = symbols.intern("assert");
       kwReleaseAssert = symbols.intern("release_assert");
       kwCaller = symbols.intern("caller");
@@ -2022,6 +2023,12 @@ namespace
           (at(TokenKind::Identifier, 1) || at(TokenKind::Keyword, 1)))
       {
         error("a config declaration (config TYPE NAME = DEFAULT;) stands at a file's top level, first on its line");
+        recover();
+        return;
+      }
+      // `flags NAME : STORAGE { ... }` (design.md 27): the class it stands for, read as written.
+      if (isKpp() && scope != Scope::Local && atIdent(kwFlags) && atIdent(1) && (at(P::Colon, 2) || at(P::LBrace, 2)) && !spliceFlags())
+      {
         recover();
         return;
       }
@@ -4181,6 +4188,229 @@ namespace
       pos = from;
     }
 
+    // `flags NAME : STORAGE { A, B = 3, C = A };` at pos (design.md 27), its flags in a block of their own
+    // when members follow them (`flags NAME { { A, B } MEMBERS };`, as a kpp enum's values): rewritten as the
+    // class it stands for, which the parser then reads. The class keeps the set in `__kpp_bits`, a
+    // STORAGE; each flag is a static constexpr set of its one bit, located at its name (as the class's
+    // name is); the operators, has, hasAny, set, empty, bits, fromBits and appendTo (the names of the set flags,
+    // `A | C`, `{}` for none) are written for it. A flag's bit is the one after the last flag's that was
+    // no second name (the first's 0), or `= N`; `= OTHER` names OTHER's bit again. The class tells its
+    // flags to the debugger's view (ClassDecl::flagBits). False after an error that leaves no declaration.
+    bool spliceFlags()
+    {
+      uint32_t from = pos;
+      noteWord(from);
+      uint32_t nameToken = from + 1, i = from + 2;
+      // The problems found, each at a token of the declaration: reported once it is the class, at the token
+      // there that stands for it (its name, a flag's, or an empty declaration `;` located at it).
+      std::vector<std::pair<uint32_t, std::string>> problems;
+      auto problem = [&](uint32_t at, std::string message) { problems.push_back({at, std::move(message)}); };
+      std::string storage = "u32";
+      int width = 32;
+      if (toks[i].is(P::Colon))
+      {
+        ++i;
+        std::string written = tokensText(i, i + 1);
+        width = written == "u8" ? 8 : written == "u16" ? 16 : written == "u32" ? 32 : written == "u64" ? 64 : 0;
+        if (width)
+          storage = written;
+        else
+        {
+          problem(nameToken, "a flags declaration's storage is u8, u16, u32 or u64");
+          width = 32;
+        }
+        ++i;
+      }
+      if (!toks[i].is(P::LBrace))
+      {
+        pos = i;
+        error("expected '{' and the flags");
+        return false;
+      }
+      uint32_t open = i, close = closingToken(open);
+      bool block = toks[open + 1].is(P::LBrace);
+      uint32_t listClose = block ? closingToken(open + 1) : close;
+      std::string name(symbols.name(toks[nameToken].id));
+      struct Written { uint32_t token; int bit; bool alias; };
+      std::vector<Written> written;
+      std::vector<int> owner(64, -1); // each bit's first flag
+      int next = 0;
+      for (uint32_t k = open + (block ? 2 : 1); k < listClose;)
+      {
+        if (toks[k].getKind() != TokenKind::Identifier)
+        {
+          problem(k, "expected the name of a flag");
+          break;
+        }
+        Written f{k, next, false};
+        std::string flag(symbols.name(toks[k].id));
+        ++k;
+        if (toks[k].is(P::Assign))
+        {
+          ++k;
+          std::string value = tokensText(k, k + 1);
+          if (toks[k].getKind() == TokenKind::Number)
+          {
+            char* end = nullptr;
+            unsigned long long n = strtoull(value.c_str(), &end, 0);
+            if (*end || n > 255)
+              problem(f.token, ("the bit of " + flag + " is a number (0 is the first bit) or the name of a flag before it"));
+            f.bit = int(n > 255 ? 255 : n);
+          }
+          else if (toks[k].getKind() == TokenKind::Identifier)
+          {
+            f.alias = true;
+            f.bit = -1;
+            for (const Written& w : written)
+              if (toks[w.token].id == toks[k].id)
+                f.bit = w.bit;
+            if (f.bit < 0)
+              problem(f.token, (value + " is no flag of " + name + " before " + flag + ": `" + flag + " = OTHER` names OTHER's bit again"));
+          }
+          else
+            problem(f.token, ("the bit of " + flag + " is a number (0 is the first bit) or the name of a flag before it"));
+          ++k;
+        }
+        bool fine = f.bit >= 0;
+        for (const Written& w : written)
+          if (toks[w.token].id == toks[f.token].id)
+          {
+            problem(f.token, ("the flag " + flag + " is declared already"));
+            fine = false;
+          }
+        static const char* const generated[] = {"Storage", "fromBits", "bits", "empty", "has", "hasAny", "set", "appendTo", "__kpp_bits"};
+        for (const char* g : generated)
+          if (flag == g)
+          {
+            problem(f.token, ("a flag named " + flag + " (" + name + "'s " + flag + " is written for every flags declaration)"));
+            fine = false;
+          }
+        if (fine && f.bit >= width)
+        {
+          problem(f.token, ("the bit " + std::to_string(f.bit) + " of " + flag + " is outside " + name + "'s storage, " + storage + " (bits 0 to " +
+                                std::to_string(width - 1) + ")"));
+          fine = false;
+        }
+        if (fine && !f.alias && owner[f.bit] >= 0)
+        {
+          std::string first(symbols.name(toks[written[owner[f.bit]].token].id));
+          problem(f.token, ("the bit " + std::to_string(f.bit) + " of " + flag + " is " + first + "'s already: `" + flag + " = " + first +
+                                "` names it again"));
+          fine = false;
+        }
+        if (fine)
+        {
+          if (!f.alias)
+          {
+            owner[f.bit] = int(written.size());
+            next = f.bit + 1;
+          }
+          written.push_back(f);
+        }
+        if (toks[k].is(P::Comma))
+          ++k;
+        else if (k != listClose)
+        {
+          problem(k, "expected ',' or '}' after a flag");
+          break;
+        }
+      }
+
+      // (A token the parser writes has no spelling of its own, so the class has no literals: the bits are the
+      // values of an enumeration's names, b0 to the last bit, the texts `__kpp_text` slots, 0 is `Storage()`.)
+      const std::string& n = name;
+      std::vector<std::string> texts;
+      auto text = [&](std::string written)
+      {
+        texts.push_back(std::move(written));
+        return std::string("__kpp_text __kpp_text_slot");
+      };
+      auto bit = [&](int b) { return n + "::__kpp_bit(" + n + "::__KppBit::b" + std::to_string(b) + ")"; };
+      int last = -1;
+      for (const Written& w : written)
+        last = std::max(last, w.bit);
+      std::string declared = "Storage()";
+      for (const Written& w : written)
+        if (!w.alias)
+          declared += " | " + bit(w.bit);
+      std::string set = "Storage(this.__kpp_bits ";
+      std::vector<Token> made;
+      auto append = [&](std::vector<Token> more) { made.insert(made.end(), more.begin(), more.end()); };
+      auto copy = [&](uint32_t a, uint32_t b) { made.insert(made.end(), toks.begin() + a, toks.begin() + b); };
+      append(synthesize("class", from));
+      copy(nameToken, nameToken + 1);
+      copy(open, open + 1); // (the declaration's own brace: the formatter's, a class body's)
+      std::string body = "public: using Storage = " + storage + "; ";
+      if (last >= 0)
+      {
+        body += "enum class __KppBit : u8 { ";
+        for (int b = 0; b <= last; ++b)
+          body += "b" + std::to_string(b) + ", ";
+        body += "}; static constexpr Storage __kpp_bit(__KppBit at) { return Storage(Storage(true) << u8(at)); } ";
+      }
+      body += "static constexpr Storage __kpp_declared = Storage(" + declared + "); " +
+        "constexpr " + n + "() = default; " +
+        "static constexpr " + n + " fromBits(Storage value) { " + n + " made; made.__kpp_bits = value; return made; } " +
+        "constexpr Storage bits() const { return this.__kpp_bits; } " +
+        "constexpr bool empty() const { return this.__kpp_bits == Storage(); } " +
+        "constexpr bool has(" + n + " other) const { return (this.__kpp_bits & other.__kpp_bits) == other.__kpp_bits; } " +
+        "constexpr bool hasAny(" + n + " other) const { return (this.__kpp_bits & other.__kpp_bits) != Storage(); } " +
+        "void set(" + n + " other, bool on) { this.__kpp_bits = on ? " + set + "| other.__kpp_bits) : " + set + "& ~other.__kpp_bits); } ";
+      for (const char* op : {"|", "&", "^"})
+        body += std::string("constexpr ") + n + " operator" + op + "(" + n + " other) const { return " + n + "::fromBits(" + set + op + " other.__kpp_bits)); } " +
+                n + "& operator" + op + "=(" + n + " other) { this.__kpp_bits = " + set + op + " other.__kpp_bits); return this; } ";
+      body += "constexpr " + n + " operator~() const { return " + n + "::fromBits(Storage(~this.__kpp_bits & " + n + "::__kpp_declared)); } " +
+              "constexpr bool operator==(const " + n + "&) const = default; " +
+              "constexpr operator bool() const { return this.__kpp_bits != Storage(); } " +
+              "void appendTo(std::String& out) const { bool first = true; ";
+      for (const Written& w : written)
+        if (!w.alias)
+        {
+          std::string flag(symbols.name(toks[w.token].id));
+          std::string alone = text(flag), after = text(" | " + flag); // (in this order: the slots' order)
+          body += "if ((this.__kpp_bits & " + bit(w.bit) + ") != Storage()) { out.append(first ? " + alone + " : " + after + "); first = false; } ";
+        }
+      std::string separator = text(" | "), none = text("{}");
+      body += "Storage rest = Storage(this.__kpp_bits & ~" + n + "::__kpp_declared); " +
+              "if (rest != Storage()) { if (!first) out.append(" + separator + "); out.append(std::toString(u64(rest))); first = false; } if (first) out.append(" + none + "); } ";
+      append(synthesize(body, from, texts));
+      std::vector<ClassDecl::Flag> flagsOf;
+      for (const Written& w : written)
+      {
+        append(synthesize("static constexpr " + n, w.token));
+        copy(w.token, w.token + 1);
+        append(synthesize("= " + n + "::fromBits(" + bit(w.bit) + ");", w.token));
+        flagsOf.push_back({toks[w.token].id, uint8_t(w.bit), w.alias});
+      }
+      std::unordered_map<uint32_t, uint32_t> at; // a problem's token -> its place in made
+      at[nameToken] = 1;
+      for (const Written& w : written)
+        for (uint32_t m = 0; m < made.size(); ++m)
+          if (made[m].offset == toks[w.token].offset && made[m].getKind() == TokenKind::Identifier && made[m].id == toks[w.token].id)
+            at[w.token] = m;
+      for (const auto& [token, message] : problems)
+        if (!at.count(token))
+        {
+          at[token] = uint32_t(made.size());
+          append(synthesize(";", token));
+        }
+      append(synthesize("private: Storage __kpp_bits = Storage(); public:", from));
+      if (block)
+        copy(listClose + 1, close);
+      toks.erase(toks.begin() + from, toks.begin() + close);
+      toks.insert(toks.begin() + from, made.begin(), made.end());
+      pos = from;
+      pendingFlags = std::move(flagsOf);
+      pendingFlagsAt = from;
+      for (const auto& [token, message] : problems)
+      {
+        char* kept = static_cast<char*>(out.arena.allocate(message.size() + 1, 1));
+        memcpy(kept, message.c_str(), message.size() + 1);
+        errorAt(from + at[token], kept);
+      }
+      return true;
+    }
+
     // Format mode: token i's role (ParsedFile::formatRoles), on a token of the source (a synthesized
     // token, at another token's place, has none). A node's (first) keeps the first node made at the
     // token: what the parser makes there afterwards (a check's comparison call, a generic lambda's
@@ -4664,6 +4894,11 @@ namespace
       ClassDecl* c = decl<ClassDecl>(start);
       c->keyword = keyword;
       c->flags |= flags;
+      if (pendingFlagsAt == start)
+      {
+        c->flagBits = makeSpanOf(pendingFlags);
+        pendingFlagsAt = UINT32_MAX;
+      }
       c->alignment = pendingAlignment;
       pendingAlignment = nullptr;
       c->pack = pendingPack;
@@ -7561,7 +7796,10 @@ namespace
     uint32_t kwImplicit, kwFallthrough, kwBothConst, kwClassConst, kwSuper, kwAccumulate, kwImport, kwAssert, kwReleaseAssert, kwCaller,
              kwConditional, kwUnderscore, kwConfig, kwNameof, kwCount, kwValues, kwStr, kwEnumeratorName, kwTypes, kwFromStr, kwOptional, kwUniquePtr, kwStd, kwText, kwTag,
              kwTagField,
-             kwTagMethod, kwTypeMember, kwSuite;
+             kwTagMethod, kwTypeMember, kwSuite, kwFlags;
+    // The flags of the class spliceFlags wrote at token pendingFlagsAt, which parseClassOrElaborated gives it.
+    std::vector<ClassDecl::Flag> pendingFlags;
+    uint32_t pendingFlagsAt = UINT32_MAX;
     uint32_t lambdaCount = 0;        // Lambdas parsed so far in this file outside the bodies of functions at file or class level.
     uint32_t numberedTypes = 0;      // Classes and enumerations given a number so far in this file outside those (ClassDecl::number).
     FunctionDecl* numberingFunction = nullptr; // The function at file or class level whose body is parsed now (beginNumbering).

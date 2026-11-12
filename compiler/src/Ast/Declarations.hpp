@@ -113,6 +113,10 @@ struct ClassDecl : Decl
   // Whether the class defines a friend function (a hidden friend, which argument-dependent lookup
   // finds): 0 not looked at yet, 1 none, 2 some. The resolver's (hiddenFriendsOf), decided once.
   std::atomic<int8_t> hiddenFriendState{0};
+  // The class a `flags` declaration stands for (design.md 27, the parser's spliceFlags): each flag's name and
+  // bit in the order written, a second name of a bit (`C = A`) marked alias. Empty for any other class.
+  struct Flag { uint32_t name; uint8_t bit; bool alias; };
+  Span<Flag> flagBits;
 };
 struct EnumeratorDecl : Decl { uint32_t name; Expr* value = nullptr; };
 struct EnumDecl : Decl

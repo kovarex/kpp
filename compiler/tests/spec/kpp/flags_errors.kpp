@@ -1,0 +1,29 @@
+// spec: a flags declaration's errors: a storage that is no unsigned integer of 8, 16, 32 or 64 bits, a bit outside its storage, a bit another flag has already without `= OTHER`, an OTHER that is no flag before it, a flag declared twice, a flag named as one of the members every flags declaration has, and no integer converts to a set (design.md 27)
+// error: flags_errors.kpp:10: error: a flags declaration's storage is u8, u16, u32 or u64 (at 'Wide')
+// error: flags_errors.kpp:16: error: the bit 8 of TOO_FAR is outside Small's storage, u8 (bits 0 to 7)
+// error: flags_errors.kpp:17: error: the bit 1 of AGAIN is B's already: `AGAIN = B` names it again
+// error: flags_errors.kpp:18: error: LATER is no flag of Small before EARLY: `EARLY = OTHER` names OTHER's bit again
+// error: flags_errors.kpp:20: error: the flag A is declared already
+// error: flags_errors.kpp:21: error: a flag named has (Small's has is written for every flags declaration)
+// error: flags_errors.kpp:26: error: an int32 does not convert to Small
+// error: flags_errors.kpp:27: error: a class (Small) does not convert to int32
+flags Wide : i32 { X };
+
+flags Small : u8
+{
+  A,
+  B,
+  TOO_FAR = 8,
+  AGAIN = 1,
+  EARLY = LATER,
+  LATER,
+  A,
+  has,
+};
+
+int main()
+{
+  Small small = 3;
+  int bits = Small::A;
+  return bits + int(small.bits());
+}

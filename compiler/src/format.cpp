@@ -702,7 +702,8 @@ namespace
       const Token& t = tok(i);
       if (!sawParams && head == Brace::None)
       {
-        if (t.is(Kw::enum_))
+        if (t.is(Kw::enum_) || (i == start && isIdent(i, "flags") && tok(i + 1).getKind() == TokenKind::Identifier &&
+                                (isP(i + 2, P::Colon) || isP(i + 2, P::LBrace)))) // (`flags NAME : u16 {`, design.md 27: a kpp enum's braces)
           head = Brace::Enum;
         else if (t.is(Kw::class_) || t.is(Kw::struct_) || t.is(Kw::union_))
           head = Brace::Class;
@@ -731,6 +732,12 @@ namespace
       if (t.is(P::LBrace))
       {
         uint32_t close = info[i].match;
+        if (i == start && ctx == Ctx::Class && i > 0 && isP(i - 1, P::LBrace) && info[i - 1].brace == Brace::Enum)
+        {
+          // a kpp enum's values (or a flags declaration's flags) in their own block, members after it
+          enumBody(i, frame, level);
+          return close + 1;
+        }
         if (roleIs(i, NodeKind::BraceInitExpr))
         {
           list(i, frame, level, stmt);
@@ -931,6 +938,12 @@ namespace
   void Formatter::enumBody(uint32_t open, uint16_t frame, uint16_t level)
   {
     uint32_t close = info[open].match;
+    if (isP(open + 1, P::LBrace))
+    {
+      // a kpp enum (design.md 8.5, a flags declaration's too, 27): its values' block, then members as a class's
+      bodyBraces(open, frame, level, Brace::Enum, Ctx::Class, uint16_t(level + 1), Rule::IndentClass);
+      return;
+    }
     info[open].brace = info[close].brace = Brace::Enum;
     bool oneLine = tokLine(open) == tokLine(close);
     info[open].oneLine = info[close].oneLine = oneLine;

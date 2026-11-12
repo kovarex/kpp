@@ -52,6 +52,10 @@
           "captures": { "1": { "name": "keyword.other.kpp-word.kpp" } }
         },
         {
+          "match": "^\\s*(?:private\\s+)?(flags)\\b(?=\\s+[A-Za-z_]\\w*\\s*(?:[:{]|$))",
+          "captures": { "1": { "name": "keyword.other.kpp-word.kpp" } }
+        },
+        {
           "begin": "^\\s*(suite)\\b(?=\\s+[A-Za-z_])", "end": "(?=\\{)|$",
           "beginCaptures": { "1": { "name": "keyword.other.kpp-word.kpp" } },
           "patterns": [{ "name": "keyword.other.kpp-word.kpp", "match": "\\b(?:depends|tags)\\b" }]

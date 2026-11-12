@@ -2974,7 +2974,7 @@ other options (hand-written files, a format string, calling the program's code):
   constants, `switch`, a `[[noreturn]]` end, a `str()` returning text inlined with its cases, std::Text pieces,
   choices between texts, conversions to bool and to String.
 
-### 27. `flags`: a set of named bits (decided 2026-11-12)
+### 27. `flags`: a set of named bits (decided 2026-11-12, built)
 kovarex, 2026-11-12, on the game's eleven flag classes and their debugger rows ("I don't like that it is too
 separate things, the enum, and the Flags definition, can we make better?"): a set of flags is a declaration
 of its own, as `enum` is, so the names and the type are one thing. Prior art: C#'s `[Flags] enum`, Swift's
@@ -2991,24 +2991,56 @@ flags EntityUsage : u16
 };
 
 EntityUsage usage;                        // the set, stored in a u16, empty at first
-usage |= EntityUsage::TO_BE_DELETED;
+usage |= EntityUsage::TO_BE_LOOTED;
 usage &= ~EntityUsage::SAVED;
 if (usage & EntityUsage::OWNED_BY_GHOST) ...
 ```
 
-- **The declaration** names the type, its storage (an unsigned integer type, `u32` when none is written) and
-  its flags. A flag's bit is its position after the one before it, the first's 0; `NAME = N` gives it bit N
-  by hand (kovarex: "for backwards compatibility when flag is removed and such"), the names after it
-  continuing from there; `NAME = OTHER` names the same bit again. A bit outside the storage type, or a bit
-  two names have without `= OTHER`, is an error.
+- **The declaration** names the type, its storage (u8, u16, u32 or u64; `u32` when none is written) and
+  its flags. A flag's bit is the one after the last flag's that was no second name, the first's 0; `NAME = N`
+  gives it bit N by hand (kovarex: "for backwards compatibility when flag is removed and such"), the names
+  after it continuing from there; `NAME = OTHER` names OTHER's bit again (OTHER a flag before it) and moves no
+  count. Errors: another storage, a bit outside the storage, a bit two names have without `= OTHER`, a flag
+  declared twice, a flag named as a member every set has (Storage, fromBits, bits, empty, has, hasAny, set,
+  appendTo).
+  Spec kpp/flags_declaration, kpp/flags_errors.
+- **Members** (kovarex, 2026-11-12, on EntityUsageBitMask's valueForSaving: "Couldn't we make the flags
+  structure similar as enum class change in kpp, so it can have methods?"): as a kpp enum's values, the flags
+  may stand in a block of their own with members after it, which are a class's (methods, operators, constants).
+  A named combination is such a constant, not a flag: it has no row in the debugger and printing never names
+  it. Spec kpp/flags_with_members.
+  ```
+  flags EntityUsage : u16
+  {
+    {
+      TO_BE_UPGRADED,
+      ...
+      SAVED = 12,
+      SETUP,
+      NON_EMPTY_TARGETER = SAVED,
+    }
+    static constexpr EntityUsage ADDITIONAL_VOLATILE = This::SAVED | This::SETUP | This::FOUND_BY_ENTITY_ITERATOR;
+    u16 valueForSaving() const { return (this & ~This::ADDITIONAL_VOLATILE).bits(); }
+    static EntityUsage loaded(u16 value) { return This::fromBits(value) & ~This::ADDITIONAL_VOLATILE; }
+  };
+  ```
 - **A value of the type is a set**; each name is the set of its one bit (`EntityUsage::SAVED`). `|`, `&`, `^`
   and `~` of sets give a set (`~` within the declared bits), `|=`, `&=`, `^=` change one, `==` compares; a set
-  is true when it is not empty, so `if (usage & EntityUsage::X)` reads as before. `contains(set)`, `empty()`,
-  `bits()` (the storage integer) and `fromBits(n)` complete it; no integer converts to a set implicitly.
+  is true when it is not empty, so `if (usage & EntityUsage::X)` reads as before. `has(set)` (every flag of
+  it set; kovarex's names, 2026-11-12), `hasAny(set)`, `set(set, on)` (sets or clears them), `empty()`, `bits()`
+  (the storage integer) and `fromBits(n)` complete it; no integer converts to a set, and a set to no integer
+  (`(usage & X) != 0` is `usage.has(X)`, `(usage & (X | Y)) == 0` is `!usage.hasAny(X | Y)`). All of it is
+  constexpr but set and the compound assignments.
 - **It saves as its number**: a savegame keeps its bits, whatever names change, so bits by hand keep old
-  saves loading.
-- **Its views come with it** (26): the debugger shows the set's bits and a row per flag (true or false), and
-  printing it gives the names of the set flags, `OWNED_BY_GHOST | SAVED` (`{}` when empty).
+  saves loading. `fromBits` keeps bits no flag names.
+- **Its views come with it** (26): printing it gives the names of the set flags, `OWNED_BY_GHOST | SAVED`
+  (`{}` when empty; a bit no flag names as its number, `SAVED | 32768`; a second name never). The debugger
+  shows the one flag set by its name, `{}`, or the bits otherwise, and a row per name, true or false, with
+  the bits (a type's own debugValue replaces the view).
+- **How**: the parser writes the class the declaration stands for (spliceFlags, as a test's code): the set in
+  a private `__kpp_bits`, each flag a `static constexpr` set located at its name, the operators and appendTo
+  written for it (ClassDecl::flagBits tells the debugger's view its flags). The formatter formats it as a kpp
+  enum.
 - **Open.** The converted game's mask classes (EntityUsageBitMask and six others, a u16 or u32 with
   `static constexpr` masks, about 188 uses for the two entity masks) become `flags` declarations, their uses
   respelt where needed (thread F with C, a game PR); the four sets indexed by an enum (SpriteFlags,

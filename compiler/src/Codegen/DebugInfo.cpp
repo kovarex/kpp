@@ -789,6 +789,11 @@ auto codegen::Emitter::findDebugValueClasses() -> void
     Decl* defined = global.definitionOf(type->decl);
     if (!defined || defined->kind != NodeKind::ClassDecl || !defined->file || defined->file->isImported)
       continue;
+    if (!static_cast<ClassDecl*>(defined)->flagBits.empty()) // (a set of flags, design.md 27: its rows, natvis.cpp)
+    {
+      sh.debugValueClasses.push_back({type, debuggerClassName(type)});
+      continue;
+    }
     for (Decl* m : static_cast<ClassDecl*>(defined)->members)
       if (m->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(m)->name.parts.size() == 1 &&
           static_cast<FunctionDecl*>(m)->name.last().symbol != UINT32_MAX && sym(static_cast<FunctionDecl*>(m)->name.last().symbol) == "debugValue")

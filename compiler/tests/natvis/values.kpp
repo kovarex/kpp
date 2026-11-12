@@ -171,6 +171,15 @@ public:
   SizedName name;
 };
 
+// A set of flags (design.md 27): the name of the one flag set, {} or its bits, a row per name.
+flags Usage : u16
+{
+  UPGRADED,
+  OWNED = 2,
+  LOOTED,
+  OVERRIDE = LOOTED,
+};
+
 struct Buffer
 {
   std::Span<i32> debugValue() const { return std::Span<i32>(this.data, this.size); }
@@ -217,6 +226,7 @@ int main()
   release.minor = 72;
   Station station;
   station.name.value = "depot";
+  Usage usage = Usage::OWNED | Usage::LOOTED;
   Buffer buffer;
   buffer.data = held;
   buffer.size = 3;
