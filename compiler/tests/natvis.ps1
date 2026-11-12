@@ -57,7 +57,7 @@ if ($d) { "FAIL natvis: its rules differ from natvis\values.expected"; $names | 
 # debugValue() (docs/debugging.md, "debugValue"): Fixed<8>'s rule computes its value with its own
 # scale, Item's shows its name (a text view), Force's and Stack's are text views, Angle's inlines its toTurns(); a body the debugger cannot compute (a free function's call, a
 # non-const debugValue) is the build's error, naming the file and line, with or without debug information.
-$types = @(([xml](Get-Content $natvis -Raw)).AutoVisualizer.Type)
+$types = @(([xml](Get-Content $natvis -Raw -Encoding UTF8)).AutoVisualizer.Type)
 $fixed = @($types | Where-Object { $_.Name -eq 'Fixed<8>' })[0]
 $item = @($types | Where-Object { $_.Name -eq 'Item' })[0]
 if (-not $fixed -or $fixed.DisplayString -ne '{(double)(value) * 0.00390625,g}') { "FAIL natvis: Fixed<8>'s debugValue rule is '$($fixed.DisplayString)'"; exit 1 }
@@ -74,7 +74,12 @@ $stack = @($types | Where-Object { $_.Name -eq 'Stack' })[0]
 if (-not $stack -or $stack.DisplayString -ne '{count} x {name,sb} ({weight,g})') { "FAIL natvis: Stack's text view is '$($stack.DisplayString)'"; exit 1 }
 function Displays([string]$name) { @(@($types | Where-Object { $_.Name -eq $name })[0].ChildNodes | Where-Object { $_.LocalName -eq 'DisplayString' } | ForEach-Object { "$($_.GetAttribute('Condition'))|$($_.InnerText)" }) -join ' ' }
 foreach ($case in @(@('Heading', '|{(Heading::Enum)(value)}'), @('Shape', '|side {(*(Square*)this).side}'), @('Pointing<Square>', '|{(Square*)(target)}'),
-                    @('Short', 'onHeap == 0|{inPlace,sb} |{heap,[length]sb}')))
+                    @('Short', 'onHeap == 0|{inPlace,s8b} |{heap,[length]s8b}'),
+                    # the types' own names and conversions: a switch's signs (an end in abort(): ?), a comparison with a
+                    # named constant, std::Text pieces and a choice between texts, a member's conversion to String
+                    @('Sign', "value == 0|> value == 1|< value == 2|$([char]0x2265) |?"), @('Team', '(index == 1)|red |{{index={(int)(index)}}}'),
+                    @('Release', '(branch.version != 0)|{(unsigned int)(major)}.{(unsigned int)(minor)} (branch) |{(unsigned int)(major)}.{(unsigned int)(minor)}'),
+                    @('Station', '|{name.value,sb}')))
 {
   $shown = Displays $case[0]
   if ($shown -ne $case[1]) { "FAIL natvis: $($case[0])'s debugValue rule is '$shown', not '$($case[1])'"; exit 1 }

@@ -263,16 +263,44 @@ namespace
     return e->kind == NodeKind::UnaryExpr && static_cast<UnaryExpr*>(e)->implicitThis;
   }
 
-  // The body of a debugValue as natvis cases: (condition, value), the last one's condition empty.
-  // False, with v's why, for a body of another shape.
-  bool debugCases(DebugValue& v, FunctionDecl* f, std::vector<std::pair<Expr*, Expr*>>& cases)
+  // A case of a debugValue's rule: its condition (an expression, or a switch's text already made; neither
+  // for the last) and the value it returns.
+  struct DebugCase
+  {
+    Expr* first = nullptr;
+    Expr* second = nullptr;
+    std::string text = {};
+    bool conditional() const { return this->first || !this->text.empty(); }
+  };
+
+  bool natvisExpression(DebugValue& v, Expr* e, std::string& out);
+
+  // The body of a debugValue as natvis cases (DebugCase), the last one unconditional: `if (C) return E;`s,
+  // a switch whose cases return (`case A: return E;`, `default:` last), a final `return E;`. False, with v's
+  // why, for a body of another shape.
+  bool debugCases(DebugValue& v, FunctionDecl* f, std::vector<DebugCase>& cases, bool* endsNowhere = nullptr)
   {
     if (!f || !f->body || f->body->kind != NodeKind::BlockStmt)
       return fail(v, f, "it has no body here");
+    bool noReturnEnd = false;
     for (Stmt* s : static_cast<BlockStmt*>(f->body)->stmts)
     {
-      if (!cases.empty() && !cases.back().first)
+      if ((!cases.empty() && !cases.back().conditional()) || noReturnEnd)
         return fail(v, s, "a statement after its last return");
+      // A call of a [[noreturn]] function at the end (Comparison::str()'s logEnumAndAbortOrThrow after its
+      // switch): no value there; the rule's cases before it are all it shows.
+      if (s->kind == NodeKind::ExprStmt && static_cast<ExprStmt*>(s)->expr && static_cast<ExprStmt*>(s)->expr->kind == NodeKind::CallExpr)
+      {
+        auto* call = static_cast<CallExpr*>(static_cast<ExprStmt*>(s)->expr);
+        Decl* callee = call->callee && call->callee->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(call->callee)->resolved
+                       : call->callee && call->callee->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(call->callee)->resolved
+                                                                                    : nullptr;
+        if (callee && callee->kind == NodeKind::FunctionDecl && (callee->attributes & ATTR_NoReturn))
+        {
+          noReturnEnd = true;
+          continue;
+        }
+      }
       auto returned = [&](Stmt* r) -> Expr*
       {
         while (r && r->kind == NodeKind::BlockStmt && static_cast<BlockStmt*>(r)->stmts.size() == 1)
@@ -281,6 +309,63 @@ namespace
       };
       if (s->kind == NodeKind::ReturnStmt && static_cast<ReturnStmt*>(s)->value)
         cases.push_back({nullptr, static_cast<ReturnStmt*>(s)->value});
+      else if (s->kind == NodeKind::SwitchStmt)
+      {
+        // switch (X) { case A: case B: return E; ... default: return D; }: a case `(X == A || X == B)` per
+        // return, the default's last (a switch without one goes on to the statements after it).
+        auto* sw = static_cast<SwitchStmt*>(s);
+        std::string subject;
+        if (sw->init || !sw->cond || sw->cond->kind == NodeKind::DeclStmt || !sw->body || sw->body->kind != NodeKind::BlockStmt)
+          return fail(v, s, "a switch other than `switch (VALUE) { case A: return EXPRESSION; ... }`");
+        if (!natvisExpression(v, static_cast<Expr*>(sw->cond), subject))
+          return false;
+        std::vector<std::string> labels;
+        bool isDefault = false;
+        Expr* fallback = nullptr;
+        for (Stmt* inner : static_cast<BlockStmt*>(sw->body)->stmts)
+        {
+          if (inner->kind == NodeKind::CaseStmt)
+          {
+            auto* c = static_cast<CaseStmt*>(inner);
+            if (c->rangeEnd)
+              return fail(v, inner, "a case range");
+            std::string label;
+            if (!natvisExpression(v, c->value, label))
+              return false;
+            labels.push_back(label);
+            for (Expr* more : c->moreValues)
+            {
+              if (!natvisExpression(v, more, label))
+                return false;
+              labels.push_back(label);
+            }
+            continue;
+          }
+          if (inner->kind == NodeKind::DefaultStmt)
+          {
+            isDefault = true;
+            continue;
+          }
+          Expr* value = returned(inner);
+          if (!value || (labels.empty() && !isDefault))
+            return fail(v, inner, "a switch's statement other than `return EXPRESSION;` after its case labels");
+          if (isDefault)
+            fallback = value; // (last, whatever the labels beside it)
+          else
+          {
+            std::string condition;
+            for (const std::string& label : labels)
+              condition += (condition.empty() ? "" : " || ") + subject + " == " + label;
+            cases.push_back({nullptr, value, labels.size() > 1 ? "(" + condition + ")" : condition});
+          }
+          labels.clear();
+          isDefault = false;
+        }
+        if (!labels.empty() || isDefault)
+          return fail(v, s, "a case label without its `return EXPRESSION;`");
+        if (fallback)
+          cases.push_back({nullptr, fallback});
+      }
       else if (s->kind == NodeKind::DeclStmt && !static_cast<DeclStmt*>(s)->decls.empty() &&
                std::all_of(static_cast<DeclStmt*>(s)->decls.begin(), static_cast<DeclStmt*>(s)->decls.end(),
                            [](Decl* d) { return d->kind == NodeKind::VariableDecl && (d->flags & DF_Constexpr); }))
@@ -303,42 +388,45 @@ namespace
       else
         return fail(v, s, "a statement other than `if (CONDITION) return EXPRESSION;` and `return EXPRESSION;`");
     }
-    if (cases.empty() || cases.back().first)
+    if (cases.empty() || (cases.back().conditional() && !(noReturnEnd && endsNowhere)))
       return fail(v, f, "no `return EXPRESSION;` at its end");
+    if (endsNowhere)
+      *endsNowhere = cases.back().conditional();
     return true;
   }
 
-  bool natvisExpression(DebugValue& v, Expr* e, std::string& out);
+  bool natvisText(DebugValue& v, Expr* e, std::string& out);
+  bool natvisCondition(DebugValue& v, Expr* e, std::string& out);
+  bool literalText(const ParsedFile* f, const LiteralExpr* e, std::string& out);
 
-  // A call of a const member function without arguments (`this.toDouble()`, `this.speed.debugValue()`):
-  // its body, one `return EXPRESSION;` after constexpr locals, inlined with that object (the call's
-  // own object, or that member) as its object.
-  bool inlinedCall(DebugValue& v, CallExpr* c, std::string& out)
+  // A const member function's body inlined on an object (the call's object, `this.toDouble()`, or a member,
+  // `this.speed.debugValue()`; a conversion to bool on a class value): one `return EXPRESSION;` after
+  // constexpr locals, as an expression, or as text (natvisText) for a function returning a String.
+  bool inlinedMember(DebugValue& v, Node* at, FunctionDecl* called, Expr* objectExpr, bool arrow, bool text, std::string& out)
   {
-    auto* m = static_cast<MemberExpr*>(c->callee);
-    auto* called = static_cast<FunctionDecl*>(m->resolved);
     if (!(called->flags & DF_Const) || (called->flags & (DF_Static | DF_Virtual | DF_Override)) || !called->templateParams.empty() || !called->params.empty())
-      return fail(v, c, "a call of a function other than a const, non-virtual member function without parameters");
+      return fail(v, at, "a call of a function other than a const, non-virtual member function without parameters");
     std::string base;
     const Ty* object = nullptr;
     TypeTable& types = v.global.types();
-    if (isThisObject(m->base))
+    if (!objectExpr || isThisObject(objectExpr))
     {
       if (isDebugValue(called, v.symbols))
-        return fail(v, c, "a call of its own debugValue");
+        return fail(v, at, "a call of its own debugValue");
       object = v.self;
     }
     else
     {
-      if (!natvisExpression(v, m->base, base))
+      if (!natvisExpression(v, objectExpr, base))
         return false;
-      base += m->op == P::Arrow ? "->" : ".";
-      object = m->base->ty;
+      base += arrow ? "->" : ".";
+      object = objectExpr->ty;
       if (object)
         object = types.unqualified(types.stripRef(object));
-      if (object && m->op == P::Arrow && object->kind == TyKind::Pointer)
+      if (object && arrow && object->kind == TyKind::Pointer)
         object = object->inner ? types.unqualified(object->inner) : nullptr;
     }
+    Node* c = at;
     if (!object || object->kind != TyKind::Class || !object->decl)
       return fail(v, c, "a call on something other than the object or a member that is a class");
     if (v.depth > 8)
@@ -349,15 +437,47 @@ namespace
     auto* def = defined && defined->kind == NodeKind::FunctionDecl ? static_cast<FunctionDecl*>(defined) : static_cast<FunctionDecl*>(declared);
     FunctionDecl* instance = args.empty() ? def : v.global.instanceBody(def, args, object);
     DebugValue inner{v.global, v.symbols, def->file, instance, args, v.prefix + base, v.depth + 1, object};
-    std::vector<std::pair<Expr*, Expr*>> cases;
-    bool done = debugCases(inner, instance, cases);
-    if (done && cases.size() != 1)
-      done = fail(inner, instance, "its `if`s, which an expression of the function it is called in cannot hold");
+    std::vector<DebugCase> cases;
+    bool endsNowhere = false;
+    bool done = debugCases(inner, instance, cases, &endsNowhere);
+    if (done && text && cases.size() != 1)
+      done = fail(inner, instance, "its `if`s or switch, which a text built of it cannot hold");
     std::string value;
-    if (done && natvisExpression(inner, cases[0].second, value))
+    if (done && text && natvisText(inner, cases[0].second, value))
     {
-      out = "(" + value + ")";
+      out += value;
       return true;
+    }
+    if (done && !text)
+    {
+      // Its cases as one expression, `(C1 ? V1 : C2 ? V2 : V3)`; a body ending in a [[noreturn]] call, a
+      // char pointer's `"?"` for the values it has no case for (Comparison::str()'s switch).
+      std::string rest;
+      if (endsNowhere)
+      {
+        const Ty* returned = v.global.typeOfDeclIn(called, args);
+        const Ty* pointee = returned && returned->kind == TyKind::Function && returned->inner && returned->inner->kind == TyKind::Pointer && returned->inner->inner
+                              ? types.unqualified(returned->inner->inner)
+                              : nullptr;
+        if (!pointee || pointee->kind != TyKind::Char)
+          done = fail(inner, instance, "an end without a return, which only a function returning characters may have (\"?\" then)");
+        rest = "\"?\"";
+      }
+      for (size_t i = cases.size(); done && i-- > 0;)
+      {
+        std::string one, when = cases[i].text;
+        if (!natvisExpression(inner, cases[i].second, one) || (cases[i].first && !natvisCondition(inner, cases[i].first, when)))
+        {
+          done = false;
+          break;
+        }
+        rest = cases[i].conditional() ? (rest.empty() ? one : "(" + when + " ? " + one + " : " + rest + ")") : one;
+      }
+      if (done)
+      {
+        out = "(" + rest + ")";
+        return true;
+      }
     }
     if (v.why.empty())
     {
@@ -366,6 +486,169 @@ namespace
       v.atFile = inner.atFile;
     }
     return false;
+  }
+
+  bool inlinedCall(DebugValue& v, CallExpr* c, std::string& out)
+  {
+    auto* m = static_cast<MemberExpr*>(c->callee);
+    return inlinedMember(v, c, static_cast<FunctionDecl*>(m->resolved), m->base, m->op == P::Arrow, false, out);
+  }
+
+  // A class's const conversion whose result (its reference stripped) `wanted` accepts, null when it has none:
+  // SizeLimitedString's `operator const std::String&() const` in a text view.
+  FunctionDecl* conversionOf(GlobalScope& global, const Ty* t, const std::function<bool(const Ty*)>& wanted)
+  {
+    TypeTable& types = global.types();
+    t = t ? types.unqualified(types.stripRef(t)) : nullptr;
+    if (!t || t->kind != TyKind::Class || !t->decl)
+      return nullptr;
+    Decl* defined = global.definitionOf(t->decl);
+    if (!defined || defined->kind != NodeKind::ClassDecl)
+      return nullptr;
+    TemplateArgs args = global.classArgsOf(t);
+    for (Decl* m : static_cast<ClassDecl*>(defined)->members)
+      if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Conversion) && (m->flags & DF_Const))
+        if (const Ty* ft = global.typeOfDeclIn(m, args); ft && ft->kind == TyKind::Function && ft->inner && wanted(types.unqualified(types.stripRef(ft->inner))))
+          return static_cast<FunctionDecl*>(m);
+    return nullptr;
+  }
+
+  // A class's const conversion to bool (`constexpr operator bool() const { return this.version != 0; }`),
+  // null when it has none.
+  FunctionDecl* boolConversionOf(GlobalScope& global, const Ty* t)
+  {
+    TypeTable& types = global.types();
+    t = t ? types.unqualified(types.stripRef(t)) : nullptr;
+    if (!t || t->kind != TyKind::Class || !t->decl)
+      return nullptr;
+    Decl* defined = global.definitionOf(t->decl);
+    if (!defined || defined->kind != NodeKind::ClassDecl)
+      return nullptr;
+    TemplateArgs args = global.classArgsOf(t);
+    for (Decl* m : static_cast<ClassDecl*>(defined)->members)
+      if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Conversion) && (m->flags & DF_Const))
+        if (const Ty* ft = global.typeOfDeclIn(m, args); ft && ft->kind == TyKind::Function && ft->inner && ft->inner->kind == TyKind::Bool)
+          return static_cast<FunctionDecl*>(m);
+    return nullptr;
+  }
+
+  // A condition: a class value through its conversion to bool, inlined; anything else as an expression.
+  bool natvisCondition(DebugValue& v, Expr* e, std::string& out)
+  {
+    if (FunctionDecl* conversion = e ? boolConversionOf(v.global, e->ty) : nullptr)
+    {
+      Expr* object = e;
+      while (object && object->kind == NodeKind::ParenExpr)
+        object = static_cast<ParenExpr*>(object)->inner;
+      return inlinedMember(v, e, conversion, object, false, false, out);
+    }
+    return natvisExpression(v, e, out);
+  }
+
+  // `a == b` and `a != b` of a class whose comparison is defaulted (`= default`, or == rewritten from a
+  // defaulted <=>), its data members compared one by one: each side the object (`this`), a member, or a
+  // constant (`Force::player.id`, folded). Its members numbers, enumerations or such classes.
+  bool memberwiseEquality(DebugValue& v, BinaryExpr* b, std::string& out)
+  {
+    TypeTable& types = v.global.types();
+    struct Side
+    {
+      bool constant = false;
+      ConstValue value;
+      std::string path;
+    };
+    Side sides[2];
+    Expr* operands[2] = {b->lhs, b->rhs};
+    for (int i = 0; i < 2; ++i)
+    {
+      Expr* e = operands[i];
+      while (e && e->kind == NodeKind::ParenExpr)
+        e = static_cast<ParenExpr*>(e)->inner;
+      if (!readsObject(e))
+      {
+        ConstHooks hooks;
+        std::optional<ConstValue> value = v.global.evaluate(e, v.file, v.context, v.args, hooks);
+        GlobalScope::clearConstantReason();
+        if (!value || !value->isObject())
+          return fail(v, e, "a comparison with a class value that is no constant");
+        sides[i].constant = true;
+        sides[i].value = *value;
+      }
+      else if (isThisObject(e))
+        sides[i].path = v.prefix;
+      else
+      {
+        if (!natvisExpression(v, e, sides[i].path))
+          return false;
+        sides[i].path += ".";
+      }
+    }
+    std::vector<std::string> compared;
+    std::function<bool(const Ty*, const Side&, const Side&, int)> members = [&](const Ty* cls, const Side& left, const Side& right, int depth) -> bool
+    {
+      Decl* defined = cls && cls->kind == TyKind::Class && cls->decl ? v.global.definitionOf(cls->decl) : nullptr;
+      if (!defined || defined->kind != NodeKind::ClassDecl || depth > 4)
+        return fail(v, b, "a comparison of something other than a class");
+      auto* def = static_cast<ClassDecl*>(defined);
+      if (!def->bases.empty())
+        return fail(v, b, "a comparison of a class with bases");
+      TemplateArgs args = v.global.classArgsOf(cls);
+      size_t part = 0;
+      for (Decl* m : def->members)
+      {
+        if (m->kind != NodeKind::VariableDecl || (m->flags & (DF_Static | DF_Typedef | DF_Friend)))
+        {
+          if (m->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(m)->name.parts.empty())
+            return fail(v, b, "a comparison of a class with an anonymous struct or union");
+          continue;
+        }
+        const Ty* type = v.global.typeOfDeclIn(m, args);
+        type = type ? types.unqualified(type) : nullptr;
+        std::string name(v.symbols.name(static_cast<VariableDecl*>(m)->name.last().symbol));
+        auto at = [&](const Side& side, Side& member) -> bool
+        {
+          if (!side.constant)
+          {
+            member.path = side.path + name;
+            return true;
+          }
+          if (!side.value.parts || part >= side.value.parts->size())
+            return fail(v, b, "a constant class value without its members");
+          member.constant = true;
+          member.value = (*side.value.parts)[part];
+          return true;
+        };
+        Side l, r;
+        if (!at(left, l) || !at(right, r))
+          return false;
+        ++part;
+        if (type && type->kind == TyKind::Class)
+        {
+          if (!l.constant)
+            l.path += ".";
+          if (!r.constant)
+            r.path += ".";
+          if (!members(type, l, r, depth + 1))
+            return false;
+          continue;
+        }
+        if (!type || !(type->isArithmetic() || type->kind == TyKind::Enum))
+          return fail(v, b, "a comparison of a class with a member other than a number, an enumeration or such a class");
+        auto text = [&](const Side& side) { return side.constant ? natvisConstant(side.value) : side.path; };
+        compared.push_back(text(l) + " == " + text(r));
+      }
+      return true;
+    };
+    const Ty* cls = b->lhs->ty ? types.unqualified(types.stripRef(b->lhs->ty)) : nullptr;
+    if (!members(cls, sides[0], sides[1], 0))
+      return false;
+    std::string all;
+    for (const std::string& c : compared)
+      all += (all.empty() ? "" : " && ") + c;
+    if (all.empty())
+      all = "true";
+    out = P(b->op) == P::NotEq ? "!(" + all + ")" : "(" + all + ")";
+    return true;
   }
 
   // A cast of operand to type (natvisCastType): `(T)(x)`; to a reference, `(*(T*)&x)`, the object itself
@@ -389,6 +672,22 @@ namespace
   {
     if (!e)
       return fail(v, e, "an expression the parser left out");
+    if (e->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(e)->literalKind == TokenKind::String)
+    {
+      // ("a" in `this.branch ? " (branch)" : ""`: a C++ literal again, which natvis's expressions read)
+      std::string text;
+      if (!literalText(static_cast<LiteralExpr*>(e)->file ? static_cast<LiteralExpr*>(e)->file : v.file, static_cast<LiteralExpr*>(e), text))
+        return fail(v, e, "a string literal with a prefix or an unusual escape");
+      out = "\"";
+      for (char c : text)
+      {
+        char hex[8];
+        snprintf(hex, sizeof(hex), "\\x%02X", (unsigned char)c);
+        out += c == '"' ? std::string("\\\"") : c == '\\' ? std::string("\\\\") : (unsigned char)c < 32 || (unsigned char)c > 126 ? std::string(hex) : std::string(1, c);
+      }
+      out += "\"";
+      return true;
+    }
     if (!readsObject(e))
     {
       ConstHooks hooks;
@@ -454,6 +753,15 @@ namespace
     case NodeKind::BinaryExpr:
     {
       auto* b = static_cast<BinaryExpr*>(e);
+      if ((P(b->op) == P::EqEq || P(b->op) == P::NotEq) && b->lhs && b->lhs->ty && b->rhs && b->rhs->ty)
+      {
+        TypeTable& types = v.global.types();
+        const Ty* left = types.unqualified(types.stripRef(b->lhs->ty));
+        const Ty* right = types.unqualified(types.stripRef(b->rhs->ty));
+        bool defaulted = b->call == OperatorCall::Rewritten || (b->callee && (b->callee->flags & DF_Default));
+        if (left == right && left->kind == TyKind::Class && defaulted)
+          return memberwiseEquality(v, b, out);
+      }
       if (b->callee || b->call == OperatorCall::Function || b->call == OperatorCall::Rewritten || b->isKeyword)
         return fail(v, e, "an operator function");
       P op = P(b->op);
@@ -473,7 +781,7 @@ namespace
       if (!c->then)
         return fail(v, e, "the operator ?:");
       std::string cond, then, otherwise;
-      if (!natvisExpression(v, c->cond, cond) || !natvisExpression(v, c->then, then) || !natvisExpression(v, c->else_, otherwise))
+      if (!natvisCondition(v, c->cond, cond) || !natvisExpression(v, c->then, then) || !natvisExpression(v, c->else_, otherwise))
         return false;
       out = "(" + cond + " ? " + then + " : " + otherwise + ")";
       return true;
@@ -510,7 +818,17 @@ namespace
         return fail(v, e, "a call other than of a const member function (debugValue's body is the debugger's expression: data members, constants, operators and const member functions with such bodies)");
       return natvisCast(v, c->args[0], type, false, out);
     }
-    default: return fail(v, e, "this kind of expression");
+    case NodeKind::BraceInitExpr:
+    {
+      // A number type's conversion as the parser writes it in places (`u32(x)` among a call's arguments).
+      auto* b = static_cast<BraceInitExpr*>(e);
+      bool reference = false;
+      std::string type = b->args.size() == 1 ? natvisCastType(v.global, v.symbols, e->ty, reference) : std::string();
+      if (type.empty() || reference)
+        return fail(v, e, "a braced value other than a number's conversion");
+      return natvisCast(v, b->args[0], type, false, out);
+    }
+    default: return fail(v, e, std::string("this kind of expression (") + nodeKindName(e->kind) + ")");
     }
   }
 
@@ -571,62 +889,242 @@ namespace
       case 't': out += '\t'; break;
       case 'r': out += '\r'; break;
       case '0': break;
+      case 'x':
+      {
+        // \xHH...: its byte (a UTF-8 sign's, Comparison's "\xE2\x89\xA5")
+        size_t end = i + 1;
+        unsigned value = 0;
+        while (end + 1 < text.size() && isxdigit((unsigned char)text[end]))
+          value = value * 16 + (isdigit((unsigned char)text[end]) ? text[end] - '0' : (tolower((unsigned char)text[end]) - 'a' + 10)), ++end;
+        if (end == i + 1 || value > 255)
+          return false;
+        out += char(value);
+        i = end - 1;
+        break;
+      }
       default: return false;
       }
     }
     return true;
   }
 
-  // A text view's DisplayString (DebugValue, a debugValue returning std::String): the `+` of string
-  // literals (their text, natvis's braces doubled), std::toString(VALUE) and other values (each `{VALUE}`,
-  // shown by its own view; a floating one `,g`).
-  bool natvisText(DebugValue& v, Expr* e, std::string& out)
+  // A text view's DisplayStrings (DebugValue, a debugValue returning std::String): its variants, each a
+  // condition (empty: always) and a text, in order, the first that holds shown, the last unconditional.
+  // The `+` of string literals (their text, natvis's braces doubled), std::toString(VALUE, ...) and other
+  // values (each `{VALUE}` by its own view; a floating one `,g`, characters `,s8b`); a choice between texts
+  // (`this.branch ? " (branch)" : ""`) and a call of a const member function returning text (MapVersion's
+  // str(), Comparison's switch of signs) split the variants, natvis's expressions having no string literals.
+  using TextVariants = std::vector<std::pair<std::string, std::string>>;
+
+  std::string bothConditions(const std::string& a, const std::string& b)
+  {
+    if (a.empty())
+      return b;
+    if (b.empty())
+      return a;
+    return a + " && " + b;
+  }
+
+  bool isTextType(const Ty* t, const SymbolTable& symbols, TypeTable& types)
+  {
+    t = t ? types.unqualified(types.stripRef(t)) : nullptr;
+    if (!t)
+      return false;
+    if (isLibraryClass(t, symbols, "String") || isLibraryClass(t, symbols, "StringView"))
+      return true;
+    return (t->kind == TyKind::Pointer || t->kind == TyKind::Array) && t->inner && types.unqualified(t->inner)->kind == TyKind::Char;
+  }
+
+  // Every variant of out followed by every variant of piece, in order (the first that holds of both).
+  bool textProduct(DebugValue& v, Node* at, TextVariants& out, const TextVariants& piece)
+  {
+    if (piece.size() == 1)
+    {
+      for (auto& [condition, text] : out)
+        condition = bothConditions(condition, piece[0].first), text += piece[0].second;
+      return true;
+    }
+    TextVariants made;
+    for (const auto& [condition, text] : out)
+      for (const auto& [more, added] : piece)
+        made.push_back({bothConditions(condition, more), text + added});
+    if (made.size() > 32)
+      return fail(v, at, "a text of more than 32 variants (its choices multiply)");
+    out = std::move(made);
+    return true;
+  }
+
+  bool natvisText(DebugValue& v, Expr* e, TextVariants& out);
+
+  // A const member function returning text, inlined: each of its cases' texts under its condition (a
+  // body ending in a [[noreturn]] call, `?` for the values it has no case for).
+  bool inlinedText(DebugValue& v, Node* at, FunctionDecl* called, Expr* objectExpr, bool arrow, TextVariants& out)
+  {
+    if (!(called->flags & DF_Const) || (called->flags & (DF_Static | DF_Virtual | DF_Override)) || !called->templateParams.empty() || !called->params.empty())
+      return fail(v, at, "a call of a function other than a const, non-virtual member function without parameters");
+    std::string base;
+    const Ty* object = nullptr;
+    TypeTable& types = v.global.types();
+    if (!objectExpr || isThisObject(objectExpr))
+    {
+      if (isDebugValue(called, v.symbols))
+        return fail(v, at, "a call of its own debugValue");
+      object = v.self;
+    }
+    else
+    {
+      if (!natvisExpression(v, objectExpr, base))
+        return false;
+      base += arrow ? "->" : ".";
+      object = objectExpr->ty ? types.unqualified(types.stripRef(objectExpr->ty)) : nullptr;
+      if (object && arrow && object->kind == TyKind::Pointer)
+        object = object->inner ? types.unqualified(object->inner) : nullptr;
+    }
+    if (!object || object->kind != TyKind::Class || !object->decl)
+      return fail(v, at, "a call on something other than the object or a member that is a class");
+    if (v.depth > 8)
+      return fail(v, at, "calls nested deeper than 8");
+    TemplateArgs args = v.global.classArgsOf(object);
+    Decl* defined = args.empty() ? v.global.definitionOf(called) : v.global.definitionOf(called, args);
+    auto* def = defined && defined->kind == NodeKind::FunctionDecl ? static_cast<FunctionDecl*>(defined) : called;
+    FunctionDecl* instance = args.empty() ? def : v.global.instanceBody(def, args, object);
+    DebugValue inner{v.global, v.symbols, def->file, instance, args, v.prefix + base, v.depth + 1, object};
+    std::vector<DebugCase> cases;
+    bool endsNowhere = false;
+    TextVariants piece;
+    bool done = debugCases(inner, instance, cases, &endsNowhere);
+    for (size_t i = 0; done && i < cases.size(); ++i)
+    {
+      std::string when = cases[i].text;
+      TextVariants one{{"", ""}};
+      if ((cases[i].first && !natvisCondition(inner, cases[i].first, when)) || !natvisText(inner, cases[i].second, one))
+      {
+        done = false;
+        break;
+      }
+      for (const auto& [condition, text] : one)
+        piece.push_back({bothConditions(when, condition), text});
+    }
+    if (done)
+    {
+      if (endsNowhere)
+        piece.push_back({"", "?"});
+      return textProduct(v, at, out, piece);
+    }
+    if (v.why.empty())
+    {
+      v.why = "the function it calls, " + std::string(v.symbols.name(called->name.last().symbol)) + ": " + inner.why;
+      v.at = inner.at;
+      v.atFile = inner.atFile;
+    }
+    return false;
+  }
+
+  bool natvisText(DebugValue& v, Expr* e, TextVariants& out)
   {
     while (e && e->kind == NodeKind::ParenExpr)
       e = static_cast<ParenExpr*>(e)->inner;
     if (!e)
       return fail(v, e, "an expression the parser left out");
     TypeTable& types = v.global.types();
+    auto append = [&](const std::string& text)
+    {
+      for (auto& variant : out)
+        variant.second += text;
+      return true;
+    };
     if (e->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(e)->literalKind == TokenKind::String)
     {
-      std::string text;
+      std::string text, doubled;
       if (!literalText(static_cast<LiteralExpr*>(e)->file ? static_cast<LiteralExpr*>(e)->file : v.file, static_cast<LiteralExpr*>(e), text))
-        return fail(v, e, "a string literal with a prefix or an escape other than \\\" \\\\ \\n \\t \\r");
+        return fail(v, e, "a string literal with a prefix or an escape other than \\\" \\\\ \\n \\t \\r \\x");
       for (char c : text)
         if (c == '{' || c == '}')
-          out += std::string(2, c);
+          doubled += std::string(2, c);
         else
-          out += c;
-      return true;
+          doubled += c;
+      return append(doubled);
     }
     const Ty* type = e->ty ? types.unqualified(types.stripRef(e->ty)) : nullptr;
     bool string = isLibraryClass(type, v.symbols, "String");
+    bool view = isLibraryClass(type, v.symbols, "StringView");
+    auto isToString = [&](Expr* callee)
+    {
+      Decl* d = callee && callee->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(callee)->resolved : nullptr;
+      return d && d->kind == NodeKind::FunctionDecl && d->file && d->file->isLibrary && v.symbols.name(static_cast<FunctionDecl*>(d)->name.last().symbol) == "toString";
+    };
+    if (e->kind == NodeKind::BraceInitExpr && isLibraryClass(type, v.symbols, "Text"))
+    {
+      // std::toString(a, ".", b)'s pieces, a std::Text (design.md 14): each a piece of the text
+      for (Expr* piece : static_cast<BraceInitExpr*>(e)->args)
+        if (!natvisText(v, piece, out))
+          return false;
+      return true;
+    }
     if (e->kind == NodeKind::BinaryExpr && P(static_cast<BinaryExpr*>(e)->op) == P::Plus && string)
       return natvisText(v, static_cast<BinaryExpr*>(e)->lhs, out) && natvisText(v, static_cast<BinaryExpr*>(e)->rhs, out);
-    Expr* value = e;
-    if (e->kind == NodeKind::CallExpr && static_cast<CallExpr*>(e)->args.size() == 1)
+    if (e->kind == NodeKind::CallExpr && isToString(static_cast<CallExpr*>(e)->callee))
     {
-      auto* c = static_cast<CallExpr*>(e);
-      Decl* callee = c->callee && c->callee->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(c->callee)->resolved : nullptr;
-      if (callee && callee->kind == NodeKind::FunctionDecl && callee->file && callee->file->isLibrary &&
-          v.symbols.name(static_cast<FunctionDecl*>(callee)->name.last().symbol) == "toString")
-        value = c->args[0]; // (std::toString(x): x as the debugger shows it)
-      else if (string)
-        return natvisText(v, c->args[0], out); // (std::String("..."))
+      // std::toString(x) or std::toString(a, ".", b): x as the debugger shows it, each piece of the text
+      for (Expr* piece : static_cast<CallExpr*>(e)->args)
+        if (!natvisText(v, piece, out))
+          return false;
+      return true;
     }
-    else if (e->kind == NodeKind::FunctionalCastExpr && string && static_cast<FunctionalCastExpr*>(e)->args.size() == 1)
-      return natvisText(v, static_cast<FunctionalCastExpr*>(e)->args[0], out);
+    if ((string || view) && ((e->kind == NodeKind::CallExpr && static_cast<CallExpr*>(e)->args.size() == 1 &&
+                               !(static_cast<CallExpr*>(e)->callee && static_cast<CallExpr*>(e)->callee->kind == NodeKind::MemberExpr)) ||
+                              (e->kind == NodeKind::FunctionalCastExpr && static_cast<FunctionalCastExpr*>(e)->args.size() == 1)))
+      return natvisText(v, e->kind == NodeKind::CallExpr ? static_cast<CallExpr*>(e)->args[0] : static_cast<FunctionalCastExpr*>(e)->args[0], out); // (std::String("..."), std::StringView(x))
+    if (e->kind == NodeKind::ConditionalExpr && static_cast<ConditionalExpr*>(e)->then && isTextType(e->ty, v.symbols, types))
+    {
+      // a choice between texts: the variants of each, under the condition and after it
+      auto* c = static_cast<ConditionalExpr*>(e);
+      std::string when;
+      TextVariants then{{"", ""}}, otherwise{{"", ""}};
+      if (!natvisCondition(v, c->cond, when) || !natvisText(v, c->then, then) || !natvisText(v, c->else_, otherwise))
+        return false;
+      TextVariants piece;
+      for (const auto& [condition, text] : then)
+        piece.push_back({bothConditions(when, condition), text});
+      piece.insert(piece.end(), otherwise.begin(), otherwise.end());
+      return textProduct(v, e, out, piece);
+    }
+    if (e->kind == NodeKind::CallExpr && static_cast<CallExpr*>(e)->args.empty() && isTextType(e->ty, v.symbols, types) &&
+        static_cast<CallExpr*>(e)->callee && static_cast<CallExpr*>(e)->callee->kind == NodeKind::MemberExpr &&
+        static_cast<MemberExpr*>(static_cast<CallExpr*>(e)->callee)->resolved &&
+        static_cast<MemberExpr*>(static_cast<CallExpr*>(e)->callee)->resolved->kind == NodeKind::FunctionDecl)
+    {
+      // a const member function returning text, its text inlined (MapVersion's str(), Comparison's)
+      auto* m = static_cast<MemberExpr*>(static_cast<CallExpr*>(e)->callee);
+      return inlinedText(v, e, static_cast<FunctionDecl*>(m->resolved), m->base, m->op == P::Arrow, out);
+    }
+    if (type && type->kind == TyKind::Class && !string && !view)
+      if (FunctionDecl* conversion = conversionOf(v.global, type, [&](const Ty* t) { return isLibraryClass(t, v.symbols, "String"); }))
+        return inlinedText(v, e, conversion, e, false, out); // (a class that becomes text through its conversion: StationID's SizeLimitedString name)
     std::string expression;
-    if (!natvisExpression(v, value, expression))
+    if (!natvisExpression(v, e, expression))
       return false;
-    const Ty* shown = value->ty ? types.unqualified(types.stripRef(value->ty)) : nullptr;
-    if (shown && shown->kind == TyKind::Int && shown->bits == 8)
+    if (type && type->kind == TyKind::Int && type->bits == 8)
       expression = "(int)(" + expression + ")"; // (a u8 or i8 as its number, not a character)
-    bool characters = shown && (shown->kind == TyKind::Pointer || shown->kind == TyKind::Array) && shown->inner &&
-                      types.unqualified(shown->inner)->kind == TyKind::Char; // (a char array or pointer: its text)
-    out += "{" + expression +
-           (shown && shown->kind == TyKind::Float ? ",g" : isLibraryClass(shown, v.symbols, "String") || isLibraryClass(shown, v.symbols, "StringView") || characters ? ",sb" : "") +
-           "}";
+    bool characters = type && (type->kind == TyKind::Pointer || type->kind == TyKind::Array) && type->inner &&
+                      types.unqualified(type->inner)->kind == TyKind::Char; // (a char array or pointer: its text)
+    return append("{" + expression +
+                  (type && type->kind == TyKind::Float ? ",g"
+                   : characters ? ",s8b" // (kpp's text is UTF-8)
+                   : string || view ? ",sb"
+                   : "") +
+                  "}");
+  }
+
+  // One text, for a place that cannot hold variants (an inlined function's text in an expression).
+  bool natvisText(DebugValue& v, Expr* e, std::string& out)
+  {
+    TextVariants variants{{"", ""}};
+    if (!natvisText(v, e, variants))
+      return false;
+    if (variants.size() != 1)
+      return fail(v, e, "a choice between texts where only one text can stand");
+    out += variants[0].second;
     return true;
   }
 
@@ -675,7 +1173,7 @@ namespace
       auto* def = body && body->kind == NodeKind::FunctionDecl ? static_cast<FunctionDecl*>(body) : f;
       FunctionDecl* instance = args.empty() || !def->body ? def : global.instanceBody(def, args, d.type);
       DebugValue v{global, symbols, def->file, instance, args, "", 0, d.type};
-      std::vector<std::pair<Expr*, Expr*>> cases;
+      std::vector<DebugCase> cases;
       auto cannot = [&]()
       {
         return error(v.atFile ? v.atFile : def->file, v.at ? v.at : def, "debugValue of " + d.name + " cannot be shown by the debugger: " + v.why);
@@ -691,15 +1189,16 @@ namespace
       bool view = isLibraryClass(shown, symbols, "StringView"); // (characters: a pointer, or a pointer and a length)
       std::string displays, items;
       bool failed = false;
-      for (const auto& [condition, value] : cases)
+      for (const DebugCase& one : cases)
       {
-        std::string when;
-        if (condition && !natvisExpression(v, condition, when))
+        Expr* value = one.second;
+        std::string when = one.text;
+        if (one.first && !natvisCondition(v, one.first, when))
         {
           failed = true;
           break;
         }
-        std::string attribute = condition ? " Condition=\"" + escape(when) + "\"" : std::string();
+        std::string attribute = one.conditional() ? " Condition=\"" + escape(when) + "\"" : std::string();
         Expr* pointer = nullptr;
         Expr* length = nullptr;
         if (span)
@@ -750,18 +1249,22 @@ namespace
             failed = true;
             break;
           }
-          displays += "    <DisplayString" + attribute + ">{" + escape(chars) + (args.size() == 2 ? ",[" + escape(length) + "]sb" : ",sb") + "}</DisplayString>\n";
+          displays += "    <DisplayString" + attribute + ">{" + escape(chars) + (args.size() == 2 ? ",[" + escape(length) + "]s8b" : ",s8b") + "}</DisplayString>\n";
           continue;
         }
         if (text)
         {
-          std::string display;
-          if (!natvisText(v, value, display))
+          TextVariants variants{{"", ""}};
+          if (!natvisText(v, value, variants))
           {
             failed = true;
             break;
           }
-          displays += "    <DisplayString" + attribute + ">" + escape(display) + "</DisplayString>\n";
+          for (const auto& [condition, display] : variants)
+          {
+            std::string all = bothConditions(when, condition);
+            displays += "    <DisplayString" + (all.empty() ? std::string() : " Condition=\"" + escape(all) + "\"") + ">" + escape(display) + "</DisplayString>\n";
+          }
           continue;
         }
         std::string expression;

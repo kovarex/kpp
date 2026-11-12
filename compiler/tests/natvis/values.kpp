@@ -4,7 +4,9 @@
 // "debugValue"): a fixed-point number shown as its value, a rule per instance; a class shown as its
 // String member; one with an `if` and another type's debugValue; one shown as a Span's elements; one
 // through its own conversion, a constexpr local in it; text views, a std::String built with +; an
-// enumeration's name, a cast to a derived class, a pointer to its template argument, characters as text.
+// enumeration's name, a cast to a derived class, a pointer to its template argument, characters as text;
+// the types' own names and conversions (kovarex, 2026-11-12): a str() of a switch, a comparison with a named
+// constant, a str() of std::Text pieces and a choice between texts, a member's conversion to String.
 struct Point
 {
   int x = 0;
@@ -105,6 +107,70 @@ struct Short
   usize length = 0;
 };
 
+class Sign
+{
+public:
+  enum class Enum : u8 { Greater, Less, AtLeast };
+  const char* str() const
+  {
+    switch (this.value)
+    {
+      case Enum::Greater: return ">";
+      case Enum::Less: return "<";
+      case Enum::AtLeast: return "\xE2\x89\xA5";
+    }
+    abort();
+  }
+  std::String debugValue() const { return this.str(); }
+  Enum value = Enum::Greater;
+};
+
+class Team
+{
+public:
+  static constexpr Team red() { Team team; team.index = 1; return team; }
+  constexpr bool operator==(const Team&) const = default;
+  std::String debugValue() const
+  {
+    if (this == Team::red())
+      return "red";
+    return "{index=" + std::toString(this.index) + "}";
+  }
+  u8 index = 0;
+};
+
+class Branch
+{
+public:
+  constexpr operator bool() const { return this.version != 0; }
+  u8 version = 0;
+};
+
+class Release
+{
+public:
+  std::String str() const { return std::toString(u32(this.major), ".", u32(this.minor), std::StringView(this.branch ? " (branch)" : "")); }
+  std::String debugValue() const { return this.str(); }
+  u16 major = 0;
+  u16 minor = 0;
+  Branch branch;
+};
+
+class SizedName
+{
+public:
+  implicit operator const std::String&() const { return this.value; }
+  std::String value;
+};
+
+class Station
+{
+public:
+  const std::String& str() const { return this.name; }
+  std::String debugValue() const { return this.str(); }
+  SizedName name;
+};
+
 struct Buffer
 {
   std::Span<i32> debugValue() const { return std::Span<i32>(this.data, this.size); }
@@ -142,6 +208,15 @@ int main()
   Short name;
   name.inPlace[0] = 'o';
   name.inPlace[1] = 'k';
+  Sign sign;
+  sign.value = Sign::Enum::AtLeast;
+  Team team;
+  team.index = 1;
+  Release release;
+  release.major = 2;
+  release.minor = 72;
+  Station station;
+  station.name.value = "depot";
   Buffer buffer;
   buffer.data = held;
   buffer.size = 3;

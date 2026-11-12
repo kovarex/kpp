@@ -365,8 +365,18 @@ struct Load
 struct Buffer { std::Span<i32> debugValue() const { return std::Span<i32>(this.data, this.size); } i32* data; usize size; }; // {length=3}, [0] [1] [2]
 ```
 
-- **The body**: `return EXPRESSION;`, after any number of `if (CONDITION) return EXPRESSION;` (each a
-  case of the rule, a DisplayString with that Condition). An expression reads the object's data members
+- **The body**: `return EXPRESSION;`, after any number of `if (CONDITION) return EXPRESSION;` and
+  `switch (VALUE) { case A: return EXPRESSION; ... default: ... }` (each a case of the rule, a DisplayString
+  with that Condition); a body may end in a `[[noreturn]]` call instead (Comparison::str()'s
+  `logEnumAndAbortOrThrow` after its switch: no case for the values it has none for).
+- **Written with the type's own names and conversions** (kovarex, 2026-11-12, reviewing the game's first
+  debugValues: "in the kpp code we should write nicely"): `this == Force::player.id` compares a class whose
+  `==` is defaulted member by member against the folded constant (`index == 1`); `return this.str();` uses
+  the conversion the type has, inlined with its cases and choices: MapVersion's `std::toString(a, ".", b,
+  std::StringView(this.branchVersion ? " (branch)" : ""))` (std::Text's pieces, a class's `operator bool`,
+  a choice between texts as two DisplayStrings, natvis's expressions having no string literals),
+  Comparison's switch of signs (`≥`, its `\xE2\x89\xA5` escapes read), StationID's name through its
+  SizeLimitedString's `operator const std::String&`. An expression reads the object's data members
   (`this.x`, chains of members, `->` and `*` through pointers); what reads none is folded to a
   constant under the instance's arguments (`This::ValuesPerOne`, an enumerator, `1.0 / 256`), so
   `Fixed<8>` shows `{(double)(value) * 0.00390625,g}` and `Fixed<12>` its own scale; arithmetic,

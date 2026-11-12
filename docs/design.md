@@ -2969,7 +2969,10 @@ other options (hand-written files, a format string, calling the program's code):
   enumeration or pointer, a class member (its view and expansion), a Span (pointer and length) or a text view
   (a `std::String` of literals and values joined with `+`, 2026-11-12), an enumeration, a class pointer or
   characters (`std::StringView`) returned; casts to enumerations and to class pointers and references. A
-  body outside that is an error in every build and in the language server's check.
+  body outside that is an error in every build and in the language server's check. Written with the type's
+  own names and conversions (kovarex, 2026-11-12): comparisons of classes with a defaulted `==` against named
+  constants, `switch`, a `[[noreturn]]` end, a `str()` returning text inlined with its cases, std::Text pieces,
+  choices between texts, conversions to bool and to String.
 
 ## Code packages (proposed 2026-10-27, decided 2026-11-04)
 
