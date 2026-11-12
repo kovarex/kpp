@@ -343,9 +343,113 @@ inline std::string withStyleEmptyLinesOnce(const std::string& text)
 // or `,`), nor a statement's head (`if (x)`). The statement: one line ending with `;`, no comment, no
 // block (`{`), no statement of its own kind (if, for, while...). And no empty line between two
 // one-liners that follow one another.
-inline std::string withOneLiners(const std::string& text)
+// What the C++ wrote that kpp's likely-slip errors (design.md "The likely slips are errors", --slip-checks)
+// take for a mistake, written as kpp says it on purpose, with the same meaning:
+// - an `if` or `else` whose body is `;` gets `{}` (`if (pattern[x] == ' ')` / `;` / `else if ...`);
+// - an assignment as an if's or a while's condition gets its own parentheses (`if ((player =
+//   game->getLocalPlayer()))`, `} while ((quality = quality->next.getPrototype()));`). A declaration in
+//   a condition (`if (Player* player = f())`) is none: what stands before its `=` is two words.
+inline std::string withSlipsSpelledOut(const std::string& text)
 {
   using namespace styleEmptyLines;
+  std::vector<std::string> lines;
+  for (size_t start = 0; start < text.size();)
+  {
+    size_t end = text.find('\n', start);
+    if (end == std::string::npos)
+      end = text.size();
+    lines.push_back(text.substr(start, end - start));
+    start = end + 1;
+  }
+  bool finalNewline = !text.empty() && text.back() == '\n';
+  std::vector<std::string> code;
+  std::vector<bool> inside;
+  codeOf(lines, code, inside);
+  auto word = [](std::string_view t, size_t at, std::string_view w)
+  {
+    return t.substr(at, w.size()) == w && (at == 0 || !isIdentChar(t[at - 1])) && (at + w.size() == t.size() || !isIdentChar(t[at + w.size()]));
+  };
+  size_t previousCode = SIZE_MAX; // the last line with code before line i
+  for (size_t i = 0; i < lines.size(); ++i)
+  {
+    if (inside[i])
+      continue;
+    std::string_view c = trimmed(code[i]);
+    if (c.empty())
+      continue;
+    if (c == ";" && previousCode != SIZE_MAX)
+    {
+      std::string_view above = trimmed(code[previousCode]);
+      if (above.substr(0, 1) == "}")
+        above = trimmed(above.substr(1));
+      bool header = (word(above, 0, "if") || (word(above, 0, "else") && word(trimmed(above.substr(4)), 0, "if"))) && endsWith(above, ")") &&
+                    above.find("constexpr") == std::string_view::npos;
+      if (header || above == "else")
+      {
+        size_t at = code[i].find(';');
+        lines[i].replace(at, 1, "{}");
+      }
+    }
+    for (std::string_view keyword : {"if", "while"})
+      for (size_t at = code[i].find(keyword); at != std::string::npos; at = code[i].find(keyword, at + 1))
+      {
+        if (!word(code[i], at, keyword))
+          continue;
+        size_t open = code[i].find_first_not_of(' ', at + keyword.size());
+        if (open == std::string::npos || code[i][open] != '(')
+          continue;
+        int depth = 0;
+        size_t close = std::string::npos, assignment = std::string::npos;
+        bool semicolon = false;
+        for (size_t k = open; k < code[i].size(); ++k)
+        {
+          char ch = code[i][k];
+          if (ch == '(' || ch == '[' || ch == '{')
+            ++depth;
+          else if (ch == ')' || ch == ']' || ch == '}')
+          {
+            if (--depth == 0)
+            {
+              close = k;
+              break;
+            }
+          }
+          else if (depth == 1 && ch == ';')
+            semicolon = true;
+          else if (depth == 1 && ch == '=' && assignment == std::string::npos)
+          {
+            char before = k > 0 ? code[i][k - 1] : ' ', after = k + 1 < code[i].size() ? code[i][k + 1] : ' ';
+            if (after != '=' && !strchr("=!<>+-*/%&|^", before))
+              assignment = k;
+          }
+        }
+        if (close == std::string::npos || semicolon || assignment == std::string::npos)
+          continue;
+        std::string_view target = trimmed(std::string_view(code[i]).substr(open + 1, assignment - open - 1));
+        if (target.empty() || target.find(' ') != std::string_view::npos || target.find('\t') != std::string_view::npos)
+          continue; // (a declaration, `Player* player = ...`)
+        lines[i].insert(close, ")");
+        lines[i].insert(open + 1, "(");
+        code[i].insert(close, ")");
+        code[i].insert(open + 1, "(");
+        at = close + 2;
+      }
+    previousCode = i;
+  }
+  std::string result;
+  for (size_t i = 0; i < lines.size(); ++i)
+  {
+    result += lines[i];
+    if (i + 1 < lines.size() || finalNewline)
+      result += '\n';
+  }
+  return result;
+}
+
+inline std::string withOneLiners(const std::string& input)
+{
+  using namespace styleEmptyLines;
+  const std::string text = withSlipsSpelledOut(input);
   std::vector<std::string> lines;
   for (size_t start = 0; start < text.size();)
   {

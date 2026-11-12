@@ -1,0 +1,53 @@
+// tests\convert_slips: what kpp's likely-slip errors take for a mistake, written as the C++ meant it: an `if`'s
+// or `else`'s empty body `;` as `{}`, and an assignment as a condition in its own parentheses (a declaration
+// in a condition stays as it is). convert.cmd compares the conversion with tests\convert_slips.expected.kpp and
+// builds it with --slip-checks and runs it.
+
+struct Node
+{
+  Node* parent = nullptr;
+  i32 value = 0;
+};
+
+i32* find(i32* p) { return p; }
+
+i32 count(const char* pattern)
+{
+  i32 walls = 0;
+  for (i32 x = 0; pattern[x]; x++)
+    if (pattern[x] == ' ')
+      {}
+    else if (pattern[x] == '#')
+      walls++;
+    else
+      {} // anything else
+  return walls;
+}
+
+i32 main()
+{
+  i32 number = 5;
+  i32* p = nullptr;
+  i32 found = 0;
+  if ((p = find(&number)))
+    found += *p;
+  bool both = false;
+  if ((both = found > 0 && number > 0))
+    found += 1;
+  Node root{nullptr, 1};
+  Node child{&root, 2};
+  Node* node = &child;
+  i32 depth = 0;
+  while ((node = node->parent))
+    depth++;
+  Node* walk = &child;
+  do
+    depth++;
+  while((walk = walk->parent));
+  if (i32* q = find(&number))
+    found += *q;
+  if (found == 11)
+    {}
+  std::print(count("# #  ##"), " ", found, " ", depth, " ", i32(both ? 1 : 0), "\n");
+  return 0;
+}

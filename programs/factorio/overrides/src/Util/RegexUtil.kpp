@@ -34,10 +34,6 @@ namespace re2
     implicit StringPiece(std::StringView view) : std::StringView(view) {}
     std::String ToString() const { return std::String(this->data(), this->size()); }
     std::String as_string() const { return std::String(this->data(), this->size()); }
-    // Into the target's own buffer, as RE2's target->assign does: Package::examinePath copies a
-    // piece of the name into the name itself and then reads another piece of it (the version of
-    // `mod_1.1.0.zip`); a new buffer freed what that piece showed, and every zipped mod's version
-    // read as 0.0.0 ("Filename of mod ... doesn't match the expected", kovarex 2026-11-11).
     void CopyToString(std::String* target) const { target->assign(this->data(), this->size()); }
     void AppendToString(std::String* target) const { target->append(this->data(), this->size()); }
   };

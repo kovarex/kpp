@@ -1665,25 +1665,41 @@
 # linked list or look a prototype up in a static table, which a debugValue body cannot do yet.
 
 @ src/Util/FixedPointNumber.hpp: shows as its number (1.5), one rule for every instance (the natvis had six, one per precision)
--   static constexpr T ValuesPerOne = T(1) << PrecisionBits;
-+   static constexpr T ValuesPerOne = T(1) << PrecisionBits;
-+   double debugValue() const { return double(this->value) * (1.0 / ValuesPerOne); }
+-   constexpr double getDouble() const { constexpr double ValuePerIncrement = 1.0 / ValuesPerOne; return double(this->value) * ValuePerIncrement; }
++   constexpr double getDouble() const { constexpr double ValuePerIncrement = 1.0 / ValuesPerOne; return double(this->value) * ValuePerIncrement; }
++   double debugValue() const { return this->getDouble(); }
 
 @ src/Util/RealOrientation.hpp: shows as the orientation, 0 to 1
 - private:
 -   ValueType value = 0u;
-+   double debugValue() const { return double(this->value) * (1.0 / 4294967296.0); }
++   double debugValue() const { return this->toDouble(); }
 +
 + private:
 +   ValueType value = 0u;
 
 @ src/Util/Container/SmallVector.hpp: shows as its elements, wherever they are
--   T* begin_;
--   T* end_;
-- };
-+   T* begin_;
-+   T* end_;
-+
-+ public:
-+   std::span<const T> debugValue() const { return std::span<const T>(this->begin_, this->end_); }
-+ };
+-   const_iterator cend() const { return this->end_; }
++   const_iterator cend() const { return this->end_; }
++   std::span<const T> debugValue() const { return std::span<const T>(this->begin(), this->end()); }
+
+# kpp's likely slips (design.md, "The likely slips are errors"; --slip-checks) the converter cannot write
+# away: each says what the C++ does, unchanged. (An assignment as a condition and an `if`'s empty body `;`
+# are the converter's, Converter/StyleEmptyLines.inl's withSlipsSpelledOut.)
+
+@ libraries/StackWalker/StackWalker.cpp: a switch on SYM_TYPE names its count, NumSymTypes, no more than before
+-             szSymType = "Virtual";
+-             break;
+-         }
++             szSymType = "Virtual";
++             break;
++           default:
++             break;
++         }
+
+@ libraries/Agui/Widget/Slider.cpp: the first notch's position is the marker's middle in whole pixels, as before (an integer division stored in a double)
+-       double firstPosition = this->marker.getWidth() / 2; // position of the first notch (it's middle)
++       double firstPosition = double(this->marker.getWidth() / 2); // position of the first notch (it's middle)
+
+@ src/Graphics/ChartRenderer.cpp: kept as it was, an integer division (1 for a 64 pixel sprite, 2 for 32, 0 for 128 and wider); kovarex decides whether 64.0 was meant
+-     const double spriteScale = 64 / alert.sprite->getFinalWidth();
++     const double spriteScale = double(64 / alert.sprite->getFinalWidth());
