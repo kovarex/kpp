@@ -8436,7 +8436,10 @@ auto GlobalScope::Impl::Walker::operatorFunction(P op, const Ty* lhs, const Ty* 
   uint32_t symbol = impl.opSymbols[uint32_t(op)];
   const Ty* l = types.stripRef(lhs);
   isMember = false;
-  if (l && l->kind == TyKind::Class)
+  // A class's own operators, and a kpp enum's (design.md 8.4: its methods are a class's; thread B, 2026-11-12: `a + b`
+  // with `Dir operator+(const Dir&) const` in the enum was typed int32, and codegen refused "+ on a value of an enum class").
+  bool enumMembers = l && l->kind == TyKind::Enum && l->decl && l->decl->kind == NodeKind::EnumDecl && static_cast<EnumDecl*>(l->decl)->isKpp;
+  if (l && (l->kind == TyKind::Class || enumMembers))
   {
     MemberResult r = memberOf(l, symbol, nullptr, token, false);
     if (r.decl && r.decl->kind == NodeKind::FunctionDecl)
@@ -8450,9 +8453,9 @@ auto GlobalScope::Impl::Walker::operatorFunction(P op, const Ty* lhs, const Ty* 
       // assignment, which hides every base's operator= (C++ [class.copy.assign]; a using-declaration
       // brings one in: BoolConfigItem's `using StorageConfigItem<bool>::operator=;`). Not the base's, which would leave the class's own members as they
       // were (classes/implicit_assignment_hides_base_operator).
-      if (f && op == P::Assign && f->parent && !callableAssignment(impl.classDefinition(l), f))
+      if (f && op == P::Assign && !enumMembers && f->parent && !callableAssignment(impl.classDefinition(l), f))
         f = nullptr;
-      if (f && op == P::Assign && arity == 2 && impl.implicitAssignmentBeats(impl.classDefinition(l), l, f, r.subst, rhs))
+      if (f && op == P::Assign && !enumMembers && arity == 2 && impl.implicitAssignmentBeats(impl.classDefinition(l), l, f, r.subst, rhs))
         f = nullptr;
       if (f)
       {
@@ -9068,7 +9071,7 @@ auto GlobalScope::Impl::Walker::reportUnmarkedOperand(const Ty* side, const std:
   return true;
 }
 
-auto GlobalScope::Impl::Walker::enumUnaryOperator(P op, bool postfix, const Ty* operand, uint32_t token, FunctionDecl** chosen) -> const Ty*
+auto GlobalScope::Impl::Walker::enumUnaryOperator(P op, bool postfix, const Ty* operand, uint32_t token, FunctionDecl** chosen, bool* member) -> const Ty*
 {
   // Postfix `d++` is `operator++(d, 0)` ([over.oper.incr]): the candidates taking (E&, int).
   bool step = op == P::PlusPlus || op == P::MinusMinus;
@@ -9076,6 +9079,20 @@ auto GlobalScope::Impl::Walker::enumUnaryOperator(P op, bool postfix, const Ty* 
   Subst subst;
   bool isMember;
   FunctionDecl* f = operatorFunction(op, operand, twoOperands ? types.intType() : nullptr, token, twoOperands ? 2 : 1, subst, isMember);
+  if (member)
+    *member = false;
+  if (f && isMember && member)
+  {
+    // (a kpp enum's own member operator, `Dir operator-() const`: the operand its object)
+    *member = true;
+    if (chosen)
+      *chosen = f;
+    Span<Expr*> none;
+    std::vector<const Ty*> operands;
+    if (twoOperands)
+      operands.push_back(types.intType());
+    return returnTypeOfCall(f, &subst, none, nullptr, nullptr, &operands);
+  }
   if (!f || isMember || !f->templateParams.empty())
     return nullptr;
   // Only one that takes the enumeration as it is (not through a conversion to some class).
@@ -9089,11 +9106,23 @@ auto GlobalScope::Impl::Walker::enumUnaryOperator(P op, bool postfix, const Ty* 
   return returnTypeOfCall(f, nullptr, none, nullptr);
 }
 
-auto GlobalScope::Impl::Walker::enumOperator(P op, const Ty* lhs, const Ty* rhs, uint32_t token, FunctionDecl** chosen) -> const Ty*
+auto GlobalScope::Impl::Walker::enumOperator(P op, const Ty* lhs, const Ty* rhs, uint32_t token, FunctionDecl** chosen, bool* member) -> const Ty*
 {
   Subst subst;
   bool isMember;
   FunctionDecl* f = operatorFunction(op, lhs, rhs, token, 2, subst, isMember);
+  if (member)
+    *member = false;
+  if (f && isMember && member)
+  {
+    // (a kpp enum's own member operator: its object the left operand, the right one its argument)
+    *member = true;
+    if (chosen)
+      *chosen = f;
+    Span<Expr*> none;
+    std::vector<const Ty*> operands{rhs};
+    return returnTypeOfCall(f, &subst, none, nullptr, nullptr, &operands);
+  }
   if (!f || isMember || !impl.takesEnumOperands(f, lhs, rhs))
     return nullptr;
   if (chosen)
@@ -9350,10 +9379,10 @@ auto GlobalScope::Impl::Walker::typeOfBinaryOperator(BinaryExpr* b, OperatorCall
   if (ls->kind == TyKind::Param || rs->kind == TyKind::Param)
     return ls->kind == TyKind::Param ? ls : rs;
   if ((ls->kind == TyKind::Enum || rs->kind == TyKind::Enum) && op != P::Assign)
-    if (const Ty* user = enumOperator(op, argumentType(b->lhs, l, types), argumentType(b->rhs, r, types), b->token, &callee))
+    if (bool isMember = false; const Ty* user = enumOperator(op, argumentType(b->lhs, l, types), argumentType(b->rhs, r, types), b->token, &callee, &isMember))
     {
       call = OperatorCall::Function;
-      member = false;
+      member = isMember;
       return user;
     }
   switch (op)
@@ -9661,10 +9690,10 @@ auto GlobalScope::Impl::Walker::typeOfUnaryOperator(UnaryExpr* u, OperatorCall& 
   if (s->kind == TyKind::Param)
     return op == P::Bang ? types.boolType() : op == P::Amp ? types.pointer(s) : s;
   if (s->kind == TyKind::Enum && op != P::Amp && op != P::Star)
-    if (const Ty* r = enumUnaryOperator(op, u->postfix, argumentType(u->operand, t, types), u->token, &callee))
+    if (bool isMember = false; const Ty* r = enumUnaryOperator(op, u->postfix, argumentType(u->operand, t, types), u->token, &callee, &isMember))
     {
       call = OperatorCall::Function;
-      member = false;
+      member = isMember;
       return r;
     }
   if (s->kind == TyKind::Class)

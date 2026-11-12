@@ -772,6 +772,11 @@
   // the body run with `this` the value, as a method's, unset until the body assigns it. No constant for an enum of a
   // class template's instance yet, nor for one whose constructors take none of these.
   std::optional<ConstValue> constEnumConstruct(const Ty* t, const std::vector<ConstValue>& args, int depth);
+  // A kpp enum's method (or member operator) f run on the value self with args (thread B, 2026-11-12: they were no
+  // constant): its body with `this` that value, as constEnumConstruct runs a constructor's. self is then the value
+  // `this` was left with (what a method that is not const changed, for its caller to write where it was called on).
+  // Its result, or a void value. No constant for an enum of a class template's instance yet.
+  std::optional<ConstValue> constEnumMethod(FunctionDecl* f, ConstValue& self, const std::vector<ConstValue>& args, int depth);
 
   // A constructor's body run with `this` the object its initializers made: the object as the
   // body leaves it; with target, written there first and run on it there.

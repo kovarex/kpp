@@ -2380,6 +2380,25 @@ auto codegen::Emitter::callChosenOperator(Expr* e, FunctionDecl* f, bool member,
 {
   if (member)
   {
+    // A kpp enum's own operator (design.md 8.4), called as its methods are (callMember): one that is not const on the
+    // operand's place (`a += b` changes a), a const one on a copy of its value.
+    if (const Ty* et = operands[0]->ty ? types.unqualified(types.stripRef(operands[0]->ty)) : nullptr; et && et->kind == TyKind::Enum)
+    {
+      std::string thisArg;
+      if (!(f->flags & DF_Const))
+        thisArg = lvalue(operands[0]);
+      else
+      {
+        Value o = rvalue(operands[0]);
+        thisArg = "%v" + std::to_string(temp++);
+        allocas += "  " + thisArg + " = alloca " + llType(et, e) + "\n";
+        fn += "  store " + llType(et, e) + " " + o.text + ", ptr " + thisArg + "\n";
+      }
+      const Ty* objectTy = enumInstance(et);
+      return callRvalue(callFunction(f, global.classArgsOf(objectTy), objectTy, thisArg, operatorResult(e),
+                                     Span<Expr*>{operands.begin() + 1, uint32_t(operands.size() - 1)}, e),
+                        e);
+    }
     Value object = withCheckedConst(rvalue(operands[0]), operands[0]);
     const Ty* foundIn = isClass(object.ty) ? declaringClass(object.ty, f, e) : nullptr;
     if (!foundIn)

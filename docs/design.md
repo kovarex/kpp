@@ -673,10 +673,16 @@ class's converts its object (`operator bool() const`, explicit unless marked imp
 name, or null for a value that is none (`str()` gives "?"); a hand-written one replaces it. The constant
 evaluation runs an enum's constructors as a class's, `this` the value: `E()`, `E(args)`, `{}` and a member
 without an initializer are constants, and a constant global holding one is constant data, as one holding C++'s
-Direction with its constexpr default constructor was (an enum's other methods are not evaluated yet: no
-constant). Specs kpp/enum_constructors, enum_constructors_everywhere, enum_constructor_in_constant_evaluation,
-enum_conversion_operator, enum_enumerator_name, enum_without_default_constructor_made_without_initializer_is_error,
+Direction with its constexpr default constructor was. It runs the enum's other methods too (2026-11-12, thread
+B's report: `Dir::East.turned()` and `d.turn()` were no constant), `this` the value: one that is not const changes
+the value where it was called on. Specs kpp/enum_constructors, enum_constructors_everywhere,
+enum_constructor_in_constant_evaluation, enum_method_in_constant_evaluation, enum_conversion_operator,
+enum_enumerator_name, enum_without_default_constructor_made_without_initializer_is_error,
 enum_constructor_taking_one_number_is_error, enum_constructor_member_initializer_is_error.
+An enum's member operators are its operators, as a class's are (2026-11-12, thread B's report: with
+`Dir operator+(const Dir&) const` in the enum, `a + b` was typed int32 and codegen refused it, and in a constant
+the built-in `+` added the two values, silently): binary, compound (`a += b` changes a), unary, in a constant too.
+They rank with the free ones as a class's do (Walker::operatorFunction). Spec kpp/enum_member_operator.
 Done 2026-10-24: the brace block, methods with `this` as the value, `count`, `values`, the
 generated or hand-written `str()`, `switch` without `default` that must name every value (a
 compile error otherwise) and aborts on a value outside them; `nameof(x)` from 8.3. A plain C++

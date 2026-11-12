@@ -2325,6 +2325,31 @@ auto GlobalScope::Impl::constMemberCall(CallExpr* c, const TypeContext& ctx, int
       return std::nullopt;
     return ConstValue::integer(0, types.voidType());
   }
+  // `d.turn()`, `Dir::East.turned()`: a kpp enum's method on a value (constEnumMethod). One that is not const changes
+  // the value where it was called on (a temporary's for a value, its change dropped).
+  if (const Ty* et = m->base->ty ? types.unqualified(types.stripRef(m->base->ty)) : nullptr;
+      et && et->kind == TyKind::Enum && m->op == P::Dot && m->resolved && m->resolved->kind == NodeKind::FunctionDecl && !(m->resolved->flags & DF_Static))
+  {
+    auto* f = static_cast<FunctionDecl*>(m->resolved);
+    bool changes = !(f->flags & DF_Const);
+    std::optional<ConstPlace> place = changes && constPure(m->base) ? constPlaceOf(m->base, ctx, depth + 1, true) : std::nullopt;
+    std::optional<ConstValue> self = place ? constRead(*place) : constValue(m->base, ctx, depth + 1);
+    if (!self)
+      return std::nullopt;
+    std::vector<ConstValue> args;
+    for (Expr* a : c->args)
+    {
+      std::optional<ConstValue> v = constValue(a, ctx, depth + 1);
+      if (!v)
+        return std::nullopt;
+      args.push_back(*v);
+    }
+    ConstValue value = *self;
+    std::optional<ConstValue> result = constEnumMethod(f, value, args, depth + 1);
+    if (!result || (place && changes && !constWrite(*place, value)))
+      return std::nullopt;
+    return result;
+  }
   // `o->size()` of an Optional, an iterator, a handle (a class with operator->): the call on what
   // its operator-> points at, run before the arguments are evaluated, as the call's postfix
   // expression is ([expr.call] 8); its object the class that pointer's type names. (It was no
@@ -3015,6 +3040,18 @@ auto GlobalScope::Impl::constBinaryValues(P op, const ConstValue& l, const Const
   // built-in operator only where it chose that (language/enum_operand_calls_user_defined_operator).
   auto enumeration = [this](const ConstValue& v) { return v.type && types.unqualified(types.stripRef(v.type))->kind == TyKind::Enum; };
   bool enums = node && !l.isObject() && !r.isObject() && (enumeration(l) || enumeration(r)) && op != P::AndAnd && op != P::OrOr;
+  // A kpp enum's own member operator the checker chose (`Dir operator+(const Dir&) const`), run on the left value, as
+  // codegen calls it; one that is not const (`a += b`) writes the value it left where the left operand is.
+  if (enums && enumeration(l) && node->call == OperatorCall::Function && node->callee && node->calleeMember && !verifyInterpreterDecisions())
+  {
+    ConstValue self = l;
+    std::optional<ConstValue> result = constEnumMethod(node->callee, self, {r}, depth + 1);
+    if (!result)
+      return std::nullopt;
+    if (!(node->callee->flags & DF_Const) && (!lo || !lo->place || !constWrite(*lo->place, self)))
+      return std::nullopt;
+    return result;
+  }
   // `this->items + N`: an array an operator meets is a pointer to its first element.
   auto decayed = [this](const ConstValue& v) -> std::optional<ConstValue> {
     const Ty* t = v.isObject() && v.type ? types.unqualified(types.stripRef(v.type)) : nullptr;
@@ -5915,6 +5952,68 @@ auto GlobalScope::Impl::constEnumConstruct(const Ty* t, const std::vector<ConstV
   if (!made.isScalar())
     return none("its constructor gives `this` no value");
   return constConverted(made, t);
+}
+
+auto GlobalScope::Impl::constEnumMethod(FunctionDecl* f, ConstValue& self, const std::vector<ConstValue>& args, int depth) -> std::optional<ConstValue>
+{
+  EvaluationCall call; // (past the bound: its why is set)
+  if (!call.ok)
+    return std::nullopt;
+  const Ty* t = self.type ? types.unqualified(types.stripRef(self.type)) : nullptr;
+  auto none = [&](const std::string& why) -> std::optional<ConstValue> {
+    if (constWhy().empty())
+      constWhy() = "a call of " + debugName(f->name.last().special ? 0 : f->name.last().symbol) + " on a value of " + types.toString(t, &symbols) + ": " + why;
+    return std::nullopt;
+  };
+  if (!t || t->kind != TyKind::Enum || !self.isScalar())
+    return std::nullopt;
+  if (!t->args.empty())
+    return none("an enum of a class template's instance, whose methods the constant evaluation does not run yet");
+  FunctionDecl* def = f->body ? f : constDefinition(f);
+  if (!def || !def->body || def->params.size() != f->params.size() || !f->templateParams.empty())
+    return none("its body is not where the constant evaluation sees it");
+  depth = 0; // as a function's body (constRun): the call guard bounds the chain
+  TypeContext fctx{lexicalScopeOf(f), nullptr, nullptr, def->file ? def->file->tokens : nullptr, def->file ? def->file->text : std::string_view()};
+  std::vector<ConstBinding> env;
+  ConstFrame frame(&env);
+  ConstRunning running(def->file);
+  fctx.env = &env;
+  for (size_t i = 0; i < def->params.size(); ++i)
+  {
+    auto* p = static_cast<ParamDecl*>(def->params[i]);
+    if (p->isPack)
+      return none("a parameter pack");
+    Expr* defaultValue = p->defaultValue ? p->defaultValue : static_cast<ParamDecl*>(f->params[i])->defaultValue;
+    const Ty* type = p->type ? convertType(p->type, fctx, depth + 1) : nullptr;
+    if (!constBindParameter(p, type, i, args, defaultValue, fctx, depth, nullptr, nullptr, env))
+      return std::nullopt;
+  }
+  size_t at = env.size();
+  std::optional<ConstValue> given = constConverted(self, t);
+  if (!given)
+    return std::nullopt;
+  env.push_back(constBinding(constThisSymbol, *given, t));
+  env.back().writable = !(f->flags & DF_Const);
+  std::optional<ConstValue> result;
+  ConstFlow flow = constStatement(def->body, fctx, env, result, depth + 1);
+  if (flow != ConstFlow::Next && flow != ConstFlow::Returned)
+    return std::nullopt;
+  ConstValue after = env[at].value;
+  if (!constEndLocals(env, 0, depth, true))
+    return std::nullopt;
+  if (!after.isScalar())
+    return none("it leaves `this` without a value");
+  std::optional<ConstValue> left = constConverted(after, t);
+  if (!left)
+    return std::nullopt;
+  self = *left;
+  const Ty* ft = declaredTypeOf(f, nullptr, 0);
+  const Ty* returned = ft && ft->kind == TyKind::Function ? ft->inner : nullptr;
+  if (!returned || returned->kind == TyKind::Void)
+    return ConstValue::integer(0, types.voidType());
+  if (!result)
+    return none("it returns no value");
+  return returned->isReference() ? *result : constConverted(*result, returned);
 }
 
 auto GlobalScope::Impl::constRunConstructor(FunctionDecl* ctor, const Ty* t, const std::vector<ConstValue>& args, int depth, const Subst* own, FunctionDecl* declared, const std::vector<std::optional<ConstPlace>>* places, const ConstPlace* target,
@@ -8935,6 +9034,24 @@ auto GlobalScope::Impl::constEnumUnary(UnaryExpr* u, P op, const TypeContext& ct
   if (u->postfix && !step)
     return std::nullopt;
   const Ty* operand = argumentType(u->operand, u->operand->ty, types);
+  if (u->call == OperatorCall::Function && u->callee && u->calleeMember && !verifyInterpreterDecisions())
+  {
+    // A kpp enum's own member operator (`Dir operator-() const`, `Dir& operator++()`): run on the operand's value, one
+    // that is not const writing the value it left where the operand is; postfix given 0.
+    bool changes = !(u->callee->flags & DF_Const);
+    std::optional<ConstPlace> at = changes && constPure(u->operand) ? constPlaceOf(u->operand, ctx, depth + 1, true) : std::nullopt;
+    std::optional<ConstValue> v = at ? constRead(*at) : constValue(u->operand, ctx, depth + 1);
+    if (!v)
+      return std::optional<ConstValue>();
+    ConstValue self = *v;
+    std::vector<ConstValue> args;
+    if (postfix)
+      args.push_back(ConstValue::integer(0, types.intType()));
+    std::optional<ConstValue> result = constEnumMethod(u->callee, self, args, depth + 1);
+    if (!result || (changes && (!at || !constWrite(*at, self))))
+      return std::optional<ConstValue>();
+    return std::optional<std::optional<ConstValue>>(result);
+  }
   FunctionDecl* f = u->call == OperatorCall::Function && !u->calleeMember ? u->callee : nullptr;
   if (verifyInterpreterDecisions())
   {

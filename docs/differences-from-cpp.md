@@ -533,7 +533,8 @@ function that runs every level of a hierarchy. See the readme's Planned.
   enumerators are in scope. It has `count`, `values`, `str()`, `enumeratorName()` and `fromStr()`,
   generated or hand-written, and the underlying type is `i32` unless written. It may declare constructors,
   whose default one makes each value declared without an initializer (`Direction() { this = None; }`;
-  `E(x)` of one number stays the conversion), and conversion operators, as a class's (kovarex, 2026-11-11).
+  `E(x)` of one number stays the conversion), conversion operators and member operators (`Dir operator+(const
+  Dir&) const`), as a class's (kovarex, 2026-11-11). The constant evaluation runs them all.
   A plain `enum class` without the inner block keeps C++'s rules.
 - **Why:** it replaces the hand-written tables and macros beside each enum.
 - **Names:** outside the enum an enumerator is `Direction::North`, in a case label too; no bare label and

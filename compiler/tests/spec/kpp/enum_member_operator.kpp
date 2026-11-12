@@ -1,0 +1,24 @@
+// spec: a kpp enum's member operator is found as a class's is (thread B, 2026-11-12: with `Dir operator+(const Dir&) const` in the enum, `a + b` was typed int32 and codegen refused "+ on a value of an enum class"): a binary one, a compound assignment that changes the value it is called on, a unary one, in a constant too
+enum class Dir : u8
+{
+  { North, East, South, West }
+  Dir operator+(const Dir& other) const { return Dir((u8(this) + u8(other)) & 3); }
+  Dir& operator+=(const Dir& other)
+  {
+    this = this + other;
+    return this;
+  }
+  Dir operator-() const { return Dir((4 - u8(this)) & 3); }
+};
+constexpr Dir constant = Dir::East + Dir::West;
+static_assert(constant == Dir::North);
+int main()
+{
+  Dir a = Dir::East;
+  Dir b = Dir::South;
+  Dir c = a + b;
+  a += b;
+  Dir d = -Dir::East;
+  std::println(c, " ", a, " ", d, " ", constant);
+  return 0;
+}
