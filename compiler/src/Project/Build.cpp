@@ -343,6 +343,15 @@ namespace projects
     auto kppStart = Clock::now();
     int code = invoke(args, request.server, compile);
     double kppSeconds = since(kppStart);
+    // A kpp that crashed says so here too, with its code: its own report (a stack) is above, and the
+    // build's exit code is its code (2026-11-12, D: under --no-server it was lost).
+#ifdef _WIN32
+    bool crashed = unsigned(code) >= 0xC0000000u; // (an NTSTATUS error: an access violation, a stack overflow)
+#else
+    bool crashed = code > 128; // (128 + the signal, as the shell gives it)
+#endif
+    if (crashed)
+      fprintf(stderr, "error: kpp's build of %s (%s) crashed (exit code 0x%08X)\n", p.name.c_str(), p.configuration.c_str(), unsigned(code));
     if (lowered)
       lowered->raise(); // (the link waits for them now: nothing of kpp's left to give way to)
     if (libraries.joinable())

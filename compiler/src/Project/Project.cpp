@@ -35,7 +35,7 @@ int runProject(int argc, char** argv, CompileFunction compile)
   {
     bool asking = interactiveInput();
     if (!asking && root.empty())
-      return -1;
+      return notAProject;
     if (!root.empty())
       fs::current_path(root, currentPathError);
     return menu(root, compile, asking);
@@ -46,7 +46,7 @@ int runProject(int argc, char** argv, CompileFunction compile)
     return 2;
   }
   if (root.empty())
-    return -1;
+    return notAProject;
   // A project's command line names targets and configurations, never sources: an argument that is
   // an existing file or directory makes it a plain build of those sources. So does a .kpp file right
   // after --run while no target or configuration is named: `kpp --run hello.kpp a b` runs the file, as
@@ -70,7 +70,7 @@ int runProject(int argc, char** argv, CompileFunction compile)
     else if (arg == "--run")
     {
       if (i + 1 < argc && request.names.empty() && !options && std::string_view(argv[i + 1]).ends_with(".kpp"))
-        return -1;
+        return notAProject;
       request.run = true;
     }
     else if (arg == "--generate-visual-studio-files")
@@ -124,7 +124,7 @@ int runProject(int argc, char** argv, CompileFunction compile)
         request.passed.push_back(argv[++i]);
     }
     else if (fs::exists(arg, ec))
-      return -1;
+      return notAProject;
     else
       request.names.push_back(arg);
   }

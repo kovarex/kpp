@@ -10,8 +10,11 @@
 // executables' and libraries' tests (`kpp --test [names] [-- runner arguments]`), writes its IDE
 // files (`--generate-visual-studio-files`,
 // `--generate-vs-code-files`), and `kpp` alone in a console asks what to do. `kpp new` makes a
-// project. Returns -1 when the arguments are no project's (a build of the sources they name, or
-// `--run FILE.kpp ARGS`, which runs that file).
+// project. Returns notAProject when the arguments are no project's (a build of the sources they
+// name, or `--run FILE.kpp ARGS`, which runs that file); any other value is the project's exit code,
+// a negative one too (a cell's kpp that crashed on Windows: 0xC0000005 is negative as an int, and it
+// sent the arguments to the compiler, which said only `error: unknown option --no-server`).
+constexpr int notAProject = -2147483647 - 1;
 int runProject(int argc, char** argv, CompileFunction compile);
 
 // How many values kpp's option arg takes, -1 when kpp has no such option (main.cpp). A project's

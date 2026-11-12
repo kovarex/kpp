@@ -7,6 +7,7 @@
 using namespace driver;
 
 int compile(int argc, char** argv);
+void kppServerCrashForTest(); // (server.cpp: a write through a null pointer)
 
 bool withKeptProgram(const std::function<void(const KeptProgram&)>& f)
 {
@@ -147,8 +148,12 @@ static int compilerMain(int argc, char** argv)
   if (argc >= 2 && std::string(argv[1]) == "format")
     return runFormat(argc, argv);
   // A project's build.kpp (project.hpp): `kpp` with no sources in its directory, `kpp new`.
-  if (int code = runProject(argc, argv, compile); code >= 0)
+  if (int code = runProject(argc, argv, compile); code != notAProject)
     return code;
+  // A crash on purpose of a build that is no project's (a project's cell), for project.ps1's test that
+  // a crashed cell's code and report reach the project's build (KPP_CRASH_TEST=1).
+  if (const char* crash = getenv("KPP_CRASH_TEST"); crash && std::string(crash) == "1")
+    kppServerCrashForTest();
   // Project files for an IDE (generate.hpp) take the build's own arguments.
   for (int i = 1; i < argc; ++i)
     if (isGenerateOption(argv[i]))

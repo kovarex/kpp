@@ -125,6 +125,15 @@ if (Run 'basic')
     }
     [IO.File]::WriteAllText((Join-Path (Get-Location) 'src\main.kpp'), $main)
     Kpp @('--stop-server') | Out-Null
+    # A cell's kpp that crashes under --no-server (KPP_CRASH_TEST=1: a write through a null pointer):
+    # the build says so with the crash's code and exits with it. A crash's code is negative as an int
+    # on Windows, which the build took for "no project here" and ran the arguments as a compiler's,
+    # which said only "error: unknown option --no-server" (D, 2026-11-12).
+    $env:KPP_CRASH_TEST = '1'
+    $output = (Kpp @('--no-server')) -join "`n"
+    Remove-Item Env:KPP_CRASH_TEST
+    if ($code -ne -1073741819 -or $output -notmatch 'crashed \(exit code 0xC0000005\)' -or $output -match 'unknown option')
+    { Fail "a cell's kpp that crashed under --no-server: exit $code`n$output" }
     # `kpp` alone (2026-11-04). Input from a pipe asks nothing and says so, listing the commands
     # (exit 2). The pipe a Cygwin or MSYS terminal gives its programs (Git Bash's mintty:
     # \msys-<hash>-pty0-from-master) is a terminal: the menu asks, and 0 quits.
