@@ -46,13 +46,30 @@ function Alive([int]$id)
   $process = Get-Process -Id $id -ErrorAction SilentlyContinue
   return $null -ne $process -and $process.Path -and $process.Path.StartsWith([IO.Path]::GetFullPath($work), [StringComparison]::OrdinalIgnoreCase)
 }
+$script:lastReport = ''
 function Build([string]$name)
 {
   $ErrorActionPreference = 'Continue'
   $report = & $copy --server --std $std --exe "$work\$name.exe" "$work\$name.kpp" 2>&1 | Out-String
   $code = $LASTEXITCODE
   $ErrorActionPreference = 'Stop'
+  $script:lastReport = $report
   if ($code -ne 0) { Fail "$name did not build through a server: $report" }
+}
+# The servers running, once count of them are (or after $seconds): a client waits 20 s for the server
+# it starts and then builds in its own process ("no compile server could be reached"), and on a loaded
+# machine the server it started comes up after that, so the servers are counted when they are there,
+# not right after the build (F's gate, 2026-11-12: "0 servers after one build", "1 servers running after
+# two builds", servers.ps1 passing alone).
+function RunningServers([int]$count, [int]$seconds = 60)
+{
+  $deadline = (Get-Date).AddSeconds($seconds)
+  while ($true)
+  {
+    $running = @((Servers).GetEnumerator() | Where-Object { Alive $_.Value })
+    if ($running.Count -ge $count -or (Get-Date) -ge $deadline) { return $running }
+    Start-Sleep -Milliseconds 250
+  }
 }
 # Waits up to $seconds for a server to end: on its process (WaitForExit returns when it ends), so the
 # limits are generous for a loaded machine (other threads' gates) and cost nothing when it ends at once.
@@ -66,13 +83,12 @@ function Ended([int]$id, [int]$seconds)
 
 # 1. A server exits once its kpp changes (here: written again, with a later time).
 Build 'one'
-$servers = Servers
-if ($servers.Count -ne 1) { Fail "$($servers.Count) servers after one build, 1 expected" }
+$servers = @(RunningServers 1)
+if ($servers.Count -ne 1) { Fail "$($servers.Count) servers after one build, 1 expected: $script:lastReport" }
 else
 {
-  $log = @($servers.Keys)[0]
-  $id = $servers[$log]
-  if (-not (Alive $id)) { Fail "the server ($id) is not running after its build" }
+  $log = $servers[0].Key
+  $id = $servers[0].Value
   Copy-Item $KppExe $copy -Force
   (Get-Item $copy).LastWriteTime = (Get-Date).AddMinutes(1)
   if (-not (Ended $id 60)) { Fail "the server ($id) still runs 60 s after its kpp changed" }
@@ -82,8 +98,8 @@ else
 # 2. --stop-all-servers stops every server (two of the new kpp's, for two programs).
 Build 'one'
 Build 'two'
-$running = @((Servers).Values | Where-Object { Alive $_ } | Sort-Object -Unique)
-if ($running.Count -ne 2) { Fail "$($running.Count) servers running after two builds, 2 expected" }
+$running = @(RunningServers 2 | ForEach-Object { $_.Value } | Sort-Object -Unique)
+if ($running.Count -ne 2) { Fail "$($running.Count) servers running after two builds, 2 expected: $script:lastReport" }
 $ErrorActionPreference = 'Continue'
 $said = & $copy --stop-all-servers 2>&1 | Out-String
 $ErrorActionPreference = 'Stop'
@@ -166,7 +182,7 @@ foreach ($columns in @($false, $true))
     elseif ($msvc -and ((@($got) | Sort-Object) -join "`n") -ne ((@($want) | Sort-Object) -join "`n")) { Fail "${what}: other errors than without a server:`n$($got -join "`n")`nwithout a server:`n$($want -join "`n")" }
   }
   # (each process once: a stopped server's id may be the next one's, its old log naming it too, CI 2026-11-05)
-  $running = @((Servers).Values | Where-Object { Alive $_ } | Sort-Object -Unique)
+  $running = @(RunningServers 1 | ForEach-Object { $_.Value } | Sort-Object -Unique)
   if ($running.Count -ne 1) { Fail "kpp --server $($c -join ' '), with and without --msvc-diagnostics: $($running.Count) servers running, 1 expected" }
   $ErrorActionPreference = 'Continue'
   & $copy --stop-all-servers 2>&1 | Out-Null
