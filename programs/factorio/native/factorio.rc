@@ -2,8 +2,9 @@
 // supportedOS entries, without which Windows runs the game as Windows 8, and per-monitor DPI
 // awareness) and the icons. fbuild.bff embeds the manifest with link /MANIFEST:EMBED, which needs
 // mt.exe; as a resource it needs nothing more. build.cmd compiles this into build/factorio.res, which
-// link-settings.cmd links.
-1 24 "C:/Factorio/fastbuild/win/Factorio.manifest"
-101 ICON "C:/Factorio/data/core/graphics/factorio.ico"
-102 ICON "C:/Factorio/data/core/graphics/factorio.ico"
-103 PNG "C:/Factorio/data/core/graphics/factorio-icon.png"
+// link-settings.cmd links. The three files are
+// FACTORIO's (a C++ checkout of the game), which build.cmd takes from git into build/.
+1 24 "build/Factorio.manifest"
+101 ICON "build/factorio.ico"
+102 ICON "build/factorio.ico"
+103 PNG "build/factorio-icon.png"

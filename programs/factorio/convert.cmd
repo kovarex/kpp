@@ -28,6 +28,11 @@ rem The Factorio source tree read (src, libraries, tests, data): C:\Factorio unl
 rem as a snapshot of an older commit taken with git archive. Its prebuilt libraries and executables
 rem (vs2022\, bin\) are always C:\Factorio's.
 if not defined FACTORIO set FACTORIO=C:\Factorio
+rem Since 2026-11-11 C:\Factorio is kovarex's working tree on the kpp branch (the converted game), which
+rem has no C++ to convert: FACTORIO names a C++ checkout of Factorio's master then (a clone with
+rem --reference C:\Factorio, data\ left out of a sparse checkout, will do; its BuildVersion.hpp generated
+rem from PowerShell or cmd, where `find` is Windows', not Git Bash's).
+if not exist "%FACTORIO%\src\Main.cpp" (echo convert: %FACTORIO% has no C++ sources ^(src\Main.cpp^): set FACTORIO to a C++ checkout of Factorio, C:\Factorio being on the kpp branch& exit /b 2)
 cd /d "%~dp0"
 set KPP=..\..\compiler\build\kpp.exe
 set SMOKES=0
@@ -151,8 +156,9 @@ xcopy /s /y /q /i native\include "%NATIVE%\include" >nul
 copy /y %FACTORIO%\src\LED\Logitech\Includes\LogitechLEDLib.h "%NATIVE%\include\LED\Logitech\Includes" >nul || goto :failed
 copy /y %FACTORIO%\fastbuild\win\Factorio.manifest "%NATIVE%" >nul || goto :failed
 rem (and its icons beside it: a thread's copy has no data\, setup-checkout.cmd)
-for %%i in (factorio.ico factorio-icon.png) do copy /y %FACTORIO%\data\core\graphics\%%i "%NATIVE%" >nul || goto :failed
-powershell -NoProfile -Command "(Get-Content -Raw native\factorio.rc).Replace('C:/Factorio/fastbuild/win/', '').Replace('C:/Factorio/data/core/graphics/', '') | Set-Content -NoNewline -Encoding ascii '%NATIVE%\factorio.rc'" || goto :failed
+rem (from git, which a checkout without data\ has too)
+for %%i in (factorio.ico factorio-icon.png) do git -C %FACTORIO% show HEAD:data/core/graphics/%%i > "%NATIVE%\%%i" || goto :failed
+powershell -NoProfile -Command "(Get-Content -Raw native\factorio.rc).Replace('\"build/', '\"') | Set-Content -NoNewline -Encoding ascii '%NATIVE%\factorio.rc'" || goto :failed
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\native-rc.ps1 -Native "%NATIVE%" || goto :failed
 set STEP=the conversion into kpp\
 set CINC=--cinclude %FACTORIO%\libraries\SDL3\include --cinclude %FACTORIO%\libraries\SDL_Mixer\include --cinclude %FACTORIO%\libraries\Lua --cinclude %FACTORIO%\libraries --cinclude %FACTORIO%\libraries\curl\include --cinclude %FACTORIO%\libraries\glad\include --cinclude %FACTORIO%\libraries\trio --cinclude native\include
@@ -463,6 +469,13 @@ if exist kpp\convert_align rd /s /q kpp\convert_align
 fc /b kpp\convert_align\convert_align\align.kpp tests\convert_align.expected.kpp > nul && (echo alignment: as expected) || (echo alignment: DIFFERS& fc kpp\convert_align\convert_align\align.kpp tests\convert_align.expected.kpp & goto :failed)
 %KPP% --std ..\..\stdlib --quiet --this-reference --exe kpp\convert_align.exe kpp\convert_align || goto :failed
 kpp\convert_align.exe > nul || goto :failed
+set "STEP=slips check"
+echo == slips: tests\convert_slips\slips.cpp converted: an if's or else's empty body `;` as `{}`, an assignment as a condition in its own parentheses ^(tests\convert_slips.expected.kpp^); built with --slip-checks, and it runs
+if exist kpp\convert_slips rd /s /q kpp\convert_slips
+%KPP% --no-std --quiet --convert kpp\convert_slips --ext .cpp tests\convert_slips || goto :failed
+fc /b kpp\convert_slips\convert_slips\slips.kpp tests\convert_slips.expected.kpp > nul && (echo slips: as expected) || (echo slips: DIFFERS& fc kpp\convert_slips\convert_slips\slips.kpp tests\convert_slips.expected.kpp & goto :failed)
+%KPP% --std ..\..\stdlib --quiet --slip-checks --exe kpp\convert_slips.exe kpp\convert_slips || goto :failed
+kpp\convert_slips.exe > nul || goto :failed
 set "STEP=platforms check"
 echo == platforms: tests\convert_platform\platform.cpp converted for Windows and for Linux ^(--convert-platform linux, clang's predefines in linux-predefines.txt^) in debug and release, each configuration's two made one by config::platform ^(--convert-merge-platform^), then the configurations by config::debug; built and run for Windows ^(tests\convert_platform.expected^) and for Linux under WSL ^(tests\convert_platform.linux.expected^)
 if exist kpp\cplat rd /s /q kpp\cplat

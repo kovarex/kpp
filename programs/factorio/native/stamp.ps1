@@ -4,8 +4,9 @@
 # build\inputs.stamp: rebuilt, the library differed by a few bytes each time, which made every other
 # incremental link of the game a full one (docs/compile-speed.md, "The link in the edit loop").
 $here = $PSScriptRoot
-$lines = @("factorio " + (git -C C:\Factorio rev-parse HEAD))
-if ($LASTEXITCODE -ne 0) { throw "git -C C:\Factorio rev-parse HEAD failed" }
+$factorio = if ($env:FACTORIO) { $env:FACTORIO } else { 'C:\Factorio' }
+$lines = @("factorio " + (git -C $factorio rev-parse HEAD))
+if ($LASTEXITCODE -ne 0) { throw "git -C $factorio rev-parse HEAD failed" }
 # The tree the headers come from when FACTORIO names another (a snapshot of an older commit).
 if ($env:FACTORIO) { $lines += "tree " + $env:FACTORIO }
 $files = Get-ChildItem -Path $here -Recurse -File | Where-Object { $_.FullName -notlike "$here\build\*" } | Sort-Object FullName

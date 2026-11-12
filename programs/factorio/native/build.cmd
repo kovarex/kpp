@@ -38,6 +38,11 @@ clang-cl /nologo /c /O2 /MT /EHsc /std:c++17 /DNDEBUG /I %FACTORIO%\src logitech
 clang-cl /nologo /c /O2 /MT /EHsc /std:c++17 /DNDEBUG /I %FACTORIO%\libraries open_vcdiff_c.cpp /Fobuild\open_vcdiff_c.obj || exit /b 1
 clang-cl /nologo /c /O2 /MT /DNDEBUG inline_c.c /Fobuild\inline_c.obj || exit /b 1
 clang-cl /nologo /c /O2 /MT /DNDEBUG crash_report.c /Fobuild\crash_report.obj || exit /b 1
+rem (factorio.rc's manifest and icons, from git: C:\Factorio on the kpp branch has no fastbuild\, a C++
+rem checkout may have no data\)
+git -C %FACTORIO% show HEAD:fastbuild/win/Factorio.manifest > build\Factorio.manifest || exit /b 1
+git -C %FACTORIO% show HEAD:data/core/graphics/factorio.ico > build\factorio.ico || exit /b 1
+git -C %FACTORIO% show HEAD:data/core/graphics/factorio-icon.png > build\factorio-icon.png || exit /b 1
 rc /nologo /fo build\factorio.res factorio.rc || exit /b 1
 llvm-lib /nologo /out:build\factorio-native.lib build\re2_c.obj build\imgui_c.obj build\header_only.obj build\jc_voronoi.obj build\logitech_led_c.obj build\open_vcdiff_c.obj build\inline_c.obj build\crash_report.obj || exit /b 1
 move /y build\inputs.new build\inputs.stamp >nul || exit /b 1

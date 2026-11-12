@@ -68,10 +68,15 @@ if %ASAN%==1 set "PATH=%ASANRUNTIME%;%PATH%"
 if %RELEASE%==1 set OUT=%HERE%kpp\tests-release
 if %RELEASE%==1 set SANITIZE=%SANITIZE% --release
 if not exist %OUT%\run mkdir %OUT%\run
-rem The config the runner reads (--config): the game's data from C:\Factorio, the writes in run\.
+rem The config the runner reads (--config): the game's data, the writes in run\. The data, with the
+rem tests' saves and mods beside it (read-data/../tests): GAMEDATA, else the checkout's data\, else
+rem C:\factorio-in-kpp's (a thread's copy has none), else FACTORIO's.
+if not defined GAMEDATA if not "%CONVERSION%"=="" if exist "%CONVERSION%\data\core" set GAMEDATA=%CONVERSION%\data
+if not defined GAMEDATA if exist C:\factorio-in-kpp\data\core set GAMEDATA=C:\factorio-in-kpp\data
+if not defined GAMEDATA set GAMEDATA=%FACTORIO%\data
 (
   echo [path]
-  echo read-data=%FACTORIO:\=/%/data
+  echo read-data=%GAMEDATA:\=/%
   echo write-data=%OUT:\=/%/run
 ) > %OUT%\config.ini
 set EXE=C:\Factorio\bin\Releasex64vs2022\factorio-test.exe
