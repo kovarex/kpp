@@ -492,6 +492,96 @@ namespace
     return true;
   }
 
+  // Whether t is the library's class of that name (`String`, `Span`): its declaration in the library's files.
+  bool isLibraryClass(const Ty* t, const SymbolTable& symbols, const char* name)
+  {
+    return t && t->kind == TyKind::Class && t->decl && t->decl->kind == NodeKind::ClassDecl && t->decl->file && t->decl->file->isLibrary &&
+           nameOf(static_cast<const ClassDecl*>(t->decl)->name, symbols) == name;
+  }
+
+  // A string literal's characters, its escapes read (\" \\ \n \t \r \0), or false for one with a prefix
+  // or another escape: a natvis DisplayString holds them as text.
+  bool literalText(const ParsedFile* f, const LiteralExpr* e, std::string& out)
+  {
+    if (e->literalKind != TokenKind::String || !f || !f->tokens || e->token >= f->tokens->size())
+      return false;
+    const Token& t = (*f->tokens)[e->token];
+    std::string_view text = f->text.substr(t.offset, t.length);
+    if (text.size() < 2 || text.front() != '"' || text.back() != '"')
+      return false;
+    for (size_t i = 1; i + 1 < text.size(); ++i)
+    {
+      char c = text[i];
+      if (c != '\\')
+      {
+        out += c;
+        continue;
+      }
+      if (++i + 1 > text.size() - 1)
+        return false;
+      switch (text[i])
+      {
+      case '"': out += '"'; break;
+      case '\\': out += '\\'; break;
+      case 'n': out += '\n'; break;
+      case 't': out += '\t'; break;
+      case 'r': out += '\r'; break;
+      case '0': break;
+      default: return false;
+      }
+    }
+    return true;
+  }
+
+  // A text view's DisplayString (DebugValue, a debugValue returning std::String): the `+` of string
+  // literals (their text, natvis's braces doubled), std::toString(VALUE) and other values (each `{VALUE}`,
+  // shown by its own view; a floating one `,g`).
+  bool natvisText(DebugValue& v, Expr* e, std::string& out)
+  {
+    while (e && e->kind == NodeKind::ParenExpr)
+      e = static_cast<ParenExpr*>(e)->inner;
+    if (!e)
+      return fail(v, e, "an expression the parser left out");
+    TypeTable& types = v.global.types();
+    if (e->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(e)->literalKind == TokenKind::String)
+    {
+      std::string text;
+      if (!literalText(static_cast<LiteralExpr*>(e)->file ? static_cast<LiteralExpr*>(e)->file : v.file, static_cast<LiteralExpr*>(e), text))
+        return fail(v, e, "a string literal with a prefix or an escape other than \\\" \\\\ \\n \\t \\r");
+      for (char c : text)
+        if (c == '{' || c == '}')
+          out += std::string(2, c);
+        else
+          out += c;
+      return true;
+    }
+    const Ty* type = e->ty ? types.unqualified(types.stripRef(e->ty)) : nullptr;
+    bool string = isLibraryClass(type, v.symbols, "String");
+    if (e->kind == NodeKind::BinaryExpr && P(static_cast<BinaryExpr*>(e)->op) == P::Plus && string)
+      return natvisText(v, static_cast<BinaryExpr*>(e)->lhs, out) && natvisText(v, static_cast<BinaryExpr*>(e)->rhs, out);
+    Expr* value = e;
+    if (e->kind == NodeKind::CallExpr && static_cast<CallExpr*>(e)->args.size() == 1)
+    {
+      auto* c = static_cast<CallExpr*>(e);
+      Decl* callee = c->callee && c->callee->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(c->callee)->resolved : nullptr;
+      if (callee && callee->kind == NodeKind::FunctionDecl && callee->file && callee->file->isLibrary &&
+          v.symbols.name(static_cast<FunctionDecl*>(callee)->name.last().symbol) == "toString")
+        value = c->args[0]; // (std::toString(x): x as the debugger shows it)
+      else if (string)
+        return natvisText(v, c->args[0], out); // (std::String("..."))
+    }
+    else if (e->kind == NodeKind::FunctionalCastExpr && string && static_cast<FunctionalCastExpr*>(e)->args.size() == 1)
+      return natvisText(v, static_cast<FunctionalCastExpr*>(e)->args[0], out);
+    std::string expression;
+    if (!natvisExpression(v, value, expression))
+      return false;
+    const Ty* shown = value->ty ? types.unqualified(types.stripRef(value->ty)) : nullptr;
+    if (shown && shown->kind == TyKind::Int && shown->bits == 8)
+      expression = "(int)(" + expression + ")"; // (a u8 or i8 as its number, not a character)
+    out += "{" + expression + (shown && shown->kind == TyKind::Float ? ",g" : isLibraryClass(shown, v.symbols, "String") ? ",sb" : "") + "}";
+    return true;
+  }
+
   // FILE:LINE:COLUMN of a node's token, as the compiler's diagnostics give a place.
   std::string placeOf(const ParsedFile* f, const Node* n)
   {
@@ -548,8 +638,8 @@ namespace
       const Ty* shown = global.typeOfDeclIn(f, args);
       shown = shown && shown->kind == TyKind::Function && shown->inner ? types.unqualified(types.stripRef(shown->inner)) : nullptr;
       bool number = shown && (shown->isArithmetic() || shown->kind == TyKind::Enum || shown->kind == TyKind::Pointer);
-      bool span = shown && shown->kind == TyKind::Class && shown->decl && shown->decl->kind == NodeKind::ClassDecl && shown->decl->file &&
-                  shown->decl->file->isLibrary && nameOf(static_cast<const ClassDecl*>(shown->decl)->name, symbols) == "Span"; // (the library's Span)
+      bool span = isLibraryClass(shown, symbols, "Span"); // (the library's Span)
+      bool text = isLibraryClass(shown, symbols, "String"); // (a text view: its pieces)
       std::string displays, items;
       bool failed = false;
       for (const auto& [condition, value] : cases)
@@ -584,6 +674,17 @@ namespace
                    "        <Size>" + escape(size) + "</Size>\n"
                    "        <ValuePointer>" + escape(data) + "</ValuePointer>\n"
                    "      </ArrayItems>\n";
+          continue;
+        }
+        if (text)
+        {
+          std::string display;
+          if (!natvisText(v, value, display))
+          {
+            failed = true;
+            break;
+          }
+          displays += "    <DisplayString" + attribute + ">" + escape(display) + "</DisplayString>\n";
           continue;
         }
         std::string expression;

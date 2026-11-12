@@ -3,7 +3,7 @@
 // a typed union; containers with more than one block or node. And debugValue() (docs/debugging.md,
 // "debugValue"): a fixed-point number shown as its value, a rule per instance; a class shown as its
 // String member; one with an `if` and another type's debugValue; one shown as a Span's elements; one
-// through its own conversion, a constexpr local in it.
+// through its own conversion, a constexpr local in it; text views, a std::String built with +.
 struct Point
 {
   int x = 0;
@@ -46,6 +46,25 @@ struct Angle
   u32 value = 0;
 };
 
+struct Force
+{
+  std::String debugValue() const
+  {
+    if (this.index == 1)
+      return "player";
+    return "{index=" + std::toString(this.index) + "}";
+  }
+  u8 index = 0;
+};
+
+struct Stack
+{
+  std::String debugValue() const { return std::toString(this.count) + " x " + this.name + " (" + std::toString(this.weight) + ")"; }
+  std::String name;
+  i32 count = 0;
+  f64 weight = 0;
+};
+
 struct Buffer
 {
   std::Span<i32> debugValue() const { return std::Span<i32>(this.data, this.size); }
@@ -69,6 +88,12 @@ int main()
   i32 held[3] = {4, 5, 6};
   Angle angle;
   angle.value = 1073741824;
+  Force force;
+  force.index = 7;
+  Stack stack;
+  stack.name = "gear";
+  stack.count = 3;
+  stack.weight = 1.5;
   Buffer buffer;
   buffer.data = held;
   buffer.size = 3;

@@ -55,18 +55,23 @@ $d = Compare-Object @(Get-Content $expectedPath) $names -SyncWindow 0
 if ($d) { "FAIL natvis: its rules differ from natvis\values.expected"; $names | ForEach-Object { "  $_" }; exit 1 }
 
 # debugValue() (docs/debugging.md, "debugValue"): Fixed<8>'s rule computes its value with its own
-# scale, Item's shows its name and expands to it, Angle's inlines its toTurns(); a body the debugger cannot compute (a free function's call, a
+# scale, Item's shows its name (a text view), Force's and Stack's are text views, Angle's inlines its toTurns(); a body the debugger cannot compute (a free function's call, a
 # non-const debugValue) is the build's error, naming the file and line, with or without debug information.
 $types = @(([xml](Get-Content $natvis -Raw)).AutoVisualizer.Type)
 $fixed = @($types | Where-Object { $_.Name -eq 'Fixed<8>' })[0]
 $item = @($types | Where-Object { $_.Name -eq 'Item' })[0]
 if (-not $fixed -or $fixed.DisplayString -ne '{(double)(value) * 0.00390625,g}') { "FAIL natvis: Fixed<8>'s debugValue rule is '$($fixed.DisplayString)'"; exit 1 }
-if (-not $item -or $item.DisplayString -ne '{name}' -or $item.Expand.ExpandedItem -ne 'name') { "FAIL natvis: Item's debugValue rule is '$($item.DisplayString)'"; exit 1 }
+if (-not $item -or $item.DisplayString -ne '{name,sb}') { "FAIL natvis: Item's debugValue rule is '$($item.DisplayString)'"; exit 1 } # (a String: a text view)
 $load = @($types | Where-Object { $_.Name -eq 'Load' })[0]
 $shown = @($load.ChildNodes | Where-Object { $_.LocalName -eq 'DisplayString' } | ForEach-Object { "$($_.GetAttribute('Condition'))|$($_.InnerText)" }) -join ' '
 if ($shown -ne 'empty|{0,g} |{((double)(weight.value) * 0.000244140625) * 2,g}') { "FAIL natvis: Load's debugValue rule is '$shown'"; exit 1 }
 $angle = @($types | Where-Object { $_.Name -eq 'Angle' })[0]
 if (-not $angle -or $angle.DisplayString -ne '{((double)(value) * 2.3283064365386963e-10),g}') { "FAIL natvis: Angle's debugValue rule is '$($angle.DisplayString)'"; exit 1 }
+$force = @($types | Where-Object { $_.Name -eq 'Force' })[0]
+$shown = @($force.ChildNodes | Where-Object { $_.LocalName -eq 'DisplayString' } | ForEach-Object { "$($_.GetAttribute('Condition'))|$($_.InnerText)" }) -join ' '
+if ($shown -ne 'index == 1|player |{{index={(int)(index)}}}') { "FAIL natvis: Force's text view is '$shown'"; exit 1 }
+$stack = @($types | Where-Object { $_.Name -eq 'Stack' })[0]
+if (-not $stack -or $stack.DisplayString -ne '{count} x {name,sb} ({weight,g})') { "FAIL natvis: Stack's text view is '$($stack.DisplayString)'"; exit 1 }
 $buffer = @($types | Where-Object { $_.Name -eq 'Buffer' })[0]
 if ($buffer.DisplayString -ne '{{length={size}}}' -or $buffer.Expand.ArrayItems.Size -ne 'size' -or $buffer.Expand.ArrayItems.ValuePointer -ne 'data')
 { "FAIL natvis: Buffer's debugValue rule is '$($buffer.DisplayString)'"; exit 1 }

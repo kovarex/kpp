@@ -350,7 +350,7 @@ template<i32 Bits> class Fixed
   f64 debugValue() const { return f64(this.value) * (1.0 / This::ValuesPerOne); } // 1.5
   i32 value = 0;
 };
-struct Item { std::String debugValue() const { return this.name; } std::String name; }; // "gear"
+struct Item { std::String debugValue() const { return this.name; } std::String name; }; // gear (a text view)
 struct Load
 {
   f64 debugValue() const
@@ -377,7 +377,11 @@ struct Buffer { std::Span<i32> debugValue() const { return std::Span<i32>(this.d
   a member (`this.weight.debugValue()`). A constexpr local (`constexpr f64 PerStep = 1.0 / 4294967296.0;`)
   folds to its value.
 - **What it returns** says how the type shows: a number, a bool, an enumeration or a pointer as that
-  value (a floating one with `,g`, `1.5` and not `1.5000000000000000`); a data member that is a class
+  value (a floating one with `,g`, `1.5` and not `1.5000000000000000`); a `std::String` built with `+`
+  as text (2026-11-12, kovarex's plan to replace the game's factorio.natvis): its string literals as they
+  are, `std::toString(x)` and other values each as `{x}` by its own view (a String without quotes, an 8-bit
+  integer as its number), so `"{index=" + std::toString(this.index) + "}"` shows `{index=7}` and the
+  program calling it gets the same text; a data member that is a class
   as that class's view, and its expansion (`ExpandedItem`); a `std::Span` made of a pointer and a length
   (or two pointers) as `{length=N}` and its elements (`ArrayItems`). Any other type returned is an error.
 - **Anything else is a compile error** at its place, naming what it was: a call of any other function
@@ -390,7 +394,7 @@ struct Buffer { std::Span<i32> debugValue() const { return std::Span<i32>(this.d
   DWARF (stage 2).
 - tests\natvis.ps1 checks the rules of natvis\values.kpp's Fixed<8>, Item, Load and Buffer and the errors
   of two bodies the debugger cannot compute; in Visual Studio (exe-check, 2026-11-11) `item` showed
-  `"gear"`, `item.speed` `1.5`, `load` `1`, `buffer` `{length=3}` with `[0] 4`, `[1] 5`, `[2] 6`.
+  `"gear"` (`gear` since text views, 2026-11-12), `item.speed` `1.5`, `load` `1`, `buffer` `{length=3}` with `[0] 4`, `[1] 5`, `[2] 6`.
 
 ### this in the watch window
 
