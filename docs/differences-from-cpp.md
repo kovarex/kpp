@@ -936,7 +936,7 @@ struct S1 : B16 { int y; };   // 32 bytes; 16 with MSVC's layout
 - **C++:** an enum of masks (`1 << n`) or a class of `static constexpr` integers, combined with `|` and `&`
   on the raw integer; a library type such as `std::bitset` indexed by an enum.
 - **kpp:** `flags Name : u16 { A, B, C = 7 };`: the type is the set, each name the set of its bit (by position,
-  or by hand), with `|`, `&`, `~`, `has`, `hasAny`, `set`, a debugger view of a row per flag and printing as `A | C`; members
+  or by hand), with `|`, `&`, `~`, `has`, `hasAny`, `set`, `clear`, a debugger view of a row per flag and printing as `A | C`; members
   after the flags' own block, as a kpp enum's. No integer converts to a set or back but through `fromBits` and
   `bits()`.
 - **Why:** the names and the type are one thing, nobody writes `1 << n`, and the debugger and logs show names.

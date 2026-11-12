@@ -3002,7 +3002,7 @@ if (usage & EntityUsage::OWNED_BY_GHOST) ...
   after it continuing from there; `NAME = OTHER` names OTHER's bit again (OTHER a flag before it) and moves no
   count. Errors: another storage, a bit outside the storage, a bit two names have without `= OTHER`, a flag
   declared twice, a flag named as a member every set has (Storage, fromBits, bits, empty, has, hasAny, set,
-  appendTo).
+  clear, appendTo).
   Spec kpp/flags_declaration, kpp/flags_errors.
 - **Members** (kovarex, 2026-11-12, on EntityUsageBitMask's valueForSaving: "Couldn't we make the flags
   structure similar as enum class change in kpp, so it can have methods?"): as a kpp enum's values, the flags
@@ -3027,10 +3027,11 @@ if (usage & EntityUsage::OWNED_BY_GHOST) ...
 - **A value of the type is a set**; each name is the set of its one bit (`EntityUsage::SAVED`). `|`, `&`, `^`
   and `~` of sets give a set (`~` within the declared bits), `|=`, `&=`, `^=` change one, `==` compares; a set
   is true when it is not empty, so `if (usage & EntityUsage::X)` reads as before. `has(set)` (every flag of
-  it set; kovarex's names, 2026-11-12), `hasAny(set)`, `set(set, on)` (sets or clears them), `empty()`, `bits()`
+  it set; kovarex's names, 2026-11-12), `hasAny(set)`, `set(set)` and `clear(set)` (`set(set, on)` either, by a bool; kovarex, 2026-11-12: "set method has
+  true as default, so you can call just set to turn it on. We have also clear method for better readability"), `empty()`, `bits()`
   (the storage integer) and `fromBits(n)` complete it; no integer converts to a set, and a set to no integer
   (`(usage & X) != 0` is `usage.has(X)`, `(usage & (X | Y)) == 0` is `!usage.hasAny(X | Y)`). All of it is
-  constexpr but set and the compound assignments.
+  constexpr but set, clear and the compound assignments.
 - **It saves as its number**: a savegame keeps its bits, whatever names change, so bits by hand keep old
   saves loading. `fromBits` keeps bits no flag names.
 - **Its views come with it** (26): printing it gives the names of the set flags, `OWNED_BY_GHOST | SAVED`

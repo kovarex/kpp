@@ -4192,7 +4192,7 @@ namespace
     // when members follow them (`flags NAME { { A, B } MEMBERS };`, as a kpp enum's values): rewritten as the
     // class it stands for, which the parser then reads. The class keeps the set in `__kpp_bits`, a
     // STORAGE; each flag is a static constexpr set of its one bit, located at its name (as the class's
-    // name is); the operators, has, hasAny, set, empty, bits, fromBits and appendTo (the names of the set flags,
+    // name is); the operators, has, hasAny, set, clear, empty, bits, fromBits and appendTo (the names of the set flags,
     // `A | C`, `{}` for none) are written for it. A flag's bit is the one after the last flag's that was
     // no second name (the first's 0), or `= N`; `= OTHER` names OTHER's bit again. The class tells its
     // flags to the debugger's view (ClassDecl::flagBits). False after an error that leaves no declaration.
@@ -4278,7 +4278,7 @@ namespace
             problem(f.token, ("the flag " + flag + " is declared already"));
             fine = false;
           }
-        static const char* const generated[] = {"Storage", "fromBits", "bits", "empty", "has", "hasAny", "set", "appendTo", "__kpp_bits"};
+        static const char* const generated[] = {"Storage", "fromBits", "bits", "empty", "has", "hasAny", "set", "clear", "appendTo", "__kpp_bits"};
         for (const char* g : generated)
           if (flag == g)
           {
@@ -4355,7 +4355,8 @@ namespace
         "constexpr bool empty() const { return this.__kpp_bits == Storage(); } " +
         "constexpr bool has(" + n + " other) const { return (this.__kpp_bits & other.__kpp_bits) == other.__kpp_bits; } " +
         "constexpr bool hasAny(" + n + " other) const { return (this.__kpp_bits & other.__kpp_bits) != Storage(); } " +
-        "void set(" + n + " other, bool on) { this.__kpp_bits = on ? " + set + "| other.__kpp_bits) : " + set + "& ~other.__kpp_bits); } ";
+        "void set(" + n + " other, bool on = true) { this.__kpp_bits = on ? " + set + "| other.__kpp_bits) : " + set + "& ~other.__kpp_bits); } " +
+        "void clear(" + n + " other) { this.__kpp_bits = " + set + "& ~other.__kpp_bits); } ";
       for (const char* op : {"|", "&", "^"})
         body += std::string("constexpr ") + n + " operator" + op + "(" + n + " other) const { return " + n + "::fromBits(" + set + op + " other.__kpp_bits)); } " +
                 n + "& operator" + op + "=(" + n + " other) { this.__kpp_bits = " + set + op + " other.__kpp_bits); return this; } ";

@@ -1,4 +1,4 @@
-// spec: `flags NAME : STORAGE { ... }` declares a set of named bits (design.md 27): each flag's bit is the one after the last's, the first's 0, or written by hand (`= N`), `= OTHER` a second name of a bit; a value is a set, each name the set of its one bit, with |, &, ^, ~ (within the declared bits), |=, &=, ^=, ==, has (every flag of a set), hasAny, set(flags, on), empty, bits, fromBits, true when not empty; printing gives the names of the set flags (`A | C`, `{}` for none, a bit no flag names as its number)
+// spec: `flags NAME : STORAGE { ... }` declares a set of named bits (design.md 27): each flag's bit is the one after the last's, the first's 0, or written by hand (`= N`), `= OTHER` a second name of a bit; a value is a set, each name the set of its one bit, with |, &, ^, ~ (within the declared bits), |=, &=, ^=, ==, has (every flag of a set), hasAny, set(flags, on = true), clear(flags), empty, bits, fromBits, true when not empty; printing gives the names of the set flags (`A | C`, `{}` for none, a bit no flag names as its number)
 flags Usage : u16
 {
   TO_BE_UPGRADED,
@@ -41,6 +41,9 @@ int main()
   std::println(usage, " ", usage == Usage::TO_BE_LOOTED, " ", usage != Usage::TO_BE_LOOTED);
   usage.set(Usage::OWNED_BY_GHOST | Usage::SETUP, true);
   usage.set(Usage::TO_BE_LOOTED, false);
+  std::println(usage);
+  usage.set(Usage::SAVED);
+  usage.clear(Usage::OWNED_BY_GHOST | Usage::SETUP);
   std::println(usage);
   Usage loaded = Usage::fromBits(u16(0x8001));
   std::println(loaded);
