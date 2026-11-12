@@ -3,6 +3,7 @@
 // own since 2026-11-05 (main.cpp split, stage 2), moved without a change.
 #include "Driver.hpp"
 #include "LineStarts.hpp"
+#include <deque>
 
 namespace driver
 {
@@ -926,8 +927,12 @@ bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, double collec
     if (files[i].path != kept.files[i].path)
       return false;
   auto start = Clock::now();
-  std::vector<ChangedFile> changed;         // bodies only (3b)
-  std::vector<FunctionChange> functionEdits; // whole functions (step 4)
+  // (Deques: each one's parse points at its own tokens and text, ParsedFile::tokens and ::text, so a file's must stay where
+  // it is while the next ones are added. In vectors each growth moved them, and the parses of every file but the last read
+  // freed memory where remapKeptFile maps their lines: with several files edited at once their lines stayed as they were,
+  // "--verify-incremental: ... what it wrote differs", and with 16, F's crash in remapKeptFile, 2026-11-12.)
+  std::deque<ChangedFile> changed;         // bodies only (3b)
+  std::deque<FunctionChange> functionEdits; // whole functions (step 4)
   for (size_t i = 0; i < files.size(); ++i)
     if (files[i].text != kept.files[i].text)
     {

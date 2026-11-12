@@ -1,0 +1,229 @@
+// spec: a compile server's build after an edit of function bodies in six files at once is what a build from scratch gives (docs/compile-speed.md, "The compile server"): each file's caller location below its edited body says its line after the edit (F's crash, 2026-11-12: the changed files' parses were kept in a vector, and each one's tokens were found through a pointer into it, which the next file's growth moved, so the line map of every file but the last read freed memory: 0xC0000005 in remapKeptFile with 16 files edited, and with fewer, lines left as they were)
+//--- step: the program
+int lineOf(std::CallerLocation here = caller)
+{
+  return int(here.line());
+}
+
+int main()
+{
+  std::println(editedA(1), " ", editedB(1), " ", editedC(1), " ", editedD(1), " ", editedE(1), " ", editedF(1));
+  std::println(positionA(), " ", positionB(), " ", positionC(), " ", positionD(), " ", positionE(), " ", positionF());
+  return 0;
+}
+// expect: 2 2 2 2 2 2
+// expect: 8 8 8 8 8 8
+//--- file: a.kpp
+int editedA(int v)
+{
+  return v + 1;
+}
+
+int positionA()
+{
+  return lineOf();
+}
+//--- file: b.kpp
+int editedB(int v)
+{
+  return v + 1;
+}
+
+int positionB()
+{
+  return lineOf();
+}
+//--- file: c.kpp
+int editedC(int v)
+{
+  return v + 1;
+}
+
+int positionC()
+{
+  return lineOf();
+}
+//--- file: d.kpp
+int editedD(int v)
+{
+  return v + 1;
+}
+
+int positionD()
+{
+  return lineOf();
+}
+//--- file: e.kpp
+int editedE(int v)
+{
+  return v + 1;
+}
+
+int positionE()
+{
+  return lineOf();
+}
+//--- file: f.kpp
+int editedF(int v)
+{
+  return v + 1;
+}
+
+int positionF()
+{
+  return lineOf();
+}
+//--- step: a line added to the first body of every file
+int lineOf(std::CallerLocation here = caller)
+{
+  return int(here.line());
+}
+
+int main()
+{
+  std::println(editedA(1), " ", editedB(1), " ", editedC(1), " ", editedD(1), " ", editedE(1), " ", editedF(1));
+  std::println(positionA(), " ", positionB(), " ", positionC(), " ", positionD(), " ", positionE(), " ", positionF());
+  return 0;
+}
+// expect: 12 12 12 12 12 12
+// expect: 9 9 9 9 9 9
+//--- file: a.kpp
+int editedA(int v)
+{
+  v = v + 10;
+  return v + 1;
+}
+
+int positionA()
+{
+  return lineOf();
+}
+//--- file: b.kpp
+int editedB(int v)
+{
+  v = v + 10;
+  return v + 1;
+}
+
+int positionB()
+{
+  return lineOf();
+}
+//--- file: c.kpp
+int editedC(int v)
+{
+  v = v + 10;
+  return v + 1;
+}
+
+int positionC()
+{
+  return lineOf();
+}
+//--- file: d.kpp
+int editedD(int v)
+{
+  v = v + 10;
+  return v + 1;
+}
+
+int positionD()
+{
+  return lineOf();
+}
+//--- file: e.kpp
+int editedE(int v)
+{
+  v = v + 10;
+  return v + 1;
+}
+
+int positionE()
+{
+  return lineOf();
+}
+//--- file: f.kpp
+int editedF(int v)
+{
+  v = v + 10;
+  return v + 1;
+}
+
+int positionF()
+{
+  return lineOf();
+}
+//--- step: the lines taken out again
+int lineOf(std::CallerLocation here = caller)
+{
+  return int(here.line());
+}
+
+int main()
+{
+  std::println(editedA(1), " ", editedB(1), " ", editedC(1), " ", editedD(1), " ", editedE(1), " ", editedF(1));
+  std::println(positionA(), " ", positionB(), " ", positionC(), " ", positionD(), " ", positionE(), " ", positionF());
+  return 0;
+}
+// expect: 2 2 2 2 2 2
+// expect: 8 8 8 8 8 8
+//--- file: a.kpp
+int editedA(int v)
+{
+  return v + 1;
+}
+
+int positionA()
+{
+  return lineOf();
+}
+//--- file: b.kpp
+int editedB(int v)
+{
+  return v + 1;
+}
+
+int positionB()
+{
+  return lineOf();
+}
+//--- file: c.kpp
+int editedC(int v)
+{
+  return v + 1;
+}
+
+int positionC()
+{
+  return lineOf();
+}
+//--- file: d.kpp
+int editedD(int v)
+{
+  return v + 1;
+}
+
+int positionD()
+{
+  return lineOf();
+}
+//--- file: e.kpp
+int editedE(int v)
+{
+  return v + 1;
+}
+
+int positionE()
+{
+  return lineOf();
+}
+//--- file: f.kpp
+int editedF(int v)
+{
+  return v + 1;
+}
+
+int positionF()
+{
+  return lineOf();
+}
