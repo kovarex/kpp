@@ -168,13 +168,6 @@ namespace projects
       return nullptr;
     };
 
-    // Its builds are cold: no C library object from the object cache (CLibraryBuild.cpp), which every
-    // build it starts inherits (kovarex, 2026-11-07: the whole builds stay cold builds).
-#ifdef _WIN32
-    _putenv_s("KPP_CLIB_CACHE", "off");
-#else
-    setenv("KPP_CLIB_CACHE", "off", 1);
-#endif
     std::string self = compilerPath().string(), commit;
     runAndRead("git -C " + quoteArg(root.string()) + " log -1 --format=\"%h (%cs)\"", commit);
     while (!commit.empty() && (commit.back() == '\n' || commit.back() == '\r'))

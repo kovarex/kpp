@@ -10,8 +10,6 @@
 param([string]$KppExe = "$PSScriptRoot\..\build\kpp.exe", [string]$Section = '')
 $ErrorActionPreference = 'Stop'
 $work = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\build\tests\project'))
-# The C libraries' object cache of this test's own (run_tests sets one for every test).
-if (-not $env:KPP_CLIB_CACHE) { $env:KPP_CLIB_CACHE = Join-Path $work 'clib-cache' }
 # The compile servers of this test's projects, stopped at its start and its end (testservers.ps1).
 . "$PSScriptRoot\testservers.ps1"
 function StopTestServers() { Stop-TestServers $work }
@@ -287,25 +285,6 @@ void build(Project& project)
     if ($code -ne 0 -or (& $inArchive)) { Fail "kpp --release with extra.c excluded: exit $code, its symbol still in plus.lib: $(& $inArchive)`n$($output -join "`n")" }
     Set-Content 'build.kpp' $good
     Remove-Item 'libs\plus\extra.c'
-    # The object cache (docs/build.md, "The object cache"): with build\clib gone, as after build\ was
-    # deleted or in a new checkout, the release build takes plus.c's object from it, compiles nothing
-    # and links the same program; with a header the object read changed, it compiles plus.c again;
-    # with KPP_CLIB_CACHE=off it compiles and says nothing of a cache. A cache of this test's own.
-    $savedCache = $env:KPP_CLIB_CACHE
-    $env:KPP_CLIB_CACHE = Join-Path $work 'clibs-object-cache'
-    foreach ($round in 'fill', 'reuse', 'header', 'off')
-    {
-      if ($round -eq 'header') { Add-Content 'include\greeting.h' '// the object cache must not take plus.c''s object now' }
-      if ($round -eq 'off') { $env:KPP_CLIB_CACHE = 'off' }
-      Remove-Item -Recurse -Force 'build\clib'
-      $output = Kpp @('--release', '--no-server', '--set', "INCLUDE_ROOT=$root")
-      $tests = if ($code -eq 0) { & '.\build\release\game-tests.exe' } else { '' }
-      $said = ($output -join "`n")
-      $expected = @{ fill = 'the object cache had 0 of the 1 objects'; reuse = 'the object cache had 1 of the 1 objects'; header = 'the object cache had 0 of the 1 objects'; off = '' }[$round]
-      $right = if ($expected) { $said.Contains($expected) } else { $said -notmatch 'object cache' }
-      if ($code -ne 0 -or "$tests" -ne 'tests 42' -or -not $right) { Fail "the object cache, ${round}: exit $code, printed '$tests', expected '$expected'`n$said" }
-    }
-    $env:KPP_CLIB_CACHE = $savedCache
     # A C library's resource script (llvm-rc) naming a file next to it and one outside its directory, as
     # factorio-in-kpp's names its icon in ..\..\data. With the outside one missing the build fails, and
     # what llvm-rc wrote before it failed is no .res that the next build takes as made (it was linked,

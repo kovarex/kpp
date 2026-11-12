@@ -930,36 +930,6 @@ A program's build is its C libraries and kpp's work at once, then the link:
   22.3, 27.6, 26.2 s with the pool (the last two on a machine 80 to 100% busy). The machine is busy
   all the time either way: the libraries take as long beside kpp as alone, and so does kpp.
 
-### The object cache (2026-11-12)
-
-The C libraries' objects are also kept outside every build directory, in the user's **object cache**
-(`%LOCALAPPDATA%\kpp\clib-objects`; on Linux and FreeBSD `$XDG_CACHE_HOME/kpp/clib-objects` or
-`~/.cache/kpp/clib-objects`), so that a build that finds no object in `build\clib` (build\ deleted, a
-fresh checkout, another checkout of the same project) takes the one compiled before instead of
-compiling the file again. kovarex's build of a fresh `C:\Factorio\build` spent 53.5 s of its 59 s
-compiling all 591 of the game's C/C++ files (2026-11-12).
-- An object is found by its compile command with the project's directory written as `<root>` (the
-  library's flags, includes and defines, the configuration's C flags; the file prefix maps make the
-  object itself the same in every checkout), the compiler (clang's path, size and time) and its
-  source's path in the project and contents. It is taken when every file its compile read (its `.d`
-  file, kept with it, the project's files as `<root>`) has the contents it had then; the object is
-  then written where the compile would have put it, with its `.d` file, and dated now.
-- A compiled object goes into the cache with the contents of what it read. A library's precompiled
-  header is built as before.
-- The build says how many it took: `kpp: the object cache had 591 of the 591 objects to compile
-  (C:\Users\...\kpp\clib-objects)`.
-- Past 4 GB the entries used longest ago go until 3 GB are left (the game's debug objects are 37 MB).
-- `KPP_CLIB_CACHE=DIR` names another directory, `KPP_CLIB_CACHE=off` turns it off. `kpp measure` turns
-  it off: its whole builds stay cold builds (kovarex, 2026-11-07). run_tests uses a cache of its own.
-- It is another cache than the opt-in one of kpp's module objects (`KPP_OBJECT_CACHE`, below).
-- Measured on wube/Factorio branch kpp (723c4b2), `kpp factorio debug` after `build\` was deleted, a
-  machine 85% busy with other work, rounds interleaved: the C libraries 13.6 to 14.5 s without the
-  cache, 3.0 to 3.9 s with it (591 of 591 objects taken; SDL's and curl's precompiled headers still built);
-  the whole build 16.1 to 16.6 s against 13.7 to 19.1 s, kpp's own part (11 to 15 s, its modules compiled
-  again) now the longer one. A second
-  checkout of the same commit took all 591 from the first one's entries; with `re2.h` changed, the 8
-  objects that read it were compiled again.
-
 ### kpp's own steps in an edit build (2026-11-05)
 
 An edit build is kpp's steps around kpp's and the link: build.kpp's description (cached in
@@ -997,8 +967,7 @@ m.compare("whole factorio", "..."); // an executable's whole build's
   - the clean build: `kpp --stop-server`, `build\CONFIGURATION` deleted, the C and C++ libraries
     (`build\clib`) and the import cache kept, then the build, which starts the server again;
   - per executable, its whole build: the server stopped, `build\CONFIGURATION` and `build\clib`
-    deleted, `kpp EXECUTABLE CONFIGURATION` (with the C libraries' object cache off, KPP_CLIB_CACHE=off:
-    every library compiled).
+    deleted, `kpp EXECUTABLE CONFIGURATION`.
   Each time is the build command's wall time from start to exit, the link and the after-build step
   included, and every build must write its executable anew (else the measurement stops).
 - **`--compare DIR`**: after each row, its `compare` command (by the edit's row, `clean`, or `whole

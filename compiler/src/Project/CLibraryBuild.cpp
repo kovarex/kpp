@@ -271,309 +271,6 @@ namespace projects
     return text.substr(i + 1, end - i - 1);
   }
 
-  // The files a make rule (a .d file: "target: dep dep \<newline> dep", a blank inside a path "\ ")
-  // names after its target.
-  std::vector<std::string> dependencyFiles(const std::string& text)
-  {
-    std::vector<std::string> out;
-    size_t colon = text.find(": ");
-    std::string word;
-    for (size_t i = colon == std::string::npos ? text.size() : colon + 2; i <= text.size(); ++i)
-    {
-      char c = i < text.size() ? text[i] : ' ';
-      if (c == '\\' && i + 1 < text.size() && text[i + 1] == ' ')
-        word += ' ', ++i;
-      else if (c == '\\' && i + 1 < text.size() && (text[i + 1] == '\n' || text[i + 1] == '\r'))
-        ;
-      else if (c == ' ' || c == '\n' || c == '\r' || c == '\t')
-      {
-        if (!word.empty())
-          out.push_back(word);
-        word.clear();
-      }
-      else
-        word += c;
-    }
-    return out;
-  }
-
-  // The object cache (docs/build.md, "The object cache"): the C libraries' objects of every project
-  // of this user, outside any build directory, so that a build after build\ was deleted, a fresh
-  // checkout, another checkout of the same project or another configuration with the same flags takes
-  // an object compiled before instead of compiling it again. An object is found by its command (the
-  // project's directory written as <root>), the compiler (its path, size and time) and its source's
-  // path and contents; it is taken when every file its compile read (its .d file, kept beside it) has
-  // the contents it had then. KPP_CLIB_CACHE names another directory, or `off` (kpp measure: its whole
-  // builds stay cold). The module objects' cache (KPP_OBJECT_CACHE, Driver/ModuleCompile.cpp) is another.
-  namespace objectcache
-  {
-    fs::path directory()
-    {
-      if (const char* named = getenv("KPP_CLIB_CACHE"))
-        return std::string(named) == "off" || !*named ? fs::path() : fs::path(named);
-#ifdef _WIN32
-      const char* base = getenv("LOCALAPPDATA");
-      return base && *base ? fs::path(base) / "kpp" / "clib-objects" : fs::path();
-#else
-      if (const char* xdg = getenv("XDG_CACHE_HOME"); xdg && *xdg)
-        return fs::path(xdg) / "kpp" / "clib-objects";
-      const char* home = getenv("HOME");
-      return home && *home ? fs::path(home) / ".cache" / "kpp" / "clib-objects" : fs::path();
-#endif
-    }
-
-    uint64_t hashBytes(uint64_t h, const char* bytes, size_t count)
-    {
-      h ^= count * 0x9E3779B97F4A7C15ull;
-      for (; count >= 8; bytes += 8, count -= 8)
-      {
-        uint64_t word;
-        memcpy(&word, bytes, 8);
-        h = (h ^ word) * 0xFF51AFD7ED558CCDull;
-        h ^= h >> 32;
-      }
-      for (; count > 0; ++bytes, --count)
-        h = (h ^ (unsigned char)*bytes) * 0x100000001B3ull;
-      return h ^ (h >> 29);
-    }
-
-    // fopen whose file the processes started while it is open do not inherit (the clang compiles run
-    // beside these reads and writes: one that inherited a file the cache was writing held it open,
-    // and its rename failed, 18 of 591 entries in one build).
-    FILE* openPrivate(const fs::path& path, const char* mode)
-    {
-#ifdef _WIN32
-      return host::openFile(path, (std::string(mode) + "N").c_str());
-#else
-      return host::openFile(path, (std::string(mode) + "e").c_str());
-#endif
-    }
-
-    std::string hex(uint64_t h)
-    {
-      char text[17];
-      snprintf(text, sizeof text, "%016llx", (unsigned long long)h);
-      return text;
-    }
-
-    // A file's contents as two hashes ("" when it cannot be read), each file read once per build.
-    struct Contents
-    {
-      std::mutex lock;
-      std::unordered_map<std::string, std::string> known;
-
-      std::string of(const std::string& path)
-      {
-        {
-          std::lock_guard<std::mutex> guard(this->lock);
-          if (auto at = this->known.find(path); at != this->known.end())
-            return at->second;
-        }
-        std::string text, result;
-        if (FILE* file = openPrivate(path, "rb"))
-        {
-          char buffer[1 << 16];
-          for (size_t n; (n = fread(buffer, 1, sizeof buffer, file)) > 0;)
-            text.append(buffer, n);
-          bool failed = ferror(file) != 0;
-          fclose(file);
-          if (!failed)
-            result = hex(hashBytes(0x84222325CBF29CE4ull, text.data(), text.size())) + hex(hashBytes(0x2545F4914F6CDD1Dull, text.data(), text.size()));
-        }
-        std::lock_guard<std::mutex> guard(this->lock);
-        return this->known.emplace(path, result).first->second;
-      }
-    };
-
-    std::string replaced(std::string text, const std::string& from, const std::string& to)
-    {
-      if (from.empty())
-        return text;
-      for (size_t at = 0; (at = text.find(from, at)) != std::string::npos; at += to.size())
-        text.replace(at, from.size(), to);
-      return text;
-    }
-
-    // The compiler as it is: its path, size and time (an update of Visual Studio's clang in place).
-    std::string compilerIdentity()
-    {
-      std::error_code ec;
-      fs::path clang = clangPath();
-      auto size = fs::file_size(clang, ec);
-      auto time = fs::last_write_time(clang, ec).time_since_epoch().count();
-      return clang.string() + " " + std::to_string(ec ? 0 : size) + " " + std::to_string(time);
-    }
-
-    // Where an object's entry is: DIRECTORY\ab\KEY (.o or .obj, and .deps).
-    fs::path entry(const fs::path& cache, const LibraryJob& job, const LibraryJob::Cached& c, Contents& contents, const std::string& compiler)
-    {
-      std::string source = c.source.string();
-      std::string key = c.key + "\n" + compiler + "\n" + replaced(source, job.root, "<root>") + "\n" + contents.of(source);
-      std::string name = hex(hashBytes(0x51ED270B27B1E5A3ull, key.data(), key.size())) + hex(hashBytes(0x7F4A7C159E3779B9ull, key.data(), key.size()));
-      return cache / name.substr(0, 2) / name;
-    }
-
-    // Renames from to to, again a few times when it fails: a file just written may be held open for a
-    // moment (on Windows by a virus scanner: 18 of 591 entries' renames failed in one build).
-    void moveInto(const fs::path& from, const fs::path& to, std::error_code& ec)
-    {
-      for (int attempt = 0; attempt < 8; ++attempt)
-      {
-        fs::rename(from, to, ec);
-        if (!ec)
-          return;
-        std::this_thread::sleep_for(std::chrono::milliseconds(5 << attempt));
-      }
-    }
-
-    // Writes text to path through a file of its own beside it, so that a build reading the cache
-    // never sees half of it (another build may write the same entry at the same time).
-    bool writeWhole(const fs::path& path, const std::string& text)
-    {
-      fs::path temporary = path;
-      temporary += ".tmp" + std::to_string(host::processId()) + "-" + std::to_string(std::hash<std::thread::id>()(std::this_thread::get_id()));
-      FILE* file = openPrivate(temporary, "wb");
-      if (!file)
-        return false;
-      bool ok = fwrite(text.data(), 1, text.size(), file) == text.size();
-      ok = fclose(file) == 0 && ok;
-      std::error_code ec;
-      if (ok)
-        moveInto(temporary, path, ec);
-      if (!ok || ec)
-        fs::remove(temporary, ec);
-      return ok && !ec;
-    }
-
-    // Takes c's object from the cache when its entry is there and every file the compile read is as
-    // it was: the object, its .d file (this checkout's paths) and an empty log written where the
-    // compile would have written them, the object's time now (newer than its headers, so that the
-    // next build sees it up to date).
-    bool take(const fs::path& cache, const LibraryJob& job, const LibraryJob::Cached& c, Contents& contents, const std::string& compiler)
-    {
-      fs::path at = entry(cache, job, c, contents, compiler);
-      fs::path object = at;
-      object += c.object.extension();
-      std::string deps = readText(fs::path(at) += ".deps");
-      if (deps.empty())
-        return false;
-      std::string rule = c.object.string() + ":";
-      size_t line = 0;
-      while (line < deps.size())
-      {
-        size_t end = deps.find('\n', line);
-        if (end == std::string::npos)
-          end = deps.size();
-        std::string text = deps.substr(line, end - line);
-        line = end + 1;
-        if (text.size() < 33 || text[32] != ' ')
-          return false;
-        std::string path = replaced(text.substr(33), "<root>", job.root);
-        if (contents.of(path) != text.substr(0, 32))
-          return false;
-        std::string escaped;
-        for (char ch : path)
-          escaped += ch == ' ' ? std::string("\\ ") : std::string(1, ch);
-        rule += " \\\n  " + escaped;
-      }
-      std::error_code ec;
-      fs::path temporary = c.object;
-      temporary += ".cached";
-      if (!fs::copy_file(object, temporary, fs::copy_options::overwrite_existing, ec))
-        return false;
-      moveInto(temporary, c.object, ec);
-      if (ec)
-        return false;
-      fs::last_write_time(c.object, fs::file_time_type::clock::now(), ec);
-      fs::last_write_time(fs::path(at) += ".deps", fs::file_time_type::clock::now(), ec); // (used: trim keeps it)
-      writeWhole(c.dependencies, rule + "\n");
-      return true;
-    }
-
-    // Keeps a compiled object in the cache with the contents of the files its compile read.
-    void keep(const fs::path& cache, const LibraryJob& job, const LibraryJob::Cached& c, Contents& contents, const std::string& compiler)
-    {
-      std::string deps;
-      for (const std::string& path : dependencyFiles(readText(c.dependencies)))
-      {
-        std::string hash = contents.of(path);
-        if (hash.empty())
-          return;
-        deps += hash + " " + replaced(path, job.root, "<root>") + "\n";
-      }
-      if (deps.empty())
-        return;
-      fs::path at = entry(cache, job, c, contents, compiler);
-      std::error_code ec;
-      fs::create_directories(at.parent_path(), ec);
-      fs::path object = at;
-      object += c.object.extension();
-      fs::path temporary = object;
-      temporary += ".tmp" + std::to_string(host::processId()) + "-" + std::to_string(std::hash<std::thread::id>()(std::this_thread::get_id()));
-      if (!fs::copy_file(c.object, temporary, fs::copy_options::overwrite_existing, ec))
-        return;
-      moveInto(temporary, object, ec);
-      if (ec)
-      {
-        fs::remove(temporary, ec);
-        return;
-      }
-      writeWhole(fs::path(at) += ".deps", deps);
-    }
-
-    // Past `limit` bytes, the entries used longest ago go until `keep` bytes are left (an entry's
-    // .deps file's time is its last use); files of builds that died half way go once they are a day
-    // old. The game's C libraries take 83 MB of objects per set of flags (debug).
-    void trim(const fs::path& cache, uintmax_t limit, uintmax_t keep)
-    {
-      struct Entry
-      {
-        fs::path deps;
-        fs::file_time_type used;
-        uintmax_t size = 0;
-      };
-      std::map<std::string, Entry> entries;
-      uintmax_t total = 0;
-      std::error_code ec;
-      auto old = fs::file_time_type::clock::now() - std::chrono::hours(24);
-      for (const auto& e : fs::recursive_directory_iterator(cache, ec))
-      {
-        std::error_code fe;
-        if (!e.is_regular_file(fe))
-          continue;
-        fs::path path = e.path();
-        std::string name = path.filename().string();
-        if (name.find(".tmp") != std::string::npos)
-        {
-          if (e.last_write_time(fe) < old)
-            fs::remove(path, fe);
-          continue;
-        }
-        uintmax_t size = e.file_size(fe);
-        total += size;
-        Entry& entry = entries[(path.parent_path() / path.stem()).string()];
-        entry.size += size;
-        if (path.extension() == ".deps")
-        {
-          entry.deps = path;
-          entry.used = e.last_write_time(fe);
-        }
-      }
-      if (total <= limit)
-        return;
-      std::vector<std::pair<std::string, Entry>> byUse(entries.begin(), entries.end());
-      std::sort(byUse.begin(), byUse.end(), [](const auto& a, const auto& b) { return a.second.used < b.second.used; });
-      for (auto& [stem, entry] : byUse)
-      {
-        if (total <= keep)
-          break;
-        for (const char* extension : {".deps", ".obj", ".o"})
-          fs::remove(fs::path(stem) += extension, ec);
-        total -= entry.size;
-      }
-    }
-  }
-
   bool upToDate(const fs::path& object, const fs::path& dependencies, std::unordered_map<std::string, fs::file_time_type>& times)
   {
     std::error_code ec;
@@ -622,9 +319,6 @@ namespace projects
     const std::string& platform = target.platform;
     job.library = &c;
     job.directory = libraryDirectory(root, c, cFlags, platform);
-    job.root = fs::absolute(root).lexically_normal().string();
-    while (job.root.size() > 3 && (job.root.back() == '\\' || job.root.back() == '/'))
-      job.root.pop_back();
     std::error_code ec;
     fs::create_directories(job.directory, ec);
     std::vector<std::string> sourceEntries = forPlatform(c.sources, platform), resourceEntries = forPlatform(c.resources, platform);
@@ -790,9 +484,6 @@ namespace projects
           continue;
         job.logs.push_back(job.directory / (stem + ".log"));
         job.usesPch.push_back(withPch ? pchIndex[l] : -1);
-        // (keyed without the precompiled header: the object is the compile's without it)
-        job.cached.push_back({source, object, dependencies,
-                              objectcache::replaced(flags + (cpp ? cppFlags : "") + "\n" + (gnu ? "gnu " : "cl ") + object.extension().string(), job.root, "<root>")});
         std::string pch = !withPch ? std::string() : gnu ? " -include-pch " + quoteArg(pchFile[l].string())
                                                          : " /Yu" + quoteArg(c.precompiled) + " /Fp" + quoteArg(pchFile[l].string());
         // clang-cl is clang in its cl mode (no clang-cl.exe to ship).
@@ -850,46 +541,6 @@ namespace projects
     // (by then it nearly always is)
     std::vector<std::pair<size_t, size_t>> work;
     auto usesPch = [&](size_t j, size_t k) { return k < jobs[j].usesPch.size() ? jobs[j].usesPch[k] : -1; };
-    unsigned count = std::max(1u, std::thread::hardware_concurrency());
-    // First the object cache: each compile whose object it has, as it was compiled from the same
-    // files, takes it (on all cores: hashing the headers of 591 compiles), and is not run.
-    fs::path cache = objectcache::directory();
-    std::string compiler = cache.empty() ? std::string() : objectcache::compilerIdentity();
-    objectcache::Contents contents;
-    std::vector<std::vector<char>> reused(jobs.size());
-    for (size_t j = 0; j < jobs.size(); ++j)
-      reused[j].assign(jobs[j].compiles, 0);
-    size_t taken = 0, looked = 0;
-    if (!cache.empty())
-    {
-      std::vector<std::pair<size_t, size_t>> lookups;
-      for (size_t j = 0; j < jobs.size(); ++j)
-        for (size_t k = 0; k < jobs[j].compiles; ++k)
-          lookups.push_back({j, k});
-      looked = lookups.size();
-      std::atomic<size_t> next = 0, hits = 0;
-      std::vector<std::thread> threads;
-      for (unsigned t = 0; t < count && t < lookups.size(); ++t)
-        threads.emplace_back([&]
-        {
-          for (size_t i; (i = next++) < lookups.size();)
-          {
-            auto [j, k] = lookups[i];
-            if (objectcache::take(cache, jobs[j], jobs[j].cached[k], contents, compiler))
-            {
-              reused[j][k] = 1;
-              if (FILE* log = objectcache::openPrivate(jobs[j].logs[k], "wb"))
-                fclose(log);
-              ++hits;
-            }
-          }
-        });
-      for (std::thread& t : threads)
-        t.join();
-      taken = hits;
-    }
-    // (a precompiled header is built also when the cache had every object that uses it: without it the
-    // next build would take them as out of date and look them up again)
     for (size_t j = 0; j < jobs.size(); ++j)
       for (size_t p = 0; p < jobs[j].pchs.size(); ++p)
         if (!jobs[j].pchs[p].command.empty())
@@ -897,12 +548,11 @@ namespace projects
     for (int pass = 0; pass < 2; ++pass)
       for (size_t j = 0; j < jobs.size(); ++j)
         for (size_t k = 0; k < jobs[j].commands.size(); ++k)
-          if ((usesPch(j, k) >= 0) == (pass == 1) && !(k < jobs[j].compiles && reused[j][k]))
+          if ((usesPch(j, k) >= 0) == (pass == 1))
             work.push_back({j, k});
-    if (looked)
-      printf("kpp: the object cache had %zu of the %zu objects to compile (%s)\n", taken, looked, cache.string().c_str());
     std::atomic<size_t> next = 0;
     std::vector<std::thread> threads;
+    unsigned count = std::max(1u, std::thread::hardware_concurrency());
     for (unsigned t = 0; t < count && t < work.size(); ++t)
       threads.emplace_back([&]
       {
@@ -928,8 +578,6 @@ namespace projects
           }
           if (host::shell(job.commands[k], k >= job.compiles ? job.scripts[k - job.compiles].parent_path() : fs::path(), lowered) != 0)
             job.failed[k] = true;
-          else if (k < job.compiles && !cache.empty())
-            objectcache::keep(cache, job, job.cached[k], contents, compiler);
         }
       });
     for (std::thread& t : threads)
@@ -1007,8 +655,6 @@ namespace projects
         ok = false;
       }
     }
-    if (!cache.empty() && looked > taken)
-      objectcache::trim(cache, uintmax_t(4) << 30, uintmax_t(3) << 30);
     return ok;
   }
 }
