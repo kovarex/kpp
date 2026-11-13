@@ -1,0 +1,12 @@
+// spec: a C header's parameter of a transparent union (`typedef union { const struct sockaddr *__restrict __sockaddr__; ... } __CONST_SOCKADDR_ARG __attribute__ ((__transparent_union__))`, glibc's sys/socket.h read as C) takes its first member's pointer, as C++ reads the same header (`struct sockaddr *__restrict`): a `point*` or `const point*` passes as it is (`10 11`)
+// factorio: src/Net/TCPSocket.kpp and UDPSocket.kpp's connect, bind, getsockname, sendto and recvfrom of a `const sockaddr*` on Linux: "a const sockaddr* does not convert to __CONST_SOCKADDR_ARG" (9 errors, wube/Factorio kpp bbba9d582f, 2026-11-13)
+extern "C" import "c_transparent_union_parameter_takes_its_first_member.h";
+
+int main()
+{
+  point q;
+  fill(&q);
+  const point* c = &q;
+  std::println(sum(c, 1), " ", sum(&q, 2));
+  return 0;
+}

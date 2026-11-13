@@ -8159,6 +8159,76 @@ void parseFile(std::vector<Token>& tokens, std::string_view text, SymbolTable& s
       return s == "__extension__" || s == "__restrict__" || s == "restrict" || s == "_Nonnull" || s == "_Nullable" ||
              s == "_Nullable_result" || s == "_Null_unspecified";
     };
+    // A transparent union (`typedef union { const struct sockaddr *__restrict __sockaddr__; ... }
+    // __CONST_SOCKADDR_ARG __attribute__ ((__transparent_union__))`: glibc's sys/socket.h read as C, its
+    // connect, bind, sendto ...) is a parameter type C passes as the member given, with the first member's
+    // ABI. Its typedef becomes the typedef of its first member's type, as C++ reads the same header
+    // (`# define __CONST_SOCKADDR_ARG const struct sockaddr *__restrict`): a `const sockaddr*` passes as it
+    // is. Until 2026-11-13 the union stayed, and nothing converted to it (the game's Linux build, 9 errors).
+    {
+      auto is = [&](size_t k, std::string_view s) { return k < tokens.size() && spelled(tokens[k]) == s; };
+      // The index of the first of `stop` at the depth of `from` (parentheses, brackets and braces), or the end.
+      auto findAtDepth = [&](size_t from, std::string_view stop, size_t end)
+      {
+        int depth = 0;
+        for (size_t k = from; k < end; ++k)
+        {
+          std::string_view s = spelled(tokens[k]);
+          if (depth == 0 && s == stop)
+            return k;
+          if (s == "(" || s == "[" || s == "{")
+            ++depth;
+          else if (s == ")" || s == "]" || s == "}")
+            --depth;
+        }
+        return end;
+      };
+      std::vector<Token> rewritten;
+      rewritten.reserve(tokens.size());
+      for (size_t i = 0; i < tokens.size(); ++i)
+      {
+        if (is(i, "typedef") && is(i + 1, "union"))
+        {
+          // (a union with a body: its `{` before the declaration's `;`, which findAtDepth steps over inside braces)
+          size_t end = findAtDepth(i + 2, ";", tokens.size());
+          size_t open = findAtDepth(i + 2, "{", end);
+          size_t close = open < end ? findAtDepth(open + 1, "}", end) : end;
+          bool transparent = false;
+          for (size_t k = close; k < end; ++k)
+            transparent = transparent || is(k, "__transparent_union__") || is(k, "transparent_union");
+          for (size_t k = i + 2; k < open && k < end; ++k)
+            transparent = transparent || is(k, "__transparent_union__") || is(k, "transparent_union");
+          size_t member = transparent ? findAtDepth(open + 1, ";", close) : close;
+          // The first member: its type, the tokens before its name (a plain declarator, `T *name`).
+          bool plain = member < close && member > open + 2 && TokenKind(tokens[member - 1].kind) == TokenKind::Identifier;
+          // The typedef's name: the identifier after the braces that no __attribute__ holds.
+          size_t name = tokens.size();
+          int names = 0;
+          for (size_t k = close + 1; plain && k < end; ++k)
+          {
+            if (is(k, "__attribute__") && is(k + 1, "("))
+            {
+              k = findAtDepth(k + 2, ")", end); // (at the attribute's own closing parenthesis)
+              continue;
+            }
+            if (TokenKind(tokens[k].kind) == TokenKind::Identifier)
+              name = k, ++names;
+          }
+          if (plain && names == 1)
+          {
+            rewritten.push_back(tokens[i]);
+            for (size_t k = open + 1; k + 1 < member; ++k)
+              rewritten.push_back(tokens[k]);
+            rewritten.push_back(tokens[name]);
+            rewritten.push_back(tokens[end]);
+            i = end;
+            continue;
+          }
+        }
+        rewritten.push_back(tokens[i]);
+      }
+      tokens = std::move(rewritten);
+    }
     std::vector<Token> kept;
     kept.reserve(tokens.size());
     for (size_t i = 0; i < tokens.size(); ++i)
