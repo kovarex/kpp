@@ -1465,6 +1465,7 @@
     const ProgramNames* programNames = nullptr; // what the program's types name (convertToKpp)
     std::set<std::string>* opaqueKept = nullptr; // classes declared and defined nowhere, kept as declarations (once in the program)
     const std::set<std::string>* macroClasses = nullptr; // the classes ENUM and BITFIELD define (collectMacroClasses)
+    const std::string* bitfieldMacro = nullptr; // BITFIELD's definition among the inputs (collectBitfieldMacro)
     const std::set<std::string>* braceableClasses = nullptr; // collectBraceableClasses
     const InlineBodies* inlineBodies = nullptr; // collectInlineBodies
     const SuperAliases* superAliases = nullptr; // collectSuperAliases

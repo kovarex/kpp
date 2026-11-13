@@ -476,6 +476,11 @@ if exist kpp\convert_slips rd /s /q kpp\convert_slips
 fc /b kpp\convert_slips\convert_slips\slips.kpp tests\convert_slips.expected.kpp > nul && (echo slips: as expected) || (echo slips: DIFFERS& fc kpp\convert_slips\convert_slips\slips.kpp tests\convert_slips.expected.kpp & goto :failed)
 %KPP% --std ..\..\stdlib --quiet --slip-checks --exe kpp\convert_slips.exe kpp\convert_slips || goto :failed
 kpp\convert_slips.exe > nul || goto :failed
+set "STEP=bitfield check"
+echo == bitfield: tests\convert_bitfield converted: BITFIELD written with the members its own definition has ^(Factorio 2.1.24's, without the xor and complement operators: tests\convert_bitfield.expected^)
+if exist kpp\convert_bitfield rd /s /q kpp\convert_bitfield
+%KPP% --no-std --quiet --convert kpp\convert_bitfield --ext .cpp,.hpp tests\convert_bitfield || goto :failed
+fc /b kpp\convert_bitfield\convert_bitfield\use.kpp tests\convert_bitfield.expected > nul && (echo bitfield: as expected) || (echo bitfield: DIFFERS& fc kpp\convert_bitfield\convert_bitfield\use.kpp tests\convert_bitfield.expected & goto :failed)
 set "STEP=platforms check"
 echo == platforms: tests\convert_platform\platform.cpp converted for Windows and for Linux ^(--convert-platform linux, clang's predefines in linux-predefines.txt^) in debug and release, each configuration's two made one by config::platform ^(--convert-merge-platform^), then the configurations by config::debug; built and run for Windows ^(tests\convert_platform.expected^) and for Linux under WSL ^(tests\convert_platform.linux.expected^)
 if exist kpp\cplat rd /s /q kpp\cplat

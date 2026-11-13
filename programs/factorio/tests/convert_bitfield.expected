@@ -1,0 +1,58 @@
+// tests\convert_bitfield: BITFIELD expanded with the members its own definition has: Util\Container\BitField.hpp is
+// Factorio 2.1.24's, without master's operator^, operator~ and operator^= (thread P, 2026-11-13), and the class it
+// writes (tests\convert_bitfield.expected) has none of them either.
+
+class Flags : public BitFieldBase
+{
+public:
+  enum class Enum
+  {
+    A, B, C
+  };
+  constexpr static usize value_count = 3;
+  using UnderlyingType = SmallBitset<value_count>::UnderlyingType;
+
+  constexpr Flags() = default;
+  implicit constexpr Flags(std::InitializerList<Enum> values) : bits(Flags::toBits(values)) {}
+  implicit constexpr Flags(Enum value) : bits(static_cast<u64>(1ULL << static_cast<usize>(value))) {}
+
+private:
+  constexpr Flags(SmallBitset<value_count> bits) : bits(bits) {}
+
+public:
+  Flags& add(Enum value) { this->bits.set(static_cast<usize>(value)); return *this; }
+  Flags& remove(Enum value) { this->bits.reset(static_cast<usize>(value)); return *this; }
+  Flags& flip(Enum value) { this->bits.flip(static_cast<usize>(value)); return *this; }
+  Flags& set(Enum value, bool boolValue) { boolValue ? this->add(value) : this->remove(value); return *this; }
+  Flags& set() { this->bits.set(); return *this; }
+  Flags& reset() { this->bits.reset(); return *this; }
+  Flags& flip() { this->bits.flip(); return *this; }
+  constexpr bool none() const { return this->bits.none(); }
+  constexpr bool any() const { return this->bits.any(); }
+  constexpr bool all() const { return this->bits.all(); }
+  template<Enum value>
+  constexpr bool contains() const { return this->bits.test<static_cast<usize>(value)>(); }
+  constexpr bool checkedContains(Enum value) const { return this->bits.test(static_cast<usize>(value)); }
+
+  constexpr bool operator==(const Flags& other) const = default;
+  constexpr Flags operator|(Enum value) const { return (*this) | Flags(value); }
+  constexpr Flags operator|(const Flags other) const { return Flags(this->bits | other.bits); }
+  constexpr Flags operator&(Enum value) const { return (*this) & Flags(value); }
+  constexpr Flags operator&(const Flags other) const { return Flags(this->bits & other.bits); }
+  Flags& operator&=(const Flags& other) { this->bits &= other.bits; return *this; }
+  Flags& operator|=(const Flags& other) { this->bits |= other.bits; return *this; }
+  constexpr SmallBitset<value_count>::UnderlyingType getBits() const { return this->bits.getBits(); }
+  static Flags fromBits(u64 bits) { Flags value; value.bits = SmallBitset<value_count>(bits); return value; }
+
+  using enum Enum;
+private:
+  constexpr static u64 toBits(std::InitializerList<Enum> values)
+  {
+    u64 acc = 0;
+    for (auto value : values)
+      acc |= static_cast<u64>(1ULL << static_cast<usize>(value));
+    return acc;
+  }
+
+  SmallBitset<value_count> bits;
+};

@@ -3650,6 +3650,32 @@
                   if (m > 1) members += ", ";
                   members += args[m];
                 }
+                // Each member as the macro has it (collectBitfieldMacro: BitField.hpp's BITFIELD among the
+                // inputs), so that another version of the source gets its own: kpp-2.1.24's has no operator^,
+                // ~ or ^= (thread P, 2026-11-13). An operator the expansion does not know, or no definition
+                // to read, leaves the use as written, an error, never a class with other members.
+                static const std::string noMacro;
+                const std::string& macro = bitfieldMacro ? *bitfieldMacro : noMacro;
+                auto has = [&](const char* marker) { return macro.find(marker) != std::string::npos; };
+                std::string unknownOperator;
+                for (size_t at = macro.find("operator"); at != std::string::npos; at = macro.find("operator", at + 1))
+                {
+                  size_t open = macro.find('(', at);
+                  std::string op = open == std::string::npos ? std::string() : macro.substr(at, open - at);
+                  while (!op.empty() && op.back() == ' ')
+                    op.pop_back();
+                  static const char* known[] = {"operator==", "operator!=", "operator|", "operator&", "operator^", "operator~", "operator&=", "operator|=", "operator^="};
+                  if (std::find_if(std::begin(known), std::end(known), [&](const char* k) { return op == k; }) == std::end(known))
+                    unknownOperator = op;
+                }
+                if (macro.empty() || !unknownOperator.empty())
+                {
+                  todo(t.offset, macro.empty() ? "BITFIELD without its definition among the inputs (Util/Container/BitField.hpp): left as written"
+                                               : "BITFIELD's " + unknownOperator + ", which the converter does not write: left as written");
+                  i = j;
+                  continue;
+                }
+                auto line = [&](const char* marker, const std::string& text) { return has(marker) ? "  " + text + "\n" : std::string(); };
                 std::string expanded =
                   "class " + bfName + " : public BitFieldBase\n"
                   "{\n"
@@ -3668,37 +3694,36 @@
                   "private:\n"
                   "  constexpr " + bfName + "(SmallBitset<value_count> bits) : bits(bits) {}\n"
                   "\n"
-                  "public:\n"
-                  "  " + bfName + "& add(Enum value) { this->bits.set(static_cast<size_t>(value)); return *this; }\n"
-                  "  " + bfName + "& remove(Enum value) { this->bits.reset(static_cast<size_t>(value)); return *this; }\n"
-                  "  " + bfName + "& flip(Enum value) { this->bits.flip(static_cast<size_t>(value)); return *this; }\n"
-                  "  " + bfName + "& set(Enum value, bool boolValue) { boolValue ? this->add(value) : this->remove(value); return *this; }\n"
-                  "\n"
-                  "  " + bfName + "& set() { this->bits.set(); return *this; }\n"
-                  "  " + bfName + "& reset() { this->bits.reset(); return *this; }\n"
-                  "  " + bfName + "& flip() { this->bits.flip(); return *this; }\n"
-                  "\n"
-                  "  constexpr bool none() const { return this->bits.none(); }\n"
-                  "  constexpr bool any() const { return this->bits.any(); }\n"
-                  "  constexpr bool all() const { return this->bits.all(); }\n"
-                  "  template<Enum value>\n"
-                  "  constexpr bool contains() const { return this->bits.test<static_cast<size_t>(value)>(); }\n"
-                  "  constexpr bool checkedContains(Enum value) const { return this->bits.test(static_cast<size_t>(value)); }\n"
-                  "\n"
-                  "  constexpr bool operator==(const " + bfName + "& other) const = default;\n"
-                  "  constexpr " + bfName + " operator|(Enum value) const { return (*this) | " + bfName + "(value); }\n"
-                  "  constexpr " + bfName + " operator|(const " + bfName + " other) const { return " + bfName + "(this->bits | other.bits); }\n"
-                  "  constexpr " + bfName + " operator&(Enum value) const { return (*this) & " + bfName + "(value); }\n"
-                  "  constexpr " + bfName + " operator&(const " + bfName + " other) const { return " + bfName + "(this->bits & other.bits); }\n"
-                  "  constexpr " + bfName + " operator^(Enum value) const { return (*this) ^ " + bfName + "(value); }\n"
-                  "  constexpr " + bfName + " operator^(const " + bfName + " other) const { return " + bfName + "(this->bits ^ other.bits); }\n"
-                  "  constexpr " + bfName + " operator~() const { return " + bfName + "(~this->bits); }\n"
-                  "  " + bfName + "& operator&=(const " + bfName + "& other) { this->bits &= other.bits; return *this; }\n"
-                  "  " + bfName + "& operator|=(const " + bfName + "& other) { this->bits |= other.bits; return *this; }\n"
-                  "  " + bfName + "& operator^=(const " + bfName + "& other) { this->bits ^= other.bits; return *this; }\n"
-                  "\n"
-                  "  constexpr SmallBitset<value_count>::UnderlyingType getBits() const { return this->bits.getBits(); }\n"
-                  "  static " + bfName + " fromBits(uint64_t bits) { " + bfName + " value; value.bits = SmallBitset<value_count>(bits); return value; }\n"
+                  "public:\n" +
+                  line("Name& add(", bfName + "& add(Enum value) { this->bits.set(static_cast<size_t>(value)); return *this; }") +
+                  line("Name& remove(", bfName + "& remove(Enum value) { this->bits.reset(static_cast<size_t>(value)); return *this; }") +
+                  line("Name& flip(Enum", bfName + "& flip(Enum value) { this->bits.flip(static_cast<size_t>(value)); return *this; }") +
+                  line("Name& set(Enum", bfName + "& set(Enum value, bool boolValue) { boolValue ? this->add(value) : this->remove(value); return *this; }") +
+                  "\n" +
+                  line("Name& set()", bfName + "& set() { this->bits.set(); return *this; }") +
+                  line("Name& reset()", bfName + "& reset() { this->bits.reset(); return *this; }") +
+                  line("Name& flip()", bfName + "& flip() { this->bits.flip(); return *this; }") +
+                  "\n" +
+                  line("bool none()", "constexpr bool none() const { return this->bits.none(); }") +
+                  line("bool any()", "constexpr bool any() const { return this->bits.any(); }") +
+                  line("bool all()", "constexpr bool all() const { return this->bits.all(); }") +
+                  (has("bool contains()") ? std::string("  template<Enum value>\n  constexpr bool contains() const { return this->bits.test<static_cast<size_t>(value)>(); }\n") : std::string()) +
+                  line("bool checkedContains(", "constexpr bool checkedContains(Enum value) const { return this->bits.test(static_cast<size_t>(value)); }") +
+                  "\n" +
+                  line("operator==", "constexpr bool operator==(const " + bfName + "& other) const = default;") +
+                  line("Name operator|(Enum", "constexpr " + bfName + " operator|(Enum value) const { return (*this) | " + bfName + "(value); }") +
+                  line("Name operator|(const Name", "constexpr " + bfName + " operator|(const " + bfName + " other) const { return " + bfName + "(this->bits | other.bits); }") +
+                  line("Name operator&(Enum", "constexpr " + bfName + " operator&(Enum value) const { return (*this) & " + bfName + "(value); }") +
+                  line("Name operator&(const Name", "constexpr " + bfName + " operator&(const " + bfName + " other) const { return " + bfName + "(this->bits & other.bits); }") +
+                  line("Name operator^(Enum", "constexpr " + bfName + " operator^(Enum value) const { return (*this) ^ " + bfName + "(value); }") +
+                  line("Name operator^(const Name", "constexpr " + bfName + " operator^(const " + bfName + " other) const { return " + bfName + "(this->bits ^ other.bits); }") +
+                  line("Name operator~()", "constexpr " + bfName + " operator~() const { return " + bfName + "(~this->bits); }") +
+                  line("Name& operator&=(", bfName + "& operator&=(const " + bfName + "& other) { this->bits &= other.bits; return *this; }") +
+                  line("Name& operator|=(", bfName + "& operator|=(const " + bfName + "& other) { this->bits |= other.bits; return *this; }") +
+                  line("Name& operator^=(", bfName + "& operator^=(const " + bfName + "& other) { this->bits ^= other.bits; return *this; }") +
+                  "\n" +
+                  line("getBits()", "constexpr SmallBitset<value_count>::UnderlyingType getBits() const { return this->bits.getBits(); }") +
+                  line("fromBits(", "static " + bfName + " fromBits(uint64_t bits) { " + bfName + " value; value.bits = SmallBitset<value_count>(bits); return value; }") +
                   "\n"
                   "  using enum Enum;\n"
                   "private:\n"

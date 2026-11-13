@@ -845,6 +845,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
           programNames.unresolved.insert(t->name.last().symbol);
       });
   std::set<std::string> macroClasses = collectMacroClasses(inputs);
+  std::string bitfieldMacro = collectBitfieldMacro(inputs);
   InlineBodies inlineBodies;
   for (const ConvertInput& in : inputs)
     if (in.parsed && !in.parsed->isImported && !in.c)
@@ -1058,6 +1059,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     fc.opaqueKept = &opaqueKept;
     fc.programNames = &programNames;
     fc.macroClasses = &macroClasses;
+    fc.bitfieldMacro = &bitfieldMacro;
     fc.braceableClasses = &braceableClasses;
     fc.inlineBodies = &inlineBodies;
     fc.superAliases = &superAliases;

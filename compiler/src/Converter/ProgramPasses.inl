@@ -1024,6 +1024,51 @@ static void collectInlineBodies(Span<Decl*> decls, bool inTemplate, GlobalScope&
   }
 }
 
+// The body of Factorio's `#define BITFIELD(Name, ...)` (Util/Container/BitField.hpp) among the inputs, its
+// continuation lines joined and its spaces one each: the BITFIELD expansion writes the members this macro
+// has, so a source of another version (kpp-2.1.24's, without operator^, ~ and ^=) gets its own (thread P,
+// 2026-11-13: the members of master's hard-coded were 14 errors there). Empty when no input defines it.
+static std::string collectBitfieldMacro(const std::vector<ConvertInput>& inputs)
+{
+  for (const ConvertInput& in : inputs)
+  {
+    std::string_view text = in.text;
+    for (size_t at = text.find("BITFIELD("); at != std::string_view::npos; at = text.find("BITFIELD(", at + 1))
+    {
+      size_t lineStart = text.rfind('\n', at);
+      lineStart = lineStart == std::string_view::npos ? 0 : lineStart + 1;
+      std::string head(text.substr(lineStart, at - lineStart));
+      head.erase(std::remove_if(head.begin(), head.end(), [](char c) { return isspace((unsigned char)c); }), head.end());
+      if (head != "#define")
+        continue;
+      std::string body;
+      size_t p = at;
+      while (p < text.size())
+      {
+        size_t end = text.find('\n', p);
+        if (end == std::string_view::npos)
+          end = text.size();
+        std::string_view line = text.substr(p, end - p);
+        while (!line.empty() && (line.back() == '\r' || line.back() == ' ' || line.back() == '\t'))
+          line.remove_suffix(1);
+        bool continued = !line.empty() && line.back() == '\\';
+        if (continued)
+          line.remove_suffix(1);
+        body += std::string(line) + " ";
+        p = end + 1;
+        if (!continued)
+          break;
+      }
+      std::string squeezed;
+      for (char c : body)
+        if (!isspace((unsigned char)c) || (!squeezed.empty() && squeezed.back() != ' '))
+          squeezed += isspace((unsigned char)c) ? ' ' : c;
+      return squeezed;
+    }
+  }
+  return std::string();
+}
+
 // The classes Factorio's ENUM(Name, ...) and BITFIELD(Name, ...) define at namespace scope, by
 // qualified name (`ns::Name`). The resolver sees the macro's use, not the class the converter writes
 // for it, so a forward declaration of one (Entity.hpp's `class DrawingFlags;`) finds no definition;
