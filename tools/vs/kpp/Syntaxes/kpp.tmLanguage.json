@@ -87,8 +87,8 @@
       "match": "\\b(?:void|bool|char|char8_t|char16_t|char32_t|wchar_t|short|int|long|signed|unsigned|float|double|auto|int8_t|int16_t|int32_t|int64_t|uint8_t|uint16_t|uint32_t|uint64_t|size_t|ptrdiff_t|int8|int16|int32|int64|uint8|uint16|uint32|uint64)\\b"
     },
     "numberTypes": {
-      "comment": "kpp's number types: a scope no theme colors, so VS Code draws them in the text's color; Visual Studio draws this scope as kpp Number Type (tools/vs/vsix/kpp.tmLanguage.tmTheme)",
-      "name": "meta.number-type.kpp",
+      "comment": "kpp's number types, built-in types as int is: storage.type, which themes color as they color int (VS Code's Modern themes: the keywords' blue); Visual Studio draws this scope as kpp Number Type (tools/vs/vsix/kpp.tmLanguage.tmTheme), a color of its own in Fonts and Colors",
+      "name": "storage.type.number.kpp",
       "match": "\\b(?:i8|i16|i32|i64|u8|u16|u32|u64|f32|f64|usize|isize)\\b"
     },
     "functions": {

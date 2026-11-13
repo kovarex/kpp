@@ -48,7 +48,7 @@
       </dict>
       <dict>
         <key>scope</key>
-        <string>meta.number-type.kpp</string>
+        <string>storage.type.number.kpp</string>
         <key>settings</key>
         <dict>
           <key>vsclassificationtype</key>

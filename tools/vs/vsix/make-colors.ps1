@@ -23,7 +23,7 @@ $colors = @(
   @('kpp enumerator',      '0070C1', '4FC1FF'),
   @('kpp control keyword', 'AF00DB', 'C586C0'),
   @('kpp number',          '098658', 'B5CEA8'),
-  @('kpp number type',     '3B3B3B', 'CCCCCC'),
+  @('kpp number type',     '0000FF', '569CD6'),
   @('kpp string',          'A31515', 'CE9178'),
   @('kpp string escape',   'EE0000', 'D7BA7D'),
   @('kpp comment',         '008000', '6A9955'),

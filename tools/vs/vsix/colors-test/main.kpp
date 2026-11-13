@@ -38,6 +38,6 @@ shapes::Side chosen = shapes::Side::leftSide;
 bool debugging = config::debug;
 int main()
 {
-  return first ? 8 : shapes::globalCount;
+  return first ? (i32)8 : shapes::globalCount;
 }
 // the last line

@@ -91,7 +91,7 @@ $lines = @(
   'numberType method control type static', '', 'numberType type static number', '',
   'keyword type', 'numberType function type parameter', '', 'control parameter function', '',
   'namespace type global number', 'keyword global string escape', 'keyword global', 'numberType global keyword', 'numberType global operator',
-  'namespace type global enumerator', 'keyword global namespace', 'keyword function', '', 'control global number namespace', '', 'comment'
+  'namespace type global enumerator', 'keyword global namespace', 'keyword function', '', 'control numberType number global namespace', '', 'comment'
 )
 
 $ide = "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE"

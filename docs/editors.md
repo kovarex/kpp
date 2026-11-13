@@ -221,7 +221,7 @@ Studio. `tools\vs\install.cmd`, the grammar alone, is not needed with it.
   | enumerators | `#0070C1` | `#4FC1FF` |
   | control keywords (`if`, `return`, `for`, ...) | `#AF00DB` | `#C586C0` |
   | numbers | `#098658` | `#B5CEA8` |
-  | number types (`i32`, `u8`, `f64`, ...) | `#3B3B3B` | `#CCCCCC` |
+  | number types (`i32`, `u8`, `f64`, ...), as `int` and the other keywords | `#0000FF` | `#569CD6` |
   | strings | `#A31515` | `#CE9178` |
   | escapes in strings | `#EE0000` | `#D7BA7D` |
   | comments | `#008000` | `#6A9955` |
