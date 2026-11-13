@@ -117,6 +117,11 @@ try
   Expect 'handle' '{1, gear}'
   Expect 'none0' '{0}'
   Expect 'outside' 'assert failed: handle.index < Registry<T>::all.size()'
+  # The game's SignalIDBase through its typeToStr and getName: a generic lambda per type, a Handle made from the index.
+  Expect 'emptySignal' '{part }'
+  Expect 'gearSignal' '{part gear}'
+  Expect 'waterSignal' '{fluid water}'
+  Expect 'badSignal' 'reaches abort()'
   $rows = @((Value 'many').DataMembers | ForEach-Object { "$($_.Name)=$($_.Value)" }) -join ', '
   Check "a set's rows" ($rows -like 'Red=true, Green=false, Blue=true, `[bits`]=0x61*') $rows
   $stack = @($dte.Debugger.CurrentThread.StackFrames | ForEach-Object { "$($_.Language)" })

@@ -193,9 +193,17 @@ flags Usage : u16
 
 // A handle shows the name of what it indexes in a template's static list, the game's ID<T> through
 // PrototypeList<T>::indexToPrototype: a static data member read by its debugger name, a Vector's element.
-struct Part
+struct Prototype
 {
   std::String name;
+};
+
+struct Part : public Prototype
+{
+};
+
+struct Fluid : public Prototype
+{
 };
 
 template<class T>
@@ -238,7 +246,63 @@ struct Handle
       return "{0}";
     return std::toString("{", this.index, ", ", this.getName(), "}");
   }
+  Handle() = default;
+  Handle(u16 index) : index(index) {}
+  static Handle fromIndex(u16 index) { return Handle(index); }
   u16 index = 0;
+};
+
+// The game's SignalIDBase: a type and an index in one value. Its view uses the real getName and typeToStr: getName's
+// getPrototype dispatches through applyOrAbort, a generic lambda per type called by a static template's switch, which
+// makes the type's Handle from the index (getRaw<T>: T::fromIndex, a constructed value) and asks it for its prototype.
+struct Signal
+{
+  enum class Type : u8 { Part = 0, Fluid = 1 };
+
+  static const char* typeToStr(Type type)
+  {
+    switch (type)
+    {
+      case Type::Part: return "part";
+      case Type::Fluid: return "fluid";
+    }
+    abort();
+  }
+
+  template<bool AbortOnInvalid, class T>
+  static auto apply(Type type, T op)
+  {
+    switch (type)
+    {
+      case Type::Part: return op(Handle<Part>());
+      case Type::Fluid: return op(Handle<Fluid>());
+    }
+    if constexpr (AbortOnInvalid)
+      abort();
+    else
+      abort();
+  }
+
+  template<class T>
+  static auto applyOrAbort(Type type, T op) { return Signal::apply<true>(type, op); }
+
+  Type getType() const { return Type(u8(this.value >> 16)); }
+  u16 getValueIndex() const { return u16(this.value); }
+  template<class T>
+  T getRaw() const { return T::fromIndex(this.getValueIndex()); }
+  const Prototype* getPrototype() const
+  {
+    return Signal::applyOrAbort(this.getType(), [&]<class T>(T) -> const Prototype* { return this.getRaw<T>().getPrototype(); });
+  }
+  std::String getName() const
+  {
+    if (this.value == 0)
+      return "";
+    return this.getPrototype()->name;
+  }
+  std::String debugValue() const { return std::toString("{", std::StringView(Signal::typeToStr(this.getType())), " ", this.getName(), "}"); }
+
+  u32 value = 0;
 };
 
 struct Buffer
@@ -296,6 +360,12 @@ int main()
   Registry<Part>::all.push_back(&gear);
   Handle<Part> handle;
   handle.index = 1;
+  Fluid water;
+  water.name = "water";
+  Registry<Fluid>::all.push_back(nullptr);
+  Registry<Fluid>::all.push_back(&water);
+  Signal signal;
+  signal.value = (1u << 16) | 1u;
   Buffer buffer;
   buffer.data = held;
   buffer.size = 3;

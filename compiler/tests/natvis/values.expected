@@ -28,6 +28,7 @@ Buffer
 Fixed<12>
 Fixed<8>
 Force
+Handle<Fluid>
 Handle<Part>
 Heading
 Item
@@ -38,6 +39,7 @@ Release
 Shape
 Short
 Sign
+Signal
 Stack
 Station
 Team

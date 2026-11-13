@@ -105,6 +105,41 @@ namespace
   // body inlined on that object, held to the same rules; a constexpr local is its constant. Anything
   // else (another call, an operator function, a variable) is the build's error, with what it was: a
   // view kpp cannot write is never left raw in silence.
+  struct ObjectValue;
+  struct LambdaValue;
+
+  // An inlined call's parameter bound to its argument: an expression (an object's path: `(*this)`, `speed`), an
+  // object the code constructs, or a lambda.
+  struct Bound
+  {
+    const Decl* param = nullptr;
+    std::string expression;
+    std::shared_ptr<ObjectValue> object;
+    std::shared_ptr<LambdaValue> lambda;
+  };
+
+  // A value the code constructs (`ID(index)` in fromIndex): each data member's expression; a member it does not set
+  // is unknown to the view.
+  struct ObjectValue
+  {
+    const Ty* type = nullptr;
+    std::vector<std::pair<std::string, std::string>> members;
+  };
+
+  // A lambda passed as an argument (getPrototype's to applyOrAbort): the lambda and where it was written, what its
+  // `this` and its captures are there.
+  struct LambdaValue
+  {
+    LambdaExpr* lambda = nullptr;
+    ParsedFile* file = nullptr;
+    Decl* context = nullptr;
+    TemplateArgs args;
+    std::string prefix;
+    const Ty* self = nullptr;
+    std::vector<Bound> bound;
+    std::shared_ptr<ObjectValue> object;
+  };
+
   struct DebugValue
   {
     GlobalScope& global;
@@ -118,12 +153,17 @@ namespace
     std::string why = {};      // the first thing that could not be said
     Node* at = nullptr;        // where
     const ParsedFile* atFile = nullptr;
-    // An inlined call's parameters: each its argument's expression (an object's: the object's own, `(*this)`).
-    std::vector<std::pair<const Decl*, std::string>> bound = {};
-    // The asserts the body and the functions it calls make: each a condition and its text, which the rule shows
-    // as `assert failed: TEXT` where the condition does not hold (kovarex, 2026-11-13: "The assert is correct
-    // here"). Shared by every inlined call of one rule.
+    // An inlined call's parameters, bound to its arguments.
+    std::vector<Bound> bound = {};
+    // The object an inlined call runs on when the code constructed it (getRaw<T>()'s ID): its members' values.
+    std::shared_ptr<ObjectValue> object = {};
+    // The asserts the body and the functions it calls make: each a condition and what the rule shows where it
+    // holds, `assert failed: TEXT` where an assert's condition does not hold (kovarex, 2026-11-13: "The assert is
+    // correct here"), `reaches abort()` where a function ends in a [[noreturn]] call. Shared by every inlined call
+    // of one rule.
     std::shared_ptr<std::vector<std::pair<std::string, std::string>>> asserts = {};
+    // The [[noreturn]] call the cases of the body last translated end in, when they do (apply's abort()).
+    Stmt* noReturn = nullptr;
     // Where the code being translated runs: the conditions of the cases on its way (getPointer only where an ID's
     // getName has passed `index == 0`), which an assert's failure holds only together with. Empty: always.
     std::string reached = {};
@@ -137,6 +177,14 @@ namespace
     if (b.empty() || a.find("(" + b + ")") != std::string::npos)
       return a; // (a condition already on the way: an ID's `index == 0` in its debugValue and its getName)
     return "(" + a + ") && (" + b + ")";
+  }
+
+  const Bound* boundOf(const DebugValue& v, const Decl* d)
+  {
+    for (const Bound& b : v.bound)
+      if (b.param == d)
+        return &b;
+    return nullptr;
   }
 
   // Where each of a function's cases is taken, its conditions given: its own and none of the earlier ones.
@@ -323,18 +371,62 @@ namespace
   };
 
   bool natvisExpression(DebugValue& v, Expr* e, std::string& out);
+  bool natvisObject(DebugValue& v, Expr* e, std::shared_ptr<ObjectValue>& out);
+  bool lambdaCall(DebugValue& v, CallExpr* call, const LambdaValue& lambda, std::string& out);
+  std::string objectPath(const DebugValue& v);
+  bool noReturnEnd(DebugValue& inner, Node* at, const std::vector<std::string>& whens, std::vector<bool>& conditional);
+  std::string asResult(DebugValue& v, const Ty* result, Expr* value, const std::string& one);
+  const Ty* calledClass(DebugValue& v, NameExpr* n, FunctionDecl* f);
   bool natvisCondition(DebugValue& v, Expr* e, std::string& out);
 
   // The body of a debugValue as natvis cases (DebugCase), the last one unconditional: `if (C) return E;`s,
   // a switch whose cases return (`case A: return E;`, `default:` last), a final `return E;`. False, with v's
   // why, for a body of another shape.
+  bool debugCasesOf(DebugValue& v, Stmt* body, Node* at, std::vector<DebugCase>& cases, bool* endsNowhere);
+
+  // The text of the tokens [start, end) as written.
+  std::string sourceText(const DebugValue& v, uint32_t start, uint32_t end)
+  {
+    if (!v.file || !v.file->tokens || start >= end || end > v.file->tokens->size())
+      return {};
+    const std::vector<Token>& tokens = *v.file->tokens;
+    const Token& last = tokens[end - 1];
+    return std::string(v.file->text.substr(tokens[start].offset, last.offset + last.length - tokens[start].offset));
+  }
+
+  // A statement's text as written, up to its `;`.
+  std::string statementText(const DebugValue& v, const Stmt* s)
+  {
+    if (!v.file || !v.file->tokens)
+      return {};
+    const std::vector<Token>& tokens = *v.file->tokens;
+    int depth = 0;
+    for (uint32_t i = s->token; i < tokens.size(); ++i)
+    {
+      const Token& t = tokens[i];
+      depth += t.is(P::LParen) || t.is(P::LBrace) || t.is(P::LBracket);
+      depth -= t.is(P::RParen) || t.is(P::RBrace) || t.is(P::RBracket);
+      if (depth <= 0 && t.is(P::Semi))
+        return sourceText(v, s->token, i);
+    }
+    return {};
+  }
+
   bool debugCases(DebugValue& v, FunctionDecl* f, std::vector<DebugCase>& cases, bool* endsNowhere = nullptr)
   {
     if (!f || !f->body || f->body->kind != NodeKind::BlockStmt)
       return fail(v, f, "it has no body here");
+    return debugCasesOf(v, f->body, f, cases, endsNowhere);
+  }
+
+  bool debugCasesOf(DebugValue& v, Stmt* body, Node* at, std::vector<DebugCase>& cases, bool* endsNowhere)
+  {
+    if (!body || body->kind != NodeKind::BlockStmt)
+      return fail(v, at, "it has no body here");
+    Node* f = at;
     bool noReturnEnd = false;
     // (the statements, an `if constexpr`'s taken branch spliced in where it stands)
-    std::vector<Stmt*> todo(static_cast<BlockStmt*>(f->body)->stmts.begin(), static_cast<BlockStmt*>(f->body)->stmts.end());
+    std::vector<Stmt*> todo(static_cast<BlockStmt*>(body)->stmts.begin(), static_cast<BlockStmt*>(body)->stmts.end());
     std::reverse(todo.begin(), todo.end());
     while (!todo.empty())
     {
@@ -369,16 +461,10 @@ namespace
           return fail(v, s, "an assert after an `if` or a switch");
         if (!v.asserts)
           return fail(v, s, "an assert here");
-        std::string condition, text;
+        std::string condition;
         if (!natvisCondition(v, a->cond, condition))
           return false;
-        if (v.file && v.file->tokens && a->startToken < a->endToken && a->endToken <= v.file->tokens->size())
-        {
-          const std::vector<Token>& tokens = *v.file->tokens;
-          const Token& last = tokens[a->endToken - 1];
-          text = std::string(v.file->text.substr(tokens[a->startToken].offset, last.offset + last.length - tokens[a->startToken].offset));
-        }
-        v.asserts->push_back({reachedAnd(v.reached, "!(" + condition + ")"), text});
+        v.asserts->push_back({reachedAnd(v.reached, "!(" + condition + ")"), "assert failed: " + sourceText(v, a->startToken, a->endToken)});
         continue;
       }
       // A call of a [[noreturn]] function at the end (Comparison::str()'s logEnumAndAbortOrThrow after its
@@ -392,6 +478,7 @@ namespace
         if (callee && callee->kind == NodeKind::FunctionDecl && (callee->attributes & ATTR_NoReturn))
         {
           noReturnEnd = true;
+          v.noReturn = s;
           continue;
         }
       }
@@ -504,8 +591,79 @@ namespace
     FunctionDecl* instance = nullptr;
     const Ty* self = nullptr;
     std::string prefix;
-    std::vector<std::pair<const Decl*, std::string>> bound;
+    std::vector<Bound> bound;
+    std::shared_ptr<ObjectValue> object;
   };
+
+  // A value the code makes rather than reads: a class constructed (`Handle(index)`, `ItemID()`), or a call returning one.
+  bool isMadeObject(Expr* e)
+  {
+    while (e && e->kind == NodeKind::ParenExpr)
+      e = static_cast<ParenExpr*>(e)->inner;
+    return e && (e->kind == NodeKind::FunctionalCastExpr || e->kind == NodeKind::BraceInitExpr || e->kind == NodeKind::CallExpr);
+  }
+
+  // An argument bound to its parameter: a lambda, an object the code makes, the viewed object, or an expression.
+  bool bindArgument(DebugValue& v, Expr* argument, const Decl* param, std::vector<Bound>& out)
+  {
+    TypeTable& types = v.global.types();
+    Expr* a = argument;
+    while (a && a->kind == NodeKind::ParenExpr)
+      a = static_cast<ParenExpr*>(a)->inner;
+    Bound b;
+    b.param = param;
+    const Ty* type = a && a->ty ? types.unqualified(types.stripRef(a->ty)) : nullptr;
+    if (a && a->kind == NodeKind::LambdaExpr)
+    {
+      auto l = std::make_shared<LambdaValue>();
+      l->lambda = static_cast<LambdaExpr*>(a);
+      l->file = v.file;
+      l->context = v.context;
+      l->args = v.args;
+      l->prefix = v.prefix;
+      l->self = v.self;
+      l->bound = v.bound;
+      l->object = v.object;
+      b.lambda = l;
+    }
+    else if (a && a->kind == NodeKind::NameExpr && static_cast<NameExpr*>(a)->resolved && static_cast<NameExpr*>(a)->resolved->kind == NodeKind::ParamDecl &&
+             boundOf(v, static_cast<NameExpr*>(a)->resolved) &&
+             (boundOf(v, static_cast<NameExpr*>(a)->resolved)->object || boundOf(v, static_cast<NameExpr*>(a)->resolved)->lambda))
+    {
+      const Bound* passed = boundOf(v, static_cast<NameExpr*>(a)->resolved); // (applyOrAbort passing its op on to apply)
+      b.object = passed->object;
+      b.lambda = passed->lambda;
+    }
+    else if (type && type->kind == TyKind::Class && isThisObject(a))
+    {
+      if (v.object)
+        b.object = v.object;
+      else
+        b.expression = objectPath(v); // (`getPointer(this)`: the viewed object)
+    }
+    else if (type && type->kind == TyKind::Class && isMadeObject(a))
+    {
+      if (!natvisObject(v, a, b.object))
+        return false;
+    }
+    else if (!natvisExpression(v, argument, b.expression))
+      return false;
+    out.push_back(std::move(b));
+    return true;
+  }
+
+  // A member of an object the code constructed: its value, as the construction set it.
+  bool memberOf(DebugValue& v, Node* at, const std::string& name, std::string& out, const ObjectValue* object = nullptr)
+  {
+    for (const auto& [member, value] : (object ? object : v.object.get())->members)
+      if (member == name)
+      {
+        out = "(" + value + ")";
+        return true;
+      }
+    return fail(v, at, "the member " + name + " of a value the code makes, which its construction does not set");
+  }
+
 
   // The viewed object's path at v: `(*this)`, a member's `speed`, a pointer's `(*target)`.
   std::string objectPath(const DebugValue& v)
@@ -539,6 +697,19 @@ namespace
       if (isDebugValue(called, v.symbols))
         return fail(v, at, "a call of its own debugValue");
       object = v.self;
+      c.object = v.object;
+    }
+    else if (const Bound* b = objectExpr->kind == NodeKind::NameExpr && static_cast<NameExpr*>(objectExpr)->resolved
+                                ? boundOf(v, static_cast<NameExpr*>(objectExpr)->resolved) : nullptr; b && b->object && !arrow)
+    {
+      c.object = b->object; // (a parameter bound to an object the code made)
+      object = b->object->type;
+    }
+    else if (!arrow && isMadeObject(objectExpr) && objectExpr->ty && types.unqualified(types.stripRef(objectExpr->ty))->kind == TyKind::Class)
+    {
+      if (!natvisObject(v, objectExpr, c.object)) // (getRaw<T>().getPrototype(): the ID getRaw makes)
+        return false;
+      object = c.object->type;
     }
     else
     {
@@ -572,19 +743,10 @@ namespace
     if (!c.instance)
       return fail(v, at, "a call of a function whose body is not here");
     c.self = isStatic ? nullptr : object;
-    c.prefix = isStatic ? std::string() : v.prefix + base;
+    c.prefix = isStatic || c.object ? std::string() : v.prefix + base;
     for (size_t i = 0; i < given; ++i)
-    {
-      Expr* argument = call->args[i];
-      const Ty* type = argument && argument->ty ? types.unqualified(types.stripRef(argument->ty)) : nullptr;
-      std::string expression;
-      if (type && type->kind == TyKind::Class && isThisObject(argument))
-        expression = objectPath(v); // (`getPointer(this)`: the viewed object)
-      else if (!natvisExpression(v, argument, expression))
+      if (!bindArgument(v, call->args[i], i < c.instance->params.size() ? c.instance->params[i] : nullptr, c.bound))
         return false;
-      if (i < c.instance->params.size())
-        c.bound.push_back({c.instance->params[i], expression});
-    }
     return true;
   }
 
@@ -603,6 +765,7 @@ namespace
     FunctionDecl* instance = c.instance;
     DebugValue inner{v.global, v.symbols, def->file, instance, args, c.prefix, v.depth + 1, c.self};
     inner.bound = std::move(c.bound);
+    inner.object = c.object;
     inner.asserts = v.asserts;
     inner.reached = v.reached;
     std::vector<DebugCase> cases;
@@ -619,17 +782,19 @@ namespace
     if (done && !text)
     {
       // Its cases as one expression, `(C1 ? V1 : C2 ? V2 : V3)`; a body ending in a [[noreturn]] call, a
-      // char pointer's `"?"` for the values it has no case for (Comparison::str()'s switch).
+      // char pointer's `"?"` for the values it has no case for (Comparison::str()'s switch), any other value's
+      // `reaches abort()` (noReturnEnd).
       std::string rest;
+      bool characters = false;
       if (endsNowhere)
       {
         const Ty* returned = v.global.typeOfDeclIn(called, args);
         const Ty* pointee = returned && returned->kind == TyKind::Function && returned->inner && returned->inner->kind == TyKind::Pointer && returned->inner->inner
                               ? types.unqualified(returned->inner->inner)
                               : nullptr;
-        if (!pointee || pointee->kind != TyKind::Char)
-          done = fail(inner, instance, "an end without a return, which only a function returning characters may have (\"?\" then)");
-        rest = "\"?\"";
+        characters = pointee && pointee->kind == TyKind::Char;
+        if (characters)
+          rest = "\"?\"";
       }
       std::vector<std::string> whens(cases.size());
       std::vector<bool> conditional(cases.size());
@@ -640,8 +805,12 @@ namespace
         if (cases[i].first && !natvisCondition(inner, cases[i].first, whens[i]))
           done = false;
       }
+      if (done && endsNowhere && !characters)
+        done = noReturnEnd(inner, instance, whens, conditional);
       std::vector<std::string> reaches = done ? caseReaches(inner.reached, whens, conditional) : std::vector<std::string>();
       std::string callReached = inner.reached;
+      const Ty* result = v.global.typeOfDeclIn(called, args);
+      result = result && result->kind == TyKind::Function ? result->inner : nullptr;
       for (size_t i = cases.size(); done && i-- > 0;)
       {
         std::string one;
@@ -651,6 +820,7 @@ namespace
           done = false;
           break;
         }
+        one = asResult(v, result, cases[i].second, one);
         rest = conditional[i] ? (rest.empty() ? one : "(" + whens[i] + " ? " + one + " : " + rest + ")") : one;
       }
       inner.reached = callReached;
@@ -669,10 +839,270 @@ namespace
     return false;
   }
 
+  // A returned pointer as the function's result type (`const Prototype*` from a lambda returning a Part's): the
+  // cases of one conditional expression need one type.
+  std::string asResult(DebugValue& v, const Ty* result, Expr* value, const std::string& one)
+  {
+    TypeTable& types = v.global.types();
+    const Ty* r = result ? types.unqualified(types.stripRef(result)) : nullptr;
+    const Ty* t = value && value->ty ? types.unqualified(types.stripRef(value->ty)) : nullptr;
+    if (!r || !t || r == t || r->kind != TyKind::Pointer || t->kind != TyKind::Pointer || !r->inner || !t->inner ||
+        types.unqualified(r->inner) == types.unqualified(t->inner))
+      return one; // (the same type, `const` or not)
+    bool reference = false;
+    std::string type = natvisCastType(v.global, v.symbols, r, reference);
+    return type.empty() ? one : "((" + type + ")(" + one + "))";
+  }
+
+  // A body whose cases end in a [[noreturn]] call (apply's switch, then abort()): where none of them is taken the
+  // rule shows `reaches abort()`, like an assert's failure; the last case is then taken without its condition.
+  bool noReturnEnd(DebugValue& inner, Node* at, const std::vector<std::string>& whens, std::vector<bool>& conditional)
+  {
+    if (!inner.asserts || !inner.noReturn)
+      return fail(inner, at, "an end without a return here");
+    std::string none = inner.reached;
+    for (size_t i = 0; i < whens.size(); ++i)
+      if (conditional[i])
+        none = reachedAnd(none, "!(" + whens[i] + ")");
+    inner.asserts->push_back({none, "reaches " + statementText(inner, inner.noReturn)});
+    conditional.back() = false;
+    return true;
+  }
+
   bool inlinedCall(DebugValue& v, CallExpr* c, std::string& out)
   {
     auto* m = static_cast<MemberExpr*>(c->callee);
     return inlinedMember(v, c, static_cast<FunctionDecl*>(m->resolved), m->base, m->op == P::Arrow, false, out, c);
+  }
+
+  // A lambda's call: its body (a generic lambda's instance for the call's arguments) inlined where the lambda was
+  // written, its parameters bound to the call's arguments.
+  bool lambdaCall(DebugValue& v, CallExpr* call, const LambdaValue& lambda, std::string& out)
+  {
+    TypeTable& types = v.global.types();
+    LambdaExpr* body = lambda.lambda;
+    TemplateArgs args = lambda.args;
+    if (v.depth > 8)
+      return fail(v, call, "calls nested deeper than 8");
+    if (!body->templateParams.empty())
+    {
+      if (call->templateArgCount != body->templateParams.size())
+        return fail(v, call, "a call of a generic lambda whose arguments are not known here");
+      TemplateArgs own;
+      for (size_t i = 0; i < body->templateParams.size(); ++i)
+        own.pairs.push_back({body->templateParams[i], call->templateArgs[i]});
+      const Ty* closure = call->callee && call->callee->ty ? types.unqualified(types.stripRef(call->callee->ty)) : nullptr;
+      LambdaExpr* instance = nullptr;
+      TemplateArgs full;
+      if (!closure || !v.global.lambdaInstance(closure, own, &full, &instance) || !instance)
+        return fail(v, call, "a generic lambda whose body cannot be typed for this call");
+      body = instance;
+      args = full;
+    }
+    if (call->args.size() != body->params.size())
+      return fail(v, call, "a lambda's call that leaves a parameter its default value");
+    DebugValue inner{v.global, v.symbols, lambda.file, lambda.context, args, lambda.prefix, v.depth + 1, lambda.self};
+    inner.bound = lambda.bound;
+    inner.object = lambda.object;
+    inner.asserts = v.asserts;
+    inner.reached = v.reached;
+    for (size_t i = 0; i < call->args.size(); ++i)
+      if (!bindArgument(v, call->args[i], body->params[i], inner.bound))
+        return false;
+    std::vector<DebugCase> cases;
+    bool endsNowhere = false;
+    bool done = debugCasesOf(inner, body->body, call, cases, &endsNowhere);
+    std::string rest;
+    std::vector<std::string> whens(cases.size());
+    std::vector<bool> conditional(cases.size());
+    for (size_t i = 0; done && i < cases.size(); ++i)
+    {
+      whens[i] = cases[i].text;
+      conditional[i] = cases[i].conditional();
+      if (cases[i].first && !natvisCondition(inner, cases[i].first, whens[i]))
+        done = false;
+    }
+    if (done && endsNowhere)
+      done = noReturnEnd(inner, call, whens, conditional);
+    std::vector<std::string> reaches = done ? caseReaches(inner.reached, whens, conditional) : std::vector<std::string>();
+    for (size_t i = cases.size(); done && i-- > 0;)
+    {
+      std::string one;
+      inner.reached = reaches[i];
+      if (!natvisExpression(inner, cases[i].second, one))
+      {
+        done = false;
+        break;
+      }
+      one = asResult(v, call->ty, cases[i].second, one);
+      rest = conditional[i] ? (rest.empty() ? one : "(" + whens[i] + " ? " + one + " : " + rest + ")") : one;
+    }
+    if (done)
+    {
+      out = "(" + rest + ")";
+      return true;
+    }
+    if (v.why.empty())
+    {
+      v.why = "the lambda it calls: " + inner.why;
+      v.at = inner.at;
+      v.atFile = inner.atFile;
+    }
+    return false;
+  }
+
+  // An object the code makes: a construction (`Handle(index)`, `ItemID()`: the constructor's member initializers and
+  // the members' default initializers, its parameters bound to the arguments), or a call returning one (fromIndex,
+  // getRaw<T>()), whose one return makes it.
+  bool natvisObject(DebugValue& v, Expr* e, std::shared_ptr<ObjectValue>& out)
+  {
+    TypeTable& types = v.global.types();
+    while (e && e->kind == NodeKind::ParenExpr)
+      e = static_cast<ParenExpr*>(e)->inner;
+    if (!e || !e->ty)
+      return fail(v, e, "a value the code makes, of no known type");
+    const Ty* cls = types.unqualified(types.stripRef(e->ty));
+    if (cls->kind != TyKind::Class || !cls->decl)
+      return fail(v, e, "a value the code makes that is no class");
+    if (v.depth > 8)
+      return fail(v, e, "calls nested deeper than 8");
+    Span<Expr*> constructorArgs;
+    bool construction = false;
+    if (e->kind == NodeKind::FunctionalCastExpr)
+    {
+      constructorArgs = static_cast<FunctionalCastExpr*>(e)->args;
+      construction = true;
+    }
+    else if (e->kind == NodeKind::BraceInitExpr)
+    {
+      constructorArgs = static_cast<BraceInitExpr*>(e)->args;
+      construction = true;
+    }
+    else if (e->kind == NodeKind::CallExpr)
+    {
+      auto* c = static_cast<CallExpr*>(e);
+      Decl* callee = c->callee && c->callee->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(c->callee)->resolved
+                     : c->callee && c->callee->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(c->callee)->resolved
+                                                                            : nullptr;
+      if (!callee || callee->kind == NodeKind::ClassDecl)
+      {
+        constructorArgs = c->args; // (`Handle(index)` read as a call of the class)
+        construction = true;
+      }
+      else if (callee->kind == NodeKind::FunctionDecl)
+      {
+        // a function returning the object: its one return makes it
+        auto* f = static_cast<FunctionDecl*>(callee);
+        InlinedCall call;
+        bool isStatic = (f->flags & DF_Static) || !v.global.owningClass(f);
+        Expr* objectExpr = c->callee->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(c->callee)->base : nullptr;
+        bool arrow = c->callee->kind == NodeKind::MemberExpr && static_cast<MemberExpr*>(c->callee)->op == P::Arrow;
+        const Ty* staticClass = isStatic && c->callee->kind == NodeKind::NameExpr ? calledClass(v, static_cast<NameExpr*>(c->callee), f) : nullptr;
+        if (!prepareCall(v, c, f, c, objectExpr, arrow, staticClass, call))
+          return false;
+        DebugValue inner{v.global, v.symbols, call.def->file, call.instance, call.args, call.prefix, v.depth + 1, call.self};
+        inner.bound = std::move(call.bound);
+        inner.object = call.object;
+        inner.asserts = v.asserts;
+        inner.reached = v.reached;
+        std::vector<DebugCase> cases;
+        if (!debugCases(inner, call.instance, cases) || cases.size() != 1 || cases[0].conditional() || !natvisObject(inner, cases[0].second, out))
+        {
+          if (v.why.empty())
+          {
+            v.why = "the function making the value, " + std::string(v.symbols.name(f->name.last().symbol)) + ": " +
+                    (inner.why.empty() ? std::string("a body other than one `return EXPRESSION;`") : inner.why);
+            v.at = inner.at ? inner.at : c;
+            v.atFile = inner.atFile;
+          }
+          return false;
+        }
+        return true;
+      }
+      else
+        return fail(v, e, "a value the code makes through something other than a function");
+    }
+    else if (isThisObject(e) && v.object)
+    {
+      out = v.object;
+      return true;
+    }
+    else if (e->kind == NodeKind::NameExpr && static_cast<NameExpr*>(e)->resolved)
+    {
+      const Bound* b = boundOf(v, static_cast<NameExpr*>(e)->resolved);
+      if (b && b->object)
+      {
+        out = b->object;
+        return true;
+      }
+    }
+    if (!construction)
+      return fail(v, e, "a value the code makes in a way the debugger cannot follow");
+    // A construction: the constructor the arguments choose, its member initializers; the rest by the members'
+    // default initializers.
+    auto made = std::make_shared<ObjectValue>();
+    made->type = cls;
+    TemplateArgs classArgs = v.global.classArgsOf(cls);
+    std::vector<const Ty*> argTypes;
+    for (Expr* a : constructorArgs)
+      argTypes.push_back(a ? a->ty : nullptr);
+    FunctionDecl* constructor = v.global.chooseConstructor(cls, argTypes);
+    std::vector<std::string> set;
+    if (constructor)
+    {
+      Decl* defined = classArgs.empty() ? v.global.definitionOf(constructor) : v.global.definitionOf(constructor, classArgs);
+      auto* def = defined && defined->kind == NodeKind::FunctionDecl ? static_cast<FunctionDecl*>(defined) : constructor;
+      FunctionDecl* instance = classArgs.empty() ? def : v.global.instanceBody(def, classArgs, cls);
+      if (!instance)
+        return fail(v, e, "a constructor whose body is not here");
+      if (instance->body && (instance->body->kind != NodeKind::BlockStmt || !static_cast<BlockStmt*>(instance->body)->stmts.empty()))
+        return fail(v, e, "a constructor with statements, whose value the debugger cannot follow");
+      if (constructorArgs.size() != instance->params.size())
+        return fail(v, e, "a construction that leaves a parameter its default value");
+      DebugValue inner{v.global, v.symbols, def->file, instance, classArgs, "", v.depth + 1, cls};
+      inner.asserts = v.asserts;
+      inner.reached = v.reached;
+      for (size_t i = 0; i < constructorArgs.size(); ++i)
+        if (!bindArgument(v, constructorArgs[i], instance->params[i], inner.bound))
+          return false;
+      for (const FunctionDecl::CtorInit& init : instance->ctorInits)
+      {
+        if (init.member.empty() || init.args.size() != 1)
+          return fail(v, e, "a member initializer other than one value");
+        std::string member(v.symbols.name(init.member.last().symbol)), value;
+        if (!natvisExpression(inner, init.args[0], value))
+        {
+          if (v.why.empty())
+          {
+            v.why = "the constructor: " + inner.why;
+            v.at = inner.at;
+            v.atFile = inner.atFile;
+          }
+          return false;
+        }
+        made->members.push_back({member, value});
+        set.push_back(member);
+      }
+    }
+    else if (!constructorArgs.empty())
+      return fail(v, e, "a construction whose constructor the debugger cannot find");
+    // the members the constructor leaves: their default initializers, constants
+    Decl* defined = v.global.definitionOf(cls->decl);
+    if (defined && defined->kind == NodeKind::ClassDecl)
+      for (Decl* m : static_cast<ClassDecl*>(defined)->members)
+        if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef)) && static_cast<VariableDecl*>(m)->init)
+        {
+          std::string member = nameOf(static_cast<VariableDecl*>(m)->name, v.symbols);
+          if (std::find(set.begin(), set.end(), member) != set.end())
+            continue;
+          ConstHooks hooks;
+          std::optional<ConstValue> value = v.global.evaluate(static_cast<VariableDecl*>(m)->init, defined->file, defined, classArgs, hooks);
+          GlobalScope::clearConstantReason();
+          if (value && (value->kind == ConstValue::Kind::Int || value->kind == ConstValue::Kind::Float))
+            made->members.push_back({member, natvisConstant(*value)});
+        }
+    out = made;
+    return true;
   }
 
   // The class a static function's call names (`PrototypeList<PrototypeType>::getPointer(this)`: the qualifier's
@@ -923,13 +1353,13 @@ namespace
       Decl* d = n->resolved;
       if (d && d->kind == NodeKind::ParamDecl)
       {
-        for (const auto& [param, argument] : v.bound)
-          if (param == d)
-          {
-            out = "(" + argument + ")";
-            return true;
-          }
-        return fail(v, e, "a parameter of the function the debugger cannot call");
+        const Bound* b = boundOf(v, d);
+        if (b && !b->object && !b->lambda)
+        {
+          out = "(" + b->expression + ")";
+          return true;
+        }
+        return fail(v, e, b ? "an object or a lambda used as a value" : "a parameter of the function the debugger cannot call");
       }
       if (d && d->kind == NodeKind::VariableDecl && (d->flags & DF_Static))
       {
@@ -960,6 +1390,8 @@ namespace
         out = types.toString(cls, &v.symbols, true) + "::" + std::string(v.symbols.name(n->name.last().symbol));
         return true;
       }
+      if (v.object)
+        return memberOf(v, e, std::string(v.symbols.name(n->name.last().symbol)), out);
       out = v.prefix + std::string(v.symbols.name(n->name.last().symbol));
       return true;
     }
@@ -990,8 +1422,22 @@ namespace
       std::string name(v.symbols.name(m->member.last().symbol));
       if (isThisObject(m->base))
       {
+        if (v.object)
+          return memberOf(v, e, name, out);
         out = v.prefix + name;
         return true;
+      }
+      if (m->op != P::Arrow && m->base && m->base->ty && v.global.types().unqualified(v.global.types().stripRef(m->base->ty))->kind == TyKind::Class)
+      {
+        // a member of an object the code made: a parameter bound to one (getPointer's `handle.index`), or a construction
+        const Bound* b = m->base->kind == NodeKind::NameExpr && static_cast<NameExpr*>(m->base)->resolved ? boundOf(v, static_cast<NameExpr*>(m->base)->resolved) : nullptr;
+        if ((b && b->object) || isMadeObject(m->base))
+        {
+          std::shared_ptr<ObjectValue> object = b && b->object ? b->object : nullptr;
+          if (!object && !natvisObject(v, m->base, object))
+            return false;
+          return memberOf(v, e, name, out, object.get());
+        }
       }
       std::string base;
       if (!natvisExpression(v, m->base, base))
@@ -1075,6 +1521,11 @@ namespace
       if (c->callee && c->callee->kind == NodeKind::MemberExpr && static_cast<MemberExpr*>(c->callee)->resolved &&
           static_cast<MemberExpr*>(c->callee)->resolved->kind == NodeKind::FunctionDecl)
         return inlinedCall(v, c, out);
+      // A lambda's call through its parameter (apply's `op(ItemID())`): its body, its captures where it was written.
+      if (c->callee && c->callee->kind == NodeKind::NameExpr && static_cast<NameExpr*>(c->callee)->resolved &&
+          static_cast<NameExpr*>(c->callee)->resolved->kind == NodeKind::ParamDecl)
+        if (const Bound* b = boundOf(v, static_cast<NameExpr*>(c->callee)->resolved); b && b->lambda)
+          return lambdaCall(v, c, *b->lambda, out);
       // A static or free function's call, inlined (ID's `PrototypeList<PrototypeType>::getPointer(this)`).
       if (c->callee && c->callee->kind == NodeKind::NameExpr && static_cast<NameExpr*>(c->callee)->resolved &&
           static_cast<NameExpr*>(c->callee)->resolved->kind == NodeKind::FunctionDecl)
@@ -1248,6 +1699,7 @@ namespace
     FunctionDecl* instance = c.instance;
     DebugValue inner{v.global, v.symbols, def->file, instance, args, c.prefix, v.depth + 1, c.self};
     inner.bound = std::move(c.bound);
+    inner.object = c.object;
     inner.asserts = v.asserts;
     inner.reached = v.reached;
     std::vector<DebugCase> cases;
@@ -1691,7 +2143,7 @@ namespace
       for (const auto& [condition, text] : *v.asserts)
       {
         std::string doubled;
-        for (char ch : "assert failed: " + text)
+        for (char ch : text)
           doubled += ch == '{' || ch == '}' ? std::string(2, ch) : std::string(1, ch);
         assertsShown += "    <DisplayString Condition=\"" + escape(condition) + "\">" + escape(doubled) + "</DisplayString>\n";
       }

@@ -2961,7 +2961,9 @@ other options (hand-written files, a format string, calling the program's code):
   and an assert is a case of the rule, `assert failed: TEXT` where the code reaches it and its condition does not
   hold (the game's ID: getName, getPrototype, PrototypeList::getPointer's assert). Measured on the game's
   factorio-test debug build: the whole natvis 45 ms, every debugValue's check 8 to 11 ms, of about 7 s (2026-11-13).
-  Open: a value the code constructs (`T::fromIndex(i)`) and lambdas (SignalIDBase::getPrototype's applyOrAbort).
+  Values the code makes (a construction, `T::fromIndex(i)`) are their members' expressions, and a lambda passed as
+  an argument is inlined where it is called (SignalIDBase::getPrototype's applyOrAbort); a `[[noreturn]]` end after
+  the cases shows `reaches abort()` where none is taken, like an assert (2026-11-13).
 - **It reads a class's static data members** too, globals the program writes (kovarex, 2026-11-13: "Why is it so
   special for the debugValue code to read global?"; the game's ID<T> shows its prototype's name through
   `PrototypeList<T>::indexToPrototype[this.index]->name`): the rule names the global as the debug information does

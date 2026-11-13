@@ -409,8 +409,17 @@ atvis.ps1 checks Match, `{left} vs {right}`.
   getPrototype only for an index other than 0) and its condition does not hold. A view never calls the program:
   natvis has no calls, a crash dump has no process, and a call at every step for every value shown would be slow and
   could deadlock a stopped program. tests\natvis.ps1 checks Handle<Part>, the game's ID; tools\vs\vsix\
-  debugger-check.ps1 saw `{1, gear}`, `{0}` and the assert's text in Visual Studio. Not yet: a value the code
-  constructs (`T::fromIndex(i)`) and lambdas.
+  debugger-check.ps1 saw `{1, gear}`, `{0}` and the assert's text in Visual Studio.
+- **Values the code makes, and lambdas** (2026-11-13): a construction (`Handle(index)`: the constructor's member
+  initializers, the members' default initializers) and a function returning one with one `return` (`T::fromIndex(i)`)
+  are a value whose members are their expressions; a lambda passed as an argument is inlined where it is called, a
+  generic lambda's instance for the call's arguments (SignalIDBase's getPrototype: `applyOrAbort(type, [&]<class T>(T)
+  { return this.getRaw<T>().getPrototype(); })`). A pointer returned as a base class's (`const Prototype*`) is cast to
+  it. A body whose cases end in a `[[noreturn]]` call (apply's `abort()` after its switch) shows `reaches abort()`
+  where none of them is taken, like an assert's failure; a function returning characters still shows `?` there.
+  tests
+atvis.ps1 checks Signal, the game's SignalIDBase; debugger-check.ps1 saw `{part gear}`, `{fluid water}`,
+  `{part }` and `reaches abort()` in Visual Studio.
 - **A class's static data member** is read too, a global the program writes, by its name in the debug information:
   `Registry<T>::all[this.index]->name` in Handle<Part> is `{Registry<Part>::all.items[index]->name,sb}` (an element of
   the library's Vector is its `items[i]`, of a pointer or array `[i]`). The game's ID<T> shows its prototype's name so

@@ -93,6 +93,15 @@ foreach ($case in @(@('Heading', '|{(Heading::Enum)(value)}'), @('Shape', '|side
   $shown = Displays $case[0]
   if ($shown -ne $case[1]) { "FAIL natvis: $($case[0])'s debugValue rule is '$shown', not '$($case[1])'"; exit 1 }
 }
+# The game's SignalIDBase: its view through its typeToStr and getName, getName's getPrototype through applyOrAbort's
+# generic lambda per type, which makes the type's Handle (getRaw<T>: T::fromIndex, a constructed value) and asks it
+# for its prototype; apply's abort() after its switch is shown where the code reaches it, like an assert.
+$shown = Displays 'Signal'
+foreach ($part in @('|reaches abort()', '|assert failed: handle.index < Registry<T>::all.size()', '(((Signal::Type)((unsigned char)(value >> 16)))) == 1 && value == 0|{{fluid }}',
+                    '(((Prototype*)(((Registry<Fluid>::all.items[(((((unsigned short)(value)))))])))))'))
+{
+  if (-not $shown.Contains($part)) { "FAIL natvis: Signal's debugValue rule has no '$part': '$shown'"; exit 1 }
+}
 $rows = @(@(@($types | Where-Object { $_.Name -eq 'Usage' })[0].Expand.Item) | ForEach-Object { "$($_.Name)=$($_.InnerText)" }) -join ' '
 if ($rows -ne 'UPGRADED=(__kpp_bits & 0x1) != 0 OWNED=(__kpp_bits & 0x4) != 0 LOOTED=(__kpp_bits & 0x8) != 0 OVERRIDE=(__kpp_bits & 0x8) != 0 [bits]=__kpp_bits,x')
 { "FAIL natvis: Usage's rows are '$rows'"; exit 1 }
