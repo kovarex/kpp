@@ -98,7 +98,7 @@ foreach ($case in @(@('Heading', '|{(Heading::Enum)(value)}'), @('Shape', '|side
 # for its prototype; apply's abort() after its switch is shown where the code reaches it, like an assert.
 $shown = Displays 'Signal'
 foreach ($part in @('|reaches abort()', '|assert failed: handle.index < Registry<T>::all.size()', '(((Signal::Type)((unsigned char)(value >> 16)))) == 1 && value == 0|{{fluid }}',
-                    '(((Prototype*)(((Registry<Fluid>::all.items[(((((unsigned short)(value)))))])))))'))
+                    '(((Prototype*)(((Registry<Fluid>::all.items[((((unsigned short)(((unsigned short)(value))))))])))))'))
 {
   if (-not $shown.Contains($part)) { "FAIL natvis: Signal's debugValue rule has no '$part': '$shown'"; exit 1 }
 }

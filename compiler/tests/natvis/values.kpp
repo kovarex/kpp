@@ -249,8 +249,12 @@ struct Handle
   Handle() = default;
   Handle(u16 index) : index(index) {}
   static Handle fromIndex(u16 index) { return Handle(index); }
+  using IndexType = u16;
   u16 index = 0;
 };
+
+using PartHandle = Handle<Part>; // (the game's ItemID: an alias of the ID template)
+using FluidHandle = Handle<Fluid>;
 
 // The game's SignalIDBase: a type and an index in one value. Its view uses the real getName and typeToStr: getName's
 // getPrototype dispatches through applyOrAbort, a generic lambda per type called by a static template's switch, which
@@ -274,8 +278,8 @@ struct Signal
   {
     switch (type)
     {
-      case Type::Part: return op(Handle<Part>());
-      case Type::Fluid: return op(Handle<Fluid>());
+      case Type::Part: return op(PartHandle());
+      case Type::Fluid: return op(FluidHandle());
     }
     if constexpr (AbortOnInvalid)
       abort();
@@ -289,7 +293,7 @@ struct Signal
   Type getType() const { return Type(u8(this.value >> 16)); }
   u16 getValueIndex() const { return u16(this.value); }
   template<class T>
-  T getRaw() const { return T::fromIndex(this.getValueIndex()); }
+  T getRaw() const { return T::fromIndex(T::IndexType(this.getValueIndex())); }
   const Prototype* getPrototype() const
   {
     return Signal::applyOrAbort(this.getType(), [&]<class T>(T) -> const Prototype* { return this.getRaw<T>().getPrototype(); });

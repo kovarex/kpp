@@ -984,9 +984,10 @@ namespace
       Decl* callee = c->callee && c->callee->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(c->callee)->resolved
                      : c->callee && c->callee->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(c->callee)->resolved
                                                                             : nullptr;
-      if (!callee || callee->kind == NodeKind::ClassDecl)
+      if (!callee || callee->kind == NodeKind::ClassDecl || callee->kind == NodeKind::UsingAliasDecl || callee->kind == NodeKind::TemplateParamDecl ||
+          (callee->kind == NodeKind::VariableDecl && (callee->flags & DF_Typedef)))
       {
-        constructorArgs = c->args; // (`Handle(index)` read as a call of the class)
+        constructorArgs = c->args; // (`Handle(index)`, `ItemID()` read as a call of the class, its alias or a template parameter)
         construction = true;
       }
       else if (callee->kind == NodeKind::FunctionDecl)
