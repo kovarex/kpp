@@ -1154,7 +1154,9 @@ kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a 
 - **The bundled toolchain in a release** is llvm-mingw's x86-64 part at its own relative paths, so
   clang finds the rest from its `bin\`: `bin\` (clang.exe, clang-19.exe, ld.lld.exe, llvm-ar.exe,
   llvm-rc.exe, llvm-dlltool.exe, libLLVM-19.dll, libclang-cpp.dll, libc++.dll, libunwind.dll and the
-  two .cfg files), `include\`, `lib\clang\19\include\`,
+  two .cfg files; and ld.lld.exe again as ld64.lld.exe, the name clang's Darwin driver runs for
+  `-fuse-ld=lld`, from which lld takes its Mach-O driver: without it an installed kpp's build for
+  macOS stopped at the link, 2026-11-13), `include\`, `lib\clang\19\include\`,
   `lib\clang\19\lib\windows\libclang_rt.builtins-x86_64.a`, `x86_64-w64-mingw32\lib\` and
   `x86_64-w64-mingw32\share\mingw32\` (MinGW-w64's COPYING files). Also included:
   `LICENSE-llvm-mingw.txt` (the archive's LICENSE.TXT) and `NOTICE-toolchain.txt`, which gives each
@@ -1174,6 +1176,11 @@ kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a 
   - the output;
   - that the program imports only Windows' own DLLs (llvm-objdump from the unpacked llvm-mingw,
     not shipped).
+
+  Then, with the same environment, `--target freebsd` builds an ELF FreeBSD program with the
+  package's sysroot, and `--target macos` links the spec's macos_stdlib_compiles_to_mach_o_objects
+  into a Mach-O arm64 executable with the bundled toolchain's ld64.lld, against the repository's
+  stand-in SDK (a user brings a real one).
 
   It then writes the zip, and the installer when Inno Setup 6 is installed (`-IsccPath` names an
   ISCC elsewhere). kpp-vscode.vsix needs Node.js (npm). Without npm, a package made by hand leaves it out,

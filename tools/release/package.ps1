@@ -142,6 +142,10 @@ foreach ($file in 'clang.exe', 'clang-19.exe', 'ld.lld.exe', 'llvm-ar.exe', 'llv
 {
   Copy-Item "$llvmMingw\bin\$file" "$kpp\bin"
 }
+# ld64.lld.exe, the name clang's Darwin driver runs for -fuse-ld=lld (--target macos and macos-x64 link with
+# it): lld's own file again, which takes its Mach-O driver from that name. Without it an installed kpp built
+# for macOS and stopped at the link: "invalid linker name in argument '-fuse-ld=lld'".
+Copy-Item "$llvmMingw\bin\ld.lld.exe" "$kpp\bin\ld64.lld.exe"
 CopyTree "$llvmMingw\include" "$kpp\include"
 CopyTree "$llvmMingw\lib\clang\19\include" "$kpp\lib\clang\19\include"
 Copy-Item "$llvmMingw\lib\clang\19\lib\windows\libclang_rt.builtins-x86_64.a" "$kpp\lib\clang\19\lib\windows"
@@ -281,6 +285,18 @@ try
   $elf = if (Test-Path "$smoke\freebsd.elf") { [IO.File]::ReadAllBytes("$smoke\freebsd.elf") } else { @() }
   if ($LASTEXITCODE -ne 0 -or $elf.Count -lt 8 -or $elf[0] -ne 0x7f -or $elf[1] -ne 0x45 -or $elf[7] -ne 9) { throw "the packaged kpp did not build for FreeBSD without --sysroot:`n$output" } # (EI_OSABI 9: FreeBSD)
   Write-Output "smoke test: --target freebsd built an ELF FreeBSD program with the package's sysroot"
+  # macOS with an SDK of the user's (the package brings none: design.md stage 8, Q7), here the repository's
+  # stand-in: the library's macOS layer linked by the bundled toolchain's ld64.lld into a Mach-O arm64
+  # executable (MH_MAGIC_64, CPU_TYPE_ARM64; built, not run).
+  $macSdk = "$repository\compiler\tests\spec\kpp\macos_sdk_checked_before_the_build.sdk"
+  $ErrorActionPreference = 'Continue' # (clang warns on stderr that the stand-in is not named as a MacOSX*.sdk is)
+  $output = (& "$kpp\kpp.exe" --target macos --sysroot $macSdk --exe "$smoke\macos" "$repository\compiler\tests\spec\kpp\macos_stdlib_compiles_to_mach_o_objects.kpp" 2>&1 | ForEach-Object { "$_" }) -join "`n"
+  $code = $LASTEXITCODE
+  $ErrorActionPreference = 'Stop'
+  $macho = if (Test-Path "$smoke\macos") { [IO.File]::ReadAllBytes("$smoke\macos") } else { @() }
+  if ($code -ne 0 -or $macho.Count -lt 8 -or $macho[0] -ne 0xcf -or $macho[1] -ne 0xfa -or $macho[2] -ne 0xed -or $macho[3] -ne 0xfe -or
+      $macho[4] -ne 0x0c -or $macho[7] -ne 0x01) { throw "the packaged kpp did not link a macOS program with its bundled toolchain:`n$output" }
+  Write-Output "smoke test: --target macos linked a Mach-O arm64 program with the bundled toolchain's ld64.lld (the repository's stand-in SDK)"
   # In the project's directory, as kovarex ran it: the version, never a build.
   $printed = (& "$kpp\kpp.exe" --version 2>&1 | ForEach-Object { "$_" }) -join "`n"
   if ($LASTEXITCODE -ne 0 -or $printed -notmatch "^kpp $([regex]::Escape($Version))" -or
