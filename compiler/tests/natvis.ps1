@@ -119,6 +119,12 @@ foreach ($case in @(@('Ring<int32>', 'var __kpp_index=0 | break __kpp_index == c
   $shown = Loop $case[0]
   if ($shown -ne $case[1]) { "FAIL natvis: $($case[0])'s elements are '$shown', not '$($case[1])'"; exit 1 }
 }
+# Their data members first (kovarex, 2026-11-13: "Yes", Inventory's handPosition beside its stacks).
+foreach ($case in @(@('Ring<int32>', 'items capacity head count'), @('Shelf', 'data size'), @('Chain', 'head')))
+{
+  $rows = @(@($types | Where-Object { $_.Name -eq $case[0] })[0].Expand.Item | ForEach-Object { $_.Name }) -join ' '
+  if ($rows -ne $case[1]) { "FAIL natvis: $($case[0])'s rows are '$rows', not '$($case[1])'"; exit 1 }
+}
 $rows = @(@(@($types | Where-Object { $_.Name -eq 'Usage' })[0].Expand.Item) | ForEach-Object { "$($_.Name)=$($_.InnerText)" }) -join ' '
 if ($rows -ne 'UPGRADED=(__kpp_bits & 0x1) != 0 OWNED=(__kpp_bits & 0x4) != 0 LOOTED=(__kpp_bits & 0x8) != 0 OVERRIDE=(__kpp_bits & 0x8) != 0 [bits]=__kpp_bits,x')
 { "FAIL natvis: Usage's rows are '$rows'"; exit 1 }

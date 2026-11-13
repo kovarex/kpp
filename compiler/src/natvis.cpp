@@ -2781,6 +2781,34 @@ namespace
     return true;
   }
 
+  // A class's data members as rows, its bases first (`[Base]`, the base's own view), an anonymous union's or
+  // struct's members in their place: what Visual Studio shows of a class without a rule, before a container's
+  // elements (kovarex, 2026-11-13: "Yes", Inventory's handPosition beside its stacks).
+  void memberRows(GlobalScope& global, const SymbolTable& symbols, ClassDecl* cls, const TemplateArgs& args, bool bases, std::string& out)
+  {
+    TypeTable& types = global.types();
+    for (const ClassDecl::Base& b : cls->bases)
+    {
+      const Ty* t = bases && b.type ? global.typeOfAstIn(b.type, cls, args) : nullptr;
+      t = t ? types.unqualified(t) : nullptr;
+      if (!t || t->kind != TyKind::Class)
+        continue;
+      std::string name = types.toString(t, &symbols, true);
+      out += "      <Item Name=\"[" + escape(name) + "]\">*(" + escape(name) + "*)this</Item>\n";
+    }
+    for (Decl* m : cls->members)
+    {
+      if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef)))
+      {
+        std::string name = nameOf(static_cast<VariableDecl*>(m)->name, symbols);
+        if (!name.empty())
+          out += "      <Item Name=\"" + escape(name) + "\">" + escape(name) + "</Item>\n";
+      }
+      else if (m->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(m)->name.parts.empty())
+        memberRows(global, symbols, static_cast<ClassDecl*>(m), args, false, out);
+    }
+  }
+
   // A container's elements (kovarex, 2026-11-13: "lets try C"): its own begin() and end(), const and without
   // parameters, and its iterator's ==, * and ++, as natvis's loop (CustomListItems): the iterator's members
   // that ++ changes are the loop's variables (`__kpp_index`), the others their begin() values; a pointer
@@ -2887,7 +2915,9 @@ namespace
       if (when != "false")
         breaks += "          <Break Condition=\"" + escape(when) + "\"/> <!-- " + escape(text) + " -->\n";
     }
-    out = "      <CustomListItems MaxItemsPerView=\"5000\">\n" + variables + "        <Loop>\n" + breaks + "          <Item>" + escape(item) + "</Item>\n";
+    out.clear();
+    memberRows(global, symbols, cls, global.classArgsOf(d.type), true, out);
+    out += "      <CustomListItems MaxItemsPerView=\"5000\">\n" + variables + "        <Loop>\n" + breaks + "          <Item>" + escape(item) + "</Item>\n";
     for (const std::string& exec : execs)
       out += "          <Exec>" + escape(exec) + "</Exec>\n";
     out += "        </Loop>\n      </CustomListItems>\n";

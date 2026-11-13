@@ -430,7 +430,8 @@ atvis.ps1 checks Signal, the game's SignalIDBase; debugger-check.ps1 saw `{part 
   changes are variables (`__kpp_index`, `__kpp_current`), operator== with end() breaks the loop, operator* is the
   item (CompactDeque's through its operator[] and wrap, whose parameter it reassigns: `(CONDITION ? NEW : OLD)`),
   a pointer iterator steps by one (Inventory's), and an assert on the way breaks the loop where it fails. The
-  members are under [Raw View]. A class kpp cannot follow (an operator* calling a non-const function, a
+  data members come first, a row each, the bases as `[Base]` rows (kovarex, 2026-11-13: "Yes", Inventory's
+  handPosition beside its stacks). A class kpp cannot follow (an operator* calling a non-const function, a
   constructor with statements) shows its members as before; KPP_NATVIS_ELEMENTS=1 lists them and why.
   tests\natvis.ps1 checks Ring, Shelf and Chain (CompactDeque, Inventory, IntrusiveList); debugger-check.ps1 saw
   their elements in Visual Studio.
