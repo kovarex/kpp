@@ -69,6 +69,9 @@ Add 'long paths' (PsCheck 'tests\longpaths.ps1') -seconds 9
 # --target (tests\targets.ps1): Linux run under WSL, skipped without it (3) or when it does not answer
 # in 30 s (4); the rest passed.
 Add 'targets' ((PsCheck 'tests\targets.ps1') + @(if (-not $Full) { '-NoLinux' })) -seconds 20 -counted $true -skip @{ 3 = 'linux targets (no WSL)'; 4 = 'linux targets (WSL did not answer in 30 s)'; 5 = 'linux targets (left to the full run)' }
+# macOS arm64 code checked here without a Mac (tests\macoscode.ps1): thread_locals through llvm.threadlocal.address, a
+# release build's catching main with compact unwind and its LSDA.
+Add 'macos code' (PsCheck 'tests\macoscode.ps1') -seconds 5
 Add 'specfiles' @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'tests\specfiles.ps1') -seconds 1
 Add 'runcache' (PsCheck 'tests\runcache.ps1') -seconds 3
 Add 'toolchain' (PsCheck 'tests\toolchain.ps1') -seconds 14

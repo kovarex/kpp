@@ -312,7 +312,7 @@ auto codegen::Emitter::emitThrow(ThrowExpr* t) -> void
       // In a function a handler calls (an exception dispatcher's `try { throw; } catch ...`):
       // the exception that handler holds, kpp.eh.current; with none, a wrong program, stopped.
       slot = newTemp();
-      fn += "  " + slot + " = load ptr, ptr @kpp.eh.current\n";
+      fn += "  " + slot + " = load ptr, ptr " + threadLocalAddress("@kpp.eh.current") + "\n";
       if (declaredNames.claim("@llvm.trap"))
         decls += "declare void @llvm.trap()\n";
       std::string none = newTemp(), okL = newLabel("rethrow"), noneL = newLabel("rethrow.none");
@@ -688,6 +688,7 @@ auto codegen::Emitter::finishExceptionRuntime() -> void
     declareOnce("@fflush", "declare i32 @fflush(ptr)");
     declareOnce("@abort", "declare void @abort()");
     declareOnce("@_Unwind_RaiseException", "declare i32 @_Unwind_RaiseException(ptr)");
+    declareOnce("@llvm.threadlocal.address.p0", "declare ptr @llvm.threadlocal.address.p0(ptr)"); // (kpp.eh.current: this thread's)
     emittingShared = true;
     std::string uncaught = cStringConstant("unhandled exception of type %s"), throughNoexcept = cStringConstant("exception of type %s thrown through a noexcept function"),
                 unlisted = cStringConstant("exception of type %s thrown from a call its function's exception table does not list"),
@@ -737,10 +738,10 @@ auto codegen::Emitter::finishExceptionRuntime() -> void
               "  %s5 = getelementptr inbounds i64, ptr %out, i64 5\n  %s6 = getelementptr inbounds i64, ptr %out, i64 6\n"
               "  store ptr %object, ptr %out\n  store ptr %ti, ptr %s1\n  store ptr %dtor, ptr %s2\n  %hz = zext i32 %handler to i64\n  store i64 %hz, ptr %s3\n"
               "  store ptr %adjusted, ptr %s4\n  store ptr %h, ptr %s6\n"
-              "  %outer = load ptr, ptr @kpp.eh.current\n  store ptr %outer, ptr %s5\n  store ptr %out, ptr @kpp.eh.current\n  ret void\n}\n";
+              "  %current = call ptr @llvm.threadlocal.address.p0(ptr @kpp.eh.current)\n  %outer = load ptr, ptr %current\n  store ptr %outer, ptr %s5\n  store ptr %out, ptr %current\n  ret void\n}\n";
     shared += sharedComdat("@kpp_eh_end") +
               std::string(kppEhEndHeader) + "\nentry:\n"
-              "  %op = getelementptr inbounds i8, ptr %out, i64 40\n  %outer = load ptr, ptr %op\n  store ptr %outer, ptr @kpp.eh.current\n"
+              "  %op = getelementptr inbounds i8, ptr %out, i64 40\n  %outer = load ptr, ptr %op\n  %current = call ptr @llvm.threadlocal.address.p0(ptr @kpp.eh.current)\n  store ptr %outer, ptr %current\n"
               "  %obj = load ptr, ptr %out\n  %null = icmp eq ptr %obj, null\n  br i1 %null, label %header, label %live\n"
               "live:\n  %dp = getelementptr inbounds i8, ptr %out, i64 16\n  %dtor = load ptr, ptr %dp\n"
               + capturedRelease("header") +
@@ -766,7 +767,7 @@ auto codegen::Emitter::finishExceptionRuntime() -> void
     shared += sharedComdat("@kpp_current_exception") + std::string(kppCurrentExceptionHeader) + "\nentry:\n"
               "  %s1 = getelementptr inbounds i64, ptr %into, i64 1\n  %s2 = getelementptr inbounds i64, ptr %into, i64 2\n"
               "  store ptr null, ptr %into\n  store ptr null, ptr %s1\n  store ptr null, ptr %s2\n"
-              "  %rec = load ptr, ptr @kpp.eh.current\n  %none = icmp eq ptr %rec, null\n  br i1 %none, label %done, label %some\n"
+              "  %current = call ptr @llvm.threadlocal.address.p0(ptr @kpp.eh.current)\n  %rec = load ptr, ptr %current\n  %none = icmp eq ptr %rec, null\n  br i1 %none, label %done, label %some\n"
               "some:\n  %obj = load ptr, ptr %rec\n  %gone = icmp eq ptr %obj, null\n  br i1 %gone, label %done, label %take\n"
               "take:\n  %tp = getelementptr inbounds i8, ptr %rec, i64 8\n  %ti = load ptr, ptr %tp\n"
               "  %dp = getelementptr inbounds i8, ptr %rec, i64 16\n  %dtor = load ptr, ptr %dp\n"
@@ -781,6 +782,7 @@ auto codegen::Emitter::finishExceptionRuntime() -> void
     declareOnce("@fprintf", "declare i32 @fprintf(ptr, ptr, ...)");
     declareOnce("@fflush", "declare i32 @fflush(ptr)");
     declareOnce("@__acrt_iob_func", "declare ptr @__acrt_iob_func(i32)");
+    declareOnce("@llvm.threadlocal.address.p0", "declare ptr @llvm.threadlocal.address.p0(ptr)"); // (kpp.eh.current, .stack, .depth: this thread's)
     declareOnce("@abort", "declare void @abort()");
     markEH();
     emittingShared = true;
@@ -796,7 +798,8 @@ auto codegen::Emitter::finishExceptionRuntime() -> void
     shared += baseSearchFunction("@kpp_eh_offset", typeinfoFor(types.nullptrType(), nullptr)); // (a pointer handler takes nullptr)
     shared += sharedComdat("@kpp_eh_push") +
               std::string(kppEhPushHeader) + "\nentry:\n"
-              "  %d = load i64, ptr @kpp.eh.depth\n  %i = mul i64 %d, 5\n  %slot = getelementptr inbounds i64, ptr @kpp.eh.stack, i64 %i\n"
+              "  %depth = call ptr @llvm.threadlocal.address.p0(ptr @kpp.eh.depth)\n  %stack = call ptr @llvm.threadlocal.address.p0(ptr @kpp.eh.stack)\n"
+              "  %d = load i64, ptr %depth\n  %i = mul i64 %d, 5\n  %slot = getelementptr inbounds i64, ptr %stack, i64 %i\n"
               "  %info = getelementptr inbounds i8, ptr %record, i64 32\n  %obj = load i64, ptr %info\n"
               "  %tip = getelementptr inbounds i8, ptr %record, i64 40\n  %ti = load i64, ptr %tip\n"
               "  %dp = getelementptr inbounds i8, ptr %record, i64 48\n  %dtor = load i64, ptr %dp\n"
@@ -804,20 +807,21 @@ auto codegen::Emitter::finishExceptionRuntime() -> void
               "  %s1 = getelementptr inbounds i64, ptr %slot, i64 1\n  %s2 = getelementptr inbounds i64, ptr %slot, i64 2\n"
               "  %s3 = getelementptr inbounds i64, ptr %slot, i64 3\n  %s4 = getelementptr inbounds i64, ptr %slot, i64 4\n"
               "  store i64 %obj, ptr %slot\n  store i64 %ti, ptr %s1\n  store i64 %dtor, ptr %s2\n  store i64 %h, ptr %s3\n  store i64 %adj, ptr %s4\n"
-              "  %d1 = add i64 %d, 1\n  store i64 %d1, ptr @kpp.eh.depth\n  ret void\n}\n";
+              "  %d1 = add i64 %d, 1\n  store i64 %d1, ptr %depth\n  ret void\n}\n";
     // A handler's record is the current exception while it runs (kpp.eh.current, the record of
     // the handler around it kept in its sixth word): what `throw;` in a function it calls raises.
     decls += sharedComdat("@kpp.eh.current") + kppEhCurrentLine + "\n";
     shared += sharedComdat("@kpp_eh_begin") +
               std::string(kppEhBeginHeader) + "\nentry:\n" + uncaughtChange(-1) +
-              "  %d = load i64, ptr @kpp.eh.depth\n  %d1 = sub i64 %d, 1\n  store i64 %d1, ptr @kpp.eh.depth\n"
-              "  %i = mul i64 %d1, 5\n  %slot = getelementptr inbounds i64, ptr @kpp.eh.stack, i64 %i\n"
+              "  %depth = call ptr @llvm.threadlocal.address.p0(ptr @kpp.eh.depth)\n  %stack = call ptr @llvm.threadlocal.address.p0(ptr @kpp.eh.stack)\n"
+              "  %d = load i64, ptr %depth\n  %d1 = sub i64 %d, 1\n  store i64 %d1, ptr %depth\n"
+              "  %i = mul i64 %d1, 5\n  %slot = getelementptr inbounds i64, ptr %stack, i64 %i\n"
               "  call void @llvm.memcpy.p0.p0.i64(ptr %out, ptr %slot, i64 40, i1 false)\n"
-              "  %outer = load ptr, ptr @kpp.eh.current\n  %op = getelementptr inbounds i8, ptr %out, i64 40\n  store ptr %outer, ptr %op\n"
-              "  store ptr %out, ptr @kpp.eh.current\n  ret void\n}\n";
+              "  %current = call ptr @llvm.threadlocal.address.p0(ptr @kpp.eh.current)\n  %outer = load ptr, ptr %current\n  %op = getelementptr inbounds i8, ptr %out, i64 40\n  store ptr %outer, ptr %op\n"
+              "  store ptr %out, ptr %current\n  ret void\n}\n";
     shared += sharedComdat("@kpp_eh_end") +
               std::string(kppEhEndHeader) + "\nentry:\n"
-              "  %op = getelementptr inbounds i8, ptr %out, i64 40\n  %outer = load ptr, ptr %op\n  store ptr %outer, ptr @kpp.eh.current\n"
+              "  %op = getelementptr inbounds i8, ptr %out, i64 40\n  %outer = load ptr, ptr %op\n  %current = call ptr @llvm.threadlocal.address.p0(ptr @kpp.eh.current)\n  store ptr %outer, ptr %current\n"
               "  %obj = load ptr, ptr %out\n  %null = icmp eq ptr %obj, null\n  br i1 %null, label %done, label %live\n"
               "live:\n  %dp = getelementptr inbounds i8, ptr %out, i64 16\n  %dtor = load ptr, ptr %dp\n"
               + capturedRelease("done") +
@@ -842,7 +846,7 @@ auto codegen::Emitter::finishExceptionRuntime() -> void
     shared += sharedComdat("@kpp_current_exception") + std::string(kppCurrentExceptionHeader) + "\nentry:\n"
               "  %s1 = getelementptr inbounds i64, ptr %into, i64 1\n  %s2 = getelementptr inbounds i64, ptr %into, i64 2\n"
               "  store ptr null, ptr %into\n  store ptr null, ptr %s1\n  store ptr null, ptr %s2\n"
-              "  %rec = load ptr, ptr @kpp.eh.current\n  %none = icmp eq ptr %rec, null\n  br i1 %none, label %done, label %some\n"
+              "  %current = call ptr @llvm.threadlocal.address.p0(ptr @kpp.eh.current)\n  %rec = load ptr, ptr %current\n  %none = icmp eq ptr %rec, null\n  br i1 %none, label %done, label %some\n"
               "some:\n  %obj = load ptr, ptr %rec\n  %gone = icmp eq ptr %obj, null\n  br i1 %gone, label %done, label %take\n"
               "take:\n  %tp = getelementptr inbounds i8, ptr %rec, i64 8\n  %ti = load ptr, ptr %tp\n"
               "  %dp = getelementptr inbounds i8, ptr %rec, i64 16\n  %dtor = load ptr, ptr %dp\n"

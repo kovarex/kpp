@@ -5451,6 +5451,29 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   200 bytes). The library's Lock, Condition and SharedLock now set their first word to the platform
   file's `mutexSignature`, `conditionSignature` and `rwlockSignature` (0 on glibc and FreeBSD), which
   each platform file must declare.
+- **Run on a Mac (2026-11-13, thread B, from thread O's runs on GitHub's macOS arm64 runners):** two
+  silent wrong answers that no build here could show, both fixed in the code generator and the driver.
+  - **thread_local:** every access of a thread_local goes through `llvm.threadlocal.address`, as
+    clang's does, never the global's own name as an operand: a user's thread_local, a static local's
+    guard and object, a lifetime-extended temporary of one, and the runtime's own (kpp.eh.current,
+    kpp.eh.depth and kpp.eh.stack, kpp.thread.exits). Without it an unoptimized build for macOS arm64
+    kept the address the TLV descriptor's call returned in a register across later calls, which
+    clobbered it, and every thread_local access of a debug build crashed (language/thread_local_locals,
+    the test runner's). Every target gets the same IR; LLVM lowers the call to the global's address.
+  - **Unwind tables:** on macOS kpp's functions get synchronous unwind tables (`uwtable(sync)`) and
+    frame pointers (`"frame-pointer"="non-leaf"` on arm64, `"all"` on x86-64), and the modules'
+    compiles and a release build's ThinLTO link write compact unwind for a personality that is not
+    one of Darwin's (`-femit-compact-unwind-non-canonical`; `-Wl,-mllvm,-emit-compact-unwind-non-canonical`).
+    LLVM writes compact unwind only for a frame it can describe without DWARF (no epilogue CFI, which
+    asynchronous tables write; a frame pointer) and, unless told otherwise, only with
+    `___gxx_personality_v0`; the rest got DWARF FDEs in `__eh_frame`, which ld64.lld (LLVM 19) dropped
+    from a ThinLTO build's objects: a release build's main had no unwind information and its throws
+    found no handler (language/rethrow_from_nested_catch_release, "unhandled exception", and three
+    more exception snippets that printed nothing).
+  - **Checked:** compiler/tests/macoscode.ps1 in run_tests: a debug build's IR uses no thread_local
+    directly, and a release build linked here with ld64.lld against the stand-in SDK has compact
+    unwind for every function, main's with its LSDA (both fail with kpp before the fix). Every spec
+    snippet built for macOS (1572), and thread O's runs on the Mac runners.
 
 ### Questions for kovarex
 

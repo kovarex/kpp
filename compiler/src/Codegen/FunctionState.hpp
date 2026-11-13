@@ -58,6 +58,9 @@
       // scopes.size() where a block's variable, a loop variable or a catch parameter was declared, 0 for
       // a parameter: whether a try block lies between it and a `throw name;` (implicitlyMovableLocal).
       size_t scopeDepth = 0;
+      // A thread_local static local's: addr is its global, whose address in the current thread each use takes
+      // (localAddress, Emitter::threadLocalAddress).
+      bool threadLocal = false;
     };
     // An argument of the call a check tests (design.md 8.7): its address, or a scalar's value and
     // LLVM type. No type: it has no value to show.

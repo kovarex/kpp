@@ -69,11 +69,21 @@ std::string withUnwindTables(const std::string& text, const char* attributes);
 
 // A module's text as its target takes it: every function with unwind tables (and the sanitizer's
 // attribute, without which clang's instrumentation leaves a function out: --sanitize), and no COMDAT
-// on Mach-O.
+// on Mach-O. On macOS the tables are compact unwind's, as clang makes them there: synchronous
+// (`uwtable(sync)`, a call's place alone, which an exception needs) and every function that calls keeping its
+// frame record (x29: `-mframe-pointer=non-leaf` on arm64, `all` on x86-64, Apple's ABI), so that a frame, its
+// personality and LSDA are compact unwind's encoding. Asynchronous tables describe the epilogues too, which
+// compact unwind cannot, and without a frame record an optimized frame is none it can: that unwind information
+// was DWARF's, an FDE, which ld64.lld dropped from a ThinLTO build's objects, main's among them, whose handlers no
+// exception then reached ("unhandled exception", thread O's macOS release runs, 2026-11-13).
 std::string forTarget(const std::string& text, const Options& options)
 {
-  const char* attributes = options.sanitizeAddress ? " uwtable sanitize_address" : options.sanitizeThread ? " uwtable sanitize_thread" : " uwtable";
-  return options.target.mac() ? withoutComdats(withUnwindTables(text, attributes)) : withUnwindTables(text, attributes);
+  bool mac = options.target.mac();
+  std::string attributes = mac ? " uwtable(sync)" : " uwtable";
+  attributes += options.sanitizeAddress ? " sanitize_address" : options.sanitizeThread ? " sanitize_thread" : "";
+  if (mac)
+    attributes += options.target.arm64() ? " \"frame-pointer\"=\"non-leaf\"" : " \"frame-pointer\"=\"all\"";
+  return mac ? withoutComdats(withUnwindTables(text, attributes.c_str())) : withUnwindTables(text, attributes.c_str());
 }
 
 std::string withUnwindTables(const std::string& text, const char* attributes)
@@ -456,7 +466,8 @@ void runCodegen(Build& build)
   if (!objectCacheDir.empty())
   {
     objectCacheCompiler = inProcess ? "kpp " + objectcache::stamp(compilerPath()) : "clang " + objectcache::stamp(clangPath());
-    objectCacheFlags = targetFlags(options) + " " + options.clangFlags + (functionSections ? " sections" : " no-sections");
+    objectCacheFlags = targetFlags(options) + " " + options.clangFlags + (functionSections ? " sections" : " no-sections") +
+                       (options.target.mac() ? " compact-unwind-non-canonical" : "");
   }
   std::vector<std::string> objectCacheKeys(outputModules);
   std::atomic<int> sharedHits{0};
@@ -667,8 +678,12 @@ void runCodegen(Build& build)
   // (src/backend.cpp). A release clang passes -disable-llvm-verifier by default, which took an IR
   // bug of kpp's in silently: at -O0 the module compiled (exit 0), at -O2 clang hung on it
   // (KPP_TEST_BROKEN_MODULE's use its definition does not dominate, tests\verifier.ps1).
-  const char* compileFlags = functionSections ? "-ffunction-sections -fdata-sections -ffp-contract=off -fverify-intermediate-code"
+  // macOS: compact unwind for the functions whose personality is kpp's, which LLVM gives only Darwin's own
+  // personalities by itself, the others DWARF's FDEs (forTarget; ltoLinkFlags for a ThinLTO link's back end).
+  std::string compileFlags = functionSections ? "-ffunction-sections -fdata-sections -ffp-contract=off -fverify-intermediate-code"
                                               : "-ffp-contract=off -fverify-intermediate-code";
+  if (options.target.mac())
+    compileFlags += " -femit-compact-unwind-non-canonical";
   // --keep-going: the errors stay reported (and the exit code), but what was emitted is compiled and
   // linked; the functions errors left out are listed next to the executable for the link's report.
   bool stop = codegenExit && !options.keepGoing;

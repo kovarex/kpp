@@ -2001,6 +2001,8 @@ auto codegen::Emitter::finishThreadExitRuntime() -> void
   // Windows: this thread's list of what to destroy (a node: next, dtor, object), and one fiber-local
   // slot whose callback runs the list when a thread that set the slot ends.
   ensureMalloc();
+  if (declaredNames.claim("@llvm.threadlocal.address.p0"))
+    decls += "declare ptr @llvm.threadlocal.address.p0(ptr)\n"; // (kpp.thread.exits: this thread's)
   if (sh.target.msvc())
   {
     // The Visual C++ runtime's list of a thread's destructors, which exit() runs first of all, as
@@ -2010,20 +2012,20 @@ auto codegen::Emitter::finishThreadExitRuntime() -> void
       decls += "declare i32 @__tlregdtor(ptr)\n";
     shared += sharedComdat("@kpp.thread.exits") + "@kpp.thread.exits = linkonce_odr thread_local global ptr null, comdat\n";
     shared += sharedComdat("@kpp_thread_exit") +
-              "define linkonce_odr void @kpp_thread_exit() comdat {\nentry:\n  br label %next\n"
-              "next:\n  %node = load ptr, ptr @kpp.thread.exits\n  %done = icmp eq ptr %node, null\n  br i1 %done, label %end, label %run\n"
-              "run:\n  %rest = load ptr, ptr %node\n  store ptr %rest, ptr @kpp.thread.exits\n"
+              "define linkonce_odr void @kpp_thread_exit() comdat {\nentry:\n  %exits = call ptr @llvm.threadlocal.address.p0(ptr @kpp.thread.exits)\n  br label %next\n"
+              "next:\n  %node = load ptr, ptr %exits\n  %done = icmp eq ptr %node, null\n  br i1 %done, label %end, label %run\n"
+              "run:\n  %rest = load ptr, ptr %node\n  store ptr %rest, ptr %exits\n"
               "  %dp = getelementptr inbounds i8, ptr %node, i64 8\n  %dtor = load ptr, ptr %dp\n"
               "  %op = getelementptr inbounds i8, ptr %node, i64 16\n  %object = load ptr, ptr %op\n"
               "  call void @free(ptr %node)\n  call void %dtor(ptr %object)\n  br label %next\n"
               "end:\n  ret void\n}\n";
     shared += sharedComdat("@kpp_thread_atexit") + std::string(kppThreadAtExitHeader) +
-              "\nentry:\n  %head = load ptr, ptr @kpp.thread.exits\n  %first = icmp eq ptr %head, null\n  br i1 %first, label %register, label %push\n"
+              "\nentry:\n  %exits = call ptr @llvm.threadlocal.address.p0(ptr @kpp.thread.exits)\n  %head = load ptr, ptr %exits\n  %first = icmp eq ptr %head, null\n  br i1 %first, label %register, label %push\n"
               "register:\n  %r = call i32 @__tlregdtor(ptr @kpp_thread_exit)\n  br label %push\n"
               "push:\n  %node = call ptr @malloc(i64 24)\n  store ptr %head, ptr %node\n"
               "  %dp = getelementptr inbounds i8, ptr %node, i64 8\n  store ptr %dtor, ptr %dp\n"
               "  %op = getelementptr inbounds i8, ptr %node, i64 16\n  store ptr %object, ptr %op\n"
-              "  store ptr %node, ptr @kpp.thread.exits\n  ret void\n}\n";
+              "  store ptr %node, ptr %exits\n  ret void\n}\n";
     emittingShared = false;
     return;
   }
@@ -2036,9 +2038,9 @@ auto codegen::Emitter::finishThreadExitRuntime() -> void
   shared += sharedComdat("@kpp.thread.slot") + "@kpp.thread.slot = linkonce_odr global i32 -1, comdat\n";
   shared += sharedComdat("@kpp.thread.exits") + "@kpp.thread.exits = linkonce_odr thread_local global ptr null, comdat\n";
   shared += sharedComdat("@kpp_thread_exit") +
-            "define linkonce_odr void @kpp_thread_exit(ptr %unused) comdat {\nentry:\n  br label %next\n"
-            "next:\n  %node = load ptr, ptr @kpp.thread.exits\n  %done = icmp eq ptr %node, null\n  br i1 %done, label %end, label %run\n"
-            "run:\n  %rest = load ptr, ptr %node\n  store ptr %rest, ptr @kpp.thread.exits\n"
+            "define linkonce_odr void @kpp_thread_exit(ptr %unused) comdat {\nentry:\n  %exits = call ptr @llvm.threadlocal.address.p0(ptr @kpp.thread.exits)\n  br label %next\n"
+            "next:\n  %node = load ptr, ptr %exits\n  %done = icmp eq ptr %node, null\n  br i1 %done, label %end, label %run\n"
+            "run:\n  %rest = load ptr, ptr %node\n  store ptr %rest, ptr %exits\n"
             "  %dp = getelementptr inbounds i8, ptr %node, i64 8\n  %dtor = load ptr, ptr %dp\n"
             "  %op = getelementptr inbounds i8, ptr %node, i64 16\n  %object = load ptr, ptr %op\n"
             "  call void @free(ptr %node)\n  call void %dtor(ptr %object)\n  br label %next\n"

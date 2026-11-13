@@ -244,6 +244,7 @@ auto codegen::Emitter::staticLocal(VariableDecl* v, const Ty* t) -> void
     globals[v] = name;
   }
   locals[v] = {name, t, isRef};
+  locals[v].threadLocal = (v->flags & DF_ThreadLocal) != 0;
   // Built on the first pass whose initializer returns, once per program across threads ([stmt.dcl]
   // 4). The guard is 0 not built, 1 being built, 2 built: a pass that finds 2 goes on; one that claims
   // 0 for 1 (cmpxchg) builds it and releases 2, or, the initializer throwing, gives 0 back (an
@@ -252,6 +253,13 @@ auto codegen::Emitter::staticLocal(VariableDecl* v, const Ty* t) -> void
   // 2026-11-05 the guard was set before the initializer ran: a constructor that threw left a
   // half-built object every later call used, and a second thread read the object before it was built.
   bool perThread = (v->flags & DF_ThreadLocal) != 0;
+  // (a thread_local one's guard and object: this thread's, threadLocalAddress)
+  std::string object = name;
+  if (perThread)
+  {
+    guard = threadLocalAddress(guard);
+    object = threadLocalAddress(name);
+  }
   std::string done = newLabel("static.done"), init = newLabel("static.init");
   std::string state = newTemp(), built = newTemp();
   fn += "  " + state + " = load atomic i8, ptr " + guard + " acquire, align 1\n";
@@ -290,20 +298,20 @@ auto codegen::Emitter::staticLocal(VariableDecl* v, const Ty* t) -> void
   if (constantValue)
     ; // (its value is there)
   else if (isRef)
-    fn += "  store ptr " + staticReferenceTarget(v, name, t, v->init, v, perThread) + ", ptr " + name + "\n";
+    fn += "  store ptr " + staticReferenceTarget(v, name, t, v->init, v, perThread) + ", ptr " + object + "\n";
   else if (v->init && (isClass(t) || (t->kind == TyKind::Array && v->init->kind == NodeKind::BraceInitExpr)))
-    initializeExtending(name, t, v, v->init, name, (v->flags & DF_ThreadLocal) != 0);
+    initializeExtending(object, t, v, v->init, name, (v->flags & DF_ThreadLocal) != 0);
   else if (v->init)
-    initializeFrom(name, t, v->init, v, scalarContext(t, v->bracedInit)); // (`static bool b = x;` copies, `static bool b{x};` does not)
+    initializeFrom(object, t, v->init, v, scalarContext(t, v->bracedInit)); // (`static bool b = x;` copies, `static bool b{x};` does not)
   else if (isClass(t))
-    defaultConstruct(name, t, v);
+    defaultConstruct(object, t, v);
   else if (global.enumWithConstructors(t))
-    constructEnum(name, t, {}, v); // `static Dir d;`: a kpp enum's default constructor (kovarex, 2026-11-11)
+    constructEnum(object, t, {}, v); // `static Dir d;`: a kpp enum's default constructor (kovarex, 2026-11-11)
   else if (t->kind == TyKind::Array && needsConstruction(t, v))
-    constructArray(name, t, v);
+    constructArray(object, t, v);
   destroyTemps(); // (the claim's cleanup with them: the initializer returned)
   if (perThread && !isRef)
-    registerThreadExits(name, t, v); // destroyed when the thread ends ([basic.stc.thread] 2)
+    registerThreadExits(object, t, v); // destroyed when the thread ends ([basic.stc.thread] 2)
   else if (!perThread)
     registerProgramExits(name, isRef ? types.voidType() : t, v); // destroyed at the program's end, as a global ([basic.start.term] 3)
   staticTemporaries = std::move(outerTemporaries);
@@ -418,6 +426,8 @@ auto codegen::Emitter::staticTemporary(const Ty* type, Node* at) -> std::string
   std::string name = extendingStatic.substr(0, extendingStatic.size() - 1) + ".temp" + std::to_string(extendingCount++) + "\"";
   addOwnedEntry(name + (extendingThreadLocal ? " = internal thread_local global " : " = internal global ") + llType(type, at) + " zeroinitializer" +
                 alignSuffix(type, 0, at) + "\n");
+  if (extendingThreadLocal)
+    name = threadLocalAddress(name); // (this thread's)
   if (needsDestruction(type, at))
     staticTemporaries.push_back({name, type}); // (destroyed at the program's or the thread's exit, after the variable)
   return name;

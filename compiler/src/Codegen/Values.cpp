@@ -870,10 +870,10 @@ auto codegen::Emitter::lvalue(Expr* e) -> std::string
         if (it->second.isRef)
         {
           std::string r = newTemp();
-          fn += "  " + r + " = load ptr, ptr " + it->second.addr + "\n";
+          fn += "  " + r + " = load ptr, ptr " + localAddress(it->second) + "\n";
           return r;
         }
-        return it->second.addr;
+        return localAddress(it->second);
       }
       if (d->kind == NodeKind::VariableDecl)
       {
@@ -1210,6 +1210,7 @@ auto codegen::Emitter::emitGlobalConstructor(VariableDecl* v, const std::string&
   {
     staticTemporaries.clear();
     bool builds = build != Shared::GlobalBuild::ExitOnly;
+    std::string object = name; // (a thread_local one's: this thread's, threadLocalAddress)
     if (perThread)
     {
       {
@@ -1217,28 +1218,30 @@ auto codegen::Emitter::emitGlobalConstructor(VariableDecl* v, const std::string&
         if (declaredNames.claim(guard))
           decls += "$" + guard.substr(1) + " = comdat any\n" + guard + " = linkonce_odr thread_local global i1 false, comdat\n";
       }
-      fn += "  %tls.built = load i1, ptr " + guard + "\n  br i1 %tls.built, label %tls.done, label %tls.build\ntls.build:\n";
-      fn += "  store i1 true, ptr " + guard + "\n";
+      std::string guardHere = threadLocalAddress(guard);
+      fn += "  %tls.built = load i1, ptr " + guardHere + "\n  br i1 %tls.built, label %tls.done, label %tls.build\ntls.build:\n";
+      fn += "  store i1 true, ptr " + guardHere + "\n";
+      object = threadLocalAddress(name);
     }
     pushScope();
     if (builds && t->isReference() && init)
     {
       // (temporaries of static storage, never destroyed: staticReferenceTarget)
-      fn += "  store ptr " + staticReferenceTarget(v, name, t, init, at, perThread) + ", ptr " + name + "\n";
+      fn += "  store ptr " + staticReferenceTarget(v, name, t, init, at, perThread) + ", ptr " + object + "\n";
     }
     else if (builds && init && (isClass(t) || (t->kind == TyKind::Array && init->kind == NodeKind::BraceInitExpr)))
-      initializeExtending(name, t, v, init, name, perThread);
+      initializeExtending(object, t, v, init, name, perThread);
     else if (builds && init)
-      initializeFrom(name, t, init, at, scalarContext(t, def->bracedInit)); // (`bool g = x;` copies, `bool g{x};` does not)
+      initializeFrom(object, t, init, at, scalarContext(t, def->bracedInit)); // (`bool g = x;` copies, `bool g{x};` does not)
     else if (builds && isClass(t))
-      defaultConstruct(name, t, at);
+      defaultConstruct(object, t, at);
     else if (builds && global.enumWithConstructors(t))
-      constructEnum(name, t, {}, at); // `Dir d;` of static storage: a kpp enum's default constructor (kovarex, 2026-11-11)
+      constructEnum(object, t, {}, at); // `Dir d;` of static storage: a kpp enum's default constructor (kovarex, 2026-11-11)
     else if (builds && t->kind == TyKind::Array)
-      constructArray(name, t, at); // `static Style styles[3];`
+      constructArray(object, t, at); // `static Style styles[3];`
     destroyTemps();
     if (perThread)
-      registerThreadExits(name, t->isReference() ? types.voidType() : t, at); // destroyed when the thread ends ([basic.stc.thread] 2)
+      registerThreadExits(object, t->isReference() ? types.voidType() : t, at); // destroyed when the thread ends ([basic.stc.thread] 2)
     else if (build != Shared::GlobalBuild::BuildOnly)
       registerProgramExits(name, t->isReference() ? types.voidType() : t, at); // destroyed at the program's end ([basic.start.term] 3)
     popScope();
@@ -1525,6 +1528,23 @@ auto codegen::Emitter::inheritedConstructorBase(ClassDecl* c) -> std::optional<Q
   return std::nullopt;
 }
 
+auto codegen::Emitter::threadLocalAddress(const std::string& global) -> std::string
+{
+  if (declaredNames.claim("@llvm.threadlocal.address.p0"))
+    decls += "declare ptr @llvm.threadlocal.address.p0(ptr)\n";
+  std::string address = newTemp();
+  fn += "  " + address + " = call ptr @llvm.threadlocal.address.p0(ptr " + global + ")\n";
+  return address;
+}
+
+auto codegen::Emitter::isThreadLocalVariable(VariableDecl* v) -> bool
+{
+  if (v->flags & DF_ThreadLocal)
+    return true;
+  Decl* defined = global.definitionOf(v);
+  return defined && (defined->flags & DF_ThreadLocal);
+}
+
 auto codegen::Emitter::globalAddress(VariableDecl* v, Node* at, const Ty* classTy) -> std::string
 {
   std::string g;
@@ -1543,6 +1563,8 @@ auto codegen::Emitter::globalAddress(VariableDecl* v, Node* at, const Ty* classT
     classTy = staticMemberClass(v, at, at, classTy);
     g = globalFor(v, at, classTy);
   }
+  if (isThreadLocalVariable(v))
+    g = threadLocalAddress(g); // (this thread's)
   const Ty* t = classTy ? global.typeOfDeclIn(v, global.classArgsOf(classTy)) : global.typeOfDecl(v);
   if (!t || !t->isReference())
     return g;

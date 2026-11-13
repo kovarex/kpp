@@ -233,6 +233,11 @@ std::string ltoLinkFlags(const Options& options)
   // were built last to first.
   if (options.target.gnu)
     flags += " -Wl,-mllvm,-use-ctors";
+  // macOS: compact unwind for the functions whose personality is kpp's (ModuleCompile.cpp's compileFlags). A ThinLTO
+  // build's back end is ld64.lld's, and the FDEs it would write otherwise were dropped from its objects: main's,
+  // whose handlers no exception reached (thread O, 2026-11-13).
+  if (options.target.mac())
+    flags += " -Wl,-mllvm,-emit-compact-unwind-non-canonical";
   return flags.empty() ? flags : flags.substr(1);
 }
 

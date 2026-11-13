@@ -221,4 +221,12 @@
     // The address of the object a global names: the global itself, or, for a reference global,
     // what it was bound to. classTy: the instantiation, for a static member of a class template.
     std::string globalAddress(VariableDecl* v, Node* at, const Ty* classTy = nullptr);
+    // The address of the thread_local global name in the current thread, for the code emitted now: through
+    // llvm.threadlocal.address, as clang takes it (the global's own name as an operand is a constant to LLVM, which on
+    // macOS arm64 an unoptimized build computed once and used after calls that had clobbered it: thread O, 2026-11-13).
+    std::string threadLocalAddress(const std::string& global);
+    // Whether v, a global or a static local, is thread_local (its definition's word counts too).
+    bool isThreadLocalVariable(VariableDecl* v);
+    // A local's address: a thread_local static local's in the current thread (threadLocalAddress).
+    std::string localAddress(const Local& local) { return local.threadLocal ? threadLocalAddress(local.addr) : local.addr; }
 

@@ -2126,7 +2126,7 @@ auto codegen::Emitter::bindingAddress(VariableDecl* v, Node* e, std::string& out
   auto it = locals.find(v);
   if (it == locals.end())
     unsupported(e, "a structured binding outside its function");
-  std::string base = it->second.addr;
+  std::string base = localAddress(it->second);
   if (it->second.isRef)
   {
     std::string r = newTemp();
@@ -2533,10 +2533,10 @@ auto codegen::Emitter::addressOfDecl(Decl* d, Node* e) -> std::string
     if (it->second.isRef)
     {
       std::string r = newTemp();
-      fn += "  " + r + " = load ptr, ptr " + it->second.addr + "\n";
+      fn += "  " + r + " = load ptr, ptr " + localAddress(it->second) + "\n";
       return r;
     }
-    return it->second.addr;
+    return localAddress(it->second);
   }
   if (d->kind == NodeKind::VariableDecl)
   {
