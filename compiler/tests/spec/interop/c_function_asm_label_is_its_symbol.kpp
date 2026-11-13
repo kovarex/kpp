@@ -1,0 +1,10 @@
+// spec: a C header's function with an asm label (`int scaled(int) __asm("_scaled_by_label")`, macOS's stdio.h's freopen, glibc's __REDIRECT) is declared and links the label's symbol, the target's prefix included, through the header's declaration and through kpp's own `extern "C"` declaration of the same function (`30 40`; the plain symbol gives `-3 -4`)
+// factorio: none; macOS's stdio.h declares freopen so (the spec's library/out_streams_write_bytes_as_characters_and_strings_whole, run on a Mac): until 2026-11-13 the import dropped such a declaration, and the function was not declared
+extern "C" import "c_function_asm_label_is_its_symbol.h";
+extern "C" int scaled(int x);
+
+int main()
+{
+  std::println(scaled(3), " ", scaled(4));
+  return 0;
+}
