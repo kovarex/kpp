@@ -671,6 +671,8 @@ void GlobalScope::setConverting(bool converting) { impl->converting = converting
 
 void GlobalScope::setDebug(bool debug) { impl->debug = debug; }
 
+bool GlobalScope::isDebug() const { return impl->debug; }
+
 void GlobalScope::setMsvcAbi(bool msvc) { impl->msvcAbi = msvc; }
 
 void GlobalScope::setLP64(bool lp64, bool wcharUnsigned)

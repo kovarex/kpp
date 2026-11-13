@@ -664,6 +664,8 @@ namespace
         // An assert: the rule shows `assert failed: TEXT` where it does not hold, before its cases (an assert
         // after an `if` would hold only on its way: not said yet).
         auto* a = static_cast<AssertStmt*>(s);
+        if (!a->release && !v.global.isDebug())
+          continue; // (config::debug false: the assert is nothing, its expression discarded code, design.md 7)
         if (!cases.empty())
           return fail(v, s, "an assert after an `if` or a switch");
         if (!v.asserts)

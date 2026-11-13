@@ -425,6 +425,9 @@ atvis.ps1 checks Signal, the game's SignalIDBase; debugger-check.ps1 saw `{part 
   alone, `case 3` left out); a condition says each part once and leaves out `!(X == 3)` beside `X == 4`;
   parentheses only where precedence needs them (`(double)value * 0.25`, not `(double)(value) * 0.25`). The
   game's SignalIDBase rule: 25 KB before, 7.2 KB after, 27 DisplayStrings either way.
+- **Asserts where config::debug is false** (a release or final build) are nothing, as in the program: the rule
+  has no case for them (their expressions are discarded code the checker leaves unresolved; translating them
+  failed the game's release and final builds, 44 errors, until 2026-11-13).
 - **A class's static data member** is read too, a global the program writes, by its name in the debug information:
   `Registry<T>::all[this.index]->name` in Handle<Part> is `{Registry<Part>::all.items[index]->name,sb}` (an element of
   the library's Vector is its `items[i]`, of a pointer or array `[i]`). The game's ID<T> shows its prototype's name so

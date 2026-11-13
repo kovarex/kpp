@@ -328,6 +328,7 @@ public:
   // false, `assert` compiles to nothing (design.md 7), so the checker and the evaluator leave its
   // expression as discarded code (a `when (config::debug)` member it names is no error, design.md 19).
   void setDebug(bool debug);
+  bool isDebug() const;
   // Whether a checker error at a place in the file at path was reported outside any unit (the
   // index's, a class instance's static_assert): walking the file again would not take it back.
   bool unitlessErrorIn(const std::string& path);

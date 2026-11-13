@@ -129,6 +129,18 @@ foreach ($mode in @('--exe', (Join-Path $work 'debugvalue-plain.exe')), @('--che
   { "FAIL natvis: debugValue's errors in a build with $($mode[0]) alone: exit $code`n$log"; exit 1 }
 }
 
+# A build with config::debug false (a release build): an assert is nothing there, its expression discarded code
+# the checker leaves unresolved, so debugValue's translation leaves it out and the build has no error (the
+# game's release build failed on PrototypeList::getPointer's assert, Handle's getPointer here, 2026-11-13).
+foreach ($mode in @(@('--config', 'debug=false', '--debug-info', '--exe', (Join-Path $work 'values-nodebug.exe')), @('--release', '--check')))
+{
+  $ErrorActionPreference = 'Continue'
+  $log = (& $KppExe --quiet @mode (Join-Path $PSScriptRoot 'natvis\values.kpp') 2>&1 | ForEach-Object { "$_" }) -join "`n"
+  $code = $LASTEXITCODE
+  $ErrorActionPreference = 'Stop'
+  if ($code -ne 0) { "FAIL natvis: a build with $($mode -join ' '): exit $code`n$log"; exit 1 }
+}
+
 # A program's own .natvis (build.kpp's Executable::natvis, kpp's --natvis): natvis\project builds
 # values.kpp with point.natvis; its debug build's PDB holds both that file and the one kpp writes.
 $project = Join-Path $work 'project'
