@@ -954,6 +954,13 @@ if (Run 'linkinputs')
     Set-Content 'build.kpp' "void build(Project& project)`n{`n  Executable& app = project.executable(`"app`", {`"src`"});`n  app.argument(`"--keep-going`");`n  app.linkFile(`"nowhere-to-be-found.lib`");`n}"
     $output = (Kpp @('release')) -join "`n"
     if ($code -eq 0 -or $output -notmatch 'nowhere-to-be-found' -or $output -notmatch 'the link failed') { Fail "a failed link without the linker's message: exit $code`n$output" }
+    # An empty argument of build.kpp stays an argument (2026-11-13, the Factorio CI thread: with `--set toolchain=`,
+    # describe.txt dropped `project.setting("toolchain", ...)`'s empty value, and `--toolchain` took the next option for
+    # its own): describe.txt keeps `argument ` with nothing after it, and the build goes on with the option after it.
+    Set-Content 'build.kpp' "void build(Project& project)`n{`n  Executable& app = project.executable(`"app`", {`"src`"});`n  app.argument(`"--toolchain`");`n  app.argument(project.setting(`"toolchain`", `"msvc`"));`n  app.argument(`"--keep-going`");`n}"
+    $output = (Kpp @('debug', '--no-server', '--set', 'toolchain=')) -join "`n"
+    $described = @(Select-String '^argument' 'build\kpp\describe.txt' | ForEach-Object { $_.Line }) -join '|'
+    if ($code -ne 0 -or $described -notmatch 'argument --toolchain\|argument \|argument --keep-going') { Fail "an empty argument of build.kpp: exit $code, describe.txt's arguments $described`n$output" }
     Kpp @('--stop-server') | Out-Null
   }
   finally { Pop-Location }

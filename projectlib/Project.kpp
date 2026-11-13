@@ -504,6 +504,19 @@ void kppLines(std::String& out, std::StringView key, const std::Vector<std::Stri
     kppLine(out, key, value);
 }
 
+// An argument line for each of values, an empty one too (`argument ` and nothing after it): an option's value may be
+// empty (`e.argument(project.setting("toolchain", "msvc,bundled"))` with `--set toolchain=`), and a dropped one gave
+// the option the next argument for its value (`--toolchain` took `--keep-symbol`, 2026-11-13, the Factorio CI thread).
+void kppArguments(std::String& out, const std::Vector<std::String>& values)
+{
+  for (const std::String& value : values)
+  {
+    out << "argument ";
+    out << value;
+    out << '\n';
+  }
+}
+
 void kppUses(std::String& out, const std::Deque<Dependency>& uses)
 {
   for (const Dependency& d : uses)
@@ -669,9 +682,9 @@ void kppCell(std::String& out, const Project& project, const Executable& target,
   kppConfigs(out, "cell", cell.configs);
   kppLines(out, "root", e.roots);
   kppLines(out, "exclude", e.excluded);
-  kppLines(out, "argument", project.arguments);
-  kppLines(out, "argument", cell.configuration.arguments);
-  kppLines(out, "argument", e.arguments);
+  kppArguments(out, project.arguments);
+  kppArguments(out, cell.configuration.arguments);
+  kppArguments(out, e.arguments);
   kppLines(out, "library", project.libraries);
   kppLines(out, "library", e.libraries);
   kppLines(out, "system-library", e.systemLibraries);
@@ -721,8 +734,8 @@ std::String describe(const Project& project)
   {
     kppLine(out, "configuration", c.name);
     kppConfigurationLines(out, project, c);
-    kppLines(out, "argument", project.arguments);
-    kppLines(out, "argument", c.arguments);
+    kppArguments(out, project.arguments);
+    kppArguments(out, c.arguments);
     out << "end\n";
   }
   if (project.executables.empty() && project.kppLibraries.empty())
