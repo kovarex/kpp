@@ -5475,6 +5475,21 @@ its IR for every spec snippet (1073) is byte-identical before and after.
     directly, and a release build linked here with ld64.lld against the stand-in SDK has compact
     unwind for every function, main's with its LSDA (both fail with kpp before the fix). Every spec
     snippet built for macOS (1572), and thread O's runs on the Mac runners.
+- **AddressSanitizer on macOS arm64 (2026-11-13, thread B; kovarex chose LLVM's own runtime: "as
+  little friction as possible (as long as it is not gigabytes)"):** `--sanitize address` for `--target
+  macos` links LLVM 19.1.7's `libclang_rt.asan_osx_dynamic.dylib`, which kpp brings beside itself at
+  `lib\clang\19\lib\darwin` (1.1 MB in a release; tools\sysroot\llvm-macos.ps1 takes it out of LLVM's
+  1.4 GB macOS arm64 release, pinned by the SHA-256 LLVM's signed attestation gives), by its path
+  (`-fno-sanitize-link-runtime`), with an `@executable_path` rpath, and copies it beside the
+  executable: dyld finds `@rpath/libclang_rt.asan_osx_dynamic.dylib` there, wherever the program is
+  copied with it. Without one beside kpp, its clang's own (BIN/../lib/clang/VERSION/lib/darwin: a Mac
+  host's Homebrew llvm@19), so the three ASan snippets leave macos-host-known-failures.txt (stage 9).
+  macos-x64 stays an error: LLVM's x86-64 runtime needs macOS 13.7, kpp's x86-64
+  target is 10.15. CI's macos_build and package jobs keep the file in a cache under the script's hash.
+  Spec kpp/macos_sanitize_address_takes_its_runtime_along (run_spec checks the dylib beside the
+  executable and its @rpath and @executable_path), and kpp/sanitize_config_constants builds for macos
+  (a known failure for macos-x64 alone: macos-known-failures.txt's `@TARGET`); the package's smoke test
+  builds the snippet with the packaged kpp.
 
 ### Stage 9, kpp on a macOS host (2026-11-13, thread O)
 

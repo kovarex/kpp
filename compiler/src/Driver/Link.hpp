@@ -13,6 +13,10 @@
 
   std::string linkFlags(const Options& options, bool wideEntry);
   void placeSanitizerRuntime(const Options& options);
+  // AddressSanitizer's runtime for macOS arm64, LLVM 19.1.7's libclang_rt.asan_osx_dynamic.dylib, which kpp
+  // brings at its place in clang's resource directory beside kpp (lib\clang\19\lib\darwin: a release's own;
+  // tools\sysroot\llvm-macos.ps1 puts it beside a build of kpp).
+  std::filesystem::path macAddressSanitizerRuntime();
 
 
   // What follows the link of an optimized ELF build with --debug-info (` && llvm-objcopy ...`): its

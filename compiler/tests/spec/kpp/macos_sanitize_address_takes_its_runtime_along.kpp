@@ -1,0 +1,13 @@
+// spec: `--sanitize address` for macOS arm64 (kovarex, 2026-11-13: "as little friction as possible"): AddressSanitizer's runtime there, LLVM 19.1.7's libclang_rt.asan_osx_dynamic.dylib, comes with kpp (lib\clang\19\lib\darwin beside it: a release's own, in a build of kpp tools\sysroot\llvm-macos.ps1's), as no clang kpp builds with has one: the link takes it by that path, the executable names it by @rpath and looks beside itself (@executable_path), and kpp copies it there, so the program runs on a Mac wherever it is copied with it; linked here with ld64.lld against the stand-in SDK, run on CI's macOS runners. Until 2026-11-13 an error: "AddressSanitizer's runtime for --target macos is not in kpp's toolchain"
+// target: macos (a Mach-O program: built, not run, by run_spec.py --target macos)
+// kpp: --no-std --target macos --sysroot {here}/macos_sdk_checked_before_the_build.sdk --sanitize address
+extern "C" int printf(const char* format, ...);
+int main()
+{
+  int values[4] = {1, 2, 3, 4};
+  int sum = 0;
+  for (int i = 0; i < 4; ++i)
+    sum += values[i];
+  printf("%d\n", sum);
+  return 0;
+}

@@ -153,6 +153,11 @@ Copy-Item "$llvmMingw\lib\clang\19\lib\windows\libclang_rt.builtins-x86_64.a" "$
 # which kpp copies beside a sanitized executable (MinGW-w64's ASan is a DLL only).
 Copy-Item "$llvmMingw\lib\clang\19\lib\windows\libclang_rt.asan*-x86_64*" "$kpp\lib\clang\19\lib\windows"
 Copy-Item "$llvmMingw\bin\libclang_rt.asan_dynamic-x86_64.dll" "$kpp\bin"
+# macOS arm64's, which kpp copies beside a sanitized executable too: LLVM 19.1.7's own (llvm-mingw has
+# none), the one file tools\sysroot\llvm-macos.ps1 takes from LLVM's macOS release (1.1 MB).
+$macRuntime = & "$repository\tools\sysroot\llvm-macos.ps1" | Select-Object -Last 1
+New-Item -ItemType Directory -Force "$kpp\lib\clang\19\lib\darwin" | Out-Null
+Copy-Item "$macRuntime\libclang_rt.asan_osx_dynamic.dylib" "$kpp\lib\clang\19\lib\darwin"
 CopyTree "$llvmMingw\x86_64-w64-mingw32\lib" "$kpp\x86_64-w64-mingw32\lib"
 CopyTree "$llvmMingw\x86_64-w64-mingw32\share\mingw32" "$kpp\x86_64-w64-mingw32\share\mingw32"
 Copy-Item "$llvmMingw\LICENSE.TXT" "$kpp\LICENSE-llvm-mingw.txt"
@@ -164,6 +169,10 @@ The bundled toolchain (bin\, include\, lib\, x86_64-w64-mingw32\) is llvm-mingw 
 - MinGW-w64's headers and runtime: public domain or ZPL 2.1; the DirectX headers taken from Wine are
   LGPL-2.1 or later. x86_64-w64-mingw32\share\mingw32\COPYING*.
 - llvm-mingw's own scripts: ISC.
+One file is not llvm-mingw's: lib\clang\19\lib\darwin\libclang_rt.asan_osx_dynamic.dylib,
+AddressSanitizer's runtime for macOS arm64, is LLVM 19.1.7's compiler-rt from LLVM's own macOS release
+(https://github.com/llvm/llvm-project/releases/tag/llvmorg-19.1.7), unchanged: Apache-2.0 WITH
+LLVM-exception, as kpp.
 "@ | Set-Content "$kpp\NOTICE-toolchain.txt"
 
 # FreeBSD 14.3's sysroot, so that `--target freebsd` builds as installed (kpp takes sysroots\NAME beside
@@ -297,6 +306,18 @@ try
   if ($code -ne 0 -or $macho.Count -lt 8 -or $macho[0] -ne 0xcf -or $macho[1] -ne 0xfa -or $macho[2] -ne 0xed -or $macho[3] -ne 0xfe -or
       $macho[4] -ne 0x0c -or $macho[7] -ne 0x01) { throw "the packaged kpp did not link a macOS program with its bundled toolchain:`n$output" }
   Write-Output "smoke test: --target macos linked a Mach-O arm64 program with the bundled toolchain's ld64.lld (the repository's stand-in SDK)"
+  # And --sanitize address there: the package's AddressSanitizer runtime linked by its @rpath name, and
+  # copied beside the executable, which looks for it there (@executable_path).
+  $asan = "$smoke\macos-asan"
+  New-Item -ItemType Directory -Force $asan | Out-Null
+  $ErrorActionPreference = 'Continue'
+  $output = (& "$kpp\kpp.exe" --no-std --target macos --sysroot $macSdk --sanitize address --exe "$asan\program" "$repository\compiler\tests\spec\kpp\macos_sanitize_address_takes_its_runtime_along.kpp" 2>&1 | ForEach-Object { "$_" }) -join "`n"
+  $code = $LASTEXITCODE
+  $ErrorActionPreference = 'Stop'
+  $image = if (Test-Path "$asan\program") { [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes("$asan\program")) } else { '' }
+  if ($code -ne 0 -or -not $image.Contains('@rpath/libclang_rt.asan_osx_dynamic.dylib') -or -not $image.Contains('@executable_path') -or
+      -not (Test-Path "$asan\libclang_rt.asan_osx_dynamic.dylib")) { throw "the packaged kpp did not build a macOS program with --sanitize address and its runtime beside it:`n$output" }
+  Write-Output "smoke test: --target macos --sanitize address linked the package's AddressSanitizer runtime and put it beside the program"
   # In the project's directory, as kovarex ran it: the version, never a build.
   $printed = (& "$kpp\kpp.exe" --version 2>&1 | ForEach-Object { "$_" }) -join "`n"
   if ($LASTEXITCODE -ne 0 -or $printed -notmatch "^kpp $([regex]::Escape($Version))" -or

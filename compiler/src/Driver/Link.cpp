@@ -42,25 +42,55 @@ void requireLld()
   codegenExit = 1;
 }
 
+std::filesystem::path macAddressSanitizerRuntime()
+{
+  const char* name = "libclang_rt.asan_osx_dynamic.dylib";
+  std::error_code ec;
+  std::filesystem::path own = compilerPath().parent_path() / "lib" / "clang" / "19" / "lib" / "darwin" / name;
+  if (std::filesystem::is_regular_file(own, ec))
+    return own;
+  // Else its clang's own, in that clang's resource directory (BIN/../lib/clang/VERSION/lib/darwin): a Mac's
+  // LLVM has one (Homebrew's llvm@19, KPP_CLANG on CI's Mac), Visual Studio's and llvm-mingw's none. The
+  // newest version's when there are several.
+  std::string clang = clangPath();
+  std::vector<std::filesystem::path> found;
+  if (!clang.empty())
+    for (const std::filesystem::path& bin : {std::filesystem::path(clang).parent_path(), std::filesystem::canonical(clang, ec).parent_path()})
+      if (!bin.empty())
+        for (const std::filesystem::directory_entry& version : std::filesystem::directory_iterator(bin.parent_path() / "lib" / "clang", ec))
+          if (std::filesystem::path runtime = version.path() / "lib" / "darwin" / name; std::filesystem::is_regular_file(runtime, ec))
+            found.push_back(runtime);
+  std::sort(found.begin(), found.end());
+  return found.empty() ? own : found.back(); // (none: kpp's own place, which the error names)
+}
+
 // --sanitize address for windows-gnu: MinGW-w64's AddressSanitizer is a DLL only (llvm-mingw's
 // libclang_rt.asan_dynamic-x86_64.dll, beside its clang, which needs that toolchain's libc++.dll and
-// libunwind.dll), so the executable gets a copy of each beside it and runs from anywhere. MSVC's and
-// Linux's runtimes are linked statically: nothing to place.
+// libunwind.dll), so the executable gets a copy of each beside it and runs from anywhere. macOS's is a
+// dylib only, LLVM's libclang_rt.asan_osx_dynamic.dylib, which the executable looks for beside itself
+// (@executable_path): a copy goes there too. MSVC's and Linux's runtimes are linked statically: nothing
+// to place.
 void placeSanitizerRuntime(const Options& options)
 {
-  if (!options.sanitizeAddress || !options.target.gnu || options.exe.empty())
+  if (!options.sanitizeAddress || !(options.target.gnu || options.target.mac()) || options.exe.empty())
     return;
   std::error_code ec;
   std::filesystem::path clang = std::filesystem::canonical(clangPath(), ec);
   std::filesystem::path into = std::filesystem::absolute(options.exe, ec).parent_path();
   std::filesystem::create_directories(into, ec);
-  for (const char* name : {"libclang_rt.asan_dynamic-x86_64.dll", "libc++.dll", "libunwind.dll"})
+  std::vector<std::filesystem::path> runtime;
+  if (options.target.mac())
+    runtime.push_back(macAddressSanitizerRuntime());
+  else
+    for (const char* name : {"libclang_rt.asan_dynamic-x86_64.dll", "libc++.dll", "libunwind.dll"})
+      runtime.push_back(clang.parent_path() / name);
+  for (const std::filesystem::path& from : runtime)
   {
-    std::filesystem::path from = clang.parent_path() / name;
+    std::string name = from.filename().string();
     if (!std::filesystem::exists(from, ec))
     {
-      fprintf(stderr, "error: --sanitize address for %s needs AddressSanitizer's runtime, %s, beside %s, which has none\n", options.target.name.c_str(), name,
-              clang.string().c_str());
+      fprintf(stderr, "error: --sanitize address for %s needs AddressSanitizer's runtime, %s, beside %s, which has none\n", options.target.name.c_str(),
+              name.c_str(), from.parent_path().string().c_str());
       codegenExit = 1;
       return;
     }

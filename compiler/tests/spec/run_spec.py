@@ -432,6 +432,18 @@ def build_and_run(path, area, name, work):
             if magic != MACHO_MAGIC:
                 result["status"] = "FAIL"; result["note"] = f"the link wrote no 64-bit Mach-O executable (its first bytes {magic.hex()})"
                 return finish(result)
+            # --sanitize address: AddressSanitizer's runtime, a dylib the executable names by @rpath, beside it,
+            # where the executable looks (an @executable_path rpath).
+            if re.search(r"--sanitize[ =]\S*address", info["kpp"] + " " + " ".join(EXTRA)):
+                runtime = "libclang_rt.asan_osx_dynamic.dylib"
+                with open(exe, "rb") as f:
+                    image = f.read()
+                if not os.path.exists(os.path.join(os.path.dirname(exe), runtime)):
+                    result["status"] = "FAIL"; result["note"] = f"no {runtime} beside the executable"
+                    return finish(result)
+                if b"@rpath/" + runtime.encode() not in image or b"@executable_path" not in image:
+                    result["status"] = "FAIL"; result["note"] = f"the executable does not load {runtime} from beside itself (@rpath, @executable_path)"
+                    return finish(result)
         result["status"] = "built"
         return result
     if TARGET == "freebsd":
@@ -654,6 +666,10 @@ def apply_known_freebsd(results, whole, path=KNOWN_FREEBSD, bundle=True):
             line = line.split("#", 1)[0].strip()
             if line:
                 kind, name, *why = line.split(None, 2)
+                # (area/name@TARGET: a failure of that target alone, as macos-x64's beside macos)
+                name, _, only = name.partition("@")
+                if only and only != TARGET:
+                    continue
                 known[name] = (kind, why[0] if why else "")
     seen = set()
     runs = []

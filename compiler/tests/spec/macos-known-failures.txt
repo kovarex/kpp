@@ -1,9 +1,10 @@
 # macOS's known failures: the spec built for macos and macos-x64 (run_spec.py --target macos,
 # macos-x64; CI's macos_build, ci.yml): every snippet's modules compiled to Mach-O objects and linked
 # with ld64.lld (with the stand-in SDK the link is deferred unless the snippet names its own SDK). One
-# line each, for both:
+# line each, for both, or for one target with @TARGET after the name:
 #   build area/name  why   the snippet does not build for macOS yet
+#   build area/name@macos-x64  why   ... for macos-x64 alone (macos builds it)
 # A known failure is reported as "known"; one that starts working fails the run until its line goes,
 # and so does a line naming no snippet. With the stand-in SDK (no KPP_SDK_MACOS) a snippet that imports
 # C headers is skipped. None on 2026-11-09: 1435 built for each target, 293 skipped.
-build kpp/sanitize_config_constants  --sanitize address: kpp has no AddressSanitizer runtime for macOS (an error, not a link without it)
+build kpp/sanitize_config_constants@macos-x64  --sanitize address: kpp brings AddressSanitizer's runtime for macOS arm64 only (LLVM's x86-64 one needs macOS 13.7; an error, not a link without it)

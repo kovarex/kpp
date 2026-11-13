@@ -669,11 +669,28 @@ int compile(int argc, char** argv)
       fprintf(stderr, "--sanitize thread: ThreadSanitizer has a runtime for Linux only, not for --target %s\n", options.target.name.c_str());
       return 2;
     }
-    if (options.sanitizeAddress && options.target.os != Target::Os::Windows && options.target.os != Target::Os::Linux)
+    if (options.sanitizeAddress && options.target.os != Target::Os::Windows && options.target.os != Target::Os::Linux &&
+        !(options.target.mac() && options.target.arm64()))
     {
-      fprintf(stderr, "--sanitize address: AddressSanitizer's runtime for --target %s is not in kpp's toolchain (Windows' and Linux' are)\n",
+      fprintf(stderr, "--sanitize address: AddressSanitizer's runtime for --target %s is not in kpp's toolchain (Windows', Linux' and macOS arm64's are)\n",
               options.target.name.c_str());
       return 2;
+    }
+    // macOS arm64's is LLVM's own, which kpp brings beside itself (Visual Studio's and llvm-mingw's clangs
+    // have none), or its clang's (a Mac's LLVM): a build of kpp with neither is told where it comes from,
+    // never a link that fails on its path.
+    if (options.sanitizeAddress && options.target.mac())
+    {
+      std::error_code ec;
+      if (std::filesystem::path runtime = macAddressSanitizerRuntime(); !std::filesystem::is_regular_file(runtime, ec))
+      {
+        fprintf(stderr,
+                "--sanitize address for --target %s needs AddressSanitizer's runtime for macOS, which is neither at %s nor in its "
+                "clang's resource directory: a release of kpp has it; for a build of kpp, tools\\sysroot\\llvm-macos.ps1 puts it "
+                "there, or KPP_CLANG names a clang that has it (on a Mac, Homebrew's llvm@19)\n",
+                options.target.name.c_str(), runtime.string().c_str());
+        return 2;
+      }
     }
     for (const char* name : {"sanitizeAddress", "sanitizeThread", "sanitizeUndefined", "sanitizeOverflow"})
       if (options.configValues.count(name))
@@ -690,6 +707,15 @@ int compile(int argc, char** argv)
       std::string flag = options.sanitizeAddress ? "-fsanitize=address" : "-fsanitize=thread";
       options.clangFlags += (options.clangFlags.empty() ? "" : " ") + flag;
       options.libs.push_back(flag);
+      // macOS: the runtime by its path, not from clang's resource directory (which has none), and an
+      // executable that looks for it beside itself (the dylib's name is @rpath/...), where kpp copies it
+      // (placeSanitizerRuntime): a program runs on a Mac wherever it is copied with it.
+      if (options.target.mac())
+      {
+        options.libs.push_back("-fno-sanitize-link-runtime");
+        options.libs.push_back(macAddressSanitizerRuntime().string());
+        options.libs.push_back("-Wl,-rpath,@executable_path");
+      }
       // (AddressSanitizer's runtime exports its interface from the executable, so link.exe would write an
       // import library and an .exp beside it, and say so on every build; lld-link, an optimized build's
       // and the bundled toolchain's, takes /NOIMPLIB and has no /NOEXP)

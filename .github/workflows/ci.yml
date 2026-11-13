@@ -428,6 +428,20 @@ jobs:
           name: kpp
           path: compiler/build
 
+      # AddressSanitizer's runtime for macOS arm64 beside kpp (tools\sysroot\llvm-macos.ps1: one file of
+      # LLVM's 1.4 GB macOS release), which --sanitize address for --target macos links and copies: kept
+      # in the cache under the script's hash (which pins the archive's and the file's SHA-256), so that a
+      # hit downloads nothing.
+      - name: macOS AddressSanitizer runtime cache
+        uses: actions/cache@v4
+        with:
+          path: compiler/build/lib/clang/19/lib/darwin
+          key: llvm-macos-asan-${{ hashFiles('tools/sysroot/llvm-macos.ps1') }}
+
+      - name: macOS AddressSanitizer runtime
+        shell: powershell
+        run: tools\sysroot\llvm-macos.ps1
+
       - name: spec built for macOS
         shell: powershell
         run: |
@@ -582,6 +596,14 @@ jobs:
         with:
           path: compiler/build/sysroots/freebsd-x86_64
           key: freebsd-sysroot-${{ hashFiles('tools/sysroot/freebsd.ps1') }}
+
+      # AddressSanitizer's runtime for macOS arm64, which the package carries (package.ps1 runs
+      # tools\sysroot\llvm-macos.ps1): macos_build's cache, so that a hit downloads nothing from LLVM.
+      - name: macOS AddressSanitizer runtime cache
+        uses: actions/cache@v4
+        with:
+          path: compiler/build/lib/clang/19/lib/darwin
+          key: llvm-macos-asan-${{ hashFiles('tools/sysroot/llvm-macos.ps1') }}
 
       # The package's version is kpp's own (docs/build.md, "Versions": VERSION and the commits since it
       # changed), which package.ps1 takes from kpp --version; never "+dirty" or unknown here. A push

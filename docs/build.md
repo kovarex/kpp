@@ -165,8 +165,19 @@ at all: UBSan's checks are written by clang's front end, not by an LLVM pass, so
   interface from the executable, and link.exe would write an import library beside it on every
   build). windows-gnu: MinGW-w64's ASan is a DLL only, so kpp copies llvm-mingw's
   `libclang_rt.asan_dynamic-x86_64.dll`, `libc++.dll` and `libunwind.dll` beside the executable.
-  Linux: clang links it statically (Ubuntu's clang-19 has it in libclang-rt-19-dev). FreeBSD and
-  macOS: an error, kpp's toolchain has no runtime for them.
+  Linux: clang links it statically (Ubuntu's clang-19 has it in libclang-rt-19-dev). macOS arm64
+  (2026-11-13, kovarex: "as little friction as possible"): ASan is a dylib only, LLVM 19.1.7's
+  `libclang_rt.asan_osx_dynamic.dylib`, which no clang kpp builds with has, so kpp brings it at its
+  place in clang's resource directory beside itself, `lib\clang\19\lib\darwin\` (a release's own,
+  1.1 MB; in a build of kpp `tools\sysroot\llvm-macos.ps1` puts it there: the one file taken from LLVM's
+  1.4 GB macOS release, pinned by the SHA-256 LLVM attests, the archive deleted after). Without one
+  beside it kpp takes its clang's own, from that clang's resource directory (on a Mac, Homebrew's
+  llvm@19 has it: CI's macos_host runs the ASan snippets natively with it). The link takes
+  it by that path (`-fno-sanitize-link-runtime`: clang would look in its own resource directory), the
+  executable names it `@rpath/libclang_rt.asan_osx_dynamic.dylib` and looks beside itself (an
+  `@executable_path` rpath), and kpp copies it there, so the program runs on a Mac wherever it is
+  copied with it. Without the file a build says where it belongs and where it comes from. FreeBSD and
+  macos-x64: an error, kpp's toolchain has no runtime for them (LLVM's x86-64 one needs macOS 13.7).
 - C libraries kpp compiles and the prebuilt libraries it links are not instrumented (a
   configuration's `cFlag("-fsanitize=address")` adds kpp's C libraries); their memory still comes
   from ASan's malloc.
@@ -1157,6 +1168,8 @@ kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a 
   two .cfg files; and ld.lld.exe again as ld64.lld.exe, the name clang's Darwin driver runs for
   `-fuse-ld=lld`, from which lld takes its Mach-O driver: without it an installed kpp's build for
   macOS stopped at the link, 2026-11-13), `include\`, `lib\clang\19\include\`,
+  `lib\clang\19\lib\darwin\libclang_rt.asan_osx_dynamic.dylib` (macOS arm64's AddressSanitizer, LLVM's
+  own, not llvm-mingw's: "Sanitizers" above),
   `lib\clang\19\lib\windows\libclang_rt.builtins-x86_64.a`, `x86_64-w64-mingw32\lib\` and
   `x86_64-w64-mingw32\share\mingw32\` (MinGW-w64's COPYING files). Also included:
   `LICENSE-llvm-mingw.txt` (the archive's LICENSE.TXT) and `NOTICE-toolchain.txt`, which gives each
@@ -1180,7 +1193,9 @@ kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a 
   Then, with the same environment, `--target freebsd` builds an ELF FreeBSD program with the
   package's sysroot, and `--target macos` links the spec's macos_stdlib_compiles_to_mach_o_objects
   into a Mach-O arm64 executable with the bundled toolchain's ld64.lld, against the repository's
-  stand-in SDK (a user brings a real one).
+  stand-in SDK (a user brings a real one), and with `--sanitize address`
+  macos_sanitize_address_takes_its_runtime_along, which must load the package's ASan runtime by its
+  @rpath name and find it copied beside itself.
 
   It then writes the zip, and the installer when Inno Setup 6 is installed (`-IsccPath` names an
   ISCC elsewhere). kpp-vscode.vsix needs Node.js (npm). Without npm, a package made by hand leaves it out,

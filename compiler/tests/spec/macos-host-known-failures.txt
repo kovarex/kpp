@@ -4,12 +4,8 @@
 # A known failure is reported as "known"; one that starts passing fails the run until its line goes, and
 # so does a line naming no snippet. The first run on a Mac also found thread_local accesses crashing and a
 # release build's exceptions failing on macOS arm64 (36 snippets), fixed by B's 72892205d.
-#
-# AddressSanitizer: the toolchain kpp finds on a Mac has no runtime for macOS that kpp takes (Homebrew's
-# LLVM brings libclang_rt.asan_osx_dynamic.dylib); --sanitize address is an error that says so.
-fails kpp/sanitize_address_stack_overflow_stops  no AddressSanitizer runtime for macOS
-fails kpp/sanitize_address_use_after_free_stops  no AddressSanitizer runtime for macOS
-fails kpp/sanitize_config_constants  no AddressSanitizer runtime for macOS
+# AddressSanitizer's three snippets pass on a Mac since kpp takes its clang's runtime there (Homebrew's
+# llvm@19 has libclang_rt.asan_osx_dynamic.dylib) and copies it beside the program (B, 2026-11-13).
 #
 # Another host's check: on a Mac kpp takes the Mac's own SDK (xcrun) when neither --sysroot nor SDKROOT
 # names one, so the build this snippet expects to be refused builds.
