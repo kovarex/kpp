@@ -420,6 +420,11 @@ atvis.ps1 checks Match, `{left} vs {right}`.
   tests
 atvis.ps1 checks Signal, the game's SignalIDBase; debugger-check.ps1 saw `{part gear}`, `{fluid water}`,
   `{part }` and `reaches abort()` in Visual Studio.
+- **Short rules** (2026-11-13): a case of a choice is translated knowing its condition and that no earlier
+  case's holds, so a switch on the same value inside takes the one case they pick (`X == 4` known: `case 4`
+  alone, `case 3` left out); a condition says each part once and leaves out `!(X == 3)` beside `X == 4`;
+  parentheses only where precedence needs them (`(double)value * 0.25`, not `(double)(value) * 0.25`). The
+  game's SignalIDBase rule: 25 KB before, 7.2 KB after, 27 DisplayStrings either way.
 - **A class's static data member** is read too, a global the program writes, by its name in the debug information:
   `Registry<T>::all[this.index]->name` in Handle<Part> is `{Registry<Part>::all.items[index]->name,sb}` (an element of
   the library's Vector is its `items[i]`, of a pointer or array `[i]`). The game's ID<T> shows its prototype's name so
@@ -483,6 +488,9 @@ What stays C++'s: in Locals the `this` row is the pointer, and "Add Watch" on a 
 (which evaluates). A bare `this` is the pointer. The debug information cannot change that: giving its
 `this` variable a reference type left it as it was (tried 2026-11-07 on kpp ac6731fd), so kpp writes `this`
 as a pointer, as clang does.
+
+The rules are the PDB's, so VS Code's C++ debugger on Windows (cppvsdbg, Visual Studio's engine) shows them
+too: kovarex checked it on 2026-11-12. GDB and LLDB read no natvis (design.md 26, Open).
 
 VS Code's debugger loads no kpp extension: there, `this.x` is still an error or a wrong value (C++'s
 evaluator reads `this.count` as a static member's), and `this->x` or `x` is what works.

@@ -164,10 +164,216 @@ namespace
     std::shared_ptr<std::vector<std::pair<std::string, std::string>>> asserts = {};
     // The [[noreturn]] call the cases of the body last translated end in, when they do (apply's abort()).
     Stmt* noReturn = nullptr;
+    // What holds where the code being translated runs, each part of a condition written as canonicalAtom
+    // does (`X == 2`, `!(X == 0)`): a switch on X takes the case they pick (SignalIDBase's getName inside
+    // typeToStr's case for a type: the one prototype list, not a choice of eight).
+    std::vector<std::string> known = {};
     // Where the code being translated runs: the conditions of the cases on its way (getPointer only where an ID's
     // getName has passed `index == 0`), which an assert's failure holds only together with. Empty: always.
     std::string reached = {};
   };
+
+  // Whether s is enclosed by one pair of parentheses, the first closing at the end.
+  bool enclosed(const std::string& s)
+  {
+    if (s.size() < 2 || s.front() != '(' || s.back() != ')')
+      return false;
+    int depth = 0;
+    bool quoted = false;
+    for (size_t i = 0; i < s.size(); ++i)
+    {
+      char c = s[i];
+      if (quoted)
+      {
+        if (c == '\\')
+          ++i;
+        else if (c == '"')
+          quoted = false;
+        continue;
+      }
+      if (c == '"')
+        quoted = true;
+      else if (c == '(')
+        ++depth;
+      else if (c == ')' && --depth == 0)
+        return i == s.size() - 1;
+    }
+    return false;
+  }
+
+  // s without the parentheses that enclose all of it.
+  std::string bare(std::string s)
+  {
+    while (enclosed(s))
+      s = s.substr(1, s.size() - 2);
+    return s;
+  }
+
+  // s is one operand without parentheses: a name, a number, a member or an element of one (`a.b->c[i]`), a
+  // string, or enclosed.
+  bool primary(const std::string& s)
+  {
+    if (s.empty())
+      return false;
+    if (enclosed(s) || (s.size() >= 2 && s.front() == '"' && s.back() == '"' && s.find('"', 1) == s.size() - 1))
+      return true;
+    if (s[0] == '-' || s[0] == '.')
+      return false;
+    for (size_t i = 0; i < s.size(); ++i)
+    {
+      char c = s[i];
+      if (c == '-' && i + 1 < s.size() && s[i + 1] == '>')
+      {
+        ++i;
+        continue;
+      }
+      if (!(std::isalnum((unsigned char)c) || c == '_' || c == ':' || c == '.' || c == '<' || c == '>' || c == '[' || c == ']'))
+        return false;
+    }
+    return true;
+  }
+
+  // s as an operand: in parentheses only where it needs them (natvis reads `a.b`, not `((a)).b`).
+  std::string wrap(const std::string& s)
+  {
+    std::string b = bare(s);
+    return primary(b) ? b : "(" + b + ")";
+  }
+
+  // The places of token in s outside parentheses, brackets and strings.
+  std::vector<size_t> topLevel(const std::string& s, const std::string& token)
+  {
+    std::vector<size_t> at;
+    int depth = 0;
+    bool quoted = false;
+    for (size_t i = 0; i < s.size(); ++i)
+    {
+      char c = s[i];
+      if (quoted)
+      {
+        if (c == '\\')
+          ++i;
+        else if (c == '"')
+          quoted = false;
+        continue;
+      }
+      if (c == '"')
+        quoted = true;
+      else if (c == '(' || c == '[')
+        ++depth;
+      else if (c == ')' || c == ']')
+        --depth;
+      else if (depth == 0 && s.compare(i, token.size(), token) == 0)
+        at.push_back(i);
+    }
+    return at;
+  }
+
+  // A condition's parts that all hold, `a && (b && c)` as a, b, c (one part where an `||` or a `?:` decides).
+  void conditionAtoms(const std::string& condition, std::vector<std::string>& out)
+  {
+    std::string s = bare(condition);
+    if (s.empty())
+      return;
+    std::vector<size_t> ands = topLevel(s, " && ");
+    if (ands.empty() || !topLevel(s, " || ").empty() || !topLevel(s, " ? ").empty())
+    {
+      out.push_back(s);
+      return;
+    }
+    size_t from = 0;
+    for (size_t at : ands)
+    {
+      conditionAtoms(s.substr(from, at - from), out);
+      from = at + 4;
+    }
+    conditionAtoms(s.substr(from), out);
+  }
+
+  // One part of a condition, written the same way wherever it comes from: `X == 1` with X bare, `!(...)` of one.
+  std::string canonicalAtom(const std::string& atom)
+  {
+    std::string s = bare(atom);
+    if (s.size() > 3 && s[0] == '!' && enclosed(s.substr(1)))
+      return "!(" + canonicalAtom(s.substr(1)) + ")";
+    std::vector<size_t> eq = topLevel(s, " == ");
+    if (eq.size() == 1 && topLevel(s, " && ").empty() && topLevel(s, " || ").empty() && topLevel(s, " ? ").empty())
+      return bare(s.substr(0, eq[0])) + " == " + bare(s.substr(eq[0] + 4));
+    return s;
+  }
+
+  // `X == N` with N an integer: X and N.
+  bool equalsNumber(const std::string& atom, std::string& subject, std::string& number)
+  {
+    std::vector<size_t> eq = topLevel(atom, " == ");
+    if (eq.size() != 1 || !topLevel(atom, " && ").empty() || !topLevel(atom, " || ").empty() || !topLevel(atom, " ? ").empty())
+      return false;
+    number = bare(atom.substr(eq[0] + 4));
+    if (number.empty() || !std::all_of(number.begin() + (number[0] == '-' ? 1 : 0), number.end(), [](char c) { return std::isdigit((unsigned char)c); }))
+      return false;
+    subject = bare(atom.substr(0, eq[0]));
+    return true;
+  }
+
+  // A condition with its parts once each, leaving out `!(X == M)` beside `X == N` (a switch's earlier cases
+  // beside its own: `type == 6` says it is no other type), its parentheses only where they are needed.
+  std::string simplifyCondition(const std::string& condition)
+  {
+    std::vector<std::string> atoms, kept;
+    conditionAtoms(condition, atoms);
+    std::vector<std::pair<std::string, std::string>> equal;
+    for (std::string& atom : atoms)
+    {
+      atom = canonicalAtom(atom);
+      std::string subject, number;
+      if (equalsNumber(atom, subject, number))
+        equal.push_back({subject, number});
+    }
+    for (const std::string& atom : atoms)
+    {
+      if (std::find(kept.begin(), kept.end(), atom) != kept.end())
+        continue;
+      std::string subject, number;
+      if (atom.size() > 3 && atom[0] == '!' && equalsNumber(bare(atom.substr(1)), subject, number) &&
+          std::any_of(equal.begin(), equal.end(), [&](const auto& e) { return e.first == subject && e.second != number; }))
+        continue;
+      kept.push_back(atom);
+    }
+    std::string out;
+    for (const std::string& atom : kept)
+      out += (out.empty() ? "" : " && ") + (topLevel(atom, " || ").empty() && topLevel(atom, " ? ").empty() ? atom : "(" + atom + ")");
+    return out;
+  }
+
+  // Facts that hold where a case is taken: its condition's parts, and that each earlier case's does not
+  // (`X == 2` and `!(X == 0)`, `!(X == 1)`): a switch on X inside takes its one case (design.md 26).
+  std::vector<std::string> caseFacts(const std::vector<std::string>& known, const std::vector<std::string>& whens, const std::vector<bool>& conditional, size_t i)
+  {
+    std::vector<std::string> facts = known;
+    for (size_t k = 0; k < i; ++k)
+      if (conditional[k])
+      {
+        std::string s = bare(whens[k]);
+        std::vector<size_t> ors = topLevel(s, " || ");
+        if (!topLevel(s, " && ").empty() || !topLevel(s, " ? ").empty())
+          continue;
+        size_t from = 0;
+        ors.push_back(s.size());
+        for (size_t at : ors)
+        {
+          facts.push_back(canonicalAtom("!(" + s.substr(from, at - from) + ")"));
+          from = at + 4;
+        }
+      }
+    if (i < whens.size() && conditional[i])
+    {
+      std::vector<std::string> atoms;
+      conditionAtoms(whens[i], atoms);
+      for (const std::string& atom : atoms)
+        facts.push_back(canonicalAtom(atom));
+    }
+    return facts;
+  }
 
   // Both conditions, either of them empty for none.
   std::string reachedAnd(const std::string& a, const std::string& b)
@@ -374,6 +580,7 @@ namespace
   bool natvisObject(DebugValue& v, Expr* e, std::shared_ptr<ObjectValue>& out);
   bool lambdaCall(DebugValue& v, CallExpr* call, const LambdaValue& lambda, std::string& out);
   std::string objectPath(const DebugValue& v);
+  std::string noValue(DebugValue& v, const Ty* result);
   bool noReturnEnd(DebugValue& inner, Node* at, const std::vector<std::string>& whens, std::vector<bool>& conditional);
   std::string asResult(DebugValue& v, const Ty* result, Expr* value, const std::string& one);
   const Ty* calledClass(DebugValue& v, NameExpr* n, FunctionDecl* f);
@@ -503,6 +710,8 @@ namespace
         std::vector<std::string> labels;
         bool isDefault = false;
         Expr* fallback = nullptr;
+        size_t switchFirst = cases.size();
+        std::vector<std::vector<std::string>> switchLabels; // (each case's)
         for (Stmt* inner : static_cast<BlockStmt*>(sw->body)->stmts)
         {
           if (inner->kind == NodeKind::CaseStmt)
@@ -538,6 +747,7 @@ namespace
             for (const std::string& label : labels)
               condition += (condition.empty() ? "" : " || ") + subject + " == " + label;
             cases.push_back({nullptr, value, labels.size() > 1 ? "(" + condition + ")" : condition});
+            switchLabels.push_back(labels);
           }
           labels.clear();
           isDefault = false;
@@ -546,6 +756,54 @@ namespace
           return fail(v, s, "a case label without its `return EXPRESSION;`");
         if (fallback)
           cases.push_back({nullptr, fallback});
+        if (!v.known.empty())
+        {
+          // What is known picks the case (`X == 2`: that case alone) or leaves cases out (`!(X == 0)`).
+          auto isKnown = [&](const std::string& atom)
+          {
+            std::string fact = canonicalAtom(atom), subject, number, knownSubject, knownNumber;
+            if (std::find(v.known.begin(), v.known.end(), fact) != v.known.end())
+              return true;
+            // (`!(X == 3)` where `X == 4` is known)
+            if (fact.size() > 3 && fact[0] == '!' && equalsNumber(bare(fact.substr(1)), subject, number))
+              for (const std::string& known : v.known)
+                if (equalsNumber(known, knownSubject, knownNumber) && knownSubject == subject && knownNumber != number)
+                  return true;
+            return false;
+          };
+          std::vector<DebugCase> kept(cases.begin(), cases.begin() + switchFirst);
+          bool decided = false;
+          for (size_t i = switchFirst; i < cases.size() && !decided; ++i)
+          {
+            if (!cases[i].conditional())
+            {
+              kept.push_back(cases[i]);
+              decided = true;
+              break;
+            }
+            std::string labelsLeft;
+            for (const std::string& label : switchLabels[i - switchFirst])
+            {
+              std::string equal = subject + " == " + label;
+              if (isKnown(equal))
+              {
+                kept.push_back({nullptr, cases[i].second});
+                decided = true;
+                break;
+              }
+              if (!isKnown("!(" + equal + ")"))
+                labelsLeft += (labelsLeft.empty() ? "" : " || ") + equal;
+            }
+            if (!decided && !labelsLeft.empty())
+              kept.push_back({nullptr, cases[i].second, topLevel(labelsLeft, " || ").empty() ? labelsLeft : "(" + labelsLeft + ")"});
+          }
+          cases = std::move(kept);
+          if (decided)
+          {
+            todo.clear(); // (the statements after it are not reached)
+            continue;
+          }
+        }
       }
       else if (s->kind == NodeKind::DeclStmt && !static_cast<DeclStmt*>(s)->decls.empty() &&
                std::all_of(static_cast<DeclStmt*>(s)->decls.begin(), static_cast<DeclStmt*>(s)->decls.end(),
@@ -568,6 +826,11 @@ namespace
       }
       else
         return fail(v, s, "a statement other than `if (CONDITION) return EXPRESSION;` and `return EXPRESSION;`");
+    }
+    if (cases.empty() && noReturnEnd && endsNowhere)
+    {
+      *endsNowhere = true; // (every case ruled out by what is known: the [[noreturn]] end alone)
+      return true;
     }
     if (cases.empty() || (cases.back().conditional() && !(noReturnEnd && endsNowhere)))
       return fail(v, f, "no `return EXPRESSION;` at its end");
@@ -658,7 +921,7 @@ namespace
     for (const auto& [member, value] : (object ? object : v.object.get())->members)
       if (member == name)
       {
-        out = "(" + value + ")";
+        out = wrap(value);
         return true;
       }
     return fail(v, at, "the member " + name + " of a value the code makes, which its construction does not set");
@@ -715,10 +978,10 @@ namespace
     {
       if (!natvisExpression(v, objectExpr, base))
         return false;
-      if (base == "((*this))" && !arrow)
+      if (base == "(*this)" && !arrow)
         base.clear(); // (a parameter bound to the viewed object: `id.getIndex()` in getPointer(this) reads `index`)
       else
-        base += arrow ? "->" : ".";
+        base = wrap(base) + (arrow ? "->" : ".");
       object = objectExpr->ty ? types.unqualified(types.stripRef(objectExpr->ty)) : nullptr;
       if (object && arrow && object->kind == TyKind::Pointer)
         object = object->inner ? types.unqualified(object->inner) : nullptr;
@@ -767,6 +1030,7 @@ namespace
     inner.bound = std::move(c.bound);
     inner.object = c.object;
     inner.asserts = v.asserts;
+    inner.known = v.known;
     inner.reached = v.reached;
     std::vector<DebugCase> cases;
     bool endsNowhere = false;
@@ -809,12 +1073,16 @@ namespace
         done = noReturnEnd(inner, instance, whens, conditional);
       std::vector<std::string> reaches = done ? caseReaches(inner.reached, whens, conditional) : std::vector<std::string>();
       std::string callReached = inner.reached;
+      std::vector<std::string> callKnown = inner.known;
       const Ty* result = v.global.typeOfDeclIn(called, args);
       result = result && result->kind == TyKind::Function ? result->inner : nullptr;
+      if (done && cases.empty() && !characters)
+        rest = noValue(v, result);
       for (size_t i = cases.size(); done && i-- > 0;)
       {
         std::string one;
         inner.reached = reaches[i];
+        inner.known = caseFacts(callKnown, whens, conditional, i);
         if (!natvisExpression(inner, cases[i].second, one))
         {
           done = false;
@@ -824,9 +1092,10 @@ namespace
         rest = conditional[i] ? (rest.empty() ? one : "(" + whens[i] + " ? " + one + " : " + rest + ")") : one;
       }
       inner.reached = callReached;
+      inner.known = callKnown;
       if (done)
       {
-        out = "(" + rest + ")";
+        out = wrap(rest);
         return true;
       }
     }
@@ -851,7 +1120,7 @@ namespace
       return one; // (the same type, `const` or not)
     bool reference = false;
     std::string type = natvisCastType(v.global, v.symbols, r, reference);
-    return type.empty() ? one : "((" + type + ")(" + one + "))";
+    return type.empty() ? one : "(" + type + ")" + wrap(one);
   }
 
   // A body whose cases end in a [[noreturn]] call (apply's switch, then abort()): where none of them is taken the
@@ -865,8 +1134,20 @@ namespace
       if (conditional[i])
         none = reachedAnd(none, "!(" + whens[i] + ")");
     inner.asserts->push_back({none, "reaches " + statementText(inner, inner.noReturn)});
-    conditional.back() = false;
+    if (!conditional.empty())
+      conditional.back() = false;
     return true;
+  }
+
+  // The value of a call whose every case the known facts rule out: it reaches its [[noreturn]] end, which the
+  // rule shows before (`reaches abort()`, the same condition); a number of the result's type, never shown.
+  std::string noValue(DebugValue& v, const Ty* result)
+  {
+    TypeTable& types = v.global.types();
+    const Ty* r = result ? types.unqualified(types.stripRef(result)) : nullptr;
+    bool reference = false;
+    std::string type = r && r->kind == TyKind::Pointer ? natvisCastType(v.global, v.symbols, r, reference) : std::string();
+    return type.empty() ? "0" : "(" + type + ")0";
   }
 
   bool inlinedCall(DebugValue& v, CallExpr* c, std::string& out)
@@ -905,6 +1186,7 @@ namespace
     inner.bound = lambda.bound;
     inner.object = lambda.object;
     inner.asserts = v.asserts;
+    inner.known = v.known;
     inner.reached = v.reached;
     for (size_t i = 0; i < call->args.size(); ++i)
       if (!bindArgument(v, call->args[i], body->params[i], inner.bound))
@@ -925,10 +1207,14 @@ namespace
     if (done && endsNowhere)
       done = noReturnEnd(inner, call, whens, conditional);
     std::vector<std::string> reaches = done ? caseReaches(inner.reached, whens, conditional) : std::vector<std::string>();
+    std::vector<std::string> callKnown = inner.known;
+    if (done && cases.empty())
+      rest = noValue(v, call->ty);
     for (size_t i = cases.size(); done && i-- > 0;)
     {
       std::string one;
       inner.reached = reaches[i];
+      inner.known = caseFacts(callKnown, whens, conditional, i);
       if (!natvisExpression(inner, cases[i].second, one))
       {
         done = false;
@@ -939,7 +1225,7 @@ namespace
     }
     if (done)
     {
-      out = "(" + rest + ")";
+      out = wrap(rest);
       return true;
     }
     if (v.why.empty())
@@ -1005,6 +1291,7 @@ namespace
         inner.bound = std::move(call.bound);
         inner.object = call.object;
         inner.asserts = v.asserts;
+        inner.known = v.known;
         inner.reached = v.reached;
         std::vector<DebugCase> cases;
         if (!debugCases(inner, call.instance, cases) || cases.size() != 1 || cases[0].conditional() || !natvisObject(inner, cases[0].second, out))
@@ -1062,6 +1349,7 @@ namespace
         return fail(v, e, "a construction that leaves a parameter its default value");
       DebugValue inner{v.global, v.symbols, def->file, instance, classArgs, "", v.depth + 1, cls};
       inner.asserts = v.asserts;
+      inner.known = v.known;
       inner.reached = v.reached;
       for (size_t i = 0; i < constructorArgs.size(); ++i)
         if (!bindArgument(v, constructorArgs[i], instance->params[i], inner.bound))
@@ -1302,7 +1590,7 @@ namespace
       return false;
     else if (reference)
       inner = "&(" + inner + ")";
-    out = reference ? "(*(" + type + ")" + inner + ")" : "(" + type + ")(" + inner + ")";
+    out = reference ? "(*(" + type + ")" + inner + ")" : "(" + type + ")" + wrap(inner);
     return true;
   }
 
@@ -1345,7 +1633,7 @@ namespace
       std::string inner;
       if (!natvisExpression(v, static_cast<ParenExpr*>(e)->inner, inner))
         return false;
-      out = "(" + inner + ")";
+      out = wrap(inner);
       return true;
     }
     case NodeKind::NameExpr: // a data member, `this.` implicit
@@ -1357,7 +1645,7 @@ namespace
         const Bound* b = boundOf(v, d);
         if (b && !b->object && !b->lambda)
         {
-          out = "(" + b->expression + ")";
+          out = wrap(b->expression);
           return true;
         }
         return fail(v, e, b ? "an object or a lambda used as a value" : "a parameter of the function the debugger cannot call");
@@ -1411,7 +1699,7 @@ namespace
       std::string object, at;
       if (!natvisExpression(v, x->base, object) || !natvisExpression(v, x->args[0], at))
         return false;
-      out = object + (vector ? ".items[" : "[") + at + "]";
+      out = wrap(object) + (vector ? ".items[" : "[") + at + "]";
       return true;
     }
     case NodeKind::MemberExpr:
@@ -1443,10 +1731,10 @@ namespace
       std::string base;
       if (!natvisExpression(v, m->base, base))
         return false;
-      if (base == "((*this))" && m->op != P::Arrow)
+      if (base == "(*this)" && m->op != P::Arrow)
         out = v.prefix + name; // (`handle.index` with handle the viewed object: `index`)
       else
-        out = base + (m->op == P::Arrow ? "->" : ".") + name;
+        out = wrap(base) + (m->op == P::Arrow ? "->" : ".") + name;
       return true;
     }
     case NodeKind::UnaryExpr:
@@ -1702,12 +1990,14 @@ namespace
     inner.bound = std::move(c.bound);
     inner.object = c.object;
     inner.asserts = v.asserts;
+    inner.known = v.known;
     inner.reached = v.reached;
     std::vector<DebugCase> cases;
     bool endsNowhere = false;
     TextVariants piece;
     bool done = debugCases(inner, instance, cases, &endsNowhere);
     std::string callReached = inner.reached, notBefore;
+    std::vector<std::string> callKnown = inner.known, earlier;
     for (size_t i = 0; done && i < cases.size(); ++i)
     {
       std::string when = cases[i].text;
@@ -1718,13 +2008,26 @@ namespace
         break;
       }
       inner.reached = reachedAnd(callReached, reachedAnd(notBefore, cases[i].conditional() ? when : std::string()));
+      inner.known = callKnown;
+      for (const std::string& before : earlier)
+        inner.known.push_back(canonicalAtom("!(" + before + ")"));
+      if (cases[i].conditional())
+      {
+        std::vector<std::string> atoms;
+        conditionAtoms(when, atoms);
+        for (const std::string& atom : atoms)
+          inner.known.push_back(canonicalAtom(atom));
+      }
       if (!natvisText(inner, cases[i].second, one))
       {
         done = false;
         break;
       }
       if (cases[i].conditional())
+      {
         notBefore = reachedAnd(notBefore, "!(" + when + ")");
+        earlier.push_back(when);
+      }
       for (const auto& [condition, text] : one)
         piece.push_back({bothConditions(when, condition), text});
     }
@@ -1750,6 +2053,40 @@ namespace
       e = static_cast<ParenExpr*>(e)->inner;
     if (!e)
       return fail(v, e, "an expression the parser left out");
+    if (out.size() > 1 && !(e->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(e)->literalKind == TokenKind::String))
+    {
+      // After a choice (typeToStr's case per type): the piece once per variant, knowing that variant's
+      // condition and that no earlier one's holds, so a switch on the same value takes its one case
+      // (getName's prototype list for that type).
+      TextVariants all;
+      std::string reached = v.reached, notBefore;
+      std::vector<std::string> known = v.known;
+      for (size_t j = 0; j < out.size(); ++j)
+      {
+        TextVariants one{out[j]};
+        std::vector<std::string> whens, atoms;
+        std::vector<bool> conditional;
+        for (size_t k = 0; k <= j; ++k)
+        {
+          whens.push_back(out[k].first);
+          conditional.push_back(!out[k].first.empty());
+        }
+        v.known = caseFacts(known, whens, conditional, j);
+        v.reached = reachedAnd(reached, reachedAnd(notBefore, out[j].first));
+        bool done = natvisText(v, e, one);
+        v.known = known;
+        v.reached = reached;
+        if (!done)
+          return false;
+        if (!out[j].first.empty())
+          notBefore = reachedAnd(notBefore, "!(" + out[j].first + ")");
+        all.insert(all.end(), one.begin(), one.end());
+      }
+      if (all.size() > 32)
+        return fail(v, e, "a text of more than 32 variants (its choices multiply)");
+      out = std::move(all);
+      return true;
+    }
     TypeTable& types = v.global.types();
     auto append = [&](const std::string& text)
     {
@@ -2114,7 +2451,7 @@ namespace
           }
           for (const auto& [condition, display] : variants)
           {
-            std::string all = bothConditions(when, condition);
+            std::string all = simplifyCondition(bothConditions(when, condition));
             displays += "    <DisplayString" + (all.empty() ? std::string() : " Condition=\"" + escape(all) + "\"") + ">" + escape(display) + "</DisplayString>\n";
           }
           continue;
@@ -2146,7 +2483,7 @@ namespace
         std::string doubled;
         for (char ch : text)
           doubled += ch == '{' || ch == '}' ? std::string(2, ch) : std::string(1, ch);
-        assertsShown += "    <DisplayString Condition=\"" + escape(condition) + "\">" + escape(doubled) + "</DisplayString>\n";
+        assertsShown += "    <DisplayString Condition=\"" + escape(simplifyCondition(condition)) + "\">" + escape(doubled) + "</DisplayString>\n";
       }
       out = "  <Type Name=\"" + escape(d.name) + "\">\n" + reachedDisplays(assertsShown + displays);
       if (!items.empty())

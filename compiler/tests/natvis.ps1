@@ -60,32 +60,32 @@ if ($d) { "FAIL natvis: its rules differ from natvis\values.expected"; $names | 
 $types = @(([xml](Get-Content $natvis -Raw -Encoding UTF8)).AutoVisualizer.Type)
 $fixed = @($types | Where-Object { $_.Name -eq 'Fixed<8>' })[0]
 $item = @($types | Where-Object { $_.Name -eq 'Item' })[0]
-if (-not $fixed -or $fixed.DisplayString -ne '{(double)(value) * 0.00390625,g}') { "FAIL natvis: Fixed<8>'s debugValue rule is '$($fixed.DisplayString)'"; exit 1 }
+if (-not $fixed -or $fixed.DisplayString -ne '{(double)value * 0.00390625,g}') { "FAIL natvis: Fixed<8>'s debugValue rule is '$($fixed.DisplayString)'"; exit 1 }
 if (-not $item -or $item.DisplayString -ne '{name,sb}') { "FAIL natvis: Item's debugValue rule is '$($item.DisplayString)'"; exit 1 } # (a String: a text view)
 $load = @($types | Where-Object { $_.Name -eq 'Load' })[0]
 $shown = @($load.ChildNodes | Where-Object { $_.LocalName -eq 'DisplayString' } | ForEach-Object { "$($_.GetAttribute('Condition'))|$($_.InnerText)" }) -join ' '
-if ($shown -ne 'empty|{0,g} |{((double)(weight.value) * 0.000244140625) * 2,g}') { "FAIL natvis: Load's debugValue rule is '$shown'"; exit 1 }
+if ($shown -ne 'empty|{0,g} |{((double)weight.value * 0.000244140625) * 2,g}') { "FAIL natvis: Load's debugValue rule is '$shown'"; exit 1 }
 $angle = @($types | Where-Object { $_.Name -eq 'Angle' })[0]
-if (-not $angle -or $angle.DisplayString -ne '{((double)(value) * 2.3283064365386963e-10),g}') { "FAIL natvis: Angle's debugValue rule is '$($angle.DisplayString)'"; exit 1 }
+if (-not $angle -or $angle.DisplayString -ne '{((double)value * 2.3283064365386963e-10),g}') { "FAIL natvis: Angle's debugValue rule is '$($angle.DisplayString)'"; exit 1 }
 $force = @($types | Where-Object { $_.Name -eq 'Force' })[0]
 $shown = @($force.ChildNodes | Where-Object { $_.LocalName -eq 'DisplayString' } | ForEach-Object { "$($_.GetAttribute('Condition'))|$($_.InnerText)" }) -join ' '
 if ($shown -ne 'index == 1|player |{{index={(int)(index)}}}') { "FAIL natvis: Force's text view is '$shown'"; exit 1 }
 $stack = @($types | Where-Object { $_.Name -eq 'Stack' })[0]
 if (-not $stack -or $stack.DisplayString -ne '{count} x {name,sb} ({weight,g})') { "FAIL natvis: Stack's text view is '$($stack.DisplayString)'"; exit 1 }
 function Displays([string]$name) { @(@($types | Where-Object { $_.Name -eq $name })[0].ChildNodes | Where-Object { $_.LocalName -eq 'DisplayString' } | ForEach-Object { "$($_.GetAttribute('Condition'))|$($_.InnerText)" }) -join ' ' }
-foreach ($case in @(@('Heading', '|{(Heading::Enum)(value)}'), @('Shape', '|side {(*(Square*)this).side}'), @('Pointing<Square>', '|{(Square*)(target)}'),
+foreach ($case in @(@('Heading', '|{(Heading::Enum)value}'), @('Shape', '|side {(*(Square*)this).side}'), @('Pointing<Square>', '|{(Square*)target}'),
                     @('Short', 'onHeap == 0|{inPlace,s8b} onHeap == 2|(shared) |{heap,[length]s8b}'),
                     # the types' own names and conversions: a switch's signs (an end in abort(): ?), a comparison with a
                     # named constant, std::Text pieces and a choice between texts, a member's conversion to String
-                    @('Sign', "value == 0|> value == 1|< value == 2|$([char]0x2265) |?"), @('Team', '(index == 1)|red |{{index={(int)(index)}}}'),
-                    @('Release', '(branch.version != 0)|{(unsigned int)(major)}.{(unsigned int)(minor)} (branch) |{(unsigned int)(major)}.{(unsigned int)(minor)}'),
+                    @('Sign', "value == 0|> value == 1|< value == 2|$([char]0x2265) |?"), @('Team', 'index == 1|red |{{index={(int)(index)}}}'),
+                    @('Release', 'branch.version != 0|{(unsigned int)major}.{(unsigned int)minor} (branch) |{(unsigned int)major}.{(unsigned int)minor}'),
                     @('Station', '|{name.value,sb}'),
                     # another object's debugValue in a text: that object by its own rule
                     @('Match', '|{left} vs {right}'),
                     # the game's ID<T> through its real getName: a static data member by its debugger name, a Vector's
                     # element, `if constexpr`'s branch, a static function called with the object, its assert a case first
                     # where the code reaches it (getName calls getPrototype only for an index other than 0)
-                    @('Handle<Part>', '(!(index == 0)) && (!(index < (Registry<Part>::all.length)))|assert failed: handle.index < Registry<T>::all.size() index == 0|{{0}} |{{{index}, {((Registry<Part>::all.items[index]))->name,sb}}}'),
+                    @('Handle<Part>', '!(index == 0) && !(index < Registry<Part>::all.length)|assert failed: handle.index < Registry<T>::all.size() index == 0|{{0}} |{{{index}, {Registry<Part>::all.items[index]->name,sb}}}'),
                     # a set of flags: the names of the flags set, A | B | C, a chain of views a flag (OVERRIDE, a second
                     # name, left out), the bits no flag names last, {} when none; Visual Studio showed it (tools\vs\vsix\debugger-check.ps1)
                     @('Usage', '(__kpp_bits & 0x1) != 0 && (__kpp_bits & 0xfffffffffffffffe) != 0|UPGRADED | {*this,view(kpp1)} (__kpp_bits & 0x1) != 0|UPGRADED |{*this,view(kpp1)} (__kpp_bits & 0x4) != 0 && (__kpp_bits & 0xfffffffffffffffa) != 0|OWNED | {*this,view(kpp2)} (__kpp_bits & 0x4) != 0|OWNED |{*this,view(kpp2)} (__kpp_bits & 0x8) != 0 && (__kpp_bits & 0xfffffffffffffff2) != 0|LOOTED | {*this,view(kpp3)} (__kpp_bits & 0x8) != 0|LOOTED |{*this,view(kpp3)} |{(unsigned long long)(__kpp_bits & 0xfffffffffffffff2)} __kpp_bits == 0|{{}} |{*this,view(kpp0)}')))
@@ -95,13 +95,12 @@ foreach ($case in @(@('Heading', '|{(Heading::Enum)(value)}'), @('Shape', '|side
 }
 # The game's SignalIDBase: its view through its typeToStr and getName, getName's getPrototype through applyOrAbort's
 # generic lambda per type, which makes the type's Handle (getRaw<T>: T::fromIndex, a constructed value) and asks it
-# for its prototype; apply's abort() after its switch is shown where the code reaches it, like an assert.
+# for its prototype; apply's abort() after its switch is shown where the code reaches it, like an assert. In each
+# type's case only that type's list: getName is translated knowing typeToStr's case, so apply's switch takes its one
+# case; an assert's condition has no `!(type == 0)` beside `type == 1` (design.md 26).
 $shown = Displays 'Signal'
-foreach ($part in @('|reaches abort()', '|assert failed: handle.index < Registry<T>::all.size()', '(((Signal::Type)((unsigned char)(value >> 16)))) == 1 && value == 0|{{fluid }}',
-                    '(((Prototype*)(((Registry<Fluid>::all.items[((((unsigned short)(((unsigned short)(value))))))])))))'))
-{
-  if (-not $shown.Contains($part)) { "FAIL natvis: Signal's debugValue rule has no '$part': '$shown'"; exit 1 }
-}
+$want = '(Signal::Type)((unsigned char)(value >> 16)) == 0 && !(value == 0) && !(((unsigned short)((unsigned short)value)) < Registry<Part>::all.length)|assert failed: handle.index < Registry<T>::all.size() (Signal::Type)((unsigned char)(value >> 16)) == 1 && !(value == 0) && !(((unsigned short)((unsigned short)value)) < Registry<Fluid>::all.length)|assert failed: handle.index < Registry<T>::all.size() !((Signal::Type)((unsigned char)(value >> 16)) == 0) && !((Signal::Type)((unsigned char)(value >> 16)) == 1) && !(value == 0)|reaches abort() (Signal::Type)((unsigned char)(value >> 16)) == 0 && value == 0|{{part }} (Signal::Type)((unsigned char)(value >> 16)) == 0|{{part {((Prototype*)(Registry<Part>::all.items[((unsigned short)((unsigned short)value))]))->name,sb}}} (Signal::Type)((unsigned char)(value >> 16)) == 1 && value == 0|{{fluid }} (Signal::Type)((unsigned char)(value >> 16)) == 1|{{fluid {((Prototype*)(Registry<Fluid>::all.items[((unsigned short)((unsigned short)value))]))->name,sb}}} value == 0|{{? }} |{{? {((Prototype*)0)->name,sb}}}'
+if ($shown -ne $want) { "FAIL natvis: Signal's debugValue rule is '$shown', not '$want'"; exit 1 }
 $rows = @(@(@($types | Where-Object { $_.Name -eq 'Usage' })[0].Expand.Item) | ForEach-Object { "$($_.Name)=$($_.InnerText)" }) -join ' '
 if ($rows -ne 'UPGRADED=(__kpp_bits & 0x1) != 0 OWNED=(__kpp_bits & 0x4) != 0 LOOTED=(__kpp_bits & 0x8) != 0 OVERRIDE=(__kpp_bits & 0x8) != 0 [bits]=__kpp_bits,x')
 { "FAIL natvis: Usage's rows are '$rows'"; exit 1 }

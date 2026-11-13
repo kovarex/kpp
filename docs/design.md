@@ -2964,6 +2964,11 @@ other options (hand-written files, a format string, calling the program's code):
   Values the code makes (a construction, `T::fromIndex(i)`) are their members' expressions, and a lambda passed as
   an argument is inlined where it is called (SignalIDBase::getPrototype's applyOrAbort); a `[[noreturn]]` end after
   the cases shows `reaches abort()` where none is taken, like an assert (2026-11-13).
+  The rules are short (kovarex, 2026-11-13: "make the shorter ones"): a choice's case is translated knowing its
+  condition, so a switch on the same value inside takes its one case (SignalIDBase's getName in typeToStr's case
+  for a type reads that type's prototype list, not a choice of eight); a condition leaves out `!(X == M)` beside
+  `X == N`; parentheses only where precedence needs them. SignalIDBase's rule went from 25 KB to 7.2 KB, the
+  game's factorio-test natvis from 1,522,941 to 1,503,274 bytes, every display the same.
 - **It reads a class's static data members** too, globals the program writes (kovarex, 2026-11-13: "Why is it so
   special for the debugValue code to read global?"; the game's ID<T> shows its prototype's name through
   `PrototypeList<T>::indexToPrototype[this.index]->name`): the rule names the global as the debug information does
