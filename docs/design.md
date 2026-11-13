@@ -3006,7 +3006,9 @@ if (usage & EntityUsage::OWNED_BY_GHOST) ...
   Spec kpp/flags_declaration, kpp/flags_errors.
 - **Members** (kovarex, 2026-11-12, on EntityUsageBitMask's valueForSaving: "Couldn't we make the flags
   structure similar as enum class change in kpp, so it can have methods?"): as a kpp enum's values, the flags
-  may stand in a block of their own with members after it, which are a class's (methods, operators, constants).
+  may stand in a block of their own with members after it, which are a class's (methods, operators, constants,
+  constructors: a default one of its own replaces the generated empty set, CraftingMachineFlags starting with
+  FULL_DIRTY; fromBits never calls it).
   A named combination is such a constant, not a flag: it has no row in the debugger and printing never names
   it. Spec kpp/flags_with_members.
   ```

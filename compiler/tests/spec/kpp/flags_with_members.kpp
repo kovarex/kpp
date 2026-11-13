@@ -1,4 +1,4 @@
-// spec: a flags declaration's flags may stand in a block of their own with members after it, as a kpp enum's values (kovarex, 2026-11-12, on EntityUsageBitMask's valueForSaving: "Couldn't we make the flags structure similar as enum class change in kpp, so it can have methods?"): methods, operators and named combinations of flags, which are constants of the type, not flags (printing never names them)
+// spec: a flags declaration's flags may stand in a block of their own with members after it, as a kpp enum's values (kovarex, 2026-11-12, on EntityUsageBitMask's valueForSaving: "Couldn't we make the flags structure similar as enum class change in kpp, so it can have methods?"): methods, operators, constructors (a default one replacing the generated one) and named combinations of flags, which are constants of the type, not flags (printing never names them)
 flags EntityUsage : u16
 {
   {
@@ -15,11 +15,25 @@ flags EntityUsage : u16
   bool isProtected() const { return this.has(This::PROTECTED); }
 };
 
+// A default constructor of its own replaces the generated one: the set starts with flags set.
+flags Machine : u8
+{
+  {
+    FULL,
+    FULL_DIRTY,
+  }
+  Machine() { this = This::FULL_DIRTY; }
+  Machine(bool full) { this = full ? This::FULL : This::fromBits(Storage()); }
+};
+
 int main()
 {
   EntityUsage usage = EntityUsage::PROTECTED | EntityUsage::SAVED | EntityUsage::TO_BE_UPGRADED;
   std::println(usage, " ", usage.valueForSaving(), " ", usage.isProtected());
   EntityUsage again = EntityUsage::loaded(u16(0x3081));
   std::println(again, " ", EntityUsage::ADDITIONAL_VOLATILE, " ", EntityUsage::NON_EMPTY_TARGETER);
+  Machine machine;
+  Machine full(true);
+  std::println(machine, " ", full, " ", Machine(false));
   return 0;
 }

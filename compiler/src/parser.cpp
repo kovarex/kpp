@@ -4278,7 +4278,7 @@ namespace
             problem(f.token, ("the flag " + flag + " is declared already"));
             fine = false;
           }
-        static const char* const generated[] = {"Storage", "fromBits", "bits", "empty", "has", "hasAny", "set", "clear", "appendTo", "__kpp_bits"};
+        static const char* const generated[] = {"Storage", "fromBits", "bits", "empty", "has", "hasAny", "set", "clear", "appendTo", "__kpp_bits", "__KppBits", "__KppBit"};
         for (const char* g : generated)
           if (flag == g)
           {
@@ -4348,9 +4348,26 @@ namespace
           body += "b" + std::to_string(b) + ", ";
         body += "}; static constexpr Storage __kpp_bit(__KppBit at) { return Storage(Storage(true) << u8(at)); } ";
       }
+      // A default constructor among the members replaces the generated one (a set that starts with flags set:
+      // CraftingMachineFlags' FULL_DIRTY): `NAME(` `)` at the members' own level, not after `~`, `::` or `.`.
+      bool ownDefault = false;
+      if (block)
+        for (uint32_t k = listClose + 1, level = 0; k + 2 < close && !ownDefault; ++k)
+        {
+          if (toks[k].is(P::LBrace) || toks[k].is(P::LParen) || toks[k].is(P::LBracket))
+            ++level;
+          else if ((toks[k].is(P::RBrace) || toks[k].is(P::RParen) || toks[k].is(P::RBracket)) && level > 0)
+            --level;
+          else if (level == 0 && toks[k].getKind() == TokenKind::Identifier && toks[k].id == toks[nameToken].id && toks[k + 1].is(P::LParen) &&
+                   toks[k + 2].is(P::RParen) && !toks[k - 1].is(P::Tilde) && !toks[k - 1].is(P::ColonColon) && !toks[k - 1].is(P::Dot))
+            ownDefault = true;
+        }
       body += "static constexpr Storage __kpp_declared = Storage(" + declared + "); " +
-        "constexpr " + n + "() = default; " +
-        "static constexpr " + n + " fromBits(Storage value) { " + n + " made; made.__kpp_bits = value; return made; } " +
+        (ownDefault ? std::string() : "constexpr " + n + "() = default; ") +
+        // (fromBits makes the set from its bits alone, not through a default constructor of the members': that one may
+        // name a flag, whose constant fromBits makes)
+        "struct __KppBits {}; constexpr " + n + "(" + n + "::__KppBits, Storage value) : __kpp_bits(value) {} " +
+        "static constexpr " + n + " fromBits(Storage value) { return " + n + "(" + n + "::__KppBits(), value); } " +
         "constexpr Storage bits() const { return this.__kpp_bits; } " +
         "constexpr bool empty() const { return this.__kpp_bits == Storage(); } " +
         "constexpr bool has(" + n + " other) const { return (this.__kpp_bits & other.__kpp_bits) == other.__kpp_bits; } " +
