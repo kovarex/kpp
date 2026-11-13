@@ -99,6 +99,8 @@ struct Short
   {
     if (this.onHeap == 0)
       return std::StringView(this.inPlace);
+    if (this.onHeap == 2)
+      return std::StringView("(shared)"); // (a literal: text, the game's ImmutableString)
     return std::StringView(this.heap, this.length);
   }
   u8 onHeap = 0;

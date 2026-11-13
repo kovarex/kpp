@@ -74,7 +74,7 @@ $stack = @($types | Where-Object { $_.Name -eq 'Stack' })[0]
 if (-not $stack -or $stack.DisplayString -ne '{count} x {name,sb} ({weight,g})') { "FAIL natvis: Stack's text view is '$($stack.DisplayString)'"; exit 1 }
 function Displays([string]$name) { @(@($types | Where-Object { $_.Name -eq $name })[0].ChildNodes | Where-Object { $_.LocalName -eq 'DisplayString' } | ForEach-Object { "$($_.GetAttribute('Condition'))|$($_.InnerText)" }) -join ' ' }
 foreach ($case in @(@('Heading', '|{(Heading::Enum)(value)}'), @('Shape', '|side {(*(Square*)this).side}'), @('Pointing<Square>', '|{(Square*)(target)}'),
-                    @('Short', 'onHeap == 0|{inPlace,s8b} |{heap,[length]s8b}'),
+                    @('Short', 'onHeap == 0|{inPlace,s8b} onHeap == 2|(shared) |{heap,[length]s8b}'),
                     # the types' own names and conversions: a switch's signs (an end in abort(): ?), a comparison with a
                     # named constant, std::Text pieces and a choice between texts, a member's conversion to String
                     @('Sign', "value == 0|> value == 1|< value == 2|$([char]0x2265) |?"), @('Team', '(index == 1)|red |{{index={(int)(index)}}}'),

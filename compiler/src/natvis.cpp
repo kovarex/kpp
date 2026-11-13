@@ -1298,6 +1298,26 @@ namespace
             failed = true;
             break;
           }
+          Expr* only = args.size() == 1 ? args[0] : nullptr;
+          while (only && only->kind == NodeKind::ParenExpr)
+            only = static_cast<ParenExpr*>(only)->inner;
+          if (only && only->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(only)->literalKind == TokenKind::String)
+          {
+            // (`std::StringView("(shared)")`: the literal's text, as a text view's: natvis's expressions have no string
+            // literals, Visual Studio shows `{"(shared)",s8b}` as an error)
+            std::string text, doubled;
+            auto* literal = static_cast<LiteralExpr*>(only);
+            if (!literalText(literal->file ? literal->file : v.file, literal, text))
+            {
+              fail(v, only, "a string literal with a prefix or an escape other than \\\" \\\\ \\n \\t \\r \\x");
+              failed = true;
+              break;
+            }
+            for (char c : text)
+              doubled += c == '{' || c == '}' ? std::string(2, c) : std::string(1, c);
+            displays += "    <DisplayString" + attribute + ">" + escape(doubled) + "</DisplayString>\n";
+            continue;
+          }
           if (!natvisExpression(v, args[0], chars) || (args.size() == 2 && !natvisExpression(v, args[1], length)))
           {
             failed = true;
