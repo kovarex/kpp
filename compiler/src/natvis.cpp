@@ -1156,8 +1156,18 @@ namespace
         static_cast<MemberExpr*>(static_cast<CallExpr*>(e)->callee)->resolved &&
         static_cast<MemberExpr*>(static_cast<CallExpr*>(e)->callee)->resolved->kind == NodeKind::FunctionDecl)
     {
-      // a const member function returning text, its text inlined (MapVersion's str(), Comparison's)
       auto* m = static_cast<MemberExpr*>(static_cast<CallExpr*>(e)->callee);
+      if (isDebugValue(m->resolved, v.symbols) && !isThisObject(m->base))
+      {
+        // Another object's debugValue (a member's: CircuitCondition's `this.first.debugValue()`): that object, shown
+        // by its own rule, as natvis shows a member, not its text inlined here, whose cases would multiply with
+        // the others' (a condition's two signals and its comparison: 17 x 6 x 17).
+        std::string object;
+        if (!natvisExpression(v, m->base, object))
+          return false;
+        return append("{" + (m->op == P::Arrow ? "*(" + object + ")" : object) + "}");
+      }
+      // a const member function returning text, its text inlined (MapVersion's str(), Comparison's)
       return inlinedText(v, e, static_cast<FunctionDecl*>(m->resolved), m->base, m->op == P::Arrow, out);
     }
     if (type && type->kind == TyKind::Class && !string && !view)

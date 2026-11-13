@@ -80,6 +80,8 @@ foreach ($case in @(@('Heading', '|{(Heading::Enum)(value)}'), @('Shape', '|side
                     @('Sign', "value == 0|> value == 1|< value == 2|$([char]0x2265) |?"), @('Team', '(index == 1)|red |{{index={(int)(index)}}}'),
                     @('Release', '(branch.version != 0)|{(unsigned int)(major)}.{(unsigned int)(minor)} (branch) |{(unsigned int)(major)}.{(unsigned int)(minor)}'),
                     @('Station', '|{name.value,sb}'),
+                    # another object's debugValue in a text: that object by its own rule
+                    @('Match', '|{left} vs {right}'),
                     # a static data member by its debugger name, a Vector's element: the game's ID<T>
                     @('Handle<Part>', 'index == 0|{{0}} |{Registry<Part>::all.items[index]->name,sb}'),
                     # a set of flags: the names of the flags set, A | B | C, a chain of views a flag (OVERRIDE, a second

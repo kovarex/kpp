@@ -141,6 +141,15 @@ public:
   u8 index = 0;
 };
 
+// Another object's debugValue in a text: that object by its own rule (`{left}`), not its cases inlined, whose
+// cases would multiply (the game's CircuitCondition: two signals and a comparison).
+struct Match
+{
+  std::String debugValue() const { return std::toString(this.left.debugValue(), " vs ", this.right.debugValue()); }
+  Team left;
+  Team right;
+};
+
 class Branch
 {
 public:
@@ -248,6 +257,8 @@ int main()
   sign.value = Sign::Enum::AtLeast;
   Team team;
   team.index = 1;
+  Match match;
+  match.left.index = 1;
   Release release;
   release.major = 2;
   release.minor = 72;
