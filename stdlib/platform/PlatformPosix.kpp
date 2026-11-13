@@ -8,7 +8,7 @@ extern "C" char* getenv(const char* name);
 
 namespace posix
 {
-  extern "C" i32 clock_gettime(i32 clock, timespec* time);
+  extern "C" i32 clock_gettime(clockid clock, timespec* time);
   extern "C" i32 nanosleep(const timespec* duration, timespec* remaining);
   extern "C" i32 sched_yield();
 }
@@ -25,7 +25,7 @@ namespace platform
   TimeSpec clockTime(i32 clock)
   {
     TimeSpec time;
-    posix::clock_gettime(clock, (timespec*)&time);
+    posix::clock_gettime(posix::clockid(clock), (timespec*)&time);
     return time;
   }
 

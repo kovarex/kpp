@@ -9,6 +9,9 @@ namespace posix
 {
   // errno, which macOS's errno.h defines as (*__error()).
   extern "C" i32* __error();
+  // time.h's clockid_t, clock_gettime's clock: an enum (CTagsMac.kpp), so that a program's import of
+  // time.h declares clock_gettime the same way (thread O, 2026-11-13: "declared with two types").
+  using clockid = ::clockid_t;
   using pthread_t = _opaque_pthread_t*;
   using pthread_attr_t = _opaque_pthread_attr_t;
   using pthread_mutex_t = _opaque_pthread_mutex_t;

@@ -6,6 +6,8 @@ namespace posix
 {
   // errno, which FreeBSD's errno.h defines as (*__error()).
   extern "C" i32* __error();
+  // time.h's clockid_t, clock_gettime's clock: an int.
+  using clockid = i32;
   using pthread_t = pthread*;
   using pthread_attr_t = pthread_attr*;
   using pthread_mutex_t = pthread_mutex*;

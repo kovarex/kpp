@@ -5,6 +5,8 @@ namespace posix
 {
   // errno, which glibc's errno.h defines as (*__errno_location()).
   extern "C" i32* __errno_location();
+  // time.h's clockid_t, clock_gettime's clock: an int.
+  using clockid = i32;
   using pthread_t = unsigned long;
   using pthread_attr_t = ::pthread_attr_t;
   using pthread_mutex_t = ::pthread_mutex_t;

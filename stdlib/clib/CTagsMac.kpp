@@ -12,3 +12,6 @@ struct _opaque_pthread_rwlock_t;
 // A directory stream, as dirent.h names it: `typedef struct { ... } DIR;`, a struct of no tag, which
 // the C import names by its typedef.
 struct DIR;
+// The clocks' ids, as time.h names them: `typedef enum { _CLOCK_REALTIME = 0, ... } clockid_t;`, an enum
+// of no tag (unsigned int: its values are not negative), which the C import names by its typedef.
+enum clockid_t : u32;
