@@ -48,7 +48,14 @@ function Build([string[]]$arguments, [string]$label)
 function ServerLog([datetime]$since, [string]$last = $src)
 {
   return @(Get-ChildItem (Join-Path $env:TEMP 'kpp-server\*.log') | Where-Object { $_.LastWriteTime -ge $since } | ForEach-Object {
-    $lines = @(Get-Content $_.FullName | Where-Object { $_.Length -gt 23 -and [datetime]::ParseExact($_.Substring(0, 23), 'yyyy-MM-dd HH:mm:ss.fff', $null) -ge $since })
+    # A line that does not start with a time (a message's second line) goes with the line before it
+    # (ParseExact threw on one: CI run 43423069776, "the compile server's build differs").
+    $keep = $false
+    $lines = @(Get-Content $_.FullName | Where-Object {
+      $time = [datetime]::MinValue
+      if ($_.Length -ge 23 -and [datetime]::TryParseExact($_.Substring(0, 23), 'yyyy-MM-dd HH:mm:ss.fff', [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::None, [ref]$time)) { $keep = $time -ge $since }
+      $keep
+    })
     if ($lines | Where-Object { $_.Contains("the last $last") }) { $lines }
   })
 }
