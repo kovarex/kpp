@@ -25,6 +25,7 @@ std::RbTree<std::Pair<std::String, int32>, std::String, std::MapKey<std::String,
 Property
 Angle
 Buffer
+Chain
 Fixed<12>
 Fixed<8>
 Force
@@ -36,7 +37,9 @@ Load
 Match
 Pointing<Square>
 Release
+Ring<int32>
 Shape
+Shelf
 Short
 Sign
 Signal

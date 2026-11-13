@@ -316,6 +316,109 @@ struct Buffer
   usize size = 0;
 };
 
+// Containers: their elements by their own begin(), end(), iterator's ++, * and == (natvis's CustomListItems):
+// a ring of four with its iterator an index (the game's CompactDeque, its operator[] wrapping), an array of a
+// pointer and a size iterated by pointer (Inventory), and an intrusive list with a sentinel link (IntrusiveList).
+template<class T>
+struct Ring
+{
+  template<class Type, class RingType>
+  struct IteratorBase
+  {
+    IteratorBase(RingType* ring, u32 index) : ring(ring), index(index) {}
+    bool operator==(const IteratorBase& other) const
+    {
+      assert(this.ring == other.ring);
+      return this.index == other.index;
+    }
+    IteratorBase& operator++()
+    {
+      ++this.index;
+      return this;
+    }
+    IteratorBase operator++(i32)
+    {
+      IteratorBase copy(this);
+      ++this;
+      return copy;
+    }
+    Type& operator*() const { return (*this.ring)[this.index]; }
+
+    RingType* ring = nullptr;
+    u32 index = 0;
+  };
+
+  using iterator = IteratorBase<T, Ring>;
+  using const_iterator = IteratorBase<const T, const Ring>;
+
+  iterator begin() { return iterator(&this, 0); }
+  iterator end() { return iterator(&this, this.size()); }
+  const_iterator begin() const { return this.cbegin(); }
+  const_iterator end() const { return this.cend(); }
+  const_iterator cbegin() const { return const_iterator(&this, 0); }
+  const_iterator cend() const { return const_iterator(&this, this.size()); }
+  u32 size() const { return this.count; }
+  T& operator[](u32 index)
+  {
+    assert(index < this.count);
+    return this.items[this.wrap(this.head + index)];
+  }
+  const T& operator[](u32 index) const
+  {
+    assert(index < this.count);
+    return this.items[this.wrap(this.head + index)];
+  }
+  u32 wrap(u32 index) const
+  {
+    assert(index < this.capacity * 2);
+    if (index >= this.capacity)
+      index -= this.capacity;
+    return index;
+  }
+
+  T* items = nullptr;
+  u32 capacity = 0;
+  u32 head = 0;
+  u32 count = 0;
+};
+
+struct Shelf
+{
+  const i32* begin() const { return this.data; }
+  const i32* end() const { return this.data + this.size; }
+
+  i32* data = nullptr;
+  u32 size = 0;
+};
+
+struct Link
+{
+  Link* next = nullptr;
+  i32 value = 0;
+};
+
+struct Chain
+{
+  struct Iterator
+  {
+    Iterator(const Link* at) : at(at) {}
+    bool operator==(const Iterator& other) const { return this.at == other.at; }
+    Iterator& operator++()
+    {
+      this.at = this.at->next;
+      return this;
+    }
+    const Link& operator*() const { return *this.at; }
+
+    const Link* at = nullptr;
+  };
+
+  Iterator begin() const { return Iterator(this.head.next); }
+  Iterator end() const { return Iterator(&this.head); }
+
+  Link head;
+};
+
 union enum Property : uint8_t
 {
   { {int, Integer}, {double, Real}, {std::String, Text} }
@@ -417,8 +520,32 @@ int main()
   shared->y = 6;
   std::SharedPtr<Point> again = shared;
   std::WeakPtr<Point> weak = shared;
+  i32 ringItems[4] = {30, 40, 10, 20};
+  Ring<i32> ring;
+  ring.items = ringItems;
+  ring.capacity = 4;
+  ring.head = 2;
+  ring.count = 3;
+  i32 shelved[3] = {7, 8, 9};
+  Shelf shelf;
+  shelf.data = shelved;
+  shelf.size = 3;
+  Chain chain;
+  Link first, second;
+  first.value = 1;
+  second.value = 2;
+  chain.head.next = &first;
+  first.next = &second;
+  second.next = &chain.head;
+  i32 total = 0;
+  for (const i32& x : ring)
+    total += x;
+  for (const i32& x : shelf)
+    total += x;
+  for (const Link& link : chain)
+    total += link.value;
   std::println(numbers.size(), " ", small, " ", view.size(), " ", ages.size(), " ", seen.size(), " ", *some, " ", none.has_value(), " ", point->x, " ",
           count[Property::Integer], " ", name[Property::Text], " ", queue.size(), " ", queue[0], " ", words.size(), " ", stack.front(), " ",
-          heights.size(), " ", groups.size(), " ", ids.size(), " ", again.use_count(), " ", weak.expired(), " ", shared->y);
+          heights.size(), " ", groups.size(), " ", ids.size(), " ", again.use_count(), " ", weak.expired(), " ", shared->y, " ", total);
   return 0;
 }

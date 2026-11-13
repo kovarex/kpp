@@ -24,7 +24,7 @@ if ($code -ne 0) { "FAIL natvis: compile (exit $code)"; $log | Select-Object -La
 $warnings = @($log | Where-Object { $_ -match 'warning: natvis' })
 if ($warnings) { "FAIL natvis: kpp left rules out"; $warnings | ForEach-Object { "  $_" }; exit 1 }
 $out = & $exe
-if ("$out" -ne '2 kpp 51 2 1 5 false 4 12 gear 40 -20 2 9 3 1 3 2 false 6') { "FAIL natvis: the program printed $out"; exit 1 }
+if ("$out" -ne '2 kpp 51 2 1 5 false 4 12 gear 40 -20 2 9 3 1 3 2 false 6 87') { "FAIL natvis: the program printed $out"; exit 1 }
 if (-not (Test-Path $natvis)) { "FAIL natvis: no $natvis"; exit 1 }
 
 # Visual Studio's schema.
@@ -101,6 +101,24 @@ foreach ($case in @(@('Heading', '|{(Heading::Enum)value}'), @('Shape', '|side {
 $shown = Displays 'Signal'
 $want = '(Signal::Type)((unsigned char)(value >> 16)) == 0 && !(value == 0) && !(((unsigned short)((unsigned short)value)) < Registry<Part>::all.length)|assert failed: handle.index < Registry<T>::all.size() (Signal::Type)((unsigned char)(value >> 16)) == 1 && !(value == 0) && !(((unsigned short)((unsigned short)value)) < Registry<Fluid>::all.length)|assert failed: handle.index < Registry<T>::all.size() !((Signal::Type)((unsigned char)(value >> 16)) == 0) && !((Signal::Type)((unsigned char)(value >> 16)) == 1) && !(value == 0)|reaches abort() (Signal::Type)((unsigned char)(value >> 16)) == 0 && value == 0|{{part }} (Signal::Type)((unsigned char)(value >> 16)) == 0|{{part {((Prototype*)(Registry<Part>::all.items[((unsigned short)((unsigned short)value))]))->name,sb}}} (Signal::Type)((unsigned char)(value >> 16)) == 1 && value == 0|{{fluid }} (Signal::Type)((unsigned char)(value >> 16)) == 1|{{fluid {((Prototype*)(Registry<Fluid>::all.items[((unsigned short)((unsigned short)value))]))->name,sb}}} value == 0|{{? }} |{{? {((Prototype*)0)->name,sb}}}'
 if ($shown -ne $want) { "FAIL natvis: Signal's debugValue rule is '$shown', not '$want'"; exit 1 }
+# Containers' elements (kovarex, 2026-11-13, option C): their own begin() and end() and their iterator's ==, * and ++
+# as natvis's loop: Ring (the game's CompactDeque: an iterator template of an index, operator[] with its wrap
+# reassigning its parameter, asserts on the way as breaks), Shelf (Inventory: a pointer iterator) and Chain
+# (IntrusiveList: a sentinel link). Visual Studio showed their elements (tools\vs\vsix\debugger-check.ps1).
+function Loop([string]$name)
+{
+  $list = @($types | Where-Object { $_.Name -eq $name })[0].Expand.CustomListItems
+  $parts = @(@($list.Variable) | ForEach-Object { "var $($_.Name)=$($_.InitialValue)" })
+  $parts += @($list.Loop.ChildNodes | Where-Object { $_.NodeType -eq 'Element' } | ForEach-Object { if ($_.LocalName -eq 'Break') { "break $($_.Condition)" } else { "$($_.LocalName.ToLower()) $($_.InnerText)" } })
+  $parts -join ' | '
+}
+foreach ($case in @(@('Ring<int32>', 'var __kpp_index=0 | break __kpp_index == count | break !(__kpp_index < count) | break !((head + __kpp_index) < capacity * 2) | item (items[((head + __kpp_index) >= capacity ? (head + __kpp_index) - capacity : (head + __kpp_index))]) | exec __kpp_index = __kpp_index + 1'),
+                    @('Shelf', 'var __kpp_it=data | break __kpp_it == data + size | item *__kpp_it | exec __kpp_it = __kpp_it + 1'),
+                    @('Chain', 'var __kpp_at=head.next | break __kpp_at == &head | item (*__kpp_at) | exec __kpp_at = __kpp_at->next')))
+{
+  $shown = Loop $case[0]
+  if ($shown -ne $case[1]) { "FAIL natvis: $($case[0])'s elements are '$shown', not '$($case[1])'"; exit 1 }
+}
 $rows = @(@(@($types | Where-Object { $_.Name -eq 'Usage' })[0].Expand.Item) | ForEach-Object { "$($_.Name)=$($_.InnerText)" }) -join ' '
 if ($rows -ne 'UPGRADED=(__kpp_bits & 0x1) != 0 OWNED=(__kpp_bits & 0x4) != 0 LOOTED=(__kpp_bits & 0x8) != 0 OVERRIDE=(__kpp_bits & 0x8) != 0 [bits]=__kpp_bits,x')
 { "FAIL natvis: Usage's rows are '$rows'"; exit 1 }

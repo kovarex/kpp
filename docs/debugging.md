@@ -425,6 +425,15 @@ atvis.ps1 checks Signal, the game's SignalIDBase; debugger-check.ps1 saw `{part 
   alone, `case 3` left out); a condition says each part once and leaves out `!(X == 3)` beside `X == 4`;
   parentheses only where precedence needs them (`(double)value * 0.25`, not `(double)(value) * 0.25`). The
   game's SignalIDBase rule: 25 KB before, 7.2 KB after, 27 DisplayStrings either way.
+- **A container's elements** (2026-11-13): a class with const begin() and end() without parameters shows its
+  elements when expanded, by natvis's loop made from its own code: the iterator's members that operator++
+  changes are variables (`__kpp_index`, `__kpp_current`), operator== with end() breaks the loop, operator* is the
+  item (CompactDeque's through its operator[] and wrap, whose parameter it reassigns: `(CONDITION ? NEW : OLD)`),
+  a pointer iterator steps by one (Inventory's), and an assert on the way breaks the loop where it fails. The
+  members are under [Raw View]. A class kpp cannot follow (an operator* calling a non-const function, a
+  constructor with statements) shows its members as before; KPP_NATVIS_ELEMENTS=1 lists them and why.
+  tests\natvis.ps1 checks Ring, Shelf and Chain (CompactDeque, Inventory, IntrusiveList); debugger-check.ps1 saw
+  their elements in Visual Studio.
 - **Asserts where config::debug is false** (a release or final build) are nothing, as in the program: the rule
   has no case for them (their expressions are discarded code the checker leaves unresolved; translating them
   failed the game's release and final builds, 44 errors, until 2026-11-13).

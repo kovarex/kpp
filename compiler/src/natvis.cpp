@@ -321,6 +321,17 @@ namespace
   {
     std::vector<std::string> atoms, kept;
     conditionAtoms(condition, atoms);
+    for (const std::string& atom : atoms)
+    {
+      std::string a = canonicalAtom(atom);
+      std::vector<size_t> eq = a.size() > 3 && a[0] == '!' ? topLevel(bare(a.substr(1)), " == ") : std::vector<size_t>();
+      if (eq.size() == 1)
+      {
+        std::string inner = bare(a.substr(1));
+        if (bare(inner.substr(0, eq[0])) == bare(inner.substr(eq[0] + 4)))
+          return "false"; // (`!(X == X)`: it never holds)
+      }
+    }
     std::vector<std::pair<std::string, std::string>> equal;
     for (std::string& atom : atoms)
     {
@@ -659,6 +670,60 @@ namespace
           todo.push_back(taken);
         continue;
       }
+      // A parameter given a new value (`index -= this._capacity;`, CompactDeque's wrap), maybe under an `if` without
+      // an else: its value from here on, `(CONDITION ? NEW : OLD)`.
+      {
+        Stmt* assigning = s;
+        Expr* when = nullptr;
+        if (s->kind == NodeKind::IfStmt && !static_cast<IfStmt*>(s)->init && !static_cast<IfStmt*>(s)->isConstexpr && !static_cast<IfStmt*>(s)->ifConsteval &&
+            !static_cast<IfStmt*>(s)->else_ && static_cast<IfStmt*>(s)->cond && static_cast<IfStmt*>(s)->cond->kind != NodeKind::DeclStmt)
+        {
+          assigning = static_cast<IfStmt*>(s)->then;
+          while (assigning && assigning->kind == NodeKind::BlockStmt && static_cast<BlockStmt*>(assigning)->stmts.size() == 1)
+            assigning = static_cast<BlockStmt*>(assigning)->stmts[0];
+          when = static_cast<Expr*>(static_cast<IfStmt*>(s)->cond);
+        }
+        Expr* e = assigning && assigning->kind == NodeKind::ExprStmt ? static_cast<ExprStmt*>(assigning)->expr : nullptr;
+        Expr* target = nullptr;
+        Expr* operand = nullptr;
+        P op = P(0);
+        if (e && e->kind == NodeKind::BinaryExpr && !static_cast<BinaryExpr*>(e)->callee)
+        {
+          op = P(static_cast<BinaryExpr*>(e)->op);
+          target = static_cast<BinaryExpr*>(e)->lhs;
+          operand = static_cast<BinaryExpr*>(e)->rhs;
+        }
+        else if (e && e->kind == NodeKind::UnaryExpr && !static_cast<UnaryExpr*>(e)->callee)
+        {
+          op = P(static_cast<UnaryExpr*>(e)->op);
+          target = static_cast<UnaryExpr*>(e)->operand;
+        }
+        while (target && target->kind == NodeKind::ParenExpr)
+          target = static_cast<ParenExpr*>(target)->inner;
+        Bound* parameter = nullptr;
+        if (target && target->kind == NodeKind::NameExpr && static_cast<NameExpr*>(target)->resolved &&
+            static_cast<NameExpr*>(target)->resolved->kind == NodeKind::ParamDecl)
+          for (Bound& b : v.bound)
+            if (b.param == static_cast<NameExpr*>(target)->resolved && !b.object && !b.lambda)
+              parameter = &b;
+        bool arithmetic = op == P::Assign || op == P::PlusAssign || op == P::MinusAssign || op == P::StarAssign || op == P::PlusPlus || op == P::MinusMinus;
+        if (parameter && arithmetic)
+        {
+          std::string old = wrap(parameter->expression), value, condition;
+          if (operand && !natvisExpression(v, operand, value))
+            return false;
+          std::string made = op == P::Assign ? wrap(value)
+                             : op == P::PlusAssign ? old + " + " + wrap(value)
+                             : op == P::MinusAssign ? old + " - " + wrap(value)
+                             : op == P::StarAssign ? old + " * " + wrap(value)
+                             : op == P::PlusPlus ? old + " + 1"
+                                                 : old + " - 1";
+          if (when && !natvisCondition(v, when, condition))
+            return false;
+          parameter->expression = when ? "(" + condition + " ? " + made + " : " + old + ")" : made;
+          continue;
+        }
+      }
       if (s->kind == NodeKind::AssertStmt && !static_cast<AssertStmt*>(s)->testKind)
       {
         // An assert: the rule shows `assert failed: TEXT` where it does not hold, before its cases (an assert
@@ -930,6 +995,58 @@ namespace
   }
 
 
+  // A function's name in a message: an operator's `operator[]` (its symbol is none).
+  std::string functionName(const SymbolTable& symbols, const FunctionDecl* f)
+  {
+    if (!f || f->name.parts.empty())
+      return "a function";
+    const auto& last = f->name.last();
+    if (last.special == 2)
+      return "operator" + std::string(P(last.opToken) == P::LBracket ? "[]" : punctuatorSpelling(P(last.opToken)));
+    if (last.special != 0)
+      return "a special member function";
+    return std::string(symbols.name(last.symbol));
+  }
+
+  // A function among a class's members: its name's or operator's, the one the test takes (none, or more than one: null).
+  FunctionDecl* memberFunction(GlobalScope& global, const SymbolTable& symbols, const Ty* cls, const char* name, P op, const std::function<bool(FunctionDecl*)>& takes)
+  {
+    if (!cls || cls->kind != TyKind::Class || !cls->decl)
+      return nullptr;
+    Decl* defined = global.definitionOf(cls->decl);
+    if (!defined || defined->kind != NodeKind::ClassDecl)
+      return nullptr;
+    FunctionDecl* found = nullptr;
+    for (Decl* m : static_cast<ClassDecl*>(defined)->members)
+    {
+      if (m->kind != NodeKind::FunctionDecl || static_cast<FunctionDecl*>(m)->name.parts.empty())
+        continue;
+      auto* f = static_cast<FunctionDecl*>(m);
+      const auto& last = f->name.last();
+      bool named = name ? last.special == 0 && symbols.name(last.symbol) == name : last.special == 2 && P(last.opToken) == op;
+      if (!named || !takes(f))
+        continue;
+      if (found)
+        return nullptr;
+      found = f;
+    }
+    return found;
+  }
+
+  // The address of the object at v: `this`, a member's `&speed`, a pointer member's `target`.
+  bool objectAddress(DebugValue& v, Node* at, std::string& out)
+  {
+    if (v.object)
+      return fail(v, at, "the address of a value the code makes");
+    if (v.prefix.empty())
+      out = "this";
+    else if (v.prefix.size() >= 2 && v.prefix.compare(v.prefix.size() - 2, 2, "->") == 0)
+      out = v.prefix.substr(0, v.prefix.size() - 2);
+    else
+      out = "&" + wrap(v.prefix.substr(0, v.prefix.size() - 1));
+    return true;
+  }
+
   // The viewed object's path at v: `(*this)`, a member's `speed`, a pointer's `(*target)`.
   std::string objectPath(const DebugValue& v)
   {
@@ -940,7 +1057,8 @@ namespace
     return v.prefix.substr(0, v.prefix.size() - 1);
   }
 
-  bool prepareCall(DebugValue& v, Node* at, FunctionDecl* called, CallExpr* call, Expr* objectExpr, bool arrow, const Ty* staticClass, InlinedCall& c)
+  bool prepareCall(DebugValue& v, Node* at, FunctionDecl* called, CallExpr* call, Expr* objectExpr, bool arrow, const Ty* staticClass, InlinedCall& c,
+                   const std::vector<Bound>* preset)
   {
     TypeTable& types = v.global.types();
     bool isStatic = (called->flags & DF_Static) || !v.global.owningClass(called);
@@ -948,7 +1066,7 @@ namespace
       return fail(v, at, "a call of a virtual function");
     if (!isStatic && !(called->flags & DF_Const))
       return fail(v, at, "a call of a member function that is not const");
-    size_t given = call ? call->args.size() : 0;
+    size_t given = call ? call->args.size() : preset ? preset->size() : 0;
     if (given != called->params.size())
       return fail(v, at, "a call that leaves a parameter its default value");
     if (v.depth > 8)
@@ -1009,9 +1127,14 @@ namespace
       return fail(v, at, "a call of a function whose body is not here");
     c.self = isStatic ? nullptr : object;
     c.prefix = isStatic || c.object ? std::string() : v.prefix + base;
-    for (size_t i = 0; i < given; ++i)
+    for (size_t i = 0; call && i < given; ++i)
       if (!bindArgument(v, call->args[i], i < c.instance->params.size() ? c.instance->params[i] : nullptr, c.bound))
         return false;
+    for (size_t i = 0; !call && preset && i < given && i < c.instance->params.size(); ++i)
+    {
+      c.bound.push_back((*preset)[i]);
+      c.bound.back().param = c.instance->params[i];
+    }
     return true;
   }
 
@@ -1019,11 +1142,11 @@ namespace
   // `this.speed.debugValue()`; a conversion to bool on a class value): one `return EXPRESSION;` after
   // constexpr locals, as an expression, or as text (natvisText) for a function returning a String.
   bool inlinedMember(DebugValue& v, Node* at, FunctionDecl* called, Expr* objectExpr, bool arrow, bool text, std::string& out,
-                     CallExpr* call = nullptr, const Ty* staticClass = nullptr)
+                     CallExpr* call = nullptr, const Ty* staticClass = nullptr, const std::vector<Bound>* preset = nullptr)
   {
     TypeTable& types = v.global.types();
     InlinedCall c;
-    if (!prepareCall(v, at, called, call, objectExpr, arrow, staticClass, c))
+    if (!prepareCall(v, at, called, call, objectExpr, arrow, staticClass, c, preset))
       return false;
     const TemplateArgs& args = c.args;
     FunctionDecl* def = c.def;
@@ -1103,7 +1226,7 @@ namespace
     }
     if (v.why.empty())
     {
-      v.why = "the function it calls, " + std::string(v.symbols.name(called->name.last().symbol)) + ": " + inner.why;
+      v.why = "the function it calls, " + functionName(v.symbols, called) + ": " + inner.why;
       v.at = inner.at;
       v.atFile = inner.atFile;
     }
@@ -1287,7 +1410,7 @@ namespace
         Expr* objectExpr = c->callee->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(c->callee)->base : nullptr;
         bool arrow = c->callee->kind == NodeKind::MemberExpr && static_cast<MemberExpr*>(c->callee)->op == P::Arrow;
         const Ty* staticClass = isStatic && c->callee->kind == NodeKind::NameExpr ? calledClass(v, static_cast<NameExpr*>(c->callee), f) : nullptr;
-        if (!prepareCall(v, c, f, c, objectExpr, arrow, staticClass, call))
+        if (!prepareCall(v, c, f, c, objectExpr, arrow, staticClass, call, nullptr))
           return false;
         DebugValue inner{v.global, v.symbols, call.def->file, call.instance, call.args, call.prefix, v.depth + 1, call.self};
         inner.bound = std::move(call.bound);
@@ -1300,7 +1423,7 @@ namespace
         {
           if (v.why.empty())
           {
-            v.why = "the function making the value, " + std::string(v.symbols.name(f->name.last().symbol)) + ": " +
+            v.why = "the function making the value, " + functionName(v.symbols, f) + ": " +
                     (inner.why.empty() ? std::string("a body other than one `return EXPRESSION;`") : inner.why);
             v.at = inner.at ? inner.at : c;
             v.atFile = inner.atFile;
@@ -1696,6 +1819,18 @@ namespace
       TypeTable& types = v.global.types();
       const Ty* base = types.unqualified(types.stripRef(x->base->ty));
       bool vector = isLibraryClass(base, v.symbols, "Vector");
+      if (!vector && base->kind == TyKind::Class)
+      {
+        // A class's own operator[] (CompactDeque's, its index wrapped): its const one, inlined on the object.
+        FunctionDecl* index = memberFunction(v.global, v.symbols, base, nullptr, P::LBracket,
+                                             [&](FunctionDecl* f) { return (f->flags & DF_Const) && f->params.size() == x->args.size(); });
+        if (!index)
+          return fail(v, e, "an index of a class without one const operator[]");
+        std::vector<Bound> arguments;
+        if (!bindArgument(v, x->args[0], nullptr, arguments))
+          return false;
+        return inlinedMember(v, e, index, x->base, false, false, out, nullptr, nullptr, &arguments);
+      }
       if (!vector && base->kind != TyKind::Pointer && base->kind != TyKind::Array)
         return fail(v, e, "an index of a class other than the library's Vector");
       std::string object, at;
@@ -1739,14 +1874,35 @@ namespace
         out = wrap(base) + (m->op == P::Arrow ? "->" : ".") + name;
       return true;
     }
+    case NodeKind::ThisExpr:
+    {
+      // `this` as a pointer (`&this`, folded by the parser: an iterator's `Iterator(&this, 0)`): the object's address
+      const Ty* t = e->ty ? v.global.types().unqualified(v.global.types().stripRef(e->ty)) : nullptr;
+      if (!t || t->kind != TyKind::Pointer)
+        return fail(v, e, "the object itself, which has no value to show");
+      return objectAddress(v, e, out);
+    }
     case NodeKind::UnaryExpr:
     {
       auto* u = static_cast<UnaryExpr*>(e);
       if (u->implicitThis)
         return fail(v, e, "the object itself, which has no value to show");
+      if (u->callee && u->calleeMember && !u->postfix && !u->isKeyword && P(u->op) == P::Star)
+        return inlinedMember(v, e, u->callee, u->operand, false, false, out); // (an iterator's `*`, a Hook's)
       if (u->callee || u->call == OperatorCall::Function || u->postfix || u->isKeyword)
         return fail(v, e, "an operator that calls a function or changes a value");
       P op = P(u->op);
+      if (op == P::Amp)
+      {
+        // an address: the object's (`&this`: `this`), or a member's
+        if (isThisObject(u->operand))
+          return objectAddress(v, e, out);
+        std::string operand;
+        if (!natvisExpression(v, u->operand, operand))
+          return false;
+        out = "&" + wrap(operand);
+        return true;
+      }
       if (op != P::Minus && op != P::Plus && op != P::Bang && op != P::Tilde && op != P::Star)
         return fail(v, e, "the operator " + std::string(punctuatorSpelling(op)));
       std::string operand;
@@ -1766,6 +1922,19 @@ namespace
         bool defaulted = b->call == OperatorCall::Rewritten || (b->callee && (b->callee->flags & DF_Default));
         if (left == right && left->kind == TyKind::Class && defaulted)
           return memberwiseEquality(v, b, out);
+      }
+      if (b->callee && b->calleeMember && !b->isKeyword && (P(b->op) == P::EqEq || P(b->op) == P::NotEq) &&
+          b->callee->name.last().special == 2 && P(b->callee->name.last().opToken) == P::EqEq)
+      {
+        // a class's own operator== (an iterator's), inlined on the left with the right as its argument; `!=` its negation
+        std::vector<Bound> arguments;
+        if (!bindArgument(v, b->rhs, nullptr, arguments))
+          return false;
+        std::string equal;
+        if (!inlinedMember(v, e, b->callee, b->lhs, false, false, equal, nullptr, nullptr, &arguments))
+          return false;
+        out = P(b->op) == P::NotEq ? "!" + wrap(equal) : equal;
+        return true;
       }
       if (b->callee || b->call == OperatorCall::Function || b->call == OperatorCall::Rewritten || b->isKeyword)
         return fail(v, e, "an operator function");
@@ -1983,7 +2152,7 @@ namespace
                    const Ty* staticClass = nullptr)
   {
     InlinedCall c;
-    if (!prepareCall(v, at, called, call, objectExpr, arrow, staticClass, c))
+    if (!prepareCall(v, at, called, call, objectExpr, arrow, staticClass, c, nullptr))
       return false;
     const TemplateArgs& args = c.args;
     FunctionDecl* def = c.def;
@@ -2042,7 +2211,7 @@ namespace
     }
     if (v.why.empty())
     {
-      v.why = "the function it calls, " + std::string(v.symbols.name(called->name.last().symbol)) + ": " + inner.why;
+      v.why = "the function it calls, " + functionName(v.symbols, called) + ": " + inner.why;
       v.at = inner.at;
       v.atFile = inner.atFile;
     }
@@ -2485,7 +2654,9 @@ namespace
         std::string doubled;
         for (char ch : text)
           doubled += ch == '{' || ch == '}' ? std::string(2, ch) : std::string(1, ch);
-        assertsShown += "    <DisplayString Condition=\"" + escape(simplifyCondition(condition)) + "\">" + escape(doubled) + "</DisplayString>\n";
+        std::string when = simplifyCondition(condition);
+        if (when != "false")
+          assertsShown += "    <DisplayString Condition=\"" + escape(when) + "\">" + escape(doubled) + "</DisplayString>\n";
       }
       out = "  <Type Name=\"" + escape(d.name) + "\">\n" + reachedDisplays(assertsShown + displays);
       if (!items.empty())
@@ -2494,6 +2665,233 @@ namespace
       return true;
     }
     return false;
+  }
+}
+
+namespace
+{
+  // What a const member function without parameters returns on the object at v: an expression (a pointer:
+  // Inventory's `data.get()`), or the object it makes (an iterator: CompactDeque's `iterator(&this, 0)`).
+  bool returnedValue(DebugValue& v, Node* at, FunctionDecl* f, std::string& expression, std::shared_ptr<ObjectValue>& object)
+  {
+    TypeTable& types = v.global.types();
+    InlinedCall c;
+    if (!prepareCall(v, at, f, nullptr, nullptr, false, nullptr, c, nullptr))
+      return false;
+    DebugValue inner{v.global, v.symbols, c.def->file, c.instance, c.args, c.prefix, v.depth + 1, c.self};
+    inner.bound = c.bound;
+    inner.object = c.object;
+    inner.asserts = v.asserts;
+    inner.known = v.known;
+    inner.reached = v.reached;
+    std::vector<DebugCase> cases;
+    bool done = debugCases(inner, c.instance, cases);
+    if (done && (cases.size() != 1 || cases[0].conditional()))
+      done = fail(inner, c.instance, "a body other than one `return EXPRESSION;`");
+    if (done)
+    {
+      const Ty* r = cases[0].second->ty ? types.unqualified(types.stripRef(cases[0].second->ty)) : nullptr;
+      if (r && r->kind == TyKind::Class)
+        done = natvisObject(inner, cases[0].second, object);
+      else if (natvisExpression(inner, cases[0].second, expression))
+        expression = wrap(expression);
+      else
+        done = false;
+    }
+    if (!done && v.why.empty())
+    {
+      v.why = functionName(v.symbols, f) + ": " + inner.why;
+      v.at = inner.at ? inner.at : at;
+      v.atFile = inner.atFile;
+    }
+    return done;
+  }
+
+  // The member an expression names as the target of an assignment in the object's own code (`this.index`,
+  // `index`), or empty.
+  std::string assignedMember(const SymbolTable& symbols, Expr* e)
+  {
+    while (e && e->kind == NodeKind::ParenExpr)
+      e = static_cast<ParenExpr*>(e)->inner;
+    if (e && e->kind == NodeKind::MemberExpr && isThisObject(static_cast<MemberExpr*>(e)->base) && static_cast<MemberExpr*>(e)->op != P::Arrow)
+      return std::string(symbols.name(static_cast<MemberExpr*>(e)->member.last().symbol));
+    if (e && e->kind == NodeKind::NameExpr && static_cast<NameExpr*>(e)->resolved && static_cast<NameExpr*>(e)->resolved->kind == NodeKind::VariableDecl &&
+        !(static_cast<NameExpr*>(e)->resolved->flags & DF_Static))
+      return std::string(symbols.name(static_cast<NameExpr*>(e)->name.last().symbol));
+    return {};
+  }
+
+  // An iterator's operator++ as natvis's steps: each statement an assignment to a member of the iterator
+  // (`++this.index`, `this.current = this.current->next`), `return this;` at the end.
+  bool iteratorStep(DebugValue& v, Node* at, FunctionDecl* f, const Ty* iterator, std::vector<std::string>& members, std::vector<std::string>* execs)
+  {
+    TemplateArgs args = v.global.classArgsOf(iterator);
+    Decl* defined = args.empty() ? v.global.definitionOf(f) : v.global.definitionOf(f, args);
+    auto* def = defined && defined->kind == NodeKind::FunctionDecl ? static_cast<FunctionDecl*>(defined) : f;
+    FunctionDecl* instance = args.empty() ? def : v.global.instanceBody(def, args, iterator);
+    if (!instance || !instance->body || instance->body->kind != NodeKind::BlockStmt)
+      return fail(v, at, "an iterator's operator++ whose body is not here");
+    DebugValue inner{v.global, v.symbols, def->file, instance, args, "", v.depth + 1, iterator};
+    inner.object = v.object;
+    inner.asserts = v.asserts;
+    inner.known = v.known;
+    for (Stmt* s : static_cast<BlockStmt*>(instance->body)->stmts)
+    {
+      if (s->kind == NodeKind::ReturnStmt && static_cast<ReturnStmt*>(s)->value && isThisObject(static_cast<ReturnStmt*>(s)->value))
+        continue;
+      Expr* e = s->kind == NodeKind::ExprStmt ? static_cast<ExprStmt*>(s)->expr : nullptr;
+      std::string member, value;
+      if (e && e->kind == NodeKind::UnaryExpr && !static_cast<UnaryExpr*>(e)->callee &&
+          (P(static_cast<UnaryExpr*>(e)->op) == P::PlusPlus || P(static_cast<UnaryExpr*>(e)->op) == P::MinusMinus))
+      {
+        member = assignedMember(v.symbols, static_cast<UnaryExpr*>(e)->operand);
+        if (!member.empty() && execs)
+        {
+          if (!memberOf(inner, e, member, value))
+            return false;
+          value += P(static_cast<UnaryExpr*>(e)->op) == P::PlusPlus ? " + 1" : " - 1";
+        }
+      }
+      else if (e && e->kind == NodeKind::BinaryExpr && !static_cast<BinaryExpr*>(e)->callee &&
+               (P(static_cast<BinaryExpr*>(e)->op) == P::Assign || P(static_cast<BinaryExpr*>(e)->op) == P::PlusAssign ||
+                P(static_cast<BinaryExpr*>(e)->op) == P::MinusAssign))
+      {
+        auto* b = static_cast<BinaryExpr*>(e);
+        member = assignedMember(v.symbols, b->lhs);
+        if (!member.empty() && execs)
+        {
+          std::string current;
+          if (!natvisExpression(inner, b->rhs, value))
+            return false;
+          if (P(b->op) != P::Assign)
+          {
+            if (!memberOf(inner, e, member, current))
+              return false;
+            value = current + (P(b->op) == P::PlusAssign ? " + " : " - ") + wrap(value);
+          }
+        }
+      }
+      if (member.empty())
+        return fail(inner, s, "an iterator's operator++ with a statement other than an assignment to its member and `return this;`");
+      if (std::find(members.begin(), members.end(), member) == members.end())
+        members.push_back(member);
+      if (execs)
+        execs->push_back("__kpp_" + member + " = " + value);
+    }
+    return true;
+  }
+
+  // A container's elements (kovarex, 2026-11-13: "lets try C"): its own begin() and end(), const and without
+  // parameters, and its iterator's ==, * and ++, as natvis's loop (CustomListItems): the iterator's members
+  // that ++ changes are the loop's variables (`__kpp_index`), the others their begin() values; a pointer
+  // iterator is one variable stepped by one. An assert on the way stops the loop where it fails. False with
+  // why empty for a class without them.
+  bool elementsRule(GlobalScope& global, const SymbolTable& symbols, const DebugClass& d, std::string& out, std::string& why)
+  {
+    TypeTable& types = global.types();
+    if (!d.type || !d.type->decl || d.type->decl->kind != NodeKind::ClassDecl)
+      return false;
+    Decl* defined = global.definitionOf(d.type->decl);
+    if (!defined || defined->kind != NodeKind::ClassDecl || !defined->file || defined->file->isImported || defined->file->isLibrary)
+      return false;
+    auto* cls = static_cast<ClassDecl*>(defined);
+    if (!cls->flagBits.empty())
+      return false;
+    auto constWithout = [](FunctionDecl* f) { return (f->flags & DF_Const) && f->params.empty() && f->templateParams.empty(); };
+    FunctionDecl* begin = memberFunction(global, symbols, d.type, "begin", P(0), constWithout);
+    FunctionDecl* end = memberFunction(global, symbols, d.type, "end", P(0), constWithout);
+    if (!begin || !end)
+      return false;
+    DebugValue v{global, symbols, cls->file, cls, global.classArgsOf(d.type), "", 0, d.type};
+    v.asserts = std::make_shared<std::vector<std::pair<std::string, std::string>>>();
+    auto failed = [&]
+    {
+      why = d.name + ": " + v.why;
+      return false;
+    };
+    std::string beginValue, endValue, variables, condition, item;
+    std::vector<std::string> execs;
+    std::shared_ptr<ObjectValue> beginObject, endObject;
+    if (!returnedValue(v, cls, begin, beginValue, beginObject) || !returnedValue(v, cls, end, endValue, endObject))
+      return failed();
+    if (!beginObject != !endObject || (beginObject && beginObject->type != endObject->type))
+    {
+      fail(v, begin, "begin() and end() of different types");
+      return failed();
+    }
+    if (!beginObject)
+    {
+      const Ty* returned = global.typeOfDeclIn(begin, v.args);
+      returned = returned && returned->kind == TyKind::Function && returned->inner ? types.unqualified(types.stripRef(returned->inner)) : nullptr;
+      if (!returned || returned->kind != TyKind::Pointer)
+      {
+        fail(v, begin, "a begin() returning neither a pointer nor an iterator object");
+        return failed();
+      }
+      variables = "        <Variable Name=\"__kpp_it\" InitialValue=\"" + escape(beginValue) + "\"/>\n";
+      condition = "__kpp_it == " + endValue;
+      item = "*__kpp_it";
+      execs.push_back("__kpp_it = __kpp_it + 1");
+    }
+    else
+    {
+      const Ty* iterator = beginObject->type;
+      FunctionDecl* step = memberFunction(global, symbols, iterator, nullptr, P::PlusPlus, [](FunctionDecl* f) { return f->params.empty(); });
+      FunctionDecl* equal = memberFunction(global, symbols, iterator, nullptr, P::EqEq, [&](FunctionDecl* f)
+      {
+        const Ty* t = f->params.size() == 1 ? global.typeOfDeclIn(f->params[0], global.classArgsOf(iterator)) : nullptr;
+        return (f->flags & DF_Const) && t && types.unqualified(types.stripRef(t)) == iterator;
+      });
+      FunctionDecl* star = memberFunction(global, symbols, iterator, nullptr, P::Star, [](FunctionDecl* f) { return (f->flags & DF_Const) && f->params.empty(); });
+      if (!step || !equal || !star)
+      {
+        fail(v, begin, std::string("an iterator without ") + (!step ? "one operator++()" : !equal ? "one const operator== of its own type" : "one const operator*()"));
+        return failed();
+      }
+      std::vector<std::string> changed;
+      if (!iteratorStep(v, step, step, iterator, changed, nullptr))
+        return failed();
+      // the loop's object: a variable for each member ++ changes, begin()'s value for the others
+      auto loop = std::make_shared<ObjectValue>();
+      loop->type = iterator;
+      for (const std::string& member : changed)
+      {
+        auto initial = std::find_if(beginObject->members.begin(), beginObject->members.end(), [&](const auto& m) { return m.first == member; });
+        if (initial == beginObject->members.end())
+        {
+          fail(v, step, "an iterator member begin() does not set: " + member);
+          return failed();
+        }
+        variables += "        <Variable Name=\"__kpp_" + member + "\" InitialValue=\"" + escape(initial->second) + "\"/>\n";
+        loop->members.push_back({member, "__kpp_" + member});
+      }
+      for (const auto& [member, value] : beginObject->members)
+        if (std::find(changed.begin(), changed.end(), member) == changed.end())
+          loop->members.push_back({member, value});
+      DebugValue at{global, symbols, cls->file, cls, global.classArgsOf(iterator), "", 0, iterator};
+      at.object = loop;
+      at.asserts = v.asserts;
+      std::vector<Bound> other(1);
+      other[0].object = endObject;
+      if (!inlinedMember(at, equal, equal, nullptr, false, false, condition, nullptr, nullptr, &other) ||
+          !inlinedMember(at, star, star, nullptr, false, false, item, nullptr, nullptr, nullptr) || !iteratorStep(at, step, step, iterator, changed, &execs))
+      {
+        v.why = at.why;
+        return failed();
+      }
+    }
+    std::string breaks = "          <Break Condition=\"" + escape(simplifyCondition(condition)) + "\"/>\n";
+    for (const auto& [failing, text] : *v.asserts)
+    {
+      std::string when = simplifyCondition(failing);
+      if (when != "false")
+        breaks += "          <Break Condition=\"" + escape(when) + "\"/> <!-- " + escape(text) + " -->\n";
+    }
+    out = "      <CustomListItems MaxItemsPerView=\"5000\">\n" + variables + "        <Loop>\n" + breaks + "          <Item>" + escape(item) + "</Item>\n";
+    for (const std::string& exec : execs)
+      out += "          <Exec>" + escape(exec) + "</Exec>\n";
+    out += "        </Loop>\n      </CustomListItems>\n";
+    return true;
   }
 }
 
@@ -2924,11 +3322,25 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
              "  </Type>\n";
     }
   }
-  // A type's debugValue() (DebugValue above): its rule, one per instance (debugValueRule).
+  // A type's debugValue() (DebugValue above): its rule, one per instance (debugValueRule); a container's
+  // elements (elementsRule) in its Expand.
   for (const DebugClass& d : classes)
   {
-    std::string rule, error;
-    if (debugValueRule(global, symbols, d, rule, error))
+    std::string rule, error, elements, why;
+    bool shown = debugValueRule(global, symbols, d, rule, error);
+    if (elementsRule(global, symbols, d, elements, why))
+    {
+      if (!shown)
+        rule = "  <Type Name=\"" + escape(d.name) + "\">\n    <Expand>\n" + elements + "    </Expand>\n  </Type>\n";
+      else if (size_t at = rule.rfind("    </Expand>\n"); at != std::string::npos)
+        rule.insert(at, elements);
+      else
+        rule.insert(rule.rfind("  </Type>\n"), "    <Expand>\n" + elements + "    </Expand>\n");
+      shown = true;
+    }
+    else if (!why.empty() && getenv("KPP_NATVIS_ELEMENTS"))
+      fprintf(stderr, "natvis elements: %s\n", why.c_str());
+    if (shown)
       out += rule;
   }
   out += "</AutoVisualizer>\n";

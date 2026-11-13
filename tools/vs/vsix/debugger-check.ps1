@@ -122,6 +122,15 @@ try
   Expect 'gearSignal' '{part gear}'
   Expect 'waterSignal' '{fluid water}'
   Expect 'badSignal' 'reaches abort()'
+  # A container's elements by its own begin() and end() (a ring's index iterator wrapping, a pointer, a sentinel list).
+  foreach ($case in @(@('ring', '[0]=10, [1]=20, [2]=30, [Raw View]='), @('shelf', '[0]=7, [1]=8, [2]=9, [Raw View]=')))
+  {
+    $rows = @((Value $case[0]).DataMembers | ForEach-Object { "$($_.Name)=$($_.Value)" }) -join ', '
+    Check "$($case[0])'s elements" ($rows.StartsWith($case[1])) $rows
+  }
+  $links = @((Value 'chain').DataMembers)
+  $values = @($links | Where-Object { $_.Name -like '`[?`]' } | ForEach-Object { @($_.DataMembers | Where-Object { $_.Name -eq 'value' })[0].Value }) -join ', '
+  Check "chain's elements" ($values -eq '1, 2') $values
   $rows = @((Value 'many').DataMembers | ForEach-Object { "$($_.Name)=$($_.Value)" }) -join ', '
   Check "a set's rows" ($rows -like 'Red=true, Green=false, Blue=true, `[bits`]=0x61*') $rows
   $stack = @($dte.Debugger.CurrentThread.StackFrames | ForEach-Object { "$($_.Language)" })

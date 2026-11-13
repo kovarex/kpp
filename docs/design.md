@@ -2969,6 +2969,13 @@ other options (hand-written files, a format string, calling the program's code):
   for a type reads that type's prototype list, not a choice of eight); a condition leaves out `!(X == M)` beside
   `X == N`; parentheses only where precedence needs them. SignalIDBase's rule went from 25 KB to 7.2 KB, the
   game's factorio-test natvis from 1,522,941 to 1,503,274 bytes, every display the same.
+- **A container's elements come from its own begin() and end()** (kovarex, 2026-11-13: "lets try C", over
+  debugCount/debugItem and debugFirst/debugNext methods that would repeat what operator[] and the iterator say):
+  every class of the program with const begin() and end() without parameters gets natvis's loop
+  (CustomListItems): its iterator's members that operator++ changes are the loop's variables, its operator==
+  with end() the break, its operator* the item; a pointer iterator steps by one. An assert on the way stops the
+  loop where it fails. Automatic: a class kpp cannot follow shows its members as before, listed with
+  KPP_NATVIS_ELEMENTS=1 (the game's factorio-test: 693 classes with elements, 107 not, 2026-11-13).
 - **It reads a class's static data members** too, globals the program writes (kovarex, 2026-11-13: "Why is it so
   special for the debugValue code to read global?"; the game's ID<T> shows its prototype's name through
   `PrototypeList<T>::indexToPrototype[this.index]->name`): the rule names the global as the debug information does
