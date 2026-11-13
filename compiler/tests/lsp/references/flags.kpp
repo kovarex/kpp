@@ -1,0 +1,21 @@
+flags Marks : u8 { Red, Green, Blue };
+
+flags Usage : u16
+{
+  {
+    Saved,
+    Found = 6,
+    Kept = Saved,
+  }
+  bool isSaved() const { return this.has(Usage::Saved); }
+};
+
+i32 countMarks(Marks marks)
+{
+  Marks blue = Marks::Blue;
+  marks.set(Marks::Blue);
+  marks.clear(Marks::Green);
+  return marks.has(blue) && marks.hasAny(Marks::Red) ? 1 : 0;
+}
+
+bool used(Usage usage) { return usage.has(Usage::Found) || usage.isSaved(); }

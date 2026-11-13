@@ -1466,12 +1466,27 @@ namespace
       if (fileOut)
         *fileOut = f;
       size_t offset = offsetOf(f->text, startsOf(f), params["position"]);
-      uint32_t t = tokenAt(*f->tokens, offset);
-      if (t == UINT32_MAX)
-        return nullptr;
       const std::vector<Occurrence>& list = occurrencesOf(f);
-      auto it = std::lower_bound(list.begin(), list.end(), t, [](const Occurrence& o, uint32_t token) { return o.token < token; });
-      return it != list.end() && it->token == t ? &*it : nullptr;
+      if (uint32_t t = tokenAt(*f->tokens, offset); t != UINT32_MAX)
+      {
+        auto it = std::lower_bound(list.begin(), list.end(), t, [](const Occurrence& o, uint32_t token) { return o.token < token; });
+        if (it != list.end() && it->token == t)
+          return &*it;
+      }
+      // The tokens the parser wrote in place of a declaration (a flags declaration's class, design.md 27)
+      // stand at the places of the tokens they were made like, out of the source's order, where the
+      // search by offset misses the names among them: the name there, found among the file's names.
+      const std::vector<Token>& tokens = *f->tokens;
+      const Occurrence* after = nullptr;
+      for (const Occurrence& o : list)
+      {
+        const Token& t = tokens[o.token];
+        if (offset >= t.offset && offset < size_t(t.offset) + t.length)
+          return &o;
+        if (!after && offset == size_t(t.offset) + t.length) // (a cursor right after the name)
+          after = &o;
+      }
+      return after;
     }
 
     Json tokenRange(const ParsedFile* f, uint32_t token)
@@ -3170,6 +3185,10 @@ namespace
         for (uint32_t k = 0; k < f->tokens->size(); ++k)
         {
           if (!sameIdentifier((*f->tokens)[k], symbol))
+            continue;
+          // (a name the parser made, a flags declaration's class's, stands at another token's place: renamed with
+          // the source it is made from)
+          if (const Token& t = (*f->tokens)[k]; f->text.substr(t.offset, t.length) != program.symbols->name(symbol))
             continue;
           auto found = known.find(k);
           bool isTarget = false, isOther = false;

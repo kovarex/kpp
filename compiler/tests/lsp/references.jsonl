@@ -19,5 +19,19 @@
 {"jsonrpc":"2.0","id":8,"method":"textDocument/references","params":{"textDocument":{"uri":"$ROOT/speak.kpp"},"position":{"line":25,"character":14},"context":{"includeDeclaration":true}}}
 // The overload say(i32): itself and its call.
 {"jsonrpc":"2.0","id":9,"method":"textDocument/references","params":{"textDocument":{"uri":"$ROOT/speak.kpp"},"position":{"line":7,"character":14},"context":{"includeDeclaration":true}}}
-{"jsonrpc":"2.0","id":10,"method":"shutdown"}
+// A flags declaration's set (design.md 27), from its declaration: the parser rewrites it as a class, its tokens out of source order.
+{"jsonrpc":"2.0","id":10,"method":"textDocument/references","params":{"textDocument":{"uri":"$ROOT/flags.kpp"},"position":{"line":0,"character":6},"context":{"includeDeclaration":true}}}
+// A flag, from its declaration: its uses through has, set and a local.
+{"jsonrpc":"2.0","id":11,"method":"textDocument/references","params":{"textDocument":{"uri":"$ROOT/flags.kpp"},"position":{"line":0,"character":31},"context":{"includeDeclaration":true}}}
+// A set with members, from its declaration.
+{"jsonrpc":"2.0","id":12,"method":"textDocument/references","params":{"textDocument":{"uri":"$ROOT/flags.kpp"},"position":{"line":2,"character":6},"context":{"includeDeclaration":true}}}
+// A flag of a set with members: its use in a member function and the second name that names its bit again (`Kept = Saved`).
+{"jsonrpc":"2.0","id":13,"method":"textDocument/references","params":{"textDocument":{"uri":"$ROOT/flags.kpp"},"position":{"line":5,"character":4},"context":{"includeDeclaration":true}}}
+// A flag from a use (`Marks::Blue` in set).
+{"jsonrpc":"2.0","id":14,"method":"textDocument/references","params":{"textDocument":{"uri":"$ROOT/flags.kpp"},"position":{"line":15,"character":19},"context":{"includeDeclaration":true}}}
+// Renaming a flag from its declaration: its uses and the second name that names it.
+{"jsonrpc":"2.0","id":15,"method":"textDocument/rename","params":{"textDocument":{"uri":"$ROOT/flags.kpp"},"position":{"line":5,"character":4},"newName":"Stored"}}
+// Renaming the set from its declaration.
+{"jsonrpc":"2.0","id":16,"method":"textDocument/rename","params":{"textDocument":{"uri":"$ROOT/flags.kpp"},"position":{"line":0,"character":6},"newName":"Paint"}}
+{"jsonrpc":"2.0","id":17,"method":"shutdown"}
 {"jsonrpc":"2.0","method":"exit"}

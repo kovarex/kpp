@@ -4231,7 +4231,7 @@ namespace
       bool block = toks[open + 1].is(P::LBrace);
       uint32_t listClose = block ? closingToken(open + 1) : close;
       std::string name(symbols.name(toks[nameToken].id));
-      struct Written { uint32_t token; int bit; bool alias; };
+      struct Written { uint32_t token; int bit; bool alias; uint32_t other = 0; }; // (other: the token naming an alias's flag)
       std::vector<Written> written;
       std::vector<int> owner(64, -1); // each bit's first flag
       int next = 0;
@@ -4260,6 +4260,7 @@ namespace
           else if (toks[k].getKind() == TokenKind::Identifier)
           {
             f.alias = true;
+            f.other = k;
             f.bit = -1;
             for (const Written& w : written)
               if (toks[w.token].id == toks[k].id)
@@ -4397,7 +4398,15 @@ namespace
       {
         append(synthesize("static constexpr " + n, w.token));
         copy(w.token, w.token + 1);
-        append(synthesize("= " + n + "::fromBits(" + bit(w.bit) + ");", w.token));
+        if (w.alias)
+        {
+          // (the flag it names again, written as its name: a reference to it, which the editor finds and renames)
+          append(synthesize("= " + n + "::", w.other));
+          copy(w.other, w.other + 1);
+          append(synthesize(";", w.other));
+        }
+        else
+          append(synthesize("= " + n + "::fromBits(" + bit(w.bit) + ");", w.token));
         flagsOf.push_back({toks[w.token].id, uint8_t(w.bit), w.alias});
       }
       std::unordered_map<uint32_t, uint32_t> at; // a problem's token -> its place in made
