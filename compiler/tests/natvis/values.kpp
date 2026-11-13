@@ -182,6 +182,31 @@ flags Usage : u16
   OVERRIDE = LOOTED,
 };
 
+// A handle shows the name of what it indexes in a template's static list, the game's ID<T> through
+// PrototypeList<T>::indexToPrototype: a static data member read by its debugger name, a Vector's element.
+struct Part
+{
+  std::String name;
+};
+
+template<class T>
+struct Registry
+{
+  static std::Vector<T*> all;
+};
+
+template<class T>
+struct Handle
+{
+  std::String debugValue() const
+  {
+    if (this.index == 0)
+      return "{0}";
+    return Registry<T>::all[this.index]->name;
+  }
+  u16 index = 0;
+};
+
 struct Buffer
 {
   std::Span<i32> debugValue() const { return std::Span<i32>(this.data, this.size); }
@@ -229,6 +254,12 @@ int main()
   Station station;
   station.name.value = "depot";
   Usage usage = Usage::OWNED | Usage::LOOTED;
+  Part gear;
+  gear.name = "gear";
+  Registry<Part>::all.push_back(nullptr);
+  Registry<Part>::all.push_back(&gear);
+  Handle<Part> handle;
+  handle.index = 1;
   Buffer buffer;
   buffer.data = held;
   buffer.size = 3;

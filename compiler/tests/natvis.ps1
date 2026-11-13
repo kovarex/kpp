@@ -80,6 +80,8 @@ foreach ($case in @(@('Heading', '|{(Heading::Enum)(value)}'), @('Shape', '|side
                     @('Sign', "value == 0|> value == 1|< value == 2|$([char]0x2265) |?"), @('Team', '(index == 1)|red |{{index={(int)(index)}}}'),
                     @('Release', '(branch.version != 0)|{(unsigned int)(major)}.{(unsigned int)(minor)} (branch) |{(unsigned int)(major)}.{(unsigned int)(minor)}'),
                     @('Station', '|{name.value,sb}'),
+                    # a static data member by its debugger name, a Vector's element: the game's ID<T>
+                    @('Handle<Part>', 'index == 0|{{0}} |{Registry<Part>::all.items[index]->name,sb}'),
                     # a set of flags: the names of the flags set, A | B | C, a chain of views a flag (OVERRIDE, a second
                     # name, left out), the bits no flag names last, {} when none; Visual Studio showed it (tools\vs\vsix\debugger-check.ps1)
                     @('Usage', '(__kpp_bits & 0x1) != 0 && (__kpp_bits & 0xfffffffffffffffe) != 0|UPGRADED | {*this,view(kpp1)} (__kpp_bits & 0x1) != 0|UPGRADED |{*this,view(kpp1)} (__kpp_bits & 0x4) != 0 && (__kpp_bits & 0xfffffffffffffffa) != 0|OWNED | {*this,view(kpp2)} (__kpp_bits & 0x4) != 0|OWNED |{*this,view(kpp2)} (__kpp_bits & 0x8) != 0 && (__kpp_bits & 0xfffffffffffffff2) != 0|LOOTED | {*this,view(kpp3)} (__kpp_bits & 0x8) != 0|LOOTED |{*this,view(kpp3)} |{(unsigned long long)(__kpp_bits & 0xfffffffffffffff2)} __kpp_bits == 0|{{}} |{*this,view(kpp0)}')))

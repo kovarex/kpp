@@ -113,6 +113,9 @@ try
   Expect 'one' 'Green'
   Expect 'many' 'Red | Blue | 64'
   Expect 'wide' 'F0 | F1 | F2 | F3 | F4 | F5 | F6 | F7 | F8 | F9 | F10 | F11 | F12 | F13 | F14 | F15 | F16 | F17 | F18 | F19'
+  # A global read by a view: a handle's name in a template's static list (the game's ID<T>).
+  Expect 'handle' 'gear'
+  Expect 'none0' '{0}'
   $rows = @((Value 'many').DataMembers | ForEach-Object { "$($_.Name)=$($_.Value)" }) -join ', '
   Check "a set's rows" ($rows -like 'Red=true, Green=false, Blue=true, `[bits`]=0x61*') $rows
   $stack = @($dte.Debugger.CurrentThread.StackFrames | ForEach-Object { "$($_.Language)" })

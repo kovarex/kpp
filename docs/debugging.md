@@ -398,6 +398,11 @@ struct Buffer { std::Span<i32> debugValue() const { return std::Span<i32>(this.d
   `static_cast<const Entity&>(this).position` reads the derived class's member (`(*(Entity*)this).position`); a data member that is a class
   as that class's view, and its expansion (`ExpandedItem`); a `std::Span` made of a pointer and a length
   (or two pointers) as `{length=N}` and its elements (`ArrayItems`). Any other type returned is an error.
+- **A class's static data member** is read too, a global the program writes, by its name in the debug information:
+  `Registry<T>::all[this.index]->name` in Handle<Part> is `{Registry<Part>::all.items[index]->name,sb}` (an element of
+  the library's Vector is its `items[i]`, of a pointer or array `[i]`). The game's ID<T> shows its prototype's name so
+  (2026-11-13). tests\natvis.ps1 checks Handle<Part>; tools\vs\vsix\debugger-check.ps1 saw `gear` and `{0}` in
+  Visual Studio.
 - **Any member, private ones of the bases too**, may be named in a debugValue, which no other function may (kovarex,
   2026-11-13): the debugger sees them all, and a view reads the members themselves rather than the functions that guard
   them, whose asserts a view cannot evaluate (Targeter's view reads its base's `target`, not `get()`). Specs

@@ -2954,6 +2954,11 @@ other options (hand-written files, a format string, calling the program's code):
   kovarex 2026-11-12: "Why not use what we already have?"; a member's `debugValue`); no allocation, no writes,
   no calls of other functions. A body outside that is a compile error in the type's own file, so a renamed
   member never leaves a stale rule.
+- **It reads a class's static data members** too, globals the program writes (kovarex, 2026-11-13: "Why is it so
+  special for the debugValue code to read global?"; the game's ID<T> shows its prototype's name through
+  `PrototypeList<T>::indexToPrototype[this.index]->name`): the rule names the global as the debug information does
+  (`PrototypeList<ItemPrototype>::indexToPrototype`, the class's instance as the qualifier names it in that instance),
+  and an element of the library's Vector is its `items[i]`.
 - **It names any member** of its class and its bases, private ones too (kovarex, 2026-11-13, choosing this over
   leaving the asserts of the functions it calls out of the view: "it can explode into new versions of code, and some
   asserts recursively can have meaning"): the debugger sees every member, and a view reads the member itself, not the

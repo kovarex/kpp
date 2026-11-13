@@ -203,7 +203,20 @@ namespace
     case NodeKind::NameExpr:
     {
       Decl* d = static_cast<NameExpr*>(n)->resolved;
+      if (d && d->kind == NodeKind::VariableDecl && (d->flags & DF_Static) && !(d->flags & DF_Constexpr) && d->parent &&
+          d->parent->kind == NodeKind::ClassDecl)
+        return true; // (a static data member: a global, read where the debugger stops)
       return d && d->kind == NodeKind::VariableDecl && !(d->flags & DF_Static) && d->parent && d->parent->kind == NodeKind::ClassDecl;
+    }
+    case NodeKind::IndexExpr:
+    {
+      auto* x = static_cast<IndexExpr*>(n);
+      if (readsObject(x->base))
+        return true;
+      for (Expr* a : x->args)
+        if (readsObject(a))
+          return true;
+      return false;
     }
     case NodeKind::MemberExpr: return readsObject(static_cast<MemberExpr*>(n)->base);
     case NodeKind::ParenExpr: return readsObject(static_cast<ParenExpr*>(n)->inner);
@@ -398,6 +411,7 @@ namespace
   bool natvisText(DebugValue& v, Expr* e, std::string& out);
   bool natvisCondition(DebugValue& v, Expr* e, std::string& out);
   bool literalText(const ParsedFile* f, const LiteralExpr* e, std::string& out);
+  bool isLibraryClass(const Ty* t, const SymbolTable& symbols, const char* name);
 
   // A const member function's body inlined on an object (the call's object, `this.toDouble()`, or a member,
   // `this.speed.debugValue()`; a conversion to bool on a class value): one `return EXPRESSION;` after
@@ -713,7 +727,55 @@ namespace
     case NodeKind::NameExpr: // a data member, `this.` implicit
     {
       auto* n = static_cast<NameExpr*>(e);
+      Decl* d = n->resolved;
+      if (d && d->kind == NodeKind::VariableDecl && (d->flags & DF_Static))
+      {
+        // A static data member, a global (kovarex, 2026-11-13: a prototype's name through
+        // `PrototypeList<T>::indexToPrototype[index]`): its name in the debug information, its class's
+        // instance as the qualifier names it in this instance (`PrototypeList<ItemPrototype>::indexToPrototype`).
+        Decl* owner = v.global.owningClass(d);
+        if (!owner || owner->kind != NodeKind::ClassDecl)
+          return fail(v, e, "a variable other than a data member or a class's static data member");
+        TypeTable& types = v.global.types();
+        const Ty* cls = nullptr;
+        if (n->name.parts.size() > 1)
+        {
+          NamedType qualifier{};
+          qualifier.kind = NodeKind::NamedType;
+          qualifier.token = n->token;
+          qualifier.name = n->name;
+          qualifier.name.parts.count -= 1;
+          cls = v.global.typeOfAstIn(&qualifier, v.context, v.args);
+        }
+        else if (owner->templateParams.empty())
+          cls = types.classType(owner, {});
+        else if (v.self)
+          cls = v.self; // (a member of the class whose view this is, named alone)
+        cls = cls ? types.unqualified(types.stripRef(cls)) : nullptr;
+        if (!cls || cls->kind != TyKind::Class || types.isDependent(cls))
+          return fail(v, e, "a static data member whose class the view cannot name");
+        out = types.toString(cls, &v.symbols, true) + "::" + std::string(v.symbols.name(n->name.last().symbol));
+        return true;
+      }
       out = v.prefix + std::string(v.symbols.name(n->name.last().symbol));
+      return true;
+    }
+    case NodeKind::IndexExpr:
+    {
+      // An element: of an array or through a pointer, or of the library's Vector (its items), as natvis
+      // writes them (`all.items[index]`).
+      auto* x = static_cast<IndexExpr*>(e);
+      if (x->args.size() != 1 || !x->base || !x->base->ty)
+        return fail(v, e, "an index other than one value");
+      TypeTable& types = v.global.types();
+      const Ty* base = types.unqualified(types.stripRef(x->base->ty));
+      bool vector = isLibraryClass(base, v.symbols, "Vector");
+      if (!vector && base->kind != TyKind::Pointer && base->kind != TyKind::Array)
+        return fail(v, e, "an index of a class other than the library's Vector");
+      std::string object, at;
+      if (!natvisExpression(v, x->base, object) || !natvisExpression(v, x->args[0], at))
+        return false;
+      out = object + (vector ? ".items[" : "[") + at + "]";
       return true;
     }
     case NodeKind::MemberExpr:

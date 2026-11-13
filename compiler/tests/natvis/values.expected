@@ -28,6 +28,7 @@ Buffer
 Fixed<12>
 Fixed<8>
 Force
+Handle<Part>
 Heading
 Item
 Load
