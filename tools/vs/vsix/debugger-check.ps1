@@ -131,6 +131,10 @@ try
   $links = @((Value 'chain').DataMembers)
   $values = @($links | Where-Object { $_.Name -like '`[?`]' } | ForEach-Object { @($_.DataMembers | Where-Object { $_.Name -eq 'value' })[0].Value }) -join ', '
   Check "chain's elements" ($values -eq '1, 2') $values
+  # A class's own listing of its children (debugItems): a tree's line and its children.
+  Expect 'tree' '{ root, List }'
+  $rows = @((Value 'tree').DataMembers | ForEach-Object { "$($_.Name)=$($_.Value)" }) -join ', '
+  Check "tree's children" ($rows.Contains('[0]={ a, 4, Leaf }, [1]={ b, 5, Leaf }')) $rows
   $rows = @((Value 'many').DataMembers | ForEach-Object { "$($_.Name)=$($_.Value)" }) -join ', '
   Check "a set's rows" ($rows -like 'Red=true, Green=false, Blue=true, `[bits`]=0x61*') $rows
   $stack = @($dte.Debugger.CurrentThread.StackFrames | ForEach-Object { "$($_.Language)" })

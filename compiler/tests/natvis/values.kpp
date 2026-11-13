@@ -419,6 +419,45 @@ struct Chain
   Link head;
 };
 
+// A class's own listing of its children (debugItems), over its begin() and end(), which mark the node used and
+// throw where it has no children (the game's PropertyTree): a list's children as a Span of its member's, a leaf none;
+// its value line by debugValue, the kind by its enumerator's name; its union's members left out of the rows.
+struct Tree
+{
+  enum class Kind : u8 { Leaf = 0, List = 1 };
+
+  const Tree* begin() const
+  {
+    this.used = true;
+    if (this.kind != Kind::List)
+      abort();
+    return this.children.data();
+  }
+  const Tree* end() const { return this.children.data() + this.children.size(); }
+  std::String debugValue() const
+  {
+    if (this.kind == Kind::List)
+      return std::toString("{ ", this.name, ", ", this.kind, " }");
+    return std::toString("{ ", this.name, ", ", this.number, ", ", this.kind, " }");
+  }
+  std::Span<const Tree> debugItems() const
+  {
+    if (this.kind == Kind::List)
+      return std::Span<const Tree>(this.children.data(), this.children.size());
+    return {};
+  }
+
+  std::String name;
+  Kind kind = Kind::Leaf;
+  union
+  {
+    i32 number;
+    f32 ratio;
+  };
+  std::Vector<Tree> children;
+  mutable bool used = false;
+};
+
 union enum Property : uint8_t
 {
   { {int, Integer}, {double, Real}, {std::String, Text} }
@@ -537,7 +576,17 @@ int main()
   chain.head.next = &first;
   first.next = &second;
   second.next = &chain.head;
+  Tree tree;
+  tree.name = "root";
+  tree.kind = Tree::Kind::List;
+  tree.children.resize(2);
+  tree.children[0].name = "a";
+  tree.children[0].number = 4;
+  tree.children[1].name = "b";
+  tree.children[1].number = 5;
   i32 total = 0;
+  for (const Tree& leaf : tree)
+    total += leaf.number;
   for (const i32& x : ring)
     total += x;
   for (const i32& x : shelf)

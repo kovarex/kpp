@@ -24,7 +24,7 @@ if ($code -ne 0) { "FAIL natvis: compile (exit $code)"; $log | Select-Object -La
 $warnings = @($log | Where-Object { $_ -match 'warning: natvis' })
 if ($warnings) { "FAIL natvis: kpp left rules out"; $warnings | ForEach-Object { "  $_" }; exit 1 }
 $out = & $exe
-if ("$out" -ne '2 kpp 51 2 1 5 false 4 12 gear 40 -20 2 9 3 1 3 2 false 6 87') { "FAIL natvis: the program printed $out"; exit 1 }
+if ("$out" -ne '2 kpp 51 2 1 5 false 4 12 gear 40 -20 2 9 3 1 3 2 false 6 96') { "FAIL natvis: the program printed $out"; exit 1 }
 if (-not (Test-Path $natvis)) { "FAIL natvis: no $natvis"; exit 1 }
 
 # Visual Studio's schema.
@@ -119,6 +119,13 @@ foreach ($case in @(@('Ring<int32>', 'var __kpp_index=0 | break __kpp_index == c
   $shown = Loop $case[0]
   if ($shown -ne $case[1]) { "FAIL natvis: $($case[0])'s elements are '$shown', not '$($case[1])'"; exit 1 }
 }
+# A class's own listing of its children (debugItems, kovarex 2026-11-13: "We need custom debugItems"), over its
+# begin() and end(): Tree (the game's PropertyTree) lists its children's Span where it is a list, none for a leaf;
+# its rows leave its anonymous union out.
+$tree = @($types | Where-Object { $_.Name -eq 'Tree' })[0]
+$shown = "$((@($tree.Expand.Item) | ForEach-Object { $_.Name }) -join ' ') | $($tree.Expand.ArrayItems.Condition) $($tree.Expand.ArrayItems.Size) $($tree.Expand.ArrayItems.ValuePointer) | $(Displays 'Tree')"
+if ($shown -ne 'name kind children used | kind == 1 children.length children.items | kind == 1|{{ {name,sb}, {kind,en} }} |{{ {name,sb}, {number}, {kind,en} }}' -or $tree.Expand.CustomListItems)
+{ "FAIL natvis: Tree's rule is '$shown'"; exit 1 }
 # Their data members first (kovarex, 2026-11-13: "Yes", Inventory's handPosition beside its stacks).
 foreach ($case in @(@('Ring<int32>', 'items capacity head count'), @('Shelf', 'data size'), @('Chain', 'head')))
 {
@@ -133,14 +140,16 @@ if ($buffer.DisplayString -ne '{{length={size}}}' -or $buffer.Expand.ArrayItems.
 { "FAIL natvis: Buffer's debugValue rule is '$($buffer.DisplayString)'"; exit 1 }
 $bad = Join-Path $work 'debugvalue-errors.kpp'
 [IO.File]::WriteAllText($bad, "i32 twice(i32 x) { i32 doubled = 2 * x; return doubled; }`nstruct Counted`n{`n  i32 debugValue() const { return twice(this.n); }`n  i32 n = 0;`n};`n`n" +
-  "struct Moving`n{`n  i32 debugValue() { return this.speed; }`n  i32 speed = 0;`n};`n`nint main()`n{`n  Counted c;`n  Moving m;`n  return c.n + m.speed;`n}`n")
+  "struct Moving`n{`n  i32 debugValue() { return this.speed; }`n  i32 speed = 0;`n};`n`n" +
+  "struct Listed`n{`n  i32 debugItems() const { return this.n; }`n  i32 n = 0;`n};`n`nint main()`n{`n  Counted c;`n  Moving m;`n  Listed l;`n  return c.n + m.speed + l.n;`n}`n")
 $ErrorActionPreference = 'Continue'
 $log = & $KppExe --quiet --debug-info --exe (Join-Path $work 'debugvalue-errors.exe') $bad 2>&1 | ForEach-Object { "$_" }
 $code = $LASTEXITCODE
 $ErrorActionPreference = 'Stop'
 $log = $log -join "`n"
 if ($code -eq 0 -or $log -notmatch 'debugvalue-errors\.kpp:1:\d+: error: debugValue of Counted cannot be shown by the debugger: the function it calls, twice: a statement other than' -or
-    $log -notmatch 'debugvalue-errors\.kpp:10:\d+: error: debugValue, which the debugger shows Moving as, is a const member function without parameters')
+    $log -notmatch 'debugvalue-errors\.kpp:10:\d+: error: debugValue, which the debugger shows Moving as, is a const member function without parameters' -or
+    $log -notmatch 'debugvalue-errors\.kpp:16:\d+: error: debugItems of Listed cannot be shown by the debugger: a value other than a Span or a member that is a class')
 { "FAIL natvis: debugValue bodies the debugger cannot compute: exit $code`n$log"; exit 1 }
 # The same errors in a build without debug information, and in a check (the language server's).
 foreach ($mode in @('--exe', (Join-Path $work 'debugvalue-plain.exe')), @('--check'))

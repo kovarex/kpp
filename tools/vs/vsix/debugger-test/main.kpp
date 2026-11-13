@@ -231,6 +231,43 @@ struct Chain
   Link head;
 };
 
+// (a class's own listing of its children, debugItems: the game's PropertyTree)
+struct Tree
+{
+  enum class Kind : u8 { Leaf = 0, List = 1 };
+
+  const Tree* begin() const
+  {
+    this.used = true;
+    if (this.kind != Kind::List)
+      abort();
+    return this.children.data();
+  }
+  const Tree* end() const { return this.children.data() + this.children.size(); }
+  std::String debugValue() const
+  {
+    if (this.kind == Kind::List)
+      return std::toString("{ ", this.name, ", ", this.kind, " }");
+    return std::toString("{ ", this.name, ", ", this.number, ", ", this.kind, " }");
+  }
+  std::Span<const Tree> debugItems() const
+  {
+    if (this.kind == Kind::List)
+      return std::Span<const Tree>(this.children.data(), this.children.size());
+    return {};
+  }
+
+  std::String name;
+  Kind kind = Kind::Leaf;
+  union
+  {
+    i32 number;
+    f32 ratio;
+  };
+  std::Vector<Tree> children;
+  mutable bool used = false;
+};
+
 i32 main()
 {
   Square square;
@@ -282,6 +319,14 @@ i32 main()
   chain.head.next = &first;
   first.next = &second;
   second.next = &chain.head;
-  std::println(square.area(), " ", numbers.size(), " ", name, " ", queue.size(), " ", corner.x, " ", held.label, " ", none, " ", one, " ", many, " ", wide, " ", handle.index, " ", none0.index, " ", outside.index, " ", emptySignal.value, " ", gearSignal.value, " ", waterSignal.value, " ", badSignal.value, " ", ring.count, " ", shelf.size, " ", chain.head.next->value);
+  Tree tree;
+  tree.name = "root";
+  tree.kind = Tree::Kind::List;
+  tree.children.resize(2);
+  tree.children[0].name = "a";
+  tree.children[0].number = 4;
+  tree.children[1].name = "b";
+  tree.children[1].number = 5;
+  std::println(square.area(), " ", numbers.size(), " ", name, " ", queue.size(), " ", corner.x, " ", held.label, " ", none, " ", one, " ", many, " ", wide, " ", handle.index, " ", none0.index, " ", outside.index, " ", emptySignal.value, " ", gearSignal.value, " ", waterSignal.value, " ", badSignal.value, " ", ring.count, " ", shelf.size, " ", chain.head.next->value, " ", tree.children.size());
   return 0;
 }

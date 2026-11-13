@@ -468,6 +468,30 @@ atvis.ps1 checks Signal, the game's SignalIDBase; debugger-check.ps1 saw `{part 
   natvis\values.kpp's Usage; tools\vs\vsix\debugger-check.ps1 (2026-11-13) saw `{}`, `Green`, `Red | Blue |
   64` and a set of 20 flags in full in Visual Studio.
 
+### debugItems
+
+A class lists its children for the debugger with `debugItems() const` (kovarex, 2026-11-13: "We need custom
+debugItems"), which takes priority over its begin() and end(): the game's PropertyTree, whose begin() marks the
+node used and throws on a leaf, lists its children where it is a list or a dictionary:
+
+```kpp
+std::Span<const PropertyTree> debugItems() const
+{
+  if (this.getType() == Type::List || this.getType() == Type::Dictionary)
+    return std::Span<const PropertyTree>(this.listValue.data(), this.listValue.size());
+  return {};
+}
+```
+
+Its body is debugValue's (the same translation and errors), each case under its condition (natvis tests each on
+its own, so a case's says that no earlier one's holds): a `Span(pointer, length)` is its elements (ArrayItems), a
+member that is a class that member's own expansion (ExpandedItem), an empty Span (`return {};`) none. The data
+members come first, a row each, an anonymous union's left out (which member is live only the code knows; they
+stay under [Raw View]); an assert is an error (a listing has no place to show it). A text's piece that is an
+enumeration shows its enumerator's name alone (`,en`: `List`, not `List (1 '\x1')`). tests\natvis.ps1 checks
+Tree (PropertyTree's shape) and the error of a debugItems returning a number; debugger-check.ps1 saw `{ root,
+List }` and its children `{ a, 4, Leaf }`, `{ b, 5, Leaf }` in Visual Studio.
+
 ### this in the watch window
 
 Visual Studio takes `this.x` as kpp writes it (kovarex, 2026-11-09: "In debug window we need to write

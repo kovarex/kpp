@@ -796,7 +796,8 @@ auto codegen::Emitter::findDebugValueClasses() -> void
     }
     for (Decl* m : static_cast<ClassDecl*>(defined)->members)
       if (m->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(m)->name.parts.size() == 1 &&
-          static_cast<FunctionDecl*>(m)->name.last().symbol != UINT32_MAX && sym(static_cast<FunctionDecl*>(m)->name.last().symbol) == "debugValue")
+          static_cast<FunctionDecl*>(m)->name.last().symbol != UINT32_MAX &&
+          (sym(static_cast<FunctionDecl*>(m)->name.last().symbol) == "debugValue" || sym(static_cast<FunctionDecl*>(m)->name.last().symbol) == "debugItems"))
       {
         sh.debugValueClasses.push_back({type, debuggerClassName(type)});
         break;

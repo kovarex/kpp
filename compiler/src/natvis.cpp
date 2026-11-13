@@ -2362,6 +2362,7 @@ namespace
                       types.unqualified(type->inner)->kind == TyKind::Char; // (a char array or pointer: its text)
     return append("{" + expression +
                   (type && type->kind == TyKind::Float ? ",g"
+                   : type && type->kind == TyKind::Enum ? ",en" // (its enumerator's name alone, as an enum's text)
                    : characters ? ",s8b" // (kpp's text is UTF-8)
                    : string || view ? ",sb"
                    : "") +
@@ -2804,9 +2805,119 @@ namespace
         if (!name.empty())
           out += "      <Item Name=\"" + escape(name) + "\">" + escape(name) + "</Item>\n";
       }
-      else if (m->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(m)->name.parts.empty())
-        memberRows(global, symbols, static_cast<ClassDecl*>(m), args, false, out);
+      else if (m->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(m)->name.parts.empty() && static_cast<ClassDecl*>(m)->keyword != Kw::union_)
+        memberRows(global, symbols, static_cast<ClassDecl*>(m), args, false, out); // (an anonymous union's members, which one
+                                                                                   // is live only the code knows, under [Raw View])
     }
+  }
+
+  // A class's own listing of its children (kovarex, 2026-11-13: "We need custom debugItems"): a const
+  // debugItems() without parameters, its cases as debugValue's, each under its condition: a
+  // Span(pointer, length) its elements (ArrayItems), a member that is a class that member's own expansion
+  // (ExpandedItem), an empty Span (`return {};`) none. The data members come first. It takes priority over
+  // begin() and end(); a body the debugger cannot show is the build's error, as debugValue's is. False with
+  // message empty for a class without one.
+  bool itemsRule(GlobalScope& global, const SymbolTable& symbols, const DebugClass& d, std::string& out, std::string& message)
+  {
+    TypeTable& types = global.types();
+    if (!d.type || !d.type->decl || d.type->decl->kind != NodeKind::ClassDecl)
+      return false;
+    Decl* defined = global.definitionOf(d.type->decl);
+    if (!defined || defined->kind != NodeKind::ClassDecl || !defined->file || defined->file->isImported)
+      return false;
+    auto* cls = static_cast<ClassDecl*>(defined);
+    FunctionDecl* f = memberFunction(global, symbols, d.type, "debugItems", P(0), [](FunctionDecl*) { return true; });
+    if (!f)
+      return false;
+    auto error = [&](const ParsedFile* file, const Node* at, const std::string& what)
+    {
+      message = placeOf(file, at) + ": error: " + what + " (docs/debugging.md, \"debugItems\")";
+      return false;
+    };
+    if (!f->params.empty() || !(f->flags & DF_Const) || (f->flags & DF_Static) || !f->templateParams.empty())
+      return error(f->file, f, "debugItems, which the debugger lists " + d.name + "'s children by, is a const member function without parameters");
+    TemplateArgs args = global.classArgsOf(d.type);
+    Decl* body = args.empty() ? global.definitionOf(f) : global.definitionOf(f, args);
+    auto* def = body && body->kind == NodeKind::FunctionDecl ? static_cast<FunctionDecl*>(body) : f;
+    FunctionDecl* instance = args.empty() || !def->body ? def : global.instanceBody(def, args, d.type);
+    DebugValue v{global, symbols, def->file, instance, args, "", 0, d.type};
+    v.asserts = std::make_shared<std::vector<std::pair<std::string, std::string>>>();
+    auto cannot = [&]()
+    {
+      return error(v.atFile ? v.atFile : def->file, v.at ? v.at : def, "debugItems of " + d.name + " cannot be shown by the debugger: " + v.why);
+    };
+    std::vector<DebugCase> cases;
+    if (!debugCases(v, instance, cases))
+      return cannot();
+    std::vector<std::string> whens(cases.size());
+    std::vector<bool> conditional(cases.size());
+    for (size_t i = 0; i < cases.size(); ++i)
+    {
+      whens[i] = cases[i].text;
+      conditional[i] = cases[i].conditional();
+      if (cases[i].first && !natvisCondition(v, cases[i].first, whens[i]))
+        return cannot();
+    }
+    // (natvis tests each item's condition on its own: each case's says that no earlier one's holds)
+    std::vector<std::string> reaches = caseReaches("", whens, conditional);
+    std::string items;
+    for (size_t i = 0; i < cases.size(); ++i)
+    {
+      Expr* value = cases[i].second;
+      while (value && value->kind == NodeKind::ParenExpr)
+        value = static_cast<ParenExpr*>(value)->inner;
+      const Ty* t = value && value->ty ? types.unqualified(types.stripRef(value->ty)) : nullptr;
+      v.reached = reaches[i];
+      v.known = caseFacts({}, whens, conditional, i);
+      std::string condition = simplifyCondition(reaches[i]);
+      if (value && value->kind == NodeKind::BraceInitExpr && static_cast<BraceInitExpr*>(value)->args.empty())
+        continue; // (`return {};`: no children)
+      if (isLibraryClass(t, symbols, "Span"))
+      {
+        Expr* pointer = nullptr;
+        Expr* length = nullptr;
+        Span<Expr*> made = value->kind == NodeKind::BraceInitExpr ? static_cast<BraceInitExpr*>(value)->args
+                           : value->kind == NodeKind::FunctionalCastExpr ? static_cast<FunctionalCastExpr*>(value)->args
+                           : value->kind == NodeKind::CallExpr ? static_cast<CallExpr*>(value)->args
+                                                               : Span<Expr*>();
+        if ((value->kind == NodeKind::BraceInitExpr || value->kind == NodeKind::FunctionalCastExpr || value->kind == NodeKind::CallExpr) && made.empty())
+          continue; // (an empty Span: no children)
+        if (!spanParts(value, pointer, length))
+        {
+          fail(v, value, "a Span other than one made of a pointer and a length (`Span(this.data, this.size)`)");
+          return cannot();
+        }
+        std::string data, size;
+        if (!natvisExpression(v, pointer, data) || !natvisExpression(v, length, size))
+          return cannot();
+        if (length->ty && types.unqualified(types.stripRef(length->ty))->kind == TyKind::Pointer)
+          size = wrap(size) + " - " + wrap(data); // (Span(first, last))
+        items += "      <ArrayItems" + (condition.empty() ? std::string() : " Condition=\"" + escape(condition) + "\"") + ">\n"
+                 "        <Size>" + escape(size) + "</Size>\n"
+                 "        <ValuePointer>" + escape(data) + "</ValuePointer>\n"
+                 "      </ArrayItems>\n";
+        continue;
+      }
+      if (t && t->kind == TyKind::Class)
+      {
+        std::string member;
+        if (!natvisExpression(v, value, member))
+          return cannot();
+        items += "      <ExpandedItem" + (condition.empty() ? std::string() : " Condition=\"" + escape(condition) + "\"") + ">" + escape(member) + "</ExpandedItem>\n";
+        continue;
+      }
+      fail(v, value, "a value other than a Span or a member that is a class: " + (t ? types.toString(t, &symbols) : std::string("none")));
+      return cannot();
+    }
+    if (!v.asserts->empty())
+    {
+      fail(v, def, "an assert, which a listing of children has no place to show");
+      return cannot();
+    }
+    out.clear();
+    memberRows(global, symbols, cls, args, true, out);
+    out += items;
+    return true;
   }
 
   // A container's elements (kovarex, 2026-11-13: "lets try C"): its own begin() and end(), const and without
@@ -3358,7 +3469,7 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
   {
     std::string rule, error, elements, why;
     bool shown = debugValueRule(global, symbols, d, rule, error);
-    if (elementsRule(global, symbols, d, elements, why))
+    if (itemsRule(global, symbols, d, elements, why) || (why.empty() && elementsRule(global, symbols, d, elements, why)))
     {
       if (!shown)
         rule = "  <Type Name=\"" + escape(d.name) + "\">\n    <Expand>\n" + elements + "    </Expand>\n  </Type>\n";
@@ -3368,7 +3479,7 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
         rule.insert(rule.rfind("  </Type>\n"), "    <Expand>\n" + elements + "    </Expand>\n");
       shown = true;
     }
-    else if (!why.empty() && getenv("KPP_NATVIS_ELEMENTS"))
+    else if (!why.empty() && getenv("KPP_NATVIS_ELEMENTS") && why.find(": error: ") == std::string::npos)
       fprintf(stderr, "natvis elements: %s\n", why.c_str());
     if (shown)
       out += rule;
@@ -3384,6 +3495,9 @@ std::vector<std::string> debugValueErrors(GlobalScope& global, const SymbolTable
   {
     std::string rule, error;
     if (!debugValueRule(global, symbols, d, rule, error) && !error.empty() && std::find(errors.begin(), errors.end(), error) == errors.end())
+      errors.push_back(error);
+    error.clear();
+    if (!itemsRule(global, symbols, d, rule, error) && !error.empty() && std::find(errors.begin(), errors.end(), error) == errors.end())
       errors.push_back(error);
   }
   return errors;
