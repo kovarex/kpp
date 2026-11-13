@@ -614,6 +614,29 @@ std::filesystem::path defaultSysroot(const std::filesystem::path& compiler, cons
   return root;
 }
 
+std::string macSdk(const std::string& given, bool* asked)
+{
+  if (asked)
+    *asked = false;
+  if (!given.empty())
+    return given;
+  if (const char* root = getenv("SDKROOT"); root && *root)
+    return root;
+  if (!hostTarget().mac())
+    return {};
+  if (asked)
+    *asked = true;
+  std::string sdk;
+  if (FILE* pipe = host::openPipe("xcrun --sdk macosx --show-sdk-path 2>/dev/null", "r"))
+  {
+    char line[4096] = {};
+    if (fgets(line, sizeof line, pipe))
+      sdk.assign(line, strcspn(line, "\r\n"));
+    host::closePipe(pipe);
+  }
+  return sdk;
+}
+
 std::string macSdkProblem(const std::string& sdk, const char* arch)
 {
   namespace fs = std::filesystem;
@@ -701,7 +724,7 @@ namespace
     auto time = std::filesystem::last_write_time(clang, ec);
     if (ec)
       return 0;
-    std::string key = clang + "\n" + std::to_string(size) + "\n" + std::to_string(time.time_since_epoch().count());
+    std::string key = clang + "\n" + std::to_string(size) + "\n" + std::to_string(int64_t(time.time_since_epoch().count()));
     {
       std::lock_guard lock(mutex);
       if (auto it = known.find(key); it != known.end())
@@ -854,7 +877,7 @@ std::string headerCaseOverlay(const std::string& clang, const std::string& tripl
   std::error_code ec;
   // The key: the toolchain (its path and when it was written) and the target.
   uint64_t hash = 1469598103934665603ull;
-  std::string stamp = key + "\n" + std::to_string(std::filesystem::last_write_time(clang, ec).time_since_epoch().count());
+  std::string stamp = key + "\n" + std::to_string(int64_t(std::filesystem::last_write_time(clang, ec).time_since_epoch().count()));
   for (unsigned char c : "kpp header case 1\n" + stamp)
     hash = (hash ^ c) * 1099511628211ull;
   std::filesystem::path dir = std::filesystem::temp_directory_path(ec) / "kpp-imports";
@@ -968,7 +991,7 @@ std::string libraryCaseDirectory(const std::string& clang, const std::string& tr
     return it->second;
   std::error_code ec;
   uint64_t hash = 1469598103934665603ull;
-  std::string stamp = key + "\n" + std::to_string(std::filesystem::last_write_time(clang, ec).time_since_epoch().count());
+  std::string stamp = key + "\n" + std::to_string(int64_t(std::filesystem::last_write_time(clang, ec).time_since_epoch().count()));
   for (unsigned char c : "kpp library case 1\n" + stamp)
     hash = (hash ^ c) * 1099511628211ull;
   char hex[32];
@@ -1100,7 +1123,7 @@ namespace
       auto time = std::filesystem::last_write_time(state, e2);
       if (e2)
         return "";
-      parts.push_back(i->path().filename().string() + " " + std::to_string(size) + " " + std::to_string(time.time_since_epoch().count()));
+      parts.push_back(i->path().filename().string() + " " + std::to_string(size) + " " + std::to_string(int64_t(time.time_since_epoch().count())));
     }
     if (ec)
       return "";

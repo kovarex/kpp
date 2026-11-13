@@ -384,7 +384,7 @@ namespace projects
       {
         std::error_code missing;
         auto size = fs::file_size(f, missing);
-        auto time = fs::last_write_time(f, missing).time_since_epoch().count();
+        int64_t time = int64_t(fs::last_write_time(f, missing).time_since_epoch().count());
         inputs += f.string() + "\t" + (missing ? std::string("missing") : std::to_string(size) + "\t" + std::to_string(time)) + "\n";
       }
     }
@@ -785,7 +785,7 @@ namespace projects
     }
     // A program for another platform does not run here: an error before the build, as kpp --run's
     // (run.cpp), never a build that then fails to start an ELF.
-    if (Target t = programTarget(*chosen[0], request); request.run && (platformOf(t.os).name != std::string(host::platformName()) || t.arch != hostTarget().arch))
+    if (Target t = programTarget(*chosen[0], request); request.run && (t.os != hostTarget().os || t.arch != hostTarget().arch))
     {
       fprintf(stderr, "error: %s %s is built for %s, which does not run on this machine: build it without --run (%s)\n",
               chosen[0]->name.c_str(), chosen[0]->configuration.c_str(), t.name.c_str(),

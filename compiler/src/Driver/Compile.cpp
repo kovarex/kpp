@@ -546,9 +546,21 @@ int compile(int argc, char** argv)
     // it is missing or wrong, what to have and where it comes from, never a header clang cannot find.
     if (options.target.mac())
     {
-      if (options.sysroot.empty() && getenv("SDKROOT") && *getenv("SDKROOT"))
-        options.sysroot = getenv("SDKROOT");
-      std::string problem = options.sysroot.empty() ? "none was given (neither --sysroot nor SDKROOT)" : macSdkProblem(options.sysroot, options.target.archName());
+      // (on a Mac without either, the Mac's own SDK, as a Linux kpp takes the Linux system it runs on)
+      bool asked = false;
+      options.sysroot = macSdk(options.sysroot, &asked);
+      std::string problem = !options.sysroot.empty() ? macSdkProblem(options.sysroot, options.target.archName())
+                            : asked                  ? "none was given (neither --sysroot nor SDKROOT), and `xcrun --show-sdk-path` named none"
+                                                     : "none was given (neither --sysroot nor SDKROOT)";
+      if (!problem.empty() && asked)
+      {
+        fprintf(stderr,
+                "--target %s needs a macOS SDK, version 11.0 or newer: %s.\n"
+                "  Install Apple's Command Line Tools (`xcode-select --install`) or Xcode, or give one: --sysroot DIR, or the\n"
+                "  environment variable SDKROOT.\n",
+                options.target.name.c_str(), problem.c_str());
+        return 2;
+      }
       if (!problem.empty())
       {
         fprintf(stderr,

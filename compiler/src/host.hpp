@@ -18,9 +18,9 @@ namespace host
   const char* platformName();
 
   // Whether kpp has its compile server on this host (server.cpp: Windows' named pipes, Linux's and
-  // FreeBSD's Unix sockets). A build that would go through it builds in its own process instead
+  // FreeBSD's and macOS's Unix sockets). A build that would go through it builds in its own process instead
   // (kpp, --run).
-#if defined(_WIN32) || defined(__linux__) || defined(__FreeBSD__)
+#if defined(_WIN32) || defined(__linux__) || defined(__FreeBSD__) || defined(__APPLE__)
   constexpr bool compileServer = true;
 #else
   constexpr bool compileServer = false;

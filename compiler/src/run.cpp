@@ -171,7 +171,7 @@ int runProgram(int argc, char** argv, int runIndex)
         return 2;
       }
     }
-  if ((platformOf(target.os).name != std::string(host::platformName()) || target.arch != hostTarget().arch) && !noRun && !stop)
+  if ((target.os != hostTarget().os || target.arch != hostTarget().arch) && !noRun && !stop)
   {
     fprintf(stderr, "kpp %s: a %s program does not run on this machine; --no-run builds it and names the executable\n",
             argv[runIndex], target.name.c_str());

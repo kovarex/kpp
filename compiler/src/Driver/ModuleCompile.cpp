@@ -179,7 +179,7 @@ void reportAccessWarnings(Build& build)
       std::error_code ec;
       auto size = std::filesystem::file_size(file, ec);
       auto time = std::filesystem::last_write_time(file, ec);
-      return file.string() + " " + std::to_string(ec ? 0 : size) + " " + std::to_string(ec ? 0 : time.time_since_epoch().count());
+      return file.string() + " " + std::to_string(ec ? 0 : size) + " " + std::to_string(ec ? 0 : int64_t(time.time_since_epoch().count()));
     }
 
     std::string key(const std::string& text, const std::string& options, const std::string& compiler)

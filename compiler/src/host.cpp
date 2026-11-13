@@ -30,6 +30,8 @@
 #include <sys/types.h>
 #endif
 #if defined(__APPLE__)
+#include <atomic>
+#include <dlfcn.h>
 #include <mach-o/dyld.h>
 #endif
 extern char** environ;
@@ -672,8 +674,20 @@ namespace host
     thread.handle = nullptr;
   }
 
+#if defined(__APPLE__)
+  // macOS has no default stack size for new threads (glibc's pthread_setattr_default_np): a thread is
+  // given 512 KB, and the compiler's deep recursions (a template nested thousands deep, an if constexpr
+  // chain) overflowed it (spec on CI's macOS runner, 2026-11-13). kpp's own pthread_create, below, which
+  // its std::threads call (the executable's definition is the one its code links), gives a thread
+  // started without attributes compilerStack once useCompilerStackForThreads has run.
+  std::atomic<bool> compilerStackForThreads{false};
+#endif
+
   void useCompilerStackForThreads()
   {
+#if defined(__APPLE__)
+    compilerStackForThreads = true;
+#endif
 #if defined(__GLIBC__)
     pthread_attr_t attributes;
     pthread_attr_init(&attributes);
@@ -1053,3 +1067,21 @@ namespace host
     return *this;
   }
 }
+
+#if defined(__APPLE__)
+// (host::useCompilerStackForThreads: libSystem's pthread_create, given compilerStack for a thread
+// started without attributes; dlsym's RTLD_NEXT finds the next image's definition, libSystem's)
+extern "C" int pthread_create(pthread_t* thread, const pthread_attr_t* attributes, void* (*start)(void*), void* argument)
+{
+  using Create = int (*)(pthread_t*, const pthread_attr_t*, void* (*)(void*), void*);
+  static Create system = reinterpret_cast<Create>(dlsym(RTLD_NEXT, "pthread_create"));
+  if (attributes || !host::compilerStackForThreads)
+    return system(thread, attributes, start, argument);
+  pthread_attr_t own;
+  pthread_attr_init(&own);
+  pthread_attr_setstacksize(&own, host::compilerStack);
+  int result = system(thread, &own, start, argument);
+  pthread_attr_destroy(&own);
+  return result;
+}
+#endif

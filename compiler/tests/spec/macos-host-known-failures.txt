@@ -1,0 +1,16 @@
+# A Mac's known failures: the spec built and run on a Mac (run_spec.py there; CI's macos_host job, ci.yml,
+# on GitHub's macOS arm64 runner, thread O 2026-11-13). One line each:
+#   fails area/name  why   the snippet does not pass on a Mac yet
+# A known failure is reported as "known"; one that starts passing fails the run until its line goes, and
+# so does a line naming no snippet. The first run on a Mac also found thread_local accesses crashing and a
+# release build's exceptions failing on macOS arm64 (36 snippets), fixed by B's 72892205d.
+#
+# AddressSanitizer: the toolchain kpp finds on a Mac has no runtime for macOS that kpp takes (Homebrew's
+# LLVM brings libclang_rt.asan_osx_dynamic.dylib); --sanitize address is an error that says so.
+fails kpp/sanitize_address_stack_overflow_stops  no AddressSanitizer runtime for macOS
+fails kpp/sanitize_address_use_after_free_stops  no AddressSanitizer runtime for macOS
+fails kpp/sanitize_config_constants  no AddressSanitizer runtime for macOS
+#
+# Another host's check: on a Mac kpp takes the Mac's own SDK (xcrun) when neither --sysroot nor SDKROOT
+# names one, so the build this snippet expects to be refused builds.
+fails kpp/macos_without_sdk_is_explained  a Mac has its own SDK

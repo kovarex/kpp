@@ -27,7 +27,7 @@ int main()
   }
   catch (const std::Exception& e)
   {
-    std::println(std::StringView(e.what()), " ", map["a"], " ", (std::SteadyClock::now() - start).count() > 0, " ", std::Thread::hardware_concurrency());
+    std::println(std::StringView(e.what()), " ", map["a"], " ", (std::SteadyClock::now() - start).count() > 0, " ", std::Thread::hardware_concurrency() > 0);
   }
   return 0;
 }

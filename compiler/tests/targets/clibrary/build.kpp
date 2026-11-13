@@ -1,6 +1,6 @@
 // targets.ps1's project of a C library with a C and a C++ file and a define per platform
 // (CLibrary's define(..., Platform::X)), and an include directory of the C import per platform
-// (Executable's cInclude(..., Platform::X)), built for Windows, Linux and FreeBSD: `42 PLATFORM 10`.
+// (Executable's cInclude(..., Platform::X)), built for Windows, Linux, FreeBSD and macOS: `42 PLATFORM 10`.
 void build(Project& project)
 {
   CLibrary& numbers = project.cLibrary("numbers");
@@ -11,6 +11,7 @@ void build(Project& project)
   numbers.define("PLATFORM_ID=1", Platform::Windows);
   numbers.define("PLATFORM_ID=2", Platform::Linux);
   numbers.define("PLATFORM_ID=3", Platform::FreeBSD);
+  numbers.define("PLATFORM_ID=4", Platform::Mac);
   // numbers.c includes numbers.h first, from beside it (the include directory's file): it compiles with
   // the header precompiled; sum.cpp includes <numeric> first, and compiles as it is.
   numbers.precompiledHeader("numbers.h");
@@ -31,4 +32,5 @@ void build(Project& project)
   app.cInclude("include-windows", Platform::Windows);
   app.cInclude("include-linux", Platform::Linux);
   app.cInclude("include-freebsd", Platform::FreeBSD);
+  app.cInclude("include-mac", Platform::Mac);
 }

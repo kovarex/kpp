@@ -151,6 +151,10 @@ inline Target hostTarget()
   targetNamed("linux", t, why);
 #elif defined(__FreeBSD__)
   targetNamed("freebsd", t, why);
+#elif defined(__APPLE__) && defined(__aarch64__)
+  targetNamed("macos", t, why);
+#elif defined(__APPLE__)
+  targetNamed("macos-x64", t, why);
 #endif
   return t;
 }
