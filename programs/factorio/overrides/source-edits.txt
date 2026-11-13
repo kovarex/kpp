@@ -1660,9 +1660,8 @@
 +     return;
 
 # What the debugger shows (design.md 26, kovarex 2026-11-11: debugValue replaces the natvis rules): each
-# type's debugValue in place of its rule in Factorio's factorio.natvis (natvis.py leaves those rules out,
-# DEBUG_VALUE). The game's other rules build text from several values, list a bitmask's flags, walk a
-# linked list or look a prototype up in a static table, which a debugValue body cannot do yet.
+# type's debugValue in place of its rule in Factorio's factorio.natvis, which the conversion no longer
+# writes (the kpp branch's last rule moved to debugValue, 2026-11-13).
 
 @ src/Util/FixedPointNumber.hpp: shows as its number (1.5), one rule for every instance (the natvis had six, one per precision)
 -   constexpr double getDouble() const { constexpr double ValuePerIncrement = 1.0 / ValuesPerOne; return double(this->value) * ValuePerIncrement; }

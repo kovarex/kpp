@@ -140,10 +140,8 @@ rem the tests' macros their headers define, then left out (overrides\left-out-fi
 set STEP=the left-out files
 for /f "eol=# tokens=*" %%f in (overrides\left-out-files.txt) do if exist "%WHOLE%\%%f" (del /q "%WHOLE%\%%~f") else (echo convert: overrides\left-out-files.txt names %%f, which the conversion did not write& goto :failed)
 type %WHOLE%\CONVERSION.md | findstr /B "Files"
-set STEP=the debugger rules
-rem The game's own Visual Studio rules (utils\tools\vs15\Visualizers\factorio.natvis) for the converted
-rem types: tools\factorio.natvis, which the checkout's build.kpp gives both executables.
-python -I natvis.py %FACTORIO% %WHOLE% %WHOLE%\tools\factorio.natvis || goto :failed
+rem (No tools\factorio.natvis: what the debugger shows is each type's debugValue and flags declarations,
+rem design.md 26 and 27, the game's own since its natvis's last rule moved, thread F, 2026-11-13.)
 set STEP=the shims for the checkout
 rem The shims, for the build of the checkout (its build.kpp): the sources native\build.cmd compiles,
 rem with the headers they include from Factorio's src\ (which the checkout has as kpp only) and the
