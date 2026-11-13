@@ -178,6 +178,10 @@ std::filesystem::path defaultSysroot(const std::filesystem::path& compiler, cons
 // usr/lib/libSystem.tbd that lists the architecture (design.md, "Targets and hosts", Q7: each user
 // supplies one, and kpp says what to have when it is missing or wrong).
 std::string macSdkProblem(const std::string& sdk, const char* arch);
+// The macOS SDK a build for a Mac uses: given (--sysroot), else SDKROOT, else on a Mac the Mac's own,
+// as `xcrun --sdk macosx --show-sdk-path` names it (Xcode's or the Command Line Tools'). "" when none;
+// asked says whether xcrun was asked (thread O, 2026-11-13).
+std::string macSdk(const std::string& given, bool* asked = nullptr);
 // The official libraries kpp brings (libraries\ beside stdlib\: a release's, or a checkout's for a
 // build of kpp), where use("NAME") looks last (docs/build.md, "kpp libraries").
 std::filesystem::path defaultLibraries(const std::filesystem::path& compiler);

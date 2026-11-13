@@ -163,6 +163,9 @@ KNOWN_FREEBSD = os.path.join(HERE, "freebsd-known-failures.txt")
 # stand-in SDK has no C headers but stdio.h's stand-in: a snippet that imports one is known).
 SDK_MACOS = os.environ.get("KPP_SDK_MACOS", os.path.join(HERE, "kpp", "macos_sdk_checked_before_the_build.sdk"))
 KNOWN_MACOS = os.path.join(HERE, "macos-known-failures.txt")
+# A Mac's own run (run_spec.py on a Mac: the snippets built and run there): macos-host-known-failures.txt,
+# `fails area/name  why` for a snippet that does not pass there yet.
+KNOWN_MACOS_HOST = os.path.join(HERE, "macos-host-known-failures.txt")
 MACOS_TARGETS = ("macos", "macos-x64")
 # Without KPP_SDK_MACOS a snippet that imports C headers, or has a C source, is skipped: the stand-in
 # has none.
@@ -330,7 +333,7 @@ def build_and_run(path, area, name, work):
     # A snippet that prints its own configuration has the release build's output next to the debug one's.
     if "--release" in EXTRA and os.path.exists(os.path.splitext(path)[0] + ".release.expected"):
         expected_path = os.path.splitext(path)[0] + ".release.expected"
-    variants = [TARGET, "linux"] if TARGET in ("freebsd", "linux-arm64") else [TARGET] if TARGET else []
+    variants = [TARGET, "linux"] if TARGET in ("freebsd", "linux-arm64") else [TARGET, "macos", "linux"] if TARGET in MACOS_TARGETS and NATIVE else [TARGET] if TARGET else []
     # (the first of the variants that has a file: FreeBSD's own over Linux's, which it falls back on)
     for variant in variants:
         if os.path.exists(os.path.splitext(path)[0] + f".{variant}.expected"):
@@ -353,7 +356,7 @@ def build_and_run(path, area, name, work):
         result["status"] = "skip"; return result
     if info["arch"] and info["arch"].split()[0] != ("arm64" if TARGET in ("linux-arm64", "macos") else "x86_64"):
         result["status"] = "skip"; return result
-    if TARGET in MACOS_TARGETS and MACOS_STAND_IN and imports_c(path):
+    if TARGET in MACOS_TARGETS and MACOS_STAND_IN and not NATIVE and imports_c(path):
         result["status"] = "skip"; return result # (the stand-in SDK has no C headers)
     os.makedirs(work, exist_ok=True)
     libs = []
@@ -374,7 +377,7 @@ def build_and_run(path, area, name, work):
     sources = [path, companions] if os.path.isdir(companions) else [path]
     sources += library_roots(path)
     # (macOS with the stand-in SDK: the link deferred, unless the snippet names its own SDK)
-    defer = ["--defer-link"] if TARGET in MACOS_TARGETS and MACOS_STAND_IN and "--sysroot" not in info["kpp"] else []
+    defer = ["--defer-link"] if TARGET in MACOS_TARGETS and MACOS_STAND_IN and not NATIVE and "--sysroot" not in info["kpp"] else []
     try:
         c = subprocess.run([KPP, "--quiet", *extra_for(info), *shlex.split(info["kpp"]), *modules, *libs, *defer, "--exe", exe, *sources], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
     except subprocess.TimeoutExpired:
@@ -421,7 +424,7 @@ def build_and_run(path, area, name, work):
     if unwanted:
         result["status"] = "FAIL"; result["note"] = f"a warning that should not be: `{unwanted[0]}`"
         return finish(result)
-    if TARGET in MACOS_TARGETS:
+    if TARGET in MACOS_TARGETS and not NATIVE:
         # Built: its objects and link command (deferred), or a Mach-O executable.
         if not deferred:
             with open(exe, "rb") as f:
@@ -658,10 +661,10 @@ def apply_known_freebsd(results, whole, path=KNOWN_FREEBSD, bundle=True):
         key = f"{r['area']}/{r['name']}"
         seen.add(key)
         kind, why = known.get(key, ("", ""))
-        if kind == "build" and r["status"] == "FAIL":
+        if kind in ("build", "fails") and r["status"] == "FAIL":
             r["status"] = "known"; r["note"] = why + (f"; {r['note']}" if r["note"] else "")
-        elif kind == "build" and r["status"] in ("built", "pass"):
-            r["status"] = "fixed"; r["note"] = f"builds now: remove its build line from {os.path.basename(path)}"
+        elif kind in ("build", "fails") and r["status"] in ("built", "pass"):
+            r["status"] = "fixed"; r["note"] = f"{'builds' if kind == 'build' else 'passes'} now: remove its {kind} line from {os.path.basename(path)}"
         if r["status"] == "built" and (kind == "run" or r["info"]["pending"] is not None):
             runs.append(f"{r['area']}.{r['name']}")
     if bundle:
@@ -691,7 +694,16 @@ def main():
     # On a Linux host the snippets are built for it and run here: kpp's default target is the host's,
     # linux-arm64 on AArch64 (CI's linux_arm64 job: its `// arch:` skips and .linux-arm64.expected files).
     arm64 = platform.machine().lower() in ("aarch64", "arm64")
-    if not HOST_WINDOWS and args.target in (None, "linux", "linux-arm64"):
+    if sys.platform == "darwin" and args.target in (None, "macos", "macos-x64"):
+        # On a Mac (CI's macos_host job, thread O 2026-11-13) the snippets are built for it and run here,
+        # with the Mac's own SDK (kpp asks xcrun), `run:` and `test:` ones too; output that differs goes
+        # in <name>.macos.expected (macos-x64's own first), else <name>.linux.expected.
+        TARGET, NATIVE = ("macos" if arm64 else "macos-x64"), True
+        sdk = subprocess.run(["xcrun", "--sdk", "macosx", "--show-sdk-path"], capture_output=True, text=True).stdout.strip()
+        C_TARGET_FLAGS = ["-isysroot", sdk] if sdk else []
+        args.target = None
+        args.no_doc = True
+    elif not HOST_WINDOWS and args.target in (None, "linux", "linux-arm64"):
         TARGET, NATIVE = ("linux-arm64" if arm64 else "linux"), True
         args.target = None
         args.no_doc = True # (spec-status.md is Windows' run's)
@@ -809,8 +821,10 @@ def main():
     stale = []
     if TARGET == "freebsd":
         stale = apply_known_freebsd(results, not args.filter and not only)
-    elif TARGET in MACOS_TARGETS:
+    elif TARGET in MACOS_TARGETS and not NATIVE:
         stale = apply_known_freebsd(results, not args.filter and not only, KNOWN_MACOS, bundle=False)
+    elif TARGET in MACOS_TARGETS:
+        stale = apply_known_freebsd(results, not args.filter and not only and not shard, KNOWN_MACOS_HOST, bundle=False)
     for r in results:
         tag = {"pass": "ok     ", "built": "built  ", "known": "known  ", "pending": "pending", "FAIL": "FAIL   ", "fixed": "FIXED  "}[r["status"]]
         line = f"{tag} {r['area']}/{r['name']}"
@@ -819,9 +833,9 @@ def main():
         print(line)
     counts = {s: sum(1 for r in results if r["status"] == s) for s in ("pass", "built", "known", "pending", "FAIL", "fixed")}
     for entry in stale:
-        print(f"FAIL    {entry}  -- {os.path.basename(KNOWN_MACOS if TARGET in MACOS_TARGETS else KNOWN_FREEBSD)} names no such snippet")
+        print(f"FAIL    {entry}  -- {os.path.basename((KNOWN_MACOS_HOST if NATIVE else KNOWN_MACOS) if TARGET in MACOS_TARGETS else KNOWN_FREEBSD)} names no such snippet")
     print((f"{counts['built']} built (run.sh runs them on FreeBSD: {os.path.relpath(OUT, ROOT)}), {counts['known']} known not to build, " if TARGET == "freebsd" else
-           f"{counts['built']} built for {TARGET} (Mach-O, not run here), {counts['known']} known not to build, " if TARGET in MACOS_TARGETS else "") + f"{counts['pass']} pass, {counts['pending']} pending, {counts['FAIL']} failing, {counts['fixed']} fixed" +
+           f"{counts['built']} built for {TARGET} (Mach-O, not run here), {counts['known']} known not to build, " if TARGET in MACOS_TARGETS and not NATIVE else "") + f"{counts['pass']} pass, {counts['pending']} pending, {counts['FAIL']} failing, {counts['fixed']} fixed" +
           (f", {skipped} skipped for {TARGET or 'windows'}" if skipped else "") + f" ({elapsed:.1f} s)")
     if not args.no_doc and not args.filter and not only:
         write_doc(results, elapsed)
@@ -830,7 +844,8 @@ def main():
     # mark must go), and the exit code says the same:
     #   spec: ALL PASSED (898 pass, 2 pending)
     #   spec: 2 FAILED: types/enum_size, fixed lambdas/capture (897 pass, 1 pending, 1 failing, 1 fixed)
-    summary = (f"{counts['built']} built, {counts['known']} known not to build, " if TARGET in ("freebsd", *MACOS_TARGETS) else "") + f"{counts['pass']} pass, {counts['pending']} pending" + (f", {skipped} skipped for {TARGET or 'windows'}" if skipped else "") + \
+    summary = (f"{counts['built']} built, {counts['known']} known not to build, " if TARGET == "freebsd" or (TARGET in MACOS_TARGETS and not NATIVE) else
+               f"{counts['known']} known to fail on this Mac, " if TARGET in MACOS_TARGETS else "") + f"{counts['pass']} pass, {counts['pending']} pending" + (f", {skipped} skipped for {TARGET or 'windows'}" if skipped else "") + \
               (f"; shard {args.shard}" if shard else "")
     bad = [f"{r['area']}/{r['name']}" for r in results if r["status"] == "FAIL"] + \
           [f"fixed {r['area']}/{r['name']}" for r in results if r["status"] == "fixed"] + \

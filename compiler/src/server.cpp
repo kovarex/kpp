@@ -30,7 +30,62 @@
 #include <dlfcn.h>
 #include <execinfo.h>
 #include <memory>
+#include <sys/stat.h>
 extern char** environ;
+
+// Descriptors no child process inherits, and a file's modification time. Linux and FreeBSD make the
+// descriptor so at once (SOCK_CLOEXEC, accept4, pipe2); macOS has none of those, so there it is marked
+// right after: a child started by another thread in between may inherit it, which only keeps the
+// descriptor open until that child ends.
+namespace
+{
+  int notInherited(int fd)
+  {
+    if (fd >= 0)
+      fcntl(fd, F_SETFD, FD_CLOEXEC);
+    return fd;
+  }
+
+  int unixSocket()
+  {
+#if defined(__APPLE__)
+    return notInherited(socket(AF_UNIX, SOCK_STREAM, 0));
+#else
+    return socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+#endif
+  }
+
+  int acceptNotInherited(int listener)
+  {
+#if defined(__APPLE__)
+    return notInherited(accept(listener, nullptr, nullptr));
+#else
+    return accept4(listener, nullptr, nullptr, SOCK_CLOEXEC);
+#endif
+  }
+
+  int pipeNotInherited(int ends[2])
+  {
+#if defined(__APPLE__)
+    if (pipe(ends) != 0)
+      return -1;
+    notInherited(ends[0]);
+    notInherited(ends[1]);
+    return 0;
+#else
+    return pipe2(ends, O_CLOEXEC);
+#endif
+  }
+
+  const timespec& modifiedTime(const struct stat& s)
+  {
+#if defined(__APPLE__)
+    return s.st_mtimespec;
+#else
+    return s.st_mtim;
+#endif
+  }
+}
 #endif
 #include <atomic>
 #include <chrono>
@@ -354,7 +409,7 @@ namespace
     struct stat a{};
     if (stat(path.c_str(), &a) != 0)
       return "missing";
-    return std::to_string(a.st_size) + " " + std::to_string(a.st_mtim.tv_sec) + " " + std::to_string(a.st_mtim.tv_nsec);
+    return std::to_string(a.st_size) + " " + std::to_string(modifiedTime(a).tv_sec) + " " + std::to_string(modifiedTime(a).tv_nsec);
 #endif
   }
 
@@ -617,7 +672,7 @@ namespace
     bool told = false;
     for (;;)
     {
-      int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+      int fd = unixSocket();
       if (fd < 0)
         return -1;
       if (connect(fd, reinterpret_cast<sockaddr*>(&address), sizeof address) == 0)
@@ -900,9 +955,9 @@ namespace
   {
 #ifndef _WIN32
     int outPipe[2], errPipe[2];
-    if (pipe2(outPipe, O_CLOEXEC) != 0)
+    if (pipeNotInherited(outPipe) != 0)
       return false;
-    if (pipe2(errPipe, O_CLOEXEC) != 0)
+    if (pipeNotInherited(errPipe) != 0)
     {
       close(outPipe[0]), close(outPipe[1]);
       return false;
@@ -1803,7 +1858,7 @@ int runServer(const char* key, const char* origin, const char* stamp, CompileFun
     return 1;
   memcpy(address.sun_path, name.c_str(), name.size() + 1);
   unlink(name.c_str());
-  int listener = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+  int listener = unixSocket();
   if (listener < 0 || bind(listener, reinterpret_cast<sockaddr*>(&address), sizeof address) != 0 || listen(listener, 64) != 0)
     return 1;
   serverLog = logPath(key);
@@ -1849,7 +1904,7 @@ int runServer(const char* key, const char* origin, const char* stamp, CompileFun
   }).detach();
   for (;;)
   {
-    int client = accept4(listener, nullptr, nullptr, SOCK_CLOEXEC);
+    int client = acceptNotInherited(listener);
     if (client < 0)
     {
       if (errno == EINTR)

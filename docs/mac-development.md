@@ -36,7 +36,8 @@ developer's Mac. Today:
   shared checkout). Effort: M to L, and a worse result than A for an editor.
 - **C. Both:** A for the developer's own Mac; B later for a fast build farm. Not needed for this list.
 
-The rest of this document assumes A. With B, every "on the Mac" below becomes "on the server, mapped".
+**Decided (kovarex, 2026-11-13): A.** Built the same day: kpp builds and runs on a Mac, CI's macos_host job
+tests it (design.md, "Targets and hosts", stage 9). The rest of this document assumes A.
 
 ## 1. Debug symbols (all editors)
 
@@ -188,7 +189,7 @@ the Mac.
 
 ## Decisions for kovarex
 
-- **D1:** kpp on macOS as a host (A, recommended), or a remote compile server (B)? A changes Q5.
+- **D1:** decided 2026-11-13: A, kpp on macOS as a host (built: design.md, "Targets and hosts", stage 9).
 - **D2:** CLion: our plugin on JetBrains' LSP API (recommended), LSP4IJ only, or a native IntelliJ
   plugin?
 - **D3:** LLDB views: Python in the .dSYM first (recommended), or formatter bytecode?

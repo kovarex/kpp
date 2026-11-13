@@ -56,7 +56,7 @@ std::string fileStamp(const std::string& path)
   auto time = std::filesystem::last_write_time(path, ec);
   if (ec)
     return {};
-  return std::to_string(size) + " " + std::to_string(time.time_since_epoch().count()) + " " + path;
+  return std::to_string(size) + " " + std::to_string(int64_t(time.time_since_epoch().count())) + " " + path;
 }
 
 bool writeHeaderStamps(const std::string& makeDeps, const std::filesystem::path& source, const std::filesystem::path& out)

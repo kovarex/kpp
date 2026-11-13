@@ -4002,5 +4002,5 @@ int runLanguageServer(int argc, char** argv, CompileFunction compile)
   }
   int code = server.shutdownRequested ? 0 : 1;
   log("exit %d after %zu checks", code, server.checks);
-  _exit(code); // the kept program is not freed (seconds on a large program)
+  std::_Exit(code); // the kept program is not freed (seconds on a large program)
 }

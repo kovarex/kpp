@@ -1,0 +1,61 @@
+# A Mac's known failures: the spec built and run on a Mac (run_spec.py there; CI's macos_host job, ci.yml,
+# on GitHub's macOS arm64 runner, thread O 2026-11-13). One line each:
+#   fails area/name  why   the snippet does not pass on a Mac yet
+# A known failure is reported as "known"; one that starts passing fails the run until its line goes, and
+# so does a line naming no snippet. Each is a bug of the macOS target (or a check that is another
+# host's), not of kpp on the Mac: they showed when kpp first ran its programs on a Mac (the plan's M10).
+#
+# thread_local on macOS arm64: an access in a debug build stores through a null address (thread_local_locals:
+# `stlrb w8, [x0]` with x0 = 0 in cacheOf(), the guard's TLV address taken before the calls and used after
+# them); kpp writes a thread_local as a plain `ptr @g` operand, clang wraps every access in
+# @llvm.threadlocal.address. kpp's test runner keeps its call site and frame in thread_locals, so every
+# test whose check fails crashes (exit 139). B's.
+fails classes/runtime_calls_inside_a_catch_block  thread_local on macOS (B)
+fails language/thread_local_destroyed_at_thread_exit  thread_local on macOS (B)
+fails language/thread_local_locals  thread_local on macOS (B)
+fails kpp/test_before_each  a failed check crashes: the test runner's thread_locals on macOS (B)
+fails kpp/test_called_from_kinds  a failed check crashes: the test runner's thread_locals on macOS (B)
+fails kpp/test_called_from_never_stale  a failed check crashes: the test runner's thread_locals on macOS (B)
+fails kpp/test_check_call_values  a failed check crashes: the test runner's thread_locals on macOS (B)
+fails kpp/test_check_dependent_base_without_the_name  a failed check crashes: the test runner's thread_locals on macOS (B)
+fails kpp/test_check_message  a failed check crashes: the test runner's thread_locals on macOS (B)
+fails kpp/test_check_mixed_sign  a failed check crashes: the test runner's thread_locals on macOS (B)
+fails kpp/test_check_values  a failed check crashes: the test runner's thread_locals on macOS (B)
+fails kpp/test_class_body_outside  a failed check crashes: the test runner's thread_locals on macOS (B)
+fails kpp/test_class_template_body_outside  a failed check crashes: the test runner's thread_locals on macOS (B)
+fails kpp/test_dependents_annotated  a failed check crashes: the test runner's thread_locals on macOS (B)
+fails kpp/test_ended_public  a failed check crashes: the test runner's thread_locals on macOS (B)
+fails kpp/test_exception  a failed check crashes: the test runner's thread_locals on macOS (B)
+fails kpp/test_exit_on_failure_before_dependents  a failed check crashes: the test runner's thread_locals on macOS (B)
+fails kpp/test_fail  a failed check crashes: the test runner's thread_locals on macOS (B)
+fails kpp/test_fixture  a failed check crashes: the test runner's thread_locals on macOS (B)
+fails kpp/test_fixture_constructor_fails  a failed check crashes: the test runner's thread_locals on macOS (B)
+fails kpp/test_function_called_from  a failed check crashes: the test runner's thread_locals on macOS (B)
+fails kpp/test_hooks  a failed check crashes: the test runner's thread_locals on macOS (B)
+fails kpp/test_jobs  a failed check crashes: the test runner's thread_locals on macOS (B)
+fails kpp/test_jobs_crash_fails_its_test  a failed check crashes: the test runner's thread_locals on macOS (B)
+fails kpp/test_jobs_exit_on_failure  a failed check crashes: the test runner's thread_locals on macOS (B)
+fails kpp/test_report  a failed check crashes: the test runner's thread_locals on macOS (B)
+fails kpp/test_require  a failed check crashes: the test runner's thread_locals on macOS (B)
+fails kpp/test_require_throws  a failed check crashes: the test runner's thread_locals on macOS (B)
+fails kpp/test_root_failures_simplest_first  a failed check crashes: the test runner's thread_locals on macOS (B)
+fails kpp/test_run_by_name_unknown  a failed check crashes: the test runner's thread_locals on macOS (B)
+fails kpp/test_run_hook  a failed check crashes: the test runner's thread_locals on macOS (B)
+fails kpp/test_same_name_in_two_suites  a failed check crashes: the test runner's thread_locals on macOS (B)
+fails kpp/test_suite_helper_uses_require  a failed check crashes: the test runner's thread_locals on macOS (B)
+#
+# A release build's exceptions on macOS arm64 (ThinLTO, -O2): a rethrow from a nested catch is
+# "unhandled exception of type std::RuntimeError: inner", and the others print nothing. B's.
+fails language/rethrow_from_nested_catch_release  release exceptions on macOS (B)
+fails language/adjacent_invokes_cleanup_once_release  release exceptions on macOS (B)
+fails language/globals_destroyed_by_a_call_of_exit  prints nothing on macOS (B)
+#
+# AddressSanitizer: the toolchain kpp finds on a Mac has no runtime for macOS that kpp takes (Homebrew's
+# LLVM brings libclang_rt.asan_osx_dynamic.dylib); --sanitize address is an error that says so.
+fails kpp/sanitize_address_stack_overflow_stops  no AddressSanitizer runtime for macOS
+fails kpp/sanitize_address_use_after_free_stops  no AddressSanitizer runtime for macOS
+fails kpp/sanitize_config_constants  no AddressSanitizer runtime for macOS
+#
+# Another host's check: on a Mac kpp takes the Mac's own SDK (xcrun) when neither --sysroot nor SDKROOT
+# names one, so the build this snippet expects to be refused builds.
+fails kpp/macos_without_sdk_is_explained  a Mac has its own SDK

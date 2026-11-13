@@ -77,6 +77,9 @@ namespace allocator
 
   std::string check()
   {
+#if defined(__APPLE__)
+    return ""; // (macOS's own malloc, which kppAllocatorName says)
+#endif
     // Called through volatile pointers, so the compiler cannot take them for the allocation functions
     // it knows and decide a fresh block's comparison itself.
     static const Way ways[] = {{"malloc", viaMalloc, releaseFree},

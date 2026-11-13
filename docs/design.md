@@ -2266,8 +2266,8 @@ nothing else installed: no Visual Studio, no Build Tools, no Windows SDK.
   installer and package.
 - Any host builds any target (kovarex, 2026-11-02): the bundled lld links every format, and each
   target's headers and libraries are laid out side by side (Windows from MinGW-w64, Linux, FreeBSD's
-  base, macOS later), so `--target` works from Windows and Linux alike (macOS as a host is under
-  consideration, 2026-11-06, "Targets and hosts"); tests still run on the target.
+  base, macOS later), so `--target` works from Windows and Linux alike (and from a Mac: macOS as a host,
+  2026-11-13, "Targets and hosts"); tests still run on the target.
 - Less Microsoft-specific tooling is preferred (kovarex: "I personally prefer needing less microsoft
   related stuff than more"): the destination leans to the GNU dialect on Windows too (the Itanium
   exception model and DWARF, which Linux and macOS need anyway), reached in steps; the game keeps an
@@ -4505,16 +4505,17 @@ on NearlyFreeSpeech.NET, which runs FreeBSD. That decision has two axes:
 - **Targets:** what kpp emits and links for. The minimum is Windows x64 (the default), Linux x86-64
   and arm64, macOS arm64 (Apple Silicon) and x86-64, and FreeBSD x86-64 for kpp.net.
 - **Hosts:** where kpp itself (C++20) builds and runs. That is Windows and Linux (done 2026-11-06,
-  stage 5 below); macOS as a host is under consideration (below).
+  stage 5 below) and macOS (kovarex, 2026-11-13: "kpp running on macOS itself is still planned it was
+  just postponed, we can do it now"; stage 9 below).
 
 On both axes Windows stays the default, with its output unchanged: the game, the tests, and the IR
 byte for byte unless a difference is shown to be a fix.
 
 **This stage (kovarex, 2026-11-06; "Roadmap" has the stages):** macOS as a host moves to under
 consideration, not decided. Building every target, macOS included, on Windows and Linux is enough
-for this stage, so macOS as a target stays planned. What this section says of a Mac host (section 5,
-`xcrun`, kpp hosted on macOS) waits for that decision. macOS as a target moved to stage 2 on
-2026-11-10 (kovarex; "Roadmap").
+for this stage, so macOS as a target stays planned. macOS as a target moved to stage 2 on
+2026-11-10 (kovarex; "Roadmap"). macOS as a host was taken up on 2026-11-13 (kovarex; stage 9 below),
+for Factorio's Mac developers (docs/mac-development.md).
 
 **Order (proposed):**
 1. Linux x86-64: the most tooling, CI runners, and the closest to FreeBSD. It is also testable on
@@ -5317,8 +5318,8 @@ its IR for every spec snippet (1073) is byte-identical before and after.
   CI's linux_host job builds hello world and tests/targets/clibrary (whose Windows library and C
   import include `<WinSock2.h>` and `<Windows.h>`) for windows-gnu, in debug and release.
 - **Not yet:** the compile server and the language server on POSIX (a Unix socket, A's; F's), macOS as a
-  host (host.cpp has its executable path and machine description; nothing tested), FreeBSD as a
-  host (the same), and a release for Linux (packaging, E's).
+  host (done 2026-11-13, stage 9 below), FreeBSD as a host (host.cpp has its executable path and machine
+  description; nothing tested), and a release for Linux (packaging, E's).
 
 ### Stage 7, AArch64: Linux arm64 (2026-11-07, thread I)
 
@@ -5475,6 +5476,45 @@ its IR for every spec snippet (1073) is byte-identical before and after.
     unwind for every function, main's with its LSDA (both fail with kpp before the fix). Every spec
     snippet built for macOS (1572), and thread O's runs on the Mac runners.
 
+### Stage 9, kpp on a macOS host (2026-11-13, thread O)
+
+kovarex, 2026-11-13: "kpp running on macOS itself is still planned it was just postponed, we can do it now"
+(D1 of docs/mac-development.md, the plan for Factorio's Mac developers).
+- **Built and tested** by CI's macos_host job (ci.yml) on GitHub's macos-15 arm64 runner: kpp built with
+  Apple's clang (CMake, Ninja), its programs with Homebrew's LLVM 19 and lld (KPP_CLANG). Hello world with
+  `--run`, the C library project (tests/targets/clibrary, a Mac variant: `42 mac 10`) in debug and release,
+  the compile server (a Unix socket in $TMPDIR: a build, the same replayed, an edit built incrementally,
+  --stop-server), the language server's smoke test, and the spec built and run natively.
+- **What it took in kpp:** hostTarget() is macos or macos-x64 by the processor; the compile server is on;
+  server.cpp's descriptors are made not inherited after socket, accept and pipe (macOS has no SOCK_CLOEXEC,
+  accept4 or pipe2) and a file's time is st_mtimespec; libc++'s file times are __int128 (int64_t where they
+  are printed); the language server ends with std::_Exit; `--run` compares the target with the host's by
+  system and processor (host::platformName's "macos" is no platformOf name). Threads: macOS has no
+  default stack size for new threads (512 KB, which the compiler's deep recursions overflowed: four spec
+  snippets crashed), so kpp defines pthread_create there, giving a thread started without attributes
+  compilerStack once useCompilerStackForThreads has run (host.cpp). The allocator: an executable's malloc
+  does not replace libSystem's or libc++'s on macOS (two-level namespace), so kpp uses macOS's malloc there
+  and `--version` says so (rpmalloc needs a malloc zone of its own: not yet).
+- **The SDK:** `--sysroot`, else SDKROOT, else on a Mac the Mac's own, as `xcrun --sdk macosx
+  --show-sdk-path` names it (source.cpp's macSdk, for the program and its C libraries alike), as a Linux kpp
+  takes the system it runs on. When none: install Apple's Command Line Tools (`xcode-select --install`) or
+  give one.
+- **The C import honours asm labels:** a function a header gives another symbol (`__asm("_" "freopen")`,
+  macOS's __DARWIN_ALIAS; glibc's __REDIRECT) is declared, and every declaration of it, kpp's own `extern "C"`
+  ones too, links the label (`@"\01_freopen"`, as clang writes it); two labels for one function are an
+  error. Until then the import dropped such a declaration and the function was not declared (freopen on
+  a Mac). Spec interop/c_function_asm_label_is_its_symbol.
+- **The spec on a Mac** (run_spec.py there): the snippets built for the Mac and run, `run:` and `test:` ones
+  too; output that differs goes in <name>.macos.expected, else <name>.linux.expected. First full run: 2135
+  pass, 40 known failures (compiler/tests/spec/macos-host-known-failures.txt), each a bug of the macOS
+  target that a run on a Mac showed for the first time, for its owner: thread_local accesses crash in a
+  debug build (kpp writes no @llvm.threadlocal.address; the test runner's thread_locals make every failed
+  check crash), a release build's exceptions (a rethrow from a nested catch), and AddressSanitizer's
+  runtime; and one check that is another host's (a Mac has its own SDK).
+- **Not yet:** a release for macOS (packaging, signing and notarization), rpmalloc on macOS, an x86-64 Mac
+  (macos-x64 as the host), and the plan's next steps (docs/mac-development.md: the .dSYM, LLDB views, the
+  Xcode and CLion integration).
+
 ### Questions for kovarex
 
 - **Q1:** `long` on LP64 targets: decided 2026-11-01, "Distinct fixed types, deprecate long" (above).
@@ -5486,7 +5526,8 @@ its IR for every spec snippet (1073) is byte-identical before and after.
 - **Q5:** decided 2026-11-07 (kovarex): the macOS programs kpp builds run on GitHub's macOS runners,
   arm64 and x86-64; building stays on Windows and Linux, never on macOS: a Windows or Linux job builds
   the specs and tests, a macOS job runs them. Linux arm64 works the same way later (ubuntu arm64
-  runners).
+  runners). Changed 2026-11-13 (kovarex: macOS as a host, stage 9): kpp also builds on a Mac, and CI's
+  macos_host job builds and runs the spec there.
 - **Q6:** decided 2026-11-04 (kovarex: "the targets are ok as they are"; accepted again 2026-11-06): the oldest systems a
   kpp program runs on are Windows 10 x64, FreeBSD 14, glibc 2.31 (Debian 11, Ubuntu 20.04; Steam's
   Linux runtime "sniper" is Debian 11) and, when macOS work starts, macOS 11.0 arm64 and 10.15
@@ -5897,9 +5938,10 @@ ones under "Targets and hosts".
 The readme's "Planned" lists what is in each. Placed by this decision:
 - Named arguments, `both_const` and `class_const` (their details not decided yet) and the localisation
   library are stage 2's.
-- macOS as a host is under consideration, not decided. macOS as a target is stage 2's (kovarex,
-  2026-11-10: Wube's Apple people take it up once Factorio is a branch), still built on Windows and
-  Linux ("Targets and hosts"); what is built of it so far stays. Linux as a host is done (2026-11-06).
+- macOS as a host: taken up 2026-11-13 (kovarex: "it was just postponed, we can do it now"; "Targets
+  and hosts", stage 9), for Factorio's Mac developers (docs/mac-development.md). macOS as a target is
+  stage 2's (kovarex, 2026-11-10: Wube's Apple people take it up once Factorio is a branch), built on
+  Windows, Linux and now a Mac; what is built of it so far stays. Linux as a host is done (2026-11-06).
 - Compilation outside Visual Studio is stage 2's (kovarex, 2026-11-10): builds from a terminal and
   other editors, the compile server for them included (a terminal build on kovarex's machine said "no
   compile server could be reached"). Stage 1 is the Visual Studio workflow.

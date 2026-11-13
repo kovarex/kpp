@@ -41,7 +41,9 @@ namespace projects
     {
       out.triple = target.triple;
       out.sysrootName = out.platform + "-" + target.archName();
-      out.sysroot = !sysroot.empty() ? sysroot : defaultSysroot(compilerPath(), out.sysrootName.c_str()).string();
+      out.sysroot = target.mac()        ? macSdk(sysroot) // (--sysroot, SDKROOT, or on a Mac its own)
+                    : !sysroot.empty() ? sysroot
+                                       : defaultSysroot(compilerPath(), out.sysrootName.c_str()).string();
     }
     return out;
   }

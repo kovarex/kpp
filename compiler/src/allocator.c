@@ -15,6 +15,27 @@
 //   thread's heap is made at its first allocation, and released at its exit by a pthread key's
 //   destructor.
 
+// - macOS: not yet (2026-11-13). A definition of malloc in the executable is not taken by libSystem
+//   or libc++ (two-level namespace), so a block from libc++'s operator new would reach rpmalloc's free;
+//   rpmalloc there needs a malloc zone of its own. kpp uses macOS's malloc, and --version says so.
+
+#if defined(__APPLE__)
+
+#include <stddef.h>
+
+const char* kppAllocatorName(void)
+{
+  return "macOS's malloc (rpmalloc is not used on macOS yet)";
+}
+
+void* kppAllocatorNextBlock(size_t size)
+{
+  (void)size;
+  return 0;
+}
+
+#else
+
 #if defined(_WIN32)
 #  define ENABLE_OVERRIDE 1
 #  define ENABLE_PRELOAD 1
@@ -158,3 +179,5 @@ void* kppAllocatorNextBlock(size_t size)
   rpfree(first);
   return sizeClass->free_list;
 }
+
+#endif

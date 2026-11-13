@@ -287,7 +287,7 @@ namespace projects
     for (const fs::path& file : collectFiles(library, {".kpp"}))
       key = hashText(key, readText(file));
     key = hashText(key, self.string() + std::to_string(fs::file_size(self, ec)) +
-                            std::to_string(fs::last_write_time(self, ec).time_since_epoch().count()));
+                            std::to_string(int64_t(fs::last_write_time(self, ec).time_since_epoch().count())));
     std::string keyText = std::to_string(key);
     fs::path described = directory / "describe.txt";
     if (readText(directory / "describe.key") != keyText || !fs::exists(described, ec))
