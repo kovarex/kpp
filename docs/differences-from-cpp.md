@@ -947,7 +947,9 @@ struct S1 : B16 { int y; };   // 32 bytes; 16 with MSVC's layout
 - **C++:** a .natvis file, GDB or LLDB Python, written apart from the type and per debugger.
 - **kpp:** `T debugValue() const`, a member the language knows: the debugger shows the type as what it
   returns. Its body is translated into each debugger's description and must be translatable (no calls but of const member functions with such bodies, no
-  writes), or it is a compile error. Built for Visual Studio's natvis (2026-11-11, [debugging.md][dbgv]); LLDB and GDB with stage 2's DWARF.
+  writes), or it is a compile error. It may name any member of its class and its bases, private ones too, which C++'s
+  access rules refuse in another function (2026-11-13: the debugger sees them all). Built for Visual Studio's natvis
+  (2026-11-11, [debugging.md][dbgv]); LLDB and GDB with stage 2's DWARF.
 - **Why:** one description in the type's own code, checked by the compiler, for every debugger.
 - **See:** [design 26][d26].
 

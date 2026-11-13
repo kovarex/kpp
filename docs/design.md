@@ -2954,6 +2954,11 @@ other options (hand-written files, a format string, calling the program's code):
   kovarex 2026-11-12: "Why not use what we already have?"; a member's `debugValue`); no allocation, no writes,
   no calls of other functions. A body outside that is a compile error in the type's own file, so a renamed
   member never leaves a stale rule.
+- **It names any member** of its class and its bases, private ones too (kovarex, 2026-11-13, choosing this over
+  leaving the asserts of the functions it calls out of the view: "it can explode into new versions of code, and some
+  asserts recursively can have meaning"): the debugger sees every member, and a view reads the member itself, not the
+  function that guards it (Targeter's view reads its base's `target`, not `get()` with its assert). No other function
+  may.
 - **Otherwise an ordinary method:** the program and its tests call it.
 - **Output.** natvis first (Windows, the natvis kpp already writes into the PDB, thread F); LLDB (formatter bytecode
   in the binary, or Python where a loop is needed) and GDB (Python in `.debug_gdb_scripts`) once kpp writes DWARF

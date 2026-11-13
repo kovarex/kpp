@@ -1,0 +1,37 @@
+// spec: a class's debugValue (design.md 26), the debugger's expression, may name any member of its class and its bases, private and protected ones too: the debugger sees them all, and a view reads them without the functions that guard them (kovarex, 2026-11-13: Targeter's view reads its base's target, not get() with its assert); any other function still may not
+class TargeterBase
+{
+public:
+  int* get() const
+  {
+    assert(!this.loading);
+    return this.target;
+  }
+
+private:
+  int* target = nullptr;
+  bool loading = false;
+
+  friend class Holder;
+};
+
+class Targeter : public TargeterBase
+{
+public:
+  int* debugValue() const { return this.target; }
+};
+
+class Holder
+{
+public:
+  static void aim(TargeterBase& base, int* at) { base.target = at; }
+};
+
+int main()
+{
+  int value = 7;
+  Targeter targeter;
+  Holder::aim(targeter, &value);
+  std::println(*targeter.debugValue(), " ", targeter.get() == targeter.debugValue());
+  return 0;
+}

@@ -398,6 +398,10 @@ struct Buffer { std::Span<i32> debugValue() const { return std::Span<i32>(this.d
   `static_cast<const Entity&>(this).position` reads the derived class's member (`(*(Entity*)this).position`); a data member that is a class
   as that class's view, and its expansion (`ExpandedItem`); a `std::Span` made of a pointer and a length
   (or two pointers) as `{length=N}` and its elements (`ArrayItems`). Any other type returned is an error.
+- **Any member, private ones of the bases too**, may be named in a debugValue, which no other function may (kovarex,
+  2026-11-13): the debugger sees them all, and a view reads the members themselves rather than the functions that guard
+  them, whose asserts a view cannot evaluate (Targeter's view reads its base's `target`, not `get()`). Specs
+  kpp/debugvalue_names_private_members_of_bases, kpp/debugvalue_only_names_private_members_of_bases.
 - **Anything else is a compile error** at its place, naming what it was: a call of any other function
   (a free function, a virtual or non-const one, one with arguments), an operator function, a variable, a statement other than those `if`s and `return`, a debugValue that is not
   const or takes parameters ("FILE:LINE:COLUMN: error: debugValue of Counted cannot be shown by the

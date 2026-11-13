@@ -1,0 +1,21 @@
+// spec: only a class's debugValue names a base's private members: another member function, or a free function named debugValue, is refused as before (design.md 26)
+// error: debugvalue_only_names_private_members_of_bases.kpp:12: error: Base::hidden is private, named in Derived::peek
+// error: debugvalue_only_names_private_members_of_bases.kpp:15: error: Base::hidden is private, named in the function debugValue
+class Base
+{
+private:
+  int hidden = 1;
+};
+class Derived : public Base
+{
+public:
+  int peek() const { return this.hidden; }
+};
+
+int debugValue(const Base& base) { return base.hidden; }
+
+int main()
+{
+  Derived d;
+  return d.peek() + debugValue(d);
+}

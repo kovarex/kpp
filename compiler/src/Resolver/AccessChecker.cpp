@@ -120,6 +120,11 @@ auto GlobalScope::Impl::accessOf(Decl* used, FunctionDecl* fn, const std::vector
     member = member->parent; // an enumerator is as accessible as its enum
   if ((member->access != Access::Private && member->access != Access::Protected) || (member->flags & DF_Friend))
     return a;
+  // A class's debugValue, the debugger's expression (design.md 26), names any member, its bases' private ones
+  // too: the debugger sees them all, and a view reads them without the functions that guard them (kovarex,
+  // 2026-11-13: Targeter's view reads its base's target, not get() with its assert).
+  if (fn && !fn->name.empty() && owningClassOf(fn) && namePartText(fn->name.last()) == "debugValue")
+    return a;
   Decl* owner = owningClassOf(member);
   if (!owner || owner->kind != NodeKind::ClassDecl || !owner->ownScope || static_cast<ClassDecl*>(owner)->isClosure)
     return a;
