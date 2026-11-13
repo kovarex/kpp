@@ -2779,6 +2779,26 @@ auto GlobalScope::Impl::checkCFunctionTypes() -> void
     if (declarations.size() > 1)
       names.push_back({symbol, &declarations});
   std::sort(names.begin(), names.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+  // A C header's asm label (FunctionDecl::asmLabel) is the symbol of every declaration of the function:
+  // kpp's own `extern "C"` declaration of one the header labels links the label too, as C does (one
+  // function, one symbol). Two labels are two symbols for one function: an error.
+  for (auto& [symbol, declarations] : names)
+  {
+    FunctionDecl* labelled = nullptr;
+    for (FunctionDecl* f : *declarations)
+      if (f->asmLabel != UINT32_MAX)
+      {
+        if (labelled && labelled->asmLabel != f->asmLabel)
+          reportCheckerError(f->file, f->token,
+                             "the C function " + std::string(symbols.name(symbol)) + " links as " + std::string(symbols.name(f->asmLabel)) + " here and as " +
+                                 std::string(symbols.name(labelled->asmLabel)) + " at " + locationOf(labelled->file, labelled->token));
+        labelled = labelled ? labelled : f;
+      }
+    if (labelled)
+      for (FunctionDecl* f : *declarations)
+        if (f->asmLabel == UINT32_MAX)
+          f->asmLabel = labelled->asmLabel;
+  }
   auto signature = [&](FunctionDecl* f) -> const Ty*
   {
     TokenScope tokenScope(f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view());

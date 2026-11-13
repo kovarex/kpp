@@ -26,6 +26,7 @@ namespace
     uint32_t flags = 0;
     FunctionDecl::RefQualifier refQualifier = FunctionDecl::RefQualifier::None; // `f() &`, `f() &&`
     Expr* noexceptCondition = nullptr; // noexcept(expr)
+    uint32_t asmLabel = UINT32_MAX;    // a C header's `__asm("_freopen")` after the parameters (FunctionDecl::asmLabel)
     Type* trailingReturn = nullptr;
     Expr* bitfield = nullptr;
     Expr* requiresClause = nullptr;
@@ -3167,6 +3168,34 @@ namespace
             d.flags |= DF_Noexcept; // `throw()` is `noexcept(true)` (C++17)
           skipBalanced();
         }
+        else if (isC() && (at(Kw::asm_) || (atIdent(0) && (spelling() == "__asm" || spelling() == "__asm__"))) && at(P::LParen, 1))
+        {
+          // A C header's asm label: the symbol the function links as, its string literals joined
+          // (`__asm("_" "freopen")`). Until 2026-11-13 the declaration was dropped, the function not declared.
+          advance();
+          uint32_t open = pos;
+          advance();
+          std::string label;
+          while (at(TokenKind::String))
+          {
+            std::string_view s = spelling();
+            if (s.size() < 2 || s.front() != '"' || s.back() != '"' || s.find('\\') != std::string_view::npos)
+              break;
+            label += s.substr(1, s.size() - 2);
+            advance();
+          }
+          if (!at(P::RParen) || label.empty())
+          {
+            error("an asm label is one or more string literals without escapes");
+            pos = open;
+            skipBalanced();
+          }
+          else
+          {
+            advance();
+            d.asmLabel = symbols.intern(label);
+          }
+        }
         else if (atIdent(0) && spelling() == "override") { advance(); d.flags |= DF_Override; }
         else if (atIdent(0) && spelling() == "final") { advance(); d.flags |= DF_Final; }
         else if (at(P::Arrow))
@@ -3306,6 +3335,7 @@ namespace
       pendingConversionMark = UINT32_MAX;
       f->noexceptCondition = d.noexceptCondition;
       f->refQualifier = d.refQualifier;
+      f->asmLabel = d.asmLabel;
       if (pendingAttributes & ATTR_NoUniqueAddress)
         error("[[no_unique_address]] is for a data member that is no bit field");
       f->attributes = pendingAttributes;

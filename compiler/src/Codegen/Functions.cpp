@@ -49,6 +49,10 @@ auto codegen::Emitter::withSpecialisationArgs(std::string q, Decl* d) -> std::st
 
 auto codegen::Emitter::computeFunctionName(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy) -> std::string
 {
+  // (a C header's asm label, FunctionDecl::asmLabel: the symbol itself, which LLVM's \01 keeps from
+  // the target's prefix, as clang writes it: `__asm("_freopen")` links _freopen on macOS)
+  if (global.isExternC(f) && f->asmLabel != UINT32_MAX)
+    return "@\"\\01" + sym(f->asmLabel) + "\"";
   if (global.isExternC(f))
     return "@" + cSymbol(sym(f->name.last().symbol));
   // The global main (wmain): called by the generated @main (@wmain), which reports uncaught

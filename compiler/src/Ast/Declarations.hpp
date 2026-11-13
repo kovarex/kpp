@@ -168,6 +168,10 @@ struct FunctionDecl : Decl
   // Two overloads of one parameter list differing in it are two functions.
   enum class RefQualifier : uint8_t { None, LValue, RValue };
   RefQualifier refQualifier = RefQualifier::None;
+  // A C header's asm label, the symbol the function links as (macOS's stdio.h: `FILE* freopen(...)
+  // __asm("_freopen")`, glibc's __REDIRECT): its interned text, UINT32_MAX for none (in the padding after
+  // refQualifier: no larger a FunctionDecl).
+  uint32_t asmLabel = UINT32_MAX;
 };
 struct VariableDecl : Decl
 {
