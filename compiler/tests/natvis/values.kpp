@@ -199,19 +199,44 @@ struct Part
 };
 
 template<class T>
+struct Handle;
+
+template<class T>
 struct Registry
 {
   static std::Vector<T*> all;
+
+  static const T* getPointer(const Handle<T>& handle)
+  {
+    assert(handle.index < Registry<T>::all.size());
+    return Registry<T>::all[handle.index];
+  }
 };
 
+// The game's ID<T>: its view calls the real getName (kovarex, 2026-11-13: "Why isn't it using getName?"), whose
+// getPrototype takes a branch of `if constexpr` and calls a static function of the list with the object, whose
+// assert is a case of the rule (`assert failed: ...`).
 template<class T>
 struct Handle
 {
+  const T* getPrototype() const
+  {
+    if constexpr (sizeof(T) == 0)
+      return nullptr;
+    else
+      return Registry<T>::getPointer(this);
+  }
+  std::String getName() const
+  {
+    if (this.index == 0)
+      return "";
+    return this.getPrototype()->name;
+  }
   std::String debugValue() const
   {
     if (this.index == 0)
       return "{0}";
-    return Registry<T>::all[this.index]->name;
+    return std::toString("{", this.index, ", ", this.getName(), "}");
   }
   u16 index = 0;
 };

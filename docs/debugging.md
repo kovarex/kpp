@@ -402,6 +402,15 @@ struct Buffer { std::Span<i32> debugValue() const { return std::Span<i32>(this.d
   `{first}`, not its text inlined, whose cases would multiply with the others' (the game's CircuitCondition: two signals
   and a comparison). tests
 atvis.ps1 checks Match, `{left} vs {right}`.
+- **The code it calls is followed** (2026-11-13): a const member function with arguments, a static or free function
+  and a function template are inlined, their parameters bound to the arguments (`getPointer(this)`: `id` is the viewed
+  object); `if constexpr` takes the instance's branch; an assert is a case of the rule, first: `assert failed:
+  id.getIndex() < PrototypeList<PrototypeType>::indexToPrototype.size()` where the code reaches it (getName calls
+  getPrototype only for an index other than 0) and its condition does not hold. A view never calls the program:
+  natvis has no calls, a crash dump has no process, and a call at every step for every value shown would be slow and
+  could deadlock a stopped program. tests\natvis.ps1 checks Handle<Part>, the game's ID; tools\vs\vsix\
+  debugger-check.ps1 saw `{1, gear}`, `{0}` and the assert's text in Visual Studio. Not yet: a value the code
+  constructs (`T::fromIndex(i)`) and lambdas.
 - **A class's static data member** is read too, a global the program writes, by its name in the debug information:
   `Registry<T>::all[this.index]->name` in Handle<Part> is `{Registry<Part>::all.items[index]->name,sb}` (an element of
   the library's Vector is its `items[i]`, of a pointer or array `[i]`). The game's ID<T> shows its prototype's name so

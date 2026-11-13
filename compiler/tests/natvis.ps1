@@ -82,8 +82,10 @@ foreach ($case in @(@('Heading', '|{(Heading::Enum)(value)}'), @('Shape', '|side
                     @('Station', '|{name.value,sb}'),
                     # another object's debugValue in a text: that object by its own rule
                     @('Match', '|{left} vs {right}'),
-                    # a static data member by its debugger name, a Vector's element: the game's ID<T>
-                    @('Handle<Part>', 'index == 0|{{0}} |{Registry<Part>::all.items[index]->name,sb}'),
+                    # the game's ID<T> through its real getName: a static data member by its debugger name, a Vector's
+                    # element, `if constexpr`'s branch, a static function called with the object, its assert a case first
+                    # where the code reaches it (getName calls getPrototype only for an index other than 0)
+                    @('Handle<Part>', '(!(index == 0)) && (!(index < (Registry<Part>::all.length)))|assert failed: handle.index < Registry<T>::all.size() index == 0|{{0}} |{{{index}, {((Registry<Part>::all.items[index]))->name,sb}}}'),
                     # a set of flags: the names of the flags set, A | B | C, a chain of views a flag (OVERRIDE, a second
                     # name, left out), the bits no flag names last, {} when none; Visual Studio showed it (tools\vs\vsix\debugger-check.ps1)
                     @('Usage', '(__kpp_bits & 0x1) != 0 && (__kpp_bits & 0xfffffffffffffffe) != 0|UPGRADED | {*this,view(kpp1)} (__kpp_bits & 0x1) != 0|UPGRADED |{*this,view(kpp1)} (__kpp_bits & 0x4) != 0 && (__kpp_bits & 0xfffffffffffffffa) != 0|OWNED | {*this,view(kpp2)} (__kpp_bits & 0x4) != 0|OWNED |{*this,view(kpp2)} (__kpp_bits & 0x8) != 0 && (__kpp_bits & 0xfffffffffffffff2) != 0|LOOTED | {*this,view(kpp3)} (__kpp_bits & 0x8) != 0|LOOTED |{*this,view(kpp3)} |{(unsigned long long)(__kpp_bits & 0xfffffffffffffff2)} __kpp_bits == 0|{{}} |{*this,view(kpp0)}')))
@@ -98,14 +100,14 @@ $buffer = @($types | Where-Object { $_.Name -eq 'Buffer' })[0]
 if ($buffer.DisplayString -ne '{{length={size}}}' -or $buffer.Expand.ArrayItems.Size -ne 'size' -or $buffer.Expand.ArrayItems.ValuePointer -ne 'data')
 { "FAIL natvis: Buffer's debugValue rule is '$($buffer.DisplayString)'"; exit 1 }
 $bad = Join-Path $work 'debugvalue-errors.kpp'
-[IO.File]::WriteAllText($bad, "i32 twice(i32 x) { return 2 * x; }`nstruct Counted`n{`n  i32 debugValue() const { return twice(this.n); }`n  i32 n = 0;`n};`n`n" +
+[IO.File]::WriteAllText($bad, "i32 twice(i32 x) { i32 doubled = 2 * x; return doubled; }`nstruct Counted`n{`n  i32 debugValue() const { return twice(this.n); }`n  i32 n = 0;`n};`n`n" +
   "struct Moving`n{`n  i32 debugValue() { return this.speed; }`n  i32 speed = 0;`n};`n`nint main()`n{`n  Counted c;`n  Moving m;`n  return c.n + m.speed;`n}`n")
 $ErrorActionPreference = 'Continue'
 $log = & $KppExe --quiet --debug-info --exe (Join-Path $work 'debugvalue-errors.exe') $bad 2>&1 | ForEach-Object { "$_" }
 $code = $LASTEXITCODE
 $ErrorActionPreference = 'Stop'
 $log = $log -join "`n"
-if ($code -eq 0 -or $log -notmatch 'debugvalue-errors\.kpp:4:\d+: error: debugValue of Counted cannot be shown by the debugger: a call other than of a const member function' -or
+if ($code -eq 0 -or $log -notmatch 'debugvalue-errors\.kpp:1:\d+: error: debugValue of Counted cannot be shown by the debugger: the function it calls, twice: a statement other than' -or
     $log -notmatch 'debugvalue-errors\.kpp:10:\d+: error: debugValue, which the debugger shows Moving as, is a const member function without parameters')
 { "FAIL natvis: debugValue bodies the debugger cannot compute: exit $code`n$log"; exit 1 }
 # The same errors in a build without debug information, and in a check (the language server's).
@@ -115,7 +117,7 @@ foreach ($mode in @('--exe', (Join-Path $work 'debugvalue-plain.exe')), @('--che
   $log = (& $KppExe --quiet @mode $bad 2>&1 | ForEach-Object { "$_" }) -join "`n"
   $code = $LASTEXITCODE
   $ErrorActionPreference = 'Stop'
-  if ($code -eq 0 -or $log -notmatch 'debugvalue-errors\.kpp:4:\d+: error: debugValue of Counted cannot be shown by the debugger: a call other than of a const member function')
+  if ($code -eq 0 -or $log -notmatch 'debugvalue-errors\.kpp:1:\d+: error: debugValue of Counted cannot be shown by the debugger: the function it calls, twice: a statement other than')
   { "FAIL natvis: debugValue's errors in a build with $($mode[0]) alone: exit $code`n$log"; exit 1 }
 }
 

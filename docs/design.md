@@ -2954,6 +2954,14 @@ other options (hand-written files, a format string, calling the program's code):
   kovarex 2026-11-12: "Why not use what we already have?"; a member's `debugValue`); no allocation, no writes,
   no calls of other functions. A body outside that is a compile error in the type's own file, so a renamed
   member never leaves a stale rule.
+- **It follows the code it calls** (kovarex, 2026-11-13: "Why isn't it using getName?"; option A over views
+  that call the program, which a crash dump cannot run, which would run code at every step, and which may deadlock
+  a stopped program): calls of const member functions with arguments, of static and free functions and of function
+  templates are inlined with their parameters bound to the arguments, `if constexpr` takes its instance's branch,
+  and an assert is a case of the rule, `assert failed: TEXT` where the code reaches it and its condition does not
+  hold (the game's ID: getName, getPrototype, PrototypeList::getPointer's assert). Measured on the game's
+  factorio-test debug build: the whole natvis 45 ms, every debugValue's check 8 to 11 ms, of about 7 s (2026-11-13).
+  Open: a value the code constructs (`T::fromIndex(i)`) and lambdas (SignalIDBase::getPrototype's applyOrAbort).
 - **It reads a class's static data members** too, globals the program writes (kovarex, 2026-11-13: "Why is it so
   special for the debugValue code to read global?"; the game's ID<T> shows its prototype's name through
   `PrototypeList<T>::indexToPrototype[this.index]->name`): the rule names the global as the debug information does

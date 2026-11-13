@@ -34,19 +34,41 @@ struct Part
 };
 
 template<class T>
+struct Handle;
+
+template<class T>
 struct Registry
 {
   static std::Vector<T*> all;
+
+  static const T* getPointer(const Handle<T>& handle)
+  {
+    assert(handle.index < Registry<T>::all.size());
+    return Registry<T>::all[handle.index];
+  }
 };
 
 template<class T>
 struct Handle
 {
+  const T* getPrototype() const
+  {
+    if constexpr (sizeof(T) == 0)
+      return nullptr;
+    else
+      return Registry<T>::getPointer(this);
+  }
+  std::String getName() const
+  {
+    if (this.index == 0)
+      return "";
+    return this.getPrototype()->name;
+  }
   std::String debugValue() const
   {
     if (this.index == 0)
       return "{0}";
-    return Registry<T>::all[this.index]->name;
+    return std::toString("{", this.index, ", ", this.getName(), "}");
   }
   u16 index = 0;
 };
@@ -72,6 +94,8 @@ i32 main()
   Handle<Part> none0;
   Handle<Part> handle;
   handle.index = 1;
-  std::println(square.area(), " ", numbers.size(), " ", name, " ", queue.size(), " ", corner.x, " ", held.label, " ", none, " ", one, " ", many, " ", wide, " ", handle.index, " ", none0.index);
+  Handle<Part> outside;
+  outside.index = 5;
+  std::println(square.area(), " ", numbers.size(), " ", name, " ", queue.size(), " ", corner.x, " ", held.label, " ", none, " ", one, " ", many, " ", wide, " ", handle.index, " ", none0.index, " ", outside.index);
   return 0;
 }
