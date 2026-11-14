@@ -1,0 +1,44 @@
+// spec: under `--sanitize thread` a destructor's store of its own class's vtable pointer, which the object already has, is no data race with another thread's virtual call on it: kpp marks a vtable pointer's loads and stores as such (TBAA's "vtable pointer"), and ThreadSanitizer's pass makes them __tsan_vptr_read and __tsan_vptr_update, which reports only a store that changes the pointer, as clang's C++ does. The game's routers end their read thread in their destructor, whose virtual calls went on until the join; until 2026-11-14 that was a report in 5 of the game's tests (ServerRouter::~ServerRouter, ClientRouter::~ClientRouter against RouterBase::readPacketsLoop), which the C++ build of the same code never had
+// target: linux (ThreadSanitizer's runtime is Linux's)
+// kpp: --sanitize thread
+class Base
+{
+public:
+  std::Atomic<bool> stopping;
+  std::Atomic<int> ticks;
+
+  virtual ~Base() {}
+  virtual void tick() { this.ticks.fetchAdd(1); }
+
+  void loop()
+  {
+    while (!this.stopping.load())
+      this.tick();
+  }
+};
+
+class Worker : public Base
+{
+public:
+  std::Thread thread;
+
+  Worker() { this.thread = std::Thread(&Base::loop, (Base*)&this); }
+  ~Worker()
+  {
+    this.stopping.store(true);
+    this.thread.join();
+  }
+
+  void tick() override { this.ticks.fetchAdd(1); }
+};
+
+int main()
+{
+  Worker* worker = new Worker();
+  while (worker->ticks.load() < 1000)
+  {
+  }
+  delete worker;
+  std::println("done");
+  return 0;
+}

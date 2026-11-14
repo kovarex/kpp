@@ -1625,7 +1625,7 @@ auto codegen::Emitter::slotKeyed(const StructInfo& info, const std::string& key)
 auto codegen::Emitter::loadSlot(const std::string& addr, int slot) -> std::string
 {
   std::string vptr = newTemp();
-  fn += "  " + vptr + " = load ptr, ptr " + addr + "\n";
+  fn += "  " + vptr + " = load ptr, ptr " + addr + vptrAccess(sh.sanitizeThread) + "\n";
   std::string entry = newTemp();
   fn += "  " + entry + " = getelementptr inbounds ptr, ptr " + vptr + ", i64 " + std::to_string(slot) + "\n";
   std::string fp = newTemp();

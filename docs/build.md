@@ -177,7 +177,12 @@ at all: UBSan's checks are written by clang's front end, not by an LLVM pass, so
   `lib/<triple>/` or `lib/linux/`), else a build says where it comes from. Both packages carry them,
   so the Windows one builds a TSan program for Linux (run under WSL) and the Linux one links them with
   llvm-mingw's clang (Factorio's kpp CI). A data race is ThreadSanitizer's report on stderr, the program
-  goes on, and its exit code at the end is 66; `TSAN_OPTIONS=suppressions=FILE` takes a suppressions
+  goes on, and its exit code at the end is 66. A vtable pointer's loads and stores carry TBAA's "vtable
+  pointer" tag, as clang's C++ ones do, so TSan checks them as `__tsan_vptr_read`/`__tsan_vptr_update`: a
+  destructor's store of the pointer the object already has is no race with another thread's virtual call,
+  and one that changes it is "data race on vptr (ctor/dtor vs virtual call)" (untagged until 2026-11-14,
+  every destructor that ends a thread making virtual calls on its object was a race: 5 of the game's
+  tests, its routers'). `TSAN_OPTIONS=suppressions=FILE` takes a suppressions
   file (Factorio's `tsan-suppressions`). The game's `debug-tsan` configuration (factorio-test, built from
   Windows with `--target linux` in 30 s) is Factorio's DebugTSAN. macOS arm64
   (2026-11-13, kovarex: "as little friction as possible"): ASan is a dylib only, LLVM 19.1.7's

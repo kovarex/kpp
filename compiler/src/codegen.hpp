@@ -30,6 +30,12 @@ inline std::string lineSlotSection(std::string_view absolutePath)
   return text;
 }
 
+// --sanitize thread: the TBAA nodes of the "vtable pointer" tag that a vtable pointer's loads and stores carry
+// (codegen::vptrAccess, which says why), which driver::forTarget appends to every module.
+inline const char* const vptrAccessMetadata = "!999999990 = !{!999999991, !999999991, i64 0}\n"
+                                              "!999999991 = !{!\"vtable pointer\", !999999992, i64 0}\n"
+                                              "!999999992 = !{!\"Simple C++ TBAA\"}\n";
+
 // A class the debug information defines (--debug-info with variables), by the name its definition
 // gives it (debuggerClassName, Codegen/DebugInfo.inl): what the .natvis's per-instance rules name and
 // cast to (makeNatvis), so that the two agree by construction.
@@ -114,6 +120,8 @@ struct CodegenOptions
   bool sanitizeUndefined = false;
   // --sanitize overflow: signed overflow of + - * and unary minus (which kpp wraps, as -fwrapv) calls it too.
   bool sanitizeOverflow = false;
+  // --sanitize thread: a vtable pointer's loads and stores carry TBAA's "vtable pointer" tag (vptrAccess).
+  bool sanitizeThread = false;
   // --debug-info: line tables, each statement's instructions at its line, so that a debugger steps
   // through the kpp source (docs/debugging.md).
   bool debugInfo = false;

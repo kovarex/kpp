@@ -518,7 +518,7 @@ auto codegen::Emitter::sharedThunk(const std::string& name, const Signature& s, 
   std::string target = callee;
   if (slot >= 0)
   {
-    body += "  %vt = load ptr, ptr %self\n  %sp = getelementptr inbounds ptr, ptr %vt, i64 " + std::to_string(slot) + "\n  %fp = load ptr, ptr %sp\n";
+    body += "  %vt = load ptr, ptr %self" + vptrAccess(sh.sanitizeThread) + "\n  %sp = getelementptr inbounds ptr, ptr %vt, i64 " + std::to_string(slot) + "\n  %fp = load ptr, ptr %sp\n";
     target = "%fp";
   }
   if (s.returnType == "void")

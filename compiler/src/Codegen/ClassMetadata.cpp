@@ -935,7 +935,7 @@ auto codegen::Emitter::storeVptrs(const std::string& addr, const StructInfo& inf
   useVtable(info);
   std::vector<std::string> where = vptrAddresses(addr, info);
   for (size_t i = 0; i < where.size(); ++i)
-    fn += "  store ptr " + info.vtables[i].vptrValue + ", ptr " + where[i] + "\n";
+    fn += "  store ptr " + info.vtables[i].vptrValue + ", ptr " + where[i] + vptrAccess(sh.sanitizeThread) + "\n";
 }
 
 auto codegen::Emitter::loadVptrs(const std::string& addr, const StructInfo& info) -> std::vector<std::string>

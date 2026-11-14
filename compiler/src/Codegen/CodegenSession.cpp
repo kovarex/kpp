@@ -767,6 +767,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     sh.target = *target;
   sh.sanitizeUndefined = options.sanitizeUndefined;
   sh.sanitizeOverflow = options.sanitizeOverflow;
+  sh.sanitizeThread = options.sanitizeThread;
   sh.inlineTrivial = inlineTrivial;
   sh.debugInfo = debugInfo;
   sh.fullDebugInfo = debugInfo && !optimize; // (an optimized build keeps its line tables alone)

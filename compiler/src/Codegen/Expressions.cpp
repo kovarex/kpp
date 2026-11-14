@@ -1334,7 +1334,7 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
           std::string vptr = newTemp(), slot = newTemp(), offset = newTemp(), bytes = newTemp(), back = newTemp(), deleterSlot = newTemp();
           block = newTemp();
           deleter = newTemp();
-          fn += "  " + vptr + " = load ptr, ptr " + p.text + "\n";
+          fn += "  " + vptr + " = load ptr, ptr " + p.text + vptrAccess(sh.sanitizeThread) + "\n";
           fn += "  " + slot + " = getelementptr inbounds ptr, ptr " + vptr + ", i64 -2\n";
           fn += "  " + offset + " = load ptr, ptr " + slot + "\n";
           fn += "  " + bytes + " = ptrtoint ptr " + offset + " to i64\n";

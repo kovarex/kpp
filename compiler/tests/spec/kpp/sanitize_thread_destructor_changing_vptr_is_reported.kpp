@@ -1,0 +1,42 @@
+// spec: under `--sanitize thread` a base class's destructor that points the vtable pointer at its own class while another thread still makes virtual calls on the object is ThreadSanitizer's "data race on vptr (ctor/dtor vs virtual call)", exit code 66: the race Factorio's C++ CI found in TestRouter's LocalNetworkFixture (2026-11-14, its destructor against the TransferSource thread), which the vtable pointer's tag (kpp/sanitize_thread_destructor_keeps_vptr_without_report) must not hide
+// target: linux (ThreadSanitizer's runtime is Linux's)
+// kpp: --sanitize thread
+// exit: 66
+class Base
+{
+public:
+  std::Atomic<bool> stopping;
+  std::Atomic<int> ticks;
+  std::Thread thread;
+
+  virtual ~Base()
+  {
+    this.stopping.store(true);
+    this.thread.join();
+  }
+  virtual void tick() { this.ticks.fetchAdd(1); }
+
+  void loop()
+  {
+    while (!this.stopping.load())
+      this.tick();
+  }
+  void start() { this.thread = std::Thread(&Base::loop, &this); }
+};
+
+class Worker : public Base
+{
+public:
+  void tick() override { this.ticks.fetchAdd(1); }
+};
+
+int main()
+{
+  Worker* worker = new Worker();
+  worker->start();
+  while (worker->ticks.load() < 1000)
+  {
+  }
+  delete worker;
+  return 0;
+}

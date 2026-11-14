@@ -466,6 +466,7 @@ namespace codegen
     bool inlineTrivial = true;                           // trivial callees emitted in their callers (--no-inline: false)
     bool sanitizeUndefined = false;                      // --sanitize undefined: Emitter::undefinedCheck
     bool sanitizeOverflow = false;                       // --sanitize overflow: signed overflow, Emitter::undefinedCheck
+    bool sanitizeThread = false;                         // --sanitize thread: vtable pointers' loads and stores tagged (vptrAccess)
     bool debugInfo = false;                              // --debug-info: line tables for the debugger (Emitter::debugLines)
     bool fullDebugInfo = false;                          // --debug-info unoptimized: variables and types too (Emitter::debugVariable)
     // An unoptimized build for Windows with no importable modules, --debug-info or not: the lines in its code are constants
@@ -710,6 +711,18 @@ namespace codegen
     lists.retained = listOf(retained);
     lists.globals = listOf(globalList);
     return lists;
+  }
+
+  // --sanitize thread: a vtable pointer's load or store carries TBAA's "vtable pointer" tag, as clang's C++
+  // does, which ThreadSanitizer's pass makes __tsan_vptr_read and __tsan_vptr_update: a constructor's or
+  // destructor's store of the pointer the object already has is then no race with another thread's virtual
+  // call (only a store that changes it is). Untagged, TSan reported every destructor that ends a thread
+  // making virtual calls on its object (the game's routers, 2026-11-14), which C++ never did. The tag's
+  // nodes (vptrAccessMetadata, codegen.hpp) are numbered past any module's own (9 digits: renumberDebugIds
+  // renumbers 10), and driver::forTarget appends them to every module of a build with --sanitize thread.
+  inline std::string vptrAccess(bool sanitizeThread)
+  {
+    return sanitizeThread ? ", !tbaa !999999990" : "";
   }
 
   // --debug-info: what every module's line tables refer to (the definitions' `unit: !0`, `type: !2`).

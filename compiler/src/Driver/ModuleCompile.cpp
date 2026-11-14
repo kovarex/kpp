@@ -83,7 +83,10 @@ std::string forTarget(const std::string& text, const Options& options)
   attributes += options.sanitizeAddress ? " sanitize_address" : options.sanitizeThread ? " sanitize_thread" : "";
   if (mac)
     attributes += options.target.arm64() ? " \"frame-pointer\"=\"non-leaf\"" : " \"frame-pointer\"=\"all\"";
-  return mac ? withoutComdats(withUnwindTables(text, attributes.c_str())) : withUnwindTables(text, attributes.c_str());
+  std::string out = mac ? withoutComdats(withUnwindTables(text, attributes.c_str())) : withUnwindTables(text, attributes.c_str());
+  if (options.sanitizeThread) // (the vtable pointer accesses' TBAA tag, codegen::vptrAccess)
+    out += vptrAccessMetadata;
+  return out;
 }
 
 std::string withUnwindTables(const std::string& text, const char* attributes)
@@ -590,6 +593,7 @@ void runCodegen(Build& build)
                                   .inlineTrivial = !options.noInline,
                                   .sanitizeUndefined = options.sanitizeUndefined,
                                   .sanitizeOverflow = options.sanitizeOverflow,
+                                  .sanitizeThread = options.sanitizeThread,
                                   .debugInfo = options.debugInfo,
                                   .target = &options.target,
                                   .optimize = options.optimize != 0}; // (resolved to 0 or 1 by now)
