@@ -1105,6 +1105,16 @@ bool __kppHasTag(const __KppSuite* suite, const char* tag)
   return false;
 }
 
+// --sanitize thread: ThreadSanitizer calls __tsan_on_report for each report it prints, on whichever thread
+// raced (its runtime's own definition is weak and empty). The report names no test, so the reports are
+// counted, and the test that was running when one came fails with it (__kppRunOne): the run says which
+// test raced, beside the report on stderr and the process's exit code 66 at its end.
+std::Atomic<i64> __kppSanitizerReports;
+when (config::sanitizeThread) extern "C" void __tsan_on_report([[maybe_unused]] const void* report)
+{
+  __kppSanitizerReports.fetchAdd(1);
+}
+
 // One test with the program's hooks: whether it passed, and in *took its time.
 bool __kppRunOne(const __KppTest* test, u64 slowSeconds, u64* took)
 {
@@ -1112,12 +1122,17 @@ bool __kppRunOne(const __KppTest* test, u64 slowSeconds, u64* took)
   state.failures.clear();
   state.current = test;
   state.running = true;
+  i64 reports = __kppSanitizerReports.load();
   u64 started = __kppNanoseconds();
   // The program's testBeforeEach and testAfterEach: a failure in them is the test's, and one that
   // ends testBeforeEach leaves the test out.
   if (__kppGuarded([]() { testBeforeEach(); }, "testBeforeEach"))
     __kppRunWhole(test);
   __kppGuarded([]() { testAfterEach(); }, "testAfterEach");
+  if (i64 now = __kppSanitizerReports.load(); now != reports)
+    __kppFail(test->where.file_name(), int(test->where.line()), int(test->where.column()), "sanitizer", "",
+              now - reports == 1 ? "ThreadSanitizer reported a data race while it ran (the report above)"
+                                 : "ThreadSanitizer reported data races while it ran (the reports above)");
   state.running = false;
   *took = __kppNanoseconds() - started;
   if (*took > slowSeconds * 1000000000u)
@@ -1614,7 +1629,13 @@ template<typename Finished> bool __kppRunJobs(const std::Vector<const __KppTest*
     if (event.kind != 'X')
       continue;
     int code = pool.ended(event);
-    if (code != 0)
+    if (code == 66 && config::sanitizeThread)
+    {
+      // (ThreadSanitizer's exit code after its reports, each of which failed the test it came in)
+      std::println("a test worker ended with ThreadSanitizer's exit code 66 after its tests (its reports above)");
+      ended = false;
+    }
+    else if (code != 0)
     {
       std::println("a test worker ended with exit code ", code, " after its tests");
       ended = false;

@@ -460,10 +460,15 @@ def build_and_run(path, area, name, work):
         r = subprocess.run(run_program(exe), env=program_env(exe), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
     except subprocess.TimeoutExpired:
         result["status"] = "FAIL"; result["note"] = "program timed out"; return finish(result)
-    if r.returncode != 0 and r.returncode > 1:
-        result["status"] = "FAIL"; result["note"] = f"program exited with 0x{r.returncode & 0xFFFFFFFF:X}"
+    # (`// exit: N` without `run:`: the program's own, as a --target linux run checks it, where `run:` snippets
+    # are skipped; ThreadSanitizer's 66 after a report)
+    want = int(info["exit"]) if info["exit"] is not None else None
+    if want is not None and r.returncode != want or want is None and r.returncode != 0 and r.returncode > 1:
+        result["status"] = "FAIL"; result["note"] = f"program exited with 0x{r.returncode & 0xFFFFFFFF:X}" + (f", expected {want}" if want is not None else "")
         return finish(result)
-    compare(r.stdout, expected_path, result)
+    # (a --tests program names its tests by their files' paths, which a `test:` snippet's own run makes
+    # relative: here the snippet's directory is taken out, so that its expected output holds on any machine)
+    compare(r.stdout.replace(os.path.dirname(os.path.abspath(path)) + os.sep, ""), expected_path, result)
     return finish(result)
 
 

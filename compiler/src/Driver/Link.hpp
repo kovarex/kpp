@@ -17,6 +17,11 @@
   // brings at its place in clang's resource directory beside kpp (lib\clang\19\lib\darwin: a release's own;
   // tools\sysroot\llvm-macos.ps1 puts it beside a build of kpp).
   std::filesystem::path macAddressSanitizerRuntime();
+  // A sanitizer's runtime for Linux, libclang_rt.SANITIZER.a (tsan, asan): LLVM 19.1.7's for x86-64, which kpp
+  // brings at its place in clang's resource directory beside kpp (lib\clang\19\lib\x86_64-unknown-linux-gnu: a
+  // release's own; tools\sysroot\llvm-linux.ps1 or llvm-linux.sh puts it beside a build of kpp), else its
+  // clang's own (a Linux distribution's clang 19 with its compiler-rt, Ubuntu's libclang-rt-19-dev).
+  std::filesystem::path linuxSanitizerRuntime(const Options& options, const std::string& sanitizer);
 
 
   // What follows the link of an optimized ELF build with --debug-info (` && llvm-objcopy ...`): its

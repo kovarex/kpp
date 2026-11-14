@@ -28,6 +28,13 @@ strip "$kpp/kpp" 2>/dev/null || true
 cp "$repository/LICENSE" "$kpp/LICENSE.txt"
 cp -r "$repository/stdlib" "$kpp/stdlib"
 cp -r "$repository/projectlib" "$kpp/projectlib"
+# ThreadSanitizer's and AddressSanitizer's runtimes for Linux x86-64 (--sanitize thread|address; docs/build.md,
+# "Sanitizers"), LLVM 19.1.7's six files (11.6 MB) from LLVM's own release (tools/sysroot/llvm-linux.sh), at
+# their place in clang's resource directory beside kpp, which kpp prefers to its clang's: a clang without
+# compiler-rt's sanitizers (llvm-mingw's, which Factorio's kpp CI links with) then links them too.
+runtimes=$(sh "$repository/tools/sysroot/llvm-linux.sh" | tail -n 1)
+mkdir -p "$kpp/lib/clang/19/lib/x86_64-unknown-linux-gnu"
+cp "$runtimes"/libclang_rt.* "$kpp/lib/clang/19/lib/x86_64-unknown-linux-gnu/"
 # The official libraries: each one's tracked files (its tests and licence texts with it), no build/.
 libraries=""
 for dir in "$repository"/libraries/*/; do
@@ -51,6 +58,11 @@ Documentation: https://github.com/kovarex/kpp/blob/master/docs/build.md
 
 The official libraries are in libraries/ ($libraries; libraries/README.md): use("json") finds them
 there when a project has no copy of its own.
+
+lib/clang/19/lib/x86_64-unknown-linux-gnu/ holds ThreadSanitizer's and AddressSanitizer's runtimes
+(--sanitize thread, --sanitize address), LLVM 19.1.7's compiler-rt from LLVM's own Linux release
+(https://github.com/llvm/llvm-project/releases/tag/llvmorg-19.1.7), unchanged: Apache-2.0 WITH
+LLVM-exception, as kpp.
 
 Not yet on Linux: the compile server (each build checks everything again) and the language server.
 
@@ -76,6 +88,14 @@ printf 'int main()\n{\n  std::println(json::parseJson("[1, 2]").size());\n  retu
 run=$("$installed" --run | tail -n 1)
 [ "$run" = "2" ] || { echo "the packaged kpp did not build a project using its json library: '$run'"; exit 1; }
 echo "smoke test: a project using json: $run"
+# ThreadSanitizer from the package's own runtime: a data race reported, exit code 66.
+mkdir -p "$smoke/race/src" && cd "$smoke/race"
+printf 'int counter = 0;\nvoid work() { counter = counter + 1; }\nint main()\n{\n  std::Thread thread(work);\n  counter = counter + 1;\n  thread.join();\n  return 0;\n}\n' > src/main.kpp
+"$installed" --sanitize thread --exe race src/main.kpp > /dev/null
+code=0
+./race 2> race.log || code=$?
+[ "$code" = 66 ] && grep -q "WARNING: ThreadSanitizer: data race" race.log || { echo "the packaged kpp's --sanitize thread did not report a data race (exit $code)"; cat race.log; exit 1; }
+echo "smoke test: --sanitize thread reports a data race"
 printed=$("$installed" --version)
 echo "$printed"
 echo "$printed" | grep -q "^kpp $version" && echo "$printed" | grep -q "^stdlib: $smoke/$name/stdlib\$" &&

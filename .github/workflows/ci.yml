@@ -605,6 +605,15 @@ jobs:
           path: compiler/build/lib/clang/19/lib/darwin
           key: llvm-macos-asan-${{ hashFiles('tools/sysroot/llvm-macos.ps1') }}
 
+      # Linux x86-64's ThreadSanitizer and AddressSanitizer runtimes, which the package carries too
+      # (package.ps1 runs tools\sysroot\llvm-linux.ps1: six files of LLVM's 1.65 GB Linux release), kept in
+      # the cache under the script's hash (which pins the archive's and the files' SHA-256).
+      - name: Linux sanitizer runtimes cache
+        uses: actions/cache@v4
+        with:
+          path: compiler/build/lib/clang/19/lib/x86_64-unknown-linux-gnu
+          key: llvm-linux-sanitizers-${{ hashFiles('tools/sysroot/llvm-linux.ps1') }}
+
       # The package's version is kpp's own (docs/build.md, "Versions": VERSION and the commits since it
       # changed), which package.ps1 takes from kpp --version; never "+dirty" or unknown here. A push
       # run's release is tagged v<version>; the nightly run's, of a commit a push run has released
@@ -848,6 +857,14 @@ jobs:
             file "build/$configuration/app.exe" | grep -q "PE32+ executable"
           done
           test -f build/release/app.pdb
+
+      # The sanitizer runtimes the Linux package carries (package-linux.sh runs tools/sysroot/llvm-linux.sh,
+      # which streams six files out of LLVM's 1.65 GB Linux release): cached under the script's hash.
+      - name: Linux sanitizer runtimes cache
+        uses: actions/cache@v4
+        with:
+          path: compiler/build/lib/clang/19/lib/x86_64-unknown-linux-gnu
+          key: llvm-linux-sanitizers-sh-${{ hashFiles('tools/sysroot/llvm-linux.sh') }}
 
       # kpp's Linux release (tools/release/package-linux.sh: the tarball, its smoke test outside the
       # repository), kept as this run's artifact. libstdc++ and libgcc are linked into kpp (above), so

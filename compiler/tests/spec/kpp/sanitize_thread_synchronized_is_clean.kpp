@@ -1,0 +1,51 @@
+// spec: under `--sanitize thread` a program whose threads share data only through the standard library's Mutex, ConditionVariable, Atomic and Thread's join has no report and exits as it would without it: the library's locks are the C library's pthread ones, which ThreadSanitizer's runtime intercepts, and an Atomic's operations are LLVM's atomic instructions, which it instruments with their order
+// target: linux (ThreadSanitizer's runtime is Linux's)
+// kpp: --sanitize thread
+std::Mutex mutex;
+std::ConditionVariable ready;
+bool started = false;
+int counter = 0;
+std::Atomic<int> hits;
+int published = 0;
+std::Atomic<bool> flag;
+
+void work(int times)
+{
+  {
+    std::UniqueLock<std::Mutex> lock(mutex);
+    started = true;
+    ready.notifyAll();
+  }
+  for (int i = 0; i < times; ++i)
+  {
+    std::LockGuard<std::Mutex> lock(mutex);
+    ++counter;
+    hits.fetchAdd(1);
+  }
+}
+
+void publish()
+{
+  published = 42;
+  flag.store(true);
+}
+
+int main()
+{
+  std::Thread a(work, 1000);
+  {
+    std::UniqueLock<std::Mutex> lock(mutex);
+    ready.wait(lock, []() { return started; });
+  }
+  std::Thread b(work, 1000);
+  std::Thread c(publish);
+  while (!flag.load())
+  {
+  }
+  int seen = published;
+  a.join();
+  b.join();
+  c.join();
+  std::println(counter, " ", hits.load(), " ", seen, " ", config::sanitizeThread);
+  return 0;
+}

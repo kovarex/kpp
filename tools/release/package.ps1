@@ -158,6 +158,12 @@ Copy-Item "$llvmMingw\bin\libclang_rt.asan_dynamic-x86_64.dll" "$kpp\bin"
 $macRuntime = & "$repository\tools\sysroot\llvm-macos.ps1" | Select-Object -Last 1
 New-Item -ItemType Directory -Force "$kpp\lib\clang\19\lib\darwin" | Out-Null
 Copy-Item "$macRuntime\libclang_rt.asan_osx_dynamic.dylib" "$kpp\lib\clang\19\lib\darwin"
+# Linux x86-64's ThreadSanitizer and AddressSanitizer runtimes, which kpp --target linux links (llvm-mingw has
+# none for Linux): LLVM 19.1.7's six files that tools\sysroot\llvm-linux.ps1 takes from LLVM's Linux release
+# (11.6 MB), so that an installed kpp builds Factorio's debug-tsan for Linux (run under WSL).
+$linuxRuntimes = & "$repository\tools\sysroot\llvm-linux.ps1" | Select-Object -Last 1
+New-Item -ItemType Directory -Force "$kpp\lib\clang\19\lib\x86_64-unknown-linux-gnu" | Out-Null
+Copy-Item "$linuxRuntimes\libclang_rt.*" "$kpp\lib\clang\19\lib\x86_64-unknown-linux-gnu"
 CopyTree "$llvmMingw\x86_64-w64-mingw32\lib" "$kpp\x86_64-w64-mingw32\lib"
 CopyTree "$llvmMingw\x86_64-w64-mingw32\share\mingw32" "$kpp\x86_64-w64-mingw32\share\mingw32"
 Copy-Item "$llvmMingw\LICENSE.TXT" "$kpp\LICENSE-llvm-mingw.txt"
@@ -169,10 +175,11 @@ The bundled toolchain (bin\, include\, lib\, x86_64-w64-mingw32\) is llvm-mingw 
 - MinGW-w64's headers and runtime: public domain or ZPL 2.1; the DirectX headers taken from Wine are
   LGPL-2.1 or later. x86_64-w64-mingw32\share\mingw32\COPYING*.
 - llvm-mingw's own scripts: ISC.
-One file is not llvm-mingw's: lib\clang\19\lib\darwin\libclang_rt.asan_osx_dynamic.dylib,
-AddressSanitizer's runtime for macOS arm64, is LLVM 19.1.7's compiler-rt from LLVM's own macOS release
-(https://github.com/llvm/llvm-project/releases/tag/llvmorg-19.1.7), unchanged: Apache-2.0 WITH
-LLVM-exception, as kpp.
+Some files are not llvm-mingw's: lib\clang\19\lib\darwin\libclang_rt.asan_osx_dynamic.dylib,
+AddressSanitizer's runtime for macOS arm64, and lib\clang\19\lib\x86_64-unknown-linux-gnu\, ThreadSanitizer's
+and AddressSanitizer's runtimes for Linux x86-64, are LLVM 19.1.7's compiler-rt from LLVM's own macOS and
+Linux releases (https://github.com/llvm/llvm-project/releases/tag/llvmorg-19.1.7), unchanged: Apache-2.0
+WITH LLVM-exception, as kpp.
 "@ | Set-Content "$kpp\NOTICE-toolchain.txt"
 
 # FreeBSD 14.3's sysroot, so that `--target freebsd` builds as installed (kpp takes sysroots\NAME beside

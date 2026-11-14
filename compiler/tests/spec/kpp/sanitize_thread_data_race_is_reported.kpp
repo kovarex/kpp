@@ -1,0 +1,18 @@
+// spec: `--sanitize thread` checks every load and store of kpp's code for a data race (Linux; kovarex, 2026-11-14, a TSan build of the game as Factorio's CI has): two threads writing one global with nothing ordering them is ThreadSanitizer's report, and the program's exit code at its end is ThreadSanitizer's 66. The runtime is LLVM 19.1.7's libclang_rt.tsan.a, which kpp brings beside itself (lib\clang\19\lib\x86_64-unknown-linux-gnu), as the clangs kpp builds with have none for Linux
+// target: linux (ThreadSanitizer's runtime is Linux's)
+// kpp: --sanitize thread
+// exit: 66
+int counter = 0;
+
+void work()
+{
+  counter = counter + 1;
+}
+
+int main()
+{
+  std::Thread thread(work);
+  counter = counter + 1;
+  thread.join();
+  return 0;
+}

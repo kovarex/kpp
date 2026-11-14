@@ -712,6 +712,25 @@ int compile(int argc, char** argv)
         return 2;
       }
     }
+    // Linux's ThreadSanitizer and AddressSanitizer runtimes: kpp's own beside itself (LLVM 19.1.7's, x86-64), or
+    // its clang's. Neither Visual Studio's nor llvm-mingw's clang has one, so a build without either is told
+    // where it comes from, never a link that fails on its path (until 2026-11-14 every such link did: ld.lld's
+    // "cannot open ...\lib\clang\19\lib\x86_64-unknown-linux-gnu\libclang_rt.tsan.a").
+    if ((options.sanitizeThread || options.sanitizeAddress) && options.target.os == Target::Os::Linux)
+    {
+      std::error_code ec;
+      std::string sanitizer = options.sanitizeThread ? "thread" : "address";
+      if (std::filesystem::path runtime = linuxSanitizerRuntime(options, options.sanitizeThread ? "tsan" : "asan");
+          !std::filesystem::is_regular_file(runtime, ec))
+      {
+        fprintf(stderr,
+                "--sanitize %s for --target %s needs the sanitizer's runtime for Linux, which is neither at %s nor in its "
+                "clang's resource directory: a release of kpp has it for x86-64; for a build of kpp, tools\\sysroot\\llvm-linux.ps1 "
+                "(or llvm-linux.sh) puts it there, or KPP_CLANG names a clang that has it (Ubuntu's clang-19 with libclang-rt-19-dev)\n",
+                sanitizer.c_str(), options.target.name.c_str(), runtime.string().c_str());
+        return 2;
+      }
+    }
     for (const char* name : {"sanitizeAddress", "sanitizeThread", "sanitizeUndefined", "sanitizeOverflow"})
       if (options.configValues.count(name))
       {
@@ -727,6 +746,15 @@ int compile(int argc, char** argv)
       std::string flag = options.sanitizeAddress ? "-fsanitize=address" : "-fsanitize=thread";
       options.clangFlags += (options.clangFlags.empty() ? "" : " ") + flag;
       options.libs.push_back(flag);
+      // Linux: clang links the runtime with what it needs (the whole archive, its .syms as the dynamic list,
+      // -ldl and the rest) from the resource directory it is given: kpp's own (lib\clang\19 beside kpp) when
+      // the runtime is kpp's, as its clang's has none.
+      if (options.target.os == Target::Os::Linux)
+      {
+        std::filesystem::path own = compilerPath().parent_path() / "lib" / "clang" / "19";
+        if (linuxSanitizerRuntime(options, options.sanitizeThread ? "tsan" : "asan").string().starts_with(own.string()))
+          options.libs.push_back("-resource-dir=" + own.string());
+      }
       // macOS: the runtime by its path, not from clang's resource directory (which has none), and an
       // executable that looks for it beside itself (the dylib's name is @rpath/...), where kpp copies it
       // (placeSanitizerRuntime): a program runs on a Mac wherever it is copied with it.

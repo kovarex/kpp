@@ -1,0 +1,3 @@
+sanitize_thread_names_the_test_that_raced.kpp:17:1: ThreadSanitizer reported a data race while it ran (the report above)
+failed: sanitize_thread_names_the_test_that_raced.kpp > races
+3 tests, 1 failed (root failures: sanitize_thread_names_the_test_that_raced.kpp > races)

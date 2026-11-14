@@ -166,7 +166,20 @@ at all: UBSan's checks are written by clang's front end, not by an LLVM pass, so
   interface from the executable, and link.exe would write an import library beside it on every
   build). windows-gnu: MinGW-w64's ASan is a DLL only, so kpp copies llvm-mingw's
   `libclang_rt.asan_dynamic-x86_64.dll`, `libc++.dll` and `libunwind.dll` beside the executable.
-  Linux: clang links it statically (Ubuntu's clang-19 has it in libclang-rt-19-dev). macOS arm64
+  Linux (2026-11-14): clang links ASan's and TSan's runtimes statically, from its resource
+  directory: Ubuntu's clang-19 has them (libclang-rt-19-dev), Visual Studio's and llvm-mingw's clangs
+  have none for Linux (every `--target linux` link of a sanitized program through them failed: "cannot
+  open ...libclang_rt.tsan.a"), so kpp brings LLVM 19.1.7's for x86-64 beside itself,
+  `lib\clang\19\lib\x86_64-unknown-linux-gnu\` (`libclang_rt.tsan.a`, `libclang_rt.asan.a`, their
+  `.syms`, `asan_static`, `asan-preinit`: 11.6 MB, from LLVM's own Linux release, whose 1.65 GB archive
+  `tools\sysroot\llvm-linux.ps1` and `llvm-linux.sh` stream them out of, pinned by the SHA-256 LLVM attests),
+  and links with `-resource-dir` naming its own when the runtime is there; else its clang's (either layout,
+  `lib/<triple>/` or `lib/linux/`), else a build says where it comes from. Both packages carry them,
+  so the Windows one builds a TSan program for Linux (run under WSL) and the Linux one links them with
+  llvm-mingw's clang (Factorio's kpp CI). A data race is ThreadSanitizer's report on stderr, the program
+  goes on, and its exit code at the end is 66; `TSAN_OPTIONS=suppressions=FILE` takes a suppressions
+  file (Factorio's `tsan-suppressions`). The game's `debug-tsan` configuration (factorio-test, built from
+  Windows with `--target linux` in 30 s) is Factorio's DebugTSAN. macOS arm64
   (2026-11-13, kovarex: "as little friction as possible"): ASan is a dylib only, LLVM 19.1.7's
   `libclang_rt.asan_osx_dynamic.dylib`, which no clang kpp builds with has, so kpp brings it at its
   place in clang's resource directory beside itself, `lib\clang\19\lib\darwin\` (a release's own,

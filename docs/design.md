@@ -5567,6 +5567,11 @@ just have it, and create one or two extra debug config targets for factorio with
   (ThreadSanitizer, Linux only), a configuration's `sanitize(NAME)` in build.kpp, and the constants
   `config::sanitizeAddress` and `config::sanitizeThread` (build.md, "Sanitizers"). A sanitizer kpp
   cannot give for a target is an error, never a build without it.
+- Built 2026-11-14 (kovarex "yes" to a TSan build of the game and a CI step, as Factorio's CI has
+  DebugTSAN): kpp brings Linux x86-64's ThreadSanitizer and AddressSanitizer runtimes, LLVM 19.1.7's
+  (11.6 MB), beside itself, as it brings macOS's ASan runtime: the clangs kpp links with on Windows and
+  Factorio's kpp CI on Linux (llvm-mingw's) have none, and every such link failed. The game's
+  `debug-tsan` configuration is Linux's alone (build.md, "Sanitizers").
 - Built: `--sanitize undefined`, kpp's own checks of division by zero and float to
   integer conversions, through the assert hook (no runtime library), and `--sanitize overflow` for
   signed overflow, which kpp wraps as Factorio's -fwrapv builds do (so not undefined there, and a

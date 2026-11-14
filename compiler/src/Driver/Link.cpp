@@ -42,26 +42,46 @@ void requireLld()
   codegenExit = 1;
 }
 
-std::filesystem::path macAddressSanitizerRuntime()
+static std::filesystem::path sanitizerRuntime(const std::string& directory, const std::string& name)
 {
-  const char* name = "libclang_rt.asan_osx_dynamic.dylib";
   std::error_code ec;
-  std::filesystem::path own = compilerPath().parent_path() / "lib" / "clang" / "19" / "lib" / "darwin" / name;
+  std::filesystem::path own = compilerPath().parent_path() / "lib" / "clang" / "19" / "lib" / directory / name;
   if (std::filesystem::is_regular_file(own, ec))
     return own;
-  // Else its clang's own, in that clang's resource directory (BIN/../lib/clang/VERSION/lib/darwin): a Mac's
-  // LLVM has one (Homebrew's llvm@19, KPP_CLANG on CI's Mac), Visual Studio's and llvm-mingw's none. The
-  // newest version's when there are several.
+  // Else its clang's own, in that clang's resource directory (BIN/../lib/clang/VERSION/lib/DIRECTORY): a Mac's
+  // LLVM has macOS's (Homebrew's llvm@19, KPP_CLANG on CI's Mac), a Linux distribution's clang Linux's
+  // (Ubuntu's libclang-rt-19-dev), Visual Studio's and llvm-mingw's neither. The newest version's when there
+  // are several.
   std::string clang = clangPath();
   std::vector<std::filesystem::path> found;
   if (!clang.empty())
     for (const std::filesystem::path& bin : {std::filesystem::path(clang).parent_path(), std::filesystem::canonical(clang, ec).parent_path()})
       if (!bin.empty())
         for (const std::filesystem::directory_entry& version : std::filesystem::directory_iterator(bin.parent_path() / "lib" / "clang", ec))
-          if (std::filesystem::path runtime = version.path() / "lib" / "darwin" / name; std::filesystem::is_regular_file(runtime, ec))
+          if (std::filesystem::path runtime = version.path() / "lib" / directory / name; std::filesystem::is_regular_file(runtime, ec))
             found.push_back(runtime);
   std::sort(found.begin(), found.end());
   return found.empty() ? own : found.back(); // (none: kpp's own place, which the error names)
+}
+
+std::filesystem::path macAddressSanitizerRuntime()
+{
+  return sanitizerRuntime("darwin", "libclang_rt.asan_osx_dynamic.dylib");
+}
+
+std::filesystem::path linuxSanitizerRuntime(const Options& options, const std::string& sanitizer)
+{
+  // (LLVM's per-target layout, lib/<triple>/libclang_rt.tsan.a, which LLVM's releases and kpp's copy have;
+  // a distribution's clang may keep the older one, lib/linux/libclang_rt.tsan-<arch>.a)
+  std::filesystem::path runtime = sanitizerRuntime(options.target.triple, "libclang_rt." + sanitizer + ".a");
+  std::error_code ec;
+  if (!std::filesystem::is_regular_file(runtime, ec))
+  {
+    std::string arch = options.target.triple.substr(0, options.target.triple.find('-'));
+    if (std::filesystem::path old = sanitizerRuntime("linux", "libclang_rt." + sanitizer + "-" + arch + ".a"); std::filesystem::is_regular_file(old, ec))
+      return old;
+  }
+  return runtime;
 }
 
 // --sanitize address for windows-gnu: MinGW-w64's AddressSanitizer is a DLL only (llvm-mingw's

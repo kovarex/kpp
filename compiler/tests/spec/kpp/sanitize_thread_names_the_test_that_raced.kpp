@@ -1,0 +1,27 @@
+// spec: under `--sanitize thread` the test runner fails the test that was running when ThreadSanitizer reported a data race (it counts the reports through the runtime's __tsan_on_report hook, whose own definition is empty), with its location and "ThreadSanitizer reported a data race while it ran": a report names no test, and until 2026-11-14 a race in the game's tests under --jobs said only "a test worker ended with exit code 66"; the tests around it pass, and the process ends with ThreadSanitizer's exit code 66
+// target: linux (ThreadSanitizer's runtime is Linux's)
+// kpp: --tests --sanitize thread
+// exit: 66
+int shared = 0;
+
+void bump()
+{
+  shared = shared + 1;
+}
+
+test quiet
+{
+  check(shared == 0);
+}
+
+test races
+{
+  std::Thread thread(bump);
+  shared = shared + 1;
+  thread.join();
+}
+
+test after
+{
+  check(shared == 2);
+}
