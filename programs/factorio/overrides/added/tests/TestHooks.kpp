@@ -27,6 +27,10 @@ void testsSetup(const std::Vector<std::String>& arguments)
     argv.push_back(argument.data());
   if (i32 result = fmain(i32(argv.size()), argv.data()))
     ::exit(result);
+  // (an earlier run's workers' CRC files, had it ended before merging them: not this run's)
+  if (writeCrc && testWorker() == 0)
+    for (const Filesystem::Path& part : workerCrcFiles())
+      Filesystem::remove(part);
 }
 
 // After the runner's own --help: the game's options, as its option parser says them (fmain prints
@@ -128,10 +132,70 @@ test void testAfterEach()
     });
 }
 
+// --crc-mode write's file (--crc-file, else crc-values.dat in the working folder), and a --jobs worker's own
+// beside it: each process writes the CRCs of the tests it ran, and the first process, which ends after
+// its workers, merges theirs into the file, as Factorio's --fork merged each task's (ForkLogic.cpp). They
+// all wrote the one file, and the first process, which ran no test, left it empty with exit code 0.
+private Filesystem::Path crcFile()
+{
+  if (!TestGlobals::crcFilePath.empty())
+    return TestGlobals::crcFilePath;
+  return Filesystem::Path(TestGlobals::workingFolderPath) / CrcDumper::crcFileName;
+}
+
+private Filesystem::Path workerCrcFile(i32 worker) { return Filesystem::Path(std::toString(crcFile().string(), ".worker-", worker)); }
+
+// The workers' files beside the CRC file, which the first process merges (an earlier run's too: none
+// is left, as each is removed once merged).
+private std::Vector<Filesystem::Path> workerCrcFiles()
+{
+  std::Vector<Filesystem::Path> files;
+  Filesystem::Path file = crcFile();
+  Filesystem::Path directory = file.has_parent_path() ? file.parent_path() : Filesystem::Path(".");
+  std::String prefix = std::toString(file.filename().string(), ".worker-");
+  FileUtil::forEachFile(directory, [&](const Filesystem::directory_entry& entry)
+  {
+    Filesystem::Path path(entry.path());
+    if (path.filename().string().rfind(prefix, 0) == 0)
+      files.push_back(path);
+  });
+  return files;
+}
+
+private void writeCrcFile()
+{
+  if (i32 worker = testWorker())
+  {
+    crcDumper.writeData(workerCrcFile(worker));
+    return;
+  }
+  crcDumper.writeData(crcFile());
+  std::Vector<Filesystem::Path> parts = workerCrcFiles();
+  if (parts.empty())
+    return;
+  std::Map<std::String, std::String> all;
+  {
+    Deserialiser input(FileUtil::openForRead(crcFile()));
+    input >> all;
+  }
+  for (const Filesystem::Path& part : parts)
+  {
+    std::Map<std::String, std::String> tests;
+    {
+      Deserialiser input(FileUtil::openForRead(part));
+      input >> tests;
+    }
+    for (auto& [name, crc] : tests)
+      all[name] = std::move(crc);
+    Filesystem::remove(part);
+  }
+  Serialiser(FileUtil::openForWrite(crcFile())) << all;
+}
+
 void testsTeardown()
 {
   if (writeCrc)
-    crcDumper.writeData(TestGlobals::crcFilePath);
+    writeCrcFile();
   delete currentRun;
   if constexpr (!config::finalRelease)
     if (Entity::count != 0)
