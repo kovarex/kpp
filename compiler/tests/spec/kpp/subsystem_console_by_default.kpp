@@ -1,0 +1,12 @@
+// spec: without `--subsystem` a Windows program is a console program (IMAGE_SUBSYSTEM_WINDOWS_CUI, 3), as link.exe's default for a main: started outside a console it opens one, as Factorio's C++ Debug and FastDebug builds and its tests do; the program reads its own PE header's Subsystem (`--subsystem windows`: kpp/subsystem_windows_opens_no_console)
+// target: windows (a Windows executable's subsystem; windows-gnu's link too)
+// run:
+extern "C" void* GetModuleHandleW(const void* name);
+int main()
+{
+  const u8* image = reinterpret_cast<const u8*>(GetModuleHandleW(nullptr));
+  i32 header = *reinterpret_cast<const i32*>(image + 0x3C);
+  u16 subsystem = *reinterpret_cast<const u16*>(image + header + 0x5C);
+  std::println("subsystem ", subsystem);
+  return 0;
+}

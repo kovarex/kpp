@@ -1,0 +1,13 @@
+// spec: `--subsystem windows` links a Windows program for the GUI subsystem, as link.exe's /SUBSYSTEM:WINDOWS: started, it opens no console window, as Factorio's C++ Release and FinalRelease builds do not (kovarex, 2026-11-14: "The C++ version doesn't show the console in release"). main stays its entry (/SUBSYSTEM:WINDOWS alone would want a WinMain), and what it prints still reaches whoever redirects its output. The program reads its own PE header's Subsystem: 2, IMAGE_SUBSYSTEM_WINDOWS_GUI (3, the console's, without the option: kpp/subsystem_console_by_default)
+// target: windows (a Windows executable's subsystem; windows-gnu's link too)
+// kpp: --subsystem windows
+// run:
+extern "C" void* GetModuleHandleW(const void* name);
+int main()
+{
+  const u8* image = reinterpret_cast<const u8*>(GetModuleHandleW(nullptr));
+  i32 header = *reinterpret_cast<const i32*>(image + 0x3C);
+  u16 subsystem = *reinterpret_cast<const u16*>(image + header + 0x5C);
+  std::println("subsystem ", subsystem);
+  return 0;
+}

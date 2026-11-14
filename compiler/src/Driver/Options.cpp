@@ -131,6 +131,8 @@ void usage(FILE* out)
           "  --incremental-link  a debug build links incrementally (link.exe /INCREMENTAL): the next link redoes\n"
           "                only the objects that changed, as long as the executable and its .ilk stay; every\n"
           "                function is kept (/OPT:NOREF)\n"
+          "  --subsystem S  a Windows program's subsystem: console (the default) or windows, the GUI one:\n"
+          "                started, it opens no console window (/SUBSYSTEM:WINDOWS, main still its entry)\n"
           "  --defer-link  write the link command to EXE.link.command (and EXE.link.pending when this build's\n"
           "                objects are new) instead of linking: kpp links once the C libraries, built alongside, are there\n"
           "  --toolchain T  bundled: the installation's own llvm-mingw (bin\\, the default where it has one),\n"

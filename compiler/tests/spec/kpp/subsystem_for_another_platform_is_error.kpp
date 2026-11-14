@@ -1,0 +1,5 @@
+// spec: `--subsystem` is a Windows executable's: for another target it is refused, not ignored (a Linux, FreeBSD or macOS program opens no window of its own either way)
+// kpp: --subsystem windows --target linux
+// exit: 2
+// error: --subsystem windows: only a Windows program has a subsystem, not one for --target linux
+int main() { return 0; }

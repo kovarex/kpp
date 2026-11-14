@@ -39,6 +39,7 @@ int compile(int argc, char** argv)
   msvcDiagnostics = false;
   diagnosticColumns = false;
   Options options;
+  std::string windowsSubsystemGiven; // (--subsystem's value, checked against the target below)
   for (int i = 1; i < argc; ++i)
   {
     std::string arg = argv[i];
@@ -130,6 +131,17 @@ int compile(int argc, char** argv)
       options.cIncludeDirs.push_back(argv[++i]);
     else if (arg == "--incremental-link")
       options.incrementalLink = true;
+    else if (arg == "--subsystem" && i + 1 < argc)
+    {
+      std::string name = argv[++i];
+      if (name != "console" && name != "windows")
+      {
+        fprintf(stderr, "--subsystem %s: console (the default) or windows (no console window)\n", name.c_str());
+        return 2;
+      }
+      options.windowsSubsystem = name == "windows";
+      windowsSubsystemGiven = name;
+    }
     else if (arg == "--defer-link")
       options.deferLink = true;
     else if (arg == "--toolchain" && i + 1 < argc)
@@ -654,6 +666,13 @@ int compile(int argc, char** argv)
     if (options.incrementalLink && !options.target.windows())
     {
       fprintf(stderr, "--incremental-link is link.exe's, for --target windows\n");
+      return 2;
+    }
+    // --subsystem (docs/build.md, "Options"): the PE header's, which no other platform's executable has.
+    if (!windowsSubsystemGiven.empty() && !options.target.windows())
+    {
+      fprintf(stderr, "--subsystem %s: only a Windows program has a subsystem, not one for --target %s\n", windowsSubsystemGiven.c_str(),
+              options.target.name.c_str());
       return 2;
     }
     // Sanitizers (docs/build.md, "Sanitizers"): clang instruments only the functions that carry the

@@ -120,6 +120,10 @@ std::string linkFlags(const Options& options, bool wideEntry)
       flags += " \"--sysroot=" + options.sysroot + "\"";
     if (wideEntry)
       flags += " -municode";
+    // --subsystem windows: the GUI subsystem, no console window; lld then enters through MinGW-w64's
+    // WinMainCRTStartup, which calls main (or wmain) as mainCRTStartup does.
+    if (options.windowsSubsystem)
+      flags += " -Wl,--subsystem,windows";
     // The PDB, with the .natvis in it as the MSVC link's /NATVIS puts it (lld's COFF option through
     // --Xlink): Visual Studio shows the library's values in a windows-gnu build too, the bundled
     // toolchain's default.
@@ -189,8 +193,15 @@ std::string linkFlags(const Options& options, bool wideEntry)
   flags += " -llegacy_stdio_definitions -luser32 -ladvapi32 -lshell32 -lole32 -lws2_32";
   if (bundledToolchain()) // its lld-link (Visual Studio's link.exe is clang's default)
     flags += " -fuse-ld=lld";
+  // --subsystem windows: the GUI subsystem, no console window, as Factorio's C++ Release and FinalRelease
+  // link (/SUBSYSTEM:WINDOWS). Its default entry would be WinMain's: main's is named instead (wmain's,
+  // as Factorio's /ENTRY:"wmainCRTStartup", or main's).
   if (wideEntry)
     flags += " -Wl,/ENTRY:wmainCRTStartup";
+  else if (options.windowsSubsystem)
+    flags += " -Wl,/ENTRY:mainCRTStartup";
+  if (options.windowsSubsystem)
+    flags += " -Wl,/SUBSYSTEM:WINDOWS";
   if (options.debugInfo)
   {
     flags += " -Wl,/DEBUG \"-Wl,/NATVIS:" + natvisPath(options) + "\""; // (the .natvis in the PDB: Visual Studio loads it with it)

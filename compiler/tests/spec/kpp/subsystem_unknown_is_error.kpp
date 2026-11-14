@@ -1,0 +1,5 @@
+// spec: `--subsystem` takes console or windows, link.exe's names for the two a program runs under; another name is refused, not ignored
+// kpp: --subsystem gui
+// exit: 2
+// error: --subsystem gui: console (the default) or windows (no console window)
+int main() { return 0; }

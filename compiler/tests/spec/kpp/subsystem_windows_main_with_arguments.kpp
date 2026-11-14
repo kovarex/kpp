@@ -1,0 +1,13 @@
+// spec: `--subsystem windows` with a main that takes its arguments, which a Windows program is entered through wmain for (the wide command line handed to main as UTF-8): the GUI subsystem keeps that entry (wmainCRTStartup, as Factorio's C++ build links its wmain with /ENTRY:"wmainCRTStartup" /SUBSYSTEM:WINDOWS), so main gets its arguments; the program reads its own PE header's Subsystem, 2
+// target: windows (a Windows executable's subsystem; windows-gnu's link too, -municode)
+// kpp: --subsystem windows
+// run:
+extern "C" void* GetModuleHandleW(const void* name);
+int main(int argc, char** argv)
+{
+  const u8* image = reinterpret_cast<const u8*>(GetModuleHandleW(nullptr));
+  i32 header = *reinterpret_cast<const i32*>(image + 0x3C);
+  u16 subsystem = *reinterpret_cast<const u16*>(image + header + 0x5C);
+  std::println("subsystem ", subsystem, ", arguments ", argc, ", the program's name given: ", argv[0][0] != 0);
+  return 0;
+}
