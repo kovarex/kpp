@@ -550,6 +550,14 @@ int compile(int argc, char** argv)
                       "naming such a clang\n");
       return 2;
     }
+    // --subsystem (docs/build.md, "Options"): the PE header's, which no other platform's executable has;
+    // said before anything about the target's tools (its sysroot, its SDK).
+    if (!windowsSubsystemGiven.empty() && !options.target.windows())
+    {
+      fprintf(stderr, "--subsystem %s: only a Windows program has a subsystem, not one for --target %s\n", windowsSubsystemGiven.c_str(),
+              options.target.name.c_str());
+      return 2;
+    }
     // Another platform's C headers and libraries (design.md, "Targets and hosts"): --sysroot, else the
     // one that comes with kpp, sysroots\freebsd-x86_64 or linux-x86_64 beside it (a release brings
     // FreeBSD's: `--target freebsd` works as installed, 2026-11-04). A link without either is an error
@@ -666,13 +674,6 @@ int compile(int argc, char** argv)
     if (options.incrementalLink && !options.target.windows())
     {
       fprintf(stderr, "--incremental-link is link.exe's, for --target windows\n");
-      return 2;
-    }
-    // --subsystem (docs/build.md, "Options"): the PE header's, which no other platform's executable has.
-    if (!windowsSubsystemGiven.empty() && !options.target.windows())
-    {
-      fprintf(stderr, "--subsystem %s: only a Windows program has a subsystem, not one for --target %s\n", windowsSubsystemGiven.c_str(),
-              options.target.name.c_str());
       return 2;
     }
     // Sanitizers (docs/build.md, "Sanitizers"): clang instruments only the functions that carry the
