@@ -449,6 +449,7 @@ auto codegen::Emitter::emitFunction(FunctionDecl* original, const TemplateArgs& 
       returnLabel = newLabel("dtor.members");
     }
     namedReturn = builtInResult(global.namedReturnVariable(f->body, currentReturn, nullptr, currentArgs), f);
+    coverBegin(f);
     statement(f->body);
     if (destructor)
     {
@@ -472,6 +473,7 @@ auto codegen::Emitter::emitFunction(FunctionDecl* original, const TemplateArgs& 
         fn += "  ret " + (currentReturn->isReference() ? std::string("ptr null") : llType(currentReturn, f) + " zeroinitializer") + "\n";
       }
     }
+    coverFinish();
     addFunction(name, functionText(header));
   }
   catch (Unsupported&)

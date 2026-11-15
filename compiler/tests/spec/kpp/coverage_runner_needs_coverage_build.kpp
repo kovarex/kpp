@@ -1,0 +1,7 @@
+// spec: the runner's --coverage FILE in tests built without kpp --coverage is an error, not an empty file
+// test: --coverage -
+// exit: 2
+test nothing
+{
+  check(true);
+}

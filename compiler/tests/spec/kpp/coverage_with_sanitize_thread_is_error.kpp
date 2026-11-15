@@ -1,0 +1,5 @@
+// spec: --coverage and --sanitize thread together are refused: the probes' stores are races to ThreadSanitizer
+// kpp: --coverage --sanitize thread
+// exit: 2
+// error: --coverage and --sanitize thread do not go together
+int main() { return 0; }

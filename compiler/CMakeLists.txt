@@ -51,6 +51,7 @@ add_executable(kpp
   src/Codegen/ConstantData.cpp
   src/Codegen/Constants.cpp
   src/Codegen/ControlFlow.cpp
+  src/Codegen/CoverageProbes.cpp
   src/Codegen/DebugInfo.cpp
   src/Codegen/Diagnostics.cpp
   src/Codegen/EmitterNames.cpp
@@ -88,6 +89,7 @@ add_executable(kpp
   src/Project/Measure.cpp
   src/Project/Menu.cpp
   src/tests.cpp
+  src/coverage.cpp
   src/Ast/AstWalk.cpp
   src/version.cpp
   src/backend.cpp

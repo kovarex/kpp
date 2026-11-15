@@ -3089,6 +3089,47 @@ if (usage & EntityUsage::OWNED_BY_GHOST) ...
   respelt where needed (thread F with C, a game PR); the four sets indexed by an enum (SpriteFlags,
   OtherSpriteOptions, DrawingFlags, TileMaterialDataFlags over SmallBitset) after them.
 
+### 28. Test coverage: kpp's own probes (decided 2026-11-15, collection built)
+kovarex, 2026-11-15, on the options report (https://claude.ai/artifact/AaRWhcxoU62emT3c9tAo7Y): "In C++ this
+usually means using 3rd party tools, usually not free ones, so this would be great to have it as native feature
+of kpp, lets go with this plan." The plan: kpp's codegen writes the probes (not LLVM's source-based coverage,
+not SanitizerCoverage), one byte per probe set to 1, conditions' outcomes recorded, the editors fed by the
+language server.
+- **The switch.** `kpp --coverage` (a configuration's `argument("--coverage")` in build.kpp) and the constant
+  `config::coverage`. Without it nothing changes: no probe, no table, no runtime file, the IR as before. With it
+  kpp inlines no trivial function (an inlined body would count as its caller's), a compile server generates
+  the program in full each build (rebuildLLVM declines), and `--sanitize thread` is refused (the probes' stores
+  are races to ThreadSanitizer).
+- **What is counted.** The functions of the program's own files: not the standard library's, not a C
+  header's, not a file kpp adds, not test code (a test's body, a test function or class: what the tests cover
+  is the rest). Per function: its entry; each statement, by regions (a run of statements entered only at its
+  first: a new one at every block and after every statement with a call, so a statement after a call that
+  threw is not counted as run); each condition's true and its false, the condition of an if (its missing else
+  is its false: kovarex, "the part of if not handled is also covered"), of a loop, of a ?:, and each operand of
+  && and || (an operand never evaluated has neither: kovarex's `if (foo() && bar())`); a switch's missing
+  default. Not counted: an assert's condition (true whenever the program is right), a global's initializer, a
+  constructor's member initializers, what the compile-time interpreter runs, code a false `when` or `if
+  constexpr` dropped (none in the totals). A template's instances and a function's copies count together at
+  their places in the source.
+- **How.** Each function's probes are a byte array of its own, `@"kpp.cov.<function>"`, and its region map
+  a constant beside it, both in the shared declarations; module 0 defines `kpp_coverage_entries`, the table of
+  them all, by name (Codegen/CoverageProbes.hpp has the map's format). A probe is one store; a condition's is
+  a select of its two bytes and a store. The runtime is one more source file, `<coverage>.kpp`
+  (compiler/src/coverage.cpp).
+- **Collected.** The test runner writes it after its summary: `--coverage FILE` (- for stdout), else
+  kpp-coverage.json. Under `--jobs` each worker sends what a test set, after the test, to the first process,
+  which writes it all. A program without the runner writes it at its exit, to KPP_COVERAGE_FILE or
+  kpp-coverage.json. One JSON line per file: its hash, `lines` ([line, 1 all ran | 0 none | 2 some]),
+  `statements` and `conditions` with their places (line, column, last line, the column after), `defaults`,
+  `functions`; then a summary, and a line `coverage: lines 72.7% (8 of 11), conditions 54.5% (6 of 11),
+  functions 100.0% (2 of 2)` (a condition's two outcomes and each default counted; never rounded up).
+- **Next** (the report's plan, in order): `kpp --coverage-merge` and an lcov export; the language server's
+  coverage for VS Code's test coverage and Visual Studio's marks, each with its on/off toggle; per-test
+  attribution (opt-in); the game's `debug-coverage` configuration, its build and run measured.
+- Spec: kpp/coverage_statements_conditions_and_missing_default, kpp/coverage_throw_ends_region,
+  kpp/coverage_jobs_merges_workers, kpp/coverage_program_writes_at_exit, kpp/coverage_config_constant,
+  kpp/coverage_runner_needs_coverage_build, kpp/coverage_with_sanitize_thread_is_error.
+
 ## Code packages (proposed 2026-10-27, decided 2026-11-04)
 
 **Decided** (kovarex, 2026-11-04): a directory is a package, named after the directory; an optional

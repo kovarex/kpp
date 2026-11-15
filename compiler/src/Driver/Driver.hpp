@@ -13,6 +13,7 @@
 #include "project.hpp"
 #include "run.hpp"
 #include "tests.hpp"
+#include "coverage.hpp"
 #include "server.hpp"
 #include "lsp.hpp"
 #include "natvis.hpp"

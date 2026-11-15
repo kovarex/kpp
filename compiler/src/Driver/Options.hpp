@@ -79,6 +79,7 @@
     bool keepGoing = false;        // --keep-going: compile and link what codegen emitted despite its errors
     bool stubMissing = false;      // --stub-missing (with --keep-going): what was left out aborts with its name when called
     bool noInline = false;         // --no-inline: every call stays a call (no trivial callee emitted in its caller)
+    bool coverage = false;         // --coverage: the program's own functions record which of their code ran (design.md 28)
     std::string clangFlags;        // --clang-flags: more flags for compiling the modules
     bool sanitizeAddress = false;  // --sanitize address: AddressSanitizer (every function kpp defines checked, its runtime linked)
     bool sanitizeThread = false;   // --sanitize thread: ThreadSanitizer (Linux)

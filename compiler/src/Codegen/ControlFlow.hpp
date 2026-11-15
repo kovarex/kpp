@@ -44,6 +44,7 @@
     void rangeFor(RangeForStmt* f);
 
     Value condition(Node* cond, Node* at);
+    Value conditionValue(Node* cond, Node* at); // (condition's, without its --coverage probe)
 
     void switchStatement(SwitchStmt* sw);
 

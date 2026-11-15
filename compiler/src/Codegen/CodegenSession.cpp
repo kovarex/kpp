@@ -768,6 +768,14 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   sh.sanitizeUndefined = options.sanitizeUndefined;
   sh.sanitizeOverflow = options.sanitizeOverflow;
   sh.sanitizeThread = options.sanitizeThread;
+  sh.coverage = options.coverage;
+  if (sh.coverage)
+  {
+    // Module 0 defines the runner's kpp_coverage_entries (Emitter::coverageTableText): its declaration
+    // is left out there.
+    sh.definedIn["@kpp_coverage_entries"] = 0;
+    sh.declareLines["@kpp_coverage_entries"] = "declare ptr @kpp_coverage_entries(ptr)";
+  }
   sh.inlineTrivial = inlineTrivial;
   sh.debugInfo = debugInfo;
   sh.fullDebugInfo = debugInfo && !optimize; // (an optimized build keeps its line tables alone)
@@ -1641,6 +1649,12 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
   if (!session.usable || !session.shared || session.emitters.empty())
   {
     out.declined = "no session kept from the last build";
+    return out;
+  }
+  if (session.shared->coverage)
+  {
+    // (a function emitted again would change its probes, and module 0's table lists every function's)
+    out.declined = "--coverage generates the program in full";
     return out;
   }
   session.usable = false; // until this rebuild is done: one that fails leaves the session to a build from scratch

@@ -621,6 +621,7 @@ auto codegen::Emitter::startBlock(const std::string& name) -> void
   fn += name + ":\n";
   blockTerminated = false;
   currentBlock = name;
+  coverRegion = -1; // (--coverage: control may come here from elsewhere, so a new region)
 }
 
 auto codegen::Emitter::callValue(CallExpr* c, const std::string& sret) -> Value

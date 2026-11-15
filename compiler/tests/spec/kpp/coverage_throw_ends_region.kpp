@@ -1,0 +1,44 @@
+// spec: kpp --coverage: a statement after a call that threw has not run (each call ends a region), a catch's statements ran when it caught, and a template's instances and a lambda count at their places in the source (twice's if was true in one instance and false in another)
+// kpp: --coverage
+// test: --coverage -
+int thrower(int x)
+{
+  if (x > 5)
+    throw x;
+  return x;
+}
+
+int caught(int x)
+{
+  try
+  {
+    int y = thrower(x);
+    y = y + 1;
+    return y;
+  }
+  catch (int e)
+  {
+    return -e;
+  }
+}
+
+template<typename T> T twice(T x)
+{
+  if (x > T(0))
+    return x + x;
+  return T(0);
+}
+
+int clipped(int n)
+{
+  auto positive = [](int a) { return a > 0 ? a : 0; };
+  return positive(n);
+}
+
+test throws
+{
+  check(caught(9) == -9);
+  check(twice(2) == 4);
+  check(twice(-1.5) == 0.0);
+  check(clipped(4) == 4);
+}

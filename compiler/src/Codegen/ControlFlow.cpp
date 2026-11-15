@@ -528,6 +528,14 @@ auto codegen::Emitter::rangeFor(RangeForStmt* f) -> void
 
 auto codegen::Emitter::condition(Node* cond, Node* at) -> Value
 {
+  Value v = conditionValue(cond, at);
+  if (!at || at->kind != NodeKind::AssertStmt) // (an assert's is true whenever the program is right: not a branch to cover)
+    coverCondition(cond, v.text);
+  return v;
+}
+
+auto codegen::Emitter::conditionValue(Node* cond, Node* at) -> Value
+{
   if (!cond)
     unsupported(at, "a missing condition");
   if (cond->kind == NodeKind::DeclStmt)
@@ -675,8 +683,17 @@ auto codegen::Emitter::switchStatement(SwitchStmt* sw) -> void
       invalidL = newLabel("switch.invalid");
     }
   }
-  fn += "  switch " + llType(ct, sw) + " " + cond.text + ", label %" + (invalidL.empty() ? (defaultL.empty() ? endL : defaultL) : invalidL) + " [\n" + cases + "  ]\n";
+  // --coverage: a switch without a default goes to a block of its own for the values no case has.
+  std::string noDefaultL = coverActive && invalidL.empty() && defaultL.empty() ? newLabel("switch.nodefault") : "";
+  std::string otherL = !invalidL.empty() ? invalidL : !defaultL.empty() ? defaultL : !noDefaultL.empty() ? noDefaultL : endL;
+  fn += "  switch " + llType(ct, sw) + " " + cond.text + ", label %" + otherL + " [\n" + cases + "  ]\n";
   blockTerminated = true;
+  if (!noDefaultL.empty())
+  {
+    startBlock(noDefaultL);
+    coverMissingDefault(sw);
+    emitBranch(endL);
+  }
   if (!invalidL.empty())
   {
     startBlock(invalidL);
@@ -720,6 +737,7 @@ auto codegen::Emitter::switchStatement(SwitchStmt* sw) -> void
       const std::string& l = caseLabels[{st, element}];
       emitBranch(l);
       startBlock(l);
+      coverStatement(st);
       if (implicitBreaks && element == topLevel && !groupScope)
       {
         pushScope();

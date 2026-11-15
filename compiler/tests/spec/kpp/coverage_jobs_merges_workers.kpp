@@ -1,0 +1,27 @@
+// spec: kpp --coverage with the runner's --jobs: each worker sends what its tests ran to the first process, which writes it all: the same coverage as one process
+// kpp: --coverage
+// test: --jobs 2 --coverage -
+int sign(int x)
+{
+  if (x < 0)
+    return -1;
+  if (x > 0)
+    return 1;
+  return 0;
+}
+
+suite Negative
+{
+  test negative
+  {
+    check(sign(-4) == -1);
+  }
+}
+
+suite Positive
+{
+  test positive
+  {
+    check(sign(4) == 1);
+  }
+}

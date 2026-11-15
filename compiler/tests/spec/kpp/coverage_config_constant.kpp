@@ -1,0 +1,12 @@
+// spec: config::coverage is kpp's own constant, true in a --coverage build
+// target: windows (the snippet sets the variable with _putenv)
+// kpp: --coverage
+// run:
+extern "C" int _putenv(const char* setting);
+
+int main()
+{
+  _putenv("KPP_COVERAGE_FILE=NUL");
+  std::println(config::coverage);
+  return 0;
+}

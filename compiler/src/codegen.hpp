@@ -122,6 +122,9 @@ struct CodegenOptions
   bool sanitizeOverflow = false;
   // --sanitize thread: a vtable pointer's loads and stores carry TBAA's "vtable pointer" tag (vptrAccess).
   bool sanitizeThread = false;
+  // --coverage (design.md 28): probes in the program's own functions, and module 0's table of them
+  // (Codegen/CoverageProbes.hpp).
+  bool coverage = false;
   // --debug-info: line tables, each statement's instructions at its line, so that a debugger steps
   // through the kpp source (docs/debugging.md).
   bool debugInfo = false;

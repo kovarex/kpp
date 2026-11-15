@@ -1,0 +1,29 @@
+// spec: kpp --coverage: a test run says which statements ran, each condition's true and false (an if's missing else is its false; each operand of && and ||, so one never evaluated has neither) and a switch's missing default, one JSON line per file (`--coverage -` after --: stdout) and a summary line; the tests' own code is not counted (design.md 28)
+// kpp: --coverage
+// test: --coverage -
+bool foo(int x)
+{
+  return x > 2;
+}
+
+int bar(int x)
+{
+  if (foo(x) && x < 10)
+    return 1;
+  if (x == 0)
+    x = 5;
+  switch (x)
+  {
+    case 1:
+      return 7;
+    case 5:
+      return 8;
+  }
+  return x > 3 ? 2 : 3;
+}
+
+test simple
+{
+  check(bar(3) == 1);
+  check(bar(0) == 8);
+}

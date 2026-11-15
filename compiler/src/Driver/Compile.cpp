@@ -173,6 +173,8 @@ int compile(int argc, char** argv)
       options.stubMissing = true;
     else if (arg == "--no-inline")
       options.noInline = true;
+    else if (arg == "--coverage")
+      options.coverage = true;
     else if (arg == "--clang-flags" && i + 1 < argc)
       options.clangFlags = argv[++i];
     else if (arg == "--sanitize" && i + 1 < argc)
@@ -679,6 +681,12 @@ int compile(int argc, char** argv)
     // Sanitizers (docs/build.md, "Sanitizers"): clang instruments only the functions that carry the
     // sanitizer's attribute, which forTarget writes on every definition. -fsanitize alone (--clang-flags,
     // before 2026-11-11) linked AddressSanitizer's allocator and checked no load or store of kpp's code.
+    if (options.coverage && options.sanitizeThread)
+    {
+      // (the probes' stores, a byte set to 1 by any thread, are races to ThreadSanitizer)
+      fprintf(stderr, "--coverage and --sanitize thread do not go together: coverage's probes are stores that ThreadSanitizer reports as races\n");
+      return 2;
+    }
     if (options.sanitizeAddress && options.sanitizeThread)
     {
       fprintf(stderr, "--sanitize address,thread: AddressSanitizer and ThreadSanitizer do not go together (clang refuses both)\n");
@@ -731,7 +739,7 @@ int compile(int argc, char** argv)
         return 2;
       }
     }
-    for (const char* name : {"sanitizeAddress", "sanitizeThread", "sanitizeUndefined", "sanitizeOverflow"})
+    for (const char* name : {"sanitizeAddress", "sanitizeThread", "sanitizeUndefined", "sanitizeOverflow", "coverage"})
       if (options.configValues.count(name))
       {
         fprintf(stderr, "--config %s: it is --sanitize's\n", name);
@@ -741,6 +749,7 @@ int compile(int argc, char** argv)
     options.configValues["sanitizeThread"] = parseConfigValue(options.sanitizeThread ? "true" : "false");
     options.configValues["sanitizeUndefined"] = parseConfigValue(options.sanitizeUndefined ? "true" : "false");
     options.configValues["sanitizeOverflow"] = parseConfigValue(options.sanitizeOverflow ? "true" : "false");
+    options.configValues["coverage"] = parseConfigValue(options.coverage ? "true" : "false");
     if (options.sanitizeAddress || options.sanitizeThread)
     {
       std::string flag = options.sanitizeAddress ? "-fsanitize=address" : "-fsanitize=thread";
@@ -784,6 +793,15 @@ int compile(int argc, char** argv)
     build->configDeclared = declared;
     totalBytes += config.text.size();
     files.push_back(std::move(config));
+    // --coverage: its runtime is one more source file (coverage.hpp).
+    if (options.coverage)
+    {
+      SourceFile runtime;
+      runtime.path = coverageRuntimePath;
+      runtime.text = coverageRuntimeSource();
+      totalBytes += runtime.text.size();
+      files.push_back(std::move(runtime));
+    }
     // --tests: the runner is one more source file (tests.hpp).
     if (options.configValues.count("tests") && options.configValues["tests"].number)
     {

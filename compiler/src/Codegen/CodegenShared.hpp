@@ -317,6 +317,15 @@ namespace codegen
     std::vector<SharedText> moduleDecls;                    // per module: its string constants and vtables
     std::vector<Startup> startups;
     std::unordered_set<std::string> startupFunctions; // the functions startups names (a server's build emits one again)
+    // --coverage (design.md 28): each function with probes, by its array's name, with how many it has
+    // and its region map's constant (Emitter::coverFinish); module 0's kpp_coverage_table lists them
+    // (Emitter::coverageTableText).
+    struct CoverageEntry
+    {
+      size_t count = 0;
+      std::string map;
+    };
+    std::map<std::string, CoverageEntry> coverageEntries;
     std::unordered_map<std::string, GlobalInit> globalInits;
     std::unordered_map<const Decl*, std::vector<std::string>> globalInitsOf;
     // A global defined with no constructor (constant data, globalForOnce), by its IR name: the declaration
@@ -467,6 +476,7 @@ namespace codegen
     bool sanitizeUndefined = false;                      // --sanitize undefined: Emitter::undefinedCheck
     bool sanitizeOverflow = false;                       // --sanitize overflow: signed overflow, Emitter::undefinedCheck
     bool sanitizeThread = false;                         // --sanitize thread: vtable pointers' loads and stores tagged (vptrAccess)
+    bool coverage = false;                               // --coverage: probes in the program's own functions (Emitter::coverBegin)
     bool debugInfo = false;                              // --debug-info: line tables for the debugger (Emitter::debugLines)
     bool fullDebugInfo = false;                          // --debug-info unoptimized: variables and types too (Emitter::debugVariable)
     // An unoptimized build for Windows with no importable modules, --debug-info or not: the lines in its code are constants

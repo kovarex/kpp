@@ -994,6 +994,7 @@ auto codegen::Emitter::ifChain(IfStmt* first) -> void
     if (declaresInHead(next)) // (what statement() does before an if's own work)
       openDebugBlock(next);
     debugLine(next);
+    coverStatement(next);
     i = next;
   }
   for (size_t k = open.size(); k-- > 0;)
@@ -1024,6 +1025,8 @@ auto codegen::Emitter::statement(Stmt* s) -> void
   if (declaresInHead(s))
     openDebugBlock(s);
   debugLine(s);
+  struct CoverAfter { ~CoverAfter() { e.coverAfter(from); } Emitter& e; size_t from; } coverAfterGuard{*this, fn.size()};
+  coverStatement(s);
   switch (s->kind)
   {
     case NodeKind::BlockStmt:
@@ -1390,6 +1393,7 @@ auto codegen::Emitter::statement(Stmt* s) -> void
       startBlock(cL);
       debugLine(d->cond);
       Value cond = convert(rvalue(d->cond), types.boolType(), s, false, ConversionContext::Direct);
+      coverCondition(d->cond, cond.text);
       destroyTemps();
       fn += "  br i1 " + cond.text + ", label %" + bL + ", label %" + eL + "\n";
       startBlock(eL);

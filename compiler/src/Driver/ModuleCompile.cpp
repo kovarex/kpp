@@ -590,10 +590,11 @@ void runCodegen(Build& build)
                                   .despiteErrors = despiteErrors,
                                   .threads = options.codegenThreads ? options.codegenThreads : options.threads,
                                   .stubMissing = despiteErrors && options.stubMissing,
-                                  .inlineTrivial = !options.noInline,
+                                  .inlineTrivial = !options.noInline && !options.coverage, // (an inlined body would be counted as its caller's)
                                   .sanitizeUndefined = options.sanitizeUndefined,
                                   .sanitizeOverflow = options.sanitizeOverflow,
                                   .sanitizeThread = options.sanitizeThread,
+                                  .coverage = options.coverage,
                                   .debugInfo = options.debugInfo,
                                   .target = &options.target,
                                   .optimize = options.optimize != 0}; // (resolved to 0 or 1 by now)

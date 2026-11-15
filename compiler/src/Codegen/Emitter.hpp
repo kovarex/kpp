@@ -129,6 +129,7 @@ namespace codegen
 #include "TypedUnions.hpp"
 #include "ControlFlow.hpp"
 #include "FunctionDefinitions.hpp"
+#include "CoverageProbes.hpp"
 
     GlobalScope& global;
     TypeTable& types;

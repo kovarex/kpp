@@ -1009,6 +1009,7 @@ auto codegen::Emitter::emitLambda(LambdaExpr* l, const Ty* t, const Ty* callTy, 
       }
     }
     namedReturn = builtInResult(global.namedReturnVariable(l->body, currentReturn, nullptr, currentArgs), l);
+    coverBegin(l, currentFunction ? "a lambda in " + qualifiedName(currentFunction) : std::string("a lambda"));
     statement(l->body);
     if (!blockTerminated)
     {
@@ -1021,6 +1022,7 @@ auto codegen::Emitter::emitLambda(LambdaExpr* l, const Ty* t, const Ty* callTy, 
         fn += "  ret " + (currentReturn->isReference() ? std::string("ptr null") : llType(currentReturn, l) + " zeroinitializer") + "\n";
       }
     }
+    coverFinish();
     addFunction(name, functionText(header));
   }
   catch (Unsupported&)

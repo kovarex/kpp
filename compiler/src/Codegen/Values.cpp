@@ -1274,8 +1274,11 @@ auto codegen::Emitter::emitGlobalConstructor(VariableDecl* v, const std::string&
 
 auto codegen::Emitter::ctorsText(unsigned k) -> std::string
 {
-  if (k != 0 || startups.empty())
+  if (k != 0)
     return "";
+  std::string table = coverageTableText(); // (--coverage: module 0 lists every function's probes too)
+  if (startups.empty())
+    return table;
   std::vector<Shared::Startup> order = startups;
   std::sort(order.begin(), order.end(), [](const Shared::Startup& a, const Shared::Startup& b) {
     return std::tie(a.file, a.token, a.member, a.function) < std::tie(b.file, b.token, b.member, b.function);
@@ -1283,7 +1286,7 @@ auto codegen::Emitter::ctorsText(unsigned k) -> std::string
   std::string s = "@llvm.global_ctors = appending global [" + std::to_string(order.size()) + " x { i32, ptr, ptr }] [";
   for (size_t i = 0; i < order.size(); ++i)
     s += std::string(i ? ", " : "") + "{ i32, ptr, ptr } { i32 65535, ptr " + order[i].function + ", ptr null }";
-  return s + "]\n";
+  return table + s + "]\n";
 }
 
 auto codegen::Emitter::variableDefinition(VariableDecl* v) -> VariableDecl*

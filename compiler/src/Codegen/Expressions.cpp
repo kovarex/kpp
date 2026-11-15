@@ -1135,6 +1135,7 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
           return isClass(t) || isLambda(t) || v.ty == t ? v : convert(v, t, e, false, ConversionContext::Copy);
         }
       Value cond = convert(rvalue(c->cond), types.boolType(), e, false, ConversionContext::Direct);
+      coverCondition(c->cond, cond.text);
       std::string tL = newLabel("cond.then"), eL = newLabel("cond.else"), jL = newLabel("cond.end");
       fn += "  br i1 " + cond.text + ", label %" + tL + ", label %" + eL + "\n";
       // A closure is an object as a class is (`c ? make(1) : make(2)` of one lambda's type): until
@@ -1565,6 +1566,7 @@ auto codegen::Emitter::enterBranchBesideThrow(ConditionalExpr* c) -> Expr*
   if (!beside)
     return nullptr;
   Value cond = convert(rvalue(c->cond), types.boolType(), c, false, ConversionContext::Direct);
+  coverCondition(c->cond, cond.text);
   std::string on = newLabel("cond.on"), leaves = newLabel("cond.throw");
   bool thenThrows = beside == c->else_;
   fn += "  br i1 " + cond.text + ", label %" + (thenThrows ? leaves : on) + ", label %" + (thenThrows ? on : leaves) + "\n";
@@ -1584,6 +1586,7 @@ auto codegen::Emitter::enterBranchBesideThrow(ConditionalExpr* c) -> Expr*
 auto codegen::Emitter::conditionalOfBranches(ConditionalExpr* c) -> Value
 {
   Value cond = convert(rvalue(c->cond), types.boolType(), c, false, ConversionContext::Direct);
+  coverCondition(c->cond, cond.text);
   std::string tL = newLabel("cond.then"), eL = newLabel("cond.else"), jL = newLabel("cond.end");
   fn += "  br i1 " + cond.text + ", label %" + tL + ", label %" + eL + "\n";
   size_t temps = statementTemps.size();
@@ -3261,6 +3264,8 @@ auto codegen::Emitter::memberPointerAddress(BinaryExpr* b) -> std::string
 auto codegen::Emitter::logical(bool isAnd, Expr* lhs, Expr* rhs, Node* at) -> Value
 {
   Value l = convert(rvalue(lhs), types.boolType(), at, false, ConversionContext::Direct);
+  if (!coverageIsLogical(lhs))
+    coverCondition(lhs, l.text); // (each operand of a chain of && and || is a condition of its own)
   std::string rL = newLabel(isAnd ? "and.rhs" : "or.rhs"), eL = newLabel(isAnd ? "and.end" : "or.end");
   std::string lEnd = currentBlock;
   if (isAnd)
@@ -3270,6 +3275,8 @@ auto codegen::Emitter::logical(bool isAnd, Expr* lhs, Expr* rhs, Node* at) -> Va
   startBlock(rL);
   size_t temps = statementTemps.size();
   Value r = convert(rvalue(rhs), types.boolType(), at, false, ConversionContext::Direct);
+  if (!coverageIsLogical(rhs))
+    coverCondition(rhs, r.text);
   keepOperandTemps(temps); // `flag && Noisy(2).value() > 5`: the Noisy exists only when this operand ran
   std::string rEnd = currentBlock;
   emitBranch(eL);

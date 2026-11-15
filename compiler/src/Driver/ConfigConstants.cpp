@@ -123,9 +123,9 @@ bool configDeclarations(const std::vector<SourceFile>& files, size_t count, cons
         d.name = options.libraryRoots[size_t(fileLibrary[i])].name + "::" + d.name;
       else if (d.name == "debug" || d.name == "platform" || d.name == "platformName" || d.name == "arch" || d.name == "mingw" ||
                d.name == "tests" || d.name == "sanitizeAddress" || d.name == "sanitizeThread" ||
-               d.name == "sanitizeUndefined" || d.name == "sanitizeOverflow")
+               d.name == "sanitizeUndefined" || d.name == "sanitizeOverflow" || d.name == "coverage")
       {
-        report(path, d.line, d.column, "config::" + d.name + " is kpp's own (--release, --target, --tests, --sanitize): it is not declared in source");
+        report(path, d.line, d.column, "config::" + d.name + " is kpp's own (--release, --target, --tests, --sanitize, --coverage): it is not declared in source");
         continue;
       }
       auto [at, added] = declared.insert({d.name, {d, path}});
