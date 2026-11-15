@@ -1240,7 +1240,8 @@ auto codegen::Emitter::checkInitializersNamed(const Ty* t, const StructInfo& inf
     if (init.member.empty())
       continue;
     Span<FunctionDecl::CtorInit> one{inits.data + i, 1};
-    bool named = namesMemberOf(classDef(t->decl, at), one);
+    // (a member a false `when` dropped: its initializer is dropped with it, design.md 19)
+    bool named = namesMemberOf(classDef(t->decl, at), one) || absentMemberInit(classDef(t->decl, at), init);
     for (auto& [baseDef, index] : info.bases)
     {
       if (named)
