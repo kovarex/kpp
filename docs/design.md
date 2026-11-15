@@ -1196,9 +1196,13 @@ kpp/test_check_char_pointers_is_error.
   ends the program before anything unwinds, the throw site on the stack (2026-11-04). Rules that follow
   from this: a destructor is noexcept unless it or a base's or member's says otherwise, as in C++
   (see "A destructor's exception specification"), and a `noexcept(false)` one throws to the scope that
-  ran it (spec language/noexcept_false_destructor_throws_to_its_caller); `extern "C"` functions do not
-  throw (calls to them stay
-  plain calls); an exception cannot pass through a C callback frame that was not compiled for
+  ran it (spec language/noexcept_false_destructor_throws_to_its_caller); C functions do not
+  throw (calls to them stay plain calls), but an `extern "C"` function that a kpp body defines is kpp's
+  own and may throw, whichever of its declarations a call names (2026-11-15, B: Factorio's Lua is kpp
+  with C's names, and lua_error throws; with plain calls the game's debug-asan tests leaked every failed
+  Lua binding's exception, LeakSanitizer on Linux, and a handler around such a call caught nothing:
+  spec language/extern_c_function_defined_in_kpp_throws_to_its_callers); an exception cannot pass
+  through a C callback frame that was not compiled for
   unwinding; a handler of a pointer by value or by const reference takes a thrown pointer that
   converts to it, as C++'s [except.handle] 3.3 and 3.4 have it (2026-11-05, 0b2ed657: a derived
   class's, a less qualified one, any object pointer for `void*`, nullptr), and `catch (Base*&)`, a

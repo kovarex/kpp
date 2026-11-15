@@ -46,6 +46,11 @@
 
     std::string useFunction(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy, Node* at = nullptr);
 
+    // Whether a kpp body defines f, which of its declarations the use found aside (not an imported C
+    // header's body): an `extern "C"` function that one defines is kpp's own, not C's (its long double
+    // is kpp's, and it may throw kpp's exceptions).
+    bool definedInKpp(FunctionDecl* f, const TemplateArgs& args);
+
 
     // The arguments of f's instantiation as its definition def names them: a definition separate
     // from the declaration has its own parameter declarations (`template<typename Policy>

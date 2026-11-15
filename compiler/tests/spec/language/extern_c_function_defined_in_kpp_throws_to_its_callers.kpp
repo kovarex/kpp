@@ -1,0 +1,46 @@
+// spec: an `extern "C"` function that a kpp body defines is kpp's own: an exception leaving it unwinds its callers as any function's does, their objects destroyed, their handlers catching it, and a handler it leaves ended (the exception that handler held destroyed), whichever declaration the call names. Factorio's Lua is kpp code with C's names, and its lua_error throws Lua's error, as Lua compiled as C++ does. Until 2026-11-15 every call to an extern "C" function was a plain call, so none of that ran: the game's debug-asan tests on Linux leaked the exception of every Lua binding that failed (LeakSanitizer: 77 groups, LuaBinder's `catch (const std::RuntimeError& e) { ...; return lua_error(L); }`) and objects of the frames it left, and a handler around such a call caught nothing. A C function (imported, or declared with no kpp body) stays a plain call: C throws no kpp exception
+i32 live = 0;
+class Tracked
+{
+public:
+  i32 id;
+  Tracked(i32 i) : id(i) { ++live; }
+  Tracked(const Tracked& other) : id(other.id) { ++live; }
+  virtual ~Tracked() { --live; }
+};
+
+extern "C" i32 luaError(i32 code) { throw code; }
+extern "C" i32 declaredFirst(i32 code); // defined below
+
+void frameWithObject()
+{
+  Tracked object(1);
+  luaError(10);
+}
+
+i32 callWrapper()
+{
+  try
+  {
+    throw Tracked(2);
+  }
+  catch (const Tracked& e)
+  {
+    return luaError(20 + e.id);
+  }
+}
+
+int main()
+{
+  try { frameWithObject(); } catch (i32 code) { std::println("caught ", code, ", ", live, " alive"); }
+  try { luaError(11); } catch (i32 code) { std::println("caught in the calling frame: ", code); }
+  try { callWrapper(); } catch (i32 code) { std::println("caught ", code, ", ", live, " alive"); }
+  try { declaredFirst(30); } catch (i32 code) { std::println("through a declaration: ", code, ", ", live, " alive"); }
+  return 0;
+}
+
+extern "C" i32 declaredFirst(i32 code)
+{
+  Tracked object(3);
+  throw code;
+}

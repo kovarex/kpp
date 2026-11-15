@@ -1,0 +1,4 @@
+caught 10, 0 alive
+caught in the calling frame: 11
+caught 22, 0 alive
+through a declaration: 30, 0 alive

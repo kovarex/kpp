@@ -825,12 +825,17 @@ for constexpr (auto m : members(T))
 
 ## Exceptions
 
-### An `extern "C"` function does not throw (built)
+### A C function does not throw (built)
 
-- **C++:** the language allows it, and what happens depends on the compiler and its flags.
-- **kpp:** calls to one stay plain calls, and an exception leaving one ends the program.
-- **Why:** nothing on the way out is compiled for unwinding.
-- **See:** [design 9][d9].
+- **C++:** the language allows an `extern "C"` function to throw, and what happens depends on the
+  compiler and its flags (MSVC's /EHsc assumes it does not).
+- **kpp:** a C function (an imported one, or one declared `extern "C"` that no kpp body defines) throws
+  no kpp exception: calls to one stay plain calls, and an exception leaving one ends the program. An
+  `extern "C"` function that a kpp body defines is kpp's own and may throw, as clang's and GCC's C++
+  have it: its callers unwind as any function's do (since 2026-11-15; Factorio's Lua, kpp code with C's
+  names, throws its errors out of lua_error).
+- **Why:** nothing on the way out of C is compiled for unwinding.
+- **See:** [design 9][d9]; spec `language/extern_c_function_defined_in_kpp_throws_to_its_callers`.
 
 ### An uncaught exception reports itself (built)
 
