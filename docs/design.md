@@ -3123,6 +3123,15 @@ not SanitizerCoverage), one byte per probe set to 1, conditions' outcomes record
   `statements` and `conditions` with their places (line, column, last line, the column after), `defaults`,
   `functions`; then a summary, and a line `coverage: lines 72.7% (8 of 11), conditions 54.5% (6 of 11),
   functions 100.0% (2 of 2)` (a condition's two outcomes and each default counted; never rounded up).
+- **Cost on the game** (factorio-in-kpp fdbb5a0b3, a local debug-coverage configuration beside debug, kpp of this
+  commit, `factorio-test.exe --jobs 16`, 9,526 tests, two rounds each, the machine not quiet: other threads
+  building): debug 79.6 and 74.1 s, debug with `--no-inline` 90.3 and 89.9 s, debug-coverage 121.3 and 121.2 s:
+  +55%, of which the inlining kpp gives up is about +17%. The build: kpp 25.2 s against 24.5 s, the link 10.8 s
+  against 3.2 s; factorio-test.exe 267 MB against 186 MB (the region maps, as text). The probe reads its byte
+  and writes it only when it is 0: a store each time made the same run 270 s (the threads wrote the lines of the
+  probes of the code they all run, again and again); the body's first statements share the entry's probe. The
+  coverage of the run: lines 58.4% (261,403 of 447,114), conditions 51.9%, functions 65.8% (55,245 of 83,898);
+  the file 18 MB, its writing about 2.5 s.
 - **Tools.** `kpp --coverage-merge FILE... -o OUT` adds runs' coverage up (a source of another hash in two
   files is an error: two versions do not merge); `kpp --coverage-export lcov FILE... -o OUT` writes lcov's
   tracefile (FN/FNDA, DA, BRDA: a condition's true and false, "-" never evaluated; a missing default), for

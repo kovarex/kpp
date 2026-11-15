@@ -40,6 +40,9 @@
     std::string coverArrayName() const;
     std::string coverProbeAt(size_t probe) const;
     size_t coverProbe(char kind, const std::string& place);
+    // Sets the byte at address to 1 when it is 0 (a branch around the store, weighted as rarely taken).
+    void coverSet(const std::string& address);
+    static constexpr int coverWeightsId = 999999980; // the branch weights' metadata (coverageTableText defines it)
     // `l c l c` of tokens first..last of the current file (the end: the column after last's text).
     std::string coverPlace(uint32_t first, uint32_t last);
     // The tokens a node's text spans: its first and its last (the closing brackets of what it opens

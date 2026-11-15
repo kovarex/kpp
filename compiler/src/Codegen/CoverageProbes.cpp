@@ -56,8 +56,25 @@ auto codegen::Emitter::coverProbe(char kind, const std::string& place) -> size_t
   if (!place.empty())
     coverMap += " " + place;
   coverMap += "\n";
-  fn += "  store i8 1, ptr " + coverProbeAt(probe) + "\n";
+  coverSet(coverProbeAt(probe));
   return probe;
+}
+
+auto codegen::Emitter::coverSet(const std::string& address) -> void
+{
+  // Read first, written once: a store each time would have every thread that runs the code write the
+  // byte's cache line again and again (the game's tests took three times as long: thread contention
+  // on the probes of the code all its threads run).
+  std::string old = newTemp(), unset = newTemp(), setL = newLabel("cov.set"), doneL = newLabel("cov.done");
+  fn += "  " + old + " = load i8, ptr " + address + "\n";
+  fn += "  " + unset + " = icmp eq i8 " + old + ", 0\n";
+  fn += "  br i1 " + unset + ", label %" + setL + ", label %" + doneL + ", !prof !" + std::to_string(coverWeightsId) + "\n";
+  int region = coverRegion; // (the blocks are the probe's own: the statements around it stay one region)
+  startBlock(setL);
+  fn += "  store i8 1, ptr " + address + "\n";
+  emitBranch(doneL);
+  startBlock(doneL);
+  coverRegion = region;
 }
 
 auto codegen::Emitter::coverTokens(Node* n) -> std::pair<uint32_t, uint32_t>
@@ -168,6 +185,7 @@ auto codegen::Emitter::coverBegin(Node* at, const std::string& name) -> void
   std::string shown = !name.empty() ? name : currentFunction ? qualifiedName(currentFunction) : currentFunctionName;
   coverMap = programPathOf(currentFile) + "\n" + hash->second + "\n" + shown + "\n" + std::to_string(lineOf(at, currentFile)) + "\n";
   coverProbe('F', coverPlace(at->token, at->token));
+  coverRegion = 0; // (the body's first statements run whenever the entry does: one probe less per call)
 }
 
 auto codegen::Emitter::coverStatement(Stmt* s) -> void
@@ -200,7 +218,7 @@ auto codegen::Emitter::coverCondition(Node* e, const std::string& value) -> void
   coverMap += "C " + coverPlace(first, last) + "\n";
   std::string chosen = newTemp();
   fn += "  " + chosen + " = select i1 " + value + ", ptr " + coverProbeAt(probe) + ", ptr " + coverProbeAt(probe + 1) + "\n";
-  fn += "  store i8 1, ptr " + chosen + "\n";
+  coverSet(chosen);
 }
 
 auto codegen::Emitter::coverMissingDefault(Node* sw) -> void
