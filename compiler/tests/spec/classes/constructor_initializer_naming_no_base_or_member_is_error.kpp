@@ -1,0 +1,35 @@
+// spec: a constructor initializer that names neither a direct base nor a data member of the class is an error, as in C++ ([class.base.init] 2), not skipped: a template parameter that is not the base in this instance (`D<T>::D(int v) : T(v)` with Base the base), a name of no member
+// error: constructor_initializer_naming_no_base_or_member_is_error.kpp:26: error: the constructor initializer `T(...)` names no direct base or data member of D<Other>
+// error: constructor_initializer_naming_no_base_or_member_is_error.kpp:12: error: the constructor initializer `missing(...)` names no direct base or data member of Other
+struct Base
+{
+  Base(int value = 7) : value(value) {}
+  int value;
+};
+
+struct Other
+{
+  Other(int other = 8)
+    : other(other)
+    , missing(1)
+  {}
+  int other;
+};
+
+template<class T>
+struct D : public Base
+{
+  D(int v);
+};
+
+template<class T>
+D<T>::D(int v)
+  : T(v)
+{}
+
+int main()
+{
+  D<Other> d(42);
+  std::println(d.value);
+  return 0;
+}

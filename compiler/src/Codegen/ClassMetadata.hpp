@@ -163,6 +163,16 @@
     // template), `Holder<1, T>(b)` beside a base Holder<0, H>.
     bool initializerNamesOther(const Ty* t, const FunctionDecl::CtorInit& init, const Ty* cls, Node* at);
 
+    // The function whose constructor initializers are being emitted: an inlined one (initializerOf)
+    // or the function being emitted; null in a default member initializer.
+    FunctionDecl* constructorWritten();
+    // Whether that function is a member (a constructor) of class cls.
+    bool fromOwnConstructor(const Ty* cls, Node* at);
+    // The template arguments a constructor initializer of class cls is typed with: the constructor's
+    // own when it is the one being emitted (an out-of-class definition's parameters among them),
+    // else the class's.
+    TemplateArgs initializerArgs(const Ty* cls, Node* at);
+
     // The constructor initializer that names base `baseTy` of class t by its type (through an
     // alias, `using super = Conditional<...>; Const(const T& v) : super(v) {}`, or one of several
     // instances of a template); null if none does.
@@ -248,6 +258,10 @@
     // destroyed if an exception leaves the constructor after it was built (a later member's
     // initializer or the body throwing), as C++ does.
     void initializeMembers(const std::string& addr, const Ty* t, Span<FunctionDecl::CtorInit> inits, Node* at, bool built = false);
+
+    // Fails unless each constructor initializer of a constructor of class t (layout info) names one
+    // of its direct bases or data members.
+    void checkInitializersNamed(const Ty* t, const StructInfo& info, Span<FunctionDecl::CtorInit> inits, Node* at);
 
     // Whether a constructor initializer names a data member of the anonymous struct or union c (or
     // of one nested in it).

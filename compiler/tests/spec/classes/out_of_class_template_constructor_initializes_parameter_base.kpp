@@ -1,0 +1,76 @@
+// spec: an out-of-class constructor of a class template initializes the base its initializer names by the definition's own template parameter (`template<class T> Derived<T>::Derived(int v) : T(v) {}`, a pack's `Ts(v)...` too), inline, inlined or folded at compile time
+// found in the game (2026-11-15): EntityButtonBase<BaseWidget>'s constructor, defined out of class with `: BaseWidget(parentStyle)`, default-constructed its EmptyWidget base, so the entity GUI's preview had the default style (0x0) and drew nothing: a black box
+struct Base
+{
+  constexpr Base(int value = 7) : value(value) {}
+  int value;
+};
+
+struct Other
+{
+  Other(int other = 8) : other(other) {}
+  int other;
+};
+
+template<class T>
+struct Derived : public T
+{
+  constexpr Derived(int value, int extra);
+  int extra;
+};
+
+template<class T>
+constexpr Derived<T>::Derived(int value, int extra)
+  : T(value)
+  , extra(extra)
+{}
+
+template<class... Ts>
+struct Many : public Ts...
+{
+  Many(int x, int y);
+};
+
+template<class... Ts>
+Many<Ts...>::Many(int x, int y)
+  : Ts(x + y)...
+{}
+
+template<class BaseWidget>
+class ButtonBase : public BaseWidget
+{
+public:
+  ButtonBase(int style, bool info = false);
+  bool info;
+};
+
+template<class BaseWidget>
+ButtonBase<BaseWidget>::ButtonBase(int style, bool info)
+  : BaseWidget(style)
+  , info(info)
+{}
+
+using BaseButton = ButtonBase<Base>;
+
+class Button : public BaseButton
+{
+public:
+  Button(int style) : BaseButton(style * 2, true) {}
+};
+
+constexpr int folded = Derived<Base>(30, 1).value;
+
+int main()
+{
+  Derived<Base> d(42, 5);
+  std::println(d.value, " ", d.extra);
+  Derived<Other> o(43, 6);
+  std::println(o.other, " ", o.extra);
+  Many<Base, Other> m(10, 20);
+  std::println(m.value, " ", m.other);
+  Button* b = new Button(76);
+  std::println(b->value, " ", b->info);
+  delete b;
+  std::println(folded);
+  return 0;
+}

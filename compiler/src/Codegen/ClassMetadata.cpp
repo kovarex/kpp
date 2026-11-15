@@ -735,6 +735,32 @@ auto codegen::Emitter::constructedEnum(const Ty* t, Span<Expr*> args, Node* at) 
   return {v, e};
 }
 
+auto codegen::Emitter::constructorWritten() -> FunctionDecl*
+{
+  // A constructor inlined into its caller (inlineCall) is initializerOf, the caller currentFunction.
+  if (initializerOf)
+    return initializerOf->kind == NodeKind::FunctionDecl ? static_cast<FunctionDecl*>(initializerOf) : nullptr;
+  return currentFunction;
+}
+
+auto codegen::Emitter::fromOwnConstructor(const Ty* cls, Node* at) -> bool
+{
+  FunctionDecl* f = constructorWritten();
+  return f && global.owningClass(f) && classDef(global.owningClass(f), at) == classDef(canonicalClass(cls, at)->decl, at);
+}
+
+auto codegen::Emitter::initializerArgs(const Ty* cls, Node* at) -> TemplateArgs
+{
+  // An out-of-class constructor of a class template declares the class's parameters anew
+  // (`template<class T> Derived<T>::Derived(int v) : T(v) {}`): the constructor's own arguments
+  // (currentArgs) bind them. The class's alone left `T` unresolved, and the base it names was
+  // default-constructed instead (Factorio's EntityButtonBase got the default style: a 0x0
+  // entity preview, 2026-11-15).
+  if (fromOwnConstructor(cls, at) && currentArgs)
+    return *currentArgs;
+  return global.classArgsOf(canonicalClass(cls, at));
+}
+
 auto codegen::Emitter::initializerClass(const Ty* t, const FunctionDecl::CtorInit& init, Node* at, const TemplateArgs* args) -> const Ty*
 {
   if (init.member.empty())
@@ -746,8 +772,8 @@ auto codegen::Emitter::initializerClass(const Ty* t, const FunctionDecl::CtorIni
   named.token = at ? at->token : 0;
   named.name = init.member;
   // Looked up from inside the class: from the constructor when it is the one being emitted.
-  Decl* context = currentFunction && global.owningClass(currentFunction) && classDef(global.owningClass(currentFunction), at) == c ? static_cast<Decl*>(currentFunction) : c;
-  const Ty* nt = global.typeOfAstIn(&named, context, args ? *args : global.classArgsOf(cls));
+  Decl* context = fromOwnConstructor(cls, at) ? static_cast<Decl*>(constructorWritten()) : c;
+  const Ty* nt = global.typeOfAstIn(&named, context, args ? *args : initializerArgs(cls, at));
   return nt && (isClass(nt) || isLambda(nt)) && !types.isDependent(nt) ? canonicalClass(nt, at) : nullptr; // (a closure: `F(f)` with the base F a lambda's type)
 }
 
@@ -773,7 +799,7 @@ auto codegen::Emitter::initializerNamingBase(const Ty* t, const Ty* baseTy, Span
 auto codegen::Emitter::packInitializerOf(const Ty* t, const Ty* baseTy, Span<FunctionDecl::CtorInit> inits, size_t& element, Node* at) -> const FunctionDecl::CtorInit*
 {
   const Ty* base = canonicalClass(baseTy, at);
-  TemplateArgs args = global.classArgsOf(canonicalClass(t, at));
+  TemplateArgs args = initializerArgs(t, at); // (`template<class... Ts> Many<Ts...>::Many(...) : Ts(x)... {}`: the definition's Ts)
   size_t count = 0;
   for (auto& [d, bound] : args.pairs)
     if (bound && bound->kind == TyKind::Pack)
@@ -1027,6 +1053,8 @@ auto codegen::Emitter::initializeMembers(const std::string& addr, const Ty* t, S
       return;
     }
   }
+  if (!inits.empty() && isClass(t) && t->decl && fromOwnConstructor(t, at))
+    checkInitializersNamed(t, info, inits, at);
   // Each base's and member's initializer is a full-expression of its own ([class.base.init] 7):
   // the temporaries it made die when it is done, not when every member is (ControlSettings'
   // constructor kept 980 temporaries alive to its end, and each member's cleanup destroyed all
@@ -1198,6 +1226,39 @@ auto codegen::Emitter::initializeMembers(const std::string& addr, const Ty* t, S
       storeZero(ft, fieldAddr, at);
     destroyTempsFrom(partTemps);
     builtPart(fieldAddr, ft);
+  }
+}
+
+auto codegen::Emitter::checkInitializersNamed(const Ty* t, const StructInfo& info, Span<FunctionDecl::CtorInit> inits, Node* at) -> void
+{
+  // Every constructor initializer names a direct base or a data member, or the constructor
+  // delegates (initializeMembers returned before this). One that matched nothing was skipped:
+  // `template<class T> D<T>::D(int v) : T(v) {}` default-constructed its base until 2026-11-15.
+  for (size_t i = 0; i < inits.size(); ++i)
+  {
+    const FunctionDecl::CtorInit& init = inits[i];
+    if (init.member.empty())
+      continue;
+    Span<FunctionDecl::CtorInit> one{inits.data + i, 1};
+    bool named = namesMemberOf(classDef(t->decl, at), one);
+    for (auto& [baseDef, index] : info.bases)
+    {
+      if (named)
+        break;
+      const Ty* bt = info.fieldTypes[index];
+      size_t element = 0;
+      if (init.isPack)
+        named = packInitializerOf(t, bt, one, element, at) != nullptr;
+      else
+      {
+        const QualifiedName& bn = static_cast<ClassDecl*>(baseDef)->name;
+        named = (!bn.empty() && bn.last().symbol == init.member.last().symbol && !initializerNamesOther(t, init, bt, at)) ||
+                initializerClass(t, init, at) == canonicalClass(bt, at);
+      }
+    }
+    if (!named)
+      fail(at, "the constructor initializer `" + sym(init.member.last().symbol) + "(...)` names no direct base or data member of " +
+                 types.toString(t, &symbols));
   }
 }
 
