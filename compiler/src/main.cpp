@@ -154,6 +154,10 @@ static int compilerMain(int argc, char** argv)
   // a crashed cell's code and report reach the project's build (KPP_CRASH_TEST=1).
   if (const char* crash = getenv("KPP_CRASH_TEST"); crash && std::string(crash) == "1")
     kppServerCrashForTest();
+  // Coverage files (coverage.hpp): merged, exported.
+  for (int i = 1; i < argc; ++i)
+    if (isCoverageCommand(argv[i]))
+      return coverageCommand(argc, argv);
   // Project files for an IDE (generate.hpp) take the build's own arguments.
   for (int i = 1; i < argc; ++i)
     if (isGenerateOption(argv[i]))

@@ -1,5 +1,14 @@
 #include "coverage.hpp"
 
+#include <cctype>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <fstream>
+#include <type_traits>
+#include <vector>
+
 // The coverage runtime, in kpp (docs/design.md 28). Module 0 of a --coverage build defines
 // kpp_coverage_entries, the table of every function's probes: its byte array (a byte set to 1 when
 // its probe ran), how many it has, and its region map (Codegen/CoverageProbes.hpp says the map's text).
@@ -368,4 +377,289 @@ int __kppCoverageStart()
 
 int __kppCoverageStarted = __kppCoverageStart();
 )kpp";
+}
+
+
+namespace
+{
+#include "Lsp/Json.hpp"
+#include "Lsp/JsonParser.hpp"
+
+std::string jsonText(const std::string& text)
+{
+  std::string out = "\"";
+  for (unsigned char c : text)
+    if (c == '"' || c == '\\')
+      out += '\\', out += char(c);
+    else if (c < 32)
+    {
+      char escaped[8];
+      snprintf(escaped, sizeof escaped, "\\u%04x", unsigned(c));
+      out += escaped;
+    }
+    else
+      out += char(c);
+  return out + "\"";
+}
+
+std::string percent(long long covered, long long total)
+{
+  if (total == 0)
+    return "none";
+  long long tenths = covered * 1000 / total; // (never rounded up, as the runtime's)
+  return std::to_string(tenths / 10) + "." + std::to_string(tenths % 10) + "% (" + std::to_string(covered) + " of " + std::to_string(total) + ")";
+}
+
+int number(const Json& j, size_t i)
+{
+  return i < j.items.size() ? int(j.items[i].integer()) : 0;
+}
+
+std::string placeText(const std::array<int, 4>& p)
+{
+  return std::to_string(p[0]) + "," + std::to_string(p[1]) + "," + std::to_string(p[2]) + "," + std::to_string(p[3]);
+}
+}
+
+bool readCoverage(const std::string& path, Coverage& into, std::string& error)
+{
+  std::ifstream in(path, std::ios::binary);
+  if (!in)
+  {
+    error = path + ": cannot be read";
+    return false;
+  }
+  std::string line;
+  size_t lineNumber = 0;
+  while (std::getline(in, line))
+  {
+    ++lineNumber;
+    if (!line.empty() && line.back() == '\r')
+      line.pop_back();
+    if (line.empty())
+      continue;
+    JsonParser parser{line};
+    Json j = parser.value();
+    if (!parser.ok || j.kind != Json::Object)
+    {
+      error = path + ":" + std::to_string(lineNumber) + ": not a coverage file's line (kpp --coverage writes them)";
+      return false;
+    }
+    if (j.has("summary"))
+      continue;
+    const std::string& name = j["file"].text;
+    if (name.empty())
+    {
+      error = path + ":" + std::to_string(lineNumber) + ": a line without its file";
+      return false;
+    }
+    auto [at, added] = into.try_emplace(name);
+    CoverageFile& file = at->second;
+    if (!added && file.hash != j["hash"].text)
+    {
+      error = path + ": " + name + " is another version of it (hash " + j["hash"].text + ", " + file.hash +
+              " before): the coverage of two versions of a source does not merge";
+      return false;
+    }
+    file.hash = j["hash"].text;
+    for (const Json& s : j["statements"].items)
+      file.statements[{number(s, 0), number(s, 1), number(s, 2), number(s, 3)}] |= number(s, 4) != 0 ? 1 : 0;
+    for (const Json& c : j["conditions"].items)
+      file.conditions[{number(c, 0), number(c, 1), number(c, 2), number(c, 3)}] |= (number(c, 4) != 0 ? 1 : 0) | (number(c, 5) != 0 ? 2 : 0);
+    for (const Json& d : j["defaults"].items)
+      file.defaults[{number(d, 0), number(d, 1)}] |= number(d, 2) != 0 ? 1 : 0;
+    for (const Json& f : j["functions"].items)
+      if (f.items.size() >= 3)
+        file.functions[{int(f.items[1].integer()), f.items[0].text}] |= f.items[2].integer() != 0 ? 1 : 0;
+  }
+  if (lineNumber == 0)
+  {
+    error = path + ": empty";
+    return false;
+  }
+  return true;
+}
+
+std::map<int, int> coverageLines(const CoverageFile& file)
+{
+  std::map<int, int> bits; // 1 a statement on it ran, 2 one did not
+  for (const auto& [place, hit] : file.statements)
+    for (int l = place[0]; l <= place[2]; ++l)
+      bits[l] |= hit ? 1 : 2;
+  std::map<int, int> lines;
+  for (const auto& [l, b] : bits)
+    lines[l] = b == 1 ? 1 : b == 2 ? 0 : 2;
+  return lines;
+}
+
+std::string coverageText(const Coverage& coverage, std::string& summary)
+{
+  long long lines = 0, linesCovered = 0, conditions = 0, conditionsCovered = 0, functions = 0, functionsCovered = 0;
+  std::string out;
+  for (const auto& [name, file] : coverage)
+  {
+    out += "{\"file\":" + jsonText(name) + ",\"hash\":\"" + file.hash + "\",\"lines\":[";
+    const char* separator = "";
+    for (const auto& [l, hit] : coverageLines(file))
+    {
+      out += std::string(separator) + "[" + std::to_string(l) + "," + std::to_string(hit) + "]";
+      separator = ",";
+      ++lines;
+      linesCovered += hit != 0;
+    }
+    out += "],\"statements\":[";
+    separator = "";
+    for (const auto& [p, hit] : file.statements)
+    {
+      out += std::string(separator) + "[" + placeText(p) + "," + std::to_string(hit) + "]";
+      separator = ",";
+    }
+    out += "],\"conditions\":[";
+    separator = "";
+    for (const auto& [p, outcomes] : file.conditions)
+    {
+      out += std::string(separator) + "[" + placeText(p) + "," + std::to_string(outcomes & 1) + "," + std::to_string(outcomes >> 1) + "]";
+      separator = ",";
+      conditions += 2;
+      conditionsCovered += (outcomes & 1) + (outcomes >> 1);
+    }
+    out += "],\"defaults\":[";
+    separator = "";
+    for (const auto& [p, hit] : file.defaults)
+    {
+      out += std::string(separator) + "[" + std::to_string(p[0]) + "," + std::to_string(p[1]) + "," + std::to_string(hit) + "]";
+      separator = ",";
+      ++conditions;
+      conditionsCovered += hit;
+    }
+    out += "],\"functions\":[";
+    separator = "";
+    for (const auto& [key, hit] : file.functions)
+    {
+      out += std::string(separator) + "[" + jsonText(key.second) + "," + std::to_string(key.first) + "," + std::to_string(hit) + "]";
+      separator = ",";
+      ++functions;
+      functionsCovered += hit;
+    }
+    out += "]}\n";
+  }
+  out += "{\"summary\":{\"lines\":[" + std::to_string(linesCovered) + "," + std::to_string(lines) + "],\"conditions\":[" + std::to_string(conditionsCovered) +
+         "," + std::to_string(conditions) + "],\"functions\":[" + std::to_string(functionsCovered) + "," + std::to_string(functions) + "]}}\n";
+  summary = "coverage: lines " + percent(linesCovered, lines) + ", conditions " + percent(conditionsCovered, conditions) + ", functions " +
+            percent(functionsCovered, functions);
+  return out;
+}
+
+std::string coverageLcov(const Coverage& coverage)
+{
+  std::string out;
+  for (const auto& [name, file] : coverage)
+  {
+    out += "TN:\nSF:" + name + "\n";
+    int functionsHit = 0;
+    for (const auto& [key, hit] : file.functions)
+      out += "FN:" + std::to_string(key.first) + "," + key.second + "\n";
+    for (const auto& [key, hit] : file.functions)
+    {
+      out += "FNDA:" + std::to_string(hit) + "," + key.second + "\n";
+      functionsHit += hit;
+    }
+    out += "FNF:" + std::to_string(file.functions.size()) + "\nFNH:" + std::to_string(functionsHit) + "\n";
+    // A condition's true and false are a branch pair of a block of its own ("-": never evaluated), a
+    // missing default a branch alone.
+    int block = 0, branches = 0, branchesHit = 0;
+    for (const auto& [p, outcomes] : file.conditions)
+    {
+      for (int outcome = 0; outcome < 2; ++outcome)
+      {
+        int taken = (outcomes >> outcome) & 1;
+        out += "BRDA:" + std::to_string(p[0]) + "," + std::to_string(block) + "," + std::to_string(outcome) + "," +
+               (outcomes == 0 ? std::string("-") : std::to_string(taken)) + "\n";
+        ++branches;
+        branchesHit += taken;
+      }
+      ++block;
+    }
+    for (const auto& [p, hit] : file.defaults)
+    {
+      out += "BRDA:" + std::to_string(p[0]) + "," + std::to_string(block++) + ",0," + std::to_string(hit) + "\n";
+      ++branches;
+      branchesHit += hit;
+    }
+    out += "BRF:" + std::to_string(branches) + "\nBRH:" + std::to_string(branchesHit) + "\n";
+    int linesHit = 0;
+    std::map<int, int> lines = coverageLines(file);
+    for (const auto& [l, hit] : lines)
+    {
+      out += "DA:" + std::to_string(l) + "," + (hit != 0 ? "1" : "0") + "\n";
+      linesHit += hit != 0;
+    }
+    out += "LF:" + std::to_string(lines.size()) + "\nLH:" + std::to_string(linesHit) + "\nend_of_record\n";
+  }
+  return out;
+}
+
+bool isCoverageCommand(const char* argument)
+{
+  return std::strcmp(argument, "--coverage-merge") == 0 || std::strcmp(argument, "--coverage-export") == 0;
+}
+
+int coverageCommand(int argc, char** argv)
+{
+  std::vector<std::string> inputs;
+  std::string output, format;
+  bool merge = false;
+  for (int i = 1; i < argc; ++i)
+  {
+    std::string arg = argv[i];
+    if (arg == "--coverage-merge")
+      merge = true;
+    else if (arg == "--coverage-export" && i + 1 < argc)
+      format = argv[++i];
+    else if (arg == "-o" && i + 1 < argc)
+      output = argv[++i];
+    else if (!arg.empty() && arg[0] == '-')
+    {
+      fprintf(stderr, "%s: not an option of kpp --coverage-merge or --coverage-export\n", arg.c_str());
+      return 2;
+    }
+    else
+      inputs.push_back(arg);
+  }
+  if (!merge && format != "lcov")
+  {
+    fprintf(stderr, "--coverage-export %s: the format kpp exports is lcov\n", format.c_str());
+    return 2;
+  }
+  if (inputs.empty() || output.empty())
+  {
+    fprintf(stderr, "usage: kpp --coverage-merge FILE... -o OUT, kpp --coverage-export lcov FILE... -o OUT (OUT - for stdout)\n");
+    return 2;
+  }
+  Coverage coverage;
+  for (const std::string& input : inputs)
+    if (std::string error; !readCoverage(input, coverage, error))
+    {
+      fprintf(stderr, "%s\n", error.c_str());
+      return 1;
+    }
+  std::string summary;
+  std::string text = merge ? coverageText(coverage, summary) : coverageLcov(coverage);
+  if (output == "-")
+    fwrite(text.data(), 1, text.size(), stdout);
+  else
+  {
+    std::ofstream out(output, std::ios::binary);
+    out << text;
+    out.close();
+    if (!out)
+    {
+      fprintf(stderr, "%s: cannot be written\n", output.c_str());
+      return 1;
+    }
+  }
+  if (merge)
+    printf("%s%s\n", summary.c_str(), output == "-" ? "" : (": " + output).c_str());
+  fflush(stdout);
+  return 0;
 }

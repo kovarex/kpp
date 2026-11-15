@@ -2,6 +2,7 @@
 // that starts `kpp --lsp` (docs/editors.md, "The language server") for the workspace.
 const vscode = require('vscode');
 const { LanguageClient, TransportKind } = require('vscode-languageclient/node');
+const coverage = require('./coverage');
 
 let client;
 let output;
@@ -174,6 +175,7 @@ async function activate(context)
   }));
   context.subscriptions.push(vscode.commands.registerCommand('kpp.showOutput', () => output.show()));
   context.subscriptions.push(vscode.commands.registerCommand('kpp.selectCell', selectCell));
+  coverage.register(context, output); // (docs/design.md 28: VS Code's own test coverage)
   status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left);
   status.command = 'kpp.selectCell';
   context.subscriptions.push(status);

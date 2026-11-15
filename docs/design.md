@@ -3093,8 +3093,7 @@ if (usage & EntityUsage::OWNED_BY_GHOST) ...
 kovarex, 2026-11-15, on the options report (https://claude.ai/artifact/AaRWhcxoU62emT3c9tAo7Y): "In C++ this
 usually means using 3rd party tools, usually not free ones, so this would be great to have it as native feature
 of kpp, lets go with this plan." The plan: kpp's codegen writes the probes (not LLVM's source-based coverage,
-not SanitizerCoverage), one byte per probe set to 1, conditions' outcomes recorded, the editors fed by the
-language server.
+not SanitizerCoverage), one byte per probe set to 1, conditions' outcomes recorded, shown in the editors.
 - **The switch.** `kpp --coverage` (a configuration's `argument("--coverage")` in build.kpp) and the constant
   `config::coverage`. Without it nothing changes: no probe, no table, no runtime file, the IR as before. With it
   kpp inlines no trivial function (an inlined body would count as its caller's), a compile server generates
@@ -3119,12 +3118,19 @@ language server.
 - **Collected.** The test runner writes it after its summary: `--coverage FILE` (- for stdout), else
   kpp-coverage.json. Under `--jobs` each worker sends what a test set, after the test, to the first process,
   which writes it all. A program without the runner writes it at its exit, to KPP_COVERAGE_FILE or
-  kpp-coverage.json. One JSON line per file: its hash, `lines` ([line, 1 all ran | 0 none | 2 some]),
+  kpp-coverage.json. One JSON line per file: its hash (64-bit FNV-1a of its bytes with the offset kpp's hashes use,
+  1469598103934665603: an editor tells a source changed since the run), `lines` ([line, 1 all ran | 0 none | 2 some]),
   `statements` and `conditions` with their places (line, column, last line, the column after), `defaults`,
   `functions`; then a summary, and a line `coverage: lines 72.7% (8 of 11), conditions 54.5% (6 of 11),
   functions 100.0% (2 of 2)` (a condition's two outcomes and each default counted; never rounded up).
-- **Next** (the report's plan, in order): `kpp --coverage-merge` and an lcov export; the language server's
-  coverage for VS Code's test coverage and Visual Studio's marks, each with its on/off toggle; per-test
+- **Tools.** `kpp --coverage-merge FILE... -o OUT` adds runs' coverage up (a source of another hash in two
+  files is an error: two versions do not merge); `kpp --coverage-export lcov FILE... -o OUT` writes lcov's
+  tracefile (FN/FNDA, DA, BRDA: a condition's true and false, "-" never evaluated; a missing default), for
+  genhtml and CI services (tests\coverage.ps1).
+- **Editors.** Each editor's extension reads the coverage file itself (not through the language server, as the
+  report had it: VS Code's test coverage is the extension's to give, and the file is all it needs): VS Code's
+  *Run Tests with Coverage* and *kpp: Show a Coverage File* (editors.md, "Coverage"), its own toggle. A source
+  whose hash is not the file's is left out, named. Next: Visual Studio's marks and their toggle; per-test
   attribution (opt-in); the game's `debug-coverage` configuration, its build and run measured.
 - Spec: kpp/coverage_statements_conditions_and_missing_default, kpp/coverage_throw_ends_region,
   kpp/coverage_jobs_merges_workers, kpp/coverage_program_writes_at_exit, kpp/coverage_config_constant,

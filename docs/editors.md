@@ -176,6 +176,22 @@ The extension is in `tools/vscode`; its README covers the details.
     `config::debug` of an `if constexpr`: the converter now writes debug-only members as
     `when (config::debug)`, gone in release, and the hover there finds nothing to answer.
 
+### Coverage
+
+A coverage file `kpp --coverage` wrote (docs/design.md 28) shows in VS Code's own test coverage: green
+and red in the gutter, the statements and conditions inside a line (`bar()` in `foo() && bar()` when it
+never ran, an `if` that was never false), each function, and the percentages in the Explorer and the
+Test Coverage view. Turning it off and on is VS Code's: *Test: Toggle Inline Coverage*, and *Test:
+Clear Coverage* closes it (bind either to a key).
+- *Run Tests with Coverage* in the Testing view runs `kpp.coverageCommand` in the workspace folder
+  (default `kpp --coverage --test . -- --coverage kpp-coverage.json`) and shows `kpp.coverageFile`.
+- *kpp: Show a Coverage File* shows one written elsewhere: the game's tests, a CI run, `kpp
+  --coverage-merge`'s.
+- A source whose text changed since the run (the file's hash is not the coverage file's) is left out,
+  and a message names it: its lines would be another version's. The paths are the coverage file's,
+  relative ones from its folder, else from the workspace folder.
+- It needs VS Code 1.88 (test coverage); the extension asks for it since 2026-11-15. tools/vscode/coverage.js.
+
 ## Visual Studio 2022
 
 Checked with libraries on 2026-11-05 (gorating, its generated solution, where each library used is a

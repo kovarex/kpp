@@ -6,7 +6,7 @@
   "publisher": "kovarex",
   "license": "Apache-2.0 WITH LLVM-exception",
   "repository": { "type": "git", "url": "https://github.com/kovarex/kpp" },
-  "engines": { "vscode": "^1.82.0" },
+  "engines": { "vscode": "^1.88.0" },
   "categories": ["Programming Languages"],
   "main": "./extension.js",
   "activationEvents": ["workspaceContains:build.kpp"],
@@ -66,6 +66,16 @@
           "default": {},
           "markdownDescription": "Settings for build.kpp, as `kpp --set NAME=VALUE` gives them."
         },
+        "kpp.coverageFile": {
+          "type": "string",
+          "default": "kpp-coverage.json",
+          "markdownDescription": "The coverage file `kpp --coverage` writes (docs/design.md 28), from the workspace folder: what *Run Tests with Coverage* shows after `kpp.coverageCommand`."
+        },
+        "kpp.coverageCommand": {
+          "type": "string",
+          "default": "kpp --coverage --test . -- --coverage kpp-coverage.json",
+          "markdownDescription": "What *Run Tests with Coverage* in the Testing view runs, in the workspace folder: tests built with `--coverage` that write `kpp.coverageFile`."
+        },
         "kpp.inactiveCodeOpacity": {
           "type": "number",
           "minimum": 0,
@@ -84,7 +94,8 @@
     "commands": [
       { "command": "kpp.selectCell", "title": "kpp: Select the Target and Configuration" },
       { "command": "kpp.restartServer", "title": "kpp: Restart the Language Server" },
-      { "command": "kpp.showOutput", "title": "kpp: Show the Language Server's Output" }
+      { "command": "kpp.showOutput", "title": "kpp: Show the Language Server's Output" },
+      { "command": "kpp.showCoverage", "title": "kpp: Show a Coverage File" }
     ]
   },
   "scripts": {
