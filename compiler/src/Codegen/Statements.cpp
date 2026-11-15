@@ -1547,6 +1547,10 @@ auto codegen::Emitter::iteratorLoop(RangeForStmt* f, Value begin, Value end) -> 
   }
   fn += "  br i1 " + cond + ", label %" + bL + ", label %" + eL + "\n";
   startBlock(bL);
+  // The iteration's scope, the loop variable's: break and continue leave it too, destroying the
+  // variable on the way (until 2026-11-15 their depth was inside it, and neither did: spec
+  // language/range_for_break_and_continue_destroy_the_loop_variable).
+  size_t outside = scopes.size();
   pushScope();
   // The loop variable from `*it`: a reference binds to the element, a value copies it.
   auto* v = static_cast<VariableDecl*>(f->var);
@@ -1613,7 +1617,7 @@ auto codegen::Emitter::iteratorLoop(RangeForStmt* f, Value begin, Value end) -> 
   }
   destroyTemps();
   declareTupleBindings(v); // `for (auto& [a, b] : tuples)`: each element's get<i>
-  loops.push_back({eL, sL, scopes.size()});
+  loops.push_back({eL, sL, outside});
   subStatement(f->body);
   loops.pop_back();
   popScope();

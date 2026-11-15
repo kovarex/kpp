@@ -1,0 +1,57 @@
+// spec: `break` and `continue` in a range-for destroy the iteration's loop variable on the way out, as the end of each iteration does ([stmt.ranged]: the variable is declared in the loop's body, which the jump leaves): over a container's iterators and over an array, a class element copied by value, nested loops. Until 2026-11-15 neither jump destroyed it, silently: Factorio's InventoryWithFilters::sortRangeWithFilters leaked the copy of a std::Map's pair (an ItemFilter and a Vector of stacks) at every `break` of its `for (auto filteredStackGroup : filteredStacks)` (LeakSanitizer in the game's debug-asan tests on Linux, 11 allocations)
+i32 live = 0;
+class Tracked
+{
+public:
+  i32 id;
+  Tracked(i32 i) : id(i) { ++live; }
+  Tracked(const Tracked& other) : id(other.id) { ++live; }
+  ~Tracked() { --live; }
+};
+
+int main()
+{
+  std::Vector<Tracked> v;
+  v.emplace_back(1);
+  v.emplace_back(2);
+  v.emplace_back(3);
+  i32 before = live;
+  for (auto t : v)
+    if (t.id == 2)
+      break;
+  std::println("break: ", live - before, " left");
+  for (auto t : v)
+  {
+    if (t.id != 3)
+      continue;
+  }
+  std::println("continue: ", live - before, " left");
+
+  Tracked array[2] = {Tracked(4), Tracked(5)};
+  before = live;
+  for (Tracked t : array)
+    if (t.id == 4)
+      break;
+  for (Tracked t : array)
+  {
+    if (t.id == 4)
+      continue;
+  }
+  std::println("an array's: ", live - before, " left");
+
+  std::Map<i32, std::Vector<Tracked>> groups;
+  groups[1].emplace_back(6);
+  groups[2].emplace_back(7);
+  before = live;
+  for (auto group : groups)
+    if (group.first == 1)
+    {
+      for (auto member : group.second)
+        if (member.id == 6)
+          break;
+      if (group.first == 1)
+        break;
+    }
+  std::println("a map's pairs, nested: ", live - before, " left");
+  return 0;
+}

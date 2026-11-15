@@ -451,6 +451,8 @@ auto codegen::Emitter::rangeFor(RangeForStmt* f) -> void
   fn += "  " + done + " = icmp eq ptr " + it + ", " + endV + "\n";
   fn += "  br i1 " + done + ", label %" + eL + ", label %" + bL + "\n";
   startBlock(bL);
+  // The iteration's scope, the loop variable's: break and continue leave it too (iteratorLoop's).
+  size_t outside = scopes.size();
   pushScope();
   // The loop variable: a reference binds to the element, a value copies it.
   auto* v = static_cast<VariableDecl*>(f->var);
@@ -507,7 +509,7 @@ auto codegen::Emitter::rangeFor(RangeForStmt* f) -> void
       scopes.back().push_back({slot, vt});
   }
   declareTupleBindings(v); // `for (auto& [a, b] : tuples)`: each element's get<i>
-  loops.push_back({eL, sL, scopes.size()});
+  loops.push_back({eL, sL, outside});
   subStatement(f->body);
   loops.pop_back();
   popScope();
