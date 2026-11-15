@@ -3138,8 +3138,10 @@ not SanitizerCoverage), one byte per probe set to 1, conditions' outcomes record
   genhtml and CI services (tests\coverage.ps1).
 - **Editors.** Each editor's extension reads the coverage file itself (not through the language server, as the
   report had it: VS Code's test coverage is the extension's to give, and the file is all it needs): VS Code's
-  *Run Tests with Coverage* and *kpp: Show a Coverage File* (editors.md, "Coverage"), its own toggle. A source
-  whose hash is not the file's is left out, named. Next: Visual Studio's marks and their toggle; per-test
+  *Run Tests with Coverage* and *kpp: Show a Coverage File* (editors.md, "Coverage"), its own toggle; Visual
+  Studio's Tools > kpp > Show Coverage (a check) and Load Coverage File..., colours and a Quick Info that says
+  "this condition was never false" (editors.md, "Coverage in Visual Studio"). A source whose hash is not the
+  file's is left out. Next: per-test
   attribution (opt-in); the game's `debug-coverage` configuration, its build and run measured.
 - Spec: kpp/coverage_statements_conditions_and_missing_default, kpp/coverage_throw_ends_region,
   kpp/coverage_jobs_merges_workers, kpp/coverage_program_writes_at_exit, kpp/coverage_config_constant,

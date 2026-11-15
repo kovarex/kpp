@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <Reference Include="System.ComponentModel.Composition" />
+    <Reference Include="System.Design" />
   </ItemGroup>
 
   <ItemGroup>
@@ -33,6 +34,13 @@
 
   <ItemGroup>
     <VsdConfigXmlFiles Include="KppVisualStudio.vsdconfigxml" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Tools > kpp's commands (KppPackage.cs), as the Menus.ctmenu resource kpp.pkgdef names. -->
+    <VSCTCompile Include="KppCommands.vsct">
+      <ResourceName>Menus.ctmenu</ResourceName>
+    </VSCTCompile>
   </ItemGroup>
 
   <!-- The compiled .vsdconfig (VSDConfigTool's CreateVsdbgConfigFile) into the VSIX, beside the dll, where

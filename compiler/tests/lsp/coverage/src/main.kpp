@@ -1,0 +1,23 @@
+// tools/vs/vsix/test.ps1 -CoverageAt: the tests below never make positive(x) false, so its condition shows
+// "never false" and the return 0 is not run.
+bool positive(int x)
+{
+  return x > 0;
+}
+
+int sign(int x)
+{
+  if (positive(x))
+    return 1;
+  return 0;
+}
+
+int main()
+{
+  return sign(1);
+}
+
+test signOfOne
+{
+  check(sign(1) == 1);
+}

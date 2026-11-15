@@ -18,6 +18,10 @@ The Visual Studio extension (docs/editors.md, "Visual Studio 2022"). It needs Vi
   project as the target and the active configuration as the configuration. They go to the server
   at its start, and as `kpp/selectCell` when either changes.
 
+- test coverage (docs/editors.md, "Coverage in Visual Studio"): Tools > kpp > Show Coverage and Load
+  Coverage File... (`KppPackage.cs`, `KppCommands.vsct`, registered by `kpp.pkgdef`) show a `kpp --coverage`
+  file's statements, conditions and missing defaults as colours, with Quick Info (`Coverage.cs`).
+
 It also gives the debugger kpp's `this.x` in the watch window, hovers, the Immediate window and breakpoint
 conditions (docs/debugging.md, "this in the watch window"): `KppFrameLanguage.cs` and
 `KppExpressionEvaluator.cs`, debugger engine components configured by `KppVisualStudio.vsdconfigxml`.

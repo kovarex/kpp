@@ -297,6 +297,19 @@ Studio. `tools\vs\install.cmd`, the grammar alone, is not needed with it.
   answer. Opening a file only another target compiles checks that target's cell (see "Cells"). In a folder, or in a solution kpp did not write, the server checks every target in
   debug.
 
+### Coverage in Visual Studio
+
+*Tools > kpp > Show Coverage* (a check; Tools.kppShowCoverage, bindable to a key) shows a coverage file
+`kpp --coverage` wrote (docs/design.md 28): the file shown before, else the nearest kpp-coverage.json above
+the active document or in the solution's folder, else one picked. Each statement that ran has a green
+background, one that did not a red one; a condition only ever true or only ever false is amber, one never
+evaluated (`bar()` in `foo() && bar()`) red, a switch whose missing default was never taken amber at its
+`switch`; Quick Info over them says which ("kpp coverage: this condition was never false"). The same
+command hides it; *Load Coverage File...* (Tools.kppLoadCoverageFile) shows another. The file is watched: a
+later run's shows when it is written. A document whose text is not the run's (its hash) shows none. The
+colours are Fonts and Colors' "kpp Covered", "kpp Not Covered" and "kpp Partly Covered". tools/vs/vsix/
+Coverage.cs, KppPackage.cs; `test.ps1 -CoverageAt` checks it (compiler/tests/lsp/coverage).
+
 ## Other editors
 
 The commands below assume `kpp` is on the PATH (the installer puts it there). In a checkout, use

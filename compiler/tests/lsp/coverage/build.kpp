@@ -1,0 +1,4 @@
+void build(Project& project)
+{
+  project.executable("app", {"src"});
+}
