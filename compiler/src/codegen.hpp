@@ -35,9 +35,6 @@ inline std::string lineSlotSection(std::string_view absolutePath)
 inline const char* const vptrAccessMetadata = "!999999990 = !{!999999991, !999999991, i64 0}\n"
                                               "!999999991 = !{!\"vtable pointer\", !999999992, i64 0}\n"
                                               "!999999992 = !{!\"Simple C++ TBAA\"}\n";
-// --coverage: a probe's branch around its store, taken once (Emitter::coverSet, coverWeightsId), which
-// driver::forTarget appends to every module.
-inline const char* const coverageWeightsMetadata = "!999999980 = !{!\"branch_weights\", i32 1, i32 1048575}\n";
 
 // A class the debug information defines (--debug-info with variables), by the name its definition
 // gives it (debuggerClassName, Codegen/DebugInfo.inl): what the .natvis's per-instance rules name and

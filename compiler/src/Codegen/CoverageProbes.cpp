@@ -68,7 +68,7 @@ auto codegen::Emitter::coverSet(const std::string& address) -> void
   std::string old = newTemp(), unset = newTemp(), setL = newLabel("cov.set"), doneL = newLabel("cov.done");
   fn += "  " + old + " = load i8, ptr " + address + "\n";
   fn += "  " + unset + " = icmp eq i8 " + old + ", 0\n";
-  fn += "  br i1 " + unset + ", label %" + setL + ", label %" + doneL + ", !prof !" + std::to_string(coverWeightsId) + "\n";
+  fn += "  br i1 " + unset + ", label %" + setL + ", label %" + doneL + "\n";
   int region = coverRegion; // (the blocks are the probe's own: the statements around it stay one region)
   startBlock(setL);
   fn += "  store i8 1, ptr " + address + "\n";

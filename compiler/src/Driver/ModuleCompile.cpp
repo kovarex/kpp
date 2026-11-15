@@ -86,8 +86,6 @@ std::string forTarget(const std::string& text, const Options& options)
   std::string out = mac ? withoutComdats(withUnwindTables(text, attributes.c_str())) : withUnwindTables(text, attributes.c_str());
   if (options.sanitizeThread) // (the vtable pointer accesses' TBAA tag, codegen::vptrAccess)
     out += vptrAccessMetadata;
-  if (options.coverage) // (a probe's store is the rare way: Emitter::coverSet)
-    out += coverageWeightsMetadata;
   return out;
 }
 
