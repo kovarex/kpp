@@ -1,42 +1,44 @@
-// spec: under `--sanitize thread` a base class's destructor that points the vtable pointer at its own class while another thread still makes virtual calls on the object is ThreadSanitizer's "data race on vptr (ctor/dtor vs virtual call)", exit code 66: the race Factorio's C++ CI found in TestRouter's LocalNetworkFixture (2026-11-14, its destructor against the TransferSource thread), which the vtable pointer's tag (kpp/sanitize_thread_destructor_keeps_vptr_without_report) must not hide
+// spec: under `--sanitize thread` a base class's destructor that points the vtable pointer at its own class while another thread has made a virtual call on the object with nothing ordering the two is ThreadSanitizer's "data race on vptr (ctor/dtor vs virtual call)", exit code 66: the race Factorio's C++ CI found in TestRouter's LocalNetworkFixture (2026-11-14, its destructor against the TransferSource thread), which the vtable pointer's tag (kpp/sanitize_thread_destructor_keeps_vptr_without_report) must not hide. The threads meet through the C file beside it, which ThreadSanitizer does not see: until 2026-11-15 they met through kpp Atomics, and ThreadSanitizer reported nothing when the main thread's wait had acquired the worker's last call or the worker's spinning had filled its trace (CI's linux_spec exited 0)
 // target: linux (ThreadSanitizer's runtime is Linux's)
 // kpp: --sanitize thread
 // exit: 66
+extern "C" void handshakeCalled();
+extern "C" void handshakeWaitCalled();
+extern "C" void handshakeStop();
+extern "C" void handshakeWaitStop();
+
 class Base
 {
 public:
-  std::Atomic<bool> stopping;
-  std::Atomic<int> ticks;
   std::Thread thread;
 
   virtual ~Base()
   {
-    this.stopping.store(true);
+    handshakeStop();
     this.thread.join();
   }
-  virtual void tick() { this.ticks.fetchAdd(1); }
+  virtual void tick() {}
 
-  void loop()
+  void work()
   {
-    while (!this.stopping.load())
-      this.tick();
+    this.tick();
+    handshakeCalled();
+    handshakeWaitStop();
   }
-  void start() { this.thread = std::Thread(&Base::loop, &this); }
+  void start() { this.thread = std::Thread(&Base::work, &this); }
 };
 
 class Worker : public Base
 {
 public:
-  void tick() override { this.ticks.fetchAdd(1); }
+  void tick() override {}
 };
 
 int main()
 {
   Worker* worker = new Worker();
   worker->start();
-  while (worker->ticks.load() < 1000)
-  {
-  }
+  handshakeWaitCalled();
   delete worker;
   return 0;
 }
