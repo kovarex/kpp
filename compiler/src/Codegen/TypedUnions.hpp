@@ -59,6 +59,28 @@
       startBlock(endL);
     }
     void destroyAlternative(ClassDecl* c, const Ty* t, const std::string& obj, Node* at);
+    // A typed union's own data members (declared after its alternatives, laid out before its tag:
+    // design.md 8.5), as (field index, member) of t's layout.
+    std::vector<std::pair<uint32_t, Decl*>> ownMembers(ClassDecl* c, const Ty* t, Node* at);
+    // `U u;`: the own members by their default member initializers, then the first alternative.
+    void defaultConstructTypedUnion(ClassDecl* c, const Ty* t, const std::string& addr, Node* at);
+    // A union built from a tag or a value: the own members by their default member initializers,
+    // then build() makes the alternative, the members destroyed if it throws.
+    template<typename Build>
+    void constructTypedUnion(ClassDecl* c, const Ty* t, const std::string& addr, Node* at, Build&& build)
+    {
+      storeZero(t, addr, at);
+      InlineParts parts(*this, at);
+      initializeOwnMembers(c, t, addr, parts, at);
+      build();
+    }
+    void initializeOwnMembers(ClassDecl* c, const Ty* t, const std::string& addr, InlineParts& parts, Node* at);
+    // A copy (or move) of a typed union: its own members, then the alternative src holds.
+    void copyTypedUnion(ClassDecl* c, const Ty* t, const std::string& dst, const std::string& src, bool move, Node* at);
+    // The destruction of a typed union: the alternative it holds, then its own members, last first.
+    void destroyTypedUnion(ClassDecl* c, const Ty* t, const std::string& addr, Node* at);
+    // The assignment of a typed union's own members (its alternative's is assignObject's).
+    void assignOwnMembers(ClassDecl* c, const Ty* t, const std::string& dst, const std::string& src, bool move, Node* at);
     // Copies (or moves) the alternative src holds into dst, tag included.
     void copyAlternative(ClassDecl* c, const Ty* t, const std::string& dst, const std::string& src, bool move, Node* at);
     // dst holds another alternative than src: its copy assignment (design.md 8.5).

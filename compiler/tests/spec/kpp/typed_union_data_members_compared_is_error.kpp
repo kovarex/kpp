@@ -1,0 +1,14 @@
+// spec: the built-in comparison of typed unions compares the alternative held (design.md 8.5); for a union with data members of its own it would leave them out, so it is a compile error there, and the union declares its operator== or operator<=> itself
+// error: typed_union_data_members_compared_is_error.kpp:13: error: the typed union Action has data members of its own, which the built-in == would leave out: declare its operator== (design.md 8.5)
+union enum Action : u16
+{
+  { {int, Count}, {std::String, Text} }
+  u64 tick = 7;
+};
+int main()
+{
+  Action a;
+  Action b;
+  b.tick = 8;
+  return a == b ? 1 : 0;
+}

@@ -3456,8 +3456,16 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
         shown += "    <DisplayString Condition=\"" + when + "\">" + escape(alternative) + " {" + storage + "}</DisplayString>\n";
         items += "      <Item Name=\"" + escape(alternative) + "\" Condition=\"" + when + "\">" + storage + "</Item>\n";
       }
+      // The union's own data members first, as they are laid out (design.md 8.5).
+      std::string members;
+      for (const Decl* m : c->members)
+        if (m->kind == NodeKind::VariableDecl && m != c->tagField && !(m->flags & (DF_Static | DF_Typedef)))
+        {
+          std::string name = nameOf(static_cast<const VariableDecl*>(m)->name, symbols);
+          members += "      <Item Name=\"" + escape(name) + "\">" + name + "</Item>\n";
+        }
       out += "  <Type Name=\"" + escape(d.name) + "\">\n" + shown +
-             "    <Expand>\n"
+             "    <Expand>\n" + members +
              "      <Item Name=\"[tag]\">" + tag + "</Item>\n" + items +
              "    </Expand>\n"
              "  </Type>\n";

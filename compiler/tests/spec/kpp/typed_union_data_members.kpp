@@ -1,0 +1,52 @@
+// spec: a typed union's own data members (declared after its alternatives, design.md 8.5) are built with their default member initializers, and copied, moved, assigned and destroyed with the alternative held, as any class's members; its traits count them: a member with a user-provided copy constructor and destructor makes the union neither trivially copyable nor trivially destructible
+// factorio: the game's InputAction as a typed union keeps its update tick and player index beside the action's payload; until 2026-11-16 the members were left out of all of it (a default union printed tick 0 and an empty name, a copy a garbage tick)
+int live = 0;
+struct Tracked
+{
+  int id = 0;
+  Tracked(int id) : id(id) { live += 1; }
+  Tracked(const Tracked& other) : id(other.id) { live += 1; }
+  Tracked& operator=(const Tracked& other) { this.id = other.id; return this; }
+  ~Tracked() { live -= 1; }
+};
+union enum Action : u16
+{
+  { {int, Count}, {std::String, Text} }
+  u64 tick = 7;
+  std::String name = "init";
+  Tracked tracked = Tracked(1);
+};
+void show(std::StringView what, const Action& a)
+{
+  std::print(what, ": tick ", a.tick, " name ", a.name, " tracked ", a.tracked.id, " ");
+  if (a == Action::Count)
+    std::println("count ", a[Action::Count]);
+  else
+    std::println("text ", a[Action::Text]);
+}
+int main()
+{
+  std::println(std::isTriviallyCopyable<Action>, " ", std::isTriviallyDestructible<Action>);
+  {
+    Action a;
+    show("default", a);
+    a.tick = 5;
+    a.name = "five";
+    a.tracked.id = 2;
+    a[Action::Text] = "hello";
+    Action b = a;
+    show("copy", b);
+    Action c = Action(Action::Count, 3);
+    show("from a tag", c);
+    c = b;
+    show("assigned", c);
+    Action d = std::move(b);
+    show("moved", d);
+    Action e;
+    e = std::move(d);
+    show("move-assigned", e);
+    std::println("live ", live);
+  }
+  std::println("live ", live);
+  return 0;
+}

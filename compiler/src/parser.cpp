@@ -4070,8 +4070,7 @@ namespace
       tagFieldPart.symbol = kwTagField;
       tagField->name.parts = makeSpanOf(std::vector<NamePart>{tagFieldPart});
       c->tagField = tagField;
-      pushDecl(tagField);
-      pushDecl(storage);
+      uint32_t alternativesEnd = pos;
       {
         // `Tag tag() const { return __tag; }`: the alternative held (design.md 8.5).
         FunctionDecl* f = decl<FunctionDecl>(start);
@@ -4099,6 +4098,12 @@ namespace
         if (inRecovery)
           break;
       }
+      // The tag and the alternatives' storage after the union's own data members (design.md 8.5):
+      // members and tag share one head, as a hand-written tagged union has them (the game's
+      // InputAction: a u64, a u16, the u16 tag and 112 bytes are 128; the tag first made 136).
+      pushDecl(tagField);
+      pushDecl(storage);
+      tagField->endToken = storage->endToken = alternativesEnd; // (where they were written, not the union's end)
       c->members = makeSpan<Decl*>(mark);
       checkWhenClash(c);
       currentParent = savedParent;

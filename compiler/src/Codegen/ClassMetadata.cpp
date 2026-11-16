@@ -420,9 +420,11 @@ auto codegen::Emitter::needsDestruction(const Ty* t, Node* at) -> bool
   bool result = false;
   if (c->isTypedUnion)
   {
-    // A typed union destroys whichever alternative it holds.
+    // A typed union destroys whichever alternative it holds, and its own members.
     for (size_t i = 0; i < c->alternatives.size() && !result; ++i)
       result = needsDestruction(alternativeType(c, t, i, at), at);
+    for (auto& [index, d] : ownMembers(c, t, at))
+      result = result || (!info.fieldTypes[index]->isReference() && needsDestruction(info.fieldTypes[index], at));
   }
   else
   {
@@ -504,7 +506,7 @@ auto codegen::Emitter::destroy(const std::string& addr, const Ty* t, Node* at, b
   ClassDecl* c = classDef(t->decl, at);
   if (c->isTypedUnion)
   {
-    destroyAlternative(c, t, addr, at);
+    destroyTypedUnion(c, t, addr, at);
     return;
   }
   if (FunctionDecl* dtor = findDestructor(c))
@@ -554,6 +556,9 @@ auto codegen::Emitter::destructionMayThrow(const Ty* t, Node* at, int depth) -> 
     {
       for (size_t i = 0; i < c->alternatives.size() && !result; ++i)
         result = destructionMayThrow(alternativeType(c, t, i, at), at, depth + 1);
+      for (auto& [index, d] : ownMembers(c, t, at))
+        if (const Ty* ft = structFor(t, at).fieldTypes[index]; !result && !ft->isReference())
+          result = destructionMayThrow(ft, at, depth + 1);
     }
     else
       for (const Ty* ft : std::vector<const Ty*>(structFor(t, at).fieldTypes))
@@ -671,10 +676,8 @@ auto codegen::Emitter::defaultConstruct(const std::string& addr, const Ty* t, No
   ClassDecl* c = classDef(t->decl, at);
   if (c->isTypedUnion)
   {
-    // `Property p;`: the first alternative, default-constructed.
-    storeZero(t, addr, at);
-    if (!c->alternatives.empty())
-      constructAlternative(c, t, addr, 0, nullptr, at);
+    // `Property p;`: its own members, then the first alternative, default-constructed.
+    defaultConstructTypedUnion(c, t, addr, at);
     return;
   }
   if (hasUserConstructors(c))
@@ -1527,16 +1530,18 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
     std::optional<int64_t> index = constantTag(c, args[0]);
     if (!index || *index < 0 || size_t(*index) >= c->alternatives.size())
       fail(args[0], "the tag constructing the typed union " + qualifiedName(c) + " is no constant one of its alternatives");
-    storeZero(t, addr, at);
-    if (args.size() <= 2)
-      constructAlternative(c, t, addr, size_t(*index), args.size() == 2 ? args[1] : nullptr, at);
-    else
+    constructTypedUnion(c, t, addr, at, [&]
     {
-      setTag(c, t, addr, c->alternatives.size(), at); // (holding none meanwhile: constructAlternative)
-      constructInto(alternativeAddress(c, t, addr, size_t(*index), at), alternativeType(c, t, size_t(*index), at),
-                    Span<Expr*>{args.data + 1, uint32_t(args.size() - 1)}, at);
-      setTag(c, t, addr, size_t(*index), at);
-    }
+      if (args.size() <= 2)
+        constructAlternative(c, t, addr, size_t(*index), args.size() == 2 ? args[1] : nullptr, at);
+      else
+      {
+        setTag(c, t, addr, c->alternatives.size(), at); // (holding none meanwhile: constructAlternative)
+        constructInto(alternativeAddress(c, t, addr, size_t(*index), at), alternativeType(c, t, size_t(*index), at),
+                      Span<Expr*>{args.data + 1, uint32_t(args.size() - 1)}, at);
+        setTag(c, t, addr, size_t(*index), at);
+      }
+    });
     return;
   }
   if (c->isTypedUnion && args.size() == 1 && args[0]->ty && args[0]->ty->isKnown() && !isPackExpansion(args[0])) // an expansion: its element, below
@@ -1547,8 +1552,7 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
     const Ty* argTy = types.stripRef(args[0]->ty);
     if (!(isClass(argTy) && classKey(argTy) == classKey(t)))
     {
-      storeZero(t, addr, at);
-      constructAlternative(c, t, addr, alternativeForValue(c, t, args[0]->ty, at), args[0], at);
+      constructTypedUnion(c, t, addr, at, [&] { constructAlternative(c, t, addr, alternativeForValue(c, t, args[0]->ty, at), args[0], at); });
       return;
     }
     initializeFrom(addr, t, args[0], at);
@@ -2746,7 +2750,7 @@ auto codegen::Emitter::copyConstruct(const std::string& dst, const std::string& 
   ClassDecl* c = classDef(t->decl, at);
   if (c->isTypedUnion)
   {
-    copyAlternative(c, t, dst, src, move, at);
+    copyTypedUnion(c, t, dst, src, move, at);
     return;
   }
   TemplateArgs args = global.classArgsOf(canonicalClass(t, at));
@@ -2990,6 +2994,7 @@ auto codegen::Emitter::assignObject(const std::string& dst, const std::string& s
     fn += "  " + same + " = icmp eq ptr " + dst + ", " + src + "\n";
     fn += "  br i1 " + same + ", label %" + doneL + ", label %" + assignL + "\n";
     startBlock(assignL);
+    assignOwnMembers(c, t, dst, src, move, at); // (its own members first, in layout order)
     std::string sameTag = newTemp(), toTag = loadTag(c, t, dst, at), fromTag = loadTag(c, t, src, at);
     fn += "  " + sameTag + " = icmp eq " + llType(tagType(c), at) + " " + toTag + ", " + fromTag + "\n";
     fn += "  br i1 " + sameTag + ", label %" + heldL + ", label %" + otherL + "\n";
@@ -3301,8 +3306,7 @@ auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr
       // `AIState s = Patrolling{1};`, `return Attacking{n};`: the alternative of the value's
       // type, constructed from it (design.md 8.5).
       size_t index = alternativeForValue(u, t, initTy, at);
-      storeZero(t, addr, at);
-      constructAlternative(u, t, addr, index, init, at);
+      constructTypedUnion(u, t, addr, at, [&] { constructAlternative(u, t, addr, index, init, at); });
       return;
     }
     if (init->kind == NodeKind::FunctionalCastExpr && sameClass)

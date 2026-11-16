@@ -1,0 +1,14 @@
+// spec: a typed union's constructors, destructor and copy and move operations are the compiler's (design.md 8.5); one declared in the union enum is a compile error until its own are designed, as it would build no alternative and set no tag
+// error: typed_union_own_constructor_is_error.kpp:8: error: the typed union Action declares a constructor: a typed union's constructors, destructor and assignments are the compiler's (build it from a tag and value, design.md 8.5)
+union enum Action : u16
+{
+  { {int, Count}, {std::String, Text} }
+  u64 tick = 7;
+
+  Action(u64 tick) : tick(tick) {}
+};
+int main()
+{
+  Action a(9);
+  return int(a.tick);
+}

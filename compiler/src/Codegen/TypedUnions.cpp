@@ -149,6 +149,95 @@ auto codegen::Emitter::destroyAlternative(ClassDecl* c, const Ty* t, const std::
                      [&](size_t i) { destroy(alternativeAddress(c, t, obj, i, at), alternativeType(c, t, i, at), at); });
 }
 
+auto codegen::Emitter::ownMembers(ClassDecl* c, const Ty* t, Node* at) -> std::vector<std::pair<uint32_t, Decl*>>
+{
+  // (The storage of the alternatives is the layout's one anonymous union, a ClassDecl; the tag is
+  // c->tagField. Until 2026-11-16 every operation below saw only those two, and a member was never
+  // built, copied or destroyed: kpp/typed_union_data_members.)
+  const StructInfo& info = structFor(t, at);
+  std::vector<std::pair<uint32_t, Decl*>> members;
+  for (Decl* d : info.fieldDecls)
+    if (d->kind == NodeKind::VariableDecl && d != c->tagField)
+      members.push_back({fieldIndexOf(info, d), d});
+  return members;
+}
+
+auto codegen::Emitter::initializeOwnMembers(ClassDecl* c, const Ty* t, const std::string& addr, InlineParts& parts, Node* at) -> void
+{
+  std::vector<std::pair<uint32_t, Decl*>> members = ownMembers(c, t, at);
+  if (members.empty())
+    return;
+  // The class's member initialization: the members by their default member initializers, the tag
+  // left zero, the alternatives' storage untouched (no alternative has an initializer).
+  initializeMembers(addr, t, {}, at);
+  const StructInfo& info = structFor(t, at);
+  for (auto& [index, d] : members)
+    parts.built(gep(info.name, addr, index), info.fieldTypes[index]);
+}
+
+auto codegen::Emitter::defaultConstructTypedUnion(ClassDecl* c, const Ty* t, const std::string& addr, Node* at) -> void
+{
+  constructTypedUnion(c, t, addr, at, [&]
+  {
+    if (!c->alternatives.empty())
+      constructAlternative(c, t, addr, 0, nullptr, at);
+  });
+}
+
+auto codegen::Emitter::copyTypedUnion(ClassDecl* c, const Ty* t, const std::string& dst, const std::string& src, bool move, Node* at) -> void
+{
+  // In layout order, as memberwiseConstruct: the members, each destroyed if a later part's copy
+  // throws, then the alternative (a valueless source copies as valueless).
+  const StructInfo& info = structFor(t, at);
+  InlineParts parts(*this, at);
+  for (auto& [index, d] : ownMembers(c, t, at))
+  {
+    const Ty* ft = info.fieldTypes[index];
+    std::string to = gep(info.name, dst, index), from = gep(info.name, src, index);
+    if (isClass(ft) && move)
+      moveConstruct(to, from, ft, at);
+    else if (isClass(ft))
+      copyConstruct(to, from, ft, at);
+    else if (isLambda(ft))
+      copyClosure(to, from, ft, at, move);
+    else if (ft->kind == TyKind::Array)
+      transferArray(to, from, ft, at, move, false);
+    else
+      copyBytes(to, from, ft, at);
+    parts.built(to, ft);
+  }
+  copyAlternative(c, t, dst, src, move, at);
+}
+
+auto codegen::Emitter::destroyTypedUnion(ClassDecl* c, const Ty* t, const std::string& addr, Node* at) -> void
+{
+  destroyAlternative(c, t, addr, at);
+  const StructInfo& info = structFor(t, at);
+  std::vector<std::pair<uint32_t, Decl*>> members = ownMembers(c, t, at);
+  for (size_t i = members.size(); i-- > 0;)
+  {
+    const Ty* ft = info.fieldTypes[members[i].first];
+    if (!ft->isReference() && needsDestruction(ft, at))
+      destroy(gep(info.name, addr, members[i].first), ft, at);
+  }
+}
+
+auto codegen::Emitter::assignOwnMembers(ClassDecl* c, const Ty* t, const std::string& dst, const std::string& src, bool move, Node* at) -> void
+{
+  const StructInfo& info = structFor(t, at);
+  for (auto& [index, d] : ownMembers(c, t, at))
+  {
+    const Ty* ft = info.fieldTypes[index];
+    std::string to = gep(info.name, dst, index), from = gep(info.name, src, index);
+    if (isClass(ft))
+      assignObject(to, from, ft, at, move);
+    else if (ft->kind == TyKind::Array)
+      transferArray(to, from, ft, at, move, true);
+    else
+      copyBytes(to, from, ft, at);
+  }
+}
+
 auto codegen::Emitter::copyAlternative(ClassDecl* c, const Ty* t, const std::string& dst, const std::string& src, bool move, Node* at) -> void
 {
   // (dst holds none, valueless, until the copy is built: a copy that throws leaves dst nothing to
@@ -192,11 +281,13 @@ auto codegen::Emitter::copyOverAlternative(ClassDecl* c, const Ty* t, const std:
     copyAlternative(c, t, dst, src, false, at);
     return;
   }
-  size_t temps = statementTemps.size();
-  std::string copy = newObjectSlot(t, at); // (a union holding none, unless src's alternative is one of those)
+  // The copy: a union holding none, unless src's alternative is one of those. Only its alternative
+  // is built, never the union's own members, so it is destroyed as an alternative, below, not as a
+  // temporary of the union (which destroyed members never built: kpp/typed_union_data_members).
+  // Nothing between can throw but a destructor: the moves to dst cannot, and the copies made there
+  // leave the copy holding none.
+  std::string copy = newObjectSlot(t, at);
   setTag(c, t, copy, c->alternatives.size(), at);
-  if (needsDestruction(t, at))
-    statementTemps.push_back({copy, t});
   forHeldAlternative(c, t, src, at, copiedFirst, [&](size_t i)
   {
     copyConstruct(alternativeAddress(c, t, copy, i, at), alternativeAddress(c, t, src, i, at), alternativeType(c, t, i, at), at);
@@ -217,7 +308,7 @@ auto codegen::Emitter::copyOverAlternative(ClassDecl* c, const Ty* t, const std:
       copyBytes(to, from, altTy, at);
   });
   fn += "  store " + llType(tagType(c), at) + " " + tag + ", ptr " + tagAddress(c, t, dst, at) + "\n";
-  destroyTempsFrom(temps);
+  destroyAlternative(c, t, copy, at);
 }
 
 auto codegen::Emitter::assignAlternative(BinaryExpr* b) -> Value
@@ -435,6 +526,10 @@ auto codegen::Emitter::alternativeTags(ClassDecl* c) -> std::vector<int64_t>
 
 auto codegen::Emitter::typedUnionEqual(ClassDecl* c, const std::string& a, const std::string& b, const Ty* t, Node* at) -> Value
 {
+  // (std::variant's comparison is of the alternative alone; a union with members of its own would compare
+  // without them, a silent wrong answer: its own operator decides, design.md 8.5.)
+  if (!ownMembers(c, t, at).empty())
+    fail(at, "the typed union " + qualifiedName(c) + " has data members of its own, which the built-in == would leave out: declare its operator== (design.md 8.5)");
   const Ty* underlying = enumUnderlying(c->tagEnum);
   Value ta = convert(Value{loadTag(c, t, a, at), tagType(c), false}, underlying, at);
   Value tb = convert(Value{loadTag(c, t, b, at), tagType(c), false}, underlying, at);
@@ -457,6 +552,10 @@ auto codegen::Emitter::typedUnionEqual(ClassDecl* c, const std::string& a, const
 
 auto codegen::Emitter::typedUnionOrder(ClassDecl* c, const std::string& a, const std::string& b, const Ty* t, Node* at) -> Value
 {
+  // (std::variant's comparison is of the alternative alone; a union with members of its own would compare
+  // without them, a silent wrong answer: its own operator decides, design.md 8.5.)
+  if (!ownMembers(c, t, at).empty())
+    fail(at, "the typed union " + qualifiedName(c) + " has data members of its own, which the built-in <=> would leave out: declare its operator<=> (design.md 8.5)");
   const Ty* underlying = enumUnderlying(c->tagEnum);
   Value ta = convert(Value{loadTag(c, t, a, at), tagType(c), false}, underlying, at);
   Value tb = convert(Value{loadTag(c, t, b, at), tagType(c), false}, underlying, at);

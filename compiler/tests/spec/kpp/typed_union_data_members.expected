@@ -1,0 +1,9 @@
+false false
+default: tick 7 name init tracked 1 count 0
+copy: tick 5 name five tracked 2 text hello
+from a tag: tick 7 name init tracked 1 count 3
+assigned: tick 5 name five tracked 2 text hello
+moved: tick 5 name five tracked 2 text hello
+move-assigned: tick 5 name five tracked 2 text hello
+live 5
+live 0

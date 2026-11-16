@@ -1582,14 +1582,13 @@ auto GlobalScope::Impl::defaultConstructible(const Ty* t, int depth) -> std::opt
       return inheritsDefault;
   }
   Subst s = substFor(u);
-  if (def->isTypedUnion)
-  {
-    if (def->alternatives.empty())
-      return true;
-    return defaultConstructible(declaredTypeOf(def->alternatives[0], s.pairs.empty() ? nullptr : &s, 0), depth + 1);
-  }
+  // A typed union builds its first alternative, then its own members by their initializers, as a class's
+  // (kpp/typed_union_data_members).
+  if (def->isTypedUnion && !def->alternatives.empty())
+    if (std::optional<bool> r = defaultConstructible(declaredTypeOf(def->alternatives[0], s.pairs.empty() ? nullptr : &s, 0), depth + 1); !r || !*r)
+      return r;
   std::vector<const Ty*> bases;
-  if (!directBases(u, def, bases))
+  if (!def->isTypedUnion && !directBases(u, def, bases))
     return std::nullopt;
   for (const Ty* b : bases)
     if (std::optional<bool> r = defaultConstructible(b, depth + 1); !r || !*r)
@@ -1727,8 +1726,7 @@ auto GlobalScope::Impl::nothrowDefaultConstructionUncached(const Ty* t) -> std::
   for (const Ty* b : bases)
     if (std::optional<bool> r = traitValue("nothrowDefaultConstruction", {b}); !r || !*r)
       return r;
-  if (def->isTypedUnion)
-    return true;
+  // (a typed union's own members too, below: kpp/typed_union_data_members)
   bool plainUnion = def->keyword == Kw::union_;
   std::optional<bool> answer = true;
   for (Decl* m : membersRead(def))

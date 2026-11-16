@@ -1,0 +1,26 @@
+// spec: a typed union lays its own data members out first, then its tag, then the storage of its alternatives (design.md 8.5), so members and tag share one head, as a hand-written tagged union does: a u64 and a u16 member, a u16 tag and 112 bytes of alternatives make 128 bytes, where the tag first made 136
+// factorio: InputAction is 128 bytes (its update tick, its type, its player index and a 112-byte buffer); as a typed union with the tag first it was 136
+struct Big
+{
+  u64 first = 0;
+  char rest[104];
+};
+union enum Bare : u16
+{
+  { {int, Small}, {Big, Large} }
+};
+union enum Action : u16
+{
+  { {int, Small}, {Big, Large} }
+  u64 tick = 0;
+  u16 player = 0;
+};
+int main()
+{
+  Action a(Action::Small, 4);
+  a.tick = 9;
+  a.player = 2;
+  Action b = a;
+  std::println(sizeof(Bare), " ", sizeof(Action), " ", b.tick, " ", b.player, " ", b[Action::Small]);
+  return 0;
+}
