@@ -45,6 +45,24 @@ if (($ran -join '|') -ne 'running 2 tests: suite Basics') { Fail "a second run's
 if (-not ($lines -match '^no such key$')) { Fail "x did not say: no such key" }
 if (-not ($lines -match '^heavy mode on$') -or -not ($lines -match 'h heavy mode \(on\)')) { Fail "the program's key h was not its: $($lines -join ' / ')" }
 
-if ($failed -eq 0) { Write-Output "ok   interactive: a (in parallel), A, f, T with a search, s, space, the next run's space, an unknown key, the program's key" }
+# Workers that end in their testsSetup (the game's without --write-data, 2026-11-16): a's tests did not
+# run, and they failed (the summary said 0 failed), f runs them again; with testsWorkerArguments' argument
+# (g) the workers run them.
+$exe = Join-Path $work 'workers.exe'
+$ErrorActionPreference = 'Continue'
+$built = & $Kppc --quiet --tests --exe $exe "$PSScriptRoot\interactive\tests.kpp" "$PSScriptRoot\interactive\workers.kpp" 2>&1 | ForEach-Object { "$_" }
+$ErrorActionPreference = 'Stop'
+if (-not (Test-Path $exe)) { Fail "the workers' tests did not build: $($built -join "`n")" }
+else
+{
+  $lines = Keys "agfq"
+  $summaries = @($lines | Where-Object { $_ -match '^\d+ tests?, ' })
+  if ($summaries.Count -ne 2 -or $summaries[0] -notmatch '^4 tests, 4 failed, 4 of them not run \(\d+\.\d{3} s\)$' -or $summaries[1] -notmatch '^4 tests, 1 failed \(\d+\.\d{3} s\)$')
+  { Fail "a without the workers' argument, then f with it, said:`n$($summaries -join "`n")`nnot '4 tests, 4 failed, 4 of them not run' and '4 tests, 1 failed'" }
+  if (-not ($lines -match '^worker \d+ without --worker-ok$')) { Fail "no worker said: without --worker-ok" }
+  if (-not ($lines -match '^running 4 tests: the failed tests \(4\)$')) { Fail "f did not run the 4 tests not run" }
+}
+
+if ($failed -eq 0) { Write-Output "ok   interactive: a (in parallel), A, f, T with a search, s, space, the next run's space, an unknown key, the program's key, tests a's workers did not run fail" }
 cmd /c "rd /s /q `"$work`"" | Out-Null
 exit $failed

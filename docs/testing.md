@@ -102,7 +102,9 @@ selection is not typed on the command line each time):
 
 - **space**: the last choice again (kept between runs);
 - **a**: all the tests, in parallel: worker processes as `--jobs` starts them, as many as Factorio's
-  test program used (the hardware threads, 1 to 64, then the program's `testsWorkers(count)`);
+  test program used (the hardware threads, 1 to 64, then the program's `testsWorkers(count)`); a test
+  the workers did not run (a worker that ended in its `testsSetup` runs none) failed, and **f** runs it
+  again;
 - **A**: all the tests, in this process;
 - **t** / **s**: a test or a suite, found by typing part of its name: each key shows how many match
   and the highlighted one; up and down move it, Enter takes it, Escape goes back;
@@ -121,7 +123,7 @@ has no clipboard yet.
 A program adds keys of its own with two functions: `std::String testsInteractiveKeys()`, the text
 added to the menu's last line, and `bool testsInteractiveKey(int key)`, true when the key was its
 (the game's `h` turns its heavy mode on and off). For `a`'s workers, `testsWorkerArguments()` adds
-arguments to their command line (the game's `--heavy-mode`) and `testsWorkers(count)` sets how many
+arguments to their command line (the game's `--write-data`, a directory of their own) and `testsWorkers(count)` sets how many
 start (heavy mode's fewer, as Factorio's). `--jobs` does not apply in this mode.
 
 ## Parallel runs: `--jobs N`

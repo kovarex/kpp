@@ -2021,8 +2021,13 @@ int __kppInteractive(int argc, char** argv, const std::Vector<const char*>& skip
       bool ran = __kppRunJobs(selected, pool, nullptr, false, [&](int position, const __KppJobTest& result)
       {
         std::print(result.printed);
+        // A test the workers did not run failed (a worker that ended in its testsSetup ran none: the
+        // game's without --write-data, 2026-11-16), and f runs it again.
         if (!result.finished)
+        {
           ++notRun;
+          failed.push_back(selected[position]->fullName);
+        }
         else if (!result.passed)
         {
           failed.push_back(selected[position]->fullName);
@@ -2045,10 +2050,11 @@ int __kppInteractive(int argc, char** argv, const std::Vector<const char*>& skip
           std::println("failed: ", test->fullName);
         }
       }
-    if (notRun > 0)
-      std::println(notRun, " not run");
     u64 ms = (__kppNanoseconds() - started) / 1000000;
-    std::println(int(selected.size()), " ", std::StringView(selected.size() == 1 ? "test" : "tests"), ", ", int(failed.size()), " failed (",
+    std::String notRunText;
+    if (notRun > 0)
+      notRunText << ", " << notRun << " of them not run";
+    std::println(int(selected.size()), " ", std::StringView(selected.size() == 1 ? "test" : "tests"), ", ", int(failed.size()), " failed", notRunText, " (",
                  ms / 1000, ".", std::StringView(ms % 1000 < 100 ? "0" : ""), std::StringView(ms % 1000 < 10 ? "0" : ""), ms % 1000, " s)");
     last = choice;
     __kppSaveInteractive(path, last, failed);

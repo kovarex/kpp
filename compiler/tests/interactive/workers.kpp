@@ -1,0 +1,30 @@
+// A program whose workers need an argument of testsWorkerArguments, as the game's need --write-data
+// (2026-11-16): without it each worker ends in its testsSetup and runs no test, and those tests fail.
+// g gives the argument.
+bool give = false;
+std::String testsInteractiveKeys() { return std::String(", g give the workers --worker-ok (") + std::String(give ? "on" : "off") + std::String(")"); }
+bool testsInteractiveKey(int key)
+{
+  if (key != 'g')
+    return false;
+  give = !give;
+  std::println("giving --worker-ok ", std::StringView(give ? "on" : "off"));
+  return true;
+}
+std::Vector<std::String> testsWorkerArguments()
+{
+  std::Vector<std::String> arguments;
+  if (give)
+    arguments.push_back(std::String("--worker-ok"));
+  return arguments;
+}
+void testsSetup(const std::Vector<std::String>& arguments)
+{
+  if (testWorker() == 0)
+    return;
+  for (const std::String& argument : arguments)
+    if (argument == "--worker-ok")
+      return;
+  std::println("worker ", testWorker(), " without --worker-ok");
+  ::exit(2);
+}

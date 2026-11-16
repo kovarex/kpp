@@ -2,14 +2,22 @@
 // UnitTest++'s Test::Run did around the tests. The runner handles its own options and passes the others
 // here: the game's.
 
+// Whether the first process was given --write-data: its workers have it then (they are started with its
+// arguments), else testsWorkerArguments gives them one.
+private bool writeDataGiven = false;
+
 void testsSetup(const std::Vector<std::String>& arguments)
 {
   std::Vector<char*> argv;
   std::String program = "factorio-test";
   argv.push_back(program.data());
   std::Vector<std::String> copies = arguments;
+  for (const std::String& argument : copies)
+    if (argument == "--write-data")
+      writeDataGiven = true;
   // --jobs: each process writes to a directory of its own under --write-data (a log, saves, a lock the
-  // game takes), and without that option the processes would share the config's.
+  // game takes), and without that option the processes would share the config's. (-i's a gives its
+  // workers one, testsWorkerArguments.)
   if (i32 worker = testWorker())
   {
     usize at = 0;
@@ -31,6 +39,21 @@ void testsSetup(const std::Vector<std::String>& arguments)
   if (writeCrc && testWorker() == 0)
     for (const Filesystem::Path& part : workerCrcFiles())
       Filesystem::remove(part);
+}
+
+// -i's a (all in parallel): workers without --write-data would share the config's write directory, and
+// each ended with "--jobs needs --write-data" (none ran a test: 2026-11-16). They get the first
+// process's write directory's fork-test-results, where Factorio's --fork put each task's
+// (ForkLogic::runFork), and each its own worker-N in it (testsSetup).
+std::Vector<std::String> testsWorkerArguments()
+{
+  std::Vector<std::String> arguments;
+  if (!writeDataGiven)
+  {
+    arguments.push_back("--write-data");
+    arguments.push_back((global->paths->writeData / "fork-test-results").string());
+  }
+  return arguments;
 }
 
 // After the runner's own --help: the game's options, as its option parser says them (fmain prints
