@@ -389,6 +389,16 @@ auto codegen::Emitter::convert(Value v, const Ty* to, Node* at, bool explicitCas
     fn += "  " + result() + " = icmp ne ptr " + v.text + ", null\n";
     return {r, to};
   }
+  if (fk == TyKind::Float && tk == TyKind::Bool && to->kind == TyKind::Enum)
+  {
+    // `(B)0.5` of `enum class B : bool`: [expr.static.cast] 10 converts a floating value to the underlying type by
+    // [conv.fpint], which truncates (B(0), as clang's fptoui to i1 gives), not by a bool's own conversion ([conv.bool]:
+    // nonzero is true, until 2026-11-16). A value that truncates to neither 0 nor 1 is undefined.
+    if (checksUndefined(at))
+      checkFloatToInteger(v.text, from, to, at);
+    fn += "  " + result() + " = fptoui " + fromT + " " + v.text + " to i1\n";
+    return {r, to};
+  }
   if (fk == TyKind::Float && tk == TyKind::Bool)
   {
     fn += "  " + result() + " = fcmp une " + fromT + " " + v.text + ", 0.0\n";

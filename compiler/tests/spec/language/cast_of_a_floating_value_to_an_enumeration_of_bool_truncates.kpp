@@ -1,5 +1,4 @@
-// spec: a floating value cast to an enumeration converts it to the underlying type by [conv.fpint] (truncation) and then to the enumeration ([expr.static.cast] 10): `(B)0.5` with `enum class B : bool` is B(0), as clang and MSVC's STL target both give (`0 1`); 1.5 truncates to 1
-// pending: kpp converts the double to bool by [conv.bool] (nonzero is true), so `(B)0.5` is B::yes: prints `1 1`, a silent wrong answer. Found by the differential tests (compiler/tests/differential, registry/en3), 2026-11-16; D
+// spec: a floating value cast to an enumeration converts it to the underlying type by [conv.fpint] (truncation) and then to the enumeration ([expr.static.cast] 10): `(B)0.5` with `enum class B : bool` is B(0), as clang and MSVC's STL target both give (`0 1`); 1.5 truncates to 1; the same at compile time
 extern "C" int printf(const char* format, ...);
 enum class B : bool
 {
@@ -12,6 +11,8 @@ int main()
   volatile double more = 1.5;
   B h = (B)half;
   B m = static_cast<B>(more);
-  printf("%d %d\n", (int)h, (int)m);
+  constexpr B constantHalf = (B)0.5;
+  constexpr B constantMore = static_cast<B>(1.5);
+  printf("%d %d %d %d\n", (int)h, (int)m, (int)constantHalf, (int)constantMore);
   return 0;
 }

@@ -5,8 +5,6 @@
 
 # Silent wrong answers of kpp's (a pending spec snippet each)
 codegen/p12 debug: an unscoped enum of unsigned char given to printf's ... is not promoted to int (spec interop/c_variadic_argument_of_a_small_enum_is_promoted; release happens to pass the bits right)
-registry/en3: (B)0.5 for enum class B : bool gives true, C++ truncates to false (spec language/cast_of_a_floating_value_to_an_enumeration_of_bool_truncates)
-registry/en3b: as registry/en3
 
 # The standard library against MSVC's STL and libc++ (both agree; kpp differs), triaged 2026-11-16 (thread C)
 stdlib-e/fm1: format's 0 flag pads inf and nan with spaces: C++20 [format.string.std] says the 0 option pads "except when applied to an infinity or NaN", which both libraries do not follow

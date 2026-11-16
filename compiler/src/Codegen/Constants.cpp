@@ -787,8 +787,10 @@ auto codegen::Emitter::checkFloatToInteger(const std::string& value, const Ty* f
   // Compared as a double: a float widens exactly. In range: above the lowest value minus one (the
   // conversion truncates toward zero) and below the highest plus one, both powers of two or exact
   // below 2^53; a NaN is neither. For 64 bits the lowest minus one is no double: at or above it.
-  unsigned bits = unsigned(sizeOf(to, at) * 8);
-  bool isUnsigned = to->isUnsigned;
+  // (an enumeration of bool's: 0 or 1 once truncated, -1 < value < 2)
+  bool toBool = to->kind == TyKind::Bool || (to->kind == TyKind::Enum && enumUnderlying(to)->kind == TyKind::Bool);
+  unsigned bits = toBool ? 1 : unsigned(sizeOf(to, at) * 8);
+  bool isUnsigned = toBool || to->isUnsigned;
   std::string v = value;
   if (sizeOf(from, at) == 4)
   {
@@ -802,7 +804,7 @@ auto codegen::Emitter::checkFloatToInteger(const std::string& value, const Ty* f
   fn += "  " + below + " = fcmp olt double " + v + ", " + floatConstant(high, 64) + "\n";
   fn += "  " + inRange + " = and i1 " + above + ", " + below + "\n";
   fn += "  " + out + " = xor i1 " + inRange + ", true\n";
-  undefinedCheck(out, std::string("a floating value out of the range of ") + (isUnsigned ? "uint" : "int") + std::to_string(bits), at);
+  undefinedCheck(out, std::string("a floating value out of the range of ") + (toBool ? std::string("bool") : (isUnsigned ? "uint" : "int") + std::to_string(bits)), at);
 }
 
 auto codegen::Emitter::lineColumnOf(uint32_t token) -> std::pair<uint32_t, uint32_t>

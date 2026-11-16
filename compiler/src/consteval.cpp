@@ -627,6 +627,19 @@ std::optional<ConstValue> ConstArith::convert(const ConstValue& v, const Ty* to)
       // the value (every value of its enumerators fits it).
       if (const Ty* u = underlying ? underlying(t) : nullptr; u && u->kind != TyKind::Enum)
       {
+        // A floating value converts to it by [conv.fpint] ([expr.static.cast] 10), which truncates, a bool too: `(B)0.5`
+        // of `enum class B : bool` is B(0), as C++ gives, where a bool's own conversion ([conv.bool]) made it true
+        // (until 2026-11-16). A value that truncates to neither 0 nor 1 is undefined, so no constant.
+        if (v.isFloat() && u->kind == TyKind::Bool)
+        {
+          double whole = std::trunc(v.f);
+          if (!(whole >= 0.0 && whole < 2.0))
+            return fail("a floating value out of the range of bool");
+          std::optional<ConstValue> c = convert(ConstValue::integer(int64_t(whole)), u);
+          if (c)
+            c->type = t;
+          return c;
+        }
         std::optional<ConstValue> c = convert(v, u);
         if (c)
           c->type = t;
