@@ -1,0 +1,33 @@
+// spec: a constructor's Text arguments with one that is no piece of a Text (a pointer, an enumeration's str()) give the piece's error alone, no other error for the call they left unpacked (until 2026-11-16 codegen also said the call had more arguments than parameters); an enumeration's str() points to the enumeration itself, a piece that prints its enumerator's name
+// error: text_constructor_pointer_piece_is_error.kpp:24: error: a pointer (const char*, Kind's str()) is no piece of a Text: an enumeration is a piece itself, its enumerator's name (write the value without .str(), design.md 14)
+// error: text_constructor_pointer_piece_is_error.kpp:25: error: a pointer (const char*) is no piece of a Text: write StringView(p) for C text or address(p) for its address (design.md 14)
+enum class Kind : u8
+{
+  { Alpha, Beta }
+};
+struct Writer
+{
+  Writer(std::String& sink, const char* tag) { sink << std::StringView(tag); }
+  Writer(std::String& sink, const char* tag, std::Text text)
+  {
+    sink << std::StringView(tag) << " ";
+    text.appendTo(sink);
+  }
+};
+struct Action
+{
+  Kind kind = Kind::Beta;
+  u32 updateTick = 7;
+  Kind tag() const { return this.kind; }
+  void save(std::String& sink, const char* note) const
+  {
+    Writer first(sink, "action", "type=", this.tag().str(), " update-tick=", this.updateTick);
+    Writer second(sink, "action", "note=", note, " update-tick=", this.updateTick);
+  }
+};
+int main()
+{
+  std::String sink;
+  Action().save(sink, "x");
+  return 0;
+}

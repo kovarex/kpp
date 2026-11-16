@@ -1,0 +1,41 @@
+// spec: a brace list constructing a class whose constructor ends in a Text packs the list's elements from that parameter on, as a call's arguments are (design.md 14): a variable's `{...}` and `= {...}`, `T{...}`, `new T{...}`, a member's and a base's `{...}`, `return {...}` and an argument `T{...}`, beside an overload without the Text (`a:(1)! b:(2)! c:(3)! d:(4)! e:(5)! f:(6)! g:(7)! h:(8)! i`)
+extern "C" import "stdio.h";
+struct Point
+{
+  int x = 0;
+  void appendTo(std::String& out) const { out << "(" << this.x << ")"; }
+};
+struct Tagged
+{
+  std::String message;
+  Tagged(char tag) { this.message << tag; }
+  Tagged(char tag, std::Text text)
+  {
+    this.message << tag << ":";
+    text.appendTo(this.message);
+  }
+};
+struct Owner
+{
+  Tagged member;
+  Owner() : member{'e', Point{5}, "!"} {}
+};
+struct Derived : Tagged
+{
+  Derived() : Tagged{'f', Point{6}, "!"} {}
+};
+Tagged made() { return {'g', Point{7}, "!"}; }
+std::String show(const Tagged& t) { return t.message; }
+int main()
+{
+  Tagged a{'a', Point{1}, "!"};
+  Tagged b = {'b', Point{2}, "!"};
+  Tagged* d = new Tagged{'d', Point{4}, "!"};
+  Owner owner;
+  Derived derived;
+  Tagged plain{'i'};
+  printf("%s %s %s %s %s %s %s %s %s\n", a.message.c_str(), b.message.c_str(), Tagged{'c', Point{3}, "!"}.message.c_str(), d->message.c_str(),
+         owner.member.message.c_str(), derived.message.c_str(), made().message.c_str(), show(Tagged{'h', Point{8}, "!"}).c_str(), plain.message.c_str());
+  delete d;
+  return 0;
+}

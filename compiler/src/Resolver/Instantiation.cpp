@@ -991,6 +991,16 @@ auto GlobalScope::Impl::textPieceOf(const Expr* e, const Ty* given) -> TextPiece
     return thunk("appendCTextPiece");
   if (t->kind == TyKind::Pointer || t->kind == TyKind::Nullptr)
   {
+    // `e.str()` of an enumeration: the enumeration is a piece itself, its enumerator's name.
+    if (t->kind == TyKind::Pointer && isNarrowChar(t->inner) && e && e->kind == NodeKind::CallExpr)
+      if (const Expr* callee = static_cast<const CallExpr*>(e)->callee; callee && callee->kind == NodeKind::MemberExpr)
+        if (auto* m = static_cast<const MemberExpr*>(callee); !m->member.empty() && m->member.last().symbol == symbols.intern("str") && m->base && m->base->ty)
+          if (const Ty* of = types.unqualified(types.stripRef(m->base->ty)); of && of->kind == TyKind::Enum)
+          {
+            out.error = "a pointer (" + name + ", " + types.toString(of, &symbols) + "'s str()) is no piece of a Text: an enumeration is a piece itself, " +
+                        "its enumerator's name (write the value without .str(), design.md 14)";
+            return out;
+          }
     out.error = t->kind == TyKind::Pointer && isNarrowChar(t->inner)
                   ? "a pointer (" + name + ") is no piece of a Text: write StringView(p) for C text or address(p) for its address (design.md 14)"
                   : "a pointer (" + name + ") is no piece of a Text: write address(p) for its address (design.md 14)";

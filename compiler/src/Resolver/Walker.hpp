@@ -1002,6 +1002,9 @@
 
     // The constructor of cls a call with these arguments runs when one of cls's takes a Text, else null.
     FunctionDecl* textConstructor(const Ty* cls, Span<Expr*> args);
+    // A brace list's elements constructing a t whose constructor taking them ends in a Text: packed as
+    // a call's arguments are (`Problem p{4, "bad ", point};`, `return {4, "bad ", point};`, design.md 14).
+    void packListText(Span<Expr*>& elements, const Ty* t, uint32_t token);
 
     const Ty* typeOfCall(CallExpr* c);
 

@@ -6485,6 +6485,8 @@ auto GlobalScope::Impl::Walker::checkExplicitArguments(FunctionDecl* f, const Ty
       {
         if (i < refused.size() && refused[i])
           continue; // (one error for the list: it is no argument at all)
+        if (static_cast<BraceInitExpr*>(args[i])->designators.empty() && !static_cast<BraceInitExpr*>(args[i])->text)
+          packListText(static_cast<BraceInitExpr*>(args[i])->args, fnTy->args[i], args[i]->token); // `take({4, "bad ", point})`
         checkExplicitListCopy(static_cast<BraceInitExpr*>(args[i]), fnTy->args[i]);
         if (static_cast<BraceInitExpr*>(args[i])->designators.empty() && !static_cast<BraceInitExpr*>(args[i])->text)
           checkListNarrowing(static_cast<BraceInitExpr*>(args[i])->args, fnTy->args[i]); // `take({1.5})` for an int
@@ -7519,6 +7521,13 @@ auto GlobalScope::Impl::Walker::textConstructor(const Ty* cls, Span<Expr*> args)
   bool ambiguous = false;
   FunctionDecl* f = impl.chooseAmong(ctors, argTypesOf(args), subst.empty() ? nullptr : &subst, nullptr, ambiguous);
   return f && !ambiguous && impl.namesTextLast(f) ? f : nullptr;
+}
+
+auto GlobalScope::Impl::Walker::packListText(Span<Expr*>& elements, const Ty* t, uint32_t token) -> void
+{
+  t = t ? types.unqualified(types.stripRef(t)) : nullptr;
+  if (t && t->kind == TyKind::Class && !types.isDependent(t))
+    packText(elements, textConstructor(t, elements), token);
 }
 
 auto GlobalScope::Impl::Walker::typeOfCall(CallExpr* c) -> const Ty*
@@ -11172,11 +11181,13 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
         if (init.braced && !init.isPack && l.decl && (l.decl->kind == NodeKind::VariableDecl || l.decl->kind == NodeKind::ClassDecl))
         {
           const Ty* target = l.decl->kind == NodeKind::VariableDecl ? impl.declaredTypeOf(l.decl, activeSubst, 0) : impl.selfType(l.decl);
-          Span<Expr*> elements = init.args;
-          if (elements.size() == 1 && elements[0] && elements[0]->kind == NodeKind::BraceInitExpr)
-            elements = static_cast<BraceInitExpr*>(elements[0])->args;
-          if (target)
+          bool nested = init.args.size() == 1 && init.args[0] && init.args[0]->kind == NodeKind::BraceInitExpr;
+          Span<Expr*>& elements = nested ? static_cast<BraceInitExpr*>(init.args[0])->args : init.args;
+          if (target && !(nested && static_cast<BraceInitExpr*>(init.args[0])->text))
+          {
+            packListText(elements, target, f->token); // `problem{4, "bad ", point}` for a member (or base)
             checkListNarrowing(elements, target);
+          }
         }
         // `: f(l2)` for a member `const decltype(l1)& f`.
         if (!init.isPack && init.args.size() == 1 && l.decl && l.decl->kind == NodeKind::VariableDecl)
@@ -11312,6 +11323,10 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
         checkClassToScalar(argumentType(v->init, initTy, types), declared, v->init->token, false, v->init);
         checkExplicitCopy(argumentType(v->init, initTy, types), declared, v->init->token, v->init); // `Strict s = 5;` (an lvalue as one: `B&& x = a;` takes `implicit B(A&)`)
       }
+      // `Problem p{4, "bad ", point};`, `Problem p = {4, "bad ", point};`: the list's elements for a Text constructor (design.md 14).
+      if (v->init && declared && !impl.containsAuto(declared) && v->init->kind == NodeKind::BraceInitExpr &&
+          static_cast<BraceInitExpr*>(v->init)->designators.empty() && !static_cast<BraceInitExpr*>(v->init)->text)
+        packListText(static_cast<BraceInitExpr*>(v->init)->args, declared, v->init->token);
       if (v->init && declared && !impl.containsAuto(declared) && !v->bracedInit && v->init->kind == NodeKind::BraceInitExpr)
         checkExplicitListCopy(static_cast<BraceInitExpr*>(v->init), declared); // `Strict s = {5};`
       if (v->init && declared && declared->kind == TyKind::Array && v->init->kind == NodeKind::FunctionalCastExpr && !static_cast<FunctionalCastExpr*>(v->init)->braced)
@@ -12215,6 +12230,8 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
           {
             if (value->kind == NodeKind::BraceInitExpr)
             {
+              if (static_cast<BraceInitExpr*>(value)->designators.empty() && !static_cast<BraceInitExpr*>(value)->text)
+                packListText(static_cast<BraceInitExpr*>(value)->args, ft->inner, value->token); // `return {4, "bad ", point};`
               checkExplicitListCopy(static_cast<BraceInitExpr*>(value), ft->inner);
               if (static_cast<BraceInitExpr*>(value)->designators.empty() && !static_cast<BraceInitExpr*>(value)->text)
                 checkListNarrowing(static_cast<BraceInitExpr*>(value)->args, ft->inner); // `return {1.5};` from a function returning int
@@ -12681,10 +12698,16 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
       else if (n->args.size() == 1 && n->args[0] && n->args[0]->kind == NodeKind::BraceInitExpr)
       {
         if (auto* list = static_cast<BraceInitExpr*>(n->args[0]); list->designators.empty() && !list->text)
+        {
+          packListText(list->args, t, n->token); // `new Problem{4, "bad ", point}`
           checkListNarrowing(list->args, t); // `new int{1.5}`
+        }
       }
       else
+      {
+        packListText(n->args, t, n->token);
         checkListNarrowing(n->args, t);
+      }
       if (!n->braced && n->args.empty())
       {
         // `new T`, `new (p) T()`, `new T[n]`: the element's (a requirement's probe of it not met)
@@ -12948,10 +12971,16 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
       else if (c->args.size() == 1 && c->args[0] && c->args[0]->kind == NodeKind::BraceInitExpr)
       {
         if (auto* list = static_cast<BraceInitExpr*>(c->args[0]); list->designators.empty() && !list->text)
+        {
+          packListText(list->args, t, c->token); // `Problem{4, "bad ", point}`
           checkListNarrowing(list->args, t); // `int{1.5}`, `Point{1.5, 2}`
+        }
       }
       else
+      {
+        packListText(c->args, t, c->token);
         checkListNarrowing(c->args, t);
+      }
       for (Expr* a : c->args)
         if (const Ty* failed = formedOnly(nullptr, a))
           return record(e, failed); // (`void(T::value)` of an int, while probing)

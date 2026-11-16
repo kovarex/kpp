@@ -2306,7 +2306,9 @@ glad stays unscoped, its build.kpp says why; CommonUtil, Agui and Util not this 
   its position on, zero or more, in order, evaluated left to right. A single argument that is
   already a Text passes through. Calls, member calls, calls through a lambda or a function
   pointer, constructors (`Problem("bad ", point)`, `throw`, a variable's `(...)`, `new`, a
-  member's initializer) and an operator's right operand (`out << a`) pack. Packing ranks
+  member's initializer), a brace list constructing a class (a variable's `{...}` and `= {...}`,
+  `T{...}`, `new T{...}`, a member's or base's `{...}`, `return {...}`; 2026-11-16, until then
+  codegen refused it) and an operator's right operand (`out << a`) pack. Packing ranks
   as C's `...` does, below every standard and user-defined conversion, so an overload taking the
   arguments as they are wins.
 - **Lifetime:** the arguments live to the end of the caller's full expression, as a reference
@@ -2325,7 +2327,9 @@ glad stays unscoped, its build.kpp says why; CommonUtil, Agui and Util not this 
     Specs: language/append_to_on_built_in_types, language/append_to_on_enumerations;
   - a free `appendTo` the program writes is an error, as it would never be called;
   - a string literal or an array of chars: C text, to its first zero;
-  - a pointer is no piece (the error points to `StringView(p)` or `address(p)`).
+  - a pointer is no piece (the error points to `StringView(p)` or `address(p)`, and for an
+    enumeration's `e.str()` to `e` itself). Its error is the call's only one: codegen adds none for
+    the arguments it left unpacked (spec language/text_constructor_pointer_piece_is_error).
 - **Compile errors (the lifetime rule):**
   - a Text anywhere but a parameter or a local initialized from a Text;
   - a data member, a global or static, a function's result, a pointer to one, `new`;
