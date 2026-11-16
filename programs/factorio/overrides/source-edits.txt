@@ -1702,3 +1702,463 @@
 @ src/Graphics/ChartRenderer.cpp: kept as it was, an integer division (1 for a 64 pixel sprite, 2 for 32, 0 for 128 and wider); kovarex decides whether 64.0 was meant
 -     const double spriteScale = 64 / alert.sprite->getFinalWidth();
 +     const double spriteScale = double(64 / alert.sprite->getFinalWidth());
+
+@ src/Main.cpp: the command line options of a build variant (STEAM, DEMO, HEADLESS) or of FinalRelease are statements of their own, each
+# cxxopts chain split where such an #if stands, so that the conversion writes each with `if constexpr` (kpp design.md 12,
+# "The game's build variants as config constants"); cxxopts adds to a group again where add_options names it again
+-   options.add_options("Running")
+-     ("s,map2scenario", "map to scenario conversion", po::value<std::string>())
+-     ("m,scenario2map", "scenario to map conversion", po::value<std::string>())
+-     ("apply-update", "immediately apply update package", po::value<std::vector<std::string>>())
+-     ("create", "create a new map", po::value<std::string>(), "FILE")
+-     ("enable-replay", "Enable replay recording when used with --create", po::value<bool>(), "BOOL")
+-     ("map-gen-settings",
+-       "Map generation settings for use with --create, --start-server-load-scenario or --generate-map-preview. See data/map-gen-settings.example.json",
+-       po::value<std::string>(), "FILE")
+-     ("map-gen-seed",
+-      "Map generation seed for use with --create, --start-server-load-scenario or --generate-map-preview. Will override seed specified in map gen settings",
+-       po::value<uint32_t>(), "SEED")
+-     ("map-gen-seed-max",
+-      "Map generation seed for use with --generate-map-preview to generate multiple previews using every second seed in the interval from map-gen-seed to map-gen-seed-max.",
+-      po::value<uint32_t>(), "SEED")
+-     ("map-settings", "Map settings for use with --create or --start-server-load-scenario. See data/base/prototypes/map-settings.lua", po::value<std::string>(), "FILE")
+-     ("preset", "Name of the map generation preset to be used.", po::value<std::string>())
+-     ("exchange-string", "The exchange string for use with --create, --start-server-load-scenario or --generate-map-preview. If provided, this is loaded first and then any other setting arguments are processed.", po::value<std::string>())
+-     ("generate-map-preview", "Generate preview images of the map; PATH should name a PNG file or end with a '/' or '\\' to indicate a directory.", po::value<std::string>(), "PATH")
+-     ("generate-map-preview-random", "Number of maps to generate with a random seed using --generate-map-preview.", po::value<uint32_t>(), "COUNT")
+-     ("map-preview-size", "Size (in pixels) of map preview", po::value<uint32_t>()->default_value("1024"), "SIZE")
+-     ("map-preview-offset", "Offset of the center of the map, in meters", po::value<std::string>()->default_value("0,0"), "X,Y")
+-     ("map-preview-planet", "Planet to generate the preview for", po::value<std::string>()->default_value("nauvis"), "PLANET")
+-     ("report-quantities", "When generating map preview, report approximate quantities of the named entity prototypes", po::value<std::string>(), "PROTOTYPE,...")
+-     ("threads", "Number of threads to use when generating map previews", po::value<uint32_t>(), "THREADCOUNT")
+-     ("instrument-mod", "Name of a mod to enable Instrument Mode", po::value<std::string>())
+-     ("sync-mods", "Sync mods with save", po::value<std::string>(), "FILE")
+-     ("enable-unsafe-lua-debug-api", "Enables unsafe functions in the Lua debug library.", po::value<bool>())
+-     ("enable-lua-udp", "Set local port and enable helpers.send_udp() and helpers.recv_udp()", po::value<uint16_t>())
+- #ifndef DEMO
+- #ifndef HEADLESS
+-   ("host", "Start hosting a multiplayer game", po::value<std::string>(), "FILE")
+-   ("host-interactive", "Open multiplayer server settings for hosting the selecting save", po::value<std::string>(), "FILE")
+- #endif
+-   ("start-server", "start a multiplayer server", po::value<std::string>(), "FILE")
+-   ("start-server-load-scenario",
+-     "start a multiplayer server and load the specified scenario. The scenario is looked for inside the given mod. If no mod is given, it is looked for in the top-level scenarios directory.",
+-     po::value<std::string>(), "[MOD/]NAME")
+-   ("start-server-load-latest", "start a multiplayer server and load the latest available save")
+-   ("run-replay", "run a replay until completion in headless mode", po::value<std::string>(), "FILE")
+- #endif
+- #ifndef FINAL_RELEASE
+-   ("add-tags", "File", po::value<std::string>())
+-   ("resave", "File", po::value<std::string>())
+-   ("read-network-message", "read network message from the hex dump", po::value<std::string>())
+- #endif
+-   ("test-scenario",
+-     "load the specified scenario headless with a player and run it until a script calls script.finish_test(passed). Exits with 0 if the test passed, 1 if it failed or there was an error. The scenario is looked for inside the given mod. If no mod is given, it is looked for in the top-level scenarios directory.",
+-     po::value<std::string>(), "[MOD/]NAME")
+-   ("test-save", "like --test-scenario, but loads a save", po::value<std::string>(), "FILE")
+-   ("test-ticks", "for --test-scenario and --test-save: exit with 0 after this many ticks if the test hasn't finished before", po::value<uint32_t>(), "N")
+-   ("test-arg", "for --test-scenario and --test-save: a string scripts can read as script.test_arg", po::value<std::string>(), "STRING")
+-   ("benchmark", "load save and run benchmark", po::value<std::string>(), "FILE")
+-   ("benchmark-ticks", "number of ticks for benchmarking. Default is 1000", po::value<uint32_t>()->default_value("1000"), "N")
+-   ("benchmark-runs", "how often the number of ticks will be run, map will reload after each run. Default is 1", po::value<uint32_t>()->default_value("1"), "N")
+-   ("benchmark-verbose",
+-     "comma separated list of timings to output each tick. \"all\", \"timestamp\", \"entities\", as well as all other values seen in the debug view are allowed here. An empty string disables verbose benchmarking.",
+-     po::value<std::string>()->default_value(""), "timings")
+-   ("benchmark-sanitize", "only output the final benchmark results", po::value<bool>())
+-   ("benchmark-consistency", "checks scenario consistency before first update and after last update", po::value<bool>())
+-   ("benchmark-ignore-paused", "leaves the game paused if it was paused when saved. By default the game is unpaused when a benchmark starts.", po::value<bool>())
+-   ("output-perf-stats", "path of file to which rendering performance statistics measurements should be saved. Special tags {api}, {hw}, {time} and {tag} will be replaced.", po::value<std::string>(), "FILE")
+-   ("dump-data", "dumps data.raw as JSON to the script output folder and exits.", po::value<bool>())
+- #ifndef HEADLESS
+-   ("dump-icon-sprites", "dumps all icon sprites as png files to the script output folder and exits.", po::value<bool>())
+- #endif
+-   ("dump-prototype-locale", "dumps all prototypes name and description (if they have a valid value) to the script output folder and exits.", po::value<bool>())
+-   ("report-autogenerated-icon-mipmaps", "Report which icons will have generated mipmaps.")
+-   ("log-shared-tile-layers", "After loading prototypes logs which tile layers are shared by multiple prototypes and lists the prototypes that share them.")
+- #ifndef HEADLESS
+-   ("log-spritesheets-to-optimize", "Logs N spritesheets that seem to have some nearly transparent noise, and could be made much smaller if the noise was cleaned up.", po::value<uint32_t>(), "N")
+- #endif
+-   ;
+- #ifndef HEADLESS
+-   options.add_options("Running")
+- #ifndef DEMO
+-   ("mp-connect", "start factorio and connect to address", po::value<std::string>(), "ADDRESS")
+-   ("password", "the password to use when using mp-connect (if any)", po::value<std::string>(), "PASSWORD")
+-   ("heavy", "run the game in heavy mode if singleplayer with graphics")
+- #endif
+-   ("load-game", "start Factorio and load a game in singleplayer", po::value<std::string>(), "FILE")
+-   ("load-scenario", "start Factorio and load the specified scenario in singleplayer. The scenario is looked for inside the given mod. If no mod is given, it is looked for in the top-level scenarios directory.",
+-     po::value<std::string>(), "[MOD/]NAME")
+-   ("until-tick", "run a save until given map tick", po::value<uint32_t>(), "TICK")
+-   ("disable-migration-window", "Disables the gui that is shown when opening a save with migrated content")
+-   ("benchmark-graphics", "load save and run it with graphics for benchmark-ticks number of ticks as normal game would", po::value<std::string>(), "FILE")
+-   ("benchmark-frame", "load save and benchmark graphics rendering of single frame (prepare + render) without updating the game", po::value<std::string>(), "FILE")
+- #if defined(FACTORIO_USE_D3D) || defined(FACTORIO_USE_METAL)
+-   // For Steam release it is useful to be able to override config.ini setting of default renderer,
+-   // as it is possible to configure command line arguments directly in Steam and players are used to it.
+-   ("force-opengl", "use OpenGL for rendering")
+- #endif
+- #if defined(FACTORIO_USE_D3D)
+-   ("force-d3d", "use Direct3D for rendering")
+-   ("d3d-adapter", "adapter which should be used to initialized Direct3D", po::value<uint32_t>(), "ID")
+-   ("d3d-feature-level", "override feature level (11, 10.1, 10)", po::value<std::string>())
+-   ("dxgi-blit-model", "force Blit presentation mode", po::value<bool>())
+- #endif
+- #if defined(FACTORIO_USE_METAL)
+-   ("force-metal", "use Metal for rendering")
+- #endif
+-   ("debug-graphics", "enables debugging layer for graphics API. If DirectX is used DirectX SDK needs to be installed for this to work.")
+-   ("fullscreen", "start game in windowed mode (saved to configuration)", po::value<bool>(), "BOOL")
+-   ("max-texture-size", "maximal size of texture that the game can use (saved to configuration). Should be power of two greater than 2048", po::value<uint16_t>(), "N")
+-   ("graphics-quality", "accepted values: high, medium", po::value<std::string>())
+-   ("video-memory-usage", "accepted values: all, high, medium, low", po::value<std::string>())
+-   ("force-graphics-preset", "accepted values: very-low, low, mac-with-low-ram, medium-with-low-vram, medium, high, very-high, extreme", po::value<std::string>())
+-   ("gfx-safe-mode", "resets some graphics settings to values that should work on most configurations")
+-   ("low-vram", "sprites that are not put into sprite atlases won't be allocated as texture objects")
+-   ("shader", "enable/disable shader postprocessing (saved to configuration)", po::value<std::string>())
+-   ("disable-audio", "Disable audio. Mainly for faster startup during development.")
+-   ("window-size", R"(Desired window resolution. For example "1680x1050". Or "maximized")", po::value<std::string>())
+-   ("single-thread-loading", "Disables loading of sprites in multiple threads.")
+-   ("cache-sprite-atlas", "Enable/disable sprite atlas cache.", po::value<bool>(), "BOOL")
+-   ("nogamepad", "Disable gamepad(controller) support")
+- #ifndef FINAL_RELEASE
+-   ("runtime-sprite-reload", "in runtime scans for changes in sprite sheets and reloads them if some change was detected")
+- #endif
+-   ;
+- #endif
+-   options.add_options("Internal")
+-     ("autoupdate-launcher", "internal use only", po::value<std::string>())
+-     ("autoupdate-stage2", "internal use only", po::value<std::string>())
+-     // Pre-0.16 will launch the game with this parameter when the update is finished. Keep it so the game doesn't error due to unknown parameter.
+-     ("autoupdate-finished", "internal use only")
+-     ("join-game-by-id", "internal use only", po::value<uint32_t>(), "ID")
+-     ("global-seed", "seed for random generator on global context, 0 means random seed", po::value<uint32_t>())
+- #ifdef STEAM
+-     ("join-game-by-steam-id", "internal use only", po::value<uint64_t>(), "ID")
+-     ("connect_lobby", "internal use only", po::value<uint64_t>(), "ID")
+- #endif
+- #ifndef DEMO
+-     ("complete", "run the game in complete heavy mode")
+- #endif
+-   ("upload-log-file", "internal use only", po::value<std::string>())
+-   ("no-crash-handler", "Disables Factorio's crash handler. For debugging purposes.")
+- #if defined(WIN32)
+-   ("no-console-attach", "Stops Factorio from attaching to the parent console.")
+-   ("wait-to-close", "Wait until the specified process finishes.", po::value<uint32_t>())
+- #ifndef DEBUG
+-   ("create-console", "Create console window")
+- #endif
+- #endif
+- #ifdef MAC_OSX
+-   ("p", "workaround", po::value<std::string>()) // workaround for options like -psn_0_45239074 that Mac Finder adds
+- #endif
+- #ifdef LINUX
+-   ("debug-linux-dump-proc-maps-on-steam-init", "")
+-   ("debug-linux-dump-proc-maps", "")
+- #endif
+- #if defined(NINTENDO_SWITCH) && !defined(FINAL_RELEASE)
+-     ("switch-save-host-path", "Nintendo Switch specific: set the path on the host computer where save data is mounted", po::value<std::string>())
+- #endif
+-   ;
+-
+-   // Deprecated command line parameters that don't do anything anymore, but we don't want to throw errors on people who might have set them.
++   options.add_options("Running")
++     ("s,map2scenario", "map to scenario conversion", po::value<std::string>())
++     ("m,scenario2map", "scenario to map conversion", po::value<std::string>())
++     ("apply-update", "immediately apply update package", po::value<std::vector<std::string>>())
++     ("create", "create a new map", po::value<std::string>(), "FILE")
++     ("enable-replay", "Enable replay recording when used with --create", po::value<bool>(), "BOOL")
++     ("map-gen-settings",
++       "Map generation settings for use with --create, --start-server-load-scenario or --generate-map-preview. See data/map-gen-settings.example.json",
++       po::value<std::string>(), "FILE")
++     ("map-gen-seed",
++      "Map generation seed for use with --create, --start-server-load-scenario or --generate-map-preview. Will override seed specified in map gen settings",
++       po::value<uint32_t>(), "SEED")
++     ("map-gen-seed-max",
++      "Map generation seed for use with --generate-map-preview to generate multiple previews using every second seed in the interval from map-gen-seed to map-gen-seed-max.",
++      po::value<uint32_t>(), "SEED")
++     ("map-settings", "Map settings for use with --create or --start-server-load-scenario. See data/base/prototypes/map-settings.lua", po::value<std::string>(), "FILE")
++     ("preset", "Name of the map generation preset to be used.", po::value<std::string>())
++     ("exchange-string", "The exchange string for use with --create, --start-server-load-scenario or --generate-map-preview. If provided, this is loaded first and then any other setting arguments are processed.", po::value<std::string>())
++     ("generate-map-preview", "Generate preview images of the map; PATH should name a PNG file or end with a '/' or '\\' to indicate a directory.", po::value<std::string>(), "PATH")
++     ("generate-map-preview-random", "Number of maps to generate with a random seed using --generate-map-preview.", po::value<uint32_t>(), "COUNT")
++     ("map-preview-size", "Size (in pixels) of map preview", po::value<uint32_t>()->default_value("1024"), "SIZE")
++     ("map-preview-offset", "Offset of the center of the map, in meters", po::value<std::string>()->default_value("0,0"), "X,Y")
++     ("map-preview-planet", "Planet to generate the preview for", po::value<std::string>()->default_value("nauvis"), "PLANET")
++     ("report-quantities", "When generating map preview, report approximate quantities of the named entity prototypes", po::value<std::string>(), "PROTOTYPE,...")
++     ("threads", "Number of threads to use when generating map previews", po::value<uint32_t>(), "THREADCOUNT")
++     ("instrument-mod", "Name of a mod to enable Instrument Mode", po::value<std::string>())
++     ("sync-mods", "Sync mods with save", po::value<std::string>(), "FILE")
++     ("enable-unsafe-lua-debug-api", "Enables unsafe functions in the Lua debug library.", po::value<bool>())
++     ("enable-lua-udp", "Set local port and enable helpers.send_udp() and helpers.recv_udp()", po::value<uint16_t>())
++   ;
++ #ifndef DEMO
++ #ifndef HEADLESS
++   options.add_options("Running")
++   ("host", "Start hosting a multiplayer game", po::value<std::string>(), "FILE")
++   ("host-interactive", "Open multiplayer server settings for hosting the selecting save", po::value<std::string>(), "FILE")
++   ;
++ #endif
++   options.add_options("Running")
++   ("start-server", "start a multiplayer server", po::value<std::string>(), "FILE")
++   ("start-server-load-scenario",
++     "start a multiplayer server and load the specified scenario. The scenario is looked for inside the given mod. If no mod is given, it is looked for in the top-level scenarios directory.",
++     po::value<std::string>(), "[MOD/]NAME")
++   ("start-server-load-latest", "start a multiplayer server and load the latest available save")
++   ("run-replay", "run a replay until completion in headless mode", po::value<std::string>(), "FILE")
++   ;
++ #endif
++ #ifndef FINAL_RELEASE
++   options.add_options("Running")
++   ("add-tags", "File", po::value<std::string>())
++   ("resave", "File", po::value<std::string>())
++   ("read-network-message", "read network message from the hex dump", po::value<std::string>())
++   ;
++ #endif
++   options.add_options("Running")
++   ("test-scenario",
++     "load the specified scenario headless with a player and run it until a script calls script.finish_test(passed). Exits with 0 if the test passed, 1 if it failed or there was an error. The scenario is looked for inside the given mod. If no mod is given, it is looked for in the top-level scenarios directory.",
++     po::value<std::string>(), "[MOD/]NAME")
++   ("test-save", "like --test-scenario, but loads a save", po::value<std::string>(), "FILE")
++   ("test-ticks", "for --test-scenario and --test-save: exit with 0 after this many ticks if the test hasn't finished before", po::value<uint32_t>(), "N")
++   ("test-arg", "for --test-scenario and --test-save: a string scripts can read as script.test_arg", po::value<std::string>(), "STRING")
++   ("benchmark", "load save and run benchmark", po::value<std::string>(), "FILE")
++   ("benchmark-ticks", "number of ticks for benchmarking. Default is 1000", po::value<uint32_t>()->default_value("1000"), "N")
++   ("benchmark-runs", "how often the number of ticks will be run, map will reload after each run. Default is 1", po::value<uint32_t>()->default_value("1"), "N")
++   ("benchmark-verbose",
++     "comma separated list of timings to output each tick. \"all\", \"timestamp\", \"entities\", as well as all other values seen in the debug view are allowed here. An empty string disables verbose benchmarking.",
++     po::value<std::string>()->default_value(""), "timings")
++   ("benchmark-sanitize", "only output the final benchmark results", po::value<bool>())
++   ("benchmark-consistency", "checks scenario consistency before first update and after last update", po::value<bool>())
++   ("benchmark-ignore-paused", "leaves the game paused if it was paused when saved. By default the game is unpaused when a benchmark starts.", po::value<bool>())
++   ("output-perf-stats", "path of file to which rendering performance statistics measurements should be saved. Special tags {api}, {hw}, {time} and {tag} will be replaced.", po::value<std::string>(), "FILE")
++   ("dump-data", "dumps data.raw as JSON to the script output folder and exits.", po::value<bool>())
++   ;
++ #ifndef HEADLESS
++   options.add_options("Running")
++   ("dump-icon-sprites", "dumps all icon sprites as png files to the script output folder and exits.", po::value<bool>())
++   ;
++ #endif
++   options.add_options("Running")
++   ("dump-prototype-locale", "dumps all prototypes name and description (if they have a valid value) to the script output folder and exits.", po::value<bool>())
++   ("report-autogenerated-icon-mipmaps", "Report which icons will have generated mipmaps.")
++   ("log-shared-tile-layers", "After loading prototypes logs which tile layers are shared by multiple prototypes and lists the prototypes that share them.")
++   ;
++ #ifndef HEADLESS
++   options.add_options("Running")
++   ("log-spritesheets-to-optimize", "Logs N spritesheets that seem to have some nearly transparent noise, and could be made much smaller if the noise was cleaned up.", po::value<uint32_t>(), "N")
++   ;
++ #endif
++ #ifndef HEADLESS
++ #ifndef DEMO
++   options.add_options("Running")
++   ("mp-connect", "start factorio and connect to address", po::value<std::string>(), "ADDRESS")
++   ("password", "the password to use when using mp-connect (if any)", po::value<std::string>(), "PASSWORD")
++   ("heavy", "run the game in heavy mode if singleplayer with graphics")
++   ;
++ #endif
++   options.add_options("Running")
++   ("load-game", "start Factorio and load a game in singleplayer", po::value<std::string>(), "FILE")
++   ("load-scenario", "start Factorio and load the specified scenario in singleplayer. The scenario is looked for inside the given mod. If no mod is given, it is looked for in the top-level scenarios directory.",
++     po::value<std::string>(), "[MOD/]NAME")
++   ("until-tick", "run a save until given map tick", po::value<uint32_t>(), "TICK")
++   ("disable-migration-window", "Disables the gui that is shown when opening a save with migrated content")
++   ("benchmark-graphics", "load save and run it with graphics for benchmark-ticks number of ticks as normal game would", po::value<std::string>(), "FILE")
++   ("benchmark-frame", "load save and benchmark graphics rendering of single frame (prepare + render) without updating the game", po::value<std::string>(), "FILE")
++ #if defined(FACTORIO_USE_D3D) || defined(FACTORIO_USE_METAL)
++   // For Steam release it is useful to be able to override config.ini setting of default renderer,
++   // as it is possible to configure command line arguments directly in Steam and players are used to it.
++   ("force-opengl", "use OpenGL for rendering")
++ #endif
++ #if defined(FACTORIO_USE_D3D)
++   ("force-d3d", "use Direct3D for rendering")
++   ("d3d-adapter", "adapter which should be used to initialized Direct3D", po::value<uint32_t>(), "ID")
++   ("d3d-feature-level", "override feature level (11, 10.1, 10)", po::value<std::string>())
++   ("dxgi-blit-model", "force Blit presentation mode", po::value<bool>())
++ #endif
++ #if defined(FACTORIO_USE_METAL)
++   ("force-metal", "use Metal for rendering")
++ #endif
++   ("debug-graphics", "enables debugging layer for graphics API. If DirectX is used DirectX SDK needs to be installed for this to work.")
++   ("fullscreen", "start game in windowed mode (saved to configuration)", po::value<bool>(), "BOOL")
++   ("max-texture-size", "maximal size of texture that the game can use (saved to configuration). Should be power of two greater than 2048", po::value<uint16_t>(), "N")
++   ("graphics-quality", "accepted values: high, medium", po::value<std::string>())
++   ("video-memory-usage", "accepted values: all, high, medium, low", po::value<std::string>())
++   ("force-graphics-preset", "accepted values: very-low, low, mac-with-low-ram, medium-with-low-vram, medium, high, very-high, extreme", po::value<std::string>())
++   ("gfx-safe-mode", "resets some graphics settings to values that should work on most configurations")
++   ("low-vram", "sprites that are not put into sprite atlases won't be allocated as texture objects")
++   ("shader", "enable/disable shader postprocessing (saved to configuration)", po::value<std::string>())
++   ("disable-audio", "Disable audio. Mainly for faster startup during development.")
++   ("window-size", R"(Desired window resolution. For example "1680x1050". Or "maximized")", po::value<std::string>())
++   ("single-thread-loading", "Disables loading of sprites in multiple threads.")
++   ("cache-sprite-atlas", "Enable/disable sprite atlas cache.", po::value<bool>(), "BOOL")
++   ("nogamepad", "Disable gamepad(controller) support")
++   ;
++ #ifndef FINAL_RELEASE
++   options.add_options("Running")
++   ("runtime-sprite-reload", "in runtime scans for changes in sprite sheets and reloads them if some change was detected")
++   ;
++ #endif
++ #endif
++   options.add_options("Internal")
++     ("autoupdate-launcher", "internal use only", po::value<std::string>())
++     ("autoupdate-stage2", "internal use only", po::value<std::string>())
++     // Pre-0.16 will launch the game with this parameter when the update is finished. Keep it so the game doesn't error due to unknown parameter.
++     ("autoupdate-finished", "internal use only")
++     ("join-game-by-id", "internal use only", po::value<uint32_t>(), "ID")
++     ("global-seed", "seed for random generator on global context, 0 means random seed", po::value<uint32_t>())
++   ;
++ #ifdef STEAM
++   options.add_options("Internal")
++     ("join-game-by-steam-id", "internal use only", po::value<uint64_t>(), "ID")
++     ("connect_lobby", "internal use only", po::value<uint64_t>(), "ID")
++   ;
++ #endif
++ #ifndef DEMO
++   options.add_options("Internal")
++     ("complete", "run the game in complete heavy mode")
++   ;
++ #endif
++   options.add_options("Internal")
++   ("upload-log-file", "internal use only", po::value<std::string>())
++   ("no-crash-handler", "Disables Factorio's crash handler. For debugging purposes.")
++ #if defined(WIN32)
++   ("no-console-attach", "Stops Factorio from attaching to the parent console.")
++   ("wait-to-close", "Wait until the specified process finishes.", po::value<uint32_t>())
++ #ifndef DEBUG
++   ("create-console", "Create console window")
++ #endif
++ #endif
++ #ifdef MAC_OSX
++   ("p", "workaround", po::value<std::string>()) // workaround for options like -psn_0_45239074 that Mac Finder adds
++ #endif
++ #ifdef LINUX
++   ("debug-linux-dump-proc-maps-on-steam-init", "")
++   ("debug-linux-dump-proc-maps", "")
++ #endif
++ #if defined(NINTENDO_SWITCH) && !defined(FINAL_RELEASE)
++     ("switch-save-host-path", "Nintendo Switch specific: set the path on the host computer where save data is mounted", po::value<std::string>())
++ #endif
++   ;
++
++   // Deprecated command line parameters that don't do anything anymore, but we don't want to throw errors on people who might have set them.
+
+@ src/Main.cpp: --apply-update's link calls a function every build has, its body the updater's builds' alone (inside it): the converted
+# if-else chain joins the link with `!config::steam && !config::demo`, and the call then compiles in Steam's and the demo's builds too
+# (kpp design.md 12, "The game's build variants as config constants")
+- #ifndef DISABLE_UPDATER
+-   else if (parsed.options.count("apply-update"))
+-   {
+-     int result = 0;
+-     GlobalContext::headlessMode = true;
+-     global = new GlobalContext(parsed.executablePath, parsed.configPath);
+-     global->loadUserMods = false;
+-     global->init(parsed.rotateLogs);
+-     ScopedCallback deleteGlobalGuard([] { delete global; });
+-     global->modManager->saveOnExit = false;
+-
+-     try
+-     {
+-       auto& pathData = parsed.options["apply-update"].as<std::vector<std::string>>();
+-       std::vector<Filesystem::Path> paths;
+-       paths.reserve(pathData.size());
+-       for (const std::string& pathString : pathData)
+-         paths.emplace_back(pathString);
+-       global->updater->applyUpdates(paths, false /* restartWhenFinished */);
+-       AppManager::applyExecutablePermissions();
+-     }
+-     catch (const UpdaterException& e)
+-     {
+-       Util::showUrgentError(e.what());
+-       result = 1;
+-     }
+-     global->saveConfig = false;
+-     return result;
+-   }
+- #endif
++ #ifndef DISABLE_UPDATER
++   else if (parsed.options.count("apply-update"))
++     return applyUpdate(parsed);
++ #endif
+
+@ src/Main.cpp: --benchmark-frame's link calls a function every build has (MainTasks::benchmarkFrame is no headless build's), as --apply-update's
+- #ifndef HEADLESS
+-   else if (parsed.options.count("benchmark-frame"))
+-     return MainTasks::benchmarkFrame(parsed);
++ #ifndef HEADLESS
++   else if (parsed.options.count("benchmark-frame"))
++     return benchmarkFrame(parsed);
+
+@ src/Main.cpp: the two links' functions (above), before fmain (and its [[nodiscard]])
+- [[nodiscard]]
+- static int fmain(int argc, char** argv)
++ static int applyUpdate(const ParsedOptions& parsed)
++ {
++ #ifndef DISABLE_UPDATER
++   int result = 0;
++   GlobalContext::headlessMode = true;
++   global = new GlobalContext(parsed.executablePath, parsed.configPath);
++   global->loadUserMods = false;
++   global->init(parsed.rotateLogs);
++   ScopedCallback deleteGlobalGuard([] { delete global; });
++   global->modManager->saveOnExit = false;
++
++   try
++   {
++     auto& pathData = parsed.options["apply-update"].as<std::vector<std::string>>();
++     std::vector<Filesystem::Path> paths;
++     paths.reserve(pathData.size());
++     for (const std::string& pathString : pathData)
++       paths.emplace_back(pathString);
++     global->updater->applyUpdates(paths, false /* restartWhenFinished */);
++     AppManager::applyExecutablePermissions();
++   }
++   catch (const UpdaterException& e)
++   {
++     Util::showUrgentError(e.what());
++     result = 1;
++   }
++   global->saveConfig = false;
++   return result;
++ #else
++   return 1;
++ #endif
++ }
++
++ static int benchmarkFrame(const ParsedOptions& parsed)
++ {
++ #ifndef HEADLESS
++   return MainTasks::benchmarkFrame(parsed);
++ #else
++   return 1;
++ #endif
++ }
++
++ [[nodiscard]]
++ static int fmain(int argc, char** argv)
+
+@ src/Main.cpp: the updater's own links (Windows', --autoupdate-launcher and --autoupdate-stage2) call functions every build has, as --apply-update's
+-     Updater::autoUpdateLauncher(instructionsPath);
++     runAutoUpdateLauncher(instructionsPath);
+
+@ src/Main.cpp: (and the second)
+-     Updater::autoUpdateStage2(instructionsPath);
++     runAutoUpdateStage2(instructionsPath);
+
+@ src/Main.cpp: the updater links' functions, before the others (above)
+- static int applyUpdate(const ParsedOptions& parsed)
++ static void runAutoUpdateLauncher(const Filesystem::Path& instructionsPath)
++ {
++ #if defined(WIN32) && !defined(DISABLE_UPDATER)
++   Updater::autoUpdateLauncher(instructionsPath);
++ #endif
++ }
++
++ static void runAutoUpdateStage2(const Filesystem::Path& instructionsPath)
++ {
++ #if defined(WIN32) && !defined(DISABLE_UPDATER)
++   Updater::autoUpdateStage2(instructionsPath);
++ #endif
++ }
++
++ static int applyUpdate(const ParsedOptions& parsed)

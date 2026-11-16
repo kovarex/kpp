@@ -1520,6 +1520,46 @@ configurations are (`config::platform == Platform::Windows`, `== Platform::Linux
 an `else`), then the configurations by `--convert-merge` (convert.cmd, since 2026-11-05;
 CONVERT_LINUX=0 converts Windows alone).
 
+**The game's build variants as config constants (kovarex, 2026-11-16: "bring those back using our
+when/ if constexpr etc logic instead of #if/#ifdefs").** Factorio's packages are seven builds
+(scripts/deploy's modes): the game (Space Age), the base game (no SPACE_AGE), the demo (DEMO,
+DISABLE_UPDATER, no SPACE_AGE), the headless server (HEADLESS), Steam's with and without Space Age
+(STEAM, DISABLE_UPDATER) and Steam's demo. Until 2026-11-16 the game was converted as the first alone,
+and the others' code was gone. Each variant is now a config constant, declared beside finalRelease
+(overrides/added/CommonUtil/BuildVariant.kpp): `config::steam`, `config::demo`, `config::headless`
+(false by default) and `config::spaceAge` (true). DISABLE_UPDATER has none of its own: the builds that
+define it are the Steam and demo ones, and its groups are chosen by those two. The game is converted
+for each of the 16 combinations of STEAM, DEMO, HEADLESS and SPACE_AGE (`kpp --convert-define NAME`,
+`--convert-undefine NAME`; DISABLE_UPDATER with STEAM or DEMO), and the 16 made one by
+`--convert-merge-flag OFF ON OUT CONDITION`, which makes two conversions one as two platforms are, a
+constant at a time: spaceAge, headless, demo, then steam (programs/factorio/variants.ps1, from
+convert.cmd's each configuration and platform, before the platforms and the configurations; 16
+conversions of about 26 s each, four at a time; CONVERT_VARIANTS=0 converts the game's build alone).
+The two sides of each merge differ in that constant alone, every other one's choices made alike in
+both, so a group one define decides is chosen by its constant alone, and one that several decide
+(ApplicationVersion's BUILD_MODE: "steamdemo", "steam", "headless", "demo", "full") is chosen by each
+in turn, right for every combination. Merging the shipped builds alone, two at a time, was tried first
+and dropped: right for those seven, but a group was chosen by whichever constant told the two sides
+apart, `isSpaceAge()` nested in `steam`, `demo` and `headless`. Combinations no package is built from
+(Steam's headless server) cost conversions, not code. build.kpp's configurations set the constants
+(`final-steam`, `final-demo` ...). The Steam API is called through Valve's flat C API and its manual
+callback dispatch (programs/factorio/native/generate_steam.py writes kpp_steam.h from the SDK's
+steam_api.json, the callback structs with the SDK's packing; their layouts are checked against the C++
+SDK's on Windows and Linux).
+- A link of an if-else chain that a variant alone has is joined with its constant, as a configuration's
+  is (`else if (!config::demo && (...))`), not the whole if statement written once per variant; links on
+  both sides of a merge are joined each with its own side's constant, one chain. Such a link's code then
+  compiles in every build, so a link that calls what a variant alone declares calls a function every
+  build has instead (source-edits.txt: Main.cpp's --apply-update, --benchmark-frame and the updater's).
+- A merge's two sides line up again where an earlier merge widened a statement on one side alone
+  (Main.cpp's option chain), and a class's `{` is told from a list's by its code, its comments left out.
+- The fix passes (explicit by default, nullptr, `This::`) check the checkout in the packages' builds too,
+  so that code only a variant compiles is fixed as the rest is; convert.cmd's "variant errors" gate checks
+  the game, Main.kpp too, in the game's, the base game's, the demo's and the headless server's builds (0).
+- Where a merge writes a constructor once per variant for one member initializer (EntityPrototype's
+  `#ifndef DEMO nextUpgrade(...)`), the kpp branch writes it once, the initializer choosing:
+  `nextUpgrade(config::demo ? IDConnector<EntityID>() : IDConnector<EntityID>(input, "next_upgrade"))`.
+
 **One spelling on every platform (kovarex, 2026-11-05).** Code that differs between the platforms
 outside an #if group cannot be merged, so a name the game spells per platform is one spelling,
 declared per platform:

@@ -68,7 +68,7 @@ namespace
     {"--codegen-threads", 1}, {"--lib", 1}, {"--keep-symbol", 1}, {"--exclude", 1}, {"--file-prefix-map", 1},{"--this-reference-library", 1}, {"--library-root", 2}, {"--unscoped-library-root", 2},
     {"--config", 1}, {"--release", 0}, {"--tests", 0}, {"--modules", 1}, {"--convert", 1},
     {"--verify-incremental", 0}, {"--overrides", 1}, {"--convert-base", 1}, {"--c-sources", 0}, {"--convert-library", 2},
-    {"--convert-release", 0}, {"--convert-final", 0}, {"--convert-marks", 0}, {"--convert-native-tests", 0}, {"--convert-platform", 1}, {"--convert-predefines", 1},
+    {"--convert-release", 0}, {"--convert-final", 0}, {"--convert-marks", 0}, {"--convert-native-tests", 0}, {"--convert-platform", 1}, {"--convert-predefines", 1}, {"--convert-define", 1}, {"--convert-undefine", 1},
     {"--no-run", 0}};
 }
 
@@ -137,6 +137,9 @@ static int compilerMain(int argc, char** argv)
     return convertMergePlatform(argv[2], argv[3], argv[4]);
   if (argc == 7 && std::string(argv[1]) == "--convert-merge-platform")
     return convertMergePlatform(argv[2], argv[3], argv[4], argv[5], argv[6]);
+  // Two builds that differ by a variant made one (convert.hpp): `kpp --convert-merge-flag OFF ON OUT config::steam`.
+  if (argc == 6 && std::string(argv[1]) == "--convert-merge-flag")
+    return convertMergeFlag(argv[2], argv[3], argv[4], argv[5]);
   // `this` written as a reference in converted files (convert.hpp): `kpp --convert-this-reference DIR...`.
   if (argc >= 3 && std::string(argv[1]) == "--convert-this-reference")
     return convertThisReference(std::vector<std::filesystem::path>(argv + 2, argv + argc));

@@ -30,6 +30,17 @@ bool setConvertPlatform(const std::string& platform)
   return true;
 }
 
+bool setConvertDefine(const std::string& name, bool defined)
+{
+  if (name.empty() || !(isalpha((unsigned char)name[0]) || name[0] == '_'))
+    return false;
+  for (char c : name)
+    if (!(isalnum((unsigned char)c) || c == '_'))
+      return false;
+  (defined ? convertDefined : convertUndefined).push_back(name);
+  return true;
+}
+
 bool setConvertPredefines(const std::filesystem::path& file)
 {
   std::string text;
@@ -181,6 +192,10 @@ namespace
   std::string platformOn = "config::platform == Platform::Windows", platformOff = "config::platform == Platform::Linux";
   std::string platformOnName = "windows", platformOffName = "linux";
   MergeDimension platformDimension = {platformOn.c_str(), platformOff.c_str(), platformOnName.c_str(), platformOffName.c_str()};
+  // --convert-merge-flag's: the two sides are builds of one platform, so a link of an if-else chain that one
+  // variant alone has compiles in the others too, and is joined with the variant's condition as a
+  // configuration's is (elseLinksWhen), not the whole if statement each variant's.
+  bool mergingVariants = false;
   // FIRST and SECOND as `Windows` or `Linux,FreeBSD`: the conditions `config::platform ==
   // Platform::Linux || config::platform == Platform::FreeBSD` and the names `linux-freebsd`.
   void setMergePlatforms(const std::string& first, const std::string& second)
@@ -189,6 +204,15 @@ namespace
     {
       std::string out;
       name.clear();
+      // (a build variant's condition as it stands, --convert-merge-flag's `config::steam` or
+      // `!config::steam`: its name `steam` or `no-steam`)
+      if (list.find("config::") != std::string::npos)
+      {
+        name = (list[0] == '!' ? "no-" : "") + list.substr(list.find("config::") + 8);
+        for (char& c : name)
+          c = isalnum((unsigned char)c) || c == '-' ? char(tolower((unsigned char)c)) : '-';
+        return list;
+      }
       for (size_t at = 0; at <= list.size();)
       {
         size_t comma = std::min(list.find(',', at), list.size());
@@ -658,6 +682,25 @@ namespace
   }
 
   // A text that is string and number literals alone, at least one ("left-" "windows", 42).
+  // A config constant or a platform at text[i] (`config::demo`, `config::platform`, `Platform::Linux`),
+  // as an earlier merge's choice writes them: where it ends, or 0. Such a choice between literals is a
+  // literal still for the merges after (--convert-merge-flag's variants, one constant at a time).
+  size_t configWordAt(const std::string& text, size_t i)
+  {
+    for (const char* head : {"config::", "Platform::"})
+    {
+      size_t n = strlen(head);
+      if (text.compare(i, n, head) != 0 || (i > 0 && isIdentChar(text[i - 1])))
+        continue;
+      size_t e = i + n;
+      while (e < text.size() && isIdentChar(text[e]))
+        ++e;
+      if (e > i + n)
+        return e;
+    }
+    return 0;
+  }
+
   bool onlyLiterals(const std::string& text)
   {
     size_t count = 0;
@@ -682,6 +725,10 @@ namespace
           ++i;
         ++count;
       }
+      else if (size_t e = configWordAt(text, i))
+        i = e; // (an earlier merge's choice: `(!config::demo ? "steam" : "steamdemo")`)
+      else if (strchr("()!?:&|=", c))
+        ++i;
       else
         return false;
     }
@@ -714,7 +761,9 @@ namespace
     auto literal = [](const std::string& value)
     {
       for (size_t i = 0; i < value.size();)
-        if (isalpha((unsigned char)value[i]) || value[i] == '_')
+        if (size_t e = configWordAt(value, i))
+          i = e; // (an earlier merge's choice: `!config::headless ? "full" : "headless"`)
+        else if (isalpha((unsigned char)value[i]) || value[i] == '_')
         {
           size_t e = i;
           while (e < value.size() && isIdentChar(value[e]))
@@ -739,16 +788,21 @@ namespace
             return false;
           ++i;
         }
-        else if (strchr(" \t+-()", value[i]))
+        else if (strchr(" \t+-()!?:&|=", value[i]))
           ++i;
         else
           return false;
       return true;
     };
     std::string dh, dv, dt, rh, rv, rt;
-    if (!split(debug, dh, dv, dt) || !split(release, rh, rv, rt) || dh != rh || dv == rv || !literal(dv) || !literal(rv))
+    // (the heads alike but for their indentation: the #if branches nest to different depths, BUILD_MODE's
+    // `#elif defined(HEADLESS)` one level above `#if defined(DEMO)`'s)
+    if (!split(debug, dh, dv, dt) || !split(release, rh, rv, rt) || withoutOuterSpace(dh) != withoutOuterSpace(rh) || dv == rv || !literal(dv) ||
+        !literal(rv))
       return "";
-    return dh + " = " + dimension.on + " ? " + dv + " : " + rv + dt;
+    // (an arm that is an earlier merge's choice in parentheses: `config::demo ? (...) : (...)`)
+    auto arm = [](const std::string& value) { return value.find('?') == std::string::npos ? value : "(" + value + ")"; };
+    return dh + " = " + dimension.on + " ? " + arm(dv) + " : " + arm(rv) + dt;
   }
 
   // A group whose configurations' texts differ, where declarations and statements stand (after `;`,
@@ -1076,6 +1130,73 @@ namespace
   // a `when` declaration each: design.md 12, "One spelling on every platform"). The statement's other
   // groups go into it, their marks kept. Nothing is widened where the statement cannot be found (it
   // starts before the file's text, or the groups do not match): the merge reports those as before.
+  // A statement an earlier merge widened on one side alone (--convert-merge-flag's: the headless merge
+  // widened Main.cpp's option chain where its HEADLESS group stood, inside DEMO's, and the demo build has
+  // neither): the other side's same statement made a widened group of the same id, cut where the text
+  // around it is the same on both, so that the two line up again and the statement is chosen whole.
+  // Each side's parts are left as they were where they do not fit that shape.
+  void alignWidened(std::vector<MarkedPart>& a, std::vector<MarkedPart>& b)
+  {
+    for (bool changed = true; changed;)
+    {
+      changed = false;
+      for (int side = 0; side < 2 && !changed; ++side)
+      {
+        std::vector<MarkedPart>& x = side == 0 ? a : b; // (the side with the widened group)
+        std::vector<MarkedPart>& y = side == 0 ? b : a;
+        for (size_t k = 0; k < x.size() && !changed; ++k)
+        {
+          if (!widenedGroup(x[k].group) || (k < y.size() && y[k].group == x[k].group))
+            continue;
+          // x: [..][P][G+][S][..], P and S the text parts around it (empty where a group or the file's
+          // start or end is); y: the same before and after, its middle the statement: a text starting
+          // with P .. a text ending with S.
+          bool hasPrefix = k > 0 && x[k - 1].group.empty(), hasSuffix = k + 1 < x.size() && x[k + 1].group.empty();
+          size_t ys = hasPrefix ? k - 1 : k;
+          std::string prefix = hasPrefix ? x[k - 1].text : "", suffix = hasSuffix ? x[k + 1].text : "";
+          size_t after = x.size() - (hasSuffix ? k + 2 : k + 1); // parts after S in x
+          if (y.size() < ys + after + 1)
+            continue;
+          size_t ye = y.size() - after - 1;
+          bool fits = true;
+          for (size_t j = 0; j < ys && fits; ++j)
+            fits = y[j].group == x[j].group;
+          for (size_t j = 0; j < after && fits; ++j)
+            fits = y[ye + 1 + j].group == x[x.size() - after + j].group;
+          if (!fits || (hasPrefix && (!y[ys].group.empty() || y[ys].text.compare(0, prefix.size(), prefix) != 0)) ||
+              (hasSuffix && (!y[ye].group.empty() || y[ye].text.size() < suffix.size() ||
+                             y[ye].text.compare(y[ye].text.size() - suffix.size(), suffix.size(), suffix) != 0)) ||
+              (ys == ye && y[ys].group.empty() && y[ys].text.size() < prefix.size() + suffix.size()))
+            continue;
+          MarkedPart widened;
+          widened.group = x[k].group;
+          widened.openLine = x[k].openLine;
+          widened.closeLine = x[k].closeLine;
+          for (size_t j = ys; j <= ye; ++j)
+          {
+            if (!y[j].group.empty())
+            {
+              widened.parts.push_back(y[j]);
+              continue;
+            }
+            size_t from = j == ys ? prefix.size() : 0;
+            size_t to = j == ye ? y[j].text.size() - suffix.size() : y[j].text.size();
+            addText(widened.parts, std::string_view(y[j].text).substr(from, to - from));
+          }
+          std::vector<MarkedPart> out(y.begin(), y.begin() + ys);
+          if (hasPrefix)
+            out.push_back({prefix, {}, {}});
+          out.push_back(std::move(widened));
+          if (hasSuffix)
+            out.push_back({suffix, {}, {}});
+          out.insert(out.end(), y.begin() + (ye + 1), y.end());
+          y = std::move(out);
+          changed = true;
+        }
+      }
+    }
+  }
+
   void widenToStatements(std::vector<MarkedPart>& w, std::vector<MarkedPart>& l)
   {
     if (w.size() != l.size())
@@ -1155,7 +1276,7 @@ namespace
         return depth == 0;
       };
       if (statementAfter(prefix) && whole(wt) && whole(lt) && !handler(wt) && !handler(lt) && balanced(wt) && balanced(lt) && !caseLabel &&
-          !elseLink)
+          (!elseLink || mergingVariants))
         continue;
       if (inLine && onlyLiterals(wt) && onlyLiterals(lt))
         continue;
@@ -1192,7 +1313,20 @@ namespace
           if (word == keyword)
             return true;
         // (a class's, a namespace's or an enum's head: `class A : public B {`)
-        std::string_view statement = std::string_view(all).substr(boundary.back(), at - boundary.back());
+        // (its comments left out: a class's doc comment's "(different animation, ...)" is no call)
+        std::string code;
+        for (size_t k = boundary.back(); k < at;)
+          if (all.compare(k, 2, "//") == 0)
+            k = std::min(all.find('\n', k), at);
+          else if (all.compare(k, 2, "/*") == 0)
+          {
+            size_t e = all.find("*/", k + 2);
+            k = e == std::string::npos ? at : std::min(e + 2, at);
+            code += ' ';
+          }
+          else
+            code += all[k++];
+        std::string_view statement = code;
         if (statement.find('=') != std::string_view::npos || statement.find('(') != std::string_view::npos)
           return false;
         // (an enum's braces hold a list: its entries are not statements)
@@ -1388,15 +1522,19 @@ namespace
                   const std::string& file, MergeReport& report, const MergeDimension& firstDimension = debugDimension, bool keepMarks = false,
                   bool widened = false)
   {
-    if (debug.size() != release.size() || (final && final->size() != debug.size()))
-      return false;
-    // (the platforms' groups widened to their statements first, at each level: widenToStatements)
+    // (the platforms' groups widened to their statements first, at each level: widenToStatements; a
+    // statement one side has widened already, the other's alike first: alignWidened)
     if (&firstDimension == &platformDimension && !final && !widened)
     {
       std::vector<MarkedPart> w = debug, l = release;
+      alignWidened(w, l);
+      if (w.size() != l.size())
+        return false;
       widenToStatements(w, l);
       return mergeParts(w, l, nullptr, out, file, report, firstDimension, keepMarks, true);
     }
+    if (debug.size() != release.size() || (final && final->size() != debug.size()))
+      return false;
     MergeReport before = report;
     std::string merged;
     size_t skipSemicolon = std::string::npos; // the next text part's `;`, which a statement's group took
@@ -1424,6 +1562,14 @@ namespace
       // (a widened group's texts are its platforms' whole statements: chosen as they are; the
       // configurations' merge after it merges inside it, its groups' marks kept)
       bool wholeStatements = &firstDimension == &platformDimension && widenedGroup(d.group);
+      // (a widened group both texts have alike, an earlier merge's, as --convert-merge-flag's
+      // variants meet one: once, as it is)
+      if (wholeStatements && flattenedMarked(d.parts) == flattenedMarked(r.parts))
+      {
+        std::string same = flattenedMarked(d.parts);
+        merged += keepMarks ? markedLike(d, same) : same;
+        continue;
+      }
       if (!wholeStatements && mergeParts(d.parts, r.parts, f ? &f->parts : nullptr, inner, file, report, firstDimension, keepMarks))
         merged += keepMarks ? markedLike(d, inner) : inner;
       else if (auto choice = report.choices.find(file + " " + d.group); !keepMarks && choice != report.choices.end())
@@ -1465,13 +1611,27 @@ namespace
         }
         // Links of an if-else chain that one configuration alone has: each link's condition joined
         // with the configuration's (elseLinksWhen).
-        if (blankText(on) != blankText(off) && dimension != &platformDimension)
+        if (blankText(on) != blankText(off) && (dimension != &platformDimension || mergingVariants))
           if (std::string joined = elseLinksWhen(blankText(on) ? off : on, blankText(on) ? dimension->off : dimension->on); !joined.empty())
           {
             merged += keepMarks ? markedLike(d, joined) : joined;
             ++report.conditional;
             continue;
           }
+        // (links of an if-else chain on both sides, which differ, an earlier variant's joined links among
+        // them: each side's joined with its own condition, one chain; the two conditions exclude each
+        // other, so each build takes the links it had. An `if constexpr` block cannot start with `else`.)
+        if (mergingVariants && !blankText(on) && !blankText(off) && codeStart(on).substr(0, 4) == "else" && codeStart(off).substr(0, 4) == "else")
+        {
+          std::string first = elseLinksWhen(on, dimension->on), second = elseLinksWhen(off, dimension->off);
+          if (!first.empty() && !second.empty())
+          {
+            std::string joined = first + second;
+            merged += keepMarks ? markedLike(d, joined) : joined;
+            ++report.conditional;
+            continue;
+          }
+        }
         // A macro's use within a line (its id `FILE:@OFFSET`): as a statement, the `;` after it
         // closes it, `if constexpr (config::debug) { debug; } else { release; }`.
         bool inLine = on.find('\n') == std::string::npos && off.find('\n') == std::string::npos;
@@ -1699,6 +1859,13 @@ int convertMergePlatform(const std::filesystem::path& windowsDir, const std::fil
     // (a file that requires a platform already, one an earlier merge made: its own condition stays)
     if (text.rfind("requires config::platform", 0) == 0)
       return text;
+    // (one that requires a build variant, --convert-merge-flag's: both conditions, a file has one requires)
+    if (text.rfind("requires ", 0) == 0)
+    {
+      size_t semi = text.find(";\n");
+      if (semi != std::string::npos)
+        return "requires (" + condition + ") && (" + text.substr(9, semi - 9) + ");\n" + text.substr(semi + 2);
+    }
     return "requires " + condition + ";\n" + text;
   };
   // An imports file: the imports both have, then each platform's own in a file of its own, which
@@ -1822,6 +1989,20 @@ int convertMergePlatform(const std::filesystem::path& windowsDir, const std::fil
   for (const std::string& problem : report.problems)
     fprintf(stderr, "convert-merge-platform: %s\n", problem.c_str());
   return report.problems.empty() ? 0 : 1;
+}
+
+// --- the build's variants made one (design.md 12, "The game's build variants as config constants") ---
+
+// Two conversions of the same configuration and platform for builds of the game that differ by a
+// variant (Steam's and the standalone one, the demo and the full game ...), the first's builds all
+// with CONDITION false, the second's all with it true: made one as two platforms are, each #if group
+// whose texts differ chosen by CONDITION with `when` and `if constexpr`, the marks kept for the merges
+// after. Each side may be a merge already; the result is right for each build merged in (convert.cmd
+// merges the packages' builds alone, each variant's constant set by build.kpp's configurations).
+int convertMergeFlag(const std::filesystem::path& offDir, const std::filesystem::path& onDir, const std::filesystem::path& outDir, const std::string& condition)
+{
+  mergingVariants = true;
+  return convertMergePlatform(offDir, onDir, outDir, "!" + condition, condition);
 }
 
 // `this` is a reference (design.md 23d; kpp --convert-this-reference DIR...): C++'s spellings of the object written

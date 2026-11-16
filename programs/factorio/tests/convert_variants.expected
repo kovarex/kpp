@@ -1,0 +1,46 @@
+== full
+mode standalone, ticket 7
+window 1920
+full game
+updater checks 3
+space age 1, choice 1
+nested 1 2
+== alpha
+mode standalone, ticket 7
+window 1920
+full game
+updater checks 3
+space age 0, choice 1
+nested 1 2
+== demo
+mode demo, ticket 7
+window 1920
+space age 0, choice 2
+nested 3 3
+== headless
+mode standalone, ticket 7
+headless
+full game
+updater checks 3
+space age 1, choice 1
+nested 1 3
+== steam
+mode steam, ticket 7
+steam id 76561
+window 1920
+full game
+space age 0, choice 1
+nested 1 2
+== steam-expansion
+mode steam, ticket 7
+steam id 76561
+window 1920
+full game
+space age 1, choice 1
+nested 1 2
+== steam-demo
+mode steam, ticket 7
+steam id 76561
+window 1920
+space age 0, choice 2
+nested 3 3

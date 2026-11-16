@@ -91,12 +91,21 @@ void setConvertNativeTests();
 // output). False for another name or an unreadable file.
 bool setConvertPlatform(const std::string& platform);
 bool setConvertPredefines(const std::filesystem::path& file);
+// kpp --convert-define NAME / --convert-undefine NAME: the build preprocessed with NAME defined (empty) or
+// not, a variant of the game's build (STEAM, DEMO, HEADLESS, DISABLE_UPDATER; SPACE_AGE undefined for the
+// vanilla build), for --convert-merge-flag. False for a name that is no identifier.
+bool setConvertDefine(const std::string& name, bool defined);
 // kpp --convert-merge-platform WINDOWS LINUX OUT: one configuration's marked Windows and Linux
 // conversions made one, each #if group whose two texts differ chosen by config::platform, its marks
 // kept for convertMerge, which makes the configurations one after; a file of one platform alone
 // starts `requires config::platform == Platform::X;`. Returns 1 when they differ outside a group.
 int convertMergePlatform(const std::filesystem::path& windowsDir, const std::filesystem::path& linuxDir, const std::filesystem::path& outDir,
                          const std::string& firstPlatforms = "Windows", const std::string& secondPlatforms = "Linux");
+// kpp --convert-merge-flag OFF ON OUT CONDITION: two conversions of the game's builds that differ by a
+// variant (--convert-define STEAM; the first's builds with the config constant CONDITION false, the
+// second's with it true, `config::steam`) made one as convertMergePlatform makes two platforms: each
+// #if group whose texts differ chosen by CONDITION, the marks kept (design.md 12).
+int convertMergeFlag(const std::filesystem::path& offDir, const std::filesystem::path& onDir, const std::filesystem::path& outDir, const std::string& condition);
 // kpp --convert-this-reference DIR...: `this` as a reference (design.md 23d) in the .kpp files below each directory.
 int convertThisReference(const std::vector<std::filesystem::path>& directories);
 // kpp --convert-merge DEBUG RELEASE OUT: the two configurations' marked conversions made one into

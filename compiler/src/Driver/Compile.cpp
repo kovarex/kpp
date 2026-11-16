@@ -303,6 +303,12 @@ int compile(int argc, char** argv)
       if (!setConvertPlatform(argv[++i]))
         return optionError(arg + std::string(" ") + argv[i]);
     }
+    else if ((arg == "--convert-define" || arg == "--convert-undefine") && i + 1 < argc)
+    {
+      if (!setConvertDefine(argv[i + 1], arg == "--convert-define"))
+        return optionError(arg + std::string(" ") + argv[i + 1]);
+      ++i;
+    }
     else if (arg == "--convert-predefines" && i + 1 < argc)
     {
       if (!setConvertPredefines(argv[++i]))

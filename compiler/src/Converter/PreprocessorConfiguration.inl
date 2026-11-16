@@ -246,6 +246,7 @@
   // factorio-all-in-one build that packages are made from adds (docs/final-release.md).
   bool convertRelease = false;
   bool convertFinal = false;
+  std::vector<std::string> convertDefined, convertUndefined; // --convert-define, --convert-undefine
   bool convertMarks = false;
   // With kpp --convert-native-tests, the game's UnitTest++ tests are written as kpp's own (design.md
   // 8.7): SUITE as `suite`, TEST and TEST_FIXTURE as `test`, every CHECK as `require`
@@ -304,7 +305,23 @@
       d["ALL_IN_ONE"] = "1";
       return d;
     }();
-    return convertFinal ? final : convertRelease ? release : platformDefines();
+    const std::map<std::string, std::string>& configured = convertFinal ? final : convertRelease ? release : platformDefines();
+    if (convertDefined.empty() && convertUndefined.empty())
+      return configured;
+    // A variant of the build (kpp --convert-define STEAM, --convert-undefine SPACE_AGE): the game's
+    // Steam, demo, headless and vanilla builds (fbuild.bff's .BuildSteamRelease, .demoDefines,
+    // .headlessBuildType, the Vanilla ones), each converted and merged in as a config constant
+    // (--convert-merge-flag, design.md 12).
+    static const std::map<std::string, std::string> variant = [&]
+    {
+      std::map<std::string, std::string> d = configured;
+      for (const std::string& name : convertUndefined)
+        d.erase(name);
+      for (const std::string& name : convertDefined)
+        d[name] = "";
+      return d;
+    }();
+    return variant;
   }
   // The build a C library converted as C (kpp --c-sources) is preprocessed as: factorio-in-kpp's
   // build.kpp compiles the C libraries with clang-cl as C, release (/O2 /DNDEBUG), with Factorio's

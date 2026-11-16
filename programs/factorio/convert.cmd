@@ -105,11 +105,13 @@ rem FastDebug and its Release preprocess it, each #if group marked, made one tex
 rem a group whose two texts differ written as `if constexpr (config::debug)`
 rem (overrides\configuration-choices.txt: the few no `if constexpr` can choose between).
 for %%c in (debug release final) do if exist kpp\whole-%%c rd /s /q kpp\whole-%%c
-%KPP% --no-std --quiet --convert-marks --convert-native-tests --convert kpp\whole-debug --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
-%KPP% --no-std --quiet --convert-marks --convert-native-tests --convert-release --convert kpp\whole-release --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
+set WHOLEWIN=%FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests
+set WHOLEPOSIX=%FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests
+call :whole kpp\whole-debug WHOLEWIN "" || goto :failed
+call :whole kpp\whole-release WHOLEWIN "--convert-release" || goto :failed
 rem And the official builds' FinalRelease (docs/final-release.md): Release's defines with FINAL_RELEASE,
 rem PACKAGED_BUILD and ALL_IN_ONE, a group whose text it alone has written with config::finalRelease.
-%KPP% --no-std --quiet --convert-marks --convert-native-tests --convert-final --convert kpp\whole-final --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
+call :whole kpp\whole-final WHOLEWIN "--convert-final" || goto :failed
 rem The same three for Linux (docs/design.md 12, "The game's platforms as config::platform"; CONVERT_LINUX=0
 rem leaves it out, the checkout then Windows' alone)
 rem (--convert-platform linux, clang's predefines in linux-predefines.txt; StackWalker is Windows' alone), each configuration's two made
@@ -123,12 +125,12 @@ for %%c in (debug release final) do if exist kpp\whole-freebsd-%%c rd /s /q kpp\
 for %%c in (debug release final) do if exist kpp\whole-posix-%%c rd /s /q kpp\whole-posix-%%c
 set LINUXCONVERT=--convert-platform linux --convert-predefines linux-predefines.txt
 set FREEBSDCONVERT=--convert-platform freebsd --convert-predefines freebsd-predefines.txt
-%KPP% --no-std --quiet --convert-marks --convert-native-tests %LINUXCONVERT% --convert kpp\whole-linux-debug --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
-%KPP% --no-std --quiet --convert-marks --convert-native-tests %FREEBSDCONVERT% --convert kpp\whole-freebsd-debug --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
-%KPP% --no-std --quiet --convert-marks --convert-native-tests %LINUXCONVERT% --convert-release --convert kpp\whole-linux-release --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
-%KPP% --no-std --quiet --convert-marks --convert-native-tests %FREEBSDCONVERT% --convert-release --convert kpp\whole-freebsd-release --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
-%KPP% --no-std --quiet --convert-marks --convert-native-tests %LINUXCONVERT% --convert-final --convert kpp\whole-linux-final --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
-%KPP% --no-std --quiet --convert-marks --convert-native-tests %FREEBSDCONVERT% --convert-final --convert kpp\whole-freebsd-final --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
+call :whole kpp\whole-linux-debug WHOLEPOSIX "%LINUXCONVERT%" || goto :failed
+call :whole kpp\whole-freebsd-debug WHOLEPOSIX "%FREEBSDCONVERT%" || goto :failed
+call :whole kpp\whole-linux-release WHOLEPOSIX "%LINUXCONVERT% --convert-release" || goto :failed
+call :whole kpp\whole-freebsd-release WHOLEPOSIX "%FREEBSDCONVERT% --convert-release" || goto :failed
+call :whole kpp\whole-linux-final WHOLEPOSIX "%LINUXCONVERT% --convert-final" || goto :failed
+call :whole kpp\whole-freebsd-final WHOLEPOSIX "%FREEBSDCONVERT% --convert-final" || goto :failed
 set STEP=the platforms made one
 for %%c in (debug release final) do %KPP% --convert-merge-platform kpp\whole-linux-%%c kpp\whole-freebsd-%%c kpp\whole-posix-%%c Linux FreeBSD > kpp\whole-posix-%%c.log 2>&1 || (type kpp\whole-posix-%%c.log& goto :failed)
 for %%c in (debug release final) do %KPP% --convert-merge-platform kpp\whole-%%c kpp\whole-posix-%%c kpp\whole-both-%%c Windows Linux,FreeBSD > kpp\whole-both-%%c.log 2>&1 || (type kpp\whole-both-%%c.log& goto :failed)
@@ -196,6 +198,12 @@ rem kpp\ and in the checkout, from each configuration's check: Windows' debug, r
 rem checkout's with its tests, Linux's and Linux's final (CrashHandler's upload of the log is final's alone); a build through codegen where templates' instances are walked. Twice:
 rem a fix can show the next. Explicit by default is kpp's default (D's 13d36a85), and so is no implicit
 rem fallthrough, for which the converter drops the `break;` that ends a case (design.md "No implicit fallthrough").
+rem The packages' builds besides the game's own (design.md 12, "The game's build variants as config
+rem constants"): each pass below checks the checkout in them too, so that a fix in code only a variant
+rem compiles (its `if constexpr` branch, its `when` declaration) is made as in the rest. Steam's builds
+rem report errors where the converted code calls Steam's C++ API, which the kpp branch's port replaces;
+rem the passes take the warnings of the code around them all the same.
+set VARIANTCONFIGS="--config spaceAge=false" "--config demo=true --config spaceAge=false" "--config headless=true" "--config steam=true" "--config steam=true --config demo=true --config spaceAge=false"
 set STEP=the explicit-by-default pass
 set EBD=--std ..\..\stdlib %CINC% --this-pointer --diagnostic-columns --errors 0 --unresolved 0
 set L=%WHOLE%\libraries
@@ -207,11 +215,13 @@ for %%r in (1 2) do (
   %KPP% %EBD% --emit-llvm kpp\ebd-whole.ll --ext .kpp --tests %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests > nul 2> kpp\ebd-%%r-whole.txt
   %KPP% %EBD% --check --ext .kpp --release %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %WHOLE%\src > nul 2> kpp\ebd-%%r-whole-release.txt
   %KPP% %EBD% --check --ext .kpp --release --config finalRelease=true %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %WHOLE%\src > nul 2> kpp\ebd-%%r-whole-final.txt
+  type nul > kpp\ebd-%%r-variants.txt
+  for %%v in (%VARIANTCONFIGS%) do %KPP% %EBD% --check --ext .kpp --release %%~v %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %WHOLE%\src > nul 2>> kpp\ebd-%%r-variants.txt
   type nul > kpp\ebd-%%r-linux.txt
   if not "%CONVERT_LINUX%"=="0" if exist %GAMESYSROOT%\kpp-sysroot.txt %KPP% %EBD% --cinclude %FACTORIO%\libraries\libbacktrace --target linux --sysroot %GAMESYSROOT% --emit-llvm kpp\ebd-linux.ll --ext .kpp --tests %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests > nul 2> kpp\ebd-%%r-linux.txt
   type nul > kpp\ebd-%%r-linux-final.txt
   if not "%CONVERT_LINUX%"=="0" if exist %GAMESYSROOT%\kpp-sysroot.txt %KPP% %EBD% --cinclude %FACTORIO%\libraries\libbacktrace --target linux --sysroot %GAMESYSROOT% --check --release --config finalRelease=true --ext .kpp %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\Lua %L%\crc32fast %CLIBWHOLE% %WHOLE%\src > nul 2> kpp\ebd-%%r-linux-final.txt
-  python -I apply-fixes.py kpp\ebd-%%r-debug.txt kpp\ebd-%%r-release.txt kpp\ebd-%%r-final.txt kpp\ebd-%%r-whole.txt kpp\ebd-%%r-whole-release.txt kpp\ebd-%%r-whole-final.txt kpp\ebd-%%r-linux.txt kpp\ebd-%%r-linux-final.txt || goto :failed
+  python -I apply-fixes.py kpp\ebd-%%r-debug.txt kpp\ebd-%%r-release.txt kpp\ebd-%%r-final.txt kpp\ebd-%%r-whole.txt kpp\ebd-%%r-whole-release.txt kpp\ebd-%%r-whole-final.txt kpp\ebd-%%r-linux.txt kpp\ebd-%%r-linux-final.txt kpp\ebd-%%r-variants.txt || goto :failed
 )
 for %%f in (kpp\ebd.ll kpp\ebd-whole.ll kpp\ebd-linux.ll) do if exist %%f del %%f
 rem (kpp\Util is a copy of kpp\src\Util, made before the fixes: again)
@@ -227,6 +237,9 @@ python -I fix-null.py kpp\zero-null.txt kpp || goto :failed
 set L=%WHOLE%\libraries
 %KPP% --std ..\..\stdlib %CINC% --ext .kpp --tests --this-pointer --zero-null-warnings --diagnostic-columns --emit-llvm kpp\zero-null-whole.ll %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests 2> kpp\zero-null-whole.txt
 python -I fix-null.py kpp\zero-null-whole.txt "%WHOLE%" || goto :failed
+type nul > kpp\zero-null-variants.txt
+for %%v in (%VARIANTCONFIGS%) do %KPP% --std ..\..\stdlib %CINC% --ext .kpp --this-pointer --zero-null-warnings --diagnostic-columns --check %%~v %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %WHOLE%\src > nul 2>> kpp\zero-null-variants.txt
+python -I fix-null.py kpp\zero-null-variants.txt "%WHOLE%" || goto :failed
 rem And the Linux branches: Linux's build of the merged checkout (until it compiles, its other errors
 rem are B's list; the warnings of the code it reaches are written all the same).
 rem With the game's Linux sysroot (the -dev packages of linux-packages.txt: libudev, EGL, X11, dbus...),
@@ -249,7 +262,9 @@ set THISW=--std ..\..\stdlib %CINC% --this-pointer --this-warnings --diagnostic-
 %KPP% %THISW% --emit-llvm kpp\this.ll --ext .kpp --tests %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests > nul 2> kpp\this-whole.txt
 %KPP% %THISW% --check --ext .kpp --release %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %WHOLE%\src > nul 2> kpp\this-whole-release.txt
 %KPP% %THISW% --check --ext .kpp --release --config finalRelease=true %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %WHOLE%\src > nul 2> kpp\this-whole-final.txt
-set THISFILES=kpp\this-debug.txt kpp\this-release.txt kpp\this-final.txt kpp\this-whole.txt kpp\this-whole-release.txt kpp\this-whole-final.txt
+type nul > kpp\this-variants.txt
+for %%v in (%VARIANTCONFIGS%) do %KPP% %THISW% --check --ext .kpp --release %%~v %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %WHOLE%\src > nul 2>> kpp\this-variants.txt
+set THISFILES=kpp\this-debug.txt kpp\this-release.txt kpp\this-final.txt kpp\this-whole.txt kpp\this-whole-release.txt kpp\this-whole-final.txt kpp\this-variants.txt
 if not "%CONVERT_LINUX%"=="0" %KPP% %THISW% --cinclude %FACTORIO%\libraries\libbacktrace --target linux --sysroot %GAMESYSROOT% --emit-llvm kpp\this.ll --ext .kpp --tests %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests > nul 2> kpp\this-linux.txt
 if not "%CONVERT_LINUX%"=="0" %KPP% %THISW% --cinclude %FACTORIO%\libraries\libbacktrace --target linux --sysroot %GAMESYSROOT% --check --release --config finalRelease=true --ext .kpp %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\Lua %L%\crc32fast %CLIBWHOLE% %WHOLE%\src > nul 2> kpp\this-linux-final.txt
 if not "%CONVERT_LINUX%"=="0" %KPP% %THISW% --cinclude %FACTORIO%\libraries\libbacktrace --target freebsd --sysroot ..\..\compiler\build\sysroots\freebsd-x86_64 --emit-llvm kpp\this.ll --ext .kpp --tests %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests > nul 2> kpp\this-freebsd.txt
@@ -321,6 +336,17 @@ set TESTSRC=%errorlevel%
 %SystemRoot%\System32\find.exe /c /v "" kpp\tests-errors.txt
 for /f %%n in ('type kpp\tests-errors.txt ^| %SystemRoot%\System32\find.exe /c /v ""') do set TESTSERRORS=%%n
 if not "%TESTSRC%"=="0" if not "%TESTSRC%"=="1" echo NOT A VALID COUNT: kpp crashed (exit %TESTSRC%)& set TESTSERRORS=not valid ^(kpp exit %TESTSRC%^)
+rem The game itself (Main.kpp too, which the tests leave out) in the packages' builds that need no
+rem library of their own (design.md 12, "The game's build variants as config constants"): the game, the
+rem base game, the demo and the headless server, each --check'd, a gate as the headline is (0). Steam's
+rem builds also need its API (kpp_steam.h, the game's port of SteamContext), which the kpp branch has.
+echo == variants: %WHOLE%'s game checked in the game's, the base game's, the demo's and the headless server's builds (errors in kpp\variant-errors.txt)
+if exist kpp\variant-errors.txt del kpp\variant-errors.txt
+for %%v in ("" "--config spaceAge=false" "--config demo=true --config spaceAge=false" "--config headless=true") do (
+  %KPP% --std ..\..\stdlib %CINC% --ext .kpp --errors 0 --unresolved 0 --zero-null-warnings --check %%~v %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %WHOLE%\src >nul 2>> kpp\variant-errors.txt
+)
+for /f %%n in ('type kpp\variant-errors.txt ^| %SystemRoot%\System32\find.exe /c /v ""') do set VARIANTERRORS=%%n
+echo variant errors %VARIANTERRORS%
 set "STEP=smoke test"
 echo == smoke test: tests\smoke.kpp against the converted CommonUtil (SystemClipboard stubbed: the real one needs SDL)
 setlocal EnableDelayedExpansion
@@ -497,6 +523,26 @@ kpp\cplat\platform.exe > kpp\cplat\windows.txt
 wsl.exe -e kpp/cplat/platform > kpp\cplat\linux.txt 2>&1 || (echo platforms: the Linux build did not run under WSL ^(kpp\cplat\linux.txt^)& goto :failed)
 fc /w kpp\cplat\windows.txt tests\convert_platform.expected > nul || (echo platforms: WINDOWS OUTPUT DIFFERS & fc /w kpp\cplat\windows.txt tests\convert_platform.expected & goto :failed)
 fc /w kpp\cplat\linux.txt tests\convert_platform.linux.expected > nul && (echo platforms: output as expected on Windows and Linux& set /a SMOKES+=1) || (echo platforms: LINUX OUTPUT DIFFERS & fc /w kpp\cplat\linux.txt tests\convert_platform.linux.expected & goto :failed)
+set "STEP=variants check"
+echo == variants: tests\convert_variants\variants.cpp converted for each combination of STEAM, DEMO, HEADLESS and SPACE_AGE and made one by config::steam, config::demo, config::headless and config::spaceAge ^(variants.ps1^), built as each package's build ^(build.kpp's --config^) and run ^(tests\convert_variants.expected^)
+if exist kpp\cvar rd /s /q kpp\cvar
+mkdir kpp\cvar
+setlocal
+set FACTORIO=tests
+set EXT=--ext .cpp
+set CLIBUSE=
+set WHOLEOUT=kpp\cvar\marked
+set WHOLEOPTS=
+set WHOLEINPUTS=tests\convert_variants
+powershell -NoProfile -ExecutionPolicy Bypass -File variants.ps1 || (endlocal& goto :failed)
+endlocal
+%KPP% --convert-merge kpp\cvar\marked kpp\cvar\marked kpp\cvar\out > nul || goto :failed
+for %%v in ("full:" "alpha:--config spaceAge=false" "demo:--config demo=true --config spaceAge=false" "headless:--config headless=true" "steam:--config steam=true --config spaceAge=false" "steam-expansion:--config steam=true" "steam-demo:--config steam=true --config demo=true --config spaceAge=false") do for /f "tokens=1* delims=:" %%a in (%%v) do (
+  %KPP% --std ..\..\stdlib --quiet %%b --exe kpp\cvar\%%a.exe overrides\added\CommonUtil\BuildVariant.kpp kpp\cvar\out || goto :failed
+  echo == %%a>> kpp\cvar\out.txt
+  kpp\cvar\%%a.exe >> kpp\cvar\out.txt
+)
+fc /w kpp\cvar\out.txt tests\convert_variants.expected > nul && (echo variants: output as expected in each build& set /a SMOKES+=1) || (echo variants: OUTPUT DIFFERS & fc /w kpp\cvar\out.txt tests\convert_variants.expected & goto :failed)
 set "STEP=configurations check"
 echo == configurations: the game's DEBUG code is config::debug's (docs/design.md 12): tests\configurations.kpp with the converted BuildConstants prints IsDebug, IsFinalRelease and IsPackagedBuild in debug, release and final, and debug-only.py finds TransportLine's referenceSet and Rcu's writeLockCount only where config::debug is true, in a when (config::debug) declaration or an if constexpr (config::debug), and IsDebug chosen by config::debug (tests\configurations.expected)
 %KPP% --std ..\..\stdlib --quiet --exe kpp\configurations-debug.exe kpp\CommonUtil\FinalRelease.kpp kpp\src\BuildConstants.kpp tests\configurations.kpp || goto :failed
@@ -529,11 +575,12 @@ set STEP=the converted text (a source line or a needless forward declaration)
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\converted-text.ps1 -Checkout "%WHOLE%" || goto :failed
 rem The one line that says whether everything passed: the headline, the release and final checks and
 rem the tests' count are gates (0).
-set SUMMARY=headline %HEADLINE%, release errors %RELEASEERRORS%, final errors %FINALERRORS%, tests errors %TESTSERRORS%, smoke tests %SMOKES%/19, C rules %CRULES%
+set SUMMARY=headline %HEADLINE%, release errors %RELEASEERRORS%, final errors %FINALERRORS%, tests errors %TESTSERRORS%, variant errors %VARIANTERRORS%, smoke tests %SMOKES%/20, C rules %CRULES%
 if not "%HEADLINE%"=="0" goto :countsfailed
 if not "%RELEASEERRORS%"=="0" goto :countsfailed
 if not "%FINALERRORS%"=="0" goto :countsfailed
 if not "%TESTSERRORS%"=="0" goto :countsfailed
+if not "%VARIANTERRORS%"=="0" goto :countsfailed
 echo convert: ALL PASSED (%SUMMARY%)
 exit /b 0
 :countsfailed
@@ -547,6 +594,23 @@ for %%r in (1 2) do (
 )
 if exist %1.ebd.ll del %1.ebd.ll
 goto :eof
+rem One conversion of the whole (%1 the directory written, %2 WHOLEWIN or WHOLEPOSIX: the inputs, %3 the
+rem configuration's and the platform's options, quoted), with every variant of the game's build (design.md
+rem 12, "The game's build variants as config constants"): variants.ps1 converts each combination of STEAM,
+rem DEMO, HEADLESS and SPACE_AGE and makes them one, each #if group on them chosen by config::steam,
+rem config::demo, config::headless or config::spaceAge. CONVERT_VARIANTS=0 converts the game's own build
+rem alone (Space Age, no Steam, demo or headless code), as before 2026-11-16.
+:whole
+setlocal
+call set WHOLEINPUTS=%%%~2%%
+set WHOLEOPTS=%~3
+set WHOLEOUT=%~1
+if "%CONVERT_VARIANTS%"=="0" (
+  %KPP% --no-std --quiet --convert-marks --convert-native-tests %WHOLEOPTS% --convert %1 --convert-base %FACTORIO% %EXT% --overrides overrides %CLIBUSE% %WHOLEINPUTS% || exit /b 1
+  endlocal& exit /b 0
+)
+powershell -NoProfile -ExecutionPolicy Bypass -File variants.ps1 || exit /b 1
+endlocal& exit /b 0
 :libraryUses
 rem (LIBUSE: the --convert-library options of the scoped libraries C library %1 uses,
 rem c-libraries\%1\uses.txt, converted before it: minizip's zlib)

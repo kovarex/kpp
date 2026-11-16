@@ -1,0 +1,14 @@
+// The variants of Factorio's build that the packages are made from (fbuild.bff's build types,
+// scripts/deploy's modes): each was a define, each is a config constant the game's configurations
+// set (build.kpp), the conversion writing each #if on them with `when` and `if constexpr` (design.md
+// 12, "The game's build variants as config constants"). Declared here, in CommonUtil, as
+// finalRelease is. DISABLE_UPDATER has no constant of its own: the builds that define it are the
+// Steam and demo ones, and its #if groups are written with config::steam and config::demo.
+// STEAM: the Steam build, with the Steam API (SteamContext, SteamSocket).
+config bool steam = false;
+// DEMO: the demo (its limits; its data is trimmed when it is packaged). Never with Space Age.
+config bool demo = false;
+// HEADLESS: the headless server (Linux's package).
+config bool headless = false;
+// SPACE_AGE: the expansion; false in the base game's builds (fbuild.bff's Vanilla ones, the demo).
+config bool spaceAge = true;
