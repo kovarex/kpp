@@ -21,7 +21,7 @@ int main()
   char c = (char)(200 + z);
   printf("char %d %d\n", c, (int)(unsigned char)c);
   unsigned short us = 0xFFFF + z;
-  printf("promote %d %u %d\n", us * us > 0, (unsigned)(us << 16), (int)(us + 1));
+  printf("promote %d %u %d\n", (long long)us * us > 0, (unsigned)(us << 16), (int)(us + 1));
   uint8_t b8 = 0x81 + z;
   printf("shift %d %d %d\n", b8 << 1, (uint8_t)(b8 << 1), ~b8);
   double d = -2.7 + z;

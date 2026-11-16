@@ -64,12 +64,12 @@ WithDefault gwd;
 WithDefault gwd2 = { 5 };
 int main()
 {
-  int a = ctr(); int b = ctr(); printf("%d %d %d %d\n", a, b, once(1), once(2));
+  int a = ctr(); int b = ctr(); int o1 = once(1); int o2 = once(2); printf("%d %d %d %d\n", a, b, o1, o2);
   ref() = 5; printf("%d\n", ref());
   printf("%d ", lazy()->id); printf("%d\n", lazy() == lazy());
   printf("%d\n", rec(3));
   tcount<int>(); tcount<int>(); tcount<char>(); printf("%d %d\n", tcount<int>(), tcount<char>());
-  printf("%d %d %d %d %d %d\n", TS<int>::v, TS<char>::v, TS<int>::c, TS<double>::in, TS<int>::get(), TS<int>::get());
+  int g1 = TS<int>::get(); int g2 = TS<int>::get(); printf("%d %d %d %d %d %d\n", TS<int>::v, TS<char>::v, TS<int>::c, TS<double>::in, g1, g2);
   printf("%d %d %d\n", TS<char>::get(), CS::a + CS::b, CS::c + CS::d);
   printf("%s %.1f %d\n", CS::s, CS::e, CS::arr[2]);
   const int* pb = &CS::b; const int& rc = CS::c; printf("%d %d\n", *pb, rc);
@@ -80,7 +80,7 @@ int main()
   printf("%d %d %d %.1f %s %d %d %.1f %d\n", garr[2], gst.a, gst.d[1], gst.b, gst.c, gst2.a, gst2.d[1], gst2.b, gst2.c == nullptr);
   printf("%d %d %d %d %d\n", e2, (int)(sizeof(garr2) / sizeof(int)), (int)(sizeof(arrc) / sizeof(int)), szc.v, szs.v);
   printf("%d %u %lld %.9g %.17g %d %d %u %d %d %d\n", neg, big, llc, cf, cd, cdiv, cmod, cwrap, cshift, cchar, cbool);
-  printf("%d %d\n", tl, nextTl());
+  { int before = tl; int next = nextTl(); printf("%d %d\n", before, next); }
   printf("%d %d %d\n", gA, gB, gvc.f());
   printf("%d %d %.1f %d %d %.1f\n", gwd.a, gwd.b, gwd.c, gwd2.a, gwd2.b, gwd2.c);
   static int loc = 3; static const int lc = 4; static constexpr int lx = 5; const int ln = 6; constexpr int ly = 7;
