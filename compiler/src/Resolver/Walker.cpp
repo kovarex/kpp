@@ -11223,7 +11223,11 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
                                                         thisType->inner->isVolatile || (f->flags & DF_Volatile)));          // (2026-11-11: it was assignable)
       FunctionDecl* savedBodyOf = bodyOf;
       bodyOf = f;
+      size_t savedDeclaredReturnFrames = declaredReturnFrames;
+      if (!autoReturn)
+        declaredReturnFrames = returnFrames.size();
       walkStmt(f->body);
+      declaredReturnFrames = savedDeclaredReturnFrames;
       checkFunctionEnd(f, autoReturn, autoReturn ? returnFrames.back() : nullptr); // (bodyOf still f: an instance's errors are its own)
       checkUnusedNames(f);
       recordFieldNames(f, f);
@@ -12145,7 +12149,10 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
       // in one element's body is an error), and in an instance of an auto function whose return type is still open
       // (`visit(f, u)` returning f's result from inside the loop), until a return gives the type.
       std::vector<const Ty*> elements;
-      bool open = activeSubst && !returnFrames.empty() && !returnFrames.back();
+      // (Not in a function whose return type is declared: walking each element there, on each of codegen's retypes of one
+      // element, walked n bodies n times, `payload<T>()` over InputAction's 358 alternatives, and kept every condition's
+      // copies: 28 GB for a build of the game's tests, 10 GB before, until 2026-11-17.)
+      bool open = activeSubst && !returnFrames.empty() && !returnFrames.back() && returnFrames.size() != declaredReturnFrames;
       bool checked = !generic && !retypingElements && !probing;
       bool listed = !generic && (open || checked || f->elementBodies.empty()) && forConstexprElements(f, elements);
       if (listed && bodyOf && !probing)

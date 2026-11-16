@@ -1,6 +1,6 @@
 # Dot-sourced by the checks that start compile servers in a directory of their own (project.ps1,
 # generate.ps1): Stop-TestServers ROOT stops the servers whose KEY.args (in %TEMP%\kpp-server,
-# server.cpp) starts with a working directory under ROOT, each through its process, KEY.exe. A check
+# server.cpp) starts with a working directory under ROOT, each through its process, kpp-server-KEY.exe. A check
 # that failed partway left its servers running, holding ROOT, which the next run could not delete
 # (thread B, 2026-11-04; D, generate.ps1, 2026-11-05); never kpp --stop-all-servers, which would stop
 # other threads' servers too.
@@ -14,7 +14,8 @@ function Stop-TestServers([string]$root)
     # whose own are written by then; it stopped the whole test once, the gate of 2026-11-05)
     try { $cwd = ([IO.File]::ReadAllText($record.FullName) -split "`0")[0] } catch { continue }
     if (-not $cwd.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) { continue }
-    $exe = Join-Path $dir ($record.BaseName + '.exe')
-    Get-Process | Where-Object { $_.Path -and $_.Path -ieq $exe } | ForEach-Object { Stop-Process -Id $_.Id -Force; $_.WaitForExit(10000) | Out-Null }
+    $exe = Join-Path $dir ('kpp-server-' + $record.BaseName + '.exe')
+    $old = Join-Path $dir ($record.BaseName + '.exe') # (an older kpp's copy)
+    Get-Process | Where-Object { $_.Path -and ($_.Path -ieq $exe -or $_.Path -ieq $old) } | ForEach-Object { Stop-Process -Id $_.Id -Force; $_.WaitForExit(10000) | Out-Null }
   }
 }

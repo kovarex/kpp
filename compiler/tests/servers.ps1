@@ -124,12 +124,13 @@ foreach ($f in $earlier) { $t = (Get-Date).AddHours(-2); $f.CreationTime = $t; $
 # The server of 1., which ended when its kpp was replaced: its copy and log, old and unused.
 $replaced = @(Select-String -Path "$dir\*.log" -SimpleMatch 'changed: exiting' | ForEach-Object Path)
 if ($replaced.Count -ne 1) { Fail "$($replaced.Count) logs of a server whose kpp changed, 1 expected" }
-$replaced += $replaced | ForEach-Object { $_ -replace '\.log$', '.exe' }
-$gone = 'aaaaaaaaaaaaaaaa.exe', 'aaaaaaaaaaaaaaaa.log', 'aaaaaaaaaaaaaaaa.args', 'dddddddddddddddd.log', 'verify.4242.out', 'verify.4242.err', 'eeeeeeeeeeeeeeee.exe.999'
-$stay = 'bbbbbbbbbbbbbbbb.exe', 'bbbbbbbbbbbbbbbb.log', 'cccccccccccccccc.exe', 'cccccccccccccccc.log'
-foreach ($name in $gone + 'bbbbbbbbbbbbbbbb.exe', 'bbbbbbbbbbbbbbbb.log') { Plant $name $true }
-foreach ($name in 'cccccccccccccccc.exe', 'cccccccccccccccc.log') { Plant $name $false }
-$held = [IO.File]::Open("$dir\bbbbbbbbbbbbbbbb.exe", 'Open', 'Read', 'Read') # (as startServer holds the copy it starts)
+$replaced += $replaced | ForEach-Object { Join-Path $dir ('kpp-server-' + [IO.Path]::GetFileNameWithoutExtension($_) + '.exe') }
+# (ffffffffffffffff.exe: an older kpp's copy, named by its key alone)
+$gone = 'kpp-server-aaaaaaaaaaaaaaaa.exe', 'aaaaaaaaaaaaaaaa.log', 'aaaaaaaaaaaaaaaa.args', 'dddddddddddddddd.log', 'verify.4242.out', 'verify.4242.err', 'kpp-server-eeeeeeeeeeeeeeee.exe.999', 'ffffffffffffffff.exe', 'ffffffffffffffff.log'
+$stay = 'kpp-server-bbbbbbbbbbbbbbbb.exe', 'bbbbbbbbbbbbbbbb.log', 'kpp-server-cccccccccccccccc.exe', 'cccccccccccccccc.log'
+foreach ($name in $gone + 'kpp-server-bbbbbbbbbbbbbbbb.exe', 'bbbbbbbbbbbbbbbb.log') { Plant $name $true }
+foreach ($name in 'kpp-server-cccccccccccccccc.exe', 'cccccccccccccccc.log') { Plant $name $false }
+$held = [IO.File]::Open("$dir\kpp-server-bbbbbbbbbbbbbbbb.exe", 'Open', 'Read', 'Read') # (as startServer holds the copy it starts)
 # A running server whose copy and log are old ('one' runs again from its aged copy): its copy is its
 # image, which is not deleted.
 Build 'one'
@@ -139,7 +140,7 @@ $runningServer = @(Get-ChildItem "$dir\*.log" | ForEach-Object {
   if ($last) { [pscustomobject]@{ Key = $_.FullName; Value = [int]$last.Matches[0].Groups[1].Value } }
 } | Where-Object { Alive $_.Value }) | Select-Object -First 1
 if (-not $runningServer) { Fail "no server runs after building one" }
-$runningCopy = $runningServer.Key -replace '\.log$', '.exe'
+$runningCopy = Join-Path $dir ('kpp-server-' + [IO.Path]::GetFileNameWithoutExtension($runningServer.Key) + '.exe')
 if ((Get-Item $runningCopy).CreationTime -gt (Get-Date).AddHours(-1)) { Fail "'one' did not run from its aged copy: the check proves nothing" }
 Build 'two' # (another key: its server's start prunes)
 $held.Close()
@@ -259,7 +260,7 @@ if (-not $key) { Fail 'no key found for the unreachable checks' }
 else
 {
   & $copy --stop-all-servers 2>&1 | Out-Null
-  $image = "$work\tmp\kpp-server\$key.exe"
+  $image = "$work\tmp\kpp-server\kpp-server-$key.exe"
   for ($try = 0; $try -lt 100 -and (Test-Path $image); $try++) { try { Remove-Item -Force $image } catch { Start-Sleep -Milliseconds 100 } }
   Set-Content -Encoding ascii $image 'no program'
   Unreachable 'a server image that is no program' 'could not be started'

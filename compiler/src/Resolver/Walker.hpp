@@ -73,6 +73,10 @@
     };
     // Return statements inside lambdas / auto functions record their type here.
     std::vector<const Ty*> returnFrames;
+    // How many frames returnFrames had when the function whose body is walked began, its return type declared (no `auto`
+    // to deduce): its returns give no type that frame waits for, so a `for constexpr` in it walks no element's body to
+    // find one. SIZE_MAX outside such a body. (A lambda's body pushes a frame of its own: deducing again.)
+    size_t declaredReturnFrames = SIZE_MAX;
     // Set on the scratch walkers that probe a requires-expression's requirements: an explicit
     // conversion of a class to a type that is no class (`bool(instance)`) is typed only when
     // the class has an operator for it, since a requirement holds exactly when it is valid.

@@ -143,6 +143,21 @@ namespace
   std::string logPath(const std::string& key) { return serverDirectory() + key + ".log"; }
 
 #ifdef _WIN32
+  // A server's copy of kpp, the image its process runs: kpp-server-KEY.exe, so that a process list names it a kpp
+  // compile server (kovarex, 2026-11-16: a bare KEY.exe, "0ab01998d733abf5", read as a random hash). The copies an
+  // older kpp made were KEY.exe; pruneServerDirectory and stopAllServers still know them.
+  const char copyPrefix[] = "kpp-server-";
+  std::string copyPath(const std::string& key) { return serverDirectory() + copyPrefix + key + ".exe"; }
+
+  // The key a file of the server directory belongs to: KEY.log, KEY.args, KEY.exe.PID, kpp-server-KEY.exe.
+  std::string keyOfFile(const std::string& name)
+  {
+    size_t from = name.compare(0, sizeof copyPrefix - 1, copyPrefix) == 0 ? sizeof copyPrefix - 1 : 0;
+    return name.substr(from, name.find('.', from) - from);
+  }
+#endif
+
+#ifdef _WIN32
   std::string errorText(DWORD error);
 #endif
 
@@ -497,12 +512,12 @@ namespace
     }
   }
 
-  // The server directory stays bounded: every key had its copy of kpp (KEY.exe, 42 MB with LLVM's
+  // The server directory stays bounded: every key had its copy of kpp (kpp-server-KEY.exe, 42 MB with LLVM's
   // back end), and every rebuilt kpp and every set of arguments is a key, so nothing ever went: 4,044
   // copies, 53.3 GB, and 6,300 other files on 2026-11-04. Each server start removes what is more than
   // ten minutes old and in no one's use: a copy whose server has ended (a running server's copy is its
   // image, which Windows does not delete), then the files of a key whose copy is gone (KEY.log,
-  // KEY.args) and what a verify or a copy left (verify.PID.out and .err, KEY.exe.PID). A copy that a
+  // KEY.args) and what a verify or a copy left (verify.PID.out and .err, kpp-server-KEY.exe.PID). A copy that a
   // client is about to start is held open against deletion (startServer), and keep's files stay.
   void pruneServerDirectory(const std::string& dir, const std::string& keep)
   {
@@ -533,7 +548,7 @@ namespace
       if (found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
         continue;
       std::string name = found.cFileName;
-      std::string stem = name.substr(0, name.find('.'));
+      std::string stem = keyOfFile(name);
       // (A copy's time of writing is its kpp's; when it was made is its creation.)
       if (stem == keep || now - std::max(value(found.ftCreationTime), value(found.ftLastWriteTime)) < margin)
         continue;
@@ -545,8 +560,8 @@ namespace
       remove(name);
     for (const std::string& name : others)
     {
-      std::string stem = name.substr(0, name.find('.'));
-      if (GetFileAttributesA((dir + stem + ".exe").c_str()) == INVALID_FILE_ATTRIBUTES) // (its server runs otherwise)
+      std::string stem = keyOfFile(name);
+      if (GetFileAttributesA(copyPath(stem).c_str()) == INVALID_FILE_ATTRIBUTES && GetFileAttributesA((dir + stem + ".exe").c_str()) == INVALID_FILE_ATTRIBUTES) // (its server runs otherwise)
         remove(name);
     }
     startSteps.push_back("prune: " + std::to_string(removed) + " old file(s) removed, " + std::to_string(kept) + " not" + (kept ? " (a running server's copy is not; the last, " + errorText(keptBecause) + ")" : std::string()));
@@ -565,7 +580,7 @@ namespace
     else
       startSteps.push_back("folder: " + dir + ", cannot be created (" + errorText(GetLastError()) + ")");
     pruneServerDirectory(dir, key);
-    std::string copy = dir + key + ".exe";
+    std::string copy = copyPath(key);
     // The copy is held open, without sharing its deletion, until its server runs from it: another
     // client's pruneServerDirectory cannot delete it in between.
     auto hold = [&] { return CreateFileA(copy.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr); };
@@ -2023,14 +2038,14 @@ namespace
   {
     Channel pipe = connectPipe(pipeName(key), 0);
     // A server still starting (its client wrote KEY.args before starting it, runClient) has no pipe
-    // yet: its copy of kpp, KEY.exe, is in use (running, or held by the client that starts it), so
+    // yet: its copy of kpp, kpp-server-KEY.exe, is in use (running, or held by the client that starts it), so
     // that it cannot be opened for deletion. It is waited for as its client waits, never left
     // running unseen (thread H, 2026-11-05: a stop could miss a server that came up a moment later).
     // (as long as it is still starting, up to startedServerWaitMs)
 #ifdef _WIN32
     auto starting = [&]
     {
-      HANDLE copy = CreateFileA((serverDirectory() + key + ".exe").c_str(), DELETE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+      HANDLE copy = CreateFileA(copyPath(key).c_str(), DELETE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
       if (copy == INVALID_HANDLE_VALUE)
         return GetLastError() == ERROR_SHARING_VIOLATION;
       CloseHandle(copy);
@@ -2083,8 +2098,8 @@ int stopServer(int argc, char** argv)
 
 int stopAllServers()
 {
-  // Every server runs from its copy, KEY.exe (startServer), whatever kpp started it and whether its
-  // KEY.args is there or not.
+  // Every server runs from its copy, kpp-server-KEY.exe (startServer; KEY.exe from an older kpp), whatever kpp started
+  // it and whether its KEY.args is there or not.
   std::vector<std::string> keys;
 #ifdef _WIN32
   WIN32_FIND_DATAA found;
@@ -2094,8 +2109,9 @@ int stopAllServers()
     do
     {
       std::string name = found.cFileName;
-      if (name.size() == 20 && name.compare(16, 4, ".exe") == 0)
-        keys.push_back(name.substr(0, 16));
+      std::string key = keyOfFile(name);
+      if (key.size() == 16 && name.size() > 4 && name.compare(name.size() - 4, 4, ".exe") == 0 && std::find(keys.begin(), keys.end(), key) == keys.end())
+        keys.push_back(key);
     } while (FindNextFileA(search, &found));
     FindClose(search);
   }

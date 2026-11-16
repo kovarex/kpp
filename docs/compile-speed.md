@@ -847,7 +847,7 @@ set (they are in its key, or hashed and checked per build).
 - `kpp --server ARGS` is a client; `kpp ARGS` without it builds in its own process as before.
   `kpp --stop-server ARGS` stops the server of ARGS; `kpp --stop-all-servers` (`kpp
   --stop-all-servers`, in a project's directory too) stops every server of this user, of any
-  arguments and any kpp: each runs from its `%TEMP%\kpp-server\KEY.exe`, which it finds them by.
+  arguments and any kpp: each runs from its `%TEMP%\kpp-server\kpp-server-KEY.exe` (named so in a process list; KEY.exe before 2026-11-17), which it finds them by.
 - **Key:** FNV-1a of the kpp binary's path, size and write time, the working directory
   (lowercased) and the arguments, all but `--msvc-diagnostics` and `--verify-incremental`. The
   server writes each diagnostic's place marked (`\1path:line[\2column]\3`), and the client prints
@@ -858,9 +858,9 @@ set (they are in its key, or hashed and checked per build).
   argument list is another server, so a server never serves a build it did not start for; the
   files' contents and the stdlib are read again on every build at step 1, and from step 3 on are
   checked by hash on every build.
-- **Starting:** a client that finds no pipe copies kpp to `%TEMP%\kpp-server\KEY.exe` (Windows
+- **Starting:** a client that finds no pipe copies kpp to `%TEMP%\kpp-server\kpp-server-KEY.exe` (Windows
   locks a running executable, and kpp must stay rebuildable) and starts the copy as
-  `KEY.exe --serve KEY ORIGIN STAMP` (ORIGIN the kpp the client ran, STAMP its size and write
+  `kpp-server-KEY.exe --serve KEY ORIGIN STAMP` (ORIGIN the kpp the client ran, STAMP its size and write
   time, as the key has them) in a new process group with a console of its own and no window
   (CREATE_NO_WINDOW), in the client's directory, inheriting no handles; it then waits
   for the pipe while that process runs, up to 120 s, saying so on stderr after 10 s ("kpp: waiting for

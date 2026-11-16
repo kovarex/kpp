@@ -2,6 +2,7 @@
 // build, a compile server's kept build. A translation unit of its own since 2026-11-05 (main.cpp
 // split, stage 2), moved without a change.
 #include "Driver.hpp"
+#include <thread>
 using namespace driver;
 
 namespace
@@ -920,6 +921,12 @@ int compile(int argc, char** argv)
         return codegenExit;
       }
     }
+    // A build from scratch has no use for the kept build (its texts are copied above): freed now, on a thread of its own as
+    // a build's predecessor always was, not held until this build is kept. Held, a server had two whole programs at once,
+    // its codegen sessions with them: 28.6 GB after a build of the game's tests, 58.8 GB after the next one that was not
+    // incremental (kovarex's machine at 128 GB, 2026-11-16).
+    if (keptBuild)
+      std::thread([old = std::move(keptBuild)]() mutable { old.reset(); }).detach();
     lastImportStamps.clear(); // this build's, if it imports any
   }
   // Converting, the front end lexes the C++ sources with the #if branches the converter drops
