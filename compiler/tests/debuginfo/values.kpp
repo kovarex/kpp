@@ -48,7 +48,7 @@ namespace game
     Shape* next = nullptr;
 
   private:
-    int secret = 4;
+    [[maybe_unused]] int secret = 4;
   };
 }
 

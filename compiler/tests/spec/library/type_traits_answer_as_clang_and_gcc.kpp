@@ -42,7 +42,7 @@ class Final final { public: int a; };
 class PrivateCtor { PrivateCtor() {} public: int a; };
 class PrivateCopy { public: PrivateCopy() {} private: PrivateCopy(const PrivateCopy&); };
 class PrivateDtor { ~PrivateDtor() {} public: int a; };
-class PrivateMember { int a; public: int b; };
+class PrivateMember { [[maybe_unused]] int a; public: int b; };
 union U { int a; float b; };
 union UCtor { int a; UCtor() : a(0) {} };
 union UNontrivial { UserCopy a; int b; UNontrivial() : b(0) {} };

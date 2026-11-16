@@ -1,6 +1,6 @@
 // spec: isFundamental, isTriviallyDestructible, isTriviallyCopyAssignable, isTriviallyDefaultConstructible
 // factorio: is_fundamental_v, is_trivially_destructible_v used in Serialiser/Container code
-class Simple { int x; };
+class Simple { [[maybe_unused]] int x; };
 class NonTrivial { ~NonTrivial() { } };
 class WithCtor { WithCtor(int x) { } };
 

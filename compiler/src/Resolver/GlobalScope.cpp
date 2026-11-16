@@ -2360,8 +2360,17 @@ void GlobalScope::reportUnusedFields(const std::vector<std::unique_ptr<ParsedFil
     if (!c->isDefinition || c->isClosure || c->isTypedUnion || c->keyword == Kw::union_ || c->name.empty() || !c->file || c->file->isImported)
       return;
     for (Decl* m : c->members)
+    {
       if (m && (m->kind == NodeKind::FriendDecl || (m->flags & DF_Friend)))
         return; // (a friend may name them, from anywhere)
+      // A defaulted comparison compares every member (`bool operator==(const C&) const = default;`, a defaulted friend
+      // comparison too, which the parser makes that member).
+      if (m && m->kind == NodeKind::FunctionDecl && (m->flags & DF_Default) && !static_cast<FunctionDecl*>(m)->name.empty())
+        if (const NamePart& n = static_cast<FunctionDecl*>(m)->name.last(); n.special == 2)
+          if (P op = P(n.opToken); op == P::EqEq || op == P::NotEq || op == P::Less || op == P::LessEq || op == P::Greater || op == P::GreaterEq ||
+                                   op == P::Spaceship)
+            return;
+    }
     auto found = named.find(c);
     for (Decl* m : c->members)
     {

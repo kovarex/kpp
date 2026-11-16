@@ -27,7 +27,7 @@ auto viaVoidCast(T t) -> decltype((void)t.size(), 1) { return 1; }
 int viaVoidCast(...) { return 2; }
 class Priv
 {
-  int secret = 1;
+  [[maybe_unused]] int secret = 1;
 public:
   int open = 2;
 };
