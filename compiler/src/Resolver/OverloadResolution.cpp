@@ -2153,9 +2153,14 @@ auto GlobalScope::Impl::typeOfSignatureExpression(Expr* e, const TypeContext& ct
     probe.thisType = types.pointer(substitute(selfType(cls), *ctx.subst)); // `noexcept(noexcept(this.v = x))` in a member: the instance's object
   if (ctx.elementPacks && !ctx.elementPacks->empty())
   {
-    // One element of a pack expansion's pattern: the packs' mentions name it, ctx.subst binding them whole.
+    // One element of a pack expansion's pattern: the packs' mentions name it, ctx.subst binding them whole. The pattern
+    // is e itself, so an expansion inside it takes its packs whole, as the code generator's typing of the element does
+    // (`sumAll(sumAll(args, args...)...)`: the inner `args...` was that one element, sumAll(int, int) for the int
+    // element, whose result the evaluator took for an int: 10 at compile time where run time gives 10.5, until 2026-11-16).
     probe.elementPacks = ctx.elementPacks;
     probe.elementIndex = ctx.elementIndex;
+    probe.elementPattern = copy;
+    probe.inElementPattern = true;
     probe.retypingElements = true;
   }
   if (ctx.locals)

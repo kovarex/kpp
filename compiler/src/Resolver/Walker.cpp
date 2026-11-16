@@ -2173,8 +2173,18 @@ auto GlobalScope::Impl::Walker::checkDemandedMember(FunctionDecl* def, const Ty*
 auto GlobalScope::Impl::Walker::instantiateFunction(FunctionDecl* f, const Subst& subst, bool needReturn, const Subst* classSubst, const Ty* objectType, Impl::InstanceRecord** record) -> const Ty*
 {
   for (Decl* p : f->templateParams)
-    if (!subst.find(p) || types.isDependent(subst.find(p)) || !subst.find(p)->isKnown())
+  {
+    const Ty* t = subst.find(p);
+    if (!t || types.isDependent(t) || !t->isKnown())
       return nullptr;
+    // A pack with an element of no type is no instance either: `sumAll(args, 1)` typed for one element of a pack the
+    // typing could not see made sumAll<unknown, int>, whose int result (`(0 + ... + a)`) the evaluator deduced the
+    // outer sumAll from (5 for 5.75 at compile time, until 2026-11-16).
+    if (t->kind == TyKind::Pack)
+      for (const Ty* element : t->args)
+        if (!element || !element->isKnown() || types.isDependent(element))
+          return nullptr;
+  }
   // A member function template declared in its class and defined after it (`template<bool B>
   // auto* Net::maybeGet(int) const {...}`): the definition's body, its own template parameters
   // taking the declaration's arguments in order; the instance stays the declaration's.

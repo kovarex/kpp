@@ -1,5 +1,4 @@
-// spec: a pack expansion whose pattern is a call, `sumAll((sumAll(args, 1))...)`, gives each call's own type at compile time as at run time: with args a double 4.75, sumAll(4.75, 1) is the double 5.75 and the outer sum 5.75, and with (short 1, 4.75, 9u) 17.75 (clang's)
-// pending: the constant evaluation gives 5 and 17: each expanded call's double result is taken as an int (run time gives 5.75 and 17.75). A silent wrong answer, found by the differential tests' genpack.py seed 5 (compiler/tests/differential), 2026-11-16; seed 7's `pat3` makes it an error instead ("a floating value out of the range of int32"); D
+// spec: a pack expansion whose pattern is a call, `sumAll((sumAll(args, 1))...)`, gives each call's own type at compile time as at run time: with args a double 4.75, sumAll(4.75, 1) is the double 5.75 and the outer sum 5.75, and with (short 1, 4.75, 9u) 17.75 (clang's); an expansion inside the pattern takes its pack whole, `sumAll(sumAll(args, args...)...)` of (1.5, 2) is sumAll(5.0, 5.5), 10.5
 extern "C" int printf(const char* format, ...);
 template <typename... Ts> constexpr auto sumAll(Ts... a)
 {
@@ -9,11 +8,17 @@ template <typename... Ts> constexpr auto pat(Ts... args)
 {
   return sumAll((sumAll(args, 1))...);
 }
+template <typename... Ts> constexpr auto inner(Ts... args)
+{
+  return sumAll(sumAll(args, args...)...);
+}
 int main()
 {
   constexpr auto one = pat(4.75);
   constexpr auto three = pat((short)1, 4.75, 9u);
+  constexpr auto both = inner(1.5, 2);
   volatile int zero = 0;
-  printf("%g %g | %g %g\n", (double)one, (double)three, (double)pat(4.75 + zero), (double)pat((short)1, 4.75 + zero, 9u));
+  printf("%g %g %g | %g %g %g\n", (double)one, (double)three, (double)both, (double)pat(4.75 + zero), (double)pat((short)1, 4.75 + zero, 9u),
+         (double)inner(1.5 + zero, 2 + zero));
   return 0;
 }

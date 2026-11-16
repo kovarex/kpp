@@ -5733,6 +5733,7 @@ auto GlobalScope::Impl::constCallClosure(LambdaExpr* l, const ConstValue& closur
       b.type = packTy;
       b.pack = true;
       b.packPlaces = std::move(elementPlaces);
+      b.decl = p; // (what a pattern typed for one element names: constPatternFor)
       env.push_back(std::move(b));
       break;
     }
@@ -6091,6 +6092,7 @@ auto GlobalScope::Impl::constRunConstructor(FunctionDecl* ctor, const Ty* t, con
       b.type = packTy;
       b.pack = true;
       b.packPlaces = std::move(elementPlaces);
+      b.decl = p; // (what a pattern typed for one element names: constPatternFor)
       env.push_back(std::move(b));
       break;
     }
@@ -8744,6 +8746,7 @@ auto GlobalScope::Impl::constRun(FunctionDecl* f, const std::vector<ConstValue>&
       b.type = packTy;
       b.pack = true;
       b.packPlaces = std::move(elementPlaces);
+      b.decl = p; // (what a pattern typed for one element names: constPatternFor)
       env.push_back(std::move(b));
       break;
     }
