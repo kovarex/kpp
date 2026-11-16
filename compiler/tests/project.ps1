@@ -555,7 +555,7 @@ if (Run 'syslibs')
     # target's argument), which configure(cell) sees and describe.txt keeps. A --target configure(cell)
     # adds itself comes too late for it: an error before the build, never Windows' steps in another's.
     $cellBuild = "void build(Project& project)`n{`n  Executable& app = project.executable(`"app`", {`"src`"});`n  app.use(`"sys`");`n  app.systemLibrary(`"version`");`n  TARGET`n}`n" +
-                 "void configure(Cell& cell)`n{`n  std::String c = `"echo `";`n  c << std::StringView(config::platformName(cell.platform)) << `">platform.txt`";`n  cell.target.afterBuild(c);`n  CONFIGURE`n}"
+                 "void configure(Cell& cell)`n{`n  std::String c = std::StringView(config::platformName(cell.platform));`n  cell.target.writeAfterBuildIfMissing(`"platform.txt`", c);`n  CONFIGURE`n}"
     foreach ($case in @(@('', '', @(), 'windows'), @('', '', @('--target', 'freebsd', '--run'), 'freebsd'),
                         @('app.argument("--target");  app.argument("linux");', '', @('--run'), 'linux'),
                         @('app.argument("--target");  app.argument("linux");', '', @('--target', 'windows'), 'windows'),
@@ -702,7 +702,7 @@ void build(Project& project)
   tests.config("unit", true);
   tests.config("level", 4); // the target's, over the configuration's
   // Run and the debugger start a copy in a directory per configuration: {configuration} in debug().
-  tests.afterBuild("cmd /c \"if not exist copies\\{configuration} mkdir copies\\{configuration}\" && copy /y \"{exe}\" copies\\{configuration}\\ >nul");
+  tests.linkAfterBuild("{exe}", "copies/{configuration}/checks.exe");
   tests.debug("copies/{configuration}/checks.exe", "", "copies/{configuration}");
 }
 void configure(Cell& cell)
@@ -717,7 +717,7 @@ void configure(Cell& cell)
   if (cell.target.name == "main")
   {
     std::String name = std::String(cell.configuration.name == "debug" ? "Debug" : cell.configuration.name == "release" ? "Release" : "FastDebug") + "x64";
-    cell.target.afterBuild("cmd /c \"if not exist bin\\" + name + " mkdir bin\\" + name + "\" && copy /y \"{exe}\" bin\\" + name + "\\ >nul");
+    cell.target.linkAfterBuild("{exe}", "bin/" + name + "/main.exe");
     cell.target.debug("bin/" + name + "/main.exe");
   }
 }
@@ -1206,7 +1206,8 @@ if (Run 'buildinfo')
                         @('.text("version", "version.txt")', "  project.configuration(`"debug`").clangFlag(`"-O1 -fplugin=x.dll`");`n", 'the clang flag "-fplugin=x.dll" is not one build.kpp may give'),
                         @('.text("version", "version.txt")', "  project.configuration(`"debug`").cFlag(`"-Xclang`");`n", 'the clang flag "-Xclang" is not one build.kpp may give'),
                         @('.text("version", "version.txt")', "  app.argument(`"--clang-flags`");`n  app.argument(`"-O1`");`n", '"--clang-flags" is not one'),
-                        @('.text("version", "version.txt")', "  app.argument(`"--sysroot`");`n  app.argument(`"sys`");`n", '"--sysroot" is not one')))
+                        @('.text("version", "version.txt")', "  app.argument(`"--sysroot`");`n  app.argument(`"sys`");`n", '"--sysroot" is not one'),
+                        @('.text("version", "version.txt")', "  app.afterBuild(`"echo x`");`n", 'app: build.kpp runs no command (beforeBuild, afterBuild)')))
     {
       Set-Content 'build.kpp' (& $describe $case[0] $case[1])
       $output = (Kpp @('--no-server')) -join "`n"

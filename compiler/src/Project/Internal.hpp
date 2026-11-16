@@ -96,9 +96,9 @@ namespace projects
     std::vector<std::string> roots, excluded, libraries, cIncludes, links;
     std::vector<std::string> systemLibraries; // NAME or PLATFORM NAME: an executable's own (Executable::systemLibrary), a library's when its tests are built (libraryProgram)
     std::vector<std::string> natvis; // Executable::natvis's files, relative to the project
-    std::string beforeBuild, afterBuild, debugCommand, debugArguments, debugDirectory;
+    std::string debugCommand, debugArguments, debugDirectory;
     BuildInfoWanted buildInfo;
-    std::vector<BuildStep> steps; // after the build, before after-build's command
+    std::vector<BuildStep> steps; // after the build
     std::string platform; // the platform configure(cell) saw (Cell::platform): windows, linux, freebsd
     std::string unavailable; // Cell::unavailable's reason: the cell is not built (Description::unavailable)
     std::vector<Use> uses;

@@ -1479,8 +1479,9 @@ commands for, kpp does itself, typed:
   code compiles (-O, -D, -U, -W, -g, -f and -m but -fplugin=, -fpass-plugin= and -mllvm, -std=, clang-cl's
   /O /D /W /EH /Zc: /arch: /std:); anything else is an error naming it. Tested by tests/project.ps1,
   section buildinfo;
-- before-build and after-build commands are removed once the game's build.kpp has moved off them (it is
-  checked with the released kpp).
+- before-build and after-build commands are removed (2026-11-16, after the game's build.kpp moved off them,
+  wube/Factorio #8763): one still given is an error naming what replaces it. kpp's own `--before-build`
+  and `--after-build` of `--generate-visual-studio-files` without a build.kpp stay: a person types them.
 What stays: `debug(...)`'s command, which names the program F5 and `--run` start (the person starts it), and
 `kpp measure`'s compare commands, which run only when a person types `kpp measure --compare`.
 

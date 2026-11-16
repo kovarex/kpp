@@ -410,8 +410,8 @@ run_tests.cmd.
   compile time`. The result is kept, keyed by build.kpp, projectlib, the settings and kpp itself.
 - **projectlib** (`projectlib/Project.kpp`). Lists are `Vector<String>`, paths join with `+`
   (`project.cInclude(project.setting("ROOT", "C:/x") + "/include")`), and executables and C
-  libraries are Deques, so the reference `executable()` returns stays valid. Commands are set by
-  methods: `game.afterBuild("copy ...")`, `game.debug(command, arguments, directory)`,
+  libraries are Deques, so the reference `executable()` returns stays valid. Settings are
+  methods: `game.linkAfterBuild("{exe}", "bin/game.exe")`, `game.debug(command, arguments, directory)`,
   `library.standard("c++20")`. `{exe}` (the configuration's executable) and `{configuration}` are
   expanded in the steps, and in debug()'s command, arguments and directory as well (2026-11-02).
   `kpp NAME --run`, F5 in the generated Visual Studio project and VS Code's launch.json then start
@@ -421,12 +421,11 @@ run_tests.cmd.
   `cell.configuration.name`. tests/project.ps1 checks both.
 - **Measured** on a `kpp new` project (2026-10-31, PC-PRACOVNA): the first `kpp --debug` took
   1.9 s (compiling build.kpp and the program); with nothing changed it took 0.2 s.
+- **No commands** (kovarex, 2026-11-16: design.md, "What build.kpp can run"): build.kpp's
+  `beforeBuild` and `afterBuild` commands, run by cmd in the project's directory, are gone, and one
+  that is still given is an error naming what replaces it: build information and the steps after the
+  build, below, which kpp does itself.
 - **What version 0 lacks:**
-  - Steps are `beforeBuild` and `afterBuild` commands of an executable, run by cmd in the
-    project's directory. They are going (kovarex, 2026-11-16: design.md, "What build.kpp can run"):
-    build information and the steps after the build below are kpp's own, and once the game's build.kpp
-    uses them, a command is an error. `--check` runs no before-build command since 2026-11-16 (it ran
-    one, before the check).
   - `use()` finds libraries in directories only (below); the registry, build.lock and `kpp add`
     do not exist yet.
 
@@ -463,7 +462,7 @@ game.buildInfo().countSince("e20534c41b745b1dae4f29bc4e7cb43ad0b2cd6d", 82606).t
 
 ### Steps after the build (2026-11-16)
 
-What a project did with an after-build command, kpp does itself, inside the project's directory, after a
+What a project did with an after-build command (gone, above), kpp does itself, inside the project's directory, after a
 build that wrote the executable (and with `--keep-going` when one is there), in the order given. Paths
 are relative to the project's directory, `{exe}` and `{configuration}` expanded as in the commands, and
 both ends must be inside the project (links and junctions followed): one outside is an error.
@@ -934,14 +933,14 @@ void configure(Cell& cell)
 - **configure(Cell& cell)** is optional. The interpreter runs it once per cell after build(), on
   a copy of the cell's target and configuration: `cell.target` and `cell.configuration` are
   readable and changeable for that cell only (`cell.target.linkFile(...)`,
-  `cell.target.afterBuild(...)`, `cell.configuration.clangFlag(...)`), and `cell.config(NAME, VALUE)`
+  `cell.target.linkAfterBuild(...)`, `cell.configuration.clangFlag(...)`), and `cell.config(NAME, VALUE)`
   sets a constant for the cell. It still cannot act. `cell.platform` is the platform the cell is
   built for (`Platform::Windows`, `Linux`, `FreeBSD`): the last `--target` of the project's, the
   configuration's and the target's arguments, the command line's over them all (`kpp --target linux`,
   which kpp gives build.kpp in build\kpp\settings.kpp, so the description is computed again when it
-  changes), Windows without one. A step only one platform can run is chosen by it, as the game's
-  cmd steps (mklink, config.ini) are Windows': `if (cell.platform == Platform::Windows)
-  cell.target.afterBuild(...)`. describe.txt keeps it (`platform linux`), and kpp checks it against
+  changes), Windows without one. A step only one platform needs is chosen by it, as the game's
+  bin\Debugx64 links and config.ini are Windows': `if (cell.platform == Platform::Windows)
+  cell.target.linkAfterBuild(...)`. describe.txt keeps it (`platform linux`), and kpp checks it against
   the platform it builds the cell for: a `--target` that configure(cell) adds itself comes too late
   for `cell.platform`, and that build stops before it starts, never a Linux build that runs Windows'
   steps (2026-11-05, for the game's Linux build). `cell.unavailable(REASON)` says the cell does not

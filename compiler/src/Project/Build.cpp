@@ -286,12 +286,6 @@ namespace projects
         fprintf(stderr, "kpp: %s (%s) failed its check after %.1f s\n", p.name.c_str(), p.configuration.c_str(), since(start));
       return code;
     }
-    // (not for --check, above: a check runs no command of build.kpp's, as an editor's check runs none)
-    if (!p.beforeBuild.empty() && host::shellAsIs(withExe(p.beforeBuild, exe, p.configuration)) != 0)
-    {
-      fprintf(stderr, "error: %s's before-build command failed: %s\n", p.name.c_str(), p.beforeBuild.c_str());
-      return 1;
-    }
     double beforeSeconds = std::chrono::duration<double>(start - kppStarted).count();
     std::vector<LibraryJob> jobs(p.links.size());
     // (Linux and FreeBSD libraries are compiled by clang's GNU driver, as the bundled toolchain's are)
@@ -486,12 +480,6 @@ namespace projects
     auto afterStart = Clock::now();
     if (!p.steps.empty() && (code == 0 || (keepGoing && fs::exists(exe, ec))) && !runSteps(root, p, exe))
       return 1;
-    if (!p.afterBuild.empty() && (code == 0 || (keepGoing && fs::exists(exe, ec))) &&
-        host::shellAsIs(withExe(p.afterBuild, exe, p.configuration)) != 0)
-    {
-      fprintf(stderr, "error: %s's after-build command failed: %s\n", p.name.c_str(), p.afterBuild.c_str());
-      return 1;
-    }
     // KPP_STEP_TIMES=1: where an edit build's time goes besides kpp's and the link's (an environment
     // variable, not an option: an option of its own would give the build a compile server of its own).
     if (getenv("KPP_STEP_TIMES"))
