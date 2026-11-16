@@ -855,6 +855,12 @@ Specs: kpp/typed_union_data_members, kpp/typed_union_data_members_before_tag,
 kpp/typed_union_own_constructor, kpp/typed_union_own_copy_constructor_is_error, kpp/typed_union_own_assignment_is_error,
 kpp/typed_union_own_destructor_is_error, kpp/typed_union_data_members_compared_is_error.
 
+*`union enum class U`* (2026-11-16, for InputAction, whose 358 named constructors `InputAction::Build(...)`
+have the names of its actions): the alternatives' names are in `U::Tag` alone, as an enum class's
+enumerators, so U's own members may take them. `U::Tag::Count` is the tag (`u[U::Tag::Count]`,
+`u == U::Tag::Count`, `case U::Tag::Count:`, `U(U::Tag::Count, 3)`), and an alias (`using InputActionType =
+InputAction::Tag;`) names it as the game did. Spec: kpp/typed_union_scoped_tag.
+
 *inline(N)* (kovarex 2026-11-16, option D of the InputAction study: "without the inline, everything is
 directly in the object, the inline creates the limit"). `union enum InputAction : u16 inline(112)` keeps an
 alternative of at most N bytes in the union and one larger on the heap, its storage holding the address;

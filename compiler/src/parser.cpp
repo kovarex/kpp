@@ -3965,6 +3965,9 @@ namespace
       uint32_t start = pos;
       advance(); // union
       advance(); // enum
+      // `union enum class U`: the alternatives' names in U::Tag alone, as an enum class's, so that U's
+      // own members may take them (InputAction's named constructors `InputAction::Build(...)`).
+      bool scopedTag = accept(Kw::class_) || accept(Kw::struct_);
       skipAttributes();
       ClassDecl* c = decl<ClassDecl>(start);
       c->keyword = Kw::struct_;
@@ -4011,6 +4014,7 @@ namespace
       numberType(tag, false);
       tag->isKpp = true;
       tag->isDefinition = true;
+      tag->isClass = scopedTag;
       tag->underlying = underlying;
       NamePart tagPart;
       tagPart.symbol = kwTag;

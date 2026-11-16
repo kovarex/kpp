@@ -798,8 +798,8 @@ auto codegen::Emitter::typedUnionEqual(ClassDecl* c, const std::string& a, const
   if (!ownMembers(c, t, at).empty())
     fail(at, "the typed union " + qualifiedName(c) + " has data members of its own, which the built-in == would leave out: declare its operator== (design.md 8.5)");
   const Ty* underlying = enumUnderlying(c->tagEnum);
-  Value ta = convert(Value{loadTag(c, t, a, at), tagType(c), false}, underlying, at);
-  Value tb = convert(Value{loadTag(c, t, b, at), tagType(c), false}, underlying, at);
+  Value ta = convert(Value{loadTag(c, t, a, at), tagType(c), false}, underlying, at, true); // (the tag's own: an enum class's too)
+  Value tb = convert(Value{loadTag(c, t, b, at), tagType(c), false}, underlying, at, true); // (the tag's own: an enum class's too)
   std::string slot = "%equal" + std::to_string(temp++);
   allocas += "  " + slot + " = alloca i1\n";
   fn += "  store i1 false, ptr " + slot + "\n";
@@ -824,8 +824,8 @@ auto codegen::Emitter::typedUnionOrder(ClassDecl* c, const std::string& a, const
   if (!ownMembers(c, t, at).empty())
     fail(at, "the typed union " + qualifiedName(c) + " has data members of its own, which the built-in <=> would leave out: declare its operator<=> (design.md 8.5)");
   const Ty* underlying = enumUnderlying(c->tagEnum);
-  Value ta = convert(Value{loadTag(c, t, a, at), tagType(c), false}, underlying, at);
-  Value tb = convert(Value{loadTag(c, t, b, at), tagType(c), false}, underlying, at);
+  Value ta = convert(Value{loadTag(c, t, a, at), tagType(c), false}, underlying, at, true); // (the tag's own: an enum class's too)
+  Value tb = convert(Value{loadTag(c, t, b, at), tagType(c), false}, underlying, at, true); // (the tag's own: an enum class's too)
   std::string slot = "%order" + std::to_string(temp++);
   allocas += "  " + slot + " = alloca i8\n";
   std::string type = llType(underlying, at);
@@ -864,8 +864,9 @@ auto codegen::Emitter::compareTag(BinaryExpr* b, bool negate) -> Value
   Value obj = rvalue(unionExpr);
   ClassDecl* c = typedUnionOf(obj.ty, b);
   const Ty* underlying = enumUnderlying(c->tagEnum);
-  Value tag = convert(Value{loadTag(c, obj.ty, obj.text, b), tagType(c), false}, underlying, b);
-  Value other = convert(rvalue(tagExpr), underlying, b);
+  Value tag = convert(Value{loadTag(c, obj.ty, obj.text, b), tagType(c), false}, underlying, b, true); // (the tag's own: an enum class's too)
+  Value given = rvalue(tagExpr);
+  Value other = convert(given, underlying, b, isTagOf(c, given.ty)); // (`u == U::Tag::Count` of a `union enum class`: its own tag)
   std::string r = newTemp();
   fn += "  " + r + " = icmp " + (negate ? "ne " : "eq ") + llType(underlying, b) + " " + tag.text + ", " + other.text + "\n";
   return {r, types.boolType(), false};

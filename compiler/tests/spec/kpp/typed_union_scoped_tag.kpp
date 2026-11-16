@@ -1,0 +1,25 @@
+// spec: `union enum class U` puts the alternatives' names in U::Tag alone, as an enum class does its enumerators (design.md 8.5), so that U's own members may have those names: `U::Count(3)` calls U's static function, `U::Tag::Count` is the tag, and `u[U::Tag::Count]`, `u == U::Tag::Count`, `switch (u)` and `U(U::Tag::Count, 3)` take it
+// factorio: InputAction's named constructors (`InputAction::Build(parameters)`, 358 of them, 1,272 calls) have the names of its actions
+union enum class Action : u16
+{
+  { {int, Count}, {std::String, Text} }
+
+  static Action Count(int n) { return Action(Action::Tag::Count, n); }
+  static Action Text(std::StringView text) { return Action(Action::Tag::Text, std::String(text)); }
+};
+using ActionType = Action::Tag;
+int main()
+{
+  Action a = Action::Count(3);
+  Action b = Action::Text("hi");
+  b[ActionType::Text] << "!";
+  for (const Action& x : {a, b})
+    switch (x)
+    {
+      case ActionType::Count: std::println("count ", x[ActionType::Count], " ", x == Action::Tag::Count);
+      case ActionType::Text: std::println("text ", x[Action::Tag::Text], " ", std::StringView(x.tag().str()));
+    }
+  for constexpr (auto alternative : alternatives(Action))
+    std::println(std::StringView(alternative.name), " ", int(alternative.tag));
+  return 0;
+}
