@@ -276,7 +276,7 @@ internal static class Coverage
     public static string TestsText(long count, List<string> tests)
     {
         if (count <= 0)
-            return "no test";
+            return "no test (it ran outside the tests: their setup, or an earlier run of the menu)";
         string names = string.Join(", ", tests);
         string noun = count == 1 ? "test" : "tests";
         return tests.Count >= count ? $"{count:N0} {noun}: {names}" : $"{count:N0} {noun}, the first {tests.Count}: {names}";

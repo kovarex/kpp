@@ -420,6 +420,22 @@ extern "C" void kpp_coverage_test_name(i32 test, const char* name)
   state.testNames[size_t(test)] = std::String(name);
 }
 
+// -i's next run: which tests ran a place is that run's; what ran before stays as run (outside the tests).
+extern "C" void kpp_coverage_new_run()
+{
+  __KppCoverageState& state = __kppCoverageState();
+  if (!state.perTest)
+    return;
+  __kppCoverageCollect(-1);
+  for (__KppCoveragePlace& place : state.places)
+  {
+    place.ranOutside = place.ranOutside || place.count > 0;
+    place.count = 0;
+    place.last = -1;
+    place.tests.clear();
+  }
+}
+
 // After test number `test` (-1: before the first, the setup's).
 extern "C" void kpp_coverage_test_end(i32 test)
 {

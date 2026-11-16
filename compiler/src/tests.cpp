@@ -684,6 +684,7 @@ extern "C" void kpp_coverage_test_name(i32 test, const char* name);
 extern "C" void kpp_coverage_test_end(i32 test);
 extern "C" const char* kpp_coverage_take();
 extern "C" void kpp_coverage_give(const char* text);
+extern "C" void kpp_coverage_new_run();
 
 // --coverage-tests N: per test, N of the tests that ran each place named (0: the run as a whole).
 int __kppCoverageTestLimit = 10;
@@ -1188,7 +1189,7 @@ int __kppWork(const std::Vector<const __KppTest*>& selected, i64 from, u64 slowS
       if constexpr (config::coverage)
       {
         if (__kppCoverageTestLimit > 0)
-          kpp_coverage_test_end(int(i));
+          kpp_coverage_test_end(int(selected[int(i)] - state.tests.data()));
         else
           __kppSend('C', std::String(kpp_coverage_delta())); // (what the test ran, before it is done: the first process writes it)
       }
@@ -2036,6 +2037,9 @@ int __kppInteractive(int argc, char** argv, const std::Vector<const char*>& skip
     failed.clear();
     u64 started = __kppNanoseconds();
     int notRun = 0;
+    // (--coverage-tests: which tests ran a place is this run's; what earlier runs ran stays as run)
+    if constexpr (config::coverage)
+      kpp_coverage_new_run();
     if (choice.parallel)
     {
       // As --jobs: the workers run this program with its arguments (-i a worker's selection does
@@ -2068,7 +2072,10 @@ int __kppInteractive(int argc, char** argv, const std::Vector<const char*>& skip
       for (const __KppTest* test : selected)
       {
         u64 took = 0;
-        if (!__kppRunOne(test, slowSeconds, &took))
+        bool passed = __kppRunOne(test, slowSeconds, &took);
+        if constexpr (config::coverage)
+          kpp_coverage_test_end(int(test - state.tests.data()));
+        if (!passed)
         {
           failed.push_back(test->fullName);
           std::println("failed: ", test->fullName);
@@ -2329,6 +2336,11 @@ int main(int argc, char** argv)
       return a.order != b.order ? a.order < b.order : a.shuffled < b.shuffled;
     });
   }
+  // (--coverage-tests: each test by its place in this order, the same in every process and every run of
+  // -i, whatever a run selects: the coverage file names them)
+  if constexpr (config::coverage)
+    for (int i = 0; i < int(tests.size()); ++i)
+      kpp_coverage_test_name(i, tests[i].fullName.c_str());
   if (interactive && !state.working)
     return __kppInteractive(argc, argv, skipSuites, tag, slowSeconds, coverage);
 
@@ -2427,10 +2439,6 @@ int main(int argc, char** argv)
     return 0;
   }
 
-  // (each test by its place in the run's order, the same in every process: the coverage file names them)
-  if constexpr (config::coverage)
-    for (int i = 0; i < int(selected.size()); ++i)
-      kpp_coverage_test_name(i, selected[i]->fullName.c_str());
   if (state.working)
     return __kppWork(selected, i64(workerIn), slowSeconds);
 
@@ -2508,7 +2516,7 @@ int main(int argc, char** argv)
       u64 took = 0;
       bool passed = __kppRunOne(test, slowSeconds, &took);
       if constexpr (config::coverage)
-        kpp_coverage_test_end(position);
+        kpp_coverage_test_end(int(test - tests.data()));
       finished(test, passed, std::String());
       writeReport(__kppJsonTest(*test, passed ? "pass" : "fail", state.failures, double(took) / 1000000000.0));
     }
