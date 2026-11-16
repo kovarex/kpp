@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**2256 pass, 2 pending, 0 failing, 0 fixed** (2258 snippets, 228.5 s).
+**2257 pass, 2 pending, 0 failing, 0 fixed** (2259 snippets, 308.0 s).
 
 ## Language: statements, expressions, declarations
 
@@ -1145,6 +1145,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `classes/using_declaration_alone_of_its_name.kpp` | a class's `using A::f;` and `using A::x;`, nothing else of the names in the class, are A's function and field to an unqualified use in the class and in classes derived from it, through a private base too | pass |  |  |
 | `classes/using_declaration_beside_own_overloads.kpp` | a using-declaration of a base's member functions beside the class's own overloads of the name (`using Vec2::save;` with `save(Tree&)` and `save(Tree&, const String&)`) makes both sets candidates, the base's with the base instance's arguments, for member calls and for unqualified calls inside the class | pass | Vector2D (`using Vector2::save;` beside save(PropertyTree&) and save(PropertyTree&, const String&)), saved by every prototype that holds one (18 calls) |  |
 | `classes/using_declaration_hidden_by_own_member.kpp` | a member function the class declares hides the base's of the same parameter types and qualifiers that a using-declaration brings in (C++ [namespace.udecl] 15), so a call of it is no ambiguity: ArtilleryTurret's `getInventory(uint8) override` beside `using super::getInventory;`, virtual or not; the base's other overloads stay candidates | pass |  |  |
+| `classes/using_declaration_of_a_base_class_and_its_functional_cast.kpp` | a class's using-declaration of a base's nested class names that class in the class, as C++'s does ([namespace.udecl] 1): after `using Base::Nested;` in Derived, `Nested(4)` in a member is a functional cast, `Nested(4).v` 4, and `Nested made(5);` a Base::Nested; a base's enumeration the same (`Kind(2)`), a class template's `using typename TBase<T>::Nested;` with its instance's arguments, and beside `using Base::Base;` (inherited constructors) `Base(7)` still makes a Base (clang: `4 5 2 7 4.5`) | pass |  |  |
 | `classes/using_declaration_of_member_enumerator.kpp` | a using-declaration of a member enum's enumerator (`using Enum::True;`) names that enumerator as a member of the class: `NamedBool::True` is the enumerator's value | pass |  |  |
 | `classes/using_declaration_of_member_enumerator_as_constant.kpp` | an enumerator a using-declaration names (`using Enum::True;`) is a constant wherever one is: unqualified in its class, a case label, a constant expression (static_assert), a conditional's operand; and the conditional over `static constexpr` members of an enum type, the form it replaced | pass |  |  |
 | `classes/using_declaration_protected_is_error.kpp` | a member a using-declaration names in a protected section stays protected: naming it outside the class and the classes deriving from it is an error, as its base's own protected member is ([namespace.udecl] 19) | pass |  |  |

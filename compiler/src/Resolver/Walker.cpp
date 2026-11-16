@@ -7718,9 +7718,11 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
     if (l.found == Found::Global)
       l = impl.withNamespaceUsings(l, 0); // `using lib::size;` beside the namespace's own size(int)
     // `using std::String;` then `String(p)`: the class the using-declaration names, a functional cast as `std::String(p)` is
-    // (until 2026-11-16 the declaration itself, a value of no type, which codegen took for a function's address).
+    // (until 2026-11-16 the declaration itself, a value of no type, which codegen took for a function's address); a class's
+    // `using Base::Nested;` then `Nested(4)` in a member too. (`using Base::Base;` inherits constructors and is no name in
+    // the class: Indexer.)
     if (l.decl && l.decl->kind == NodeKind::UsingNameDecl && !static_cast<UsingNameDecl*>(l.decl)->isEnum && !l.ambiguousWith && l.foundIn &&
-        l.foundIn->kind == ScopeKind::Namespace)
+        (l.foundIn->kind == ScopeKind::Namespace || l.foundIn->kind == ScopeKind::Class))
     {
       Lookup target = impl.lookupQualified(static_cast<UsingNameDecl*>(l.decl)->name, impl.lexicalScopeOf(l.decl), nullptr, 0);
       if (Decl* t = target.decl; t && (t->kind == NodeKind::ClassDecl || t->kind == NodeKind::EnumDecl || t->kind == NodeKind::UsingAliasDecl ||

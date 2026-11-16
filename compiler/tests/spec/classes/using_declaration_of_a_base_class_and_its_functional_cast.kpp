@@ -1,0 +1,53 @@
+// spec: a class's using-declaration of a base's nested class names that class in the class, as C++'s does ([namespace.udecl] 1): after `using Base::Nested;` in Derived, `Nested(4)` in a member is a functional cast, `Nested(4).v` 4, and `Nested made(5);` a Base::Nested; a base's enumeration the same (`Kind(2)`), a class template's `using typename TBase<T>::Nested;` with its instance's arguments, and beside `using Base::Base;` (inherited constructors) `Base(7)` still makes a Base (clang: `4 5 2 7 4.5`)
+extern "C" int printf(const char* format, ...);
+struct Base
+{
+  int b = 0;
+  Base() {}
+  Base(int x) : b(x) {}
+  struct Nested
+  {
+    int v;
+    Nested(int x) : v(x) {}
+  };
+  enum Kind
+  {
+    zero,
+    one,
+    two
+  };
+};
+struct Derived : Base
+{
+  using Base::Base;
+  using Base::Nested;
+  using Base::Kind;
+  int cast() { return Nested(4).v; }
+  int declared()
+  {
+    Nested made(5);
+    return made.v;
+  }
+  int kind() { return (int)Kind(2); }
+  int base() { return Base(7).b; }
+};
+template <typename T> struct TBase
+{
+  struct Nested
+  {
+    T v;
+    Nested(T x) : v(x) {}
+  };
+};
+template <typename T> struct TDerived : TBase<T>
+{
+  using typename TBase<T>::Nested;
+  T cast() { return Nested(T(4.5)).v; }
+};
+int main()
+{
+  Derived d;
+  TDerived<double> t;
+  printf("%d %d %d %d %g\n", d.cast(), d.declared(), d.kind(), d.base(), t.cast());
+  return 0;
+}
