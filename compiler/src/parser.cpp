@@ -3981,6 +3981,16 @@ namespace
       Type* underlying = nullptr;
       if (accept(P::Colon))
         underlying = parseType();
+      // `inline(N)`: alternatives larger than N bytes kept on the heap (design.md 8.5, "inline(N)").
+      if (at(Kw::inline_))
+      {
+        advance();
+        if (expect(P::LParen, "expected '(' after inline: inline(N), the bytes an alternative may take in the union"))
+        {
+          c->inlineLimit = parseAssignment();
+          expect(P::RParen, "expected ')' after inline(N)");
+        }
+      }
       if (at(P::Semi))
       {
         advance();

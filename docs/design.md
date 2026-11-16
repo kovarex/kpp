@@ -850,6 +850,27 @@ Specs: kpp/typed_union_data_members, kpp/typed_union_data_members_before_tag,
 kpp/typed_union_own_constructor_is_error, kpp/typed_union_own_assignment_is_error,
 kpp/typed_union_own_destructor_is_error, kpp/typed_union_data_members_compared_is_error.
 
+*inline(N)* (kovarex 2026-11-16, option D of the InputAction study: "without the inline, everything is
+directly in the object, the inline creates the limit"). `union enum InputAction : u16 inline(112)` keeps an
+alternative of at most N bytes in the union and one larger on the heap, its storage holding the address;
+N is a constant expression (a class template's may use its parameters). Which alternatives are boxed is
+decided at layout, by sizeof, and is the same in the resolver's sizeof and the code generator's; the union
+is as large as its members, tag and largest inline alternative (at least a pointer). The program never
+names the box: `u[Big]` is the value (a `T&`), `a.type` is the value's type and `a.boxed` tells whether it
+is on the heap. Building it allocates (malloc, freed if its construction throws, the union holding none
+meanwhile); a copy allocates a copy of the value; a move takes the allocation (the value's address stays,
+nothing is allocated) and leaves the source holding none, so that reading the source's alternative stops on
+the alternative check ("the typed union's alternative was moved from"), never at null; assignment of the
+same alternative assigns the value (a source moved from replaces it), `u[Big] = x` assigns the value held
+or allocates a new one; destruction destroys the value and frees it; comparison compares values. A union
+with a boxed alternative is neither trivially copyable nor trivially destructible (a Vector copies it
+element by element), and is no constant (it is made at run time). Not yet: a boxed alternative aligned to
+more than 16 bytes (an error), and the debugger shows a boxed alternative as its address. Found on the way,
+a silent wrong answer of every class template's typed union: `Holder<Tracked>(Holder<Tracked>::Value, 4)`
+was a list of the tag and the first alternative's value, the alternative's constructor never run (the
+instance's Tag was not the template's). Specs: kpp/typed_union_inline_boxes_larger_alternatives,
+kpp/typed_union_inline_with_members_in_a_vector, kpp/typed_union_template_from_tag_and_value.
+
 **8.6 Tests in the compiler.**
 ```
 test directionIsVertical

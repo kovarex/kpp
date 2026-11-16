@@ -34,12 +34,167 @@ auto codegen::Emitter::alternativeType(ClassDecl* c, const Ty* t, size_t index, 
   return alt;
 }
 
-auto codegen::Emitter::alternativeAddress(ClassDecl* c, const Ty* t, const std::string& obj, size_t index, Node* at) -> std::string
+auto codegen::Emitter::alternativeSlot(ClassDecl* c, const Ty* t, const std::string& obj, size_t index, Node* at) -> std::string
 {
   std::string addr;
   if (!fieldAddress(types.unqualified(types.stripRef(t)), c->alternatives[index], obj, addr, at))
     unsupported(at, "a typed union without its storage");
   return addr;
+}
+
+auto codegen::Emitter::alternativeAddress(ClassDecl* c, const Ty* t, const std::string& obj, size_t index, Node* at) -> std::string
+{
+  std::string slot = alternativeSlot(c, t, obj, index, at);
+  if (!boxedAlternative(c, t, index, at))
+    return slot;
+  std::string p = newTemp(); // (a boxed alternative: the address its storage holds)
+  fn += "  " + p + " = load ptr, ptr " + slot + "\n";
+  return p;
+}
+
+auto codegen::Emitter::typedUnionOfStorage(Decl* m) -> ClassDecl*
+{
+  // (the storage member's parent is the anonymous union, whose parent is the typed union)
+  Decl* storage = m ? m->parent : nullptr;
+  Decl* u = storage ? storage->parent : nullptr;
+  if (!u || u->kind != NodeKind::ClassDecl || !static_cast<ClassDecl*>(u)->isTypedUnion)
+    return nullptr;
+  for (Decl* a : static_cast<ClassDecl*>(u)->alternatives)
+    if (a == m)
+      return static_cast<ClassDecl*>(u);
+  return nullptr;
+}
+
+auto codegen::Emitter::boxesAlternative(ClassDecl* u, const TemplateArgs& args, const Ty* altTy, Node* at) -> bool
+{
+  if (!u->inlineLimit)
+    return false;
+  std::optional<int64_t> limit;
+  {
+    ArgsScope scope(*this, &args);
+    ConstContextScope context(*this, u);
+    ParsedFile* saved = currentFile;
+    currentFile = u->file ? u->file : currentFile;
+    limit = evalConst(u->inlineLimit);
+    currentFile = saved;
+  }
+  if (!limit || *limit <= 0)
+    fail(at, "inline(N) of the typed union " + qualifiedName(u) + " is no constant positive number of bytes");
+  if (sizeOf(altTy, at) <= uint64_t(*limit))
+    return false;
+  if (alignOf(altTy, at) > 16)
+    unsupported(at, "an alternative of the typed union " + qualifiedName(u) + " kept on the heap and aligned to more than 16 bytes");
+  return true;
+}
+
+auto codegen::Emitter::boxedAlternative(ClassDecl* c, const Ty* t, size_t index, Node* at) -> bool
+{
+  if (!c->inlineLimit)
+    return false;
+  const Ty* cls = canonicalClass(types.unqualified(types.stripRef(t)), at);
+  auto found = boxedAlternatives.find(cls);
+  if (found == boxedAlternatives.end())
+  {
+    std::vector<char> answers;
+    for (size_t i = 0; i < c->alternatives.size(); ++i)
+      answers.push_back(boxesAlternative(c, global.classArgsOf(cls), alternativeType(c, cls, i, at), at) ? 1 : 0);
+    found = boxedAlternatives.emplace(cls, std::move(answers)).first;
+  }
+  return found->second[index] != 0;
+}
+
+auto codegen::Emitter::placeForAlternative(ClassDecl* c, const Ty* t, const std::string& obj, size_t index, Node* at) -> std::string
+{
+  std::string slot = alternativeSlot(c, t, obj, index, at);
+  if (!boxedAlternative(c, t, index, at))
+    return slot;
+  // The allocation, freed if the construction throws (as new's: the union holds none meanwhile).
+  const Ty* altTy = alternativeType(c, t, index, at);
+  ensureMalloc();
+  std::string p = newTemp();
+  emitCall(p + " = ", "ptr @malloc(i64 " + std::to_string(std::max<uint64_t>(sizeOf(altTy, at), 1)) + ")", false);
+  checkAllocation(p, at);
+  fn += "  store ptr " + p + ", ptr " + slot + "\n";
+  Object allocation{p, altTy};
+  allocation.unwindOnly = true;
+  allocation.freeMemory = true;
+  statementTemps.push_back(allocation);
+  boxesBuilding.push_back(statementTemps.size() - 1);
+  return p;
+}
+
+auto codegen::Emitter::builtAlternative(ClassDecl* c, const Ty* t, size_t index, Node* at) -> void
+{
+  if (!boxedAlternative(c, t, index, at))
+    return;
+  statementTemps.erase(statementTemps.begin() + ptrdiff_t(boxesBuilding.back()));
+  boxesBuilding.pop_back();
+}
+
+auto codegen::Emitter::buildAlternativeFrom(ClassDecl* c, const Ty* t, const std::string& dst, const std::string& src, size_t index, bool move,
+                                            Node* at) -> void
+{
+  const Ty* altTy = alternativeType(c, t, index, at);
+  auto build = [&](const std::string& to, const std::string& from)
+  {
+    if (isClass(altTy))
+    {
+      if (move)
+        moveConstruct(to, from, altTy, at);
+      else
+        copyConstruct(to, from, altTy, at);
+    }
+    else if (altTy->kind == TyKind::Array)
+      transferArray(to, from, altTy, at, move, false);
+    else
+      copyBytes(to, from, altTy, at);
+  };
+  if (!boxedAlternative(c, t, index, at))
+  {
+    build(alternativeSlot(c, t, dst, index, at), alternativeSlot(c, t, src, index, at));
+    return;
+  }
+  std::string toSlot = alternativeSlot(c, t, dst, index, at), fromSlot = alternativeSlot(c, t, src, index, at);
+  std::string from = newTemp();
+  fn += "  " + from + " = load ptr, ptr " + fromSlot + "\n";
+  if (move)
+  {
+    // The allocation changes hands; the source holds none (reading it stops on the check).
+    fn += "  store ptr " + from + ", ptr " + toSlot + "\n";
+    fn += "  store ptr null, ptr " + fromSlot + "\n";
+    return;
+  }
+  // A copy: a new allocation of the value, none of a source that holds none (moved from).
+  std::string none = newTemp(), copyL = newLabel("boxed.copy"), noneL = newLabel("boxed.none"), doneL = newLabel("boxed.copied");
+  fn += "  " + none + " = icmp eq ptr " + from + ", null\n";
+  fn += "  br i1 " + none + ", label %" + noneL + ", label %" + copyL + "\n";
+  blockTerminated = true;
+  startBlock(noneL);
+  fn += "  store ptr null, ptr " + toSlot + "\n";
+  emitBranch(doneL);
+  startBlock(copyL);
+  std::string to = placeForAlternative(c, t, dst, index, at);
+  build(to, from);
+  builtAlternative(c, t, index, at);
+  emitBranch(doneL);
+  startBlock(doneL);
+}
+
+auto codegen::Emitter::destroyBoxed(ClassDecl* c, const Ty* t, const std::string& obj, size_t index, Node* at) -> void
+{
+  // A boxed alternative: its value destroyed and its allocation freed, none for one moved from.
+  const Ty* altTy = alternativeType(c, t, index, at);
+  std::string p = alternativeAddress(c, t, obj, index, at), some = newTemp(), freeL = newLabel("boxed.free"), doneL = newLabel("boxed.freed");
+  fn += "  " + some + " = icmp ne ptr " + p + ", null\n";
+  fn += "  br i1 " + some + ", label %" + freeL + ", label %" + doneL + "\n";
+  blockTerminated = true;
+  startBlock(freeL);
+  if (needsDestruction(altTy, at))
+    destroy(p, altTy, at);
+  ensureMalloc();
+  emitCall("", "void @free(ptr " + p + ")", false);
+  emitBranch(doneL);
+  startBlock(doneL);
 }
 
 auto codegen::Emitter::alternativeForValue(ClassDecl* c, const Ty* t, const Ty* valueTy, Node* at) -> size_t
@@ -114,7 +269,22 @@ auto codegen::Emitter::alternativeLvalue(ClassDecl* c, Value base, IndexExpr* i,
     usesAssert = true;
     startBlock(okL);
   }
-  return alternativeAddress(c, base.ty, base.text, index, at);
+  std::string addr = alternativeAddress(c, base.ty, base.text, index, at);
+  if (check && boxedAlternative(c, base.ty, index, at))
+  {
+    // A boxed alternative moved from holds no allocation: reading it stops here, never at null.
+    std::string none = newTemp(), okL = newLabel("boxed.ok"), failL = newLabel("boxed.fail");
+    fn += "  " + none + " = icmp eq ptr " + addr + ", null\n";
+    fn += "  br i1 " + none + ", label %" + failL + ", label %" + okL + "\n";
+    startBlock(failL);
+    auto [line, column] = lineColumnOf(at->token);
+    emitCall("", "void @kpp_assert_failed(ptr " + cStringConstant(programPathOf(currentFile)) + ", i32 " + lineOperand(line) + ", i32 " +
+                     std::to_string(column) + ", ptr " + cStringConstant("the typed union's alternative was moved from") + ")", false);
+    fn += "  unreachable\n";
+    usesAssert = true;
+    startBlock(okL);
+  }
+  return addr;
 }
 
 auto codegen::Emitter::setTag(ClassDecl* c, const Ty* t, const std::string& obj, size_t index, Node* at) -> void
@@ -130,7 +300,7 @@ auto codegen::Emitter::constructAlternative(ClassDecl* c, const Ty* t, const std
   // union destroyed the alternative never built: E's battery, kpp/typed_union_alternative_that_throws_is_not_destroyed).
   setTag(c, t, obj, c->alternatives.size(), at);
   const Ty* altTy = alternativeType(c, t, index, at);
-  std::string addr = alternativeAddress(c, t, obj, index, at);
+  std::string addr = placeForAlternative(c, t, obj, index, at);
   if (init)
     initializeFrom(addr, altTy, init, at);
   else if (isClass(altTy))
@@ -139,14 +309,21 @@ auto codegen::Emitter::constructAlternative(ClassDecl* c, const Ty* t, const std
     constructArray(addr, altTy, at);
   else
     storeZero(altTy, addr, at);
+  builtAlternative(c, t, index, at);
   setTag(c, t, obj, index, at);
 }
 
 auto codegen::Emitter::destroyAlternative(ClassDecl* c, const Ty* t, const std::string& obj, Node* at) -> void
 {
   forHeldAlternative(c, t, obj, at,
-                     [&](size_t i) { return needsDestruction(alternativeType(c, t, i, at), at); },
-                     [&](size_t i) { destroy(alternativeAddress(c, t, obj, i, at), alternativeType(c, t, i, at), at); });
+                     [&](size_t i) { return boxedAlternative(c, t, i, at) || needsDestruction(alternativeType(c, t, i, at), at); },
+                     [&](size_t i)
+                     {
+                       if (boxedAlternative(c, t, i, at))
+                         destroyBoxed(c, t, obj, i, at);
+                       else
+                         destroy(alternativeAddress(c, t, obj, i, at), alternativeType(c, t, i, at), at);
+                     });
 }
 
 auto codegen::Emitter::ownMembers(ClassDecl* c, const Ty* t, Node* at) -> std::vector<std::pair<uint32_t, Decl*>>
@@ -244,22 +421,7 @@ auto codegen::Emitter::copyAlternative(ClassDecl* c, const Ty* t, const std::str
   // destroy, as constructAlternative; a valueless src copies as valueless.)
   std::string tag = loadTag(c, t, src, at);
   setTag(c, t, dst, c->alternatives.size(), at);
-  forHeldAlternative(c, t, src, at, [&](size_t) { return true; }, [&](size_t i)
-  {
-    const Ty* altTy = alternativeType(c, t, i, at);
-    std::string from = alternativeAddress(c, t, src, i, at), to = alternativeAddress(c, t, dst, i, at);
-    if (isClass(altTy))
-    {
-      if (move)
-        moveConstruct(to, from, altTy, at);
-      else
-        copyConstruct(to, from, altTy, at);
-    }
-    else
-    {
-      copyBytes(to, from, altTy, at);
-    }
-  });
+  forHeldAlternative(c, t, src, at, [&](size_t) { return true; }, [&](size_t i) { buildAlternativeFrom(c, t, dst, src, i, move, at); });
   fn += "  store " + llType(tagType(c), at) + " " + tag + ", ptr " + tagAddress(c, t, dst, at) + "\n";
 }
 
@@ -270,7 +432,8 @@ auto codegen::Emitter::copyOverAlternative(ClassDecl* c, const Ty* t, const std:
   auto copiedFirst = [&](size_t i)
   {
     const Ty* altTy = alternativeType(c, t, i, at);
-    return isClass(altTy) && global.constructsWithoutThrowing(altTy, true) && !global.constructsWithoutThrowing(altTy, false);
+    return !boxedAlternative(c, t, i, at) && isClass(altTy) && global.constructsWithoutThrowing(altTy, true) &&
+           !global.constructsWithoutThrowing(altTy, false); // (a boxed one's copy is a new allocation: buildAlternativeFrom)
   };
   bool any = false;
   for (size_t i = 0; i < c->alternatives.size(); ++i)
@@ -298,14 +461,10 @@ auto codegen::Emitter::copyOverAlternative(ClassDecl* c, const Ty* t, const std:
   setTag(c, t, dst, c->alternatives.size(), at);
   forHeldAlternative(c, t, src, at, [&](size_t) { return true; }, [&](size_t i)
   {
-    const Ty* altTy = alternativeType(c, t, i, at);
-    std::string from = alternativeAddress(c, t, src, i, at), to = alternativeAddress(c, t, dst, i, at);
     if (copiedFirst(i))
-      moveConstruct(to, alternativeAddress(c, t, copy, i, at), altTy, at);
-    else if (isClass(altTy))
-      copyConstruct(to, from, altTy, at);
+      moveConstruct(alternativeAddress(c, t, dst, i, at), alternativeAddress(c, t, copy, i, at), alternativeType(c, t, i, at), at);
     else
-      copyBytes(to, from, altTy, at);
+      buildAlternativeFrom(c, t, dst, src, i, false, at);
   });
   fn += "  store " + llType(tagType(c), at) + " " + tag + ", ptr " + tagAddress(c, t, dst, at) + "\n";
   destroyAlternative(c, t, copy, at);
@@ -329,6 +488,8 @@ auto codegen::Emitter::setAlternative(ClassDecl* c, const Ty* t, const std::stri
   // cannot: a class that must not move at all is built in place by the union's destructor and
   // placement new, std::variant's emplace (kpp/typed_union_alternative_built_in_place).
   const Ty* altTy = alternativeType(c, t, index, at);
+  if (boxedAlternative(c, t, index, at))
+    return setBoxedAlternative(c, t, obj, index, rhs, at);
   std::string addr = alternativeAddress(c, t, obj, index, at);
   auto replaceBy = [&](auto&& build)
   {
@@ -471,6 +632,66 @@ auto codegen::Emitter::setAlternative(ClassDecl* c, const Ty* t, const std::stri
   return Value{addr, altTy, false};
 }
 
+auto codegen::Emitter::setBoxedAlternative(ClassDecl* c, const Ty* t, const std::string& obj, size_t index, Expr* rhs, Node* at) -> Value
+{
+  // `u[Big] = x` for an alternative kept on the heap (design.md 8.5, "inline(N)"): x first, as a
+  // value of the alternative's type; the alternative held, with its allocation, takes it by its
+  // operator=; else what the union holds goes and x moves to a new allocation.
+  const Ty* altTy = alternativeType(c, t, index, at);
+  if (isClass(altTy) && !movableByConstructor(altTy, at))
+  {
+    auto* name = static_cast<EnumeratorDecl*>(static_cast<EnumDecl*>(c->tagEnum)->enumerators[index]);
+    std::string u = qualifiedName(c), alternative = sym(name->name);
+    fail(at, "the alternative " + alternative + " of the typed union " + u + " cannot be assigned: " + types.toString(altTy, &symbols) +
+                 " has no copy or move constructor, and the value comes first (build it in place: the union's destructor, then new (&u) " + u + "(" + u +
+                 "::" + alternative + ", ...))");
+  }
+  std::string value = newObjectSlot(altTy, at);
+  initializeFrom(value, altTy, rhs, at);
+  if (needsDestruction(altTy, at))
+    statementTemps.push_back({value, altTy});
+  auto moveInto = [&](const std::string& to)
+  {
+    if (isClass(altTy))
+      moveConstruct(to, value, altTy, at);
+    else if (altTy->kind == TyKind::Array)
+      transferArray(to, value, altTy, at, true, false);
+    else
+      copyBytes(to, value, altTy, at);
+  };
+  std::string held = newTemp(), p = newTemp(), some = newTemp(), both = newTemp();
+  std::string assignL = newLabel("boxed.assign"), otherL = newLabel("boxed.other"), doneL = newLabel("boxed.done");
+  fn += "  " + held + " = icmp eq " + llType(tagType(c), at) + " " + loadTag(c, t, obj, at) + ", " + std::to_string(index) + "\n";
+  fn += "  " + p + " = load ptr, ptr " + alternativeSlot(c, t, obj, index, at) + "\n";
+  fn += "  " + some + " = icmp ne ptr " + p + ", null\n";
+  fn += "  " + both + " = and i1 " + held + ", " + some + "\n";
+  fn += "  br i1 " + both + ", label %" + assignL + ", label %" + otherL + "\n";
+  blockTerminated = true;
+  startBlock(assignL);
+  if (alternativeAssignable(altTy, at))
+    assignObject(p, value, altTy, at, true);
+  else if (altTy->kind == TyKind::Array)
+    transferArray(p, value, altTy, at, true, true);
+  else if (isClass(altTy))
+  {
+    destroy(p, altTy, at); // (no operator= to call: the value moves to its place)
+    moveInto(p);
+  }
+  else
+    copyBytes(p, value, altTy, at);
+  emitBranch(doneL);
+  startBlock(otherL);
+  destroyAlternative(c, t, obj, at);
+  setTag(c, t, obj, c->alternatives.size(), at);
+  std::string place = placeForAlternative(c, t, obj, index, at);
+  moveInto(place);
+  builtAlternative(c, t, index, at);
+  setTag(c, t, obj, index, at);
+  emitBranch(doneL);
+  startBlock(doneL);
+  return Value{alternativeAddress(c, t, obj, index, at), altTy, false};
+}
+
 auto codegen::Emitter::isAssignmentOf(FunctionDecl* f, const Ty* cls, Node* at) -> bool
 {
   if (f->params.size() != 1)
@@ -492,6 +713,42 @@ auto codegen::Emitter::assignHeldAlternative(ClassDecl* c, const Ty* t, const st
   forHeldAlternative(c, t, dst, at, [&](size_t) { return true; }, [&](size_t i)
   {
     const Ty* altTy = alternativeType(c, t, i, at);
+    if (boxedAlternative(c, t, i, at))
+    {
+      // A move takes src's allocation; a copy assigns the value where both hold one, else dst's goes
+      // and a copy of src's comes (none for src moved from).
+      std::string toSlot = alternativeSlot(c, t, dst, i, at), fromSlot = alternativeSlot(c, t, src, i, at);
+      std::string to = newTemp(), from = newTemp();
+      fn += "  " + to + " = load ptr, ptr " + toSlot + "\n";
+      fn += "  " + from + " = load ptr, ptr " + fromSlot + "\n";
+      if (move)
+      {
+        destroyBoxed(c, t, dst, i, at);
+        buildAlternativeFrom(c, t, dst, src, i, true, at);
+        return;
+      }
+      std::string toSome = newTemp(), fromSome = newTemp(), both = newTemp(), assignL = newLabel("boxed.assign"), replaceL = newLabel("boxed.replace"),
+                  doneL = newLabel("boxed.assigned");
+      fn += "  " + toSome + " = icmp ne ptr " + to + ", null\n";
+      fn += "  " + fromSome + " = icmp ne ptr " + from + ", null\n";
+      fn += "  " + both + " = and i1 " + toSome + ", " + fromSome + "\n";
+      fn += "  br i1 " + both + ", label %" + assignL + ", label %" + replaceL + "\n";
+      blockTerminated = true;
+      startBlock(assignL);
+      if (isClass(altTy))
+        assignObject(to, from, altTy, at, false);
+      else if (altTy->kind == TyKind::Array)
+        transferArray(to, from, altTy, at, false, true);
+      else
+        copyBytes(to, from, altTy, at);
+      emitBranch(doneL);
+      startBlock(replaceL);
+      destroyBoxed(c, t, dst, i, at);
+      buildAlternativeFrom(c, t, dst, src, i, false, at);
+      emitBranch(doneL);
+      startBlock(doneL);
+      return;
+    }
     std::string from = alternativeAddress(c, t, src, i, at), to = alternativeAddress(c, t, dst, i, at);
     if (alternativeAssignable(altTy, at))
       assignObject(to, from, altTy, at, move);

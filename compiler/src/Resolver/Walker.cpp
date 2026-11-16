@@ -4123,7 +4123,9 @@ auto GlobalScope::Impl::Walker::typeOfMember(MemberExpr* m) -> const Ty*
       return descriptor->inner ? descriptor->inner : types.unknown();
     size_t index = 0;
     if (ClassDecl* u = alternativeOf(descriptor, index))
-      return which == "tag" && u->tagEnum ? impl.tagTypeOf(u, descriptor->args.empty() ? nullptr : descriptor->args[0]) : unknown(Why::Member);
+      return which == "tag" && u->tagEnum ? impl.tagTypeOf(u, descriptor->args.empty() ? nullptr : descriptor->args[0])
+           : which == "boxed"            ? types.boolType() // (kept on the heap: design.md 8.5, "inline(N)")
+                                         : unknown(Why::Member);
     if (which == "offset")
       return types.sizeType();
     return unknown(Why::Member);

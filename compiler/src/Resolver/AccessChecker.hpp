@@ -185,6 +185,14 @@
   // An alignas(N) written in class cls (on it, or on one of its data members), N under the class's
   // arguments; 1 when there is none, nothing when N is no constant.
   std::optional<int64_t> constDeclaredAlign(ClassDecl* cls, Expr* alignment, const Subst* sp, int depth);
+  // Whether the alternative (a storage member of typed union u, of type altTy) is kept on the heap:
+  // u is `inline(N)` and altTy is larger than N bytes (design.md 8.5, "inline(N)"); none when not known.
+  std::optional<bool> constBoxedAlternative(ClassDecl* u, const Ty* altTy, const Subst* sp, int depth);
+  // The typed union whose alternative's storage member m is, or null.
+  static ClassDecl* typedUnionOfAlternative(Decl* m);
+  // Whether typed union def (of type cls) keeps any alternative on the heap: then it is neither
+  // trivially copyable nor trivially destructible.
+  std::optional<bool> boxesAnyAlternative(const Ty* cls, ClassDecl* def);
 
   std::optional<int64_t> constSizeOf(const Ty* t, int depth);
   // GlobalScope::hasBaseAtOffset, and the declaration-based facts it rests on (structFor's: a class

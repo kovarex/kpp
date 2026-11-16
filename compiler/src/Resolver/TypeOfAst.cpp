@@ -1281,6 +1281,8 @@ auto GlobalScope::Impl::triviallyDestructible(const Ty* t, int depth) -> std::op
       return false;
   if (hasVirtualDestructor(s.cls))
     return false; // (a polymorphic class's, virtual by kpp's rule: design.md 23b)
+  if (std::optional<bool> boxed = boxesAnyAlternative(s.cls, def); !boxed || *boxed)
+    return boxed ? std::optional<bool>(false) : std::nullopt; // (an `inline(N)` union frees its boxed alternative: design.md 8.5)
   std::vector<const Ty*> parts;
   if (!directBases(s.cls, def, parts) || !fieldTypes(s.cls, def, parts))
     return std::nullopt;
@@ -1475,6 +1477,8 @@ auto GlobalScope::Impl::triviallyCopyable(const Ty* t) -> std::optional<bool>
   for (FunctionDecl* f : {own.copyCtor, own.copyCtorNonConst, own.moveCtor, own.copyAssign, own.copyAssignNonConst, own.moveAssign})
     if (f && !(f->flags & (DF_Default | DF_Delete)))
       return false;
+  if (std::optional<bool> boxed = boxesAnyAlternative(s.cls, def); !boxed || *boxed)
+    return boxed ? std::optional<bool>(false) : std::nullopt; // (a boxed alternative's copy allocates: design.md 8.5, "inline(N)")
   // Then its parts, whose copies it deleted or not (a union's member that copies otherwise).
   std::vector<const Ty*> parts;
   if (!directBases(s.cls, def, parts) || !fieldTypes(s.cls, def, parts))

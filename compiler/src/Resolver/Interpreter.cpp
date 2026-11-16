@@ -3513,6 +3513,10 @@ auto GlobalScope::Impl::constLayoutOf(const Ty* t, int /*depth*/) -> const Const
   t = t ? types.unqualified(types.stripRef(t)) : nullptr;
   if (!t || t->kind != TyKind::Class || types.isDependent(t) || mentionsUnknown(t))
     return nullptr;
+  // An `inline(N)` typed union keeping an alternative on the heap is made at run time (design.md 8.5).
+  if (ClassDecl* def = classDefinition(t); def && def->isTypedUnion && def->inlineLimit)
+    if (boxesAnyAlternative(t, def) != std::optional<bool>(false))
+      return nullptr;
   {
     std::lock_guard lock(constLayoutsMutex);
     if (auto it = constLayouts.find(t); it != constLayouts.end())
@@ -4680,6 +4684,13 @@ auto GlobalScope::Impl::constTypedUnion(const Ty* t, const ConstClassLayout& lay
   const Ty* alternative = which < def->alternatives.size() ? alternativeType(which) : nullptr;
   if (!alternative)
     return std::nullopt;
+  // An alternative of an `inline(N)` union kept on the heap: built at run time (design.md 8.5).
+  if (def->inlineLimit)
+  {
+    Subst subst = substFor(t);
+    if (constBoxedAlternative(def, alternative, subst.empty() ? nullptr : &subst, depth + 1) != std::optional<bool>(false))
+      return std::nullopt;
+  }
   const Ty* au = types.unqualified(alternative);
   std::optional<ConstValue> value = rest.size() == 1 && rest[0].type && types.unqualified(types.stripRef(rest[0].type)) == au
                                       ? constConvertTo(rest[0], au, depth + 1)

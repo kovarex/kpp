@@ -121,6 +121,7 @@ namespace
             type(b.type);
           decls(c->members);
           expr(c->alignment);
+          expr(c->inlineLimit);
           break;
         }
         case NodeKind::EnumDecl:

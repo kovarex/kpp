@@ -5,6 +5,12 @@
 
     ClassDecl* typedUnionOf(const Ty* t, Node* at);
     const Ty* tagType(ClassDecl* c) { return types.enumType(c->tagEnum); }
+    // Whether t is c's tag type (of any instance of c, a class template's).
+    bool isTagOf(ClassDecl* c, const Ty* t)
+    {
+      t = t ? types.unqualified(types.stripRef(t)) : nullptr;
+      return t && t->kind == TyKind::Enum && t->decl == c->tagEnum;
+    }
     std::string tagAddress(ClassDecl* c, const Ty* t, const std::string& obj, Node* at);
     std::string loadTag(ClassDecl* c, const Ty* t, const std::string& obj, Node* at);
     const Ty* alternativeType(ClassDecl* c, const Ty* t, size_t index, Node* at);
@@ -59,6 +65,27 @@
       startBlock(endL);
     }
     void destroyAlternative(ClassDecl* c, const Ty* t, const std::string& obj, Node* at);
+    // `inline(N)` (design.md 8.5): whether typed union u (under args) keeps an alternative of type
+    // altTy on the heap, altTy being larger than N bytes; its storage member then holds the address.
+    bool boxesAlternative(ClassDecl* u, const TemplateArgs& args, const Ty* altTy, Node* at);
+    // Whether alternative index of typed union c (of type t) is kept on the heap.
+    bool boxedAlternative(ClassDecl* c, const Ty* t, size_t index, Node* at);
+    std::unordered_map<const Ty*, std::vector<char>> boxedAlternatives; // (t's answers, by index: 0 inline, 1 boxed)
+    // The typed union whose alternative's storage member m is, or null.
+    static ClassDecl* typedUnionOfStorage(Decl* m);
+    // The storage member of alternative index: the value, or a boxed one's address.
+    std::string alternativeSlot(ClassDecl* c, const Ty* t, const std::string& obj, size_t index, Node* at);
+    // The place to build alternative index of the union at obj in: its storage, or for a boxed one a
+    // new allocation, its address stored in the storage, freed if the construction throws (until
+    // the matching builtAlternative).
+    std::string placeForAlternative(ClassDecl* c, const Ty* t, const std::string& obj, size_t index, Node* at);
+    void builtAlternative(ClassDecl* c, const Ty* t, size_t index, Node* at);
+    // Builds alternative index of dst from src's (both holding it): a copy, or a move (a boxed one's
+    // allocation taken, src's address left null).
+    void buildAlternativeFrom(ClassDecl* c, const Ty* t, const std::string& dst, const std::string& src, size_t index, bool move, Node* at);
+    // A boxed alternative's value destroyed and its allocation freed (none for one moved from).
+    void destroyBoxed(ClassDecl* c, const Ty* t, const std::string& obj, size_t index, Node* at);
+    std::vector<size_t> boxesBuilding; // (placeForAlternative's allocations, their statementTemps entries)
     // A typed union's own data members (declared after its alternatives, laid out before its tag:
     // design.md 8.5), as (field index, member) of t's layout.
     std::vector<std::pair<uint32_t, Decl*>> ownMembers(ClassDecl* c, const Ty* t, Node* at);
@@ -94,6 +121,8 @@
     // rhs assigned to alternative index of the union at obj (`u[Name] = rhs`, named being that
     // assignment, or `u = rhs`, null): as std::variant's assignment (design.md 8.5).
     Value setAlternative(ClassDecl* c, const Ty* t, const std::string& obj, size_t index, Expr* rhs, BinaryExpr* named, Node* at);
+    // setAlternative for an alternative kept on the heap (design.md 8.5, "inline(N)").
+    Value setBoxedAlternative(ClassDecl* c, const Ty* t, const std::string& obj, size_t index, Expr* rhs, Node* at);
     // Whether operator= f takes a cls (its copy or move assignment), no value of another type.
     bool isAssignmentOf(FunctionDecl* f, const Ty* cls, Node* at);
     // The tag values of a typed union's alternatives, in declaration order (the cases of a switch).

@@ -1,0 +1,65 @@
+// spec: an `inline(N)` typed union with data members of its own (design.md 8.5) is the size of its members, tag and inline storage; it is no trivially copyable type, so a Vector copies its elements through the union's copy (each boxed value to an allocation of its own) and destroys them; an alternative assigned to a union moved from, which holds no allocation, gets a new one
+// factorio: InputAction as `union enum InputAction : u16 inline(112)` with its update tick and player index: 128 bytes, the 9 payloads larger than 112 bytes on the heap, kept in Vectors of actions (InputActionList, replays)
+int live = 0;
+struct Tracked
+{
+  int id = 0;
+  Tracked(int id) : id(id) { live += 1; }
+  Tracked(const Tracked& other) : id(other.id) { live += 1; }
+  Tracked& operator=(const Tracked& other) { this.id = other.id; return this; }
+  ~Tracked() { live -= 1; }
+};
+struct Blueprint
+{
+  Tracked tracked;
+  char label[240];
+  Blueprint(int id) : tracked(id) {}
+};
+struct Raw
+{
+  char bytes[112];
+};
+struct Walk
+{
+  double x = 0;
+  double y = 0;
+};
+union enum Action : u16 inline(112)
+{
+  { {Walk, StartWalking}, {Blueprint, SetupBlueprint}, {Raw, RawBytes} }
+  u64 updateTick = 0;
+  u16 playerIndex = 0;
+};
+template<typename T>
+union enum Holder : u8 inline(sizeof(void*) * 2)
+{
+  { {int, Small}, {T, Value} }
+};
+int main()
+{
+  static_assert(sizeof(Action) == 128 && sizeof(Holder<Walk>) == 24 && sizeof(Holder<Blueprint>) == 16);
+  std::println(sizeof(Action), " ", sizeof(Holder<double>), " ", sizeof(Holder<Walk>), " ", sizeof(Holder<Blueprint>));
+  {
+    Holder<Blueprint> h(Holder<Blueprint>::Value, 4);
+    Holder<Blueprint> other = h;
+    std::println("holder ", other[Holder<Blueprint>::Value].tracked.id, " live ", live);
+  }
+  {
+    std::Vector<Action> actions;
+    for (int i = 0; i < 6; ++i)
+    {
+      Action a = i % 2 ? Action(Action::SetupBlueprint, i) : Action(Action::StartWalking, Walk{double(i), 1});
+      a.updateTick = u64(i * 10);
+      actions.push_back(a);
+    }
+    std::Vector<Action> copy = actions;
+    copy[1][Action::SetupBlueprint].tracked.id = 100;
+    std::println("live ", live, " copy ", copy[1][Action::SetupBlueprint].tracked.id, " original ", actions[1][Action::SetupBlueprint].tracked.id,
+                 " tick ", copy[5].updateTick);
+    Action moved = std::move(copy[3]);
+    copy[3][Action::SetupBlueprint] = Blueprint(33);
+    std::println("refilled ", copy[3][Action::SetupBlueprint].tracked.id, " moved ", moved[Action::SetupBlueprint].tracked.id, " live ", live);
+  }
+  std::println("live ", live);
+  return 0;
+}

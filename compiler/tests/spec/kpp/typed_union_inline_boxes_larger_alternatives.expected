@@ -1,0 +1,11 @@
+16 64
+Count 4 false
+Big 60 true
+OtherBig 60 true
+big 7 live 1
+copy 8 original 7 live 2 equal false
+moved keeps its place true live 2
+assigned 7 equal true live 2
+count 3 live 1
+other 9 live 2
+live 0

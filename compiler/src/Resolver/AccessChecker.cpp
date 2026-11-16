@@ -766,6 +766,45 @@ auto GlobalScope::Impl::constDeclaredAlign(ClassDecl* cls, Expr* alignment, cons
   return v->i;
 }
 
+auto GlobalScope::Impl::typedUnionOfAlternative(Decl* m) -> ClassDecl*
+{
+  // (the storage member's parent is the anonymous union, whose parent is the typed union)
+  Decl* storage = m ? m->parent : nullptr;
+  Decl* u = storage ? storage->parent : nullptr;
+  if (!u || u->kind != NodeKind::ClassDecl || !static_cast<ClassDecl*>(u)->isTypedUnion)
+    return nullptr;
+  for (Decl* a : static_cast<ClassDecl*>(u)->alternatives)
+    if (a == m)
+      return static_cast<ClassDecl*>(u);
+  return nullptr;
+}
+
+auto GlobalScope::Impl::constBoxedAlternative(ClassDecl* u, const Ty* altTy, const Subst* sp, int depth) -> std::optional<bool>
+{
+  if (!u->inlineLimit)
+    return false;
+  std::optional<int64_t> limit = constDeclaredAlign(u, u->inlineLimit, sp, depth);
+  std::optional<int64_t> size = altTy && altTy->isKnown() && !types.isDependent(altTy) ? constSizeOf(altTy, depth + 1) : std::nullopt;
+  if (!limit || !size)
+    return std::nullopt;
+  return *size > *limit;
+}
+
+auto GlobalScope::Impl::boxesAnyAlternative(const Ty* cls, ClassDecl* def) -> std::optional<bool>
+{
+  if (!def->isTypedUnion || !def->inlineLimit)
+    return false;
+  Subst subst = substFor(cls);
+  const Subst* sp = subst.empty() ? nullptr : &subst;
+  for (Decl* a : def->alternatives)
+  {
+    std::optional<bool> boxed = constBoxedAlternative(def, declaredTypeOf(a, sp, 0), sp, 0);
+    if (!boxed || *boxed)
+      return boxed;
+  }
+  return false;
+}
+
 auto GlobalScope::Impl::classBasesOf(const Ty* cls, ClassDecl*& def, int depth) -> std::vector<const Ty*>
 {
   std::vector<const Ty*> out;
@@ -972,6 +1011,15 @@ auto GlobalScope::Impl::constSizeOf(const Ty* t, int depth) -> std::optional<int
           continue;
         if (!ft || !ft->isKnown() || types.isDependent(ft))
           return std::nullopt;
+        // An alternative of an `inline(N)` typed union larger than N: its address (design.md 8.5).
+        if (ClassDecl* u = isUnion && m->kind == NodeKind::VariableDecl ? typedUnionOfAlternative(m) : nullptr; u && u->inlineLimit)
+        {
+          std::optional<bool> boxed = constBoxedAlternative(u, ft, sp, depth + 1);
+          if (!boxed)
+            return std::nullopt;
+          if (*boxed)
+            ft = types.pointer(ft);
+        }
         auto fs = constSizeOf(ft, depth + 1);
         auto fa = constAlignOf(ft, depth + 1);
         if (!fs || !fa) return std::nullopt;
@@ -1062,6 +1110,14 @@ auto GlobalScope::Impl::constAlignOf(const Ty* t, int depth) -> std::optional<in
       else
         continue;
       if (!ft || !ft->isKnown()) return std::nullopt;
+      if (ClassDecl* u = m->kind == NodeKind::VariableDecl ? typedUnionOfAlternative(m) : nullptr; u && u->inlineLimit)
+      {
+        std::optional<bool> boxed = constBoxedAlternative(u, ft, sp, depth + 1); // (its address: design.md 8.5, "inline(N)")
+        if (!boxed)
+          return std::nullopt;
+        if (*boxed)
+          ft = types.pointer(ft);
+      }
       auto fa = constAlignOf(ft, depth + 1);
       if (!fa) return std::nullopt;
       align = std::max(align, *fa);

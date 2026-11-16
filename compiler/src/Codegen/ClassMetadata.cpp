@@ -422,7 +422,7 @@ auto codegen::Emitter::needsDestruction(const Ty* t, Node* at) -> bool
   {
     // A typed union destroys whichever alternative it holds, and its own members.
     for (size_t i = 0; i < c->alternatives.size() && !result; ++i)
-      result = needsDestruction(alternativeType(c, t, i, at), at);
+      result = boxedAlternative(c, t, i, at) || needsDestruction(alternativeType(c, t, i, at), at); // (a boxed one is freed)
     for (auto& [index, d] : ownMembers(c, t, at))
       result = result || (!info.fieldTypes[index]->isReference() && needsDestruction(info.fieldTypes[index], at));
   }
@@ -1525,7 +1525,10 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
   // `U(U::Text, x)`, `U u(U::Where, 1, 2)`, `return U(U::Comment, s)`: a tag first names the
   // alternative, the rest build it (its value, or its constructor's arguments), whichever others
   // share its type, and nothing else is built first (design.md 8.5, decided by kovarex 2026-10-31).
-  if (c->isTypedUnion && !args.empty() && args[0]->ty && types.unqualified(types.stripRef(args[0]->ty)) == tagType(c))
+  // (the tag's enum by its declaration: a class template's instance has a Tag type of its own, which was no
+  // tagType(c), and `Holder<Tracked>(Holder<Tracked>::Value, 4)` was a list of the tag and the first alternative's
+  // value, Tracked's constructor never run: kpp/typed_union_template_from_tag_and_value)
+  if (c->isTypedUnion && !args.empty() && args[0]->ty && isTagOf(c, args[0]->ty))
   {
     std::optional<int64_t> index = constantTag(c, args[0]);
     if (!index || *index < 0 || size_t(*index) >= c->alternatives.size())
@@ -1537,8 +1540,9 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
       else
       {
         setTag(c, t, addr, c->alternatives.size(), at); // (holding none meanwhile: constructAlternative)
-        constructInto(alternativeAddress(c, t, addr, size_t(*index), at), alternativeType(c, t, size_t(*index), at),
+        constructInto(placeForAlternative(c, t, addr, size_t(*index), at), alternativeType(c, t, size_t(*index), at),
                       Span<Expr*>{args.data + 1, uint32_t(args.size() - 1)}, at);
+        builtAlternative(c, t, size_t(*index), at);
         setTag(c, t, addr, size_t(*index), at);
       }
     });

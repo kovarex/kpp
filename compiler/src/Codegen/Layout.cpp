@@ -597,6 +597,10 @@ auto codegen::Emitter::buildStruct(const Ty* key, Node* at, StructInfo& info, st
         if (!whenMemberHolds(m, c, args, key, at))
           continue; // (a `when` member this instance does not have)
         ft = global.typeOfDeclIn(m, args);
+        // An alternative of an `inline(N)` typed union larger than N: its address (design.md 8.5).
+        if (ClassDecl* u = typedUnionOfStorage(m); u && u->inlineLimit && ft && ft->isKnown() && !types.isDependent(ft) &&
+                                                    boxesAlternative(u, args, ft, at))
+          ft = types.pointer(ft);
       }
       else if (m->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(m)->name.empty() && static_cast<ClassDecl*>(m)->isDefinition)
         ft = types.classType(m, key->args); // an anonymous struct takes the enclosing instantiation's arguments

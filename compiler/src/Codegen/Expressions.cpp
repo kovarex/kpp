@@ -703,7 +703,9 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
               return {cStringConstant(sym(en->name)), e->ty};
             if (which == "tag")
               return {std::to_string(enumeratorValue(en)), tagType(u)};
-            unsupported(e, "an alternative descriptor has name, type and tag only");
+            if (which == "boxed") // (kept on the heap: design.md 8.5, "inline(N)")
+              return {boxedAlternative(u, bt->args[0], size_t(index), e) ? "true" : "false", types.boolType()};
+            unsupported(e, "an alternative descriptor has name, type, tag and boxed only");
           }
         if (which == "name")
           return {cStringConstant(field->name.empty() ? std::string() : sym(field->name.last().symbol)), e->ty};

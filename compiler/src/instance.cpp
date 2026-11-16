@@ -202,6 +202,7 @@ Decl* InstanceCopier::decl(const Decl* d)
       c->bases = span(c->bases, [&](ClassDecl::Base& b) { b.type = type(b.type); });
       c->members = declList(c->members);
       c->alignment = expr(c->alignment);
+      c->inlineLimit = expr(c->inlineLimit);
       copy = c;
       break;
     }
@@ -781,6 +782,7 @@ void InstanceCopier::fixReferences(Node* root)
             for (Decl* m : c->members)
               push(m);
             push(c->alignment);
+            push(c->inlineLimit);
             fix(c->tagEnum);
             fix(c->tagField);
             for (Decl*& a : c->alternatives)

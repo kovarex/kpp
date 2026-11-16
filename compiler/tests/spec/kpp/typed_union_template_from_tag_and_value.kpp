@@ -1,0 +1,25 @@
+// spec: a typed union of a class template is built from a tag and a value as any typed union is (design.md 8.5): the tag names the alternative, whose constructor builds it from the value
+// factorio: none yet (the game's typed unions are no templates); found building `inline(N)` for InputAction: until 2026-11-16 `Holder<Tracked>(Holder<Tracked>::Value, 4)` was taken as a list of the tag and the first alternative's value, Tracked's constructor never ran (built 0, then live -1 after its destructor)
+int live = 0;
+struct Tracked
+{
+  int id = 0;
+  Tracked(int id) : id(id) { live += 1; }
+  Tracked(const Tracked& other) : id(other.id) { live += 1; }
+  ~Tracked() { live -= 1; }
+};
+template<typename T>
+union enum Holder : u8
+{
+  { {int, Small}, {T, Value} }
+};
+int main()
+{
+  {
+    Holder<Tracked> h(Holder<Tracked>::Value, 4);
+    Holder<Tracked> small(Holder<Tracked>::Small, 9);
+    std::println("built ", live, " ", h[Holder<Tracked>::Value].id, " ", small[Holder<Tracked>::Small]);
+  }
+  std::println("live ", live);
+  return 0;
+}

@@ -1,0 +1,57 @@
+// spec: `union enum U : u16 inline(N)` keeps an alternative of at most N bytes in the union and one larger on the heap, the union holding its address (design.md 8.5, "inline(N)"): the union is as large as its largest inline alternative (at least a pointer), `u[Large]` is the value itself, a copy copies the value to a new allocation, a move takes the allocation (its address stays), assignment assigns the value, destruction destroys it and frees it, comparison compares values, and reflection's `a.type` is the value's type, `a.boxed` whether it is on the heap
+// factorio: InputAction keeps payloads of up to 112 bytes inline and allocates the 9 larger ones (SetupBlueprintData 248 bytes, MultiplayerConfigSettings 160 ...), so that every action is 128 bytes
+int live = 0;
+struct Tracked
+{
+  int id = 0;
+  Tracked(int id) : id(id) { live += 1; }
+  Tracked(const Tracked& other) : id(other.id) { live += 1; }
+  Tracked& operator=(const Tracked& other) { this.id = other.id; return this; }
+  ~Tracked() { live -= 1; }
+  bool operator==(const Tracked& other) const = default;
+};
+struct Large
+{
+  Tracked tracked;
+  char bytes[56];
+  Large(int id) : tracked(id) {}
+  bool operator==(const Large& other) const { return this.tracked == other.tracked; }
+};
+union enum Action : u16 inline(16)
+{
+  { {int, Count}, {Large, Big}, {Large, OtherBig} }
+};
+union enum Plain : u16
+{
+  { {int, Count}, {Large, Big} }
+};
+static_assert(sizeof(Action) == 16, "the tag and a pointer's storage: the larger alternatives are on the heap");
+static_assert(!std::isTriviallyCopyable<Action> && !std::isTriviallyDestructible<Action>);
+int main()
+{
+  std::println(sizeof(Action), " ", sizeof(Plain));
+  for constexpr (auto a : alternatives(Action))
+  {
+    bool boxed = a.boxed;
+    std::println(std::StringView(a.name), " ", sizeof(a.type), " ", boxed);
+  }
+  {
+    Action a(Action::Big, 7);
+    std::println("big ", a[Action::Big].tracked.id, " live ", live);
+    Action copy = a;
+    copy[Action::Big].tracked.id = 8;
+    std::println("copy ", copy[Action::Big].tracked.id, " original ", a[Action::Big].tracked.id, " live ", live, " equal ", copy == a);
+    const Large* where = &a[Action::Big];
+    Action moved = std::move(a);
+    std::println("moved keeps its place ", &moved[Action::Big] == where, " live ", live);
+    copy = moved;
+    std::println("assigned ", copy[Action::Big].tracked.id, " equal ", copy == moved, " live ", live);
+    copy[Action::Count] = 3;
+    std::println("count ", copy[Action::Count], " live ", live);
+    copy = moved;
+    copy[Action::OtherBig] = Large(9);
+    std::println("other ", copy[Action::OtherBig].tracked.id, " live ", live);
+  }
+  std::println("live ", live);
+  return 0;
+}

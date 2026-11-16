@@ -106,6 +106,9 @@ struct ClassDecl : Decl
   Decl* tagEnum = nullptr;        // the nested kpp enum `Tag` naming the alternatives (unscoped: `Property::Integer`)
   Decl* tagField = nullptr;       // the tag data member (`__tag`; the generated `tag()` returns it)
   Span<Decl*> alternatives;       // the storage member of each alternative, in tag order (inside an anonymous union)
+  // `union enum U : u16 inline(N)`: an alternative larger than N bytes is kept on the heap, its
+  // storage member holding the address (design.md 8.5, "inline(N)"); null: every one inline.
+  Expr* inlineLimit = nullptr;
   // The members a false `when` dropped in this configuration (design.md 19): not members, but names
   // a lookup in the class stops at (Scope::absent); a data member's constructor initializers are
   // dropped with it (absentMemberInit).
