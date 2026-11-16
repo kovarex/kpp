@@ -1544,7 +1544,8 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
   // (the tag's enum by its declaration: a class template's instance has a Tag type of its own, which was no
   // tagType(c), and `Holder<Tracked>(Holder<Tracked>::Value, 4)` was a list of the tag and the first alternative's
   // value, Tracked's constructor never run: kpp/typed_union_template_from_tag_and_value)
-  if (c->isTypedUnion && !args.empty() && args[0]->ty && isTagOf(c, args[0]->ty))
+  if (c->isTypedUnion && !args.empty() && args[0]->ty && isTagOf(c, args[0]->ty) &&
+      !ownConstructorTakes(c, t, args, at)) // (`InputAction(type, input, false)`: the union's own constructor of a tag read at run time)
   {
     std::optional<int64_t> index = constantTag(c, args[0]);
     if (!index || *index < 0 || size_t(*index) >= c->alternatives.size())
@@ -1565,7 +1566,8 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
     return;
   }
   if (c->isTypedUnion && args.size() == 1 && args[0]->ty && args[0]->ty->isKnown() && !isPackExpansion(args[0]) && // an expansion: its element, below
-      !ownConstructorTakes(c, t, args, at)) // (`InputAction(input)`: the union's own constructor, below)
+      !ownConstructorTakes(c, t, args, at) && // (`InputAction(input)`: the union's own constructor, below)
+      !(isClass(types.stripRef(args[0]->ty)) && conversionOperator(types.unqualified(types.stripRef(args[0]->ty)), t, at)))
   {
     // `Shape a(s)`, `Shape(7)`, a member initializer `shape(s)`, `new (slot) Shape(x)`: as
     // copy-initialization, a value of the union itself copies or moves it, any other the
@@ -3322,7 +3324,9 @@ auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr
     // template, typed SharedPtr<T>): the value's own class decides once it is emitted.
     bool dependent = initIsClass && types.isDependent(initTy);
     bool sameClass = initIsClass && !dependent && canonicalClass(initTy, at) == canonicalClass(t, at);
-    if (ClassDecl* u = typedUnionOf(t, at); u && !sameClass && !dependent && init->kind != NodeKind::BraceInitExpr && initTy && initTy->isKnown())
+    if (ClassDecl* u = typedUnionOf(t, at); u && !sameClass && !dependent && init->kind != NodeKind::BraceInitExpr && initTy && initTy->isKnown() &&
+        !(initIsClass && conversionOperator(types.unqualified(types.stripRef(initTy)), t, at)) && // (`implicit operator InputAction()`: below)
+        !ownConstructorTakes(u, t, Span<Expr*>{&init, 1}, at))
     {
       // `AIState s = Patrolling{1};`, `return Attacking{n};`: the alternative of the value's
       // type, constructed from it (design.md 8.5).

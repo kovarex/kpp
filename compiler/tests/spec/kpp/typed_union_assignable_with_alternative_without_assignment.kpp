@@ -1,0 +1,44 @@
+// spec: a typed union is copy and move assignable when each alternative is assignable or, without an operator= (a const member, a deleted operator=), can be built anew from the source's (design.md 8.5: the alternative held is then destroyed and built again), as its assignment does; and a constructor of its own taking a tag known at run time is called as any constructor (only a constant tag first builds that alternative itself)
+// factorio: InputAction as a typed union: CargoDestination's `operator=(const CargoDestination&) = delete` ("assignment through its deleted operator="), and InputActionDesegmenter's `InputAction(type, deserialiser, false)` with the type read ("no constant one of its alternatives")
+struct Fixed
+{
+  const int value;
+  Fixed(int value) : value(value) {}
+  Fixed(const Fixed& other) = default;
+};
+struct Destination
+{
+  int where = 0;
+  Destination(int where) : where(where) {}
+  Destination(const Destination& other) = default;
+  Destination& operator=(const Destination& other) = delete;
+};
+union enum Action : u16
+{
+  { {int, Count}, {Fixed, Pinned}, {Destination, Cargo} }
+
+  Action() {}
+  Action(Action::Tag tag, int value, bool read)
+  {
+    if (tag == Action::Count)
+      this[Action::Count] = value;
+    else
+      this[Action::Cargo] = Destination(read ? value : 0);
+  }
+};
+static_assert(std::isMoveAssignable<Action> && std::isCopyAssignable<Action>);
+static_assert(!std::isCopyAssignable<Fixed>);
+int main()
+{
+  Action a(Action::Pinned, 4);
+  Action b(Action::Pinned, 9);
+  a = b;
+  Action c(Action::Count, 1);
+  c = std::move(b);
+  Action::Tag read = Action::Cargo;
+  Action d(read, 6, true);
+  Action e(Action::Tag(0), 2, true);
+  d = Action(read, 7, true);
+  std::println(a[Action::Pinned].value, " ", c[Action::Pinned].value, " ", d[Action::Cargo].where, " ", e[Action::Count]);
+  return 0;
+}

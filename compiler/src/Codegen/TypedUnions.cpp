@@ -715,7 +715,18 @@ auto codegen::Emitter::isAssignmentOf(FunctionDecl* f, const Ty* cls, Node* at) 
 
 auto codegen::Emitter::alternativeAssignable(const Ty* altTy, Node* at) -> bool
 {
-  return isClass(altTy) && (declaresAssignment(altTy, at) || !declaresMoveMember(classDef(altTy->decl, at), altTy, false, at));
+  if (!isClass(altTy))
+    return false;
+  // A class whose operator= is deleted (CargoDestination's), or a part's, is no assignable one: the alternative
+  // held is destroyed and built anew instead (the game's InputAction as a typed union: "assignment to
+  // CargoDestination through its deleted operator=").
+  for (Decl* m : classDef(altTy->decl, at)->members)
+    if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Delete) && !static_cast<FunctionDecl*>(m)->name.empty() &&
+        static_cast<FunctionDecl*>(m)->name.last().special == 2 && P(static_cast<FunctionDecl*>(m)->name.last().opToken) == P::Assign)
+      return false;
+  if (partAssignmentDeleted(altTy, false, at))
+    return false;
+  return declaresAssignment(altTy, at) || !declaresMoveMember(classDef(altTy->decl, at), altTy, false, at);
 }
 
 auto codegen::Emitter::assignHeldAlternative(ClassDecl* c, const Ty* t, const std::string& dst, const std::string& src, bool move, Node* at) -> void

@@ -1193,6 +1193,19 @@ auto GlobalScope::Impl::assignableFromSelf(const Ty* t, bool move, TraitForm for
       return false; // a declared move operation deletes the implicit copy assignment
     move = move && !s.copyCtor && !s.copyCtorNonConst && !s.destructor;
   }
+  // A typed union's alternative held is assigned by its operator=, or else destroyed and built anew from the source's
+  // (design.md 8.5): one with no assignment of its own but a copy or move constructor leaves the union assignable.
+  if (def->isTypedUnion && form == TraitForm::Plain)
+    return membersAllow(u, def, form,
+                        [&](const Ty* m, int d) -> std::optional<bool>
+                        {
+                          std::optional<bool> assigned = assignableFromSelf(m, move, form, d);
+                          if (assigned && *assigned)
+                            return true;
+                          std::optional<bool> rebuilt = constructibleFromSelf(m, move, form, d);
+                          return rebuilt && *rebuilt ? std::optional<bool>(true) : assigned;
+                        },
+                        false, depth);
   return membersAllow(u, def, form, [&](const Ty* m, int d) { return assignableFromSelf(m, move, form, d); }, true, depth);
 }
 

@@ -996,7 +996,8 @@ auto GlobalScope::Impl::conversionRank(const Ty* arg, const Ty* param, int depth
         for (Decl* alt : u->alternatives)
           if (types.unqualified(declaredTypeOf(alt, s.pairs.empty() ? nullptr : &s, 0)) == types.unqualified(a))
             return 4;
-        return NotViable; // no other conversion makes a union
+        // Otherwise as any class: a converting constructor of the union's own, or a conversion operator of a's
+        // (the game's CustomTestInputHandler's `implicit operator InputAction()`; until 2026-11-16 nothing else made one).
       }
       // User-defined: a non-explicit single-argument constructor of p accepting a, its own or
       // one a `using Base::Base;` inherits (not the base's copy or move constructor).

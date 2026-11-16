@@ -855,6 +855,15 @@ Specs: kpp/typed_union_data_members, kpp/typed_union_data_members_before_tag,
 kpp/typed_union_own_constructor, kpp/typed_union_own_copy_constructor_is_error, kpp/typed_union_own_assignment_is_error,
 kpp/typed_union_own_destructor_is_error, kpp/typed_union_data_members_compared_is_error.
 
+*Assignment and conversions* (2026-11-16, found moving the game's InputAction onto a typed union): an
+alternative whose class has no usable operator= (a const member, a deleted operator= as CargoDestination's)
+is destroyed and built anew from the source's, so the union stays copy and move assignable (the traits say
+so); a constructor of the union's own taking a tag read at run time is called as any constructor (a
+constant tag first, with no own constructor taking the arguments, builds that alternative); and a value of
+another type converts to the union by its own converting constructors or the value's conversion operators
+(`implicit operator InputAction()`) when no alternative has its type. Specs:
+kpp/typed_union_assignable_with_alternative_without_assignment, kpp/typed_union_from_conversion_operator.
+
 *`union enum class U`* (2026-11-16, for InputAction, whose 358 named constructors `InputAction::Build(...)`
 have the names of its actions): the alternatives' names are in `U::Tag` alone, as an enum class's
 enumerators, so U's own members may take them. `U::Tag::Count` is the tag (`u[U::Tag::Count]`,
