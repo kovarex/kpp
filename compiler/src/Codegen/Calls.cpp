@@ -1842,6 +1842,12 @@ auto codegen::Emitter::argumentText(const Ty* pt, Expr* arg, Node* at) -> std::s
     a = convert(a, types.intType(32), at);
   else if (a.ty->kind == TyKind::Bool)
     a = convert(a, types.intType(32), at);
+  // An unscoped enumeration is promoted as its underlying type is ([expr.call] 12, [conv.prom] 4): an
+  // `enum : unsigned char` is an int there (until 2026-11-16 an i8, whose register's other bytes printf
+  // read: spec interop/c_variadic_argument_of_a_small_enum_is_promoted). A scoped one is not promoted,
+  // as clang passes it.
+  else if (a.ty->kind == TyKind::Enum && !scopedEnum(a.ty))
+    a = convert(a, promoted(a.ty), at);
   return llType(a.ty, at) + " " + a.text;
 }
 
