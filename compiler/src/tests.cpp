@@ -678,6 +678,7 @@ extern "C" void kpp_coverage_managed();
 extern "C" const char* kpp_coverage_delta();
 extern "C" void kpp_coverage_apply(const char* delta);
 extern "C" bool kpp_coverage_write(const char* path);
+extern "C" const char* kpp_coverage_default_path();
 
 extern "C" void kpp_check_failed(const char* file, int line, int column, const char* text, int kind)
 {
@@ -731,7 +732,7 @@ void __kppPrintHelp()
              "  --durations FILE      with --jobs: an earlier run's --report, each test on its own, the longest first\n"
              "  --list                the selected tests, in the run's order, without running them\n"
              "  --report FILE         one JSON line per test and a summary (- for stdout)\n"
-             "  --coverage FILE       a kpp --coverage build: what the tests ran, to FILE (- for stdout; kpp-coverage.json)\n"
+             "  --coverage FILE       a kpp --coverage build: what the tests ran, to FILE (- for stdout; else the build's --coverage-file or kpp-coverage.json)\n"
              "  -i, --interactive     a menu: a key chooses the tests (a all in parallel, A all here, a test or a suite\n"
              "                        found by typing, the clipboard's, the failed ones; space again), they run, again until q\n"
              "  --help                this text\n"
@@ -2487,7 +2488,7 @@ int main(int argc, char** argv)
   }
   std::println(summary);
   if constexpr (config::coverage)
-    if (!kpp_coverage_write(coverage ? coverage : "kpp-coverage.json"))
+    if (!kpp_coverage_write(coverage ? coverage : kpp_coverage_default_path()))
       return 2;
   return !jobsRan ? 2 : failed ? 1 : 0;
 }

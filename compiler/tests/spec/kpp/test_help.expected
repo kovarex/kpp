@@ -13,7 +13,7 @@ kpp's test runner: runs the program's tests (design.md 8.7, docs/testing.md). It
   --durations FILE      with --jobs: an earlier run's --report, each test on its own, the longest first
   --list                the selected tests, in the run's order, without running them
   --report FILE         one JSON line per test and a summary (- for stdout)
-  --coverage FILE       a kpp --coverage build: what the tests ran, to FILE (- for stdout; kpp-coverage.json)
+  --coverage FILE       a kpp --coverage build: what the tests ran, to FILE (- for stdout; else the build's --coverage-file or kpp-coverage.json)
   -i, --interactive     a menu: a key chooses the tests (a all in parallel, A all here, a test or a suite
                         found by typing, the clipboard's, the failed ones; space again), they run, again until q
   --help                this text

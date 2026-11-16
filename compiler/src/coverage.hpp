@@ -10,7 +10,9 @@
 // (Codegen/CoverageProbes.hpp), and the build gets one more source file, this runtime: it reads the
 // table and writes what ran, at the program's exit or when the test runner says.
 constexpr const char* coverageRuntimePath = "<coverage>.kpp";
-std::string coverageRuntimeSource();
+// defaultFile: where the run writes the coverage when neither the runner's --coverage nor
+// KPP_COVERAGE_FILE says (--coverage-file; empty: kpp-coverage.json in the working directory).
+std::string coverageRuntimeSource(const std::string& defaultFile);
 
 // A coverage file's line for one source file (the runtime's format, coverage.cpp), read back: each
 // place by its numbers (line, column, last line, the column after).

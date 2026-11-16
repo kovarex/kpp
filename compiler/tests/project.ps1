@@ -574,7 +574,7 @@ if (Run 'syslibs')
       {
         if ($code -ne 1 -or $output -notmatch 'app \(debug\) is built for freebsd, but build.kpp''s configure\(cell\) saw cell.platform windows' -or (Test-Path 'platform.txt')) { Fail $what }
       }
-      elseif ($described -ne "platform $($case[3]),platform $($case[3])") { Fail $what }
+      elseif ($described -ne "platform $($case[3]),platform $($case[3]),platform $($case[3])") { Fail $what } # (debug, release, coverage)
       elseif ($case[3] -eq 'windows' -and ($code -ne 0 -or (Get-Content 'platform.txt') -ne 'windows')) { Fail "$what`nplatform.txt: $(Get-Content 'platform.txt' -ErrorAction SilentlyContinue)" }
     }
     Remove-Item 'platform.txt' -ErrorAction SilentlyContinue
@@ -797,7 +797,7 @@ void configure(Cell& cell)
     }
     Set-Content 'build.kpp' $matrixBuild
     $output = (Kpp @('nosuch', '--no-server')) -join "`n"
-    if ($code -eq 0 -or $output -notmatch 'describes no target or configuration nosuch \(its configurations: debug release fastdebug\)') { Fail "an unknown name: exit $code`n$output" }
+    if ($code -eq 0 -or $output -notmatch 'describes no target or configuration nosuch \(its configurations: debug coverage release fastdebug\)') { Fail "an unknown name: exit $code`n$output" }
 
     # In a project's directory, --version and --help print and build nothing, and an option kpp does
     # not have is an error, never passed on or ignored (kovarex's `kpp --version` built the project).

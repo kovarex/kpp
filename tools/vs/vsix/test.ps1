@@ -17,10 +17,11 @@
 # -ReferencesAt FILE:LINE:COLUMN with -ReferencesCount N: Edit.FindAllReferences there; the server must
 # answer N references (its log) and Visual Studio's Find All References window must show them (its
 # visible rows: between 1 and N).
-# -CoverageAt FILE:LINE:COLUMN with -CoverageText TEXT (docs/editors.md, "Coverage"): the project's tests
-# run with kpp --coverage into its kpp-coverage.json first; Tools.kppShowCoverage must show it (the
-# extension's log), Quick Info there must show TEXT ("never false"), and the command again must hide it.
-#   test.ps1 -Name coverage -Project compiler	ests\lsp\coverage -File src\main.kpp -Line 10 -Column 7 -Definition src\main.kpp:3 -CoverageAt src\main.kpp:10:9 -CoverageText 'never false'
+# -CoverageAt FILE:LINE:COLUMN with -CoverageText TEXT (docs/editors.md, "Coverage in Visual Studio"): once
+# Visual Studio is up, `kpp CELL coverage --run` (-CoverageCell, app by default) writes the project's
+# kpp-coverage.json, which must show by itself (the extension's log), Quick Info there must show TEXT
+# ("never false"), Tools.kppShowCoverage must hide it and show it again.
+#   test.ps1 -Name coverage -Project compiler\tests\lsp\coverage -File src\main.kpp -Line 10 -Column 7 -Definition src\main.kpp:3 -CoverageAt src\main.kpp:10:9 -CoverageText 'never false'
 # -NavigateBack: View.NavigateBackward after Edit.GoToDefinition must land at -File:-Line again (the
 # navigation history Alt+Left uses).
 # -Solution opens the solution kpp --generate-visual-studio-files writes instead of the folder; with
@@ -58,7 +59,8 @@ param(
   [int]$ReferencesCount = -1,
   [switch]$NavigateBack,
   [string]$CoverageAt,
-  [string]$CoverageText
+  [string]$CoverageText,
+  [string]$CoverageCell = 'app'
 )
 $ErrorActionPreference = 'Stop'
 
@@ -104,14 +106,6 @@ $copy = "$Work\$Name"
 if (Test-Path $copy) { cmd /c "rd /s /q `"$copy`"" }
 robocopy $Project $copy /E /XD .git build bin .vs /XJ /NFL /NDL /NJH /NJS /NP /MT:16 | Out-Null
 $open = $copy
-if ($CoverageAt)
-{
-  # (the tests of the file the check is in, built and run with coverage, in the copy: the paths relative)
-  Push-Location $copy
-  $ran = & $KppExe --no-server --coverage --test ($CoverageAt -replace ':[0-9]+:[0-9]+$', '') -- --coverage kpp-coverage.json 2>&1
-  Pop-Location
-  Check 'kpp --coverage --test' (Test-Path "$copy\kpp-coverage.json") (($ran | Select-Object -Last 1) -join ' ')
-}
 if ($Solution)
 {
   Push-Location $copy
@@ -391,13 +385,21 @@ try
   # which outcome the tests never had; the command again hides it.
   if ($CoverageAt)
   {
-    $extensionLog = "$env:LOCALAPPDATA\kppisual-studio-lsp.log"
     $p = Position $CoverageAt
     Open $p.File $p.Line $p.Column
-    try { $dte.ExecuteCommand('Tools.kppShowCoverage') } catch { "Tools.kppShowCoverage: $_" }
-    Start-Sleep -Milliseconds 1500
-    $loaded = @(Get-Content (ServerLog) -ErrorAction SilentlyContinue | Where-Object { $_ -match '^kpp coverage: [0-9]+ file' }) | Select-Object -Last 1
-    Check 'Tools.kppShowCoverage' ([bool]$loaded) $(if ($loaded) { $loaded } else { 'no "kpp coverage:" line in the log' })
+    # The coverage configuration's run, as Ctrl+F5 in it: the project's kpp-coverage.json, shown by itself.
+    Push-Location $copy
+    $ran = & $KppExe $CoverageCell coverage --run 2>&1
+    Pop-Location
+    Check "kpp $CoverageCell coverage --run" (Test-Path "$copy\kpp-coverage.json") (($ran | Select-Object -Last 1) -join ' ')
+    $t = [Diagnostics.Stopwatch]::StartNew()
+    $loaded = $null
+    while (-not $loaded -and $t.Elapsed.TotalSeconds -lt 30)
+    {
+      Start-Sleep -Milliseconds 500
+      $loaded = @(Get-Content (ServerLog) -ErrorAction SilentlyContinue | Where-Object { $_ -match '^kpp coverage: [0-9]+ file' }) | Select-Object -Last 1
+    }
+    Check 'the run''s coverage shown by itself' ([bool]$loaded) $(if ($loaded) { "$loaded; {0:N1} s" -f $t.Elapsed.TotalSeconds } else { 'no "kpp coverage:" line in the log' })
     $t = [Diagnostics.Stopwatch]::StartNew()
     $shown = ''
     while ($t.Elapsed.TotalSeconds -lt $Timeout)
@@ -414,8 +416,13 @@ try
     try { $dte.ExecuteCommand('Tools.kppShowCoverage') } catch { "Tools.kppShowCoverage: $_" }
     Start-Sleep -Milliseconds 800
     $hidden = @(Get-Content (ServerLog) -ErrorAction SilentlyContinue | Where-Object { $_ -match '^kpp coverage: hidden' }).Count -gt 0
-    Check 'Tools.kppShowCoverage again hides it' $hidden ''
+    Check 'Tools.kppShowCoverage hides it' $hidden ''
     Snap 'coverage-hidden'
+    $before = @(Get-Content (ServerLog) -ErrorAction SilentlyContinue | Where-Object { $_ -match '^kpp coverage: [0-9]+ file' }).Count
+    try { $dte.ExecuteCommand('Tools.kppShowCoverage') } catch { "Tools.kppShowCoverage: $_" }
+    Start-Sleep -Milliseconds 800
+    $after = @(Get-Content (ServerLog) -ErrorAction SilentlyContinue | Where-Object { $_ -match '^kpp coverage: [0-9]+ file' }).Count
+    Check 'Tools.kppShowCoverage shows it again' ($after -gt $before) "$before, then $after lines"
   }
 
   # Completion: a line typed in, Edit.ListMembers at its end, the list's items.

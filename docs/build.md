@@ -869,6 +869,12 @@ void configure(Cell& cell)
   | `debugInfo` | true | true: line tables in a file beside the executable, the PDB (Linux, FreeBSD: NAME.debug), which it names without its directory; its code unchanged (kovarex 2026-11-07, question 1) |
   | kpp trivial-function inlining | on | on |
   | its C libraries | unoptimized: `/Od` (`-O0` for clang's GNU driver) after kpp's `/O2`, in `build\clib\flags-HASH` (kovarex 2026-11-07: "debug builds means everything debug", as Factorio's C++ Debug build compiles its libraries) | `/O2`, in `build\clib` |
+  A third is built in since 2026-11-16 (kovarex, design.md 28): **coverage**, debug's settings with kpp
+  `--coverage` and `--coverage-file PROJECT\kpp-coverage.json`, in `build\coverage`: its run (the tests'
+  runner, or a program at its exit) writes what ran into the project's directory, where Visual Studio's and
+  VS Code's extensions find it. A generated solution has it beside Debug and Release, so Ctrl+F5 on a
+  test target in Coverage shows its coverage in the editor. A project's own configuration named coverage
+  replaces it, as one named debug or release does.
 - **config constants** are set for the project (`project.config`), for a configuration, for a
   target (`tests.config`) and for a cell (configure()); each later one overrides: project,
   configuration, target, cell. The command line's `kpp --config NAME=VALUE` overrides them all.

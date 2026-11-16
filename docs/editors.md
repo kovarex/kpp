@@ -299,7 +299,9 @@ Studio. `tools\vs\install.cmd`, the grammar alone, is not needed with it.
 
 ### Coverage in Visual Studio
 
-*Tools > kpp > Show Coverage* (a check; Tools.kppShowCoverage, bindable to a key) shows a coverage file
+To run tests with coverage, pick the **Coverage** configuration (every build.kpp project has it, build.md)
+and run the test target (Ctrl+F5): the run writes the project's kpp-coverage.json, and the extension shows it
+as soon as it is written. *Tools > kpp > Show Coverage* (a check; Tools.kppShowCoverage, bindable to a key) shows a coverage file
 `kpp --coverage` wrote (docs/design.md 28): the file shown before, else the nearest kpp-coverage.json above
 the active document or in the solution's folder, else one picked. Each statement that ran has a green
 background, one that did not a red one; a condition only ever true or only ever false is amber, one never

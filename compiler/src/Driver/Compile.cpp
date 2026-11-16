@@ -175,6 +175,8 @@ int compile(int argc, char** argv)
       options.noInline = true;
     else if (arg == "--coverage")
       options.coverage = true;
+    else if (arg == "--coverage-file" && i + 1 < argc)
+      options.coverageFile = argv[++i];
     else if (arg == "--clang-flags" && i + 1 < argc)
       options.clangFlags = argv[++i];
     else if (arg == "--sanitize" && i + 1 < argc)
@@ -798,7 +800,7 @@ int compile(int argc, char** argv)
     {
       SourceFile runtime;
       runtime.path = coverageRuntimePath;
-      runtime.text = coverageRuntimeSource();
+      runtime.text = coverageRuntimeSource(options.coverageFile);
       totalBytes += runtime.text.size();
       files.push_back(std::move(runtime));
     }

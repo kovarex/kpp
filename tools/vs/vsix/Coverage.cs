@@ -141,6 +141,45 @@ internal static class Coverage
         }
     }
 
+    private static readonly HashSet<string> watchedProjects = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly List<FileSystemWatcher> projectWatchers = new();
+
+    /// <summary>
+    /// A .kpp document opened: the folder of its build.kpp (the nearest above it) is watched, and a
+    /// kpp-coverage.json written there (the coverage configuration's run: build.kpp's coverage, kpp
+    /// --coverage-file) is shown at once, as Show Coverage would.
+    /// </summary>
+    public static void WatchProject(string documentPath)
+    {
+        string? folder = Path.GetDirectoryName(documentPath);
+        while (!string.IsNullOrEmpty(folder) && !File.Exists(Path.Combine(folder, "build.kpp")))
+            folder = Path.GetDirectoryName(folder);
+        if (string.IsNullOrEmpty(folder))
+            return;
+        lock (Lock)
+        {
+            if (!watchedProjects.Add(folder!))
+                return;
+            var w = new FileSystemWatcher(folder!, "kpp-coverage.json") { NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.FileName };
+            FileSystemEventHandler written = (_, e) =>
+            {
+                Thread.Sleep(300); // (written whole at the run's end)
+                try
+                {
+                    KppLanguageClient.Log(Load(e.FullPath));
+                }
+                catch (Exception error)
+                {
+                    KppLanguageClient.Log($"kpp: coverage {e.FullPath} not read: {error.Message}");
+                }
+            };
+            w.Changed += written;
+            w.Created += written;
+            w.EnableRaisingEvents = true;
+            projectWatchers.Add(w);
+        }
+    }
+
     /// <summary>The nearest kpp-coverage.json in a folder or one above it, null if none.</summary>
     public static string? Find(string? folder)
     {
@@ -284,6 +323,7 @@ internal sealed class CoverageClassifierProvider : IClassifierProvider
     {
         if (!this.Documents.TryGetTextDocument(buffer, out ITextDocument document))
             return null;
+        Coverage.WatchProject(document.FilePath);
         return buffer.Properties.GetOrCreateSingletonProperty(() => new CoverageClassifier(buffer, document, this.Registry));
     }
 }

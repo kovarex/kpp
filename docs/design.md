@@ -3132,6 +3132,12 @@ not SanitizerCoverage), one byte per probe set to 1, conditions' outcomes record
   probes of the code they all run, again and again); the body's first statements share the entry's probe. The
   coverage of the run: lines 58.4% (261,403 of 447,114), conditions 51.9%, functions 65.8% (55,245 of 83,898);
   the file 18 MB, its writing about 2.5 s.
+- **The coverage configuration** (kovarex, 2026-11-16, of three ways to run tests with coverage in Visual
+  Studio: "1)"): every build.kpp project has a third built-in configuration, coverage, debug's with
+  `--coverage` and `--coverage-file` naming the project's kpp-coverage.json (build.md, "Targets and
+  configurations"); Visual Studio's extension watches that file in the folder of a .kpp document's build.kpp
+  and shows a run's coverage as it is written. `--coverage-file FILE` sets where a run writes it when
+  neither the runner's `--coverage` nor KPP_COVERAGE_FILE says.
 - **Tools.** `kpp --coverage-merge FILE... -o OUT` adds runs' coverage up (a source of another hash in two
   files is an error: two versions do not merge); `kpp --coverage-export lcov FILE... -o OUT` writes lcov's
   tracefile (FN/FNDA, DA, BRDA: a condition's true and false, "-" never evaluated; a missing default), for

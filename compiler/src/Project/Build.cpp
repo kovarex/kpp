@@ -140,6 +140,10 @@ namespace projects
       args.push_back("--sanitize"), args.push_back(sanitizers);
     for (const std::string& a : p.arguments)
       args.push_back(a);
+    // --coverage (the coverage configuration's): the run writes kpp-coverage.json into the project's
+    // directory, where the editors find it (docs/design.md 28), wherever it runs from.
+    if (std::find(args.begin(), args.end(), "--coverage") != args.end() && std::find(args.begin(), args.end(), "--coverage-file") == args.end())
+      args.push_back("--coverage-file"), args.push_back((root / "kpp-coverage.json").string());
     // The C import's include directories, another platform's left out (cInclude(path, Platform),
     // kept as "PLATFORM PATH").
     std::string platform = targetPlatform(p, request);
