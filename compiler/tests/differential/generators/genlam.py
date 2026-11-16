@@ -94,6 +94,7 @@ def blockCaptures():
         elif p.startswith('&'): byref.add(p[1:])
         else: byval.add(p)
     names = list(byval | byref)
+    explicit = sorted(names)  # (the captures written: each read in the body, as kpp's unused captures are errors)
     if dflt:
         for n in 'abc':
             if n not in byval and n not in byref:
@@ -113,7 +114,7 @@ def blockCaptures():
     calls = r.randint(1, 3)
     lines = ['{',
              '  int a = %d, b = %d, c = %d;' % (g.num(), g.num(), g.num()),
-             '  auto f = [%s](int p)%s { %s };' % (caps, ' mutable' if mut else '', ' '.join(body))]
+             '  auto f = [%s](int p)%s { %s };' % (caps, ' mutable' if mut else '', ' '.join(['(void)p;'] + ['(void)%s;' % n for n in explicit] + body))]
     if r.random() < 0.5: lines.append('  ' + ' '.join(after))
     lines.append('  int r0 = f(1);')
     if r.random() < 0.4: lines.append('  auto f2 = f;')
@@ -161,9 +162,11 @@ def blockGeneric():
               'return k > 3 ? x : y;', 'return (x + k) / 2;']
     body = r.choice(bodies)
     params = r.choice(['auto x, auto y', 'auto x, auto y', 'const auto& x, auto y', 'auto x, int y', 'auto&& x, auto y'])
+    params = ', '.join('[[maybe_unused]] ' + q for q in params.split(', '))  # (the body may read either)
+    cap = r.choice(['k', '&k', '=', '&'])
     lines = ['{',
-             '  int k = %d;' % k,
-             '  auto gl = [%s](%s) { %s };' % (r.choice(['k', '&k', '=', '&']), params, body)]
+             '  [[maybe_unused]] int k = %d;' % k,
+             '  auto gl = [%s](%s) { %s%s };' % (cap, params, '(void)k; ' if cap in ('k', '&k') else '', body)]
     for _ in range(r.randint(2, 5)):
         t1, v1 = r.choice(TYPES); t2, v2 = r.choice(TYPES)
         a, b = r.choice(v1), r.choice(v2)
@@ -299,7 +302,7 @@ def blockPointer():
 def blockTemplateLambda():
     # C++20 lambdas with a template parameter list: deduced from the call, a pack, an array bound
     k = g.num()
-    lines = ['{', '  int k = %d;' % k]
+    lines = ['{', '  [[maybe_unused]] int k = %d;' % k]  # (read or not: kpp's unused names are errors)
     for i in range(r.randint(2, 4)):
         c = r.randint(0, 4)
         if c == 0:
@@ -312,7 +315,7 @@ def blockTemplateLambda():
         elif c == 2:
             n = r.randint(1, 5)
             lines.append('  int arr%d[%d] = {};' % (i, n))
-            lines.append('  auto bound%d = []<class X, int N>(X (&a)[N]) { return N * 10 + (int)sizeof(X); };' % i)
+            lines.append('  auto bound%d = []<class X, int N>(X (&)[N]) { return N * 10 + (int)sizeof(X); };' % i)
             lines.append('  show(bound%d(arr%d));' % (i, i))
         elif c == 3:
             lines.append('  auto first%d = [&]<class X, class... Rest>(X x, Rest... rest) { return x * k + (int)sizeof...(Rest); };' % i)
@@ -326,7 +329,7 @@ def blockTemplateLambda():
 
 def blockMore():
     k = g.num()
-    lines = ['{', '  int k = %d;' % k]
+    lines = ['{', '  [[maybe_unused]] int k = %d;' % k]
     for i in range(r.randint(2, 4)):
         c = r.randint(0, 13)
         if c == 0:

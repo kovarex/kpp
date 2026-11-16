@@ -134,7 +134,7 @@ def block(b):
                 sig = (p,)
             if sig in used: continue
             used.add(sig)
-            params = ', '.join('%s p%d' % (t, i) for i, t in enumerate(sig))
+            params = ', '.join(sig)  # (unnamed: the overload reads none, and kpp's unused names are errors)
             defs.append('int %s(%s) { return %d; }' % (fname, params, j + 1))
         if r.random() < 0.2:
             defs.append('template<class T> int %s(T) { return 9; }' % fname)

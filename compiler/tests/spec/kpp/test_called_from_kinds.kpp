@@ -23,7 +23,7 @@ suite Kinds
 
   test Constructor { Value a(1); }
   test Destructor { Value a(7); }
-  test OperatorEquals { Value a(2); Value b(2); bool same = a == b; }
+  test OperatorEquals { Value a(2); Value b(2); bool same = a == b; (void)same; }
   test OperatorPlus { Value a(3); Value b(1 + 1); Value c = a + b; }
   test Conversion { Value a(4); if (a) { } }
   test CallOperator { Value a(0); a(5); }

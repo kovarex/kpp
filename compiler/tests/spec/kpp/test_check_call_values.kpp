@@ -58,7 +58,7 @@ suite Values
   test Nested
   {
     check(generic([]() { check(false, "inside"); return 1; }()));
-    auto f = [](int a) { return false; };
+    auto f = []([[maybe_unused]] int a) { return false; };
     check(f(1));
     bool (*p)(int) = &isTrivial;
     check(p(1));

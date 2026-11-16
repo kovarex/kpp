@@ -49,7 +49,7 @@ int main()
   int arr[7];
   printf("T9 %d\n", arraySize(arr));
 
-  int (*fns[3])();
+  [[maybe_unused]] int (*fns[3])();
   int results[3];
   auto l0 = [] { return 0; };
   for (int i = 0; i < 3; ++i)

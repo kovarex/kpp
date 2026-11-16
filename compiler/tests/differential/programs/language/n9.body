@@ -45,8 +45,8 @@ template<class T> struct One { T t; };
 template<class... Ts> struct Pack { static constexpr int n = sizeof...(Ts); };
 template<class T, class... Ts> int sum(T t, Ts... ts) { if constexpr (sizeof...(ts) == 0) return t; else return t + sum(ts...); }
 template<class... Ts> int cnt(Ts&&...) { return sizeof...(Ts); }
-template<class T> int deduce(T a, T b) { return 1; }
-int deduce(int a, double b) { return 2; }
+template<class T> int deduce(T, T) { return 1; }
+int deduce(int, double) { return 2; }
 template<class T> T maxOf(T a, T b) { return a > b ? a : b; }
 template<class R, class A> R conv(A a) { return (R)a; }
 template<class T> auto addr(T& t) -> decltype(&t) { return &t; }

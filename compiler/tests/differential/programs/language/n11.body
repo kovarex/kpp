@@ -1,7 +1,7 @@
 // block-scope extern
 int shadowed = 1;
 int plainUse() { extern int shadowed; return shadowed; }
-int oneShadow() { int shadowed = 2; { extern int shadowed; return shadowed; } }
+int oneShadow() { [[maybe_unused]] int shadowed = 2; { extern int shadowed; return shadowed; } }
 int later() { extern int defined_after; return defined_after; }
 int defined_after = 5;
 int setIt() { extern int shadowed; shadowed = 9; return shadowed; }

@@ -23,7 +23,7 @@ struct GlobalContext
     SuspendedContext sum = other + other;
     if (sum && !other)
       levelOf(sum);
-    i32 number = other;
+    i32 number = other; (void)number;
   }
 
   UniquePointer<SuspendedContext> suspendedContext;

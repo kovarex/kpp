@@ -309,7 +309,7 @@ void build(Project& project)
     Set-Content 'build.kpp' "void build(Project& project)`n{`n  project.executable(`"x`", {undefinedName});`n}"
     $output = Kpp @('--no-server')
     if ($code -eq 0 -or ($output -join "`n") -notmatch "build\.kpp:3: error: ") { Fail "a build.kpp with an error: exit $code`n$($output -join "`n")" }
-    Set-Content 'build.kpp' "extern `"C`" int puts(const char*);`nvoid build(Project& project)`n{`n  puts(`"io`");`n}"
+    Set-Content 'build.kpp' "extern `"C`" int puts(const char*);`nvoid build([[maybe_unused]] Project& project)`n{`n  puts(`"io`");`n}"
     $output = Kpp @('--no-server')
     if ($code -eq 0 -or ($output -join "`n") -notmatch 'puts, a C function, which has no body to run at compile time') { Fail "a build() calling C: exit $code`n$($output -join "`n")" }
     Set-Content 'build.kpp' $good
@@ -493,7 +493,7 @@ void build(Project& project)
     if ($code -ne 0 -or $output -notmatch '(?m)^a3Bw$') { Fail "base64 from kpp's own libraries: exit $code`n$output" }
     New-Item -ItemType Directory -Force 'libraries\base64\src' | Out-Null
     Set-Content 'libraries\base64\build.kpp' "void build(Project& project)`n{`n  Library& base64 = project.library(`"base64`");`n  base64.version = `"9.0.0`";`n  base64.root(`"src`");`n}"
-    Set-Content 'libraries\base64\src\Base64.kpp' "std::String base64Encode(std::StringView data) { return `"the project's own base64`"; }"
+    Set-Content 'libraries\base64\src\Base64.kpp' "std::String base64Encode([[maybe_unused]] std::StringView data) { return `"the project's own base64`"; }"
     $output = (Kpp @('--no-server', '--run')) -join "`n"
     if ($code -ne 0 -or $output -notmatch "(?m)^the project's own base64$") { Fail "a project's own base64 before kpp's: exit $code`n$output" }
     cmd /c rd /s /q 'libraries\base64'

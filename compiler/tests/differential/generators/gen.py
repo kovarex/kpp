@@ -316,6 +316,10 @@ class Gen:
                 res = arith(op[0], conv(v, t, c), conv(e.val, e.ty, c), c)
                 nv = conv(res, c, t)
                 text = e.text
+                # An integer value given to a floating x converts as the usual conversions do; written, since kpp takes
+                # an integer division assigned to a floating variable for a slip (an error).
+                if t.kind == 'f' and e.ty.kind != 'f':
+                    text = 'static_cast<%s>(%s)' % (t.name, e.text)
             lines.append('  x ' + op + ' ' + text + ';')
             v = nv
         lines.append('  return x;')
@@ -328,7 +332,7 @@ class Gen:
         if t.kind == 'i' and t.bits >= 32 and t.signed and init in (t.lo(), t.hi()): init = 5
         if t.kind == 'f' and abs(init) > 1e15: init = 2.5
         lines = ['  ' + t.name + ' x = ' + s.lit_text(init, t) + ';']
-        lines.append('  ' + t.name + ' y = ' + r.choice(['x++', '++x', 'x--', '--x']) + ';')
+        lines.append('  [[maybe_unused]] ' + t.name + ' y = ' + r.choice(['x++', '++x', 'x--', '--x']) + ';')  # (returned or not)
         lines.append('  return ' + r.choice(['x', 'y']) + ';')
         return lines, []
 

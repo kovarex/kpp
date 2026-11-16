@@ -1,7 +1,7 @@
 // a local lambda named like a function template whose return type is a template parameter deduced from a later argument
-template<typename It, typename T> T gatherAll(It first, It last, T init) { return init; }
-template<typename T> T firstOf(T a, T b) { return a; }
-template<typename A, typename T> T second(A a, T b) { return b; }
+template<typename It, typename T> T gatherAll(It, It, T init) { return init; }
+template<typename T> T firstOf(T a, T) { return a; }
+template<typename A, typename T> T second(A, T b) { return b; }
 int main()
 {
   auto gatherAll = [](int v) { return v * 10; };

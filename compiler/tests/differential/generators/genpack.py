@@ -154,7 +154,7 @@ class Gen:
         op, form, types, vals, initT, initV, e = s.fold(0)
         defs = []
         if form >= 2:
-            defs.append('template<typename I, typename... Ts> constexpr auto fold%d(I init, Ts... args) { return %s; }' % (i, e))
+            defs.append('template<typename I, typename... Ts> constexpr auto fold%d([[maybe_unused]] I init, Ts... args) { return %s; }' % (i, e))
             cargs = [lit(initT, initV)] + [lit(t, v) for t, v in zip(types, vals)]
             rargs = [vol(initT, initV)] + [vol(t, v) for t, v in zip(types, vals)]
         else:
@@ -187,7 +187,7 @@ class Gen:
         if op == ',' and form < 2 and count == 0: count, types, vals = 1, [INT], [3]
         ret = 'auto' if op != ',' else 'void'
         stmt = 'return %s;' % e if op != ',' else '%s;' % e
-        defs = ['template<typename I, typename... Ts> %s eff%d(I init, Ts... args) { %s }' % (ret, i, stmt)]
+        defs = ['template<typename I, typename... Ts> %s eff%d([[maybe_unused]] I init, Ts... args) { %s }' % (ret, i, stmt)]
         initV = s.value(INT, big=False)
         args = ', '.join([str(initV)] + [vol(t, v) for t, v in zip(types, vals)])
         if op == ',':
@@ -299,6 +299,7 @@ class Gen:
             call = 'fwd%d(%s)' % (i, ', '.join(args))
         body = ['  {',
                 '    int x = 1; const int cx = 2; Holder h{3, 4}; double d = 2.5; int& rx = x; const int& crx = cx; int ix[3] = {1, 2, 3};',
+                '    (void)x; (void)cx; (void)h; (void)d; (void)rx; (void)crx; (void)ix;',  # (each call names some: kpp's unused names are errors)
                 '    printf("%d f ");' % i,
                 '    %s;' % call,
                 '    printf("\\n");',

@@ -35,7 +35,7 @@ int main()
   auto g2 = [](auto&... xs) { return (xs + ...); }; int p = 1, q = 2; printf("%d\n", g2(p, q));
   auto g3 = []<class X>(X x) { return (int)sizeof(X) + (int)x; }; printf("%d %d\n", g3('a'), g3(1.5));
   auto rec = [](auto self, int n) -> int { return n <= 1 ? 1 : n * self(self, n - 1); }; printf("%d\n", rec(rec, 5));
-  auto rt = [](int x) -> double { return x / 2; }; printf("%.1f\n", rt(5));
+  auto rt = [](int x) -> double { return double(x / 2); }; printf("%.1f\n", rt(5));
   auto rr = [](int& x) -> int& { return x; }; int w = 1; rr(w) = 2; printf("%d\n", w);
   auto ab = [](bool c) { if (c) return 1; else return 2; }; printf("%d\n", ab(false));
   int (*fp)(int, int) = [](int x, int y) { return x - y; }; printf("%d\n", fp(5, 3));

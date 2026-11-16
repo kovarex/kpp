@@ -137,7 +137,7 @@ def nttpSet(si):
     else:
         defs = ['template<class T, class U = T*, int N = sizeof(U)> struct %s { static int v() { return Name<T>::v * 1000 + Name<U>::v * 10 + N; } };' % name,
                 'template<class T> struct %s<T, T> { static int v() { return 7000 + Name<T>::v; } };' % name,
-                'template<class T = int, class U = Box<T>> int %sf(T a = T()) { return Name<T>::v * 100 + Name<U>::v; }' % name]
+                'template<class T = int, class U = Box<T>> int %sf([[maybe_unused]] T a = T()) { return Name<T>::v * 100 + Name<U>::v; }' % name]
         queries = set()
         for _ in range(10):
             k = r.randint(0, 4)
@@ -159,9 +159,9 @@ def funcSet(si):
         p = r.choice(FPAT)
         if p in used: continue
         used.add(p)
-        defs.append('template<class T> int %s(%s x) { return %d + Name<T>::v; }' % (name, p, k * 100))
+        defs.append('template<class T> int %s([[maybe_unused]] %s x) { return %d + Name<T>::v; }' % (name, p, k * 100))
     if r.random() < 0.3:
-        defs.append('int %s(int* x) { return 900; }' % name)
+        defs.append('int %s([[maybe_unused]] int* x) { return 900; }' % name)
     queries = sorted(set('%s(%s)' % (name, r.choice(FARGS)) for _ in range(10)))
     return defs, queries
 
@@ -286,6 +286,7 @@ def render():
     lines.append('{')
     lines.append('  int i = 1; int* pi = &i; const int* cpi = &i; const int ci = 2; Box<int> bi{3}; const Box<int> cbi{4}; Box<int*> bpi{pi}; int** ppi = &pi;')
     lines.append('  Two<int, int> ti{5, 6}; Two<int, char> tic{7, 8};')
+    lines.append('  (void)i; (void)pi; (void)cpi; (void)ci; (void)bi; (void)cbi; (void)bpi; (void)ppi; (void)ti; (void)tic;')  # (each query names some)
     for si, (defs, qs) in enumerate(sets):
         if not defs: continue
         lines.append('  printf("s%d:");' % si)

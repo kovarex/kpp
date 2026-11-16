@@ -166,7 +166,7 @@ def main():
     out.append('{')
     out.append('  for (int n = 0; n < 40; n++)')
     out.append('  {')
-    out.append('    ticks = 0; limit = n; printf("[%d/%d] ", id, n); bool thrown = false;')
+    out.append('    ticks = 0; limit = n; printf("[%d/%d] ", id, n); [[maybe_unused]] bool thrown = false;')
     out.append('    try { int r = f(); printf("=> %d", r); } catch (int e) { printf("=> threw %d", e); thrown = true; }')
     out.append('    printf("\\n");')
     out.append('    if (n != 0 && ticks < n) break;')

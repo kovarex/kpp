@@ -61,8 +61,8 @@ template <typename Engine, typename T> void wide(const char* label, Engine& engi
 
 int main()
 {
-  Small small;
-  OneBased oneBased;
+  [[maybe_unused]] Small small;
+  [[maybe_unused]] OneBased oneBased;
   DefaultRandomEngine engine(42);
   wide("default engine, -10^18 to 10^18", engine, -1000000000000000000ll, 1000000000000000000ll, 100000);
   wide("default engine, short -300 to 300", engine, (short)-300, (short)300, 100000);

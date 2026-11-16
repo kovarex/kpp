@@ -157,7 +157,7 @@ $ErrorActionPreference = 'Stop'
 # without, with the column under --diagnostic-columns (which is in the key: another server). The
 # errors come in the order and the words of a build without a server; a replay (no input changed)
 # is in the asking client's form, not the first's.
-Set-Content -Encoding ascii "$work\bad.kpp" "int main()`n{`n  int a = noSuchName;`n  return otherMissing;`n}"
+Set-Content -Encoding ascii "$work\bad.kpp" "int main()`n{`n  int a = noSuchName;`n  return a + otherMissing;`n}"
 function Errors([string[]]$options)
 {
   $ErrorActionPreference = 'Continue'

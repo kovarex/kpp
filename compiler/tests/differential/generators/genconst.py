@@ -91,12 +91,12 @@ class Gen:
             v = s.name('i')
             init = s.iexpr()
             s.ints.append(v)
-            return [p + 'int %s = %s;' % (v, init)]
+            return [p + '[[maybe_unused]] int %s = %s;' % (v, init)]  # (read or not: kpp's unused names are errors)
         if c == 2:
             v = s.name('u')
             init = s.uexpr()
             s.uns.append(v)
-            return [p + 'unsigned %s = %s;' % (v, init)]
+            return [p + '[[maybe_unused]] unsigned %s = %s;' % (v, init)]
         if c == 3 and s.uns:
             return [p + '%s %s %s;' % (r.choice(s.uns), r.choice(['+=', '-=', '*=', '^=', '|=', '&=']), s.uexpr())]
         if c == 4:
@@ -104,12 +104,12 @@ class Gen:
             n = r.randint(2, 6)
             init = ', '.join(s.iexpr(1) for _ in range(r.randint(0, n)))
             s.arrs.append((v, n))  # (in scope after its initializer: kpp's interpreter refuses a read of itself there)
-            return [p + 'int %s[%d] = {%s};' % (v, n, init)]
+            return [p + '[[maybe_unused]] int %s[%d] = {%s};' % (v, n, init)]
         if c == 5:
             v = s.name('p')
             init = (s.iexpr(1), s.iexpr(1))
             s.ps.append(v)
-            return [p + 'P %s{%s, %s};' % (v, init[0], init[1])]
+            return [p + '[[maybe_unused]] P %s{%s, %s};' % (v, init[0], init[1])]
         if c == 6:
             t = s.target()
             return [p + '%s = (%s %s %s) %% 100000;' % (t, t, r.choice(['+', '-', '^', '|', '&']), s.iexpr(1))]
@@ -166,7 +166,7 @@ class Gen:
             v = s.name('p')
             src = r.choice(s.ps)
             s.ps.append(v)
-            return [p + 'P %s = %s;' % (v, src), p + '%s.x += 1;' % v]
+            return [p + '[[maybe_unused]] P %s = %s;' % (v, src), p + '%s.x += 1;' % v]
         if c == 16 and s.arrs:
             a, n = r.choice(s.arrs)
             return [p + 'for (int& e : %s) e = (e * 3 + %s) %% 1000;' % (a, s.iexpr(1))]
@@ -179,7 +179,7 @@ for f in range(NF):
     g = Gen(f)
     body = g.block(2, 0, [r.randint(5, 16)])
     ret = g.iexpr()
-    lines = ['constexpr int f%d(int a, int b)' % f, '{'] + body + ['  return (%s) %% 100000;' % ret, '}']
+    lines = ['constexpr int f%d([[maybe_unused]] int a, [[maybe_unused]] int b)' % f, '{'] + body + ['  return (%s) %% 100000;' % ret, '}']
     funcs.append([lines, [(r.randint(-20, 40), r.randint(-20, 40)) for _ in range(4)], True])
 
 def render():

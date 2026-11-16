@@ -11,7 +11,7 @@ int main()
   printf("%u %u %d\n", s1.a, s1.b, s1.c);
   Left l = make<Left>(1, 2);
   printf("%d %d %d %d\n", l.x, l.y, l.z, l.q.v);
-  int i = 11;
+  [[maybe_unused]] int i = 11;
   Gap g2{1, 2, 3};
   printf("%d %d %d\n", g2.a, g2.b, g2.c);
   return 0;

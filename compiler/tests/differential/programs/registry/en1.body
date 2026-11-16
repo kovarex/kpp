@@ -34,7 +34,7 @@ Fl& operator|=(Fl& l, Fl r) { l = l | r; return l; }
 Fl& operator++(Fl& l) { l = Fl((unsigned)l << 1); return l; }
 Fl operator++(Fl& l, int) { Fl o = l; ++l; return o; }
 enum Op { add, sub };
-Op operator+(Op l, Op r) { return sub; }
+Op operator+(Op, Op) { return sub; }
 int main()
 {
   printf("%d %d %d %d %d\n", (int)sizeof(Plain), (int)sizeof(Sc), (int)sizeof(Sc8), (int)sizeof(S16), (int)sizeof(U64));
@@ -87,7 +87,7 @@ int main()
   long long ll = (long long)bBig;
   long long nn = bn;
   printf("%d %lld %lld\n", uc, ll, nn);
-  double d = a5 / 2;
+  double d = double(a5 / 2);
   double e = a5 / 2.0;
   printf("%g %g %d %d\n", d, e, a5 % 3, a5 << 2);
   printf("%d %d %d\n", a5 & 4, a5 | 2, a5 ^ 1);

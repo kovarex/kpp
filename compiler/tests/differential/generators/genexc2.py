@@ -73,7 +73,7 @@ def block(b):
         throwsInBody = r.random() < 0.5
         fty = r.random() < 0.3
         body = '{ printf("+%s "); %s}' % (name, 'throw E1(%d); ' % b if throwsInBody else '')
-        head = 'class %s%s { public: %s %s(int k)' % (name, (' : ' + ', '.join('public ' + x for x in bases)) if bases else '', ' '.join(members), name)
+        head = 'class %s%s { public: %s %s([[maybe_unused]] int k)' % (name, (' : ' + ', '.join('public ' + x for x in bases)) if bases else '', ' '.join(members), name)
         if fty:
             defs.append(head + ' try : %s %s catch (...) { printf("[ctor-catch] "); } ~%s() { printf("-%s "); } };' % (', '.join(inits), body, name, name))
         else:

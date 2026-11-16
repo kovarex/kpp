@@ -1,9 +1,9 @@
 // a local lambda named like an overloaded function template of the same file
-template<typename It, typename T> T gather(It first, It last, T init) { return init; }
-template<typename It, typename T, typename F> T gather(It first, It last, T init, F op) { return init; }
-int single(int a, int b) { return a; }
-int overloaded(int a, int b) { return a; }
-int overloaded(int a, int b, int c) { return a; }
+template<typename It, typename T> T gather(It, It, T init) { return init; }
+template<typename It, typename T, typename F> T gather(It, It, T init, F) { return init; }
+int single(int a, int) { return a; }
+int overloaded(int a, int) { return a; }
+int overloaded(int a, int, int) { return a; }
 int main()
 {
   auto gather = [](int v) { return v * 10; };

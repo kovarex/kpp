@@ -15,7 +15,7 @@ int main()
   unsigned short us2 = 65535; us2++; printf("D10 %d", us2); us2--; printf(" %d\n", us2);
   int k = 5; k %= -3; printf("D11 %d\n", k);
   unsigned uu = 10; uu *= -1; printf("D12 %u\n", uu);
-  double dd = 1; dd += 1 / 3; printf("D13 %.17g\n", dd);
+  double dd = 1; dd += double(1 / 3); printf("D13 %.17g\n", dd);
   unsigned char sh2 = 1; sh2 <<= 8; printf("D14 %d", sh2); sh2 = 128; sh2 >>= 1; printf(" %d\n", sh2);
   signed char sc3 = -128; sc3 >>= 1; printf("D15 %d", sc3); sc3 = -128; sc3 /= -1; printf(" %d\n", sc3);
   long long q = 5; q += 0.7; printf("D16 %lld\n", q);
@@ -191,7 +191,7 @@ int main()
   printf("L43 %d %d\n", la, lb);
   int lc = 0;
   lc || bump();
-  bool unused = lc && bump();
+  [[maybe_unused]] bool unused = lc && bump();
   printf("L44 %d\n", g);
   return 0;
 }

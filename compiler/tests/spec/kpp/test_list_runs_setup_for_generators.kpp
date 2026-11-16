@@ -4,7 +4,7 @@
 i32* count = nullptr;
 i32 storage = 2;
 
-void testsSetup(const std::Vector<std::String>& arguments) { count = &storage; }
+void testsSetup([[maybe_unused]] const std::Vector<std::String>& arguments) { count = &storage; }
 
 suite Numbers
 {

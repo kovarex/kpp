@@ -56,7 +56,7 @@ def overload(name, k, used):
             sig = 'template<class T> ' + ','.join(ps)
             if sig in used: continue
             used.add(sig)
-            params = ', '.join('%s a%d' % (p, i) for i, p in enumerate(ps))
+            params = ', '.join(ps)  # (unnamed: the overload reads none, and kpp's unused names are errors)
             return 'template<class T> int %s(%s) { return %d; }' % (name, params, k)
         n = r.choice([1, 1, 1, 2, 2])
         ps = [r.choice(PARAMS) for _ in range(n)]
@@ -65,7 +65,7 @@ def overload(name, k, used):
         if key in used or (dflt and ps[0] in used): continue
         used.add(key)
         if dflt: used.add(ps[0])
-        params = ', '.join('%s a%d%s' % (p, i, ' = 1' if dflt and i == 1 else '') for i, p in enumerate(ps))
+        params = ', '.join('%s%s' % (p, ' = 1' if dflt and i == 1 else '') for i, p in enumerate(ps))
         return 'int %s(%s) { return %d; }' % (name, params, k)
     return None
 

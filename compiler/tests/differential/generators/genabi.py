@@ -63,7 +63,7 @@ def value(t, seed, bits):
 
 def setter(t, prefix):
     n = t.name if isinstance(t, St) else t.replace(' ', '_').replace('*', 'p')
-    lines = ['static %s %s_make_%s(int seed)' % (tname(t), prefix, n), '{']
+    lines = ['static %s %s_make_%s(int seed)' % (tname(t), prefix, n), '{', '  (void)seed;']  # (C's and kpp's: a struct of no leaf reads none)
     if isinstance(t, St):
         lines.append('  %s s;' % t.name)
         lines.append('  memset(&s, 0, sizeof(s));')
@@ -75,6 +75,7 @@ def setter(t, prefix):
     lines.append('}')
     lines.append('static int %s_same_%s(%s s, int seed)' % (prefix, n, tname(t)))
     lines.append('{')
+    lines.append('  (void)s; (void)seed;')
     if isinstance(t, St):
         for i, (path, lt, bits) in enumerate(leaves(t)):
             lines.append('  if (s%s != %s) return 0;' % (path, value(lt, i, bits)))
