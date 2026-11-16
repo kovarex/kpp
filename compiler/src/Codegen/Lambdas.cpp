@@ -1009,7 +1009,13 @@ auto codegen::Emitter::emitLambda(LambdaExpr* l, const Ty* t, const Ty* callTy, 
       }
     }
     namedReturn = builtInResult(global.namedReturnVariable(l->body, currentReturn, nullptr, currentArgs), l);
-    coverBegin(l, currentFunction ? "a lambda in " + qualifiedName(currentFunction) : std::string("a lambda"));
+    // (named by the function it is written in, around any lambdas and local classes it is in, never by the function
+    // whose emission asked for its body first: a generic lambda at namespace scope was "a lambda in" whichever of its
+    // callers' threads came first, and the game's IR differed from run to run, 2026-11-17)
+    Decl* writtenIn = l->closure ? l->closure->parent : nullptr;
+    while (writtenIn && writtenIn->kind != NodeKind::FunctionDecl)
+      writtenIn = writtenIn->parent;
+    coverBegin(l, writtenIn ? "a lambda in " + qualifiedName(writtenIn) : std::string("a lambda"));
     statement(l->body);
     if (!blockTerminated)
     {

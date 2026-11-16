@@ -1,0 +1,32 @@
+// spec: kpp --coverage names a lambda's function by where it is written, never by the function that emits its body first (which varies with codegen's threads: a generic lambda at namespace scope, its call operator emitted for the first function calling it, was "a lambda in" either one, so a build's IR differed from run to run): a lambda at namespace scope is "a lambda", a generic one too, one written in a function is "a lambda in" that function, also when a template instance written elsewhere calls it
+// kpp: --coverage
+// test: --coverage -
+auto doubled = [](auto x) { return 2 * x; };
+
+int first(int n)
+{
+  return doubled(n);
+}
+
+int second(int n)
+{
+  return doubled(n + 1);
+}
+
+template<typename F> int applyTo(F f, int n)
+{
+  return f(n);
+}
+
+int caller(int n)
+{
+  auto plusOne = [](auto a) { return a + 1; };
+  return applyTo(plusOne, n);
+}
+
+test lambdas
+{
+  check(second(1) == 4);
+  check(first(1) == 2);
+  check(caller(1) == 2);
+}
