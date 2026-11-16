@@ -2302,6 +2302,28 @@ void GlobalScope::reportUnusedFields(const std::vector<std::unique_ptr<ParsedFil
       for (const auto& [cls, symbol] : list)
         named[cls].insert(symbol);
   }
+  // What another configuration's code spells, which the parser dropped for this one (a false `when` at namespace or class
+  // scope, a declaration-scope `if constexpr` branch not taken: ParsedFile::droppedTokens), by file: a field that code
+  // in its class's files names is used there, by its spelling (`when (config::steam) void Window::notify() { this.taskBar...
+  // }`), as the locals' rule takes a dropped branch's names.
+  std::unordered_map<const ParsedFile*, std::unordered_set<uint32_t>> spelledElsewhere;
+  for (const std::unique_ptr<ParsedFile>& f : files)
+    if (f && !f->isImported && f->tokens)
+      for (const auto& [from, to] : f->droppedTokens)
+        for (uint32_t k = from; k < to && k < f->tokens->size(); ++k)
+          if ((*f->tokens)[k].getKind() == TokenKind::Identifier)
+            spelledElsewhere[f.get()].insert((*f->tokens)[k].id);
+  auto spelledInFilesOf = [&](const ClassDecl* c, uint32_t symbol)
+  {
+    auto in = [&](const ParsedFile* f) { auto it = spelledElsewhere.find(f); return it != spelledElsewhere.end() && it->second.count(symbol); };
+    if (in(c->file))
+      return true;
+    if (c->ownScope)
+      for (const FunctionDecl* m : c->ownScope->outOfLineMembers)
+        if (m->file != c->file && in(m->file))
+          return true;
+    return false;
+  };
   // What this reads and reports is its own unit's (a compile server's reads outside any unit build an edit from scratch).
   RecordInto into(&impl.fieldCheckUnit);
   TypeTable& types = impl.types;
@@ -2349,7 +2371,7 @@ void GlobalScope::reportUnusedFields(const std::vector<std::unique_ptr<ParsedFil
       auto* v = static_cast<VariableDecl*>(m);
       if (v->name.parts.size() != 1 || v->name.parts[0].symbol == UINT32_MAX || v->when)
         continue;
-      if (found != named.end() && found->second.count(v->name.parts[0].symbol))
+      if ((found != named.end() && found->second.count(v->name.parts[0].symbol)) || spelledInFilesOf(c, v->name.parts[0].symbol))
         continue;
       const Ty* t = impl.declaredTypeOf(v, nullptr, 0);
       if (!t || !t->isKnown() || types.isDependent(t) || Impl::mentionsUnknown(t) || impl.containsAuto(t) || !plain(t, 0))

@@ -1,4 +1,4 @@
-// spec: what --unused-field-checks takes as named or leaves alone: [[maybe_unused]]; a name in an out-of-line member, in a nested class's member, in a lambda or a local class in a member, in another field's default initializer, in a constructor initializer's argument, in a type (`decltype(this.size)`); a class with a friend (it may name them from anywhere); a public or protected field; a static field; a field whose type's making or ending does something (a guard: a class with a constructor or a destructor of its own); a struct's fields (public)
+// spec: what --unused-field-checks takes as named or leaves alone: [[maybe_unused]]; a name in an out-of-line member, in a nested class's member, in a lambda or a local class in a member, in another field's default initializer, in a constructor initializer's argument, in a type (`decltype(this.size)`); a class with a friend (it may name them from anywhere); a public or protected field; a static field; a field whose type's making or ending does something (a guard: a class with a constructor or a destructor of its own); a struct's fields (public); one that code another configuration keeps names (a false `when`, which the parser drops for this one)
 // kpp: --unused-field-checks
 extern "C" int printf(const char* format, ...);
 class Guard
@@ -64,6 +64,15 @@ int peek(const WithFriend& w) { return w.secret; }
 struct Plain
 {
   int x = 1;
+};
+class OtherConfiguration
+{
+public:
+  int value() const { return 1; }
+  when (false) int only() const { return this.namedThere; }
+
+private:
+  int namedThere = 0;
 };
 int main()
 {

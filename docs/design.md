@@ -498,7 +498,8 @@ replacements, in the order of how much code they remove:
    A private data member nothing names is an error too (kovarex's 2026-11-11 rule names private fields with
    locals, parameters and captures), kept by `[[maybe_unused]]`: named is spelled in a member function of its
    class (in the class or out of it), in a class nested in it, in a lambda or a local class in such a member, in a
-   constructor initializer's argument or another member's default initializer, or in a type (`decltype(this.x)`).
+   constructor initializer's argument or another member's default initializer, or in a type (`decltype(this.x)`), or
+   by code another configuration keeps that its class's files spell (a false `when` the parser dropped).
    Its own initializers are no use (`x(v)`, `int x = 0;`), as clang's -Wunused-private-field takes them. Not judged:
    a class with a friend (it may name them anywhere), a static member, a public or protected one, one whose type's
    making or ending does something (the locals' rule), one whose type depends on a template's parameters, a `when`
