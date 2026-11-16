@@ -15,7 +15,9 @@ Copy-Item "$PSScriptRoot\incremental\*.kpp" $src
 $lib = Join-Path $work 'lib'
 New-Item -ItemType Directory -Force $lib | Out-Null
 Set-Content (Join-Path $lib 'ilib.kpp') "int libValue() { return 1; }`nstruct LibBox { int v = 2; int get() const { return this.v + libValue(); } };"
-$libRoot = @('--library-root', 'ilib', $lib) # (before the sources: the server's log names a build by its last argument)
+# (before the sources: the server's log names a build by its last argument). --unused-field-checks: its record of what
+# each walk names of the private fields, kept across the edits, is checked against a build from scratch too.
+$libRoot = @('--library-root', 'ilib', $lib, '--unused-field-checks')
 $KppExe = (Resolve-Path $KppExe).Path
 $failed = 0
 $env:KPP_WATCH_CHECK = '1' # (and each build's listing compared with the watched one: a difference fails the build)

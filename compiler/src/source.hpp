@@ -127,6 +127,9 @@ bool unusedChecksOn();
 // division stored in a floating variable or returned as one.
 void setSlipChecks(bool on);
 bool slipChecksOn();
+// Whether a private data member nothing names is an error (--unused-field-checks; GlobalScope::reportUnusedFields).
+void setUnusedFieldChecks(bool on);
+bool unusedFieldChecksOn();
 void noteZeroNullWarning(const std::string& warning);
 std::vector<std::string> takeZeroNullWarnings();
 // Whether the literal 0 at token of file is reported for the first time in this build (the walk

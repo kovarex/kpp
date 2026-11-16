@@ -1232,6 +1232,7 @@ namespace
   std::atomic<bool> indentationWarningsEnabled{true};
   std::atomic<bool> unusedChecksEnabled{true};
   std::atomic<bool> slipChecksEnabled{true};
+  std::atomic<bool> unusedFieldChecksEnabled{false};
   std::atomic<bool> zeroNullWarningsEnabled{false};
   std::mutex zeroNullMutex;
   std::set<std::string> zeroNullNotes; // (sorted, each token once)
@@ -1400,6 +1401,10 @@ bool unusedChecksOn() { return unusedChecksEnabled; }
 void setSlipChecks(bool on) { slipChecksEnabled = on; }
 
 bool slipChecksOn() { return slipChecksEnabled; }
+
+void setUnusedFieldChecks(bool on) { unusedFieldChecksEnabled = on; }
+
+bool unusedFieldChecksOn() { return unusedFieldChecksEnabled; }
 
 void noteZeroNullWarning(const std::string& warning)
 {

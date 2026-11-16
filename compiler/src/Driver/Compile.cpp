@@ -85,6 +85,8 @@ int compile(int argc, char** argv)
       options.unusedChecks = true;
     else if (arg == "--slip-checks")
       options.slipChecks = true;
+    else if (arg == "--unused-field-checks")
+      options.unusedFieldChecks = true;
     else if (arg == "--this-warnings")
       options.thisWarnings = true;
     else if (arg == "--this-reference")

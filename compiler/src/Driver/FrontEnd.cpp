@@ -464,6 +464,7 @@ void runResolve(Build& build)
   setIndentationWarnings(options.indentationWarnings);
   setUnusedChecks(options.unusedChecks);
   setSlipChecks(options.slipChecks);
+  setUnusedFieldChecks(options.unusedFieldChecks);
   setThisWarnings(options.thisWarnings);
   setImplicitUses(!options.implicitUses.empty());
   setThisReference(options.thisReference);
@@ -479,6 +480,7 @@ void runResolve(Build& build)
   build.resolveTime = seconds(Clock::now() - start);
   // What the reports count is the resolve's: codegen instantiates more afterwards.
   global.resolveDone();
+  global.reportUnusedFields(parsed); // (after the walks: the fields their units named)
   build.instantiation = global.instantiationStats();
   build.instanceStats = global.instanceStats();
   reportResolve(build);

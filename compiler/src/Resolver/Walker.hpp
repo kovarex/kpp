@@ -943,6 +943,12 @@
     // A local, parameter or lambda capture nothing in f uses, and a local only ever assigned: errors (kovarex,
     // 2026-11-11; on by default since 2026-11-16).
     void checkUnusedNames(FunctionDecl* f);
+    // --unused-field-checks: which private data members of the classes around unit (its own class, the classes that
+    // enclose that one, a member function's local class's) code names, by name, wherever (a member's access, a type's
+    // or a template argument's spelling, an initializer's argument): the unit's record (Impl::noteFieldNames), which
+    // GlobalScope::reportUnusedFields reads after the build's walks. unit: a function walked as written, a data member
+    // whose default initializer is code.
+    void recordFieldNames(Decl* unit, Node* code);
     // The checks that follow f's paths (kovarex, 2026-11-11; FlowChecks.cpp): a local of a scalar type read where nothing
     // can have been assigned to it yet (kpp zeroes it, and the zero is the rule), an integer division by a constant 0 and
     // a constant index outside a built-in array, where they run. Each an error.

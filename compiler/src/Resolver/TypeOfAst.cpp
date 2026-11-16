@@ -2378,6 +2378,11 @@ auto GlobalScope::Impl::forgetUnitsOf(const Decl* d) -> void
   if (Dependencies* type = d->typeDependencies.load(std::memory_order_acquire))
     units.insert(type);
   forgetErrorsOf(units);
+  {
+    FieldNamesShard& shard = fieldNamesShard(d); // (what its walk named of the private fields: --unused-field-checks)
+    std::lock_guard lock(shard.mutex);
+    shard.map.erase(d);
+  }
 }
 
 auto GlobalScope::Impl::lambdaNames(Node* n, std::unordered_set<Decl*>& inner, std::vector<Decl*>& used, bool& usesThis, std::unordered_map<Decl*, const Ty*>* useTypes, int depth,

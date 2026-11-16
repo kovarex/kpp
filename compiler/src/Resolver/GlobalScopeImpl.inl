@@ -814,6 +814,28 @@
   }
   std::mutex relationScopesMutex;
   std::vector<const Scope*> relationScopes; // the scopes whose relations were resolved (their relationDeps)
+  // --unused-field-checks: the private fields of the classes around each walk unit that its code names (class, the
+  // field's symbol), by the unit's declaration (Walker::recordFieldNames): a walk again replaces its record, a
+  // declaration taken out takes its record with it (forgetUnitsOf). GlobalScope::reportUnusedFields reads them all after
+  // a build's walks, as one unit of its own (fieldCheckUnit: what it reads and the errors it reports, which go before
+  // the next report).
+  struct FieldNamesShard
+  {
+    std::mutex mutex;
+    std::unordered_map<const Decl*, std::vector<std::pair<const Decl*, uint32_t>>> map;
+  };
+  FieldNamesShard fieldNames[16];
+  FieldNamesShard& fieldNamesShard(const Decl* unit) { return fieldNames[(reinterpret_cast<uintptr_t>(unit) >> 6) % std::size(fieldNames)]; }
+  void noteFieldNames(const Decl* unit, std::vector<std::pair<const Decl*, uint32_t>> named)
+  {
+    FieldNamesShard& shard = fieldNamesShard(unit);
+    std::lock_guard lock(shard.mutex);
+    if (named.empty())
+      shard.map.erase(unit);
+    else
+      shard.map[unit] = std::move(named);
+  }
+  Dependencies fieldCheckUnit;
   // The bodies the checker's evaluator ran outside any unit while recording (nothing records that
   // it did): an edit of one is built from scratch.
   std::mutex ranOutsideMutex;

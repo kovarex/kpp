@@ -643,13 +643,16 @@ p[Property::Text] = String("hello");
 ### Unused names are errors (built)
 
 - **C++:** compilers warn, where asked (-Wunused-variable, -Wunused-parameter, -Wunused-but-set-variable,
-  -Wunused-lambda-capture).
+  -Wunused-lambda-capture, clang's -Wunused-private-field).
 - **kpp:** a local nothing uses, a local only ever assigned, a parameter nothing uses and a lambda capture
   nothing uses are compile errors (kovarex, 2026-11-11); `(void)x;` or `[[maybe_unused]]` keeps one, and the
   unnamed `_` needs neither. Not a parameter of an empty body, a virtual function, an override or main, nor a
   class object whose making or ending does something (a guard). On by default since 2026-11-16 (it was behind
   `--unused-checks` until the game was free of them); `tools/unused/fix.py` marks what a compile reports.
-- **See:** [design 7][d7], item 8; specs `kpp/unused_names_are_errors`, `kpp/unused_names_kept_or_exempt`.
+  A private data member nothing names but its own initializers is an error too, under `--unused-field-checks`
+  until the game is free of them (this stage).
+- **See:** [design 7][d7], item 8; specs `kpp/unused_names_are_errors`, `kpp/unused_names_kept_or_exempt`,
+  `kpp/unused_private_fields_are_errors`, `kpp/unused_private_fields_kept_or_exempt`.
 
 ### A local without an initializer is zero, and reading it first is an error (built)
 

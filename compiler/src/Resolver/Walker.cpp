@@ -812,6 +812,46 @@ auto GlobalScope::Impl::Walker::checkFunctionEnd(FunctionDecl* f, bool autoRetur
                     ": return a value there, or end that path with a throw or a call of a [[noreturn]] function");
 }
 
+auto GlobalScope::Impl::Walker::recordFieldNames(Decl* unit, Node* code) -> void
+{
+  if (!unusedFieldChecksOn() || !unit || !code || probing || activeSubst || retypingElements || !file || file->isImported)
+    return;
+  // The classes whose private members code may name: unit's, those enclosing it, and through a local class the class of
+  // the member function it is in.
+  std::vector<ClassDecl*> classes;
+  for (Decl* d = impl.owningClassOf(unit); d && d->kind == NodeKind::ClassDecl && classes.size() < 16;)
+  {
+    classes.push_back(static_cast<ClassDecl*>(d));
+    Decl* p = d->parent;
+    d = !p ? nullptr : p->kind == NodeKind::ClassDecl ? p : p->kind == NodeKind::FunctionDecl ? impl.owningClassOf(p) : nullptr;
+  }
+  // Every data member's name, whatever its access (one made private later needs no walk again to have its names): read
+  // from the member list as it is, unrecorded, so that a data member added is no change the walk read (an edit of the
+  // class's layout stays incremental); a walk that names a new member looked its name up, and is walked again.
+  std::unordered_map<uint32_t, std::vector<const Decl*>> bySymbol; // a data member's name -> the classes with one of that name
+  for (ClassDecl* c : classes)
+    for (Decl* m : c->members)
+      if (m && m->kind == NodeKind::VariableDecl && !(m->flags & DF_Typedef))
+        if (const QualifiedName& n = static_cast<VariableDecl*>(m)->name; n.parts.size() == 1 && n.parts[0].symbol != UINT32_MAX)
+          bySymbol[n.parts[0].symbol].push_back(c);
+  std::vector<std::pair<const Decl*, uint32_t>> named;
+  if (!bySymbol.empty())
+    forEachNode(code, [&](Node* x)
+    {
+      const QualifiedName* q = x->kind == NodeKind::MemberExpr ? &static_cast<MemberExpr*>(x)->member
+                             : x->kind == NodeKind::NameExpr   ? &static_cast<NameExpr*>(x)->name
+                             : x->kind == NodeKind::NamedType  ? &static_cast<NamedType*>(x)->name
+                                                               : nullptr;
+      if (q && !q->empty())
+        if (auto it = bySymbol.find(q->last().symbol); it != bySymbol.end())
+          for (const Decl* c : it->second)
+            named.push_back({c, q->last().symbol});
+    });
+  std::sort(named.begin(), named.end());
+  named.erase(std::unique(named.begin(), named.end()), named.end());
+  impl.noteFieldNames(unit, std::move(named));
+}
+
 auto GlobalScope::Impl::Walker::checkUnusedNames(FunctionDecl* f) -> void
 {
   // kovarex, 2026-11-11 (thread D's survey of missing checks, item 1): a local nothing uses, a local only ever
@@ -11175,6 +11215,7 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
       walkStmt(f->body);
       checkFunctionEnd(f, autoReturn, autoReturn ? returnFrames.back() : nullptr); // (bodyOf still f: an instance's errors are its own)
       checkUnusedNames(f);
+      recordFieldNames(f, f);
       checkFlow(f);
       bodyOf = savedBodyOf;
       if ((impl.accessWarnings || impl.accessErrors) && !probing && !retypingElements)
@@ -11229,6 +11270,8 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
         scope = semanticScopeFor(v->name);
       const Ty* initTy = walkExpr(v->init);
       scope = saved;
+      if (member && v->init && !bodyOf)
+        recordFieldNames(v, v->init); // (a default initializer naming another field: `int b = this.a + 1;`)
       if ((impl.accessWarnings || impl.accessErrors) && !probing && !retypingElements && !bodyOf && returnFrames.empty())
         impl.checkAccessIn(v); // (a local, also a lambda's in a member initializer: with the function it is in)
       // Deduce `auto` now that the initializer is typed, and cache it on the declaration.

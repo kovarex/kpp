@@ -1,0 +1,75 @@
+// spec: what --unused-field-checks takes as named or leaves alone: [[maybe_unused]]; a name in an out-of-line member, in a nested class's member, in a lambda or a local class in a member, in another field's default initializer, in a constructor initializer's argument, in a type (`decltype(this.size)`); a class with a friend (it may name them from anywhere); a public or protected field; a static field; a field whose type's making or ending does something (a guard: a class with a constructor or a destructor of its own); a struct's fields (public)
+// kpp: --unused-field-checks
+extern "C" int printf(const char* format, ...);
+class Guard
+{
+public:
+  Guard() { printf("made "); }
+  ~Guard() { printf("ended\n"); }
+};
+class Holder
+{
+public:
+  Holder();
+  int sum() const;
+  int fromNested() const;
+  int fromLambda() const { auto f = [&this]() { return this.byLambda; }; return f(); }
+  int fromLocal() const
+  {
+    class Reader
+    {
+    public:
+      static int read(const Holder& h) { return h.byLocal; }
+    };
+    return Reader::read(this);
+  }
+  int typed() const { decltype(this.size) copy = 2; return copy; }
+  int initialized() const { return this.second; }
+
+  class Nested
+  {
+  public:
+    static int read(const Holder& h) { return h.byNested; }
+  };
+
+protected:
+  int forDerived = 0;
+
+private:
+  int byOutOfLine = 1;
+  int byNested = 2;
+  int byLambda = 3;
+  int byLocal = 4;
+  int size = 0;
+  int first = 5;
+  int second = this.first + 1;
+  int fromArgument = 0;
+  int argumentOf;
+  [[maybe_unused]] int kept = 0;
+  static int counter;
+  Guard guard;
+};
+int Holder::counter = 0;
+Holder::Holder() : fromArgument(7), argumentOf(this.fromArgument * 2) {}
+int Holder::sum() const { return this.byOutOfLine + this.argumentOf; }
+int Holder::fromNested() const { return Nested::read(this); }
+class WithFriend
+{
+  friend int peek(const WithFriend& w);
+
+private:
+  int secret = 9;
+};
+int peek(const WithFriend& w) { return w.secret; }
+struct Plain
+{
+  int x = 1;
+};
+int main()
+{
+  Holder h;
+  WithFriend w;
+  Plain p;
+  printf("%d %d %d %d %d %d %d %d\n", h.sum(), h.fromNested(), h.fromLambda(), h.fromLocal(), h.typed(), h.initialized(), peek(w), p.x);
+  return 0;
+}

@@ -51,6 +51,8 @@ void usage(FILE* out)
           "  --slip-checks  on by default (kept for scripts): an assignment as a condition, an `if` whose body is `;`, a switch\n"
           "                on an enum naming neither every enumerator nor a default and an integer division stored in a\n"
           "                floating variable are errors (kovarex, 2026-11-11)\n"
+          "  --unused-field-checks  a private data member nothing names is an error (kovarex, 2026-11-11; [[maybe_unused]]\n"
+          "                keeps one): on by default once the game is free of them\n"
           "  --zero-null-warnings  a literal 0 that would be a pointer (an error, docs/design.md 4) is a warning instead:\n"
           "                convert.cmd's nullptr pass rewrites what they name\n"
           "  --implicit-uses FILE  write each constructor and conversion operator marked `implicit`, its uses as an\n"

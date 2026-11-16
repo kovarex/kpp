@@ -2283,6 +2283,99 @@ size_t GlobalScope::typeCountWithoutUnknown() const { return impl->types.sizeWit
 
 void GlobalScope::recordDependencies(bool on) { recordingDependencies = on; }
 
+void GlobalScope::reportUnusedFields(const std::vector<std::unique_ptr<ParsedFile>>& files)
+{
+  Impl& impl = *this->impl;
+  impl.forgetErrorsOf({&impl.fieldCheckUnit}); // (the last report's: what is still unused is reported again)
+  {
+    std::lock_guard lock(impl.fieldCheckUnit.mutex);
+    impl.fieldCheckUnit.list = DependencyList{};
+  }
+  if (!unusedFieldChecksOn())
+    return;
+  // What the walk units named, by class (Walker::recordFieldNames).
+  std::unordered_map<const Decl*, std::unordered_set<uint32_t>> named;
+  for (Impl::FieldNamesShard& shard : impl.fieldNames)
+  {
+    std::lock_guard lock(shard.mutex);
+    for (const auto& [unit, list] : shard.map)
+      for (const auto& [cls, symbol] : list)
+        named[cls].insert(symbol);
+  }
+  // What this reads and reports is its own unit's (a compile server's reads outside any unit build an edit from scratch).
+  RecordInto into(&impl.fieldCheckUnit);
+  TypeTable& types = impl.types;
+  // Whether making or ending an object of type t does nothing a program sees (Walker::checkUnusedNames' rule for locals):
+  // no class with a constructor or a destructor of its own (nor a base or member with one), no reference to a class.
+  std::function<bool(const Ty*, int)> plain = [&](const Ty* t, int depth) -> bool
+  {
+    if (!t || depth > 16)
+      return false;
+    if (t->isReference())
+      return types.unqualified(types.stripRef(t))->kind != TyKind::Class;
+    t = types.unqualified(t);
+    while (t->kind == TyKind::Array && t->inner)
+      t = types.unqualified(t->inner);
+    if (t->kind != TyKind::Class)
+      return true;
+    ClassDecl* def = impl.classDefinition(t);
+    if (!def || def->isTypedUnion || impl.triviallyDestructible(t) != std::optional<bool>(true))
+      return false;
+    for (Decl* m : membersRead(def))
+      if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor) && !(m->flags & DF_Default))
+        return false;
+      else if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef)) && !plain(impl.declaredTypeOf(m, nullptr, 0), depth + 1))
+        return false;
+    std::vector<const Ty*> bases;
+    impl.directBases(t, def, bases);
+    for (const Ty* b : bases)
+      if (!plain(b, depth + 1))
+        return false;
+    return true;
+  };
+  auto check = [&](ClassDecl* c)
+  {
+    if (!c->isDefinition || c->isClosure || c->isTypedUnion || c->keyword == Kw::union_ || c->name.empty() || !c->file || c->file->isImported)
+      return;
+    for (Decl* m : c->members)
+      if (m && (m->kind == NodeKind::FriendDecl || (m->flags & DF_Friend)))
+        return; // (a friend may name them, from anywhere)
+    auto found = named.find(c);
+    for (Decl* m : c->members)
+    {
+      if (!m || m->kind != NodeKind::VariableDecl || (m->flags & (DF_Static | DF_Typedef | DF_Extern)) || (m->attributes & ATTR_MaybeUnused) ||
+          !(m->access == Access::Private || (m->access == Access::Default && c->keyword == Kw::class_)))
+        continue;
+      auto* v = static_cast<VariableDecl*>(m);
+      if (v->name.parts.size() != 1 || v->name.parts[0].symbol == UINT32_MAX || v->when)
+        continue;
+      if (found != named.end() && found->second.count(v->name.parts[0].symbol))
+        continue;
+      const Ty* t = impl.declaredTypeOf(v, nullptr, 0);
+      if (!t || !t->isKnown() || types.isDependent(t) || Impl::mentionsUnknown(t) || impl.containsAuto(t) || !plain(t, 0))
+        continue;
+      impl.reportCheckerError(v->file ? v->file : c->file, v->token,
+                              "the private field " + std::string(impl.symbols.name(v->name.parts[0].symbol)) + " of " +
+                                  std::string(impl.symbols.name(c->name.last().symbol)) +
+                                  " is never used: remove it, or keep it with [[maybe_unused]]");
+    }
+  };
+  std::function<void(Span<Decl*>)> visit = [&](Span<Decl*> decls)
+  {
+    for (Decl* d : decls)
+      if (d && d->kind == NodeKind::NamespaceDecl)
+        visit(static_cast<NamespaceDecl*>(d)->decls);
+      else if (d && d->kind == NodeKind::ClassDecl)
+      {
+        visit(static_cast<ClassDecl*>(d)->members);
+        check(static_cast<ClassDecl*>(d));
+      }
+  };
+  for (const std::unique_ptr<ParsedFile>& f : files)
+    if (f && !f->isImported)
+      visit(f->decls);
+}
+
 void GlobalScope::resolveDone()
 {
   impl->afterResolve = true;

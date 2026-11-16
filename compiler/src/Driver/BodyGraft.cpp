@@ -1226,6 +1226,7 @@ bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, double collec
     logBuildNote("not incremental: " + why);
     return false;
   }
+  global.reportUnusedFields(kept.parsed); // (the walked files' units named the fields anew, the others' as before)
   kept.resolveTime = seconds(Clock::now() - start);
   // The reports a build from scratch prints. The lexer's counts come from lexing every file again
   // into a table of its own (the kept table holds the old texts' identifiers too); with --quiet

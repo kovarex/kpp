@@ -495,6 +495,19 @@ replacements, in the order of how much code they remove:
    (its PR #8726; `--unused-checks` is still accepted); `tools/unused/fix.py` writes `[[maybe_unused]]` where
    a compile's errors (`--diagnostic-columns`) point, a capture left to a hand.
    Specs kpp/unused_names_are_errors, kpp/unused_names_kept_or_exempt.
+   A private data member nothing names is an error too (kovarex's 2026-11-11 rule names private fields with
+   locals, parameters and captures), kept by `[[maybe_unused]]`: named is spelled in a member function of its
+   class (in the class or out of it), in a class nested in it, in a lambda or a local class in such a member, in a
+   constructor initializer's argument or another member's default initializer, or in a type (`decltype(this.x)`).
+   Its own initializers are no use (`x(v)`, `int x = 0;`), as clang's -Wunused-private-field takes them. Not judged:
+   a class with a friend (it may name them anywhere), a static member, a public or protected one, one whose type's
+   making or ending does something (the locals' rule), one whose type depends on a template's parameters, a `when`
+   member, a union's, a typed union's and an imported C struct's. Each walk unit records the data members of its
+   classes it names (Walker::recordFieldNames: by name, read from the member list unrecorded, so a layout edit
+   stays incremental), and after a build's walks, a compile server's walk of an edit too, the fields no record
+   names are reported (GlobalScope::reportUnusedFields, a unit of its own whose errors go before the next report).
+   Under `--unused-field-checks` until the game is free of them: its kpp branch at 174dd30 has 53 (2026-11-16).
+   Specs kpp/unused_private_fields_are_errors, kpp/unused_private_fields_kept_or_exempt.
    A local read before anything is assigned to it is an error (2026-11-11, kovarex's "ok" to item 2 of thread
    D's survey: zero is the rule for what has no initializer, "Sanitizers and debug checks" below, and a read the
    compiler can prove comes first is an error): "the local x is read before anything is assigned to it (it is

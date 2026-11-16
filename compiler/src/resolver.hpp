@@ -389,6 +389,9 @@ public:
   // itself are counted, rewalkCounts). forgetWalks: the file's walks' recorded reads, before they
   // are walked again. instancesWalksUse: the instances the file's walks requested.
   void resolveDone();
+  // --unused-field-checks: after a build's walks (a compile server's walk of an edit too), a private data member of a
+  // class definition that no walk unit named (Walker::recordFieldNames) is an error; the last report's errors go first.
+  void reportUnusedFields(const std::vector<std::unique_ptr<ParsedFile>>& files);
   void beginRewalk();
   bool endRewalk();
   void forgetWalks(const ParsedFile& file);
