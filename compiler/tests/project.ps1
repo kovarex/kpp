@@ -33,7 +33,7 @@ function Kpp([string[]]$arguments)
 
 # The sections, each started as `project.ps1 -Section NAME`, its output kept and shown in this order,
 # its exit code its failures; one that stops on an error of its own (not a Fail) is a failure too.
-$sections = 'basic', 'clibs', 'libraries', 'syslibs', 'matrix', 'sanitize', 'outside', 'runfile', 'measure', 'paths', 'readonly', 'linkinputs', 'pch'
+$sections = 'basic', 'clibs', 'libraries', 'syslibs', 'matrix', 'sanitize', 'outside', 'runfile', 'measure', 'paths', 'readonly', 'linkinputs', 'pch', 'buildinfo'
 function Run([string]$name) { return $Section -eq $name }
 if (-not $Section)
 {
@@ -1127,6 +1127,91 @@ if (Run 'pch')
     Set-Content 'build.kpp' (& $describe "  pre.precompiledHeader(`"missing.h`");`n")
     $output = (Kpp @('release', '--no-server')) -join "`n"
     if ($code -eq 0 -or $output -notmatch 'the C library pre: its precompiled header missing\.h is in none of its include directories') { Fail "a header in no include directory: exit $code`n$output" }
+  }
+  finally { Pop-Location }
+}
+# What kpp does itself around a build, so that build.kpp starts no process (docs/build.md, "Build information" and
+# "Steps after the build"): buildInfo()'s constants from git and a project file (the count of HEAD's commits, a
+# count after a commit plus a base, a given number, the revision, version.txt's text), written again only when
+# HEAD moves, and by --check too; the after-build steps: the executable hard-linked into bin\, the PDB when there,
+# a config file written when missing and kept when there. Errors: a given number that is no number, a text file
+# and a step's file outside the project, a shallow clone.
+if (Run 'buildinfo')
+{
+  $project = Join-Path $work 'buildinfo'
+  if (Test-Path $project) { Remove-Item -Recurse -Force $project } # (a run of this section alone: its last run's repository)
+  New-Item -ItemType Directory -Force "$project\src" | Out-Null
+  Push-Location $project
+  try
+  {
+    function RunGit([string[]]$arguments)
+    {
+      $ErrorActionPreference = 'Continue'
+      $output = & git.exe -c user.name=kpp -c user.email=kpp@localhost @arguments 2>&1 | ForEach-Object { "$_" }
+      $ErrorActionPreference = 'Stop'
+      return $output
+    }
+    $describe = { param([string]$info, [string]$steps)
+      "void build(Project& project)`n{`n  Executable& app = project.executable(`"app`", {`"src`"});`n  app.buildInfo()$info;`n$steps}" }
+    $steps = "  app.linkAfterBuild(`"{exe}`", `"bin/{configuration}/app.exe`");`n" +
+             "  app.linkAfterBuildIfThere(`"build/{configuration}/app.pdb`", `"bin/{configuration}/app.pdb`");`n" +
+             "  app.linkAfterBuildIfThere(`"build/{configuration}/none.pdb`", `"bin/{configuration}/none.pdb`");`n" +
+             "  app.writeAfterBuildIfMissing(`"config/config.ini`", `"[path]\nread-data=data\n`");`n"
+    Set-Content 'build.kpp' (& $describe '.text("version", "version.txt")' $steps)
+    Set-Content 'version.txt' "1.2.3`r`n"
+    Set-Content 'src\main.kpp' 'int main() { std::println(buildInfo::number, " ", std::StringView(buildInfo::version), " ", std::StringView(buildInfo::revision).size()); return 0; }'
+    RunGit @('init', '-q') | Out-Null
+    RunGit @('add', '-A') | Out-Null
+    RunGit @('commit', '-q', '-m', 'one') | Out-Null
+    $first = (RunGit @('rev-parse', 'HEAD')) -join ''
+    RunGit @('commit', '-q', '--allow-empty', '-m', 'two') | Out-Null
+    RunGit @('commit', '-q', '--allow-empty', '-m', 'three') | Out-Null
+    $output = @(Kpp @('--no-server', '--run'))
+    if ($code -ne 0 -or $output[-1] -ne '3 1.2.3 40') { Fail "buildInfo(): exit $code, '$($output[-1])', not '3 1.2.3 40'`n$($output -join "`n")" }
+    if ($output -match '^3$') { Fail "git's output reached kpp's:`n$($output -join "`n")" }
+    foreach ($made in 'bin\debug\app.exe', 'bin\debug\app.pdb')
+    {
+      if (-not (Test-Path $made)) { Fail "the after-build steps made no $made" }
+    }
+    if (Test-Path 'bin\debug\none.pdb') { Fail "linkAfterBuildIfThere of a missing file made bin\debug\none.pdb" }
+    $built = (& '.\bin\debug\app.exe') -join ''
+    if ($built -ne '3 1.2.3 40') { Fail "bin\debug\app.exe printed '$built'" }
+    if ((Get-Content -Raw 'config\config.ini') -ne "[path]`nread-data=data`n") { Fail "config\config.ini is '$(Get-Content -Raw 'config\config.ini')'" }
+    Set-Content 'config\config.ini' 'edited'
+    $info = 'build\kpp\buildinfo\app\BuildInfo.kpp'
+    $written = (Get-Item $info).LastWriteTimeUtc
+    $output = @(Kpp @('--no-server', '--run'))
+    if ($code -ne 0 -or $output[-1] -ne '3 1.2.3 40') { Fail "built again: exit $code, '$($output[-1])'`n$($output -join "`n")" }
+    if ((Get-Item $info).LastWriteTimeUtc -ne $written) { Fail "HEAD unchanged, and $info was written again" }
+    if ((Get-Content -Raw 'config\config.ini').Trim() -ne 'edited') { Fail "writeAfterBuildIfMissing replaced a config.ini that was there" }
+    RunGit @('commit', '-q', '--allow-empty', '-m', 'four') | Out-Null
+    $output = @(Kpp @('--no-server', '--run'))
+    if ($code -ne 0 -or $output[-1] -ne '4 1.2.3 40') { Fail "after a commit: exit $code, '$($output[-1])', not '4 1.2.3 40'`n$($output -join "`n")" }
+    Set-Content 'build.kpp' (& $describe ".countSince(`"$first`", 100).text(`"version`", `"version.txt`")" '')
+    $output = @(Kpp @('--no-server', '--run'))
+    if ($code -ne 0 -or $output[-1] -ne '103 1.2.3 40') { Fail "countSince(first, 100): exit $code, '$($output[-1])', not '103 1.2.3 40'`n$($output -join "`n")" }
+    Set-Content 'build.kpp' (& $describe '.given("77").text("version", "version.txt")' '')
+    $output = @(Kpp @('--no-server', '--run'))
+    if ($code -ne 0 -or $output[-1] -ne '77 1.2.3 0') { Fail "given(77): exit $code, '$($output[-1])', not '77 1.2.3 0'`n$($output -join "`n")" }
+    # --check writes it too (the editor's check does: Project.cpp's projectCheckArguments)
+    Set-Content 'build.kpp' (& $describe '.text("version", "version.txt")' '')
+    Remove-Item -Recurse -Force 'build\kpp\buildinfo'
+    $output = (Kpp @('app', '--check', '--no-server')) -join "`n"
+    if ($code -ne 0 -or -not (Test-Path $info)) { Fail "kpp app --check with buildInfo(): exit $code, $info $(if (Test-Path $info) { 'written' } else { 'not written' })`n$output" }
+    foreach ($case in @(@('.given("7x")', '', 'the given number 7x is not a number of digits'),
+                        @('.text("version", "../version.txt")', '', 'the file must be in the project''s directory'),
+                        @('.text("version", "missing.txt")', '', 'no such file in the project'),
+                        @('.text("version", "version.txt")', "  app.linkAfterBuild(`"{exe}`", `"../app.exe`");`n", 'its files must be in the project''s directory')))
+    {
+      Set-Content 'build.kpp' (& $describe $case[0] $case[1])
+      $output = (Kpp @('--no-server')) -join "`n"
+      if ($code -eq 0 -or -not $output.Contains($case[2])) { Fail "buildInfo()$($case[0]) $($case[1]): exit $code, not '$($case[2])'`n$output" }
+    }
+    Set-Content 'build.kpp' (& $describe '' '')
+    Set-Content '.git\shallow' $first
+    RunGit @('commit', '-q', '--allow-empty', '-m', 'five') | Out-Null
+    $output = (Kpp @('--no-server')) -join "`n"
+    if ($code -eq 0 -or $output -notmatch 'is a shallow clone') { Fail "a shallow clone: exit $code`n$output" }
   }
   finally { Pop-Location }
 }

@@ -1397,6 +1397,25 @@ options (`kpp options` shows the default and where it is declared). option() sta
 source declarations replace it is open. Details: [build.md](build.md), "config:: defaults in
 source"; specs tests/spec/kpp/config_default_*.
 
+**What build.kpp can run (decided by kovarex, 2026-11-16, option A+ of the analysis "build.kpp and running
+scripts").** kovarex: "The fact, that we can build the version from build itself, unlike in C++ version,
+where it had to be done in various git hooks is nice. But I'm worried, the build.kpp can now run any script,
+which looks like a huge security hole." build.kpp itself never could (the interpreter has no I/O), but the
+root project's description named shell commands kpp ran: before-build (under `--check` too), after-build,
+and compiler flags (clang has flags that load a plugin into it). The rule: building, checking or opening a
+project runs only kpp and the compilers, never a command or program the project names; what projects used
+commands for, kpp does itself, typed:
+- the build number and revision from git, and a file's text: `buildInfo()` (docs/build.md, "Build
+  information"; built 2026-11-16);
+- copying or linking the executable and writing a missing config file after the build:
+  `linkAfterBuild`, `linkAfterBuildIfThere`, `writeAfterBuildIfMissing` (docs/build.md, "Steps after the
+  build"; built 2026-11-16);
+- before-build and after-build commands are removed once the game's build.kpp has moved off them (it is
+  checked with the released kpp), and compiler flags (`clangFlag`, `cFlag`, the C libraries') become an
+  allowlist, as Go's cgo flags are: later, this stage.
+What stays: `debug(...)`'s command, which names the program F5 and `--run` start (the person starts it), and
+`kpp measure`'s compare commands, which run only when a person types `kpp measure --compare`.
+
 **What a library's build.kpp can do (audited 2026-11-11 at kovarex's request: "can a bad-actor
 library added to my project, through its build.kpp, do something unexpected on my computer?").**
 A build.kpp runs in the compile-time interpreter, in a kpp process of its own (Project/Describe.cpp,

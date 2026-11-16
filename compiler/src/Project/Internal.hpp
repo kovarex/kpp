@@ -72,6 +72,21 @@ namespace projects
     std::vector<std::string> configFrom; // per config, who set it: project, configuration, target, cell, option
   };
 
+  // Executable::buildInfo()'s (projectlib's BuildInfo): what kpp writes as build\kpp\buildinfo\TARGET\BuildInfo.kpp.
+  struct BuildInfoWanted
+  {
+    bool wanted = false;
+    std::string since, base = "0", number;
+    std::vector<std::string> texts; // NAME=PATH
+  };
+
+  // A step kpp runs itself after the build (projectlib's BuildStep): link, link-if-there, write-if-missing.
+  struct BuildStep
+  {
+    std::string kind, from, to;
+    std::vector<std::string> lines; // write-if-missing's text, a line each
+  };
+
   // One cell, an executable in a configuration, as build.kpp described it (projectlib\Project.kpp's
   // describe, configure(cell) applied). After resolveUses, kppLibraries holds the libraries it uses,
   // each with its roots, absolute, and its scope.
@@ -82,6 +97,8 @@ namespace projects
     std::vector<std::string> systemLibraries; // NAME or PLATFORM NAME: an executable's own (Executable::systemLibrary), a library's when its tests are built (libraryProgram)
     std::vector<std::string> natvis; // Executable::natvis's files, relative to the project
     std::string beforeBuild, afterBuild, debugCommand, debugArguments, debugDirectory;
+    BuildInfoWanted buildInfo;
+    std::vector<BuildStep> steps; // after the build, before after-build's command
     std::string platform; // the platform configure(cell) saw (Cell::platform): windows, linux, freebsd
     std::string unavailable; // Cell::unavailable's reason: the cell is not built (Description::unavailable)
     std::vector<Use> uses;
@@ -278,6 +295,11 @@ namespace projects
   int runTests(const fs::path& root, const Description& d, const Configuration& configuration, const std::vector<std::string>& targets,
                const Request& request);
   int act(const fs::path& root, const Request& request, CompileFunction compile);
+  // Steps.cpp
+  bool insideProject(const fs::path& root, const fs::path& path);
+  fs::path buildInfoFile(const fs::path& root, const Program& p);
+  bool writeBuildInfo(const fs::path& root, const Program& p, std::string& error);
+  bool runSteps(const fs::path& root, const Program& p, const fs::path& exe);
   // IdeProjects.cpp
   std::string visualStudioName(std::string name);
   int generate(const fs::path& root, const Description& d, const Request& request);

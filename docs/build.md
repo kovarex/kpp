@@ -423,9 +423,61 @@ run_tests.cmd.
   1.9 s (compiling build.kpp and the program); with nothing changed it took 0.2 s.
 - **What version 0 lacks:**
   - Steps are `beforeBuild` and `afterBuild` commands of an executable, run by cmd in the
-    project's directory.
+    project's directory. They are going (kovarex, 2026-11-16: design.md, "What build.kpp can run"):
+    build information and the steps after the build below are kpp's own, and once the game's build.kpp
+    uses them, a command is an error. `--check` runs no before-build command since 2026-11-16 (it ran
+    one, before the check).
   - `use()` finds libraries in directories only (below); the registry, build.lock and `kpp add`
     do not exist yet.
+
+### Build information (2026-11-16)
+
+`game.buildInfo()` gives the program `buildInfo::` constants that kpp reads itself, so that no script of
+the project runs before the build (the game's build number was a cmd and a sh script, PR 8763; C++
+Factorio's, FASTBuild steps and git hooks). kpp writes them as `build\kpp\buildinfo\TARGET\BuildInfo.kpp`,
+one of the program's sources, before each build and each check (`--check`, an editor's), and only when
+its text changes, so an unchanged number recompiles nothing.
+
+```cpp
+game.buildInfo().countSince("e20534c41b745b1dae4f29bc4e7cb43ad0b2cd6d", 82606).text("version", "version.txt");
+```
+
+| Constant | What it is |
+|---|---|
+| `buildInfo::number` (i64) | HEAD's commits (`git rev-list --count HEAD`); with `countSince(COMMIT, BASE)`, the commits after COMMIT plus BASE; with `given(NUMBER)`, that number and no git read |
+| `buildInfo::revision` | HEAD's commit, its whole hash; `""` with `given` |
+| `buildInfo::NAME` | `text(NAME, PATH)`'s: the project file's text, its trailing blanks and line ends left out; the file must be in the project |
+
+- **git.** kpp finds the repository at the project's directory or above it (a worktree's `.git` file
+  too) and reads HEAD's commit from git's files. When it is the one the written file was counted at,
+  no git runs: `git rev-list --count HEAD` of Factorio's 87,971 commits took 5.3 s with a cold disk
+  cache and 130 to 170 ms after (2026-11-16), which the scripts paid on every build. Otherwise kpp runs
+  git itself, a fixed command line with the repository's fsmonitor hook off, found on PATH's absolute
+  directories (never the project's or the current directory) or in `C:\Program Files\Git`.
+- **Errors, not guesses:** no repository, no git, a shallow clone (its count is not the history's: `git
+  fetch --unshallow --filter=tree:0 origin`), a COMMIT not in the history, a given number of anything
+  but digits, a text file outside the project or missing. A build without git (a packager's, a release
+  branch whose number is the official one) gives the number: `if (project.setting("buildNumber", "") !=
+  "") info.given(project.setting("buildNumber", ""));` with `kpp --set buildNumber=87995`.
+- Tested by tests/project.ps1, section buildinfo.
+
+### Steps after the build (2026-11-16)
+
+What a project did with an after-build command, kpp does itself, inside the project's directory, after a
+build that wrote the executable (and with `--keep-going` when one is there), in the order given. Paths
+are relative to the project's directory, `{exe}` and `{configuration}` expanded as in the commands, and
+both ends must be inside the project (links and junctions followed): one outside is an error.
+
+| Step | What it does |
+|---|---|
+| `linkAfterBuild(FROM, TO)` | TO made a hard link to FROM, replacing what is there (a copy where a link cannot be made, which kpp says); TO's directory made |
+| `linkAfterBuildIfThere(FROM, TO)` | the same, nothing when FROM is missing (a PDB) |
+| `writeAfterBuildIfMissing(PATH, TEXT)` | PATH written with TEXT when it is missing; one that is there (a config file a person edited) kept |
+
+The game's copy into `bin\Debugx64\` and its `config-path.cfg` and `config\config.ini` are three of
+these each (factorio-in-kpp's build.kpp). Two builds at once (Visual Studio builds factorio and
+factorio-test together) write each file through a name of their own, moved into place. Tested by
+tests/project.ps1, section buildinfo.
 
 ### kpp libraries (working now, 2026-10-31)
 

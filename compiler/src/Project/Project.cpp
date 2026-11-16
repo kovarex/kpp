@@ -282,8 +282,13 @@ bool projectCheckArguments(const std::filesystem::path& directory, const Project
           program.kppLibraries.push_back(l);
       addAll(program.excluded, p.excluded);
       addAll(program.cIncludes, p.cIncludes);
+      if (!program.buildInfo.wanted)
+        program.buildInfo = p.buildInfo;
     }
   }
+  // buildInfo()'s constants, as a build writes them (kpp's own reading of git, no step of the project's)
+  if (program.buildInfo.wanted && !writeBuildInfo(root, program, error))
+    return true;
   // What only code generation and the link read is left out (the executable, the link's options).
   std::vector<std::string> all = buildArguments(root, d, program, request);
   args.clear();

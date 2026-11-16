@@ -218,6 +218,9 @@ namespace projects
     args.push_back(exeOf(root, p, request).string());
     for (const std::string& r : p.roots)
       args.push_back(rooted(root, r).string());
+    // buildInfo()'s constants, which writeBuildInfo writes before the build (Steps.cpp)
+    if (p.buildInfo.wanted)
+      args.push_back(buildInfoFile(root, p).string());
     return args;
   }
 
@@ -260,9 +263,9 @@ namespace projects
       fprintf(stderr, "warning: %s (%s): --toolchain %s takes %s: %s\n", p.name.c_str(), p.configuration.c_str(), toolchain.c_str(),
               toolchainName().c_str(), skipped.c_str());
     fs::create_directories(exe.parent_path(), ec);
-    if (!p.beforeBuild.empty() && host::shellAsIs(withExe(p.beforeBuild, exe, p.configuration)) != 0)
+    if (std::string error; p.buildInfo.wanted && !writeBuildInfo(root, p, error))
     {
-      fprintf(stderr, "error: %s's before-build command failed: %s\n", p.name.c_str(), p.beforeBuild.c_str());
+      fprintf(stderr, "error: %s\n", error.c_str());
       return 1;
     }
     using Clock = std::chrono::steady_clock;
@@ -282,6 +285,12 @@ namespace projects
       else
         fprintf(stderr, "kpp: %s (%s) failed its check after %.1f s\n", p.name.c_str(), p.configuration.c_str(), since(start));
       return code;
+    }
+    // (not for --check, above: a check runs no command of build.kpp's, as an editor's check runs none)
+    if (!p.beforeBuild.empty() && host::shellAsIs(withExe(p.beforeBuild, exe, p.configuration)) != 0)
+    {
+      fprintf(stderr, "error: %s's before-build command failed: %s\n", p.name.c_str(), p.beforeBuild.c_str());
+      return 1;
     }
     double beforeSeconds = std::chrono::duration<double>(start - kppStarted).count();
     std::vector<LibraryJob> jobs(p.links.size());
@@ -475,6 +484,8 @@ namespace projects
     else
       fprintf(stderr, "kpp: %s (%s) failed after %.1f s (%s)\n", p.name.c_str(), p.configuration.c_str(), seconds, split);
     auto afterStart = Clock::now();
+    if (!p.steps.empty() && (code == 0 || (keepGoing && fs::exists(exe, ec))) && !runSteps(root, p, exe))
+      return 1;
     if (!p.afterBuild.empty() && (code == 0 || (keepGoing && fs::exists(exe, ec))) &&
         host::shellAsIs(withExe(p.afterBuild, exe, p.configuration)) != 0)
     {
@@ -530,6 +541,11 @@ namespace projects
     int result = 0;
     for (const Program& p : chosen)
     {
+      if (std::string error; p.buildInfo.wanted && !writeBuildInfo(root, p, error))
+      {
+        fprintf(stderr, "error: %s\n", error.c_str());
+        return 1;
+      }
       std::vector<std::string> args = buildArguments(root, d, p, request);
       size_t exe = std::find(args.begin(), args.end(), "--exe") - args.begin();
       std::vector<std::string> roots(args.begin() + std::min(exe + 2, args.size()), args.end());

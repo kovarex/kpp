@@ -88,6 +88,7 @@ add_executable(kpp
   src/Project/IdeProjects.cpp
   src/Project/Measure.cpp
   src/Project/Menu.cpp
+  src/Project/Steps.cpp
   src/tests.cpp
   src/coverage.cpp
   src/Ast/AstWalk.cpp

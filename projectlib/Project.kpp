@@ -83,6 +83,64 @@ void kppUse(Dependency& d, std::StringView name, std::StringView minimum, std::S
   d.path = path;
 }
 
+// What kpp writes into a program as build/kpp/buildinfo/TARGET/BuildInfo.kpp before its build, when build.kpp
+// asks with Executable::buildInfo() (docs/build.md, "Build information"): namespace buildInfo's constants,
+// read from git and the project's files by kpp itself, so that no script of the project runs. The file is
+// written only when its text changes, so an unchanged number recompiles nothing.
+//   buildInfo::number    i64: the commits of HEAD (after `since`'s, when given) plus `base`; or the given number
+//   buildInfo::revision  HEAD's commit, 40 hexadecimal digits; "" when the number is given
+//   buildInfo::NAME      a text(NAME, PATH)'s: the project file's text, its trailing blanks and line ends left out
+struct BuildInfo
+{
+  bool wanted = false;
+  std::String since;  // a commit: count only the commits after it (git rev-list SINCE..HEAD); "": every commit of HEAD
+  std::String base = "0"; // added to the count
+  std::String number; // given: no git is read (a release branch's official number, a build without git)
+  std::Vector<std::String> texts; // NAME=PATH
+
+  // Count the commits after `commit` and add `base` (Factorio's: the commits since 2.0.47, plus its build 82606).
+  BuildInfo& countSince(std::StringView commit, i64 base)
+  {
+    this.since = commit;
+    this.base = std::toString(base);
+    return this;
+  }
+
+  // The number as given, digits: git is not read, and revision is "". `project.setting("buildNumber", "")`
+  // given here only when it is set lets a build without git (a packager's) name it.
+  BuildInfo& given(std::StringView number)
+  {
+    this.number = number;
+    return this;
+  }
+
+  // buildInfo::NAME, the text of the file PATH (relative to the project, inside it): `text("version", "version.txt")`.
+  BuildInfo& text(std::StringView name, std::StringView path)
+  {
+    kppConfig(this.texts, name, path);
+    return this;
+  }
+};
+
+// A step kpp runs after a build that wrote the executable (Executable::linkAfterBuild and the others): one of a
+// few things kpp does itself, inside the project's directory, so that build.kpp starts no process.
+struct BuildStep
+{
+  std::String kind; // link, link-if-there, write-if-missing
+  std::String from;
+  std::String to;
+  std::String text;
+};
+
+void kppStep(std::Vector<BuildStep>& steps, std::StringView kind, std::StringView from, std::StringView to, std::StringView text)
+{
+  BuildStep& step = steps.emplace_back();
+  step.kind = kind;
+  step.from = from;
+  step.to = to;
+  step.text = text;
+}
+
 // One program the project builds: a target, the matrix's first axis.
 struct Executable
 {
@@ -99,6 +157,8 @@ struct Executable
   std::Vector<std::String> configs;   // config:: constants of this target, NAME=VALUE (kppConfig)
   std::String beforeBuildCommand;
   std::String afterBuildCommand;
+  BuildInfo info;                 // buildInfo()'s
+  std::Vector<BuildStep> afterBuildSteps;
   std::String debugCommand;
   std::String debugArguments;
   std::String debugDirectory;
@@ -150,6 +210,30 @@ struct Executable
   // executable, {configuration} the configuration.
   void beforeBuild(std::StringView command) { this.beforeBuildCommand = command; }
   void afterBuild(std::StringView command) { this.afterBuildCommand = command; }
+
+  // buildInfo:: constants for this program (struct BuildInfo): `game.buildInfo().countSince(commit, 82606)`.
+  BuildInfo& buildInfo()
+  {
+    this.info.wanted = true;
+    return this.info;
+  }
+
+  // After the build: `to` made a hard link to `from` (a copy where a link cannot be made, which kpp says),
+  // replacing what is there; its directory made when missing. Both relative to the project's directory and
+  // inside it, {exe} and {configuration} expanded. linkAfterBuildIfThere does nothing when `from` is missing.
+  void linkAfterBuild(std::StringView from, std::StringView to) { kppStep(this.afterBuildSteps, "link", from, to, ""); }
+
+  void linkAfterBuildIfThere(std::StringView from, std::StringView to)
+  {
+    kppStep(this.afterBuildSteps, "link-if-there", from, to, "");
+  }
+
+  // After the build: the file `path` written with `text` when it is missing (a config file a person may then
+  // edit); one that is there is left as it is.
+  void writeAfterBuildIfMissing(std::StringView path, std::StringView text)
+  {
+    kppStep(this.afterBuildSteps, "write-if-missing", "", path, text);
+  }
 
   // What Run and the debugger start, when not the executable itself: the command, its arguments and
   // the directory it starts in; {exe} and {configuration} are expanded in each, as in the build steps.
@@ -697,6 +781,34 @@ void kppCell(std::String& out, const Project& project, const Executable& target,
   kppLines(out, "cinclude", e.cIncludes);
   kppLine(out, "before-build", e.beforeBuildCommand);
   kppLine(out, "after-build", e.afterBuildCommand);
+  if (e.info.wanted)
+  {
+    out << "build-info 1\n";
+    kppLine(out, "build-info-since", e.info.since);
+    kppLine(out, "build-info-base", e.info.base);
+    kppLine(out, "build-info-number", e.info.number);
+    kppLines(out, "build-info-text", e.info.texts);
+  }
+  // Per step `step KIND`, its paths and its text, a `step-text` line per line of it (an empty one too).
+  for (const BuildStep& step : e.afterBuildSteps)
+  {
+    kppLine(out, "step", step.kind);
+    kppLine(out, "step-from", step.from);
+    kppLine(out, "step-to", step.to);
+    if (step.kind == "write-if-missing")
+    {
+      std::StringView rest = step.text;
+      while (rest.size() != 0)
+      {
+        u64 end = rest.find('\n');
+        std::StringView line = end == std::StringView::npos ? rest : rest.substr(0, end);
+        out << "step-text ";
+        out << line;
+        out << '\n';
+        rest = end == std::StringView::npos ? std::StringView() : rest.substr(end + 1);
+      }
+    }
+  }
   kppLine(out, "debug-command", e.debugCommand);
   kppLine(out, "debug-arguments", e.debugArguments);
   kppLine(out, "debug-directory", e.debugDirectory);
