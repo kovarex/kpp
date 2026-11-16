@@ -1,0 +1,73 @@
+// spec: a constructor of a typed union's own (not a copy or move constructor, which are the compiler's: design.md 8.5) builds the union's members by its initializers and the first alternative, default-constructed, before its body, which may set another (`this[Text] = ...`); a delegating one builds the whole union by the one it names; if the body throws, the alternative it holds then and the members are destroyed
+// factorio: InputAction's loading constructors (`InputAction(Deserialiser& input, bool loadTick = true)`: the update tick and player index by their initializers, then the action's alternative by the type read)
+int live = 0;
+struct Tracked
+{
+  int id = 0;
+  Tracked(int id) : id(id) { live += 1; }
+  Tracked(const Tracked& other) : id(other.id) { live += 1; }
+  ~Tracked() { live -= 1; }
+};
+struct Reader
+{
+  int values[4] = {11, 1, 12, 2};
+  int next = 0;
+  int read()
+  {
+    if (this.next == 4)
+      throw 4;
+    return this.values[this.next++];
+  }
+};
+union enum Action : u16
+{
+  { {int, Count}, {std::String, Text}, {Tracked, Watched} }
+  u64 tick = 7;
+  Tracked member = Tracked(100);
+
+  Action(Reader& reader) : tick(u64(reader.read()))
+  {
+    std::println("before the body: count ", this == Action::Count, " ", this[Action::Count]);
+    if (reader.read() == 1)
+      this[Action::Text] = "read";
+    else
+    {
+      this[Action::Watched] = Tracked(5);
+      reader.read(); // (throws at the end of the values)
+    }
+  }
+  Action(int count) : Action(Action::Count, count) {}
+};
+void show(const char* what, const Action& a)
+{
+  std::print(std::StringView(what), ": tick ", a.tick, " ");
+  switch (a)
+  {
+    case Action::Count: std::println("count ", a[Action::Count]);
+    case Action::Text: std::println("text ", a[Action::Text]);
+    case Action::Watched: std::println("watched ", a[Action::Watched].id);
+  }
+}
+int main()
+{
+  Reader reader;
+  {
+    Action a(reader);
+    show("read", a);
+    Action b = a;
+    show("copy", b);
+    Action c(3);
+    show("delegated", c);
+    std::println("live ", live);
+  }
+  std::println("live ", live);
+  try
+  {
+    Action thrown(reader);
+  }
+  catch (int at)
+  {
+    std::println("thrown at ", at, " live ", live);
+  }
+  return 0;
+}

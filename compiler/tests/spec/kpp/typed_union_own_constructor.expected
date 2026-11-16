@@ -1,0 +1,8 @@
+before the body: count true 0
+read: tick 11 text read
+copy: tick 11 text read
+delegated: tick 7 count 3
+live 3
+live 0
+before the body: count true 0
+thrown at 4 live 0

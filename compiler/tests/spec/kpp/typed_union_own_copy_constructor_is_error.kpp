@@ -1,0 +1,15 @@
+// spec: a typed union's copy and move constructors, destructor and assignments are the compiler's (design.md 8.5): a copy constructor declared in the union enum, which its copies would never call, is a compile error (its other constructors are its own: kpp/typed_union_own_constructor)
+// error: typed_union_own_copy_constructor_is_error.kpp:8: error: the typed union Action declares a copy or move constructor: a typed union's copy and move constructors, destructor and assignments are the compiler's (design.md 8.5)
+union enum Action : u16
+{
+  { {int, Count}, {std::String, Text} }
+  u64 tick = 7;
+
+  Action(const Action& other) : tick(other.tick) {}
+};
+int main()
+{
+  Action a;
+  Action b = a;
+  return int(b.tick);
+}

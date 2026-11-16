@@ -101,7 +101,11 @@
       initializeOwnMembers(c, t, addr, parts, at);
       build();
     }
-    void initializeOwnMembers(ClassDecl* c, const Ty* t, const std::string& addr, InlineParts& parts, Node* at);
+    void initializeOwnMembers(ClassDecl* c, const Ty* t, const std::string& addr, InlineParts& parts, Node* at,
+                              Span<FunctionDecl::CtorInit> inits = {});
+    // Whether a constructor of typed union c's own takes these arguments (it then builds the union,
+    // not the alternative of the value's type: design.md 8.5).
+    bool ownConstructorTakes(ClassDecl* c, const Ty* t, Span<Expr*> args, Node* at);
     // A copy (or move) of a typed union: its own members, then the alternative src holds.
     void copyTypedUnion(ClassDecl* c, const Ty* t, const std::string& dst, const std::string& src, bool move, Node* at);
     // The destruction of a typed union: the alternative it holds, then its own members, last first.

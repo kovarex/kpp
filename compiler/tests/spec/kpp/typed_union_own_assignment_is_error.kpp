@@ -1,5 +1,5 @@
 // spec: a typed union's assignment operators are the compiler's (design.md 8.5): one declared in the union enum, which the union's assignment would never call, is a compile error
-// error: typed_union_own_assignment_is_error.kpp:7: error: the typed union Action declares an assignment operator: a typed union's constructors, destructor and assignments are the compiler's (build it from a tag and value, design.md 8.5)
+// error: typed_union_own_assignment_is_error.kpp:7: error: the typed union Action declares an assignment operator: a typed union's copy and move constructors, destructor and assignments are the compiler's (design.md 8.5)
 union enum Action : u16
 {
   { {int, Count}, {std::String, Text} }

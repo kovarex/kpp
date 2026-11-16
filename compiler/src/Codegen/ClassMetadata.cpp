@@ -674,9 +674,10 @@ auto codegen::Emitter::destroyMembers(const std::string& addr, const Ty* t, Node
 auto codegen::Emitter::defaultConstruct(const std::string& addr, const Ty* t, Node* at) -> void
 {
   ClassDecl* c = classDef(t->decl, at);
-  if (c->isTypedUnion)
+  if (c->isTypedUnion && !findConstructor(t, {}, at))
   {
-    // `Property p;`: its own members, then the first alternative, default-constructed.
+    // `Property p;`: its own members, then the first alternative, default-constructed (a default
+    // constructor of the union's own: below, as any class's).
     defaultConstructTypedUnion(c, t, addr, at);
     return;
   }
@@ -1055,6 +1056,21 @@ auto codegen::Emitter::initializeMembers(const std::string& addr, const Ty* t, S
       builtPart(addr, t); // (whole now: if the body throws, its destructor runs, [except.ctor] 4)
       return;
     }
+  }
+  // A typed union's own constructor (design.md 8.5): its members by the initializers, then its first
+  // alternative, default-constructed, before the body, which may set another; from then on the body's
+  // exception destroys the whole union, the alternative it holds then included (kpp/typed_union_own_constructor).
+  if (built && isClass(t) && t->decl && classDef(t->decl, at)->isTypedUnion)
+  {
+    ClassDecl* u = classDef(t->decl, at);
+    {
+      InlineParts parts(*this, at);
+      initializeOwnMembers(u, t, addr, parts, at, inits);
+      if (!u->alternatives.empty())
+        constructAlternative(u, t, addr, 0, nullptr, at);
+    }
+    builtPart(addr, t);
+    return;
   }
   if (!inits.empty() && isClass(t) && t->decl && fromOwnConstructor(t, at))
     checkInitializersNamed(t, info, inits, at);
@@ -1548,7 +1564,8 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
     });
     return;
   }
-  if (c->isTypedUnion && args.size() == 1 && args[0]->ty && args[0]->ty->isKnown() && !isPackExpansion(args[0])) // an expansion: its element, below
+  if (c->isTypedUnion && args.size() == 1 && args[0]->ty && args[0]->ty->isKnown() && !isPackExpansion(args[0]) && // an expansion: its element, below
+      !ownConstructorTakes(c, t, args, at)) // (`InputAction(input)`: the union's own constructor, below)
   {
     // `Shape a(s)`, `Shape(7)`, a member initializer `shape(s)`, `new (slot) Shape(x)`: as
     // copy-initialization, a value of the union itself copies or moves it, any other the

@@ -10995,23 +10995,26 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
                                                       " derives from " + (base->name.empty() ? std::string("a") : impl.namePartText(base->name.last()) + ",") +
                                                       " a polymorphic class (a struct is a public value type, design.md \"struct and class\"): make it a class");
       checkDestructorNoexcept(c);
-      // A typed union's constructors, destructor and assignments are the compiler's (design.md 8.5): its own would build no
-      // alternative and set no tag, or never be called (until 2026-11-16 a constructor left the tag unset, read as another
-      // alternative, and an operator= of its own was skipped by the union's assignment).
+      // A typed union's copy and move constructors, destructor and assignments are the compiler's (design.md 8.5): its own
+      // would never be called (until 2026-11-16 an operator= of its own was skipped by the union's assignment). Its other
+      // constructors are its own, the first alternative built before their bodies (kpp/typed_union_own_constructor).
       if (c->isTypedUnion && c->isDefinition && !activeSubst && !probing && file && !file->isImported)
+      {
+        GlobalScope::Impl::SpecialMembers special = impl.specialMembersOf(c);
         for (Decl* m : c->members)
         {
           if (m->kind != NodeKind::FunctionDecl)
             continue;
           auto* f = static_cast<FunctionDecl*>(m);
-          const char* what = (f->flags & DF_Constructor)                                                                   ? "a constructor"
-                           : (f->flags & DF_Destructor)                                                                    ? "a destructor"
+          const char* what = f == special.copyCtor || f == special.copyCtorNonConst || f == special.moveCtor ? "a copy or move constructor"
+                           : (f->flags & DF_Destructor)                                                         ? "a destructor"
                            : !f->name.empty() && f->name.last().special == 2 && f->name.last().opToken == uint32_t(P::Assign) ? "an assignment operator"
-                                                                                                                           : nullptr;
+                                                                                                                : nullptr;
           if (what)
             impl.reportCheckerError(file, f->token, "the typed union " + impl.namePartText(c->name.last()) + " declares " + what +
-                                                        ": a typed union's constructors, destructor and assignments are the compiler's (build it from a tag and value, design.md 8.5)");
+                                                        ": a typed union's copy and move constructors, destructor and assignments are the compiler's (design.md 8.5)");
         }
+      }
       if (c->isDefinition && !activeSubst && !probing && !retypingElements && file && !file->isImported && !inGenericTemplate() &&
           c->templateParams.empty() && !c->bases.empty())
         if (const Ty* self = impl.selfType(c); self && self->isKnown() && !types.isDependent(self))

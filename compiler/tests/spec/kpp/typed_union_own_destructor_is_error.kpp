@@ -1,5 +1,5 @@
 // spec: a typed union's destructor is the compiler's (design.md 8.5): one declared in the union enum is a compile error
-// error: typed_union_own_destructor_is_error.kpp:7: error: the typed union Action declares a destructor: a typed union's constructors, destructor and assignments are the compiler's (build it from a tag and value, design.md 8.5)
+// error: typed_union_own_destructor_is_error.kpp:7: error: the typed union Action declares a destructor: a typed union's copy and move constructors, destructor and assignments are the compiler's (design.md 8.5)
 union enum Action : u16
 {
   { {int, Count}, {std::String, Text} }

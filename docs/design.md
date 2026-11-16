@@ -840,14 +840,19 @@ hand-written tagged union has them: `union enum InputAction : u16 { {...} u64 up
 playerIndex; }` with 112 bytes of alternatives is 128 bytes (the tag first made 136: `tag 2, pad 6`
 inside the union and `pad 6` after the members). The debugger shows them before `[tag]`. Until
 2026-11-16 the members were left out of every one of these operations (a copy's tick was garbage) and
-laid out after the storage. What is not decided yet is an error, never a silent wrong answer:
-- A constructor, destructor or assignment operator declared in a union enum ("the typed union X
-  declares a constructor: ..."): its own would build no alternative and set no tag, or never be called.
-  A union is built from a tag and value, then its members set.
+laid out after the storage. A constructor of the union's own (not a copy or move constructor) builds the members by its
+initializers, then the first alternative, default-constructed, before its body, which may set another
+(`this[Text] = ...`, the game's loading constructors); a delegating one builds the whole union by the
+one it names (`: Action(Action::Count, n)`); from the body on, an exception destroys the alternative held
+then and the members (kpp/typed_union_own_constructor). A constructor of its own taking the value comes
+before the alternative of the value's type. What is not decided yet is an error, never a silent wrong answer:
+- A copy or move constructor, destructor or assignment operator declared in a union enum ("the typed
+  union X declares a destructor: ..."): the union's own copies, destruction and assignment are the
+  compiler's, which would never call them.
 - The built-in `==` and `<=>` of a union with members of its own ("... which the built-in == would
   leave out: declare its operator=="), as std::variant's compare the alternative alone.
 Specs: kpp/typed_union_data_members, kpp/typed_union_data_members_before_tag,
-kpp/typed_union_own_constructor_is_error, kpp/typed_union_own_assignment_is_error,
+kpp/typed_union_own_constructor, kpp/typed_union_own_copy_constructor_is_error, kpp/typed_union_own_assignment_is_error,
 kpp/typed_union_own_destructor_is_error, kpp/typed_union_data_members_compared_is_error.
 
 *inline(N)* (kovarex 2026-11-16, option D of the InputAction study: "without the inline, everything is

@@ -339,14 +339,24 @@ auto codegen::Emitter::ownMembers(ClassDecl* c, const Ty* t, Node* at) -> std::v
   return members;
 }
 
-auto codegen::Emitter::initializeOwnMembers(ClassDecl* c, const Ty* t, const std::string& addr, InlineParts& parts, Node* at) -> void
+auto codegen::Emitter::ownConstructorTakes(ClassDecl* c, const Ty* t, Span<Expr*> args, Node* at) -> bool
+{
+  if (!hasUserConstructors(c))
+    return false;
+  FunctionDecl* f = findConstructor(t, argTypesOf(args), at);
+  return f && !(f->flags & DF_Default);
+}
+
+auto codegen::Emitter::initializeOwnMembers(ClassDecl* c, const Ty* t, const std::string& addr, InlineParts& parts, Node* at,
+                                            Span<FunctionDecl::CtorInit> inits) -> void
 {
   std::vector<std::pair<uint32_t, Decl*>> members = ownMembers(c, t, at);
   if (members.empty())
     return;
-  // The class's member initialization: the members by their default member initializers, the tag
-  // left zero, the alternatives' storage untouched (no alternative has an initializer).
-  initializeMembers(addr, t, {}, at);
+  // The class's member initialization: the members by a constructor's initializers or their default
+  // member initializers, the tag left zero, the alternatives' storage untouched (no alternative has an
+  // initializer).
+  initializeMembers(addr, t, inits, at);
   const StructInfo& info = structFor(t, at);
   for (auto& [index, d] : members)
     parts.built(gep(info.name, addr, index), info.fieldTypes[index]);
