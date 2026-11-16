@@ -59,6 +59,7 @@ namespace
       kwEnumeratorName = symbols.intern("enumeratorName");
       kwTypes = symbols.intern("types");
       kwFromStr = symbols.intern("fromStr");
+      kwUnderlyingType = symbols.intern("UnderlyingType");
       kwOptional = symbols.intern("Optional");
       kwUniquePtr = symbols.intern("UniquePtr");
       kwStd = symbols.intern("std");
@@ -1559,10 +1560,12 @@ namespace
     // the AST.
     void addEnumBuiltins(EnumDecl* e, uint32_t start, size_t mark)
     {
-      bool hasStr = false, hasFromStr = false, hasEnumeratorName = false;
+      bool hasStr = false, hasFromStr = false, hasEnumeratorName = false, hasUnderlyingType = false;
       for (size_t i = mark; i < scratch.size(); ++i)
       {
         Node* n = scratch[i];
+        if (n->kind == NodeKind::UsingAliasDecl && static_cast<UsingAliasDecl*>(n)->name == kwUnderlyingType)
+          hasUnderlyingType = true;
         if (n->kind == NodeKind::FunctionDecl)
         {
           auto* f = static_cast<FunctionDecl*>(n);
@@ -1575,6 +1578,23 @@ namespace
         }
       }
       NamePart part;
+      // `using UnderlyingType = u16;`: the enumeration's underlying type, written or int (C++'s
+      // std::underlying_type_t<E>, as std::UnderlyingType<E>), for `values[E::UnderlyingType(e)]` (kovarex,
+      // 2026-11-16).
+      if (!hasUnderlyingType)
+      {
+        UsingAliasDecl* alias = decl<UsingAliasDecl>(start);
+        alias->name = kwUnderlyingType;
+        if (e->underlying)
+          alias->type = e->underlying;
+        else
+        {
+          BuiltinType* fallback = node<BuiltinType>(start);
+          fallback->keyword = Kw::int_;
+          alias->type = fallback;
+        }
+        pushDecl(alias);
+      }
       VariableDecl* count = decl<VariableDecl>(start);
       count->flags |= DF_Static | DF_Const;
       count->builtin = BUILTIN_EnumCount;
@@ -7870,7 +7890,7 @@ namespace
     uint32_t testCount = 0;   // Tests parsed so far in this file.
     uint32_t kwThisType;
     uint32_t kwImplicit, kwFallthrough, kwBothConst, kwClassConst, kwSuper, kwAccumulate, kwImport, kwAssert, kwReleaseAssert, kwCaller,
-             kwConditional, kwUnderscore, kwConfig, kwNameof, kwCount, kwValues, kwStr, kwEnumeratorName, kwTypes, kwFromStr, kwOptional, kwUniquePtr, kwStd, kwText, kwTag,
+             kwConditional, kwUnderscore, kwConfig, kwNameof, kwCount, kwValues, kwStr, kwEnumeratorName, kwTypes, kwFromStr, kwUnderlyingType, kwOptional, kwUniquePtr, kwStd, kwText, kwTag,
              kwTagField,
              kwTagMethod, kwTypeMember, kwSuite, kwFlags;
     // The flags of the class spliceFlags wrote at token pendingFlagsAt, which parseClassOrElaborated gives it.

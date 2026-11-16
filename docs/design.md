@@ -661,6 +661,7 @@ Direction::count                       // 5
 for (Direction d : Direction::values)  // iteration, in declaration order
 d.str()                                // "North"; a user-written str() replaces the generated one
 Direction::fromStr("North")            // Optional<Direction>
+Direction::UnderlyingType(d)           // its number, as u8: the underlying type, written or int (2026-11-16)
 switch (d) { case Direction::North: ... } // exhaustive, no default; an invalid value aborts
 ```
 Inside the enum's methods `this` is the value and the enumerators are in scope unqualified.

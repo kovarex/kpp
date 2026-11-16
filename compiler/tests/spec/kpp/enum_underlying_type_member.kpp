@@ -1,0 +1,24 @@
+// spec: every kpp enum, and a typed union's Tag, has `E::UnderlyingType`, its underlying type (written, or int), as C++'s std::underlying_type_t<E> and kpp's std::UnderlyingType<E>, so a value converts to its number without spelling the type: `names[E::UnderlyingType(e)]` (design.md 6)
+// factorio: InputActionList's name table indexed by an InputActionType (InputAction::Tag, u16): kovarex 2026-11-16, "casting it with u16 or something would repeat the type"
+enum class Direction : u8
+{
+  { North, East, South, West }
+};
+enum class Plain
+{
+  { One, Two }
+};
+union enum class Action : u16
+{
+  { {int, Count}, {std::String, Text} }
+};
+static_assert(std::isSame<Direction::UnderlyingType, u8> && std::isSame<Plain::UnderlyingType, int>);
+static_assert(std::isSame<Action::Tag::UnderlyingType, u16> && std::isSame<Action::Tag::UnderlyingType, std::UnderlyingType<Action::Tag>>);
+int main()
+{
+  std::Vector<const char*> names(usize(Action::Tag::count));
+  for (Action::Tag tag : Action::Tag::values)
+    names[Action::Tag::UnderlyingType(tag)] = tag.str();
+  std::println(std::StringView(names[0]), " ", std::StringView(names[1]), " ", Direction::UnderlyingType(Direction::West) + 0);
+  return 0;
+}
